@@ -495,8 +495,14 @@
       </div>
       <div class="stack" style="margin-top: 15px;">
         <label class="tag" for="newPlayerPassword">Password</label>
-        <input id="newPlayerPassword" type="password" placeholder="Enter password" />
-      </div>
+<input
+  id="newPlayerPassword"
+  type="tel"
+  inputmode="numeric"
+  pattern="\d{4}"
+  maxlength="4"
+  placeholder="4-digit PIN"
+/>      </div>
     </div>
     <div class="modal-footer">
       <button id="cancelAddPlayerBtn" class="btn" type="button">Cancel</button>
@@ -517,8 +523,14 @@
         </div>
         <div class="stack" style="margin-top: 15px;">
           <label class="tag" for="playerPassword">Password</label>
-          <input id="playerPassword" type="password" placeholder="Enter password" />
-        </div>
+<input
+  id="playerPassword"
+  type="tel"
+  inputmode="numeric"
+  pattern="\d{4}"
+  maxlength="4"
+  placeholder="4-digit PIN"
+/>        </div>
       </div>
       <div class="modal-footer">
         <button id="cancelSelectPlayerBtn" class="btn" type="button">Cancel</button>
@@ -601,9 +613,36 @@ const byId = id => document.getElementById(id);
 const STORAGE_KEY='shateki_quest_scorer_v6';
 const HS_KEY='shateki_quest_highscores_v1';       // kept for backward-compat local
 const HS_KEY_SP='shateki_quest_highscores_sp_v1'; // kept for backward-compat local
+// Long-term history logs (not cleared when a match ends)
+const GAMES_LOG_KEY   = 'shateki_quest_games_log_v1';
+const MATCHES_LOG_KEY = 'shateki_quest_matches_log_v1';
 const safeSave=(k,o)=>{try{localStorage.setItem(k,JSON.stringify(o));}catch(e){}};
 const safeLoad=k=>{try{const r=localStorage.getItem(k);return r?JSON.parse(r):null;}catch(e){return null;}};
 const safeClear=k=>{try{localStorage.removeItem(k);}catch(e){}};
+
+// ---------- CORE STATE ----------
+const baseState = {
+  players: [],
+  score: [],
+  currentRound: 0,
+  currentPlayer: 0,
+  currentDart: 0,
+  history: [],
+  finished: false,
+  suddenDeath: { active: false, participants: [], turnIndex: 0, throws: [], round: 1 },
+  match: {
+    id: null,
+    targetWins: 4,      // default "first to 4 wins" – overwritten when you start a match
+    gameNumber: 1,
+    wins: [],
+    history: [],
+    completedLogged: false
+  },
+  matchAgg: null,
+  gameAwarded: false
+};
+
+let state = JSON.parse(JSON.stringify(baseState));
 
 const COLOR_PALETTE=['#7bdcff','#8cff9e','#ffcc66','#ff9bd6','#f8d66d','#a6b3ff','#7fffd4','#ffb27b','#ffd166','#06d6a0','#118ab2','#ef476f'];
 function assignUniqueColors(arr){ for(let i=0;i<arr.length;i++){ arr[i].color = COLOR_PALETTE[i % COLOR_PALETTE.length]; } }
@@ -747,6 +786,64 @@ const MAX_ROUNDS=ROUNDS.length;
 const totalScoreForPlayer = i => (state.score[i]||[]).reduce((s,row)=>s+(row?.roundTotal||0),0);
 const save=()=>safeSave(STORAGE_KEY,state);
 function ensureMatchAgg(){ if(state.matchAgg && state.matchAgg.hits) return; state.matchAgg={ hits:Array.from({length:state.players.length},()=>({})), totals60:Array.from({length:state.players.length},()=>0), totals100:Array.from({length:state.players.length},()=>0), totals140:Array.from({length:state.players.length},()=>0) }; }
+
+function getGameLog() {
+  return safeLoad(GAMES_LOG_KEY) || [];
+}
+
+function setGameLog(arr) {
+  safeSave(GAMES_LOG_KEY, arr || []);
+}
+
+function getMatchLog() {
+  return safeLoad(MATCHES_LOG_KEY) || [];
+}
+
+function setMatchLog(arr) {
+  safeSave(MATCHES_LOG_KEY, arr || []);
+}
+
+function logCompletedGame(totals, winners, boardClone) {
+  const games = getGameLog();
+  const nowIso = new Date().toISOString();
+
+  games.push({
+    id: `g-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    ts: nowIso,
+    matchId: state.match.id || null,
+    players: state.players.map(p => ({ name: p.name })),
+    totals: totals.slice(),
+    winners: winners.slice(),
+    board: boardClone
+  });
+
+  setGameLog(games);
+}
+
+function logCompletedMatch() {
+  const matches = getMatchLog();
+  const nowIso = new Date().toISOString();
+  const gamesInMatch = state.match.history.length;
+
+  const players = state.players.map(p => ({ name: p.name }));
+  const wins    = (state.match.wins || []).slice();
+
+  const matchTotals = state.players.map((_, idx) =>
+    state.match.history.reduce((sum, g) => sum + (g.totals?.[idx] || 0), 0)
+  );
+
+  matches.push({
+    id: state.match.id || `m-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    ts: nowIso,
+    players,
+    wins,
+    targetWins: state.match.targetWins || 1,
+    games: gamesInMatch,
+    matchTotals
+  });
+
+  setMatchLog(matches);
+}
 
 /*****************
  * SUPABASE HELPERS
@@ -908,7 +1005,7 @@ function setupStartMenuButtons(){
 
   byId('hsMenuBtn').onclick    = openHighScoresDialog; 
   byId('hsMenuBtnSP').onclick  = openHighScoresDialogSP; 
-  byId('playerStatsBtn').onclick = openStatsHubDialog;
+  byId('playerStatsBtn').onclick = openPlayerStatsLookupDialog;
 }
 
 byId('questBtn').addEventListener('click', ()=>{
@@ -1032,11 +1129,15 @@ async function showAddPlayerDialog(index){
   const cancelBtn = byId('cancelAddPlayerBtn');
 
   saveBtn.onclick = async () => {
-    const newName = byId('newPlayerName').value.trim();
-    const newPass = byId('newPlayerPassword').value;
+      const newName = byId('newPlayerName').value.trim();
+    const newPass = byId('newPlayerPassword').value.trim();
 
     if (!newName || !newPass) {
-      toast('Enter name & password');
+      toast('Enter name & PIN');
+      return;
+    }
+    if (!/^\d{4}$/.test(newPass)) {
+      toast('PIN must be exactly 4 digits');
       return;
     }
 
@@ -1066,7 +1167,557 @@ async function showAddPlayerDialog(index){
 
   cancelBtn.onclick = () => modal.classList.add('hidden');
 }
+function computePlayerThrowStatsFromGames(playerName, gamesSubset) {
+  let totalPoints = 0;
+  let totalThrows = 0;
 
+  let miss = 0, single = 0, double = 0, treble = 0, bulls = 0;
+  const perNumberTotals = {};
+
+  for (const game of gamesSubset) {
+    if (!game || !Array.isArray(game.players) || !game.board) continue;
+
+    const pIdx = game.players.findIndex(p => p && p.name === playerName);
+    if (pIdx === -1) continue;
+
+    const board = game.board[pIdx];
+    if (!board) continue;
+
+    for (let r = 0; r < MAX_ROUNDS; r++) {
+      const roundDef = ROUNDS[r];
+      const entry = board[r];
+      if (!entry || !entry.darts) continue;
+
+      for (const dart of entry.darts) {
+        if (!dart) continue;
+
+        const points = dart.points || 0;
+        totalPoints += points;
+        totalThrows++;
+
+        if (!points || dart.kind === 'Miss') {
+          miss++;
+          continue;
+        }
+
+        let key = null;
+
+        if (dart.kind === 'Bull') {
+          bulls++;
+          key = 'Bull';
+        } else {
+          if (dart.kind === 'S' || dart.kind === 'Single') {
+            single++;
+          } else if (dart.kind === 'D' || dart.kind === 'Double') {
+            double++;
+          } else if (dart.kind === 'T' || dart.kind === 'Triple') {
+            treble++;
+          }
+
+          if (roundDef.type === 'number') {
+            key = String(roundDef.target);
+          } else if ((roundDef.type === 'doubles' || roundDef.type === 'triples') && dart.sector) {
+            key = String(dart.sector);
+          }
+        }
+
+        if (key) {
+          perNumberTotals[key] = (perNumberTotals[key] || 0) + points;
+        }
+      }
+    }
+  }
+
+  const pct = v => totalThrows ? Math.round((v / totalThrows) * 100) : 0;
+
+  let bestKey = null, bestScore = 0;
+  let worstKey = null, worstScore = Infinity;
+
+  Object.keys(perNumberTotals).forEach(key => {
+    const total = perNumberTotals[key];
+    if (total > bestScore) { bestScore = total; bestKey = key; }
+    if (total < worstScore) { worstScore = total; worstKey = key; }
+  });
+
+  function fmtNum(key, score) {
+    if (!key || !isFinite(score)) return '—';
+    if (key === 'Bull') return `Bull (${score})`;
+    return `${key} (${score})`;
+  }
+
+  return {
+    totalPoints,
+    totalThrows,
+    missPct:   pct(miss),
+    singlePct: pct(single),
+    doublePct: pct(double),
+    treblePct: pct(treble),
+    bullsPct:  pct(bulls),
+    favouriteNumber: fmtNum(bestKey, bestScore),
+    worstNumber:     fmtNum(worstKey, worstScore)
+  };
+}
+const STAT_WINDOWS = [
+  { key: 'today',     label: 'Today',         test: (dt, now) => (
+      dt.getFullYear() === now.getFullYear() &&
+      dt.getMonth()    === now.getMonth() &&
+      dt.getDate()     === now.getDate()
+    )},
+  { key: 'week',      label: '1 Week',        test: (dt, now) => (now - dt) / 86400000 < 7 },
+  { key: 'last30',    label: 'Past 30 Days',  test: (dt, now) => (now - dt) / 86400000 < 30 },
+  { key: 'days30_60', label: '30–60 days',    test: (dt, now) => {
+      const d = (now - dt) / 86400000;
+      return d >= 30 && d < 60;
+    }},
+  { key: 'life',      label: 'Lifetime',      test: () => true }
+];
+
+function computePlayerWindowStats(playerName) {
+  const games   = getGameLog();
+  const matches = getMatchLog();
+  const now     = new Date();
+
+  const result = {};
+
+  for (const win of STAT_WINDOWS) {
+    result[win.key] = computeSingleWindowStats(playerName, games, matches, win, now);
+  }
+
+  return result;
+}
+
+function computeSingleWindowStats(playerName, games, matches, win, now) {
+  const stats = {
+    gamesPlayed:  0,
+    gamesWon:     0,
+    gameWinPct:   0,
+
+    matchesPlayed: 0,
+    matchesWon:    0,
+    matchWinPct:   0,
+
+    totalPoints:        0,
+    avgPointsPerThrow:  0,
+    avgPointsPerGame:   0,
+    avgPointsPerMatch:  0,
+
+    missPct:   0,
+    singlePct: 0,
+    doublePct: 0,
+    treblePct: 0,
+    bullsPct:  0,
+
+    favouriteNumber: '—',
+    worstNumber:     '—',
+
+    favouriteOpponent: '—',
+    nemesis:           '—'
+  };
+
+  const gamesForPlayer = [];
+  const aheadCounts  = {};
+  const behindCounts = {};
+
+  // --- Games ---
+  for (const game of games) {
+    if (!game || !game.ts) continue;
+    const dt = new Date(game.ts);
+    if (!win.test(dt, now)) continue;
+    if (!Array.isArray(game.players)) continue;
+
+    const idx = game.players.findIndex(p => p && p.name === playerName);
+    if (idx === -1) continue;
+
+    gamesForPlayer.push(game);
+    stats.gamesPlayed++;
+
+    const total = (game.totals && game.totals[idx]) || 0;
+    stats.totalPoints += total;
+
+    const winners = game.winners || [];
+    if (winners.includes(idx)) stats.gamesWon++;
+
+    // Opponent stats
+    game.players.forEach((p, j) => {
+      if (!p || j === idx) return;
+      const oppName = p.name;
+      const oppTotal = (game.totals && game.totals[j]) || 0;
+
+      if (total > oppTotal) {
+        aheadCounts[oppName]  = (aheadCounts[oppName]  || 0) + 1;
+      } else if (total < oppTotal) {
+        behindCounts[oppName] = (behindCounts[oppName] || 0) + 1;
+      }
+    });
+  }
+
+  // Throw-level stats
+  if (gamesForPlayer.length) {
+    const tStats = computePlayerThrowStatsFromGames(playerName, gamesForPlayer);
+    stats.missPct   = tStats.missPct;
+    stats.singlePct = tStats.singlePct;
+    stats.doublePct = tStats.doublePct;
+    stats.treblePct = tStats.treblePct;
+    stats.bullsPct  = tStats.bullsPct;
+
+    stats.avgPointsPerThrow = tStats.totalThrows
+      ? tStats.totalPoints / tStats.totalThrows
+      : 0;
+
+    stats.favouriteNumber = tStats.favouriteNumber;
+    stats.worstNumber     = tStats.worstNumber;
+  }
+
+  stats.gameWinPct = stats.gamesPlayed
+    ? (stats.gamesWon / stats.gamesPlayed * 100)
+    : 0;
+
+  stats.avgPointsPerGame = stats.gamesPlayed
+    ? (stats.totalPoints / stats.gamesPlayed)
+    : 0;
+
+  // --- Matches (completed only; we only log completed matches) ---
+  let matchPointsSum = 0;
+
+  for (const match of matches) {
+    if (!match || !match.ts) continue;
+    const dt = new Date(match.ts);
+    if (!win.test(dt, now)) continue;
+    if (!Array.isArray(match.players)) continue;
+
+    const idx = match.players.findIndex(p => p && p.name === playerName);
+    if (idx === -1) continue;
+
+    stats.matchesPlayed++;
+
+    const winsArr  = match.wins || [];
+    const myWins   = winsArr[idx] || 0;
+    const maxWins  = winsArr.length ? Math.max(...winsArr) : 0;
+    if (maxWins > 0 && myWins === maxWins) {
+      stats.matchesWon++;
+    }
+
+    if (match.matchTotals && match.matchTotals[idx] != null) {
+      matchPointsSum += match.matchTotals[idx];
+    }
+  }
+
+  stats.matchWinPct = stats.matchesPlayed
+    ? (stats.matchesWon / stats.matchesPlayed * 100)
+    : 0;
+
+  stats.avgPointsPerMatch = stats.matchesPlayed
+    ? (matchPointsSum / stats.matchesPlayed)
+    : 0;
+
+  // Favourite opponent / Nemesis
+  function pickMaxName(map) {
+    let bestName = null;
+    let bestVal  = 0;
+    Object.keys(map).forEach(name => {
+      const v = map[name];
+      if (v > bestVal) {
+        bestVal  = v;
+        bestName = name;
+      }
+    });
+    return bestVal > 0 ? `${bestName} (${bestVal})` : '—';
+  }
+
+  stats.favouriteOpponent = pickMaxName(aheadCounts);
+  stats.nemesis           = pickMaxName(behindCounts);
+
+  return stats;
+}
+function openPlayerStatsDialog(playerName) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-backdrop';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+
+  const title = document.createElement('h3');
+  title.textContent = `Player Stats – ${playerName}`;
+
+  const body = document.createElement('div');
+  body.className = 'modal-body';
+
+  const statsByWindow = computePlayerWindowStats(playerName);
+
+  const table = document.createElement('table');
+  table.className = 'hs-table';
+
+  const thead = document.createElement('thead');
+  const trh = document.createElement('tr');
+
+  const metricTh = document.createElement('th');
+  metricTh.textContent = 'Metric';
+  trh.appendChild(metricTh);
+
+  STAT_WINDOWS.forEach(w => {
+    const th = document.createElement('th');
+    th.textContent = w.label;
+    th.style.textAlign = 'center';
+    trh.appendChild(th);
+  });
+
+  thead.appendChild(trh);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+
+  const num = v => (v || 0).toString();
+  const avg = (v, has) => (has ? v.toFixed(1) : '—');
+  const pct = (v, has) => (has ? v.toFixed(1) + '%' : '—');
+  const pctInt = (v, has) => (has ? Math.round(v) + '%' : '—');
+  const txt = v => (v && v !== 'NaN' ? v : '—');
+
+  function addRow(label, key, formatter, needsDataKey) {
+    const tr = document.createElement('tr');
+    const th = document.createElement('th');
+    th.className = 'stats-th';
+    th.textContent = label;
+    tr.appendChild(th);
+
+    STAT_WINDOWS.forEach(w => {
+      const td = document.createElement('td');
+      td.className = 'center num';
+      const s = statsByWindow[w.key];
+      const hasData = needsDataKey ? (s[needsDataKey] > 0) : true;
+      const v = s[key];
+      td.textContent = formatter(v, hasData);
+      tr.appendChild(td);
+    });
+
+    tbody.appendChild(tr);
+  }
+
+  // Games / Matches
+  addRow('Games Played',        'gamesPlayed',      num,    'gamesPlayed');
+  addRow('Games Won',           'gamesWon',         num,    'gamesPlayed');
+  addRow('Win % (Games)',       'gameWinPct',       pct,    'gamesPlayed');
+  addRow('Matches Played',      'matchesPlayed',    num,    'matchesPlayed');
+  addRow('Matches Won',         'matchesWon',       num,    'matchesPlayed');
+  addRow('Win % (Matches)',     'matchWinPct',      pct,    'matchesPlayed');
+
+  // Spacer row
+  const spacer1 = document.createElement('tr');
+  const spTd1 = document.createElement('td');
+  spTd1.colSpan = 1 + STAT_WINDOWS.length;
+  spTd1.textContent = '';
+  spacer1.appendChild(spTd1);
+  tbody.appendChild(spacer1);
+
+  // Points
+  addRow('Total Points',            'totalPoints',       num,  'gamesPlayed');
+  addRow('Avg Points / Throw',      'avgPointsPerThrow', avg,  'gamesPlayed');
+  addRow('Avg Points / Game',       'avgPointsPerGame',  avg,  'gamesPlayed');
+  addRow('Avg Points / Match',      'avgPointsPerMatch', avg,  'matchesPlayed');
+
+  // Spacer
+  const spacer2 = document.createElement('tr');
+  const spTd2 = document.createElement('td');
+  spTd2.colSpan = 1 + STAT_WINDOWS.length;
+  spTd2.textContent = '';
+  spacer2.appendChild(spTd2);
+  tbody.appendChild(spacer2);
+
+  // Hit-type percentages
+  addRow('Miss %',    'missPct',   pctInt, 'gamesPlayed');
+  addRow('Single %',  'singlePct', pctInt, 'gamesPlayed');
+  addRow('Double %',  'doublePct', pctInt, 'gamesPlayed');
+  addRow('Treble %',  'treblePct', pctInt, 'gamesPlayed');
+  addRow('Bulls %',   'bullsPct',  pctInt, 'gamesPlayed');
+
+  // Spacer
+  const spacer3 = document.createElement('tr');
+  const spTd3 = document.createElement('td');
+  spTd3.colSpan = 1 + STAT_WINDOWS.length;
+  spTd3.textContent = '';
+  spacer3.appendChild(spTd3);
+  tbody.appendChild(spacer3);
+
+  // Favourite / Worst number
+  addRow('Favourite Number', 'favouriteNumber', txt, 'gamesPlayed');
+  addRow('Worst Number',     'worstNumber',     txt, 'gamesPlayed');
+
+  // Spacer
+  const spacer4 = document.createElement('tr');
+  const spTd4 = document.createElement('td');
+  spTd4.colSpan = 1 + STAT_WINDOWS.length;
+  spTd4.textContent = '';
+  spacer4.appendChild(spTd4);
+  tbody.appendChild(spacer4);
+
+  // Opponents
+  addRow('Favourite Opponent', 'favouriteOpponent', txt, 'gamesPlayed');
+  addRow('Nemesis',            'nemesis',           txt, 'gamesPlayed');
+
+  table.appendChild(tbody);
+  body.appendChild(table);
+
+  const footer = document.createElement('div');
+  footer.className = 'modal-footer';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn';
+  closeBtn.textContent = 'Close';
+  closeBtn.onclick = () => overlay.remove();
+
+  footer.appendChild(closeBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  modal.tabIndex = 0;
+  modal.focus();
+
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.remove();
+  });
+  overlay.addEventListener('keydown', e => {
+    if (e.key === 'Escape') overlay.remove();
+  });
+}
+async function openPlayerStatsLookupDialog() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-backdrop';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+
+  const title = document.createElement('h3');
+  title.textContent = 'Player Stats – Select Player';
+
+  const body = document.createElement('div');
+  body.className = 'modal-body';
+
+  const nameWrap = document.createElement('div');
+  nameWrap.className = 'stack';
+  const nameLabel = document.createElement('label');
+  nameLabel.className = 'tag';
+  nameLabel.textContent = 'Player Name';
+  const nameSelect = document.createElement('select');
+  nameSelect.id = 'statsPlayerSelect';
+  nameSelect.style.width = '100%';
+  nameWrap.append(nameLabel, nameSelect);
+
+  const passWrap = document.createElement('div');
+  passWrap.className = 'stack';
+  passWrap.style.marginTop = '12px';
+  const passLabel = document.createElement('label');
+  passLabel.className = 'tag';
+  passLabel.textContent = 'Password';
+  const passInput = document.createElement('input');
+  passInput.id = 'statsPlayerPassword';
+  passInput.type = 'tel';
+  passInput.inputMode = 'numeric';
+  passInput.pattern = '\\d{4}';
+  passInput.maxLength = 4;
+  passInput.placeholder = '4-digit PIN';
+  passWrap.append(passLabel, passInput);
+
+  body.append(nameWrap, passWrap);
+
+  const footer = document.createElement('div');
+  footer.className = 'modal-footer';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.onclick = () => overlay.remove();
+
+  const viewBtn = document.createElement('button');
+  viewBtn.className = 'btn primary';
+  viewBtn.textContent = 'View Stats';
+
+  footer.append(cancelBtn, viewBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  modal.tabIndex = 0;
+  modal.focus();
+
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.remove();
+  });
+  overlay.addEventListener('keydown', e => {
+    if (e.key === 'Escape') overlay.remove();
+  });
+
+  // Populate players: cloud first, local fallback
+  nameSelect.innerHTML = '<option value="">Select a saved player...</option>';
+  let anyPlayers = false;
+
+  try {
+    const cloudPlayers = await cloudListPlayers();
+    cloudPlayers.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      nameSelect.appendChild(opt);
+      anyPlayers = true;
+    });
+  } catch (err) {
+    console.error('Stats: cloudListPlayers failed', err);
+  }
+
+  if (!anyPlayers) {
+    const local = getSavedPlayers();
+    local.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      nameSelect.appendChild(opt);
+      anyPlayers = true;
+    });
+  }
+
+  if (!anyPlayers) {
+    body.innerHTML = '<p>No saved players found. Save a player from the Player Select screen first.</p>';
+    viewBtn.disabled = true;
+    return;
+  }
+
+  viewBtn.onclick = async () => {
+    const name = nameSelect.value;
+    const pass = passInput.value.trim();
+
+    if (!name || !pass) {
+      toast('Enter player & PIN');
+      return;
+    }
+    if (!/^\d{4}$/.test(pass)) {
+      toast('PIN must be exactly 4 digits');
+      return;
+    }
+
+    let ok = false;
+
+    // Try cloud
+    try {
+      ok = await cloudValidatePlayer(name, pass);
+    } catch (err) {
+      console.error('Stats: cloudValidatePlayer failed', err);
+    }
+
+    // Fallback local if needed
+    if (!ok) {
+      const locals = getSavedPlayers();
+      const found  = locals.find(p => p.name === name);
+      if (!found || found.password !== pass) {
+        toast('Incorrect name or password');
+        return;
+      }
+    }
+
+    overlay.remove();
+    openPlayerStatsDialog(name);
+  };
+}
 async function showSelectPlayerDialog(index){
   const select = byId('existingPlayerSelect');
   select.innerHTML = '<option value="">Select a saved player...</option>';
@@ -1110,11 +1761,15 @@ byId('confirmSelectPlayerBtn').onclick = async () => {
   const modal = byId('selectPlayerModal');
   const idx   = parseInt(modal.dataset.playerIndex || '0', 10) || 1;
 
-  const name = byId('existingPlayerSelect').value;
-  const pass = byId('playerPassword').value;
+ const name = byId('existingPlayerSelect').value;
+  const pass = byId('playerPassword').value.trim();
 
   if (!name || !pass) {
-    toast('Enter player & password');
+    toast('Enter player & PIN');
+    return;
+  }
+  if (!/^\d{4}$/.test(pass)) {
+    toast('PIN must be exactly 4 digits');
     return;
   }
 
@@ -1150,25 +1805,6 @@ byId('confirmSelectPlayerBtn').onclick = async () => {
   toast('Player selected');
 };
 
-const state={
-  players:[],
-  score:[],
-  currentRound:0,
-  currentPlayer:0,
-  currentDart:0,
-  history:[],
-  finished:false,
-  suddenDeath:{active:false, participants:[], turnIndex:0, throws:[], round:1},
-  match:{
-    targetWins:4,
-    gameNumber:1,
-    wins:[],
-    history:[]
-  },
-  matchAgg:null,
-  gameAwarded:false
-};
-
 byId('startMatchBtn').addEventListener('click', ()=>{
   // Build state from Player Select
   const games = parseInt(psNumGamesSel.value,10) || 1;
@@ -1180,10 +1816,12 @@ byId('startMatchBtn').addEventListener('click', ()=>{
   state.players = ppl.map(p=>({ name:p.name, color:null }));
   assignUniqueColors(state.players);
   state.match = {
+  id: `m-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
   targetWins: games,                               // first to X wins
   gameNumber: 1,
   wins: Array.from({length:state.players.length}, () => 0),
-  history: []
+  history: [],
+  completedLogged: false
 };
   state.matchAgg=null; ensureMatchAgg();
   startNewGame(false); // will show order dialog first
@@ -1306,6 +1944,12 @@ function buildFloatingHeader(){
     th.appendChild(wrap); 
     trNames.appendChild(th);
   }  
+  
+  const pin = newPass.trim();
+if (!/^\d{4}$/.test(pin)) {
+  toast('PIN must be exactly 4 digits');
+  return;
+}
 
   // Totals + diff in same row
   const trTotals = document.createElement('tr'); 
@@ -1382,6 +2026,7 @@ function computeStatsFromBoards(boards, pIdx) {
 
       const roundTotal = entry.roundTotal || 0;
 
+      // Track individual darts
       d.forEach(dart => {
         if (!dart) return;
         const p = dart.points || 0;
@@ -1393,17 +2038,18 @@ function computeStatsFromBoards(boards, pIdx) {
         }
       });
 
-      // fully completed round = 3 darts thrown
+      // Fully completed round (3 darts thrown) – for avg-round calc
       if (d[0] && d[1] && d[2]) {
         completedRounds++;
         completedPoints += roundTotal;
       }
 
-      if (roundTotal >= 60) rounds60++;
+      // --- 60 / 100 / 140+ are based on ROUND TOTAL ---
+      if (roundTotal >= 60)  rounds60++;
       if (roundTotal >= 100) rounds100++;
       if (roundTotal >= 140) rounds140++;
 
-      // Best number tracking
+      // Best-number tracking (accumulate by number/sector/bull)
       d.forEach(dart => {
         if (!dart || !(dart.points > 0)) return;
         let key = null;
@@ -2442,17 +3088,41 @@ function missGo(){
     recordThrow({ kind: 'Miss' });
   }
 }
-// TEMP: safe no-op stubs for cloud logging
+// --- GAME LOGGING TO SUPABASE (STUB) + HIGH SCORES ---
+
+// Currently a stub – you can later log full per-throw data into TABLE_GAME_THROWS here if you want.
 async function recordFullGameToSupabase() {
-  // TODO: wire real Supabase game_throws logging here
   return;
 }
 
+// Insert every finished game into the appropriate high scores table.
+// Multi-player -> League (TABLE_HS_LEAGUE), single-player -> Practice (TABLE_HS_PRACTICE).
 async function recordGameToHighScores() {
-  // TODO: wire real Supabase HS insert here
-  return;
+  if (!state.players || !state.players.length) return;
+
+  const totals   = state.players.map((_, i) => totalScoreForPlayer(i));
+  const isSingle = state.players.length === 1;
+
+  const tasks = [];
+
+  for (let i = 0; i < state.players.length; i++) {
+    const name  = state.players[i].name || `Player ${i + 1}`;
+    const score = totals[i] || 0;
+
+    // Don’t log ghost/zero scores
+    if (!name || score <= 0) continue;
+
+    tasks.push(
+      cloudInsertHighScore(name, score, isSingle).catch(err => {
+        console.error('High score insert failed', err);
+      })
+    );
+  }
+
+  await Promise.all(tasks);
 }
-async function awardAndShowLeaderboard(){ 
+
+async function awardAndShowLeaderboard(){
   // prevent double-award if called twice for same game
   if (state.gameAwarded) {
     showLeaderboard();
@@ -2479,6 +3149,19 @@ async function awardAndShowLeaderboard(){
     totals: totals.slice(),
     board:  boardClone
   });
+  
+  // Persist this game to the long-term game log
+logCompletedGame(totals, winners, boardClone);
+
+// If the match just completed and hasn't been logged yet, log it
+const targetWins = state.match.targetWins || 1;
+const maxWins    = state.match.wins.length ? Math.max(...state.match.wins) : 0;
+const matchDone  = maxWins >= targetWins;
+
+if (matchDone && !state.match.completedLogged) {
+  logCompletedMatch();
+  state.match.completedLogged = true;
+}
 
   // Full game → Supabase
   try {
@@ -2578,19 +3261,8 @@ newMatchBtn.addEventListener('click',()=>{
 
   safeClear(STORAGE_KEY); 
 
-  Object.assign(state,{
-    players:[],
-    score:[],
-    currentRound:0,
-    currentPlayer:0,
-    currentDart:0,
-    history:[],
-    finished:false,
-    suddenDeath:{active:false,participants:[],turnIndex:0,throws:[],round:1},
-    match:{ targetWins:4, gameNumber:1, wins:[], history:[] },
-    matchAgg:null,
-    gameAwarded:false
-  });
+  // Reset full state to baseState
+  Object.assign(state, JSON.parse(JSON.stringify(baseState)));
 
   show('details');
   setupStartMenuButtons();
