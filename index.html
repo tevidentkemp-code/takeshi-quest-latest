@@ -23,12 +23,28 @@
     background:radial-gradient(1000px 600px at 0% 0%,#1b1f36 0%,#0f1220 45%,#0b0e1a 100%); color:var(--ink);
     -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
   }
-  /* Start Match button full-width under the player box */
-#startMatchRow{
-  margin-top:16px;
+  /* Start/Back buttons under the player box (scope to #players only) */
+#players #startMatchRow,
+#players #backRow{
   max-width:640px;
-  margin-inline:auto;
+  width:100%;
+  margin:12px auto 0;
 }
+#players #startMatchBtn,
+#players #startScreenBtn{
+  width:100%;                 /* full width buttons */
+}
+
+/* Player Select: Back row same width as the boxes + full-width button */
+#players #backRow{
+  max-width:640px;
+  width:100%;
+  margin:12px auto 0;
+}
+#players #startScreenBtn{ width:100%; }
+
+/* Hide the old top-left Back row on Player Select */
+#players #gameTopRow{ display:none; }
 
 #startMatchBtn{
   width:100%;          /* same width as the box */
@@ -457,10 +473,6 @@
 
 <!-- PAGE 2: PLAYER SELECT -->
 <section id="players" class="card section hidden">
-  <div class="row" id="gameTopRow" style="align-items:center; justify-content:flex-start;">
-    <button id="startScreenBtn" class="btn" type="button">Back</button>
-  </div>
-
   <h2>Player Select</h2>
 
   <!-- BOX 1: Number of games / Number of players -->
@@ -497,11 +509,16 @@
     </div>
   </div>
 
-  <!-- Start Match button – full width under the boxes -->
-  <div class="row" id="startMatchRow">
-    <button id="startMatchBtn" class="btn good big" type="button">Start Match ▶</button>
-  </div>
-</section>
+ <!-- Start Match button – full width under the boxes -->
+<div class="row" id="startMatchRow">
+  <button id="startMatchBtn" class="btn good big" type="button">Start Match ➡</button>
+</div>
+
+<!-- Back button – same width/size as Start Match -->
+<div class="row" id="backRow">
+  <button id="startScreenBtn" class="btn big" type="button">⬅ Back</button>
+</div>
+</section> <!-- end #players -->
 
     <!--PAGE3: GAME -->
     <section id="game" class="hidden">
@@ -652,22 +669,31 @@
       </div>
     </div>
 
-    <!-- Admin Hub Modal -->
-    <div id="adminHubModal" class="modal-backdrop hidden">
-      <div class="modal">
-        <h3>Admin Hub</h3>
-        <div class="modal-body">
-          <div class="row">
-            <button id="openHsLeagueAdmin" class="btn">League High Scores Admin</button>
-            <button id="openHsPracticeAdmin" class="btn">Practice High Scores Admin</button>
-            <button id="openSavedPlayersAdmin" class="btn">Saved Players Admin</button>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button id="closeAdminHubBtn" class="btn" type="button">Close</button>
-        </div>
+   <!-- Admin Hub Modal -->
+<div id="adminHubModal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h3>Admin Hub</h3>
+    <div class="modal-body">
+      <div class="column" style="align-items:center; gap:8px;">
+        <button id="openHsLeagueAdmin"   class="btn" style="width:min(360px,92%);">League High Scores</button>
+        <button id="openHsPracticeAdmin" class="btn" style="width:min(360px,92%);">Practice High Scores</button>
+
+        <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
+
+        <button id="openSavedPlayersAdmin" class="btn" style="width:min(360px,92%);">Saved Player Admin</button>
+
+        <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
+
+        <button id="backdateNextSaveBtn" class="btn warn" style="width:min(360px,92%);">Backdate Next Cloud Save</button>
+        <button id="clearBackdateBtn"    class="btn"       style="width:min(360px,92%);">Clear Backdate</button>
+
+        <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
+
+        <button id="closeAdminHubBtn" class="btn" type="button" style="width:min(360px,92%);">Return</button>
       </div>
     </div>
+  </div>
+</div>
 
     <!-- Saved Players Admin Modal -->
     <div id="savedPlayersAdminModal" class="modal-backdrop hidden">
@@ -5319,29 +5345,18 @@ function swapPlayers(i, j) {
 function openAdminHub(){
   const hub = byId('adminHubModal');
   hub.classList.remove('hidden');
-  byId('openHsLeagueAdmin').onclick = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(false); };
+
+  // Open sub-panels
+  byId('openHsLeagueAdmin').onclick   = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(false); };
   byId('openHsPracticeAdmin').onclick = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(true); };
   byId('openSavedPlayersAdmin').onclick = ()=>{ hub.classList.add('hidden'); openSavedPlayersAdmin(); };
+
+  // Backdate controls
+  byId('backdateNextSaveBtn').onclick = setBackdateInteractive;
+  byId('clearBackdateBtn').onclick = ()=>{ clearBackdate(); toast('Backdate cleared'); };
+
+  // Return to previous screen (just closes the modal)
   byId('closeAdminHubBtn').onclick = ()=> hub.classList.add('hidden');
-
-  // Add Backdate buttons once
-  const row = hub.querySelector('.modal-body .row');
-  if (row && !byId('backdateNextSaveBtn')) {
-    const bd = document.createElement('button');
-    bd.id = 'backdateNextSaveBtn';
-    bd.className = 'btn warn';
-    bd.textContent = 'Backdate Next Cloud Save';
-    bd.title = 'Sets created_at for the next Game & Match write';
-    bd.onclick = setBackdateInteractive;
-    row.appendChild(bd);
-
-    const clr = document.createElement('button');
-    clr.id = 'clearBackdateBtn';
-    clr.className = 'btn';
-    clr.textContent = 'Clear Backdate';
-    clr.onclick = () => { clearBackdate(); toast('Backdate cleared'); };
-    row.appendChild(clr);
-  }
 }
 
 async function openHighScoresAdminDialog(single=false){ 
