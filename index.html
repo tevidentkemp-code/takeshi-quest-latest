@@ -2917,6 +2917,12 @@ function buildFloatingHeader(){
   floatThead.append(trWins, trNames, trTotals);
 }
 
+function formatTop3Inline(list){
+  if (!Array.isArray(list) || !list.length) return '—';
+  const pick = i => list[i] || '—';
+  return `1st ${pick(0)} | 2nd ${pick(1)} | 3rd ${pick(2)}`;
+}
+
 /*****************
  * STATS (modal compute)
  *****************/
@@ -2927,7 +2933,6 @@ const METRICS = [
   { key: 'treble',       label: '% Trebles',        fmt: v => v + '%' },
   { key: 'bulls',        label: '% Bulls (I+O)',    fmt: v => v + '%' },
 
-  // NEW: per-round power scoring
   { key: 'sixtyPlus',    label: '60+ Rounds',       fmt: v => String(v) },
   { key: 'hundredPlus',  label: '100+ Rounds',      fmt: v => String(v) },
   { key: 'oneFortyPlus', label: '140+ Rounds',      fmt: v => String(v) },
@@ -2937,10 +2942,13 @@ const METRICS = [
   { key: 'avgGame',      label: 'Avg (throw)',      fmt: v => v.toFixed(1) },
   { key: 'singleStreak', label: 'Single Streak',    fmt: v => String(v) },
   { key: 'roundStreak',  label: 'Round Streak',     fmt: v => String(v) },
-  { key: 'bestNumber',   label: 'Best Number',      fmt: v => v || '—' }
+
+  // NEW: top-3 lists
+  { key: 'bestNumbers',  label: 'Best Numbers',     fmt: formatTop3Inline },
+  { key: 'worstNumbers', label: 'Worst Numbers',    fmt: formatTop3Inline },
 ];
 
-// Metrics layout for popups (Game Stats / Match Stats)
+// What the popups actually render
 const DISPLAY_METRICS = [
   { key: 'wins',          label: 'Game Wins',              kind: 'wins' },
   { sep: true },
@@ -2952,9 +2960,9 @@ const DISPLAY_METRICS = [
   { key: 'bulls',         label: 'Bulls % (I+O)',          fmt: v => v + '%' },
   { sep: true },
 
-  { key: 'sixtyPlus',     label: '60+ Round',              fmt: v => String(v) },     // 60..99
-  { key: 'hundredPlus',   label: '100+ Round',             fmt: v => String(v) },     // 100..139
-  { key: 'oneFortyPlus',  label: '140+ Round',             fmt: v => String(v) },     // 140+
+  { key: 'sixtyPlus',     label: '60+ Round',              fmt: v => String(v) },
+  { key: 'hundredPlus',   label: '100+ Round',             fmt: v => String(v) },
+  { key: 'oneFortyPlus',  label: '140+ Round',             fmt: v => String(v) },
   { sep: true },
 
   { key: 'avgGame',       label: 'Avg Throw',              fmt: v => v.toFixed(1) },
@@ -2966,100 +2974,93 @@ const DISPLAY_METRICS = [
   { key: 'roundStreak',   label: 'Round Streak',           fmt: v => String(v) },
   { sep: true },
 
-  { key: 'bestNumber',    label: 'Best Number',            fmt: v => v || '—' },
-  { key: 'worstNumber',   label: 'Worse Number',           fmt: v => v || '—' },
+  // NEW: multi-line rows rendered specially in the popups
+  { key: 'bestNumbers',   label: 'Best Numbers',           multi: true },
+  { key: 'worstNumbers',  label: 'Worst Numbers',          multi: true },
 ];
 
 function computeStatsFromBoards(boards, pIdx) {
+  // Flatten darts (in order) and collect per-round info
   const dartsFlat = [];
-  const perRoundHit = [];
-
-  // Weighted hit % per number 10..20 (S=1, D=2, T=3). Bulls excluded.
-  const numAttempts     = Array(21).fill(0); // index = number
-  const numWeightedHits = Array(21).fill(0);
-
-  let completedRounds = 0;
-  let completedPoints = 0;
+  const perRoundHit = [];          // boolean per round (any scoring dart)
   let rounds60 = 0, rounds100 = 0, rounds140 = 0;
+  let completedRounds = 0, completedPoints = 0;
 
-  boards.forEach(board => {
-    if (!board || !board[pIdx]) return;
+  // Weighted-hit tracking for 10..20 (S=1, D=2, T=3); bulls excluded
+  const numAttempts = {};       // total darts aimed at that number
+  const numWeightedHits = {};   // sum of weights of successful hits
+
+  function addAttempt(n){ numAttempts[n] = (numAttempts[n] || 0) + 1; }
+  function addWeighted(n,w){ numWeightedHits[n] = (numWeightedHits[n] || 0) + w; }
+
+  (boards || []).forEach(board => {
+    const playerBoard = board?.[pIdx];
+    if (!playerBoard) return;
 
     for (let r = 0; r < MAX_ROUNDS; r++) {
       const roundDef = ROUNDS[r];
-      const entry = board[pIdx][r];
-      if (!entry) continue;
+      const entry = playerBoard[r];
+      const darts = entry?.darts || [];
+      const rt = entry?.roundTotal || 0;
 
-      const d = entry.darts || [];
-      const roundIndex = perRoundHit.length;
-      perRoundHit.push(false);
+      if (rt > 0) { completedRounds++; completedPoints += rt; }
+      if (rt >=  60) rounds60++;
+      if (rt >= 100) rounds100++;
+      if (rt >= 140) rounds140++;
 
-      const roundTotal = entry.roundTotal || 0;
+      let anyHit = false;
 
-      // Track individual darts + build weighted tallies
-      d.forEach(dart => {
-        if (!dart) return;
+      darts.forEach(d => {
+        if (!d) return;
+        dartsFlat.push({ dart: d, roundDef });
+        const points = d.points || 0;
+        if (points > 0) anyHit = true;
 
-        dartsFlat.push({ dart, roundDef, roundIndex });
-        if ((dart.points || 0) > 0) perRoundHit[roundIndex] = true;
-
-        // weighted attempts/hits for numbers only
-        let targetNum = null, weight = 0;
+        // Attempts/weighted hits by number (10..20)
         if (roundDef.type === 'number') {
-          targetNum = roundDef.target;
-          if (dart.kind === 'S' || dart.kind === 'Single') weight = 1;
-          else if (dart.kind === 'D' || dart.kind === 'Double') weight = 2;
-          else if (dart.kind === 'T' || dart.kind === 'Triple') weight = 3;
-        } else if (roundDef.type === 'doubles' || roundDef.type === 'triples') {
-          if (dart.sector) {
-            targetNum = Number(dart.sector);
-            if (roundDef.type === 'doubles' && (dart.kind === 'D' || dart.kind === 'Double')) weight = 2;
-            if (roundDef.type === 'triples' && (dart.kind === 'T' || dart.kind === 'Triple')) weight = 3;
+          const n = roundDef.target;
+          if (n >= 10 && n <= 20) {
+            addAttempt(n);
+            if (points > 0) {
+              const w = (d.kind === 'T' || d.kind === 'Triple') ? 3 :
+                        (d.kind === 'D' || d.kind === 'Double') ? 2 : 1;
+              addWeighted(n, w);
+            }
+          }
+        } else if ((roundDef.type === 'doubles' || roundDef.type === 'triples') && d.sector) {
+          const n = d.sector;
+          if (n >= 10 && n <= 20) {
+            addAttempt(n); // only count when we know the sector
+            if (points > 0) addWeighted(n, roundDef.type === 'doubles' ? 2 : 3);
           }
         }
-        if (targetNum != null && targetNum >= 1 && targetNum <= 20) {
-          numAttempts[targetNum] += 1;
-          numWeightedHits[targetNum] += weight;
-        }
+        // Bulls are ignored for best/worst number calc (by design)
       });
 
-      // fully completed round (3 darts) -> avg(round)
-      if (d[0] && d[1] && d[2]) {
-        completedRounds++;
-        completedPoints += roundTotal;
-      }
-
-      // mutually exclusive buckets
-      if (roundTotal >= 140) rounds140++;
-      else if (roundTotal >= 100) rounds100++;
-      else if (roundTotal >= 60) rounds60++;
+      perRoundHit.push(anyHit);
     }
   });
 
   const n = dartsFlat.length;
-  let miss=0, singles=0, doubles=0, trebles=0, bulls=0, pts=0;
-  let currentHitStreak=0, bestHitStreak=0;
+  let miss=0, single=0, double=0, treble=0, bulls=0, pts=0;
+  let curHitStreak=0, bestHitStreak=0;
 
   dartsFlat.forEach(({ dart }) => {
     const p = dart.points || 0;
     pts += p;
-
-    if (p > 0) {
-      currentHitStreak++;
-      if (currentHitStreak > bestHitStreak) bestHitStreak = currentHitStreak;
-    } else {
-      currentHitStreak = 0;
-    }
+    if (p > 0) { curHitStreak++; bestHitStreak = Math.max(bestHitStreak, curHitStreak); }
+    else curHitStreak = 0;
 
     if (dart.kind === 'Miss') miss++;
     else if (dart.kind === 'Bull') bulls++;
-    else if (dart.kind === 'S' || dart.kind === 'Single') singles++;
-    else if (dart.kind === 'D' || dart.kind === 'Double') doubles++;
-    else if (dart.kind === 'T' || dart.kind === 'Triple') trebles++;
+    else if (dart.kind === 'S' || dart.kind === 'Single') single++;
+    else if (dart.kind === 'D' || dart.kind === 'Double') double++;
+    else if (dart.kind === 'T' || dart.kind === 'Triple') treble++;
   });
 
   const pct = v => n ? Math.round((v / n) * 100) : 0;
 
+  // Avg of last 9 throws
   const last9 = dartsFlat.slice(-9);
   const sum9  = last9.reduce((a, x) => a + (x.dart.points || 0), 0);
   const avg9  = last9.length ? (sum9 / last9.length) : 0;
@@ -3067,45 +3068,47 @@ function computeStatsFromBoards(boards, pIdx) {
   const avgGame  = n ? (pts / n) : 0;
   const avgRound = completedRounds ? (completedPoints / completedRounds) : 0;
 
-  // Round streak (any scoring dart in a round)
-  let currentRoundStreak = 0, bestRoundStreak = 0;
-  for (const hit of perRoundHit) {
-    if (hit) { currentRoundStreak++; if (currentRoundStreak > bestRoundStreak) bestRoundStreak = currentRoundStreak; }
-    else { currentRoundStreak = 0; }
-  }
+  // Round streak (consecutive rounds with any score)
+  let curR = 0, bestR = 0;
+  perRoundHit.forEach(hit => {
+    if (hit) { curR++; bestR = Math.max(bestR, curR); } else curR = 0;
+  });
 
-  // Best / Worse number by weighted hit %, bulls excluded
-  let bestKey = null, bestPct = -1;
-  let worstKey = null, worstPct = Infinity;
+  // Best / Worst numbers by weighted hit % (10..20 only)
+  const scored = [];
   for (let num = 10; num <= 20; num++) {
-    const att = numAttempts[num];
+    const att = numAttempts[num] || 0;
     if (!att) continue;
-    const p = numWeightedHits[num] / (3 * att); // 0..1
-    if (p > bestPct) { bestPct = p; bestKey = num; }
-    if (p < worstPct) { worstPct = p; worstKey = num; }
+    const p = (numWeightedHits[num] || 0) / (3 * att); // 0..1
+    scored.push({ num, pct: p });
   }
-  const bestNumberLabel  = bestKey  != null ? `${bestKey} (${Math.round(bestPct * 100)}%)`  : '—';
-  const worseNumberLabel = worstKey != null ? `${worstKey} (${Math.round(worstPct * 100)}%)` : '—';
+  scored.sort((a, b) => b.pct - a.pct);
+  const best3  = scored.slice(0, 3).map(x => `${x.num} (${Math.round(x.pct * 100)}%)`);
+  const worst3 = scored.slice(-3).reverse().map(x => `${x.num} (${Math.round(x.pct * 100)}%)`);
 
   return {
     miss: pct(miss),
-    single: pct(singles),
-    double: pct(doubles),
-    treble: pct(trebles),
+    single: pct(single),
+    double: pct(double),
+    treble: pct(treble),
     bulls: pct(bulls),
 
-    sixtyPlus:    rounds60,     // 60..99
-    hundredPlus:  rounds100,    // 100..139
-    oneFortyPlus: rounds140,    // 140+
+    sixtyPlus:    rounds60,
+    hundredPlus:  rounds100,
+    oneFortyPlus: rounds140,
 
     avg9,
     avgRound,
     avgGame,
-    singleStreak: bestHitStreak,
-    roundStreak:  bestRoundStreak,
 
-    bestNumber:   bestNumberLabel,
-    worstNumber:  worseNumberLabel,
+    singleStreak: bestHitStreak,
+    roundStreak:  bestR,
+
+    // top-3 lists + backward-compat single value
+    bestNumber:   best3[0] || '—',
+    worstNumber:  worst3[0] || '—',
+    bestNumbers:  best3,
+    worstNumbers: worst3,
 
     totalThrows:  n,
     totalHits:    n - miss,
@@ -3557,6 +3560,14 @@ function openGameStatsDialog(){
       return;
     }
 
+    // Collect raw numeric values (for highlighting)
+    const rowNumeric = state.players.map((_, idx) => {
+      if (m.kind === 'wins') return winsArr[idx] || 0;
+      const v = statsByPlayer[idx][m.key];
+      return (typeof v === 'number') ? v : Number.isFinite(Number(v)) ? Number(v) : -Infinity;
+    });
+    const maxVal = Math.max(...rowNumeric);
+
     const tr = document.createElement('tr');
     const th = document.createElement('th');
     th.className = 'stats-th';
@@ -3566,16 +3577,32 @@ function openGameStatsDialog(){
     state.players.forEach((_, idx) => {
       const td = document.createElement('td');
       td.className = 'center num';
-      let val;
 
-      if (m.kind === 'wins') {
-        val = winsArr[idx] || 0;
+      if (m.multi) {
+        const list = statsByPlayer[idx][m.key] || [];
+        td.innerHTML = `
+          <div>1st ${list[0] || '—'}</div>
+          <div>2nd ${list[1] || '—'}</div>
+          <div>3rd ${list[2] || '—'}</div>
+        `;
       } else {
-        const v = statsByPlayer[idx][m.key];
-        val = m.fmt ? m.fmt(v) : String(v);
+        let val;
+        if (m.kind === 'wins') {
+          val = winsArr[idx] || 0;
+        } else {
+          const v = statsByPlayer[idx][m.key];
+          val = m.fmt ? m.fmt(v) : String(v);
+        }
+        td.textContent = val;
       }
 
-      td.textContent = val;
+      // Highlight highest numeric value(s) in the row
+      const raw = (m.kind === 'wins') ? (winsArr[idx] || 0) : rowNumeric[idx];
+      if (!m.multi && raw === maxVal && maxVal !== -Infinity) {
+        td.style.color = 'var(--accent-2)';
+        td.style.fontWeight = '800';
+      }
+
       tr.appendChild(td);
     });
 
@@ -3608,7 +3635,7 @@ function openGameStatsDialog(){
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
 }
 
-function openMatchStatsDialog(){ 
+function openMatchStatsDialog(){
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop';
 
@@ -3641,10 +3668,29 @@ function openMatchStatsDialog(){
   thead.appendChild(trh);
   table.appendChild(thead);
 
-  const tb  = document.createElement('tbody');
-  const vByP = state.players.map((_, i) => computeStatsForPlayerMatch(i));
+  const tbody = document.createElement('tbody');
+  const vByP  = state.players.map((_, i) => computeStatsForPlayerMatch(i));
+  const winsArr = (state.match?.wins || []).slice();
 
-  METRICS.forEach(m => {
+  DISPLAY_METRICS.forEach(m => {
+    if (m.sep) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 1 + state.players.length;
+      td.textContent = '';
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+      return;
+    }
+
+    // Gather raw numeric values for leader highlight
+    const rowNumeric = state.players.map((_, idx) => {
+      if (m.kind === 'wins') return winsArr[idx] || 0;
+      const v = vByP[idx][m.key];
+      return (typeof v === 'number') ? v : Number.isFinite(Number(v)) ? Number(v) : -Infinity;
+    });
+    const maxVal = Math.max(...rowNumeric);
+
     const tr = document.createElement('tr');
 
     const th = document.createElement('th');
@@ -3652,17 +3698,42 @@ function openMatchStatsDialog(){
     th.className   = 'stats-th';
     tr.appendChild(th);
 
-    state.players.forEach((_, i) => {
+    state.players.forEach((_, idx) => {
       const td = document.createElement('td');
       td.className = 'center num';
-      td.textContent = m.fmt(vByP[i][m.key]);
+
+      if (m.multi) {
+        const list = vByP[idx][m.key] || [];
+        td.innerHTML = `
+          <div>1st ${list[0] || '—'}</div>
+          <div>2nd ${list[1] || '—'}</div>
+          <div>3rd ${list[2] || '—'}</div>
+        `;
+      } else {
+        let val;
+        if (m.kind === 'wins') {
+          val = winsArr[idx] || 0;
+        } else {
+          const v = vByP[idx][m.key];
+          val = m.fmt ? m.fmt(v) : String(v);
+        }
+        td.textContent = val;
+      }
+
+      // Leader highlight
+      const raw = (m.kind === 'wins') ? (winsArr[idx] || 0) : rowNumeric[idx];
+      if (!m.multi && raw === maxVal && maxVal !== -Infinity) {
+        td.style.color = 'var(--accent-2)';
+        td.style.fontWeight = '800';
+      }
+
       tr.appendChild(td);
     });
 
-    tb.appendChild(tr);
+    tbody.appendChild(tr);
   });
 
-  table.appendChild(tb);
+  table.appendChild(tbody);
   body.appendChild(table);
 
   const footer = document.createElement('div');
@@ -3681,12 +3752,8 @@ function openMatchStatsDialog(){
   modal.tabIndex = 0;
   modal.focus();
 
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) overlay.remove();
-  });
-  overlay.addEventListener('keydown', e => {
-    if (e.key === 'Escape') overlay.remove();
-  });
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
 }
 function openHighScoresMenuDialog() {
   const overlay = document.createElement('div');
@@ -3703,71 +3770,38 @@ function openHighScoresMenuDialog() {
   body.style.display = 'flex';
   body.style.flexDirection = 'column';
   body.style.alignItems = 'center';
-  body.style.justifyContent = 'center';
-  body.style.gap = '10px';
+  body.style.gap = '8px';
 
-  // 1) High Scores Official
-  const officialBtn = document.createElement('button');
-  officialBtn.className = 'btn primary big';
-  officialBtn.textContent = 'High Scores (Official)';
-  officialBtn.style.minWidth = '220px';
-  officialBtn.onclick = () => {
-    overlay.remove();
-    openHighScoresDialog();
+  const W = 'min(420px, 92vw)';
+  const mkBtn = (label, extraClass, onClick) => {
+    const b = document.createElement('button');
+    b.className = `btn big ${extraClass || ''}`.trim();
+    b.textContent = label;
+    b.style.width = W;
+    b.onclick = () => { overlay.remove(); onClick(); };
+    return b;
   };
 
-  // 2) High Scores Practice
-  const practiceBtn = document.createElement('button');
-  practiceBtn.className = 'btn big';
-  practiceBtn.textContent = 'High Scores (Practice)';
-  practiceBtn.style.minWidth = '220px';
-  practiceBtn.onclick = () => {
-    overlay.remove();
-    openHighScoresDialogSP();
-  };
-
-  // Separator
-  const sep = document.createElement('hr');
-  sep.style.width = '100%';
-  sep.style.borderColor = '#23284a';
-  sep.style.margin = '10px 0';
-
-  // 3) Sprint League (new)
-  const sprintBtn = document.createElement('button');
-  sprintBtn.className = 'btn';
-  sprintBtn.textContent = 'Sprint League';
-  sprintBtn.style.minWidth = '220px';
-  sprintBtn.onclick = () => {
-    overlay.remove();
-    openSprintLeagueDialog();
-  };
-
-  body.appendChild(officialBtn);
-  body.appendChild(practiceBtn);
-  body.appendChild(sep);
-  body.appendChild(sprintBtn);
+  body.appendChild(mkBtn('Official (League)', 'primary', openHighScoresDialog));
+  body.appendChild(mkBtn('Practice (Single)', '',        openHighScoresDialogSP));
+  body.appendChild(mkBtn('Lowest (League)',  'warn',     openLowScoresDialog));
 
   const footer = document.createElement('div');
   footer.className = 'modal-footer';
-
   const closeBtn = document.createElement('button');
   closeBtn.className = 'btn';
   closeBtn.textContent = 'Close';
   closeBtn.onclick = () => overlay.remove();
-
   footer.appendChild(closeBtn);
 
   modal.append(title, body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
-  modal.tabIndex = 0;
-  modal.focus();
-
+  modal.tabIndex = 0; modal.focus();
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
 }
-
 
 async function openHighScoresDialog(){ 
   const overlay = document.createElement('div');
