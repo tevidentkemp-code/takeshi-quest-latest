@@ -1519,29 +1519,22 @@ async function computePlayerWindowStatsAsync(playerName, mode = 'official') {
   let games = [];
   try { games = await cloudFetchAllGamesAsLocal(); } catch (_) {}
 
-  // 2) If empty, synthesize from the *relevant* high-score table
-  if (!games.length) {
-    const tbl = (mode === 'official') ? TABLE_HS_LEAGUE : TABLE_HS_PRACTICE;
+  // 2) Filter by mode first
+  const byMode = (g) => (mode === 'official' ? isOfficialGame(g) : isPracticeGame(g));
+  games = (games || []).filter(byMode);
+
+  // 3) If there are NO games for THIS player after mode filter, top up from the relevant high-scores table
+  const hasAnyForPlayer = (games || []).some(g =>
+    (g.players || []).some(p => p && eqName(p.name, playerName))
+  );
+
+  if (!hasAnyForPlayer) {
+    // Reuse existing helper that builds 1-player pseudo games from high_scores/_sp
     try {
-      const { data, error } = await sb
-        .from(tbl)
-        .select('name, score, ts')
-        .eq('name', playerName)
-        .order('ts', { ascending: true });
-      if (!error && data) {
-        games = (data || []).map(r => ({
-          ts: r.ts || null,
-          players: [{ name: r.name }],
-          totals: [Number(r.score) || 0],
-          winners: [0],
-          board: null
-        }));
-      }
+      const synth = await cloudSynthGamesFromHighScores(playerName);
+      games = games.concat((synth || []).filter(byMode));
     } catch (_) {}
   }
-
-  // 3) Apply mode filter
-  games = games.filter(mode === 'official' ? isOfficialGame : isPracticeGame);
 
   // 4) Matches (only for official)
   let matches = [];
@@ -1553,8 +1546,8 @@ async function computePlayerWindowStatsAsync(playerName, mode = 'official') {
   const now = new Date();
   const out = {};
   STAT_WINDOWS.forEach(w => {
-    const gWin = games.filter(g => g.ts && w.test(new Date(g.ts), now));
-    const mWin = matches.filter(m => m.ts && w.test(new Date(m.ts), now));
+    const gWin = (games || []).filter(g => g.ts && w.test(new Date(g.ts), now));
+    const mWin = (matches || []).filter(m => m.ts && w.test(new Date(m.ts), now));
     out[w.key] = computeSingleWindowStats(playerName, gWin, mWin, w, now);
   });
   out.life = computeSingleWindowStats(playerName, games, matches, { test: () => true }, now);
@@ -2340,11 +2333,16 @@ async function openPlayerStatsDialog(playerName, mode = 'official') {
 
   const body = document.createElement('div'); body.className = 'modal-body';
 
- // Prefer local; fallback to cloud
-  let statsByWindow = computePlayerWindowStats(playerName, mode);
-  if (!statsByWindow?.life || (statsByWindow.life.gamesPlayed || 0) === 0) {
-    try { statsByWindow = await computePlayerWindowStatsAsync(playerName, mode); } catch(_) {}
-  }
+// Prefer cloud (has throw-by-throw boards); fallback to local if cloud not available
+let statsByWindow;
+try {
+  statsByWindow = await computePlayerWindowStatsAsync(playerName, mode);
+} catch (_) {
+  statsByWindow = null;
+}
+if (!statsByWindow?.life || (statsByWindow.life.gamesPlayed || 0) === 0) {
+  statsByWindow = computePlayerWindowStats(playerName, mode);
+}
 
   const table = document.createElement('table');
   table.className = 'hs-table';
@@ -2483,7 +2481,18 @@ async function openPlayerStatsDialog(playerName, mode = 'official') {
   topTitle.style.marginBottom = '4px';
   extraWrap.appendChild(topTitle);
 
-  const gamesAll = getGameLog();
+let gamesAll = getGameLog();
+if (!gamesAll || !gamesAll.length) {
+  try { gamesAll = await cloudFetchAllGamesAsLocal(); } catch (_) { gamesAll = []; }
+};
+
+if (!gamesAll || !gamesAll.length) {
+  try { gamesAll = await cloudFetchAllGamesAsLocal(); } catch (_) {}
+  if (!gamesAll || !gamesAll.length) {
+    // last-ditch: synthesize from high_scores so at least totals appear
+    gamesAll = await cloudSynthGamesFromHighScores(playerName);
+  }
+}
   const scores = [];
   (gamesAll || []).forEach(g => {
     if (!g || !Array.isArray(g.players) || !Array.isArray(g.totals)) return;
@@ -4519,20 +4528,30 @@ function missGo(){
 // --- GAME LOGGING TO SUPABASE (real) + HIGH SCORES ---
 async function recordFullGameToSupabase(createdAtOverride) {
   try {
+    const isOfficial = (state.players?.length || 0) >= 2;
+
+    // If we’re going to attach a match_id, make sure the match exists first
+    if (isOfficial) {
+      try { await upsertMatchToSupabase(_tsOverride); } catch (e) { console.warn('match upsert failed', e); }
+    }
+
     const totals = state.players.map((_, i) => totalScoreForPlayer(i));
     const boardClone = JSON.parse(JSON.stringify(state.score || []));
+
     const payload = {
-      match_id: state.match?.id || null,                     // uuid
+      match_id: isOfficial ? (state.match?.id || null) : null, // ← null for practice
       game_number: state.match?.history?.length ? state.match.history.length : 1,
-      created_at: createdAtOverride || new Date().toISOString(),
+      created_at: createdAtOverride || state.match?.createdAtIso || new Date().toISOString(),
       state: { players: state.players.map(p => ({ name: p.name })), board: boardClone },
       totals,
       finished: true
     };
+
     const { error } = await sb.from(TABLE_GAMES).insert(payload);
     if (error) throw error;
   } catch (e) {
     console.error('recordFullGameToSupabase failed', e);
+    throw e; // let caller show the toast
   }
 }
 
@@ -4574,6 +4593,11 @@ async function awardAndShowLeaderboard(){
   const totals  = state.players.map((_,i)=> totalScoreForPlayer(i));
   const max     = Math.max(...totals);
   const winners = totals.map((t,i)=> t===max?i:null).filter(x=>x!==null);
+
+// before recordFullGameToSupabase();
+if ((state.players?.length || 0) >= 2) {
+  try { await upsertMatchToSupabase(); } catch (e) { console.warn(e); }
+}
 
   // Ensure wins array exists
   if (!state.match.wins || state.match.wins.length !== state.players.length) {
