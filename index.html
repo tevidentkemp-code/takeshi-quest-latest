@@ -26,14 +26,19 @@
   /* Start/Back buttons under the player box (scope to #players only) */
 #players #startMatchRow,
 #players #backRow{
-  max-width:640px;
-  width:100%;
-  margin:12px auto 0;
+  max-width: 640px;
+  width: 100%;
+  margin: 12px auto 0;
 }
+
+/* Make the buttons themselves fill those rows */
 #players #startMatchBtn,
 #players #startScreenBtn{
-  width:100%;                 /* full width buttons */
+  width: 100%;
 }
+
+/* Hide the old top-left back row on Player Select */
+#players #gameTopRow{ display: none; }
 
 /* Player Select: Back row same width as the boxes + full-width button */
 #players #backRow{
@@ -340,6 +345,11 @@
   .hs-table{ width:100%; border-collapse:separate; border-spacing:0 }
   .hs-table th, .hs-table td{ padding:.5rem .5rem; border-bottom:1px dashed #23284a; }
   .hs-table th{ text-align:left; color:#cfd3ee; }
+  
+  /* Orange accent for practice games */
+.row-practice {
+  box-shadow: inset 4px 0 0 0 #ff8a00;
+}
 
   /* Add / Select Player Modals */
   #addPlayerModal.hidden, #selectPlayerModal.hidden, #adminHubModal.hidden, #savedPlayersAdminModal.hidden { display:none; }
@@ -441,6 +451,93 @@
 
 /* Leave Admin Code row compact/independent */
 #adminCodeRow{ max-width: 260px; width: 100%; }
+
+/* Final Leaderboard layout */
+#leaderboard .stacked-actions{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  margin-top:12px;
+}
+#leaderboard .stacked-actions .btn.big{
+  width:100%;                   /* fill the lb-box width */
+}
+#leaderboard .stacked-actions .btn.big{
+  width:min(420px, 92%);
+}
+#leaderboard .lb-box{
+  padding:12px;
+  border-radius:12px;
+  background:linear-gradient(180deg,#14284a,#12213d);
+  border:1px solid #2a4777;
+}
+/* Leaderboard action buttons: full width of the leaderboard table */
+#leaderboard .lb-box .stacked-actions{
+  width:100%;
+  margin-top:8px;
+}
+
+#leaderboard .lb-box .stacked-actions .btn.big{
+  width:100% !important;   /* fill the table/container width */
+  max-width:none;          /* no artificial cap */
+  display:block;           /* makes 100% width dependable */
+
+}
+/* --- Leaderboard table grid + polish --- */
+:root{
+  --lb-num-w:   72px;   /* each G# column */
+  --lb-pct-w:   86px;   /* Match %        */
+  --lb-total-w: 96px;   /* Match Total    */
+  --lb-win-w:   56px;   /* Win            */
+}
+
+/* visual separation for the Player column */
+#leaderboard #lbTable thead th:first-child,
+#leaderboard #lbTable tbody td:first-child{
+  border-right: 1px solid #2a2e48;
+}
+
+/* table layout + no-wrap for player names */
+#leaderboard #lbTable{
+  table-layout: fixed; /* respect colgroup widths */
+  width: 100%;
+}
+#leaderboard #lbTable thead th:first-child,
+#leaderboard #lbTable tbody td:first-child{
+  white-space: nowrap;
+  border-right: 1px solid #2a2e48; /* vertical divider after Player */
+}
+
+/* divider after the LAST G# column */
+#leaderboard #lbTable thead th.after-games-sep,
+#leaderboard #lbTable tbody td.after-games-sep{
+  border-right: 1px solid #2a2e48;
+}
+
+/* widths for numeric columns */
+:root{
+  --lb-num-w:   72px;  /* each G# */
+  --lb-pct-w:   86px;  /* Match % */
+  --lb-total-w: 96px;  /* Match Total */
+  --lb-win-w:   56px;  /* Win */
+}#lbTable thead th:first-child{ text-align:left; }
+
+/* keep names tidy on small screens */
+#leaderboard #lbTable th:first-child,
+#leaderboard #lbTable td:first-child{
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* numbers look better with tabular figures */
+#leaderboard #lbTable td,
+#leaderboard #lbTable th{ font-variant-numeric: tabular-nums; }
+
+/* subtle zebra + hover */
+#leaderboard #lbTable tbody tr:nth-child(odd) td{ background: rgba(255,255,255,.02); }
+#leaderboard #lbTable tbody tr:hover td{ background: rgba(255,255,255,.03); }
+
+/* green highlight is already defined as .leader-total in your CSS */
+
 
 </style>
 </head>
@@ -566,37 +663,40 @@
       </div>
     </section>
 
-    <!-- LEADERBOARD -->
-    <section id="leaderboard" class="card section hidden">
-      <div class="row" style="position: relative; height: 40px;">
-        <button id="startScreenBtnLB" class="btn" style="position: absolute; top: 0; left: 0;">Start Screen</button>
-        <button id="restartGameBtnLB" class="btn" style="position: absolute; top: 0; left: 110px;">Restart Game</button>
-      </div>
-      <h2>Leaderboard</h2>
-      <p class="tag"><span id="lbMatchInfo"></span></p>
+<section id="leaderboard" class="card section hidden">
+  <!-- Mirror the in-game top row (3 buttons, same sizing) -->
+  <div class="row" id="leaderboardTopRow">
+    <button id="startScreenBtnLB" class="btn letter-throw top-throw">Start Screen</button>
+    <button id="restartGameBtnLB" class="btn letter-throw top-throw">Restart Game</button>
+    <button id="statsHubBtnFinal" class="btn letter-throw top-throw">Stats</button>
+  </div>
 
-      <div class="table-wrap" style="margin-top:8px">
-        <table id="lbTable">
-          <thead></thead>
-          <tbody></tbody>
-        </table>
-      </div>
+  <!-- Leaderboard in its own box -->
+  <div class="lb-box" style="margin-top:8px;">
+    <h2 style="margin-top:0;">Leaderboard</h2>
+ <p class="tag hidden" style="margin-top:6px;"><span id="lbMatchInfo"></span></p>
 
-      <div class="row" style="margin-top:10px; align-items:center;">
-        <button id="nextGameBtn" class="btn primary big" type="button">Next game ▶</button>
-        <span class="grow"></span>
-        <button id="gameScoresBtn" class="btn" type="button">Game Scores</button>
-        <button id="newMatchBtn" class="btn danger" type="button">🗑 END MATCH</button>
-        <span id="gamesRemainTag" class="tag"></span>
-      </div>
+    <div class="table-wrap" style="margin-top:8px">
+      <table id="lbTable">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+      <!-- Stacked, centered actions -->
+  <div class="stacked-actions">
+    <button id="gameScoresBtn" class="btn big" type="button">GAME SCORES</button>
+    <button id="highScoresMenuBtnLB" class="btn big" type="button">HIGH SCORES</button>
 
-      <!-- New stats row under leaderboard -->
-      <div class="row" style="margin-top:10px; justify-content:center; gap:8px;">
-        <button id="lbGameStatsBtn" class="btn" type="button">Game Stats</button>
-        <button id="lbMatchStatsBtn" class="btn" type="button">Match Stats</button>
-        <button id="lbGameRaceBtn" class="btn" type="button">Race</button>
-      </div>
-    </section>
+    <!-- NEXT GAME (shown while match ongoing) -->
+    <button id="nextGameBtn" class="btn primary big" type="button">NEXT GAME ▶</button>
+
+    <!-- END MATCH (replaces NEXT GAME when match complete) -->
+    <button id="newMatchBtn" class="btn danger big hidden" type="button">END MATCH</button>
+
+  </div>
+  </div>
+
+</section>
 
     <!-- Fixed Throw Pad (Game Stats / Match Stats / High Scores / Race appear here) -->
     <div class="pad-bar" id="padBar">
@@ -722,6 +822,9 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 const TABLE_PLAYERS = "players";
+// View/table that lists every player's game across Official + Practice.
+// Expected columns: sheet_id, player, score, position, ts, is_practice, rounds
+const TABLE_PLAYER_GAMES = 'player_games_union';
 const TABLE_HS_LEAGUE = "high_scores";
 const TABLE_HS_PRACTICE = "high_scores_sp";
 const TABLE_GAME_THROWS = "game_throws";
@@ -770,6 +873,7 @@ function syncStartTitleWidth(){
   if (!t) return;
   const w = Math.ceil(t.getBoundingClientRect().width);
   document.documentElement.style.setProperty('--title-w', w + 'px');
+  
 }
 // Return games (and matches) for a mode; prefer local, then cloud
 async function getGamesForMode(mode){
@@ -779,6 +883,8 @@ async function getGamesForMode(mode){
   }
   return (games || []).filter(mode === 'official' ? isOfficialGame : isPracticeGame);
 }
+
+
 
 async function getMatchesOfficial(){
   // matches only make sense for H2H and official
@@ -845,6 +951,13 @@ function accumulateTargetCounters(playerName, games){
   });
 
   return keys;
+}
+// Put this at top-level (outside any function)
+function openScoreSheetFromHistory(gIndex){
+  const game = state.match.history[gIndex];
+  if (!game || !game.board) { toast('No score sheet for that game.'); return; }
+  const local = { ts: null, players: state.players.map(p=>({name:p.name})), board: game.board };
+  openSingleGameScoreSheet(local, -1);
 }
 
 // Percent helper
@@ -1025,18 +1138,6 @@ returnBtn.onclick = () => overlay.remove();
 function markCloudError(err) {
   console.error('[Supabase]', err);
   setCloudStatus('error', 'Cloud: problem – using local');
-}
-function addPadUtilityButtons() {
-  const spacer = document.createElement('span');
-  spacer.className = 'pad-spacer';
-  pad.appendChild(spacer);
-
-  const statsBtn = document.createElement('button');
-  statsBtn.className = 'btn';
-  statsBtn.textContent = 'Stats';
-  statsBtn.onclick = openStatsHubDialog;
-
-  pad.append(statsBtn);
 }
 
 function show(id){
@@ -1261,7 +1362,32 @@ async function initialCloudCheck() {
     markCloudError(err);
   }
 }
-
+// --- Period filter helper (Today / 1 Week / 1 Month / All Time) ---
+function periodStartIso(key){
+  const now = new Date();
+  if (key === 'today') {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return d.toISOString();
+  }
+  if (key === 'week') {
+    const d = new Date(now.getTime() - 7*24*60*60*1000);
+    return d.toISOString();
+  }
+  if (key === 'month') {
+    const d = new Date(now.getTime() - 30*24*60*60*1000);
+    return d.toISOString();
+  }
+  return null; // all time
+}
+// --- Date formatter: dd/mm/yy @ 24h:mm ---
+function fmtDdMmYyAtTime(d){
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const yy = String(d.getFullYear()).slice(-2);
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mi = String(d.getMinutes()).padStart(2,'0');
+  return `${dd}/${mm}/${yy} @ ${hh}:${mi}`;
+}
 // HIGH SCORES
 async function cloudInsertHighScore(name, score, single=false){
   const table   = single ? TABLE_HS_PRACTICE : TABLE_HS_LEAGUE;
@@ -1274,13 +1400,17 @@ async function cloudInsertHighScore(name, score, single=false){
   markCloudOk();
 }
 
-async function cloudListHighScores(single=false, limit=20){
+async function cloudListHighScores(single=false, limit=20, sinceIso=null){
   const table = single ? TABLE_HS_PRACTICE : TABLE_HS_LEAGUE;
-  const { data, error } = await sb.from(table)
-    .select('name, score, ts')
+  let q = sb.from(table)
+    .select('name, score, ts')            // ← ONLY existing columns
     .order('score', { ascending:false })
-    .order('ts', { ascending:true })
+    .order('ts',    { ascending:true })
     .limit(limit);
+
+  if (sinceIso) q = q.gte('ts', sinceIso);
+
+  const { data, error } = await q;
   if (error) {
     markCloudError(error);
     throw error;
@@ -1515,39 +1645,39 @@ async function cloudFetchAllMatchesAsLocal(){
 }
 
 async function computePlayerWindowStatsAsync(playerName, mode = 'official') {
-  // 1) Cloud games (ordered oldest→newest)
-  let games = [];
-  try { games = await cloudFetchAllGamesAsLocal(); } catch (_) {}
+  // 0) Load sources
+  let cloudGames = [];
+  let cloudMatches = [];
+  try { cloudGames = await cloudFetchAllGamesAsLocal(); } catch (_) {}
+  try { cloudMatches = await cloudFetchAllMatchesAsLocal(); } catch (_) {}
 
-  // 2) Filter by mode first
+  const localGames   = getGameLog()   || [];
+  const localMatches = getMatchLog()  || [];
+
+  // 1) Merge (cloud first, then local) – oldest→newest order
+  let games   = [...cloudGames, ...localGames];
+  let matches = (mode === 'official') ? [...cloudMatches, ...localMatches] : [];
+
+  // 2) Filter by mode
   const byMode = (g) => (mode === 'official' ? isOfficialGame(g) : isPracticeGame(g));
-  games = (games || []).filter(byMode);
+  games = games.filter(byMode);
+  if (mode !== 'official') matches = [];
 
-  // 3) If there are NO games for THIS player after mode filter, top up from the relevant high-scores table
-  const hasAnyForPlayer = (games || []).some(g =>
-    (g.players || []).some(p => p && eqName(p.name, playerName))
-  );
-
+  // 3) If still no games for this player, synth from high_scores tables
+  const hasAnyForPlayer = games.some(g => (g.players || []).some(p => p && eqName(p.name, playerName)));
   if (!hasAnyForPlayer) {
-    // Reuse existing helper that builds 1-player pseudo games from high_scores/_sp
     try {
       const synth = await cloudSynthGamesFromHighScores(playerName);
       games = games.concat((synth || []).filter(byMode));
     } catch (_) {}
   }
 
-  // 4) Matches (only for official)
-  let matches = [];
-  if (mode === 'official') {
-    try { matches = await cloudFetchAllMatchesAsLocal(); } catch (_) {}
-  }
-
-  // 5) Compute per-window stats
+  // 4) Windows
   const now = new Date();
   const out = {};
   STAT_WINDOWS.forEach(w => {
-    const gWin = (games || []).filter(g => g.ts && w.test(new Date(g.ts), now));
-    const mWin = (matches || []).filter(m => m.ts && w.test(new Date(m.ts), now));
+    const gWin = games.filter(g => g.ts && w.test(new Date(g.ts), now));
+    const mWin = matches.filter(m => m.ts && w.test(new Date(m.ts), now));
     out[w.key] = computeSingleWindowStats(playerName, gWin, mWin, w, now);
   });
   out.life = computeSingleWindowStats(playerName, games, matches, { test: () => true }, now);
@@ -2252,13 +2382,22 @@ function openPlayerStatsModePicker(playerName){
   const body = document.createElement('div');
   body.className = 'modal-body';
 
-  // Single grid so STATS spans all 3 columns and the others share equal width
+  // 3-col grid
   const grid = document.createElement('div');
   grid.style.display = 'grid';
   grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
   grid.style.gap = '8px';
   grid.style.maxWidth = '620px';
   grid.style.margin = '0 auto';
+
+  // NEW: GAMES (spans all 3 columns, sits ABOVE STATS)
+  const gamesBtn = document.createElement('button');
+  gamesBtn.className = 'btn big';
+  gamesBtn.textContent = 'GAMES';
+  gamesBtn.style.gridColumn = '1 / -1';
+  gamesBtn.style.width = '100%';
+  gamesBtn.onclick = () => { overlay.remove(); openPlayerGamesDialog(playerName); };
+  grid.appendChild(gamesBtn);
 
   // STATS (spans 3 columns)
   const statsBtn = document.createElement('button');
@@ -2270,12 +2409,12 @@ function openPlayerStatsModePicker(playerName){
     overlay.remove();
     openModeChooser(
       mode => openPlayerStatsDialog(playerName, mode),
-      ()   => openPlayerStatsModePicker(playerName)   // Return goes back here
+      ()   => openPlayerStatsModePicker(playerName)
     );
   };
   grid.appendChild(statsBtn);
 
-  // Helper: open mode, then a specific screen
+  // Helper: choose mode for the sub-screens
   function chooseModeAnd(fn){
     overlay.remove();
     openModeChooser(
@@ -2284,7 +2423,7 @@ function openPlayerStatsModePicker(playerName){
     );
   }
 
-  // 3 equal-width buttons
+  // 3 equal-width buttons under STATS
   const thrBtn = document.createElement('button');
   thrBtn.className = 'btn';
   thrBtn.textContent = 'Target Hit %';
@@ -2306,7 +2445,6 @@ function openPlayerStatsModePicker(playerName){
   grid.append(thrBtn, tdbBtn, h2hBtn);
   body.appendChild(grid);
 
-  // Footer: Return to the Select Player + PIN dialog
   const footer = document.createElement('div');
   footer.className = 'modal-footer';
   const backBtn = document.createElement('button');
@@ -2323,6 +2461,18 @@ function openPlayerStatsModePicker(playerName){
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
 }
+function hasThrowData(statsByWindow){
+  const wins = statsByWindow || {};
+  return Object.values(wins).some(w =>
+    w && (
+      (w.avgPointsPerThrow || 0) > 0 ||
+      (w.singlePct || 0) > 0 ||
+      (w.doublePct || 0) > 0 ||
+      (w.treblePct || 0) > 0 ||
+      (w.bullsPct  || 0) > 0
+    )
+  );
+}
 
 async function openPlayerStatsDialog(playerName, mode = 'official') {
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
@@ -2333,16 +2483,21 @@ async function openPlayerStatsDialog(playerName, mode = 'official') {
 
   const body = document.createElement('div'); body.className = 'modal-body';
 
-// Prefer cloud (has throw-by-throw boards); fallback to local if cloud not available
-let statsByWindow;
-try {
-  statsByWindow = await computePlayerWindowStatsAsync(playerName, mode);
-} catch (_) {
-  statsByWindow = null;
-}
-if (!statsByWindow?.life || (statsByWindow.life.gamesPlayed || 0) === 0) {
-  statsByWindow = computePlayerWindowStats(playerName, mode);
-}
+// Choose the source that has throw-level data; otherwise pick the one with games
+let cloud = null, local = null, statsByWindow = null;
+
+try { cloud = await computePlayerWindowStatsAsync(playerName, mode); } catch (_) {}
+local = computePlayerWindowStats(playerName, mode);
+
+const cloudHasGames  = !!(cloud?.life?.gamesPlayed);
+const localHasGames  = !!(local?.life?.gamesPlayed);
+const cloudHasThrows = cloudHasGames && hasThrowData(cloud);
+const localHasThrows = localHasGames && hasThrowData(local);
+
+if (cloudHasThrows)       statsByWindow = cloud;
+else if (localHasThrows)  statsByWindow = local;
+else if (cloudHasGames)   statsByWindow = cloud;
+else                      statsByWindow = local; // may be empty, but safe
 
   const table = document.createElement('table');
   table.className = 'hs-table';
@@ -3527,6 +3682,8 @@ function openStatsHubDialog(){
   // 3) High/Low (Official)
   body.appendChild(mkBtn('HIGH SCORES (Official)', '', openHighScoresDialog));
   body.appendChild(mkBtn('LOW SCORES (Official)', '', openLowScoresDialog));
+  
+  
 
   // Footer: Close (original size)
   const footer = document.createElement('div');
@@ -3820,6 +3977,119 @@ function openHighScoresMenuDialog() {
   body.appendChild(mkBtn('Official (League)', 'primary', openHighScoresDialog));
   body.appendChild(mkBtn('Practice (Single)', '',        openHighScoresDialogSP));
   body.appendChild(mkBtn('Lowest (League)',  'warn',     openLowScoresDialog));
+  
+  // Practice (Single) High Scores dialog
+function openHighScoresDialogSP(){ 
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal   = document.createElement('div'); modal.className   = 'modal';
+  const title   = document.createElement('h3');  title.textContent = 'High Scores (Practice)';
+  const body    = document.createElement('div'); body.className    = 'modal-body';
+
+  let period = 'all';
+
+  async function render(){
+    body.innerHTML = '';
+    try{
+      const since = periodStartIso(period);
+      const list  = await cloudListHighScores(true, 20, since);
+
+      if (!list.length){
+        const p = document.createElement('p');
+        p.textContent = 'No high scores in this period.';
+        body.appendChild(p);
+        return;
+      }
+
+      const table = document.createElement('table'); table.className='hs-table';
+      const thead = document.createElement('thead'); const trh=document.createElement('tr');
+      ['#','Player','Score','Avg / Round','When'].forEach(h=>{
+        const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);
+      });
+      thead.appendChild(trh); table.appendChild(thead);
+
+      const tb = document.createElement('tbody');
+      list.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+
+        const td1 = document.createElement('td'); td1.textContent = String(idx + 1);
+        const td2 = document.createElement('td'); td2.textContent = row.name;
+        const td3 = document.createElement('td'); td3.textContent = String(row.score);
+
+        const td4 = document.createElement('td');
+        const avgRound = (typeof MAX_ROUNDS === 'number' && MAX_ROUNDS > 0)
+          ? (Number(row.score || 0) / MAX_ROUNDS) : 0;
+        td4.textContent = avgRound.toFixed(1);
+
+        const td5 = document.createElement('td');
+        const d = new Date(row.ts);
+        td5.textContent = !Number.isNaN(d.getTime())
+          ? d.toLocaleString(undefined, {
+              year:'2-digit', month:'short', day:'2-digit',
+              hour:'2-digit', minute:'2-digit'
+            })
+          : '';
+        td5.style.fontSize = '0.8rem';
+
+        tr.append(td1, td2, td3, td4, td5);
+
+        // click → score sheet (PRACTICE)
+        tr.style.cursor = 'pointer';
+        tr.title = 'Open score sheet';
+        tr.onclick = () => openScoreSheetFromHighScore(row, /* isPractice */ true);
+
+        tb.appendChild(tr);
+      });
+
+      table.appendChild(tb);
+      body.appendChild(table);
+    }catch(err){
+      console.error(err);
+      const p=document.createElement('p');
+      p.textContent='Failed to load high scores.';
+      body.appendChild(p);
+    }
+  }
+
+  const footer = document.createElement('div'); footer.className='modal-footer';
+  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  backBtn.onclick = () => overlay.remove();
+  footer.appendChild(backBtn);
+
+  const periods = [
+    { key:'today', label:'Today' },
+    { key:'week',  label:'1 Week' },
+    { key:'month', label:'1 Month' },
+    { key:'all',   label:'All Time' },
+  ];
+
+  const periodBtns = periods.map(p=>{
+    const b = document.createElement('button');
+    b.className='btn';
+    b.textContent = p.label;
+    b.dataset.period = p.key;
+    b.onclick = async () => { period = p.key; setActive(); await render(); };
+    footer.appendChild(b);
+    return b;
+  });
+
+  function setActive(){
+    periodBtns.forEach(b=>{
+      if (b.dataset.period === period) b.classList.add('primary');
+      else b.classList.remove('primary');
+    });
+  }
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  modal.tabIndex = 0; modal.focus();
+  overlay.addEventListener('click', e=>{ if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e=>{ if (e.key === 'Escape') overlay.remove(); });
+
+  setActive();
+  render();
+}
 
   const footer = document.createElement('div');
   footer.className = 'modal-footer';
@@ -3837,201 +4107,345 @@ function openHighScoresMenuDialog() {
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
 }
+// List all games for a specific player, filtered by optional period
+async function cloudListPlayerGames(playerName, sinceIso=null, limit=200){
+  let q = sb.from(TABLE_PLAYER_GAMES)
+    .select('sheet_id, player, score, position, ts, is_practice, rounds')
+    .eq('player', playerName)
+    .order('ts', { ascending:false })
+    .limit(limit);
 
-async function openHighScoresDialog(){ 
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-backdrop';
+  if (sinceIso) q = q.gte('ts', sinceIso);
 
-  const modal = document.createElement('div');
-  modal.className = 'modal';
+  const { data, error } = await q;
+  if (error) {
+    markCloudError(error);
+    throw error;
+  }
+  markCloudOk();
+  return data || [];
+  
+  async function openPlayerGamesDialog(playerName){
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal   = document.createElement('div'); modal.className   = 'modal';
+  const title   = document.createElement('h3');  title.textContent = `Games – ${playerName}`;
+  const body    = document.createElement('div'); body.className    = 'modal-body';
 
-  const title = document.createElement('h3');
-  title.textContent = 'High Scores (Official)';
+  let period = 'all';
 
-  const body = document.createElement('div');
-  body.className = 'modal-body';
+  async function render(){
+    body.innerHTML = '';
+    try {
+      const since = periodStartIso(period);
+      const rows  = await cloudListPlayerGames(playerName, since);
 
-  try {
-    const list = await cloudListHighScores(false, 20); // TOP 20 ONLY
+      if (!rows.length){
+        const p = document.createElement('p');
+        p.textContent = 'No games in this period.';
+        body.appendChild(p);
+        return;
+      }
 
-    if (!list.length) {
-      const p = document.createElement('p');
-      p.textContent = 'No high scores yet.';
-      body.appendChild(p);
-    } else {
-      const table = document.createElement('table');
-      table.className = 'hs-table';
-
-      const thead = document.createElement('thead');
-      const trh   = document.createElement('tr');
-
-      ['#','Player','Score','Avg / Round','When'].forEach(h => {
-        const th = document.createElement('th');
-        th.textContent = h;
-        trh.appendChild(th);
+      const table = document.createElement('table'); table.className='hs-table';
+      const thead = document.createElement('thead'); const trh = document.createElement('tr');
+      ['#','Pos','Score','Avg / Round','Date'].forEach(h=>{
+        const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);
       });
-
-      thead.appendChild(trh);
-      table.appendChild(thead);
+      thead.appendChild(trh); table.appendChild(thead);
 
       const tb = document.createElement('tbody');
-
-      list.forEach((row, idx) => {
+      rows.forEach((row, idx) => {
         const tr = document.createElement('tr');
+        if (row.is_practice) tr.classList.add('row-practice');
 
-        const td1 = document.createElement('td');
-        td1.textContent = String(idx + 1);
+        const tdIdx   = document.createElement('td'); tdIdx.textContent   = String(idx + 1);
+        const tdPos   = document.createElement('td'); tdPos.textContent   = row.position ?? '';
+        const tdScore = document.createElement('td'); tdScore.textContent = String(row.score ?? '');
 
-        const td2 = document.createElement('td');
-        td2.textContent = row.name;
+        const rounds = Number(row.rounds || MAX_ROUNDS || 0);
+        const avg    = rounds ? (Number(row.score || 0) / rounds) : 0;
+        const tdAvg  = document.createElement('td'); tdAvg.textContent = avg.toFixed(1);
 
-        const td3 = document.createElement('td');
-        td3.textContent = String(row.score);
-
-        const td4 = document.createElement('td');
-        const avgRound = typeof MAX_ROUNDS === 'number' && MAX_ROUNDS > 0
-          ? (Number(row.score || 0) / MAX_ROUNDS)
-          : 0;
-        td4.textContent = avgRound.toFixed(1);
-
-        const td5 = document.createElement('td');
         const d = new Date(row.ts);
-        td5.textContent = !Number.isNaN(d.getTime())
-          ? d.toLocaleString(undefined, {
-              year: '2-digit',
-              month: 'short',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit'
-            })
-          : '';
-        td5.style.fontSize = '0.8rem';
+        const tdWhen = document.createElement('td');
+        tdWhen.textContent = Number.isNaN(d.getTime()) ? '' : fmtDdMmYyAtTime(d);
+        tdWhen.style.fontSize = '0.8rem';
 
-        tr.append(td1, td2, td3, td4, td5);
+        tr.append(tdIdx, tdPos, tdScore, tdAvg, tdWhen);
+
+        tr.style.cursor = 'pointer';
+        tr.title = 'Open scorecard';
+        tr.onclick = () => openScoreSheetFromHighScore({ sheet_id: row.sheet_id }, !!row.is_practice);
+
         tb.appendChild(tr);
       });
 
       table.appendChild(tb);
       body.appendChild(table);
+    } catch (err){
+      console.error(err);
+      const p = document.createElement('p');
+      p.textContent = 'Failed to load games.';
+      body.appendChild(p);
     }
-  } catch (err) {
-    console.error(err);
-    const p = document.createElement('p');
-    p.textContent = 'Failed to load high scores.';
-    body.appendChild(p);
   }
 
-  const footer = document.createElement('div');
-  footer.className = 'modal-footer';
+  const footer = document.createElement('div'); footer.className = 'modal-footer';
+  const backBtn = document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  backBtn.onclick = () => overlay.remove();
+  footer.appendChild(backBtn);
 
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn';
-  closeBtn.textContent = 'Close';
-  closeBtn.onclick = () => overlay.remove();
-  footer.appendChild(closeBtn);
+  const periods = [
+    { key:'today', label:'Today' },
+    { key:'week',  label:'1 Week' },
+    { key:'month', label:'1 Month' },
+    { key:'all',   label:'All Time' },
+  ];
+  const periodBtns = periods.map(p => {
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.textContent = p.label;
+    b.dataset.period = p.key;
+    b.onclick = async () => { period = p.key; setActive(); await render(); };
+    footer.appendChild(b);
+    return b;
+  });
+  function setActive(){
+    periodBtns.forEach(b => {
+      if (b.dataset.period === period) b.classList.add('primary');
+      else b.classList.remove('primary');
+    });
+  }
 
   modal.append(title, body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
-  modal.tabIndex = 0;
-  modal.focus();
+  modal.tabIndex = 0; modal.focus();
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
 
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) overlay.remove();
-  });
-  overlay.addEventListener('keydown', e => {
-    if (e.key === 'Escape') overlay.remove();
-  });
+  setActive();
+  await render();
 }
-async function openHighScoresDialogSP(){ 
-  const overlay=document.createElement('div'); overlay.className='modal-backdrop'; 
-  const modal=document.createElement('div'); modal.className='modal'; 
-  const title=document.createElement('h3'); 
-  title.textContent='High Scores (Practice)'; 
-  const body=document.createElement('div'); body.className='modal-body'; 
+  
+  async function openPlayerGamesDialog(playerName){
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal   = document.createElement('div'); modal.className   = 'modal';
+  const title   = document.createElement('h3');  title.textContent = `Games – ${playerName}`;
+  const body    = document.createElement('div'); body.className    = 'modal-body';
 
-  try{
-    // practice = single-player table
-    const list = await cloudListHighScores(true, 20);   // TOP 20 ONLY
-    if(!list.length){ 
-      const p=document.createElement('p'); 
-      p.textContent='No high scores yet.'; 
-      body.appendChild(p); 
-    } else {
-      const table=document.createElement('table'); 
-      table.className='hs-table';
-      const thead=document.createElement('thead'); 
-      const trh=document.createElement('tr');
+  let period = 'all';
 
+  async function render(){
+    body.innerHTML = '';
+    try {
+      const since = periodStartIso(period);
+      const rows  = await cloudListPlayerGames(playerName, since);
+
+      if (!rows.length){
+        const p = document.createElement('p');
+        p.textContent = 'No games in this period.';
+        body.appendChild(p);
+        return;
+      }
+
+      const table = document.createElement('table'); table.className='hs-table';
+      const thead = document.createElement('thead'); const trh = document.createElement('tr');
+      ['#','Pos','Score','Avg / Round','Date'].forEach(h=>{
+        const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);
+      });
+      thead.appendChild(trh); table.appendChild(thead);
+
+      const tb = document.createElement('tbody');
+      rows.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        if (row.is_practice) tr.classList.add('row-practice');
+
+        const tdIdx = document.createElement('td'); tdIdx.textContent = String(idx + 1);
+        const tdPos = document.createElement('td'); tdPos.textContent = row.position ?? '';
+        const tdScore = document.createElement('td'); tdScore.textContent = String(row.score ?? '');
+
+        const rounds = Number(row.rounds || MAX_ROUNDS || 0);
+        const avg = rounds ? (Number(row.score || 0) / rounds) : 0;
+        const tdAvg = document.createElement('td'); tdAvg.textContent = avg.toFixed(1);
+
+        const d = new Date(row.ts);
+        const tdWhen = document.createElement('td');
+        tdWhen.textContent = Number.isNaN(d.getTime()) ? '' : fmtDdMmYyAtTime(d);
+        tdWhen.style.fontSize = '0.8rem';
+
+        tr.append(tdIdx, tdPos, tdScore, tdAvg, tdWhen);
+
+        // Open the scorecard
+        tr.style.cursor = 'pointer';
+        tr.title = 'Open scorecard';
+        tr.onclick = () => openScoreSheetFromHighScore({ sheet_id: row.sheet_id }, !!row.is_practice);
+
+        tb.appendChild(tr);
+      });
+
+      table.appendChild(tb);
+      body.appendChild(table);
+    } catch (err){
+      console.error(err);
+      const p = document.createElement('p');
+      p.textContent = 'Failed to load games.';
+      body.appendChild(p);
+    }
+  }
+
+  const footer = document.createElement('div'); footer.className = 'modal-footer';
+  const backBtn = document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  backBtn.onclick = () => overlay.remove();
+  footer.appendChild(backBtn);
+
+  const periods = [
+    { key:'today', label:'Today' },
+    { key:'week',  label:'1 Week' },
+    { key:'month', label:'1 Month' },
+    { key:'all',   label:'All Time' },
+  ];
+  const periodBtns = periods.map(p => {
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.textContent = p.label;
+    b.dataset.period = p.key;
+    b.onclick = async () => { period = p.key; setActive(); await render(); };
+    footer.appendChild(b);
+    return b;
+  });
+  function setActive(){
+    periodBtns.forEach(b => {
+      if (b.dataset.period === period) b.classList.add('primary');
+      else b.classList.remove('primary');
+    });
+  }
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  modal.tabIndex = 0; modal.focus();
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+
+  setActive();
+  await render();
+}
+  
+}
+async function openHighScoresDialog(){ 
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal   = document.createElement('div'); modal.className   = 'modal';
+  const title   = document.createElement('h3');  title.textContent = 'High Scores (Official)';
+  const body    = document.createElement('div'); body.className    = 'modal-body';
+
+  let period = 'all';
+
+  async function render(){
+    body.innerHTML = '';
+    try {
+      const since = periodStartIso(period);
+      const list  = await cloudListHighScores(false, 20, since);
+
+      if (!list.length){
+        const p = document.createElement('p');
+        p.textContent = 'No high scores in this period.';
+        body.appendChild(p);
+        return;
+      }
+
+      const table = document.createElement('table'); table.className='hs-table';
+      const thead = document.createElement('thead'); const trh = document.createElement('tr');
       ['#','Player','Score','Avg / Round','When'].forEach(h=>{
-        const th=document.createElement('th'); 
-        th.textContent=h; 
-        trh.appendChild(th);
-      }); 
-      thead.appendChild(trh); 
-      table.appendChild(thead);
+        const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);
+      });
+      thead.appendChild(trh); table.appendChild(thead);
 
-      const tb=document.createElement('tbody');
-      list.forEach((row,idx)=>{ 
-        const tr=document.createElement('tr'); 
+      const tb = document.createElement('tbody');
+      list.forEach((row, idx) => {
+        const tr  = document.createElement('tr');
 
-        const td1=document.createElement('td'); 
-        td1.textContent=String(idx+1);
+        const td1 = document.createElement('td'); td1.textContent = String(idx + 1);
+        const td2 = document.createElement('td'); td2.textContent = row.name;
+        const td3 = document.createElement('td'); td3.textContent = String(row.score);
 
-        const td2=document.createElement('td'); 
-        td2.textContent=row.name;
-
-        const td3=document.createElement('td'); 
-        td3.textContent=String(row.score);
-
-        const td4=document.createElement('td');
-        const avgRound = MAX_ROUNDS ? (Number(row.score || 0) / MAX_ROUNDS) : 0;
+        const td4 = document.createElement('td');
+        const avgRound = (typeof MAX_ROUNDS === 'number' && MAX_ROUNDS > 0)
+          ? (Number(row.score || 0) / MAX_ROUNDS) : 0;
         td4.textContent = avgRound.toFixed(1);
 
-        const td5=document.createElement('td'); 
+        const td5 = document.createElement('td');
         const d = new Date(row.ts);
         td5.textContent = !Number.isNaN(d.getTime())
-          ? d.toLocaleString(undefined, {
-              year: '2-digit',
-              month: 'short',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit'
-            })
+          ? d.toLocaleString(undefined, { year:'2-digit', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' })
           : '';
         td5.style.fontSize = '0.8rem';
 
-        tr.append(td1,td2,td3,td4,td5); 
+        tr.append(td1, td2, td3, td4, td5);
+
+        // click → score sheet (OFFICIAL)
+        tr.style.cursor = 'pointer';
+        tr.title = 'Open score sheet';
+        tr.onclick = () => openScoreSheetFromHighScore(row, /* isPractice */ false);
+
         tb.appendChild(tr);
       });
-      table.appendChild(tb); 
+
+      table.appendChild(tb);
       body.appendChild(table);
+    } catch (err) {
+      console.error(err);
+      const p = document.createElement('p');
+      p.textContent = 'Failed to load high scores.';
+      body.appendChild(p);
     }
-  }catch(err){ 
-    console.error(err); 
-    const p=document.createElement('p'); 
-    p.textContent='Failed to load high scores.'; 
-    body.appendChild(p); 
   }
 
-  const footer=document.createElement('div'); 
-  footer.className='modal-footer'; 
-  const closeBtn=document.createElement('button'); 
-  closeBtn.className='btn'; 
-  closeBtn.textContent='Close'; 
-  closeBtn.onclick=()=>overlay.remove(); 
-  footer.appendChild(closeBtn); 
+  const footer = document.createElement('div'); footer.className = 'modal-footer';
 
-  modal.append(title,body,footer); 
-  overlay.appendChild(modal); 
-  document.body.appendChild(overlay); 
+  // Back (renamed from Close)
+  const backBtn = document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  backBtn.onclick = () => overlay.remove();
+  footer.appendChild(backBtn);
 
-  modal.tabIndex=0; 
-  modal.focus(); 
+  // Period buttons
+  const periods = [
+    { key:'today', label:'Today' },
+    { key:'week',  label:'1 Week' },
+    { key:'month', label:'1 Month' },
+    { key:'all',   label:'All Time' },
+  ];
 
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();}); 
-  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
+  const periodBtns = periods.map(p => {
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.textContent = p.label;
+    b.dataset.period = p.key;
+    b.onclick = async () => { period = p.key; setActive(); await render(); };
+    footer.appendChild(b);
+    return b;
+  });
+
+  function setActive(){
+    periodBtns.forEach(b => {
+      if (b.dataset.period === period) b.classList.add('primary');
+      else b.classList.remove('primary');
+    });
+  }
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  modal.tabIndex = 0; modal.focus();
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+
+  setActive();
+  await render();
+
 }
 async function openLowScoresDialog(){ 
   const overlay = document.createElement('div');
@@ -4539,9 +4953,10 @@ async function recordFullGameToSupabase(createdAtOverride) {
     const boardClone = JSON.parse(JSON.stringify(state.score || []));
 
     const payload = {
-      match_id: isOfficial ? (state.match?.id || null) : null, // ← null for practice
+      match_id: isOfficial ? (state.match?.id || null) : null, // null for practice
       game_number: state.match?.history?.length ? state.match.history.length : 1,
-      created_at: createdAtOverride || state.match?.createdAtIso || new Date().toISOString(),
+      // ↓ use the actual FINISH time (or backdate override) – not match start
+      created_at: createdAtOverride || _tsOverride || new Date().toISOString(),
       state: { players: state.players.map(p => ({ name: p.name })), board: boardClone },
       totals,
       finished: true
@@ -4551,11 +4966,10 @@ async function recordFullGameToSupabase(createdAtOverride) {
     if (error) throw error;
   } catch (e) {
     console.error('recordFullGameToSupabase failed', e);
-    throw e; // let caller show the toast
+    throw e;
   }
 }
 
-// Insert every finished game into the appropriate high scores table.
 // Multi-player -> League (TABLE_HS_LEAGUE), single-player -> Practice (TABLE_HS_PRACTICE).
 async function recordGameToHighScores() {
   if (!state.players || !state.players.length) return;
@@ -4647,88 +5061,218 @@ const gamesRemainTag=byId('gamesRemainTag');
 const lbGameStatsBtn  = byId('lbGameStatsBtn');
 const lbMatchStatsBtn = byId('lbMatchStatsBtn');
 const lbGameRaceBtn   = byId('lbGameRaceBtn');
-function updateLeaderboardTable(){ 
-  lbTHead.innerHTML=''; lbTBody.innerHTML=''; 
-  const trh=document.createElement('tr');
-trh.appendChild(Object.assign(document.createElement('th'),{textContent:'Player'}));
 
-// one column per game actually played
-const gamesPlayed = state.match.history.length;
-for(let g=0; g<gamesPlayed; g++){
-  const th=document.createElement('th');
-  th.textContent='G'+(g+1);
-  trh.appendChild(th);
-}
+function updateLeaderboardTable(){
+  lbTHead.innerHTML = '';
+  lbTBody.innerHTML = '';
 
-trh.appendChild(Object.assign(document.createElement('th'),{textContent:'Match Total'}));
-trh.appendChild(Object.assign(document.createElement('th'),{textContent:'Win'}));
-  lbTHead.appendChild(trh); 
-  state.players.forEach((player, idx)=>{ 
-    const tr=document.createElement('tr'); 
-    const nameTd=document.createElement('td'); nameTd.textContent=player.name; nameTd.style.color=player.color; tr.appendChild(nameTd); 
-   let matchTotal=0;
-for(let g=0; g<gamesPlayed; g++){
-  const td=document.createElement('td');
-  td.className='center';
-  const t = (state.match.history[g]?.totals?.[idx]) || 0;
-  td.textContent = String(t);
-  matchTotal += t;
-  tr.appendChild(td);
-}
-    const totalTd=document.createElement('td'); totalTd.className='center'; totalTd.textContent=String(matchTotal); tr.appendChild(totalTd); 
-    const winsTd=document.createElement('td'); winsTd.className='center'; winsTd.textContent=String(state.match.wins[idx]||0); tr.appendChild(winsTd); 
-    lbTBody.appendChild(tr); 
-  }); 
-}
-function showLeaderboard(){ 
-  show('leaderboard'); 
-  updateLeaderboardTable(); 
-
-  const target    = state.match.targetWins || 1;
   const gamesPlayed = state.match.history.length;
-  const maxWins  = state.match.wins.length ? Math.max(...state.match.wins) : 0;
-  const matchDone = maxWins >= target;
 
-  lbMatchInfo.textContent =
-    `Games played: ${gamesPlayed} • Target wins: ${target} • Current best: ${maxWins}`;
-  
-  gamesRemainTag.textContent = matchDone
-    ? 'Match complete'
-    : (target - maxWins) + ' to win';
+  /* ---------- measure Player column to fit largest name ---------- */
+  function measureNameColWidthPx(){
+    const labels = ['Player', ...state.players.map(p => p.name || '')];
+    const cs = getComputedStyle(lbTable);
+    const font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = font;
 
-  nextGameBtn.disabled = matchDone;
-}
-nextGameBtn.addEventListener('click',()=>{ 
-  const target  = state.match.targetWins || 1;
-  const maxWins = state.match.wins.length ? Math.max(...state.match.wins) : 0;
+    let max = 0;
+    for (const t of labels){
+      const w = ctx.measureText(t).width;
+      if (w > max) max = w;
+    }
+    const padding = 24;  // left+right cell padding
+    const border  = 1;   // right border separator
+    // clamp to something sensible
+    const px = Math.ceil(max + padding + border);
+    return Math.min(Math.max(px, 100), 320);
+  }
+  const nameColWidth = measureNameColWidthPx();
 
-  if (maxWins >= target) {
-    alert('Match complete! Start a new match from the details screen.');
-    return;
+  /* ---------- define column grid ---------- */
+  let colgroup = lbTable.querySelector('colgroup');
+  if (!colgroup) {
+    colgroup = document.createElement('colgroup');
+    lbTable.insertBefore(colgroup, lbTable.firstChild);
+  }
+  colgroup.innerHTML = '';
+
+  // Player (exact width to longest name)
+  const cName = document.createElement('col');
+  cName.style.width = nameColWidth + 'px';
+  colgroup.appendChild(cName);
+
+  // G1..Gn
+  for (let g = 0; g < gamesPlayed; g++) {
+    const c = document.createElement('col');
+    c.style.width = 'var(--lb-num-w)';
+    colgroup.appendChild(c);
   }
 
-  const completedGames = state.match.history.length; 
-  state.finished=false; 
-  state.suddenDeath={active:false,participants:[],turnIndex:0,throws:[],round:1}; 
+ // Distinct columns for Match %, Match Total, Win – same width
+const rightW = 'var(--lb-right-w)';
+const cPct   = document.createElement('col'); cPct.style.width   = rightW; colgroup.appendChild(cPct);
+const cTotal = document.createElement('col'); cTotal.style.width = rightW; colgroup.appendChild(cTotal);
+const cWin   = document.createElement('col'); cWin.style.width   = rightW; colgroup.appendChild(cWin);
 
-  // simple rotation: next game starts with next player
-  const rot=completedGames % state.players.length; 
-  startNewGame(false); 
-  state.currentPlayer=rot; 
-  show('game'); 
-  updateUI(); 
-});
-newMatchBtn.addEventListener('click',()=>{ 
-  if (!confirm('End current match and return to details?')) return; 
+  /* ---------- header ---------- */
+  const trh = document.createElement('tr');
 
-  safeClear(STORAGE_KEY); 
+  const thName = document.createElement('th');
+  thName.scope = 'col';
+  thName.textContent = 'Player';
+  trh.appendChild(thName);
 
-  // Reset full state to baseState
-  Object.assign(state, JSON.parse(JSON.stringify(baseState)));
+  for (let g = 0; g < gamesPlayed; g++) {
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.className = 'center gcol' + (g === gamesPlayed - 1 ? ' after-games-sep' : '');
+    th.textContent = 'G' + (g + 1);
+    th.style.cursor = 'pointer';
+    th.title = 'Open Game ' + (g + 1) + ' score sheet';
+    th.onclick = () => openScoreSheetFromHistory(g);
+    trh.appendChild(th);
+  }
 
-  show('details');
-  setupStartMenuButtons();
-});
+  const thPct = document.createElement('th');
+  thPct.scope = 'col';
+  thPct.className = 'center';
+  thPct.textContent = 'Match %';
+  trh.appendChild(thPct);
+
+  const thTotal = document.createElement('th');
+  thTotal.scope = 'col';
+  thTotal.className = 'center';
+  thTotal.textContent = 'Match Total';
+  trh.appendChild(thTotal);
+
+  const thWin = document.createElement('th');
+  thWin.scope = 'col';
+  thWin.className = 'center';
+  thWin.textContent = 'Win';
+  trh.appendChild(thWin);
+
+  lbTHead.appendChild(trh);
+
+  /* ---------- gather data ---------- */
+  let bestMatchTotal = -Infinity;
+  const perPlayerTotals = state.players.map((_, idx) => {
+    let mt = 0;
+    const perGame = [];
+    for (let g = 0; g < gamesPlayed; g++) {
+      const t = (state.match.history[g]?.totals?.[idx]) || 0;
+      perGame.push(t);
+      mt += t;
+    }
+    bestMatchTotal = Math.max(bestMatchTotal, mt);
+    return { perGame, matchTotal: mt };
+  });
+
+  function dartsThrownForMatch(pIdx){
+    let n = 0;
+    for (let g = 0; g < gamesPlayed; g++) {
+      const board = state.match.history[g]?.board?.[pIdx];
+      if (!board) continue;
+      for (let r = 0; r < MAX_ROUNDS; r++) {
+        const darts = board[r]?.darts || [];
+        darts.forEach(d => { if (d !== null) n++; });
+      }
+    }
+    return n;
+  }
+
+  /* ---------- rows ---------- */
+  state.players.forEach((player, idx) => {
+    const tr = document.createElement('tr');
+
+    // Player
+    const nameTd = document.createElement('td');
+    nameTd.textContent = player.name;
+    nameTd.style.color = player.color;
+    tr.appendChild(nameTd);
+
+    // G1..Gn
+    perPlayerTotals[idx].perGame.forEach((val, g) => {
+      const td = document.createElement('td');
+      td.className = 'center num gcol' + (g === gamesPlayed - 1 ? ' after-games-sep' : '');
+      td.textContent = String(val);
+      tr.appendChild(td);
+    });
+
+    // Match % (three-dart average across the whole match)
+    const thrown = dartsThrownForMatch(idx);
+    const total  = perPlayerTotals[idx].matchTotal;
+    const avg3   = thrown ? (total / thrown) * 3 : 0;
+
+    const pctTd = document.createElement('td');
+    pctTd.className = 'center num';
+    pctTd.textContent = avg3.toFixed(1);
+    tr.appendChild(pctTd);
+
+    // Match Total (highlight leader)
+    const totalTd = document.createElement('td');
+    totalTd.className = 'center num';
+    totalTd.textContent = String(total);
+    if (total === bestMatchTotal && bestMatchTotal > 0) {
+      totalTd.classList.add('leader-total');
+    }
+    tr.appendChild(totalTd);
+
+    // Win
+    const winsTd = document.createElement('td');
+    winsTd.className = 'center num';
+    winsTd.textContent = String(state.match.wins[idx] || 0);
+    tr.appendChild(winsTd);
+
+    lbTBody.appendChild(tr);
+  });
+}
+
+function showLeaderboard() {
+  // Build table
+  updateLeaderboardTable();
+
+  // Decide which CTA to show
+  const targetWins = state.match?.targetWins || 1;
+  const winsArr    = state.match?.wins || [];
+  const maxWins    = winsArr.length ? Math.max(...winsArr) : 0;
+  const matchDone  = maxWins >= targetWins;
+
+  // NEXT GAME button
+  if (nextGameBtn) {
+    nextGameBtn.classList.toggle('hidden', matchDone);
+    nextGameBtn.onclick = () => {
+      state.finished = false;
+      startNewGame();      // opens throw-order dialog, then goes to Game
+    };
+  }
+
+  // END MATCH button
+  if (newMatchBtn) {
+    newMatchBtn.classList.toggle('hidden', !matchDone);
+    newMatchBtn.onclick = () => {
+      // reset to start a fresh match
+      state = JSON.parse(JSON.stringify(baseState));
+      save();
+      show('players');     // or: show('details');
+      drawPsRows();
+    };
+  }
+
+  // Optional info line
+  if (lbMatchInfo) {
+    const gamesPlayed = state.match?.history?.length || 0;
+    const toWin = Math.max(0, targetWins - maxWins);
+    lbMatchInfo.textContent = matchDone
+      ? `Match complete — first to ${targetWins}`
+      : `Games: ${gamesPlayed} · First to ${targetWins} · ${toWin} to win`;
+    lbMatchInfo.parentElement?.classList.remove('hidden');
+  }
+
+  // Show the screen
+  show('leaderboard');
+}
 
 function openGameScoresDialog() {
   if (!state.match || !Array.isArray(state.match.history) || !state.match.history.length) {
@@ -5366,6 +5910,187 @@ function swapPlayers(i, j) {
     setGameLog(filtered);
   }
 }
+// ------- High Score → Score Sheet (cloud-first) -------
+
+// Try to find the exact game in Supabase by timestamp ±10min + name + score.
+// Falls back to local getGameLog() via findGameForHighScore().
+async function findGameForHighScoreCloudFirst(row, isPractice = false){
+  const ts = row?.ts ? new Date(row.ts) : null;
+
+  // 1) Cloud window query
+  if (ts && window.sb) {
+    const pad = 10 * 60 * 1000; // ±10 min
+    const fromIso = new Date(ts.getTime() - pad).toISOString();
+    const toIso   = new Date(ts.getTime() + pad).toISOString();
+
+    try {
+      const { data, error } = await sb
+        .from(TABLE_GAMES)
+        .select('created_at, state, totals, match_id')
+        .gte('created_at', fromIso)
+        .lte('created_at', toIso)
+        .order('created_at', { ascending: true })
+        .limit(100);
+
+      if (error) throw error;
+
+      const candidates = (data || []);
+      for (const g of candidates) {
+        const players = (g?.state?.players || []).map(p => (typeof p === 'string' ? { name:p } : p));
+        const totals  = Array.isArray(g?.totals) ? g.totals : [];
+
+        // Practice vs Official sanity check (optional but helps)
+        const isSingle = players.length === 1 || !g.match_id;
+        if (isPractice && !isSingle) continue;
+        if (!isPractice && isSingle) continue;
+
+        const pIdx = players.findIndex(p => p && eqName(p.name, row.name));
+        if (pIdx === -1) continue;
+        if (Number(totals[pIdx] || 0) !== Number(row.score || 0)) continue;
+
+        // Convert to local shape the rest of the code expects
+        const local = {
+          ts: g.created_at || null,
+          players,
+          totals: totals.slice(),
+          winners: [], // not needed for the sheet
+          board: g?.state?.board || null
+        };
+        return { game: local, playerIndex: pIdx };
+      }
+    } catch (e) {
+      console.error('cloud lookup for high-score row failed', e);
+    }
+  }
+
+  // 2) Local fallback
+  const local = findGameForHighScore(row);
+  if (local) return { game: local.game, playerIndex: local.playerIndex };
+
+  return null;
+}
+
+// Render a single game's score sheet (round-by-round) in a modal.
+// Optionally highlight one player's column (e.g. the high-score row owner).
+function openSingleGameScoreSheet(game, highlightIdx = -1){
+  if (!game || !Array.isArray(game.players) || !game.board) {
+    toast('Score sheet not available for this row yet.');
+    return;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-backdrop';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+
+  const title = document.createElement('h3');
+  const when  = game.ts ? new Date(game.ts).toLocaleString() : '';
+  title.textContent = `Score Sheet${when ? ' — ' + when : ''}`;
+
+  const body = document.createElement('div');
+  body.className = 'modal-body';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'table-wrap';
+
+  const table = document.createElement('table');
+  table.className = 'hs-table';
+
+  // Header
+  const thead = document.createElement('thead');
+  const trh = document.createElement('tr');
+  const thRound = document.createElement('th');
+  thRound.textContent = 'Round';
+  trh.appendChild(thRound);
+
+  game.players.forEach((p, idx) => {
+    const th = document.createElement('th');
+    th.textContent = p.name;
+    th.style.textAlign = 'center';
+    if (idx === highlightIdx) {
+      th.style.color = 'var(--accent-2)';
+      th.style.fontWeight = '900';
+    }
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh);
+  table.appendChild(thead);
+
+  // Body
+  const tbody = document.createElement('tbody');
+  const runningTotals = game.players.map(() => 0);
+
+  for (let r = 0; r < MAX_ROUNDS; r++) {
+    const tr = document.createElement('tr');
+
+    const roundDef = ROUNDS[r];
+    const roundTh = document.createElement('th');
+    roundTh.textContent =
+      roundDef.type === 'number'
+        ? (roundDef.target + 's')
+        : (roundDef.type === 'doubles' ? "D's" : (roundDef.type === 'triples' ? "T's" : 'Bull'));
+    tr.appendChild(roundTh);
+
+    for (let p = 0; p < game.players.length; p++) {
+      const td = document.createElement('td');
+      td.className = 'center num';
+
+      const entry = game.board?.[p]?.[r];
+      const hasDarts = entry && entry.darts && entry.darts.some(d => d);
+      const rt = entry?.roundTotal || 0;
+
+      if (hasDarts) {
+        runningTotals[p] += rt;
+        const main = document.createElement('div');
+        main.className = 'cell-main';
+        main.textContent = String(runningTotals[p]);
+
+        const sub = document.createElement('div');
+        sub.className = 'cell-sub';
+        sub.textContent = rt ? `(${rt})` : '';
+
+        td.appendChild(main);
+        td.appendChild(sub);
+      } else {
+        td.textContent = '–';
+      }
+
+      tr.appendChild(td);
+    }
+
+    tbody.appendChild(tr);
+  }
+
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  body.appendChild(wrap);
+
+  const footer = document.createElement('div');
+  footer.className = 'modal-footer';
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn';
+  closeBtn.textContent = 'Close';
+  closeBtn.onclick = () => overlay.remove();
+  footer.appendChild(closeBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  modal.tabIndex = 0;
+  modal.focus();
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+}
+
+// Entry point used by the tables
+async function openScoreSheetFromHighScore(row, isPractice){
+  const found = await findGameForHighScoreCloudFirst(row, isPractice);
+  if (!found) { toast('Could not find a score sheet for that row (yet).'); return; }
+  openSingleGameScoreSheet(found.game, found.playerIndex);
+}
+
 function openAdminHub(){
   const hub = byId('adminHubModal');
   hub.classList.remove('hidden');
@@ -5384,88 +6109,91 @@ function openAdminHub(){
 }
 
 async function openHighScoresAdminDialog(single=false){ 
-  const overlay=document.createElement('div'); overlay.className='modal-backdrop'; 
-  const modal=document.createElement('div'); modal.className='modal'; 
-  const title=document.createElement('h3'); title.textContent=`High Scores — Admin (${single?'Practice':'League'})`; 
-  const body=document.createElement('div'); body.className='modal-body'; 
-  const footer=document.createElement('div'); footer.className='modal-footer';
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop'; 
+  const modal   = document.createElement('div'); modal.className='modal'; 
+  const title   = document.createElement('h3'); title.textContent=`High Scores — Admin (${single?'Practice':'League'})`; 
+  const body    = document.createElement('div'); body.className='modal-body'; 
+  const footer  = document.createElement('div'); footer.className='modal-footer';
 
   async function render(){
-    body.innerHTML='';
+    body.innerHTML = '';
     try{
       const list = await cloudListHighScores(single, 50);
-      if(!list.length){ const p=document.createElement('p'); p.textContent='No high scores.'; body.appendChild(p); return; }
+      if(!list.length){
+        const p=document.createElement('p'); p.textContent='No high scores.'; body.appendChild(p); return;
+      }
+
       const table=document.createElement('table'); table.className='hs-table compact';
       const thead=document.createElement('thead'); const trh=document.createElement('tr');
-      ['#','Player','Score','When'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);}); thead.appendChild(trh); table.appendChild(thead);
+      ['#','Player','Score','Avg / Round','When','Actions'].forEach(h=>{
+        const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);
+      });
+      thead.appendChild(trh); table.appendChild(thead);
+
       const tb=document.createElement('tbody');
-      list.forEach((row,idx)=>{ 
-        const tr=document.createElement('tr'); tr.style.cursor='pointer'; tr.title='Click to delete'; 
+      list.forEach((row, idx) => {
+        const tr=document.createElement('tr');
+
         const td1=document.createElement('td'); td1.textContent=String(idx+1);
         const td2=document.createElement('td'); td2.textContent=row.name;
         const td3=document.createElement('td'); td3.textContent=String(row.score);
-        const td4=document.createElement('td'); td4.textContent=new Date(row.ts).toLocaleString();
-        tr.append(td1,td2,td3,td4);
-tr.onclick = async () => {
-  if (!confirm(`Delete ${row.name} — ${row.score}?`)) return;
 
-  try {
-    await cloudDeleteHighScore(row, single);
+        const td4=document.createElement('td');
+        const avgRound = MAX_ROUNDS ? (Number(row.score||0)/MAX_ROUNDS) : 0;
+        td4.textContent = avgRound.toFixed(1);
 
-    // Also remove any matching games from local stats log
-    deleteLocalStatsForHighScore(row);
+        const td5=document.createElement('td');
+        const d=new Date(row.ts);
+        td5.textContent = !Number.isNaN(d.getTime())
+          ? d.toLocaleString(undefined,{year:'2-digit',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'})
+          : '';
+        td5.style.fontSize='0.8rem';
 
-    await render();
-  } catch (e) {
-    console.error(e);
-    toast('Delete failed');
-  }
-};        tb.appendChild(tr);
+        const td6=document.createElement('td'); td6.className='center';
+        const del=document.createElement('button'); del.className='btn small danger'; del.textContent='Delete';
+        del.onclick = async () => {
+          if (!confirm('Delete this high score?')) return;
+          try { await cloudDeleteHighScore(row, single); await render(); }
+          catch(e){ console.error(e); toast('Delete failed'); }
+        };
+        td6.appendChild(del);
+
+        tr.append(td1,td2,td3,td4,td5,td6);
+
+        // click → score sheet
+        tr.style.cursor='pointer';
+        tr.title='Open score sheet';
+        tr.onclick = (e)=> {
+          if (e.target === del) return;           // don’t open when pressing Delete
+          openScoreSheetFromHighScore(row, single);
+        };
+
+        tb.appendChild(tr);
       });
-      table.appendChild(tb); body.appendChild(table);
-    }catch(err){ console.error(err); const p=document.createElement('p'); p.textContent='Failed to load.'; body.appendChild(p); }
+
+      table.appendChild(tb); 
+      body.appendChild(table);
+    } catch(err){
+      console.error(err);
+      const p=document.createElement('p'); p.textContent='Failed to load.'; body.appendChild(p);
+    }
   }
+
   await render();
-  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Exit'; closeBtn.onclick=()=>overlay.remove(); footer.appendChild(closeBtn); 
-  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay); 
+
+  const closeBtn=document.createElement('button'); 
+  closeBtn.className='btn'; 
+  closeBtn.textContent='Exit'; 
+  closeBtn.onclick=()=>overlay.remove(); 
+  footer.appendChild(closeBtn); 
+
+  modal.append(title, body, footer); 
+  overlay.appendChild(modal); 
+  document.body.appendChild(overlay); 
+
   overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
   overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); }); 
   modal.tabIndex=0; modal.focus(); 
-}
-
-async function openSavedPlayersAdmin(){
-  const modalWrap = byId('savedPlayersAdminModal');
-  const body = byId('savedPlayersAdminBody');
-  modalWrap.classList.remove('hidden');
-  byId('closeSavedPlayersAdminBtn').onclick = ()=> modalWrap.classList.add('hidden');
-
-  async function render(){
-    body.innerHTML='';
-    try{
-      const list = await cloudListPlayers();
-      if(!list.length){ body.innerHTML = '<p>No players saved.</p>'; return; }
-      const table = document.createElement('table'); table.className='hs-table compact';
-      const thead=document.createElement('thead'); const trh=document.createElement('tr');
-      ['Player','Actions'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); }); thead.appendChild(trh); table.appendChild(thead);
-      const tb=document.createElement('tbody');
-      list.forEach(row=>{
-        const tr=document.createElement('tr');
-        const tdName=document.createElement('td'); tdName.textContent=row.name; tr.appendChild(tdName);
-        const tdAct=document.createElement('td'); tdAct.className='center';
-        const editBtn=document.createElement('button'); editBtn.className='btn small'; editBtn.textContent='Set Password';
-        editBtn.onclick=async()=>{
-          const np = prompt(`New password for ${row.name}:`);
-          if(!np) return;
-          try{ await cloudUpdatePlayerPassword(row.name, np); toast('Updated'); }catch(e){ console.error(e); toast('Update failed'); }
-        };
-        const delBtn=document.createElement('button'); delBtn.className='btn small danger'; delBtn.textContent='Delete';
-        delBtn.onclick=async()=>{ if(confirm(`Delete player ${row.name}?`)){ try{ await cloudDeletePlayer(row.name); await render(); }catch(e){ console.error(e); toast('Delete failed'); } } };
-        tdAct.append(editBtn,' ',delBtn); tr.appendChild(tdAct); tb.appendChild(tr);
-      });
-      table.appendChild(tb); body.appendChild(table);
-    }catch(err){ console.error(err); body.innerHTML='<p>Failed to load players.</p>'; }
-  }
-  await render();
 }
 
 /*****************
@@ -5498,6 +6226,8 @@ window.addEventListener('resize', syncStartTitleWidth, { passive: true });
 
   if (statsHubBtnGame)  statsHubBtnGame.onclick  = openStatsHubDialog;
   if (statsHubBtnFinal) statsHubBtnFinal.onclick = openStatsHubDialog;
+   const hsFinalBtn = byId('highScoresMenuBtnLB');
+  if (hsFinalBtn) hsFinalBtn.onclick = openHighScoresMenuDialog;
   if (lbGameStatsBtn)  lbGameStatsBtn.onclick  = openGameStatsDialog;
   if (lbMatchStatsBtn) lbMatchStatsBtn.onclick = openMatchStatsDialog;
   if (lbGameRaceBtn)   lbGameRaceBtn.onclick   = openGameRaceDialog;
