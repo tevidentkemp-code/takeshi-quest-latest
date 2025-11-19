@@ -224,9 +224,37 @@
   thead th .th-name{font-weight:800;letter-spacing:.02em}
   thead th .th-beers{font-size:12px;line-height:1;min-height:14px;letter-spacing:.5px;filter:drop-shadow(0 0 6px rgba(255,204,102,.35)); text-align:center}
   .th-throw-arrow{font-size:13px; line-height:1}
-  .th-total{font-weight:800;letter-spacing:.02em}
-  .th-diff{font-size:10px; line-height:1; font-weight:400 !important; color:var(--muted); text-align:center}
+
+  /* Base total style (used everywhere) */
+  .th-total{
+    font-weight:800;
+    letter-spacing:.02em;
+  }
+
+/* Floating header: hero total score */
+.float-head .th-total{
+  font-size:34px;
+  line-height:1.1;
+  display:block;
+  margin:0;
+  text-align:center;
+}
+  
+  .th-diff{
+    font-size:10px;
+    line-height:1;
+    font-weight:400 !important;
+    color:var(--muted);
+    text-align:center;
+  }
   .th-diff-label{font-size:11px; font-weight:400 !important; color:var(--muted)}
+
+/* Floating header: layout under player names */
+.float-head thead th .th-wrap{
+  border-bottom:none;
+  padding-bottom:2px;
+  margin-bottom:0;
+}
 
   /* Score cell */
   .cell-wrap{display:inline-flex;flex-direction:column;align-items:center;gap:1px;line-height:1}
@@ -252,11 +280,31 @@
   .float-head .table-wrap{border:none;border-radius:12px}
   #floatWrap thead th:first-child{width:var(--left-col-w);min-width:var(--left-col-w);max-width:var(--left-col-w)}
 
-/* Current round target display (left header cell) */
-#floatWrap #froundlabel {
-  text-align: center;
-  vertical-align: middle;
+/* Vertical divider after the TARGET column in floating header */
+.float-head thead th:first-child{
+  border-right:1px solid #22264a;
+
 }
+
+/* Floating header: base header cells */
+.float-head thead th{
+  border-bottom:none;
+  vertical-align:middle;
+}
+
+/* Row 1 (names): divider line just under player names */
+.float-head thead tr:nth-child(1) th{
+  border-bottom:1px solid #2a2e48;
+  padding-bottom:4px;
+}
+
+/* Row 2 (totals): even vertical padding so score + diff sit centrally */
+.float-head thead tr:nth-child(2) th{
+  padding-top:8px;
+  padding-bottom:8px;
+  text-align:center;
+}
+
 #floatWrap #froundlabel .round-now{
   display:flex;
   flex-direction:column;
@@ -2976,21 +3024,28 @@ const mstatsThead=byId('mstatsThead'), mstatsTbody=byId('mstatsTbody');
 const floatThead=byId('floatThead');
 
 function buildScoreHeader(){ 
-  // Main scoreboard header is now minimal – only used for layout/scroll sync.
+  // Main scoreboard header: thin strip just above 10s/Bull.
   thead.innerHTML = '';
 
   const tr = document.createElement('tr');
 
-  // Left column label
- const thRound = document.createElement('th');
-thRound.textContent = '';   // no "Round" label
-tr.appendChild(thRound);
+  // Left column header above "10s" (leave blank for now)
+  const thRound = document.createElement('th');
+  thRound.textContent = '';
+  tr.appendChild(thRound);
 
-  // One blank header cell per player (no Game Wins / names / totals here)
+  // Per-player header cells: show game wins as cups here
   for (let i = 0; i < state.players.length; i++) {
     const th = document.createElement('th');
     th.className = 'player';
-    th.textContent = ''; // keep it visually empty; floating header shows the info
+    th.style.color = state.players[i].color;
+
+    const wins = document.createElement('div');
+    wins.className = 'th-beers';
+    wins.id = 'beers-' + i;      // NEW: main header wins row
+    wins.textContent = '';
+
+    th.appendChild(wins);
     tr.appendChild(th);
   }
 
@@ -3035,32 +3090,15 @@ function buildScoreBody(){
 function buildFloatingHeader(){ 
   floatThead.innerHTML = '';
 
-  // ROW 1: Wins (left cell spans all rows and shows the current round label)
-  const trWins = document.createElement('tr');
+  // ROW 1: round label (left) + player names + throws
+  const trNames = document.createElement('tr');
 
   const thRound = document.createElement('th');
   thRound.id = 'froundlabel';
-  thRound.rowSpan = 3;          // ← one column, spans all 3 rows
+  thRound.rowSpan = 2;          // now only 2 rows in the floating header
   thRound.textContent = '';     // filled by updateUI()
-  trWins.appendChild(thRound);
+  trNames.appendChild(thRound);
 
-  for (let i = 0; i < state.players.length; i++) { 
-    const th = document.createElement('th'); 
-    th.className = 'player'; 
-    th.style.color = state.players[i].color; 
-
-    const wins = document.createElement('div'); 
-    wins.className = 'th-beers'; 
-    wins.id = 'fbeers-' + i; 
-    wins.textContent = ''; 
-    th.appendChild(wins); 
-
-    trWins.appendChild(th);
-  }  
-
-  // ROW 2: player names + throws (no left label here because the left cell spans)
-  const trNames = document.createElement('tr'); 
-  // (no first-cell here)
   for (let i = 0; i < state.players.length; i++) { 
     const th = document.createElement('th'); 
     th.className = 'player'; 
@@ -3083,9 +3121,8 @@ function buildFloatingHeader(){
     trNames.appendChild(th);
   }  
 
-  // ROW 3: totals + diff
+  // ROW 2: totals + diff
   const trTotals = document.createElement('tr');
-  // (no first-cell here)
   for (let i = 0; i < state.players.length; i++) { 
     const th = document.createElement('th'); 
     th.className = 'player'; 
@@ -3104,7 +3141,7 @@ function buildFloatingHeader(){
     trTotals.appendChild(th);
   }  
 
-  floatThead.append(trWins, trNames, trTotals);
+  floatThead.append(trNames, trTotals);
 }
 
 function formatTop3Inline(list){
@@ -4679,16 +4716,15 @@ if (roundLabelEl) {
       const diff = totals[i] - max;
       diffEl.textContent = String(diff);
     }
-
-  // Wins – trophies for wins, circles for remaining games
-    const winsEl = byId('fbeers-' + i);
-    if (winsEl) {
+ // Wins – trophies for wins, circles for remaining games
+    const winsElMain = byId('beers-' + i);     // NEW location: thin row above 10s
+    if (winsElMain) {
       const wins = state.match.wins?.[i] || 0;
       let bubbles = '';
       for (let k = 0; k < targetWins; k++) {
         bubbles += k < wins ? '🏆' : '○';
       }
-      winsEl.textContent = bubbles;
+      winsElMain.textContent = bubbles;
     }
 
     // Throws remaining (targets)
@@ -5446,62 +5482,73 @@ function buildEverything(){
   setupScrollSync(); 
 }
 
-// GLOBAL — Supabase-only pace for the #1 league high score
-async function buildRecordPaceSeries(roundsCount){
-  try{
-    const list = await cloudListHighScores(false, 1);     // league top 1
+// GLOBAL — record pace (#1 league high score) from Supabase only
+async function buildRecordPaceSeries(roundsCount) {
+  try {
+    // 1) Get #1 league high score from Supabase
+    const list = await cloudListHighScores(false, 1);
     if (!list || !list.length) return null;
-    const top = list[0];                                   // { name, score, ts }
 
-    // Find the exact game in Supabase games (name + score; closest timestamp)
-    let games = [];
-    try { games = await cloudFetchAllGamesAsLocal(); } catch(_) {}
+    const top    = list[0];
     const target = Number(top.score) || 0;
 
-    const best = (games || [])
+    // 2) Load all games from Supabase (already mapped into local shape)
+    let games = [];
+    try {
+      games = await cloudFetchAllGamesAsLocal();
+    } catch (_) {
+      console.error('cloudFetchAllGamesAsLocal failed in buildRecordPaceSeries');
+      return null;
+    }
+    if (!games || !games.length) return null;
+
+    // 3) Find the matching *official* game for that record
+    const best = games
       .filter(isOfficialGame)
       .map(g => {
-        const pIdx = (g.players || []).findIndex(p => p && eqName(p.name, top.name));
+        const pIdx = (g.players || []).findIndex(
+          p => p && eqName(p.name, top.name)
+        );
         if (pIdx === -1) return null;
         if ((g.totals?.[pIdx] || 0) !== target) return null;
+
         const delta = (top.ts && g.ts)
           ? Math.abs(new Date(g.ts) - new Date(top.ts))
           : Number.MAX_SAFE_INTEGER;
+
         return { g, pIdx, delta };
       })
       .filter(Boolean)
-      .sort((a,b) => a.delta - b.delta)[0];
-let data = [];
+      .sort((a, b) => a.delta - b.delta)[0];
 
-if (best && best.g?.board) {
-  // Use the real round-by-round board from Supabase `games`
-  let running = 0;
-  for (let r = 0; r < roundsCount; r++) {
-    const rt = best.g.board?.[best.pIdx]?.[r]?.roundTotal || 0;
-    running += rt;
-    data.push(running);
-  }
-} else {
-  // Cloud-only fallback: derive an even “pace” from the high_scores row
-  // (no local data, no guessing from current game)
-  for (let r = 0; r < roundsCount; r++) {
-    // cumulative target after r+1 rounds
-    data.push(Math.round(target * (r + 1) / roundsCount));
-  }
-}
+    // No matching game or no board = we cannot draw a true pace line
+    if (!best || !best.g || !best.g.board || !Array.isArray(best.g.board[best.pIdx])) {
+      console.warn('No board data for top record game; skipping record pace line');
+      return null;
+    }
 
-return {
-  name: `Record: ${top.name} (${target})`,
-  color: '#ffffff',
-  data,
-  dotted: true
-};
+    // 4) Build true round-by-round cumulative totals for that player
+    const data   = [];
+    let running  = 0;
+    const board  = best.g.board[best.pIdx];
+
+    for (let r = 0; r < roundsCount; r++) {
+      const rt = board?.[r]?.roundTotal || 0;
+      running += rt;
+      data.push(running);
+    }
+
+    return {
+      name: `Record: ${top.name} (${target})`,
+      color: '#ffffff',
+      data,
+      dotted: true
+    };
   } catch (e) {
-    console.error('buildRecordPaceSeries (cloud-only) failed', e);
+    console.error('buildRecordPaceSeries failed', e);
     return null;
   }
 }
-
 async function openGameRaceDialog() {
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop';
