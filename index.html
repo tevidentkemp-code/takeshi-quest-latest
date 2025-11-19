@@ -348,6 +348,21 @@
 /* Center the "10s…Bull" row labels in the main scoreboard */
 #scoreWrap tbody th{
   text-align: center;
+  
+  /* Landscape-only scoreboard behaviour: show ~4 rounds, enlarge current round row */
+@media (orientation: landscape){
+  #scoreWrap{
+    max-height: 220px;   /* approx 4 rounds visible */
+    overflow-y: auto;    /* still scrollable if you want to look up/down */
+  }
+
+  /* Make the current round row noticeably taller */
+  #scoreWrap tbody tr.current-round-row th,
+  #scoreWrap tbody tr.current-round-row td{
+    padding-top: 1.0rem;
+    padding-bottom: 1.0rem;
+  }
+}
 }
 #leaderboardTopRow .btn.top-throw{
   flex: 1 1 0;
@@ -3490,14 +3505,20 @@ function buildPad(){
     // ----- NUMBER ROUNDS (10–20) -----
     if (r.type === 'number') {
       const topRow = document.createElement('div');
-      topRow.style.display = 'flex';
+       topRow.style.display = 'flex';
       topRow.style.gap = '8px';
       topRow.style.width = '100%';
 
+      // spacer cell under the "Target" column
+      const spacerTop = document.createElement('div');
+      spacerTop.style.flex = '1 1 0';
+      spacerTop.style.minWidth = '0';
+      topRow.appendChild(spacerTop);
+
       ['S','D','T'].forEach(k => {
-  const b = document.createElement('button');
-  b.className = 'btn primary letter-throw';
-  b.textContent = k;
+        const b = document.createElement('button');
+        b.className = 'btn primary letter-throw';
+        b.textContent = k;
         b.style.flex = '1 1 0';
         b.style.minWidth = '0';
         b.onclick = () => recordThrow({ kind: k });
@@ -3507,9 +3528,15 @@ function buildPad(){
       pad.appendChild(topRow);
 
       const bottomRow = document.createElement('div');
-bottomRow.style.display = 'flex';
-bottomRow.style.gap = '8px';
-bottomRow.style.width = '100%';
+      bottomRow.style.display = 'flex';
+      bottomRow.style.gap = '8px';
+      bottomRow.style.width = '100%';
+
+      // spacer cell under the "Target" column
+      const spacerBottom = document.createElement('div');
+      spacerBottom.style.flex = '1 1 0';
+      spacerBottom.style.minWidth = '0';
+      bottomRow.appendChild(spacerBottom);
 
 const miss = document.createElement('button');
 miss.className = 'btn danger letter-throw';
@@ -4605,9 +4632,9 @@ async function openLowScoresDialog(){
 function updateUI() {
   if (!tbody) return;
 
-  // Clear previous highlights
-  document.querySelectorAll('.current-cell, .current-col').forEach(el => {
-    el.classList.remove('current-cell', 'current-col');
+ // Clear previous highlights (cell, column, and current round row)
+  document.querySelectorAll('.current-cell, .current-col, .current-round-row').forEach(el => {
+    el.classList.remove('current-cell', 'current-col', 'current-round-row');
   });
 
   // --- Precompute per-round totals to find best round per row ---
@@ -4676,9 +4703,23 @@ function updateUI() {
   const cp = state.currentPlayer;
   const cr = state.currentRound;
   const currentCell = byId(`cell-${cp}-${cr}`);
-  if (currentCell) {
+    if (currentCell) {
     currentCell.classList.add('current-cell');
-    currentCell.classList.add('current-col');
+
+    // Mark whole row so we can style it (taller in landscape)
+    const rowEl = currentCell.closest('tr');
+    if (rowEl) {
+      rowEl.classList.add('current-round-row');
+
+      // In landscape, auto-scroll so the current round row sits near the bottom
+      const wrap = byId('scoreWrap');
+      if (wrap && window.matchMedia && window.matchMedia('(orientation: landscape)').matches) {
+        const wrapRect = wrap.getBoundingClientRect();
+        const rowRect  = rowEl.getBoundingClientRect();
+        const delta    = rowRect.bottom - wrapRect.bottom;
+        wrap.scrollTop += delta;
+      }
+    }
   }
   
  // Current round label in floating header (single column)
