@@ -1,4 +1,4 @@
-V-DATATEST
+V_CLOUDUPLOAD
 
 <!DOCTYPE html>
 <html lang="en">
@@ -6510,6 +6510,86 @@ async function openHighScoresAdminDialog(single=false){
 // Toggle for writing per-player game rows to a table.
 // Your project uses a view (`player_games_union`), so writes should be disabled.
 const ENABLE_PLAYER_GAMES_WRITES = false;
+
+/*****************
+ * CLOUD-ONLY READS (force consistency across devices)
+ *****************/
+const READS_CLOUD_ONLY = true; // all reads come from Supabase
+
+// If cloud-only reads are enabled, neutralise local log accessors so UI never reads from them
+if (READS_CLOUD_ONLY) {
+  window.getGameLog = function(){ return []; };
+  window.setGameLog = function(){ /* no-op */ };
+  window.logCompletedGame = function(){ /* no-op (we persist to cloud in recordFullGameToSupabase) */ };
+  window.getMatchLog = function(){ return []; };
+  window.setMatchLog = function(){ /* no-op */ };
+  window.logCompletedMatch = function(){ /* no-op */ };
+}
+
+// Helpers (define only if missing)
+if (typeof window.eqName !== 'function') {
+  window.eqName = (a,b) => String(a||'').trim().toLowerCase() === String(b||'').trim().toLowerCase();
+}
+if (typeof window.isOfficialGame !== 'function') {
+  window.isOfficialGame = g => Array.isArray(g?.players) && g.players.length >= 2;
+}
+if (typeof window.isPracticeGame !== 'function') {
+  window.isPracticeGame = g => Array.isArray(g?.players) && g.players.length === 1;
+}
+
+// Override readers to fetch **only** from cloud and dedupe by a stable key
+window.getGamesForMode = async function getGamesForMode(mode){
+  try {
+    let cloudGames = await cloudFetchAllGamesAsLocal();
+    cloudGames = Array.isArray(cloudGames) ? cloudGames : [];
+
+    // Filter by mode
+    const filtered = cloudGames.filter(g =>
+      mode === 'official' ? isOfficialGame(g) : isPracticeGame(g)
+    );
+
+    // De-dup by stable key (ts | players(lowercased) | totals)
+    const map = new Map();
+    const stableKey = (g) => {
+      const players = (g.players || [])
+        .map(p => (p && p.name) ? String(p.name).trim().toLowerCase() : '')
+        .join(',');
+      return [g.ts || '', players, (g.totals || []).join(',')].join('|');
+    };
+    for (const g of filtered) {
+      const key = stableKey(g);
+      if (!map.has(key)) map.set(key, g);
+    }
+    return [...map.values()];
+  } catch (e) {
+    console.error('getGamesForMode (cloud-only) failed', e);
+    return [];
+  }
+};
+
+window.getMatchesOfficial = async function getMatchesOfficial(){
+  try {
+    const cloudMatches = await cloudFetchAllMatchesAsLocal();
+    const list = Array.isArray(cloudMatches) ? cloudMatches : [];
+
+    // De-dup by ts | players(lowercased)
+    const map = new Map();
+    const stableKey = (m) => {
+      const players = (m.players || [])
+        .map(p => (p && p.name) ? String(p.name).trim().toLowerCase() : '')
+        .join(',');
+      return [m.ts || '', players].join('|');
+    };
+    for (const m of list) {
+      const key = stableKey(m);
+      if (!map.has(key)) map.set(key, m);
+    }
+    return [...map.values()];
+  } catch (e) {
+    console.error('getMatchesOfficial (cloud-only) failed', e);
+    return [];
+  }
+};
 
 /*****************
  * BACKFILL: Sync all local data → Supabase
