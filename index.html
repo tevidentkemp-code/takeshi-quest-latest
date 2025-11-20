@@ -1103,12 +1103,17 @@ async function getGamesForMode(mode) {
     // cloud might be down, just ignore
   }
 
-  // Merge & de-dupe by a fairly stable key
+  // Merge & de-dup with a stable, source-agnostic key (prefer cloud over local)
   const map = new Map();
-  [...localGames, ...cloudGames].forEach(g => {
+  const stableKey = (g) => {
+    const players = (g.players || [])
+      .map(p => (p && p.name) ? String(p.name).trim().toLowerCase() : '')
+      .join(',');
+    return [g.ts || '', players, (g.totals || []).join(',')].join('|');
+  };
+  [...cloudGames, ...localGames].forEach(g => {
     if (!g) return;
-    const players = (g.players || []).map(p => (p && p.name) ? p.name : '').join(',');
-    const key = (g.id || '') + '|' + (g.ts || '') + '|' + players + '|' + (g.totals || []).join(',');
+    const key = stableKey(g);
     if (!map.has(key)) map.set(key, g);
   });
 
@@ -1118,34 +1123,24 @@ async function getGamesForMode(mode) {
 }
 
 // Return matches for official mode, merging local + cloud
-async function getMatchesOfficial() {
+async function getMatchesOfficial(){
   const localMatches = getMatchLog() || [];
   let cloudMatches = [];
-
-  try {
-    cloudMatches = await cloudFetchAllMatchesAsLocal();
-  } catch (_) {
-    // cloud might be down, that's fine
-  }
+  try { cloudMatches = await cloudFetchAllMatchesAsLocal(); } catch(_) {}
 
   const map = new Map();
-  [...localMatches, ...cloudMatches].forEach(m => {
+  const stableKey = (m) => {
+    const players = (m.players || [])
+      .map(p => (p && p.name) ? String(p.name).trim().toLowerCase() : '')
+      .join(',');
+    return [m.ts || '', players].join('|');
+  };
+  [...cloudMatches, ...localMatches].forEach(m => {
     if (!m) return;
-    const players = (m.players || []).map(p => (p && p.name) ? p.name : '').join(',');
-    const key = (m.id || '') + '|' + (m.ts || '') + '|' + players;
+    const key = stableKey(m);
     if (!map.has(key)) map.set(key, m);
   });
-
   return [...map.values()];
-}
-
-async function getMatchesOfficial(){
-  // matches only make sense for H2H and official
-  let matches = getMatchLog() || [];
-  if (!matches.length) {
-    try { matches = await cloudFetchAllMatchesAsLocal(); } catch(_) {}
-  }
-  return matches || [];
 }
 
 // Build per-target counters for one player
@@ -6510,9 +6505,13 @@ async function openHighScoresAdminDialog(single=false){
       return false;
     }
   }
-  /*****************
-   * BACKFILL: Sync all local data → Supabase
-   *****************/
+// Toggle for writing per-player game rows to a table.
+// Your project uses a view (`player_games_union`), so writes should be disabled.
+const ENABLE_PLAYER_GAMES_WRITES = false;
+
+/*****************
+ * BACKFILL: Sync all local data → Supabase
+ *****************/
   async function backfillLocalGamesToCloud() {
     const games = (typeof getGameLog === 'function') ? (getGameLog() || []) : [];
     let inserted = 0, hs = 0, playerRows = 0;
@@ -6554,8 +6553,8 @@ async function openHighScoresAdminDialog(single=false){
           }
         }
 
-        // --- player_games (optional)
-        if (typeof TABLE_PLAYER_GAMES !== 'undefined' && players.length) {
+        // --- player_games (optional; skipped when using a view like `player_games_union`)
+        if (ENABLE_PLAYER_GAMES_WRITES && typeof TABLE_PLAYER_GAMES !== 'undefined' && players.length) {
           const sorted = totals.map((t,i)=>({t:Number(t||0),i})).sort((a,b)=>b.t-a.t);
           const posByIdx = Array(players.length).fill(null);
           sorted.forEach((o,rank)=>{ posByIdx[o.i] = rank+1; });
