@@ -1,5 +1,3 @@
-V_CLOUDUPLOAD
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -381,7 +379,11 @@ V_CLOUDUPLOAD
   .float-head{position:sticky; top:0; z-index:200000;
     background:rgba(17,19,38,.96); backdrop-filter:blur(6px);
     border:1px solid #2a2e48; border-radius:12px; margin-bottom:10px}
-  .float-head .table-wrap{border:none;border-radius:12px}
+  .float-head .table-wrap{
+    border:none;
+    border-radius:12px;
+    overflow:hidden; /* allow horizontal sync scrolling of header */
+  }
   #floatWrap thead th:first-child{width:var(--left-col-w);min-width:var(--left-col-w);max-width:var(--left-col-w)}
 
 /* Vertical divider after the TARGET column in floating header */
@@ -445,9 +447,62 @@ V_CLOUDUPLOAD
   padding: 6px 10px;
   min-height: 32px;
 }
-/* Center the "10s…Bull" row labels in the main scoreboard */
+/* Center + bold the "10s…Bull" row labels in the main scoreboard */
 #scoreWrap tbody th{
-  text-align: center;
+  text-align:center;
+  font-weight:800;   /* bold target labels (10–Bull) */
+}
+
+/* Reverted: show cumulative total as main and round score in parentheses below */
+#scoreWrap .cell-main{
+  display:block !important;
+  font-size:1.6rem;
+  font-weight:900;
+  line-height:1.1;
+}
+#scoreWrap .cell-sub{
+  display:block !important;
+  font-size:.9rem;
+  font-weight:700;
+  color: var(--accent-2);
+  line-height:1.1;
+}
+
+/* Per-dart markers under each round score */
+/* Per-dart markers under each round score */
+.cell-throws{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  margin-top:4px;
+  font-weight:800;
+  font-size:.95rem;
+  letter-spacing:.02em;
+  line-height:1;
+}
+.cell-throws span{ user-select:none; }
+.cell-throws .miss{ color: var(--danger); }  /* red X for a miss */
+
+/* Revert UI: hide per‑dart markers */
+.cell-throws{ display:none !important; }
+
+/* Double the height of all round rows (10–Bull) on the main scoreboard */
+#scoreWrap tbody th,
+#scoreWrap tbody td{
+  padding-top: 1.1rem;
+  padding-bottom: 1.1rem;
+}
+
+/* Landscape: keep TARGET cell (float header) aligned with the round-label column */
+@media (orientation: landscape){
+  #floatWrap thead th:first-child,
+  #scoreWrap thead th:first-child,
+  #scoreWrap tbody th{
+    width: var(--left-col-w);
+    min-width: var(--left-col-w);
+    max-width: var(--left-col-w);
+  }
 }
 #leaderboardTopRow .btn.top-throw{
   flex: 1 1 0;
@@ -786,7 +841,7 @@ V_CLOUDUPLOAD
 </div>
 </section> <!-- end #players -->
 
-    <!--PAGE3: GAME -->
+   <!--PAGE3: GAME -->
     <section id="game" class="hidden">
       <div class="card section">
  <div class="row" id="leaderboardTopRow">
@@ -944,17 +999,19 @@ V_CLOUDUPLOAD
     <h3>Admin Hub</h3>
     <div class="modal-body">
       <div class="column" style="align-items:center; gap:8px;">
+        <button id="openAllGamesBtn" class="btn" style="width:min(360px,92%);">All Games</button>
+        <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
+
         <button id="openHsLeagueAdmin"   class="btn" style="width:min(360px,92%);">League High Scores</button>
         <button id="openHsPracticeAdmin" class="btn" style="width:min(360px,92%);">Practice High Scores</button>
 
         <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
 
-        <button id="openSavedPlayersAdmin" class="btn" style="width:min(360px,92%);">Saved Player Admin</button>
+        <button id="openSavedPlayersAdminBtn" class="btn" style="width:min(360px,92%);">Saved Player Admin</button>
 
         <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
 
-        <button id="backdateNextSaveBtn" class="btn warn" style="width:min(360px,92%);">Backdate Next Cloud Save</button>
-        <button id="clearBackdateBtn"    class="btn"       style="width:min(360px,92%);">Clear Backdate</button>
+        <button id="fixDuplicatesBtn" class="btn danger" style="width:min(360px,92%);">Remove Duplicate High Scores</button>
 
         <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
 
@@ -972,6 +1029,7 @@ V_CLOUDUPLOAD
           <div id="savedPlayersAdminBody"></div>
         </div>
         <div class="modal-footer">
+          <button id="backSavedPlayersAdminBtn" class="btn" type="button">Back</button>
           <button id="closeSavedPlayersAdminBtn" class="btn" type="button">Close</button>
         </div>
       </div>
@@ -983,8 +1041,267 @@ V_CLOUDUPLOAD
       <span id="cloudStatusText">Checking cloud…</span>
     </div>
     <script>
+function bindScoreHeaderScrollSync(){
+  const scoreWrap = document.getElementById('scoreWrap');
+  const floatWrap = document.getElementById('floatWrap');
+  if (!scoreWrap || !floatWrap) return;
+
+  let _lock = false;
+  const sync = (from, to) => {
+    if (_lock) return;
+    _lock = true;
+    to.scrollLeft = from.scrollLeft;
+    _lock = false;
+  };
+
+  scoreWrap.addEventListener('scroll', () => sync(scoreWrap, floatWrap), { passive: true });
+  floatWrap.addEventListener('scroll', () => sync(floatWrap, scoreWrap), { passive: true });
+}
+// --- Round score only (DOM promotion + cleanup) ---
+function promoteRoundOnly(){
+  // Reverted: keep cumulative main + (round) sub rendering.
+  return;
+}
+
+// Compute the per-dart symbol for a given dart + round
+function symbolForDart(d, rd){
+  // No dart thrown yet
+  if (!d || (typeof d.points === 'undefined' && !d.kind)) return { ch: '○', cls: '' };
+
+  // Miss (no points registered)
+  if (!d || Number(d.points || 0) === 0){
+    // Bulls: only 'Bull' kind counts as a hit
+    if (rd && rd.type === 'bull' && d && d.kind === 'Bull'){
+      const inner = (d.bull === 'Inner');
+      return { ch: inner ? 'D' : 'S', cls: '' };
+    }
+    return { ch: '✕', cls: 'miss' };
+  }
+
+  // Number rounds
+  if (rd && rd.type === 'number'){
+    const k = (d.kind || '').toUpperCase();
+    if (k === 'TRIPLE' || k === 'T') return { ch: 'T', cls: '' };
+    if (k === 'DOUBLE' || k === 'D') return { ch: 'D', cls: '' };
+    return { ch: 'S', cls: '' };
+  }
+
+  // Doubles / Triples
+  if (rd && rd.type === 'doubles') return { ch: 'D', cls: '' };
+  if (rd && rd.type === 'triples') return { ch: 'T', cls: '' };
+
+  // Bull round – map outer to S, inner to D
+  if (rd && rd.type === 'bull'){
+    if (d.kind === 'Bull') return { ch: (d.bull === 'Inner' ? 'D' : 'S'), cls: '' };
+    return { ch: '✕', cls: 'miss' };
+  }
+
+  // Fallback
+  return { ch: '○', cls: '' };
+}
+
+// Inject/update the three per-dart markers under each round score cell
+function injectThrowMarkers(){
+  // Reverted: per‑dart markers disabled.
+  return;
+}
+function setupRoundScoreObserver(){
+  // Reverted: no DOM rewrites needed after render.
+  return;
+}
+// --- Global high-score de-dup helpers ---
+function _keyNameScore(row){
+  const n = String(row?.name || '').trim().toLowerCase();
+  const s = Number(row?.score || 0);
+  return `${n}|${s}`;
+}
+function dedupeRowsByNameScoreKeepEarliest(rows){
+  const map = new Map(); // key => row with earliest ts
+  for (const r of (rows || [])){
+    if (!r) continue;
+    const key = _keyNameScore(r);
+    const existing = map.get(key);
+    const tNew = r?.ts ? Date.parse(r.ts) : Infinity;
+    if (!existing){
+      map.set(key, r);
+    } else {
+      const tOld = existing?.ts ? Date.parse(existing.ts) : Infinity;
+      if (tNew < tOld) map.set(key, r); // keep the earliest/original
+    }
+  }
+  return [...map.values()];
+}
+async function dedupeTableHighScores(table){
+  const { data, error } = await sb
+    .from(table)
+    .select('name, score, ts')
+    .order('ts', { ascending: true })
+    .limit(10000);
+  if (error) { markCloudError(error); throw error; }
+  const groups = new Map();
+  for (const r of (data || [])){
+    const key = _keyNameScore(r);
+    const arr = groups.get(key) || [];
+    arr.push(r);
+    groups.set(key, arr);
+  }
+  let deleted = 0;
+  for (const [, arr] of groups){
+    if (arr.length <= 1) continue;
+    arr.sort((a,b)=> (Date.parse(a.ts||'')||0) - (Date.parse(b.ts||'')||0));
+    // keep earliest (index 0), delete the rest
+    for (let i = 1; i < arr.length; i++){
+      const row = arr[i];
+      const { error: delErr } = await sb.from(table)
+        .delete()
+        .eq('name', row.name)
+        .eq('score', row.score)
+        .eq('ts', row.ts);
+      if (!delErr) deleted++;
+    }
+  }
+  markCloudOk();
+  return deleted;
+}
+async function dedupeAllHighScores(){
+  let total = 0;
+  try { total += await dedupeTableHighScores(TABLE_HS_LEAGUE); } catch(e){ console.error(e); }
+  try { total += await dedupeTableHighScores(TABLE_HS_PRACTICE); } catch(e){ console.error(e); }
+  return total;
+}
+// ---- Admin Hub ----
+function openAdminHub(){
+  const hub = document.getElementById('adminHubModal');
+  if (!hub) return;
+  hub.classList.remove('hidden');
+
+  // Buttons
+  const btnAll   = document.getElementById('openAllGamesBtn');
+  const btnLHS   = document.getElementById('openHsLeagueAdmin');
+  const btnPHS   = document.getElementById('openHsPracticeAdmin');
+  const btnSave  = document.getElementById('openSavedPlayersAdminBtn'); // renamed to avoid global name collision
+  const btnClose = document.getElementById('closeAdminHubBtn');
+  const btnFix   = document.getElementById('fixDuplicatesBtn');
+
+  if (btnAll)  btnAll.onclick  = ()=>{ hub.classList.add('hidden'); openAllGamesDialog(); };
+  if (btnLHS)  btnLHS.onclick  = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(false); };
+  if (btnPHS)  btnPHS.onclick  = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(true); };
+  if (btnSave) btnSave.onclick = ()=>{ hub.classList.add('hidden'); openSavedPlayersAdminDialog(); };
+  if (btnFix) btnFix.onclick = async ()=>{ 
+    hub.classList.add('hidden'); 
+    try{ 
+      const removed = await dedupeAllHighScores(); 
+      toast(`Removed ${removed} duplicate row${removed===1?'':'s'}.`); 
+    }catch(e){ 
+      console.error(e); 
+      toast('Dedupe failed'); 
+    }
+  };
+  if (btnClose)btnClose.onclick= ()=>{ hub.classList.add('hidden'); };
+}
+
+// Saved Players Admin
+async function openSavedPlayersAdminDialog(){
+  const modal = document.getElementById('savedPlayersAdminModal');
+  const body  = document.getElementById('savedPlayersAdminBody');
+  const back  = document.getElementById('backSavedPlayersAdminBtn');
+  const close = document.getElementById('closeSavedPlayersAdminBtn');
+  if (!modal || !body) return;
+
+  modal.classList.remove('hidden');
+  if (back)  back.onclick  = () => { modal.classList.add('hidden'); openAdminHub(); };
+  if (close) close.onclick = () => { modal.classList.add('hidden'); };
+
+  await renderSavedPlayersAdmin();
+}
+
+async function renderSavedPlayersAdmin(){
+  const body = document.getElementById('savedPlayersAdminBody');
+  if (!body) return;
+  body.innerHTML = '<p class="tag">Loading players…</p>';
+  let players = [];
+  try { players = await cloudListPlayers(); } catch(e){ console.error(e); body.innerHTML = '<p>Failed to load players.</p>'; return; }
+
+  if (!Array.isArray(players) || players.length === 0){
+    body.innerHTML = '<p>No players found.</p>';
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'hs-table';
+  const thead = document.createElement('thead');
+  const hr = document.createElement('tr');
+  ['Name','New PIN','Actions'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; hr.appendChild(th); });
+  thead.appendChild(hr); table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+
+  players.forEach(p=>{
+    const tr = document.createElement('tr');
+
+    // Name input
+    const nameTd = document.createElement('td');
+    const nameIn = document.createElement('input');
+    nameIn.type = 'text';
+    nameIn.value = p.name;
+    nameIn.style.width = '100%';
+    nameTd.appendChild(nameIn);
+
+    // PIN input
+    const pinTd = document.createElement('td');
+    const pinIn = document.createElement('input');
+    pinIn.type = 'tel'; pinIn.inputMode='numeric'; pinIn.pattern='\\n\\d{4}'; // hint only
+    pinIn.placeholder = '4-digit';
+    pinIn.maxLength = 4;
+    pinIn.style.width = '100%';
+    pinTd.appendChild(pinIn);
+
+    // Actions
+    const actTd = document.createElement('td');
+    const saveNameBtn = document.createElement('button');
+    saveNameBtn.className='btn small'; saveNameBtn.textContent='Save Name';
+    const savePinBtn = document.createElement('button');
+    savePinBtn.className='btn small'; savePinBtn.textContent='Update PIN';
+    const delBtn = document.createElement('button');
+    delBtn.className='btn small danger'; delBtn.textContent='Delete';
+    actTd.append(saveNameBtn, document.createTextNode(' '), savePinBtn, document.createTextNode(' '), delBtn);
+
+    // Wire actions
+    saveNameBtn.onclick = async ()=>{
+      const newName = (nameIn.value||'').trim();
+      if (!newName){ toast('Enter a name'); return; }
+      if (newName === p.name){ toast('No change'); return; }
+      try { await cloudRenamePlayer(p.name, newName); toast('Name updated'); await renderSavedPlayersAdmin(); }
+      catch(e){ console.error(e); toast('Rename failed'); }
+    };
+
+    savePinBtn.onclick = async ()=>{
+      const pin = (pinIn.value||'').trim();
+      if (!/^\n?\d{4}$/.test(pin)){ toast('PIN must be 4 digits'); return; }
+      try { await cloudUpdatePlayerPassword(p.name, pin); pinIn.value=''; toast('PIN updated'); }
+      catch(e){ console.error(e); toast('PIN update failed'); }
+    };
+
+    delBtn.onclick = async ()=>{
+      if (!confirm(`Delete ${p.name}?`)) return;
+      try { await cloudDeletePlayer(p.name); toast('Deleted'); await renderSavedPlayersAdmin(); }
+      catch(e){ console.error(e); toast('Delete failed'); }
+    };
+
+    tr.append(nameTd, pinTd, actTd); tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  body.innerHTML = '';
+  body.appendChild(table);
+}
+
+// Rename helper (updates `name` column)
+async function cloudRenamePlayer(oldName, newName){
+  const { error } = await sb.from(TABLE_PLAYERS).update({ name: newName }).eq('name', oldName);
+  if (error) { markCloudError(error); throw error; }
+  markCloudOk();
+}
       console.log('SQ build: script wrapped OK');
-/*******************************************************************
 // --- Stepper bootstrap (must exist before any DOMContentLoaded references) ---
 (function(){
   if (typeof window.initSetupSteppers === 'function') return;
@@ -999,6 +1316,15 @@ V_CLOUDUPLOAD
       if (sufEl) sufEl.textContent = suffix;
       if (!select || !numEl) return;
 
+      // Prevent duplicate bindings (which caused skipping: 1→3→5…)
+      if (stepper.dataset.bound === '1') return;
+      stepper.dataset.bound = '1';
+
+      // Determine min/max from the select's option values
+      const values = [...select.options].map(o => parseInt(o.value, 10)).filter(n => !Number.isNaN(n));
+      const minVal = Math.min(...values);
+      const maxVal = Math.max(...values);
+
       function syncFromSelect(){
         const val = parseInt(select.value, 10);
         if (!Number.isNaN(val)) {
@@ -1010,22 +1336,30 @@ V_CLOUDUPLOAD
           numEl.textContent = m ? m[0] : txt;
         }
       }
-      syncFromSelect();
 
-      stepper.querySelectorAll('.stepper-btn').forEach(btn => {
-        const delta = parseInt(btn.getAttribute('data-delta') || '0', 10);
-        btn.addEventListener('click', () => {
-          const opts = select.options;
-          let idx = select.selectedIndex + (delta > 0 ? 1 : -1);
-          if (idx < 0) idx = 0;
-          if (idx > opts.length - 1) idx = opts.length - 1;
-          select.selectedIndex = idx;
+      function setTo(v){
+        const targetIdx = [...select.options].findIndex(o => parseInt(o.value, 10) === v);
+        if (targetIdx >= 0) {
+          select.selectedIndex = targetIdx;
           select.dispatchEvent(new Event('change', { bubbles: true }));
           syncFromSelect();
-        });
+        }
+      }
+
+      // Bind buttons using `onclick` (overwrites any prior handlers)
+      stepper.querySelectorAll('.stepper-btn').forEach(btn => {
+        const delta = parseInt(btn.getAttribute('data-delta') || '0', 10);
+        btn.onclick = () => {
+          const cur = parseInt(select.value, 10);
+          const next = Math.min(maxVal, Math.max(minVal, cur + (delta > 0 ? 1 : -1)));
+          setTo(next);
+        };
       });
+
       select.addEventListener('change', syncFromSelect);
+      syncFromSelect();
     });
+
     // Ensure initial player rows render to match default "players" count
     try { if (typeof drawPsRows === 'function') drawPsRows(); } catch(_) {}
   };
@@ -1397,6 +1731,10 @@ function show(id){
   const fh=byId('floatHead');
   if(fh) fh.classList.toggle('hidden', id!=='game');
   buildPad();
+  if (id === 'game') {
+    // Reverted: rely on default scoreboard rendering.
+    if (window.__marksKick) { clearInterval(window.__marksKick); window.__marksKick = null; }
+  }
 }
 const padBar = byId('padBar');
 const pad     = byId('pad');
@@ -1596,6 +1934,20 @@ async function cloudUpdatePlayerPassword(name, newPassword){
   markCloudOk();
 }
 
+// Fetch high scores from Supabase (league or practice)
+async function cloudListHighScores(isPractice = false, limit = 500){
+  const table = isPractice ? TABLE_HS_PRACTICE : TABLE_HS_LEAGUE;
+  const { data, error } = await sb
+    .from(table)
+    .select('name, score, ts')
+    .order('score', { ascending: false })  // highest first
+    .order('ts',    { ascending: false })  // newest first tie-break
+    .limit(limit);
+  if (error) { markCloudError(error); throw error; }
+  markCloudOk();
+  return (data || []).map(r => ({ name: r.name, score: Number(r.score) || 0, ts: r.ts }));
+}
+
 // Simple initial Supabase connectivity check
 async function initialCloudCheck() {
   try {
@@ -1624,6 +1976,15 @@ if (typeof window.initSetupSteppers !== 'function') {
       if (sufEl) sufEl.textContent = suffix;
       if (!select || !numEl) return;
 
+      // Prevent duplicate bindings (which caused skipping: 1→3→5…)
+      if (stepper.dataset.bound === '1') return;
+      stepper.dataset.bound = '1';
+
+      // Determine min/max from the select's option values
+      const values = [...select.options].map(o => parseInt(o.value, 10)).filter(n => !Number.isNaN(n));
+      const minVal = Math.min(...values);
+      const maxVal = Math.max(...values);
+
       function syncFromSelect(){
         const val = parseInt(select.value, 10);
         if (!Number.isNaN(val)) {
@@ -1635,24 +1996,32 @@ if (typeof window.initSetupSteppers !== 'function') {
           numEl.textContent = m ? m[0] : txt;
         }
       }
-      syncFromSelect();
 
-      stepper.querySelectorAll('.stepper-btn').forEach(btn => {
-        const delta = parseInt(btn.getAttribute('data-delta') || '0', 10);
-        btn.addEventListener('click', () => {
-          const opts = select.options;
-          let idx = select.selectedIndex + (delta > 0 ? 1 : -1);
-          if (idx < 0) idx = 0;
-          if (idx > opts.length - 1) idx = opts.length - 1;
-          select.selectedIndex = idx;
+      function setTo(v){
+        const targetIdx = [...select.options].findIndex(o => parseInt(o.value, 10) === v);
+        if (targetIdx >= 0) {
+          select.selectedIndex = targetIdx;
           select.dispatchEvent(new Event('change', { bubbles: true }));
           syncFromSelect();
-        });
+        }
+      }
+
+      // Bind buttons using `onclick` (overwrites any prior handlers)
+      stepper.querySelectorAll('.stepper-btn').forEach(btn => {
+        const delta = parseInt(btn.getAttribute('data-delta') || '0', 10);
+        btn.onclick = () => {
+          const cur = parseInt(select.value, 10);
+          const next = Math.min(maxVal, Math.max(minVal, cur + (delta > 0 ? 1 : -1)));
+          setTo(next);
+        };
       });
+
       select.addEventListener('change', syncFromSelect);
+      syncFromSelect();
     });
-    // Render initial rows to match current players setting
-    try { if (typeof drawPsRows === 'function') drawPsRows(); } catch (_) {}
+
+    // Ensure initial player rows render to match default "players" count
+    try { if (typeof drawPsRows === 'function') drawPsRows(); } catch(_) {}
   };
 }
 document.addEventListener('DOMContentLoaded', () => {
@@ -1660,6 +2029,7 @@ document.addEventListener('DOMContentLoaded', () => {
   try { if (typeof initSetupSteppers   === 'function') initSetupSteppers();   } catch (e) { console.error(e); }
   try { if (typeof initialCloudCheck   === 'function') initialCloudCheck();   } catch (e) { console.error(e); }
   try { updatePadSpacer(); } catch (e) {}
+  try { bindScoreHeaderScrollSync(); } catch (e) {}
 });
 // --- Period filter helper (Today / 1 Week / 1 Month / All Time) ---
 function periodStartIso(key){
@@ -1687,52 +2057,102 @@ function fmtDdMmYyAtTime(d){
   const mi = String(d.getMinutes()).padStart(2,'0');
   return `${dd}/${mm}/${yy} @ ${hh}:${mi}`;
 }
-// HIGH SCORES
-async function cloudInsertHighScore(name, score, single=false){
-  const table   = single ? TABLE_HS_PRACTICE : TABLE_HS_LEAGUE;
- const payload = {
-  name,
-  score,
-  ts: _tsOverride || new Date().toISOString()
-};
-  const { error } = await sb.from(table).insert(payload);
-  if (error) {
-    markCloudError(error);
-    throw error;
+// High Scores dialog — deduped + period buttons
+async function openHighScoresDialog(isPractice = false, range = 'all') {
+  // range helpers
+  function rangePassFactory(r){
+    const now = new Date();
+    if (r==='today'){ const s=new Date(now); s.setHours(0,0,0,0); return d=>d>=s && d<=now; }
+    if (r==='yesterday'){ const y0=new Date(now); y0.setDate(y0.getDate()-1); y0.setHours(0,0,0,0); const y1=new Date(y0); y1.setHours(23,59,59,999); return d=>d>=y0 && d<=y1; }
+    if (r==='1w'){ const s=new Date(now); s.setDate(s.getDate()-7); return d=>d>=s && d<=now; }
+    if (r==='1m'){ const s=new Date(now); s.setMonth(s.getMonth()-1); return d=>d>=s && d<=now; }
+    if (r==='6m'){ const s=new Date(now); s.setMonth(s.getMonth()-6); return d=>d>=s && d<=now; }
+    return _=>true;
   }
-  markCloudOk();
-}
 
-async function cloudListHighScores(single=false, limit=20, sinceIso=null){
-  const table = single ? TABLE_HS_PRACTICE : TABLE_HS_LEAGUE;
-  let q = sb.from(table)
-    .select('name, score, ts')            // ← ONLY existing columns
-    .order('score', { ascending:false })
-    .order('ts',    { ascending:true })
-    .limit(limit);
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className='modal';
+  const title   = document.createElement('h3');  title.textContent = `High Scores (${isPractice? 'Practice' : 'Official'})`;
+  const body    = document.createElement('div'); body.className='modal-body';
+  const footer  = document.createElement('div'); footer.className='modal-footer';
+  modal.append(title, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  modal.tabIndex = 0; modal.focus();
+  overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
 
-  if (sinceIso) q = q.gte('ts', sinceIso);
+  async function render(){
+    body.innerHTML = '';
+    let rows = [], loadErr = null;
+    try { rows = await cloudListHighScores(isPractice, 1000); }
+    catch(e){ console.error(e); loadErr = e; rows = []; }
 
-  const { data, error } = await q;
-  if (error) {
-    markCloudError(error);
-    throw error;
+    if (loadErr){
+      const p=document.createElement('p'); p.textContent='Failed to load high scores.'; body.appendChild(p); return;
+    }
+
+    // Robust client-side de-dup: one row per (name,score), keep original (earliest ts)
+    rows = dedupeRowsByNameScoreKeepEarliest(rows);
+
+    // Filter by requested window
+    const pass = rangePassFactory(range);
+    rows = rows.filter(r=> r?.ts ? pass(new Date(r.ts)) : true);
+
+    // Sort: highest score first, then newest, then name
+    rows.sort((a, b) => {
+      const sa = Number(a?.score || 0);
+      const sb = Number(b?.score || 0);
+      if (sb !== sa) return sb - sa;
+      const ta = a?.ts ? Date.parse(a.ts) : 0;
+      const tb = b?.ts ? Date.parse(b.ts) : 0;
+      if (tb !== ta) return tb - ta;
+      const na = String(a?.name || '');
+      const nb = String(b?.name || '');
+      return na.localeCompare(nb);
+    });
+
+    if (!rows.length){
+      const p=document.createElement('p'); p.textContent='No scores recorded for this period.'; body.appendChild(p); return;
+    }
+
+    const table=document.createElement('table'); table.className='hs-table';
+    const thead=document.createElement('thead'); const trh=document.createElement('tr');
+    ;['#','Player','Score','Avg / Round','When'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
+    thead.appendChild(trh); table.appendChild(thead);
+    const tb=document.createElement('tbody');
+
+    rows.forEach((r, idx)=>{
+      const tr=document.createElement('tr');
+      const td1=document.createElement('td'); td1.textContent=String(idx+1);
+      const td2=document.createElement('td'); td2.textContent=String(r.name||'');
+      const td3=document.createElement('td'); td3.textContent=String(r.score);
+      const td4=document.createElement('td');
+      const avg=(typeof MAX_ROUNDS==='number'&&MAX_ROUNDS>0)?(Number(r.score||0)/MAX_ROUNDS):0; td4.textContent=avg.toFixed(1);
+      const td5=document.createElement('td');
+      const d=r.ts?new Date(r.ts):null; td5.textContent=(d&&!Number.isNaN(d.getTime()))? d.toLocaleString(undefined,{year:'2-digit',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+      td5.style.fontSize='0.8rem';
+      tr.append(td1,td2,td3,td4,td5);
+      tb.appendChild(tr);
+    });
+
+    table.appendChild(tb); body.appendChild(table);
   }
-  markCloudOk();
-  return data || [];
-}
 
-async function cloudDeleteHighScore(row, single=false){
-  const table = single ? TABLE_HS_PRACTICE : TABLE_HS_LEAGUE;
-  const { error } = await sb.from(table).delete()
-    .eq('name', row.name)
-    .eq('score', row.score)
-    .eq('ts', row.ts);
-  if (error) {
-    markCloudError(error);
-    throw error;
+  function mkBtn(lbl,val,primary=false){
+    const b=document.createElement('button'); b.className='btn'; if(primary) b.classList.add('primary'); b.textContent=lbl;
+    b.onclick=()=>{ if(val==='__back__'){ overlay.remove(); return; } range=val; render(); };
+    return b;
   }
-  markCloudOk();
+  footer.append(
+    mkBtn('Today','today'),
+    mkBtn('Yesterday','yesterday'),
+    mkBtn('1 Week','1w'),
+    mkBtn('1 Month','1m'),
+    mkBtn('6 Month','6m'),
+    mkBtn('All Time','all', true),
+    mkBtn('Back','__back__',false)
+  );
+
+  await render();
 }
 /*****************
  * CLOUD STATS HELPERS
@@ -1853,39 +2273,9 @@ async function openSprintLeagueDialog() {
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
 }
 
-// Fallback synthesizer: create 1-player "pseudo games" from high_scores rows
-async function cloudSynthGamesFromHighScores(playerName){
-  const synth = [];
-
-  async function fetchRows(table){
-    const { data, error } = await sb
-      .from(table)
-      .select('name, score, ts')
-      .eq('name', playerName)
-      .order('ts', { ascending: true });
-    if (error) throw error;
-    return data || [];
-  }
-
-  try {
-    const league   = await fetchRows(TABLE_HS_LEAGUE);
-    const practice = await fetchRows(TABLE_HS_PRACTICE);
-
-    [...league, ...practice].forEach(row => {
-      synth.push({
-        ts: row.ts || null,
-        players: [{ name: row.name }],
-        totals: [Number(row.score) || 0],
-        winners: [0],     // unknown; treat as self-only game
-        board: null
-      });
-    });
-  } catch(e){
-    console.error('cloudSynthGamesFromHighScores failed', e);
-  }
-
-  return synth;
-}
+// (cloudSynthGamesFromHighScores remains unchanged)
+// If a wrapper exists for openHighScoresMenuDialog, patch it to call the new dialog:
+function openHighScoresMenuDialog(){ openHighScoresDialog(false, 'all'); }
 
 
 /*****************
@@ -5694,48 +6084,66 @@ async function buildRecordPaceSeries(roundsCount) {
     const list = await cloudListHighScores(false, 1);
     if (!list || !list.length) return null;
 
-    const top    = list[0];
+    const top = list[0];
     const target = Number(top.score) || 0;
 
-    // 2) Load all games from Supabase (already mapped into local shape)
-    let games = [];
+    // 2) Try to find the exact game for that row using our cloud-first resolver
+    let found = null;
     try {
-      games = await cloudFetchAllGamesAsLocal();
-    } catch (_) {
-      console.error('cloudFetchAllGamesAsLocal failed in buildRecordPaceSeries');
-      return null;
-    }
-    if (!games || !games.length) return null;
-
-    // 3) Find the matching *official* game for that record
-    const best = games
-      .filter(isOfficialGame)
-      .map(g => {
-        const pIdx = (g.players || []).findIndex(
-          p => p && eqName(p.name, top.name)
+      if (typeof findGameForHighScoreCloudFirst === 'function') {
+        found = await findGameForHighScoreCloudFirst(
+          { name: top.name, score: target, ts: top.ts },
+          /* isPractice */ false
         );
-        if (pIdx === -1) return null;
-        if ((g.totals?.[pIdx] || 0) !== target) return null;
+      }
+    } catch (e) {
+      console.error('findGameForHighScoreCloudFirst failed', e);
+    }
 
-        const delta = (top.ts && g.ts)
-          ? Math.abs(new Date(g.ts) - new Date(top.ts))
-          : Number.MAX_SAFE_INTEGER;
+    // 3) If not found, fall back to scanning cloud games we have locally
+    if (!found) {
+      let games = [];
+      try {
+        games = await cloudFetchAllGamesAsLocal();
+      } catch (_) {
+        console.error('cloudFetchAllGamesAsLocal failed in buildRecordPaceSeries');
+        games = [];
+      }
 
-        return { g, pIdx, delta };
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.delta - b.delta)[0];
+      if (games && games.length) {
+        const candidates = games
+          .filter(isOfficialGame)
+          .map(g => {
+            const pIdx = (g.players || []).findIndex(p => p && eqName(p.name, top.name));
+            if (pIdx === -1) return null;
+            if ((g.totals?.[pIdx] || 0) !== target) return null;
 
-    // No matching game or no board = we cannot draw a true pace line
-    if (!best || !best.g || !best.g.board || !Array.isArray(best.g.board[best.pIdx])) {
+            const delta =
+              (top.ts && g.ts)
+                ? Math.abs(new Date(g.ts) - new Date(top.ts))
+                : Number.MAX_SAFE_INTEGER;
+
+            return { game: g, playerIndex: pIdx, delta };
+          })
+          .filter(Boolean)
+          .sort((a, b) => a.delta - b.delta)[0];
+
+        if (candidates && candidates.game) {
+          found = candidates;
+        }
+      }
+    }
+
+    // 4) If still not found or missing board, bail
+    if (!found || !found.game || !Array.isArray(found.game.board?.[found.playerIndex])) {
       console.warn('No board data for top record game; skipping record pace line');
       return null;
     }
 
-    // 4) Build true round-by-round cumulative totals for that player
-    const data   = [];
-    let running  = 0;
-    const board  = best.g.board[best.pIdx];
+    // 5) Build true round-by-round cumulative totals for that player
+    const data = [];
+    let running = 0;
+    const board = found.game.board[found.playerIndex];
 
     for (let r = 0; r < roundsCount; r++) {
       const rt = board?.[r]?.roundTotal || 0;
@@ -6350,38 +6758,23 @@ function openAdminHub(){
   // Open sub-panels
   byId('openHsLeagueAdmin').onclick   = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(false); };
   byId('openHsPracticeAdmin').onclick = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(true); };
-  byId('openSavedPlayersAdmin').onclick = ()=>{ hub.classList.add('hidden'); openSavedPlayersAdmin(); };
+  byId('openSavedPlayersAdminBtn').onclick = ()=>{ hub.classList.add('hidden'); openSavedPlayersAdminDialog(); };
 
-  // Backdate: replace two old buttons with a single "BACKDATE: Sync Local → Cloud"
-  (function setupBackdate(){
-    const oldBackdate = byId('backdateNextSaveBtn');
-    const oldClear    = byId('clearBackdateBtn');
-    let backfillBtn   = byId('backfillAllBtn');
+  // Remove deprecated backdate controls (if still present)
+  ['backfillAllBtn','backdateNextSaveBtn','clearBackdateBtn'].forEach(id => { const el = byId(id); if (el) el.remove(); });
 
-    // If the old buttons exist, convert/remove them
-    if (oldBackdate) {
-      oldBackdate.id = 'backfillAllBtn';
-      oldBackdate.textContent = 'BACKDATE: Sync Local → Cloud';
-      oldBackdate.classList.add('warn','big');
-      backfillBtn = oldBackdate;
+  // Ensure "All Games" button exists and opens the new dialog
+  (function ensureAllGamesBtn(){
+    const container = document.querySelector('#adminHubModal .modal-body') || hub;
+    let btn = byId('openAllGamesBtn');
+    if (!btn && container) {
+      btn = document.createElement('button');
+      btn.id = 'openAllGamesBtn';
+      btn.className = 'btn';
+      btn.textContent = 'All Games';
+      container.appendChild(btn);
     }
-    if (oldClear) oldClear.remove();
-
-    // If no converted button exists, create one under the same container (admin hub body)
-    if (!backfillBtn) {
-      const container = document.querySelector('#adminHubModal .modal-body') || byId('adminHubModal');
-      if (container) {
-        backfillBtn = document.createElement('button');
-        backfillBtn.id = 'backfillAllBtn';
-        backfillBtn.className = 'btn warn big';
-        backfillBtn.style.width = '100%';
-        backfillBtn.textContent = 'BACKDATE: Sync Local → Cloud';
-        container.appendChild(backfillBtn);
-      }
-    }
-
-    // Wire handler
-    if (backfillBtn) backfillBtn.onclick = runBackfillAll;
+    if (btn) btn.onclick = ()=>{ hub.classList.add('hidden'); openAllGamesDialog(); };
   })();
 
   // Return to previous screen (just closes the modal)
@@ -6461,11 +6854,15 @@ async function openHighScoresAdminDialog(single=false){
 
   await render();
 
+  const backBtn=document.createElement('button');
+  backBtn.className='btn';
+  backBtn.textContent='Back';
+  backBtn.onclick=()=>{ overlay.remove(); openAdminHub(); };
   const closeBtn=document.createElement('button'); 
   closeBtn.className='btn'; 
   closeBtn.textContent='Exit'; 
   closeBtn.onclick=()=>overlay.remove(); 
-  footer.appendChild(closeBtn); 
+  footer.append(backBtn, closeBtn);
 
   modal.append(title, body, footer); 
   overlay.appendChild(modal); 
@@ -6474,6 +6871,154 @@ async function openHighScoresAdminDialog(single=false){
   overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
   overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); }); 
   modal.tabIndex=0; modal.focus(); 
+}
+
+// All Games dialog (cloud-only, with Delete and re-render)
+async function openAllGamesDialog(){
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className='modal';
+  const title   = document.createElement('h3');  title.textContent='All Games';
+  const body    = document.createElement('div'); body.className='modal-body';
+  const footer  = document.createElement('div'); footer.className='modal-footer';
+
+  async function render(){
+    body.innerHTML = '';
+
+    // Cloud-only (no local merge)
+    let games = [];
+    try { games = await cloudFetchAllGamesAsLocal(); } catch(e){ console.error(e); }
+    games = (games || []).sort((a,b)=> new Date(b.ts) - new Date(a.ts));
+
+    if (!games.length){
+      const p=document.createElement('p'); p.textContent='No games found.'; body.appendChild(p); return;
+    }
+
+    const table=document.createElement('table'); table.className='hs-table';
+
+    // Tight first column
+    const colgroup = document.createElement('colgroup');
+    const cIdx = document.createElement('col'); cIdx.style.width = '3ch'; colgroup.appendChild(cIdx);
+    colgroup.appendChild(document.createElement('col')); // When
+    colgroup.appendChild(document.createElement('col')); // Players
+    colgroup.appendChild(document.createElement('col')); // Totals
+    const cAct = document.createElement('col'); cAct.style.width = '1%'; colgroup.appendChild(cAct); // Actions
+    table.appendChild(colgroup);
+
+    const thead=document.createElement('thead'); const trh=document.createElement('tr');
+    ['#','When','Players','Totals','Actions'].forEach((h,i)=>{
+      const th=document.createElement('th'); th.textContent=h; if(i===0) th.style.width='3ch'; trh.appendChild(th);
+    });
+    thead.appendChild(trh); table.appendChild(thead);
+
+    const tb=document.createElement('tbody');
+    games.forEach((g, idx)=>{
+      const tr=document.createElement('tr');
+
+      const td1=document.createElement('td'); td1.textContent=String(idx+1); td1.style.width='3ch';
+      const td2=document.createElement('td');
+      const d=new Date(g.ts);
+      td2.textContent = (!Number.isNaN(d.getTime()))
+        ? d.toLocaleString(undefined,{year:'2-digit',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'})
+        : '';
+      const td3=document.createElement('td'); td3.textContent=(g.players||[]).map(p=>p?.name||'').join(', ');
+      const td4=document.createElement('td'); td4.textContent=(g.totals||[]).join(' · ');
+
+      const td5=document.createElement('td'); td5.className='center';
+      const del=document.createElement('button'); del.className='btn small danger'; del.textContent='Delete';
+      del.onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this game from cloud (and related high-score rows)?')) return;
+        try { await cloudDeleteGameCascade(g); toast('Game deleted'); await render(); }
+        catch(err){ console.error(err); toast('Delete failed'); }
+      };
+      td5.appendChild(del);
+
+      tr.style.cursor='pointer';
+      tr.title='Open score sheet';
+      tr.onclick=()=>{ if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(g); };
+
+      tr.append(td1,td2,td3,td4,td5); tb.appendChild(tr);
+    });
+
+    table.appendChild(tb); body.appendChild(table);
+  }
+
+  // Footer
+  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  backBtn.onclick=()=>{ overlay.remove(); if (typeof openAdminHub==='function') openAdminHub(); };
+  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  closeBtn.onclick=()=> overlay.remove();
+  footer.append(backBtn, closeBtn);
+
+  modal.append(title, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
+  modal.tabIndex=0; modal.focus();
+
+  await render();
+}
+async function cloudDeleteGameCascade(g){
+  if (!g || !g.ts) throw new Error('Missing timestamp for delete');
+  const ts = g.ts;
+
+  // Delete the game by exact timestamp; fallback to ±2min window
+  try {
+    const { error } = await sb.from(TABLE_GAMES).delete().eq('created_at', ts);
+    if (error) throw error;
+  } catch (e) {
+    try {
+      const pad = 2 * 60 * 1000;
+      const fromIso = new Date(new Date(ts).getTime() - pad).toISOString();
+      const toIso   = new Date(new Date(ts).getTime() + pad).toISOString();
+      const { error } = await sb.from(TABLE_GAMES).delete()
+        .gte('created_at', fromIso).lte('created_at', toIso);
+      if (error) throw error;
+    } catch (ee) {
+      console.error('Delete from games failed', ee); throw ee;
+    }
+  }
+
+  // Best-effort clean-up of highs (practice/league)
+  const isSingle = (g?.players || []).length === 1;
+  const players = g?.players || [];
+  const totals  = g?.totals  || [];
+  await Promise.all(players.map((p,i)=>
+    cloudDeleteHighScore({ name: p?.name||'', score: Number(totals[i]||0), ts }, isSingle)
+      .catch(()=>{})   // ignore if no matching row
+  ));
+}
+// Delete a game (by timestamp) and its related high-score rows from Supabase
+async function cloudDeleteGameCascade(g){
+  if (!ensureCloudInit()) throw new Error('Cloud not initialised');
+  const ts = g?.ts;
+  if (!ts) throw new Error('Missing timestamp for delete');
+
+  // 1) Delete the game row by exact timestamp
+  try {
+    const { error } = await sb.from(TABLE_GAMES).delete().eq('created_at', ts);
+    if (error) throw error;
+  } catch (e) {
+    // Try a fallback range delete ±2min if exact equality fails
+    try {
+      const pad = 2 * 60 * 1000;
+      const fromIso = new Date(new Date(ts).getTime() - pad).toISOString();
+      const toIso   = new Date(new Date(ts).getTime() + pad).toISOString();
+      const { error } = await sb.from(TABLE_GAMES).delete().gte('created_at', fromIso).lte('created_at', toIso);
+      if (error) throw error;
+    } catch (ee) {
+      console.error('Delete games failed', ee); throw ee;
+    }
+  }
+
+  // 2) Delete related high-score rows (practice/league)
+  const isSingle = (g?.players || []).length === 1;
+  const players = g?.players || [];
+  const totals  = g?.totals  || [];
+  const tasks = players.map((p,i)=>{
+    const row = { name: p?.name || '', score: Number(totals[i]||0), ts };
+    return cloudDeleteHighScore(row, isSingle).catch(()=>{});
+  });
+  await Promise.all(tasks);
 }
 
   /*****************
@@ -6815,6 +7360,82 @@ window.addEventListener('resize', syncStartTitleWidth, { passive: true });
     }
   });
 });
+// ===== FINAL OVERRIDE: Admin Hub opener (safe + id compatible) =====
+window.openAdminHub = function openAdminHub(){
+  const hub = document.getElementById('adminHubModal');
+  if (!hub) return;
+  hub.classList.remove('hidden');
+
+  const bind = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.onclick = fn;
+  };
+
+  // All Games
+  bind('openAllGamesBtn', () => {
+    hub.classList.add('hidden');
+    if (typeof openAllGamesDialog === 'function') openAllGamesDialog();
+  });
+
+  // High scores (league / practice)
+  bind('openHsLeagueAdmin',   () => { hub.classList.add('hidden'); if (typeof openHighScoresAdminDialog === 'function') openHighScoresAdminDialog(false); });
+  bind('openHsPracticeAdmin', () => { hub.classList.add('hidden'); if (typeof openHighScoresAdminDialog === 'function') openHighScoresAdminDialog(true);  });
+
+  // Saved Players Admin — supports legacy ID too
+  const spa = document.getElementById('openSavedPlayersAdminBtn') || document.getElementById('openSavedPlayersAdmin');
+  if (spa) spa.onclick = () => {
+    hub.classList.add('hidden');
+    if (typeof openSavedPlayersAdminDialog === 'function') openSavedPlayersAdminDialog();
+  };
+
+  // Return
+  bind('closeAdminHubBtn', () => { hub.classList.add('hidden'); });
+};
+
+// ===== FINAL OVERRIDE: Cloud pill — dot-only indicator =====
+// Replaces any previous setCloudStatus to remove text and show a single coloured dot.
+window.setCloudStatus = function setCloudStatus(state, msg){
+  var el = document.getElementById('cloudStatusPill') ||
+           document.getElementById('cloudStatus') ||
+           document.querySelector('.cloud-pill');
+  if (!el) return;
+
+  // Decide colour
+  var root = getComputedStyle(document.documentElement);
+  function pick(varName, fallback){ 
+    try { 
+      var v = root.getPropertyValue(varName); 
+      return (v && v.trim()) ? v.trim() : fallback; 
+    } catch(_) { return fallback; } 
+  }
+  var colour = pick('--muted', '#8a8fa6'); // default/checking
+  if (state === 'ok' || state === 'connected' || state === 'online') {
+    colour = pick('--good', '#7fffd4');
+  } else if (state === 'warn' || state === 'checking') {
+    colour = pick('--warn', '#ffcc66');
+  } else if (state === 'error' || state === 'offline') {
+    colour = pick('--danger', '#ff6b6b');
+  }
+
+  // Strip pill styling & content → dot only
+  el.innerHTML = '';
+  el.style.padding = '0';
+  el.style.minWidth = '0';
+  el.style.background = 'transparent';
+  el.style.boxShadow = 'none';
+  el.style.border = 'none';
+  el.style.display = 'inline-block';
+
+  var dot = document.createElement('span');
+  dot.style.display = 'inline-block';
+  dot.style.width = '12px';
+  dot.style.height = '12px';
+  dot.style.borderRadius = '50%';
+  dot.style.background = colour;
+  dot.title = msg || (state || '');
+  el.appendChild(dot);
+};
+
 </script>
 </body>
 </html>
