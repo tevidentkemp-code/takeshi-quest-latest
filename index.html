@@ -1,5 +1,3 @@
-V-HIGHCOREFIX
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -462,8 +460,9 @@ V-HIGHCOREFIX
   color: var(--accent-2);
   line-height:1.1;
 }
+/* TEMP: disable PB/GR badges on the scoreboard only */
+#scoreWrap .pbgr { display: none !important; }
 
-/* Per-dart markers under each round score */
 /* Per-dart markers under each round score */
 .cell-throws{
   display:flex;
@@ -554,6 +553,8 @@ V-HIGHCOREFIX
   .compact .btn { padding: 4px 8px; font-weight: 600; }
   .compact table th, .compact table td { padding: .35rem .4rem; }
   
+  </style>
+<style>
   /* Cloud status pill (top-right) */
 .cloud-status {
   position: fixed;
@@ -1035,7 +1036,7 @@ body[data-page="details"] #psTicker{
       </div>
     </div>
 
-   <!-- Admin Hub Modal -->
+<!-- Admin Hub Modal -->
 <div id="adminHubModal" class="modal-backdrop hidden">
   <div class="modal">
     <h3>Admin Hub</h3>
@@ -1052,6 +1053,10 @@ body[data-page="details"] #psTicker{
         <button id="openSavedPlayersAdminBtn" class="btn" style="width:min(360px,92%);">Saved Player Admin</button>
 
         <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
+        
+        <button id="openPBGRAdminBtn" class="btn" style="width:min(360px,92%);">PB / GR Admin</button>
+
+        <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
 
         <button id="fixDuplicatesBtn" class="btn danger" style="width:min(360px,92%);">Remove Duplicate High Scores</button>
 
@@ -1062,6 +1067,49 @@ body[data-page="details"] #psTicker{
     </div>
   </div>
 </div>
+
+
+<!-- PB / GR Admin Modal -->
+<div id="pbgrAdminModal" class="modal-backdrop hidden">
+  <div class="modal compact">
+    <h3>PB / GR Admin</h3>
+    <div class="modal-body">
+      <p class="tag">Manage Personal Bests and Game Records. Deleting a row will remove the underlying round from the cloud.</p>
+      <h4 style="margin-top:8px;">World Records (All Players)</h4>
+      <div id="pbgrGlobal"></div>
+      <hr style="margin:10px 0;">
+      <div class="row" style="align-items:center; gap:8px;">
+        <select id="pbgrPlayerSelect" style="flex:1; min-width: 180px;">
+          <option value="">Select a saved player…</option>
+        </select>
+        <button id="pbgrRefreshBtn" class="btn" type="button">Refresh</button>
+      </div>
+      <div class="row" style="margin-top:10px; gap:8px; align-items:center;">
+        <button id="pbgrBackfillBtn" class="btn warn" type="button">Backdate PB / WR</button>
+        <span class="tag">Scan cloud throws (saved players, official games) and write PBs + WRs to cloud tables.</span>
+      </div>
+      <div id="pbgrPlayer" style="margin-top:8px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button id="pbgrBackBtn" class="btn" type="button">Back</button>
+      <button id="pbgrCloseBtn" class="btn" type="button">Close</button>
+    </div>
+  </div>
+</div>
+
+  <!-- Round High Scores (public) -->
+  <div id="roundHighScoresModal" class="modal-backdrop hidden">
+    <div class="modal compact">
+      <h3>Round High Scores</h3>
+      <div class="modal-body" id="roundHSBody">
+        <p class="tag">Loading…</p>
+      </div>
+      <div class="modal-footer">
+        <button id="roundHSBackBtn" class="btn" type="button">Back</button>
+        <button id="roundHSCloseBtn" class="btn" type="button">Close</button>
+      </div>
+    </div>
+  </div>
 
     <!-- Saved Players Admin Modal -->
     <div id="savedPlayersAdminModal" class="modal-backdrop hidden">
@@ -1109,13 +1157,12 @@ function promoteRoundOnly(){
 function symbolForDart(d, rd){
   // No dart thrown yet
   if (!d || (typeof d.points === 'undefined' && !d.kind)) return { ch: '○', cls: '' };
-
   // Miss (no points registered)
   if (!d || Number(d.points || 0) === 0){
-    // Bulls: only 'Bull' kind counts as a hit
+    // Bulls: if it's marked as a Bull hit, show 50 / 25 even if points weren’t recorded
     if (rd && rd.type === 'bull' && d && d.kind === 'Bull'){
-      const inner = (d.bull === 'Inner');
-      return { ch: inner ? 'D' : 'S', cls: '' };
+      const isInner = (d.bull === 'Inner');
+      return { ch: isInner ? '50' : '25', cls: '' };
     }
     return { ch: '✕', cls: 'miss' };
   }
@@ -1128,18 +1175,123 @@ function symbolForDart(d, rd){
     return { ch: 'S', cls: '' };
   }
 
-  // Doubles / Triples
-  if (rd && rd.type === 'doubles') return { ch: 'D', cls: '' };
-  if (rd && rd.type === 'triples') return { ch: 'T', cls: '' };
+  // Doubles / Triples with explicit numbers
+  if (rd && rd.type === 'doubles'){
+    const pts = Number(d.points || 0);
+    let n = pts ? pts / 2 : null;
+    if (!Number.isInteger(n) || n < 1 || n > 20){
+      const t = Number(d.target ?? d.num ?? d.number ?? NaN);
+      if (Number.isInteger(t) && t >= 1 && t <= 20) n = t;
+    }
+    const label = Number.isInteger(n) ? `D${n}` : 'D?';
+    return { ch: label, cls: '' };
+  }
+  if (rd && rd.type === 'triples'){
+    const pts = Number(d.points || 0);
+    let n = pts ? pts / 3 : null;
+    if (!Number.isInteger(n) || n < 1 || n > 20){
+      const t = Number(d.target ?? d.num ?? d.number ?? NaN);
+      if (Number.isInteger(t) && t >= 1 && t <= 20) n = t;
+    }
+    const label = Number.isInteger(n) ? `T${n}` : 'T?';
+    return { ch: label, cls: '' };
+  }
 
-  // Bull round – map outer to S, inner to D
+  // Bull round – show 50/25
   if (rd && rd.type === 'bull'){
-    if (d.kind === 'Bull') return { ch: (d.bull === 'Inner' ? 'D' : 'S'), cls: '' };
+    if (d.kind === 'Bull'){
+      const isInner = (d.bull === 'Inner');
+      return { ch: isInner ? '50' : '25', cls: '' };
+    }
+    const pts = Number(d.points || 0);
+    if (pts === 50 || pts === 25) return { ch: String(pts), cls: '' };
     return { ch: '✕', cls: 'miss' };
   }
 
   // Fallback
   return { ch: '○', cls: '' };
+}
+
+// Fetch per-dart pattern for a specific game/player/round (e.g. "S/S/D" or "x/T/T")
+async function fetchRoundPattern(gameId, playerName, ridx){
+  if (!gameId || playerName == null || ridx == null) return '';
+  // 1) Preferred: throws table
+  try{
+    const { data, error } = await sb
+      .from(TABLE_GAME_THROWS)
+      .select('dart_index, points, kind, bull')
+      .eq('game_id', gameId)
+      .eq('player', playerName)
+      .eq('round_index', ridx)
+      .order('dart_index', { ascending: true });
+    if (error) throw error;
+
+    const rd = ROUNDS[ridx];
+    const chars = [];
+    for (let i = 0; i < 3; i++){
+      const d = (data || []).find(r => Number(r.dart_index) === i) || null;
+      const sym = symbolForDart(d, rd);
+      let ch = sym && sym.ch ? sym.ch : 'x';
+      if (ch === '✕') ch = 'x';
+      chars.push(ch);
+    }
+    return chars.join('/');
+  } catch(e){
+    // 2) Fallback: games.state.board (if stored)
+    try{
+      const { data, error } = await sb.from(TABLE_GAMES).select('state').eq('id', gameId).single();
+      if (error) throw error;
+      const rd = ROUNDS[ridx];
+      const players = (data?.state?.players || []).map(p => (typeof p === 'string' ? { name:p } : p));
+      const pIdx = players.findIndex(p => eqName(p.name, playerName));
+      const ent  = pIdx >= 0 ? (data?.state?.board?.[pIdx] || [])[ridx] : null;
+      const chars = [];
+      for (let i = 0; i < 3; i++){
+        const d = ent && Array.isArray(ent.darts) ? ent.darts[i] : null;
+        const sym = symbolForDart(d, rd);
+        let ch = sym && sym.ch ? sym.ch : 'x';
+        if (ch === '✕') ch = 'x';
+        chars.push(ch);
+      }
+      return chars.join('/');
+    }catch(_){
+      return '';
+    }
+  }
+}
+window.fetchRoundPattern = fetchRoundPattern;
+
+// Fetch a game's timestamp from the cloud (with fallbacks)
+async function fetchGameTS(gameId){
+  try{
+    const { data, error } = await sb
+      .from(TABLE_GAMES)
+      .select('ts, created_at, inserted_at')
+      .eq('id', gameId)
+      .single();
+    if (error) throw error;
+    return data?.ts || data?.created_at || data?.inserted_at || null;
+  }catch(_){
+    return null;
+  }
+}
+
+// Earliest TS for a specific game/player/round (fallback for Date/Time column)
+async function fetchRoundTS(gameId, playerName, ridx){
+  try{
+    const { data, error } = await sb
+      .from(TABLE_GAME_THROWS)
+      .select('ts')
+      .eq('game_id', gameId)
+      .eq('player', playerName)
+      .eq('round_index', ridx)
+      .order('ts', { ascending: true })
+      .limit(1);
+    if (error) throw error;
+    return (data && data[0] && data[0].ts) ? data[0].ts : null;
+  }catch(_){
+    return null;
+  }
 }
 
 // Inject/update the three per-dart markers under each round score cell
@@ -1221,25 +1373,56 @@ function openAdminHub(){
   const btnAll   = document.getElementById('openAllGamesBtn');
   const btnLHS   = document.getElementById('openHsLeagueAdmin');
   const btnPHS   = document.getElementById('openHsPracticeAdmin');
-  const btnSave  = document.getElementById('openSavedPlayersAdminBtn'); // renamed to avoid global name collision
+  const btnSave  = document.getElementById('openSavedPlayersAdminBtn');
   const btnClose = document.getElementById('closeAdminHubBtn');
   const btnFix   = document.getElementById('fixDuplicatesBtn');
+  const btnPBGR  = document.getElementById('openPBGRAdminBtn');
 
   if (btnAll)  btnAll.onclick  = ()=>{ hub.classList.add('hidden'); openAllGamesDialog(); };
   if (btnLHS)  btnLHS.onclick  = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(false); };
   if (btnPHS)  btnPHS.onclick  = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(true); };
   if (btnSave) btnSave.onclick = ()=>{ hub.classList.add('hidden'); openSavedPlayersAdminDialog(); };
-  if (btnFix) btnFix.onclick = async ()=>{ 
-    hub.classList.add('hidden'); 
-    try{ 
-      const removed = await dedupeAllHighScores(); 
-      toast(`Removed ${removed} duplicate row${removed===1?'':'s'}.`); 
-    }catch(e){ 
-      console.error(e); 
-      toast('Dedupe failed'); 
+  if (btnPBGR) btnPBGR.onclick = ()=>{ hub.classList.add('hidden'); openPBGRAdminDialog(); };
+
+  if (btnFix) btnFix.onclick = async ()=>{
+    hub.classList.add('hidden');
+    try{
+      const removed = await dedupeAllHighScores();
+      toast(`Removed ${removed} duplicate row${removed===1?'':'s'}.`);
+    }catch(e){
+      console.error(e);
+      toast('Dedupe failed');
     }
   };
-  if (btnClose)btnClose.onclick= ()=>{ hub.classList.add('hidden'); };
+
+  if (btnClose) btnClose.onclick = ()=>{ hub.classList.add('hidden'); };
+}
+// --- PB / GR Admin: open/close + minimal render ---
+function openPBGRAdminDialog(){
+  const modal = document.getElementById('pbgrAdminModal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+
+  const back  = document.getElementById('pbgrBackBtn');
+  const close = document.getElementById('pbgrCloseBtn');
+  const sel   = document.getElementById('pbgrPlayerSelect');
+  const ref   = document.getElementById('pbgrRefreshBtn');
+
+  if (back)  back.onclick  = () => { modal.classList.add('hidden'); openAdminHub(); };
+  if (close) close.onclick = () => { modal.classList.add('hidden'); };
+
+  // Populate dropdown once per open
+  (async () => {
+    try{
+      const items = await cloudListPlayers(); // [{name}]
+      if (sel){
+        sel.innerHTML = '<option value="">Select a saved player…</option>' +
+          (items||[]).map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+      }
+    }catch(e){ console.error(e); }
+  })();
+
+  if (ref) ref.onclick = () => { try{ if (typeof refreshPBGRCloud === 'function') refreshPBGRCloud(); }catch(_){ } };
 }
 
 // Saved Players Admin
@@ -1255,6 +1438,120 @@ async function openSavedPlayersAdminDialog(){
   if (close) close.onclick = () => { modal.classList.add('hidden'); };
 
   await renderSavedPlayersAdmin();
+}
+
+// Generic renderer that can write the PB/GR table into any mount id
+async function renderPBGRTableInto(mountId){
+  const mount = document.getElementById(mountId);
+  if (!mount) return;
+  mount.innerHTML = '<p class="tag">Loading…</p>';
+  try{
+    const snap = await (typeof getPBGRSnapshot === 'function' ? getPBGRSnapshot() : Promise.resolve({ byTargetMeta: {} }));
+    const order = [...Array.from({length:11},(_,i)=>10+i), 'D','T','B'];
+
+    // Build table with Date / Time column included
+    const table = document.createElement('table'); table.className='hs-table';
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ['Round','WR','Darts','Date / Time','Holder'].forEach(h=>{
+      const th = document.createElement('th');
+      th.textContent = h;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+
+    const fmtDate = (ts) => {
+      if (!ts) return '—';
+      try{
+        const d = new Date(ts);
+        if (isNaN(d)) return '—';
+        return d.toLocaleString('en-GB', {
+          year: 'numeric',
+          month: 'short',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      }catch(_){ return '—'; }
+    };
+
+    const pending = [];
+
+    order.forEach(key=>{
+      const meta = (snap.byTargetMeta && snap.byTargetMeta[key]) ? snap.byTargetMeta[key] : { val:0, player:'', game_id:null, ridx:null, ts:null };
+      const tr   = document.createElement('tr');
+
+      const tdR  = document.createElement('td'); tdR.textContent = String(key);
+      const tdV  = document.createElement('td'); tdV.textContent = String(meta.val || 0);
+      const tdD  = document.createElement('td'); tdD.textContent = '—'; // async filled with S/D/T/x pattern
+      const tdT  = document.createElement('td'); tdT.textContent = fmtDate(meta.ts);
+      const tdN  = document.createElement('td'); tdN.textContent = meta.player ? meta.player : '—';
+
+      tr.append(tdR, tdV, tdD, tdT, tdN);
+      tbody.appendChild(tr);
+
+      // Fetch the per-dart pattern (S/D/T etc.)
+      if (meta && meta.game_id != null && meta.player && (meta.ridx || meta.ridx === 0)){
+        pending.push(
+          fetchRoundPattern(meta.game_id, meta.player, meta.ridx)
+            .then(pat => { tdD.textContent = pat || '—'; })
+            .catch(()=>{ tdD.textContent = '—'; })
+        );
+      }
+
+      // Fill Date/Time if missing: try Games.ts -> earliest throw ts
+      if (!meta?.ts && meta?.game_id){
+        pending.push(
+          (async ()=>{
+            // 1) game-level timestamp
+            const gts = await fetchGameTS(meta.game_id);
+            if (gts){
+              tdT.textContent = fmtDate(gts);
+              return;
+            }
+            // 2) earliest throw for this player/round
+            if (meta.player && (meta.ridx || meta.ridx === 0)){
+              const rts = await fetchRoundTS(meta.game_id, meta.player, meta.ridx);
+              if (rts) tdT.textContent = fmtDate(rts);
+            }
+          })()
+        );
+      }
+    });
+
+    if (pending.length){ try{ await Promise.allSettled(pending); }catch(_){ /* ignore */ } }
+    mount.innerHTML = '';
+    mount.appendChild(table);
+  }catch(e){
+    console.error('renderPBGRTableInto failed', e);
+    mount.innerHTML = '<p>Unable to load World Records right now.</p>';
+  }
+}
+
+// Keep admin renderer for pb/gr admin modal
+async function renderPBGRGlobalTable(){
+  return renderPBGRTableInto('pbgrGlobal');
+}
+// Public Round High Scores modal
+function openRoundHighScoresDialog(){
+  const modal = document.getElementById('roundHighScoresModal');
+  const body  = document.getElementById('roundHSBody');
+  const btnBack  = document.getElementById('roundHSBackBtn');
+  const btnClose = document.getElementById('roundHSCloseBtn');
+  if (!modal || !body) return;
+
+  modal.classList.remove('hidden');
+  if (btnBack)  btnBack.onclick  = () => { modal.classList.add('hidden'); };
+  if (btnClose) btnClose.onclick = () => { modal.classList.add('hidden'); };
+
+  // Re-use the generic PB/GR table builder
+  renderPBGRTableInto('roundHSBody').catch(()=>{
+    body.innerHTML = '<p>Unable to load right now.</p>';
+  });
 }
 
 async function renderSavedPlayersAdmin(){
@@ -1359,6 +1656,264 @@ if (!window.buildStartTicker) { window.buildStartTicker = async function(){}; }
       const sufEl    = stepper.querySelector('.stepper-suffix');
       if (sufEl) sufEl.textContent = suffix;
       if (!select || !numEl) return;
+      
+
+/* === Admin → Button + Password Popup (final) === */
+(function adminButton(){
+  const expected = (window.ADMIN_PASSWORD || 'hownowbrowncow'); // change if needed
+
+  // 1) Ensure we have a single Admin button
+  const row = document.getElementById('adminCodeRow');
+  let btn = document.getElementById('adminCodeBtn');
+
+  function ensureButton() {
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'adminCodeBtn';
+      btn.className = 'btn';
+      if (row) { row.innerHTML = ''; row.appendChild(btn); }
+      else document.body.appendChild(btn); // fallback (shouldn’t be used)
+    }
+    btn.textContent = 'Admin';
+    btn.title = 'Admin';
+    btn.setAttribute('aria-label', 'Admin');
+    btn.onclick = openAdminPasswordModal;
+  }
+
+  // 2) Remove any standalone "Admin Code" heading/label left in the markup
+  function removeStandaloneLabel(){
+    const candidates = Array.from(document.querySelectorAll(
+      '#details h1, #details h2, #details h3, #details h4, #details .muted, #details label'
+    ));
+    candidates.forEach(el => {
+      const t = (el.textContent || '').trim();
+      if (/^admin\s*code$/i.test(t)) el.remove();
+    });
+  }
+
+  // 3) Password popup → on success open the standard Admin panel
+  function openAdminPasswordModal(){
+    const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+    const modal   = document.createElement('div'); modal.className = 'modal';
+
+    const title = document.createElement('h3'); title.textContent = 'Admin Login';
+    const body  = document.createElement('div'); body.className = 'modal-body';
+
+    const label = document.createElement('label');
+    label.textContent = 'Enter password:';
+    label.className = 'muted';
+    label.style.display = 'block';
+    label.style.marginBottom = '6px';
+
+    const input = document.createElement('input');
+    input.type = 'password';
+    input.className = 'input';
+    input.autocomplete = 'current-password';
+    input.placeholder = 'Password';
+    input.style.minWidth = '220px';
+
+    body.append(label, input);
+
+    const footer = document.createElement('div'); footer.className = 'modal-footer';
+    const cancel = document.createElement('button'); cancel.className = 'btn';         cancel.textContent = 'Cancel';
+    const enter  = document.createElement('button'); enter.className  = 'btn primary'; enter.textContent  = 'Enter';
+
+    function close(){ overlay.remove(); }
+    function deny(){
+      if (typeof toast === 'function') toast('Incorrect password');
+      else alert('Incorrect password');
+      input.focus(); input.select();
+    }
+    function grant(){
+      close();
+      if (typeof window.openAdminHub === 'function') window.openAdminHub();
+      else if (typeof openAdminHub === 'function') openAdminHub();
+    }
+    function submit(){
+      const v = (input.value || '').trim();
+      if (!expected || v === expected) grant(); else deny();
+    }
+
+    cancel.onclick = close;
+    enter.onclick  = submit;
+    input.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') submit(); });
+
+    footer.append(cancel, enter);
+    modal.append(title, body, footer);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    modal.tabIndex = 0; modal.focus();
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+    overlay.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+
+    setTimeout(()=> input.focus(), 0);
+  }
+
+  removeStandaloneLabel();
+  ensureButton();
+})();
+
+/* === New Game screen: reorder buttons & labels exactly as requested ===
+   Order:
+   NEW GAME
+   Resume Game
+   --
+   The Crown League
+   --
+   High Scores (Game)
+   High Scores (Round)
+   --
+   Player Stats
+   --
+   Admin Code
+*/
+(function arrangeStartScreen(){
+  const root = document.getElementById('details');
+  if (!root) return;
+
+  // Prefer the canonical start-actions wrapper if present
+  const host =
+    root.querySelector('.start-actions') ||
+    root.querySelector('#start') ||
+    root;
+
+  // Helpers
+  const byText = (sel, rx) =>
+    Array.from(host.querySelectorAll(sel)).find(el => rx.test((el.textContent||el.innerText||'').trim()));
+
+  const getBtn = (...cands) => {
+    // try ids first, then find by text
+    for (const c of cands) {
+      if (typeof c === 'string' && c.startsWith('#')) {
+        const el = host.querySelector(c);
+        if (el) return el;
+      }
+      if (c instanceof RegExp) {
+        const el = byText('button, .btn, [role="button"]', c);
+        if (el) return el;
+      }
+    }
+    return null;
+  };
+
+  const mkBtn = (id, label, onClick) => {
+    const b = document.createElement('button');
+    b.id = id;
+    b.className = 'btn';
+    b.textContent = label;
+    if (onClick) b.onclick = onClick;
+    return b;
+  };
+
+  const sep = () => {
+    const hr = document.createElement('hr');
+    hr.style.border = 0;
+    hr.style.borderTop = '1px solid rgba(255,255,255,.12)';
+    hr.style.margin = '10px 0';
+    return hr;
+  };
+
+  // --- Gather / create the required controls ---
+
+  // NEW GAME
+  let newGameBtn =
+    getBtn('#newGameBtn', '#startNewGameBtn', '#questBtn', /^new\s*game$/i);
+  if (!newGameBtn) newGameBtn = mkBtn('startNewGameBtn', 'NEW GAME', () => startNewGame());
+
+  // RESUME GAME
+  let resumeBtn =
+    getBtn('#resumeBtn', '#resumeGameBtn', /^resume\s*game$/i);
+  if (!resumeBtn) resumeBtn = mkBtn('resumeBtn', 'Resume Game', () => (typeof restartGame==='function'?restartGame():null));
+
+  // THE CROWN LEAGUE (rename any Shotgun* button, else create)
+  let crownBtn =
+    getBtn('#shotgunLeaderboardBtn', '#shotgunBtn', /(shotgun(\s*leaderboard)?)/i);
+  if (!crownBtn) crownBtn = mkBtn('crownLeagueBtn', 'The Crown League');
+  crownBtn.textContent = 'The Crown League';
+  crownBtn.title = 'The Crown League';
+  crownBtn.setAttribute('aria-label','The Crown League');
+  crownBtn.onclick = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof toast === 'function') toast('Coming soon');
+    else alert('Coming soon');
+  };
+
+  // HIGH SCORES (Game)
+  let hsGameBtn =
+    getBtn('#highScoresMenuBtn', '#highScoresBtn', /^high\s*scores$/i, /^high\s*scores\s*\(game\)$/i);
+  if (!hsGameBtn) hsGameBtn = mkBtn('highScoresMenuBtn', 'High Scores (Game)', () => openHighScoresMenuDialog && openHighScoresMenuDialog(false));
+  else hsGameBtn.textContent = 'High Scores (Game)';
+
+  // HIGH SCORES (Round) — ensureRoundHSStartBtn normally creates this
+  let hsRoundBtn = getBtn('#roundHighScoresBtn', /^round\s*high\s*scores$/i, /^high\s*scores\s*\(round\)$/i);
+  if (!hsRoundBtn) hsRoundBtn = mkBtn('roundHighScoresBtn', 'High Scores (Round)', () => openRoundHighScoresDialog && openRoundHighScoresDialog());
+
+  // PLAYER STATS
+  let statsBtn =
+    getBtn('#playerStatsBtn', /^player\s*stats$/i);
+  if (!statsBtn) statsBtn = mkBtn('playerStatsBtn', 'Player Stats', () => (typeof openStatsHubDialog==='function'?openStatsHubDialog():null));
+
+  // ADMIN CODE ROW (move as a block)
+  const adminRow =
+    document.getElementById('adminCodeRow') ||
+    root.querySelector('.admin-code-row');
+
+  // Optional label for Admin Code
+  const adminLabel = document.createElement('div');
+  adminLabel.className = 'muted';
+  adminLabel.style.margin = '6px 0 -2px 0';
+  adminLabel.textContent = '';
+
+  // --- Clear current layout and re-append in the exact order ---
+
+  // Make a dedicated vertical stack
+  let stack = host.querySelector('.start-stack');
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.className = 'start-stack';
+    stack.style.display = 'flex';
+    stack.style.flexDirection = 'column';
+    stack.style.gap = '8px';
+    // wipe previous loose buttons only (keep other content like title/logo)
+    // Move existing buttons out so we can control order
+    Array.from(host.querySelectorAll('button, .btn[role="button"]')).forEach(el => el.remove());
+    host.appendChild(stack);
+  } else {
+    // if a stack exists, reset it
+    stack.innerHTML = '';
+  }
+
+  const append = (el) => { if (el && el.parentElement !== stack) stack.appendChild(el); };
+
+  append(newGameBtn);
+  append(resumeBtn);
+  stack.appendChild(sep());
+
+  append(crownBtn);
+  stack.appendChild(sep());
+
+  append(hsGameBtn);
+  append(hsRoundBtn);
+  stack.appendChild(sep());
+
+  append(statsBtn);
+  stack.appendChild(sep());
+
+  if (adminRow) {
+    // move admin row to end and add label
+    stack.appendChild(adminLabel);
+    stack.appendChild(adminRow);
+  }
+
+  // Tidy: make all stacked buttons full-width within the stack (non-destructive)
+  Array.from(stack.querySelectorAll('button.btn,[role="button"].btn')).forEach(b => {
+    b.style.display = 'block';
+    b.style.width = '100%';
+    b.style.marginLeft = 'auto';
+    b.style.marginRight = 'auto';
+  });
+})();
 
       // Prevent duplicate bindings (which caused skipping: 1→3→5…)
       if (stepper.dataset.bound === '1') return;
@@ -1425,6 +1980,10 @@ const TABLE_PLAYER_GAMES = 'player_games_union';
 const TABLE_HS_LEAGUE = "high_scores";
 const TABLE_HS_PRACTICE = "high_scores_sp";
 const TABLE_GAME_THROWS = "game_throws";
+
+// PB/WR storage (targets for the backfill)
+const TABLE_PB_ROUNDS = 'player_pb_rounds';    // columns: player, cat, val, game_id, ridx, ts
+const TABLE_WR_ROUNDS = 'world_record_rounds'; // columns: cat, val, player, game_id, ridx, ts
 
 // Extra tables used for cloud-backed stats
 const TABLE_GAMES   = "games";
@@ -1602,6 +2161,269 @@ function openScoreSheetFromHistory(gIndex){
   openSingleGameScoreSheet(local, -1);
 }
 
+/* ===== PB / GR from Supabase (Saved Players + official games only; 10–20 + D/T/B) ===== */
+(function(){
+  const PBGR = {
+    ready:false, fetching:false, fetchedAt:0,
+    byPlayer:new Map(),           // player(lower) -> { [key]: best }
+    byPlayerMeta:new Map(),       // player(lower) -> { [key]: {val, game_id, ridx, ts} }
+    byTarget:{},                  // key -> best value (global)
+    byTargetMeta:{}               // key -> { val, player, game_id, ridx, ts }
+  };
+
+  (function initGlobals(){
+    for (let n=10;n<=20;n++) { PBGR.byTarget[n]=0; PBGR.byTargetMeta[n]={val:0,player:'',game_id:null,ridx:null,ts:null}; }
+    ['D','T','B'].forEach(k=>{ PBGR.byTarget[k]=0; PBGR.byTargetMeta[k]={val:0,player:'',game_id:null,ridx:null,ts:null}; });
+  })();
+
+  const toNameKey = n => String(n||'').trim().toLowerCase();
+  const toTarget  = t => {
+    if (t==null) return null;
+    if (typeof t === 'number') return t;
+    const m = String(t).match(/\d+/);
+    return m ? parseInt(m[0],10) : null;
+  };
+
+  async function fetchSavedPlayerNames(){
+    try{
+      const { data, error } = await sb.from(TABLE_PLAYERS).select('name').order('name');
+      if (error) throw error;
+      return (data||[]).map(r => String(r.name)).filter(Boolean);
+    }catch(e){
+      console.error('Saved players fetch failed', e);
+      return [];
+    }
+  }
+
+  async function findOfficialGameIds(){
+    try{
+      const { data, error } = await sb
+        .from(TABLE_GAMES)
+        .select('id, players, pcount')
+        .limit(100000);
+      if (error) throw error;
+      const ids = new Set();
+      for (const g of (data||[])){
+        let n = 0;
+        if (Array.isArray(g.players)) n = g.players.length;
+        else if (typeof g.pcount === 'number') n = g.pcount;
+        else if (typeof g.players === 'string'){
+          try { const arr = JSON.parse(g.players); if (Array.isArray(arr)) n = arr.length; } catch(_){}
+        }
+        if (n >= 2 && g.id) ids.add(g.id);
+      }
+      return ids;
+    }catch(e){
+      console.warn('Could not read official game IDs from GAMES; will try is_practice on throws', e);
+      return null;
+    }
+  }
+
+  async function fetchPBGRFromCloud(limit = 100000){
+    if (PBGR.fetching) return;
+    PBGR.fetching = true;
+    try{
+      const savedNames = await fetchSavedPlayerNames();
+      if (!savedNames.length){
+        PBGR.byPlayer = new Map();
+        PBGR.byPlayerMeta = new Map();
+        PBGR.ready = true;
+        PBGR.fetchedAt = Date.now();
+        return;
+      }
+
+      const officialIds = await findOfficialGameIds();
+      let rows = [];
+      try{
+        let q = sb.from(TABLE_GAME_THROWS)
+          .select('player, game_id, round_index, target, points, round_total, ts, is_practice')
+          .in('player', savedNames)
+          .limit(limit);
+
+        if (officialIds && officialIds.size){
+          q = q.in('game_id', Array.from(officialIds));
+        } else {
+          q = q.eq('is_practice', false);
+        }
+
+        const { data, error } = await q;
+        if (error) throw error;
+        rows = data || [];
+      }catch(e1){
+        console.error('Primary throws fetch failed; falling back to saved players only', e1);
+        const { data } = await sb.from(TABLE_GAME_THROWS)
+          .select('player, game_id, round_index, target, points, round_total, ts')
+          .in('player', savedNames)
+          .limit(limit);
+        rows = data || [];
+      }
+
+      const bestPerPlayerVal  = new Map();  // key: name|key -> val
+      const bestPerPlayerMeta = new Map();  // key: name|key -> {val, game_id, ridx, ts}
+      const bestGlobalVal     = { ...PBGR.byTarget };
+      const bestGlobalMeta    = JSON.parse(JSON.stringify(PBGR.byTargetMeta));
+
+      const bucket = new Map(); // key: game|name|ridx -> { ridx, target, total, ts }
+
+      for (const row of (rows||[])){
+        const nameKey = toNameKey(row.player || row.name);
+        if (!nameKey) continue;
+
+        const ridx = (typeof row.round_index === 'number') ? row.round_index : (row.round_index!=null ? Number(row.round_index) : null);
+        const tNum = toTarget(row.target);
+        const rt   = (row.round_total != null) ? Number(row.round_total) : null;
+        const ts   = row.ts || null;
+
+        function catFrom(ridxLocal, tLocal){
+          if (tLocal!=null && tLocal>=10 && tLocal<=20) return tLocal;
+          if (ridxLocal==null) return null;
+          if (ridxLocal === 11) return 'D';
+          if (ridxLocal === 12) return 'T';
+          if (ridxLocal === 13) return 'B';
+          if (ridxLocal>=0 && ridxLocal<=10) return 10 + ridxLocal;
+          return null;
+        }
+
+        if (rt != null){
+          const key = catFrom(ridx, tNum);
+          if (key==null) continue;
+          const val = rt;
+          const pKey = `${nameKey}|${key}`;
+
+          if (val > (bestPerPlayerVal.get(pKey) || 0)){
+            bestPerPlayerVal.set(pKey, val);
+            bestPerPlayerMeta.set(pKey, { val, game_id: row.game_id || null, ridx, ts });
+          }
+          if (val > (bestGlobalVal[key] || 0)){
+            bestGlobalVal[key] = val;
+            bestGlobalMeta[key] = { val, player: nameKey, game_id: row.game_id || null, ridx, ts };
+          }
+        } else {
+          const gId = row.game_id || row.game || '';
+          if (!gId || ridx==null) continue;
+          const k = `${gId}|${nameKey}|${ridx}`;
+          const cur = bucket.get(k) || { ridx, target: (tNum!=null ? tNum : null), total: 0, ts: ts };
+          cur.total += Number(row.points || 0);
+          if (cur.target==null && tNum!=null) cur.target = tNum;
+          if (!cur.ts && ts) cur.ts = ts;
+          bucket.set(k, cur);
+        }
+      }
+
+      for (const [k, obj] of bucket){
+        const [gId, nameKey, ridxStr] = k.split('|');
+        const ridx = Number(ridxStr);
+        const key  = (obj.target!=null && obj.target>=10 && obj.target<=20)
+          ? obj.target
+          : (ridx===11 ? 'D' : ridx===12 ? 'T' : ridx===13 ? 'B' : (ridx>=0 && ridx<=10 ? 10+ridx : null));
+        if (key==null) continue;
+        const val  = Number(obj.total || 0);
+        const ts   = obj.ts || null;
+        const pKey = `${nameKey}|${key}`;
+
+        if (val > (bestPerPlayerVal.get(pKey) || 0)){
+          bestPerPlayerVal.set(pKey, val);
+          bestPerPlayerMeta.set(pKey, { val, game_id: gId, ridx, ts });
+        }
+        if (val > (bestGlobalVal[key] || 0)){
+          bestGlobalVal[key] = val;
+          bestGlobalMeta[key] = { val, player: nameKey, game_id: gId, ridx, ts };
+        }
+      }
+
+      const byPlayer = new Map();
+      const byPlayerMeta = new Map();
+      for (const [key, v] of bestPerPlayerVal){
+        const idx = key.lastIndexOf('|');
+        const pKey = key.slice(0, idx);
+        const cat  = key.slice(idx+1);
+        const isNum = /^\d+$/.test(cat);
+        const normKey = isNum ? parseInt(cat,10) : cat;
+        if (!byPlayer.has(pKey)) byPlayer.set(pKey, {});
+        if (!byPlayerMeta.has(pKey)) byPlayerMeta.set(pKey, {});
+        byPlayer.get(pKey)[normKey] = v;
+        byPlayerMeta.get(pKey)[normKey] = bestPerPlayerMeta.get(key);
+      }
+
+      PBGR.byPlayer     = byPlayer;
+      PBGR.byPlayerMeta = byPlayerMeta;
+      PBGR.byTarget     = bestGlobalVal;
+      PBGR.byTargetMeta = bestGlobalMeta;
+      PBGR.ready        = true;
+      PBGR.fetchedAt    = Date.now();
+    }catch(e){
+      console.error('PBGR cloud build failed', e);
+      PBGR.ready = false;
+    }finally{
+      PBGR.fetching = false;
+    }
+  }
+
+  async function ensurePBGRCache(){
+    if (PBGR.ready && Date.now() - PBGR.fetchedAt < 5*60*1000) return;
+    await fetchPBGRFromCloud();
+  }
+
+  window.updatePBGRBadges = async function updatePBGRBadges(){
+    if (document.body.getAttribute('data-page') !== 'game') return;
+    await ensurePBGRCache();
+    if (!PBGR.ready) return;
+    try{
+      for (let p=0; p<(state.players||[]).length; p++){
+        const nameKey = toNameKey(state.players[p]?.name);
+        const rounds  = state.score?.[p] || [];
+        const pbMap   = PBGR.byPlayer.get(nameKey) || {};
+        for (let r=0; r<Math.min(rounds.length, MAX_ROUNDS); r++){
+          const rdDef = ROUNDS[r];
+          if (!rdDef) continue;
+          let key = null;
+          if (rdDef.type === 'number')  key = rdDef.target;
+          if (rdDef.type === 'doubles') key = 'D';
+          if (rdDef.type === 'triples') key = 'T';
+          if (rdDef.type === 'bull')    key = 'B';
+          if (key==null) continue;
+          const rt = Number(rounds[r]?.roundTotal||0);
+          if (!rt) continue;
+          const priorPB = Number(pbMap[key] || 0);
+          const priorGR = Number(PBGR.byTarget[key] || 0);
+          const isPB = rt > priorPB;
+          const isGR = rt > priorGR;
+          const tbody = document.getElementById('tbody'); if (!tbody) continue;
+          const tr = tbody.rows?.[r]; if (!tr) continue;
+          const td = tr.children?.[p+1]; if (!td) continue;
+          const sub = td.querySelector('.cell-sub') || td;
+          sub.querySelectorAll('.pbgr').forEach(n => n.remove());
+          if (isPB){
+            const b = document.createElement('span');
+            b.className = 'pbgr pb'; b.textContent = ' (PB)'; sub.appendChild(b);
+          }
+          if (isGR){
+            const g = document.createElement('span');
+            g.className = 'pbgr gr'; g.textContent = ' (GR)'; sub.appendChild(g);
+          }
+        }
+      }
+    }catch(_){}
+  };
+
+  window.refreshPBGRCloud = async function(){
+    PBGR.ready=false;
+    await ensurePBGRCache();
+    await window.updatePBGRBadges();
+  };
+
+  // Expose a read-only snapshot for admin UI
+  window.getPBGRSnapshot = async function(){
+    await ensurePBGRCache();
+    return {
+      byTarget: Object.assign({}, PBGR.byTarget),
+      byTargetMeta: JSON.parse(JSON.stringify(PBGR.byTargetMeta)),
+      byPlayer: new Map(PBGR.byPlayer),
+      byPlayerMeta: new Map(PBGR.byPlayerMeta)
+    };
+  };
+})();
+
 // ==== Triple-Trebles (3 x T) celebration logic ====
 (function(){
   const SEEN_KEY_SET = new Set();
@@ -1652,6 +2474,15 @@ function openScoreSheetFromHistory(gIndex){
 
   // Called after every save()
   window.onStateSaved = function(){ scanForTripleHatAndCelebrate(); };
+})();
+
+// Chain PB/GR badges after any existing onStateSaved handler
+(function(){
+  const prev = window.onStateSaved;
+  window.onStateSaved = function(){
+    try{ if (typeof prev === 'function') prev(); }catch(_){}
+    try{ if (typeof updatePBGRBadges === 'function') updatePBGRBadges(); }catch(_){}
+  };
 })();
 
 // Percent helper
@@ -1850,6 +2681,7 @@ function show(id){
     // Reverted: rely on default scoreboard rendering.
     if (window.__marksKick) { clearInterval(window.__marksKick); window.__marksKick = null; }
     try { if (typeof scanForTripleHatAndCelebrate === 'function') scanForTripleHatAndCelebrate(); } catch(_) {}
+  try { if (typeof updatePBGRBadges === 'function') updatePBGRBadges(); } catch(_) {}
   }
 }
 const padBar = byId('padBar');
@@ -7168,6 +8000,141 @@ function openAdminHub(){
   byId('closeAdminHubBtn').onclick = ()=> hub.classList.add('hidden');
 }
 
+// ===== Public High Scores (League / Practice) =====
+if (typeof window.openScoreSheetFromHighScore !== 'function') {
+  window.openScoreSheetFromHighScore = async function(row, isPractice){
+    try{
+      const match = await findGameForHighScoreCloudFirst(row, isPractice);
+      if (match && match.game) {
+        openSingleGameScoreSheet(match.game, match.playerIndex);
+      } else {
+        toast('Score sheet not available for this row yet.');
+      }
+    }catch(e){
+      console.error('openScoreSheetFromHighScore failed', e);
+      toast('Could not open score sheet.');
+    }
+  };
+}
+
+async function openHighScoresMenuDialog(){
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className='modal';
+  const title   = document.createElement('h3');  title.textContent='High Scores';
+  const body    = document.createElement('div'); body.className='modal-body';
+  const footer  = document.createElement('div'); footer.className='modal-footer';
+
+  // Tabs
+  const tabs = document.createElement('div');
+  tabs.style.display = 'flex';
+  tabs.style.gap = '8px';
+  tabs.style.marginBottom = '10px';
+
+  const leagueBtn   = document.createElement('button'); leagueBtn.className='btn primary'; leagueBtn.textContent='League';
+  const practiceBtn = document.createElement('button'); practiceBtn.className='btn';           practiceBtn.textContent='Practice';
+  tabs.append(leagueBtn, practiceBtn);
+
+  const status = document.createElement('div');
+  status.className = 'muted';
+  status.style.fontSize = '0.85rem';
+  status.style.margin = '6px 0 8px 0';
+
+  body.append(tabs, status);
+
+  const tableHost = document.createElement('div'); tableHost.className='table-wrap';
+  body.appendChild(tableHost);
+
+  async function render(isPractice){
+    tableHost.innerHTML = '';
+    status.textContent = '';
+
+    // visual tabs
+    leagueBtn.className   = isPractice ? 'btn' : 'btn primary';
+    practiceBtn.className = isPractice ? 'btn primary' : 'btn';
+
+    try{
+      if (!ensureCloudInit()){
+        status.textContent = 'Cloud not initialised — check keys or network.';
+        return;
+      }
+    }catch(_){}
+
+    let list = [];
+    try{
+      list = await cloudListHighScores(!!isPractice, 50);
+    }catch(e){
+      console.error('cloudListHighScores failed', e);
+      status.textContent = (e && e.message) ? `Failed to load: ${e.message}` : 'Failed to load high scores.';
+      return;
+    }
+
+    if (!list || !list.length){
+      const p=document.createElement('p');
+      p.textContent='No high scores yet.';
+      tableHost.appendChild(p);
+      return;
+    }
+
+    const table=document.createElement('table'); table.className='hs-table';
+    const thead=document.createElement('thead'); const trh=document.createElement('tr');
+    ['#','Player','Score','Avg / Round','When'].forEach(h=>{
+      const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);
+    });
+    thead.appendChild(trh); table.appendChild(thead);
+
+    const tb=document.createElement('tbody');
+    list.forEach((row, idx) => {
+      const tr=document.createElement('tr');
+
+      const td1=document.createElement('td'); td1.textContent=String(idx+1);
+      const td2=document.createElement('td'); td2.textContent=String(row.name || '');
+      const td3=document.createElement('td'); td3.textContent=String(row.score || 0);
+      const td4=document.createElement('td');
+      const avgRound = MAX_ROUNDS ? (Number(row.score||0)/MAX_ROUNDS) : 0;
+      td4.textContent = avgRound.toFixed(1);
+
+      const td5=document.createElement('td');
+      const d=new Date(row.ts);
+      td5.textContent = !Number.isNaN(d.getTime())
+        ? d.toLocaleString(undefined,{year:'2-digit',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'})
+        : '';
+
+      tr.append(td1,td2,td3,td4,td5);
+
+      tr.style.cursor='pointer';
+      tr.title='Open score sheet';
+      tr.onclick = ()=> window.openScoreSheetFromHighScore(row, !!isPractice);
+
+      tb.appendChild(tr);
+    });
+
+    table.appendChild(tb);
+    tableHost.appendChild(table);
+  }
+
+  // footer
+  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  backBtn.onclick=()=> overlay.remove();
+  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  closeBtn.onclick=()=> overlay.remove();
+  footer.append(backBtn, closeBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
+  modal.tabIndex=0; modal.focus();
+
+  // wire tabs
+  leagueBtn.onclick   = ()=> render(false);
+  practiceBtn.onclick = ()=> render(true);
+
+  // initial
+  await render(false);
+}
+
 async function openHighScoresAdminDialog(single=false){ 
   const overlay = document.createElement('div'); overlay.className='modal-backdrop'; 
   const modal   = document.createElement('div'); modal.className='modal'; 
@@ -7338,6 +8305,73 @@ async function openAllGamesDialog(){
   footer.append(backBtn, closeBtn);
 
   modal.append(title, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
+  modal.tabIndex=0; modal.focus();
+
+  await render();
+}
+
+async function openRoundHighScoresDialog(){
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className='modal';
+  const title   = document.createElement('h3');  title.textContent='Round High Scores';
+  const body    = document.createElement('div'); body.className='modal-body';
+  const footer  = document.createElement('div'); footer.className='modal-footer';
+
+  async function render(){
+    body.innerHTML = '';
+    try{
+      const snap = await (typeof getPBGRSnapshot === 'function' ? getPBGRSnapshot() : Promise.resolve({ byTargetMeta: {} }));
+      const order = [...Array.from({length:11},(_,i)=>10+i), 'D','T','B'];
+
+      const table = document.createElement('table'); table.className='hs-table';
+      const thead = document.createElement('thead'); const trh=document.createElement('tr');
+      ['Round','WR','Darts','Holder'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
+      thead.appendChild(trh); table.appendChild(thead);
+
+      const tbody = document.createElement('tbody'); table.appendChild(tbody);
+      const pending = [];
+
+      order.forEach(key=>{
+        const meta = (snap.byTargetMeta && snap.byTargetMeta[key]) ? snap.byTargetMeta[key] : { val:0, player:'', game_id:null, ridx:null };
+        const tr   = document.createElement('tr');
+
+        const tdR  = document.createElement('td'); tdR.textContent = String(key);
+        const tdV  = document.createElement('td'); tdV.textContent = String(meta.val || 0);
+        const tdD  = document.createElement('td'); tdD.textContent = '—'; // filled async
+        const tdN  = document.createElement('td'); tdN.textContent = meta.player ? meta.player : '—';
+
+        tr.append(tdR, tdV, tdD, tdN);
+        tbody.appendChild(tr);
+
+        if (meta && meta.game_id != null && meta.player && (meta.ridx || meta.ridx === 0)){
+          pending.push(
+            fetchRoundPattern(meta.game_id, meta.player, meta.ridx).then(pat=>{
+              tdD.textContent = pat || '—';
+            }).catch(()=>{ tdD.textContent = '—'; })
+          );
+        }
+      });
+
+      if (pending.length){ try{ await Promise.allSettled(pending); }catch(_){ /* ignore */ } }
+      body.appendChild(table);
+    }catch(e){
+      console.error('Round High Scores render failed', e);
+      const p=document.createElement('p'); p.textContent='Unable to load right now.'; body.appendChild(p);
+    }
+  }
+
+  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  backBtn.onclick=()=> overlay.remove();
+  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  closeBtn.onclick=()=> overlay.remove();
+  footer.append(backBtn, closeBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
   overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
   overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
   modal.tabIndex=0; modal.focus();
@@ -7841,6 +8875,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (statsHubBtnFinal) statsHubBtnFinal.onclick = openStatsHubDialog;
    const hsFinalBtn = byId('highScoresMenuBtnLB');
   if (hsFinalBtn) hsFinalBtn.onclick = openHighScoresMenuDialog;
+  // High Scores button on start screen
+  const hsStartBtn = byId('highScoresMenuBtn') || byId('highScoresBtn');
+  if (hsStartBtn) hsStartBtn.onclick = openHighScoresMenuDialog;
   if (lbGameStatsBtn)  lbGameStatsBtn.onclick  = openGameStatsDialog;
   if (lbMatchStatsBtn) lbMatchStatsBtn.onclick = openMatchStatsDialog;
   if (lbGameRaceBtn)   lbGameRaceBtn.onclick   = openGameRaceDialog;
@@ -7905,6 +8942,95 @@ document.addEventListener('DOMContentLoaded', () => {
       savedPlayersAdmin.classList.add('hidden');
     }
   });
+  
+  // === Crown League wiring (rename + "Coming soon") ===
+(function wireCrownLeague(){
+  // If you have a dedicated id, we'll catch it first
+  const btn =
+    document.getElementById('shotgunLeaderboardBtn') ||
+    document.getElementById('shotgunBtn') ||
+    // fallback: find by visible text
+    Array.from(document.querySelectorAll('#details button, button'))
+      .find(b => /(shotgun\s*leaderboard|^shotgun$)/i.test((b.textContent || b.innerText || '').trim()));
+
+  if (!btn) return;
+
+  // Overwrite old references (label/title/aria)
+  btn.textContent = 'The Crown League';
+  btn.title = 'The Crown League';
+  if (btn.getAttribute('aria-label')) btn.setAttribute('aria-label', 'The Crown League');
+
+  // Intercept click → Coming soon
+  btn.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof toast === 'function') toast('Coming soon');
+    else alert('Coming soon');
+  };
+})();
+
+  // === Player Stats popup: add "ROUND HIGH SCORES" under "STATS" ===
+  (function addRoundHSButtonInPlayerStats(){
+    function patchStatsModalOnce(){
+      try{
+        // Find the "Player Stats" modal by its title
+        const h3 = Array.from(document.querySelectorAll('.modal h3'))
+          .find(el => /player\s*stats/i.test((el.textContent || '').trim()));
+        if (!h3) return false;
+        const modal = h3.closest('.modal');
+        if (!modal) return false;
+
+        // If already present, skip
+        const existing = Array.from(modal.querySelectorAll('button'))
+          .find(b => /round\s*high\s*scores/i.test((b.textContent || '').trim()));
+        if (existing) return true;
+
+        // Locate one of the small stat buttons to clone class and position
+        const smallBtn = Array.from(modal.querySelectorAll('button'))
+          .find(b => /(target\s*hit|t-?d-?b|h2h)/i.test((b.textContent || '').trim()));
+        if (!smallBtn) return false;
+
+        const host = smallBtn.parentElement || modal.querySelector('.modal-body') || modal;
+
+        // Create the new button
+        const btn = document.createElement('button');
+        btn.className = smallBtn.className || 'btn';
+        btn.textContent = 'ROUND HIGH SCORES';
+        btn.title = 'ROUND HIGH SCORES';
+        btn.setAttribute('aria-label','ROUND HIGH SCORES');
+        btn.onclick = function(){
+          if (typeof window.openRoundHighScoresDialog === 'function') {
+            window.openRoundHighScoresDialog();
+          }
+        };
+
+        // Place it just before the first small stat button, i.e., directly under "STATS"
+        host.insertBefore(btn, smallBtn);
+
+        return true;
+      } catch(e){
+        console.error('addRoundHSButtonInPlayerStats failed', e);
+        return true;
+      }
+    }
+
+    // Wrap existing stats dialog opener so we can inject after it renders
+    if (typeof window.openStatsHubDialog === 'function') {
+      const __origOpenStatsHubDialog = window.openStatsHubDialog;
+      window.openStatsHubDialog = function(...args){
+        const ret = __origOpenStatsHubDialog.apply(this, args);
+        setTimeout(patchStatsModalOnce, 0);
+        return ret;
+      };
+    }
+
+    // Safety observer: if the modal is opened via another path, still inject
+    try{
+      const mo = new MutationObserver(() => { patchStatsModalOnce(); });
+      mo.observe(document.body, { childList: true, subtree: true });
+    }catch(_){}
+  })();
+  
 });
 // ===== FINAL OVERRIDE: Admin Hub opener (safe + id compatible) =====
 window.openAdminHub = function openAdminHub(){
@@ -7933,6 +9059,230 @@ window.openAdminHub = function openAdminHub(){
     hub.classList.add('hidden');
     if (typeof openSavedPlayersAdminDialog === 'function') openSavedPlayersAdminDialog();
   };
+
+  // PB / GR Admin (support both legacy/new IDs)
+  bind('openPBGRAdminBtn', () => {
+    hub.classList.add('hidden');
+    if (typeof openPBGRAdminDialog === 'function') openPBGRAdminDialog();
+  });
+  bind('openPBGRAdmin', () => {
+    hub.classList.add('hidden');
+    if (typeof openPBGRAdminDialog === 'function') openPBGRAdminDialog();
+  });
+  
+  // ===== PB / GR Admin dialog =====
+async function openPBGRAdminDialog(){
+  const modal = document.getElementById('pbgrAdminModal');
+  const globalHost = document.getElementById('pbgrGlobal');
+  const playerHost = document.getElementById('pbgrPlayer');
+  const sel = document.getElementById('pbgrPlayerSelect');
+  const back = document.getElementById('pbgrBackBtn');
+  const close = document.getElementById('pbgrCloseBtn');
+  const refresh = document.getElementById('pbgrRefreshBtn');
+    const backfill = document.getElementById('pbgrBackfillBtn');
+  if (backfill){
+    backfill.onclick = async ()=>{
+      backfill.disabled = true;
+      try{
+        const res = await backfillPBGRToCloud();
+        toast(`Backfill complete – PB rows: ${res.pbRows}, WR rows: ${res.wrRows}`);
+      }catch(e){
+        console.error(e);
+        toast('Backfill failed — see console');
+      }finally{
+        backfill.disabled = false;
+      }
+    };
+  }
+  if (!modal || !globalHost || !playerHost || !sel) return;
+
+  modal.classList.remove('hidden');
+
+  back.onclick = () => { modal.classList.add('hidden'); openAdminHub(); };
+  close.onclick = () => { modal.classList.add('hidden'); };
+  refresh.onclick = async () => { await refreshPBGRCloud(); await renderAll(); };
+
+  async function renderGlobal(){
+    const snap = await getPBGRSnapshot();
+    const order = [...Array.from({length:11},(_,i)=>10+i), 'D','T','B'];
+    const table = document.createElement('table'); table.className='hs-table';
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    ['Round','WR','Holder','Actions'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; hr.appendChild(th); });
+    thead.appendChild(hr); table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+
+    for (const key of order){
+      const meta = snap.byTargetMeta[key] || { val:0, player:'' };
+      const tr = document.createElement('tr');
+      const tdR = document.createElement('td'); tdR.textContent = String(key);
+      const tdV = document.createElement('td'); tdV.textContent = String(meta.val||0);
+      const tdN = document.createElement('td'); tdN.textContent = meta.player ? meta.player : '—';
+      const tdA = document.createElement('td');
+      const delBtn = document.createElement('button'); delBtn.className='btn small danger'; delBtn.textContent='Delete';
+      delBtn.disabled = !(meta && meta.game_id!=null && meta.ridx!=null && meta.player);
+      delBtn.onclick = async ()=>{
+        if (!confirm(`Delete WR for ${key} held by ${meta.player} (${meta.val})? This will delete the underlying round from cloud.`)) return;
+        try{
+          await cloudDeleteRound(meta.game_id, meta.player, meta.ridx);
+          await refreshPBGRCloud();
+          await renderAll();
+          toast('Deleted.');
+        }catch(e){ console.error(e); toast('Delete failed'); }
+      };
+      tdA.appendChild(delBtn);
+      tr.append(tdR, tdV, tdN, tdA); tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    globalHost.innerHTML = '';
+    globalHost.appendChild(table);
+  }
+
+  async function populatePlayers(){
+    sel.innerHTML = '<option value="">Select a saved player…</option>';
+    try{
+      const players = await cloudListPlayers();
+      players.forEach(p=>{
+        const opt = document.createElement('option');
+        opt.value = p.name; opt.textContent = p.name;
+        sel.appendChild(opt);
+      });
+    }catch(_){}
+  }
+
+  async function renderPlayer(name){
+    const snap = await getPBGRSnapshot();
+    const nk = (name||'').trim().toLowerCase();
+    const metaMap = snap.byPlayerMeta.get(nk) || {};
+    const order = [...Array.from({length:11},(_,i)=>10+i), 'D','T','B'];
+
+    const table = document.createElement('table'); table.className='hs-table';
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    ['Round','PB','Actions'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; hr.appendChild(th); });
+    thead.appendChild(hr); table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+
+    order.forEach(key=>{
+      const m = metaMap[key];
+      const tr = document.createElement('tr');
+      const tdR = document.createElement('td'); tdR.textContent = String(key);
+      const tdV = document.createElement('td'); tdV.textContent = m ? String(m.val||0) : '0';
+      const tdA = document.createElement('td');
+      const delBtn = document.createElement('button'); delBtn.className='btn small danger'; delBtn.textContent='Delete';
+      delBtn.disabled = !(m && m.game_id!=null && m.ridx!=null);
+      delBtn.onclick = async ()=>{
+        if (!confirm(`Delete ${name}'s PB for ${key} (${m.val})?`)) return;
+        try{
+          await cloudDeleteRound(m.game_id, name, m.ridx);
+          await refreshPBGRCloud();
+          await renderAll();
+          toast('Deleted.');
+        }catch(e){ console.error(e); toast('Delete failed'); }
+      };
+      tdA.appendChild(delBtn);
+      tr.append(tdR, tdV, tdA); tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    playerHost.innerHTML = '';
+    playerHost.appendChild(table);
+  }
+  // Backfill PB/WR to cloud tables from current snapshot (saved players, official games only)
+  async function backfillPBGRToCloud(){
+    // Use the existing snapshot builder; if missing, abort
+    const snap = await (typeof getPBGRSnapshot === 'function' ? getPBGRSnapshot() : null);
+    if (!snap){ throw new Error('PB/GR snapshot unavailable'); }
+
+    // Map saved player lower-case -> canonical case
+    let saved = [];
+    try { saved = await cloudListPlayers(); } catch(_){}
+    const nameMap = new Map((saved||[]).map(p => [String(p.name).trim().toLowerCase(), String(p.name)]));
+
+    // Build PB rows (per player per category)
+    const pbRows = [];
+    if (snap.byPlayerMeta && typeof snap.byPlayerMeta.forEach === 'function'){
+      snap.byPlayerMeta.forEach((metaMap, nameKey) => {
+        const playerName = nameMap.get(nameKey) || nameKey;
+        Object.keys(metaMap||{}).forEach(cat => {
+          const m = metaMap[cat];
+          if (!m || !m.val) return;
+          pbRows.push({
+            player: playerName,
+            cat: String(cat),                 // '10'..'20','D','T','B'
+            val: Number(m.val)||0,            // round total
+            game_id: m.game_id || null,
+            ridx: (typeof m.ridx==='number')?m.ridx:null,
+            ts: m.ts || null
+          });
+        });
+      });
+    }
+
+    // Build WR rows (global best per category)
+    const wrRows = [];
+    const meta = snap.byTargetMeta || {};
+    Object.keys(meta).forEach(cat => {
+      const m = meta[cat];
+      if (!m || !m.val) return;
+      const proper = nameMap.get(String(m.player||'').trim().toLowerCase()) || m.player || '';
+      wrRows.push({
+        cat: String(cat),
+        val: Number(m.val)||0,
+        player: proper,
+        game_id: m.game_id || null,
+        ridx: (typeof m.ridx==='number')?m.ridx:null,
+        ts: m.ts || null
+      });
+    });
+
+    // Try upsert; if not available (no unique constraint), fallback to delete+insert
+    async function tryUpsert(table, rows, conflictCols){
+      if (!rows.length) return 0;
+      try{
+        const { error } = await sb.from(table).upsert(rows, { onConflict: conflictCols });
+        if (error) throw error;
+        return rows.length;
+      }catch(e){
+        const keys = (conflictCols||'').split(',').map(s=>s.trim()).filter(Boolean);
+        for (const r of rows){
+          try{
+            const match = {}; keys.forEach(k => { match[k] = r[k]; });
+            await sb.from(table).delete().match(match);
+          }catch(_){}
+          try{ await sb.from(table).insert(r); }catch(_){}
+        }
+        return rows.length;
+      }
+    }
+
+    const pbCount = await tryUpsert(TABLE_PB_ROUNDS, pbRows, 'player,cat');
+    const wrCount = await tryUpsert(TABLE_WR_ROUNDS, wrRows, 'cat');
+
+    if (typeof markCloudOk === 'function') markCloudOk();
+    return { pbRows: pbCount, wrRows: wrCount };
+  }
+  sel.onchange = ()=>{ const v = sel.value || ''; if (v) renderPlayer(v); else playerHost.innerHTML=''; };
+
+  async function renderAll(){
+    await renderGlobal();
+    await populatePlayers();
+    const v = sel.value || '';
+    if (v) await renderPlayer(v); else playerHost.innerHTML='';
+  }
+
+  await renderAll();
+}
+
+async function cloudDeleteRound(game_id, playerName, round_index){
+  const { error } = await sb
+    .from(TABLE_GAME_THROWS)
+    .delete()
+    .eq('game_id', game_id)
+    .eq('player', playerName)
+    .eq('round_index', round_index);
+  if (error) throw error;
+  markCloudOk();
+}
 
   // Ensure a 'Recover HS (24h)' button exists and is wired
   (function ensureRecoverHsBtn(){
@@ -8171,6 +9521,268 @@ window.setCloudStatus = function setCloudStatus(state, msg){
   try { mo.observe(document.body, { childList: true, subtree: true }); } catch(_) {}
 })();
 
+// ===== PB/GR snapshot + refresh (cloud-first; saved players, official-only) =====
+(function(){
+  // Build PB/WR from throws; fallback to games.board if needed
+  window.getPBGRSnapshot = async function getPBGRSnapshot(){
+    try{
+      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) {
+        return { byTargetMeta: {}, byPlayerMeta: new Map() };
+      }
+
+      // Saved players only (case-insensitive)
+      let saved = [];
+      try { saved = await (typeof cloudListPlayers === 'function' ? cloudListPlayers() : []); } catch(_){}
+      const savedSet = new Set((saved||[]).map(p => String(p?.name || '').trim().toLowerCase()));
+      const canonical = new Map((saved||[]).map(p => [String(p?.name || '').trim().toLowerCase(), String(p?.name || '')]));
+
+      function catForRoundIdx(r){
+        const rd = (typeof ROUNDS !== 'undefined') ? ROUNDS[r] : null;
+        if (!rd) return null;
+        if (rd.type === 'number')  return String(rd.target);
+        if (rd.type === 'doubles') return 'D';
+        if (rd.type === 'triples') return 'T';
+        if (rd.type === 'bull')    return 'B';
+        return null;
+      }
+      function preferNew(cur, val, ts){
+        if (!cur) return true;
+        if (val > (cur.val || 0)) return true;
+        if (val < (cur.val || 0)) return false;
+        if (ts && cur.ts) return new Date(ts) < new Date(cur.ts);
+        return false;
+      }
+
+      const byPlayerMeta = new Map(); // nameKey -> { cat -> { val, ts, game_id, ridx } }
+      const byTargetMeta = {};        // cat -> { val, player, ts, game_id, ridx }
+      function updatePB(nameKey, cat, val, ts, game_id, ridx){
+        let m = byPlayerMeta.get(nameKey); if (!m){ m={}; byPlayerMeta.set(nameKey,m); }
+        const cur = m[cat];
+        if (preferNew(cur, val, ts)) m[cat] = { val:Number(val)||0, ts:ts||null, game_id:game_id??null, ridx:(typeof ridx==='number'?ridx:null) };
+      }
+      function updateWR(cat, playerName, val, ts, game_id, ridx){
+        const cur = byTargetMeta[cat];
+        if (preferNew(cur, val, ts)) byTargetMeta[cat] = { val:Number(val)||0, player:String(playerName||''), ts:ts||null, game_id:game_id??null, ridx:(typeof ridx==='number'?ridx:null) };
+      }
+
+      // 1) OFFICIAL games (2+ players) → ids + timestamps
+      let gameRows = [];
+      try{
+        const { data, error } = await sb.from(TABLE_GAMES)
+          .select('id, created_at, state')
+          .order('created_at', { ascending: true });
+        if (error) throw error;
+        gameRows = (data||[]).filter(g => Array.isArray(g?.state?.players) && g.state.players.length >= 2);
+      }catch(e){ console.error('getPBGRSnapshot: fetch games failed', e); }
+
+      const gameMeta = new Map();
+      const officialIds = [];
+      for (const g of gameRows){
+        if (g?.id == null) continue;
+        gameMeta.set(g.id, { ts: g.created_at || null, players: (g?.state?.players||[]).map(p => (typeof p==='string'?{name:p}:p)) });
+        officialIds.push(g.id);
+      }
+
+      // 2) Prefer throws-table path
+      if (officialIds.length){
+        let throwsRows = [];
+        try{
+          const { data, error } = await sb.from(TABLE_GAME_THROWS)
+            .select('game_id, player, round_index, dart_index, points, kind')
+            .in('game_id', officialIds)
+            .order('game_id', { ascending: true })
+            .order('round_index', { ascending: true })
+            .order('dart_index', { ascending: true });
+          if (error) throw error;
+          throwsRows = data || [];
+        }catch(e){ console.error('getPBGRSnapshot: throws fetch failed (falling back)', e); }
+
+        if (throwsRows.length){
+          const byKey = new Map(); // gid|playerLC|ridx -> {points, meta}
+          for (const t of throwsRows){
+            const gm = gameMeta.get(t.game_id); if (!gm) continue;
+            const plc = String(t?.player||'').trim().toLowerCase();
+            if (!savedSet.has(plc)) continue;
+            const key = `${t.game_id}|${plc}|${t.round_index}`;
+            let rec = byKey.get(key);
+            if (!rec){
+              rec = { game_id:t.game_id, ridx:Number(t.round_index||0), playerLC:plc, player: canonical.get(plc) || t.player || '', ts: gm.ts, points:0 };
+              byKey.set(key, rec);
+            }
+            rec.points += Number(t.points||0);
+          }
+          for (const rec of byKey.values()){
+            const cat = catForRoundIdx(rec.ridx); if (!cat) continue;
+            const val = Number(rec.points||0); if (val <= 0) continue;
+            updatePB(rec.playerLC, cat, val, rec.ts, rec.game_id, rec.ridx);
+            updateWR(cat, rec.player, val, rec.ts, rec.game_id, rec.ridx);
+          }
+          return { byTargetMeta, byPlayerMeta };
+        }
+      }
+
+      // 3) Fallback: compute from games.state.board
+      for (const g of gameRows){
+        const ts = g?.created_at || null;
+        const players = (g?.state?.players||[]).map(p => (typeof p==='string'?{name:p}:p));
+        const board = g?.state?.board || null;
+        if (!Array.isArray(players) || !board) continue;
+        for (let p = 0; p < players.length; p++){
+          const name = players[p]?.name || '';
+          const key  = name.trim().toLowerCase();
+          if (!savedSet.has(key)) continue;
+          const rows = board[p] || [];
+          const maxR = (typeof MAX_ROUNDS==='number') ? Math.min(MAX_ROUNDS, rows.length) : rows.length;
+          for (let r = 0; r < maxR; r++){
+            const cat = catForRoundIdx(r); if (!cat) continue;
+            const ent = rows[r] || {};
+            let val = Number(ent.roundTotal ?? 0);
+            if (!val && Array.isArray(ent.darts)) val = ent.darts.reduce((s,d)=> s + Number(d && d.points || 0), 0);
+            if (val <= 0) continue;
+            updatePB(key, cat, val, ts, g.id ?? null, r);
+            updateWR(cat, name, val, ts, g.id ?? null, r);
+          }
+        }
+      }
+      return { byTargetMeta, byPlayerMeta };
+    } catch (e){
+      console.error('getPBGRSnapshot failed', e);
+      return { byTargetMeta: {}, byPlayerMeta: new Map() };
+    }
+  };
+
+  window.refreshPBGRCloud = async function refreshPBGRCloud(){
+    try { window.__pbgrSnapshot = await window.getPBGRSnapshot(); return window.__pbgrSnapshot; }
+    catch(e){ console.error('refreshPBGRCloud failed', e); return null; }
+  };
+})();
+
+// PB-only badges: only mark (PB) when a new score strictly BEATS previous PB (not equals), no GR
+(function setupPBBadges(){
+  // Map round label (e.g., "10s", "D's", "T's", "Bull") to category key used by the snapshot
+  function keyFromRoundLabel(text){
+    const t = String(text || '').trim();
+    const m = t.match(/^(\d{2})s?$/i);
+    if (m) return parseInt(m[1],10);
+    if (/^d/i.test(t)) return 'D';
+    if (/^t(?!\d)/i.test(t)) return 'T';
+    if (/^b/i.test(t)) return 'B';
+    return null;
+  }
+  function getPlayerNames(){
+    return Array.from(document.querySelectorAll('#thead th.player'))
+      .map(th => (th.querySelector('.th-name')?.textContent || th.textContent || '').trim());
+  }
+  function stripPB(sub){
+    // Remove any previous "(PB)" tokens we may have appended earlier
+    if (!sub) return;
+    const raw = sub.textContent || '';
+    const cleaned = raw.replace(/\(\s*PB\s*\)/gi, '').replace(/\s{2,}/g,' ').trim();
+    if (cleaned !== raw) sub.textContent = cleaned;
+  }
+  async function getSnap(){
+    try{
+      if (!window.__pbgrSnapshot){
+        // Prefer a fresh cloud read; fall back to getter
+        if (typeof refreshPBGRCloud === 'function') {
+          window.__pbgrSnapshot = await refreshPBGRCloud();
+        } else if (typeof getPBGRSnapshot === 'function') {
+          window.__pbgrSnapshot = await getPBGRSnapshot();
+        }
+      }
+      return window.__pbgrSnapshot || null;
+    }catch(e){
+      console.error('PBBadges: snapshot load failed', e);
+      return null;
+    }
+  }
+
+  async function apply(){
+    const snap = await getSnap();
+    if (!snap || !snap.byPlayerMeta) return;
+
+    const players = getPlayerNames();
+    const rows = Array.from(document.querySelectorAll('#tbody tr'));
+    rows.forEach(tr => {
+      const labelCell = tr.querySelector('th, td:first-child');
+      const key = keyFromRoundLabel(labelCell ? labelCell.textContent : '');
+      if (key == null) return;
+
+      const cells = Array.from(tr.querySelectorAll('td'));
+      cells.forEach((td, idx) => {
+        const name = (players[idx] || '').trim();
+        if (!name) return;
+        const sub = td.querySelector('.cell-sub');
+        if (!sub) return;
+
+        // Always start clean
+        stripPB(sub);
+
+        // Read round total as the number inside the first parentheses e.g. "(30)"
+        let val = NaN;
+        const m = (sub.textContent || '').match(/\(\s*(-?\d+)\s*\)/);
+        if (m) val = parseInt(m[1], 10);
+        if (!Number.isFinite(val) || val <= 0) return;
+
+        // Lookup player's previous PB for this category
+        const nameKey = name.toLowerCase();
+        let pMeta = null;
+        if (snap.byPlayerMeta){
+          pMeta = (typeof snap.byPlayerMeta.get === 'function')
+            ? snap.byPlayerMeta.get(nameKey)
+            : snap.byPlayerMeta[nameKey];
+        }
+        const pbVal = pMeta && pMeta[key] ? Number(pMeta[key].val || 0) : 0;
+
+        // Only show PB if current round BEATS previous PB (strictly greater)
+        if (val > pbVal){
+          sub.appendChild(document.createTextNode(' (PB)'));
+        }
+      });
+    });
+  }
+
+  // Observe scoreboard changes; re-run after renders
+  try{
+    const mo = new MutationObserver(() => apply());
+    const tbody = document.getElementById('tbody');
+    if (tbody) mo.observe(tbody, { childList: true, subtree: true, characterData: true });
+  }catch(_){}
+
+  // Initial pass
+  setTimeout(apply, 0);
+
+  // Expose manual refresh hook
+  window.refreshPBBadges = apply;
+})();
 </script>
+<!-- PB / GR Admin Modal -->
+<div id="pbgrAdminModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pbgrTitle">
+  <h3 id="pbgrTitle">PB / GR Admin</h3>
+  <div class="modal-body">
+    <p class="muted" style="margin-top:-6px;margin-bottom:10px;">
+      Manage Personal Bests and Game Records. Deleting a row will remove the underlying round from the cloud.
+    </p>
+
+    <h4 style="margin:8px 0 6px;">World Records (All Players)</h4>
+    <div id="pbgrGlobal" class="table-wrap"></div>
+
+    <hr style="border:0;border-top:1px solid rgba(255,255,255,.08);margin:12px 0;">
+
+    <h4 style="margin:8px 0 6px;">Player PBs</h4>
+    <label for="pbgrPlayerSelect" class="muted" style="display:block;margin-bottom:6px;">Select saved player:</label>
+    <select id="pbgrPlayerSelect" class="input" style="min-width:220px;"></select>
+    <div class="row" id="pbgrBackfillRow" style="margin-top:10px; gap:8px; align-items:center;">
+  <button id="pbgrBackfillBtn" class="btn warn" type="button">Backdate PB / WR</button>
+  <span class="muted">Scan cloud throws (saved players, official only) and write PBs + WRs.</span>
+</div>
+    <div id="pbgrPlayer" class="table-wrap" style="margin-top:8px;"></div>
+  </div>
+  <div class="modal-footer">
+    <button id="pbgrBackBtn" class="btn">Back</button>
+    <button id="pbgrRefreshBtn" class="btn">Refresh</button>
+    <button id="pbgrCloseBtn" class="btn">Close</button>
+  </div>
+</div>
 </body>
 </html>
