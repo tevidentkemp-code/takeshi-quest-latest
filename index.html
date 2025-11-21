@@ -8251,18 +8251,24 @@ async function openAllGamesDialog(){
 
     // Tight first column
     const colgroup = document.createElement('colgroup');
-    const cIdx = document.createElement('col'); cIdx.style.width = '3ch'; colgroup.appendChild(cIdx);
-    colgroup.appendChild(document.createElement('col')); // When
-    colgroup.appendChild(document.createElement('col')); // Players
-    colgroup.appendChild(document.createElement('col')); // Totals
-    const cAct = document.createElement('col'); cAct.style.width = '1%'; colgroup.appendChild(cAct); // Actions
-    table.appendChild(colgroup);
+// Actions (delete) column first
+const cAct = document.createElement('col'); cAct.style.width = '1%'; colgroup.appendChild(cAct);
+// Index column (#)
+const cIdx = document.createElement('col'); cIdx.style.width = '3ch'; colgroup.appendChild(cIdx);
+// When, Players, Totals
+colgroup.appendChild(document.createElement('col'));
+colgroup.appendChild(document.createElement('col'));
+colgroup.appendChild(document.createElement('col'));
+table.appendChild(colgroup);
 
     const thead=document.createElement('thead'); const trh=document.createElement('tr');
-    ['#','When','Players','Totals','Actions'].forEach((h,i)=>{
-      const th=document.createElement('th'); th.textContent=h; if(i===0) th.style.width='3ch'; trh.appendChild(th);
-    });
-    thead.appendChild(trh); table.appendChild(thead);
+['', '#','When','Players','Totals'].forEach((h,i)=>{
+  const th=document.createElement('th'); th.textContent=h;
+  if(i===1) th.style.width='3ch'; // # column
+  if(i===0) th.style.width='1%';  // delete column
+  trh.appendChild(th);
+});
+thead.appendChild(trh); table.appendChild(thead);
 
     const tb=document.createElement('tbody');
     games.forEach((g, idx)=>{
@@ -8277,21 +8283,23 @@ async function openAllGamesDialog(){
       const td3=document.createElement('td'); td3.textContent=(g.players||[]).map(p=>p?.name||'').join(', ');
       const td4=document.createElement('td'); td4.textContent=(g.totals||[]).join(' · ');
 
-      const td5=document.createElement('td'); td5.className='center';
-      const del=document.createElement('button'); del.className='btn small danger'; del.textContent='Delete';
-      del.onclick = async (e) => {
-        e.stopPropagation();
-        if (!confirm('Delete this game from cloud (and related high-score rows)?')) return;
-        try { await cloudDeleteGameCascade(g); toast('Game deleted'); await render(); }
-        catch(err){ console.error(err); toast('Delete failed'); }
-      };
-      td5.appendChild(del);
+// Delete button as first column
+const tdDel=document.createElement('td'); tdDel.className='center';
+const delBtn=document.createElement('button'); delBtn.className='btn small danger'; delBtn.textContent='Delete';
+delBtn.title='Delete this game';
+delBtn.onclick = async (e) => {
+  e.stopPropagation();
+  if (!confirm('Delete this game from cloud (and related high-score rows)?')) return;
+  try { await cloudDeleteGameCascade(g); toast('Game deleted'); await render(); }
+  catch(err){ console.error(err); toast('Delete failed'); }
+};
+tdDel.appendChild(delBtn);
 
-      tr.style.cursor='pointer';
-      tr.title='Open score sheet';
-      tr.onclick=()=>{ if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(g); };
+tr.style.cursor='pointer';
+tr.title='Open score sheet';
+tr.onclick=()=>{ if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(g); };
 
-      tr.append(td1,td2,td3,td4,td5); tb.appendChild(tr);
+tr.append(tdDel, td1, td2, td3, td4); tb.appendChild(tr);
     });
 
     table.appendChild(tb); body.appendChild(table);
@@ -8878,9 +8886,19 @@ document.addEventListener('DOMContentLoaded', () => {
   // High Scores button on start screen
   const hsStartBtn = byId('highScoresMenuBtn') || byId('highScoresBtn');
   if (hsStartBtn) hsStartBtn.onclick = openHighScoresMenuDialog;
-  if (lbGameStatsBtn)  lbGameStatsBtn.onclick  = openGameStatsDialog;
-  if (lbMatchStatsBtn) lbMatchStatsBtn.onclick = openMatchStatsDialog;
-  if (lbGameRaceBtn)   lbGameRaceBtn.onclick   = openGameRaceDialog;
+  // Leaderboard buttons (guarded lookups)
+  (function(){
+    const map = [
+      ['lbGameStatsBtn',   'openGameStatsDialog'],
+      ['lbMatchStatsBtn',  'openMatchStatsDialog'],
+      ['lbGameRaceBtn',    'openGameRaceDialog']
+    ];
+    map.forEach(([id, fn])=>{
+      const el = byId(id);
+      const handler = (typeof window[fn] === 'function') ? window[fn] : null;
+      if (el && handler) el.onclick = handler;
+    });
+  })();
 
   // Global ESC/click-outside for add/select/admin modals
   document.addEventListener('click', function(event) {
@@ -8969,67 +8987,6 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 })();
 
-  // === Player Stats popup: add "ROUND HIGH SCORES" under "STATS" ===
-  (function addRoundHSButtonInPlayerStats(){
-    function patchStatsModalOnce(){
-      try{
-        // Find the "Player Stats" modal by its title
-        const h3 = Array.from(document.querySelectorAll('.modal h3'))
-          .find(el => /player\s*stats/i.test((el.textContent || '').trim()));
-        if (!h3) return false;
-        const modal = h3.closest('.modal');
-        if (!modal) return false;
-
-        // If already present, skip
-        const existing = Array.from(modal.querySelectorAll('button'))
-          .find(b => /round\s*high\s*scores/i.test((b.textContent || '').trim()));
-        if (existing) return true;
-
-        // Locate one of the small stat buttons to clone class and position
-        const smallBtn = Array.from(modal.querySelectorAll('button'))
-          .find(b => /(target\s*hit|t-?d-?b|h2h)/i.test((b.textContent || '').trim()));
-        if (!smallBtn) return false;
-
-        const host = smallBtn.parentElement || modal.querySelector('.modal-body') || modal;
-
-        // Create the new button
-        const btn = document.createElement('button');
-        btn.className = smallBtn.className || 'btn';
-        btn.textContent = 'ROUND HIGH SCORES';
-        btn.title = 'ROUND HIGH SCORES';
-        btn.setAttribute('aria-label','ROUND HIGH SCORES');
-        btn.onclick = function(){
-          if (typeof window.openRoundHighScoresDialog === 'function') {
-            window.openRoundHighScoresDialog();
-          }
-        };
-
-        // Place it just before the first small stat button, i.e., directly under "STATS"
-        host.insertBefore(btn, smallBtn);
-
-        return true;
-      } catch(e){
-        console.error('addRoundHSButtonInPlayerStats failed', e);
-        return true;
-      }
-    }
-
-    // Wrap existing stats dialog opener so we can inject after it renders
-    if (typeof window.openStatsHubDialog === 'function') {
-      const __origOpenStatsHubDialog = window.openStatsHubDialog;
-      window.openStatsHubDialog = function(...args){
-        const ret = __origOpenStatsHubDialog.apply(this, args);
-        setTimeout(patchStatsModalOnce, 0);
-        return ret;
-      };
-    }
-
-    // Safety observer: if the modal is opened via another path, still inject
-    try{
-      const mo = new MutationObserver(() => { patchStatsModalOnce(); });
-      mo.observe(document.body, { childList: true, subtree: true });
-    }catch(_){}
-  })();
   
 });
 // ===== FINAL OVERRIDE: Admin Hub opener (safe + id compatible) =====
@@ -9657,104 +9614,6 @@ window.setCloudStatus = function setCloudStatus(state, msg){
   };
 })();
 
-// PB-only badges: only mark (PB) when a new score strictly BEATS previous PB (not equals), no GR
-(function setupPBBadges(){
-  // Map round label (e.g., "10s", "D's", "T's", "Bull") to category key used by the snapshot
-  function keyFromRoundLabel(text){
-    const t = String(text || '').trim();
-    const m = t.match(/^(\d{2})s?$/i);
-    if (m) return parseInt(m[1],10);
-    if (/^d/i.test(t)) return 'D';
-    if (/^t(?!\d)/i.test(t)) return 'T';
-    if (/^b/i.test(t)) return 'B';
-    return null;
-  }
-  function getPlayerNames(){
-    return Array.from(document.querySelectorAll('#thead th.player'))
-      .map(th => (th.querySelector('.th-name')?.textContent || th.textContent || '').trim());
-  }
-  function stripPB(sub){
-    // Remove any previous "(PB)" tokens we may have appended earlier
-    if (!sub) return;
-    const raw = sub.textContent || '';
-    const cleaned = raw.replace(/\(\s*PB\s*\)/gi, '').replace(/\s{2,}/g,' ').trim();
-    if (cleaned !== raw) sub.textContent = cleaned;
-  }
-  async function getSnap(){
-    try{
-      if (!window.__pbgrSnapshot){
-        // Prefer a fresh cloud read; fall back to getter
-        if (typeof refreshPBGRCloud === 'function') {
-          window.__pbgrSnapshot = await refreshPBGRCloud();
-        } else if (typeof getPBGRSnapshot === 'function') {
-          window.__pbgrSnapshot = await getPBGRSnapshot();
-        }
-      }
-      return window.__pbgrSnapshot || null;
-    }catch(e){
-      console.error('PBBadges: snapshot load failed', e);
-      return null;
-    }
-  }
-
-  async function apply(){
-    const snap = await getSnap();
-    if (!snap || !snap.byPlayerMeta) return;
-
-    const players = getPlayerNames();
-    const rows = Array.from(document.querySelectorAll('#tbody tr'));
-    rows.forEach(tr => {
-      const labelCell = tr.querySelector('th, td:first-child');
-      const key = keyFromRoundLabel(labelCell ? labelCell.textContent : '');
-      if (key == null) return;
-
-      const cells = Array.from(tr.querySelectorAll('td'));
-      cells.forEach((td, idx) => {
-        const name = (players[idx] || '').trim();
-        if (!name) return;
-        const sub = td.querySelector('.cell-sub');
-        if (!sub) return;
-
-        // Always start clean
-        stripPB(sub);
-
-        // Read round total as the number inside the first parentheses e.g. "(30)"
-        let val = NaN;
-        const m = (sub.textContent || '').match(/\(\s*(-?\d+)\s*\)/);
-        if (m) val = parseInt(m[1], 10);
-        if (!Number.isFinite(val) || val <= 0) return;
-
-        // Lookup player's previous PB for this category
-        const nameKey = name.toLowerCase();
-        let pMeta = null;
-        if (snap.byPlayerMeta){
-          pMeta = (typeof snap.byPlayerMeta.get === 'function')
-            ? snap.byPlayerMeta.get(nameKey)
-            : snap.byPlayerMeta[nameKey];
-        }
-        const pbVal = pMeta && pMeta[key] ? Number(pMeta[key].val || 0) : 0;
-
-        // Only show PB if current round BEATS previous PB (strictly greater)
-        if (val > pbVal){
-          sub.appendChild(document.createTextNode(' (PB)'));
-        }
-      });
-    });
-  }
-
-  // Observe scoreboard changes; re-run after renders
-  try{
-    const mo = new MutationObserver(() => apply());
-    const tbody = document.getElementById('tbody');
-    if (tbody) mo.observe(tbody, { childList: true, subtree: true, characterData: true });
-  }catch(_){}
-
-  // Initial pass
-  setTimeout(apply, 0);
-
-  // Expose manual refresh hook
-  window.refreshPBBadges = apply;
-})();
 </script>
 <!-- PB / GR Admin Modal -->
 <div id="pbgrAdminModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pbgrTitle">
