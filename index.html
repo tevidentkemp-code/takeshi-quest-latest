@@ -1,3 +1,5 @@
+V-HIGHCOREFIX
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,6 +9,8 @@
 
 <!-- Supabase JS v2 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script async src="https://tenor.com/embed.js"></script>
 
 <style>
   :root{
@@ -120,7 +124,7 @@
   max-width:640px;
   width:100%;
   margin:12px auto 0;
-  
+}
   /* Player Select: steppers for games/players instead of native selects */
 .setup-row {
   display: flex;
@@ -227,8 +231,6 @@
   .setup-row {
     flex-direction: column;
   }
-}
-
 }
 
 /* Box each player row (guest name + select/save buttons) */
@@ -438,14 +440,7 @@
 }
 .pad .btn.letter-throw{
   min-height: 46px;
-}
-/* Top action buttons (Start Screen, Restart Game, Stats) – smaller & shorter */
-#leaderboardTopRow .btn{
-  font-size: 0.86rem;
-  font-weight: 700;
-  line-height: 1.1;
-  padding: 6px 10px;
-  min-height: 32px;
+  
 }
 /* Center + bold the "10s…Bull" row labels in the main scoreboard */
 #scoreWrap tbody th{
@@ -487,12 +482,12 @@
 /* Revert UI: hide per‑dart markers */
 .cell-throws{ display:none !important; }
 
-/* Double the height of all round rows (10–Bull) on the main scoreboard */
-#scoreWrap tbody th,
-#scoreWrap tbody td{
-  padding-top: 1.1rem;
-  padding-bottom: 1.1rem;
-}
+  /* Round rows height – reverted to original sizing */
+  #scoreWrap tbody th,
+  #scoreWrap tbody td{
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+  }
 
 /* Landscape: keep TARGET cell (float header) aligned with the round-label column */
 @media (orientation: landscape){
@@ -641,16 +636,11 @@
   #details .start-actions > .row:first-of-type{ width:92vw; }
 }
 
-/* Admin Code stays compact */
-#adminCodeRow{ max-width:260px; width:100%; margin-inline:auto; }
 
 /* Make each button line fill that width */
 #details .start-actions .btn.big{ width: 100%; }
 #details .start-actions .row{ width: 100%; }     /* High Scores / Player Stats row */
 #details .start-actions .row .btn{ width: 100%; }
-
-/* Leave Admin Code row compact/independent */
-#adminCodeRow{ max-width: 260px; width: 100%; }
 
 /* Final Leaderboard layout */
 #leaderboard .stacked-actions{
@@ -682,13 +672,6 @@
   max-width:none;          /* no artificial cap */
   display:block;           /* makes 100% width dependable */
 
-}
-/* --- Leaderboard table grid + polish --- */
-:root{
-  --lb-num-w:   72px;   /* each G# column */
-  --lb-pct-w:   86px;   /* Match %        */
-  --lb-total-w: 96px;   /* Match Total    */
-  --lb-win-w:   56px;   /* Win            */
 }
 
 /* visual separation for the Player column */
@@ -738,6 +721,59 @@
 
 /* green highlight is already defined as .leader-total in your CSS */
 
+/* ===== Player Stats rolling banner (Start screen) ===== */
+#psTicker{
+  width: 100vw;
+  max-width: none;
+  margin: 12px 0 0;
+  /* full-bleed even inside centered layout */
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  overflow: hidden;
+  border: 1px solid #2a2e48;
+  border-radius: 12px;
+  background: linear-gradient(180deg,#14183a,#0f1329);
+  padding: 6px 8px;
+  white-space: nowrap;
+}
+#psTicker.hidden { display: none; }
+#psTicker .track{
+  display: inline-block;
+  white-space: nowrap;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  animation: psTickerScroll 105s linear infinite; /* slow */
+  will-change: transform;
+}
+@keyframes psTickerScroll {
+  0%   { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+#psTicker .sep  { opacity: .75; margin: 0 10px; }
+
+/* Pin the ticker to the bottom of the Start screen only */
+body[data-page="details"] #psTicker{
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  z-index: 300000;
+}
+
+/* === Triple-Trebles celebration overlay === */
+.gif-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:600000;pointer-events:none;}
+.gif-overlay.hidden{display:none;}
+.gif-overlay .gif-box{width:min(540px,84vw);max-height:80vh;display:block}
+/* Hide Tenor fallback link text so no raw anchor text shows */
+#gifOverlay .tenor-gif-embed a { display: none !important; }
+#gifOverlay .tenor-gif-embed { font-size: 0 !important; line-height: 0 !important; }
+
 </style>
 </head>
 <body data-page="details">
@@ -752,6 +788,7 @@
 
         <div class="row" style="justify-content:center; gap:8px; flex-wrap:wrap; margin-top:4px;">
   <button id="hsMainBtn" class="btn" type="button">High Scores</button>
+  <button id="shotgunBtn" class="btn" type="button">Shotgun Leaderboard</button>
   <button id="playerStatsBtn" class="btn" type="button">Player Stats</button>
 </div>
 
@@ -762,8 +799,11 @@
         </div>
         <button id="adminEnterBtn" class="btn" type="button">Enter</button>
       </div>
-    </div> <!-- CLOSE .start-actions -->
-    </section>
+</div> <!-- CLOSE .start-actions -->
+
+<!-- Start-screen rolling banner: last 10 completed games -->
+<div id="psTicker" class="hidden"><div class="track"></div></div>
+</section>
 
 <!-- PAGE 2: PLAYER SELECT -->
 <section id="players" class="card section hidden">
@@ -934,6 +974,8 @@
         <div id="pad" class="pad"></div>
       </div>
     </div>
+    
+    <div id="gifOverlay" class="gif-overlay hidden"></div>
 
     <!-- Add Player Modal -->
     <div id="addPlayerModal" class="modal-backdrop hidden">
@@ -1249,7 +1291,8 @@ async function renderSavedPlayersAdmin(){
     // PIN input
     const pinTd = document.createElement('td');
     const pinIn = document.createElement('input');
-    pinIn.type = 'tel'; pinIn.inputMode='numeric'; pinIn.pattern='\\n\\d{4}'; // hint only
+    pinIn.type = 'tel'; pinIn.inputMode='numeric'; 
+    pinIn.pattern='\\d{4}'; // 4 digits
     pinIn.placeholder = '4-digit';
     pinIn.maxLength = 4;
     pinIn.style.width = '100%';
@@ -1302,6 +1345,7 @@ async function cloudRenamePlayer(oldName, newName){
   markCloudOk();
 }
       console.log('SQ build: script wrapped OK');
+if (!window.buildStartTicker) { window.buildStartTicker = async function(){}; }
 // --- Stepper bootstrap (must exist before any DOMContentLoaded references) ---
 (function(){
   if (typeof window.initSetupSteppers === 'function') return;
@@ -1433,13 +1477,25 @@ async function getGamesForMode(mode) {
   const localGames = getGameLog() || [];
   let cloudGames = [];
 
+  // Try primary cloud source if available
   try {
-    cloudGames = await cloudFetchAllGamesAsLocal();
+    if (typeof cloudFetchAllGamesAsLocal === 'function') {
+      cloudGames = await cloudFetchAllGamesAsLocal();
+    }
   } catch (_) {
-    // cloud might be down, just ignore
+    // ignore and fall back
   }
 
-  // Merge & de-dup with a stable, source-agnostic key (prefer cloud over local)
+  // Fallback: synthesize from high scores if no cloud list is available
+  if ((!cloudGames || cloudGames.length === 0) && typeof cloudSynthAllGamesFromHighScores === 'function') {
+    try {
+      cloudGames = await cloudSynthAllGamesFromHighScores(500);
+    } catch (_) {
+      // ignore completely; we'll just use local
+    }
+  }
+
+  // Merge & de‑dup with a stable, source‑agnostic key (prefer cloud over local)
   const map = new Map();
   const stableKey = (g) => {
     const players = (g.players || [])
@@ -1447,7 +1503,9 @@ async function getGamesForMode(mode) {
       .join(',');
     return [g.ts || '', players, (g.totals || []).join(',')].join('|');
   };
-  [...cloudGames, ...localGames].forEach(g => {
+
+  // Place cloud first so it wins dedupe collisions
+  [...(cloudGames || []), ...(localGames || [])].forEach(g => {
     if (!g) return;
     const key = stableKey(g);
     if (!map.has(key)) map.set(key, g);
@@ -1543,6 +1601,58 @@ function openScoreSheetFromHistory(gIndex){
   const local = { ts: null, players: state.players.map(p=>({name:p.name})), board: game.board };
   openSingleGameScoreSheet(local, -1);
 }
+
+// ==== Triple-Trebles (3 x T) celebration logic ====
+(function(){
+  const SEEN_KEY_SET = new Set();
+  function keyFor(iPlayer, iRound){
+    const mid = (state && state.match && state.match.id) ? state.match.id : 'local';
+    return mid + '|' + iPlayer + '|' + iRound;
+  }
+
+  // Show GIF overlay once; auto hides
+  window.showTripleTrebleGif = function(){
+    const host = document.getElementById('gifOverlay');
+    if (!host) return;
+    const embed =
+      '<div class="gif-box">'+
+        '<div class="tenor-gif-embed" data-postid="1906516478472844827" data-share-method="host" data-aspect-ratio="1.77857" data-width="100%"></div>'+
+      '</div>';
+    host.innerHTML = embed;
+    host.classList.remove('hidden');
+    try { if (window.Tenor && window.Tenor.Embed && window.Tenor.Embed.init) window.Tenor.Embed.init(); } catch(_){}
+    setTimeout(()=>{ host.classList.add('hidden'); host.innerHTML=''; }, 6000);
+  };
+
+  // Scan: number round where roundTotal == 9 * target  (i.e., T x 3)
+  window.scanForTripleHatAndCelebrate = function(){
+    try{
+      if (!state || !Array.isArray(state.players) || !Array.isArray(state.score)) return;
+      for (let p = 0; p < state.players.length; p++){
+        const rows = state.score[p] || [];
+        for (let r = 0; r < rows.length && r < MAX_ROUNDS; r++){
+          const rdDef = ROUNDS[r];
+          if (!rdDef || rdDef.type !== 'number') continue;
+          const row = rows[r];
+          if (!row) continue;
+
+          const expected = (rdDef.target || 0) * 9;
+          const total = Number(row.roundTotal || 0);
+          if (total !== expected) continue;
+
+          const k = keyFor(p, r);
+          if (SEEN_KEY_SET.has(k)) continue;   // only once per player/round/match
+          SEEN_KEY_SET.add(k);
+          try { row.__gif180 = true; } catch(_) {}
+          showTripleTrebleGif();
+        }
+      }
+    }catch(_){}
+  };
+
+  // Called after every save()
+  window.onStateSaved = function(){ scanForTripleHatAndCelebrate(); };
+})();
 
 // Percent helper
 function pctStr(num, den){
@@ -1731,9 +1841,15 @@ function show(id){
   const fh=byId('floatHead');
   if(fh) fh.classList.toggle('hidden', id!=='game');
   buildPad();
+  if (id === 'details') {
+    try {
+      if (typeof window.buildStartTicker === 'function') { window.buildStartTicker(); }
+    } catch(e) { console.error(e); }
+  }
   if (id === 'game') {
     // Reverted: rely on default scoreboard rendering.
     if (window.__marksKick) { clearInterval(window.__marksKick); window.__marksKick = null; }
+    try { if (typeof scanForTripleHatAndCelebrate === 'function') scanForTripleHatAndCelebrate(); } catch(_) {}
   }
 }
 const padBar = byId('padBar');
@@ -1757,7 +1873,10 @@ function labelForRound(def){
 }
 const MAX_ROUNDS=ROUNDS.length;
 const totalScoreForPlayer = i => (state.score[i]||[]).reduce((s,row)=>s+(row?.roundTotal||0),0);
-const save=()=>safeSave(STORAGE_KEY,state);
+const save = () => {
+  safeSave(STORAGE_KEY, state);
+  try { if (typeof onStateSaved === 'function') onStateSaved(); } catch(_) {}
+};
 function ensureMatchAgg(){ if(state.matchAgg && state.matchAgg.hits) return; state.matchAgg={ hits:Array.from({length:state.players.length},()=>({})), totals60:Array.from({length:state.players.length},()=>0), totals100:Array.from({length:state.players.length},()=>0), totals140:Array.from({length:state.players.length},()=>0) }; }
 
 function getGameLog() {
@@ -1814,6 +1933,14 @@ function logCompletedGame(totals, winners, boardClone) {
 
   games.push(gameRecord);
   setGameLog(games);
+    // Persist each player's total as a High Score row (respects backdate)
+  (async () => {
+    try {
+      await cloudSaveHighScoresForGame(totals, nowIso);
+    } catch (e) {
+      console.error('High score cloud save failed', e);
+    }
+  })();
 };
 
 function logCompletedMatch() {
@@ -1948,6 +2075,46 @@ async function cloudListHighScores(isPractice = false, limit = 500){
   return (data || []).map(r => ({ name: r.name, score: Number(r.score) || 0, ts: r.ts }));
 }
 
+// Insert (name, score, ts) if not already present in the table
+async function cloudInsertHighScoreIfMissing(table, name, score, ts){
+  try {
+    const { data, error } = await sb
+      .from(table)
+      .select('name', { count: 'exact' })
+      .eq('name', name)
+      .eq('score', score)
+      .eq('ts', ts)
+      .limit(1);
+    if (error) { markCloudError(error); return false; }
+    if (Array.isArray(data) && data.length) return false; // already exists
+    const { error: insErr } = await sb.from(table).insert({ name, score, ts });
+    if (insErr) { markCloudError(insErr); return false; }
+    markCloudOk();
+    return true;
+  } catch (e){
+    console.error('cloudInsertHighScoreIfMissing failed', e);
+    return false;
+  }
+}
+
+// From a finished game, write one HS row per player to the correct table
+async function cloudSaveHighScoresForGame(totals, tsIso){
+  try {
+    const isPractice = (state.players || []).length === 1;
+    const table = isPractice ? TABLE_HS_PRACTICE : TABLE_HS_LEAGUE;
+    const when = tsIso || new Date().toISOString();
+
+    for (let i = 0; i < (state.players || []).length; i++){
+      const name  = state.players[i]?.name || '';
+      const score = Number(totals?.[i] || 0);
+      if (!name || score <= 0) continue;
+      await cloudInsertHighScoreIfMissing(table, name, score, when);
+    }
+  } catch (e) {
+    console.error('cloudSaveHighScoresForGame failed', e);
+  }
+}
+
 // Simple initial Supabase connectivity check
 async function initialCloudCheck() {
   try {
@@ -2030,6 +2197,8 @@ document.addEventListener('DOMContentLoaded', () => {
   try { if (typeof initialCloudCheck   === 'function') initialCloudCheck();   } catch (e) { console.error(e); }
   try { updatePadSpacer(); } catch (e) {}
   try { bindScoreHeaderScrollSync(); } catch (e) {}
+  // Build the rolling ticker on first load of the Start screen
+  try { if (typeof window.buildStartTicker === 'function') { window.buildStartTicker(); } } catch (e) { console.error(e); }
 });
 // --- Period filter helper (Today / 1 Week / 1 Month / All Time) ---
 function periodStartIso(key){
@@ -2057,6 +2226,63 @@ function fmtDdMmYyAtTime(d){
   const mi = String(d.getMinutes()).padStart(2,'0');
   return `${dd}/${mm}/${yy} @ ${hh}:${mi}`;
 }
+
+// --- Start-screen rolling banner (last 10 completed games) ---
+function _psHumanList(parts){
+  if (!parts || !parts.length) return '';
+  if (parts.length === 1) return parts[0];
+  if (parts.length === 2) return parts[0] + ' and ' + parts[1];
+  return parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
+}
+
+function _psFormatLine(game){
+  try{
+    const list = (game.players || []).map((p, i) => ({
+      name: (p && p.name) ? String(p.name) : `Player ${i + 1}`,
+      score: Number(Array.isArray(game.totals) ? (game.totals[i] || 0) : 0)
+    }));
+    if (!list.length) return '';
+    list.sort((a,b)=> b.score - a.score);      // winner first
+    const winner = list[0];
+    const others = list.slice(1).map(o => `${o.name} (${o.score})`);
+    return others.length
+      ? `${winner.name} (${winner.score}) beats ${_psHumanList(others)}`
+      : `${winner.name} (${winner.score}) wins`;
+  }catch(_){ return ''; }
+}
+
+// Expose globally so `show()` can always reach it, even if the code is wrapped.
+window.buildStartTicker = async function buildStartTicker(){
+  const wrap  = document.getElementById('psTicker');
+  const track = wrap ? wrap.querySelector('.track') : null;
+  if (!wrap || !track){ return; }
+
+  try{
+    // Merge local + cloud; then newest first; take last 10 completed official games
+    let games = await getGamesForMode('official');
+    games = (games || [])
+      .filter(g => g && Array.isArray(g.players) && Array.isArray(g.totals))
+      .sort((a,b) => (Date.parse(b.ts || 0) || 0) - (Date.parse(a.ts || 0) || 0))
+      .slice(0, 10);
+
+    if (!games.length){
+      wrap.classList.add('hidden');
+      return;
+    }
+
+    const parts = games.map(_psFormatLine).filter(Boolean);
+    if (!parts.length){
+      wrap.classList.add('hidden');
+      return;
+    }
+
+    track.textContent = parts.join('🔴 🔴 🔴');
+    wrap.classList.remove('hidden');
+  }catch(e){
+    console.error('buildStartTicker failed', e);
+    wrap.classList.add('hidden');
+  }
+};
 // High Scores dialog — deduped + period buttons
 async function openHighScoresDialog(isPractice = false, range = 'all') {
   // range helpers
@@ -2080,6 +2306,18 @@ async function openHighScoresDialog(isPractice = false, range = 'all') {
   overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
   overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
 
+// --- Shotgun Leaderboard (3-dart avg over last 28 rounds = last 2 official games) ---
+async function cloudListPlayerRecentOfficialGames(name, limitGames = 2){
+  const { data, error } = await sb
+    .from(TABLE_PLAYER_GAMES) // 'player_games_union'
+    .select('player, score, rounds, ts, is_practice')
+    .eq('player', name)
+    .eq('is_practice', false) // official only
+    .order('ts', { ascending: false })
+    .limit(limitGames);
+  if (error) { console.error(error); return []; }
+  return data || [];
+}
   async function render(){
     body.innerHTML = '';
     let rows = [], loadErr = null;
@@ -2952,6 +3190,73 @@ function computeSingleWindowStats(playerName, games, matches, win, now) {
   const gamesForPlayer = [];
   const aheadCounts  = {};
   const behindCounts = {};
+  
+  // ===== Start screen ticker (bottom of New Game screen) =====
+function __formatGameBannerLine(g){
+  try{
+    const players = (g.players || []).map(p => ({ name: (p && p.name) ? String(p.name) : '—' }));
+    const totals  = Array.isArray(g.totals) ? g.totals.slice() : [];
+    const rows = players.map((p, i) => ({ name: p.name, score: Number(totals[i] || 0) }));
+    rows.sort((a,b)=> b.score - a.score);
+    if (!rows.length) return '';
+    const top = rows[0].score;
+    const winners = rows.filter(r => r.score === top);
+    const others  = rows.slice(winners.length);
+
+    if (winners.length > 1){
+      const wn = winners.map(w => w.name).join(' & ');
+      const tail = others.length ? (' vs ' + others.map(o => `${o.name} (${o.score})`).join(' and ')) : '';
+      return `${wn} (${top}) draw${tail}`;
+    } else {
+      const wn = winners[0].name;
+      const tail = others.length ? (' beats ' + others.map(o => `${o.name} (${o.score})`).join(' and ')) : '';
+      return `${wn} (${top})${tail}`;
+    }
+  }catch(_){ return ''; }
+}
+
+async function buildStartTicker(){
+  const host = document.getElementById('psTicker');
+  const track = host ? host.querySelector('.track') : null;
+  if (!host || !track) return;
+
+  let games = [];
+  try {
+    // Use your existing merge (local + cloud) and filter to official games
+    games = await getGamesForMode('official');
+  } catch (e) {
+    console.error('buildStartTicker: failed to load games', e);
+    host.classList.add('hidden');
+    return;
+  }
+
+  games = (games || []).filter(g => g && Array.isArray(g.players) && Array.isArray(g.totals) && g.totals.length === g.players.length);
+  games.sort((a,b)=> (Date.parse(b.ts||0)||0) - (Date.parse(a.ts||0)||0));
+  const last10 = games.slice(0,10);
+
+  if (!last10.length){
+    host.classList.add('hidden');
+    track.innerHTML = '';
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  last10.forEach((g, idx) => {
+    const span = document.createElement('span');
+    span.textContent = __formatGameBannerLine(g);
+    frag.appendChild(span);
+    if (idx !== last10.length - 1){
+      const sep = document.createElement('span');
+      sep.className = 'sep';
+      sep.textContent = '● ● ●';
+      frag.appendChild(sep);
+    }
+  });
+
+  track.innerHTML = '';
+  track.appendChild(frag);
+  host.classList.remove('hidden');
+}
 
   // --- Games ---
   for (const game of games) {
@@ -5415,6 +5720,9 @@ function recordThrow(spec){
     (entry.darts[1]?.points || 0) +
     (entry.darts[2]?.points || 0);
 
+  // flag if we just completed the 3rd dart in this round (used for GIF triggers)
+  const __completedRoundNow = (state.currentDart === 2);
+
   // History (for Undo)
   state.history.push({
     player:    pIndex,
@@ -5436,6 +5744,11 @@ function recordThrow(spec){
   // Recompute 60+/100+/140+ for this player
   recomputeMatchAggTotalsForPlayer(pIndex);
 
+  // --- Round-completion visual effects (Tenor GIFs) ---
+  if (__completedRoundNow) {
+    // If all 3 darts in the round were trebles, show the 180-style GIF overlay once
+    maybePlayThreeTreblesGif(pIndex, rIndex);
+  }
   // Advance dart / player / round
   if (state.currentDart < 2) {
     state.currentDart++;
@@ -5562,6 +5875,81 @@ function missGo(){
     recordThrow({ kind: 'Miss' });
   }
 }
+  /*****************
+   * TENOR GIF OVERLAY (plays once, then cleans up)
+   *****************/
+  function ensureTenorOverlayStyles(){
+    if (document.getElementById('tenorOverlayStyles')) return;
+    const st = document.createElement('style');
+    st.id = 'tenorOverlayStyles';
+    st.textContent = `
+      .gif-overlay{
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        z-index: 9999;
+        background: transparent;
+      }
+      .gif-overlay .tenor-gif-embed{
+        max-width: 80vw;
+        width: 60vw;
+        pointer-events: none;
+      }
+      @media (max-width: 600px){
+        .gif-overlay .tenor-gif-embed{ width: 88vw; }
+      }
+    `;
+    document.head.appendChild(st);
+  }
+
+  // Inject a Tenor embed DIV and (re)load Tenor's script so it renders even when added dynamically.
+  function showTenorOnce(postId, durationMs = 2600){
+    try{
+      ensureTenorOverlayStyles();
+      const overlay = document.createElement('div');
+      overlay.className = 'gif-overlay';
+      overlay.innerHTML = `
+        &lt;div class="tenor-gif-embed"
+             data-postid="${postId}"
+             data-share-method="host"
+             data-aspect-ratio="1.777"
+             data-width="100%"&gt;&lt;/div&gt;`;
+      document.body.appendChild(overlay);
+
+      // Force Tenor to parse the newly injected embed by adding a fresh script tag.
+      const s = document.createElement('script');
+      s.src = 'https://tenor.com/embed.js';
+      s.async = true;
+      s.onload = () => {
+        setTimeout(() => {
+          try { overlay.remove(); } catch(_) {}
+          try { s.remove(); } catch(_) {}
+        }, durationMs);
+      };
+      document.body.appendChild(s);
+    } catch (e){
+      console.warn('showTenorOnce error', e);
+    }
+  }
+
+  // Check if a just-completed round was "three trebles" and, if so, play the GIF.
+  function maybePlayThreeTreblesGif(pIndex, rIndex){
+    try{
+      const entry = state.score?.[pIndex]?.[rIndex];
+      if (!entry) return;
+      const d = entry.darts || [];
+      if (d.length < 3) return;
+      const isTriple = (x) => !!x && (x.kind === 'T' || x.kind === 'Triple');
+      if (isTriple(d[0]) && isTriple(d[1]) && isTriple(d[2])) {
+        // Gerwyn Price 180 GIF
+        showTenorOnce('25741026', 2600);
+      }
+    } catch(_) {}
+  }
+
 // --- GAME LOGGING TO SUPABASE (real) + HIGH SCORES ---
 async function recordFullGameToSupabase(createdAtOverride) {
   try {
@@ -5681,9 +6069,9 @@ if ((state.players?.length || 0) >= 2) {
 }
 // next line should exist already in your file:
 const lbTable = byId('lbTable');
-const lbTHead=lbTable.querySelector('thead'); 
-const lbTBody=lbTable.querySelector('tbody');
-const lbMatchInfo=byId('lbMatchInfo'); 
+const lbTHead = lbTable ? lbTable.querySelector('thead') : null;
+const lbTBody = lbTable ? lbTable.querySelector('tbody') : null;
+const lbMatchInfo = byId('lbMatchInfo');
 const nextGameBtn=byId('nextGameBtn'); 
 const gameScoresBtn=byId('gameScoresBtn'); 
 const newMatchBtn=byId('newMatchBtn'); 
@@ -5694,6 +6082,7 @@ const lbMatchStatsBtn = byId('lbMatchStatsBtn');
 const lbGameRaceBtn   = byId('lbGameRaceBtn');
 
 function updateLeaderboardTable(){
+  if (!lbTable || !lbTHead || !lbTBody) return;
   lbTHead.innerHTML = '';
   lbTBody.innerHTML = '';
 
@@ -6050,6 +6439,10 @@ function setupScrollSync(){
   [sw,st,fh,ms].forEach(el=> el.addEventListener('scroll',()=>mirror(el),{passive:true})); 
   _scrollSyncSet=true; 
   requestAnimationFrame(()=>{ 
+    // Safely resolve header elements even if global refs (thead, statsThead, floatThead) are undefined
+    const thead      = document.querySelector('#scoreWrap thead')  || document.querySelector('#scoreTable thead') || window.thead      || null;
+    const statsThead = document.querySelector('#statsWrap thead')  || window.statsThead  || null;
+    const floatThead = document.querySelector('#floatWrap thead')  || window.floatThead  || null;
     const sRow=thead?.querySelector('tr'), tRow=statsThead?.querySelector('tr'), fRow=floatThead?.querySelector('tr'); 
     if(!sRow||!tRow||!fRow) return; 
     const sCells=sRow.children, tCells=tRow.children, fCells=fRow.children; 
@@ -6744,12 +7137,6 @@ function openSingleGameScoreSheet(game, highlightIdx = -1){
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
 }
 
-// Entry point used by the tables
-async function openScoreSheetFromHighScore(row, isPractice){
-  const found = await findGameForHighScoreCloudFirst(row, isPractice);
-  if (!found) { toast('Could not find a score sheet for that row (yet).'); return; }
-  openSingleGameScoreSheet(found.game, found.playerIndex);
-}
 
 function openAdminHub(){
   const hub = byId('adminHubModal');
@@ -6957,36 +7344,7 @@ async function openAllGamesDialog(){
 
   await render();
 }
-async function cloudDeleteGameCascade(g){
-  if (!g || !g.ts) throw new Error('Missing timestamp for delete');
-  const ts = g.ts;
 
-  // Delete the game by exact timestamp; fallback to ±2min window
-  try {
-    const { error } = await sb.from(TABLE_GAMES).delete().eq('created_at', ts);
-    if (error) throw error;
-  } catch (e) {
-    try {
-      const pad = 2 * 60 * 1000;
-      const fromIso = new Date(new Date(ts).getTime() - pad).toISOString();
-      const toIso   = new Date(new Date(ts).getTime() + pad).toISOString();
-      const { error } = await sb.from(TABLE_GAMES).delete()
-        .gte('created_at', fromIso).lte('created_at', toIso);
-      if (error) throw error;
-    } catch (ee) {
-      console.error('Delete from games failed', ee); throw ee;
-    }
-  }
-
-  // Best-effort clean-up of highs (practice/league)
-  const isSingle = (g?.players || []).length === 1;
-  const players = g?.players || [];
-  const totals  = g?.totals  || [];
-  await Promise.all(players.map((p,i)=>
-    cloudDeleteHighScore({ name: p?.name||'', score: Number(totals[i]||0), ts }, isSingle)
-      .catch(()=>{})   // ignore if no matching row
-  ));
-}
 // Delete a game (by timestamp) and its related high-score rows from Supabase
 async function cloudDeleteGameCascade(g){
   if (!ensureCloudInit()) throw new Error('Cloud not initialised');
@@ -7052,6 +7410,146 @@ async function cloudDeleteGameCascade(g){
       return false;
     }
   }
+
+/*** CLOUD HIGH SCORES API — safe fallback implementations ***/
+(function(){
+  // Insert (or keep existing) → create only if missing to avoid duplicates
+  if (typeof window.cloudInsertHighScore !== 'function') {
+    window.cloudInsertHighScore = async function(name, score, isPractice){
+      if (!ensureCloudInit()) throw new Error('Cloud not initialised');
+      const table = isPractice
+        ? (typeof TABLE_HS_PRACTICE !== 'undefined' ? TABLE_HS_PRACTICE : 'high_scores_practice')
+        : (typeof TABLE_HS_LEAGUE   !== 'undefined' ? TABLE_HS_LEAGUE   : 'high_scores');
+
+      const row = {
+        name: String(name || '').trim(),
+        score: Number(score || 0),
+        // Prefer server default if your table has one; otherwise send a timestamp
+        ts: new Date().toISOString()
+      };
+
+      // basic guards; don't write empty rows
+      if (!row.name || row.score <= 0) return false;
+
+      const { error } = await sb.from(table).insert(row);
+      if (error) throw error;
+      return true;
+    };
+  }
+if (typeof window.cloudInsertHighScoreIfMissing !== 'function') {
+  window.cloudInsertHighScoreIfMissing = async function(table, name, score, ts){
+    if (!ensureCloudInit()) throw new Error('Cloud not initialised');
+    const n = String(name || '').trim();
+    const s = Number(score || 0);
+    if (!n || s <= 0) return false;
+
+    // Does a matching row already exist? (exact name/score; if ts is given, use ±2 min window)
+    async function existsQuery() {
+      try {
+        if (ts) {
+          const pad = 2 * 60 * 1000;
+          const fromIso = new Date(new Date(ts).getTime() - pad).toISOString();
+          const toIso   = new Date(new Date(ts).getTime() + pad).toISOString();
+          const { count, error } = await sb
+            .from(table)
+            .select('name,score,ts', { count: 'exact', head: true })
+            .gte('ts', fromIso).lte('ts', toIso)
+            .eq('name', n).eq('score', s)
+            .limit(1);
+          if (error) throw error;
+          return !!(count && count > 0);
+        } else {
+          const { count, error } = await sb
+            .from(table)
+            .select('name,score,ts', { count: 'exact', head: true })
+            .eq('name', n).eq('score', s)
+            .limit(1);
+          if (error) throw error;
+          return !!(count && count > 0);
+        }
+      } catch {
+        // Fallback: non-head select
+        try {
+          if (ts) {
+            const pad = 2 * 60 * 1000;
+            const fromIso = new Date(new Date(ts).getTime() - pad).toISOString();
+            const toIso   = new Date(new Date(ts).getTime() + pad).toISOString();
+            const { data } = await sb
+              .from(table).select('name,score,ts')
+              .gte('ts', fromIso).lte('ts', toIso)
+              .eq('name', n).eq('score', s).limit(1);
+            return Array.isArray(data) && data.length > 0;
+          } else {
+            const { data } = await sb
+              .from(table).select('name,score,ts')
+              .eq('name', n).eq('score', s).limit(1);
+            return Array.isArray(data) && data.length > 0;
+          }
+        } catch {
+          return false;
+        }
+      }
+    }
+
+    if (await existsQuery()) return false;
+
+    const row = { name: n, score: s, ts: ts || new Date().toISOString() };
+    const { error } = await sb.from(table).insert(row);
+    if (error) throw error;
+    return true;
+  };
+}
+
+  if (typeof window.cloudListHighScores !== 'function') {
+    window.cloudListHighScores = async function(isPractice, limit = 50){
+      if (!ensureCloudInit()) throw new Error('Cloud not initialised');
+      const table = isPractice
+        ? (typeof TABLE_HS_PRACTICE !== 'undefined' ? TABLE_HS_PRACTICE : 'high_scores_practice')
+        : (typeof TABLE_HS_LEAGUE   !== 'undefined' ? TABLE_HS_LEAGUE   : 'high_scores');
+
+      const { data, error } = await sb
+        .from(table)
+        .select('name, score, ts')
+        .order('score', { ascending: false })
+        .order('ts',    { ascending: true })
+        .limit(limit);
+
+      if (error) throw error;
+      return data || [];
+    };
+  }
+
+  if (typeof window.cloudDeleteHighScore !== 'function') {
+    window.cloudDeleteHighScore = async function(row, isPractice){
+      if (!ensureCloudInit()) throw new Error('Cloud not initialised');
+      const table = isPractice
+        ? (typeof TABLE_HS_PRACTICE !== 'undefined' ? TABLE_HS_PRACTICE : 'high_scores_practice')
+        : (typeof TABLE_HS_LEAGUE   !== 'undefined' ? TABLE_HS_LEAGUE   : 'high_scores');
+
+      // Try exact match (including ts if provided)
+      try {
+        let q = sb.from(table).delete()
+          .eq('name', String(row?.name || ''))
+          .eq('score', Number(row?.score || 0));
+        if (row?.ts) q = q.eq('ts', row.ts);
+        const { error } = await q;
+        if (error) throw error;
+        return;
+      } catch (e) {
+        // Fallback: delete on small time window if exact ts equality fails
+        if (!row?.ts) throw e;
+        const pad = 2 * 60 * 1000;
+        const fromIso = new Date(new Date(row.ts).getTime() - pad).toISOString();
+        const toIso   = new Date(new Date(row.ts).getTime() + pad).toISOString();
+        const { error } = await sb.from(table).delete()
+          .gte('ts', fromIso).lte('ts', toIso)
+          .eq('name', String(row.name || ''))
+          .eq('score', Number(row.score || 0));
+        if (error) throw error;
+      }
+    };
+  }
+})();
 // Toggle for writing per-player game rows to a table.
 // Your project uses a view (`player_games_union`), so writes should be disabled.
 const ENABLE_PLAYER_GAMES_WRITES = false;
@@ -7135,6 +7633,59 @@ window.getMatchesOfficial = async function getMatchesOfficial(){
     return [];
   }
 };
+
+// Recover missing High Scores by scanning cloud Games for a recent window (default 24h).
+async function recoverHighScoresFromCloudWindow(hours = 24){
+  if (!ensureCloudInit()) { toast('Cloud not initialised'); return { inserted:0, scanned:0, skipped:0 }; }
+  const now = Date.now();
+  const fromIso = new Date(now - (hours * 60 * 60 * 1000)).toISOString();
+  const toIso   = new Date(now + (5 * 60 * 1000)).toISOString(); // small future skew for device time drift
+
+  let scanned = 0, inserted = 0, skipped = 0;
+  let rows = [];
+  try {
+    const { data, error } = await sb
+      .from(TABLE_GAMES)
+      .select('created_at, state, totals')
+      .gte('created_at', fromIso)
+      .lte('created_at', toIso)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    rows = data || [];
+  } catch (e) {
+    console.error('recover HS: fetch games failed', e);
+    toast('Recover HS failed: could not fetch games');
+    return { inserted, scanned, skipped };
+  }
+
+  for (const g of rows) {
+    scanned++;
+    const players = (g?.state?.players || [])
+      .map(p => (typeof p === 'string') ? { name: p } : p)
+      .filter(Boolean);
+    const totals = Array.isArray(g?.totals) ? g.totals : [];
+    const ts = g?.created_at || new Date().toISOString();
+    const isSingle = players.length === 1;
+    const table = isSingle
+      ? (typeof TABLE_HS_PRACTICE !== 'undefined' ? TABLE_HS_PRACTICE : 'high_scores_practice')
+      : (typeof TABLE_HS_LEAGUE   !== 'undefined' ? TABLE_HS_LEAGUE   : 'high_scores');
+
+    for (let i = 0; i < players.length; i++) {
+      const name  = players[i]?.name || '';
+      const score = Number(totals[i] || 0);
+      if (!name || score <= 0) continue;
+      try {
+        const ok = await cloudInsertHighScoreIfMissing(table, name, score, ts);
+        if (ok) inserted++; else skipped++;
+      } catch (e) {
+        console.error('recover HS: insert failed', e);
+        skipped++;
+      }
+    }
+  }
+
+  return { inserted, scanned, skipped };
+}
 
 /*****************
  * BACKFILL: Sync all local data → Supabase
@@ -7271,11 +7822,6 @@ document.addEventListener('DOMContentLoaded', () => {
   updatePadSpacer();
   setupStartMenuButtons();
   initSetupSteppers();
-  syncStartTitleWidth();
-window.addEventListener('resize', syncStartTitleWidth, { passive: true });
-
-  // Default Player Select rows
-  drawPsRows();
 
   // Kick off initial cloud connectivity check
   if (ensureCloudInit()) initialCloudCheck();
@@ -7388,6 +7934,34 @@ window.openAdminHub = function openAdminHub(){
     if (typeof openSavedPlayersAdminDialog === 'function') openSavedPlayersAdminDialog();
   };
 
+  // Ensure a 'Recover HS (24h)' button exists and is wired
+  (function ensureRecoverHsBtn(){
+    const container = hub.querySelector('.modal-body') || hub;
+    let btn = document.getElementById('recoverHs24hBtn');
+    if (!btn && container) {
+      btn = document.createElement('button');
+      btn.id = 'recoverHs24hBtn';
+      btn.className = 'btn';
+      btn.textContent = 'Recover HS (24h)';
+      container.appendChild(btn);
+    }
+    if (btn) {
+      btn.onclick = async () => {
+        const old = btn.textContent;
+        btn.disabled = true; btn.textContent = 'Recovering…';
+        try {
+          const res = await recoverHighScoresFromCloudWindow(24);
+          toast(`Recovered: ${res.inserted} rows (scanned ${res.scanned}, skipped ${res.skipped})`);
+        } catch (e) {
+          console.error(e);
+          toast('Recovery failed — see console');
+        } finally {
+          btn.disabled = false; btn.textContent = old;
+        }
+      };
+    }
+  })();
+
   // Return
   bind('closeAdminHubBtn', () => { hub.classList.add('hidden'); });
 };
@@ -7435,6 +8009,167 @@ window.setCloudStatus = function setCloudStatus(state, msg){
   dot.title = msg || (state || '');
   el.appendChild(dot);
 };
+
+// ===== Match Stats helpers (avg throw/round + perfect rounds) =====
+(function(){
+  if (window.__matchStatsHelpers) return; // prevent double insert
+  window.__matchStatsHelpers = true;
+
+  // Gather all rounds (completed games + current in‑progress) for a player index
+  function __iterateAllRoundsForPlayer(playerIdx){
+    const acc = [];
+
+    // Completed games in the current match
+    const hist = (state && state.match && Array.isArray(state.match.history)) ? state.match.history : [];
+    hist.forEach(g => {
+      const board = g && g.board && g.board[playerIdx];
+      if (!board) return;
+      for (let r = 0; r < MAX_ROUNDS; r++){
+        const ent = board[r];
+        const rd  = ROUNDS[r];
+        if (!ent || !rd) continue;
+        const darts = Array.isArray(ent.darts) ? ent.darts : [];
+        // If roundTotal missing, compute from darts
+        const rt = Number(ent.roundTotal ?? darts.reduce((s,d)=> s + Number(d && d.points || 0), 0));
+        acc.push({ rd, darts, roundTotal: rt });
+      }
+    });
+
+    // Current (in‑progress) game
+    const curRows = (state && state.score && state.score[playerIdx]) ? state.score[playerIdx] : [];
+    for (let r = 0; r < (curRows ? curRows.length : 0); r++){
+      const ent = curRows[r];
+      const rd  = ROUNDS[r];
+      if (!ent || !rd) continue;
+      const darts = Array.isArray(ent.darts) ? ent.darts : [];
+      const rt = Number(ent.roundTotal ?? darts.reduce((s,d)=> s + Number(d && d.points || 0), 0));
+      acc.push({ rd, darts, roundTotal: rt });
+    }
+
+    return acc;
+  }
+
+  // Public API used by the modal fixer
+  window.computeMatchAverages = function computeMatchAverages(){
+    const players = (state && Array.isArray(state.players)) ? state.players : [];
+    return players.map((_, i) => {
+      const rounds = __iterateAllRoundsForPlayer(i);
+      let points = 0, throws = 0, perfect = 0;
+
+      rounds.forEach(({ rd, darts, roundTotal }) => {
+        const rt = Number(roundTotal || 0);
+        points += rt;
+
+        // Count darts actually thrown (includes misses)
+        const taken = (darts || []).filter(d => d !== null).length;
+        throws += taken;
+
+        // Perfect round = 3 darts, all on the intended target for that round
+        // number/doubles/triples: any scoring hit (points > 0) counts
+        // bull: only darts with kind === 'Bull' count
+        if (taken === 3){
+          let allHit = false;
+          if (rd.type === 'number' || rd.type === 'doubles' || rd.type === 'triples'){
+            allHit = darts.every(d => d && Number(d.points || 0) > 0);
+          } else if (rd.type === 'bull') {
+            allHit = darts.every(d => d && d.kind === 'Bull');
+          }
+          if (allHit) perfect++;
+        }
+      });
+
+      const avgThrow = throws ? (points / throws) : 0;
+      const avgRound = avgThrow * 3;
+      return { points, throws, avgThrow, avgRound, perfect };
+    });
+  };
+})();
+  
+// ===== Match Stats modal fixer (remove Avg Last 9, fix avgs, add Perfect Rounds) =====
+(function(){
+  if (window.__matchStatsModalFixer) return;
+  window.__matchStatsModalFixer = true;
+
+  function applyMatchStatsFix(root){
+    try{
+      // Find a modal with title "Match Stats"
+      const modal = root.querySelector('.modal');
+      if (!modal) return;
+      const h3 = modal.querySelector('h3');
+      if (!h3 || !/match stats/i.test((h3.textContent || '').trim())) return;
+
+      const table = modal.querySelector('table');
+      const tbody = table && table.querySelector('tbody');
+      if (!tbody) return;
+
+      const players = (state && Array.isArray(state.players)) ? state.players : [];
+      const P = players.length;
+      const stats = (typeof computeMatchAverages === 'function') ? computeMatchAverages() : players.map(()=>({avgThrow:0,avgRound:0,perfect:0}));
+
+      // helpers
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      const getRow = (label) => rows.find(tr => (tr.firstElementChild && (tr.firstElementChild.textContent || '').trim().toLowerCase()) === label.toLowerCase());
+      const setRowVals = (tr, values, fmt = (v)=>String(v)) => {
+        if (!tr) return;
+        for (let i = 0; i < P; i++){
+          const td = tr.children[1 + i]; // first col is label
+          if (td) td.textContent = fmt(values[i] ?? 0);
+        }
+      };
+
+      // Remove "Avg Last 9" (keep it in Game Stats only)
+      const avg9 = getRow('Avg Last 9');
+      if (avg9) avg9.remove();
+
+      // Update Avg Throw / Avg Round from computed values
+      const rAvgT = getRow('Avg Throw');
+      const rAvgR = getRow('Avg Round');
+      setRowVals(rAvgT, stats.map(s => s.avgThrow), v => (Number(v)||0).toFixed(1));
+      setRowVals(rAvgR, stats.map(s => s.avgRound), v => (Number(v)||0).toFixed(1));
+
+      // Insert "Perfect Rounds" after "Round Streak" (or at the end if not found)
+      const afterRow = getRow('Round Streak') || rows[rows.length - 1];
+      const existingPR = getRow('Perfect Rounds');
+      const valuesPR = stats.map(s => s.perfect);
+
+      if (existingPR) {
+        // just update values if it already exists
+        setRowVals(existingPR, valuesPR);
+      } else {
+        // create the row
+        const tr = document.createElement('tr');
+        const tdLabel = document.createElement('td');
+        tdLabel.textContent = 'Perfect Rounds';
+        tr.appendChild(tdLabel);
+        for (let i = 0; i < P; i++){
+          const td = document.createElement('td');
+          td.textContent = String(valuesPR[i] || 0);
+          tr.appendChild(td);
+        }
+        if (afterRow && afterRow.parentElement) {
+          afterRow.insertAdjacentElement('afterend', tr);
+        } else {
+          tbody.appendChild(tr);
+        }
+      }
+    } catch(e){
+      console.error('applyMatchStatsFix error', e);
+    }
+  }
+
+  // Observe for modal creation; patch when Match Stats dialog appears
+  const mo = new MutationObserver(muts => {
+    for (const m of muts){
+      for (const n of m.addedNodes){
+        if (n.nodeType === 1 && n.classList.contains('modal-backdrop')){
+          // let the dialog render, then patch
+          setTimeout(() => applyMatchStatsFix(n), 0);
+        }
+      }
+    }
+  });
+  try { mo.observe(document.body, { childList: true, subtree: true }); } catch(_) {}
+})();
 
 </script>
 </body>
