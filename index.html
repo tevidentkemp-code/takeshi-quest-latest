@@ -737,6 +737,22 @@
   padding: 6px 8px;
   white-space: nowrap;
 }
+/* Match ticker sits above the game ticker */
+#psTickerMatch{
+  width: 100vw;
+  max-width: none;
+  margin: 12px 0 0;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  overflow: hidden;
+  border: 1px solid #2a2e48;
+  border-radius: 12px;
+  background: linear-gradient(180deg,#14183a,#0f1329);
+  padding: 6px 8px;
+  white-space: nowrap;
+}
+
+
 #psTicker.hidden { display: none; }
 #psTicker .track{
   display: inline-block;
@@ -747,6 +763,18 @@
   animation: psTickerScroll 105s linear infinite; /* slow */
   will-change: transform;
 }
+
+/* Slightly faster than the game ticker */
+#psTickerMatch .track{
+  display: inline-block;
+  white-space: nowrap;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  animation: psTickerScroll 88s linear infinite; /* games are ~105s */
+  will-change: transform;
+}
+
 @keyframes psTickerScroll {
   0%   { transform: translateX(100%); }
   100% { transform: translateX(-100%); }
@@ -765,6 +793,16 @@ body[data-page="details"] #psTicker{
   border-left: 0;
   border-right: 0;
   z-index: 300000;
+}
+
+body[data-page="details"] #psTickerMatch{
+  position: fixed;
+  left: 0; right: 0;
+  bottom: 40px;              /* tiny gap above game ticker */
+  margin: 0;
+  border-radius: 0;
+  border-left: 0; border-right: 0;
+  z-index: 300001;           /* above the game ticker */
 }
 
 /* === Triple-Trebles celebration overlay === */
@@ -803,6 +841,10 @@ body[data-page="details"] #psTicker{
 </div> <!-- CLOSE .start-actions -->
 
 <!-- Start-screen rolling banner: last 10 completed games -->
+
+<!-- Start-screen rolling banner: last 10 completed matches -->
+<div id="psTickerMatch" class="hidden"><div class="track"></div></div>
+
 <div id="psTicker" class="hidden"><div class="track"></div></div>
 </section>
 
@@ -8251,24 +8293,24 @@ async function openAllGamesDialog(){
 
     // Tight first column
     const colgroup = document.createElement('colgroup');
-// Actions (delete) column first
-const cAct = document.createElement('col'); cAct.style.width = '1%'; colgroup.appendChild(cAct);
-// Index column (#)
-const cIdx = document.createElement('col'); cIdx.style.width = '3ch'; colgroup.appendChild(cIdx);
-// When, Players, Totals
-colgroup.appendChild(document.createElement('col'));
-colgroup.appendChild(document.createElement('col'));
-colgroup.appendChild(document.createElement('col'));
-table.appendChild(colgroup);
+    // Actions (delete) column first — give it enough width for the button label
+    const cAct = document.createElement('col'); cAct.style.width = '88px'; colgroup.appendChild(cAct);
+    // Index column (#)
+    const cIdx = document.createElement('col'); cIdx.style.width = '3ch'; colgroup.appendChild(cIdx);
+    // When, Players, Totals
+    colgroup.appendChild(document.createElement('col'));
+    colgroup.appendChild(document.createElement('col'));
+    colgroup.appendChild(document.createElement('col'));
+    table.appendChild(colgroup);
 
     const thead=document.createElement('thead'); const trh=document.createElement('tr');
-['', '#','When','Players','Totals'].forEach((h,i)=>{
-  const th=document.createElement('th'); th.textContent=h;
-  if(i===1) th.style.width='3ch'; // # column
-  if(i===0) th.style.width='1%';  // delete column
-  trh.appendChild(th);
-});
-thead.appendChild(trh); table.appendChild(thead);
+    ['', '#','When','Players','Totals'].forEach((h,i)=>{
+      const th=document.createElement('th'); th.textContent=h;
+      if(i===1) th.style.width='3ch'; // # column
+      if(i===0) th.style.width='88px';  // delete column
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh); table.appendChild(thead);
 
     const tb=document.createElement('tbody');
     games.forEach((g, idx)=>{
@@ -9613,6 +9655,81 @@ window.setCloudStatus = function setCloudStatus(state, msg){
     catch(e){ console.error('refreshPBGRCloud failed', e); return null; }
   };
 })();
+
+// === Start Screen: Match Ticker (last 10 completed matches) ===
+(function(){
+  async function buildMatchTicker(){
+    const wrap  = document.getElementById('psTickerMatch');
+    const track = wrap ? wrap.querySelector('.track') : null;
+    if (!wrap || !track) return;
+
+    let items = [];
+    try{
+      const list = await (typeof getMatchesOfficial === 'function'
+        ? getMatchesOfficial()
+        : Promise.resolve([]));
+
+      const toTS = (m)=>{
+        const t = m?.ts || m?.created_at || m?.inserted_at || (m?.meta && (m.meta.ts || m.meta.date)) || null;
+        const n = t ? Date.parse(t) : NaN;
+        return Number.isFinite(n) ? n : 0;
+      };
+      (list || []).sort((a,b)=> toTS(b) - toTS(a));
+      const last10 = (list || []).slice(0, 10);
+
+      const infer = (m)=>{
+        const names = (m?.players || [])
+          .map(p => (typeof p === 'string' ? p : (p && p.name) || ''))
+          .filter(Boolean);
+
+        let wins = {};
+        if (m && typeof m.wins==='object') wins = m.wins;
+        else if (m && typeof m.winMap==='object') wins = m.winMap;
+        else if (Array.isArray(m?.history) || Array.isArray(m?.games)){
+          const games = Array.isArray(m.history) ? m.history : m.games;
+          const cnt = Object.create(null); names.forEach(n => cnt[n] = 0);
+          for (const g of games){
+            const totals = Array.isArray(g?.totals) ? g.totals : (Array.isArray(g?.scores)? g.scores : null);
+            if (Array.isArray(totals) && totals.length === names.length){
+              let max=-Infinity, idx=-1;
+              for (let i=0;i<totals.length;i++){
+                const v = Number(totals[i] || 0);
+                if (v > max){ max = v; idx = i; }
+              }
+              if (idx >= 0) cnt[names[idx]] = (cnt[names[idx]] || 0) + 1;
+            }
+          }
+          wins = cnt;
+        }
+
+        const entries = Object.entries(wins).sort((a,b)=> (b[1]||0)-(a[1]||0));
+        if (entries.length >= 2) return { a: entries[0][0], b: entries[1][0], score: `${entries[0][1]}-${entries[1][1]}` };
+        const a = names[0] || '—', b = names[1] || '—';
+        return { a, b, score: '' };
+      };
+
+      items = last10.map((m,i)=>{
+        const r = infer(m);
+        return `Match ${i+1} - ${r.a}${r.score ? ' beat ' + r.b + ' ' + r.score : ' vs ' + r.b}`;
+      });
+    }catch(e){
+      console.error('buildMatchTicker', e);
+      items = [];
+    }
+
+    if (!items.length){ wrap.classList.add('hidden'); return; }
+    track.textContent = items.join('  //  ');
+    wrap.classList.remove('hidden');
+  }
+
+  document.addEventListener('DOMContentLoaded', ()=>{
+    try{ if (typeof window.buildStartTicker === 'function') window.buildStartTicker(); }catch(_){}
+    buildMatchTicker();
+  });
+
+  window.buildMatchTicker = buildMatchTicker;
+})();
+
 
 </script>
 <!-- PB / GR Admin Modal -->
