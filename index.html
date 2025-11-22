@@ -453,15 +453,14 @@
   font-weight:900;
   line-height:1.1;
 }
-#scoreWrap .cell-sub{
-  display:block !important;
-  font-size:.9rem;
-  font-weight:700;
-  color: var(--accent-2);
-  line-height:1.1;
-}
-/* TEMP: disable PB/GR badges on the scoreboard only */
-#scoreWrap .pbgr { display: none !important; }
+  #scoreWrap .cell-sub{
+    display:block !important;
+    font-size:.9rem;
+    font-weight:700;
+    color: var(--accent-2);
+    line-height:1.1;
+  }
+
 
 /* Per-dart markers under each round score */
 .cell-throws{
@@ -538,6 +537,29 @@
   .modal h3{ margin:0 0 8px 0; font-size:1.02rem }
   .modal-body{ max-height:60vh; overflow:auto; padding-right:2px; }
   .modal-footer{ margin-top:10px; display:flex; gap:8px; }
+
+  /* Game Complete popup hierarchy */
+  .modal.game-complete h3.gc-title{
+    font-size:1rem;
+    font-weight:600;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    opacity:.9;
+  }
+
+  .modal.game-complete .gc-result{
+    margin-top:6px;
+    margin-bottom:10px;
+    font-size:1.35rem;
+    font-weight:700;
+  }
+
+  .modal.game-complete .gc-standings{
+    margin-top:4px;
+    font-size:.9rem;
+    opacity:.9;
+  }
+
   .hs-table{ width:100%; border-collapse:separate; border-spacing:0 }
   .hs-table th, .hs-table td{ padding:.5rem .5rem; border-bottom:1px dashed #23284a; }
   .hs-table th{ text-align:left; color:#cfd3ee; }
@@ -1199,6 +1221,10 @@ body[data-page="details"] #psTickerMatch{
       <span id="cloudStatusText">Checking cloud…</span>
     </div>
     <script>
+// Global guard: some third‑party embeds reference a global `F`; define a harmless fallback
+if (typeof window.F === 'undefined') {
+  window.F = function(){ /* no-op */ };
+}
 function bindScoreHeaderScrollSync(){
   const scoreWrap = document.getElementById('scoreWrap');
   const floatWrap = document.getElementById('floatWrap');
@@ -1368,8 +1394,47 @@ function injectThrowMarkers(){
   return;
 }
 function setupRoundScoreObserver(){
-  // Reverted: no DOM rewrites needed after render.
-  return;
+  // PB/GR disabled on the scoreboard: scrub any tokens that might be rendered by legacy code
+  const tbody = document.getElementById('tbody');
+  if (!tbody) { setTimeout(setupRoundScoreObserver, 250); return; }
+
+  function scrub(){
+    const subs = tbody.querySelectorAll('.cell-sub');
+    subs.forEach(sub => {
+      // Flatten to plain text and strip (PB) / (GR) tokens, preserving the round score e.g. (30)
+      const raw = (sub.textContent || '');
+      const cleaned = raw
+        .replace(/\s*\(PB\)\s*/gi, ' ')
+        .replace(/\s*\(GR\)\s*/gi, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      if (cleaned !== raw) sub.textContent = cleaned;
+
+      // Remove any leftover elements used by older implementations
+      sub.querySelectorAll('.pbgr, .pb-badge').forEach(n => {
+        try {
+          // If it wraps text like "(30) (PB) (GR)", keep the text but without tokens
+          const txt = (n.textContent || '')
+            .replace(/\s*\(PB\)\s*/gi, ' ')
+            .replace(/\s*\(GR\)\s*/gi, ' ')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+          n.replaceWith(document.createTextNode(txt));
+        } catch(_) { try { n.remove(); } catch(_){} }
+      });
+    });
+  }
+
+  // Observe scoreboard updates and continuously scrub
+  try {
+    const mo = new MutationObserver(() => scrub());
+    mo.observe(tbody, { childList: true, subtree: true, characterData: true });
+  } catch(_){}
+
+  // Initial + delayed passes
+  scrub();
+  setTimeout(scrub, 300);
+  setTimeout(scrub, 1000);
 }
 // --- Global high-score de-dup helpers ---
 function _keyNameScore(row){
@@ -1844,8 +1909,80 @@ async function cloudRenamePlayer(oldName, newName){
   if (error) { markCloudError(error); throw error; }
   markCloudOk();
 }
+
+// Game Complete modal hierarchy tweak (title + big result + smaller standings)
+(function(){
+  if (window.__gameCompleteModalPatch) return;
+  window.__gameCompleteModalPatch = true;
+
+  function patchGameCompleteModal(root){
+    try{
+      const modal = root.querySelector('.modal');
+      if (!modal) return;
+
+      const titleEl = modal.querySelector('h3');
+      if (!titleEl) return;
+      const titleText = (titleEl.textContent || '').trim();
+      if (!/game complete/i.test(titleText)) return; // only touch the Game Complete popup
+
+      // Tag modal + title for CSS
+      modal.classList.add('game-complete');
+      titleEl.classList.add('gc-title');
+
+      const body = modal.querySelector('.modal-body') || modal;
+      if (!body) return;
+
+      // Find the existing winners line (WINNER: / JOINT WINNERS: ...)
+      const children = Array.from(body.children || []);
+      let resultEl = children.find(el => /winner/i.test((el.textContent || '')));
+
+      // Fallback: first strong/heading that mentions winner
+      if (!resultEl){
+        const candidate = body.querySelector('strong, h1, h2, h3');
+        if (candidate && /winner/i.test((candidate.textContent || ''))) {
+          resultEl = candidate;
+        }
+      }
+
+      if (resultEl){
+        resultEl.classList.add('gc-result');
+      }
+
+      // Style the standings list (ordered or unordered list)
+      const list = body.querySelector('ol, ul');
+      if (list){
+        list.classList.add('gc-standings');
+      }
+    } catch(e){
+      console.error('patchGameCompleteModal error', e);
+    }
+  }
+
+  // Watch for modals being added; when a Game Complete popup appears, patch it
+  const mo = new MutationObserver(muts => {
+    for (const m of muts){
+      for (const n of m.addedNodes){
+        if (!(n instanceof HTMLElement)) continue;
+        if (n.classList.contains('modal-backdrop')){
+          // Let the modal render fully, then patch it
+          setTimeout(() => patchGameCompleteModal(n), 0);
+        }
+      }
+    }
+  });
+
+  try {
+    mo.observe(document.body, { childList: true, subtree: true });
+  } catch(_) {}
+})();
+
       console.log('SQ build: script wrapped OK');
 if (!window.buildStartTicker) { window.buildStartTicker = async function(){}; }
+
+// Start PB annotation on load (safe to call multiple times)
+document.addEventListener('DOMContentLoaded', () => {
+  try { setupRoundScoreObserver(); } catch(_) {}
+});
 // --- Stepper bootstrap (must exist before any DOMContentLoaded references) ---
 (function(){
   if (typeof window.initSetupSteppers === 'function') return;
@@ -2042,15 +2179,13 @@ if (!window.buildStartTicker) { window.buildStartTicker = async function(){}; }
     else alert('Coming soon');
   };
 
-  // HIGH SCORES (Game)
-  let hsGameBtn =
-    getBtn('#highScoresMenuBtn', '#highScoresBtn', /^high\s*scores$/i, /^high\s*scores\s*\(game\)$/i);
-  if (!hsGameBtn) hsGameBtn = mkBtn('highScoresMenuBtn', 'High Scores (Game)', () => openHighScoresMenuDialog && openHighScoresMenuDialog(false));
-  else hsGameBtn.textContent = 'High Scores (Game)';
-
-  // HIGH SCORES (Round) — ensureRoundHSStartBtn normally creates this
-  let hsRoundBtn = getBtn('#roundHighScoresBtn', /^round\s*high\s*scores$/i, /^high\s*scores\s*\(round\)$/i);
-  if (!hsRoundBtn) hsRoundBtn = mkBtn('roundHighScoresBtn', 'High Scores (Round)', () => openRoundHighScoresDialog && openRoundHighScoresDialog());
+  // HIGH SCORES (Hub)
+  let hsHubBtn = getBtn('#hsMainBtn', /^high\s*scores$/i);
+  if (!hsHubBtn) hsHubBtn = mkBtn('hsMainBtn', 'High Scores', () => openHighScoresHubDialog());
+  else {
+    hsHubBtn.textContent = 'High Scores';
+    hsHubBtn.onclick = () => openHighScoresHubDialog();
+  }
 
   // PLAYER STATS
   let statsBtn =
@@ -2096,8 +2231,7 @@ if (!window.buildStartTicker) { window.buildStartTicker = async function(){}; }
   append(crownBtn);
   stack.appendChild(sep());
 
-  append(hsGameBtn);
-  append(hsRoundBtn);
+  append(hsHubBtn);
   stack.appendChild(sep());
 
   append(statsBtn);
@@ -2117,6 +2251,55 @@ if (!window.buildStartTicker) { window.buildStartTicker = async function(){}; }
     b.style.marginRight = 'auto';
   });
 })();
+
+// Start screen: simple High Scores hub (two choices)
+function openHighScoresHubDialog(){
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal   = document.createElement('div'); modal.className = 'modal';
+  const title   = document.createElement('h3');  title.textContent = 'High Scores';
+  const body    = document.createElement('div'); body.className = 'modal-body';
+  const col     = document.createElement('div'); col.className = 'column'; col.style.gap = '8px';
+
+  const btnMatch = document.createElement('button');
+  btnMatch.className = 'btn big';
+  btnMatch.textContent = 'High Scores (Match)';
+  btnMatch.onclick = () => {
+    try {
+      if (typeof openHighScoresMenuDialog === 'function') openHighScoresMenuDialog(false);
+      else if (typeof openHighScoresMenu === 'function') openHighScoresMenu(false);
+      else if (typeof openHighScoresDialog === 'function') openHighScoresDialog(false);
+      else if (typeof toast === 'function') toast('Match high scores not available');
+      else alert('Match high scores not available');
+    } finally { overlay.remove(); }
+  };
+
+  const btnRound = document.createElement('button');
+  btnRound.className = 'btn big';
+  btnRound.textContent = 'High Scores (Round)';
+  btnRound.onclick = () => {
+    try {
+      if (typeof openRoundHighScoresDialog === 'function') openRoundHighScoresDialog();
+      else if (typeof toast === 'function') toast('Round high scores not available');
+      else alert('Round high scores not available');
+    } finally { overlay.remove(); }
+  };
+
+  col.append(btnMatch, btnRound);
+  body.appendChild(col);
+
+  const footer = document.createElement('div'); footer.className = 'modal-footer';
+  const close  = document.createElement('button'); close.className = 'btn'; close.textContent = 'Close';
+  close.onclick = () => overlay.remove();
+  footer.appendChild(close);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  modal.tabIndex = 0; modal.focus();
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') overlay.remove(); });
+}
 
       // Prevent duplicate bindings (which caused skipping: 1→3→5…)
       if (stepper.dataset.bound === '1') return;
@@ -10299,7 +10482,5 @@ function ensureLatestScoresButton(){
   </div>
   
 </div>
-
-
 </body>
 </html>
