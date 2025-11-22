@@ -553,6 +553,17 @@
   .compact .btn { padding: 4px 8px; font-weight: 600; }
   .compact table th, .compact table td { padding: .35rem .4rem; }
   
+  
+  /* Latest Scores table tweaks */
+.table-wrap th.col-idx, .table-wrap td.col-idx{
+  width:1%;
+  white-space:nowrap;
+  text-align:center;
+}
+.table-wrap th.when-col, .table-wrap td.when-col{
+  white-space:nowrap;
+}
+  
   </style>
 <style>
   /* Cloud status pill (top-right) */
@@ -825,9 +836,10 @@ body[data-page="details"] #psTickerMatch{
         <button id="questBtn" class="btn primary big" type="button">New game ▶</button>
         <button id="resumeBtn" class="btn good big" type="button" disabled title="No saved match">Resume game ▶</button>
 
-        <div class="row" style="justify-content:center; gap:8px; flex-wrap:wrap; margin-top:4px;">
+<div class="row" style="justify-content:center; gap:8px; flex-wrap:wrap; margin-top:4px;">
   <button id="hsMainBtn" class="btn" type="button">High Scores</button>
-  <button id="shotgunBtn" class="btn" type="button">Shotgun Leaderboard</button>
+  <button id="latestScoresBtn" class="btn" type="button">Latest Scores</button>
+  <button id="shotgunBtn" class="btn" type="button">The Crown League</button>
   <button id="playerStatsBtn" class="btn" type="button">Player Stats</button>
 </div>
 
@@ -1106,6 +1118,20 @@ body[data-page="details"] #psTickerMatch{
 
         <button id="closeAdminHubBtn" class="btn" type="button" style="width:min(360px,92%);">Return</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- All Games Modal -->
+<div id="allGamesModal" class="modal-backdrop hidden">
+  <div class="modal compact">
+    <h3>All Games</h3>
+    <div class="modal-body" id="allGamesBody">
+      <div id="allGamesTableWrap"></div>
+    </div>
+    <div class="modal-footer">
+      <button id="allGamesBackBtn" class="btn" type="button">Back</button>
+      <button id="allGamesCloseBtn" class="btn" type="button">Close</button>
     </div>
   </div>
 </div>
@@ -1439,6 +1465,145 @@ function openAdminHub(){
 
   if (btnClose) btnClose.onclick = ()=>{ hub.classList.add('hidden'); };
 }
+
+// === All Games modal (simple list) ===
+function openAllGamesDialog(){
+  const modal = document.getElementById('allGamesModal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+
+  const wrap   = document.getElementById('allGamesTableWrap');
+  const back   = document.getElementById('allGamesBackBtn');
+  const close  = document.getElementById('allGamesCloseBtn');
+  if (back)  back.onclick  = () => { modal.classList.add('hidden'); openAdminHub(); };
+  if (close) close.onclick = () => { modal.classList.add('hidden'); };
+
+  // Hard cleanup: remove any rogue Official/Practice filter buttons injected by older code
+  function __stripAllGamesFilterButtons(){
+    try{
+      const btns = Array.from(modal.querySelectorAll('button'));
+      btns.forEach(b=>{
+        const t = (b.textContent || '').trim().toLowerCase();
+        if (t === 'official' || t === 'practice') {
+          b.remove();
+        }
+      });
+      // If their parent container is now empty and only existed for those buttons, remove it too
+      Array.from(modal.querySelectorAll('.filters, .row, .header, div')).forEach(node=>{
+        if (!node || node === modal) return;
+        // Only consider small containers near the heading
+        const isSmall = node.childElementCount <= 1;
+        if (isSmall) {
+          const hasButtons = Array.from(node.querySelectorAll('button')).length === 0;
+          if (hasButtons && /^\s*$/.test(node.textContent || '')) {
+            // empty and had no other content
+            // (wrapped containers that are now empty)
+            try { node.remove(); } catch(_) {}
+          }
+        }
+      });
+    }catch(_){}
+  }
+  __stripAllGamesFilterButtons();
+
+  const toTS = (g)=> {
+    const t = g?.ts || g?.created_at || g?.inserted_at || (g?.meta && (g.meta.ts || g.meta.date)) || null;
+    const n = t ? Date.parse(t) : NaN;
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  async function render(){
+    if (wrap) wrap.innerHTML = '<p class="tag">Loading…</p>';
+
+    let games = [];
+    try { games = await cloudFetchAllGamesAsLocal(); } catch(e){ console.error(e); }
+
+    games = (games || []).filter(Boolean).sort((a,b)=> toTS(b) - toTS(a));
+
+    // Build table
+    const table = document.createElement('table');
+    table.className = 'hs-table';
+
+    const colgroup = document.createElement('colgroup');
+    const maxDigits = Math.max(2, String(games.length || 0).length);
+    const colNum  = document.createElement('col');  colNum.style.width  = `${Math.min(3, maxDigits)}ch`;
+    const colWhen = document.createElement('col');  colWhen.style.width = '10ch';
+    const colRes  = document.createElement('col');
+    colgroup.append(colNum, colWhen, colRes);
+    table.appendChild(colgroup);
+
+    const thead = document.createElement('thead');
+    const trh   = document.createElement('tr');
+    ['#','When','Result'].forEach(h => {
+      const th = document.createElement('th'); th.textContent = h; trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    games.forEach((g, idx) => {
+      const tr  = document.createElement('tr');
+
+      // #
+      const td1 = document.createElement('td'); td1.textContent = String(idx + 1);
+
+      // When (locale short form; original behaviour)
+      const td2 = document.createElement('td');
+      const tsVal = g.ts || g.created_at || g.inserted_at || (g.meta && (g.meta.ts || g.meta.date)) || null;
+      if (tsVal){
+        const d = new Date(tsVal);
+        td2.textContent = !Number.isNaN(d.getTime())
+          ? d.toLocaleString(undefined,{year:'2-digit',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'})
+          : '';
+      } else {
+        td2.textContent = '';
+      }
+
+      // Result
+      const players = (g.players || []).map(p => (p && p.name) ? p.name : '');
+      const totals  = Array.isArray(g.totals) ? g.totals : [];
+      const ordered = players
+        .map((name, i) => ({ name, score: Number(totals[i] || 0) }))
+        .filter(x => x.name)
+        .sort((a, b) => b.score - a.score);
+
+      let result = '—';
+      if (ordered.length >= 2) {
+        result = `${ordered[0].name} ${ordered[0].score} beat ${ordered[1].name} ${ordered[1].score}`;
+        if (ordered.length > 2) {
+          result += ' ' + ordered.slice(2).map(o => `${o.name} ${o.score}`).join(' ');
+        }
+      } else if (ordered.length === 1) {
+        result = `${ordered[0].name} ${ordered[0].score}`;
+      }
+
+      const td3 = document.createElement('td'); td3.textContent = result;
+
+      tr.append(td1, td2, td3);
+
+      // Click row to open the score sheet if available
+      tr.style.cursor = 'pointer';
+      tr.title = 'Open score sheet';
+      tr.onclick = () => { try { if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(g); } catch(_) {} };
+
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+
+    if (wrap) {
+      wrap.innerHTML = '';
+      const tw = document.createElement('div'); tw.className = 'table-wrap';
+      tw.appendChild(table);
+      wrap.appendChild(tw);
+      // After DOM insert, clean up any rogue filter buttons
+      __stripAllGamesFilterButtons();
+    }
+  }
+
+  render();
+}
 // --- PB / GR Admin: open/close + minimal render ---
 function openPBGRAdminDialog(){
   const modal = document.getElementById('pbgrAdminModal');
@@ -1508,17 +1673,15 @@ async function renderPBGRTableInto(mountId){
 
     const fmtDate = (ts) => {
       if (!ts) return '—';
-      try{
-        const d = new Date(ts);
-        if (isNaN(d)) return '—';
-        return d.toLocaleString('en-GB', {
-          year: 'numeric',
-          month: 'short',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-      }catch(_){ return '—'; }
+      const d = new Date(ts);
+      if (Number.isNaN(d.getTime())) return '—';
+      return d.toLocaleString('en-GB', {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
     };
 
     const pending = [];
@@ -1549,13 +1712,11 @@ async function renderPBGRTableInto(mountId){
       if (!meta?.ts && meta?.game_id){
         pending.push(
           (async ()=>{
-            // 1) game-level timestamp
             const gts = await fetchGameTS(meta.game_id);
             if (gts){
               tdT.textContent = fmtDate(gts);
               return;
             }
-            // 2) earliest throw for this player/round
             if (meta.player && (meta.ridx || meta.ridx === 0)){
               const rts = await fetchRoundTS(meta.game_id, meta.player, meta.ridx);
               if (rts) tdT.textContent = fmtDate(rts);
@@ -2072,49 +2233,6 @@ function syncStartTitleWidth(){
   const w = Math.ceil(t.getBoundingClientRect().width);
   document.documentElement.style.setProperty('--title-w', w + 'px');
   
-}
-// Return games for a mode, merging local + cloud
-async function getGamesForMode(mode) {
-  const localGames = getGameLog() || [];
-  let cloudGames = [];
-
-  // Try primary cloud source if available
-  try {
-    if (typeof cloudFetchAllGamesAsLocal === 'function') {
-      cloudGames = await cloudFetchAllGamesAsLocal();
-    }
-  } catch (_) {
-    // ignore and fall back
-  }
-
-  // Fallback: synthesize from high scores if no cloud list is available
-  if ((!cloudGames || cloudGames.length === 0) && typeof cloudSynthAllGamesFromHighScores === 'function') {
-    try {
-      cloudGames = await cloudSynthAllGamesFromHighScores(500);
-    } catch (_) {
-      // ignore completely; we'll just use local
-    }
-  }
-
-  // Merge & de‑dup with a stable, source‑agnostic key (prefer cloud over local)
-  const map = new Map();
-  const stableKey = (g) => {
-    const players = (g.players || [])
-      .map(p => (p && p.name) ? String(p.name).trim().toLowerCase() : '')
-      .join(',');
-    return [g.ts || '', players, (g.totals || []).join(',')].join('|');
-  };
-
-  // Place cloud first so it wins dedupe collisions
-  [...(cloudGames || []), ...(localGames || [])].forEach(g => {
-    if (!g) return;
-    const key = stableKey(g);
-    if (!map.has(key)) map.set(key, g);
-  });
-
-  const all = [...map.values()];
-  const filterFn = (mode === 'official') ? isOfficialGame : isPracticeGame;
-  return all.filter(filterFn);
 }
 
 // Return matches for official mode, merging local + cloud
@@ -6475,7 +6593,7 @@ if (roundLabelEl) {
         totalEl.classList.add('leader-total');
       }
     }
-
+F
     // Diff
     const diffEl = byId('fdiff-' + i);
     if (diffEl) {
@@ -8277,13 +8395,102 @@ async function openAllGamesDialog(){
   const body    = document.createElement('div'); body.className='modal-body';
   const footer  = document.createElement('div'); footer.className='modal-footer';
 
+  // Header with filter controls (top-right)
+  const header = document.createElement('div');
+  header.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:8px;';
+  const controls = document.createElement('div');
+  controls.style.cssText = 'display:flex; gap:6px;';
+  const officialBtn = document.createElement('button'); officialBtn.className='btn primary'; officialBtn.textContent='Official';
+  const practiceBtn = document.createElement('button'); practiceBtn.className='btn';          practiceBtn.textContent='Practice';
+  controls.append(officialBtn, practiceBtn);
+  header.append(title, controls);
+
+  // Filter state + saved players cache
+  let filterMode = 'official';
+  let savedSet = null;
+  async function getSavedSet(){
+    try{
+      if (savedSet) return savedSet;
+      const players = await (typeof cloudListPlayers === 'function' ? cloudListPlayers() : []);
+      savedSet = new Set((players||[]).map(p => String(p?.name || '').trim().toLowerCase()).filter(Boolean));
+      return savedSet;
+    }catch(_){
+      savedSet = new Set();
+      return savedSet;
+    }
+  }
+
+  // Wire filter buttons
+  officialBtn.onclick = async ()=>{
+    filterMode = 'official';
+    officialBtn.className = 'btn primary';
+    practiceBtn.className = 'btn';
+    await render();
+  };
+  practiceBtn.onclick = async ()=>{
+    filterMode = 'practice';
+    practiceBtn.className = 'btn primary';
+    officialBtn.className = 'btn';
+    await render();
+  };
+
   async function render(){
     body.innerHTML = '';
 
-    // Cloud-only (no local merge)
-    let games = [];
-    try { games = await cloudFetchAllGamesAsLocal(); } catch(e){ console.error(e); }
-    games = (games || []).sort((a,b)=> new Date(b.ts) - new Date(a.ts));
+    // Merge cloud + synthetic (extend beyond any cloud page limits)
+    let cloudGames = [];
+    try { cloudGames = await cloudFetchAllGamesAsLocal(); } catch(e){ console.error(e); }
+
+    let synthGames = [];
+    try {
+      if (typeof cloudSynthAllGamesFromHighScores === 'function') {
+        synthGames = await cloudSynthAllGamesFromHighScores(2000);
+      }
+    } catch(e){ console.warn('synth backfill failed', e); }
+
+    const toTS = (g)=> {
+      const t = g?.ts || g?.created_at || g?.inserted_at || (g?.meta && (g.meta.ts || g.meta.date)) || null;
+      const n = t ? Date.parse(t) : NaN;
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const stableKey = (g) => {
+      const names = (g?.players || [])
+        .map(p => (typeof p === 'string' ? p : (p && p.name) || ''))
+        .map(s => String(s || '').trim().toLowerCase())
+        .filter(Boolean);
+      return [String(toTS(g)), names.join(','), (g?.totals || []).join(',')].join('|');
+    };
+
+    // Cloud wins over synth; both over any local (reads are cloud-only anyway)
+    const map = new Map();
+    (cloudGames || []).forEach(g => { if (!g) return; map.set(stableKey(g), g); });
+    (synthGames || []).forEach(g => { if (!g) return; const k = stableKey(g); if (!map.has(k)) map.set(k, g); });
+
+    let games = Array.from(map.values());
+
+    // Build saved players set for robust Official/Practice classification
+    const sset = await getSavedSet();
+    const savedAvailable = !!(sset && sset.size);
+
+    games = (games || [])
+      .filter(Boolean)
+      .sort((a,b)=> toTS(b) - toTS(a))
+      .filter(g => {
+        const names = (g.players || [])
+          .map(p => (typeof p === 'string' ? p : (p && p.name) || ''))
+          .map(s => String(s || '').trim())
+          .filter(Boolean);
+        if (!savedAvailable) {
+          // Fallback: if we can't tell saved vs guest, treat 2+ players as Official
+          const officialSimple = names.length >= 2;
+          return (filterMode === 'official') ? officialSimple : !officialSimple;
+        }
+        const savedCount = names.reduce((acc,n)=> acc + (sset.has(n.toLowerCase()) ? 1 : 0), 0);
+        const isOfficial = (names.length >= 2 && savedCount >= 2);
+        const isPractice = (names.length === 1) || (savedCount < 2);
+        return (filterMode === 'official') ? isOfficial : isPractice;
+      });
 
     if (!games.length){
       const p=document.createElement('p'); p.textContent='No games found.'; body.appendChild(p); return;
@@ -8317,31 +8524,29 @@ async function openAllGamesDialog(){
       const tr=document.createElement('tr');
 
       const td1=document.createElement('td'); td1.textContent=String(idx+1); td1.style.width='3ch';
-      const td2=document.createElement('td');
-      const d=new Date(g.ts);
-      td2.textContent = (!Number.isNaN(d.getTime()))
-        ? d.toLocaleString(undefined,{year:'2-digit',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'})
-        : '';
+      const td2 = document.createElement('td');
+      const tsVal = g.ts || g.created_at || g.inserted_at || (g.meta && (g.meta.ts || g.meta.date)) || null;
+      td2.textContent = (window.fmtWhen && tsVal) ? window.fmtWhen(tsVal) : '';
       const td3=document.createElement('td'); td3.textContent=(g.players||[]).map(p=>p?.name||'').join(', ');
       const td4=document.createElement('td'); td4.textContent=(g.totals||[]).join(' · ');
 
-// Delete button as first column
-const tdDel=document.createElement('td'); tdDel.className='center';
-const delBtn=document.createElement('button'); delBtn.className='btn small danger'; delBtn.textContent='Delete';
-delBtn.title='Delete this game';
-delBtn.onclick = async (e) => {
-  e.stopPropagation();
-  if (!confirm('Delete this game from cloud (and related high-score rows)?')) return;
-  try { await cloudDeleteGameCascade(g); toast('Game deleted'); await render(); }
-  catch(err){ console.error(err); toast('Delete failed'); }
-};
-tdDel.appendChild(delBtn);
+      // Delete button as first column
+      const tdDel=document.createElement('td'); tdDel.className='center';
+      const delBtn=document.createElement('button'); delBtn.className='btn small danger'; delBtn.textContent='Delete';
+      delBtn.title='Delete this game';
+      delBtn.onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this game from cloud (and related high-score rows)?')) return;
+        try { await cloudDeleteGameCascade(g); toast('Game deleted'); await render(); }
+        catch(err){ console.error(err); toast('Delete failed'); }
+      };
+      tdDel.appendChild(delBtn);
 
-tr.style.cursor='pointer';
-tr.title='Open score sheet';
-tr.onclick=()=>{ if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(g); };
+      tr.style.cursor='pointer';
+      tr.title='Open score sheet';
+      tr.onclick=()=>{ if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(g); };
 
-tr.append(tdDel, td1, td2, td3, td4); tb.appendChild(tr);
+      tr.append(tdDel, td1, td2, td3, td4); tb.appendChild(tr);
     });
 
     table.appendChild(tb); body.appendChild(table);
@@ -8354,7 +8559,7 @@ tr.append(tdDel, td1, td2, td3, td4); tb.appendChild(tr);
   closeBtn.onclick=()=> overlay.remove();
   footer.append(backBtn, closeBtn);
 
-  modal.append(title, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  modal.append(header, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
   overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
   overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
   modal.tabIndex=0; modal.focus();
@@ -8664,6 +8869,31 @@ if (typeof window.isPracticeGame !== 'function') {
   window.isPracticeGame = g => Array.isArray(g?.players) && g.players.length === 1;
 }
 
+/* NEW: shared date formatter → "DD/MM/YY @ HH:MM" (24h) */
+if (typeof window.fmtWhen !== 'function') {
+  window.fmtWhen = function fmtWhen(ts){
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return '';
+    const dd = String(d.getDate()).padStart(2,'0');
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const yy = String(d.getFullYear()).slice(-2);
+    const HH = String(d.getHours()).padStart(2,'0');
+    const MI = String(d.getMinutes()).padStart(2,'0');
+    return `${dd}/${mm}/${yy} @ ${HH}:${MI}`;
+  };
+}
+
+// Helpers (define only if missing)
+if (typeof window.eqName !== 'function') {
+  window.eqName = (a,b) => String(a||'').trim().toLowerCase() === String(b||'').trim().toLowerCase();
+}
+if (typeof window.isOfficialGame !== 'function') {
+  window.isOfficialGame = g => Array.isArray(g?.players) && g.players.length >= 2;
+}
+if (typeof window.isPracticeGame !== 'function') {
+  window.isPracticeGame = g => Array.isArray(g?.players) && g.players.length === 1;
+}
+
 // Override readers to fetch **only** from cloud and dedupe by a stable key
 window.getGamesForMode = async function getGamesForMode(mode){
   try {
@@ -8897,6 +9127,135 @@ async function recoverHighScoresFromCloudWindow(hours = 24){
     }
   }
 
+// === Start screen layout arranger (non-destructive; rebuilds start-actions) ===
+function arrangeStartActions(){
+  try{
+    const host = document.querySelector('#details .start-actions.column') || document.querySelector('.start-actions.column');
+    if (!host) return;
+    const doc = document;
+
+    // helpers
+    const mkRow = (btn) => {
+      const row = doc.createElement('div');
+      row.className = 'row';
+      row.style.cssText = 'justify-content:center; gap:8px; flex-wrap:wrap; margin-top:4px;';
+      row.appendChild(btn);
+      return row;
+    };
+    const mkHr = () => {
+      const hr = doc.createElement('hr');
+      hr.style.cssText = 'border:0;border-top:1px solid rgba(255,255,255,.10);margin:10px 0;';
+      return hr;
+    };
+
+    // ensure / find buttons
+    const newBtn = document.getElementById('questBtn');
+    if (newBtn) newBtn.textContent = 'NEW GAME';
+
+    const resumeBtn = document.getElementById('resumeBtn');
+    if (resumeBtn) resumeBtn.textContent = 'Resume Game';
+
+    // Latest Scores
+    let latest = document.getElementById('latestScoresBtn');
+    if (!latest){
+      latest = doc.createElement('button');
+      latest.id = 'latestScoresBtn';
+      latest.className = 'btn';
+      latest.type = 'button';
+      latest.textContent = 'Latest Scores';
+    }
+
+    // The Crown League (Shotgun)
+    let crown = document.getElementById('shotgunBtn') ||
+                document.getElementById('shotgunLeaderboardBtn') ||
+                Array.from(document.querySelectorAll('#details button, button'))
+                  .find(b => /(shotgun\s*leaderboard|^shotgun$)/i.test((b.textContent || b.innerText || '').trim()));
+    if (!crown){
+      crown = doc.createElement('button');
+      crown.id = 'shotgunBtn';
+      crown.className = 'btn';
+      crown.type = 'button';
+    }
+    crown.textContent = 'The Crown League';
+
+    // High Scores (Match)
+    let hsMatch = document.getElementById('highScoresMenuBtn') ||
+                  document.getElementById('highScoresBtn');
+    if (!hsMatch){
+      hsMatch = doc.createElement('button');
+      hsMatch.id = 'highScoresMenuBtn';
+      hsMatch.className = 'btn';
+      hsMatch.type = 'button';
+    }
+    hsMatch.textContent = 'High Scores (Match)';
+
+    // High Scores (Round)
+    let hsRound = document.getElementById('roundHighScoresBtn');
+    if (!hsRound){
+      hsRound = doc.createElement('button');
+      hsRound.id = 'roundHighScoresBtn';
+      hsRound.className = 'btn';
+      hsRound.type = 'button';
+    }
+    hsRound.textContent = 'High Scores (Round)';
+
+    // Player Stats
+    let stats = document.getElementById('playerStatsBtn');
+    if (!stats){
+      stats = doc.createElement('button');
+      stats.id = 'playerStatsBtn';
+      stats.className = 'btn';
+      stats.type = 'button';
+      stats.textContent = 'Player Stats';
+    } else {
+      stats.textContent = 'Player Stats';
+    }
+
+    // Admin
+    let admin = document.getElementById('adminBtn') ||
+                Array.from(document.querySelectorAll('#details button, button'))
+                  .find(b => /admin code|^admin$/i.test((b.textContent || b.innerText || '').trim()));
+    if (!admin){
+      admin = doc.createElement('button');
+      admin.id = 'adminBtn';
+      admin.className = 'btn';
+      admin.type = 'button';
+      admin.textContent = 'Admin';
+    } else {
+      admin.textContent = 'Admin';
+    }
+
+    // wire handlers (idempotent, safe if functions missing)
+    if (typeof window.openLatestScoresDialog === 'function') latest.onclick = window.openLatestScoresDialog;
+    if (typeof window.openRoundHighScoresDialog === 'function') hsRound.onclick = window.openRoundHighScoresDialog;
+    if (typeof window.openHighScoresMenuDialog === 'function') hsMatch.onclick = window.openHighScoresMenuDialog;
+    if (typeof window.openAdminHub === 'function') admin.onclick = window.openAdminHub;
+    crown.onclick = (e) => { e.preventDefault(); e.stopPropagation(); if (typeof toast === 'function') toast('Coming soon'); else alert('Coming soon'); };
+
+    // rebuild layout
+    const frag = doc.createDocumentFragment();
+    if (newBtn) frag.appendChild(newBtn);
+    if (resumeBtn) frag.appendChild(resumeBtn);
+
+    frag.appendChild(mkHr());
+    frag.appendChild(mkRow(latest));
+    frag.appendChild(mkHr());
+    frag.appendChild(mkRow(crown));
+    frag.appendChild(mkRow(hsMatch));
+    frag.appendChild(mkRow(hsRound));
+    frag.appendChild(mkHr());
+    frag.appendChild(mkRow(stats));
+    frag.appendChild(mkHr());
+    frag.appendChild(mkRow(admin));
+
+    // clear and insert
+    host.innerHTML = '';
+    host.appendChild(frag);
+  } catch(e){
+    console.error('arrangeStartActions failed', e);
+  }
+}
+
 /*****************
  * BOOT
  *****************/
@@ -8928,6 +9287,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // High Scores button on start screen
   const hsStartBtn = byId('highScoresMenuBtn') || byId('highScoresBtn');
   if (hsStartBtn) hsStartBtn.onclick = openHighScoresMenuDialog;
+  
+  // Latest Scores button on start screen (create if missing and wire)
+try { ensureLatestScoresButton(); } catch(_) {}
+
   // Leaderboard buttons (guarded lookups)
   (function(){
     const map = [
@@ -9030,6 +9393,7 @@ document.addEventListener('DOMContentLoaded', () => {
 })();
 
   
+  try { arrangeStartActions(); } catch(_) {}
 });
 // ===== FINAL OVERRIDE: Admin Hub opener (safe + id compatible) =====
 window.openAdminHub = function openAdminHub(){
@@ -9656,6 +10020,161 @@ window.setCloudStatus = function setCloudStatus(state, msg){
   };
 })();
 
+// === Latest Scores (last 10 completed official games) ===
+async function openLatestScoresDialog(){
+  try{
+    if (typeof ensureCloudInit === 'function' && !ensureCloudInit()){
+      if (typeof toast === 'function') toast('Cloud not initialised');
+    }
+  }catch(_){}
+
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className='modal';
+  const title   = document.createElement('h3');  title.textContent='Latest Scores';
+  const body    = document.createElement('div'); body.className='modal-body';
+  const footer  = document.createElement('div'); footer.className='modal-footer';
+
+  async function render(){
+    body.innerHTML = '';
+    let games = [];
+    try{
+      if (typeof getGamesForMode === 'function'){
+        games = await getGamesForMode('official'); // cloud-only read
+      }
+    }catch(e){ console.error('Latest Scores fetch failed', e); }
+
+    games = (games || []).filter(Boolean)
+      .sort((a,b)=> new Date(b.ts||0)-new Date(a.ts||0))
+      .slice(0,10);
+
+    if (!games.length){
+      const p=document.createElement('p'); p.textContent='No recent games.'; body.appendChild(p); 
+      return;
+    }
+
+const table = document.createElement('table'); table.className = 'hs-table';
+const thead = document.createElement('thead'); const trh = document.createElement('tr');
+['#','When','Result'].forEach(h => {
+  const th = document.createElement('th');
+  th.textContent = h;
+  trh.appendChild(th);
+});
+thead.appendChild(trh);
+table.appendChild(thead);
+
+const tb = document.createElement('tbody');
+games.forEach((g, idx) => {
+  const tr = document.createElement('tr');
+
+  // #
+  const td1 = document.createElement('td');
+  td1.textContent = String(idx + 1);
+
+  // When
+ const d = new Date(g.ts);
+td2.textContent = fmtWhen(d);
+  td2.textContent = !Number.isNaN(d.getTime())
+    ? d.toLocaleString(undefined, { year:'2-digit', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' })
+    : '';
+
+  // Result: "Winner {score} beat Second {score} Third {score} …"
+  const td3 = document.createElement('td');
+  const players = (g.players || []).map(p => (p && p.name) ? p.name : '');
+  const totals  = Array.isArray(g.totals) ? g.totals : [];
+  const ordered = players
+    .map((name, i) => ({ name, score: Number(totals[i] || 0) }))
+    .filter(x => x.name)
+    .sort((a, b) => b.score - a.score);
+
+  let result = '—';
+  if (ordered.length >= 2) {
+    result = `${ordered[0].name} ${ordered[0].score} beat ${ordered[1].name} ${ordered[1].score}`;
+    if (ordered.length > 2) {
+      result += ' ' + ordered.slice(2).map(o => `${o.name} ${o.score}`).join(' ');
+    }
+  } else if (ordered.length === 1) {
+    result = `${ordered[0].name} ${ordered[0].score}`;
+  }
+  td3.textContent = result;
+
+  tr.append(td1, td2, td3);
+
+  // Click to open the full score sheet
+  tr.style.cursor = 'pointer';
+  tr.title = 'Open score sheet';
+  tr.onclick = () => {
+    try { if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(g); } catch(_) {}
+  };
+
+  tb.appendChild(tr);
+});
+
+table.appendChild(tb);
+body.appendChild(table);
+  }
+
+  const backBtn  = document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  backBtn.onclick = ()=> overlay.remove();
+  const closeBtn = document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  closeBtn.onclick = ()=> overlay.remove();
+  footer.append(backBtn, closeBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
+  modal.tabIndex=0; modal.focus();
+
+  await render();
+}
+
+function ensureLatestScoresButton(){
+  // Try several ids for the existing High Scores button
+  const hsBtn = document.getElementById('highScoresMenuBtn')
+             || document.getElementById('highScoresBtn')
+             || document.getElementById('hsMainBtn');
+
+  // Reuse if present
+  let latestRow = document.getElementById('latestScoresRow');
+  let latest    = document.getElementById('latestScoresBtn');
+
+  if (!latest){
+    latest = document.createElement('button');
+    latest.id = 'latestScoresBtn';
+    latest.className = 'btn';
+    latest.type = 'button';
+    latest.textContent = 'Latest Scores';
+  }
+
+  if (!latestRow){
+    latestRow = document.createElement('div');
+    latestRow.id = 'latestScoresRow';
+    latestRow.className = 'row';
+    latestRow.style.cssText = 'justify-content:center; gap:8px; flex-wrap:wrap; margin-top:4px;';
+    latestRow.appendChild(latest);
+  } else if (!latestRow.contains(latest)){
+    latestRow.appendChild(latest);
+  }
+
+  // Find the row that contains the High Scores button
+  const hsRow = hsBtn ? (hsBtn.closest('.row') || hsBtn.parentElement) : null;
+
+  if (hsRow && hsRow.parentElement){
+    // Insert our Latest Scores row **above** the High Scores row
+    hsRow.insertAdjacentElement('beforebegin', latestRow);
+  } else {
+    // Fallback: append near the start screen container
+    (document.getElementById('details') || document.body).appendChild(latestRow);
+  }
+
+  // Wire click
+  latest.onclick = (typeof window.openLatestScoresDialog === 'function')
+    ? window.openLatestScoresDialog
+    : function(){ console.warn('openLatestScoresDialog not available'); };
+}
+
 // === Start Screen: Match Ticker (last 10 completed matches) ===
 (function(){
   async function buildMatchTicker(){
@@ -9678,33 +10197,52 @@ window.setCloudStatus = function setCloudStatus(state, msg){
       const last10 = (list || []).slice(0, 10);
 
       const infer = (m)=>{
+        // Clean list of player display names
         const names = (m?.players || [])
           .map(p => (typeof p === 'string' ? p : (p && p.name) || ''))
+          .map(s => String(s || '').trim())
           .filter(Boolean);
 
+        // Helper: map wins-map key to a real display name
+        const nameFromKey = (k)=>{
+          const idx = Number(k);
+          if (Number.isInteger(idx) && idx >= 0 && idx < names.length) return names[idx];
+          return String(k || '—');
+        };
+
+        // Prefer explicit wins map, else derive from games
         let wins = {};
-        if (m && typeof m.wins==='object') wins = m.wins;
-        else if (m && typeof m.winMap==='object') wins = m.winMap;
-        else if (Array.isArray(m?.history) || Array.isArray(m?.games)){
+        if (m && typeof m.wins === 'object' && m.wins) {
+          wins = m.wins; // may be {0:3,1:2} or {"Thomas":3,"Doheny":2}
+        } else if (m && typeof m.winMap === 'object' && m.winMap) {
+          wins = m.winMap;
+        } else if (Array.isArray(m?.history) || Array.isArray(m?.games)) {
           const games = Array.isArray(m.history) ? m.history : m.games;
-          const cnt = Object.create(null); names.forEach(n => cnt[n] = 0);
-          for (const g of games){
-            const totals = Array.isArray(g?.totals) ? g.totals : (Array.isArray(g?.scores)? g.scores : null);
-            if (Array.isArray(totals) && totals.length === names.length){
-              let max=-Infinity, idx=-1;
-              for (let i=0;i<totals.length;i++){
+          const cnt = Object.create(null);
+          names.forEach(n => cnt[n] = 0);
+          for (const g of games) {
+            const totals = Array.isArray(g?.totals) ? g.totals : (Array.isArray(g?.scores) ? g.scores : null);
+            if (Array.isArray(totals) && totals.length) {
+              let max = -Infinity, idx = -1;
+              for (let i = 0; i < totals.length; i++) {
                 const v = Number(totals[i] || 0);
-                if (v > max){ max = v; idx = i; }
+                if (v > max) { max = v; idx = i; }
               }
-              if (idx >= 0) cnt[names[idx]] = (cnt[names[idx]] || 0) + 1;
+              const name = (idx >= 0 && idx < names.length) ? names[idx] : String(idx);
+              cnt[name] = (cnt[name] || 0) + 1;
             }
           }
           wins = cnt;
         }
 
-        const entries = Object.entries(wins).sort((a,b)=> (b[1]||0)-(a[1]||0));
-        if (entries.length >= 2) return { a: entries[0][0], b: entries[1][0], score: `${entries[0][1]}-${entries[1][1]}` };
-        const a = names[0] || '—', b = names[1] || '—';
+        const entries = Object.entries(wins).sort((a,b)=> (Number(b[1])||0) - (Number(a[1])||0));
+        if (entries.length >= 2) {
+          const aName = nameFromKey(entries[0][0]);
+          const bName = nameFromKey(entries[1][0]);
+          return { a: aName, b: bName, score: `${entries[0][1]}-${entries[1][1]}` };
+        }
+        const a = names[0] || '—';
+        const b = names[1] || '—';
         return { a, b, score: '' };
       };
 
@@ -9759,6 +10297,9 @@ window.setCloudStatus = function setCloudStatus(state, msg){
     <button id="pbgrRefreshBtn" class="btn">Refresh</button>
     <button id="pbgrCloseBtn" class="btn">Close</button>
   </div>
+  
 </div>
+
+
 </body>
 </html>
