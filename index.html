@@ -11,12 +11,33 @@
 <script async src="https://tenor.com/embed.js"></script>
 
 <style>
-  :root{
-    --bg:#0f1220;--card:#171a2b;--ink:#e7e9f5;--muted:#a8acc3;--accent:#7bdcff;--accent-2:#8cff9e;
-    --danger:#ff6b6b;--warn:#ffcc66;--good:#7fffd4;--shadow:0 10px 30px rgba(0,0,0,.35);--radius:14px;
-    --pad-h:148px; --left-col-w:96px; --start-btn-h:52px;
-  }
-  :root{ --title-w: 640px; }  /* fallback until JS measures */
+:root{
+  /* Theme */
+  --bg:#0f1220;
+  --card:#171a2b;
+  --ink:#e7e9f5;
+  --muted:#a8acc3;
+  --accent:#7bdcff;
+  --accent-2:#8cff9e;
+  --danger:#ff6b6b;
+  --warn:#ffcc66;
+  --good:#7fffd4;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+  --radius:14px;
+
+  /* Layout */
+  --pad-h:148px;
+  --left-col-w:96px;
+  --start-btn-h:52px;
+  --title-w:640px;      /* fallback until JS measures */
+  --section-gap:10px;   /* global vertical spacing */
+
+  /* Leaderboard widths */
+  --lb-num-w:72px;      /* each G# */
+  --lb-pct-w:86px;      /* Match % */
+  --lb-total-w:96px;    /* Match Total */
+  --lb-win-w:56px;      /* Win */
+}
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
@@ -39,19 +60,7 @@
   width: 100%;
 }
 
-/* Hide the old top-left back row on Player Select */
-#players #gameTopRow{ display: none; }
 
-/* Player Select: Back row same width as the boxes + full-width button */
-#players #backRow{
-  max-width:640px;
-  width:100%;
-  margin:12px auto 0;
-}
-#players #startScreenBtn{ width:100%; }
-
-/* Hide the old top-left Back row on Player Select */
-#players #gameTopRow{ display:none; }
 
 #startMatchBtn{
   width:100%;          /* same width as the box */
@@ -97,9 +106,6 @@
   display:none;              /* hide "Player Select" text */
 }
 
-#players #gameTopRow{
-  margin-bottom:12px;
-}
 
 /* Center the Player Select screen vertically like page 1 */
 #players{
@@ -266,19 +272,6 @@
   margin-top: 24px;
   max-width: 260px;
   margin-inline: auto;
-}
-
-#adminCodeRow .grow {
-  max-width: none;
-  width: 100%;
-}
-
-#adminCode {
-  width: 100%;
-}
-
-#adminEnterBtn {
-  width: 100%;
 }
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   .column{display:flex;flex-direction:column;gap:10px}
@@ -618,33 +611,34 @@
 .cloud-status.checking .cloud-dot { background: var(--warn); }
 .cloud-status.ok       .cloud-dot { background: var(--accent-2); }
 .cloud-status.error    .cloud-dot { background: var(--danger); }
-  
-:root{
-  /* one place to tweak section spacing */
-  --section-gap: 10px;
+
+
+/* Top row of buttons: keep spacing on leaderboard etc. */
+#leaderboardTopRow,
+#gameTopRow{
+margin-bottom: var(--section-gap);
 }
 
-/* Top row of buttons: put the same gap below as the float-head/score gap */
-#leaderboardTopRow{
-  margin-bottom: var(--section-gap);
-}
 
-/* Make the float header + score gap use the same token too */
+/* Main game: stick the scoreboard (Game Wins row) directly to the bottom
+   of the floating score block above it. */
 .float-head{
-  margin-bottom: var(--section-gap);
+  margin-bottom: 0;
 }
 
-/* Scoreboard had inline margin-top; override to match */
+/* Remove extra top margin on the scoreboard so it touches the float-head */
 #scoreWrap{
-  margin-top: var(--section-gap) !important;
+  margin-top: 0 !important;
 }
 
-/* (from earlier ask) keep these tiny + shorter */
-#leaderboardTopRow .btn{
+/* keep these tiny + shorter */
+#leaderboardTopRow .btn,
+#gameTopRow .btn{
   font-size: 0.9rem;
   min-height: 34px;
   padding: 6px 10px;
 }
+
 /* ===== Start Screen sizing (page: #details) ===== */
 #details #appTitle{ display:inline-block; } /* measurable text width */
 
@@ -677,41 +671,26 @@
 #details .start-actions .row .btn{ width: 100%; }
 
 /* Final Leaderboard layout */
-#leaderboard .stacked-actions{
-  display:flex;
-  flex-direction:column;
-  gap:8px;
-  margin-top:12px;
-}
-#leaderboard .stacked-actions .btn.big{
-  width:100%;                   /* fill the lb-box width */
-}
-#leaderboard .stacked-actions .btn.big{
-  width:min(420px, 92%);
-}
 #leaderboard .lb-box{
   padding:12px;
   border-radius:12px;
   background:linear-gradient(180deg,#14284a,#12213d);
   border:1px solid #2a4777;
 }
+
 /* Leaderboard action buttons: full width of the leaderboard table */
 #leaderboard .lb-box .stacked-actions{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
   width:100%;
   margin-top:8px;
 }
 
 #leaderboard .lb-box .stacked-actions .btn.big{
-  width:100% !important;   /* fill the table/container width */
-  max-width:none;          /* no artificial cap */
-  display:block;           /* makes 100% width dependable */
-
-}
-
-/* visual separation for the Player column */
-#leaderboard #lbTable thead th:first-child,
-#leaderboard #lbTable tbody td:first-child{
-  border-right: 1px solid #2a2e48;
+  width:100%;
+  max-width:none;
+  display:block;
 }
 
 /* table layout + no-wrap for player names */
@@ -732,12 +711,9 @@
 }
 
 /* widths for numeric columns */
-:root{
-  --lb-num-w:   72px;  /* each G# */
-  --lb-pct-w:   86px;  /* Match % */
-  --lb-total-w: 96px;  /* Match Total */
-  --lb-win-w:   56px;  /* Win */
-}#lbTable thead th:first-child{ text-align:left; }
+#lbTable thead th:first-child{
+  text-align:left;
+}
 
 /* keep names tidy on small screens */
 #leaderboard #lbTable th:first-child,
@@ -865,12 +841,9 @@ body[data-page="details"] #psTickerMatch{
   <button id="playerStatsBtn" class="btn" type="button">Player Stats</button>
 </div>
 
-            <!-- Single Admin Code row -->
-      <div class="row" id="adminCodeRow" style="margin-top:16px;">
-        <div class="grow" style="max-width:360px">
-          <input id="adminCode" placeholder="Admin Code" />
-        </div>
-        <button id="adminEnterBtn" class="btn" type="button">Enter</button>
+            <!-- Single Admin row -->
+      <div class="row" id="adminCodeRow" style="margin-top:16px; justify-content:center;">
+        <button id="adminCodeBtn" class="btn" type="button">Admin</button>
       </div>
 </div> <!-- CLOSE .start-actions -->
 
@@ -959,13 +932,13 @@ body[data-page="details"] #psTickerMatch{
 </section> <!-- end #players -->
 
    <!--PAGE3: GAME -->
-    <section id="game" class="hidden">
-      <div class="card section">
- <div class="row" id="leaderboardTopRow">
-  <button id="startScreenBtnLB" class="btn letter-throw top-throw">Start Screen</button>
-  <button id="restartGameBtnLB" class="btn letter-throw top-throw">Restart Game</button>
-  <button id="statsHubBtnLB" class="btn letter-throw top-throw">Stats</button>
-</div>
+<section id="game" class="hidden">
+  <div class="card section">
+    <div class="row" id="gameTopRow">
+      <button id="startScreenBtnGame" class="btn letter-throw top-throw">Start Screen</button>
+      <button id="restartGameBtnGame" class="btn letter-throw top-throw">Restart Game</button>
+      <button id="statsHubBtnGame" class="btn letter-throw top-throw">Stats</button>
+    </div>
 
         <!-- Floating names + wins + totals -->
         <div class="float-head" id="floatHead">
@@ -1123,7 +1096,7 @@ body[data-page="details"] #psTickerMatch{
 
         <button id="openHsLeagueAdmin"   class="btn" style="width:min(360px,92%);">League High Scores</button>
         <button id="openHsPracticeAdmin" class="btn" style="width:min(360px,92%);">Practice High Scores</button>
-
+        <button id="openLeagueLowsAdmin" class="btn" style="width:min(360px,92%);">League Low Scores</button>
         <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
 
         <button id="openSavedPlayersAdminBtn" class="btn" style="width:min(360px,92%);">Saved Player Admin</button>
@@ -1158,6 +1131,19 @@ body[data-page="details"] #psTickerMatch{
   </div>
 </div>
 
+<!-- League Low Scores Admin Modal -->
+<div id="leagueLowsAdminModal" class="modal-backdrop hidden">
+  <div class="modal compact">
+    <h3>League Low Scores — Admin</h3>
+    <div class="modal-body" id="leagueLowsAdminBody">
+      <p class="tag">Loading league low scores…</p>
+    </div>
+    <div class="modal-footer">
+      <button id="leagueLowsBackBtn" class="btn" type="button">Back</button>
+      <button id="leagueLowsCloseBtn" class="btn" type="button">Close</button>
+    </div>
+  </div>
+</div>
 
 <!-- PB / GR Admin Modal -->
 <div id="pbgrAdminModal" class="modal-backdrop hidden">
@@ -1224,22 +1210,6 @@ body[data-page="details"] #psTickerMatch{
 // Global guard: some third‑party embeds reference a global `F`; define a harmless fallback
 if (typeof window.F === 'undefined') {
   window.F = function(){ /* no-op */ };
-}
-function bindScoreHeaderScrollSync(){
-  const scoreWrap = document.getElementById('scoreWrap');
-  const floatWrap = document.getElementById('floatWrap');
-  if (!scoreWrap || !floatWrap) return;
-
-  let _lock = false;
-  const sync = (from, to) => {
-    if (_lock) return;
-    _lock = true;
-    to.scrollLeft = from.scrollLeft;
-    _lock = false;
-  };
-
-  scoreWrap.addEventListener('scroll', () => sync(scoreWrap, floatWrap), { passive: true });
-  floatWrap.addEventListener('scroll', () => sync(floatWrap, scoreWrap), { passive: true });
 }
 // --- Round score only (DOM promotion + cleanup) ---
 function promoteRoundOnly(){
@@ -1506,15 +1476,20 @@ function openAdminHub(){
   const btnAll   = document.getElementById('openAllGamesBtn');
   const btnLHS   = document.getElementById('openHsLeagueAdmin');
   const btnPHS   = document.getElementById('openHsPracticeAdmin');
+  const btnLLS   = document.getElementById('openLeagueLowsAdmin');
   const btnSave  = document.getElementById('openSavedPlayersAdminBtn');
   const btnClose = document.getElementById('closeAdminHubBtn');
   const btnFix   = document.getElementById('fixDuplicatesBtn');
   const btnPBGR  = document.getElementById('openPBGRAdminBtn');
 
-  if (btnAll)  btnAll.onclick  = ()=>{ hub.classList.add('hidden'); openAllGamesDialog(); };
-  if (btnLHS)  btnLHS.onclick  = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(false); };
-  if (btnPHS)  btnPHS.onclick  = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(true); };
-  if (btnSave) btnSave.onclick = ()=>{ hub.classList.add('hidden'); openSavedPlayersAdminDialog(); };
+if (btnAll)  btnAll.onclick  = ()=>{ hub.classList.add('hidden'); openAllGamesDialog(); };
+if (btnLHS)  btnLHS.onclick  = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(false); };
+if (btnPHS)  btnPHS.onclick  = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(true); };
+if (btnLLS)  btnLLS.onclick  = () => {
+  hub.classList.add('hidden');
+  openLeagueLowsAdminDialog();
+};
+if (btnSave) btnSave.onclick = ()=>{ hub.classList.add('hidden'); openSavedPlayersAdminDialog(); };
   if (btnPBGR) btnPBGR.onclick = ()=>{ hub.classList.add('hidden'); openPBGRAdminDialog(); };
 
   if (btnFix) btnFix.onclick = async ()=>{
@@ -1669,6 +1644,149 @@ function openAllGamesDialog(){
 
   render();
 }
+
+// League Low Scores Admin dialog (global)
+function openLeagueLowsAdminDialog(){
+  const modal = document.getElementById('leagueLowsAdminModal');
+  const body  = document.getElementById('leagueLowsAdminBody');
+  const back  = document.getElementById('leagueLowsBackBtn');
+  const close = document.getElementById('leagueLowsCloseBtn');
+  if (!modal || !body) return;
+
+  modal.classList.remove('hidden');
+
+  if (back)  back.onclick  = () => { modal.classList.add('hidden'); openAdminHub(); };
+  if (close) close.onclick = () => { modal.classList.add('hidden'); };
+
+  (async () => {
+    body.innerHTML = '<p class="tag">Loading league low scores…</p>';
+
+    try {
+      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()){
+        body.innerHTML = '<p>Cloud not initialised.</p>';
+        return;
+      }
+    } catch(_) {}
+
+    let rows = [];
+    try {
+      const { data, error } = await sb
+        .from(TABLE_PLAYER_GAMES)
+        .select('sheet_id, player, score, ts, is_practice, rounds')
+        .eq('is_practice', false)
+        .order('score', { ascending: true })
+        .order('ts',    { ascending: true })
+        .limit(1000);
+      if (error) throw error;
+      rows = data || [];
+    } catch(e) {
+      console.error('League low scores fetch failed', e);
+      const msg = (e && e.message) ? e.message : 'Unknown error';
+      body.innerHTML = '<p>Failed to load league low scores.</p>' +
+        '<p class="tag">' + msg + '</p>';
+      return;
+    }
+
+    if (!rows.length){
+      body.innerHTML = '<p>No league low scores found.</p>';
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'hs-table compact';
+
+    const thead = document.createElement('thead');
+    const trh   = document.createElement('tr');
+    ['#','Player','Score','Avg / Round','When','Actions'].forEach(h=>{
+      const th = document.createElement('th');
+      th.textContent = h;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    rows.forEach((row, idx) => {
+      const tr    = document.createElement('tr');
+
+      const tdIdx = document.createElement('td');
+      tdIdx.textContent = String(idx + 1);
+
+      const tdName = document.createElement('td');
+      tdName.textContent = row.player || '';
+
+      const tdScore = document.createElement('td');
+      tdScore.textContent = String(row.score ?? '');
+
+      const tdAvg = document.createElement('td');
+      const rounds = Number(row.rounds || 0);
+      if (rounds > 0) {
+        const avg = row.score / rounds;
+        tdAvg.textContent = avg.toFixed(1);
+      } else {
+        tdAvg.textContent = '—';
+      }
+
+      const tdWhen = document.createElement('td');
+      if (row.ts){
+        const d = new Date(row.ts);
+        tdWhen.textContent = !Number.isNaN(d.getTime())
+          ? d.toLocaleString(undefined,{
+              year: '2-digit',
+              month: 'short',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+          : '';
+      } else {
+        tdWhen.textContent = '';
+      }
+
+      const tdAct = document.createElement('td');
+      tdAct.className = 'center';
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn small danger';
+      delBtn.textContent = 'Delete game';
+      delBtn.onclick = async (e) => {
+        e.stopPropagation();
+        const sheetId = row.sheet_id;
+        if (!sheetId){
+          if (typeof toast === 'function') toast('Missing game id for this row');
+          return;
+        }
+        const msg = `Delete game ${sheetId} for ${row.player || 'Unknown'} (score ${row.score})?\n\nThis will remove the game and all related stats from the cloud.`;
+        if (!confirm(msg)) return;
+        try{
+          // Delete throws first, then game record
+          try {
+            await sb.from(TABLE_GAME_THROWS).delete().eq('game_id', sheetId);
+          } catch(e1){
+            console.error('Delete game_throws failed', e1);
+          }
+          const { error: delErr } = await sb.from(TABLE_GAMES).delete().eq('id', sheetId);
+          if (delErr) throw delErr;
+          if (typeof toast === 'function') toast('Game deleted');
+          // re-render list
+          openLeagueLowsAdminDialog();
+        }catch(err){
+          console.error('Delete league low game failed', err);
+          if (typeof toast === 'function') toast('Delete failed');
+        }
+      };
+
+      tdAct.appendChild(delBtn);
+      tr.append(tdIdx, tdName, tdScore, tdAvg, tdWhen, tdAct);
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    body.innerHTML = '';
+    body.appendChild(table);
+  })();
+}
+
 // --- PB / GR Admin: open/close + minimal render ---
 function openPBGRAdminDialog(){
   const modal = document.getElementById('pbgrAdminModal');
@@ -1976,13 +2094,454 @@ async function cloudRenamePlayer(oldName, newName){
   } catch(_) {}
 })();
 
+// === Player Summary Stats dialog (cloud-only, extended aggregate) ===
+window.openPlayerSummaryStatsDialog = async function openPlayerSummaryStatsDialog(playerName, mode){
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal   = document.createElement('div'); modal.className   = 'modal compact';
+  const title   = document.createElement('h3');
+  const body    = document.createElement('div'); body.className    = 'modal-body';
+  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
+
+  const isPractice = (mode === 'practice' || mode === true);
+  const labelMode  = isPractice ? 'Practice' : 'Official';
+  const safeName   = playerName || 'Unknown';
+
+  title.textContent = `Player Stats — ${safeName} (${labelMode})`;
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  modal.tabIndex = 0;
+  modal.focus();
+
+  const close = () => { overlay.remove(); };
+
+  const returnBtn = document.createElement('button');
+  returnBtn.className = 'btn';
+  returnBtn.textContent = 'Return';
+  returnBtn.onclick = close;
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn';
+  closeBtn.textContent = 'Close';
+  closeBtn.onclick = close;
+
+  footer.append(returnBtn, closeBtn);
+
+  body.innerHTML = '<p class="tag">Loading stats…</p>';
+
+  try{
+    // Ensure cloud is ready
+    try{
+      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()){
+        body.innerHTML = '<p>Cloud not initialised.</p>';
+        return;
+      }
+    }catch(_){}
+
+    const tableName = (typeof TABLE_PLAYER_GAMES !== 'undefined' && TABLE_PLAYER_GAMES)
+      ? TABLE_PLAYER_GAMES
+      : 'player_games_union';
+
+    // --- Base per‑game stats for this player/mode ---
+    const { data: gamesRaw, error: gErr } = await sb
+      .from(tableName)
+      .select('sheet_id, player, score, position, ts, is_practice, rounds')
+      .eq('player', safeName)
+      .eq('is_practice', !!isPractice)
+      .order('ts', { ascending: true })
+      .limit(2000);
+
+    if (gErr) throw gErr;
+    const games = (gamesRaw || []).filter(Boolean);
+
+    if (!games.length){
+      body.innerHTML = `<p>No ${labelMode.toLowerCase()} games found for this player yet.</p>`;
+      return;
+    }
+
+    const totalGames = games.length;
+    const scores     = games.map(g => Number(g.score || 0));
+    const wins       = games.filter(g => Number(g.position) === 1).length;
+
+    const bestScore  = Math.max(...scores);
+    const worstScore = Math.min(...scores);
+    const totalScore = scores.reduce((sum, v) => sum + v, 0);
+    const avgScore   = totalScore / totalGames;
+
+    const last       = games[games.length - 1];
+    const lastScore  = Number(last.score || 0);
+    const lastWhen   = (window.fmtWhen && last.ts) ? window.fmtWhen(last.ts) : (last.ts || '');
+
+    const pct = (num, den) => den ? (num * 100 / den) : 0;
+
+    // --- Favourite opponent / Nemesis (H2H) ---
+    let favOpponent   = '—';
+    let nemesisOpp    = '—';
+
+    try{
+      const gameIds = [...new Set(games.map(g => g.sheet_id).filter(Boolean))];
+      if (gameIds.length){
+        const { data: allRowsRaw, error: hErr } = await sb
+          .from(tableName)
+          .select('sheet_id, player, score, position, rounds, is_practice')
+          .in('sheet_id', gameIds)
+          .eq('is_practice', !!isPractice);
+
+        if (!hErr && Array.isArray(allRowsRaw)){
+          const allRows = allRowsRaw.filter(Boolean);
+          const selfByGame = new Map();
+          games.forEach(g => { selfByGame.set(g.sheet_id, g); });
+
+          const opponentStats = new Map(); // name -> { games, rounds, wins, losses, draws }
+
+          for (const row of allRows){
+            const gid  = row.sheet_id;
+            const self = selfByGame.get(gid);
+            if (!self) continue;
+
+            const oppName = row.player;
+            if (!oppName || oppName === safeName) continue;
+
+            let stat = opponentStats.get(oppName);
+            if (!stat){
+              stat = { games:0, rounds:0, wins:0, losses:0, draws:0 };
+              opponentStats.set(oppName, stat);
+            }
+
+            stat.games += 1;
+            const r = Number(row.rounds || self.rounds || 0);
+            if (Number.isFinite(r)) stat.rounds += r;
+
+            const selfScore = Number(self.score || 0);
+            const oppScore  = Number(row.score || 0);
+            if (selfScore > oppScore) stat.wins++;
+            else if (selfScore < oppScore) stat.losses++;
+            else stat.draws++;
+          }
+
+          const eligible = [...opponentStats.entries()].filter(([, s]) =>
+            s.rounds >= 28 && (s.wins + s.losses) > 0
+          );
+
+          if (eligible.length){
+            const sortByWinPct = (a, b) => {
+              const sa = a[1], sb = b[1];
+              const pa = sa.wins / (sa.wins + sa.losses);
+              const pb = sb.wins / (sb.wins + sb.losses);
+              if (pb !== pa) return pb - pa;               // higher win % first
+              if (sb.games !== sa.games) return sb.games - sa.games; // then more games
+              return a[0].localeCompare(b[0]);             // then name A–Z
+            };
+
+            const sorted = eligible.slice().sort(sortByWinPct);
+            const favEntry = sorted[0];
+            const nemEntry = sorted[sorted.length - 1];
+
+            const fmtOpp = (entry) => {
+              if (!entry) return '—';
+              const [name, s] = entry;
+              const p = (s.wins + s.losses)
+                ? (s.wins * 100 / (s.wins + s.losses))
+                : 0;
+              return `${name} (${s.wins}-${s.losses}, ${p.toFixed(0)}% over ${s.rounds} rnds)`;
+            };
+
+            favOpponent = fmtOpp(favEntry);
+            nemesisOpp  = fmtOpp(nemEntry);
+          }
+        }
+      }
+    }catch(e){
+      console.error('H2H stats failed', e);
+    }
+
+    // --- Round bands: 60+ / 100+ / 140+ (cloud view) ---
+    let count60 = null, count100 = null, count140 = null;
+    try{
+      const { data: roundsRaw, error: rErr } = await sb
+        .from('v_game_rounds')
+        .select('player, is_practice, score, round_score, total')
+        .eq('player', safeName)
+        .eq('is_practice', !!isPractice)
+        .limit(20000);
+
+      if (rErr) throw rErr;
+      const rounds = (roundsRaw || []).filter(Boolean);
+      let c60 = 0, c100 = 0, c140 = 0;
+      for (const r of rounds){
+        const s = Number(
+          r.score ??
+          r.round_score ??
+          r.total ??
+          0
+        );
+        if (!Number.isFinite(s)) continue;
+        if (s >= 140)      c140++;
+        else if (s >= 100) c100++;
+        else if (s >= 60)  c60++;
+      }
+      count60 = c60;
+      count100 = c100;
+      count140 = c140;
+    }catch(e){
+      console.error('Round band stats failed', e);
+    }
+
+    // --- Favourite / worst board numbers (10–20) from throw_events_v ---
+    let favNums = ['—','—','—'];
+    let worstNums = ['—','—','—'];
+    try{
+      const { data: throwsRaw, error: tErr } = await sb
+        .from('throw_events_v')
+        .select('player, is_practice, target, num, number, kind, points, round_index')
+        .eq('player', safeName)
+        .eq('is_practice', !!isPractice)
+        .limit(50000);
+
+      if (tErr) throw tErr;
+      const tally = new Map(); // num -> weighted hits
+
+      for (const row of (throwsRaw || [])){
+        // Work out multiplier: S=1, D=2, T=3 (0 if miss)
+        const k = (row.kind || '').toString().toUpperCase();
+        let mult;
+        if (k === 'TRIPLE' || k === 'T') mult = 3;
+        else if (k === 'DOUBLE' || k === 'D') mult = 2;
+        else mult = (Number(row.points || 0) > 0 ? 1 : 0);
+        if (!mult) continue;
+
+        // Target number: prefer explicit num/target/number
+        let numVal = row.target ?? row.num ?? row.number;
+
+        // Fallback using round index + global ROUNDS config if available
+        if ((numVal === undefined || numVal === null) &&
+            typeof window.ROUNDS !== 'undefined' &&
+            row.round_index != null){
+          const ridx = Number(row.round_index);
+          const rd = Number.isInteger(ridx) ? window.ROUNDS[ridx] : null;
+          if (rd && rd.type === 'number' && rd.num != null) {
+            numVal = rd.num;
+          }
+        }
+
+        const n = Number(numVal);
+        if (!Number.isInteger(n) || n < 10 || n > 20) continue; // only 10–20 for favourite/worst
+
+        const key = String(n);
+        const prev = tally.get(key) || 0;
+        tally.set(key, prev + mult);
+      }
+
+      if (tally.size){
+        const entries = [...tally.entries()];
+        // Most‑hit numbers
+        entries.sort((a,b)=> {
+          if (b[1] !== a[1]) return b[1] - a[1]; // desc by hits
+          return Number(a[0]) - Number(b[0]);    // then lower number first
+        });
+        favNums = entries.slice(0,3).map(([n]) => n);
+
+        // Least‑hit numbers (including zeros if we want a full board picture)
+        const entriesAsc = entries.slice().sort((a,b)=> {
+          if (a[1] !== b[1]) return a[1] - b[1]; // asc by hits
+          return Number(a[0]) - Number(b[0]);
+        });
+        worstNums = entriesAsc.slice(0,3).map(([n]) => n);
+
+        // Pad to length 3 with "—" if needed
+        while (favNums.length < 3) favNums.push('—');
+        while (worstNums.length < 3) worstNums.push('—');
+      }
+    }catch(e){
+      console.error('Favourite/worst number stats failed', e);
+    }
+
+    const metrics = [
+      { label: 'Games Played',    value: String(totalGames) },
+      { label: 'Wins',            value: totalGames ? `${wins} (${pct(wins, totalGames).toFixed(1)}%)` : '0 (0%)' },
+      { label: 'Best Score',      value: String(bestScore) },
+      { label: 'Worst Score',     value: String(worstScore) },
+      { label: 'Average Score',   value: avgScore.toFixed(1) },
+      { label: 'Last Game Score', value: String(lastScore) },
+      { label: 'Last Game When',  value: lastWhen || '—' },
+
+      { label: '60+ Rounds',      value: (count60  == null ? '—' : String(count60)) },
+      { label: '100+ Rounds',     value: (count100 == null ? '—' : String(count100)) },
+      { label: '140+ Rounds',     value: (count140 == null ? '—' : String(count140)) },
+
+      { label: 'Favourite Number 1st', value: favNums[0] || '—' },
+      { label: 'Favourite Number 2nd', value: favNums[1] || '—' },
+      { label: 'Favourite Number 3rd', value: favNums[2] || '—' },
+      { label: 'Worst Number 1st',     value: worstNums[0] || '—' },
+      { label: 'Worst Number 2nd',     value: worstNums[1] || '—' },
+      { label: 'Worst Number 3rd',     value: worstNums[2] || '—' },
+
+      { label: 'Favourite Opponent', value: favOpponent },
+      { label: 'Nemesis',            value: nemesisOpp }
+    ];
+
+    const table = document.createElement('table');
+    table.className = 'hs-table';
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    ['Stat','Value'].forEach(h => {
+      const th = document.createElement('th'); th.textContent = h; hr.appendChild(th);
+    });
+    thead.appendChild(hr);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    metrics.forEach(m => {
+      const tr  = document.createElement('tr');
+      const tdL = document.createElement('td'); tdL.textContent = m.label;
+      const tdV = document.createElement('td'); tdV.textContent = m.value;
+      tr.append(tdL, tdV);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    body.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    wrap.appendChild(table);
+    body.appendChild(wrap);
+  }catch(e){
+    console.error('openPlayerSummaryStatsDialog error', e);
+    const msg = (e && e.message) ? e.message : 'Unknown error';
+    body.innerHTML = '<p>Failed to load stats.</p>' +
+      '<p class="tag">' + msg + '</p>';
+  }
+};
+
+// Player Stats overlay: wire the STATS tab via global click delegation
+(function wirePlayerStatsStatsButton(){
+  if (window.__playerStatsStatsWired) return;
+  window.__playerStatsStatsWired = true;
+
+  document.addEventListener('click', function(e){
+    try {
+      const btn = e.target.closest('button, .btn');
+      if (!btn) return;
+      const label = (btn.textContent || '').trim().toLowerCase();
+      if (label !== 'stats') return;
+
+      // Only act if this STATS control lives inside a Player Stats modal
+      const modal = btn.closest('.modal');
+      if (!modal) return;
+      const h3 = modal.querySelector('h3');
+      if (!h3 || !/player stats/i.test((h3.textContent || ''))) return;
+
+      const titleText = h3.textContent || '';
+      let playerName = '';
+
+      // Extract the bit after "Player Stats –" / "Player Stats —" / "Player Stats -"
+      const m = titleText.match(/player stats\s*[\u2013\u2014-]\s*(.+)$/i);
+      if (m && m[1]) {
+        playerName = m[1].trim();
+      }
+
+      // Fallback: strip the "Player Stats" prefix if present
+      if (!playerName) {
+        playerName = titleText.replace(/player stats/i, '').trim();
+      }
+
+      if (typeof window.openPlayerSummaryStatsDialog === 'function'){
+        window.openPlayerSummaryStatsDialog(playerName || '');
+      }
+    } catch(err){
+      console.error('wirePlayerStatsStatsButton error', err);
+    }
+  }, true); // capture so we see it before other handlers
+})();
+
       console.log('SQ build: script wrapped OK');
 if (!window.buildStartTicker) { window.buildStartTicker = async function(){}; }
 
 // Start PB annotation on load (safe to call multiple times)
 document.addEventListener('DOMContentLoaded', () => {
   try { setupRoundScoreObserver(); } catch(_) {}
+  try { wireTopRowButtons(); } catch(_) {}
+  try { initSetupSteppers(); } catch(_) {}
 });
+
+// --- Top row buttons: compatibility wiring for new + legacy IDs ---
+function _showPageSafe(id){
+  // Prefer existing app router, else do a minimal local switch
+  if (typeof window.showPage === 'function') { try { window.showPage(id); return; } catch(_){ } }
+  const sections = ['details','players','game','leaderboard'];
+  sections.forEach(sid => {
+    const sec = document.getElementById(sid);
+    if (sec) {
+      if (sid === id) sec.classList.remove('hidden');
+      else sec.classList.add('hidden');
+    }
+  });
+  try { document.body.dataset.page = id; } catch(_){}
+}
+
+function navigateToStartScreen(){
+  _showPageSafe('details');
+}
+
+function restartGameSafe(){
+  // Try known hooks if they exist, else reload as a last resort
+  const candidates = ['restartGame', 'startNewGame', 'initMatch', 'beginNewGame'];
+  for (const name of candidates){
+    const fn = window[name];
+    if (typeof fn === 'function'){
+      try { fn(); return; } catch(_){}
+    }
+  }
+  // Fallback: hard reset
+  location.reload();
+}
+
+function openStatsHubSafe(){
+  const candidates = ['openStatsHub', 'openStatsHubDialog', 'openStatsMenu', 'openStats', 'showStatsHub'];
+  for (const name of candidates){
+    const fn = window[name];
+    if (typeof fn === 'function'){
+      try { fn(); return; } catch(_){}
+    }
+  }
+  if (typeof toast === 'function') toast('Stats panel not available on this build');
+}
+function wireTopRowButtons(){
+  // Support both the new IDs and legacy IDs if they exist
+  const startIds   = [
+    'startScreenBtnFromGame',
+    'startScreenBtnFromLB',
+    'startScreenBtnLB',
+    'startScreenBtnGame'
+  ];
+  const restartIds = [
+    'restartGameBtnFromGame',
+    'restartGameBtnFromLB',
+    'restartGameBtnLB',
+    'restartGameBtnGame'
+  ];
+  const statsIds   = [
+    'statsHubBtnFromGame',
+    'statsHubBtnFinal',
+    'statsHubBtnLB',
+    'statsHubBtnGame'
+  ];
+
+  startIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.onclick = navigateToStartScreen;
+  });
+  restartIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.onclick = restartGameSafe;
+  });
+  statsIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.onclick = openStatsHubSafe;
+  });
+}
+
 // --- Stepper bootstrap (must exist before any DOMContentLoaded references) ---
 (function(){
   if (typeof window.initSetupSteppers === 'function') return;
@@ -2089,6 +2648,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setTimeout(()=> input.focus(), 0);
   }
+    // Export for other wiring (e.g. start-screen Admin button)
+    window.openAdminPasswordModal = openAdminPasswordModal;
 
   removeStandaloneLabel();
   ensureButton();
@@ -2108,149 +2669,7 @@ document.addEventListener('DOMContentLoaded', () => {
    --
    Admin Code
 */
-(function arrangeStartScreen(){
-  const root = document.getElementById('details');
-  if (!root) return;
 
-  // Prefer the canonical start-actions wrapper if present
-  const host =
-    root.querySelector('.start-actions') ||
-    root.querySelector('#start') ||
-    root;
-
-  // Helpers
-  const byText = (sel, rx) =>
-    Array.from(host.querySelectorAll(sel)).find(el => rx.test((el.textContent||el.innerText||'').trim()));
-
-  const getBtn = (...cands) => {
-    // try ids first, then find by text
-    for (const c of cands) {
-      if (typeof c === 'string' && c.startsWith('#')) {
-        const el = host.querySelector(c);
-        if (el) return el;
-      }
-      if (c instanceof RegExp) {
-        const el = byText('button, .btn, [role="button"]', c);
-        if (el) return el;
-      }
-    }
-    return null;
-  };
-
-  const mkBtn = (id, label, onClick) => {
-    const b = document.createElement('button');
-    b.id = id;
-    b.className = 'btn';
-    b.textContent = label;
-    if (onClick) b.onclick = onClick;
-    return b;
-  };
-
-  const sep = () => {
-    const hr = document.createElement('hr');
-    hr.style.border = 0;
-    hr.style.borderTop = '1px solid rgba(255,255,255,.12)';
-    hr.style.margin = '10px 0';
-    return hr;
-  };
-
-  // --- Gather / create the required controls ---
-
-  // NEW GAME
-  let newGameBtn =
-    getBtn('#newGameBtn', '#startNewGameBtn', '#questBtn', /^new\s*game$/i);
-  if (!newGameBtn) newGameBtn = mkBtn('startNewGameBtn', 'NEW GAME', () => startNewGame());
-
-  // RESUME GAME
-  let resumeBtn =
-    getBtn('#resumeBtn', '#resumeGameBtn', /^resume\s*game$/i);
-  if (!resumeBtn) resumeBtn = mkBtn('resumeBtn', 'Resume Game', () => (typeof restartGame==='function'?restartGame():null));
-
-  // THE CROWN LEAGUE (rename any Shotgun* button, else create)
-  let crownBtn =
-    getBtn('#shotgunLeaderboardBtn', '#shotgunBtn', /(shotgun(\s*leaderboard)?)/i);
-  if (!crownBtn) crownBtn = mkBtn('crownLeagueBtn', 'The Crown League');
-  crownBtn.textContent = 'The Crown League';
-  crownBtn.title = 'The Crown League';
-  crownBtn.setAttribute('aria-label','The Crown League');
-  crownBtn.onclick = (e) => {
-    e.preventDefault(); e.stopPropagation();
-    if (typeof toast === 'function') toast('Coming soon');
-    else alert('Coming soon');
-  };
-
-  // HIGH SCORES (Hub)
-  let hsHubBtn = getBtn('#hsMainBtn', /^high\s*scores$/i);
-  if (!hsHubBtn) hsHubBtn = mkBtn('hsMainBtn', 'High Scores', () => openHighScoresHubDialog());
-  else {
-    hsHubBtn.textContent = 'High Scores';
-    hsHubBtn.onclick = () => openHighScoresHubDialog();
-  }
-
-  // PLAYER STATS
-  let statsBtn =
-    getBtn('#playerStatsBtn', /^player\s*stats$/i);
-  if (!statsBtn) statsBtn = mkBtn('playerStatsBtn', 'Player Stats', () => (typeof openStatsHubDialog==='function'?openStatsHubDialog():null));
-
-  // ADMIN CODE ROW (move as a block)
-  const adminRow =
-    document.getElementById('adminCodeRow') ||
-    root.querySelector('.admin-code-row');
-
-  // Optional label for Admin Code
-  const adminLabel = document.createElement('div');
-  adminLabel.className = 'muted';
-  adminLabel.style.margin = '6px 0 -2px 0';
-  adminLabel.textContent = '';
-
-  // --- Clear current layout and re-append in the exact order ---
-
-  // Make a dedicated vertical stack
-  let stack = host.querySelector('.start-stack');
-  if (!stack) {
-    stack = document.createElement('div');
-    stack.className = 'start-stack';
-    stack.style.display = 'flex';
-    stack.style.flexDirection = 'column';
-    stack.style.gap = '8px';
-    // wipe previous loose buttons only (keep other content like title/logo)
-    // Move existing buttons out so we can control order
-    Array.from(host.querySelectorAll('button, .btn[role="button"]')).forEach(el => el.remove());
-    host.appendChild(stack);
-  } else {
-    // if a stack exists, reset it
-    stack.innerHTML = '';
-  }
-
-  const append = (el) => { if (el && el.parentElement !== stack) stack.appendChild(el); };
-
-  append(newGameBtn);
-  append(resumeBtn);
-  stack.appendChild(sep());
-
-  append(crownBtn);
-  stack.appendChild(sep());
-
-  append(hsHubBtn);
-  stack.appendChild(sep());
-
-  append(statsBtn);
-  stack.appendChild(sep());
-
-  if (adminRow) {
-    // move admin row to end and add label
-    stack.appendChild(adminLabel);
-    stack.appendChild(adminRow);
-  }
-
-  // Tidy: make all stacked buttons full-width within the stack (non-destructive)
-  Array.from(stack.querySelectorAll('button.btn,[role="button"].btn')).forEach(b => {
-    b.style.display = 'block';
-    b.style.width = '100%';
-    b.style.marginLeft = 'auto';
-    b.style.marginRight = 'auto';
-  });
-})();
 
 // Start screen: simple High Scores hub (two choices)
 function openHighScoresHubDialog(){
@@ -2352,19 +2771,16 @@ function openHighScoresHubDialog(){
 /**********************
  * CONFIG: Supabase
  **********************/
-/**********************
- * CONFIG: Supabase
- **********************/
 const SUPABASE_URL = "https://vvfqumgtasuacpggdmxx.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2ZnF1bWd0YXN1YWNwZ2dkbXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NTk0MDMsImV4cCI6MjA3ODUzNTQwM30.8NblWOwEsY1FP1hxvO6isQ908NyxkTgntnZZiXIFPHE";
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 const TABLE_PLAYERS = "players";
 // View/table that lists every player's game across Official + Practice.
-// Expected columns: sheet_id, player, score, position, ts, is_practice, rounds
 const TABLE_PLAYER_GAMES = 'player_games_union';
 const TABLE_HS_LEAGUE = "high_scores";
 const TABLE_HS_PRACTICE = "high_scores_sp";
+const TABLE_LEAGUE_LOW_SCORES = "league_low_scores";
 const TABLE_GAME_THROWS = "game_throws";
 
 // PB/WR storage (targets for the backfill)
@@ -4076,16 +4492,6 @@ if (questBtnEl) questBtnEl.addEventListener('click', ()=>{
   });
 });
 
-byId('adminEnterBtn').addEventListener('click', ()=>{
-  const code=(byId('adminCode')?.value||'').trim();
-  if(code.toLowerCase()==='hownowbrowncow'){
-    byId('adminCode').value='';
-    openAdminHub();
-  }else{
-    toast('Invalid code');
-  }
-});
-
 /*****************
  * PLAYER SELECT (page 2)
  *****************/
@@ -4671,53 +5077,62 @@ else if (localHasThrows)  statsByWindow = local;
 else if (cloudHasGames)   statsByWindow = cloud;
 else                      statsByWindow = local; // may be empty, but safe
 
-  const table = document.createElement('table');
-  table.className = 'hs-table';
+const table = document.createElement('table'); table.className = 'hs-table';
+const thead = document.createElement('thead'); const trh = document.createElement('tr');
+['#','When','Result'].forEach(h => {
+  const th = document.createElement('th');
+  th.textContent = h;
+  trh.appendChild(th);
+});
+thead.appendChild(trh);
+table.appendChild(thead);
 
-  const thead = document.createElement('thead');
-  const trh = document.createElement('tr');
+const tb = document.createElement('tbody');
+games.forEach((g, idx) => {
+  const tr = document.createElement('tr');
 
-  const metricTh = document.createElement('th');
-  metricTh.textContent = 'Metric';
-  trh.appendChild(metricTh);
+  // #
+  const td1 = document.createElement('td');
+  td1.textContent = String(idx + 1);
 
-  STAT_WINDOWS.forEach(w => {
-    const th = document.createElement('th');
-    th.textContent = w.label;
-    th.style.textAlign = 'center';
-    trh.appendChild(th);
-  });
+  // When
+  const td2 = document.createElement('td');
+  td2.textContent = fmtWhen(g.ts || g.created_at || g.inserted_at || '');
 
-  thead.appendChild(trh);
-  table.appendChild(thead);
+  // Result: "Winner {score} beat Second {score} Third {score} …"
+  const td3 = document.createElement('td');
+  const players = (g.players || []).map(p => (p && p.name) ? p.name : '');
+  const totals  = Array.isArray(g.totals) ? g.totals : [];
+  const ordered = players
+    .map((name, i) => ({ name, score: Number(totals[i] || 0) }))
+    .filter(x => x.name)
+    .sort((a, b) => b.score - a.score);
 
-  const tbody = document.createElement('tbody');
-
-  const num = v => (v || 0).toString();
-  const avg = (v, has) => (has ? v.toFixed(1) : '—');
-  const pct = (v, has) => (has ? v.toFixed(1) + '%' : '—');
-  const pctInt = (v, has) => (has ? Math.round(v) + '%' : '—');
-  const txt = v => (v && v !== 'NaN' ? v : '—');
-
-  function addRow(label, key, formatter, needsDataKey) {
-    const tr = document.createElement('tr');
-    const th = document.createElement('th');
-    th.className = 'stats-th';
-    th.textContent = label;
-    tr.appendChild(th);
-
-    STAT_WINDOWS.forEach(w => {
-      const td = document.createElement('td');
-      td.className = 'center num';
-      const s = statsByWindow[w.key] || {};
-      const hasData = needsDataKey ? (s[needsDataKey] > 0) : true;
-      const v = s[key];
-      td.textContent = formatter(v, hasData);
-      tr.appendChild(td);
-    });
-
-    tbody.appendChild(tr);
+  let result = '—';
+  if (ordered.length >= 2) {
+    result = `${ordered[0].name} ${ordered[0].score} beat ${ordered[1].name} ${ordered[1].score}`;
+    if (ordered.length > 2) {
+      result += ' ' + ordered.slice(2).map(o => `${o.name} ${o.score}`).join(' ');
+    }
+  } else if (ordered.length === 1) {
+    result = `${ordered[0].name} ${ordered[0].score}`;
   }
+  td3.textContent = result;
+
+  tr.append(td1, td2, td3);
+
+  // Click to open the full score sheet
+  tr.style.cursor = 'pointer';
+  tr.title = 'Open score sheet';
+  tr.onclick = () => {
+    try { if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(g); } catch(_) {}
+  };
+
+  tb.appendChild(tr);
+});
+
+table.appendChild(tb);
+body.appendChild(table);
 
   // Games / Matches
   addRow('Games Played',        'gamesPlayed',      num,    'gamesPlayed');
@@ -8569,6 +8984,129 @@ async function openHighScoresAdminDialog(single=false){
   overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); }); 
   modal.tabIndex=0; modal.focus(); 
 }
+// League Low Scores — Admin dialog
+async function openLeagueLowsAdminDialog(){
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className='modal';
+  const title   = document.createElement('h3');  title.textContent='League Low Scores — Admin';
+  const body    = document.createElement('div'); body.className='modal-body';
+  const footer  = document.createElement('div'); footer.className='modal-footer';
+
+  async function render(){
+    body.innerHTML = '';
+
+    try{
+      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()){
+        const p = document.createElement('p');
+        p.textContent = 'Cloud not initialised.';
+        body.appendChild(p);
+        return;
+      }
+    }catch(_){}
+
+    let rows = [];
+    try{
+      const tableName = (typeof TABLE_LEAGUE_LOW_SCORES !== 'undefined' && TABLE_LEAGUE_LOW_SCORES)
+        ? TABLE_LEAGUE_LOW_SCORES
+        : 'league_low_scores';
+
+      const { data, error } = await sb
+        .from(tableName)
+        .select('name, score, ts')
+        .order('score', { ascending: true })
+        .order('ts',    { ascending: true })
+        .limit(1000);
+      if (error) throw error;
+      rows = data || [];
+    }catch(e){
+      console.error('League low scores fetch failed', e);
+      const p = document.createElement('p');
+      p.textContent = 'Failed to load league low scores.';
+      body.appendChild(p);
+      return;
+    }
+
+    if (!rows.length){
+      const p = document.createElement('p');
+      p.textContent = 'No league low scores found.';
+      body.appendChild(p);
+      return;
+    }
+
+    const table = document.createElement('table'); table.className='hs-table compact';
+    const thead = document.createElement('thead'); const trh=document.createElement('tr');
+    ['#','Player','Score','When','Actions'].forEach(h=>{
+      const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);
+    });
+    thead.appendChild(trh); table.appendChild(thead);
+
+    const tb = document.createElement('tbody');
+
+    rows.forEach((row, idx) => {
+      const tr = document.createElement('tr');
+
+      const td1 = document.createElement('td'); td1.textContent = String(idx+1);
+      const td2 = document.createElement('td'); td2.textContent = row.name || '';
+      const td3 = document.createElement('td'); td3.textContent = String(row.score ?? '');
+
+      const td4 = document.createElement('td');
+      const d   = new Date(row.ts);
+      td4.textContent = !Number.isNaN(d.getTime())
+        ? d.toLocaleString(undefined,{year:'2-digit',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'})
+        : '';
+      td4.style.fontSize = '0.8rem';
+
+      const td5 = document.createElement('td'); td5.className='center';
+      const del = document.createElement('button'); del.className='btn small danger'; del.textContent='Delete';
+      del.onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Delete ${row.name}'s low score of ${row.score}?`)) return;
+        try{
+          const tableName = (typeof TABLE_LEAGUE_LOW_SCORES !== 'undefined' && TABLE_LEAGUE_LOW_SCORES)
+            ? TABLE_LEAGUE_LOW_SCORES
+            : 'league_low_scores';
+
+          let q = sb.from(tableName)
+            .delete()
+            .eq('name', String(row.name || ''))
+            .eq('score', Number(row.score || 0));
+          if (row.ts) q = q.eq('ts', row.ts);
+          const { error } = await q;
+          if (error) throw error;
+
+          if (typeof toast === 'function') toast('Deleted');
+          await render();
+        }catch(err){
+          console.error('Delete league low score failed', err);
+          if (typeof toast === 'function') toast('Delete failed');
+        }
+      };
+      td5.appendChild(del);
+
+      tr.append(td1, td2, td3, td4, td5);
+      tb.appendChild(tr);
+    });
+
+    table.appendChild(tb);
+    body.appendChild(table);
+  }
+
+  await render();
+
+  const backBtn  = document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  backBtn.onclick = ()=>{ overlay.remove(); if (typeof openAdminHub === 'function') openAdminHub(); };
+  const closeBtn = document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Exit';
+  closeBtn.onclick = ()=> overlay.remove();
+  footer.append(backBtn, closeBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
+  modal.tabIndex=0; modal.focus();
+}
 
 // All Games dialog (cloud-only, with Delete and re-render)
 async function openAllGamesDialog(){
@@ -8681,23 +9219,20 @@ async function openAllGamesDialog(){
 
     const table=document.createElement('table'); table.className='hs-table';
 
-    // Tight first column
+    // Column layout: # | When | Players | Totals | Actions
     const colgroup = document.createElement('colgroup');
-    // Actions (delete) column first — give it enough width for the button label
-    const cAct = document.createElement('col'); cAct.style.width = '88px'; colgroup.appendChild(cAct);
-    // Index column (#)
-    const cIdx = document.createElement('col'); cIdx.style.width = '3ch'; colgroup.appendChild(cIdx);
-    // When, Players, Totals
-    colgroup.appendChild(document.createElement('col'));
-    colgroup.appendChild(document.createElement('col'));
-    colgroup.appendChild(document.createElement('col'));
+    const cIdx = document.createElement('col'); cIdx.style.width = '3ch'; colgroup.appendChild(cIdx); // #
+    colgroup.appendChild(document.createElement('col')); // When
+    colgroup.appendChild(document.createElement('col')); // Players
+    colgroup.appendChild(document.createElement('col')); // Totals
+    const cAct = document.createElement('col'); cAct.style.width = '88px'; colgroup.appendChild(cAct); // Actions
     table.appendChild(colgroup);
 
     const thead=document.createElement('thead'); const trh=document.createElement('tr');
-    ['', '#','When','Players','Totals'].forEach((h,i)=>{
+    ['#','When','Players','Totals',''].forEach((h,i)=>{
       const th=document.createElement('th'); th.textContent=h;
-      if(i===1) th.style.width='3ch'; // # column
-      if(i===0) th.style.width='88px';  // delete column
+      if(i===0) th.style.width='3ch';   // # column
+      if(i===4) th.style.width='88px';  // actions column
       trh.appendChild(th);
     });
     thead.appendChild(trh); table.appendChild(thead);
@@ -8713,7 +9248,7 @@ async function openAllGamesDialog(){
       const td3=document.createElement('td'); td3.textContent=(g.players||[]).map(p=>p?.name||'').join(', ');
       const td4=document.createElement('td'); td4.textContent=(g.totals||[]).join(' · ');
 
-      // Delete button as first column
+      // Delete button as last column
       const tdDel=document.createElement('td'); tdDel.className='center';
       const delBtn=document.createElement('button'); delBtn.className='btn small danger'; delBtn.textContent='Delete';
       delBtn.title='Delete this game';
@@ -8729,7 +9264,7 @@ async function openAllGamesDialog(){
       tr.title='Open score sheet';
       tr.onclick=()=>{ if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(g); };
 
-      tr.append(tdDel, td1, td2, td3, td4); tb.appendChild(tr);
+      tr.append(td1, td2, td3, td4, tdDel); tb.appendChild(tr);
     });
 
     table.appendChild(tb); body.appendChild(table);
@@ -9041,17 +9576,6 @@ if (READS_CLOUD_ONLY) {
   window.logCompletedMatch = function(){ /* no-op */ };
 }
 
-// Helpers (define only if missing)
-if (typeof window.eqName !== 'function') {
-  window.eqName = (a,b) => String(a||'').trim().toLowerCase() === String(b||'').trim().toLowerCase();
-}
-if (typeof window.isOfficialGame !== 'function') {
-  window.isOfficialGame = g => Array.isArray(g?.players) && g.players.length >= 2;
-}
-if (typeof window.isPracticeGame !== 'function') {
-  window.isPracticeGame = g => Array.isArray(g?.players) && g.players.length === 1;
-}
-
 /* NEW: shared date formatter → "DD/MM/YY @ HH:MM" (24h) */
 if (typeof window.fmtWhen !== 'function') {
   window.fmtWhen = function fmtWhen(ts){
@@ -9310,6 +9834,122 @@ async function recoverHighScoresFromCloudWindow(hours = 24){
     }
   }
 
+// === Player Summary Stats dialog (cloud-only, simple aggregate) ===
+window.openPlayerSummaryStatsDialog = async function openPlayerSummaryStatsDialog(playerName, mode){
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal   = document.createElement('div'); modal.className   = 'modal';
+  const title   = document.createElement('h3');
+  const body    = document.createElement('div'); body.className    = 'modal-body';
+  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
+
+  const isPractice = (mode === 'practice' || mode === true);
+
+  title.textContent = 'Player Stats — ' + (playerName || 'Unknown') + (isPractice ? ' (Practice)' : ' (Official)');
+
+  async function render(){
+    body.innerHTML = '';
+
+    try{
+      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()){
+        const p = document.createElement('p');
+        p.textContent = 'Cloud not initialised.';
+        body.appendChild(p);
+        return;
+      }
+    } catch(_){}
+
+    // Fetch all games for this player/mode from the cloud view
+    let rows = [];
+    try{
+      const tableName = (typeof TABLE_PLAYER_GAMES !== 'undefined' && TABLE_PLAYER_GAMES)
+        ? TABLE_PLAYER_GAMES
+        : 'player_games_union';
+
+      const query = sb
+        .from(tableName)
+        .select('score, position, ts, is_practice, rounds')
+        .eq('player', playerName || '')
+        .eq('is_practice', !!isPractice)
+        .order('ts', { ascending: false })
+        .limit(5000);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      rows = data || [];
+    }catch(e){
+      console.error('Player summary stats fetch failed', e);
+      const p = document.createElement('p');
+      p.textContent = 'Failed to load stats.';
+      const d = document.createElement('p');
+      d.className = 'tag';
+      d.textContent = (e && e.message) ? e.message : 'Unknown error';
+      body.append(p, d);
+      return;
+    }
+
+    if (!rows.length){
+      const p = document.createElement('p');
+      p.textContent = 'No games found for this player in this mode.';
+      body.appendChild(p);
+      return;
+    }
+
+    // Basic aggregates
+    const games = rows.length;
+    const scores = rows.map(r => Number(r.score || 0));
+    const wins   = rows.filter(r => Number(r.position || 0) === 1).length;
+    const best   = Math.max(...scores);
+    const worst  = Math.min(...scores);
+    const total  = scores.reduce((s,v)=> s + v, 0);
+    const avg    = total / games;
+
+    const last   = rows[0];
+    const lastScore = Number(last.score || 0);
+    const lastWhen  = (window.fmtWhen && last.ts) ? window.fmtWhen(last.ts) : (last.ts || '');
+
+    // Build a compact two-column table of stats
+    const table = document.createElement('table');
+    table.className = 'hs-table compact';
+
+    const tbody = document.createElement('tbody');
+    function addRow(label, value){
+      const tr = document.createElement('tr');
+      const tdL = document.createElement('td'); tdL.textContent = label;
+      const tdV = document.createElement('td'); tdV.textContent = value;
+      tr.append(tdL, tdV);
+      tbody.appendChild(tr);
+    }
+
+    const winPct = games ? ((wins / games) * 100).toFixed(1) + '%' : '0%';
+    addRow('Games Played', String(games));
+    addRow('Wins',        `${wins} (${winPct})`);
+    addRow('Best Score',  String(best));
+    addRow('Worst Score', String(worst));
+    addRow('Average Score', avg.toFixed(1));
+    addRow('Last Game Score', String(lastScore));
+    addRow('Last Game When',  lastWhen || '—');
+
+    table.appendChild(tbody);
+    body.appendChild(table);
+  }
+
+  await render();
+
+  const backBtn  = document.createElement('button'); backBtn.className  = 'btn'; backBtn.textContent  = 'Return';
+  const closeBtn = document.createElement('button'); closeBtn.className = 'btn'; closeBtn.textContent = 'Close';
+  backBtn.onclick  = () => overlay.remove();
+  closeBtn.onclick = () => overlay.remove();
+  footer.append(backBtn, closeBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0; modal.focus();
+};
+
 // === Start screen layout arranger (non-destructive; rebuilds start-actions) ===
 function arrangeStartActions(){
   try{
@@ -9412,7 +10052,11 @@ function arrangeStartActions(){
     if (typeof window.openLatestScoresDialog === 'function') latest.onclick = window.openLatestScoresDialog;
     if (typeof window.openRoundHighScoresDialog === 'function') hsRound.onclick = window.openRoundHighScoresDialog;
     if (typeof window.openHighScoresMenuDialog === 'function') hsMatch.onclick = window.openHighScoresMenuDialog;
-    if (typeof window.openAdminHub === 'function') admin.onclick = window.openAdminHub;
+    if (typeof window.openAdminPasswordModal === 'function') {
+      admin.onclick = window.openAdminPasswordModal;
+    } else if (typeof window.openAdminHub === 'function') {
+      admin.onclick = window.openAdminHub;
+    }
     crown.onclick = (e) => { e.preventDefault(); e.stopPropagation(); if (typeof toast === 'function') toast('Coming soon'); else alert('Coming soon'); };
 
     // rebuild layout
@@ -9453,26 +10097,25 @@ document.addEventListener('DOMContentLoaded', () => {
   if (ensureCloudInit()) initialCloudCheck();
 
 // Restart buttons (Player Select + Game + Leaderboard)
-  ['restartGameBtn', 'restartGameBtnLB'].forEach(id => {
+  ['restartGameBtn', 'restartGameBtnLB', 'restartGameBtnGame'].forEach(id => {
     document.querySelectorAll('#' + id).forEach(btn => {
       btn.onclick = restartGame;
     });
   });
 
- // Stats buttons in top rows (game + final leaderboard)
-  const statsHubBtnGame  = byId('statsHubBtnLB');      // game screen
+  // Stats buttons in top rows (game + final leaderboard)
+  const statsHubBtnGame  = byId('statsHubBtnGame');    // game screen
   const statsHubBtnFinal = byId('statsHubBtnFinal');   // leaderboard screen
 
   if (statsHubBtnGame)  statsHubBtnGame.onclick  = openStatsHubDialog;
   if (statsHubBtnFinal) statsHubBtnFinal.onclick = openStatsHubDialog;
-   const hsFinalBtn = byId('highScoresMenuBtnLB');
+  const hsFinalBtn = byId('highScoresMenuBtnLB');
   if (hsFinalBtn) hsFinalBtn.onclick = openHighScoresMenuDialog;
+  
   // High Scores button on start screen
   const hsStartBtn = byId('highScoresMenuBtn') || byId('highScoresBtn');
   if (hsStartBtn) hsStartBtn.onclick = openHighScoresMenuDialog;
   
-  // Latest Scores button on start screen (create if missing and wire)
-try { ensureLatestScoresButton(); } catch(_) {}
 
   // Leaderboard buttons (guarded lookups)
   (function(){
@@ -9550,32 +10193,31 @@ try { ensureLatestScoresButton(); } catch(_) {}
   });
   
   // === Crown League wiring (rename + "Coming soon") ===
-(function wireCrownLeague(){
-  // If you have a dedicated id, we'll catch it first
-  const btn =
-    document.getElementById('shotgunLeaderboardBtn') ||
-    document.getElementById('shotgunBtn') ||
-    // fallback: find by visible text
-    Array.from(document.querySelectorAll('#details button, button'))
-      .find(b => /(shotgun\s*leaderboard|^shotgun$)/i.test((b.textContent || b.innerText || '').trim()));
+  (function wireCrownLeague(){
+    // If you have a dedicated id, we'll catch it first
+    const btn =
+      document.getElementById('shotgunLeaderboardBtn') ||
+      document.getElementById('shotgunBtn') ||
+      // fallback: find by visible text
+      Array.from(document.querySelectorAll('#details button, button'))
+        .find(b => /(shotgun\s*leaderboard|^shotgun$)/i.test((b.textContent || b.innerText || '').trim()));
 
-  if (!btn) return;
+    if (!btn) return;
 
-  // Overwrite old references (label/title/aria)
-  btn.textContent = 'The Crown League';
-  btn.title = 'The Crown League';
-  if (btn.getAttribute('aria-label')) btn.setAttribute('aria-label', 'The Crown League');
+    // Overwrite old references (label/title/aria)
+    btn.textContent = 'The Crown League';
+    btn.title = 'The Crown League';
+    if (btn.getAttribute('aria-label')) btn.setAttribute('aria-label', 'The Crown League');
 
-  // Intercept click → Coming soon
-  btn.onclick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (typeof toast === 'function') toast('Coming soon');
-    else alert('Coming soon');
-  };
-})();
+    // Intercept click → Coming soon
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof toast === 'function') toast('Coming soon');
+      else alert('Coming soon');
+    };
+  })();
 
-  
   try { arrangeStartActions(); } catch(_) {}
 });
 // ===== FINAL OVERRIDE: Admin Hub opener (safe + id compatible) =====
@@ -9598,6 +10240,16 @@ window.openAdminHub = function openAdminHub(){
   // High scores (league / practice)
   bind('openHsLeagueAdmin',   () => { hub.classList.add('hidden'); if (typeof openHighScoresAdminDialog === 'function') openHighScoresAdminDialog(false); });
   bind('openHsPracticeAdmin', () => { hub.classList.add('hidden'); if (typeof openHighScoresAdminDialog === 'function') openHighScoresAdminDialog(true);  });
+
+  // League Low Scores (admin)
+  bind('openLeagueLowsAdminBtn', () => {
+    hub.classList.add('hidden');
+    if (typeof openLeagueLowsAdminDialog === 'function') openLeagueLowsAdminDialog();
+  });
+  bind('openLeagueLowsAdmin', () => {
+    hub.classList.add('hidden');
+    if (typeof openLeagueLowsAdminDialog === 'function') openLeagueLowsAdminDialog();
+  });
 
   // Saved Players Admin — supports legacy ID too
   const spa = document.getElementById('openSavedPlayersAdminBtn') || document.getElementById('openSavedPlayersAdmin');
@@ -10203,160 +10855,153 @@ window.setCloudStatus = function setCloudStatus(state, msg){
   };
 })();
 
-// === Latest Scores (last 10 completed official games) ===
+// Latest Scores modal: overlay with # | When | Result (no delete column)
 async function openLatestScoresDialog(){
-  try{
-    if (typeof ensureCloudInit === 'function' && !ensureCloudInit()){
-      if (typeof toast === 'function') toast('Cloud not initialised');
-    }
-  }catch(_){}
-
-  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-  const modal   = document.createElement('div'); modal.className='modal';
-  const title   = document.createElement('h3');  title.textContent='Latest Scores';
-  const body    = document.createElement('div'); body.className='modal-body';
-  const footer  = document.createElement('div'); footer.className='modal-footer';
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal   = document.createElement('div'); modal.className   = 'modal';
+  const title   = document.createElement('h3');  title.textContent = 'Latest Scores';
+  const body    = document.createElement('div'); body.className    = 'modal-body';
+  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
 
   async function render(){
     body.innerHTML = '';
+
+    // Fetch all games from cloud and sort newest → oldest
     let games = [];
-    try{
-      if (typeof getGamesForMode === 'function'){
-        games = await getGamesForMode('official'); // cloud-only read
-      }
-    }catch(e){ console.error('Latest Scores fetch failed', e); }
-
-    games = (games || []).filter(Boolean)
-      .sort((a,b)=> new Date(b.ts||0)-new Date(a.ts||0))
-      .slice(0,10);
-
-    if (!games.length){
-      const p=document.createElement('p'); p.textContent='No recent games.'; body.appendChild(p); 
+    try {
+      games = await cloudFetchAllGamesAsLocal();
+    } catch (e) {
+      console.error('Latest Scores fetch failed', e);
+      const p = document.createElement('p');
+      p.textContent = 'Failed to load latest scores.';
+      body.appendChild(p);
       return;
     }
 
-const table = document.createElement('table'); table.className = 'hs-table';
-const thead = document.createElement('thead'); const trh = document.createElement('tr');
-['#','When','Result'].forEach(h => {
-  const th = document.createElement('th');
-  th.textContent = h;
-  trh.appendChild(th);
-});
-thead.appendChild(trh);
-table.appendChild(thead);
+    const toTS = (g) => {
+      const t = g?.ts || g?.created_at || g?.inserted_at || (g?.meta && (g.meta.ts || g.meta.date)) || null;
+      const n = t ? Date.parse(t) : NaN;
+      return Number.isFinite(n) ? n : 0;
+    };
 
-const tb = document.createElement('tbody');
-games.forEach((g, idx) => {
-  const tr = document.createElement('tr');
+    games = (games || []).filter(Boolean).sort((a,b)=> toTS(b) - toTS(a)).slice(0, 10);
 
-  // #
-  const td1 = document.createElement('td');
-  td1.textContent = String(idx + 1);
-
-  // When
- const d = new Date(g.ts);
-td2.textContent = fmtWhen(d);
-  td2.textContent = !Number.isNaN(d.getTime())
-    ? d.toLocaleString(undefined, { year:'2-digit', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' })
-    : '';
-
-  // Result: "Winner {score} beat Second {score} Third {score} …"
-  const td3 = document.createElement('td');
-  const players = (g.players || []).map(p => (p && p.name) ? p.name : '');
-  const totals  = Array.isArray(g.totals) ? g.totals : [];
-  const ordered = players
-    .map((name, i) => ({ name, score: Number(totals[i] || 0) }))
-    .filter(x => x.name)
-    .sort((a, b) => b.score - a.score);
-
-  let result = '—';
-  if (ordered.length >= 2) {
-    result = `${ordered[0].name} ${ordered[0].score} beat ${ordered[1].name} ${ordered[1].score}`;
-    if (ordered.length > 2) {
-      result += ' ' + ordered.slice(2).map(o => `${o.name} ${o.score}`).join(' ');
+    if (!games.length){
+      const p = document.createElement('p');
+      p.textContent = 'No games found.';
+      body.appendChild(p);
+      return;
     }
-  } else if (ordered.length === 1) {
-    result = `${ordered[0].name} ${ordered[0].score}`;
+
+    const table = document.createElement('table');
+    table.className = 'hs-table';
+
+    // Columns: # | When | Result
+    const colgroup = document.createElement('colgroup');
+    const maxDigits = Math.max(2, String(games.length || 0).length);
+    const colNum  = document.createElement('col');  colNum.style.width  = `${Math.min(3, maxDigits)}ch`;
+    const colWhen = document.createElement('col');  colWhen.style.width = '14ch';
+    const colRes  = document.createElement('col');
+    colgroup.append(colNum, colWhen, colRes);
+    table.appendChild(colgroup);
+
+    const thead = document.createElement('thead');
+    const trh   = document.createElement('tr');
+    ['#','When','Result'].forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    games.forEach((g, idx) => {
+      const tr  = document.createElement('tr');
+
+      // #
+      const td1 = document.createElement('td');
+      td1.textContent = String(idx + 1);
+
+      // When (use shared fmtWhen helper if available)
+      const td2 = document.createElement('td');
+      const tsVal = g.ts || g.created_at || g.inserted_at || (g.meta && (g.meta.ts || g.meta.date)) || null;
+      if (tsVal){
+        if (typeof window.fmtWhen === 'function') {
+          td2.textContent = window.fmtWhen(tsVal);
+        } else {
+          const d = new Date(tsVal);
+          td2.textContent = !Number.isNaN(d.getTime())
+            ? d.toLocaleString(undefined,{ year:'2-digit', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })
+            : '';
+        }
+      } else {
+        td2.textContent = '';
+      }
+
+      // Result string (winner beat runner-up [others...])
+      const players = (g.players || []).map(p => (p && p.name) ? p.name : '');
+      const totals  = Array.isArray(g.totals) ? g.totals : [];
+      const ordered = players
+        .map((name, i) => ({ name, score: Number(totals[i] || 0) }))
+        .filter(x => x.name)
+        .sort((a, b) => b.score - a.score);
+
+      let result = '—';
+      if (ordered.length >= 2) {
+        result = `${ordered[0].name} ${ordered[0].score} beat ${ordered[1].name} ${ordered[1].score}`;
+        if (ordered.length > 2) {
+          result += ' ' + ordered.slice(2).map(o => `${o.name} ${o.score}`).join(' ');
+        }
+      } else if (ordered.length === 1) {
+        result = `${ordered[0].name} ${ordered[0].score}`;
+      }
+
+      const td3 = document.createElement('td');
+      td3.textContent = result;
+
+      tr.append(td1, td2, td3);
+
+      // Click row to open the score sheet if available
+      tr.style.cursor = 'pointer';
+      tr.title = 'Open score sheet';
+      tr.onclick = () => {
+        try {
+          if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(g);
+        } catch (_) {}
+      };
+
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+
+    const tw = document.createElement('div');
+    tw.className = 'table-wrap';
+    tw.appendChild(table);
+    body.appendChild(tw);
   }
-  td3.textContent = result;
 
-  tr.append(td1, td2, td3);
-
-  // Click to open the full score sheet
-  tr.style.cursor = 'pointer';
-  tr.title = 'Open score sheet';
-  tr.onclick = () => {
-    try { if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(g); } catch(_) {}
-  };
-
-  tb.appendChild(tr);
-});
-
-table.appendChild(tb);
-body.appendChild(table);
-  }
-
-  const backBtn  = document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
-  backBtn.onclick = ()=> overlay.remove();
-  const closeBtn = document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
-  closeBtn.onclick = ()=> overlay.remove();
+  // Footer buttons
+  const backBtn  = document.createElement('button'); backBtn.className  = 'btn'; backBtn.textContent  = 'Back';
+  const closeBtn = document.createElement('button'); closeBtn.className = 'btn'; closeBtn.textContent = 'Close';
+  backBtn.onclick  = () => overlay.remove();
+  closeBtn.onclick = () => overlay.remove();
   footer.append(backBtn, closeBtn);
 
   modal.append(title, body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
-  overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
-  modal.tabIndex=0; modal.focus();
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0; modal.focus();
 
   await render();
 }
 
-function ensureLatestScoresButton(){
-  // Try several ids for the existing High Scores button
-  const hsBtn = document.getElementById('highScoresMenuBtn')
-             || document.getElementById('highScoresBtn')
-             || document.getElementById('hsMainBtn');
 
-  // Reuse if present
-  let latestRow = document.getElementById('latestScoresRow');
-  let latest    = document.getElementById('latestScoresBtn');
-
-  if (!latest){
-    latest = document.createElement('button');
-    latest.id = 'latestScoresBtn';
-    latest.className = 'btn';
-    latest.type = 'button';
-    latest.textContent = 'Latest Scores';
-  }
-
-  if (!latestRow){
-    latestRow = document.createElement('div');
-    latestRow.id = 'latestScoresRow';
-    latestRow.className = 'row';
-    latestRow.style.cssText = 'justify-content:center; gap:8px; flex-wrap:wrap; margin-top:4px;';
-    latestRow.appendChild(latest);
-  } else if (!latestRow.contains(latest)){
-    latestRow.appendChild(latest);
-  }
-
-  // Find the row that contains the High Scores button
-  const hsRow = hsBtn ? (hsBtn.closest('.row') || hsBtn.parentElement) : null;
-
-  if (hsRow && hsRow.parentElement){
-    // Insert our Latest Scores row **above** the High Scores row
-    hsRow.insertAdjacentElement('beforebegin', latestRow);
-  } else {
-    // Fallback: append near the start screen container
-    (document.getElementById('details') || document.body).appendChild(latestRow);
-  }
-
-  // Wire click
-  latest.onclick = (typeof window.openLatestScoresDialog === 'function')
-    ? window.openLatestScoresDialog
-    : function(){ console.warn('openLatestScoresDialog not available'); };
-}
 
 // === Start Screen: Match Ticker (last 10 completed matches) ===
 (function(){
