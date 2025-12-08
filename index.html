@@ -1050,35 +1050,35 @@ margin-bottom: var(--section-gap);
       </div>
     </div>
 
-    <!-- Select Player Modal -->
-    <div id="selectPlayerModal" class="modal-backdrop hidden">
-      <div class="modal">
-        <h3>Select Player</h3>
-        <div class="modal-body">
-          <div class="stack">
-            <label class="tag">Player Name</label>
-            <select id="existingPlayerSelect" style="width: 100%;">
-              <option value="">Select a saved player...</option>
-            </select>
-          </div>
-          <div class="stack" style="margin-top: 15px;">
-            <label class="tag" for="playerPassword">Password</label>
-            <input
-              id="playerPassword"
-              type="tel"
-              inputmode="numeric"
-              pattern="\d{4}"
-              maxlength="4"
-              placeholder="4-digit PIN"
-            />
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button id="cancelSelectPlayerBtn" class="btn" type="button">Cancel</button>
-          <button id="confirmSelectPlayerBtn" class="btn primary" type="button">Confirm</button>
-        </div>
+<!-- Select Player Modal -->
+<div id="selectPlayerModal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h3>Select Player</h3>
+    <div class="modal-body">
+      <div class="stack">
+        <label class="tag">Player Name</label>
+        <select id="existingPlayerSelect" style="width: 100%;">
+          <option value="">Select a saved player...</option>
+        </select>
+      </div>
+      <div class="stack ps-password-row" style="margin-top: 15px;">
+        <label class="tag" for="playerPassword">Password</label>
+        <input
+          id="playerPassword"
+          type="tel"
+          inputmode="numeric"
+          pattern="\d{4}"
+          maxlength="4"
+          placeholder="4-digit PIN"
+        />
       </div>
     </div>
+    <div class="modal-footer">
+      <button id="cancelSelectPlayerBtn" class="btn" type="button">Cancel</button>
+      <button id="confirmSelectPlayerBtn" class="btn primary" type="button">View Stats</button>
+    </div>
+  </div>
+</div>
 
 <!-- Admin Hub Modal -->
 <div id="adminHubModal" class="modal-backdrop hidden">
@@ -2283,6 +2283,79 @@ async function cloudRenamePlayer(oldName, newName){
   } catch(_) {}
 })();
 
+// Patch Player Stats hub modal to inject a PROGRESSION button after STATS
+(function () {
+  if (window.__playerStatsProgressionPatch) return;
+  window.__playerStatsProgressionPatch = true;
+
+  function tryPatchPlayerStatsModal(root) {
+    try {
+      const modal = root.querySelector('.modal');
+      if (!modal) return;
+
+      const titleEl = modal.querySelector('h3');
+      if (!titleEl) return;
+      const titleText = (titleEl.textContent || '').trim();
+
+      // Only touch Player Stats modals
+      if (!/^Player Stats\s*[\u2013\u2014-]/i.test(titleText)) return;
+
+      // Find GAMES and STATS buttons
+      const buttons = Array.from(modal.querySelectorAll('button'));
+      const gamesBtn = buttons.find(
+        b => (b.textContent || '').trim().toUpperCase() === 'GAMES'
+      );
+      const statsBtn = buttons.find(
+        b => (b.textContent || '').trim().toUpperCase() === 'STATS'
+      );
+
+      if (!gamesBtn || !statsBtn) return;
+
+      // If PROGRESSION already exists, do nothing
+      const existingProg = buttons.find(
+        b => (b.textContent || '').trim().toUpperCase() === 'PROGRESSION'
+      );
+      if (existingProg) return;
+
+      // Clone STATS style to keep look identical
+      const progBtn = statsBtn.cloneNode(true);
+      progBtn.textContent = 'PROGRESSION';
+      if (progBtn.dataset) {
+        progBtn.dataset.view = 'progression';
+      }
+
+      // Insert immediately after STATS
+      if (statsBtn.parentNode) {
+        statsBtn.parentNode.insertBefore(progBtn, statsBtn.nextSibling);
+      }
+    } catch (e) {
+      console.error('Player Stats progression patch failed', e);
+    }
+  }
+
+  const mo = new MutationObserver(muts => {
+    for (const m of muts) {
+      for (const n of m.addedNodes) {
+        if (!(n instanceof HTMLElement)) continue;
+
+        // Modal added directly
+        if (n.classList.contains('modal-backdrop')) {
+          tryPatchPlayerStatsModal(n);
+        } else if (n.querySelector) {
+          // Or nested within some other added node
+          const backdrop = n.querySelector('.modal-backdrop');
+          if (backdrop) tryPatchPlayerStatsModal(backdrop);
+        }
+      }
+    }
+  });
+
+  try {
+    mo.observe(document.body, { childList: true, subtree: true });
+  } catch (_) {}
+})();
+
+
 // === Player Summary Stats dialog (cloud-only, extended aggregate) ===
 window.openPlayerSummaryStatsDialog = async function openPlayerSummaryStatsDialog(playerName, mode){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
@@ -2317,7 +2390,41 @@ window.openPlayerSummaryStatsDialog = async function openPlayerSummaryStatsDialo
 
   footer.append(returnBtn, closeBtn);
 
-  body.innerHTML = '<p class="tag">Loading stats…</p>';
+   // --- TOP BUTTON HUB: GAMES / STATS / PROGRESSION / [row: Target Hit % / T-D-B % / H2H] ---
+  body.innerHTML = `
+    <div class="column" style="gap:10px;">
+      <button class="btn big" data-view="games">GAMES</button>
+      <button class="btn big" data-view="stats">STATS</button>
+      <button class="btn big" data-view="progression">PROGRESSION</button>
+      <div class="row" style="gap:8px; margin-top:8px;">
+        <button class="btn" data-view="target">Target Hit %</button>
+        <button class="btn" data-view="tdb">T-D-B %</button>
+        <button class="btn" data-view="h2h">H2H</button>
+      </div>
+      <button class="btn" data-role="return">Return</button>
+    </div>
+  `;
+
+  // Wire the PROGRESSION button (works whether it came from this template or a DOM patch)
+  function wireProgressionButton() {
+    const buttons = Array.from(modal.querySelectorAll('button'));
+    const progBtn = buttons.find(
+      b => (b.textContent || '').trim().toUpperCase() === 'PROGRESSION'
+    );
+    if (progBtn) {
+      progBtn.onclick = () => {
+        try {
+          if (typeof window.openPlayerProgressionDialog === 'function') {
+            window.openPlayerProgressionDialog(safeName, isPractice);
+          }
+        } catch (_) {}
+      };
+    }
+  }
+
+  // Run now and again shortly in case PROGRESSION is injected slightly later
+  wireProgressionButton();
+  setTimeout(wireProgressionButton, 150);
 
   try{
     // Ensure cloud is ready
@@ -2603,6 +2710,307 @@ window.openPlayerSummaryStatsDialog = async function openPlayerSummaryStatsDialo
   }
 };
 
+// === Player Progression dialog (per-game line graph) ===
+window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(playerName, mode) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-backdrop';
+  const modal = document.createElement('div');
+  modal.className = 'modal compact';
+  const title = document.createElement('h3');
+  const body = document.createElement('div');
+  body.className = 'modal-body';
+  const footer = document.createElement('div');
+  footer.className = 'modal-footer';
+
+  const isPractice = (mode === 'practice' || mode === true);
+  const labelMode = isPractice ? 'Practice' : 'Official';
+  const safeName = playerName || 'Unknown';
+
+  title.textContent = `Progression — ${safeName} (${labelMode})`;
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  modal.tabIndex = 0;
+  modal.focus();
+
+  const close = () => { overlay.remove(); };
+
+  const backBtn = document.createElement('button');
+  backBtn.className = 'btn';
+  backBtn.textContent = 'Back';
+  backBtn.onclick = close;
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn';
+  closeBtn.textContent = 'Close';
+  closeBtn.onclick = close;
+
+  footer.append(backBtn, closeBtn);
+
+  // Top controls + chart area
+body.innerHTML = `
+  <div class="row" style="gap:8px; margin-bottom:8px;">
+    <button class="btn primary" data-metric="score">Game Score</button>
+    <button class="btn" data-metric="avg">5 Game Average</button>
+    <button class="btn" data-metric="target">Target %</button>
+  </div>
+  <p class="tag" id="progHint">Vertical: Score / %, Horizontal: Games (1, 2, 3, …)</p>
+`;
+
+  const metricButtons = Array.from(body.querySelectorAll('button[data-metric]'));
+  const canvas = body.querySelector('#progChartCanvas');
+  const ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
+
+  if (!ctx) {
+    const wrap = body.querySelector('#progChartWrap');
+    if (wrap) wrap.innerHTML = '<p>Canvas not supported in this browser.</p>';
+    return;
+  }
+
+  // ---- Fetch per-game data for this player ----
+  async function loadData() {
+    try {
+      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) {
+        return { labels: [], scores: [], avgs: [], targetPct: [] };
+      }
+    } catch (_) {}
+
+    const tableName = (typeof TABLE_PLAYER_GAMES !== 'undefined' && TABLE_PLAYER_GAMES)
+      ? TABLE_PLAYER_GAMES
+      : 'player_games_union';
+
+    let games = [];
+    try {
+      const { data, error } = await sb
+        .from(tableName)
+        .select('sheet_id, player, score, rounds, ts, is_practice')
+        .eq('player', safeName)
+        .eq('is_practice', !!isPractice)
+        .order('ts', { ascending: true })
+        .limit(200);
+      if (error) throw error;
+      games = (data || []).filter(Boolean);
+    } catch (e) {
+      console.error('Progression: games fetch failed', e);
+      return { labels: [], scores: [], avgs: [], targetPct: [] };
+    }
+
+    if (!games.length) {
+      return { labels: [], scores: [], avgs: [], targetPct: [] };
+    }
+
+    // x-axis: game index 1..N
+    const labels = games.map((_, idx) => idx + 1);
+
+const scores = games.map(g => Number(g.score || 0));
+
+// 5 Game Average: only at games 5, 10, 15…
+// game 5 = avg of game 1–5, game 10 = avg of 6–10, etc.
+const avgs = scores.map((_, idx) => {
+  const gameNo = idx + 1;          // 1-based game index
+  if (gameNo % 5 !== 0) return NaN; // only plot at 5, 10, 15, ...
+  const start = idx - 4;           // start of the 5-game block
+  if (start < 0) return NaN;
+  let sum = 0;
+  for (let i = start; i <= idx; i++) {
+    sum += Number(scores[i] || 0);
+  }
+  return sum / 5;
+});
+
+    // Overall target hit % per game (all darts)
+    let targetPct = new Array(games.length).fill(0);
+
+    try {
+      const gameIds = games.map(g => g.sheet_id).filter(Boolean);
+      if (gameIds.length && typeof TABLE_GAME_THROWS !== 'undefined') {
+        const { data: throwsRaw, error: tErr } = await sb
+          .from(TABLE_GAME_THROWS)
+          .select('game_id, points')
+          .in('game_id', gameIds)
+          .eq('player', safeName);
+        if (!tErr && Array.isArray(throwsRaw)) {
+          const byGame = new Map();
+          throwsRaw.forEach(row => {
+            const gid = row.game_id;
+            if (!gid) return;
+            let agg = byGame.get(gid);
+            if (!agg) {
+              agg = { hits: 0, attempts: 0 };
+              byGame.set(gid, agg);
+            }
+            agg.attempts += 1;
+            const pts = Number(row.points || 0);
+            if (pts > 0) agg.hits += 1;
+          });
+
+          targetPct = games.map(g => {
+            const agg = byGame.get(g.sheet_id);
+            if (!agg || !agg.attempts) return 0;
+            return (agg.hits * 100) / agg.attempts;
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Progression: target% fetch failed', e);
+    }
+
+    return { labels, scores, avgs, targetPct };
+  }
+
+  const data = await loadData();
+
+  if (!data.labels.length) {
+    const wrap = body.querySelector('#progChartWrap');
+    if (wrap) wrap.innerHTML = '<p>No games found for this player/mode.</p>';
+    return;
+  }
+
+  function setActiveMetricButton(metric) {
+    metricButtons.forEach(btn => {
+      const m = btn.getAttribute('data-metric');
+      if (m === metric) btn.classList.add('primary');
+      else btn.classList.remove('primary');
+    });
+  }
+
+  function drawLineChart(values, metric) {
+    const labels = data.labels;
+    const W = canvas.width;
+    const H = canvas.height;
+    const paddingLeft = 40;
+    const paddingRight = 10;
+    const paddingTop = 10;
+    const paddingBottom = 28;
+
+    ctx.clearRect(0, 0, W, H);
+
+    if (!labels.length || !values.length) return;
+
+    const finiteVals = values.filter(v => Number.isFinite(v));
+    if (!finiteVals.length) return;
+    const maxValRaw = Math.max(...finiteVals);
+    const rawMax = maxValRaw > 0 ? maxValRaw : 1;
+
+    // Snap to nice tick steps depending on metric
+    const baseStep = metric === 'target' ? 10 : 25; // 10% steps for Target %, 25‑point steps for scores
+    const scaleTop = Math.ceil(rawMax / baseStep) * baseStep;
+
+    const xMin = 0;
+    const xMax = labels.length > 1 ? labels.length - 1 : 1;
+
+    const plotW = W - paddingLeft - paddingRight;
+    const plotH = H - paddingTop - paddingBottom;
+
+    function xForIndex(i) {
+      if (xMax === xMin) return paddingLeft + plotW / 2;
+      return paddingLeft + ((i - xMin) / (xMax - xMin)) * plotW;
+    }
+    function yForValue(v) {
+      const clamped = v < 0 ? 0 : v;
+      return paddingTop + (1 - clamped / scaleTop) * plotH;
+    }
+
+    // Axes
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1;
+
+    // Y-axis
+    ctx.beginPath();
+    ctx.moveTo(paddingLeft, paddingTop);
+    ctx.lineTo(paddingLeft, H - paddingBottom);
+    ctx.stroke();
+
+    // X-axis
+    ctx.beginPath();
+    ctx.moveTo(paddingLeft, H - paddingBottom);
+    ctx.lineTo(W - paddingRight, H - paddingBottom);
+    ctx.stroke();
+
+    // Y ticks: start at 25 (or 10% for target %) and step in fixed increments
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = '10px system-ui';
+    const yStep = baseStep; // 25 for scores / avg, 10 for target %
+    for (let v = yStep; v <= scaleTop; v += yStep) {
+      const y = yForValue(v);
+      ctx.beginPath();
+      ctx.moveTo(paddingLeft - 3, y);
+      ctx.lineTo(W - paddingRight, y);
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.fillText(metric === 'target' ? v.toFixed(0) + '%' : v.toFixed(0), 4, y + 3);
+    }
+
+    // X labels
+    for (let i = 0; i < labels.length; i++) {
+      const x = xForIndex(i);
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      ctx.fillText(String(labels[i]), x - 4, H - paddingBottom + 14);
+    }
+// Average line across the chart for the current metric (finite values only)
+const sum = values.reduce((acc, v) => acc + (Number.isFinite(v) ? v : 0), 0);
+const mean = finiteVals.length ? (sum / finiteVals.length) : 0;
+const yMean = yForValue(mean);
+
+ctx.save();
+ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+ctx.lineWidth = 1;
+ctx.setLineDash([4, 4]);
+ctx.beginPath();
+ctx.moveTo(paddingLeft, yMean);
+ctx.lineTo(W - paddingRight, yMean);
+ctx.stroke();
+ctx.restore();
+
+// Line (skip positions without data, e.g. non-5th games for 5 Game Average)
+ctx.strokeStyle = '#7bdcff';
+ctx.lineWidth = 2;
+ctx.beginPath();
+let started = false;
+values.forEach((v, i) => {
+  if (!Number.isFinite(v)) return;
+  const x = xForIndex(i);
+  const y = yForValue(v);
+  if (!started) {
+    ctx.moveTo(x, y);
+    started = true;
+  } else {
+    ctx.lineTo(x, y);
+  }
+});
+if (started) ctx.stroke();
+
+// Points
+ctx.fillStyle = '#8cff9e';
+values.forEach((v, i) => {
+  if (!Number.isFinite(v)) return;
+  const x = xForIndex(i);
+  const y = yForValue(v);
+  ctx.beginPath();
+  ctx.arc(x, y, 3, 0, Math.PI * 2);
+  ctx.fill();
+});
+  }
+
+ function render(metric) {
+  let values = data.scores;
+  if (metric === 'target') values = data.targetPct;
+  setActiveMetricButton(metric);
+  drawLineChart(values, metric);
+}
+
+  // Wire metric buttons
+  metricButtons.forEach(btn => {
+    const metric = btn.getAttribute('data-metric');
+    btn.onclick = () => render(metric);
+  });
+
+  // Initial render
+  render('score');
+};
+
 // Player Stats overlay: wire the STATS tab via global click delegation
 (function wirePlayerStatsStatsButton(){
   if (window.__playerStatsStatsWired) return;
@@ -2844,26 +3252,10 @@ function wireTopRowButtons(){
   ensureButton();
 })();
 
-/* === New Game screen: reorder buttons & labels exactly as requested ===
-   Order:
-   NEW GAME
-   Resume Game
-   --
-   The Crown League
-   --
-   High Scores (Game)
-   High Scores (Round)
-   --
-   Player Stats
-   --
-   Admin Code
-*/
-
-
 // Start screen: simple High Scores hub (two choices)
 function openHighScoresHubDialog(){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal   = document.createElement('div'); modal.className = 'modal';
+   const modal   = document.createElement('div'); modal.className   = 'modal compact';
   const title   = document.createElement('h3');  title.textContent = 'High Scores';
   const body    = document.createElement('div'); body.className = 'modal-body';
   const col     = document.createElement('div'); col.className = 'column'; col.style.gap = '8px';
@@ -5001,7 +5393,7 @@ async function buildStartTicker(){
   }
 
   games = (games || []).filter(g => g && Array.isArray(g.players) && Array.isArray(g.totals) && g.totals.length === g.players.length);
-  games.sort((a,b)=> (Date.parse(b.ts||0)||0) - (Date.parse(a.ts||0)||0));
+  games.sort((a, b) => toTS(a) - toTS(b));
   const last10 = games.slice(0,10);
 
   if (!last10.length){
@@ -10139,6 +10531,398 @@ window.openPlayerSummaryStatsDialog = async function openPlayerSummaryStatsDialo
   modal.tabIndex = 0; modal.focus();
 };
 
+// === Player Progression dialog (per‑game line graph for a player) ===
+window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(playerName, mode) {
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal   = document.createElement('div'); modal.className   = 'modal compact';
+  const title   = document.createElement('h3');
+  const body    = document.createElement('div'); body.className    = 'modal-body';
+  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
+
+  const isPractice = (mode === 'practice' || mode === true);
+  const labelMode  = isPractice ? 'Practice' : 'Official';
+  const safeName   = playerName || 'Unknown';
+
+  title.textContent = `Progression — ${safeName} (${labelMode})`;
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  modal.tabIndex = 0;
+  modal.focus();
+
+  const close = () => { overlay.remove(); };
+
+  const backBtn  = document.createElement('button');
+  backBtn.className  = 'btn';
+  backBtn.textContent  = 'Back';
+  backBtn.onclick  = close;
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn';
+  closeBtn.textContent = 'Close';
+  closeBtn.onclick = close;
+
+  footer.append(backBtn, closeBtn);
+
+  // Top controls + chart area
+  body.innerHTML = `
+    <div class="row" style="gap:8px; margin-bottom:8px;">
+      <button class="btn primary" data-metric="score">Game Score</button>
+<button class="btn" data-metric="avg">5 Game Average</button>
+<button class="btn" data-metric="target">Target %</button>
+    </div>
+    <div id="progChartWrap" style="border-radius:12px;border:1px solid #23284a;padding:8px;background:#101533;min-height:260px;">
+      <canvas id="progChartCanvas" width="600" height="260"></canvas>
+    </div>
+    <p class="tag" id="progHint">Vertical: Score / %, Horizontal: Games (1, 2, 3, …)</p>
+  `;
+
+  const metricButtons = Array.from(body.querySelectorAll('button[data-metric]'));
+  const canvas = body.querySelector('#progChartCanvas');
+  const ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
+
+  if (!ctx) {
+    const wrap = body.querySelector('#progChartWrap');
+    if (wrap) wrap.innerHTML = '<p>Canvas not supported in this browser.</p>';
+    return;
+  }
+
+  // ---- Fetch per‑game data for this player ----
+  async function loadData() {
+    try {
+      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) {
+        return { labels: [], scores: [], avgs: [], targetPct: [] };
+      }
+    } catch (_) {}
+
+    const tableName = (typeof TABLE_PLAYER_GAMES !== 'undefined' && TABLE_PLAYER_GAMES)
+      ? TABLE_PLAYER_GAMES
+      : 'player_games_union';
+
+    let games = [];
+    try {
+      const { data, error } = await sb
+        .from(tableName)
+        .select('sheet_id, player, score, rounds, ts, is_practice')
+        .eq('player', safeName)
+        .eq('is_practice', !!isPractice)
+        .order('ts', { ascending: true })
+        .limit(200);
+      if (error) throw error;
+      games = data || [];
+    } catch (e) {
+      console.error('Progression: games fetch failed', e);
+      return { labels: [], scores: [], avgs: [], targetPct: [] };
+    }
+
+    if (!games.length) {
+      return { labels: [], scores: [], avgs: [], targetPct: [] };
+    }
+
+    // x‑axis labels: game index 1..N
+    const labels = games.map((_, idx) => idx + 1);
+const scores = games.map(g => Number(g.score || 0));
+
+// 5 Game Average: only at games 5, 10, 15, ...
+// game 5 = avg of games 1–5, game 10 = avg of games 6–10, etc.
+const avgs = scores.map((_, idx) => {
+  const gameNo = idx + 1;          // 1-based game index
+  if (gameNo % 5 !== 0) return NaN; // only plot at 5, 10, 15, ...
+  const start = idx - 4;           // start of the 5-game block
+  if (start < 0) return NaN;
+  let sum = 0;
+  for (let i = start; i <= idx; i++) {
+    sum += Number(scores[i] || 0);
+  }
+  return sum / 5;
+});
+
+    // Overall target hit % per game (all darts → (hits / attempts)*100)
+    let targetPct = new Array(games.length).fill(0);
+
+    try {
+      const gameIds = games.map(g => g.sheet_id).filter(Boolean);
+      if (gameIds.length && typeof TABLE_GAME_THROWS !== 'undefined') {
+        const { data: throwsRaw, error: tErr } = await sb
+          .from(TABLE_GAME_THROWS)
+          .select('game_id, player, points')
+          .in('game_id', gameIds)
+          .eq('player', safeName);
+        if (!tErr && Array.isArray(throwsRaw)) {
+          const byGame = new Map();
+          throwsRaw.forEach(row => {
+            const gid = row.game_id;
+            if (!gid) return;
+            let agg = byGame.get(gid);
+            if (!agg) {
+              agg = { hits: 0, attempts: 0 };
+              byGame.set(gid, agg);
+            }
+            agg.attempts += 1;
+            const pts = Number(row.points || 0);
+            if (pts > 0) agg.hits += 1;
+          });
+
+          targetPct = games.map(g => {
+            const agg = byGame.get(g.sheet_id);
+            if (!agg || !agg.attempts) return 0;
+            return (agg.hits * 100) / agg.attempts;
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Progression: target% fetch failed', e);
+    }
+
+    return { labels, scores, avgs, targetPct };
+  }
+
+  const data = await loadData();
+
+  if (!data.labels.length) {
+    const wrap = body.querySelector('#progChartWrap');
+    if (wrap) wrap.innerHTML = '<p>No games found for this player/mode.</p>';
+    return;
+  }
+
+  function setActiveMetricButton(metric) {
+    metricButtons.forEach(btn => {
+      const m = btn.getAttribute('data-metric');
+      if (m === metric) btn.classList.add('primary');
+      else btn.classList.remove('primary');
+    });
+  }
+
+  function drawLineChart(values, metric) {
+    const labels = data.labels;
+    const W = canvas.width;
+    const H = canvas.height;
+    const paddingLeft = 40;
+    const paddingRight = 10;
+    const paddingTop = 10;
+    const paddingBottom = 28;
+
+    ctx.clearRect(0, 0, W, H);
+
+    if (!labels.length || !values.length) return;
+
+const finiteVals = values.filter(v => Number.isFinite(v));
+if (!finiteVals.length) return;
+const maxValRaw = Math.max(...finiteVals);
+const maxVal = maxValRaw > 0 ? maxValRaw : 1;
+
+    const xMin = 0;
+    const xMax = labels.length > 1 ? labels.length - 1 : 1;
+
+    const plotW = W - paddingLeft - paddingRight;
+    const plotH = H - paddingTop - paddingBottom;
+
+    function xForIndex(i) {
+      if (xMax === xMin) return paddingLeft + plotW / 2;
+      return paddingLeft + ((i - xMin) / (xMax - xMin)) * plotW;
+    }
+    function yForValue(v) {
+      const clamped = v < 0 ? 0 : v;
+      return paddingTop + (1 - clamped / maxVal) * plotH;
+    }
+
+    // Axes
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1;
+
+    // Y-axis
+    ctx.beginPath();
+    ctx.moveTo(paddingLeft, paddingTop);
+    ctx.lineTo(paddingLeft, H - paddingBottom);
+    ctx.stroke();
+
+    // X-axis
+    ctx.beginPath();
+    ctx.moveTo(paddingLeft, H - paddingBottom);
+    ctx.lineTo(W - paddingRight, H - paddingBottom);
+    ctx.stroke();
+
+    // Y ticks
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = '10px system-ui';
+    const steps = 4;
+    for (let i = 0; i <= steps; i++) {
+      const v = (maxVal * i) / steps;
+      const y = yForValue(v);
+      ctx.beginPath();
+      ctx.moveTo(paddingLeft - 3, y);
+      ctx.lineTo(W - paddingRight, y);
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.fillText(metric === 'target' ? v.toFixed(0) + '%' : v.toFixed(0), 4, y + 3);
+    }
+
+// X labels (game index 1..N)
+for (let i = 0; i < labels.length; i++) {
+  const x = xForIndex(i);
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.fillText(String(labels[i]), x - 4, H - paddingBottom + 14);
+}
+
+// Trend line (linear regression) across finite values
+const xs = [];
+const ys = [];
+values.forEach((v, i) => {
+  if (!Number.isFinite(v)) return;
+  xs.push(i);
+  ys.push(v);
+});
+
+if (xs.length >= 2) {
+  // Least-squares fit: y = m*x + b
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+  for (let i = 0; i < xs.length; i++) {
+    const x = xs[i];
+    const y = ys[i];
+    sumX  += x;
+    sumY  += y;
+    sumXY += x * y;
+    sumX2 += x * x;
+  }
+  const n = xs.length;
+  const denom = (n * sumX2 - sumX * sumX) || 1;
+  const m = (n * sumXY - sumX * sumY) / denom;
+  const b = (sumY - m * sumX) / n;
+
+  const xStartIdx = xs[0];
+  const xEndIdx   = xs[xs.length - 1];
+  const yStartVal = m * xStartIdx + b;
+  const yEndVal   = m * xEndIdx + b;
+
+  const xStart = xForIndex(xStartIdx);
+  const xEnd   = xForIndex(xEndIdx);
+  const yStart = yForValue(yStartVal);
+  const yEnd   = yForValue(yEndVal);
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(xStart, yStart);
+  ctx.lineTo(xEnd,   yEnd);
+  ctx.stroke();
+  ctx.restore();
+}
+
+    // Line (skip positions without data, e.g. non-5th games for 5 Game Average)
+ctx.strokeStyle = '#7bdcff';
+ctx.lineWidth = 2;
+ctx.beginPath();
+let started = false;
+values.forEach((v, i) => {
+  if (!Number.isFinite(v)) return;
+  const x = xForIndex(i);
+  const y = yForValue(v);
+  if (!started) {
+    ctx.moveTo(x, y);
+    started = true;
+  } else {
+    ctx.lineTo(x, y);
+  }
+});
+if (started) ctx.stroke();
+
+// Points
+ctx.fillStyle = '#8cff9e';
+values.forEach((v, i) => {
+  if (!Number.isFinite(v)) return;
+  const x = xForIndex(i);
+  const y = yForValue(v);
+  ctx.beginPath();
+  ctx.arc(x, y, 3, 0, Math.PI * 2);
+  ctx.fill();
+});
+  }
+
+  function render(metric) {
+    let values = data.scores;
+    if (metric === 'avg') values = data.avgs;
+    else if (metric === 'target') values = data.targetPct;
+    setActiveMetricButton(metric);
+    drawLineChart(values, metric);
+  }
+
+  // Wire metric buttons
+  metricButtons.forEach(btn => {
+    const metric = btn.getAttribute('data-metric');
+    btn.onclick = () => render(metric);
+  });
+
+  // Initial render
+  render('score');
+
+  // Allow closing via ESC or click-outside
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+};
+
+// === Patch Player Stats modal to wire PROGRESSION button ===
+(function(){
+  if (window.__playerProgressionPatch) return;
+  window.__playerProgressionPatch = true;
+
+  function attachProgression(root){
+    try{
+      const modal = root.querySelector('.modal');
+      if (!modal) return;
+      const h3 = modal.querySelector('h3');
+      if (!h3) return;
+      const title = (h3.textContent || '').trim();
+      if (!/^Player Stats/i.test(title)) return;
+
+      // Extract player name + mode from title: "Player Stats — Name (Practice)"
+      let rest = title.replace(/^Player Stats\s*[\u2013\u2014\-]\s*/i, '');
+      const isPractice = /\(practice\)/i.test(rest);
+      rest = rest.replace(/\(.*\)\s*$/,'').trim();
+      const playerName = rest || 'Unknown';
+
+      const buttons = Array.from(modal.querySelectorAll('button'));
+      const progBtn = buttons.find(b => (b.textContent || '').trim().toUpperCase() === 'PROGRESSION');
+      if (!progBtn) return;
+
+      // Avoid double-binding
+      if (progBtn.dataset && progBtn.dataset.progressionBound === '1') return;
+      if (progBtn.dataset) progBtn.dataset.progressionBound = '1';
+
+      progBtn.onclick = () => {
+        try{
+          if (typeof window.openPlayerProgressionDialog === 'function'){
+            window.openPlayerProgressionDialog(playerName, isPractice);
+          }
+        }catch(e){
+          console.error('Progression button handler failed', e);
+        }
+      };
+    }catch(e){
+      console.error('attachProgression error', e);
+    }
+  }
+
+  const mo = new MutationObserver(muts => {
+    for (const m of muts){
+      for (const n of m.addedNodes){
+        if (n.nodeType !== 1) continue;
+        if (n.classList.contains('modal-backdrop')){
+          setTimeout(() => attachProgression(n), 0);
+        } else if (n.querySelector){
+          const backdrop = n.querySelector('.modal-backdrop');
+          if (backdrop) setTimeout(() => attachProgression(backdrop), 0);
+        }
+      }
+    }
+  });
+
+  try { mo.observe(document.body, { childList: true, subtree: true }); } catch(_) {}
+})();
+
 // === Start-screen Vertical Game Ticker (Sky Sports-style) ===
 (function(){
   if (window.__verticalGameTickerBootstrapped) return;
@@ -11146,6 +11930,44 @@ window.setCloudStatus = function setCloudStatus(state, msg){
   try { mo.observe(document.body, { childList: true, subtree: true }); } catch(_) {}
 })();
 
+// ===== High Scores modals: force compact style (League / Practice / Match / Round) =====
+(function(){
+  if (window.__hsCompactModalFixer) return;
+  window.__hsCompactModalFixer = true;
+
+  function applyHsCompact(root){
+    try{
+      const modal = root.querySelector('.modal');
+      if (!modal) return;
+      const h3 = modal.querySelector('h3');
+      if (!h3) return;
+      const title = (h3.textContent || '').trim().toLowerCase();
+
+      // Any modal titled "High Scores" → compact
+      if (title.includes('high scores')) {
+        modal.classList.add('compact');
+      }
+    } catch(e){
+      console.error('applyHsCompact error', e);
+    }
+  }
+
+  const mo = new MutationObserver(muts => {
+    for (const m of muts){
+      for (const n of m.addedNodes){
+        if (n.nodeType === 1 && n.classList.contains('modal-backdrop')){
+          // Let the dialog render, then patch
+          setTimeout(() => applyHsCompact(n), 0);
+        }
+      }
+    }
+  });
+
+  try {
+    mo.observe(document.body, { childList: true, subtree: true });
+  } catch(_) {}
+})();
+
 // ===== PB/GR snapshot + refresh (cloud-first; saved players, official-only) =====
 (function(){
   // Build PB/WR from throws; fallback to games.board if needed
@@ -11285,23 +12107,24 @@ window.setCloudStatus = function setCloudStatus(state, msg){
 // High Score League — per-player best match score, rows clickable to open game
 window.openHighScoreLeagueDialog = async function openHighScoreLeagueDialog() {
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal   = document.createElement('div'); modal.className   = 'modal';
+  const modal   = document.createElement('div'); 
+  modal.className = 'modal compact';
   const title   = document.createElement('h3');  title.textContent = 'High Score League — Best Match Score';
   const body    = document.createElement('div'); body.className    = 'modal-body';
   const footer  = document.createElement('div'); footer.className  = 'modal-footer';
 
   // Local date formatter → "20 Nov 25 at 20:38"
   function fmtLeagueWhen(ts) {
-    const d = new Date(ts);
-    if (Number.isNaN(d.getTime())) return '';
-    const dd = String(d.getDate()).padStart(2, '0');
-    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const mon = MONTHS[d.getMonth()] || '';
-    const yy  = String(d.getFullYear()).slice(-2);
-    const HH  = String(d.getHours()).padStart(2, '0');
-    const MI  = String(d.getMinutes()).padStart(2, '0');
-    return `${dd} ${mon} ${yy} at ${HH}:${MI}`;
-  }
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return '';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  const HH = String(d.getHours()).padStart(2, '0');
+  const MI = String(d.getMinutes()).padStart(2, '0');
+  // DD/MM/YY HH:MM
+  return `${dd}/${mm}/${yy} ${HH}:${MI}`;
+}
 
   // When a league row is clicked, try to find & open the underlying game
   async function openGameForHighScore(row) {
@@ -11823,10 +12646,10 @@ for (let i = 0; i < rounds; i++) {
 };
 
 
-// Latest Scores modal: overlay with # | When | Result (no delete column)
+// Latest Scores modal: overlay with # | Result | Date/Time (no delete column)
 async function openLatestScoresDialog(){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal   = document.createElement('div'); modal.className   = 'modal';
+   const modal   = document.createElement('div'); modal.className   = 'modal compact';
   const title   = document.createElement('h3');  title.textContent = 'Latest Scores';
   const body    = document.createElement('div'); body.className    = 'modal-body';
   const footer  = document.createElement('div'); footer.className  = 'modal-footer';
@@ -11864,18 +12687,18 @@ async function openLatestScoresDialog(){
     const table = document.createElement('table');
     table.className = 'hs-table';
 
-    // Columns: # | When | Result
+    // Columns: # | Result | Date/Time
     const colgroup = document.createElement('colgroup');
     const maxDigits = Math.max(2, String(games.length || 0).length);
     const colNum  = document.createElement('col');  colNum.style.width  = `${Math.min(3, maxDigits)}ch`;
-    const colWhen = document.createElement('col');  colWhen.style.width = '14ch';
     const colRes  = document.createElement('col');
-    colgroup.append(colNum, colWhen, colRes);
+    const colWhen = document.createElement('col');  colWhen.style.width = '14ch';
+    colgroup.append(colNum, colRes, colWhen);
     table.appendChild(colgroup);
 
     const thead = document.createElement('thead');
     const trh   = document.createElement('tr');
-    ['#','When','Result'].forEach(h => {
+    ['#','Result','Date/Time'].forEach(h => {
       const th = document.createElement('th');
       th.textContent = h;
       trh.appendChild(th);
@@ -11889,24 +12712,8 @@ async function openLatestScoresDialog(){
       const tr  = document.createElement('tr');
 
       // #
-      const td1 = document.createElement('td');
-      td1.textContent = String(idx + 1);
-
-      // When (use shared fmtWhen helper if available)
-      const td2 = document.createElement('td');
-      const tsVal = g.ts || g.created_at || g.inserted_at || (g.meta && (g.meta.ts || g.meta.date)) || null;
-      if (tsVal){
-        if (typeof window.fmtWhen === 'function') {
-          td2.textContent = window.fmtWhen(tsVal);
-        } else {
-          const d = new Date(tsVal);
-          td2.textContent = !Number.isNaN(d.getTime())
-            ? d.toLocaleString(undefined,{ year:'2-digit', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })
-            : '';
-        }
-      } else {
-        td2.textContent = '';
-      }
+      const tdNum = document.createElement('td');
+      tdNum.textContent = String(idx + 1);
 
       // Result string (winner beat runner-up [others...])
       const players = (g.players || []).map(p => (p && p.name) ? p.name : '');
@@ -11926,10 +12733,26 @@ async function openLatestScoresDialog(){
         result = `${ordered[0].name} ${ordered[0].score}`;
       }
 
-      const td3 = document.createElement('td');
-      td3.textContent = result;
+      const tdResult = document.createElement('td');
+      tdResult.textContent = result;
 
-      tr.append(td1, td2, td3);
+      // Date/Time (use shared fmtWhen helper if available)
+      const tdWhen = document.createElement('td');
+      const tsVal = g.ts || g.created_at || g.inserted_at || (g.meta && (g.meta.ts || g.meta.date)) || null;
+      if (tsVal){
+        if (typeof window.fmtWhen === 'function') {
+          tdWhen.textContent = window.fmtWhen(tsVal);
+        } else {
+          const d = new Date(tsVal);
+          tdWhen.textContent = !Number.isNaN(d.getTime())
+            ? d.toLocaleString(undefined,{ year:'2-digit', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })
+            : '';
+        }
+      } else {
+        tdWhen.textContent = '';
+      }
+
+      tr.append(tdNum, tdResult, tdWhen);
 
       // Click row to open the score sheet if available
       tr.style.cursor = 'pointer';
@@ -11969,7 +12792,100 @@ async function openLatestScoresDialog(){
   await render();
 }
 
+// === Player Stats Select: two-step flow (name first, then PIN) ===
+(function(){
+  function initPlayerStatsTwoStep(){
+    const modal      = document.getElementById('selectPlayerModal');
+    const selectEl   = document.getElementById('existingPlayerSelect');
+    const pinInput   = document.getElementById('playerPassword');
+    const cancelBtn  = document.getElementById('cancelSelectPlayerBtn');
+    const confirmBtn = document.getElementById('confirmSelectPlayerBtn');
 
+    // Derive the PIN row container: prefer an element with .ps-password-row,
+    // fall back to the closest `.stack` wrapping the PIN input, then its parent.
+    let pinRow = null;
+    if (modal){
+      pinRow = modal.querySelector('.ps-password-row');
+    }
+    if (!pinRow && pinInput){
+      let node = pinInput.parentElement;
+      while (node && node !== modal && !node.classList.contains('stack')) {
+        node = node.parentElement;
+      }
+      pinRow = node || pinInput.parentElement;
+    }
+
+    if (!modal || !selectEl || !pinRow || !confirmBtn) return;
+
+    // Capture the original Confirm behaviour so we can call it on step 2
+    const originalConfirm = confirmBtn.onclick || null;
+
+    function resetStep(){
+      modal.classList.remove('show-pin');
+      confirmBtn.dataset.step = '1';
+      confirmBtn.textContent = 'Next';
+      if (pinInput) pinInput.value = '';
+      if (pinRow) pinRow.style.display = 'none';
+    }
+
+    // Initial state
+    resetStep();
+
+    // Wrap Cancel so it always resets the flow
+    if (cancelBtn){
+      const originalCancel = cancelBtn.onclick || null;
+      cancelBtn.onclick = function(ev){
+        resetStep();
+        if (typeof originalCancel === 'function') originalCancel(ev);
+      };
+    }
+
+    // Two-step behaviour on Confirm
+    confirmBtn.onclick = function(ev){
+      const step = confirmBtn.dataset.step || '1';
+
+      // STEP 1: only name visible → reveal PIN
+      if (step === '1'){
+        ev.preventDefault();
+        const chosen = (selectEl.value || '').trim();
+        if (!chosen){
+          if (typeof toast === 'function') {
+            toast('Select a saved player');
+          }
+          return;
+        }
+        modal.classList.add('show-pin');
+        confirmBtn.dataset.step = '2';
+        confirmBtn.textContent = 'View Stats';
+        if (pinRow) pinRow.style.display = 'block';
+        if (pinInput) pinInput.focus();
+        return;
+      }
+
+      // STEP 2: run original Confirm logic (auth + stats)
+      resetStep();
+      if (typeof originalConfirm === 'function') {
+        return originalConfirm(ev);
+      }
+    };
+
+    // If other code hides the modal via .hidden, reset on close
+    try {
+      const mo = new MutationObserver(() => {
+        if (modal.classList.contains('hidden')) {
+          resetStep();
+        }
+      });
+      mo.observe(modal, { attributes: true, attributeFilter: ['class'] });
+    } catch(_) {}
+  }
+
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', initPlayerStatsTwoStep);
+  } else {
+    initPlayerStatsTwoStep();
+  }
+})();
 
 // === Start Screen: Match Ticker (disabled; use vertical game ticker instead) ===
 (function(){
