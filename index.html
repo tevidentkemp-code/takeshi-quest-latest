@@ -87,13 +87,14 @@
   margin-bottom: 24px;
   color: #e7e9f5;
 }
-/* Center the contents of the Game Details screen */
+/* Game Details screen: content aligned towards top with some breathing room */
 #details {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;           /* no vertical centering */
   min-height: calc(100vh - var(--pad-h));
+  padding-top: 32px;                     /* move SHATEKI-QUEST / New / Resume closer to top */
 }
 
 /* Center the main buttons block */
@@ -670,6 +671,27 @@ margin-bottom: var(--section-gap);
 #details .start-actions .row{ width: 100%; }     /* High Scores / Player Stats row */
 #details .start-actions .row .btn{ width: 100%; }
 
+/* Start screen: stack Latest / High Scores / Player Stats with equal gaps */
+#details .start-secondary-row{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  justify-content:center;
+  gap:8px;                 /* small, consistent gap between medium buttons */
+  margin-top:72px;         /* push secondary buttons lower so they sit roughly central */
+}
+
+/* Medium buttons: same visual width as the big ones, centred */
+#details .start-secondary-row .btn{
+  width:min(calc(var(--title-w) * 0.6667), 820px);
+  margin-inline:auto;
+}
+
+/* GAP below the medium buttons before the Admin button */
+#adminCodeRow{
+  margin-top:16px;
+}
+
 /* Final Leaderboard layout */
 #leaderboard .lb-box{
   padding:12px;
@@ -729,89 +751,62 @@ margin-bottom: var(--section-gap);
 #leaderboard #lbTable tbody tr:nth-child(odd) td{ background: rgba(255,255,255,.02); }
 #leaderboard #lbTable tbody tr:hover td{ background: rgba(255,255,255,.03); }
 
-/* green highlight is already defined as .leader-total in your CSS */
-
-/* ===== Player Stats rolling banner (Start screen) ===== */
+/* === Start screen Game Ticker (single-line vertical scroll) === */
 #psTicker{
   width: 100vw;
   max-width: none;
-  margin: 12px 0 0;
-  /* full-bleed even inside centered layout */
+  margin: 0;
+
+  /* full-bleed even inside centred layout */
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
+
+  /* Videprinter styling */
+  background: linear-gradient(180deg,#fdd45c,#f7b733);
+  border-top: 2px solid #b98b00;
+  border-bottom: 2px solid #b98b00;
+  color: #111;
+
+  /* Single-line strip; one score at a time */
+  height: 32px;
   overflow: hidden;
-  border: 1px solid #2a2e48;
-  border-radius: 12px;
-  background: linear-gradient(180deg,#14183a,#0f1329);
-  padding: 6px 8px;
-  white-space: nowrap;
-}
-/* Match ticker sits above the game ticker */
-#psTickerMatch{
-  width: 100vw;
-  max-width: none;
-  margin: 12px 0 0;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
-  overflow: hidden;
-  border: 1px solid #2a2e48;
-  border-radius: 12px;
-  background: linear-gradient(180deg,#14183a,#0f1329);
-  padding: 6px 8px;
-  white-space: nowrap;
-}
 
-
-#psTicker.hidden { display: none; }
-#psTicker .track{
-  display: inline-block;
-  white-space: nowrap;
-  font-size: 0.95rem;
+  padding: 0;
+  font-size: 0.85rem;
   font-weight: 700;
-  letter-spacing: .02em;
-  animation: psTickerScroll 105s linear infinite; /* slow */
-  will-change: transform;
-}
+  font-variant-numeric: tabular-nums;
 
-/* Slightly faster than the game ticker */
-#psTickerMatch .track{
-  display: inline-block;
-  white-space: nowrap;
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: .02em;
-  animation: psTickerScroll 88s linear infinite; /* games are ~105s */
-  will-change: transform;
-}
-
-@keyframes psTickerScroll {
-  0%   { transform: translateX(100%); }
-  100% { transform: translateX(-100%); }
-}
-
-#psTicker .sep  { opacity: .75; margin: 0 10px; }
-
-/* Pin the ticker to the bottom of the Start screen only */
-body[data-page="details"] #psTicker{
+  /* Pin to bottom on the Start screen */
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  margin: 0;
   border-radius: 0;
   border-left: 0;
   border-right: 0;
   z-index: 300000;
 }
 
-body[data-page="details"] #psTickerMatch{
-  position: fixed;
-  left: 0; right: 0;
-  bottom: 40px;              /* tiny gap above game ticker */
-  margin: 0;
-  border-radius: 0;
-  border-left: 0; border-right: 0;
-  z-index: 300001;           /* above the game ticker */
+#psTicker.hidden{
+  display:none;
+}
+
+/* Each line inside the ticker (we use two and slide them) */
+#psTicker .track{
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: 0.85rem;     /* slightly smaller text */
+  font-weight: 500;       /* base (normal) weight; winners boosted via <strong> */
+  letter-spacing: 0.01em;
+  line-height: 32px;      /* vertically centred in the 32px strip */
+  will-change: transform;
+  transform: translateY(0);
 }
 
 /* === Triple-Trebles celebration overlay === */
@@ -834,18 +829,18 @@ body[data-page="details"] #psTickerMatch{
         <button id="questBtn" class="btn primary big" type="button">New game ▶</button>
         <button id="resumeBtn" class="btn good big" type="button" disabled title="No saved match">Resume game ▶</button>
 
-<div class="row" style="justify-content:center; gap:8px; flex-wrap:wrap; margin-top:4px;">
-  <button id="hsMainBtn" class="btn" type="button">High Scores</button>
-  <button id="latestScoresBtn" class="btn" type="button">Latest Scores</button>
-  <button id="shotgunBtn" class="btn" type="button">The Crown League</button>
-  <button id="playerStatsBtn" class="btn" type="button">Player Stats</button>
-</div>
+        <div class="row start-secondary-row">
+          <button id="latestScoresBtn" class="btn" type="button">Latest Scores</button>
+          <button id="hsMainBtn" class="btn" type="button">High Scores (Match)</button>
+          <button id="shotgunBtn" class="btn" type="button">High Scores (Round)</button>
+          <button id="playerStatsBtn" class="btn" type="button">Player Stats</button>
+        </div>
 
-            <!-- Single Admin row -->
-      <div class="row" id="adminCodeRow" style="margin-top:16px; justify-content:center;">
-        <button id="adminCodeBtn" class="btn" type="button">Admin</button>
+        <!-- Single Admin row -->
+        <div class="row" id="adminCodeRow" style="margin-top:16px; justify-content:center;">
+          <button id="adminCodeBtn" class="btn small" type="button">Admin</button>
+        </div>
       </div>
-</div> <!-- CLOSE .start-actions -->
 
 <!-- Start-screen rolling banner: last 10 completed games -->
 
@@ -2017,9 +2012,203 @@ async function renderSavedPlayersAdmin(){
   });
 
   table.appendChild(tbody);
-  body.innerHTML = '';
-  body.appendChild(table);
+    body.innerHTML = '';
+    body.appendChild(table);
 }
+
+// === Final version: single-line psTicker vertical scroller ===
+(function () {
+  const IN_MS   = 800;   // time for the scroll animation (ms)
+  const HOLD_MS = 3000;  // time each score stays fully visible (ms)
+
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function formatGameForTicker(g) {
+    if (!g) return '';
+
+    const players = (g.players || []).map(p =>
+      (p && typeof p === 'object' && 'name' in p) ? p.name : String(p || '')
+    );
+    const totals  = Array.isArray(g.totals) ? g.totals : [];
+
+    const ordered = players
+      .map((name, i) => ({ name, score: Number(totals[i] || 0) }))
+      .filter(x => x.name)
+      .sort((a, b) => b.score - a.score);
+
+    let resultHtml = '—';
+    if (ordered.length >= 2) {
+      const winnerLabel = `${ordered[0].name} ${ordered[0].score}`;
+      const losersLabel = ordered
+        .slice(1)
+        .map(o => `${o.name} ${o.score}`)
+        .join(' ');
+
+      // Winner name + score in bold, losers normal, with extra gap before bts
+      resultHtml = `<strong>${winnerLabel}</strong>&nbsp;&nbsp;bts ${losersLabel}`;
+    } else if (ordered.length === 1) {
+      const winnerLabel = `${ordered[0].name} ${ordered[0].score}`;
+      resultHtml = `<strong>${winnerLabel}</strong>`;
+    }
+
+    const tsVal =
+      g.ts ||
+      g.created_at ||
+      g.inserted_at ||
+      (g.meta && (g.meta.ts || g.meta.date)) ||
+      null;
+
+    let when = '';
+    if (tsVal) {
+      const d = new Date(tsVal);
+      if (!Number.isNaN(d.getTime())) {
+        when = d.toLocaleString('en-GB', {
+          day:    '2-digit',
+          month:  '2-digit',
+          hour:   '2-digit',
+          minute: '2-digit'
+        }).replace(',', '');
+      }
+    }
+
+    // Date/time in bold, followed by the formatted result with extra gap
+    if (when) {
+      return `<strong>${when}</strong>&nbsp;&nbsp;&nbsp;&nbsp;${resultHtml}`;
+    }
+    return resultHtml;
+  }
+
+  async function startPsTicker(container, items) {
+    if (!container || !items || !items.length) return;
+
+    // Prevent multiple ticker loops if init is ever called twice
+    if (container.dataset.vtickerRunning === '1') return;
+    container.dataset.vtickerRunning = '1';
+
+    // Clear any legacy content and create two stacked lines
+    container.innerHTML = '';
+    const lineA = document.createElement('div');
+    const lineB = document.createElement('div');
+    lineA.className = 'track';
+    lineB.className = 'track';
+    container.appendChild(lineA);
+    container.appendChild(lineB);
+
+    const height = container.clientHeight || 32;
+
+    let currentIdx = 0;
+    let active = lineA;
+    let next   = lineB;
+
+    // Initial state: first score visible, second line parked just below
+    active.innerHTML = items[currentIdx];
+    active.style.transition = 'none';
+    next.style.transition   = 'none';
+    active.style.transform  = 'translateY(0)';
+    next.style.transform    = `translateY(${height}px)`;
+    // Force a reflow so the browser applies initial transforms
+    void active.offsetHeight;
+
+    while (container.isConnected && items.length) {
+      // Hold the current score fully visible
+      await sleep(HOLD_MS);
+
+      const nextIdx = (currentIdx + 1) % items.length;
+      next.innerHTML = items[nextIdx];
+
+      // Reset start positions (active in centre, next just below)
+      active.style.transition = 'none';
+      next.style.transition   = 'none';
+      active.style.transform  = 'translateY(0)';
+      next.style.transform    = `translateY(${height}px)`;
+      void active.offsetHeight; // reflow
+
+      // Animate both lines upwards together
+      const dur = IN_MS;
+      active.style.transition = `transform ${dur}ms ease-in-out`;
+      next.style.transition   = `transform ${dur}ms ease-in-out`;
+      active.style.transform  = `translateY(-${height}px)`;
+      next.style.transform    = 'translateY(0)';
+
+      // Wait for the animation to finish
+      await sleep(dur);
+
+      // Swap roles: the line that just slid in becomes the new active line
+      const tmp = active;
+      active = next;
+      next   = tmp;
+      currentIdx = nextIdx;
+    }
+  }
+
+  async function initSingleLinePsTicker() {
+    const ticker = document.getElementById('psTicker');
+    if (!ticker) return;
+
+    try {
+      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) {
+        ticker.classList.add('hidden');
+        return;
+      }
+    } catch (_) {}
+
+    let games = [];
+    try {
+      if (typeof cloudFetchAllGamesAsLocal === 'function') {
+        games = await cloudFetchAllGamesAsLocal();
+      }
+    } catch (e) {
+      console.error('psTicker: failed to fetch games', e);
+    }
+
+    if (!Array.isArray(games) || !games.length) {
+      ticker.classList.add('hidden');
+      return;
+    }
+
+    const toTS = (g) => {
+      const t =
+        g?.ts ||
+        g?.created_at ||
+        g?.inserted_at ||
+        (g?.meta && (g.meta.ts || g.meta.date)) ||
+        null;
+      const n = t ? Date.parse(t) : NaN;
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    games = games
+      .filter(Boolean)
+      .sort((a, b) => toTS(b) - toTS(a))
+      .slice(0, 25);
+
+    const items = games
+      .map(formatGameForTicker)
+      .filter(line => line && line.trim().length > 0);
+
+    if (!items.length) {
+      ticker.classList.add('hidden');
+      return;
+    }
+
+    ticker.classList.remove('hidden');
+    startPsTicker(ticker, items).catch(err => {
+      console.error('psTicker loop error', err);
+    });
+  }
+
+  // Remove any legacy ticker entry points so they can't interfere
+  window.buildStartTicker = function () {};
+  window.initVerticalGameTicker = function () {};
+
+  document.addEventListener('DOMContentLoaded', function () {
+    initSingleLinePsTicker().catch(function (err) {
+      console.error('psTicker init failed', err);
+    });
+  });
+})();
 
 // Rename helper (updates `name` column)
 async function cloudRenamePlayer(oldName, newName){
@@ -9950,6 +10139,236 @@ window.openPlayerSummaryStatsDialog = async function openPlayerSummaryStatsDialo
   modal.tabIndex = 0; modal.focus();
 };
 
+// === Start-screen Vertical Game Ticker (Sky Sports-style) ===
+(function(){
+  if (window.__verticalGameTickerBootstrapped) return;
+  window.__verticalGameTickerBootstrapped = true;
+
+  const IN_MS   = 800;   // slower scroll in (bottom -> centre)
+  const HOLD_MS = 3000;  // 3s pause while centred
+  const OUT_MS  = 800;   // slower scroll out (centre -> top)
+
+  function formatGameForTicker(g){
+    if (!g) return '';
+
+    const players = (g.players || []).map(p =>
+      (p && typeof p === 'object' && 'name' in p) ? p.name : String(p || '')
+    );
+    const totals  = Array.isArray(g.totals) ? g.totals : [];
+
+    const ordered = players
+      .map((name, i) => ({ name, score: Number(totals[i] || 0) }))
+      .filter(x => x.name)
+      .sort((a,b) => b.score - a.score);
+
+    let result = '—';
+    if (ordered.length >= 2){
+      result = `${ordered[0].name} ${ordered[0].score} beat ${ordered[1].name} ${ordered[1].score}`;
+      if (ordered.length > 2){
+        result += ' ' + ordered.slice(2).map(o => `${o.name} ${o.score}`).join(' ');
+      }
+    } else if (ordered.length === 1){
+      result = `${ordered[0].name} ${ordered[0].score}`;
+    }
+
+    const tsVal =
+      g.ts ||
+      g.created_at ||
+      g.inserted_at ||
+      (g.meta && (g.meta.ts || g.meta.date)) ||
+      null;
+
+    let when = '';
+    if (tsVal){
+      const d = new Date(tsVal);
+      if (!Number.isNaN(d.getTime())){
+        when = d.toLocaleString('en-GB', {
+          day: '2-digit',
+          month: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        }).replace(',', '');
+      }
+    }
+
+    return when ? `${when}  ${result}` : result;
+  }
+
+  function startVerticalTicker(container, track, items){
+    if (!container || !track || !items || !items.length) return;
+
+    // Ensure only a single line is ever visible
+    container.style.overflow = 'hidden';
+    container.style.whiteSpace = 'nowrap';
+
+    let idx = 0;
+
+    function step(){
+      if (!container.isConnected || !items.length) return;
+
+      // Use container height if set, otherwise fall back to a reasonable line height
+      const height = container.clientHeight || 28;
+
+      // Pick the next single line to show
+      const line = items[idx % items.length];
+      idx = (idx + 1) % items.length;
+
+      // Reset track content and position off-screen at the bottom
+      track.style.transition = 'none';
+      track.style.transform  = `translateY(${height}px)`;
+      track.innerHTML = '';
+
+      const div = document.createElement('div');
+      div.textContent = line || '';
+      div.style.whiteSpace = 'nowrap';
+      track.appendChild(div);
+
+      // Scroll into view (bottom -> centre)
+      requestAnimationFrame(() => {
+        track.style.transition = `transform ${IN_MS}ms linear`;
+        track.style.transform  = 'translateY(0px)';
+      });
+
+      // After the hold, scroll out through the top and then show the next single line
+      setTimeout(() => {
+        track.style.transition = `transform ${OUT_MS}ms linear`;
+        track.style.transform  = `translateY(${-height}px)`;
+        setTimeout(step, OUT_MS);
+      }, IN_MS + HOLD_MS);
+    }
+
+    container.classList.remove('hidden');
+    step();
+  }
+
+  // Public bootstrap used on the Start (details) screen
+  window.initVerticalGameTicker = async function initVerticalGameTicker(){
+    const ticker = document.getElementById('psTicker');
+    const track  = ticker && ticker.querySelector('.track');
+    if (!ticker || !track) return;
+
+    try{
+      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()){
+        ticker.classList.add('hidden');
+        return;
+      }
+    }catch(_){}
+
+    let games = [];
+    try{
+      if (typeof cloudFetchAllGamesAsLocal === 'function'){
+        games = await cloudFetchAllGamesAsLocal();
+      }
+    }catch(e){
+      console.error('Vertical ticker: failed to fetch games', e);
+    }
+
+    if (!Array.isArray(games) || !games.length){
+      ticker.classList.add('hidden');
+      return;
+    }
+
+    const toTS = (g) => {
+      const t = g?.ts || g?.created_at || g?.inserted_at || (g?.meta && (g.meta.ts || g.meta.date)) || null;
+      const n = t ? Date.parse(t) : NaN;
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    games = games.filter(Boolean).sort((a,b)=> toTS(b) - toTS(a)).slice(0, 25);
+
+    const items = games
+      .map(formatGameForTicker)
+      .filter(line => line && line.trim().length > 0);
+
+    if (!items.length){
+      ticker.classList.add('hidden');
+      return;
+    }
+
+    startVerticalTicker(ticker, track, items);
+  };
+})();
+
+// Simple High Scores picker for start screen: Match vs Round
+window.openStartHighScoresMenu = function openStartHighScoresMenu(){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-backdrop';
+
+  const modal  = document.createElement('div');
+  modal.className = 'modal';
+
+  const title  = document.createElement('h3');
+  title.textContent = 'High Scores';
+
+  const body   = document.createElement('div');
+  body.className = 'modal-body';
+
+  const footer = document.createElement('div');
+  footer.className = 'modal-footer';
+
+  // Buttons for existing High Scores views
+  const matchBtn = document.createElement('button');
+  matchBtn.className = 'btn';
+  matchBtn.type = 'button';
+  matchBtn.textContent = 'High Scores (Match)';
+
+  const roundBtn = document.createElement('button');
+  roundBtn.className = 'btn';
+  roundBtn.type = 'button';
+  roundBtn.textContent = 'High Scores (Round)';
+
+  // Stack vertically with a small gap
+  const row1 = document.createElement('div');
+  row1.className = 'row';
+  row1.style.cssText = 'justify-content:center; gap:8px; flex-wrap:wrap; margin-top:4px;';
+  row1.appendChild(matchBtn);
+
+  const row2 = document.createElement('div');
+  row2.className = 'row';
+  row2.style.cssText = 'justify-content:center; gap:8px; flex-wrap:wrap; margin-top:8px;';
+  row2.appendChild(roundBtn);
+
+  body.append(row1, row2);
+
+  // Footer actions
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn';
+  closeBtn.type = 'button';
+  closeBtn.textContent = 'Close';
+  closeBtn.onclick = () => overlay.remove();
+  footer.appendChild(closeBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  // Wire through to existing dialogs, preserving previous behaviour
+  matchBtn.onclick = () => {
+    overlay.remove();
+    if (typeof window.openHighScoresMenuDialog === 'function') {
+      window.openHighScoresMenuDialog();
+    }
+  };
+
+  roundBtn.onclick = () => {
+    overlay.remove();
+    if (typeof window.openRoundHighScoresDialog === 'function') {
+      window.openRoundHighScoresDialog();
+    }
+  };
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  overlay.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') overlay.remove();
+  });
+
+  modal.tabIndex = 0;
+  modal.focus();
+};
+
 // === Start screen layout arranger (non-destructive; rebuilds start-actions) ===
 function arrangeStartActions(){
   try{
@@ -9961,14 +10380,15 @@ function arrangeStartActions(){
     const mkRow = (btn) => {
       const row = doc.createElement('div');
       row.className = 'row';
-      row.style.cssText = 'justify-content:center; gap:8px; flex-wrap:wrap; margin-top:4px;';
+      // centred single button row, consistent small vertical gap
+      row.style.cssText = 'justify-content:center; gap:8px; flex-wrap:wrap; margin-top:8px;';
       row.appendChild(btn);
       return row;
     };
-    const mkHr = () => {
-      const hr = doc.createElement('hr');
-      hr.style.cssText = 'border:0;border-top:1px solid rgba(255,255,255,.10);margin:10px 0;';
-      return hr;
+    const mkSpacer = (h) => {
+      const d = doc.createElement('div');
+      d.style.height = (h || 16) + 'px';
+      return d;
     };
 
     // ensure / find buttons
@@ -9988,18 +10408,27 @@ function arrangeStartActions(){
       latest.textContent = 'Latest Scores';
     }
 
-    // The Crown League (Shotgun)
-    let crown = document.getElementById('shotgunBtn') ||
-                document.getElementById('shotgunLeaderboardBtn') ||
-                Array.from(document.querySelectorAll('#details button, button'))
-                  .find(b => /(shotgun\s*leaderboard|^shotgun$)/i.test((b.textContent || b.innerText || '').trim()));
-    if (!crown){
-      crown = doc.createElement('button');
-      crown.id = 'shotgunBtn';
-      crown.className = 'btn';
-      crown.type = 'button';
+    // League / Rankings (start-screen popup)
+    let league = document.getElementById('leagueRankingsBtn');
+    if (!league){
+      league = doc.createElement('button');
+      league.id = 'leagueRankingsBtn';
+      league.className = 'btn';
+      league.type = 'button';
     }
-    crown.textContent = 'The Crown League';
+    league.textContent = 'League / Rankings';
+
+    // High Scores (wrapper button that opens Match/Round picker)
+    let hsMain = document.getElementById('highScoresMainBtn');
+    if (!hsMain){
+      hsMain = doc.createElement('button');
+      hsMain.id = 'highScoresMainBtn';
+      hsMain.className = 'btn';
+      hsMain.type = 'button';
+      hsMain.textContent = 'High Scores';
+    } else {
+      hsMain.textContent = 'High Scores';
+    }
 
     // High Scores (Match)
     let hsMatch = document.getElementById('highScoresMenuBtn') ||
@@ -10050,6 +10479,8 @@ function arrangeStartActions(){
 
     // wire handlers (idempotent, safe if functions missing)
     if (typeof window.openLatestScoresDialog === 'function') latest.onclick = window.openLatestScoresDialog;
+    if (typeof window.openLeagueRankingsDialog === 'function') league.onclick = window.openLeagueRankingsDialog;
+    if (typeof window.openStartHighScoresMenu === 'function') hsMain.onclick = window.openStartHighScoresMenu;
     if (typeof window.openRoundHighScoresDialog === 'function') hsRound.onclick = window.openRoundHighScoresDialog;
     if (typeof window.openHighScoresMenuDialog === 'function') hsMatch.onclick = window.openHighScoresMenuDialog;
     if (typeof window.openAdminPasswordModal === 'function') {
@@ -10057,23 +10488,44 @@ function arrangeStartActions(){
     } else if (typeof window.openAdminHub === 'function') {
       admin.onclick = window.openAdminHub;
     }
-    crown.onclick = (e) => { e.preventDefault(); e.stopPropagation(); if (typeof toast === 'function') toast('Coming soon'); else alert('Coming soon'); };
 
-    // rebuild layout
+    // rebuild layout to:
+    // NEW GAME (big)
+    // Resume Game (big)
+    // GAP
+    // Latest Scores
+    // High Scores (Match)
+    // High Scores (Round)
+    // Player Stats
+    // GAP
+    // Admin
     const frag = doc.createDocumentFragment();
-    if (newBtn) frag.appendChild(newBtn);
-    if (resumeBtn) frag.appendChild(resumeBtn);
 
-    frag.appendChild(mkHr());
-    frag.appendChild(mkRow(latest));
-    frag.appendChild(mkHr());
-    frag.appendChild(mkRow(crown));
-    frag.appendChild(mkRow(hsMatch));
-    frag.appendChild(mkRow(hsRound));
-    frag.appendChild(mkHr());
-    frag.appendChild(mkRow(stats));
-    frag.appendChild(mkHr());
-    frag.appendChild(mkRow(admin));
+    if (newBtn) {
+      newBtn.textContent = 'NEW GAME';
+      frag.appendChild(newBtn);
+    }
+    if (resumeBtn) {
+      resumeBtn.textContent = 'Resume Game';
+      frag.appendChild(resumeBtn);
+    }
+
+    // GAP between large buttons and the medium stats buttons
+    frag.appendChild(mkSpacer(16));
+
+    // Medium buttons – one per row, equal spacing
+    [latest, league, hsMain, stats].forEach(btn => {
+      if (!btn) return;
+      frag.appendChild(mkRow(btn));
+    });
+
+    // GAP before Admin
+    frag.appendChild(mkSpacer(16));
+
+    // Admin button row at the bottom
+    if (admin) {
+      frag.appendChild(mkRow(admin));
+    }
 
     // clear and insert
     host.innerHTML = '';
@@ -10192,31 +10644,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   
-  // === Crown League wiring (rename + "Coming soon") ===
-  (function wireCrownLeague(){
-    // If you have a dedicated id, we'll catch it first
-    const btn =
-      document.getElementById('shotgunLeaderboardBtn') ||
-      document.getElementById('shotgunBtn') ||
-      // fallback: find by visible text
-      Array.from(document.querySelectorAll('#details button, button'))
-        .find(b => /(shotgun\s*leaderboard|^shotgun$)/i.test((b.textContent || b.innerText || '').trim()));
-
-    if (!btn) return;
-
-    // Overwrite old references (label/title/aria)
-    btn.textContent = 'The Crown League';
-    btn.title = 'The Crown League';
-    if (btn.getAttribute('aria-label')) btn.setAttribute('aria-label', 'The Crown League');
-
-    // Intercept click → Coming soon
-    btn.onclick = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (typeof toast === 'function') toast('Coming soon');
-      else alert('Coming soon');
-    };
-  })();
 
   try { arrangeStartActions(); } catch(_) {}
 });
@@ -10855,6 +11282,77 @@ window.setCloudStatus = function setCloudStatus(state, msg){
   };
 })();
 
+// League / Rankings popup (Power League + High Score League)
+window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal   = document.createElement('div'); modal.className   = 'modal';
+  const title   = document.createElement('h3');  title.textContent = 'League / Rankings';
+  const body    = document.createElement('div'); body.className    = 'modal-body';
+  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
+
+  // Column container for the two league options
+  const col = document.createElement('div');
+  col.className = 'column';
+  col.style.alignItems = 'stretch';
+  col.style.gap = '10px';
+
+  // Power League button + description
+  const powerBtn = document.createElement('button');
+  powerBtn.id = 'powerLeagueBtn';
+  powerBtn.className = 'btn';
+  powerBtn.type = 'button';
+  powerBtn.style.width = 'min(360px,92%)';
+  powerBtn.textContent = 'Power League';
+
+  const powerP = document.createElement('p');
+  powerP.className = 'tag';
+  powerP.textContent =
+    'League of all saved players and their average round score, ' +
+    'calculated from the last 25 rounds only.';
+
+  // High Score League button + description
+  const highBtn = document.createElement('button');
+  highBtn.id = 'highScoreLeagueBtn';
+  highBtn.className = 'btn';
+  highBtn.type = 'button';
+  highBtn.style.width = 'min(360px,92%)';
+  highBtn.textContent = 'High Score';
+
+  const highP = document.createElement('p');
+  highP.className = 'tag';
+  highP.textContent =
+    'League of all players and their highest match score ' +
+    '(each player has one high-score entry only).';
+
+  col.appendChild(powerBtn);
+  col.appendChild(powerP);
+  col.appendChild(highBtn);
+  col.appendChild(highP);
+  body.appendChild(col);
+
+  // Footer: Back / Close behave as before
+  const backBtn  = document.createElement('button');
+  backBtn.className  = 'btn';
+  backBtn.textContent  = 'Back';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn';
+  closeBtn.textContent = 'Close';
+
+  backBtn.onclick  = () => overlay.remove();
+  closeBtn.onclick = () => overlay.remove();
+  footer.append(backBtn, closeBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0;
+  modal.focus();
+};
+
 // Latest Scores modal: overlay with # | When | Result (no delete column)
 async function openLatestScoresDialog(){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
@@ -11003,97 +11501,28 @@ async function openLatestScoresDialog(){
 
 
 
-// === Start Screen: Match Ticker (last 10 completed matches) ===
+// === Start Screen: Match Ticker (disabled; use vertical game ticker instead) ===
 (function(){
-  async function buildMatchTicker(){
-    const wrap  = document.getElementById('psTickerMatch');
-    const track = wrap ? wrap.querySelector('.track') : null;
-    if (!wrap || !track) return;
+  // Legacy stub so any old calls don't explode
+  window.buildMatchTicker = function(){};
 
-    let items = [];
-    try{
-      const list = await (typeof getMatchesOfficial === 'function'
-        ? getMatchesOfficial()
-        : Promise.resolve([]));
+  document.addEventListener('DOMContentLoaded', () => {
+    try {
+      // If any old start ticker needs to run (e.g. non-ticker UI tweaks), keep it
+      if (typeof window.buildStartTicker === 'function') {
+        window.buildStartTicker();
+      }
+    } catch(_) {}
 
-      const toTS = (m)=>{
-        const t = m?.ts || m?.created_at || m?.inserted_at || (m?.meta && (m.meta.ts || m.meta.date)) || null;
-        const n = t ? Date.parse(t) : NaN;
-        return Number.isFinite(n) ? n : 0;
-      };
-      (list || []).sort((a,b)=> toTS(b) - toTS(a));
-      const last10 = (list || []).slice(0, 10);
-
-      const infer = (m)=>{
-        // Clean list of player display names
-        const names = (m?.players || [])
-          .map(p => (typeof p === 'string' ? p : (p && p.name) || ''))
-          .map(s => String(s || '').trim())
-          .filter(Boolean);
-
-        // Helper: map wins-map key to a real display name
-        const nameFromKey = (k)=>{
-          const idx = Number(k);
-          if (Number.isInteger(idx) && idx >= 0 && idx < names.length) return names[idx];
-          return String(k || '—');
-        };
-
-        // Prefer explicit wins map, else derive from games
-        let wins = {};
-        if (m && typeof m.wins === 'object' && m.wins) {
-          wins = m.wins; // may be {0:3,1:2} or {"Thomas":3,"Doheny":2}
-        } else if (m && typeof m.winMap === 'object' && m.winMap) {
-          wins = m.winMap;
-        } else if (Array.isArray(m?.history) || Array.isArray(m?.games)) {
-          const games = Array.isArray(m.history) ? m.history : m.games;
-          const cnt = Object.create(null);
-          names.forEach(n => cnt[n] = 0);
-          for (const g of games) {
-            const totals = Array.isArray(g?.totals) ? g.totals : (Array.isArray(g?.scores) ? g.scores : null);
-            if (Array.isArray(totals) && totals.length) {
-              let max = -Infinity, idx = -1;
-              for (let i = 0; i < totals.length; i++) {
-                const v = Number(totals[i] || 0);
-                if (v > max) { max = v; idx = i; }
-              }
-              const name = (idx >= 0 && idx < names.length) ? names[idx] : String(idx);
-              cnt[name] = (cnt[name] || 0) + 1;
-            }
-          }
-          wins = cnt;
-        }
-
-        const entries = Object.entries(wins).sort((a,b)=> (Number(b[1])||0) - (Number(a[1])||0));
-        if (entries.length >= 2) {
-          const aName = nameFromKey(entries[0][0]);
-          const bName = nameFromKey(entries[1][0]);
-          return { a: aName, b: bName, score: `${entries[0][1]}-${entries[1][1]}` };
-        }
-        const a = names[0] || '—';
-        const b = names[1] || '—';
-        return { a, b, score: '' };
-      };
-
-      items = last10.map((m,i)=>{
-        const r = infer(m);
-        return `Match ${i+1} - ${r.a}${r.score ? ' beat ' + r.b + ' ' + r.score : ' vs ' + r.b}`;
-      });
-    }catch(e){
-      console.error('buildMatchTicker', e);
-      items = [];
+    try {
+      // New vertical Sky Sports–style game ticker
+      if (typeof window.initVerticalGameTicker === 'function') {
+        window.initVerticalGameTicker();
+      }
+    } catch(e) {
+      console.error('initVerticalGameTicker failed', e);
     }
-
-    if (!items.length){ wrap.classList.add('hidden'); return; }
-    track.textContent = items.join('  //  ');
-    wrap.classList.remove('hidden');
-  }
-
-  document.addEventListener('DOMContentLoaded', ()=>{
-    try{ if (typeof window.buildStartTicker === 'function') window.buildStartTicker(); }catch(_){}
-    buildMatchTicker();
   });
-
-  window.buildMatchTicker = buildMatchTicker;
 })();
 
 
