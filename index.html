@@ -11282,6 +11282,237 @@ window.setCloudStatus = function setCloudStatus(state, msg){
   };
 })();
 
+// High Score League — per-player best match score, rows clickable to open game
+window.openHighScoreLeagueDialog = async function openHighScoreLeagueDialog() {
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal   = document.createElement('div'); modal.className   = 'modal';
+  const title   = document.createElement('h3');  title.textContent = 'High Score League — Best Match Score';
+  const body    = document.createElement('div'); body.className    = 'modal-body';
+  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
+
+  // Local date formatter → "20 Nov 25 at 20:38"
+  function fmtLeagueWhen(ts) {
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return '';
+    const dd = String(d.getDate()).padStart(2, '0');
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const mon = MONTHS[d.getMonth()] || '';
+    const yy  = String(d.getFullYear()).slice(-2);
+    const HH  = String(d.getHours()).padStart(2, '0');
+    const MI  = String(d.getMinutes()).padStart(2, '0');
+    return `${dd} ${mon} ${yy} at ${HH}:${MI}`;
+  }
+
+  // When a league row is clicked, try to find & open the underlying game
+  async function openGameForHighScore(row) {
+    try {
+      let games = [];
+      if (typeof cloudFetchAllGamesAsLocal === 'function') {
+        games = await cloudFetchAllGamesAsLocal();
+      } else if (typeof ensureCloudInit === 'function' && ensureCloudInit()) {
+        const table = (typeof TABLE_GAMES !== 'undefined' ? TABLE_GAMES : 'games');
+        const { data } = await sb
+          .from(table)
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(2000);
+        games = data || [];
+      }
+
+      if (!Array.isArray(games) || !games.length) {
+        if (typeof toast === 'function') toast('No games available to look up.');
+        return;
+      }
+
+      const targetNameLC = String(row.name || '').trim().toLowerCase();
+      const targetScore  = Number(row.score || 0);
+      const rowTs        = row.ts || row.created_at || row.inserted_at || null;
+      const rowTime      = rowTs ? new Date(rowTs).getTime() : null;
+
+      let bestMatch = null;
+
+      games.forEach(g => {
+        const players = (g.players || []).map(p =>
+          (p && p.name) ? p.name : String(p || '')
+        );
+        const idx = players.findIndex(n =>
+          String(n || '').trim().toLowerCase() === targetNameLC
+        );
+        if (idx < 0) return;
+
+        const totals = Array.isArray(g.totals) ? g.totals : [];
+        const score  = Number(totals[idx] || 0);
+        if (score !== targetScore) return;
+
+        const gTsVal = g.ts || g.created_at || g.inserted_at ||
+                       (g.meta && (g.meta.ts || g.meta.date)) || null;
+        const gTime  = gTsVal ? new Date(gTsVal).getTime() : null;
+
+        let penalty = 0;
+        if (rowTime != null && gTime != null) {
+          penalty = Math.abs(gTime - rowTime);      // smaller = closer in time
+        }
+
+        const cand = { game: g, penalty };
+        if (!bestMatch || cand.penalty < bestMatch.penalty) {
+          bestMatch = cand;
+        }
+      });
+
+      if (!bestMatch) {
+        if (typeof toast === 'function') toast('Could not locate game for this high score.');
+        return;
+      }
+
+      if (typeof openSingleGameScoreSheet === 'function') {
+        openSingleGameScoreSheet(bestMatch.game);
+      }
+    } catch (e) {
+      console.error('openGameForHighScore failed', e);
+      if (typeof toast === 'function') toast('Unable to open game for this high score.');
+    }
+  }
+
+  async function render() {
+    body.innerHTML = '';
+
+    let rows = [];
+    try {
+      if (typeof cloudListHighScores === 'function') {
+        // false → league (not practice), pull a generous number of rows
+        rows = await cloudListHighScores(false, 2000);
+      } else {
+        if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) {
+          throw new Error('Cloud not initialised');
+        }
+        const table = (typeof TABLE_HS_LEAGUE !== 'undefined' ? TABLE_HS_LEAGUE : 'high_scores');
+        const { data, error } = await sb
+          .from(table)
+          .select('name, score, ts')
+          .order('score', { ascending: false })
+          .order('ts',    { ascending: true })
+          .limit(2000);
+        if (error) throw error;
+        rows = data || [];
+      }
+    } catch (e) {
+      console.error('High Score League fetch failed', e);
+      const p = document.createElement('p');
+      p.textContent = 'Failed to load high score league.';
+      body.appendChild(p);
+      return;
+    }
+
+    if (!Array.isArray(rows) || !rows.length) {
+      const p = document.createElement('p');
+      p.textContent = 'No high scores logged yet.';
+      body.appendChild(p);
+      return;
+    }
+
+    // Pick the single best row per player (highest score, then earliest ts)
+    const bestByPlayer = new Map();
+    rows.forEach(r => {
+      const name = String(r.name || '').trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      const ts  = r.ts || r.created_at || r.inserted_at || null;
+      const score = Number(r.score || 0);
+
+      const cur = bestByPlayer.get(key);
+      if (!cur) {
+        bestByPlayer.set(key, { name, score, ts, raw: r });
+      } else {
+        const curScore = Number(cur.score || 0);
+        if (
+          score > curScore ||
+          (score === curScore && ts && cur.ts && new Date(ts) < new Date(cur.ts))
+        ) {
+          bestByPlayer.set(key, { name, score, ts, raw: r });
+        }
+      }
+    });
+
+    const league = Array.from(bestByPlayer.values()).sort((a, b) => {
+      const ds = Number(b.score || 0) - Number(a.score || 0);
+      if (ds !== 0) return ds;
+      const at = a.ts ? new Date(a.ts).getTime() : 0;
+      const bt = b.ts ? new Date(b.ts).getTime() : 0;
+      return at - bt;
+    });
+
+    const table = document.createElement('table');
+    table.className = 'hs-table';
+
+    const colgroup = document.createElement('colgroup');
+    const colNum   = document.createElement('col');  colNum.style.width  = '2ch';
+    const colName  = document.createElement('col');  colName.style.width = '10ch';
+    const colScore = document.createElement('col');  colScore.style.width = '7ch';
+    const colWhen  = document.createElement('col');
+    colgroup.append(colNum, colName, colScore, colWhen);
+    table.appendChild(colgroup);
+
+    const thead = document.createElement('thead');
+    const trh   = document.createElement('tr');
+    ['#', 'Player', 'High Score', 'When'].forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    league.forEach((row, idx) => {
+      const tr = document.createElement('tr');
+
+      const tdRank  = document.createElement('td');
+      const tdName  = document.createElement('td');
+      const tdScore = document.createElement('td');
+      const tdWhen  = document.createElement('td');
+
+      tdRank.textContent  = String(idx + 1);
+      tdName.textContent  = row.name || '';
+      tdScore.textContent = String(row.score || 0);
+      tdWhen.textContent  = row.ts ? fmtLeagueWhen(row.ts) : '';
+
+      tr.append(tdRank, tdName, tdScore, tdWhen);
+
+      // Make the row clickable to open the game
+      tr.style.cursor = 'pointer';
+      tr.title = 'Open the game where this score was hit';
+      tr.onclick = () => { openGameForHighScore(row); };
+
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    wrap.appendChild(table);
+    body.appendChild(wrap);
+  }
+
+  await render();
+
+  const backBtn  = document.createElement('button'); backBtn.className  = 'btn'; backBtn.textContent  = 'Back';
+  const closeBtn = document.createElement('button'); closeBtn.className = 'btn'; closeBtn.textContent = 'Close';
+  backBtn.onclick  = () => overlay.remove();
+  closeBtn.onclick = () => overlay.remove();
+  footer.append(backBtn, closeBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0;
+  modal.focus();
+};
+
 // League / Rankings popup (Power League + High Score League)
 window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
@@ -11306,9 +11537,9 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
 
   const powerP = document.createElement('p');
   powerP.className = 'tag';
-  powerP.textContent =
-    'League of all saved players and their average round score, ' +
-    'calculated from the last 25 rounds only.';
+ powerP.textContent =
+  'Average round score, ' +
+  'calculated from the last 50 rounds.';
 
   // High Score League button + description
   const highBtn = document.createElement('button');
@@ -11316,7 +11547,7 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
   highBtn.className = 'btn';
   highBtn.type = 'button';
   highBtn.style.width = 'min(360px,92%)';
-  highBtn.textContent = 'High Score';
+  highBtn.textContent = 'High Score League';
 
   const highP = document.createElement('p');
   highP.className = 'tag';
@@ -11330,7 +11561,7 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
   col.appendChild(highP);
   body.appendChild(col);
 
-  // Footer: Back / Close behave as before
+  // Footer: Back / Close
   const backBtn  = document.createElement('button');
   backBtn.className  = 'btn';
   backBtn.textContent  = 'Back';
@@ -11342,6 +11573,20 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
   backBtn.onclick  = () => overlay.remove();
   closeBtn.onclick = () => overlay.remove();
   footer.append(backBtn, closeBtn);
+  
+    // Wire league buttons
+  powerBtn.onclick = () => {
+    // Placeholder for Power League (still to be built)
+    // For now we just leave the popup open or show a toast if you like.
+    // toast('Power League coming soon');
+  };
+
+  highBtn.onclick = () => {
+    overlay.remove();
+    if (typeof window.openHighScoreLeagueDialog === 'function') {
+      window.openHighScoreLeagueDialog();
+    }
+  };
 
   modal.append(title, body, footer);
   overlay.appendChild(modal);
@@ -11351,7 +11596,232 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
   modal.tabIndex = 0;
   modal.focus();
+
+  // Wire buttons to dialogs
+  powerBtn.onclick = () => {
+    overlay.remove();
+    if (typeof window.openPowerLeagueDialog === 'function') {
+      window.openPowerLeagueDialog();
+    }
+  };
+
+  highBtn.onclick = () => {
+    overlay.remove();
+    if (typeof window.openHighScoreLeagueDialog === 'function') {
+      window.openHighScoreLeagueDialog();
+    }
+  };
 };
+
+// Power League: last 25 official rounds, saved players only
+window.openPowerLeagueDialog = async function openPowerLeagueDialog(){
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal   = document.createElement('div'); modal.className   = 'modal compact';
+const title   = document.createElement('h3');  title.textContent = 'Power League — Last 50 Rounds (Official)';
+  const body    = document.createElement('div'); body.className    = 'modal-body';
+  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
+
+  const backBtn  = document.createElement('button');
+  backBtn.className  = 'btn';
+  backBtn.textContent  = 'Back';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn';
+  closeBtn.textContent = 'Close';
+
+  backBtn.onclick  = () => {
+    overlay.remove();
+    if (typeof window.openLeagueRankingsDialog === 'function') {
+      window.openLeagueRankingsDialog();
+    }
+  };
+  closeBtn.onclick = () => overlay.remove();
+  footer.append(backBtn, closeBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0;
+  modal.focus();
+
+  async function computePowerLeagueRows(){
+    try {
+      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) {
+        throw new Error('Cloud not initialised');
+      }
+    } catch (_) {}
+
+    if (typeof sb === 'undefined' || typeof TABLE_PLAYER_GAMES === 'undefined') {
+      throw new Error('Cloud tables not configured');
+    }
+
+    // Saved players list (to restrict to real profiles)
+    let saved = [];
+    try {
+      if (typeof cloudListPlayers === 'function') {
+        saved = await cloudListPlayers(); // [{name}]
+      }
+    } catch (e) {
+      console.error('Power League: cloudListPlayers failed', e);
+    }
+    const savedSet = new Set(
+      (saved || [])
+        .map(p => (p && p.name ? String(p.name).trim().toLowerCase() : ''))
+        .filter(Boolean)
+    );
+
+    let rows = [];
+    try {
+      const { data, error } = await sb
+        .from(TABLE_PLAYER_GAMES)
+        .select('player, score, rounds, ts, is_practice')
+        .eq('is_practice', false)          // official games only
+        .order('ts', { ascending: true })  // oldest → newest
+        .limit(20000);
+      if (error) throw error;
+      rows = data || [];
+    } catch (e) {
+      console.error('Power League: fetch player_games failed', e);
+      throw new Error('Failed to fetch player scores');
+    }
+
+    if (!rows.length) return [];
+
+    const byPlayer = new Map(); // keyLC -> { name, roundsArr: number[], lastTs }
+
+    for (const r of rows) {
+      const rawName = (r.player || '').trim();
+      if (!rawName) continue;
+
+      const keyLC = rawName.toLowerCase();
+      if (savedSet.size && !savedSet.has(keyLC)) {
+        continue; // only include saved players if we have a list
+      }
+
+      const rounds = Number(r.rounds || 0);
+      const score  = Number(r.score || 0);
+      if (!rounds || !Number.isFinite(score)) continue;
+
+      const perRound = score / rounds;
+
+      let rec = byPlayer.get(keyLC);
+      if (!rec) {
+        rec = { name: rawName, roundsArr: [], lastTs: null };
+        byPlayer.set(keyLC, rec);
+      }
+
+     // Push one entry per round, keep only the last 50 per player
+for (let i = 0; i < rounds; i++) {
+  rec.roundsArr.push(perRound);
+  if (rec.roundsArr.length > 50) {
+    rec.roundsArr.shift();
+  }
+}
+
+      if (r.ts) {
+        rec.lastTs = r.ts;
+      }
+    }
+
+    const out = [];
+    for (const rec of byPlayer.values()) {
+      if (!rec.roundsArr.length) continue;
+      const total = rec.roundsArr.reduce((s, v) => s + v, 0);
+      const count = rec.roundsArr.length;
+      const avg   = total / count;
+      out.push({
+        name: rec.name,
+        rounds: count,
+        avg,
+        ts: rec.lastTs || null
+      });
+    }
+
+    // Sort best → worst
+    out.sort((a, b) => {
+      if (b.avg !== a.avg) return b.avg - a.avg;
+      if ((b.rounds || 0) !== (a.rounds || 0)) return (b.rounds || 0) - (a.rounds || 0);
+      const ta = a.ts ? Date.parse(a.ts) : 0;
+      const tb = b.ts ? Date.parse(b.ts) : 0;
+      if (tb !== ta) return tb - ta;
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+
+    return out;
+  }
+
+  async function render(){
+    body.innerHTML = '<p class="tag">Loading Power League…</p>';
+
+    let rows = [];
+    try {
+      rows = await computePowerLeagueRows();
+    } catch (e) {
+      console.error(e);
+      const p = document.createElement('p');
+      p.textContent = (e && e.message) ? e.message : 'Failed to load Power League.';
+      body.innerHTML = '';
+      body.appendChild(p);
+      return;
+    }
+
+    if (!rows.length) {
+      body.innerHTML = '<p>No official games found for any saved players yet.</p>';
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'hs-table';
+
+    const thead = document.createElement('thead');
+    const trh   = document.createElement('tr');
+  ['#','Player','Rounds (up to 50)','Avg / Round'].forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    rows.forEach((row, idx) => {
+      const tr = document.createElement('tr');
+
+      const tdRank = document.createElement('td');
+      tdRank.textContent = String(idx + 1);
+
+      const tdName = document.createElement('td');
+      tdName.textContent = row.name || '—';
+
+      const tdRounds = document.createElement('td');
+      tdRounds.textContent = String(row.rounds || 0);
+
+      const tdAvg = document.createElement('td');
+      tdAvg.textContent = row.avg.toFixed(2);
+
+      tr.appendChild(tdRank);
+      tr.appendChild(tdName);
+      tr.appendChild(tdRounds);
+      tr.appendChild(tdAvg);
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    wrap.appendChild(table);
+
+    body.innerHTML = '';
+    body.appendChild(wrap);
+  }
+
+  await render();
+};
+
 
 // Latest Scores modal: overlay with # | When | Result (no delete column)
 async function openLatestScoresDialog(){
