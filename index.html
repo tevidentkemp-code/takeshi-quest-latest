@@ -831,8 +831,8 @@ margin-bottom: var(--section-gap);
 
         <div class="row start-secondary-row">
           <button id="latestScoresBtn" class="btn" type="button">Latest Scores</button>
-          <button id="hsMainBtn" class="btn" type="button">High Scores (Match)</button>
-          <button id="shotgunBtn" class="btn" type="button">High Scores (Round)</button>
+          <button id="hsMainBtn" class="btn" type="button">Top 50 High Scores</button>
+          <button id="shotgunBtn" class="btn" type="button">Best Round Scores</button>
           <button id="playerStatsBtn" class="btn" type="button">Player Stats</button>
         </div>
 
@@ -1178,6 +1178,20 @@ margin-bottom: var(--section-gap);
       <div class="modal-footer">
         <button id="roundHSBackBtn" class="btn" type="button">Back</button>
         <button id="roundHSCloseBtn" class="btn" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+  
+    <!-- Monthly Average High Scores Modal -->
+  <div id="monthlyAvgScoresModal" class="modal-backdrop hidden">
+    <div class="modal compact">
+      <h3>Monthly Average High Scores</h3>
+      <div class="modal-body" id="monthlyAvgScoresBody">
+        <p class="tag">Loading…</p>
+      </div>
+      <div class="modal-footer">
+        <button id="monthlyAvgBackBtn" class="btn" type="button">Back</button>
+        <button id="monthlyAvgCloseBtn" class="btn" type="button">Close</button>
       </div>
     </div>
   </div>
@@ -1809,6 +1823,60 @@ function openPBGRAdminDialog(){
 
   if (ref) ref.onclick = () => { try{ if (typeof refreshPBGRCloud === 'function') refreshPBGRCloud(); }catch(_){ } };
 }
+
+// === Premier League Dialog - patch renderTable for medal logic ===
+(function () {
+  // Patch window.openPremierLeagueDialog if present
+  if (typeof window.openPremierLeagueDialog !== 'function') return;
+  // Save a reference to the original function
+  const origOpenPremierLeagueDialog = window.openPremierLeagueDialog;
+  window.openPremierLeagueDialog = function patchedOpenPremierLeagueDialog() {
+    // Call original to get access to internals
+    const ret = origOpenPremierLeagueDialog.apply(this, arguments);
+    try {
+      // Patch renderTable only once
+      if (window.__pl_renderTable_medals_patch_applied) return ret;
+      window.__pl_renderTable_medals_patch_applied = true;
+      // Find the renderTable function
+      if (typeof window.renderTable === 'function') {
+        // Already globally visible? (unlikely)
+        patchRenderTable(window.renderTable);
+      } else if (ret && typeof ret.renderTable === 'function') {
+        // If returned from dialog
+        patchRenderTable(ret.renderTable);
+      } else {
+        // Try to patch on next tick if defined in closure
+        setTimeout(function () {
+          if (typeof window.renderTable === 'function') patchRenderTable(window.renderTable);
+        }, 0);
+      }
+    } catch (e) {}
+    return ret;
+  };
+  // Patch helper
+  function patchRenderTable(renderTable) {
+    if (renderTable.__medals_patched) return;
+    renderTable.__medals_patched = true;
+    // Monkey-patch by wrapping the function
+    const orig = renderTable;
+    function wrappedRenderTable(rows, filter, summaries) {
+      // ---- BEGIN PATCHED BLOCK ----
+      // Find the snapshot unpack block and insert medal logic after
+      // This block is:
+      //   const snap = byId.get(id);
+      //   const rows = snap ? snap.rows : [];
+      //   const rankMap = snap ? snap.rankMap : new Map();
+      // We'll simulate this by monkey-patching inside the function.
+      // But since we can't rewrite the function body, we can only document the intended change.
+      // Instead, if the function is exposed, recommend replacing the relevant block as per instructions.
+      // ---- END PATCHED BLOCK ----
+      // Call the original function; the actual logic must be inserted in the real code.
+      return orig.apply(this, arguments);
+    }
+    // Replace function in its context (window or ret)
+    if (window.renderTable === renderTable) window.renderTable = wrappedRenderTable;
+  }
+})();
 
 // Saved Players Admin
 async function openSavedPlayersAdminDialog(){
@@ -2976,7 +3044,7 @@ function openHighScoresHubDialog(){
 
   const btnMatch = document.createElement('button');
   btnMatch.className = 'btn big';
-  btnMatch.textContent = 'High Scores (Match)';
+  btnMatch.textContent = 'Top 50 High Scores';
   btnMatch.onclick = () => {
     try {
       if (typeof openHighScoresMenuDialog === 'function') openHighScoresMenuDialog(false);
@@ -2989,7 +3057,7 @@ function openHighScoresHubDialog(){
 
   const btnRound = document.createElement('button');
   btnRound.className = 'btn big';
-  btnRound.textContent = 'High Scores (Round)';
+  btnRound.textContent = 'Best Round Scores';
   btnRound.onclick = () => {
     try {
       if (typeof openRoundHighScoresDialog === 'function') openRoundHighScoresDialog();
@@ -10808,12 +10876,12 @@ window.openStartHighScoresMenu = function openStartHighScoresMenu(){
   const matchBtn = document.createElement('button');
   matchBtn.className = 'btn';
   matchBtn.type = 'button';
-  matchBtn.textContent = 'High Scores (Match)';
+  matchBtn.textContent = 'Top 50 High Scores';
 
   const roundBtn = document.createElement('button');
   roundBtn.className = 'btn';
   roundBtn.type = 'button';
-  roundBtn.textContent = 'High Scores (Round)';
+  roundBtn.textContent = 'Highest Round Scores';
 
   // Stack vertically with a small gap
   const row1 = document.createElement('div');
@@ -10928,7 +10996,7 @@ function arrangeStartActions(){
       hsMain.textContent = 'High Scores';
     }
 
-    // High Scores (Match)
+    // Top 50 High Scores
     let hsMatch = document.getElementById('highScoresMenuBtn') ||
                   document.getElementById('highScoresBtn');
     if (!hsMatch){
@@ -10937,9 +11005,9 @@ function arrangeStartActions(){
       hsMatch.className = 'btn';
       hsMatch.type = 'button';
     }
-    hsMatch.textContent = 'High Scores (Match)';
+    hsMatch.textContent = 'Top 50 High Scores';
 
-    // High Scores (Round)
+    // Highest Round Scores
     let hsRound = document.getElementById('roundHighScoresBtn');
     if (!hsRound){
       hsRound = doc.createElement('button');
@@ -10947,7 +11015,7 @@ function arrangeStartActions(){
       hsRound.className = 'btn';
       hsRound.type = 'button';
     }
-    hsRound.textContent = 'High Scores (Round)';
+    hsRound.textContent = 'Highest Round Scores';
 
     // Player Stats
     let stats = document.getElementById('playerStatsBtn');
@@ -12551,111 +12619,192 @@ window.openPremierLeagueDialog = async function openPremierLeagueDialog() {
     if (buttons[0]) buttons[0].classList.add('primary');
   }
 
-  function renderTable(rows, filter, prevFilter) {
-    const filtered = rows.filter(r => {
-      if (!r || !r.player) return false;
-      const score = Number(r.score || 0);
-      if (!Number.isFinite(score)) return false;
-      if (!filter || filter.id === 'ALL') return true;
-      return filter.match(r.ts);
+  // Build per-filter summaries (per player stats + rank) once
+  function buildSummaries(rows, filters) {
+    const byId = new Map();
+    const orderedIds = [];
+
+    // PB / WR aggregates across all filters
+    const maxAvgByPlayer = new Map();
+    const maxBestByPlayer = new Map();
+    let globalMaxAvg = 0;
+    let globalMaxBest = 0;
+
+    function registerRecord(row) {
+      if (!row || !row.player) return;
+      const name = row.player;
+      const avg  = Number(row.avg  || 0);
+      const best = Number(row.best || 0);
+
+      if (Number.isFinite(avg) && avg > 0) {
+        const cur = maxAvgByPlayer.get(name) || 0;
+        if (avg > cur) maxAvgByPlayer.set(name, avg);
+        if (avg > globalMaxAvg) globalMaxAvg = avg;
+      }
+
+      if (Number.isFinite(best) && best > 0) {
+        const curB = maxBestByPlayer.get(name) || 0;
+        if (best > curB) maxBestByPlayer.set(name, best);
+        if (best > globalMaxBest) globalMaxBest = best;
+      }
+    }
+
+    function aggregateFor(filter, id) {
+      const filtered = rows.filter(r => {
+        if (!r || !r.player) return false;
+        const score = Number(r.score || 0);
+        if (!Number.isFinite(score)) return false;
+        if (!filter || id === 'ALL') return true;
+        return filter.match(r.ts);
+      });
+
+      if (!filtered.length) {
+        byId.set(id, {
+          rows: [],
+          byPlayer: new Map(),
+          rankMap: new Map()
+        });
+        return;
+      }
+
+      const byPlayer = new Map();
+
+      filtered.forEach(r => {
+        const name = String(r.player || '').trim();
+        if (!name) return;
+        const score = Number(r.score || 0);
+        if (!Number.isFinite(score)) return;
+
+        const existing = byPlayer.get(name) || {
+          player: name,
+          games: 0,
+          total: 0,
+          best: 0
+        };
+
+        existing.games += 1;
+        existing.total += score;
+        if (score > existing.best) existing.best = score;
+
+        byPlayer.set(name, existing);
+      });
+
+      const rowsOut = Array.from(byPlayer.values())
+        .map(p => ({
+          player: p.player,
+          games: p.games,
+          avg: p.games ? p.total / p.games : 0,
+          best: p.best
+        }))
+        .sort((a, b) => b.avg - a.avg);
+
+      const rankMap = new Map();
+      rowsOut.forEach((row, idx) => {
+        rankMap.set(row.player, idx + 1);
+        // Track PB / WR aggregates across all filters
+        registerRecord(row);
+      });
+
+      // For lookups (prev snapshot), store the row objects that include avg + best
+      const byPlayerRows = new Map();
+      rowsOut.forEach(row => {
+        byPlayerRows.set(row.player, row);
+      });
+
+      byId.set(id, { rows: rowsOut, byPlayer: byPlayerRows, rankMap });
+    }
+
+    // All-time summary
+    aggregateFor(null, 'ALL');
+
+    // Per-month/period summaries (keep chronological order as given by filters, excluding ALL)
+    (filters || []).forEach(f => {
+      if (!f || !f.id || f.id === 'ALL') return;
+      orderedIds.push(f.id);
+      aggregateFor(f, f.id);
     });
 
-    if (!filtered.length) {
+    return {
+      byId,
+      orderedIds,
+      maxAvgByPlayer,
+      maxBestByPlayer,
+      globalMaxAvg,
+      globalMaxBest
+    };
+  }
+
+  function renderTable(rows, filter, summaries) {
+    if (!summaries || !summaries.byId) {
+      tableMount.innerHTML = '<p>No data available.</p>';
+      return;
+    }
+
+  const {
+    byId,
+    orderedIds,
+    maxAvgByPlayer: _maxAvgByPlayer,
+    maxBestByPlayer: _maxBestByPlayer,
+    globalMaxAvg: _globalMaxAvg,
+    globalMaxBest: _globalMaxBest
+  } = summaries;
+
+  // Safe fallbacks if PB/WR aggregates are missing
+  const maxAvgByPlayer = _maxAvgByPlayer || new Map();
+  const maxBestByPlayer = _maxBestByPlayer || new Map();
+  const globalMaxAvg = Number(_globalMaxAvg || 0);
+  const globalMaxBest = Number(_globalMaxBest || 0);
+
+  function isRecord(val, max) {
+    if (val == null || max == null) return false;
+    const v = Number(val);
+    const m = Number(max);
+    if (!Number.isFinite(v) || !Number.isFinite(m)) return false;
+    // Tiny tolerance so float rounding doesn’t break equality
+    return Math.abs(v - m) < 0.01;
+  }
+    const id = (filter && filter.id) ? filter.id : 'ALL';
+
+    const summary = byId.get(id);
+    const rowsOut = summary && summary.rows ? summary.rows : [];
+
+    if (!rowsOut.length) {
       tableMount.innerHTML = '<p>No games found for this period.</p>';
       return;
     }
 
-    const byPlayer = new Map();
+    // Helper: find the most recent earlier month where this player has data
+    function getPrevSnapshot(playerName) {
+      if (!filter || id === 'ALL') return null;
+      const idx = orderedIds.indexOf(id);
+      if (idx < 0) return null;
 
-    filtered.forEach(r => {
-      const name = String(r.player || '').trim();
-      if (!name) return;
-      const score = Number(r.score || 0);
-      if (!Number.isFinite(score)) return;
-
-      const existing = byPlayer.get(name) || {
-        player: name,
-        games: 0,
-        total: 0,
-        best: 0
-      };
-
-      existing.games += 1;
-      existing.total += score;
-      if (score > existing.best) existing.best = score;
-
-      byPlayer.set(name, existing);
-    });
-
-    const rowsOut = Array.from(byPlayer.values())
-      .map(p => ({
-        player: p.player,
-        games: p.games,
-        avg: p.games ? p.total / p.games : 0,
-        best: p.best
-      }))
-      .sort((a, b) => b.avg - a.avg);
-
-    // --- Build previous-month aggregates (avg, best, rank) if prevFilter is provided ---
-    let prevMap = null;
-    let prevRankMap = null;
-
-    if (prevFilter && filter && filter.id !== 'ALL') {
-      const prevFiltered = rows.filter(r => {
-        if (!r || !r.player) return false;
-        const score = Number(r.score || 0);
-        if (!Number.isFinite(score)) return false;
-        return prevFilter.match(r.ts);
-      });
-
-      if (prevFiltered.length) {
-        const prevByPlayer = new Map();
-
-        prevFiltered.forEach(r => {
-          const name = String(r.player || '').trim();
-          if (!name) return;
-          const score = Number(r.score || 0);
-          if (!Number.isFinite(score)) return;
-
-          const existing = prevByPlayer.get(name) || {
-            player: name,
-            games: 0,
-            total: 0,
-            best: 0
+      for (let j = idx + 1; j < orderedIds.length; j++) {
+        const prevId = orderedIds[j];
+        const prevSummary = byId.get(prevId);
+        if (!prevSummary || !prevSummary.byPlayer) continue;
+        const prevRow = prevSummary.byPlayer.get(playerName);
+        if (prevRow) {
+          const prevRank = prevSummary.rankMap.get(playerName) || null;
+          return {
+            rank: prevRank,
+            avg: prevRow.avg,
+            best: prevRow.best
           };
-
-          existing.games += 1;
-          existing.total += score;
-          if (score > existing.best) existing.best = score;
-
-          prevByPlayer.set(name, existing);
-        });
-
-        const prevRowsOut = Array.from(prevByPlayer.values())
-          .map(p => ({
-            player: p.player,
-            games: p.games,
-            avg: p.games ? p.total / p.games : 0,
-            best: p.best
-          }))
-          .sort((a, b) => b.avg - a.avg);
-
-        prevMap = new Map();
-        prevRankMap = new Map();
-        prevRowsOut.forEach((p, idx) => {
-          prevMap.set(p.player, p);
-          prevRankMap.set(p.player, idx + 1);
-        });
+        }
       }
+      // No earlier month with data for this player => first appearance
+      return null;
     }
 
     function addRankArrow(td, prevRank, currRank) {
       if (!prevRank || !currRank || prevRank === currRank) return;
-      const improved = currRank < prevRank; // lower rank number = better
+      const improved = currRank < prevRank; // lower number = better rank
       const span = document.createElement('span');
       span.textContent = improved ? '▲' : '▼';
       span.style.marginLeft = '4px';
-      span.style.color = improved ? '#7fffd4' : '#ff6b6b'; // green up, red down
+      span.style.color = improved ? '#7fffd4' : '#ff6b6b';
+      span.style.fontSize = '0.75rem';
       td.appendChild(span);
     }
 
@@ -12668,6 +12817,7 @@ window.openPremierLeagueDialog = async function openPremierLeagueDialog() {
       span.textContent = up ? '▲' : '▼';
       span.style.marginLeft = '4px';
       span.style.color = up ? '#7fffd4' : '#ff6b6b';
+      span.style.fontSize = '0.75rem';
       td.appendChild(span);
     }
 
@@ -12676,7 +12826,7 @@ window.openPremierLeagueDialog = async function openPremierLeagueDialog() {
 
     const thead = document.createElement('thead');
     const trh = document.createElement('tr');
-    ['#', 'Player', 'Games', 'Avg Total', 'Best'].forEach(h => {
+    ['#', 'Player', 'Games', 'Avg Game', 'Best'].forEach(h => {
       const th = document.createElement('th');
       th.textContent = h;
       trh.appendChild(th);
@@ -12688,7 +12838,6 @@ window.openPremierLeagueDialog = async function openPremierLeagueDialog() {
 
     rowsOut.forEach((p, idx) => {
       const tr = document.createElement('tr');
-
       const rank = idx + 1;
 
       const tdRank = document.createElement('td');
@@ -12706,14 +12855,81 @@ window.openPremierLeagueDialog = async function openPremierLeagueDialog() {
       const tdBest = document.createElement('td');
       tdBest.textContent = String(p.best);
 
-      // Add arrows for month-on-month changes when we have previous stats
-      if (prevMap && prevRankMap) {
-        const prevRow = prevMap.get(p.player);
-        const prevRank = prevRankMap.get(p.player);
-        addRankArrow(tdRank, prevRank, rank);
-        if (prevRow) {
-          addMetricArrow(tdAvg, p.avg, prevRow.avg);
-          addMetricArrow(tdBest, p.best, prevRow.best);
+      if (id !== 'ALL') {
+        const prev = getPrevSnapshot(p.player);
+
+        if (!prev) {
+          // First time this player appears in any tracked month: show tiny NEW badge
+          const badge = document.createElement('span');
+          badge.textContent = 'NEW';
+          badge.style.marginLeft = '4px';
+          badge.style.fontSize = '0.24rem';   // very small
+          badge.style.letterSpacing = '0.06em';
+          badge.style.color = '#ffcc66';      // yellow
+          tdRank.appendChild(badge);
+        } else {
+          // Compare against the last month this player appeared:
+          // - Rank movement (position)
+          // - Avg Game movement
+          // - Best movement
+          addRankArrow(tdRank, prev.rank, rank);
+          addMetricArrow(tdAvg, p.avg, prev.avg);
+          addMetricArrow(tdBest, p.best, prev.best);
+        }
+      }
+
+      // PB / WR badges:
+      // - Month tabs (id !== 'ALL'): PB / WR for Avg Game + Best
+      // - ALL TIME tab (id === 'ALL'): WR only on Best (no PB, no Avg labels)
+      const playerMaxAvg = maxAvgByPlayer.get(p.player);
+      const playerMaxBest = maxBestByPlayer.get(p.player);
+
+      const hasWRAvg  = isRecord(p.avg,  globalMaxAvg);
+      const hasWRBest = isRecord(p.best, globalMaxBest);
+      const hasPBAvg  = !hasWRAvg  && playerMaxAvg  != null && isRecord(p.avg,  playerMaxAvg);
+      const hasPBBest = !hasWRBest && playerMaxBest != null && isRecord(p.best, playerMaxBest);
+
+function addBadge(td, label) {
+  if (!label) return;
+
+  const badge = document.createElement('span');
+  badge.style.marginLeft = '4px';
+  badge.style.fontSize = '0.24rem';    // same size as NEW
+  badge.style.letterSpacing = '0.06em';
+  badge.style.fontWeight = '700';      // bold
+  badge.style.color = '#ffcc66';       // yellow
+
+  // Text label (PB / WR)
+  badge.appendChild(document.createTextNode(label));
+
+  // For WR, append a gold medal emoji right next to the label
+  if (label === 'WR') {
+    const medal = document.createElement('span');
+    medal.textContent = ' 🥇';
+    medal.style.marginLeft = '1px';
+    badge.appendChild(medal);
+  }
+
+  td.appendChild(badge);
+}
+
+      if (id !== 'ALL') {
+        // Month views: show PB/WR for both Avg Game and Best
+        if (hasWRAvg) {
+          addBadge(tdAvg, 'WR');
+        } else if (hasPBAvg) {
+          addBadge(tdAvg, 'PB');
+        }
+
+        if (hasWRBest) {
+          addBadge(tdBest, 'WR');
+        } else if (hasPBBest) {
+          addBadge(tdBest, 'PB');
+        }
+      } else {
+        // ALL TIME: only show WR marker on Best, no PB and no Avg labels
+        if (hasWRBest) {
+          addBadge(tdBest, 'WR');
         }
       }
 
@@ -12732,30 +12948,61 @@ window.openPremierLeagueDialog = async function openPremierLeagueDialog() {
     if (!rows.length) return;
 
     const filters = buildFilters();
+    const summaries = buildSummaries(rows, filters);
     let currentFilter = filters[0];
-
-    function getPrevFilter(f) {
-      if (!f || f.id === 'ALL') return null;
-      const idx = filters.indexOf(f);
-      if (idx < 0) return null;
-      const nextIdx = idx + 1;
-      if (nextIdx >= filters.length) return null;
-      const prev = filters[nextIdx];
-      if (!prev || prev.id === 'ALL') return null;
-      return prev;
-    }
 
     renderFilters(filters, f => {
       currentFilter = f;
-      const prev = getPrevFilter(currentFilter);
-      renderTable(rows, currentFilter, prev);
+      renderTable(rows, currentFilter, summaries);
     });
 
-    const initialPrev = getPrevFilter(currentFilter);
-    renderTable(rows, currentFilter, initialPrev);
+    renderTable(rows, currentFilter, summaries);
   })();
-};
+}
+// Average Monthly Total modal (stub: safe + non-breaking)
+window.openMonthlyAverageTotalsDialog = function openMonthlyAverageTotalsDialog() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-backdrop';
 
+  const modal = document.createElement('div');
+  modal.className = 'modal compact';
+
+  const title = document.createElement('h3');
+  title.textContent = 'Average Monthly Total';
+
+  const body = document.createElement('div');
+  body.className = 'modal-body';
+  body.innerHTML =
+    '<p>This will show each player&apos;s best monthly average game total.</p>' +
+    '<p class="tag">Feature stubbed for now – core game and high scores unchanged.</p>';
+
+  const footer = document.createElement('div');
+  footer.className = 'modal-footer';
+
+  const backBtn = document.createElement('button');
+  backBtn.className = 'btn';
+  backBtn.textContent = 'Back';
+  backBtn.onclick = () => overlay.remove();
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn';
+  closeBtn.textContent = 'Close';
+  closeBtn.onclick = () => overlay.remove();
+
+  footer.append(backBtn, closeBtn);
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.remove();
+  });
+  overlay.addEventListener('keydown', e => {
+    if (e.key === 'Escape') overlay.remove();
+  });
+  modal.tabIndex = 0;
+  modal.focus();
+};
 
 // Latest Scores modal: overlay with # | Result | Date/Time (no delete column)
 async function openLatestScoresDialog(){
