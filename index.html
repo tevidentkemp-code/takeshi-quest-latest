@@ -2355,359 +2355,76 @@ async function cloudRenamePlayer(oldName, newName){
   } catch (_) {}
 })();
 
+// Patch High Score League modal 'Back' button to return to League / Rankings
+(function () {
+  if (window.__hsLeagueBackPatch) return;
+  window.__hsLeagueBackPatch = true;
+
+  function tryPatchHsLeagueModal(root) {
+    try {
+      const modal = root.querySelector
+        ? root.querySelector('.modal')
+        : null;
+      if (!modal) return;
+
+      const titleEl = modal.querySelector('h3');
+      if (!titleEl) return;
+
+      const titleText = (titleEl.textContent || '').toLowerCase();
+      // Only touch "High Scores" modals that look like the league/match view,
+      // and skip anything clearly labeled as "Round High Scores".
+      if (!titleText.includes('high') || !titleText.includes('score')) return;
+      if (titleText.includes('round')) return;
+      if (!titleText.includes('league') && !titleText.includes('match')) return;
+
+      const buttons = Array.from(modal.querySelectorAll('button'));
+      const backBtn = buttons.find(
+        b => (b.textContent || '').trim().toLowerCase() === 'back'
+      );
+      if (!backBtn) return;
+
+      backBtn.onclick = () => {
+        let backdrop = root;
+        if (!(backdrop instanceof HTMLElement) || !backdrop.classList.contains('modal-backdrop')) {
+          backdrop = modal.closest('.modal-backdrop') || backdrop;
+        }
+        if (backdrop && backdrop.classList) {
+          try { backdrop.classList.add('hidden'); } catch (_) {}
+          try { backdrop.remove(); } catch (_) {}
+        }
+        if (typeof window.openLeagueRankingsDialog === 'function') {
+          try { window.openLeagueRankingsDialog(); } catch (_) {}
+        }
+      };
+    } catch (e) {
+      try { console.error('HS League back patch failed', e); } catch (_) {}
+    }
+  }
+
+  const mo = new MutationObserver(muts => {
+    for (const m of muts) {
+      for (const n of m.addedNodes) {
+        if (!(n instanceof HTMLElement)) continue;
+        if (n.classList.contains('modal-backdrop')) {
+          tryPatchHsLeagueModal(n);
+        } else if (n.querySelector) {
+          const backdrop = n.querySelector('.modal-backdrop');
+          if (backdrop) tryPatchHsLeagueModal(backdrop);
+        }
+      }
+    }
+  });
+
+  try {
+    mo.observe(document.body, { childList: true, subtree: true });
+  } catch (_) {}
+})();
+
 
 // === Player Summary Stats dialog (cloud-only, extended aggregate) ===
+// Temporary stub so the game runs while this feature is unfinished.
 window.openPlayerSummaryStatsDialog = async function openPlayerSummaryStatsDialog(playerName, mode){
-  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal   = document.createElement('div'); modal.className   = 'modal compact';
-  const title   = document.createElement('h3');
-  const body    = document.createElement('div'); body.className    = 'modal-body';
-  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
-
-  const isPractice = (mode === 'practice' || mode === true);
-  const labelMode  = isPractice ? 'Practice' : 'Official';
-  const safeName   = playerName || 'Unknown';
-
-  title.textContent = `Player Stats — ${safeName} (${labelMode})`;
-
-  modal.append(title, body, footer);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-  modal.tabIndex = 0;
-  modal.focus();
-
-  const close = () => { overlay.remove(); };
-
-  const returnBtn = document.createElement('button');
-  returnBtn.className = 'btn';
-  returnBtn.textContent = 'Return';
-  returnBtn.onclick = close;
-
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn';
-  closeBtn.textContent = 'Close';
-  closeBtn.onclick = close;
-
-  footer.append(returnBtn, closeBtn);
-
-   // --- TOP BUTTON HUB: GAMES / STATS / PROGRESSION / [row: Target Hit % / T-D-B % / H2H] ---
-  body.innerHTML = `
-    <div class="column" style="gap:10px;">
-      <button class="btn big" data-view="games">GAMES</button>
-      <button class="btn big" data-view="stats">STATS</button>
-      <button class="btn big" data-view="progression">PROGRESSION</button>
-      <div class="row" style="gap:8px; margin-top:8px;">
-        <button class="btn" data-view="target">Target Hit %</button>
-        <button class="btn" data-view="tdb">T-D-B %</button>
-        <button class="btn" data-view="h2h">H2H</button>
-      </div>
-      <button class="btn" data-role="return">Return</button>
-    </div>
-  `;
-
-  // Wire the PROGRESSION button (works whether it came from this template or a DOM patch)
-  function wireProgressionButton() {
-    const buttons = Array.from(modal.querySelectorAll('button'));
-    const progBtn = buttons.find(
-      b => (b.textContent || '').trim().toUpperCase() === 'PROGRESSION'
-    );
-    if (progBtn) {
-      progBtn.onclick = () => {
-        try {
-          if (typeof window.openPlayerProgressionDialog === 'function') {
-            window.openPlayerProgressionDialog(safeName, isPractice);
-          }
-        } catch (_) {}
-      };
-    }
-  }
-
-  // Run now and again shortly in case PROGRESSION is injected slightly later
-  wireProgressionButton();
-  setTimeout(wireProgressionButton, 150);
-
-  try{
-    // Ensure cloud is ready
-    try{
-      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()){
-        body.innerHTML = '<p>Cloud not initialised.</p>';
-        return;
-      }
-    }catch(_){}
-
-    const tableName = (typeof TABLE_PLAYER_GAMES !== 'undefined' && TABLE_PLAYER_GAMES)
-      ? TABLE_PLAYER_GAMES
-      : 'player_games_union';
-
-    // --- Base per‑game stats for this player/mode ---
-    const { data: gamesRaw, error: gErr } = await sb
-      .from(tableName)
-      .select('sheet_id, player, score, position, ts, is_practice, rounds')
-      .eq('player', safeName)
-      .eq('is_practice', !!isPractice)
-      .order('ts', { ascending: true })
-      .limit(2000);
-
-    if (gErr) throw gErr;
-    const games = (gamesRaw || []).filter(Boolean);
-
-    if (!games.length){
-      body.innerHTML = `<p>No ${labelMode.toLowerCase()} games found for this player yet.</p>`;
-      return;
-    }
-
-    const totalGames = games.length;
-    const scores     = games.map(g => Number(g.score || 0));
-    const wins       = games.filter(g => Number(g.position) === 1).length;
-
-    const bestScore  = Math.max(...scores);
-    const worstScore = Math.min(...scores);
-    const totalScore = scores.reduce((sum, v) => sum + v, 0);
-    const avgScore   = totalScore / totalGames;
-
-    const last       = games[games.length - 1];
-    const lastScore  = Number(last.score || 0);
-    const lastWhen   = (window.fmtWhen && last.ts) ? window.fmtWhen(last.ts) : (last.ts || '');
-
-    const pct = (num, den) => den ? (num * 100 / den) : 0;
-
-    // --- Favourite opponent / Nemesis (H2H) ---
-    let favOpponent   = '—';
-    let nemesisOpp    = '—';
-
-    try{
-      const gameIds = [...new Set(games.map(g => g.sheet_id).filter(Boolean))];
-      if (gameIds.length){
-        const { data: allRowsRaw, error: hErr } = await sb
-          .from(tableName)
-          .select('sheet_id, player, score, position, rounds, is_practice')
-          .in('sheet_id', gameIds)
-          .eq('is_practice', !!isPractice);
-
-        if (!hErr && Array.isArray(allRowsRaw)){
-          const allRows = allRowsRaw.filter(Boolean);
-          const selfByGame = new Map();
-          games.forEach(g => { selfByGame.set(g.sheet_id, g); });
-
-          const opponentStats = new Map(); // name -> { games, rounds, wins, losses, draws }
-
-          for (const row of allRows){
-            const gid  = row.sheet_id;
-            const self = selfByGame.get(gid);
-            if (!self) continue;
-
-            const oppName = row.player;
-            if (!oppName || oppName === safeName) continue;
-
-            let stat = opponentStats.get(oppName);
-            if (!stat){
-              stat = { games:0, rounds:0, wins:0, losses:0, draws:0 };
-              opponentStats.set(oppName, stat);
-            }
-
-            stat.games += 1;
-            const r = Number(row.rounds || self.rounds || 0);
-            if (Number.isFinite(r)) stat.rounds += r;
-
-            const selfScore = Number(self.score || 0);
-            const oppScore  = Number(row.score || 0);
-            if (selfScore > oppScore) stat.wins++;
-            else if (selfScore < oppScore) stat.losses++;
-            else stat.draws++;
-          }
-
-          const eligible = [...opponentStats.entries()].filter(([, s]) =>
-            s.rounds >= 28 && (s.wins + s.losses) > 0
-          );
-
-          if (eligible.length){
-            const sortByWinPct = (a, b) => {
-              const sa = a[1], sb = b[1];
-              const pa = sa.wins / (sa.wins + sa.losses);
-              const pb = sb.wins / (sb.wins + sb.losses);
-              if (pb !== pa) return pb - pa;               // higher win % first
-              if (sb.games !== sa.games) return sb.games - sa.games; // then more games
-              return a[0].localeCompare(b[0]);             // then name A–Z
-            };
-
-            const sorted = eligible.slice().sort(sortByWinPct);
-            const favEntry = sorted[0];
-            const nemEntry = sorted[sorted.length - 1];
-
-            const fmtOpp = (entry) => {
-              if (!entry) return '—';
-              const [name, s] = entry;
-              const p = (s.wins + s.losses)
-                ? (s.wins * 100 / (s.wins + s.losses))
-                : 0;
-              return `${name} (${s.wins}-${s.losses}, ${p.toFixed(0)}% over ${s.rounds} rnds)`;
-            };
-
-            favOpponent = fmtOpp(favEntry);
-            nemesisOpp  = fmtOpp(nemEntry);
-          }
-        }
-      }
-    }catch(e){
-      console.error('H2H stats failed', e);
-    }
-
-    // --- Round bands: 60+ / 100+ / 140+ (cloud view) ---
-    let count60 = null, count100 = null, count140 = null;
-    try{
-      const { data: roundsRaw, error: rErr } = await sb
-        .from('v_game_rounds')
-        .select('player, is_practice, score, round_score, total')
-        .eq('player', safeName)
-        .eq('is_practice', !!isPractice)
-        .limit(20000);
-
-      if (rErr) throw rErr;
-      const rounds = (roundsRaw || []).filter(Boolean);
-      let c60 = 0, c100 = 0, c140 = 0;
-      for (const r of rounds){
-        const s = Number(
-          r.score ??
-          r.round_score ??
-          r.total ??
-          0
-        );
-        if (!Number.isFinite(s)) continue;
-        if (s >= 140)      c140++;
-        else if (s >= 100) c100++;
-        else if (s >= 60)  c60++;
-      }
-      count60 = c60;
-      count100 = c100;
-      count140 = c140;
-    }catch(e){
-      console.error('Round band stats failed', e);
-    }
-
-    // --- Favourite / worst board numbers (10–20) from throw_events_v ---
-    let favNums = ['—','—','—'];
-    let worstNums = ['—','—','—'];
-    try{
-      const { data: throwsRaw, error: tErr } = await sb
-        .from('throw_events_v')
-        .select('player, is_practice, target, num, number, kind, points, round_index')
-        .eq('player', safeName)
-        .eq('is_practice', !!isPractice)
-        .limit(50000);
-
-      if (tErr) throw tErr;
-      const tally = new Map(); // num -> weighted hits
-
-      for (const row of (throwsRaw || [])){
-        // Work out multiplier: S=1, D=2, T=3 (0 if miss)
-        const k = (row.kind || '').toString().toUpperCase();
-        let mult;
-        if (k === 'TRIPLE' || k === 'T') mult = 3;
-        else if (k === 'DOUBLE' || k === 'D') mult = 2;
-        else mult = (Number(row.points || 0) > 0 ? 1 : 0);
-        if (!mult) continue;
-
-        // Target number: prefer explicit num/target/number
-        let numVal = row.target ?? row.num ?? row.number;
-
-        // Fallback using round index + global ROUNDS config if available
-        if ((numVal === undefined || numVal === null) &&
-            typeof window.ROUNDS !== 'undefined' &&
-            row.round_index != null){
-          const ridx = Number(row.round_index);
-          const rd = Number.isInteger(ridx) ? window.ROUNDS[ridx] : null;
-          if (rd && rd.type === 'number' && rd.num != null) {
-            numVal = rd.num;
-          }
-        }
-
-        const n = Number(numVal);
-        if (!Number.isInteger(n) || n < 10 || n > 20) continue; // only 10–20 for favourite/worst
-
-        const key = String(n);
-        const prev = tally.get(key) || 0;
-        tally.set(key, prev + mult);
-      }
-
-      if (tally.size){
-        const entries = [...tally.entries()];
-        // Most‑hit numbers
-        entries.sort((a,b)=> {
-          if (b[1] !== a[1]) return b[1] - a[1]; // desc by hits
-          return Number(a[0]) - Number(b[0]);    // then lower number first
-        });
-        favNums = entries.slice(0,3).map(([n]) => n);
-
-        // Least‑hit numbers (including zeros if we want a full board picture)
-        const entriesAsc = entries.slice().sort((a,b)=> {
-          if (a[1] !== b[1]) return a[1] - b[1]; // asc by hits
-          return Number(a[0]) - Number(b[0]);
-        });
-        worstNums = entriesAsc.slice(0,3).map(([n]) => n);
-
-        // Pad to length 3 with "—" if needed
-        while (favNums.length < 3) favNums.push('—');
-        while (worstNums.length < 3) worstNums.push('—');
-      }
-    }catch(e){
-      console.error('Favourite/worst number stats failed', e);
-    }
-
-    const metrics = [
-      { label: 'Games Played',    value: String(totalGames) },
-      { label: 'Wins',            value: totalGames ? `${wins} (${pct(wins, totalGames).toFixed(1)}%)` : '0 (0%)' },
-      { label: 'Best Score',      value: String(bestScore) },
-      { label: 'Worst Score',     value: String(worstScore) },
-      { label: 'Average Score',   value: avgScore.toFixed(1) },
-      { label: 'Last Game Score', value: String(lastScore) },
-      { label: 'Last Game When',  value: lastWhen || '—' },
-
-      { label: '60+ Rounds',      value: (count60  == null ? '—' : String(count60)) },
-      { label: '100+ Rounds',     value: (count100 == null ? '—' : String(count100)) },
-      { label: '140+ Rounds',     value: (count140 == null ? '—' : String(count140)) },
-
-      { label: 'Favourite Number 1st', value: favNums[0] || '—' },
-      { label: 'Favourite Number 2nd', value: favNums[1] || '—' },
-      { label: 'Favourite Number 3rd', value: favNums[2] || '—' },
-      { label: 'Worst Number 1st',     value: worstNums[0] || '—' },
-      { label: 'Worst Number 2nd',     value: worstNums[1] || '—' },
-      { label: 'Worst Number 3rd',     value: worstNums[2] || '—' },
-
-      { label: 'Favourite Opponent', value: favOpponent },
-      { label: 'Nemesis',            value: nemesisOpp }
-    ];
-
-    const table = document.createElement('table');
-    table.className = 'hs-table';
-    const thead = document.createElement('thead');
-    const hr = document.createElement('tr');
-    ['Stat','Value'].forEach(h => {
-      const th = document.createElement('th'); th.textContent = h; hr.appendChild(th);
-    });
-    thead.appendChild(hr);
-    table.appendChild(thead);
-
-    const tbody = document.createElement('tbody');
-    metrics.forEach(m => {
-      const tr  = document.createElement('tr');
-      const tdL = document.createElement('td'); tdL.textContent = m.label;
-      const tdV = document.createElement('td'); tdV.textContent = m.value;
-      tr.append(tdL, tdV);
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-
-    body.innerHTML = '';
-    const wrap = document.createElement('div');
-    wrap.className = 'table-wrap';
-    wrap.appendChild(table);
-    body.appendChild(wrap);
-  }catch(e){
-    console.error('openPlayerSummaryStatsDialog error', e);
-    const msg = (e && e.message) ? e.message : 'Unknown error';
-    body.innerHTML = '<p>Failed to load stats.</p>' +
-      '<p class="tag">' + msg + '</p>';
-  }
+  console.warn('openPlayerSummaryStatsDialog is not implemented yet.', { playerName, mode });
 };
 
 // === Player Progression dialog (per-game line graph) ===
@@ -2888,14 +2605,10 @@ const avgs = scores.map((_, idx) => {
 
     if (!labels.length || !values.length) return;
 
-    const finiteVals = values.filter(v => Number.isFinite(v));
-    if (!finiteVals.length) return;
-    const maxValRaw = Math.max(...finiteVals);
-    const rawMax = maxValRaw > 0 ? maxValRaw : 1;
-
-    // Snap to nice tick steps depending on metric
-    const baseStep = metric === 'target' ? 10 : 25; // 10% steps for Target %, 25‑point steps for scores
-    const scaleTop = Math.ceil(rawMax / baseStep) * baseStep;
+const finiteVals = values.filter(v => Number.isFinite(v));
+if (!finiteVals.length) return;
+const maxValRaw = Math.max(...finiteVals);
+const maxVal = maxValRaw > 0 ? maxValRaw : 1;
 
     const xMin = 0;
     const xMax = labels.length > 1 ? labels.length - 1 : 1;
@@ -2909,7 +2622,7 @@ const avgs = scores.map((_, idx) => {
     }
     function yForValue(v) {
       const clamped = v < 0 ? 0 : v;
-      return paddingTop + (1 - clamped / scaleTop) * plotH;
+      return paddingTop + (1 - clamped / maxVal) * plotH;
     }
 
     // Axes
@@ -2928,11 +2641,12 @@ const avgs = scores.map((_, idx) => {
     ctx.lineTo(W - paddingRight, H - paddingBottom);
     ctx.stroke();
 
-    // Y ticks: start at 25 (or 10% for target %) and step in fixed increments
+    // Y ticks
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
     ctx.font = '10px system-ui';
-    const yStep = baseStep; // 25 for scores / avg, 10 for target %
-    for (let v = yStep; v <= scaleTop; v += yStep) {
+    const steps = 4;
+    for (let i = 0; i <= steps; i++) {
+      const v = (maxVal * i) / steps;
       const y = yForValue(v);
       ctx.beginPath();
       ctx.moveTo(paddingLeft - 3, y);
@@ -12225,6 +11939,22 @@ window.openHighScoreLeagueDialog = async function openHighScoreLeagueDialog() {
       body.appendChild(p);
       return;
     }
+    
+        // Restrict to saved players only, if we can fetch them
+    try {
+      if (typeof cloudListPlayers === 'function') {
+        const saved = await cloudListPlayers();
+        const savedSet = new Set(
+          (saved || [])
+            .map(p => (p && p.name ? String(p.name).trim().toLowerCase() : ''))
+            .filter(Boolean)
+        );
+        rows = (rows || []).filter(r => {
+          const nameLC = String(r.name || '').trim().toLowerCase();
+          return nameLC && savedSet.has(nameLC);
+        });
+      }
+    } catch (_) {}
 
     if (!Array.isArray(rows) || !rows.length) {
       const p = document.createElement('p');
@@ -12340,29 +12070,42 @@ window.openHighScoreLeagueDialog = async function openHighScoreLeagueDialog() {
 window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
   const modal   = document.createElement('div'); modal.className   = 'modal';
-  const title   = document.createElement('h3');  title.textContent = 'League / Rankings';
   const body    = document.createElement('div'); body.className    = 'modal-body';
   const footer  = document.createElement('div'); footer.className  = 'modal-footer';
 
   // Column container for the two league options
   const col = document.createElement('div');
   col.className = 'column';
-  col.style.alignItems = 'stretch';
+  col.style.alignItems = 'center';
   col.style.gap = '10px';
 
-  // Power League button + description
+  // Power Rankings button + description
   const powerBtn = document.createElement('button');
-  powerBtn.id = 'powerLeagueBtn';
+  powerBtn.id = 'powerRankingsBtn';
   powerBtn.className = 'btn';
   powerBtn.type = 'button';
   powerBtn.style.width = 'min(360px,92%)';
-  powerBtn.textContent = 'Power League';
+  powerBtn.textContent = 'Power Rankings';
 
   const powerP = document.createElement('p');
   powerP.className = 'tag';
- powerP.textContent =
-  'Average round score, ' +
-  'calculated from the last 50 rounds.';
+  powerP.textContent = 'Average round score, calculated from the last 50 rounds.';
+  powerP.style.width = powerBtn.style.width;
+  powerP.style.textAlign = 'center';
+  
+    // Premier League button + description
+  const premierBtn = document.createElement('button');
+  premierBtn.id = 'premierLeagueBtn';
+  premierBtn.className = 'btn';
+  premierBtn.type = 'button';
+  premierBtn.style.width = 'min(360px,92%)';
+  premierBtn.textContent = 'Premier League';
+
+  const premierP = document.createElement('p');
+  premierP.className = 'tag';
+  premierP.textContent = 'Average match total per player (filter by month)';
+  premierP.style.width = premierBtn.style.width;
+  premierP.style.textAlign = 'center';
 
   // High Score League button + description
   const highBtn = document.createElement('button');
@@ -12374,12 +12117,14 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
 
   const highP = document.createElement('p');
   highP.className = 'tag';
-  highP.textContent =
-    'League of all players and their highest match score ' +
-    '(each player has one high-score entry only).';
+  highP.textContent = 'Highest PB from each saved player';
+  highP.style.width = highBtn.style.width;
+  highP.style.textAlign = 'center';
 
   col.appendChild(powerBtn);
   col.appendChild(powerP);
+  col.appendChild(premierBtn);
+  col.appendChild(premierP);
   col.appendChild(highBtn);
   col.appendChild(highP);
   body.appendChild(col);
@@ -12396,22 +12141,8 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
   backBtn.onclick  = () => overlay.remove();
   closeBtn.onclick = () => overlay.remove();
   footer.append(backBtn, closeBtn);
-  
-    // Wire league buttons
-  powerBtn.onclick = () => {
-    // Placeholder for Power League (still to be built)
-    // For now we just leave the popup open or show a toast if you like.
-    // toast('Power League coming soon');
-  };
 
-  highBtn.onclick = () => {
-    overlay.remove();
-    if (typeof window.openHighScoreLeagueDialog === 'function') {
-      window.openHighScoreLeagueDialog();
-    }
-  };
-
-  modal.append(title, body, footer);
+  modal.append(body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
@@ -12428,6 +12159,13 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
     }
   };
 
+  premierBtn.onclick = () => {
+    overlay.remove();
+    if (typeof window.openPremierLeagueDialog === 'function') {
+      window.openPremierLeagueDialog();
+    }
+  };
+
   highBtn.onclick = () => {
     overlay.remove();
     if (typeof window.openHighScoreLeagueDialog === 'function') {
@@ -12436,11 +12174,11 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
   };
 };
 
-// Power League: last 25 official rounds, saved players only
+// Power Rankings: last 25 official rounds, saved players only
 window.openPowerLeagueDialog = async function openPowerLeagueDialog(){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
   const modal   = document.createElement('div'); modal.className   = 'modal compact';
-const title   = document.createElement('h3');  title.textContent = 'Power League — Last 50 Rounds (Official)';
+const title   = document.createElement('h3');  title.textContent = 'Power Rankings — Last 50 Rounds (Official)';
   const body    = document.createElement('div'); body.className    = 'modal-body';
   const footer  = document.createElement('div'); footer.className  = 'modal-footer';
 
@@ -12643,6 +12381,379 @@ for (let i = 0; i < rounds; i++) {
   }
 
   await render();
+};
+
+// Premier League popup – average match total per player, with month filters
+window.openPremierLeagueDialog = async function openPremierLeagueDialog() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-backdrop';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal compact';
+
+  const title = document.createElement('h3');
+  title.textContent = 'Premier League';
+
+  const body = document.createElement('div');
+  body.className = 'modal-body';
+
+  const footer = document.createElement('div');
+  footer.className = 'modal-footer';
+
+  // Filter row + table mount
+  const filterRow = document.createElement('div');
+  filterRow.className = 'row';
+  filterRow.style.marginBottom = '8px';
+
+  const tableMount = document.createElement('div');
+  tableMount.className = 'table-wrap';
+
+  body.appendChild(filterRow);
+  body.appendChild(tableMount);
+
+  // Footer buttons
+  const backBtn = document.createElement('button');
+  backBtn.className = 'btn';
+  backBtn.textContent = 'Back';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn';
+  closeBtn.textContent = 'Close';
+
+  backBtn.onclick = () => {
+    overlay.remove();
+    if (typeof window.openLeagueRankingsDialog === 'function') {
+      window.openLeagueRankingsDialog();
+    }
+  };
+
+  closeBtn.onclick = () => {
+    overlay.remove();
+  };
+
+  footer.append(backBtn, closeBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  overlay.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') overlay.remove();
+  });
+
+  modal.tabIndex = 0;
+  modal.focus();
+
+  // --- Data helpers ---
+
+  async function fetchRows() {
+    try {
+      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) {
+        tableMount.innerHTML = '<p>Cloud not initialised.</p>';
+        return [];
+      }
+    } catch (_) {}
+
+    tableMount.innerHTML = '<p class="tag">Loading Premier League…</p>';
+
+    try {
+      const { data, error } = await sb
+        .from(TABLE_PLAYER_GAMES)
+        .select('player, score, ts, is_practice')
+        .eq('is_practice', false)
+        .order('player', { ascending: true })
+        .order('ts', { ascending: true })
+        .limit(5000);
+      if (error) throw error;
+
+      let rows = data || [];
+
+      // Restrict to saved players only, if available
+      try {
+        if (typeof cloudListPlayers === 'function') {
+          const saved = await cloudListPlayers();
+          const savedSet = new Set(
+            (saved || [])
+              .map(p => (p && p.name ? String(p.name).trim().toLowerCase() : ''))
+              .filter(Boolean)
+          );
+          rows = rows.filter(r => {
+            const nameLC = String(r.player || '').trim().toLowerCase();
+            return nameLC && savedSet.has(nameLC);
+          });
+        }
+      } catch (_) {}
+
+      return rows;
+    } catch (e) {
+      console.error('Premier League fetch failed', e);
+      tableMount.innerHTML = '<p>Failed to load Premier League.</p>';
+      return [];
+    }
+  }
+
+  function buildFilters() {
+    const filters = [];
+
+    // ALL TIME
+    filters.push({
+      id: 'ALL',
+      label: 'ALL TIME',
+      match: () => true
+    });
+
+       const now = new Date();
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const month = d.getMonth();   // 0–11
+      const year = d.getFullYear();
+      const label = d.toLocaleString('en-GB', { month: 'short' }).toUpperCase();
+
+      filters.push({
+        id: `${year}-${month}`,
+        label,
+        match: (ts) => {
+          if (!ts) return false;
+          const dt = new Date(ts);
+          if (Number.isNaN(dt.getTime())) return false;
+          return dt.getFullYear() === year && dt.getMonth() === month;
+        }
+      });
+    }
+
+    return filters;
+  }
+
+  function renderFilters(filters, onChange) {
+    filterRow.innerHTML = '';
+    const buttons = [];
+
+    filters.forEach((f, idx) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn small';
+      btn.textContent = idx === 0 ? 'ALL TIME' : f.label;
+      btn.dataset.filterId = f.id;
+      filterRow.appendChild(btn);
+      buttons.push(btn);
+
+      btn.onclick = () => {
+        buttons.forEach(b => b.classList.remove('primary'));
+        btn.classList.add('primary');
+        onChange(f);
+      };
+    });
+
+    if (buttons[0]) buttons[0].classList.add('primary');
+  }
+
+  function renderTable(rows, filter, prevFilter) {
+    const filtered = rows.filter(r => {
+      if (!r || !r.player) return false;
+      const score = Number(r.score || 0);
+      if (!Number.isFinite(score)) return false;
+      if (!filter || filter.id === 'ALL') return true;
+      return filter.match(r.ts);
+    });
+
+    if (!filtered.length) {
+      tableMount.innerHTML = '<p>No games found for this period.</p>';
+      return;
+    }
+
+    const byPlayer = new Map();
+
+    filtered.forEach(r => {
+      const name = String(r.player || '').trim();
+      if (!name) return;
+      const score = Number(r.score || 0);
+      if (!Number.isFinite(score)) return;
+
+      const existing = byPlayer.get(name) || {
+        player: name,
+        games: 0,
+        total: 0,
+        best: 0
+      };
+
+      existing.games += 1;
+      existing.total += score;
+      if (score > existing.best) existing.best = score;
+
+      byPlayer.set(name, existing);
+    });
+
+    const rowsOut = Array.from(byPlayer.values())
+      .map(p => ({
+        player: p.player,
+        games: p.games,
+        avg: p.games ? p.total / p.games : 0,
+        best: p.best
+      }))
+      .sort((a, b) => b.avg - a.avg);
+
+    // --- Build previous-month aggregates (avg, best, rank) if prevFilter is provided ---
+    let prevMap = null;
+    let prevRankMap = null;
+
+    if (prevFilter && filter && filter.id !== 'ALL') {
+      const prevFiltered = rows.filter(r => {
+        if (!r || !r.player) return false;
+        const score = Number(r.score || 0);
+        if (!Number.isFinite(score)) return false;
+        return prevFilter.match(r.ts);
+      });
+
+      if (prevFiltered.length) {
+        const prevByPlayer = new Map();
+
+        prevFiltered.forEach(r => {
+          const name = String(r.player || '').trim();
+          if (!name) return;
+          const score = Number(r.score || 0);
+          if (!Number.isFinite(score)) return;
+
+          const existing = prevByPlayer.get(name) || {
+            player: name,
+            games: 0,
+            total: 0,
+            best: 0
+          };
+
+          existing.games += 1;
+          existing.total += score;
+          if (score > existing.best) existing.best = score;
+
+          prevByPlayer.set(name, existing);
+        });
+
+        const prevRowsOut = Array.from(prevByPlayer.values())
+          .map(p => ({
+            player: p.player,
+            games: p.games,
+            avg: p.games ? p.total / p.games : 0,
+            best: p.best
+          }))
+          .sort((a, b) => b.avg - a.avg);
+
+        prevMap = new Map();
+        prevRankMap = new Map();
+        prevRowsOut.forEach((p, idx) => {
+          prevMap.set(p.player, p);
+          prevRankMap.set(p.player, idx + 1);
+        });
+      }
+    }
+
+    function addRankArrow(td, prevRank, currRank) {
+      if (!prevRank || !currRank || prevRank === currRank) return;
+      const improved = currRank < prevRank; // lower rank number = better
+      const span = document.createElement('span');
+      span.textContent = improved ? '▲' : '▼';
+      span.style.marginLeft = '4px';
+      span.style.color = improved ? '#7fffd4' : '#ff6b6b'; // green up, red down
+      td.appendChild(span);
+    }
+
+    function addMetricArrow(td, curr, prev) {
+      if (prev == null || !Number.isFinite(prev)) return;
+      const diff = curr - prev;
+      if (Math.abs(diff) < 0.01) return; // ignore tiny noise
+      const up = diff > 0;
+      const span = document.createElement('span');
+      span.textContent = up ? '▲' : '▼';
+      span.style.marginLeft = '4px';
+      span.style.color = up ? '#7fffd4' : '#ff6b6b';
+      td.appendChild(span);
+    }
+
+    const table = document.createElement('table');
+    table.className = 'hs-table';
+
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ['#', 'Player', 'Games', 'Avg Total', 'Best'].forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    rowsOut.forEach((p, idx) => {
+      const tr = document.createElement('tr');
+
+      const rank = idx + 1;
+
+      const tdRank = document.createElement('td');
+      tdRank.textContent = String(rank);
+
+      const tdName = document.createElement('td');
+      tdName.textContent = p.player;
+
+      const tdGames = document.createElement('td');
+      tdGames.textContent = String(p.games);
+
+      const tdAvg = document.createElement('td');
+      tdAvg.textContent = p.avg.toFixed(1);
+
+      const tdBest = document.createElement('td');
+      tdBest.textContent = String(p.best);
+
+      // Add arrows for month-on-month changes when we have previous stats
+      if (prevMap && prevRankMap) {
+        const prevRow = prevMap.get(p.player);
+        const prevRank = prevRankMap.get(p.player);
+        addRankArrow(tdRank, prevRank, rank);
+        if (prevRow) {
+          addMetricArrow(tdAvg, p.avg, prevRow.avg);
+          addMetricArrow(tdBest, p.best, prevRow.best);
+        }
+      }
+
+      tr.append(tdRank, tdName, tdGames, tdAvg, tdBest);
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    tableMount.innerHTML = '';
+    tableMount.appendChild(table);
+  }
+
+  // Kick it all off
+  (async () => {
+    const rows = await fetchRows();
+    if (!rows.length) return;
+
+    const filters = buildFilters();
+    let currentFilter = filters[0];
+
+    function getPrevFilter(f) {
+      if (!f || f.id === 'ALL') return null;
+      const idx = filters.indexOf(f);
+      if (idx < 0) return null;
+      const nextIdx = idx + 1;
+      if (nextIdx >= filters.length) return null;
+      const prev = filters[nextIdx];
+      if (!prev || prev.id === 'ALL') return null;
+      return prev;
+    }
+
+    renderFilters(filters, f => {
+      currentFilter = f;
+      const prev = getPrevFilter(currentFilter);
+      renderTable(rows, currentFilter, prev);
+    });
+
+    const initialPrev = getPrevFilter(currentFilter);
+    renderTable(rows, currentFilter, initialPrev);
+  })();
 };
 
 
