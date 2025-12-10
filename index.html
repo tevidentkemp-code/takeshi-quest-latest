@@ -2667,6 +2667,11 @@ body.innerHTML = `
     // x-axis: game index 1..N
     const labels = games.map((_, idx) => idx + 1);
 
+// Fixed Y-axis (same across all modes) + overall average of all games
+const avgAll = scores.length ? (scores.reduce((s,v)=>s+v,0) / scores.length) : 0;
+const baseMaxScore = scores.length ? Math.max(...scores) : 0;
+const FIXED_Y_MAX = Math.max(25, Math.ceil(baseMaxScore / 25) * 25);
+
 const scores = games.map(g => Number(g.score || 0));
 
 // 5 Game Average: only at games 5, 10, 15…
@@ -9844,8 +9849,14 @@ window.openPlayerSummaryStatsDialog = async function openPlayerSummaryStatsDialo
 
   const backBtn  = document.createElement('button'); backBtn.className  = 'btn'; backBtn.textContent  = 'Return';
   const closeBtn = document.createElement('button'); closeBtn.className = 'btn'; closeBtn.textContent = 'Close';
-  backBtn.onclick  = () => overlay.remove();
-  closeBtn.onclick = () => overlay.remove();
+backBtn.onclick  = () => {
+  overlay.remove();
+  try { 
+    if (typeof window.openPlayerStatsModePicker === 'function') {
+      window.openPlayerStatsModePicker(name || pretty || playerName);
+    }
+  } catch(_) {}
+};  closeBtn.onclick = () => overlay.remove();
   footer.append(backBtn, closeBtn);
 
   modal.append(title, body, footer);
@@ -11720,6 +11731,23 @@ const colNum   = document.createElement('col');  colNum.style.width  = '3.5ch';
   modal.focus();
 };
 
+// ---- one-time error banner (shows first JS crash) ----
+(function attachFirstErrorBanner(){
+  if (window.__errorBannerAttached) return;
+  window.__errorBannerAttached = true;
+  window.addEventListener('error', function(ev){
+    try {
+      if (document.getElementById('firstErrorBanner')) return;
+      const b = document.createElement('div');
+      b.id = 'firstErrorBanner';
+      b.style.cssText = 'position:fixed;left:8px;right:8px;top:8px;z-index:99999;padding:8px 10px;border-radius:6px;background:#400;color:#fff;font:12px/1.4 system-ui';
+      b.textContent = 'JS error: ' + (ev.message || 'unknown') + (ev.filename?(' @ '+ev.filename+':'+ev.lineno):'');
+      document.body.appendChild(b);
+      setTimeout(()=>{ if(b && b.parentNode) b.parentNode.removeChild(b); }, 6000);
+    } catch(_) {}
+  });
+})();
+
 // League / Rankings popup (Power League + High Score League)
 window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
@@ -13099,7 +13127,7 @@ async function openLatestScoresDialog(){
 }
 
 // === Player Stats — modal (official games only) ===
-window.openPlayerStatsHub = async function openPlayerStatsHub(playerName){
+window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
   const name = String(playerName || '').trim();
   if (!name) { try{ toast('Pick a player'); }catch(_){ } return; }
 
@@ -13199,8 +13227,7 @@ window.openPlayerStatsHub = async function openPlayerStatsHub(playerName){
 
   const backBtn  = document.createElement('button'); backBtn.className = 'btn'; backBtn.textContent = 'Back';
   const closeBtn = document.createElement('button'); closeBtn.className = 'btn'; closeBtn.textContent = 'Close';
-  backBtn.onclick  = () => overlay.remove();
-  closeBtn.onclick = () => overlay.remove();
+backBtn.onclick  = () => { overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };  closeBtn.onclick = () => overlay.remove();
   footer.append(backBtn, closeBtn);
 
   modal.append(title, body, footer);
@@ -13212,33 +13239,700 @@ window.openPlayerStatsHub = async function openPlayerStatsHub(playerName){
   modal.tabIndex = 0; modal.focus();
 };
 
-// === Player Stats — shim so the Select Player modal can open stats ===
-window.openPlayerStatsModePicker = function openPlayerStatsModePicker(name) {
-  try {
-    const n = String(name || '').trim();
-    if (!n) {
-      if (typeof toast === 'function') toast('Pick a player');
-      return;
-    }
+// === Player Hub — Latest Matches / High Scores / Progression / Target % / D T B % / H2H ===
+window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
+  const name = String(playerName || '').trim();
+  if (!name){ try{ toast('Pick a player'); }catch(_){} return; }
 
-    // Prefer the newer hub if present; fall back to older dialog names.
-    if (typeof window.openPlayerStatsHub === 'function') {
-      return window.openPlayerStatsHub(n);
-    }
-    if (typeof window.openPlayerStatsDialog === 'function') {
-      return window.openPlayerStatsDialog(n);
-    }
-    if (typeof window.showPlayerStats === 'function') {
-      return window.showPlayerStats(n);
-    }
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal   = document.createElement('div'); modal.className   = 'modal compact';
+  const title   = document.createElement('h3');  title.textContent = `Player — ${name}`;
+  const body    = document.createElement('div'); body.className    = 'modal-body';
+  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
 
-    console.warn('openPlayerStatsModePicker: no stats dialog function found');
-    if (typeof toast === 'function') toast('Stats view not available in this build');
-  } catch (e) {
-    console.error('openPlayerStatsModePicker failed', e);
-    if (typeof toast === 'function') toast('Failed to open player stats');
+  // fixed outer; only inner scrolls if needed
+  modal.style.maxHeight = '80vh';
+  modal.style.overflow  = 'hidden';
+  body .style.maxHeight = 'none';
+  body .style.overflowY = 'visible';
+
+  const col = document.createElement('div');
+  col.className = 'column';
+  col.style.alignItems = 'center';
+  col.style.gap = '10px';
+
+  function addBtn(text, desc, handler){
+    const btn = document.createElement('button'); btn.className='btn'; btn.type='button';
+    btn.style.width = 'min(360px,92%)'; btn.textContent = text;
+    const p = document.createElement('p'); p.className='tag'; p.textContent = desc;
+    p.style.width = btn.style.width; p.style.textAlign='center';
+    btn.onclick = () => { overlay.remove(); handler(); };
+    col.append(btn, p);
   }
+
+  // 1) Latest Matches
+  addBtn('Latest Matches', 'Position / Points / Round Avg', () => {
+    if (typeof window.openPlayerLatestMatchesDialog === 'function') return window.openPlayerLatestMatchesDialog(name);
+    if (typeof toast==='function') toast('Latest Matches not available');
+  });
+
+  // 2) High Scores (row opens match)
+  addBtn('High Scores', 'All scores (click to open match)', () => {
+    if (typeof window.openPlayerHighScoresDialog === 'function') return window.openPlayerHighScoresDialog(name);
+    if (typeof toast==='function') toast('High Scores not available');
+  });
+
+  // 3) Progression
+  addBtn('Progression', 'Line graph of all game scores', () => {
+    if (typeof window.openPlayerProgressionDialog === 'function') return window.openPlayerProgressionDialog(name);
+    if (typeof toast==='function') toast('Progression not available');
+  });
+
+  // 4) Target %
+  addBtn('Target %', 'Accuracy per round (10→20 + D + T + B)', () => {
+    if (typeof window.openPlayerTargetPctDialog === 'function') return window.openPlayerTargetPctDialog(name);
+    if (typeof toast==='function') toast('Target % not available');
+  });
+
+  // 5) D T B %
+  addBtn('D T B %', 'Hit frequency for doubles / trebles / bull', () => {
+    if (typeof window.openPlayerDTBPctDialog === 'function') return window.openPlayerDTBPctDialog(name);
+    if (typeof toast==='function') toast('D T B % not available');
+  });
+
+  // 6) H2H
+  addBtn('H2H', 'Wins / Losses / Win % / Avg Score Diff', () => {
+    if (typeof window.openPlayerH2HDialog === 'function') return window.openPlayerH2HDialog(name);
+    if (typeof toast==='function') toast('H2H not available');
+  });
+
+  // 7) Stats (your existing detail screen)
+  addBtn('Stats', 'Averages, PB, recent games', () => {
+    if (typeof window.openPlayerStatsDialog === 'function') return window.openPlayerStatsDialog(name);
+    if (typeof toast==='function') toast('Stats view not available');
+  });
+
+  body.appendChild(col);
+
+  const backBtn  = document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  const closeBtn = document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  backBtn.onclick = () => overlay.remove();
+  closeBtn.onclick= () => overlay.remove();
+  footer.append(backBtn, closeBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
+  modal.tabIndex = 0; modal.focus();
 };
+
+
+// ==== Player-Stats helpers ====================================================
+async function __fetchOfficialGames(limit=5000){
+  try{
+    // Prefer local fetch if available (already normalized in your app)
+    if (typeof cloudFetchAllGamesAsLocal === 'function') {
+      const all = await cloudFetchAllGamesAsLocal();
+      return (all||[]).filter(g => Array.isArray(g?.players) && g.players.length >= 2);
+    }
+    if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) return [];
+    const table = (typeof TABLE_GAMES !== 'undefined' ? TABLE_GAMES : 'games');
+    const { data, error } = await sb.from(table).select('*').order('created_at',{ascending:false}).limit(limit);
+    if (error) throw error;
+    return (data||[]).filter(g => Array.isArray(g?.state?.players) && g.state.players.length >= 2);
+  }catch(e){ console.error('__fetchOfficialGames failed', e); return []; }
+}
+function __gameTs(g){
+  return g?.ts || g?.created_at || g?.inserted_at || (g?.meta && (g.meta.ts || g.meta.date)) || null;
+}
+function __normalizeGame(g){
+  const players = Array.isArray(g.players)
+    ? g.players.map(p => (p && p.name) ? p.name : String(p||''))
+    : (Array.isArray(g?.state?.players) ? g.state.players.map(p => (p && p.name) ? p.name : String(p||'')) : []);
+  const totals = Array.isArray(g.totals) ? g.totals : (Array.isArray(g?.state?.totals) ? g.state.totals : []);
+  const board  = g?.state?.board || null;
+  const ts     = __gameTs(g);
+  return { players, totals, board, ts, raw: g };
+}
+function __roundCountFor(g, idx){
+  if (g.board && Array.isArray(g.board[idx])) return Math.min(14, g.board[idx].length||0);
+  return 14; // fallback
+}
+function __roundLabels(){
+  return ['10','11','12','13','14','15','16','17','18','19','20','D','T','B'];
+}
+
+// Fetch throws for a set of game IDs; filter to a player (case-insensitive) in JS
+async function __fetchThrowsForGames(gameIds){
+  if (!gameIds.length) return [];
+  try{
+    const out=[]; const CHUNK=200;
+    for (let i=0;i<gameIds.length;i+=CHUNK){
+      const slice=gameIds.slice(i,i+CHUNK);
+      const { data, error } = await sb
+        .from(TABLE_GAME_THROWS)
+        .select('game_id, player, round_index, dart_index, points, kind')
+        .in('game_id', slice)
+        .order('game_id',{ascending:true})
+        .order('round_index',{ascending:true})
+        .order('dart_index',{ascending:true});
+      if (error) throw error;
+      out.push(...(data||[]));
+    }
+    return out;
+  }catch(e){ console.error('__fetchThrowsForGames failed', e); return []; }
+}
+
+// ==== (1) Latest Matches ======================================================
+window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDialog(playerName){
+  const name = String(playerName||'').trim();
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className  ='modal compact';
+  const title   = document.createElement('h3');  title.textContent=`Latest Matches — ${name}`;
+  const body    = document.createElement('div'); body.className   ='modal-body';
+  const footer  = document.createElement('div'); footer.className ='modal-footer';
+  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
+  body .style.maxHeight='none'; body .style.overflowY='visible';
+
+  let games = (await __fetchOfficialGames(5000)).map(__normalizeGame)
+    .filter(g => g.players.some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()))
+    .sort((a,b)=> (new Date(__gameTs(b.raw)) - new Date(__gameTs(a.raw))));
+
+  const table=document.createElement('table'); table.className='hs-table';
+  const thead=document.createElement('thead'); const trh=document.createElement('tr');
+  ['#','Position','Points','Round Avg','When'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
+  thead.appendChild(trh); table.appendChild(thead);
+  Array.from(trh.children).forEach(th => { th.style.position='sticky'; th.style.top='0'; th.style.zIndex='2'; th.style.background='rgba(0,0,0,0.4)'; });
+  const tbody=document.createElement('tbody');
+
+  games.forEach((g,i)=>{
+    const idx = g.players.findIndex(p => String(p||'').trim().toLowerCase()===name.toLowerCase());
+    const score = Number(g.totals[idx]||0);
+    const rank = g.totals.map((s,j)=>({j,s:Number(s||0)})).sort((a,b)=>b.s-a.s).findIndex(x=>x.j===idx)+1;
+    const rounds=__roundCountFor(g, idx);
+    const ravg = rounds ? score/rounds : 0;
+
+    const tr=document.createElement('tr');
+    const tdN=document.createElement('td'); tdN.textContent=String(i+1);
+    const tdP=document.createElement('td'); tdP.textContent=String(rank||'');
+    const tdS=document.createElement('td'); tdS.textContent=String(score);
+    const tdA=document.createElement('td'); tdA.textContent=ravg.toFixed(1);
+    const tdW=document.createElement('td'); tdW.textContent=(g.ts && typeof window.fmtWhen==='function') ? window.fmtWhen(g.ts) : (g.ts? new Date(g.ts).toLocaleString() : '');
+    tr.append(tdN,tdP,tdS,tdA,tdW);
+    tr.style.cursor='pointer'; tr.title='Open score sheet';
+    tr.onclick = ()=>{ try{ if (typeof openSingleGameScoreSheet==='function') openSingleGameScoreSheet(g.raw); }catch(_){} };
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.appendChild(table);
+  body.appendChild(scroll);
+
+  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
+  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
+
+  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
+  modal.tabIndex=0; modal.focus();
+};
+
+// ==== (2) High Scores — per-player (rows open match) =========================
+window.openPlayerHighScoresDialog = async function openPlayerHighScoresDialog(playerName){
+  const name = String(playerName||'').trim();
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className  ='modal compact';
+  const title   = document.createElement('h3');  title.textContent=`High Scores — ${name}`;
+  const body    = document.createElement('div'); body.className   ='modal-body';
+  const footer  = document.createElement('div'); footer.className ='modal-footer';
+  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
+  body .style.maxHeight='none'; body .style.overflowY='visible';
+
+  let games = (await __fetchOfficialGames(5000)).map(__normalizeGame)
+    .filter(g => g.players.some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()));
+
+  // Rows: score + per-game average-per-round
+  const rows = [];
+  games.forEach(g => {
+    const i = g.players.findIndex(p => String(p||'').trim().toLowerCase() === name.toLowerCase());
+    const score  = Number(g.totals[i] || 0);
+    const rounds = __roundCountFor(g, i);   // uses board if available, else 14
+    const avgRound = rounds ? (score / rounds) : 0;
+    rows.push({ score, avgRound, ts: g.ts, g });
+  });
+  rows.sort((a, b) => b.score - a.score);
+
+  const table=document.createElement('table'); table.className='hs-table';
+  const thead=document.createElement('thead'); const trh=document.createElement('tr');
+  ['#','Score','Avg / Round','When'].forEach(h => { const th = document.createElement('th'); th.textContent = h; trh.appendChild(th); });
+  thead.appendChild(trh); table.appendChild(thead);
+  Array.from(trh.children).forEach(th => { th.style.position='sticky'; th.style.top='0'; th.style.zIndex='2'; th.style.background='rgba(0,0,0,0.4)'; });
+
+  const tbody=document.createElement('tbody');
+  rows.slice(0, 50).forEach((r, idx) => {
+    const tr  = document.createElement('tr');
+    const tdN = document.createElement('td'); tdN.textContent = String(idx + 1);
+    const tdS = document.createElement('td'); tdS.textContent = String(r.score);
+    const tdA = document.createElement('td'); tdA.textContent = (Number(r.avgRound) || 0).toFixed(1);
+    const tdW = document.createElement('td');
+    tdW.textContent = (r.ts && typeof window.fmtWhen === 'function') ? window.fmtWhen(r.ts) : (r.ts ? new Date(r.ts).toLocaleString() : '');
+    tr.append(tdN, tdS, tdA, tdW);
+    tr.style.cursor = 'pointer'; tr.title = 'Open this match';
+    tr.onclick = () => { try { if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(r.g.raw); } catch (_) {} };
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.appendChild(table);
+  body.appendChild(scroll);
+
+  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
+  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
+
+  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
+  modal.tabIndex=0; modal.focus();
+};
+
+// ==== (3) Progression (buttons + proper axes) =============================
+window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(playerName){
+  const name = String(playerName||'').trim();
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className  ='modal compact';
+  const title   = document.createElement('h3');  title.textContent=`Progression — ${name}`;
+  const body    = document.createElement('div'); body.className   ='modal-body';
+  const footer  = document.createElement('div'); footer.className ='modal-footer';
+  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
+  body .style.maxHeight='none'; body .style.overflowY='visible';
+
+  // --- Load & prep data: sort OLDEST → NEWEST so X (game #) grows left→right
+  const games = (await __fetchOfficialGames(5000)).map(__normalizeGame)
+    .filter(g => g.players.some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()))
+    .sort((a,b)=> (new Date(a.ts) - new Date(b.ts))); // oldest first
+
+  const scores = games.map(g => {
+    const i = g.players.findIndex(p => String(p || '').trim().toLowerCase() === name.toLowerCase());
+    return Number(g.totals[i] || 0);
+  });
+  
+  // Fixed Y-axis (same for all modes) and overall average (used for the dashed line)
+const avgAll = scores.length ? (scores.reduce((s, v) => s + v, 0) / scores.length) : 0;
+const baseMaxScore = scores.length ? Math.max(...scores) : 0;
+const FIXED_Y_MAX = Math.max(25, Math.ceil(baseMaxScore / 25) * 25);
+
+  // --- UI: mode buttons row
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.style.gap = '8px';
+  row.style.marginBottom = '8px';
+  const modes = [
+    { id:'ALL', label:'All Games' },
+    { id:'AVG5',  label:'5 Game AV'  },
+    { id:'AVG10', label:'10 Game AV' },
+    { id:'AVG20', label:'20 Game AV' },
+  ];
+  const buttons = [];
+  modes.forEach(m=>{
+    const b = document.createElement('button');
+    b.type='button'; b.className='btn small'; b.textContent=m.label; b.dataset.mode=m.id;
+    b.onclick = ()=> { buttons.forEach(x=>x.classList.remove('primary')); b.classList.add('primary'); render(m.id); };
+    buttons.push(b); row.appendChild(b);
+  });
+  // Default
+  (buttons[0]||{}).classList.add('primary');
+
+  // Mount row and a container where we’ll draw the chart
+  const chartHost = document.createElement('div');
+  body.appendChild(row);
+  body.appendChild(chartHost);
+
+// --- helpers
+function chunkAvg(arr, k){
+  // Non-overlapping buckets: [0..k-1], [k..2k-1], ...; ignore tail < k
+  const out = [];
+  for (let end = k; end <= arr.length; end += k) {
+    const start = end - k;
+    const slice = arr.slice(start, end);
+    const mean = slice.reduce((s,v)=>s+Number(v||0),0) / slice.length;
+    out.push({ x: end, y: mean }); // x = game number at bucket end (5,10,15,...)
+  }
+  return out;
+}
+
+  function render(mode){
+    chartHost.innerHTML = '';
+
+   // Build points:
+//  - ALL: per-game points (x = 1..N, y = score)
+//  - AVG5/10/20: non-overlapping bucket means at x = 5/10/20, 10/20/40, ...
+let pts;
+if (mode === 'ALL') {
+  pts = scores.map((y, idx) => ({ x: idx + 1, y: Number(y || 0) }));
+} else if (mode === 'AVG5') {
+  pts = chunkAvg(scores, 5);
+} else if (mode === 'AVG10') {
+  pts = chunkAvg(scores, 10);
+} else if (mode === 'AVG20') {
+  pts = chunkAvg(scores, 20);
+} else {
+  pts = scores.map((y, idx) => ({ x: idx + 1, y: Number(y || 0) }));
+}
+   
+    // SVG setup
+    const w = 560, h = 260, padL = 36, padB = 28, padT = 10, padR = 10;
+    const plotW = w - padL - padR;
+    const plotH = h - padT - padB;
+
+    // Axis ranges
+const yMin = 0;
+const yMax = FIXED_Y_MAX; // keep left scale identical across modes
+    const xMin = 1;
+const xMax = pts.length ? Math.max(...pts.map(p => p.x)) : 1;
+    const sx = x => padL + ((x - xMin) / (xMax - xMin || 1)) * plotW;
+    const sy = y => padT + plotH - ((y - yMin) / (yMax - yMin || 1)) * plotH;
+
+    const ns  = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', String(w));
+    svg.setAttribute('height', String(h));
+    svg.style.display = 'block';
+    svg.style.margin  = '6px auto';
+
+    // Axes
+    const xAxis = document.createElementNS(ns,'line');
+    xAxis.setAttribute('x1', padL); xAxis.setAttribute('y1', padT + plotH);
+    xAxis.setAttribute('x2', padL + plotW); xAxis.setAttribute('y2', padT + plotH);
+    xAxis.setAttribute('stroke','currentColor'); xAxis.setAttribute('stroke-opacity','0.4');
+    svg.appendChild(xAxis);
+
+    const yAxis = document.createElementNS(ns,'line');
+    yAxis.setAttribute('x1', padL); yAxis.setAttribute('y1', padT);
+    yAxis.setAttribute('x2', padL); yAxis.setAttribute('y2', padT + plotH);
+    yAxis.setAttribute('stroke','currentColor'); yAxis.setAttribute('stroke-opacity','0.4');
+    svg.appendChild(yAxis);
+
+    // X ticks = game number (step 5 if many)
+    const xStep = xMax > 30 ? 5 : 1;
+    for (let v = xMin; v <= xMax; v += xStep) {
+      const x = sx(v);
+      const t = document.createElementNS(ns,'line');
+      t.setAttribute('x1', x); t.setAttribute('x2', x);
+      t.setAttribute('y1', padT + plotH); t.setAttribute('y2', padT + plotH + 4);
+      t.setAttribute('stroke','currentColor'); t.setAttribute('stroke-opacity','0.6');
+      svg.appendChild(t);
+
+      const lbl = document.createElementNS(ns,'text');
+      lbl.setAttribute('x', x);
+      lbl.setAttribute('y', padT + plotH + 16);
+      lbl.setAttribute('text-anchor','middle');
+      lbl.setAttribute('font-size','10');
+      lbl.setAttribute('fill','currentColor');
+      lbl.textContent = String(v);
+      svg.appendChild(lbl);
+    }
+
+    // Y ticks = points (every 25)
+    for (let v = yMin; v <= yMax; v += 25) {
+      const yy = sy(v);
+      const t = document.createElementNS(ns,'line');
+      t.setAttribute('x1', padL - 4); t.setAttribute('x2', padL);
+      t.setAttribute('y1', yy); t.setAttribute('y2', yy);
+      t.setAttribute('stroke','currentColor'); t.setAttribute('stroke-opacity','0.6');
+      svg.appendChild(t);
+
+      const lbl = document.createElementNS(ns,'text');
+      lbl.setAttribute('x', padL - 6); lbl.setAttribute('y', yy + 3);
+      lbl.setAttribute('text-anchor','end');
+      lbl.setAttribute('font-size','10'); lbl.setAttribute('fill','currentColor');
+      lbl.textContent = String(v);
+      svg.appendChild(lbl);
+    }
+
+    // Line + dots (dots only in ALL mode)
+    if (pts.length) {
+      const path = document.createElementNS(ns,'path');
+      path.setAttribute('d', pts.map((p,i) => (i ? 'L' : 'M') + sx(p.x) + ',' + sy(p.y)).join(' '));
+      path.setAttribute('fill','none');
+      path.setAttribute('stroke','currentColor');
+      path.setAttribute('stroke-width','2');
+      svg.appendChild(path);
+
+     // Dots only in ALL mode (keep clean lines in AV modes)
+if (mode === 'ALL') {
+  pts.forEach(p => {
+    const c = document.createElementNS(ns,'circle');
+    c.setAttribute('cx', sx(p.x)); c.setAttribute('cy', sy(p.y));
+    c.setAttribute('r', '2'); c.setAttribute('fill', 'currentColor'); c.setAttribute('fill-opacity', '0.9');
+    svg.appendChild(c);
+  });
+}
+
+// Overall average (visible in ALL and in AV modes)
+const yAvg = sy(avgAll);
+const avgLine = document.createElementNS(ns,'line');
+avgLine.setAttribute('x1', padL);
+avgLine.setAttribute('x2', padL + plotW);
+avgLine.setAttribute('y1', yAvg);
+avgLine.setAttribute('y2', yAvg);
+avgLine.setAttribute('stroke', 'currentColor');
+avgLine.setAttribute('stroke-opacity', '0.6');
+avgLine.setAttribute('stroke-dasharray', '4 4');
+svg.appendChild(avgLine);
+
+const avgLbl = document.createElementNS(ns,'text');
+avgLbl.setAttribute('x', padL + plotW - 4);
+avgLbl.setAttribute('y', yAvg - 4);
+avgLbl.setAttribute('text-anchor','end');
+avgLbl.setAttribute('font-size','10');
+avgLbl.setAttribute('fill','currentColor');
+avgLbl.textContent = 'AVG ' + (avgAll||0).toFixed(1);
+svg.appendChild(avgLbl);
+    }
+
+    chartHost.appendChild(svg);
+  }
+
+// initial render (guarded so an error can’t kill the modal)
+try { render('ALL'); } catch (e) { console.error('Progression render failed', e); }
+
+  // Footer
+  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
+  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
+
+  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
+  modal.tabIndex=0; modal.focus();
+};
+
+// ==== (4) Target % — per round (10→20 + D + T + B) ==========================
+window.openPlayerTargetPctDialog = async function openPlayerTargetPctDialog(playerName){
+  const name = String(playerName||'').trim();
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className  ='modal compact';
+  const title   = document.createElement('h3');  title.textContent=`Target % — ${name}`;
+  const body    = document.createElement('div'); body.className   ='modal-body';
+  const footer  = document.createElement('div'); footer.className ='modal-footer';
+  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
+  body .style.maxHeight='none'; body .style.overflowY='visible';
+
+  const games = (await __fetchOfficialGames(5000));
+  const ids   = games.map(g => g.id || g.game_id).filter(x=>x!=null);
+  const throwsRows = (typeof TABLE_GAME_THROWS!=='undefined') ? await __fetchThrowsForGames(ids) : [];
+  const labels = __roundLabels();
+  const nameLC = name.toLowerCase();
+
+  const taken = Array(14).fill(0), hits = Array(14).fill(0);
+  throwsRows.filter(t => String(t.player||'').trim().toLowerCase()===nameLC)
+    .forEach(t=>{
+      const r=(typeof t.round_index==='number')?t.round_index:null;
+      if (r==null || r<0 || r>13) return;
+      taken[r] += 1;
+      if (Number(t.points||0)>0) hits[r] += 1; // any scoring counts as a hit (incl. bull)
+    });
+
+  const table=document.createElement('table'); table.className='hs-table';
+  const thead=document.createElement('thead'); const trh=document.createElement('tr');
+  ['Round','Hits','Throws','%'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);});
+  thead.appendChild(trh); table.appendChild(thead);
+  const tbody=document.createElement('tbody');
+  for (let i=0;i<14;i++){
+    const tr=document.createElement('tr');
+    const tdR=document.createElement('td'); tdR.textContent=labels[i];
+    const tdH=document.createElement('td'); tdH.textContent=String(hits[i]);
+    const tdT=document.createElement('td'); tdT.textContent=String(taken[i]);
+    const pct= taken[i]? (100*hits[i]/taken[i]) : 0;
+    const tdP=document.createElement('td'); tdP.textContent=pct.toFixed(1)+'%';
+    tr.append(tdR,tdH,tdT,tdP); tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.appendChild(table);
+  body.appendChild(scroll);
+
+  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
+  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
+
+  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
+  modal.tabIndex=0; modal.focus();
+};
+
+// ==== (5) D T B % — per number + bull inner/outer ============================
+window.openPlayerDTBPctDialog = async function openPlayerDTBPctDialog(playerName){
+  const name = String(playerName||'').trim();
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className  ='modal compact';
+  const title   = document.createElement('h3');  title.textContent=`D T B % — ${name}`;
+  const body    = document.createElement('div'); body.className   ='modal-body';
+  const footer  = document.createElement('div'); footer.className ='modal-footer';
+  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
+  body .style.maxHeight='none'; body .style.overflowY='visible';
+
+  const games = (await __fetchOfficialGames(5000));
+  const ids   = games.map(g => g.id || g.game_id).filter(x=>x!=null);
+  const throwsRows = (typeof TABLE_GAME_THROWS!=='undefined') ? await __fetchThrowsForGames(ids) : [];
+  const nameLC = name.toLowerCase();
+  const mine = throwsRows.filter(t => String(t.player||'').trim().toLowerCase()===nameLC);
+  const kindL = t => String(t.kind||'').toLowerCase();
+
+  // 10..20 rows (round_index 0..10)
+  const perNum = [];
+  for (let r=0;r<=10;r++){
+    const shots = mine.filter(t => t.round_index === r);
+    const n = shots.length;
+    const d = shots.filter(t => kindL(t).includes('double')).length;
+    const t = shots.filter(t => kindL(t).includes('treble') || kindL(t).includes('triple')).length;
+    perNum.push({ label:String(10+r), dHits:d, dThrows:n, dPct: n?(100*d/n):0, tHits:t, tThrows:n, tPct:n?(100*t/n):0 });
+  }
+  // Bull (round_index 13)
+  const bullShots = mine.filter(t => t.round_index === 13);
+  const bullN = bullShots.length;
+  const inner = bullShots.filter(t => kindL(t).includes('inner') || kindL(t).includes('double bull') || kindL(t).includes('bullseye')).length;
+  const outer = bullShots.filter(t => kindL(t).includes('outer') || kindL(t).includes('single bull')).length;
+
+  const table=document.createElement('table'); table.className='hs-table';
+  const thead=document.createElement('thead'); const trh=document.createElement('tr');
+  ['Target','D Hits','D Throws','D %','T Hits','T Throws','T %'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);});
+  thead.appendChild(trh); table.appendChild(thead);
+
+  const tbody=document.createElement('tbody');
+  perNum.forEach(r=>{
+    const tr=document.createElement('tr');
+    const mk=v=>{ const td=document.createElement('td'); td.textContent=(typeof v==='number')? (Number.isFinite(v)? (v.toFixed ? v.toFixed(1) : String(v)) : '0') : String(v); return td; };
+    tr.append(mk(r.label), mk(r.dHits), mk(r.dThrows), mk(r.dPct+'%'), mk(r.tHits), mk(r.tThrows), mk(r.tPct+'%'));
+    tbody.appendChild(tr);
+  });
+  // Bull inner
+  {
+    const tr=document.createElement('tr');
+    const pct = bullN ? (100*inner/bullN) : 0;
+    tr.append(...['BULL (inner)', inner, bullN, pct.toFixed(1)+'%', '', '', ''].map(v=>{ const td=document.createElement('td'); td.textContent=String(v); return td; }));
+    tbody.appendChild(tr);
+  }
+  // Bull outer
+  {
+    const tr=document.createElement('tr');
+    const pct = bullN ? (100*outer/bullN) : 0;
+    tr.append(...['BULL (outer)', outer, bullN, pct.toFixed(1)+'%', '', '', ''].map(v=>{ const td=document.createElement('td'); td.textContent=String(v); return td; }));
+    tbody.appendChild(tr);
+  }
+
+  table.appendChild(tbody);
+  const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.appendChild(table);
+  body.appendChild(scroll);
+
+  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
+  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
+
+  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
+  modal.tabIndex=0; modal.focus();
+};
+
+// ==== (6) H2H — wins/losses vs each opponent =================================
+window.openPlayerH2HDialog = async function openPlayerH2HDialog(playerName){
+  const nameLC = String(playerName||'').trim().toLowerCase();
+  const pretty = playerName;
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className  ='modal compact';
+  const title   = document.createElement('h3');  title.textContent=`H2H — ${pretty}`;
+  const body    = document.createElement('div'); body.className   ='modal-body';
+  const footer  = document.createElement('div'); footer.className ='modal-footer';
+  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
+  body .style.maxHeight='none'; body .style.overflowY='visible';
+
+  const games=(await __fetchOfficialGames(5000)).map(__normalizeGame)
+    .filter(g => g.players.some(p => String(p||'').trim().toLowerCase()===nameLC));
+
+  const vs=new Map();
+  games.forEach(g=>{
+    const i = g.players.findIndex(p => String(p||'').trim().toLowerCase()===nameLC);
+    const me=Number(g.totals[i]||0);
+    g.players.forEach((op,j)=>{
+      const lc=String(op||'').trim().toLowerCase(); if (!lc || lc===nameLC) return;
+      const their=Number(g.totals[j]||0);
+      const rec=vs.get(lc) || { opp: op, W:0, L:0, diffs:[], games:0 };
+      if (me>their) rec.W++; else if (me<their) rec.L++;
+      rec.games++; rec.diffs.push(me-their);
+      vs.set(lc,rec);
+    });
+  });
+
+  const rows=Array.from(vs.values()).map(r=>({
+    opp:r.opp, W:r.W, L:r.L,
+    winp: (r.W+r.L)? (100*r.W/(r.W+r.L)) : 0,
+    avgdiff: r.diffs.length ? (r.diffs.reduce((s,x)=>s+x,0)/r.diffs.length) : 0
+  })).sort((a,b)=> (b.winp-a.winp) || (b.avgdiff-a.avgdiff) || String(a.opp).localeCompare(String(b.opp)));
+
+  const table=document.createElement('table'); table.className='hs-table';
+  const thead=document.createElement('thead'); const trh=document.createElement('tr');
+  ['Opponent','Wins','Losses','Win %','Avg Score Diff'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);});
+  thead.appendChild(trh); table.appendChild(thead);
+  const tbody=document.createElement('tbody');
+  rows.forEach(r=>{
+    const tr=document.createElement('tr');
+    const tdO=document.createElement('td'); tdO.textContent=r.opp;
+    const tdW=document.createElement('td'); tdW.textContent=String(r.W);
+    const tdL=document.createElement('td'); tdL.textContent=String(r.L);
+    const tdP=document.createElement('td'); tdP.textContent=r.winp.toFixed(1)+'%';
+    const tdD=document.createElement('td'); tdD.textContent=r.avgdiff.toFixed(1);
+    tr.append(tdO,tdW,tdL,tdP,tdD); tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.appendChild(table);
+  body.appendChild(scroll);
+
+  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(pretty); };
+  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
+
+  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
+  modal.tabIndex=0; modal.focus();
+};
+
+// === Player Stats — shim so the Select Player modal can open stats (always hub) ===
+window.openPlayerStatsModePicker = function openPlayerStatsModePicker(name) {
+  const n = String(name || '').trim();
+  if (!n) { if (typeof toast==='function') toast('Pick a player'); return; }
+  if (typeof window.openPlayerStatsHub === 'function') return window.openPlayerStatsHub(n);
+  // Fallback: open the detail dialog if hub is somehow missing
+  if (typeof window.openPlayerStatsDialog === 'function') return window.openPlayerStatsDialog(n);
+  if (typeof toast==='function') toast('Stats view not available in this build');
+};
+
+// ---- ensure "New Game" button always works ----
+document.addEventListener('DOMContentLoaded', function(){
+  const btn = document.getElementById('newGameBtn') || document.getElementById('startNewGameBtn');
+  if (!btn) return;
+  btn.onclick = function(){
+    try {
+      if (typeof window.openSelectPlayersDialog === 'function') {
+        window.openSelectPlayersDialog();
+      } else if (typeof window.startNewGame === 'function') {
+        window.startNewGame();
+      } else if (typeof window.openPlayerSelectDialog === 'function') {
+        window.openPlayerSelectDialog();
+      } else {
+        console.warn('No New Game opener found');
+      }
+    } catch(e){
+      console.error('New Game failed', e);
+      try { if (typeof toast==='function') toast('Failed to open New Game'); } catch(_) {}
+    }
+  };
+});
 
 
 </script>
