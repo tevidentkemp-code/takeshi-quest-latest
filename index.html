@@ -831,8 +831,8 @@ margin-bottom: var(--section-gap);
 
         <div class="row start-secondary-row">
           <button id="latestScoresBtn" class="btn" type="button">Latest Scores</button>
-          <button id="hsMainBtn" class="btn" type="button">Top 50 High Scores</button>
-          <button id="shotgunBtn" class="btn" type="button">Best Round Scores</button>
+          <button id="hsMainBtn" class="btn" type="button">High Scores (Match)</button>
+          <button id="shotgunBtn" class="btn" type="button">High Scores (Round)</button>
           <button id="playerStatsBtn" class="btn" type="button">Player Stats</button>
         </div>
 
@@ -1075,7 +1075,8 @@ margin-bottom: var(--section-gap);
     </div>
     <div class="modal-footer">
       <button id="cancelSelectPlayerBtn" class="btn" type="button">Cancel</button>
-      <button id="confirmSelectPlayerBtn" class="btn primary" type="button">View Stats</button>
+<button id="confirmSelectPlayerBtn" class="btn primary" type="button">Enter</button>
+
     </div>
   </div>
 </div>
@@ -1178,20 +1179,6 @@ margin-bottom: var(--section-gap);
       <div class="modal-footer">
         <button id="roundHSBackBtn" class="btn" type="button">Back</button>
         <button id="roundHSCloseBtn" class="btn" type="button">Close</button>
-      </div>
-    </div>
-  </div>
-  
-    <!-- Monthly Average High Scores Modal -->
-  <div id="monthlyAvgScoresModal" class="modal-backdrop hidden">
-    <div class="modal compact">
-      <h3>Monthly Average High Scores</h3>
-      <div class="modal-body" id="monthlyAvgScoresBody">
-        <p class="tag">Loading…</p>
-      </div>
-      <div class="modal-footer">
-        <button id="monthlyAvgBackBtn" class="btn" type="button">Back</button>
-        <button id="monthlyAvgCloseBtn" class="btn" type="button">Close</button>
       </div>
     </div>
   </div>
@@ -1824,60 +1811,6 @@ function openPBGRAdminDialog(){
   if (ref) ref.onclick = () => { try{ if (typeof refreshPBGRCloud === 'function') refreshPBGRCloud(); }catch(_){ } };
 }
 
-// === Premier League Dialog - patch renderTable for medal logic ===
-(function () {
-  // Patch window.openPremierLeagueDialog if present
-  if (typeof window.openPremierLeagueDialog !== 'function') return;
-  // Save a reference to the original function
-  const origOpenPremierLeagueDialog = window.openPremierLeagueDialog;
-  window.openPremierLeagueDialog = function patchedOpenPremierLeagueDialog() {
-    // Call original to get access to internals
-    const ret = origOpenPremierLeagueDialog.apply(this, arguments);
-    try {
-      // Patch renderTable only once
-      if (window.__pl_renderTable_medals_patch_applied) return ret;
-      window.__pl_renderTable_medals_patch_applied = true;
-      // Find the renderTable function
-      if (typeof window.renderTable === 'function') {
-        // Already globally visible? (unlikely)
-        patchRenderTable(window.renderTable);
-      } else if (ret && typeof ret.renderTable === 'function') {
-        // If returned from dialog
-        patchRenderTable(ret.renderTable);
-      } else {
-        // Try to patch on next tick if defined in closure
-        setTimeout(function () {
-          if (typeof window.renderTable === 'function') patchRenderTable(window.renderTable);
-        }, 0);
-      }
-    } catch (e) {}
-    return ret;
-  };
-  // Patch helper
-  function patchRenderTable(renderTable) {
-    if (renderTable.__medals_patched) return;
-    renderTable.__medals_patched = true;
-    // Monkey-patch by wrapping the function
-    const orig = renderTable;
-    function wrappedRenderTable(rows, filter, summaries) {
-      // ---- BEGIN PATCHED BLOCK ----
-      // Find the snapshot unpack block and insert medal logic after
-      // This block is:
-      //   const snap = byId.get(id);
-      //   const rows = snap ? snap.rows : [];
-      //   const rankMap = snap ? snap.rankMap : new Map();
-      // We'll simulate this by monkey-patching inside the function.
-      // But since we can't rewrite the function body, we can only document the intended change.
-      // Instead, if the function is exposed, recommend replacing the relevant block as per instructions.
-      // ---- END PATCHED BLOCK ----
-      // Call the original function; the actual logic must be inserted in the real code.
-      return orig.apply(this, arguments);
-    }
-    // Replace function in its context (window or ret)
-    if (window.renderTable === renderTable) window.renderTable = wrappedRenderTable;
-  }
-})();
-
 // Saved Players Admin
 async function openSavedPlayersAdminDialog(){
   const modal = document.getElementById('savedPlayersAdminModal');
@@ -2065,8 +1998,7 @@ async function renderSavedPlayersAdmin(){
 
     savePinBtn.onclick = async ()=>{
       const pin = (pinIn.value||'').trim();
-      if (!/^\n?\d{4}$/.test(pin)){ toast('PIN must be 4 digits'); return; }
-      try { await cloudUpdatePlayerPassword(p.name, pin); pinIn.value=''; toast('PIN updated'); }
+if (!/^\d{4}$/.test(pin)){ toast('PIN must be 4 digits'); return; }      try { await cloudUpdatePlayerPassword(p.name, pin); pinIn.value=''; toast('PIN updated'); }
       catch(e){ console.error(e); toast('PIN update failed'); }
     };
 
@@ -3044,7 +2976,7 @@ function openHighScoresHubDialog(){
 
   const btnMatch = document.createElement('button');
   btnMatch.className = 'btn big';
-  btnMatch.textContent = 'Top 50 High Scores';
+  btnMatch.textContent = 'High Scores (Match)';
   btnMatch.onclick = () => {
     try {
       if (typeof openHighScoresMenuDialog === 'function') openHighScoresMenuDialog(false);
@@ -3057,7 +2989,7 @@ function openHighScoresHubDialog(){
 
   const btnRound = document.createElement('button');
   btnRound.className = 'btn big';
-  btnRound.textContent = 'Best Round Scores';
+  btnRound.textContent = 'High Scores (Round)';
   btnRound.onclick = () => {
     try {
       if (typeof openRoundHighScoresDialog === 'function') openRoundHighScoresDialog();
@@ -3971,15 +3903,19 @@ async function cloudListPlayers(){
   return data || [];
 }
 
-async function cloudCreatePlayer(name, password){
-  const password_hash = await sha256Hex(password);
-  const { error } = await sb.from(TABLE_PLAYERS).upsert({ name, password_hash }, { onConflict: 'name' });
+// Create / update a player by name only (no password)
+async function cloudCreatePlayer(name){
+  const { error } = await sb
+    .from(TABLE_PLAYERS)
+    .upsert({ name }, { onConflict: 'name' });   // only name is stored
+
   if (error) {
     markCloudError(error);
     throw error;
   }
   markCloudOk();
 }
+
 
 async function cloudValidatePlayer(name, password){
   const hash = await sha256Hex(password);
@@ -4838,6 +4774,238 @@ function setupStartMenuButtons(){
     hsMainBtn.onclick = openHighScoresMenuDialog;
   }
 
+// === Player Stats: simple name-only picker (no PIN) ===
+async function openPlayerStatsLookupDialog() {
+  // Create basic modal shell
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-backdrop';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+
+  const title = document.createElement('h3');
+  title.textContent = 'Player Stats \u2013 Select Player';
+
+  const body = document.createElement('div');
+  body.className = 'modal-body';
+
+  // Player name dropdown
+  const nameWrap = document.createElement('div');
+  nameWrap.className = 'stack';
+
+  const nameLabel = document.createElement('label');
+  nameLabel.className = 'tag';
+  nameLabel.textContent = 'Player Name';
+
+  const nameSelect = document.createElement('select');
+  nameSelect.id = 'statsPlayerSelect';
+  nameSelect.style.width = '100%';
+
+  nameWrap.append(nameLabel, nameSelect);
+  body.append(nameWrap);
+
+  const footer = document.createElement('div');
+  footer.className = 'modal-footer';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.type = 'button';
+  cancelBtn.onclick = () => overlay.remove();
+
+  const viewBtn = document.createElement('button');
+  viewBtn.className = 'btn primary';
+  viewBtn.textContent = 'View Stats';
+  viewBtn.type = 'button';
+
+  footer.append(cancelBtn, viewBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  modal.tabIndex = 0;
+  modal.focus();
+
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.remove();
+  });
+  overlay.addEventListener('keydown', e => {
+    if (e.key === 'Escape') overlay.remove();
+  });
+
+  // Populate players: cloud first, then local saved players
+  nameSelect.innerHTML = '<option value="">Select a saved player...</option>';
+  let anyPlayers = false;
+
+  try {
+    if (typeof cloudListPlayers === 'function') {
+      const cloudPlayers = await cloudListPlayers();
+      (cloudPlayers || []).forEach(p => {
+        if (!p || !p.name) return;
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        opt.textContent = p.name;
+        nameSelect.appendChild(opt);
+        anyPlayers = true;
+      });
+    }
+  } catch (err) {
+    console.error('Stats: cloudListPlayers failed', err);
+  }
+
+  if (!anyPlayers && typeof getSavedPlayers === 'function') {
+    const local = getSavedPlayers();
+    (local || []).forEach(p => {
+      if (!p || !p.name) return;
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      nameSelect.appendChild(opt);
+      anyPlayers = true;
+    });
+  }
+
+  if (!anyPlayers) {
+    body.innerHTML = '<p>No saved players found. Save a player from the Player Select screen first.</p>';
+    viewBtn.disabled = true;
+    return;
+  }
+
+  // Confirm: open stats for selected player, no PIN check
+  viewBtn.onclick = () => {
+    const name = nameSelect.value;
+    if (!name) {
+      if (typeof toast === 'function') toast('Select a saved player');
+      return;
+    }
+
+    overlay.remove();
+
+    if (typeof openPlayerStatsModePicker === 'function') {
+      openPlayerStatsModePicker(name);
+    } else {
+      console.warn('openPlayerStatsModePicker is not defined; cannot show stats for', name);
+    }
+  };
+}
+
+// === Player Stats: simple name-only picker (no PIN) ===
+async function openPlayerStatsLookupDialog() {
+  // Create basic modal shell
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-backdrop';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+
+  const title = document.createElement('h3');
+  title.textContent = 'Player Stats – Select Player';
+
+  const body = document.createElement('div');
+  body.className = 'modal-body';
+
+  // Player name dropdown
+  const nameWrap = document.createElement('div');
+  nameWrap.className = 'stack';
+
+  const nameLabel = document.createElement('label');
+  nameLabel.className = 'tag';
+  nameLabel.textContent = 'Player Name';
+
+  const nameSelect = document.createElement('select');
+  nameSelect.id = 'statsPlayerSelect';
+  nameSelect.style.width = '100%';
+
+  nameWrap.append(nameLabel, nameSelect);
+  body.append(nameWrap);
+
+  const footer = document.createElement('div');
+  footer.className = 'modal-footer';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.type = 'button';
+  cancelBtn.onclick = () => overlay.remove();
+
+  const viewBtn = document.createElement('button');
+  viewBtn.className = 'btn primary';
+  viewBtn.textContent = 'View Stats';
+  viewBtn.type = 'button';
+
+  footer.append(cancelBtn, viewBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  modal.tabIndex = 0;
+  modal.focus();
+
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.remove();
+  });
+  overlay.addEventListener('keydown', e => {
+    if (e.key === 'Escape') overlay.remove();
+  });
+
+  // Populate players: cloud first, then local saved players
+  nameSelect.innerHTML = '<option value="">Select a saved player...</option>';
+  let anyPlayers = false;
+
+  try {
+    if (typeof cloudListPlayers === 'function') {
+      const cloudPlayers = await cloudListPlayers();
+      (cloudPlayers || []).forEach(p => {
+        if (!p || !p.name) return;
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        opt.textContent = p.name;
+        nameSelect.appendChild(opt);
+        anyPlayers = true;
+      });
+    }
+  } catch (err) {
+    console.error('Stats: cloudListPlayers failed', err);
+  }
+
+  if (!anyPlayers && typeof getSavedPlayers === 'function') {
+    const local = getSavedPlayers();
+    (local || []).forEach(p => {
+      if (!p || !p.name) return;
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      nameSelect.appendChild(opt);
+      anyPlayers = true;
+    });
+  }
+
+  if (!anyPlayers) {
+    body.innerHTML = '<p>No saved players found. Save a player from the Player Select screen first.</p>';
+    viewBtn.disabled = true;
+    return;
+  }
+
+  // Confirm: open stats for selected player, no PIN check
+  viewBtn.onclick = () => {
+    const name = nameSelect.value;
+    if (!name) {
+      if (typeof toast === 'function') toast('Select a saved player');
+      return;
+    }
+
+    overlay.remove();
+
+    if (typeof openPlayerStatsModePicker === 'function') {
+      openPlayerStatsModePicker(name);
+    } else {
+      console.warn('openPlayerStatsModePicker is not defined; cannot show stats for', name);
+    }
+  };
+}
+
   const playerStatsBtn = byId('playerStatsBtn');
   if (playerStatsBtn) {
     playerStatsBtn.onclick = openPlayerStatsLookupDialog;
@@ -4899,25 +5067,36 @@ row.style.gap = '8px';
 
 psNumPlayersSel.addEventListener('change', drawPsRows);
 psNumGamesSel.addEventListener('change', ()=>{/* nothing else; read on start */});
+
 // ---- Saved players helpers (shared by Add + Select modals) ----
 function getSavedPlayers(){
-  try { return JSON.parse(localStorage.getItem('shateki_players') || '[]'); }
-  catch(e){ return []; }
+  try {
+    return JSON.parse(localStorage.getItem('shateki_players') || '[]');
+  } catch(e){
+    return [];
+  }
 }
+
 function setSavedPlayers(arr){
-  try { localStorage.setItem('shateki_players', JSON.stringify(arr)); }
-  catch(e){}
+  try {
+    localStorage.setItem('shateki_players', JSON.stringify(arr));
+  } catch(e){}
 }
+
 function populateSavedPlayersSelects(){
-  const arr = getSavedPlayers();
-  const sel1 = document.getElementById('existingPlayers');       // Add Player modal
-  const sel2 = document.getElementById('existingPlayerSelect');  // Select Player modal
-  [sel1, sel2].forEach(sel=>{
-    if(!sel) return;
-    sel.innerHTML = '<option value=\"\">Select a saved player...</option>' +
-      arr.map(p=>`<option value="${p.name}">${p.name}</option>`).join('');
+  const arr  = getSavedPlayers();
+  const sel1 = document.getElementById('existingPlayers');      // Add Player modal
+  const sel2 = document.getElementById('existingPlayerSelect'); // Select Player modal
+
+  [sel1, sel2].forEach(sel => {
+    if (!sel) return;
+    sel.innerHTML =
+      '<option value="">Select a saved player...</option>' +
+      arr.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
   });
 }
+
+// Add / Save Player – name only, no PIN
 async function showAddPlayerDialog(index){
   const modal = byId('addPlayerModal');
   if (!modal) { toast('Add Player modal missing'); return; }
@@ -4934,14 +5113,23 @@ async function showAddPlayerDialog(index){
 
     // close + reset
     modal.classList.add('hidden');
-    byId('newPlayerName').value = '';
-    byId('newPlayerPassword').value = '';
+    const nameEl = byId('newPlayerName');
+    const passEl = byId('newPlayerPassword');
+    if (nameEl) nameEl.value = '';
+    if (passEl) passEl.value = '';
     toast(msg);
   }
 
   // Reset fields
-  byId('newPlayerName').value = '';
-  byId('newPlayerPassword').value = '';
+  const nameEl = byId('newPlayerName');
+  const passEl = byId('newPlayerPassword');
+  if (nameEl) nameEl.value = '';
+  if (passEl) {
+    passEl.value = '';
+    // Hide the password row visually (if present)
+    const row = passEl.closest('.stack') || passEl.parentElement;
+    if (row) row.style.display = 'none';
+  }
 
   // Remember which row invoked the dialog
   modal.dataset.playerIndex = index ? String(index) : '';
@@ -4953,873 +5141,77 @@ async function showAddPlayerDialog(index){
   const saveBtn   = byId('savePlayerBtn');
   const cancelBtn = byId('cancelAddPlayerBtn');
 
-  saveBtn.onclick = async () => {
-    const newName = byId('newPlayerName').value.trim();
-    const newPass = byId('newPlayerPassword').value.trim();
-
-    if (!newName || !newPass) {
-      toast('Enter name & PIN');
-      return;
-    }
-    if (!/^\d{4}$/.test(newPass)) {
-      toast('PIN must be exactly 4 digits');
-      return;
-    }
-
-    // Local duplicate check (same device)
-    const players = getSavedPlayers();
-    if (players.some(p => p.name.toLowerCase() === newName.toLowerCase())) {
-      toast('Name already exists');
-      return;
-    }
-
-    // Try cloud create – but DO NOT block local if it fails
-    try {
-      await cloudCreatePlayer(newName, newPass);
-    } catch (err) {
-      console.error(err);
-      toast('Cloud save failed – saved locally only');
-      // fall through to local save
-    }
-
-    // Always keep a local cache for offline behaviour
-    players.push({ name: newName, password: newPass });
-    setSavedPlayers(players);
-
-    chosenName = newName;
-    finish('Player saved');
-  };
-
-  cancelBtn.onclick = () => modal.classList.add('hidden');
-}
-function computePlayerThrowStatsFromGames(playerName, gamesSubset) {
-  let totalPoints = 0;
-  let totalThrows = 0;
-
-  let miss = 0, single = 0, double = 0, treble = 0, bulls = 0;
-  const perNumberTotals = {};
-
-  for (const game of gamesSubset) {
-    if (!game || !Array.isArray(game.players) || !game.board) continue;
-
-    const pIdx = game.players.findIndex(p => p && eqName(p.name, playerName));
-    if (pIdx === -1) continue;
-
-    const board = game.board[pIdx];
-    if (!board) continue;
-
-    for (let r = 0; r < MAX_ROUNDS; r++) {
-      const roundDef = ROUNDS[r];
-      const entry = board[r];
-      if (!entry || !entry.darts) continue;
-
-      for (const dart of entry.darts) {
-        if (!dart) continue;
-
-        const points = dart.points || 0;
-        totalPoints += points;
-        totalThrows++;
-
-        if (!points || dart.kind === 'Miss') {
-          miss++;
-          continue;
-        }
-
-        let key = null;
-
-        if (dart.kind === 'Bull') {
-          bulls++;
-          key = 'Bull';
-        } else {
-          if (dart.kind === 'S' || dart.kind === 'Single') single++;
-          else if (dart.kind === 'D' || dart.kind === 'Double') double++;
-          else if (dart.kind === 'T' || dart.kind === 'Triple') treble++;
-
-          if (roundDef.type === 'number') {
-            key = String(roundDef.target);
-          } else if ((roundDef.type === 'doubles' || roundDef.type === 'triples') && dart.sector) {
-            key = String(dart.sector);
-          }
-        }
-
-        if (key) perNumberTotals[key] = (perNumberTotals[key] || 0) + points;
-      }
-    }
-  }
-
-  const pct = v => totalThrows ? Math.round((v / totalThrows) * 100) : 0;
-
-  let bestKey = null, bestScore = 0;
-  let worstKey = null, worstScore = Infinity;
-
-  Object.keys(perNumberTotals).forEach(key => {
-    const total = perNumberTotals[key];
-    if (total > bestScore) { bestScore = total; bestKey = key; }
-    if (total < worstScore) { worstScore = total; worstKey = key; }
-  });
-
-  const fmtNum = (key, score) => (!key || !isFinite(score)) ? '—' : (key === 'Bull' ? `Bull (${score})` : `${key} (${score})`);
-
-  return {
-    totalPoints,
-    totalThrows,
-    missPct:   pct(miss),
-    singlePct: pct(single),
-    doublePct: pct(double),
-    treblePct: pct(treble),
-    bullsPct:  pct(bulls),
-    favouriteNumber: fmtNum(bestKey, bestScore),
-    worstNumber:     fmtNum(worstKey, worstScore)
-  };
-}
-const STAT_WINDOWS = [
-  { key: 'today',     label: 'Today',         test: (dt, now) => (
-      dt.getFullYear() === now.getFullYear() &&
-      dt.getMonth()    === now.getMonth() &&
-      dt.getDate()     === now.getDate()
-    )},
-  { key: 'week',      label: '1 Week',        test: (dt, now) => (now - dt) / 86400000 < 7 },
-  { key: 'last30',    label: 'Past 30 Days',  test: (dt, now) => (now - dt) / 86400000 < 30 },
-  { key: 'days30_60', label: '30–60 days',    test: (dt, now) => {
-      const d = (now - dt) / 86400000;
-      return d >= 30 && d < 60;
-    }},
-  { key: 'life',      label: 'Lifetime',      test: () => true }
-];
-
-function computePlayerWindowStats(playerName, mode = 'official') {
-  const games   = getGameLog();
-  const matches = getMatchLog();
-  const now     = new Date();
-
-  const { games: gF, matches: mF } = filterByMode(games, matches, mode);
-
-  const out = {};
-  for (const win of STAT_WINDOWS) {
-    const gWin = gF.filter(g => g.ts && win.test(new Date(g.ts), now));
-    const mWin = mF.filter(m => m.ts && win.test(new Date(m.ts), now));
-    out[win.key] = computeSingleWindowStats(playerName, gWin, mWin, win, now);
-  }
-  out.life = computeSingleWindowStats(playerName, gF, mF, { test: () => true }, now);
-  return out;
-}
-function computeSingleWindowStats(playerName, games, matches, win, now) {
-  const stats = {
-    gamesPlayed:  0,
-    gamesWon:     0,
-    gameWinPct:   0,
-
-    matchesPlayed: 0,
-    matchesWon:    0,
-    matchWinPct:   0,
-
-    totalPoints:        0,
-    avgPointsPerThrow:  0,
-    avgPointsPerGame:   0,
-    avgPointsPerMatch:  0,
-
-    missPct:   0,
-    singlePct: 0,
-    doublePct: 0,
-    treblePct: 0,
-    bullsPct:  0,
-
-    favouriteNumber: '—',
-    worstNumber:     '—',
-
-    favouriteOpponent: '—',
-    nemesis:           '—'
-  };
-
-  const gamesForPlayer = [];
-  const aheadCounts  = {};
-  const behindCounts = {};
-  
-  // ===== Start screen ticker (bottom of New Game screen) =====
-function __formatGameBannerLine(g){
-  try{
-    const players = (g.players || []).map(p => ({ name: (p && p.name) ? String(p.name) : '—' }));
-    const totals  = Array.isArray(g.totals) ? g.totals.slice() : [];
-    const rows = players.map((p, i) => ({ name: p.name, score: Number(totals[i] || 0) }));
-    rows.sort((a,b)=> b.score - a.score);
-    if (!rows.length) return '';
-    const top = rows[0].score;
-    const winners = rows.filter(r => r.score === top);
-    const others  = rows.slice(winners.length);
-
-    if (winners.length > 1){
-      const wn = winners.map(w => w.name).join(' & ');
-      const tail = others.length ? (' vs ' + others.map(o => `${o.name} (${o.score})`).join(' and ')) : '';
-      return `${wn} (${top}) draw${tail}`;
-    } else {
-      const wn = winners[0].name;
-      const tail = others.length ? (' beats ' + others.map(o => `${o.name} (${o.score})`).join(' and ')) : '';
-      return `${wn} (${top})${tail}`;
-    }
-  }catch(_){ return ''; }
-}
-
-async function buildStartTicker(){
-  const host = document.getElementById('psTicker');
-  const track = host ? host.querySelector('.track') : null;
-  if (!host || !track) return;
-
-  let games = [];
-  try {
-    // Use your existing merge (local + cloud) and filter to official games
-    games = await getGamesForMode('official');
-  } catch (e) {
-    console.error('buildStartTicker: failed to load games', e);
-    host.classList.add('hidden');
-    return;
-  }
-
-  games = (games || []).filter(g => g && Array.isArray(g.players) && Array.isArray(g.totals) && g.totals.length === g.players.length);
-  games.sort((a, b) => toTS(a) - toTS(b));
-  const last10 = games.slice(0,10);
-
-  if (!last10.length){
-    host.classList.add('hidden');
-    track.innerHTML = '';
-    return;
-  }
-
-  const frag = document.createDocumentFragment();
-  last10.forEach((g, idx) => {
-    const span = document.createElement('span');
-    span.textContent = __formatGameBannerLine(g);
-    frag.appendChild(span);
-    if (idx !== last10.length - 1){
-      const sep = document.createElement('span');
-      sep.className = 'sep';
-      sep.textContent = '● ● ●';
-      frag.appendChild(sep);
-    }
-  });
-
-  track.innerHTML = '';
-  track.appendChild(frag);
-  host.classList.remove('hidden');
-}
-
-  // --- Games ---
-  for (const game of games) {
-    if (!game || !game.ts) continue;
-    const dt = new Date(game.ts);
-    if (!win.test(dt, now)) continue;
-    if (!Array.isArray(game.players)) continue;
-
-    const idx = game.players.findIndex(p => p && eqName(p.name, playerName));
-    if (idx === -1) continue;
-
-    gamesForPlayer.push(game);
-    stats.gamesPlayed++;
-
-    const total = (game.totals && game.totals[idx]) || 0;
-    stats.totalPoints += total;
-
-    const winners = game.winners || [];
-    if (winners.includes(idx)) stats.gamesWon++;
-
-    // Opponent stats
-    game.players.forEach((p, j) => {
-      if (!p || j === idx) return;
-      const oppName  = (p.name || '').trim();
-      const oppTotal = (game.totals && game.totals[j]) || 0;
-
-      if (total > oppTotal) {
-        aheadCounts[oppName]  = (aheadCounts[oppName]  || 0) + 1;
-      } else if (total < oppTotal) {
-        behindCounts[oppName] = (behindCounts[oppName] || 0) + 1;
-      }
-    });
-  }
-
-  // Throw-level stats
-  if (gamesForPlayer.length) {
-    const tStats = computePlayerThrowStatsFromGames(playerName, gamesForPlayer);
-    stats.missPct   = tStats.missPct;
-    stats.singlePct = tStats.singlePct;
-    stats.doublePct = tStats.doublePct;
-    stats.treblePct = tStats.treblePct;
-    stats.bullsPct  = tStats.bullsPct;
-
-    stats.avgPointsPerThrow = tStats.totalThrows
-      ? tStats.totalPoints / tStats.totalThrows
-      : 0;
-
-    stats.favouriteNumber = tStats.favouriteNumber;
-    stats.worstNumber     = tStats.worstNumber;
-  }
-
-  stats.gameWinPct = stats.gamesPlayed
-    ? (stats.gamesWon / stats.gamesPlayed * 100)
-    : 0;
-
-  stats.avgPointsPerGame = stats.gamesPlayed
-    ? (stats.totalPoints / stats.gamesPlayed)
-    : 0;
-
-  // --- Matches (completed only) ---
-  let matchPointsSum = 0;
-
-  for (const match of matches) {
-    if (!match || !match.ts) continue;
-    const dt = new Date(match.ts);
-    if (!win.test(dt, now)) continue;
-    if (!Array.isArray(match.players)) continue;
-
-    const idx = match.players.findIndex(p => p && eqName(p.name, playerName));
-    if (idx === -1) continue;
-
-    stats.matchesPlayed++;
-
-    const winsArr  = match.wins || [];
-    const myWins   = winsArr[idx] || 0;
-    const maxWins  = winsArr.length ? Math.max(...winsArr) : 0;
-    if (maxWins > 0 && myWins === maxWins) {
-      stats.matchesWon++;
-    }
-
-    if (match.matchTotals && match.matchTotals[idx] != null) {
-      matchPointsSum += match.matchTotals[idx];
-    }
-  }
-
-  stats.matchWinPct = stats.matchesPlayed
-    ? (stats.matchesWon / stats.matchesPlayed * 100)
-    : 0;
-
-  stats.avgPointsPerMatch = stats.matchesPlayed
-    ? (matchPointsSum / stats.matchesPlayed)
-    : 0;
-
-  // Favourite opponent / Nemesis
-  const pickMaxName = (map) => {
-    let bestName = null, bestVal = 0;
-    Object.keys(map).forEach(name => {
-      const v = map[name];
-      if (v > bestVal) { bestVal = v; bestName = name; }
-    });
-    return bestVal > 0 ? `${bestName} (${bestVal})` : '—';
+  if (cancelBtn) {
+    cancelBtn.onclick = () => {
+      modal.classList.add('hidden');
     };
-
-  stats.favouriteOpponent = pickMaxName(aheadCounts);
-  stats.nemesis           = pickMaxName(behindCounts);
-
-  return stats;
-}
-// make this GLOBAL (top-level), not nested
-function openPlayerStatsModePicker(playerName){
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-backdrop';
-
-  const modal = document.createElement('div');
-  modal.className = 'modal';
-
-  const title = document.createElement('h3');
-  title.textContent = `Player Stats – ${playerName}`;
-
-  const body = document.createElement('div');
-  body.className = 'modal-body';
-
-  // 3-col grid
-  const grid = document.createElement('div');
-  grid.style.display = 'grid';
-  grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
-  grid.style.gap = '8px';
-  grid.style.maxWidth = '620px';
-  grid.style.margin = '0 auto';
-
-  // NEW: GAMES (spans all 3 columns, sits ABOVE STATS)
-  const gamesBtn = document.createElement('button');
-  gamesBtn.className = 'btn big';
-  gamesBtn.textContent = 'GAMES';
-  gamesBtn.style.gridColumn = '1 / -1';
-  gamesBtn.style.width = '100%';
-  gamesBtn.onclick = () => { overlay.remove(); openPlayerGamesDialog(playerName); };
-  grid.appendChild(gamesBtn);
-
-  // STATS (spans 3 columns)
-  const statsBtn = document.createElement('button');
-  statsBtn.className = 'btn primary big';
-  statsBtn.textContent = 'STATS';
-  statsBtn.style.gridColumn = '1 / -1';
-  statsBtn.style.width = '100%';
-  statsBtn.onclick = () => {
-    overlay.remove();
-    openModeChooser(
-      mode => openPlayerStatsDialog(playerName, mode),
-      ()   => openPlayerStatsModePicker(playerName)
-    );
-  };
-  grid.appendChild(statsBtn);
-
-  // Helper: choose mode for the sub-screens
-  function chooseModeAnd(fn){
-    overlay.remove();
-    openModeChooser(
-      mode => fn(playerName, mode),
-      ()   => openPlayerStatsModePicker(playerName)
-    );
   }
 
-  // 3 equal-width buttons under STATS
-  const thrBtn = document.createElement('button');
-  thrBtn.className = 'btn';
-  thrBtn.textContent = 'Target Hit %';
-  thrBtn.style.width = '100%';
-  thrBtn.onclick = () => chooseModeAnd(openTargetHitRateDialog);
+  if (saveBtn) {
+    saveBtn.onclick = async () => {
+      const newName = (nameEl?.value || '').trim();
 
-  const tdbBtn = document.createElement('button');
-  tdbBtn.className = 'btn';
-  tdbBtn.textContent = 'T-D-B %';
-  tdbBtn.style.width = '100%';
-  tdbBtn.onclick = () => chooseModeAnd(openTDHDialog);
-
-  const h2hBtn = document.createElement('button');
-  h2hBtn.className = 'btn';
-  h2hBtn.textContent = 'H2H';
-  h2hBtn.style.width = '100%';
-  h2hBtn.onclick = () => { overlay.remove(); openH2HDialog(playerName); };
-
-  grid.append(thrBtn, tdbBtn, h2hBtn);
-  body.appendChild(grid);
-
-  const footer = document.createElement('div');
-  footer.className = 'modal-footer';
-  const backBtn = document.createElement('button');
-  backBtn.className = 'btn';
-  backBtn.textContent = 'Return';
-  backBtn.onclick = () => { overlay.remove(); openPlayerStatsLookupDialog(); };
-  footer.appendChild(backBtn);
-
-  modal.append(title, body, footer);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-
-  modal.tabIndex = 0; modal.focus();
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
-}
-function hasThrowData(statsByWindow){
-  const wins = statsByWindow || {};
-  return Object.values(wins).some(w =>
-    w && (
-      (w.avgPointsPerThrow || 0) > 0 ||
-      (w.singlePct || 0) > 0 ||
-      (w.doublePct || 0) > 0 ||
-      (w.treblePct || 0) > 0 ||
-      (w.bullsPct  || 0) > 0
-    )
-  );
-}
-
-async function openPlayerStatsDialog(playerName, mode = 'official') {
-  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal   = document.createElement('div'); modal.className   = 'modal';
-
-  const title = document.createElement('h3');
-  title.textContent = `Player Stats – ${playerName} (${mode === 'official' ? 'Official' : 'Unofficial'})`;
-
-  const body = document.createElement('div'); body.className = 'modal-body';
-
-// Choose the source that has throw-level data; otherwise pick the one with games
-let cloud = null, local = null, statsByWindow = null;
-
-try { cloud = await computePlayerWindowStatsAsync(playerName, mode); } catch (_) {}
-local = computePlayerWindowStats(playerName, mode);
-
-const cloudHasGames  = !!(cloud?.life?.gamesPlayed);
-const localHasGames  = !!(local?.life?.gamesPlayed);
-const cloudHasThrows = cloudHasGames && hasThrowData(cloud);
-const localHasThrows = localHasGames && hasThrowData(local);
-
-if (cloudHasThrows)       statsByWindow = cloud;
-else if (localHasThrows)  statsByWindow = local;
-else if (cloudHasGames)   statsByWindow = cloud;
-else                      statsByWindow = local; // may be empty, but safe
-
-const table = document.createElement('table'); table.className = 'hs-table';
-const thead = document.createElement('thead'); const trh = document.createElement('tr');
-['#','When','Result'].forEach(h => {
-  const th = document.createElement('th');
-  th.textContent = h;
-  trh.appendChild(th);
-});
-thead.appendChild(trh);
-table.appendChild(thead);
-
-const tb = document.createElement('tbody');
-games.forEach((g, idx) => {
-  const tr = document.createElement('tr');
-
-  // #
-  const td1 = document.createElement('td');
-  td1.textContent = String(idx + 1);
-
-  // When
-  const td2 = document.createElement('td');
-  td2.textContent = fmtWhen(g.ts || g.created_at || g.inserted_at || '');
-
-  // Result: "Winner {score} beat Second {score} Third {score} …"
-  const td3 = document.createElement('td');
-  const players = (g.players || []).map(p => (p && p.name) ? p.name : '');
-  const totals  = Array.isArray(g.totals) ? g.totals : [];
-  const ordered = players
-    .map((name, i) => ({ name, score: Number(totals[i] || 0) }))
-    .filter(x => x.name)
-    .sort((a, b) => b.score - a.score);
-
-  let result = '—';
-  if (ordered.length >= 2) {
-    result = `${ordered[0].name} ${ordered[0].score} beat ${ordered[1].name} ${ordered[1].score}`;
-    if (ordered.length > 2) {
-      result += ' ' + ordered.slice(2).map(o => `${o.name} ${o.score}`).join(' ');
-    }
-  } else if (ordered.length === 1) {
-    result = `${ordered[0].name} ${ordered[0].score}`;
-  }
-  td3.textContent = result;
-
-  tr.append(td1, td2, td3);
-
-  // Click to open the full score sheet
-  tr.style.cursor = 'pointer';
-  tr.title = 'Open score sheet';
-  tr.onclick = () => {
-    try { if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(g); } catch(_) {}
-  };
-
-  tb.appendChild(tr);
-});
-
-table.appendChild(tb);
-body.appendChild(table);
-
-  // Games / Matches
-  addRow('Games Played',        'gamesPlayed',      num,    'gamesPlayed');
-  addRow('Games Won',           'gamesWon',         num,    'gamesPlayed');
-  addRow('Win % (Games)',       'gameWinPct',       pct,    'gamesPlayed');
-  addRow('Matches Played',      'matchesPlayed',    num,    'matchesPlayed');
-  addRow('Matches Won',         'matchesWon',       num,    'matchesPlayed');
-  addRow('Win % (Matches)',     'matchWinPct',      pct,    'matchesPlayed');
-
-  // Spacer
-  const spacer1 = document.createElement('tr');
-  const spTd1 = document.createElement('td');
-  spTd1.colSpan = 1 + STAT_WINDOWS.length;
-  spTd1.textContent = '';
-  spacer1.appendChild(spTd1);
-  tbody.appendChild(spacer1);
-
-  // Points
-  addRow('Total Points',            'totalPoints',       num,  'gamesPlayed');
-  addRow('Avg Points / Throw',      'avgPointsPerThrow', avg,  'gamesPlayed');
-  addRow('Avg Points / Game',       'avgPointsPerGame',  avg,  'gamesPlayed');
-  addRow('Avg Points / Match',      'avgPointsPerMatch', avg,  'matchesPlayed');
-
-  // Spacer
-  const spacer2 = document.createElement('tr');
-  const spTd2 = document.createElement('td');
-  spTd2.colSpan = 1 + STAT_WINDOWS.length;
-  spTd2.textContent = '';
-  spacer2.appendChild(spTd2);
-  tbody.appendChild(spacer2);
-
-  // Hit-type percentages
-  addRow('Miss %',    'missPct',   pctInt, 'gamesPlayed');
-  addRow('Single %',  'singlePct', pctInt, 'gamesPlayed');
-  addRow('Double %',  'doublePct', pctInt, 'gamesPlayed');
-  addRow('Treble %',  'treblePct', pctInt, 'gamesPlayed');
-  addRow('Bulls %',   'bullsPct',  pctInt, 'gamesPlayed');
-
-  // Spacer
-  const spacer3 = document.createElement('tr');
-  const spTd3 = document.createElement('td');
-  spTd3.colSpan = 1 + STAT_WINDOWS.length;
-  spTd3.textContent = '';
-  spacer3.appendChild(spTd3);
-  tbody.appendChild(spacer3);
-
-  // Favourite / Worst number
-  addRow('Favourite Number', 'favouriteNumber', txt, 'gamesPlayed');
-  addRow('Worst Number',     'worstNumber',     txt, 'gamesPlayed');
-
-  // Spacer
-  const spacer4 = document.createElement('tr');
-  const spTd4 = document.createElement('td');
-  spTd4.colSpan = 1 + STAT_WINDOWS.length;
-  spTd4.textContent = '';
-  spacer4.appendChild(spTd4);
-  tbody.appendChild(spacer4);
-
-  // Opponents
-  addRow('Favourite Opponent', 'favouriteOpponent', txt, 'gamesPlayed');
-  addRow('Nemesis',            'nemesis',           txt, 'gamesPlayed');
-
-  table.appendChild(tbody);
-  body.appendChild(table);
-
-  // ---- Lifetime extras (unchanged) ----
-  const lifeStats = statsByWindow['life'] || {};
-  const extraWrap = document.createElement('div');
-  extraWrap.style.marginTop = '10px';
-  extraWrap.style.fontSize = '0.9rem';
-
-  const favP = document.createElement('p');
-  favP.textContent = 'Favourite Opponent: ' + (lifeStats.favouriteOpponent || '—');
-  const nemP = document.createElement('p');
-  nemP.textContent = 'Nemesis: ' + (lifeStats.nemesis || '—');
-
-  extraWrap.appendChild(favP);
-  extraWrap.appendChild(nemP);
-
-  const sep = document.createElement('hr');
-  sep.style.borderColor = '#23284a';
-  sep.style.margin = '8px 0';
-  extraWrap.appendChild(sep);
-
-  const topTitle = document.createElement('div');
-  topTitle.textContent = 'Top Scores (lifetime)';
-  topTitle.style.fontWeight = '700';
-  topTitle.style.marginBottom = '4px';
-  extraWrap.appendChild(topTitle);
-
-let gamesAll = getGameLog();
-if (!gamesAll || !gamesAll.length) {
-  try { gamesAll = await cloudFetchAllGamesAsLocal(); } catch (_) { gamesAll = []; }
-};
-
-if (!gamesAll || !gamesAll.length) {
-  try { gamesAll = await cloudFetchAllGamesAsLocal(); } catch (_) {}
-  if (!gamesAll || !gamesAll.length) {
-    // last-ditch: synthesize from high_scores so at least totals appear
-    gamesAll = await cloudSynthGamesFromHighScores(playerName);
-  }
-}
-  const scores = [];
-  (gamesAll || []).forEach(g => {
-    if (!g || !Array.isArray(g.players) || !Array.isArray(g.totals)) return;
-    const idx = g.players.findIndex(p => p && eqName(p.name, playerName));
-    if (idx === -1) return;
-    const s = Number(g.totals[idx] || 0);
-    scores.push({ score: s, ts: g.ts });
-  });
-  scores.sort((a, b) => b.score - a.score);
-  const top = scores.slice(0, 10);
-
-  if (!top.length) {
-    const none = document.createElement('p');
-    none.textContent = 'No recorded games yet.';
-    none.style.fontStyle = 'italic';
-    extraWrap.appendChild(none);
-  } else {
-    const ol = document.createElement('ol');
-    ol.style.paddingLeft = '18px';
-    ol.style.margin = '0';
-    top.forEach(item => {
-      const li = document.createElement('li');
-      let when = '';
-      if (item.ts) {
-        const d = new Date(item.ts);
-        if (!Number.isNaN(d.getTime())) {
-          when = d.toLocaleDateString(undefined, {
-            year: '2-digit',
-            month: 'short',
-            day: '2-digit'
-          });
-        }
+      if (!newName) {
+        toast('Enter a player name');
+        return;
       }
-      li.textContent = when ? `${item.score} (${when})` : String(item.score);
-      ol.appendChild(li);
-    });
-    extraWrap.appendChild(ol);
+
+      chosenName = newName;
+
+      // Save to local storage
+      const arr = getSavedPlayers();
+      const idxExisting = arr.findIndex(p => p && p.name === newName);
+      if (idxExisting === -1) arr.push({ name: newName });
+      else arr[idxExisting].name = newName;
+      setSavedPlayers(arr);
+      populateSavedPlayersSelects();
+
+      // Save to Supabase (name only)
+      try {
+        await cloudCreatePlayer(newName);
+      } catch (e) {
+        console.error('cloudCreatePlayer failed', e);
+      }
+
+      finish('Player saved');
+    };
   }
-
-  body.appendChild(extraWrap);
-
-  const footer = document.createElement('div');
-  footer.className = 'modal-footer';
-
-  const returnBtn = document.createElement('button');
-  returnBtn.className = 'btn';
-  returnBtn.textContent = 'Return';
-  returnBtn.onclick = () => {
-    overlay.remove();
-    openPlayerStatsModePicker(playerName); // back to Official / Practice chooser
-  };
-
-  footer.appendChild(returnBtn);
-
-  modal.append(title, body, footer);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-
-  modal.tabIndex = 0;
-  modal.focus();
-
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) overlay.remove();
-  });
-  overlay.addEventListener('keydown', e => {
-    if (e.key === 'Escape') overlay.remove();
-  });
 }
-async function openPlayerStatsLookupDialog() {
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-backdrop';
 
-  const modal = document.createElement('div');
-  modal.className = 'modal';
-
-  const title = document.createElement('h3');
-  title.textContent = 'Player Stats – Select Player';
-
-  const body = document.createElement('div');
-  body.className = 'modal-body';
-
-  const nameWrap = document.createElement('div');
-  nameWrap.className = 'stack';
-  const nameLabel = document.createElement('label');
-  nameLabel.className = 'tag';
-  nameLabel.textContent = 'Player Name';
-  const nameSelect = document.createElement('select');
-  nameSelect.id = 'statsPlayerSelect';
-  nameSelect.style.width = '100%';
-  nameWrap.append(nameLabel, nameSelect);
-
-  const passWrap = document.createElement('div');
-  passWrap.className = 'stack';
-  passWrap.style.marginTop = '12px';
-  const passLabel = document.createElement('label');
-  passLabel.className = 'tag';
-  passLabel.textContent = 'Password';
-  const passInput = document.createElement('input');
-  passInput.id = 'statsPlayerPassword';
-  passInput.type = 'tel';
-  passInput.inputMode = 'numeric';
-  passInput.pattern = '\\d{4}';
-  passInput.maxLength = 4;
-  passInput.placeholder = '4-digit PIN';
-  passWrap.append(passLabel, passInput);
-
-  body.append(nameWrap, passWrap);
-
-  const footer = document.createElement('div');
-  footer.className = 'modal-footer';
-
-  const cancelBtn = document.createElement('button');
-  cancelBtn.className = 'btn';
-  cancelBtn.textContent = 'Cancel';
-  cancelBtn.onclick = () => overlay.remove();
-
-  const viewBtn = document.createElement('button');
-  viewBtn.className = 'btn primary';
-  viewBtn.textContent = 'View Stats';
-
-  footer.append(cancelBtn, viewBtn);
-
-  modal.append(title, body, footer);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-
-  modal.tabIndex = 0;
-  modal.focus();
-
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
-
-  // Populate players: cloud first, local fallback
-  nameSelect.innerHTML = '<option value="">Select a saved player...</option>';
-  let anyPlayers = false;
-
-  try {
-    const cloudPlayers = await cloudListPlayers();
-    cloudPlayers.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.name;
-      opt.textContent = p.name;
-      nameSelect.appendChild(opt);
-      anyPlayers = true;
-    });
-  } catch (err) {
-    console.error('Stats: cloudListPlayers failed', err);
-  }
-
-  if (!anyPlayers) {
-    const local = getSavedPlayers();
-    local.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.name;
-      opt.textContent = p.name;
-      nameSelect.appendChild(opt);
-      anyPlayers = true;
-    });
-  }
-
-  if (!anyPlayers) {
-    body.innerHTML = '<p>No saved players found. Save a player from the Player Select screen first.</p>';
-    viewBtn.disabled = true;
-    return;
-  }
-
-  // PIN check → then mode picker
-  viewBtn.onclick = async () => {
-    const name = nameSelect.value;
-    const pass = passInput.value.trim();
-
-    if (!name || !pass) { toast('Enter player & PIN'); return; }
-    if (!/^\d{4}$/.test(pass)) { toast('PIN must be exactly 4 digits'); return; }
-
-    let ok = false;
-    try { ok = await cloudValidatePlayer(name, pass); } catch (_) {}
-
-    if (!ok) {
-      const locals = getSavedPlayers();
-      const found  = locals.find(p => p.name === name);
-      if (!found || found.password !== pass) { toast('Incorrect name or password'); return; }
-    }
-
-    overlay.remove();
-    openPlayerStatsModePicker(name);
-  };
-}
+// Select a saved player for a match – name only, no PIN
 async function showSelectPlayerDialog(index){
   const select = byId('existingPlayerSelect');
+  if (!select) { toast('Select list missing'); return; }
   select.innerHTML = '<option value="">Select a saved player...</option>';
-
-  let cloudList = [];
-  try {
-    cloudList = await cloudListPlayers();
-  } catch (err) {
-    console.error(err);
-    // ignore here – we’ll fall back to local
-  }
 
   let any = false;
 
-  // If we got cloud players, use them
-  if (cloudList && cloudList.length) {
-    cloudList.forEach(p => {
+  // Try cloud players first
+  try {
+    const cloudList = await cloudListPlayers();
+    (cloudList || []).forEach(p => {
+      if (!p || !p.name) return;
       const opt = document.createElement('option');
       opt.value = p.name;
       opt.textContent = p.name;
       select.appendChild(opt);
     });
-    any = true;
-  } else {
-    // Fallback: local saved players
+    any = !!(cloudList && cloudList.length);
+  } catch (err) {
+    console.error('cloudListPlayers failed', err);
+  }
+
+  // Fallback: local saved players
+  if (!any) {
     const local = getSavedPlayers();
-    if (local && local.length) {
-      local.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.name;
-        opt.textContent = p.name;
-        select.appendChild(opt);
-      });
-      any = true;
-    }
+    (local || []).forEach(p => {
+      if (!p || !p.name) return;
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      select.appendChild(opt);
+    });
+    any = !!(local && local.length);
   }
 
   if (!any) {
@@ -5828,63 +5220,68 @@ async function showSelectPlayerDialog(index){
   }
 
   const modal = byId('selectPlayerModal');
+  if (!modal) { toast('Select Player modal missing'); return; }
+
+  // Hide password row if it exists
+  const passInput = byId('playerPassword');
+  if (passInput) {
+    const row = passInput.closest('.stack') || passInput.parentElement;
+    if (row) row.style.display = 'none';
+    passInput.value = '';
+  }
+
   modal.dataset.playerIndex = String(index);
   modal.classList.remove('hidden');
+
+  let cancelBtn  = byId('cancelSelectPlayerBtn');
+  let confirmBtn = byId('confirmSelectPlayerBtn');
+
+  // 🔧 Strip any old listeners completely (stats two-step etc.)
+  if (cancelBtn) {
+    const clone = cancelBtn.cloneNode(true);
+    cancelBtn.parentNode.replaceChild(clone, cancelBtn);
+    cancelBtn = clone;
+  }
+  if (confirmBtn) {
+    const clone = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(clone, confirmBtn);
+    confirmBtn = clone;
+  }
+
+  if (cancelBtn) {
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.onclick = () => {
+      select.value = '';
+      modal.classList.add('hidden');
+    };
+  }
+
+  if (confirmBtn) {
+    confirmBtn.textContent = 'Enter';   // make sure it doesn’t say "View Stats"
+    confirmBtn.onclick = () => {
+      const name = select.value;
+      if (!name) { toast('Select a saved player'); return; }
+
+      const idx = parseInt(modal.dataset.playerIndex || '0', 10) || 1;
+      const row =
+        document.querySelector(`#psPlayerFields .pf[data-index="${idx}"]`) ||
+        document.querySelector(`.pf[data-index="${idx}"]`);
+      const input = row?.querySelector('input[data-role="display"]');
+      if (input) input.value = name;
+
+      select.value = '';
+      modal.classList.add('hidden');
+      toast('Player selected');
+    };
+  }
 }
 
-byId('cancelSelectPlayerBtn').addEventListener('click', ()=>{
-  byId('existingPlayerSelect').value='';
-  byId('playerPassword').value='';
-  byId('selectPlayerModal').classList.add('hidden');
-});
 
-byId('confirmSelectPlayerBtn').onclick = async () => {
-  const modal = byId('selectPlayerModal');
-  const idx   = parseInt(modal.dataset.playerIndex || '0', 10) || 1;
 
- const name = byId('existingPlayerSelect').value;
-  const pass = byId('playerPassword').value.trim();
 
-  if (!name || !pass) {
-    toast('Enter player & PIN');
-    return;
-  }
-  if (!/^\d{4}$/.test(pass)) {
-    toast('PIN must be exactly 4 digits');
-    return;
-  }
 
-  let ok = false;
 
-  // Try cloud first
-  try {
-    ok = await cloudValidatePlayer(name, pass);
-  } catch (err) {
-    console.error(err);
-  }
 
-  // Fallback to local cache if cloud fails or returns false
-  if (!ok) {
-    const players = getSavedPlayers();
-    const found   = players.find(p => p.name === name);
-    if (!found || found.password !== pass) {
-      toast('Incorrect name or password');
-      return;
-    }
-  }
-
-  // Write back into the correct Player Select row
-  const row =
-    document.querySelector(`#psPlayerFields .pf[data-index="${idx}"]`) ||
-    document.querySelector(`.pf[data-index="${idx}"]`);
-  const input = row?.querySelector('input[data-role="display"]');
-  if (input) input.value = name;
-
-  byId('playerPassword').value = '';
-  byId('existingPlayerSelect').value = '';
-  modal.classList.add('hidden');
-  toast('Player selected');
-};
 
 byId('startMatchBtn').addEventListener('click', ()=>{
   const games = parseInt(psNumGamesSel.value,10) || 1;
@@ -10876,12 +10273,12 @@ window.openStartHighScoresMenu = function openStartHighScoresMenu(){
   const matchBtn = document.createElement('button');
   matchBtn.className = 'btn';
   matchBtn.type = 'button';
-  matchBtn.textContent = 'Top 50 High Scores';
+  matchBtn.textContent = 'High Scores (Match)';
 
   const roundBtn = document.createElement('button');
   roundBtn.className = 'btn';
   roundBtn.type = 'button';
-  roundBtn.textContent = 'Highest Round Scores';
+  roundBtn.textContent = 'High Scores (Round)';
 
   // Stack vertically with a small gap
   const row1 = document.createElement('div');
@@ -10996,7 +10393,7 @@ function arrangeStartActions(){
       hsMain.textContent = 'High Scores';
     }
 
-    // Top 50 High Scores
+    // High Scores (Match)
     let hsMatch = document.getElementById('highScoresMenuBtn') ||
                   document.getElementById('highScoresBtn');
     if (!hsMatch){
@@ -11005,9 +10402,9 @@ function arrangeStartActions(){
       hsMatch.className = 'btn';
       hsMatch.type = 'button';
     }
-    hsMatch.textContent = 'Top 50 High Scores';
+    hsMatch.textContent = 'High Scores (Match)';
 
-    // Highest Round Scores
+    // High Scores (Round)
     let hsRound = document.getElementById('roundHighScoresBtn');
     if (!hsRound){
       hsRound = doc.createElement('button');
@@ -11015,7 +10412,7 @@ function arrangeStartActions(){
       hsRound.className = 'btn';
       hsRound.type = 'button';
     }
-    hsRound.textContent = 'Highest Round Scores';
+    hsRound.textContent = 'High Scores (Round)';
 
     // Player Stats
     let stats = document.getElementById('playerStatsBtn');
@@ -12619,192 +12016,111 @@ window.openPremierLeagueDialog = async function openPremierLeagueDialog() {
     if (buttons[0]) buttons[0].classList.add('primary');
   }
 
-  // Build per-filter summaries (per player stats + rank) once
-  function buildSummaries(rows, filters) {
-    const byId = new Map();
-    const orderedIds = [];
-
-    // PB / WR aggregates across all filters
-    const maxAvgByPlayer = new Map();
-    const maxBestByPlayer = new Map();
-    let globalMaxAvg = 0;
-    let globalMaxBest = 0;
-
-    function registerRecord(row) {
-      if (!row || !row.player) return;
-      const name = row.player;
-      const avg  = Number(row.avg  || 0);
-      const best = Number(row.best || 0);
-
-      if (Number.isFinite(avg) && avg > 0) {
-        const cur = maxAvgByPlayer.get(name) || 0;
-        if (avg > cur) maxAvgByPlayer.set(name, avg);
-        if (avg > globalMaxAvg) globalMaxAvg = avg;
-      }
-
-      if (Number.isFinite(best) && best > 0) {
-        const curB = maxBestByPlayer.get(name) || 0;
-        if (best > curB) maxBestByPlayer.set(name, best);
-        if (best > globalMaxBest) globalMaxBest = best;
-      }
-    }
-
-    function aggregateFor(filter, id) {
-      const filtered = rows.filter(r => {
-        if (!r || !r.player) return false;
-        const score = Number(r.score || 0);
-        if (!Number.isFinite(score)) return false;
-        if (!filter || id === 'ALL') return true;
-        return filter.match(r.ts);
-      });
-
-      if (!filtered.length) {
-        byId.set(id, {
-          rows: [],
-          byPlayer: new Map(),
-          rankMap: new Map()
-        });
-        return;
-      }
-
-      const byPlayer = new Map();
-
-      filtered.forEach(r => {
-        const name = String(r.player || '').trim();
-        if (!name) return;
-        const score = Number(r.score || 0);
-        if (!Number.isFinite(score)) return;
-
-        const existing = byPlayer.get(name) || {
-          player: name,
-          games: 0,
-          total: 0,
-          best: 0
-        };
-
-        existing.games += 1;
-        existing.total += score;
-        if (score > existing.best) existing.best = score;
-
-        byPlayer.set(name, existing);
-      });
-
-      const rowsOut = Array.from(byPlayer.values())
-        .map(p => ({
-          player: p.player,
-          games: p.games,
-          avg: p.games ? p.total / p.games : 0,
-          best: p.best
-        }))
-        .sort((a, b) => b.avg - a.avg);
-
-      const rankMap = new Map();
-      rowsOut.forEach((row, idx) => {
-        rankMap.set(row.player, idx + 1);
-        // Track PB / WR aggregates across all filters
-        registerRecord(row);
-      });
-
-      // For lookups (prev snapshot), store the row objects that include avg + best
-      const byPlayerRows = new Map();
-      rowsOut.forEach(row => {
-        byPlayerRows.set(row.player, row);
-      });
-
-      byId.set(id, { rows: rowsOut, byPlayer: byPlayerRows, rankMap });
-    }
-
-    // All-time summary
-    aggregateFor(null, 'ALL');
-
-    // Per-month/period summaries (keep chronological order as given by filters, excluding ALL)
-    (filters || []).forEach(f => {
-      if (!f || !f.id || f.id === 'ALL') return;
-      orderedIds.push(f.id);
-      aggregateFor(f, f.id);
+  function renderTable(rows, filter, prevFilter) {
+    const filtered = rows.filter(r => {
+      if (!r || !r.player) return false;
+      const score = Number(r.score || 0);
+      if (!Number.isFinite(score)) return false;
+      if (!filter || filter.id === 'ALL') return true;
+      return filter.match(r.ts);
     });
 
-    return {
-      byId,
-      orderedIds,
-      maxAvgByPlayer,
-      maxBestByPlayer,
-      globalMaxAvg,
-      globalMaxBest
-    };
-  }
-
-  function renderTable(rows, filter, summaries) {
-    if (!summaries || !summaries.byId) {
-      tableMount.innerHTML = '<p>No data available.</p>';
-      return;
-    }
-
-  const {
-    byId,
-    orderedIds,
-    maxAvgByPlayer: _maxAvgByPlayer,
-    maxBestByPlayer: _maxBestByPlayer,
-    globalMaxAvg: _globalMaxAvg,
-    globalMaxBest: _globalMaxBest
-  } = summaries;
-
-  // Safe fallbacks if PB/WR aggregates are missing
-  const maxAvgByPlayer = _maxAvgByPlayer || new Map();
-  const maxBestByPlayer = _maxBestByPlayer || new Map();
-  const globalMaxAvg = Number(_globalMaxAvg || 0);
-  const globalMaxBest = Number(_globalMaxBest || 0);
-
-  function isRecord(val, max) {
-    if (val == null || max == null) return false;
-    const v = Number(val);
-    const m = Number(max);
-    if (!Number.isFinite(v) || !Number.isFinite(m)) return false;
-    // Tiny tolerance so float rounding doesn’t break equality
-    return Math.abs(v - m) < 0.01;
-  }
-    const id = (filter && filter.id) ? filter.id : 'ALL';
-
-    const summary = byId.get(id);
-    const rowsOut = summary && summary.rows ? summary.rows : [];
-
-    if (!rowsOut.length) {
+    if (!filtered.length) {
       tableMount.innerHTML = '<p>No games found for this period.</p>';
       return;
     }
 
-    // Helper: find the most recent earlier month where this player has data
-    function getPrevSnapshot(playerName) {
-      if (!filter || id === 'ALL') return null;
-      const idx = orderedIds.indexOf(id);
-      if (idx < 0) return null;
+    const byPlayer = new Map();
 
-      for (let j = idx + 1; j < orderedIds.length; j++) {
-        const prevId = orderedIds[j];
-        const prevSummary = byId.get(prevId);
-        if (!prevSummary || !prevSummary.byPlayer) continue;
-        const prevRow = prevSummary.byPlayer.get(playerName);
-        if (prevRow) {
-          const prevRank = prevSummary.rankMap.get(playerName) || null;
-          return {
-            rank: prevRank,
-            avg: prevRow.avg,
-            best: prevRow.best
+    filtered.forEach(r => {
+      const name = String(r.player || '').trim();
+      if (!name) return;
+      const score = Number(r.score || 0);
+      if (!Number.isFinite(score)) return;
+
+      const existing = byPlayer.get(name) || {
+        player: name,
+        games: 0,
+        total: 0,
+        best: 0
+      };
+
+      existing.games += 1;
+      existing.total += score;
+      if (score > existing.best) existing.best = score;
+
+      byPlayer.set(name, existing);
+    });
+
+    const rowsOut = Array.from(byPlayer.values())
+      .map(p => ({
+        player: p.player,
+        games: p.games,
+        avg: p.games ? p.total / p.games : 0,
+        best: p.best
+      }))
+      .sort((a, b) => b.avg - a.avg);
+
+    // --- Build previous-month aggregates (avg, best, rank) if prevFilter is provided ---
+    let prevMap = null;
+    let prevRankMap = null;
+
+    if (prevFilter && filter && filter.id !== 'ALL') {
+      const prevFiltered = rows.filter(r => {
+        if (!r || !r.player) return false;
+        const score = Number(r.score || 0);
+        if (!Number.isFinite(score)) return false;
+        return prevFilter.match(r.ts);
+      });
+
+      if (prevFiltered.length) {
+        const prevByPlayer = new Map();
+
+        prevFiltered.forEach(r => {
+          const name = String(r.player || '').trim();
+          if (!name) return;
+          const score = Number(r.score || 0);
+          if (!Number.isFinite(score)) return;
+
+          const existing = prevByPlayer.get(name) || {
+            player: name,
+            games: 0,
+            total: 0,
+            best: 0
           };
-        }
+
+          existing.games += 1;
+          existing.total += score;
+          if (score > existing.best) existing.best = score;
+
+          prevByPlayer.set(name, existing);
+        });
+
+        const prevRowsOut = Array.from(prevByPlayer.values())
+          .map(p => ({
+            player: p.player,
+            games: p.games,
+            avg: p.games ? p.total / p.games : 0,
+            best: p.best
+          }))
+          .sort((a, b) => b.avg - a.avg);
+
+        prevMap = new Map();
+        prevRankMap = new Map();
+        prevRowsOut.forEach((p, idx) => {
+          prevMap.set(p.player, p);
+          prevRankMap.set(p.player, idx + 1);
+        });
       }
-      // No earlier month with data for this player => first appearance
-      return null;
     }
 
     function addRankArrow(td, prevRank, currRank) {
       if (!prevRank || !currRank || prevRank === currRank) return;
-      const improved = currRank < prevRank; // lower number = better rank
+      const improved = currRank < prevRank; // lower rank number = better
       const span = document.createElement('span');
       span.textContent = improved ? '▲' : '▼';
       span.style.marginLeft = '4px';
-      span.style.color = improved ? '#7fffd4' : '#ff6b6b';
-      span.style.fontSize = '0.75rem';
+      span.style.color = improved ? '#7fffd4' : '#ff6b6b'; // green up, red down
       td.appendChild(span);
     }
 
@@ -12817,7 +12133,6 @@ window.openPremierLeagueDialog = async function openPremierLeagueDialog() {
       span.textContent = up ? '▲' : '▼';
       span.style.marginLeft = '4px';
       span.style.color = up ? '#7fffd4' : '#ff6b6b';
-      span.style.fontSize = '0.75rem';
       td.appendChild(span);
     }
 
@@ -12826,7 +12141,7 @@ window.openPremierLeagueDialog = async function openPremierLeagueDialog() {
 
     const thead = document.createElement('thead');
     const trh = document.createElement('tr');
-    ['#', 'Player', 'Games', 'Avg Game', 'Best'].forEach(h => {
+    ['#', 'Player', 'Games', 'Avg Total', 'Best'].forEach(h => {
       const th = document.createElement('th');
       th.textContent = h;
       trh.appendChild(th);
@@ -12838,6 +12153,7 @@ window.openPremierLeagueDialog = async function openPremierLeagueDialog() {
 
     rowsOut.forEach((p, idx) => {
       const tr = document.createElement('tr');
+
       const rank = idx + 1;
 
       const tdRank = document.createElement('td');
@@ -12855,81 +12171,14 @@ window.openPremierLeagueDialog = async function openPremierLeagueDialog() {
       const tdBest = document.createElement('td');
       tdBest.textContent = String(p.best);
 
-      if (id !== 'ALL') {
-        const prev = getPrevSnapshot(p.player);
-
-        if (!prev) {
-          // First time this player appears in any tracked month: show tiny NEW badge
-          const badge = document.createElement('span');
-          badge.textContent = 'NEW';
-          badge.style.marginLeft = '4px';
-          badge.style.fontSize = '0.24rem';   // very small
-          badge.style.letterSpacing = '0.06em';
-          badge.style.color = '#ffcc66';      // yellow
-          tdRank.appendChild(badge);
-        } else {
-          // Compare against the last month this player appeared:
-          // - Rank movement (position)
-          // - Avg Game movement
-          // - Best movement
-          addRankArrow(tdRank, prev.rank, rank);
-          addMetricArrow(tdAvg, p.avg, prev.avg);
-          addMetricArrow(tdBest, p.best, prev.best);
-        }
-      }
-
-      // PB / WR badges:
-      // - Month tabs (id !== 'ALL'): PB / WR for Avg Game + Best
-      // - ALL TIME tab (id === 'ALL'): WR only on Best (no PB, no Avg labels)
-      const playerMaxAvg = maxAvgByPlayer.get(p.player);
-      const playerMaxBest = maxBestByPlayer.get(p.player);
-
-      const hasWRAvg  = isRecord(p.avg,  globalMaxAvg);
-      const hasWRBest = isRecord(p.best, globalMaxBest);
-      const hasPBAvg  = !hasWRAvg  && playerMaxAvg  != null && isRecord(p.avg,  playerMaxAvg);
-      const hasPBBest = !hasWRBest && playerMaxBest != null && isRecord(p.best, playerMaxBest);
-
-function addBadge(td, label) {
-  if (!label) return;
-
-  const badge = document.createElement('span');
-  badge.style.marginLeft = '4px';
-  badge.style.fontSize = '0.24rem';    // same size as NEW
-  badge.style.letterSpacing = '0.06em';
-  badge.style.fontWeight = '700';      // bold
-  badge.style.color = '#ffcc66';       // yellow
-
-  // Text label (PB / WR)
-  badge.appendChild(document.createTextNode(label));
-
-  // For WR, append a gold medal emoji right next to the label
-  if (label === 'WR') {
-    const medal = document.createElement('span');
-    medal.textContent = ' 🥇';
-    medal.style.marginLeft = '1px';
-    badge.appendChild(medal);
-  }
-
-  td.appendChild(badge);
-}
-
-      if (id !== 'ALL') {
-        // Month views: show PB/WR for both Avg Game and Best
-        if (hasWRAvg) {
-          addBadge(tdAvg, 'WR');
-        } else if (hasPBAvg) {
-          addBadge(tdAvg, 'PB');
-        }
-
-        if (hasWRBest) {
-          addBadge(tdBest, 'WR');
-        } else if (hasPBBest) {
-          addBadge(tdBest, 'PB');
-        }
-      } else {
-        // ALL TIME: only show WR marker on Best, no PB and no Avg labels
-        if (hasWRBest) {
-          addBadge(tdBest, 'WR');
+      // Add arrows for month-on-month changes when we have previous stats
+      if (prevMap && prevRankMap) {
+        const prevRow = prevMap.get(p.player);
+        const prevRank = prevRankMap.get(p.player);
+        addRankArrow(tdRank, prevRank, rank);
+        if (prevRow) {
+          addMetricArrow(tdAvg, p.avg, prevRow.avg);
+          addMetricArrow(tdBest, p.best, prevRow.best);
         }
       }
 
@@ -12948,61 +12197,30 @@ function addBadge(td, label) {
     if (!rows.length) return;
 
     const filters = buildFilters();
-    const summaries = buildSummaries(rows, filters);
     let currentFilter = filters[0];
+
+    function getPrevFilter(f) {
+      if (!f || f.id === 'ALL') return null;
+      const idx = filters.indexOf(f);
+      if (idx < 0) return null;
+      const nextIdx = idx + 1;
+      if (nextIdx >= filters.length) return null;
+      const prev = filters[nextIdx];
+      if (!prev || prev.id === 'ALL') return null;
+      return prev;
+    }
 
     renderFilters(filters, f => {
       currentFilter = f;
-      renderTable(rows, currentFilter, summaries);
+      const prev = getPrevFilter(currentFilter);
+      renderTable(rows, currentFilter, prev);
     });
 
-    renderTable(rows, currentFilter, summaries);
+    const initialPrev = getPrevFilter(currentFilter);
+    renderTable(rows, currentFilter, initialPrev);
   })();
-}
-// Average Monthly Total modal (stub: safe + non-breaking)
-window.openMonthlyAverageTotalsDialog = function openMonthlyAverageTotalsDialog() {
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-backdrop';
-
-  const modal = document.createElement('div');
-  modal.className = 'modal compact';
-
-  const title = document.createElement('h3');
-  title.textContent = 'Average Monthly Total';
-
-  const body = document.createElement('div');
-  body.className = 'modal-body';
-  body.innerHTML =
-    '<p>This will show each player&apos;s best monthly average game total.</p>' +
-    '<p class="tag">Feature stubbed for now – core game and high scores unchanged.</p>';
-
-  const footer = document.createElement('div');
-  footer.className = 'modal-footer';
-
-  const backBtn = document.createElement('button');
-  backBtn.className = 'btn';
-  backBtn.textContent = 'Back';
-  backBtn.onclick = () => overlay.remove();
-
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn';
-  closeBtn.textContent = 'Close';
-  closeBtn.onclick = () => overlay.remove();
-
-  footer.append(backBtn, closeBtn);
-  modal.append(title, body, footer);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) overlay.remove();
-  });
-  overlay.addEventListener('keydown', e => {
-    if (e.key === 'Escape') overlay.remove();
-  });
-  modal.tabIndex = 0;
-  modal.focus();
 };
+
 
 // Latest Scores modal: overlay with # | Result | Date/Time (no delete column)
 async function openLatestScoresDialog(){
@@ -13150,123 +12368,13 @@ async function openLatestScoresDialog(){
   await render();
 }
 
-// === Player Stats Select: two-step flow (name first, then PIN) ===
-(function(){
-  function initPlayerStatsTwoStep(){
-    const modal      = document.getElementById('selectPlayerModal');
-    const selectEl   = document.getElementById('existingPlayerSelect');
-    const pinInput   = document.getElementById('playerPassword');
-    const cancelBtn  = document.getElementById('cancelSelectPlayerBtn');
-    const confirmBtn = document.getElementById('confirmSelectPlayerBtn');
-
-    // Derive the PIN row container: prefer an element with .ps-password-row,
-    // fall back to the closest `.stack` wrapping the PIN input, then its parent.
-    let pinRow = null;
-    if (modal){
-      pinRow = modal.querySelector('.ps-password-row');
-    }
-    if (!pinRow && pinInput){
-      let node = pinInput.parentElement;
-      while (node && node !== modal && !node.classList.contains('stack')) {
-        node = node.parentElement;
-      }
-      pinRow = node || pinInput.parentElement;
-    }
-
-    if (!modal || !selectEl || !pinRow || !confirmBtn) return;
-
-    // Capture the original Confirm behaviour so we can call it on step 2
-    const originalConfirm = confirmBtn.onclick || null;
-
-    function resetStep(){
-      modal.classList.remove('show-pin');
-      confirmBtn.dataset.step = '1';
-      confirmBtn.textContent = 'Next';
-      if (pinInput) pinInput.value = '';
-      if (pinRow) pinRow.style.display = 'none';
-    }
-
-    // Initial state
-    resetStep();
-
-    // Wrap Cancel so it always resets the flow
-    if (cancelBtn){
-      const originalCancel = cancelBtn.onclick || null;
-      cancelBtn.onclick = function(ev){
-        resetStep();
-        if (typeof originalCancel === 'function') originalCancel(ev);
-      };
-    }
-
-    // Two-step behaviour on Confirm
-    confirmBtn.onclick = function(ev){
-      const step = confirmBtn.dataset.step || '1';
-
-      // STEP 1: only name visible → reveal PIN
-      if (step === '1'){
-        ev.preventDefault();
-        const chosen = (selectEl.value || '').trim();
-        if (!chosen){
-          if (typeof toast === 'function') {
-            toast('Select a saved player');
-          }
-          return;
-        }
-        modal.classList.add('show-pin');
-        confirmBtn.dataset.step = '2';
-        confirmBtn.textContent = 'View Stats';
-        if (pinRow) pinRow.style.display = 'block';
-        if (pinInput) pinInput.focus();
-        return;
-      }
-
-      // STEP 2: run original Confirm logic (auth + stats)
-      resetStep();
-      if (typeof originalConfirm === 'function') {
-        return originalConfirm(ev);
-      }
-    };
-
-    // If other code hides the modal via .hidden, reset on close
-    try {
-      const mo = new MutationObserver(() => {
-        if (modal.classList.contains('hidden')) {
-          resetStep();
-        }
-      });
-      mo.observe(modal, { attributes: true, attributeFilter: ['class'] });
-    } catch(_) {}
-  }
-
-  if (document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', initPlayerStatsTwoStep);
-  } else {
-    initPlayerStatsTwoStep();
-  }
-})();
-
-// === Start Screen: Match Ticker (disabled; use vertical game ticker instead) ===
-(function(){
-  // Legacy stub so any old calls don't explode
-  window.buildMatchTicker = function(){};
-
-  document.addEventListener('DOMContentLoaded', () => {
-    try {
-      // If any old start ticker needs to run (e.g. non-ticker UI tweaks), keep it
-      if (typeof window.buildStartTicker === 'function') {
-        window.buildStartTicker();
-      }
-    } catch(_) {}
-
-    try {
-      // New vertical Sky Sports–style game ticker
-      if (typeof window.initVerticalGameTicker === 'function') {
-        window.initVerticalGameTicker();
-      }
-    } catch(e) {
-      console.error('initVerticalGameTicker failed', e);
-    }
-  });
+// === Player Stats Select: two-step flow (DISABLED to fix saved-player login) ===
+(function () {
+  // Intentionally left empty.
+  // We now rely entirely on the original app behaviour for selectPlayerModal
+  // so that:
+  // - Match setup "Select Player" -> PIN -> ENTER works as before
+  // - Player Stats uses the original single-step flow.
 })();
 
 
