@@ -13288,18 +13288,24 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
     if (typeof toast==='function') toast('Progression not available');
   });
 
-  // 4) Target %
-  addBtn('Target %', 'Accuracy per round (10→20 + D + T + B)', () => {
-    if (typeof window.openPlayerTargetPctDialog === 'function') return window.openPlayerTargetPctDialog(name);
-    if (typeof toast==='function') toast('Target % not available');
+// 4) Target Hit %
+addBtn('Target Hit %', 'Accuracy per round (10→20 + D + T + B)', () => {
+  if (typeof window.openPlayerTargetPctDialog === 'function') return window.openPlayerTargetPctDialog(name);
+  if (typeof toast==='function') toast('Target Hit % not available');
+});
+  
+    // 4b) Target Points %
+  addBtn('Target Points %', 'Points vs maximum (lifetime)', () => {
+    if (typeof window.openPlayerTargetPointsPctDialog === 'function') return window.openPlayerTargetPointsPctDialog(name);
+    if (typeof toast==='function') toast('Target Points % not available');
   });
 
-  // 5) D T B %
-  addBtn('D T B %', 'Hit frequency for doubles / trebles / bull', () => {
+ // 5) D T B Hit %
+  addBtn('D T B Hit %', 'Hit frequency for doubles / trebles (lifetime)', () => {
     if (typeof window.openPlayerDTBPctDialog === 'function') return window.openPlayerDTBPctDialog(name);
-    if (typeof toast==='function') toast('D T B % not available');
+    if (typeof toast==='function') toast('D T B Hit % not available');
   });
-
+  
   // 6) H2H
   addBtn('H2H', 'Wins / Losses / Win % / Avg Score Diff', () => {
     if (typeof window.openPlayerH2HDialog === 'function') return window.openPlayerH2HDialog(name);
@@ -13352,7 +13358,8 @@ function __normalizeGame(g){
     ? g.players.map(p => (p && p.name) ? p.name : String(p||''))
     : (Array.isArray(g?.state?.players) ? g.state.players.map(p => (p && p.name) ? p.name : String(p||'')) : []);
   const totals = Array.isArray(g.totals) ? g.totals : (Array.isArray(g?.state?.totals) ? g.state.totals : []);
-  const board  = g?.state?.board || null;
+// prefer top-level board if present, else state.board
+const board  = Array.isArray(g.board) ? g.board : (g?.state?.board || null);
   const ts     = __gameTs(g);
   return { players, totals, board, ts, raw: g };
 }
@@ -13364,26 +13371,183 @@ function __roundLabels(){
   return ['10','11','12','13','14','15','16','17','18','19','20','D','T','B'];
 }
 
-// Fetch throws for a set of game IDs; filter to a player (case-insensitive) in JS
-async function __fetchThrowsForGames(gameIds){
-  if (!gameIds.length) return [];
-  try{
-    const out=[]; const CHUNK=200;
-    for (let i=0;i<gameIds.length;i+=CHUNK){
-      const slice=gameIds.slice(i,i+CHUNK);
-      const { data, error } = await sb
-        .from(TABLE_GAME_THROWS)
-        .select('game_id, player, round_index, dart_index, points, kind')
-        .in('game_id', slice)
-        .order('game_id',{ascending:true})
-        .order('round_index',{ascending:true})
-        .order('dart_index',{ascending:true});
-      if (error) throw error;
-      out.push(...(data||[]));
+// Build throw rows for a player from normalized games' boards.
+// Supports two shapes:
+//   A) board[playerIndex][round][throw]
+//   B) board[round][playerIndex][throw]
+// Returns rows like: { game_id, player, round_index, dart_index, points, kind }
+function __throwsFromGamesForPlayer(playerName, games){
+  const nameLC = String(playerName||'').trim().toLowerCase();
+  const out = [];
+
+  (games||[]).forEach(g=>{
+    const pIdx = (g.players||[]).findIndex(p => String(p||'').trim().toLowerCase()===nameLC);
+    if (pIdx < 0) return;
+
+    const b = g.board;
+    if (!Array.isArray(b) || !b.length) return;
+
+    // Detect shape
+    // Shape A: b[pIdx] exists and is array of rounds
+    const looksLikeA = Array.isArray(b[pIdx]) && (b[pIdx].length > 0);
+    // Shape B: b[0][pIdx] exists => array of rounds where each round has array for this player
+    const looksLikeB = Array.isArray(b[0]) && Array.isArray(b[0][pIdx]);
+
+    // Build a per-player "rounds list" no matter the shape
+    let rounds = [];
+    if (looksLikeA) {
+      rounds = b[pIdx]; // [round][throw]
+    } else if (looksLikeB) {
+      rounds = b.map(r => r ? r[pIdx] : null); // [round][throw]
+    } else {
+      // Unknown layout — give up on this game
+      return;
     }
-    return out;
-  }catch(e){ console.error('__fetchThrowsForGames failed', e); return []; }
+
+    for (let r = 0; r < Math.min(14, rounds.length || 0); r++){
+      const cell = rounds[r];
+      if (!cell) continue;
+
+      // Each cell can be:
+      //  - array of throws
+      //  - object with { throws: [...] } or { darts: [...] }
+      const list = Array.isArray(cell) ? cell
+                  : (Array.isArray(cell.throws) ? cell.throws
+                     : (Array.isArray(cell.darts) ? cell.darts : []));
+
+      list.forEach((t, di)=>{
+        const ringRaw = (t?.kind || t?.type || t?.segment || t?.ring || '').toString().toLowerCase();
+        const mult  = Number(
+          t?.mult ?? t?.multiplier ??
+          (ringRaw==='double' ? 2 : (ringRaw==='treble'||ringRaw==='triple' ? 3 : 1))
+        ) || 1;
+
+        // value/number: for rounds 0..10 use 10+r fallback; D/T/B rows (11..13) have no number
+        const baseVal = Number(t?.value ?? t?.number ?? t?.n ?? (r<=10 ? (10+r) : NaN));
+        let points  = Number(t?.points ?? t?.pts ?? t?.score);
+        if (!Number.isFinite(points)) {
+          points = (Number.isFinite(baseVal) ? baseVal : 0) * mult;
+        }
+
+        let kind = ringRaw;
+        if (!kind){
+          if (mult===2) kind = 'double';
+          else if (mult===3) kind = 'treble';
+          else if (r===13)   kind = 'bull';
+          else               kind = 'single';
+        }
+
+        out.push({
+          game_id: g.raw?.id || g.raw?.game_id || null,
+          player: g.players[pIdx],
+          round_index: r,
+          dart_index: di,
+          points: Number.isFinite(points) ? points : 0,
+          kind
+        });
+      });
+    }
+  });
+
+  return out;
 }
+
+// Fetch throws for a set of game IDs; returns rows normalized to:
+// { game_id, player, round_index, dart_index, points, kind }
+async function __fetchThrowsForGames(gameIds){
+  const ids = Array.isArray(gameIds) ? gameIds.filter(Boolean) : [];
+  if (!ids.length) return [];
+
+  // Candidate tables to try (put your real table first if you know it)
+  const tableCandidates = [
+    (typeof TABLE_GAME_THROWS !== 'undefined') ? TABLE_GAME_THROWS : 'game_throws',
+    'throws', 'shots', 'game_shots', 'game_darts'
+  ];
+  // Candidate game-id columns to try
+  const idCols = ['game_id','game','gid','match_id','gameId','gameID'];
+
+  // Map raw row -> normalized row
+  const norm = (r) => {
+    const gid =
+      r.game_id ?? r.game ?? r.gid ?? r.match_id ?? r.gameId ?? r.gameID ?? null;
+    const player =
+      r.player ?? r.name ?? r.player_name ?? r.playerName ?? r.p ?? null;
+
+    // round index: prefer 0..13; otherwise derive from number/ring if present
+    let ri = r.round_index ?? r.round ?? r.roundIdx ?? r.ri ?? null;
+    if (ri == null) {
+      const target = r.target ?? r.number ?? r.n ?? null; // 10..20
+      const ring   = (r.ring ?? r.segment ?? r.kind ?? r.type ?? '').toString().toUpperCase();
+      if (typeof target === 'number' && target >= 10 && target <= 20) ri = target - 10;
+      else if (ring === 'D') ri = 11;
+      else if (ring === 'T' || ring === 'TRIPLE' || ring === 'TREBLE') ri = 12;
+      else if (ring === 'B' || ring === 'BULL') ri = 13;
+    }
+
+    let di = r.dart_index ?? r.throw_index ?? r.dart ?? r.d ?? r.index ?? r.di ?? null;
+
+    // points
+    let pts = Number(r.points ?? r.pts ?? r.score ?? NaN);
+    if (!Number.isFinite(pts)) {
+      const val = Number(r.value ?? r.number ?? NaN);
+      const mul = Number(r.mult ?? r.multiplier ?? NaN);
+      if (Number.isFinite(val) && Number.isFinite(mul)) pts = val * mul;
+    }
+
+    // kind
+    let kind = r.kind ?? r.type ?? r.segment ?? r.ring ?? '';
+    if (!kind) {
+      const mul = Number(r.mult ?? r.multiplier ?? NaN);
+      if (mul === 2) kind = 'double';
+      else if (mul === 3) kind = 'treble';
+      else if (mul === 1) kind = 'single';
+    }
+
+    return {
+      game_id: gid, player, round_index: ri, dart_index: di,
+      points: Number.isFinite(pts) ? pts : 0, kind: String(kind || '').toLowerCase()
+    };
+  };
+
+  const out = [];
+  const CHUNK = 200;
+
+  for (const table of tableCandidates) {
+    try {
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const slice = ids.slice(i, i + CHUNK);
+
+        // try each id column until one works
+        let data = null, errLast = null;
+        for (const col of idCols) {
+          try {
+            const { data: d, error } = await sb
+              .from(table)
+              .select('*')
+              .in(col, slice)
+              .order(col, { ascending: true })
+              .limit(2000);
+            if (!error && Array.isArray(d)) { data = d; break; }
+            errLast = error;
+          } catch (e) { errLast = e; }
+        }
+        if (data && data.length) out.push(...data.map(norm));
+      }
+      if (out.length) {
+        console.info('[throws] using table:', table, 'rows:', out.length);
+        break; // found a working table
+      }
+    } catch (e) {
+      console.warn('[throws] failed table', table, e);
+    }
+  }
+
+  if (!out.length) {
+    console.warn('[throws] no throw rows found for supplied game ids:', ids.slice(0,10), '…');
+  }
+  return out;
+}
+
 
 // ==== (1) Latest Matches ======================================================
 window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDialog(playerName){
@@ -13549,6 +13713,8 @@ const FIXED_Y_MAX = Math.max(25, Math.ceil(baseMaxScore / 25) * 25);
   const chartHost = document.createElement('div');
   body.appendChild(row);
   body.appendChild(chartHost);
+  chartHost.style.position = 'relative';
+  chartHost.style.paddingBottom = '22px'; // space for the pill below the axis labels
 
 // --- helpers
 function chunkAvg(arr, k){
@@ -13651,14 +13817,29 @@ const xMax = pts.length ? Math.max(...pts.map(p => p.x)) : 1;
       lbl.textContent = String(v);
       svg.appendChild(lbl);
     }
+    
+    // light gridlines every 50 points across the plot
+for (let gv = 50; gv <= yMax; gv += 50) {
+  const yy = sy(gv);
+  const gl = document.createElementNS(ns, 'line');
+  gl.setAttribute('x1', padL);
+  gl.setAttribute('x2', padL + plotW);
+  gl.setAttribute('y1', yy);
+  gl.setAttribute('y2', yy);
+  gl.setAttribute('stroke', 'currentColor');
+  gl.setAttribute('stroke-opacity', '0.15');
+  gl.setAttribute('stroke-dasharray', '2 4');
+  svg.appendChild(gl);
+}
 
     // Line + dots (dots only in ALL mode)
     if (pts.length) {
       const path = document.createElementNS(ns,'path');
       path.setAttribute('d', pts.map((p,i) => (i ? 'L' : 'M') + sx(p.x) + ',' + sy(p.y)).join(' '));
-      path.setAttribute('fill','none');
-      path.setAttribute('stroke','currentColor');
-      path.setAttribute('stroke-width','2');
+path.setAttribute('fill','none');
+// Blue in AVG modes, normal color in ALL
+path.setAttribute('stroke', (mode === 'ALL') ? 'currentColor' : '#4da3ff');
+path.setAttribute('stroke-width','2');
       svg.appendChild(path);
 
      // Dots only in ALL mode (keep clean lines in AV modes)
@@ -13671,6 +13852,53 @@ if (mode === 'ALL') {
   });
 }
 
+// For AVG modes, show labels but de-clutter aggressively
+if (mode !== 'ALL') {
+  // pixel positions so we can enforce spacing
+  const xs = pts.map(p => sx(p.x));
+  let lastLabeledX = -Infinity;
+
+  // dynamic spacing — more points ⇒ larger min gap
+  const n = pts.length;
+  const MIN_GAP = n > 20 ? 48 : (n > 12 ? 40 : 32);
+
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    const x = xs[i];
+    const y = sy(p.y);
+
+    const isFirst = (i === 0);
+    const isLast  = (i === pts.length - 1);
+
+    // local extrema (peak or valley)
+    let isExtrema = false;
+    if (!isFirst && !isLast) {
+      const py = pts[i - 1].y;
+      const ny = pts[i + 1].y;
+      isExtrema = (p.y > py && p.y >= ny) || (p.y < py && p.y <= ny);
+    }
+
+    const spacedEnough = (x - lastLabeledX) >= MIN_GAP;
+
+    if (isFirst || isLast || isExtrema || spacedEnough) {
+      // slight vertical shift to reduce chance of overlap with line
+      const yOffset = isExtrema ? (isLast ? -6 : -10) : -6;
+
+      const tx = document.createElementNS(ns, 'text');
+      tx.setAttribute('x', x + 4);
+      tx.setAttribute('y', y + yOffset);
+      tx.setAttribute('font-size', '10');
+      tx.setAttribute('fill', 'currentColor');
+      tx.setAttribute('fill-opacity', '0.85');
+      tx.setAttribute('pointer-events', 'none');
+      tx.textContent = (Number(p.y) || 0).toFixed(1);
+      svg.appendChild(tx);
+
+      lastLabeledX = x;
+    }
+  }
+}
+
 // Overall average (visible in ALL and in AV modes)
 const yAvg = sy(avgAll);
 const avgLine = document.createElementNS(ns,'line');
@@ -13678,22 +13906,32 @@ avgLine.setAttribute('x1', padL);
 avgLine.setAttribute('x2', padL + plotW);
 avgLine.setAttribute('y1', yAvg);
 avgLine.setAttribute('y2', yAvg);
-avgLine.setAttribute('stroke', 'currentColor');
-avgLine.setAttribute('stroke-opacity', '0.6');
+avgLine.setAttribute('stroke', '#4da3ff');       // blue
+avgLine.setAttribute('stroke-opacity', '0.7');
 avgLine.setAttribute('stroke-dasharray', '4 4');
 svg.appendChild(avgLine);
-
-const avgLbl = document.createElementNS(ns,'text');
-avgLbl.setAttribute('x', padL + plotW - 4);
-avgLbl.setAttribute('y', yAvg - 4);
-avgLbl.setAttribute('text-anchor','end');
-avgLbl.setAttribute('font-size','10');
-avgLbl.setAttribute('fill','currentColor');
-avgLbl.textContent = 'AVG ' + (avgAll||0).toFixed(1);
-svg.appendChild(avgLbl);
     }
 
-    chartHost.appendChild(svg);
+chartHost.appendChild(svg);
+
+// ---- stats pill (mode-aware) ----
+const oldPill = chartHost.querySelector('.prog-stats');
+if (oldPill) oldPill.remove();
+
+const ys = pts.map(p => Number(p.y) || 0);
+const curAvg = ys.length ? ys.reduce((s,v)=>s+v,0) / ys.length : 0;
+const lo = ys.length ? Math.min(...ys) : 0;
+const hi = ys.length ? Math.max(...ys) : 0;
+
+const pill = document.createElement('div');
+pill.className = 'tag prog-stats';
+pill.textContent = `Avg ${curAvg.toFixed(1)} • Low ${lo.toFixed(1)} • High ${hi.toFixed(1)}`;
+pill.style.position = 'absolute';
+pill.style.right = '6px';
+pill.style.bottom = '-14px';  // sit just below the axis area
+pill.style.zIndex = '3';      // keep above the SVG
+pill.style.pointerEvents = 'none';pill.style.opacity = '0.9';
+chartHost.appendChild(pill);
   }
 
 // initial render (guarded so an error can’t kill the modal)
@@ -13715,15 +13953,37 @@ window.openPlayerTargetPctDialog = async function openPlayerTargetPctDialog(play
   const name = String(playerName||'').trim();
   const overlay = document.createElement('div'); overlay.className='modal-backdrop';
   const modal   = document.createElement('div'); modal.className  ='modal compact';
-  const title   = document.createElement('h3');  title.textContent=`Target % — ${name}`;
-  const body    = document.createElement('div'); body.className   ='modal-body';
+const title   = document.createElement('h3');  title.textContent=`Target Hit % — ${name}`;  const body    = document.createElement('div'); body.className   ='modal-body';
   const footer  = document.createElement('div'); footer.className ='modal-footer';
   modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
   body .style.maxHeight='none'; body .style.overflowY='visible';
 
-  const games = (await __fetchOfficialGames(5000));
-  const ids   = games.map(g => g.id || g.game_id).filter(x=>x!=null);
-  const throwsRows = (typeof TABLE_GAME_THROWS!=='undefined') ? await __fetchThrowsForGames(ids) : [];
+// Collect game IDs from player_games (official only), fallback to official games if needed
+let ids = [];
+try {
+  const { data: pg } = await sb
+    .from(TABLE_PLAYER_GAMES)
+    .select('game_id, is_practice')
+    .eq('player', name)
+    .eq('is_practice', false)
+    .order('game_id', { ascending: true })
+    .limit(5000);
+  ids = (pg || []).map(r => r.game_id).filter(Boolean);
+} catch (_) {}
+
+if (!ids.length) {
+  const games = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+  ids = games
+    .map(g => (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id)
+    .filter(Boolean);
+}
+
+let throwsRows = ids.length ? await __fetchThrowsForGames(ids) : [];
+if (!throwsRows.length) {
+  // Fallback to reconstruct from game boards (lifetime official)
+  const gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+  throwsRows = __throwsFromGamesForPlayer(name, gamesAll);
+}
   const labels = __roundLabels();
   const nameLC = name.toLowerCase();
 
@@ -13738,17 +13998,16 @@ window.openPlayerTargetPctDialog = async function openPlayerTargetPctDialog(play
 
   const table=document.createElement('table'); table.className='hs-table';
   const thead=document.createElement('thead'); const trh=document.createElement('tr');
-  ['Round','Hits','Throws','%'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);});
-  thead.appendChild(trh); table.appendChild(thead);
+  ['Round','Throws','Hits','%'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);});  thead.appendChild(trh); table.appendChild(thead);
   const tbody=document.createElement('tbody');
-  for (let i=0;i<14;i++){
+   for (let i=0;i<14;i++){
     const tr=document.createElement('tr');
     const tdR=document.createElement('td'); tdR.textContent=labels[i];
-    const tdH=document.createElement('td'); tdH.textContent=String(hits[i]);
-    const tdT=document.createElement('td'); tdT.textContent=String(taken[i]);
+    const tdT=document.createElement('td'); tdT.textContent=String(taken[i]); // Throws
+    const tdH=document.createElement('td'); tdH.textContent=String(hits[i]);  // Hits
     const pct= taken[i]? (100*hits[i]/taken[i]) : 0;
     const tdP=document.createElement('td'); tdP.textContent=pct.toFixed(1)+'%';
-    tr.append(tdR,tdH,tdT,tdP); tbody.appendChild(tr);
+    tr.append(tdR,tdT,tdH,tdP); tbody.appendChild(tr);
   }
   table.appendChild(tbody);
   const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.appendChild(table);
@@ -13764,67 +14023,80 @@ window.openPlayerTargetPctDialog = async function openPlayerTargetPctDialog(play
   modal.tabIndex=0; modal.focus();
 };
 
-// ==== (5) D T B % — per number + bull inner/outer ============================
+// ==== (5) D T B Hit % — per number (10..20), lifetime =======================
 window.openPlayerDTBPctDialog = async function openPlayerDTBPctDialog(playerName){
   const name = String(playerName||'').trim();
   const overlay = document.createElement('div'); overlay.className='modal-backdrop';
   const modal   = document.createElement('div'); modal.className  ='modal compact';
-  const title   = document.createElement('h3');  title.textContent=`D T B % — ${name}`;
+  const title   = document.createElement('h3');  title.textContent = `D T B Hit % — ${name}`;
   const body    = document.createElement('div'); body.className   ='modal-body';
   const footer  = document.createElement('div'); footer.className ='modal-footer';
   modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
   body .style.maxHeight='none'; body .style.overflowY='visible';
 
-  const games = (await __fetchOfficialGames(5000));
-  const ids   = games.map(g => g.id || g.game_id).filter(x=>x!=null);
-  const throwsRows = (typeof TABLE_GAME_THROWS!=='undefined') ? await __fetchThrowsForGames(ids) : [];
-  const nameLC = name.toLowerCase();
-  const mine = throwsRows.filter(t => String(t.player||'').trim().toLowerCase()===nameLC);
+// Lifetime throws across all official games (build IDs from player_games)
+let ids = [];
+try {
+  const { data: pg } = await sb
+    .from(TABLE_PLAYER_GAMES)
+    .select('game_id, is_practice')
+    .eq('player', name)
+    .eq('is_practice', false)
+    .order('game_id', { ascending: true })
+    .limit(5000);
+  ids = (pg || []).map(r => r.game_id).filter(Boolean);
+} catch (_) {}
+
+if (!ids.length) {
+  const games = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+  ids = games
+    .map(g => (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id)
+    .filter(Boolean);
+}
+
+let throwsRows = ids.length ? await __fetchThrowsForGames(ids) : [];
+if (!throwsRows.length) {
+  const gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+  throwsRows = __throwsFromGamesForPlayer(name, gamesAll);
+}  const mine = throwsRows.filter(t => String(t.player||'').trim().toLowerCase() === name.toLowerCase());
   const kindL = t => String(t.kind||'').toLowerCase();
 
-  // 10..20 rows (round_index 0..10)
-  const perNum = [];
-  for (let r=0;r<=10;r++){
+  // Build per-target stats for 10..20 (round_index 0..10)
+  const rows = [];
+  for (let r=0; r<=10; r++){
+    const target = 10 + r;
     const shots = mine.filter(t => t.round_index === r);
-    const n = shots.length;
-    const d = shots.filter(t => kindL(t).includes('double')).length;
-    const t = shots.filter(t => kindL(t).includes('treble') || kindL(t).includes('triple')).length;
-    perNum.push({ label:String(10+r), dHits:d, dThrows:n, dPct: n?(100*d/n):0, tHits:t, tThrows:n, tPct:n?(100*t/n):0 });
+    const throwsN = shots.length;
+    const dHits = shots.filter(t => kindL(t).includes('double')).length;
+    const tHits = shots.filter(t => kindL(t).includes('treble') || kindL(t).includes('triple')).length;
+    const dPct = throwsN ? (100 * dHits / throwsN) : 0;
+    const tPct = throwsN ? (100 * tHits / throwsN) : 0;
+    const hitPct = throwsN ? (100 * (dHits + tHits) / throwsN) : 0; // for ranking
+    rows.push({ target, throwsN, dPct, tPct, hitPct });
   }
-  // Bull (round_index 13)
-  const bullShots = mine.filter(t => t.round_index === 13);
-  const bullN = bullShots.length;
-  const inner = bullShots.filter(t => kindL(t).includes('inner') || kindL(t).includes('double bull') || kindL(t).includes('bullseye')).length;
-  const outer = bullShots.filter(t => kindL(t).includes('outer') || kindL(t).includes('single bull')).length;
+  // Rank by total hit% (D or T) descending, only among rows with throws>0
+  const rankedTargets = rows
+    .filter(r => r.throwsN > 0)
+    .slice()
+    .sort((a,b)=> b.hitPct - a.hitPct || b.dPct - a.dPct || b.tPct - a.tPct)
+    .map((r,idx)=>({target:r.target, rank: idx+1}));
+  const rankMap = new Map(rankedTargets.map(x=>[x.target, x.rank]));
 
+  // Table
   const table=document.createElement('table'); table.className='hs-table';
   const thead=document.createElement('thead'); const trh=document.createElement('tr');
-  ['Target','D Hits','D Throws','D %','T Hits','T Throws','T %'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);});
+  ['Target','Throws','D %','T %','Rank'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);});
   thead.appendChild(trh); table.appendChild(thead);
 
   const tbody=document.createElement('tbody');
-  perNum.forEach(r=>{
+  rows.forEach(r=>{
     const tr=document.createElement('tr');
-    const mk=v=>{ const td=document.createElement('td'); td.textContent=(typeof v==='number')? (Number.isFinite(v)? (v.toFixed ? v.toFixed(1) : String(v)) : '0') : String(v); return td; };
-    tr.append(mk(r.label), mk(r.dHits), mk(r.dThrows), mk(r.dPct+'%'), mk(r.tHits), mk(r.tThrows), mk(r.tPct+'%'));
+    const mk = v => { const td=document.createElement('td'); td.textContent = (typeof v==='number') ? (Number.isFinite(v) ? (v % 1 === 0 ? String(v) : v.toFixed(1)) : '0') : (v??''); return td; };
+    tr.append(mk(r.target), mk(r.throwsN), mk(r.dPct ? (r.dPct.toFixed(1)+'%') : '0%'), mk(r.tPct ? (r.tPct.toFixed(1)+'%') : '0%'), mk(rankMap.get(r.target) || '—'));
     tbody.appendChild(tr);
   });
-  // Bull inner
-  {
-    const tr=document.createElement('tr');
-    const pct = bullN ? (100*inner/bullN) : 0;
-    tr.append(...['BULL (inner)', inner, bullN, pct.toFixed(1)+'%', '', '', ''].map(v=>{ const td=document.createElement('td'); td.textContent=String(v); return td; }));
-    tbody.appendChild(tr);
-  }
-  // Bull outer
-  {
-    const tr=document.createElement('tr');
-    const pct = bullN ? (100*outer/bullN) : 0;
-    tr.append(...['BULL (outer)', outer, bullN, pct.toFixed(1)+'%', '', '', ''].map(v=>{ const td=document.createElement('td'); td.textContent=String(v); return td; }));
-    tbody.appendChild(tr);
-  }
-
   table.appendChild(tbody);
+
   const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.appendChild(table);
   body.appendChild(scroll);
 
@@ -13834,7 +14106,8 @@ window.openPlayerDTBPctDialog = async function openPlayerDTBPctDialog(playerName
   closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
 
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();});
+  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
   modal.tabIndex=0; modal.focus();
 };
 
@@ -13900,6 +14173,138 @@ window.openPlayerH2HDialog = async function openPlayerH2HDialog(playerName){
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
   overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
   modal.tabIndex=0; modal.focus();
+};
+
+// ==== (4b) Target Points % — points vs max per throw (lifetime) =============
+window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPctDialog(playerName){
+  const name = String(playerName||'').trim();
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className  ='modal compact';
+  const title   = document.createElement('h3');  title.textContent = `Target Points % — ${name}`;
+  const body    = document.createElement('div'); body.className   ='modal-body';
+  const footer  = document.createElement('div'); footer.className ='modal-footer';
+  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
+  body .style.maxHeight='none'; body .style.overflowY='visible';
+
+  // Lifetime throws (official only)
+let ids = [];
+try {
+  const { data: pg } = await sb
+    .from(TABLE_PLAYER_GAMES)
+    .select('game_id, is_practice')
+    .eq('player', name)
+    .eq('is_practice', false)
+    .order('game_id', { ascending: true })
+    .limit(5000);
+  ids = (pg || []).map(r => r.game_id).filter(Boolean);
+} catch (_) {}
+
+if (!ids.length) {
+  const games = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+  ids = games
+    .map(g => (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id)
+    .filter(Boolean);
+}
+
+let throwsRows = ids.length ? await __fetchThrowsForGames(ids) : [];
+if (!throwsRows.length) {
+  const gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+  throwsRows = __throwsFromGamesForPlayer(name, gamesAll);
+}  const mine = throwsRows.filter(t => String(t.player||'').trim().toLowerCase() === name.toLowerCase());
+
+// Aggregate per target 10..20
+const rows=[];
+for (let r=0; r<=10; r++){
+  const target = 10 + r;
+  const shots   = mine.filter(t => t.round_index === r);
+
+  // Thrown = number of darts thrown at this target across all rounds
+  const throwsN = shots.length;
+
+  // Actual Hits (marks): single=1, double=2, treble=3 (miss=0)
+  const hitsUnits = shots.reduce((s,t)=>{
+    const k = String(t.kind||'').toLowerCase();
+    if (k.includes('treble') || k.includes('triple')) return s + 3;
+    if (k.includes('double')) return s + 2;
+    if (k.includes('single')) return s + (Number(t.points||0) > 0 ? 1 : 0);
+    // Fallback: infer marks from points/target if kind missing
+    const ratio = Number(t.points||0) / target;
+    if (ratio >= 2.5) return s + 3;
+    if (ratio >= 1.5) return s + 2;
+    if (ratio >= 0.5) return s + 1;
+    return s;
+  }, 0);
+
+  // Available Hits = 3 marks per dart (equivalent to 9 per round)
+  const available = 3 * throwsN;
+
+  // Points % (your definition) = Actual Hits ÷ Available Hits
+  const pct = available ? (100 * hitsUnits / available) : 0;
+
+  rows.push({ target, throwsN, hitsUnits, available, pct });
+}
+
+  // Table
+  const table=document.createElement('table'); table.className='hs-table';
+  const thead=document.createElement('thead'); const trh=document.createElement('tr');
+['Target','Thrown','Available Hits','Actual Hits','Points %'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);});
+  thead.appendChild(trh);
+table.appendChild(thead);
+
+// sticky header like other tables
+Array.from(trh.children).forEach(th => {
+  th.style.position = 'sticky';
+  th.style.top = '0';
+  th.style.zIndex = '2';
+  th.style.background = 'rgba(0,0,0,0.4)';
+});
+  const tbody=document.createElement('tbody');
+
+rows.forEach(r=>{
+  const tr=document.createElement('tr');
+
+  const tdTarget=document.createElement('td'); tdTarget.textContent = String(r.target);
+  const tdThrown=document.createElement('td'); tdThrown.textContent = String(r.throwsN);
+
+  const available = 3 * (r.throwsN || 0);
+  const tdAvail   = document.createElement('td'); tdAvail.textContent = String(available);
+
+  const tdHits    = document.createElement('td'); tdHits.textContent   = String(r.hitsUnits || 0);
+
+  const tdPct     = document.createElement('td'); tdPct.textContent    = (r.pct||0).toFixed(1)+'%';
+
+  tr.append(tdTarget, tdThrown, tdAvail, tdHits, tdPct);
+  tbody.appendChild(tr);
+});
+
+  table.appendChild(tbody);
+
+  const info=document.createElement('p');
+  info.className='tag';
+  info.style.marginTop='8px';
+info.textContent = 'Actual Hits = single 1 • double 2 • treble 3 — Available Hits = 3 × thrown (9 per round) — Points % = Actual Hits ÷ Available Hits';  const scroll=document.createElement('div');
+  scroll.style.maxHeight='56vh';
+  scroll.style.overflowY='auto';
+  scroll.style.borderRadius='8px';
+  scroll.appendChild(table);
+
+  body.appendChild(scroll);
+  body.appendChild(info);
+
+  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
+  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
+
+  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();});
+  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
+  modal.tabIndex=0; modal.focus();
+};
+
+// Back-compat alias (if any old code still calls the previous name)
+window.openPlayerDTBPointsPctDialog = function(name){
+  return window.openPlayerTargetPointsPctDialog(name);
 };
 
 // === Player Stats — shim so the Select Player modal can open stats (always hub) ===
