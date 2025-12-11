@@ -451,6 +451,12 @@ body.xmas #newGameBtn {
   font-weight:800;   /* bold target labels (10–Bull) */
 }
 
+/* round sub-value (the bracketed "(30)") defaults to muted */
+.round-sub { color: var(--hint, rgba(255,255,255,.65)); }
+
+/* only the top per-round score(s) get green */
+.round-sub.is-round-high { color: var(--green, #37d67a); font-weight: 600; }
+
 /* Reverted: show cumulative total as main and round score in parentheses below */
 #scoreWrap .cell-main{
   display:block !important;
@@ -1319,6 +1325,39 @@ function symbolForDart(d, rd){
   // Fallback
   return { ch: '○', cls: '' };
 }
+
+// Mark the highest bracketed value per round as green.
+// Works on any score-sheet markup as long as the bracket text contains a number.
+window.markRoundHighs = function markRoundHighs(root = document) {
+  // cover 10..20 + D/T/B = 14 rows => indexes 0..13
+  for (let r = 0; r <= 13; r++) {
+    // try to find bracketed elements; prefer ones tagged with data-round if present
+    const subs = Array.from(
+      root.querySelectorAll(`.round-sub[data-round="${r}"], [data-round="${r}"] .round-sub`)
+    );
+
+    // fallback: just grab all .round-sub in the table section for this round
+    const bucket = subs.length ? subs :
+      Array.from(root.querySelectorAll(`.round-sub`))
+        .filter(el => el.closest('[data-round-index]')?.getAttribute('data-round-index') == String(r));
+
+    if (!bucket.length) continue;
+
+    // read a numeric value from data-points if provided, else parse `(123)`
+    const values = bucket.map(el => {
+      const v = Number(el.dataset.points);
+      if (Number.isFinite(v)) return v;
+      const m = (el.textContent || '').match(/-?\d+(?:\.\d+)?/);
+      return m ? Number(m[0]) : 0;
+    });
+
+    const max = Math.max(0, ...values);
+
+    bucket.forEach((el, i) => {
+      el.classList.toggle('is-round-high', values[i] === max && max > 0);
+    });
+  }
+};
 
 // Fetch per-dart pattern for a specific game/player/round (e.g. "S/S/D" or "x/T/T")
 async function fetchRoundPattern(gameId, playerName, ridx){
@@ -13405,19 +13444,15 @@ const bestRound = bestRoundFromBoards(name, games) || null;
 const qualifiedOpp = Array.from(vs.values()).filter(r=> r.n >= 5).map(r=>({ ...r, pct: (r.W+r.L) ? (100*r.W/(r.W+r.L)) : 0 }));  const bff = qualifiedOpp.length ? qualifiedOpp.reduce((m,r)=> r.pct>m.pct?r:m, qualifiedOpp[0]) : null;
   const nem = qualifiedOpp.length ? qualifiedOpp.reduce((m,r)=> r.pct<m.pct?r:m, qualifiedOpp[0]) : null;
 
-// Build my throws now so Favorite/Worst can use them without waiting for the later power-rank section
-let onlyTargetRounds = [];
-try {
   // lifetime, from the games we already loaded at the top of this function
-  const myThrowsFromBoards = __throwsFromGamesForPlayer(name, games);
+const myThrowsFromBoards = __throwsFromGamesForPlayer(name, games);
+let onlyTargetRounds = [];
+if (Array.isArray(myThrowsFromBoards) && myThrowsFromBoards.length) {
   onlyTargetRounds = myThrowsFromBoards.filter(
     t => typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 10 // 10..20 only
   );
-} catch (_) {
-  onlyTargetRounds = [];
 }
 
-  // 5) Favorite / Worst Number from Target Points % (10..20), lifetime
   // Reuse same hits model: “marks per dart” (single=1, double=2, treble=3)
   const markUnits = (t, target) => {
     const k = String(t.kind||'').toLowerCase();
@@ -13515,24 +13550,33 @@ const powerRows = Array.from(roundsByPlayer.entries()).map(([player, list]) => {
     return (at - bt) || (a.ri - b.ri);
   });
 
-  const last = list.slice(-WINDOW_ROUNDS);
-  const n    = last.length;
-  const pts  = last.reduce((s, r) => s + Number(r.sum || 0), 0);
+  const last     = list.slice(-WINDOW_ROUNDS);
+  const n        = last.length;
+  const pts      = last.reduce((s, r) => s + Number(r.sum || 0), 0);
   const avgRound = n ? (pts / n) : 0;
+  const recentTs = last.length ? (last[last.length - 1].ts || 0) : 0;
   const qualifies = n >= MIN_ROUNDS_QUALIFY;
 
-  return { player, rounds: n, avgRound, qualifies };
+  return { player, rounds: n, avgRound, recentTs, qualifies };
 });
 
-// Sort by avgRound descending (like the table)
-powerRows.sort((a, b) => b.avgRound - a.avgRound);
+// Sort using the same tie-breakers as the Power Rankings table:
+// 1) avg/round ↓, 2) rounds ↓, 3) most-recent ts ↓, 4) player name ↑
+const qualified = powerRows
+  .filter(r => r.qualifies)
+  .sort((a, b) =>
+    (b.avgRound - a.avgRound) ||
+    (b.rounds   - a.rounds)   ||
+    (b.recentTs - a.recentTs) ||
+    String(a.player).localeCompare(String(b.player))
+  );
 
-// Position among **qualified** players only
-const qualified = powerRows.filter(r => r.qualifies);
-const myPower   = powerRows.find(r => r.player.toLowerCase() === name.toLowerCase()) || null;
-const myPowerPos = (myPower && myPower.qualifies)
-  ? (qualified.findIndex(r => r.player.toLowerCase() === name.toLowerCase()) + 1)
-  : null;
+// My row + absolute position among qualified
+const myPower = qualified.find(
+  r => r.player.toLowerCase() === name.toLowerCase()
+) || null;
+
+const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
 
   // Highest power rank (historical) — not tracked; show current as best for now.
   const bestPowerPos = myPowerPos || null;
@@ -13579,8 +13623,11 @@ const myPowerPos = (myPower && myPower.qualifies)
   // Top: Games / Current & Highest Power Rank
   body.appendChild(section('Overview'));
   grid.appendChild(card('Games', String(GAMES)));
-  grid.appendChild(card('Current Power Rank', myPower && myPower.qualifies ? `${myPower.avgRound.toFixed(2)}  (#${myPowerPos})` : '—', 
-  myPower ? `${myPower.throws} throws` : ''));
+grid.appendChild(card(
+  'Current Power Rank',
+  (myPower && myPower.qualifies) ? `${myPower.avgRound.toFixed(2)}  (#${myPowerPos})` : '—',
+  myPower ? `${myPower.rounds} rounds (last ${WINDOW_ROUNDS} window)` : ''
+));
   grid.appendChild(card('Highest Power Rank', bestPowerPos ? `#${bestPowerPos}` : '—', 'Best historical position (requires rank history)'));
   body.appendChild(grid);
 
@@ -15013,12 +15060,39 @@ document.addEventListener('DOMContentLoaded', function(){
         backdrop-filter: blur(4px);
       }
       #${TOGGLE_ID}.on { background: rgba(40,179,94,.22); border-color: rgba(40,179,94,.35); }
+            /* candy-cane accents */
+      body.xmas .modal.compact::before {
+        content: '';
+        position: absolute; left: 0; right: 0; top: 0; height: 6px;
+        background: repeating-linear-gradient(45deg,
+          #e44343 0 10px, #ffffff 10px 20px, #28b35e 20px 30px, #ffffff 30px 40px);
+        border-top-left-radius: 6px; border-top-right-radius: 6px;
+        opacity: .9; pointer-events: none;
+      }
+      body.xmas table.hs-table thead th {
+        border-bottom: 2px solid rgba(255,255,255,.15);
+        background-image: linear-gradient(to bottom, rgba(255,255,255,.05), rgba(0,0,0,0));
+      }
+      /* medal glow */
+      body.xmas .medal-gold  { filter: drop-shadow(0 0 6px rgba(255,215,0,.45)); }
+      body.xmas .medal-silver{ filter: drop-shadow(0 0 6px rgba(210,210,210,.35)); }
+      body.xmas .medal-bronze{ filter: drop-shadow(0 0 6px rgba(205,127,50,.35)); }
+      /* heavy mode: brighter lights bar */
+      body[data-xmas="heavy"] #xmasLights { filter: brightness(1.25); }
+      /* subtle snow pile at the very bottom */
+      body.xmas::after{
+        content:''; position:fixed; left:0; right:0; bottom:0; height:18px; z-index:2; pointer-events:none;
+        background: radial-gradient(50% 120% at 50% 150%, rgba(255,255,255,.25), rgba(255,255,255,0) 70%);
+      }
+      
     `;
     const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = css;
     document.head.appendChild(style);
   }
+  
+  
 
   function addLights(){
     if (document.getElementById(LIGHTS_ID)) return;
@@ -15027,8 +15101,10 @@ document.addEventListener('DOMContentLoaded', function(){
     document.body.appendChild(bar);
   }
 
-  function startSnow(){
+   function startSnow(mode){
     if (document.getElementById(SNOW_ID)) return;
+    setSnowCfgFor(mode || getSavedMode() || 'light');
+
     const c = document.createElement('canvas');
     c.id = SNOW_ID;
     const ctx = c.getContext('2d');
@@ -15036,14 +15112,14 @@ document.addEventListener('DOMContentLoaded', function(){
 
     function resize(){
       c.width = window.innerWidth; c.height = window.innerHeight;
-      // build a modest number of flakes relative to viewport
-      const target = Math.min(140, Math.round((c.width * c.height) / 15000));
+      const base = Math.round((c.width * c.height) / 15000); // baseline density
+      const target = Math.min(220, Math.max(40, Math.round(base * snowCfg.density)));
       flakes = Array.from({length: target}, ()=>({
         x: Math.random() * c.width,
         y: Math.random() * c.height,
         r: 0.8 + Math.random() * 2.2,
-        s: 0.4 + Math.random() * 0.9,  // speed
-        d: Math.random() * 2 * Math.PI // drift phase
+        s: (0.4 + Math.random() * 0.9) * snowCfg.speed,  // speed by mode
+        d: Math.random() * 2 * Math.PI
       }));
     }
     resize();
@@ -15054,7 +15130,7 @@ document.addEventListener('DOMContentLoaded', function(){
       ctx.fillStyle = 'rgba(255,255,255,.9)';
       for (const f of flakes){
         f.y += f.s;
-        f.x += Math.sin(f.d += 0.01) * 0.4;
+        f.x += Math.sin(f.d += 0.01) * 0.45;
         if (f.y > c.height + 6) { f.y = -6; f.x = Math.random()*c.width; }
         ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI*2); ctx.fill();
       }
@@ -15067,58 +15143,205 @@ document.addEventListener('DOMContentLoaded', function(){
     if (rafId) cancelAnimationFrame(rafId), rafId = null;
     const c = document.getElementById(SNOW_ID);
     if (c) c.remove();
+    flakes = [];
   }
-
   function ensureToggle(){
     if (document.getElementById(TOGGLE_ID)) return;
     const btn = document.createElement('button');
     btn.id = TOGGLE_ID;
     btn.className = 'btn small';
     btn.type = 'button';
-    btn.textContent = '🎄 Xmas';
-    btn.onclick = () => {
-      const on = !document.body.classList.contains('xmas');
-      if (on) enableXmas(true); else disableXmas(true);
-    };
     document.body.appendChild(btn);
+
+    btn.onclick = () => {
+      // cycle: off -> light -> medium -> heavy -> off
+      const enabled = document.body.classList.contains('xmas');
+      let mode = (document.body.dataset.xmas || getSavedMode() || 'light');
+      if (!enabled) {
+        mode = 'light';
+        enableXmas(true, mode);
+      } else {
+        const i = MODES.indexOf(mode);
+        if (i < MODES.length - 1) {
+          mode = MODES[i+1];
+          // update without turning off
+          setSnowCfgFor(mode);
+          stopSnow(); startSnow(mode);
+          localStorage.setItem('xmas','1');
+          localStorage.setItem('xmasMode', mode);
+        } else {
+          // go OFF
+          disableXmas(true);
+        }
+      }
+      updateToggle();
+    };
+
     updateToggle();
   }
+
   function updateToggle(){
-    const b = document.getElementById(TOGGLE_ID);
-    if (b) b.classList.toggle('on', document.body.classList.contains('xmas'));
+    const btn = document.getElementById(TOGGLE_ID);
+    if (!btn) return;
+    const enabled = document.body.classList.contains('xmas');
+    const mode = document.body.dataset.xmas || getSavedMode() || (enabled ? 'light' : 'off');
+    btn.classList.toggle('on', enabled);
+    btn.textContent = enabled ? `🎄 Xmas: ${mode[0].toUpperCase()+mode.slice(1)}` : '🎄 Xmas: Off';
   }
 
-  function enableXmas(user){
+  function enableXmas(user, mode){
     injectStyles();
     document.body.classList.add('xmas');
+    setSnowCfgFor(mode || getSavedMode() || 'light');
     addLights();
-    startSnow();
+    startSnow(mode);
     ensureToggle(); updateToggle();
-    if (user) localStorage.setItem('xmas','1');
+    if (user) {
+      localStorage.setItem('xmas','1');
+      localStorage.setItem('xmasMode', document.body.dataset.xmas || 'light');
+    }
   }
   function disableXmas(user){
     document.body.classList.remove('xmas');
+    document.body.removeAttribute('data-xmas');
     document.getElementById(LIGHTS_ID)?.remove();
     stopSnow();
     ensureToggle(); updateToggle();
-    if (user) localStorage.removeItem('xmas');
+    if (user) {
+      localStorage.removeItem('xmas');
+      localStorage.removeItem('xmasMode');
+    }
   }
 
   // expose just in case
   window.enableChristmasTheme = enableXmas;
   window.disableChristmasTheme = disableXmas;
 
-  // auto-enable in December, or if user toggled it last time
+   // auto-enable in December or if user saved a mode
   const isDec = (new Date().getMonth() === 11);
-  if (localStorage.getItem('xmas') === '1' || isDec) {
-    // Wait a tick until body is fully ready so canvas sizing is correct
-    setTimeout(()=> enableXmas(false), 0);
+  const saved = getSavedMode();
+  if (saved) {
+    setTimeout(()=> enableXmas(false, saved), 0);
+  } else if (isDec) {
+    setTimeout(()=> enableXmas(false, 'light'), 0);
   } else {
-    // still place the toggle so people can turn it on
     setTimeout(()=> ensureToggle(), 0);
+  }
+    // Snow mode (light/medium/heavy)
+  const MODES = ['light','medium','heavy'];
+  let snowCfg = { density: 1.0, speed: 1.0 };
+
+  function setSnowCfgFor(mode){
+    if (mode === 'medium') { snowCfg = { density: 1.6, speed: 1.2 }; }
+    else if (mode === 'heavy') { snowCfg = { density: 2.2, speed: 1.4 }; }
+    else { snowCfg = { density: 1.0, speed: 1.0 }; }
+    document.body.dataset.xmas = mode || 'light';
+  }
+
+  function getSavedMode(){
+    return localStorage.getItem('xmasMode') || (localStorage.getItem('xmas')==='1' ? 'light' : '');
   }
 })();
 
+/* === Gremlins Xmas GIF — resilient, no embed.js required ================ */
+(function mountGremlins(){
+  const WRAP_ID   = 'gremlinsGif';
+  const GIF_PAGE  = 'https://tenor.com/view/gremlins-singing-christmascarol-christmas-monster-gif-4239908413876512369';
+
+  // Fallback: paste a direct media.tenor.com GIF/MP4 URL here if your CSP blocks iframes.
+  // Example (replace with the actual media link you copy from Tenor): 
+  // const GIF_SRC = 'https://media.tenor.com/XXXXXAA/mp4';
+  const GIF_SRC = ''; // <-- leave empty to try iframe first
+
+  function findAdminAnchor(){
+    return (
+      document.getElementById('adminBtn') ||
+      document.getElementById('adminCodeBtn') ||
+      document.querySelector('[data-role="admin"]') ||
+      Array.from(document.querySelectorAll('button,.btn,[role="button"]'))
+        .find(el => /^\s*admin\s*$/i.test(el.textContent || ''))
+    );
+  }
+
+  function buildWrapper(){
+    const wrap = document.createElement('div');
+    wrap.id = WRAP_ID;
+    wrap.style.maxWidth   = '680px';
+    wrap.style.width      = 'min(680px, 92%)';
+    wrap.style.margin     = '12px auto 8px';
+    wrap.style.borderRadius = '10px';
+    wrap.style.overflow   = 'hidden';
+    wrap.style.boxShadow  = '0 4px 22px rgba(0,0,0,.25)';
+    wrap.style.background = 'rgba(255,255,255,0.03)';
+
+    // Maintain ~16:9 area
+    const holder = document.createElement('div');
+    holder.style.position = 'relative';
+    holder.style.paddingTop = '56.6%'; // 16:9
+    const box = document.createElement('div');
+    box.style.position = 'absolute';
+    box.style.inset = '0';
+
+    if (GIF_SRC) {
+      // Use plain media (no iframe, no scripts)
+      if (GIF_SRC.includes('.mp4')) {
+        const v = document.createElement('video');
+        v.src = GIF_SRC;
+        v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
+        v.style.width = '100%'; v.style.height = '100%'; v.style.objectFit = 'cover';
+        box.appendChild(v);
+      } else {
+        const img = new Image();
+        img.src = GIF_SRC; img.alt = 'Gremlins Singing';
+        img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover';
+        box.appendChild(img);
+      }
+    } else {
+      // Try Tenor’s iframe directly (no embed.js)
+      const iframe = document.createElement('iframe');
+      iframe.src = 'https://tenor.com/embed/gremlins-singing-christmascarol-christmas-monster-gif-4239908413876512369';
+      iframe.allowFullscreen = true;
+      iframe.loading = 'lazy';
+      iframe.referrerPolicy = 'no-referrer-when-downgrade';
+      iframe.style.border = '0';
+      iframe.style.width = '100%';
+      iframe.style.height = '100%';
+      // IMPORTANT: do not add sandbox here (avoids the 'allow-presentation' warning)
+      box.appendChild(iframe);
+    }
+
+    holder.appendChild(box);
+    wrap.appendChild(holder);
+
+    // Credit / fallback click-through
+    const credit = document.createElement('a');
+    credit.href = GIF_PAGE;
+    credit.target = '_blank';
+    credit.rel = 'noopener';
+    credit.textContent = 'Gremlins Singing — Tenor';
+    credit.className = 'tag';
+    credit.style.display = 'block';
+    credit.style.textAlign = 'center';
+    credit.style.marginTop = '6px';
+    wrap.appendChild(credit);
+
+    return wrap;
+  }
+
+  function insertAfterAdmin(){
+    if (document.getElementById(WRAP_ID)) return; // already mounted
+    const admin = findAdminAnchor();
+    if (!admin) return;
+    admin.insertAdjacentElement('afterend', buildWrapper());
+  }
+
+  // Mount once DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', insertAfterAdmin);
+  } else {
+    insertAfterAdmin();
+  }
+})();
 
 </script>
 <!-- PB / GR Admin Modal -->
