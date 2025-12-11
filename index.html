@@ -60,7 +60,18 @@
   width: 100%;
 }
 
+/* Add into the same <style id="xmasStyles"> block if wanted */
+body.xmas td, body.xmas th { text-shadow: 0 0 0 transparent; }
+body.xmas .medal-gold  { filter: drop-shadow(0 0 6px rgba(255,215,0,.45)); }
+body.xmas .medal-silver{ filter: drop-shadow(0 0 6px rgba(210,210,210,.35)); }
+body.xmas .medal-bronze{ filter: drop-shadow(0 0 6px rgba(205,127,50,.35)); }
 
+body.xmas #newGameBtn {
+  border-image: repeating-linear-gradient(
+    45deg, #e44343 0 8px, #ffffff 8px 16px, #28b35e 16px 24px, #ffffff 24px 32px
+  ) 8 / 1.5px / 0 stretch;
+  border-style: solid; border-width: 1.5px;
+}
 
 #startMatchBtn{
   width:100%;          /* same width as the box */
@@ -9868,6 +9879,77 @@ backBtn.onclick  = () => {
   modal.tabIndex = 0; modal.focus();
 };
 
+// === SHARED: Official Power Rankings calculator =============================
+// Returns [{ player, rounds, avgRound, qualifies }] sorted by avgRound desc
+// Rules: practice excluded, rounds = 10..20 + D + T + B, last 50 rounds window,
+//        qualifies with >= 15 rounds (1 game + 1 round)
+window.getOfficialPowerRows = async function getOfficialPowerRows(){
+  const MIN_ROUNDS = 15, WINDOW = 50;
+
+  const allGames = (await __fetchOfficialGames(50000)).map(__normalizeGame)
+    .filter(g => !g.is_practice && g.is_practice !== true);
+
+  const gameTs = new Map();
+  allGames.forEach(g=>{
+    const gid = (g.raw && (g.raw.id||g.raw.game_id)) || g.id || g.game_id;
+    if (gid) gameTs.set(gid, g.ts || null);
+  });
+
+  let allThrows = [];
+  try {
+    const ids = allGames.map(g => (g.raw && (g.raw.id||g.raw.game_id)) || g.id || g.game_id).filter(Boolean);
+    allThrows = await __fetchThrowsForGames(ids);
+  } catch(_) {}
+
+  // fallback from boards if needed
+  if (!allThrows.length){
+    allGames.forEach(g=>{
+      (g.players||[]).forEach(p=>{
+        const rows = __throwsFromGamesForPlayer(p, [g]);
+        if (rows && rows.length) allThrows.push(...rows);
+      });
+    });
+  }
+
+  // keep only proper rounds with finite points
+  allThrows = allThrows.filter(t =>
+    typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 13 &&
+    Number.isFinite(Number(t.points))
+  );
+
+  // sum to per-player round objects (game+round)
+  const roundsByPlayer = new Map(); // player -> [{key, ts, ri, sum}]
+  allThrows.forEach(t=>{
+    const p = String(t.player||'').trim(); if (!p) return;
+    const gid = t.game_id;
+    const ts  = gameTs.get(gid) || null;
+    const ri  = Number(t.round_index||0);
+    const pts = Number(t.points||0);
+    const key = `${gid}|${ri}`;
+    let list = roundsByPlayer.get(p); if (!list){ list=[]; roundsByPlayer.set(p,list); }
+    let r = list.find(e=>e.key===key);
+    if (!r){ r = { key, ts, ri, sum:0 }; list.push(r); }
+    r.sum += pts;
+  });
+
+  // build rows (order rounds by time then round index)
+  const rows = Array.from(roundsByPlayer.entries()).map(([player,list])=>{
+    list.sort((a,b)=>{
+      const at=a.ts?new Date(a.ts).getTime():0, bt=b.ts?new Date(b.ts).getTime():0;
+      return (at-bt) || (a.ri-b.ri);
+    });
+    const last = list.slice(-WINDOW);
+    const n    = last.length;
+    const pts  = last.reduce((s,r)=>s+Number(r.sum||0),0);
+    const avgRound = n ? (pts/n) : 0;
+    const qualifies = n >= MIN_ROUNDS;
+    return { player, rounds:n, avgRound, qualifies };
+  });
+
+  rows.sort((a,b)=> b.avgRound - a.avgRound);
+  return rows;
+};
+
 // === Player Progression dialog (per‑game line graph for a player) ===
 window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(playerName, mode) {
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
@@ -11771,7 +11853,7 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
 
   const powerP = document.createElement('p');
   powerP.className = 'tag';
-  powerP.textContent = 'Average round score, calculated from the last 50 rounds.';
+  powerP.textContent = 'Form Guide';
   powerP.style.width = powerBtn.style.width;
   powerP.style.textAlign = 'center';
   
@@ -11785,7 +11867,7 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
 
   const premierP = document.createElement('p');
   premierP.className = 'tag';
-  premierP.textContent = 'Average match total per player (filter by month)';
+  premierP.textContent = 'Monthly Highest Average League';
   premierP.style.width = premierBtn.style.width;
   premierP.style.textAlign = 'center';
 
@@ -11799,7 +11881,7 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
 
   const highP = document.createElement('p');
   highP.className = 'tag';
-  highP.textContent = 'Highest PB from each saved player';
+  highP.textContent = 'Each Players PBs';
   highP.style.width = highBtn.style.width;
   highP.style.textAlign = 'center';
 
@@ -13126,7 +13208,7 @@ async function openLatestScoresDialog(){
   await render();
 }
 
-// === Player Stats — modal (official games only) ===
+// === Player Stats — redesigned overview =====================================
 window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
   const name = String(playerName || '').trim();
   if (!name) { try{ toast('Pick a player'); }catch(_){ } return; }
@@ -13138,105 +13220,416 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
   const body    = document.createElement('div'); body.className    = 'modal-body';
   const footer  = document.createElement('div'); footer.className  = 'modal-footer';
 
-  // Keep outer fixed; only inner table scrolls (like Premier League)
-  modal.style.maxHeight = '90vh';
-  modal.style.overflow  = 'hidden';
-  body.style.maxHeight  = 'none';
-  body.style.overflowY  = 'visible';
-
-  // Fetch scores (league/official only)
-  let rows = [];
-  try{
-    if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) throw new Error('Cloud not initialised');
-    const { data, error } = await sb
-      .from(TABLE_PLAYER_GAMES)
-      .select('player, score, ts, is_practice')
-      .eq('is_practice', false)
-      .eq('player', name)
-      .order('ts', { ascending: true })
-      .limit(5000);
-    if (error) throw error;
-    rows = data || [];
-  }catch(e){
-    console.error('Player Stats fetch failed', e);
-    body.innerHTML = '<p>Failed to load player stats.</p>';
-  }
-
-  // Compute summary
-  const games = rows.length;
-  const total = rows.reduce((s,r)=> s + Number(r.score || 0), 0);
-  const avg   = games ? (total / games) : 0;
-  const best  = rows.reduce((m,r)=> Math.max(m, Number(r.score||0)), 0);
-  const lastTs = rows[games-1]?.ts || null;
-
-  // Summary row
-  const summary = document.createElement('div');
-  summary.className = 'row';
-  summary.style.gap = '12px';
-  summary.style.margin = '0 0 8px 0';
-  const pill = (label, val) => {
-    const p = document.createElement('span');
-    p.className = 'tag';
-    p.textContent = `${label}: ${val}`;
-    return p;
-  };
-  summary.append(
-    pill('Games', String(games)),
-    pill('Avg Total', avg.toFixed(1)),
-    pill('PB', String(best)),
-    pill('Last Played', (lastTs && typeof window.fmtWhen === 'function') ? window.fmtWhen(lastTs) : (lastTs ? new Date(lastTs).toLocaleDateString() : '—'))
-  );
-
-  // Table: recent games (newest → oldest)
-  const table = document.createElement('table'); table.className = 'hs-table';
-  const thead = document.createElement('thead');
-  const trh   = document.createElement('tr');
-  ['#','Score','When'].forEach(h=>{
-    const th = document.createElement('th'); th.textContent = h; trh.appendChild(th);
-  });
-  thead.appendChild(trh); table.appendChild(thead);
-
-  // Sticky header
-  Array.from(trh.children).forEach(th => { th.style.position='sticky'; th.style.top='0'; th.style.zIndex='2'; th.style.background='rgba(0,0,0,0.4)'; });
-
-  const tbody = document.createElement('tbody');
-  const recents = rows.slice().sort((a,b)=> (new Date(b.ts) - new Date(a.ts))); // newest first
-  recents.forEach((r, idx)=>{
-    const tr = document.createElement('tr');
-    const tdNum   = document.createElement('td'); tdNum.textContent   = String(idx + 1);
-    const tdScore = document.createElement('td'); tdScore.textContent = String(r.score || 0);
-    const tdWhen  = document.createElement('td');
-    tdWhen.textContent = (r.ts && typeof window.fmtWhen === 'function')
-      ? window.fmtWhen(r.ts)
-      : (r.ts ? new Date(r.ts).toLocaleString(undefined,{ year:'2-digit', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : '');
-    tr.append(tdNum, tdScore, tdWhen);
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
-
-  // Single inner scroller for the table
-  const scroll = document.createElement('div');
-  scroll.style.maxHeight = '56vh';
-  scroll.style.overflowY = 'auto';
-  scroll.style.borderRadius = '8px';
-  scroll.appendChild(table);
-
-  // Mount modal
-  body.appendChild(summary);
-  body.appendChild(scroll);
-
-  const backBtn  = document.createElement('button'); backBtn.className = 'btn'; backBtn.textContent = 'Back';
-  const closeBtn = document.createElement('button'); closeBtn.className = 'btn'; closeBtn.textContent = 'Close';
-backBtn.onclick  = () => { overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };  closeBtn.onclick = () => overlay.remove();
-  footer.append(backBtn, closeBtn);
-
+  // Fixed outer; inner content can scroll
+  modal.style.maxHeight = '90vh'; modal.style.overflow = 'hidden';
+  body .style.maxHeight = 'none'; body .style.overflowY = 'auto';
+  
+    // Mount early so we never "flash" back to home between dialogs
+  body.innerHTML = '<p class="muted">Loading…</p>';
   modal.append(title, body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
-
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
-  modal.tabIndex = 0; modal.focus();
+  modal.tabIndex = 0; 
+  modal.focus();
+
+  // Helpers
+  const monthKey = d => {
+    const x = (d instanceof Date) ? d : (d ? new Date(d) : null);
+    return x && !Number.isNaN(x.getTime()) ? `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}` : '';
+  };
+  const monthLabel = k => {
+    if (!k) return '—';
+    const [y,m] = k.split('-').map(Number);
+    return new Date(y, m-1, 1).toLocaleString(undefined,{ month:'short', year:'numeric' }).toUpperCase();
+  };
+
+  // 1) All official games (normalized, oldest→newest)
+  const games = (await __fetchOfficialGames(50000)).map(__normalizeGame)
+    .filter(g => Array.isArray(g.players) && g.players.some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()))
+    .sort((a,b)=> (new Date(a.ts) - new Date(b.ts)));
+
+  // Short-circuit if nothing
+    if (!games.length){
+    body.innerHTML = '';
+    const p = document.createElement('p');
+    p.textContent = 'No official games found for this player.';
+    body.appendChild(p);
+    footer.innerHTML = '';
+    const closeBtn = document.createElement('button'); 
+    closeBtn.className='btn'; 
+    closeBtn.textContent='Close';
+    closeBtn.onclick = () => overlay.remove();
+    footer.append(closeBtn);
+    modal.focus();
+    return;
+  }
+
+  // Index for this player and raw scores
+  const idxOf = g => g.players.findIndex(p => String(p||'').trim().toLowerCase()===name.toLowerCase());
+  const scores = games.map(g => Number(g.totals[idxOf(g)] || 0));
+
+  // 2) Basic aggregates
+  const GAMES = scores.length;
+  const TOTAL = scores.reduce((s,v)=>s+v,0);
+  const AVG   = GAMES ? (TOTAL / GAMES) : 0;
+  const PB    = GAMES ? Math.max(...scores) : 0;
+  const LOW   = GAMES ? Math.min(...scores) : 0;
+
+  // Per-game ranks (1st place detection) and per-month buckets
+  const monthly = new Map(); // key -> { sum, n, wins }
+  games.forEach((g,i)=>{
+    const meI = idxOf(g);
+    const meS = Number(g.totals[meI] || 0);
+    const max = Math.max(...(g.totals||[]).map(Number));
+    const win = meS === max ? 1 : 0;
+
+    const k = monthKey(g.ts);
+    const rec = monthly.get(k) || { sum:0, n:0, wins:0 };
+    rec.sum += meS; rec.n += 1; rec.wins += win;
+    monthly.set(k, rec);
+  });
+
+  // Highest/lowest monthly averages
+  const monthlyRows = Array.from(monthly.entries()).map(([k,rec])=>({ k, avg: rec.n ? rec.sum/rec.n : 0, wins: rec.wins }));
+  monthlyRows.sort((a,b)=> a.k.localeCompare(b.k));
+  const bestMonth = monthlyRows.length ? monthlyRows.reduce((m,r)=> r.avg>m.avg?r:m, monthlyRows[0]) : null;
+  const worstMonth= monthlyRows.length ? monthlyRows.reduce((m,r)=> r.avg<m.avg?r:m, monthlyRows[0]) : null;
+
+  // PL Average (career) & PL Monthly Wins (current month)
+const nowK = monthKey(new Date());
+
+// Premier League "Monthly Wins":
+// # of months this player finished 1st by monthly average (min 3 games)
+function computePLMonthlyWinsTop(games, minGames = 3, me = name){
+  const byMonthPlayer = new Map(); // `${month}|${player}` -> { sum, n }
+
+  games.forEach(g=>{
+    const mk = monthKey(g.ts);
+    (g.players||[]).forEach((p,i)=>{
+      const key = `${mk}|${p}`;
+      const rec = byMonthPlayer.get(key) || { sum:0, n:0 };
+      rec.sum += Number(g.totals[i] || 0);
+      rec.n   += 1;
+      byMonthPlayer.set(key, rec);
+    });
+  });
+
+  const months = new Set(Array.from(byMonthPlayer.keys()).map(k=>k.split('|')[0]));
+  let wins = 0;
+
+  months.forEach(mk=>{
+    const contenders = [];
+    byMonthPlayer.forEach((rec,key)=>{
+      const [k,p] = key.split('|');
+      if (k !== mk) return;
+      if (rec.n >= minGames) contenders.push({ player:p, avg: rec.sum/rec.n });
+    });
+    if (!contenders.length) return;
+    contenders.sort((a,b)=> b.avg - a.avg);
+    if (contenders[0].player.toLowerCase() === me.toLowerCase()) wins += 1;
+  });
+
+  return wins;
+}
+const plMonthlyWins = computePLMonthlyWinsTop(games, 3, name);
+
+ // 3) Highest Scoring Round (10→20 only) with S/D/T breakdown — robust via boards
+function bestRoundFromBoards(playerName, games){
+  const nameLC = String(playerName||'').trim().toLowerCase();
+  let best = null;
+
+  games.forEach(g=>{
+    const pIdx = (g.players||[]).findIndex(p => String(p||'').trim().toLowerCase()===nameLC);
+    if (pIdx < 0) return;
+    const b = g.board; if (!b) return;
+
+    const looksA = Array.isArray(b[pIdx]);
+    const looksB = Array.isArray(b[0]) && Array.isArray(b[0][pIdx]);
+    const rounds = looksA ? b[pIdx] : (looksB ? b.map(r => r ? r[pIdx] : null) : []);
+
+    for (let r = 0; r < Math.min(14, rounds.length || 0); r++){
+      if (r > 10) break; // 10..20 only
+      const cell = rounds[r]; if (!cell) continue;
+
+      const list = Array.isArray(cell)
+        ? cell
+        : (Array.isArray(cell.throws) ? cell.throws : (Array.isArray(cell.darts) ? cell.darts : []));
+
+      let sum = 0, s = 0, d = 0, t = 0;
+      const target = 10 + r;
+
+      list.forEach(tw=>{
+        const ringRaw = (tw?.kind || tw?.type || tw?.segment || tw?.ring || '').toString().toLowerCase();
+        let mult = Number(tw?.mult ?? tw?.multiplier);
+        if (!mult || !Number.isFinite(mult)) {
+          // infer multiplier from points if needed
+          const pts = Number(tw?.points ?? tw?.score ?? 0);
+          const ratio = target ? (pts/target) : 0;
+          if (ratio >= 2.5) mult = 3;
+          else if (ratio >= 1.5) mult = 2;
+          else mult = pts>0 ? 1 : 0;
+        }
+        const pts = Number.isFinite(Number(tw?.points ?? tw?.score))
+          ? Number(tw?.points ?? tw?.score)
+          : (target * mult);
+
+        sum += pts;
+        if (mult === 3 || ringRaw.includes('treb')) t++;
+        else if (mult === 2 || ringRaw.includes('doub')) d++;
+        else if (mult === 1) s++;
+      });
+
+      if (!best || sum > best.sum) best = { round: 10+r, sum, s, d, t };
+    }
+  });
+
+  return best;
+}
+const bestRound = bestRoundFromBoards(name, games) || null;
+
+  // 4) H2H for Nemesis/BFF (>=10 games vs opponent)
+  const vs = new Map();
+  games.forEach(g=>{
+    const meI = idxOf(g), meS = Number(g.totals[meI]||0);
+    g.players.forEach((op,j)=>{
+      if (j===meI) return;
+      const opp = String(op||'').trim();
+      const theirs = Number(g.totals[j]||0);
+      const rec = vs.get(opp) || { opp, W:0, L:0, n:0 };
+      if (meS > theirs) rec.W++; else if (meS < theirs) rec.L++;
+      rec.n++; vs.set(opp, rec);
+    });
+  });
+const qualifiedOpp = Array.from(vs.values()).filter(r=> r.n >= 5).map(r=>({ ...r, pct: (r.W+r.L) ? (100*r.W/(r.W+r.L)) : 0 }));  const bff = qualifiedOpp.length ? qualifiedOpp.reduce((m,r)=> r.pct>m.pct?r:m, qualifiedOpp[0]) : null;
+  const nem = qualifiedOpp.length ? qualifiedOpp.reduce((m,r)=> r.pct<m.pct?r:m, qualifiedOpp[0]) : null;
+
+// Build my throws now so Favorite/Worst can use them without waiting for the later power-rank section
+let onlyTargetRounds = [];
+try {
+  // lifetime, from the games we already loaded at the top of this function
+  const myThrowsFromBoards = __throwsFromGamesForPlayer(name, games);
+  onlyTargetRounds = myThrowsFromBoards.filter(
+    t => typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 10 // 10..20 only
+  );
+} catch (_) {
+  onlyTargetRounds = [];
+}
+
+  // 5) Favorite / Worst Number from Target Points % (10..20), lifetime
+  // Reuse same hits model: “marks per dart” (single=1, double=2, treble=3)
+  const markUnits = (t, target) => {
+    const k = String(t.kind||'').toLowerCase();
+    if (k.includes('treble') || k.includes('triple')) return 3;
+    if (k.includes('double')) return 2;
+    if (k.includes('single')) return Number(t.points||0)>0 ? 1 : 0;
+    const ratio = Number(t.points||0) / target; // fallback
+    if (ratio >= 2.5) return 3; if (ratio >= 1.5) return 2; if (ratio >= 0.5) return 1; return 0;
+  };
+  const favRows = [];
+  for (let r=0; r<=10; r++){
+    const target = 10 + r;
+    const shots  = onlyTargetRounds.filter(t => t.round_index === r);
+    const throwsN = shots.length;
+    const hitsUnits = shots.reduce((s,t)=> s + markUnits(t,target), 0);
+    const pct = throwsN ? (100 * hitsUnits / (3*throwsN)) : 0; // units ÷ (3 per throw)
+    favRows.push({ target, throwsN, pct });
+  }
+  // require a small sample to avoid noise
+  const MIN_THROWS_PER_TARGET = 30;
+  const favCandidates = favRows.filter(r => r.throwsN >= MIN_THROWS_PER_TARGET);
+  const fav = favCandidates.length ? favCandidates.reduce((m,r)=> r.pct>m.pct?r:m, favCandidates[0]) : null;
+  const worst = favCandidates.length ? favCandidates.reduce((m,r)=> r.pct<m.pct?r:m, favCandidates[0]) : null;
+
+// 6) Current Power Rank — mirror “Power Rankings — Last 50 Rounds (Official)”
+const MIN_ROUNDS_QUALIFY = 15;   // 1 game + 1 round (as agreed)
+const WINDOW_ROUNDS      = 50;   // last 50 rounds
+
+// Use ALL official games (not just this player's) so we can rank everyone
+const allGames = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+
+// Map game_id -> timestamp (for ordering rounds)
+const gameTs = new Map();
+allGames.forEach(g => {
+  const gid = (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id;
+  if (gid) gameTs.set(gid, g.ts || null);
+});
+
+// Fetch throws for all those games; fallback to reconstruct from boards
+let allThrows = [];
+try {
+  const allIds = allGames
+    .map(g => (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id)
+    .filter(Boolean);
+  allThrows = await __fetchThrowsForGames(allIds);
+} catch (_) {}
+
+if (!allThrows.length) {
+  // fallback: synthesize from boards
+  allGames.forEach(g => {
+    (g.players || []).forEach(p => {
+      const rows = __throwsFromGamesForPlayer(p, [g]);
+      if (rows && rows.length) allThrows.push(...rows);
+    });
+  });
+}
+
+// Keep only real round rows and finite points
+allThrows = allThrows.filter(t =>
+  typeof t.round_index === 'number' &&
+  t.round_index >= 0 && t.round_index <= 13 &&
+  Number.isFinite(Number(t.points))
+);
+
+// Aggregate to per-player round totals, ordered by (game ts, round index)
+const roundsByPlayer = new Map(); // player -> [{ts, ri, pts}, ...]
+allThrows.forEach(t => {
+  const player = String(t.player || '').trim();
+  if (!player) return;
+  const gid = t.game_id;
+  const ts  = gameTs.get(gid) || null;
+  const ri  = Number(t.round_index || 0);
+  const pts = Number(t.points || 0);
+
+  // key per game+round so multiple darts sum to that round
+  const bucketKey = `${gid}|${ri}`;
+  let list = roundsByPlayer.get(player);
+  if (!list) { list = []; roundsByPlayer.set(player, list); }
+
+  // find or create that round entry
+  let entry = list.find(e => e.key === bucketKey);
+  if (!entry) {
+    entry = { key: bucketKey, ts, ri, sum: 0 };
+    list.push(entry);
+  }
+  entry.sum += pts;
+});
+
+// Build power rows: last 50 rounds -> avg per round; qualify if >= 15 rounds
+const powerRows = Array.from(roundsByPlayer.entries()).map(([player, list]) => {
+  // order by time then round index
+  list.sort((a, b) => {
+    const at = a.ts ? new Date(a.ts).getTime() : 0;
+    const bt = b.ts ? new Date(b.ts).getTime() : 0;
+    return (at - bt) || (a.ri - b.ri);
+  });
+
+  const last = list.slice(-WINDOW_ROUNDS);
+  const n    = last.length;
+  const pts  = last.reduce((s, r) => s + Number(r.sum || 0), 0);
+  const avgRound = n ? (pts / n) : 0;
+  const qualifies = n >= MIN_ROUNDS_QUALIFY;
+
+  return { player, rounds: n, avgRound, qualifies };
+});
+
+// Sort by avgRound descending (like the table)
+powerRows.sort((a, b) => b.avgRound - a.avgRound);
+
+// Position among **qualified** players only
+const qualified = powerRows.filter(r => r.qualifies);
+const myPower   = powerRows.find(r => r.player.toLowerCase() === name.toLowerCase()) || null;
+const myPowerPos = (myPower && myPower.qualifies)
+  ? (qualified.findIndex(r => r.player.toLowerCase() === name.toLowerCase()) + 1)
+  : null;
+
+  // Highest power rank (historical) — not tracked; show current as best for now.
+  const bestPowerPos = myPowerPos || null;
+
+  // Best-score leaderboard rank (use each player's PB across all games)
+  const bestByPlayer = new Map();
+  games.forEach(g=>{
+    (g.players||[]).forEach((p,i)=>{
+      const s = Number(g.totals[i]||0);
+      const prev = bestByPlayer.get(p) || 0;
+      if (s > prev) bestByPlayer.set(p, s);
+    });
+  });
+  const bestList = Array.from(bestByPlayer.entries()).map(([p,b])=>({p,b})).sort((a,b)=> b.b - a.b);
+  const myPB = PB;
+  const myPBPos = myPB ? (bestList.findIndex(x => x.p.toLowerCase()===name.toLowerCase()) + 1 || null) : null;
+
+  // ---- Render as a tidy two-column grid of “stat cards” ----
+  const grid = document.createElement('div');
+  grid.style.display = 'grid';
+  grid.style.gridTemplateColumns = '1fr 1fr';
+  grid.style.gap = '10px';
+
+  function card(label, value, hint){
+    const c = document.createElement('div');
+    c.className = 'tag';
+    c.style.display='flex'; c.style.justifyContent='space-between'; c.style.alignItems='center';
+    c.style.padding='8px 10px';
+    const L = document.createElement('span'); L.textContent = label;
+    const R = document.createElement('span'); R.textContent = value;
+    if (hint) R.title = hint;
+    c.append(L,R);
+    return c;
+  }
+
+  // Section helper
+  function section(titleTxt){
+    const h = document.createElement('h4');
+    h.textContent = titleTxt;
+    h.style.margin = '12px 0 6px';
+    return h;
+  }
+
+  // Top: Games / Current & Highest Power Rank
+  body.appendChild(section('Overview'));
+  grid.appendChild(card('Games', String(GAMES)));
+  grid.appendChild(card('Current Power Rank', myPower && myPower.qualifies ? `${myPower.avgRound.toFixed(2)}  (#${myPowerPos})` : '—', 
+  myPower ? `${myPower.throws} throws` : ''));
+  grid.appendChild(card('Highest Power Rank', bestPowerPos ? `#${bestPowerPos}` : '—', 'Best historical position (requires rank history)'));
+  body.appendChild(grid);
+
+  // Premier League style
+  body.appendChild(section('Premier League'));
+  const gridPL = document.createElement('div');
+  gridPL.style.display='grid'; gridPL.style.gridTemplateColumns='1fr 1fr'; gridPL.style.gap='10px';
+  gridPL.appendChild(card('PL Average', AVG.toFixed(1)));
+gridPL.appendChild(card('PL Monthly Wins', String(plMonthlyWins)));
+gridPL.appendChild(card('Highest Monthly Average', bestMonth ? `${bestMonth.avg.toFixed(1)} (${monthLabel(bestMonth.k)})` : '—'));
+  gridPL.appendChild(card('Lowest Monthly Average',  worstMonth ? `${worstMonth.avg.toFixed(1)} (${monthLabel(worstMonth.k)})` : '—'));
+  body.appendChild(gridPL);
+
+  // Game highs/lows + best round
+  body.appendChild(section('Game Highs & Lows'));
+  const gridGL = document.createElement('div');
+  gridGL.style.display='grid'; gridGL.style.gridTemplateColumns='1fr 1fr'; gridGL.style.gap='10px';
+  gridGL.appendChild(card('Highest Score', myPB ? `${myPB}  (#${myPBPos||'—'})` : '—'));
+  gridGL.appendChild(card('Lowest Score', GAMES ? String(LOW) : '—'));
+function lettersFromCounts(s,d,t){
+  return `${'S'.repeat(s).split('').join('/')}${s&& (d||t)?'/':''}${'D'.repeat(d).split('').join('/')}${d&&t?'/':''}${'T'.repeat(t).split('').join('/')}`.replace(/^\/|\/$/g,'') || '—';
+}
+const brTxt = bestRound ? `${bestRound.round} • ${bestRound.sum}  (${lettersFromCounts(bestRound.s, bestRound.d, bestRound.t)})` : '—';
+  gridGL.appendChild(card('Highest Scoring Round', brTxt, '10→20 rounds only'));
+  body.appendChild(gridGL);
+
+  // Opponents
+  body.appendChild(section('Opponents'));
+  const gridOP = document.createElement('div');
+  gridOP.style.display='grid'; gridOP.style.gridTemplateColumns='1fr 1fr'; gridOP.style.gap='10px';
+gridOP.appendChild(card('Nemesis', nem ? `${nem.opp}  (${nem.pct.toFixed(1)}%)` : '—', '≥5 games'));
+gridOP.appendChild(card('BFF', bff ? `${bff.opp}  (${bff.pct.toFixed(1)}%)` : '—', '≥5 games'));
+  body.appendChild(gridOP);
+
+  // Targets
+  body.appendChild(section('Targets'));
+  const gridTG = document.createElement('div');
+  gridTG.style.display='grid'; gridTG.style.gridTemplateColumns='1fr 1fr'; gridTG.style.gap='10px';
+  gridTG.appendChild(card('Favorite Number', fav ? `${fav.target}  (${fav.pct.toFixed(1)}%)` : '—', 'min 30 throws'));
+  gridTG.appendChild(card('Worst Number',   worst ? `${worst.target}  (${worst.pct.toFixed(1)}%)` : '—', 'min 30 throws'));
+  body.appendChild(gridTG);
+
+  // Footer buttons
+  const backBtn  = document.createElement('button'); backBtn.className = 'btn'; backBtn.textContent = 'Back';
+  const closeBtn = document.createElement('button'); closeBtn.className = 'btn'; closeBtn.textContent = 'Close';
+  backBtn.onclick  = () => { overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
+  closeBtn.onclick = () => overlay.remove();
+  footer.append(backBtn, closeBtn);
+
 };
 
 // === Player Hub — Latest Matches / High Scores / Progression / Target % / D T B % / H2H ===
@@ -13261,14 +13654,27 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   col.style.alignItems = 'center';
   col.style.gap = '10px';
 
-  function addBtn(text, desc, handler){
-    const btn = document.createElement('button'); btn.className='btn'; btn.type='button';
-    btn.style.width = 'min(360px,92%)'; btn.textContent = text;
-    const p = document.createElement('p'); p.className='tag'; p.textContent = desc;
-    p.style.width = btn.style.width; p.style.textAlign='center';
-    btn.onclick = () => { overlay.remove(); handler(); };
-    col.append(btn, p);
-  }
+function addBtn(text, desc, handler){
+  const btn = document.createElement('button'); 
+  btn.className = 'btn'; 
+  btn.type = 'button';
+  btn.style.width = 'min(360px,92%)';
+  btn.textContent = text;
+
+  const p = document.createElement('p');
+  p.className = 'tag';
+  p.textContent = desc;
+  p.style.width = btn.style.width;
+  p.style.textAlign = 'center';
+
+  btn.onclick = () => {
+    try { handler(); }
+    finally { setTimeout(() => { try { overlay.remove(); } catch(_){} }, 0); }
+  };
+
+  // actually add to the column!
+  col.append(btn, p);
+}
 
   // 1) Latest Matches
   addBtn('Latest Matches', 'Position / Points / Round Avg', () => {
@@ -13277,40 +13683,40 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   });
 
   // 2) High Scores (row opens match)
-  addBtn('High Scores', 'All scores (click to open match)', () => {
+  addBtn('High Scores', 'Full Game History', () => {
     if (typeof window.openPlayerHighScoresDialog === 'function') return window.openPlayerHighScoresDialog(name);
     if (typeof toast==='function') toast('High Scores not available');
   });
 
   // 3) Progression
-  addBtn('Progression', 'Line graph of all game scores', () => {
+  addBtn('Progression', 'Players Scores Mapped Over Time', () => {
     if (typeof window.openPlayerProgressionDialog === 'function') return window.openPlayerProgressionDialog(name);
     if (typeof toast==='function') toast('Progression not available');
   });
 
 // 4) Target Hit %
-addBtn('Target Hit %', 'Accuracy per round (10→20 + D + T + B)', () => {
+addBtn('Target Hit %', 'Target Hits per Round', () => {
   if (typeof window.openPlayerTargetPctDialog === 'function') return window.openPlayerTargetPctDialog(name);
   if (typeof toast==='function') toast('Target Hit % not available');
 });
   
-    // 4b) Target Points %
-  addBtn('Target Points %', 'Points vs maximum (lifetime)', () => {
-    if (typeof window.openPlayerTargetPointsPctDialog === 'function') return window.openPlayerTargetPointsPctDialog(name);
-    if (typeof toast==='function') toast('Target Points % not available');
-  });
-
- // 5) D T B Hit %
-  addBtn('D T B Hit %', 'Hit frequency for doubles / trebles (lifetime)', () => {
-    if (typeof window.openPlayerDTBPctDialog === 'function') return window.openPlayerDTBPctDialog(name);
-    if (typeof toast==='function') toast('D T B Hit % not available');
+// 4b) Target Points %
+addBtn('Target Points %', 'Available Points Hit Per Round', () => {
+  if (typeof window.openPlayerTargetPointsPctDialog === 'function') return window.openPlayerTargetPointsPctDialog(name);
+  if (typeof toast==='function') toast('Target Points % not available');
+});
+  
+    // 4c) D T B %
+  addBtn('D T B %', 'Double or Treble hit rate by target', () => {
+    if (typeof window.openPlayerDTBCombinedPctDialog === 'function') return window.openPlayerDTBCombinedPctDialog(name);
+    if (typeof toast==='function') toast('D T B % not available');
   });
   
-  // 6) H2H
-  addBtn('H2H', 'Wins / Losses / Win % / Avg Score Diff', () => {
-    if (typeof window.openPlayerH2HDialog === 'function') return window.openPlayerH2HDialog(name);
-    if (typeof toast==='function') toast('H2H not available');
-  });
+// 6) H2H
+addBtn('H2H', 'Record vs other players', () => {
+  if (typeof window.openPlayerH2HDialog === 'function') return window.openPlayerH2HDialog(name);
+  if (typeof toast === 'function') toast('H2H not available');
+});
 
   // 7) Stats (your existing detail screen)
   addBtn('Stats', 'Averages, PB, recent games', () => {
@@ -14023,6 +14429,158 @@ if (!throwsRows.length) {
   modal.tabIndex=0; modal.focus();
 };
 
+// ==== (4b) Target Points % — lifetime, per target (10..20) ===================
+window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPctDialog(playerName){
+  const name = String(playerName||'').trim();
+
+  // Modal shell
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className  ='modal compact';
+  const title   = document.createElement('h3');  title.textContent = `Target Points % — ${name}`;
+  const body    = document.createElement('div'); body.className   ='modal-body';
+  const footer  = document.createElement('div'); footer.className ='modal-footer';
+  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
+  body .style.maxHeight='none'; body .style.overflowY='visible';
+
+  // Mount early so user always sees something
+  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();});
+  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
+  modal.tabIndex=0; modal.focus();
+
+  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
+  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
+
+  body.innerHTML = '<p class="muted">Loading…</p>';
+
+  try{
+    // Build official game IDs for this player (lifetime), fallback to scan official games
+    let ids = [];
+    try {
+      const { data: pg } = await sb
+        .from(TABLE_PLAYER_GAMES)
+        .select('game_id, is_practice')
+        .eq('player', name)
+        .eq('is_practice', false)
+        .order('game_id', { ascending: true })
+        .limit(5000);
+      ids = (pg || []).map(r => r.game_id).filter(Boolean);
+    } catch(_){}
+
+    if (!ids.length) {
+      const games = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+      ids = games
+        .map(g => (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id)
+        .filter(Boolean);
+    }
+
+    // Fetch throws; fallback to reconstruct from boards
+    let throwsRows = ids.length ? await __fetchThrowsForGames(ids) : [];
+    if (!throwsRows.length) {
+      const gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+      throwsRows = __throwsFromGamesForPlayer(name, gamesAll);
+    }
+
+    const mineAll = throwsRows.filter(t => String(t.player||'').trim().toLowerCase() === name.toLowerCase());
+    const mine    = mineAll.filter(t => typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 10); // 10..20 only
+
+    // Aggregate per target 10..20
+    const rows=[];
+    for (let r=0; r<=10; r++){
+      const target  = 10 + r;
+      const shots   = mine.filter(t => t.round_index === r);
+      const throwsN = shots.length;
+
+      // Actual Hits (marks): single=1, double=2, treble=3 (miss=0)
+      const hitsUnits = shots.reduce((s,t)=>{
+        const k = String(t.kind||'').toLowerCase();
+        if (k.includes('treble') || k.includes('triple')) return s + 3;
+        if (k.includes('double')) return s + 2;
+        if (k.includes('single')) return s + (Number(t.points||0) > 0 ? 1 : 0);
+        // Fallback: infer from points/target if kind missing
+        const ratio = Number(t.points||0) / target;
+        if (ratio >= 2.5) return s + 3;
+        if (ratio >= 1.5) return s + 2;
+        if (ratio >= 0.5) return s + 1;
+        return s;
+      }, 0);
+
+      const available = 3 * throwsN;                        // 3 marks per dart (9 per round)
+      const pct       = available ? (100 * hitsUnits / available) : 0;  // Actual ÷ Available
+      const scoreRound = (pct / 100) * 9 * target;          // expected points in one 3-dart round
+
+      rows.push({ target, throwsN, hitsUnits, available, pct, scoreRound });
+    }
+
+    // Rank by expected per-round score (desc). Tie: hits, then thrown, then lower target.
+    const scoreRanks = rows
+      .filter(r => r.throwsN > 0)
+      .slice()
+      .sort((a,b) =>
+        (b.scoreRound - a.scoreRound) ||
+        (b.hitsUnits  - a.hitsUnits)  ||
+        (b.throwsN    - a.throwsN)    ||
+        (a.target     - b.target)
+      )
+      .map((r, idx) => ({ target: r.target, rank: idx + 1 }));
+    const scoreRankMap = new Map(scoreRanks.map(x => [x.target, x.rank]));
+
+    // Table
+    const table=document.createElement('table'); table.className='hs-table';
+    const thead=document.createElement('thead'); const trh=document.createElement('tr');
+    ['Target','Thrown','Available Hits','Actual Hits','Points %','Score','Rank']
+      .forEach(h => { const th = document.createElement('th'); th.textContent = h; trh.appendChild(th); });
+    thead.appendChild(trh); table.appendChild(thead);
+
+    // sticky header
+    Array.from(trh.children).forEach(th => {
+      th.style.position = 'sticky';
+      th.style.top = '0';
+      th.style.zIndex = '2';
+      th.style.background = 'rgba(0,0,0,0.4)';
+    });
+
+    const tbody=document.createElement('tbody');
+    rows.forEach(r=>{
+      const tr=document.createElement('tr');
+
+      const tdTarget = document.createElement('td'); tdTarget.textContent = String(r.target);
+      const tdThrown = document.createElement('td'); tdThrown.textContent = String(r.throwsN);
+      const tdAvail  = document.createElement('td'); tdAvail.textContent  = String(r.available);
+      const tdHits   = document.createElement('td'); tdHits.textContent   = String(r.hitsUnits || 0);
+      const tdPct    = document.createElement('td'); tdPct.textContent    = (r.pct||0).toFixed(1)+'%';
+      const tdScore  = document.createElement('td'); tdScore.textContent  = (r.scoreRound||0).toFixed(1);
+      const tdRank   = document.createElement('td'); tdRank.textContent   = String(scoreRankMap.get(r.target) || '—');
+
+      tr.append(tdTarget, tdThrown, tdAvail, tdHits, tdPct, tdScore, tdRank);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    const info=document.createElement('p');
+    info.className='tag';
+    info.style.marginTop='8px';
+    info.textContent = 'Actual Hits = single 1 • double 2 • treble 3 — Available Hits = 3 × thrown (9 per round) — Points % = Actual ÷ Available — Score (per round) = Points% × 9 × target';
+
+    const scroll=document.createElement('div');
+    scroll.style.maxHeight='56vh';
+    scroll.style.overflowY='auto';
+    scroll.style.borderRadius='8px';
+    scroll.appendChild(table);
+
+    body.innerHTML='';
+    body.appendChild(scroll);
+    body.appendChild(info);
+
+  }catch(e){
+    console.error('Target Points % failed', e);
+    body.innerHTML = '<p>Failed to load Target Points %.</p>';
+    try{ if (typeof toast==='function') toast('Failed to open Target Points %'); }catch(_){}
+  }
+};
+
 // ==== (5) D T B Hit % — per number (10..20), lifetime =======================
 window.openPlayerDTBPctDialog = async function openPlayerDTBPctDialog(playerName){
   const name = String(playerName||'').trim();
@@ -14058,8 +14616,10 @@ let throwsRows = ids.length ? await __fetchThrowsForGames(ids) : [];
 if (!throwsRows.length) {
   const gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame);
   throwsRows = __throwsFromGamesForPlayer(name, gamesAll);
-}  const mine = throwsRows.filter(t => String(t.player||'').trim().toLowerCase() === name.toLowerCase());
-  const kindL = t => String(t.kind||'').toLowerCase();
+}
+const mineAll = throwsRows.filter(t => String(t.player||'').trim().toLowerCase() === name.toLowerCase());
+const mine    = mineAll.filter(t => typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 10); // 10..20 only
+const kindL = t => String(t.kind||'').toLowerCase();
 
   // Build per-target stats for 10..20 (round_index 0..10)
   const rows = [];
@@ -14098,6 +14658,191 @@ if (!throwsRows.length) {
   table.appendChild(tbody);
 
   const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.appendChild(table);
+  body.appendChild(scroll);
+
+  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
+  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
+
+  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();});
+  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
+  modal.tabIndex=0; modal.focus();
+};
+
+// ==== (4c) D T B % — combined D/T hit rate per target (10..20), lifetime ====
+window.openPlayerDTBCombinedPctDialog = async function openPlayerDTBCombinedPctDialog(playerName){
+  const name = String(playerName||'').trim();
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className  ='modal compact';
+const title   = document.createElement('h3');  title.textContent = `D T B % (10–20 only) — ${name}`;  const body    = document.createElement('div'); body.className   ='modal-body';
+  const footer  = document.createElement('div'); footer.className ='modal-footer';
+  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
+  body .style.maxHeight='none'; body .style.overflowY='visible';
+
+  // Build player's official game IDs (lifetime), fallback to scanning official games
+  let ids = [];
+  try {
+    const { data: pg } = await sb
+      .from(TABLE_PLAYER_GAMES)
+      .select('game_id, is_practice')
+      .eq('player', name)
+      .eq('is_practice', false)
+      .order('game_id', { ascending: true })
+      .limit(5000);
+    ids = (pg || []).map(r => r.game_id).filter(Boolean);
+  } catch (_) {}
+
+  if (!ids.length) {
+    const games = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+    ids = games
+      .map(g => (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id)
+      .filter(Boolean);
+  }
+
+  // Fetch throws; if table is absent, reconstruct from boards
+  let throwsRows = ids.length ? await __fetchThrowsForGames(ids) : [];
+  if (!throwsRows.length) {
+    const gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+    throwsRows = __throwsFromGamesForPlayer(name, gamesAll);
+  }
+
+const mineAll = throwsRows.filter(t => String(t.player||'').trim().toLowerCase() === name.toLowerCase());
+const mine    = mineAll.filter(t => typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 10); // 10..20 only
+
+// Aggregate per target 10..20
+const rows = [];
+for (let r = 0; r <= 10; r++) {
+  const target  = 10 + r;
+  const shots   = mine.filter(t => t.round_index === r);
+  const throwsN = shots.length;
+
+  const kindL = t => String(t.kind || '').toLowerCase();
+
+  // Count doubles / trebles
+  const dHits = shots.reduce((s,t)=>{
+    const k = kindL(t);
+    if (k.includes('double')) return s + 1;
+    // fallback if kind missing: points/target ≈ 2
+    const ratio = Number(t.points||0) / target;
+    return s + (ratio >= 1.5 && ratio < 2.5 ? 1 : 0);
+  }, 0);
+
+  const tHits = shots.reduce((s,t)=>{
+    const k = kindL(t);
+    if (k.includes('treble') || k.includes('triple')) return s + 1;
+    // fallback if kind missing: points/target ≈ 3
+    const ratio = Number(t.points||0) / target;
+    return s + (ratio >= 2.5 ? 1 : 0);
+  }, 0);
+
+  const dPct = throwsN ? (100 * dHits / throwsN) : 0;
+  const tPct = throwsN ? (100 * tHits / throwsN) : 0;
+
+  rows.push({ target, throwsN, dHits, dPct, tHits, tPct });
+}
+
+// Build ranks per column (D-only and T-only)
+const dRanked = rows
+  .filter(r => r.throwsN > 0)
+  .slice()
+  .sort((a,b) => (b.dPct - a.dPct) || (b.dHits - a.dHits) || (a.target - b.target))
+  .map((r,idx) => ({ target: r.target, rank: idx + 1 }));
+const tRanked = rows
+  .filter(r => r.throwsN > 0)
+  .slice()
+  .sort((a,b) => (b.tPct - a.tPct) || (b.tHits - a.tHits) || (a.target - b.target))
+  .map((r,idx) => ({ target: r.target, rank: idx + 1 }));
+
+const dRankMap = new Map(dRanked.map(x => [x.target, x.rank]));
+const tRankMap = new Map(tRanked.map(x => [x.target, x.rank]));
+
+  // Table
+  const table=document.createElement('table'); table.className='hs-table';
+  const thead=document.createElement('thead'); const trh=document.createElement('tr');
+['Target','Throws','Doubles (Hits + %)','D Rank','Trebles (Hits + %)','T Rank']
+  .forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
+thead.appendChild(trh);
+table.appendChild(thead);
+
+  // sticky header
+  Array.from(trh.children).forEach(th => {
+    th.style.position = 'sticky';
+    th.style.top = '0';
+    th.style.zIndex = '2';
+    th.style.background = 'rgba(0,0,0,0.4)';
+  });
+
+ const tbody = document.createElement('tbody');
+rows.forEach(r=>{
+  const tr = document.createElement('tr');
+
+  const tdTarget = document.createElement('td'); tdTarget.textContent = String(r.target);
+  const tdThrows = document.createElement('td'); tdThrows.textContent = String(r.throwsN);
+
+  const tdD = document.createElement('td');
+  tdD.textContent = `${r.dHits} (${(r.dPct || 0).toFixed(1)}%)`;
+  const tdDRank = document.createElement('td');
+  tdDRank.textContent = r.throwsN ? String(dRankMap.get(r.target) || '—') : '—';
+
+  const tdT = document.createElement('td');
+  tdT.textContent = `${r.tHits} (${(r.tPct || 0).toFixed(1)}%)`;
+  const tdTRank = document.createElement('td');
+  tdTRank.textContent = r.throwsN ? String(tRankMap.get(r.target) || '—') : '—';
+
+  tr.append(tdTarget, tdThrows, tdD, tdDRank, tdT, tdTRank);
+  tbody.appendChild(tr);
+});
+table.appendChild(tbody);
+
+  // Append BULL rows (outer & inner) using bull round (round_index === 13).
+  // These are informational; D/T columns and ranks do not apply.
+  try {
+    const bullShots = mineAll.filter(t => t.round_index === 13);
+    if (bullShots.length) {
+      const totalBullThrows = bullShots.length;
+
+      // Heuristics: kind may be 'inner'/'outer'; otherwise infer via points (≈25 outer, ≈50 inner)
+      const outerCount = bullShots.filter(t => {
+        const k = String(t.kind || '').toLowerCase();
+        if (k.includes('outer')) return true;
+        if (k.includes('inner')) return false;
+        const pts = Number(t.points || 0);
+        return pts > 0 && pts < 40; // ~25
+      }).length;
+
+      const innerCount = bullShots.filter(t => {
+        const k = String(t.kind || '').toLowerCase();
+        if (k.includes('inner')) return true;
+        if (k.includes('outer')) return false;
+        const pts = Number(t.points || 0);
+        return pts >= 40; // ~50
+      }).length;
+
+      const addBullRow = (label) => {
+        const tr = document.createElement('tr');
+        const tdTarget = document.createElement('td'); tdTarget.textContent = label;
+        const tdThrows = document.createElement('td'); tdThrows.textContent = String(totalBullThrows);
+        const tdD  = document.createElement('td'); tdD.textContent  = '—';
+        const tdDR = document.createElement('td'); tdDR.textContent = '—';
+        const tdT  = document.createElement('td'); tdT.textContent  = '—';
+        const tdTR = document.createElement('td'); tdTR.textContent = '—';
+        tr.append(tdTarget, tdThrows, tdD, tdDR, tdT, tdTR);
+        tbody.appendChild(tr);
+      };
+
+      // Add in this order, after the numeric targets
+      addBullRow(`BULL (outer) — hits: ${outerCount}`);
+      addBullRow(`BULL (inner) — hits: ${innerCount}`);
+    }
+  } catch (_) {}
+
+  const scroll=document.createElement('div'); 
+  scroll.style.maxHeight='56vh'; 
+  scroll.style.overflowY='auto'; 
+  scroll.style.borderRadius='8px';
+  scroll.appendChild(table);
   body.appendChild(scroll);
 
   const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
@@ -14175,133 +14920,6 @@ window.openPlayerH2HDialog = async function openPlayerH2HDialog(playerName){
   modal.tabIndex=0; modal.focus();
 };
 
-// ==== (4b) Target Points % — points vs max per throw (lifetime) =============
-window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPctDialog(playerName){
-  const name = String(playerName||'').trim();
-  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-  const modal   = document.createElement('div'); modal.className  ='modal compact';
-  const title   = document.createElement('h3');  title.textContent = `Target Points % — ${name}`;
-  const body    = document.createElement('div'); body.className   ='modal-body';
-  const footer  = document.createElement('div'); footer.className ='modal-footer';
-  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
-  body .style.maxHeight='none'; body .style.overflowY='visible';
-
-  // Lifetime throws (official only)
-let ids = [];
-try {
-  const { data: pg } = await sb
-    .from(TABLE_PLAYER_GAMES)
-    .select('game_id, is_practice')
-    .eq('player', name)
-    .eq('is_practice', false)
-    .order('game_id', { ascending: true })
-    .limit(5000);
-  ids = (pg || []).map(r => r.game_id).filter(Boolean);
-} catch (_) {}
-
-if (!ids.length) {
-  const games = (await __fetchOfficialGames(50000)).map(__normalizeGame);
-  ids = games
-    .map(g => (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id)
-    .filter(Boolean);
-}
-
-let throwsRows = ids.length ? await __fetchThrowsForGames(ids) : [];
-if (!throwsRows.length) {
-  const gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame);
-  throwsRows = __throwsFromGamesForPlayer(name, gamesAll);
-}  const mine = throwsRows.filter(t => String(t.player||'').trim().toLowerCase() === name.toLowerCase());
-
-// Aggregate per target 10..20
-const rows=[];
-for (let r=0; r<=10; r++){
-  const target = 10 + r;
-  const shots   = mine.filter(t => t.round_index === r);
-
-  // Thrown = number of darts thrown at this target across all rounds
-  const throwsN = shots.length;
-
-  // Actual Hits (marks): single=1, double=2, treble=3 (miss=0)
-  const hitsUnits = shots.reduce((s,t)=>{
-    const k = String(t.kind||'').toLowerCase();
-    if (k.includes('treble') || k.includes('triple')) return s + 3;
-    if (k.includes('double')) return s + 2;
-    if (k.includes('single')) return s + (Number(t.points||0) > 0 ? 1 : 0);
-    // Fallback: infer marks from points/target if kind missing
-    const ratio = Number(t.points||0) / target;
-    if (ratio >= 2.5) return s + 3;
-    if (ratio >= 1.5) return s + 2;
-    if (ratio >= 0.5) return s + 1;
-    return s;
-  }, 0);
-
-  // Available Hits = 3 marks per dart (equivalent to 9 per round)
-  const available = 3 * throwsN;
-
-  // Points % (your definition) = Actual Hits ÷ Available Hits
-  const pct = available ? (100 * hitsUnits / available) : 0;
-
-  rows.push({ target, throwsN, hitsUnits, available, pct });
-}
-
-  // Table
-  const table=document.createElement('table'); table.className='hs-table';
-  const thead=document.createElement('thead'); const trh=document.createElement('tr');
-['Target','Thrown','Available Hits','Actual Hits','Points %'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);});
-  thead.appendChild(trh);
-table.appendChild(thead);
-
-// sticky header like other tables
-Array.from(trh.children).forEach(th => {
-  th.style.position = 'sticky';
-  th.style.top = '0';
-  th.style.zIndex = '2';
-  th.style.background = 'rgba(0,0,0,0.4)';
-});
-  const tbody=document.createElement('tbody');
-
-rows.forEach(r=>{
-  const tr=document.createElement('tr');
-
-  const tdTarget=document.createElement('td'); tdTarget.textContent = String(r.target);
-  const tdThrown=document.createElement('td'); tdThrown.textContent = String(r.throwsN);
-
-  const available = 3 * (r.throwsN || 0);
-  const tdAvail   = document.createElement('td'); tdAvail.textContent = String(available);
-
-  const tdHits    = document.createElement('td'); tdHits.textContent   = String(r.hitsUnits || 0);
-
-  const tdPct     = document.createElement('td'); tdPct.textContent    = (r.pct||0).toFixed(1)+'%';
-
-  tr.append(tdTarget, tdThrown, tdAvail, tdHits, tdPct);
-  tbody.appendChild(tr);
-});
-
-  table.appendChild(tbody);
-
-  const info=document.createElement('p');
-  info.className='tag';
-  info.style.marginTop='8px';
-info.textContent = 'Actual Hits = single 1 • double 2 • treble 3 — Available Hits = 3 × thrown (9 per round) — Points % = Actual Hits ÷ Available Hits';  const scroll=document.createElement('div');
-  scroll.style.maxHeight='56vh';
-  scroll.style.overflowY='auto';
-  scroll.style.borderRadius='8px';
-  scroll.appendChild(table);
-
-  body.appendChild(scroll);
-  body.appendChild(info);
-
-  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
-  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
-  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
-  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
-
-  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();});
-  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
-  modal.tabIndex=0; modal.focus();
-};
-
 // Back-compat alias (if any old code still calls the previous name)
 window.openPlayerDTBPointsPctDialog = function(name){
   return window.openPlayerTargetPointsPctDialog(name);
@@ -14338,6 +14956,168 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   };
 });
+
+// === Christmas Theme (non-destructive, can be toggled) =======================
+(function(){
+  const STYLE_ID   = 'xmasStyles';
+  const LIGHTS_ID  = 'xmasLights';
+  const SNOW_ID    = 'xmasSnow';
+  const TOGGLE_ID  = 'xmasToggle';
+
+  let rafId = null;
+  let flakes = [];
+
+  function injectStyles(){
+    if (document.getElementById(STYLE_ID)) return;
+    const css = `
+      /* palette + subtle effects */
+      body.xmas {
+        --brand: #e44343;            /* red */
+        --brand-2: #28b35e;          /* pine */
+        --hint: rgba(255,255,255,.65);
+      }
+      body.xmas .btn.primary { box-shadow: 0 0 0 2px rgba(255,255,255,.06), 0 8px 20px rgba(40,179,94,.25); }
+      body.xmas .btn.primary:hover { box-shadow: 0 0 0 2px rgba(255,255,255,.08), 0 10px 26px rgba(228,67,67,.30); }
+      body.xmas .tag { border: 1px solid rgba(255,255,255,.08); }
+      /* title hat (cute, optional) */
+      body.xmas h1::after, body.xmas .app-title::after {
+        content: '🎅';
+        margin-left: .35rem;
+        filter: drop-shadow(0 1px 0 rgba(0,0,0,.35));
+      }
+      /* twinkling lights bar */
+      #${LIGHTS_ID} {
+        position: fixed; inset: 0 0 auto 0; height: 8px; z-index: 9999; pointer-events: none;
+        background:
+          radial-gradient(circle at  4% 50%, #ff4d4d 0 3px, transparent 4px) 0 0/60px 100%,
+          radial-gradient(circle at 20% 50%, #ffd24d 0 3px, transparent 4px) 0 0/60px 100%,
+          radial-gradient(circle at 36% 50%, #5be37d 0 3px, transparent 4px) 0 0/60px 100%,
+          radial-gradient(circle at 52% 50%, #4da3ff 0 3px, transparent 4px) 0 0/60px 100%,
+          radial-gradient(circle at 68% 50%, #ff7ad1 0 3px, transparent 4px) 0 0/60px 100%,
+          radial-gradient(circle at 84% 50%, #fff 0 3px, transparent 4px) 0 0/60px 100%;
+        animation: xmasTwinkle 1.8s ease-in-out infinite alternate;
+        opacity: .85;
+      }
+      @keyframes xmasTwinkle { from { filter: brightness(.9); } to { filter: brightness(1.15); } }
+
+      /* snowfall canvas sits above UI but non-interactive */
+      #${SNOW_ID} {
+        position: fixed; inset: 0; pointer-events: none; z-index: 9998; opacity: .85;
+      }
+
+      /* small floating toggle button */
+      #${TOGGLE_ID} {
+        position: fixed; right: 10px; bottom: 10px; z-index: 10000;
+        border-radius: 999px; padding: 6px 10px; font-size: 14px;
+        background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12);
+        backdrop-filter: blur(4px);
+      }
+      #${TOGGLE_ID}.on { background: rgba(40,179,94,.22); border-color: rgba(40,179,94,.35); }
+    `;
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  function addLights(){
+    if (document.getElementById(LIGHTS_ID)) return;
+    const bar = document.createElement('div');
+    bar.id = LIGHTS_ID;
+    document.body.appendChild(bar);
+  }
+
+  function startSnow(){
+    if (document.getElementById(SNOW_ID)) return;
+    const c = document.createElement('canvas');
+    c.id = SNOW_ID;
+    const ctx = c.getContext('2d');
+    document.body.appendChild(c);
+
+    function resize(){
+      c.width = window.innerWidth; c.height = window.innerHeight;
+      // build a modest number of flakes relative to viewport
+      const target = Math.min(140, Math.round((c.width * c.height) / 15000));
+      flakes = Array.from({length: target}, ()=>({
+        x: Math.random() * c.width,
+        y: Math.random() * c.height,
+        r: 0.8 + Math.random() * 2.2,
+        s: 0.4 + Math.random() * 0.9,  // speed
+        d: Math.random() * 2 * Math.PI // drift phase
+      }));
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    function tick(){
+      ctx.clearRect(0,0,c.width,c.height);
+      ctx.fillStyle = 'rgba(255,255,255,.9)';
+      for (const f of flakes){
+        f.y += f.s;
+        f.x += Math.sin(f.d += 0.01) * 0.4;
+        if (f.y > c.height + 6) { f.y = -6; f.x = Math.random()*c.width; }
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI*2); ctx.fill();
+      }
+      rafId = requestAnimationFrame(tick);
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function stopSnow(){
+    if (rafId) cancelAnimationFrame(rafId), rafId = null;
+    const c = document.getElementById(SNOW_ID);
+    if (c) c.remove();
+  }
+
+  function ensureToggle(){
+    if (document.getElementById(TOGGLE_ID)) return;
+    const btn = document.createElement('button');
+    btn.id = TOGGLE_ID;
+    btn.className = 'btn small';
+    btn.type = 'button';
+    btn.textContent = '🎄 Xmas';
+    btn.onclick = () => {
+      const on = !document.body.classList.contains('xmas');
+      if (on) enableXmas(true); else disableXmas(true);
+    };
+    document.body.appendChild(btn);
+    updateToggle();
+  }
+  function updateToggle(){
+    const b = document.getElementById(TOGGLE_ID);
+    if (b) b.classList.toggle('on', document.body.classList.contains('xmas'));
+  }
+
+  function enableXmas(user){
+    injectStyles();
+    document.body.classList.add('xmas');
+    addLights();
+    startSnow();
+    ensureToggle(); updateToggle();
+    if (user) localStorage.setItem('xmas','1');
+  }
+  function disableXmas(user){
+    document.body.classList.remove('xmas');
+    document.getElementById(LIGHTS_ID)?.remove();
+    stopSnow();
+    ensureToggle(); updateToggle();
+    if (user) localStorage.removeItem('xmas');
+  }
+
+  // expose just in case
+  window.enableChristmasTheme = enableXmas;
+  window.disableChristmasTheme = disableXmas;
+
+  // auto-enable in December, or if user toggled it last time
+  const isDec = (new Date().getMonth() === 11);
+  if (localStorage.getItem('xmas') === '1' || isDec) {
+    // Wait a tick until body is fully ready so canvas sizing is correct
+    setTimeout(()=> enableXmas(false), 0);
+  } else {
+    // still place the toggle so people can turn it on
+    setTimeout(()=> ensureToggle(), 0);
+  }
+})();
 
 
 </script>
