@@ -13818,6 +13818,15 @@ async function __fetchOfficialGames(limit=5000){
 function __gameTs(g){
   return g?.ts || g?.created_at || g?.inserted_at || (g?.meta && (g.meta.ts || g.meta.date)) || null;
 }
+function __isSameLocalDay(a, b){
+  if (!a || !b) return false;
+  const da = new Date(a), db = new Date(b);
+  return (
+    da.getFullYear() === db.getFullYear() &&
+    da.getMonth()    === db.getMonth() &&
+    da.getDate()     === db.getDate()
+  );
+}
 function __normalizeGame(g){
   const players = Array.isArray(g.players)
     ? g.players.map(p => (p && p.name) ? p.name : String(p||''))
@@ -13827,6 +13836,38 @@ function __normalizeGame(g){
 const board  = Array.isArray(g.board) ? g.board : (g?.state?.board || null);
   const ts     = __gameTs(g);
   return { players, totals, board, ts, raw: g };
+}
+// Filter helper for Premier League tabs (supports: ALL TIME, TODAY, and month codes like DEC/NOV/…)
+function __filterGamesByPLTab(mode, games){
+  const m = String(mode || '').trim().toUpperCase();
+  if (!Array.isArray(games)) return [];
+
+  if (m === 'ALL TIME' || m === 'ALL' || m === 'ALLTIME') return games;
+
+  if (m === 'TODAY') {
+    const now   = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    return games.filter(g => {
+      const t = __gameTs(g.raw || g);
+      if (!t) return false;
+      const dt = new Date(t);
+      return dt >= start && dt < end;
+    });
+  }
+
+  // Month filters: JAN..DEC (3-letter uppercase codes)
+  const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const mi = MONTHS.indexOf(m);
+  if (mi >= 0) {
+    return games.filter(g => {
+      const t = __gameTs(g.raw || g);
+      return t && new Date(t).getMonth() === mi;
+    });
+  }
+
+  // Fallback = no filter
+  return games;
 }
 function __roundCountFor(g, idx){
   if (g.board && Array.isArray(g.board[idx])) return Math.min(14, g.board[idx].length||0);
@@ -15253,6 +15294,307 @@ document.addEventListener('DOMContentLoaded', function(){
   function getSavedMode(){
     return localStorage.getItem('xmasMode') || (localStorage.getItem('xmas')==='1' ? 'light' : '');
   }
+})();
+
+// === Premier League — TODAY (single, safe module; adds button + renders + hides min banner) ===
+(function premierLeagueToday(){
+  const TITLE_RX = /^\s*premier league\s*$/i;
+  const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+  function findPLModal(){
+    const mods = document.querySelectorAll('.modal, [role="dialog"]');
+    for (const m of mods){
+      const hasTitle = Array.from(m.querySelectorAll('h1,h2,h3'))
+        .some(h => TITLE_RX.test((h.textContent || '')));
+      if (hasTitle) return m;
+    }
+    return null;
+  }
+
+  function findTabsRow(modal){
+    const containers = modal.querySelectorAll('div,nav,section');
+    for (const c of containers){
+      const btns = Array.from(c.querySelectorAll('button, .btn, [role="tab"]'));
+      if (!btns.length) continue;
+      const texts = btns.map(b => (b.textContent || '').trim().toUpperCase());
+      const hasAllTime = texts.some(t => t === 'ALL TIME' || t === 'ALLTIME' || t === 'ALL');
+      const hasMonth   = texts.some(t => MONTHS.includes(t));
+      const hasRecords = texts.some(t => t === 'RECORDS');
+      if (hasAllTime && (hasMonth || hasRecords)) return c;
+    }
+    return null;
+  }
+
+  function ensureTodayButton(modal, row){
+    const allBtn = Array.from(row.querySelectorAll('button, .btn, [role="tab"]'))
+      .find(b => /all\s*time/i.test((b.textContent||'')));
+    if (!allBtn) return null;
+
+    // already present?
+    let btn = Array.from(row.querySelectorAll('button, .btn, [role="tab"]'))
+      .find(b => /^today$/i.test((b.textContent||'').trim()));
+    if (btn) return btn;
+
+    const tag = allBtn.tagName.toLowerCase();
+    btn = document.createElement(tag);
+    btn.className = allBtn.className || 'btn small';
+    btn.type = allBtn.type || 'button';
+    btn.setAttribute('role', allBtn.getAttribute('role') || 'tab');
+    btn.textContent = 'TODAY';
+    btn.dataset.mode = 'TODAY';
+    btn.classList.remove('primary','active','selected');
+    allBtn.insertAdjacentElement('afterend', btn);
+    return btn;
+  }
+  
+function __limitTabsToFirstFour(row){
+  const pills = Array.from(row.querySelectorAll('button, .btn, [role="tab"]'));
+  pills.forEach((b, i) => { if (i > 3) b.style.display = 'none'; });
+}
+
+
+  function setPillSelected(row, btn){
+    Array.from(row.querySelectorAll('button, .btn, [role="tab"]'))
+      .forEach(b => b.classList.remove('primary','active','selected'));
+    btn.classList.add('primary');
+  }
+
+  // Hide/show “X Games Minimum” (TODAY only hides it)
+  function setMinBannerVisible(modal, visible){
+    const nodes = modal.querySelectorAll('.tag, .input, div, p, span');
+    nodes.forEach(el=>{
+      const txt = (el.textContent || '').trim();
+      if (/games\s+minimum/i.test(txt)) {
+        el.style.display = visible ? '' : 'none';
+        if (!visible) el.dataset._todayMinHidden = '1';
+        else delete el.dataset._todayMinHidden;
+      }
+    });
+  }
+
+  async function buildTodayRows(){
+    let games = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+    games = __filterGamesByPLTab('TODAY', games);
+
+    const by = new Map(); // name -> { player, games, sum, best }
+    games.forEach(g=>{
+      (g.players||[]).forEach((p, i)=>{
+        const score = Number(g.totals[i] || 0);
+        const k = String(p||'').trim();
+        if (!k) return;
+        const r = by.get(k) || { player:k, games:0, sum:0, best:0 };
+        r.games += 1; r.sum += score; r.best = Math.max(r.best, score);
+        by.set(k, r);
+      });
+    });
+
+    return Array.from(by.values()).map(r => ({
+      player: r.player,
+      games: r.games,
+      avg: r.games ? (r.sum / r.games) : 0,
+      best: r.best
+    }))
+    .sort((a,b)=> (b.avg - a.avg) || (b.games - a.games) || a.player.localeCompare(b.player));
+  }
+
+  function buildTable(rows){
+    const table = document.createElement('table'); table.className = 'hs-table';
+    const thead = document.createElement('thead'); const trh = document.createElement('tr');
+    ['#','Player','Games','Avg Total','Best'].forEach(h=>{
+      const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);
+    });
+    thead.appendChild(trh); table.appendChild(thead);
+    Array.from(trh.children).forEach(th => { th.style.position='sticky'; th.style.top='0'; th.style.zIndex='2'; th.style.background='rgba(0,0,0,0.4)'; });
+
+    const tbody = document.createElement('tbody');
+    rows.forEach((r, idx)=>{
+      const tr = document.createElement('tr');
+      const mk = v => { const td = document.createElement('td'); td.textContent = v; return td; };
+      tr.append(
+        mk(String(idx+1)),
+        mk(r.player),
+        mk(String(r.games)),
+        mk((Number(r.avg)||0).toFixed(1)),
+        mk(String(r.best||0))
+      );
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    return table;
+  }
+
+  async function renderToday(modal, row, btn){
+    setPillSelected(row, btn);
+
+// Hide only the table itself so the tabs row remains visible
+const firstTable = modal.querySelector('table.hs-table');
+if (firstTable && !firstTable.dataset._todayHidden){
+  firstTable.dataset._todayHidden = '1';
+  firstTable.style.display = 'none';
+}
+// Make extra sure the tabs row is visible
+if (row && row.style && row.style.display === 'none') row.style.display = '';
+
+    setMinBannerVisible(modal, false); // hide “X Games Minimum” for TODAY
+
+    // Create/replace our mount
+    let mount = modal.querySelector('#plTodayContent');
+    if (!mount){
+      mount = document.createElement('div');
+      mount.id = 'plTodayContent';
+      const tabsRow = row;
+      (tabsRow || modal.querySelector('.modal-body') || modal).insertAdjacentElement('afterend', mount);
+    }
+    mount.innerHTML = '';
+
+    const banner = document.createElement('div');
+    banner.className = 'tag';
+    banner.textContent = 'Today Only';
+    banner.style.margin = '6px 0';
+    mount.appendChild(banner);
+
+    const scroll = document.createElement('div');
+    scroll.style.maxHeight='56vh';
+    scroll.style.overflowY='auto';
+    scroll.style.borderRadius='8px';
+    mount.appendChild(scroll);
+
+    try{
+      const rows = await buildTodayRows();
+      const table = buildTable(rows);
+      scroll.appendChild(table);
+    }catch(e){
+      console.error('TODAY table failed', e);
+      scroll.innerHTML = '<p>Failed to load Today data.</p>';
+      try{ if (typeof toast==='function') toast('Failed to load Today'); }catch(_){}
+    }
+  }
+
+  // Restore original area when switching away from TODAY
+  function restoreOriginal(modal){
+    modal.querySelector('#plTodayContent')?.remove();
+    const hidden = modal.querySelector('[data-_today_hidden]');
+    // in case attribute selector above didn’t match (dataset vs attr), iterate:
+    Array.from(modal.querySelectorAll('*')).forEach(n=>{
+      if (n.dataset && n.dataset._todayHidden){
+        n.style.display = '';
+        delete n.dataset._todayHidden;
+      }
+    });
+    setMinBannerVisible(modal, true);
+  }
+
+  function setup(modal){
+    const row = findTabsRow(modal);
+    if (!row) return;
+
+    const todayBtn = ensureTodayButton(modal, row);
+    if (!todayBtn) return;
+    
+    // Limit to first four pills (RECORDS, ALL TIME, TODAY, DEC) for the end-game popup only
+if (window.__plFromEndGame && (Date.now() - window.__plFromEndGame) < 8000) {
+  __limitTabsToFirstFour(row);
+}
+
+    if (!todayBtn.dataset.wired){
+      todayBtn.dataset.wired = '1';
+      todayBtn.addEventListener('click', () => {
+        // let any existing handlers run first; then we render ours
+        setTimeout(()=> renderToday(modal, row, todayBtn), 0);
+      });
+    }
+
+    // One-time listener to clean up when any other tab is clicked
+    if (!row.dataset.todayRowWired){
+      row.dataset.todayRowWired = '1';
+      row.addEventListener('click', (e)=>{
+        const label = (e.target && (e.target.textContent||'').trim().toUpperCase()) || '';
+        if (label && label !== 'TODAY') restoreOriginal(modal);
+      }, true);
+    }
+  }
+
+  function trySetup(){
+    const m = findPLModal();
+    if (m) setup(m);
+  }
+
+  // Run now if the modal already exists, and also when DOM changes
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', trySetup);
+  } else {
+    trySetup();
+  }
+
+  // Light observer: only react to added nodes
+  const mo = new MutationObserver(() => { trySetup(); });
+  mo.observe(document.body || document.documentElement, { childList: true, subtree: true });
+})();
+
+// === End Game: add "PREMIER LEAGUE" button below "HIGH SCORES" ==============
+(function endGameAddPremierLeagueButton(){
+  // Tries to open the existing Premier League popup using known functions or UI triggers
+  async function openPremierLeaguePopup(){
+    window.__plFromEndGame = Date.now();
+    const tryFns = [
+      'openPremierLeagueDialog','openPremierLeaguePopup','openPremierLeague',
+      'openRecordsDialog','openLeagueRecordsDialog','openLeaguePopup','openRecords'
+    ];
+    for (const n of tryFns){
+      const f = window[n];
+      if (typeof f === 'function') { try { f(); return true; } catch(_){} }
+    }
+
+    // Try a visible trigger that already opens the PL modal
+    const trigger = Array.from(document.querySelectorAll('button,.btn,a,[role="button"]'))
+      .find(el => /premier\s*league|records/i.test((el.textContent||'')) && el.offsetParent);
+    if (trigger) { trigger.click(); return true; }
+
+    // Fallback: go to Stats (if available), then try again shortly
+    const statsBtn = Array.from(document.querySelectorAll('button,.btn,a,[role="button"]'))
+      .find(el => /^\s*stats\s*$/i.test((el.textContent||'')));
+    if (statsBtn) { statsBtn.click(); setTimeout(openPremierLeaguePopup, 150); return true; }
+
+    try { if (typeof toast==='function') toast('Premier League popup not found'); } catch(_) {}
+    return false;
+  }
+  // expose so other code can call it if needed
+  window.openPremierLeaguePopup = openPremierLeaguePopup;
+
+  function findHighScoresButton(){
+    // Button text is "HIGH SCORES" (case-insensitive)
+    return Array.from(document.querySelectorAll('button,.btn,[role="button"]'))
+      .find(el => /^\s*high\s*scores\s*$/i.test(el.textContent||''));
+  }
+
+  function inject(){
+    const hs = findHighScoresButton();
+    if (!hs) return;
+
+    // Avoid duplicates: if next sibling is already our PL button, stop
+    if (hs.nextElementSibling && hs.nextElementSibling.id === 'btnPremierLeague') return;
+
+    // Create a sibling button that looks identical to "HIGH SCORES"
+    const tag = hs.tagName.toLowerCase();
+    const pl = document.createElement(tag);
+    pl.id = 'btnPremierLeague';
+    pl.className = hs.className || 'btn';
+    if (pl.tagName === 'BUTTON') pl.type = 'button';
+    pl.textContent = 'PREMIER LEAGUE';
+    pl.addEventListener('click', (e)=>{ e.preventDefault(); openPremierLeaguePopup(); });
+
+    // Insert immediately after the HIGH SCORES button
+    hs.insertAdjacentElement('afterend', pl);
+  }
+
+  // Run now + keep in sync when the end-game screen mounts
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', inject);
+  } else {
+    inject();
+  }
+  const mo = new MutationObserver(inject);
+  mo.observe(document.body || document.documentElement, { childList: true, subtree: true });
 })();
 
 /* === Gremlins Xmas GIF — resilient, no embed.js required ================ */
