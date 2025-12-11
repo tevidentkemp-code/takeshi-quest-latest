@@ -3702,31 +3702,43 @@ function openScoreSheetFromHistory(gIndex){
     setTimeout(()=>{ host.classList.add('hidden'); host.innerHTML=''; }, 6000);
   };
 
-  // Scan: number round where roundTotal == 9 * target  (i.e., T x 3)
-  window.scanForTripleHatAndCelebrate = function(){
-    try{
-      if (!state || !Array.isArray(state.players) || !Array.isArray(state.score)) return;
-      for (let p = 0; p < state.players.length; p++){
-        const rows = state.score[p] || [];
-        for (let r = 0; r < rows.length && r < MAX_ROUNDS; r++){
-          const rdDef = ROUNDS[r];
-          if (!rdDef || rdDef.type !== 'number') continue;
-          const row = rows[r];
-          if (!row) continue;
+ // Show GIF overlay once; auto hides — Gerwyn Price version
+window.showTripleTrebleGif = function () {
+  const host = document.getElementById('gifOverlay');
+  if (!host) return;
 
-          const expected = (rdDef.target || 0) * 9;
-          const total = Number(row.roundTotal || 0);
-          if (total !== expected) continue;
+  const POST_ID = '1906516478472844827'; // Gerwyn Price
 
-          const k = keyFor(p, r);
-          if (SEEN_KEY_SET.has(k)) continue;   // only once per player/round/match
-          SEEN_KEY_SET.add(k);
-          try { row.__gif180 = true; } catch(_) {}
-          showTripleTrebleGif();
-        }
-      }
-    }catch(_){}
-  };
+  host.innerHTML = `
+    <div class="gif-box">
+      <div class="tenor-gif-embed"
+           data-postid="${POST_ID}"
+           data-share-method="host"
+           data-aspect-ratio="1.77857"
+           data-width="100%"></div>
+    </div>`;
+  host.classList.remove('hidden');
+
+  // Make sure Tenor embed is available, then init once
+  try {
+    if (window.Tenor && window.Tenor.Embed && window.Tenor.Embed.init) {
+      window.Tenor.Embed.init();
+    } else if (!document.getElementById('tenorEmbedJS')) {
+      const s = document.createElement('script');
+      s.id = 'tenorEmbedJS';
+      s.src = 'https://tenor.com/embed.js';
+      s.async = true;
+      s.onload = () => { try { window.Tenor.Embed.init(); } catch {} };
+      document.body.appendChild(s);
+    }
+  } catch {}
+
+  // Auto-hide after 6s
+  setTimeout(() => {
+    host.classList.add('hidden');
+    host.innerHTML = '';
+  }, 6000);
+};
 
   // Called after every save()
   window.onStateSaved = function(){ scanForTripleHatAndCelebrate(); };
@@ -15251,7 +15263,7 @@ document.addEventListener('DOMContentLoaded', function(){
   // Fallback: paste a direct media.tenor.com GIF/MP4 URL here if your CSP blocks iframes.
   // Example (replace with the actual media link you copy from Tenor): 
   // const GIF_SRC = 'https://media.tenor.com/XXXXXAA/mp4';
-  const GIF_SRC = ''; // <-- leave empty to try iframe first
+const GIF_SRC = 'https://tenor.com/fdmZlr9yPBt.gif';  // direct GIF
 
   function findAdminAnchor(){
     return (
@@ -15282,33 +15294,65 @@ document.addEventListener('DOMContentLoaded', function(){
     box.style.position = 'absolute';
     box.style.inset = '0';
 
-    if (GIF_SRC) {
-      // Use plain media (no iframe, no scripts)
-      if (GIF_SRC.includes('.mp4')) {
-        const v = document.createElement('video');
-        v.src = GIF_SRC;
-        v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
-        v.style.width = '100%'; v.style.height = '100%'; v.style.objectFit = 'cover';
-        box.appendChild(v);
-      } else {
-        const img = new Image();
-        img.src = GIF_SRC; img.alt = 'Gremlins Singing';
-        img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover';
-        box.appendChild(img);
+const postId = '4239908413876512369';
+
+if (GIF_SRC) {
+  // Try a plain asset first (no third-party scripts/iframe)
+  if (GIF_SRC.toLowerCase().endsWith('.mp4')) {
+    const v = document.createElement('video');
+    v.src = GIF_SRC;
+    v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
+    v.style.width = '100%'; v.style.height = '100%'; v.style.objectFit = 'cover';
+    box.appendChild(v);
+  } else {
+    const img = new Image();
+    img.alt = 'Gremlins Singing';
+    img.style.width = '100%';
+    img.style.height = '100%';
+    img.style.objectFit = 'cover';
+
+    // Fallback to Tenor’s official embed if the direct GIF 404s
+    img.onerror = () => {
+      box.innerHTML = '';
+      const div = document.createElement('div');
+      div.className = 'tenor-gif-embed';
+      div.setAttribute('data-postid', postId);
+      div.setAttribute('data-share-method', 'host');
+      div.setAttribute('data-aspect-ratio', '1.76596');
+      div.setAttribute('data-width', '100%');
+      box.appendChild(div);
+
+      if (!document.getElementById('tenorEmbedJS')) {
+        const s = document.createElement('script');
+        s.id = 'tenorEmbedJS';
+        s.src = 'https://tenor.com/embed.js';
+        s.async = true;
+        document.body.appendChild(s);
       }
-    } else {
-      // Try Tenor’s iframe directly (no embed.js)
-      const iframe = document.createElement('iframe');
-      iframe.src = 'https://tenor.com/embed/gremlins-singing-christmascarol-christmas-monster-gif-4239908413876512369';
-      iframe.allowFullscreen = true;
-      iframe.loading = 'lazy';
-      iframe.referrerPolicy = 'no-referrer-when-downgrade';
-      iframe.style.border = '0';
-      iframe.style.width = '100%';
-      iframe.style.height = '100%';
-      // IMPORTANT: do not add sandbox here (avoids the 'allow-presentation' warning)
-      box.appendChild(iframe);
-    }
+    };
+
+    img.onload = () => { box.replaceChildren(img); };
+    img.src = GIF_SRC;
+  }
+} else {
+  // No direct asset supplied: use Tenor’s embed right away (no sandbox, let embed.js manage it)
+  const div = document.createElement('div');
+  div.className = 'tenor-gif-embed';
+  div.setAttribute('data-postid', postId);
+  div.setAttribute('data-share-method', 'host');
+  div.setAttribute('data-aspect-ratio', '1.76596');
+  div.setAttribute('data-width', '100%');
+  box.appendChild(div);
+
+  if (!document.getElementById('tenorEmbedJS')) {
+    const s = document.createElement('script');
+    s.id = 'tenorEmbedJS';
+    s.src = 'https://tenor.com/embed.js';
+    s.async = true;
+    document.body.appendChild(s);
+  }
+}
+
 
     holder.appendChild(box);
     wrap.appendChild(holder);
