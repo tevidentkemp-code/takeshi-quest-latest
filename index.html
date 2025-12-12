@@ -472,22 +472,6 @@ body.xmas #newGameBtn {
     line-height:1.1;
   }
 
-
-/* Per-dart markers under each round score */
-.cell-throws{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:8px;
-  margin-top:4px;
-  font-weight:800;
-  font-size:.95rem;
-  letter-spacing:.02em;
-  line-height:1;
-}
-.cell-throws span{ user-select:none; }
-.cell-throws .miss{ color: var(--danger); }  /* red X for a miss */
-
 /* Revert UI: hide per‑dart markers */
 .cell-throws{ display:none !important; }
 
@@ -896,11 +880,6 @@ margin-bottom: var(--section-gap);
         </div>
       </div>
 
-<!-- Start-screen rolling banner: last 10 completed games -->
-
-<!-- Start-screen rolling banner: last 10 completed matches -->
-<div id="psTickerMatch" class="hidden"><div class="track"></div></div>
-
 <div id="psTicker" class="hidden"><div class="track"></div></div>
 </section>
 
@@ -911,9 +890,12 @@ margin-bottom: var(--section-gap);
 <!-- BOX 1: Number of games / Number of players -->
 <div class="ps-config-row">
   <div class="setup-row">
+    
     <!-- Games -->
     <div class="setup-field">
       <label class="setup-label" for="psNumGames">Number of games</label>
+      
+      
 
       <!-- custom stepper hooked to #psNumGames -->
       <div class="setup-stepper" data-select-id="psNumGames" data-suffix=" games">
@@ -924,21 +906,20 @@ margin-bottom: var(--section-gap);
         </div>
         <button type="button" class="stepper-btn" data-delta="1">+</button>
       </div>
+      
+          <!-- Players -->
+    <div class="setup-field">
+      <label class="setup-label" for="psNumPlayers">Number of players</label>
 
       <!-- original select, now visually hidden but still used by JS -->
       <select id="psNumGames" class="native-select-hidden">
         <option value="1">1 game</option>
         <option value="2">2 games</option>
-        <option value="3">3 games</option>
+        <option value="3"selected>3 games</option>
         <option value="4">4 games</option>
-        <option value="5" selected>5 games</option>
+        <option value="5">5 games</option>
       </select>
     </div>
-
-    <!-- Players -->
-    <div class="setup-field">
-      <label class="setup-label" for="psNumPlayers">Number of players</label>
-
       <!-- custom stepper hooked to #psNumPlayers -->
       <div class="setup-stepper" data-select-id="psNumPlayers" data-suffix=" players">
         <button type="button" class="stepper-btn" data-delta="-1">−</button>
@@ -948,7 +929,7 @@ margin-bottom: var(--section-gap);
         </div>
         <button type="button" class="stepper-btn" data-delta="1">+</button>
       </div>
-
+      
       <!-- original select, hidden -->
       <select id="psNumPlayers" class="native-select-hidden">
         <option value="1">1 player (Training)</option>
@@ -1261,11 +1242,6 @@ margin-bottom: var(--section-gap);
 if (typeof window.F === 'undefined') {
   window.F = function(){ /* no-op */ };
 }
-// --- Round score only (DOM promotion + cleanup) ---
-function promoteRoundOnly(){
-  // Reverted: keep cumulative main + (round) sub rendering.
-  return;
-}
 
 // Compute the per-dart symbol for a given dart + round
 function symbolForDart(d, rd){
@@ -1441,11 +1417,6 @@ async function fetchRoundTS(gameId, playerName, ridx){
   }
 }
 
-// Inject/update the three per-dart markers under each round score cell
-function injectThrowMarkers(){
-  // Reverted: per‑dart markers disabled.
-  return;
-}
 function setupRoundScoreObserver(){
   // PB/GR disabled on the scoreboard: scrub any tokens that might be rendered by legacy code
   const tbody = document.getElementById('tbody');
@@ -7235,10 +7206,7 @@ function recordThrow(spec){
   // Recompute 60+/100+/140+ for this player
   recomputeMatchAggTotalsForPlayer(pIndex);
 
-  // --- Round-completion visual effects (Tenor GIFs) ---
-  if (__completedRoundNow) {
-    // If all 3 darts in the round were trebles, show the 180-style GIF overlay once
-    maybePlayThreeTreblesGif(pIndex, rIndex);
+{
   }
   // Advance dart / player / round
   if (state.currentDart < 2) {
@@ -7425,22 +7393,6 @@ function missGo(){
       console.warn('showTenorOnce error', e);
     }
   }
-
-  // Check if a just-completed round was "three trebles" and, if so, play the GIF.
-  function maybePlayThreeTreblesGif(pIndex, rIndex){
-    try{
-      const entry = state.score?.[pIndex]?.[rIndex];
-      if (!entry) return;
-      const d = entry.darts || [];
-      if (d.length < 3) return;
-      const isTriple = (x) => !!x && (x.kind === 'T' || x.kind === 'Triple');
-      if (isTriple(d[0]) && isTriple(d[1]) && isTriple(d[2])) {
-        // Gerwyn Price 180 GIF
-        showTenorOnce('25741026', 2600);
-      }
-    } catch(_) {}
-  }
-
 // --- GAME LOGGING TO SUPABASE (real) + HIGH SCORES ---
 async function recordFullGameToSupabase(createdAtOverride) {
   try {
@@ -14947,11 +14899,6 @@ window.openPlayerH2HDialog = async function openPlayerH2HDialog(playerName){
   modal.tabIndex=0; modal.focus();
 };
 
-// Back-compat alias (if any old code still calls the previous name)
-window.openPlayerDTBPointsPctDialog = function(name){
-  return window.openPlayerTargetPointsPctDialog(name);
-};
-
 // === Player Stats — shim so the Select Player modal can open stats (always hub) ===
 window.openPlayerStatsModePicker = function openPlayerStatsModePicker(name) {
   const n = String(name || '').trim();
@@ -14977,6 +14924,8 @@ document.addEventListener('DOMContentLoaded', function(){
       } else {
         console.warn('No New Game opener found');
       }
+      
+
     } catch(e){
       console.error('New Game failed', e);
       try { if (typeof toast==='function') toast('Failed to open New Game'); } catch(_) {}
