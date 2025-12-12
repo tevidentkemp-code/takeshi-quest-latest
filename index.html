@@ -3680,79 +3680,6 @@ function openScoreSheetFromHistory(gIndex){
   };
 })();
 
-// ==== Triple-Trebles (3 x T) celebration logic ====
-(function(){
-  const SEEN_KEY_SET = new Set();
-  function keyFor(iPlayer, iRound){
-    const mid = (state && state.match && state.match.id) ? state.match.id : 'local';
-    return mid + '|' + iPlayer + '|' + iRound;
-  }
-
-  // Show GIF overlay once; auto hides
-  window.showTripleTrebleGif = function(){
-    const host = document.getElementById('gifOverlay');
-    if (!host) return;
-    const embed =
-      '<div class="gif-box">'+
-        '<div class="tenor-gif-embed" data-postid="1906516478472844827" data-share-method="host" data-aspect-ratio="1.77857" data-width="100%"></div>'+
-      '</div>';
-    host.innerHTML = embed;
-    host.classList.remove('hidden');
-    try { if (window.Tenor && window.Tenor.Embed && window.Tenor.Embed.init) window.Tenor.Embed.init(); } catch(_){}
-    setTimeout(()=>{ host.classList.add('hidden'); host.innerHTML=''; }, 6000);
-  };
-
- // Show GIF overlay once; auto hides — Gerwyn Price version
-window.showTripleTrebleGif = function () {
-  const host = document.getElementById('gifOverlay');
-  if (!host) return;
-
-  const POST_ID = '1906516478472844827'; // Gerwyn Price
-
-  host.innerHTML = `
-    <div class="gif-box">
-      <div class="tenor-gif-embed"
-           data-postid="${POST_ID}"
-           data-share-method="host"
-           data-aspect-ratio="1.77857"
-           data-width="100%"></div>
-    </div>`;
-  host.classList.remove('hidden');
-
-  // Make sure Tenor embed is available, then init once
-  try {
-    if (window.Tenor && window.Tenor.Embed && window.Tenor.Embed.init) {
-      window.Tenor.Embed.init();
-    } else if (!document.getElementById('tenorEmbedJS')) {
-      const s = document.createElement('script');
-      s.id = 'tenorEmbedJS';
-      s.src = 'https://tenor.com/embed.js';
-      s.async = true;
-      s.onload = () => { try { window.Tenor.Embed.init(); } catch {} };
-      document.body.appendChild(s);
-    }
-  } catch {}
-
-  // Auto-hide after 6s
-  setTimeout(() => {
-    host.classList.add('hidden');
-    host.innerHTML = '';
-  }, 6000);
-};
-
-  // Called after every save()
-  window.onStateSaved = function(){ scanForTripleHatAndCelebrate(); };
-})();
-
-// Chain PB/GR badges after any existing onStateSaved handler
-(function(){
-  const prev = window.onStateSaved;
-  window.onStateSaved = function(){
-    try{ if (typeof prev === 'function') prev(); }catch(_){}
-    try{ if (typeof updatePBGRBadges === 'function') updatePBGRBadges(); }catch(_){}
-  };
-})();
-
 // Percent helper
 function pctStr(num, den){
   if (!den) return '—';
@@ -15296,308 +15223,927 @@ document.addEventListener('DOMContentLoaded', function(){
   }
 })();
 
-// === Premier League — TODAY (single, safe module; adds button + renders + hides min banner) ===
-(function premierLeagueToday(){
+// === End Game (Leaderboard only): insert "PREMIER LEAGUE" below HIGH SCORES ===
+(function plBtnLeaderboardOnly(){
+  function onLeaderboard(){
+    return (document.body && (document.body.dataset.page || '').toLowerCase()) === 'leaderboard';
+  }
+  function findLeaderboardHighScoresButton(){
+    // search only within the leaderboard page
+    const root = document.querySelector('[data-page="leaderboard"]') || document.body;
+    return Array.from(root.querySelectorAll('button,.btn,[role="button"]'))
+      .find(el => /^\s*high\s*scores\s*$/i.test((el.textContent || '')));
+  }
+  function ensureOpener(){
+    // use existing opener if defined; otherwise click any visible UI that opens PL
+    return async function openPL(){
+      if (typeof window.openPremierLeaguePopup === 'function') { try { window.openPremierLeaguePopup(); return; } catch(_){} }
+      const trigger = Array.from(document.querySelectorAll('button,.btn,a,[role="button"]'))
+        .find(el => /premier\s*league|records/i.test((el.textContent||'')) && el.offsetParent);
+      if (trigger) trigger.click();
+    };
+  }
+  function ensureBtn(){
+    if (!onLeaderboard()) return;
+    const hs = findLeaderboardHighScoresButton();
+    if (!hs) return;
+    if (document.getElementById('btnPremierLeague')) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'btnPremierLeague';
+    btn.className = hs.className || 'btn';
+    btn.type = 'button';
+    btn.textContent = 'PREMIER LEAGUE';
+    const openPL = ensureOpener();
+    btn.addEventListener('click', (e)=>{ e.preventDefault(); openPL(); });
+
+    // place directly under the High Scores button on the leaderboard screen
+    hs.insertAdjacentElement('afterend', btn);
+  }
+  function tick(){ ensureBtn(); }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
+  new MutationObserver(tick).observe(document.body || document.documentElement, { childList:true, subtree:true });
+})();
+
+
+// === Premier League — TODAY (clone a month pill; no min-games rule) =========
+(function premierLeagueTodayCloneMonth(){
   const TITLE_RX = /^\s*premier league\s*$/i;
-  const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const MONTHS   = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
-  function findPLModal(){
-    const mods = document.querySelectorAll('.modal, [role="dialog"]');
+  // ---- helpers --------------------------------------------------------------
+  function findModal(){
+    const mods = document.querySelectorAll('.modal,[role="dialog"]');
     for (const m of mods){
-      const hasTitle = Array.from(m.querySelectorAll('h1,h2,h3'))
-        .some(h => TITLE_RX.test((h.textContent || '')));
-      if (hasTitle) return m;
+      if (Array.from(m.querySelectorAll('h1,h2,h3')).some(h => TITLE_RX.test(h.textContent||''))) return m;
     }
     return null;
   }
-
   function findTabsRow(modal){
-    const containers = modal.querySelectorAll('div,nav,section');
-    for (const c of containers){
-      const btns = Array.from(c.querySelectorAll('button, .btn, [role="tab"]'));
+    if (!modal) return null;
+    const blocks = modal.querySelectorAll('div,nav,section');
+    for (const c of blocks){
+      const btns = Array.from(c.querySelectorAll('button,.btn,[role="tab"]'));
       if (!btns.length) continue;
-      const texts = btns.map(b => (b.textContent || '').trim().toUpperCase());
-      const hasAllTime = texts.some(t => t === 'ALL TIME' || t === 'ALLTIME' || t === 'ALL');
-      const hasMonth   = texts.some(t => MONTHS.includes(t));
-      const hasRecords = texts.some(t => t === 'RECORDS');
-      if (hasAllTime && (hasMonth || hasRecords)) return c;
+      const labs = btns.map(b => (b.textContent||'').trim().toUpperCase());
+      const hasAll   = labs.includes('ALL TIME') || labs.includes('ALL') || labs.includes('ALLTIME');
+      const hasMonth = labs.some(t => MONTHS.includes(t));
+      const hasRec   = labs.includes('RECORDS');
+      if (hasAll && (hasMonth || hasRec)) return c;
     }
     return null;
   }
+  const visible = el => !!(el && el.offsetParent !== null);
 
-  function ensureTodayButton(modal, row){
-    const allBtn = Array.from(row.querySelectorAll('button, .btn, [role="tab"]'))
-      .find(b => /all\s*time/i.test((b.textContent||'')));
-    if (!allBtn) return null;
-
-    // already present?
-    let btn = Array.from(row.querySelectorAll('button, .btn, [role="tab"]'))
-      .find(b => /^today$/i.test((b.textContent||'').trim()));
-    if (btn) return btn;
-
-    const tag = allBtn.tagName.toLowerCase();
-    btn = document.createElement(tag);
-    btn.className = allBtn.className || 'btn small';
-    btn.type = allBtn.type || 'button';
-    btn.setAttribute('role', allBtn.getAttribute('role') || 'tab');
-    btn.textContent = 'TODAY';
-    btn.dataset.mode = 'TODAY';
-    btn.classList.remove('primary','active','selected');
-    allBtn.insertAdjacentElement('afterend', btn);
-    return btn;
+  function todayRange(){
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1);
+    return { start, end };
   }
-  
-function __limitTabsToFirstFour(row){
-  const pills = Array.from(row.querySelectorAll('button, .btn, [role="tab"]'));
-  pills.forEach((b, i) => { if (i > 3) b.style.display = 'none'; });
+
+  // ---- render Today table (replaces only the table, keeps pills visible) ----
+  async function renderToday(modal){
+   let row = findTabsRow(modal);
+if (!row || row.offsetParent === null) {
+  row = createFallbackTabsRow(modal);
+}
+let todayBtn = row && Array.from(row.querySelectorAll('button,.btn,[role="tab"]'))
+  .find(b => /^today$/i.test((b.textContent||'').trim()));
+if (!todayBtn) {
+  // make sure there is a TODAY pill in this row
+  const sample = row.querySelector('button,.btn,[role="tab"]');
+  const tag = (sample && sample.tagName) ? sample.tagName.toLowerCase() : 'button';
+  todayBtn = document.createElement(tag);
+  todayBtn.type = 'button';
+  todayBtn.setAttribute('role', (sample && (sample.getAttribute('role') || 'tab')) || 'tab');
+  todayBtn.className = (sample && sample.className) || 'btn small';
+  todayBtn.textContent = 'TODAY';
+  row.insertAdjacentElement('afterbegin', todayBtn);
+  todayBtn.addEventListener('click', (e)=>{ e.preventDefault(); renderToday(modal); });
 }
 
 
-  function setPillSelected(row, btn){
-    Array.from(row.querySelectorAll('button, .btn, [role="tab"]'))
-      .forEach(b => b.classList.remove('primary','active','selected'));
-    btn.classList.add('primary');
-  }
+    // hide only the table, NOT the tabs row
+    const existingTable = modal.querySelector('table.hs-table');
+    if (existingTable && !existingTable.dataset._pl_today_hidden){
+      existingTable.dataset._pl_today_hidden = '1';
+      existingTable.style.display = 'none';
+    }
 
-  // Hide/show “X Games Minimum” (TODAY only hides it)
-  function setMinBannerVisible(modal, visible){
-    const nodes = modal.querySelectorAll('.tag, .input, div, p, span');
-    nodes.forEach(el=>{
-      const txt = (el.textContent || '').trim();
-      if (/games\s+minimum/i.test(txt)) {
-        el.style.display = visible ? '' : 'none';
-        if (!visible) el.dataset._todayMinHidden = '1';
-        else delete el.dataset._todayMinHidden;
-      }
+    // hide "X Games Minimum" banner (TODAY has no minimum)
+    Array.from(modal.querySelectorAll('.tag,div,p,span'))
+      .filter(el => /games\s+minimum/i.test((el.textContent||'')))
+      .forEach(el => el.style.display = 'none');
+
+    // remove any previous Today mount
+    modal.querySelector('#plTodayMount')?.remove();
+
+    // fetch & reduce
+    let games = [];
+    try { games = (await __fetchOfficialGames(50000)).map(__normalizeGame); } catch(e){ console.error(e); }
+    const { start, end } = todayRange();
+    games = games.filter(g => {
+      const t = __gameTs(g.raw || g);
+      if (!t) return false; const d = new Date(t);
+      return d >= start && d < end;
     });
-  }
 
-  async function buildTodayRows(){
-    let games = (await __fetchOfficialGames(50000)).map(__normalizeGame);
-    games = __filterGamesByPLTab('TODAY', games);
-
-    const by = new Map(); // name -> { player, games, sum, best }
+    const by = new Map(); // name -> {games,sum,best}
     games.forEach(g=>{
-      (g.players||[]).forEach((p, i)=>{
-        const score = Number(g.totals[i] || 0);
-        const k = String(p||'').trim();
-        if (!k) return;
-        const r = by.get(k) || { player:k, games:0, sum:0, best:0 };
+      (g.players||[]).forEach((p,i)=>{
+        const name = String(p||'').trim(); if (!name) return;
+        const score = Number(g.totals?.[i] || 0);
+        const r = by.get(name) || { games:0, sum:0, best:0 };
         r.games += 1; r.sum += score; r.best = Math.max(r.best, score);
-        by.set(k, r);
+        by.set(name, r);
       });
     });
+    const rows = Array.from(by.entries()).map(([name,r])=>({
+      name, games:r.games, avg: r.games ? (r.sum / r.games) : 0, best:r.best
+    })).sort((a,b)=> (b.avg - a.avg) || (b.games - a.games) || a.name.localeCompare(b.name));
 
-    return Array.from(by.values()).map(r => ({
-      player: r.player,
-      games: r.games,
-      avg: r.games ? (r.sum / r.games) : 0,
-      best: r.best
-    }))
-    .sort((a,b)=> (b.avg - a.avg) || (b.games - a.games) || a.player.localeCompare(b.player));
-  }
-
-  function buildTable(rows){
-    const table = document.createElement('table'); table.className = 'hs-table';
-    const thead = document.createElement('thead'); const trh = document.createElement('tr');
-    ['#','Player','Games','Avg Total','Best'].forEach(h=>{
-      const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);
-    });
-    thead.appendChild(trh); table.appendChild(thead);
-    Array.from(trh.children).forEach(th => { th.style.position='sticky'; th.style.top='0'; th.style.zIndex='2'; th.style.background='rgba(0,0,0,0.4)'; });
-
-    const tbody = document.createElement('tbody');
-    rows.forEach((r, idx)=>{
-      const tr = document.createElement('tr');
-      const mk = v => { const td = document.createElement('td'); td.textContent = v; return td; };
-      tr.append(
-        mk(String(idx+1)),
-        mk(r.player),
-        mk(String(r.games)),
-        mk((Number(r.avg)||0).toFixed(1)),
-        mk(String(r.best||0))
-      );
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    return table;
-  }
-
-  async function renderToday(modal, row, btn){
-    setPillSelected(row, btn);
-
-// Hide only the table itself so the tabs row remains visible
-const firstTable = modal.querySelector('table.hs-table');
-if (firstTable && !firstTable.dataset._todayHidden){
-  firstTable.dataset._todayHidden = '1';
-  firstTable.style.display = 'none';
-}
-// Make extra sure the tabs row is visible
-if (row && row.style && row.style.display === 'none') row.style.display = '';
-
-    setMinBannerVisible(modal, false); // hide “X Games Minimum” for TODAY
-
-    // Create/replace our mount
-    let mount = modal.querySelector('#plTodayContent');
-    if (!mount){
-      mount = document.createElement('div');
-      mount.id = 'plTodayContent';
-      const tabsRow = row;
-      (tabsRow || modal.querySelector('.modal-body') || modal).insertAdjacentElement('afterend', mount);
-    }
-    mount.innerHTML = '';
+    // build UI
+    const mount = document.createElement('div'); mount.id = 'plTodayMount';
 
     const banner = document.createElement('div');
-    banner.className = 'tag';
-    banner.textContent = 'Today Only';
-    banner.style.margin = '6px 0';
+    banner.className = 'tag'; banner.textContent = 'Today Only'; banner.style.margin='6px 0';
     mount.appendChild(banner);
 
     const scroll = document.createElement('div');
-    scroll.style.maxHeight='56vh';
-    scroll.style.overflowY='auto';
-    scroll.style.borderRadius='8px';
+    scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.style.borderRadius='8px';
     mount.appendChild(scroll);
 
-    try{
-      const rows = await buildTodayRows();
-      const table = buildTable(rows);
-      scroll.appendChild(table);
-    }catch(e){
-      console.error('TODAY table failed', e);
-      scroll.innerHTML = '<p>Failed to load Today data.</p>';
-      try{ if (typeof toast==='function') toast('Failed to load Today'); }catch(_){}
-    }
-  }
-
-  // Restore original area when switching away from TODAY
-  function restoreOriginal(modal){
-    modal.querySelector('#plTodayContent')?.remove();
-    const hidden = modal.querySelector('[data-_today_hidden]');
-    // in case attribute selector above didn’t match (dataset vs attr), iterate:
-    Array.from(modal.querySelectorAll('*')).forEach(n=>{
-      if (n.dataset && n.dataset._todayHidden){
-        n.style.display = '';
-        delete n.dataset._todayHidden;
-      }
+    const table = document.createElement('table'); table.className = 'hs-table';
+    const thead = document.createElement('thead'); const trh = document.createElement('tr');
+    ['#','Player','Games','Avg Total','Best'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
+    thead.appendChild(trh); table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    rows.forEach((r,i)=>{
+      const tr=document.createElement('tr');
+      const td=v=>{const t=document.createElement('td'); t.textContent=v; return t;};
+      tr.append(td(String(i+1)), td(r.name), td(String(r.games)), td((r.avg||0).toFixed(1)), td(String(r.best||0)));
+      tbody.appendChild(tr);
     });
-    setMinBannerVisible(modal, true);
+    table.appendChild(tbody); scroll.appendChild(table);
+
+    // place the mount directly under the tabs row if visible, else top of modal body
+    const rowEl = row && visible(row) ? row : null;
+    if (rowEl) rowEl.insertAdjacentElement('afterend', mount);
+    else (modal.querySelector('.modal-body') || modal).insertAdjacentElement('afterbegin', mount);
   }
 
-  function setup(modal){
-    const row = findTabsRow(modal);
-    if (!row) return;
+  // ---- restore the app's default view when leaving TODAY --------------------
+  function restore(modal){
+    modal.querySelector('#plTodayMount')?.remove();
+    Array.from(modal.querySelectorAll('.tag,div,p,span'))
+      .filter(el => /games\s+minimum/i.test((el.textContent||'')))
+      .forEach(el => el.style.display = '');
+    const t = modal.querySelector('table.hs-table[data-_pl_today_hidden="1"]') || modal.querySelector('table.hs-table');
+    if (t) { t.style.display=''; delete t.dataset._pl_today_hidden; }
+  }
+  
+  function createFallbackTabsRow(modal){
+  // if a visible real row exists, use it
+  const real = findTabsRow(modal);
+  if (real && real.offsetParent !== null) return real;
 
-    const todayBtn = ensureTodayButton(modal, row);
-    if (!todayBtn) return;
-    
-    // Limit to first four pills (RECORDS, ALL TIME, TODAY, DEC) for the end-game popup only
-if (window.__plFromEndGame && (Date.now() - window.__plFromEndGame) < 8000) {
-  __limitTabsToFirstFour(row);
+  // Build a compact row and clone styling from any button we can find
+  const sampleBtn = modal.querySelector('button,.btn,[role="tab"]');
+  const mk = (label) => {
+    const tag = (sampleBtn && sampleBtn.tagName) ? sampleBtn.tagName.toLowerCase() : 'button';
+    const b = document.createElement(tag);
+    b.type = 'button';
+    b.setAttribute('role', (sampleBtn && (sampleBtn.getAttribute('role') || 'tab')) || 'tab');
+    b.className = (sampleBtn && sampleBtn.className) || 'btn small';
+    b.textContent = label;
+    return b;
+  };
+
+  const row = document.createElement('div');
+  row.id = 'plTodayTabsFallback';
+  row.style.display = 'flex';
+  row.style.flexWrap = 'wrap';
+  row.style.gap = '8px';
+  row.style.margin = '6px 0 8px';
+
+  // Standard set: RECORDS, ALL TIME, TODAY, months (DEC → JAN)
+  const pills = [mk('RECORDS'), mk('ALL TIME'), mk('TODAY'), ...[...MONTHS].reverse().map(m => mk(m))];
+  pills.forEach(b => row.appendChild(b));
+
+  // Mount right under the title so it's always visible
+  const titleEl = modal.querySelector('h1,h2,h3');
+  if (titleEl) titleEl.insertAdjacentElement('afterend', row);
+  else (modal.querySelector('.modal-body') || modal).insertAdjacentElement('afterbegin', row);
+
+  // Wire: TODAY renders our view; other pills restore and try to trigger the real tab
+  const clickOther = (label) => {
+        restore(modal);
+    const realRow = findTabsRow(modal);
+    if (realRow) {
+      const target = Array.from(realRow.querySelectorAll('button,.btn,[role="tab"]'))
+        .find(b => new RegExp(`^${label}$`, 'i').test((b.textContent || '').trim()));
+      if (target) target.click();
+    }
+  };
+  pills.forEach(b => {
+    const label = (b.textContent || '').trim().toUpperCase();
+    if (label === 'TODAY') b.addEventListener('click', (e)=>{ e.preventDefault(); renderToday(modal); });
+    else b.addEventListener('click', ()=> clickOther(label));
+  });
+
+  return row;
 }
 
-    if (!todayBtn.dataset.wired){
-      todayBtn.dataset.wired = '1';
-      todayBtn.addEventListener('click', () => {
-        // let any existing handlers run first; then we render ours
-        setTimeout(()=> renderToday(modal, row, todayBtn), 0);
-      });
-    }
+  // ---- add a TODAY pill by cloning a real month pill -----------------------
+  function ensureTodayPill(modal){
+    const row = findTabsRow(modal); if (!row || !visible(row)) return null;
 
-    // One-time listener to clean up when any other tab is clicked
-    if (!row.dataset.todayRowWired){
-      row.dataset.todayRowWired = '1';
+    // already present?
+    let btn = Array.from(row.querySelectorAll('button,.btn,[role="tab"]'))
+      .find(b => /^today$/i.test((b.textContent||'').trim()));
+    if (btn) return btn;
+
+    // clone a month pill to copy exact styling
+    const monthBtn = Array.from(row.querySelectorAll('button,.btn,[role="tab"]'))
+      .find(b => MONTHS.includes((b.textContent||'').trim().toUpperCase()));
+    if (!monthBtn) return null;
+
+    const clone = monthBtn.cloneNode(true);
+    clone.textContent = 'TODAY';
+    clone.dataset.mode = 'TODAY';
+    // remove any existing handlers by replacing the node
+    const tag = clone.tagName.toLowerCase(); const fresh = document.createElement(tag);
+    fresh.className = clone.className; fresh.type = 'button'; fresh.setAttribute('role', clone.getAttribute('role') || 'tab');
+    fresh.textContent = 'TODAY'; fresh.dataset.mode = 'TODAY';
+
+    // place it right after ALL TIME if present; else before first month
+    const allBtn = Array.from(row.querySelectorAll('button,.btn,[role="tab"]')).find(b => /all\s*time/i.test((b.textContent||'')));
+    if (allBtn && allBtn.parentElement === row) allBtn.insertAdjacentElement('afterend', fresh);
+    else monthBtn.insertAdjacentElement('beforebegin', fresh);
+
+    // wire: render Today on click
+    fresh.addEventListener('click', (e)=>{ e.preventDefault(); renderToday(modal); });
+
+    // when any other pill is clicked, restore the default table/banner
+    if (!row.dataset._todayRestoreWired){
+      row.dataset._todayRestoreWired = '1';
       row.addEventListener('click', (e)=>{
         const label = (e.target && (e.target.textContent||'').trim().toUpperCase()) || '';
-        if (label && label !== 'TODAY') restoreOriginal(modal);
+        if (label && label !== 'TODAY') restore(modal);
       }, true);
     }
+
+    return fresh;
   }
 
-  function trySetup(){
-    const m = findPLModal();
-    if (m) setup(m);
+  function tick(){
+    const m = findModal(); if (!m) return;
+    ensureTodayPill(m);
   }
 
-  // Run now if the modal already exists, and also when DOM changes
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', trySetup);
-  } else {
-    trySetup();
-  }
-
-  // Light observer: only react to added nodes
-  const mo = new MutationObserver(() => { trySetup(); });
-  mo.observe(document.body || document.documentElement, { childList: true, subtree: true });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
+  const mo = new MutationObserver(tick);
+  mo.observe(document.body || document.documentElement, { childList:true, subtree:true });
 })();
 
-// === End Game: add "PREMIER LEAGUE" button below "HIGH SCORES" ==============
-(function endGameAddPremierLeagueButton(){
-  // Tries to open the existing Premier League popup using known functions or UI triggers
-  async function openPremierLeaguePopup(){
-    window.__plFromEndGame = Date.now();
-    const tryFns = [
-      'openPremierLeagueDialog','openPremierLeaguePopup','openPremierLeague',
-      'openRecordsDialog','openLeagueRecordsDialog','openLeaguePopup','openRecords'
-    ];
-    for (const n of tryFns){
-      const f = window[n];
-      if (typeof f === 'function') { try { f(); return true; } catch(_){} }
+// === High Score League — rewritten: NEW + movement + even widths ============
+(function highScoreLeagueRewritten(){
+  const TITLE_RX = /high\s*score\s*league/i;
+  const STORAGE_KEY = 'hsLeaguePositions.v2';
+  const NEW_LIMIT_DAYS = 14;
+
+  // ---- utilities ------------------------------------------------------------
+  const daysBetween = (a,b) => Math.floor((a - b) / 86400000);
+  const visible = el => !!(el && el.offsetParent !== null);
+
+  function findHSModal(){
+    const mods = document.querySelectorAll('.modal,[role="dialog"]');
+    for (const m of mods){
+      const ok = Array.from(m.querySelectorAll('h1,h2,h3'))
+        .some(h => TITLE_RX.test(h.textContent || ''));
+      if (ok) return m;
+    }
+    return null;
+  }
+
+  function getTable(modal){
+    if (!modal) return null;
+    const table = modal.querySelector('table.hs-table');
+    if (!table) return null;
+    const ths = Array.from(table.querySelectorAll('thead th'));
+    if (!ths.length) return null;
+
+    // Expected headers: "# | Player | High Score | When"
+    const idxPos    = 0; // "#"
+    const idxPlayer = ths.findIndex(th => /player/i.test(th.textContent||''));
+    const idxHigh   = ths.findIndex(th => /high\s*score/i.test(th.textContent||''));
+    const idxWhen   = ths.findIndex(th => /when/i.test(th.textContent||''));
+    if (idxPlayer < 0 || idxHigh < 0 || idxWhen < 0) return null;
+    return { table, ths, idxPos, idxPlayer, idxHigh, idxWhen };
+  }
+
+  async function earliestMap(){
+    if (window.__hsEarliestMap_v2) return window.__hsEarliestMap_v2;
+    let games = [];
+    try { games = (await __fetchOfficialGames(50000)).map(__normalizeGame); } catch(_){}
+    const map = new Map(); // nameLC -> earliest Date
+    games.forEach(g=>{
+      const t = __gameTs(g.raw || g); if (!t) return;
+      const d = new Date(t);
+      (g.players||[]).forEach(p=>{
+        const k = String(p||'').trim().toLowerCase(); if (!k) return;
+        const cur = map.get(k);
+        if (!cur || d < cur) map.set(k, d);
+      });
+    });
+    window.__hsEarliestMap_v2 = map;
+    return map;
+  }
+
+  function arrowHTML(delta){
+    if (delta > 0) return `<span title="+${delta}" style="color:#22c55e;font-weight:700">▲</span>`;
+    if (delta < 0) return `<span title="${delta}" style="color:#ef4444;font-weight:700">▼</span>`;
+    return `<span style="opacity:.5">–</span>`;
+  }
+
+  // ---- main apply -----------------------------------------------------------
+  async function apply(modal){
+    const refs = getTable(modal); if (!refs) return;
+    const { table, ths, idxPos, idxPlayer, idxHigh, idxWhen } = refs;
+
+    // 1) Insert movement header AFTER "#"
+    let thMove = table.querySelector('thead th[data-move-col="1"]');
+    if (!thMove){
+      thMove = document.createElement('th');
+      thMove.dataset.moveCol = '1';
+      thMove.style.textAlign = 'center';
+      thMove.style.width     = '26px';
+      thMove.style.minWidth  = '24px';
+      thMove.style.maxWidth  = '36px';
+      ths[idxPos].insertAdjacentElement('afterend', thMove);
     }
 
-    // Try a visible trigger that already opens the PL modal
-    const trigger = Array.from(document.querySelectorAll('button,.btn,a,[role="button"]'))
-      .find(el => /premier\s*league|records/i.test((el.textContent||'')) && el.offsetParent);
-    if (trigger) { trigger.click(); return true; }
+    // 2) Even spacing for Player / High Score / When
+    const headNow = Array.from(table.querySelectorAll('thead th'));
+    const idxMove = headNow.findIndex(th => th.dataset && th.dataset.moveCol === '1');
 
-    // Fallback: go to Stats (if available), then try again shortly
-    const statsBtn = Array.from(document.querySelectorAll('button,.btn,a,[role="button"]'))
-      .find(el => /^\s*stats\s*$/i.test((el.textContent||'')));
-    if (statsBtn) { statsBtn.click(); setTimeout(openPremierLeaguePopup, 150); return true; }
+    table.style.tableLayout = 'fixed';
+    table.style.width = '100%';
+    if (headNow[0]) {
+      headNow[0].style.width    = '36px';
+      headNow[0].style.minWidth = '32px';
+      headNow[0].style.maxWidth = '42px';
+    }
+    if (idxMove >= 0 && headNow[idxMove]) {
+      headNow[idxMove].style.width     = '26px';
+      headNow[idxMove].style.minWidth  = '24px';
+      headNow[idxMove].style.maxWidth  = '34px';
+      headNow[idxMove].style.textAlign = 'center';
+    }
+    // recompute indexes by text (header DOM may have shifted)
+    const idxPlayerNow = headNow.findIndex(th => /player/i.test(th.textContent||''));
+    const idxHighNow   = headNow.findIndex(th => /high\s*score/i.test(th.textContent||''));
+    const idxWhenNow   = headNow.findIndex(th => /when/i.test(th.textContent||''));
 
-    try { if (typeof toast==='function') toast('Premier League popup not found'); } catch(_) {}
-    return false;
+    const fixedPx = 36 + (idxMove >= 0 ? 26 : 0);
+    const EVEN = `calc((100% - ${fixedPx}px) / 3)`;
+    [idxPlayerNow, idxHighNow, idxWhenNow].forEach(i => {
+      if (i >= 0 && headNow[i]) headNow[i].style.width = EVEN;
+    });
+
+    // 3) Per-row: add movement cell; add NEW tag if first-game ≤ 14 days
+    const prevRaw = localStorage.getItem(STORAGE_KEY);
+    const prevMap = prevRaw ? JSON.parse(prevRaw) : {}; // nameLC -> prev position
+    const now = new Date();
+    const firstMap = await earliestMap();
+
+    const rows = Array.from(table.querySelectorAll('tbody tr'));
+    const curMap = {}; // nameLC -> current position
+
+    rows.forEach((tr, i) => {
+      const pos = i + 1;
+      const tds = Array.from(tr.children);
+      const tdPos    = tds[idxPos];
+      // movement cell sits AFTER position; if not there, create
+      let tdMove = tds[idxMove];
+      if (!tdMove || tdMove === tdPos || tdMove.dataset.moveCell !== '1') {
+        tdMove = document.createElement('td');
+        tdMove.dataset.moveCell = '1';
+        tdMove.style.textAlign = 'center';
+        tdPos.insertAdjacentElement('afterend', tdMove);
+      }
+
+      // After inserting a new td, refresh children and resolve Player cell
+      const tds2 = Array.from(tr.children);
+      // Player column shifts by +1 if movement col was inserted before it
+      const tdPlayerCell = tds2[(idxPlayerNow >= 0 ? idxPlayerNow : idxPlayer) + (idxMove >= 0 ? 1 : 0)];
+      if (!tdPlayerCell) return;
+
+      // Player name (strip any existing "NEW")
+      const nameText = (tdPlayerCell.textContent || '').replace(/\bNEW\b/gi,'').trim();
+      const nameLC = nameText.toLowerCase();
+      curMap[nameLC] = pos;
+
+      // Movement arrow against previous snapshot
+      let html = '<span style="opacity:.5">–</span>';
+      const prevPos = prevMap[nameLC];
+      if (typeof prevPos === 'number') {
+        const delta = prevPos - pos; // positive = moved UP (better)
+        html = arrowHTML(delta);
+      }
+      tdMove.innerHTML = html;
+
+      // NEW tag (first official game within the last 14 days)
+      if (nameLC && firstMap.has(nameLC)) {
+        const first = firstMap.get(nameLC);
+        const isNew = daysBetween(now, first) <= NEW_LIMIT_DAYS && daysBetween(now, first) >= 0;
+        if (isNew && !/\bNEW\b/i.test(tdPlayerCell.innerHTML)) {
+          const tag = document.createElement('span');
+          tag.className = 'tag';
+          tag.textContent = 'NEW';
+          tag.style.marginLeft = '6px';
+          tdPlayerCell.appendChild(tag);
+        }
+      }
+    });
+
+    // 4) Save snapshot for next time
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(curMap)); } catch(_) {}
   }
-  // expose so other code can call it if needed
-  window.openPremierLeaguePopup = openPremierLeaguePopup;
 
-  function findHighScoresButton(){
-    // Button text is "HIGH SCORES" (case-insensitive)
-    return Array.from(document.querySelectorAll('button,.btn,[role="button"]'))
-      .find(el => /^\s*high\s*scores\s*$/i.test(el.textContent||''));
+  // Debounced observer to apply when the league modal appears/updates
+  let scheduled = false;
+  function tick(){
+    const m = findHSModal();
+    if (!m || !visible(m)) return;
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(async ()=>{ scheduled = false; try { await apply(m); } catch(e){ console.error(e); } });
   }
 
-  function inject(){
-    const hs = findHighScoresButton();
-    if (!hs) return;
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
+  const mo = new MutationObserver(tick);
+  mo.observe(document.body || document.documentElement, { childList:true, subtree:true });
+})();
 
-    // Avoid duplicates: if next sibling is already our PL button, stop
-    if (hs.nextElementSibling && hs.nextElementSibling.id === 'btnPremierLeague') return;
+// === High Scores (Match) — v3: DD/MM/YY @ HH:MM + NEW(7d) + PB + narrow # ===
+(function enhanceHighScoresMatch_v3(){
+  const TITLE_RX = /^\s*high\s*scores\s*$/i;
+  // Expected header: "# | Player | Score | Avg / Round | When"
+  const COLS_RX  = [/^#$/i, /player/i, /^score$/i, /avg\s*\/\s*round/i, /when/i];
+  const NEW_MS   = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-    // Create a sibling button that looks identical to "HIGH SCORES"
-    const tag = hs.tagName.toLowerCase();
-    const pl = document.createElement(tag);
-    pl.id = 'btnPremierLeague';
-    pl.className = hs.className || 'btn';
-    if (pl.tagName === 'BUTTON') pl.type = 'button';
-    pl.textContent = 'PREMIER LEAGUE';
-    pl.addEventListener('click', (e)=>{ e.preventDefault(); openPremierLeaguePopup(); });
-
-    // Insert immediately after the HIGH SCORES button
-    hs.insertAdjacentElement('afterend', pl);
+  // ---------- helpers ----------
+  function findModalAndTable(){
+    const mods = document.querySelectorAll('.modal,[role="dialog"]');
+    for (const m of mods){
+      const ok = Array.from(m.querySelectorAll('h1,h2,h3'))
+        .some(h => TITLE_RX.test(h.textContent||''));
+      if (!ok) continue;
+      const table = m.querySelector('table.hs-table'); if (!table) continue;
+      const ths = Array.from(table.querySelectorAll('thead th'));
+      if (ths.length < 5) continue;
+      const matches = COLS_RX.every((rx, idx)=> rx.test((ths[idx].textContent||'').trim()));
+      if (matches) return { modal: m, table, ths };
+    }
+    return null;
   }
 
-  // Run now + keep in sync when the end-game screen mounts
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', inject);
-  } else {
-    inject();
+  // "20 Nov 25 at 20:35"  or "20 Nov 25 @ 20:35"  -> "20/11/25 @ 20:35"
+  function fmt_DDMMYY_HHMM(text){
+    if (!text) return text;
+    const m = text.match(/^\s*(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2})(?:\s+at|\s*@)\s+(\d{2}):(\d{2})\s*$/);
+    if (!m) return text;
+    const [, d, mon, yy, hh, mm] = m;
+    const MONTH = {JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
+    const mmNum = MONTH[mon.toUpperCase()];
+    if (!mmNum) return text;
+    const dd = String(d).padStart(2,'0');
+    return `${dd}/${mmNum}/${yy} @ ${hh}:${mm}`;
   }
-  const mo = new MutationObserver(inject);
-  mo.observe(document.body || document.documentElement, { childList: true, subtree: true });
+
+  function yellowNEW(){
+    const span = document.createElement('span');
+    span.className = 'tag';
+    span.textContent = 'NEW';
+    span.style.color = '#facc15';
+    span.style.borderColor = 'rgba(250,204,21,.35)';
+    span.style.background = 'rgba(250,204,21,.08)';
+    return span;
+  }
+
+  // Build PB map + (player|score)→latest timestamp
+  async function buildMaps(){
+    if (window.__hsMatchMaps_v3) return window.__hsMatchMaps_v3;
+
+    let games = [];
+    try { games = (await __fetchOfficialGames(50000)).map(__normalizeGame); } catch(_) {}
+
+    const pb = new Map();      // nameLC -> max score
+    const keyTs = new Map();   // `${nameLC}|${score}` -> latest Date
+    let globalMax = 0;
+
+    games.forEach(g=>{
+      const ts = __gameTs(g.raw || g);
+      const d  = ts ? new Date(ts) : null;
+      (g.players||[]).forEach((p,i)=>{
+        const name = String(p||'').trim(); if (!name) return;
+        const k = name.toLowerCase();
+        const score = Number(g.totals?.[i] || 0);
+        if (!Number.isFinite(score)) return;
+        if (score > (pb.get(k) || 0)) pb.set(k, score);
+        if (score > globalMax) globalMax = score;
+        if (d) {
+          const key = `${k}|${score}`;
+          const prev = keyTs.get(key);
+          if (!prev || d > prev) keyTs.set(key, d);
+        }
+      });
+    });
+
+    window.__hsMatchMaps_v3 = { pb, keyTs, globalMax };
+    return window.__hsMatchMaps_v3;
+  }
+
+  async function apply(){
+    const found = findModalAndTable(); if (!found) return;
+    const { table, ths } = found;
+
+    // Insert blank header after "#", narrow first column
+    let thNew = table.querySelector('thead th[data-newcol="1"]');
+    if (!thNew){
+      thNew = document.createElement('th');
+      thNew.dataset.newcol = '1';
+      thNew.style.textAlign = 'center';
+      thNew.style.width = '44px';
+      thNew.style.minWidth = '38px';
+      thNew.style.maxWidth = '60px';
+      ths[0].insertAdjacentElement('afterend', thNew);
+    }
+    if (ths[0]) {
+      ths[0].style.width     = '24px';
+      ths[0].style.minWidth  = '22px';
+      ths[0].style.maxWidth  = '28px';
+      ths[0].style.textAlign = 'center';
+    }
+    Array.from(table.querySelectorAll('tbody tr')).forEach(tr=>{
+      const td = tr.children[0];
+      if (td) { td.style.width='24px'; td.style.minWidth='22px'; td.style.textAlign='center'; }
+    });
+
+    // Resolve indexes (robust even if columns shift)
+    const head = Array.from(table.querySelectorAll('thead th'));
+    const idxRank   = 0;
+    const idxNew    = head.findIndex(th => th.dataset && th.dataset.newcol === '1');
+    const idxPlayer = head.findIndex(th => /player/i.test(th.textContent||''));
+    const idxScore  = head.findIndex(th => /^score$/i.test(th.textContent||''));
+    let   idxWhen   = head.findIndex(th => /when/i.test(th.textContent||''));
+    if (idxWhen < 0) idxWhen = head.length - 1; // fallback: last column is When
+    if (idxNew < 0 || idxPlayer < 0 || idxScore < 0) return;
+
+    const { pb, keyTs, globalMax } = await buildMaps();
+
+    // Per-row updates
+    const rows = Array.from(table.querySelectorAll('tbody tr'));
+    rows.forEach((tr, i)=>{
+      const tds     = Array.from(tr.children);
+      const tdRank  = tds[idxRank];
+      const tdNew   = (function(){
+        let cell = tds[idxNew];
+        if (!cell || cell === tdRank || cell.dataset.newCell !== '1') {
+          cell = document.createElement('td');
+          cell.dataset.newCell = '1';
+          cell.style.textAlign = 'center';
+          tdRank.insertAdjacentElement('afterend', cell);
+        } else {
+          cell.innerHTML = '';
+        }
+        return cell;
+      })();
+
+      // Adjusted indexes after inserting NEW cell before later columns
+      const tds2    = Array.from(tr.children);
+      const tdPlayer= tds2[idxPlayer + 1];
+      const tdScore = tds2[idxScore  + 1];
+      const tdWhen  = tds2[idxWhen   + 1] || tds2[tds2.length - 1];
+
+      // 1) Format When => DD/MM/YY @ HH:MM
+      if (tdWhen) {
+        const orig = tdWhen.textContent || '';
+        const fmt  = fmt_DDMMYY_HHMM(orig);
+        if (fmt && fmt !== orig) tdWhen.textContent = fmt;
+      }
+
+      // 2) NEW (≤7 days since that exact (player,score))
+      const nameLC = (tdPlayer?.textContent || '').trim().toLowerCase();
+      const scoreN = Number((tdScore?.textContent || '').replace(/[^\d.]/g,''));
+      if (nameLC && Number.isFinite(scoreN)) {
+        const key = `${nameLC}|${scoreN}`;
+        const ts = keyTs.get(key);
+        if (ts && (Date.now() - ts.getTime()) <= NEW_MS) {
+          tdNew.appendChild(yellowNEW());
+        }
+      }
+
+      // 3) PB after Score (exclude global top score)
+      const isGlobalTop = Number((tdScore?.textContent || '').replace(/[^\d.]/g,'')) === globalMax;
+      const best = pb.get(nameLC) || -Infinity;
+      const isPB = Number((tdScore?.textContent || '').replace(/[^\d.]/g,'')) === best;
+      if (!isGlobalTop && isPB && tdScore && !/\bPB\b/i.test(tdScore.innerHTML)) {
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = 'PB';
+        tag.style.marginLeft = '6px';
+        tdScore.appendChild(tag);
+      }
+    });
+  }
+
+  function tick(){ try { apply(); } catch(e){ console.error('HS Match v3 failed', e); } }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
+  const mo = new MutationObserver(tick);
+  mo.observe(document.body || document.documentElement, { childList:true, subtree:true });
 })();
 
 /* === Gremlins Xmas GIF — resilient, no embed.js required ================ */
+
+// === T button flash + shake — v3 (Safari-safe; 1→2→3 only when T is pressed)
+(function tButtonFXv3(){
+  // CSS (proper injection)
+  if (!document.getElementById('tfx-css')) {
+    const s = document.createElement('style'); s.id = 'tfx-css';
+    s.textContent =
+`.tfx{will-change:transform,filter}
+@keyframes tFlashLow{0%{filter:brightness(1);box-shadow:none}12%{filter:brightness(1.4);box-shadow:0 0 10px rgba(255,255,255,.5),0 0 18px rgba(77,163,255,.3)}30%{filter:brightness(1.05);box-shadow:none}100%{filter:brightness(1);box-shadow:none}}
+@keyframes tFlashMed{0%{filter:brightness(1);box-shadow:none}10%{filter:brightness(1.9);box-shadow:0 0 16px rgba(255,255,255,.7),0 0 28px rgba(77,163,255,.4)}24%{filter:brightness(1.1);box-shadow:none}38%{filter:brightness(1.6);box-shadow:0 0 12px rgba(255,255,255,.5),0 0 22px rgba(77,163,255,.35)}100%{filter:brightness(1);box-shadow:none}}
+@keyframes tFlashHigh{0%{filter:brightness(1);box-shadow:none}8%{filter:brightness(2.6);box-shadow:0 0 22px rgba(255,255,255,.85),0 0 40px rgba(77,163,255,.5)}18%{filter:brightness(1.1);box-shadow:none}28%{filter:brightness(2.2);box-shadow:0 0 18px rgba(255,255,255,.7),0 0 34px rgba(77,163,255,.45)}42%{filter:brightness(1.15);box-shadow:none}100%{filter:brightness(1);box-shadow:none}}
+@keyframes tShakeLow{0%,100%{transform:translateX(0)}20%{transform:translateX(-2px)}40%{transform:translateX(2px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+@keyframes tShakeMed{0%,100%{transform:translateX(0)}15%{transform:translateX(-5px)}30%{transform:translateX(5px)}45%{transform:translateX(-4px)}60%{transform:translateX(4px)}75%{transform:translateX(-3px)}}
+@keyframes tShakeHigh{0%,100%{transform:translateX(0) rotate(0)}12%{transform:translateX(-8px) rotate(-1deg)}24%{transform:translateX(8px) rotate(1deg)}36%{transform:translateX(-7px) rotate(-.9deg)}48%{transform:translateX(7px) rotate(.9deg)}60%{transform:translateX(-6px) rotate(-.8deg)}72%{transform:translateX(6px) rotate(.8deg)}84%{transform:translateX(-4px) rotate(-.6deg)}}
+.tfx.flash-low{animation:tFlashLow .22s ease-in-out,tShakeLow .22s linear}
+.tfx.flash-med{animation:tFlashMed .34s ease-in-out,tShakeMed .34s linear}
+.tfx.flash-high{animation:tFlashHigh .50s ease-in-out,tShakeHigh .50s linear}`;
+    document.head.appendChild(s);
+  }
+
+  // Find the visible T button (label "T" or treble)
+  function isT(el){
+    if (!el) return false;
+    const label = (el.textContent || el.getAttribute('aria-label') || el.title || '').trim().toUpperCase();
+    const data  = ((el.dataset && (el.dataset.shot || el.dataset.kind || '')) || '').toUpperCase();
+    const isBtn = /^(BUTTON|A)$/i.test(el.tagName) || el.hasAttribute('role');
+    return isBtn && (label === 'T' || data === 'T' || /TREB|TREBLE/.test(label+data));
+  }
+  function findT(){ return Array.from(document.querySelectorAll('button,.btn,a,[role="button"]')).find(el => isT(el) && el.offsetParent); }
+
+  // Press-order only: 1 -> 2 -> 3 -> 1 ... (only T presses advance)
+  let count = 0;
+
+  function animate(el){
+    el.classList.add('tfx');
+    el.classList.remove('flash-low','flash-med','flash-high');
+    void el.offsetWidth; // restart
+    el.classList.add(count===1 ? 'flash-low' : count===2 ? 'flash-med' : 'flash-high');
+    setTimeout(() => el.classList.remove('flash-low','flash-med','flash-high'), 700);
+  }
+
+  function onPress(){
+    const el = findT(); if (!el) return;
+    count = (count % 3) + 1;     // 1→2→3→1…
+    animate(el);
+  }
+
+  // Wire clicks only on T; keyboard 't' also triggers it
+  function wire(){
+    const btn = findT(); if (!btn || btn.dataset.tFxWired==='1') return;
+    btn.dataset.tFxWired = '1';
+    btn.addEventListener('click', onPress);
+  }
+  document.addEventListener('keydown', e => { if ((e.key||'').toLowerCase() === 't') onPress(); });
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
+  new MutationObserver(wire).observe(document.body || document.documentElement, { childList:true, subtree:true });
+})();
+
+// === D button flash + shake — v1 (1→2→3: Ultra-low → Low → Medium)
+(function dButtonFX(){
+  // CSS for D (kept separate from T)
+  if (!document.getElementById('dfx-css')) {
+    const s = document.createElement('style'); s.id = 'dfx-css';
+    s.textContent =
+`.dfx{will-change:transform,filter}
+@keyframes dFlashUltra{0%{filter:brightness(1);box-shadow:none}18%{filter:brightness(1.2);box-shadow:0 0 6px rgba(255,255,255,.35),0 0 12px rgba(77,163,255,.20)}100%{filter:brightness(1);box-shadow:none}}
+@keyframes dFlashLow{0%{filter:brightness(1);box-shadow:none}14%{filter:brightness(1.45);box-shadow:0 0 10px rgba(255,255,255,.45),0 0 18px rgba(77,163,255,.28)}100%{filter:brightness(1);box-shadow:none}}
+@keyframes dFlashMed{0%{filter:brightness(1);box-shadow:none}12%{filter:brightness(1.7);box-shadow:0 0 14px rgba(255,255,255,.6),0 0 24px rgba(77,163,255,.35)}32%{filter:brightness(1.1);box-shadow:none}100%{filter:brightness(1);box-shadow:none}}
+@keyframes dShakeUltra{0%,100%{transform:translateX(0)}25%{transform:translateX(-1px)}75%{transform:translateX(1px)}}
+@keyframes dShakeLow{0%,100%{transform:translateX(0)}20%{transform:translateX(-3px)}40%{transform:translateX(3px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+@keyframes dShakeMed{0%,100%{transform:translateX(0)}15%{transform:translateX(-5px)}30%{transform:translateX(5px)}45%{transform:translateX(-4px)}60%{transform:translateX(4px)}}
+.dfx.flash-ultra{animation:dFlashUltra .18s ease-in-out,dShakeUltra .18s linear}
+.dfx.flash-low{animation:dFlashLow .26s ease-in-out,dShakeLow .26s linear}
+.dfx.flash-med{animation:dFlashMed .34s ease-in-out,dShakeMed .34s linear}`;
+    document.head.appendChild(s);
+  }
+
+  // Find the visible D button (label "D" or "Double")
+  function isD(el){
+    if (!el) return false;
+    const label = (el.textContent || el.getAttribute('aria-label') || el.title || '').trim().toUpperCase();
+    const data  = ((el.dataset && (el.dataset.shot || el.dataset.kind || '')) || '').toUpperCase();
+    const isBtn = /^(BUTTON|A)$/i.test(el.tagName) || el.hasAttribute('role');
+    return isBtn && (label === 'D' || data === 'D' || /DOUBLE/.test(label+data));
+  }
+  function findD(){ return Array.from(document.querySelectorAll('button,.btn,a,[role="button"]')).find(el => isD(el) && el.offsetParent); }
+
+  // Press-order only for D (independent of T/S)
+  let dCount = 0;
+
+  function animate(el){
+    el.classList.add('dfx');
+    el.classList.remove('flash-ultra','flash-low','flash-med');
+    void el.offsetWidth; // restart
+    el.classList.add(dCount===1 ? 'flash-ultra' : dCount===2 ? 'flash-low' : 'flash-med');
+    setTimeout(()=> el.classList.remove('flash-ultra','flash-low','flash-med'), 600);
+  }
+
+  function onPressD(){
+    const el = findD(); if (!el) return;
+    dCount = (dCount % 3) + 1;   // 1 (ultra-low) → 2 (low) → 3 (medium)
+    animate(el);
+  }
+
+  // Wire clicks only on D; keyboard 'd' also triggers it
+  function wire(){
+    const btn = findD(); if (!btn || btn.dataset.dFxWired==='1') return;
+    btn.dataset.dFxWired = '1';
+    btn.addEventListener('click', onPressD);
+  }
+  document.addEventListener('keydown', e => { if ((e.key||'').toLowerCase() === 'd') onPressD(); });
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
+  new MutationObserver(wire).observe(document.body || document.documentElement, { childList:true, subtree:true });
+})();
+
+// === S button flash + shake — v1 (1→2→3: Ultra-ultra low → Ultra low → Low)
+(function sButtonFX(){
+  // CSS for S
+  if (!document.getElementById('sfx-css')) {
+    const s = document.createElement('style'); s.id = 'sfx-css';
+    s.textContent =
+`.sfx{will-change:transform,filter}
+@keyframes sFlashXXL{0%{filter:brightness(1);box-shadow:none}
+  18%{filter:brightness(1.12);box-shadow:0 0 4px rgba(255,255,255,.25),0 0 8px rgba(77,163,255,.15)}
+  100%{filter:brightness(1);box-shadow:none}}
+@keyframes sFlashUltra{0%{filter:brightness(1);box-shadow:none}
+  16%{filter:brightness(1.25);box-shadow:0 0 6px rgba(255,255,255,.35),0 0 12px rgba(77,163,255,.20)}
+  100%{filter:brightness(1);box-shadow:none}}
+@keyframes sFlashLow{0%{filter:brightness(1);box-shadow:none}
+  14%{filter:brightness(1.4);box-shadow:0 0 9px rgba(255,255,255,.45),0 0 16px rgba(77,163,255,.25)}
+  100%{filter:brightness(1);box-shadow:none}}
+@keyframes sShakeXXL{0%,100%{transform:translateX(0)}
+  50%{transform:translateX(.4px)}}
+@keyframes sShakeUltra{0%,100%{transform:translateX(0)}
+  25%{transform:translateX(-.8px)}75%{transform:translateX(.8px)}}
+@keyframes sShakeLow{0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-2px)}40%{transform:translateX(2px)}}
+.sfx.flash-xxl{animation:sFlashXXL .16s ease-in-out, sShakeXXL .16s linear}
+.sfx.flash-ultra{animation:sFlashUltra .20s ease-in-out, sShakeUltra .20s linear}
+.sfx.flash-low{animation:sFlashLow .26s ease-in-out, sShakeLow .26s linear}`;
+    document.head.appendChild(s);
+  }
+
+  // Find the visible S button (label "S" or "Single")
+  function isS(el){
+    if (!el) return false;
+    const label = (el.textContent || el.getAttribute('aria-label') || el.title || '').trim().toUpperCase();
+    const data  = ((el.dataset && (el.dataset.shot || el.dataset.kind || '')) || '').toUpperCase();
+    const isBtn = /^(BUTTON|A)$/i.test(el.tagName) || el.hasAttribute('role');
+    return isBtn && (label === 'S' || /SINGLE/.test(label+data) || data === 'S');
+  }
+  function findS(){
+    return Array.from(document.querySelectorAll('button,.btn,a,[role="button"]'))
+      .find(el => isS(el) && el.offsetParent);
+  }
+
+  // Press-order only for S (independent of T/D)
+  let sCount = 0;
+
+  function animate(el){
+    el.classList.add('sfx');
+    el.classList.remove('flash-xxl','flash-ultra','flash-low');
+    void el.offsetWidth; // restart
+    el.classList.add(sCount===1 ? 'flash-xxl' : sCount===2 ? 'flash-ultra' : 'flash-low');
+    setTimeout(()=> el.classList.remove('flash-xxl','flash-ultra','flash-low'), 500);
+  }
+
+  function onPressS(){
+    const el = findS(); if (!el) return;
+    sCount = (sCount % 3) + 1;   // 1 (XXL) → 2 (Ultra) → 3 (Low)
+    animate(el);
+  }
+
+  // Wire clicks on S; keyboard 's' also triggers it
+  function wire(){
+    const btn = findS(); if (!btn || btn.dataset.sFxWired==='1') return;
+    btn.dataset.sFxWired = '1';
+    btn.addEventListener('click', onPressS);
+  }
+  document.addEventListener('keydown', e => { if ((e.key||'').toLowerCase() === 's') onPressS(); });
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
+  new MutationObserver(wire).observe(document.body || document.documentElement, { childList:true, subtree:true });
+})();
+
+// === MISS button — red glow (1→2→3: soft → medium → high) ==================
+(function missButtonFX(){
+  // CSS for MISS
+  if (!document.getElementById('mfx-css')) {
+    const s = document.createElement('style'); s.id = 'mfx-css';
+    s.textContent =
+    ` .missfx{will-change:filter,box-shadow,transform,background-color}
+
+/* existing glow tweaked to pair with bg pulse */
+@keyframes mGlowSoft{
+  0%{filter:brightness(1);box-shadow:none}
+  20%{filter:brightness(1.15);box-shadow:0 0 10px rgba(244,63,94,.45),0 0 20px rgba(244,63,94,.25)}
+  100%{filter:brightness(1);box-shadow:none}
+}
+@keyframes mGlowMed{
+  0%{filter:brightness(1);box-shadow:none}
+  18%{filter:brightness(1.35);box-shadow:0 0 16px rgba(244,63,94,.6),0 0 28px rgba(244,63,94,.35)}
+  40%{filter:brightness(1.1);box-shadow:none}
+  100%{filter:brightness(1);box-shadow:none}
+}
+@keyframes mGlowHigh{
+  0%{filter:brightness(1);box-shadow:none;transform:scale(1)}
+  14%{filter:brightness(1.6);box-shadow:0 0 22px rgba(244,63,94,.75),0 0 40px rgba(244,63,94,.45);transform:scale(1.02)}
+  30%{filter:brightness(1.2);box-shadow:0 0 12px rgba(244,63,94,.45),0 0 26px rgba(244,63,94,.30);transform:scale(1.01)}
+  100%{filter:brightness(1);box-shadow:none;transform:scale(1)}
+}
+
+/* pulse the actual red background from --miss-from to --miss-to and back */
+@keyframes mBgPulse{
+  0%  { background-color: var(--miss-from); }
+  22% { background-color: var(--miss-to);   }
+  100%{ background-color: var(--miss-from); }
+}
+
+/* combine glow + bg pulse; durations match levels */
+.missfx.glow-soft{animation: mGlowSoft .26s ease-out, mBgPulse .26s ease-in-out}
+.missfx.glow-med {animation: mGlowMed  .34s ease-out, mBgPulse .34s ease-in-out}
+.missfx.glow-high{animation: mGlowHigh .44s ease-out, mBgPulse .44s ease-in-out}`
+    
+    document.head.appendChild(s);
+  }
+
+  // Find the visible MISS button (label "MISS"; allow 'X' only if marked as miss)
+  function isMISS(el){
+    if (!el) return false;
+    const label = (el.textContent || el.getAttribute('aria-label') || el.title || '').trim();
+    const up    = label.toUpperCase();
+    const data  = ((el.dataset && (el.dataset.kind || el.dataset.shot || '')) || '').toLowerCase();
+    const isBtn = /^(BUTTON|A)$/i.test(el.tagName) || el.hasAttribute('role');
+    if (!isBtn) return false;
+    if (up === 'MISS') return true;
+    // Accept "X" only if metadata indicates miss
+    if (up === 'X' && /miss/.test(data + ' ' + (el.getAttribute('aria-label')||'').toLowerCase())) return true;
+    return /miss/.test(data);
+  }
+  function findMISS(){
+    return Array.from(document.querySelectorAll('button,.btn,a,[role="button"]'))
+      .find(el => isMISS(el) && el.offsetParent);
+  }
+
+  // Press-order only for MISS (independent)
+  let mCount = 0;
+
+  function animate(el){
+    el.classList.add('missfx');
+    el.classList.remove('glow-soft','glow-med','glow-high');
+    void el.offsetWidth; // restart
+    el.classList.add(mCount===1 ? 'glow-soft' : mCount===2 ? 'glow-med' : 'glow-high');
+  }
+
+  function onPressMISS(){
+    const el = findMISS(); if (!el) return;
+    mCount = (mCount % 3) + 1; // 1 soft → 2 med → 3 high
+    animate(el);
+  }
+
+  // Wire clicks on MISS; keyboard 'm' also triggers it
+  function wire(){
+    const btn = findMISS(); if (!btn || btn.dataset.mFxWired==='1') return;
+    btn.dataset.mFxWired = '1';
+    btn.addEventListener('click', onPressMISS);
+  }
+  document.addEventListener('keydown', e => { if ((e.key||'').toLowerCase() === 'm') onPressMISS(); });
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
+  new MutationObserver(wire).observe(document.body || document.documentElement, { childList:true, subtree:true });
+})();
+
+
 (function mountGremlins(){
   const WRAP_ID   = 'gremlinsGif';
   const GIF_PAGE  = 'https://tenor.com/view/gremlins-singing-christmascarol-christmas-monster-gif-4239908413876512369';
