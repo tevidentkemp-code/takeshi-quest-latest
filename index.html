@@ -5954,8 +5954,8 @@ bottomRow.appendChild(missGoBtn);
     if (r.type === 'doubles' || r.type === 'triples') {
       padHint.textContent =
         (r.type === 'doubles')
-          ? "Doubles round – choose sector"
-          : "Triples round – choose sector";
+          ? ""
+          : "";
 
       const grid = document.createElement('div');
       grid.style.display = 'flex';
@@ -15637,12 +15637,13 @@ if (!todayBtn) {
   mo.observe(document.body || document.documentElement, { childList:true, subtree:true });
 })();
 
-// === High Scores (Match) — v3: DD/MM/YY @ HH:MM + NEW(7d) + PB + narrow # ===
-(function enhanceHighScoresMatch_v3(){
+// === High Scores (Match) — v4: movement ▲/▼ (7d), NEW(7d), PB, date fmt =====
+(function enhanceHighScoresMatch_v4(){
   const TITLE_RX = /^\s*high\s*scores\s*$/i;
   // Expected header: "# | Player | Score | Avg / Round | When"
   const COLS_RX  = [/^#$/i, /player/i, /^score$/i, /avg\s*\/\s*round/i, /when/i];
   const NEW_MS   = 7 * 24 * 60 * 60 * 1000; // 7 days
+  const POS_KEY  = 'hsMatchEntryPositions.v1'; // entryKey -> {pos, delta, tISO}
 
   // ---------- helpers ----------
   function findModalAndTable(){
@@ -15660,7 +15661,7 @@ if (!todayBtn) {
     return null;
   }
 
-  // "20 Nov 25 at 20:35"  or "20 Nov 25 @ 20:35"  -> "20/11/25 @ 20:35"
+  // "20 Nov 25 at 20:35" | "20 Nov 25 @ 20:35" → "20/11/25 @ 20:35"
   function fmt_DDMMYY_HHMM(text){
     if (!text) return text;
     const m = text.match(/^\s*(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2})(?:\s+at|\s*@)\s+(\d{2}):(\d{2})\s*$/);
@@ -15683,9 +15684,15 @@ if (!todayBtn) {
     return span;
   }
 
+  function arrowHTML(delta){
+    if (delta > 0) return `<span title="+${delta}" style="color:#22c55e;font-weight:700">▲</span>`;
+    if (delta < 0) return `<span title="${delta}" style="color:#ef4444;font-weight:700">▼</span>`;
+    return `<span style="opacity:.5">–</span>`;
+  }
+
   // Build PB map + (player|score)→latest timestamp
   async function buildMaps(){
-    if (window.__hsMatchMaps_v3) return window.__hsMatchMaps_v3;
+    if (window.__hsMatchMaps_v4) return window.__hsMatchMaps_v4;
 
     let games = [];
     try { games = (await __fetchOfficialGames(50000)).map(__normalizeGame); } catch(_) {}
@@ -15712,15 +15719,34 @@ if (!todayBtn) {
       });
     });
 
-    window.__hsMatchMaps_v3 = { pb, keyTs, globalMax };
-    return window.__hsMatchMaps_v3;
+    window.__hsMatchMaps_v4 = { pb, keyTs, globalMax };
+    return window.__hsMatchMaps_v4;
   }
+
+  function loadPos(){ try { return JSON.parse(localStorage.getItem(POS_KEY) || '{}'); } catch(_) { return {}; } }
+  function savePos(m){ try { localStorage.setItem(POS_KEY, JSON.stringify(m)); } catch(_){} }
 
   async function apply(){
     const found = findModalAndTable(); if (!found) return;
     const { table, ths } = found;
 
-    // Insert blank header after "#", narrow first column
+    // Insert movement header AFTER "#"
+    let thMove = table.querySelector('thead th[data-move-col="1"]');
+    if (!thMove){
+      thMove = document.createElement('th');
+      thMove.dataset.moveCol = '1';
+      thMove.style.textAlign = 'center';
+      thMove.style.width     = '26px';
+      thMove.style.minWidth  = '22px';
+      thMove.style.maxWidth  = '34px';
+      ths[0].insertAdjacentElement('afterend', thMove);
+    }
+
+    // Insert NEW header AFTER movement
+    let headNow = Array.from(table.querySelectorAll('thead th'));
+    let idxRank = headNow.findIndex(th => /^#$/i.test((th.textContent||'').trim()));
+    let idxMove = headNow.findIndex(th => th.dataset && th.dataset.moveCol === '1');
+
     let thNew = table.querySelector('thead th[data-newcol="1"]');
     if (!thNew){
       thNew = document.createElement('th');
@@ -15729,54 +15755,72 @@ if (!todayBtn) {
       thNew.style.width = '44px';
       thNew.style.minWidth = '38px';
       thNew.style.maxWidth = '60px';
-      ths[0].insertAdjacentElement('afterend', thNew);
+      headNow[idxMove].insertAdjacentElement('afterend', thNew);
     }
-    if (ths[0]) {
-      ths[0].style.width     = '24px';
-      ths[0].style.minWidth  = '22px';
-      ths[0].style.maxWidth  = '28px';
-      ths[0].style.textAlign = 'center';
-    }
-    Array.from(table.querySelectorAll('tbody tr')).forEach(tr=>{
-      const td = tr.children[0];
-      if (td) { td.style.width='24px'; td.style.minWidth='22px'; td.style.textAlign='center'; }
-    });
 
-    // Resolve indexes (robust even if columns shift)
-    const head = Array.from(table.querySelectorAll('thead th'));
-    const idxRank   = 0;
-    const idxNew    = head.findIndex(th => th.dataset && th.dataset.newcol === '1');
-    const idxPlayer = head.findIndex(th => /player/i.test(th.textContent||''));
-    const idxScore  = head.findIndex(th => /^score$/i.test(th.textContent||''));
-    let   idxWhen   = head.findIndex(th => /when/i.test(th.textContent||''));
-    if (idxWhen < 0) idxWhen = head.length - 1; // fallback: last column is When
-    if (idxNew < 0 || idxPlayer < 0 || idxScore < 0) return;
+    // Narrow the "#" column
+    headNow = Array.from(table.querySelectorAll('thead th'));
+    idxRank = headNow.findIndex(th => /^#$/i.test((th.textContent||'').trim()));
+    idxMove = headNow.findIndex(th => th.dataset && th.dataset.moveCol === '1');
+    const idxNew = headNow.findIndex(th => th.dataset && th.dataset.newcol === '1');
+
+    if (headNow[idxRank]) {
+      headNow[idxRank].style.width     = '24px';
+      headNow[idxRank].style.minWidth  = '22px';
+      headNow[idxRank].style.maxWidth  = '28px';
+      headNow[idxRank].style.textAlign = 'center';
+    }
+    table.style.tableLayout = 'fixed';
+    table.style.width = '100%';
+
+    // Resolve main column indexes by header text (after our inserts)
+    const idxPlayer = headNow.findIndex(th => /player/i.test(th.textContent||''));
+    const idxScore  = headNow.findIndex(th => /^score$/i.test(th.textContent||''));
+    let   idxWhen   = headNow.findIndex(th => /when/i.test(th.textContent||''));
+    if (idxWhen < 0) idxWhen = headNow.length - 1;
 
     const { pb, keyTs, globalMax } = await buildMaps();
+
+    // Load previous entry positions (per entry: nameLC|score)
+    const prev = loadPos();
+    const next = {};
+    const now = Date.now();
 
     // Per-row updates
     const rows = Array.from(table.querySelectorAll('tbody tr'));
     rows.forEach((tr, i)=>{
-      const tds     = Array.from(tr.children);
-      const tdRank  = tds[idxRank];
-      const tdNew   = (function(){
-        let cell = tds[idxNew];
-        if (!cell || cell === tdRank || cell.dataset.newCell !== '1') {
-          cell = document.createElement('td');
-          cell.dataset.newCell = '1';
-          cell.style.textAlign = 'center';
-          tdRank.insertAdjacentElement('afterend', cell);
-        } else {
-          cell.innerHTML = '';
-        }
-        return cell;
-      })();
+      const tds0 = Array.from(tr.children);
+      const tdRank = tds0[idxRank];
 
-      // Adjusted indexes after inserting NEW cell before later columns
-      const tds2    = Array.from(tr.children);
-      const tdPlayer= tds2[idxPlayer + 1];
-      const tdScore = tds2[idxScore  + 1];
-      const tdWhen  = tds2[idxWhen   + 1] || tds2[tds2.length - 1];
+      // Ensure movement cell immediately after rank
+      let tdMove = tds0[idxMove];
+      if (!tdMove || tdMove === tdRank || tdMove.dataset.moveCell !== '1') {
+        tdMove = document.createElement('td');
+        tdMove.dataset.moveCell = '1';
+        tdMove.style.textAlign = 'center';
+        tdRank.insertAdjacentElement('afterend', tdMove);
+      } else {
+        tdMove.innerHTML = '';
+      }
+
+      // Ensure NEW cell immediately after movement
+      const tds1 = Array.from(tr.children);
+      const tdAfterMove = tds1[idxMove + 1] || tdMove.nextElementSibling;
+      let tdNew = tds1[idxNew];
+      if (!tdNew || tdNew === tdRank || tdNew === tdMove || tdNew.dataset.newCell !== '1') {
+        tdNew = document.createElement('td');
+        tdNew.dataset.newCell = '1';
+        tdNew.style.textAlign = 'center';
+        (tdAfterMove || tdMove).insertAdjacentElement('afterend', tdNew);
+      } else {
+        tdNew.innerHTML = '';
+      }
+
+      // Refresh indexes after inserts and read data cells
+      const tds = Array.from(tr.children);
+      const tdPlayer = tds[idxPlayer];
+      const tdScore  = tds[idxScore];
+      const tdWhen   = tds[idxWhen] || tds[tds.length - 1];
 
       // 1) Format When => DD/MM/YY @ HH:MM
       if (tdWhen) {
@@ -15785,18 +15829,42 @@ if (!todayBtn) {
         if (fmt && fmt !== orig) tdWhen.textContent = fmt;
       }
 
-      // 2) NEW (≤7 days since that exact (player,score))
+      // Entry key for movement & NEW: nameLC|score
       const nameLC = (tdPlayer?.textContent || '').trim().toLowerCase();
       const scoreN = Number((tdScore?.textContent || '').replace(/[^\d.]/g,''));
+      const entryKey = `${nameLC}|${Number.isFinite(scoreN) ? scoreN : -1}`;
+      const pos = i + 1;
+
+      // 2) Movement (persist 7 days if no further movement)
+      const prevRec = prev[entryKey];
+      let deltaToShow = 0;
+      if (prevRec && typeof prevRec.pos === 'number') {
+        if (prevRec.pos !== pos) {
+          // changed now
+          deltaToShow = prevRec.pos - pos; // + = moved up
+          next[entryKey] = { pos, delta: deltaToShow, tISO: new Date(now).toISOString() };
+        } else {
+          // unchanged; keep showing if within 7d and delta != 0
+          const ageOK = prevRec.tISO && (now - Date.parse(prevRec.tISO)) <= NEW_MS;
+          deltaToShow = ageOK ? (prevRec.delta || 0) : 0;
+          next[entryKey] = { pos, delta: prevRec.delta || 0, tISO: prevRec.tISO || new Date(now).toISOString() };
+        }
+      } else {
+        // first time seeing this entry
+        next[entryKey] = { pos, delta: 0, tISO: new Date(now).toISOString() };
+      }
+      tdMove.innerHTML = arrowHTML(deltaToShow);
+
+      // 3) NEW (≤7 days since that exact (player,score))
       if (nameLC && Number.isFinite(scoreN)) {
-        const key = `${nameLC}|${scoreN}`;
-        const ts = keyTs.get(key);
+        const k = `${nameLC}|${scoreN}`;
+        const ts = keyTs.get(k);
         if (ts && (Date.now() - ts.getTime()) <= NEW_MS) {
           tdNew.appendChild(yellowNEW());
         }
       }
 
-      // 3) PB after Score (exclude global top score)
+      // 4) PB after Score (exclude global top score)
       const isGlobalTop = Number((tdScore?.textContent || '').replace(/[^\d.]/g,'')) === globalMax;
       const best = pb.get(nameLC) || -Infinity;
       const isPB = Number((tdScore?.textContent || '').replace(/[^\d.]/g,'')) === best;
@@ -15808,9 +15876,12 @@ if (!todayBtn) {
         tdScore.appendChild(tag);
       }
     });
+
+    // Save snapshot for next time
+    savePos(next);
   }
 
-  function tick(){ try { apply(); } catch(e){ console.error('HS Match v3 failed', e); } }
+  function tick(){ try { apply(); } catch(e){ console.error('HS Match v4 failed', e); } }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
   const mo = new MutationObserver(tick);
   mo.observe(document.body || document.documentElement, { childList:true, subtree:true });
@@ -16093,6 +16164,118 @@ if (!todayBtn) {
 })();
 
 
+// === Miss x3 (spanning) — left of S/Miss; tall (S+Miss), half-width of S; hides on D/T ===
+(function missX3_spanning(){
+  const BTN_ID = 'missX3_spanning_btn';
+
+  // Find S / Miss buttons
+  function findBtnByLabel(rx){
+    return Array.from(document.querySelectorAll('button,.btn,[role="button"],a'))
+      .find(el => el.offsetParent && rx.test((el.textContent || el.getAttribute('aria-label') || '').trim()));
+  }
+  function findS(){  return findBtnByLabel(/^\s*S\s*$/i); }
+  function findMiss(){ return findBtnByLabel(/^\s*Miss\s*$/i); }
+
+  // Doubles/Triples sector chooser visible?
+  function chooserVisible(){
+    return Array.from(document.querySelectorAll('div,section'))
+      .some(el => el.offsetParent && /\b(Doubles|Triples)\s+round\s*—?\s*choose\s*sector\b/i.test(el.textContent || ''));
+  }
+
+  // Nearest common ancestor
+  function nca(a,b){
+    if (!a || !b) return null;
+    const path = new Set();
+    let p=a; while(p){ path.add(p); p=p.parentElement; }
+    p=b; while(p){ if(path.has(p)) return p; p=p.parentElement; }
+    return null;
+  }
+
+  async function clickMissThrice(miss){
+    for (let i=0;i<3;i++){
+      try{
+        ['mousedown','mouseup','click'].forEach(t => miss.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true})));
+      }catch(_){ miss.click(); }
+      // small gap so your game logic records three throws
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise(r=>setTimeout(r,70));
+    }
+  }
+
+  function ensure(){
+    const s = findS();
+    const miss = findMiss();
+    const wrap = nca(s, miss);
+    let x3 = document.getElementById(BTN_ID);
+
+    // If we cannot find S/Miss yet, just hide/remove the button
+    if (!s || !miss || !wrap){
+      if (x3) x3.style.display = 'none';
+      return;
+    }
+
+    // Create once
+    if (!x3){
+      x3 = document.createElement((miss.tagName || 'button').toLowerCase());
+      x3.id = BTN_ID;
+      x3.type = 'button';
+      x3.className = miss.className || 'btn';
+      x3.textContent = 'Miss\nx3';
+      x3.style.whiteSpace = 'pre-line';
+      x3.style.textAlign  = 'center';
+      x3.style.display    = 'inline-flex';
+      x3.style.alignItems = 'center';
+      x3.style.justifyContent = 'center';
+      x3.style.position   = 'absolute';
+      x3.style.left       = '8px';          // small gutter
+      x3.style.zIndex     = '4';
+
+      x3.addEventListener('click', (e)=>{ e.preventDefault(); clickMissThrice(miss); });
+
+      // Insert into the shared container and reserve space by padding-left
+      if (getComputedStyle(wrap).position === 'static') wrap.style.position = 'relative';
+      wrap.insertAdjacentElement('afterbegin', x3);
+    }
+
+    // Size and position: tall (S+Miss), half width of S; aligned to S's top
+    const wr = wrap.getBoundingClientRect();
+    const sr = s.getBoundingClientRect();
+    const mr = miss.getBoundingClientRect();
+
+    const topPx    = Math.round(sr.top - wr.top);
+    const heightPx = Math.max(44, Math.round((mr.bottom - sr.top))); // S+gap+Miss
+    const widthPx  = Math.max(64, Math.round(sr.width / 2));
+
+    x3.style.top    = `${topPx}px`;
+    x3.style.width  = `${widthPx}px`;
+    x3.style.minWidth = `${widthPx}px`;
+    x3.style.height = `${heightPx}px`;
+    x3.style.minHeight = `${heightPx}px`;
+
+    // Push the button rows to the right so x3 doesn’t overlap
+    const padLeft = widthPx + 16; // leave a small gutter
+    wrap.style.paddingLeft = `${padLeft}px`;
+
+    // Hide during Doubles/Triples chooser
+    x3.style.display = chooserVisible() ? 'none' : 'inline-flex';
+  }
+
+  function boot(){
+    // Remove any old leftover element (from older attempts)
+    document.getElementById(BTN_ID)?.remove();
+
+    const tick = ()=>{ try{ ensure(); }catch(e){ /* no-op */ } };
+    tick();
+    // React to layout changes and window resizes
+    new MutationObserver(tick).observe(document.body || document.documentElement, { childList:true, subtree:true });
+    window.addEventListener('resize', tick, { passive:true });
+    document.addEventListener('visibilitychange', tick, { passive:true });
+  }
+
+  if (document.readyState === 'loading'){ document.addEventListener('DOMContentLoaded', boot); } else { boot(); }
+})();
+
+
 (function mountGremlins(){
   const WRAP_ID   = 'gremlinsGif';
   const GIF_PAGE  = 'https://tenor.com/view/gremlins-singing-christmascarol-christmas-monster-gif-4239908413876512369';
@@ -16223,6 +16406,162 @@ if (GIF_SRC) {
     insertAfterAdmin();
   }
 })();
+
+// === In-game minis ( (xx) ) — strip green boxes; only highest is green ======
+(function strictBracketWinner(){
+  const GREEN = '#6ee7b7';
+  const MUTED = 'rgba(255,255,255,.6)';
+  const RX = /^\(\d{1,3}\)$/; // "(30)", "(99)", etc.
+
+  function isMini(el){
+    if (!el || !el.offsetParent) return false;
+    const t = (el.textContent || '').trim();
+    return RX.test(t);
+  }
+
+  // remove any .tag styling that makes them boxed/green
+  function sanitize(el){
+    // If the mini or its parent uses .tag for the bracket, strip it
+    const nodes = [el, el.parentElement];
+    for (const n of nodes){
+      if (!n) continue;
+      if (n.classList && n.classList.contains('tag') && RX.test((n.textContent||'').trim())){
+        n.classList.remove('tag');
+        // clear visual remnants
+        n.style.removeProperty('background');
+        n.style.removeProperty('border');
+        n.style.removeProperty('borderColor');
+        n.style.removeProperty('color');
+        n.style.removeProperty('box-shadow');
+      }
+    }
+  }
+
+  // find minis within a row-like container
+  function findRowMinis(row){
+    // pick visible nodes that look like a mini
+    const cand = Array.from(row.querySelectorAll('small,span,strong,div'));
+    const minis = cand.filter(isMini);
+    if (minis.length < 2) return [];
+
+    // sort by x, then take the left-most and right-most (the two player columns)
+    minis.sort((a,b)=>a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+    return [minis[0], minis[minis.length-1]];
+  }
+
+  function valueOf(el){
+    return parseInt((el.textContent||'').replace(/[^\d]/g,''), 10) || 0;
+  }
+
+  function paintRow(miniL, miniR){
+    if (!miniL || !miniR) return;
+    sanitize(miniL); sanitize(miniR);
+
+    const vL = valueOf(miniL);
+    const vR = valueOf(miniR);
+
+    if (vL > vR){
+      miniL.style.color = GREEN;
+      miniR.style.color = MUTED;
+    } else if (vR > vL){
+      miniL.style.color = MUTED;
+      miniR.style.color = GREEN;
+    } else {
+      // tie -> neither green
+      miniL.style.color = MUTED;
+      miniR.style.color = MUTED;
+    }
+  }
+
+  function apply(root){
+    // Try table rows first
+    const rows = Array.from(root.querySelectorAll('table tr,[role="row"]'))
+      .filter(r => r.offsetParent);
+    let touched = 0;
+    rows.forEach(r=>{
+      const [a,b] = findRowMinis(r);
+      if (a && b){ paintRow(a,b); touched++; }
+    });
+
+    // Fallback: scan visible sections that look like round rows
+    if (!touched){
+      const sections = Array.from(root.querySelectorAll('section,div,li'))
+        .filter(s => s.offsetParent);
+      sections.forEach(s=>{
+        const [a,b] = findRowMinis(s);
+        if (a && b) paintRow(a,b);
+      });
+    }
+  }
+
+  function run(){ apply(document.body || document); }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    run();
+  }
+
+  // Re-apply whenever the board updates
+  new MutationObserver(()=>{ try { run(); } catch(_){/* ignore */} })
+    .observe(document.body || document.documentElement, { childList:true, subtree:true, characterData:true });
+})();
+
+// === Top Nav (Start / Restart / Stats) — equal widths across full row =======
+(function equalizeTopNav_v1(){
+  // 1) CSS (scoped)
+  if (!document.getElementById('topNavEqStyles')){
+    const s = document.createElement('style');
+    s.id = 'topNavEqStyles';
+    s.textContent =
+`.top-nav-eq{display:flex;gap:12px;width:100%;align-items:stretch;justify-content:space-between;flex-wrap:nowrap}
+.top-nav-eq > *{flex:1 1 0;min-width:0}
+.top-nav-eq > *:is(button,.btn,[role="button"],a){display:block;width:100%;text-align:center}`;
+    document.head.appendChild(s);
+  }
+
+  // 2) Find the three buttons by their labels (keeps existing handlers intact)
+  const LABELS = [/^\s*start\s*screen\s*$/i, /^\s*restart\s*game\s*$/i, /^\s*stats\s*$/i];
+  function findButtons(){
+    const all = Array.from(document.querySelectorAll('button,.btn,[role="button"],a'));
+    return LABELS.map(rx => all.find(el => rx.test((el.textContent||'').trim()) && el.offsetParent));
+  }
+
+  // 3) Find nearest common ancestor of the three buttons
+  function nearestCommonAncestor(els){
+    if (els.some(e=>!e)) return null;
+    const paths = els.map(el=>{
+      const p=[]; let n=el;
+      while(n){ p.push(n); n=n.parentElement; }
+      return p;
+    });
+    for (const a of paths[0]){
+      if (paths[1].includes(a) && paths[2].includes(a)) return a;
+    }
+    return null;
+  }
+
+  function apply(){
+    const btns = findButtons();
+    if (btns.some(b=>!b)) return; // not on this screen yet
+    const root = nearestCommonAncestor(btns);
+    if (!root) return;
+
+    // Avoid double-applying
+    if (!root.classList.contains('top-nav-eq')) {
+      root.classList.add('top-nav-eq');
+      // Make sure the row actually spans the page width
+      root.style.maxWidth = 'unset';
+      root.style.width    = '100%';
+    }
+  }
+
+  // Run now + when DOM changes (in case the header re-renders)
+  function run(){ try{ apply(); }catch(e){ console.warn('TopNav equalize failed', e); } }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+  new MutationObserver(run).observe(document.body || document.documentElement, { childList:true, subtree:true });
+})();
+
 
 </script>
 <!-- PB / GR Admin Modal -->
