@@ -2131,6 +2131,236 @@ if (!/^\d{4}$/.test(pin)){ toast('PIN must be 4 digits'); return; }      try { a
     body.appendChild(table);
 }
 
+/* Premier League — TODAY chip wiring (no <script> tags) */
+(function () {
+  function todayRangeLocalTZ(){
+    const start = new Date(); start.setHours(0,0,0,0);
+    const end = new Date(start); end.setDate(start.getDate()+1);
+    return { from: start.toISOString(), to: end.toISOString() };
+  }
+
+  document.addEventListener('click', async (ev) => {
+    const btn = ev.target && ev.target.closest('button');
+    if (!btn) return;
+    if ((btn.textContent || '').trim().toUpperCase() !== 'TODAY') return;
+
+    // Limit to the Premier League modal/panel
+    const modal = btn.closest('.modal, #leaderboard');
+    if (!modal) return;
+    ev.preventDefault();
+
+    const mount =
+      modal.querySelector('#hsLeagueBody') ||
+      modal.querySelector('.modal-body') ||
+      modal;
+
+    const { from, to } = todayRangeLocalTZ();
+
+    try {
+      if (typeof renderLeagueLeaderboardRange === 'function') {
+        await renderLeagueLeaderboardRange(mount, { from, to, label: 'Today' });
+        return;
+      }
+      if (typeof renderHsLeague === 'function') {
+        await renderHsLeague({ mount, from, to, label: 'Today' });
+        return;
+      }
+      if (typeof loadHsLeague === 'function') {
+        await loadHsLeague(mount, { from, to, label: 'Today' });
+        return;
+      }
+    } catch (e) {
+      console.error('TODAY renderer error, falling back', e);
+    }
+
+    // --- Fallback: simple “today” table ---
+    if (mount) mount.innerHTML = '<p class="tag">Loading today…</p>';
+
+    try {
+      const { data, error } = await sb
+        .from(TABLE_PLAYER_GAMES)
+        .select('player, score, is_practice, ts')
+        .eq('is_practice', false)
+        .gte('ts', from)
+        .lt('ts', to);
+
+      if (error) throw error;
+
+      const map = new Map();
+      for (const r of (data || [])) {
+        const m = map.get(r.player) || { player: r.player, games: 0, total: 0, best: 0 };
+        m.games++; m.total += Number(r.score || 0); m.best = Math.max(m.best, Number(r.score || 0));
+        map.set(r.player, m);
+      }
+
+      const rows = [...map.values()]
+        .map(r => ({ ...r, avg: r.games ? r.total / r.games : 0 }))
+        .sort((a,b) => b.avg - a.avg);
+
+      mount.innerHTML = `
+        <div class="table-wrap">
+          <table class="hs-table hs-league-table">
+            <thead>
+              <tr><th>#</th><th>Player</th><th>Avg Total</th><th>Best</th><th>Games</th></tr>
+            </thead>
+            <tbody>
+              ${rows.map((r,i)=>`
+                <tr>
+                  <td>${i+1}</td>
+                  <td>${r.player || ''}</td>
+                  <td class="num">${r.avg.toFixed(1)}</td>
+                  <td class="num">${r.best}</td>
+                  <td class="num">${r.games}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    } catch (e) {
+      console.error('League TODAY fallback failed', e);
+      mount.innerHTML = '<p class="tag">Unable to load today’s scores.</p>';
+    }
+  });
+})();
+
+/* Premier League – replace TODAY chip with a fresh working one */
+(function () {
+  if (window.__plTodayChipPatched) return;
+  window.__plTodayChipPatched = true;
+
+  function startOfTodayISO() {
+    const s = new Date(); s.setHours(0,0,0,0);
+    return s.toISOString();
+  }
+  function startOfTomorrowISO() {
+    const s = new Date(); s.setHours(0,0,0,0);
+    s.setDate(s.getDate() + 1);
+    return s.toISOString();
+  }
+
+  function buildTodayTable(rows) {
+    const by = new Map();
+    for (const r of rows || []) {
+      const k = r.player || '';
+      const m = by.get(k) || { player: k, games: 0, total: 0, best: 0 };
+      m.games += 1;
+      m.total += Number(r.score || 0);
+      m.best = Math.max(m.best, Number(r.score || 0));
+      by.set(k, m);
+    }
+    const agg = [...by.values()]
+      .map(x => ({ ...x, avg: x.games ? x.total / x.games : 0 }))
+      .sort((a, b) => b.avg - a.avg);
+
+    const table = document.createElement('table');
+    table.className = 'hs-table hs-league-table';
+
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ['#','Player','Games','Avg Total','Best'].forEach(h => {
+      const th = document.createElement('th'); th.textContent = h; trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    agg.forEach((r, i) => {
+      const tr = document.createElement('tr');
+      const tdIdx   = document.createElement('td'); tdIdx.textContent = String(i + 1);
+      const tdName  = document.createElement('td'); tdName.textContent = r.player || '';
+      const tdGames = document.createElement('td'); tdGames.textContent = String(r.games);
+      const tdAvg   = document.createElement('td'); tdAvg.className = 'num'; tdAvg.textContent = r.avg.toFixed(1);
+      const tdBest  = document.createElement('td'); tdBest.className = 'num'; tdBest.textContent = String(r.best || 0);
+      tr.append(tdIdx, tdName, tdGames, tdAvg, tdBest);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    wrap.appendChild(table);
+    return wrap;
+  }
+
+  async function renderTodayInto(modal) {
+    const body = modal.querySelector('#hsLeagueBody') ||
+                 modal.querySelector('.modal-body') ||
+                 modal;
+    body.innerHTML = '<p class="tag">Loading today…</p>';
+
+    try {
+      const { data, error } = await sb
+        .from(TABLE_PLAYER_GAMES)
+        .select('player, score, ts, is_practice')
+        .eq('is_practice', false)
+        .gte('ts', startOfTodayISO())
+        .lt('ts', startOfTomorrowISO());
+
+      if (error) throw error;
+
+      const table = buildTodayTable(data || []);
+      body.innerHTML = '';
+      body.appendChild(table);
+      try { if (typeof markCloudOk === 'function') markCloudOk(); } catch(_) {}
+    } catch (e) {
+      console.error('Premier League TODAY fetch failed', e);
+      body.innerHTML = '<p class="tag">Unable to load today’s scores.</p>';
+      try { if (typeof markCloudError === 'function') markCloudError(e); } catch(_) {}
+    }
+  }
+
+  function patchPremierLeagueModal(modal) {
+    if (!modal || modal.dataset.todayChipDone === '1') return;
+    modal.dataset.todayChipDone = '1';
+
+    // Remove any existing TODAY buttons
+    Array.from(modal.querySelectorAll('button')).forEach(b => {
+      const t = (b.textContent || '').trim().toUpperCase();
+      if (t === 'TODAY') b.remove();
+    });
+
+    // Find a chip row (use the parent of "ALL TIME" if present)
+    const allTimeBtn = Array.from(modal.querySelectorAll('button'))
+      .find(b => (b.textContent || '').trim().toUpperCase() === 'ALL TIME');
+    const chipRow = allTimeBtn ? allTimeBtn.parentElement : (modal.querySelector('.modal-body') || modal);
+
+    // Insert our new chip
+    const btn = document.createElement('button');
+    btn.className = 'btn small';
+    btn.textContent = 'TODAY';
+    btn.setAttribute('data-role', 'today-chip');
+    btn.addEventListener('click', (ev) => { ev.preventDefault(); renderTodayInto(modal); });
+
+    // Place it next to the other chips (after "ALL TIME" if found)
+    if (allTimeBtn && allTimeBtn.nextSibling) {
+      chipRow.insertBefore(btn, allTimeBtn.nextSibling);
+    } else {
+      chipRow.insertBefore(btn, chipRow.firstChild);
+    }
+  }
+
+  // Watch for modals opening; patch the one titled "Premier League"
+  const mo = new MutationObserver(muts => {
+    for (const m of muts) {
+      for (const n of m.addedNodes) {
+        if (!(n instanceof HTMLElement)) continue;
+        const modal = n.matches?.('.modal') ? n : n.querySelector?.('.modal');
+        if (!modal) continue;
+        const title = (modal.querySelector('h3')?.textContent || '').trim();
+        if (/^premier league$/i.test(title)) patchPremierLeagueModal(modal);
+      }
+    }
+  });
+  try { mo.observe(document.body, { childList: true, subtree: true }); } catch(_) {}
+
+  // Also try to patch immediately if it’s already open
+  setTimeout(() => {
+    const openModal = Array.from(document.querySelectorAll('.modal'))
+      .find(m => /^premier league$/i.test((m.querySelector('h3')?.textContent || '').trim()));
+    if (openModal) patchPremierLeagueModal(openModal);
+  }, 0);
+})();
+
 // === Final version: single-line psTicker vertical scroller ===
 (function () {
   const IN_MS   = 800;   // time for the scroll animation (ms)
