@@ -6100,6 +6100,35 @@ function updateMatchStats(){
     }
   }
 }
+
+// Keep the score table focused on the most recent rounds (show 4 rows: current + previous 3)
+function autoScrollScoreboard(){
+  const wrap = document.getElementById('scoreWrap');
+  const tbodyEl = document.getElementById('tbody');
+  if (!wrap || !tbodyEl) return;
+
+  const rows = tbodyEl.rows;
+  if (!rows || !rows.length) return;
+
+  // Keep only the previous 3 rounds + the current round visible.
+  // Example: if currentRound = 15, we show rows 12, 13, 14, 15.
+  // For rounds < 3 we leave the scroll at the top.
+  const endIdx = Math.min(state.currentRound, rows.length - 1);
+  if (endIdx < 3) return;
+
+  const startIdx = Math.max(0, endIdx - 3);          // four-row window
+  const targetRow = rows[startIdx];
+  if (!targetRow) return;
+
+  const desiredTop = Math.max(0, Math.min(
+    targetRow.offsetTop,
+    wrap.scrollHeight - wrap.clientHeight
+  ));
+
+  if (Math.abs(wrap.scrollTop - desiredTop) > 2) {
+    wrap.scrollTo({ top: desiredTop, behavior: 'smooth' });
+  }
+}
 /*****************
  * UI UPDATE
  *****************/
@@ -7337,6 +7366,9 @@ F
   } catch (e) {
     console.error(e);
   }
+
+  // --- auto-scroll scoreboard to keep last 4 rounds visible ---
+  try { autoScrollScoreboard(); } catch(_){}
 
   // --- rebuild throw pad + layout + save ---
   buildPad();
@@ -12581,7 +12613,7 @@ body.style.overflowY = 'visible';
 
   function buildFilters() {
     const filters = [];
-    
+
       // RECORDS (new tab)
   filters.push({
     id: 'RECORDS',
@@ -14665,23 +14697,39 @@ window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPc
   body.innerHTML = '<p class="muted">Loading…</p>';
 
   try{
+    const safeDate = (ts) => {
+      if (!ts) return null;
+      const d = ts instanceof Date ? ts : new Date(ts);
+      return Number.isNaN(d.getTime()) ? null : d;
+    };
+
     // Build official game IDs for this player (lifetime), fallback to scan official games
     let ids = [];
+    const gameTs = new Map();
     try {
       const { data: pg } = await sb
         .from(TABLE_PLAYER_GAMES)
-        .select('game_id, is_practice')
+        .select('game_id, is_practice, ts')
         .eq('player', name)
         .eq('is_practice', false)
         .order('game_id', { ascending: true })
         .limit(5000);
-      ids = (pg || []).map(r => r.game_id).filter(Boolean);
+      (pg || []).forEach(r => {
+        if (r.game_id) {
+          ids.push(r.game_id);
+          if (r.ts) gameTs.set(r.game_id, r.ts);
+        }
+      });
     } catch(_){}
 
     if (!ids.length) {
       const games = (await __fetchOfficialGames(50000)).map(__normalizeGame);
       ids = games
-        .map(g => (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id)
+        .map(g => {
+          const gid = (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id;
+          if (gid && g.ts) gameTs.set(gid, g.ts);
+          return gid;
+        })
         .filter(Boolean);
     }
 
@@ -14689,99 +14737,171 @@ window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPc
     let throwsRows = ids.length ? await __fetchThrowsForGames(ids) : [];
     if (!throwsRows.length) {
       const gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+      gamesAll.forEach(g => {
+        const gid = (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id;
+        if (gid && g.ts) gameTs.set(gid, g.ts);
+      });
       throwsRows = __throwsFromGamesForPlayer(name, gamesAll);
     }
 
+    // Attach timestamps from the game map (if present)
+    throwsRows = (throwsRows || []).map(t => {
+      const ts = t.ts || gameTs.get(t.game_id) || null;
+      return Object.assign({}, t, { ts });
+    });
+
     const mineAll = throwsRows.filter(t => String(t.player||'').trim().toLowerCase() === name.toLowerCase());
-    const mine    = mineAll.filter(t => typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 10); // 10..20 only
+    const controls = document.createElement('div');
+    controls.style.display = 'flex';
+    controls.style.flexDirection = 'column';
+    controls.style.gap = '6px';
+    controls.style.marginBottom = '10px';
 
-    // Aggregate per target 10..20
-    const rows=[];
-    for (let r=0; r<=10; r++){
-      const target  = 10 + r;
-      const shots   = mine.filter(t => t.round_index === r);
-      const throwsN = shots.length;
+    // Filters: one row per grouping
+    const FILTERS = [
+      { id: 'all',      label: 'ALL TIME', row: 0, match: () => true },
+      { id: 'y-2026',   label: '2026',     row: 1, match: (ts) => { const d = safeDate(ts); return !d || d.getFullYear() === 2026; } },
+      { id: 'y-2025',   label: '2025',     row: 1, match: (ts) => { const d = safeDate(ts); return !d || d.getFullYear() === 2025; } },
+      { id: 'm-12',     label: 'Dec',      row: 2, match: (ts) => { const d = safeDate(ts); return !d || d.getMonth() === 11; } },
+      { id: 'm-11',     label: 'Nov',      row: 2, match: (ts) => { const d = safeDate(ts); return !d || d.getMonth() === 10; } },
+      { id: 'm-10',     label: 'Oct',      row: 2, match: (ts) => { const d = safeDate(ts); return !d || d.getMonth() === 9; } },
+      { id: 'm-9',      label: 'Sept',     row: 2, match: (ts) => { const d = safeDate(ts); return !d || d.getMonth() === 8; } },
+      { id: 'm-8',      label: 'Aug',      row: 2, match: (ts) => { const d = safeDate(ts); return !d || d.getMonth() === 7; } },
+      { id: 'm-7',      label: 'Jul',      row: 2, match: (ts) => { const d = safeDate(ts); return !d || d.getMonth() === 6; } },
+    ];
 
-      // Actual Hits (marks): single=1, double=2, treble=3 (miss=0)
-      const hitsUnits = shots.reduce((s,t)=>{
-        const k = String(t.kind||'').toLowerCase();
-        if (k.includes('treble') || k.includes('triple')) return s + 3;
-        if (k.includes('double')) return s + 2;
-        if (k.includes('single')) return s + (Number(t.points||0) > 0 ? 1 : 0);
-        // Fallback: infer from points/target if kind missing
-        const ratio = Number(t.points||0) / target;
-        if (ratio >= 2.5) return s + 3;
-        if (ratio >= 1.5) return s + 2;
-        if (ratio >= 0.5) return s + 1;
-        return s;
-      }, 0);
-
-      const available = 3 * throwsN;                        // 3 marks per dart (9 per round)
-      const pct       = available ? (100 * hitsUnits / available) : 0;  // Actual ÷ Available
-      const scoreRound = (pct / 100) * 9 * target;          // expected points in one 3-dart round
-
-      rows.push({ target, throwsN, hitsUnits, available, pct, scoreRound });
+    const rowsByIdx = new Map();
+    function rowFor(idx){
+      if (!rowsByIdx.has(idx)){
+        const r = document.createElement('div');
+        r.className = 'row';
+        r.style.gap = '8px';
+        r.style.flexWrap = 'wrap';
+        rowsByIdx.set(idx, r);
+        controls.appendChild(r);
+      }
+      return rowsByIdx.get(idx);
     }
 
-    // Rank by expected per-round score (desc). Tie: hits, then thrown, then lower target.
-    const scoreRanks = rows
-      .filter(r => r.throwsN > 0)
-      .slice()
-      .sort((a,b) =>
-        (b.scoreRound - a.scoreRound) ||
-        (b.hitsUnits  - a.hitsUnits)  ||
-        (b.throwsN    - a.throwsN)    ||
-        (a.target     - b.target)
-      )
-      .map((r, idx) => ({ target: r.target, rank: idx + 1 }));
-    const scoreRankMap = new Map(scoreRanks.map(x => [x.target, x.rank]));
-
-    // Table
-    const table=document.createElement('table'); table.className='hs-table';
-    const thead=document.createElement('thead'); const trh=document.createElement('tr');
-    ['Target','Thrown','Available Hits','Actual Hits','Points %','Score','Rank']
-      .forEach(h => { const th = document.createElement('th'); th.textContent = h; trh.appendChild(th); });
-    thead.appendChild(trh); table.appendChild(thead);
-
-    // sticky header
-    Array.from(trh.children).forEach(th => {
-      th.style.position = 'sticky';
-      th.style.top = '0';
-      th.style.zIndex = '2';
-      th.style.background = 'rgba(0,0,0,0.4)';
+    const btnMap = new Map();
+    FILTERS.forEach(f => {
+      const btn = document.createElement('button');
+      btn.className = 'btn small';
+      btn.textContent = f.label;
+      btn.dataset.filterId = f.id;
+      btn.onclick = () => { setActive(f.id); render(f); };
+      rowFor(f.row || 0).appendChild(btn);
+      btnMap.set(f.id, btn);
     });
 
-    const tbody=document.createElement('tbody');
-    rows.forEach(r=>{
-      const tr=document.createElement('tr');
+    const content = document.createElement('div');
+    body.innerHTML = '';
+    body.appendChild(controls);
+    body.appendChild(content);
 
-      const tdTarget = document.createElement('td'); tdTarget.textContent = String(r.target);
-      const tdThrown = document.createElement('td'); tdThrown.textContent = String(r.throwsN);
-      const tdAvail  = document.createElement('td'); tdAvail.textContent  = String(r.available);
-      const tdHits   = document.createElement('td'); tdHits.textContent   = String(r.hitsUnits || 0);
-      const tdPct    = document.createElement('td'); tdPct.textContent    = (r.pct||0).toFixed(1)+'%';
-      const tdScore  = document.createElement('td'); tdScore.textContent  = (r.scoreRound||0).toFixed(1);
-      const tdRank   = document.createElement('td'); tdRank.textContent   = String(scoreRankMap.get(r.target) || '—');
+    function setActive(id){
+      btnMap.forEach((btn, key) => {
+        if (key === id) btn.classList.add('primary');
+        else btn.classList.remove('primary');
+      });
+    }
 
-      tr.append(tdTarget, tdThrown, tdAvail, tdHits, tdPct, tdScore, tdRank);
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
+    function render(filter){
+      const mine = (filter ? mineAll.filter(t => filter.match(t.ts)) : mineAll)
+        .filter(t => typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 10);
 
-    const info=document.createElement('p');
-    info.className='tag';
-    info.style.marginTop='8px';
-    info.textContent = 'Actual Hits = single 1 • double 2 • treble 3 — Available Hits = 3 × thrown (9 per round) — Points % = Actual ÷ Available — Score (per round) = Points% × 9 × target';
+      // Aggregate per target 10..20
+      const rows=[];
+      for (let r=0; r<=10; r++){
+        const target  = 10 + r;
+        const shots   = mine.filter(t => t.round_index === r);
+        const throwsN = shots.length;
 
-    const scroll=document.createElement('div');
-    scroll.style.maxHeight='56vh';
-    scroll.style.overflowY='auto';
-    scroll.style.borderRadius='8px';
-    scroll.appendChild(table);
+        // Actual Hits (marks): single=1, double=2, treble=3 (miss=0)
+        const hitsUnits = shots.reduce((s,t)=>{
+          const k = String(t.kind||'').toLowerCase();
+          if (k.includes('treble') || k.includes('triple')) return s + 3;
+          if (k.includes('double')) return s + 2;
+          if (k.includes('single')) return s + (Number(t.points||0) > 0 ? 1 : 0);
+          // Fallback: infer from points/target if kind missing
+          const ratio = Number(t.points||0) / target;
+          if (ratio >= 2.5) return s + 3;
+          if (ratio >= 1.5) return s + 2;
+          if (ratio >= 0.5) return s + 1;
+          return s;
+        }, 0);
 
-    body.innerHTML='';
-    body.appendChild(scroll);
-    body.appendChild(info);
+        const available = 3 * throwsN;                        // 3 marks per dart (9 per round)
+        const pct       = available ? (100 * hitsUnits / available) : 0;  // Actual ÷ Available
+        const scoreRound = (pct / 100) * 9 * target;          // expected points in one 3-dart round
+
+        rows.push({ target, throwsN, hitsUnits, available, pct, scoreRound });
+      }
+
+      // Rank by expected per-round score (desc). Tie: hits, then thrown, then lower target.
+      const scoreRanks = rows
+        .filter(r => r.throwsN > 0)
+        .slice()
+        .sort((a,b) =>
+          (b.scoreRound - a.scoreRound) ||
+          (b.hitsUnits  - a.hitsUnits)  ||
+          (b.throwsN    - a.throwsN)    ||
+          (a.target     - b.target)
+        )
+        .map((r, idx) => ({ target: r.target, rank: idx + 1 }));
+      const scoreRankMap = new Map(scoreRanks.map(x => [x.target, x.rank]));
+
+      // Table
+      const table=document.createElement('table'); table.className='hs-table';
+      const thead=document.createElement('thead'); const trh=document.createElement('tr');
+      ['Target','Thrown','Available Hits','Actual Hits','Points %','Score','Rank']
+        .forEach(h => { const th = document.createElement('th'); th.textContent = h; trh.appendChild(th); });
+      thead.appendChild(trh); table.appendChild(thead);
+
+      // sticky header
+      Array.from(trh.children).forEach(th => {
+        th.style.position = 'sticky';
+        th.style.top = '0';
+        th.style.zIndex = '2';
+        th.style.background = 'rgba(0,0,0,0.4)';
+      });
+
+      const tbody=document.createElement('tbody');
+      rows.forEach(r=>{
+        const tr=document.createElement('tr');
+
+        const tdTarget = document.createElement('td'); tdTarget.textContent = String(r.target);
+        const tdThrown = document.createElement('td'); tdThrown.textContent = String(r.throwsN);
+        const tdAvail  = document.createElement('td'); tdAvail.textContent  = String(r.available);
+        const tdHits   = document.createElement('td'); tdHits.textContent   = String(r.hitsUnits || 0);
+        const tdPct    = document.createElement('td'); tdPct.textContent    = (r.pct||0).toFixed(1)+'%';
+        const tdScore  = document.createElement('td'); tdScore.textContent  = (r.scoreRound||0).toFixed(1);
+        const tdRank   = document.createElement('td'); tdRank.textContent   = String(scoreRankMap.get(r.target) || '—');
+
+        tr.append(tdTarget, tdThrown, tdAvail, tdHits, tdPct, tdScore, tdRank);
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+
+      const info=document.createElement('p');
+      info.className='tag';
+      info.style.marginTop='8px';
+      info.textContent = 'Actual Hits = single 1 • double 2 • treble 3 — Available Hits = 3 × thrown (9 per round) — Points % = Actual ÷ Available — Score (per round) = Points% × 9 × target';
+
+      const scroll=document.createElement('div');
+      scroll.style.maxHeight='56vh';
+      scroll.style.overflowY='auto';
+      scroll.style.borderRadius='8px';
+      scroll.appendChild(table);
+
+      content.innerHTML='';
+      content.appendChild(scroll);
+      content.appendChild(info);
+    }
+
+    const defaultFilter = FILTERS[0];
+    setActive(defaultFilter.id);
+    render(defaultFilter);
 
   }catch(e){
     console.error('Target Points % failed', e);
@@ -16421,8 +16541,20 @@ if (!todayBtn) {
     return null;
   }
 
+  // How many misses should be auto-logged given the current dart (3 → 2 → 1)
+  function missCountForCurrentThrow(){
+    try{
+      const dart = (typeof state !== 'undefined' && state && typeof state.currentDart === 'number') ? state.currentDart : 0;
+      const remaining = 3 - dart;
+      return Math.max(1, Math.min(3, remaining));
+    }catch(_){
+      return 3;
+    }
+  }
+
   async function clickMissThrice(miss){
-    for (let i=0;i<3;i++){
+    const count = missCountForCurrentThrow();
+    for (let i=0;i<count;i++){
       try{
         ['mousedown','mouseup','click'].forEach(t => miss.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true})));
       }catch(_){ miss.click(); }
@@ -16440,7 +16572,10 @@ if (!todayBtn) {
 
     // If we cannot find S/Miss yet, just hide/remove the button
     if (!s || !miss || !wrap){
-      if (x3) x3.style.display = 'none';
+      if (x3){
+        x3.style.display = 'none';
+        if (x3.parentElement) x3.parentElement.style.paddingLeft = '';
+      }
       return;
     }
 
@@ -16450,7 +16585,7 @@ if (!todayBtn) {
       x3.id = BTN_ID;
       x3.type = 'button';
       x3.className = miss.className || 'btn';
-      x3.textContent = 'Miss\nx3';
+      x3.textContent = `Miss\nx${missCountForCurrentThrow()}`;
       x3.style.whiteSpace = 'pre-line';
       x3.style.textAlign  = 'center';
       x3.style.display    = 'inline-flex';
@@ -16482,12 +16617,18 @@ if (!todayBtn) {
     x3.style.height = `${heightPx}px`;
     x3.style.minHeight = `${heightPx}px`;
 
+    // Update label based on how many misses we will apply (3 → 2 → 1)
+    const missCount = missCountForCurrentThrow();
+    const nextLabel = `Miss\nx${missCount}`;
+    if (x3.textContent !== nextLabel) x3.textContent = nextLabel;
+
     // Push the button rows to the right so x3 doesn’t overlap
     const padLeft = widthPx + 16; // leave a small gutter
-    wrap.style.paddingLeft = `${padLeft}px`;
+    const hideNow = chooserVisible();
+    wrap.style.paddingLeft = hideNow ? '' : `${padLeft}px`;
 
     // Hide during Doubles/Triples chooser
-    x3.style.display = chooserVisible() ? 'none' : 'inline-flex';
+    x3.style.display = hideNow ? 'none' : 'inline-flex';
   }
 
   function boot(){
