@@ -1080,7 +1080,7 @@ margin-bottom: var(--section-gap);
         </div>
         <div class="modal-footer">
           <button id="cancelAddPlayerBtn" class="btn" type="button">Cancel</button>
-          <button id="savePlayerBtn" class="btn primary" type="button">Save Player</button>
+          <button id="savePlayerBtn" class="btn primary" type="button">Save New Player</button>
         </div>
       </div>
     </div>
@@ -3471,9 +3471,15 @@ function openHighScoresHubDialog(){
  **********************/
 const SUPABASE_URL = "https://vvfqumgtasuacpggdmxx.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2ZnF1bWd0YXN1YWNwZ2dkbXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NTk0MDMsImV4cCI6MjA3ODUzNTQwM30.8NblWOwEsY1FP1hxvO6isQ908NyxkTgntnZZiXIFPHE";
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+// Supabase client is initialised via ensureCloudInit() into window.sb.
+// Keep a module-scope alias for legacy code paths that reference `sb`.
+let sb = null;
+
+// Supabase client is initialised via ensureCloudInit() into window.sb
 
 const TABLE_PLAYERS = "players";
+// Default legacy hash (matches existing rows: SHA-256("1234"))
+const DEFAULT_PLAYER_PASSWORD_HASH = '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4';
 // View/table that lists every player's game across Official + Practice.
 const TABLE_PLAYER_GAMES = 'player_games_union';
 const TABLE_HS_LEAGUE = "high_scores";
@@ -4245,11 +4251,24 @@ async function cloudListPlayers(){
   return data || [];
 }
 
-// Create / update a player by name only (no password)
+// Create / update a player (password UI removed; DB still expects password_hash)
 async function cloudCreatePlayer(name){
+  if (!ensureCloudInit()) {
+    const err = new Error('Cloud not initialised');
+    try { markCloudError(err); } catch(_) {}
+    throw err;
+  }
+
+  const client = window.sb || sb;
+  const nm = String(name || '').trim().replace(/\s+/g, ' ');
+  if (!nm) return;
+
   const { error } = await sb
     .from(TABLE_PLAYERS)
-    .upsert({ name }, { onConflict: 'name' });   // only name is stored
+    .upsert(
+      { name: nm, password_hash: DEFAULT_PLAYER_PASSWORD_HASH },
+      { onConflict: 'name' }
+    );
 
   if (error) {
     markCloudError(error);
@@ -4568,17 +4587,17 @@ async function cloudListPlayerRecentOfficialGames(name, limitGames = 2){
     rows = rows.filter(r=> r?.ts ? pass(new Date(r.ts)) : true);
 
     // Sort: highest score first, then newest, then name
-    rows.sort((a, b) => {
-      const sa = Number(a?.score || 0);
-      const sb = Number(b?.score || 0);
-      if (sb !== sa) return sb - sa;
-      const ta = a?.ts ? Date.parse(a.ts) : 0;
-      const tb = b?.ts ? Date.parse(b.ts) : 0;
-      if (tb !== ta) return tb - ta;
-      const na = String(a?.name || '');
-      const nb = String(b?.name || '');
-      return na.localeCompare(nb);
-    });
+rows.sort((a, b) => {
+  const sa = Number(a?.score || 0);
+const bScore = Number(b?.score || 0);
+if (bScore !== sa) return bScore - sa;
+  const ta = a?.ts ? Date.parse(a.ts) : 0;
+  const tb = b?.ts ? Date.parse(b.ts) : 0;
+  if (tb !== ta) return tb - ta;
+  const na = String(a?.name || '');
+  const nb = String(b?.name || '');
+  return na.localeCompare(nb);
+});
 
     if (!rows.length){
       const p=document.createElement('p'); p.textContent='No scores recorded for this period.'; body.appendChild(p); return;
@@ -5196,18 +5215,6 @@ async function openPlayerStatsLookupDialog() {
     console.error('Stats: cloudListPlayers failed', err);
   }
 
-  if (!anyPlayers && typeof getSavedPlayers === 'function') {
-    const local = getSavedPlayers();
-    (local || []).forEach(p => {
-      if (!p || !p.name) return;
-      const opt = document.createElement('option');
-      opt.value = p.name;
-      opt.textContent = p.name;
-      nameSelect.appendChild(opt);
-      anyPlayers = true;
-    });
-  }
-
   if (!anyPlayers) {
     body.innerHTML = '<p>No saved players found. Save a player from the Player Select screen first.</p>';
     viewBtn.disabled = true;
@@ -5312,18 +5319,6 @@ async function openPlayerStatsLookupDialog() {
     console.error('Stats: cloudListPlayers failed', err);
   }
 
-  if (!anyPlayers && typeof getSavedPlayers === 'function') {
-    const local = getSavedPlayers();
-    (local || []).forEach(p => {
-      if (!p || !p.name) return;
-      const opt = document.createElement('option');
-      opt.value = p.name;
-      opt.textContent = p.name;
-      nameSelect.appendChild(opt);
-      anyPlayers = true;
-    });
-  }
-
   if (!anyPlayers) {
     body.innerHTML = '<p>No saved players found. Save a player from the Player Select screen first.</p>';
     viewBtn.disabled = true;
@@ -5388,10 +5383,10 @@ row.style.gap = '8px';
 
     row.innerHTML = `
       <div class="grow">
-        <input placeholder="Guest Player Name" data-role="display">
+        <input placeholder="Add Guest Player Name" data-role="display">
       </div>
-      <button class="btn select-player-btn" type="button">Select Player</button>
-      <button class="btn primary save-player-btn" type="button">Save Player</button>
+      <button class="btn select-player-btn" type="button">Select Saved Player</button>
+      <button class="btn primary save-player-btn" type="button">Save New Player</button>
     `;
 
     psPlayerFields.appendChild(row);
@@ -5410,32 +5405,62 @@ row.style.gap = '8px';
 psNumPlayersSel.addEventListener('change', drawPsRows);
 psNumGamesSel.addEventListener('change', ()=>{/* nothing else; read on start */});
 
-// ---- Saved players helpers (shared by Add + Select modals) ----
-function getSavedPlayers(){
-  try {
-    return JSON.parse(localStorage.getItem('shateki_players') || '[]');
-  } catch(e){
-    return [];
-  }
-}
-
-function setSavedPlayers(arr){
-  try {
-    localStorage.setItem('shateki_players', JSON.stringify(arr));
-  } catch(e){}
-}
-
+// Players are cloud-only (Supabase). Local saved-player storage is disabled.
+function getSavedPlayers(){ return []; }
+function setSavedPlayers(_arr){ /* no-op */ }
 function populateSavedPlayersSelects(){
-  const arr  = getSavedPlayers();
-  const sel1 = document.getElementById('existingPlayers');      // Add Player modal
-  const sel2 = document.getElementById('existingPlayerSelect'); // Select Player modal
+  (async () => {
+    const sel1 = document.getElementById('existingPlayers');        // Add Player modal
+    const sel2 = document.getElementById('existingPlayerSelect');   // Select Player modal
+    const sel3 = document.getElementById('pbgrPlayerSelect');       // PB/GR Admin modal
+    const sels = [sel1, sel2, sel3].filter(Boolean);
+    if (!sels.length) return;
 
-  [sel1, sel2].forEach(sel => {
-    if (!sel) return;
-    sel.innerHTML =
-      '<option value="">Select a saved player...</option>' +
-      arr.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
-  });
+    const setOptions = (sel, names) => {
+      const cur = sel.value;
+      sel.innerHTML = '';
+      const opt0 = document.createElement('option');
+      opt0.value = '';
+      opt0.textContent = 'Select a saved player...';
+      sel.appendChild(opt0);
+      names.forEach(n => {
+        const o = document.createElement('option');
+        o.value = n;
+        o.textContent = n;
+        sel.appendChild(o);
+      });
+      if (cur && names.includes(cur)) sel.value = cur;
+    };
+
+    // placeholder while loading
+    sels.forEach(s => setOptions(s, []));
+
+    try {
+      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) return;
+
+      const client =
+        (typeof window !== 'undefined' && window.sb) ? window.sb :
+        (typeof sb !== 'undefined' ? sb : null);
+
+      if (!client || typeof client.from !== 'function') return;
+
+      const { data, error } = await client
+        .from(TABLE_PLAYERS)
+        .select('name')
+        .order('name', { ascending: true })
+        .limit(5000);
+
+      if (error) throw error;
+
+      const names = (data || [])
+        .map(r => String((r && r.name) || '').trim())
+        .filter(Boolean);
+
+      sels.forEach(s => setOptions(s, names));
+    } catch (e) {
+      console.error('populateSavedPlayersSelects failed', e);
+    }
+  })();
 }
 
 // Add / Save Player – name only, no PIN
@@ -5499,15 +5524,7 @@ async function showAddPlayerDialog(index){
       }
 
       chosenName = newName;
-
-      // Save to local storage
-      const arr = getSavedPlayers();
-      const idxExisting = arr.findIndex(p => p && p.name === newName);
-      if (idxExisting === -1) arr.push({ name: newName });
-      else arr[idxExisting].name = newName;
-      setSavedPlayers(arr);
-      populateSavedPlayersSelects();
-
+      
       // Save to Supabase (name only)
       try {
         await cloudCreatePlayer(newName);
@@ -5541,19 +5558,6 @@ async function showSelectPlayerDialog(index){
     any = !!(cloudList && cloudList.length);
   } catch (err) {
     console.error('cloudListPlayers failed', err);
-  }
-
-  // Fallback: local saved players
-  if (!any) {
-    const local = getSavedPlayers();
-    (local || []).forEach(p => {
-      if (!p || !p.name) return;
-      const opt = document.createElement('option');
-      opt.value = p.name;
-      opt.textContent = p.name;
-      select.appendChild(opt);
-    });
-    any = !!(local && local.length);
   }
 
   if (!any) {
@@ -6269,7 +6273,7 @@ bottomRow.appendChild(missGoBtn);
 
     // ----- BULL ROUND -----
     if (r.type === 'bull') {
-      padHint.textContent = 'Bull round – Outer (25) or Inner (50).';
+      padHint.textContent = '';
 
       const topRow = document.createElement('div');
       topRow.style.display = 'flex';
@@ -9504,34 +9508,35 @@ async function cloudDeleteGameCascade(g){
   /*****************
    * CLOUD INIT HELPER
    *****************/
-  function ensureCloudInit(){
-    try {
-      // Library present?
-      if (typeof window.supabase !== 'object' || !window.supabase.createClient) {
-        try { setCloudStatus && setCloudStatus('error', 'Cloud not initialised'); } catch(_) {}
-        return false;
-      }
-      // Keys present?
-      if (typeof SUPABASE_URL === 'undefined' || typeof SUPABASE_ANON === 'undefined' || !SUPABASE_URL || !SUPABASE_ANON) {
-        try { setCloudStatus && setCloudStatus('error', 'Cloud keys missing'); } catch(_) {}
-        return false;
-      }
-      // Make client if missing
-      if (!window.sb) {
-        try { window.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON); }
-        catch (e) {
-          console.error('supabase createClient failed', e);
-          try { setCloudStatus && setCloudStatus('error', 'Cloud not initialised'); } catch(_) {}
-          return false;
-        }
-      }
-      return true;
-    } catch (e) {
-      console.error('ensureCloudInit failed', e);
+function ensureCloudInit(){
+  try {
+    // Library present?
+    if (typeof window.supabase !== 'object' || !window.supabase.createClient) {
       try { setCloudStatus && setCloudStatus('error', 'Cloud not initialised'); } catch(_) {}
       return false;
     }
+
+    // Keys present?
+    if (!SUPABASE_URL || !SUPABASE_ANON) {
+      try { setCloudStatus && setCloudStatus('error', 'Cloud keys missing'); } catch(_) {}
+      return false;
+    }
+
+    // Make client if missing
+    if (!window.sb) {
+      window.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    }
+
+    // Legacy alias (some older code uses `sb`)
+    sb = window.sb;
+
+    return true;
+  } catch (e) {
+    console.error('ensureCloudInit failed', e);
+    try { setCloudStatus && setCloudStatus('error', 'Cloud not initialised'); } catch(_) {}
+    return false;
   }
+}
 
 /*** CLOUD HIGH SCORES API — safe fallback implementations ***/
 (function(){
@@ -16932,6 +16937,8 @@ if (GIF_SRC) {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
   new MutationObserver(run).observe(document.body || document.documentElement, { childList:true, subtree:true });
 })();
+
+
 
 
 </script>
