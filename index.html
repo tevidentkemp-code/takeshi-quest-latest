@@ -8,7 +8,6 @@
 <!-- Supabase JS v2 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-<script async src="https://tenor.com/embed.js"></script>
 
 <style>
 :root{
@@ -60,18 +59,6 @@
   width: 100%;
 }
 
-/* Add into the same <style id="xmasStyles"> block if wanted */
-body.xmas td, body.xmas th { text-shadow: 0 0 0 transparent; }
-body.xmas .medal-gold  { filter: drop-shadow(0 0 6px rgba(255,215,0,.45)); }
-body.xmas .medal-silver{ filter: drop-shadow(0 0 6px rgba(210,210,210,.35)); }
-body.xmas .medal-bronze{ filter: drop-shadow(0 0 6px rgba(205,127,50,.35)); }
-
-body.xmas #newGameBtn {
-  border-image: repeating-linear-gradient(
-    45deg, #e44343 0 8px, #ffffff 8px 16px, #28b35e 16px 24px, #ffffff 24px 32px
-  ) 8 / 1.5px / 0 stretch;
-  border-style: solid; border-width: 1.5px;
-}
 
 #startMatchBtn{
   width:100%;          /* same width as the box */
@@ -847,13 +834,7 @@ margin-bottom: var(--section-gap);
   transform: translateY(0);
 }
 
-/* === Triple-Trebles celebration overlay === */
-.gif-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:600000;pointer-events:none;}
-.gif-overlay.hidden{display:none;}
-.gif-overlay .gif-box{width:min(540px,84vw);max-height:80vh;display:block}
-/* Hide Tenor fallback link text so no raw anchor text shows */
-#gifOverlay .tenor-gif-embed a { display: none !important; }
-#gifOverlay .tenor-gif-embed { font-size: 0 !important; line-height: 0 !important; }
+
 
 </style>
 </head>
@@ -1080,7 +1061,7 @@ margin-bottom: var(--section-gap);
         </div>
         <div class="modal-footer">
           <button id="cancelAddPlayerBtn" class="btn" type="button">Cancel</button>
-          <button id="savePlayerBtn" class="btn primary" type="button">Save New Player</button>
+          <button id="savePlayerBtn" class="btn primary" type="button">Save Player</button>
         </div>
       </div>
     </div>
@@ -3471,15 +3452,9 @@ function openHighScoresHubDialog(){
  **********************/
 const SUPABASE_URL = "https://vvfqumgtasuacpggdmxx.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2ZnF1bWd0YXN1YWNwZ2dkbXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NTk0MDMsImV4cCI6MjA3ODUzNTQwM30.8NblWOwEsY1FP1hxvO6isQ908NyxkTgntnZZiXIFPHE";
-// Supabase client is initialised via ensureCloudInit() into window.sb.
-// Keep a module-scope alias for legacy code paths that reference `sb`.
-let sb = null;
-
-// Supabase client is initialised via ensureCloudInit() into window.sb
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 const TABLE_PLAYERS = "players";
-// Default legacy hash (matches existing rows: SHA-256("1234"))
-const DEFAULT_PLAYER_PASSWORD_HASH = '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4';
 // View/table that lists every player's game across Official + Practice.
 const TABLE_PLAYER_GAMES = 'player_games_union';
 const TABLE_HS_LEAGUE = "high_scores";
@@ -4251,24 +4226,11 @@ async function cloudListPlayers(){
   return data || [];
 }
 
-// Create / update a player (password UI removed; DB still expects password_hash)
+// Create / update a player by name only (no password)
 async function cloudCreatePlayer(name){
-  if (!ensureCloudInit()) {
-    const err = new Error('Cloud not initialised');
-    try { markCloudError(err); } catch(_) {}
-    throw err;
-  }
-
-  const client = window.sb || sb;
-  const nm = String(name || '').trim().replace(/\s+/g, ' ');
-  if (!nm) return;
-
   const { error } = await sb
     .from(TABLE_PLAYERS)
-    .upsert(
-      { name: nm, password_hash: DEFAULT_PLAYER_PASSWORD_HASH },
-      { onConflict: 'name' }
-    );
+    .upsert({ name }, { onConflict: 'name' });   // only name is stored
 
   if (error) {
     markCloudError(error);
@@ -4587,17 +4549,17 @@ async function cloudListPlayerRecentOfficialGames(name, limitGames = 2){
     rows = rows.filter(r=> r?.ts ? pass(new Date(r.ts)) : true);
 
     // Sort: highest score first, then newest, then name
-rows.sort((a, b) => {
-  const sa = Number(a?.score || 0);
-const bScore = Number(b?.score || 0);
-if (bScore !== sa) return bScore - sa;
-  const ta = a?.ts ? Date.parse(a.ts) : 0;
-  const tb = b?.ts ? Date.parse(b.ts) : 0;
-  if (tb !== ta) return tb - ta;
-  const na = String(a?.name || '');
-  const nb = String(b?.name || '');
-  return na.localeCompare(nb);
-});
+    rows.sort((a, b) => {
+      const sa = Number(a?.score || 0);
+      const sb = Number(b?.score || 0);
+      if (sb !== sa) return sb - sa;
+      const ta = a?.ts ? Date.parse(a.ts) : 0;
+      const tb = b?.ts ? Date.parse(b.ts) : 0;
+      if (tb !== ta) return tb - ta;
+      const na = String(a?.name || '');
+      const nb = String(b?.name || '');
+      return na.localeCompare(nb);
+    });
 
     if (!rows.length){
       const p=document.createElement('p'); p.textContent='No scores recorded for this period.'; body.appendChild(p); return;
@@ -5215,6 +5177,18 @@ async function openPlayerStatsLookupDialog() {
     console.error('Stats: cloudListPlayers failed', err);
   }
 
+  if (!anyPlayers && typeof getSavedPlayers === 'function') {
+    const local = getSavedPlayers();
+    (local || []).forEach(p => {
+      if (!p || !p.name) return;
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      nameSelect.appendChild(opt);
+      anyPlayers = true;
+    });
+  }
+
   if (!anyPlayers) {
     body.innerHTML = '<p>No saved players found. Save a player from the Player Select screen first.</p>';
     viewBtn.disabled = true;
@@ -5319,6 +5293,18 @@ async function openPlayerStatsLookupDialog() {
     console.error('Stats: cloudListPlayers failed', err);
   }
 
+  if (!anyPlayers && typeof getSavedPlayers === 'function') {
+    const local = getSavedPlayers();
+    (local || []).forEach(p => {
+      if (!p || !p.name) return;
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      nameSelect.appendChild(opt);
+      anyPlayers = true;
+    });
+  }
+
   if (!anyPlayers) {
     body.innerHTML = '<p>No saved players found. Save a player from the Player Select screen first.</p>';
     viewBtn.disabled = true;
@@ -5383,10 +5369,10 @@ row.style.gap = '8px';
 
     row.innerHTML = `
       <div class="grow">
-        <input placeholder="Add Guest Player Name" data-role="display">
+        <input placeholder="Guest Player Name" data-role="display">
       </div>
-      <button class="btn select-player-btn" type="button">Select Saved Player</button>
-      <button class="btn primary save-player-btn" type="button">Save New Player</button>
+      <button class="btn select-player-btn" type="button">Select Player</button>
+      <button class="btn primary save-player-btn" type="button">Save Player</button>
     `;
 
     psPlayerFields.appendChild(row);
@@ -5405,62 +5391,32 @@ row.style.gap = '8px';
 psNumPlayersSel.addEventListener('change', drawPsRows);
 psNumGamesSel.addEventListener('change', ()=>{/* nothing else; read on start */});
 
-// Players are cloud-only (Supabase). Local saved-player storage is disabled.
-function getSavedPlayers(){ return []; }
-function setSavedPlayers(_arr){ /* no-op */ }
+// ---- Saved players helpers (shared by Add + Select modals) ----
+function getSavedPlayers(){
+  try {
+    return JSON.parse(localStorage.getItem('shateki_players') || '[]');
+  } catch(e){
+    return [];
+  }
+}
+
+function setSavedPlayers(arr){
+  try {
+    localStorage.setItem('shateki_players', JSON.stringify(arr));
+  } catch(e){}
+}
+
 function populateSavedPlayersSelects(){
-  (async () => {
-    const sel1 = document.getElementById('existingPlayers');        // Add Player modal
-    const sel2 = document.getElementById('existingPlayerSelect');   // Select Player modal
-    const sel3 = document.getElementById('pbgrPlayerSelect');       // PB/GR Admin modal
-    const sels = [sel1, sel2, sel3].filter(Boolean);
-    if (!sels.length) return;
+  const arr  = getSavedPlayers();
+  const sel1 = document.getElementById('existingPlayers');      // Add Player modal
+  const sel2 = document.getElementById('existingPlayerSelect'); // Select Player modal
 
-    const setOptions = (sel, names) => {
-      const cur = sel.value;
-      sel.innerHTML = '';
-      const opt0 = document.createElement('option');
-      opt0.value = '';
-      opt0.textContent = 'Select a saved player...';
-      sel.appendChild(opt0);
-      names.forEach(n => {
-        const o = document.createElement('option');
-        o.value = n;
-        o.textContent = n;
-        sel.appendChild(o);
-      });
-      if (cur && names.includes(cur)) sel.value = cur;
-    };
-
-    // placeholder while loading
-    sels.forEach(s => setOptions(s, []));
-
-    try {
-      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) return;
-
-      const client =
-        (typeof window !== 'undefined' && window.sb) ? window.sb :
-        (typeof sb !== 'undefined' ? sb : null);
-
-      if (!client || typeof client.from !== 'function') return;
-
-      const { data, error } = await client
-        .from(TABLE_PLAYERS)
-        .select('name')
-        .order('name', { ascending: true })
-        .limit(5000);
-
-      if (error) throw error;
-
-      const names = (data || [])
-        .map(r => String((r && r.name) || '').trim())
-        .filter(Boolean);
-
-      sels.forEach(s => setOptions(s, names));
-    } catch (e) {
-      console.error('populateSavedPlayersSelects failed', e);
-    }
-  })();
+  [sel1, sel2].forEach(sel => {
+    if (!sel) return;
+    sel.innerHTML =
+      '<option value="">Select a saved player...</option>' +
+      arr.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+  });
 }
 
 // Add / Save Player – name only, no PIN
@@ -5524,7 +5480,15 @@ async function showAddPlayerDialog(index){
       }
 
       chosenName = newName;
-      
+
+      // Save to local storage
+      const arr = getSavedPlayers();
+      const idxExisting = arr.findIndex(p => p && p.name === newName);
+      if (idxExisting === -1) arr.push({ name: newName });
+      else arr[idxExisting].name = newName;
+      setSavedPlayers(arr);
+      populateSavedPlayersSelects();
+
       // Save to Supabase (name only)
       try {
         await cloudCreatePlayer(newName);
@@ -5558,6 +5522,19 @@ async function showSelectPlayerDialog(index){
     any = !!(cloudList && cloudList.length);
   } catch (err) {
     console.error('cloudListPlayers failed', err);
+  }
+
+  // Fallback: local saved players
+  if (!any) {
+    const local = getSavedPlayers();
+    (local || []).forEach(p => {
+      if (!p || !p.name) return;
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      select.appendChild(opt);
+    });
+    any = !!(local && local.length);
   }
 
   if (!any) {
@@ -9508,35 +9485,34 @@ async function cloudDeleteGameCascade(g){
   /*****************
    * CLOUD INIT HELPER
    *****************/
-function ensureCloudInit(){
-  try {
-    // Library present?
-    if (typeof window.supabase !== 'object' || !window.supabase.createClient) {
+  function ensureCloudInit(){
+    try {
+      // Library present?
+      if (typeof window.supabase !== 'object' || !window.supabase.createClient) {
+        try { setCloudStatus && setCloudStatus('error', 'Cloud not initialised'); } catch(_) {}
+        return false;
+      }
+      // Keys present?
+      if (typeof SUPABASE_URL === 'undefined' || typeof SUPABASE_ANON === 'undefined' || !SUPABASE_URL || !SUPABASE_ANON) {
+        try { setCloudStatus && setCloudStatus('error', 'Cloud keys missing'); } catch(_) {}
+        return false;
+      }
+      // Make client if missing
+      if (!window.sb) {
+        try { window.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON); }
+        catch (e) {
+          console.error('supabase createClient failed', e);
+          try { setCloudStatus && setCloudStatus('error', 'Cloud not initialised'); } catch(_) {}
+          return false;
+        }
+      }
+      return true;
+    } catch (e) {
+      console.error('ensureCloudInit failed', e);
       try { setCloudStatus && setCloudStatus('error', 'Cloud not initialised'); } catch(_) {}
       return false;
     }
-
-    // Keys present?
-    if (!SUPABASE_URL || !SUPABASE_ANON) {
-      try { setCloudStatus && setCloudStatus('error', 'Cloud keys missing'); } catch(_) {}
-      return false;
-    }
-
-    // Make client if missing
-    if (!window.sb) {
-      window.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-    }
-
-    // Legacy alias (some older code uses `sb`)
-    sb = window.sb;
-
-    return true;
-  } catch (e) {
-    console.error('ensureCloudInit failed', e);
-    try { setCloudStatus && setCloudStatus('error', 'Cloud not initialised'); } catch(_) {}
-    return false;
   }
-}
 
 /*** CLOUD HIGH SCORES API — safe fallback implementations ***/
 (function(){
@@ -15288,245 +15264,6 @@ document.addEventListener('DOMContentLoaded', function(){
   };
 });
 
-// === Christmas Theme (non-destructive, can be toggled) =======================
-(function(){
-  const STYLE_ID   = 'xmasStyles';
-  const LIGHTS_ID  = 'xmasLights';
-  const SNOW_ID    = 'xmasSnow';
-  const TOGGLE_ID  = 'xmasToggle';
-
-  let rafId = null;
-  let flakes = [];
-
-  function injectStyles(){
-    if (document.getElementById(STYLE_ID)) return;
-    const css = `
-      /* palette + subtle effects */
-      body.xmas {
-        --brand: #e44343;            /* red */
-        --brand-2: #28b35e;          /* pine */
-        --hint: rgba(255,255,255,.65);
-      }
-      body.xmas .btn.primary { box-shadow: 0 0 0 2px rgba(255,255,255,.06), 0 8px 20px rgba(40,179,94,.25); }
-      body.xmas .btn.primary:hover { box-shadow: 0 0 0 2px rgba(255,255,255,.08), 0 10px 26px rgba(228,67,67,.30); }
-      body.xmas .tag { border: 1px solid rgba(255,255,255,.08); }
-      /* title hat (cute, optional) */
-      body.xmas h1::after, body.xmas .app-title::after {
-        content: '🎅';
-        margin-left: .35rem;
-        filter: drop-shadow(0 1px 0 rgba(0,0,0,.35));
-      }
-      /* twinkling lights bar */
-      #${LIGHTS_ID} {
-        position: fixed; inset: 0 0 auto 0; height: 8px; z-index: 9999; pointer-events: none;
-        background:
-          radial-gradient(circle at  4% 50%, #ff4d4d 0 3px, transparent 4px) 0 0/60px 100%,
-          radial-gradient(circle at 20% 50%, #ffd24d 0 3px, transparent 4px) 0 0/60px 100%,
-          radial-gradient(circle at 36% 50%, #5be37d 0 3px, transparent 4px) 0 0/60px 100%,
-          radial-gradient(circle at 52% 50%, #4da3ff 0 3px, transparent 4px) 0 0/60px 100%,
-          radial-gradient(circle at 68% 50%, #ff7ad1 0 3px, transparent 4px) 0 0/60px 100%,
-          radial-gradient(circle at 84% 50%, #fff 0 3px, transparent 4px) 0 0/60px 100%;
-        animation: xmasTwinkle 1.8s ease-in-out infinite alternate;
-        opacity: .85;
-      }
-      @keyframes xmasTwinkle { from { filter: brightness(.9); } to { filter: brightness(1.15); } }
-
-      /* snowfall canvas sits above UI but non-interactive */
-      #${SNOW_ID} {
-        position: fixed; inset: 0; pointer-events: none; z-index: 9998; opacity: .85;
-      }
-
-      /* small floating toggle button */
-      #${TOGGLE_ID} {
-        position: fixed; right: 10px; bottom: 10px; z-index: 10000;
-        border-radius: 999px; padding: 6px 10px; font-size: 14px;
-        background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12);
-        backdrop-filter: blur(4px);
-      }
-      #${TOGGLE_ID}.on { background: rgba(40,179,94,.22); border-color: rgba(40,179,94,.35); }
-            /* candy-cane accents */
-      body.xmas .modal.compact::before {
-        content: '';
-        position: absolute; left: 0; right: 0; top: 0; height: 6px;
-        background: repeating-linear-gradient(45deg,
-          #e44343 0 10px, #ffffff 10px 20px, #28b35e 20px 30px, #ffffff 30px 40px);
-        border-top-left-radius: 6px; border-top-right-radius: 6px;
-        opacity: .9; pointer-events: none;
-      }
-      body.xmas table.hs-table thead th {
-        border-bottom: 2px solid rgba(255,255,255,.15);
-        background-image: linear-gradient(to bottom, rgba(255,255,255,.05), rgba(0,0,0,0));
-      }
-      /* medal glow */
-      body.xmas .medal-gold  { filter: drop-shadow(0 0 6px rgba(255,215,0,.45)); }
-      body.xmas .medal-silver{ filter: drop-shadow(0 0 6px rgba(210,210,210,.35)); }
-      body.xmas .medal-bronze{ filter: drop-shadow(0 0 6px rgba(205,127,50,.35)); }
-      /* heavy mode: brighter lights bar */
-      body[data-xmas="heavy"] #xmasLights { filter: brightness(1.25); }
-      /* subtle snow pile at the very bottom */
-      body.xmas::after{
-        content:''; position:fixed; left:0; right:0; bottom:0; height:18px; z-index:2; pointer-events:none;
-        background: radial-gradient(50% 120% at 50% 150%, rgba(255,255,255,.25), rgba(255,255,255,0) 70%);
-      }
-      
-    `;
-    const style = document.createElement('style');
-    style.id = STYLE_ID;
-    style.textContent = css;
-    document.head.appendChild(style);
-  }
-  
-  
-
-  function addLights(){
-    if (document.getElementById(LIGHTS_ID)) return;
-    const bar = document.createElement('div');
-    bar.id = LIGHTS_ID;
-    document.body.appendChild(bar);
-  }
-
-   function startSnow(mode){
-    if (document.getElementById(SNOW_ID)) return;
-    setSnowCfgFor(mode || getSavedMode() || 'light');
-
-    const c = document.createElement('canvas');
-    c.id = SNOW_ID;
-    const ctx = c.getContext('2d');
-    document.body.appendChild(c);
-
-    function resize(){
-      c.width = window.innerWidth; c.height = window.innerHeight;
-      const base = Math.round((c.width * c.height) / 15000); // baseline density
-      const target = Math.min(220, Math.max(40, Math.round(base * snowCfg.density)));
-      flakes = Array.from({length: target}, ()=>({
-        x: Math.random() * c.width,
-        y: Math.random() * c.height,
-        r: 0.8 + Math.random() * 2.2,
-        s: (0.4 + Math.random() * 0.9) * snowCfg.speed,  // speed by mode
-        d: Math.random() * 2 * Math.PI
-      }));
-    }
-    resize();
-    window.addEventListener('resize', resize);
-
-    function tick(){
-      ctx.clearRect(0,0,c.width,c.height);
-      ctx.fillStyle = 'rgba(255,255,255,.9)';
-      for (const f of flakes){
-        f.y += f.s;
-        f.x += Math.sin(f.d += 0.01) * 0.45;
-        if (f.y > c.height + 6) { f.y = -6; f.x = Math.random()*c.width; }
-        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI*2); ctx.fill();
-      }
-      rafId = requestAnimationFrame(tick);
-    }
-    rafId = requestAnimationFrame(tick);
-  }
-
-  function stopSnow(){
-    if (rafId) cancelAnimationFrame(rafId), rafId = null;
-    const c = document.getElementById(SNOW_ID);
-    if (c) c.remove();
-    flakes = [];
-  }
-  function ensureToggle(){
-    if (document.getElementById(TOGGLE_ID)) return;
-    const btn = document.createElement('button');
-    btn.id = TOGGLE_ID;
-    btn.className = 'btn small';
-    btn.type = 'button';
-    document.body.appendChild(btn);
-
-    btn.onclick = () => {
-      // cycle: off -> light -> medium -> heavy -> off
-      const enabled = document.body.classList.contains('xmas');
-      let mode = (document.body.dataset.xmas || getSavedMode() || 'light');
-      if (!enabled) {
-        mode = 'light';
-        enableXmas(true, mode);
-      } else {
-        const i = MODES.indexOf(mode);
-        if (i < MODES.length - 1) {
-          mode = MODES[i+1];
-          // update without turning off
-          setSnowCfgFor(mode);
-          stopSnow(); startSnow(mode);
-          localStorage.setItem('xmas','1');
-          localStorage.setItem('xmasMode', mode);
-        } else {
-          // go OFF
-          disableXmas(true);
-        }
-      }
-      updateToggle();
-    };
-
-    updateToggle();
-  }
-
-  function updateToggle(){
-    const btn = document.getElementById(TOGGLE_ID);
-    if (!btn) return;
-    const enabled = document.body.classList.contains('xmas');
-    const mode = document.body.dataset.xmas || getSavedMode() || (enabled ? 'light' : 'off');
-    btn.classList.toggle('on', enabled);
-    btn.textContent = enabled ? `🎄 Xmas: ${mode[0].toUpperCase()+mode.slice(1)}` : '🎄 Xmas: Off';
-  }
-
-  function enableXmas(user, mode){
-    injectStyles();
-    document.body.classList.add('xmas');
-    setSnowCfgFor(mode || getSavedMode() || 'light');
-    addLights();
-    startSnow(mode);
-    ensureToggle(); updateToggle();
-    if (user) {
-      localStorage.setItem('xmas','1');
-      localStorage.setItem('xmasMode', document.body.dataset.xmas || 'light');
-    }
-  }
-  function disableXmas(user){
-    document.body.classList.remove('xmas');
-    document.body.removeAttribute('data-xmas');
-    document.getElementById(LIGHTS_ID)?.remove();
-    stopSnow();
-    ensureToggle(); updateToggle();
-    if (user) {
-      localStorage.removeItem('xmas');
-      localStorage.removeItem('xmasMode');
-    }
-  }
-
-  // expose just in case
-  window.enableChristmasTheme = enableXmas;
-  window.disableChristmasTheme = disableXmas;
-
-   // auto-enable in December or if user saved a mode
-  const isDec = (new Date().getMonth() === 11);
-  const saved = getSavedMode();
-  if (saved) {
-    setTimeout(()=> enableXmas(false, saved), 0);
-  } else if (isDec) {
-    setTimeout(()=> enableXmas(false, 'light'), 0);
-  } else {
-    setTimeout(()=> ensureToggle(), 0);
-  }
-    // Snow mode (light/medium/heavy)
-  const MODES = ['light','medium','heavy'];
-  let snowCfg = { density: 1.0, speed: 1.0 };
-
-  function setSnowCfgFor(mode){
-    if (mode === 'medium') { snowCfg = { density: 1.6, speed: 1.2 }; }
-    else if (mode === 'heavy') { snowCfg = { density: 2.2, speed: 1.4 }; }
-    else { snowCfg = { density: 1.0, speed: 1.0 }; }
-    document.body.dataset.xmas = mode || 'light';
-  }
-
-  function getSavedMode(){
-    return localStorage.getItem('xmasMode') || (localStorage.getItem('xmas')==='1' ? 'light' : '');
-  }
-})();
-
 // === End Game (Leaderboard only): insert "PREMIER LEAGUE" below HIGH SCORES ===
 (function plBtnLeaderboardOnly(){
   function onLeaderboard(){
@@ -16242,8 +15979,6 @@ if (!todayBtn) {
   mo.observe(document.body || document.documentElement, { childList:true, subtree:true });
 })();
 
-/* === Gremlins Xmas GIF — resilient, no embed.js required ================ */
-
 // === T button flash + shake — v3 (Safari-safe; 1→2→3 only when T is pressed)
 (function tButtonFXv3(){
   // CSS (proper injection)
@@ -16651,137 +16386,6 @@ if (!todayBtn) {
   if (document.readyState === 'loading'){ document.addEventListener('DOMContentLoaded', boot); } else { boot(); }
 })();
 
-
-(function mountGremlins(){
-  const WRAP_ID   = 'gremlinsGif';
-  const GIF_PAGE  = 'https://tenor.com/view/gremlins-singing-christmascarol-christmas-monster-gif-4239908413876512369';
-
-  // Fallback: paste a direct media.tenor.com GIF/MP4 URL here if your CSP blocks iframes.
-  // Example (replace with the actual media link you copy from Tenor): 
-  // const GIF_SRC = 'https://media.tenor.com/XXXXXAA/mp4';
-const GIF_SRC = 'https://tenor.com/fdmZlr9yPBt.gif';  // direct GIF
-
-  function findAdminAnchor(){
-    return (
-      document.getElementById('adminBtn') ||
-      document.getElementById('adminCodeBtn') ||
-      document.querySelector('[data-role="admin"]') ||
-      Array.from(document.querySelectorAll('button,.btn,[role="button"]'))
-        .find(el => /^\s*admin\s*$/i.test(el.textContent || ''))
-    );
-  }
-
-  function buildWrapper(){
-    const wrap = document.createElement('div');
-    wrap.id = WRAP_ID;
-    wrap.style.maxWidth   = '680px';
-    wrap.style.width      = 'min(680px, 92%)';
-    wrap.style.margin     = '12px auto 8px';
-    wrap.style.borderRadius = '10px';
-    wrap.style.overflow   = 'hidden';
-    wrap.style.boxShadow  = '0 4px 22px rgba(0,0,0,.25)';
-    wrap.style.background = 'rgba(255,255,255,0.03)';
-
-    // Maintain ~16:9 area
-    const holder = document.createElement('div');
-    holder.style.position = 'relative';
-    holder.style.paddingTop = '56.6%'; // 16:9
-    const box = document.createElement('div');
-    box.style.position = 'absolute';
-    box.style.inset = '0';
-
-const postId = '4239908413876512369';
-
-if (GIF_SRC) {
-  // Try a plain asset first (no third-party scripts/iframe)
-  if (GIF_SRC.toLowerCase().endsWith('.mp4')) {
-    const v = document.createElement('video');
-    v.src = GIF_SRC;
-    v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
-    v.style.width = '100%'; v.style.height = '100%'; v.style.objectFit = 'cover';
-    box.appendChild(v);
-  } else {
-    const img = new Image();
-    img.alt = 'Gremlins Singing';
-    img.style.width = '100%';
-    img.style.height = '100%';
-    img.style.objectFit = 'cover';
-
-    // Fallback to Tenor’s official embed if the direct GIF 404s
-    img.onerror = () => {
-      box.innerHTML = '';
-      const div = document.createElement('div');
-      div.className = 'tenor-gif-embed';
-      div.setAttribute('data-postid', postId);
-      div.setAttribute('data-share-method', 'host');
-      div.setAttribute('data-aspect-ratio', '1.76596');
-      div.setAttribute('data-width', '100%');
-      box.appendChild(div);
-
-      if (!document.getElementById('tenorEmbedJS')) {
-        const s = document.createElement('script');
-        s.id = 'tenorEmbedJS';
-        s.src = 'https://tenor.com/embed.js';
-        s.async = true;
-        document.body.appendChild(s);
-      }
-    };
-
-    img.onload = () => { box.replaceChildren(img); };
-    img.src = GIF_SRC;
-  }
-} else {
-  // No direct asset supplied: use Tenor’s embed right away (no sandbox, let embed.js manage it)
-  const div = document.createElement('div');
-  div.className = 'tenor-gif-embed';
-  div.setAttribute('data-postid', postId);
-  div.setAttribute('data-share-method', 'host');
-  div.setAttribute('data-aspect-ratio', '1.76596');
-  div.setAttribute('data-width', '100%');
-  box.appendChild(div);
-
-  if (!document.getElementById('tenorEmbedJS')) {
-    const s = document.createElement('script');
-    s.id = 'tenorEmbedJS';
-    s.src = 'https://tenor.com/embed.js';
-    s.async = true;
-    document.body.appendChild(s);
-  }
-}
-
-
-    holder.appendChild(box);
-    wrap.appendChild(holder);
-
-    // Credit / fallback click-through
-    const credit = document.createElement('a');
-    credit.href = GIF_PAGE;
-    credit.target = '_blank';
-    credit.rel = 'noopener';
-    credit.textContent = 'Gremlins Singing — Tenor';
-    credit.className = 'tag';
-    credit.style.display = 'block';
-    credit.style.textAlign = 'center';
-    credit.style.marginTop = '6px';
-    wrap.appendChild(credit);
-
-    return wrap;
-  }
-
-  function insertAfterAdmin(){
-    if (document.getElementById(WRAP_ID)) return; // already mounted
-    const admin = findAdminAnchor();
-    if (!admin) return;
-    admin.insertAdjacentElement('afterend', buildWrapper());
-  }
-
-  // Mount once DOM is ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', insertAfterAdmin);
-  } else {
-    insertAfterAdmin();
-  }
-})();
 
 // === In-game minis ( (xx) ) — strip green boxes; only highest is green ======
 (function strictBracketWinner(){
