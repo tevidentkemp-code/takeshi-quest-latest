@@ -846,12 +846,13 @@ margin-bottom: var(--section-gap);
 <h2 id="appTitle">SHATEKI-QUEST</h2>
       <div class="start-actions column" style="gap:8px">
         <button id="questBtn" class="btn primary big" type="button">New game ▶</button>
-        <button id="resumeBtn" class="btn good big" type="button" disabled title="No saved match">Resume game ▶</button>
+                <button id="tournamentBtn" class="btn big" type="button">TOURNAMENT</button>
+<button id="resumeBtn" class="btn good big" type="button" disabled title="No saved match">Resume game ▶</button>
 
         <div class="row start-secondary-row">
           <button id="latestScoresBtn" class="btn" type="button">Latest Scores</button>
-          <button id="hsMainBtn" class="btn" type="button">High Scores (Match)</button>
-          <button id="shotgunBtn" class="btn" type="button">High Scores (Round)</button>
+          <button id="leagueRankingsBtn" class="btn" type="button">League / Rankings</button>
+          <button id="hsMainBtn" class="btn" type="button">High Scores</button>
           <button id="playerStatsBtn" class="btn" type="button">Player Stats</button>
         </div>
 
@@ -871,12 +872,10 @@ margin-bottom: var(--section-gap);
 <!-- BOX 1: Number of games / Number of players -->
 <div class="ps-config-row">
   <div class="setup-row">
-    
+
     <!-- Games -->
     <div class="setup-field">
       <label class="setup-label" for="psNumGames">Number of games</label>
-      
-      
 
       <!-- custom stepper hooked to #psNumGames -->
       <div class="setup-stepper" data-select-id="psNumGames" data-suffix=" games">
@@ -887,20 +886,21 @@ margin-bottom: var(--section-gap);
         </div>
         <button type="button" class="stepper-btn" data-delta="1">+</button>
       </div>
-      
-          <!-- Players -->
-    <div class="setup-field">
-      <label class="setup-label" for="psNumPlayers">Number of players</label>
 
       <!-- original select, now visually hidden but still used by JS -->
       <select id="psNumGames" class="native-select-hidden">
         <option value="1">1 game</option>
         <option value="2">2 games</option>
-        <option value="3"selected>3 games</option>
+        <option value="3" selected>3 games</option>
         <option value="4">4 games</option>
         <option value="5">5 games</option>
       </select>
     </div>
+
+    <!-- Players -->
+    <div class="setup-field">
+      <label class="setup-label" for="psNumPlayers">Number of players</label>
+
       <!-- custom stepper hooked to #psNumPlayers -->
       <div class="setup-stepper" data-select-id="psNumPlayers" data-suffix=" players">
         <button type="button" class="stepper-btn" data-delta="-1">−</button>
@@ -910,7 +910,7 @@ margin-bottom: var(--section-gap);
         </div>
         <button type="button" class="stepper-btn" data-delta="1">+</button>
       </div>
-      
+
       <!-- original select, hidden -->
       <select id="psNumPlayers" class="native-select-hidden">
         <option value="1">1 player (Training)</option>
@@ -921,10 +921,11 @@ margin-bottom: var(--section-gap);
         <option value="6">6 players</option>
       </select>
     </div>
+
   </div>
 </div>
 
-  <!-- BOX 2: Player rows (guest / saved players) -->
+<!-- BOX 2: Player rows (guest / saved players) -->
   <div class="ps-config-row">
     <div id="psPlayerFields" class="column" style="width:100%;">
       <!-- Rows injected -->
@@ -2206,8 +2207,8 @@ if (!/^\d{4}$/.test(pin)){ toast('PIN must be 4 digits'); return; }      try { a
 
 /* Premier League – replace TODAY chip with a fresh working one */
 (function () {
-  if (window.__plTodayChipPatched) return;
-  window.__plTodayChipPatched = true;
+  // Disabled: native Premier League TODAY tab is now handled by the 4-row filter layout.
+  return;
 
   function startOfTodayISO() {
     const s = new Date(); s.setHours(0,0,0,0);
@@ -3452,8 +3453,21 @@ function openHighScoresHubDialog(){
  **********************/
 const SUPABASE_URL = "https://vvfqumgtasuacpggdmxx.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2ZnF1bWd0YXN1YWNwZ2dkbXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NTk0MDMsImV4cCI6MjA3ODUzNTQwM30.8NblWOwEsY1FP1hxvO6isQ908NyxkTgntnZZiXIFPHE";
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
+// IMPORTANT: do NOT hard-crash the entire app if Supabase CDN is blocked (e.g., some online previewers).
+// We initialise lazily in ensureCloudInit() instead.
+let sb = null;
+try {
+  if (window.supabase && typeof window.supabase.createClient === 'function') {
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    window.sb = sb;
+  }
+} catch (e) {
+  console.warn('Supabase client init deferred/failed', e);
+  sb = null;
+}
+
+// Keep table constants below
 const TABLE_PLAYERS = "players";
 // View/table that lists every player's game across Official + Practice.
 const TABLE_PLAYER_GAMES = 'player_games_union';
@@ -5076,10 +5090,20 @@ function setupStartMenuButtons(){
   const saved   = getSavedState(); 
   const hasSaved = !!saved; 
 
-  resumeBtn.disabled = !hasSaved; 
-  resumeBtn.title    = hasSaved ? 'Resume last match' : 'No saved match'; 
+  
+  // Tournament button (placeholder)
+  const tournamentBtn = byId("tournamentBtn");
+  if (tournamentBtn) {
+    tournamentBtn.disabled = false;
+    tournamentBtn.title = "Tournament mode is coming soon";
+    tournamentBtn.onclick = () => toast("Tournament mode; for 4 / 8 players - Coming soon!");
+  }
 
-  if (hasSaved){ 
+  // Only show Resume if we actually have an in-progress saved match
+  resumeBtn.style.display = hasSaved ? '' : 'none';
+  resumeBtn.disabled = !hasSaved;
+  resumeBtn.title    = hasSaved ? 'Resume last match' : 'No saved match';
+if (hasSaved){ 
     resumeBtn.onclick = () => { 
       Object.assign(state, saved); 
       show('game'); 
@@ -5096,6 +5120,9 @@ function setupStartMenuButtons(){
   if (hsMainBtn) {
     hsMainBtn.onclick = openHighScoresMenuDialog;
   }
+
+  const leagueBtn = byId('leagueRankingsBtn');
+  if (leagueBtn) leagueBtn.onclick = openLeagueRankingsDialog;
 
 // === Player Stats: simple name-only picker (no PIN) ===
 async function openPlayerStatsLookupDialog() {
@@ -9499,13 +9526,14 @@ async function cloudDeleteGameCascade(g){
       }
       // Make client if missing
       if (!window.sb) {
-        try { window.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON); }
+        try { window.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON); sb = window.sb; }
         catch (e) {
           console.error('supabase createClient failed', e);
           try { setCloudStatus && setCloudStatus('error', 'Cloud not initialised'); } catch(_) {}
           return false;
         }
       }
+      if (!sb && window.sb) sb = window.sb;
       return true;
     } catch (e) {
       console.error('ensureCloudInit failed', e);
@@ -10927,17 +10955,34 @@ function arrangeStartActions(){
     // GAP
     // Admin
     const frag = doc.createDocumentFragment();
+    // TOURNAMENT
+    let tournament = document.getElementById('tournamentBtn');
+    if (!tournament){
+      tournament = doc.createElement('button');
+      tournament.id = 'tournamentBtn';
+      tournament.className = 'btn';
+      tournament.type = 'button';
+    }
+    tournament.textContent = 'TOURNAMENT';
+    tournament.onclick = () => toast('Tournament mode; for 4 / 8 players - Coming soon!');
+
+    const hasSaved = (typeof getSavedState === 'function' && !!getSavedState());
 
     if (newBtn) {
       newBtn.textContent = 'NEW GAME';
       frag.appendChild(newBtn);
     }
+
+    // Insert Tournament between NEW GAME and Resume
+    if (tournament) frag.appendChild(tournament);
+
     if (resumeBtn) {
       resumeBtn.textContent = 'Resume Game';
-      frag.appendChild(resumeBtn);
+      resumeBtn.style.display = hasSaved ? '' : 'none';
+      if (hasSaved) frag.appendChild(resumeBtn);
     }
 
-    // GAP between large buttons and the medium stats buttons
+// GAP between large buttons and the medium stats buttons
     frag.appendChild(mkSpacer(16));
 
     // Medium buttons – one per row, equal spacing
@@ -12321,17 +12366,24 @@ roundsList.sort((a, b) => {
 
   // 6) Compute outputs
   const out = [];
+  const cutoffMs = Date.now() - (14 * 24 * 60 * 60 * 1000);
   for (const [key, rec] of byPlayer){
     const count = Math.min(LIMIT, rec.buf.length);
     if (count <= 0) continue;
 
     const total = rec.buf.reduce((s, v) => s + v, 0);
     const avg   = total / count;
-    const qualifies = count >= MIN_ROUNDS;
+
+    const lastTs = rec.lastTs || null;
+    const lastMs = lastTs ? Date.parse(lastTs) : 0;
+    const inactive = (!lastMs) || (lastMs < cutoffMs);
+
+    const qualifiesBase = count >= MIN_ROUNDS;
+    const qualifies = qualifiesBase && !inactive;
 
     // Use canonical casing when available
     const name = canonical.get(key) || rec.name || '—';
-    out.push({ name, rounds: count, avg, ts: rec.lastTs || null, qualifies });
+    out.push({ name, rounds: count, avg, ts: lastTs, qualifies, inactive, qualifiesBase });
   }
 
   // 7) Sort: qualified first (ranked), then unqualified (grey/unranked)
@@ -12368,7 +12420,7 @@ roundsList.sort((a, b) => {
     const note = document.createElement('p');
     note.className = 'tag';
     if (rows.some(r => !r.qualifies)) {
-      note.textContent = `Players with fewer than ${MIN_ROUNDS} rounds (1 game + 1 round) are greyed out and unranked.`;
+      note.textContent = `Players with fewer than ${MIN_ROUNDS} rounds (1 game + 1 round), or no official rounds in the last 14 days, are greyed out and unranked.`;
       body.innerHTML = '';
       body.appendChild(note);
     } else {
@@ -12416,7 +12468,13 @@ rows.forEach((row) => {
     tr.classList.add('muted');
     tr.style.opacity = '0.6';
     const need = Math.max(0, MIN_ROUNDS - (row.rounds || 0));
-    tr.title = need ? `Needs ${need} more round${need===1?'':'s'} to qualify` : `Below ${MIN_ROUNDS} rounds`;
+    if (row.inactive) {
+      tr.title = need
+        ? `Inactive (no official rounds in last 14 days) • Needs ${need} more round${need===1?'':'s'} to qualify`
+        : 'Inactive (no official rounds in last 14 days)';
+    } else {
+      tr.title = need ? `Needs ${need} more round${need===1?'':'s'} to qualify` : `Below ${MIN_ROUNDS} rounds`;
+    }
   }
 
   // Determine current rank (qualified only)
@@ -12496,15 +12554,36 @@ body.style.overflowY = 'visible';
   const footer = document.createElement('div');
   footer.className = 'modal-footer';
 
-  // Filter row + table mount
-  const filterRow = document.createElement('div');
-  filterRow.className = 'row';
-  filterRow.style.marginBottom = '8px';
+  // Filter rows + table mount
+  const filterWrap = document.createElement('div');
+  filterWrap.className = 'pl-filters';
+  filterWrap.style.display = 'flex';
+  filterWrap.style.flexDirection = 'column';
+  filterWrap.style.gap = '6px';
+  filterWrap.style.marginBottom = '8px';
+
+  const filterRowRecords = document.createElement('div');
+  const filterRowToday   = document.createElement('div');
+  const filterRowMonths  = document.createElement('div');
+  const filterRowAllYrs  = document.createElement('div');
+
+  [filterRowRecords, filterRowToday, filterRowMonths, filterRowAllYrs].forEach(r => {
+    r.className = 'row';
+    r.style.display = 'flex';
+    r.style.flexWrap = 'wrap';
+    r.style.gap = '8px';
+    r.style.alignItems = 'center';
+  });
+
+  filterWrap.appendChild(filterRowRecords); // Line 1: RECORDS
+  filterWrap.appendChild(filterRowToday);   // Line 2: TODAY
+  filterWrap.appendChild(filterRowMonths);  // Line 3: Months
+  filterWrap.appendChild(filterRowAllYrs);  // Line 4: ALL TIME + Years
 
   const tableMount = document.createElement('div');
   tableMount.className = 'table-wrap';
 
-  body.appendChild(filterRow);
+  body.appendChild(filterWrap);
   body.appendChild(tableMount);
 
   // Footer buttons
@@ -12595,29 +12674,38 @@ body.style.overflowY = 'visible';
   function buildFilters() {
     const filters = [];
 
-      // RECORDS (new tab)
-  filters.push({
-    id: 'RECORDS',
-    label: 'RECORDS',
-    match: () => true
-  });
+    const now = new Date();
 
-    // ALL TIME
+    // RECORDS
     filters.push({
-      id: 'ALL',
-      label: 'ALL TIME',
+      id: 'RECORDS',
+      label: 'RECORDS',
       match: () => true
     });
 
-       const now = new Date();
+    // TODAY (local timezone)
+    filters.push({
+      id: 'TODAY',
+      label: 'TODAY',
+      match: (ts) => {
+        if (!ts) return false;
+        const dt = new Date(ts);
+        if (Number.isNaN(dt.getTime())) return false;
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        return dt >= start && dt < end;
+      }
+    });
+
+    // Recent months (most recent first)
     for (let i = 0; i < 6; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const month = d.getMonth();   // 0–11
       const year = d.getFullYear();
+      const month = d.getMonth();
       const label = d.toLocaleString('en-GB', { month: 'short' }).toUpperCase();
 
       filters.push({
-        id: `${year}-${month}`,
+        id: `M${year}-${String(month + 1).padStart(2,'0')}`,
         label,
         match: (ts) => {
           if (!ts) return false;
@@ -12628,35 +12716,68 @@ body.style.overflowY = 'visible';
       });
     }
 
+    // Line 4: ALL TIME + explicit year buttons (newest first)
+    filters.push({
+      id: 'ALL',
+      label: 'ALL TIME',
+      match: () => true
+    });
+
+    // Years (explicit)
+    [2026, 2025].forEach(y => {
+      filters.push({
+        id: `Y${y}`,
+        label: String(y),
+        match: (ts) => {
+          if (!ts) return false;
+          const dt = new Date(ts);
+          if (Number.isNaN(dt.getTime())) return false;
+          return dt.getFullYear() === y;
+        }
+      });
+    });
+
     return filters;
   }
 
   function renderFilters(filters, onChange) {
-    filterRow.innerHTML = '';
+
+    // Clear each line
+    [filterRowRecords, filterRowToday, filterRowMonths, filterRowAllYrs].forEach(r => r.innerHTML = '');
+
     const buttons = [];
 
-  filters.forEach((f) => {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'btn small';
-  btn.textContent = (f.id === 'ALL') ? 'ALL TIME' : f.label;
-  btn.dataset.filterId = f.id;
-  filterRow.appendChild(btn);
-  buttons.push(btn);
+    const hostFor = (f) => {
+      if (f.id === 'RECORDS') return filterRowRecords;              // Line 1
+      if (f.id === 'TODAY')   return filterRowToday;                // Line 2
+      if (f.id === 'ALL')     return filterRowAllYrs;                // Line 4
+      if (/^Y\d{4}$/.test(f.id)) return filterRowAllYrs;            // Line 4 (years)
+      return filterRowMonths;                                        // Line 3 (months)
+    };
 
-  btn.onclick = () => {
-    buttons.forEach(b => b.classList.remove('primary'));
-    btn.classList.add('primary');
-    onChange(f);
-  };
-});
+    filters.forEach((f) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn small';
+      btn.textContent = (f.id === 'ALL') ? 'ALL TIME' : f.label;
+      btn.dataset.filterId = f.id;
 
-// Default highlight = ALL TIME
-const allBtn = buttons.find(b => b.dataset.filterId === 'ALL');
-if (allBtn) allBtn.classList.add('primary');
+      hostFor(f).appendChild(btn);
+      buttons.push(btn);
+
+      btn.onclick = () => {
+        buttons.forEach(b => b.classList.remove('primary'));
+        btn.classList.add('primary');
+        onChange(f);
+      };
+    });
+
+    // Default highlight: ALL TIME
+    const allBtn = buttons.find(b => b.dataset.filterId === 'ALL');
+    if (allBtn) allBtn.classList.add('primary');
   }
-  
-  function renderRecords(rows){
+
+function renderRecords(rows){
   // Clear host
   tableMount.innerHTML = '';
 
@@ -15452,6 +15573,8 @@ if (!todayBtn) {
 
   // Build a compact row and clone styling from any button we can find
   const sampleBtn = modal.querySelector('button,.btn,[role="tab"]');
+  // If TODAY already exists (native tab), don't inject a duplicate
+  if (Array.from(modal.querySelectorAll('button')).some(b => ((b.textContent||'').trim().toUpperCase() === 'TODAY'))) return;
   const mk = (label) => {
     const tag = (sampleBtn && sampleBtn.tagName) ? sampleBtn.tagName.toLowerCase() : 'button';
     const b = document.createElement(tag);
