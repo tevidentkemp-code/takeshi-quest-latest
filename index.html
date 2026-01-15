@@ -45,6 +45,19 @@
     background:radial-gradient(1000px 600px at 0% 0%,#1b1f36 0%,#0f1220 45%,#0b0e1a 100%); color:var(--ink);
     -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
   }
+
+  /* >>> PATCH:bg-thunder START */
+  body::before{
+    content:"";
+    position:fixed;
+    inset:0;
+    background:url("blue-thunder-bolt-light-electric-energy-circle_107791-30267.jpg") center/cover no-repeat;
+    opacity:.22;
+    z-index:-2;
+    pointer-events:none;
+  }
+  body[data-page="game"]::before{ display:none; }
+  /* <<< PATCH:bg-thunder END */
   /* Start/Back buttons under the player box (scope to #players only) */
 #players #startMatchRow,
 #players #backRow{
@@ -5709,6 +5722,8 @@ function buildScoreBody(){
 
     // Left-hand round label
     const th = document.createElement('th'); 
+    th.className = 'round-label';
+    th.id = `roundth-${r}`;
     th.textContent = (
       ROUNDS[r].type === 'number'
         ? (ROUNDS[r].target + 's')
@@ -7230,6 +7245,27 @@ function updateUI() {
   document.querySelectorAll('.current-cell, .current-col').forEach(el => {
     el.classList.remove('current-cell', 'current-col');
   });
+
+  // Active round label (left column): big + bold only for current round
+  try {
+    for (let r = 0; r < MAX_ROUNDS; r++) {
+      const th = document.getElementById(`roundth-${r}`);
+      if (!th) continue;
+      th.style.fontSize = '';
+      th.style.fontWeight = '';
+      th.style.opacity = '';
+    }
+    const cr = state.currentRound;
+    const active = document.getElementById(`roundth-${cr}`);
+    if (active) {
+      active.style.fontSize = '18px';
+      active.style.fontWeight = '800';
+      active.style.opacity = '1';
+    }
+  } catch(_) {}
+
+
+
 
   // --- Precompute per-round totals to find best round per row ---
   const roundTotals    = Array.from({ length: MAX_ROUNDS }, () => Array(state.players.length).fill(0));
