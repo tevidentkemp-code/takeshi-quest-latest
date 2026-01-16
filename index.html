@@ -4396,7 +4396,11 @@ async function cloudSynthAllGamesFromHighScores(limit = 500) {
 
 // PLAYERS
 async function cloudListPlayers(){
-  const { data, error } = await sb.from(TABLE_PLAYERS).select('name').order('name');
+  // Include created_at so tickers / "new players" windows can be cloud-backed.
+  const { data, error } = await sb
+    .from(TABLE_PLAYERS)
+    .select('name, created_at')
+    .order('name');
   if (error) {
     markCloudError(error);
     throw error;
@@ -4683,6 +4687,10 @@ window.buildStartTicker = async function buildStartTicker(){
   }
 
   try{
+    // Ensure local cache includes cloud players so the ticker is consistent across devices.
+    if (typeof syncSavedPlayersFromCloud === 'function') {
+      try{ await syncSavedPlayersFromCloud(); }catch(_){ }
+    }
     const names = getNewPlayers(14);
     const msg = names.length
       ? `NEW PLAYERS // ${names.join(', ')} // WELCOME TO SHATEKIS QUEST`
@@ -5621,8 +5629,36 @@ function setSavedPlayers(arr){
   } catch(e){}
 }
 
-function populateSavedPlayersSelects(){
-  const arr  = getSavedPlayers();
+// Keep local saved players in sync with Supabase so all devices see the same list.
+// We store a minimal cache locally for offline fallback and for the "new players" ticker.
+async function syncSavedPlayersFromCloud(){
+  // Canonical: cloud is the source of truth when available.
+  if (typeof cloudListPlayers !== 'function') return false;
+  try{
+    const cloud = await cloudListPlayers(); // [{name, created_at}]
+    const cloudArr = (cloud || [])
+      .filter(p => p && p.name)
+      .map(p => ({
+        name: String(p.name),
+        joinedAt: p.created_at ? new Date(p.created_at).toISOString() : null,
+        _src: 'cloud'
+      }))
+      .sort((a,b)=> String(a.name).localeCompare(String(b.name)));
+
+    // If cloud returns a list, overwrite local cache so devices converge.
+    if (cloudArr.length){
+      setSavedPlayers(cloudArr);
+      return true;
+    }
+    return false;
+  }catch(e){
+    console.error('syncSavedPlayersFromCloud failed', e);
+    return false;
+  }
+}
+
+function populateSavedPlayersSelects(arrOverride){
+  const arr = Array.isArray(arrOverride) ? arrOverride : getSavedPlayers();
   const sel1 = document.getElementById('existingPlayers');      // Add Player modal
   const sel2 = document.getElementById('existingPlayerSelect'); // Select Player modal
 
@@ -5633,6 +5669,21 @@ function populateSavedPlayersSelects(){
       arr.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
   });
 }
+
+// Best-effort: sync at startup so all devices converge.
+document.addEventListener('DOMContentLoaded', function(){
+  try{
+    syncSavedPlayersFromCloud().then((didSync)=>{
+      try{
+        populateSavedPlayersSelects(getSavedPlayers());
+        // Refresh tickers after sync so all devices see the same 'new players' list.
+        if (typeof window.buildStartTicker === 'function') {
+          try{ window.buildStartTicker(); }catch(_){ }
+        }
+      }catch(_){ }
+    });
+  }catch(_){ }
+});
 
 // Add / Save Player – name only, no PIN
 async function showAddPlayerDialog(index){
@@ -5707,6 +5758,10 @@ async function showAddPlayerDialog(index){
       // Save to Supabase (name only)
       try {
         await cloudCreatePlayer(newName);
+        // Pull the canonical cloud list back down so other devices converge quickly.
+        await syncSavedPlayersFromCloud();
+        try{ populateSavedPlayersSelects(); }catch(_){ }
+        try{ if (typeof window.buildStartTicker === 'function') window.buildStartTicker(); }catch(_){ }
       } catch (e) {
         console.error('cloudCreatePlayer failed', e);
       }
