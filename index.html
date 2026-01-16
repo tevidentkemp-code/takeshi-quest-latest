@@ -305,8 +305,6 @@
   .btn.danger{background:linear-gradient(180deg,#47212a,#3c1b23);border-color:#7a2e3f}
   .btn.big{font-size:1.15rem;padding:1rem 1.25rem;border-radius:14px}
   .btn.small { padding: 4px 8px; font-size: 0.8rem; min-width: 30px; min-height: 24px; }
-  .btn.range { padding: 6px 10px; font-size: 0.82rem; min-height: 28px; min-width: 78px; opacity: .85; }
-  .btn.range.active { opacity: 1; box-shadow: 0 0 0 1px rgba(255,255,255,.35) inset; }
 
   /* Tables */
   .table-wrap{overflow:auto;border-radius:12px;border:1px solid #2a2e48}
@@ -530,38 +528,10 @@
 
   /* Modal */
   .modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; z-index:400000}
-  .modal{
-    background:#0f1329;
-    border:1px solid #2a2e48;
-    border-radius:14px;
-    box-shadow:var(--shadow);
-    padding:12px;
-    width:92%;
-    max-width:640px;
-
-    /* keep footer visible; scroll only the body */
-    display:flex;
-    flex-direction:column;
-    max-height:80vh;
-    overflow:hidden;
-  }
+  .modal{background:#0f1329; border:1px solid #2a2e48; border-radius:14px; box-shadow:var(--shadow); padding:12px; width:92%; max-width:640px}
   .modal h3{ margin:0 0 8px 0; font-size:1.02rem }
-  .modal-body{
-    flex:1 1 auto;
-    overflow:auto;
-    padding-right:2px;
-    min-height:0; /* allow flexbox scroll */
-  }
-  .modal-footer{
-    margin-top:10px;
-    display:flex;
-    gap:8px;
-    position:sticky;
-    bottom:0;
-    background:#0f1329;
-    padding-top:8px;
-    padding-bottom:max(0px, env(safe-area-inset-bottom));
-  }
+  .modal-body{ max-height:60vh; overflow:auto; padding-right:2px; }
+  .modal-footer{ margin-top:10px; display:flex; gap:8px; }
 
   /* Game Complete popup hierarchy */
   .modal.game-complete h3.gc-title{
@@ -855,50 +825,6 @@ margin-bottom: var(--section-gap);
   z-index: 300000;
 }
 
-
-/* === Start screen Extra Ticker (stacked above yellow) === */
-#psTickerTop{
-  width: 100vw;
-  max-width: none;
-  margin: 0;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
-  background: linear-gradient(180deg,#1e2654,#121630);
-  border-top: 1px solid rgba(255,255,255,0.10);
-  border-bottom: 1px solid rgba(255,255,255,0.10);
-  color: #eaf0ff;
-  height: 32px;
-  overflow: hidden;
-  padding: 0;
-  font-size: 0.85rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 32px;
-  border-radius: 0;
-  border-left: 0;
-  border-right: 0;
-  z-index: 300000;
-}
-#psTickerTop.hidden{display:none;}
-#psTickerTop .track{
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  top: 0;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  white-space: nowrap;
-  font-size: 0.85rem;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  line-height: 32px;
-  will-change: transform;
-  transform: translateY(0);
-}
 #psTicker.hidden{
   display:none;
 }
@@ -913,44 +839,15 @@ margin-bottom: var(--section-gap);
   display: flex;
   align-items: center;
   white-space: nowrap;
-  font-size: 0.85rem;
-  font-weight: 500;
+  font-size: 0.85rem;     /* slightly smaller text */
+  font-weight: 500;       /* base (normal) weight; winners boosted via <strong> */
   letter-spacing: 0.01em;
-  line-height: 32px;
+  line-height: 32px;      /* vertically centred in the 32px strip */
   will-change: transform;
   transform: translateY(0);
 }
 
-/* >>> PATCH:ticker-marquee START */
-#psTicker .track,
-#psTickerTop .track{
-  left: 0;
-  right: 0;
-  padding: 0 14px;
-  overflow: hidden;
-}
-#psTicker .track .marquee,
-#psTickerTop .track .marquee{
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-  min-width: 300%;
-  will-change: transform;
-  animation: ticker-marquee 18s linear infinite;
-}
-/* New (upper) ticker: half speed (i.e., double duration) */
-#psTickerTop .track .marquee{ animation-duration: 36s; }
-#psTicker .track .marquee span,
-#psTickerTop .track .marquee span{
-  display: inline-block;
-  padding-right: 64px;
-}
-@keyframes ticker-marquee{
-  /* Start fully off-screen to the right, then scroll left across the whole ticker */
-  0%{ transform: translateX(100%); }
-  100%{ transform: translateX(-66.6667%); }
-}
-/* <<< PATCH:ticker-marquee END */
+
 
 </style>
 </head>
@@ -977,8 +874,6 @@ margin-bottom: var(--section-gap);
           <button id="adminCodeBtn" class="btn small" type="button">Admin</button>
         </div>
       </div>
-
-<div id="psTickerTop" class="hidden"><div class="track"></div></div>
 
 <div id="psTicker" class="hidden"><div class="track"></div></div>
 </section>
@@ -1238,9 +1133,6 @@ margin-bottom: var(--section-gap);
 
         <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
 
-        <button id="openDataAdminBtn" class="btn" style="width:min(360px,92%);">DATA</button>
-
-        <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
         <button id="fixDuplicatesBtn" class="btn danger" style="width:min(360px,92%);">Remove Duplicate High Scores</button>
 
         <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
@@ -1249,50 +1141,6 @@ margin-bottom: var(--section-gap);
       </div>
     </div>
   </div>
-</div>
-
-<!-- Data Modal -->
-<div id="dataAdminModal" class="modal-backdrop hidden">
-  <div class="modal compact">
-    <h3>DATA</h3>
-    <div class="modal-body">
-      <p class="tag" id="dataPlayersCount">Number of saved players 0</p>
-      <p class="tag" id="dataNewPlayers7">New saved players (past 7 days) 0</p>
-      <hr style="margin:10px 0; border:0; border-top:1px solid #23284a;">
-      <div class="column" style="align-items:center; gap:8px;">
-        <button id="dataDailyGamesBtn" class="btn" style="width:min(360px,92%);">Daily Games</button>
-        <button id="dataUniqueLogonsBtn" class="btn" style="width:min(360px,92%);">Unique Log Ons</button>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button id="dataAdminBackBtn" class="btn" type="button">Back</button>
-      <button id="dataAdminCloseBtn" class="btn" type="button">Close</button>
-    </div>
-  </div>
-</div>
-
-<!-- Data Chart Modal -->
-<div id="dataChartModal" class="modal-backdrop hidden">
-  <div class="modal compact">
-    <h3 id="dataChartTitle">Chart</h3>
-    <div class="modal-body">
-      <div class="row" style="gap:8px; flex-wrap:wrap; justify-content:center; margin-bottom:10px;">
-        <button id="dataChartRangeDaily"  class="btn small range active" type="button">Daily</button>
-        <button id="dataChartRangeWeekly" class="btn small range" type="button">Weekly</button>
-        <button id="dataChartRangeMonthly" class="btn small range" type="button">Monthly</button>
-        <button id="dataChartRangeYearly" class="btn small range" type="button">Yearly</button>
-      </div>
-      <div style="border-radius:12px;border:1px solid #23284a;padding:8px;background:#101533;min-height:260px;">
-        <canvas id="dataChartCanvas" width="640" height="320" style="width:100%; height:auto;"></canvas>
-      </div>
-      <p class="tag" id="dataChartHint">Horizontal: Date, Vertical: Count</p>
-    </div>
-    <div class="modal-footer">
-      <button id="dataChartBackBtn" class="btn" type="button">Back</button>
-      <button id="dataChartCloseBtn" class="btn" type="button">Close</button>
-    </div>
-  </div>
-</div>
 </div>
 
 <!-- All Games Modal -->
@@ -4645,57 +4493,34 @@ function _psFormatLine(game){
 
 // Expose globally so `show()` can always reach it, even if the code is wrapped.
 window.buildStartTicker = async function buildStartTicker(){
-  const wrap1  = document.getElementById('psTicker');
-  const track1 = wrap1 ? wrap1.querySelector('.track') : null;
-  const wrap2  = document.getElementById('psTickerTop');
-  const track2 = wrap2 ? wrap2.querySelector('.track') : null;
-
-  if ((!wrap1 || !track1) && (!wrap2 || !track2)) { return; }
-
-  function escHtml(s){
-    return String(s || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
-  function parseJoined(v){
-    if (!v) return 0;
-    if (typeof v === 'number') return v;
-    const t = Date.parse(v);
-    return Number.isFinite(t) ? t : 0;
-  }
-
-  function getNewPlayers(days){
-    const cutoff = Date.now() - (days * 86400000);
-    const arr = (typeof getSavedPlayers === 'function') ? (getSavedPlayers() || []) : [];
-    return arr
-      .filter(p => p && p.name && parseJoined(p.joinedAt) >= cutoff)
-      .sort((a,b) => parseJoined(b.joinedAt) - parseJoined(a.joinedAt))
-      .map(p => p.name);
-  }
-
-  function setMarquee(track, msg){
-    const safe = escHtml(msg);
-    track.innerHTML = `<div class="marquee"><span>${safe}</span><span aria-hidden="true">${safe}</span><span aria-hidden="true">${safe}</span></div>`;
-  }
+  const wrap  = document.getElementById('psTicker');
+  const track = wrap ? wrap.querySelector('.track') : null;
+  if (!wrap || !track){ return; }
 
   try{
-    const names = getNewPlayers(14);
-    const msg = names.length
-      ? `NEW PLAYERS // ${names.join(', ')} // WELCOME TO SHATEKIS QUEST`
-      : `WELCOME TO SHATEKIS QUEST`;
+    // Merge local + cloud; then newest first; take last 10 completed official games
+    let games = await getGamesForMode('official');
+    games = (games || [])
+      .filter(g => g && Array.isArray(g.players) && Array.isArray(g.totals))
+      .sort((a,b) => (Date.parse(b.ts || 0) || 0) - (Date.parse(a.ts || 0) || 0))
+      .slice(0, 10);
 
-    if (track1) setMarquee(track1, msg);
-    if (track2) setMarquee(track2, msg);
-    if (wrap1) wrap1.classList.remove('hidden');
-    if (wrap2) wrap2.classList.remove('hidden');
+    if (!games.length){
+      wrap.classList.add('hidden');
+      return;
+    }
+
+    const parts = games.map(_psFormatLine).filter(Boolean);
+    if (!parts.length){
+      wrap.classList.add('hidden');
+      return;
+    }
+
+    track.textContent = parts.join('🔴 🔴 🔴');
+    wrap.classList.remove('hidden');
   }catch(e){
     console.error('buildStartTicker failed', e);
-    if (wrap1) wrap1.classList.add('hidden');
-    if (wrap2) wrap2.classList.add('hidden');
+    wrap.classList.add('hidden');
   }
 };
 // High Scores dialog — deduped + period buttons
@@ -5699,7 +5524,7 @@ async function showAddPlayerDialog(index){
       // Save to local storage
       const arr = getSavedPlayers();
       const idxExisting = arr.findIndex(p => p && p.name === newName);
-      if (idxExisting === -1) arr.push({ name: newName, joinedAt: new Date().toISOString() });
+      if (idxExisting === -1) arr.push({ name: newName });
       else arr[idxExisting].name = newName;
       setSavedPlayers(arr);
       populateSavedPlayersSelects();
@@ -14159,13 +13984,13 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   // fixed outer; only inner scrolls if needed
   modal.style.maxHeight = '80vh';
   modal.style.overflow  = 'hidden';
-  body.style.maxHeight  = 'none';
-  body.style.overflowY  = 'auto';
+  body .style.maxHeight = 'none';
+  body .style.overflowY = 'visible';
 
   const col = document.createElement('div');
   col.className = 'column';
   col.style.alignItems = 'center';
-  col.style.gap = '6px';
+  col.style.gap = '10px';
 
 function addBtn(text, desc, handler){
   const btn = document.createElement('button'); 
@@ -14179,7 +14004,6 @@ function addBtn(text, desc, handler){
   p.textContent = desc;
   p.style.width = btn.style.width;
   p.style.textAlign = 'center';
-  p.style.margin = '2px 0 10px 0';
 
   btn.onclick = () => {
     try { handler(); }
@@ -14225,6 +14049,7 @@ addBtn('Target Points %', 'Available Points Hit Per Round', () => {
     if (typeof window.openPlayerDTBCombinedPctDialog === 'function') return window.openPlayerDTBCombinedPctDialog(name);
     if (typeof toast==='function') toast('D T B % not available');
   });
+  
 // 6) H2H
 addBtn('H2H', 'Record vs other players', () => {
   if (typeof window.openPlayerH2HDialog === 'function') return window.openPlayerH2HDialog(name);
@@ -14463,13 +14288,9 @@ async function __fetchThrowsForGames(gameIds){
       else if (mul === 1) kind = 'single';
     }
 
-    const ts = r.ts ?? r.created_at ?? r.inserted_at ?? r.time ?? null;
-
     return {
       game_id: gid, player, round_index: ri, dart_index: di,
-      points: Number.isFinite(pts) ? pts : 0,
-      kind: String(kind || '').toLowerCase(),
-      ts
+      points: Number.isFinite(pts) ? pts : 0, kind: String(kind || '').toLowerCase()
     };
   };
 
@@ -14563,8 +14384,7 @@ window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDia
   closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
 
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
-    overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
   modal.tabIndex=0; modal.focus();
 };
 
@@ -14623,8 +14443,7 @@ window.openPlayerHighScoresDialog = async function openPlayerHighScoresDialog(pl
   closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
 
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
-    overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
   modal.tabIndex=0; modal.focus();
 };
 
@@ -14953,18 +14772,14 @@ if (!throwsRows.length) {
   const labels = __roundLabels();
   const nameLC = name.toLowerCase();
 
-  const playerThrows = throwsRows.filter(t => String(t.player||'').trim().toLowerCase()===nameLC);
-
   const taken = Array(14).fill(0), hits = Array(14).fill(0);
-  playerThrows.forEach(t=>{
+  throwsRows.filter(t => String(t.player||'').trim().toLowerCase()===nameLC)
+    .forEach(t=>{
       const r=(typeof t.round_index==='number')?t.round_index:null;
       if (r==null || r<0 || r>13) return;
       taken[r] += 1;
-      if ((t.hit===true) || (Number(t.points||0)>0)) hits[r] += 1; // any scoring counts as a hit (incl. bull)
+      if (Number(t.points||0)>0) hits[r] += 1; // any scoring counts as a hit (incl. bull)
     });
-
-  const pctArr = taken.map((n,i)=> n ? (100*hits[i]/n) : 0);
-
 
   const table=document.createElement('table'); table.className='hs-table';
   const thead=document.createElement('thead'); const trh=document.createElement('tr');
@@ -14975,7 +14790,7 @@ if (!throwsRows.length) {
     const tdR=document.createElement('td'); tdR.textContent=labels[i];
     const tdT=document.createElement('td'); tdT.textContent=String(taken[i]); // Throws
     const tdH=document.createElement('td'); tdH.textContent=String(hits[i]);  // Hits
-    const pct = pctArr[i] || 0;
+    const pct= taken[i]? (100*hits[i]/taken[i]) : 0;
     const tdP=document.createElement('td'); tdP.textContent=pct.toFixed(1)+'%';
     tr.append(tdR,tdT,tdH,tdP); tbody.appendChild(tr);
   }
@@ -14986,14 +14801,10 @@ if (!throwsRows.length) {
   const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
   const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
   backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
-  closeBtn.onclick=()=>overlay.remove();
-  const __spacer=document.createElement('div'); __spacer.style.flex='1';
-  const spiderBtn=document.createElement('button'); spiderBtn.className='btn small'; spiderBtn.textContent='SPIDER'; spiderBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerSpiderDialog==='function') window.openPlayerSpiderDialog(name,{parentOverlay:overlay,data:{labels:labels,pct:pctArr}}); else if (typeof toast==='function') toast('SPIDER not available'); };
-  const progBtn=document.createElement('button'); progBtn.className='btn small'; progBtn.textContent='PROGRESS'; progBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerProgressHitDialog==='function') window.openPlayerProgressHitDialog(name,{parentOverlay:overlay,data:{labels:labels,throws:playerThrows,gameOrder:ids}}); else if (typeof toast==='function') toast('PROGRESS not available'); };
-  footer.append(backBtn,closeBtn,__spacer,spiderBtn,progBtn);
+  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
 
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
   modal.tabIndex=0; modal.focus();
 };
 
@@ -15012,18 +14823,14 @@ window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPc
 
   // Mount early so user always sees something
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
-  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();});
+  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
   modal.tabIndex=0; modal.focus();
 
   const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
   const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
   backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
-  closeBtn.onclick=()=>overlay.remove();
-  const __spacer=document.createElement('div'); __spacer.style.flex='1';
-  const spiderBtn=document.createElement('button'); spiderBtn.className='btn small'; spiderBtn.textContent='SPIDER'; spiderBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerSpiderDialog==='function') window.openPlayerSpiderDialog(name,{parentOverlay:overlay}); else if (typeof toast==='function') toast('SPIDER not available'); };
-  const progBtn=document.createElement('button'); progBtn.className='btn small'; progBtn.textContent='PROGRESS'; progBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerProgressHitDialog==='function') window.openPlayerProgressHitDialog(name,{parentOverlay:overlay}); else if (typeof toast==='function') toast('PROGRESS not available'); };
-  footer.append(backBtn,closeBtn,__spacer,spiderBtn,progBtn);
+  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
 
   body.innerHTML = '<p class="muted">Loading…</p>';
 
@@ -15326,8 +15133,8 @@ const kindL = t => String(t.kind||'').toLowerCase();
   closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
 
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
-  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();});
+  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
   modal.tabIndex=0; modal.focus();
 };
 
@@ -15508,15 +15315,11 @@ table.appendChild(tbody);
   const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
   const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
   backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
-  closeBtn.onclick=()=>overlay.remove();
-  const __spacer=document.createElement('div'); __spacer.style.flex='1';
-  const spiderBtn=document.createElement('button'); spiderBtn.className='btn small'; spiderBtn.textContent='SPIDER'; spiderBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerSpiderDialog==='function') window.openPlayerSpiderDialog(name,{parentOverlay:overlay}); else if (typeof toast==='function') toast('SPIDER not available'); };
-  const progBtn=document.createElement('button'); progBtn.className='btn small'; progBtn.textContent='PROGRESS'; progBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerProgressHitDialog==='function') window.openPlayerProgressHitDialog(name,{parentOverlay:overlay}); else if (typeof toast==='function') toast('PROGRESS not available'); };
-  footer.append(backBtn,closeBtn,__spacer,spiderBtn,progBtn);
+  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
 
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
-  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();});
+  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
   modal.tabIndex=0; modal.focus();
 };
 
@@ -15580,7 +15383,7 @@ window.openPlayerH2HDialog = async function openPlayerH2HDialog(playerName){
   closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
 
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
   modal.tabIndex=0; modal.focus();
 };
 
@@ -16900,1088 +16703,6 @@ if (!todayBtn) {
 
 
 
-
-
-
-// >>> PATCH:data-admin START
-(function(){
-  const DAY_MS = 24*60*60*1000;
-
-  // ---- Supabase analytics tables ----
-  // This code expects (or you should create) the following table in Supabase:
-  //   app_logons(day date not null, device_id text not null, created_at timestamptz default now(),
-  //             primary key (day, device_id))
-  // And (recommended) players table has either created_at or joined_at timestamptz.
-
-  // NOTE: we keep a local fallback for offline/dev, but the source of truth is cloud.
-
-  function isoDay(d){
-    const dt = new Date(d);
-    const y = dt.getFullYear();
-    const m = String(dt.getMonth()+1).padStart(2,'0');
-    const da = String(dt.getDate()).padStart(2,'0');
-    return y + '-' + m + '-' + da;
-  }
-
-  function isoNow(){
-    return new Date().toISOString();
-  }
-
-  function getSb(){
-    // Supports both window.sb and a local sb binding if present.
-    try { if (window.sb) return window.sb; } catch(e){}
-    try { if (typeof sb !== 'undefined') return sb; } catch(e){}
-    return null;
-  }
-
-  // Table name constant (safe if you already defined it elsewhere)
-  try {
-    if (typeof TABLE_APP_LOGONS === 'undefined') {
-      // eslint-disable-next-line no-var
-      var TABLE_APP_LOGONS = 'app_logons';
-    }
-  } catch(e){}
-
-  function getDeviceId(){
-    try {
-      let id = localStorage.getItem('sq_device_id');
-      if (!id) {
-        id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('dev_' + Math.random().toString(16).slice(2) + Date.now());
-        localStorage.setItem('sq_device_id', id);
-      }
-      return id;
-    } catch(e){
-      return 'anon';
-    }
-  }
-
-  // ---- Cloud logon tracking (device/day) ----
-  async function logDailyVisitToCloud(){
-    const client = getSb();
-    if (!client) return;
-
-    const day = isoDay(new Date());
-    const device_id = getDeviceId();
-
-    // Upsert once per device per day.
-    try {
-      const { error } = await client
-        .from(TABLE_APP_LOGONS)
-        .upsert({ day, device_id }, { onConflict: 'day,device_id' });
-      if (error) console.warn('Cloud logon upsert failed', error);
-    } catch(e){
-      console.warn('Cloud logon upsert exception', e);
-    }
-  }
-
-  // ---- Local fallback logon tracking (kept for offline/dev) ----
-  function logDailyVisitLocal(){
-    try {
-      const key = 'sq_daily_logons';
-      const raw = JSON.parse(localStorage.getItem(key) || '{}');
-      const day = isoDay(new Date());
-      const did = getDeviceId();
-      raw[day] = raw[day] || {};
-      raw[day][did] = true;
-      localStorage.setItem(key, JSON.stringify(raw));
-    } catch(e){}
-  }
-
-  // Log on page load
-  try { logDailyVisitLocal(); } catch(_){ }
-  try { logDailyVisitToCloud(); } catch(_){ }
-
-  // ---- Saved players stats ----
-  function getSavedPlayersSafe(){
-    try {
-      if (typeof getSavedPlayers === 'function') return getSavedPlayers() || [];
-    } catch(e){}
-    try {
-      return JSON.parse(localStorage.getItem('shateki_players') || '[]');
-    } catch(e){
-      return [];
-    }
-  }
-
-  function countNewPlayersLocal(days){
-    const arr = getSavedPlayersSafe();
-    const cutoff = Date.now() - (days * DAY_MS);
-    let c = 0;
-    for (const p of arr){
-      if (!p) continue;
-      const t = Date.parse(p.joinedAt || p.createdAt || p.created_at || '');
-      if (Number.isFinite(t) && t >= cutoff) c++;
-    }
-    return c;
-  }
-
-  async function fetchPlayersStatsCloud(days){
-    const client = getSb();
-    if (!client) return null;
-
-    // Total players (count)
-    let total = null;
-    try {
-      const { count, error } = await client
-        .from(TABLE_PLAYERS)
-        .select('name', { count: 'exact', head: true });
-      if (!error && typeof count === 'number') total = count;
-    } catch(e){ }
-
-    // New players in last N days (prefer joined_at, then created_at)
-    const cutoffIso = new Date(Date.now() - days*DAY_MS).toISOString();
-
-    let newN = null;
-    // Try joined_at
-    try {
-      const { count, error } = await client
-        .from(TABLE_PLAYERS)
-        .select('name', { count: 'exact', head: true })
-        .gte('joined_at', cutoffIso);
-      if (!error && typeof count === 'number') newN = count;
-    } catch(e){ }
-
-    // Fallback to created_at
-    if (newN == null) {
-      try {
-        const { count, error } = await client
-          .from(TABLE_PLAYERS)
-          .select('name', { count: 'exact', head: true })
-          .gte('created_at', cutoffIso);
-        if (!error && typeof count === 'number') newN = count;
-      } catch(e){ }
-    }
-
-    // If either failed, return what we have (caller can fall back locally)
-    return { total, newN };
-  }
-
-  function openModal(id){
-    const el = document.getElementById(id);
-    if (el) el.classList.remove('hidden');
-  }
-  function closeModal(id){
-    const el = document.getElementById(id);
-    if (el) el.classList.add('hidden');
-  }
-
-  // ---- Daily games series (cloud; existing) ----
-  async function getDailyGamesSeries(daysBack){
-    daysBack = daysBack || 30;
-    const labels = [];
-    const counts = [];
-    const today = new Date();
-    for (let i=daysBack-1; i>=0; i--){
-      const d = new Date(today.getTime() - i*DAY_MS);
-      labels.push(isoDay(d));
-      counts.push(0);
-    }
-
-    const client = getSb();
-    if (!client) return { labels, counts };
-
-    const from = labels[0];
-
-    // Pull only what's needed; aggregate client-side
-    try {
-      const { data, error } = await client
-        .from(TABLE_GAMES)
-        .select('created_at, ts')
-        .gte('created_at', from + 'T00:00:00Z')
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      const idxByDay = new Map(labels.map((d,i)=>[d,i]));
-      for (const row of (data||[])){
-        const t = row.created_at || row.ts;
-        if (!t) continue;
-        const day = isoDay(t);
-        const idx = idxByDay.get(day);
-        if (idx == null) continue;
-        counts[idx] = (counts[idx]||0) + 1;
-      }
-    } catch(e){
-      // If created_at filter failed (older schema), try ts only
-      try {
-        const { data } = await client
-          .from(TABLE_GAMES)
-          .select('ts')
-          .order('ts', { ascending: true });
-        const idxByDay = new Map(labels.map((d,i)=>[d,i]));
-        for (const row of (data||[])){
-          const t = row.ts;
-          if (!t) continue;
-          const day = isoDay(t);
-          const idx = idxByDay.get(day);
-          if (idx == null) continue;
-          counts[idx] = (counts[idx]||0) + 1;
-        }
-      } catch(_){ }
-    }
-
-    return { labels, counts };
-  }
-
-  // ---- Unique logons series (cloud) ----
-  async function getUniqueLogonsSeriesCloud(daysBack){
-    daysBack = daysBack || 30;
-    const labels = [];
-    const counts = [];
-    const today = new Date();
-    for (let i=daysBack-1; i>=0; i--){
-      const d = new Date(today.getTime() - i*DAY_MS);
-      labels.push(isoDay(d));
-      counts.push(0);
-    }
-
-    const client = getSb();
-    if (!client) return { labels, counts };
-
-    const from = labels[0];
-
-    try {
-      const { data, error } = await client
-        .from(TABLE_APP_LOGONS)
-        .select('day, device_id')
-        .gte('day', from)
-        .order('day', { ascending: true });
-      if (error) throw error;
-
-      // Aggregate distinct device_id per day client-side
-      const setByDay = new Map(labels.map(d=>[d, new Set()]));
-      for (const row of (data||[])){
-        const day = row.day;
-        const did = row.device_id;
-        if (!day || !did) continue;
-        const s = setByDay.get(day);
-        if (s) s.add(did);
-      }
-      for (let i=0;i<labels.length;i++){
-        counts[i] = setByDay.get(labels[i]).size;
-      }
-    } catch(e){
-      console.warn('Unique logons cloud fetch failed', e);
-    }
-
-    return { labels, counts };
-  }
-
-  // ---- Unique logons fallback (local) ----
-  function getUniqueLogonsSeriesLocal(daysBack){
-    daysBack = daysBack || 30;
-    const labels = [];
-    const counts = [];
-    const today = new Date();
-    for (let i=daysBack-1; i>=0; i--){
-      const d = new Date(today.getTime() - i*DAY_MS);
-      labels.push(isoDay(d));
-      counts.push(0);
-    }
-
-    try {
-      const raw = JSON.parse(localStorage.getItem('sq_daily_logons') || '{}');
-      const idxByDay = new Map(labels.map((d,i)=>[d,i]));
-      for (const day in raw){
-        const idx = idxByDay.get(day);
-        if (idx == null) continue;
-        counts[idx] = Object.keys(raw[day] || {}).length;
-      }
-    } catch(e){}
-
-    return { labels, counts };
-  }
-
-  function drawBarChart(canvas, labels, values){
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width, H = canvas.height;
-    ctx.clearRect(0,0,W,H);
-
-    const padL=44, padR=10, padT=10, padB=34;
-    const chartW = W - padL - padR;
-    const chartH = H - padT - padB;
-
-    const maxVal = Math.max(1, ...values.map(v=>Number(v||0)));
-
-    // axes
-    ctx.globalAlpha = 0.35;
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(padL, padT);
-    ctx.lineTo(padL, H-padB);
-    ctx.lineTo(W-padR, H-padB);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    const n = values.length || 1;
-    const barGap = 2;
-    const barW = Math.max(2, Math.floor(chartW / n) - barGap);
-
-    for (let i=0; i<n; i++){
-      const v = Number(values[i]||0);
-      const h = Math.round((v/maxVal)*chartH);
-      const x = padL + i*(barW+barGap);
-      const y = (H-padB) - h;
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      ctx.fillRect(x,y,barW,h);
-    }
-
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
-    ctx.textAlign = 'right';
-    ctx.fillText(String(maxVal), padL-6, padT+12);
-    ctx.fillText('0', padL-6, H-padB);
-
-    // x labels sparse
-    ctx.textAlign = 'center';
-    const step = Math.ceil(n / 6);
-    for (let i=0; i<n; i+=step){
-      const lab = labels[i] || '';
-      const short = lab.slice(5); // MM-DD
-      const x = padL + i*(barW+barGap) + barW/2;
-      ctx.fillText(short, x, H-10);
-    }
-  }
-
-  function bind(){
-    const openBtn = document.getElementById('openDataAdminBtn');
-    const back = document.getElementById('dataAdminBackBtn');
-    const close = document.getElementById('dataAdminCloseBtn');
-    const chartBack = document.getElementById('dataChartBackBtn');
-    const chartClose= document.getElementById('dataChartCloseBtn');
-
-    async function refreshData(){
-      const elTotal = document.getElementById('dataPlayersCount');
-      const elNew7  = document.getElementById('dataNewPlayers7');
-
-      // local fallback
-      let totalLocal = 0;
-      try { totalLocal = getSavedPlayersSafe().length; } catch(e){}
-      let new7Local = 0;
-      try { new7Local = countNewPlayersLocal(7); } catch(e){}
-
-      // cloud preferred
-      let total = null;
-      let new7  = null;
-      try {
-        const cloud = await fetchPlayersStatsCloud(7);
-        if (cloud) {
-          total = cloud.total;
-          new7  = cloud.newN;
-        }
-      } catch(e){}
-
-      const finalTotal = (typeof total === 'number') ? total : totalLocal;
-      const finalNew7  = (typeof new7  === 'number') ? new7  : new7Local;
-
-      if (elTotal) elTotal.textContent = 'Number of saved players ' + finalTotal;
-      if (elNew7)  elNew7.textContent  = 'New saved players (past 7 days) ' + finalNew7;
-    }
-
-    if (openBtn){
-      openBtn.onclick = async () => {
-        closeModal('adminHubModal');
-        await refreshData();
-        openModal('dataAdminModal');
-      };
-    }
-
-    if (back) back.onclick = () => { closeModal('dataAdminModal'); openModal('adminHubModal'); };
-    if (close) close.onclick = () => { closeModal('dataAdminModal'); };
-    if (chartBack) chartBack.onclick = () => { closeModal('dataChartModal'); openModal('dataAdminModal'); };
-    if (chartClose) chartClose.onclick = () => { closeModal('dataChartModal'); };
-
-    const dailyBtn = document.getElementById('dataDailyGamesBtn');
-    const logonsBtn= document.getElementById('dataUniqueLogonsBtn');
-
-    let currentKind = null;
-    let currentRange = 'daily';
-
-    function setRangeActive(range){
-      currentRange = range;
-      const map = {
-        daily: document.getElementById('dataChartRangeDaily'),
-        weekly: document.getElementById('dataChartRangeWeekly'),
-        monthly: document.getElementById('dataChartRangeMonthly'),
-        yearly: document.getElementById('dataChartRangeYearly'),
-      };
-      Object.entries(map).forEach(([k, el]) => {
-        if (!el) return;
-        el.classList.toggle('active', k === range);
-      });
-    }
-
-    function formatMonthLabel(key){
-      // key: YYYY-MM
-      const y = key.slice(0,4);
-      const m = parseInt(key.slice(5,7), 10);
-      const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      return (names[m-1] || key) + ' ' + y.slice(2);
-    }
-
-    function aggregateSeries(labels, counts, mode){
-      const out = new Map();
-      for (let i=0;i<labels.length;i++){
-        const lab = labels[i];
-        const v = Number(counts[i]||0);
-        let key = lab;
-        if (mode === 'weekly'){
-          const d = new Date(lab + 'T00:00:00Z');
-          const day = d.getUTCDay(); // 0=Sun
-          const offset = (day + 6) % 7; // days since Mon
-          d.setUTCDate(d.getUTCDate() - offset);
-          key = d.toISOString().slice(0,10); // week start
-        } else if (mode === 'monthly'){
-          key = lab.slice(0,7);
-        } else if (mode === 'yearly'){
-          key = lab.slice(0,4);
-        }
-        out.set(key, (out.get(key)||0) + v);
-      }
-      const keys = Array.from(out.keys()).sort();
-      const outLabels = keys.map(k => {
-        if (mode === 'weekly') return 'Wk ' + k.slice(5); // MM-DD
-        if (mode === 'monthly') return formatMonthLabel(k);
-        if (mode === 'yearly') return k;
-        return k;
-      });
-      const outCounts = keys.map(k => out.get(k)||0);
-      return { labels: outLabels, counts: outCounts };
-    }
-
-    async function getSeriesFor(kind, range){
-      // Fetch enough daily data, then aggregate client-side.
-      if (range === 'daily'){
-        if (kind === 'games') return await getDailyGamesSeries(30);
-        const s = await getUniqueLogonsSeriesCloud(30);
-        const any = (s.counts || []).some(v => (v||0) > 0);
-        return any ? s : getUniqueLogonsSeriesLocal(30);
-      }
-
-      if (range === 'weekly'){
-        const days = 84; // 12 weeks
-        const raw = (kind === 'games') ? await getDailyGamesSeries(days) : await getUniqueLogonsSeriesCloud(days);
-        const any = (raw.counts || []).some(v => (v||0) > 0);
-        const base = (kind === 'logons' && !any) ? getUniqueLogonsSeriesLocal(days) : raw;
-        return aggregateSeries(base.labels, base.counts, 'weekly');
-      }
-
-      if (range === 'monthly'){
-        const days = 365; // 12 months-ish
-        const raw = (kind === 'games') ? await getDailyGamesSeries(days) : await getUniqueLogonsSeriesCloud(days);
-        const any = (raw.counts || []).some(v => (v||0) > 0);
-        const base = (kind === 'logons' && !any) ? getUniqueLogonsSeriesLocal(days) : raw;
-        return aggregateSeries(base.labels, base.counts, 'monthly');
-      }
-
-      // yearly
-      const days = 365 * 5;
-      const raw = (kind === 'games') ? await getDailyGamesSeries(days) : await getUniqueLogonsSeriesCloud(days);
-      const any = (raw.counts || []).some(v => (v||0) > 0);
-      const base = (kind === 'logons' && !any) ? getUniqueLogonsSeriesLocal(days) : raw;
-      return aggregateSeries(base.labels, base.counts, 'yearly');
-    }
-
-    async function renderChart(){
-      const title = document.getElementById('dataChartTitle');
-      const hint  = document.getElementById('dataChartHint');
-      const canvas= document.getElementById('dataChartCanvas');
-      if (!canvas || !canvas.getContext) {
-        if (typeof toast === 'function') toast('Canvas not supported');
-        return;
-      }
-
-      const k = currentKind;
-      const r = currentRange;
-
-      if (k === 'games'){
-        if (title) title.textContent = (r[0].toUpperCase()+r.slice(1)) + ' Games';
-      } else {
-        if (title) title.textContent = (r[0].toUpperCase()+r.slice(1)) + ' Unique Log Ons';
-      }
-
-      if (hint){
-        const x = (r === 'daily') ? 'Date' : (r === 'weekly') ? 'Week' : (r === 'monthly') ? 'Month' : 'Year';
-        const y = (k === 'games') ? 'Games played' : 'Unique device log ons';
-        hint.textContent = 'Horizontal: ' + x + ', Vertical: ' + y;
-      }
-
-      const series = await getSeriesFor(k, r);
-      drawBarChart(canvas, series.labels, series.counts);
-    }
-
-    async function openChart(kind){
-      currentKind = (kind === 'games') ? 'games' : 'logons';
-      setRangeActive('daily');
-      await renderChart();
-      closeModal('dataAdminModal');
-      openModal('dataChartModal');
-    }
-
-    const bDaily = document.getElementById('dataChartRangeDaily');
-    const bWeekly = document.getElementById('dataChartRangeWeekly');
-    const bMonthly = document.getElementById('dataChartRangeMonthly');
-    const bYearly = document.getElementById('dataChartRangeYearly');
-
-    function hookRange(btn, range){
-      if (!btn) return;
-      btn.onclick = async () => {
-        if (!currentKind) return;
-        setRangeActive(range);
-        await renderChart();
-      };
-    }
-    hookRange(bDaily, 'daily');
-    hookRange(bWeekly, 'weekly');
-    hookRange(bMonthly, 'monthly');
-    hookRange(bYearly, 'yearly');
-
-    if (dailyBtn) dailyBtn.onclick = () => { openChart('games'); };
-    if (logonsBtn) logonsBtn.onclick = () => { openChart('logons'); };
-
-    // If you add a saved player, refresh the stats when returning to DATA.
-    document.addEventListener('sq:savedPlayersUpdated', () => {
-      try { refreshData(); } catch(e){}
-    });
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
-  else bind();
-})();
-// >>> PATCH:data-admin END
-
-
-// >>> PATCH:player_stats_spider_progress START
-(function(){
-  function safeLower(s){return String(s||'').trim().toLowerCase();}
-  function isoWeekStart(d){
-    const x = (d instanceof Date) ? new Date(d) : new Date(d);
-    if (Number.isNaN(x.getTime())) return null;
-    // Monday start
-    const day = (x.getDay()+6)%7; // Mon=0
-    x.setHours(0,0,0,0);
-    x.setDate(x.getDate()-day);
-    return x;
-  }
-
-  function drawRadar(canvas, labels, valuesPct){
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width, H = canvas.height;
-    ctx.clearRect(0,0,W,H);
-
-    const cx = W/2, cy = H/2;
-    const R  = Math.min(W,H)*0.38;
-    const N  = labels.length;
-
-    // grid
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-    ctx.lineWidth = 1;
-    for (let g=1; g<=4; g++){
-      const r = (R*g)/4;
-      ctx.beginPath();
-      for (let i=0;i<N;i++){
-        const a = (-Math.PI/2) + (i*2*Math.PI/N);
-        const x = cx + Math.cos(a)*r;
-        const y = cy + Math.sin(a)*r;
-        if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-      }
-      ctx.closePath();
-      ctx.stroke();
-    }
-
-    // spokes
-    for (let i=0;i<N;i++){
-      const a = (-Math.PI/2) + (i*2*Math.PI/N);
-      ctx.beginPath();
-      ctx.moveTo(cx,cy);
-      ctx.lineTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R);
-      ctx.stroke();
-    }
-
-    // polygon
-    ctx.strokeStyle = 'rgba(34,197,94,0.95)';
-    ctx.fillStyle   = 'rgba(34,197,94,0.18)';
-    ctx.lineWidth   = 2;
-    ctx.beginPath();
-    for (let i=0;i<N;i++){
-      const pct = Math.max(0, Math.min(100, Number(valuesPct[i]||0)))/100;
-      const a = (-Math.PI/2) + (i*2*Math.PI/N);
-      const x = cx + Math.cos(a)*R*pct;
-      const y = cy + Math.sin(a)*R*pct;
-      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    }
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // labels
-    ctx.fillStyle = 'rgba(255,255,255,0.80)';
-    ctx.font = '11px system-ui, -apple-system, Segoe UI, Roboto, Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    for (let i=0;i<N;i++){
-      const a = (-Math.PI/2) + (i*2*Math.PI/N);
-      const x = cx + Math.cos(a)*(R+16);
-      const y = cy + Math.sin(a)*(R+16);
-      ctx.fillText(labels[i], x, y);
-    }
-
-    // center % rings labels
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('100%', cx+6, cy-R+12);
-    ctx.fillText('50%',  cx+6, cy-(R/2)+12);
-  }
-
-  function drawMultiLine(canvas, xLabels, seriesMap){
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width, H = canvas.height;
-    ctx.clearRect(0,0,W,H);
-
-    const padL=44, padR=10, padT=12, padB=34;
-    const chartW = W - padL - padR;
-    const chartH = H - padT - padB;
-
-    // Y max fixed at 100%
-    const maxY = 100;
-
-    // axes
-    ctx.globalAlpha = 0.35;
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(padL, padT);
-    ctx.lineTo(padL, H-padB);
-    ctx.lineTo(W-padR, H-padB);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    // y labels
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
-    ctx.textAlign = 'right';
-    ctx.fillText('100', padL-6, padT+12);
-    ctx.fillText('50',  padL-6, padT + chartH/2 + 4);
-    ctx.fillText('0',   padL-6, H-padB);
-
-    const n = xLabels.length || 1;
-    const stepX = (n<=1) ? chartW : (chartW/(n-1));
-
-    // x labels sparse
-    ctx.textAlign = 'center';
-    const step = Math.ceil(n/6);
-    for (let i=0;i<n;i+=step){
-      const lab = xLabels[i] || '';
-      const x = padL + i*stepX;
-      ctx.fillText(lab, x, H-10);
-    }
-
-    const keys = Object.keys(seriesMap||{});
-    const palette = ['#34d399','#60a5fa','#f472b6','#fbbf24','#a78bfa','#fb7185','#22d3ee','#c084fc','#86efac','#fde047','#93c5fd','#fda4af','#fca5a5','#67e8f9'];
-    keys.forEach((k, idx)=>{
-      const vals = seriesMap[k] || [];
-      const col = palette[idx % palette.length];
-      ctx.strokeStyle = col;
-      ctx.lineWidth = (idx===0? 2.8 : 2.2);
-      ctx.beginPath();
-      for (let i=0;i<n;i++){
-        const v = Number(vals[i]);
-        const yy = Number.isFinite(v) ? v : 0;
-        const x = padL + i*stepX;
-        const y = (H-padB) - (yy/maxY)*chartH;
-        if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-      }
-      ctx.stroke();
-    });
-  }
-
-  async function fetchPlayerThrowsWithTs(playerName){
-    const name = String(playerName||'').trim();
-    const nameLC = safeLower(name);
-
-    // --- Preferred: Supabase canonical view (one row per throw) ---
-    // Columns (confirmed): match_id, game_number, created_at, player_index, player_name,
-    // round_number, target, ring, hit
-    // NOTE: This view is read-only; ideal for analytics.
-    try{
-      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) throw new Error('Cloud not initialised');
-      if (!sb) throw new Error('Supabase client missing');
-
-      const VIEW = 'throw_events_v';
-
-      const selectCols = 'created_at,player_name,round_number,target,ring,hit';
-      const rows = [];
-      const PAGE = 1000;
-      const MAX = 50000;
-
-      for (let from = 0; from < MAX; from += PAGE){
-        const to = from + PAGE - 1;
-        const { data, error } = await sb
-          .from(VIEW)
-          .select(selectCols)
-          .ilike('player_name', `%${name}%`)
-          .order('created_at', { ascending: true })
-          .range(from, to);
-        if (error) throw error;
-        if (Array.isArray(data) && data.length) rows.push(...data);
-        if (!Array.isArray(data) || data.length < PAGE) break;
-      }
-
-      // Map view row -> internal throw row used by SPIDER/PROGRESS
-      const mapped = (rows||[]).map(r => {
-        const rn = Number(r.round_number);
-        let round_index = null;
-
-        // Robust mapping: different schemas encode rounds differently.
-        // Supported encodings:
-        //  A) round_number = 10..20 (numbers), 21 (Doubles), 22 (Triples), 23 (Bull)
-        //  B) round_number = 1..11 (maps to 10..20), 12 (Doubles), 13 (Triples), 14 (Bull)
-        //  C) round_number = 0..13 (direct index)
-
-        if (Number.isFinite(rn)) {
-          // C) direct index
-          if (rn >= 0 && rn <= 13) {
-            round_index = rn;
-          }
-          // B) 1..11 -> 10..20, then 12/13/14
-          else if (rn >= 1 && rn <= 11) {
-            round_index = rn - 1;
-          } else if (rn === 12) {
-            round_index = 11;
-          } else if (rn === 13) {
-            round_index = 12;
-          } else if (rn === 14) {
-            round_index = 13;
-          }
-          // A) 10..20, 21/22/23
-          else if (rn >= 10 && rn <= 20) {
-            round_index = rn - 10;
-          } else if (rn === 21) {
-            round_index = 11;
-          } else if (rn === 22) {
-            round_index = 12;
-          } else if (rn === 23) {
-            round_index = 13;
-          }
-        }
-
-        // Last-resort fallback: infer from target/ring
-        if (round_index == null) {
-          const ring = String(r.ring || '').trim().toUpperCase();
-          const target = Number(r.target);
-          if (Number.isFinite(target) && target >= 10 && target <= 20) round_index = target - 10;
-          else if (ring === 'D') round_index = 11;
-          else if (ring === 'T') round_index = 12;
-          else if (ring === 'B') round_index = 13;
-        }
-
-        const ts = r.created_at || null;
-        const hit = !!r.hit;
-
-        return {
-          game_id: r.match_id || null,
-          player: r.player_name || name,
-          round_index,
-          dart_index: null,
-          points: hit ? 1 : 0,
-          kind: String(r.ring || '').toLowerCase(),
-          hit,
-          ts
-        };
-      }).filter(x => safeLower(x.player) === nameLC);
-
-      return mapped;
-    }catch(e){
-      console.warn('[throws] throw_events_v not available, falling back to game boards', e);
-    }
-
-    // --- Fallback: reconstruct from official games (local-normalised) ---
-    const gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame);
-    const rows = __throwsFromGamesForPlayer(name, gamesAll);
-    // Attach timestamps from games if available
-    const gameTs = new Map();
-    gamesAll.forEach(g => {
-      const gid = (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id;
-      if (gid && g.ts) gameTs.set(gid, g.ts);
-    });
-
-    return (rows||[]).map(r => {
-      const ts = r.ts || gameTs.get(r.game_id) || null;
-      const hit = Number(r.points||0) > 0;
-      return Object.assign({}, r, { ts, hit });
-    }).filter(r => safeLower(r.player) === nameLC);
-  }
-
-  window.openPlayerSpiderDialog = async function openPlayerSpiderDialog(playerName, opts){
-    const name = String(playerName||'').trim();
-    const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-    const modal   = document.createElement('div'); modal.className  ='modal compact';
-    const title   = document.createElement('h3');  title.textContent=`SPIDER — ${name}`;
-    const body    = document.createElement('div'); body.className   ='modal-body';
-    const footer  = document.createElement('div'); footer.className ='modal-footer';
-    modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
-    body.style.maxHeight='none'; body.style.overflowY='visible';
-
-    const wrap = document.createElement('div');
-    wrap.style.display='flex';
-    wrap.style.flexDirection='column';
-    wrap.style.alignItems='center';
-    wrap.style.gap='10px';
-
-    const canvas = document.createElement('canvas');
-    canvas.width = 360; canvas.height = 360;
-    canvas.style.width = 'min(360px, 92vw)';
-    canvas.style.height= 'auto';
-
-    const note = document.createElement('p');
-    note.className='muted';
-    note.style.textAlign='center';
-    note.textContent='Loading…';
-
-    wrap.append(canvas, note);
-    body.appendChild(wrap);
-
-    const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
-    const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
-    const parentOverlay = opts && opts.parentOverlay ? opts.parentOverlay : null;
-    const backToPrev = () => {
-      overlay.remove();
-      if (parentOverlay){ parentOverlay.style.display=''; try{ parentOverlay.querySelector('.modal')?.focus?.(); }catch(_e){} return; }
-      if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name);
-      else if (typeof window.openPlayerStatsHub==='function') window.openPlayerStatsHub(name);
-    };
-    const closeToHub = () => {
-      overlay.remove();
-      if (parentOverlay) parentOverlay.remove();
-      if (typeof window.openPlayerStatsHub==='function') window.openPlayerStatsHub(name);
-      else if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name);
-    };
-    backBtn.onclick = backToPrev;
-    closeBtn.onclick = closeToHub;
-    footer.append(backBtn, closeBtn);
-
-    modal.append(title, body, footer);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-    overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
-    overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
-    modal.tabIndex=0; modal.focus();
-
-    try{
-      const labels = (opts && opts.data && Array.isArray(opts.data.labels)) ? opts.data.labels : __roundLabels();
-      let pct = (opts && opts.data && Array.isArray(opts.data.pct)) ? opts.data.pct.slice(0,14) : null;
-
-      if (!pct){
-        const rows = await fetchPlayerThrowsWithTs(name);
-        const taken = Array(14).fill(0), hits = Array(14).fill(0);
-        rows.forEach(t=>{
-        const r = (typeof t.round_index==='number') ? t.round_index : null;
-        if (r==null || r<0 || r>13) return;
-        taken[r] += 1;
-        if ((t.hit===true) || (Number(t.points||0)>0)) hits[r] += 1;
-      });
-        pct = taken.map((n,i)=> n ? (100*hits[i]/n) : 0);
-      }
-
-      drawRadar(canvas, labels, pct);
-      note.textContent = 'Hit % by target (10–20, D, T, B).';
-    }catch(e){
-      console.error('SPIDER failed', e);
-      note.textContent = 'Could not load data.';
-    }
-  };
-
-  window.openPlayerProgressHitDialog = async function openPlayerProgressHitDialog(playerName, opts){
-    const name = String(playerName||'').trim();
-    const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-    const modal   = document.createElement('div'); modal.className  ='modal compact';
-    const title   = document.createElement('h3');  title.textContent=`PROGRESS — ${name}`;
-    const body    = document.createElement('div'); body.className   ='modal-body';
-    const footer  = document.createElement('div'); footer.className ='modal-footer';
-    modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
-    body.style.maxHeight='none'; body.style.overflowY='visible';
-
-    const controls = document.createElement('div');
-    controls.className='row';
-    controls.style.flexWrap='wrap';
-    controls.style.gap='6px';
-    controls.style.marginBottom='10px';
-
-    const labels = __roundLabels();
-    const selected = new Set(['10']);
-
-    function mkToggle(lab){
-      const b = document.createElement('button');
-      b.className='btn small';
-      b.textContent = lab;
-      b.onclick = () => {
-        if (selected.has(lab)) selected.delete(lab);
-        else selected.add(lab);
-        render();
-      };
-      return b;
-    }
-    const btnByLab = new Map();
-    labels.forEach(l=>{
-      const b = mkToggle(l);
-      controls.appendChild(b);
-      btnByLab.set(l,b);
-    });
-
-    const canvas = document.createElement('canvas');
-    canvas.width = 520; canvas.height = 260;
-    canvas.style.width = 'min(560px, 92vw)';
-    canvas.style.height= 'auto';
-
-    const note = document.createElement('p');
-    note.className='muted';
-    note.style.marginTop='6px';
-    note.style.textAlign='center';
-
-    const wrap = document.createElement('div');
-    wrap.style.display='flex';
-    wrap.style.flexDirection='column';
-    wrap.style.alignItems='center';
-    wrap.append(controls, canvas, note);
-    body.appendChild(wrap);
-
-    const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
-    const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
-    const parentOverlay = opts && opts.parentOverlay ? opts.parentOverlay : null;
-    const backToPrev = () => {
-      overlay.remove();
-      if (parentOverlay){ parentOverlay.style.display=''; try{ parentOverlay.querySelector('.modal')?.focus?.(); }catch(_e){} return; }
-      if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name);
-      else if (typeof window.openPlayerStatsHub==='function') window.openPlayerStatsHub(name);
-    };
-    const closeToHub = () => {
-      overlay.remove();
-      if (parentOverlay) parentOverlay.remove();
-      if (typeof window.openPlayerStatsHub==='function') window.openPlayerStatsHub(name);
-      else if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name);
-    };
-    backBtn.onclick = backToPrev;
-    closeBtn.onclick = closeToHub;
-    footer.append(backBtn, closeBtn);
-
-    modal.append(title, body, footer);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-    overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
-    overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
-    modal.tabIndex=0; modal.focus();
-
-    // Load + prep
-    let weekLabels = [];
-    let seriesByLabel = {}; // label -> values per week
-
-    function refreshButtons(){
-      btnByLab.forEach((b, lab)=>{
-        if (selected.has(lab)) b.classList.add('primary');
-        else b.classList.remove('primary');
-      });
-    }
-
-    function render(){
-      refreshButtons();
-      const chosen = Array.from(selected);
-      if (!chosen.length){
-        note.textContent = 'Select one or more targets to plot.';
-        drawMultiLine(canvas, weekLabels, {});
-        return;
-      }
-      const map = {};
-      chosen.forEach(l=>{ map[l] = seriesByLabel[l] || []; });
-      drawMultiLine(canvas, weekLabels, map);
-      note.textContent = chosen.join(', ') + ' — 3-game hit % average (oldest → newest).';
-    }
-
-    try{
-      const providedRows = opts && opts.data && Array.isArray(opts.data.throws) ? opts.data.throws : null;
-      const rows = providedRows ? providedRows : await fetchPlayerThrowsWithTs(name);
-      const withTs = rows.filter(r=>r.ts || r.game_id);
-      if (!withTs.length){
-        note.textContent = 'No timestamps found for throws.';
-        return;
-      }
-
-      // Build per-game hit% for each target label, then compute rolling 3-game % (aggregated hits/attempts).
-
-      // Group throws by game (best-effort): prefer game_id, otherwise bucket by date.
-      const games = new Map(); // key -> {tsMax, perLabel: Array(14){t,h}}
-      for (const r of withTs){
-        const d = new Date(r.ts);
-        if (Number.isNaN(d.getTime())) continue;
-        const key = r.game_id ? String(r.game_id) : d.toISOString().slice(0,10);
-        let g = games.get(key);
-        if (!g){
-          g = { tsMax: d, per: Array.from({length:14}, ()=>({t:0,h:0})) };
-          games.set(key, g);
-        }
-        if (d > g.tsMax) g.tsMax = d;
-        const ri = (typeof r.round_index==='number') ? r.round_index : null;
-        if (ri==null || ri<0 || ri>13) continue;
-        g.per[ri].t += 1;
-        if ((r.hit===true) || (Number(r.points||0)>0)) g.per[ri].h += 1;
-      }
-
-      // Sort games oldest -> newest
-      let gameList = Array.from(games.entries())
-        .map(([k,v])=>({key:k, ts:v.tsMax, per:v.per}));
-
-      const order = opts && opts.data && Array.isArray(opts.data.gameOrder) ? opts.data.gameOrder.map(String) : null;
-      if (order && order.length){
-        const idx = new Map(order.map((id,i)=>[String(id), i]));
-        gameList.sort((a,b)=> (idx.get(String(a.key)) ?? 1e9) - (idx.get(String(b.key)) ?? 1e9));
-      } else {
-        gameList.sort((a,b)=>a.ts - b.ts);
-      }
-
-      if (gameList.length < 3){
-        note.textContent = 'Need at least 3 games to show 3-game averages.';
-        drawMultiLine(canvas, [], {});
-        return;
-      }
-
-      // X labels: date of the newest game in the rolling window
-      function fmtMMDD(dt){
-        const m = String(dt.getMonth()+1).padStart(2,'0');
-        const da = String(dt.getDate()).padStart(2,'0');
-        return `${m}-${da}`;
-      }
-
-      const xLabels = [];
-      for (let i=2;i<gameList.length;i++){
-        xLabels.push(fmtMMDD(gameList[i].ts));
-      }
-
-      // For each label, compute rolling pct across 3 games (aggregate hits/attempts across window)
-      seriesByLabel = {};
-      for (let ri=0; ri<14; ri++){
-        const lab = labels[ri];
-        const vals = [];
-        for (let i=2;i<gameList.length;i++){
-          let t=0,h=0;
-          for (let j=i-2;j<=i;j++){
-            const cell = gameList[j].per[ri];
-            t += cell.t;
-            h += cell.h;
-          }
-          const pct = t ? (100*h/t) : 0;
-          vals.push(Number(pct.toFixed(1)));
-        }
-        seriesByLabel[lab] = vals;
-      }
-
-      weekLabels = xLabels;
-render();
-    }catch(e){
-      console.error('PROGRESS failed', e);
-      note.textContent = 'Could not load data.';
-    }
-  };
-})();
-// >>> PATCH:player_stats_spider_progress END
 
 </script>
 <!-- PB / GR Admin Modal -->
