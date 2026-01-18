@@ -2,14 +2,27 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23ff6a00'/%3E%3Ctext x='32' y='41' font-size='28' text-anchor='middle' font-family='Arial' fill='white'%3ESQ%3C/text%3E%3C/svg%3E" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Shateki Quest Scorer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f1220'/%3E%3Cpath d='M22 12h24l-8 18h10L18 52l10-20H18z' fill='%23ff7a00'/%3E%3C/svg%3E" />
 
+
+<link rel=\"shortcut icon\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f1220'/%3E%3Cpath d='M22 12h24l-8 18h10L18 52l10-20H18z' fill='%23ff7a00'/%3E%3C/svg%3E\" />
+<!-- =====================================================================
+     FILE MAP (MOT)
+     1) <head>: meta, external libs, CSS
+     2) <body>: screens + modals (static DOM)
+     3) Main <script>: state, UI, storage/cloud, event wiring, patches
+
+     Convention: search for "// =====" or "/* =====" to jump sections
+     ===================================================================== -->
 <!-- Supabase JS v2 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 
 <style>
+/* ===== CSS: THEME TOKENS ===== */
 :root{
   /* Theme */
   --bg:#0f1220;
@@ -45,19 +58,6 @@
     background:radial-gradient(1000px 600px at 0% 0%,#1b1f36 0%,#0f1220 45%,#0b0e1a 100%); color:var(--ink);
     -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
   }
-
-  /* >>> PATCH:bg-thunder START */
-  body::before{
-    content:"";
-    position:fixed;
-    inset:0;
-    background:url("blue-thunder-bolt-light-electric-energy-circle_107791-30267.jpg") center/cover no-repeat;
-    opacity:.22;
-    z-index:-2;
-    pointer-events:none;
-  }
-  body[data-page="game"]::before{ display:none; }
-  /* <<< PATCH:bg-thunder END */
   /* Start/Back buttons under the player box (scope to #players only) */
 #players #startMatchRow,
 #players #backRow{
@@ -589,6 +589,8 @@
   .hs-table{ width:100%; border-collapse:separate; border-spacing:0 }
   .hs-table th, .hs-table td{ padding:.5rem .5rem; border-bottom:1px dashed #23284a; }
   .hs-table th{ text-align:left; color:#cfd3ee; }
+  .hs-table th .thSub{ display:block; font-size:.72rem; opacity:.85; font-weight:500; margin-top:2px; }
+  .hs-table th .thSub{ display:block; font-size:.72rem; opacity:.85; font-weight:600; }
 
 /* >>> PATCH:hs-league-layout START — tidy High Score League columns */
 .hs-table.hs-league-table{
@@ -938,8 +940,11 @@ margin-bottom: var(--section-gap);
   will-change: transform;
   animation: ticker-marquee 18s linear infinite;
 }
-/* New (upper) ticker: half speed (i.e., double duration) */
-#psTickerTop .track .marquee{ animation-duration: 36s; }
+/* Upper (new players) ticker: single-run scroll with a pause */
+#psTickerTop .track .marquee{
+  min-width: 0;              /* don't require repeats */
+  animation: ticker-marquee-top 77s linear infinite; /* 72s scroll + ~5s pause */
+}
 #psTicker .track .marquee span,
 #psTickerTop .track .marquee span{
   display: inline-block;
@@ -949,6 +954,13 @@ margin-bottom: var(--section-gap);
   /* Start fully off-screen to the right, then scroll left across the whole ticker */
   0%{ transform: translateX(100%); }
   100%{ transform: translateX(-66.6667%); }
+}
+
+@keyframes ticker-marquee-top{
+  /* One message: start offscreen right, traverse fully, pause, then restart */
+  0%{ transform: translateX(100%); }
+  93.5%{ transform: translateX(-100%); }
+  100%{ transform: translateX(-100%); }
 }
 /* <<< PATCH:ticker-marquee END */
 
@@ -1385,6 +1397,8 @@ margin-bottom: var(--section-gap);
       <span id="cloudStatusText">Checking cloud…</span>
     </div>
     <script>
+// ===== JS: BOOT / GLOBALS =====
+
 // Global guard: some third‑party embeds reference a global `F`; define a harmless fallback
 if (typeof window.F === 'undefined') {
   window.F = function(){ /* no-op */ };
@@ -1485,48 +1499,53 @@ window.markRoundHighs = function markRoundHighs(root = document) {
 // Fetch per-dart pattern for a specific game/player/round (e.g. "S/S/D" or "x/T/T")
 async function fetchRoundPattern(gameId, playerName, ridx){
   if (!gameId || playerName == null || ridx == null) return '';
-  // 1) Preferred: throws table
-  try{
-    const { data, error } = await sb
-      .from(TABLE_GAME_THROWS)
-      .select('dart_index, points, kind, bull')
-      .eq('game_id', gameId)
-      .eq('player', playerName)
-      .eq('round_index', ridx)
-      .order('dart_index', { ascending: true });
-    if (error) throw error;
 
-    const rd = ROUNDS[ridx];
-    const chars = [];
-    for (let i = 0; i < 3; i++){
-      const d = (data || []).find(r => Number(r.dart_index) === i) || null;
-      const sym = symbolForDart(d, rd);
-      let ch = sym && sym.ch ? sym.ch : 'x';
-      if (ch === '✕') ch = 'x';
-      chars.push(ch);
-    }
-    return chars.join('/');
-  } catch(e){
-    // 2) Fallback: games.state.board (if stored)
+  // 1) Preferred: per-dart throws table (only if available)
+  if (FEATURE_CLOUD_THROWS && !cloudIsTableMissing(TABLE_GAME_THROWS)){
     try{
-      const { data, error } = await sb.from(TABLE_GAMES).select('state').eq('id', gameId).single();
+      const { data, error } = await sb
+        .from(TABLE_GAME_THROWS)
+        .select('dart_index, points, kind, bull')
+        .eq('game_id', gameId)
+        .eq('player', playerName)
+        .eq('round_index', ridx)
+        .order('dart_index', { ascending: true });
       if (error) throw error;
+
       const rd = ROUNDS[ridx];
-      const players = (data?.state?.players || []).map(p => (typeof p === 'string' ? { name:p } : p));
-      const pIdx = players.findIndex(p => eqName(p.name, playerName));
-      const ent  = pIdx >= 0 ? (data?.state?.board?.[pIdx] || [])[ridx] : null;
       const chars = [];
       for (let i = 0; i < 3; i++){
-        const d = ent && Array.isArray(ent.darts) ? ent.darts[i] : null;
+        const d = (data || []).find(r => Number(r.dart_index) === i) || null;
         const sym = symbolForDart(d, rd);
         let ch = sym && sym.ch ? sym.ch : 'x';
         if (ch === '✕') ch = 'x';
         chars.push(ch);
       }
       return chars.join('/');
-    }catch(_){
-      return '';
+    } catch(e){
+      cloudMarkTableMissing(TABLE_GAME_THROWS, e);
     }
+  }
+
+  // 2) Fallback: games.state.board (if stored)
+  try{
+    const { data, error } = await sb.from(TABLE_GAMES).select('state').eq('id', gameId).single();
+    if (error) throw error;
+    const rd = ROUNDS[ridx];
+    const players = (data?.state?.players || []).map(p => (typeof p === 'string' ? { name:p } : p));
+    const pIdx = players.findIndex(p => eqName(p.name, playerName));
+    const ent  = pIdx >= 0 ? (data?.state?.board?.[pIdx] || [])[ridx] : null;
+    const chars = [];
+    for (let i = 0; i < 3; i++){
+      const d = ent && Array.isArray(ent.darts) ? ent.darts[i] : null;
+      const sym = symbolForDart(d, rd);
+      let ch = sym && sym.ch ? sym.ch : 'x';
+      if (ch === '✕') ch = 'x';
+      chars.push(ch);
+    }
+    return chars.join('/');
+  }catch(_){
+    return '';
   }
 }
 window.fetchRoundPattern = fetchRoundPattern;
@@ -1541,13 +1560,14 @@ async function fetchGameTS(gameId){
       .single();
     if (error) throw error;
     return data?.ts || data?.created_at || data?.inserted_at || null;
-  }catch(_){
+  }catch(e){
     return null;
   }
 }
 
 // Earliest TS for a specific game/player/round (fallback for Date/Time column)
 async function fetchRoundTS(gameId, playerName, ridx){
+  if (!FEATURE_CLOUD_THROWS || cloudIsTableMissing(TABLE_GAME_THROWS)) return null;
   try{
     const { data, error } = await sb
       .from(TABLE_GAME_THROWS)
@@ -1670,6 +1690,7 @@ async function dedupeAllHighScores(){
 // ---- Admin Hub ----
 function openAdminHub(){
   const hub = document.getElementById('adminHubModal');
+  try { window.__sqNavContext = 'admin'; } catch(_) {}
   if (!hub) return;
   hub.classList.remove('hidden');
 
@@ -1704,8 +1725,12 @@ if (btnSave) btnSave.onclick = ()=>{ hub.classList.add('hidden'); openSavedPlaye
     }
   };
 
-  if (btnClose) btnClose.onclick = ()=>{ hub.classList.add('hidden'); };
+  if (btnClose) btnClose.onclick = ()=>{ hub.classList.add('hidden'); try{ window.__sqNavContext = null; }catch(_){} };
 }
+
+// Export Admin Hub opener for any callers that use window.openAdminHub
+try { window.openAdminHub = openAdminHub; } catch(_) {}
+
 
 // === All Games modal (simple list) ===
 function openAllGamesDialog(){
@@ -2198,12 +2223,103 @@ function openRoundHighScoresDialog(){
   });
 }
 
+function _normName(s){ return String(s||'').trim(); }
+function __sqLoadPlayerAliases(){
+  try { return JSON.parse(localStorage.getItem('SQ_PLAYER_ALIASES') || '{}') || {}; } catch(e){ return {}; }
+}
+function __sqSavePlayerAliases(map){
+  try { localStorage.setItem('SQ_PLAYER_ALIASES', JSON.stringify(map || {})); } catch(e){}
+}
+function __sqRememberPlayerRename(oldName, newName){
+  const o = _normName(oldName), n = _normName(newName);
+  if (!o || !n || o === n) return;
+  const map = __sqLoadPlayerAliases();
+
+  // Collapse chains: if something already pointed to old, repoint to new
+  try { Object.keys(map).forEach(k => { if (map[k] === o) map[k] = n; }); } catch(_){ }
+
+  map[o] = n;
+  __sqSavePlayerAliases(map);
+
+  try { document.dispatchEvent(new CustomEvent('sq:player-alias-updated', { detail: { oldName:o, newName:n }})); } catch(_){ }
+}
+function __sqApplyPlayerAlias(name){
+  let x = _normName(name);
+  if (!x) return x;
+  const map = __sqLoadPlayerAliases();
+  const seen = new Set();
+  while (map[x] && !seen.has(x)){
+    seen.add(x);
+    x = _normName(map[x]);
+  }
+  return x;
+}
+window.__sqApplyPlayerAlias = __sqApplyPlayerAlias;
+window.__sqRememberPlayerRename = __sqRememberPlayerRename;
+
+function renamePlayerInLocalState(oldName, newName){
+  const o = _normName(oldName), n = _normName(newName);
+  if (!o || !n || o === n) return;
+
+  // Update in-memory current game
+  let changed = false;
+  try {
+    (state.players||[]).forEach(pl=>{
+      if (pl && _normName(pl.name) === o){ pl.name = n; changed = true; }
+    });
+  } catch(_) {}
+
+  // Persist current state snapshot
+  if (changed){
+    try { save(); } catch(_) {}
+    try { if (typeof buildScoreHeader==='function') buildScoreHeader(); } catch(_) {}
+    try { if (typeof buildFloatingHeader==='function') buildFloatingHeader(); } catch(_) {}
+    try { if (typeof buildMatchStatsHead==='function') buildMatchStatsHead(); } catch(_) {}
+    try { if (typeof buildMatchStatsBody==='function') buildMatchStatsBody(); } catch(_) {}
+    try { if (typeof updateMatchStats==='function') updateMatchStats(); } catch(_) {}
+    try { if (typeof updateUI==='function') updateUI(); } catch(_) {}
+  }
+
+  // Update persisted state in localStorage (safety)
+  try {
+    const st = safeLoad(STORAGE_KEY);
+    if (st && Array.isArray(st.players)){
+      let ch = false;
+      st.players.forEach(pl=>{
+        if (pl && _normName(pl.name) === o){ pl.name = n; ch = true; }
+      });
+      if (ch) safeSave(STORAGE_KEY, st);
+    }
+  } catch(_) {}
+
+  // Update saved players cache (offline fallback / quick UI refresh)
+  try {
+    const arr = getSavedPlayers();
+    let ch = false;
+    (arr||[]).forEach(x=>{
+      if (x && _normName(x.name) === o){ x.name = n; ch = true; }
+    });
+    if (ch) setSavedPlayers(arr);
+  } catch(_) {}
+}
+
+function removePlayerFromLocalCache(name){
+  const n = _normName(name);
+  if (!n) return;
+  try {
+    const arr = (getSavedPlayers()||[]).filter(x => _normName(x && x.name) !== n);
+    setSavedPlayers(arr);
+  } catch(_) {}
+}
+
 async function renderSavedPlayersAdmin(){
   const body = document.getElementById('savedPlayersAdminBody');
   if (!body) return;
   body.innerHTML = '<p class="tag">Loading players…</p>';
+
   let players = [];
-  try { players = await cloudListPlayers(); } catch(e){ console.error(e); body.innerHTML = '<p>Failed to load players.</p>'; return; }
+  try { players = await cloudListPlayers(); }
+  catch(e){ console.error(e); body.innerHTML = '<p>Failed to load players.</p>'; return; }
 
   if (!Array.isArray(players) || players.length === 0){
     body.innerHTML = '<p>No players found.</p>';
@@ -2212,71 +2328,95 @@ async function renderSavedPlayersAdmin(){
 
   const table = document.createElement('table');
   table.className = 'hs-table';
+
   const thead = document.createElement('thead');
   const hr = document.createElement('tr');
-  ['Name','New PIN','Actions'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; hr.appendChild(th); });
-  thead.appendChild(hr); table.appendChild(thead);
+  ['Player Name','Actions'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; hr.appendChild(th); });
+  thead.appendChild(hr);
+  table.appendChild(thead);
+
   const tbody = document.createElement('tbody');
 
   players.forEach(p=>{
     const tr = document.createElement('tr');
+    const nm = String((p && p.name) ? p.name : '').trim();
+    const pid = (p && p.id) ? p.id : null;
 
-    // Name input
     const nameTd = document.createElement('td');
     const nameIn = document.createElement('input');
     nameIn.type = 'text';
-    nameIn.value = p.name;
+    nameIn.value = nm;
     nameIn.style.width = '100%';
     nameTd.appendChild(nameIn);
 
-    // PIN input
-    const pinTd = document.createElement('td');
-    const pinIn = document.createElement('input');
-    pinIn.type = 'tel'; pinIn.inputMode='numeric'; 
-    pinIn.pattern='\\d{4}'; // 4 digits
-    pinIn.placeholder = '4-digit';
-    pinIn.maxLength = 4;
-    pinIn.style.width = '100%';
-    pinTd.appendChild(pinIn);
-
-    // Actions
     const actTd = document.createElement('td');
-    const saveNameBtn = document.createElement('button');
-    saveNameBtn.className='btn small'; saveNameBtn.textContent='Save Name';
-    const savePinBtn = document.createElement('button');
-    savePinBtn.className='btn small'; savePinBtn.textContent='Update PIN';
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'btn small';
+    saveBtn.textContent = 'Save';
+
     const delBtn = document.createElement('button');
-    delBtn.className='btn small danger'; delBtn.textContent='Delete';
-    actTd.append(saveNameBtn, document.createTextNode(' '), savePinBtn, document.createTextNode(' '), delBtn);
+    delBtn.className = 'btn small danger';
+    delBtn.textContent = 'Delete';
 
-    // Wire actions
-    saveNameBtn.onclick = async ()=>{
-      const newName = (nameIn.value||'').trim();
-      if (!newName){ toast('Enter a name'); return; }
-      if (newName === p.name){ toast('No change'); return; }
-      try { await cloudRenamePlayer(p.name, newName); toast('Name updated'); await renderSavedPlayersAdmin(); }
-      catch(e){ console.error(e); toast('Rename failed'); }
-    };
+    actTd.append(saveBtn, document.createTextNode(' '), delBtn);
 
-    savePinBtn.onclick = async ()=>{
-      const pin = (pinIn.value||'').trim();
-if (!/^\d{4}$/.test(pin)){ toast('PIN must be 4 digits'); return; }      try { await cloudUpdatePlayerPassword(p.name, pin); pinIn.value=''; toast('PIN updated'); }
-      catch(e){ console.error(e); toast('PIN update failed'); }
+    saveBtn.onclick = async ()=>{
+      const newName = String(nameIn.value||'').trim();
+      if (!newName){ toast('Name required'); return; }
+      if (!nm){ toast('Invalid player'); return; }
+      try {
+        if (newName !== nm){
+          if (pid) { await cloudRenamePlayerById(pid, nm, newName); } else { await cloudRenamePlayer(nm, newName); }
+          // Keep the running game stable: rename in-memory + persisted local state
+          renamePlayerInLocalState(nm, newName);
+          try { if (typeof window.__sqRememberPlayerRename==='function') window.__sqRememberPlayerRename(nm, newName); } catch(_) {}
+          try { if (typeof window.buildStartTicker==='function') window.buildStartTicker(); } catch(_) {}
+          try { if (typeof window.__sqRefreshRecentMatchesTicker==='function') window.__sqRefreshRecentMatchesTicker(); } catch(_) {}
+        }
+        try { await syncSavedPlayersFromCloud(); } catch(_) {}
+        try { document.dispatchEvent(new Event('sq:savedPlayersUpdated')); } catch(_) {}
+        toast('Saved');
+        await renderSavedPlayersAdmin();
+      } catch(e){
+        console.error(e);
+        toast('Save failed');
+      }
     };
 
     delBtn.onclick = async ()=>{
-      if (!confirm(`Delete ${p.name}?`)) return;
-      try { await cloudDeletePlayer(p.name); toast('Deleted'); await renderSavedPlayersAdmin(); }
-      catch(e){ console.error(e); toast('Delete failed'); }
+      if (!nm){ toast('Invalid player'); return; }
+
+      // Safety: don’t delete a player who’s currently in an active game/match (would corrupt indices).
+      const inCurrent = (state && Array.isArray(state.players)) ? state.players.some(pl => pl && _normName(pl.name) === _normName(nm)) : false;
+      const gameStarted = !!(state && ((state.currentRound||0) > 0 || (state.history && state.history.length)));
+      if (inCurrent && gameStarted){
+        toast('Finish/reset the current game before deleting this player.');
+        return;
+      }
+
+      if (!confirm(`Delete ${nm}?`)) return;
+      try {
+        await cloudDeletePlayer(pid ? { id: pid, name: nm } : nm);
+        removePlayerFromLocalCache(nm);
+        try { await syncSavedPlayersFromCloud(); } catch(_) {}
+        try { document.dispatchEvent(new Event('sq:savedPlayersUpdated')); } catch(_) {}
+        toast('Deleted');
+        await renderSavedPlayersAdmin();
+      } catch(e){
+        console.error(e);
+        toast('Delete failed');
+      }
     };
 
-    tr.append(nameTd, pinTd, actTd); tbody.appendChild(tr);
+    tr.append(nameTd, actTd);
+    tbody.appendChild(tr);
   });
 
   table.appendChild(tbody);
-    body.innerHTML = '';
-    body.appendChild(table);
+  body.innerHTML = '';
+  body.appendChild(table);
 }
+
 
 /* Premier League — TODAY chip wiring (no <script> tags) */
 (function () {
@@ -2520,9 +2660,14 @@ if (!/^\d{4}$/.test(pin)){ toast('PIN must be 4 digits'); return; }      try { a
   function formatGameForTicker(g) {
     if (!g) return '';
 
-    const players = (g.players || []).map(p =>
-      (p && typeof p === 'object' && 'name' in p) ? p.name : String(p || '')
-    );
+    const alias = (typeof window !== 'undefined' && typeof window.__sqApplyPlayerAlias === 'function')
+      ? window.__sqApplyPlayerAlias
+      : (x)=>x;
+
+    const players = (g.players || []).map(p => {
+      const nm = (p && typeof p === 'object' && 'name' in p) ? p.name : String(p || '');
+      return alias(nm);
+    });
     const totals  = Array.isArray(g.totals) ? g.totals : [];
 
     const ordered = players
@@ -2644,6 +2789,8 @@ if (!/^\d{4}$/.test(pin)){ toast('PIN must be 4 digits'); return; }      try { a
         ticker.classList.add('hidden');
         return;
       }
+  // Expose a safe refresh hook (used after player renames)
+  window.__sqRefreshRecentMatchesTicker = initSingleLinePsTicker;
     } catch (_) {}
 
     let games = [];
@@ -2676,6 +2823,28 @@ if (!/^\d{4}$/.test(pin)){ toast('PIN must be 4 digits'); return; }      try { a
       .sort((a, b) => toTS(b) - toTS(a))
       .slice(0, 25);
 
+    // Phase 1 IDs: hide deleted players from the ticker.
+    // We treat "active" players as those currently present in the players table.
+    try {
+      let activeSet = window.__sqActivePlayerNameSet;
+      if (!(activeSet instanceof Set) && typeof cloudListPlayers === 'function') {
+        const plist = await cloudListPlayers();
+        activeSet = window.__sqActivePlayerNameSet;
+      }
+      const alias = (typeof window !== 'undefined' && typeof window.__sqApplyPlayerAlias === 'function')
+        ? window.__sqApplyPlayerAlias
+        : (x)=>x;
+
+      if (activeSet instanceof Set && activeSet.size) {
+        games = games.filter(g => {
+          const names = (g?.players || []).map(p => (p && typeof p === 'object' && 'name' in p) ? p.name : String(p || ''));
+          const mapped = names.map(n => String(alias(n) || '').trim().toLowerCase()).filter(Boolean);
+          if (!mapped.length) return false;
+          return mapped.every(n => activeSet.has(n));
+        });
+      }
+    } catch (_) {}
+
     const items = games
       .map(formatGameForTicker)
       .filter(line => line && line.trim().length > 0);
@@ -2702,12 +2871,167 @@ if (!/^\d{4}$/.test(pin)){ toast('PIN must be 4 digits'); return; }      try { a
   });
 })();
 
+// Propagate a player rename to other cloud tables that store name strings.
+// Best-effort only (ignore failures so we never break the app).
+async function cloudPropagatePlayerRename(oldName, newName){
+  // Keep this conservative: only touch tables that are known to exist in your current Supabase schema.
+  const o = String(oldName||'').trim();
+  const n = String(newName||'').trim();
+  if (!o || !n || o === n) return;
+
+  const tasks = [];
+  try { tasks.push(sb.from(TABLE_HS_LEAGUE).update({ name: n }).eq('name', o)); } catch(_) {}
+  try { tasks.push(sb.from(TABLE_HS_PRACTICE).update({ name: n }).eq('name', o)); } catch(_) {}
+
+  // Best-effort only; never throw (avoid console red spam on missing tables/views)
+  try { await Promise.allSettled(tasks); } catch(_) {}
+}
+
+// Best-effort: rename the player inside historical games.state JSON so stats/ranks stay unified.
+// This updates state.players[].name (board is index-based so it stays valid).
+async function cloudRenamePlayerInGamesState(oldName, newName, maxRows=500){
+  const o = String(oldName||'').trim();
+  const n = String(newName||'').trim();
+  if (!o || !n || o === n) return { updated: 0 };
+  let updated = 0;
+  let offset = 0;
+  const page = 100;
+
+  while (updated < maxRows){
+    const { data, error } = await sb
+      .from(TABLE_GAMES)
+      .select('id, state')
+      .contains('state', { players: [{ name: o }] })
+      .range(offset, offset + page - 1);
+
+    if (error) throw error;
+    const rows = data || [];
+    if (!rows.length) break;
+
+    for (const row of rows){
+      if (updated >= maxRows) break;
+      const st = row.state;
+      if (!st || !Array.isArray(st.players)) continue;
+
+      let changed = false;
+      const players = st.players.map(pl => {
+        if (pl && typeof pl === 'object' && String(pl.name||'').trim() === o){
+          changed = true;
+          return { ...pl, name: n };
+        }
+        return pl;
+      });
+
+      if (!changed) continue;
+
+      const nextState = { ...st, players };
+      const { error: uErr } = await sb.from(TABLE_GAMES).update({ state: nextState }).eq('id', row.id);
+      if (uErr) throw uErr;
+      updated += 1;
+    }
+
+    if (rows.length < page) break;
+    offset += rows.length;
+  }
+
+  return { updated };
+}
+
+
 // Rename helper (updates `name` column)
-async function cloudRenamePlayer(oldName, newName){
-  const { error } = await sb.from(TABLE_PLAYERS).update({ name: newName }).eq('name', oldName);
+async function cloudResolvePlayerKeyByName(name){
+  const nm = String(name||'').trim();
+  if (!nm) return null;
+  // Use case-insensitive match to avoid "0 rows updated" silent failures
+  try{
+    const { data, error } = await sb
+      .from(TABLE_PLAYERS)
+      .select('id, name')
+      .ilike('name', nm)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  }catch(_){
+    return null;
+  }
+}
+
+
+// >>> PATCH:PLAYER_ID_SUPPORT START
+
+
+// >>> PATCH:PLAYER_RENAME_RPC START
+// Use Supabase RPC to merge rename across history (DB function: public.rename_player_merge(old_name, new_name)).
+// This keeps legacy name-based data coherent while we gradually migrate UI to IDs.
+async function cloudRenamePlayerMerge(oldName, newName){
+  const o = String(oldName||'').trim();
+  const n = String(newName||'').trim();
+  if (!o || !n || o === n) return;
+
+  const { error } = await sb.rpc('rename_player_merge', { old_name: o, new_name: n });
   if (error) { markCloudError(error); throw error; }
   markCloudOk();
 }
+// <<< PATCH:PLAYER_RENAME_RPC END
+
+// Player rename by UUID id (keeps name-based propagation for legacy tables)
+async function cloudRenamePlayerById(playerId, oldName, newName){
+  const id = String(playerId||'').trim();
+  const fallbackOld = String(oldName||'').trim();
+  const n  = String(newName||'').trim();
+  if (!id || !n) return;
+
+  // Prefer the authoritative current name for this id (protects against case/whitespace mismatches)
+  let o = fallbackOld;
+  try{
+    const { data, error } = await sb
+      .from(TABLE_PLAYERS)
+      .select('name')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    if (data && data.name) o = String(data.name).trim();
+  }catch(_){ /* fall back */ }
+
+  if (!o || o === n) return;
+
+  // Server-side merge rename (players + match_players + matches JSON + highscores)
+  await cloudRenamePlayerMerge(o, n);
+
+  // Extra legacy cleanup: some views still parse games.state; keep those unified too.
+  try { await cloudRenamePlayerInGamesState(o, n); } catch(_) {}
+}
+// <<< PATCH:PLAYER_ID_SUPPORT END
+
+
+async function cloudRenamePlayer(oldName, newName){
+  const o = String(oldName||'').trim();
+  const n = String(newName||'').trim();
+  if (!o || !n || o === n) return;
+
+  // Server-side merge rename (players + match_players + matches JSON + highscores)
+  await cloudRenamePlayerMerge(o, n);
+
+  // Extra legacy cleanup: some views still parse games.state; keep those unified too.
+  try { await cloudRenamePlayerInGamesState(o, n); } catch(_) {}
+}
+
+// Update player profile (first/last/region) while keeping `name` as the app-wide display key.
+// Falls back to name-only update if profile columns do not exist.
+// Update player profile (MOT2.2): rename-only shim.
+// Your Supabase schema (players) appears to be name-only.
+// Keeping this function prevents older UI code from breaking if it still calls it.
+async function cloudUpdatePlayerProfile(playerOrName, profile){
+  const obj = (playerOrName && typeof playerOrName === 'object') ? playerOrName : null;
+  const oldName = String(obj ? (obj.name||'') : (playerOrName||'' )).trim();
+  const newName = String((profile && profile.name) ? profile.name : oldName).trim();
+  if (!oldName) return null;
+  if (newName && newName !== oldName){
+    await cloudRenamePlayer(oldName, newName);
+  }
+  return null;
+}
+
 
 // Game Complete modal hierarchy tweak (title + big result + smaller standings)
 (function(){
@@ -2884,7 +3208,11 @@ async function cloudRenamePlayer(oldName, newName){
           try { backdrop.classList.add('hidden'); } catch (_) {}
           try { backdrop.remove(); } catch (_) {}
         }
-        if (typeof window.openLeagueRankingsDialog === 'function') {
+        // Return behaviour: if we're in admin context, go back to Admin Hub; otherwise League / Rankings
+        if (window.__sqNavContext === 'admin' && typeof window.openAdminHub === 'function') {
+          try { if (window.__sqLeagueOverlay && window.__sqLeagueOverlay.remove) window.__sqLeagueOverlay.remove(); } catch(_) {}
+          try { window.openAdminHub(); } catch (_) {}
+        } else if (typeof window.openLeagueRankingsDialog === 'function') {
           try { window.openLeagueRankingsDialog(); } catch (_) {}
         }
       };
@@ -3641,6 +3969,10 @@ const TABLE_HS_PRACTICE = "high_scores_sp";
 const TABLE_LEAGUE_LOW_SCORES = "league_low_scores";
 const TABLE_GAME_THROWS = "game_throws";
 
+// Feature flag: the per-dart throws table/view (game_throws) is optional.
+// If your Supabase schema doesn't include it, keep this false to avoid noisy 404s.
+const FEATURE_CLOUD_THROWS = false;
+
 // PB/WR storage (targets for the backfill)
 const TABLE_PB_ROUNDS = 'player_pb_rounds';    // columns: player, cat, val, game_id, ridx, ts
 const TABLE_WR_ROUNDS = 'world_record_rounds'; // columns: cat, val, player, game_id, ridx, ts
@@ -3648,6 +3980,31 @@ const TABLE_WR_ROUNDS = 'world_record_rounds'; // columns: cat, val, player, gam
 // Extra tables used for cloud-backed stats
 const TABLE_GAMES   = "games";
 const TABLE_MATCHES = "matches";
+
+/* >>> PATCH:CLOUD_TABLE_MISSING_GUARD START */
+const CLOUD_TABLE_MISSING = Object.create(null);
+const CLOUD_ONCE = Object.create(null);
+function cloudIsTableMissing(tableName){
+  return !!(tableName && CLOUD_TABLE_MISSING[tableName]);
+}
+function cloudMarkTableMissing(tableName, err){
+  if (!tableName) return false;
+  if (CLOUD_TABLE_MISSING[tableName]) return true;
+  const code = err && (err.code || err.error_code);
+  const status = err && (err.status || err.statusCode);
+  const msg = String((err && (err.message || err.error_description || err.details)) || '');
+  const isMissing = code === 'PGRST205' || status === 404 || /\b404\b/.test(msg) || /does not exist/i.test(msg) || /not found/i.test(msg);
+  if (!isMissing) return false;
+  CLOUD_TABLE_MISSING[tableName] = true;
+  const onceKey = 'missing:' + tableName;
+  if (!CLOUD_ONCE[onceKey]){
+    CLOUD_ONCE[onceKey] = true;
+    console.warn('Cloud table missing/blocked; disabling related calls:', tableName, err);
+  }
+  return true;
+}
+/* <<< PATCH:CLOUD_TABLE_MISSING_GUARD END */
+
 
 /**********************
  * SAFETY + TOAST
@@ -3811,23 +4168,24 @@ function openScoreSheetFromHistory(gIndex){
       return [];
     }
   }
-
   async function findOfficialGameIds(){
     try{
       const { data, error } = await sb
         .from(TABLE_GAMES)
-        .select('id, players, pcount')
+        .select('id, state')
         .limit(100000);
       if (error) throw error;
+
       const ids = new Set();
       for (const g of (data||[])){
-        let n = 0;
-        if (Array.isArray(g.players)) n = g.players.length;
-        else if (typeof g.pcount === 'number') n = g.pcount;
-        else if (typeof g.players === 'string'){
-          try { const arr = JSON.parse(g.players); if (Array.isArray(arr)) n = arr.length; } catch(_){}
+        if (!g || !g.id) continue;
+        let st = g.state;
+        if (typeof st === 'string'){
+          try { st = JSON.parse(st); } catch(_) {}
         }
-        if (n >= 2 && g.id) ids.add(g.id);
+        const players = st && Array.isArray(st.players) ? st.players : null;
+        const n = players ? players.length : 0;
+        if (n >= 2) ids.add(g.id);
       }
       return ids;
     }catch(e){
@@ -3839,6 +4197,25 @@ function openScoreSheetFromHistory(gIndex){
   async function fetchPBGRFromCloud(limit = 100000){
     if (PBGR.fetching) return;
     PBGR.fetching = true;
+
+    // PB/GR cloud fetch depends on a per-dart throws table/view (game_throws).
+    // Keep disabled unless your Supabase project provides that schema.
+    if (!FEATURE_CLOUD_THROWS) {
+      PBGR.ready = true;
+      PBGR.fetchedAt = Date.now();
+      PBGR.fetching = false;
+      return;
+    }
+
+    // If the per-dart throws table/view is not available in this Supabase project,
+    // disable PB/GR cloud fetch silently so gameplay is unaffected.
+    if (cloudIsTableMissing(TABLE_GAME_THROWS)) {
+      PBGR.ready = true;
+      PBGR.fetchedAt = Date.now();
+      PBGR.fetching = false;
+      return;
+    }
+
     try{
       const savedNames = await fetchSavedPlayerNames();
       if (!savedNames.length){
@@ -3868,6 +4245,18 @@ function openScoreSheetFromHistory(gIndex){
         rows = data || [];
       }catch(e1){
         console.error('Primary throws fetch failed; falling back to saved players only', e1);
+        if (cloudMarkTableMissing(TABLE_GAME_THROWS, e1)) {
+          PBGR.ready = true;
+          PBGR.fetchedAt = Date.now();
+          PBGR.fetching = false;
+          return;
+        }
+        if (cloudIsTableMissing(TABLE_GAME_THROWS)) {
+          PBGR.ready = true;
+          PBGR.fetchedAt = Date.now();
+          PBGR.fetching = false;
+          return;
+        }
         const { data } = await sb.from(TABLE_GAME_THROWS)
           .select('player, game_id, round_index, target, points, round_total, ts')
           .in('player', savedNames)
@@ -4366,6 +4755,25 @@ async function sha256Hex(text){
   return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
+
+// Safari-safe timestamp parsing.
+// Accepts ISO strings, PostgREST timestamps like '2026-01-18 13:53:52.437+00', and epoch ms/seconds.
+function parseMs(v){
+  if (v == null) return null;
+  if (typeof v === 'number') return v > 1e12 ? v : v * 1000;
+  const s = String(v).trim();
+  if (!s) return null;
+  if (/^\d+$/.test(s)) {
+    const n = Number(s);
+    return n > 1e12 ? n : n * 1000;
+  }
+  // Convert 'YYYY-MM-DD HH:MM:SS(.ms)?+00' to ISO-like.
+  const isoish = s.replace(' ', 'T');
+  const ms = Date.parse(isoish);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+
 async function cloudSynthAllGamesFromHighScores(limit = 500) {
   const items = [];
   async function fetchTbl(tbl) {
@@ -4395,19 +4803,30 @@ async function cloudSynthAllGamesFromHighScores(limit = 500) {
 }
 
 // PLAYERS
+// PLAYERS
 async function cloudListPlayers(){
-  // Include created_at so tickers / "new players" windows can be cloud-backed.
+  // MOT2.2: keep schema-safe and quiet. Only select columns that definitely exist.
   const { data, error } = await sb
     .from(TABLE_PLAYERS)
-    .select('name, created_at')
+    .select('id, name, created_at')
     .order('name');
-  if (error) {
-    markCloudError(error);
-    throw error;
-  }
+  if (error) { markCloudError(error); throw error; }
   markCloudOk();
+  // Phase 1 IDs: keep an in-memory cache of "active" player names/ids.
+  // This lets us hide deleted players from the start-screen ticker and other lightweight UI.
+  try {
+    const list = Array.isArray(data) ? data : [];
+    window.__sqPlayersList = list;
+    const set = new Set(list.map(p => String(p?.name || '').trim().toLowerCase()).filter(Boolean));
+    window.__sqActivePlayerNameSet = set;
+    window.__sqIsActivePlayerName = (nm) => {
+      const key = String(nm || '').trim().toLowerCase();
+      return key ? (window.__sqActivePlayerNameSet?.has(key) === true) : false;
+    };
+  } catch (_) {}
   return data || [];
 }
+
 
 // Create / update a player by name only (no password)
 async function cloudCreatePlayer(name){
@@ -4438,13 +4857,40 @@ async function cloudValidatePlayer(name, password){
   return data.password_hash === hash;
 }
 
-async function cloudDeletePlayer(name){
-  const { error } = await sb.from(TABLE_PLAYERS).delete().eq('name', name);
-  if (error) {
-    markCloudError(error);
-    throw error;
+async function cloudDeletePlayer(playerOrName){
+  const obj = (playerOrName && typeof playerOrName === 'object') ? playerOrName : null;
+  const nmIn = obj ? String(obj.name||'').trim() : String(playerOrName||'').trim();
+  const id = obj && obj.id ? obj.id : null;
+  if (!nmIn && !id) throw new Error('Delete failed: missing player key');
+
+  let targetName = nmIn;
+  let q = sb.from(TABLE_PLAYERS).delete();
+
+  if (id) {
+    q = q.eq('id', id);
+  } else {
+    // Resolve exact stored name (case-insensitive) to avoid silent 0-row deletes
+    const resolved = await cloudResolvePlayerKeyByName(nmIn);
+    targetName = (resolved && resolved.name) ? resolved.name : nmIn;
+    q = q.eq('name', targetName);
   }
+
+  const { data, error } = await q.select('name').maybeSingle();
+  if (error) { markCloudError(error); throw error; }
+  if (!data) throw new Error('Delete failed: player not found');
   markCloudOk();
+
+  const nm = String((data && data.name) ? data.name : targetName).trim();
+
+  // Best-effort cleanup: remove name-linked rows so deleted players disappear from leaderboards/admin.
+  try{
+    const tasks = [];
+    try { tasks.push(sb.from(TABLE_HS_LEAGUE).delete().eq('name', nm)); } catch(_) {}
+    try { tasks.push(sb.from(TABLE_HS_PRACTICE).delete().eq('name', nm)); } catch(_) {}
+    // NOTE: Some deployments don't include PB/WR/Low-score tables.
+    // Keep Phase 1 conservative: only touch the tables we know exist.
+    if (tasks.length) await Promise.allSettled(tasks);
+  } catch(_) {}
 }
 
 async function cloudUpdatePlayerPassword(name, newPassword){
@@ -4681,8 +5127,14 @@ window.buildStartTicker = async function buildStartTicker(){
       .map(p => p.name);
   }
 
-  function setMarquee(track, msg){
+  function setMarquee(track, msg, mode){
     const safe = escHtml(msg);
+    // Bottom (yellow) ticker uses repeated spans for a seamless loop.
+    // Top (new players) ticker uses a single span and a CSS pause between runs.
+    if (mode === 'single'){
+      track.innerHTML = `<div class="marquee"><span>${safe}</span></div>`;
+      return;
+    }
     track.innerHTML = `<div class="marquee"><span>${safe}</span><span aria-hidden="true">${safe}</span><span aria-hidden="true">${safe}</span></div>`;
   }
 
@@ -4693,11 +5145,11 @@ window.buildStartTicker = async function buildStartTicker(){
     }
     const names = getNewPlayers(14);
     const msg = names.length
-      ? `NEW PLAYERS // ${names.join(', ')} // WELCOME TO SHATEKIS QUEST`
-      : `WELCOME TO SHATEKIS QUEST`;
+      ? `NEW PLAYERS // ${names.join(', ')} // WELCOME TO SHATEKI'S QUEST`
+      : `WELCOME TO SHATEKI'S QUEST`;
 
-    if (track1) setMarquee(track1, msg);
-    if (track2) setMarquee(track2, msg);
+    if (track1) setMarquee(track1, msg, 'repeat');
+    if (track2) setMarquee(track2, msg, 'single');
     if (wrap1) wrap1.classList.remove('hidden');
     if (wrap2) wrap2.classList.remove('hidden');
   }catch(e){
@@ -9117,35 +9569,6 @@ function openSingleGameScoreSheet(game, highlightIdx = -1){
 }
 
 
-function openAdminHub(){
-  const hub = byId('adminHubModal');
-  hub.classList.remove('hidden');
-
-  // Open sub-panels
-  byId('openHsLeagueAdmin').onclick   = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(false); };
-  byId('openHsPracticeAdmin').onclick = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(true); };
-  byId('openSavedPlayersAdminBtn').onclick = ()=>{ hub.classList.add('hidden'); openSavedPlayersAdminDialog(); };
-
-  // Remove deprecated backdate controls (if still present)
-  ['backfillAllBtn','backdateNextSaveBtn','clearBackdateBtn'].forEach(id => { const el = byId(id); if (el) el.remove(); });
-
-  // Ensure "All Games" button exists and opens the new dialog
-  (function ensureAllGamesBtn(){
-    const container = document.querySelector('#adminHubModal .modal-body') || hub;
-    let btn = byId('openAllGamesBtn');
-    if (!btn && container) {
-      btn = document.createElement('button');
-      btn.id = 'openAllGamesBtn';
-      btn.className = 'btn';
-      btn.textContent = 'All Games';
-      container.appendChild(btn);
-    }
-    if (btn) btn.onclick = ()=>{ hub.classList.add('hidden'); openAllGamesDialog(); };
-  })();
-
-  // Return to previous screen (just closes the modal)
-  byId('closeAdminHubBtn').onclick = ()=> hub.classList.add('hidden');
-}
 
 // ===== Public High Scores (League / Practice) =====
 if (typeof window.openScoreSheetFromHighScore !== 'function') {
@@ -9393,22 +9816,35 @@ async function openLeagueLowsAdminDialog(){
       }
     }catch(_){}
 
+      // >>> PATCH:MOT3_2_LLS_FILTER_SAVED START
+  let __llsSavedSet = null;
+  try{
+    const __ps = await (typeof cloudListPlayers === 'function' ? cloudListPlayers() : []);
+    __llsSavedSet = new Set((__ps||[]).map(p=>String(p?.name||'').trim().toLowerCase()).filter(Boolean));
+  }catch(_){ __llsSavedSet = null; }
+  // <<< PATCH:MOT3_2_LLS_FILTER_SAVED END
+
+// Derived low scores from official games (no dedicated table required)
     let rows = [];
     try{
-      const tableName = (typeof TABLE_LEAGUE_LOW_SCORES !== 'undefined' && TABLE_LEAGUE_LOW_SCORES)
-        ? TABLE_LEAGUE_LOW_SCORES
-        : 'league_low_scores';
-
-      const { data, error } = await sb
-        .from(tableName)
-        .select('name, score, ts')
-        .order('score', { ascending: true })
-        .order('ts',    { ascending: true })
-        .limit(1000);
-      if (error) throw error;
-      rows = data || [];
+      const games = await cloudFetchAllGamesAsLocal();
+      (games||[]).filter(isOfficialGame).forEach(g=>{
+        const ts = g.ts || g.created_at || g.inserted_at || (g.meta && (g.meta.ts || g.meta.date)) || null;
+        const players = Array.isArray(g.players) ? g.players : [];
+        const totals  = Array.isArray(g.totals)  ? g.totals  : [];
+        players.forEach((p,i)=>{
+          const name = (typeof p==='string') ? p : (p && p.name) ? p.name : '';
+          if (!name) return;
+          const __k = String(name).trim().toLowerCase();
+          const __savedSet = (typeof __llsSavedSet !== "undefined" ? __llsSavedSet : (window.__llsSavedSet || null));
+          if (__savedSet && !__savedSet.has(__k)) return;
+          rows.push({ name, score: Number(totals[i]||0), ts, __game: g });
+        });
+      });
+      rows.sort((a,b)=> (a.score-b.score) || (Date.parse(a.ts||'')-Date.parse(b.ts||'')));
+      rows = rows.slice(0, 50);
     }catch(e){
-      console.error('League low scores fetch failed', e);
+      console.error('League low scores derived fetch failed', e);
       const p = document.createElement('p');
       p.textContent = 'Failed to load league low scores.';
       body.appendChild(p);
@@ -9455,13 +9891,9 @@ async function openLeagueLowsAdminDialog(){
             ? TABLE_LEAGUE_LOW_SCORES
             : 'league_low_scores';
 
-          let q = sb.from(tableName)
-            .delete()
-            .eq('name', String(row.name || ''))
-            .eq('score', Number(row.score || 0));
-          if (row.ts) q = q.eq('ts', row.ts);
-          const { error } = await q;
-          if (error) throw error;
+          // Derived list: delete the underlying game instead
+          if (!row.__game) throw new Error('Missing game for delete');
+          await cloudDeleteGameCascade(Object.assign({}, row.__game, { ts: row.ts }));// >>> PATCH:MOT3_2_LLS_DELETE_TS
 
           if (typeof toast === 'function') toast('Deleted');
           await render();
@@ -9505,6 +9937,15 @@ async function openAllGamesDialog(){
   const body    = document.createElement('div'); body.className='modal-body';
   const footer  = document.createElement('div'); footer.className='modal-footer';
 
+  // >>> PATCH:MOT3_2_ALLGAMES_TOTS START
+  const toTS = (g)=>{
+    const t = g?.ts || g?.created_at || g?.inserted_at || (g?.meta && (g.meta.ts || g.meta.date)) || null;
+    const n = t ? Date.parse(t) : NaN;
+    return Number.isFinite(n) ? n : 0;
+  };
+  // <<< PATCH:MOT3_2_ALLGAMES_TOTS END
+
+
   // Header with filter controls (top-right)
   const header = document.createElement('div');
   header.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:8px;';
@@ -9547,60 +9988,54 @@ async function openAllGamesDialog(){
   async function render(){
     body.innerHTML = '';
 
-    // Merge cloud + synthetic (extend beyond any cloud page limits)
+    // Build list (cloud games only; no synthetic backfill here to avoid duplicates)
     let cloudGames = [];
-    try { cloudGames = await cloudFetchAllGamesAsLocal(); } catch(e){ console.error(e); }
+    try { cloudGames = await cloudFetchAllGamesAsLocal(); } catch(e){ console.error(e); cloudGames = []; }
 
-    let synthGames = [];
-    try {
-      if (typeof cloudSynthAllGamesFromHighScores === 'function') {
-        synthGames = await cloudSynthAllGamesFromHighScores(2000);
-      }
-    } catch(e){ console.warn('synth backfill failed', e); }
-
-    const toTS = (g)=> {
-      const t = g?.ts || g?.created_at || g?.inserted_at || (g?.meta && (g.meta.ts || g.meta.date)) || null;
-      const n = t ? Date.parse(t) : NaN;
-      return Number.isFinite(n) ? n : 0;
+    // >>> PATCH:MOT3_3_ALLGAMES_FILTER_ACTIVE_START
+    const saved = await getSavedSet();
+    const isActiveName = (nm)=>{
+      const k = String(nm||'').trim().toLowerCase();
+      return (!saved || !saved.size) ? true : saved.has(k);
     };
-
-    const stableKey = (g) => {
-      const names = (g?.players || [])
-        .map(p => (typeof p === 'string' ? p : (p && p.name) || ''))
-        .map(s => String(s || '').trim().toLowerCase())
-        .filter(Boolean);
-      return [String(toTS(g)), names.join(','), (g?.totals || []).join(',')].join('|');
-    };
-
-    // Cloud wins over synth; both over any local (reads are cloud-only anyway)
-    const map = new Map();
-    (cloudGames || []).forEach(g => { if (!g) return; map.set(stableKey(g), g); });
-    (synthGames || []).forEach(g => { if (!g) return; const k = stableKey(g); if (!map.has(k)) map.set(k, g); });
-
-    let games = Array.from(map.values());
-
-    // Build saved players set for robust Official/Practice classification
-    const sset = await getSavedSet();
-    const savedAvailable = !!(sset && sset.size);
-
-    games = (games || [])
-      .filter(Boolean)
-      .sort((a,b)=> toTS(b) - toTS(a))
-      .filter(g => {
-        const names = (g.players || [])
-          .map(p => (typeof p === 'string' ? p : (p && p.name) || ''))
-          .map(s => String(s || '').trim())
-          .filter(Boolean);
-        if (!savedAvailable) {
-          // Fallback: if we can't tell saved vs guest, treat 2+ players as Official
-          const officialSimple = names.length >= 2;
-          return (filterMode === 'official') ? officialSimple : !officialSimple;
-        }
-        const savedCount = names.reduce((acc,n)=> acc + (sset.has(n.toLowerCase()) ? 1 : 0), 0);
-        const isOfficial = (names.length >= 2 && savedCount >= 2);
-        const isPractice = (names.length === 1) || (savedCount < 2);
-        return (filterMode === 'official') ? isOfficial : isPractice;
+    const gameHasOnlyActivePlayers = (g)=>{
+      const pls = Array.isArray(g?.players) ? g.players : [];
+      if (!pls.length) return false;
+      return pls.every(p=>{
+        const nm = (typeof p === 'string') ? p : (p && p.name) ? p.name : '';
+        return nm ? isActiveName(nm) : false;
       });
+    };
+
+    let gamesAll = (cloudGames || []).filter(Boolean).sort((a,b)=> toTS(b) - toTS(a));
+    let games = gamesAll.filter(g => (filterMode === 'official') ? isOfficialGame(g) : isPracticeGame(g));
+    if (saved && saved.size) games = games.filter(gameHasOnlyActivePlayers);
+
+    // If there are no practice games in TABLE_GAMES, synth from practice high-scores table.
+    if (filterMode === 'practice' && !games.length) {
+      try {
+        if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) throw new Error('Cloud not initialised');
+        const practiceTbl = (typeof TABLE_HS_PRACTICE !== 'undefined' ? TABLE_HS_PRACTICE : 'high_scores_sp');
+        const { data, error } = await sb
+          .from(practiceTbl)
+          .select('name, score, ts')
+          .order('ts', { ascending: false })
+          .limit(500);
+        if (error) throw error;
+        const synth = (data || []).map(r => ({
+          ts: r.ts || null,
+          players: [{ name: r.name }],
+          totals: [Number(r.score) || 0],
+          board: null,
+          __synth: true
+        }));
+        games = synth.sort((a,b)=> toTS(b) - toTS(a));
+        if (saved && saved.size) games = games.filter(gameHasOnlyActivePlayers);
+      } catch (e) {
+        console.error('All Games practice synth failed', e);
+      }
+    }
+    // <<< PATCH:MOT3_3_ALLGAMES_FILTER_ACTIVE_END
 
     if (!games.length){
       const p=document.createElement('p'); p.textContent='No games found.'; body.appendChild(p); return;
@@ -9634,7 +10069,7 @@ async function openAllGamesDialog(){
       const td2 = document.createElement('td');
       const tsVal = g.ts || g.created_at || g.inserted_at || (g.meta && (g.meta.ts || g.meta.date)) || null;
       td2.textContent = (window.fmtWhen && tsVal) ? window.fmtWhen(tsVal) : '';
-      const td3=document.createElement('td'); td3.textContent=(g.players||[]).map(p=>p?.name||'').join(', ');
+      const td3=document.createElement('td'); td3.textContent=(g.players||[]).map(p=> (typeof p==='string'?p:(p&&p.name)||'')).filter(Boolean).join(', ');
       const td4=document.createElement('td'); td4.textContent=(g.totals||[]).join(' · ');
 
       // Delete button as last column
@@ -10827,9 +11262,14 @@ values.forEach((v, i) => {
   window.formatGameResultLine = function formatGameResultLine(g){
     if (!g) return '';
 
-    const players = (g.players || []).map(p =>
-      (p && typeof p === 'object' && 'name' in p) ? p.name : String(p || '')
-    );
+    const alias = (typeof window !== 'undefined' && typeof window.__sqApplyPlayerAlias === 'function')
+      ? window.__sqApplyPlayerAlias
+      : (x)=>x;
+
+    const players = (g.players || []).map(p => {
+      const nm = (p && typeof p === 'object' && 'name' in p) ? p.name : String(p || '');
+      return alias(nm);
+    });
     const totals  = Array.isArray(g.totals) ? g.totals : [];
 
     const ordered = players
@@ -11385,299 +11825,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   try { arrangeStartActions(); } catch(_) {}
 });
-// ===== FINAL OVERRIDE: Admin Hub opener (safe + id compatible) =====
-window.openAdminHub = function openAdminHub(){
-  const hub = document.getElementById('adminHubModal');
-  if (!hub) return;
-  hub.classList.remove('hidden');
-
-  const bind = (id, fn) => {
-    const el = document.getElementById(id);
-    if (el) el.onclick = fn;
-  };
-
-  // All Games
-  bind('openAllGamesBtn', () => {
-    hub.classList.add('hidden');
-    if (typeof openAllGamesDialog === 'function') openAllGamesDialog();
-  });
-
-  // High scores (league / practice)
-  bind('openHsLeagueAdmin',   () => { hub.classList.add('hidden'); if (typeof openHighScoresAdminDialog === 'function') openHighScoresAdminDialog(false); });
-  bind('openHsPracticeAdmin', () => { hub.classList.add('hidden'); if (typeof openHighScoresAdminDialog === 'function') openHighScoresAdminDialog(true);  });
-
-  // League Low Scores (admin)
-  bind('openLeagueLowsAdminBtn', () => {
-    hub.classList.add('hidden');
-    if (typeof openLeagueLowsAdminDialog === 'function') openLeagueLowsAdminDialog();
-  });
-  bind('openLeagueLowsAdmin', () => {
-    hub.classList.add('hidden');
-    if (typeof openLeagueLowsAdminDialog === 'function') openLeagueLowsAdminDialog();
-  });
-
-  // Saved Players Admin — supports legacy ID too
-  const spa = document.getElementById('openSavedPlayersAdminBtn') || document.getElementById('openSavedPlayersAdmin');
-  if (spa) spa.onclick = () => {
-    hub.classList.add('hidden');
-    if (typeof openSavedPlayersAdminDialog === 'function') openSavedPlayersAdminDialog();
-  };
-
-  // PB / GR Admin (support both legacy/new IDs)
-  bind('openPBGRAdminBtn', () => {
-    hub.classList.add('hidden');
-    if (typeof openPBGRAdminDialog === 'function') openPBGRAdminDialog();
-  });
-  bind('openPBGRAdmin', () => {
-    hub.classList.add('hidden');
-    if (typeof openPBGRAdminDialog === 'function') openPBGRAdminDialog();
-  });
-  
-  // ===== PB / GR Admin dialog =====
-async function openPBGRAdminDialog(){
-  const modal = document.getElementById('pbgrAdminModal');
-  const globalHost = document.getElementById('pbgrGlobal');
-  const playerHost = document.getElementById('pbgrPlayer');
-  const sel = document.getElementById('pbgrPlayerSelect');
-  const back = document.getElementById('pbgrBackBtn');
-  const close = document.getElementById('pbgrCloseBtn');
-  const refresh = document.getElementById('pbgrRefreshBtn');
-    const backfill = document.getElementById('pbgrBackfillBtn');
-  if (backfill){
-    backfill.onclick = async ()=>{
-      backfill.disabled = true;
-      try{
-        const res = await backfillPBGRToCloud();
-        toast(`Backfill complete – PB rows: ${res.pbRows}, WR rows: ${res.wrRows}`);
-      }catch(e){
-        console.error(e);
-        toast('Backfill failed — see console');
-      }finally{
-        backfill.disabled = false;
-      }
-    };
-  }
-  if (!modal || !globalHost || !playerHost || !sel) return;
-
-  modal.classList.remove('hidden');
-
-  back.onclick = () => { modal.classList.add('hidden'); openAdminHub(); };
-  close.onclick = () => { modal.classList.add('hidden'); };
-  refresh.onclick = async () => { await refreshPBGRCloud(); await renderAll(); };
-
-  async function renderGlobal(){
-    const snap = await getPBGRSnapshot();
-    const order = [...Array.from({length:11},(_,i)=>10+i), 'D','T','B'];
-    const table = document.createElement('table'); table.className='hs-table';
-    const thead = document.createElement('thead');
-    const hr = document.createElement('tr');
-    ['Round','WR','Holder','Actions'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; hr.appendChild(th); });
-    thead.appendChild(hr); table.appendChild(thead);
-    const tbody = document.createElement('tbody');
-
-    for (const key of order){
-      const meta = snap.byTargetMeta[key] || { val:0, player:'' };
-      const tr = document.createElement('tr');
-      const tdR = document.createElement('td'); tdR.textContent = String(key);
-      const tdV = document.createElement('td'); tdV.textContent = String(meta.val||0);
-      const tdN = document.createElement('td'); tdN.textContent = meta.player ? meta.player : '—';
-      const tdA = document.createElement('td');
-      const delBtn = document.createElement('button'); delBtn.className='btn small danger'; delBtn.textContent='Delete';
-      delBtn.disabled = !(meta && meta.game_id!=null && meta.ridx!=null && meta.player);
-      delBtn.onclick = async ()=>{
-        if (!confirm(`Delete WR for ${key} held by ${meta.player} (${meta.val})? This will delete the underlying round from cloud.`)) return;
-        try{
-          await cloudDeleteRound(meta.game_id, meta.player, meta.ridx);
-          await refreshPBGRCloud();
-          await renderAll();
-          toast('Deleted.');
-        }catch(e){ console.error(e); toast('Delete failed'); }
-      };
-      tdA.appendChild(delBtn);
-      tr.append(tdR, tdV, tdN, tdA); tbody.appendChild(tr);
-    }
-    table.appendChild(tbody);
-    globalHost.innerHTML = '';
-    globalHost.appendChild(table);
-  }
-
-  async function populatePlayers(){
-    sel.innerHTML = '<option value="">Select a saved player…</option>';
-    try{
-      const players = await cloudListPlayers();
-      players.forEach(p=>{
-        const opt = document.createElement('option');
-        opt.value = p.name; opt.textContent = p.name;
-        sel.appendChild(opt);
-      });
-    }catch(_){}
-  }
-
-  async function renderPlayer(name){
-    const snap = await getPBGRSnapshot();
-    const nk = (name||'').trim().toLowerCase();
-    const metaMap = snap.byPlayerMeta.get(nk) || {};
-    const order = [...Array.from({length:11},(_,i)=>10+i), 'D','T','B'];
-
-    const table = document.createElement('table'); table.className='hs-table';
-    const thead = document.createElement('thead');
-    const hr = document.createElement('tr');
-    ['Round','PB','Actions'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; hr.appendChild(th); });
-    thead.appendChild(hr); table.appendChild(thead);
-    const tbody = document.createElement('tbody');
-
-    order.forEach(key=>{
-      const m = metaMap[key];
-      const tr = document.createElement('tr');
-      const tdR = document.createElement('td'); tdR.textContent = String(key);
-      const tdV = document.createElement('td'); tdV.textContent = m ? String(m.val||0) : '0';
-      const tdA = document.createElement('td');
-      const delBtn = document.createElement('button'); delBtn.className='btn small danger'; delBtn.textContent='Delete';
-      delBtn.disabled = !(m && m.game_id!=null && m.ridx!=null);
-      delBtn.onclick = async ()=>{
-        if (!confirm(`Delete ${name}'s PB for ${key} (${m.val})?`)) return;
-        try{
-          await cloudDeleteRound(m.game_id, name, m.ridx);
-          await refreshPBGRCloud();
-          await renderAll();
-          toast('Deleted.');
-        }catch(e){ console.error(e); toast('Delete failed'); }
-      };
-      tdA.appendChild(delBtn);
-      tr.append(tdR, tdV, tdA); tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    playerHost.innerHTML = '';
-    playerHost.appendChild(table);
-  }
-  // Backfill PB/WR to cloud tables from current snapshot (saved players, official games only)
-  async function backfillPBGRToCloud(){
-    // Use the existing snapshot builder; if missing, abort
-    const snap = await (typeof getPBGRSnapshot === 'function' ? getPBGRSnapshot() : null);
-    if (!snap){ throw new Error('PB/GR snapshot unavailable'); }
-
-    // Map saved player lower-case -> canonical case
-    let saved = [];
-    try { saved = await cloudListPlayers(); } catch(_){}
-    const nameMap = new Map((saved||[]).map(p => [String(p.name).trim().toLowerCase(), String(p.name)]));
-
-    // Build PB rows (per player per category)
-    const pbRows = [];
-    if (snap.byPlayerMeta && typeof snap.byPlayerMeta.forEach === 'function'){
-      snap.byPlayerMeta.forEach((metaMap, nameKey) => {
-        const playerName = nameMap.get(nameKey) || nameKey;
-        Object.keys(metaMap||{}).forEach(cat => {
-          const m = metaMap[cat];
-          if (!m || !m.val) return;
-          pbRows.push({
-            player: playerName,
-            cat: String(cat),                 // '10'..'20','D','T','B'
-            val: Number(m.val)||0,            // round total
-            game_id: m.game_id || null,
-            ridx: (typeof m.ridx==='number')?m.ridx:null,
-            ts: m.ts || null
-          });
-        });
-      });
-    }
-
-    // Build WR rows (global best per category)
-    const wrRows = [];
-    const meta = snap.byTargetMeta || {};
-    Object.keys(meta).forEach(cat => {
-      const m = meta[cat];
-      if (!m || !m.val) return;
-      const proper = nameMap.get(String(m.player||'').trim().toLowerCase()) || m.player || '';
-      wrRows.push({
-        cat: String(cat),
-        val: Number(m.val)||0,
-        player: proper,
-        game_id: m.game_id || null,
-        ridx: (typeof m.ridx==='number')?m.ridx:null,
-        ts: m.ts || null
-      });
-    });
-
-    // Try upsert; if not available (no unique constraint), fallback to delete+insert
-    async function tryUpsert(table, rows, conflictCols){
-      if (!rows.length) return 0;
-      try{
-        const { error } = await sb.from(table).upsert(rows, { onConflict: conflictCols });
-        if (error) throw error;
-        return rows.length;
-      }catch(e){
-        const keys = (conflictCols||'').split(',').map(s=>s.trim()).filter(Boolean);
-        for (const r of rows){
-          try{
-            const match = {}; keys.forEach(k => { match[k] = r[k]; });
-            await sb.from(table).delete().match(match);
-          }catch(_){}
-          try{ await sb.from(table).insert(r); }catch(_){}
-        }
-        return rows.length;
-      }
-    }
-
-    const pbCount = await tryUpsert(TABLE_PB_ROUNDS, pbRows, 'player,cat');
-    const wrCount = await tryUpsert(TABLE_WR_ROUNDS, wrRows, 'cat');
-
-    if (typeof markCloudOk === 'function') markCloudOk();
-    return { pbRows: pbCount, wrRows: wrCount };
-  }
-  sel.onchange = ()=>{ const v = sel.value || ''; if (v) renderPlayer(v); else playerHost.innerHTML=''; };
-
-  async function renderAll(){
-    await renderGlobal();
-    await populatePlayers();
-    const v = sel.value || '';
-    if (v) await renderPlayer(v); else playerHost.innerHTML='';
-  }
-
-  await renderAll();
-}
-
-async function cloudDeleteRound(game_id, playerName, round_index){
-  const { error } = await sb
-    .from(TABLE_GAME_THROWS)
-    .delete()
-    .eq('game_id', game_id)
-    .eq('player', playerName)
-    .eq('round_index', round_index);
-  if (error) throw error;
-  markCloudOk();
-}
-
-  // Ensure a 'Recover HS (24h)' button exists and is wired
-  (function ensureRecoverHsBtn(){
-    const container = hub.querySelector('.modal-body') || hub;
-    let btn = document.getElementById('recoverHs24hBtn');
-    if (!btn && container) {
-      btn = document.createElement('button');
-      btn.id = 'recoverHs24hBtn';
-      btn.className = 'btn';
-      btn.textContent = 'Recover HS (24h)';
-      container.appendChild(btn);
-    }
-    if (btn) {
-      btn.onclick = async () => {
-        const old = btn.textContent;
-        btn.disabled = true; btn.textContent = 'Recovering…';
-        try {
-          const res = await recoverHighScoresFromCloudWindow(24);
-          toast(`Recovered: ${res.inserted} rows (scanned ${res.scanned}, skipped ${res.skipped})`);
-        } catch (e) {
-          console.error(e);
-          toast('Recovery failed — see console');
-        } finally {
-          btn.disabled = false; btn.textContent = old;
-        }
-      };
-    }
-  })();
-
-  // Return
-  bind('closeAdminHubBtn', () => { hub.classList.add('hidden'); });
-};
 
 // ===== FINAL OVERRIDE: Cloud pill — dot-only indicator =====
 // Replaces any previous setCloudStatus to remove text and show a single coloured dot.
@@ -12283,7 +12430,13 @@ const colNum   = document.createElement('col');  colNum.style.width  = '3.5ch';
 
   const backBtn  = document.createElement('button'); backBtn.className  = 'btn'; backBtn.textContent  = 'Back';
   const closeBtn = document.createElement('button'); closeBtn.className = 'btn'; closeBtn.textContent = 'Close';
-  backBtn.onclick  = () => overlay.remove();
+  backBtn.onclick  = () => {
+    overlay.remove();
+    if (window.__sqNavContext === 'admin' && typeof window.openAdminHub === 'function') {
+      try { if (window.__sqLeagueOverlay && window.__sqLeagueOverlay.remove) window.__sqLeagueOverlay.remove(); } catch(_) {}
+      try { window.openAdminHub(); } catch(_) {}
+    }
+  };
   closeBtn.onclick = () => overlay.remove();
   footer.append(backBtn, closeBtn);
 
@@ -12317,6 +12470,7 @@ const colNum   = document.createElement('col');  colNum.style.width  = '3.5ch';
 // League / Rankings popup (Power League + High Score League)
 window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  try { window.__sqLeagueOverlay = overlay; } catch(_) {}
   const modal   = document.createElement('div'); modal.className   = 'modal';
   const body    = document.createElement('div'); body.className    = 'modal-body';
   const footer  = document.createElement('div'); footer.className  = 'modal-footer';
@@ -12474,6 +12628,25 @@ if (typeof sb === 'undefined'
   throw new Error('Cloud tables not configured');
 }
 
+  // Robust timestamp parsing (Safari is strict; Supabase often returns: "YYYY-MM-DD HH:MM:SS.sss+00")
+  const parseMs = (ts) => {
+    if (!ts) return 0;
+    if (typeof ts === 'number') return ts;
+    let s = String(ts).trim();
+    // "2026-01-18 13:53:52.437+00" -> "2026-01-18T13:53:52.437+00:00"
+    if (/^\d{4}-\d{2}-\d{2}\s/.test(s) && !s.includes('T')) s = s.replace(' ', 'T');
+    // Add missing minutes in offset: "+00" -> "+00:00", "-05" -> "-05:00"
+    if (/[+-]\d{2}$/.test(s)) s = s + ':00';
+    // Insert colon in offset: "+0000" -> "+00:00"
+    if (/[+-]\d{4}$/.test(s) && !/[+-]\d{2}:\d{2}$/.test(s)) s = s.replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
+    let ms = Date.parse(s);
+    if (!Number.isFinite(ms)) {
+      // Last-ditch: treat as UTC if it looks like an ISO datetime without zone.
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(s)) ms = Date.parse(s + 'Z');
+    }
+    return Number.isFinite(ms) ? ms : 0;
+  };
+
   // Saved players (case-insensitive)
   let saved = [];
   try { if (typeof cloudListPlayers === 'function') saved = await cloudListPlayers(); } catch(_){}
@@ -12609,8 +12782,8 @@ if (!roundsList.length) return []; // nothing to compute
 
  // 4) Chronologically order rounds (oldest → newest)
 roundsList.sort((a, b) => {
-  const ta = a.ts ? Date.parse(a.ts) : 0;
-  const tb = b.ts ? Date.parse(b.ts) : 0;
+  const ta = a.ts ? parseMs(a.ts) : 0;
+  const tb = b.ts ? parseMs(b.ts) : 0;
   if (ta !== tb) return ta - tb;
   if (a.gid !== b.gid) return (a.gid < b.gid ? -1 : 1);
   return a.ridx - b.ridx;
@@ -12641,8 +12814,8 @@ roundsList.sort((a, b) => {
     const avg   = total / count;
 
     const lastTs = rec.lastTs || null;
-    const lastMs = lastTs ? Date.parse(lastTs) : 0;
-    const inactive = (!lastMs) || (lastMs < cutoffMs);
+    const lastMs = lastTs ? parseMs(lastTs) : 0;
+    const inactive = (lastMs > 0) && (lastMs < cutoffMs);
 
     const qualifiesBase = count >= MIN_ROUNDS;
     const qualifies = qualifiesBase && !inactive;
@@ -12657,8 +12830,8 @@ roundsList.sort((a, b) => {
     if (a.qualifies !== b.qualifies) return a.qualifies ? -1 : 1;
     if (b.avg !== a.avg) return b.avg - a.avg;
     if ((b.rounds || 0) !== (a.rounds || 0)) return (b.rounds || 0) - (a.rounds || 0);
-    const ta = a.ts ? Date.parse(a.ts) : 0;
-    const tb = b.ts ? Date.parse(b.ts) : 0;
+    const ta = a.ts ? parseMs(a.ts) : 0;
+    const tb = b.ts ? parseMs(b.ts) : 0;
     if (tb !== ta) return tb - ta;
     return String(a.name || '').localeCompare(String(b.name || ''));
   });
@@ -12954,9 +13127,9 @@ body.style.overflowY = 'visible';
       id: 'TODAY',
       label: 'TODAY',
       match: (ts) => {
-        if (!ts) return false;
-        const dt = new Date(ts);
-        if (Number.isNaN(dt.getTime())) return false;
+        const ms = parseMs(ts);
+        if (!Number.isFinite(ms)) return false;
+        const dt = new Date(ms);
         const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
         return dt >= start && dt < end;
@@ -12974,9 +13147,9 @@ body.style.overflowY = 'visible';
         id: `M${year}-${String(month + 1).padStart(2,'0')}`,
         label,
         match: (ts) => {
-          if (!ts) return false;
-          const dt = new Date(ts);
-          if (Number.isNaN(dt.getTime())) return false;
+          const ms = parseMs(ts);
+          if (!Number.isFinite(ms)) return false;
+          const dt = new Date(ms);
           return dt.getFullYear() === year && dt.getMonth() === month;
         }
       });
@@ -12995,9 +13168,9 @@ body.style.overflowY = 'visible';
         id: `Y${y}`,
         label: String(y),
         match: (ts) => {
-          if (!ts) return false;
-          const dt = new Date(ts);
-          if (Number.isNaN(dt.getTime())) return false;
+          const ms = parseMs(ts);
+          if (!Number.isFinite(ms)) return false;
+          const dt = new Date(ms);
           return dt.getFullYear() === y;
         }
       });
@@ -13055,7 +13228,8 @@ const wrap = document.createElement('div');
 
   // small helper
   const monthLabel = (ts)=>{
-    const d = ts ? new Date(ts) : null;
+    const ms = parseMs(ts);
+    const d = Number.isFinite(ms) ? new Date(ms) : null;
     if (!d || Number.isNaN(d.getTime())) return '';
     return d.toLocaleString('en-GB', { month:'short', year:'numeric' }).toUpperCase();
   };
@@ -13065,7 +13239,7 @@ const wrap = document.createElement('div');
     const ordered = (rows || [])
       .map(r => ({ name: String(r.player||'').trim(), score: Number(r.score||0), ts: r.ts }))
       .filter(x => x.name && Number.isFinite(x.score))
-      .sort((a,b) => (b.score - a.score) || (new Date(a.ts) - new Date(b.ts)));
+      .sort((a,b) => (b.score - a.score) || ((parseMs(a.ts) || 0) - (parseMs(b.ts) || 0)));
     const seen = new Set(); const out = [];
     for (const r of ordered){
       if (!seen.has(r.score)) { seen.add(r.score); out.push(r); }
@@ -13096,7 +13270,7 @@ const wrap = document.createElement('div');
   // Require at least 3 games in that month
   rowsM = rowsM.filter(r => (r.games || 0) >= MIN_MONTHLY_GAMES);
 
-  rowsM.sort((a,b)=> (b.avg - a.avg) || (new Date(a.ts) - new Date(b.ts)));
+  rowsM.sort((a,b)=> (b.avg - a.avg) || ((parseMs(a.ts) || 0) - (parseMs(b.ts) || 0)));
   const seen = new Set(); const out = [];
   for (const r of rowsM){
     const k = r.avg.toFixed(3);
@@ -13138,7 +13312,7 @@ const topCareerAvg = (() => {
 
 
   // Sort by avg desc, then by earliest ts (stable)
-  list.sort((a, b) => (b.avg - a.avg) || (new Date(a.ts) - new Date(b.ts)));
+  list.sort((a, b) => (b.avg - a.avg) || ((parseMs(a.ts) || 0) - (parseMs(b.ts) || 0)));
 
   // Take top 3 distinct averages (treat near-equals as same)
   const seen = new Set(); const out = [];
@@ -13222,7 +13396,8 @@ section('Highest All Time Averages',
   function renderTable(rows, filter, prevFilter) {
     // Qualification thresholds
 const MIN_MONTHLY_GAMES = 3;
-const MIN_ALLTIME_GAMES = 5;
+const MIN_YEAR_GAMES = 10;
+const MIN_ALLTIME_GAMES = 15;
     const filtered = rows.filter(r => {
       if (!r || !r.player) return false;
       const score = Number(r.score || 0);
@@ -13258,7 +13433,15 @@ const MIN_ALLTIME_GAMES = 5;
       byPlayer.set(name, existing);
     });
     
-const threshold = (!filter || filter.id === 'ALL') ? MIN_ALLTIME_GAMES : MIN_MONTHLY_GAMES;
+// Determine qualification threshold by filter:
+// - ALL TIME: 15 games
+// - Year (e.g. 2025/2026): 10 games
+// - Monthly: 3 games
+const threshold = (() => {
+  if (!filter || filter.id === 'ALL') return MIN_ALLTIME_GAMES;
+  if (/^Y\d{4}$/.test(filter.id)) return MIN_YEAR_GAMES;
+  return MIN_MONTHLY_GAMES;
+})();
 
 const rowsOut = Array.from(byPlayer.values())
   .map(p => {
@@ -13372,6 +13555,9 @@ monthlyAgg.forEach((v, key) => {
         prevFiltered.forEach(r => {
           const name = String(r.player || '').trim();
           if (!name) return;
+          const __k = String(name).trim().toLowerCase();
+          const __savedSet = (typeof __llsSavedSet !== "undefined" ? __llsSavedSet : (window.__llsSavedSet || null));
+          if (__savedSet && !__savedSet.has(__k)) return;
           const score = Number(r.score || 0);
           if (!Number.isFinite(score)) return;
 
@@ -13473,10 +13659,10 @@ rowsOut.forEach((p) => {
   if (!qualifies) {
     tr.classList.add('muted');
     tr.style.opacity = '0.6';
-    const need = (!filter || filter.id === 'ALL')
-      ? Math.max(0, 5 - (p.games || 0))
-      : Math.max(0, 3 - (p.games || 0));
-    tr.title = need ? `Needs ${need} more game${need===1?'':'s'} to qualify` : 'Unqualified';
+    const need = Math.max(0, threshold - (p.games || 0));
+    tr.title = need
+      ? `Needs ${need} more game${need===1?'':'s'} to qualify (min ${threshold})`
+      : `Unqualified (min ${threshold})`;
   }
 
   const tdRank = document.createElement('td');
@@ -13647,7 +13833,30 @@ async function openLatestScoresDialog(){
       return Number.isFinite(n) ? n : 0;
     };
 
-    games = (games || []).filter(Boolean).sort((a,b)=> toTS(b) - toTS(a)).slice(0, 10);
+    games = (games || []).filter(Boolean).sort((a,b)=> toTS(b) - toTS(a));
+
+    // Phase 1 IDs: hide deleted players from the Latest Scores list (match history remains in DB).
+    try {
+      let activeSet = window.__sqActivePlayerNameSet;
+      if (!(activeSet instanceof Set) && typeof cloudListPlayers === 'function') {
+        await cloudListPlayers();
+        activeSet = window.__sqActivePlayerNameSet;
+      }
+      const alias = (typeof window !== 'undefined' && typeof window.__sqApplyPlayerAlias === 'function')
+        ? window.__sqApplyPlayerAlias
+        : (x)=>x;
+
+      if (activeSet instanceof Set && activeSet.size) {
+        games = games.filter(g => {
+          const names = (g?.players || []).map(p => (p && typeof p === 'object' && 'name' in p) ? p.name : String(p || ''));
+          const mapped = names.map(n => String(alias(n) || '').trim().toLowerCase()).filter(Boolean);
+          if (!mapped.length) return false;
+          return mapped.every(n => activeSet.has(n));
+        });
+      }
+    } catch (_) {}
+
+    games = games.slice(0, 10);
 
     if (!games.length){
       const p = document.createElement('p');
@@ -13719,7 +13928,8 @@ async function openLatestScoresDialog(){
       } else {
         const tsVal = g.ts || g.created_at || g.inserted_at || (g.meta && (g.meta.ts || g.meta.date)) || null;
         if (tsVal) {
-          const d = new Date(tsVal);
+          const ms = parseMs(tsVal);
+        const d = Number.isFinite(ms) ? new Date(ms) : null;
           tdWhen.textContent = !Number.isNaN(d.getTime())
             ? d.toLocaleString(undefined,{ year:'2-digit', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })
             : '';
@@ -14475,6 +14685,8 @@ async function __fetchThrowsForGames(gameIds){
 
   // Candidate tables to try (put your real table first if you know it)
   const tableCandidates = [
+    // Prefer the canonical backdated view if it exists
+    'throw_events_v', 'throw_events',
     (typeof TABLE_GAME_THROWS !== 'undefined') ? TABLE_GAME_THROWS : 'game_throws',
     'throws', 'shots', 'game_shots', 'game_darts'
   ];
@@ -14618,6 +14830,8 @@ window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDia
   closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
 
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+
+  function closeToHub(){ overlay.remove(); }
   overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
     overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
   modal.tabIndex=0; modal.focus();
@@ -14678,6 +14892,8 @@ window.openPlayerHighScoresDialog = async function openPlayerHighScoresDialog(pl
   closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
 
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+
+  function closeToHub(){ overlay.remove(); }
   overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
     overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
   modal.tabIndex=0; modal.focus();
@@ -14979,19 +15195,9 @@ const title   = document.createElement('h3');  title.textContent=`Target Hit % �
   modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
   body .style.maxHeight='none'; body .style.overflowY='visible';
 
-// Collect game IDs from player_games (official only), fallback to official games if needed
+// Collect game IDs from official games only.
+// (Avoid querying player_games_union here — its schema varies and causes noisy 400s.)
 let ids = [];
-try {
-  const { data: pg } = await sb
-    .from(TABLE_PLAYER_GAMES)
-    .select('game_id, is_practice')
-    .eq('player', name)
-    .eq('is_practice', false)
-    .order('game_id', { ascending: true })
-    .limit(5000);
-  ids = (pg || []).map(r => r.game_id).filter(Boolean);
-} catch (_) {}
-
 if (!ids.length) {
   const games = (await __fetchOfficialGames(50000)).map(__normalizeGame);
   ids = games
@@ -15020,10 +15226,43 @@ if (!throwsRows.length) {
 
   const pctArr = taken.map((n,i)=> n ? (100*hits[i]/n) : 0);
 
+  // Rank (within this player's own targets): higher % => better
+  const playerRankMap = new Map(
+    pctArr
+      .map((pct,i)=>({i,pct:Number(pct)||0,n:taken[i],h:hits[i]}))
+      .filter(x=>x.n>0)
+      .sort((a,b)=> (b.pct-a.pct) || (b.h-a.h) || (b.n-a.n) || (a.i-b.i))
+      .map((x,idx)=>[x.i, idx+1])
+  );
+
+  // Game Rank (across all players): prefer Supabase view (server-derived, backdated)
+  const gameRankByKey = new Map(); // key -> game_rank
+  try{
+    const { data: grRows, error: grErr } = await sb
+      .from('player_hit_bucket_ranks_v')
+      .select('bucket_key, game_rank')
+      .eq('player_name', name);
+    if (grErr) throw grErr;
+    (grRows||[]).forEach(r=>{
+      const k = String(r.bucket_key||'').trim().toUpperCase();
+      const v = Number(r.game_rank);
+      if (k) gameRankByKey.set(k, Number.isFinite(v) ? v : null);
+    });
+  }catch(e){
+    console.warn('Game Rank view not available (player_hit_bucket_ranks_v).', e);
+  }
+
+
 
   const table=document.createElement('table'); table.className='hs-table';
   const thead=document.createElement('thead'); const trh=document.createElement('tr');
-  ['Round','Throws','Hits','%'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);});  thead.appendChild(trh); table.appendChild(thead);
+  ['Round','Throws','Hits','%','Rank','Game Rank'].forEach(h=>{
+    const th=document.createElement('th');
+    if (h === 'Game Rank') th.innerHTML = 'Game<br>Rank';
+    else th.textContent=h;
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh); table.appendChild(thead);
   const tbody=document.createElement('tbody');
    for (let i=0;i<14;i++){
     const tr=document.createElement('tr');
@@ -15032,11 +15271,23 @@ if (!throwsRows.length) {
     const tdH=document.createElement('td'); tdH.textContent=String(hits[i]);  // Hits
     const pct = pctArr[i] || 0;
     const tdP=document.createElement('td'); tdP.textContent=pct.toFixed(1)+'%';
-    tr.append(tdR,tdT,tdH,tdP); tbody.appendChild(tr);
+    const tdRank=document.createElement('td'); tdRank.textContent=String(playerRankMap.get(i) || '—');
+    const lbl=labels[i];
+    const key = (/^\d+$/.test(lbl) ? lbl : String(lbl||'').trim().toUpperCase());
+    const gr = (gameRankByKey.get(key) != null) ? gameRankByKey.get(key) : '—';
+    const tdGameRank=document.createElement('td'); tdGameRank.textContent=String(gr);
+    tr.append(tdR,tdT,tdH,tdP,tdRank,tdGameRank); tbody.appendChild(tr);
   }
   table.appendChild(tbody);
   const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.appendChild(table);
   body.appendChild(scroll);
+
+  const grNote=document.createElement('div');
+  grNote.className='tag muted';
+  grNote.style.marginTop='10px';
+  grNote.textContent='Game Rank is shown only after 15+ throws (5 rounds) for that row.';
+  body.appendChild(grNote);
+
 
   const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
   const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
@@ -15048,6 +15299,8 @@ if (!throwsRows.length) {
   footer.append(backBtn,closeBtn,__spacer,spiderBtn,progBtn);
 
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+
+  function closeToHub(){ overlay.remove(); }
   overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
   modal.tabIndex=0; modal.focus();
 };
@@ -15067,6 +15320,8 @@ window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPc
 
   // Mount early so user always sees something
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+
+  function closeToHub(){ overlay.remove(); }
   overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
   overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
   modal.tabIndex=0; modal.focus();
@@ -15076,7 +15331,7 @@ window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPc
   backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
   closeBtn.onclick=()=>overlay.remove();
   const __spacer=document.createElement('div'); __spacer.style.flex='1';
-  const spiderBtn=document.createElement('button'); spiderBtn.className='btn small'; spiderBtn.textContent='SPIDER'; spiderBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerSpiderDialog==='function') window.openPlayerSpiderDialog(name,{parentOverlay:overlay}); else if (typeof toast==='function') toast('SPIDER not available'); };
+  const spiderBtn=document.createElement('button'); spiderBtn.className='btn small'; spiderBtn.textContent='SPIDER'; spiderBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerSpiderDialog==='function') window.openPlayerSpiderDialog(name,{parentOverlay:overlay, mode:'points', data: window.__lastPointsPctSpiderData}); else if (typeof toast==='function') toast('SPIDER not available'); };
   const progBtn=document.createElement('button'); progBtn.className='btn small'; progBtn.textContent='PROGRESS'; progBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerProgressHitDialog==='function') window.openPlayerProgressHitDialog(name,{parentOverlay:overlay}); else if (typeof toast==='function') toast('PROGRESS not available'); };
   footer.append(backBtn,closeBtn,__spacer,spiderBtn,progBtn);
 
@@ -15137,159 +15392,123 @@ window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPc
     });
 
     const mineAll = throwsRows.filter(t => String(t.player||'').trim().toLowerCase() === name.toLowerCase());
-    const controls = document.createElement('div');
-    controls.style.display = 'flex';
-    controls.style.flexDirection = 'column';
-    controls.style.gap = '6px';
-    controls.style.marginBottom = '10px';
-
-    // Filters: one row per grouping
-    const FILTERS = [
-      { id: 'all',      label: 'ALL TIME', row: 0, match: () => true },
-      { id: 'y-2026',   label: '2026',     row: 1, match: (ts) => { const d = safeDate(ts); return !d || d.getFullYear() === 2026; } },
-      { id: 'y-2025',   label: '2025',     row: 1, match: (ts) => { const d = safeDate(ts); return !d || d.getFullYear() === 2025; } },
-      { id: 'm-12',     label: 'Dec',      row: 2, match: (ts) => { const d = safeDate(ts); return !d || d.getMonth() === 11; } },
-      { id: 'm-11',     label: 'Nov',      row: 2, match: (ts) => { const d = safeDate(ts); return !d || d.getMonth() === 10; } },
-      { id: 'm-10',     label: 'Oct',      row: 2, match: (ts) => { const d = safeDate(ts); return !d || d.getMonth() === 9; } },
-      { id: 'm-9',      label: 'Sept',     row: 2, match: (ts) => { const d = safeDate(ts); return !d || d.getMonth() === 8; } },
-      { id: 'm-8',      label: 'Aug',      row: 2, match: (ts) => { const d = safeDate(ts); return !d || d.getMonth() === 7; } },
-      { id: 'm-7',      label: 'Jul',      row: 2, match: (ts) => { const d = safeDate(ts); return !d || d.getMonth() === 6; } },
-    ];
-
-    const rowsByIdx = new Map();
-    function rowFor(idx){
-      if (!rowsByIdx.has(idx)){
-        const r = document.createElement('div');
-        r.className = 'row';
-        r.style.gap = '8px';
-        r.style.flexWrap = 'wrap';
-        rowsByIdx.set(idx, r);
-        controls.appendChild(r);
-      }
-      return rowsByIdx.get(idx);
-    }
-
-    const btnMap = new Map();
-    FILTERS.forEach(f => {
-      const btn = document.createElement('button');
-      btn.className = 'btn small';
-      btn.textContent = f.label;
-      btn.dataset.filterId = f.id;
-      btn.onclick = () => { setActive(f.id); render(f); };
-      rowFor(f.row || 0).appendChild(btn);
-      btnMap.set(f.id, btn);
-    });
-
+    
+    // --- Clean view (no filters): All-time Target Points % (10..20)
     const content = document.createElement('div');
     body.innerHTML = '';
-    body.appendChild(controls);
     body.appendChild(content);
 
-    function setActive(id){
-      btnMap.forEach((btn, key) => {
-        if (key === id) btn.classList.add('primary');
-        else btn.classList.remove('primary');
+    // Game Rank (across all players): prefer Supabase view (server-derived, backdated)
+    const gameRankByTarget = new Map(); // target_round -> game_rank
+    try{
+      const { data: grRows, error: grErr } = await sb
+        .from('player_points_bucket_ranks_v')
+        .select('target_round, game_rank')
+        .eq('player_name', name)
+        .order('target_round', { ascending: true });
+      if (grErr) throw grErr;
+      (grRows||[]).forEach(r=>{
+        const t = Number(r.target_round);
+        const v = Number(r.game_rank);
+        if (Number.isFinite(t)) gameRankByTarget.set(t, Number.isFinite(v) ? v : null);
       });
+    }catch(e){
+      console.warn('Game Rank view not available (player_points_bucket_ranks_v).', e);
     }
 
-    function render(filter){
-      const mine = (filter ? mineAll.filter(t => filter.match(t.ts)) : mineAll)
-        .filter(t => typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 10);
 
-      // Aggregate per target 10..20
-      const rows=[];
-      for (let r=0; r<=10; r++){
-        const target  = 10 + r;
-        const shots   = mine.filter(t => t.round_index === r);
-        const throwsN = shots.length;
-
-        // Actual Hits (marks): single=1, double=2, treble=3 (miss=0)
-        const hitsUnits = shots.reduce((s,t)=>{
-          const k = String(t.kind||'').toLowerCase();
-          if (k.includes('treble') || k.includes('triple')) return s + 3;
-          if (k.includes('double')) return s + 2;
-          if (k.includes('single')) return s + (Number(t.points||0) > 0 ? 1 : 0);
-          // Fallback: infer from points/target if kind missing
-          const ratio = Number(t.points||0) / target;
-          if (ratio >= 2.5) return s + 3;
-          if (ratio >= 1.5) return s + 2;
-          if (ratio >= 0.5) return s + 1;
-          return s;
-        }, 0);
-
-        const available = 3 * throwsN;                        // 3 marks per dart (9 per round)
-        const pct       = available ? (100 * hitsUnits / available) : 0;  // Actual ÷ Available
-        const scoreRound = (pct / 100) * 9 * target;          // expected points in one 3-dart round
-
-        rows.push({ target, throwsN, hitsUnits, available, pct, scoreRound });
-      }
-
-      // Rank by expected per-round score (desc). Tie: hits, then thrown, then lower target.
-      const scoreRanks = rows
-        .filter(r => r.throwsN > 0)
-        .slice()
-        .sort((a,b) =>
-          (b.scoreRound - a.scoreRound) ||
-          (b.hitsUnits  - a.hitsUnits)  ||
-          (b.throwsN    - a.throwsN)    ||
-          (a.target     - b.target)
-        )
-        .map((r, idx) => ({ target: r.target, rank: idx + 1 }));
-      const scoreRankMap = new Map(scoreRanks.map(x => [x.target, x.rank]));
-
-      // Table
-      const table=document.createElement('table'); table.className='hs-table';
-      const thead=document.createElement('thead'); const trh=document.createElement('tr');
-      ['Target','Thrown','Available Hits','Actual Hits','Points %','Score','Rank']
-        .forEach(h => { const th = document.createElement('th'); th.textContent = h; trh.appendChild(th); });
-      thead.appendChild(trh); table.appendChild(thead);
-
-      // sticky header
-      Array.from(trh.children).forEach(th => {
-        th.style.position = 'sticky';
-        th.style.top = '0';
-        th.style.zIndex = '2';
-        th.style.background = 'rgba(0,0,0,0.4)';
-      });
-
-      const tbody=document.createElement('tbody');
-      rows.forEach(r=>{
-        const tr=document.createElement('tr');
-
-        const tdTarget = document.createElement('td'); tdTarget.textContent = String(r.target);
-        const tdThrown = document.createElement('td'); tdThrown.textContent = String(r.throwsN);
-        const tdAvail  = document.createElement('td'); tdAvail.textContent  = String(r.available);
-        const tdHits   = document.createElement('td'); tdHits.textContent   = String(r.hitsUnits || 0);
-        const tdPct    = document.createElement('td'); tdPct.textContent    = (r.pct||0).toFixed(1)+'%';
-        const tdScore  = document.createElement('td'); tdScore.textContent  = (r.scoreRound||0).toFixed(1);
-        const tdRank   = document.createElement('td'); tdRank.textContent   = String(scoreRankMap.get(r.target) || '—');
-
-        tr.append(tdTarget, tdThrown, tdAvail, tdHits, tdPct, tdScore, tdRank);
-        tbody.appendChild(tr);
-      });
-      table.appendChild(tbody);
-
-      const info=document.createElement('p');
-      info.className='tag';
-      info.style.marginTop='8px';
-      info.textContent = 'Actual Hits = single 1 • double 2 • treble 3 — Available Hits = 3 × thrown (9 per round) — Points % = Actual ÷ Available — Score (per round) = Points% × 9 × target';
-
-      const scroll=document.createElement('div');
-      scroll.style.maxHeight='56vh';
-      scroll.style.overflowY='auto';
-      scroll.style.borderRadius='8px';
-      scroll.appendChild(table);
-
-      content.innerHTML='';
-      content.appendChild(scroll);
-      content.appendChild(info);
+    // Aggregate per target 10..20 for THIS player
+    const mine = mineAll.filter(t => typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 10);
+    const rows=[];
+    for (let r=0; r<=10; r++){
+      const target  = 10 + r;
+      const shots   = mine.filter(t => t.round_index === r);
+      const throwsN = shots.length;
+      const hitsUnits = shots.reduce((s,t)=>{
+        const k = String(t.kind||'').toLowerCase();
+        if (k.includes('treble') || k.includes('triple')) return s + 3;
+        if (k.includes('double')) return s + 2;
+        if (k.includes('single')) return s + (Number(t.points||0) > 0 ? 1 : 0);
+        const ratio = Number(t.points||0) / target;
+        if (ratio >= 2.5) return s + 3;
+        if (ratio >= 1.5) return s + 2;
+        if (ratio >= 0.5) return s + 1;
+        return s;
+      }, 0);
+      const available = 3 * throwsN;
+      const pct       = available ? (100 * hitsUnits / available) : 0;
+      rows.push({ target, throwsN, hitsUnits, available, pct });
     }
 
-    const defaultFilter = FILTERS[0];
-    setActive(defaultFilter.id);
-    render(defaultFilter);
+    // Player Rank: by Points% (desc). Tie: thrown, then lower target.
+    const pctRanks = rows
+      .filter(r => r.throwsN > 0)
+      .slice()
+      .sort((a,b) => (b.pct - a.pct) || (b.throwsN - a.throwsN) || (a.target - b.target))
+      .map((r, idx) => ({ target: r.target, rank: idx + 1 }));
+    const pctRankMap = new Map(pctRanks.map(x => [x.target, x.rank]));
 
-  }catch(e){
+    // Table
+    const table=document.createElement('table'); table.className='hs-table';
+    const thead=document.createElement('thead'); const trh=document.createElement('tr');
+    ['Target','Thrown','Available Hits','Actual Hits','Points %','Rank','Game Rank']
+      .forEach(h => {
+        const th = document.createElement('th');
+        if (h === 'Game Rank') th.innerHTML = 'Game<br>Rank';
+        else th.textContent = h;
+        trh.appendChild(th);
+      });
+    thead.appendChild(trh); table.appendChild(thead);
+
+    Array.from(trh.children).forEach(th => {
+      th.style.position='sticky'; th.style.top='0'; th.style.zIndex='2'; th.style.background='rgba(0,0,0,0.4)';
+    });
+
+    const tbody=document.createElement('tbody');
+    rows.forEach(r=>{
+      const tr=document.createElement('tr');
+      const tdTarget = document.createElement('td'); tdTarget.textContent = String(r.target);
+      const tdThrown = document.createElement('td'); tdThrown.textContent = String(r.throwsN);
+      const tdAvail  = document.createElement('td'); tdAvail.textContent  = String(r.available);
+      const tdHits   = document.createElement('td'); tdHits.textContent   = String(r.hitsUnits || 0);
+      const tdPct    = document.createElement('td'); tdPct.textContent    = (r.pct||0).toFixed(1)+'%';
+      const tdRank   = document.createElement('td'); tdRank.textContent   = String(pctRankMap.get(r.target) || '—');
+      const tdGR     = document.createElement('td');
+      const gr = gameRankByTarget.get(r.target);
+      tdGR.textContent = gr ? String(gr) : '—';
+      tr.append(tdTarget, tdThrown, tdAvail, tdHits, tdPct, tdRank, tdGR);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    const info=document.createElement('p');
+    info.className='tag';
+    info.style.marginTop='8px';
+    info.textContent = 'Actual Hits = single 1 • double 2 • treble 3 — Available Hits = 3 × thrown (9 per round) — Points % = Actual ÷ Available';
+
+    const scroll=document.createElement('div');
+    scroll.style.maxHeight='56vh';
+    scroll.style.overflowY='auto';
+    scroll.style.borderRadius='8px';
+    scroll.appendChild(table);
+
+    content.innerHTML='';
+    content.appendChild(scroll);
+    content.appendChild(info);
+
+    const grNote=document.createElement('div');
+    grNote.className='tag muted';
+    grNote.style.marginTop='10px';
+    grNote.textContent='Game Rank is shown only after 15+ throws (5 rounds) for that target.';
+    content.appendChild(grNote);
+
+
+    // (optional) Feed SPIDER with this table’s Points% (10..20, then D/T/B zeros)
+    window.__lastPointsPctSpiderData = {
+      labels: rows.map(r=>String(r.target)),
+      pct: rows.map(r=>Number(r.pct||0))
+    };
+}catch(e){
     console.error('Target Points % failed', e);
     body.innerHTML = '<p>Failed to load Target Points %.</p>';
     try{ if (typeof toast==='function') toast('Failed to open Target Points %'); }catch(_){}
@@ -15381,6 +15600,8 @@ const kindL = t => String(t.kind||'').toLowerCase();
   closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
 
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+
+  function closeToHub(){ overlay.remove(); }
   overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
   overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
   modal.tabIndex=0; modal.focus();
@@ -15391,26 +15612,20 @@ window.openPlayerDTBCombinedPctDialog = async function openPlayerDTBCombinedPctD
   const name = String(playerName||'').trim();
   const overlay = document.createElement('div'); overlay.className='modal-backdrop';
   const modal   = document.createElement('div'); modal.className  ='modal compact';
-const title   = document.createElement('h3');  title.textContent = `D T B % (10–20 only) — ${name}`;  const body    = document.createElement('div'); body.className   ='modal-body';
+  const title   = document.createElement('h3');  title.textContent = `DTB % — ${name}`;
+  const body    = document.createElement('div'); body.className   ='modal-body';
   const footer  = document.createElement('div'); footer.className ='modal-footer';
-  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
-  body .style.maxHeight='none'; body .style.overflowY='visible';
 
-  // Build player's official game IDs (lifetime), fallback to scanning official games
+  modal.style.maxHeight='90vh';
+  modal.style.overflow='hidden';
+  body.style.maxHeight='none';
+  body.style.overflowY='visible';
+
+  // Build player's official game IDs (lifetime) from official games only.
+// (Avoid querying player_games_union here — its schema varies and causes noisy 400s.)
   let ids = [];
-  try {
-    const { data: pg } = await sb
-      .from(TABLE_PLAYER_GAMES)
-      .select('game_id, is_practice')
-      .eq('player', name)
-      .eq('is_practice', false)
-      .order('game_id', { ascending: true })
-      .limit(5000);
-    ids = (pg || []).map(r => r.game_id).filter(Boolean);
-  } catch (_) {}
-
   if (!ids.length) {
-    const games = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+    const games = (await __fetchOfficialGames(60000)).map(__normalizeGame);
     ids = games
       .map(g => (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id)
       .filter(Boolean);
@@ -15419,157 +15634,209 @@ const title   = document.createElement('h3');  title.textContent = `D T B % (10�
   // Fetch throws; if table is absent, reconstruct from boards
   let throwsRows = ids.length ? await __fetchThrowsForGames(ids) : [];
   if (!throwsRows.length) {
-    const gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+    const gamesAll = (await __fetchOfficialGames(60000)).map(__normalizeGame);
     throwsRows = __throwsFromGamesForPlayer(name, gamesAll);
   }
 
-const mineAll = throwsRows.filter(t => String(t.player||'').trim().toLowerCase() === name.toLowerCase());
-const mine    = mineAll.filter(t => typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 10); // 10..20 only
+  const mineAll = (throwsRows||[]).filter(t => String(t.player||'').trim().toLowerCase() === name.toLowerCase());
+  const mine1020 = mineAll.filter(t => typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 10); // 10..20 only
 
-// Aggregate per target 10..20
-const rows = [];
-for (let r = 0; r <= 10; r++) {
-  const target  = 10 + r;
-  const shots   = mine.filter(t => t.round_index === r);
-  const throwsN = shots.length;
+  const kindL = (t)=> String(t.kind || '').toLowerCase();
 
-  const kindL = t => String(t.kind || '').toLowerCase();
+  // ---- Game Rank helpers (server view preferred)
+  const dGameRankByTarget = new Map();
+  const tGameRankByTarget = new Map();
+  try {
+    const { data: grRows, error: grErr } = await sb
+      .from('player_dtb_bucket_ranks_v')
+      .select('target_round, d_game_rank, t_game_rank')
+      .eq('player_name', name)
+      .order('target_round', { ascending: true });
+    if (grErr) throw grErr;
+    (grRows||[]).forEach(r=>{
+      const t = Number(r.target_round);
+      if (!Number.isFinite(t)) return;
+      const dgr = Number(r.d_game_rank);
+      const tgr = Number(r.t_game_rank);
+      dGameRankByTarget.set(t, Number.isFinite(dgr) ? dgr : null);
+      tGameRankByTarget.set(t, Number.isFinite(tgr) ? tgr : null);
+    });
+  } catch(e) {
+    console.warn('Game Rank view not available (player_dtb_bucket_ranks_v).', e);
+  }
 
-  // Count doubles / trebles
-  const dHits = shots.reduce((s,t)=>{
-    const k = kindL(t);
-    if (k.includes('double')) return s + 1;
-    // fallback if kind missing: points/target ≈ 2
-    const ratio = Number(t.points||0) / target;
-    return s + (ratio >= 1.5 && ratio < 2.5 ? 1 : 0);
-  }, 0);
+  // ---- Player aggregates per target 10..20
+  const rows = [];
+  for (let r=0; r<=10; r++){
+    const target  = 10 + r;
+    const shots   = mine1020.filter(t => t.round_index === r);
+    const throwsN = shots.length;
 
-  const tHits = shots.reduce((s,t)=>{
-    const k = kindL(t);
-    if (k.includes('treble') || k.includes('triple')) return s + 1;
-    // fallback if kind missing: points/target ≈ 3
-    const ratio = Number(t.points||0) / target;
-    return s + (ratio >= 2.5 ? 1 : 0);
-  }, 0);
+    const dHits = shots.reduce((s,t)=>{
+      const k = kindL(t);
+      if (k.includes('double')) return s + 1;
+      const ratio = Number(t.points||0) / target;
+      return s + (ratio >= 1.5 && ratio < 2.5 ? 1 : 0);
+    }, 0);
 
-  const dPct = throwsN ? (100 * dHits / throwsN) : 0;
-  const tPct = throwsN ? (100 * tHits / throwsN) : 0;
+    const tHits = shots.reduce((s,t)=>{
+      const k = kindL(t);
+      if (k.includes('treble') || k.includes('triple')) return s + 1;
+      const ratio = Number(t.points||0) / target;
+      return s + (ratio >= 2.5 ? 1 : 0);
+    }, 0);
 
-  rows.push({ target, throwsN, dHits, dPct, tHits, tPct });
-}
+    const dPct = throwsN ? (100*dHits/throwsN) : 0;
+    const tPct = throwsN ? (100*tHits/throwsN) : 0;
 
-// Build ranks per column (D-only and T-only)
-const dRanked = rows
-  .filter(r => r.throwsN > 0)
-  .slice()
-  .sort((a,b) => (b.dPct - a.dPct) || (b.dHits - a.dHits) || (a.target - b.target))
-  .map((r,idx) => ({ target: r.target, rank: idx + 1 }));
-const tRanked = rows
-  .filter(r => r.throwsN > 0)
-  .slice()
-  .sort((a,b) => (b.tPct - a.tPct) || (b.tHits - a.tHits) || (a.target - b.target))
-  .map((r,idx) => ({ target: r.target, rank: idx + 1 }));
+    rows.push({ target, throwsN, dHits, dPct, tHits, tPct });
+  }
 
-const dRankMap = new Map(dRanked.map(x => [x.target, x.rank]));
-const tRankMap = new Map(tRanked.map(x => [x.target, x.rank]));
+  // Player rank (within-player)
+  const dRanked = rows
+    .filter(r => r.throwsN > 0)
+    .slice()
+    .sort((a,b) => (b.dPct - a.dPct) || (b.dHits - a.dHits) || (a.target - b.target))
+    .map((r,idx) => ({ target:r.target, rank:idx+1 }));
 
-  // Table
+  const tRanked = rows
+    .filter(r => r.throwsN > 0)
+    .slice()
+    .sort((a,b) => (b.tPct - a.tPct) || (b.tHits - a.tHits) || (a.target - b.target))
+    .map((r,idx) => ({ target:r.target, rank:idx+1 }));
+
+  const dRankMap = new Map(dRanked.map(x => [x.target, x.rank]));
+  const tRankMap = new Map(tRanked.map(x => [x.target, x.rank]));
+
+  // ---- Bull (single row): outer = 25, inner = 50
+  const bullShots = mineAll.filter(t => Number(t.target) === 25 || Number(t.target) === 50 || t.round_index === 13);
+  let outerCount = 0;
+  let innerCount = 0;
+  if (bullShots.length){
+    bullShots.forEach(t=>{
+      const tgt = Number(t.target);
+      const k = String(t.kind||'').toLowerCase();
+      const pts = Number(t.points||0);
+      if (tgt === 25 || k.includes('outer') || (pts > 0 && pts < 40)) outerCount += 1;
+      if (tgt === 50 || k.includes('inner') || (pts >= 40)) innerCount += 1;
+    });
+  }
+  const bullThrows = bullShots.length || (outerCount + innerCount);
+  const outerPct = bullThrows ? (100*outerCount/bullThrows) : 0;
+  const innerPct = bullThrows ? (100*innerCount/bullThrows) : 0;
+
+  // ---- Table
   const table=document.createElement('table'); table.className='hs-table';
-  const thead=document.createElement('thead'); const trh=document.createElement('tr');
-['Target','Throws','Doubles (Hits + %)','D Rank','Trebles (Hits + %)','T Rank']
-  .forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
-thead.appendChild(trh);
-table.appendChild(thead);
+  const thead=document.createElement('thead');
+  const trh=document.createElement('tr');
 
-  // sticky header
+  const headers = ['Target','Throws','Doubles','My Rank','Game Rank','Trebles','My Rank','Game Rank'];
+  headers.forEach(h=>{
+    const th=document.createElement('th');
+    if (h === 'Game Rank') th.innerHTML = 'Game<br>Rank';
+    else if (h === 'My Rank') th.innerHTML = 'My<br>Rank';
+    else if (h === 'Doubles') th.innerHTML = 'Doubles<br><span class="thSub">(Hits / %)</span>';
+    else if (h === 'Trebles') th.innerHTML = 'Trebles<br><span class="thSub">(Hits / %)</span>';
+    else th.textContent = h;
+    trh.appendChild(th);
+  });
+
+  thead.appendChild(trh);
+  table.appendChild(thead);
+
   Array.from(trh.children).forEach(th => {
     th.style.position = 'sticky';
     th.style.top = '0';
     th.style.zIndex = '2';
     th.style.background = 'rgba(0,0,0,0.4)';
+    th.style.whiteSpace = 'normal';
+    th.style.lineHeight = '1.05';
   });
 
- const tbody = document.createElement('tbody');
-rows.forEach(r=>{
-  const tr = document.createElement('tr');
+  const tbody=document.createElement('tbody');
 
-  const tdTarget = document.createElement('td'); tdTarget.textContent = String(r.target);
-  const tdThrows = document.createElement('td'); tdThrows.textContent = String(r.throwsN);
+  rows.forEach(r=>{
+    const tr=document.createElement('tr');
+    const tdTarget=document.createElement('td'); tdTarget.textContent=String(r.target);
+    const tdThrows=document.createElement('td'); tdThrows.textContent=String(r.throwsN);
 
-  const tdD = document.createElement('td');
-  tdD.textContent = `${r.dHits} (${(r.dPct || 0).toFixed(1)}%)`;
-  const tdDRank = document.createElement('td');
-  tdDRank.textContent = r.throwsN ? String(dRankMap.get(r.target) || '—') : '—';
+    const tdD=document.createElement('td'); tdD.textContent=`${r.dHits} (${(r.dPct||0).toFixed(1)}%)`;
+    const tdDR=document.createElement('td'); tdDR.textContent = r.throwsN ? String(dRankMap.get(r.target) || '—') : '—';
+    const tdDGR=document.createElement('td');
+    const dgr = dGameRankByTarget.get(r.target);
+    tdDGR.textContent = dgr ? String(dgr) : '—';
 
-  const tdT = document.createElement('td');
-  tdT.textContent = `${r.tHits} (${(r.tPct || 0).toFixed(1)}%)`;
-  const tdTRank = document.createElement('td');
-  tdTRank.textContent = r.throwsN ? String(tRankMap.get(r.target) || '—') : '—';
+    const tdT=document.createElement('td'); tdT.textContent=`${r.tHits} (${(r.tPct||0).toFixed(1)}%)`;
+    const tdTR=document.createElement('td'); tdTR.textContent = r.throwsN ? String(tRankMap.get(r.target) || '—') : '—';
+    const tdTGR=document.createElement('td');
+    const tgr = tGameRankByTarget.get(r.target);
+    tdTGR.textContent = tgr ? String(tgr) : '—';
 
-  tr.append(tdTarget, tdThrows, tdD, tdDRank, tdT, tdTRank);
-  tbody.appendChild(tr);
-});
-table.appendChild(tbody);
+    tr.append(tdTarget, tdThrows, tdD, tdDR, tdDGR, tdT, tdTR, tdTGR);
+    tbody.appendChild(tr);
+  });
 
-  // Append BULL rows (outer & inner) using bull round (round_index === 13).
-  // These are informational; D/T columns and ranks do not apply.
-  try {
-    const bullShots = mineAll.filter(t => t.round_index === 13);
-    if (bullShots.length) {
-      const totalBullThrows = bullShots.length;
+  // Bull summary row
+  const bullTr=document.createElement('tr');
+  const tdBT=document.createElement('td'); tdBT.textContent='BULL';
+  const tdBTh=document.createElement('td'); tdBTh.textContent=String(bullThrows || 0);
+  const tdBD=document.createElement('td'); tdBD.textContent = bullThrows ? `${outerCount} (${outerPct.toFixed(1)}%)` : '—';
+  const tdBDR=document.createElement('td'); tdBDR.textContent='—';
+  const tdBDGR=document.createElement('td'); tdBDGR.textContent='—';
+  const tdBTc=document.createElement('td'); tdBTc.textContent = bullThrows ? `${innerCount} (${innerPct.toFixed(1)}%)` : '—';
+  const tdBTR=document.createElement('td'); tdBTR.textContent='—';
+  const tdBTGR=document.createElement('td'); tdBTGR.textContent='—';
+  bullTr.append(tdBT, tdBTh, tdBD, tdBDR, tdBDGR, tdBTc, tdBTR, tdBTGR);
+  tbody.appendChild(bullTr);
 
-      // Heuristics: kind may be 'inner'/'outer'; otherwise infer via points (≈25 outer, ≈50 inner)
-      const outerCount = bullShots.filter(t => {
-        const k = String(t.kind || '').toLowerCase();
-        if (k.includes('outer')) return true;
-        if (k.includes('inner')) return false;
-        const pts = Number(t.points || 0);
-        return pts > 0 && pts < 40; // ~25
-      }).length;
+  table.appendChild(tbody);
 
-      const innerCount = bullShots.filter(t => {
-        const k = String(t.kind || '').toLowerCase();
-        if (k.includes('inner')) return true;
-        if (k.includes('outer')) return false;
-        const pts = Number(t.points || 0);
-        return pts >= 40; // ~50
-      }).length;
-
-      const addBullRow = (label) => {
-        const tr = document.createElement('tr');
-        const tdTarget = document.createElement('td'); tdTarget.textContent = label;
-        const tdThrows = document.createElement('td'); tdThrows.textContent = String(totalBullThrows);
-        const tdD  = document.createElement('td'); tdD.textContent  = '—';
-        const tdDR = document.createElement('td'); tdDR.textContent = '—';
-        const tdT  = document.createElement('td'); tdT.textContent  = '—';
-        const tdTR = document.createElement('td'); tdTR.textContent = '—';
-        tr.append(tdTarget, tdThrows, tdD, tdDR, tdT, tdTR);
-        tbody.appendChild(tr);
-      };
-
-      // Add in this order, after the numeric targets
-      addBullRow(`BULL (outer) — hits: ${outerCount}`);
-      addBullRow(`BULL (inner) — hits: ${innerCount}`);
-    }
-  } catch (_) {}
-
-  const scroll=document.createElement('div'); 
-  scroll.style.maxHeight='56vh'; 
-  scroll.style.overflowY='auto'; 
+  const scroll=document.createElement('div');
+  scroll.style.maxHeight='56vh';
+  scroll.style.overflowY='auto';
   scroll.style.borderRadius='8px';
   scroll.appendChild(table);
   body.appendChild(scroll);
+
+  const note=document.createElement('div');
+  note.className='tag';
+  note.style.marginTop='10px';
+  note.textContent = 'Bull: Doubles column = outer bull (25). Trebles column = inner bull (50).';
+  body.appendChild(note);
+
+  const grNote=document.createElement('div');
+  grNote.className='tag muted';
+  grNote.style.marginTop='10px';
+  grNote.textContent='Game Rank is shown only after 15+ throws (5 rounds) for that row.';
+  body.appendChild(grNote);
+
 
   const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
   const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
   backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
   closeBtn.onclick=()=>overlay.remove();
-  const __spacer=document.createElement('div'); __spacer.style.flex='1';
-  const spiderBtn=document.createElement('button'); spiderBtn.className='btn small'; spiderBtn.textContent='SPIDER'; spiderBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerSpiderDialog==='function') window.openPlayerSpiderDialog(name,{parentOverlay:overlay}); else if (typeof toast==='function') toast('SPIDER not available'); };
-  const progBtn=document.createElement('button'); progBtn.className='btn small'; progBtn.textContent='PROGRESS'; progBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerProgressHitDialog==='function') window.openPlayerProgressHitDialog(name,{parentOverlay:overlay}); else if (typeof toast==='function') toast('PROGRESS not available'); };
-  footer.append(backBtn,closeBtn,__spacer,spiderBtn,progBtn);
 
-  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  const __spacer=document.createElement('div'); __spacer.style.flex='1';
+
+  const __dtbSpiderData = {
+    labels: rows.map(r=>String(r.target)).concat(['BULL']),
+    pctD: rows.map(r=>Number(r.dPct||0)).concat([Number(outerPct||0)]),
+    pctT: rows.map(r=>Number(r.tPct||0)).concat([Number(innerPct||0)])
+  };
+
+  const spiderBtn=document.createElement('button'); spiderBtn.className='btn small'; spiderBtn.textContent='SPIDER';
+  spiderBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerSpiderDialog==='function') window.openPlayerSpiderDialog(name,{parentOverlay:overlay, mode:'dtb', data: __dtbSpiderData}); else if (typeof toast==='function') toast('SPIDER not available'); };
+
+  const progBtn=document.createElement('button'); progBtn.className='btn small'; progBtn.textContent='PROGRESS';
+  progBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerProgressHitDialog==='function') window.openPlayerProgressHitDialog(name,{parentOverlay:overlay, mode:'dtb'}); else if (typeof toast==='function') toast('PROGRESS not available'); };
+
+  footer.append(backBtn, closeBtn, __spacer, spiderBtn, progBtn);
+
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  function closeToHub(){ overlay.remove(); }
   overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
   overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
   modal.tabIndex=0; modal.focus();
@@ -15635,6 +15902,8 @@ window.openPlayerH2HDialog = async function openPlayerH2HDialog(playerName){
   closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
 
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+
+  function closeToHub(){ overlay.remove(); }
   overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
   modal.tabIndex=0; modal.focus();
 };
@@ -17015,6 +17284,11 @@ if (!todayBtn) {
     const client = getSb();
     if (!client) return;
 
+    // If cloud logons are blocked by RLS/policies, stop spamming the console.
+    try {
+      if (localStorage.getItem('sq_cloud_logons_disabled') === '1') return;
+    } catch(_){}
+
     const day = isoDay(new Date());
     const device_id = getDeviceId();
 
@@ -17023,7 +17297,17 @@ if (!todayBtn) {
       const { error } = await client
         .from(TABLE_APP_LOGONS)
         .upsert({ day, device_id }, { onConflict: 'day,device_id' });
-      if (error) console.warn('Cloud logon upsert failed', error);
+
+      if (error) {
+        // Common: 42501 insufficient_privilege, 401/403 auth/policy issues
+        const code = (error && (error.code || error.status)) || '';
+        if (String(code) === '42501' || String(code) === '401' || String(code) === '403') {
+          try { localStorage.setItem('sq_cloud_logons_disabled', '1'); } catch(_){}
+          console.warn('Cloud logons disabled (policy/privilege). Using local-only.');
+          return;
+        }
+        console.warn('Cloud logon upsert failed', error);
+      }
     } catch(e){
       console.warn('Cloud logon upsert exception', e);
     }
@@ -17083,29 +17367,9 @@ if (!todayBtn) {
       if (!error && typeof count === 'number') total = count;
     } catch(e){ }
 
-    // New players in last N days (prefer joined_at, then created_at)
-    const cutoffIso = new Date(Date.now() - days*DAY_MS).toISOString();
-
-    let newN = null;
-    // Try joined_at
-    try {
-      const { count, error } = await client
-        .from(TABLE_PLAYERS)
-        .select('name', { count: 'exact', head: true })
-        .gte('joined_at', cutoffIso);
-      if (!error && typeof count === 'number') newN = count;
-    } catch(e){ }
-
-    // Fallback to created_at
-    if (newN == null) {
-      try {
-        const { count, error } = await client
-          .from(TABLE_PLAYERS)
-          .select('name', { count: 'exact', head: true })
-          .gte('created_at', cutoffIso);
-        if (!error && typeof count === 'number') newN = count;
-      } catch(e){ }
-    }
+    // New players count: derive locally to avoid relying on optional timestamp columns (joined_at/created_at).
+    // (Those columns are not guaranteed in your current schema and cause noisy 400s in the console.)
+    const newN = null;
 
     // If either failed, return what we have (caller can fall back locally)
     return { total, newN };
@@ -17823,18 +18087,70 @@ if (!todayBtn) {
     modal.tabIndex=0; modal.focus();
 
     try{
-      const labels = (opts && opts.data && Array.isArray(opts.data.labels)) ? opts.data.labels : __roundLabels();
-      let pct = (opts && opts.data && Array.isArray(opts.data.pct)) ? opts.data.pct.slice(0,14) : null;
+      const mode = (opts && opts.mode) ? String(opts.mode).toLowerCase() : 'hit';
+      const data = (opts && opts.data) ? opts.data : null;
+
+      if (mode === 'points' && data && Array.isArray(data.labels) && Array.isArray(data.pct)) {
+        const labels = data.labels.slice();
+        const pct = data.pct.slice();
+        drawRadar(canvas, labels, pct);
+        note.textContent = 'Points % by target (10–20).';
+        return;
+      }
+
+      if (mode === 'dtb' && data && Array.isArray(data.labels) && Array.isArray(data.pctD) && Array.isArray(data.pctT)) {
+        const labels = data.labels.slice();
+        const pctD = data.pctD.slice();
+        const pctT = data.pctT.slice();
+
+        const toggleRow = document.createElement('div');
+        toggleRow.className='row';
+        toggleRow.style.gap='8px';
+        toggleRow.style.justifyContent='center';
+        toggleRow.style.flexWrap='wrap';
+        toggleRow.dataset.dtbToggle='1';
+
+        const btnD = document.createElement('button'); btnD.className='btn small primary'; btnD.textContent='DOUBLES';
+        const btnT = document.createElement('button'); btnT.className='btn small'; btnT.textContent='TREBLES';
+
+        let which = 'd';
+        const renderDTB = () => {
+          if (which === 'd') {
+            btnD.classList.add('primary'); btnT.classList.remove('primary');
+            drawRadar(canvas, labels, pctD);
+            note.textContent = 'Doubles % by target (10–20) + outer bull.';
+          } else {
+            btnT.classList.add('primary'); btnD.classList.remove('primary');
+            drawRadar(canvas, labels, pctT);
+            note.textContent = 'Trebles % by target (10–20) + inner bull.';
+          }
+        };
+
+        btnD.onclick = ()=>{ which='d'; renderDTB(); };
+        btnT.onclick = ()=>{ which='t'; renderDTB(); };
+
+        if (!wrap.querySelector('[data-dtb-toggle="1"]')) {
+          toggleRow.append(btnD, btnT);
+          wrap.insertBefore(toggleRow, canvas);
+        }
+
+        renderDTB();
+        return;
+      }
+
+      // Default: Hit % spider (10–20, D, T, B)
+      const labels = (data && Array.isArray(data.labels)) ? data.labels : __roundLabels();
+      let pct = (data && Array.isArray(data.pct)) ? data.pct.slice(0, labels.length) : null;
 
       if (!pct){
         const rows = await fetchPlayerThrowsWithTs(name);
         const taken = Array(14).fill(0), hits = Array(14).fill(0);
         rows.forEach(t=>{
-        const r = (typeof t.round_index==='number') ? t.round_index : null;
-        if (r==null || r<0 || r>13) return;
-        taken[r] += 1;
-        if ((t.hit===true) || (Number(t.points||0)>0)) hits[r] += 1;
-      });
+          const r = (typeof t.round_index==='number') ? t.round_index : null;
+          if (r==null || r<0 || r>13) return;
+          taken[r] += 1;
+          if ((t.hit===true) || (Number(t.points||0)>0)) hits[r] += 1;
+        });
         pct = taken.map((n,i)=> n ? (100*hits[i]/n) : 0);
       }
 
