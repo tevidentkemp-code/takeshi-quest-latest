@@ -2430,6 +2430,9 @@ async function renderSavedPlayersAdmin(){
     const btn = ev.target && ev.target.closest('button');
     if (!btn) return;
     if ((btn.textContent || '').trim().toUpperCase() !== 'TODAY') return;
+    // New Premier League dialog uses data-filter-id buttons; don't intercept those.
+    if (btn.dataset && btn.dataset.filterId) return;
+
 
     // Limit to the Premier League modal/panel
     const modal = btn.closest('.modal, #leaderboard');
@@ -13469,7 +13472,7 @@ const rowsOut = Array.from(byPlayer.values())
 let bestTop3 = null;
 if (!filter || filter.id === 'ALL') {
   const uniques = Array.from(
-    new Set(rowsOut.map(p => Number(p.best || 0)).filter(v => Number.isFinite(v) && v > 0))
+    new Set(rowsOut.filter(p=>p.qualifies).map(p => Number(p.best || 0)).filter(v => Number.isFinite(v) && v > 0))
   ).sort((a, b) => b - a);
   bestTop3 = uniques.slice(0, 3); // [gold, silver, bronze]
 }
@@ -13835,7 +13838,8 @@ async function openLatestScoresDialog(){
 
     games = (games || []).filter(Boolean).sort((a,b)=> toTS(b) - toTS(a));
 
-    // Phase 1 IDs: hide deleted players from the Latest Scores list (match history remains in DB).
+    // Latest Scores: keep games that include at least one currently-active (registered) player.
+    // This allows guest/unregistered opponents to appear in the feed, without needing them in the players table.
     try {
       let activeSet = window.__sqActivePlayerNameSet;
       if (!(activeSet instanceof Set) && typeof cloudListPlayers === 'function') {
@@ -13851,7 +13855,7 @@ async function openLatestScoresDialog(){
           const names = (g?.players || []).map(p => (p && typeof p === 'object' && 'name' in p) ? p.name : String(p || ''));
           const mapped = names.map(n => String(alias(n) || '').trim().toLowerCase()).filter(Boolean);
           if (!mapped.length) return false;
-          return mapped.every(n => activeSet.has(n));
+          return mapped.some(n => activeSet.has(n));
         });
       }
     } catch (_) {}
@@ -15988,6 +15992,8 @@ document.addEventListener('DOMContentLoaded', function(){
 
 // === Premier League — TODAY (clone a month pill; no min-games rule) =========
 (function premierLeagueTodayCloneMonth(){
+  // Disabled: superseded by openPremierLeagueDialog + filterId='TODAY'
+  if (typeof window.openPremierLeagueDialog === 'function') return;
   const TITLE_RX = /^\s*premier league\s*$/i;
   const MONTHS   = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
