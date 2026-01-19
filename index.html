@@ -650,7 +650,96 @@
   white-space:nowrap;
 }
   
-  </style>
+  
+/* >>> PATCH:home-footer-nav START */
+.home-footer-nav{
+  /* Pin these controls just above the fixed tickers */
+  position: fixed;
+  left: 0;
+  right: 0;
+  /* default; JS will refine based on which tickers are visible */
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap: 12px;
+
+  z-index: 250000; /* below tickers (300000) */
+  pointer-events: auto;
+}
+.home-square-row{
+  width: min(420px, 94%);
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.home-square-row .home-square-btn{
+  aspect-ratio: 3 / 2; /* reduce height ~33% */
+  border-radius: 14px;
+  padding: 10px;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+}
+.home-admin-row{
+  width: min(420px, 94%);
+  display:flex;
+  justify-content:center;
+}
+.home-admin-row .btn{ width: 100%; }
+/* <<< PATCH:home-footer-nav END */
+
+
+/* >>> PATCH:home-live-printer START */
+.home-live-printer{
+  width: min(560px, 94%);
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(6, 10, 20, .78);
+  box-shadow: 0 10px 40px rgba(0,0,0,.35);
+  overflow: hidden;
+}
+.home-live-printer .lp-head{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #36ff7a;
+  background: rgba(0,0,0,.22);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.home-live-printer .lp-dot{
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #36ff7a;
+  opacity: .85;
+}
+.home-live-printer pre{
+  margin: 0;
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.25;
+  color: rgba(220,255,230,.95);
+  min-height: 240px;
+  max-height: 320px;
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+/* <<< PATCH:home-live-printer END */
+
+</style>
 <style>
   /* Cloud status pill (top-right) */
 .cloud-status {
@@ -717,6 +806,7 @@ margin-bottom: var(--section-gap);
 
 /* Big buttons: 2/3 of title width, max 820px */
 #details #questBtn,
+#details #startGameBtn,
 #details #resumeBtn{
   width: min(calc(var(--title-w) * 0.6667), 820px);
   margin-inline:auto;
@@ -731,6 +821,7 @@ margin-bottom: var(--section-gap);
 /* Small screens */
 @media (max-width:560px){
   #details #questBtn,
+  #details #startGameBtn,
   #details #resumeBtn,
   #details .start-actions > .row:first-of-type{ width:92vw; }
 }
@@ -980,7 +1071,6 @@ margin-bottom: var(--section-gap);
         <div class="row start-secondary-row">
           <button id="latestScoresBtn" class="btn" type="button">Latest Scores</button>
           <button id="leagueRankingsBtn" class="btn" type="button">League / Rankings</button>
-          <button id="hsMainBtn" class="btn" type="button">High Scores</button>
           <button id="playerStatsBtn" class="btn" type="button">Player Stats</button>
         </div>
 
@@ -1178,17 +1268,6 @@ margin-bottom: var(--section-gap);
             <label class="tag" for="newPlayerName">Player Name</label>
             <input id="newPlayerName" type="text" placeholder="Enter player name" />
           </div>
-          <div class="stack" style="margin-top: 15px;">
-            <label class="tag" for="newPlayerPassword">Password</label>
-            <input
-              id="newPlayerPassword"
-              type="tel"
-              inputmode="numeric"
-              pattern="\d{4}"
-              maxlength="4"
-              placeholder="4-digit PIN"
-            />
-          </div>
         </div>
         <div class="modal-footer">
           <button id="cancelAddPlayerBtn" class="btn" type="button">Cancel</button>
@@ -1208,22 +1287,24 @@ margin-bottom: var(--section-gap);
           <option value="">Select a saved player...</option>
         </select>
       </div>
-      <div class="stack ps-password-row" style="margin-top: 15px;">
-        <label class="tag" for="playerPassword">Password</label>
-        <input
-          id="playerPassword"
-          type="tel"
-          inputmode="numeric"
-          pattern="\d{4}"
-          maxlength="4"
-          placeholder="4-digit PIN"
-        />
-      </div>
     </div>
     <div class="modal-footer">
       <button id="cancelSelectPlayerBtn" class="btn" type="button">Cancel</button>
 <button id="confirmSelectPlayerBtn" class="btn primary" type="button">Enter</button>
 
+    </div>
+  </div>
+</div>
+
+<!-- Start Game Modal (Home > START GAME >) -->
+<div id="startGameModal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h3>Start Game</h3>
+    <div class="modal-body">
+      <div id="startGameModalBody" class="column" style="align-items:center; gap:12px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button id="closeStartGameModalBtn" class="btn" type="button">Close</button>
     </div>
   </div>
 </div>
@@ -4751,13 +4832,6 @@ function logCompletedMatch() {
 /*****************
  * SUPABASE HELPERS
  *****************/
-// simple SHA-256 hex for demo auth (client-side)
-async function sha256Hex(text){
-  const enc = new TextEncoder().encode(text);
-  const buf = await crypto.subtle.digest('SHA-256', enc);
-  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
-}
-
 
 // Safari-safe timestamp parsing.
 // Accepts ISO strings, PostgREST timestamps like '2026-01-18 13:53:52.437+00', and epoch ms/seconds.
@@ -4845,20 +4919,6 @@ async function cloudCreatePlayer(name){
 }
 
 
-async function cloudValidatePlayer(name, password){
-  const hash = await sha256Hex(password);
-  const { data, error } = await sb.from(TABLE_PLAYERS)
-    .select('name, password_hash')
-    .eq('name', name)
-    .maybeSingle();
-  if (error) {
-    markCloudError(error);
-    throw error;
-  }
-  markCloudOk();
-  if (!data) return false;
-  return data.password_hash === hash;
-}
 
 async function cloudDeletePlayer(playerOrName){
   const obj = (playerOrName && typeof playerOrName === 'object') ? playerOrName : null;
@@ -4896,15 +4956,6 @@ async function cloudDeletePlayer(playerOrName){
   } catch(_) {}
 }
 
-async function cloudUpdatePlayerPassword(name, newPassword){
-  const password_hash = await sha256Hex(newPassword);
-  const { error } = await sb.from(TABLE_PLAYERS).update({ password_hash }).eq('name', name);
-  if (error) {
-    markCloudError(error);
-    throw error;
-  }
-  markCloudOk();
-}
 
 // Fetch high scores from Supabase (league or practice)
 async function cloudListHighScores(isPractice = false, limit = 500){
@@ -6158,23 +6209,13 @@ async function showAddPlayerDialog(index){
     // close + reset
     modal.classList.add('hidden');
     const nameEl = byId('newPlayerName');
-    const passEl = byId('newPlayerPassword');
     if (nameEl) nameEl.value = '';
-    if (passEl) passEl.value = '';
     toast(msg);
   }
 
   // Reset fields
   const nameEl = byId('newPlayerName');
-  const passEl = byId('newPlayerPassword');
   if (nameEl) nameEl.value = '';
-  if (passEl) {
-    passEl.value = '';
-    // Hide the password row visually (if present)
-    const row = passEl.closest('.stack') || passEl.parentElement;
-    if (row) row.style.display = 'none';
-  }
-
   // Remember which row invoked the dialog
   modal.dataset.playerIndex = index ? String(index) : '';
 
@@ -6269,15 +6310,6 @@ async function showSelectPlayerDialog(index){
 
   const modal = byId('selectPlayerModal');
   if (!modal) { toast('Select Player modal missing'); return; }
-
-  // Hide password row if it exists
-  const passInput = byId('playerPassword');
-  if (passInput) {
-    const row = passInput.closest('.stack') || passInput.parentElement;
-    if (row) row.style.display = 'none';
-    passInput.value = '';
-  }
-
   modal.dataset.playerIndex = String(index);
   modal.classList.remove('hidden');
 
@@ -11533,7 +11565,19 @@ window.openStartHighScoresMenu = function openStartHighScoresMenu(){
   modal.focus();
 };
 
+// --- Global modal helpers (some parts of the file define modal helpers in inner scopes) ---
+// Keep these on window so start-screen / global handlers can always open/close modals safely.
+window.openModal = window.openModal || function(id){
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('hidden');
+};
+window.closeModal = window.closeModal || function(id){
+  const el = document.getElementById(id);
+  if (el) el.classList.add('hidden');
+};
+
 // === Start screen layout arranger (non-destructive; rebuilds start-actions) ===
+
 function arrangeStartActions(){
   try{
     const host = document.querySelector('#details .start-actions.column') || document.querySelector('.start-actions.column');
@@ -11544,7 +11588,6 @@ function arrangeStartActions(){
     const mkRow = (btn) => {
       const row = doc.createElement('div');
       row.className = 'row';
-      // centred single button row, consistent small vertical gap
       row.style.cssText = 'justify-content:center; gap:8px; flex-wrap:wrap; margin-top:8px;';
       row.appendChild(btn);
       return row;
@@ -11554,10 +11597,26 @@ function arrangeStartActions(){
       d.style.height = (h || 16) + 'px';
       return d;
     };
+    const setSquareLabel = (btn, lines) => {
+      const txt = (lines || []).join('\n');
+      btn.textContent = txt;
+      btn.style.whiteSpace = 'pre-line';
+    };
 
     // ensure / find buttons
     const newBtn = document.getElementById('questBtn');
     if (newBtn) newBtn.textContent = 'NEW GAME';
+
+    // New Home button: opens the Start Game modal
+    let startGameBtn = document.getElementById('startGameBtn');
+    if (!startGameBtn){
+      startGameBtn = doc.createElement('button');
+      startGameBtn.id = 'startGameBtn';
+      startGameBtn.className = 'btn primary big';
+      startGameBtn.type = 'button';
+    }
+    startGameBtn.textContent = 'START GAME >';
+    startGameBtn.onclick = () => openModal('startGameModal');
 
     const resumeBtn = document.getElementById('resumeBtn');
     if (resumeBtn) resumeBtn.textContent = 'Resume Game';
@@ -11572,7 +11631,7 @@ function arrangeStartActions(){
       latest.textContent = 'Latest Scores';
     }
 
-    // League / Rankings (start-screen popup)
+    // League / Rankings -> footer square
     let league = document.getElementById('leagueRankingsBtn');
     if (!league){
       league = doc.createElement('button');
@@ -11580,110 +11639,107 @@ function arrangeStartActions(){
       league.className = 'btn';
       league.type = 'button';
     }
-    league.textContent = 'League / Rankings';
 
-    // High Scores (wrapper button that opens Match/Round picker)
-    let hsMain = document.getElementById('highScoresMainBtn');
-    if (!hsMain){
-      hsMain = doc.createElement('button');
-      hsMain.id = 'highScoresMainBtn';
-      hsMain.className = 'btn';
-      hsMain.type = 'button';
-      hsMain.textContent = 'High Scores';
-    } else {
-      hsMain.textContent = 'High Scores';
-    }
-
-    // High Scores (Match)
-    let hsMatch = document.getElementById('highScoresMenuBtn') ||
-                  document.getElementById('highScoresBtn');
-    if (!hsMatch){
-      hsMatch = doc.createElement('button');
-      hsMatch.id = 'highScoresMenuBtn';
-      hsMatch.className = 'btn';
-      hsMatch.type = 'button';
-    }
-    hsMatch.textContent = 'High Scores (Match)';
-
-    // High Scores (Round)
-    let hsRound = document.getElementById('roundHighScoresBtn');
-    if (!hsRound){
-      hsRound = doc.createElement('button');
-      hsRound.id = 'roundHighScoresBtn';
-      hsRound.className = 'btn';
-      hsRound.type = 'button';
-    }
-    hsRound.textContent = 'High Scores (Round)';
-
-    // Player Stats
+    // Player Stats -> footer square
     let stats = document.getElementById('playerStatsBtn');
     if (!stats){
       stats = doc.createElement('button');
       stats.id = 'playerStatsBtn';
       stats.className = 'btn';
       stats.type = 'button';
-      stats.textContent = 'Player Stats';
-    } else {
-      stats.textContent = 'Player Stats';
     }
 
     // Admin
     let admin = document.getElementById('adminBtn') ||
+                document.getElementById('adminCodeBtn') ||
                 Array.from(document.querySelectorAll('#details button, button'))
                   .find(b => /admin code|^admin$/i.test((b.textContent || b.innerText || '').trim()));
     if (!admin){
       admin = doc.createElement('button');
       admin.id = 'adminBtn';
-      admin.className = 'btn';
+      admin.className = 'btn small';
       admin.type = 'button';
       admin.textContent = 'Admin';
     } else {
       admin.textContent = 'Admin';
     }
-
     // wire handlers (idempotent, safe if functions missing)
     if (typeof window.openLatestScoresDialog === 'function') latest.onclick = window.openLatestScoresDialog;
     if (typeof window.openLeagueRankingsDialog === 'function') league.onclick = window.openLeagueRankingsDialog;
-    if (typeof window.openStartHighScoresMenu === 'function') hsMain.onclick = window.openStartHighScoresMenu;
-    if (typeof window.openRoundHighScoresDialog === 'function') hsRound.onclick = window.openRoundHighScoresDialog;
-    if (typeof window.openHighScoresMenuDialog === 'function') hsMatch.onclick = window.openHighScoresMenuDialog;
+
+    // STATS should always start at: Player Stats – Select Player
+    if (typeof openPlayerStatsSelectDialog === 'function') {
+      stats.onclick = () => openPlayerStatsSelectDialog();
+    } else if (typeof window.openPlayerStatsLookupDialog === 'function') {
+      stats.onclick = window.openPlayerStatsLookupDialog;
+    } else if (typeof window.openStatsHubDialog === 'function') {
+      stats.onclick = window.openStatsHubDialog;
+    }
+
     if (typeof window.openAdminPasswordModal === 'function') {
       admin.onclick = window.openAdminPasswordModal;
     } else if (typeof window.openAdminHub === 'function') {
       admin.onclick = window.openAdminHub;
     }
 
-    // rebuild layout to:
-    // NEW GAME (big)
-    // Resume Game (big)
-    // GAP
-    // Latest Scores
-    // High Scores (Match)
-    // High Scores (Round)
-    // Player Stats
-    // GAP
-    // Admin
-    const frag = doc.createDocumentFragment();
-    // TOURNAMENT
+    // TOURNAMENT (lives in Start Game modal)
     let tournament = document.getElementById('tournamentBtn');
     if (!tournament){
       tournament = doc.createElement('button');
       tournament.id = 'tournamentBtn';
-      tournament.className = 'btn';
+      tournament.className = 'btn big';
       tournament.type = 'button';
     }
     tournament.textContent = 'TOURNAMENT';
     tournament.onclick = () => toast('Tournament mode; for 4 / 8 players - Coming soon!');
 
-    const hasSaved = (typeof getSavedState === 'function' && !!getSavedState());
-
-    if (newBtn) {
-      newBtn.textContent = 'NEW GAME';
-      frag.appendChild(newBtn);
+    // Populate Start Game modal with NEW GAME + TOURNAMENT
+    const startGameBody = document.getElementById('startGameModalBody');
+    if (startGameBody){
+      startGameBody.innerHTML = '';
+      [newBtn, tournament].forEach(b=>{
+        if (!b) return;
+        b.style.width = 'min(360px,92%)';
+      });
+      if (newBtn) startGameBody.appendChild(newBtn);
+      if (tournament) startGameBody.appendChild(tournament);
     }
 
-    // Insert Tournament between NEW GAME and Resume
-    if (tournament) frag.appendChild(tournament);
+    // Close button in modal
+    const closeStart = document.getElementById('closeStartGameModalBtn');
+    if (closeStart) closeStart.onclick = () => closeModal('startGameModal');
+
+    // Backdrop + Esc close (bind once)
+    const startGameModal = document.getElementById('startGameModal');
+    if (startGameModal && !startGameModal.dataset.bound){
+      startGameModal.dataset.bound = '1';
+      startGameModal.addEventListener('click', (e)=>{
+        if (e.target === startGameModal) closeModal('startGameModal');
+      });
+      document.addEventListener('keydown', (e)=>{
+        if (e.key === 'Escape' && !startGameModal.classList.contains('hidden')) closeModal('startGameModal');
+      });
+    }
+
+    // Close modal when choosing an option (without overwriting existing handlers)
+    if (newBtn && !newBtn.dataset.sgClose){
+      newBtn.dataset.sgClose = '1';
+      newBtn.addEventListener('click', () => closeModal('startGameModal'));
+    }
+    if (tournament && !tournament.dataset.sgClose){
+      tournament.dataset.sgClose = '1';
+      tournament.addEventListener('click', () => closeModal('startGameModal'));
+    }
+
+    // ===== HOME MAIN COLUMN =====
+    // START GAME > (big)
+    // Resume Game (big)
+    // GAP
+    // Latest Scores
+    const frag = doc.createDocumentFragment();
+    const hasSaved = (typeof getSavedState === 'function' && !!getSavedState());
+
+    if (startGameBtn) frag.appendChild(startGameBtn);
 
     if (resumeBtn) {
       resumeBtn.textContent = 'Resume Game';
@@ -11691,30 +11747,115 @@ function arrangeStartActions(){
       if (hasSaved) frag.appendChild(resumeBtn);
     }
 
-// GAP between large buttons and the medium stats buttons
     frag.appendChild(mkSpacer(16));
+    if (latest) frag.appendChild(mkRow(latest));
 
-    // Medium buttons – one per row, equal spacing
-    [latest, league, hsMain, stats].forEach(btn => {
-      if (!btn) return;
-      frag.appendChild(mkRow(btn));
-    });
-
-    // GAP before Admin
-    frag.appendChild(mkSpacer(16));
-
-    // Admin button row at the bottom
-    if (admin) {
-      frag.appendChild(mkRow(admin));
+    // ===== HOME LIVE PRINTER (between Latest Scores and footer buttons) =====
+    frag.appendChild(mkSpacer(26));
+    let printer = document.getElementById('homeLivePrinter');
+    if (!printer){
+      printer = doc.createElement('div');
+      printer.id = 'homeLivePrinter';
+      printer.className = 'home-live-printer';
+      printer.innerHTML = '<div class="lp-head"><span class="lp-dot"></span><span>LATEST GAMES</span></div>'+
+                          '<pre id="homeLivePrinterText">MATCH_LOG.TXT loading...</pre>';
     }
+    frag.appendChild(printer);
 
-    // clear and insert
     host.innerHTML = '';
     host.appendChild(frag);
+
+    // Live-printer updater (bind once)
+    try{
+      if (!window.__homeLivePrinterInterval){
+        window.__homeLivePrinterDots = 0;
+        window.__homeLivePrinterInterval = setInterval(()=>{
+          const pre = document.getElementById('homeLivePrinterText');
+          if (!pre) return;
+          const track = (document.querySelector('#psTickerTop .track') || document.querySelector('#psTicker .track'));
+          const t = (track && (track.textContent || track.innerText)) ? (track.textContent || track.innerText).trim() : '';
+          const parts = t ? t.split('//').map(s=>s.trim()).filter(Boolean) : [];
+          const dots = '.'.repeat((window.__homeLivePrinterDots++ % 4));
+          const lines = [
+            `MATCH_LOG.TXT loading${dots}`,
+            ...parts.slice(0, 6)
+          ];
+          pre.textContent = lines.join('\n');
+        }, 450);
+      }
+    }catch(_){ }
+
+    // ===== HOME FOOTER NAV (above tickers) =====
+    let footer = document.getElementById('homeFooterNav');
+    const tickerTop = document.getElementById('psTickerTop') || document.getElementById('psTicker');
+    if (!footer){
+      footer = doc.createElement('div');
+      footer.id = 'homeFooterNav';
+      footer.className = 'home-footer-nav';
+      // insert right before the ticker(s)
+      if (tickerTop && tickerTop.parentNode) {
+        tickerTop.parentNode.insertBefore(footer, tickerTop);
+      } else {
+        // fallback: append to details section
+        const details = document.getElementById('details');
+        if (details) details.appendChild(footer);
+      }
+    }
+
+
+    // Ensure footer sits just above the fixed tickers
+    try{
+      const t1 = document.getElementById('psTicker');
+      const t2 = document.getElementById('psTickerTop');
+      const h1 = (t1 && !t1.classList.contains('hidden')) ? (t1.getBoundingClientRect().height || 32) : 0;
+      const h2 = (t2 && !t2.classList.contains('hidden')) ? (t2.getBoundingClientRect().height || 32) : 0;
+      const pad = 74; // breathing room above tickers + space for Admin bar
+      footer.style.bottom = `calc(${h1 + h2 + pad}px + env(safe-area-inset-bottom, 0px))`;
+    } catch(_) {}
+
+    // Build 3x squares + Admin row
+    footer.innerHTML = '';
+
+    // Player HUB (coming soon)
+    let hub = document.getElementById('playerHubBtn');
+    if (!hub){
+      hub = doc.createElement('button');
+      hub.id = 'playerHubBtn';
+      hub.type = 'button';
+      hub.className = 'btn home-square-btn';
+      hub.onclick = () => toast('Player HUB - Coming soon!');
+    }
+
+    // Square styling + labels
+    hub.classList.add('home-square-btn');
+    league.classList.add('home-square-btn');
+    stats.classList.add('home-square-btn');
+
+    setSquareLabel(hub,   ['PLAYER', 'HUB']);
+    setSquareLabel(stats, ['STATS']);
+    setSquareLabel(league,['LEAGUE', '& RANKS']);
+
+    const squareRow = doc.createElement('div');
+    squareRow.className = 'home-square-row';
+    squareRow.appendChild(hub);
+    squareRow.appendChild(stats);
+    squareRow.appendChild(league);
+
+    const adminRow = doc.createElement('div');
+    adminRow.className = 'home-admin-row';
+    // ensure admin looks like a full width footer button
+    admin.classList.remove('small');
+    admin.classList.add('btn');
+    adminRow.appendChild(admin);
+
+    footer.appendChild(squareRow);
+    footer.appendChild(adminRow);
+
   } catch(e){
     console.error('arrangeStartActions failed', e);
   }
 }
+
 
 /*****************
  * BOOT
@@ -11744,12 +11885,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (statsHubBtnFinal) statsHubBtnFinal.onclick = openStatsHubDialog;
   const hsFinalBtn = byId('highScoresMenuBtnLB');
   if (hsFinalBtn) hsFinalBtn.onclick = openHighScoresMenuDialog;
-  
-  // High Scores button on start screen
-  const hsStartBtn = byId('highScoresMenuBtn') || byId('highScoresBtn');
-  if (hsStartBtn) hsStartBtn.onclick = openHighScoresMenuDialog;
-  
-
   // Leaderboard buttons (guarded lookups)
   (function(){
     const map = [
@@ -12532,6 +12667,42 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
   col.appendChild(premierP);
   col.appendChild(highBtn);
   col.appendChild(highP);
+
+
+  // High Scores Round (moved from Home)
+  const roundScoresBtn = document.createElement('button');
+  roundScoresBtn.id = 'leagueRoundHighScoresBtn';
+  roundScoresBtn.className = 'btn';
+  roundScoresBtn.type = 'button';
+  roundScoresBtn.style.width = 'min(360px,92%)';
+  roundScoresBtn.textContent = 'High Scores Round';
+
+  const roundScoresP = document.createElement('p');
+  roundScoresP.className = 'tag';
+  roundScoresP.textContent = 'Best single-round scores';
+  roundScoresP.style.width = roundScoresBtn.style.width;
+  roundScoresP.style.textAlign = 'center';
+
+  col.appendChild(roundScoresBtn);
+  col.appendChild(roundScoresP);
+
+  // Top 50 Scores (moved from Home)
+  const topScoresBtn = document.createElement('button');
+  topScoresBtn.id = 'topScoresBtn';
+  topScoresBtn.className = 'btn';
+  topScoresBtn.type = 'button';
+  topScoresBtn.style.width = 'min(360px,92%)';
+  topScoresBtn.textContent = 'Top 50 Scores';
+
+  const topScoresP = document.createElement('p');
+  topScoresP.className = 'tag';
+  topScoresP.textContent = 'Best match scores';
+  topScoresP.style.width = topScoresBtn.style.width;
+  topScoresP.style.textAlign = 'center';
+
+  col.appendChild(topScoresBtn);
+  col.appendChild(topScoresP);
+
   body.appendChild(col);
 
   // Footer: Back / Close
@@ -12576,6 +12747,24 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
     if (typeof window.openHighScoreLeagueDialog === 'function') {
       window.openHighScoreLeagueDialog();
     }
+  };
+
+  roundScoresBtn.onclick = () => {
+    overlay.remove();
+    try {
+      if (typeof window.openRoundHighScoresDialog === 'function') return window.openRoundHighScoresDialog();
+      if (typeof openRoundHighScoresDialog === 'function') return openRoundHighScoresDialog();
+    } catch(_) {}
+    try { toast('Round High Scores not available'); } catch(_) {}
+  };
+
+  topScoresBtn.onclick = () => {
+    overlay.remove();
+    try {
+      if (typeof window.openHighScoresMenuDialog === 'function') return window.openHighScoresMenuDialog();
+      if (typeof openHighScoresMenuDialog === 'function') return openHighScoresMenuDialog();
+    } catch(_) {}
+    try { toast('High Scores not available'); } catch(_) {}
   };
 };
 
