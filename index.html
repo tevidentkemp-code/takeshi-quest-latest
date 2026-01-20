@@ -90,13 +90,28 @@
 }
 #details #appTitle {
   display: block;               /* override the display:none */
-  font-size: 2.6rem;
-  font-weight: 800;
-  letter-spacing: 0.18em;
   text-transform: uppercase;
   text-align: center;
-  margin-bottom: 24px;
-  color: #e7e9f5;
+  margin: 8px 0 14px;
+  line-height: 1.02;
+}
+
+#details #appTitle .titleMain{
+  display:block;
+  font-size: 3.3rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: #ff7a00;
+}
+
+#details #appTitle .titleSub{
+  display:block;
+  margin-top: 6px;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.55em;
+  color: #f2f4ff;
+  opacity: 0.92;
 }
 /* Game Details screen: content aligned towards top with some breathing room */
 #details {
@@ -700,6 +715,7 @@
 .home-live-printer{
   min-height: 320px;
   max-height: 360px;
+  height:clamp(320px,42vh,360px);
   display: flex;
   flex-direction: column;
   border-radius: 14px;
@@ -727,6 +743,10 @@
   flex-direction:column;
   gap: 4px;
 }
+.home-live-printer .lp-meta{display:none !important;}
+#homeLpHS{display:none !important;}
+.home-live-printer hr{display:none !important;}
+
 .home-live-printer .lp-meta-line{
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
@@ -802,13 +822,18 @@
 
 /* Bottom: marquee */
 .home-live-printer .lp-bottom{
-  padding: 8px 10px;
+  padding: 2px 10px;
   background: rgba(0,0,0,.18);
 }
+
+/* The new players marquee sits below the VIDE box */
+.home-newplayers{ margin-top: 10px; }
 .home-live-printer .lp-marquee{
   position: relative;
   overflow: hidden;
-  height: 18px;
+  height: 14px;
+  display:flex;
+  align-items:center;
 }
 .home-live-printer .lp-marquee-track{
   display: inline-block;
@@ -817,7 +842,7 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
   color: rgba(220,255,230,.85);
-  animation: lpMarquee 14s linear infinite;
+  animation: none;
 }
 @keyframes lpMarquee{
   0%   { transform: translateX(100%); }
@@ -886,7 +911,7 @@ margin-bottom: var(--section-gap);
 }
 
 /* ===== Start Screen sizing (page: #details) ===== */
-#details #appTitle{ display:inline-block; } /* measurable text width */
+#details #appTitle{ display:inline-flex; } /* measurable title width */
 
 #details .start-actions{ max-width:none; }
 
@@ -926,6 +951,48 @@ margin-bottom: var(--section-gap);
   justify-content:center;
   gap:8px;                 /* small, consistent gap between medium buttons */
   margin-top:72px;         /* push secondary buttons lower so they sit roughly central */
+}
+
+/* ===== Start/Resume visual style (match orange mock) ===== */
+#details #startGameBtn,
+#details #resumeBtn{
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+#details #startGameBtn{
+  background: #ff6a00;
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  color: #ffffff;
+}
+
+#details #resumeBtn{
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  color: rgba(255,255,255,.82);
+}
+
+#details #resumeBtn[disabled],
+#details #resumeBtn.disabled{
+  opacity: .55;
+  filter: grayscale(.2);
+}
+
+#details .btnIcon{
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
 }
 
 /* Medium buttons: same visual width as the big ones, centred */
@@ -1062,6 +1129,10 @@ margin-bottom: var(--section-gap);
   z-index: 300000;
 }
 #psTickerTop.hidden{display:none;}
+/* Hard-disable bottom tickers (removed from UI) */
+#psTicker,
+#psTickerTop{ display:none !important; }
+
 #psTickerTop .track{
   position: absolute;
   left: 14px;
@@ -1148,11 +1219,11 @@ margin-bottom: var(--section-gap);
 
     <!-- PAGE 1: GAME DETAILS -->
     <section id="details" class="card section">
-<h2 id="appTitle">SHATEKI-QUEST</h2>
+<h2 id="appTitle"><span class="titleMain">SHATEKI</span><span class="titleSub">QUEST</span></h2>
       <div class="start-actions column" style="gap:8px">
         <button id="questBtn" class="btn primary big" type="button">New game ▶</button>
                 <button id="tournamentBtn" class="btn big" type="button">TOURNAMENT</button>
-<button id="resumeBtn" class="btn good big" type="button" disabled title="No saved match">Resume game ▶</button>
+<button id="resumeBtn" class="btn secondary big" type="button" disabled title="No saved match"><span class="btnIcon">↺</span><span class="btnLabel">RESUME GAME</span></button>
 
         <div class="row start-secondary-row">
           <button id="latestScoresBtn" class="btn" type="button">Latest Scores</button>
@@ -11714,7 +11785,7 @@ function arrangeStartActions(){
       startGameBtn.className = 'btn primary big';
       startGameBtn.type = 'button';
     }
-    startGameBtn.textContent = 'START GAME >';
+    startGameBtn.innerHTML = '<span class="btnIcon">▶</span><span class="btnLabel">START GAME</span>';
     startGameBtn.onclick = () => openModal('startGameModal');
 
     const resumeBtn = document.getElementById('resumeBtn');
@@ -11841,7 +11912,8 @@ function arrangeStartActions(){
     if (startGameBtn) frag.appendChild(startGameBtn);
 
     if (resumeBtn) {
-      resumeBtn.textContent = 'Resume Game';
+      resumeBtn.innerHTML = '<span class="btnIcon">↺</span><span class="btnLabel">RESUME GAME</span>';
+      resumeBtn.classList.add('secondary');
       resumeBtn.style.display = hasSaved ? '' : 'none';
       if (hasSaved) frag.appendChild(resumeBtn);
     }
@@ -11859,23 +11931,24 @@ function arrangeStartActions(){
           '<span id="homeLpTopLine">MATCH_LOG.TXT loading...</span>'+
         '</div>'+
         '<div class="lp-rule"></div>'+
-        '<div class="lp-meta">'+
-          '<div class="lp-meta-line"><b>HIGH SCORES:</b> <span id="homeLpHS">—</span></div>'+
-                  '</div>'+
-        '<div class="lp-meta-rule"></div>'+
         '<div class="lp-mid">'+
           '<table class="lp-table" aria-label="Latest games">'+
             '<tbody id="homeLivePrinterRows"></tbody>'+
           '</table>'+
         '</div>'+
-        '<div class="lp-rule"></div>'+
-        '<div class="lp-bottom">'+
-          '<div class="lp-marquee">'+
-            '<div id="homeLpBottomTrack" class="lp-marquee-track">NEW PLAYERS // </div>'+
-          '</div>'+
-        '</div>';
+        '<div class="lp-rule"></div>';
     }
     frag.appendChild(printer);
+
+    // NEW PLAYERS marquee sits directly below the VIDE box
+    let np = document.getElementById('homeNewPlayersMarquee');
+    if (!np){
+      np = doc.createElement('div');
+      np.id = 'homeNewPlayersMarquee';
+      np.className = 'lp-bottom';
+      np.innerHTML = '<div class="lp-marquee"><div id="homeLpBottomTrack" class="lp-marquee-track">NEW PLAYERS // </div></div>';
+    }
+    frag.appendChild(np);
 
     host.innerHTML = '';
     host.appendChild(frag);
@@ -11893,65 +11966,39 @@ function arrangeStartActions(){
           syncCount: 0
         };
       }
-
       const lpSig = (g) => {
-        const names = (g?.players || []).map(p => (p && p.name) ? String(p.name) : '').join('|');
-        const totals = Array.isArray(g?.totals) ? g.totals.map(x=>String(Number(x)||0)).join('|') : '';
-        const ts = g?.ts || g?.created_at || '';
-        return `${ts}::${names}::${totals}`;
+        if (!g) return '';
+        const ts = String(g.event_ts ?? g.ts ?? g.created_at ?? g.createdAt ?? '');
+        const id = String(g.event_id ?? g.match_id ?? g.game_id ?? '');
+        if (id && ts) return `${ts}::${id}`;
+        if (id) return id;
+        if (ts) return ts;
+        return '';
       };
 
       const LP_BUFFER = 20;
       const LP_VISIBLE = 6;
 
       const lpPad2 = (n) => String(Number(n) || 0).padStart(2, '0');
-
       const lpFmtDT = (g) => {
-        // DD/MM _ HH:MM (local)
-        let d = null;
-        try {
-          if (typeof window.getGameTimestamp === 'function') d = window.getGameTimestamp(g);
-        } catch (_) {}
-        if (!d) {
-          const tsVal = g?.ts || g?.created_at || null;
-          if (tsVal) {
-            const ms = (typeof parseMs === 'function') ? parseMs(tsVal) : Date.parse(tsVal);
-            if (Number.isFinite(ms)) d = new Date(ms);
-          }
-        }
-        if (!d || Number.isNaN(d.getTime())) return '';
-        const dd = lpPad2(d.getDate());
-        const mm = lpPad2(d.getMonth() + 1);
-        const hh = lpPad2(d.getHours());
-        const mi = lpPad2(d.getMinutes());
-        return `${dd}/${mm} _ ${hh}:${mi}`;
+        const ts = g.event_ts || g.ts || g.created_at || g.createdAt;
+        const d = ts ? new Date(ts) : null;
+        if (!d || isNaN(d.getTime())) return '--/-- _ --:--';
+        return `${lpPad2(d.getDate())}/${lpPad2(d.getMonth()+1)} _ ${lpPad2(d.getHours())}:${lpPad2(d.getMinutes())}`;
       };
-
       const lpFmtLine = (g) => {
-        // DD/MM _ HH:MM _ Winner (89) bts X (70), Y (60)
+        if (g && g.line_text) return String(g.line_text);
         const dt = lpFmtDT(g);
-        const players = Array.isArray(g?.players) ? g.players : [];
-        const totals = Array.isArray(g?.totals) ? g.totals : [];
-        const list = players.map((p, i) => {
-          const name = (p && p.name) ? String(p.name) : '';
-          const score = Number(totals[i] ?? 0) || 0;
-          return { name, score };
-        }).filter(x => x.name);
-        if (!list.length) return dt ? `${dt} _ —` : '—';
-
-        list.sort((a, b) => (b.score - a.score) || a.name.localeCompare(b.name));
-        const winner = list[0];
-        const rest = list.slice(1);
-        const restStr = rest.length ? rest.map(x => `${x.name} (${x.score})`).join(', ') : '';
-
-        const core = restStr ? `${winner.name} (${winner.score}) bts ${restStr}` : `${winner.name} (${winner.score})`;
-        return dt ? `${dt} _ ${core}` : core;
+        const winnerName = g.winner_name || '?';
+        const winnerScore = (g.winner_score ?? '?');
+        const opp = g.opponents_text || '';
+        return `${dt} _ ${winnerName} (${winnerScore})${opp ? ' bts ' + opp : ''}`;
       };
-
-
-      
 
       const lpUpdateMeta = async (games) => {
+
+        // VIDE: hide HIGH SCORES meta row
+        return;
         const st = window.__homeLivePrinterState;
         if (!st) return;
         const hsEl = document.getElementById('homeLpHS');
@@ -12000,16 +12047,17 @@ function arrangeStartActions(){
         const finish = () => {
           if (doneCalled) return;
           doneCalled = true;
-          if (onDone) onDone();
           try {
+            // Reset first (no transition), then update content next frame.
             tbody.style.transition = '';
             tbody.style.transform = 'translateY(0)';
             tbody.style.willChange = '';
           } catch (_) {}
+          if (onDone) requestAnimationFrame(onDone);
         };
         try {
           tbody.style.willChange = 'transform';
-          tbody.style.transition = `transform ${durationMs}ms ease-in-out`;
+          tbody.style.transition = `transform ${durationMs}ms ease`;
           void tbody.offsetHeight;
           tbody.style.transform = `translateY(-${rowH}px)`;
           tbody.addEventListener('transitionend', (e) => {
@@ -12026,7 +12074,7 @@ function arrangeStartActions(){
         const tbody = document.getElementById('homeLivePrinterRows');
         if (!tbody) return;
         tbody.innerHTML = '';
-        (lines || []).slice(0, LP_VISIBLE).slice().reverse().forEach((line) => {
+        (lines || []).slice(0, LP_VISIBLE).forEach((line) => {
           const tr = document.createElement('tr');
           tr.className = 'lp-row';
           const td = document.createElement('td');
@@ -12060,7 +12108,7 @@ function arrangeStartActions(){
         const buf = Array.isArray(st.bufLines) ? st.bufLines : [];
         const start = Number(st.viewStart || 0) || 0;
         const win = buf.slice(start, start + LP_VISIBLE);
-        const winDisp = win.slice().reverse();
+        const winDisp = win;
         const rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
         if (rows.length !== LP_VISIBLE) { lpEnsureRows(win); return; }
         rows.forEach((tr, i) => {
@@ -12093,7 +12141,7 @@ function arrangeStartActions(){
 
         lpSmoothShiftUp(tbody, rowH, 420, () => {
           const win = buf.slice(st.viewStart, st.viewStart + LP_VISIBLE);
-          const winDisp = win.slice().reverse();
+          const winDisp = win;
           const rows2 = Array.from(tbody.querySelectorAll('tr.lp-row'));
           if (rows2.length !== LP_VISIBLE) {
             lpEnsureRows(win);
@@ -12126,7 +12174,7 @@ function arrangeStartActions(){
         const rowH = (rows[0] ? (rows[0].getBoundingClientRect().height || 22) : 22);
 
         const buf = Array.isArray(bufLines) ? bufLines : [];
-        const winNew = buf.slice(0, LP_VISIBLE).slice().reverse();
+        const winNew = buf.slice(0, LP_VISIBLE);
 
         lpSmoothShiftUp(tbody, rowH, 460, () => {
           const rows2 = Array.from(tbody.querySelectorAll('tr.lp-row'));
@@ -12153,62 +12201,129 @@ function arrangeStartActions(){
           }
         });
       };
-
-
-
-
       const lpSync = async (forceFull = false) => {
         const st = window.__homeLivePrinterState;
-        if (st.syncing) return;
+        if (!st || st.syncing) return;
         st.syncing = true;
-        try{
-          let games = [];
-          if (typeof cloudFetchLatestGamesAsLocal === 'function') {
-            games = await cloudFetchLatestGamesAsLocal(20);
-          } else if (typeof cloudFetchAllGamesAsLocal === 'function') {
-            const all = await cloudFetchAllGamesAsLocal();
-            games = (all || []).slice().sort((a,b)=>{
-              const ta = Date.parse(a?.ts||'')||0;
-              const tb = Date.parse(b?.ts||'')||0;
-              return tb - ta;
-            }).slice(0,20);
+        try {
+          homeLpMsg.innerHTML = cloudMode ? 'MATCH_LOG.TXT LOADING...' : 'MATCH_LOG.TXT LOADING (local)...';
+
+          // 1) Prefer the consolidated printer events view (VIDE)
+          let items = [];
+          if (cloudMode && window.sb) {
+            try {
+              const { data, error } = await window.sb
+                .from('printer_events_v_all')
+                .select('event_id,event_ts,kind_priority,event_kind,line_text')
+                .order('event_ts', { ascending: false })
+                .order('kind_priority', { ascending: false })
+                .order('event_id', { ascending: false })
+                .limit(LP_BUFFER);
+              if (!error && Array.isArray(data)) items = data;
+            } catch (e) {
+              // ignore
+            }
           }
 
-          
-          const lines = (games || []).slice(0, LP_BUFFER).map(lpFmtLine);
-          st.bufLines = lines;
-          if (typeof st.viewStart !== 'number') st.viewStart = 0;
-          try { await lpUpdateMeta(games); } catch (_) {}
-if (!games || !games.length) {
-            lpEnsureRows([]);
-            st.bufLines = [];
-            st.viewStart = 0;
-            st.lastSig = null;
+          // 2) Fallback: recent games (existing behaviour)
+          if (!items.length) {
+            let games = [];
+            if (cloudMode) {
+              games = await cloudFetchLatestGamesAsLocal(LP_BUFFER);
+            }
+            if (!games || !games.length) {
+              const ids = getSavedMatchIdsSorted();
+              games = ids.slice(-LP_BUFFER).reverse().map(id => {
+                const m = getMatchState(id);
+                if (!m) return null;
+                const rows = (m.players || []).map(p => ({ name: p.name || '?', score: (p.totalScore ?? 0) }))
+                  .sort((a,b)=> b.score - a.score || String(a.name).localeCompare(String(b.name)));
+                const winner = rows[0] || { name: '?', score: '?' };
+                const opp = rows.slice(1).map(r => `${r.name} (${r.score})`).join(', ');
+                return {
+                  match_id: id,
+                  ts: m.ts || m.createdAt || m.created_at || m.updatedAt || m.updated_at,
+                  winner_name: winner.name,
+                  winner_score: winner.score,
+                  opponents_text: opp
+                };
+              }).filter(Boolean);
+            }
+            items = games;
+          }
+
+          if (!items.length) {
+            homeLpMsg.textContent = 'No data.';
             return;
           }
 
-          const sig0 = lpSig(games[0]);
-          if (!st.lastSig || forceFull) {
-            lpEnsureRows(st.bufLines || []);
-            st.lastSig = sig0;
-            return;
+          const _lpGetTs = (g) => g.event_ts || g.ts || g.created_at || g.createdAt;
+          const sorted = items.slice().sort((a,b) => (new Date(_lpGetTs(b))).getTime() - (new Date(_lpGetTs(a))).getTime());
+  // Show all printer event kinds on the home VIDE.
+  const HIDE_KINDS = new Set();
+    const filtered = sorted.filter(it => !(it && it.event_kind && HIDE_KINDS.has(it.event_kind)));
+    const lines = filtered.map(lpFmtLine);
+          const sig0 = sorted[0] ? lpSig(sorted[0]) : '';
+
+          // Force-refresh periodically even if the top line hasn't changed (helps after view tweaks)
+          const shouldRefresh = forceFull || (sig0 && sig0 !== st.lastSig);
+          if (shouldRefresh) {
+            st.lastSig = sig0 || st.lastSig;
+
+            st.lines = lines.slice(0, LP_KEEP_LINES);
+            st.displayed = st.lines.slice(0, LP_VISIBLE_ROWS);
+
+            st.offset = 0;
+            st.typeLine = 0;
+            st.typePos = 0;
+            st.fullText = st.displayed.map(()=> '');
+
+            renderHomeLp();
           }
 
-          if (sig0 !== st.lastSig) {
-            st.viewStart = 0;
-            lpAnimateNewBottom(st.bufLines);
-            st.lastSig = sig0;
-          } else {
-            lpRenderWindow();
-          }
-        }catch(_){
-          // swallow; printer should never crash the app
+          lpUpdateMeta([]);
+          homeLpMsg.innerHTML = cloudMode ? 'MATCH_LOG.TXT' : 'MATCH_LOG.TXT (local)';
+
         } finally {
-          window.__homeLivePrinterState.syncing = false;
+          st.syncing = false;
         }
       };
 
-      if (!window.__homeLivePrinterInterval){
+
+      
+      // Constant-speed marquee for NEW PLAYERS line (avoids slow/fast drift)
+      function __startHomeLpMarquee(trackEl, msg){
+        try{
+          const wrap = trackEl && trackEl.parentElement;
+          if (!trackEl || !wrap) return;
+          const cleaned = String(msg||'').replace(/\s+/g,' ').trim();
+          if (trackEl.dataset.lpMsg === cleaned && trackEl.__lpAnim) return;
+          trackEl.dataset.lpMsg = cleaned;
+
+          // Build a single message span (we'll animate across wrap width at constant px/s)
+          trackEl.textContent = cleaned || 'NEW PLAYERS // —';
+
+          // Cancel prior anim
+          if (trackEl.__lpAnim) { try{ trackEl.__lpAnim.cancel(); }catch(_){} }
+
+          // Measure and animate
+          requestAnimationFrame(()=>{
+            const cw = wrap.getBoundingClientRect().width || 0;
+            const tw = trackEl.getBoundingClientRect().width || trackEl.scrollWidth || 0;
+            const speed = 60; // px/sec
+            const distance = cw + tw + 40;
+            const duration = Math.max(8000, Math.round((distance / speed) * 1000));
+            trackEl.__lpAnim = trackEl.animate(
+              [
+                { transform: `translateX(${cw}px)` },
+                { transform: `translateX(-${tw + 40}px)` }
+              ],
+              { duration, iterations: Infinity, easing: 'linear' }
+            );
+          });
+        }catch(_){}
+      }
+if (!window.__homeLivePrinterInterval){
         window.__homeLivePrinterInterval = setInterval(()=>{
           const st = window.__homeLivePrinterState;
           if (!st) return;
@@ -12230,10 +12345,9 @@ if (!games || !games.length) {
               const tBot = document.getElementById('psTicker');
               let raw = (tTop && tTop.textContent) ? tTop.textContent : ((tBot && tBot.textContent) ? tBot.textContent : '');
               raw = String(raw || '').replace(/\s+/g, ' ').trim();
-              // strip any existing prefix
               raw = raw.replace(/^NEW\s*PLAYERS\s*\/\/\s*/i, '');
               const msg = `NEW PLAYERS // ${raw || '—'}`;
-              track.textContent = `${msg} — ${msg} — ${msg}`;
+              __startHomeLpMarquee(track, msg);
             }
           } catch (_) {}
 
