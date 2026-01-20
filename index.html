@@ -707,7 +707,7 @@
   background: rgba(6, 10, 20, .78);
   box-shadow: 0 10px 40px rgba(0,0,0,.35);
   overflow: hidden;
-  width: min(900px, 96%);
+  width: min(420px, 94%);
   margin: 22px auto;
 }
 
@@ -11861,8 +11861,7 @@ function arrangeStartActions(){
         '<div class="lp-rule"></div>'+
         '<div class="lp-meta">'+
           '<div class="lp-meta-line"><b>HIGH SCORES:</b> <span id="homeLpHS">—</span></div>'+
-          '<div class="lp-meta-line"><b>PERSONAL BESTS:</b> <span id="homeLpPB">—</span></div>'+
-        '</div>'+
+                  '</div>'+
         '<div class="lp-meta-rule"></div>'+
         '<div class="lp-mid">'+
           '<table class="lp-table" aria-label="Latest games">'+
@@ -11903,7 +11902,7 @@ function arrangeStartActions(){
       };
 
       const LP_BUFFER = 20;
-      const LP_VISIBLE = 10;
+      const LP_VISIBLE = 6;
 
       const lpPad2 = (n) => String(Number(n) || 0).padStart(2, '0');
 
@@ -11956,8 +11955,6 @@ function arrangeStartActions(){
         const st = window.__homeLivePrinterState;
         if (!st) return;
         const hsEl = document.getElementById('homeLpHS');
-        const pbEl = document.getElementById('homeLpPB');
-
         // High Scores Top 3 (League)
         try {
           const now = Date.now();
@@ -11980,50 +11977,8 @@ function arrangeStartActions(){
         } catch (_) {
           if (hsEl) hsEl.textContent = '—';
         }
-
-        // Personal bests (trigger for any player in newest game)
-        try {
-          const g0 = (games || [])[0];
-          const players = Array.isArray(g0?.players) ? g0.players : [];
-          const totals  = Array.isArray(g0?.totals) ? g0.totals : [];
-          const entries = players.map((p,i)=>({
-            name: p?.name ? String(p.name) : '',
-            score: Number(totals[i] ?? 0) || 0
-          })).filter(x=>x.name);
-          if (!entries.length) { if (pbEl) pbEl.textContent = '—'; return; }
-
-          const now = Date.now();
-          if (!st.pbMap || !st.pbFetchedAt || (now - st.pbFetchedAt) > 60000) {
-            if (typeof cloudListHighScores === 'function') {
-              const rows = await cloudListHighScores(false, 2000);
-              const m = {};
-              for (const r of (rows||[])) {
-                const n = String(r.name||'');
-                const s = Number(r.score)||0;
-                if (!n) continue;
-                m[n] = Math.max(m[n]||0, s);
-              }
-              st.pbMap = m;
-              st.pbFetchedAt = now;
-            }
-          }
-
-          if (pbEl) {
-            const m = st.pbMap || {};
-            const hits = [];
-            for (const e of entries) {
-              const best = Number(m[e.name] || 0) || 0;
-              if (e.score > 0 && best > 0 && e.score >= best) {
-                hits.push(`${e.name} (${e.score})`);
-              }
-            }
-            pbEl.textContent = hits.length ? hits.join('  |  ') : '—';
-          }
-        } catch (_) {
-          if (pbEl) pbEl.textContent = '—';
-        }
       };
-const lpType = (el, text, speedMs = 14) => {
+      const lpType = (el, text, speedMs = 28) => {
         if (!el) return;
         el.textContent = '';
         let i = 0;
@@ -12034,6 +11989,37 @@ const lpType = (el, text, speedMs = 14) => {
           el.textContent = t.slice(0, i);
           if (i >= max) clearInterval(timer);
         }, speedMs);
+      };
+
+      const lpSmoothShiftUp = (tbody, rowH, durationMs, onDone) => {
+        if (!tbody) {
+          if (onDone) onDone();
+          return;
+        }
+        let doneCalled = false;
+        const finish = () => {
+          if (doneCalled) return;
+          doneCalled = true;
+          if (onDone) onDone();
+          try {
+            tbody.style.transition = '';
+            tbody.style.transform = 'translateY(0)';
+            tbody.style.willChange = '';
+          } catch (_) {}
+        };
+        try {
+          tbody.style.willChange = 'transform';
+          tbody.style.transition = `transform ${durationMs}ms ease-in-out`;
+          void tbody.offsetHeight;
+          tbody.style.transform = `translateY(-${rowH}px)`;
+          tbody.addEventListener('transitionend', (e) => {
+            if (e && e.propertyName && e.propertyName !== 'transform') return;
+            finish();
+          }, { once: true });
+          setTimeout(finish, durationMs + 120);
+        } catch (_) {
+          finish();
+        }
       };
 
       const lpEnsureRows = (lines) => {
@@ -12086,7 +12072,6 @@ const lpType = (el, text, speedMs = 14) => {
           }
         });
       };
-
       const lpScrollStep = () => {
         const st = window.__homeLivePrinterState;
         const tbody = document.getElementById('homeLivePrinterRows');
@@ -12094,48 +12079,45 @@ const lpType = (el, text, speedMs = 14) => {
         const buf = Array.isArray(st.bufLines) ? st.bufLines : [];
         if (buf.length <= LP_VISIBLE) return;
 
-        const existingFirst = tbody.querySelector('tr.lp-row');
-        const rowH = existingFirst ? (existingFirst.getBoundingClientRect().height || 22) : 22;
+        const rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
+        const rowH = (rows[0] ? (rows[0].getBoundingClientRect().height || 22) : 22);
 
-        // advance window
         const maxStart = Math.max(0, buf.length - LP_VISIBLE);
-        st.viewStart = (Number(st.viewStart || 0) || 0) + 1;
-        if (st.viewStart > maxStart) {
+        const nextStart = (Number(st.viewStart || 0) || 0) + 1;
+        if (nextStart > maxStart) {
           st.viewStart = 0;
           lpRenderWindow();
           return;
         }
+        st.viewStart = nextStart;
 
-        // animate tbody up, then rewrite text + type last line
-        try {
-          tbody.animate([
-            { transform: 'translateY(0)' },
-            { transform: `translateY(-${rowH}px)` }
-          ], { duration: 220, easing: 'ease-out' });
-        } catch (_) {}
-
-        setTimeout(() => {
+        lpSmoothShiftUp(tbody, rowH, 420, () => {
           const win = buf.slice(st.viewStart, st.viewStart + LP_VISIBLE);
           const winDisp = win.slice().reverse();
-          const rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
-          if (rows.length !== LP_VISIBLE) { lpEnsureRows(win); return; }
+          const rows2 = Array.from(tbody.querySelectorAll('tr.lp-row'));
+          if (rows2.length !== LP_VISIBLE) {
+            lpEnsureRows(win);
+            return;
+          }
 
           for (let i = 0; i < LP_VISIBLE - 1; i++) {
-            const sp = rows[i].querySelector('.lp-ellipsis');
+            const sp = rows2[i].querySelector('.lp-ellipsis');
             if (sp) sp.textContent = String(winDisp[i] ?? '—');
+            rows2[i].classList.remove('lp-new');
           }
-          const lastRow = rows[LP_VISIBLE - 1];
+
+          const lastRow = rows2[LP_VISIBLE - 1];
           const lastSp = lastRow ? lastRow.querySelector('.lp-ellipsis') : null;
           if (lastSp) {
             lastRow.classList.add('lp-new');
             lastSp.textContent = '';
-            lpType(lastSp, String(winDisp[LP_VISIBLE - 1] ?? '—'), 10);
-            setTimeout(()=>{ try{ lastRow.classList.remove('lp-new'); }catch(_){ } }, 520);
+            lpType(lastSp, String(winDisp[LP_VISIBLE - 1] ?? '—'), 20);
+            setTimeout(() => {
+              try { lastRow.classList.remove('lp-new'); } catch (_) {}
+            }, 900);
           }
-          tbody.style.transform = 'translateY(0)';
-        }, 240);
+        });
       };
-
       const lpAnimateNewBottom = (bufLines) => {
         const tbody = document.getElementById('homeLivePrinterRows');
         if (!tbody) return;
@@ -12144,40 +12126,36 @@ const lpType = (el, text, speedMs = 14) => {
         const rowH = (rows[0] ? (rows[0].getBoundingClientRect().height || 22) : 22);
 
         const buf = Array.isArray(bufLines) ? bufLines : [];
-        const winNew = buf.slice(0, LP_VISIBLE).slice().reverse(); // oldest->newest
+        const winNew = buf.slice(0, LP_VISIBLE).slice().reverse();
 
-        // Animate content up by one row (old-school printer feed)
-        try {
-          tbody.animate([
-            { transform: 'translateY(0)' },
-            { transform: `translateY(-${rowH}px)` }
-          ], { duration: 260, easing: 'ease-out' });
-        } catch (_) {}
-
-        setTimeout(() => {
+        lpSmoothShiftUp(tbody, rowH, 460, () => {
           const rows2 = Array.from(tbody.querySelectorAll('tr.lp-row'));
-          if (rows2.length !== LP_VISIBLE) { lpEnsureRows(winNew); return; }
+          if (rows2.length !== LP_VISIBLE) {
+            lpEnsureRows(winNew);
+            return;
+          }
 
-          // Set first 9 rows immediately
           for (let i = 0; i < LP_VISIBLE - 1; i++) {
             const sp = rows2[i].querySelector('.lp-ellipsis');
             if (sp) sp.textContent = String(winNew[i] ?? '—');
             rows2[i].classList.remove('lp-new');
           }
 
-          // Last row: blank then type
           const lastRow = rows2[LP_VISIBLE - 1];
           const lastSp = lastRow ? lastRow.querySelector('.lp-ellipsis') : null;
           if (lastSp) {
             lastRow.classList.add('lp-new');
             lastSp.textContent = '';
-            lpType(lastSp, String(winNew[LP_VISIBLE - 1] ?? '—'), 10);
-            setTimeout(()=>{ try{ lastRow.classList.remove('lp-new'); }catch(_){ } }, 900);
+            lpType(lastSp, String(winNew[LP_VISIBLE - 1] ?? '—'), 20);
+            setTimeout(() => {
+              try { lastRow.classList.remove('lp-new'); } catch (_) {}
+            }, 900);
           }
-
-          tbody.style.transform = 'translateY(0)';
-        }, 280);
+        });
       };
+
+
+
 
       const lpSync = async (forceFull = false) => {
         const st = window.__homeLivePrinterState;
