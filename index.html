@@ -713,8 +713,8 @@
 
 /* >>> PATCH:home-live-printer START */
 .home-live-printer{
-  min-height: 320px;
-  max-height: 360px;
+  min-height: 220px;
+  max-height: 260px;
   height:clamp(320px,42vh,360px);
   display: flex;
   flex-direction: column;
@@ -854,6 +854,86 @@
   0%   { transform: translateX(100%); }
   100% { transform: translateX(-110%); }
 }
+
+
+/* <<< PATCH:home-mini-leagues START */
+.home-mini-leagues{
+  width:min(440px,94vw);
+  margin:12px auto 18px;
+  display:flex;
+  gap:14px;
+}
+@media (max-width: 520px){
+  .home-mini-leagues{ flex-direction:column; }
+}
+.home-mini-printer{
+  flex:1;
+  min-height:170px;
+  max-height:190px;
+  display:flex;
+  flex-direction:column;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.11);
+  overflow:hidden;
+  background: radial-gradient(120% 140% at 50% 0%, rgba(0,255,120,.08) 0%, rgba(255,255,255,.04) 45%, rgba(0,0,0,.08) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 18px 40px rgba(0,0,0,.35);
+}
+.home-mini-printer .lp-top{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:12px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size:12px;
+  letter-spacing:.08em;
+  color: rgba(0,255,120,.85);
+  text-transform:uppercase;
+  background: linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.08));
+}
+.home-mini-printer .lp-dot{
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  background: rgba(0,255,120,.95);
+  box-shadow: 0 0 10px rgba(0,255,120,.45);
+}
+.home-mini-printer .lp-rule{
+  height:1px;
+  background: rgba(255,255,255,.09);
+}
+.home-mini-printer .lp-mid{
+  flex:1;
+  padding:10px 12px 12px;
+  overflow:hidden;
+}
+.home-mini-printer table.mini-table{
+  width:100%;
+  border-collapse:collapse;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size:12px;
+}
+.home-mini-printer table.mini-table thead th{
+  padding:6px 6px;
+  color: rgba(0,255,120,.85);
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  border-bottom: 1px solid rgba(0,255,120,.25);
+}
+.home-mini-printer table.mini-table tbody td{
+  padding:6px 6px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  color: rgba(220,255,230,.85);
+}
+.home-mini-printer table.mini-table tbody tr:last-child td{ border-bottom:none; }
+.home-mini-muted{
+  color: rgba(220,255,230,.55) !important;
+  text-align:center;
+  font-style:italic;
+  padding:10px 0;
+}
+/* <<< PATCH:home-mini-leagues END */
+
 /* <<< PATCH:home-live-printer END */
 
 </style>
@@ -11969,8 +12049,76 @@ function arrangeStartActions(){
     }
     printer.appendChild(np);
 
+    // Mini league panels under VIDE
+    let mini = document.getElementById('homeMiniLeagues');
+    if (!mini) {
+      mini = document.createElement('div');
+      mini.id = 'homeMiniLeagues';
+      mini.className = 'home-mini-leagues';
+      mini.innerHTML = `
+        <div class="home-mini-printer" aria-label="High Score League">
+          <div class="lp-top"><span class="lp-dot"></span><span>HIGH SCORE LEAGUE — TOP 5</span></div>
+          <div class="lp-rule"></div>
+          <div class="lp-mid">
+            <table class="mini-table" aria-label="High Score League Top 5">
+              <thead>
+                <tr>
+                  <th style="width:34px">#</th>
+                  <th>Player</th>
+                  <th style="text-align:right">High</th>
+                </tr>
+              </thead>
+              <tbody id="homeHsLeagueRows">
+                <tr><td colspan="3" class="home-mini-muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="home-mini-printer" aria-label="Power Rankings">
+          <div class="lp-top"><span class="lp-dot"></span><span>POWER RANKINGS — TOP 5</span></div>
+          <div class="lp-rule"></div>
+          <div class="lp-mid">
+            <table class="mini-table" aria-label="Power Rankings Top 5">
+              <thead>
+                <tr>
+                  <th style="width:34px">#</th>
+                  <th>Player</th>
+                  <th style="text-align:right">Avg</th>
+                </tr>
+              </thead>
+              <tbody id="homePowerRows">
+                <tr><td colspan="3" class="home-mini-muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      frag.appendChild(mini);
+    }
+
     host.innerHTML = '';
     host.appendChild(frag);
+
+    // Push footer buttons (Player Hub / Stats / League / Admin) to the bottom of the screen
+    try{
+      const details = document.getElementById('details');
+      const sr = document.querySelector('.start-secondary-row');
+      if (details && sr){
+        details.style.display = 'flex';
+        details.style.flexDirection = 'column';
+        details.style.minHeight = '100vh';
+        let sp = document.getElementById('homeFlexSpacer');
+        if (!sp){
+          sp = doc.createElement('div');
+          sp.id = 'homeFlexSpacer';
+          sp.style.flex = '1';
+          details.insertBefore(sp, sr);
+        }
+      }
+    }catch(_e){}
+
+    // Kick mini leagues once on home render
+    try{ updateHomeMiniLeagues && updateHomeMiniLeagues(); }catch(_e){}
 
     // Live-printer updater (bind once)
     try{
