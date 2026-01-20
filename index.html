@@ -698,14 +698,51 @@
 
 /* >>> PATCH:home-live-printer START */
 .home-live-printer{
-  width: min(560px, 94%);
+  min-height: 320px;
+  max-height: 360px;
+  display: flex;
+  flex-direction: column;
   border-radius: 14px;
   border: 1px solid rgba(255,255,255,.10);
   background: rgba(6, 10, 20, .78);
   box-shadow: 0 10px 40px rgba(0,0,0,.35);
   overflow: hidden;
+  width: min(900px, 96%);
+  margin: 22px auto;
 }
-.home-live-printer .lp-head{
+
+/* Center key home elements defensively */
+#details #startGameBtn,
+#details #resumeBtn,
+#details #homeLivePrinter{
+  display:block;
+  margin-left:auto;
+  margin-right:auto;
+}
+
+/* Meta (HS / PB) */
+.home-live-printer .lp-meta{
+  padding: 8px 10px;
+  display:flex;
+  flex-direction:column;
+  gap: 4px;
+}
+.home-live-printer .lp-meta-line{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  color: rgba(220,255,230,.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.home-live-printer .lp-meta-line b{ color: rgba(54,255,122,.95); font-weight: 900; }
+.home-live-printer .lp-meta-rule{
+  height: 1px;
+  background: rgba(255,255,255,.10);
+}
+
+/* Top: MATCH_LOG.TXT */
+.home-live-printer .lp-top{
   display:flex;
   align-items:center;
   gap: 10px;
@@ -716,7 +753,6 @@
   text-transform: uppercase;
   color: #36ff7a;
   background: rgba(0,0,0,.22);
-  border-bottom: 1px solid rgba(255,255,255,.08);
 }
 .home-live-printer .lp-dot{
   width: 10px;
@@ -725,17 +761,67 @@
   background: #36ff7a;
   opacity: .85;
 }
-.home-live-printer pre{
-  margin: 0;
-  padding: 12px;
+.home-live-printer .lp-top span:last-child{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+
+/* Thin rules */
+.home-live-printer .lp-rule{
+  height: 1px;
+  background: rgba(255,255,255,.10);
+}
+
+/* Middle: printer table */
+.home-live-printer .lp-mid{
+  padding: 8px 10px;
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+}
+.home-live-printer .lp-table{
+  width: 100%;
+  border-collapse: collapse;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
   line-height: 1.25;
   color: rgba(220,255,230,.95);
-  min-height: 240px;
-  max-height: 320px;
+}
+.home-live-printer .lp-row{ height: 22px; }
+.home-live-printer .lp-row td{ padding: 2px 6px; vertical-align: top; }
+.home-live-printer .lp-line{ padding-right: 6px; }
+.home-live-printer .lp-ellipsis{
+  display:block;
+  overflow:hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.home-live-printer .lp-row.lp-new .lp-line{ color: rgba(54,255,122,.95); }
+
+/* Bottom: marquee */
+.home-live-printer .lp-bottom{
+  padding: 8px 10px;
+  background: rgba(0,0,0,.18);
+}
+.home-live-printer .lp-marquee{
+  position: relative;
   overflow: hidden;
-  white-space: pre-wrap;
+  height: 18px;
+}
+.home-live-printer .lp-marquee-track{
+  display: inline-block;
+  white-space: nowrap;
+  will-change: transform;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  color: rgba(220,255,230,.85);
+  animation: lpMarquee 14s linear infinite;
+}
+@keyframes lpMarquee{
+  0%   { transform: translateX(100%); }
+  100% { transform: translateX(-110%); }
 }
 /* <<< PATCH:home-live-printer END */
 
@@ -5478,6 +5564,17 @@ async function cloudFetchAllGamesAsLocal(){
     .from(TABLE_GAMES)
     .select('created_at,state,totals')
     .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(mapCloudGameRowToLocal);
+}
+
+// Efficient: newest→oldest, limited (used by home live printer)
+async function cloudFetchLatestGamesAsLocal(limit = 10){
+  const { data, error } = await sb
+    .from(TABLE_GAMES)
+    .select('created_at,state,totals')
+    .order('created_at', { ascending: false })
+    .limit(limit);
   if (error) throw error;
   return (data || []).map(mapCloudGameRowToLocal);
 }
@@ -11581,7 +11678,9 @@ window.closeModal = window.closeModal || function(id){
 function arrangeStartActions(){
   try{
     const host = document.querySelector('#details .start-actions.column') || document.querySelector('.start-actions.column');
+    if (host){ host.style.alignItems = 'center'; host.style.textAlign = 'center'; }
     if (!host) return;
+    try{ host.style.alignItems='center'; host.style.textAlign='center'; host.style.width='100%'; }catch(_){ }
     const doc = document;
 
     // helpers
@@ -11747,18 +11846,35 @@ function arrangeStartActions(){
       if (hasSaved) frag.appendChild(resumeBtn);
     }
 
-    frag.appendChild(mkSpacer(16));
-    if (latest) frag.appendChild(mkRow(latest));
-
-    // ===== HOME LIVE PRINTER (between Latest Scores and footer buttons) =====
-    frag.appendChild(mkSpacer(26));
+    // Latest Scores moved into League & Rankings
+    // ===== HOME LIVE PRINTER =====
     let printer = document.getElementById('homeLivePrinter');
     if (!printer){
       printer = doc.createElement('div');
       printer.id = 'homeLivePrinter';
       printer.className = 'home-live-printer';
-      printer.innerHTML = '<div class="lp-head"><span class="lp-dot"></span><span>LATEST GAMES</span></div>'+
-                          '<pre id="homeLivePrinterText">MATCH_LOG.TXT loading...</pre>';
+      printer.innerHTML = ''+
+        '<div class="lp-top">'+
+          '<span class="lp-dot"></span>'+
+          '<span id="homeLpTopLine">MATCH_LOG.TXT loading...</span>'+
+        '</div>'+
+        '<div class="lp-rule"></div>'+
+        '<div class="lp-meta">'+
+          '<div class="lp-meta-line"><b>HIGH SCORES:</b> <span id="homeLpHS">—</span></div>'+
+          '<div class="lp-meta-line"><b>PERSONAL BESTS:</b> <span id="homeLpPB">—</span></div>'+
+        '</div>'+
+        '<div class="lp-meta-rule"></div>'+
+        '<div class="lp-mid">'+
+          '<table class="lp-table" aria-label="Latest games">'+
+            '<tbody id="homeLivePrinterRows"></tbody>'+
+          '</table>'+
+        '</div>'+
+        '<div class="lp-rule"></div>'+
+        '<div class="lp-bottom">'+
+          '<div class="lp-marquee">'+
+            '<div id="homeLpBottomTrack" class="lp-marquee-track">NEW PLAYERS // </div>'+
+          '</div>'+
+        '</div>';
     }
     frag.appendChild(printer);
 
@@ -11767,21 +11883,396 @@ function arrangeStartActions(){
 
     // Live-printer updater (bind once)
     try{
+      if (!window.__homeLivePrinterState){
+        window.__homeLivePrinterState = {
+          dots: 0,
+          lastSig: null,
+          tick: 0,
+          lastSyncMs: 0,
+          syncing: false,
+          forceFullEvery: 6, // every N syncs, hard refresh rows
+          syncCount: 0
+        };
+      }
+
+      const lpSig = (g) => {
+        const names = (g?.players || []).map(p => (p && p.name) ? String(p.name) : '').join('|');
+        const totals = Array.isArray(g?.totals) ? g.totals.map(x=>String(Number(x)||0)).join('|') : '';
+        const ts = g?.ts || g?.created_at || '';
+        return `${ts}::${names}::${totals}`;
+      };
+
+      const LP_BUFFER = 20;
+      const LP_VISIBLE = 10;
+
+      const lpPad2 = (n) => String(Number(n) || 0).padStart(2, '0');
+
+      const lpFmtDT = (g) => {
+        // DD/MM _ HH:MM (local)
+        let d = null;
+        try {
+          if (typeof window.getGameTimestamp === 'function') d = window.getGameTimestamp(g);
+        } catch (_) {}
+        if (!d) {
+          const tsVal = g?.ts || g?.created_at || null;
+          if (tsVal) {
+            const ms = (typeof parseMs === 'function') ? parseMs(tsVal) : Date.parse(tsVal);
+            if (Number.isFinite(ms)) d = new Date(ms);
+          }
+        }
+        if (!d || Number.isNaN(d.getTime())) return '';
+        const dd = lpPad2(d.getDate());
+        const mm = lpPad2(d.getMonth() + 1);
+        const hh = lpPad2(d.getHours());
+        const mi = lpPad2(d.getMinutes());
+        return `${dd}/${mm} _ ${hh}:${mi}`;
+      };
+
+      const lpFmtLine = (g) => {
+        // DD/MM _ HH:MM _ Winner (89) bts X (70), Y (60)
+        const dt = lpFmtDT(g);
+        const players = Array.isArray(g?.players) ? g.players : [];
+        const totals = Array.isArray(g?.totals) ? g.totals : [];
+        const list = players.map((p, i) => {
+          const name = (p && p.name) ? String(p.name) : '';
+          const score = Number(totals[i] ?? 0) || 0;
+          return { name, score };
+        }).filter(x => x.name);
+        if (!list.length) return dt ? `${dt} _ —` : '—';
+
+        list.sort((a, b) => (b.score - a.score) || a.name.localeCompare(b.name));
+        const winner = list[0];
+        const rest = list.slice(1);
+        const restStr = rest.length ? rest.map(x => `${x.name} (${x.score})`).join(', ') : '';
+
+        const core = restStr ? `${winner.name} (${winner.score}) bts ${restStr}` : `${winner.name} (${winner.score})`;
+        return dt ? `${dt} _ ${core}` : core;
+      };
+
+
+      
+
+      const lpUpdateMeta = async (games) => {
+        const st = window.__homeLivePrinterState;
+        if (!st) return;
+        const hsEl = document.getElementById('homeLpHS');
+        const pbEl = document.getElementById('homeLpPB');
+
+        // High Scores Top 3 (League)
+        try {
+          const now = Date.now();
+          if (!st.hsFetchedAt || (now - st.hsFetchedAt) > 30000) {
+            if (typeof cloudListHighScores === 'function') {
+              const top3 = await cloudListHighScores(false, 3);
+              st.hsTop3 = (top3 || []).slice(0, 3);
+              st.hsFetchedAt = now;
+            }
+          }
+          if (hsEl) {
+            const t = Array.isArray(st.hsTop3) ? st.hsTop3 : [];
+            if (t.length) {
+              const parts = t.map((r, i)=>`#${i+1} ${r.name} (${Number(r.score)||0})`);
+              hsEl.textContent = parts.join('  |  ');
+            } else {
+              hsEl.textContent = '—';
+            }
+          }
+        } catch (_) {
+          if (hsEl) hsEl.textContent = '—';
+        }
+
+        // Personal bests (trigger for any player in newest game)
+        try {
+          const g0 = (games || [])[0];
+          const players = Array.isArray(g0?.players) ? g0.players : [];
+          const totals  = Array.isArray(g0?.totals) ? g0.totals : [];
+          const entries = players.map((p,i)=>({
+            name: p?.name ? String(p.name) : '',
+            score: Number(totals[i] ?? 0) || 0
+          })).filter(x=>x.name);
+          if (!entries.length) { if (pbEl) pbEl.textContent = '—'; return; }
+
+          const now = Date.now();
+          if (!st.pbMap || !st.pbFetchedAt || (now - st.pbFetchedAt) > 60000) {
+            if (typeof cloudListHighScores === 'function') {
+              const rows = await cloudListHighScores(false, 2000);
+              const m = {};
+              for (const r of (rows||[])) {
+                const n = String(r.name||'');
+                const s = Number(r.score)||0;
+                if (!n) continue;
+                m[n] = Math.max(m[n]||0, s);
+              }
+              st.pbMap = m;
+              st.pbFetchedAt = now;
+            }
+          }
+
+          if (pbEl) {
+            const m = st.pbMap || {};
+            const hits = [];
+            for (const e of entries) {
+              const best = Number(m[e.name] || 0) || 0;
+              if (e.score > 0 && best > 0 && e.score >= best) {
+                hits.push(`${e.name} (${e.score})`);
+              }
+            }
+            pbEl.textContent = hits.length ? hits.join('  |  ') : '—';
+          }
+        } catch (_) {
+          if (pbEl) pbEl.textContent = '—';
+        }
+      };
+const lpType = (el, text, speedMs = 14) => {
+        if (!el) return;
+        el.textContent = '';
+        let i = 0;
+        const t = String(text || '');
+        const max = Math.min(t.length, 240);
+        const timer = setInterval(()=>{
+          i++;
+          el.textContent = t.slice(0, i);
+          if (i >= max) clearInterval(timer);
+        }, speedMs);
+      };
+
+      const lpEnsureRows = (lines) => {
+        const tbody = document.getElementById('homeLivePrinterRows');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        (lines || []).slice(0, LP_VISIBLE).slice().reverse().forEach((line) => {
+          const tr = document.createElement('tr');
+          tr.className = 'lp-row';
+          const td = document.createElement('td');
+          td.className = 'lp-line';
+          const sp = document.createElement('span');
+          sp.className = 'lp-ellipsis';
+          sp.textContent = String(line || '—');
+          td.appendChild(sp);
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+        });
+        // pad to exactly LP_VISIBLE rows
+        while (tbody.querySelectorAll('tr.lp-row').length < LP_VISIBLE) {
+          const tr = document.createElement('tr');
+          tr.className = 'lp-row';
+          const td = document.createElement('td');
+          td.className = 'lp-line';
+          const sp = document.createElement('span');
+          sp.className = 'lp-ellipsis';
+          sp.textContent = '—';
+          td.appendChild(sp);
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+        }
+      };
+
+      const lpRenderWindow = (opts = {}) => {
+        const st = window.__homeLivePrinterState;
+        const tbody = document.getElementById('homeLivePrinterRows');
+        if (!tbody || !st) return;
+        const buf = Array.isArray(st.bufLines) ? st.bufLines : [];
+        const start = Number(st.viewStart || 0) || 0;
+        const win = buf.slice(start, start + LP_VISIBLE);
+        const winDisp = win.slice().reverse();
+        const rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
+        if (rows.length !== LP_VISIBLE) { lpEnsureRows(win); return; }
+        rows.forEach((tr, i) => {
+          const sp = tr.querySelector('.lp-ellipsis');
+          if (!sp) return;
+          const line = winDisp[i] ?? '—';
+          if (!opts.skipLastType || i < LP_VISIBLE - 1) {
+            sp.textContent = String(line);
+          }
+        });
+      };
+
+      const lpScrollStep = () => {
+        const st = window.__homeLivePrinterState;
+        const tbody = document.getElementById('homeLivePrinterRows');
+        if (!st || !tbody) return;
+        const buf = Array.isArray(st.bufLines) ? st.bufLines : [];
+        if (buf.length <= LP_VISIBLE) return;
+
+        const existingFirst = tbody.querySelector('tr.lp-row');
+        const rowH = existingFirst ? (existingFirst.getBoundingClientRect().height || 22) : 22;
+
+        // advance window
+        const maxStart = Math.max(0, buf.length - LP_VISIBLE);
+        st.viewStart = (Number(st.viewStart || 0) || 0) + 1;
+        if (st.viewStart > maxStart) {
+          st.viewStart = 0;
+          lpRenderWindow();
+          return;
+        }
+
+        // animate tbody up, then rewrite text + type last line
+        try {
+          tbody.animate([
+            { transform: 'translateY(0)' },
+            { transform: `translateY(-${rowH}px)` }
+          ], { duration: 220, easing: 'ease-out' });
+        } catch (_) {}
+
+        setTimeout(() => {
+          const win = buf.slice(st.viewStart, st.viewStart + LP_VISIBLE);
+          const winDisp = win.slice().reverse();
+          const rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
+          if (rows.length !== LP_VISIBLE) { lpEnsureRows(win); return; }
+
+          for (let i = 0; i < LP_VISIBLE - 1; i++) {
+            const sp = rows[i].querySelector('.lp-ellipsis');
+            if (sp) sp.textContent = String(winDisp[i] ?? '—');
+          }
+          const lastRow = rows[LP_VISIBLE - 1];
+          const lastSp = lastRow ? lastRow.querySelector('.lp-ellipsis') : null;
+          if (lastSp) {
+            lastRow.classList.add('lp-new');
+            lastSp.textContent = '';
+            lpType(lastSp, String(winDisp[LP_VISIBLE - 1] ?? '—'), 10);
+            setTimeout(()=>{ try{ lastRow.classList.remove('lp-new'); }catch(_){ } }, 520);
+          }
+          tbody.style.transform = 'translateY(0)';
+        }, 240);
+      };
+
+      const lpAnimateNewBottom = (bufLines) => {
+        const tbody = document.getElementById('homeLivePrinterRows');
+        if (!tbody) return;
+
+        const rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
+        const rowH = (rows[0] ? (rows[0].getBoundingClientRect().height || 22) : 22);
+
+        const buf = Array.isArray(bufLines) ? bufLines : [];
+        const winNew = buf.slice(0, LP_VISIBLE).slice().reverse(); // oldest->newest
+
+        // Animate content up by one row (old-school printer feed)
+        try {
+          tbody.animate([
+            { transform: 'translateY(0)' },
+            { transform: `translateY(-${rowH}px)` }
+          ], { duration: 260, easing: 'ease-out' });
+        } catch (_) {}
+
+        setTimeout(() => {
+          const rows2 = Array.from(tbody.querySelectorAll('tr.lp-row'));
+          if (rows2.length !== LP_VISIBLE) { lpEnsureRows(winNew); return; }
+
+          // Set first 9 rows immediately
+          for (let i = 0; i < LP_VISIBLE - 1; i++) {
+            const sp = rows2[i].querySelector('.lp-ellipsis');
+            if (sp) sp.textContent = String(winNew[i] ?? '—');
+            rows2[i].classList.remove('lp-new');
+          }
+
+          // Last row: blank then type
+          const lastRow = rows2[LP_VISIBLE - 1];
+          const lastSp = lastRow ? lastRow.querySelector('.lp-ellipsis') : null;
+          if (lastSp) {
+            lastRow.classList.add('lp-new');
+            lastSp.textContent = '';
+            lpType(lastSp, String(winNew[LP_VISIBLE - 1] ?? '—'), 10);
+            setTimeout(()=>{ try{ lastRow.classList.remove('lp-new'); }catch(_){ } }, 900);
+          }
+
+          tbody.style.transform = 'translateY(0)';
+        }, 280);
+      };
+
+      const lpSync = async (forceFull = false) => {
+        const st = window.__homeLivePrinterState;
+        if (st.syncing) return;
+        st.syncing = true;
+        try{
+          let games = [];
+          if (typeof cloudFetchLatestGamesAsLocal === 'function') {
+            games = await cloudFetchLatestGamesAsLocal(20);
+          } else if (typeof cloudFetchAllGamesAsLocal === 'function') {
+            const all = await cloudFetchAllGamesAsLocal();
+            games = (all || []).slice().sort((a,b)=>{
+              const ta = Date.parse(a?.ts||'')||0;
+              const tb = Date.parse(b?.ts||'')||0;
+              return tb - ta;
+            }).slice(0,20);
+          }
+
+          
+          const lines = (games || []).slice(0, LP_BUFFER).map(lpFmtLine);
+          st.bufLines = lines;
+          if (typeof st.viewStart !== 'number') st.viewStart = 0;
+          try { await lpUpdateMeta(games); } catch (_) {}
+if (!games || !games.length) {
+            lpEnsureRows([]);
+            st.bufLines = [];
+            st.viewStart = 0;
+            st.lastSig = null;
+            return;
+          }
+
+          const sig0 = lpSig(games[0]);
+          if (!st.lastSig || forceFull) {
+            lpEnsureRows(st.bufLines || []);
+            st.lastSig = sig0;
+            return;
+          }
+
+          if (sig0 !== st.lastSig) {
+            st.viewStart = 0;
+            lpAnimateNewBottom(st.bufLines);
+            st.lastSig = sig0;
+          } else {
+            lpRenderWindow();
+          }
+        }catch(_){
+          // swallow; printer should never crash the app
+        } finally {
+          window.__homeLivePrinterState.syncing = false;
+        }
+      };
+
       if (!window.__homeLivePrinterInterval){
-        window.__homeLivePrinterDots = 0;
         window.__homeLivePrinterInterval = setInterval(()=>{
-          const pre = document.getElementById('homeLivePrinterText');
-          if (!pre) return;
-          const track = (document.querySelector('#psTickerTop .track') || document.querySelector('#psTicker .track'));
-          const t = (track && (track.textContent || track.innerText)) ? (track.textContent || track.innerText).trim() : '';
-          const parts = t ? t.split('//').map(s=>s.trim()).filter(Boolean) : [];
-          const dots = '.'.repeat((window.__homeLivePrinterDots++ % 4));
-          const lines = [
-            `MATCH_LOG.TXT loading${dots}`,
-            ...parts.slice(0, 6)
-          ];
-          pre.textContent = lines.join('\n');
-        }, 450);
+          const st = window.__homeLivePrinterState;
+          if (!st) return;
+          st.tick++;
+
+          // Top animation
+          const topLine = document.getElementById('homeLpTopLine');
+          if (topLine){
+            const dots = '.'.repeat((st.dots++ % 4));
+            topLine.textContent = `MATCH_LOG.TXT loading${dots}`;
+          }
+
+
+          // Bottom marquee mirrors NEW PLAYERS ticker
+          try {
+            const track = document.getElementById('homeLpBottomTrack');
+            if (track) {
+              const tTop = document.getElementById('psTickerTop');
+              const tBot = document.getElementById('psTicker');
+              let raw = (tTop && tTop.textContent) ? tTop.textContent : ((tBot && tBot.textContent) ? tBot.textContent : '');
+              raw = String(raw || '').replace(/\s+/g, ' ').trim();
+              // strip any existing prefix
+              raw = raw.replace(/^NEW\s*PLAYERS\s*\/\/\s*/i, '');
+              const msg = `NEW PLAYERS // ${raw || '—'}`;
+              track.textContent = `${msg} — ${msg} — ${msg}`;
+            }
+          } catch (_) {}
+
+          
+          // Continuous feed: scroll through last 20 even when nothing new arrives
+          try {
+            if (st.tick % 5 === 0) lpScrollStep();
+          } catch (_) {}
+// Sync every ~3 seconds
+          if (st.tick % 3 === 0) {
+            st.syncCount++;
+            const force = (st.syncCount % st.forceFullEvery) === 0;
+            lpSync(force);
+          }
+        }, 1000);
+        // initial fill
+        lpSync(true);
       }
     }catch(_){ }
 
@@ -12703,6 +13194,24 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
   col.appendChild(topScoresBtn);
   col.appendChild(topScoresP);
 
+
+  // Latest Scores (moved from Home)
+  const latestScoresBtn = document.createElement('button');
+  latestScoresBtn.id = 'leagueLatestScoresBtn';
+  latestScoresBtn.className = 'btn';
+  latestScoresBtn.type = 'button';
+  latestScoresBtn.style.width = 'min(360px,92%)';
+  latestScoresBtn.textContent = 'Latest Scores';
+
+  const latestScoresP = document.createElement('p');
+  latestScoresP.className = 'tag';
+  latestScoresP.textContent = 'Last 10 results';
+  latestScoresP.style.width = latestScoresBtn.style.width;
+  latestScoresP.style.textAlign = 'center';
+
+  col.appendChild(latestScoresBtn);
+  col.appendChild(latestScoresP);
+
   body.appendChild(col);
 
   // Footer: Back / Close
@@ -12765,6 +13274,16 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
       if (typeof openHighScoresMenuDialog === 'function') return openHighScoresMenuDialog();
     } catch(_) {}
     try { toast('High Scores not available'); } catch(_) {}
+  };
+
+
+  latestScoresBtn.onclick = () => {
+    overlay.remove();
+    try {
+      if (typeof window.openLatestScoresDialog === 'function') return window.openLatestScoresDialog();
+      if (typeof openLatestScoresDialog === 'function') return openLatestScoresDialog();
+    } catch(_) {}
+    try { toast('Latest Scores not available'); } catch(_) {}
   };
 };
 
@@ -17844,7 +18363,7 @@ if (!todayBtn) {
           const day = d.getUTCDay(); // 0=Sun
           const offset = (day + 6) % 7; // days since Mon
           d.setUTCDate(d.getUTCDate() - offset);
-          key = d.toISOString().slice(0,10); // week start
+          key = d.toISOString().slice(0,20); // week start
         } else if (mode === 'monthly'){
           key = lab.slice(0,7);
         } else if (mode === 'yearly'){
@@ -18478,7 +18997,7 @@ if (!todayBtn) {
       for (const r of withTs){
         const d = new Date(r.ts);
         if (Number.isNaN(d.getTime())) continue;
-        const key = r.game_id ? String(r.game_id) : d.toISOString().slice(0,10);
+        const key = r.game_id ? String(r.game_id) : d.toISOString().slice(0,20);
         let g = games.get(key);
         if (!g){
           g = { tsMax: d, per: Array.from({length:14}, ()=>({t:0,h:0})) };
