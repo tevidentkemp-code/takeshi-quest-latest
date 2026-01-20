@@ -41,7 +41,9 @@
   --pad-h:148px;
   --left-col-w:96px;
   --start-btn-h:52px;
-  --title-w:640px;      /* fallback until JS measures */
+  --title-w:640px;
+  --homeW: min(calc(var(--title-w) * 0.6667), 820px);
+  --navGap: 10px;      /* fallback until JS measures */
   --section-gap:10px;   /* global vertical spacing */
 
   /* Leaderboard widths */
@@ -93,7 +95,7 @@
   display: block;               /* override the display:none */
   text-transform: uppercase;
   text-align: center;
-  margin: 8px 0 14px;
+  margin: 8px 0 24px;
   line-height: 1.02;
 }
 
@@ -122,6 +124,7 @@
   justify-content: flex-start;           /* no vertical centering */
   min-height: calc(100vh - var(--pad-h));
   padding-top: 32px;                     /* move SHATEKI-QUEST / New / Resume closer to top */
+  --homeW: min(420px, 94%);
 }
 
 /* Center the main buttons block */
@@ -291,15 +294,13 @@
   min-width:120px;
 }
 
-#adminCodeRow {
+#adminCodeRow{
+  width: var(--homeW);
+  max-width: var(--homeW);
+  margin: 10px auto 22px;
   display: flex;
-  flex-direction: column;
-  align-items: center;
   justify-content: center;
-  gap: 8px;
-  margin-top: 24px;
-  max-width: 260px;
-  margin-inline: auto;
+  box-sizing: border-box;
 }
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   .column{display:flex;flex-direction:column;gap:10px}
@@ -668,20 +669,19 @@
   
   
 /* >>> PATCH:home-footer-nav START */
-.home-footer-nav{
-  /* Pin these controls just above the fixed tickers */
-  position: fixed;
-  left: 0;
-  right: 0;
-  /* default; JS will refine based on which tickers are visible */
-  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-
-  display:flex;
-  flex-direction:column;
-  align-items:center;
+.home-footer-nav {
+  /* Normal flow (not fixed) so content can scroll naturally */
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  z-index: auto;
+  width: min(520px, calc(100vw - 32px));
+  margin: 10px auto 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-
-  z-index: 250000; /* below tickers (300000) */
   pointer-events: auto;
 }
 .home-square-row{
@@ -942,6 +942,224 @@
 .start-actions .btn.big{
   width: 100%;
 }
+
+
+  /* --- FIX: centre bottom nav + admin buttons (and match RESUME styling) --- */
+  #details .start-actions .start-secondary-row{
+    width: var(--homeW) !important;
+    margin: 10px auto 0 !important;
+    display: flex !important;
+    justify-content: center !important;
+    gap: 14px !important;
+  }
+  #details .start-actions .start-secondary-row .btn{
+    height: 74px;
+    width: calc((var(--homeW) - 28px) / 3);
+    max-width: 160px;
+    background: #131733;            /* same as .btn base */
+    border-color: #2b3050;
+    box-shadow: 0 18px 44px rgba(0,0,0,.28);
+  }
+  #details .start-actions .start-secondary-row .btn:hover{
+    background: #161a3a;
+    border-color: #32407a;
+    transform: translateY(-2px);
+  }
+
+  #details .start-actions .home-admin-row{
+    width: var(--homeW) !important;
+    margin: 10px auto 0 !important;
+    display: flex !important;
+    justify-content: center !important;
+  }
+  #details .start-actions .home-admin-row .btn{
+    height: 52px;
+    width: calc((var(--homeW) - 28px) / 3); /* same as STATS */
+    max-width: 160px;
+    background: #131733;
+    border-color: #2b3050;
+    font-weight: 800;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+  }
+  #details .start-actions .home-admin-row .btn:hover{
+    background: #161a3a;
+    border-color: #32407a;
+    transform: translateY(-2px);
+  }
+
+
+/* ===== VIDE HOME: fix footer/nav centering + unstick buttons ===== */
+.home-footer-nav{
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  top: auto !important;
+  transform: none !important;
+
+  width: var(--homeW, min(420px, 94%)) !important;
+  margin: 10px auto 0 !important;
+  padding: 0 !important;
+
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+}
+
+.home-square-row{
+  width: 100% !important;
+  margin: 0 auto !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 14px !important;
+  justify-items: stretch !important;
+}
+
+.home-admin-row{
+  width: 100% !important;
+  margin: 0 auto !important;
+  display: flex !important;
+  justify-content: center !important;
+}
+
+.home-admin-row button,
+.home-admin-row .btn{
+  width: calc((100% - 28px) / 3) !important; /* match one of the 3 square buttons */
+  max-width: none !important;
+  text-transform: uppercase !important;
+}
+
+/* match RESUME button vibe (neutral grey) */
+.home-square-row .btn,
+.home-admin-row .btn,
+.home-square-row button,
+.home-admin-row button{
+  background: linear-gradient(180deg, rgba(55,58,66,.92) 0%, rgba(35,38,46,.92) 100%) !important;
+  border: 1px solid rgba(110,115,130,.45) !important;
+  color: rgba(230,232,238,.95) !important;
+  box-shadow: 0 10px 26px rgba(0,0,0,.35) !important;
+  font-weight: 700 !important;
+  letter-spacing: .06em !important;
+}
+
+/* keep icons/text sizes readable */
+.home-square-row .btn span,
+.home-admin-row .btn span{
+  letter-spacing: .08em !important;
+}
+
+
+/* --- Footer nav alignment + styling (mirrors start-actions nav styles) --- */
+.home-footer-nav{
+  width: var(--homeW);
+  max-width: 92vw;
+  margin: 12px auto 0;
+}
+.home-footer-nav .home-nav-row{
+  display:flex;
+  gap: var(--navGap, 12px);
+  width: 100%;
+  align-items: stretch;
+  justify-content: space-between;
+}
+.home-footer-nav .home-nav-row .navBtn{
+  flex: 1 1 0;
+  height: 64px;
+  padding: 0 10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap: 10px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 30px rgba(0,0,0,0.35);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.home-footer-nav .home-nav-row .navBtn .navIcon{
+  width: 22px;
+  height: 22px;
+  display:inline-flex;
+}
+.home-footer-nav .home-nav-row .navBtn .navIcon svg{
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.home-footer-nav .home-nav-row .navBtn .navLabel{
+  font-size: 12px;
+  line-height: 1;
+  text-align:center;
+}
+
+/* Color accents (edge + text) */
+.home-footer-nav .home-nav-row .navBtn.navGreen{ color:#3cff86; border-color: rgba(60,255,134,0.35); }
+.home-footer-nav .home-nav-row .navBtn.navBlue{  color:#4aa3ff; border-color: rgba(74,163,255,0.35); }
+.home-footer-nav .home-nav-row .navBtn.navOrange{color:#ffb14a; border-color: rgba(255,177,74,0.35); }
+
+.home-footer-nav .home-nav-row .navBtn:hover{ transform: translateY(-1px); }
+.home-footer-nav .home-nav-row .navBtn:active{ transform: translateY(0); }
+
+.home-footer-nav .home-admin-row{
+  margin-top: 10px;
+  display:flex;
+  justify-content:center;
+}
+.home-footer-nav .adminLink{
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.55);
+  cursor: pointer;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap: 6px;
+  padding: 6px 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+.home-footer-nav .adminLink .adminLock{
+  width: 18px;
+  height: 18px;
+  display:inline-flex;
+  opacity: 0.75;
+}
+.home-footer-nav .adminLink .adminLock svg{
+  width: 18px;
+  height: 18px;
+  fill:none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.home-footer-nav .adminLink:hover{ color: rgba(255,255,255,0.75); }
+
+/* Ensure the start-actions container doesn't constrain/offset the nav */
+#details .start-actions{
+  width: var(--homeW);
+  max-width: 92vw;
+  margin-left:auto;
+  margin-right:auto;
+}
+#details .home-live-printer, #details .hspr-row{
+  width: var(--homeW);
+  max-width: 92vw;
+}
+
 </style>
 <style>
   /* Cloud status pill (top-right) */
@@ -1035,16 +1253,6 @@ margin-bottom: var(--section-gap);
 #details .start-actions .row{ width: 100%; }     /* High Scores / Player Stats row */
 #details .start-actions .row .btn{ width: 100%; }
 
-/* Start screen: stack Latest / High Scores / Player Stats with equal gaps */
-#details .start-secondary-row{
-  display:flex;
-  flex-direction:column;
-  align-items:stretch;
-  justify-content:center;
-  gap:8px;                 /* small, consistent gap between medium buttons */
-  margin-top:72px;         /* push secondary buttons lower so they sit roughly central */
-}
-
 /* ===== Start/Resume visual style (match orange mock) ===== */
 #details #startGameBtn,
 #details #resumeBtn{
@@ -1088,28 +1296,63 @@ margin-bottom: var(--section-gap);
 }
 
 
-/* Secondary navigation buttons (3-up) */
-#details .start-secondary-row{--navW:min(var(--title-w),820px);--navGap:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--navGap);width:var(--navW);margin:72px auto 0;}
-@media (max-width:760px){#details .start-secondary-row{grid-template-columns:repeat(2,minmax(0,1fr));}}
-@media (max-width:520px){#details .start-secondary-row{grid-template-columns:1fr;}}
 
-#details .start-secondary-row .btn{width:100%;margin:0;height:66px;border-radius:14px;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(0,0,0,.08));border:1px solid rgba(255,255,255,.10);box-shadow:0 10px 26px rgba(0,0,0,.45) inset,0 10px 28px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;gap:10px;letter-spacing:.08em;font-weight:800;}
+/* Secondary navigation buttons + Admin (aligned to main column) */
+#details .start-secondary-row{
+  width: var(--homeW);
+  max-width: var(--homeW);
+  margin: 10px auto 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--navGap);
+  box-sizing: border-box;
+}
+
+#details .start-secondary-row .btn{
+  height: 86px;
+  border-radius: 18px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 12px 30px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.04) inset;
+  color: rgba(255,255,255,.86);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+}
 #details .start-secondary-row .btn .navIcon{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;}
 #details .start-secondary-row .btn .navIcon svg{width:22px;height:22px;}
 #details .start-secondary-row .btn .navText{font-size:14px;line-height:1;}
 
-#latestScoresBtn{--acc:#37e08f;color:var(--acc);border-color:rgba(55,224,143,.35);}
-#latestScoresBtn .navIcon{color:var(--acc);}
-#playerStatsBtn{--acc:#4aa7ff;color:var(--acc);border-color:rgba(74,167,255,.35);}
-#playerStatsBtn .navIcon{color:var(--acc);}
-#leagueRankingsBtn{--acc:#ffb24a;color:var(--acc);border-color:rgba(255,178,74,.35);}
-#leagueRankingsBtn .navIcon{color:var(--acc);}
+#latestScoresBtn{--acc:#37e08f;color:var(--acc);border-color:rgba(55,224,143,.35);} 
+#latestScoresBtn .navIcon{color:var(--acc);} 
+#playerStatsBtn{--acc:#4aa7ff;color:var(--acc);border-color:rgba(74,167,255,.35);} 
+#playerStatsBtn .navIcon{color:var(--acc);} 
+#leagueRankingsBtn{--acc:#ffb24a;color:var(--acc);border-color:rgba(255,178,74,.35);} 
+#leagueRankingsBtn .navIcon{color:var(--acc);} 
 
 /* Admin button: same width as one nav tile */
-#adminCodeRow{--navW:min(var(--title-w),820px);--navGap:12px;margin-top:14px;width:var(--navW);margin-inline:auto;display:flex;justify-content:center;}
-#adminCodeRow .btn{width:calc((var(--navW) - (2 * var(--navGap)))/3);height:58px;border-radius:14px;}
-@media (max-width:760px){#adminCodeRow .btn{width:calc((var(--navW) - (1 * var(--navGap)))/2);}}
-@media (max-width:520px){#adminCodeRow .btn{width:100%;}}
+#adminCodeRow{
+  width: var(--homeW);
+  max-width: var(--homeW);
+  margin: 10px auto 22px;
+  display: flex;
+  justify-content: center;
+  box-sizing: border-box;
+}
+#adminCodeBtn{
+  width: calc((var(--homeW) - (2 * var(--navGap))) / 3);
+  max-width: 100%;
+  height: 58px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 12px 30px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.04) inset;
+  color: rgba(255,255,255,.86);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+}
+
 /* Final Leaderboard layout */
 #leaderboard .lb-box{
   padding:12px;
@@ -1330,6 +1573,88 @@ margin-bottom: var(--section-gap);
 .home-live-printer .lp-top{
   gap: 0;
 }
+
+
+/* --- HOME NAV (Player Hub / Stats / League) --- */
+#details .start-actions .home-nav-row{
+  width: var(--homeW);
+  margin: 12px auto 0;
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+#details .start-actions .home-nav-row .navBtn.btn{
+  width: 100%;
+  max-width: none;
+  min-height: 58px;
+  padding: 0 14px;
+  border-radius: 16px;
+  background: #131733;
+  border: 1px solid #2b3050;
+  box-shadow: 0 10px 22px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-weight: 800;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ink);
+}
+#details .start-actions .home-nav-row .navBtn.btn .navIcon{
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+}
+#details .start-actions .home-nav-row .navBtn.btn .navIcon svg{
+  width: 20px;
+  height: 20px;
+}
+#details .start-actions .home-nav-row .navBtn.btn:active{ transform: translateY(1px); }
+
+/* Theme edges + text */
+#details .start-actions .home-nav-row .navGreen{ color: #22e46b; border-color: rgba(34,228,107,.55); }
+#details .start-actions .home-nav-row .navBlue{ color: #2f86ff; border-color: rgba(47,134,255,.55); }
+#details .start-actions .home-nav-row .navAmber{ color: #ff9b22; border-color: rgba(255,155,34,.55); }
+
+#details .start-actions .home-nav-row .navBtn.btn:hover{
+  filter: brightness(1.05);
+}
+
+/* --- ADMIN (text link with lock) --- */
+#details .start-actions .home-admin-row{
+  width: var(--homeW);
+  margin: 10px auto 0;
+  display: flex;
+  justify-content: center;
+}
+#details .start-actions .adminLink{
+  background: transparent;
+  border: 0;
+  padding: 6px 10px 2px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: rgba(230,230,230,.55);
+  font-weight: 800;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+}
+#details .start-actions .adminLink .adminLock{
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  opacity: .9;
+}
+#details .start-actions .adminLink .adminLock svg{
+  width: 16px;
+  height: 16px;
+}
+#details .start-actions .adminLink:hover{ color: rgba(230,230,230,.8); }
 </style>
 </head>
 <body data-page="details">
@@ -1343,17 +1668,58 @@ margin-bottom: var(--section-gap);
                 <button id="tournamentBtn" class="btn big" type="button">TOURNAMENT</button>
 <button id="resumeBtn" class="btn secondary big" type="button" disabled title="No saved match"><span class="btnIcon">↺</span><span class="btnLabel">RESUME GAME</span></button>
 
-        <div class="row start-secondary-row">
-          <button id="latestScoresBtn" class="btn" type="button"><span class="navIcon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg></span><span class="navText">PLAYER HUB</span></button>
-  <button id="playerStatsBtn" class="btn" type="button"><span class="navIcon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M8 19V11"/><path d="M12 19V7"/><path d="M16 19V9"/><path d="M20 19V13"/></svg></span><span class="navText">STATS</span></button>
-  <button id="leagueRankingsBtn" class="btn" type="button"><span class="navIcon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v4a5 5 0 0 1-10 0V4z"/><path d="M5 6h2a3 3 0 0 1-3 3V6h1z"/><path d="M19 6h1v3a3 3 0 0 1-3-3h2z"/></svg></span><span class="navText">LEAGUE & RANKS</span></button>
+        <div class="row start-secondary-row home-nav-row">
+  <button id="latestScoresBtn" class="btn navBtn navGreen" type="button">
+    <span class="navIcon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+    </span>
+    <span class="navText">PLAYER HUB</span>
+  </button>
 
-        </div>
+  <button id="playerStatsBtn" class="btn navBtn navBlue" type="button">
+    <span class="navIcon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 3v18h18"/>
+        <path d="M7 15v3"/>
+        <path d="M12 11v7"/>
+        <path d="M17 6v12"/>
+      </svg>
+    </span>
+    <span class="navText">STATS</span>
+  </button>
 
-        <!-- Single Admin row -->
-        <div class="row" id="adminCodeRow" style="margin-top:16px; justify-content:center;">
-          <button id="adminCodeBtn" class="btn small" type="button">Admin</button>
-        </div>
+  <button id="leagueRankingsBtn" class="btn navBtn navAmber" type="button">
+    <span class="navIcon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 21h8"/>
+        <path d="M12 17v4"/>
+        <path d="M7 4h10"/>
+        <path d="M17 4v5a5 5 0 0 1-10 0V4"/>
+        <path d="M5 6h2v3a4 4 0 0 1-2-3z"/>
+        <path d="M19 6h-2v3a4 4 0 0 0 2-3z"/>
+      </svg>
+    </span>
+    <span class="navText">LEAGUE &amp; RANKS</span>
+  </button>
+</div>
+
+<!-- Admin (text link) -->
+<div class="row home-admin-row" id="adminCodeRow">
+  <button id="adminCodeBtn" class="adminLink" type="button">
+    <span class="adminLock" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="5" y="11" width="14" height="10" rx="2"/>
+        <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+      </svg>
+    </span>
+    <span class="adminText">ADMIN</span>
+  </button>
+</div>
       </div>
 
 <div id="psTickerTop" class="hidden"><div class="track"></div></div>
@@ -12561,17 +12927,9 @@ if (!window.__homeLivePrinterInterval){
         if (details) details.appendChild(footer);
       }
     }
+    // Footer is not fixed; keep in normal document flow
+    try{ footer.style.bottom=''; footer.style.left=''; footer.style.right=''; }catch(_){}
 
-
-    // Ensure footer sits just above the fixed tickers
-    try{
-      const t1 = document.getElementById('psTicker');
-      const t2 = document.getElementById('psTickerTop');
-      const h1 = (t1 && !t1.classList.contains('hidden')) ? (t1.getBoundingClientRect().height || 32) : 0;
-      const h2 = (t2 && !t2.classList.contains('hidden')) ? (t2.getBoundingClientRect().height || 32) : 0;
-      const pad = 74; // breathing room above tickers + space for Admin bar
-      footer.style.bottom = `calc(${h1 + h2 + pad}px + env(safe-area-inset-bottom, 0px))`;
-    } catch(_) {}
 
     // Build 3x squares + Admin row
     footer.innerHTML = '';
@@ -12587,29 +12945,40 @@ if (!window.__homeLivePrinterInterval){
     }
 
     // Square styling + labels
-    hub.classList.add('home-square-btn');
-    league.classList.add('home-square-btn');
-    stats.classList.add('home-square-btn');
+    
+// Nav buttons (PLAYER HUB / STATS / LEAGUE & RANKS) — match main button styling
+hub.className = 'btn secondary big navBtn navGreen';
+stats.className = 'btn secondary big navBtn navBlue';
+league.className = 'btn secondary big navBtn navOrange';
 
-    setSquareLabel(hub,   ['PLAYER', 'HUB']);
-    setSquareLabel(stats, ['STATS']);
-    setSquareLabel(league,['LEAGUE', '& RANKS']);
+// Inline SVG icons (no external deps)
+const svgUsers = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+const svgBar = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M10 19V9"/><path d="M16 19V13"/><path d="M22 19V7"/></svg>';
+const svgTrophy = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v3a5 5 0 0 1-10 0V4Z"/><path d="M5 7H3V5h4"/><path d="M19 7h2V5h-4"/><path d="M5 7a5 5 0 0 0 5 5"/><path d="M19 7a5 5 0 0 1-5 5"/></svg>';
+const svgLock = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
 
-    const squareRow = doc.createElement('div');
-    squareRow.className = 'home-square-row';
-    squareRow.appendChild(hub);
-    squareRow.appendChild(stats);
-    squareRow.appendChild(league);
+hub.innerHTML   = `<span class="navIcon">${svgUsers}</span><span class="navLabel">PLAYER HUB</span>`;
+stats.innerHTML = `<span class="navIcon">${svgBar}</span><span class="navLabel">STATS</span>`;
+league.innerHTML= `<span class="navIcon">${svgTrophy}</span><span class="navLabel">LEAGUE &amp; RANKS</span>`;
 
-    const adminRow = doc.createElement('div');
-    adminRow.className = 'home-admin-row';
-    // ensure admin looks like a full width footer button
-    admin.classList.remove('small');
-    admin.classList.add('btn');
-    adminRow.appendChild(admin);
+// Admin: clickable text + lock (no big button)
+admin.className = 'adminLink';
+admin.type = 'button';
+admin.innerHTML = `<span class="adminLock">${svgLock}</span><span class="adminText">ADMIN</span>`;
 
-    footer.appendChild(squareRow);
-    footer.appendChild(adminRow);
+// Row: 3 buttons aligned to the same outer edges as the 2 league boxes above
+const navRow = doc.createElement('div');
+navRow.className = 'home-nav-row';
+navRow.appendChild(hub);
+navRow.appendChild(stats);
+navRow.appendChild(league);
+
+const adminRow = doc.createElement('div');
+adminRow.className = 'home-admin-row';
+adminRow.appendChild(admin);
+
+footer.appendChild(navRow);
+footer.appendChild(adminRow);
 
   } catch(e){
     console.error('arrangeStartActions failed', e);
