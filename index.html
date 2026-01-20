@@ -1180,6 +1180,32 @@
   max-width: 92vw;
 }
 
+
+
+/* Home mini leagues: no headers/green rule */
+.home-mini-printer .lp-rule{display:none;}
+.mini-table-plain{width:100%;border-collapse:collapse;margin-top:10px;}
+.mini-table-plain td{background:transparent !important;border:0 !important;padding:10px 12px;font-size:12.5px;}
+.mini-table-plain tr + tr td{border-top:1px solid rgba(255,255,255,0.08) !important;}
+.mini-table-plain .mini-rank{width:2.2em;text-align:center;color:rgba(233,238,255,0.65);} 
+.mini-table-plain .mini-name{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(233,238,255,0.88);} 
+.mini-table-plain .mini-val{text-align:right;font-variant-numeric:tabular-nums;color:rgba(233,238,255,0.88);} 
+
+
+
+/* Admin link: fully transparent (no pill) */
+.home-admin-row .adminLink{
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  padding:0 !important;
+  height:auto !important;
+  width:auto !important;
+  border-radius:0 !important;
+  letter-spacing:0.18em !important;
+}
+.home-admin-row .adminLink:hover{background:transparent !important;}
+
 </style>
 <style>
   /* Cloud status pill (top-right) */
@@ -12457,36 +12483,22 @@ function arrangeStartActions(){
           <div class="lp-top"><span>HIGH SCORE LEAGUE</span></div>
           <div class="lp-rule"></div>
           <div class="lp-mid">
-            <table class="mini-table" aria-label="High Score League Top 5">
-              <thead>
-                <tr>
-                  <th style="width:34px">#</th>
-                  <th>Player</th>
-                  <th style="text-align:right">High</th>
-                </tr>
-              </thead>
-              <tbody id="homeHsLeagueRows">
-                <tr><td colspan="3" class="home-mini-muted">Loading…</td></tr>
-              </tbody>
-            </table>
+            <table class="mini-table mini-table-plain" aria-label="High Score League Top 5">
+        <tbody id="homeHsLeagueRows">
+          <tr class="mini-loading"><td colspan="3" class="home-mini-muted"><em>Loading…</em></td></tr>
+        </tbody>
+      </table>
           </div>
         </div>
         <div class="home-mini-printer" aria-label="Power Rankings">
           <div class="lp-top"><span>POWER RANKINGS</span></div>
           <div class="lp-rule"></div>
           <div class="lp-mid">
-            <table class="mini-table" aria-label="Power Rankings Top 5">
-              <thead>
-                <tr>
-                  <th style="width:34px">#</th>
-                  <th>Player</th>
-                  <th style="text-align:right">Avg</th>
-                </tr>
-              </thead>
-              <tbody id="homePowerRows">
-                <tr><td colspan="3" class="home-mini-muted">Loading…</td></tr>
-              </tbody>
-            </table>
+            <table class="mini-table mini-table-plain" aria-label="Power Rankings Top 5">
+        <tbody id="homePowerLeagueRows">
+          <tr class="mini-loading"><td colspan="3" class="home-mini-muted"><em>Loading…</em></td></tr>
+        </tbody>
+      </table>
           </div>
         </div>
       `;
@@ -12514,7 +12526,75 @@ function arrangeStartActions(){
       }
     }catch(_e){}
 
-    // Kick mini leagues once on home render
+    
+
+async function updateHomeMiniLeagues(){
+  const hsBody = document.getElementById('homeHsLeagueRows');
+  const prBody = document.getElementById('homePowerLeagueRows');
+  if(!hsBody && !prBody) return;
+
+  const esc = (typeof escHtml === 'function') ? escHtml : (s)=>String(s||'');
+  const setMsg = (body, msg)=>{ if(body) body.innerHTML = `<tr class="mini-loading"><td colspan="3" class="home-mini-muted"><em>${esc(msg)}</em></td></tr>`; };
+
+  if(hsBody) setMsg(hsBody,'Loading…');
+  if(prBody) setMsg(prBody,'Loading…');
+
+  try{
+    // High Score League (best match score per registered player)
+    if(hsBody){
+      let rows = [];
+      try{ rows = (typeof cloudListHighScores === 'function') ? (await cloudListHighScores()) : []; }catch(e){ rows = []; }
+
+      const best = new Map();
+      for(const r of (rows || [])){
+        if(!r) continue;
+        const pid = r.player_id || r.playerId;
+        if(!pid) continue;
+        const score = Number(r.score);
+        if(!Number.isFinite(score)) continue;
+        const name = r.name || r.player || '—';
+        const ts = r.ts || r.created_at || r.event_ts || '';
+        const prev = best.get(pid);
+        if(!prev || score > prev.score || (score === prev.score && String(ts) > String(prev.ts))){
+          best.set(pid, { name, score, ts });
+        }
+      }
+
+      const list = Array.from(best.values())
+        .sort((a,b)=> (b.score - a.score) || String(a.name).localeCompare(String(b.name)) );
+
+      const top = list.slice(0,5);
+      if(!top.length){
+        setMsg(hsBody,'No data');
+      }else{
+        hsBody.innerHTML = top.map((x,i)=>
+          `<tr><td class="mini-rank">${i+1}</td><td class="mini-name">${esc(x.name)}</td><td class="mini-val">${x.score}</td></tr>`
+        ).join('');
+      }
+    }
+
+    // Power Rankings (official)
+    if(prBody){
+      let rows = [];
+      try{ rows = (typeof getOfficialPowerRows === 'function') ? (await getOfficialPowerRows()) : []; }catch(e){ rows = []; }
+      const list = (rows || []).filter(r => r && r.player);
+      const top = list.slice(0,5);
+      if(!top.length){
+        setMsg(prBody,'No data');
+      }else{
+        prBody.innerHTML = top.map((r,i)=>{
+          const avg = Number(r.avgRound ?? r.avg ?? 0);
+          return `<tr><td class="mini-rank">${i+1}</td><td class="mini-name">${esc(r.player)}</td><td class="mini-val">${(Number.isFinite(avg) ? avg : 0).toFixed(2)}</td></tr>`;
+        }).join('');
+      }
+    }
+  }catch(e){
+    if(hsBody) setMsg(hsBody,'Unavailable');
+    if(prBody) setMsg(prBody,'Unavailable');
+  }
+}
+
+// Kick mini leagues once on home render
     try{ updateHomeMiniLeagues && updateHomeMiniLeagues(); }catch(_e){}
 
     // Live-printer updater (bind once)
