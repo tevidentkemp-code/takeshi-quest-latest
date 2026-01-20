@@ -78,6 +78,7 @@
 }
  .wrap{max-width:1100px;margin-inline:auto;padding:16px; padding-bottom:calc(var(--pad-h) + 16px)}
 .start-actions{
+  width: min(420px, 94%);
   display:flex;
   flex-direction:column;
   align-items:center;
@@ -724,7 +725,7 @@
   box-shadow: 0 10px 40px rgba(0,0,0,.35);
   overflow: hidden;
   width: min(420px, 94%);
-  margin: 22px auto;
+  margin: 22px auto 5px;
 }
 
 /* Center key home elements defensively */
@@ -858,8 +859,8 @@
 
 /* <<< PATCH:home-mini-leagues START */
 .home-mini-leagues{
-  width:min(440px,94vw);
-  margin:12px auto 18px;
+  width:min(420px,94%);
+  margin:0 auto 18px;
   display:flex;
   gap:14px;
 }
@@ -875,8 +876,8 @@
   border-radius:16px;
   border:1px solid rgba(255,255,255,.11);
   overflow:hidden;
-  background: radial-gradient(120% 140% at 50% 0%, rgba(0,255,120,.08) 0%, rgba(255,255,255,.04) 45%, rgba(0,0,0,.08) 100%);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 18px 40px rgba(0,0,0,.35);
+  background: rgba(6,10,20,.78);
+  box-shadow: 0 10px 40px rgba(0,0,0,.35), 0 0 20px rgba(255,255,255,.04) inset;
 }
 .home-mini-printer .lp-top{
   display:flex;
@@ -936,6 +937,11 @@
 
 /* <<< PATCH:home-live-printer END */
 
+
+
+.start-actions .btn.big{
+  width: 100%;
+}
 </style>
 <style>
   /* Cloud status pill (top-right) */
@@ -1310,6 +1316,20 @@ margin-bottom: var(--section-gap);
 }
 /* <<< PATCH:ticker-marquee END */
 
+
+
+/* --- MOT3_47 home layout fixes --- */
+#details{
+  padding-bottom: calc(260px + env(safe-area-inset-bottom));
+}
+.home-live-printer .lp-top,
+.home-mini-printer .lp-top{
+  justify-content: center;
+  text-align: center;
+}
+.home-live-printer .lp-top{
+  gap: 0;
+}
 </style>
 </head>
 <body data-page="details">
@@ -12026,8 +12046,7 @@ function arrangeStartActions(){
       printer.className = 'home-live-printer';
       printer.innerHTML = ''+
         '<div class="lp-top">'+
-          '<span class="lp-dot"></span>'+
-          '<span id="homeLpTopLine">MATCH_LOG.TXT loading...</span>'+
+          '<span id="homeLpTopLine">// LIVE UPDATES //</span>'+
         '</div>'+
         '<div class="lp-rule"></div>'+
         '<div class="lp-mid">'+
@@ -12039,15 +12058,7 @@ function arrangeStartActions(){
     }
     frag.appendChild(printer);
 
-    // NEW PLAYERS marquee sits directly below the VIDE box
-    let np = document.getElementById('homeNewPlayersMarquee');
-    if (!np){
-      np = doc.createElement('div');
-      np.id = 'homeNewPlayersMarquee';
-      np.className = 'lp-bottom';
-      np.innerHTML = '<div class="lp-marquee"><div id="homeLpBottomTrack" class="lp-marquee-track">NEW PLAYERS // </div></div>';
-    }
-    printer.appendChild(np);
+    // (removed) NEW PLAYERS ticker in VIDE
 
     // Mini league panels under VIDE
     let mini = document.getElementById('homeMiniLeagues');
@@ -12057,7 +12068,7 @@ function arrangeStartActions(){
       mini.className = 'home-mini-leagues';
       mini.innerHTML = `
         <div class="home-mini-printer" aria-label="High Score League">
-          <div class="lp-top"><span class="lp-dot"></span><span>HIGH SCORE LEAGUE — TOP 5</span></div>
+          <div class="lp-top"><span>HIGH SCORE LEAGUE</span></div>
           <div class="lp-rule"></div>
           <div class="lp-mid">
             <table class="mini-table" aria-label="High Score League Top 5">
@@ -12075,7 +12086,7 @@ function arrangeStartActions(){
           </div>
         </div>
         <div class="home-mini-printer" aria-label="Power Rankings">
-          <div class="lp-top"><span class="lp-dot"></span><span>POWER RANKINGS — TOP 5</span></div>
+          <div class="lp-top"><span>POWER RANKINGS</span></div>
           <div class="lp-rule"></div>
           <div class="lp-mid">
             <table class="mini-table" aria-label="Power Rankings Top 5">
@@ -12499,8 +12510,7 @@ if (!window.__homeLivePrinterInterval){
           // Top animation
           const topLine = document.getElementById('homeLpTopLine');
           if (topLine){
-            const dots = '.'.repeat((st.dots++ % 4));
-            topLine.textContent = `MATCH_LOG.TXT loading${dots}`;
+            topLine.textContent = '// LIVE UPDATES //';
           }
 
 
