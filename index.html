@@ -428,23 +428,80 @@
   border-right:1px solid #22264a;
 }
 
+/* Vertical dividers BETWEEN player columns (so 3+ players stay separated) */
+.float-head thead tr th:nth-child(n+3){
+  border-left:1px solid #22264a;
+}
+
 /* Floating header: base header cells */
 .float-head thead th{
   border-bottom:none;
   vertical-align:middle;
 }
 
-/* Row 1 (names): divider line just under player names */
+/* Row B (names): divider line just under player names */
 .float-head thead tr:nth-child(1) th{
   border-bottom:1px solid #2a2e48;
-  padding-bottom:4px;
+  padding-top:8px;
+  padding-bottom:6px;
 }
 
-/* Row 2 (totals): even vertical padding so score + diff sit centrally */
+/* Row C (totals): divider line under totals */
 .float-head thead tr:nth-child(2) th{
   padding-top:8px;
+  padding-bottom:6px;
+  text-align:center;
+  border-bottom:1px solid #22264a;
+}
+
+/* Row D (darts): compact row */
+.float-head thead tr:nth-child(3) th{
+  padding-top:6px;
   padding-bottom:8px;
   text-align:center;
+}
+.th-wins{
+  font-size:12px;
+  line-height:1;
+  letter-spacing:.08em;
+  opacity:.9;
+  margin-bottom:6px;
+  color:rgba(255,255,255,.75);
+}
+.th-wins span{ display:inline-block; margin:0 2px; }
+.th-darts{
+  display:flex;
+  justify-content:center;
+  gap:8px;
+}
+.dart-slot{
+  width:22px;
+  height:22px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  font-weight:800;
+  font-size:12px;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.06);
+}
+.dart-empty{
+  color:rgba(255,255,255,.55);
+}
+.dart-miss{
+  color:rgba(255,255,255,.85);
+}
+.dart-s,.dart-d,.dart-t,.dart-b{
+  color:currentColor; /* use player colour */
+}
+.th-darts.is-active .dart-slot{
+  box-shadow:0 0 0 2px rgba(255,255,255,.06) inset;
+}
+.th-darts.is-active .dart-slot.dart-empty{
+  color:#ff7a00;
+  border-color:rgba(255,122,0,.28);
+  background:rgba(255,122,0,.08);
 }
 #floatWrap #froundlabel .round-now{
   display:flex;
@@ -1513,6 +1570,11 @@ margin-bottom: var(--section-gap);
    - Player info block (#floatHead) becomes sticky at the top.
    - Score pad (.pad-bar) stays fixed at the bottom.
 */
+
+/* Game page background palette (match main menu tone) */
+body[data-page="game"]{
+  background:radial-gradient(1100px 700px at 0% 0%, #192033 0%, #0f1220 52%, #070913 100%);
+}
 body[data-page="game"] .wrap,
 body[data-page="leaderboard"] .wrap{
   height: 100dvh;
@@ -1520,6 +1582,13 @@ body[data-page="leaderboard"] .wrap{
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
+
+/* Game table palette */
+body[data-page="game"] #scoreWrap table{ background:rgba(15,18,32,.72); }
+body[data-page="game"] #scoreWrap thead th{ background:rgba(23,26,43,.96); }
+body[data-page="game"] #scoreWrap tbody th{ background:rgba(16,19,38,.92); }
+body[data-page="game"] .float-head{ background:rgba(17,20,34,.94); }
+body[data-page="game"] .pad-bar{ background:rgba(17,20,34,.94); }
 
 /* Undo the "internal table scroll" approach for the game page */
 body[data-page="game"] #game{
@@ -7463,28 +7532,23 @@ const mstatsThead=byId('mstatsThead'), mstatsTbody=byId('mstatsTbody');
 const floatThead=byId('floatThead');
 
 function buildScoreHeader(){ 
-  // Main scoreboard header: thin strip just above 10s/Bull.
+  // Main scoreboard header: spacer row used to keep column widths aligned.
+  // Match progress (wins) lives in the floating header now.
   thead.innerHTML = '';
 
   const tr = document.createElement('tr');
 
-  // Left column header above "10s" (leave blank for now)
+  // Left column header above "10s" (leave blank)
   const thRound = document.createElement('th');
   thRound.textContent = '';
   tr.appendChild(thRound);
 
-  // Per-player header cells: show game wins as cups here
+  // Per-player header cells: blank (width alignment only)
   for (let i = 0; i < state.players.length; i++) {
     const th = document.createElement('th');
     th.className = 'player';
     th.style.color = state.players[i].color;
-
-    const wins = document.createElement('div');
-    wins.className = 'th-beers';
-    wins.id = 'beers-' + i;      // NEW: main header wins row
-    wins.textContent = '';
-
-    th.appendChild(wins);
+    th.textContent = '';
     tr.appendChild(th);
   }
 
@@ -7531,15 +7595,16 @@ function buildScoreBody(){
 function buildFloatingHeader(){ 
   floatThead.innerHTML = '';
 
-  // ROW 1: round label (left) + player names + throws
+  // A) Target (left) spans B/C/D rows
   const trNames = document.createElement('tr');
 
   const thRound = document.createElement('th');
   thRound.id = 'froundlabel';
-  thRound.rowSpan = 2;          // now only 2 rows in the floating header
+  thRound.rowSpan = 3;          // B, C, D rows
   thRound.textContent = '';     // filled by updateUI()
   trNames.appendChild(thRound);
 
+  // B) Player names + match progress
   for (let i = 0; i < state.players.length; i++) { 
     const th = document.createElement('th'); 
     th.className = 'player'; 
@@ -7548,21 +7613,21 @@ function buildFloatingHeader(){
     const wrap = document.createElement('div'); 
     wrap.className = 'th-wrap'; 
 
+    const wins = document.createElement('div');
+    wins.className = 'th-wins';
+    wins.id = 'fwins-' + i;
+    wins.textContent = '';
+
     const name = document.createElement('div'); 
     name.className = 'th-name'; 
     name.textContent = state.players[i].name; 
 
-    const throws = document.createElement('div');
-    throws.className = 'th-throws';
-    throws.id = 'fthrows-' + i;
-    throws.textContent = '';
-
-    wrap.append(name, throws);
+    wrap.append(wins, name);
     th.appendChild(wrap); 
     trNames.appendChild(th);
   }  
 
-  // ROW 2: totals + diff
+  // C) Totals + diff
   const trTotals = document.createElement('tr');
   for (let i = 0; i < state.players.length; i++) { 
     const th = document.createElement('th'); 
@@ -7582,7 +7647,48 @@ function buildFloatingHeader(){
     trTotals.appendChild(th);
   }  
 
-  floatThead.append(trNames, trTotals);
+  // D) Darts (per player for this round)
+  const trDarts = document.createElement('tr');
+  for (let i = 0; i < state.players.length; i++) {
+    const th = document.createElement('th');
+    th.className = 'player';
+    th.style.color = state.players[i].color;
+
+    const darts = document.createElement('div');
+    darts.className = 'th-darts';
+    darts.id = 'fdarts-' + i;
+    darts.textContent = '';
+
+    th.appendChild(darts);
+    trDarts.appendChild(th);
+  }
+
+  floatThead.append(trNames, trTotals, trDarts);
+}
+
+// Darts display (D row)
+function dartHeaderSymbol(dart){
+  if (!dart) return { text: '➤', cls: 'dart-empty' };
+
+  const k = dart.kind;
+
+  if (k === 'Miss') return { text: 'X', cls: 'dart-miss' };
+  if (k === 'S' || k === 'D' || k === 'T') return { text: k, cls: 'dart-' + k.toLowerCase() };
+  if (k === 'Double') return { text: 'D', cls: 'dart-d' };
+  if (k === 'Triple') return { text: 'T', cls: 'dart-t' };
+  if (k === 'Bull') return { text: 'B', cls: 'dart-b' };
+
+  return { text: '?', cls: 'dart-unk' };
+}
+function renderDartsHeaderHTML(pIdx, rIdx){
+  const entry = state.score?.[pIdx]?.[rIdx];
+  const darts = entry?.darts || [];
+  let html = '';
+  for (let k = 0; k < 3; k++) {
+    const sym = dartHeaderSymbol(darts[k]);
+    html += `<span class="dart-slot ${sym.cls}">${sym.text}</span>`;
+  }
+  return html;
 }
 
 function formatTop3Inline(list){
@@ -9161,27 +9267,23 @@ if (roundLabelEl) {
       const diff = totals[i] - max;
       diffEl.textContent = String(diff);
     }
- // Wins – trophies for wins, circles for remaining games
-    const winsElMain = byId('beers-' + i);     // NEW location: thin row above 10s
-    if (winsElMain) {
-      const wins = state.match.wins?.[i] || 0;
-      let bubbles = '';
-      for (let k = 0; k < targetWins; k++) {
-        bubbles += k < wins ? '🏆' : '○';
+    // Match progress (wins) – stars for wins, circles for remaining games
+    const winsEl = byId('fwins-' + i);
+    if (winsEl) {
+      const wins = state.match?.wins?.[i] || 0;
+      const firstTo = state.match?.targetWins || 1;
+      let s = '';
+      for (let k = 0; k < firstTo; k++) {
+        s += k < wins ? '★' : '○';
       }
-      winsElMain.textContent = bubbles;
+      winsEl.textContent = s;
     }
 
-    // Throws remaining (targets)
-    const throwsEl = byId('fthrows-' + i);
-    if (throwsEl) {
-      throwsEl.textContent = '';
-      if (!state.finished && i === state.currentPlayer) {
-        const remaining = 3 - state.currentDart;   // 3, 2, or 1
-        let icons = '';
-        for (let k = 0; k < remaining; k++) icons += '🎯';
-        throwsEl.textContent = icons;
-      }
+    // Darts (this round for this player)
+    const dartsEl = byId('fdarts-' + i);
+    if (dartsEl) {
+      dartsEl.innerHTML = renderDartsHeaderHTML(i, state.currentRound);
+      dartsEl.classList.toggle('is-active', (!state.finished && i === state.currentPlayer));
     }
   }
 
