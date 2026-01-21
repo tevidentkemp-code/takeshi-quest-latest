@@ -15,14 +15,14 @@
      2) <body>: screens + modals (static DOM)
      3) Main <script>: state, UI, storage/cloud, event wiring, patches
 
-     Convention: search for "// =====" or "/* =====" to jump sections
+     Convention: use CTRL+F for "@JS:" / "@CSS:" / "@HTML:" / "@PATCH:" jump keys (see SQ NAV INDEX in main script)
      ===================================================================== -->
 <!-- Supabase JS v2 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 
 <style>
-/* ===== CSS: THEME TOKENS ===== */
+/* ===== @CSS:TOKENS | CSS: THEME TOKENS ===== */
 :root{
   /* Theme */
   --bg:#0f1220;
@@ -1258,12 +1258,90 @@ margin-bottom: var(--section-gap);
   margin-top: 0 !important;
 }
 
+/* ===== @CSS:GAME_SCROLL =====
+   Body scrolling is intentionally disabled (overflow:hidden).
+   These rules make the in-game scoreboard scrollable inside its allocated area,
+   especially on mobile where the table can extend beyond the viewport. */
+#game{
+  height: 100dvh;
+}
+#game > .card.section{
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* critical: allow overflow children to scroll inside flex */
+}
+#gameTopRow,
+#floatHead{
+  flex: 0 0 auto;
+}
+/* The main scroll container for the live scoreboard */
+#scoreWrap{
+  flex: 1 1 auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+/* Control pad stays anchored below */
+#pad{
+  flex: 0 0 auto;
+}
+
+
 /* keep these tiny + shorter */
 #leaderboardTopRow .btn,
 #gameTopRow .btn{
   font-size: 0.9rem;
   min-height: 34px;
   padding: 6px 10px;
+}
+
+
+/* ===== @CSS:GAME_SCROLL_CLASSIC =====
+   Classic in-game scroll behaviour:
+   - The PAGE scroll container is .wrap (not the table).
+   - Top row (Start Screen / Restart / Stats) scrolls away.
+   - Player info block (#floatHead) becomes sticky at the top.
+   - Score pad (.pad-bar) stays fixed at the bottom.
+*/
+body[data-page="game"] .wrap,
+body[data-page="leaderboard"] .wrap{
+  height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Undo the "internal table scroll" approach for the game page */
+body[data-page="game"] #game{
+  height: auto !important;
+}
+body[data-page="game"] #game > .card.section{
+  height: auto !important;
+  display: block !important;
+}
+
+/* Let the scoreboard table flow with the page scroll */
+body[data-page="game"] #scoreWrap{
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+/* Prevent the table header from sticking over the sticky player header */
+body[data-page="game"] #scoreWrap thead th{
+  position: static !important;
+}
+
+/* Sticky player info block */
+body[data-page="game"] #floatHead{
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  background: rgba(23,26,43,.98);
+  backdrop-filter: blur(6px);
+  border-radius: 12px;
+  border: 1px solid rgba(42,46,72,.85);
 }
 
 /* ===== Start Screen sizing (page: #details) ===== */
@@ -1704,6 +1782,8 @@ margin-bottom: var(--section-gap);
 </style>
 </head>
 <body data-page="details">
+<!-- ===== @HTML:SCREENS ===== -->
+
   <div class="wrap">
 
     <!-- PAGE 1: GAME DETAILS -->
@@ -2168,6 +2248,99 @@ margin-bottom: var(--section-gap);
     <script>
 // ===== JS: BOOT / GLOBALS =====
 
+
+// ===== SQ NAV INDEX (CTRL+F KEYS) =====
+/*
+  STYLE
+  - @CSS:TOKENS
+  - @CSS:HOME
+  - @CSS:MODALS
+  - @CSS:TICKER
+
+  HTML (STATIC DOM)
+  - @HTML:SCREENS
+  - @HTML:MODALS
+  - @HTML:ADMIN
+
+  JS (PUBLIC ENTRYPOINTS / CORE)
+  - @JS:BOOT
+  - @JS:UI:HOME
+  - @JS:UI:GAME
+  - @JS:UI:ADMIN
+  - @JS:CLOUD:SUPABASE_INIT
+  - @JS:CLOUD:PLAYERS
+  - @JS:CLOUD:GAMES
+  - @JS:CLOUD:HIGHSCORES
+
+  MODALS (OPENERS)
+  - @JS:MODAL:LEAGUE_RANKINGS
+  - @JS:MODAL:HIGH_SCORE_LEAGUE
+  - @JS:MODAL:PREMIER_LEAGUE
+  - @JS:MODAL:LATEST_SCORES
+
+  PATCHES
+  - @PATCHES:REGISTRY
+  - @PATCH:<name>  (search the patch name exactly as printed)
+*/
+// ===== @JS:BOOT =====
+// ===== @JS:UTIL:UI_MUTATION_BUS =====
+// Single DOM mutation observer + per-frame flush (replaces many per-feature MutationObservers)
+(function(){
+  if (window.__sqUIMutationBus) return;
+
+  const listeners = new Set();
+  let pending = false;
+  /** @type {MutationRecord[]} */
+  let buf = [];
+
+  function flush(){
+    pending = false;
+    const muts = buf;
+    buf = [];
+    for (const fn of listeners){
+      try { fn(muts); } catch(e){ try{ console.warn('sqUIMutationBus listener failed', e); }catch(_){ } }
+    }
+  }
+
+  function schedule(){
+    if (pending) return;
+    pending = true;
+    const raf = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : (cb)=>setTimeout(cb, 0);
+    raf(flush);
+  }
+
+  const mo = new MutationObserver((muts)=>{
+    if (muts && muts.length) {
+      buf = buf.concat(muts);
+      schedule();
+    }
+  });
+
+  function start(){
+    const root = document.body || document.documentElement;
+    if (!root) return;
+    try {
+      mo.observe(root, { childList:true, subtree:true, characterData:true });
+    } catch(_){}
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once:true });
+  } else {
+    start();
+  }
+
+  window.__sqUIMutationBus = {
+    on(fn){
+      if (typeof fn !== 'function') return ()=>{};
+      listeners.add(fn);
+      return ()=>{ try{ listeners.delete(fn); }catch(_){ } };
+    },
+    emit(){ try{ schedule(); }catch(_){ } }
+  };
+})();
+
+
 // Global guard: some third‑party embeds reference a global `F`; define a harmless fallback
 if (typeof window.F === 'undefined') {
   window.F = function(){ /* no-op */ };
@@ -2385,10 +2558,23 @@ function setupRoundScoreObserver(){
     });
   }
 
-  // Observe scoreboard updates and continuously scrub
+  // Observe scoreboard updates and continuously scrub (via shared UI mutation bus)
   try {
-    const mo = new MutationObserver(() => scrub());
-    mo.observe(tbody, { childList: true, subtree: true, characterData: true });
+    if (!tbody.dataset.sqScrubWired) {
+      tbody.dataset.sqScrubWired = '1';
+      window.__sqUIMutationBus?.on((muts) => {
+        try{
+          if (!tbody || !tbody.isConnected) return;
+          for (const m of (muts || [])){
+            const t = m.target;
+            if (t && tbody.contains(t)) { scrub(); return; }
+            for (const n of (m.addedNodes || [])){
+              if (n && n.nodeType === 1 && tbody.contains(n)) { scrub(); return; }
+            }
+          }
+        }catch(_){}
+      });
+    }
   } catch(_){}
 
   // Initial + delayed passes
@@ -2457,6 +2643,7 @@ async function dedupeAllHighScores(){
   return total;
 }
 // ---- Admin Hub ----
+// ===== @JS:UI:ADMIN =====
 function openAdminHub(){
   const hub = document.getElementById('adminHubModal');
   try { window.__sqNavContext = 'admin'; } catch(_) {}
@@ -3398,19 +3585,20 @@ async function renderSavedPlayersAdmin(){
     }
   }
 
-  // Watch for modals opening; patch the one titled "Premier League"
-  const mo = new MutationObserver(muts => {
-    for (const m of muts) {
-      for (const n of m.addedNodes) {
-        if (!(n instanceof HTMLElement)) continue;
-        const modal = n.matches?.('.modal') ? n : n.querySelector?.('.modal');
-        if (!modal) continue;
-        const title = (modal.querySelector('h3')?.textContent || '').trim();
-        if (/^premier league$/i.test(title)) patchPremierLeagueModal(modal);
+  // Watch for modals opening; patch the one titled "Premier League" (via shared UI mutation bus)
+  try {
+    window.__sqUIMutationBus?.on((muts) => {
+      for (const m of (muts || [])) {
+        for (const n of (m.addedNodes || [])) {
+          if (!(n instanceof HTMLElement)) continue;
+          const modal = n.matches?.('.modal') ? n : n.querySelector?.('.modal');
+          if (!modal) continue;
+          const title = (modal.querySelector('h3')?.textContent || '').trim();
+          if (/^premier league$/i.test(title)) patchPremierLeagueModal(modal);
+        }
       }
-    }
-  });
-  try { mo.observe(document.body, { childList: true, subtree: true }); } catch(_) {}
+    });
+  } catch(_) {}
 
   // Also try to patch immediately if it’s already open
   setTimeout(() => {
@@ -3853,21 +4041,19 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
     }
   }
 
-  // Watch for modals being added; when a Game Complete popup appears, patch it
-  const mo = new MutationObserver(muts => {
-    for (const m of muts){
-      for (const n of m.addedNodes){
-        if (!(n instanceof HTMLElement)) continue;
-        if (n.classList.contains('modal-backdrop')){
-          // Let the modal render fully, then patch it
-          setTimeout(() => patchGameCompleteModal(n), 0);
+  // Watch for modals being added; when a Game Complete popup appears, patch it (via shared UI mutation bus)
+  try {
+    window.__sqUIMutationBus?.on((muts) => {
+      for (const m of (muts || [])){
+        for (const n of (m.addedNodes || [])){
+          if (!(n instanceof HTMLElement)) continue;
+          if (n.classList.contains('modal-backdrop')){
+            // Let the modal render fully, then patch it
+            setTimeout(() => patchGameCompleteModal(n), 0);
+          }
         }
       }
-    }
-  });
-
-  try {
-    mo.observe(document.body, { childList: true, subtree: true });
+    });
   } catch(_) {}
 })();
 
@@ -3921,25 +4107,23 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
     }
   }
 
-  const mo = new MutationObserver(muts => {
-    for (const m of muts) {
-      for (const n of m.addedNodes) {
-        if (!(n instanceof HTMLElement)) continue;
+  try {
+    window.__sqUIMutationBus?.on((muts) => {
+      for (const m of (muts || [])) {
+        for (const n of (m.addedNodes || [])) {
+          if (!(n instanceof HTMLElement)) continue;
 
-        // Modal added directly
-        if (n.classList.contains('modal-backdrop')) {
-          tryPatchPlayerStatsModal(n);
-        } else if (n.querySelector) {
-          // Or nested within some other added node
-          const backdrop = n.querySelector('.modal-backdrop');
-          if (backdrop) tryPatchPlayerStatsModal(backdrop);
+          // Modal added directly
+          if (n.classList.contains('modal-backdrop')) {
+            tryPatchPlayerStatsModal(n);
+          } else if (n.querySelector) {
+            // Or nested within some other added node
+            const backdrop = n.querySelector('.modal-backdrop');
+            if (backdrop) tryPatchPlayerStatsModal(backdrop);
+          }
         }
       }
-    }
-  });
-
-  try {
-    mo.observe(document.body, { childList: true, subtree: true });
+    });
   } catch (_) {}
 })();
 
@@ -3993,22 +4177,20 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
     }
   }
 
-  const mo = new MutationObserver(muts => {
-    for (const m of muts) {
-      for (const n of m.addedNodes) {
-        if (!(n instanceof HTMLElement)) continue;
-        if (n.classList.contains('modal-backdrop')) {
-          tryPatchHsLeagueModal(n);
-        } else if (n.querySelector) {
-          const backdrop = n.querySelector('.modal-backdrop');
-          if (backdrop) tryPatchHsLeagueModal(backdrop);
+  try {
+    window.__sqUIMutationBus?.on((muts) => {
+      for (const m of (muts || [])) {
+        for (const n of (m.addedNodes || [])) {
+          if (!(n instanceof HTMLElement)) continue;
+          if (n.classList.contains('modal-backdrop')) {
+            tryPatchHsLeagueModal(n);
+          } else if (n.querySelector) {
+            const backdrop = n.querySelector('.modal-backdrop');
+            if (backdrop) tryPatchHsLeagueModal(backdrop);
+          }
         }
       }
-    }
-  });
-
-  try {
-    mo.observe(document.body, { childList: true, subtree: true });
+    });
   } catch (_) {}
 })();
 
@@ -6010,123 +6192,29 @@ async function cloudListPlayerRecentOfficialGames(name, limitGames = 2){
   await render();
 }
 /*****************
- * CLOUD STATS HELPERS
+ * CLOUD STATS HELPERS (LEGACY ALIAS)
+ *****************
+ * NOTE: "Sprint League" has been renamed to "Power Rankings".
+ * The old Sprint League view-based dialog has been removed to reduce code size
+ * and prevent naming drift. This function now forwards to the canonical
+ * Power Rankings dialog.
  *****************/
 
-async function computeSprintLeagueAsync() {
-  try {
-    const { data, error } = await sb
-      .from('sprint_league_last5')
-      .select('player, rounds_used, total_points, avg_per_round')
-      .order('avg_per_round', { ascending: false })
-      .limit(10);
-    if (error) throw error;
-
-    return (data || []).map(r => ({
-      name: r.player,
-      roundsUsed: r.rounds_used,
-      totalPoints: r.total_points,
-      avgRound: Number(r.avg_per_round)
-    }));
-  } catch (e) {
-    console.error('sprint_league_last5 fetch failed', e);
-    return [];
+async function openSprintLeagueDialog(){
+  try{
+    if (typeof window.openPowerLeagueDialog === 'function') {
+      return await window.openPowerLeagueDialog();
+    }
+    console.warn('Power Rankings dialog not available (openPowerLeagueDialog missing)');
+    if (typeof toast === 'function') toast('Power Rankings not available');
+  } catch(e){
+    console.error('openSprintLeagueDialog failed', e);
+    try { if (typeof toast === 'function') toast('Failed to open Power Rankings'); } catch(_) {}
   }
 }
 
-async function openSprintLeagueDialog() {
-  // CLEANUP: if you still have any stray header code at the very start of the old
-  // function that references `trh` before it's defined, delete it.
-
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-backdrop';
-
-  const modal = document.createElement('div');
-  modal.className = 'modal';
-
-  const title = document.createElement('h3');
-  title.textContent = 'Sprint League';
-
-  const body = document.createElement('div');
-  body.className = 'modal-body';
-
-  // Updated bio
-  const info = document.createElement('p');
-  info.textContent =
-    'Ranking by average points per round from the most recent 2–5 games (28–70 rounds). Minimum 2 games. One entry per player.';
-  info.style.fontSize = '0.82rem';
-  info.style.color = '#a8acc3';
-  info.style.marginBottom = '6px';
-  body.appendChild(info);
-
-  // Table shell
-  const table = document.createElement('table');
-  table.className = 'hs-table';
-
-  const thead = document.createElement('thead');
-  const trh   = document.createElement('tr');
-  ['#', 'Player', 'Rounds', 'Points', 'Avg PPR'].forEach(h => {
-    const th = document.createElement('th');
-    th.textContent = h;
-    trh.appendChild(th);
-  });
-  thead.appendChild(trh);
-  table.appendChild(thead);
-
-  const tbody = document.createElement('tbody');
-  table.appendChild(tbody);
-  body.appendChild(table);
-
-  // Fetch rows (your computeSprintLeagueAsync now reads from the SQL view)
-  let rows = [];
-  try {
-    rows = await computeSprintLeagueAsync();
-  } catch (e) {
-    console.error(e);
-  }
-
-  if (!rows || !rows.length) {
-    const tr = document.createElement('tr');
-    const td = document.createElement('td');
-    td.colSpan = 5;
-    td.textContent = 'No qualifying players yet.';
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-  } else {
-    // Already sorted by avgRound desc in computeSprintLeagueAsync; keep it.
-    rows.forEach((row, idx) => {
-      const tr = document.createElement('tr');
-
-      const rank   = document.createElement('td'); rank.textContent = String(idx + 1);
-      const name   = document.createElement('td'); name.textContent = row.name;
-      const rounds = document.createElement('td'); rounds.className = 'num'; rounds.textContent = String(row.roundsUsed);
-      const points = document.createElement('td'); points.className = 'num'; points.textContent = String(Math.round(row.totalPoints));
-      const avg    = document.createElement('td'); avg.className = 'num';  avg.textContent = (Number(row.avgRound) || 0).toFixed(1);
-
-      tr.append(rank, name, rounds, points, avg);
-      tbody.appendChild(tr);
-    });
-  }
-
-  // Footer
-  const footer  = document.createElement('div');
-  footer.className = 'modal-footer';
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn';
-  closeBtn.textContent = 'Close';
-  closeBtn.onclick = () => overlay.remove();
-  footer.appendChild(closeBtn);
-
-  modal.append(title, body, footer);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-
-  modal.tabIndex = 0;
-  modal.focus();
-
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
-}
+// Backwards-compatible no-op (legacy callers may still await this)
+async function computeSprintLeagueAsync(){ return []; }
 
 // (cloudSynthGamesFromHighScores remains unchanged)
 // If a wrapper exists for openHighScoresMenuDialog, patch it to call the new dialog:
@@ -7543,6 +7631,17 @@ function updateMatchStats(){
 // Keep the score table focused on the most recent rounds (show 4 rows: current + previous 3)
 function autoScrollScoreboard(){
   const wrap = document.getElementById('scoreWrap');
+  // Allow the user to scroll the live table without the game snapping it back.
+  // If the user has scrolled in the last 1500ms, skip auto-scroll.
+  try {
+    if (wrap && !wrap.__sqScrollGuard) {
+      wrap.__sqScrollGuard = true;
+      wrap.addEventListener('scroll', () => {
+        wrap.__sqUserScrollUntil = Date.now() + 1500;
+      }, { passive: true });
+    }
+    if (wrap && wrap.__sqUserScrollUntil && Date.now() < wrap.__sqUserScrollUntil) return;
+  } catch(_) {}
   const tbodyEl = document.getElementById('tbody');
   if (!wrap || !tbodyEl) return;
 
@@ -8782,7 +8881,7 @@ if (roundLabelEl) {
         totalEl.classList.add('leader-total');
       }
     }
-F
+
     // Diff
     const diffEl = byId('fdiff-' + i);
     if (diffEl) {
@@ -10947,7 +11046,8 @@ async function cloudDeleteGameCascade(g){
   /*****************
    * CLOUD INIT HELPER
    *****************/
-  function ensureCloudInit(){
+  // ===== @JS:CLOUD:SUPABASE_INIT =====
+function ensureCloudInit(){
     try {
       // Library present?
       if (typeof window.supabase !== 'object' || !window.supabase.createClient) {
@@ -11961,21 +12061,21 @@ values.forEach((v, i) => {
     }
   }
 
-  const mo = new MutationObserver(muts => {
-    for (const m of muts){
-      for (const n of m.addedNodes){
-        if (n.nodeType !== 1) continue;
-        if (n.classList.contains('modal-backdrop')){
-          setTimeout(() => attachProgression(n), 0);
-        } else if (n.querySelector){
-          const backdrop = n.querySelector('.modal-backdrop');
-          if (backdrop) setTimeout(() => attachProgression(backdrop), 0);
+  try {
+    window.__sqUIMutationBus?.on((muts) => {
+      for (const m of (muts || [])){
+        for (const n of (m.addedNodes || [])){
+          if (n.nodeType !== 1) continue;
+          if (n.classList.contains('modal-backdrop')){
+            setTimeout(() => attachProgression(n), 0);
+          } else if (n.querySelector){
+            const backdrop = n.querySelector('.modal-backdrop');
+            if (backdrop) setTimeout(() => attachProgression(backdrop), 0);
+          }
         }
       }
-    }
-  });
-
-  try { mo.observe(document.body, { childList: true, subtree: true }); } catch(_) {}
+    });
+  } catch(_) {}
 })();
 
 (function(){
@@ -13384,18 +13484,19 @@ window.setCloudStatus = function setCloudStatus(state, msg){
     }
   }
 
-  // Observe for modal creation; patch when Match Stats dialog appears
-  const mo = new MutationObserver(muts => {
-    for (const m of muts){
-      for (const n of m.addedNodes){
-        if (n.nodeType === 1 && n.classList.contains('modal-backdrop')){
-          // let the dialog render, then patch
-          setTimeout(() => applyMatchStatsFix(n), 0);
+  // Observe for modal creation; patch when Match Stats dialog appears (via shared UI mutation bus)
+  try {
+    window.__sqUIMutationBus?.on((muts) => {
+      for (const m of (muts || [])){
+        for (const n of (m.addedNodes || [])){
+          if (n.nodeType === 1 && n.classList.contains('modal-backdrop')){
+            // let the dialog render, then patch
+            setTimeout(() => applyMatchStatsFix(n), 0);
+          }
         }
       }
-    }
-  });
-  try { mo.observe(document.body, { childList: true, subtree: true }); } catch(_) {}
+    });
+  } catch(_) {}
 })();
 
 // ===== High Scores modals: force compact style (League / Practice / Match / Round) =====
@@ -13420,19 +13521,17 @@ window.setCloudStatus = function setCloudStatus(state, msg){
     }
   }
 
-  const mo = new MutationObserver(muts => {
-    for (const m of muts){
-      for (const n of m.addedNodes){
-        if (n.nodeType === 1 && n.classList.contains('modal-backdrop')){
-          // Let the dialog render, then patch
-          setTimeout(() => applyHsCompact(n), 0);
+  try {
+    window.__sqUIMutationBus?.on((muts) => {
+      for (const m of (muts || [])){
+        for (const n of (m.addedNodes || [])){
+          if (n.nodeType === 1 && n.classList.contains('modal-backdrop')){
+            // Let the dialog render, then patch
+            setTimeout(() => applyHsCompact(n), 0);
+          }
         }
       }
-    }
-  });
-
-  try {
-    mo.observe(document.body, { childList: true, subtree: true });
+    });
   } catch(_) {}
 })();
 
@@ -13573,6 +13672,7 @@ window.setCloudStatus = function setCloudStatus(state, msg){
 })();
 
 // High Score League — per-player best match score, rows clickable to open game
+// ===== @JS:MODAL:HIGH_SCORE_LEAGUE =====
 window.openHighScoreLeagueDialog = async function openHighScoreLeagueDialog() {
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
   const modal   = document.createElement('div'); 
@@ -13834,7 +13934,8 @@ const colNum   = document.createElement('col');  colNum.style.width  = '3.5ch';
   });
 })();
 
-// League / Rankings popup (Power League + High Score League)
+// League / Rankings popup (Power Rankings + High Score League)
+// ===== @JS:MODAL:LEAGUE_RANKINGS =====
 window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
   try { window.__sqLeagueOverlay = overlay; } catch(_) {}
@@ -14115,7 +14216,7 @@ if (typeof sb === 'undefined'
     if (error) throw error;
     gameRows = (data || []).filter(g => Array.isArray(g?.state?.players) && g.state.players.length >= 2);
   } catch(e){
-    console.error('Power League: fetch games failed', e);
+    console.error('Power Rankings: fetch games failed', e);
     throw new Error('Failed to fetch games for Power League');
   }
 
@@ -14180,7 +14281,7 @@ try {
     roundsList = Array.from(byRoundKey.values());
   }
 } catch (e) {
-  console.error('Power League: throws fetch failed (will fallback)', e);
+  console.error('Power Rankings: throws fetch failed (will fallback)', e);
 }
 
 // Fallback: build approximate rounds from player_games if no throws
@@ -14222,7 +14323,7 @@ if (!roundsList.length) {
       }
     }
   } catch (e) {
-    console.error('Power League: fallback player_games fetch failed', e);
+    console.error('Power Rankings: fallback player_games fetch failed', e);
     // keep roundsList empty → UI will show the "No official games..." message later
   }
 }
@@ -14289,7 +14390,7 @@ roundsList.sort((a, b) => {
 }
 
   async function render(){
-    body.innerHTML = '<p class="tag">Loading Power League…</p>';
+    body.innerHTML = '<p class="tag">Loading Power Rankings…</p>';
 
     let rows = [];
     try {
@@ -14329,10 +14430,12 @@ roundsList.sort((a, b) => {
     table.appendChild(thead);
     
     // -- rank change arrows (persisted since last open) --
-const LS_KEY = 'powerLeague.lastRanks';
+const LS_KEY = 'powerRankings.lastRanks';
+const LS_KEY_LEGACY = 'powerLeague.lastRanks';
 let prevRanks = new Map();
 try {
-  const raw = localStorage.getItem(LS_KEY);
+  let raw = localStorage.getItem(LS_KEY);
+  if (!raw) raw = localStorage.getItem(LS_KEY_LEGACY);
   if (raw) {
     const obj = JSON.parse(raw);
     if (obj && obj.ranks && typeof obj.ranks === 'object') {
@@ -14420,6 +14523,7 @@ try {
 };
 
 // Premier League popup – average match total per player, with month filters
+// ===== @JS:MODAL:PREMIER_LEAGUE =====
 window.openPremierLeagueDialog = async function openPremierLeagueDialog() {
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop';
@@ -15254,6 +15358,7 @@ renderTable(rows, currentFilter, initialPrev);
 
 
 // Latest Scores modal: overlay with # | Result | Date/Time (no delete column)
+// ===== @JS:MODAL:LATEST_SCORES =====
 async function openLatestScoresDialog(){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
    const modal   = document.createElement('div'); modal.className   = 'modal compact';
@@ -17406,6 +17511,7 @@ document.addEventListener('DOMContentLoaded', function(){
   function ensureOpener(){
     // use existing opener if defined; otherwise click any visible UI that opens PL
     return async function openPL(){
+      if (typeof window.openPremierLeagueDialog === 'function') { try { window.openPremierLeagueDialog(); return; } catch(_){} }
       if (typeof window.openPremierLeaguePopup === 'function') { try { window.openPremierLeaguePopup(); return; } catch(_){} }
       const trigger = Array.from(document.querySelectorAll('button,.btn,a,[role="button"]'))
         .find(el => /premier\s*league|records/i.test((el.textContent||'')) && el.offsetParent);
@@ -17432,7 +17538,7 @@ document.addEventListener('DOMContentLoaded', function(){
   function tick(){ ensureBtn(); }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
-  new MutationObserver(tick).observe(document.body || document.documentElement, { childList:true, subtree:true });
+  try { window.__sqUIMutationBus?.on(()=>tick()); } catch(_) {}
 })();
 
 
@@ -17677,8 +17783,7 @@ if (!todayBtn) {
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
-  const mo = new MutationObserver(tick);
-  mo.observe(document.body || document.documentElement, { childList:true, subtree:true });
+  try { window.__sqUIMutationBus?.on(()=>tick()); } catch(_) {}
 })();
 
 // === High Score League — rewritten: NEW + movement + even widths ============
@@ -17857,8 +17962,7 @@ if (!todayBtn) {
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
-  const mo = new MutationObserver(tick);
-  mo.observe(document.body || document.documentElement, { childList:true, subtree:true });
+  try { window.__sqUIMutationBus?.on(()=>tick()); } catch(_) {}
 })();
 
 // === High Scores (Match) — v4: movement ▲/▼ (7d), NEW(7d), PB, date fmt =====
@@ -18107,8 +18211,7 @@ if (!todayBtn) {
 
   function tick(){ try { apply(); } catch(e){ console.error('HS Match v4 failed', e); } }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
-  const mo = new MutationObserver(tick);
-  mo.observe(document.body || document.documentElement, { childList:true, subtree:true });
+  try { window.__sqUIMutationBus?.on(()=>tick()); } catch(_) {}
 })();
 
 // === T button flash + shake — v3 (Safari-safe; 1→2→3 only when T is pressed)
@@ -18166,7 +18269,7 @@ if (!todayBtn) {
   document.addEventListener('keydown', e => { if ((e.key||'').toLowerCase() === 't') onPress(); });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
-  new MutationObserver(wire).observe(document.body || document.documentElement, { childList:true, subtree:true });
+  try { window.__sqUIMutationBus?.on(()=>wire()); } catch(_) {}
 })();
 
 // === D button flash + shake — v1 (1→2→3: Ultra-low → Low → Medium)
@@ -18224,7 +18327,7 @@ if (!todayBtn) {
   document.addEventListener('keydown', e => { if ((e.key||'').toLowerCase() === 'd') onPressD(); });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
-  new MutationObserver(wire).observe(document.body || document.documentElement, { childList:true, subtree:true });
+  try { window.__sqUIMutationBus?.on(()=>wire()); } catch(_) {}
 })();
 
 // === S button flash + shake — v1 (1→2→3: Ultra-ultra low → Ultra low → Low)
@@ -18294,7 +18397,7 @@ if (!todayBtn) {
   document.addEventListener('keydown', e => { if ((e.key||'').toLowerCase() === 's') onPressS(); });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
-  new MutationObserver(wire).observe(document.body || document.documentElement, { childList:true, subtree:true });
+  try { window.__sqUIMutationBus?.on(()=>wire()); } catch(_) {}
 })();
 
 // === MISS button — red glow (1→2→3: soft → medium → high) ==================
@@ -18382,7 +18485,7 @@ if (!todayBtn) {
   document.addEventListener('keydown', e => { if ((e.key||'').toLowerCase() === 'm') onPressMISS(); });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
-  new MutationObserver(wire).observe(document.body || document.documentElement, { childList:true, subtree:true });
+  try { window.__sqUIMutationBus?.on(()=>wire()); } catch(_) {}
 })();
 
 
@@ -18510,7 +18613,7 @@ if (!todayBtn) {
     const tick = ()=>{ try{ ensure(); }catch(e){ /* no-op */ } };
     tick();
     // React to layout changes and window resizes
-    new MutationObserver(tick).observe(document.body || document.documentElement, { childList:true, subtree:true });
+    try { window.__sqUIMutationBus?.on(()=>tick()); } catch(_) {}
     window.addEventListener('resize', tick, { passive:true });
     document.addEventListener('visibilitychange', tick, { passive:true });
   }
@@ -18614,9 +18717,8 @@ if (!todayBtn) {
     run();
   }
 
-  // Re-apply whenever the board updates
-  new MutationObserver(()=>{ try { run(); } catch(_){/* ignore */} })
-    .observe(document.body || document.documentElement, { childList:true, subtree:true, characterData:true });
+  // Re-apply whenever the board updates (via shared UI mutation bus)
+  try { window.__sqUIMutationBus?.on(()=>{ try { run(); } catch(_){/* ignore */} }); } catch(_){}
 })();
 
 // === Top Nav (Start / Restart / Stats) — equal widths across full row =======
@@ -18671,7 +18773,7 @@ if (!todayBtn) {
   // Run now + when DOM changes (in case the header re-renders)
   function run(){ try{ apply(); }catch(e){ console.warn('TopNav equalize failed', e); } }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
-  new MutationObserver(run).observe(document.body || document.documentElement, { childList:true, subtree:true });
+  try { window.__sqUIMutationBus?.on(()=>run()); } catch(_) {}
 })();
 
 
@@ -19806,6 +19908,25 @@ render();
 })();
 // >>> PATCH:player_stats_spider_progress END
 
+
+// ===== @PATCHES:REGISTRY =====
+// Active patch blocks in this file (keep this list current):
+// - MOT3_2_ALLGAMES_TOTS
+// - MOT3_2_LLS_DELETE_TS
+// - MOT3_2_LLS_FILTER_SAVED
+// - MOT3_3_ALLGAMES_FILTER_ACTIVE_START
+// - PLAYER_ID_SUPPORT
+// - PLAYER_RENAME_RPC
+// - data-admin
+// - game-utils
+// - player_stats_spider_progress
+// - power-league-rounds
+//
+// Patch rules:
+// 1) Patches must be named and small.
+// 2) Avoid redefining whole modals unless unavoidable.
+// 3) If a patch becomes permanent, merge it into core code and delete the patch.
+// 4) Patches should log once (not spam) when they fail.
 </script>
 <!-- PB / GR Admin Modal -->
 <div id="pbgrAdminModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pbgrTitle">
