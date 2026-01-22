@@ -889,19 +889,60 @@ body[data-page="game"] #gameScrollGate{
   padding: 12px 18px 18px;
 }
 
+/* Card layout closer to the reference: icon + copy, richer accent per mode */
 .sg-opt{
+  --sgAccent: rgba(255,255,255,.18);
   width:100%;
   text-align:left;
-  border-radius: 16px;
+  border-radius: 18px;
   padding: 16px 16px;
   border: 1px solid rgba(255,255,255,.12);
-  background: linear-gradient(180deg, rgba(30,40,90,.55), rgba(20,26,60,.55));
-  box-shadow: 0 10px 26px rgba(0,0,0,.26);
+  background: linear-gradient(180deg, rgba(30,40,90,.58), rgba(20,26,60,.58));
+  box-shadow: 0 12px 30px rgba(0,0,0,.28);
+  display:flex;
+  align-items:center;
+  gap: 14px;
   transition: transform .12s ease, border-color .12s ease, filter .12s ease;
+  position:relative;
+  overflow:hidden;
+}
+.sg-opt::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  background: radial-gradient(120% 120% at 0% 0%, color-mix(in srgb, var(--sgAccent) 28%, transparent) 0%, transparent 60%);
+  pointer-events:none;
 }
 .sg-opt:hover{ transform: translateY(-1px); border-color: rgba(255,255,255,.20); }
 .sg-opt:active{ transform: translateY(0); }
 
+.sg-opt .sg-ico{
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display:grid;
+  place-items:center;
+  flex: 0 0 46px;
+  background: color-mix(in srgb, var(--sgAccent) 22%, rgba(255,255,255,.06));
+  border: 1px solid color-mix(in srgb, var(--sgAccent) 34%, rgba(255,255,255,.10));
+  box-shadow: 0 10px 20px rgba(0,0,0,.18);
+  position:relative;
+  z-index:1;
+}
+.sg-opt .sg-ico svg{
+  width: 26px;
+  height: 26px;
+  display:block;
+  color: var(--sgAccent);
+  opacity: .95;
+}
+
+.sg-opt .sg-copy{
+  flex:1 1 auto;
+  min-width:0;
+  position:relative;
+  z-index:1;
+}
 .sg-opt .sg-opt-top{
   display:flex;
   align-items:flex-start;
@@ -922,6 +963,7 @@ body[data-page="game"] #gameScrollGate{
   letter-spacing: .08em;
   text-transform: uppercase;
   color: rgba(255,255,255,.55);
+  line-height: 1.15;
 }
 .sg-opt .sg-opt-soon{
   font-size: 11px;
@@ -931,6 +973,13 @@ body[data-page="game"] #gameScrollGate{
   color: rgba(255,122,0,.92);
   white-space: nowrap;
 }
+
+/* Mode accents */
+.sg-opt--match{ --sgAccent: var(--shatekiOrange, #ff7a00); }
+.sg-opt--tournament{ --sgAccent: #f6c453; }
+.sg-opt--practice{ --sgAccent: #3aa5ff; }
+.sg-opt--training{ --sgAccent: #2fe07b; }
+
 .sg-opt.disabled{
   opacity: .55;
   filter: grayscale(.2);
@@ -947,8 +996,6 @@ body[data-page="game"] #gameScrollGate{
 .sg-footer .btn{
   width: 120px;
 }
-
-
 /* ===== @CSS:MENU_MODAL | League & Rankings menu styling ===== */
 .modal.menu-modal{
   max-width:440px;
@@ -1304,6 +1351,10 @@ body[data-page="game"] #gameScrollGate{
 
 .lp-mid-hold{ position:relative; }
 
+/* Home panels: use centered overlay only (hide corner badge) */
+#homeLivePrinter .lp-badge{ display:none !important; }
+
+
 .home-hold-overlay{
   position:absolute;
   inset: 0;
@@ -1318,12 +1369,16 @@ body[data-page="game"] #gameScrollGate{
   pointer-events:none;
 }
 
+/* Center hold content within panel content area (below panel headers) */
+#homeLivePrinter .home-hold-overlay{ inset: 34px 0 0 0; }
+.home-mini-printer .home-hold-overlay{ inset: 30px 0 0 0; }
+
 .home-hold-overlay-mini{
   background: rgba(6,10,20,.78);
 }
 
 .home-hold-title{
-  font-size: 14px;
+  font-size: 16px;
   letter-spacing: .14em;
   font-weight: 900;
   text-transform: uppercase;
@@ -1331,7 +1386,7 @@ body[data-page="game"] #gameScrollGate{
 }
 
 .home-hold-sub{
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: .12em;
   font-weight: 800;
   text-transform: uppercase;
@@ -13537,24 +13592,34 @@ function arrangeStartActions(){
     // ===== START GAME MODAL OPTIONS =====
     const startGameBody = document.getElementById('startGameModalBody');
     if (startGameBody){
-      const makeOpt = (id, title, desc, soon, enabled) => {
+            const ICONS = {
+        match: "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/><circle cx='8.5' cy='7' r='3'/><path d='M23 21v-2a4 4 0 0 0-3-3.87'/><path d='M16 3.13a3 3 0 0 1 0 5.74'/></svg>",
+        tournament: "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M8 21h8'/><path d='M12 17v4'/><path d='M7 4h10v3a5 5 0 0 1-10 0V4z'/><path d='M5 6h2v2a4 4 0 0 1-2-2z'/><path d='M19 6h-2v2a4 4 0 0 0 2-2z'/></svg>",
+        practice: "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='8'/><circle cx='12' cy='12' r='4'/><path d='M12 2v2'/><path d='M22 12h-2'/><path d='M12 22v-2'/><path d='M2 12h2'/></svg>",
+        training: "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M2 12h2'/><path d='M20 12h2'/><path d='M6 9v6'/><path d='M18 9v6'/><path d='M6 12h12'/><path d='M4 10v4'/><path d='M20 10v4'/></svg>"
+      };
+
+      const makeOpt = (id, mode, title, desc, soon, enabled) => {
         let b = document.getElementById(id);
         if (!b){
           b = doc.createElement('button');
           b.id = id;
           b.type = 'button';
         }
-        b.className = 'sg-opt' + (enabled ? '' : ' disabled');
+        b.className = 'sg-opt sg-opt--' + mode + (enabled ? '' : ' disabled');
         b.disabled = false; // keep clickable for feedback
         b.setAttribute('aria-disabled', enabled ? 'false' : 'true');
         b.innerHTML =
-          '<div class="sg-opt-top">'+
-            '<div class="sg-opt-title">'+ title +'</div>'+
-            (soon ? '<div class="sg-opt-soon">'+ soon +'</div>' : '')+
-          '</div>'+
-          '<div class="sg-opt-desc">'+ desc +'</div>';
+          '<div class="sg-ico">' + (ICONS[mode] || '') + '</div>' +
+          '<div class="sg-copy">' +
+            '<div class="sg-opt-top">'+
+              '<div class="sg-opt-title">'+ title +'</div>'+
+              (soon ? '<div class="sg-opt-soon">'+ soon +'</div>' : '')+
+            '</div>'+
+            '<div class="sg-opt-desc">'+ desc +'</div>' +
+          '</div>';
         if (!enabled){
-          b.onclick = () => toast('Coming soon!');
+          b.onclick = (e) => { e.preventDefault(); toast('Coming soon!'); };
         }
         return b;
       };
@@ -13562,19 +13627,22 @@ function arrangeStartActions(){
       // MATCH PLAY = the existing NEW GAME logic (questBtn)
       const matchPlay = document.getElementById('questBtn');
       if (matchPlay){
-        matchPlay.className = 'sg-opt';
+        matchPlay.className = 'sg-opt sg-opt--match';
         matchPlay.disabled = false;
         matchPlay.setAttribute('aria-disabled','false');
         matchPlay.innerHTML =
-          '<div class="sg-opt-top">'+
-            '<div class="sg-opt-title">MATCH PLAY</div>'+
-          '</div>'+
-          '<div class="sg-opt-desc">GAMES BETWEEN 1 AND 6 PEOPLE</div>';
+          '<div class="sg-ico">' + (ICONS.match || '') + '</div>' +
+          '<div class="sg-copy">' +
+            '<div class="sg-opt-top">'+
+              '<div class="sg-opt-title">MATCH PLAY</div>'+
+            '</div>'+
+            '<div class="sg-opt-desc">GAMES BETWEEN 1 AND 6 PEOPLE</div>' +
+          '</div>';
       }
 
-      const tournament = makeOpt('tournamentBtn', 'TOURNAMENT', 'COMING SOON', 'COMING SOON', false);
-      const practice  = makeOpt('practiceBtn',  'PRACTICE',  'SCORES DO NOT COUNT TOWARDS HIGH SCORES OR STATS', 'COMING SOON', false);
-      const training  = makeOpt('trainingBtn',  'TRAINING',  'HONE AND PRACTICE SPECIFIC SKILLS', 'COMING SOON', false);
+      const tournament = makeOpt('tournamentBtn', 'tournament', 'TOURNAMENT', 'COMING SOON', 'COMING SOON', false);
+      const practice  = makeOpt('practiceBtn', 'practice', 'PRACTICE', 'SCORES DO NOT COUNT TOWARDS HIGH SCORES OR STATS', 'COMING SOON', false);
+      const training  = makeOpt('trainingBtn', 'training', 'TRAINING', 'HONE AND PRACTICE SPECIFIC SKILLS', 'COMING SOON', false);
 
       startGameBody.innerHTML = '';
       if (matchPlay) startGameBody.appendChild(matchPlay);
