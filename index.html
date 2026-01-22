@@ -1355,6 +1355,9 @@ body[data-page="game"] #gameScrollGate{
 #homeLivePrinter .lp-badge{ display:none !important; }
 
 
+#homeLivePrinter.is-live .home-hold-overlay{ display:none !important; }
+.home-mini-printer.is-live .home-hold-overlay{ display:none !important; }
+
 .home-hold-overlay{
   position:absolute;
   inset: 0;
@@ -1497,21 +1500,22 @@ body[data-page="game"] #gameScrollGate{
 
 /* Middle: printer table */
 .home-live-printer .lp-mid{
-  padding: 8px 10px;
+  padding: 18px 10px 8px;
   flex: 1;
   display: flex;
   align-items: flex-start;
+  overflow: hidden;
 }
 .home-live-printer .lp-table{
   width: 100%;
   border-collapse: collapse;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 12px;
-  line-height: 1.25;
+  font-size: 11px;
+  line-height: 1.15;
   color: rgba(220,255,230,.95);
 }
-.home-live-printer .lp-row{ height: 22px; }
-.home-live-printer .lp-row td{ padding: 2px 6px; vertical-align: top; }
+.home-live-printer .lp-row{ height: 16px; }
+.home-live-printer .lp-row td{ padding: 1px 6px; vertical-align: top; }
 .home-live-printer .lp-line{ padding-right: 6px; }
 .home-live-printer .lp-ellipsis{
   display:block;
@@ -1520,7 +1524,7 @@ body[data-page="game"] #gameScrollGate{
   white-space: nowrap;
   max-width: 100%;
 }
-.home-live-printer .lp-row.lp-new .lp-line{ color: rgba(54,255,122,.95); }
+.home-live-printer .lp-row.lp-new .lp-line{ color: rgba(20,150,70,.95); }
 
 /* Bottom: marquee */
 .home-live-printer .lp-bottom{
@@ -14006,26 +14010,109 @@ async function updateHomeMiniLeagues(){
         return '';
       };
 
-      const LP_BUFFER = 20;
-      const LP_VISIBLE = 6;
+      const LP_BUFFER = 30;
+      const LP_VISIBLE = 9;
+      // Cloud availability helper (avoid ReferenceError on older builds)
+      const lpCloudOK = () => {
+        try {
+          if (typeof ensureCloudInit === 'function') return !!ensureCloudInit();
+          return !!window.sb;
+        } catch(_e) { return !!window.sb; }
+      };
+
 
       const lpPad2 = (n) => String(Number(n) || 0).padStart(2, '0');
       const lpFmtDT = (g) => {
         const ts = g.event_ts || g.ts || g.created_at || g.createdAt;
         const d = ts ? new Date(ts) : null;
-        if (!d || isNaN(d.getTime())) return '--/-- _ --:--';
-        return `${lpPad2(d.getDate())}/${lpPad2(d.getMonth()+1)} _ ${lpPad2(d.getHours())}:${lpPad2(d.getMinutes())}`;
+        if (!d || isNaN(d.getTime())) return '--/-- / --:--';
+        return `${lpPad2(d.getDate())}/${lpPad2(d.getMonth()+1)} / ${lpPad2(d.getHours())}:${lpPad2(d.getMinutes())}`;
       };
-      const lpFmtLine = (g) => {
-        if (g && g.line_text) return String(g.line_text);
-        const dt = lpFmtDT(g);
-        const winnerName = g.winner_name || '?';
-        const winnerScore = (g.winner_score ?? '?');
-        const opp = g.opponents_text || '';
-        return `${dt} _ ${winnerName} (${winnerScore})${opp ? ' bts ' + opp : ''}`;
+      const lpNormalizeBull = (s) => String(s || '')
+        .replace(/\bSB(\d+)\b/g, 'OB$1')
+        .replace(/\bDB(\d+)\b/g, 'IB$1')
+        .replace(/\bB(\d+)\b/g, 'OB$1')
+        .trim();
+
+      const lpFmtRoundPB = (rest) => {
+        // Expected source examples:
+        // "ROUND PB / 18s — James (90) — S2 / D0 / T1"
+        // "ROUND PB / 18s - James (90) - S2 / D0 / T1 / SB1"
+        const r = String(rest || '').replace(/\s*_\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+        const m = r.match(/ROUND\s*PB\s*\/\s*(\d+)\s*s?\s*[–—-]\s*([^()–—-]+?)\s*\((\d+)\)\s*[–—-]\s*(.+)$/i);
+        if (!m) return null;
+
+        const secs = m[1];
+        const name = String(m[2] || '').trim();
+        const score = m[3];
+        const countsRaw = String(m[4] || '').trim();
+
+        const counts = lpNormalizeBull(countsRaw)
+          .split(/\s*\/\s*/)
+          .map(x => x.trim())
+          .filter(Boolean)
+          .join(' / ');
+
+        return `ROUND PB / ${name} - ${secs}s (${score}) ${counts}`.trim();
       };
 
-      const lpUpdateMeta = async (games) => {
+      const lpFmtLine = (g) => {
+        // Prefer server-provided line_text, but normalize formatting for UI.
+        const raw = String((g && g.line_text) ? g.line_text : '').trim() || null;
+
+        const buildFallback = () => {
+          const dt = lpFmtDT(g);
+          const winnerName = g.winner_name || '?';
+          const winnerScore = (g.winner_score ?? '?');
+          const opp = g.opponents_text || '';
+          return `${dt} ${winnerName} (${winnerScore})${opp ? ' bts ' + opp : ''}`;
+        };
+
+        const src = raw || buildFallback();
+
+        // Expect legacy format: "DD/MM _ HH:MM _ rest"
+        const m = src.match(/^(\d{2}\/\d{2})\s*[_\-–—]\s*(\d{2}:\d{2})\s*[_\-–—]\s*(.+)$/);
+        if (m) {
+          const ddmm = m[1];
+          const hhmm = m[2];
+          let rest = String(m[3] || '').trim();
+
+          // Normalize separators
+          rest = rest.replace(/\s*_\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+
+          // PB/WR lines should not show date/time, and need custom formatting.
+          if (/(^|\b)(NEW\s*PB|ROUND\s*PB|PB|WR|WORLD\s*RECORD)\b/i.test(rest)) {
+            // "NEW PB" -> "GAME PB"
+            rest = rest.replace(/\bNEW\s*PB\b/i, 'GAME PB');
+
+            // Round PB reformat
+            const roundPB = lpFmtRoundPB(rest);
+            if (roundPB) return roundPB;
+
+            // World record / WR etc: just return line without timestamp
+            return rest;
+          }
+
+          // Normal match line: "DD/MM / HH:MM ..."
+          return `${ddmm} / ${hhmm} ${rest}`;
+        }
+
+        // If it contains underscores but not the full pattern, clean them.
+        let cleaned = src.replace(/\s*_\s*/g, ' ').replace(/\s{2,}/g,' ').trim();
+
+        // PB/WR lines: strip any leading timestamp if present and normalize wording
+        if (/(^|\b)(NEW\s*PB|ROUND\s*PB|PB|WR|WORLD\s*RECORD)\b/i.test(cleaned)) {
+          cleaned = cleaned.replace(/^\d{2}\/\d{2}\s*\/\s*\d{2}:\d{2}\s*/,'').trim() || cleaned;
+          cleaned = cleaned.replace(/\bNEW\s*PB\b/i, 'GAME PB');
+          const roundPB = lpFmtRoundPB(cleaned);
+          if (roundPB) return roundPB;
+          return cleaned;
+        }
+
+        return cleaned;
+      };
+
+const lpUpdateMeta = async (games) => {
 
         // VIDE: hide HIGH SCORES meta row
         return;
@@ -14111,7 +14198,7 @@ async function updateHomeMiniLeagues(){
           td.className = 'lp-line';
           const sp = document.createElement('span');
           sp.className = 'lp-ellipsis';
-          sp.textContent = String(line || '—');
+          sp.textContent = (line == null ? '' : String(line));
           td.appendChild(sp);
           tr.appendChild(td);
           tbody.appendChild(tr);
@@ -14124,7 +14211,7 @@ async function updateHomeMiniLeagues(){
           td.className = 'lp-line';
           const sp = document.createElement('span');
           sp.className = 'lp-ellipsis';
-          sp.textContent = '—';
+          sp.textContent = '';
           td.appendChild(sp);
           tr.appendChild(td);
           tbody.appendChild(tr);
@@ -14154,45 +14241,54 @@ async function updateHomeMiniLeagues(){
         const st = window.__homeLivePrinterState;
         const tbody = document.getElementById('homeLivePrinterRows');
         if (!st || !tbody) return;
+
         const buf = Array.isArray(st.bufLines) ? st.bufLines : [];
-        if (buf.length <= LP_VISIBLE) return;
+        if (!buf.length) return;
+
+        // Ensure display model exists
+        if (!st.lpStarted || !Array.isArray(st.displayLines) || st.displayLines.length !== LP_VISIBLE) {
+          st.lpStarted = true;
+          st.lpCursor = (Number.isFinite(st.lpCursor) ? st.lpCursor : 0) || 0;
+          st.displayLines = Array.from({ length: LP_VISIBLE }, () => '');
+          lpEnsureRows(st.displayLines);
+        }
 
         const rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
-        const rowH = (rows[0] ? (rows[0].getBoundingClientRect().height || 22) : 22);
+        const rowH = (rows[0] ? (rows[0].getBoundingClientRect().height || 20) : 20);
 
-        const maxStart = Math.max(0, buf.length - LP_VISIBLE);
-        const nextStart = (Number(st.viewStart || 0) || 0) + 1;
-        if (nextStart > maxStart) {
-          st.viewStart = 0;
-          lpRenderWindow();
-          return;
-        }
-        st.viewStart = nextStart;
+        // Pull next line (circular)
+        const nextIdx = st.lpCursor % buf.length;
+        const nextLine = String(buf[nextIdx] ?? '').trim();
+        st.lpCursor = (st.lpCursor + 1) % buf.length;
 
-        lpSmoothShiftUp(tbody, rowH, 420, () => {
-          const win = buf.slice(st.viewStart, st.viewStart + LP_VISIBLE);
-          const winDisp = win;
+        // Shift window (top drops, new line appears at bottom)
+        try { st.displayLines.shift(); } catch(_e){ st.displayLines = st.displayLines.slice(1); }
+        st.displayLines.push(nextLine);
+
+        // Animate the physical shift, then repaint + type last line
+        lpSmoothShiftUp(tbody, rowH, 520, () => {
           const rows2 = Array.from(tbody.querySelectorAll('tr.lp-row'));
           if (rows2.length !== LP_VISIBLE) {
-            lpEnsureRows(win);
+            lpEnsureRows(st.displayLines);
             return;
           }
 
+          // Reset non-last rows + text
           for (let i = 0; i < LP_VISIBLE - 1; i++) {
-            const sp = rows2[i].querySelector('.lp-ellipsis');
-            if (sp) sp.textContent = String(winDisp[i] ?? '—');
             rows2[i].classList.remove('lp-new');
+            const sp = rows2[i].querySelector('.lp-ellipsis');
+            if (sp) sp.textContent = String(st.displayLines[i] ?? '');
           }
 
+          // Last row stays dark green until it moves up (next step)
           const lastRow = rows2[LP_VISIBLE - 1];
-          const lastSp = lastRow ? lastRow.querySelector('.lp-ellipsis') : null;
+          if (!lastRow) return;
+          lastRow.classList.add('lp-new');
+          const lastSp = lastRow.querySelector('.lp-ellipsis');
           if (lastSp) {
-            lastRow.classList.add('lp-new');
             lastSp.textContent = '';
-            lpType(lastSp, String(winDisp[LP_VISIBLE - 1] ?? '—'), 20);
-            setTimeout(() => {
-              try { lastRow.classList.remove('lp-new'); } catch (_) {}
-            }, 900);
+            // slower typing
+            lpType(lastSp, String(st.displayLines[LP_VISIBLE - 1] ?? ''), 42);
           }
         });
       };
@@ -14236,11 +14332,9 @@ async function updateHomeMiniLeagues(){
         if (!st || st.syncing) return;
         st.syncing = true;
         try {
-          homeLpMsg.innerHTML = cloudMode ? 'MATCH_LOG.TXT LOADING...' : 'MATCH_LOG.TXT LOADING (local)...';
-
           // 1) Prefer the consolidated printer events view (VIDE)
           let items = [];
-          if (cloudMode && window.sb) {
+          if (lpCloudOK() && window.sb) {
             try {
               const { data, error } = await window.sb
                 .from('printer_events_v_all')
@@ -14250,7 +14344,7 @@ async function updateHomeMiniLeagues(){
                 .order('event_id', { ascending: false })
                 .limit(LP_BUFFER);
               if (!error && Array.isArray(data)) items = data;
-            } catch (e) {
+            } catch (_e) {
               // ignore
             }
           }
@@ -14258,21 +14352,21 @@ async function updateHomeMiniLeagues(){
           // 2) Fallback: recent games (existing behaviour)
           if (!items.length) {
             let games = [];
-            if (cloudMode) {
-              games = await cloudFetchLatestGamesAsLocal(LP_BUFFER);
+            if (lpCloudOK()) {
+              try { games = await cloudFetchLatestGamesAsLocal(LP_BUFFER); } catch (_e) { games = []; }
             }
             if (!games || !games.length) {
               const ids = getSavedMatchIdsSorted();
               games = ids.slice(-LP_BUFFER).reverse().map(id => {
-                const m = getMatchState(id);
-                if (!m) return null;
-                const rows = (m.players || []).map(p => ({ name: p.name || '?', score: (p.totalScore ?? 0) }))
+                const mm = getMatchState(id);
+                if (!mm) return null;
+                const rows = (mm.players || []).map(p => ({ name: p.name || '?', score: (p.totalScore ?? 0) }))
                   .sort((a,b)=> b.score - a.score || String(a.name).localeCompare(String(b.name)));
                 const winner = rows[0] || { name: '?', score: '?' };
                 const opp = rows.slice(1).map(r => `${r.name} (${r.score})`).join(', ');
                 return {
                   match_id: id,
-                  ts: m.ts || m.createdAt || m.created_at || m.updatedAt || m.updated_at,
+                  ts: mm.ts || mm.createdAt || mm.created_at || mm.updatedAt || mm.updated_at,
                   winner_name: winner.name,
                   winner_score: winner.score,
                   opponents_text: opp
@@ -14282,38 +14376,46 @@ async function updateHomeMiniLeagues(){
             items = games;
           }
 
+          const mid = document.querySelector('#homeLivePrinter .lp-mid');
+          const hold = document.querySelector('#homeLivePrinter .home-hold-overlay');
+
           if (!items.length) {
-            homeLpMsg.textContent = 'No data.';
+            // Keep the hold overlay visible; show empty rows.
+            try { if (mid) mid.classList.add('lp-mid-hold'); } catch(_e){}
+            try { const p = document.getElementById('homeLivePrinter'); if (p) p.classList.remove('is-live'); } catch(_e){}
+            lpEnsureRows(Array.from({length: LP_VISIBLE}, ()=>'—'));
             return;
           }
 
+          // We have data — turn the printer "live" (hide the overlay).
+          try { if (mid) mid.classList.remove('lp-mid-hold'); } catch(_e){}
+          try { const p = document.getElementById('homeLivePrinter'); if (p) p.classList.add('is-live'); } catch(_e){}
+          try { if (hold) hold.style.display = 'none'; } catch(_e){}
+
           const _lpGetTs = (g) => g.event_ts || g.ts || g.created_at || g.createdAt;
           const sorted = items.slice().sort((a,b) => (new Date(_lpGetTs(b))).getTime() - (new Date(_lpGetTs(a))).getTime());
-  // Show all printer event kinds on the home VIDE.
-  const HIDE_KINDS = new Set();
-    const filtered = sorted.filter(it => !(it && it.event_kind && HIDE_KINDS.has(it.event_kind)));
-    const lines = filtered.map(lpFmtLine);
-          const sig0 = sorted[0] ? lpSig(sorted[0]) : '';
+          const HIDE_KINDS = new Set();
+          const filtered = sorted.filter(it => !(it && it.event_kind && HIDE_KINDS.has(it.event_kind)));
+          const lines = filtered.map(lpFmtLine);
 
-          // Force-refresh periodically even if the top line hasn't changed (helps after view tweaks)
-          const shouldRefresh = forceFull || (sig0 && sig0 !== st.lastSig);
+          const sig0 = sorted[0] ? lpSig(sorted[0]) : '';
+          const shouldRefresh = forceFull || (sig0 && sig0 !== st.lastSig) || !Array.isArray(st.bufLines);
+
+          // Always keep the buffer for scrolling
+          st.bufLines = lines.slice(0, LP_BUFFER);
           if (shouldRefresh) {
             st.lastSig = sig0 || st.lastSig;
-
-            st.lines = lines.slice(0, LP_KEEP_LINES);
-            st.displayed = st.lines.slice(0, LP_VISIBLE_ROWS);
-
-            st.offset = 0;
-            st.typeLine = 0;
-            st.typePos = 0;
-            st.fullText = st.displayed.map(()=> '');
-
-            renderHomeLp();
           }
 
-          lpUpdateMeta([]);
-          homeLpMsg.innerHTML = cloudMode ? 'MATCH_LOG.TXT' : 'MATCH_LOG.TXT (local)';
-
+          // Start empty on first load; events scroll in from bottom one-by-one.
+          if (!st.lpStarted) {
+            st.lpStarted = true;
+            st.lpCursor = 0;
+            st.displayLines = Array.from({ length: LP_VISIBLE }, () => '');
+            lpEnsureRows(st.displayLines);
+          } else if (!Array.isArray(st.displayLines) || st.displayLines.length !== LP_VISIBLE) {
+            st.displayLines = Array.from({ length: LP_VISIBLE }, () => '');
+          }
         } finally {
           st.syncing = false;
         }
