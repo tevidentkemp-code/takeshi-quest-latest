@@ -378,6 +378,136 @@
   margin:0;
   text-align:center;
 }
+
+/* Floating header: scale total score for 5/6 players */
+.float-head.players-5 .th-total{ font-size: calc(34px * 0.95); }
+.float-head.players-6 .th-total{ font-size: calc(34px * 0.90); }
+
+/* Throw indicator colours */
+:root{ --shatekiOrange: #ff7a00; }
+
+/* Single shared go-indicator shown under TARGET (A) */
+.go-darts{ display:flex; justify-content:center; gap:8px; margin-top:8px; }
+.go-darts .dart-slot{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:20px; height:20px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.16);
+  font-size:12px; font-weight:900; letter-spacing:.02em;
+}
+
+/* Arrows are orange, always */
+.go-darts .dart-slot.dart-empty{
+  color: var(--shatekiOrange);
+  border-color: rgba(255,122,0,.35);
+}
+
+/* Hits show white (S/D/T/OB/B). Miss stays slightly muted but still readable. */
+.go-darts .dart-slot:not(.dart-empty){
+  color: rgba(255,255,255,.95);
+  border-color: rgba(255,255,255,.22);
+}
+.go-darts .dart-slot.dart-miss{ color: rgba(255,255,255,.82); }
+
+/* Turn underline: animated sliding bar (moves Player 1 → Player 2 → … → Player 1) */
+#floatHead{ position: sticky; overflow: visible; } /* keep; also acts as containing block for abs children */
+#floatHead .turn-bar{
+  position:absolute;
+  left:0; top:0;
+  height:3px;
+  width:0;
+  background: rgba(255,122,0,.95);
+  border-radius:3px;
+  box-shadow: 0 0 12px rgba(255,122,0,.22);
+  transform: translate(0px, 0px);
+  transition: transform 260ms ease, width 260ms ease;
+    z-index: 90001;
+  will-change: transform, width;
+  pointer-events:none;
+}
+
+/* Keep legacy class (no longer used for the underline animation) */
+#floatWrap thead tr:nth-child(2) th.player.turn-active{ box-shadow:none; }
+
+/* Round indicator: animated right-edge glow bar for the active round label */
+#scoreWrap{ position: relative; z-index:1; }
+#scoreWrap .round-bar{
+  position:absolute;
+  left:0; top:0;
+  width:2px;
+  height:0;
+  background: rgba(255,122,0,.95);
+  border-radius:2px;
+  box-shadow: 0 0 14px rgba(255,122,0,.22);
+  transform: translate(0px, 0px);
+  transition: transform 260ms ease, height 260ms ease;
+    z-index: 50;
+  will-change: transform, height;
+  pointer-events:none;
+}
+
+#scoreWrap .round-seam-bar{
+  position:absolute;
+  display:none; /* single boundary bar uses #roundBar */
+  left:0; top:0;
+  width:2px;
+  height:0;
+  background: rgba(255,122,0,.95);
+  border-radius:2px;
+  box-shadow: 0 0 14px rgba(255,122,0,.22);
+  transform: translate(0px, 0px);
+  transition: transform 260ms ease, height 260ms ease;
+  z-index: 50;
+  will-change: transform, height;
+  pointer-events:none;
+}
+
+/* Smooth transitions for the active round label (A2) */
+#scoreWrap tbody th.round-label{
+  transition: font-size 220ms ease, font-weight 220ms ease, text-shadow 220ms ease, transform 220ms ease;
+}
+/* Active round separator glow (between round labels and Player 1 column) */
+#scoreWrap tbody th.active-round-glow{
+  border-right: 2px solid rgba(255,122,0,.95) !important;
+  box-shadow: inset -2px 0 0 rgba(255,122,0,.95), 0 0 10px rgba(255,122,0,.10);
+}
+#scoreWrap tbody td.active-round-leftglow{
+  border-left: 2px solid rgba(255,122,0,.95) !important;
+  box-shadow: inset 2px 0 0 rgba(255,122,0,.95), 0 0 10px rgba(255,122,0,.10);
+}
+
+/* Active round label sizing */
+#scoreWrap tbody th.round-label.active-round-label{
+  font-size:20px !important;
+  font-weight:900 !important;
+  opacity:1;
+  color: rgba(255,255,255,.98);
+  text-shadow: 0 0 10px rgba(255,122,0,.35);
+  transform: scale(1.08);
+  box-shadow: inset 0 0 0 1px rgba(255,122,0,.35), 0 0 14px rgba(255,122,0,.18);
+  border-radius:10px;
+}
+
+
+/* --- FIX: active round label bottom edge getting eaten by dashed row border --- */
+#scoreWrap tbody th.round-label{ position: relative; overflow: visible; }
+#scoreWrap tbody th.round-label.active-round-label{
+  border-bottom: none !important; /* remove dashed separator for this cell */
+  z-index: 2;
+}
+#scoreWrap tbody th.round-label.active-round-label::after{
+  content:'';
+  position:absolute;
+  inset:0;
+  border-radius:10px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,122,0,.55),
+    0 0 14px rgba(255,122,0,.18);
+  pointer-events:none;
+}
+
+
+
   
   .th-diff{
     font-size:10px;
@@ -398,7 +528,9 @@
   /* Score cell */
   .cell-wrap{display:inline-flex;flex-direction:column;align-items:center;gap:1px;line-height:1}
   .cell-main{font-weight:800;line-height:1.1}
-  .cell-sub{color:var(--muted);font-size:.60em;font-weight:500;opacity:.95;letter-spacing:-0.01em;line-height:1}
+  .cell-sub{color:var(--muted);font-size:.60em;font-weight:500;opacity:.95;letter-spacing:-0.01em;line-height:1;display:block;min-height:1em}
+  .cell-sub:empty::before{content:'\00a0';}
+
   .sub-win{color:var(--accent-2)!important;font-weight:700}
 
   /* Stats (kept for layout sync; shown via modals) */
@@ -413,7 +545,7 @@
   .stats-row td{color:#e1e4fb}
 
   /* Floating names header */
-  .float-head{position:sticky; top:0; z-index:200000;
+  .float-head{position:sticky; top:1px; z-index:200000;
     background:rgba(17,19,38,.96); backdrop-filter:blur(6px);
     border:1px solid #2a2e48; border-radius:12px; margin-bottom:10px}
   .float-head .table-wrap{
@@ -423,6 +555,50 @@
   }
   #floatWrap thead th:first-child{width:var(--left-col-w);min-width:var(--left-col-w);max-width:var(--left-col-w)}
 
+  /* ===== @CSS:GAME_TOPMENU_COLLAPSE =====
+   Top menu is part of the sticky header and collapses away as you scroll.
+   - Sticky inset: 4px from top
+   - Menu collapses until only a thin divider remains
+===== */
+:root{
+  --gameTopInset:0px;
+  --fhMenuH:48px;   /* JS will overwrite */
+  --fhCollapse:0px; /* JS updates on scroll */
+}
+
+#floatHead.float-head{
+  background: var(--bg);
+  position: sticky;
+  top: var(--gameTopInset);
+  z-index: 20000;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+  isolation:isolate;
+  overflow: visible;
+}
+
+.fh-menu-wrap{
+  height: calc(var(--fhMenuH) - var(--fhCollapse));
+  overflow: hidden;
+  position: relative;
+  background: var(--bg);
+}
+
+#gameTopRow.fh-menu{
+  margin: 0 !important;
+  position: relative;
+  padding-top: 4px; /* B1 sits 4px below header edge */
+  transform: translateY(calc(-1 * var(--fhCollapse)));
+}
+
+.fh-menu-line{
+  position:absolute;
+  left:0; right:0;
+  top: calc(var(--fhMenuH) - var(--fhCollapse));
+  height: 1px;
+  background: rgba(255,255,255,.10);
+  pointer-events:none;
+}
 /* Vertical divider after the TARGET column in floating header */
 .float-head thead th:first-child{
   border-right:1px solid #22264a;
@@ -1581,7 +1757,9 @@ body[data-page="leaderboard"] .wrap{
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  padding-top: 0 !important;
 }
+
 
 /* Game table palette */
 body[data-page="game"] #scoreWrap table{ background:rgba(15,18,32,.72); }
@@ -1618,8 +1796,11 @@ body[data-page="game"] #floatHead{
   background: rgba(23,26,43,.98);
   backdrop-filter: blur(6px);
   border-radius: 12px;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
   border: 1px solid rgba(42,46,72,.85);
 }
+
 
 /* ===== Start Screen sizing (page: #details) ===== */
 #details #appTitle{ display:inline-flex; } /* measurable title width */
@@ -2211,21 +2392,27 @@ body[data-page="game"] #floatHead{
    <!--PAGE3: GAME -->
 <section id="game" class="hidden">
   <div class="card section">
-    <div class="row" id="gameTopRow">
+<!-- Floating names + wins + totals -->
+        <div class="float-head" id="floatHead">
+          
+      <div id="fhMenuWrap" class="fh-menu-wrap">
+        <div class="row fh-menu" id="gameTopRow">
       <button id="startScreenBtnGame" class="btn letter-throw top-throw">Start Screen</button>
       <button id="restartGameBtnGame" class="btn letter-throw top-throw">Restart Game</button>
       <button id="statsHubBtnGame" class="btn letter-throw top-throw">Stats</button>
     </div>
-
-        <!-- Floating names + wins + totals -->
-        <div class="float-head" id="floatHead">
-          <div class="table-wrap" id="floatWrap">
+      </div>
+      <div id="fhMenuLine" class="fh-menu-line" aria-hidden="true"></div>
+<div class="table-wrap" id="floatWrap">
             <table aria-hidden="true"><thead id="floatThead"></thead></table>
           </div>
+          <div id="turnBar" class="turn-bar" aria-hidden="true"></div>
         </div>
 
         <!-- Scoreboard -->
         <div class="table-wrap" id="scoreWrap" style="margin-top:10px">
+          <div id="roundBar" class="round-bar" aria-hidden="true"></div>
+          <div id="roundSeamBar" class="round-seam-bar" aria-hidden="true"></div>
           <table aria-label="Scoreboard">
             <thead id="thead"></thead>
             <tbody id="tbody"></tbody>
@@ -5910,6 +6097,7 @@ function show(id){
   byId(id)?.classList.remove('hidden');
   document.body.setAttribute('data-page', id);
   updatePadSpacer();
+  try{ bindFHCollapseScroll(); updateFHCollapse(id); }catch(e){}
   const fh=byId('floatHead');
   if(fh) fh.classList.toggle('hidden', id!=='game');
   buildPad();
@@ -5928,8 +6116,51 @@ function show(id){
 const padBar = byId('padBar');
 const pad     = byId('pad');
 const padHint = byId('padHint');
-function updatePadSpacer(){ try{ const h=padBar?padBar.getBoundingClientRect().height:148; document.documentElement.style.setProperty('--pad-h', h+'px'); }catch(e){} }
-addEventListener('resize',updatePadSpacer,{passive:true}); addEventListener('orientationchange',updatePadSpacer,{passive:true});
+function updatePadSpacer(){
+  try{
+    const h = padBar ? padBar.getBoundingClientRect().height : 148;
+    document.documentElement.style.setProperty('--pad-h', h + 'px');
+  }catch(e){}
+  try{
+    const topRow = document.getElementById('gameTopRow');
+    if(topRow){
+      const rh = Math.ceil(topRow.getBoundingClientRect().height);
+      document.documentElement.style.setProperty('--fhMenuH', rh + 'px');
+      window.__sqFHMenuH = rh;
+    }
+  }catch(e){}
+}
+
+// Keep the in-header top buttons (B1) collapsible on scroll.
+let __sqFHScrollBound = false;
+function updateFHCollapse(forcePage){
+  try{
+    const page = forcePage || document.body.getAttribute('data-page') || '';
+    const wrap = document.querySelector('.wrap');
+    const mh = (window.__sqFHMenuH != null ? window.__sqFHMenuH : 48);
+    const c = (page === 'game' && wrap) ? Math.max(0, Math.min(wrap.scrollTop, mh)) : 0;
+    document.documentElement.style.setProperty('--fhCollapse', c + 'px');
+  }catch(e){}
+}
+function bindFHCollapseScroll(){
+  if (__sqFHScrollBound) return;
+  const wrap = document.querySelector('.wrap');
+  if (!wrap) return;
+  wrap.addEventListener('scroll', () => {
+    if (document.body.getAttribute('data-page') !== 'game') return;
+    updateFHCollapse();
+    // keep animated bars aligned during menu collapse / scroll (no animation on scroll)
+    requestAnimationFrame(() => {
+      try{ updateTurnBar(false); }catch(_){ }
+      try{ updateRoundBar(false, true); }catch(_){ }
+    });
+  }, { passive:true });
+  __sqFHScrollBound = true;
+}
+window.addEventListener('load', bindFHCollapseScroll, { passive:true });
+
+addEventListener('resize', updatePadSpacer, { passive:true });
+addEventListener('orientationchange', updatePadSpacer, { passive:true });
 window.addEventListener('load', syncStartTitleWidth, { passive: true });
 
 /*****************
@@ -7595,12 +7826,19 @@ function buildScoreBody(){
 function buildFloatingHeader(){ 
   floatThead.innerHTML = '';
 
-  // A) Target (left) spans B/C/D rows
+  // Apply player-count classes for responsive sizing
+  try {
+    floatHead.classList.remove('players-5','players-6');
+    if (state.players.length === 5) floatHead.classList.add('players-5');
+    if (state.players.length === 6) floatHead.classList.add('players-6');
+  } catch(_) {}
+
+  // A) Target (left) spans B/C rows
   const trNames = document.createElement('tr');
 
   const thRound = document.createElement('th');
   thRound.id = 'froundlabel';
-  thRound.rowSpan = 3;          // B, C, D rows
+  thRound.rowSpan = 2;          // B, C rows
   thRound.textContent = '';     // filled by updateUI()
   trNames.appendChild(thRound);
 
@@ -7627,11 +7865,12 @@ function buildFloatingHeader(){
     trNames.appendChild(th);
   }  
 
-  // C) Totals + diff
+  // C) Totals + diff + throw indicator (single row; no separate D row)
   const trTotals = document.createElement('tr');
   for (let i = 0; i < state.players.length; i++) { 
     const th = document.createElement('th'); 
-    th.className = 'player'; 
+    th.className = 'player';
+    th.id = 'fcoltot-' + i; 
 
     const total = document.createElement('div'); 
     total.className = 'th-total th-name num'; 
@@ -7641,30 +7880,14 @@ function buildFloatingHeader(){
     const diff = document.createElement('div'); 
     diff.className = 'th-diff'; 
     diff.id = 'fdiff-' + i; 
-    diff.textContent = '0'; 
-
+    diff.textContent = '0';
     th.append(total, diff);
-    trTotals.appendChild(th);
+trTotals.appendChild(th);
   }  
 
-  // D) Darts (per player for this round)
-  const trDarts = document.createElement('tr');
-  for (let i = 0; i < state.players.length; i++) {
-    const th = document.createElement('th');
-    th.className = 'player';
-    th.style.color = state.players[i].color;
-
-    const darts = document.createElement('div');
-    darts.className = 'th-darts';
-    darts.id = 'fdarts-' + i;
-    darts.textContent = '';
-
-    th.appendChild(darts);
-    trDarts.appendChild(th);
-  }
-
-  floatThead.append(trNames, trTotals, trDarts);
+  floatThead.append(trNames, trTotals);
 }
+
 
 // Darts display (D row)
 function dartHeaderSymbol(dart){
@@ -7676,20 +7899,85 @@ function dartHeaderSymbol(dart){
   if (k === 'S' || k === 'D' || k === 'T') return { text: k, cls: 'dart-' + k.toLowerCase() };
   if (k === 'Double') return { text: 'D', cls: 'dart-d' };
   if (k === 'Triple') return { text: 'T', cls: 'dart-t' };
-  if (k === 'Bull') return { text: 'B', cls: 'dart-b' };
+  if (k === 'Bull') return { text: (dart.bull === 'Outer' ? 'OB' : 'B'), cls: (dart.bull === 'Outer' ? 'dart-ob' : 'dart-b') };
 
   return { text: '?', cls: 'dart-unk' };
 }
-function renderDartsHeaderHTML(pIdx, rIdx){
-  const entry = state.score?.[pIdx]?.[rIdx];
-  const darts = entry?.darts || [];
+function renderDartsHeaderHTML(pIdx){
+  const now = Date.now();
+
+  // Expire last-go hold
+  if (state.uiLastGo && now >= state.uiLastGo.showUntil) {
+    state.uiLastGo = null;
+  }
+
+  const isActive = (!state.finished && pIdx === state.currentPlayer);
+  const showLast = (!!state.uiLastGo && state.uiLastGo.player === pIdx);
+
+  let darts = [];
+  if (isActive) {
+    const entry = state.score?.[pIdx]?.[state.currentRound];
+    darts = entry?.darts || [];
+  } else if (showLast) {
+    darts = state.uiLastGo.darts || [];
+  }
+
   let html = '';
   for (let k = 0; k < 3; k++) {
-    const sym = dartHeaderSymbol(darts[k]);
+    let d = null;
+
+    if (isActive) {
+      // Only show darts already thrown this go (currentDart is the NEXT dart index)
+      d = (k < state.currentDart) ? darts[k] : null;
+    } else if (showLast) {
+      // Show completed go for 1s after 3rd dart
+      d = darts[k] || null;
+    }
+
+    const sym = dartHeaderSymbol(d);
     html += `<span class="dart-slot ${sym.cls}">${sym.text}</span>`;
   }
   return html;
 }
+
+// Shared go indicator (single 3-slot display under TARGET)
+function renderSharedGoIndicatorHTML(){
+  const now = Date.now();
+
+  // expire any hold
+  if (state.uiLastGo && now >= state.uiLastGo.showUntil) {
+    state.uiLastGo = null;
+  }
+
+  // If the next player has already started throwing, don't keep showing previous go
+  if (state.uiLastGo && state.currentPlayer !== state.uiLastGo.player && state.currentDart > 0) {
+    state.uiLastGo = null;
+  }
+
+  const isHoldingPrev = (!!state.uiLastGo && state.currentPlayer !== state.uiLastGo.player && state.currentDart === 0);
+
+  let darts = [];
+  if (isHoldingPrev) {
+    darts = state.uiLastGo.darts || [];
+  } else {
+    const entry = state.score?.[state.currentPlayer]?.[state.currentRound];
+    darts = entry?.darts || [];
+  }
+
+  let html = '';
+  for (let k = 0; k < 3; k++) {
+    let d = null;
+    if (isHoldingPrev) {
+      d = darts[k] || null;           // hold completed go for 1s
+    } else {
+      d = (k < state.currentDart) ? (darts[k] || null) : null; // show only thrown darts for active player
+    }
+    const sym = dartHeaderSymbol(d);
+    html += `<span class="dart-slot ${sym.cls}">${sym.text}</span>`;
+  }
+  return html;
+}
+
 
 function formatTop3Inline(list){
   if (!Array.isArray(list) || !list.length) return '—';
@@ -9132,6 +9420,112 @@ async function openLowScoresDialog(){
     if (e.key === 'Escape') overlay.remove();
   });
 }
+
+// ===== @JS:UI:ANIM_INDICATORS =====
+let __sqLastTurnPlayer = null;
+let __sqLastRound = null;
+let __sqRoundBarScrollBound = false;
+
+function updateTurnBar(animateOverride){
+  const bar  = byId('turnBar');
+  const wrap = byId('floatWrap');
+  if (!bar || !wrap) return;
+
+  bar.style.opacity = '1';
+
+  if (state.finished) {
+    bar.style.width = '0px';
+    return;
+  }
+
+  const pIdx = state.currentPlayer ?? 0;
+  const cell = byId('fcoltot-' + pIdx);
+  if (!cell) return;
+
+  const head = byId('floatHead');
+  const headRect = (head || wrap).getBoundingClientRect();
+  const cellRect = cell.getBoundingClientRect();
+
+  const left = cellRect.left - headRect.left;
+  const width = cellRect.width;
+  const barH = (bar.getBoundingClientRect().height || 3);
+  const top = (cellRect.bottom - headRect.top) - barH + 1; // flush to bottom of B3
+
+  const animate = (animateOverride != null)
+    ? !!animateOverride
+    : (__sqLastTurnPlayer !== null && __sqLastTurnPlayer !== pIdx);
+
+  if (!animate) bar.style.transition = 'none';
+  else bar.style.transition = 'transform 260ms ease, width 260ms ease';
+    bar.style.width = `${Math.max(0, width)}px`;
+  bar.style.transform = `translate(${left}px, ${top}px)`;
+
+  if (!animate) requestAnimationFrame(() => {
+    bar.style.transition = 'transform 260ms ease, width 260ms ease';
+  });
+
+  __sqLastTurnPlayer = pIdx;
+}
+
+function updateRoundBar(animateOverride, fromScroll=false){
+  const bar  = byId('roundBar');
+  const wrap = byId('scoreWrap');
+  if (!bar || !wrap) return;
+
+  const rIdx = state.currentRound ?? 0;
+  const th = byId('roundth-' + rIdx);
+  if (!th) return;
+
+  // Bind scroll tracker once so the bar stays aligned during manual scroll
+  if (!__sqRoundBarScrollBound) {
+    wrap.addEventListener('scroll', () => {
+      // No animation while user scrolls
+      updateRoundBar(false, true);
+      try{
+        const mh = (window.__sqFHMenuH != null ? window.__sqFHMenuH : 48);
+        const c = Math.max(0, Math.min(wrap.scrollTop, mh));
+        document.documentElement.style.setProperty('--fhCollapse', c + 'px');
+      }catch(e){}
+    }, { passive:true });
+    __sqRoundBarScrollBound = true;
+  }
+
+  const wrapRect = wrap.getBoundingClientRect();
+
+  // The "round indicator" is the boundary between the round label column (left)
+  // and Player 1's cell (right). Use Player 1 cell's left edge as the anchor.
+  let left = null, y = null, h = null;
+  const tdP1 = byId('cell-0-' + rIdx);
+  if (tdP1) {
+    const tdRect = tdP1.getBoundingClientRect();
+    left = (tdRect.left - wrapRect.left) - 2; // center the 2px bar on the seam
+    y = (tdRect.top - wrapRect.top);
+    h = tdRect.height;
+  } else {
+    // Fallback: right edge of the round header cell
+    const thRect = th.getBoundingClientRect();
+    left = (thRect.right - wrapRect.left) - 2;
+    y = (thRect.top - wrapRect.top);
+    h = thRect.height;
+  }
+
+  const animate = (animateOverride != null)
+    ? !!animateOverride
+    : (!fromScroll && __sqLastRound !== null && __sqLastRound !== rIdx);
+
+  if (!animate) bar.style.transition = 'none';
+  else bar.style.transition = 'transform 260ms ease, height 260ms ease';
+
+  bar.style.height = `${Math.max(0, h)}px`;
+  bar.style.transform = `translate(${left}px, ${y}px)`;
+
+  if (!animate) requestAnimationFrame(() => {
+    bar.style.transition = 'transform 260ms ease, height 260ms ease';
+  });
+
+  __sqLastRound = rIdx;
+}
+
 function updateUI() {
   if (!tbody) return;
 
@@ -9145,23 +9539,14 @@ function updateUI() {
     for (let r = 0; r < MAX_ROUNDS; r++) {
       const th = document.getElementById(`roundth-${r}`);
       if (!th) continue;
-      th.style.fontSize = '';
-      th.style.fontWeight = '';
-      th.style.opacity = '';
+      th.classList.remove('active-round-label');
     }
     const cr = state.currentRound;
-    const active = document.getElementById(`roundth-${cr}`);
-    if (active) {
-      active.style.fontSize = '18px';
-      active.style.fontWeight = '800';
-      active.style.opacity = '1';
-    }
+    const thActive = document.getElementById(`roundth-${cr}`);
+    if (thActive) thActive.classList.add('active-round-label');
+    try{ updateRoundBar(); }catch(_){ }
   } catch(_) {}
-
-
-
-
-  // --- Precompute per-round totals to find best round per row ---
+// --- Precompute per-round totals to find best round per row ---
   const roundTotals    = Array.from({ length: MAX_ROUNDS }, () => Array(state.players.length).fill(0));
   const roundHasScore  = Array.from({ length: MAX_ROUNDS }, () => Array(state.players.length).fill(false));
 
@@ -9240,8 +9625,17 @@ if (roundLabelEl) {
     <div class="round-now">
       <div class="rn-label">TARGET</div>
       <div class="rn-value">${lbl}</div>
+      <div id="fgoDarts" class="go-darts" aria-label="Current go"></div>
     </div>
   `;
+  try{
+    const goEl = byId('fgoDarts');
+    if (goEl) goEl.innerHTML = renderSharedGoIndicatorHTML();
+
+    // Animated C underline (slides between players)
+    updateTurnBar();
+
+  } catch(_) {}
 }
 
   // --- update floating header (wins, totals, diffs, turn arrow, throws remaining) ---
@@ -9278,13 +9672,6 @@ if (roundLabelEl) {
       }
       winsEl.textContent = s;
     }
-
-    // Darts (this round for this player)
-    const dartsEl = byId('fdarts-' + i);
-    if (dartsEl) {
-      dartsEl.innerHTML = renderDartsHeaderHTML(i, state.currentRound);
-      dartsEl.classList.toggle('is-active', (!state.finished && i === state.currentPlayer));
-    }
   }
 
   // --- end-of-game banner ---
@@ -9307,6 +9694,16 @@ if (roundLabelEl) {
   // --- rebuild throw pad + layout + save ---
   buildPad();
   updatePadSpacer();
+
+  // Keep collapsing header + animated indicators aligned even when the user doesn't scroll
+  try {
+    updateFHCollapse('game');
+    requestAnimationFrame(() => {
+      try { updateTurnBar(null); } catch(_){ }
+      try { updateRoundBar(null, false); } catch(_){ }
+    });
+  } catch(_){ }
+
   save();
 }
 
@@ -9380,6 +9777,24 @@ function recordThrow(spec){
 
   // flag if we just completed the 3rd dart in this round (used for GIF triggers)
   const __completedRoundNow = (state.currentDart === 2);
+
+  // UI: hold the completed go's dart symbols for 1s, then reset to arrows for the next player's go
+  if (dartIndex === 2) {
+    try {
+      state.uiLastGo = {
+        player: pIndex,
+        darts: (entry.darts || []).slice(0, 3),
+        showUntil: Date.now() + 1000
+      };
+      state.__uiLastGoToken = (state.__uiLastGoToken || 0) + 1;
+      const __tok = state.__uiLastGoToken;
+      setTimeout(() => {
+        try {
+          if (state.__uiLastGoToken === __tok) updateUI();
+        } catch(_) {}
+      }, 1050);
+    } catch(_) {}
+  }
 
   // History (for Undo)
   state.history.push({
