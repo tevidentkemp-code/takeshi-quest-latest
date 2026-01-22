@@ -1506,6 +1506,9 @@ body[data-page="game"] #gameScrollGate{
   align-items: flex-start;
   overflow: hidden;
 }
+/* Mini league panels: pull table content up a touch */
+.home-mini-printer .lp-mid{ padding-top: 8px; }
+
 .home-live-printer .lp-table{
   width: 100%;
   border-collapse: collapse;
@@ -1525,6 +1528,12 @@ body[data-page="game"] #gameScrollGate{
   max-width: 100%;
 }
 .home-live-printer .lp-row.lp-new .lp-line{ color: rgba(20,150,70,.95); }
+
+.lp-record .lp-line, .lp-record .lp-ellipsis{
+  color: var(--shatekiOrange, #ff7a00) !important;
+  font-weight: 800 !important;
+}
+
 
 /* Bottom: marquee */
 .home-live-printer .lp-bottom{
@@ -12856,6 +12865,8 @@ backBtn.onclick  = () => {
 //        qualifies with >= 15 rounds (1 game + 1 round)
 window.getOfficialPowerRows = async function getOfficialPowerRows(){
   const MIN_ROUNDS = 15, WINDOW = 50;
+  const INACTIVE_MS = 14 * 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
 
   const allGames = (await __fetchOfficialGames(50000)).map(__normalizeGame)
     .filter(g => !g.is_practice && g.is_practice !== true);
@@ -12904,7 +12915,7 @@ window.getOfficialPowerRows = async function getOfficialPowerRows(){
   });
 
   // build rows (order rounds by time then round index)
-  const rows = Array.from(roundsByPlayer.entries()).map(([player,list])=>{
+  const rowsAll = Array.from(roundsByPlayer.entries()).map(([player,list])=>{
     list.sort((a,b)=>{
       const at=a.ts?new Date(a.ts).getTime():0, bt=b.ts?new Date(b.ts).getTime():0;
       return (at-bt) || (a.ri-b.ri);
@@ -12913,11 +12924,26 @@ window.getOfficialPowerRows = async function getOfficialPowerRows(){
     const n    = last.length;
     const pts  = last.reduce((s,r)=>s+Number(r.sum||0),0);
     const avgRound = n ? (pts/n) : 0;
-    const qualifies = n >= MIN_ROUNDS;
-    return { player, rounds:n, avgRound, qualifies };
+
+    const lastTs = last.length ? (last[last.length-1].ts || null) : null;
+    const recentMs = lastTs ? new Date(lastTs).getTime() : 0;
+
+    const qualifiesRounds = n >= MIN_ROUNDS;
+    const qualifiesRecent = recentMs >= (nowMs - INACTIVE_MS);
+
+    return { player, rounds:n, avgRound, recentMs, qualifiesRounds, qualifiesRecent };
   });
 
-  rows.sort((a,b)=> b.avgRound - a.avgRound);
+  // Apply league rules: >= 15 rounds AND played within last 14 days
+  const rows = rowsAll
+    .filter(r => r.qualifiesRounds && r.qualifiesRecent)
+    .sort((a,b)=>
+      (b.avgRound - a.avgRound) ||
+      (b.rounds   - a.rounds)   ||
+      (b.recentMs - a.recentMs) ||
+      String(a.player).localeCompare(String(b.player))
+    );
+
   return rows;
 };
 
@@ -13930,45 +13956,84 @@ async function updateHomeMiniLeagues(){
   if(prBody) setMsg(prBody,'Loading…');
 
   try{
-    // High Score League (best match score per registered player)
-    if(hsBody){
-      let rows = [];
-      try{ rows = (typeof cloudListHighScores === 'function') ? (await cloudListHighScores()) : []; }catch(e){ rows = []; }
+    // High Score League (best match score per player name)
+if(hsBody){
+  const unhold = (body)=>{
+    try{
+      const wrap = body?.closest?.('.home-mini-printer');
+      if(!wrap) return;
+      const mid = wrap.querySelector('.lp-mid');
+      if(mid) mid.classList.remove('lp-mid-hold');
+      const ov = wrap.querySelector('.home-hold-overlay');
+      if(ov) ov.style.display = 'none';
+      const badge = wrap.querySelector('.lp-badge');
+      if(badge) badge.style.display = 'none';
+    }catch(_e){}
+  };
 
-      const best = new Map();
-      for(const r of (rows || [])){
-        if(!r) continue;
-        const pid = r.player_id || r.playerId;
-        if(!pid) continue;
-        const score = Number(r.score);
-        if(!Number.isFinite(score)) continue;
-        const name = r.name || r.player || '—';
-        const ts = r.ts || r.created_at || r.event_ts || '';
-        const prev = best.get(pid);
-        if(!prev || score > prev.score || (score === prev.score && String(ts) > String(prev.ts))){
-          best.set(pid, { name, score, ts });
-        }
-      }
+  let rows = [];
+  try{
+    rows = (typeof cloudListHighScores === 'function') ? (await cloudListHighScores(false, 500)) : [];
+  }catch(e){
+    rows = [];
+  }
 
-      const list = Array.from(best.values())
-        .sort((a,b)=> (b.score - a.score) || String(a.name).localeCompare(String(b.name)) );
+  // If the query executed (even if empty), this panel is no longer "testing".
+  unhold(hsBody);
 
-      const top = list.slice(0,5);
-      if(!top.length){
-        setMsg(hsBody,'No data');
-      }else{
-        hsBody.innerHTML = top.map((x,i)=>
-          `<tr><td class="mini-rank">${i+1}</td><td class="mini-name">${esc(x.name)}</td><td class="mini-val">${x.score}</td></tr>`
-        ).join('');
-      }
+  const best = new Map(); // key: name lower
+  for(const r of (rows || [])){
+    if(!r) continue;
+    const name = String(r.name || r.player || r.player_name || '—').trim() || '—';
+    const key  = name.toLowerCase();
+    const score = Number(r.score);
+    if(!Number.isFinite(score)) continue;
+    const ts = r.ts || r.created_at || r.event_ts || '';
+    const prev = best.get(key);
+    if(!prev || score > prev.score || (score === prev.score && String(ts) > String(prev.ts))){
+      best.set(key, { name, score, ts });
     }
+  }
 
-    // Power Rankings (official)
+  const list = Array.from(best.values())
+    .sort((a,b)=> (b.score - a.score) || String(a.name).localeCompare(String(b.name)) );
+
+  try{ const st = window.__homeLivePrinterState; if(st && list.length) st.globalMaxScore = Number(list[0].score)||0; }catch(_e){}
+
+  const top = list.slice(0,5);
+  if(!top.length){
+    setMsg(hsBody,'No data');
+  }else{
+    hsBody.innerHTML = top.map((x,i)=>
+      `<tr><td class="mini-rank">${i+1}</td><td class="mini-name">${esc(x.name)}</td><td class="mini-val">${x.score}</td></tr>`
+    ).join('');
+  }
+}
+
+// Power Rankings (official; last 50 rounds; >=15 rounds; active in last 14 days)
     if(prBody){
+      const unhold = (body)=>{
+        try{
+          const wrap = body?.closest?.('.home-mini-printer');
+          if(!wrap) return;
+          const mid = wrap.querySelector('.lp-mid');
+          if(mid) mid.classList.remove('lp-mid-hold');
+          const ov = wrap.querySelector('.home-hold-overlay');
+          if(ov) ov.style.display = 'none';
+          const badge = wrap.querySelector('.lp-badge');
+          if(badge) badge.style.display = 'none';
+        }catch(_e){}
+      };
+
       let rows = [];
       try{ rows = (typeof getOfficialPowerRows === 'function') ? (await getOfficialPowerRows()) : []; }catch(e){ rows = []; }
+
+      // If the query executed (even if empty), this panel is no longer "testing".
+      unhold(prBody);
+
       const list = (rows || []).filter(r => r && r.player);
       const top = list.slice(0,5);
+
       if(!top.length){
         setMsg(prBody,'No data');
       }else{
@@ -14056,6 +14121,31 @@ async function updateHomeMiniLeagues(){
         return `ROUND PB / ${name} - ${secs}s (${score}) ${counts}`.trim();
       };
 
+      const lpMaybeGameRecord = (rest) => {
+        // If a GAME PB equals the current league-high score, treat it as a game record.
+        try{
+          const st = window.__homeLivePrinterState;
+          const max = Number(st && st.globalMaxScore);
+          if (!Number.isFinite(max) || max <= 0) return null;
+
+          const r = String(rest || '').replace(/\s{2,}/g,' ').trim();
+          if (!/^GAME\s*PB\b/i.test(r)) return null;
+
+          const m = r.match(/^GAME\s*PB\s*(?:[\/\-–—]|—|–|-)+\s*([^()]+?)\s*\((\d+)\)/i);
+          if (!m) return null;
+
+          const name = String(m[1] || '').trim();
+          const score = Number(m[2]);
+          if (!Number.isFinite(score)) return null;
+
+          if (score === max) {
+            return `NEW GAME RECORD SCORE - ${name} - ${score} 🥇`;
+          }
+        }catch(_e){}
+        return null;
+      };
+
+
       const lpFmtLine = (g) => {
         // Prefer server-provided line_text, but normalize formatting for UI.
         const raw = String((g && g.line_text) ? g.line_text : '').trim() || null;
@@ -14085,6 +14175,9 @@ async function updateHomeMiniLeagues(){
             // "NEW PB" -> "GAME PB"
             rest = rest.replace(/\bNEW\s*PB\b/i, 'GAME PB');
 
+            const rec = lpMaybeGameRecord(rest);
+            if (rec) return rec;
+
             // Round PB reformat
             const roundPB = lpFmtRoundPB(rest);
             if (roundPB) return roundPB;
@@ -14104,6 +14197,8 @@ async function updateHomeMiniLeagues(){
         if (/(^|\b)(NEW\s*PB|ROUND\s*PB|PB|WR|WORLD\s*RECORD)\b/i.test(cleaned)) {
           cleaned = cleaned.replace(/^\d{2}\/\d{2}\s*\/\s*\d{2}:\d{2}\s*/,'').trim() || cleaned;
           cleaned = cleaned.replace(/\bNEW\s*PB\b/i, 'GAME PB');
+          const rec = lpMaybeGameRecord(cleaned);
+          if (rec) return rec;
           const roundPB = lpFmtRoundPB(cleaned);
           if (roundPB) return roundPB;
           return cleaned;
@@ -14155,6 +14250,8 @@ const lpUpdateMeta = async (games) => {
         }, speedMs);
       };
 
+      const lpIsRecordLine = (line) => /^NEW GAME RECORD SCORE\b/i.test(String(line || ''));
+
       const lpSmoothShiftUp = (tbody, rowH, durationMs, onDone) => {
         if (!tbody) {
           if (onDone) onDone();
@@ -14199,6 +14296,7 @@ const lpUpdateMeta = async (games) => {
           const sp = document.createElement('span');
           sp.className = 'lp-ellipsis';
           sp.textContent = (line == null ? '' : String(line));
+          if (lpIsRecordLine(line)) tr.classList.add('lp-record');
           td.appendChild(sp);
           tr.appendChild(td);
           tbody.appendChild(tr);
@@ -14234,6 +14332,7 @@ const lpUpdateMeta = async (games) => {
           const line = winDisp[i] ?? '—';
           if (!opts.skipLastType || i < LP_VISIBLE - 1) {
             sp.textContent = String(line);
+            tr.classList.toggle('lp-record', lpIsRecordLine(line));
           }
         });
       };
@@ -14278,12 +14377,14 @@ const lpUpdateMeta = async (games) => {
             rows2[i].classList.remove('lp-new');
             const sp = rows2[i].querySelector('.lp-ellipsis');
             if (sp) sp.textContent = String(st.displayLines[i] ?? '');
+            rows2[i].classList.toggle('lp-record', lpIsRecordLine(st.displayLines[i]));
           }
 
           // Last row stays dark green until it moves up (next step)
           const lastRow = rows2[LP_VISIBLE - 1];
           if (!lastRow) return;
           lastRow.classList.add('lp-new');
+          lastRow.classList.toggle('lp-record', lpIsRecordLine(st.displayLines[LP_VISIBLE - 1]));
           const lastSp = lastRow.querySelector('.lp-ellipsis');
           if (lastSp) {
             lastSp.textContent = '';
@@ -14312,6 +14413,7 @@ const lpUpdateMeta = async (games) => {
           for (let i = 0; i < LP_VISIBLE - 1; i++) {
             const sp = rows2[i].querySelector('.lp-ellipsis');
             if (sp) sp.textContent = String(winNew[i] ?? '—');
+            rows2[i].classList.toggle('lp-record', lpIsRecordLine(winNew[i]));
             rows2[i].classList.remove('lp-new');
           }
 
@@ -14319,6 +14421,7 @@ const lpUpdateMeta = async (games) => {
           const lastSp = lastRow ? lastRow.querySelector('.lp-ellipsis') : null;
           if (lastSp) {
             lastRow.classList.add('lp-new');
+            lastRow.classList.toggle('lp-record', lpIsRecordLine(winNew[LP_VISIBLE - 1]));
             lastSp.textContent = '';
             lpType(lastSp, String(winNew[LP_VISIBLE - 1] ?? '—'), 20);
             setTimeout(() => {
