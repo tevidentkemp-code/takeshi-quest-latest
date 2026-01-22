@@ -31,6 +31,7 @@
   --muted:#a8acc3;
   --accent:#7bdcff;
   --accent-2:#8cff9e;
+  --leader-lime:#9BFF2E;
   --danger:#ff6b6b;
   --warn:#ffcc66;
   --good:#7fffd4;
@@ -288,7 +289,8 @@
   min-height: 14px;
 }
 .leader-total{
-  color: var(--accent-2) !important;
+  color: var(--leader-lime) !important;
+  text-shadow: 0 0 10px rgba(155,255,46,.18);
 }
 
 #psPlayerFields .pf input[data-role="display"]{
@@ -355,8 +357,8 @@
 
   .num{font-variant-numeric:tabular-nums}
   .center{text-align:center}
-  .current-cell{background:linear-gradient(180deg,#1e2450,#171d45)!important;box-shadow:inset 0 0 0 1px #4050a7}
-  .current-col{background:rgba(64,80,167,.07)}
+  .current-cell{background:rgba(255,122,0,.06)!important;box-shadow:inset 0 0 0 1px rgba(255,122,0,.45)}
+  .current-col{background:rgba(255,122,0,.035)}
 
   /* Header content */
   thead th .th-wrap{display:flex;flex-direction:column;align-items:center;gap:2px}
@@ -373,6 +375,7 @@
 /* Floating header: hero total score */
 .float-head .th-total{
   font-size:34px;
+  color: rgba(255,255,255,.98);
   line-height:1.1;
   display:block;
   margin:0;
@@ -469,11 +472,11 @@
 /* Active round separator glow (between round labels and Player 1 column) */
 #scoreWrap tbody th.active-round-glow{
   border-right: 2px solid rgba(255,122,0,.95) !important;
-  box-shadow: inset -2px 0 0 rgba(255,122,0,.95), 0 0 10px rgba(255,122,0,.10);
+  box-shadow: none !important;
 }
 #scoreWrap tbody td.active-round-leftglow{
-  border-left: 2px solid rgba(255,122,0,.95) !important;
-  box-shadow: inset 2px 0 0 rgba(255,122,0,.95), 0 0 10px rgba(255,122,0,.10);
+  border-left: none !important;
+  box-shadow: none !important;
 }
 
 /* Active round label sizing */
@@ -482,34 +485,36 @@
   font-weight:900 !important;
   opacity:1;
   color: rgba(255,255,255,.98);
-  text-shadow: 0 0 10px rgba(255,122,0,.35);
-  transform: scale(1.08);
-  box-shadow: inset 0 0 0 1px rgba(255,122,0,.35), 0 0 14px rgba(255,122,0,.18);
+  text-shadow: none !important;
+  transform: scale(1.06);
+  box-shadow: none !important;
   border-radius:10px;
 }
+
 
 
 /* --- FIX: active round label bottom edge getting eaten by dashed row border --- */
 #scoreWrap tbody th.round-label{ position: relative; overflow: visible; }
 #scoreWrap tbody th.round-label.active-round-label{
-  border-bottom: none !important; /* remove dashed separator for this cell */
-  z-index: 2;
-}
-#scoreWrap tbody th.round-label.active-round-label::after{
-  content:'';
-  position:absolute;
-  inset:0;
+  font-size:20px !important;
+  font-weight:900 !important;
+  opacity:1;
+  color: rgba(255,255,255,.98);
+  text-shadow: none !important;
+  transform: scale(1.06);
   border-radius:10px;
+  background: rgba(255,255,255,.05); /* faint grey */
+  /* Standard borders (top/left/bottom) without affecting the orange right edge */
   box-shadow:
-    inset 0 0 0 1px rgba(255,122,0,.55),
-    0 0 14px rgba(255,122,0,.18);
-  pointer-events:none;
+    inset 1px 0 0 rgba(255,255,255,.10),
+    inset 0 1px 0 rgba(255,255,255,.10),
+    inset 0 -1px 0 rgba(255,255,255,.10) !important;
 }
 
 
+#scoreWrap tbody th.round-label.active-round-label::after{ content:none !important; }
 
-  
-  .th-diff{
+.th-diff{
     font-size:10px;
     line-height:1;
     font-weight:400 !important;
@@ -528,10 +533,10 @@
   /* Score cell */
   .cell-wrap{display:inline-flex;flex-direction:column;align-items:center;gap:1px;line-height:1}
   .cell-main{font-weight:800;line-height:1.1}
-  .cell-sub{color:var(--muted);font-size:.60em;font-weight:500;opacity:.95;letter-spacing:-0.01em;line-height:1;display:block;min-height:1em}
+  .cell-sub{color:var(--muted);font-size:.52em;font-weight:400;opacity:.92;letter-spacing:-0.01em;line-height:1.05;display:block;min-height:1em}
   .cell-sub:empty::before{content:'\00a0';}
 
-  .sub-win{color:var(--accent-2)!important;font-weight:700}
+  .sub-win{color:var(--accent-2)!important;font-weight:400}
 
   /* Stats (kept for layout sync; shown via modals) */
   .stats-box{display:none}
@@ -564,6 +569,7 @@
   --gameTopInset:0px;
   --fhMenuH:48px;   /* JS will overwrite */
   --fhCollapse:0px; /* JS updates on scroll */
+  --fhScrollGate:0px; /* JS updates: hold content until B1 collapsed */
 }
 
 #floatHead.float-head{
@@ -588,6 +594,7 @@
   margin: 0 !important;
   position: relative;
   padding-top: 4px; /* B1 sits 4px below header edge */
+  padding-bottom: 4px; /* match top inset: B1->B2 gap */
   transform: translateY(calc(-1 * var(--fhCollapse)));
 }
 
@@ -599,6 +606,20 @@
   background: rgba(255,255,255,.10);
   pointer-events:none;
 }
+
+/* ===== @CSS:GAME_SCROLL_GATE =====
+   Consume initial scroll to collapse B1 before the scoreboard content (A2/D) starts moving under A1/B2/B3. */
+body[data-page="game"] #gameScrollGate{
+  /* Cancel the first part of scroll (used to collapse B1) without creating a gap under the header */
+  transform: translateY(var(--fhScrollGate));
+  margin-top: calc(-1 * var(--fhScrollGate));
+  will-change: transform;
+}
+
+/* ===== @CSS:FLOATHEAD_NAMES_COLOR =====
+   B2 names are white by default; active player's name turns Shateki orange. */
+.float-head .th-name{ color:#ffffff !important; }
+.float-head thead tr:nth-child(1) th.player.is-go .th-name{ color:var(--shatekiOrange, #ff7a00) !important; }
 /* Vertical divider after the TARGET column in floating header */
 .float-head thead th:first-child{
   border-right:1px solid #22264a;
@@ -645,6 +666,8 @@
   color:rgba(255,255,255,.75);
 }
 .th-wins span{ display:inline-block; margin:0 2px; }
+.th-wins .win-star{color:rgba(255,255,255,.85);}
+.th-wins .win-circle{color:rgba(255,255,255,.35);}
 .th-darts{
   display:flex;
   justify-content:center;
@@ -720,7 +743,7 @@
 .round-sub { color: var(--hint, rgba(255,255,255,.65)); }
 
 /* only the top per-round score(s) get green */
-.round-sub.is-round-high { color: var(--green, #37d67a); font-weight: 600; }
+.round-sub.is-round-high { color: var(--green, #37d67a); font-weight: 400; }
 
 /* Reverted: show cumulative total as main and round score in parentheses below */
 #scoreWrap .cell-main{
@@ -731,10 +754,11 @@
 }
   #scoreWrap .cell-sub{
     display:block !important;
-    font-size:.9rem;
-    font-weight:700;
-    color: var(--accent-2);
-    line-height:1.1;
+    font-size:.72rem;
+    font-weight:400;
+    color: var(--muted);
+    opacity:.92;
+    line-height:1.05;
   }
 
 /* Revert UI: hide per‑dart markers */
@@ -2409,6 +2433,8 @@ body[data-page="game"] #floatHead{
           <div id="turnBar" class="turn-bar" aria-hidden="true"></div>
         </div>
 
+        <div id="gameScrollGate">
+
         <!-- Scoreboard -->
         <div class="table-wrap" id="scoreWrap" style="margin-top:10px">
           <div id="roundBar" class="round-bar" aria-hidden="true"></div>
@@ -2438,6 +2464,8 @@ body[data-page="game"] #floatHead{
         </div>
 
         <div id="endBanner" class="banner hidden"></div>
+      </div>
+
       </div>
     </section>
 
@@ -2896,10 +2924,12 @@ window.markRoundHighs = function markRoundHighs(root = document) {
 
     const max = Math.max(0, ...values);
 
+    const iMax = (max > 0) ? values.indexOf(max) : -1;
+
     bucket.forEach((el, i) => {
-      el.classList.toggle('is-round-high', values[i] === max && max > 0);
+      el.classList.toggle('is-round-high', i === iMax && iMax >= 0);
     });
-  }
+}
 };
 
 // Fetch per-dart pattern for a specific game/player/round (e.g. "S/S/D" or "x/T/T")
@@ -6138,8 +6168,24 @@ function updateFHCollapse(forcePage){
     const page = forcePage || document.body.getAttribute('data-page') || '';
     const wrap = document.querySelector('.wrap');
     const mh = (window.__sqFHMenuH != null ? window.__sqFHMenuH : 48);
-    const c = (page === 'game' && wrap) ? Math.max(0, Math.min(wrap.scrollTop, mh)) : 0;
+
+    if (page !== 'game' || !wrap){
+      document.documentElement.style.setProperty('--fhCollapse', '0px');
+      document.documentElement.style.setProperty('--fhScrollGate', '0px');
+      return;
+    }
+
+    const s = Math.max(0, wrap.scrollTop || 0);
+    const c = Math.max(0, Math.min(s, mh));
+
+    // Phase gate:
+    //  - While B1 is collapsing (s < mh), prevent A2/D content from moving under the sticky header.
+    //    We cancel BOTH the scroll movement and the header-height shrink by offsetting 2*c.
+    //  - Once B1 is fully gone (s >= mh), release the content to scroll normally.
+    const gate = (s < mh) ? (2 * c) : mh;
+
     document.documentElement.style.setProperty('--fhCollapse', c + 'px');
+    document.documentElement.style.setProperty('--fhScrollGate', gate + 'px');
   }catch(e){}
 }
 function bindFHCollapseScroll(){
@@ -7873,7 +7919,7 @@ function buildFloatingHeader(){
     th.id = 'fcoltot-' + i; 
 
     const total = document.createElement('div'); 
-    total.className = 'th-total th-name num'; 
+    total.className = 'th-total num'; 
     total.id = 'ftotal-' + i; 
     total.textContent = '0'; 
 
@@ -9611,6 +9657,12 @@ function updateUI() {
   // Highlight the current cell (round + player)
   const cp = state.currentPlayer;
   const cr = state.currentRound;
+
+  // B2 name color: white by default, Shateki orange for current player's go
+  try{
+    const nameCells = document.querySelectorAll('#floatThead tr:first-child th.player');
+    nameCells.forEach((th, idx) => th.classList.toggle('is-go', idx === cp));
+  }catch(_){}
   const currentCell = byId(`cell-${cp}-${cr}`);
   if (currentCell) {
     currentCell.classList.add('current-cell');
@@ -9666,12 +9718,12 @@ if (roundLabelEl) {
     if (winsEl) {
       const wins = state.match?.wins?.[i] || 0;
       const firstTo = state.match?.targetWins || 1;
-      let s = '';
+      let html = "";
       for (let k = 0; k < firstTo; k++) {
-        s += k < wins ? '★' : '○';
+        html += (k < wins) ? "<span class=\"win-star\">★<\/span>" : "<span class=\"win-circle\">○<\/span>";
       }
-      winsEl.textContent = s;
-    }
+      winsEl.innerHTML = html;
+}
   }
 
   // --- end-of-game banner ---
