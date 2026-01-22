@@ -4003,6 +4003,41 @@ function openRoundHighScoresDialog(){
 }
 
 function _normName(s){ return String(s||'').trim(); }
+
+// Initials helpers (cloud-first; name fallback)
+function __sqComputeInitialsFromName(name){
+  const s = String(name||'').trim();
+  if (!s) return '';
+  // Split on whitespace + hyphen; keep alphanumerics
+  const parts = s.split(/\s+|-/g).map(x=>x.replace(/[^A-Za-z0-9]/g,'')).filter(Boolean);
+  if (!parts.length) return '';
+  if (parts.length === 1){
+    const w = parts[0].toUpperCase();
+    return w.slice(0, Math.min(2, w.length));
+  }
+  const a = parts[0].toUpperCase().slice(0,1);
+  const b = parts[parts.length-1].toUpperCase().slice(0,1);
+  return (a+b).trim();
+}
+function __sqNormalizeInitials(init, nameFallback){
+  const raw = String(init||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if (raw) return raw.slice(0,3);
+  return __sqComputeInitialsFromName(nameFallback);
+}
+function __sqFindSavedPlayerMetaByName(name){
+  const key = String(name||'').trim().toLowerCase();
+  if (!key) return null;
+  try{
+    const arr = getSavedPlayers() || [];
+    return arr.find(p => p && String(p.name||'').trim().toLowerCase() === key) || null;
+  }catch(_){ return null; }
+}
+function __sqHeaderLabelForPlayer(pl){
+  const nm = pl && pl.name ? String(pl.name) : '';
+  const init = pl && pl.initials ? String(pl.initials) : '';
+  return __sqNormalizeInitials(init, nm) || nm || '';
+}
+
 function __sqLoadPlayerAliases(){
   try { return JSON.parse(localStorage.getItem('SQ_PLAYER_ALIASES') || '{}') || {}; } catch(e){ return {}; }
 }
@@ -4110,7 +4145,7 @@ async function renderSavedPlayersAdmin(){
 
   const thead = document.createElement('thead');
   const hr = document.createElement('tr');
-  ['Player Name','Actions'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; hr.appendChild(th); });
+  ['Player Name','Initials','Actions'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; hr.appendChild(th); });
   thead.appendChild(hr);
   table.appendChild(thead);
 
@@ -4128,6 +4163,15 @@ async function renderSavedPlayersAdmin(){
     nameIn.style.width = '100%';
     nameTd.appendChild(nameIn);
 
+    const initTd = document.createElement('td');
+    const initIn = document.createElement('input');
+    initIn.type = 'text';
+    initIn.value = __sqNormalizeInitials(p && p.initials ? p.initials : '', nm);
+    initIn.maxLength = 3;
+    initIn.style.width = '70px';
+    initIn.style.textTransform = 'uppercase';
+    initTd.appendChild(initIn);
+
     const actTd = document.createElement('td');
     const saveBtn = document.createElement('button');
     saveBtn.className = 'btn small';
@@ -4141,6 +4185,7 @@ async function renderSavedPlayersAdmin(){
 
     saveBtn.onclick = async ()=>{
       const newName = String(nameIn.value||'').trim();
+      const newInit = __sqNormalizeInitials(initIn.value, newName || nm);
       if (!newName){ toast('Name required'); return; }
       if (!nm){ toast('Invalid player'); return; }
       try {
@@ -4152,6 +4197,8 @@ async function renderSavedPlayersAdmin(){
           try { if (typeof window.buildStartTicker==='function') window.buildStartTicker(); } catch(_) {}
           try { if (typeof window.__sqRefreshRecentMatchesTicker==='function') window.__sqRefreshRecentMatchesTicker(); } catch(_) {}
         }
+        // Update initials (no-op if column not deployed yet)
+        try { await cloudUpdatePlayerInitials(pid ? { id: pid, name: (newName || nm) } : (newName || nm), newInit); } catch(_) {}
         try { await syncSavedPlayersFromCloud(); } catch(_) {}
         try { document.dispatchEvent(new Event('sq:savedPlayersUpdated')); } catch(_) {}
         toast('Saved');
@@ -4187,7 +4234,7 @@ async function renderSavedPlayersAdmin(){
       }
     };
 
-    tr.append(nameTd, actTd);
+    tr.append(nameTd, initTd, actTd);
     tbody.appendChild(tr);
   });
 
@@ -6635,15 +6682,35 @@ async function cloudSynthAllGamesFromHighScores(limit = 500) {
 // PLAYERS
 // PLAYERS
 async function cloudListPlayers(){
-  // MOT2.2: keep schema-safe and quiet. Only select columns that definitely exist.
-  const { data, error } = await sb
-    .from(TABLE_PLAYERS)
-    .select('id, name, created_at')
-    .order('name');
-  if (error) { markCloudError(error); throw error; }
-  markCloudOk();
-  // Phase 1 IDs: keep an in-memory cache of "active" player names/ids.
-  // This lets us hide deleted players from the start-screen ticker and other lightweight UI.
+  // Cloud is canonical. Prefer to read initials if the column exists; fall back safely if not.
+  let data = null;
+  try{
+    const r1 = await sb
+      .from(TABLE_PLAYERS)
+      .select('id, name, initials, created_at')
+      .order('name');
+    if (r1.error) throw r1.error;
+    data = r1.data || [];
+    markCloudOk();
+  }catch(e1){
+    // Column may not exist yet on some deployments; fall back to the minimal schema.
+    const msg = String(e1?.message || e1 || '');
+    const code = String(e1?.code || '');
+    const isMissingInitials = (code === '42703') || /initials/i.test(msg);
+    if (!isMissingInitials){
+      markCloudError(e1);
+      throw e1;
+    }
+    const r2 = await sb
+      .from(TABLE_PLAYERS)
+      .select('id, name, created_at')
+      .order('name');
+    if (r2.error){ markCloudError(r2.error); throw r2.error; }
+    data = (r2.data || []).map(p => ({ ...p, initials: __sqComputeInitialsFromName(p?.name) }));
+    markCloudOk();
+  }
+
+  // Cache active player names/ids for light UI (ticker etc.)
   try {
     const list = Array.isArray(data) ? data : [];
     window.__sqPlayersList = list;
@@ -6660,16 +6727,68 @@ async function cloudListPlayers(){
 
 // Create / update a player by name only (no password)
 async function cloudCreatePlayer(name){
-  const { error } = await sb
-    .from(TABLE_PLAYERS)
-    .upsert({ name }, { onConflict: 'name' });   // only name is stored
-
-  if (error) {
-    markCloudError(error);
-    throw error;
+  const nm = String(name||'').trim();
+  const initials = __sqNormalizeInitials('', nm);
+  // Prefer writing initials if supported; fall back silently if column doesn't exist yet.
+  try{
+    const { error } = await sb
+      .from(TABLE_PLAYERS)
+      .upsert({ name: nm, initials }, { onConflict: 'name' });
+    if (error) throw error;
+    markCloudOk();
+    return;
+  }catch(e1){
+    const msg = String(e1?.message || e1 || '');
+    const code = String(e1?.code || '');
+    const isMissingInitials = (code === '42703') || /initials/i.test(msg);
+    if (!isMissingInitials){
+      markCloudError(e1);
+      throw e1;
+    }
+    const { error } = await sb
+      .from(TABLE_PLAYERS)
+      .upsert({ name: nm }, { onConflict: 'name' });
+    if (error){ markCloudError(error); throw error; }
+    markCloudOk();
   }
-  markCloudOk();
 }
+
+
+// Update initials for a player (by id when available; by resolved name otherwise)
+async function cloudUpdatePlayerInitials(playerOrName, initials){
+  const obj = (playerOrName && typeof playerOrName === 'object') ? playerOrName : null;
+  const nmIn = obj ? String(obj.name||'').trim() : String(playerOrName||'').trim();
+  const id = obj && obj.id ? obj.id : null;
+  if (!nmIn && !id) throw new Error('Update initials failed: missing player key');
+
+  const init = __sqNormalizeInitials(initials, nmIn);
+  try{
+    let q = sb.from(TABLE_PLAYERS).update({ initials: init });
+    if (id) {
+      q = q.eq('id', id);
+    } else {
+      const resolved = await cloudResolvePlayerKeyByName(nmIn);
+      const targetName = (resolved && resolved.name) ? resolved.name : nmIn;
+      q = q.eq('name', targetName);
+    }
+    const { data, error } = await q.select('id, name, initials').maybeSingle();
+    if (error) throw error;
+    markCloudOk();
+    return data || null;
+  }catch(e1){
+    const msg = String(e1?.message || e1 || '');
+    const code = String(e1?.code || '');
+    const isMissingInitials = (code === '42703') || /initials/i.test(msg);
+    if (!isMissingInitials){
+      markCloudError(e1);
+      throw e1;
+    }
+    // Column doesn't exist yet: treat as no-op so UI doesn't break.
+    markCloudOk();
+    return null;
+  }
+}
+
 
 
 
@@ -7816,6 +7935,7 @@ async function syncSavedPlayersFromCloud(){
       .filter(p => p && p.name)
       .map(p => ({
         name: String(p.name),
+        initials: __sqNormalizeInitials(p.initials, p.name),
         joinedAt: p.created_at ? new Date(p.created_at).toISOString() : null,
         _src: 'cloud'
       }))
@@ -7916,8 +8036,8 @@ async function showAddPlayerDialog(index){
       // Save to local storage
       const arr = getSavedPlayers();
       const idxExisting = arr.findIndex(p => p && p.name === newName);
-      if (idxExisting === -1) arr.push({ name: newName, joinedAt: new Date().toISOString() });
-      else arr[idxExisting].name = newName;
+      if (idxExisting === -1) arr.push({ name: newName, initials: __sqNormalizeInitials('', newName), joinedAt: new Date().toISOString() });
+      else { arr[idxExisting].name = newName; arr[idxExisting].initials = __sqNormalizeInitials(arr[idxExisting].initials, newName); }
       setSavedPlayers(arr);
       populateSavedPlayersSelects();
 
@@ -8042,7 +8162,12 @@ byId('startMatchBtn').addEventListener('click', ()=>{
   }));
   if (!ppl.length){ toast('Add at least 1 player'); return; }
 
-  state.players = ppl.map(p=>({ name:p.name, color:null }));
+  // Attach initials from saved-player meta (cloud-synced) when available; fallback to computed initials.
+  state.players = ppl.map(p=>{
+    const meta = __sqFindSavedPlayerMetaByName(p.name);
+    const init = meta ? meta.initials : '';
+    return { name: p.name, initials: __sqNormalizeInitials(init, p.name), color: null };
+  });
   assignUniqueColors(state.players);
 
   state.match = {
@@ -8168,7 +8293,7 @@ function buildFloatingHeader(){
 
     const name = document.createElement('div'); 
     name.className = 'th-name'; 
-    name.textContent = state.players[i].name; 
+    name.textContent = __sqHeaderLabelForPlayer(state.players[i]); 
 
     wrap.append(wins, name);
     th.appendChild(wrap); 
