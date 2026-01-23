@@ -149,10 +149,10 @@
 #players{
   display:flex;
   flex-direction:column;
-  align-items:stretch;
-  justify-content:flex-start;
+  align-items:center;
+  justify-content:center;              /* vertical centering */
   min-height:calc(100vh - var(--pad-h));
-  padding-top: 10px;
+  padding: 24px 0;                     /* breathing room top/bottom */
 }
 
 
@@ -389,7 +389,7 @@
 .float-head.players-6 .th-total{ font-size: calc(34px * 0.90); }
 
 /* Throw indicator colours */
-:root{ --shatekiOrange: #ff7a00; }
+:root{ --shatekiOrange: #ff7a00; --shatekiBlue:#2f86ff; --shatekiBlueLight:#4aa3ff; }
 
 /* Single shared go-indicator shown under TARGET (A) */
 .go-darts{ display:flex; justify-content:center; gap:8px; margin-top:8px; }
@@ -891,11 +891,18 @@ body[data-page="game"] #gameScrollGate{
 
 
 /* ===== @CSS:START_GAME_MODAL | Home START GAME popup ===== */
+
+/* Darker overlay for this modal only (obscure home behind) */
+#startGameModal.modal-backdrop{
+  background: rgba(0,0,0,.78);
+  backdrop-filter: blur(6px);
+}
+
 .modal.sg-modal{
-  max-width: 560px;
+  max-width: 520px;
   padding: 0;
   border-radius: 18px;
-  background: rgba(15,18,32,.96);
+  background: rgba(15,18,32,.97);
   border: 1px solid rgba(255,255,255,.10);
   overflow:hidden;
 }
@@ -905,7 +912,7 @@ body[data-page="game"] #gameScrollGate{
   text-align:center;
 }
 .sg-title{
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 900;
   letter-spacing: .06em;
   text-transform: uppercase;
@@ -923,63 +930,56 @@ body[data-page="game"] #gameScrollGate{
 .sg-options{
   display:flex;
   flex-direction:column;
-  gap: 14px;
+  gap: 12px;
   padding: 12px 18px 18px;
 }
 
-/* Card layout closer to the reference: icon + copy, richer accent per mode */
+/* Clean, cut card style: no coloured backgrounds, only subtle accent on icon */
 .sg-opt{
   --sgAccent: rgba(255,255,255,.18);
   width:100%;
   text-align:left;
-  border-radius: 18px;
-  padding: 16px 16px;
+  border-radius: 16px;
+  padding: 14px 16px;
   border: 1px solid rgba(255,255,255,.12);
-  background: linear-gradient(180deg, rgba(30,40,90,.58), rgba(20,26,60,.58));
-  box-shadow: 0 12px 30px rgba(0,0,0,.28);
+  background: rgba(20,24,44,.82);
+  box-shadow: 0 10px 26px rgba(0,0,0,.28);
   display:flex;
   align-items:center;
   gap: 14px;
-  transition: transform .12s ease, border-color .12s ease, filter .12s ease;
+  transition: transform .12s ease, border-color .12s ease, filter .12s ease, background .12s ease;
   position:relative;
   overflow:hidden;
 }
-.sg-opt::before{
-  content:'';
-  position:absolute;
-  inset:0;
-  background: radial-gradient(120% 120% at 0% 0%, color-mix(in srgb, var(--sgAccent) 28%, transparent) 0%, transparent 60%);
-  pointer-events:none;
+.sg-opt:hover{
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,.18);
+  background: rgba(22,27,50,.86);
 }
-.sg-opt:hover{ transform: translateY(-1px); border-color: rgba(255,255,255,.20); }
 .sg-opt:active{ transform: translateY(0); }
 
 .sg-opt .sg-ico{
-  width: 46px;
-  height: 46px;
+  width: 44px;
+  height: 44px;
   border-radius: 14px;
   display:grid;
   place-items:center;
-  flex: 0 0 46px;
-  background: color-mix(in srgb, var(--sgAccent) 22%, rgba(255,255,255,.06));
-  border: 1px solid color-mix(in srgb, var(--sgAccent) 34%, rgba(255,255,255,.10));
-  box-shadow: 0 10px 20px rgba(0,0,0,.18);
-  position:relative;
-  z-index:1;
+  flex: 0 0 44px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 8px 18px rgba(0,0,0,.18);
 }
 .sg-opt .sg-ico svg{
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   display:block;
   color: var(--sgAccent);
-  opacity: .95;
+  opacity: .98;
 }
 
 .sg-opt .sg-copy{
   flex:1 1 auto;
   min-width:0;
-  position:relative;
-  z-index:1;
 }
 .sg-opt .sg-opt-top{
   display:flex;
@@ -988,7 +988,7 @@ body[data-page="game"] #gameScrollGate{
   gap: 10px;
 }
 .sg-opt .sg-opt-title{
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 900;
   letter-spacing: .04em;
   text-transform: uppercase;
@@ -996,12 +996,12 @@ body[data-page="game"] #gameScrollGate{
 }
 .sg-opt .sg-opt-desc{
   margin-top: 6px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
-  letter-spacing: .08em;
+  letter-spacing: .10em;
   text-transform: uppercase;
-  color: rgba(255,255,255,.55);
-  line-height: 1.15;
+  color: rgba(255,255,255,.52);
+  line-height: 1.2;
 }
 .sg-opt .sg-opt-soon{
   font-size: 11px;
@@ -1012,18 +1012,18 @@ body[data-page="game"] #gameScrollGate{
   white-space: nowrap;
 }
 
-/* Mode accents */
+/* Mode accents (icon colour only) */
 .sg-opt--match{ --sgAccent: var(--shatekiOrange, #ff7a00); }
-.sg-opt--tournament{ --sgAccent: #f6c453; }
+.sg-opt--tournament{ --sgAccent: rgba(255,255,255,.32); }
 .sg-opt--practice{ --sgAccent: #3aa5ff; }
 .sg-opt--training{ --sgAccent: #2fe07b; }
 
 .sg-opt.disabled{
   opacity: .55;
-  filter: grayscale(.2);
+  filter: grayscale(.25);
+  cursor:not-allowed;
 }
-.sg-opt.disabled:hover{ transform:none; border-color: rgba(255,255,255,.12); }
-.sg-opt.disabled{ cursor:not-allowed; }
+.sg-opt.disabled:hover{ transform:none; border-color: rgba(255,255,255,.12); background: rgba(20,24,44,.82); }
 
 .sg-footer{
   padding: 0 18px 16px;
@@ -1032,8 +1032,10 @@ body[data-page="game"] #gameScrollGate{
   justify-content:center;
 }
 .sg-footer .btn{
-  width: 120px;
+  width: 140px;
 }
+
+
 /* ===== @CSS:MENU_MODAL | League & Rankings menu styling ===== */
 .modal.menu-modal{
   max-width:440px;
@@ -1179,6 +1181,29 @@ body[data-page="game"] #gameScrollGate{
   display:flex;
   align-items:center;
   flex:0 0 auto;
+}
+
+
+/* Admin Hub menu styling (align with current sub-menu look) */
+.admin-menu-modal{ max-width:560px; }
+.menu-section-label{
+  margin:14px 4px 4px;
+  padding:2px 6px;
+  font-size:11px;
+  letter-spacing:1.6px;
+  text-transform:uppercase;
+  color:rgba(168,172,195,.85);
+}
+.menu-section-label:first-child{ margin-top:0; }
+.danger-row{
+  border-color:rgba(255,107,107,.28);
+  background:linear-gradient(180deg, rgba(255,107,107,.09), rgba(255,107,107,.03));
+}
+.danger-row .menu-row-title{ color:#ffe1e1; }
+.danger-row .menu-row-icon{
+  background:rgba(255,107,107,.12);
+  border-color:rgba(255,107,107,.22);
+  color:#ffd1d1;
 }
 
 /* Title/description typography (used by Player Stats menu) */
@@ -1998,8 +2023,35 @@ body[data-page="game"] #gameScrollGate{
   filter: grayscale(.3);
 }
 
+.ms-primary-blue{
+  background: var(--shatekiBlue) !important;
+  border: 1px solid rgba(0,0,0,.25) !important;
+  color:#fff !important;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+.ms-primary-blue:disabled{ opacity:.35; filter: grayscale(.3); }
+
+.ms-primary-blueLight{
+  background: var(--shatekiBlueLight) !important;
+  border: 1px solid rgba(0,0,0,.25) !important;
+  color:#fff !important;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+.ms-primary-blueLight:disabled{ opacity:.35; filter: grayscale(.3); }
+
+/* Practice CTA sizing to match Match Setup */
+.practice-cta{
+  height: 52px !important;
+  border-radius: 18px !important;
+  font-size: 1rem !important;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
 .ms-back-bottom{
-  width: min(640px, 94%) !important;
+  width: min(420px, 94%) !important;
   margin: 12px auto 0;
   height: 52px !important;
   border-radius:18px;
@@ -2123,7 +2175,7 @@ body[data-page="game"] #gameScrollGate{
   transition: opacity .2s ease;
 }
 .ms-start{
-  width: min(640px, 94%) !important;
+  width: min(420px, 94%) !important;
   margin: 0 auto 12px;
   height: 52px !important;
   border-radius:18px;
@@ -2138,7 +2190,7 @@ body[data-page="game"] #gameScrollGate{
   filter: grayscale(.4);
 }
 .ms-register{
-  width: min(640px, 94%) !important;
+  width: min(420px, 94%) !important;
   margin: 0 auto;
   height: 52px !important;
   border-radius:18px;
@@ -2241,6 +2293,12 @@ body[data-page="game"] #gameScrollGate{
   letter-spacing: .08em;
   color:#fff !important;
 }
+
+.to-start.to-blueLight{
+  background: var(--shatekiBlueLight) !important;
+  border: 1px solid rgba(0,0,0,.25) !important;
+  color:#fff !important;
+}
 .to-start .to-start-ic{ margin-left: 10px; }
 .to-back{
   width: 100%;
@@ -2321,6 +2379,112 @@ body[data-page="game"] #gameScrollGate{
   justify-content:center;
   padding-bottom: 14px;
 }
+
+
+/* ===== NEW PLAYER MODAL (Add Player) ===== */
+.np-modal{
+  width: min(360px, calc(100vw - 28px));
+  border-radius: 16px;
+  background: rgba(24, 30, 50, .96);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 18px 40px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.04);
+  overflow: hidden;
+}
+.np-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding: 14px 14px 10px;
+}
+.np-title{
+  flex:1;
+  text-align:left;
+  padding-left: 8px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  color: #e7e9f5;
+}
+.np-back, .np-close{
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  color: rgba(231,233,245,.9);
+  font-weight: 900;
+  font-size: 18px;
+  line-height: 1;
+}
+.np-close{
+  font-size: 22px;
+}
+.np-back:active, .np-close:active{ transform: translateY(1px); }
+
+.np-body{
+  padding: 0 14px 12px;
+}
+.np-field{ margin-top: 10px; }
+.np-label{
+  font-size: 11px;
+  letter-spacing: .14em;
+  font-weight: 900;
+  color: rgba(231,233,245,.55);
+  text-transform: uppercase;
+  margin: 0 0 6px;
+}
+.np-body input{
+  width: 100%;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(0,0,0,.25);
+  border: 1px solid rgba(255,255,255,.12);
+  color: #e7e9f5;
+  padding: 0 12px;
+  outline: none;
+}
+.np-body input:focus{
+  border-color: rgba(255,122,0,.42);
+  box-shadow: 0 0 0 3px rgba(255,122,0,.10);
+}
+.np-nick-row{
+  display:flex;
+  gap: 10px;
+  align-items: center;
+}
+.np-nick-row input{ flex: 1; }
+.np-gen{
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  color: rgba(231,233,245,.9);
+  font-weight: 900;
+  font-size: 18px;
+}
+.np-gen:active{ transform: translateY(1px); }
+
+.np-footer{
+  padding: 12px 14px 14px;
+}
+.np-save{
+  width: 100%;
+  height: 54px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.12);
+  color: rgba(231,233,245,.9);
+  font-weight: 900;
+  letter-spacing: .06em;
+}
+.np-save:not([disabled]){
+  background: rgba(47,134,255,.18);
+  border-color: rgba(47,134,255,.45);
+}
+.np-save:not([disabled]):hover{ filter: brightness(1.05); }
+.np-save:active{ transform: translateY(1px); }
+.np-save[disabled]{ opacity: .45; cursor: not-allowed; }
+
 </style>
 <style>
   /* Cloud status pill (top-right) */
@@ -3166,17 +3330,40 @@ body[data-page="game"] #floatHead{
 
     <!-- Add Player Modal -->
     <div id="addPlayerModal" class="modal-backdrop hidden">
-      <div class="modal">
-        <h3>Add New Player</h3>
-        <div class="modal-body">
-          <div class="stack">
-            <label class="tag" for="newPlayerName">Player Name</label>
-            <input id="newPlayerName" type="text" placeholder="Enter player name" />
+      <div class="modal np-modal" role="dialog" aria-modal="true" aria-labelledby="npTitle">
+        <div class="np-top">
+          <button id="npBackBtn" class="np-back" type="button" aria-label="Back">←</button>
+          <div id="npTitle" class="np-title">NEW PLAYER</div>
+          <button id="npCloseBtn" class="np-close" type="button" aria-label="Close">×</button>
+        </div>
+
+        <div class="modal-body np-body">
+          <div class="np-field">
+            <div class="np-label">FIRST NAME</div>
+            <input id="newPlayerFirst" type="text" autocomplete="given-name" placeholder="e.g. Luke" />
+          </div>
+
+          <div class="np-field np-nick">
+            <div class="np-label">NICKNAME</div>
+            <div class="np-nick-row">
+              <input id="newPlayerNickname" type="text" autocomplete="off" placeholder="e.g. The Nuke" />
+              <button id="genNicknameBtn" class="np-gen" type="button" aria-label="Generate nickname">⟳</button>
+            </div>
+          </div>
+
+          <div class="np-field">
+            <div class="np-label">LAST NAME</div>
+            <input id="newPlayerLast" type="text" autocomplete="family-name" placeholder="e.g. Littler" />
+          </div>
+
+          <div class="np-field">
+            <div class="np-label">INITIALS</div>
+            <input id="newPlayerInitials" type="text" inputmode="text" maxlength="3" autocomplete="off" placeholder="e.g. LL" />
           </div>
         </div>
-        <div class="modal-footer">
-          <button id="cancelAddPlayerBtn" class="btn" type="button">Cancel</button>
-          <button id="savePlayerBtn" class="btn primary" type="button">Save Player</button>
+
+        <div class="modal-footer np-footer">
+          <button id="savePlayerBtn" class="btn np-save" type="button" disabled>💾 SAVE PLAYER</button>
         </div>
       </div>
     </div>
@@ -3241,34 +3428,137 @@ body[data-page="game"] #floatHead{
 </div>
 <!-- Admin Hub Modal -->
 <div id="adminHubModal" class="modal-backdrop hidden">
-  <div class="modal">
-    <h3>Admin Hub</h3>
-    <div class="modal-body">
-      <div class="column" style="align-items:center; gap:8px;">
-        <button id="openAllGamesBtn" class="btn" style="width:min(360px,92%);">All Games</button>
-        <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
+  <div class="modal menu-modal admin-menu-modal">
+    <div class="menu-modal-header">
+      <button id="closeAdminHubBtn" class="icon-btn" type="button" aria-label="Back">
+        <span style="font-size:18px;line-height:1;">←</span>
+      </button>
 
-        <button id="openHsLeagueAdmin"   class="btn" style="width:min(360px,92%);">League High Scores</button>
-        <button id="openHsPracticeAdmin" class="btn" style="width:min(360px,92%);">Practice High Scores</button>
-        <button id="openLeagueLowsAdmin" class="btn" style="width:min(360px,92%);">League Low Scores</button>
-        <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
+      <div class="menu-modal-title">
+        <div class="menu-modal-title-text">ADMIN HUB</div>
+        <div class="menu-modal-title-sub">Tools & maintenance</div>
+      </div>
 
-        <button id="openSavedPlayersAdminBtn" class="btn" style="width:min(360px,92%);">Saved Player Admin</button>
+      <button id="closeAdminHubBtnX" class="icon-btn" type="button" aria-label="Close">
+        <span style="font-size:18px;line-height:1;">✕</span>
+      </button>
+    </div>
 
-        <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
-        
-        <button id="openPBGRAdminBtn" class="btn" style="width:min(360px,92%);">PB / GR Admin</button>
+    <div class="menu-modal-body">
+      <div class="menu-section-label">GAMES</div>
+      <div class="menu-list">
+        <button id="openAllGamesBtn" class="menu-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M3 7h18"/><path d="M6 7v14"/><path d="M18 7v14"/><path d="M6 11h12"/><path d="M6 15h12"/><path d="M6 19h12"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">All Games</span>
+            <span class="menu-row-sub">Browse recent matches</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
+      </div>
 
-        <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
+      <div class="menu-section-label">LEAGUE</div>
+      <div class="menu-list">
+        <button id="openHsLeagueAdmin" class="menu-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M7 21h10"/><path d="M9 17h6"/><path d="M8 4h8l-1 6H9z"/><path d="M9 10v7"/><path d="M15 10v7"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">League High Scores</span>
+            <span class="menu-row-sub">Official leaderboard maintenance</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
 
-        <button id="openDataAdminBtn" class="btn" style="width:min(360px,92%);">DATA</button>
+        <button id="openHsPracticeAdmin" class="menu-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M12 2v5"/><path d="M6 7h12"/><path d="M7 7l2 15h6l2-15"/><path d="M9 12h6"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">Practice High Scores</span>
+            <span class="menu-row-sub">Non-official leaderboard</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
 
-        <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
-        <button id="fixDuplicatesBtn" class="btn danger" style="width:min(360px,92%);">Remove Duplicate High Scores</button>
+        <button id="openLeagueLowsAdmin" class="menu-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M4 17l6-6 4 4 6-8"/><path d="M20 7v6h-6"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">League Low Scores</span>
+            <span class="menu-row-sub">Official low-score table</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
+      </div>
 
-        <hr style="width:min(360px,92%); border:0; border-top:1px solid #23284a; margin:6px 0;">
+      <div class="menu-section-label">PLAYERS</div>
+      <div class="menu-list">
+        <button id="openSavedPlayersAdminBtn" class="menu-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M20 21v-2a4 4 0 0 0-3-3.8"/><path d="M4 21v-2a4 4 0 0 1 3-3.8"/><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">Saved Player Admin</span>
+            <span class="menu-row-sub">Edit names, initials & nicknames</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
 
-        <button id="closeAdminHubBtn" class="btn" type="button" style="width:min(360px,92%);">Return</button>
+        <button id="openPBGRAdminBtn" class="menu-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M12 2l3 7h7l-5.5 4 2 7-6.5-4.5L5.5 20l2-7L2 9h7z"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">PB / GR Admin</span>
+            <span class="menu-row-sub">Personal best & game record tools</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
+      </div>
+
+      <div class="menu-section-label">DATA</div>
+      <div class="menu-list">
+        <button id="openDataAdminBtn" class="menu-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M4 4h16v16H4z"/><path d="M8 8h8"/><path d="M8 12h8"/><path d="M8 16h8"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">DATA</span>
+            <span class="menu-row-sub">Dashboards & metrics</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
+
+        <button id="fixDuplicatesBtn" class="menu-row danger-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.3h3.4L22 21H2z"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">Remove Duplicate High Scores</span>
+            <span class="menu-row-sub">Cleanup helper (use carefully)</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
       </div>
     </div>
   </div>
@@ -3821,6 +4111,7 @@ function openAdminHub(){
   const btnLLS   = document.getElementById('openLeagueLowsAdmin');
   const btnSave  = document.getElementById('openSavedPlayersAdminBtn');
   const btnClose = document.getElementById('closeAdminHubBtn');
+  const btnCloseX = document.getElementById('closeAdminHubBtnX');
   const btnFix   = document.getElementById('fixDuplicatesBtn');
   const btnPBGR  = document.getElementById('openPBGRAdminBtn');
 
@@ -3846,6 +4137,7 @@ if (btnSave) btnSave.onclick = ()=>{ hub.classList.add('hidden'); openSavedPlaye
   };
 
   if (btnClose) btnClose.onclick = ()=>{ hub.classList.add('hidden'); try{ window.__sqNavContext = null; }catch(_){} };
+  if (btnCloseX) btnCloseX.onclick = ()=>{ hub.classList.add('hidden'); try{ window.__sqNavContext = null; }catch(_){} };
 }
 
 // Export Admin Hub opener for any callers that use window.openAdminHub
@@ -4425,6 +4717,19 @@ function __sqComputeInitialsFromName(name){
   const b = parts[parts.length-1].toUpperCase().slice(0,1);
   return (a+b).trim();
 }
+function __sqComputeInitials(first, last){
+  const f0 = String(first||'').trim();
+  const l0 = String(last||'').trim();
+  const f = f0.replace(/[^A-Za-z0-9]/g,'');
+  const l = l0.replace(/[^A-Za-z0-9]/g,'');
+  if (f && l){
+    return (f[0] + l[0]).toUpperCase();
+  }
+  if (f){
+    return f.toUpperCase().slice(0, Math.min(2, f.length));
+  }
+  return __sqComputeInitialsFromName((f0 + (l0 ? ' ' + l0 : '')).trim());
+}
 function __sqNormalizeInitials(init, nameFallback){
   const raw = String(init||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
   if (raw) return raw.slice(0,3);
@@ -4551,7 +4856,7 @@ async function renderSavedPlayersAdmin(){
 
   const thead = document.createElement('thead');
   const hr = document.createElement('tr');
-  ['Player Name','Initials','Actions'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; hr.appendChild(th); });
+  ['First','Nickname','Last','Initials','Actions'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; hr.appendChild(th); });
   thead.appendChild(hr);
   table.appendChild(thead);
 
@@ -4559,20 +4864,40 @@ async function renderSavedPlayersAdmin(){
 
   players.forEach(p=>{
     const tr = document.createElement('tr');
-    const nm = String((p && p.name) ? p.name : '').trim();
+    const nmOld = String((p && p.name) ? p.name : '').trim();
     const pid = (p && p.id) ? p.id : null;
 
-    const nameTd = document.createElement('td');
-    const nameIn = document.createElement('input');
-    nameIn.type = 'text';
-    nameIn.value = nm;
-    nameIn.style.width = '100%';
-    nameTd.appendChild(nameIn);
+    const firstTd = document.createElement('td');
+    const firstIn = document.createElement('input');
+    firstIn.type='text';
+    firstIn.value = String(p?.first_name || (nmOld.split(' ')[0]||'')).trim();
+    firstIn.style.width='100%';
+    firstTd.appendChild(firstIn);
+
+    const nickTd = document.createElement('td');
+    const nickIn = document.createElement('input');
+    nickIn.type='text';
+    nickIn.value = String(p?.nickname || '').trim();
+    nickIn.style.width='100%';
+    nickTd.appendChild(nickIn);
+
+    const lastTd = document.createElement('td');
+    const lastIn = document.createElement('input');
+    lastIn.type='text';
+    // Best-effort derive last name from existing full name if column missing
+    const derivedLast = (()=>{
+      const parts = nmOld.split(' ').filter(Boolean);
+      if (parts.length <= 1) return '';
+      return parts.slice(1).join(' ');
+    })();
+    lastIn.value = String(p?.last_name || derivedLast).trim();
+    lastIn.style.width='100%';
+    lastTd.appendChild(lastIn);
 
     const initTd = document.createElement('td');
     const initIn = document.createElement('input');
-    initIn.type = 'text';
-    initIn.value = __sqNormalizeInitials(p && p.initials ? p.initials : '', nm);
+    initIn.type='text';
+    initIn.value = __sqNormalizeInitials(p?.initials ? p.initials : '', nmOld);
     initIn.maxLength = 3;
     initIn.style.width = '70px';
     initIn.style.textTransform = 'uppercase';
@@ -4590,57 +4915,76 @@ async function renderSavedPlayersAdmin(){
     actTd.append(saveBtn, document.createTextNode(' '), delBtn);
 
     saveBtn.onclick = async ()=>{
-      const newName = String(nameIn.value||'').trim();
-      const newInit = __sqNormalizeInitials(initIn.value, newName || nm);
-      if (!newName){ toast('Name required'); return; }
-      if (!nm){ toast('Invalid player'); return; }
-      try {
-        if (newName !== nm){
-          if (pid) { await cloudRenamePlayerById(pid, nm, newName); } else { await cloudRenamePlayer(nm, newName); }
-          // Keep the running game stable: rename in-memory + persisted local state
-          renamePlayerInLocalState(nm, newName);
-          try { if (typeof window.__sqRememberPlayerRename==='function') window.__sqRememberPlayerRename(nm, newName); } catch(_) {}
-          try { if (typeof window.buildStartTicker==='function') window.buildStartTicker(); } catch(_) {}
-          try { if (typeof window.__sqRefreshRecentMatchesTicker==='function') window.__sqRefreshRecentMatchesTicker(); } catch(_) {}
+      const first = String(firstIn.value||'').trim();
+      const last  = String(lastIn.value||'').trim();
+      const nick  = String(nickIn.value||'').trim();
+      if (!first){ toast('First name required'); return; }
+
+      // IMPORTANT: we do NOT rename `players.name` here.
+      // Name is a legacy key used across games/history; changing it risks data integrity and can violate unique constraints.
+      const init = __sqNormalizeInitials(initIn.value, __sqBuildFullName(first, last));
+
+      try{
+        let id = pid;
+        if (!id && nmOld){
+          const key = await cloudResolvePlayerKeyByName(nmOld);
+          id = key && key.id ? key.id : null;
         }
-        // Update initials (no-op if column not deployed yet)
-        try { await cloudUpdatePlayerInitials(pid ? { id: pid, name: (newName || nm) } : (newName || nm), newInit); } catch(_) {}
-        try { await syncSavedPlayersFromCloud(); } catch(_) {}
-        try { document.dispatchEvent(new Event('sq:savedPlayersUpdated')); } catch(_) {}
+        if (!id){
+          toast('Save failed: missing player id');
+          return;
+        }
+
+        // Cloud-first: update profile fields only
+        await cloudUpdatePlayerProfile({ id, name: nmOld }, {
+          first_name: first,
+          last_name: last,
+          nickname: nick,
+          initials: init
+        });
+
+        // Ensure initials are set even on older deployments
+        try { await cloudUpdatePlayerInitials({ id, name: nmOld }, init); } catch(_){}
+
+        try { await syncSavedPlayersFromCloud(); } catch(_){}
+        try { document.dispatchEvent(new Event('sq:savedPlayersUpdated')); } catch(_){}
         toast('Saved');
         await renderSavedPlayersAdmin();
-      } catch(e){
+      }catch(e){
         console.error(e);
-        toast('Save failed');
+        // Handle uniqueness conflict cleanly (e.g. if DB still enforces something unexpected)
+        const msg = (e && (e.message || e.details)) ? String(e.message || e.details) : '';
+        if (/duplicate key|unique/i.test(msg)) toast('Save failed: name already exists');
+        else toast('Save failed');
       }
     };
 
     delBtn.onclick = async ()=>{
-      if (!nm){ toast('Invalid player'); return; }
+      if (!nmOld){ toast('Invalid player'); return; }
 
       // Safety: don’t delete a player who’s currently in an active game/match (would corrupt indices).
-      const inCurrent = (state && Array.isArray(state.players)) ? state.players.some(pl => pl && _normName(pl.name) === _normName(nm)) : false;
+      const inCurrent = (state && Array.isArray(state.players)) ? state.players.some(pl => pl && _normName(pl.name) === _normName(nmOld)) : false;
       const gameStarted = !!(state && ((state.currentRound||0) > 0 || (state.history && state.history.length)));
       if (inCurrent && gameStarted){
         toast('Finish/reset the current game before deleting this player.');
         return;
       }
 
-      if (!confirm(`Delete ${nm}?`)) return;
-      try {
-        await cloudDeletePlayer(pid ? { id: pid, name: nm } : nm);
-        removePlayerFromLocalCache(nm);
+      if (!confirm(`Delete ${nmOld}?`)) return;
+      try{
+        await cloudDeletePlayer(pid ? { id: pid, name: nmOld } : nmOld);
+        removePlayerFromLocalCache(nmOld);
         try { await syncSavedPlayersFromCloud(); } catch(_) {}
         try { document.dispatchEvent(new Event('sq:savedPlayersUpdated')); } catch(_) {}
         toast('Deleted');
         await renderSavedPlayersAdmin();
-      } catch(e){
+      }catch(e){
         console.error(e);
         toast('Delete failed');
       }
     };
 
-    tr.append(nameTd, initTd, actTd);
+    tr.append(firstTd, nickTd, lastTd, initTd, actTd);
     tbody.appendChild(tr);
   });
 
@@ -5257,19 +5601,64 @@ async function cloudRenamePlayer(oldName, newName){
 // Update player profile (MOT2.2): rename-only shim.
 // Your Supabase schema (players) appears to be name-only.
 // Keeping this function prevents older UI code from breaking if it still calls it.
+
 async function cloudUpdatePlayerProfile(playerOrName, profile){
   const obj = (playerOrName && typeof playerOrName === 'object') ? playerOrName : null;
-  const oldName = String(obj ? (obj.name||'') : (playerOrName||'' )).trim();
-  const newName = String((profile && profile.name) ? profile.name : oldName).trim();
-  if (!oldName) return null;
-  if (newName && newName !== oldName){
-    await cloudRenamePlayer(oldName, newName);
+  const keyName = String(obj ? (obj.name||'') : (playerOrName||'')).trim();
+  const keyId   = String(obj ? (obj.id||'')   : '').trim();
+  const p = (profile && typeof profile === 'object') ? profile : {};
+
+  if (!keyName && !keyId) return null;
+
+  // Build payload (only include defined keys)
+  const payload = {};
+  if (p.first_name != null) payload.first_name = String(p.first_name||'').trim();
+  if (p.last_name  != null) payload.last_name  = String(p.last_name ||'').trim();
+  if (p.nickname   != null) payload.nickname   = String(p.nickname  ||'').trim();
+  if (p.initials   != null) payload.initials   = __sqNormalizeInitials(String(p.initials||''), (p.name||keyName));
+
+  // Optional name update (normally handled via rename RPC first)
+  if (p.name != null){
+    const nm = String(p.name||'').trim();
+    if (nm) payload.name = nm;
   }
-  return null;
+
+  if (!Object.keys(payload).length) return null;
+
+  try{
+    let q = sb.from(TABLE_PLAYERS).update(payload);
+    if (keyId) q = q.eq('id', keyId);
+    else q = q.eq('name', keyName);
+
+    const { data, error } = await q.select('id,name,first_name,last_name,nickname,initials').maybeSingle();
+    if (error) { markCloudError(error); throw error; }
+    markCloudOk();
+    return data || null;
+  }catch(e){
+    // If some columns don't exist on older deployments, fall back to safe minimal update.
+    const msg  = String(e?.message || e || '');
+    const code = String(e?.code || '');
+    const missing = (code === '42703') || /column .* does not exist/i.test(msg);
+    if (!missing) throw e;
+
+    const fallback = {};
+    if (payload.initials != null) fallback.initials = payload.initials;
+    if (payload.name != null)     fallback.name     = payload.name;
+    if (!Object.keys(fallback).length) return null;
+
+    const q2 = keyId
+      ? sb.from(TABLE_PLAYERS).update(fallback).eq('id', keyId)
+      : sb.from(TABLE_PLAYERS).update(fallback).eq('name', keyName);
+    const { data, error } = await q2.select('id,name,initials').maybeSingle();
+    if (error) { markCloudError(error); throw error; }
+    markCloudOk();
+    return data || null;
+  }
 }
 
 
 // Game Complete modal hierarchy tweak (title + big result + smaller standings)
+
 (function(){
   if (window.__gameCompleteModalPatch) return;
   window.__gameCompleteModalPatch = true;
@@ -6043,8 +6432,11 @@ function wireTopRowButtons(){
       input.focus(); input.select();
     }
     function grant(){
+      window.__sqAdminAuthed = true;
       close();
-      if (typeof window.openAdminHub === 'function') window.openAdminHub();
+      // Call the ungated hub if available to avoid recursion
+      if (typeof window.__openAdminHubUnsafe === 'function') window.__openAdminHubUnsafe();
+      else if (typeof window.openAdminHub === 'function') window.openAdminHub();
       else if (typeof openAdminHub === 'function') openAdminHub();
     }
     function submit(){
@@ -6069,6 +6461,51 @@ function wireTopRowButtons(){
   }
     // Export for other wiring (e.g. start-screen Admin button)
     window.openAdminPasswordModal = openAdminPasswordModal;
+
+// Ensure ALL admin entrypoints are password-gated (including any legacy buttons calling openAdminHub directly)
+(function(){
+  if (window.__sqAdminGateWrapped) return;
+  window.__sqAdminGateWrapped = true;
+  if (window.__sqAdminAuthed == null) window.__sqAdminAuthed = false;
+
+  function tryWrap(){
+    if (typeof window.openAdminPasswordModal !== 'function') return false;
+    if (typeof window.openAdminHub !== 'function') return false;
+    if (window.openAdminHub.__sqIsGated) return true;
+
+    const unsafe = window.openAdminHub;
+    window.__openAdminHubUnsafe = unsafe;
+
+    window.openAdminHub = function(){
+      if (window.__sqAdminAuthed) return unsafe();
+      return window.openAdminPasswordModal();
+    };
+    window.openAdminHub.__sqIsGated = true;
+
+    // Capture-click safety net (covers markup onclick + nested icons)
+    document.addEventListener('click', (e)=>{
+      const el = e.target && e.target.closest ? e.target.closest('#adminBtn,#adminCodeBtn,button,a') : null;
+      if (!el) return;
+      const id = (el.id||'').toLowerCase();
+      const label = String(el.textContent||'').trim().toLowerCase();
+      const isAdmin = (id==='adminbtn' || id==='admincodebtn' || label==='admin' || label==='admin hub' || label==='admin code');
+      if (!isAdmin) return;
+      if (!window.__sqAdminAuthed){
+        e.preventDefault();
+        e.stopPropagation();
+        window.openAdminPasswordModal();
+      }
+    }, true);
+    return true;
+  }
+
+  let tries = 0;
+  const iv = setInterval(()=>{
+    tries++;
+    if (tryWrap() || tries > 30) clearInterval(iv);
+  }, 200);
+})();
+
 
   removeStandaloneLabel();
   ensureButton();
@@ -6861,6 +7298,7 @@ function show(id){
   const fh=byId('floatHead');
   if(fh) fh.classList.toggle('hidden', id!=='game');
   buildPad();
+  if (id === 'players') { try{ __msUpdateStartEnabled(); }catch(_){} }
   if (id === 'details') {
     try {
       if (typeof window.buildStartTicker === 'function') { window.buildStartTicker(); }
@@ -7108,7 +7546,7 @@ async function cloudListPlayers(){
   try{
     const r1 = await sb
       .from(TABLE_PLAYERS)
-      .select('id, name, initials, created_at')
+      .select('id, name, initials, nickname, first_name, last_name, created_at')
       .order('name');
     if (r1.error) throw r1.error;
     data = r1.data || [];
@@ -7147,30 +7585,53 @@ async function cloudListPlayers(){
 
 
 // Create / update a player by name only (no password)
-async function cloudCreatePlayer(name){
+async function cloudCreatePlayer(name, profile){
   const nm = String(name||'').trim();
-  const initials = __sqNormalizeInitials('', nm);
-  // Prefer writing initials if supported; fall back silently if column doesn't exist yet.
+  const p = (profile && typeof profile === 'object') ? profile : {};
+  const initials = __sqNormalizeInitials(String(p.initials||''), nm);
+  const row = {
+    name: nm,
+    initials,
+    first_name: (p.first_name != null) ? String(p.first_name||'').trim() : undefined,
+    last_name:  (p.last_name  != null) ? String(p.last_name ||'').trim() : undefined,
+    nickname:   (p.nickname   != null) ? String(p.nickname  ||'').trim() : undefined,
+  };
+
+  // Try full schema; fall back if columns missing.
   try{
     const { error } = await sb
       .from(TABLE_PLAYERS)
-      .upsert({ name: nm, initials }, { onConflict: 'name' });
+      .upsert(row, { onConflict: 'name' });
     if (error) throw error;
     markCloudOk();
     return;
   }catch(e1){
     const msg = String(e1?.message || e1 || '');
     const code = String(e1?.code || '');
-    const isMissingInitials = (code === '42703') || /initials/i.test(msg);
-    if (!isMissingInitials){
+    const isMissingCols = (code === '42703') || /(initials|first_name|last_name|nickname)/i.test(msg);
+    if (!isMissingCols){
       markCloudError(e1);
       throw e1;
     }
-    const { error } = await sb
-      .from(TABLE_PLAYERS)
-      .upsert({ name: nm }, { onConflict: 'name' });
-    if (error){ markCloudError(error); throw error; }
-    markCloudOk();
+    // Minimal schema fallback
+    try{
+      const { error } = await sb
+        .from(TABLE_PLAYERS)
+        .upsert({ name: nm, initials }, { onConflict: 'name' });
+      if (error) throw error;
+      markCloudOk();
+      return;
+    }catch(e2){
+      const msg2 = String(e2?.message || e2 || '');
+      const code2 = String(e2?.code || '');
+      const isMissingInitials = (code2 === '42703') || /initials/i.test(msg2);
+      if (!isMissingInitials){ markCloudError(e2); throw e2; }
+      const { error } = await sb
+        .from(TABLE_PLAYERS)
+        .upsert({ name: nm }, { onConflict: 'name' });
+      if (error){ markCloudError(error); throw error; }
+      markCloudOk();
+    }
   }
 }
 
@@ -8370,7 +8831,24 @@ function __msMinPlayersRequired(){
   return (mode === 'practice') ? 1 : 2;
 }
 
+
+function __msApplyModeStyling(){
+  const mode = (window.__sqSelectedMode || 'match');
+  const startBtn = byId('startMatchBtn');
+  const regBtn = byId('msRegisterPlayerBtn');
+
+  // Practice: remove Save New Player from this flow
+  if (regBtn) regBtn.style.display = (mode === 'practice') ? 'none' : '';
+
+  // Practice: blue primary CTA
+  if (startBtn) {
+    startBtn.classList.remove('ms-primary','ms-primary-blue','ms-primary-blueLight');
+    startBtn.classList.add(mode === 'practice' ? 'ms-primary-blue' : 'ms-primary');
+  }
+}
+
 function __msUpdateStartEnabled(){
+  try{ __msApplyModeStyling(); }catch(_){ }
   const n = __msValidPlayerCount();
   const startBtn = byId('startMatchBtn');
   const minP = __msMinPlayersRequired();
@@ -8442,6 +8920,19 @@ function __mlBuildGrid(){
 
 function __mlOpen(){
   if (!matchLengthModal) return;
+
+  const mode = (window.__sqSelectedMode || 'match');
+  if (mlStartBtn) {
+    if (mode === 'practice') {
+      mlStartBtn.className = 'btn ms-start ms-primary-blueLight practice-cta';
+      mlStartBtn.innerHTML = 'SELECT THROWING ORDER <span class="ms-arrow">▶</span>';
+    } else {
+      mlStartBtn.className = 'btn good big';
+      mlStartBtn.textContent = 'Start Match ▶';
+    }
+    mlStartBtn.disabled = true;
+  }
+
   __mlBuildGrid();
   matchLengthModal.classList.remove('hidden');
 }
@@ -8581,15 +9072,79 @@ document.addEventListener('DOMContentLoaded', function(){
   }catch(_){}
 });
 
-// Add / Save Player – name only, no PIN.
+
+
+// Nickname generator pool (non-pro style, darts vibe) — no repeats until exhausted.
+const __sqNicknamePool = ["The Quiet Checkout", "Captain Double", "The Split Fixer", "Bullseye Bandit", "The Oche Operator", "Double Dealer", "Treble Tactician", "The Wire Whisperer", "The Flight Surgeon", "The Dart Doctor", "Checkout Chief", "The Board Whisper", "The Angle Artist", "The Scoring Sentry", "The Bull Butler", "The Nickel Navigator", "The Treble Clerk", "The Double Clerk", "The Oche Enforcer", "The Marker", "The Point Professor", "The Segment Sniper", "The Ring Rattler", "The 180 Tease", "The Inside Man", "Outer Bull Baron", "Inner Bull Boss", "The Finishing Foreman", "The Calm Closer", "The Rhythm Rack", "The Aim Assistant", "The Line Judge", "The Split Specialist", "The Lane Lifter", "The Dart Librarian", "The Checkout Courier", "The Trouble Trebler", "The Double Dispatcher", "The Oche Accountant", "The Treble Broker", "The Scoring Steward", "The Board Barista", "The Flight Captain", "The Wire Walker", "The Calm Calculator", "The Segment Surgeon", "The Bull Runner", "The Finish Inspector", "The Tempo Technician", "The Pressure Plumber"];
+let __sqNicknameBag = [];
+function __sqRefillNicknameBag(){
+  __sqNicknameBag = Array.isArray(__sqNicknamePool) ? __sqNicknamePool.slice() : [];
+  // Fisher–Yates
+  for (let i = __sqNicknameBag.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = __sqNicknameBag[i];
+    __sqNicknameBag[i] = __sqNicknameBag[j];
+    __sqNicknameBag[j] = tmp;
+  }
+}
+function __sqPickNickname(){
+  if (!__sqNicknameBag.length) __sqRefillNicknameBag();
+  return __sqNicknameBag.pop() || '';
+}
+function __sqAutoInitials(first, last){
+  return __sqComputeInitials(first, last);
+}
+function __sqBuildFullName(first, last){
+  const f = String(first||'').trim();
+  const l = String(last||'').trim();
+  return (f + (l ? ' ' + l : '')).trim();
+}
+
+// Add / Save Player – now supports First/Last/Initials/Nickname. (No PIN.)
 // index==0 means "register only" (do not inject into any row).
 async function showAddPlayerDialog(index){
   const modal = byId('addPlayerModal');
   if (!modal) { toast('Add Player modal missing'); return; }
 
-  let chosenName = '';
+  // Ensure cloud is ready — players should not diverge device-locally.
+  try{ if (typeof ensureCloudInit === 'function') ensureCloudInit(); }catch(_){ }
 
-  function finish(msg){
+  const firstEl = byId('newPlayerFirst');
+  const lastEl  = byId('newPlayerLast');
+  const initEl  = byId('newPlayerInitials');
+  const nickEl  = byId('newPlayerNickname');
+  const genBtn  = byId('genNicknameBtn');
+  const saveBtn = byId('savePlayerBtn');
+  const backBtn = byId('npBackBtn');
+  const closeBtn= byId('npCloseBtn');
+
+  let chosenName = '';
+  let manualInitials = false;
+
+  const setSaveEnabled = () => {
+    const ok = !!String(firstEl?.value || '').trim();
+    const cloudOk = !!(window.sb && typeof window.sb.from === 'function');
+    if (saveBtn) saveBtn.disabled = !(ok && cloudOk);
+  };
+
+  const maybeAutoInitials = () => {
+    if (!initEl) return;
+    if (manualInitials) return;
+    const val = __sqAutoInitials(firstEl?.value, lastEl?.value);
+    initEl.value = val || '';
+  };
+
+  const reset = () => {
+    if (firstEl) firstEl.value = '';
+    if (lastEl)  lastEl.value  = '';
+    if (nickEl)  nickEl.value  = __sqPickNickname();
+    if (initEl)  initEl.value  = '';
+    manualInitials = false;
+    maybeAutoInitials();
+    setSaveEnabled();
+  };
+
+  const finish = (msg) => {
     const idx = parseInt(modal.dataset.playerIndex || '0', 10) || 0;
 
     // idx>0 => legacy: inject into old #psPlayerFields row (if it exists)
@@ -8601,53 +9156,70 @@ async function showAddPlayerDialog(index){
       if (input) input.value = chosenName || '';
     }
 
-    // close + reset
     modal.classList.add('hidden');
-    const nameEl = byId('newPlayerName');
-    if (nameEl) nameEl.value = '';
+    reset();
     toast(msg);
+  };
+
+  // Wire buttons (avoid stacking listeners)
+  if (backBtn)  backBtn.onclick  = () => { modal.classList.add('hidden'); reset(); };
+  if (closeBtn) closeBtn.onclick = () => { modal.classList.add('hidden'); reset(); };
+
+  if (genBtn && nickEl){
+    genBtn.onclick = () => {
+      nickEl.value = __sqPickNickname();
+    };
   }
 
-  const nameEl = byId('newPlayerName');
-  if (nameEl) nameEl.value = '';
+  if (initEl){
+    initEl.addEventListener('input', () => {
+      manualInitials = !!String(initEl.value||'').trim();
+      setSaveEnabled();
+    }, { passive:true });
+  }
+  if (firstEl){
+    firstEl.addEventListener('input', () => { setSaveEnabled(); maybeAutoInitials(); }, { passive:true });
+  }
+  if (lastEl){
+    lastEl.addEventListener('input', () => { maybeAutoInitials(); }, { passive:true });
+  }
 
+  // Open
   modal.dataset.playerIndex = index ? String(index) : '0';
   modal.classList.remove('hidden');
+  reset();
+  try{ firstEl?.focus(); }catch(_){ }
 
-  const saveBtn   = byId('savePlayerBtn');
-  const cancelBtn = byId('cancelAddPlayerBtn');
-
-  if (cancelBtn) cancelBtn.onclick = () => modal.classList.add('hidden');
-
+  // Save
   if (saveBtn) {
     saveBtn.onclick = async () => {
-      const newName = (nameEl?.value || '').trim();
-      if (!newName) { toast('Enter a player name'); return; }
+      const first = String(firstEl?.value || '').trim();
+      const last  = String(lastEl?.value  || '').trim();
+      if (!first){ toast('Enter a first name'); return; }
 
-      chosenName = newName;
+      const fullName = __sqBuildFullName(first, last);
+      const initials = __sqNormalizeInitials(String(initEl?.value || '').trim(), fullName);
+      const nickname = String(nickEl?.value || '').trim();
 
-      // Local cache
-      const arr = getSavedPlayers();
-      const idxExisting = arr.findIndex(p => p && p.name === newName);
-      if (idxExisting === -1) arr.push({ name: newName, initials: __sqNormalizeInitials('', newName), joinedAt: new Date().toISOString() });
-      else { arr[idxExisting].name = newName; arr[idxExisting].initials = __sqNormalizeInitials(arr[idxExisting].initials, newName); }
-      setSavedPlayers(arr);
-      populateSavedPlayersSelects();
+      chosenName = fullName;
 
-      // Supabase
       try {
-        await cloudCreatePlayer(newName);
+        await cloudCreatePlayer(fullName, { initials, nickname, first_name: first, last_name: last });
         await syncSavedPlayersFromCloud();
-        try{ populateSavedPlayersSelects(); }catch(_){}
-        try{ if (typeof window.buildStartTicker === 'function') window.buildStartTicker(); }catch(_){}
+        try{ populateSavedPlayersSelects(); }catch(_){ }
+        try{ if (typeof window.buildStartTicker === 'function') window.buildStartTicker(); }catch(_){ }
+        try{ document.dispatchEvent(new Event('sq:savedPlayersUpdated')); }catch(_){ }
       } catch (e) {
         console.error('cloudCreatePlayer failed', e);
+        toast('Save failed');
+        return;
       }
 
       finish('Player saved');
     };
   }
 }
+
 
 // Select a saved player for match.
 // index==0 => add to Match Setup list.
@@ -11947,7 +12519,8 @@ function showPlayerOrderDialog() {
   actions.className = 'to-actions';
 
   const startBtn = document.createElement('button');
-  startBtn.className = 'btn good to-start';
+  const __mode = (window.__sqSelectedMode || 'match');
+  startBtn.className = (__mode === 'practice') ? 'btn to-start to-blueLight practice-cta' : 'btn to-start';
   startBtn.type = 'button';
   startBtn.innerHTML = 'START GAME <span class="to-start-ic">▶</span>';
   startBtn.onclick = () => { overlay.remove(); startNewGame(true); };
@@ -22319,6 +22892,143 @@ render();
 // 2) Avoid redefining whole modals unless unavoidable.
 // 3) If a patch becomes permanent, merge it into core code and delete the patch.
 // 4) Patches should log once (not spam) when they fail.
+
+/* === PATCH v12.4.57: Admin button always requires password (no silent bypass) === */
+(function(){
+  try { window.__sqAdminAuthed = false; } catch(_){}
+
+  function openGate(){
+    if (typeof window.openAdminPasswordModal === 'function') return window.openAdminPasswordModal();
+    try { if (typeof toast === 'function') toast('Admin login unavailable'); } catch(_){}
+  }
+
+  function wire(){
+    const btn = document.getElementById('adminBtn') || document.getElementById('adminCodeBtn');
+    if (btn) btn.onclick = openGate;
+  }
+
+  // Wire now + keep wired if footer re-renders
+  try { wire(); } catch(_){}
+  try {
+    const mo = new MutationObserver(()=>{ try{ wire(); }catch(_){} });
+    mo.observe(document.body, { childList:true, subtree:true });
+  } catch(_){}
+
+  // Capture clicks on any admin entry element and force the gate
+  document.addEventListener('click', (e)=>{
+    const el = e.target && e.target.closest ? e.target.closest('#adminBtn,#adminCodeBtn,.adminLink') : null;
+    if (!el) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openGate();
+  }, true);
+})();
+
+
+/* === PATCH v12.4.58: Admin login always available (wire outside steppers) === */
+(function adminLoginAlways(){
+  const expected = (window.ADMIN_PASSWORD || 'hownowbrowncow');
+
+  if (window.__sqAdminAuthed == null) window.__sqAdminAuthed = false;
+
+  if (typeof window.openAdminPasswordModal !== 'function'){
+    window.openAdminPasswordModal = function openAdminPasswordModal(){
+      const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+      const modal   = document.createElement('div'); modal.className = 'modal';
+
+      const title = document.createElement('h3'); title.textContent = 'Admin Login';
+      const body  = document.createElement('div'); body.className = 'modal-body';
+
+      const label = document.createElement('label');
+      label.textContent = 'Enter password:';
+      label.className = 'muted';
+      label.style.display = 'block';
+      label.style.marginBottom = '6px';
+
+      const input = document.createElement('input');
+      input.type = 'password';
+      input.className = 'input';
+      input.autocomplete = 'current-password';
+      input.placeholder = 'Password';
+      input.style.minWidth = '220px';
+
+      body.append(label, input);
+
+      const footer = document.createElement('div'); footer.className = 'modal-footer';
+      const cancel = document.createElement('button'); cancel.className = 'btn';         cancel.textContent = 'Cancel';
+      const enter  = document.createElement('button'); enter.className  = 'btn primary'; enter.textContent  = 'Enter';
+
+      function close(){ overlay.remove(); }
+      function deny(){
+        if (typeof toast === 'function') toast('Incorrect password');
+        else alert('Incorrect password');
+        input.focus(); input.select();
+      }
+      function grant(){
+        window.__sqAdminAuthed = true;
+        close();
+        if (typeof window.__openAdminHubUnsafe === 'function') window.__openAdminHubUnsafe();
+        else if (typeof window.openAdminHub === 'function') window.openAdminHub();
+      }
+      function submit(){
+        const v = (input.value || '').trim();
+        if (!expected || v === expected) grant(); else deny();
+      }
+
+      cancel.onclick = close;
+      enter.onclick  = submit;
+      input.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') submit(); });
+
+      footer.append(cancel, enter);
+      modal.append(title, body, footer);
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+
+      modal.tabIndex = 0; modal.focus();
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+      overlay.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+
+      setTimeout(()=> input.focus(), 0);
+    };
+  }
+
+  function wire(){
+    const btn = document.getElementById('adminCodeBtn') || document.getElementById('adminBtn');
+    if (btn){
+      btn.onclick = (e)=>{ e?.preventDefault?.(); window.openAdminPasswordModal(); };
+    }
+
+    // Wrap hub if not already wrapped
+    if (typeof window.openAdminHub === 'function' && !window.openAdminHub.__sqIsGated){
+      const unsafe = window.openAdminHub;
+      window.__openAdminHubUnsafe = unsafe;
+      window.openAdminHub = function(){
+        if (window.__sqAdminAuthed) return unsafe();
+        return window.openAdminPasswordModal();
+      };
+      window.openAdminHub.__sqIsGated = true;
+    }
+
+    // Capture-click safety net
+    document.addEventListener('click', (e)=>{
+      const el = e.target && e.target.closest ? e.target.closest('#adminBtn,#adminCodeBtn,button,a') : null;
+      if (!el) return;
+      const id = (el.id||'').toLowerCase();
+      const label = String(el.textContent||'').trim().toLowerCase();
+      const isAdmin = (id==='adminbtn' || id==='admincodebtn' || label==='admin' || label==='admin hub');
+      if (!isAdmin) return;
+      if (!window.__sqAdminAuthed){
+        e.preventDefault();
+        e.stopPropagation();
+        window.openAdminPasswordModal();
+      }
+    }, true);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire);
+  else wire();
+})();
+
 </script>
 <!-- PB / GR Admin Modal -->
 <div id="pbgrAdminModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pbgrTitle">
