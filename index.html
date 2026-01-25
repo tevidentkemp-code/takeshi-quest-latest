@@ -2,21 +2,35 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23ff6a00'/%3E%3Ctext x='32' y='41' font-size='28' text-anchor='middle' font-family='Arial' fill='white'%3ESQ%3C/text%3E%3C/svg%3E" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Shateki Quest Scorer</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f1220'/%3E%3Cpath d='M22 12h24l-8 18h10L18 52l10-20H18z' fill='%23ff7a00'/%3E%3C/svg%3E" />
 
 
-<link rel=\"shortcut icon\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f1220'/%3E%3Cpath d='M22 12h24l-8 18h10L18 52l10-20H18z' fill='%23ff7a00'/%3E%3C/svg%3E\" />
 <!-- =====================================================================
      FILE MAP (MOT)
      1) <head>: meta, external libs, CSS
      2) <body>: screens + modals (static DOM)
-     3) Main <script>: state, UI, storage/cloud, event wiring, patches
-
-     Convention: use CTRL+F for "@JS:" / "@CSS:" / "@HTML:" / "@PATCH:" jump keys (see SQ NAV INDEX in main script)
      ===================================================================== -->
+<!-- =====================================================================
+     SQ AUDIT + INDEX
+     - Housekeeping:
+       • Removed duplicate favicon + invalid escaped shortcut icon tag
+       • Removed misleading commented "<script>:</script>" snippet (kept the real SQ NAV INDEX in main script)
+
+     - Jump points (approx line numbers):
+       • Select Game Mode UI: line 3391
+       • Match Setup UI: line 3189
+       • New Player Modal UI: line 2380
+       • Admin Hub UI: line 1182
+       • Saved Players Admin UI: line 3678
+       • Stats Progression chart: line 5965
+       • Target Hit % chart: line 22716
+
+     - Known issues to revisit:
+       • Target Hit % / Target Points % / DTB % bar rendering: currently parked if JS error resurfaces in some builds
+       • Supabase rename/merge conflicts: protect against duplicate-name unique constraint in admin rename flow
+===================================================================== -->
 <!-- Supabase JS v2 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -1255,6 +1269,80 @@ body[data-page="game"] #gameScrollGate{
   .hs-table th, .hs-table td{ padding:.5rem .5rem; border-bottom:1px dashed #23284a; }
   .hs-table th{ text-align:left; color:#cfd3ee; }
   .hs-table th .thSub{ display:block; font-size:.72rem; opacity:.85; font-weight:500; margin-top:2px; }
+
+/* ===== SQ Table (modern league-style) ===== */
+.sqTableWrap{ width:100%; }
+table.sq-table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+  border-radius:14px;
+  overflow:hidden;
+  background: rgba(255,255,255,0.03);
+  border:1px solid rgba(255,255,255,0.08);
+}
+table.sq-table thead th{
+  text-align:left;
+  padding:12px 14px;
+  font-size:.72rem;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color: rgba(255,255,255,0.55);
+  background: rgba(255,255,255,0.02);
+}
+table.sq-table tbody td{
+  padding:12px 14px;
+  border-top:1px solid rgba(255,255,255,0.07);
+  font-size:.95rem;
+  color: rgba(255,255,255,0.88);
+  vertical-align:middle;
+}
+table.sq-table tbody tr:hover{
+  background: rgba(255,255,255,0.04);
+}
+table.sq-table td.rank{
+  width:56px;
+  font-weight:800;
+  color: var(--sqOrange, #ff7a1a);
+}
+table.sq-table td.num, table.sq-table th.num{ text-align:right; }
+table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
+.sqTopRightToggles{ display:flex; gap:8px; align-items:center; }
+.sqPill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:7px 12px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.03);
+  color: rgba(255,255,255,0.78);
+  font-weight:700;
+  font-size:.78rem;
+  letter-spacing:.05em;
+  cursor:pointer;
+  user-select:none;
+}
+.sqPill.isActive{
+  border-color: rgba(255,122,26,0.55);
+  background: rgba(255,122,26,0.10);
+  color: rgba(255,255,255,0.95);
+}
+
+.sq-lm-headrow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin: 6px 0 12px;
+}
+.sqTinyHint{
+  margin-top:10px;
+  font-size:.82rem;
+  color: rgba(255,255,255,0.55);
+}
+
+
   .hs-table th .thSub{ display:block; font-size:.72rem; opacity:.85; font-weight:600; }
 
 /* >>> PATCH:hs-league-layout START — tidy High Score League columns */
@@ -2309,6 +2397,7 @@ body[data-page="game"] #gameScrollGate{
   color: rgba(230,232,255,.75);
   font-weight: 800;
   letter-spacing: .06em;
+  font-size: 1rem;
 }
 
 /* ===== @CSS:MATCH-LENGTH | modal ===== */
@@ -3422,7 +3511,8 @@ body[data-page="game"] #floatHead{
     </div>
 
     <div class="modal-footer ml-footer">
-      <button id="mlStartBtn" class="btn good big" type="button" disabled>Start Match ▶</button>
+      <!-- Styled to match Match Setup CTAs; label swaps via JS based on mode -->
+      <button id="mlStartBtn" class="btn ms-start ms-primary" type="button" disabled>THROW ORDER <span class="ms-arrow">▶</span></button>
     </div>
   </div>
 </div>
@@ -4743,6 +4833,36 @@ function __sqFindSavedPlayerMetaByName(name){
     return arr.find(p => p && String(p.name||'').trim().toLowerCase() === key) || null;
   }catch(_){ return null; }
 }
+
+function __sqNameParts(name){
+  const s = String(name||'').trim();
+  if (!s) return { first:'', last:'' };
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return { first: parts[0] || '', last: '' };
+  return { first: parts[0] || '', last: parts.slice(1).join(' ') };
+}
+
+function __sqPlayerPretty(p){
+  const nm = (p && p.name != null) ? String(p.name).trim() : '';
+  const parts = __sqNameParts(nm);
+  const first = String((p && p.first_name) || '').trim() || parts.first;
+  const last  = String((p && p.last_name)  || '').trim() || parts.last;
+  const nick  = String((p && p.nickname)   || '').trim();
+
+  let out = first || nm || '';
+  if (nick) out += ' "' + nick + '"';
+  if (last) out += (out ? ' ' : '') + last;
+
+  out = out.trim();
+  return out || nm || '';
+}
+
+function __sqPlayerOptionLabel(p){
+  const pretty = __sqPlayerPretty(p);
+  const ini = __sqNormalizeInitials(p && p.initials, (p && p.name) || pretty);
+  return ini ? (pretty + ' (' + ini + ')') : pretty;
+}
+
 function __sqHeaderLabelForPlayer(pl){
   const nm = pl && pl.name ? String(pl.name) : '';
   const init = pl && pl.initials ? String(pl.initials) : '';
@@ -5633,6 +5753,8 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
     const { data, error } = await q.select('id,name,first_name,last_name,nickname,initials').maybeSingle();
     if (error) { markCloudError(error); throw error; }
     markCloudOk();
+    await cloudRefreshPlayerDirectory(true);
+    window.dispatchEvent(new CustomEvent('sq:players-changed'));
     return data || null;
   }catch(e){
     // If some columns don't exist on older deployments, fall back to safe minimal update.
@@ -5655,6 +5777,115 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
     return data || null;
   }
 }
+
+/* ===== @CLOUD:PLAYER_DIRECTORY (game-wide display + cache) ===== */
+const TABLE_PLAYERS = 'players';
+const TABLE_PLAYERS_ARCHIVE = 'players_archive'; // create this table in Supabase (see notes)
+
+let _sqPlayerDir = { byId:{}, byName:{}, list:[], loadedAt:0 };
+
+function sqIsUuidLike(v){
+  return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.trim());
+}
+
+async function cloudRefreshPlayerDirectory(force=false){
+  if (!ensureCloudInit()) return _sqPlayerDir;
+
+  const now = Date.now();
+  if (!force && _sqPlayerDir.loadedAt && (now - _sqPlayerDir.loadedAt) < 30_000 && _sqPlayerDir.list?.length) return _sqPlayerDir;
+
+  try{
+    const sb = window.supabaseClient;
+    const { data, error } = await sb
+      .from(TABLE_PLAYERS)
+      .select('id,name,first_name,last_name,initials,nickname,created_at,deleted_at')
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+
+    const list = (data || []).filter(p => !p?.deleted_at);
+
+    const byId = {};
+    const byName = {};
+    for (const p of list){
+      if (p?.id) byId[p.id] = p;
+      if (p?.name) byName[String(p.name).trim().toLowerCase()] = p;
+    }
+
+    _sqPlayerDir = { byId, byName, list, loadedAt: now };
+  }catch(e){
+    console.warn('[SQ] player directory refresh failed:', e?.message || e);
+  }
+
+  return _sqPlayerDir;
+}
+
+function sqFormatPlayerLabelFromProfile(p){
+  if (!p) return '';
+  const first = (p.first_name || '').trim();
+  const last  = (p.last_name || '').trim();
+  const nick  = (p.nickname || '').trim();
+  const baseName = (p.name || '').trim();
+
+  // Prefer: First "Nickname" Last, else fallback to name
+  if (first){
+    if (nick && last) return `${first} "${nick}" ${last}`.trim();
+    if (nick) return `${first} "${nick}"`.trim();
+    if (last) return `${first} ${last}`.trim();
+    return first;
+  }
+
+  if (baseName){
+    if (nick) return `${baseName} "${nick}"`.trim();
+    return baseName;
+  }
+
+  return '';
+}
+
+// Use anywhere UI needs a player label, even if history stores only `name`
+function sqDisplayNameForPlayerField(nameOrId){
+  if (nameOrId == null) return '';
+  const raw = String(nameOrId);
+  const t = raw.trim();
+  if (!t) return '';
+
+  const p =
+    (_sqPlayerDir.byId && _sqPlayerDir.byId[t]) ||
+    (_sqPlayerDir.byName && _sqPlayerDir.byName[t.toLowerCase()]);
+
+  return p ? sqFormatPlayerLabelFromProfile(p) : raw;
+}
+
+function sqInitialsForPlayerField(nameOrId, fallback=''){
+  if (nameOrId == null) return fallback;
+  const raw = String(nameOrId).trim();
+  if (!raw) return fallback;
+
+  const p =
+    (_sqPlayerDir.byId && _sqPlayerDir.byId[raw]) ||
+    (_sqPlayerDir.byName && _sqPlayerDir.byName[raw.toLowerCase()]);
+
+  return (p?.initials ? String(p.initials).trim() : fallback) || fallback;
+}
+
+async function cloudArchivePlayerSnapshot(playerRow, reason='admin_change'){
+  if (!ensureCloudInit() || !playerRow?.id) return;
+  try{
+    const sb = window.supabaseClient;
+    // best-effort archive (table may not exist yet)
+    await sb.from(TABLE_PLAYERS_ARCHIVE).insert({
+      player_id: playerRow.id,
+      player_name: playerRow.name || null,
+      reason,
+      payload: playerRow,
+      archived_at: new Date().toISOString(),
+    });
+  }catch(e){
+    // ignore (archive table not present / RLS / etc.)
+  }
+}
+
 
 
 // Game Complete modal hierarchy tweak (title + big result + smaller standings)
@@ -6628,7 +6859,6 @@ try {
 }
 
 // Keep table constants below
-const TABLE_PLAYERS = "players";
 // View/table that lists every player's game across Official + Practice.
 const TABLE_PLAYER_GAMES = 'player_games_union';
 const TABLE_HS_LEAGUE = "high_scores";
@@ -7546,7 +7776,8 @@ async function cloudListPlayers(){
   try{
     const r1 = await sb
       .from(TABLE_PLAYERS)
-      .select('id, name, initials, nickname, first_name, last_name, created_at')
+      .select('id, name, initials, nickname, first_name, last_name, created_at, deleted_at')
+      .is('deleted_at', null)
       .order('name');
     if (r1.error) throw r1.error;
     data = r1.data || [];
@@ -7555,8 +7786,8 @@ async function cloudListPlayers(){
     // Column may not exist yet on some deployments; fall back to the minimal schema.
     const msg = String(e1?.message || e1 || '');
     const code = String(e1?.code || '');
-    const isMissingInitials = (code === '42703') || /initials/i.test(msg);
-    if (!isMissingInitials){
+    const isSchemaMismatch = (code === '42703') || /(initials|deleted_at|nickname|first_name|last_name)/i.test(msg);
+    if (!isSchemaMismatch){
       markCloudError(e1);
       throw e1;
     }
@@ -7675,39 +7906,60 @@ async function cloudUpdatePlayerInitials(playerOrName, initials){
 
 
 async function cloudDeletePlayer(playerOrName){
+  // "Delete" is now SAFE: archive snapshot (best effort) then soft-delete (preferred) with hard-delete fallback.
   const obj = (playerOrName && typeof playerOrName === 'object') ? playerOrName : null;
-  const nmIn = obj ? String(obj.name||'').trim() : String(playerOrName||'').trim();
-  const id = obj && obj.id ? obj.id : null;
-  if (!nmIn && !id) throw new Error('Delete failed: missing player key');
+  const raw = obj ? (obj.id || obj.name || '') : String(playerOrName || '');
+  const t = String(raw).trim();
+  if (!t) return;
 
-  let targetName = nmIn;
-  let q = sb.from(TABLE_PLAYERS).delete();
+  if (!ensureCloudInit()) throw new Error('Cloud not ready');
+  const sb = window.supabaseClient;
 
-  if (id) {
-    q = q.eq('id', id);
-  } else {
-    // Resolve exact stored name (case-insensitive) to avoid silent 0-row deletes
-    const resolved = await cloudResolvePlayerKeyByName(nmIn);
-    targetName = (resolved && resolved.name) ? resolved.name : nmIn;
-    q = q.eq('name', targetName);
+  const name = obj ? String(obj.name || '').trim() : (sqIsUuidLike(t) ? '' : t);
+  let playerId = obj?.id ? String(obj.id).trim() : (sqIsUuidLike(t) ? t : null);
+
+  if (!playerId && name){
+    try{ playerId = await cloudResolvePlayerId(name); }catch(e){}
   }
 
-  const { data, error } = await q.select('name').maybeSingle();
-  if (error) { markCloudError(error); throw error; }
-  if (!data) throw new Error('Delete failed: player not found');
-  markCloudOk();
+  // Fetch player row for archive (best effort)
+  let row = null;
+  if (playerId){
+    const r = await sb.from(TABLE_PLAYERS).select('*').eq('id', playerId).maybeSingle();
+    if (!r.error) row = r.data || null;
+  } else if (name){
+    const r = await sb.from(TABLE_PLAYERS).select('*').ilike('name', name).limit(1).maybeSingle();
+    if (!r.error) row = r.data || null;
+    if (row?.id) playerId = row.id;
+  }
 
-  const nm = String((data && data.name) ? data.name : targetName).trim();
+  if (row) await cloudArchivePlayerSnapshot(row, 'admin_delete');
 
-  // Best-effort cleanup: remove name-linked rows so deleted players disappear from leaderboards/admin.
-  try{
-    const tasks = [];
-    try { tasks.push(sb.from(TABLE_HS_LEAGUE).delete().eq('name', nm)); } catch(_) {}
-    try { tasks.push(sb.from(TABLE_HS_PRACTICE).delete().eq('name', nm)); } catch(_) {}
-    // NOTE: Some deployments don't include PB/WR/Low-score tables.
-    // Keep Phase 1 conservative: only touch the tables we know exist.
-    if (tasks.length) await Promise.allSettled(tasks);
-  } catch(_) {}
+  // Prefer soft-delete (keeps history + allows restore)
+  const deletedAt = new Date().toISOString();
+  let softOk = false;
+
+  if (playerId){
+    const u = await sb.from(TABLE_PLAYERS).update({ deleted_at: deletedAt }).eq('id', playerId);
+    softOk = !u.error;
+  } else if (name){
+    const u = await sb.from(TABLE_PLAYERS).update({ deleted_at: deletedAt }).ilike('name', name);
+    softOk = !u.error;
+  }
+
+  // Fallback hard-delete only if soft-delete isn't available
+  if (!softOk){
+    if (playerId){
+      const d = await sb.from(TABLE_PLAYERS).delete().eq('id', playerId);
+      if (d.error) throw d.error;
+    } else if (name){
+      const d = await sb.from(TABLE_PLAYERS).delete().ilike('name', name);
+      if (d.error) throw d.error;
+    }
+  }
+
+  await cloudRefreshPlayerDirectory(true);
+  window.dispatchEvent(new CustomEvent('sq:players-changed'));
 }
 
 
@@ -8582,8 +8834,8 @@ async function openPlayerStatsLookupDialog() {
     (local || []).forEach(p => {
       if (!p || !p.name) return;
       const opt = document.createElement('option');
-      opt.value = p.name;
-      opt.textContent = p.name;
+      opt.value = (p.id != null && String(p.id).trim()) ? String(p.id).trim() : p.name;
+      opt.textContent = __sqPlayerOptionLabel(p) || p.name;
       nameSelect.appendChild(opt);
       anyPlayers = true;
     });
@@ -8698,8 +8950,8 @@ async function openPlayerStatsLookupDialog() {
     (local || []).forEach(p => {
       if (!p || !p.name) return;
       const opt = document.createElement('option');
-      opt.value = p.name;
-      opt.textContent = p.name;
+      opt.value = (p.id != null && String(p.id).trim()) ? String(p.id).trim() : p.name;
+      opt.textContent = __sqPlayerOptionLabel(p) || p.name;
       nameSelect.appendChild(opt);
       anyPlayers = true;
     });
@@ -8794,10 +9046,10 @@ function __msRenderPlayers(){
     } else {
       const chip = document.createElement('div');
       chip.className = 'ms-player-chip';
-      chip.textContent = 'R';
+      chip.textContent = (__sqNormalizeInitials(p.initials, p.name) || 'R');
       const name = document.createElement('div');
       name.className = 'ms-player-name';
-      name.textContent = p.name || '—';
+      name.textContent = (__sqPlayerPretty(p) || p.name || '—');
       left.appendChild(chip);
       left.appendChild(name);
     }
@@ -8927,8 +9179,9 @@ function __mlOpen(){
       mlStartBtn.className = 'btn ms-start ms-primary-blueLight practice-cta';
       mlStartBtn.innerHTML = 'SELECT THROWING ORDER <span class="ms-arrow">▶</span>';
     } else {
-      mlStartBtn.className = 'btn good big';
-      mlStartBtn.textContent = 'Start Match ▶';
+      // Match Play: keep CTA styling consistent with Match Setup
+      mlStartBtn.className = 'btn ms-start ms-primary';
+      mlStartBtn.innerHTML = 'THROW ORDER <span class="ms-arrow">▶</span>';
     }
     mlStartBtn.disabled = true;
   }
@@ -8962,12 +9215,20 @@ if (mlStartBtn) {
   mlStartBtn.addEventListener('click', () => {
     const games = parseInt(__mlSelectedGames, 10) || 1;
 
-    // Build players from __msPlayers (trim empties)
+    // Build players from __msPlayers (trim empties) and carry profile fields through.
     const built = [];
     __msPlayers.forEach((p) => {
       const nm = __msNormalizeName(p.name, '');
       if (!nm) return;
-      built.push({ name: nm });
+      built.push({
+        type: p.type || 'guest',
+        id: p.id != null ? p.id : null,
+        name: nm,
+        first_name: p.first_name || '',
+        last_name: p.last_name || '',
+        nickname: p.nickname || '',
+        initials: p.initials || ''
+      });
     });
 
     const minP = __msMinPlayersRequired();
@@ -8976,11 +9237,26 @@ if (mlStartBtn) {
       return;
     }
 
-    // Attach initials (cloud-synced) when available; fallback to computed.
+    // Attach full profile (cloud-synced) when available; fallback to name parsing.
     state.players = built.map(p => {
-      const meta = __sqFindSavedPlayerMetaByName(p.name);
-      const init = meta ? meta.initials : '';
-      return { name: p.name, initials: __sqNormalizeInitials(init, p.name), color: null };
+      const meta = (p.type === 'registered')
+        ? (p.first_name || p.last_name || p.nickname || p.initials ? p : (__sqFindSavedPlayerMetaByName(p.name) || p))
+        : (__sqFindSavedPlayerMetaByName(p.name) || p);
+
+      const parts = __sqNameParts(p.name);
+      const first = String(meta.first_name || '').trim() || parts.first;
+      const last  = String(meta.last_name  || '').trim() || parts.last;
+      const nick  = String(meta.nickname   || '').trim();
+      const init  = __sqNormalizeInitials(meta.initials, p.name);
+
+      return {
+        name: p.name,
+        first_name: first,
+        last_name: last,
+        nickname: nick,
+        initials: init,
+        color: null
+      };
     });
     assignUniqueColors(state.players);
 
@@ -9023,11 +9299,15 @@ function setSavedPlayers(arr){
 async function syncSavedPlayersFromCloud(){
   if (typeof cloudListPlayers !== 'function') return false;
   try{
-    const cloud = await cloudListPlayers(); // [{name, created_at, initials}]
+    const cloud = await cloudListPlayers(); // [{id,name,created_at,initials,first_name,last_name,nickname}]
     const cloudArr = (cloud || [])
       .filter(p => p && p.name)
       .map(p => ({
+        id: (p.id != null ? String(p.id).trim() : null),
         name: String(p.name),
+        first_name: (p.first_name != null ? String(p.first_name) : ''),
+        last_name: (p.last_name != null ? String(p.last_name) : ''),
+        nickname: (p.nickname != null ? String(p.nickname) : ''),
         initials: __sqNormalizeInitials(p.initials, p.name),
         joinedAt: p.created_at ? new Date(p.created_at).toISOString() : null,
         _src: 'cloud'
@@ -9052,11 +9332,20 @@ function populateSavedPlayersSelects(arrOverride){
 
   [sel1, sel2].forEach(sel => {
     if (!sel) return;
-    sel.innerHTML =
-      '<option value="">Select a saved player...</option>' +
-      arr.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+    sel.innerHTML = '<option value="">Select a saved player...</option>';
+    (arr || []).forEach(p => {
+      if (!p) return;
+      const v = (p.id != null && String(p.id).trim()) ? String(p.id).trim() : String(p.name || '').trim();
+      const label = __sqPlayerOptionLabel(p) || String(p.name || '').trim();
+      if (!v || !label) return;
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = label;
+      sel.appendChild(opt);
+    });
   });
 }
+
 
 // Best-effort: sync at startup so all devices converge.
 document.addEventListener('DOMContentLoaded', function(){
@@ -9146,6 +9435,7 @@ async function showAddPlayerDialog(index){
 
   const finish = (msg) => {
     const idx = parseInt(modal.dataset.playerIndex || '0', 10) || 0;
+      const metaFinal = meta || meta2;
 
     // idx>0 => legacy: inject into old #psPlayerFields row (if it exists)
     if (idx > 0) {
@@ -9229,6 +9519,7 @@ async function showSelectPlayerDialog(index){
   select.innerHTML = '<option value="">Select a saved player...</option>';
 
   let any = false;
+  let resolvedList = [];
 
   // Prefer cloud
   try {
@@ -9236,9 +9527,19 @@ async function showSelectPlayerDialog(index){
     (cloudList || []).forEach(p => {
       if (!p || !p.name) return;
       const opt = document.createElement('option');
-      opt.value = p.name;
-      opt.textContent = p.name;
+      opt.value = (p.id != null && String(p.id).trim()) ? String(p.id).trim() : p.name;
+      opt.textContent = __sqPlayerOptionLabel(p) || p.name;
       select.appendChild(opt);
+
+      // keep full record so confirm can resolve id -> profile safely
+      resolvedList.push({
+        id: (p.id != null ? String(p.id).trim() : null),
+        name: String(p.name),
+        first_name: (p.first_name != null ? String(p.first_name) : ''),
+        last_name: (p.last_name != null ? String(p.last_name) : ''),
+        nickname: (p.nickname != null ? String(p.nickname) : ''),
+        initials: __sqNormalizeInitials(p.initials, p.name)
+      });
     });
     any = !!(cloudList && cloudList.length);
   } catch (err) {
@@ -9251,9 +9552,18 @@ async function showSelectPlayerDialog(index){
     (local || []).forEach(p => {
       if (!p || !p.name) return;
       const opt = document.createElement('option');
-      opt.value = p.name;
-      opt.textContent = p.name;
+      opt.value = (p.id != null && String(p.id).trim()) ? String(p.id).trim() : p.name;
+      opt.textContent = __sqPlayerOptionLabel(p) || p.name;
       select.appendChild(opt);
+
+      resolvedList.push({
+        id: (p.id != null ? String(p.id).trim() : null),
+        name: String(p.name),
+        first_name: (p.first_name != null ? String(p.first_name) : ''),
+        last_name: (p.last_name != null ? String(p.last_name) : ''),
+        nickname: (p.nickname != null ? String(p.nickname) : ''),
+        initials: __sqNormalizeInitials(p.initials, p.name)
+      });
     });
     any = !!(local && local.length);
   }
@@ -9291,14 +9601,30 @@ async function showSelectPlayerDialog(index){
   if (confirmBtn) {
     confirmBtn.textContent = 'Enter';
     confirmBtn.onclick = () => {
-      const name = select.value;
-      if (!name) { toast('Select a saved player'); return; }
+      const selVal = String(select.value || '').trim();
+      if (!selVal) { toast('Select a saved player'); return; }
+
+      // Resolve selected player (prefer id match, else name match)
+      const meta = (resolvedList || []).find(p => p && (String(p.id||'').trim() === selVal || String(p.name||'').trim() === selVal)) || null;
+      const resolvedName = meta && meta.name ? String(meta.name).trim() : selVal;
+      // Defensive: if we somehow only got an id value, try resolve from cached saved players too
+      const meta2 = (!meta && selVal && selVal.includes('-')) ? (getSavedPlayers() || []).find(p => p && String(p.id||'').trim()===selVal) : null;
+      const resolvedFinal = meta2 && meta2.name ? String(meta2.name).trim() : resolvedName;
 
       const idx = parseInt(modal.dataset.playerIndex || '0', 10) || 0;
+      const metaFinal = meta || meta2;
 
       if (idx === 0) {
         // Add to Match Setup list
-        __msPlayers.push({ type:'registered', name });
+        __msPlayers.push({
+          type: 'registered',
+          id: metaFinal && metaFinal.id != null ? metaFinal.id : null,
+          name: resolvedFinal,
+          first_name: metaFinal && metaFinal.first_name ? metaFinal.first_name : '',
+          last_name: metaFinal && metaFinal.last_name ? metaFinal.last_name : '',
+          nickname: metaFinal && metaFinal.nickname ? metaFinal.nickname : '',
+          initials: metaFinal && metaFinal.initials ? metaFinal.initials : ''
+        });
         __msRenderPlayers();
       } else {
         // Legacy injection (if old rows exist)
@@ -9306,7 +9632,7 @@ async function showSelectPlayerDialog(index){
           document.querySelector(`#psPlayerFields .pf[data-index="${idx}"]`) ||
           document.querySelector(`.pf[data-index="${idx}"]`);
         const input = row?.querySelector('input[data-role="display"]');
-        if (input) input.value = name;
+        if (input) input.value = resolvedFinal;
       }
 
       select.value = '';
@@ -12479,7 +12805,7 @@ function showPlayerOrderDialog() {
 
       const nm = document.createElement('div');
       nm.className = 'to-name';
-      nm.textContent = String(p.name || '').trim() || ('Player ' + (i+1));
+      nm.textContent = (__sqPlayerPretty(p) || String(p.name || '').trim() || ('Player ' + (i+1)));
 
       const small = document.createElement('div');
       small.className = 'to-small';
@@ -12520,7 +12846,8 @@ function showPlayerOrderDialog() {
 
   const startBtn = document.createElement('button');
   const __mode = (window.__sqSelectedMode || 'match');
-  startBtn.className = (__mode === 'practice') ? 'btn to-start to-blueLight practice-cta' : 'btn to-start';
+  // Match Setup CTA sizing/typography consistency
+  startBtn.className = (__mode === 'practice') ? 'btn to-start to-blueLight practice-cta' : 'btn to-start practice-cta';
   startBtn.type = 'button';
   startBtn.innerHTML = 'START GAME <span class="to-start-ic">▶</span>';
   startBtn.onclick = () => { overlay.remove(); startNewGame(true); };
@@ -14231,301 +14558,187 @@ window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(
 
   footer.append(backBtn, closeBtn);
 
+  
   // Top controls + chart area
   body.innerHTML = `
-    <div class="row" style="gap:8px; margin-bottom:8px;">
-      <button class="btn primary" data-metric="score">Game Score</button>
-<button class="btn" data-metric="avg">5 Game Average</button>
-<button class="btn" data-metric="target">Target %</button>
+    <div style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin:2px 0 10px;">
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button data-win="all" class="sqPill isActive">All Games</button>
+        <button data-win="5" class="sqPill">5 Game AV</button>
+        <button data-win="10" class="sqPill">10 Game AV</button>
+        <button data-win="20" class="sqPill">20 Game AV</button>
+      </div>
+      <div id="progHint" style="opacity:.55; font-size:12px; letter-spacing:.04em; text-transform:uppercase;">Bars = games • Line = selected average</div>
     </div>
-    <div id="progChartWrap" style="border-radius:12px;border:1px solid #23284a;padding:8px;background:#101533;min-height:260px;">
-      <canvas id="progChartCanvas" width="600" height="260"></canvas>
+
+    <div id="progChartWrap" style="position:relative; border:1px solid rgba(255,255,255,.08); border-radius:16px; overflow:hidden; background:rgba(5,7,16,.35);">
+      <canvas id="progCanvas" width="1000" height="440" style="display:block; width:100%; height:auto;"></canvas>
+      <div id="progNoData" style="display:none; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; padding:18px; color:#c9ced8; opacity:.8;">
+        No game history yet for this player.
+      </div>
     </div>
-    <p class="tag" id="progHint">Vertical: Score / %, Horizontal: Games (1, 2, 3, …)</p>
+
+    <style>
+      .sqPill{ border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.04); color:#e7e9ee; padding:8px 12px; border-radius:999px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; cursor:pointer; }
+      .sqPill:hover{ background:rgba(255,255,255,.06); }
+      .sqPill.isActive{ border-color: rgba(255,132,0,.35); box-shadow: 0 0 0 2px rgba(255,132,0,.12) inset; }
+    </style>
   `;
 
-  const metricButtons = Array.from(body.querySelectorAll('button[data-metric]'));
-  const canvas = body.querySelector('#progChartCanvas');
-  const ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
+  const winButtons = Array.from(body.querySelectorAll('button[data-win]'));
+  const noDataEl = body.querySelector('#progNoData');
+  const canvas = body.querySelector('#progCanvas');
+  const ctx = canvas.getContext('2d');
 
-  if (!ctx) {
-    const wrap = body.querySelector('#progChartWrap');
-    if (wrap) wrap.innerHTML = '<p>Canvas not supported in this browser.</p>';
-    return;
-  }
-
-  // ---- Fetch per‑game data for this player ----
-  async function loadData() {
-    try {
-      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) {
-        return { labels: [], scores: [], avgs: [], targetPct: [] };
-      }
-    } catch (_) {}
-
-    const tableName = (typeof TABLE_PLAYER_GAMES !== 'undefined' && TABLE_PLAYER_GAMES)
-      ? TABLE_PLAYER_GAMES
-      : 'player_games_union';
-
-    let games = [];
-    try {
-      const { data, error } = await sb
-        .from(tableName)
-        .select('sheet_id, player, score, rounds, ts, is_practice')
-        .eq('player', safeName)
-        .eq('is_practice', !!isPractice)
-        .order('ts', { ascending: true })
-        .limit(200);
-      if (error) throw error;
-      games = data || [];
-    } catch (e) {
-      console.error('Progression: games fetch failed', e);
-      return { labels: [], scores: [], avgs: [], targetPct: [] };
-    }
-
-    if (!games.length) {
-      return { labels: [], scores: [], avgs: [], targetPct: [] };
-    }
-
-    // x‑axis labels: game index 1..N
-    const labels = games.map((_, idx) => idx + 1);
-const scores = games.map(g => Number(g.score || 0));
-
-// 5 Game Average: only at games 5, 10, 15, ...
-// game 5 = avg of games 1–5, game 10 = avg of games 6–10, etc.
-const avgs = scores.map((_, idx) => {
-  const gameNo = idx + 1;          // 1-based game index
-  if (gameNo % 5 !== 0) return NaN; // only plot at 5, 10, 15, ...
-  const start = idx - 4;           // start of the 5-game block
-  if (start < 0) return NaN;
-  let sum = 0;
-  for (let i = start; i <= idx; i++) {
-    sum += Number(scores[i] || 0);
-  }
-  return sum / 5;
-});
-
-    // Overall target hit % per game (all darts → (hits / attempts)*100)
-    let targetPct = new Array(games.length).fill(0);
-
-    try {
-      const gameIds = games.map(g => g.sheet_id).filter(Boolean);
-      if (gameIds.length && typeof TABLE_GAME_THROWS !== 'undefined') {
-        const { data: throwsRaw, error: tErr } = await sb
-          .from(TABLE_GAME_THROWS)
-          .select('game_id, player, points')
-          .in('game_id', gameIds)
-          .eq('player', safeName);
-        if (!tErr && Array.isArray(throwsRaw)) {
-          const byGame = new Map();
-          throwsRaw.forEach(row => {
-            const gid = row.game_id;
-            if (!gid) return;
-            let agg = byGame.get(gid);
-            if (!agg) {
-              agg = { hits: 0, attempts: 0 };
-              byGame.set(gid, agg);
-            }
-            agg.attempts += 1;
-            const pts = Number(row.points || 0);
-            if (pts > 0) agg.hits += 1;
-          });
-
-          targetPct = games.map(g => {
-            const agg = byGame.get(g.sheet_id);
-            if (!agg || !agg.attempts) return 0;
-            return (agg.hits * 100) / agg.attempts;
-          });
-        }
-      }
-    } catch (e) {
-      console.error('Progression: target% fetch failed', e);
-    }
-
-    return { labels, scores, avgs, targetPct };
-  }
-
+  // Load player history (scores per game)
   const data = await loadData();
-
-  if (!data.labels.length) {
-    const wrap = body.querySelector('#progChartWrap');
-    if (wrap) wrap.innerHTML = '<p>No games found for this player/mode.</p>';
+  if (!data || !data.scores || !data.scores.length) {
+    noDataEl.style.display = 'flex';
     return;
   }
 
-  function setActiveMetricButton(metric) {
-    metricButtons.forEach(btn => {
-      const m = btn.getAttribute('data-metric');
-      if (m === metric) btn.classList.add('primary');
-      else btn.classList.remove('primary');
-    });
+  function setActiveWin(key){
+    winButtons.forEach(b => b.classList.toggle('isActive', b.getAttribute('data-win') === key));
   }
 
-  function drawLineChart(values, metric) {
-    const labels = data.labels;
+  function rollingAverage(values, windowSize){
+    if (!windowSize) return [];
+    const out = new Array(values.length).fill(null);
+    let sum = 0;
+    for (let i=0;i<values.length;i++){
+      sum += values[i];
+      if (i >= windowSize) sum -= values[i-windowSize];
+      if (i >= windowSize-1) out[i] = sum / windowSize;
+    }
+    return out;
+  }
+
+  function drawProgressionBarChart(scores, mode){
     const W = canvas.width;
     const H = canvas.height;
-    const paddingLeft = 40;
-    const paddingRight = 10;
-    const paddingTop = 10;
-    const paddingBottom = 28;
+    const padL = 54, padR = 18, padT = 18, padB = 46;
 
-    ctx.clearRect(0, 0, W, H);
+    ctx.clearRect(0,0,W,H);
 
-    if (!labels.length || !values.length) return;
+    // Background wash to match "Game Race" feel
+    ctx.fillStyle = 'rgba(0,0,0,0)';
+    ctx.fillRect(0,0,W,H);
 
-const finiteVals = values.filter(v => Number.isFinite(v));
-if (!finiteVals.length) return;
-const maxValRaw = Math.max(...finiteVals);
-const maxVal = maxValRaw > 0 ? maxValRaw : 1;
+    const N = scores.length;
+    const maxVal = Math.max(1, ...scores);
+    const top = maxVal * 1.12;
 
-    const xMin = 0;
-    const xMax = labels.length > 1 ? labels.length - 1 : 1;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
 
-    const plotW = W - paddingLeft - paddingRight;
-    const plotH = H - paddingTop - paddingBottom;
+    const xForIdx = (i) => padL + (i + 0.5) * (plotW / N);
+    const yForVal = (v) => padT + (1 - (v / top)) * plotH;
 
-    function xForIndex(i) {
-      if (xMax === xMin) return paddingLeft + plotW / 2;
-      return paddingLeft + ((i - xMin) / (xMax - xMin)) * plotW;
-    }
-    function yForValue(v) {
-      const clamped = v < 0 ? 0 : v;
-      return paddingTop + (1 - clamped / maxVal) * plotH;
-    }
-
-    // Axes
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    // Gridlines + y labels
+    const steps = 8;
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.lineWidth = 1;
+    ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
 
-    // Y-axis
-    ctx.beginPath();
-    ctx.moveTo(paddingLeft, paddingTop);
-    ctx.lineTo(paddingLeft, H - paddingBottom);
-    ctx.stroke();
-
-    // X-axis
-    ctx.beginPath();
-    ctx.moveTo(paddingLeft, H - paddingBottom);
-    ctx.lineTo(W - paddingRight, H - paddingBottom);
-    ctx.stroke();
-
-    // Y ticks
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.font = '10px system-ui';
-    const steps = 4;
-    for (let i = 0; i <= steps; i++) {
-      const v = (maxVal * i) / steps;
-      const y = yForValue(v);
+    for (let s=0;s<=steps;s++){
+      const v = (top/steps)*s;
+      const y = yForVal(v);
       ctx.beginPath();
-      ctx.moveTo(paddingLeft - 3, y);
-      ctx.lineTo(W - paddingRight, y);
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.moveTo(padL, y);
+      ctx.lineTo(W-padR, y);
       ctx.stroke();
-      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-      ctx.fillText(metric === 'target' ? v.toFixed(0) + '%' : v.toFixed(0), 4, y + 3);
+      const label = Math.round(v);
+      ctx.fillText(String(label), 8, y+4);
     }
 
-// X labels (game index 1..N)
-for (let i = 0; i < labels.length; i++) {
-  const x = xForIndex(i);
-  ctx.fillStyle = 'rgba(255,255,255,0.75)';
-  ctx.fillText(String(labels[i]), x - 4, H - paddingBottom + 14);
-}
+    // Bars
+    const cellW = plotW / N;
+    const barW = Math.max(2, cellW * 0.68);
+    for (let i=0;i<N;i++){
+      const v = scores[i];
+      const x = xForIdx(i) - barW/2;
+      const y = yForVal(v);
+      const h = (padT + plotH) - y;
 
-// Trend line (linear regression) across finite values
-const xs = [];
-const ys = [];
-values.forEach((v, i) => {
-  if (!Number.isFinite(v)) return;
-  xs.push(i);
-  ys.push(v);
-});
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(x, y, barW, h);
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.strokeRect(x, y, barW, h);
+    }
 
-if (xs.length >= 2) {
-  // Least-squares fit: y = m*x + b
-  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-  for (let i = 0; i < xs.length; i++) {
-    const x = xs[i];
-    const y = ys[i];
-    sumX  += x;
-    sumY  += y;
-    sumXY += x * y;
-    sumX2 += x * x;
-  }
-  const n = xs.length;
-  const denom = (n * sumX2 - sumX * sumX) || 1;
-  const m = (n * sumXY - sumX * sumY) / denom;
-  const b = (sumY - m * sumX) / n;
+    // Average overlay
+    const overallAvg = scores.reduce((a,b)=>a+b,0) / scores.length;
+    if (mode === 'all'){
+      // Overall average as a dashed line
+      const y = yForVal(overallAvg);
+      ctx.setLineDash([6,6]);
+      ctx.strokeStyle = 'rgba(255,132,0,0.55)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(W-padR, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
 
-  const xStartIdx = xs[0];
-  const xEndIdx   = xs[xs.length - 1];
-  const yStartVal = m * xStartIdx + b;
-  const yEndVal   = m * xEndIdx + b;
+      ctx.fillStyle = 'rgba(255,132,0,0.75)';
+      ctx.fillText(`AVG ${overallAvg.toFixed(1)}`, W - padR - 86, y - 8);
+    } else {
+      const win = parseInt(mode, 10);
+      const series = rollingAverage(scores, win);
+      let started = false;
+      ctx.strokeStyle = 'rgba(255,132,0,0.75)';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      for (let i=0;i<N;i++){
+        const av = series[i];
+        if (av == null) continue;
+        const x = xForIdx(i);
+        const y = yForVal(av);
+        if (!started){ ctx.moveTo(x,y); started = true; }
+        else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
 
-  const xStart = xForIndex(xStartIdx);
-  const xEnd   = xForIndex(xEndIdx);
-  const yStart = yForValue(yStartVal);
-  const yEnd   = yForValue(yEndVal);
+      // Label at end
+      const last = series[N-1];
+      if (last != null){
+        ctx.fillStyle = 'rgba(255,132,0,0.75)';
+        ctx.fillText(`${win}G AV ${last.toFixed(1)}`, W - padR - 110, yForVal(last) - 8);
+      }
+    }
 
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4, 4]);
-  ctx.beginPath();
-  ctx.moveTo(xStart, yStart);
-  ctx.lineTo(xEnd,   yEnd);
-  ctx.stroke();
-  ctx.restore();
-}
+    // X labels (sparse)
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    const tickEvery = Math.max(1, Math.ceil(N / 10));
+    for (let i=0;i<N;i+=tickEvery){
+      const x = xForIdx(i);
+      ctx.fillText(String(i+1), x-4, H - padB + 24);
+    }
 
-    // Line (skip positions without data, e.g. non-5th games for 5 Game Average)
-ctx.strokeStyle = '#7bdcff';
-ctx.lineWidth = 2;
-ctx.beginPath();
-let started = false;
-values.forEach((v, i) => {
-  if (!Number.isFinite(v)) return;
-  const x = xForIndex(i);
-  const y = yForValue(v);
-  if (!started) {
-    ctx.moveTo(x, y);
-    started = true;
-  } else {
-    ctx.lineTo(x, y);
-  }
-});
-if (started) ctx.stroke();
-
-// Points
-ctx.fillStyle = '#8cff9e';
-values.forEach((v, i) => {
-  if (!Number.isFinite(v)) return;
-  const x = xForIndex(i);
-  const y = yForValue(v);
-  ctx.beginPath();
-  ctx.arc(x, y, 3, 0, Math.PI * 2);
-  ctx.fill();
-});
+    // Axis captions
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillText('Game #', padL, H - 16);
+    ctx.save();
+    ctx.translate(16, padT + plotH/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.fillText('Score', 0, 0);
+    ctx.restore();
   }
 
-  function render(metric) {
-    let values = data.scores;
-    if (metric === 'avg') values = data.avgs;
-    else if (metric === 'target') values = data.targetPct;
-    setActiveMetricButton(metric);
-    drawLineChart(values, metric);
+  function render(winKey){
+    setActiveWin(winKey);
+    const mode = (winKey === 'all') ? 'all' : winKey;
+    drawProgressionBarChart(data.scores, mode);
   }
 
-  // Wire metric buttons
-  metricButtons.forEach(btn => {
-    const metric = btn.getAttribute('data-metric');
-    btn.onclick = () => render(metric);
+  winButtons.forEach(btn => {
+    btn.addEventListener('click', () => render(btn.getAttribute('data-win')));
   });
 
   // Initial render
-  render('score');
-
-  // Allow closing via ESC or click-outside
+  render('all');
+// Allow closing via ESC or click-outside
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
 };
@@ -15206,6 +15419,7 @@ function arrangeStartActions(){
     
 
 async function updateHomeMiniLeagues(){
+  await cloudRefreshPlayerDirectory(false);
   const hsBody = document.getElementById('homeHsLeagueRows');
   const prBody = document.getElementById('homePowerLeagueRows');
   if(!hsBody && !prBody) return;
@@ -15266,7 +15480,7 @@ if(hsBody){
     setMsg(hsBody,'No data');
   }else{
     hsBody.innerHTML = top.map((x,i)=>
-      `<tr><td class="mini-rank">${i+1}</td><td class="mini-name">${esc(x.name)}</td><td class="mini-val">${x.score}</td></tr>`
+      `<tr><td class="mini-rank">${i+1}</td><td class="mini-name">${esc(sqDisplayNameForPlayerField(x.name))}</td><td class="mini-val">${x.score}</td></tr>`
     ).join('');
   }
 }
@@ -15300,7 +15514,7 @@ if(hsBody){
       }else{
         prBody.innerHTML = top.map((r,i)=>{
           const avg = Number(r.avgRound ?? r.avg ?? 0);
-          return `<tr><td class="mini-rank">${i+1}</td><td class="mini-name">${esc(r.player)}</td><td class="mini-val">${(Number.isFinite(avg) ? avg : 0).toFixed(2)}</td></tr>`;
+          return `<tr><td class="mini-rank">${i+1}</td><td class="mini-name">${esc(sqDisplayNameForPlayerField(r.player))}</td><td class="mini-val">${(Number.isFinite(avg) ? avg : 0).toFixed(2)}</td></tr>`;
         }).join('');
       }
     }
@@ -18916,6 +19130,33 @@ gridOP.appendChild(card('BFF', bff ? `${bff.opp}  (${bff.pct.toFixed(1)}%)` : '�
 
 };
 
+
+
+// --- Player Stats menu compat aliases (buttons expect these names) ---
+// Keep the newer dialog implementations as the source of truth.
+window.openPlayerTargetHitDialog = window.openPlayerTargetHitDialog || (function(playerName){
+  try{
+    if (typeof window.openPlayerTargetPctDialog === 'function') return window.openPlayerTargetPctDialog(playerName);
+    if (typeof window.openTargetPctDialog === 'function') return window.openTargetPctDialog(playerName);
+  }catch(e){ console.error(e); }
+  try{ if (typeof toast==='function') toast('Target Hit % not available'); }catch(_){}
+});
+
+window.openPlayerTargetPointsDialog = window.openPlayerTargetPointsDialog || (function(playerName){
+  try{
+    if (typeof window.openPlayerTargetPointsPctDialog === 'function') return window.openPlayerTargetPointsPctDialog(playerName);
+  }catch(e){ console.error(e); }
+  try{ if (typeof toast==='function') toast('Target Points % not available'); }catch(_){}
+});
+
+window.openPlayerDTBDialog = window.openPlayerDTBDialog || (function(playerName){
+  try{
+    if (typeof window.openPlayerDTBCombinedPctDialog === 'function') return window.openPlayerDTBCombinedPctDialog(playerName);
+    if (typeof window.openPlayerDTBPctDialog === 'function') return window.openPlayerDTBPctDialog(playerName);
+  }catch(e){ console.error(e); }
+  try{ if (typeof toast==='function') toast('DTB % not available'); }catch(_){}
+});
+
 // === Player Hub — Latest Matches / High Scores / Progression / Target % / D T B % / H2H ===
 window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   const name = String(playerName || '').trim();
@@ -18993,7 +19234,9 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
 
   list.append(
     mkRow('Latest Matches', 'Position / Points / Round Avg', svgClock, () => {
-      if (typeof window.openPlayerLatestMatchesDialog === 'function') return window.openPlayerLatestMatchesDialog(name);
+      // Close this menu first so Latest Matches behaves as a true modal (Close returns to main screen)
+      try{ overlay && overlay.remove(); }catch(e){}
+      if (typeof window.openPlayerLatestMatchesDialog === 'function') return window.openPlayerLatestMatchesDialog(name, 'official');
       if (typeof toast==='function') toast('Latest Matches not available');
     }),
     mkRow('High Scores', 'Full Game History', svgTrophy, () => {
@@ -19300,63 +19543,310 @@ async function __fetchThrowsForGames(gameIds){
 }
 
 
-// ==== (1) Latest Matches ======================================================
-window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDialog(playerName){
+// ---- Latest Matches data loader (cloud-first, safe fallbacks) ----
+// Returns rows: [{ position, points, round_avg, when, sheet_id }]
+window.fetchLatestMatchesRows = async function fetchLatestMatchesRows(playerName, mode='official', limit=50){
   const name = String(playerName||'').trim();
-  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-  const modal   = document.createElement('div'); modal.className  ='modal compact';
-  const title   = document.createElement('h3');  title.textContent=`Latest Matches — ${name}`;
-  const body    = document.createElement('div'); body.className   ='modal-body';
-  const footer  = document.createElement('div'); footer.className ='modal-footer';
-  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
-  body .style.maxHeight='none'; body .style.overflowY='visible';
+  if (!name) return [];
+  const isPractice = (String(mode).toLowerCase()==='practice');
+  const lim = Math.max(1, Math.min(200, Number(limit)||50));
 
-  let games = (await __fetchOfficialGames(5000)).map(__normalizeGame)
-    .filter(g => g.players.some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()))
-    .sort((a,b)=> (new Date(__gameTs(b.raw)) - new Date(__gameTs(a.raw))));
+  const fmt = (ts)=>{
+    try{
+      if (!ts) return '';
+      if (typeof window.fmtWhen === 'function') return window.fmtWhen(ts);
+      const d = new Date(ts);
+      if (!Number.isNaN(d.getTime()) && typeof window.fmtDdMmYyAtTime === 'function') return window.fmtDdMmYyAtTime(d);
+      return !Number.isNaN(d.getTime()) ? d.toLocaleString() : String(ts);
+    }catch(_){ return String(ts||''); }
+  };
 
-  const table=document.createElement('table'); table.className='hs-table';
-  const thead=document.createElement('thead'); const trh=document.createElement('tr');
-  ['#','Position','Points','Round Avg','When'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
-  thead.appendChild(trh); table.appendChild(thead);
-  Array.from(trh.children).forEach(th => { th.style.position='sticky'; th.style.top='0'; th.style.zIndex='2'; th.style.background='rgba(0,0,0,0.4)'; });
-  const tbody=document.createElement('tbody');
+  // 1) Preferred: player_games_union (TABLE_PLAYER_GAMES)
+  try{
+    if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) throw new Error('cloud not ready');
+    const tableName = (typeof TABLE_PLAYER_GAMES !== 'undefined' && TABLE_PLAYER_GAMES) ? TABLE_PLAYER_GAMES : 'player_games_union';
 
-  games.forEach((g,i)=>{
-    const idx = g.players.findIndex(p => String(p||'').trim().toLowerCase()===name.toLowerCase());
-    const score = Number(g.totals[idx]||0);
-    const rank = g.totals.map((s,j)=>({j,s:Number(s||0)})).sort((a,b)=>b.s-a.s).findIndex(x=>x.j===idx)+1;
-    const rounds=__roundCountFor(g, idx);
-    const ravg = rounds ? score/rounds : 0;
+    let q = sb
+      .from(tableName)
+      .select('sheet_id, player, score, position, rounds, ts, is_practice')
+      .ilike('player', name)
+      .order('ts', { ascending:false })
+      .limit(lim);
 
-    const tr=document.createElement('tr');
-    const tdN=document.createElement('td'); tdN.textContent=String(i+1);
-    const tdP=document.createElement('td'); tdP.textContent=String(rank||'');
-    const tdS=document.createElement('td'); tdS.textContent=String(score);
-    const tdA=document.createElement('td'); tdA.textContent=ravg.toFixed(1);
-    const tdW=document.createElement('td'); tdW.textContent=(g.ts && typeof window.fmtWhen==='function') ? window.fmtWhen(g.ts) : (g.ts? new Date(g.ts).toLocaleString() : '');
-    tr.append(tdN,tdP,tdS,tdA,tdW);
-    tr.style.cursor='pointer'; tr.title='Open score sheet';
-    tr.onclick = ()=>{ try{ if (typeof openSingleGameScoreSheet==='function') openSingleGameScoreSheet(g.raw); }catch(_){} };
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
-  const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.appendChild(table);
-  body.appendChild(scroll);
+    // Important: some historic rows have is_practice NULL; treat as official.
+    if (isPractice) q = q.eq('is_practice', true);
+    else q = q.or('is_practice.is.null,is_practice.eq.false');
 
-  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
-  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
-  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
-  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
+    const { data, error } = await q;
+    if (error) throw error;
 
-  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+    const rows = (data||[]).filter(Boolean).map(r=>{
+      const score = Number(r.score||0);
+      const rounds = Number(r.rounds||0);
+      const avg = rounds ? (score/rounds) : null;
+      return {
+        sheet_id: r.sheet_id || null,
+        position: (r.position ?? ''),
+        points: (r.score ?? ''),
+        round_avg: avg,
+        when: fmt(r.ts),
+        ts: r.ts
+      };
+    });
 
-  function closeToHub(){ overlay.remove(); }
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
-    overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
-  modal.tabIndex=0; modal.focus();
+    if (rows.length) return rows;
+  }catch(e){
+    // keep going to fallback (do not spam console in UI path)
+    console.warn('[LatestMatches] player_games_union query failed or empty; falling back.', e?.message || e);
+  }
+
+  // 2) Fallback: derive from games table (TABLE_GAMES) so UI still works during migrations.
+  try{
+    if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) return [];
+    const table = (typeof TABLE_GAMES !== 'undefined' ? TABLE_GAMES : 'games');
+
+    // Pull a wider window so we can filter down to the last N games for this player.
+    const fetchN = Math.max(500, lim * 80);
+    const { data, error } = await sb.from(table).select('*').order('created_at',{ascending:false}).limit(fetchN);
+    if (error) throw error;
+
+    const norm = (g)=>{
+      const ng = (typeof __normalizeGame === 'function') ? __normalizeGame(g) : { players:[], totals:[], board:null, ts:(g.created_at||null), raw:g };
+      const modeGuess = (g?.mode || g?.state?.mode || (g?.is_practice===true || g?.state?.is_practice===true ? 'practice' : null));
+      const matchId = (g?.match_id || g?.matchId || g?.state?.match_id || g?.state?.match?.id || null);
+      return {
+        players: ng.players || [],
+        totals: ng.totals || [],
+        board: ng.board || null,
+        ts: ng.ts || g.created_at || null,
+        mode: modeGuess,
+        is_practice: (g?.is_practice ?? g?.state?.is_practice ?? (modeGuess==='practice')),
+        match_id: matchId,
+        raw: g
+      };
+    };
+
+    const games = (data||[]).map(norm)
+      .filter(g => (isPractice ? (typeof isPracticeGame==='function'? isPracticeGame(g): (g.is_practice===true)) : (typeof isOfficialGame==='function'? isOfficialGame(g): (g.is_practice!==true && (g.players||[]).length>=2))))
+      .filter(g => (g.players||[]).some(p => (typeof eqName==='function'? eqName(p,name) : String(p||'').trim().toLowerCase()===name.toLowerCase())));
+
+    const rows = [];
+    for (const g of games){
+      const i = (g.players||[]).findIndex(p => (typeof eqName==='function'? eqName(p,name) : String(p||'').trim().toLowerCase()===name.toLowerCase()));
+      if (i < 0) continue;
+      const score = Number((g.totals||[])[i] || 0);
+      // Position: dense rank by score (desc), tie-break by original index.
+      const ord = (g.totals||[]).map((s, idx)=>({ idx, s:Number(s||0) }))
+        .sort((a,b)=> (b.s - a.s) || (a.idx - b.idx));
+      const uniq = [];
+      ord.forEach(o=>{ if (!uniq.includes(o.s)) uniq.push(o.s); });
+      const pos = (uniq.indexOf(score) >= 0) ? (uniq.indexOf(score)+1) : '';
+
+      let rounds = 14;
+      try{
+        if (typeof __roundCountFor==='function') rounds = __roundCountFor(g, i);
+        else if (g.board && Array.isArray(g.board[i])) rounds = Math.min(14, g.board[i].length||0) || 14;
+      }catch(_){}
+      const avg = rounds ? (score/rounds) : null;
+
+      rows.push({
+        sheet_id: g.raw?.id || null,
+        position: pos,
+        points: score,
+        round_avg: avg,
+        when: fmt(g.ts),
+        ts: g.ts
+      });
+      if (rows.length >= lim) break;
+    }
+    return rows;
+  }catch(e){
+    console.error('[LatestMatches] fallback failed', e);
+    return [];
+  }
 };
 
+// ==== (1) Latest Matches ======================================================
+window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDialog(playerName, initialMode){
+  try {
+    if (!playerName) return;
+
+    const escapeHtml = (s) => {
+      if (s == null) return '';
+      return String(s).replace(/[&<>"']/g, (c) => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[c] || c));
+    };
+
+    // Close any existing Latest Matches modal to avoid stacking duplicates
+    document.querySelectorAll('.sq-latest-matches-backdrop').forEach(n => n.remove());
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-backdrop sq-latest-matches-backdrop';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.maxWidth = '980px';
+    modal.style.width = '94vw';
+
+    const safeName = escapeHtml(playerName);
+
+    modal.innerHTML = `
+      <div class="modal-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div>
+            <div style="font-size:18px; font-weight:800; letter-spacing:.02em;">Latest Matches — ${safeName}</div>
+            <div style="font-size:11px; opacity:.65; margin-top:2px;">Position / Points / Round Avg</div>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="segmented" style="display:flex; gap:8px;">
+            <button class="seg-btn" data-mode="official">Official</button>
+            <button class="seg-btn" data-mode="practice">Practice</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-body" style="padding-top:8px;">
+        <div class="latest-matches-table-wrap" style="border:1px solid rgba(255,255,255,.08); border-radius:14px; overflow:auto; max-height:56vh;">
+          <table class="sq-table latest-matches" style="width:100%; border-collapse:collapse; table-layout:fixed;">
+            <colgroup>
+              <col style="width:7%">
+              <col style="width:18%">
+              <col style="width:18%">
+              <col style="width:18%">
+              <col style="width:39%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th style="text-align:left; padding-left:14px;">#</th>
+                <th>Position</th>
+                <th>Points</th>
+                <th>Round Avg</th>
+                <th style="text-align:right; padding-right:14px;">When</th>
+              </tr>
+            </thead>
+            <tbody data-role="rows"></tbody>
+          </table>
+        </div>
+
+        <div class="modal-footer" style="display:flex; justify-content:flex-start; gap:10px; margin-top:14px;">
+          <button class="btn small" data-action="back" style="min-width:84px;">Back</button>
+          <button class="btn small" data-action="close" style="min-width:84px;">Close</button>
+        </div>
+      </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Styling hooks (reuses existing theme)
+    const segBtns = modal.querySelectorAll('.seg-btn');
+    segBtns.forEach(b=>{
+      b.style.padding = '8px 12px';
+      b.style.borderRadius = '999px';
+      b.style.border = '1px solid rgba(255,255,255,.14)';
+      b.style.background = 'rgba(10,12,24,.55)';
+      b.style.color = 'rgba(255,255,255,.85)';
+      b.style.fontWeight = '700';
+      b.style.letterSpacing = '.02em';
+      b.style.cursor = 'pointer';
+      b.style.userSelect = 'none';
+    });
+
+    const rowsEl = modal.querySelector('[data-role="rows"]');
+
+    const setActiveModeUI = (mode) => {
+      segBtns.forEach(btn=>{
+        const on = btn.dataset.mode === mode;
+        btn.style.borderColor = on ? 'rgba(255,123,26,.85)' : 'rgba(255,255,255,.14)';
+        btn.style.boxShadow = on ? '0 0 0 2px rgba(255,123,26,.15) inset' : 'none';
+        btn.style.color = on ? '#fff' : 'rgba(255,255,255,.85)';
+        btn.style.background = on ? 'rgba(255,123,26,.12)' : 'rgba(10,12,24,.55)';
+      });
+    };
+
+    const renderRows = (rows) => {
+      const safeRows = Array.isArray(rows) ? rows : [];
+      rowsEl.innerHTML = safeRows.map((r, idx) => {
+        const pos = (r.position != null) ? r.position : '';
+        const pts = (r.points != null) ? r.points : '';
+        const av  = (r.round_avg != null) ? Number(r.round_avg).toFixed(1) : (r.roundAvg != null ? Number(r.roundAvg).toFixed(1) : '');
+        const when = escapeHtml(r.when || r.created_at || r.played_at || '');
+        return `
+          <tr>
+            <td style="text-align:left; padding-left:14px; color:rgba(255,123,26,.95); font-weight:800;">${idx+1}</td>
+            <td style="text-align:center;">${escapeHtml(pos)}</td>
+            <td style="text-align:center;">${escapeHtml(pts)}</td>
+            <td style="text-align:center;">${escapeHtml(av)}</td>
+            <td style="text-align:right; padding-right:14px; opacity:.9;">${when}</td>
+          </tr>
+        `;
+      }).join('');
+    };
+
+    const load = async (mode) => {
+      setActiveModeUI(mode);
+      rowsEl.innerHTML = `<tr><td colspan="5" style="padding:18px; opacity:.7;">Loading…</td></tr>`;
+      let rows = [];
+      try {
+        if (typeof fetchLatestMatchesRows === 'function') {
+          rows = await fetchLatestMatchesRows(playerName, mode, 50);
+        } else if (typeof window.fetchLatestMatchesRows === 'function') {
+          rows = await window.fetchLatestMatchesRows(playerName, mode, 50);
+        }
+      } catch(e){
+        rows = [];
+      }
+      if (!rows || !rows.length) {
+        rowsEl.innerHTML = `<tr><td colspan="5" style="padding:18px; opacity:.7;">No ${mode} matches found.</td></tr>`;
+        return;
+      }
+      renderRows(rows);
+    };
+
+    let mode = (initialMode === 'practice' || initialMode === 'official') ? initialMode : 'official';
+    await load(mode);
+
+    segBtns.forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        mode = btn.dataset.mode;
+        await load(mode);
+      });
+    });
+
+    const close = () => overlay.remove();
+    const goBack = () => {
+      overlay.remove();
+      if (typeof window.openPlayerStatsHub === 'function') window.openPlayerStatsHub(playerName);
+      else if (typeof window.openPlayerStatsDialog === 'function') window.openPlayerStatsDialog(playerName);
+      else if (typeof window.openPlayerStatsLookupDialog === 'function') window.openPlayerStatsLookupDialog(playerName);
+    };
+
+    overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(); });
+    modal.addEventListener('click', (e)=>{
+      const t = e.target.closest('[data-action]');
+      if (!t) return;
+      const a = t.dataset.action;
+      if (a === 'close') close();
+      if (a === 'back') goBack();
+    });
+
+    window.addEventListener('keydown', function escHandler(ev){
+      if (ev.key === 'Escape') {
+        window.removeEventListener('keydown', escHandler);
+        close();
+      }
+    });
+
+    // Accessibility focus
+    modal.tabIndex = 0;
+    modal.focus();
+  } catch (err) {
+    console.error('[LatestMatches] failed', err);
+  }
+};
 // ==== (2) High Scores — per-player (rows open match) =========================
 window.openPlayerHighScoresDialog = async function openPlayerHighScoresDialog(playerName){
   const name = String(playerName||'').trim();
@@ -19419,7 +19909,7 @@ window.openPlayerHighScoresDialog = async function openPlayerHighScoresDialog(pl
   modal.tabIndex=0; modal.focus();
 };
 
-// ==== (3) Progression (buttons + proper axes) =============================
+// ==== (3) Progression — per-game bar chart + avg overlay ==================
 window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(playerName){
   const name = String(playerName||'').trim();
   const overlay = document.createElement('div'); overlay.className='modal-backdrop';
@@ -19430,280 +19920,283 @@ window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(
   modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
   body .style.maxHeight='none'; body .style.overflowY='visible';
 
-  // --- Load & prep data: sort OLDEST → NEWEST so X (game #) grows left→right
-  const games = (await __fetchOfficialGames(5000)).map(__normalizeGame)
-    .filter(g => g.players.some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()))
-    .sort((a,b)=> (new Date(a.ts) - new Date(b.ts))); // oldest first
+  // ---- Data: official games only, oldest -> newest
+  let games = [];
+  try {
+    games = (await __fetchOfficialGames(50000)).map(__normalizeGame)
+      .filter(g => (g.players||[]).some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()))
+      .sort((a,b)=> (new Date(a.ts) - new Date(b.ts)));
+  } catch (e) {
+    console.error('Progression: games fetch failed', e);
+  }
 
   const scores = games.map(g => {
-    const i = g.players.findIndex(p => String(p || '').trim().toLowerCase() === name.toLowerCase());
-    return Number(g.totals[i] || 0);
+    const i = (g.players||[]).findIndex(p => String(p||'').trim().toLowerCase()===name.toLowerCase());
+    return Number((g.totals||[])[i] || 0);
   });
-  
-  // Fixed Y-axis (same for all modes) and overall average (used for the dashed line)
-const avgAll = scores.length ? (scores.reduce((s, v) => s + v, 0) / scores.length) : 0;
-const baseMaxScore = scores.length ? Math.max(...scores) : 0;
-const FIXED_Y_MAX = Math.max(25, Math.ceil(baseMaxScore / 25) * 25);
 
-  // --- UI: mode buttons row
+  const avgAll = scores.length ? (scores.reduce((s,v)=>s+v,0) / scores.length) : 0;
+  const yMaxRaw = scores.length ? Math.max(...scores, avgAll) : 0;
+  const Y_MAX = Math.max(25, Math.ceil(yMaxRaw / 25) * 25);
+
+  function blockAvgPoints(arr, k){
+    const pts = [];
+    if (!arr.length || !k) return pts;
+    const n = arr.length;
+    const blocks = Math.ceil(n / k);
+    for (let bi=0; bi<blocks; bi++){
+      const s = bi*k;
+      const e = Math.min((bi+1)*k, n);
+      const slice = arr.slice(s, e);
+      const mean = slice.reduce((a,b)=>a+b,0) / slice.length;
+      const x = Math.min(bi*k, n-1); // point at start of each block (1, 1+k, 1+2k ... visually)
+      pts.push({ x, y: mean });
+    }
+    // Ensure final point reaches the end so the line doesn't stop early
+    if (pts.length){
+      const last = pts[pts.length-1];
+      if (last.x !== n-1) pts.push({ x: n-1, y: last.y });
+    }
+    return pts;
+  }
+
+  // ---- UI: buttons change ONLY the block-average line; bars always show per-game scores.
   const row = document.createElement('div');
   row.className = 'row';
   row.style.gap = '8px';
   row.style.marginBottom = '8px';
+
   const modes = [
-    { id:'ALL', label:'All Games' },
-    { id:'AVG5',  label:'5 Game AV'  },
-    { id:'AVG10', label:'10 Game AV' },
-    { id:'AVG20', label:'20 Game AV' },
+    { id:'B5',  label:'5 Game AV',  k:5  },
+    { id:'B10', label:'10 Game AV', k:10 },
+    { id:'B20', label:'20 Game AV', k:20 },
   ];
+
   const buttons = [];
   modes.forEach(m=>{
-    const b = document.createElement('button');
+    const b=document.createElement('button');
     b.type='button'; b.className='btn small'; b.textContent=m.label; b.dataset.mode=m.id;
-    b.onclick = ()=> { buttons.forEach(x=>x.classList.remove('primary')); b.classList.add('primary'); render(m.id); };
+    b.onclick=()=>{ buttons.forEach(x=>x.classList.remove('primary')); b.classList.add('primary'); draw(m.k); };
     buttons.push(b); row.appendChild(b);
   });
-  // Default
-  (buttons[0]||{}).classList.add('primary');
+  (buttons[2]||buttons[0]||{}).classList.add('primary'); // default 20
 
-  // Mount row and a container where we’ll draw the chart
   const chartHost = document.createElement('div');
-  body.appendChild(row);
-  body.appendChild(chartHost);
-  chartHost.style.position = 'relative';
-  chartHost.style.paddingBottom = '22px'; // space for the pill below the axis labels
+  chartHost.style.position='relative';
+  chartHost.style.borderRadius='14px';
+  chartHost.style.overflow='hidden';
+  // Keep the plot clean: pills sit BELOW the canvas, not over it.
+  chartHost.style.padding='34px 6px 10px 6px';
 
-// --- helpers
-function chunkAvg(arr, k){
-  // Non-overlapping buckets: [0..k-1], [k..2k-1], ...; ignore tail < k
-  const out = [];
-  for (let end = k; end <= arr.length; end += k) {
-    const start = end - k;
-    const slice = arr.slice(start, end);
-    const mean = slice.reduce((s,v)=>s+Number(v||0),0) / slice.length;
-    out.push({ x: end, y: mean }); // x = game number at bucket end (5,10,15,...)
-  }
-  return out;
-}
+  // Canvas (responsive)
+  const canvas = document.createElement('canvas');
+  canvas.style.width = '100%';
+  canvas.style.height = '280px';
+  canvas.style.display='block';
+  chartHost.appendChild(canvas);
 
-  function render(mode){
-    chartHost.innerHTML = '';
+    // Precompute legend numbers
+  const __progAllTimeAvg = scores.reduce((s,v)=>s+v,0) / Math.max(1, scores.length);
+  const __progMid = Math.max(1, Math.floor(scores.length/2));
+  const __progTrajStart = scores.slice(0, __progMid).reduce((s,v)=>s+v,0) / Math.max(1, scores.slice(0, __progMid).length);
+  const __progTrajEnd = scores.slice(__progMid).reduce((s,v)=>s+v,0) / Math.max(1, scores.slice(__progMid).length || 1);
 
-   // Build points:
-//  - ALL: per-game points (x = 1..N, y = score)
-//  - AVG5/10/20: non-overlapping bucket means at x = 5/10/20, 10/20/40, ...
-let pts;
-if (mode === 'ALL') {
-  pts = scores.map((y, idx) => ({ x: idx + 1, y: Number(y || 0) }));
-} else if (mode === 'AVG5') {
-  pts = chunkAvg(scores, 5);
-} else if (mode === 'AVG10') {
-  pts = chunkAvg(scores, 10);
-} else if (mode === 'AVG20') {
-  pts = chunkAvg(scores, 20);
-} else {
-  pts = scores.map((y, idx) => ({ x: idx + 1, y: Number(y || 0) }));
-}
-   
-    // SVG setup
-    const w = 560, h = 260, padL = 36, padB = 28, padT = 10, padR = 10;
-    const plotW = w - padL - padR;
-    const plotH = h - padT - padB;
+// Legend (top-right)
+  const legend = document.createElement('div');
+  legend.className = 'prog-legend';
+  legend.style.position = 'absolute';
+  legend.style.top = '6px';
+  legend.style.right = '10px';
+  legend.style.display = 'flex';
+  legend.style.flexDirection = 'column';
+  legend.style.gap = '6px';
+  legend.style.pointerEvents = 'none';
+  legend.style.opacity = '0.92';
+  legend.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:rgba(255,255,255,0.78)">
+        <span style="display:inline-block;width:18px;height:0;border-top:2px dashed rgba(255,140,0,0.95)"></span>
+        <span>All Time AVG</span>
+      </div>
+      <div style="padding-left:26px;font-size:11px;color:rgba(255,255,255,0.72)">${Math.round(__progAllTimeAvg)}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:rgba(255,255,255,0.78)">
+        <span style="display:inline-block;width:18px;height:0;border-top:2px solid rgba(90,255,140,0.95)"></span>
+        <span>Trajectory</span>
+      </div>
+      <div style="padding-left:26px;font-size:11px;color:rgba(255,255,255,0.72)">${Math.round(__progTrajStart)} &rarr; ${Math.round(__progTrajEnd)}</div>
+    </div>
+  `;
+  chartHost.appendChild(legend);
 
-    // Axis ranges
-const yMin = 0;
-const yMax = FIXED_Y_MAX; // keep left scale identical across modes
-    const xMin = 1;
-const xMax = pts.length ? Math.max(...pts.map(p => p.x)) : 1;
-    const sx = x => padL + ((x - xMin) / (xMax - xMin || 1)) * plotW;
-    const sy = y => padT + plotH - ((y - yMin) / (yMax - yMin || 1)) * plotH;
+  // Stats pills (below canvas, right-aligned)
+  const pillRow = document.createElement('div');
+  pillRow.style.display = 'flex';
+  pillRow.style.flexDirection = 'column';
+  pillRow.style.alignItems = 'flex-end';
+  pillRow.style.gap = '6px';
+  pillRow.style.padding = '10px 6px 0 6px';
 
-    const ns  = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('width', String(w));
-    svg.setAttribute('height', String(h));
-    svg.style.display = 'block';
-    svg.style.margin  = '6px auto';
+  const pillAll = document.createElement('div');
+  pillAll.className = 'tag prog-stats';
+  pillAll.style.opacity = '0.9';
+  pillAll.style.pointerEvents = 'none';
 
-    // Axes
-    const xAxis = document.createElementNS(ns,'line');
-    xAxis.setAttribute('x1', padL); xAxis.setAttribute('y1', padT + plotH);
-    xAxis.setAttribute('x2', padL + plotW); xAxis.setAttribute('y2', padT + plotH);
-    xAxis.setAttribute('stroke','currentColor'); xAxis.setAttribute('stroke-opacity','0.4');
-    svg.appendChild(xAxis);
+  const pillAvg = document.createElement('div');
+  pillAvg.className = 'tag prog-stats';
+  pillAvg.style.opacity = '0.9';
+  pillAvg.style.pointerEvents = 'none';
 
-    const yAxis = document.createElementNS(ns,'line');
-    yAxis.setAttribute('x1', padL); yAxis.setAttribute('y1', padT);
-    yAxis.setAttribute('x2', padL); yAxis.setAttribute('y2', padT + plotH);
-    yAxis.setAttribute('stroke','currentColor'); yAxis.setAttribute('stroke-opacity','0.4');
-    svg.appendChild(yAxis);
+  pillRow.append(pillAll, pillAvg);
+  chartHost.appendChild(pillRow);
 
-    // X ticks = game number (step 5 if many)
-    const xStep = xMax > 30 ? 5 : 1;
-    for (let v = xMin; v <= xMax; v += xStep) {
-      const x = sx(v);
-      const t = document.createElementNS(ns,'line');
-      t.setAttribute('x1', x); t.setAttribute('x2', x);
-      t.setAttribute('y1', padT + plotH); t.setAttribute('y2', padT + plotH + 4);
-      t.setAttribute('stroke','currentColor'); t.setAttribute('stroke-opacity','0.6');
-      svg.appendChild(t);
+  body.append(row, chartHost);
 
-      const lbl = document.createElementNS(ns,'text');
-      lbl.setAttribute('x', x);
-      lbl.setAttribute('y', padT + plotH + 16);
-      lbl.setAttribute('text-anchor','middle');
-      lbl.setAttribute('font-size','10');
-      lbl.setAttribute('fill','currentColor');
-      lbl.textContent = String(v);
-      svg.appendChild(lbl);
-    }
-
-    // Y ticks = points (every 25)
-    for (let v = yMin; v <= yMax; v += 25) {
-      const yy = sy(v);
-      const t = document.createElementNS(ns,'line');
-      t.setAttribute('x1', padL - 4); t.setAttribute('x2', padL);
-      t.setAttribute('y1', yy); t.setAttribute('y2', yy);
-      t.setAttribute('stroke','currentColor'); t.setAttribute('stroke-opacity','0.6');
-      svg.appendChild(t);
-
-      const lbl = document.createElementNS(ns,'text');
-      lbl.setAttribute('x', padL - 6); lbl.setAttribute('y', yy + 3);
-      lbl.setAttribute('text-anchor','end');
-      lbl.setAttribute('font-size','10'); lbl.setAttribute('fill','currentColor');
-      lbl.textContent = String(v);
-      svg.appendChild(lbl);
-    }
-    
-    // light gridlines every 50 points across the plot
-for (let gv = 50; gv <= yMax; gv += 50) {
-  const yy = sy(gv);
-  const gl = document.createElementNS(ns, 'line');
-  gl.setAttribute('x1', padL);
-  gl.setAttribute('x2', padL + plotW);
-  gl.setAttribute('y1', yy);
-  gl.setAttribute('y2', yy);
-  gl.setAttribute('stroke', 'currentColor');
-  gl.setAttribute('stroke-opacity', '0.15');
-  gl.setAttribute('stroke-dasharray', '2 4');
-  svg.appendChild(gl);
-}
-
-    // Line + dots (dots only in ALL mode)
-    if (pts.length) {
-      const path = document.createElementNS(ns,'path');
-      path.setAttribute('d', pts.map((p,i) => (i ? 'L' : 'M') + sx(p.x) + ',' + sy(p.y)).join(' '));
-path.setAttribute('fill','none');
-// Blue in AVG modes, normal color in ALL
-path.setAttribute('stroke', (mode === 'ALL') ? 'currentColor' : '#4da3ff');
-path.setAttribute('stroke-width','2');
-      svg.appendChild(path);
-
-     // Dots only in ALL mode (keep clean lines in AV modes)
-if (mode === 'ALL') {
-  pts.forEach(p => {
-    const c = document.createElementNS(ns,'circle');
-    c.setAttribute('cx', sx(p.x)); c.setAttribute('cy', sy(p.y));
-    c.setAttribute('r', '2'); c.setAttribute('fill', 'currentColor'); c.setAttribute('fill-opacity', '0.9');
-    svg.appendChild(c);
-  });
-}
-
-// For AVG modes, show labels but de-clutter aggressively
-if (mode !== 'ALL') {
-  // pixel positions so we can enforce spacing
-  const xs = pts.map(p => sx(p.x));
-  let lastLabeledX = -Infinity;
-
-  // dynamic spacing — more points ⇒ larger min gap
-  const n = pts.length;
-  const MIN_GAP = n > 20 ? 48 : (n > 12 ? 40 : 32);
-
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-    const x = xs[i];
-    const y = sy(p.y);
-
-    const isFirst = (i === 0);
-    const isLast  = (i === pts.length - 1);
-
-    // local extrema (peak or valley)
-    let isExtrema = false;
-    if (!isFirst && !isLast) {
-      const py = pts[i - 1].y;
-      const ny = pts[i + 1].y;
-      isExtrema = (p.y > py && p.y >= ny) || (p.y < py && p.y <= ny);
-    }
-
-    const spacedEnough = (x - lastLabeledX) >= MIN_GAP;
-
-    if (isFirst || isLast || isExtrema || spacedEnough) {
-      // slight vertical shift to reduce chance of overlap with line
-      const yOffset = isExtrema ? (isLast ? -6 : -10) : -6;
-
-      const tx = document.createElementNS(ns, 'text');
-      tx.setAttribute('x', x + 4);
-      tx.setAttribute('y', y + yOffset);
-      tx.setAttribute('font-size', '10');
-      tx.setAttribute('fill', 'currentColor');
-      tx.setAttribute('fill-opacity', '0.85');
-      tx.setAttribute('pointer-events', 'none');
-      tx.textContent = (Number(p.y) || 0).toFixed(1);
-      svg.appendChild(tx);
-
-      lastLabeledX = x;
-    }
-  }
-}
-
-// Overall average (visible in ALL and in AV modes)
-const yAvg = sy(avgAll);
-const avgLine = document.createElementNS(ns,'line');
-avgLine.setAttribute('x1', padL);
-avgLine.setAttribute('x2', padL + plotW);
-avgLine.setAttribute('y1', yAvg);
-avgLine.setAttribute('y2', yAvg);
-avgLine.setAttribute('stroke', '#4da3ff');       // blue
-avgLine.setAttribute('stroke-opacity', '0.7');
-avgLine.setAttribute('stroke-dasharray', '4 4');
-svg.appendChild(avgLine);
-    }
-
-chartHost.appendChild(svg);
-
-// ---- stats pill (mode-aware) ----
-const oldPill = chartHost.querySelector('.prog-stats');
-if (oldPill) oldPill.remove();
-
-const ys = pts.map(p => Number(p.y) || 0);
-const curAvg = ys.length ? ys.reduce((s,v)=>s+v,0) / ys.length : 0;
-const lo = ys.length ? Math.min(...ys) : 0;
-const hi = ys.length ? Math.max(...ys) : 0;
-
-const pill = document.createElement('div');
-pill.className = 'tag prog-stats';
-pill.textContent = `Avg ${curAvg.toFixed(1)} • Low ${lo.toFixed(1)} • High ${hi.toFixed(1)}`;
-pill.style.position = 'absolute';
-pill.style.right = '6px';
-pill.style.bottom = '-14px';  // sit just below the axis area
-pill.style.zIndex = '3';      // keep above the SVG
-pill.style.pointerEvents = 'none';pill.style.opacity = '0.9';
-chartHost.appendChild(pill);
-  }
-
-// initial render (guarded so an error can’t kill the modal)
-try { render('ALL'); } catch (e) { console.error('Progression render failed', e); }
-
-  // Footer
+  // Footer buttons
   const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
   const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
-  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
-  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
+  const close=()=>overlay.remove();
+  backBtn.onclick=close; closeBtn.onclick=close;
+  footer.append(backBtn, closeBtn);
 
-  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove();});
-  modal.tabIndex=0; modal.focus();
-};
+  modal.append(title, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  // ---- Draw
+  function draw(blockSize){
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const W = Math.max(320, Math.floor(rect.width));
+    const H = 280;
+    canvas.width  = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    canvas.style.height = H+'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,W,H);
+
+    // Layout
+    // Extra bottom padding so X-axis labels never fight the pills below.
+    const padL=42, padR=10, padT=8, padB=34;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
+
+    // Background
+    ctx.fillStyle = 'rgba(10,12,18,0.25)';
+    ctx.fillRect(0,0,W,H);
+
+    // Grid
+    ctx.strokeStyle='rgba(255,255,255,0.10)';
+    ctx.lineWidth=1;
+    for (let y=0; y<=Y_MAX; y+=50){
+      const py = padT + plotH - (y/Y_MAX)*plotH;
+      ctx.beginPath(); ctx.moveTo(padL, py); ctx.lineTo(padL+plotW, py); ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,0.55)';
+      ctx.font='12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+      ctx.textAlign='right'; ctx.textBaseline='middle';
+      ctx.fillText(String(y), padL-6, py);
+    }
+
+    // Bars: one per game
+    const n = scores.length;
+    if (!n){
+      ctx.fillStyle='rgba(255,255,255,0.65)';
+      ctx.font='14px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('No data', W/2, H/2);
+      pillAll.textContent='';
+      pillAvg.textContent='';
+      return;
+    }
+
+    const barGap = 1;
+    const barW = Math.max(1, Math.floor(plotW / n));
+    for (let i=0;i<n;i++){
+      const v = Math.max(0, Math.min(Y_MAX, scores[i]));
+      const x = padL + i*(plotW/n);
+      const h = (v/Y_MAX)*plotH;
+      const y = padT + (plotH - h);
+      ctx.fillStyle='rgba(255,255,255,0.70)';
+      ctx.fillRect(x, y, Math.max(1, (plotW/n) - barGap), h);
+    }
+
+    // Orange "current average" line (overall)
+    const avgY = padT + plotH - (avgAll/Y_MAX)*plotH;
+    ctx.strokeStyle = 'rgba(255,140,0,0.95)'; // Shateki orange
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6,4]);
+    ctx.beginPath();
+    ctx.moveTo(padL, avgY);
+    ctx.lineTo(padL+plotW, avgY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Trajectory (green solid): first-half avg -> second-half avg
+    const mid = Math.max(1, Math.floor(n/2));
+    const avg1 = scores.slice(0, mid).reduce((s,v)=>s+v,0) / Math.max(1, scores.slice(0, mid).length);
+    const avg2 = scores.slice(mid).length ? (scores.slice(mid).reduce((s,v)=>s+v,0) / scores.slice(mid).length) : avg1;
+    const y1 = padT + plotH - (avg1/Y_MAX)*plotH;
+    const y2 = padT + plotH - (avg2/Y_MAX)*plotH;
+    ctx.strokeStyle = 'rgba(90,255,140,0.95)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(padL, y1);
+    ctx.lineTo(padL+plotW, y2);
+    ctx.stroke();
+
+    // Block average line (white) - points connected
+    const pts = blockAvgPoints(scores, blockSize || 20);
+    if (pts.length){
+      ctx.strokeStyle='rgba(255,255,255,0.92)';
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      pts.forEach((p, idx)=>{
+        const px = padL + (p.x/(n-1))*plotW;
+        const py = padT + plotH - (p.y/Y_MAX)*plotH;
+        if (idx===0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+    }
+
+    // X axis ticks: every 10 games
+    ctx.fillStyle='rgba(255,255,255,0.55)';
+    ctx.font='11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    for (let i=0;i<n;i+=10){
+      const x = padL + (i/(n-1))*plotW;
+      ctx.fillText(String(i+1), x, padT+plotH+6);
+    }
+
+    const minV = Math.min(...scores);
+    const maxV = Math.max(...scores);
+
+    // Block-average range (selected mode)
+    const k = blockSize || 20;
+    const blockMeans = [];
+    for (let s=0; s<n; s+=k){
+      const slice = scores.slice(s, Math.min(s+k, n));
+      if (!slice.length) continue;
+      blockMeans.push(slice.reduce((a,b)=>a+b,0) / slice.length);
+    }
+    const minAvg = blockMeans.length ? Math.min(...blockMeans) : avgAll;
+    const maxAvg = blockMeans.length ? Math.max(...blockMeans) : avgAll;
+
+    pillAll.textContent = `Avg ${avgAll.toFixed(1)} · Low ${minV} · High ${maxV}`;
+    pillAvg.textContent = `Avg Low ${minAvg.toFixed(1)} · Avg High ${maxAvg.toFixed(1)}`;
+  }
+
+  // initial draw
+  draw(20);
+
+  // redraw on resize
+  const ro = new ResizeObserver(()=>draw(Number((body.querySelector('.btn.primary')||{}).dataset && (body.querySelector('.btn.primary')||{}).dataset.mode==='B5'?5:(body.querySelector('.btn.primary')||{}).dataset.mode==='B10'?10:20)));
+  try { ro.observe(chartHost); } catch(_){}
+}
+;
+
 
 // ==== (4) Target % — per round (10→20 + D + T + B) ==========================
 window.openPlayerTargetPctDialog = async function openPlayerTargetPctDialog(playerName){
@@ -19815,7 +20308,7 @@ if (!throwsRows.length) {
   closeBtn.onclick=()=>overlay.remove();
   const __spacer=document.createElement('div'); __spacer.style.flex='1';
   const spiderBtn=document.createElement('button'); spiderBtn.className='btn small'; spiderBtn.textContent='SPIDER'; spiderBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerSpiderDialog==='function') window.openPlayerSpiderDialog(name,{parentOverlay:overlay,data:{labels:labels,pct:pctArr}}); else if (typeof toast==='function') toast('SPIDER not available'); };
-  const progBtn=document.createElement('button'); progBtn.className='btn small'; progBtn.textContent='PROGRESS'; progBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerProgressHitDialog==='function') window.openPlayerProgressHitDialog(name,{parentOverlay:overlay,data:{labels:labels,throws:playerThrows,gameOrder:ids}}); else if (typeof toast==='function') toast('PROGRESS not available'); };
+  const progBtn=document.createElement('button'); progBtn.className='btn small'; progBtn.textContent='PROGRESS'; progBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerProgressHitDialog==='function') window.openPlayerProgressHitDialog(name,{parentOverlay:overlay,mode:'hit',data:{labels:labels,throws:playerThrows,gameOrder:ids}}); else if (typeof toast==='function') toast('PROGRESS not available'); };
   footer.append(backBtn,closeBtn,__spacer,spiderBtn,progBtn);
 
   modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
@@ -19852,7 +20345,7 @@ window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPc
   closeBtn.onclick=()=>overlay.remove();
   const __spacer=document.createElement('div'); __spacer.style.flex='1';
   const spiderBtn=document.createElement('button'); spiderBtn.className='btn small'; spiderBtn.textContent='SPIDER'; spiderBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerSpiderDialog==='function') window.openPlayerSpiderDialog(name,{parentOverlay:overlay, mode:'points', data: window.__lastPointsPctSpiderData}); else if (typeof toast==='function') toast('SPIDER not available'); };
-  const progBtn=document.createElement('button'); progBtn.className='btn small'; progBtn.textContent='PROGRESS'; progBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerProgressHitDialog==='function') window.openPlayerProgressHitDialog(name,{parentOverlay:overlay}); else if (typeof toast==='function') toast('PROGRESS not available'); };
+  const progBtn=document.createElement('button'); progBtn.className='btn small'; progBtn.textContent='PROGRESS'; progBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerProgressHitDialog==='function') window.openPlayerProgressHitDialog(name,{parentOverlay:overlay,mode:'points'}); else if (typeof toast==='function') toast('PROGRESS not available'); };
   footer.append(backBtn,closeBtn,__spacer,spiderBtn,progBtn);
 
   body.innerHTML = '<p class="muted">Loading…</p>';
@@ -22681,63 +23174,29 @@ if (!todayBtn) {
     }
   };
 
-  window.openPlayerProgressHitDialog = async function openPlayerProgressHitDialog(playerName, opts){
+  window.openPlayerProgressHitDialog = async function openPlayerProgressHitDialog(playerName, opts={}){
     const name = String(playerName||'').trim();
+    const mode = String((opts && opts.mode) || 'hit').toLowerCase(); // hit | points | dtb
+    const parentOverlay = opts && opts.parentOverlay ? opts.parentOverlay : null;
+
+    // --- modal shell (match Game Race / Progression styling) ---
     const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-    const modal   = document.createElement('div'); modal.className  ='modal compact';
-    const title   = document.createElement('h3');  title.textContent=`PROGRESS — ${name}`;
-    const body    = document.createElement('div'); body.className   ='modal-body';
-    const footer  = document.createElement('div'); footer.className ='modal-footer';
-    modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
-    body.style.maxHeight='none'; body.style.overflowY='visible';
+    const modal   = document.createElement('div'); modal.className='modal wide';
+    modal.style.maxWidth = '920px';
+    modal.style.width = 'min(920px, 96vw)';
+    modal.style.maxHeight = '90vh';
+    modal.style.overflow = 'hidden';
 
-    const controls = document.createElement('div');
-    controls.className='row';
-    controls.style.flexWrap='wrap';
-    controls.style.gap='6px';
-    controls.style.marginBottom='10px';
+    const title = document.createElement('h3');
+    title.textContent = (mode==='points') ? `TARGET POINTS % — ${name}` : (mode==='dtb' ? `DTB % — ${name}` : `TARGET HIT % — ${name}`);
 
-    const labels = __roundLabels();
-    const selected = new Set(['10']);
+    const body = document.createElement('div'); body.className='modal-body';
+    body.style.overflow = 'auto'; body.style.overflowY = 'hidden';
 
-    function mkToggle(lab){
-      const b = document.createElement('button');
-      b.className='btn small';
-      b.textContent = lab;
-      b.onclick = () => {
-        if (selected.has(lab)) selected.delete(lab);
-        else selected.add(lab);
-        render();
-      };
-      return b;
-    }
-    const btnByLab = new Map();
-    labels.forEach(l=>{
-      const b = mkToggle(l);
-      controls.appendChild(b);
-      btnByLab.set(l,b);
-    });
-
-    const canvas = document.createElement('canvas');
-    canvas.width = 520; canvas.height = 260;
-    canvas.style.width = 'min(560px, 92vw)';
-    canvas.style.height= 'auto';
-
-    const note = document.createElement('p');
-    note.className='muted';
-    note.style.marginTop='6px';
-    note.style.textAlign='center';
-
-    const wrap = document.createElement('div');
-    wrap.style.display='flex';
-    wrap.style.flexDirection='column';
-    wrap.style.alignItems='center';
-    wrap.append(controls, canvas, note);
-    body.appendChild(wrap);
-
+    const footer = document.createElement('div'); footer.className='modal-footer';
     const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
     const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
-    const parentOverlay = opts && opts.parentOverlay ? opts.parentOverlay : null;
+
     const backToPrev = () => {
       overlay.remove();
       if (parentOverlay){ parentOverlay.style.display=''; try{ parentOverlay.querySelector('.modal')?.focus?.(); }catch(_e){} return; }
@@ -22754,6 +23213,94 @@ if (!todayBtn) {
     closeBtn.onclick = closeToHub;
     footer.append(backBtn, closeBtn);
 
+    // --- controls ---
+    const controls = document.createElement('div');
+    controls.style.display='flex';
+    controls.style.flexDirection='column';
+    controls.style.gap='10px';
+
+    const avgRow = document.createElement('div');
+    avgRow.style.display='flex';
+    avgRow.style.gap='8px';
+    avgRow.style.flexWrap='wrap';
+
+    const avgBtns = [
+      { key:'avg3',  label:'3 Dart AV' },
+      { key:'avg10', label:'10 Dart AV' },
+      { key:'avg20', label:'20 Dart AV' },
+      { key:'traj',  label:'Trajectory' }
+    ];
+
+    const targetRow = document.createElement('div');
+    targetRow.style.display='flex';
+    targetRow.style.gap='8px';
+    targetRow.style.flexWrap='wrap';
+
+    // Targets: 10..20 plus D/T/B (single-select)
+    const targets = [];
+    for (let n=10;n<=20;n++) targets.push({ key:String(n), label:String(n) });
+    targets.push({ key:'D', label:'D' }, { key:'T', label:'T' }, { key:'B', label:'B' });
+
+    let selectedTarget = '10';
+    let avgMode = 'avg10';
+
+    function makePillButton(label, isActive=false){
+      const b=document.createElement('button');
+      b.className='btn tiny';
+      b.textContent=label;
+      b.style.borderRadius='999px';
+      b.style.padding='6px 10px';
+      b.style.fontSize='12px';
+      b.style.letterSpacing='.06em';
+      b.style.textTransform='uppercase';
+      b.style.opacity = isActive ? '1' : '.75';
+      b.style.borderColor = isActive ? 'rgba(255,140,0,.65)' : 'rgba(255,255,255,.14)';
+      b.style.boxShadow = isActive ? '0 0 0 2px rgba(255,140,0,.10) inset' : 'none';
+      return b;
+    }
+
+    function renderButtons(){
+      avgRow.innerHTML='';
+      avgBtns.forEach(it=>{
+        const b = makePillButton(it.label, avgMode===it.key);
+        b.onclick = () => { avgMode = it.key; renderButtons(); draw(); };
+        avgRow.appendChild(b);
+      });
+
+      targetRow.innerHTML='';
+      targets.forEach(it=>{
+        const b = makePillButton(it.label, selectedTarget===it.key);
+        b.onclick = () => { selectedTarget = it.key; renderButtons(); draw(); };
+        targetRow.appendChild(b);
+      });
+    }
+
+    // --- chart ---
+    const canvas = document.createElement('canvas');
+    canvas.width = 860;
+    canvas.height = 420;
+    canvas.style.width = 'auto'; canvas.style.display='block';
+    canvas.style.height = 'auto';
+    canvas.style.borderRadius = '14px';
+    canvas.style.background = 'rgba(0,0,0,.18)';
+    canvas.style.border = '1px solid rgba(255,255,255,.08)';
+
+    const note = document.createElement('div');
+    note.className='muted';
+    note.style.display='flex';
+    note.style.justifyContent='space-between';
+    note.style.gap='10px';
+    note.style.marginTop='6px';
+    note.style.fontSize='12px';
+    note.innerHTML = `<span>Single target selected; bars are per-game for that target.</span><span></span>`;
+
+    controls.appendChild(avgRow);
+    controls.appendChild(targetRow);
+
+    body.appendChild(controls);
+    body.appendChild(canvas);
+    body.appendChild(note);
+
     modal.append(title, body, footer);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
@@ -22761,115 +23308,295 @@ if (!todayBtn) {
     overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
     modal.tabIndex=0; modal.focus();
 
-    // Load + prep
-    let weekLabels = [];
-    let seriesByLabel = {}; // label -> values per week
-
-    function refreshButtons(){
-      btnByLab.forEach((b, lab)=>{
-        if (selected.has(lab)) b.classList.add('primary');
-        else b.classList.remove('primary');
-      });
-    }
-
-    function render(){
-      refreshButtons();
-      const chosen = Array.from(selected);
-      if (!chosen.length){
-        note.textContent = 'Select one or more targets to plot.';
-        drawMultiLine(canvas, weekLabels, {});
-        return;
-      }
-      const map = {};
-      chosen.forEach(l=>{ map[l] = seriesByLabel[l] || []; });
-      drawMultiLine(canvas, weekLabels, map);
-      note.textContent = chosen.join(', ') + ' — 3-game hit % average (oldest → newest).';
-    }
-
+    // --- data ---
+    let rows = null;
     try{
-      const providedRows = opts && opts.data && Array.isArray(opts.data.throws) ? opts.data.throws : null;
-      const rows = providedRows ? providedRows : await fetchPlayerThrowsWithTs(name);
-      const withTs = rows.filter(r=>r.ts || r.game_id);
-      if (!withTs.length){
-        note.textContent = 'No timestamps found for throws.';
-        return;
-      }
-
-      // Build per-game hit% for each target label, then compute rolling 3-game % (aggregated hits/attempts).
-
-      // Group throws by game (best-effort): prefer game_id, otherwise bucket by date.
-      const games = new Map(); // key -> {tsMax, perLabel: Array(14){t,h}}
-      for (const r of withTs){
-        const d = new Date(r.ts);
-        if (Number.isNaN(d.getTime())) continue;
-        const key = r.game_id ? String(r.game_id) : d.toISOString().slice(0,20);
-        let g = games.get(key);
-        if (!g){
-          g = { tsMax: d, per: Array.from({length:14}, ()=>({t:0,h:0})) };
-          games.set(key, g);
-        }
-        if (d > g.tsMax) g.tsMax = d;
-        const ri = (typeof r.round_index==='number') ? r.round_index : null;
-        if (ri==null || ri<0 || ri>13) continue;
-        g.per[ri].t += 1;
-        if ((r.hit===true) || (Number(r.points||0)>0)) g.per[ri].h += 1;
-      }
-
-      // Sort games oldest -> newest
-      let gameList = Array.from(games.entries())
-        .map(([k,v])=>({key:k, ts:v.tsMax, per:v.per}));
-
-      const order = opts && opts.data && Array.isArray(opts.data.gameOrder) ? opts.data.gameOrder.map(String) : null;
-      if (order && order.length){
-        const idx = new Map(order.map((id,i)=>[String(id), i]));
-        gameList.sort((a,b)=> (idx.get(String(a.key)) ?? 1e9) - (idx.get(String(b.key)) ?? 1e9));
-      } else {
-        gameList.sort((a,b)=>a.ts - b.ts);
-      }
-
-      if (gameList.length < 3){
-        note.textContent = 'Need at least 3 games to show 3-game averages.';
-        drawMultiLine(canvas, [], {});
-        return;
-      }
-
-      // X labels: date of the newest game in the rolling window
-      function fmtMMDD(dt){
-        const m = String(dt.getMonth()+1).padStart(2,'0');
-        const da = String(dt.getDate()).padStart(2,'0');
-        return `${m}-${da}`;
-      }
-
-      const xLabels = [];
-      for (let i=2;i<gameList.length;i++){
-        xLabels.push(fmtMMDD(gameList[i].ts));
-      }
-
-      // For each label, compute rolling pct across 3 games (aggregate hits/attempts across window)
-      seriesByLabel = {};
-      for (let ri=0; ri<14; ri++){
-        const lab = labels[ri];
-        const vals = [];
-        for (let i=2;i<gameList.length;i++){
-          let t=0,h=0;
-          for (let j=i-2;j<=i;j++){
-            const cell = gameList[j].per[ri];
-            t += cell.t;
-            h += cell.h;
-          }
-          const pct = t ? (100*h/t) : 0;
-          vals.push(Number(pct.toFixed(1)));
-        }
-        seriesByLabel[lab] = vals;
-      }
-
-      weekLabels = xLabels;
-render();
+      if (opts && opts.data && Array.isArray(opts.data.throws)) rows = opts.data.throws;
+      else rows = await fetchPlayerThrowsWithTs(name);
     }catch(e){
-      console.error('PROGRESS failed', e);
-      note.textContent = 'Could not load data.';
+      console.warn('progress fetch failed', e);
+      rows = [];
     }
-  };
+
+    // Normalise game ordering (old data may not include game_id; treat null as one bucket)
+    const games = new Map(); // gid -> { tsMax, byRound: Map(ri -> [throws]) }
+    const safeGid = (r, i) => (r && r.game_id) ? String(r.game_id) : `local_${i}`;
+
+    (rows||[]).forEach((r,i)=>{
+      const gid = safeGid(r,i);
+      if (!games.has(gid)) games.set(gid, { tsMax: null, byRound: new Map() });
+      const g = games.get(gid);
+      const ts = r && r.ts ? new Date(r.ts).getTime() : null;
+      if (ts!=null && (g.tsMax==null || ts>g.tsMax)) g.tsMax = ts;
+
+      const ri = Number(r.round_index);
+      if (!Number.isFinite(ri)) return;
+      if (!g.byRound.has(ri)) g.byRound.set(ri, []);
+      g.byRound.get(ri).push(r);
+    });
+
+    // Order games by timestamp asc (fallback to insertion order)
+    const gameList = Array.from(games.entries()).map(([gid, g]) => ({ gid, tsMax: g.tsMax, byRound: g.byRound }));
+    gameList.sort((a,b)=>{
+      const at=a.tsMax??0, bt=b.tsMax??0;
+      return at-bt;
+    });
+
+    function roundIndexFromKey(key){
+      if (key==='D') return 11;
+      if (key==='T') return 12;
+      if (key==='B') return 13;
+      const n = Number(key);
+      if (Number.isFinite(n) && n>=10 && n<=20) return n-10;
+      return 0;
+    }
+
+    function pointsForThrow(r){
+      const hit = !!(r && (r.hit || Number(r.points||0)>0));
+      if (!hit) return 0;
+      const ri = Number(r.round_index);
+      const base = (ri>=0 && ri<=10) ? (10+ri) : (ri===11 ? 20 : (ri===12 ? 20 : (ri===13 ? 50 : 0)));
+      const k = String(r.kind||'').toLowerCase();
+      if (k==='d') return base*2;
+      if (k==='t') return base*3;
+      if (k==='ib') return 50;
+      if (k==='ob') return 25;
+      if (k==='b') return base; // if base is 50
+      return base; // single/default
+    }
+
+    function maxPointsPerDart(ri){
+      if (ri>=0 && ri<=10) return (10+ri)*3;
+      if (ri===11) return 40;
+      if (ri===12) return 60;
+      if (ri===13) return 50;
+      return 0;
+    }
+
+    function calcValueForRound(ri, throws){
+      const darts = (throws||[]);
+      const attempts = darts.length || 0;
+      if (!attempts) return null;
+
+      if (mode === 'points'){
+        const sumPts = darts.reduce((a,r)=>a+pointsForThrow(r),0);
+        const maxPts = attempts * maxPointsPerDart(ri);
+        return maxPts>0 ? (sumPts/maxPts)*100 : 0;
+      }
+
+      if (mode === 'dtb'){
+        let ok = 0;
+        darts.forEach(r=>{
+          const hit = !!(r && (r.hit || Number(r.points||0)>0));
+          if (!hit) return;
+          const k = String(r.kind||'').toLowerCase();
+          if (ri>=0 && ri<=10){
+            if (k==='d' || k==='t') ok++;
+          }else if (ri===11){
+            if (k==='d') ok++;
+          }else if (ri===12){
+            if (k==='t') ok++;
+          }else if (ri===13){
+            if (k==='ib' || k==='ob' || k==='b') ok++;
+          }
+        });
+        return (ok/attempts)*100;
+      }
+
+      // default: hit%
+      const hits = darts.reduce((a,r)=>a + ( (r && (r.hit || Number(r.points||0)>0)) ? 1 : 0 ), 0);
+      return (hits/attempts)*100;
+    }
+
+    function computeSeries(targetKey){
+      const ri = roundIndexFromKey(targetKey);
+      const xs = []; // game indices (1..N)
+      const ys = []; // values (0..100)
+      gameList.forEach((g, idx)=>{
+        const arr = g.byRound.get(ri) || [];
+        const v = calcValueForRound(ri, arr);
+        if (v==null) return; // skip games missing that round (rare)
+        xs.push(idx+1);
+        ys.push({ i: idx+1, v });
+      });
+      return { xs, ys, ri };
+    }
+
+    function rollingAvg(ys, win){
+      const out=[];
+      for (let i=0;i<ys.length;i++){
+        const s = Math.max(0, i-win+1);
+        let sum=0, c=0;
+        for (let j=s;j<=i;j++){ const v=ys[j]; if (Number.isFinite(v)){ sum+=v; c++; } }
+        out.push(c?sum/c:null);
+      }
+      return out;
+    }
+
+    function bucketLine(ys, bucketSize){
+      const pts=[]; // {xIndex, y}
+      for (let i=0;i<ys.length;i+=bucketSize){
+        const slice=ys.slice(i, i+bucketSize);
+        const vals=slice.filter(v=>Number.isFinite(v));
+        const avg=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;
+        pts.push({ x:i, y:avg });
+      }
+      return pts;
+    }
+
+    function trajectoryLine(ys){
+      const n=ys.length;
+      if (!n) return null;
+      const mid = Math.floor(n/2);
+      const a1 = ys.slice(0, mid).filter(v=>Number.isFinite(v));
+      const a2 = ys.slice(mid).filter(v=>Number.isFinite(v));
+      const y1 = a1.length? a1.reduce((a,b)=>a+b,0)/a1.length : null;
+      const y2 = a2.length? a2.reduce((a,b)=>a+b,0)/a2.length : null;
+      return { y1, y2 };
+    }
+
+    function drawChart(series){
+      series = Array.isArray(series) ? series : [];
+      const ys = series.map(d=>d.v);
+      const n = ys.length;
+
+      // Bar chart like Progression: squeeze bars to fit the popup (no horizontal scroll)
+      const BASE_W = 920;
+      const BASE_H = 420;
+      const host = canvas.parentElement || canvas;
+      const cssW = Math.max(320, Math.min(BASE_W, host.clientWidth || BASE_W));
+      const cssH = BASE_H;
+
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+      canvas.style.width = cssW + 'px';
+      canvas.style.height = cssH + 'px';
+
+      const ctx = canvas.getContext('2d');
+
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      const W = cssW, H = cssH;
+      ctx.clearRect(0,0,W,H);
+
+
+      const padL = 44, padR = 18, padT = 18, padB = 34;
+
+      const innerW = W - padL - padR;
+      const innerH = H - padT - padB;
+
+      // Percent-style charts: fixed axis
+      const yMin = 0, yMax = 100;
+
+      const step = innerW / Math.max(1, n);
+      const barW = Math.max(1, Math.min(6, step * 0.85));
+      const xLeftForIndex = (i) => padL + i*step + (step - barW)/2;
+      const xForIndex = (i) => xLeftForIndex(i) + barW/2;
+      const yForVal = (v) => padT + (1 - ((v - yMin)/(yMax-yMin))) * innerH;
+
+      // grid
+      ctx.strokeStyle='rgba(255,255,255,.08)';
+      ctx.lineWidth=1;
+      for (let g=0; g<=5; g++){
+        const y = padT + (innerH*(g/5));
+        ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+      }
+
+      // all-time high line
+      if (allTimeHigh != null){
+        const y = yForVal(allTimeHigh);
+        ctx.setLineDash([4,4]);
+        ctx.strokeStyle='rgba(255,255,255,.25)';
+        ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle='rgba(255,255,255,.35)';
+        ctx.font='12px system-ui, -apple-system, Segoe UI, Roboto';
+        ctx.fillText('ALL-TIME HIGH', W-padR-90, y-6);
+      }
+
+      // bars
+      ctx.fillStyle='rgba(255,255,255,.35)';
+      for (let i=0;i<n;i++){
+        const v = ys[i];
+        const x = xLeftForIndex(i);
+        const y = yForVal(v);
+        const h = (padT+innerH) - y;
+        ctx.fillRect(x, y, barW, h);
+      }
+
+      // average line modes
+      const mode = avgMode;
+      const linePts = [];
+      if (mode === 'traj'){
+        if (n>1){
+          const half = Math.floor(n/2);
+          const a1 = ys.slice(0, half).reduce((a,b)=>a+b,0) / Math.max(1, half);
+          const a2 = ys.slice(half).reduce((a,b)=>a+b,0) / Math.max(1, n-half);
+          linePts.push({x:xForIndex(0), y:yForVal(a1)});
+          linePts.push({x:xForIndex(n-1), y:yForVal(a2)});
+        }
+      } else if (mode === 'win'){
+        const win = avgWindow;
+        for (let i=0;i<n;i++){
+          const s = Math.max(0, i-win+1);
+          const seg = ys.slice(s, i+1);
+          const av = seg.reduce((a,b)=>a+b,0) / seg.length;
+          linePts.push({x:xForIndex(i), y:yForVal(av)});
+        }
+      }
+
+      // Always show all-time avg as dotted orange
+      if (allTimeAvg != null){
+        const y = yForVal(allTimeAvg);
+        ctx.setLineDash([3,4]);
+        ctx.strokeStyle='rgba(255,140,0,.95)';
+        ctx.lineWidth=2;
+        ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // green line (selected mode)
+      if (linePts.length){
+        ctx.strokeStyle='rgba(140,255,140,.85)';
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.moveTo(linePts[0].x, linePts[0].y);
+        for (let i=1;i<linePts.length;i++) ctx.lineTo(linePts[i].x, linePts[i].y);
+        ctx.stroke();
+      }
+
+      // x labels (sparse, like progression)
+      ctx.fillStyle='rgba(255,255,255,.35)';
+      ctx.font='11px system-ui, -apple-system, Segoe UI, Roboto';
+      const stepLab = (n<=40)?5:(n<=120?10:20);
+      for (let i=0;i<n;i++){
+        if (i===0 || i===n-1 || (i%stepLab===0)){
+          const tx = xForIndex(i);
+          const lbl = String(series[i].i);
+          ctx.fillText(lbl, Math.max(padL, tx-6), H-12);
+        }
+      }
+    }
+
+    function draw(){
+      if (!canvas) return;
+      const series = computeSeries(selectedTarget);
+      if (!series.ys.length){
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.fillStyle='rgba(255,255,255,.65)';
+        ctx.font='14px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+        ctx.textAlign='center';
+        ctx.fillText('No data yet for this target.', canvas.width/2, canvas.height/2);
+        return;
+      }
+      // draw expects the per-game point series array [{i,v}, ...]
+      drawChart(series.ys);
+    }
+
+    renderButtons();
+    draw();
+  };;
 })();
 // >>> PATCH:player_stats_spider_progress END
 
