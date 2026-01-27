@@ -373,12 +373,40 @@
 
   .num{font-variant-numeric:tabular-nums}
   .center{text-align:center}
+
+/* === Stats popup polish (nav buttons + rank colouring) === */
+.sq-pill{ border-radius:999px !important; padding:8px 14px !important; min-height:34px; font-size:13px; }
+.sq-rank-cell{ color: rgba(255,123,26,.95) !important; font-weight: 800; }
+
+/* Reusable button style that matches the home nav buttons */
+.sq-navBtn{ 
+  width: min(420px, 92vw);
+  height: 64px;
+  padding: 0 10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap: 10px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 30px rgba(0,0,0,0.35);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.sq-navBtn:hover{ transform: translateY(-1px); }
+.sq-navBtn:active{ transform: translateY(0); }
+.sq-navBtn.navGreen{ color:#3cff86; border-color: rgba(60,255,134,0.35); }
+.sq-navBtn.navBlue{  color:#4aa3ff; border-color: rgba(74,163,255,0.35); }
+.sq-navBtn.navOrange{color:#ffb14a; border-color: rgba(255,177,74,0.35); }
   .current-cell{background:rgba(255,122,0,.06)!important;box-shadow:inset 0 0 0 1px rgba(255,122,0,.45)}
   .current-col{background:rgba(255,122,0,.035)}
 
   /* Header content */
   thead th .th-wrap{display:flex;flex-direction:column;align-items:center;gap:2px}
-  thead th .th-name{font-weight:800;letter-spacing:.02em}
+  thead th .th-name{font-weight:900;letter-spacing:.02em;font-size:18px;line-height:1.05}
   thead th .th-beers{font-size:12px;line-height:1;min-height:14px;letter-spacing:.5px;filter:drop-shadow(0 0 6px rgba(255,204,102,.35)); text-align:center}
   .th-throw-arrow{font-size:13px; line-height:1}
 
@@ -401,6 +429,10 @@
 /* Floating header: scale total score for 5/6 players */
 .float-head.players-5 .th-total{ font-size: calc(34px * 0.95); }
 .float-head.players-6 .th-total{ font-size: calc(34px * 0.90); }
+/* Floating header: scale initials/name size for 5/6 players */
+.float-head.players-5 thead th .th-name{ font-size:16px; }
+.float-head.players-6 thead th .th-name{ font-size:15px; }
+
 
 /* Throw indicator colours */
 :root{ --shatekiOrange: #ff7a00; --shatekiBlue:#2f86ff; --shatekiBlueLight:#4aa3ff; }
@@ -813,7 +845,7 @@ body[data-page="game"] #gameScrollGate{
   /* Fixed Throw Pad */
   .pad-bar{position:fixed;left:0;right:0;bottom:0;background:rgba(17,19,38,.96);backdrop-filter:blur(6px);
     border-top:1px solid #23284a;z-index:100000;padding-bottom:max(8px, env(safe-area-inset-bottom))}
-  .pad-inner{max-width:1100px;margin:0 auto;padding:8px 10px}
+  .pad-inner{width:100%;max-width:none;margin:0;padding:8px 10px}
   .pad-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px}
   .pad-left{display:flex;align-items:center;gap:10px}
   .pad-hint{color:#a8acc3;font-size:.82rem}
@@ -822,9 +854,10 @@ body[data-page="game"] #gameScrollGate{
   flex-direction:column;
   align-items:stretch;
   gap:6px;
+  width:100%;
   max-height:140px;
   overflow:auto;
-}  
+}
 .pad .btn{min-width:52px;min-height:38px}
   .pad-spacer{flex:1 1 auto}
   .pad .btn.main-throw{
@@ -1680,16 +1713,20 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 }
 .home-live-printer .lp-row.lp-new .lp-line{ color: rgba(20,150,70,.95); }
 
-/* PB lines in LIVE UPDATES */
+/* PB / WR / ALERT lines in LIVE UPDATES */
 .home-live-printer .lp-row.lp-roundpb .lp-line,
-.home-live-printer .lp-row.lp-roundpb .lp-ellipsis{ color: rgba(20,150,70,.95) !important; font-weight: 600; }
+.home-live-printer .lp-row.lp-roundpb .lp-ellipsis{ color: rgba(255, 220, 90, .98) !important; font-weight: 800; }
 .home-live-printer .lp-row.lp-gamepb .lp-line,
-.home-live-printer .lp-row.lp-gamepb .lp-ellipsis{ color: rgba(20,150,70,.95) !important; font-weight: 800; }
+.home-live-printer .lp-row.lp-gamepb .lp-ellipsis{ color: rgba(255, 220, 90, .98) !important; font-weight: 900; }
 
+/* Any line prefixed with 🚨 (ALERT / PB / WR / NEW PLAYER / ROUND WR) */
+.home-live-printer .lp-row.lp-alert .lp-line,
+.home-live-printer .lp-row.lp-alert .lp-ellipsis{ color: rgba(255, 220, 90, .98) !important; font-weight: 900; }
 
+/* Records (e.g., NEW GAME RECORD SCORE) */
 .lp-record .lp-line, .lp-record .lp-ellipsis{
-  color: var(--shatekiOrange, #ff7a00) !important;
-  font-weight: 800 !important;
+  color: rgba(255, 220, 90, .98) !important;
+  font-weight: 900 !important;
 }
 
 
@@ -2573,6 +2610,158 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 .np-save:not([disabled]):hover{ filter: brightness(1.05); }
 .np-save:active{ transform: translateY(1px); }
 .np-save[disabled]{ opacity: .45; cursor: not-allowed; }
+
+
+/* D/T number scroller */
+.dtScroller{scrollbar-width:none;-ms-overflow-style:none}
+.dtScroller::-webkit-scrollbar{display:none}
+
+/* D/T + Bull round pad — full width */
+.dtPadWrap{
+  width:100% !important;
+  max-width:none !important;
+  margin:0 !important;
+  display:grid;
+  grid-template-columns: clamp(96px, 18vw, 132px) minmax(0,1fr);
+  gap:8px;
+  align-items:stretch;
+  justify-items:stretch;
+}
+.dtPadWrap > *{min-width:0}
+
+
+/* DT/BULL FULLWIDTH FORCE */
+.pad{width:100%;}
+.dtPadWrap{width:100% !important; max-width:none !important; margin:0 !important; justify-items:stretch !important; align-content:stretch !important;}
+.dtRight{width:100% !important;}
+.dtX3{
+  width:110px;min-width:96px;max-width:132px;
+  min-height:122px;
+  border-radius:12px;
+  background: rgba(120,20,30,.35);
+  border:1px solid rgba(255,80,90,.35);
+  color: rgba(231,233,245,.95);
+  font-weight:900;
+  letter-spacing:.02em;
+  white-space:pre-line;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  line-height:1.05;
+}
+/* Fix: prevent D/T + Bull pad drifting to RHS */
+.dtX3{width:100%;min-width:0;max-width:none;}
+.dtRight{width:100%;}
+
+.dtRight{display:flex;flex-direction:column;flex:1 1 0;min-width:0;gap:6px}
+.dtNumBtn{
+  height:58px;
+  border-radius:12px;
+  background: rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.12);
+  color: rgba(231,233,245,.95);
+  font-weight:900;
+  font-size:15px;
+  letter-spacing:.02em;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.dtNumBtn:active{transform:translateY(1px)}
+.dtActions{display:flex;gap:8px;width:100%}
+.dtActBtn{
+  flex:1 1 0;min-width:0;
+  height:58px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(0,0,0,.28);
+  color: rgba(231,233,245,.92);
+  display:flex;
+  flex-direction:row;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  font-weight:900;
+}
+
+.dtActBtn .dtIcon{font-size:18px;line-height:1;color: rgba(255,255,255,.90)}
+.dtActBtn .dtLbl{font-size:15px;font-weight:900;letter-spacing:.10em}
+.dtActBtn.miss{background: rgba(120,20,30,.28); border-color: rgba(255,80,90,.25)}
+.dtActBtn.undo{background: rgba(110,80,10,.26); border-color: rgba(255,170,60,.25)}
+.dtActBtn.undo .dtIcon{color: rgba(255,140,0,.95)}
+.dtActBtn.skip{background: rgba(15,35,85,.28); border-color: rgba(60,120,255,.25)}
+.dtActBtn.skip .dtIcon{color: rgba(90,150,255,.95)}
+.dtBullRow{display:flex;gap:8px;width:100%}
+.dtBullBtn{
+  flex:1 1 0;min-width:0;
+  height:58px;
+  border-radius:12px;
+  background: rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.12);
+  color: rgba(231,233,245,.95);
+  font-weight:900;
+  letter-spacing:.10em;
+}
+.dtBullBtn.inner{color: var(--accent-2); border-color: rgba(255,122,0,.35)}
+.dtBullBtn:active{transform:translateY(1px)}
+
+
+/* === Unified League/Rank popups (Latest Scores aesthetic) === */
+.sq-wide-modal{max-width:980px; width:94vw;}
+.sq-wide-modal h3{margin:0 0 4px; font-size:18px; font-weight:800; letter-spacing:.02em;}
+.sq-wide-modal .modal-body{padding-top:8px;}
+.sq-wide-modal .table-wrap,
+.sq-wide-modal .latest-scores-table-wrap{
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;
+  overflow:auto;
+  max-height:56vh;
+}
+.sq-wide-modal table{width:100%; border-collapse:collapse; table-layout:fixed;}
+.sq-wide-modal thead th{
+  font-size:11px;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  opacity:.65;
+  padding:12px 14px;
+  background:rgba(255,255,255,.04);
+  border-bottom:1px solid rgba(255,255,255,.06);
+}
+.sq-wide-modal tbody td{
+  padding:14px;
+  border-bottom:1px solid rgba(255,255,255,.06);
+  font-size:14px;
+  vertical-align:middle;
+}
+.sq-wide-modal tbody tr:last-child td{border-bottom:0;}
+/* Rank / position column */
+.sq-wide-modal tbody td:first-child{
+  color:rgba(255,123,26,.95);
+  font-weight:800;
+}
+
+/* Live / filter buttons: orange edge on active */
+.sq-wide-modal .pr-toggle button,
+.sq-wide-modal .pl-filters button{
+  padding:8px 12px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(10,12,24,.55);
+  color:rgba(255,255,255,.85);
+  font-weight:700;
+  letter-spacing:.02em;
+}
+.sq-wide-modal .pr-toggle button.active,
+.sq-wide-modal .pl-filters button.active{
+  border-color:rgba(255,123,26,.85);
+  box-shadow:0 0 0 2px rgba(255,123,26,.15) inset;
+  background:rgba(255,123,26,.12);
+  color:#fff;
+}
+
+/* Make league modal footer buttons match (keep existing classes) */
+.sq-wide-modal .modal-footer{justify-content:flex-start; gap:10px;}
 
 </style>
 <style>
@@ -4322,14 +4511,14 @@ function openAllGamesDialog(){
       if (tsVal){
         const d = new Date(tsVal);
         td2.textContent = !Number.isNaN(d.getTime())
-          ? d.toLocaleString(undefined,{year:'2-digit',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'})
-          : '';
+          ? `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)} @ ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+      : '';
       } else {
         td2.textContent = '';
       }
 
       // Result
-      const players = (g.players || []).map(p => (p && p.name) ? p.name : '');
+      const players = (g.players || []).map(playerNameFrom).filter(Boolean).map(displayName);
       const totals  = Array.isArray(g.totals) ? g.totals : [];
       const ordered = players
         .map((name, i) => ({ name, score: Number(totals[i] || 0) }))
@@ -4517,6 +4706,8 @@ function openLeagueLowsAdminDialog(){
 
 // Player Stats — Select Player flow (uses the generic Select Player modal)
 function openPlayerStatsSelectDialog(){
+  try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('home'); }catch(_){ }
+  try{ console.debug('[Popup]', window.__sqStatsDebugName || 'New Game Screen Stats'); }catch(_){ }
   // New: dedicated Player Stats select modal (menu/data-input style)
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop';
@@ -4610,6 +4801,7 @@ function openPlayerStatsSelectDialog(){
     const name = (sel.value || '').trim();
     if (!name){ try{ toast('Pick a player'); }catch(_){} return; }
     close();
+    try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('home', name); }catch(_){ }
     try{
       if (typeof openPlayerStatsHub === 'function') {
         openPlayerStatsHub(name);
@@ -4727,7 +4919,22 @@ async function renderPBGRTableInto(mountId){
       const tdV  = document.createElement('td'); tdV.textContent = String(meta.val || 0);
       const tdD  = document.createElement('td'); tdD.textContent = '—'; // async filled with S/D/T/x pattern
       const tdT  = document.createElement('td'); tdT.textContent = fmtDate(meta.ts);
-      const tdN  = document.createElement('td'); tdN.textContent = meta.player ? meta.player : '—';
+      const tdN  = document.createElement('td');
+        // Holder: if multiple saved players share the WR value for this round, show "Name +X"
+        let holderText = meta.player ? String(meta.player) : '—';
+        try{
+          const bpm = snap.byPlayerMeta;
+          const wrVal = Number(meta.val||0);
+          if (bpm && typeof bpm.forEach === 'function' && wrVal > 0 && meta.player){
+            let cnt = 0;
+            bpm.forEach((m) => {
+              const rec = m && m[String(key)];
+              if (rec && Number(rec.val||0) === wrVal) cnt++;
+            });
+            if (cnt > 1) holderText = `${holderText} +${cnt-1}`;
+          }
+        }catch(_){}
+        tdN.textContent = holderText || '—';
 
       tr.append(tdR, tdV, tdD, tdT, tdN);
       tbody.appendChild(tr);
@@ -5264,6 +5471,10 @@ async function renderSavedPlayersAdmin(){
 
     const wrap = document.createElement('div');
     wrap.className = 'table-wrap';
+    wrap.style.border='1px solid rgba(255,255,255,.08)';
+    wrap.style.borderRadius='14px';
+    wrap.style.overflow='auto';
+    wrap.style.maxHeight='56vh';
     wrap.appendChild(table);
     return wrap;
   }
@@ -6155,7 +6366,7 @@ window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop';
   const modal = document.createElement('div');
-  modal.className = 'modal compact';
+  modal.className = 'modal sq-wide-modal';
   const title = document.createElement('h3');
   const body = document.createElement('div');
   body.className = 'modal-body';
@@ -6182,7 +6393,7 @@ window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(
   backBtn.onclick = close;
 
   const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn';
+  closeBtn.className = 'btn sq-pill';
   closeBtn.textContent = 'Close';
   closeBtn.onclick = close;
 
@@ -6745,7 +6956,11 @@ function wireTopRowButtons(){
 // Start screen: simple High Scores hub (two choices)
 function openHighScoresHubDialog(){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-   const modal   = document.createElement('div'); modal.className   = 'modal compact';
+   const modal   = document.createElement('div'); modal.className   = 'modal sq-wide-modal';
+  modal.style.maxWidth = '980px';
+  modal.style.width = '94vw';
+  modal.style.maxHeight = '90vh';
+  modal.style.overflow = 'hidden';
   const title   = document.createElement('h3');  title.textContent = 'High Scores';
   const body    = document.createElement('div'); body.className = 'modal-body';
   const col     = document.createElement('div'); col.className = 'column'; col.style.gap = '8px';
@@ -7335,22 +7550,35 @@ function pctStr(num, den){
 
 function isOfficialGame(g){
   if (!g) return false;
+
+  // Explicit flags always win
   if (g.mode === 'practice' || g.is_practice === true || g.isPractice === true) return false;
+
+  // Cloud truth: games table uses match_id = null for practice, non-null for official
+  const hasMatch = !!(g.matchId || g.match_id);
+  if (hasMatch) return Array.isArray(g.players) && g.players.length >= 2;
+
+  // If explicitly marked official, accept
   if (g.mode === 'official' || g.is_practice === false) return Array.isArray(g.players) && g.players.length >= 2;
-  const playersOk = Array.isArray(g.players) && g.players.length >= 2;
-  const hasMatch  = !!(g.matchId || g.match_id);
-  return playersOk && hasMatch;
+
+  // Otherwise: treat unknown/no match_id as NOT official (prevents swapping)
+  return false;
 }
 function isPracticeGame(g){
   if (!g) return false;
+
+  // Explicit flags
   if (g.mode === 'practice' || g.is_practice === true || g.isPractice === true) return true;
-  if (g.mode === 'official' || g.is_practice === false) return false;
-  // Fallback: single-player OR no match id is practice
-  const players = Array.isArray(g.players) ? g.players : [];
+
   const hasMatch = !!(g.matchId || g.match_id);
-  if (players.length === 1) return true;
-  if (players.length >= 2 && !hasMatch) return true;
-  return false;
+  if (hasMatch) return false;
+
+  // Explicit official flag blocks practice
+  if (g.mode === 'official' || g.is_practice === false) return false;
+
+  // Fallback: no match_id means practice (covers guest games + old rows)
+  const players = Array.isArray(g.players) ? g.players : [];
+  return players.length >= 1;
 }
 function filterByMode(games, matches, mode){
   const gm = (games || []).filter(mode === 'official' ? isOfficialGame : isPracticeGame);
@@ -7548,6 +7776,17 @@ function updatePadSpacer(){
   try{
     const h = padBar ? padBar.getBoundingClientRect().height : 148;
     document.documentElement.style.setProperty('--pad-h', h + 'px');
+
+    // Ensure the last scoreboard row can scroll above the fixed pad bar (classic scroll mode).
+    const page = document.body.getAttribute('data-page') || '';
+    const wrap = document.querySelector('.wrap');
+    if (wrap){
+      if (page === 'game') {
+        wrap.style.paddingBottom = Math.max(20, Math.round(h + 18)) + 'px';
+      } else {
+        wrap.style.paddingBottom = '';
+      }
+    }
   }catch(e){}
   try{
     const topRow = document.getElementById('gameTopRow');
@@ -8379,16 +8618,54 @@ async function upsertMatchToSupabase(createdAtOverride) {
 
 // Map Supabase -> local shapes the stats code already understands
 function mapCloudGameRowToLocal(row){
-  const players = (row?.state?.players || []).map(p => ({ name: p.name }));
+  const rawPlayers = Array.isArray(row?.state?.players) ? row.state.players : [];
+
+  const players = rawPlayers.map(p => {
+    if (p == null) return { name: '' };
+    if (typeof p === 'string') return { name: p };
+
+    const id = p?.player_id ?? p?.playerId ?? p?.id ?? null;
+    let name = (p?.name || '').toString().trim();
+
+    const first = (p?.first_name || '').toString().trim();
+    const last  = (p?.last_name  || '').toString().trim();
+    const nick  = (p?.nickname   || '').toString().trim();
+
+    if (!name && first){
+      if (nick && last) name = (first + ' "' + nick + '" ' + last).trim();
+      else if (nick)    name = (first + ' "' + nick + '"').trim();
+      else if (last)    name = (first + ' ' + last).trim();
+      else              name = first;
+    }
+
+    if (!name && id) name = String(id).trim();
+    return { id, name };
+  });
   const totals  = Array.isArray(row?.totals) ? row.totals.slice() : [];
   let max = -Infinity, winners = [];
   totals.forEach((t,i)=>{ if (t>max){max=t; winners=[i];} else if (t===max){ winners.push(i);} });
-  return { ts: row?.created_at || null, players, totals, winners, board: row?.state?.board || null };
+
+  // Carry cloud identity + mode hints through to local shape
+  const matchId = row?.match_id ?? row?.matchId ?? row?.state?.match_id ?? row?.state?.matchId ?? null;
+  const gameNumber = row?.game_number ?? row?.gameNumber ?? row?.state?.game_number ?? row?.state?.gameNumber ?? null;
+
+  return {
+    id: row?.id ?? null,
+    ts: row?.created_at || null,
+    players,
+    totals,
+    winners,
+    board: row?.state?.board || null,
+    match_id: matchId,
+    matchId,
+    game_number: gameNumber,
+    gameNumber
+  };
 }
 async function cloudFetchAllGamesAsLocal(){
   const { data, error } = await sb
     .from(TABLE_GAMES)
-    .select('created_at,state,totals')
+    .select('id,created_at,state,totals,match_id,game_number')
     .order('created_at', { ascending: true });
   if (error) throw error;
   return (data || []).map(mapCloudGameRowToLocal);
@@ -8398,7 +8675,7 @@ async function cloudFetchAllGamesAsLocal(){
 async function cloudFetchLatestGamesAsLocal(limit = 10){
   const { data, error } = await sb
     .from(TABLE_GAMES)
-    .select('created_at,state,totals')
+    .select('id,created_at,state,totals,match_id,game_number')
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -8602,31 +8879,75 @@ async function openH2HDialog(playerName){
   if (!rows.length) {
     const p = document.createElement('p'); p.textContent = 'No head-to-head data (official games only).'; body.appendChild(p);
   } else {
-    const table = document.createElement('table'); table.className = 'hs-table';
-    const thead = document.createElement('thead'); const trh = document.createElement('tr');
-    ['Opponent','GP','W','L','Win %','Avg Diff','Last'].forEach(h=>{
-      const th = document.createElement('th'); th.textContent = h; trh.appendChild(th);
-    });
-    thead.appendChild(trh); table.appendChild(thead);
+    const ineligible = rows.filter(r => (Number(r.gp) || 0) < 4)
+      .sort((a,b)=> (b.gp - a.gp) || a.name.localeCompare(b.name));
+    const eligible = rows.filter(r => (Number(r.gp) || 0) >= 4)
+      .sort((a,b)=> (b.gp - a.gp) || (b.winPct - a.winPct) || a.name.localeCompare(b.name));
 
-    const tbody = document.createElement('tbody');
-    rows.forEach(r=>{
-      const tr = document.createElement('tr');
-      const td = (t,c)=>Object.assign(document.createElement('td'),{textContent:t, className:c||''});
-      tr.append(
-        td(r.name),
-        td(String(r.gp),'num'),
-        td(String(r.w),'num'),
-        td(String(r.l),'num'),
-        td(r.winPct.toFixed(1)+'%','num'),
-        td((r.avgDiff>=0?'+':'')+r.avgDiff.toFixed(1),'num'),
-        td(r.last && !Number.isNaN(r.last.getTime())
-          ? r.last.toLocaleDateString(undefined,{year:'2-digit',month:'short',day:'2-digit'})
-          : '—')
-      );
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody); body.appendChild(table);
+    // Ineligible opponents (shown at top, NOT in league format)
+    if (ineligible.length) {
+      const cap = document.createElement('div');
+      cap.className = 'muted';
+      cap.style.margin = '2px 0 10px';
+      cap.textContent = 'Opponents need 4+ games to enter the H2H league table.';
+      body.appendChild(cap);
+
+      const t0 = document.createElement('table'); t0.className = 'hs-table';
+      const th0 = document.createElement('thead'); const tr0 = document.createElement('tr');
+      ['Opponent','GP'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; tr0.appendChild(th); });
+      th0.appendChild(tr0); t0.appendChild(th0);
+
+      const tb0 = document.createElement('tbody');
+      ineligible.forEach(r=>{
+        const tr = document.createElement('tr');
+        tr.style.opacity = '0.45';
+        const td = (t,c)=>Object.assign(document.createElement('td'),{textContent:t, className:c||''});
+        tr.append(td(r.name), td(String(r.gp),'num'));
+        tb0.appendChild(tr);
+      });
+      t0.appendChild(tb0);
+      body.appendChild(t0);
+
+      const rule = document.createElement('div');
+      rule.style.height='1px';
+      rule.style.background='rgba(255,255,255,0.08)';
+      rule.style.margin='12px 0';
+      body.appendChild(rule);
+    }
+
+    // Eligible opponents: league format
+    if (!eligible.length) {
+      const p = document.createElement('p');
+      p.className = 'muted';
+      p.textContent = 'No eligible opponents yet (need 4+ games).';
+      body.appendChild(p);
+    } else {
+      const table = document.createElement('table'); table.className = 'hs-table';
+      const thead = document.createElement('thead'); const trh = document.createElement('tr');
+      ['Opponent','GP','W','L','Win %','Avg Diff','Last'].forEach(h=>{
+        const th = document.createElement('th'); th.textContent = h; trh.appendChild(th);
+      });
+      thead.appendChild(trh); table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      eligible.forEach(r=>{
+        const tr = document.createElement('tr');
+        const td = (t,c)=>Object.assign(document.createElement('td'),{textContent:t, className:c||''});
+        tr.append(
+          td(r.name),
+          td(String(r.gp),'num'),
+          td(String(r.w),'num'),
+          td(String(r.l),'num'),
+          td(r.winPct.toFixed(1)+'%','num'),
+          td((r.avgDiff>=0?'+':'')+r.avgDiff.toFixed(1),'num'),
+          td(r.last && !Number.isNaN(r.last.getTime())
+            ? r.last.toLocaleDateString(undefined,{year:'2-digit',month:'short',day:'2-digit'})
+            : '—')
+        );
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody); body.appendChild(table);
+    }
   }
 
   const footer = document.createElement('div'); footer.className = 'modal-footer';
@@ -9495,6 +9816,7 @@ async function showAddPlayerDialog(index){
 
       try {
         await cloudCreatePlayer(fullName, { initials, nickname, first_name: first, last_name: last });
+        try{ if (typeof window.__homeLivePrinterInjectLine === 'function') window.__homeLivePrinterInjectLine(`🚨 NEW PLAYER - ${fullName} - Welcome to Shateki Quest 🎯`); }catch(_e){}
         await syncSavedPlayersFromCloud();
         try{ populateSavedPlayersSelects(); }catch(_){ }
         try{ if (typeof window.buildStartTicker === 'function') window.buildStartTicker(); }catch(_){ }
@@ -10190,41 +10512,94 @@ function updateMatchStats(){
 
 // Keep the score table focused on the most recent rounds (show 4 rows: current + previous 3)
 function autoScrollScoreboard(){
-  const wrap = document.getElementById('scoreWrap');
-  // Allow the user to scroll the live table without the game snapping it back.
-  // If the user has scrolled in the last 1500ms, skip auto-scroll.
-  try {
-    if (wrap && !wrap.__sqScrollGuard) {
-      wrap.__sqScrollGuard = true;
-      wrap.addEventListener('scroll', () => {
-        wrap.__sqUserScrollUntil = Date.now() + 1500;
+  const scoreWrap = document.getElementById('scoreWrap');
+  const tbodyEl = document.getElementById('tbody');
+  if (!tbodyEl) return;
+
+  // Decide which element actually scrolls:
+  // - If scoreWrap is internally scrollable (overflow-y auto/scroll), use it.
+  // - Otherwise (classic mode), the page scroller is ".wrap".
+  let scroller = null;
+  try{
+    const oy = scoreWrap ? getComputedStyle(scoreWrap).overflowY : '';
+    const internalScrollable = !!(scoreWrap && (oy === 'auto' || oy === 'scroll') && scoreWrap.scrollHeight > scoreWrap.clientHeight + 2);
+    scroller = internalScrollable ? scoreWrap : (document.querySelector('body[data-page="game"] .wrap') || document.querySelector('.wrap'));
+  }catch(_){
+    scroller = document.querySelector('body[data-page="game"] .wrap') || document.querySelector('.wrap') || scoreWrap;
+  }
+  if (!scroller) return;
+
+  // Measure the fixed throw pad height (so the last round never hides behind it)
+  let padH = 0;
+  try{
+    const padEl = document.getElementById('pad');
+    if (padEl){
+      padH = Math.max(0, Math.round(padEl.getBoundingClientRect().height || 0));
+    }
+  }catch(_){}
+
+  // Ensure the scroller has enough bottom space to scroll the last row above the pad.
+  // (Safari especially needs explicit padding on the real scrolling element.)
+  try{
+    const extra = 18;
+    const want = Math.max(0, padH + extra);
+    const cur = parseInt((scroller.style.paddingBottom || '0').replace('px',''), 10) || 0;
+    if (want > cur) scroller.style.paddingBottom = want + 'px';
+  }catch(_){}
+
+  // Allow user scroll without snapping back (1500ms guard)
+  try{
+    if (!scroller.__sqScrollGuard) {
+      scroller.__sqScrollGuard = true;
+      scroller.addEventListener('scroll', () => {
+        scroller.__sqUserScrollUntil = Date.now() + 1500;
       }, { passive: true });
     }
-    if (wrap && wrap.__sqUserScrollUntil && Date.now() < wrap.__sqUserScrollUntil) return;
-  } catch(_) {}
-  const tbodyEl = document.getElementById('tbody');
-  if (!wrap || !tbodyEl) return;
+    if (scroller.__sqUserScrollUntil && Date.now() < scroller.__sqUserScrollUntil) return;
+  }catch(_){ }
 
   const rows = tbodyEl.rows;
   if (!rows || !rows.length) return;
 
-  // Keep only the previous 3 rounds + the current round visible.
-  // Example: if currentRound = 15, we show rows 12, 13, 14, 15.
-  // For rounds < 3 we leave the scroll at the top.
   const endIdx = Math.min(state.currentRound, rows.length - 1);
+  if (endIdx < 0) return;
+
+  // Keep previous 3 rounds + current round visible.
   if (endIdx < 3) return;
-
-  const startIdx = Math.max(0, endIdx - 3);          // four-row window
+  const startIdx = Math.max(0, endIdx - 3);
   const targetRow = rows[startIdx];
-  if (!targetRow) return;
+  const endRow = rows[endIdx];
+  if (!targetRow || !endRow) return;
 
-  const desiredTop = Math.max(0, Math.min(
-    targetRow.offsetTop,
-    wrap.scrollHeight - wrap.clientHeight
-  ));
+  // Compute desired scrollTop inside chosen scroller (anchor to startIdx row)
+  let desiredTop = 0;
+  try{
+    const rowRect = targetRow.getBoundingClientRect();
+    const scRect  = scroller.getBoundingClientRect();
+    desiredTop = (rowRect.top - scRect.top) + scroller.scrollTop;
+    desiredTop = Math.max(0, Math.min(desiredTop, scroller.scrollHeight - scroller.clientHeight));
+  }catch(_){
+    // Fallback for older browsers: use offsetTop when possible
+    desiredTop = Math.max(0, Math.min(targetRow.offsetTop, scroller.scrollHeight - scroller.clientHeight));
+  }
 
-  if (Math.abs(wrap.scrollTop - desiredTop) > 2) {
-    wrap.scrollTo({ top: desiredTop, behavior: 'smooth' });
+  // If the current round is still clipped by the throw pad at the bottom, nudge down.
+  try{
+    const endRect = endRow.getBoundingClientRect();
+    const scRect  = scroller.getBoundingClientRect();
+    const bottomLimit = scRect.bottom - Math.max(0, padH) - 10; // 10px breathing room
+    if (endRect.bottom > bottomLimit){
+      desiredTop += (endRect.bottom - bottomLimit);
+      desiredTop = Math.max(0, Math.min(desiredTop, scroller.scrollHeight - scroller.clientHeight));
+    }
+  }catch(_){}
+
+  if (Math.abs((scroller.scrollTop || 0) - desiredTop) > 2) {
+    try{
+      scroller.scrollTo({ top: desiredTop, behavior: 'smooth' });
+    }catch(_){
+      scroller.scrollTop = desiredTop;
+    }
   }
 }
 /*****************
@@ -10307,125 +10682,223 @@ bottomRow.appendChild(missGoBtn);
       return;
     }
 
-    // ----- DOUBLES / TRIPLES ROUNDS -----
+            // ----- DOUBLES / TRIPLES ROUNDS -----
     if (r.type === 'doubles' || r.type === 'triples') {
-      padHint.textContent =
-        (r.type === 'doubles')
-          ? ""
-          : "";
+      padHint.textContent = "";
 
-      const grid = document.createElement('div');
-      grid.style.display = 'flex';
-      grid.style.flexWrap = 'wrap';
-      grid.style.gap = '6px';
-      grid.style.justifyContent = 'center';
+      const dtWrap = document.createElement('div');
+      dtWrap.className = 'dtPadWrap';
+      dtWrap.style.width = '100%';
+      dtWrap.style.boxSizing = 'border-box';
+      dtWrap.style.display = 'grid';
+      dtWrap.style.gridTemplateColumns = 'clamp(96px, 18vw, 132px) minmax(0,1fr)';
+      dtWrap.style.gap = '8px';
+      dtWrap.style.alignItems = 'stretch';
+      dtWrap.style.justifyItems = 'stretch';
+
+      // Force D/T pad to use the full width of the scorepad (mirror number-round flex rows)
+      try{
+        const w = pad && pad.getBoundingClientRect ? pad.getBoundingClientRect().width : 0;
+        if (w && Number.isFinite(w)) {
+          dtWrap.style.width = w + 'px';
+          dtWrap.style.maxWidth = 'none';
+          dtWrap.style.marginLeft = '0';
+          dtWrap.style.marginRight = '0';
+          dtWrap.style.alignSelf = 'stretch';
+          dtWrap.style.justifySelf = 'stretch';
+        }
+      }catch(_){}
+
+      const x3 = document.createElement('button');
+      x3.className = 'dtX3';
+      x3.type = 'button';
+
+      function missCountForCurrentThrow(){
+        try{
+          const dart = (typeof state !== 'undefined' && state && typeof state.currentDart === 'number') ? state.currentDart : 0;
+          const remaining = 3 - dart;
+          return Math.max(1, Math.min(3, remaining));
+        }catch(_){
+          return 3;
+        }
+      }
+      function setX3Label(){
+        const n = missCountForCurrentThrow();
+        x3.textContent = `MISS\nx${n}`;
+        x3.dataset.missN = String(n);
+      }
+      async function pressMissN(n){
+        for (let i=0;i<n;i++){
+          recordThrow({ kind: 'Miss' });
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise(r=>setTimeout(r,70));
+        }
+      }
+      x3.onclick = ()=>{ const n = Number(x3.dataset.missN||'3')||3; pressMissN(n); };
+      setX3Label();
+
+      const right = document.createElement('div');
+      right.className = 'dtRight';
+      right.style.width = '100%';
+
+      const scroller = document.createElement('div');
+      scroller.className = 'dtScroller';
+      scroller.style.width = '100%';
+      scroller.style.display = 'flex';
+      scroller.style.gap = '8px';
+      scroller.style.overflowX = 'auto';
+      scroller.style.overflowY = 'hidden';
+      scroller.style.WebkitOverflowScrolling = 'touch';
+      scroller.style.scrollSnapType = 'x mandatory';
+      scroller.style.paddingBottom = '2px';
 
       for (let s = 1; s <= 20; s++) {
         const b = document.createElement('button');
-        b.className = 'btn primary small';
+        b.className = 'dtNumBtn';
         b.textContent = String(s);
-        b.style.flex = '0 0 calc(20% - 6px)'; // ~5 columns
+        // 6 visible at once (account for 5 gaps of 8px)
+        b.style.flex = '0 0 calc((100% - 40px) / 6)';
+        b.style.scrollSnapAlign = 'start';
         b.onclick = () => recordThrow({ sector: s });
-        grid.appendChild(b);
+        scroller.appendChild(b);
       }
 
-      pad.appendChild(grid);
+      const actions = document.createElement('div');
+      actions.className = 'dtActions';
+      actions.style.width = '100%';
 
-      const bottomRow = document.createElement('div');
-bottomRow.style.display = 'flex';
-bottomRow.style.gap = '8px';
-bottomRow.style.marginTop = '6px';
-bottomRow.style.width = '100%';
+      const mkAct = (cls, icon, label, onClick) => {
+        const b = document.createElement('button');
+        b.className = `dtActBtn ${cls}`;
+        b.type = 'button';
+        b.innerHTML = `<div class="dtIcon">${icon}</div><div class="dtLbl">${label}</div>`;
+        b.onclick = onClick;
+        return b;
+      };
 
-const miss = document.createElement('button');
-miss.className = 'btn danger letter-throw';
-miss.textContent = 'Miss';
-miss.style.flex = '1 1 0';
-miss.style.minWidth = '0';
-miss.onclick = () => recordThrow({ kind: 'Miss' });
-bottomRow.appendChild(miss);
+      actions.appendChild(mkAct('miss', '⊘', 'MISS', () => recordThrow({ kind: 'Miss' })));
+      actions.appendChild(mkAct('undo', '↶', 'UNDO', undo));
+      actions.appendChild(mkAct('skip', '▶', 'SKIP', missGo));
 
-const undoBtn = document.createElement('button');
-undoBtn.className = 'btn warn letter-throw';
-undoBtn.textContent = 'Undo';
-undoBtn.style.flex = '1 1 0';
-undoBtn.style.minWidth = '0';
-undoBtn.onclick = undo;
-bottomRow.appendChild(undoBtn);
+      right.appendChild(scroller);
+      right.appendChild(actions);
 
-const missGoBtn = document.createElement('button');
-missGoBtn.className = 'btn letter-throw';
-missGoBtn.textContent = 'Skip Go';
-missGoBtn.style.flex = '1 1 0';
-missGoBtn.style.minWidth = '0';
-missGoBtn.onclick = missGo;
-bottomRow.appendChild(missGoBtn);
+      dtWrap.appendChild(x3);
+      dtWrap.appendChild(right);
+      pad.appendChild(dtWrap);
 
-      pad.appendChild(bottomRow);
+      // Keep x3 label in sync as darts progress
+      try { window.__sqUIMutationBus?.on(()=>setX3Label()); } catch(_) {}
       return;
     }
 
-    // ----- BULL ROUND -----
+// ----- BULL ROUND -----
     if (r.type === 'bull') {
       padHint.textContent = '';
 
-      const topRow = document.createElement('div');
-      topRow.style.display = 'flex';
-      topRow.style.gap = '8px';
-      topRow.style.width = '100%';
+      const bWrap = document.createElement('div');
+      bWrap.className = 'dtPadWrap';
+      bWrap.style.width = '100%';
+      bWrap.style.boxSizing = 'border-box';
+      bWrap.style.display = 'grid';
+      bWrap.style.gridTemplateColumns = 'clamp(96px, 18vw, 132px) minmax(0,1fr)';
+      bWrap.style.gap = '8px';
+      bWrap.style.alignItems = 'stretch';
+      bWrap.style.justifyItems = 'stretch';
+
+      // Force Bull pad to use the full width of the scorepad (mirror number-round flex rows)
+      try{
+        const w = pad && pad.getBoundingClientRect ? pad.getBoundingClientRect().width : 0;
+        if (w && Number.isFinite(w)) {
+          bWrap.style.width = w + 'px';
+          bWrap.style.maxWidth = 'none';
+          bWrap.style.marginLeft = '0';
+          bWrap.style.marginRight = '0';
+          bWrap.style.alignSelf = 'stretch';
+          bWrap.style.justifySelf = 'stretch';
+        }
+      }catch(_){}
+
+      const x3 = document.createElement('button');
+      x3.className = 'dtX3';
+      x3.type = 'button';
+
+      function missCountForCurrentThrow(){
+        try{
+          const dart = (typeof state !== 'undefined' && state && typeof state.currentDart === 'number') ? state.currentDart : 0;
+          const remaining = 3 - dart;
+          return Math.max(1, Math.min(3, remaining));
+        }catch(_){
+          return 3;
+        }
+      }
+      function setX3Label(){
+        const n = missCountForCurrentThrow();
+        x3.textContent = `MISS\nx${n}`;
+        x3.dataset.missN = String(n);
+      }
+      async function pressMissN(n){
+        for (let i=0;i<n;i++){
+          recordThrow({ kind: 'Miss' });
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise(r=>setTimeout(r,70));
+        }
+      }
+      x3.onclick = ()=>{ const n = Number(x3.dataset.missN||'3')||3; pressMissN(n); };
+      setX3Label();
+
+      const right = document.createElement('div');
+      right.className = 'dtRight';
+      right.style.width = '100%';
+
+      const bullRow = document.createElement('div');
+      bullRow.className = 'dtBullRow';
+      bullRow.style.width = '100%';
 
       const outerBtn = document.createElement('button');
-      outerBtn.className = 'btn primary';
-      outerBtn.textContent = 'Outer Bull (25)';
-      outerBtn.style.flex = '1 1 0';
+      outerBtn.className = 'dtBullBtn';
+      outerBtn.type = 'button';
+      outerBtn.textContent = 'OUTER BULL';
       outerBtn.onclick = () => recordThrow({ bull: 'Outer' });
-      topRow.appendChild(outerBtn);
+      bullRow.appendChild(outerBtn);
 
       const innerBtn = document.createElement('button');
-      innerBtn.className = 'btn primary';
-      innerBtn.textContent = 'Inner Bull (50)';
-      innerBtn.style.flex = '1 1 0';
+      innerBtn.className = 'dtBullBtn inner';
+      innerBtn.type = 'button';
+      innerBtn.textContent = 'INNER BULL';
       innerBtn.onclick = () => recordThrow({ bull: 'Inner' });
-      topRow.appendChild(innerBtn);
+      bullRow.appendChild(innerBtn);
 
-      pad.appendChild(topRow);
+      const actions = document.createElement('div');
+      actions.className = 'dtActions';
+      actions.style.width = '100%';
 
-      const bottomRow = document.createElement('div');
-bottomRow.style.display = 'flex';
-bottomRow.style.gap = '8px';
-bottomRow.style.marginTop = '6px';
-bottomRow.style.width = '100%';
+      const mkAct = (cls, icon, label, onClick) => {
+        const b = document.createElement('button');
+        b.className = `dtActBtn ${cls}`;
+        b.type = 'button';
+        b.innerHTML = `<div class="dtIcon">${icon}</div><div class="dtLbl">${label}</div>`;
+        b.onclick = onClick;
+        return b;
+      };
 
-const miss = document.createElement('button');
-miss.className = 'btn danger letter-throw';
-miss.textContent = 'Miss';
-miss.style.flex = '1 1 0';
-miss.style.minWidth = '0';
-miss.onclick = () => recordThrow({ kind: 'Miss' });
-bottomRow.appendChild(miss);
+      actions.appendChild(mkAct('miss', '⊘', 'MISS', () => recordThrow({ kind: 'Miss' })));
+      actions.appendChild(mkAct('undo', '↶', 'UNDO', undo));
+      actions.appendChild(mkAct('skip', '▶', 'SKIP', missGo));
 
-const undoBtn = document.createElement('button');
-undoBtn.className = 'btn warn letter-throw';
-undoBtn.textContent = 'Undo';
-undoBtn.style.flex = '1 1 0';
-undoBtn.style.minWidth = '0';
-undoBtn.onclick = undo;
-bottomRow.appendChild(undoBtn);
+      right.appendChild(bullRow);
+      right.appendChild(actions);
 
-const missGoBtn = document.createElement('button');
-missGoBtn.className = 'btn letter-throw';
-missGoBtn.textContent = 'Skip Go';
-missGoBtn.style.flex = '1 1 0';
-missGoBtn.style.minWidth = '0';
-missGoBtn.onclick = missGo;
-bottomRow.appendChild(missGoBtn);
+      bWrap.appendChild(x3);
+      bWrap.appendChild(right);
+      pad.appendChild(bWrap);
 
-      pad.appendChild(bottomRow);
+      try { window.__sqUIMutationBus?.on(()=>setX3Label()); } catch(_) {}
       return;
     }
   }
 
-  // Finished game: show button to go to leaderboard
+// Finished game: show button to go to leaderboard
   const finishBtn = document.createElement('button');
   finishBtn.className = 'btn good';
   finishBtn.style.minWidth = '220px';
@@ -10440,66 +10913,56 @@ bottomRow.appendChild(missGoBtn);
 /*****************
  * DIALOGS (Stats / Race / High Scores)
  *****************/
+
 function openStatsHubDialog(){
+  try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('ingame'); }catch(_){ }
+  try{ console.debug('[Popup]', window.__sqStatsDebugName || 'In Game Player Stats'); }catch(_){ }
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop';
 
   const modal = document.createElement('div');
   modal.className = 'modal';
+  modal.style.maxWidth='520px';
+  modal.style.width='94vw';
 
-  const title = document.createElement('h3');
-  title.textContent = 'In Game Stats';
+  const header = (typeof __sqStatsHeader==='function')
+    ? __sqStatsHeader('Player Stats', 'Choose a stats view')
+    : (()=>{ const h=document.createElement('h3'); h.textContent='Player Stats'; return h; })();
 
   const body = document.createElement('div');
   body.className = 'modal-body';
-  body.style.display = 'flex';
-  body.style.flexDirection = 'column';
-  body.style.alignItems = 'center';
-  body.style.gap = '8px';
+  body.style.display='flex';
+  body.style.flexDirection='column';
+  body.style.alignItems='center';
+  body.style.gap='12px';
+  body.style.paddingTop='10px';
 
-  // uniform width for all main buttons
-  const W = 'min(420px, 92vw)';
-  const mkBtn = (label, extraClass, onClick) => {
+  const mk = (label, cls, fn) => {
     const b = document.createElement('button');
-    b.className = `btn big ${extraClass || ''}`.trim();
+    b.type='button';
+    b.className = `sq-navBtn ${cls||''}`.trim();
     b.textContent = label;
-    b.style.width = W;
-    b.onclick = () => { overlay.remove(); onClick(); };
+    b.onclick = () => { overlay.remove(); fn(); };
     return b;
   };
-  const sep = () => {
-    const hr = document.createElement('hr');
-    hr.style.width = W;
-    hr.style.borderColor = '#23284a';
-    hr.style.margin = '6px 0';
-    return hr;
-  };
 
-  // 1) GAME RACE (gold)
-  body.appendChild(mkBtn('GAME RACE', 'warn', openGameRaceDialog));
-  body.appendChild(sep());
+  // Keep existing actions; just re-skin.
+  body.appendChild(mk('GAME RACE', 'navOrange', openGameRaceDialog));
+  body.appendChild(mk('GAME STATS', 'navBlue', openGameStatsDialog));
+  body.appendChild(mk('MATCH STATS', 'navBlue', openMatchStatsDialog));
+  body.appendChild(mk('HIGH SCORES (Official)', 'navGreen', openHighScoresDialog));
+  body.appendChild(mk('LOW SCORES (Official)', 'navGreen', openLowScoresDialog));
 
-  // 2) GAME STATS / MATCH STATS
-  body.appendChild(mkBtn('GAME STATS', '', openGameStatsDialog));
-  body.appendChild(mkBtn('MATCH STATS', '', openMatchStatsDialog));
-  body.appendChild(sep());
-
-  // 3) High/Low (Official)
-  body.appendChild(mkBtn('HIGH SCORES (Official)', '', openHighScoresDialog));
-  body.appendChild(mkBtn('LOW SCORES (Official)', '', openLowScoresDialog));
-  
-  
-
-  // Footer: Close (original size)
   const footer = document.createElement('div');
   footer.className = 'modal-footer';
+  footer.style.justifyContent='flex-start';
   const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn';
+  closeBtn.className = 'btn sq-pill';
   closeBtn.textContent = 'Close';
   closeBtn.onclick = () => overlay.remove();
   footer.appendChild(closeBtn);
 
-  modal.append(title, body, footer);
+  modal.append(header, body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
@@ -10856,7 +11319,7 @@ function openHighScoresDialogSP(){
   }
 
   const footer = document.createElement('div'); footer.className='modal-footer';
-  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
   backBtn.onclick = () => overlay.remove();
   footer.appendChild(backBtn);
 
@@ -10899,7 +11362,7 @@ function openHighScoresDialogSP(){
   const footer = document.createElement('div');
   footer.className = 'modal-footer';
   const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn';
+  closeBtn.className = 'btn sq-pill';
   closeBtn.textContent = 'Close';
   closeBtn.onclick = () => overlay.remove();
   footer.appendChild(closeBtn);
@@ -11292,7 +11755,7 @@ async function openLowScoresDialog(){
   footer.className = 'modal-footer'; 
 
   const closeBtn = document.createElement('button'); 
-  closeBtn.className = 'btn'; 
+  closeBtn.className = 'btn sq-pill'; 
   closeBtn.textContent = 'Close'; 
   closeBtn.onclick = () => overlay.remove(); 
 
@@ -12250,7 +12713,7 @@ function showLeaderboard() {
       state = JSON.parse(JSON.stringify(baseState));
       save();
       show('players');     // or: show('details');
-      drawPsRows();
+      try { if (typeof drawPsRows === 'function') drawPsRows(); } catch(_e) {}
     };
   }
 
@@ -12374,7 +12837,7 @@ function openGameScoresDialog() {
   footer.className = 'modal-footer';
 
   const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn';
+  closeBtn.className = 'btn sq-pill';
   closeBtn.textContent = 'Close';
   closeBtn.onclick = () => overlay.remove();
 
@@ -12568,7 +13031,7 @@ async function openGameRaceDialog() {
   };
 
   const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn';
+  closeBtn.className = 'btn sq-pill';
   closeBtn.textContent = 'Close';
   closeBtn.onclick = () => overlay.remove();
 
@@ -13157,7 +13620,7 @@ function openSingleGameScoreSheet(game, highlightIdx = -1){
   const footer = document.createElement('div');
   footer.className = 'modal-footer';
   const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn';
+  closeBtn.className = 'btn sq-pill';
   closeBtn.textContent = 'Close';
   closeBtn.onclick = () => overlay.remove();
   footer.appendChild(closeBtn);
@@ -13287,9 +13750,9 @@ async function openHighScoresMenuDialog(){
   }
 
   // footer
-  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
   backBtn.onclick=()=> overlay.remove();
-  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
   closeBtn.onclick=()=> overlay.remove();
   footer.append(backBtn, closeBtn);
 
@@ -13699,9 +14162,9 @@ async function openAllGamesDialog(){
   }
 
   // Footer
-  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
   backBtn.onclick=()=>{ overlay.remove(); if (typeof openAdminHub==='function') openAdminHub(); };
-  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
   closeBtn.onclick=()=> overlay.remove();
   footer.append(backBtn, closeBtn);
 
@@ -13715,7 +14178,7 @@ async function openAllGamesDialog(){
 
 async function openRoundHighScoresDialog(){
   const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-  const modal   = document.createElement('div'); modal.className='modal';
+  const modal   = document.createElement('div'); modal.className='modal sq-wide-modal';
   const title   = document.createElement('h3');  title.textContent='Round High Scores';
   const body    = document.createElement('div'); body.className='modal-body';
   const footer  = document.createElement('div'); footer.className='modal-footer';
@@ -13763,9 +14226,9 @@ async function openRoundHighScoresDialog(){
     }
   }
 
-  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
   backBtn.onclick=()=> overlay.remove();
-  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
   closeBtn.onclick=()=> overlay.remove();
   footer.append(backBtn, closeBtn);
 
@@ -14365,8 +14828,8 @@ window.openPlayerSummaryStatsDialog = async function openPlayerSummaryStatsDialo
 
   await render();
 
-  const backBtn  = document.createElement('button'); backBtn.className  = 'btn'; backBtn.textContent  = 'Return';
-  const closeBtn = document.createElement('button'); closeBtn.className = 'btn'; closeBtn.textContent = 'Close';
+  const backBtn  = document.createElement('button'); backBtn.className  = 'btn sq-pill'; backBtn.textContent  = 'Return';
+  const closeBtn = document.createElement('button'); closeBtn.className = 'btn sq-pill'; closeBtn.textContent = 'Close';
 backBtn.onclick  = () => {
   overlay.remove();
   try { 
@@ -14527,7 +14990,11 @@ window.getOfficialPowerRows = async function getOfficialPowerRows(){
 // === Player Progression dialog (per‑game line graph for a player) ===
 window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(playerName, mode) {
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal   = document.createElement('div'); modal.className   = 'modal compact';
+  const modal   = document.createElement('div'); modal.className   = 'modal sq-wide-modal';
+  modal.style.maxWidth = '980px';
+  modal.style.width = '94vw';
+  modal.style.maxHeight = '90vh';
+  modal.style.overflow = 'hidden';
   const title   = document.createElement('h3');
   const body    = document.createElement('div'); body.className    = 'modal-body';
   const footer  = document.createElement('div'); footer.className  = 'modal-footer';
@@ -14547,12 +15014,12 @@ window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(
   const close = () => { overlay.remove(); };
 
   const backBtn  = document.createElement('button');
-  backBtn.className  = 'btn';
+  backBtn.className  = 'btn sq-pill';
   backBtn.textContent  = 'Back';
   backBtn.onclick  = close;
 
   const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn';
+  closeBtn.className = 'btn sq-pill';
   closeBtn.textContent = 'Close';
   closeBtn.onclick = close;
 
@@ -15051,7 +15518,7 @@ window.openStartHighScoresMenu = function openStartHighScoresMenu(){
 
   // Footer actions
   const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn';
+  closeBtn.className = 'btn sq-pill';
   closeBtn.type = 'button';
   closeBtn.textContent = 'Close';
   closeBtn.onclick = () => overlay.remove();
@@ -15645,22 +16112,37 @@ if(hsBody){
           // Normalize separators
           rest = rest.replace(/\s*_\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
 
-          // PB/WR lines should not show date/time, and need custom formatting.
+                    // ALERT (under 100 etc) should not show date/time.
+          const isUnder100 = (/under\s*100/i.test(rest) || /^ALERT\b/i.test(rest));
+          if (isUnder100) {
+            // Ensure it starts with ALERT, then prefix 🚨
+            if (!/^ALERT\b/i.test(rest)) rest = `ALERT - ${rest}`;
+            rest = rest.replace(/^ALERT\s*[-–—]\s*/i, 'ALERT - ');
+            return (`🚨 ${rest}`.trim());
+          }
+
+          // ROUND WR (highest round ever) should be highlighted.
+          if (/\bROUND\s*(WR|WORLD\s*RECORD|RECORD)\b/i.test(rest)) {
+            rest = rest.replace(/^\s*🚨\s*/,'');
+            return (`🚨 ${rest}`.trim());
+          }
+
+// PB/WR lines should not show date/time, and need custom formatting.
           if (/(^|\b)(NEW\s*PB|ROUND\s*PB|PB|WR|WORLD\s*RECORD)\b/i.test(rest)) {
             // "NEW PB" -> "GAME PB"
             rest = rest.replace(/\bNEW\s*PB\b/i, 'GAME PB');
 
             const rec = lpMaybeGameRecord(rest);
-            if (rec) return rec;
+            if (rec) return (`🚨 ${rec}`.replace(/^🚨\s*🚨\s*/,'🚨 ').trim());
 
             // Round PB reformat
             const roundPB = lpFmtRoundPB(rest);
-            if (roundPB) return roundPB;
+            if (roundPB) return (`🚨 ${roundPB}`.trim());
 
-            if (/^GAME PB\b/i.test(rest)) return (rest + ' 🌟').trim();
+            if (/^GAME PB\b/i.test(rest)) return (`🚨 ${(rest + ' 🌟').trim()}`.trim());
 
             // World record / WR etc: just return line without timestamp
-            return rest;
+            return (`🚨 ${rest}`.replace(/^🚨\s*🚨\s*/,'🚨 ').trim());
           }
 
           // Normal match line: "DD/MM / HH:MM ..."
@@ -15671,14 +16153,28 @@ if(hsBody){
         let cleaned = src.replace(/\s*_\s*/g, ' ').replace(/\s{2,}/g,' ').trim();
 
         // PB/WR lines: strip any leading timestamp if present and normalize wording
+        // ALERT (under 100 etc): strip timestamp and prefix 🚨
+        if (/under\s*100/i.test(cleaned) || /^ALERT\b/i.test(cleaned)) {
+          cleaned = cleaned.replace(/^\d{2}\/\d{2}\s*\/\s*\d{2}:\d{2}\s*/,'').trim() || cleaned;
+          if (!/^ALERT\b/i.test(cleaned)) cleaned = `ALERT - ${cleaned}`;
+          cleaned = cleaned.replace(/^ALERT\s*[-–—]\s*/i, 'ALERT - ');
+          return (`🚨 ${cleaned}`.trim());
+        }
+
+        // ROUND WR: highlight
+        if (/\bROUND\s*(WR|WORLD\s*RECORD|RECORD)\b/i.test(cleaned)) {
+          cleaned = cleaned.replace(/^\d{2}\/\d{2}\s*\/\s*\d{2}:\d{2}\s*/,'').trim() || cleaned;
+          return (`🚨 ${cleaned.replace(/^\s*🚨\s*/,'')}`.trim());
+        }
+
         if (/(^|\b)(NEW\s*PB|ROUND\s*PB|PB|WR|WORLD\s*RECORD)\b/i.test(cleaned)) {
           cleaned = cleaned.replace(/^\d{2}\/\d{2}\s*\/\s*\d{2}:\d{2}\s*/,'').trim() || cleaned;
           cleaned = cleaned.replace(/\bNEW\s*PB\b/i, 'GAME PB');
           const rec = lpMaybeGameRecord(cleaned);
-          if (rec) return rec;
+          if (rec) return (`🚨 ${rec}`.replace(/^🚨\s*🚨\s*/,'🚨 ').trim());
           const roundPB = lpFmtRoundPB(cleaned);
-          if (roundPB) return roundPB;
-          if (/^GAME PB\b/i.test(cleaned)) return (cleaned + ' 🌟').trim();
+          if (roundPB) return (`🚨 ${roundPB}`.trim());
+          if (/^GAME PB\b/i.test(cleaned)) return (`🚨 ${(cleaned + ' 🌟').trim()}`.trim());
           return cleaned;
         }
 
@@ -15728,10 +16224,11 @@ const lpUpdateMeta = async (games) => {
         }, speedMs);
       };
 
-      const lpIsRecordLine = (line) => /^NEW GAME RECORD SCORE\b/i.test(String(line || ''));
-      const lpIsRoundPBLine = (line) => /^ROUND PB\b/i.test(String(line || ''));
-      const lpIsGamePBLine  = (line) => /^GAME PB\b/i.test(String(line || ''));
-
+      const lpStripBang = (s) => String(s || '').replace(/^🚨\s*/,'').trim();
+      const lpIsRecordLine = (line) => /^NEW GAME RECORD SCORE\b/i.test(lpStripBang(line));
+      const lpIsRoundPBLine = (line) => /^ROUND PB\b/i.test(lpStripBang(line));
+      const lpIsGamePBLine  = (line) => /^GAME PB\b/i.test(lpStripBang(line));
+      const lpIsAlertLine   = (line) => /^🚨\s*/.test(String(line || '').trim());
 
       const lpSmoothShiftUp = (tbody, rowH, durationMs, onDone) => {
         if (!tbody) {
@@ -15780,6 +16277,8 @@ const lpUpdateMeta = async (games) => {
           tr.classList.toggle('lp-record', lpIsRecordLine(line));
           tr.classList.toggle('lp-roundpb', !lpIsRecordLine(line) && lpIsRoundPBLine(line));
           tr.classList.toggle('lp-gamepb', !lpIsRecordLine(line) && lpIsGamePBLine(line));
+            tr.classList.toggle('lp-alert', lpIsAlertLine(line));
+          tr.classList.toggle('lp-alert', lpIsAlertLine(line));
           td.appendChild(sp);
           tr.appendChild(td);
           tbody.appendChild(tr);
@@ -15798,6 +16297,24 @@ const lpUpdateMeta = async (games) => {
           tbody.appendChild(tr);
         }
       };
+
+      // Allow other parts of the app to inject a one-off LIVE UPDATES line (e.g., NEW PLAYER)
+      // Usage: window.__homeLivePrinterInjectLine('🚨 NEW PLAYER - Name - Welcome...')
+      try{
+        window.__homeLivePrinterInjectLine = (line) => {
+          const st = window.__homeLivePrinterState;
+          const l = String(line || '').replace(/\s+/g,' ').trim();
+          if (!st || !l) return;
+          // push into buffer
+          st.bufLines = [l].concat(Array.isArray(st.bufLines) ? st.bufLines : []);
+          st.bufLines = st.bufLines.slice(0, LP_BUFFER);
+          // show immediately by shifting the visible window
+          st.displayLines = Array.isArray(st.displayLines) ? st.displayLines : Array.from({ length: LP_VISIBLE }, () => '');
+          st.displayLines = st.displayLines.slice(1).concat([l]);
+          lpEnsureRows(st.displayLines);
+        };
+      }catch(_e){}
+
 
       const lpRenderWindow = (opts = {}) => {
         const st = window.__homeLivePrinterState;
@@ -15818,6 +16335,8 @@ const lpUpdateMeta = async (games) => {
             tr.classList.toggle('lp-record', lpIsRecordLine(line));
             tr.classList.toggle('lp-roundpb', !lpIsRecordLine(line) && lpIsRoundPBLine(line));
             tr.classList.toggle('lp-gamepb', !lpIsRecordLine(line) && lpIsGamePBLine(line));
+            tr.classList.toggle('lp-alert', lpIsAlertLine(line));
+          tr.classList.toggle('lp-alert', lpIsAlertLine(line));
           }
         });
       };
@@ -15905,6 +16424,7 @@ const lpUpdateMeta = async (games) => {
             rows2[i].classList.toggle('lp-record', lpIsRecordLine(winNew[i]));
             rows2[i].classList.toggle('lp-roundpb', !lpIsRecordLine(winNew[i]) && lpIsRoundPBLine(winNew[i]));
             rows2[i].classList.toggle('lp-gamepb', !lpIsRecordLine(winNew[i]) && lpIsGamePBLine(winNew[i]));
+            rows2[i].classList.toggle('lp-alert', lpIsAlertLine(winNew[i]));
             rows2[i].classList.remove('lp-new');
           }
 
@@ -15915,6 +16435,7 @@ const lpUpdateMeta = async (games) => {
             lastRow.classList.toggle('lp-record', lpIsRecordLine(winNew[LP_VISIBLE - 1]));
             lastRow.classList.toggle('lp-roundpb', !lpIsRecordLine(winNew[LP_VISIBLE - 1]) && lpIsRoundPBLine(winNew[LP_VISIBLE - 1]));
             lastRow.classList.toggle('lp-gamepb', !lpIsRecordLine(winNew[LP_VISIBLE - 1]) && lpIsGamePBLine(winNew[LP_VISIBLE - 1]));
+            lastRow.classList.toggle('lp-alert', lpIsAlertLine(winNew[LP_VISIBLE - 1]));
             lastSp.textContent = '';
             lpType(lastSp, String(winNew[LP_VISIBLE - 1] ?? '—'), 20);
             setTimeout(() => {
@@ -15950,7 +16471,26 @@ const lpUpdateMeta = async (games) => {
             let games = [];
             if (lpCloudOK()) {
               try { games = await cloudFetchLatestGamesAsLocal(LP_BUFFER); } catch (_e) { games = []; }
+            // Normalize game rows for live printer formatting (avoid "?(?)" when winner fields are absent)
+            if (Array.isArray(games) && games.length) {
+              games = games.map(g => {
+                try{
+                  const ps = Array.isArray(g.players) ? g.players : [];
+                  const ts = g.ts || g.created_at || g.createdAt || g.created_at || null;
+                  const totals = Array.isArray(g.totals) ? g.totals : [];
+                  const rows = ps.map((p,i)=>({
+                    name: (p && p.name) ? String(p.name).trim() : '?',
+                    score: Number(totals[i] ?? 0)
+                  })).sort((a,b)=> (b.score - a.score) || String(a.name).localeCompare(String(b.name)));
+                  const winner = rows[0] || { name:'?', score:'?' };
+                  const opp = rows.slice(1).map(r => `${r.name} (${r.score})`).join(', ');
+                  return { ts, winner_name: winner.name, winner_score: winner.score, opponents_text: opp };
+                }catch(_e){
+                  return { ts: g.ts || null, winner_name: '?', winner_score: '?', opponents_text: '' };
+                }
+              }).filter(Boolean);
             }
+}
             if (!games || !games.length) {
               const ids = getSavedMatchIdsSorted();
               games = ids.slice(-LP_BUFFER).reverse().map(id => {
@@ -16142,7 +16682,7 @@ const svgTrophy = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8"
 const svgLock = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
 
 hub.innerHTML   = `<span class="navIcon">${svgUsers}</span><span class="navLabel">PLAYER HUB</span>`;
-stats.innerHTML = `<span class="navIcon">${svgBar}</span><span class="navLabel">STATS</span>`;
+stats.innerHTML = `<span class="navIcon">${svgBar}</span><span class="navLabel">PLAYER STATS</span>`;
 league.innerHTML= `<span class="navIcon">${svgTrophy}</span><span class="navLabel">LEAGUE &amp; RANKS</span>`;
 
 // Admin: clickable text + lock (no big button)
@@ -16660,7 +17200,7 @@ window.setCloudStatus = function setCloudStatus(state, msg){
 window.openHighScoreLeagueDialog = async function openHighScoreLeagueDialog() {
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
   const modal   = document.createElement('div'); 
-  modal.className = 'modal compact';
+  modal.className = 'modal sq-wide-modal';
   const title   = document.createElement('h3');  title.textContent = 'High Score League — Best Match Score';
   const body    = document.createElement('div'); body.className    = 'modal-body';
   const footer  = document.createElement('div'); footer.className  = 'modal-footer';
@@ -16879,8 +17419,8 @@ const colNum   = document.createElement('col');  colNum.style.width  = '3.5ch';
 
   await render();
 
-  const backBtn  = document.createElement('button'); backBtn.className  = 'btn'; backBtn.textContent  = 'Back';
-  const closeBtn = document.createElement('button'); closeBtn.className = 'btn'; closeBtn.textContent = 'Close';
+  const backBtn  = document.createElement('button'); backBtn.className  = 'btn sq-pill'; backBtn.textContent  = 'Back';
+  const closeBtn = document.createElement('button'); closeBtn.className = 'btn sq-pill'; closeBtn.textContent = 'Close';
   backBtn.onclick  = () => {
     overlay.remove();
     if (window.__sqNavContext === 'admin' && typeof window.openAdminHub === 'function') {
@@ -17128,7 +17668,7 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
 // ===== @JS:MODAL:TOP_50_SCORES =====
 window.openTop50ScoresDialog = async function openTop50ScoresDialog(){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal   = document.createElement('div'); modal.className = 'modal';
+  const modal   = document.createElement('div'); modal.className = 'modal sq-wide-modal';
   const title   = document.createElement('h3');  title.textContent = 'Top 50 Scores (Official)';
   const body    = document.createElement('div'); body.className = 'modal-body';
   const footer  = document.createElement('div'); footer.className = 'modal-footer';
@@ -17222,7 +17762,11 @@ window.openTop50ScoresDialog = async function openTop50ScoresDialog(){
 // === Power Rankings — official only (hard cap + min sample; grey-out unqualified) ===
 window.openPowerLeagueDialog = async function openPowerLeagueDialog(){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal   = document.createElement('div'); modal.className   = 'modal compact';
+  const modal   = document.createElement('div'); modal.className   = 'modal sq-wide-modal';
+  modal.style.maxWidth = '980px';
+  modal.style.width = '94vw';
+  modal.style.maxHeight = '90vh';
+  modal.style.overflow = 'hidden';
 
   // Config
   const LIMIT = 56;                 // 4 games (14 rounds each)
@@ -17232,15 +17776,28 @@ window.openPowerLeagueDialog = async function openPowerLeagueDialog(){
 
   let view = 'current';
 
-  const head = document.createElement('div'); head.className = 'pr-modal-head';
+  const head = document.createElement('div'); head.className = 'modal-header';
+  head.style.display='flex'; head.style.alignItems='center'; head.style.justifyContent='space-between'; head.style.gap='12px';
   const titleWrap = document.createElement('div'); titleWrap.className = 'pr-modal-titlewrap';
   const title = document.createElement('h3'); title.textContent = 'Power Rankings — Last ' + LIMIT + ' Rounds (Official)';
   titleWrap.appendChild(title);
 
-  const tog = document.createElement('div'); tog.className = 'pr-toggle';
+  const tog = document.createElement('div'); tog.className = 'segmented';
+  tog.style.display='flex'; tog.style.gap='8px';
   const btnCur = document.createElement('button'); btnCur.type='button'; btnCur.textContent='Current';
   const btnAll = document.createElement('button'); btnAll.type='button'; btnAll.textContent='All Time';
   tog.append(btnCur, btnAll);
+
+  // Segmented styling (matches Latest Scores)
+  [btnCur, btnAll].forEach(b=>{
+    b.className = 'seg-btn';
+    b.style.padding='8px 12px';
+    b.style.borderRadius='999px';
+    b.style.border='1px solid rgba(255,255,255,.14)';
+    b.style.background='rgba(10,12,24,.55)';
+    b.style.color='rgba(255,255,255,.85)';
+    b.style.fontWeight='800';
+  });
 
   head.append(titleWrap, tog);
 
@@ -17249,11 +17806,11 @@ window.openPowerLeagueDialog = async function openPowerLeagueDialog(){
 
   // Footer buttons
   const backBtn  = document.createElement('button');
-  backBtn.className  = 'btn';
+  backBtn.className  = 'btn sq-pill';
   backBtn.textContent  = 'Back';
 
   const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn';
+  closeBtn.className = 'btn sq-pill';
   closeBtn.textContent = 'Close';
 
   backBtn.onclick  = () => {
@@ -17278,6 +17835,18 @@ window.openPowerLeagueDialog = async function openPowerLeagueDialog(){
     view = v;
     btnCur.classList.toggle('active', view==='current');
     btnAll.classList.toggle('active', view==='alltime');
+
+    // Active pill styling (orange edge)
+    const activeBorder = '1px solid rgba(255,138,0,.85)';
+    const activeBg = 'rgba(255,138,0,.14)';
+    const inactiveBorder = '1px solid rgba(255,255,255,.14)';
+    const inactiveBg = 'rgba(10,12,24,.55)';
+    btnCur.style.border = (view==='current') ? activeBorder : inactiveBorder;
+    btnCur.style.background = (view==='current') ? activeBg : inactiveBg;
+    btnCur.style.color = (view==='current') ? '#ff8a00' : 'rgba(255,255,255,.85)';
+    btnAll.style.border = (view==='alltime') ? activeBorder : inactiveBorder;
+    btnAll.style.background = (view==='alltime') ? activeBg : inactiveBg;
+    btnAll.style.color = (view==='alltime') ? '#ff8a00' : 'rgba(255,255,255,.85)';
     title.textContent = (view==='current')
       ? ('Power Rankings — Last ' + LIMIT + ' Rounds (Official)')
       : ('Power Rankings — All Time Best ' + LIMIT + ' (Official)');
@@ -17637,6 +18206,8 @@ rows.forEach((row) => {
 
   const tdRank   = document.createElement('td');
   tdRank.textContent = unq ? '—' : String(currentRank);
+  if (!unq) tdRank.style.color = '#ff8a00';
+  tdRank.style.fontWeight='800';
 
   const tdName   = document.createElement('td');
   tdName.textContent = row.name || '—';
@@ -17694,7 +18265,7 @@ window.openPremierLeagueDialog = async function openPremierLeagueDialog() {
   overlay.className = 'modal-backdrop';
 
   const modal = document.createElement('div');
-  modal.className = 'modal compact';
+  modal.className = 'modal sq-wide-modal';
 
   const title = document.createElement('h3');
   title.textContent = 'Premier League';
@@ -17749,7 +18320,7 @@ body.style.overflowY = 'visible';
   backBtn.textContent = 'Back';
 
   const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn';
+  closeBtn.className = 'btn sq-pill';
   closeBtn.textContent = 'Close';
 
   backBtn.onclick = () => {
@@ -18468,7 +19039,7 @@ tableMount.innerHTML = '';
 const _isAll = !filter || filter.id === 'ALL';
 const minNote = document.createElement('p');
 minNote.className = 'tag';
-minNote.textContent = _isAll ? '5 Games Minimum' : '3 Games Minimum';
+minNote.textContent = _isAll ? '15 Games Minimum' : '10 Games Minimum';
 
 // Scrolling area for the table body only
 const scroll = document.createElement('div');
@@ -18522,29 +19093,226 @@ renderTable(rows, currentFilter, initialPrev);
 };
 
 
-// Latest Scores modal: overlay with # | Result | Date/Time (no delete column)
+// Latest Scores modal: overlay with # | Result | Date/Time + Official/Practice toggle + chart
 // ===== @JS:MODAL:LATEST_SCORES =====
-async function openLatestScoresDialog(){
-  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-   const modal   = document.createElement('div'); modal.className   = 'modal compact';
-  const title   = document.createElement('h3');  title.textContent = 'Latest Scores';
-  const body    = document.createElement('div'); body.className    = 'modal-body';
-  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
+async function openLatestScoresDialog(initialMode){
+  // Match Latest Matches modal look & feel
+  document.querySelectorAll('.sq-latest-scores-backdrop').forEach(n => n.remove());
 
-  async function render(){
-    body.innerHTML = '';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-backdrop sq-latest-scores-backdrop';
 
-    // Fetch all games from cloud and sort newest → oldest
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.style.maxWidth = '980px';
+  modal.style.width = '94vw';
+
+  const mode0 = (initialMode === 'practice' || initialMode === 'official') ? initialMode : 'official';
+
+  modal.innerHTML = `
+    <div class="modal-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+      <div>
+        <div style="font-size:18px; font-weight:800; letter-spacing:.02em;">Latest Scores</div>
+        <div style="font-size:11px; opacity:.65; margin-top:2px;">Result / Date-Time</div>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="segmented" style="display:flex; gap:8px;">
+          <button class="seg-btn" data-mode="official">Official</button>
+          <button class="seg-btn" data-mode="practice">Practice</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-body" style="padding-top:8px;">
+      <div class="latest-scores-table-wrap" style="border:1px solid rgba(255,255,255,.08); border-radius:14px; overflow:auto; max-height:56vh;">
+        <table class="sq-table latest-scores" style="width:100%; border-collapse:collapse; table-layout:fixed;">
+          <colgroup>
+            <col style="width:7%">
+            <col style="width:70%">
+            <col style="width:23%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th style="text-align:left; padding-left:14px;">#</th>
+              <th style="text-align:left;">Result</th>
+              <th style="text-align:right; padding-right:14px;">Date/Time</th>
+            </tr>
+          </thead>
+          <tbody data-role="rows"></tbody>
+        </table>
+      </div>
+
+      <div class="modal-footer" style="display:flex; justify-content:flex-start; gap:10px; margin-top:14px;">
+        <button class="btn small sq-pill" data-action="back" style="min-width:84px;">Back</button>
+        <button class="btn small sq-pill" data-action="close" style="min-width:84px;">Close</button>
+      </div>
+    </div>
+  `;
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  const segBtns = modal.querySelectorAll('.seg-btn');
+  segBtns.forEach(b=>{
+    b.style.padding = '8px 12px';
+    b.style.borderRadius = '999px';
+    b.style.border = '1px solid rgba(255,255,255,.14)';
+    b.style.background = 'rgba(10,12,24,.55)';
+    b.style.color = 'rgba(255,255,255,.85)';
+    b.style.fontWeight = '700';
+    b.style.letterSpacing = '.02em';
+    b.style.cursor = 'pointer';
+    b.style.userSelect = 'none';
+  });
+
+  const rowsEl = modal.querySelector('[data-role="rows"]');
+
+  // Local helpers (Latest Scores must be self-contained; do NOT rely on other modal scopes)
+  const escapeHtml = (s) => String(s ?? '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+
+  const playerNameFrom = (p) => {
+    if (p == null) return '';
+    if (typeof p === 'string') return p.trim();
+    // Sometimes we store {name}, sometimes richer player objects
+    const name = (p?.name || p?.player || p?.player_name || p?.playerName || '').toString().trim();
+    if (name) return name;
+    const first = (p?.first_name || p?.firstName || '').toString().trim();
+    const last  = (p?.last_name  || p?.lastName  || '').toString().trim();
+    const nick  = (p?.nickname   || '').toString().trim();
+    if (first) {
+      if (nick && last) return `${first} "${nick}" ${last}`.trim();
+      if (nick) return `${first} "${nick}"`.trim();
+      if (last) return `${first} ${last}`.trim();
+      return first;
+    }
+    const id = (p?.id || p?.player_id || p?.playerId || '').toString().trim();
+    return id;
+  };
+
+  const displayName = (n) => String(n || '').replace(/\s+/g,' ').trim();
+
+  const setActiveModeUI = (mode) => {
+    segBtns.forEach(btn=>{
+      const on = btn.dataset.mode === mode;
+      btn.style.borderColor = on ? 'rgba(255,123,26,.85)' : 'rgba(255,255,255,.14)';
+      btn.style.boxShadow = on ? '0 0 0 2px rgba(255,123,26,.15) inset' : 'none';
+      btn.style.color = on ? '#fff' : 'rgba(255,255,255,.85)';
+      btn.style.background = on ? 'rgba(255,123,26,.12)' : 'rgba(10,12,24,.55)';
+    });
+  };
+
+  const formatResult = (g) => {
+    try {
+      if (typeof window.formatGameResultLine === 'function') return window.formatGameResultLine(g);
+    } catch(_) {}
+    const players = (g.players || []).map(playerNameFrom).filter(Boolean).map(displayName);
+    const totals  = Array.isArray(g.totals) ? g.totals : [];
+    const ordered = players
+      .map((name, i) => ({ name, score: Number(totals[i] || 0) }))
+      .filter(x => x.name)
+      .sort((a, b) => b.score - a.score);
+
+    if (!ordered.length) return '—';
+    if (ordered.length === 1) return `${ordered[0].name} ${ordered[0].score}`;
+
+    let result = `${ordered[0].name} ${ordered[0].score} beat ${ordered[1].name} ${ordered[1].score}`;
+    if (ordered.length > 2) result += ' ' + ordered.slice(2).map(o => `${o.name} ${o.score}`).join(' ');
+    return result;
+  };
+
+  const formatWhen = (g) => {
+    try {
+      if (typeof window.getGameTimestamp === 'function' && typeof window.fmtWhen === 'function') {
+        const d = window.getGameTimestamp(g);
+        if (d) return window.fmtWhen(d);
+      }
+    } catch(_) {}
+    const tsVal = g?.ts || g?.created_at || g?.inserted_at || (g?.meta && (g.meta.ts || g.meta.date)) || null;
+    if (!tsVal) return '';
+    const ms = parseMs(tsVal);
+    const d = Number.isFinite(ms) ? new Date(ms) : null;
+    return d && !Number.isNaN(d.getTime())
+      ? d.toLocaleString(undefined,{ year:'2-digit', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })
+      : '';
+  };
+
+  const isPracticeGameRow = (g) => {
+    // Strongest signal: explicit flags / mode
+    const mode = String(g?.mode || g?.game_mode || g?.meta?.mode || g?.state?.mode || '').toLowerCase();
+    if (mode.includes('practice')) return true;
+    if (mode.includes('unofficial') || mode.includes('un-official')) return true;
+    if (mode.includes('official')) return false;
+
+    if (g?.is_practice === true || g?.practice === true || g?.isPractice === true) return true;
+    if (g?.is_official === false || g?.official === false || g?.isOfficial === false) return true;
+    if (g?.state?.is_practice === true || g?.state?.practice === true || g?.state?.isPractice === true) return true;
+
+    // Match linkage: usually official games have a match_id, practice often doesn't.
+    const mid = (g?.match_id ?? g?.matchId ?? g?.state?.match_id ?? g?.state?.matchId ?? null);
+    if (mid) return false;
+
+    // Player-count heuristic: practice supports 1p
+    const ps = Array.isArray(g?.players) ? g.players : (Array.isArray(g?.state?.players) ? g.state.players : []);
+    if (ps.length === 1) return true;
+
+    // If we truly can't tell, default to PRACTICE only when match_id is missing.
+    return true;
+  };
+
+  const isOfficialGameRow = (g) => !isPracticeGameRow(g);
+
+  const renderRows = (games) => {
+    const safe = Array.isArray(games) ? games : [];
+    rowsEl.innerHTML = safe.map((g, idx) => {
+      const res = escapeHtml(formatResult(g));
+      const when = escapeHtml(formatWhen(g));
+      return `
+        <tr style="cursor:pointer;">
+          <td style="text-align:left; padding-left:14px; color:rgba(255,123,26,.95); font-weight:800;">${idx+1}</td>
+          <td style="text-align:left;">${res}</td>
+          <td style="text-align:right; padding-right:14px; opacity:.9;">${when}</td>
+        </tr>
+      `;
+    }).join('');
+
+    // Row click opens score sheet (if available)
+    Array.from(rowsEl.querySelectorAll('tr')).forEach((tr, i) => {
+      tr.title = 'Open score sheet';
+      tr.addEventListener('click', () => {
+        try { if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(safe[i]); } catch(_) {}
+      });
+    });
+  };
+
+  let __sqLatestScoresLoadSeq = 0;
+
+  const load = async (mode) => {
+    const seq = ++__sqLatestScoresLoadSeq;
+
+    setActiveModeUI(mode);
+    rowsEl.innerHTML = `<tr><td colspan="3" style="padding:18px; opacity:.7;">Loading…</td></tr>`;
+
+    const withTimeout = (p, ms) => Promise.race([
+      p,
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))
+    ]);
+
     let games = [];
     try {
-      games = await cloudFetchAllGamesAsLocal();
+      // Cloud-first, but don't hang forever if network stalls
+      games = await withTimeout(cloudFetchAllGamesAsLocal(), 5000);
     } catch (e) {
-      console.error('Latest Scores fetch failed', e);
-      const p = document.createElement('p');
-      p.textContent = 'Failed to load latest scores.';
-      body.appendChild(p);
-      return;
+      // Fallback to local cache (still useful offline)
+      try { games = (typeof getGameLog === 'function') ? (getGameLog() || []) : []; } catch(_) { games = []; }
     }
+
+    if (seq !== __sqLatestScoresLoadSeq) return;
 
     const toTS = (g) => {
       const t = g?.ts || g?.created_at || g?.inserted_at || (g?.meta && (g.meta.ts || g.meta.date)) || null;
@@ -18553,150 +19321,49 @@ async function openLatestScoresDialog(){
     };
 
     games = (games || []).filter(Boolean).sort((a,b)=> toTS(b) - toTS(a));
+    games = games.filter(g => mode === 'official' ? isOfficialGameRow(g) : isPracticeGameRow(g));
 
-    // Latest Scores: keep games that include at least one currently-active (registered) player.
-    // This allows guest/unregistered opponents to appear in the feed, without needing them in the players table.
-    try {
-      let activeSet = window.__sqActivePlayerNameSet;
-      if (!(activeSet instanceof Set) && typeof cloudListPlayers === 'function') {
-        await cloudListPlayers();
-        activeSet = window.__sqActivePlayerNameSet;
-      }
-      const alias = (typeof window !== 'undefined' && typeof window.__sqApplyPlayerAlias === 'function')
-        ? window.__sqApplyPlayerAlias
-        : (x)=>x;
+    // keep games with any named player (avoid blank rows)
+    games = games.filter(g => Array.isArray(g.players) && g.players.some(p => !!playerNameFrom(p)));
 
-      if (activeSet instanceof Set && activeSet.size) {
-        games = games.filter(g => {
-          const names = (g?.players || []).map(p => (p && typeof p === 'object' && 'name' in p) ? p.name : String(p || ''));
-          const mapped = names.map(n => String(alias(n) || '').trim().toLowerCase()).filter(Boolean);
-          if (!mapped.length) return false;
-          return mapped.some(n => activeSet.has(n));
-        });
-      }
-    } catch (_) {}
+    games = games.slice(0, 50);
 
-    games = games.slice(0, 10);
-
-    if (!games.length){
-      const p = document.createElement('p');
-      p.textContent = 'No games found.';
-      body.appendChild(p);
+    if (!games.length) {
+      rowsEl.innerHTML = `<tr><td colspan="3" style="padding:18px; opacity:.7;">No ${mode} games found.</td></tr>`;
       return;
     }
+    renderRows(games);
+  };
 
-    const table = document.createElement('table');
-    table.className = 'hs-table';
+  let mode = mode0;
+  load(mode);
 
-    // Columns: # | Result | Date/Time
-    const colgroup = document.createElement('colgroup');
-    const maxDigits = Math.max(2, String(games.length || 0).length);
-    const colNum  = document.createElement('col');  colNum.style.width  = `${Math.min(3, maxDigits)}ch`;
-    const colRes  = document.createElement('col');
-    const colWhen = document.createElement('col');  colWhen.style.width = '14ch';
-    colgroup.append(colNum, colRes, colWhen);
-    table.appendChild(colgroup);
-
-    const thead = document.createElement('thead');
-    const trh   = document.createElement('tr');
-    ['#','Result','Date/Time'].forEach(h => {
-      const th = document.createElement('th');
-      th.textContent = h;
-      trh.appendChild(th);
+  // Don't await inside click handler; keep UI responsive even if cloud is slow.
+  segBtns.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      mode = btn.dataset.mode;
+      load(mode);
     });
-    thead.appendChild(trh);
-    table.appendChild(thead);
+  });
 
-    const tbody = document.createElement('tbody');
+  const close = () => overlay.remove();
+  const goBack = () => { overlay.remove(); };
 
-    games.forEach((g, idx) => {
-      const tr  = document.createElement('tr');
+  overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(); });
+  modal.addEventListener('click', (e)=>{
+    const t = e.target.closest('[data-action]');
+    if (!t) return;
+    const a = t.getAttribute('data-action');
+    if (a === 'close') close();
+    if (a === 'back') goBack();
+  });
 
-      // #
-      const tdNum = document.createElement('td');
-      tdNum.textContent = String(idx + 1);
-
-      // Result string (winner beat runner-up [others...])
-      const tdResult = document.createElement('td');
-      if (typeof window.formatGameResultLine === 'function') {
-        tdResult.textContent = window.formatGameResultLine(g);
-      } else {
-        const players = (g.players || []).map(p => (p && p.name) ? p.name : '');
-        const totals  = Array.isArray(g.totals) ? g.totals : [];
-        const ordered = players
-          .map((name, i) => ({ name, score: Number(totals[i] || 0) }))
-          .filter(x => x.name)
-          .sort((a, b) => b.score - a.score);
-
-        let result = '—';
-        if (ordered.length >= 2) {
-          result = `${ordered[0].name} ${ordered[0].score} beat ${ordered[1].name} ${ordered[1].score}`;
-          if (ordered.length > 2) {
-            result += ' ' + ordered.slice(2).map(o => `${o.name} ${o.score}`).join(' ');
-          }
-        } else if (ordered.length === 1) {
-          result = `${ordered[0].name} ${ordered[0].score}`;
-        }
-        tdResult.textContent = result;
-      }
-
-      // Date/Time (use shared fmtWhen helper if available)
-      const tdWhen = document.createElement('td');
-      if (typeof window.getGameTimestamp === 'function' && typeof window.fmtWhen === 'function') {
-        const d = window.getGameTimestamp(g);
-        tdWhen.textContent = d ? window.fmtWhen(d) : '';
-      } else {
-        const tsVal = g.ts || g.created_at || g.inserted_at || (g.meta && (g.meta.ts || g.meta.date)) || null;
-        if (tsVal) {
-          const ms = parseMs(tsVal);
-        const d = Number.isFinite(ms) ? new Date(ms) : null;
-          tdWhen.textContent = !Number.isNaN(d.getTime())
-            ? d.toLocaleString(undefined,{ year:'2-digit', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })
-            : '';
-        } else {
-          tdWhen.textContent = '';
-        }
-      }
-
-      tr.append(tdNum, tdResult, tdWhen);
-
-      // Click row to open the score sheet if available
-      tr.style.cursor = 'pointer';
-      tr.title = 'Open score sheet';
-      tr.onclick = () => {
-        try {
-          if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(g);
-        } catch (_) {}
-      };
-
-      tbody.appendChild(tr);
-    });
-
-    table.appendChild(tbody);
-
-    const tw = document.createElement('div');
-    tw.className = 'table-wrap';
-    tw.appendChild(table);
-    body.appendChild(tw);
-  }
-
-  // Footer buttons
-  const backBtn  = document.createElement('button'); backBtn.className  = 'btn'; backBtn.textContent  = 'Back';
-  const closeBtn = document.createElement('button'); closeBtn.className = 'btn'; closeBtn.textContent = 'Close';
-  backBtn.onclick  = () => overlay.remove();
-  closeBtn.onclick = () => overlay.remove();
-  footer.append(backBtn, closeBtn);
-
-  modal.append(title, body, footer);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') close(); });
   modal.tabIndex = 0; modal.focus();
-
-  await render();
 }
+
+try { window.openLatestScoresDialog = openLatestScoresDialog; } catch(_) {}
+
 
 // === Player Stats — redesigned overview =====================================
 window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
@@ -18705,18 +19372,22 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
 
   // Modal shell
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal   = document.createElement('div'); modal.className   = 'modal compact';
-  const title   = document.createElement('h3');  title.textContent = `Player Stats — ${name}`;
-  const body    = document.createElement('div'); body.className    = 'modal-body';
-  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
-
-  // Fixed outer; inner content can scroll
+  const modal   = document.createElement('div'); modal.className   = 'modal';
+  modal.style.maxWidth='980px'; modal.style.width='94vw';
   modal.style.maxHeight = '90vh'; modal.style.overflow = 'hidden';
-  body .style.maxHeight = 'none'; body .style.overflowY = 'auto';
-  
-    // Mount early so we never "flash" back to home between dialogs
+
+  const header  = __sqStatsHeader(`Player Stats — ${name}`, 'Overview / Premier League / Targets');
+  const body    = document.createElement('div'); body.className    = 'modal-body';
+  body.style.paddingTop='8px';
+  body.style.maxHeight = 'none'; body.style.overflowY = 'auto';
+
+  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
+  footer.style.justifyContent='flex-start';
+  footer.style.gap='10px';
+
+  // Mount early so we never "flash" back to home between dialogs
   body.innerHTML = '<p class="muted">Loading…</p>';
-  modal.append(title, body, footer);
+  modal.append(header, body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
@@ -18741,17 +19412,21 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
     .sort((a,b)=> (new Date(a.ts) - new Date(b.ts)));
 
   // Short-circuit if nothing
-    if (!games.length){
+  if (!games.length){
     body.innerHTML = '';
     const p = document.createElement('p');
+    p.className = 'muted';
+    p.style.opacity = '.8';
     p.textContent = 'No official games found for this player.';
     body.appendChild(p);
+
     footer.innerHTML = '';
-    const closeBtn = document.createElement('button'); 
-    closeBtn.className='btn'; 
-    closeBtn.textContent='Close';
+    const backBtn  = document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
+    const closeBtn = document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
+    backBtn.onclick  = () => { overlay.remove(); __sqGoBackToStatsMain(); };
     closeBtn.onclick = () => overlay.remove();
-    footer.append(closeBtn);
+    footer.append(backBtn, closeBtn);
+
     modal.focus();
     return;
   }
@@ -19122,9 +19797,9 @@ gridOP.appendChild(card('BFF', bff ? `${bff.opp}  (${bff.pct.toFixed(1)}%)` : '�
   body.appendChild(gridTG);
 
   // Footer buttons
-  const backBtn  = document.createElement('button'); backBtn.className = 'btn'; backBtn.textContent = 'Back';
-  const closeBtn = document.createElement('button'); closeBtn.className = 'btn'; closeBtn.textContent = 'Close';
-  backBtn.onclick  = () => { overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
+  const backBtn  = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
+  const closeBtn = document.createElement('button'); closeBtn.className = 'btn sq-pill'; closeBtn.textContent = 'Close';
+  backBtn.onclick  = () => { overlay.remove(); __sqGoBackToStatsMain(); };
   closeBtn.onclick = () => overlay.remove();
   footer.append(backBtn, closeBtn);
 
@@ -19159,6 +19834,8 @@ window.openPlayerDTBDialog = window.openPlayerDTBDialog || (function(playerName)
 
 // === Player Hub — Latest Matches / High Scores / Progression / Target % / D T B % / H2H ===
 window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
+  try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('home', playerName); }catch(_){ }
+  try{ console.debug('[Popup]', window.__sqStatsDebugName || 'New Game Screen Stats'); }catch(_){ }
   const name = String(playerName || '').trim();
   if (!name){ try{ toast('Pick a player'); }catch(_){} return; }
 
@@ -19240,30 +19917,37 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
       if (typeof toast==='function') toast('Latest Matches not available');
     }),
     mkRow('High Scores', 'Full Game History', svgTrophy, () => {
+      try{ overlay && overlay.remove(); }catch(e){}
       if (typeof window.openPlayerHighScoresDialog === 'function') return window.openPlayerHighScoresDialog(name);
       if (typeof toast==='function') toast('High Scores not available');
     }),
     mkRow('Progression', 'Players scores mapped over time', svgTrend, () => {
+      try{ overlay && overlay.remove(); }catch(e){}
       if (typeof window.openPlayerProgressionDialog === 'function') return window.openPlayerProgressionDialog(name);
       if (typeof toast==='function') toast('Progression not available');
     }),
     mkRow('Target Hit %', 'Target hits per round', svgTarget, () => {
+      try{ overlay && overlay.remove(); }catch(e){}
       if (typeof window.openPlayerTargetHitDialog === 'function') return window.openPlayerTargetHitDialog(name);
       if (typeof toast==='function') toast('Target Hit % not available');
     }),
     mkRow('Target Points %', 'Available points hit per round', svgTarget, () => {
+      try{ overlay && overlay.remove(); }catch(e){}
       if (typeof window.openPlayerTargetPointsDialog === 'function') return window.openPlayerTargetPointsDialog(name);
       if (typeof toast==='function') toast('Target Points % not available');
     }),
     mkRow('D T B %', 'Double or Treble hit rate by target', svgTarget, () => {
+      try{ overlay && overlay.remove(); }catch(e){}
       if (typeof window.openPlayerDTBDialog === 'function') return window.openPlayerDTBDialog(name);
       if (typeof toast==='function') toast('DTB % not available');
     }),
     mkRow('H2H', 'Record vs other players', svgVs, () => {
+      try{ overlay && overlay.remove(); }catch(e){}
       if (typeof window.openPlayerH2HDialog === 'function') return window.openPlayerH2HDialog(name);
       if (typeof toast==='function') toast('H2H not available');
     }),
-    mkRow('Stats', 'Averages, PB, recent games', svgBars, () => {
+    mkRow('Player Stats', 'Averages, PB, recent games', svgBars, () => {
+      try{ overlay && overlay.remove(); }catch(e){}
       if (typeof window.openPlayerStatsDialog === 'function') return window.openPlayerStatsDialog(name);
       if (typeof toast==='function') toast('Stats not available');
     })
@@ -19594,6 +20278,27 @@ window.fetchLatestMatchesRows = async function fetchLatestMatchesRows(playerName
       };
     });
 
+
+
+// Enrich with total players (single bulk lookup against games)
+try{
+  const ids = rows.map(x=>x.sheet_id).filter(Boolean);
+  if (ids.length){
+    const gTable = (typeof TABLE_GAMES !== 'undefined' ? TABLE_GAMES : 'games');
+    const { data: gRows, error: gErr } = await sb.from(gTable).select('id,state,created_at,mode,is_practice').in('id', ids);
+    if (!gErr && Array.isArray(gRows)){
+      const map = new Map();
+      for (const gr of gRows){
+        try{
+          const ng = (typeof __normalizeGame==='function') ? __normalizeGame(gr) : null;
+          const cnt = ng && Array.isArray(ng.players) ? ng.players.length : (gr?.state?.players?.length || null);
+          if (gr?.id) map.set(String(gr.id), cnt);
+        }catch(_){ }
+      }
+      rows.forEach(r=>{ const k=String(r.sheet_id||''); if (map.has(k)) r.players_count = map.get(k); });
+    }
+  }
+}catch(_){ }
     if (rows.length) return rows;
   }catch(e){
     // keep going to fallback (do not spam console in UI path)
@@ -19612,15 +20317,23 @@ window.fetchLatestMatchesRows = async function fetchLatestMatchesRows(playerName
 
     const norm = (g)=>{
       const ng = (typeof __normalizeGame === 'function') ? __normalizeGame(g) : { players:[], totals:[], board:null, ts:(g.created_at||null), raw:g };
-      const modeGuess = (g?.mode || g?.state?.mode || (g?.is_practice===true || g?.state?.is_practice===true ? 'practice' : null));
       const matchId = (g?.match_id || g?.matchId || g?.state?.match_id || g?.state?.match?.id || null);
+      const playersCount = (ng.players||[]).length;
+      const modeRaw = String((g?.mode || g?.state?.mode || '')).toLowerCase();
+      const isPracticeDerived = (
+        g?.is_practice === true ||
+        g?.state?.is_practice === true ||
+        modeRaw === 'practice' ||
+        playersCount === 1
+      );
+      const modeNorm = isPracticeDerived ? 'practice' : 'official';
       return {
         players: ng.players || [],
         totals: ng.totals || [],
         board: ng.board || null,
         ts: ng.ts || g.created_at || null,
-        mode: modeGuess,
-        is_practice: (g?.is_practice ?? g?.state?.is_practice ?? (modeGuess==='practice')),
+        mode: modeNorm,
+        is_practice: isPracticeDerived,
         match_id: matchId,
         raw: g
       };
@@ -19651,6 +20364,7 @@ window.fetchLatestMatchesRows = async function fetchLatestMatchesRows(playerName
 
       rows.push({
         sheet_id: g.raw?.id || null,
+        players_count: (g.players||[]).length,
         position: pos,
         points: score,
         round_avg: avg,
@@ -19721,9 +20435,9 @@ window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDia
             <thead>
               <tr>
                 <th style="text-align:left; padding-left:14px;">#</th>
-                <th>Position</th>
-                <th>Points</th>
-                <th>Round Avg</th>
+                <th style="text-align:center;">Position</th>
+                <th style="text-align:center;">Points</th>
+                <th style="text-align:center;">Round Avg</th>
                 <th style="text-align:right; padding-right:14px;">When</th>
               </tr>
             </thead>
@@ -19732,8 +20446,8 @@ window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDia
         </div>
 
         <div class="modal-footer" style="display:flex; justify-content:flex-start; gap:10px; margin-top:14px;">
-          <button class="btn small" data-action="back" style="min-width:84px;">Back</button>
-          <button class="btn small" data-action="close" style="min-width:84px;">Close</button>
+          <button class="btn small sq-pill" data-action="back" style="min-width:84px;">Back</button>
+          <button class="btn small sq-pill" data-action="close" style="min-width:84px;">Close</button>
         </div>
       </div>
     `;
@@ -19770,7 +20484,9 @@ window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDia
     const renderRows = (rows) => {
       const safeRows = Array.isArray(rows) ? rows : [];
       rowsEl.innerHTML = safeRows.map((r, idx) => {
-        const pos = (r.position != null) ? r.position : '';
+        const posRaw = (r.position != null) ? r.position : '';
+        const pc = (r.players_count ?? r.playersCount ?? r.total_players ?? r.player_count ?? '');
+        const pos = (String(posRaw||'').includes('/') || !pc) ? posRaw : (String(posRaw||'') ? String(posRaw) + '/' + String(pc) : '');
         const pts = (r.points != null) ? r.points : '';
         const av  = (r.round_avg != null) ? Number(r.round_avg).toFixed(1) : (r.roundAvg != null ? Number(r.roundAvg).toFixed(1) : '');
         const when = escapeHtml(r.when || r.created_at || r.played_at || '');
@@ -19819,9 +20535,7 @@ window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDia
     const close = () => overlay.remove();
     const goBack = () => {
       overlay.remove();
-      if (typeof window.openPlayerStatsHub === 'function') window.openPlayerStatsHub(playerName);
-      else if (typeof window.openPlayerStatsDialog === 'function') window.openPlayerStatsDialog(playerName);
-      else if (typeof window.openPlayerStatsLookupDialog === 'function') window.openPlayerStatsLookupDialog(playerName);
+      __sqGoBackToStatsMain();
     };
 
     overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(); });
@@ -19847,75 +20561,238 @@ window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDia
     console.error('[LatestMatches] failed', err);
   }
 };
-// ==== (2) High Scores — per-player (rows open match) =========================
+
+// ---- Stats modal theming helpers (match Latest Matches look) ----
+function __sqStatsHeader(titleText, subtitleText, rightNode){
+  const header = document.createElement('div');
+  header.className = 'modal-header';
+  header.style.display = 'flex';
+  header.style.alignItems = 'center';
+  header.style.justifyContent = 'space-between';
+  header.style.gap = '12px';
+
+  const left = document.createElement('div');
+  const t = document.createElement('div');
+  t.style.fontSize = '18px';
+  t.style.fontWeight = '800';
+  t.style.letterSpacing = '.02em';
+  t.textContent = String(titleText || '');
+  left.appendChild(t);
+
+  if (subtitleText){
+    const s = document.createElement('div');
+    s.style.fontSize = '11px';
+    s.style.opacity = '.65';
+    s.style.marginTop = '2px';
+    s.textContent = String(subtitleText);
+    left.appendChild(s);
+  }
+
+  const right = document.createElement('div');
+  right.style.display = 'flex';
+  right.style.alignItems = 'center';
+  right.style.gap = '10px';
+  if (rightNode) right.appendChild(rightNode);
+
+  header.append(left, right);
+  return header;
+}
+
+// Style a scroll/table wrapper to match Latest Matches table chrome
+function __sqStyleStatsTableWrap(wrap){
+  if (!wrap || !wrap.style) return;
+  wrap.style.border = '1px solid rgba(255,255,255,.08)';
+  wrap.style.borderRadius = '14px';
+  wrap.style.overflow = 'auto';
+  if (!wrap.style.maxHeight) wrap.style.maxHeight = '56vh';
+}
+
+
+// ---- Stats navigation helpers ----
+// We have TWO "Stats main menus":
+//  - Home/Start Menu: per-player stats hub (Latest Matches, H2H, etc.)
+//  - In-Game: game/match stats hub (Game Stats, Match Stats, etc.)
+window.__sqStatsOrigin = window.__sqStatsOrigin || 'home';   // 'home' | 'ingame'
+window.__sqStatsReturnPlayer = window.__sqStatsReturnPlayer || '';
+window.__sqStatsDebugName = window.__sqStatsDebugName || 'New Game Screen Stats';
+
+function __sqSetStatsOrigin(origin, playerName){
+  window.__sqStatsOrigin = (origin === 'ingame') ? 'ingame' : 'home';
+  window.__sqStatsDebugName = (window.__sqStatsOrigin === 'ingame') ? 'In Game Player Stats' : 'New Game Screen Stats';
+  if (playerName != null) window.__sqStatsReturnPlayer = String(playerName || '').trim();
+}
+
+function __sqGoBackToStatsMain(playerName){
+  try{
+    const origin = window.__sqStatsOrigin || 'home';
+    const name = String(playerName || window.__sqStatsReturnPlayer || window.__sqSelectedPlayerName || '').trim();
+
+    if (origin === 'home'){
+      // If we know the player, go back to the per-player hub; otherwise go back to the player select.
+      if (name && typeof window.openPlayerStatsHub === 'function') return window.openPlayerStatsHub(name);
+      if (typeof window.openPlayerStatsSelectDialog === 'function') return window.openPlayerStatsSelectDialog();
+      return;
+    }
+
+    // In-game stats hub
+    if (typeof window.openStatsHubDialog === 'function') return window.openStatsHubDialog();
+    if (typeof openStatsHubDialog === 'function') return openStatsHubDialog();
+  }catch(_){ }
+}
+
+
+// ==== (2) High Scores — per-player (Top 50 scores, official) ==================
 window.openPlayerHighScoresDialog = async function openPlayerHighScoresDialog(playerName){
   const name = String(playerName||'').trim();
+  if (!name) return;
+
   const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-  const modal   = document.createElement('div'); modal.className  ='modal compact';
-  const title   = document.createElement('h3');  title.textContent=`High Scores — ${name}`;
-  const body    = document.createElement('div'); body.className   ='modal-body';
-  const footer  = document.createElement('div'); footer.className ='modal-footer';
+  const modal   = document.createElement('div'); modal.className  ='modal';
+  modal.style.maxWidth='980px'; modal.style.width='94vw';
   modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
-  body .style.maxHeight='none'; body .style.overflowY='visible';
 
-  let games = (await __fetchOfficialGames(5000)).map(__normalizeGame)
-    .filter(g => g.players.some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()));
+  const header  = __sqStatsHeader(`High Scores — ${name}`, 'Score / Avg per Round');
+  const body    = document.createElement('div'); body.className   ='modal-body';
+  body.style.paddingTop='8px';
+  const footer  = document.createElement('div'); footer.className ='modal-footer';
+  footer.style.justifyContent='flex-start';
+  footer.style.gap='10px';
 
-  // Rows: score + per-game average-per-round
-  const rows = [];
-  games.forEach(g => {
-    const i = g.players.findIndex(p => String(p||'').trim().toLowerCase() === name.toLowerCase());
-    const score  = Number(g.totals[i] || 0);
-    const rounds = __roundCountFor(g, i);   // uses board if available, else 14
-    const avgRound = rounds ? (score / rounds) : 0;
-    rows.push({ score, avgRound, ts: g.ts, g });
-  });
-  rows.sort((a, b) => b.score - a.score);
+  // Data (prefer union; fall back to official games scan)
+  const fmt = (ts)=>{
+    try{
+      if (!ts) return '';
+      if (typeof window.fmtWhen === 'function') return window.fmtWhen(ts);
+      const d = new Date(ts);
+      if (!Number.isNaN(d.getTime()) && typeof window.fmtDdMmYyAtTime === 'function') return window.fmtDdMmYyAtTime(d);
+      return !Number.isNaN(d.getTime()) ? d.toLocaleString() : String(ts);
+    }catch(_){ return String(ts||''); }
+  };
 
-  const table=document.createElement('table'); table.className='hs-table';
-  const thead=document.createElement('thead'); const trh=document.createElement('tr');
-  ['#','Score','Avg / Round','When'].forEach(h => { const th = document.createElement('th'); th.textContent = h; trh.appendChild(th); });
-  thead.appendChild(trh); table.appendChild(thead);
-  Array.from(trh.children).forEach(th => { th.style.position='sticky'; th.style.top='0'; th.style.zIndex='2'; th.style.background='rgba(0,0,0,0.4)'; });
+  let rows = [];
+  try{
+    if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) throw new Error('cloud not ready');
+    const tableName = (typeof TABLE_PLAYER_GAMES !== 'undefined' && TABLE_PLAYER_GAMES) ? TABLE_PLAYER_GAMES : 'player_games_union';
+    const q = sb
+      .from(tableName)
+      .select('sheet_id, player, score, rounds, ts, is_practice')
+      .ilike('player', name)
+      .or('is_practice.is.null,is_practice.eq.false')
+      .order('score', { ascending:false })
+      .order('ts', { ascending:false })
+      .limit(50);
+    const { data, error } = await q;
+    if (error) throw error;
 
-  const tbody=document.createElement('tbody');
-  rows.slice(0, 50).forEach((r, idx) => {
-    const tr  = document.createElement('tr');
-    const tdN = document.createElement('td'); tdN.textContent = String(idx + 1);
-    const tdS = document.createElement('td'); tdS.textContent = String(r.score);
-    const tdA = document.createElement('td'); tdA.textContent = (Number(r.avgRound) || 0).toFixed(1);
-    const tdW = document.createElement('td');
-    tdW.textContent = (r.ts && typeof window.fmtWhen === 'function') ? window.fmtWhen(r.ts) : (r.ts ? new Date(r.ts).toLocaleString() : '');
-    tr.append(tdN, tdS, tdA, tdW);
-    tr.style.cursor = 'pointer'; tr.title = 'Open this match';
-    tr.onclick = () => { try { if (typeof openSingleGameScoreSheet === 'function') openSingleGameScoreSheet(r.g.raw); } catch (_) {} };
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
+    rows = (data||[]).filter(Boolean).map(r=>{
+      const score = Number(r.score||0);
+      const rounds = Number(r.rounds||0) || 14;
+      return {
+        sheet_id: r.sheet_id || null,
+        score,
+        avg: rounds ? (score/rounds) : 0,
+        when: fmt(r.ts),
+        ts: r.ts
+      };
+    });
+  }
+  catch(e){
+    console.warn('[HighScores] player_games_union query failed; showing empty.', e?.message||e);
+  }
 
-  const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.appendChild(table);
-  body.appendChild(scroll);
+  // Fallback: derive Top 50 from official games if union is empty/mismatched (migration-safe)
+  if (!rows.length){
+    try{
+      const gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame)
+        .filter(g => (g.players||[]).some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()));
+      const tmp = [];
+      for (const g of gamesAll){
+        const i = (g.players||[]).findIndex(p => String(p||'').trim().toLowerCase()===name.toLowerCase());
+        if (i < 0) continue;
+        const score = Number((g.totals||[])[i] || 0);
+        let rounds = 14;
+        try{
+          if (typeof __roundCountFor==='function') rounds = __roundCountFor(g, i);
+          else if (g.board && Array.isArray(g.board[i])) rounds = Math.min(14, g.board[i].length||0) || 14;
+        }catch(_){}
+        tmp.push({
+          sheet_id: (g.raw && (g.raw.id || g.raw.game_id)) || null,
+          score,
+          avg: rounds ? (score/rounds) : 0,
+          when: fmt(g.ts),
+          ts: g.ts
+        });
+      }
+      tmp.sort((a,b)=> (b.score-a.score) || (new Date(b.ts||0)-new Date(a.ts||0)));
+      rows = tmp.slice(0, 50);
+    }catch(e){
+      console.warn('[HighScores] fallback scan failed.', e?.message||e);
+    }
+  }
 
-  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
-  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
-  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
-  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
+  if (!rows.length){
+    body.innerHTML = '<div class="muted" style="padding:18px; opacity:.75;">No high scores found.</div>';
+  } else {
+    // ensure sorted high->low
+    rows.sort((a,b)=> (b.score-a.score) || (new Date(b.ts||0)-new Date(a.ts||0)));
 
-  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+    const table=document.createElement('table'); table.className='sq-table hs-table';
+    const thead=document.createElement('thead'); const trh=document.createElement('tr');
+    ['#','Score','Avg / Round','When'].forEach((h,idx)=>{
+      const th=document.createElement('th');
+      th.textContent=h;
+      if (idx===0) th.style.paddingLeft='14px';
+      if (h==='When') th.style.textAlign='right';
+      else if (h!=='#') th.style.textAlign='center';
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh); table.appendChild(thead);
 
-  function closeToHub(){ overlay.remove(); }
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
-    overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
+    const tbody=document.createElement('tbody');
+    rows.slice(0,50).forEach((r,idx)=>{
+      const tr=document.createElement('tr');
+      const tdI=document.createElement('td'); tdI.textContent=String(idx+1); tdI.style.paddingLeft='14px'; tdI.className='sq-rank-cell';
+      const tdS=document.createElement('td'); tdS.textContent=String(r.score); tdS.style.textAlign='center';
+      const tdA=document.createElement('td'); tdA.textContent=Number(r.avg||0).toFixed(1); tdA.style.textAlign='center';
+      const tdW=document.createElement('td'); tdW.textContent=String(r.when||''); tdW.style.textAlign='right'; tdW.style.paddingRight='14px';
+      tr.append(tdI,tdS,tdA,tdW);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    const wrap=document.createElement('div');
+    wrap.style.maxHeight='56vh'; wrap.style.overflowY='auto';
+    __sqStyleStatsTableWrap(wrap);
+    wrap.appendChild(table);
+    body.appendChild(wrap);
+  }
+
+  const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
+  backBtn.onclick=()=>{ overlay.remove(); __sqGoBackToStatsMain(); };
+  closeBtn.onclick=()=>overlay.remove();
+  footer.append(backBtn, closeBtn);
+
+  modal.append(header, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  const close=()=>overlay.remove();
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) close(); });
+  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') close(); });
   modal.tabIndex=0; modal.focus();
 };
+
 
 // ==== (3) Progression — per-game bar chart + avg overlay ==================
 window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(playerName){
   const name = String(playerName||'').trim();
   const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-  const modal   = document.createElement('div'); modal.className  ='modal compact';
-  const title   = document.createElement('h3');  title.textContent=`Progression — ${name}`;
+  const modal   = document.createElement('div'); modal.className  ='modal';
+  modal.style.maxWidth='980px'; modal.style.width='94vw';
+  const header  = __sqStatsHeader(`Progression — ${name}`, 'Scores over time');
   const body    = document.createElement('div'); body.className   ='modal-body';
+  body.style.paddingTop='8px';
   const footer  = document.createElement('div'); footer.className ='modal-footer';
   modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
   body .style.maxHeight='none'; body .style.overflowY='visible';
@@ -20054,13 +20931,13 @@ window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(
   body.append(row, chartHost);
 
   // Footer buttons
-  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
-  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
   const close=()=>overlay.remove();
-  backBtn.onclick=close; closeBtn.onclick=close;
+  backBtn.onclick=()=>{ overlay.remove(); __sqGoBackToStatsMain(); }; closeBtn.onclick=close;
   footer.append(backBtn, closeBtn);
 
-  modal.append(title, body, footer);
+  modal.append(header, body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
@@ -20202,8 +21079,11 @@ window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(
 window.openPlayerTargetPctDialog = async function openPlayerTargetPctDialog(playerName){
   const name = String(playerName||'').trim();
   const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-  const modal   = document.createElement('div'); modal.className  ='modal compact';
-const title   = document.createElement('h3');  title.textContent=`Target Hit % — ${name}`;  const body    = document.createElement('div'); body.className   ='modal-body';
+  const modal   = document.createElement('div'); modal.className  ='modal';
+  modal.style.maxWidth='980px'; modal.style.width='94vw';
+  const header  = __sqStatsHeader(`Target Hit % — ${name}`, 'Throws / Hits / % / Ranks');
+const body    = document.createElement('div'); body.className   ='modal-body';
+  body.style.paddingTop='8px';
   const footer  = document.createElement('div'); footer.className ='modal-footer';
   modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
   body .style.maxHeight='none'; body .style.overflowY='visible';
@@ -20267,7 +21147,7 @@ if (!throwsRows.length) {
 
 
 
-  const table=document.createElement('table'); table.className='hs-table';
+  const table=document.createElement('table'); table.className='sq-table hs-table';
   const thead=document.createElement('thead'); const trh=document.createElement('tr');
   ['Round','Throws','Hits','%','Rank','Game Rank'].forEach(h=>{
     const th=document.createElement('th');
@@ -20279,7 +21159,7 @@ if (!throwsRows.length) {
   const tbody=document.createElement('tbody');
    for (let i=0;i<14;i++){
     const tr=document.createElement('tr');
-    const tdR=document.createElement('td'); tdR.textContent=labels[i];
+    const tdR=document.createElement('td'); tdR.textContent=labels[i]; tdR.className='sq-rank-cell';
     const tdT=document.createElement('td'); tdT.textContent=String(taken[i]); // Throws
     const tdH=document.createElement('td'); tdH.textContent=String(hits[i]);  // Hits
     const pct = pctArr[i] || 0;
@@ -20292,7 +21172,7 @@ if (!throwsRows.length) {
     tr.append(tdR,tdT,tdH,tdP,tdRank,tdGameRank); tbody.appendChild(tr);
   }
   table.appendChild(tbody);
-  const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.appendChild(table);
+  const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; __sqStyleStatsTableWrap(scroll); scroll.appendChild(table);
   body.appendChild(scroll);
 
   const grNote=document.createElement('div');
@@ -20302,16 +21182,16 @@ if (!throwsRows.length) {
   body.appendChild(grNote);
 
 
-  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
-  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
-  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
+  const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
+  backBtn.onclick=()=>{ overlay.remove(); __sqGoBackToStatsMain(); };
   closeBtn.onclick=()=>overlay.remove();
   const __spacer=document.createElement('div'); __spacer.style.flex='1';
   const spiderBtn=document.createElement('button'); spiderBtn.className='btn small'; spiderBtn.textContent='SPIDER'; spiderBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerSpiderDialog==='function') window.openPlayerSpiderDialog(name,{parentOverlay:overlay,data:{labels:labels,pct:pctArr}}); else if (typeof toast==='function') toast('SPIDER not available'); };
   const progBtn=document.createElement('button'); progBtn.className='btn small'; progBtn.textContent='PROGRESS'; progBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerProgressHitDialog==='function') window.openPlayerProgressHitDialog(name,{parentOverlay:overlay,mode:'hit',data:{labels:labels,throws:playerThrows,gameOrder:ids}}); else if (typeof toast==='function') toast('PROGRESS not available'); };
   footer.append(backBtn,closeBtn,__spacer,spiderBtn,progBtn);
 
-  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  modal.append(header,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
 
   function closeToHub(){ overlay.remove(); }
   overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
@@ -20324,24 +21204,26 @@ window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPc
 
   // Modal shell
   const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-  const modal   = document.createElement('div'); modal.className  ='modal compact';
-  const title   = document.createElement('h3');  title.textContent = `Target Points % — ${name}`;
-  const body    = document.createElement('div'); body.className   ='modal-body';
+  const modal   = document.createElement('div'); modal.className  ='modal';
+  modal.style.maxWidth='980px'; modal.style.width='94vw';
+  const header  = __sqStatsHeader(`Target Points % — ${name}`, 'Thrown / Points % / Ranks');
+const body    = document.createElement('div'); body.className   ='modal-body';
+  body.style.paddingTop='8px';
   const footer  = document.createElement('div'); footer.className ='modal-footer';
   modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
   body .style.maxHeight='none'; body .style.overflowY='visible';
 
   // Mount early so user always sees something
-  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  modal.append(header,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
 
   function closeToHub(){ overlay.remove(); }
   overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
   overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
   modal.tabIndex=0; modal.focus();
 
-  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
-  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
-  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
+  const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
+  backBtn.onclick=()=>{ overlay.remove(); __sqGoBackToStatsMain(); };
   closeBtn.onclick=()=>overlay.remove();
   const __spacer=document.createElement('div'); __spacer.style.flex='1';
   const spiderBtn=document.createElement('button'); spiderBtn.className='btn small'; spiderBtn.textContent='SPIDER'; spiderBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerSpiderDialog==='function') window.openPlayerSpiderDialog(name,{parentOverlay:overlay, mode:'points', data: window.__lastPointsPctSpiderData}); else if (typeof toast==='function') toast('SPIDER not available'); };
@@ -20462,7 +21344,7 @@ window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPc
     const pctRankMap = new Map(pctRanks.map(x => [x.target, x.rank]));
 
     // Table
-    const table=document.createElement('table'); table.className='hs-table';
+    const table=document.createElement('table'); table.className='sq-table hs-table';
     const thead=document.createElement('thead'); const trh=document.createElement('tr');
     ['Target','Thrown','Available Hits','Actual Hits','Points %','Rank','Game Rank']
       .forEach(h => {
@@ -20502,7 +21384,7 @@ window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPc
     const scroll=document.createElement('div');
     scroll.style.maxHeight='56vh';
     scroll.style.overflowY='auto';
-    scroll.style.borderRadius='8px';
+    __sqStyleStatsTableWrap(scroll);
     scroll.appendChild(table);
 
     content.innerHTML='';
@@ -20532,9 +21414,11 @@ window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPc
 window.openPlayerDTBPctDialog = async function openPlayerDTBPctDialog(playerName){
   const name = String(playerName||'').trim();
   const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-  const modal   = document.createElement('div'); modal.className  ='modal compact';
-  const title   = document.createElement('h3');  title.textContent = `D T B Hit % — ${name}`;
-  const body    = document.createElement('div'); body.className   ='modal-body';
+  const modal   = document.createElement('div'); modal.className  ='modal';
+  modal.style.maxWidth='980px'; modal.style.width='94vw';
+  const header  = __sqStatsHeader(`D T B Hit % — ${name}`, 'Doubles / Trebles / Rank');
+const body    = document.createElement('div'); body.className   ='modal-body';
+  body.style.paddingTop='8px';
   const footer  = document.createElement('div'); footer.className ='modal-footer';
   modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
   body .style.maxHeight='none'; body .style.overflowY='visible';
@@ -20590,7 +21474,7 @@ const kindL = t => String(t.kind||'').toLowerCase();
   const rankMap = new Map(rankedTargets.map(x=>[x.target, x.rank]));
 
   // Table
-  const table=document.createElement('table'); table.className='hs-table';
+  const table=document.createElement('table'); table.className='sq-table hs-table';
   const thead=document.createElement('thead'); const trh=document.createElement('tr');
   ['Target','Throws','D %','T %','Rank'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);});
   thead.appendChild(trh); table.appendChild(thead);
@@ -20604,15 +21488,15 @@ const kindL = t => String(t.kind||'').toLowerCase();
   });
   table.appendChild(tbody);
 
-  const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.appendChild(table);
+  const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; __sqStyleStatsTableWrap(scroll); scroll.appendChild(table);
   body.appendChild(scroll);
 
-  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
-  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
-  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
+  const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
+  backBtn.onclick=()=>{ overlay.remove(); __sqGoBackToStatsMain(); };
   closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
 
-  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  modal.append(header,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
 
   function closeToHub(){ overlay.remove(); }
   overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
@@ -20624,9 +21508,11 @@ const kindL = t => String(t.kind||'').toLowerCase();
 window.openPlayerDTBCombinedPctDialog = async function openPlayerDTBCombinedPctDialog(playerName){
   const name = String(playerName||'').trim();
   const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-  const modal   = document.createElement('div'); modal.className  ='modal compact';
-  const title   = document.createElement('h3');  title.textContent = `DTB % — ${name}`;
-  const body    = document.createElement('div'); body.className   ='modal-body';
+  const modal   = document.createElement('div'); modal.className  ='modal';
+  modal.style.maxWidth='980px'; modal.style.width='94vw';
+  const header  = __sqStatsHeader(`DTB % — ${name}`, 'Doubles / Trebles / Bull');
+const body    = document.createElement('div'); body.className   ='modal-body';
+  body.style.paddingTop='8px';
   const footer  = document.createElement('div'); footer.className ='modal-footer';
 
   modal.style.maxHeight='90vh';
@@ -20739,7 +21625,7 @@ window.openPlayerDTBCombinedPctDialog = async function openPlayerDTBCombinedPctD
   const innerPct = bullThrows ? (100*innerCount/bullThrows) : 0;
 
   // ---- Table
-  const table=document.createElement('table'); table.className='hs-table';
+  const table=document.createElement('table'); table.className='sq-table hs-table';
   const thead=document.createElement('thead');
   const trh=document.createElement('tr');
 
@@ -20807,7 +21693,7 @@ window.openPlayerDTBCombinedPctDialog = async function openPlayerDTBCombinedPctD
   const scroll=document.createElement('div');
   scroll.style.maxHeight='56vh';
   scroll.style.overflowY='auto';
-  scroll.style.borderRadius='8px';
+  __sqStyleStatsTableWrap(scroll);
   scroll.appendChild(table);
   body.appendChild(scroll);
 
@@ -20824,9 +21710,9 @@ window.openPlayerDTBCombinedPctDialog = async function openPlayerDTBCombinedPctD
   body.appendChild(grNote);
 
 
-  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
-  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
-  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name); };
+  const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
+  backBtn.onclick=()=>{ overlay.remove(); __sqGoBackToStatsMain(); };
   closeBtn.onclick=()=>overlay.remove();
 
   const __spacer=document.createElement('div'); __spacer.style.flex='1';
@@ -20845,7 +21731,7 @@ window.openPlayerDTBCombinedPctDialog = async function openPlayerDTBCombinedPctD
 
   footer.append(backBtn, closeBtn, __spacer, spiderBtn, progBtn);
 
-  modal.append(title, body, footer);
+  modal.append(header, body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
@@ -20858,24 +21744,32 @@ window.openPlayerDTBCombinedPctDialog = async function openPlayerDTBCombinedPctD
 // ==== (6) H2H — wins/losses vs each opponent =================================
 window.openPlayerH2HDialog = async function openPlayerH2HDialog(playerName){
   const nameLC = String(playerName||'').trim().toLowerCase();
-  const pretty = playerName;
+  const pretty = String(playerName||'').trim();
+
   const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-  const modal   = document.createElement('div'); modal.className  ='modal compact';
-  const title   = document.createElement('h3');  title.textContent=`H2H — ${pretty}`;
-  const body    = document.createElement('div'); body.className   ='modal-body';
-  const footer  = document.createElement('div'); footer.className ='modal-footer';
+  const modal   = document.createElement('div'); modal.className  ='modal';
+  modal.style.maxWidth='980px'; modal.style.width='94vw';
   modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
-  body .style.maxHeight='none'; body .style.overflowY='visible';
 
+  const header  = __sqStatsHeader(`H2H — ${pretty}`, 'Matches / Wins / Losses / Win % / Avg Diff');
+  const body    = document.createElement('div'); body.className   ='modal-body';
+  body.style.paddingTop='8px';
+  const footer  = document.createElement('div'); footer.className ='modal-footer';
+
+  // Pull plenty then filter locally (cloud-first)
   const games=(await __fetchOfficialGames(5000)).map(__normalizeGame)
-    .filter(g => g.players.some(p => String(p||'').trim().toLowerCase()===nameLC));
+    .filter(g => Array.isArray(g.players) && g.players.some(p => String(p||'').trim().toLowerCase()===nameLC));
 
-  const vs=new Map();
+  const vs=new Map(); // lc -> aggregate
   games.forEach(g=>{
     const i = g.players.findIndex(p => String(p||'').trim().toLowerCase()===nameLC);
+    if (i < 0) return;
     const me=Number(g.totals[i]||0);
+
     g.players.forEach((op,j)=>{
-      const lc=String(op||'').trim().toLowerCase(); if (!lc || lc===nameLC) return;
+      const lc=String(op||'').trim().toLowerCase();
+      if (!lc || lc===nameLC) return;
+
       const their=Number(g.totals[j]||0);
       const rec=vs.get(lc) || { opp: op, W:0, L:0, diffs:[], games:0 };
       if (me>their) rec.W++; else if (me<their) rec.L++;
@@ -20884,40 +21778,137 @@ window.openPlayerH2HDialog = async function openPlayerH2HDialog(playerName){
     });
   });
 
-  const rows=Array.from(vs.values()).map(r=>({
-    opp:r.opp, W:r.W, L:r.L,
+  const allRows=Array.from(vs.values()).map(r=>({
+    opp:r.opp,
+    games: Number(r.games || (r.W + r.L) || 0),
+    W: Number(r.W||0),
+    L: Number(r.L||0),
     winp: (r.W+r.L)? (100*r.W/(r.W+r.L)) : 0,
     avgdiff: r.diffs.length ? (r.diffs.reduce((s,x)=>s+x,0)/r.diffs.length) : 0
-  })).sort((a,b)=> (b.winp-a.winp) || (b.avgdiff-a.avgdiff) || String(a.opp).localeCompare(String(b.opp)));
+  }));
 
-  const table=document.createElement('table'); table.className='hs-table';
-  const thead=document.createElement('thead'); const trh=document.createElement('tr');
-  ['Opponent','Wins','Losses','Win %','Avg Score Diff'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);});
-  thead.appendChild(trh); table.appendChild(thead);
-  const tbody=document.createElement('tbody');
-  rows.forEach(r=>{
-    const tr=document.createElement('tr');
-    const tdO=document.createElement('td'); tdO.textContent=r.opp;
-    const tdW=document.createElement('td'); tdW.textContent=String(r.W);
-    const tdL=document.createElement('td'); tdL.textContent=String(r.L);
-    const tdP=document.createElement('td'); tdP.textContent=r.winp.toFixed(1)+'%';
-    const tdD=document.createElement('td'); tdD.textContent=r.avgdiff.toFixed(1);
-    tr.append(tdO,tdW,tdL,tdP,tdD); tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
+  const ineligible = allRows
+    .filter(r => (r.games||0) < 4)
+    .sort((a,b)=> (b.games-a.games) || String(a.opp).localeCompare(String(b.opp)));
 
-  const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.appendChild(table);
-  body.appendChild(scroll);
+  const eligible = allRows
+    .filter(r => (r.games||0) >= 4)
+    .sort((a,b)=> (b.winp-a.winp) || (b.avgdiff-a.avgdiff) || (b.games-a.games) || String(a.opp).localeCompare(String(b.opp)));
 
-  const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
-  const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
-  backBtn.onclick=()=>{ overlay.remove(); if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(pretty); };
-  closeBtn.onclick=()=>overlay.remove(); footer.append(backBtn,closeBtn);
+  const wrap = document.createElement('div');
+  wrap.style.maxHeight='56vh';
+  wrap.style.overflowY='auto';
+  __sqStyleStatsTableWrap(wrap);
 
-  modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  const makeTable = (headers, rows, rowFn) => {
+    const table=document.createElement('table'); table.className='sq-table hs-table';
+    const thead=document.createElement('thead'); const trh=document.createElement('tr');
+    headers.forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
+    thead.appendChild(trh); table.appendChild(thead);
+    const tbody=document.createElement('tbody');
+    rows.forEach((r, idx)=> tbody.appendChild(rowFn(r, idx)));
+    table.appendChild(tbody);
+    return table;
+  };
 
-  function closeToHub(){ overlay.remove(); }
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
+  const orangeRankCell = (n) => {
+    const td=document.createElement('td');
+    td.textContent=String(n);
+    td.style.textAlign='left';
+    td.style.paddingLeft='14px';
+    td.style.color='rgba(255,123,26,.95)';
+    td.style.fontWeight='800';
+    return td;
+  };
+
+  if (!allRows.length){
+    const p = document.createElement('div');
+    p.style.padding='18px';
+    p.style.opacity='.75';
+    p.textContent = 'No head-to-head data (official games only).';
+    wrap.appendChild(p);
+  } else {
+
+    if (ineligible.length){
+      const cap = document.createElement('div');
+      cap.className = 'muted';
+      cap.style.margin = '2px 0 10px';
+      cap.textContent = 'Opponents need 4+ games to enter the H2H league table.';
+      wrap.appendChild(cap);
+
+      const t0 = makeTable(['#','Opponent','Matches','Wins','Losses','Win %','Avg Score Diff'], ineligible, (r,idx)=>{
+        const tr=document.createElement('tr');
+        tr.style.opacity='0.45';
+        tr.title='Greyed out until 4+ games played vs this opponent';
+
+        const tdO=document.createElement('td'); tdO.textContent=String(r.opp||'');
+        const tdM=document.createElement('td'); tdM.textContent=String(r.games||0); tdM.style.textAlign='center';
+        const tdW=document.createElement('td'); tdW.textContent=String(r.W||0); tdW.style.textAlign='center';
+        const tdL=document.createElement('td'); tdL.textContent=String(r.L||0); tdL.style.textAlign='center';
+        const tdP=document.createElement('td'); tdP.textContent=(Number(r.winp||0)).toFixed(1)+'%'; tdP.style.textAlign='center';
+
+        const tdD=document.createElement('td');
+        tdD.textContent = (r.avgdiff>=0?'+':'') + Number(r.avgdiff||0).toFixed(1);
+        tdD.style.textAlign='center';
+        if (r.avgdiff > 0) tdD.style.color = 'rgba(0,255,120,.85)';
+        else if (r.avgdiff < 0) tdD.style.color = 'var(--danger)';
+
+        tr.append(orangeRankCell(idx+1), tdO, tdM, tdW, tdL, tdP, tdD);
+        return tr;
+      });
+      wrap.appendChild(t0);
+
+      const rule = document.createElement('div');
+      rule.style.height='1px';
+      rule.style.background='rgba(255,255,255,0.08)';
+      rule.style.margin='12px 0';
+      wrap.appendChild(rule);
+    }
+
+    if (!eligible.length){
+      const p = document.createElement('div');
+      p.style.padding='12px 0 4px';
+      p.style.opacity='.75';
+      p.textContent = 'No eligible opponents yet (need 4+ games).';
+      wrap.appendChild(p);
+    } else {
+      const t1 = makeTable(['#','Opponent','Matches','Wins','Losses','Win %','Avg Score Diff'], eligible, (r,idx)=>{
+        const tr=document.createElement('tr');
+
+        const tdO=document.createElement('td'); tdO.textContent=String(r.opp||'');
+        const tdM=document.createElement('td'); tdM.textContent=String(r.games||0); tdM.style.textAlign='center';
+        const tdW=document.createElement('td'); tdW.textContent=String(r.W||0); tdW.style.textAlign='center';
+        const tdL=document.createElement('td'); tdL.textContent=String(r.L||0); tdL.style.textAlign='center';
+        const tdP=document.createElement('td'); tdP.textContent=r.winp.toFixed(1)+'%'; tdP.style.textAlign='center';
+
+        const tdD=document.createElement('td');
+        tdD.textContent = (r.avgdiff>=0?'+':'') + r.avgdiff.toFixed(1);
+        tdD.style.textAlign='center';
+        if (r.avgdiff > 0) tdD.style.color = 'rgba(0,255,120,.85)';
+        else if (r.avgdiff < 0) tdD.style.color = 'var(--danger)';
+
+        tr.append(orangeRankCell(idx+1), tdO, tdM, tdW, tdL, tdP, tdD);
+        return tr;
+      });
+      wrap.appendChild(t1);
+    }
+  }
+
+  body.appendChild(wrap);
+
+  const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
+  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
+  backBtn.onclick=()=>{ overlay.remove(); __sqGoBackToStatsMain(); };
+  closeBtn.onclick=()=>overlay.remove();
+  footer.append(backBtn,closeBtn);
+
+  modal.append(header,body,footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  const closeToHub = ()=>overlay.remove();
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
+  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
   modal.tabIndex=0; modal.focus();
 };
 
@@ -23046,7 +24037,8 @@ if (!todayBtn) {
   window.openPlayerSpiderDialog = async function openPlayerSpiderDialog(playerName, opts){
     const name = String(playerName||'').trim();
     const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-    const modal   = document.createElement('div'); modal.className  ='modal compact';
+    const modal   = document.createElement('div'); modal.className  ='modal';
+  modal.style.maxWidth='980px'; modal.style.width='94vw';
     const title   = document.createElement('h3');  title.textContent=`SPIDER — ${name}`;
     const body    = document.createElement('div'); body.className   ='modal-body';
     const footer  = document.createElement('div'); footer.className ='modal-footer';
@@ -23072,8 +24064,8 @@ if (!todayBtn) {
     wrap.append(canvas, note);
     body.appendChild(wrap);
 
-    const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
-    const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+    const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
+    const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
     const parentOverlay = opts && opts.parentOverlay ? opts.parentOverlay : null;
     const backToPrev = () => {
       overlay.remove();
@@ -23194,8 +24186,8 @@ if (!todayBtn) {
     body.style.overflow = 'auto'; body.style.overflowY = 'hidden';
 
     const footer = document.createElement('div'); footer.className='modal-footer';
-    const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
-    const closeBtn=document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+    const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
+    const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
 
     const backToPrev = () => {
       overlay.remove();
