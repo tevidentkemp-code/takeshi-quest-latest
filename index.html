@@ -28,11 +28,12 @@
        • Target Hit % chart: line 22716
 
      - Known issues to revisit:
-       • Target Hit % / Target Points % / DTB % bar rendering: currently parked if JS error resurfaces in some builds
        • Supabase rename/merge conflicts: protect against duplicate-name unique constraint in admin rename flow
 ===================================================================== -->
 <!-- Supabase JS v2 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Chart.js v4 -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 
 <style>
@@ -23514,55 +23515,39 @@ if (!todayBtn) {
   }
 
   function drawBarChart(canvas, labels, values){
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width, H = canvas.height;
-    ctx.clearRect(0,0,W,H);
+    const existingChart = Chart.getChart(canvas);
+    if (existingChart) existingChart.destroy();
 
-    const padL=44, padR=10, padT=10, padB=34;
-    const chartW = W - padL - padR;
-    const chartH = H - padT - padB;
-
-    const maxVal = Math.max(1, ...values.map(v=>Number(v||0)));
-
-    // axes
-    ctx.globalAlpha = 0.35;
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(padL, padT);
-    ctx.lineTo(padL, H-padB);
-    ctx.lineTo(W-padR, H-padB);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    const n = values.length || 1;
-    const barGap = 2;
-    const barW = Math.max(2, Math.floor(chartW / n) - barGap);
-
-    for (let i=0; i<n; i++){
-      const v = Number(values[i]||0);
-      const h = Math.round((v/maxVal)*chartH);
-      const x = padL + i*(barW+barGap);
-      const y = (H-padB) - h;
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      ctx.fillRect(x,y,barW,h);
-    }
-
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
-    ctx.textAlign = 'right';
-    ctx.fillText(String(maxVal), padL-6, padT+12);
-    ctx.fillText('0', padL-6, H-padB);
-
-    // x labels sparse
-    ctx.textAlign = 'center';
-    const step = Math.ceil(n / 6);
-    for (let i=0; i<n; i+=step){
-      const lab = labels[i] || '';
-      const short = lab.slice(5); // MM-DD
-      const x = padL + i*(barW+barGap) + barW/2;
-      ctx.fillText(short, x, H-10);
-    }
+    new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: labels.map(lab => lab.includes('-') ? lab.slice(5) : lab),
+        datasets: [{
+          data: values,
+          backgroundColor: 'rgba(255, 255, 255, 0.2)',
+          borderColor: 'rgba(255, 255, 255, 0.5)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: 'rgba(255, 255, 255, 0.5)', maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+            ticks: { color: 'rgba(255, 255, 255, 0.5)' }
+          }
+        },
+        plugins: {
+          legend: { display: false }
+        }
+      }
+    });
   }
 
   function bind(){
@@ -23787,133 +23772,81 @@ if (!todayBtn) {
   }
 
   function drawRadar(canvas, labels, valuesPct){
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width, H = canvas.height;
-    ctx.clearRect(0,0,W,H);
+    const existingChart = Chart.getChart(canvas);
+    if (existingChart) existingChart.destroy();
 
-    const cx = W/2, cy = H/2;
-    const R  = Math.min(W,H)*0.38;
-    const N  = labels.length;
-
-    // grid
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-    ctx.lineWidth = 1;
-    for (let g=1; g<=4; g++){
-      const r = (R*g)/4;
-      ctx.beginPath();
-      for (let i=0;i<N;i++){
-        const a = (-Math.PI/2) + (i*2*Math.PI/N);
-        const x = cx + Math.cos(a)*r;
-        const y = cy + Math.sin(a)*r;
-        if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    new Chart(canvas, {
+      type: 'radar',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: valuesPct,
+          backgroundColor: 'rgba(34, 197, 94, 0.2)',
+          borderColor: 'rgba(34, 197, 94, 1)',
+          borderWidth: 2,
+          pointBackgroundColor: 'rgba(34, 197, 94, 1)',
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          r: {
+            angleLines: { color: 'rgba(255, 255, 255, 0.2)' },
+            grid: { color: 'rgba(255, 255, 255, 0.2)' },
+            pointLabels: { color: 'rgba(255, 255, 255, 0.8)', font: { size: 11 } },
+            ticks: { display: false, stepSize: 20 },
+            suggestedMin: 0,
+            suggestedMax: 100
+          }
+        },
+        plugins: {
+          legend: { display: false }
+        }
       }
-      ctx.closePath();
-      ctx.stroke();
-    }
-
-    // spokes
-    for (let i=0;i<N;i++){
-      const a = (-Math.PI/2) + (i*2*Math.PI/N);
-      ctx.beginPath();
-      ctx.moveTo(cx,cy);
-      ctx.lineTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R);
-      ctx.stroke();
-    }
-
-    // polygon
-    ctx.strokeStyle = 'rgba(34,197,94,0.95)';
-    ctx.fillStyle   = 'rgba(34,197,94,0.18)';
-    ctx.lineWidth   = 2;
-    ctx.beginPath();
-    for (let i=0;i<N;i++){
-      const pct = Math.max(0, Math.min(100, Number(valuesPct[i]||0)))/100;
-      const a = (-Math.PI/2) + (i*2*Math.PI/N);
-      const x = cx + Math.cos(a)*R*pct;
-      const y = cy + Math.sin(a)*R*pct;
-      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    }
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // labels
-    ctx.fillStyle = 'rgba(255,255,255,0.80)';
-    ctx.font = '11px system-ui, -apple-system, Segoe UI, Roboto, Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    for (let i=0;i<N;i++){
-      const a = (-Math.PI/2) + (i*2*Math.PI/N);
-      const x = cx + Math.cos(a)*(R+16);
-      const y = cy + Math.sin(a)*(R+16);
-      ctx.fillText(labels[i], x, y);
-    }
-
-    // center % rings labels
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('100%', cx+6, cy-R+12);
-    ctx.fillText('50%',  cx+6, cy-(R/2)+12);
+    });
   }
 
   function drawMultiLine(canvas, xLabels, seriesMap){
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width, H = canvas.height;
-    ctx.clearRect(0,0,W,H);
-
-    const padL=44, padR=10, padT=12, padB=34;
-    const chartW = W - padL - padR;
-    const chartH = H - padT - padB;
-
-    // Y max fixed at 100%
-    const maxY = 100;
-
-    // axes
-    ctx.globalAlpha = 0.35;
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(padL, padT);
-    ctx.lineTo(padL, H-padB);
-    ctx.lineTo(W-padR, H-padB);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    // y labels
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
-    ctx.textAlign = 'right';
-    ctx.fillText('100', padL-6, padT+12);
-    ctx.fillText('50',  padL-6, padT + chartH/2 + 4);
-    ctx.fillText('0',   padL-6, H-padB);
-
-    const n = xLabels.length || 1;
-    const stepX = (n<=1) ? chartW : (chartW/(n-1));
-
-    // x labels sparse
-    ctx.textAlign = 'center';
-    const step = Math.ceil(n/6);
-    for (let i=0;i<n;i+=step){
-      const lab = xLabels[i] || '';
-      const x = padL + i*stepX;
-      ctx.fillText(lab, x, H-10);
-    }
+    const existingChart = Chart.getChart(canvas);
+    if (existingChart) existingChart.destroy();
 
     const keys = Object.keys(seriesMap||{});
     const palette = ['#34d399','#60a5fa','#f472b6','#fbbf24','#a78bfa','#fb7185','#22d3ee','#c084fc','#86efac','#fde047','#93c5fd','#fda4af','#fca5a5','#67e8f9'];
-    keys.forEach((k, idx)=>{
-      const vals = seriesMap[k] || [];
-      const col = palette[idx % palette.length];
-      ctx.strokeStyle = col;
-      ctx.lineWidth = (idx===0? 2.8 : 2.2);
-      ctx.beginPath();
-      for (let i=0;i<n;i++){
-        const v = Number(vals[i]);
-        const yy = Number.isFinite(v) ? v : 0;
-        const x = padL + i*stepX;
-        const y = (H-padB) - (yy/maxY)*chartH;
-        if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+
+    const datasets = keys.map((k, idx) => ({
+      label: k,
+      data: seriesMap[k],
+      borderColor: palette[idx % palette.length],
+      borderWidth: (idx === 0 ? 3 : 2),
+      tension: 0.1,
+      pointRadius: 0
+    }));
+
+    new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: xLabels,
+        datasets: datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: 'rgba(255, 255, 255, 0.5)', maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }
+          },
+          y: {
+            min: 0,
+            max: 100,
+            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+            ticks: { color: 'rgba(255, 255, 255, 0.5)' }
+          }
+        },
+        plugins: {
+          legend: { display: false }
+        }
       }
-      ctx.stroke();
     });
   }
 
@@ -24450,124 +24383,116 @@ if (!todayBtn) {
     function drawChart(series){
       series = Array.isArray(series) ? series : [];
       const ys = series.map(d=>d.v);
+      const labels = series.map(d=>d.i);
       const n = ys.length;
+      if (n === 0) return;
 
-      // Bar chart like Progression: squeeze bars to fit the popup (no horizontal scroll)
-      const BASE_W = 920;
-      const BASE_H = 420;
-      const host = canvas.parentElement || canvas;
-      const cssW = Math.max(320, Math.min(BASE_W, host.clientWidth || BASE_W));
-      const cssH = BASE_H;
+      const allTimeHigh = Math.max(...ys);
+      const allTimeAvg = ys.reduce((a,b)=>a+b, 0) / n;
 
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.round(cssW * dpr);
-      canvas.height = Math.round(cssH * dpr);
-      canvas.style.width = cssW + 'px';
-      canvas.style.height = cssH + 'px';
+      const existingChart = Chart.getChart(canvas);
+      if (existingChart) existingChart.destroy();
 
-      const ctx = canvas.getContext('2d');
-
-      ctx.setTransform(dpr,0,0,dpr,0,0);
-      const W = cssW, H = cssH;
-      ctx.clearRect(0,0,W,H);
-
-
-      const padL = 44, padR = 18, padT = 18, padB = 34;
-
-      const innerW = W - padL - padR;
-      const innerH = H - padT - padB;
-
-      // Percent-style charts: fixed axis
-      const yMin = 0, yMax = 100;
-
-      const step = innerW / Math.max(1, n);
-      const barW = Math.max(1, Math.min(6, step * 0.85));
-      const xLeftForIndex = (i) => padL + i*step + (step - barW)/2;
-      const xForIndex = (i) => xLeftForIndex(i) + barW/2;
-      const yForVal = (v) => padT + (1 - ((v - yMin)/(yMax-yMin))) * innerH;
-
-      // grid
-      ctx.strokeStyle='rgba(255,255,255,.08)';
-      ctx.lineWidth=1;
-      for (let g=0; g<=5; g++){
-        const y = padT + (innerH*(g/5));
-        ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
-      }
-
-      // all-time high line
-      if (allTimeHigh != null){
-        const y = yForVal(allTimeHigh);
-        ctx.setLineDash([4,4]);
-        ctx.strokeStyle='rgba(255,255,255,.25)';
-        ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle='rgba(255,255,255,.35)';
-        ctx.font='12px system-ui, -apple-system, Segoe UI, Roboto';
-        ctx.fillText('ALL-TIME HIGH', W-padR-90, y-6);
-      }
-
-      // bars
-      ctx.fillStyle='rgba(255,255,255,.35)';
-      for (let i=0;i<n;i++){
-        const v = ys[i];
-        const x = xLeftForIndex(i);
-        const y = yForVal(v);
-        const h = (padT+innerH) - y;
-        ctx.fillRect(x, y, barW, h);
-      }
-
-      // average line modes
-      const mode = avgMode;
-      const linePts = [];
-      if (mode === 'traj'){
-        if (n>1){
-          const half = Math.floor(n/2);
-          const a1 = ys.slice(0, half).reduce((a,b)=>a+b,0) / Math.max(1, half);
-          const a2 = ys.slice(half).reduce((a,b)=>a+b,0) / Math.max(1, n-half);
-          linePts.push({x:xForIndex(0), y:yForVal(a1)});
-          linePts.push({x:xForIndex(n-1), y:yForVal(a2)});
+      const datasets = [
+        {
+          type: 'bar',
+          label: 'Game Score',
+          data: ys,
+          backgroundColor: 'rgba(255, 255, 255, 0.2)',
+          order: 2
+        },
+        {
+          type: 'line',
+          label: 'Average',
+          data: new Array(n).fill(allTimeAvg),
+          borderColor: 'rgba(255, 140, 0, 0.8)',
+          borderWidth: 2,
+          borderDash: [5, 5],
+          pointRadius: 0,
+          order: 1
+        },
+        {
+          type: 'line',
+          label: 'All-Time High',
+          data: new Array(n).fill(allTimeHigh),
+          borderColor: 'rgba(255, 255, 255, 0.2)',
+          borderWidth: 1,
+          borderDash: [2, 2],
+          pointRadius: 0,
+          order: 1
         }
-      } else if (mode === 'win'){
-        const win = avgWindow;
-        for (let i=0;i<n;i++){
-          const s = Math.max(0, i-win+1);
-          const seg = ys.slice(s, i+1);
-          const av = seg.reduce((a,b)=>a+b,0) / seg.length;
-          linePts.push({x:xForIndex(i), y:yForVal(av)});
+      ];
+
+      if (avgMode === 'traj') {
+        if (n > 1) {
+          const half = Math.floor(n / 2);
+          const a1 = ys.slice(0, half).reduce((a, b) => a + b, 0) / Math.max(1, half);
+          const a2 = ys.slice(half).reduce((a, b) => a + b, 0) / Math.max(1, n - half);
+          // To draw a simple trajectory line from first to last point in Chart.js
+          // we can use a sparse dataset or just two points.
+          const trajData = new Array(n).fill(null);
+          trajData[0] = a1;
+          trajData[n-1] = a2;
+          datasets.push({
+            type: 'line',
+            label: 'Trajectory',
+            data: trajData,
+            borderColor: 'rgba(140, 255, 140, 0.8)',
+            borderWidth: 3,
+            pointRadius: 0,
+            spanGaps: true,
+            order: 0
+          });
         }
-      }
-
-      // Always show all-time avg as dotted orange
-      if (allTimeAvg != null){
-        const y = yForVal(allTimeAvg);
-        ctx.setLineDash([3,4]);
-        ctx.strokeStyle='rgba(255,140,0,.95)';
-        ctx.lineWidth=2;
-        ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
-        ctx.setLineDash([]);
-      }
-
-      // green line (selected mode)
-      if (linePts.length){
-        ctx.strokeStyle='rgba(140,255,140,.85)';
-        ctx.lineWidth=2;
-        ctx.beginPath();
-        ctx.moveTo(linePts[0].x, linePts[0].y);
-        for (let i=1;i<linePts.length;i++) ctx.lineTo(linePts[i].x, linePts[i].y);
-        ctx.stroke();
-      }
-
-      // x labels (sparse, like progression)
-      ctx.fillStyle='rgba(255,255,255,.35)';
-      ctx.font='11px system-ui, -apple-system, Segoe UI, Roboto';
-      const stepLab = (n<=40)?5:(n<=120?10:20);
-      for (let i=0;i<n;i++){
-        if (i===0 || i===n-1 || (i%stepLab===0)){
-          const tx = xForIndex(i);
-          const lbl = String(series[i].i);
-          ctx.fillText(lbl, Math.max(padL, tx-6), H-12);
+      } else if (avgMode.startsWith('avg')) {
+        const windowSize = parseInt(avgMode.replace('avg', '')) || 10;
+        const rolling = [];
+        for (let i = 0; i < n; i++) {
+          const s = Math.max(0, i - windowSize + 1);
+          const seg = ys.slice(s, i + 1);
+          rolling.push(seg.reduce((a, b) => a + b, 0) / seg.length);
         }
+        datasets.push({
+          type: 'line',
+          label: `${windowSize} Dart AV`,
+          data: rolling,
+          borderColor: 'rgba(140, 255, 140, 0.8)',
+          borderWidth: 3,
+          pointRadius: 0,
+          order: 0
+        });
       }
+
+      new Chart(canvas, {
+        data: {
+          labels: labels,
+          datasets: datasets
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          datasets: {
+            bar: {
+              maxBarThickness: 40
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { color: 'rgba(255, 255, 255, 0.5)', maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }
+            },
+            y: {
+              min: 0,
+              max: 100,
+              grid: { color: 'rgba(255, 255, 255, 0.1)' },
+              ticks: { color: 'rgba(255, 255, 255, 0.5)' }
+            }
+          },
+          plugins: {
+            legend: { display: false }
+          }
+        }
+      });
     }
 
     function draw(){
