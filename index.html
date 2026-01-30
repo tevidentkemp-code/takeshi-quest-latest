@@ -13,22 +13,27 @@
      2) <body>: screens + modals (static DOM)
      ===================================================================== -->
 <!-- =====================================================================
-     SQ AUDIT + INDEX
-     - Housekeeping:
-       • Removed duplicate favicon + invalid escaped shortcut icon tag
-       • Removed misleading commented "<script>:</script>" snippet (kept the real SQ NAV INDEX in main script)
+     SQ AUDIT + INDEX (AUTO-MAINTAINED)
+     Build: v12.5.32 (organised)
+     Last update: 2026-01-29 18:37 UTC
 
-     - Jump points (approx line numbers):
-       • Select Game Mode UI: line 3391
-       • Match Setup UI: line 3189
-       • New Player Modal UI: line 2380
-       • Admin Hub UI: line 1182
-       • Saved Players Admin UI: line 3678
-       • Stats Progression chart: line 5965
-       • Target Hit % chart: line 22716
+     Jump points (CTRL+F for tags; line numbers are approximate after edits):
+       • @HTML:ADMIN                — Admin Hub + Saved Players Admin
+       • @JS:CLOUD:SUPABASE_INIT    — Supabase init + cloud status chip
+       • @JS:CLOUD:GAMES            — cloudFetchAllGamesAsLocal + mappers
+       • @JS:UI:LIVE_UPDATES_VIDE   — ticker / alerts / NEW PLAYER announcements
+       • @JS:UI:GAMEPLAY:AUTOSCROLL — keep last rounds visible above pad
+       • @JS:UI:GAMEPLAY:THROWPAD   — throw pad builder (S/D/T/Bull)
+       • @JS:MODAL:LATEST_SCORES    — League & Ranks > Latest Scores (Official/Practice)
+       • @JS:MODAL:LEAGUE_RANKINGS  — Power Rankings / Premier League / High Score League / Top 50 / Round HS
+       • @JS:UI:STATS_ROUTER        — Home vs In‑game Stats back routing
 
-     - Known issues to revisit:
-       • Supabase rename/merge conflicts: protect against duplicate-name unique constraint in admin rename flow
+     Known fragile areas (treat as “edit-with-care”):
+       • Practice vs Official classification: prefer DB truth (match_id null) + support legacy mode="unofficial"
+       • Player identity migration (name → UUID): keep player_id mapped in games.state.players to avoid stats gaps
+       • Throw pad layouts (D/T/Bull): keep flex/full-width behavior consistent with number rounds
+       • Ticker “VIDE” alerts: keep formatting logic centralized (avoid duplicate escapeHtml/playerNameFrom helpers)
+
 ===================================================================== -->
 <!-- Supabase JS v2 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -40,12 +45,12 @@
 /* ===== @CSS:TOKENS | CSS: THEME TOKENS ===== */
 :root{
   /* Theme */
-  --bg:#0f1220;
-  --card:#171a2b;
+  --bg:#0b0d10;
+  --card:#14181d;
   --ink:#e7e9f5;
   --muted:#a8acc3;
-  --accent:#7bdcff;
-  --accent-2:#8cff9e;
+  --accent:#ff7a18;
+  --accent-2:#ffb36b;
   --leader-lime:#9BFF2E;
   --danger:#ff6b6b;
   --warn:#ffcc66;
@@ -234,7 +239,7 @@
   font-weight: 700;
   background: linear-gradient(
     135deg,
-    rgba(123, 220, 255, 0.18),
+    rgba(255, 122, 24, 0.18),
     rgba(140, 255, 158, 0.12)
   );
   color: var(--ink);
@@ -332,7 +337,7 @@
   .grow{flex:1}
   .hidden{display:none!important}
   .tag{font-size:.78rem;color:var(--muted);padding:.15rem .45rem;border:1px solid #2b3050;border-radius:999px}
-  .banner{background:linear-gradient(180deg,#14284a,#12213d);border:1px solid #2a4777;border-radius:12px;padding:12px;margin-top:10px}
+  .banner{background:linear-gradient(180deg,#1a1e24,#14181d);border:1px solid #2a4777;border-radius:12px;padding:12px;margin-top:10px}
 
   input[type="text"],select,input[type="password"]{
     background:#101329;border:1px solid #2b3050;color:var(--ink);padding:.65rem .8rem;border-radius:10px;outline:none;width:100%
@@ -341,7 +346,7 @@
        padding:.7rem 1rem;cursor:pointer;transition:.15s transform,.15s background,.15s border-color,.15s opacity;font-weight:700}
   .btn:hover{transform:translateY(-1px);background:#161a3a}
   .btn:disabled{opacity:.55;cursor:not-allowed;transform:none}
-  .btn.primary{background:linear-gradient(180deg,#1d255a,#19214f);border-color:#32407a}
+  .btn.primary{background:linear-gradient(180deg,#1f242c,#1b2027);border-color:#32407a}
   .btn.good{background:linear-gradient(180deg,#1b3d2e,#183628);border-color:#2e6a4f}
   .btn.warn{background:linear-gradient(180deg,#3a3219,#2f2914);border-color:#6b5821}
   .btn.danger{background:linear-gradient(180deg,#47212a,#3c1b23);border-color:#7a2e3f}
@@ -354,7 +359,7 @@
   .table-wrap{overflow:auto;border-radius:12px;border:1px solid #2a2e48}
   table{width:100%;border-collapse:separate;border-spacing:0;background:#0f1329;table-layout:fixed}
   thead th{
-    background:#14183a;border-bottom:1px solid #2a2e48;padding:.6rem .5rem;text-align:left;font-weight:700;
+    background:#171b20;border-bottom:1px solid #2a2e48;padding:.6rem .5rem;text-align:left;font-weight:700;
     position:sticky; top:0; z-index:5;
   }
   #scoreWrap thead th:first-child{width:var(--left-col-w);min-width:var(--left-col-w);max-width:var(--left-col-w)}
@@ -404,6 +409,12 @@
 .sq-navBtn.navOrange{color:#ffb14a; border-color: rgba(255,177,74,0.35); }
   .current-cell{background:rgba(255,122,0,.06)!important;box-shadow:inset 0 0 0 1px rgba(255,122,0,.45)}
   .current-col{background:rgba(255,122,0,.035)}
+
+  /* Smooth highlight transitions when moving between players/rounds */
+  #scoreWrap tbody td.current-cell,
+  #scoreWrap tbody td.current-col{
+    transition: background-color 200ms ease, box-shadow 200ms ease;
+  }
 
   /* Header content */
   thead th .th-wrap{display:flex;flex-direction:column;align-items:center;gap:2px}
@@ -461,6 +472,30 @@
 }
 .go-darts .dart-slot.dart-miss{ color: rgba(255,255,255,.82); }
 
+
+/* Triangle layout variant used in RHS throw indicator */
+.go-darts-tri{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 6px 10px;
+  align-items:center;
+  justify-items:center;
+  width: 74px;
+  height: 56px;
+  margin: 0 auto;
+}
+.go-darts-tri .dart-slot{
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+.go-darts-tri .dart-slot:nth-child(1){ grid-column: 1 / span 2; grid-row:1; }
+.go-darts-tri .dart-slot:nth-child(2){ grid-column:1; grid-row:2; }
+.go-darts-tri .dart-slot:nth-child(3){ grid-column:2; grid-row:2; }
+
 /* Turn underline: animated sliding bar (moves Player 1 → Player 2 → … → Player 1) */
 #floatHead{ position: sticky; overflow: visible; } /* keep; also acts as containing block for abs children */
 #floatHead .turn-bar{
@@ -515,6 +550,21 @@
 }
 
 /* Smooth transitions for the active round label (A2) */
+/* Round label: show TARGET above live number */
+#scoreWrap tbody th.round-label .rl-target{
+  display:block;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.14em;
+  color: rgba(255,122,0,.95);
+  text-transform:uppercase;
+  margin-bottom:2px;
+}
+#scoreWrap tbody th.round-label .rl-num{
+  display:block;
+  line-height:1;
+}
+
 #scoreWrap tbody th.round-label{
   transition: font-size 220ms ease, font-weight 220ms ease, text-shadow 220ms ease, transform 220ms ease;
 }
@@ -667,7 +717,7 @@ body[data-page="game"] #gameScrollGate{
 
 /* ===== @CSS:FLOATHEAD_NAMES_COLOR =====
    B2 names are white by default; active player's name turns Shateki orange. */
-.float-head .th-name{ color:#ffffff !important; }
+ .float-head .th-name, .float-head .fh-name{ color:#ffffff !important; }
 .float-head thead tr:nth-child(1) th.player.is-go .th-name{ color:var(--shatekiOrange, #ff7a00) !important; }
 /* Vertical divider after the TARGET column in floating header */
 .float-head thead th:first-child{
@@ -717,6 +767,56 @@ body[data-page="game"] #gameScrollGate{
 .th-wins span{ display:inline-block; margin:0 2px; }
 .th-wins .win-star{color:rgba(255,255,255,.85);}
 .th-wins .win-circle{color:rgba(255,255,255,.35);}
+
+/* ===== @CSS:FLOATHEAD_PLAYER_BOXES =====
+   Unified player header box (wins + initials + total + round score) */
+.float-head thead th.player{ padding:8px 6px 10px; text-align:center; }
+.float-head thead th.player .fh-box{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:2px;
+  padding:6px 6px 8px;
+  border-radius:10px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.06);
+}
+.float-head thead th.player.is-go .fh-box{
+  background: rgba(255,255,255,.05);
+  border-color: rgba(255,122,0,.22);
+  box-shadow: 0 0 0 1px rgba(255,122,0,.10) inset;
+}
+.float-head .fh-name{
+  /* Player initials: more prominent */
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  line-height:1;
+  margin-top:1px;
+}
+.float-head .fh-total{
+  font-size: clamp(22px, 4.2vw, 40px);
+  font-weight: 900;
+  line-height: 1.05;
+  color: rgba(255,255,255,.98);
+}
+.float-head .fh-roundscore{
+  /* Bracketed leader/chaser diff: smaller + secondary */
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 700;
+  opacity: .92;
+}
+.float-head .fh-roundscore.diff-pos{ color: var(--green, #37d67a); }
+.float-head .fh-roundscore.diff-neg{ color: var(--red, #ff5a5f); }
+.float-head .fh-roundscore.diff-zero{ color: var(--muted); font-weight: 500; }
+
+/* The old 2-row layout rules should not add extra padding when we use a single row */
+.float-head thead tr:nth-child(2) th,
+.float-head thead tr:nth-child(3) th{ padding-top:0; padding-bottom:0; border-bottom:none; }
+
 .th-darts{
   display:flex;
   justify-content:center;
@@ -813,18 +913,28 @@ body[data-page="game"] #gameScrollGate{
 /* Revert UI: hide per‑dart markers */
 .cell-throws{ display:none !important; }
 
-  /* Round rows height – reverted to original sizing */
+  /* Round rows height – baseline sizing (with smooth active-row bump) */
   #scoreWrap tbody th,
   #scoreWrap tbody td{
     padding-top: 0.55rem;
     padding-bottom: 0.55rem;
+    transition: background-color 200ms ease, box-shadow 200ms ease, padding 200ms ease, transform 200ms ease;
+  }
+  /* Slightly taller current scoring row */
+  #scoreWrap tbody tr.active-score-row th,
+  #scoreWrap tbody tr.active-score-row td{
+    padding-top: 0.70rem;
+    padding-bottom: 0.70rem;
   }
 
 /* Landscape: keep TARGET cell (float header) aligned with the round-label column */
 @media (orientation: landscape){
   #floatWrap thead th:first-child,
+  #floatWrap thead th:last-child,
   #scoreWrap thead th:first-child,
-  #scoreWrap tbody th{
+  #scoreWrap thead th:last-child,
+  #scoreWrap tbody th:first-child,
+  #scoreWrap tbody th:last-child{
     width: var(--left-col-w);
     min-width: var(--left-col-w);
     max-width: var(--left-col-w);
@@ -2764,6 +2874,49 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 /* Make league modal footer buttons match (keep existing classes) */
 .sq-wide-modal .modal-footer{justify-content:flex-start; gap:10px;}
 
+
+/* ===== SQ: Top actions (Game / Leaderboard) ===== */
+.sq-top-actions{display:grid !important; grid-template-columns: 1fr 1fr; gap:12px; align-items:stretch;}
+/* --- Game header: anchor Stats (left) and Settings (right) over the new side columns --- */
+#gameTopRow.sq-top-actions{
+  grid-template-columns: var(--left-col-w) 1fr var(--left-col-w);
+}
+#statsHubBtnGame{ grid-column: 1; justify-self:stretch; }
+#settingsBtnGame{ grid-column: 3; justify-self:stretch; }
+
+#statsHubBtnGame, #settingsBtnGame{ border-radius:0 !important; }
+#gameTopRow .btn.top-throw{ width:100%; border-radius:0 !important; height:46px; padding:0 14px; }
+
+/* --- Right-side mirror column (visual symmetry with TARGET / round labels) --- */
+#floatWrap #froundlabelR .round-now{ display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding:6px 4px 8px; }
+#floatWrap #froundlabelR .rn-label{ font-size:11px; font-weight:700; letter-spacing:.18em; color:var(--muted); margin-bottom:4px; text-transform:uppercase; }
+#floatWrap #froundlabelR .rn-value{ font-weight:900; line-height:1; font-size:clamp(28px, 6.5vw, 64px); letter-spacing:.01em; }
+#floatWrap th#froundlabelR{ border-left:1px solid rgba(255,255,255,.06); }
+
+#scoreWrap tbody th.mirror-round{
+  border-left:1px solid rgba(255,255,255,.06);
+  color:rgba(255,255,255,.9);
+}
+
+.sq-top-actions .btn{width:100%;}
+.sq-settings-menu{position:fixed; left:0; top:0; z-index:30000; display:grid; grid-template-columns:1fr; gap:10px; padding:12px; border-radius:14px; background:rgba(10,14,24,.92); border:1px solid rgba(255,255,255,.12); box-shadow:0 16px 36px rgba(0,0,0,.45);}
+.sq-settings-menu.hidden{display:none !important;}
+.sq-settings-item{width:100%; text-align:left;}
+.sq-settings-item{height:48px; border-radius:14px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10); font-weight:800; letter-spacing:.12em; text-transform:uppercase;}
+.sq-settings-item:hover{filter:brightness(1.05);}
+
+
+#statsHubBtnGame, #settingsBtnGame{border-radius:0 !important; text-transform:uppercase;}
+#settingsBtnGame{justify-self:stretch;}
+/* Hide old shared throw indicators in TARGET box; keep only in THROWS */
+.rn-left .go-indicator-shared{display:none !important;}
+.rn-right .go-indicator-shared{display:flex !important;}
+/* Bracketed round totals: default grey; best stays green via .sub-win */
+#scoreWrap .cell-sub{color: rgba(255,255,255,.42) !important;}
+#scoreWrap .cell-sub.sub-win{color: var(--green) !important;}
+/* Dim old rounds */
+#scoreWrap td.past-cell .cell-main{opacity:.72;}
+#scoreWrap td.past-cell .cell-sub{opacity:.62;}
 </style>
 <style>
   /* Cloud status pill (top-right) */
@@ -2904,7 +3057,8 @@ margin-bottom: var(--section-gap);
 
 /* Game page background palette (match main menu tone) */
 body[data-page="game"]{
-  background:radial-gradient(1100px 700px at 0% 0%, #192033 0%, #0f1220 52%, #070913 100%);
+  background:radial-gradient(1100px 700px at 0% 0%, #222325 0%, #141416 55%, #070708 100%);
+  color-scheme: dark;
 }
 body[data-page="game"] .wrap,
 body[data-page="leaderboard"] .wrap{
@@ -2917,11 +3071,132 @@ body[data-page="leaderboard"] .wrap{
 
 
 /* Game table palette */
-body[data-page="game"] #scoreWrap table{ background:rgba(15,18,32,.72); }
-body[data-page="game"] #scoreWrap thead th{ background:rgba(23,26,43,.96); }
-body[data-page="game"] #scoreWrap tbody th{ background:rgba(16,19,38,.92); }
-body[data-page="game"] .float-head{ background:rgba(17,20,34,.94); }
-body[data-page="game"] .pad-bar{ background:rgba(17,20,34,.94); }
+body[data-page="game"] #scoreWrap table{ background:rgba(18,18,20,.82); }
+body[data-page="game"] #scoreWrap thead th{ background:rgba(30,30,32,.94); }
+body[data-page="game"] #scoreWrap tbody th{ background:rgba(24,24,26,.94); }
+body[data-page="game"] .float-head{ background:rgba(20,20,22,.94); }
+body[data-page="game"] .pad-bar{ background:rgba(20,20,22,.96); }
+
+/* Extended charcoal/orange gameplay theme (beyond the top player bar) */
+body[data-page="game"] .table-wrap{ border-color: rgba(255,255,255,.10); }
+body[data-page="game"] #scoreWrap thead th{
+  color: rgba(255,255,255,.92);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+body[data-page="game"] #scoreWrap tbody td,
+body[data-page="game"] #scoreWrap tbody th{
+  border-bottom: 1px dashed rgba(255,255,255,.10);
+}
+body[data-page="game"] #scoreWrap tbody th{
+  color: rgba(255,255,255,.82);
+  border-right: 1px solid rgba(255,255,255,.08);
+}
+body[data-page="game"] #scoreWrap tbody td{
+  color: rgba(255,255,255,.92);
+}
+body[data-page="game"] #scoreWrap tbody tr:hover td{
+  background: rgba(255,255,255,.02);
+}
+
+/* Keep orange accents for the active row/column */
+body[data-page="game"] #scoreWrap tbody tr.active-score-row td,
+body[data-page="game"] #scoreWrap tbody tr.active-score-row th{
+  box-shadow: inset 0 0 0 1px rgba(255,122,0,.22);
+}
+
+/* Throw pad – kill the remaining blue */
+
+/* Scorepad action buttons to match reference: icons left + coloured type */
+body[data-page="game"] .pad .btn.pad-act{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  font-weight:900;
+}
+body[data-page="game"] .pad .btn.pad-act::before{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:18px;
+  font-size:18px;
+  line-height:1;
+}
+body[data-page="game"] .pad .btn.pad-miss{
+  background: rgba(60,15,20,.78);
+  border-color: rgba(255,80,90,.30);
+  color: rgba(255,80,90,.95);
+}
+body[data-page="game"] .pad .btn.pad-miss::before{ content:'⊘'; color: rgba(255,80,90,.95); }
+
+body[data-page="game"] .pad .btn.pad-undo{
+  background: rgba(45,32,8,.78);
+  border-color: rgba(255,140,0,.30);
+  color: rgba(255,140,0,.95);
+}
+body[data-page="game"] .pad .btn.pad-undo::before{ content:'↶'; color: rgba(255,140,0,.95); }
+
+body[data-page="game"] .pad .btn.pad-skip{
+  background: rgba(14,22,44,.78);
+  border-color: rgba(90,150,255,.30);
+  color: rgba(90,150,255,.95);
+}
+body[data-page="game"] .pad .btn.pad-skip::before{ content:'⏩'; color: rgba(90,150,255,.95); }
+
+/* DT/Bull pad action colours (match the same palette) */
+.dtActBtn.miss{ background: rgba(60,15,20,.78); border-color: rgba(255,80,90,.30); }
+.dtActBtn.miss .dtIcon, .dtActBtn.miss .dtLbl{ color: rgba(255,80,90,.95); }
+
+.dtActBtn.undo{ background: rgba(45,32,8,.78); border-color: rgba(255,140,0,.30); }
+.dtActBtn.undo .dtIcon, .dtActBtn.undo .dtLbl{ color: rgba(255,140,0,.95); }
+
+.dtActBtn.skip{ background: rgba(14,22,44,.78); border-color: rgba(90,150,255,.30); }
+.dtActBtn.skip .dtIcon, .dtActBtn.skip .dtLbl{ color: rgba(90,150,255,.95); }
+
+/* MISS x3 tile – red type like reference */
+.dtX3{
+  background: rgba(60,15,20,.78);
+  border-color: rgba(255,80,90,.30);
+  color: rgba(255,80,90,.95);
+}
+
+body[data-page="game"] .pad-bar{
+  border-top: 1px solid rgba(255,255,255,.10);
+}
+body[data-page="game"] .pad-hint{ color: rgba(255,255,255,.55); }
+body[data-page="game"] .pad .btn{
+  border-color: rgba(255,255,255,.12);
+  background: linear-gradient(180deg, rgba(34,34,36,.95), rgba(22,22,24,.95));
+}
+body[data-page="game"] .pad .btn:hover{
+  background: linear-gradient(180deg, rgba(40,40,42,.98), rgba(26,26,28,.98));
+}
+body[data-page="game"] .pad .btn.range.active{
+  box-shadow: 0 0 0 1px rgba(255,122,0,.40) inset;
+  border-color: rgba(255,122,0,.38);
+}
+body[data-page="game"] .pad .btn.letter-throw{
+  letter-spacing:.06em;
+}
+
+/* In-game top row buttons (Stats / Settings etc) */
+#settingsBtnGame{ font-size:32px; line-height:1; letter-spacing:0; padding-left:16px; padding-right:16px; }
+
+body[data-page="game"] #gameTopRow .btn{
+  border-color: rgba(255,255,255,.14);
+  background: linear-gradient(180deg, rgba(34,34,36,.90), rgba(22,22,24,.90));
+}
+body[data-page="game"] #gameTopRow .btn:hover{
+  background: linear-gradient(180deg, rgba(40,40,42,.95), rgba(26,26,28,.95));
+}
+
+/* Cloud pill – match charcoal theme */
+body[data-page="game"] .cloud-status{
+  background: rgba(20,20,22,.92);
+  border-color: rgba(255,255,255,.12);
+}
 
 /* Undo the "internal table scroll" approach for the game page */
 body[data-page="game"] #game{
@@ -3090,11 +3365,19 @@ body[data-page="game"] #floatHead{
   letter-spacing: .12em;
 }
 
+/* Invisible quick-start hit area (dev/test) */
+#quickStartRow{
+  width: var(--homeW);
+  margin: 6px auto 0;
+  display: flex;
+  justify-content: center;
+}
+
 /* Final Leaderboard layout */
 #leaderboard .lb-box{
   padding:12px;
   border-radius:12px;
-  background:linear-gradient(180deg,#14284a,#12213d);
+  background:linear-gradient(180deg,#1a1e24,#14181d);
   border:1px solid #2a4777;
 }
 
@@ -3193,7 +3476,7 @@ body[data-page="game"] #floatHead{
   margin: 0;
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
-  background: linear-gradient(180deg,#1e2654,#121630);
+  background: linear-gradient(180deg,#1e2654,#0f1215);
   border-top: 1px solid rgba(255,255,255,0.10);
   border-bottom: 1px solid rgba(255,255,255,0.10);
   color: #eaf0ff;
@@ -3459,6 +3742,7 @@ body[data-page="game"] #floatHead{
     <span class="adminText">ADMIN</span>
   </button>
 </div>
+
       </div>
 
 <div id="psTickerTop" class="hidden"><div class="track"></div></div>
@@ -3506,10 +3790,13 @@ body[data-page="game"] #floatHead{
         <div class="float-head" id="floatHead">
           
       <div id="fhMenuWrap" class="fh-menu-wrap">
-        <div class="row fh-menu" id="gameTopRow">
-      <button id="startScreenBtnGame" class="btn letter-throw top-throw">Start Screen</button>
-      <button id="restartGameBtnGame" class="btn letter-throw top-throw">Restart Game</button>
-      <button id="statsHubBtnGame" class="btn letter-throw top-throw">Stats</button>
+        <div class="row fh-menu sq-top-actions" id="gameTopRow">
+      <button id="statsHubBtnGame" class="btn letter-throw top-throw">STATS</button>
+      <button id="settingsBtnGame" class="btn letter-throw top-throw" aria-label="Settings">⚙</button>
+    </div>
+    <div id="settingsMenuGame" class="sq-settings-menu hidden" role="menu" aria-label="Settings">
+      <button id="startScreenBtnGame" class="btn sq-settings-item" type="button">Start Screen</button>
+      <button id="restartGameBtnGame" class="btn sq-settings-item" type="button">Restart Game</button>
     </div>
       </div>
       <div id="fhMenuLine" class="fh-menu-line" aria-hidden="true"></div>
@@ -3557,10 +3844,13 @@ body[data-page="game"] #floatHead{
 
 <section id="leaderboard" class="card section hidden">
   <!-- Mirror the in-game top row (3 buttons, same sizing) -->
-  <div class="row" id="leaderboardTopRow">
-    <button id="startScreenBtnLB" class="btn letter-throw top-throw">Start Screen</button>
-    <button id="restartGameBtnLB" class="btn letter-throw top-throw">Restart Game</button>
+  <div class="row sq-top-actions" id="leaderboardTopRow">
     <button id="statsHubBtnFinal" class="btn letter-throw top-throw">Stats</button>
+    <button id="settingsBtnLB" class="btn letter-throw top-throw">Settings</button>
+  </div>
+  <div id="settingsMenuLB" class="sq-settings-menu hidden" role="menu" aria-label="Settings">
+    <button id="startScreenBtnLB" class="btn sq-settings-item" type="button">Start Screen</button>
+    <button id="restartGameBtnLB" class="btn sq-settings-item" type="button">Restart Game</button>
   </div>
 
   <!-- Leaderboard in its own box -->
@@ -3988,27 +4278,37 @@ body[data-page="game"] #floatHead{
   - @CSS:HOME
   - @CSS:MODALS
   - @CSS:TICKER
+  - @CSS:THROWPAD_DT_BULL
 
   HTML (STATIC DOM)
   - @HTML:SCREENS
   - @HTML:MODALS
   - @HTML:ADMIN
 
-  JS (PUBLIC ENTRYPOINTS / CORE)
+  JS (CORE)
   - @JS:BOOT
+  - @JS:UTIL:UI_MUTATION_BUS
   - @JS:UI:HOME
-  - @JS:UI:GAME
   - @JS:UI:ADMIN
+  - @JS:UI:STATS_ROUTER
+  - @JS:UI:LIVE_UPDATES_VIDE
+  - @JS:UI:GAMEPLAY:AUTOSCROLL
+  - @JS:UI:GAMEPLAY:THROWPAD
+
+  CLOUD
   - @JS:CLOUD:SUPABASE_INIT
   - @JS:CLOUD:PLAYERS
   - @JS:CLOUD:GAMES
   - @JS:CLOUD:HIGHSCORES
 
-  MODALS (OPENERS)
+  MODALS (LEAGUE / STATS)
   - @JS:MODAL:LEAGUE_RANKINGS
   - @JS:MODAL:HIGH_SCORE_LEAGUE
   - @JS:MODAL:PREMIER_LEAGUE
+  - @JS:MODAL:TOP_50_SCORES
+  - @JS:MODAL:ROUND_HIGH_SCORES
   - @JS:MODAL:LATEST_SCORES
+  - @JS:MODAL:PLAYER_LATEST_MATCHES
 
   PATCHES
   - @PATCHES:REGISTRY
@@ -5560,6 +5860,7 @@ async function renderSavedPlayersAdmin(){
   }, 0);
 })();
 
+// ===== @JS:UI:LIVE_UPDATES_VIDE =====
 // === Final version: single-line psTicker vertical scroller ===
 (function () {
   const IN_MS   = 800;   // time for the scroll animation (ms)
@@ -6007,7 +6308,7 @@ async function cloudRefreshPlayerDirectory(force=false){
   if (!force && _sqPlayerDir.loadedAt && (now - _sqPlayerDir.loadedAt) < 30_000 && _sqPlayerDir.list?.length) return _sqPlayerDir;
 
   try{
-    const sb = window.supabaseClient;
+    const sb = window.sb;
     const { data, error } = await sb
       .from(TABLE_PLAYERS)
       .select('id,name,first_name,last_name,initials,nickname,created_at,deleted_at')
@@ -6084,7 +6385,7 @@ function sqInitialsForPlayerField(nameOrId, fallback=''){
 async function cloudArchivePlayerSnapshot(playerRow, reason='admin_change'){
   if (!ensureCloudInit() || !playerRow?.id) return;
   try{
-    const sb = window.supabaseClient;
+    const sb = window.sb;
     // best-effort archive (table may not exist yet)
     await sb.from(TABLE_PLAYERS_ARCHIVE).insert({
       player_id: playerRow.id,
@@ -6619,7 +6920,7 @@ ctx.stroke();
 ctx.restore();
 
 // Line (skip positions without data, e.g. non-5th games for 5 Game Average)
-ctx.strokeStyle = '#7bdcff';
+ctx.strokeStyle = '#ff7a18';
 ctx.lineWidth = 2;
 ctx.beginPath();
 let started = false;
@@ -7134,7 +7435,7 @@ function cloudMarkTableMissing(tableName, err){
     window.toast=function(msg){
       var d=document.createElement('div');
       d.textContent=msg;
-      d.style.cssText='position:fixed;left:50%;top:16px;transform:translateX(-50%);background:#121735;border:1px solid #2b3050;color:#e7e9f5;padding:8px 12px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.35);z-index:110000';
+      d.style.cssText='position:fixed;left:50%;top:16px;transform:translateX(-50%);background:#101418;border:1px solid #2b3050;color:#e7e9f5;padding:8px 12px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.35);z-index:110000';
       document.body.appendChild(d); setTimeout(function(){d.remove();},1700);
     };
   }
@@ -7642,7 +7943,7 @@ const baseState = {
 };
 
 let state = JSON.parse(JSON.stringify(baseState));
-const COLOR_PALETTE=['#7bdcff','#8cff9e','#ffcc66','#ff9bd6','#f8d66d','#a6b3ff','#7fffd4','#ffb27b','#ffd166','#06d6a0','#118ab2','#ef476f'];
+const COLOR_PALETTE=['#ff7a18','#8cff9e','#ffcc66','#ff9bd6','#f8d66d','#a6b3ff','#7fffd4','#ffb27b','#ffd166','#06d6a0','#118ab2','#ef476f'];
 function assignUniqueColors(arr){ for(let i=0;i<arr.length;i++){ arr[i].color = COLOR_PALETTE[i % COLOR_PALETTE.length]; } }
 
 // Cloud status indicator
@@ -7856,7 +8157,7 @@ function labelForRound(def){
   if (def.type === 'number')  return String(def.target);
   if (def.type === 'doubles') return 'D';
   if (def.type === 'triples') return 'T';
-  if (def.type === 'bull')    return 'B';
+  if (def.type === 'bull')    return 'Bull';
   return '';
 }
 const MAX_ROUNDS=ROUNDS.length;
@@ -8153,7 +8454,7 @@ async function cloudDeletePlayer(playerOrName){
   if (!t) return;
 
   if (!ensureCloudInit()) throw new Error('Cloud not ready');
-  const sb = window.supabaseClient;
+  const sb = window.sb;
 
   const name = obj ? String(obj.name || '').trim() : (sqIsUuidLike(t) ? '' : t);
   let playerId = obj?.id ? String(obj.id).trim() : (sqIsUuidLike(t) ? t : null);
@@ -8260,10 +8561,22 @@ async function cloudSaveHighScoresForGame(totals, tsIso){
 // Simple initial Supabase connectivity check
 async function initialCloudCheck() {
   try {
+    // Always initialise client first (also handles file:// guard cleanly)
+    if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) {
+      // ensureCloudInit already sets a user-facing status message
+      return;
+    }
+    const client = window.sb || sb;
+    if (!client) {
+      setCloudStatus('error', 'Cloud not initialised');
+      return;
+    }
+
     setCloudStatus('checking', 'Checking cloud…');
-    const { error } = await sb
+    const { error } = await client
       .from(TABLE_PLAYERS)
       .select('name', { head: true, count: 'exact' });
+
     if (error) throw error;
     markCloudOk();
   } catch (err) {
@@ -9033,6 +9346,8 @@ function getSavedState(){
     return null; 
   } 
 }
+
+
 function setupStartMenuButtons(){ 
   const saved   = getSavedState(); 
   const hasSaved = !!saved; 
@@ -9062,6 +9377,8 @@ if (hasSaved){
   } else { 
     resumeBtn.onclick = null; 
   }
+
+  // Invisible quick-start test button (under ADMIN)
 
   const hsMainBtn = byId('hsMainBtn');
   if (hsMainBtn) {
@@ -9999,6 +10316,12 @@ function buildScoreHeader(){
     tr.appendChild(th);
   }
 
+
+  // Right-hand mirror header cell (width + visual symmetry)
+  const thRoundR = document.createElement('th');
+  thRoundR.textContent = '';
+  tr.appendChild(thRoundR);
+
   thead.appendChild(tr);
 }
 
@@ -10012,13 +10335,7 @@ function buildScoreBody(){
     const th = document.createElement('th'); 
     th.className = 'round-label';
     th.id = `roundth-${r}`;
-    th.textContent = (
-      ROUNDS[r].type === 'number'
-        ? (ROUNDS[r].target + 's')
-        : (ROUNDS[r].type === 'doubles'
-            ? "D's"
-            : (ROUNDS[r].type === 'triples' ? "T's" : 'Bull'))
-    );
+    th.textContent = labelForRound(ROUNDS[r]);
     tr.appendChild(th); 
 
     // Cells: now have main (rolling total) + sub (round total)
@@ -10035,74 +10352,80 @@ function buildScoreBody(){
       tr.appendChild(td);
     } 
 
+
+    // Right-hand mirror round label (visual symmetry)
+    const thR = document.createElement('th');
+    thR.className = 'round-label mirror-round';
+    thR.id = `roundthR-${r}`;
+    thR.textContent = th.textContent || '';
+    tr.appendChild(thR);
+
     tbody.appendChild(tr);
   } 
 }
 
-function buildFloatingHeader(){ 
+function buildFloatingHeader(){
+  // Single-row floating header: each player column is a unified box (wins + initials + total + round score)
+  const floatThead = byId('floatThead');
+  if (!floatThead) return;
   floatThead.innerHTML = '';
 
-  // Apply player-count classes for responsive sizing
-  try {
-    floatHead.classList.remove('players-5','players-6');
-    if (state.players.length === 5) floatHead.classList.add('players-5');
-    if (state.players.length === 6) floatHead.classList.add('players-6');
-  } catch(_) {}
+  const tr = document.createElement('tr');
 
-  // A) Target (left) spans B/C rows
-  const trNames = document.createElement('tr');
-
+  // Left round label (TARGET)
   const thRound = document.createElement('th');
   thRound.id = 'froundlabel';
-  thRound.rowSpan = 2;          // B, C rows
-  thRound.textContent = '';     // filled by updateUI()
-  trNames.appendChild(thRound);
+  thRound.rowSpan = 1;
+  thRound.className = 'round-label fh-round';
+  thRound.innerHTML = '<div class="round-now"><div class="rn-label">TARGET</div><div class="rn-value">–</div></div>';
+  tr.appendChild(thRound);
 
-  // B) Player names + match progress
-  for (let i = 0; i < state.players.length; i++) { 
-    const th = document.createElement('th'); 
-    th.className = 'player'; 
-    th.style.color = state.players[i].color; 
+  // Player columns
+  (state.players||[]).forEach((p, i) => {
+    const th = document.createElement('th');
+    th.className = 'player fh-player';
+    th.id = 'fcoltot-' + i;
 
-    const wrap = document.createElement('div'); 
-    wrap.className = 'th-wrap'; 
+    const wrap = document.createElement('div');
+    wrap.className = 'fh-box';
 
     const wins = document.createElement('div');
-    wins.className = 'th-wins';
+    wins.className = 'th-wins fh-wins';
     wins.id = 'fwins-' + i;
-    wins.textContent = '';
 
-    const name = document.createElement('div'); 
-    name.className = 'th-name'; 
-    name.textContent = __sqHeaderLabelForPlayer(state.players[i]); 
+    const name = document.createElement('div');
+    name.className = 'th-name fh-name';
+    name.textContent = __sqHeaderLabelForPlayer(p);
 
-    wrap.append(wins, name);
-    th.appendChild(wrap); 
-    trNames.appendChild(th);
-  }  
+    const total = document.createElement('div');
+    total.className = 'fh-total';
+    total.id = 'ftotal-' + i;
+    total.textContent = '0';
 
-  // C) Totals + diff + throw indicator (single row; no separate D row)
-  const trTotals = document.createElement('tr');
-  for (let i = 0; i < state.players.length; i++) { 
-    const th = document.createElement('th'); 
-    th.className = 'player';
-    th.id = 'fcoltot-' + i; 
+    const round = document.createElement('div');
+    round.className = 'fh-roundscore diff-zero';
+    round.id = 'fdiff-' + i;
+    round.textContent = '(0)';
 
-    const total = document.createElement('div'); 
-    total.className = 'th-total num'; 
-    total.id = 'ftotal-' + i; 
-    total.textContent = '0'; 
+    wrap.appendChild(wins);
+    wrap.appendChild(name);
+    wrap.appendChild(total);
+    wrap.appendChild(round);
+    th.appendChild(wrap);
+    tr.appendChild(th);
+  });
 
-    const diff = document.createElement('div'); 
-    diff.className = 'th-diff'; 
-    diff.id = 'fdiff-' + i; 
-    diff.textContent = '0';
-    th.append(total, diff);
-trTotals.appendChild(th);
-  }  
+  // Right mirror round label
+  const thRoundR = document.createElement('th');
+  thRoundR.id = 'froundlabelR';
+  thRoundR.rowSpan = 1;
+  thRoundR.className = 'round-label fh-round';
+  thRoundR.innerHTML = '<div class="round-now"><div class="rn-label">THROWS</div><div id="fgoDartsR" class="go-darts go-darts-tri" aria-label="Throws"></div></div>';
+  tr.appendChild(thRoundR);
 
-  floatThead.append(trNames, trTotals);
+  floatThead.appendChild(tr);
 }
+
 
 
 // Darts display (D row)
@@ -10115,7 +10438,7 @@ function dartHeaderSymbol(dart){
   if (k === 'S' || k === 'D' || k === 'T') return { text: k, cls: 'dart-' + k.toLowerCase() };
   if (k === 'Double') return { text: 'D', cls: 'dart-d' };
   if (k === 'Triple') return { text: 'T', cls: 'dart-t' };
-  if (k === 'Bull') return { text: (dart.bull === 'Outer' ? 'OB' : 'B'), cls: (dart.bull === 'Outer' ? 'dart-ob' : 'dart-b') };
+  if (k === 'Bull') return { text: (dart.bull === 'Outer' ? 'OB' : 'IB'), cls: (dart.bull === 'Outer' ? 'dart-ob' : 'dart-b') };
 
   return { text: '?', cls: 'dart-unk' };
 }
@@ -10157,7 +10480,7 @@ function renderDartsHeaderHTML(pIdx){
 }
 
 // Shared go indicator (single 3-slot display under TARGET)
-function renderSharedGoIndicatorHTML(){
+function renderSharedGoDartsHTML(){
   const now = Date.now();
 
   // expire any hold
@@ -10512,14 +10835,24 @@ function updateMatchStats(){
 }
 
 // Keep the score table focused on the most recent rounds (show 4 rows: current + previous 3)
+// ===== @JS:UI:GAMEPLAY:AUTOSCROLL =====
 function autoScrollScoreboard(){
   const scoreWrap = document.getElementById('scoreWrap');
   const tbodyEl = document.getElementById('tbody');
   if (!tbodyEl) return;
 
+  // Run once per round advance (even if the first throw already happened)
+  // (Previously this was gated on currentDart===0 which can be missed if the UI updates after throw 1.)
+  try{
+    if (typeof state !== 'undefined') {
+      const r = (state.currentRound || 0);
+      if (state.__sqLastAutoScrollRound === r) return;
+    }
+  }catch(_){ }
+
   // Decide which element actually scrolls:
   // - If scoreWrap is internally scrollable (overflow-y auto/scroll), use it.
-  // - Otherwise (classic mode), the page scroller is ".wrap".
+  // - Otherwise, the page scroller is ".wrap".
   let scroller = null;
   try{
     const oy = scoreWrap ? getComputedStyle(scoreWrap).overflowY : '';
@@ -10540,7 +10873,6 @@ function autoScrollScoreboard(){
   }catch(_){}
 
   // Ensure the scroller has enough bottom space to scroll the last row above the pad.
-  // (Safari especially needs explicit padding on the real scrolling element.)
   try{
     const extra = 18;
     const want = Math.max(0, padH + extra);
@@ -10565,30 +10897,39 @@ function autoScrollScoreboard(){
   const endIdx = Math.min(state.currentRound, rows.length - 1);
   if (endIdx < 0) return;
 
-  // Keep previous 3 rounds + current round visible.
-  if (endIdx < 3) return;
-  const startIdx = Math.max(0, endIdx - 3);
-  const targetRow = rows[startIdx];
-  const endRow = rows[endIdx];
-  if (!targetRow || !endRow) return;
+  // Keep ONLY two previous rounds visible (so after 3 rounds, we scroll up by 1 each round)
+  if (endIdx < 2) { try{ state.__sqLastAutoScrollRound = state.currentRound; }catch(_){ } return; }
+  const startIdx = Math.max(0, endIdx - 2);
 
-  // Compute desired scrollTop inside chosen scroller (anchor to startIdx row)
+  const anchorRow = rows[startIdx];
+  const endRow = rows[endIdx];
+  if (!anchorRow || !endRow) return;
+
+  // Enforce "only two previous rounds visible" once per round.
+  // Always anchor the scroll so the anchor row becomes the first visible row below the fixed top bar.
+  let fixedTop = null;
+  try{
+    const fh = document.getElementById('floatHead');
+    if (fh) fixedTop = fh.getBoundingClientRect().bottom;
+  }catch(_){ }
+
+  // Compute desired scrollTop inside chosen scroller (anchor so the top visible row sits ~1px under the top bar)
   let desiredTop = 0;
   try{
-    const rowRect = targetRow.getBoundingClientRect();
+    const rowRect = anchorRow.getBoundingClientRect();
     const scRect  = scroller.getBoundingClientRect();
-    desiredTop = (rowRect.top - scRect.top) + scroller.scrollTop;
+    const topRef = (fixedTop != null ? fixedTop : scRect.top);
+    desiredTop = (rowRect.top - topRef - 1) + scroller.scrollTop; // -1px tuck under the top bar
     desiredTop = Math.max(0, Math.min(desiredTop, scroller.scrollHeight - scroller.clientHeight));
   }catch(_){
-    // Fallback for older browsers: use offsetTop when possible
-    desiredTop = Math.max(0, Math.min(targetRow.offsetTop, scroller.scrollHeight - scroller.clientHeight));
+    desiredTop = Math.max(0, Math.min(anchorRow.offsetTop, scroller.scrollHeight - scroller.clientHeight));
   }
 
   // If the current round is still clipped by the throw pad at the bottom, nudge down.
   try{
     const endRect = endRow.getBoundingClientRect();
     const scRect  = scroller.getBoundingClientRect();
-    const bottomLimit = scRect.bottom - Math.max(0, padH) - 10; // 10px breathing room
+    const bottomLimit = scRect.bottom - Math.max(0, padH) - 10;
     if (endRect.bottom > bottomLimit){
       desiredTop += (endRect.bottom - bottomLimit);
       desiredTop = Math.max(0, Math.min(desiredTop, scroller.scrollHeight - scroller.clientHeight));
@@ -10602,7 +10943,10 @@ function autoScrollScoreboard(){
       scroller.scrollTop = desiredTop;
     }
   }
+
+  try{ state.__sqLastAutoScrollRound = state.currentRound; }catch(_){}
 }
+
 /*****************
  * UI UPDATE
  *****************/
@@ -10656,24 +11000,24 @@ bottomRow.style.gap = '8px';
 bottomRow.style.width = '100%';
 
 const miss = document.createElement('button');
-miss.className = 'btn danger letter-throw';
-miss.textContent = 'Miss';
+miss.className = 'btn danger letter-throw pad-act pad-miss';
+miss.textContent = 'MISS';
 miss.style.flex = '1 1 0';
 miss.style.minWidth = '0';
 miss.onclick = () => recordThrow({ kind: 'Miss' });
 bottomRow.appendChild(miss);
 
 const undoBtn = document.createElement('button');
-undoBtn.className = 'btn warn letter-throw';
-undoBtn.textContent = 'Undo';
+undoBtn.className = 'btn warn letter-throw pad-act pad-undo';
+undoBtn.textContent = 'UNDO';
 undoBtn.style.flex = '1 1 0';
 undoBtn.style.minWidth = '0';
 undoBtn.onclick = undo;
 bottomRow.appendChild(undoBtn);
 
 const missGoBtn = document.createElement('button');
-missGoBtn.className = 'btn letter-throw';
-missGoBtn.textContent = 'Skip Go';
+missGoBtn.className = 'btn letter-throw pad-act pad-skip';
+missGoBtn.textContent = 'SKIP';
 missGoBtn.style.flex = '1 1 0';
 missGoBtn.style.minWidth = '0';
 missGoBtn.onclick = missGo;
@@ -10683,7 +11027,8 @@ bottomRow.appendChild(missGoBtn);
       return;
     }
 
-            // ----- DOUBLES / TRIPLES ROUNDS -----
+            // ===== @JS:UI:GAMEPLAY:THROWPAD =====
+// ----- DOUBLES / TRIPLES ROUNDS -----
     if (r.type === 'doubles' || r.type === 'triples') {
       padHint.textContent = "";
 
@@ -10779,7 +11124,7 @@ bottomRow.appendChild(missGoBtn);
 
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => recordThrow({ kind: 'Miss' })));
       actions.appendChild(mkAct('undo', '↶', 'UNDO', undo));
-      actions.appendChild(mkAct('skip', '▶', 'SKIP', missGo));
+      actions.appendChild(mkAct('skip', '⏩', 'SKIP', missGo));
 
       right.appendChild(scroller);
       right.appendChild(actions);
@@ -10885,7 +11230,7 @@ bottomRow.appendChild(missGoBtn);
 
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => recordThrow({ kind: 'Miss' })));
       actions.appendChild(mkAct('undo', '↶', 'UNDO', undo));
-      actions.appendChild(mkAct('skip', '▶', 'SKIP', missGo));
+      actions.appendChild(mkAct('skip', '⏩', 'SKIP', missGo));
 
       right.appendChild(bullRow);
       right.appendChild(actions);
@@ -11891,16 +12236,44 @@ function updateUI() {
     el.classList.remove('current-cell', 'current-col');
   });
 
-  // Active round label (left column): big + bold only for current round
+  // Active round label (left + right mirror columns): big + bold only for current round
   try {
     for (let r = 0; r < MAX_ROUNDS; r++) {
-      const th = document.getElementById(`roundth-${r}`);
-      if (!th) continue;
-      th.classList.remove('active-round-label');
+      const thL = document.getElementById(`roundth-${r}`);
+      if (thL) thL.classList.remove('active-round-label');
+
+      const thR = document.getElementById(`roundthR-${r}`);
+      if (thR) thR.classList.remove('active-round-label');
     }
     const cr = state.currentRound;
-    const thActive = document.getElementById(`roundth-${cr}`);
-    if (thActive) thActive.classList.add('active-round-label');
+    const thActiveL = document.getElementById(`roundth-${cr}`);
+    if (thActiveL) thActiveL.classList.add('active-round-label');
+
+    const thActiveR = document.getElementById(`roundthR-${cr}`);
+    if (thActiveR) thActiveR.classList.add('active-round-label');
+
+    // Round label text: remove 's' suffix; current row shows TARGET + number
+    const setRoundTh = (th, isActive, ridx) => {
+      if (!th) return;
+      const lbl = labelForRound(ROUNDS[ridx]) || '';
+      if (isActive) {
+        th.innerHTML = `<div class="rl-target">TARGET</div><div class="rl-num">${lbl}</div>`;
+      } else {
+        th.textContent = lbl;
+      }
+    };
+    for (let r = 0; r < MAX_ROUNDS; r++) {
+      setRoundTh(byId(`roundth-${r}`), r === cr, r);
+      setRoundTh(byId(`roundthR-${r}`), r === cr, r);
+    }
+
+
+    // Slightly increase height of the live scoring row (smooth)
+    try{
+      document.querySelectorAll('#scoreWrap tbody tr.active-score-row').forEach(tr => tr.classList.remove('active-score-row'));
+      if (thActiveL && thActiveL.parentElement) thActiveL.parentElement.classList.add('active-score-row');
+    }catch(_){ }
+
     try{ updateRoundBar(); }catch(_){ }
   } catch(_) {}
 // --- Precompute per-round totals to find best round per row ---
@@ -11923,6 +12296,8 @@ function updateUI() {
   const maxRoundTotals = roundTotals.map(row =>
     row.length ? Math.max(...row) : 0
   );
+const pastCut = Math.max(0, (state.currentRound||0) - 2);
+
 
   // --- Fill cells: rolling total + (round score) + best-round highlight ---
   for (let p = 0; p < state.players.length; p++) {
@@ -11959,9 +12334,7 @@ function updateUI() {
       }
 
       td.classList.remove('current-cell', 'current-col');
-      if (p === state.currentPlayer) {
-        td.classList.add('current-col');
-      }
+      td.classList.toggle('past-cell', r < pastCut);
     }
   }
 
@@ -11977,7 +12350,6 @@ function updateUI() {
   const currentCell = byId(`cell-${cp}-${cr}`);
   if (currentCell) {
     currentCell.classList.add('current-cell');
-    currentCell.classList.add('current-col');
   }
   
  // Current round label in floating header (single column)
@@ -11988,12 +12360,9 @@ if (roundLabelEl) {
     <div class="round-now">
       <div class="rn-label">TARGET</div>
       <div class="rn-value">${lbl}</div>
-      <div id="fgoDarts" class="go-darts" aria-label="Current go"></div>
     </div>
   `;
   try{
-    const goEl = byId('fgoDarts');
-    if (goEl) goEl.innerHTML = renderSharedGoIndicatorHTML();
 
     // Animated C underline (slides between players)
     updateTurnBar();
@@ -12001,9 +12370,31 @@ if (roundLabelEl) {
   } catch(_) {}
 }
 
+const roundLabelElR = byId('froundlabelR');
+if (roundLabelElR) {
+  roundLabelElR.innerHTML = `
+    <div class="round-now">
+      <div class="rn-label">THROWS</div>
+      <div id="fgoDartsR" class="go-darts go-darts-tri" aria-label="Throws"></div>
+    </div>
+  `;
+  try{
+    const goElR = byId('fgoDartsR');
+  }catch(_){}
+}
+
+
+
   // --- update floating header (wins, totals, diffs, turn arrow, throws remaining) ---
   const totals = state.players.map((_, i) => totalScoreForPlayer(i));
-  const max    = totals.length ? Math.max(...totals) : 0;
+  const leaderTotal = totals.length ? Math.max(...totals) : 0;
+  const leadersIdx = totals.map((v, idx) => (v === leaderTotal ? idx : -1)).filter(v => v >= 0);
+  // Lead margin: leader vs best chaser (0 when tied leaders or single player)
+  let leadMargin = 0;
+  if (leadersIdx.length === 1 && totals.length > 1) {
+    const chaserBest = Math.max(...totals.filter(v => v !== leaderTotal));
+    leadMargin = Math.max(0, leaderTotal - (isFinite(chaserBest) ? chaserBest : leaderTotal));
+  }
   const targetWins = state.match.targetWins || 1;
   for (let i = 0; i < state.players.length; i++) {
     
@@ -12011,18 +12402,17 @@ if (roundLabelEl) {
     const totalEl = byId('ftotal-' + i);
     if (totalEl) {
       totalEl.textContent = String(totals[i] || 0);
-      totalEl.classList.remove('leader-total');
-      if (max > 0 && totals[i] === max) {
-        // overall leader(s) – green total
-        totalEl.classList.add('leader-total');
-      }
     }
 
-    // Diff
+    // Bracketed diff vs leader: leader shows +leadMargin, everyone else shows negative diff to leader
     const diffEl = byId('fdiff-' + i);
     if (diffEl) {
-      const diff = totals[i] - max;
-      diffEl.textContent = String(diff);
+      const isLeader = (totals[i] === leaderTotal);
+      const v = isLeader ? (leadMargin || 0) : ((totals[i] || 0) - (leaderTotal || 0));
+      const sign = v > 0 ? '+' : '';
+      diffEl.textContent = `(${sign}${v})`;
+      diffEl.classList.remove('diff-pos','diff-neg','diff-zero');
+      diffEl.classList.add(v > 0 ? 'diff-pos' : (v < 0 ? 'diff-neg' : 'diff-zero'));
     }
     // Match progress (wins) – stars for wins, circles for remaining games
     const winsEl = byId('fwins-' + i);
@@ -12191,7 +12581,8 @@ function recordThrow(spec){
       state.currentPlayer++;
     } else {
       state.currentPlayer = 0;
-      if (state.currentRound < MAX_ROUNDS - 1) {
+      const __maxRounds = (state && Number.isFinite(state.quickRoundLimit) && state.quickRoundLimit > 0) ? Math.min(MAX_ROUNDS, Math.floor(state.quickRoundLimit)) : MAX_ROUNDS;
+      if (state.currentRound < __maxRounds - 1) {
         state.currentRound++;
       } else {
         // Game done – completion dialog will open
@@ -13070,7 +13461,7 @@ async function openGameRaceDialog() {
 
     series.push({
       name: player.name,
-      color: player.color || '#7bdcff',
+      color: player.color || '#ff7a18',
       data,
       dotted: false
     });
@@ -13178,7 +13569,7 @@ if (recordSeries) {
     ctx.setLineDash(s.dotted ? [5, 4] : []);
 
     // pick line colour
-    ctx.strokeStyle = s.color || '#7bdcff';
+    ctx.strokeStyle = s.color || '#ff7a18';
 
     s.data.forEach((v, idx) => {
       const x = xForRound(idx);
@@ -13196,7 +13587,7 @@ if (recordSeries) {
 
   series.forEach(s => {
     ctx.setLineDash(s.dotted ? [5, 4] : []);
-    ctx.strokeStyle = s.color || '#7bdcff';
+    ctx.strokeStyle = s.color || '#ff7a18';
     ctx.lineWidth = 2;
 
     const lineW = 24;
@@ -14284,6 +14675,10 @@ async function cloudDeleteGameCascade(g){
   // ===== @JS:CLOUD:SUPABASE_INIT =====
 function ensureCloudInit(){
     try {
+      // NOTE: file:// is not recommended, but we allow Supabase init attempts for legacy behaviour.
+// If the browser blocks it (CORS), we’ll mark cloud offline and continue using local cache where possible.
+
+
       // Library present?
       if (typeof window.supabase !== 'object' || !window.supabase.createClient) {
         try { setCloudStatus && setCloudStatus('error', 'Cloud not initialised'); } catch(_) {}
@@ -16492,6 +16887,36 @@ const lpUpdateMeta = async (games) => {
               }).filter(Boolean);
             }
 }
+            // If cloud is unavailable, fall back to local game log cache (cloud->local sync writes here).
+            if (!games || !games.length) {
+              try {
+                const gl = (typeof getGameLog === 'function') ? getGameLog() : [];
+                if (Array.isArray(gl) && gl.length) {
+                  const slice = gl.slice(-LP_BUFFER).reverse();
+                  games = slice.map(row => {
+                    try {
+                      const ts = row.created_at || row.createdAt || row.ts || row.updated_at || null;
+                      const state = row.state || row.State || row.game_state || null;
+                      const ps0 = (state && Array.isArray(state.players)) ? state.players : (Array.isArray(row.players) ? row.players : []);
+                      const totals0 = (state && state.totals && Array.isArray(state.totals)) ? state.totals : (Array.isArray(row.totals) ? row.totals : []);
+                      const nameOf = (p) => {
+                        if (!p) return '?';
+                        if (typeof p === 'string') return p.trim() || '?';
+                        return String(p.name || p.nickname || p.first_name || p.player_name || p.initials || p.player_id || '?').trim() || '?';
+                      };
+                      const rows = ps0.map((p,i)=>({ name: nameOf(p), score: Number(totals0[i] ?? 0) }))
+                        .sort((a,b)=> (b.score - a.score) || String(a.name).localeCompare(String(b.name)));
+                      const winner = rows[0] || { name:'?', score:'?' };
+                      const opp = rows.slice(1).map(r => `${r.name} (${r.score})`).join(', ');
+                      return { ts, winner_name: winner.name, winner_score: winner.score, opponents_text: opp };
+                    } catch(_e) {
+                      return null;
+                    }
+                  }).filter(Boolean);
+                }
+              } catch(_e) {}
+            }
+
             if (!games || !games.length) {
               const ids = getSavedMatchIdsSorted();
               games = ids.slice(-LP_BUFFER).reverse().map(id => {
@@ -16737,6 +17162,63 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (statsHubBtnGame)  statsHubBtnGame.onclick  = openStatsHubDialog;
   if (statsHubBtnFinal) statsHubBtnFinal.onclick = openStatsHubDialog;
+
+  // Settings menus (Game + Leaderboard): Start Screen & Restart live inside a single Settings button
+  const settingsBtnGame = byId('settingsBtnGame');
+  const settingsMenuGame = byId('settingsMenuGame');
+  const settingsBtnLB = byId('settingsBtnLB');
+  const settingsMenuLB = byId('settingsMenuLB');
+
+  function sqPositionMenu(menu, btn){
+    if (!menu || !btn) return;
+    const r = btn.getBoundingClientRect();
+    const pad = 8;
+    const w = Math.max(220, r.width);
+    let left = r.left;
+    // keep on-screen
+    if (left + w + pad > window.innerWidth) left = Math.max(pad, window.innerWidth - w - pad);
+    const top = Math.min(window.innerHeight - pad, r.bottom + pad);
+    menu.style.width = w + 'px';
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+  }
+
+  function sqShowMenu(menu, btn){
+    if (!menu || !btn) return;
+    sqPositionMenu(menu, btn);
+    menu.classList.remove('hidden');
+  }
+  function sqHideMenu(menu){ if (menu) menu.classList.add('hidden'); }
+  function sqToggleMenu(menu, btn){
+    if (!menu || !btn) return;
+    const isHidden = menu.classList.contains('hidden');
+    sqHideMenu(settingsMenuGame);
+    sqHideMenu(settingsMenuLB);
+    if (isHidden) sqShowMenu(menu, btn);
+  }
+
+  if (settingsBtnGame && settingsMenuGame){
+    settingsBtnGame.onclick = (e)=>{ e.preventDefault(); e.stopPropagation(); sqToggleMenu(settingsMenuGame, settingsBtnGame); };
+    window.addEventListener('resize', ()=>{ if (!settingsMenuGame.classList.contains('hidden')) sqPositionMenu(settingsMenuGame, settingsBtnGame); });
+    window.addEventListener('scroll', ()=>{ if (!settingsMenuGame.classList.contains('hidden')) sqPositionMenu(settingsMenuGame, settingsBtnGame); }, true);
+  }
+  if (settingsBtnLB && settingsMenuLB){
+    settingsBtnLB.onclick = (e)=>{ e.preventDefault(); e.stopPropagation(); sqToggleMenu(settingsMenuLB, settingsBtnLB); };
+    window.addEventListener('resize', ()=>{ if (!settingsMenuLB.classList.contains('hidden')) sqPositionMenu(settingsMenuLB, settingsBtnLB); });
+    window.addEventListener('scroll', ()=>{ if (!settingsMenuLB.classList.contains('hidden')) sqPositionMenu(settingsMenuLB, settingsBtnLB); }, true);
+  }
+
+  // Close menus on outside click / ESC
+  document.addEventListener('click', ()=>{ sqHideMenu(settingsMenuGame); sqHideMenu(settingsMenuLB); });
+  if (settingsMenuGame) settingsMenuGame.addEventListener('click', (e)=> e.stopPropagation());
+  if (settingsMenuLB) settingsMenuLB.addEventListener('click', (e)=> e.stopPropagation());
+  document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape'){ sqHideMenu(settingsMenuGame); sqHideMenu(settingsMenuLB); } });
+
+  // Ensure clicking a settings item closes the menu after action
+  [settingsMenuGame, settingsMenuLB].forEach(menu=>{
+    if (!menu) return;
+    menu.querySelectorAll('button').forEach(b=> b.addEventListener('click', ()=>{ sqHideMenu(settingsMenuGame); sqHideMenu(settingsMenuLB); }, {capture:true}));
+  });
   const hsFinalBtn = byId('highScoresMenuBtnLB');
   if (hsFinalBtn) hsFinalBtn.onclick = openHighScoresMenuDialog;
   // Leaderboard buttons (guarded lookups)
@@ -20382,6 +20864,7 @@ try{
 };
 
 // ==== (1) Latest Matches ======================================================
+// ===== @JS:MODAL:PLAYER_LATEST_MATCHES =====
 window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDialog(playerName, initialMode){
   try {
     if (!playerName) return;
@@ -20524,7 +21007,7 @@ window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDia
     };
 
     let mode = (initialMode === 'practice' || initialMode === 'official') ? initialMode : 'official';
-    await load(mode);
+    load(mode);
 
     segBtns.forEach(btn=>{
       btn.addEventListener('click', async ()=>{
@@ -23780,7 +24263,7 @@ if (!todayBtn) {
       data: {
         labels: labels,
         datasets: [{
-          data: valuesPct,
+          data: Array.isArray(valuesPct) ? valuesPct.map(v => Math.max(0, Math.min(100, Number(v || 0)))) : [],
           backgroundColor: 'rgba(34, 197, 94, 0.2)',
           borderColor: 'rgba(34, 197, 94, 1)',
           borderWidth: 2,
@@ -24520,16 +25003,15 @@ if (!todayBtn) {
 
 // ===== @PATCHES:REGISTRY =====
 // Active patch blocks in this file (keep this list current):
-// - MOT3_2_ALLGAMES_TOTS
-// - MOT3_2_LLS_DELETE_TS
-// - MOT3_2_LLS_FILTER_SAVED
-// - MOT3_3_ALLGAMES_FILTER_ACTIVE_START
-// - PLAYER_ID_SUPPORT
-// - PLAYER_RENAME_RPC
-// - data-admin
-// - game-utils
-// - player_stats_spider_progress
-// - power-league-rounds
+// - ADMIN_PASSWORD_GATE
+// - SUPABASE_CLOUD_INIT
+// - ALL_GAMES_OFFICIAL_PRACTICE_FILTER
+// - LATEST_SCORES_OFFICIAL_PRACTICE
+// - STATS_BACK_ROUTER_HOME_VS_INGAME
+// - LIVE_UPDATES_VIDE_ALERTS
+// - THROWPAD_DT_BULL_LAYOUT
+// - GAMEPLAY_AUTOSCROLL_PAD_SAFE
+// - LEAGUE_POPUPS_LATEST_STYLE
 //
 // Patch rules:
 // 1) Patches must be named and small.
