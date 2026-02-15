@@ -3501,12 +3501,29 @@ body[data-page="game"]{
   margin: 10px auto 0;
 }
 
+/* Split into Gameplay Cell + Info Cell (separate modules) */
+.livev2panel .v2GameCell{
+  border-radius: 22px;
+  background: rgba(0,0,0,.10);
+  border: 1px solid rgba(255,255,255,.06);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+  padding: 14px 12px 12px;
+}
+.livev2panel .v2InfoCell{
+  margin-top: 22px;
+  border-radius: 22px;
+  background: rgba(0,0,0,.08);
+  border: 1px solid rgba(255,255,255,.06);
+  box-shadow: 0 0 0 1px rgba(255,122,0,.22), 0 0 22px rgba(255,122,0,.14), inset 0 1px 0 rgba(255,255,255,.05);
+  padding: 12px;
+}
+
 /* Top area: left dart dots + responsive player total pills */
 .livev2panel .v2Scores{
   display:grid;
   grid-template-columns: 34px 1fr;
   gap: 14px var(--sqV2Gap, 10px);
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   align-items: center;
 }
 .livev2panel .v2DotsCol{
@@ -3555,8 +3572,11 @@ body[data-page="game"]{
   justify-content:center;
 }
 .livev2panel .v2ScoreBox.active{
-  border-color: rgba(255,132,0,.75);
-  box-shadow: 0 0 0 2px rgba(255,132,0,.22), inset 0 1px 0 rgba(255,255,255,.06);
+  border-color: rgba(255,132,0,.78);
+  box-shadow:
+    0 0 0 2px rgba(255,132,0,.20),
+    0 0 18px rgba(255,132,0,.18),
+    inset 0 1px 0 rgba(255,255,255,.06);
 }
 .livev2panel .v2Initial{
   font-weight: 800; letter-spacing:.18em; font-size: var(--sqV2InitF, 16px); opacity:.95;
@@ -3584,7 +3604,7 @@ body[data-page="game"]{
 
 /* Averages box (under 3-round viewport) */
 .livev2panel .v2AvgWrap{
-  margin-top: 22px;
+  margin-top: 0;
   border-radius: 18px;
   background: rgba(30,16,0,.18);
   border: 1px solid rgba(255,255,255,.08);
@@ -3673,6 +3693,13 @@ body[data-page="game"]{
 .livev2panel .v2Cell.active{
   border-color: rgba(255,132,0,.75);
   box-shadow: 0 0 0 2px rgba(255,132,0,.22), inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.livev2panel .v2Cell.hi{
+  color: rgba(120,255,120,.92);
+  text-shadow: 0 0 10px rgba(120,255,120,.14);
+  border-color: rgba(120,255,120,.24);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
 }
 
 /* Show panel, hide legacy UI when Live V2 is active (JS toggles body class). */
@@ -12519,25 +12546,29 @@ function ensureLiveV2Panel(){
   `).join("");
 
   panel.innerHTML = `
-    <div class="v2Scores">
-      <div class="v2DotsCol" aria-hidden="true">
-        <div class="v2Dot" data-dot="0"></div>
-        <div class="v2Dot" data-dot="1"></div>
-        <div class="v2Dot" data-dot="2"></div>
+    <div class="v2GameCell" aria-label="Gameplay">
+      <div class="v2Scores">
+        <div class="v2DotsCol" aria-hidden="true">
+          <div class="v2Dot" data-dot="0"></div>
+          <div class="v2Dot" data-dot="1"></div>
+          <div class="v2Dot" data-dot="2"></div>
+        </div>
+        <div class="v2ScoreGrid">
+          ${scoreBoxes}
+        </div>
       </div>
-      <div class="v2ScoreGrid">
-        ${scoreBoxes}
+
+      <div class="v2RowsWrap">
+        <div class="v2RowsScroller">
+          <div class="v2Rows" id="v2Rows"></div>
+        </div>
       </div>
     </div>
 
-    <div class="v2RowsWrap">
-      <div class="v2RowsScroller">
-        <div class="v2Rows" id="v2Rows"></div>
+    <div class="v2InfoCell" aria-label="Info">
+      <div class="v2AvgWrap" aria-label="Averages">
+        <div class="v2Avg" id="v2Avg"></div>
       </div>
-    </div>
-
-    <div class="v2AvgWrap" aria-label="Averages">
-      <div class="v2Avg" id="v2Avg"></div>
     </div>
   `.trim();
 
@@ -12745,19 +12776,37 @@ function liveV2Render(){
     el.classList.toggle("off", k < dartN);
   });
 
-  // Rounds list: keep all past rounds up to current round; 3-row viewport + auto-scroll on advance
+  // Rounds list: 3-row viewport. At game start show current + next 2; later show current + previous 2.
   const rowsHost = document.getElementById("v2Rows");
   if(rowsHost){
     const out = [];
     const totalR = (typeof ROUNDS!=="undefined" && Array.isArray(ROUNDS) && ROUNDS.length) ? ROUNDS.length : Math.max(cr+1, 1);
+
+    // Window behavior:
+    // - Early game: show current round + next two (e.g., 10/11/12)
+    // - Thereafter: show previous two + current (rolling)
     const winStart = (cr < 2) ? cr : Math.max(0, cr-2);
-    const winEnd = (cr < 2) ? Math.min(totalR-1, cr+2) : cr;
+    const winEnd   = (cr < 2) ? Math.min(totalR-1, cr+2) : cr;
+
     for(let r = winStart; r <= winEnd; r++){
+      // Compute per-round max (for faint green highlight)
+      let maxV = -Infinity;
+      const vals = new Array(pCount);
+      for(let i=0;i<pCount;i++){
+        const v = getPerRoundScore(r, i);
+        vals[i] = (Number.isFinite(+v) ? +v : null);
+        if(vals[i] != null && vals[i] > maxV) maxV = vals[i];
+      }
+
       out.push(`<div class="v2Badge ${r === cr ? "active":""}">${escapeHtml(roundLabelForIndex(r))}</div>`);
       for(let i=0; i<pCount; i++){
-        const val = getPerRoundScore(r, i);
+        const val = vals[i];
         const isActiveCell = (r === cr) && (i === turn);
-        out.push(`<div class="v2Cell ${isActiveCell ? "active":""}">${val == null ? "–" : escapeHtml(String(val))}</div>`);
+
+        // Highlight highest round score(s), but don't green-glow a row of zeros.
+        const isHi = (maxV > 0) && (val != null) && (val === maxV);
+
+        out.push(`<div class="v2Cell ${(isActiveCell ? "active":"")} ${(isHi ? "hi":"")}">${val == null ? "–" : escapeHtml(String(val))}</div>`);
       }
     }
     rowsHost.innerHTML = out.join("");
@@ -12818,9 +12867,18 @@ function liveV2Render(){
       rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(n ? (sum / n) : NaN))}</div>`);
     }
 
-    // Row 3: blank for now
-    rows.push(`<div class="v2AvgLabel">&nbsp;</div>`);
-    for(let i=0; i<pCount; i++) rows.push(`<div class="v2AvgCell">&nbsp;</div>`);
+    // Row 3: RND PB (best round score achieved so far in this match)
+    rows.push(`<div class="v2AvgLabel"><div>RND</div><div class="sub">PB</div></div>`);
+    for(let i=0; i<pCount; i++){
+      const done = __v2CompletedRoundsForPlayer(i);
+      let best = -Infinity;
+      done.forEach((r)=>{
+        const v = getPerRoundScore(r, i);
+        const nn = +v;
+        if(Number.isFinite(nn)) best = Math.max(best, nn);
+      });
+      rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(best>-Infinity ? best : NaN))}</div>`);
+    }
 
     avgHost.innerHTML = rows.join("");
   }
