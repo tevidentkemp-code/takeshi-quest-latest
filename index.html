@@ -2544,13 +2544,13 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   color: rgba(230,232,255,.55);
   font-weight: 700;
 }
-.to-body{ padding: 10px 18px 14px; }
-.to-list{ display:flex; flex-direction:column; gap: 14px; }
+.to-body{ padding: 8px 14px 10px; }
+.to-list{ display:flex; flex-direction:column; gap: 10px; }
 .to-row{
   display:flex;
   align-items:center;
-  gap: 14px;
-  padding: 14px 14px;
+  gap: 12px;
+  padding: 10px 12px;
   border-radius: 16px;
   background: rgba(255,255,255,.045);
   border: 1px solid rgba(255,255,255,.08);
@@ -3565,22 +3565,31 @@ body[data-page="game"]{
   font-weight: 900; font-size: var(--sqV2TotalF, 36px); line-height: 1.05;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
-  margin-top: 4px;
+  margin-top: 0;
 }
 .livev2panel .v2Sub{
   margin-top: 2px;
   font-size: var(--sqV2SubF, 12px);
   opacity: .55;
 }
+.livev2panel .v2Sub.leader{
+  opacity: 1;
+  color: rgba(120,255,120,.95);
+  text-shadow: 0 0 10px rgba(120,255,120,.18);
+}
+.livev2panel .v2Sub.trailing{
+  opacity: .85;
+  color: rgba(255,90,90,.88);
+}
 
 /* Averages box (under 3-round viewport) */
 .livev2panel .v2AvgWrap{
-  margin-top: 12px;
+  margin-top: 22px;
   border-radius: 18px;
-  background: rgba(0,0,0,.14);
+  background: rgba(30,16,0,.18);
   border: 1px solid rgba(255,255,255,.08);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
-  padding: 10px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 0 18px rgba(255,122,0,.18);
+  padding: 10px 0;
 }
 .livev2panel .v2Avg{
   display:grid;
@@ -3592,13 +3601,23 @@ body[data-page="game"]{
   border-radius: 12px;
   background: rgba(255,255,255,.06);
   border: 1px solid rgba(255,255,255,.10);
-  display:flex; align-items:center; justify-content:center;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
   font-weight:800;
   font-size: 11px;
   letter-spacing: .06em;
   text-transform: uppercase;
   opacity: .85;
   min-height: 44px;
+  line-height: 1.05;
+}
+.livev2panel .v2AvgLabel .sub{
+  margin-top: 2px;
+  font-size: 10px;
+  opacity: .70;
+  letter-spacing: .08em;
 }
 .livev2panel .v2AvgCell{
   border-radius: 12px;
@@ -5073,7 +5092,7 @@ function symbolForDart(d, rd){
   // Miss (no points registered)
   if (!d || Number(d.points || 0) === 0){
     // Bulls: if it's marked as a Bull hit, show 50 / 25 even if points weren’t recorded
-    if (rd && rd.type === 'bull' && d && d.kind === 'Bull'){
+    if (rd && rd.type === 'bull' && d && d.kind === 'B'){
       const isInner = (d.bull === 'Inner');
       return { ch: isInner ? '50' : '25', cls: '' };
     }
@@ -5112,7 +5131,7 @@ function symbolForDart(d, rd){
 
   // Bull round – show 50/25
   if (rd && rd.type === 'bull'){
-    if (d.kind === 'Bull'){
+    if (d.kind === 'B'){
       const isInner = (d.bull === 'Inner');
       return { ch: isInner ? '50' : '25', cls: '' };
     }
@@ -8235,7 +8254,7 @@ function accumulateTargetCounters(playerName, games){
         darts.forEach(d=>{
           if (!d) return;
           keys.B.thrown++;
-          if (d.kind==='Bull'){
+          if (d.kind==='B'){
             keys.B.hits++;
             if (d.bull==='Inner') keys.B.inner++;
             else keys.B.outer++;
@@ -11797,8 +11816,8 @@ function buildScoreBody(){
       ROUNDS[r].type === 'number'
         ? (ROUNDS[r].target + 's')
         : (ROUNDS[r].type === 'doubles'
-            ? "D's"
-            : (ROUNDS[r].type === 'triples' ? "T's" : 'Bull'))
+            ? "D"
+            : (ROUNDS[r].type === 'triples' ? "T" : 'B'))
     );
     tr.appendChild(th); 
 
@@ -11896,7 +11915,7 @@ function dartHeaderSymbol(dart){
   if (k === 'S' || k === 'D' || k === 'T') return { text: k, cls: 'dart-' + k.toLowerCase() };
   if (k === 'Double') return { text: 'D', cls: 'dart-d' };
   if (k === 'Triple') return { text: 'T', cls: 'dart-t' };
-  if (k === 'Bull') return { text: (dart.bull === 'Outer' ? 'OB' : 'B'), cls: (dart.bull === 'Outer' ? 'dart-ob' : 'dart-b') };
+  if (k === 'B') return { text: (dart.bull === 'Outer' ? 'OB' : 'B'), cls: (dart.bull === 'Outer' ? 'dart-ob' : 'dart-b') };
 
   return { text: '?', cls: 'dart-unk' };
 }
@@ -12111,7 +12130,7 @@ function computeStatsFromBoards(boards, pIdx) {
     else curHitStreak = 0;
 
     if (dart.kind === 'Miss') miss++;
-    else if (dart.kind === 'Bull') bulls++;
+    else if (dart.kind === 'B') bulls++;
     else if (dart.kind === 'S' || dart.kind === 'Single') single++;
     else if (dart.kind === 'D' || dart.kind === 'Double') double++;
     else if (dart.kind === 'T' || dart.kind === 'Triple') treble++;
@@ -12689,16 +12708,26 @@ function liveV2Render(){
              : (Number.isFinite(+state.currentPlayerIndex) ? +state.currentPlayerIndex
              : (Number.isFinite(+state.turnIndex) ? +state.turnIndex : 0));
 
-  // Totals + initials + current round subline
+  // Totals + initials + leader diff subline
   const cr = state.currentRound ?? 0;
+
+  // Bottom number = difference to leader (leader stays at 0, shown in green)
+  const __v2Totals = [];
+  for(let i=0;i<pCount;i++) __v2Totals[i] = (+getPlayerTotal(i) || 0);
+  const __v2LeaderTotal = __v2Totals.length ? Math.max.apply(null, __v2Totals) : 0;
+
   for(let i=0; i<pCount; i++){
     const v2i = document.getElementById("v2Init"+i);
     const v2t = document.getElementById("v2Total"+i);
     const v2s = document.getElementById("v2Sub"+i);
     if(v2i) v2i.textContent = getPlayerInitial(i);
-    if(v2t) v2t.textContent = String(getPlayerTotal(i));
-    const rr = getPerRoundScore(cr, i);
-    if(v2s) v2s.textContent = (rr == null ? "0" : String(rr));
+    if(v2t) v2t.textContent = String(__v2Totals[i]);
+    const diff = (__v2Totals[i] - __v2LeaderTotal); // trailing = negative
+    if(v2s){
+      v2s.textContent = String(diff);
+      v2s.classList.toggle("leader", diff === 0);
+      v2s.classList.toggle("trailing", diff !== 0);
+    }
   }
 
   // Highlight active player on totals
@@ -12708,21 +12737,8 @@ function liveV2Render(){
   });
 
   // Dots (dart-in-turn)
-  // Requirement: reset to all ON for the next player.
-  if(typeof window.__v2LastTurn === "undefined") window.__v2LastTurn = -1;
-  if(typeof window.__v2DartN === "undefined") window.__v2DartN = 0;
-  const turnChanged = (turn !== window.__v2LastTurn);
-  if(turnChanged){
-    window.__v2LastTurn = turn;
-    window.__v2DartN = 0;
-  }
-  // Prefer per-turn counters if present; otherwise fall back to the tracked value.
-  const rawDartN = turnChanged ? 0
-                : (Number.isFinite(+state.throwInTurn) ? +state.throwInTurn
-                : (Number.isFinite(+state.dartInTurn) ? +state.dartInTurn
-                : window.__v2DartN));
-  const dartN = Math.max(0, Math.min(3, rawDartN));
-  window.__v2DartN = dartN;
+  // Use state.currentDart as the number of darts already thrown in this turn (0→1→2→0 on next player)
+  const dartN = Math.max(0, Math.min(3, Number.isFinite(+state.currentDart) ? +state.currentDart : 0));
   panel.querySelectorAll(".v2Dot").forEach((el)=>{
     const k = parseInt(el.getAttribute("data-dot") || "0", 10);
     // Dots represent remaining darts in this player's turn.
@@ -12733,7 +12749,10 @@ function liveV2Render(){
   const rowsHost = document.getElementById("v2Rows");
   if(rowsHost){
     const out = [];
-    for(let r = 0; r <= cr; r++){
+    const totalR = (typeof ROUNDS!=="undefined" && Array.isArray(ROUNDS) && ROUNDS.length) ? ROUNDS.length : Math.max(cr+1, 1);
+    const winStart = (cr < 2) ? cr : Math.max(0, cr-2);
+    const winEnd = (cr < 2) ? Math.min(totalR-1, cr+2) : cr;
+    for(let r = winStart; r <= winEnd; r++){
       out.push(`<div class="v2Badge ${r === cr ? "active":""}">${escapeHtml(roundLabelForIndex(r))}</div>`);
       for(let i=0; i<pCount; i++){
         const val = getPerRoundScore(r, i);
@@ -12758,31 +12777,44 @@ function liveV2Render(){
   // Averages box (under 3-round viewport)
   const avgHost = document.getElementById("v2Avg");
   if(avgHost){
-    const completedRoundCount = Math.max(0, cr); // rounds < cr are completed
-    const lastRounds = [];
-    for(let r = Math.max(0, completedRoundCount - 3); r < completedRoundCount; r++) lastRounds.push(r);
+
+    // A "completed round" for a player is:
+    // - any round < currentRound, OR
+    // - the current round where they have thrown all 3 darts
+    function __v2CompletedRoundsForPlayer(pIdx){
+      const list = [];
+      for(let r=0; r<=cr; r++){
+        const entry = state.score?.[pIdx]?.[r];
+        const done = (r < cr) || (entry && entry.darts && entry.darts[2] != null);
+        if(done) list.push(r);
+      }
+      return list;
+    }
 
     const rows = [];
 
-    // Row 1: rolling 3-round average
-    rows.push(`<div class="v2AvgLabel">3R</div>`);
+    // Row 1: rolling 3-round average (last 3 completed rounds for that player)
+    rows.push(`<div class="v2AvgLabel"><div>3R</div><div class="sub">AVG</div></div>`);
     for(let i=0; i<pCount; i++){
+      const done = __v2CompletedRoundsForPlayer(i);
+      const last3 = done.slice(-3);
       let sum = 0; let n = 0;
-      lastRounds.forEach((r)=>{
+      last3.forEach((r)=>{
         const v = getPerRoundScore(r, i);
         if(Number.isFinite(+v)) { sum += +v; n++; }
       });
       rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(n ? (sum / n) : NaN))}</div>`);
     }
 
-    // Row 2: match average (all completed rounds)
-    rows.push(`<div class="v2AvgLabel">AVG</div>`);
+    // Row 2: match average (all completed rounds so far for that player)
+    rows.push(`<div class="v2AvgLabel"><div>MTC</div><div class="sub">AVG</div></div>`);
     for(let i=0; i<pCount; i++){
+      const done = __v2CompletedRoundsForPlayer(i);
       let sum = 0; let n = 0;
-      for(let r=0; r<completedRoundCount; r++){
+      done.forEach((r)=>{
         const v = getPerRoundScore(r, i);
         if(Number.isFinite(+v)) { sum += +v; n++; }
-      }
+      });
       rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(n ? (sum / n) : NaN))}</div>`);
     }
 
@@ -12792,8 +12824,7 @@ function liveV2Render(){
 
     avgHost.innerHTML = rows.join("");
   }
-}
-// <<< PATCH:livev2-panel-js END
+}// <<< PATCH:livev2-panel-js END
 
 /*****************
  * UI UPDATE
@@ -14319,8 +14350,8 @@ function recordThrow(spec){
   } else if (roundDef.type === 'bull') {
     const bull = spec.bull || 'Outer';
     points = bull === 'Inner' ? 50 : 25;
-    dartObj = { kind: 'Bull', bull, points };
-    hitKey  = 'Bull';
+    dartObj = { kind: 'B', bull, points };
+    hitKey  = 'B';
   } else {
     dartObj = { kind: 'Miss', points: 0 };
   }
@@ -14442,7 +14473,7 @@ function recomputeMatchAggHitsForPlayer(pIdx){
       } else if (roundDef.type === 'doubles' || roundDef.type === 'triples') {
         if (dart.sector) key = String(dart.sector);
       } else if (roundDef.type === 'bull') {
-        key = 'Bull';
+        key = 'B';
       }
 
       if (key) {
@@ -14936,8 +14967,8 @@ function openGameScoresDialog() {
         roundDef.type === 'number'
           ? (roundDef.target + 's')
           : (roundDef.type === 'doubles'
-              ? "D's"
-              : (roundDef.type === 'triples' ? "T's" : 'Bull'));
+              ? "D"
+              : (roundDef.type === 'triples' ? "T" : 'B'));
       tr.appendChild(roundTh);
 
       for (let p = 0; p < state.players.length; p++) {
@@ -15306,7 +15337,7 @@ if (recordSeries) {
       ? String(ROUNDS[r].target)
       : (ROUNDS[r].type === 'doubles'
           ? 'D'
-          : (ROUNDS[r].type === 'triples' ? 'T' : 'Bull'));
+          : (ROUNDS[r].type === 'triples' ? 'T' : 'B'));
     ctx.fillText(label, x, marginTop + plotH + 12);
   }
   ctx.textAlign = 'left';
@@ -15726,7 +15757,7 @@ function openSingleGameScoreSheet(game, highlightIdx = -1){
     roundTh.textContent =
       roundDef.type === 'number'
         ? (roundDef.target + 's')
-        : (roundDef.type === 'doubles' ? "D's" : (roundDef.type === 'triples' ? "T's" : 'Bull'));
+        : (roundDef.type === 'doubles' ? "D" : (roundDef.type === 'triples' ? "T" : 'B'));
     tr.appendChild(roundTh);
 
     for (let p = 0; p < game.players.length; p++) {
@@ -19282,13 +19313,13 @@ window.setCloudStatus = function setCloudStatus(state, msg){
 
         // Perfect round = 3 darts, all on the intended target for that round
         // number/doubles/triples: any scoring hit (points > 0) counts
-        // bull: only darts with kind === 'Bull' count
+        // bull: only darts with kind === 'B' count
         if (taken === 3){
           let allHit = false;
           if (rd.type === 'number' || rd.type === 'doubles' || rd.type === 'triples'){
             allHit = darts.every(d => d && Number(d.points || 0) > 0);
           } else if (rd.type === 'bull') {
-            allHit = darts.every(d => d && d.kind === 'Bull');
+            allHit = darts.every(d => d && d.kind === 'B');
           }
           if (allHit) perfect++;
         }
@@ -27384,4 +27415,6 @@ if (!todayBtn) {
 </script>
 
 </body>
-</html>
+</html
+.livev2panel .v2LblSub{ font-size: 10px; opacity:.85; margin-top:2px; }
+>
