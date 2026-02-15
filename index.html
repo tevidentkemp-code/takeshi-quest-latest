@@ -3504,7 +3504,7 @@ body[data-page="game"]{
 .livev2panel .v2Scores{
   display:grid;
   grid-template-columns: 34px 1fr;
-  gap: 14px 12px;
+  gap: 14px var(--sqV2Gap, 10px);
   margin-bottom: 14px;
   align-items: start;
 }
@@ -3553,6 +3553,8 @@ body[data-page="game"]{
 }
 .livev2panel .v2Total{
   font-weight: 900; font-size: var(--sqV2TotalF, 36px); line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
   margin-top: 6px;
 }
 .livev2panel .v2Sub{
@@ -3575,8 +3577,8 @@ body[data-page="game"]{
 }
 .livev2panel .v2Rows{
   display:grid;
-  grid-template-columns: 56px repeat(var(--sqV2P, 2), minmax(0, 1fr));
-  gap: var(--sqV2RowGapY, 10px) var(--sqV2RowGapX, 10px);
+  grid-template-columns: 34px repeat(var(--sqV2P, 2), minmax(0, 1fr));
+  gap: var(--sqV2RowGapY, 10px) var(--sqV2Gap, 10px);
   align-items: stretch;
   padding-bottom: 2px; /* keeps scrollbar from kissing the border */
 }
@@ -3586,6 +3588,11 @@ body[data-page="game"]{
   border: 1px solid rgba(255,255,255,.12);
   display:flex; align-items:center; justify-content:center;
   font-weight:800; letter-spacing:.08em;
+  min-height: var(--sqV2CellH, 54px);
+}
+.livev2panel .v2Badge.active{
+  border-color: rgba(255,132,0,.55);
+  box-shadow: 0 0 0 2px rgba(255,132,0,.16), 0 0 14px rgba(255,132,0,.18) inset;
 }
 .livev2panel .v2Cell{
   border-radius: 14px;
@@ -3602,9 +3609,13 @@ body[data-page="game"]{
 }
 
 @media (max-width: 520px){
-  /* Show panel, hide legacy table when live v2 is active (JS toggles body class). */
-  body.livev2-on #scoreWrap{ display:none !important; }
+  /* Show panel, hide legacy UI when Live V2 is active (JS toggles body class). */
   body.livev2-on #liveV2Panel{ display:block !important; }
+  body.livev2-on #scoreWrap{ display:none !important; }
+  body.livev2-on #floatWrap{ display:none !important; }
+  body.livev2-on #turnBar{ display:none !important; }
+  body.livev2-on #roundBar{ display:none !important; }
+  body.livev2-on #roundSeamBar{ display:none !important; }
   body.livev2-on #gameScrollGate{ padding-bottom: 6px; }
 }
 /* <<< PATCH:livev2-panel-css END */
@@ -12523,7 +12534,7 @@ function __sqSetupLiveV2Sizing(panel){
     // Gaps scale down as players increase.
     const gap = (pCount <= 3) ? 12 : (pCount === 4 ? 10 : 8);
     panel.style.setProperty('--sqV2Gap', gap + 'px');
-    panel.style.setProperty('--sqV2RowGapX', Math.max(8, gap) + 'px');
+    panel.style.setProperty('--sqV2RowGapX', gap + 'px');
     panel.style.setProperty('--sqV2RowGapY', '10px');
 
     // Calculate pill width based on available grid width.
@@ -12532,7 +12543,7 @@ function __sqSetupLiveV2Sizing(panel){
 
     // Height + typography scale with pill width (keeps 5–6 players readable on iPhone portrait).
     const scoreH = Math.max(64, Math.min(98, Math.floor(pillW * 1.05)));
-    const totalF = Math.max(18, Math.min(38, Math.floor(pillW * 0.58)));
+    const totalF = Math.max(18, Math.min(34, Math.floor(pillW * 0.54)));
     const initF  = Math.max(12, Math.min(16, Math.floor(pillW * 0.26)));
     const subF   = Math.max(10, Math.min(12, Math.floor(pillW * 0.20)));
 
@@ -12574,9 +12585,29 @@ function __sqSetupLiveV2RowsWindow(panel){
   }catch(_){ }
 }
 
+
+function __sqToggleLegacyUIForLiveV2(on){
+  const legacyIds = ["floatWrap","turnBar","scoreWrap","roundBar","roundSeamBar"];
+  legacyIds.forEach((id)=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    // Use both hidden + display to survive iOS/Safari quirks and inline styles.
+    if(on){
+      el.hidden = true;
+      el.setAttribute("aria-hidden","true");
+      el.style.display = "none";
+    }else{
+      el.hidden = false;
+      el.removeAttribute("aria-hidden");
+      el.style.display = "";
+    }
+  });
+}
+
 function liveV2Render(){
   const eligible = isLiveV2Eligible();
   document.body.classList.toggle("livev2-on", eligible);
+  __sqToggleLegacyUIForLiveV2(!!eligible);
 
   const panel = ensureLiveV2Panel();
   if(!panel) return;
@@ -12626,7 +12657,7 @@ function liveV2Render(){
   if(rowsHost){
     const out = [];
     for(let r = 0; r <= cr; r++){
-      out.push(`<div class="v2Badge">${escapeHtml(roundLabelForIndex(r))}</div>`);
+      out.push(`<div class="v2Badge ${r === cr ? "active":""}">${escapeHtml(roundLabelForIndex(r))}</div>`);
       for(let i=0; i<pCount; i++){
         const val = getPerRoundScore(r, i);
         const isActiveCell = (r === cr) && (i === turn);
