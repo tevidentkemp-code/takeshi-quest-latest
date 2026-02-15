@@ -3507,14 +3507,15 @@ body[data-page="game"]{
   grid-template-columns: 34px 1fr;
   gap: 14px var(--sqV2Gap, 10px);
   margin-bottom: 14px;
-  align-items: start;
+  align-items: center;
 }
 .livev2panel .v2DotsCol{
   grid-column: 1 / 2;
   display:flex;
   flex-direction: column;
-  justify-content: space-between;
-  padding: 6px 0;
+  justify-content: center;
+  gap: 10px;
+  padding: 0;
 }
 .livev2panel .v2Dot{
   width:18px; height:18px; border-radius:50%;
@@ -3522,10 +3523,15 @@ body[data-page="game"]{
   box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
   opacity:.9;
   margin-left: 6px;
+  background: rgba(255,132,0,.55);
+  border-color: rgba(255,132,0,.65);
+  box-shadow: 0 0 0 2px rgba(255,132,0,.18), inset 0 1px 0 rgba(255,255,255,.10);
 }
-.livev2panel .v2Dot.filled{
-  background: rgba(255,255,255,.18);
-  border-color: rgba(255,255,255,.24);
+.livev2panel .v2Dot.off{
+  background: transparent;
+  border-color: rgba(255,255,255,.20);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+  opacity: .55;
 }
 
 /* Player totals grid: always fit 2–6 players across screen (no horizontal scroll). */
@@ -3544,6 +3550,9 @@ body[data-page="game"]{
   padding: var(--sqV2ScorePadY, 12px) var(--sqV2ScorePadX, 8px);
   min-height: var(--sqV2ScoreH, 86px);
   text-align:center;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
 }
 .livev2panel .v2ScoreBox.active{
   border-color: rgba(255,132,0,.75);
@@ -3556,12 +3565,50 @@ body[data-page="game"]{
   font-weight: 900; font-size: var(--sqV2TotalF, 36px); line-height: 1.05;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 .livev2panel .v2Sub{
   margin-top: 2px;
   font-size: var(--sqV2SubF, 12px);
   opacity: .55;
+}
+
+/* Averages box (under 3-round viewport) */
+.livev2panel .v2AvgWrap{
+  margin-top: 12px;
+  border-radius: 18px;
+  background: rgba(0,0,0,.14);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+  padding: 10px;
+}
+.livev2panel .v2Avg{
+  display:grid;
+  grid-template-columns: 34px repeat(var(--sqV2P, 2), minmax(0, 1fr));
+  gap: 10px var(--sqV2Gap, 10px);
+  align-items: stretch;
+}
+.livev2panel .v2AvgLabel{
+  border-radius: 12px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  display:flex; align-items:center; justify-content:center;
+  font-weight:800;
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  opacity: .85;
+  min-height: 44px;
+}
+.livev2panel .v2AvgCell{
+  border-radius: 12px;
+  background: rgba(0,0,0,.18);
+  border: 1px solid rgba(255,255,255,.10);
+  display:flex; align-items:center; justify-content:center;
+  font-weight:900;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  min-height: 44px;
 }
 
 /* Rounds viewport: fixed 3-row height (JS sets --sqV2RowsWinH) + horizontal scroll for 3–6 players */
@@ -12469,6 +12516,10 @@ function ensureLiveV2Panel(){
         <div class="v2Rows" id="v2Rows"></div>
       </div>
     </div>
+
+    <div class="v2AvgWrap" aria-label="Averages">
+      <div class="v2Avg" id="v2Avg"></div>
+    </div>
   `.trim();
 
   panel.dataset.built = "1";
@@ -12526,6 +12577,12 @@ function getPerRoundScore(r, i){
     if(Number.isFinite(n)) return n;
   }
   return null;
+}
+
+function __sqFmtAvg(n){
+  if(!Number.isFinite(+n)) return "–";
+  const v = Math.round((+n) * 10) / 10;
+  return (Math.abs(v - Math.round(v)) < 1e-9) ? String(Math.round(v)) : v.toFixed(1);
 }
 
 
@@ -12651,10 +12708,25 @@ function liveV2Render(){
   });
 
   // Dots (dart-in-turn)
-  const dartN = Number.isFinite(+state.dartInTurn) ? +state.dartInTurn : (Number.isFinite(+state.throwInTurn) ? +state.throwInTurn : 0);
+  // Requirement: reset to all ON for the next player.
+  if(typeof window.__v2LastTurn === "undefined") window.__v2LastTurn = -1;
+  if(typeof window.__v2DartN === "undefined") window.__v2DartN = 0;
+  const turnChanged = (turn !== window.__v2LastTurn);
+  if(turnChanged){
+    window.__v2LastTurn = turn;
+    window.__v2DartN = 0;
+  }
+  // Prefer per-turn counters if present; otherwise fall back to the tracked value.
+  const rawDartN = turnChanged ? 0
+                : (Number.isFinite(+state.throwInTurn) ? +state.throwInTurn
+                : (Number.isFinite(+state.dartInTurn) ? +state.dartInTurn
+                : window.__v2DartN));
+  const dartN = Math.max(0, Math.min(3, rawDartN));
+  window.__v2DartN = dartN;
   panel.querySelectorAll(".v2Dot").forEach((el)=>{
     const k = parseInt(el.getAttribute("data-dot") || "0", 10);
-    el.classList.toggle("filled", k < dartN);
+    // Dots represent remaining darts in this player's turn.
+    el.classList.toggle("off", k < dartN);
   });
 
   // Rounds list: keep all past rounds up to current round; 3-row viewport + auto-scroll on advance
@@ -12681,6 +12753,44 @@ function liveV2Render(){
   if(wrap && cr !== window.__liveV2LastCr){
     window.__liveV2LastCr = cr;
     wrap.scrollTop = wrap.scrollHeight;
+  }
+
+  // Averages box (under 3-round viewport)
+  const avgHost = document.getElementById("v2Avg");
+  if(avgHost){
+    const completedRoundCount = Math.max(0, cr); // rounds < cr are completed
+    const lastRounds = [];
+    for(let r = Math.max(0, completedRoundCount - 3); r < completedRoundCount; r++) lastRounds.push(r);
+
+    const rows = [];
+
+    // Row 1: rolling 3-round average
+    rows.push(`<div class="v2AvgLabel">3R</div>`);
+    for(let i=0; i<pCount; i++){
+      let sum = 0; let n = 0;
+      lastRounds.forEach((r)=>{
+        const v = getPerRoundScore(r, i);
+        if(Number.isFinite(+v)) { sum += +v; n++; }
+      });
+      rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(n ? (sum / n) : NaN))}</div>`);
+    }
+
+    // Row 2: match average (all completed rounds)
+    rows.push(`<div class="v2AvgLabel">AVG</div>`);
+    for(let i=0; i<pCount; i++){
+      let sum = 0; let n = 0;
+      for(let r=0; r<completedRoundCount; r++){
+        const v = getPerRoundScore(r, i);
+        if(Number.isFinite(+v)) { sum += +v; n++; }
+      }
+      rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(n ? (sum / n) : NaN))}</div>`);
+    }
+
+    // Row 3: blank for now
+    rows.push(`<div class="v2AvgLabel">&nbsp;</div>`);
+    for(let i=0; i<pCount; i++) rows.push(`<div class="v2AvgCell">&nbsp;</div>`);
+
+    avgHost.innerHTML = rows.join("");
   }
 }
 // <<< PATCH:livev2-panel-js END
