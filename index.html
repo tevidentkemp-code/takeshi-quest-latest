@@ -4,6 +4,27 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Shateki Quest Scorer</title>
+<!-- =========================================================
+     CODE MAP (search these tokens in this file)
+     =========================================================
+     TOP BAR / HEADER
+       - #fhMenuWrap (sticky top container)
+       - #sqDmdWrap (Pinball DMD container)            [PATCH:SQ_DMD_TOPBAR_V1]
+       - #gameTopRow (settings/hamburger row)
+
+     PINBALL DMD (Dot Matrix Display)
+       - CSS:   SQ_DMD_TOPBAR_CSS_V1                   [PATCH:SQ_DMD_TOPBAR_CSS_V1]
+       - JS:    SQ_DMD_TOPBAR_JS_V1                    [PATCH:SQ_DMD_TOPBAR_JS_V1]
+       - API:   window.sqDmdShow(top, bottom, opts)
+               window.sqDmdSetIdle(text)
+               window.sqDmdStop()
+
+     NAVIGATION HINTS
+       - Search: "function recordThrow" (throw pipeline)
+       - Search: "compute" / "totals" / "leader" (score aggregation)
+       - Search: "open" (popup handlers)
+     ========================================================= -->
+
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f1220'/%3E%3Cpath d='M22 12h24l-8 18h10L18 52l10-20H18z' fill='%23ff7a00'/%3E%3C/svg%3E" />
 
 
@@ -699,6 +720,45 @@ body[data-page="game"] #settingsMenuGame{
   right: auto;
 }
 /* >>> PATCH:game_topbar_settings_left_v1 END */
+
+/* >>> PATCH:SQ_DMD_TOPBAR_CSS_V1 START */
+/* Pinball DMD: lives in the sticky header above the Settings pill.
+   Constraint: add height, do NOT change width. */
+body[data-page="game"] .sq-dmd-wrap{
+  padding: 6px 10px 2px; /* aligns with left gutter */
+}
+body[data-page="game"] .sq-dmd{
+  position: relative;
+  width: 100%;
+  border-radius: 22px;
+  background: rgba(0,0,0,.28);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 0 1px rgba(255,122,0,.14),
+    0 10px 26px rgba(0,0,0,.45);
+  overflow: hidden;
+}
+body[data-page="game"] #sqDmdCanvas{
+  display:block;
+  width: 100%;
+  height: 112px;      /* depth: doubled */
+  image-rendering: pixelated;
+}
+body[data-page="game"] .sq-dmd-overlay{
+  pointer-events:none;
+  position:absolute; inset:0;
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,.10), rgba(255,255,255,0) 24%),
+    repeating-linear-gradient(to bottom, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,0) 1px 4px);
+  /* mix-blend-mode removed (caused yellow flashing on some browsers) */
+opacity: .18;
+}
+@media (orientation: landscape){
+  body[data-page="game"] #sqDmdCanvas{ height: 88px; }
+}
+/* >>> PATCH:SQ_DMD_TOPBAR_CSS_V1 END */
+
 
 #gameTopRow.sq-top-actions > #statsHubBtnGame,
 #leaderboardTopRow.sq-top-actions > #statsHubBtnFinal{
@@ -3518,6 +3578,31 @@ body[data-page="game"]{
   padding: 12px;
 }
 
+.livev2panel .v2HighCell{
+  margin-top: 12px;
+  border-radius: 22px;
+  background: rgba(0,0,0,.07);
+  border: 1px solid rgba(255,255,255,.06);
+  box-shadow: 0 0 0 1px rgba(170,90,255,.18), 0 0 26px rgba(170,90,255,.10), inset 0 1px 0 rgba(255,255,255,.05);
+  padding: 12px;
+}
+
+/* High Score Cell inner box (same geometry as averages, separate module). */
+.livev2panel .v2HighWrap{
+  margin-top: 0;
+  border-radius: 18px;
+  background: rgba(40,20,60,.18);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 0 18px rgba(170,90,255,.16);
+  padding: 10px 0;
+}
+.livev2panel .v2High{
+  display:grid;
+  grid-template-columns: 34px repeat(var(--sqV2P, 2), minmax(0, 1fr));
+  gap: 10px var(--sqV2Gap, 10px);
+  align-items: stretch;
+}
+
 /* Top area: left dart dots + responsive player total pills */
 .livev2panel .v2Scores{
   display:grid;
@@ -3567,9 +3652,11 @@ body[data-page="game"]{
   padding: var(--sqV2ScorePadY, 12px) var(--sqV2ScorePadX, 8px);
   min-height: var(--sqV2ScoreH, 86px);
   text-align:center;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
+
+  /* Keep the big total visually centered within the pill (initials top, delta bottom). */
+  display:grid;
+  grid-template-rows: auto 1fr auto;
+  align-items:center;
 }
 .livev2panel .v2ScoreBox.active{
   border-color: rgba(255,132,0,.78);
@@ -3587,6 +3674,10 @@ body[data-page="game"]{
   letter-spacing: -0.02em;
   margin-top: 0;
 }
+.livev2panel .v2Total.leaderTotal{
+  color: rgba(150,255,150,.98);
+  text-shadow: 0 0 14px rgba(120,255,120,.22);
+}
 .livev2panel .v2Sub{
   margin-top: 2px;
   font-size: var(--sqV2SubF, 12px);
@@ -3596,6 +3687,14 @@ body[data-page="game"]{
   opacity: 1;
   color: rgba(120,255,120,.95);
   text-shadow: 0 0 10px rgba(120,255,120,.18);
+}
+.livev2panel .v2Sub.crown::before{
+  content: "👑";
+  display: inline-block;
+  font-size: 14px;
+  line-height: 1;
+  transform: translateY(-1px);
+  filter: drop-shadow(0 0 10px rgba(255,200,60,.25));
 }
 .livev2panel .v2Sub.trailing{
   opacity: .85;
@@ -3695,11 +3794,20 @@ body[data-page="game"]{
   box-shadow: 0 0 0 2px rgba(255,132,0,.22), inset 0 1px 0 rgba(255,255,255,.06);
 }
 
-.livev2panel .v2Cell.hi{
+.livev2panel .v2Cell .v2CellNum{ display:inline-block; }
+.livev2panel .v2Cell.hi .v2CellNum{
   color: rgba(120,255,120,.92);
   text-shadow: 0 0 10px rgba(120,255,120,.14);
-  border-color: rgba(120,255,120,.24);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+}
+/* Per-player Personal Best for that round (all-time) */
+.livev2panel .v2Cell.pb{
+  border-color: rgba(120,255,120,.55);
+  box-shadow: 0 0 0 2px rgba(120,255,120,.12), inset 0 1px 0 rgba(255,255,255,.06);
+}
+/* World Record for that round (all-time) */
+.livev2panel .v2Cell.wr{
+  border-color: rgba(170,110,255,.70);
+  box-shadow: 0 0 0 2px rgba(170,110,255,.18), 0 0 14px rgba(170,110,255,.12) inset;
 }
 
 /* Show panel, hide legacy UI when Live V2 is active (JS toggles body class). */
@@ -3710,7 +3818,66 @@ body.livev2-on #turnBar{ display:none !important; }
 body.livev2-on #roundBar{ display:none !important; }
 body.livev2-on #roundSeamBar{ display:none !important; }
 body.livev2-on #gameScrollGate{ padding-bottom: 6px; }
+
+/* LIVE V2: constrain the top settings header to match the main panel width on desktop (Mac Safari etc.) */
+body.livev2-on[data-page="game"] #floatHead{
+  max-width: 560px;
+  width: 100%;
+  margin: 10px auto 0;
+}
+body.livev2-on[data-page="game"] #fhMenuWrap{
+  max-width: 560px;
+  width: 100%;
+  margin: 0 auto;
+}
+body.livev2-on[data-page="game"] #gameTopRow{
+  max-width: 560px;
+  width: 100%;
+  margin: 0 auto;
+}
+
 /* <<< PATCH:livev2-panel-css END */
+
+/* >>> PATCH:V30_INFO_RECORDS_PAGER START */
+body.livev2-on[data-page="game"] .v2InfoPager{
+  position: relative;
+  width: 100%;
+  margin-top: 10px; /* spacing from gameplay cell */
+  border-radius: 26px;
+}
+body.livev2-on[data-page="game"] .v2InfoViewport{
+  overflow: hidden;
+  border-radius: 26px;
+}
+body.livev2-on[data-page="game"] .v2InfoTrack{
+  display: flex;
+  width: 200%;
+  will-change: transform;
+  transition: transform .22s ease;
+}
+body.livev2-on[data-page="game"] .v2InfoPage{
+  width: 50%;
+  flex: 0 0 50%;
+}
+body.livev2-on[data-page="game"] .v2PagerDots{
+  display:flex;
+  justify-content:center;
+  gap:10px;
+  padding: 10px 0 0;
+}
+body.livev2-on[data-page="game"] .v2PagerDot{
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.18);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.10) inset;
+}
+body.livev2-on[data-page="game"] .v2PagerDot.on{
+  background: rgba(255,153,51,.85);
+  box-shadow: 0 0 12px rgba(255,153,51,.35);
+}
+/* >>> PATCH:V30_INFO_RECORDS_PAGER END */
+
 </style>
 <style>
   /* Cloud status pill (top-right) */
@@ -4505,24 +4672,29 @@ body[data-page="game"] #floatHead{
   <div class="card section">
 <!-- Floating names + wins + totals -->
         <div class="float-head" id="floatHead">
+          <!-- >>> PATCH:SQ_DMD_TOPBAR_V1 START -->
+<!-- Pinball DMD (dot-matrix) stands alone above the player/info pills -->
+<div class="sq-dmd-wrap" id="sqDmdTopBar" aria-label="Dot matrix display">
+  <div class="sq-dmd" id="sqDmdWrap" role="img" aria-label="Pinball-style dot matrix display">
+    <canvas id="sqDmdCanvas" width="128" height="32"></canvas>
+    <div class="sq-dmd-overlay" aria-hidden="true"></div>
+  </div>
+</div>
+<!-- >>> PATCH:SQ_DMD_TOPBAR_V1 END -->
+
           
       <div id="fhMenuWrap" class="fh-menu-wrap">
+
+        
+
         <div class="row fh-menu sq-top-actions" id="gameTopRow">
-<button id="settingsBtnGame" class="btn letter-throw top-throw sq-settings-btn" aria-label="Settings"><svg class="sq-gear" viewBox="0 0 24 24" aria-hidden="true">
-  <path d="M12 2.6l1.1 2.5 2.7.6 2-1.8 2.3 3.9-2.2 1.6.2 2.8 2.2 1.6-2.3 3.9-2.6-1.2-2.4 1.4-.6 2.7H9.6L9 18.8l-2.4-1.4-2.6 1.2-2.3-3.9 2.2-1.6.2-2.8L1.9 7.8l2.3-3.9 2 1.8 2.7-.6L12 2.6z"
-        fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="2"/>
-  <path d="M12 8.2v7.6M8.2 12h7.6M9.6 9.6l4.8 4.8M14.4 9.6l-4.8 4.8"
-        fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" opacity=".95"/>
-</svg></button>
+<button id="settingsBtnGame" class="btn letter-throw top-throw sq-settings-btn" aria-label="Settings"><svg class="sq-gear" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
 
       <!-- Kept for functionality, hidden from view (accessible via Settings menu) -->
       <button id="startScreenBtnGame" class="btn letter-throw top-throw sq-hidden-top">Start Screen</button>
       <button id="restartGameBtnGame" class="btn letter-throw top-throw sq-hidden-top">Restart Game</button>
     </div>
-    <div id="settingsMenuGame" class="sq-settings-menu hidden" role="menu" aria-label="Settings">
-      <button class="btn sq-settings-item" type="button" data-sq-action="startScreen">START SCREEN</button>
-      <button class="btn sq-settings-item" type="button" data-sq-action="restartGame">RESTART GAME</button>
-    </div>
+    <div id="settingsMenuGame" class="sq-settings-menu hidden" role="menu" aria-label="Settings"></div>
       </div>
       <div id="fhMenuLine" class="fh-menu-line" aria-hidden="true"></div>
 <div class="table-wrap" id="floatWrap">
@@ -12565,9 +12737,28 @@ function ensureLiveV2Panel(){
       </div>
     </div>
 
-    <div class="v2InfoCell" aria-label="Info">
-      <div class="v2AvgWrap" aria-label="Averages">
-        <div class="v2Avg" id="v2Avg"></div>
+    <div class="v2InfoPager" aria-label="Info & Records">
+      <div class="v2InfoViewport">
+        <div class="v2InfoTrack" id="v2InfoTrack" data-page="0">
+          <div class="v2InfoPage">
+            <div class="v2InfoCell" aria-label="Info">
+              <div class="v2AvgWrap" aria-label="Averages">
+                <div class="v2Avg" id="v2Avg"></div>
+              </div>
+            </div>
+          </div>
+          <div class="v2InfoPage">
+            <div class="v2HighCell" aria-label="Records">
+              <div class="v2HighWrap" aria-label="Records">
+                <div class="v2High" id="v2High"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="v2PagerDots" aria-label="Info pages">
+        <div class="v2PagerDot on" data-dot="0"></div>
+        <div class="v2PagerDot" data-dot="1"></div>
       </div>
     </div>
   `.trim();
@@ -12589,9 +12780,72 @@ function roundLabelForIndex(r){
 
 function getPlayerInitial(i){
   const name = (state.players?.[i]?.name || state.players?.[i] || "").toString().trim();
-  if(!name) return String.fromCharCode(65 + i);
-  return name[0].toUpperCase();
+  // Two initials:
+  // - If name has multiple words -> first letter of first + first letter of last
+  // - If single word -> first two letters (or duplicate the first if only one)
+  // - If blank -> AA, BB, CC...
+  if(!name){
+    const ch = String.fromCharCode(65 + i);
+    return (ch + ch);
+  }
+  const parts = name.split(/\s+/).filter(Boolean);
+  let a = "", b = "";
+  if(parts.length >= 2){
+    a = (parts[0][0] || "");
+    b = (parts[parts.length-1][0] || "");
+  }else{
+    a = (name[0] || "");
+    b = (name[1] || name[0] || "");
+  }
+  return (a + b).toUpperCase();
 }
+
+function getPlayerName(i){
+  const p = state.players?.[i];
+  const name = (p && typeof p === 'object' ? (p.name || p.fullName || p.displayName) : p);
+  return String(name || '').trim();
+}
+
+// Live V2 uses PB/WR snapshot for per-round WR/PB borders.
+// Keep it cached and refresh once when needed.
+async function __sqEnsurePBGRSnapshot(){
+  try{
+    if (window.__pbgrSnapshot && window.__pbgrSnapshot.__ts && (Date.now() - window.__pbgrSnapshot.__ts) < 60_000) return window.__pbgrSnapshot;
+    if (window.__pbgrSnapshotPromise) return window.__pbgrSnapshotPromise;
+    if (typeof getPBGRSnapshot !== 'function') return (window.__pbgrSnapshot || null);
+
+    window.__pbgrSnapshotPromise = getPBGRSnapshot()
+      .then(snap => {
+        if (snap && typeof snap === 'object'){
+          try{ Object.defineProperty(snap, '__ts', { value: Date.now(), enumerable:false }); }catch(_){ snap.__ts = Date.now(); }
+          window.__pbgrSnapshot = snap;
+        }
+        window.__pbgrSnapshotPromise = null;
+        return window.__pbgrSnapshot;
+      })
+      .catch(()=>{ window.__pbgrSnapshotPromise = null; return window.__pbgrSnapshot || null; });
+
+    return window.__pbgrSnapshotPromise;
+  }catch(_){
+    return window.__pbgrSnapshot || null;
+  }
+}
+
+function __sqCatForRoundIdx(r){
+  try{
+    const rd = (typeof ROUNDS !== "undefined") ? ROUNDS[r] : null;
+    if (!rd) return null;
+    if (rd.type === 'number')  return String(rd.target);
+    if (rd.type === 'doubles') return 'D';
+    if (rd.type === 'triples') return 'T';
+    if (rd.type === 'bull')    return 'B';
+  }catch(_){}
+  // fallback: already stripped "10s" -> "10"
+  const lbl = String(roundLabelForIndex(r) || '').trim();
+  const m = lbl.match(/^(\d+)/);
+  return m ? m[1] : lbl;
+}
+
 
 function getPlayerTotal(i){
   try{
@@ -12677,6 +12931,92 @@ function __sqSetupLiveV2Sizing(panel){
   }catch(_){}
 }
 
+
+// >>> PATCH:V30_INFO_RECORDS_PAGER_JS START
+function __sqSetupV2InfoPager(panel){
+  try{
+    const track = panel.querySelector('#v2InfoTrack');
+    if(!track) return;
+
+    // preserve page index across renders
+    let page = parseInt(track.dataset.page || '0', 10);
+    if(!(page === 0 || page === 1)) page = 0;
+    __sqV2SetPagerPage(panel, page, false);
+
+    const dots = panel.querySelectorAll('.v2PagerDot');
+    dots.forEach(d=>{
+      d.addEventListener('click', ()=>{
+        const p = parseInt(d.getAttribute('data-dot')||'0',10) || 0;
+        __sqV2SetPagerPage(panel, p, true);
+      }, {passive:true});
+    });
+
+    // swipe support (touch + trackpad pointer)
+    let startX = 0, startY = 0, dragging = false;
+    const viewport = panel.querySelector('.v2InfoViewport') || track.parentElement;
+
+    const onStart = (x,y)=>{
+      startX = x; startY = y; dragging = true;
+    };
+    const onEnd = (x,y)=>{
+      if(!dragging) return;
+      dragging = false;
+      const dx = x - startX;
+      const dy = y - startY;
+      // horizontal intent only
+      if(Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+      const cur = parseInt(track.dataset.page || '0',10) || 0;
+      const next = dx < 0 ? Math.min(1, cur + 1) : Math.max(0, cur - 1);
+      __sqV2SetPagerPage(panel, next, true);
+    };
+
+    viewport.addEventListener('touchstart', (e)=>{
+      const t = e.touches && e.touches[0]; if(!t) return;
+      onStart(t.clientX, t.clientY);
+    }, {passive:true});
+
+    viewport.addEventListener('touchend', (e)=>{
+      const t = (e.changedTouches && e.changedTouches[0]) || null;
+      if(!t) return;
+      onEnd(t.clientX, t.clientY);
+    }, {passive:true});
+
+    // Pointer events for desktop trackpads/mice (swipe-like drag)
+    viewport.addEventListener('pointerdown', (e)=>{
+      if(e.pointerType === 'mouse' && e.buttons !== 1) return;
+      try{ viewport.setPointerCapture(e.pointerId); }catch(_){}
+      onStart(e.clientX, e.clientY);
+    });
+
+    viewport.addEventListener('pointerup', (e)=>{
+      onEnd(e.clientX, e.clientY);
+      try{ viewport.releasePointerCapture(e.pointerId); }catch(_){}
+    });
+
+  }catch(_){}
+}
+
+function __sqV2SetPagerPage(panel, page, animate){
+  try{
+    const track = panel.querySelector('#v2InfoTrack');
+    if(!track) return;
+    if(!(page === 0 || page === 1)) page = 0;
+    if(!animate) track.style.transition = 'none';
+    track.style.transform = `translateX(${page * -50}%)`;
+    track.dataset.page = String(page);
+    if(!animate){
+      // force reflow then restore transition
+      void track.offsetWidth;
+      track.style.transition = '';
+    }
+    const dots = panel.querySelectorAll('.v2PagerDot');
+    dots.forEach(d=>{
+      d.classList.toggle('on', (d.getAttribute('data-dot') === String(page)));
+    });
+  }catch(_){}
+}
+// >>> PATCH:V30_INFO_RECORDS_PAGER_JS END
+
 function __sqSetupLiveV2RowsWindow(panel){
   try{
     const wrap = panel ? panel.querySelector('.v2RowsWrap') : null;
@@ -12717,9 +13057,26 @@ function __sqToggleLegacyUIForLiveV2(on){
 }
 
 function liveV2Render(){
+  // Only runs on gameplay screen; prevents start/menu JS from crashing
+  const page = document.body && (document.body.getAttribute('data-page') || document.body.dataset && document.body.dataset.page);
+  if(page !== 'game') return;
+
   const eligible = isLiveV2Eligible();
   document.body.classList.toggle("livev2-on", eligible);
   __sqToggleLegacyUIForLiveV2(!!eligible);
+
+  // Kick PB/WR snapshot refresh (async, cached)
+  try{ __sqEnsurePBGRSnapshot(); }catch(_){ }
+  const __pbgr = window.__pbgrSnapshot || null;
+
+  // Kick player-level all-time PB caches (async, non-fatal)
+  try{
+    if (typeof window.__plEnsureWRHistory === 'function') window.__plEnsureWRHistory();
+    if (typeof window.__plEnsureAllTimeForPlayers === 'function') {
+      const pNames = (state.players||[]).map(p => (p && (p.name||p)) ).filter(Boolean);
+      window.__plEnsureAllTimeForPlayers(pNames);
+    }
+  }catch(_){ }
 
   const panel = ensureLiveV2Panel();
   if(!panel) return;
@@ -12754,10 +13111,14 @@ function liveV2Render(){
     if(v2i) v2i.textContent = getPlayerInitial(i);
     if(v2t) v2t.textContent = String(__v2Totals[i]);
     const diff = (__v2Totals[i] - __v2LeaderTotal); // trailing = negative
+    const isLeader = (diff === 0);
+    if(v2t) v2t.classList.toggle("leaderTotal", isLeader);
     if(v2s){
-      v2s.textContent = String(diff);
-      v2s.classList.toggle("leader", diff === 0);
-      v2s.classList.toggle("trailing", diff !== 0);
+      // Leader gets a crown instead of "0"
+      v2s.textContent = isLeader ? "" : String(diff);
+      v2s.classList.toggle("leader", isLeader);
+      v2s.classList.toggle("trailing", !isLeader);
+      v2s.classList.toggle("crown", isLeader);
     }
   }
 
@@ -12806,14 +13167,26 @@ function liveV2Render(){
         // Highlight highest round score(s), but don't green-glow a row of zeros.
         const isHi = (maxV > 0) && (val != null) && (val === maxV);
 
-        out.push(`<div class="v2Cell ${(isActiveCell ? "active":"")} ${(isHi ? "hi":"")}">${val == null ? "–" : escapeHtml(String(val))}</div>`);
+        const cat = __sqCatForRoundIdx(r);
+const pNameKey = getPlayerName(i).toLowerCase();
+const pbVal = (__pbgr && __pbgr.byPlayerMeta && typeof __pbgr.byPlayerMeta.get === 'function' && cat)
+  ? Number((__pbgr.byPlayerMeta.get(pNameKey) || {})[cat]?.val || 0) : 0;
+const wrVal = (__pbgr && __pbgr.byTargetMeta && cat)
+  ? Number(__pbgr.byTargetMeta[cat]?.val || 0) : 0;
+
+const isWR = (val != null) && (wrVal > 0) && (val === wrVal);
+const isPB = (!isWR) && (val != null) && (pbVal > 0) && (val === pbVal);
+
+out.push(`<div class="v2Cell ${(isActiveCell ? "active":"")} ${(isHi ? "hi":"")} ${(isPB ? "pb":"")} ${(isWR ? "wr":"")}">` +
+         `${val == null ? "–" : `<span class="v2CellNum">${escapeHtml(String(val))}</span>`}` +
+         `</div>`);
       }
     }
     rowsHost.innerHTML = out.join("");
   }
-
-  // Constrain to exactly 3 rows (after paint)
-  try{ requestAnimationFrame(() => __sqSetupLiveV2RowsWindow(panel)); }catch(_){ __sqSetupLiveV2RowsWindow(panel); }
+try{ __sqSetupLiveV2RowsWindow(panel);
+      __sqSetupV2InfoPager(panel);
+ }catch(_){ }
 
   // Auto-scroll to newest row only when round advances
   if(typeof window.__liveV2LastCr === "undefined") window.__liveV2LastCr = -1;
@@ -12867,20 +13240,86 @@ function liveV2Render(){
       rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(n ? (sum / n) : NaN))}</div>`);
     }
 
-    // Row 3: RND PB (best round score achieved so far in this match)
-    rows.push(`<div class="v2AvgLabel"><div>RND</div><div class="sub">PB</div></div>`);
+    // Row 3: blank (reserved)
+    rows.push(`<div class="v2AvgLabel"><div>&nbsp;</div><div class="sub">&nbsp;</div></div>`);
     for(let i=0; i<pCount; i++){
-      const done = __v2CompletedRoundsForPlayer(i);
-      let best = -Infinity;
-      done.forEach((r)=>{
-        const v = getPerRoundScore(r, i);
-        const nn = +v;
-        if(Number.isFinite(nn)) best = Math.max(best, nn);
-      });
-      rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(best>-Infinity ? best : NaN))}</div>`);
+      rows.push(`<div class="v2AvgCell">&nbsp;</div>`);
     }
 
     avgHost.innerHTML = rows.join("");
+  }
+
+  // High Score Cell (below Info Cell)
+  const highHost = document.getElementById("v2High");
+  if(highHost){
+    try{
+      const rowsH = [];
+
+      // Determine the current round category key (10–20, D, T, B)
+      const rdDef = (typeof ROUNDS !== "undefined" && ROUNDS) ? (ROUNDS[state.currentRound ?? 0] || null) : null;
+      const catKey = (rdDef && rdDef.type === 'number')  ? rdDef.target
+                   : (rdDef && rdDef.type === 'doubles') ? 'D'
+                   : (rdDef && rdDef.type === 'triples') ? 'T'
+                   : (rdDef && rdDef.type === 'bull')    ? 'B'
+                   : null;
+
+      const safeNameKey = (nm)=>{
+        try{
+          if(typeof toNameKey === "function") return toNameKey(nm);
+        }catch(_){}
+        return String(nm||"").trim().toLowerCase();
+      };
+
+      const getPlayerMetaPB = (nameKey, key)=>{
+        try{
+          const snap = (typeof __pbgr !== "undefined" && __pbgr) ? __pbgr : (window.__pbgrSnapshot || null);
+          const mp = snap && snap.byPlayerMeta;
+          if(mp && typeof mp.get === "function" && key!=null){
+            const rec = mp.get(nameKey) || {};
+            const obj = rec[key] || {};
+            const v = Number(obj.val || 0);
+            return Number.isFinite(v) ? v : 0;
+          }
+        }catch(_){}
+        return 0;
+      };
+
+      // Row 1: RND PB — this player's ALL‑TIME best for the CURRENT round category (e.g. 14s, 15s, D, T, B)
+      rowsH.push(`<div class="v2AvgLabel"><div>RND</div><div class="sub">PB</div></div>`);
+      for(let i=0; i<pCount; i++){
+        const nm = String(state.players?.[i]?.name || state.players?.[i] || '').trim();
+        const nameKey = safeNameKey(nm);
+        const pbVal = getPlayerMetaPB(nameKey, catKey);
+        rowsH.push(`<div class="v2AvgCell">${pbVal>0 ? escapeHtml(String(Math.round(pbVal))) : '—'}</div>`);
+      }
+
+      // Row 2: GAME PB — best ever GAME total plus per-round average (score / 14 rounds)
+      rowsH.push(`<div class="v2AvgLabel"><div>GAME</div><div class="sub">PB</div></div>`);
+      for(let i=0; i<pCount; i++){
+        const nm = String(state.players?.[i]?.name || state.players?.[i] || '').trim();
+        const best = (window.__plBadgeCache && window.__plBadgeCache.bestGameAll && typeof window.__plBadgeCache.bestGameAll.get === 'function')
+          ? Number(window.__plBadgeCache.bestGameAll.get(nm) || 0) : 0;
+        const avg14 = best ? (best / 14) : NaN;
+        const out = best ? `${best} / ${__sqFmtAvg(avg14)}` : '—';
+        rowsH.push(`<div class="v2AvgCell">${escapeHtml(out)}</div>`);
+      }
+
+      // Row 3: PBR AVG — personal-best round average (all-time), if cache exists
+      rowsH.push(`<div class="v2AvgLabel"><div>PBR</div><div class="sub">AVG</div></div>`);
+      for(let i=0; i<pCount; i++){
+        const nm = String(state.players?.[i]?.name || state.players?.[i] || '').trim();
+        const pbAvg = (window.__plBadgeCache && window.__plBadgeCache.bestMonthlyAvgAll && typeof window.__plBadgeCache.bestMonthlyAvgAll.get === 'function')
+          ? Number(window.__plBadgeCache.bestMonthlyAvgAll.get(nm) || 0) : 0;
+        rowsH.push(`<div class="v2AvgCell">${pbAvg>0 ? escapeHtml(__sqFmtAvg(pbAvg)) : '—'}</div>`);
+      }
+
+      highHost.innerHTML = rowsH.join("");
+    }catch(_){
+      // Safe fallback: show empty rows so layout doesn't disappear
+      const pc = pCount || 2;
+      const mkRow = (a,b)=>`<div class="v2AvgLabel"><div>${a}</div><div class="sub">${b}</div></div>` + Array.from({length:pc}).map(()=>`<div class="v2AvgCell">—</div>`).join("");
+      highHost.innerHTML = [mkRow("RND","PB"), mkRow("GAME","PB"), mkRow("PBR","AVG")].join("");
+    }
   }
 }// <<< PATCH:livev2-panel-js END
 
@@ -21357,7 +21796,12 @@ section('Highest All Time Averages',
       toFetch.forEach(n => __plBadgeCache._playersFetched.add(n));
     }
   }
-  // >>> PATCH:PL_BADGES_TRUE_PB_WR END
+  
+  // Expose badge cache + loaders for other UI modules
+  window.__plBadgeCache = __plBadgeCache;
+  window.__plEnsureWRHistory = __plEnsureWRHistory;
+  window.__plEnsureAllTimeForPlayers = __plEnsureAllTimeForPlayers;
+// >>> PATCH:PL_BADGES_TRUE_PB_WR END
 
 async function renderTable(rows, filter, prevFilter) {
     // Qualification thresholds
@@ -27432,10 +27876,145 @@ if (!todayBtn) {
   }
 
   document.addEventListener('DOMContentLoaded', ()=>{
-    wireSettings('settingsBtnGame','settingsMenuGame',{
-      startScreen: 'startScreenBtnGame',
-      restartGame: 'restartGameBtnGame'
-    });
+    // >>> PATCH:game_settings_modal_v1 START
+    (function(){
+      const btn = document.getElementById('settingsBtnGame');
+      if(!btn) return;
+
+      function mkBackdrop(){
+        const bd = document.createElement('div');
+        bd.className = 'modal-backdrop';
+        bd.style.zIndex = '9999';
+        return bd;
+      }
+
+      function mkModal(title){
+        const m = document.createElement('div');
+        m.className = 'modal';
+        m.style.maxWidth = '520px';
+        m.style.width = 'min(92vw, 520px)';
+        m.innerHTML = `
+          <div class="modal-title">${title}</div>
+          <div class="modal-body" style="display:flex;flex-direction:column;gap:10px"></div>
+          <div class="modal-actions" style="display:flex;gap:12px;justify-content:center;margin-top:14px">
+            <button class="btn" data-x="close">Close</button>
+          </div>
+        `;
+        return m;
+      }
+
+      function closeAny(){
+        document.querySelectorAll('.sq-gsettings-bd,.sq-rmplayer-bd').forEach(n=>n.remove());
+      }
+
+      function confirmThen(msg, fn){
+        if(confirm(msg)) {
+          try{ fn(); }
+          catch(e){ console.error(e); if(typeof toast==='function') toast('Action failed'); }
+        }
+      }
+
+      function resetCurrentGameKeepPlayers(){
+        // Keep players + match meta/history, reset only current game state
+        const players = Array.isArray(state.players) ? state.players.slice() : [];
+        const match   = state.match ? JSON.parse(JSON.stringify(state.match)) : JSON.parse(JSON.stringify(baseState.match));
+        state = JSON.parse(JSON.stringify(baseState));
+        state.players = players;
+        state.match = match;
+        state.score = players.map(()=>[]);
+        state.currentRound = 0;
+        state.currentPlayer = 0;
+        state.currentDart = 0;
+        state.history = [];
+        state.finished = false;
+      }
+
+      function doRestartGame(){
+        resetCurrentGameKeepPlayers();
+        save();
+        if(typeof startNewGame === 'function') startNewGame();
+        else restartGameSafe();
+      }
+
+      function doEndGame(){
+        // Abandon current game and go to leaderboard/next match screen
+        resetCurrentGameKeepPlayers();
+        save();
+        if(typeof showLeaderboard === 'function') showLeaderboard();
+        else _showPageSafe('leaderboard');
+      }
+
+      function doEndMatch(){
+        confirmThen('End match? This will clear the current match state and return to the start screen.', ()=>{
+          state = JSON.parse(JSON.stringify(baseState));
+          save();
+          navigateToStartScreen();
+        });
+      }
+
+      function openRemovePlayer(){
+        closeAny();
+        const bd = mkBackdrop();
+        bd.classList.add('sq-rmplayer-bd');
+        const m  = mkModal('Remove player');
+        const body = m.querySelector('.modal-body');
+
+        const pls = Array.isArray(state.players) ? state.players : [];
+        pls.forEach((p, idx)=>{
+          const name = (__sqPlayerPretty(p) || p.name || ('Player ' + (idx+1)));
+          const b = document.createElement('button');
+          b.className = 'btn danger';
+          b.textContent = 'Remove ' + name;
+          b.onclick = ()=>{
+            confirmThen('Remove ' + name + '? Their current-game data will be deleted and the match continues.', ()=>{
+              state.players.splice(idx,1);
+              if(Array.isArray(state.score)) state.score.splice(idx,1);
+              if(state.match && Array.isArray(state.match.wins)) state.match.wins.splice(idx,1);
+              if(state.currentPlayer >= state.players.length) state.currentPlayer = 0;
+              save();
+              closeAny();
+              try{ liveV2Render(); }catch(_e){}
+            });
+          };
+          body.appendChild(b);
+        });
+
+        m.querySelector('[data-x=close]').onclick = closeAny;
+        bd.addEventListener('click', (e)=>{ if(e.target===bd) closeAny(); });
+        document.body.appendChild(bd);
+        bd.appendChild(m);
+      }
+
+      function openMenu(){
+        closeAny();
+        const bd = mkBackdrop();
+        bd.classList.add('sq-gsettings-bd');
+        const m  = mkModal('Game menu');
+        const body = m.querySelector('.modal-body');
+
+        function addBtn(label, cls, onClick){
+          const b = document.createElement('button');
+          b.className = 'btn ' + (cls||'');
+          b.textContent = label;
+          b.onclick = ()=>{ closeAny(); onClick(); };
+          body.appendChild(b);
+        }
+
+        addBtn('Restart Game', 'danger', ()=>confirmThen('Restart game? This clears current game data and returns to throw order.', doRestartGame));
+        addBtn('End Game', 'danger', ()=>confirmThen('End game? Current game data will be cleared and you will go to the end-game screen.', doEndGame));
+        addBtn('End Match', 'danger', doEndMatch);
+        addBtn('Remove player', '', openRemovePlayer);
+        addBtn('Stats', '', openStatsHubSafe);
+
+        m.querySelector('[data-x=close]').onclick = closeAny;
+        bd.addEventListener('click', (e)=>{ if(e.target===bd) closeAny(); });
+        document.body.appendChild(bd);
+        bd.appendChild(m);
+      }
+
+      btn.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); openMenu(); });
+    })();
+    // >>> PATCH:game_settings_modal_v1 END
 
     wireSettings('settingsBtnLB','settingsMenuLB',{
       startScreenLB: 'startScreenBtnLB',
@@ -27471,6 +28050,443 @@ if (!todayBtn) {
 // >>> PATCH:admin-password-enforce END
 
 </script>
+
+
+
+<!-- >>> PATCH:SQ_DMD_TOPBAR_JS_V1 START -->
+<script>
+/*
+  SQ Pinball DMD (Round-Dot, HiDPI) — Top Bar Display
+  --------------------------------------------------
+  - Native buffer: 128×32
+  - Round-dot mask: precomputed at output resolution
+  - HiDPI: output canvas = CSS px × devicePixelRatio
+  - Crisp scaling: imageSmoothingEnabled=false
+  - Idle loop never stops
+  - Public API:
+      window.sqDmdShow(top, bottom, opts)
+      window.sqDmdSetIdle(text)
+      window.sqDmdStop()
+*/
+
+(function () {
+  "use strict";
+
+  // ---------- Config ----------
+  const NATIVE_W = 128;
+  const NATIVE_H = 32;
+
+  const DEFAULTS = {
+    fps: 60,
+    stepMs: 1000 / 30,      // DMD frame-step cadence (30fps feel inside 60fps loop)
+    glowAlpha: 0.45,
+    glowPasses: 2,
+    idleSpeedPxPerSec: 26,
+    flashMs: 900,
+    holdMs: 900,
+    paddingPx: 2
+  };
+
+  // ---------- DOM ----------
+  const wrap = document.getElementById("sqDmdWrap");
+  const canvas = document.getElementById("sqDmdCanvas");
+  if (!wrap || !canvas) return;
+
+  const ctx = canvas.getContext("2d", { alpha: true });
+
+  // ---------- Offscreens ----------
+  const native = document.createElement("canvas");
+  native.width = NATIVE_W;
+  native.height = NATIVE_H;
+  const nctx = native.getContext("2d", { alpha: true });
+
+  const scaled = document.createElement("canvas"); // reused buffer at output resolution
+  const sctx = scaled.getContext("2d", { alpha: true });
+
+  const mask = document.createElement("canvas");   // round-dot mask at output resolution
+  const mctx = mask.getContext("2d", { alpha: true });
+
+  const prevScaled = document.createElement("canvas"); // for subtle persistence
+  const pctx = prevScaled.getContext("2d", { alpha: true });
+
+  // ---------- State ----------
+  let DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  let outW = 0, outH = 0;
+
+  let isRunning = false;
+  let rafId = 0;
+
+  const q = [];
+  let active = null;
+
+  let idleText = "SHATEKI QUEST";
+  let idleOffset = 0;
+
+  // ---------- Tiny bitmap font (5x7-ish, scaled) ----------
+  // Simple built-in glyphs for A–Z, 0–9, space, punctuation used by DMD.
+  // (Kept intentionally small; DMD style comes from dot mask + glow.)
+  const FONT = (function buildFont() {
+    const glyphs = {};
+    const rows = (arr) => arr.map(r => r.replace(/\s/g,"0").replace(/#/g,"1"));
+    // Minimal set; extend later if needed.
+    glyphs[" "] = rows(["00000","00000","00000","00000","00000","00000","00000"]);
+    glyphs["!"] = rows(["00100","00100","00100","00100","00100","00000","00100"]);
+    glyphs["."] = rows(["00000","00000","00000","00000","00000","00100","00100"]);
+    glyphs[":"] = rows(["00000","00100","00100","00000","00100","00100","00000"]);
+    glyphs["-"] = rows(["00000","00000","00000","11111","00000","00000","00000"]);
+    glyphs["+"] = rows(["00000","00100","00100","11111","00100","00100","00000"]);
+    glyphs["/"] = rows(["00001","00010","00100","01000","10000","00000","00000"]);
+
+    const AZ = {
+      A:["01110","10001","10001","11111","10001","10001","10001"],
+      B:["11110","10001","10001","11110","10001","10001","11110"],
+      C:["01111","10000","10000","10000","10000","10000","01111"],
+      D:["11110","10001","10001","10001","10001","10001","11110"],
+      E:["11111","10000","10000","11110","10000","10000","11111"],
+      F:["11111","10000","10000","11110","10000","10000","10000"],
+      G:["01111","10000","10000","10111","10001","10001","01111"],
+      H:["10001","10001","10001","11111","10001","10001","10001"],
+      I:["11111","00100","00100","00100","00100","00100","11111"],
+      J:["11111","00010","00010","00010","00010","10010","01100"],
+      K:["10001","10010","10100","11000","10100","10010","10001"],
+      L:["10000","10000","10000","10000","10000","10000","11111"],
+      M:["10001","11011","10101","10101","10001","10001","10001"],
+      N:["10001","11001","10101","10011","10001","10001","10001"],
+      O:["01110","10001","10001","10001","10001","10001","01110"],
+      P:["11110","10001","10001","11110","10000","10000","10000"],
+      Q:["01110","10001","10001","10001","10101","10010","01101"],
+      R:["11110","10001","10001","11110","10100","10010","10001"],
+      S:["01111","10000","10000","01110","00001","00001","11110"],
+      T:["11111","00100","00100","00100","00100","00100","00100"],
+      U:["10001","10001","10001","10001","10001","10001","01110"],
+      V:["10001","10001","10001","10001","10001","01010","00100"],
+      W:["10001","10001","10001","10101","10101","10101","01010"],
+      X:["10001","01010","00100","00100","00100","01010","10001"],
+      Y:["10001","01010","00100","00100","00100","00100","00100"],
+      Z:["11111","00001","00010","00100","01000","10000","11111"],
+    };
+    for (const k in AZ) glyphs[k] = rows(AZ[k]);
+
+    const D09 = {
+      "0":["01110","10001","10011","10101","11001","10001","01110"],
+      "1":["00100","01100","00100","00100","00100","00100","01110"],
+      "2":["01110","10001","00001","00010","00100","01000","11111"],
+      "3":["11110","00001","00001","01110","00001","00001","11110"],
+      "4":["00010","00110","01010","10010","11111","00010","00010"],
+      "5":["11111","10000","10000","11110","00001","00001","11110"],
+      "6":["01110","10000","10000","11110","10001","10001","01110"],
+      "7":["11111","00001","00010","00100","01000","01000","01000"],
+      "8":["01110","10001","10001","01110","10001","10001","01110"],
+      "9":["01110","10001","10001","01111","00001","00001","01110"],
+    };
+    for (const k in D09) glyphs[k] = rows(D09[k]);
+
+    return glyphs;
+  })();
+
+  function drawTextNative(text, x, y, scale) {
+    const s = Math.max(1, scale|0);
+    let cx = x;
+    const t = (text || "").toUpperCase();
+    for (let i = 0; i < t.length; i++) {
+      const ch = t[i];
+      const g = FONT[ch] || FONT[" "];
+      // 5x7 glyph + 1px spacing
+      for (let gy = 0; gy < g.length; gy++) {
+        const row = g[gy];
+        for (let gx = 0; gx < row.length; gx++) {
+          if (row[gx] === "1") {
+            nctx.fillRect(cx + gx*s, y + gy*s, s, s);
+          }
+        }
+      }
+      cx += (rowWidth(g) + 1) * s;
+    }
+    return cx - x;
+  }
+  function rowWidth(g){ return g && g[0] ? g[0].length : 5; }
+
+  function measureTextNative(text, scale) {
+    const s = Math.max(1, scale|0);
+    const t = (text || "").toUpperCase();
+    let w = 0;
+    for (let i = 0; i < t.length; i++) {
+      const g = FONT[t[i]] || FONT[" "];
+      w += (rowWidth(g) + 1) * s;
+    }
+    return w ? (w - 1*s) : 0;
+  }
+
+  // ---------- Layout / HiDPI ----------
+  function resize() {
+    const rect = wrap.getBoundingClientRect();
+    const cssW = Math.max(1, Math.floor(rect.width));
+    const cssH = Math.max(1, Math.floor(rect.height));
+
+    DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+
+    outW = Math.floor(cssW * DPR);
+    outH = Math.floor(cssH * DPR);
+
+    canvas.width = outW;
+    canvas.height = outH;
+
+    scaled.width = outW;
+    scaled.height = outH;
+
+    prevScaled.width = outW;
+    prevScaled.height = outH;
+
+    mask.width = outW;
+    mask.height = outH;
+
+    // Critical: crisp scaling
+    ctx.imageSmoothingEnabled = false;
+    sctx.imageSmoothingEnabled = false;
+    pctx.imageSmoothingEnabled = false;
+
+    buildDotMask();
+  }
+
+  function buildDotMask() {
+    mctx.clearRect(0, 0, outW, outH);
+
+    // Map each native pixel to an output cell.
+    const cellW = outW / NATIVE_W;
+    const cellH = outH / NATIVE_H;
+
+    // Dot radius tuned for “high-def” look (keep gaps visible)
+    const r = Math.max(0.5, Math.min(cellW, cellH) * 0.38);
+
+    // Slight edge fade for realism
+    const edge = Math.max(1, Math.min(cellW, cellH) * 0.15);
+
+    for (let y = 0; y < NATIVE_H; y++) {
+      const cy = (y + 0.5) * cellH;
+      for (let x = 0; x < NATIVE_W; x++) {
+        const cx = (x + 0.5) * cellW;
+
+        const grad = mctx.createRadialGradient(cx, cy, Math.max(0.1, r - edge), cx, cy, r);
+        grad.addColorStop(0, "rgba(255,255,255,1)");
+        grad.addColorStop(1, "rgba(255,255,255,0)");
+
+        mctx.fillStyle = grad;
+        mctx.beginPath();
+        mctx.arc(cx, cy, r, 0, Math.PI * 2);
+        mctx.fill();
+      }
+    }
+  }
+
+  // ---------- Scene Queue ----------
+  function enqueue(scene) {
+    q.push(scene);
+    if (!active) nextScene();
+    start();
+  }
+
+  function nextScene() {
+    active = q.shift() || null;
+    if (!active) {
+      // fall back to idle
+      active = { type: "idle", top: idleText, bottom: "", start: performance.now() };
+      idleOffset = 0;
+    } else {
+      active.start = performance.now();
+    }
+  }
+
+  function setIdle(text) {
+    idleText = (text || "SHATEKI QUEST").toUpperCase();
+    if (!active || active.type === "idle") {
+      active = { type: "idle", top: idleText, bottom: "", start: performance.now() };
+      idleOffset = 0;
+    }
+    start();
+  }
+
+  function stop() {
+    q.length = 0;
+    active = null;
+    isRunning = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = 0;
+  }
+
+  // ---------- Rendering ----------
+  let lastStepAt = 0;
+
+  function render(now) {
+    rafId = requestAnimationFrame(render);
+    if (!active) nextScene();
+
+    // 1) update internal “DMD step” cadence
+    if (!lastStepAt) lastStepAt = now;
+    const stepDue = (now - lastStepAt) >= DEFAULTS.stepMs;
+    if (stepDue) lastStepAt = now;
+
+    // 2) draw native buffer (128×32)
+    if (stepDue) drawNative(now);
+
+    // 3) upscale native → scaled (crisp)
+    sctx.clearRect(0, 0, outW, outH);
+    sctx.imageSmoothingEnabled = false;
+    sctx.drawImage(native, 0, 0, outW, outH);
+
+    // 4) clear output
+    ctx.clearRect(0, 0, outW, outH);
+
+    // 5) subtle persistence (previous frame)
+    ctx.globalAlpha = 0.25;
+    ctx.drawImage(prevScaled, 0, 0);
+    ctx.globalAlpha = 1;
+
+    // 6) glow pass (behind dots)
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = DEFAULTS.glowAlpha;
+    for (let i = 0; i < DEFAULTS.glowPasses; i++) {
+      ctx.drawImage(scaled, i ? 1 : 0, i ? 1 : 0);
+      ctx.drawImage(scaled, i ? -1 : 0, i ? 0 : -1);
+    }
+    ctx.restore();
+
+    // 7) apply round-dot mask
+    // mask (white circles) + source-in with scaled pixels = round dots
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.drawImage(mask, 0, 0);
+    ctx.globalCompositeOperation = "source-in";
+    ctx.drawImage(scaled, 0, 0);
+    ctx.restore();
+
+    // 8) glass overlay (scan + sheen)
+    drawGlassOverlay();
+
+    // 9) snapshot to prevScaled for persistence
+    pctx.clearRect(0, 0, outW, outH);
+    pctx.drawImage(canvas, 0, 0);
+
+    // 10) scene end / transition
+    if (active && active.type !== "idle") {
+      const age = now - active.start;
+      const dur = active.ms || DEFAULTS.holdMs;
+      if (age >= dur) nextScene();
+    }
+  }
+
+  function drawNative(now) {
+    nctx.clearRect(0, 0, NATIVE_W, NATIVE_H);
+
+    // “on” pixel color (native buffer: single channel via alpha)
+    nctx.fillStyle = "rgba(255, 170, 40, 1)";
+
+    const pad = DEFAULTS.paddingPx;
+
+    const top = (active && active.top) ? String(active.top).toUpperCase() : "";
+    const bot = (active && active.bottom) ? String(active.bottom).toUpperCase() : "";
+
+    if (!active || active.type === "idle") {
+      // simple leftward scroll for top line
+      const scale = 2;
+      const textW = measureTextNative(top || idleText, scale);
+      const speed = DEFAULTS.idleSpeedPxPerSec / 30; // per DMD step
+      idleOffset += speed;
+      const xStart = NATIVE_W - (idleOffset % (textW + 16));
+      const y = 4;
+
+      // draw repeated for seamless loop
+      drawTextNative(top || idleText, Math.floor(xStart), y, scale);
+      drawTextNative(top || idleText, Math.floor(xStart + textW + 16), y, scale);
+      return;
+    }
+
+    if (active.type === "flash") {
+      const age = now - active.start;
+      const on = (Math.floor(age / 100) % 2) === 0;
+      if (!on) return;
+    }
+
+    // layout: 2 lines if bottom present
+    if (bot) {
+      const scaleTop = 2;
+      const scaleBot = 2;
+      const tw = measureTextNative(top, scaleTop);
+      const bw = measureTextNative(bot, scaleBot);
+      const x1 = Math.max(pad, Math.floor((NATIVE_W - tw) / 2));
+      const x2 = Math.max(pad, Math.floor((NATIVE_W - bw) / 2));
+      drawTextNative(top, x1, 2, scaleTop);
+      drawTextNative(bot, x2, 18, scaleBot);
+    } else {
+      const scale = 2;
+      const tw = measureTextNative(top, scale);
+      const x = Math.max(pad, Math.floor((NATIVE_W - tw) / 2));
+      drawTextNative(top, x, 10, scale);
+    }
+  }
+
+  function drawGlassOverlay() {
+    // Very subtle scanlines
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 0.08;
+
+    const lineH = Math.max(2, Math.floor(2 * DPR));
+    for (let y = 0; y < outH; y += lineH * 2) {
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      ctx.fillRect(0, y, outW, lineH);
+    }
+
+    // Sheen band
+    const g = ctx.createLinearGradient(0, 0, 0, outH);
+    g.addColorStop(0, "rgba(255,255,255,0.08)");
+    g.addColorStop(0.25, "rgba(255,255,255,0.02)");
+    g.addColorStop(0.6, "rgba(0,0,0,0.08)");
+    g.addColorStop(1, "rgba(0,0,0,0.18)");
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, outW, outH);
+
+    ctx.restore();
+  }
+
+  // ---------- API ----------
+  function show(top, bottom, opts) {
+    const o = opts || {};
+    enqueue({
+      type: o.type || "hold",
+      top: (top ?? "").toString(),
+      bottom: (bottom ?? "").toString(),
+      ms: +o.ms || (o.type === "flash" ? DEFAULTS.flashMs : DEFAULTS.holdMs)
+    });
+  }
+
+  function start() {
+    if (isRunning) return;
+    isRunning = true;
+    resize();
+    rafId = requestAnimationFrame(render);
+  }
+
+  // ---------- Init ----------
+  let resizeTO = 0;
+  window.addEventListener("resize", () => {
+    window.clearTimeout(resizeTO);
+    resizeTO = window.setTimeout(() => resize(), 60);
+  });
+
+  // expose
+  window.sqDmdShow = show;
+  window.sqDmdSetIdle = setIdle;
+  window.sqDmdStop = stop;
+
+  // boot
+  setIdle("SHATEKI QUEST");
+  start();
+
+})();
+</script>
+<!-- >>> PATCH:SQ_DMD_TOPBAR_JS_V1 END -->
 
 </body>
 </html
