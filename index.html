@@ -31,33 +31,6 @@
   }catch(e){}
   try{ document.addEventListener('visibilitychange', function(){ if(!document.hidden) __sqSetVh(); }, { passive:true }); }catch(e){}
 })();
-
-// >>> PATCH:SCRUB_STRAY_BODY_TEXT START
-// If any raw text/markup leaks into <body> (e.g., after a bad merge or a Safari parse quirk),
-// it can appear as a giant code block *below* the UI and force document scrolling.
-// We aggressively remove anything after the main .wrap container that isn't script/style.
-(function scrubStrayBodyText(){
-  function run(){
-    try{
-      const wrap = document.querySelector('.wrap');
-      if (!wrap) return;
-      let n = wrap.nextSibling;
-      while (n){
-        const next = n.nextSibling;
-        if (n.nodeType === Node.TEXT_NODE) {
-          if ((n.textContent||'').trim()) { try{ n.remove(); }catch(_){ n.textContent=''; } }
-        } else if (n.nodeType === Node.ELEMENT_NODE) {
-          const tag = (n.tagName||'').toUpperCase();
-          if (tag !== 'SCRIPT' && tag !== 'STYLE') { try{ n.remove(); }catch(_){ n.style.display='none'; } }
-        }
-        n = next;
-      }
-    } catch(_){ }
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, { once:true });
-  else run();
-})();
-// >>> PATCH:SCRUB_STRAY_BODY_TEXT END
 </script>
 <!-- <<< PATCH:SQ_VIEWPORT_VH_FIX END -->
 <title>Shateki Quest Scorer</title>
@@ -214,17 +187,10 @@ TOC (CTRL+F)
     -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
   }
 
-  /* >>> PATCH:UI_LEAK_AND_IPHONE_FIT START */
-  /* Keep the *page* from scrolling (prevents any accidental text spill from becoming visible).
-     Any intentional scrolling should happen inside dedicated panels, not the document body. */
-  body{ overflow:hidden; overscroll-behavior:none; }
-  .wrap{ height:100dvh; overflow:hidden; }
-
-  /* iPhone portrait: reduce reserved bottom-pad height so the throw controls fit without scrolling. */
-  @media (max-width: 430px) and (max-height: 900px){
-    :root{ --pad-h:132px; }
+  /* Scroll guard */
+  @media (max-height: 820px), (max-width: 420px){
+    body{ overflow-y:auto; }
   }
-  /* >>> PATCH:UI_LEAK_AND_IPHONE_FIT END */
 
   /* Start/Back buttons under the player box (scope to #players only) */
 #players #startMatchRow,
@@ -24506,16 +24472,10 @@ window.openPlayerDTBDialog = window.openPlayerDTBDialog || (function(playerName)
 
 // === Player Hub — Latest Matches / High Scores / Progression / Target % / D T B % / H2H ===
 window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
-  // Backwards compatible: allow either a plain name string OR {id,name}.
-  const isObj = playerName && typeof playerName === 'object';
-  const name = String(isObj ? (playerName.name || '') : (playerName || '')).trim();
-  const bucketKey = String(isObj ? (playerName.id ?? playerName.bucket_key ?? '') : (window.__sqStatsActivePlayer?.bucket_key ?? '')).trim();
-  try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('home', name); }catch(_){ }
+  try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('home', playerName); }catch(_){ }
   try{ console.debug('[Popup]', window.__sqStatsDebugName || 'New Game Screen Stats'); }catch(_){ }
+  const name = String(playerName || '').trim();
   if (!name){ try{ toast('Pick a player'); }catch(_){} return; }
-
-  // Persist selection for downstream dialogs (Round High Scores, PB/WR etc.)
-  try{ window.__sqStatsActivePlayer = { name, bucket_key: bucketKey || window.__sqStatsActivePlayer?.bucket_key || '' }; }catch(_){ }
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop';
@@ -24594,15 +24554,10 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
       if (typeof window.openPlayerLatestMatchesDialog === 'function') return window.openPlayerLatestMatchesDialog(name, 'official');
       if (typeof toast==='function') toast('Latest Matches not available');
     }),
-    mkRow('Game High Scores', 'Full game history', svgTrophy, () => {
+    mkRow('High Scores', 'Full Game History', svgTrophy, () => {
       try{ overlay && overlay.remove(); }catch(e){}
       if (typeof window.openPlayerHighScoresDialog === 'function') return window.openPlayerHighScoresDialog(name);
       if (typeof toast==='function') toast('High Scores not available');
-    }),
-    mkRow('Round High Scores', 'Best single-round scores (PB + Rank)', svgTrophy, () => {
-      try{ overlay && overlay.remove(); }catch(e){}
-      if (typeof window.openPlayerRoundHighScoresDialog === 'function') return window.openPlayerRoundHighScoresDialog(name, bucketKey);
-      if (typeof toast==='function') toast('Round High Scores not available');
     }),
     mkRow('Progression', 'Players scores mapped over time', svgTrend, () => {
       try{ overlay && overlay.remove(); }catch(e){}
@@ -25467,165 +25422,6 @@ window.openPlayerHighScoresDialog = async function openPlayerHighScoresDialog(pl
   modal.tabIndex=0; modal.focus();
 };
 
-
-
-
-// >>> PATCH:round-high-scores-modal START
-// ==== (2b) Round High Scores — per-player best round (PB) + ranks =============
-window.openPlayerRoundHighScoresDialog = async function openPlayerRoundHighScoresDialog(playerName, bucketKey){
-  const name = String(playerName||'').trim();
-  if (!name) return;
-
-  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-  const modal   = document.createElement('div'); modal.className  ='modal';
-  modal.style.maxWidth='980px'; modal.style.width='94vw';
-  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
-
-  const header  = __sqStatsHeader(`Round High Scores — ${name}`, 'Best round totals (PB + WR context)');
-  const body    = document.createElement('div'); body.className='modal-body';
-  body.style.paddingTop='8px';
-  const footer  = document.createElement('div'); footer.className='modal-footer';
-  footer.style.justifyContent='flex-start';
-  footer.style.gap='10px';
-
-  const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
-  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
-  backBtn.onclick=()=>{ overlay.remove(); __sqGoBackToStatsMain(); };
-  closeBtn.onclick=()=>overlay.remove();
-  footer.append(backBtn, closeBtn);
-
-  // bucket_key is the Saved Players id (canonical). Accept it if passed.
-  let bk = (bucketKey != null && String(bucketKey).trim() !== '') ? String(bucketKey).trim() : null;
-  try{
-    // If the stats hub stored a resolved bucket_key, trust it.
-    if (window.__sqStatsActivePlayer && String(window.__sqStatsActivePlayer.name||'').trim().toLowerCase() === name.toLowerCase()) {
-      const v = (window.__sqStatsActivePlayer.bucket_key ?? window.__sqStatsActivePlayer.bucketKey ?? window.__sqStatsActivePlayer.bucket ?? window.__sqStatsActivePlayer.bk);
-      if (v != null && String(v).trim() !== '') bk = String(v).trim();
-    }
-
-    // Reuse existing saved-player map if present
-    const lc = name.toLowerCase();
-    if (window.__v2PBWRNameToBucket && typeof window.__v2PBWRNameToBucket.get==='function') bk = window.__v2PBWRNameToBucket.get(lc) || null;
-    if (!bk && typeof __sqEnsureV2PBWR==='function') {
-      await __sqEnsureV2PBWR();
-      if (window.__v2PBWRNameToBucket && typeof window.__v2PBWRNameToBucket.get==='function') bk = window.__v2PBWRNameToBucket.get(lc) || null;
-    }
-    if (!bk && typeof cloudListPlayers==='function'){
-      const saved = await cloudListPlayers();
-      const hit = (saved||[]).find(p => String(p?.name||'').trim().toLowerCase()===lc);
-      // cloudListPlayers returns {id,name}. Use id as bucket_key.
-      const v = (hit?.id ?? hit?.bucket_key ?? hit?.bucketKey ?? hit?.bucket ?? hit?.bk);
-      if (v != null && String(v).trim()!=='') bk = String(v).trim();
-    }
-  }catch(_){ }
-
-  // If bucket_key is still unknown, try a DB-side resolution by player_name.
-  // This is safe if names are unique; if not, we show a deterministic prompt.
-  if (!bk){
-    try{
-      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) throw new Error('cloud not ready');
-      const { data, error } = await sb
-        .from('v_player_round_high_scores')
-        .select('bucket_key')
-        .eq('player_name', name)
-        .limit(25);
-      if (!error && data && data.length){
-        const uniq = Array.from(new Set(data.map(r=>String(r.bucket_key)).filter(Boolean)));
-        if (uniq.length === 1) bk = uniq[0];
-        else if (uniq.length > 1) {
-          body.innerHTML = '<div class="muted" style="padding:18px; opacity:.75;">Multiple players share this name in history. Open the player from Saved Players (so we get a bucket_key), then retry.</div>';
-          modal.append(header, body, footer);
-          overlay.appendChild(modal);
-          document.body.appendChild(overlay);
-          overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove(); });
-          overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove(); });
-          modal.tabIndex=0; modal.focus();
-          return;
-        }
-      }
-    }catch(_){ }
-  }
-
-  if (!bk){
-    body.innerHTML = '<div class="muted" style="padding:18px; opacity:.75;">Pick this player from Saved Players first (so we capture its id), then retry.</div>';
-    modal.append(header, body, footer);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-    overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove(); });
-    overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove(); });
-    modal.tabIndex=0; modal.focus();
-    return;
-  }
-
-  // Fetch rows from DB-derived view
-  let rows = [];
-  try{
-    if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) throw new Error('cloud not ready');
-    const { data, error } = await sb
-      .from('v_player_round_high_scores')
-      .select('round_key, round_label, hits, round_points, my_rank, my_rank_total, game_rank, game_rank_total, sort_order')
-      .eq('bucket_key', bk)
-      .order('sort_order', { ascending:true });
-    if (error) throw error;
-    rows = (data||[]).filter(Boolean);
-  }catch(e){
-    console.warn('[RoundHighScores] view fetch failed', e?.message||e);
-    const msg = (e && (e.hint || e.message)) ? String(e.hint || e.message) : 'Unavailable';
-    body.innerHTML = `<div class="muted" style="padding:18px; opacity:.75;">Round High Scores unavailable. (${msg})</div>`;
-    modal.append(header, body, footer);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-    overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove(); });
-    overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') overlay.remove(); });
-    modal.tabIndex=0; modal.focus();
-    return;
-  }
-
-  if (!rows.length){
-    body.innerHTML = '<div class="muted" style="padding:18px; opacity:.75;">No round highs found for this player yet.</div>';
-  } else {
-    const table=document.createElement('table'); table.className='sq-table hs-table';
-    const thead=document.createElement('thead');
-    const trh=document.createElement('tr');
-    ['Round','Hits','Total','My Rank','Game Rank'].forEach((h,idx)=>{
-      const th=document.createElement('th'); th.textContent=h;
-      if (idx===0) th.style.paddingLeft='14px';
-      if (h==='Hits') th.style.textAlign='left';
-      else th.style.textAlign='center';
-      trh.appendChild(th);
-    });
-    thead.appendChild(trh); table.appendChild(thead);
-
-    const tbody=document.createElement('tbody');
-    for (const r of rows){
-      const tr=document.createElement('tr');
-      const tdR=document.createElement('td'); tdR.textContent=String(r.round_label || r.round_key || ''); tdR.style.paddingLeft='14px';
-      const tdH=document.createElement('td'); tdH.textContent=String(r.hits || ''); tdH.style.textAlign='left'; tdH.style.fontFamily='ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'; tdH.style.fontSize='12px';
-      const tdT=document.createElement('td'); tdT.textContent=String(r.round_points ?? 0); tdT.style.textAlign='center';
-      const tdM=document.createElement('td'); tdM.textContent=`${r.my_rank||'-'}/${r.my_rank_total||'-'}`; tdM.style.textAlign='center';
-      const tdG=document.createElement('td'); tdG.textContent=`${r.game_rank||'-'}/${r.game_rank_total||'-'}`; tdG.style.textAlign='center';
-      tr.append(tdR,tdH,tdT,tdM,tdG);
-      tbody.appendChild(tr);
-    }
-    table.appendChild(tbody);
-
-    const wrap=document.createElement('div');
-    wrap.style.maxHeight='56vh'; wrap.style.overflowY='auto';
-    __sqStyleStatsTableWrap(wrap);
-    wrap.appendChild(table);
-    body.appendChild(wrap);
-  }
-
-  modal.append(header, body, footer);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-
-  const close=()=>overlay.remove();
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) close(); });
-  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') close(); });
-  modal.tabIndex=0; modal.focus();
-};
-// <<< PATCH:round-high-scores-modal END
 
 // ==== (3) Progression — per-game bar chart + avg overlay ==================
 window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(playerName){
