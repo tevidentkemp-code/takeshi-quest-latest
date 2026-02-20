@@ -7,6 +7,48 @@
   /* Critical: ensure boot splash covers the white flash before main CSS applies */
   #bootSplash,#gameLoadOverlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center, rgba(26,30,56,.92) 0%, rgba(6,8,18,.98) 55%, rgba(0,0,0,1) 100%);z-index:9999;}
   #bootSplash[aria-hidden="true"],#gameLoadOverlay[aria-hidden="true"]{display:none !important;}
+
+
+/* >>> PATCH:portrait-fit-v1 START */
+@media (max-width: 480px) and (orientation: portrait){
+  :root{
+    /* Cell 1 (DM) shorter so the shot pad fits without scrolling */
+    --sqDmdH: 74px;
+  }
+  /* Cell 3 INFO: tighten pill/row heights further (requested: -25% again) */
+  .livev2panel .v2AvgWrap{
+    padding: 4px 0;
+    border-radius: 16px;
+  }
+  /* Label pill (POS / 3R AVG / MTC AVG): hard-center text vertically */
+  .livev2panel .v2AvgLabel{
+  border-radius: 12px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  font-weight:800;
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  opacity: .85;
+  min-height: 26px;
+  padding: 0;
+  line-height: 1;
+
+  /* Fit 5-row Info table (POS/3R/MTC/P-RANK/G-RANK) */
+  .livev2panel .v2InfoCell .v2AvgCell{
+    min-height: 22px;
+    font-size: 12px;
+  }
+  .livev2panel .v2AvgLabel{
+    min-height: 22px;
+  }
+
+}
+/* <<< PATCH:portrait-fit-v1 END */
 </style>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
@@ -828,7 +870,7 @@ body[data-page="game"] .sq-dmd{
 body[data-page="game"] #sqDmdCanvas{
   display:block;
   width: 100%;
-  height: 112px;      /* depth: doubled */
+  height: var(--sqDmdH,74px);      /* depth: doubled */
   image-rendering: pixelated;
 }
 body[data-page="game"] .sq-dmd-overlay{
@@ -1256,7 +1298,7 @@ body[data-page="game"] #gameScrollGate{
   max-height:140px;
   overflow:auto;
 }
-.pad .btn{min-width:52px;min-height:38px}
+.pad .btn{min-width:52px;min-height:46px}
   .pad-spacer{flex:1 1 auto}
   .pad .btn.main-throw{
     min-width:104px;
@@ -2725,7 +2767,7 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 }
 
 /* ===== @CSS:THROW-ORDER | modal ===== */
-.modal-throworder{ width: min(680px, 92vw); padding: 0; overflow:hidden; }
+.modal-throworder{ width: min(680px, 92vw); padding: 0; overflow:hidden; display:flex; flex-direction:column; max-height: min(88dvh, 760px); }
 .to-top{
   padding: 18px 18px 10px;
   text-align:center;
@@ -2743,7 +2785,7 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   color: rgba(230,232,255,.55);
   font-weight: 700;
 }
-.to-body{ padding: 8px 14px 10px; }
+.to-body{ padding: 8px 14px 10px; flex: 1 1 auto; overflow:auto; -webkit-overflow-scrolling: touch; }
 .to-list{ display:flex; flex-direction:column; gap: 10px; }
 .to-row{
   display:flex;
@@ -2835,6 +2877,29 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   font-size: 1rem;
 }
 
+
+
+/* >>> PATCH:THROW_ORDER_FIT_IPHONE_PORTRAIT START */
+@media (max-width: 430px){
+  .modal-throworder{ max-height: 86dvh; }
+  .to-top{ padding: 14px 14px 8px; }
+  .to-title{ font-size: 28px; }
+  .to-body{ padding: 6px 10px 8px; }
+  .to-list{ gap: 8px; }
+  .to-row{ padding: 8px 10px; border-radius: 14px; gap: 10px; }
+  .to-rank{ width: 30px; }
+  .to-badge{ width: 38px; height: 38px; font-size: 14px; }
+  .to-small{ margin-top: 3px; font-size: 10px; }
+  .to-arrows{ gap: 6px; padding-left: 6px; }
+  .to-arrow-btn{ width: 34px; height: 30px; border-radius: 10px; }
+  .to-actions{ padding: 0 14px 14px; gap: 10px; }
+  .to-start{ height: 50px; border-radius: 14px; }
+  .to-back{ height: 46px; border-radius: 14px; }
+}
+@media (max-height: 780px){
+  .modal-throworder{ max-height: 84dvh; }
+}
+/* <<< PATCH:THROW_ORDER_FIT_IPHONE_PORTRAIT END */
 /* >>> PATCH:GAME_COMPLETE_MODAL_V1 START */
 /* ===== @CSS:GAME-COMPLETE | modal ===== */
 .modal-gamecomplete{ width: min(680px, 92vw); padding: 0; overflow:hidden; }
@@ -3733,7 +3798,7 @@ display:grid;
 /* <<< PATCH:livev2-scoringcell-css END */
 
 .livev2panel .v2InfoCell{
-  margin-top: 22px;
+  margin-top: 34px;
   border-radius: 22px;
   background: rgba(0,0,0,.08);
   border: 1px solid rgba(255,255,255,.06);
@@ -3773,7 +3838,10 @@ display:grid;
   gap: 14px var(--sqV2Gap, 10px);
   margin-bottom: 12px;
   align-items: center;
+  box-sizing: border-box;
+  padding-right: 6px; /* PATCH:ALIGN_TOTALS_WITH_ROWS_PADDING */
 }
+
 .livev2panel .v2DotsCol{
   grid-column: 1 / 2;
   display:flex;
@@ -3817,9 +3885,13 @@ display:grid;
   text-align:center;
 
   /* Keep the big total visually centered within the pill (initials top, delta bottom). */
-  display:grid;
-  grid-template-rows: auto 1fr auto;
-  align-items:center;
+
+  /* Center name, total, and delta as a single stack (requested). */
+  display:flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
 }
 .livev2panel .v2ScoreBox.active{
   border-color: rgba(255,132,0,.78);
@@ -3842,9 +3914,10 @@ display:grid;
   text-shadow: 0 0 14px rgba(120,255,120,.22);
 }
 .livev2panel .v2Sub{
-  margin-top: 2px;
+  margin-top: 0px;
   font-size: var(--sqV2SubF, 12px);
   opacity: .55;
+  line-height: 1.1;
 }
 .livev2panel .v2Sub.leader{
   opacity: 1;
@@ -3879,6 +3952,37 @@ display:grid;
   gap: 10px var(--sqV2Gap, 10px);
   align-items: stretch;
 }
+
+/* >>> PATCH:INFO_AVG_ALIGN_TO_ROUNDS START *
+   Align INFO + PB grids to the same column geometry as the round pills above.
+   Keep the wrapper transparent (no extra middle background cell) but restore the
+   same horizontal gap so columns line up visually.
+*/
+.livev2panel .v2InfoCell .v2Avg{
+  column-gap: var(--sqV2Gap, 10px);
+}
+.livev2panel .v2HighCell .v2High{
+  column-gap: var(--sqV2Gap, 10px);
+}
+/* <<< PATCH:INFO_AVG_ALIGN_TO_ROUNDS END */
+
+/* >>> PATCH:INFO_AVG_WRAP_TRANSPARENT START */
+/* Cell 3 (INFO): remove the inner 'middle cell' styling so the grid sits directly
+   on the Info background card (no extra nested card behind the pills). */
+.livev2panel .v2InfoCell .v2AvgWrap{
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+/* Keep a small top/bottom breathing space via the grid, not a wrapper card */
+.livev2panel .v2InfoCell .v2Avg{
+  padding: 2px 0;
+}
+/* <<< PATCH:INFO_AVG_WRAP_TRANSPARENT END */
+
+
 .livev2panel .v2AvgLabel{
   border-radius: 12px;
   background: rgba(255,255,255,.06);
@@ -3888,15 +3992,23 @@ display:grid;
   align-items:center;
   justify-content:center;
   font-weight:800;
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: .06em;
   text-transform: uppercase;
   opacity: .85;
-  min-height: 44px;
-  line-height: 1.05;
+  min-height: 26px;
+  padding: 0;
+  line-height: 1;
+}
+
+/* One-line label variant (POS): remove any residual baseline/extra-line influence */
+.livev2panel .v2AvgLabel.v2AvgLabel--one{
+  justify-content:center;
+  padding: 0;
+  line-height: 1;
 }
 .livev2panel .v2AvgLabel .sub{
-  margin-top: 2px;
+  margin-top: 0px;
   font-size: 10px;
   opacity: .70;
   letter-spacing: .08em;
@@ -3907,18 +4019,52 @@ display:grid;
   border: 1px solid rgba(255,255,255,.10);
   display:flex; align-items:center; justify-content:center;
   font-weight:900;
-  font-size: 16px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
-  min-height: 44px;
+  min-height: 26px;
+  padding: 0 6px;
+  line-height: 1;
 }
 
+/* INFO pills: not bold */
+.livev2panel .v2InfoCell .v2AvgCell{
+  font-weight: 600;
+}
+
+
+
+/* >>> PATCH:INFO_FONT_REDUCE_V1 START */
+.livev2panel .v2InfoCell .v2AvgLabel{
+  font-size: 9px;
+}
+.livev2panel .v2InfoCell .v2AvgLabel .sub{
+  font-size: 9px;
+}
+.livev2panel .v2InfoCell .v2AvgCell{
+  font-size: 12px;
+}
+/* <<< PATCH:INFO_FONT_REDUCE_V1 END */
 /* Rounds viewport: fixed 3-row height (JS sets --sqV2RowsWinH) + horizontal scroll for 3–6 players */
 .livev2panel .v2RowsWrap{
   overflow-y:auto;
   max-height: var(--sqV2RowsWinH, 220px);
   scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
+
+  position:relative;
 }
+/* >>> PATCH:V2_ROWS_TOP_FADE START */
+.v2RowsWrap::before{
+  content:'';
+  position:absolute;
+  left:0; right:0; top:0;
+  height:18px;
+  pointer-events:none;
+  z-index:5;
+  background:linear-gradient(to bottom, rgba(7,9,20,1), rgba(7,9,20,0));
+}
+/* <<< PATCH:V2_ROWS_TOP_FADE END */
+
 .livev2panel .v2RowsScroller{
   overflow-x:hidden;
   scrollbar-width: thin;
@@ -3927,9 +4073,20 @@ display:grid;
 .livev2panel .v2Rows{
   display:grid;
   grid-template-columns: 34px repeat(var(--sqV2P, 2), minmax(0, 1fr));
-  gap: var(--sqV2RowGapY, 10px) var(--sqV2Gap, 10px);
+  gap: var(--sqV2RowGapY, 6px) var(--sqV2Gap, 10px);
   align-items: stretch;
-  padding-bottom: 2px; /* keeps scrollbar from kissing the border */
+  box-sizing: border-box;
+
+  /* Ensure 3 rounds are fully visible (no top/bottom clipping) */
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-right: 6px; /* PATCH:RIGHT_EDGE_SAFE_INSET */
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  /* Live row + 2 compact rows + gaps + padding */
+  max-height: none;
+  /* Height is controlled by .v2RowsWrap via --sqV2RowsWinH */
 }
 .livev2panel .v2Badge{
   color: rgba(231,233,245,.92);
@@ -3954,10 +4111,47 @@ display:grid;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
   min-height: var(--sqV2CellH, 54px);
 }
+
+/* >>> PATCH:ROUND_ROW_SIZES START */
+.livev2panel .v2Badge.small,
+.livev2panel .v2Cell.small{
+  min-height: calc(var(--sqV2CellH, 54px) * 0.55);
+}
+.livev2panel .v2Cell.small{
+  font-size: calc(var(--sqV2CellF, 20px) * 0.85);
+
+  font-weight: 600;
+}
+.livev2panel .v2Badge.small{
+  font-size: 12px;
+}
+/* <<< PATCH:ROUND_ROW_SIZES END */
+
 .livev2panel .v2Cell.active{
   border-color: rgba(255,132,0,.75);
   box-shadow: 0 0 0 2px rgba(255,132,0,.22), inset 0 1px 0 rgba(255,255,255,.06);
 }
+
+/* >>> PATCH:LIVE_ROW_TOP_GAP START
+   Increase spacing above the live (active) round row so it matches the
+   breathing room below the live row within the rounds window. */
+.livev2panel .v2Badge.liveRow,
+.livev2panel .v2Cell.liveRow{ margin-top: 0px; }
+/* <<< PATCH:LIVE_ROW_TOP_GAP END */
+
+/* >>> PATCH:LIVE_ROW_DIVIDER_LINE START
+   Faint divider between previous row and live row.
+   Must sit ABOVE the live row pills and NOT extend over the round badge column. */
+.livev2panel .v2SepNo{ height:0; }
+.livev2panel .v2Sep{
+  grid-column: 2 / -1;
+  height: 0;
+  border-top: 1px solid rgba(200,200,200,.18);
+  margin: 6px 0;
+  pointer-events: none;
+}
+/* <<< PATCH:LIVE_ROW_DIVIDER_LINE END */
+
 
 .livev2panel .v2Cell .v2CellNum{ display:inline-block; }
 .livev2panel .v2Cell.hi .v2CellNum{
@@ -4038,6 +4232,13 @@ body.livev2-on[data-page="game"] .v2InfoPage{
   width: 33.3333%;
   flex: 0 0 33.3333%;
 }
+
+/* >>> PATCH:V2_PAGER_INSET_SAFEAREA START */
+body.livev2-on[data-page="game"] .v2InfoPage{
+  box-sizing: border-box;
+  padding: 6px 8px 10px 8px; /* reveal left + bottom border/glow */
+}
+/* <<< PATCH:V2_PAGER_INSET_SAFEAREA END */
 body.livev2-on[data-page="game"] .v2PagerDots{
   display:flex;
   justify-content:center;
@@ -4057,20 +4258,64 @@ body.livev2-on[data-page="game"] .v2PagerDot.on{
 }
 
 body.livev2-on[data-page="game"] .v2InfoDmdCell{
+  /* >>> PATCH:DMD_MATCH_INFO_PB_GEOMETRY_V2 START */
+  /* Remove the extra "card" around the digi view. Use the canvas itself as the card. */
   position: relative;
-  height: 116px; /* matches other info cells */
-  border-radius: 22px;
-  background: rgba(0,0,0,.18);
-  box-shadow: 0 0 0 1px rgba(255,255,255,.06) inset;
-  overflow: hidden;
+  box-sizing: border-box;
+  margin-top: 12px;
+  height: var(--sqV2InfoCardH, 116px);
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  overflow: visible;
+  /* <<< PATCH:DMD_MATCH_INFO_PB_GEOMETRY_V2 END */
 }
 body.livev2-on[data-page="game"] canvas#v2InfoDmd{
   width: 100%;
   height: 100%;
+  margin: 0;
   display: block;
+  border-radius: 22px;
+  background: rgba(0,0,0,.07);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.06), inset 0 1px 0 rgba(255,255,255,.05), inset 0 0 0 1px rgba(255,255,255,.06);
 }
 
+
 /* >>> PATCH:V30_INFO_RECORDS_PAGER END */
+
+/* >>> PATCH:PB_MENU_REMOVE_MIDDLE_CELL_LIVEV2 START */
+/* PB/Records swipe screen: remove the inner wrapper box so it matches Gameplay/Info */
+body.livev2-on[data-page="game"] .livev2panel .v2HighCell .v2HighWrap{
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+body.livev2-on[data-page="game"] .livev2panel .v2HighCell .v2High{
+  column-gap: var(--sqV2Gap, 10px) !important;
+  row-gap: 10px !important;
+}
+body.livev2-on[data-page="game"] .livev2panel .v2HighCell .v2HighLabel{
+  margin-right: 0 !important;
+}
+/* <<< PATCH:PB_MENU_REMOVE_MIDDLE_CELL_LIVEV2 END */
+
+
+/* >>> PATCH:INFO_MATCH_PB_GEOMETRY_LIVEV2 START */
+/* Make INFO card (POS/3R/MTC) sit exactly like PB card: same top offset + padding.
+   Base CSS had v2InfoCell margin-top:34px while PB is 12px. */
+body.livev2-on[data-page="game"] .livev2panel .v2InfoCell{
+  margin-top: 12px !important;
+  padding: 12px !important;
+}
+/* Keep INFO inner grid breathing identical to PB (no extra wrapper padding) */
+body.livev2-on[data-page="game"] .livev2panel .v2InfoCell .v2Avg{
+  padding: 0 !important;
+}
+/* <<< PATCH:INFO_MATCH_PB_GEOMETRY_LIVEV2 END */
 
 </style>
 <!-- ===== @SEC:CSS:HOME ===== -->
@@ -4911,6 +5156,19 @@ body[data-page="game"] #floatHead{
 
 </style>
 <!-- <<< PATCH:SQ_BOOT_SPLASH_V1 END -->
+
+<style>
+/* >>> PATCH:portrait-fit-v6-pad-safearea START */
+@media (max-width: 460px){
+  body[data-page="game"] #gameScrollGate{
+    padding-bottom: calc(var(--pad-h, 160px) + env(safe-area-inset-bottom) + 22px) !important;
+    box-sizing: border-box;
+  }
+  /* ensure Miss/Undo/Skip match S/D/T button height */
+  .pad .btn{ min-height:46px !important; }
+}
+/* >>> PATCH:portrait-fit-v6-pad-safearea END */
+</style>
 
 </head>
 <body data-page="details">
@@ -9804,7 +10062,6 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
       deciderUndo();
     });
     modal.querySelector('[data-act="skip"]')?.addEventListener('click', ()=>{
-      try{ window.sqDmdShow?.('SKIP','GO',{type:'wipe',ms:700,revealMs:220}); }catch(_){ }
       deciderSkip();
     });
     /* <<< PATCH:SQ_DMD_DECIDER_ACTION_HOOKS END */
@@ -13364,13 +13621,14 @@ function ensureLiveV2Panel(){
           <div class="v2Rows" id="v2Rows"></div>
         </div>
       </div>
-        </div>
+
+      <div class="v2NextRow" id="v2NextRow" aria-label="Next round"></div>
+
+    </div>
 
     <!-- >>> PATCH:livev2-scoringcell-html START -->
-    <div class="v2ScoringCell" aria-label="Scoring">
-      <div class="v2NextRow" id="v2NextRow" aria-label="Next round"></div>
-    </div>
-    <!-- <<< PATCH:livev2-scoringcell-html END -->
+    <!-- removed: v2ScoringCell; v2NextRow moved into v2GameCell -->
+<!-- <<< PATCH:livev2-scoringcell-html END -->
 
     <div class="v2InfoPager" aria-label="Info & Records">
       <div class="v2InfoViewport">
@@ -13648,6 +13906,7 @@ function __sqSetupLiveV2Sizing(panel){
     // Height + typography scale with pill width (keeps 5–6 players readable on iPhone portrait).
     const scoreH = Math.max(64, Math.min(98, Math.floor(pillW * 1.05)));
     const totalF = Math.max(18, Math.min(34, Math.floor(pillW * 0.54)));
+    const totalF2 = (pCount === 6) ? Math.min(totalF, 18) : totalF;
     const initF  = Math.max(12, Math.min(16, Math.floor(pillW * 0.26)));
     const subF   = Math.max(10, Math.min(12, Math.floor(pillW * 0.20)));
 
@@ -13655,7 +13914,7 @@ function __sqSetupLiveV2Sizing(panel){
     const cellF  = Math.max(16, Math.min(24, Math.floor(pillW * 0.40)));
 
     panel.style.setProperty('--sqV2ScoreH', scoreH + 'px');
-    panel.style.setProperty('--sqV2TotalF', totalF + 'px');
+    panel.style.setProperty('--sqV2TotalF', totalF2 + 'px');
     panel.style.setProperty('--sqV2InitF', initF + 'px');
     panel.style.setProperty('--sqV2SubF', subF + 'px');
     panel.style.setProperty('--sqV2CellH', cellH + 'px');
@@ -13785,19 +14044,38 @@ function __sqV2SetPagerPage(panel, page, animate){
   function ensureCanvas(){
     const c = document.getElementById('v2InfoDmd');
     if(!c) return null;
-    if(c.__sqReady) return c;
+
+    // Make the canvas follow the same geometry as the PB/INFO cards:
+    // use the rendered box size (not hard-coded pixels).
+    try{
+      if(c.style){
+        c.style.width = '100%';
+        c.style.height = '100%';
+        c.style.display = 'block';
+      }
+    }catch(_){}
+
+    const host = c.parentElement || c;
+    const r = (host && host.getBoundingClientRect) ? host.getBoundingClientRect() : null;
+
+    const cssW = Math.max(10, Math.round(r ? r.width : 0));
+    const cssH = Math.max(10, Math.round(r ? r.height : 0));
+
     const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
-    const cssW = 320, cssH = 116;
-    c.width = Math.round(cssW * dpr);
-    c.height = Math.round(cssH * dpr);
+    const wantW = Math.round(cssW * dpr);
+    const wantH = Math.round(cssH * dpr);
+
+    // Rebuild backing store if size changed (or first run).
+    if(!c.__sqReady || c.width !== wantW || c.height !== wantH){
+      c.width = wantW;
+      c.height = wantH;
+      c.__sqReady = true;
+    }
     c.__sqDpr = dpr;
     c.__sqCssW = cssW;
     c.__sqCssH = cssH;
-    c.__sqReady = true;
     return c;
-  }
-
-  function render(){
+  }function render(){
     const c = ensureCanvas();
     if(!c) return;
     const dpr = c.__sqDpr || 1;
@@ -13875,6 +14153,8 @@ function __sqEnsureV2NextRowFilled(panel){
   try{
     const host = panel ? panel.querySelector('#v2NextRow') : document.getElementById('v2NextRow');
     if(!host) return;
+    // If the next-row host is intentionally hidden, never re-populate it.
+    if(host.getAttribute('aria-hidden') === 'true' || host.style.display === 'none') return;
     const html = (host.innerHTML || '').trim();
     if(html) return;
     const pCount = (panel && panel.dataset && panel.dataset.pcount) ? parseInt(panel.dataset.pcount,10) : getLiveV2PlayerCount();
@@ -13897,14 +14177,21 @@ function __sqSetupLiveV2RowsWindow(panel){
     if(!badges || badges.length < 1) return;
     const r0 = badges[0].getBoundingClientRect();
     let wantH = 0;
-    if(badges.length >= 3){
+    // We want the viewport tall enough to show: 1x live row (full height) + 3x compact rows.
+    // Measure from the top of the first visible badge to the bottom of the 4th badge when available.
+    if(badges.length >= 4){
+      const r3 = badges[3].getBoundingClientRect();
+      wantH = Math.round(r3.bottom - r0.top);
+    }else if(badges.length >= 3){
       const r2 = badges[2].getBoundingClientRect();
       wantH = Math.round(r2.bottom - r0.top);
     }else{
       const rl = badges[badges.length-1].getBoundingClientRect();
       wantH = Math.round(rl.bottom - r0.top);
     }
-    wantH = Math.max(120, wantH);
+    // Add a small safety buffer so the top/bottom row edges never clip
+    // (padding + border-radius + subpixel rounding on iOS).
+    wantH = Math.max(120, wantH + 60);
     wrap.style.setProperty('--sqV2RowsWinH', wantH + 'px');
   }catch(_){ }
 }
@@ -14045,51 +14332,23 @@ function liveV2Render(){
     const out = [];
     const totalR = (typeof ROUNDS!=="undefined" && Array.isArray(ROUNDS) && ROUNDS.length) ? ROUNDS.length : Math.max(cr+1, 1);
 
-    // Window behavior (Gameplay Cell = 3 visible rows + Scoring Cell = 4th row):
-// - Early fill (start at round index 0 == R10):
-//   cr=0 -> show 10/11/12 in gameplay, 13 in scoring
-//   cr=1 -> same window, active moves to 11
-//   cr=2 -> same window, active moves to 12
-//   cr=3 -> shift window to 11/12/13 in gameplay, 14 in scoring (active still in gameplay)
-// - Pin phase:
-//   cr>=4 -> gameplay shows (cr-3..cr-1), scoring shows cr (active pinned in scoring)
-// - Special scoring rounds (D/T/B): keep gameplay locked to last 3 number rounds and render active scoring round into Scoring Cell.
-const catCr = __sqCatForRoundIdx(cr);
-const isSpecial = (catCr === 'D' || catCr === 'T' || catCr === 'B');
+    // Window behavior: render all rounds up to current (plus next), within a scrollable viewport.
+    // Users can scroll back to see completed rounds; on scoring input we auto-scroll back to the live round.
+    // Window end logic:
+    // - For early game (Rounds 10–12), keep a forward-looking 4-row window: 10,11,12,13.
+    // - From Round 13 onward, show a trailing 4-row window ending at the live round (no future row below live).
+    const renderEnd = Math.min(totalR - 1, (cr <= 2 ? 3 : cr));
+    for(let r = 0; r <= renderEnd; r++){
 
-// Find last "number" round index (the last round whose category is numeric, e.g. "20").
-let lastNumberIdx = -1;
-for(let rr=0; rr<totalR; rr++){
-  const cc = __sqCatForRoundIdx(rr);
-  if(cc && /^[0-9]+$/.test(String(cc))) lastNumberIdx = rr;
-}
+      const rowSmall = (r !== cr);
+      const rowClass = (r === cr) ? " liveRow" : (rowSmall ? " small" : "");
 
-let winStart, winEnd;
-let scoringIdx;
+      // Insert a faint divider line above the live row (not over the badge column)
+      if(r === cr && r > 0){
+        out.push('<div class="v2SepNo"></div>');
+        out.push('<div class="v2Sep"></div>');
+      }
 
-if(isSpecial && lastNumberIdx >= 0){
-  // Lock gameplay to last 3 numeric rounds; scoring shows the active special round.
-  winEnd = lastNumberIdx;
-  winStart = Math.max(0, winEnd - 2);
-  scoringIdx = cr;
-}else{
-  // Numeric rounds: fill down then pin.
-  if(cr <= 2){
-    winStart = 0;
-    winEnd   = Math.min(totalR-1, 2);
-    scoringIdx = Math.min(totalR-1, 3);
-  }else if(cr == 3){
-    winStart = 1;
-    winEnd   = Math.min(totalR-1, 3);
-    scoringIdx = Math.min(totalR-1, 4);
-  }else{
-    winStart = Math.max(0, cr - 3);
-    winEnd   = Math.min(totalR-1, winStart + 2);
-    scoringIdx = cr;
-  }
-}
-
-for(let r = winStart; r <= winEnd; r++){
       // Compute per-round max (for faint green highlight)
       let maxV = -Infinity;
       const vals = new Array(pCount);
@@ -14099,7 +14358,7 @@ for(let r = winStart; r <= winEnd; r++){
         if(vals[i] != null && vals[i] > maxV) maxV = vals[i];
       }
 
-      out.push(`<div class="v2Badge ${r === cr ? "active":""}">${escapeHtml(roundLabelForIndex(r))}</div>`);
+      out.push(`<div class="v2Badge${rowClass} ${r === cr ? "active":""}">${escapeHtml(roundLabelForIndex(r))}</div>`);
       for(let i=0; i<pCount; i++){
         const val = vals[i];
         const isActiveCell = (r === cr) && (i === turn);
@@ -14133,7 +14392,7 @@ if(__pbwr && rk){
 const isWR = (val != null) && (wrVal > 0) && (val === wrVal);
 const isPB = (!isWR) && (val != null) && (pbVal > 0) && (val === pbVal);
 
-out.push(`<div class="v2Cell ${(isActiveCell ? "active":"")} ${(isHi ? "hi":"")} ${(isPB ? "pb":"")} ${(isWR ? "wr":"")}">` +
+out.push(`<div class="v2Cell${rowClass} ${(isActiveCell ? "active":"")} ${(isHi ? "hi":"")} ${(isPB ? "pb":"")} ${(isWR ? "wr":"")}">` +
          `${val == null ? "–" : `<span class="v2CellNum">${escapeHtml(String(val))}</span>`}` +
          `</div>`);
       }
@@ -14141,8 +14400,18 @@ out.push(`<div class="v2Cell ${(isActiveCell ? "active":"")} ${(isHi ? "hi":"")}
     rowsHost.innerHTML = out.join("");
 
     // >>> PATCH:livev2-scoringcell-nextrow START
-    // Next-up row (4th row) rendered into Scoring Cell (below gameplay, above info).
+    // Live V2 should only show 3 score rows total (no extra "next" row).
+    // The old v2NextRow host is now forcibly hidden to prevent a 4th visible row (e.g. Round 13).
     const nextHost = document.getElementById("v2NextRow");
+    if(nextHost){
+      nextHost.innerHTML = "";
+      nextHost.style.display = "none";
+      nextHost.setAttribute("aria-hidden", "true");
+    }
+    // <<< PATCH:livev2-scoringcell-nextrow END
+
+    /*
+    (Legacy next-row renderer retained below for reference, but disabled.)
     if(nextHost){
       const rNext = scoringIdx;
       if(rNext >= 0 && rNext <= (totalR - 1)){
@@ -14204,8 +14473,8 @@ const out2 = [];
         for(let i=0;i<safeP;i++) out2.push('<div class="v2Cell">–</div>');
         nextHost.innerHTML = out2.join('');
       }
-    // <<< PATCH:livev2-scoringcell-nextrow END
     }
+    */
   }
 // >>> PATCH:LIVEV2_POST_RENDER_BINDINGS START
     // Bind swipe + compute viewport heights AFTER DOM paint (Mobile Safari can miss initial bindings if bound too early).
@@ -14249,19 +14518,48 @@ const out2 = [];
   }
   // <<< PATCH:LIVEV2_ROWS_GUARD END
 
-  // Auto-scroll to newest row only when round advances
-  if(typeof window.__liveV2LastCr === "undefined") window.__liveV2LastCr = -1;
+  
+  // Scroll behavior:
+  // - Users may scroll up to review completed rounds.
+  // - Any scoring input (dart/total changes) snaps back to the live round at the bottom.
+  // - Round advance also snaps to bottom.
   const wrap = panel.querySelector(".v2RowsWrap");
-  if(wrap && cr !== window.__liveV2LastCr){
-    window.__liveV2LastCr = cr;
-    wrap.scrollTop = wrap.scrollHeight;
+  if(wrap){
+    // Bind once: track whether the user has scrolled away from bottom.
+    if(!wrap.__sqBound){
+      wrap.__sqBound = true;
+      wrap.addEventListener("scroll", ()=>{
+        const slack = 8;
+        const atBottom = (wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight) < slack;
+        window.__liveV2UserScrolled = !atBottom;
+      }, {passive:true});
+    }
+
+    // Build a signature for "scoring input changed" within the same round.
+    const sig = String(cr) + "|" + String(turn) + "|" + String(dartN) + "|" + __v2Totals.join(",");
+    const hadSig = (typeof window.__liveV2LastSig !== "undefined");
+    const changed = hadSig && (sig !== window.__liveV2LastSig);
+    window.__liveV2LastSig = sig;
+
+    if(typeof window.__liveV2LastCr === "undefined") window.__liveV2LastCr = -1;
+
+    const roundChanged = (cr !== window.__liveV2LastCr);
+    if(roundChanged){
+      window.__liveV2LastCr = cr;
+      wrap.scrollTop = wrap.scrollHeight;
+      window.__liveV2UserScrolled = false;
+    }else if(changed){
+      // Any dart/score update snaps back to bottom (even if user had scrolled up).
+      wrap.scrollTop = wrap.scrollHeight;
+      window.__liveV2UserScrolled = false;
+    }
   }
 
   // Averages box (under 3-round viewport)
   const avgHost = document.getElementById("v2Avg");
   if(avgHost){
 
-    // A "completed round" for a player is:
+// A "completed round" for a player is:
     // - any round < currentRound, OR
     // - the current round where they have thrown all 3 darts
     function __v2CompletedRoundsForPlayer(pIdx){
@@ -14276,7 +14574,30 @@ const out2 = [];
 
     const rows = [];
 
-    // Row 1: rolling 3-round average (last 3 completed rounds for that player)
+    
+    // Helper: ordinal labels
+    function __sqOrdinal(n){
+      const s = ["th","st","nd","rd"], v = n % 100;
+      return n + (s[(v-20)%10] || s[v] || s[0]);
+    }
+
+    // Helper: format rank with ordinal
+    function __sqFmtOrd(n){ return n ? escapeHtml(__sqOrdinal(n)) : "–"; }
+
+    // Row 1: POS (rank within current game by total score, deterministic tie-breaker by player index)
+    rows.push(`<div class="v2AvgLabel v2AvgLabel--one"><div>POS</div></div>`);
+    // Build ranks
+    const __posPairs = [];
+    for(let i=0;i<pCount;i++) __posPairs.push({i, t: Number.isFinite(+(__v2Totals?.[i])) ? +__v2Totals[i] : -Infinity});
+    __posPairs.sort((a,b)=> (b.t - a.t) || (a.i - b.i));
+    const __rankByIdx = {};
+    for(let k=0;k<__posPairs.length;k++) __rankByIdx[__posPairs[k].i] = k + 1;
+    for(let i=0;i<pCount;i++){
+      const rk = __rankByIdx[i] || 0;
+      rows.push(`<div class="v2AvgCell">${__sqFmtOrd(rk)}</div>`);
+    }
+
+    // Row 2: rolling 3-round average (last 3 completed rounds for that player)
     rows.push(`<div class="v2AvgLabel"><div>3R</div><div class="sub">AVG</div></div>`);
     for(let i=0; i<pCount; i++){
       const done = __v2CompletedRoundsForPlayer(i);
@@ -14289,7 +14610,7 @@ const out2 = [];
       rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(n ? (sum / n) : NaN))}</div>`);
     }
 
-    // Row 2: match average (all completed rounds so far for that player)
+    // Row 3: Match average (all completed rounds so far for that player)
     rows.push(`<div class="v2AvgLabel"><div>MTC</div><div class="sub">AVG</div></div>`);
     for(let i=0; i<pCount; i++){
       const done = __v2CompletedRoundsForPlayer(i);
@@ -14301,13 +14622,83 @@ const out2 = [];
       rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(n ? (sum / n) : NaN))}</div>`);
     }
 
-    // Row 3: blank (reserved)
-    rows.push(`<div class="v2AvgLabel"><div>&nbsp;</div><div class="sub">&nbsp;</div></div>`);
+    // Row 4: P RANK (current total vs THIS player's historical game totals, descending, dense_rank)
+    rows.push(`<div class="v2AvgLabel"><div>P</div><div class="sub">RANK</div></div>`);
     for(let i=0; i<pCount; i++){
-      rows.push(`<div class="v2AvgCell">&nbsp;</div>`);
+      rows.push(`<div class="v2AvgCell"><span class="v2RankVal" data-rank="p" data-idx="${i}">–</span></div>`);
+    }
+
+    // Row 5: G RANK (current total vs ALL players historical game totals, descending, dense_rank)
+    rows.push(`<div class="v2AvgLabel"><div>G</div><div class="sub">RANK</div></div>`);
+    for(let i=0; i<pCount; i++){
+      rows.push(`<div class="v2AvgCell"><span class="v2RankVal" data-rank="g" data-idx="${i}">–</span></div>`);
     }
 
     avgHost.innerHTML = rows.join("");
+
+    // Async: fill P RANK / G RANK from TABLE_PLAYER_GAMES (db-derived; dense_rank by score desc)
+    (function __sqUpdateRanks(){
+      try{
+        const gameId = state && state.gameId ? state.gameId : null;
+        const players = (state && Array.isArray(state.players)) ? state.players : [];
+        if (!players.length) return;
+        const totals = Array.isArray(__v2Totals) ? __v2Totals.slice(0) : [];
+        if (!window.__sqRankCache) window.__sqRankCache = { ts:0, rows:null };
+        const now = Date.now();
+        const cache = window.__sqRankCache;
+
+        // throttle to avoid hammering PostgREST
+        if (cache.rows && (now - cache.ts) < 30000){
+          __apply(cache.rows);
+          return;
+        }
+
+        if (!sb) { return; }
+
+        sb.from(TABLE_PLAYER_GAMES)
+          .select('player, score, ts, is_practice')
+          .or('is_practice.is.null,is_practice.eq.false')
+          .limit(5000)
+          .then(({data, error})=>{
+            if (error) throw error;
+            const rows = Array.isArray(data) ? data : [];
+            cache.ts = Date.now();
+            cache.rows = rows;
+            __apply(rows);
+          })
+          .catch((e)=>{
+            // silent: keep placeholders if table missing / RLS / offline
+            try{ console.warn('[SQ] rank fetch failed', e && (e.message||e)); }catch(_){}
+          });
+
+        function __denseRankDesc(scores, x){
+          if (!Number.isFinite(+x)) return 0;
+          let c = 0;
+          for (const s of scores){ if (Number.isFinite(+s) && (+s) > (+x)) c++; }
+          return c + 1;
+        }
+
+        function __apply(rows){
+          try{
+            // Pre-build arrays
+            const allScores = rows.map(r=>Number(r.score)).filter(v=>Number.isFinite(v));
+            for (let i=0;i<players.length;i++){
+              const nm = players[i] && (players[i].name || players[i].player || players[i].n || players[i].label) ? (players[i].name || players[i].player || players[i].n || players[i].label) : '';
+              const total = Number(totals[i]);
+              const myScores = rows.filter(r=>String(r.player||'')===String(nm)).map(r=>Number(r.score)).filter(v=>Number.isFinite(v));
+              const pRank = __denseRankDesc(myScores, total);
+              const gRank = __denseRankDesc(allScores, total);
+
+              const pEl = avgHost.querySelector(`.v2RankVal[data-rank="p"][data-idx="${i}"]`);
+              const gEl = avgHost.querySelector(`.v2RankVal[data-rank="g"][data-idx="${i}"]`);
+              if (pEl) pEl.textContent = pRank ? __sqOrdinal(pRank) : '–';
+              if (gEl) gEl.textContent = gRank ? String(gRank) : '–';
+            }
+          }catch(_){}
+        }
+      }catch(_){}
+    })();
+
   }
 
   // High Score Cell (below Info Cell)
@@ -14414,57 +14805,98 @@ function buildPad(){
 
     // ----- NUMBER ROUNDS (10–20) -----
     if (r.type === 'number') {
-      const topRow = document.createElement('div');
-      topRow.style.display = 'flex';
-      topRow.style.gap = '8px';
-      topRow.style.width = '100%';
+      // Match D/T/B pad design + colours (grid layout + action buttons)
+      const dtWrap = document.createElement('div');
+      dtWrap.className = 'dtPadWrap';
+      dtWrap.style.width = '100%';
+      dtWrap.style.boxSizing = 'border-box';
 
-      ['S','D','T'].forEach(k => {
-  const b = document.createElement('button');
-  b.className = 'btn primary letter-throw';
-  b.textContent = k;
-        b.style.flex = '1 1 0';
-        b.style.minWidth = '0';
-        b.onclick = () => recordThrow({ kind: k });
-        topRow.appendChild(b);
+      // Left: MISS xN (same visual as D/T/B)
+      const x3 = document.createElement('button');
+      x3.className = 'dtX3';
+      x3.type = 'button';
+
+      function missCountForCurrentThrow(){
+        try{
+          const dart = (typeof state !== 'undefined' && state && typeof state.currentDart === 'number') ? state.currentDart : 0;
+          const remaining = 3 - dart;
+          return Math.max(1, Math.min(3, remaining));
+        }catch(_){
+          return 3;
+        }
+      }
+      function setX3Label(){
+        const n = missCountForCurrentThrow();
+        x3.textContent = `MISS\nx${n}`;
+        x3.dataset.missN = String(n);
+      }
+      async function pressMissN(n){
+        const __prevBulk = !!window.__sqDmdBulkMiss;
+        if (n >= 2) window.__sqDmdBulkMiss = true;
+        try{
+          // Keep it simple: no MISS X/X/X sequence for bulk actions
+          if (n >= 3) window.sqDmdShow?.('THREE MISSES','',{type:'flash',ms:650});
+          else if (n === 2) window.sqDmdShow?.('TWO MISSES','',{type:'flash',ms:550});
+          else window.sqDmdShowZones?.({ z2:'MISS' },{type:'flash',ms:450});
+        }catch(_){ }
+        for (let i=0;i<n;i++){
+          recordThrow({ kind: 'Miss' });
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise(r=>setTimeout(r,70));
+        }
+        window.__sqDmdBulkMiss = __prevBulk;
+      }
+      x3.onclick = ()=>{ const n = parseInt(x3.dataset.missN||'3',10) || 3; pressMissN(n); };
+      setX3Label();
+
+      // Right: S/D/T + actions (use same styling primitives as D/T/B)
+      const right = document.createElement('div');
+      right.className = 'dtRight';
+
+      const sdtRow = document.createElement('div');
+      sdtRow.className = 'dtBullRow';
+      ['S','D','T'].forEach(k=>{
+        const b = document.createElement('button');
+        b.className = 'dtBullBtn';
+        b.type = 'button';
+        b.textContent = k;
+        b.onclick = ()=> recordThrow({ kind: k });
+        sdtRow.appendChild(b);
       });
 
-      pad.appendChild(topRow);
+      const actions = document.createElement('div');
+      actions.className = 'dtActions';
 
-      const bottomRow = document.createElement('div');
-bottomRow.style.display = 'flex';
-bottomRow.style.gap = '8px';
-bottomRow.style.width = '100%';
+      const mkAct = (cls, icon, label, onClick) => {
+        const b = document.createElement('button');
+        b.className = `dtActBtn ${cls}`;
+        b.type = 'button';
+        b.innerHTML = `<div class="dtIcon">${icon}</div><div class="dtLbl">${label}</div>`;
+        b.onclick = onClick;
+        return b;
+      };
 
-const miss = document.createElement('button');
-miss.className = 'btn danger letter-throw';
-miss.textContent = 'Miss';
-miss.style.flex = '1 1 0';
-miss.style.minWidth = '0';
-miss.onclick = () => { try{ __sqHandleMissTap(); }catch(_){ }
-};
-bottomRow.appendChild(miss);
+      actions.appendChild(mkAct('miss', '⊘', 'MISS', () => { try{ __sqHandleMissTap(); }catch(_){ } }));
+      actions.appendChild(mkAct('undo', '↶', 'UNDO', () => { try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); }));
+      actions.appendChild(mkAct('skip', '▶', 'SKIP', () => { missGo(); }));
 
-const undoBtn = document.createElement('button');
-undoBtn.className = 'btn warn letter-throw';
-undoBtn.textContent = 'Undo';
-undoBtn.style.flex = '1 1 0';
-undoBtn.style.minWidth = '0';
-undoBtn.onclick = () => { try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); };
-bottomRow.appendChild(undoBtn);
+      right.appendChild(sdtRow);
+      right.appendChild(actions);
 
-const missGoBtn = document.createElement('button');
-missGoBtn.className = 'btn letter-throw';
-missGoBtn.textContent = 'Skip Go';
-missGoBtn.style.flex = '1 1 0';
-missGoBtn.style.minWidth = '0';
-missGoBtn.onclick = () => { try{ window.sqDmdShow?.('SKIP','GO',{type:'wipe',ms:700,revealMs:220}); }catch(_){ } missGo(); };
-bottomRow.appendChild(missGoBtn);
+      dtWrap.appendChild(x3);
+      dtWrap.appendChild(right);
+      pad.appendChild(dtWrap);
 
-      pad.appendChild(bottomRow);
+      // keep xN label in sync with current dart
+      try{
+        const obs = new MutationObserver(()=>{ try{ setX3Label(); }catch(_){ } });
+        obs.observe(document.querySelector('.livev2panel')||document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
+        // store to avoid GC (best-effort)
+        window.__sqNumPadX3Obs = obs;
+      }catch(_){}
+
       return;
     }
-
             // ===== @JS:UI:GAMEPLAY:THROWPAD =====
 // ----- DOUBLES / TRIPLES ROUNDS -----
     if (r.type === 'doubles' || r.type === 'triples') {
@@ -14512,6 +14944,10 @@ bottomRow.appendChild(missGoBtn);
         x3.dataset.missN = String(n);
       }
       async function pressMissN(n){
+        // >>> PATCH:DMD_SUPPRESS_MISS_SEQ START
+        const __prevBulk = !!window.__sqDmdBulkMiss;
+        if (n >= 2) window.__sqDmdBulkMiss = true;
+        // >>> PATCH:DMD_SUPPRESS_MISS_SEQ END
         try{
           if (n >= 3) window.sqDmdShow?.('THREE MISSES','BRUTAL',{type:'shake',amp:2.6,ms:900});
           else if (n === 2) window.sqDmdShow?.('TWO MISSES','Oof',{type:'flash',ms:750});
@@ -14522,8 +14958,12 @@ bottomRow.appendChild(missGoBtn);
           // eslint-disable-next-line no-await-in-loop
           await new Promise(r=>setTimeout(r,70));
         }
+        // >>> PATCH:DMD_SUPPRESS_MISS_SEQ START
+        window.__sqDmdBulkMiss = __prevBulk;
+        // >>> PATCH:DMD_SUPPRESS_MISS_SEQ END
       }
-      x3.onclick = ()=>{ const n = Number(x3.dataset.missN||'3')||3; pressMissN(n); };
+      // Compute at click-time (not via stale dataset) so x2 works reliably on throw 2.
+      x3.onclick = ()=>{ const n = missCountForCurrentThrow(); pressMissN(n); };
       setX3Label();
 
       const right = document.createElement('div');
@@ -14568,7 +15008,7 @@ bottomRow.appendChild(missGoBtn);
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => { try{ __sqHandleMissTap(); }catch(_){ }
 }));
       actions.appendChild(mkAct('undo', '↶', 'UNDO', () => { try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); }));
-      actions.appendChild(mkAct('skip', '▶', 'SKIP', () => { try{ window.sqDmdShow?.('SKIP','GO',{type:'wipe',ms:700,revealMs:220}); }catch(_){ } missGo(); }));
+      actions.appendChild(mkAct('skip', '▶', 'SKIP', () => { missGo(); }));
 
       right.appendChild(scroller);
       right.appendChild(actions);
@@ -14639,7 +15079,8 @@ bottomRow.appendChild(missGoBtn);
           await new Promise(r=>setTimeout(r,70));
         }
       }
-      x3.onclick = ()=>{ const n = Number(x3.dataset.missN||'3')||3; pressMissN(n); };
+      // Compute at click-time (not via stale dataset) so x2 works reliably on throw 2.
+      x3.onclick = ()=>{ const n = missCountForCurrentThrow(); pressMissN(n); };
       setX3Label();
 
       const right = document.createElement('div');
@@ -14680,7 +15121,7 @@ bottomRow.appendChild(missGoBtn);
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => { try{ __sqHandleMissTap(); }catch(_){ }
 }));
       actions.appendChild(mkAct('undo', '↶', 'UNDO', () => { try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); }));
-      actions.appendChild(mkAct('skip', '▶', 'SKIP', () => { try{ window.sqDmdShow?.('SKIP','GO',{type:'wipe',ms:700,revealMs:220}); }catch(_){ } missGo(); }));
+      actions.appendChild(mkAct('skip', '▶', 'SKIP', () => { missGo(); }));
 
       right.appendChild(bullRow);
       right.appendChild(actions);
@@ -16077,7 +16518,7 @@ try {
 
   // Render all three zones; Z3 always shows the running sequence.
   if (window.sqDmdShowZones) {
-    window.sqDmdShowZones({ z1, z2, z3: seq }, fx);
+    window.sqDmdShowZones({ z1, z2, z3: (window.__sqDmdBulkMiss ? '' : seq) }, fx);
     // >>> PATCH:SQ_DMD_CLEAR_Z3_ENDTURN
     // End-of-turn behaviour:
     // - After 3rd dart, run Stage 3 round-end banner/roll-up, then clear Z3.
@@ -16192,9 +16633,14 @@ setTimeout(() => {
 
     const completedRounds = willAdvanceRound ? (thisRoundIdx + 1) : thisRoundIdx; // complete rounds only
     const rndAvg = completedRounds > 0 ? (nextTotal / completedRounds) : nextTotal;
+    const leader = (sorted[0] && typeof sorted[0].v==='number') ? sorted[0].v : nextTotal;
+    const second = (sorted[1] && typeof sorted[1].v==='number') ? sorted[1].v : leader;
+    const diffVal = (pos===1) ? (leader - second) : (nextTotal - leader);
+    const diffTxt = (diffVal>=0?'+':'') + String(diffVal);
     const infoLines = [
       `SCORE: ${nextTotal}`,
-      `POSITION: ${pos}/${pCount}`,
+      `POS: ${pos}/${pCount}`,
+      `DIFF: ${diffTxt}`,
       `RND AVG: ${fmt1(rndAvg)}`
     ];
 
@@ -16253,6 +16699,7 @@ setTimeout(() => {
 } catch(_e) {}
 /* <<< PATCH:SQ_DMD_STAGE2_THROW_QUALITY END */
 /* >>> PATCH:SQ_DMD_PRETHROW_INFO_MODE START */
+/* >>> PATCH:DMD_PRETHROW_NAME_ROTATE START */
 // Pre-throw info mode: keep player name pinned in Z2 and cycle stats in Z3 until next throw occurs.
 (function(){
   if (window.__sqDmdPreThrowInit) return;
@@ -16262,6 +16709,10 @@ setTimeout(() => {
   let _lines = [];
   let _i = 0;
   let _name = '';
+  let _full = '';
+  let _nick = '';
+  let _showNick = false;
+  let _lastFlip = 0;
     try { window.__sqDmdPinnedZ2Text = ''; } catch(_){}
 
   window.__sqDmdStopPreThrow = function(){
@@ -16276,9 +16727,18 @@ setTimeout(() => {
   };
 
   window.__sqDmdStartPreThrow = function(playerName, lines){
-    try { window.__sqDmdStopPreThrow(); } catch(_){}
+    try { window.__sqDmdStopPreThrow(); } catch(_){ }
     _name = (playerName || '').toString();
-    try { window.__sqDmdPinnedZ2Text = _name; } catch(_){}
+    try{
+      const code = _name.trim().toUpperCase();
+      const pm = (window.__sqDmdGetPlayerMeta ? window.__sqDmdGetPlayerMeta(code) : null);
+      _full = (pm && pm.full) ? String(pm.full) : _name;
+      _nick = (pm && pm.nick) ? String(pm.nick) : '';
+      if (_nick && _full && _nick.toUpperCase() === _full.toUpperCase()) _nick = '';
+    }catch(_){ _full = _name; _nick = ''; }
+    _showNick = false;
+    _lastFlip = performance.now();
+    try { window.__sqDmdPinnedZ2Text = _full || _name; } catch(_){ }
     _lines = Array.isArray(lines) ? lines.filter(Boolean).map(String) : [];
     _i = 0;
 
@@ -16301,6 +16761,13 @@ setTimeout(() => {
       if (window.SQ && SQ.boot && SQ.boot.poller){
         SQ.boot.poller.register(_timer, ()=>{
           try{
+            const now = performance.now();
+            if (_nick && (now - _lastFlip) >= 1000){
+              _showNick = !_showNick;
+              _lastFlip = now;
+              try{ window.__sqDmdPinnedZ2Text = (_showNick ? _nick : _full) || _name; window.__sqDmdNoScrollZ2 = true; }catch(_){ }
+              try{ window.sqDmdShowZones?.({ z2: (_showNick ? _nick : _full) || _name }, { type:'hold', ms:1 }); }catch(_){ }
+            }
             _i = (_i + 1) % _lines.length;
             window.sqDmdShowZones?.({ z3: _lines[_i] }, { type:'roll', ms:520, z3Small:true });
           }catch(_){}
@@ -16309,6 +16776,7 @@ setTimeout(() => {
     }catch(_){}
 };
 })();
+/* <<< PATCH:DMD_PRETHROW_NAME_ROTATE END */
 /* <<< PATCH:SQ_DMD_PRETHROW_INFO_MODE END */
 
 
@@ -16468,6 +16936,12 @@ function undo(){
 
 function missGo(){
   if (state.finished || state.suddenDeath.active) return;
+  // >>> PATCH:DMD_SUPPRESS_MISS_SEQ START
+  // Bulk-miss actions (Skip Go / MISS xN) should NOT show X / X / X in Zone 3.
+  // We set a short-lived flag consumed by the DMD renderer inside recordThrow.
+  const __prevBulk = !!window.__sqDmdBulkMiss;
+  window.__sqDmdBulkMiss = true;
+  // >>> PATCH:DMD_SUPPRESS_MISS_SEQ END
 
   const startPlayer = state.currentPlayer;
   const startRound  = state.currentRound;
@@ -16481,8 +16955,27 @@ function missGo(){
   ) {
     recordThrow({ kind: 'Miss' });
   }
+
+  // >>> PATCH:DMD_SUPPRESS_MISS_SEQ START
+  window.__sqDmdBulkMiss = __prevBulk;
+  // >>> PATCH:DMD_SUPPRESS_MISS_SEQ END
 }/* >>> PATCH:SQ_DMD_MISS_X3_FAST START */
-// MISS x3 (triple-tap) overrides single MISS button: plays TRIPLE MISS + X/X/X and records 3 misses in one go.
+// MISS button behavior:
+// - Single tap: record 1 miss + quick "MISS" flash
+// - Triple tap OR "SKIP GO": play "MISS" + "X / X / X" animation, then record remaining misses for the turn
+//
+// NOTE: Keep all DMD calls best-effort; never block gameplay on animation.
+function __sqDmdPlayMissXXX(){
+  try{
+    // Punchy: show MISS then build Xs quickly in Zone 3
+    try{ window.sqDmdShowZones?.({ z2:'MISS', z3:'' }, {type:'flash', ms:180, fx:'pop'}); }catch(_){}
+    setTimeout(()=>{ try{ window.sqDmdShowZones?.({ z2:'MISS', z3:'X' }, {type:'flash', ms:140, fx:'pop'}); }catch(_){ } }, 90);
+    setTimeout(()=>{ try{ window.sqDmdShowZones?.({ z2:'MISS', z3:'X / X' }, {type:'flash', ms:160, fx:'pop'}); }catch(_){ } }, 170);
+    setTimeout(()=>{ try{ window.sqDmdShowZones?.({ z2:'MISS', z3:'X / X / X' }, {type:'flash', ms:200, fx:'pop'}); }catch(_){ } }, 260);
+  }catch(_){}
+}
+try{ window.__sqDmdPlayMissXXX = __sqDmdPlayMissXXX; }catch(_){ }
+
 let __sqMissTapCount = 0;
 let __sqMissTapT0 = 0;
 let __sqMissTapTimer = null;
@@ -16499,27 +16992,24 @@ function __sqHandleMissTap(){
     __sqMissTapTimer = setTimeout(()=>{
       try{
         if (__sqMissTapCount === 1){
-          try{ window.sqDmdShowZones?.({ z2:'MISS' },{type:'flash',ms:320}); }catch(_){ }
+          try{ window.sqDmdShowZones?.({ z2:'MISS', z3:'' }, {type:'flash', ms:260, fx:'pop'}); }catch(_){ }
           recordThrow({ kind:'Miss' });
         }
         __sqMissTapCount = 0;
       }catch(_){}
-    }, 260);
+    }, 220);
 
+    // Triple-tap: play MISS X/X/X + fill the rest of the turn with misses
     if (__sqMissTapCount >= 3){
       try{ clearTimeout(__sqMissTapTimer); }catch(_){ }
       __sqMissTapCount = 0;
 
-      // DMD sequence (2x faster)
-      try{
-        window.sqDmdShowZones?.({ z2:'TRIPLE MISS', z3:'' }, {type:'flash', ms:260, fx:'smear'});
-        setTimeout(()=>{ try{ window.sqDmdShowZones?.({ z3:'X' }, {type:'hold', ms:1}); }catch(_){ } }, 90);
-        setTimeout(()=>{ try{ window.sqDmdShowZones?.({ z3:'X / X' }, {type:'hold', ms:1}); }catch(_){ } }, 180);
-        setTimeout(()=>{ try{ window.sqDmdShowZones?.({ z3:'X / X / X' }, {type:'hold', ms:1}); }catch(_){ } }, 270);
-      }catch(_){}
+      try{ window.sqDmdShowZones?.({ z2:'TRIPLE', z3:'MISS' }, {type:'flash', ms:320, fx:'pop'}); }catch(_){ }
 
-      // Record all 3 darts as misses (uses existing missGo to finish this turn)
-      try{ missGo(); }catch(_){ recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); }
+      // Record remaining darts as misses for this turn
+      try{ missGo(); }catch(_){
+        recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'});
+      }
     }
   }catch(_){}
 }
@@ -19332,7 +19822,87 @@ window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(
       .sqPill{ border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.04); color:#e7e9ee; padding:8px 12px; border-radius:999px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; cursor:pointer; }
       .sqPill:hover{ background:rgba(255,255,255,.06); }
       .sqPill.isActive{ border-color: rgba(255,132,0,.35); box-shadow: 0 0 0 2px rgba(255,132,0,.12) inset; }
-    </style>
+    
+/* >>> PATCH:CELL3_INFO_REMOVE_MIDDLE_CELL START */
+/* Cell 3 (INFO): remove the inner "middle cell" wrapper styling (v2AvgWrap)
+   so we have: Pills > Cell > Background (covers both 2.1 + 3) */
+.livev2panel .v2InfoCell .v2AvgWrap{
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+/* Also ensure the grid starts immediately after the label column */
+.livev2panel .v2InfoCell .v2Avg{
+  column-gap: 0px !important;
+}
+/* <<< PATCH:CELL3_INFO_REMOVE_MIDDLE_CELL END */
+
+
+/* >>> PATCH:INFO_REMOVE_INNER_BACKGROUND START */
+/* Cell 3 (INFO): remove the extra "middle" background layer so you only have:
+   Pills > Label cell > Shared outer background (the main panel). */
+.livev2panel .v2InfoCell{
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+/* Remove the inner wrapper box visuals (this was the "middle cell"). */
+.livev2panel .v2InfoCell .v2AvgWrap{
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+/* Keep the grid tight: label column + pills, no extra gutter */
+.livev2panel .v2InfoCell .v2Avg{
+  gap: 0 0 !important;
+  column-gap: 0 !important;
+}
+/* Optional: give label column a tiny breathing space without creating a new "cell" */
+.livev2panel .v2InfoCell .v2AvgLabel{
+  margin-right: 0 !important;
+}
+/* <<< PATCH:INFO_REMOVE_INNER_BACKGROUND END */
+
+
+/* >>> PATCH:PB_MENU_REMOVE_MIDDLE_CELL START */
+/* PB / Records screen: remove the inner wrapper "middle cell" (v2HighWrap)
+   so it matches Gameplay/Info structure: Pills > Label cell > Background cell. */
+.livev2panel .v2HighCell .v2HighWrap{
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+/* Keep some separation between the label column and pills without creating a new cell */
+.livev2panel .v2HighCell .v2High{
+  column-gap: 0 !important;
+}
+.livev2panel .v2HighCell .v2HighLabel{
+  margin-right: 0 !important;
+}
+/* <<< PATCH:PB_MENU_REMOVE_MIDDLE_CELL END */
+
+
+
+/* >>> PATCH:INFO_MATCH_PB_MEASUREMENTS START */
+/* Make INFO card (POS/3R/MTC) match PB card geometry (margin/padding) */
+.livev2panel .v2InfoCell{
+  margin-top: 12px !important;
+  padding: 12px !important;
+}
+/* Ensure the inner grid uses the same vertical breathing as PB (no hidden extra offsets) */
+.livev2panel .v2InfoCell .v2Avg{
+  padding: 0 !important;
+}
+/* <<< PATCH:INFO_MATCH_PB_MEASUREMENTS END */
+</style>
   `;
 
   const winButtons = Array.from(body.querySelectorAll('button[data-win]'));
@@ -27377,6 +27947,15 @@ document.addEventListener('DOMContentLoaded', function(){
       .some(el => el.offsetParent && /\b(Doubles|Triples)\s+round\s*—?\s*choose\s*sector\b/i.test(el.textContent || ''));
   }
 
+  // D/T/B rounds: do NOT reserve space for the Miss x3 spanning button (keeps pad centered)
+  function isDTBRound(){
+    try{
+      const b = document.querySelector('.livev2panel .v2Badge.active, .livev2panel .v2Badge.liveRow');
+      const t = (b && (b.textContent||'') || '').trim().toUpperCase();
+      return (t === 'D' || t === 'T' || t === 'B');
+    }catch(_){ return false; }
+  }
+
   // Nearest common ancestor
   function nca(a,b){
     if (!a || !b) return null;
@@ -27388,24 +27967,48 @@ document.addEventListener('DOMContentLoaded', function(){
 
   // How many misses should be auto-logged given the current dart (3 → 2 → 1)
   function missCountForCurrentThrow(){
+    // Primary: Live v2 dots. Exactly one dot has class `.on` and its index is the current dart (0-based).
     try{
-      const dart = (typeof state !== 'undefined' && state && typeof state.currentDart === 'number') ? state.currentDart : 0;
-      const remaining = 3 - dart;
+      const dots = Array.from(document.querySelectorAll('.livev2panel .v2DotsCol .v2Dot'));
+      if (dots.length >= 3){
+        const idx = dots.findIndex(d => d.classList.contains('on'));
+        if (idx >= 0 && idx <= 2) return (3 - idx);
+        // If none marked on yet, assume first dart
+        return 3;
+      }
+    }catch(_){ /* fall through */ }
+
+    // Fallback: use whichever state var exists (best effort)
+    try{
+      const st = (window.__SQ_STATE__ || window.SQ_STATE || window.appState || window.state || {});
+      const raw = Number((st.currentDart ?? st.dartIndex ?? st.currentDartIndex ?? 0));
+      const dartIndex = (raw > 2) ? (raw - 1) : raw;
+      const remaining = 3 - dartIndex;
       return Math.max(1, Math.min(3, remaining));
     }catch(_){
       return 3;
     }
   }
 
-  async function clickMissThrice(miss){
+  // Click Miss multiple times to auto-fill remaining darts.
+  // IMPORTANT: the game re-renders the pad after each throw, so the Miss button node
+  // can be replaced. Therefore we must re-find the Miss button each iteration.
+  async function clickMissThrice(){
+    // We intentionally keep this dumb + reliable.
+    // The previous “simulate touch” approach breaks on Safari where TouchEvent
+    // may not exist in the global scope, and the fancy wait-loop sometimes
+    // mis-detects the second-dart state.
     const count = missCountForCurrentThrow();
     for (let i=0;i<count;i++){
-      try{
-        ['mousedown','mouseup','click'].forEach(t => miss.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true})));
-      }catch(_){ miss.click(); }
-      // small gap so your game logic records three throws
+      const missNow = findMiss();
+      if (!missNow) break;
+      try{ missNow.click(); }catch(_){
+        try{ missNow.dispatchEvent(new MouseEvent('click', {bubbles:true,cancelable:true})); }catch(__){}
+      }
+
+      // Give the app time to advance/re-render the pad before the next click.
       // eslint-disable-next-line no-await-in-loop
-      await new Promise(r=>setTimeout(r,70));
+      await new Promise(r=>setTimeout(r,160));
     }
   }
 
@@ -27413,6 +28016,10 @@ document.addEventListener('DOMContentLoaded', function(){
     const s = findS();
     const miss = findMiss();
     const wrap = nca(s, miss);
+
+    // If the pad is already using the unified DT/BULL grid, do nothing (prevents double-insert + drift)
+    try{ if (wrap && wrap.querySelector && wrap.querySelector('.dtPadWrap')) return; }catch(_){ }
+
     let x3 = document.getElementById(BTN_ID);
 
     // If we cannot find S/Miss yet, just hide/remove the button
@@ -27440,7 +28047,7 @@ document.addEventListener('DOMContentLoaded', function(){
       x3.style.left       = '8px';          // small gutter
       x3.style.zIndex     = '4';
 
-      x3.addEventListener('click', (e)=>{ e.preventDefault(); clickMissThrice(miss); });
+      x3.addEventListener('click', (e)=>{ e.preventDefault(); clickMissThrice(); });
 
       // Insert into the shared container and reserve space by padding-left
       if (getComputedStyle(wrap).position === 'static') wrap.style.position = 'relative';
@@ -27469,7 +28076,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
     // Push the button rows to the right so x3 doesn’t overlap
     const padLeft = widthPx + 16; // leave a small gutter
-    const hideNow = chooserVisible();
+    const hideNow = chooserVisible() || isDTBRound();
     wrap.style.paddingLeft = hideNow ? '' : `${padLeft}px`;
 
     // Hide during Doubles/Triples chooser
@@ -30084,7 +30691,6 @@ if (!active || active.type === "idle") {
       return;
     }
     if (act === 'skip') {
-      try { window.sqDmdShow?.('SKIP','GO',{type:'wipe',ms:700,revealMs:220}); } catch(_){}
       return;
     }
   }, true);
@@ -30181,552 +30787,3 @@ __sqDmdInitV7();
 
 </body>
 </html>
-  // ============================================================
-  // QUARANTINED: Premier League TODAY legacy patches (auto-run)
-  // - Moved in Stage 4A.1c to reduce top-level auto-run clutter.
-  // - Only runs when FLAGS.ENABLE_LEGACY_HOME === true.
-  // ============================================================
-
-  function legacy_premierLeagueTodayChipPatch_v1(){
-    if(!(window.FLAGS && FLAGS.ENABLE_LEGACY_HOME)) return;
-    /* Premier League – replace TODAY chip with a fresh working one */
-    (function () {
-      // Disabled: native Premier League TODAY tab is now handled by the 4-row filter layout.
-      return;
-    
-      function startOfTodayISO() {
-        const s = new Date(); s.setHours(0,0,0,0);
-        return s.toISOString();
-      }
-      function startOfTomorrowISO() {
-        const s = new Date(); s.setHours(0,0,0,0);
-        s.setDate(s.getDate() + 1);
-        return s.toISOString();
-      }
-    
-      function buildTodayTable(rows) {
-        const by = new Map();
-        for (const r of rows || []) {
-          const k = r.player || '';
-          const m = by.get(k) || { player: k, games: 0, total: 0, best: 0 };
-          m.games += 1;
-          m.total += Number(r.score || 0);
-          m.best = Math.max(m.best, Number(r.score || 0));
-          by.set(k, m);
-        }
-        const agg = [...by.values()]
-          .map(x => ({ ...x, avg: x.games 
-// [QUARANTINED] Start-screen Vertical Game Ticker (Sky Sports-style) — legacy duplicate of psTicker
-// Reason: duplicates ticker logic + fetches full history; kept for rollback only.
-// Guard: only runs when FLAGS.ENABLE_LEGACY_HOME === true
-if (window.FLAGS && FLAGS.ENABLE_LEGACY_HOME) {
-// === Start-screen Vertical Game Ticker (Sky Sports-style) ===
-(function(){
-  if (window.__verticalGameTickerBootstrapped) return;
-  window.__verticalGameTickerBootstrapped = true;
-
-  const IN_MS   = 800;   // slower scroll in (bottom -> centre)
-  const HOLD_MS = 3000;  // 3s pause while centred
-  const OUT_MS  = 800;   // slower scroll out (centre -> top)
-
-  function formatGameForTicker(g){
-    if (!g) return '';
-
-    const result = (typeof window.formatGameResultLine === 'function')
-      ? window.formatGameResultLine(g)
-      : (function fallbackResult(game){
-          const players = (game.players || []).map(p =>
-            (p && typeof p === 'object' && 'name' in p) ? p.name : String(p || '')
-          );
-          const totals  = Array.isArray(game.totals) ? game.totals : [];
-          const ordered = players
-            .map((name, i) => ({ name, score: Number(totals[i] || 0) }))
-            .filter(x => x.name)
-            .sort((a, b) => b.score - a.score);
-
-          if (ordered.length >= 2){
-            let r = `${ordered[0].name} ${ordered[0].score} beat ${ordered[1].name} ${ordered[1].score}`;
-            if (ordered.length > 2){
-              r += ' ' + ordered.slice(2).map(o => `${o.name} ${o.score}`).join(' ');
-            }
-            return r;
-          } else if (ordered.length === 1){
-            return `${ordered[0].name} ${ordered[0].score}`;
-          }
-          return '—';
-        })(g);
-
-    let when = '';
-    if (typeof window.getGameTimestamp === 'function' && typeof window.fmtWhen === 'function'){
-      const d = window.getGameTimestamp(g);
-      if (d) when = window.fmtWhen(d, { omitYear: true });
-    }
-
-    return when ? `${when}  ${result}` : result;
-  }
-
-  function startVerticalTicker(container, track, items){
-    if (!container || !track || !items || !items.length) return;
-
-    // Ensure only a single line is ever visible
-    container.style.overflow = 'hidden';
-    container.style.whiteSpace = 'nowrap';
-
-    let idx = 0;
-
-    function step(){
-      if (!container.isConnected || !items.length) return;
-
-      // Use container height if set, otherwise fall back to a reasonable line height
-      const height = container.clientHeight || 28;
-
-      // Pick the next single line to show
-      const line = items[idx % items.length];
-      idx = (idx + 1) % items.length;
-
-      // Reset track content and position off-screen at the bottom
-      track.style.transition = 'none';
-      track.style.transform  = `translateY(${height}px)`;
-      track.innerHTML = '';
-
-      const div = document.createElement('div');
-      div.textContent = line || '';
-      div.style.whiteSpace = 'nowrap';
-      track.appendChild(div);
-
-      // Scroll into view (bottom -> centre)
-      requestAnimationFrame(() => {
-        track.style.transition = `transform ${IN_MS}ms linear`;
-        track.style.transform  = 'translateY(0px)';
-      });
-
-      // After the hold, scroll out through the top and then show the next single line
-      setTimeout(() => {
-        track.style.transition = `transform ${OUT_MS}ms linear`;
-        track.style.transform  = `translateY(${-height}px)`;
-        setTimeout(step, OUT_MS);
-      }, IN_MS + HOLD_MS);
-    }
-
-    container.classList.remove('hidden');
-    step();
-  }
-
-  // Public bootstrap used on the Start (details) screen
-  window.initVerticalGameTicker = async function initVerticalGameTicker(){
-    const ticker = document.getElementById('psTicker');
-    const track  = ticker && ticker.querySelector('.track');
-    if (!ticker || !track) return;
-
-    try{
-      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()){
-        ticker.classList.add('hidden');
-        return;
-      }
-    }catch(_){}
-
-    let games = [];
-    try{
-      if (typeof cloudFetchAllGamesAsLocal === 'function'){
-        games = await cloudFetchAllGamesAsLocal();
-      }
-    }catch(e){
-      console.error('Vertical ticker: failed to fetch games', e);
-    }
-
-    if (!Array.isArray(games) || !games.length){
-      ticker.classList.add('hidden');
-      return;
-    }
-
-    const toTS = (g) => {
-      const t = g?.ts || g?.created_at || g?.inserted_at || (g?.meta && (g.meta.ts || g.meta.date)) || null;
-      const n = t ? Date.parse(t) : NaN;
-      return Number.isFinite(n) ? n : 0;
-    };
-
-    games = games.filter(Boolean).sort((a,b)=> toTS(b) - toTS(a)).slice(0, 25);
-
-    const items = games
-      .map(formatGameForTicker)
-      .filter(line => line && line.trim().length > 0);
-
-    if (!items.length){
-      ticker.classList.add('hidden');
-      return;
-    }
-
-    startVerticalTicker(ticker, track, items);
-  };
-})();
-}
-? x.total / x.games : 0 }))
-          .sort((a, b) => b.avg - a.avg);
-    
-        const table = document.createElement('table');
-        table.className = 'hs-table hs-league-table';
-    
-        const thead = document.createElement('thead');
-        const trh = document.createElement('tr');
-        ['#','Player','Games','Avg Total','Best'].forEach(h => {
-          const th = document.createElement('th'); th.textContent = h; trh.appendChild(th);
-        });
-        thead.appendChild(trh);
-        table.appendChild(thead);
-    
-        const tbody = document.createElement('tbody');
-        agg.forEach((r, i) => {
-          const tr = document.createElement('tr');
-          const tdIdx   = document.createElement('td'); tdIdx.textContent = String(i + 1);
-          const tdName  = document.createElement('td'); tdName.textContent = r.player || '';
-          const tdGames = document.createElement('td'); tdGames.textContent = String(r.games);
-          const tdAvg   = document.createElement('td'); tdAvg.className = 'num'; tdAvg.textContent = r.avg.toFixed(1);
-          const tdBest  = document.createElement('td'); tdBest.className = 'num'; tdBest.textContent = String(r.best || 0);
-          tr.append(tdIdx, tdName, tdGames, tdAvg, tdBest);
-          tbody.appendChild(tr);
-        });
-        table.appendChild(tbody);
-    
-        const wrap = document.createElement('div');
-        wrap.className = 'table-wrap';
-        wrap.style.border='1px solid rgba(255,255,255,.08)';
-        wrap.style.borderRadius='14px';
-        wrap.style.overflow='auto';
-        wrap.style.maxHeight='56vh';
-        wrap.appendChild(table);
-        return wrap;
-      }
-    
-      async function renderTodayInto(modal) {
-        const body = modal.querySelector('#hsLeagueBody') ||
-                     modal.querySelector('.modal-body') ||
-                     modal;
-        body.innerHTML = '<p class="tag">Loading today…</p>';
-    
-        try {
-          const { data, error } = await sb
-            .from(TABLE_PLAYER_GAMES)
-            .select('player, score, ts, is_practice')
-            .or('is_practice.is.null,is_practice.eq.false')
-            .gte('ts', startOfTodayISO())
-            .lt('ts', startOfTomorrowISO());
-    
-          if (error) throw error;
-    
-          const table = buildTodayTable(data || []);
-          body.innerHTML = '';
-          body.appendChild(table);
-          try { if (typeof markCloudOk === 'function') markCloudOk(); } catch(_) {}
-        } catch (e) {
-          console.error('Premier League TODAY fetch failed', e);
-          body.innerHTML = '<p class="tag">Unable to load today’s scores.</p>';
-          try { if (typeof markCloudError === 'function') markCloudError(e); } catch(_) {}
-        }
-      }
-    
-      function patchPremierLeagueModal(modal) {
-        if (!modal || modal.dataset.todayChipDone === '1') return;
-        modal.dataset.todayChipDone = '1';
-    
-        // Remove any existing TODAY buttons
-        Array.from(modal.querySelectorAll('button')).forEach(b => {
-          const t = (b.textContent || '').trim().toUpperCase();
-          if (t === 'TODAY') b.remove();
-        });
-    
-        // Find a chip row (use the parent of "ALL TIME" if present)
-        const allTimeBtn = Array.from(modal.querySelectorAll('button'))
-          .find(b => (b.textContent || '').trim().toUpperCase() === 'ALL TIME');
-        const chipRow = allTimeBtn ? allTimeBtn.parentElement : (modal.querySelector('.modal-body') || modal);
-    
-        // Insert our new chip
-        const btn = document.createElement('button');
-        btn.className = 'btn small';
-        btn.textContent = 'TODAY';
-        btn.setAttribute('data-role', 'today-chip');
-        btn.addEventListener('click', (ev) => { ev.preventDefault(); renderTodayInto(modal); });
-    
-        // Place it next to the other chips (after "ALL TIME" if found)
-        if (allTimeBtn && allTimeBtn.nextSibling) {
-          chipRow.insertBefore(btn, allTimeBtn.nextSibling);
-        } else {
-          chipRow.insertBefore(btn, chipRow.firstChild);
-        }
-      }
-    
-      // Watch for modals opening; patch the one titled "Premier League" (via shared UI mutation bus)
-      try {
-        window.__sqUIMutationBus?.on((muts) => {
-          for (const m of (muts || [])) {
-            for (const n of (m.addedNodes || [])) {
-              if (!(n instanceof HTMLElement)) continue;
-              const modal = n.matches?.('.modal') ? n : n.querySelector?.('.modal');
-              if (!modal) continue;
-              const title = (modal.querySelector('h3')?.textContent || '').trim();
-              if (/^premier league$/i.test(title)) patchPremierLeagueModal(modal);
-            }
-          }
-        });
-      } catch(_) {}
-    
-      // Also try to patch immediately if it’s already open
-      setTimeout(() => {
-        const openModal = Array.from(document.querySelectorAll('.modal'))
-          .find(m => /^premier league$/i.test((m.querySelector('h3')?.textContent || '').trim()));
-        if (openModal) patchPremierLeagueModal(openModal);
-      }, 0);
-    })()
-  }
-
-  function legacy_premierLeagueTodayCloneMonth_v1(){
-    if(!(window.FLAGS && FLAGS.ENABLE_LEGACY_HOME)) return;
-    (function premierLeagueTodayCloneMonth(){
-      // Disabled: superseded by openPremierLeagueDialog + filterId='TODAY'
-      if (typeof window.openPremierLeagueDialog === 'function') return;
-      const TITLE_RX = /^\s*premier league\s*$/i;
-      const MONTHS   = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-    
-      // ---- helpers --------------------------------------------------------------
-      function findModal(){
-        const mods = document.querySelectorAll('.modal,[role="dialog"]');
-        for (const m of mods){
-          if (Array.from(m.querySelectorAll('h1,h2,h3')).some(h => TITLE_RX.test(h.textContent||''))) return m;
-        }
-        return null;
-      }
-      function findTabsRow(modal){
-        if (!modal) return null;
-        const blocks = modal.querySelectorAll('div,nav,section');
-        for (const c of blocks){
-          const btns = Array.from(c.querySelectorAll('button,.btn,[role="tab"]'));
-          if (!btns.length) continue;
-          const labs = btns.map(b => (b.textContent||'').trim().toUpperCase());
-          const hasAll   = labs.includes('ALL TIME') || labs.includes('ALL') || labs.includes('ALLTIME');
-          const hasMonth = labs.some(t => MONTHS.includes(t));
-          const hasRec   = labs.includes('RECORDS');
-          if (hasAll && (hasMonth || hasRec)) return c;
-        }
-        return null;
-      }
-      const visible = el => !!(el && el.offsetParent !== null);
-    
-      function todayRange(){
-        const now = new Date();
-        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1);
-        return { start, end };
-      }
-    
-      // ---- render Today table (replaces only the table, keeps pills visible) ----
-      async function renderToday(modal){
-       let row = findTabsRow(modal);
-    if (!row || row.offsetParent === null) {
-      row = createFallbackTabsRow(modal);
-    }
-    let todayBtn = row && Array.from(row.querySelectorAll('button,.btn,[role="tab"]'))
-      .find(b => /^today$/i.test((b.textContent||'').trim()));
-    if (!todayBtn) {
-      // make sure there is a TODAY pill in this row
-      const sample = row.querySelector('button,.btn,[role="tab"]');
-      const tag = (sample && sample.tagName) ? sample.tagName.toLowerCase() : 'button';
-      todayBtn = document.createElement(tag);
-      todayBtn.type = 'button';
-      todayBtn.setAttribute('role', (sample && (sample.getAttribute('role') || 'tab')) || 'tab');
-      todayBtn.className = (sample && sample.className) || 'btn small';
-      todayBtn.textContent = 'TODAY';
-      row.insertAdjacentElement('afterbegin', todayBtn);
-      todayBtn.addEventListener('click', (e)=>{ e.preventDefault(); renderToday(modal); });
-    }
-    
-    
-        // hide only the table, NOT the tabs row
-        const existingTable = modal.querySelector('table.hs-table');
-        if (existingTable && !existingTable.dataset._pl_today_hidden){
-          existingTable.dataset._pl_today_hidden = '1';
-          existingTable.style.display = 'none';
-        }
-    
-        // hide "X Games Minimum" banner (TODAY has no minimum)
-        Array.from(modal.querySelectorAll('.tag,div,p,span'))
-          .filter(el => /games\s+minimum/i.test((el.textContent||'')))
-          .forEach(el => el.style.display = 'none');
-    
-        // remove any previous Today mount
-        modal.querySelector('#plTodayMount')?.remove();
-    
-        // fetch & reduce
-        let games = [];
-        try { games = (await __fetchOfficialGames(50000)).map(__normalizeGame); } catch(e){ console.error(e); }
-        const { start, end } = todayRange();
-        games = games.filter(g => {
-          const t = __gameTs(g.raw || g);
-          if (!t) return false; const d = new Date(t);
-          return d >= start && d < end;
-        });
-    
-        const by = new Map(); // name -> {games,sum,best}
-        games.forEach(g=>{
-          (g.players||[]).forEach((p,i)=>{
-            const name = String(p||'').trim(); if (!name) return;
-            const score = Number(g.totals?.[i] || 0);
-            const r = by.get(name) || { games:0, sum:0, best:0 };
-            r.games += 1; r.sum += score; r.best = Math.max(r.best, score);
-            by.set(name, r);
-          });
-        });
-        const rows = Array.from(by.entries()).map(([name,r])=>({
-          name, games:r.games, avg: r.games ? (r.sum / r.games) : 0, best:r.best
-        })).sort((a,b)=> (b.avg - a.avg) || (b.games - a.games) || a.name.localeCompare(b.name));
-    
-        // build UI
-        const mount = document.createElement('div'); mount.id = 'plTodayMount';
-    
-        const banner = document.createElement('div');
-        banner.className = 'tag'; banner.textContent = 'Today Only'; banner.style.margin='6px 0';
-        mount.appendChild(banner);
-    
-        const scroll = document.createElement('div');
-        scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; scroll.style.borderRadius='8px';
-        mount.appendChild(scroll);
-    
-        const table = document.createElement('table'); table.className = 'hs-table';
-        const thead = document.createElement('thead'); const trh = document.createElement('tr');
-        ['#','Player','Games','Avg Total','Best'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
-        thead.appendChild(trh); table.appendChild(thead);
-        const tbody = document.createElement('tbody');
-        rows.forEach((r,i)=>{
-          const tr=document.createElement('tr');
-          const td=v=>{const t=document.createElement('td'); t.textContent=v; return t;};
-          tr.append(td(String(i+1)), td(r.name), td(String(r.games)), td((r.avg||0).toFixed(1)), td(String(r.best||0)));
-          tbody.appendChild(tr);
-        });
-        table.appendChild(tbody); scroll.appendChild(table);
-    
-        // place the mount directly under the tabs row if visible, else top of modal body
-        const rowEl = row && visible(row) ? row : null;
-        if (rowEl) rowEl.insertAdjacentElement('afterend', mount);
-        else (modal.querySelector('.modal-body') || modal).insertAdjacentElement('afterbegin', mount);
-      }
-    
-      // ---- restore the app's default view when leaving TODAY --------------------
-      function restore(modal){
-        modal.querySelector('#plTodayMount')?.remove();
-        Array.from(modal.querySelectorAll('.tag,div,p,span'))
-          .filter(el => /games\s+minimum/i.test((el.textContent||'')))
-          .forEach(el => el.style.display = '');
-        const t = modal.querySelector('table.hs-table[data-_pl_today_hidden="1"]') || modal.querySelector('table.hs-table');
-        if (t) { t.style.display=''; delete t.dataset._pl_today_hidden; }
-      }
-      
-      function createFallbackTabsRow(modal){
-      // if a visible real row exists, use it
-      const real = findTabsRow(modal);
-      if (real && real.offsetParent !== null) return real;
-    
-      // Build a compact row and clone styling from any button we can find
-      const sampleBtn = modal.querySelector('button,.btn,[role="tab"]');
-      // If TODAY already exists (native tab), don't inject a duplicate
-      if (Array.from(modal.querySelectorAll('button')).some(b => ((b.textContent||'').trim().toUpperCase() === 'TODAY'))) return;
-      const mk = (label) => {
-        const tag = (sampleBtn && sampleBtn.tagName) ? sampleBtn.tagName.toLowerCase() : 'button';
-        const b = document.createElement(tag);
-        b.type = 'button';
-        b.setAttribute('role', (sampleBtn && (sampleBtn.getAttribute('role') || 'tab')) || 'tab');
-        b.className = (sampleBtn && sampleBtn.className) || 'btn small';
-        b.textContent = label;
-        return b;
-      };
-    
-      const row = document.createElement('div');
-      row.id = 'plTodayTabsFallback';
-      row.style.display = 'flex';
-      row.style.flexWrap = 'wrap';
-      row.style.gap = '8px';
-      row.style.margin = '6px 0 8px';
-    
-      // Standard set: RECORDS, ALL TIME, TODAY, months (DEC → JAN)
-      const pills = [mk('RECORDS'), mk('ALL TIME'), mk('TODAY'), ...[...MONTHS].reverse().map(m => mk(m))];
-      pills.forEach(b => row.appendChild(b));
-    
-      // Mount right under the title so it's always visible
-      const titleEl = modal.querySelector('h1,h2,h3');
-      if (titleEl) titleEl.insertAdjacentElement('afterend', row);
-      else (modal.querySelector('.modal-body') || modal).insertAdjacentElement('afterbegin', row);
-    
-      // Wire: TODAY renders our view; other pills restore and try to trigger the real tab
-      const clickOther = (label) => {
-            restore(modal);
-        const realRow = findTabsRow(modal);
-        if (realRow) {
-          const target = Array.from(realRow.querySelectorAll('button,.btn,[role="tab"]'))
-            .find(b => new RegExp(`^${label}$`, 'i').test((b.textContent || '').trim()));
-          if (target) target.click();
-        }
-      };
-      pills.forEach(b => {
-        const label = (b.textContent || '').trim().toUpperCase();
-        if (label === 'TODAY') b.addEventListener('click', (e)=>{ e.preventDefault(); renderToday(modal); });
-        else b.addEventListener('click', ()=> clickOther(label));
-      });
-    
-      return row;
-    }
-    
-      // ---- add a TODAY pill by cloning a real month pill -----------------------
-      function ensureTodayPill(modal){
-        const row = findTabsRow(modal); if (!row || !visible(row)) return null;
-    
-        // already present?
-        let btn = Array.from(row.querySelectorAll('button,.btn,[role="tab"]'))
-          .find(b => /^today$/i.test((b.textContent||'').trim()));
-        if (btn) return btn;
-    
-        // clone a month pill to copy exact styling
-        const monthBtn = Array.from(row.querySelectorAll('button,.btn,[role="tab"]'))
-          .find(b => MONTHS.includes((b.textContent||'').trim().toUpperCase()));
-        if (!monthBtn) return null;
-    
-        const clone = monthBtn.cloneNode(true);
-        clone.textContent = 'TODAY';
-        clone.dataset.mode = 'TODAY';
-        // remove any existing handlers by replacing the node
-        const tag = clone.tagName.toLowerCase(); const fresh = document.createElement(tag);
-        fresh.className = clone.className; fresh.type = 'button'; fresh.setAttribute('role', clone.getAttribute('role') || 'tab');
-        fresh.textContent = 'TODAY'; fresh.dataset.mode = 'TODAY';
-    
-        // place it right after ALL TIME if present; else before first month
-        const allBtn = Array.from(row.querySelectorAll('button,.btn,[role="tab"]')).find(b => /all\s*time/i.test((b.textContent||'')));
-        if (allBtn && allBtn.parentElement === row) allBtn.insertAdjacentElement('afterend', fresh);
-        else monthBtn.insertAdjacentElement('beforebegin', fresh);
-    
-        // wire: render Today on click
-        fresh.addEventListener('click', (e)=>{ e.preventDefault(); renderToday(modal); });
-    
-        // when any other pill is clicked, restore the default table/banner
-        if (!row.dataset._todayRestoreWired){
-          row.dataset._todayRestoreWired = '1';
-          row.addEventListener('click', (e)=>{
-            const label = (e.target && (e.target.textContent||'').trim().toUpperCase()) || '';
-            if (label && label !== 'TODAY') restore(modal);
-          }, true);
-        }
-    
-        return fresh;
-      }
-    
-      function tick(){
-        const m = findModal(); if (!m) return;
-        ensureTodayPill(m);
-      }
-    
-      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
-      try { window.__sqUIMutationBus?.on(()=>tick()); } catch(_) {}
-    })()
-  }
-
-  try{
-    if (window.FLAGS && FLAGS.ENABLE_LEGACY_HOME){
-      legacy_premierLeagueTodayChipPatch_v1();
-      legacy_premierLeagueTodayCloneMonth_v1();
-    }
-  }catch(_){}
