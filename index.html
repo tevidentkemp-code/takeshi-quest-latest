@@ -2142,7 +2142,11 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   color: rgba(220,255,230,.95);
 }
 .home-live-printer .lp-row{ height: 16px; }
-.home-live-printer .lp-row td{ padding: 1px 6px; vertical-align: top; }
+.home-live-printer .lp-row td{
+  padding: 1px 6px;
+  vertical-align: top;
+  background: transparent;
+}
 .home-live-printer .lp-line{ padding-right: 6px; }
 .home-live-printer .lp-ellipsis{
   display:block;
@@ -2151,6 +2155,21 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   white-space: nowrap;
   max-width: 100%;
 }
+
+.home-live-printer .lp-row.lp-datehdr .lp-ellipsis{
+  font-weight: 900 !important;
+  color: #ff7a00;
+  letter-spacing: .6px;
+}
+
+
+/* PATCH:LIVE_PRINTER_DATEHDR_STYLE_ID_TARGET START */
+#homeLivePrinter .lp-row.lp-datehdr .lp-ellipsis{
+  font-weight: 900 !important;
+  color: #ff7a00 !important;
+  letter-spacing: .6px;
+}
+/* PATCH:LIVE_PRINTER_DATEHDR_STYLE_ID_TARGET END */
 .home-live-printer .lp-row.lp-new .lp-line{ color: rgba(20,150,70,.95); }
 
 /* PB / WR / ALERT lines in LIVE UPDATES */
@@ -2524,7 +2543,7 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 .mini-table-plain td{background:transparent !important;border:0 !important;padding:10px 12px;font-size:12.5px;}
 .mini-table-plain tr + tr td{border-top:1px solid rgba(255,255,255,0.08) !important;}
 .mini-table-plain .mini-rank{width:2.2em;text-align:center;color:rgba(233,238,255,0.65);} 
-.mini-table-plain .mini-name{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(233,238,255,0.88);} 
+.mini-table-plain .mini-name{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(233,238,255,0.88);} 
 .mini-table-plain .mini-val{text-align:right;font-variant-numeric:tabular-nums;color:rgba(233,238,255,0.88);} 
 
 
@@ -4468,6 +4487,15 @@ body[data-page="leaderboard"] .wrap{
   overscroll-behavior: contain;
   padding-top: 0 !important;
 }
+/* >>> PATCH:LIVE_GAME_DISABLE_PAGE_SCROLL START */
+/* Live game should not page-scroll; only Cell 2 rounds list is scrollable. */
+body.livev2-on[data-page="game"]{ overflow: hidden !important; height: 100dvh; }
+body.livev2-on[data-page="game"] .wrap{ overflow: hidden !important; height: 100dvh; }
+/* keep rounds list scrollable */
+body.livev2-on[data-page="game"] #v2RowsWrap,
+body.livev2-on[data-page="game"] .v2RowsWrap{ overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+/* <<< PATCH:LIVE_GAME_DISABLE_PAGE_SCROLL END */
+
 
 
 /* Game table palette */
@@ -5170,6 +5198,13 @@ body[data-page="game"] #floatHead{
 /* >>> PATCH:portrait-fit-v6-pad-safearea END */
 </style>
 
+
+<style id="sq-hotfix-v53">
+@media (max-width: 480px) and (orientation: portrait){
+  /* keep a visible gap between Cell 3 pager dots and Cell 4 score pad */
+  body.livev2-on[data-page="game"] .v2InfoPagerDots{ margin-bottom: 10px; }
+}
+</style>
 </head>
 <body data-page="details">
 <!-- ===== @HTML:SCREENS ===== -->
@@ -9265,6 +9300,44 @@ function accumulateTargetCounters(playerName, games){
 
   return keys;
 }
+
+// >>> PATCH:target-hit-from-throws START
+// Accumulate Target Hit counters from normalized throw rows (Supabase-derived)
+function accumulateTargetCountersFromThrows(playerName, throws){
+  const nameLC = safeLower(playerName);
+  const keys = {};
+  for (let n=10;n<=20;n++) keys[String(n)] = { thrown:0, hits:0, dHits:0, tHits:0 };
+  keys.D = { thrown:0, hits:0 };
+  keys.T = { thrown:0, hits:0 };
+  keys.B = { thrown:0, hits:0, inner:0, outer:0 };
+  (throws||[]).forEach(t=>{
+    if (!t || safeLower(t.player) !== nameLC) return;
+    const ri = t.round_index;
+    if (typeof ri !== 'number') return;
+    if (ri >= 0 && ri <= 10){
+      const key = String(10 + ri);
+      keys[key].thrown++;
+      if (t.hit) keys[key].hits++;
+      if (t.kind==='d') keys[key].dHits++;
+      if (t.kind==='t') keys[key].tHits++;
+    } else if (ri === 11){
+      keys.D.thrown++;
+      if (t.hit) keys.D.hits++;
+    } else if (ri === 12){
+      keys.T.thrown++;
+      if (t.hit) keys.T.hits++;
+    } else if (ri === 13){
+      keys.B.thrown++;
+      if (t.hit) {
+        keys.B.hits++;
+        if (t.kind==='ib') keys.B.inner++;
+        else if (t.kind==='ob') keys.B.outer++;
+      }
+    }
+  });
+  return keys;
+}
+// >>> PATCH:target-hit-from-throws END
 // Put this at top-level (outside any function)
 function openScoreSheetFromHistory(gIndex){
   const game = state.match.history[gIndex];
@@ -11650,57 +11723,139 @@ function openModeChooser(onPick, onCancel){
 
 // === Target Hit Rate ===
 async function openTargetHitRateDialog(playerName, mode){
-  const games = await getGamesForMode(mode);
-  const counters = accumulateTargetCounters(playerName, games);
+  const allGames = await getGamesForMode(mode);
+
+  function gamesForRange(rangeKey){
+    // Only consider games that include this player (for POWER R / MONTH we need the player's own game set)
+    const withPlayer = (allGames||[]).filter(g=>{
+      const ps = g && Array.isArray(g.players) ? g.players : null;
+      return ps ? ps.some(p=>p && eqName(p.name, playerName)) : false;
+    });
+
+    if (rangeKey === 'power'){
+      const sorted = withPlayer.slice().sort((a,b)=>{
+        const da = getGameTimestamp(a); const db = getGameTimestamp(b);
+        return (db?db.getTime():0) - (da?da.getTime():0);
+      });
+      return sorted.slice(0, 4);
+    }
+
+    if (rangeKey === 'month'){
+      const cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      return withPlayer.filter(g=>{
+        const d = getGameTimestamp(g);
+        return d && d.getTime() >= cutoff;
+      });
+    }
+
+    return allGames || [];
+  }
 
   const ov = document.createElement('div'); ov.className='modal-backdrop';
   const md = document.createElement('div'); md.className='modal';
   const h  = document.createElement('h3');  h.textContent = `Target Hit Rate – ${playerName} (${mode==='official'?'Official':'Practice'})`;
   const body = document.createElement('div'); body.className='modal-body';
 
+  // Range buttons (top-right)
+  const rangeBar = document.createElement('div');
+  rangeBar.style.display = 'flex';
+  rangeBar.style.justifyContent = 'flex-end';
+  rangeBar.style.gap = '8px';
+  rangeBar.style.margin = '2px 0 10px';
+
+  function mkBtn(label, key){
+    const b = document.createElement('button');
+    b.className = 'seg-btn';
+    b.type = 'button';
+    b.textContent = label;
+    b.style.padding = '8px 12px';
+    b.style.borderRadius = '999px';
+    b.style.border = '1px solid rgba(255,255,255,.14)';
+    b.style.background = 'rgba(10,12,24,.55)';
+    b.style.color = 'rgba(255,255,255,.85)';
+    b.style.fontWeight = '800';
+    b.style.letterSpacing = '.02em';
+    b.style.cursor = 'pointer';
+    b.style.userSelect = 'none';
+    b.dataset.rangeKey = key;
+    return b;
+  }
+
+  const btnAll   = mkBtn('ALL TIME', 'all');
+  const btnPower = mkBtn('POWER R', 'power');
+  const btnMonth = mkBtn('MONTH', 'month');
+  rangeBar.append(btnAll, btnPower, btnMonth);
+  body.appendChild(rangeBar);
+
   const tbl = document.createElement('table'); tbl.className='hs-table';
   const thead=document.createElement('thead'); const trh=document.createElement('tr');
   ['Target','Thrown','Hits','Hit %'].forEach(s=>{ const th=document.createElement('th'); th.textContent=s; trh.appendChild(th); });
   thead.appendChild(trh); tbl.appendChild(thead);
   const tb = document.createElement('tbody');
+  tbl.appendChild(tb);
+  body.appendChild(tbl);
 
-  for (let n=10;n<=20;n++){
-    const c = counters[String(n)];
-    const tr=document.createElement('tr');
-    tr.append(
-      Object.assign(document.createElement('td'),{textContent:String(n)}),
-      Object.assign(document.createElement('td'),{className:'num', textContent:String(c.thrown)}),
-      Object.assign(document.createElement('td'),{className:'num', textContent:String(c.hits)}),
-      Object.assign(document.createElement('td'),{className:'num', textContent:pctStr(c.hits, c.thrown)})
-    );
-    tb.appendChild(tr);
+  function setActive(key){
+    [btnAll, btnPower, btnMonth].forEach(b=>{
+      const on = (b.dataset.rangeKey === key);
+      b.style.borderColor = on ? 'rgba(255,122,0,.9)' : 'rgba(255,255,255,.14)';
+      b.style.boxShadow   = on ? '0 0 0 2px rgba(255,122,0,.18) inset' : 'none';
+      b.style.background  = on ? 'rgba(255,122,0,.10)' : 'rgba(10,12,24,.55)';
+      b.style.color       = on ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.85)';
+    });
+  }
+  async function render(rangeKey){
+    const games = gamesForRange(rangeKey);
+    const gameIds = (games||[]).map(g=>g && g.id).filter(Boolean);
+    const throws = gameIds.length ? await __fetchThrowsForGames(gameIds) : [];
+    const counters = accumulateTargetCountersFromThrows(playerName, throws);
+
+    tb.innerHTML = '';
+    for (let n=10;n<=20;n++){
+      const c = counters[String(n)];
+      const tr=document.createElement('tr');
+      tr.append(
+        Object.assign(document.createElement('td'),{textContent:String(n)}),
+        Object.assign(document.createElement('td'),{className:'num', textContent:String(c.thrown)}),
+        Object.assign(document.createElement('td'),{className:'num', textContent:String(c.hits)}),
+        Object.assign(document.createElement('td'),{className:'num', textContent:pctStr(c.hits, c.thrown)})
+      );
+      tb.appendChild(tr);
+    }
+
+    [['D', counters.D], ['T', counters.T]].forEach(([label,c])=>{
+      const tr=document.createElement('tr');
+      tr.append(
+        Object.assign(document.createElement('td'),{textContent:label}),
+        Object.assign(document.createElement('td'),{className:'num', textContent:String(c.thrown)}),
+        Object.assign(document.createElement('td'),{className:'num', textContent:String(c.hits)}),
+        Object.assign(document.createElement('td'),{className:'num', textContent:pctStr(c.hits, c.thrown)})
+      );
+      tb.appendChild(tr);
+    });
+
+    // Bulls summary row
+    {
+      const c = counters.B;
+      const tr=document.createElement('tr');
+      tr.append(
+        Object.assign(document.createElement('td'),{textContent:'B'}),
+        Object.assign(document.createElement('td'),{className:'num', textContent:String(c.thrown)}),
+        Object.assign(document.createElement('td'),{className:'num', textContent:String(c.hits)}),
+        Object.assign(document.createElement('td'),{className:'num', textContent:`${pctStr(c.hits, c.thrown)} (I:${pctStr(c.inner,c.thrown)} · O:${pctStr(c.outer,c.thrown)})`})
+      );
+      tb.appendChild(tr);
+    }
+
+    setActive(rangeKey);
   }
 
-  [['D', counters.D], ['T', counters.T]].forEach(([label,c])=>{
-    const tr=document.createElement('tr');
-    tr.append(
-      Object.assign(document.createElement('td'),{textContent:label}),
-      Object.assign(document.createElement('td'),{className:'num', textContent:String(c.thrown)}),
-      Object.assign(document.createElement('td'),{className:'num', textContent:String(c.hits)}),
-      Object.assign(document.createElement('td'),{className:'num', textContent:pctStr(c.hits, c.thrown)})
-    );
-    tb.appendChild(tr);
-  });
+  btnAll.onclick   = ()=>void render('all');
+  btnPower.onclick = ()=>render('power');
+  btnMonth.onclick = ()=>render('month');
 
-  // Bulls summary row
-  {
-    const c = counters.B;
-    const tr=document.createElement('tr');
-    tr.append(
-      Object.assign(document.createElement('td'),{textContent:'B'}),
-      Object.assign(document.createElement('td'),{className:'num', textContent:String(c.thrown)}),
-      Object.assign(document.createElement('td'),{className:'num', textContent:String(c.hits)}),
-      Object.assign(document.createElement('td'),{className:'num', textContent:`${pctStr(c.hits, c.thrown)} (I:${pctStr(c.inner,c.thrown)} · O:${pctStr(c.outer,c.thrown)})`})
-    );
-    tb.appendChild(tr);
-  }
-
-  tbl.appendChild(tb); body.appendChild(tbl);
+  // Default view
+  render('all');
 
   const ft = document.createElement('div'); ft.className='modal-footer';
   const back=document.createElement('button'); back.className='btn'; back.textContent='Return';
@@ -17270,7 +17425,7 @@ function updateLeaderboardTable(){
     const rndAvg = thrown ? (total / thrown) * 3 : 0;
 
     return {
-      name: player.name || ('P' + (idx+1)),
+      name: (__sqComputeInitialsFromName(player.name) || ('P' + (idx+1))),
       color: player.color || '#fff',
       perGame,
       total,
@@ -17331,11 +17486,11 @@ function updateLeaderboardTable(){
     );
   }
 
-  // RND AVG
-  addRow('RND AVG', perPlayer.map(p => p.rndAvg.toFixed(1)));
+  // AVG
+  addRow('AVG', perPlayer.map(p => p.rndAvg.toFixed(1)));
 
-  // TOTAL POINTS
-  addRow('TOTAL POINTS', perPlayer.map(p => String(p.total)));
+  // PTS
+  addRow('PTS', perPlayer.map(p => String(p.total)));
 
   // WINS
   addRow('WINS', perPlayer.map(p => String(p.wins)));
@@ -20536,25 +20691,6 @@ function arrangeStartActions(){
       mini.id = 'homeMiniLeagues';
       mini.className = 'home-mini-leagues';
       mini.innerHTML = `
-        <div class="home-mini-printer" aria-label="High Score League">
-          <div class="lp-top">
-            <span class="lp-title">HIGH SCORE LEAGUE</span>
-            <span class="lp-badge"><span class="lp-badgeText">CURRENTLY UNAVAILABLE</span><span class="lp-badgeSep">•</span><span class="lp-badgeText">UPGRADES IN PROCESS</span><span class="lp-dots"><i></i><i></i><i></i></span></span>
-          </div>
-          <div class="lp-rule"></div>
-          <div class="lp-mid lp-mid-hold">
-            <div class="home-hold-overlay home-hold-overlay-mini" aria-hidden="true">
-              <div class="home-hold-title">CURRENTLY UNAVAILABLE</div>
-              <div class="home-hold-sub">UPGRADES IN PROCESS</div>
-              <div class="home-hold-sim"><span></span><span></span><span></span></div>
-            </div>
-            <table class="mini-table mini-table-plain" aria-label="High Score League Top 5">
-              <tbody id="homeHsLeagueRows">
-                <tr class="mini-loading"><td colspan="3" class="home-mini-muted"><em>TESTING…</em></td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
         <div class="home-mini-printer" aria-label="Power Rankings">
           <div class="lp-top">
             <span class="lp-title">POWER RANKINGS</span>
@@ -20617,8 +20753,8 @@ async function __sqRefreshHomeMiniLeagues(){
           const score = Number(r.best_score||0);
           return `<tr>
             <td class="mini-rank">${i+1}</td>
-            <td class="mini-player">${(window.escapeHtml? window.escapeHtml(name): name)}</td>
-            <td class="mini-score">${score}</td>
+            <td class="mini-name">${(window.escapeHtml? window.escapeHtml(name): name)}</td>
+            <td class="mini-val">${score}</td>
           </tr>`;
         }).join('');
       }
@@ -20654,8 +20790,8 @@ async function __sqRefreshHomeMiniLeagues(){
           const avg = (Number(r.avg_per_round||0)).toFixed(2);
           return `<tr>
             <td class="mini-rank">${i+1}</td>
-            <td class="mini-player">${(window.escapeHtml? window.escapeHtml(name): name)}</td>
-            <td class="mini-score">${avg}</td>
+            <td class="mini-name">${(window.escapeHtml? window.escapeHtml(name): name)}</td>
+            <td class="mini-val">${avg}</td>
           </tr>`;
         }).join('');
       }
@@ -21077,6 +21213,8 @@ const lpUpdateMeta = async (games) => {
       const lpIsGamePBLine  = (line) => /^GAME PB\b/i.test(lpStripBang(line));
       const lpIsAlertLine   = (line) => /^🚨\s*/.test(String(line || '').trim());
 
+      const lpIsDateHdrLine = (line) => /^[A-Z]+\s+\d{1,2}(?:st|nd|rd|th)\s+[A-Z]{3}\s+\d{2}\s+>>>\s*$/.test(String(line||'').trim());
+
       const lpSmoothShiftUp = (tbody, rowH, durationMs, onDone) => {
         if (!tbody) {
           if (onDone) onDone();
@@ -21125,6 +21263,14 @@ const lpUpdateMeta = async (games) => {
           tr.classList.toggle('lp-roundpb', !lpIsRecordLine(line) && lpIsRoundPBLine(line));
           tr.classList.toggle('lp-gamepb', !lpIsRecordLine(line) && lpIsGamePBLine(line));
             tr.classList.toggle('lp-alert', lpIsAlertLine(line));
+          tr.classList.toggle('lp-datehdr', lpIsDateHdrLine(line));
+          // Force style for date headers (Safari-safe): set inline styles so CSS cannot be overridden.
+          if(tr.classList.contains('lp-datehdr')){
+            try{ td.style.color = '#ff7a00'; }catch(_e){}
+            try{ td.style.fontWeight = '900'; }catch(_e){}
+            try{ sp.style.color = '#ff7a00'; }catch(_e){}
+            try{ sp.style.fontWeight = '900'; }catch(_e){}
+          }
           tr.classList.toggle('lp-alert', lpIsAlertLine(line));
           td.appendChild(sp);
           tr.appendChild(td);
@@ -21398,7 +21544,43 @@ const lpUpdateMeta = async (games) => {
           const sorted = items.slice().sort((a,b) => (new Date(_lpGetTs(b))).getTime() - (new Date(_lpGetTs(a))).getTime());
           const HIDE_KINDS = new Set();
           const filtered = sorted.filter(it => !(it && it.event_kind && HIDE_KINDS.has(it.event_kind)));
-          const lines = filtered.map(lpFmtLine);
+          // >>> PATCH:LIVE_PRINTER_DATE_HEADERS START
+          // Group lines by date: add a date header line (weekday + ordinal) when the day changes.
+          // Then list the match lines with time preserved (no leading DD/MM).
+          const _lpDays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+          const _lpMons = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+          const _lpOrd = (n)=>{ const v=n%100; if(v>=11 && v<=13) return "th"; return ({1:"st",2:"nd",3:"rd"}[n%10]||"th"); };
+          const _lpFmtHeader = (d)=>{
+            const wd = (_lpDays[d.getDay()]||"").toUpperCase();
+            const dd = d.getDate();
+            const mon = (_lpMons[d.getMonth()]||"").toUpperCase();
+            const yy = String(d.getFullYear()).slice(-2);
+            return (wd + ' ' + dd + _lpOrd(dd) + ' ' + mon + ' ' + yy + ' >>>').trim();
+          };
+          const _lpStripDate = (line)=>{
+            const s = String(line||"").trim();
+            // "DD/MM / HH:MM rest" -> "HH:MM rest"
+            let m = s.match(/^(\d{2}\/\d{2})\s*\/\s*(\d{2}:\d{2})\s*(.*)$/);
+            if(m) return (m[2] + ' ' + (m[3]||'')).trim();
+            // "DD/MM _ HH:MM _ rest" -> "HH:MM rest"
+            m = s.match(/^(\d{2}\/\d{2})\s*[_\-–—]\s*(\d{2}:\d{2})\s*[_\-–—]\s*(.*)$/);
+            if(m) return (m[2] + ' ' + (m[3]||'')).trim();
+            return s;
+          };
+
+          const lines = [];
+          let _lpLastKey = null;
+          filtered.forEach(it=>{
+            const ts = _lpGetTs(it);
+            const d = ts ? new Date(ts) : null;
+            const key = d ? (d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate()) : null;
+            if(key && key !== _lpLastKey){
+              lines.push(_lpFmtHeader(d));
+              _lpLastKey = key;
+            }
+            lines.push(_lpStripDate(lpFmtLine(it)));
+          });
+          // <<< PATCH:LIVE_PRINTER_DATE_HEADERS END
 
           const sig0 = sorted[0] ? lpSig(sorted[0]) : '';
           const shouldRefresh = forceFull || (sig0 && sig0 !== st.lastSig) || !Array.isArray(st.bufLines);
@@ -25118,7 +25300,7 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   const svgBars  = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V5"/><path d="M8 19V9"/><path d="M12 19V3"/><path d="M16 19v-6"/><path d="M20 19V7"/></svg>';
 
   list.append(
-    mkRow('Latest Matches', 'Position / Points / Round Avg', svgClock, () => {
+    mkRow('Latest Matches', 'Pos / Points / Avg', svgClock, () => {
       // Close this menu first so Latest Matches behaves as a true modal (Close returns to main screen)
       try{ overlay && overlay.remove(); }catch(e){}
       if (typeof window.openPlayerLatestMatchesDialog === 'function') return window.openPlayerLatestMatchesDialog(name, 'official');
@@ -25383,16 +25565,68 @@ async function __fetchThrowsForGames(gameIds){
       if (mul === 2) kind = 'double';
       else if (mul === 3) kind = 'treble';
       else if (mul === 1) kind = 'single';
-    }
+    }      const ts = r.ts ?? r.created_at ?? r.inserted_at ?? r.time ?? null;
 
-    const ts = r.ts ?? r.created_at ?? r.inserted_at ?? r.time ?? null;
+      // ---- Canonical hit + points for Target Hit % (do not trust upstream semantics) ----
+      const ringRaw = String((r.ring ?? r.segment ?? r.kind ?? r.type ?? '') || '').trim();
+      const ringU = ringRaw.toUpperCase();
 
-    return {
-      game_id: gid, player, round_index: ri, dart_index: di,
-      points: Number.isFinite(pts) ? pts : 0,
-      kind: String(kind || '').toLowerCase(),
-      ts
-    };
+      const ringType = (() => {
+        if (!ringU) return '';
+        // Bulls
+        if (ringU === 'IB' || ringU === 'INNER' || ringU === 'DB' || ringU === 'DOUBLEBULL') return 'IB';
+        if (ringU === 'OB' || ringU === 'OUTER' || ringU === 'SB' || ringU === 'SINGLEBULL') return 'OB';
+        if (ringU === 'B' || ringU === 'BULL') return 'B';
+
+        // S/D/T (allow prefixes like S20 / D16 / T14)
+        if (ringU[0] === 'S') return 'S';
+        if (ringU[0] === 'D') return 'D';
+        if (ringU[0] === 'T') return 'T';
+
+        if (ringU.startsWith('SINGLE')) return 'S';
+        if (ringU.startsWith('DOUBLE')) return 'D';
+        if (ringU.startsWith('TRIPLE') || ringU.startsWith('TREBLE')) return 'T';
+        return '';
+      })();
+
+      const kindNorm =
+        (ringType === 'D')  ? 'd'  :
+        (ringType === 'T')  ? 't'  :
+        (ringType === 'IB') ? 'ib' :
+        (ringType === 'OB') ? 'ob' :
+        (ringType === 'B')  ? 'b'  :
+        's';
+
+      const hit =
+        (typeof ri === 'number' && ri >= 0 && ri <= 10) ? (ringType === 'S' || ringType === 'D' || ringType === 'T') :
+        (ri === 11) ? (ringType === 'D') :
+        (ri === 12) ? (ringType === 'T') :
+        (ri === 13) ? (ringType === 'IB' || ringType === 'OB' || ringType === 'B') :
+        false;
+
+      // Compute deterministic points (used by other screens too); if upstream provides pts, we still prefer our computed value.
+      const targetN = Number(r.target ?? r.number ?? r.n ?? NaN);
+      let ptsDet = 0;
+      if (hit) {
+        if (typeof ri === 'number' && ri >= 0 && ri <= 10) {
+          const base = 10 + ri;
+          ptsDet = (ringType === 'D') ? base * 2 : (ringType === 'T') ? base * 3 : base;
+        } else if (ri === 11) {
+          ptsDet = Number.isFinite(targetN) ? targetN * 2 : 0;
+        } else if (ri === 12) {
+          ptsDet = Number.isFinite(targetN) ? targetN * 3 : 0;
+        } else if (ri === 13) {
+          ptsDet = (ringType === 'IB') ? 50 : (ringType === 'OB') ? 25 : ((targetN === 25) ? 25 : 50);
+        }
+      }
+
+      return {
+        game_id: gid, player, round_index: ri, dart_index: di,
+        points: (ptsDet || 0),
+        kind: kindNorm,
+        hit,
+        ts
+      };
   };
 
   const out = [];
@@ -25474,8 +25708,8 @@ window.fetchLatestMatchesRows = async function fetchLatestMatchesRows(playerName
 
     const rows = (data||[]).filter(Boolean).map(r=>{
       const score = Number(r.score||0);
-      const rounds = Number(r.rounds||0);
-      const avg = rounds ? (score/rounds) : null;
+      const rounds = 14; // Fixed game length (10–20 + D/T/B)
+      const avg = (rounds ? (score/rounds) : null);
       return {
         sheet_id: r.sheet_id || null,
         position: (r.position ?? ''),
@@ -25619,7 +25853,7 @@ window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDia
         <div style="display:flex; align-items:center; gap:10px;">
           <div>
             <div style="font-size:18px; font-weight:800; letter-spacing:.02em;">Latest Matches — ${safeName}</div>
-            <div style="font-size:11px; opacity:.65; margin-top:2px;">Position / Points / Round Avg</div>
+            <div style="font-size:11px; opacity:.65; margin-top:2px;">Pos / Points / Avg</div>
           </div>
         </div>
 
@@ -25644,9 +25878,9 @@ window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDia
             <thead>
               <tr>
                 <th style="text-align:left; padding-left:14px;">#</th>
-                <th style="text-align:center;">Position</th>
+                <th style="text-align:center;">Pos</th>
                 <th style="text-align:center;">Points</th>
-                <th style="text-align:center;">Round Avg</th>
+                <th style="text-align:center;">Avg</th>
                 <th style="text-align:right; padding-right:14px;">When</th>
               </tr>
             </thead>
@@ -25895,11 +26129,11 @@ window.openPlayerHighScoresDialog = async function openPlayerHighScoresDialog(pl
 
     rows = (data||[]).filter(Boolean).map(r=>{
       const score = Number(r.score||0);
-      const rounds = Number(r.rounds||0) || 14;
+      const rounds = 14; // fixed: Avg is always Score / 14 (10–20 + D/T/B)
       return {
         sheet_id: r.sheet_id || null,
         score,
-        avg: rounds ? (score/rounds) : 0,
+        avg: (score/rounds),
         when: fmt(r.ts),
         ts: r.ts
       };
@@ -25947,7 +26181,7 @@ window.openPlayerHighScoresDialog = async function openPlayerHighScoresDialog(pl
 
     const table=document.createElement('table'); table.className='sq-table hs-table';
     const thead=document.createElement('thead'); const trh=document.createElement('tr');
-    ['#','Score','Avg / Round','When'].forEach((h,idx)=>{
+    ['#','Score','Avg','When'].forEach((h,idx)=>{
       const th=document.createElement('th');
       th.textContent=h;
       if (idx===0) th.style.paddingLeft='14px';
@@ -26287,125 +26521,253 @@ window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(
 // ==== (4) Target % — per round (10→20 + D + T + B) ==========================
 window.openPlayerTargetPctDialog = async function openPlayerTargetPctDialog(playerName){
   const name = String(playerName||'').trim();
+  const nameLC = name.toLowerCase();
+
+  // --- modal shell ---
   const overlay = document.createElement('div'); overlay.className='modal-backdrop';
   const modal   = document.createElement('div'); modal.className  ='modal';
   modal.style.maxWidth='980px'; modal.style.width='94vw';
-  const header  = __sqStatsHeader(`Target Hit % — ${name}`, 'Throws / Hits / % / Ranks');
-const body    = document.createElement('div'); body.className   ='modal-body';
+
+  // Segmented filter: ALL TIME (default) | POWER R (last 4) | MONTH (last 30d)
+  const seg = document.createElement('div');
+  seg.className = 'segmented';
+  seg.style.display = 'flex';
+  seg.style.gap = '8px';
+
+  const mkSegBtn = (label, mode) => {
+    const b = document.createElement('button');
+    b.className = 'seg-btn';
+    b.dataset.mode = mode;
+    b.textContent = label;
+    b.style.padding = '8px 12px';
+    b.style.borderRadius = '999px';
+    b.style.border = '1px solid rgba(255,255,255,.14)';
+    b.style.background = 'rgba(10,12,24,.55)';
+    b.style.color = 'rgba(255,255,255,.85)';
+    b.style.fontWeight = '800';
+    b.style.letterSpacing = '.02em';
+    b.style.cursor = 'pointer';
+    b.style.userSelect = 'none';
+    return b;
+  };
+
+  const btnAll   = mkSegBtn('ALL TIME', 'ALL');
+  const btnPower = mkSegBtn('POWER R',  'P4');
+  const btnMonth = mkSegBtn('MONTH',    'M30');
+  seg.append(btnAll, btnPower, btnMonth);
+
+  const setActive = (mode) => {
+    seg.querySelectorAll('.seg-btn').forEach(btn=>{
+      const on = btn.dataset.mode === mode;
+      btn.style.borderColor = on ? 'rgba(255,123,26,.85)' : 'rgba(255,255,255,.14)';
+      btn.style.boxShadow   = on ? '0 0 0 2px rgba(255,123,26,.15) inset' : 'none';
+      btn.style.color       = on ? '#fff' : 'rgba(255,255,255,.85)';
+      btn.style.background  = on ? 'rgba(255,123,26,.12)' : 'rgba(10,12,24,.55)';
+    });
+  };
+
+  const header  = __sqStatsHeader(`Target Hit % — ${name}`, 'Throws / Hits / % / Ranks', seg);
+  const body    = document.createElement('div'); body.className   ='modal-body';
   body.style.paddingTop='8px';
   const footer  = document.createElement('div'); footer.className ='modal-footer';
   modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
   body .style.maxHeight='none'; body .style.overflowY='visible';
 
-// Collect game IDs from official games only.
-// (Avoid querying player_games_union here — its schema varies and causes noisy 400s.)
-let ids = [];
-if (!ids.length) {
-  const games = (await __fetchOfficialGames(50000)).map(__normalizeGame);
-  ids = games
-    .map(g => (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id)
-    .filter(Boolean);
-}
-
-let throwsRows = ids.length ? await __fetchThrowsForGames(ids) : [];
-if (!throwsRows.length) {
-  // Fallback to reconstruct from game boards (lifetime official)
-  const gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame);
-  throwsRows = __throwsFromGamesForPlayer(name, gamesAll);
-}
-  const labels = __roundLabels();
-  const nameLC = name.toLowerCase();
-
-  const playerThrows = throwsRows.filter(t => String(t.player||'').trim().toLowerCase()===nameLC);
-
-  const taken = Array(14).fill(0), hits = Array(14).fill(0);
-  playerThrows.forEach(t=>{
-      const r=(typeof t.round_index==='number')?t.round_index:null;
-      if (r==null || r<0 || r>13) return;
-      taken[r] += 1;
-      if ((t.hit===true) || (Number(t.points||0)>0)) hits[r] += 1; // any scoring counts as a hit (incl. bull)
-    });
-
-  const pctArr = taken.map((n,i)=> n ? (100*hits[i]/n) : 0);
-
-  // Rank (within this player's own targets): higher % => better
-  const playerRankMap = new Map(
-    pctArr
-      .map((pct,i)=>({i,pct:Number(pct)||0,n:taken[i],h:hits[i]}))
-      .filter(x=>x.n>0)
-      .sort((a,b)=> (b.pct-a.pct) || (b.h-a.h) || (b.n-a.n) || (a.i-b.i))
-      .map((x,idx)=>[x.i, idx+1])
-  );
-
-  // Game Rank (across all players): prefer Supabase view (server-derived, backdated)
-  const gameRankByKey = new Map(); // key -> game_rank
-  try{
-    const { data: grRows, error: grErr } = await sb
-      .from('player_hit_bucket_ranks_v')
-      .select('bucket_key, game_rank')
-      .eq('player_name', name);
-    if (grErr) throw grErr;
-    (grRows||[]).forEach(r=>{
-      const k = String(r.bucket_key||'').trim().toUpperCase();
-      const v = Number(r.game_rank);
-      if (k) gameRankByKey.set(k, Number.isFinite(v) ? v : null);
-    });
-  }catch(e){
-    console.warn('Game Rank view not available (player_hit_bucket_ranks_v).', e);
-  }
-
-
-
-  const table=document.createElement('table'); table.className='sq-table hs-table';
-  const thead=document.createElement('thead'); const trh=document.createElement('tr');
-  ['Round','Throws','Hits','%','Rank','Game Rank'].forEach(h=>{
-    const th=document.createElement('th');
-    if (h === 'Game Rank') th.innerHTML = 'Game<br>Rank';
-    else th.textContent=h;
-    trh.appendChild(th);
-  });
-  thead.appendChild(trh); table.appendChild(thead);
-  const tbody=document.createElement('tbody');
-   for (let i=0;i<14;i++){
-    const tr=document.createElement('tr');
-    const tdR=document.createElement('td'); tdR.textContent=labels[i]; tdR.className='sq-rank-cell';
-    const tdT=document.createElement('td'); tdT.textContent=String(taken[i]); // Throws
-    const tdH=document.createElement('td'); tdH.textContent=String(hits[i]);  // Hits
-    const pct = pctArr[i] || 0;
-    const tdP=document.createElement('td'); tdP.textContent=pct.toFixed(1)+'%';
-    const tdRank=document.createElement('td'); tdRank.textContent=String(playerRankMap.get(i) || '—');
-    const lbl=labels[i];
-    const key = (/^\d+$/.test(lbl) ? lbl : String(lbl||'').trim().toUpperCase());
-    const gr = (gameRankByKey.get(key) != null) ? gameRankByKey.get(key) : '—';
-    const tdGameRank=document.createElement('td'); tdGameRank.textContent=String(gr);
-    tr.append(tdR,tdT,tdH,tdP,tdRank,tdGameRank); tbody.appendChild(tr);
-  }
-  table.appendChild(tbody);
-  const scroll=document.createElement('div'); scroll.style.maxHeight='56vh'; scroll.style.overflowY='auto'; __sqStyleStatsTableWrap(scroll); scroll.appendChild(table);
-  body.appendChild(scroll);
-
-  const grNote=document.createElement('div');
-  grNote.className='tag muted';
-  grNote.style.marginTop='10px';
-  grNote.textContent='Game Rank is shown only after 15+ throws (5 rounds) for that row.';
-  body.appendChild(grNote);
-
-
   const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
   const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
   backBtn.onclick=()=>{ overlay.remove(); __sqGoBackToStatsMain(); };
   closeBtn.onclick=()=>overlay.remove();
-  const __spacer=document.createElement('div'); __spacer.style.flex='1';
-  const spiderBtn=document.createElement('button'); spiderBtn.className='btn small'; spiderBtn.textContent='SPIDER'; spiderBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerSpiderDialog==='function') window.openPlayerSpiderDialog(name,{parentOverlay:overlay,data:{labels:labels,pct:pctArr}}); else if (typeof toast==='function') toast('SPIDER not available'); };
-  const progBtn=document.createElement('button'); progBtn.className='btn small'; progBtn.textContent='PROGRESS'; progBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerProgressHitDialog==='function') window.openPlayerProgressHitDialog(name,{parentOverlay:overlay,mode:'hit',data:{labels:labels,throws:playerThrows,gameOrder:ids}}); else if (typeof toast==='function') toast('PROGRESS not available'); };
-  footer.append(backBtn,closeBtn,__spacer,spiderBtn,progBtn);
+  footer.style.display='flex';
+  footer.style.alignItems='center';
+  footer.style.justifyContent='space-between';
+  const leftWrap=document.createElement('div'); leftWrap.style.display='flex'; leftWrap.style.gap='10px';
+  const rightWrap=document.createElement('div'); rightWrap.style.display='flex'; rightWrap.style.gap='10px';
+
+  const spiderBtn=document.createElement('button'); spiderBtn.className='btn small'; spiderBtn.textContent='SPIDER';
+  const progBtn=document.createElement('button'); progBtn.className='btn small'; progBtn.textContent='PROGRESS';
+
+  leftWrap.append(backBtn, closeBtn);
+  rightWrap.append(spiderBtn, progBtn);
+  footer.append(leftWrap, rightWrap);
 
   modal.append(header,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
-
   function closeToHub(){ overlay.remove(); }
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();}); overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
+  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
   modal.tabIndex=0; modal.focus();
+
+  const labels = __roundLabels();
+
+  // Cache: official games list (normalized) so toggles are instant
+  body.innerHTML = '<p class="muted">Loading…</p>';
+  let gamesAll = [];
+  try{
+    gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+  }catch(e){
+    console.warn('Target Hit %: failed to fetch official games', e);
+  }
+
+  // helper: does this game include player?
+  const hasPlayer = (g) => {
+    try{
+      const ps = Array.isArray(g.players) ? g.players : (g.raw && g.raw.players) ? g.raw.players : [];
+      return ps.some(p => String((p && (p.name||p.player||p.player_name)) || p || '').trim().toLowerCase()===nameLC);
+    }catch(_){ return false; }
+  };
+
+  const gameDate = (g) => {
+    const r = g && (g.raw || g);
+    const ts = r && (r.played_at || r.started_at || r.created_at || r.date || r.ts);
+    const d = ts ? new Date(ts) : null;
+    return (d && !Number.isNaN(d.getTime())) ? d : null;
+  };
+
+  const playerGames = gamesAll.filter(hasPlayer).sort((a,b)=>{
+    const da = gameDate(a), db = gameDate(b);
+    const ta = da ? da.getTime() : 0;
+    const tb = db ? db.getTime() : 0;
+    return tb - ta;
+  });
+
+  const renderForMode = async (mode) => {
+    setActive(mode);
+
+    // Filter game set
+    let subset = playerGames.slice();
+    if (mode === 'P4') subset = subset.slice(0, 4);
+    if (mode === 'M30'){
+      const cut = Date.now() - (30*24*60*60*1000);
+      subset = subset.filter(g=>{
+        const d = gameDate(g);
+        return d && d.getTime() >= cut;
+      });
+    }
+
+    // Build game IDs
+    const ids = subset
+      .map(g => (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id)
+      .filter(Boolean);
+
+    // Fetch throws for those games; fallback to reconstruct from game boards
+    let throwsRows = ids.length ? await __fetchThrowsForGames(ids) : [];
+    if (!throwsRows.length && subset.length){
+      throwsRows = __throwsFromGamesForPlayer(name, subset);
+    }
+    const playerThrows = throwsRows.filter(t => String(t.player||'').trim().toLowerCase()===nameLC);
+
+    const taken = Array(14).fill(0), hits = Array(14).fill(0);
+    playerThrows.forEach(t=>{
+      const r=(typeof t.round_index==='number')?t.round_index:null;
+      if (r==null || r<0 || r>13) return;
+      taken[r] += 1;
+      if ((t.hit===true) || (Number(t.points||0)>0)) hits[r] += 1;
+    });
+
+    // Normalise throws: each row represents ONE turn in that round (3 darts).
+    // Older game data can omit miss rows; we infer missing throws as misses so all rounds have equal throw counts.
+    const expectedPerRow = (Array.isArray(ids) ? ids.length : 0) * 3;
+    if (expectedPerRow > 0){
+      for (let i=0;i<14;i++){
+        if (taken[i] < expectedPerRow) taken[i] = expectedPerRow;
+      }
+    }
+
+    const pctArr = taken.map((n,i)=> n ? (100*hits[i]/n) : 0);
+
+    // Rank within this player's own targets (selected mode)
+    const playerRankMap = new Map(
+      pctArr
+        .map((pct,i)=>({i,pct:Number(pct)||0,n:taken[i],h:hits[i]}))
+        .filter(x=>x.n>0)
+        .sort((a,b)=> (b.pct-a.pct) || (b.h-a.h) || (b.n-a.n) || (a.i-b.i))
+        .map((x,idx)=>[x.i, idx+1])
+    );
+
+    // Game Rank (cross-player) only available for ALL TIME (server view is lifetime-derived)
+    const gameRankByKey = new Map();
+    if (mode === 'ALL'){
+      try{
+        const { data: grRows, error: grErr } = await sb
+          .from('player_hit_bucket_ranks_v')
+          .select('bucket_key, game_rank')
+          .eq('player_name', name);
+        if (grErr) throw grErr;
+        (grRows||[]).forEach(r=>{
+          const k = String(r.bucket_key||'').trim().toUpperCase();
+          const v = Number(r.game_rank);
+          if (k) gameRankByKey.set(k, Number.isFinite(v) ? v : null);
+        });
+      }catch(e){
+        console.warn('Game Rank view not available (player_hit_bucket_ranks_v).', e);
+      }
+    }
+
+    // Build table
+    const table=document.createElement('table'); table.className='sq-table hs-table';
+    const thead=document.createElement('thead'); const trh=document.createElement('tr');
+    ['Round','Throws','Hits','%','My Rank','Game Rank'].forEach(h=>{
+      const th=document.createElement('th');
+      if (h === 'Game Rank') th.innerHTML = 'Game<br>Rank';
+      else if (h === 'My Rank') th.innerHTML = 'My<br>Rank';
+      else th.textContent=h;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh); table.appendChild(thead);
+    const tbody=document.createElement('tbody');
+
+    for (let i=0;i<14;i++){
+      const tr=document.createElement('tr');
+      const tdR=document.createElement('td');
+      const _lbl = labels[i];
+      tdR.textContent = (_lbl==='D') ? 'Doubles' : (_lbl==='T') ? 'Trebles' : (_lbl==='B') ? 'Bulls' : _lbl;
+      tdR.className='sq-rank-cell';
+      const tdT=document.createElement('td'); tdT.textContent=String(taken[i]);
+      const tdH=document.createElement('td'); tdH.textContent=String(hits[i]);
+      const pct = pctArr[i] || 0;
+      const tdP=document.createElement('td'); tdP.textContent=pct.toFixed(1)+'%';
+      const tdRank=document.createElement('td'); tdRank.textContent=String(playerRankMap.get(i) || '—');
+
+      const lbl=labels[i];
+      const key = (/^\d+$/.test(lbl) ? lbl : String(lbl||'').trim().toUpperCase());
+      const gr = (mode === 'ALL' && gameRankByKey.get(key) != null) ? gameRankByKey.get(key) : '—';
+      const tdGameRank=document.createElement('td'); tdGameRank.textContent=String(gr);
+
+      tr.append(tdR,tdT,tdH,tdP,tdRank,tdGameRank);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+
+    const scroll=document.createElement('div');
+    scroll.style.maxHeight='56vh';
+    scroll.style.overflowY='auto';
+    __sqStyleStatsTableWrap(scroll);
+    scroll.appendChild(table);
+
+    body.innerHTML = '';
+    body.appendChild(scroll);
+
+    const grNote=document.createElement('div');
+    grNote.className='tag muted';
+    grNote.style.marginTop='10px';
+    grNote.textContent = (mode === 'ALL')
+      ? 'Game Rank is shown only after 15+ throws (5 rounds) for that row.'
+      : 'Game Rank is lifetime-only (ALL TIME).';
+    body.appendChild(grNote);
+
+    // wire buttons to latest data (spider/progress use current table slice)
+    spiderBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerSpiderDialog==='function') window.openPlayerSpiderDialog(name,{parentOverlay:overlay,data:{labels:labels,pct:pctArr}}); else if (typeof toast==='function') toast('SPIDER not available'); };
+    progBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerProgressHitDialog==='function') window.openPlayerProgressHitDialog(name,{parentOverlay:overlay,mode:'hit',data:{labels:labels,throws:playerThrows,gameOrder:ids}}); else if (typeof toast==='function') toast('PROGRESS not available'); };
+  };
+
+  // bind toggle clicks
+  seg.querySelectorAll('.seg-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>renderForMode(btn.dataset.mode || 'ALL'));
+  });
+
+  // default
+  await renderForMode('ALL');
 };
+
 
 // ==== (4b) Target Points % — lifetime, per target (10..20) ===================
 window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPctDialog(playerName){
@@ -28919,7 +29281,7 @@ document.addEventListener('DOMContentLoaded', function(){
         const { data, error } = await sb
           .from(VIEW)
           .select(selectCols)
-          .ilike('player_name', `%${name}%`)
+          .ilike('player_name', name)
           .order('created_at', { ascending: true })
           .range(from, to);
         if (error) throw error;
@@ -28972,19 +29334,56 @@ document.addEventListener('DOMContentLoaded', function(){
           if (Number.isFinite(target) && target >= 10 && target <= 20) round_index = target - 10;
           else if (ring === 'D') round_index = 11;
           else if (ring === 'T') round_index = 12;
-          else if (ring === 'B') round_index = 13;
+          else if (ring === 'B' || ring === 'IB' || ring === 'OB') round_index = 13;
         }
 
-        const ts = r.created_at || null;
-        const hit = !!r.hit;
+                const ts = r.created_at || null;
+
+        const ri = (typeof round_index === 'number') ? round_index : null;
+        const ringU = String(r.ring || '').trim().toUpperCase();
+        const targetN = Number(r.target);
+
+        // Normalise ring -> kind used by the app
+        const kind =
+          (ringU === 'D')  ? 'd'  :
+          (ringU === 'T')  ? 't'  :
+          (ringU === 'IB') ? 'ib' :
+          (ringU === 'OB') ? 'ob' :
+          (ringU === 'B')  ? 'b'  :
+          's';
+
+        // Canonical Target Hit% "hit" definition (do NOT trust view.hit)
+        const hit =
+          (ri != null && ri >= 0 && ri <= 10) ? (ringU === 'S' || ringU === 'D' || ringU === 'T') :
+          (ri === 11) ? (ringU === 'D') :
+          (ri === 12) ? (ringU === 'T') :
+          (ri === 13) ? (ringU === 'IB' || ringU === 'OB' || ringU === 'B') :
+          false;
+
+        // Points (robust for any points-based stat elsewhere)
+        let points = 0;
+        if (hit && ri != null) {
+          if (ri >= 0 && ri <= 10) {
+            const base = 10 + ri;
+            points = (ringU === 'D') ? base * 2 : (ringU === 'T') ? base * 3 : base;
+          } else if (ri === 11) {
+            points = Number.isFinite(targetN) ? targetN * 2 : 0;
+          } else if (ri === 12) {
+            points = Number.isFinite(targetN) ? targetN * 3 : 0;
+          } else if (ri === 13) {
+            if (ringU === 'IB') points = 50;
+            else if (ringU === 'OB') points = 25;
+            else if (ringU === 'B') points = (targetN === 25) ? 25 : 50;
+          }
+        }
 
         return {
           game_id: r.match_id || null,
           player: r.player_name || name,
           round_index,
           dart_index: null,
-          points: hit ? 1 : 0,
-          kind: String(r.ring || '').toLowerCase(),
+          points,
+          kind,
           hit,
           ts
         };
@@ -30782,6 +31181,503 @@ __sqDmdInitV7();
 
   } catch(_){}
 })();
+
+
+// >>> PATCH:PLAYER_STATS_TARGET_3MODALS_V1 START
+// Adds: Target Hit %, Target Points %, DTB %
+// Each modal has: ALL TIME (default) / POWER R (last 4 games) / MONTH (last 30 days)
+// Data source: Supabase views (throw_events_v + player_games_union)
+// Notes:
+// - Bulls only count in bucket_key='B' (Bulls round). Anywhere else: miss for Bulls logic.
+// - POWER R = rolling last 4 games for player (official only).
+// - MONTH = last 30 days by game timestamp.
+
+(function(){
+  function __sqNowMs(){ return Date.now(); }
+  function __sqDaysMs(n){ return n * 24 * 60 * 60 * 1000; }
+
+  function __sqIsCloudReady(){
+    try { return (typeof ensureCloudInit !== 'function') ? !!window.sb : !!ensureCloudInit(); }
+    catch(_){ return !!window.sb; }
+  }
+
+  function __sqGetPlayerGamesTable(){
+    try{
+      if (typeof TABLE_PLAYER_GAMES !== 'undefined' && TABLE_PLAYER_GAMES) return TABLE_PLAYER_GAMES;
+    }catch(_){}
+    return 'player_games_union';
+  }
+
+  async function __sqFetchPlayerGameIds(playerName, windowKey){
+    // Returns an array of games.id (uuid) for the given player and window.
+    // Prefer canonical events (throw_rules_v) to avoid partial history due to name mismatches in player_games_union.
+    if (!__sqIsCloudReady()) throw new Error('Cloud not initialised');
+    const sb = window.sb;
+    const table = __sqGetPlayerGamesTable();
+
+    const name = String(playerName||'').trim();
+    if (!name) return [];
+
+    const norm = (s)=>String(s||'').trim().toLowerCase();
+
+    async function fetchRows(selectStr){
+      const q = sb
+        .from(table)
+        .select(selectStr)
+        .ilike('player', name) // case-insensitive to prevent missing historical rows
+        .or('is_practice.is.null,is_practice.eq.false');
+
+      if (windowKey === 'POWER'){
+        const { data, error } = await q.order('ts', { ascending:false }).limit(4);
+        if (error) throw error;
+        return data || [];
+      }
+      if (windowKey === 'MONTH'){
+        const cutoffIso = new Date(__sqNowMs() - __sqDaysMs(30)).toISOString();
+        const { data, error } = await q.gte('ts', cutoffIso).order('ts', { ascending:false }).limit(5000);
+        if (error) throw error;
+        return data || [];
+      }
+      const { data, error } = await q.order('ts', { ascending:false }).limit(5000);
+      if (error) throw error;
+      return data || [];
+    }
+
+    // 1) Try direct game_id if present
+    try{
+      const rows = await fetchRows('game_id, ts, is_practice');
+      const ids = (rows||[]).map(r => r.game_id).filter(Boolean);
+      if (ids.length) return ids;
+    }catch(_){ /* fallthrough */ }
+
+    // 2) Fallback: player_games_union sheet_id "<match_id>:<game_number>"
+    try{
+      const rows = await fetchRows('sheet_id, ts, is_practice');
+      const sheetIds = (rows||[]).map(r => String(r.sheet_id||'').trim()).filter(Boolean);
+      if (sheetIds.length){
+        const pairs = sheetIds.map(s=>{
+          const parts = s.split(':');
+          return { match_id: (parts[0]||'').trim(), game_number: Number(parts[1]||0) };
+        }).filter(p=>p.match_id && Number.isFinite(p.game_number) && p.game_number>0);
+
+        const matchIds = Array.from(new Set(pairs.map(p=>p.match_id)));
+        if (matchIds.length){
+          const { data: gamesRows, error: gamesErr } = await sb
+            .from('games')
+            .select('id, match_id, game_number')
+            .in('match_id', matchIds);
+          if (gamesErr) throw gamesErr;
+
+          const map = new Map();
+          (gamesRows||[]).forEach(g=>map.set(`${g.match_id}:${g.game_number}`, g.id));
+
+          const out = [];
+          for (const p of pairs){
+            const gid = map.get(`${p.match_id}:${p.game_number}`);
+            if (gid) out.push(gid);
+          }
+          if (out.length) return out;
+        }
+      }
+    }catch(_){ /* fallthrough */ }
+
+    // 3) Canonical fallback: scan throw_rules_v, dedupe to game_id
+    const cutoffIso = (windowKey === 'MONTH')
+      ? new Date(__sqNowMs() - __sqDaysMs(30)).toISOString()
+      : null;
+
+    let q = sb
+      .from('throw_rules_v')
+      .select('game_id, created_at, player_name')
+      .ilike('player_name', name)
+      .order('created_at', { ascending:false })
+      .limit(20000);
+
+    if (cutoffIso) q = q.gte('created_at', cutoffIso);
+
+    const { data, error } = await q;
+    if (error) throw error;
+
+    const seen = new Set();
+    const ordered = [];
+    for (const r of (data||[])){
+      if (!r?.game_id) continue;
+      if (norm(r.player_name) !== norm(name)) continue;
+      if (seen.has(r.game_id)) continue;
+      seen.add(r.game_id);
+      ordered.push(r.game_id);
+      if (windowKey === 'POWER' && ordered.length >= 4) break;
+    }
+
+    return ordered;
+  }
+
+  async function __sqFetchThrowEvents(gameIds){
+    // Pull rules-applied throws (hit_rules/ring_rules) so ALL TIME matches Supabase truth.
+    if (!__sqIsCloudReady()) throw new Error('Cloud not initialised');
+    const sb = window.sb;
+
+    const ids = (gameIds||[]).filter(Boolean);
+    if (!ids.length) return [];
+
+    const out = [];
+    const CHUNK = 200;
+
+    for (let i=0; i<ids.length; i+=CHUNK){
+      const chunk = ids.slice(i, i+CHUNK);
+      const { data, error } = await sb
+        .from('throw_rules_v')
+        .select('game_id, created_at, player_name, bucket_key, target, points, ring_rules, hit_rules')
+        .in('game_id', chunk);
+
+      if (error) throw error;
+      (data||[]).forEach(r => out.push(r));
+    }
+
+    return out;
+  }
+  function __sqBuckets(){
+    const arr = [];
+    for (let n=10; n<=20; n++) arr.push(String(n));
+    arr.push('D','T','B');
+    return arr;
+  }
+
+  function __sqBucketLabel(bk){ return bk; }
+
+  function __sqDenseRank(sortedRows, getScore){
+    let rank = 0;
+    let last = null;
+    for (const r of sortedRows){
+      const v = getScore(r);
+      if (last === null || v !== last){
+        rank += 1;
+        last = v;
+      }
+      r.__rank = rank;
+    }
+    return sortedRows;
+  }
+
+  function __sqBuildTopRightWindowButtons(activeKey, onPick){
+    const wrap = document.createElement('div');
+    wrap.style.display = 'flex';
+    wrap.style.gap = '8px';
+
+    const mk = (key, label) => {
+      const b = document.createElement('button');
+      b.className = 'btn small';
+      b.textContent = label;
+      b.dataset.key = key;
+      if (key === activeKey) b.classList.add('primary');
+      b.onclick = () => onPick(key);
+      return b;
+    };
+
+    wrap.append(
+      mk('ALL', 'ALL TIME'),
+      mk('POWER', 'POWER R'),
+      mk('MONTH', 'MONTH')
+    );
+    return wrap;
+  }
+
+  async function __sqFetchGameRanks(playerName, metric){
+    const map = new Map();
+    try{
+      if (!__sqIsCloudReady()) return map;
+      const sb = window.sb;
+
+      const view = (metric === 'points')
+        ? 'player_points_bucket_ranks_v'
+        : 'player_hit_bucket_ranks_v';
+
+      const { data, error } = await sb
+        .from(view)
+        .select('bucket_key, game_rank')
+        .eq('player', playerName)
+        .order('bucket_key', { ascending:true });
+
+      if (error) throw error;
+
+      (data||[]).forEach(r => {
+        const bk = String(r.bucket_key||'').trim();
+        const gr = (r.game_rank == null) ? null : Number(r.game_rank);
+        if (bk) map.set(bk, gr);
+      });
+    }catch(e){
+      console.warn('[Target Stats] game-rank view missing/unavailable:', e?.message || e);
+    }
+    return map;
+  }
+
+  function __sqMakeModalShell(titleText){
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-backdrop';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal wide';
+    modal.style.maxWidth = '980px';
+    modal.style.width = 'min(980px, 96vw)';
+    modal.style.maxHeight = '90vh';
+    modal.style.overflow = 'hidden';
+
+    const header = document.createElement('div');
+    header.style.display = 'flex';
+    header.style.alignItems = 'center';
+    header.style.justifyContent = 'space-between';
+    header.style.gap = '12px';
+    header.style.padding = '10px 12px 0';
+
+    const title = document.createElement('h3');
+    title.textContent = titleText;
+    title.style.margin = '0';
+
+    const headerRight = document.createElement('div');
+
+    const body = document.createElement('div');
+    body.className = 'modal-body';
+    body.style.paddingTop = '8px';
+    body.style.overflow = 'auto';
+
+    const footer = document.createElement('div');
+    footer.className = 'modal-footer';
+    footer.style.display = 'flex';
+    footer.style.justifyContent = 'space-between';
+    footer.style.alignItems = 'center';
+
+    const left = document.createElement('div');
+    left.style.display = 'flex';
+    left.style.gap = '10px';
+
+    const backBtn = document.createElement('button');
+    backBtn.className = 'btn sq-pill';
+    backBtn.textContent = 'Back';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'btn sq-pill';
+    closeBtn.textContent = 'Close';
+
+    left.append(backBtn, closeBtn);
+
+    const right = document.createElement('div');
+    right.style.display = 'flex';
+    right.style.gap = '10px';
+
+    footer.append(left, right);
+
+    header.append(title, headerRight);
+    modal.append(header, body, footer);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const close = () => { try{ overlay.remove(); }catch(_){ } };
+    overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(); });
+    overlay.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') close(); });
+    modal.tabIndex = 0;
+    modal.focus();
+
+    return { overlay, modal, header, headerRight, body, footer, backBtn, closeBtn, right, close };
+  }
+
+  function __sqTable(headers){
+    const table = document.createElement('table');
+    table.className = 'sq-table hs-table';
+
+    const thead = document.createElement('thead');
+    const tr = document.createElement('tr');
+    headers.forEach(h=>{
+      const th = document.createElement('th');
+      if (typeof h === 'string') th.textContent = h;
+      else th.innerHTML = h.html || '';
+      tr.appendChild(th);
+    });
+    thead.appendChild(tr);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+
+    return { table, tbody };
+  }
+
+  function __sqPct(n){
+    if (!Number.isFinite(n)) return '0.0%';
+    return n.toFixed(1) + '%';
+  }
+
+  async function __sqOpenTargetModal(playerName, mode){
+    const name = String(playerName||'').trim();
+    if (!name) return;
+
+    const title = (mode === 'points')
+      ? `Target Points % — ${name}`
+      : (mode === 'dtb')
+        ? `DTB % — ${name}`
+        : `Target Hit % — ${name}`;
+
+    const shell = __sqMakeModalShell(title);
+
+    shell.backBtn.onclick = () => {
+      shell.close();
+      if (typeof window.openPlayerStatsHub === 'function') window.openPlayerStatsHub(name);
+    };
+
+    shell.closeBtn.onclick = () => { shell.close(); };
+
+    let activeWindow = 'ALL';
+
+    const render = async () => {
+      shell.body.innerHTML = '<p class="muted">Loading…</p>';
+      shell.headerRight.innerHTML = '';
+
+      const winBtns = __sqBuildTopRightWindowButtons(activeWindow, async (k)=>{
+        activeWindow = k;
+        await render();
+      });
+      shell.headerRight.appendChild(winBtns);
+
+      const gameIds = await __sqFetchPlayerGameIds(name, activeWindow);
+      if (!gameIds.length){
+        shell.body.innerHTML = '<p class="muted">No games found for this window.</p>';
+        return;
+      }
+
+      const ev = await __sqFetchThrowEvents(gameIds);
+      const mine = (ev||[]).filter(r => String(r.player_name||'').trim().toLowerCase() === name.toLowerCase());
+
+      const buckets = __sqBuckets();
+      const agg = new Map();
+      buckets.forEach(bk => {
+        agg.set(bk, { bucket_key: bk, throws: 0, hits: 0, points_scored: 0, max_points: 0, d_hits: 0, t_hits: 0 });
+      });
+
+      for (const r of mine){
+        const bk = String(r.bucket_key||'').trim();
+        if (!agg.has(bk)) continue;
+
+        const row = agg.get(bk);
+        const points = Number(r.points||0);
+        const hit = (r.hit_rules === true);
+
+        row.throws += 1;
+        if (hit) row.hits += 1;
+
+        let maxPerDart = 0;
+        let scored = 0;
+
+        if (/^\d+$/.test(bk)){
+          const target = Number(bk);
+          maxPerDart = target * 3;
+          scored = hit ? points : 0;
+        } else if (bk === 'D'){
+          maxPerDart = 40;
+          scored = hit ? points : 0;
+        } else if (bk === 'T'){
+          maxPerDart = 60;
+          scored = hit ? points : 0;
+        } else if (bk === 'B'){
+          maxPerDart = 50;
+          scored = hit ? points : 0;
+        }
+
+        row.max_points += maxPerDart;
+        row.points_scored += scored;
+
+        const ring = String(r.ring_rules||'').trim().toUpperCase();
+        if (hit){
+          if (ring === 'D') row.d_hits += 1;
+          if (ring === 'T') row.t_hits += 1;
+        }
+      }
+
+      const rows = buckets.map(bk=>{
+        const a = agg.get(bk);
+        const hit_pct = a.throws ? (100 * a.hits / a.throws) : 0;
+        const points_pct = a.max_points ? (100 * a.points_scored / a.max_points) : 0;
+        const d_pct = a.throws ? (100 * a.d_hits / a.throws) : 0;
+        const t_pct = a.throws ? (100 * a.t_hits / a.throws) : 0;
+        const dtb_pct = a.throws ? (100 * (a.d_hits + a.t_hits) / a.throws) : 0;
+
+        return { bucket_key: bk, label: __sqBucketLabel(bk), throws: a.throws, hits: a.hits, hit_pct, points_pct, d_hits: a.d_hits, t_hits: a.t_hits, d_pct, t_pct, dtb_pct };
+      });
+
+      const scoredRows = rows.filter(r => r.throws > 0);
+      const sortKey = (mode === 'points') ? 'points_pct' : (mode === 'dtb') ? 'dtb_pct' : 'hit_pct';
+
+      const sorted = scoredRows.slice().sort((a,b)=>{
+        return (b[sortKey] - a[sortKey]) || (b.throws - a.throws) || (String(a.bucket_key).localeCompare(String(b.bucket_key)));
+      });
+      __sqDenseRank(sorted, r => Number(r[sortKey].toFixed(6)));
+
+      const myRank = new Map(sorted.map(r => [r.bucket_key, r.__rank]));
+
+      let gameRankMap = new Map();
+      if (mode === 'hit') gameRankMap = await __sqFetchGameRanks(name, 'hit');
+      if (mode === 'points') gameRankMap = await __sqFetchGameRanks(name, 'points');
+
+      shell.body.innerHTML = '';
+      const content = document.createElement('div');
+      shell.body.appendChild(content);
+
+      let headers;
+      if (mode === 'dtb'){
+        headers = ['ROUND','THROWS',{ html:'D<br>HITS' },{ html:'D<br>%' },{ html:'T<br>HITS' },{ html:'T<br>%' },{ html:'MY<br>RANK' },{ html:'GAME<br>RANK' }];
+      } else {
+        headers = ['ROUND','THROWS',(mode === 'points') ? 'POINTS' : 'HITS','%',{ html:'MY<br>RANK' },{ html:'GAME<br>RANK' }];
+      }
+
+      const { table, tbody } = __sqTable(headers);
+
+      for (const r of rows){
+        const tr = document.createElement('tr');
+
+        const tdRound = document.createElement('td'); tdRound.textContent = r.label;
+        const tdThrows= document.createElement('td'); tdThrows.textContent = String(r.throws);
+
+        tr.append(tdRound, tdThrows);
+
+        if (mode === 'dtb'){
+          const tdDH = document.createElement('td'); tdDH.textContent = String(r.d_hits);
+          const tdDP = document.createElement('td'); tdDP.textContent = __sqPct(r.d_pct);
+          const tdTH = document.createElement('td'); tdTH.textContent = String(r.t_hits);
+          const tdTP = document.createElement('td'); tdTP.textContent = __sqPct(r.t_pct);
+          const tdMy = document.createElement('td'); tdMy.textContent = (myRank.get(r.bucket_key) || '—');
+          const tdGr = document.createElement('td'); tdGr.textContent = (gameRankMap.get(r.bucket_key) ?? '—');
+          tr.append(tdDH, tdDP, tdTH, tdTP, tdMy, tdGr);
+        } else {
+          const tdHitsOrPoints = document.createElement('td');
+          tdHitsOrPoints.textContent = (mode === 'points') ? __sqPct(r.points_pct) : String(r.hits);
+
+          const tdPct = document.createElement('td');
+          tdPct.textContent = (mode === 'points') ? __sqPct(r.points_pct) : __sqPct(r.hit_pct);
+
+          const tdMy = document.createElement('td'); tdMy.textContent = (myRank.get(r.bucket_key) || '—');
+          const tdGr = document.createElement('td'); tdGr.textContent = (gameRankMap.get(r.bucket_key) ?? '—');
+
+          tr.append(tdHitsOrPoints, tdPct, tdMy, tdGr);
+        }
+
+        tbody.appendChild(tr);
+      }
+
+      content.appendChild(table);
+    };
+
+    try{ await render(); }
+    catch(e){
+      console.error('[Target Stats] render failed', e);
+      shell.body.innerHTML = `<p class="muted">Failed to load.</p><p class="tag">${String(e?.message || e)}</p>`;
+    }
+  }
+
+  window.openPlayerTargetHitDialog = function(playerName){ return __sqOpenTargetModal(playerName, 'hit'); };
+  window.openPlayerTargetPointsDialog = function(playerName){ return __sqOpenTargetModal(playerName, 'points'); };
+  window.openPlayerDTBDialog = function(playerName){ return __sqOpenTargetModal(playerName, 'dtb'); };
+
+})();
+// >>> PATCH:PLAYER_STATS_TARGET_3MODALS_V1 END
+
 </script>
 <!-- >>> PATCH:SQ_DMD_TOPBAR_JS_V1 END -->
 
