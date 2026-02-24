@@ -58,6 +58,11 @@
 (function(){
   function __sqSetVh(){
     try{
+    // Local: stop intro immediately (do NOT wait for realtime delivery)
+    try{
+      window.__sqCommentaryLocal && (window.__sqCommentaryLocal.started = true);
+      window.__sqStopIntro && window.__sqStopIntro();
+    }catch(_){}
       var vv = window.visualViewport;
       var h = vv ? vv.height : window.innerHeight;
       document.documentElement.style.setProperty('--sqVh', (h * 0.01) + 'px');
@@ -1527,6 +1532,9 @@ body[data-page="game"] #gameScrollGate{
 .modal.menu-modal{
   max-width:440px;
   padding:16px 14px 14px;
+  max-height:92dvh;
+  display:flex;
+  flex-direction:column;
 }
 .menu-modal-header{
   display:flex;
@@ -1589,6 +1597,9 @@ body[data-page="game"] #gameScrollGate{
 .modal-body.menu-modal-body{
   padding:0 4px 6px;
   overflow:auto;
+  -webkit-overflow-scrolling:touch;
+  flex:1;
+  min-height:0;
 }
 .menu-list{
   display:flex;
@@ -2543,7 +2554,11 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 .mini-table-plain td{background:transparent !important;border:0 !important;padding:10px 12px;font-size:12.5px;}
 .mini-table-plain tr + tr td{border-top:1px solid rgba(255,255,255,0.08) !important;}
 .mini-table-plain .mini-rank{width:2.2em;text-align:center;color:rgba(233,238,255,0.65);} 
-.mini-table-plain .mini-name{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(233,238,255,0.88);} 
+.mini-table-plain{table-layout:fixed;}
+.mini-table-plain .mini-rank{width:28px;white-space:nowrap;}
+.mini-table-plain .mini-val{width:72px;white-space:nowrap;}
+.mini-table-plain .mini-name{max-width:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(233,238,255,0.88);}
+ 
 .mini-table-plain .mini-val{text-align:right;font-variant-numeric:tabular-nums;color:rgba(233,238,255,0.88);} 
 
 
@@ -4398,6 +4413,22 @@ margin-bottom: var(--section-gap);
   font-weight:600;
   letter-spacing:.02em;
   text-transform:none;
+}
+
+.menu-modal-title-sub2{
+  margin-top:2px;
+  font-size:.78rem;
+  color:var(--muted);
+  font-weight:600;
+  letter-spacing:.02em;
+  text-transform:none;
+}
+
+.menu-row.is-disabled{
+  opacity:.45;
+}
+.menu-row.is-disabled .menu-row-chev{
+  opacity:.35;
 }
 .menu-modal-form{
   width:100%;
@@ -7047,6 +7078,101 @@ async function renderPBGRTableInto(mountId){
   }
 }
 
+
+// >>> PATCH:round_high_scores_use_wr_table START
+async function renderRoundHighScoresInto(mountId){
+  const mount = document.getElementById(mountId);
+  if (!mount) return;
+  mount.innerHTML = '<p class="tag">Loading…</p>';
+
+  const orderKey = (rk) => {
+    const s = String(rk ?? '').trim().toUpperCase();
+    if (/^\d+$/.test(s)) return parseInt(s,10);
+    if (s === 'D') return 21;
+    if (s === 'T') return 22;
+    if (s === 'B') return 23;
+    return 999;
+  };
+
+  const safeText = (v, fallback='—') => {
+    const s = (v == null) ? '' : String(v).trim();
+    return s ? s : fallback;
+  };
+
+  const makeTable = () => {
+    const table = document.createElement('table'); table.className='hs-table';
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ['Round','WR','Darts','Holder',''].forEach(h=>{
+      const th = document.createElement('th');
+      th.textContent = h;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+    return { table, tbody };
+  };
+
+  try{
+    // Canonical source: Supabase view (backdated + ties)
+    const { data, error } = await sb
+      .from('v_round_high_scores_modal')
+      .select('round_key,wr,darts,holder,tie_idx,holder_suffix')
+      .limit(50000);
+
+    if (error) throw error;
+
+    const rows = Array.isArray(data) ? data.slice() : [];
+    if (!rows.length){
+      mount.innerHTML = '<p>No round high-score rows found in v_round_high_scores_modal.</p>';
+      return;
+    }
+
+    rows.sort((a,b)=>{
+      const ka = orderKey(a.round_key);
+      const kb = orderKey(b.round_key);
+      if (ka !== kb) return ka - kb;
+      const ta = Number(a.tie_idx || 0);
+      const tb = Number(b.tie_idx || 0);
+      if (ta !== tb) return ta - tb;
+      return String(a.holder||'').localeCompare(String(b.holder||''));
+    });
+
+    const { table, tbody } = makeTable();
+
+    for (const r of rows){
+      const tr = document.createElement('tr');
+
+      const rk = String(r.round_key ?? '').toUpperCase();
+      const roundLabel = rk; // already '10'..'20' or 'D'/'T'/'B'
+      const wr = (r.wr == null) ? '—' : String(r.wr);
+      const darts = safeText(r.darts, '—');
+      const holder = safeText(r.holder, '—');
+      const suf = safeText(r.holder_suffix, '');
+
+      [roundLabel, wr, darts, holder, suf].forEach((v, idx)=>{
+        const td = document.createElement('td');
+        td.textContent = v;
+        if (idx === 4) td.className = 'hs-suffix';
+        tr.appendChild(td);
+      });
+
+      tbody.appendChild(tr);
+    }
+
+    mount.innerHTML = '';
+    mount.appendChild(table);
+
+  }catch(err){
+    const msg = (err && (err.message || err.error_description)) ? (err.message || err.error_description) : String(err||'');
+    mount.innerHTML = '<p>Unable to load right now.</p><p class="tag">Error: '+ escapeHtml(msg) +'</p>';
+  }
+}
+
+
+// >>> PATCH:round_high_scores_use_wr_table END
 // Keep admin renderer for pb/gr admin modal
 async function renderPBGRGlobalTable(){
   return renderPBGRTableInto('pbgrGlobal');
@@ -7063,8 +7189,8 @@ function openRoundHighScoresDialog(){
   if (btnBack)  btnBack.onclick  = () => { modal.classList.add('hidden'); };
   if (btnClose) btnClose.onclick = () => { modal.classList.add('hidden'); };
 
-  // Re-use the generic PB/GR table builder
-  renderPBGRTableInto('roundHSBody').catch(()=>{
+  // Use canonical WR table (includes holder + darts)
+  renderRoundHighScoresInto('roundHSBody').catch(()=>{
     body.innerHTML = '<p>Unable to load right now.</p>';
   });
 }
@@ -11111,6 +11237,21 @@ async function cloudListHighScoresWithBackfill(isPractice=false, limit=500){
 
 
 // Insert (name, score, ts) if not already present in the table
+// >>> PATCH:SQ_GAME_EVENTS_WRITE_V1 START
+// Writes a single dart event to public.game_events (fire-and-forget).
+// This table is the canonical trigger feed for realtime commentary + future analytics.
+// IMPORTANT: this must NEVER block UI, so no await required.
+function cloudInsertGameEvent(row){
+  try{
+    if (!window.sb || !row || !row.game_id) return;
+    window.sb.from("game_events").insert(row).then(function(res){
+      // Intentionally silent (UI must not block). Uncomment for debugging:
+      // if(res && res.error) console.warn('[game_events] insert error', res.error);
+    });
+  }catch(_e){}
+}
+// >>> PATCH:SQ_GAME_EVENTS_WRITE_V1 END
+
 async function cloudInsertHighScoreIfMissing(table, playerId, name, score, ts, gameId){
   // v27: High scores are ONLY for saved players. Require player_id + game_id.
   try {
@@ -16536,6 +16677,13 @@ function __sqGameRenderFailsafe(err){
 // ===== @SEC:JS:GAME:ENGINE =====
 function recordThrow(spec){
   try{ window.__sqDmdStopPreThrow?.(); }catch(_){ }
+  // >>> PATCH:SQ_INTRO_STOP_ON_FIRST_INPUT_V1 START
+  // Stop commentary intro loop immediately on the first real input.
+  try{
+    window.__sqCommentaryLocal && (window.__sqCommentaryLocal.started = true);
+    window.__sqStopIntro && window.__sqStopIntro();
+  }catch(_){ }
+  // >>> PATCH:SQ_INTRO_STOP_ON_FIRST_INPUT_V1 END
   // Ignore input if game is finished or in sudden death
   if (state.finished || state.suddenDeath.active) return;
 
@@ -16596,12 +16744,564 @@ function recordThrow(spec){
 
   // Write dart
   entry.darts[dartIndex] = dartObj;
+
+  // >>> PATCH:SQ_GAME_EVENTS_WRITE_CALL_V1 START
+  // Mirror this dart into public.game_events so realtime commentary wakes up on first dart.
+  // Fire-and-forget by design: gameplay must never wait on network.
+  try{
+    var gid = (window.__sqCommentaryDebug && window.__sqCommentaryDebug().game_id) || ((typeof ensureLiveGameId === 'function') ? ensureLiveGameId() : (state && state.meta && state.meta.game_id));
+    if(!gid) throw new Error('game_events: missing game_id');
+    var pl  = state.players[pIndex] || {};
+    var pid = String(pl.id || pl.player_id || pl.uuid || pl.code || pl.name || '');
+    var pname = String(pl.name || pl.player_name || pl.initials || pid || ('P'+(pIndex+1)));
+    cloudInsertGameEvent({
+      game_id: gid,
+      player_id: pid,
+      player_name: pname,
+      round_index: rIndex,
+      round_label: (function(def){
+        if(!def) return '';
+        if(def.type==='number')  return String(def.target)+'s';
+        if(def.type==='doubles') return "D's";
+        if(def.type==='triples') return "T's";
+        if(def.type==='bull')    return 'Bull';
+        return '';
+      })(roundDef),
+      dart_index: dartIndex,
+      kind: String(dartObj && dartObj.kind || spec && spec.kind || ''),
+      points: Number(dartObj && dartObj.points || 0) || 0,
+      meta: {
+        match_id: (typeof __sqEnsureMatchId === 'function') ? __sqEnsureMatchId() : null,
+        source: 'client_recordThrow'
+      }
+    });
+  }catch(_){}
+  // >>> PATCH:SQ_GAME_EVENTS_WRITE_CALL_V1 END
+
   entry.roundTotal =
     (entry.darts[0]?.points || 0) +
     (entry.darts[1]?.points || 0) +
     (entry.darts[2]?.points || 0);
 
 
+
+
+/* =======================================================================
+   SHATEKI-QUEST — COMMENTARY SYSTEM (IN-FILE MAP)
+   PURPOSE
+   - Renders commentary "pills" into Live Game Cell 3 (Dot 1 / VIDE view)
+   - Writes lines to Supabase (public.game_commentary) and listens via Realtime
+   - Keeps UI changes strictly scoped to #sqCommentary* elements (no layout drift)
+
+   SINGLE SOURCE OF TRUTH
+   - Supabase is canonical. Local render is optimistic-only for responsiveness.
+
+   DATA TABLES
+   - public.game_commentary  (render + history + realtime)
+   - public.game_events      (source for stats/triggers; not rendered here)
+
+   ENTRY POINTS (Global)
+   - window.__sqCommentaryStart()  -> boot + subscribe + seed history
+   - window.__sqCommentaryStop()   -> unsubscribe + clear timers
+   - window.__sqCommentaryPush(line, meta) -> optimistic render + insert row
+   - window.__sqCommentaryDebug()  -> state dump (cloudInit, game_id, table)
+
+   UI TARGET
+   - dot1Host() MUST return Dot-1 container in Cell 3 (VIDE)
+   - ensureUI() injects #sqCommentaryWrap/#sqCommentaryBox inside Dot 1 only
+
+   SAFETY RULES
+   - Do NOT reposition/resize Cell 2.1 or Cell 3 in this module.
+   - Keep Realtime filter game_id=eq.<gid> (no cross-game bleed).
+   - Keep CSS scoped to #sqCommentary* only.
+
+   TESTING (Console)
+   - __sqCommentaryDebug()
+   - __sqCommentaryPush("BAZ: Test line", { kind:"debug" })
+
+   ======================================================================= */
+  /* >>> PATCH:SQ_COMMENTARY_EMIT_INLINE_V2 START
+   Improvements:
+   - Baz template rotation (no immediate repeats)
+   - Smart emphasis: big scores, big swings, lead changes
+   - Correct swing maths: swing = prevGap - currGap (positive closes)
+*/
+try{
+  var C = window.__sqCommentaryLocal || (window.__sqCommentaryLocal = {
+    idleTimer:null,
+    started:false,
+    lastGap:null,
+    lastLeader:null,
+    lastBazTpl:-1,
+    lastGazLine:'',
+    bazCooldown:[],
+    gazCooldown:{}
+  });
+
+
+  // Match-scoped narrative memory (persists across multiple games in a match-series)
+  C.matchId = C.matchId || __sqEnsureMatchId();
+  C.matchState = C.matchState || __sqLoadMatchState(C.matchId);
+
+  function _pKey(name){ return String(name||'').toUpperCase(); }
+  function memFor(nameU){
+    var st = C.matchState;
+    if(!st.players[nameU]){
+      st.players[nameU] = {
+        streakDT: 0, streakD: 0, streakT: 0,
+        lastDartMissStreak: 0,
+        hotStartDrop: 0,
+        doubleMerchant: 0,
+        lastJokeAt: 0
+      };
+    }
+    return st.players[nameU];
+  }
+  function saveMatchStateSoon(){
+    if(C._saveMatchT) return;
+    C._saveMatchT = setTimeout(function(){
+      try{ __sqSaveMatchState(C.matchId, C.matchState); }catch(_e){}
+      C._saveMatchT = null;
+    }, 250);
+  }
+
+  // First throw stops intro
+  if (!C.started){
+    C.started = true;
+    try{ window.__sqStopIntro && window.__sqStopIntro(); }catch(_e){}
+  }
+
+  // cancel idle timer between darts
+  if (C.idleTimer){ clearTimeout(C.idleTimer); C.idleTimer = null; }
+
+  function pickTpl(arr, lastKey, cooldownArr, cooldownN){
+    // cooldownArr stores last N indices used
+    if (!cooldownArr) cooldownArr = [];
+    var idx = Math.floor(Math.random()*arr.length);
+    // try a few times to avoid repeats
+    for (var k=0;k<8;k++){
+      idx = Math.floor(Math.random()*arr.length);
+      if (idx === lastKey) continue;
+      if (cooldownArr.indexOf(idx) !== -1) continue;
+      break;
+    }
+    // update cooldown
+    cooldownArr.push(idx);
+    while (cooldownArr.length > (cooldownN||3)) cooldownArr.shift();
+    return { idx: idx, txt: arr[idx] };
+  }
+
+  function fmtName(pi){
+    var p = state.players && state.players[pi];
+    var n = (p && (p.name || p.initials || p.code)) || ('P'+(pi+1));
+    return String(n).trim();
+  }
+  function fmtUpper(s){ return String(s||'').toUpperCase(); }
+
+  function totalForPlayer(pi){
+    var b = state.score && state.score[pi];
+    if (!b) return 0;
+    var tot = 0;
+    for (var ri=0; ri<b.length; ri++){
+      var e = b[ri];
+      if (e && typeof e.roundTotal === 'number') tot += e.roundTotal;
+    }
+    return tot;
+  }
+  function roundsDoneForPlayer(pi){
+    var b = state.score && state.score[pi];
+    if (!b) return 1;
+    var c = 0;
+    for (var ri=0; ri<b.length; ri++){
+      var e = b[ri];
+      if (e && e.darts && e.darts[2] != null) c += 1;
+    }
+    return c || 1;
+  }
+
+  // Micro: 2 misses after 2nd dart
+  if (dartIndex === 1){
+    var d0 = entry.darts[0] ? (entry.darts[0].points||0) : 0;
+    var d1 = entry.darts[1] ? (entry.darts[1].points||0) : 0;
+    if (d0 === 0 && d1 === 0){
+      window.__sqCommentaryPush && window.__sqCommentaryPush("GAZ: Two misses… the board remains unbothered.");
+    }
+  }
+
+  
+  // Moment-based micro commentary (per-dart) — only on signal
+  try{
+    var dObj = entry.darts && entry.darts[dartIndex] ? entry.darts[dartIndex] : null;
+    if (dObj){
+      // track misses in this go
+      if (C._missesThisGo == null || dartIndex === 0) C._missesThisGo = 0;
+      if ((dObj.points||0) === 0) C._missesThisGo += 1;
+
+      // Streak intelligence (D/T chains + habits) — cross-game via matchState
+      var pName = (state.players && state.players[pIndex] && (state.players[pIndex].name || state.players[pIndex].initials || state.players[pIndex].code)) || ('P'+(pIndex+1));
+      pName = String(pName).trim();
+      var pU = _pKey(pName);
+      var mem = memFor(pU);
+
+      var prevDT = mem.streakDT;
+      var isDT = (dObj.kind === 'D' || dObj.kind === 'T');
+
+      if (isDT){
+        mem.streakDT += 1;
+        if (dObj.kind === 'D'){ mem.streakD += 1; mem.streakT = 0; mem.doubleMerchant += 1; }
+        if (dObj.kind === 'T'){ mem.streakT += 1; mem.streakD = 0; }
+      } else {
+        // reset on non D/T
+        mem.streakDT = 0; mem.streakD = 0; mem.streakT = 0;
+      }
+
+      function hypeLine(){
+        if (mem.streakT >= 4) return "GAZ: **FOUR TREBLES ON THE SPIN!** That is outrageous.";
+        if (mem.streakT === 3) return "GAZ: **HAT-TRICK OF TREBLES!** He cannot miss that bed.";
+        if (mem.streakT === 2) return "GAZ: **BACK-TO-BACK TREBLES!** Now then.";
+        if (mem.streakD >= 4) return "GAZ: **FOUR DOUBLES IN A ROW!** That’s not normal darts.";
+        if (mem.streakD === 3) return "GAZ: **THREE DOUBLES ON THE BOUNCE!** He’s a doubles machine.";
+        if (mem.streakD === 2) return "GAZ: **BACK-TO-BACK DOUBLES!** That’s proper.";
+        if (mem.streakDT >= 3) return "GAZ: **THREE QUALITY DARTS IN A ROW!** He’s cooking.";
+        if (mem.streakDT === 2) return "GAZ: Two in a row… that’s rhythm.";
+        return "";
+      }
+
+      // Double excitement on successive D/T (but don't shout every time)
+      if (isDT && mem.streakDT >= 2 && Math.random() < 0.7){
+        var hl = hypeLine();
+        if (hl) window.__sqCommentaryPush && window.__sqCommentaryPush(hl, { kind: "streak" });
+      }
+
+      // Heartbreak: last dart miss kills a hot streak
+      if (dartIndex === 2){
+        var miss = ((dObj.points||0) === 0 || dObj.kind === 'Miss' || dObj.kind === 'MISS');
+        if (miss && prevDT >= 2){
+          mem.lastDartMissStreak += 1;
+          window.__sqCommentaryPush && window.__sqCommentaryPush(
+            "BAZ: Two lovely darts… then he drops the last one. That hurts.",
+            { kind: "heartbreak" }
+          );
+        } else if (miss){
+          mem.lastDartMissStreak += 1;
+        } else {
+          mem.lastDartMissStreak = 0;
+        }
+
+        // Running joke: repeated last-dart misses
+        if (mem.lastDartMissStreak >= 2 && Math.random() < 0.5){
+          window.__sqCommentaryPush && window.__sqCommentaryPush(
+            "GAZ: Third dart again… it’s like it’s got a restraining order against the board.",
+            { kind: "habit" }
+          );
+        }
+      }
+
+      saveMatchStateSoon();
+
+      // Special hits: Triple/Double/Bull
+      if (dObj.kind === 'T'){
+        window.__sqCommentaryPush && window.__sqCommentaryPush("GAZ: **TRIPLE!** " + String(dObj.points||0) + " — that’s a proper dart.");
+      } else if (dObj.kind === 'D'){
+        window.__sqCommentaryPush && window.__sqCommentaryPush("GAZ: **DOUBLE!** Clean hit — " + String(dObj.points||0) + " on it.");
+      } else if (dObj.kind === 'B'){
+        // bull can be 25/50
+        var b = (dObj.bull != null) ? dObj.bull : (dObj.points||0);
+        window.__sqCommentaryPush && window.__sqCommentaryPush("GAZ: **BULL!** " + String(b) + " — cheeky.");
+      }
+
+      // Three misses in a go: punchy
+      if (dartIndex === 2 && C._missesThisGo >= 3){
+        window.__sqCommentaryPush && window.__sqCommentaryPush("GAZ: Three misses. That’s a scratch with extra steps.");
+      }
+    }
+  }catch(_e){}
+// End-of-go (3rd dart): main comms
+  if (dartIndex === 2){
+    var pName = fmtName(pIndex);
+    var pNameU = fmtUpper(pName);
+    var rScore = entry.roundTotal || 0;
+
+
+    var roundCtx = '';
+    try{
+      if (typeof labelForRound === 'function' && typeof ROUNDS !== 'undefined' && state && typeof state.currentRound === 'number'){
+        var lbl = labelForRound(ROUNDS[state.currentRound]) || '';
+        if (lbl){
+          // 35% chance to call the round for radio listeners
+          if (Math.random() < 0.35) roundCtx = ' On ' + lbl + '.';
+        }
+      }
+    }catch(_e){}
+
+
+    var pTot = totalForPlayer(pIndex);
+    var pAvg = pTot / roundsDoneForPlayer(pIndex);
+
+    // leader + runner-up gap (canonical)
+    var leaderIdx = 0, leaderTot = -1;
+    for (var pi=0; pi<state.players.length; pi++){
+      var tt = totalForPlayer(pi);
+      if (tt > leaderTot){ leaderTot = tt; leaderIdx = pi; }
+    }
+    var secondIdx = -1, secondTot = -1;
+    for (var pi2=0; pi2<state.players.length; pi2++){
+      if (pi2 === leaderIdx) continue;
+      var tt2 = totalForPlayer(pi2);
+      if (tt2 > secondTot){ secondTot = tt2; secondIdx = pi2; }
+    }
+    if (secondTot < 0) secondTot = 0;
+    var leaderName = fmtName(leaderIdx);
+    var gap = leaderTot - secondTot; // leaderboard gap
+
+    // swing calculation: prevGap - currGap (positive closes)
+    var swingTxt = '';
+    var leadChange = false;
+    if (C.lastLeader != null && C.lastLeader !== leaderName) leadChange = true;
+
+    if (C.lastGap != null){
+      var swing = C.lastGap - gap;
+      var absSwing = Math.abs(swing);
+      if (leadChange){
+        swingTxt = " **LEAD CHANGE!**";
+      } else if (absSwing >= 10){
+        if (swing > 0) swingTxt = " **SWING " + absSwing + "** (gap closes).";
+        else swingTxt = " **SWING " + absSwing + "** (gap opens).";
+      }
+    }
+    C.lastGap = gap;
+    C.lastLeader = leaderName;
+
+    // emphasis rules
+    var scoreCallPlain = pNameU + ": " + String(rScore) + "!";
+    var scoreCall = scoreCallPlain;
+    if (rScore >= 60) scoreCall = "**" + scoreCallPlain + "**";
+
+    // Decide how "stats-y" Baz should be.
+    // Default: conversational. Only go full stats on big moments.
+    var absSwingForRule = 0;
+    try{
+      if (C.lastGap != null){
+        var swingForRule = (C.lastGap - gap);
+        absSwingForRule = Math.abs(swingForRule);
+      }
+    }catch(_e){}
+    var bigMoment = leadChange || (absSwingForRule >= 15) || (rScore >= 80) || (gap <= 10);
+    var includeStats = bigMoment || (Math.random() < 0.22);
+
+    // Round context (radio listener help) already computed as roundCtx
+    // Light Baz lines (most of the time)
+    var bazLiteTpls = [
+      "BAZ: {SCORE}{ROUNDCTX}",
+      "BAZ: {SCORE} That’s tidy.{ROUNDCTX}",
+      "BAZ: {SCORE} Just keeps it moving.{ROUNDCTX}",
+      "BAZ: {SCORE} No drama, just points.{ROUNDCTX}",
+      "BAZ: {SCORE} He’ll take that all day.{ROUNDCTX}"
+    ];
+
+    // Big-moment Baz lines (occasionally)
+    var bazStatTpls = [
+      "BAZ: {SCORE} {LEADERLINE}{SWING}{ROUNDCTX}",
+      "BAZ: {SCORE} {SWING} {LEADERLINE}{ROUNDCTX}",
+      "BAZ: {SCORE} {LEADERLINE}{ROUNDCTX}",
+      "BAZ: {SCORE} Avg {AVGNUM}. {LEADERLINE}{SWING}{ROUNDCTX}"
+    ];
+
+    // Leaderline phrasing (avoid robotic 'Leader:' prefix)
+    var leaderLine;
+    if (leadChange){
+      leaderLine = "**NEW LEADER** — " + leaderName + " by " + String(gap) + ".";
+    } else {
+      leaderLine = leaderName + " " + (gap === 0 ? "level" : (("by " + String(gap)) + "."));
+      if (gap > 0) leaderLine = leaderName + " by " + String(gap) + ".";
+      else leaderLine = "We’re level.";
+    }
+
+    // Choose template set
+    var tplArr = includeStats ? bazStatTpls : bazLiteTpls;
+    var picked = pickTpl(tplArr, C.lastBazTpl, C.bazCooldown, 3);
+    C.lastBazTpl = picked.idx;
+
+    var baz = picked.txt;
+    baz = baz.replace("{SCORE}", scoreCall);
+    baz = baz.replace("{AVGNUM}", pAvg.toFixed(1));
+    baz = baz.replace("{LEADERLINE}", leaderLine);
+    baz = baz.replace("{SWING}", swingTxt || '');
+    baz = baz.replace("{ROUNDCTX}", roundCtx || '');
+
+    // Clean double spaces if placeholders empty
+    baz = baz.replace(/\s+/g,' ').replace(' .','.');
+    window.__sqCommentaryPush && window.__sqCommentaryPush(baz);
+// Gaz variation by outcome, with cooldown
+    function pickGaz(bucket){
+      if (!C.gazCooldown) C.gazCooldown = {};
+      if (!C.gazCooldown[bucket]) C.gazCooldown[bucket] = [];
+      var opts = C.gazCooldown[bucket+'_opts'];
+      if (!opts){
+        // define buckets
+        if (bucket === 'scratch'){
+          opts = [
+            "GAZ: That’s a scratch. Three darts, zero contribution. Lovely.",
+            "GAZ: Zero. Three darts. That’s minimalist darts.",
+            "GAZ: That visit was a donation to nobody.",
+            "GAZ: The board remains completely untroubled."
+          ];
+        } else if (bucket === 'big'){
+          opts = [
+            "GAZ: OOF — that’s chunky. Someone’s woken up.",
+            "GAZ: That’ll rattle a few flights, that one.",
+            "GAZ: Proper visit. That’s how you shift a game.",
+            "GAZ: That is not messing about darts."
+          ];
+        } else if (bucket === 'ok'){
+          opts = [
+            "GAZ: It’s points. Nobody asks how, they ask how many.",
+            "GAZ: Keep stacking those and it gets awkward for everyone else.",
+            "GAZ: Not pretty — but it’s on the board.",
+            "GAZ: Boring darts win matches. Hate it, but it’s true."
+          ];
+        }
+        C.gazCooldown[bucket+'_opts'] = opts;
+      }
+      var used = C.gazCooldown[bucket];
+      // pick avoiding last 6 seconds repeat per bucket
+      var idx = Math.floor(Math.random()*opts.length);
+      for (var k=0;k<8;k++){
+        idx = Math.floor(Math.random()*opts.length);
+        if (used.indexOf(idx) !== -1) continue;
+        break;
+      }
+      used.push(idx);
+      while (used.length > 3) used.shift();
+      return opts[idx];
+    }
+
+    var bucket = (rScore === 0) ? 'scratch' : (rScore >= 60 ? 'big' : 'ok');
+    var gaz = pickGaz(bucket);
+    if (gaz === C.lastGazLine){
+      // force alternate
+      gaz = pickGaz(bucket);
+    }
+    C.lastGazLine = gaz;
+    window.__sqCommentaryPush && window.__sqCommentaryPush(gaz);
+
+    // --- AUTO ROUND UPDATE (once per full round, all players completed) ---
+    try{
+      if (C.lastRoundSummary == null) C.lastRoundSummary = -1;
+
+      function roundDone(pi, r){
+        var b = state.score && state.score[pi];
+        if (!b || !b[r]) return false;
+        var e = b[r];
+        return !!(e && e.darts && e.darts[2] != null);
+      }
+      var rIdx = (state && typeof state.currentRound === 'number') ? state.currentRound : null;
+      if (rIdx != null && rIdx !== C.lastRoundSummary){
+        var allDone = true;
+        for (var ppi=0; ppi<state.players.length; ppi++){
+          if (!roundDone(ppi, rIdx)){ allDone = false; break; }
+        }
+        if (allDone){
+          var lbl = '';
+          try{
+            if (typeof labelForRound === 'function' && typeof ROUNDS !== 'undefined'){
+              lbl = labelForRound(ROUNDS[rIdx]) || '';
+            }
+          }catch(_e){}
+
+          var rows = [];
+          for (var ppi2=0; ppi2<state.players.length; ppi2++){
+            rows.push({ name: fmtName(ppi2), tot: totalForPlayer(ppi2) });
+          }
+          rows.sort(function(a,b){ return b.tot - a.tot; });
+
+          var top = rows[0];
+          var second = rows[1] || null;
+          var gap2 = second ? (top.tot - second.tot) : top.tot;
+
+          // Track round-to-round gap trend
+          if (!C.roundGapHist) C.roundGapHist = [];
+          var prevGap = (C.roundGapHist.length ? C.roundGapHist[C.roundGapHist.length-1] : null);
+
+          // Less statsy headline variants (still useful for radio listeners)
+          var head = lbl ? ("ROUND UPDATE (" + lbl + ")") : "ROUND UPDATE";
+          var leaderU = String(top.name).toUpperCase();
+          var secondU = second ? String(second.name).toUpperCase() : "—";
+
+          var variants = [];
+          variants.push("BAZ: **" + head + "** — " + leaderU + " still in front. Gap " + String(gap2) + ".");
+          if (second){
+            variants.push("BAZ: **" + head + "** — " + leaderU + " leads " + secondU + " by " + String(gap2) + ".");
+            variants.push("BAZ: **" + head + "** — " + leaderU + " on top. " + secondU + " chasing. Gap " + String(gap2) + ".");
+          } else {
+            variants.push("BAZ: **" + head + "** — " + leaderU + " out there on his own.");
+          }
+
+          // Occasionally include just the top two totals (not the full table)
+          if (second && Math.random() < 0.35){
+            variants.push("BAZ: **" + head + "** — " + leaderU + " " + String(top.tot) + ", " + secondU + " " + String(second.tot) + ". Gap " + String(gap2) + ".");
+          }
+
+          var line = variants[Math.floor(Math.random()*variants.length)];
+          window.__sqCommentaryPush && window.__sqCommentaryPush(line, { kind: "round_update", round_index: rIdx, round_label: lbl });
+
+          // Follow-up: momentum / change since last round(s)
+          if (prevGap != null){
+            var d = prevGap - gap2; // positive = gap closed
+            var ad = Math.abs(d);
+            var follow = "";
+            if (top && C.lastRoundLeader && C.lastRoundLeader !== top.name){
+              follow = "GAZ: **Momentum swing** — new leader at the top. This is getting spicy.";
+            } else if (ad >= 10){
+              follow = (d > 0)
+                ? ("GAZ: Gap **closes by " + String(ad) + "** that round. Someone’s making a move.")
+                : ("GAZ: Gap **opens by " + String(ad) + "** — leader’s got breathing room.");
+            } else {
+              follow = (d > 0)
+                ? "GAZ: Tiny nibble back. Still close enough to feel it."
+                : "GAZ: Leader holds steady. No gifts given.";
+            }
+            if (follow) window.__sqCommentaryPush && window.__sqCommentaryPush(follow, { kind: "round_update_follow", round_index: rIdx });
+          }
+
+          // Update trend tracking
+          C.roundGapHist.push(gap2);
+          while (C.roundGapHist.length > 4) C.roundGapHist.shift();
+          C.lastRoundLeader = top ? top.name : null;
+
+          C.lastRoundSummary = rIdx;
+        }
+      }
+    }catch(_e){}
+
+
+  } else {
+    // Between darts: pause chatter if they stall
+    if (dartIndex < 2){
+      C.idleTimer = setTimeout(function(){
+        var fillers = [
+          "BAZ: Little pause here… let it breathe.",
+          "GAZ: He’s thinking. That’s never a good sign.",
+          "BAZ: Crowd’s gone quiet — someone’s doing maths.",
+          "GAZ: Someone at the back is ordering a Guinness. Respect.",
+          "BAZ: You can hear the flights rattling. Proper tension.",
+          "GAZ: He’s lining it up like it owes him money.",
+          "BAZ: Bit of theatre here. The next dart tells the story.",
+          "GAZ: Someone in the crowd just went \"ooo\" at nothing. Classic.",
+          "BAZ: A pause long enough to invent three new doubts.",
+          "GAZ: You can feel the pub leaning in."
+        ];
+        var f = fillers[Math.floor(Math.random()*fillers.length)];
+        if (C.lastFiller && fillers.length > 1 && f === C.lastFiller){
+          f = fillers[(fillers.indexOf(f)+1) % fillers.length];
+        }
+        C.lastFiller = f;
+        window.__sqCommentaryPush && window.__sqCommentaryPush(f);
+      }, 1600 + Math.floor(Math.random()*2400));
+    }
+  }
+}catch(_){}
+/* >>> PATCH:SQ_COMMENTARY_EMIT_INLINE_V2 END */
   /* >>> PATCH:SQ_DMD_STAGE2_THROW_QUALITY START */
 // Stage 2: Throw-quality scenes + Zone layout responsibilities
 // Z1 = current round/phase, Z2 = main callout, Z3 = per-turn throw sequence (S20 / X / T18)
@@ -19073,55 +19773,128 @@ async function openRoundHighScoresDialog(){
   const body    = document.createElement('div'); body.className='modal-body';
   const footer  = document.createElement('div'); footer.className='modal-footer';
 
+  function normRoundKey(r){
+    const raw = (r?.round ?? r?.round_key ?? r?.cat ?? r?.bucket ?? r?.round_label ?? r?.round_name ?? r?.round_number ?? '').toString().trim();
+    if (!raw) return '';
+
+    // If numeric: 10-20 are numbers, 21/22/23 sometimes used for D/T/B
+    const n = Number(raw);
+    if (Number.isFinite(n)){
+      if (n >= 10 && n <= 20) return String(n);
+      if (n === 21) return 'D';
+      if (n === 22) return 'T';
+      if (n === 23) return 'B';
+      // Some pipelines use 11/12/13 for D/T/B (round_index style)
+      if (n === 11) return 'D';
+      if (n === 12) return 'T';
+      if (n === 13) return 'B';
+    }
+
+    const u = raw.toUpperCase();
+    if (u === 'D' || u.includes('DOUBLE')) return 'D';
+    if (u === 'T' || u.includes('TRIPLE') || u.includes('TREBLE')) return 'T';
+    if (u === 'B' || u.includes('BULL')) return 'B';
+
+    // Strip leading 'R' (e.g. R10)
+    if (/^R\d+$/.test(u)) return String(Number(u.slice(1)));
+    return raw;
+  }
+
   async function render(){
     body.innerHTML = '';
     try{
-      const snap = await (typeof getPBGRSnapshot === 'function' ? getPBGRSnapshot() : Promise.resolve({ byTargetMeta: {} }));
-      const order = [...Array.from({length:11},(_,i)=>10+i), 'D','T','B'];
+      const order = [...Array.from({length:11},(_,i)=>String(10+i)), 'D','T','B'];
 
       const table = document.createElement('table'); table.className='hs-table';
-      const thead = document.createElement('thead'); const trh=document.createElement('tr');
+      const thead = document.createElement('thead');
+      const trh   = document.createElement('tr');
       ['Round','WR','Darts','Holder'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
       thead.appendChild(trh); table.appendChild(thead);
-
       const tbody = document.createElement('tbody'); table.appendChild(tbody);
-      const pending = [];
 
-      order.forEach(key=>{
-        const meta = (snap.byTargetMeta && snap.byTargetMeta[key]) ? snap.byTargetMeta[key] : { val:0, player:'', game_id:null, ridx:null };
-        const tr   = document.createElement('tr');
+      // One row per round. If multiple tied holders exist, rotate the holder name every 3 seconds.
+      for (const key of order){
+        const arr = by.get(String(key)) || [];
 
-        const tdR  = document.createElement('td'); tdR.textContent = String(key);
-        const tdV  = document.createElement('td'); tdV.textContent = String(meta.val || 0);
-        const tdD  = document.createElement('td'); tdD.textContent = '—'; // filled async
-        const tdN  = document.createElement('td'); tdN.textContent = meta.player ? meta.player : '—';
+        const tr = document.createElement('tr');
+        const tdR=document.createElement('td'); tdR.textContent=String(key);
 
-        tr.append(tdR, tdV, tdD, tdN);
-        tbody.appendChild(tr);
-
-        if (meta && meta.game_id != null && meta.player && (meta.ridx || meta.ridx === 0)){
-          pending.push(
-            fetchRoundPattern(meta.game_id, meta.player, meta.ridx).then(pat=>{
-              tdD.textContent = pat || '—';
-            }).catch(()=>{ tdD.textContent = '—'; })
-          );
+        if (arr.length === 0){
+          const tdW=document.createElement('td'); tdW.textContent='—';
+          const tdD=document.createElement('td'); tdD.textContent='—';
+          const tdH=document.createElement('td'); tdH.textContent='—';
+          tr.append(tdR, tdW, tdD, tdH);
+          tbody.appendChild(tr);
+          continue;
         }
-      });
 
-      if (pending.length){ try{ await Promise.allSettled(pending); }catch(_){ /* ignore */ } }
+        // Records are already sorted; first row holds the best WR.
+        const best = arr[0];
+        const tdW=document.createElement('td'); tdW.textContent=String(best.wr);
+        const tdD=document.createElement('td'); tdD.textContent=best.darts ? best.darts : '—';
+
+        const holders = arr.map(r => (r.holder || '').trim()).filter(Boolean);
+        // De-dupe while preserving order
+        const seen = new Set();
+        const uniq = [];
+        for (const h of holders){ if (!seen.has(h)){ seen.add(h); uniq.push(h); } }
+        const tdH=document.createElement('td');
+
+        if (uniq.length <= 1){
+          tdH.textContent = (uniq[0] || '—');
+        } else {
+          const span = document.createElement('span');
+          span.className = 'hs-holder-ticker';
+          span.textContent = uniq[0];
+          span.dataset.holders = JSON.stringify(uniq);
+          span.dataset.idx = '0';
+          tdH.appendChild(span);
+        }
+
+        tr.append(tdR, tdW, tdD, tdH);
+        tbody.appendChild(tr);
+      }
+
       body.appendChild(table);
-    }catch(e){
-      console.error('Round High Scores render failed', e);
-      const p=document.createElement('p'); p.textContent='Unable to load right now.'; body.appendChild(p);
+
+      // Holder rotator (single timer per modal)
+      const tickers = body.querySelectorAll('.hs-holder-ticker');
+      if (tickers.length){
+        const iv = window.setInterval(()=>{
+          tickers.forEach(el=>{
+            try{
+              const arr = JSON.parse(el.dataset.holders || '[]');
+              if (!Array.isArray(arr) || arr.length < 2) return;
+              const idx = (Number(el.dataset.idx || '0') + 1) % arr.length;
+              el.dataset.idx = String(idx);
+              el.textContent = arr[idx];
+            }catch(_){}
+          });
+        }, 3000);
+
+        // Ensure cleanup when modal closes
+        const _oldBack = btnBack.onclick;
+        btnBack.onclick = ()=>{ try{ window.clearInterval(iv); }catch(_){}; _oldBack && _oldBack(); };
+
+        const _oldClose = btnClose.onclick;
+        btnClose.onclick = ()=>{ try{ window.clearInterval(iv); }catch(_){}; _oldClose && _oldClose(); };
+      }body.appendChild(table);
+    } catch(err){
+      console.error('Round High Scores render failed', err);
+      const msg = document.createElement('div');
+      msg.className = 'muted';
+      msg.textContent = 'Unable to load right now.';
+      body.appendChild(msg);
     }
   }
 
   const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
-  backBtn.onclick=()=> overlay.remove();
+  backBtn.onclick=()=>{ overlay.remove(); if (typeof openLeagueRankingsDialog==='function') openLeagueRankingsDialog(); };
+
   const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
   closeBtn.onclick=()=> overlay.remove();
-  footer.append(backBtn, closeBtn);
 
+  footer.append(backBtn, closeBtn);
   modal.append(title, body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
@@ -19132,7 +19905,6 @@ async function openRoundHighScoresDialog(){
 
   await render();
 }
-
 // Delete a game (by timestamp) and its related high-score rows from Supabase
 async function cloudDeleteGameCascade(g){
   if (!ensureCloudInit()) throw new Error('Cloud not initialised');
@@ -19226,6 +19998,456 @@ function ensureCloudInit(){
       return false;
     }
   }
+
+/* >>> PATCH:SQ_COMMENTARY_BACKEND_PORT_V1 START
+   Backend-only commentary improvements ported onto REDO v3 visual baseline.
+   NO Live Game layout/pager changes. Only Dot-1 overlay + commentary logic.
+*/
+(function(){
+  var TABLE = 'game_commentary';
+  var MAX_PILLS = 6;
+
+  function q(sel, root){ return (root||document).querySelector(sel); }
+  function qa(sel, root){ return Array.prototype.slice.call((root||document).querySelectorAll(sel)); }
+  function safeText(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
+
+  function dot1Host(){ return q('body.livev2-on[data-page="game"] .livev2panel .v2InfoDmdCell'); }
+
+  // --- kill any residual dot-matrix renderer in Dot-1 only ---
+  function killDotMatrix(){
+    var host = dot1Host();
+    if(!host) return;
+    try{ if(typeof window.__sqV2InfoDmdUpdate === 'function') window.__sqV2InfoDmdUpdate = function(){}; }catch(_){}
+    qa('canvas#v2InfoDmd, canvas, svg, [id*="Dmd"], [class*="dmd"], [id*="dmd"]', host).forEach(function(el){
+      try{ el.style.display='none'; el.style.visibility='hidden'; }catch(_){}
+    });
+  }
+
+  // minimal **bold**
+  function renderInlineBold(text){
+    var parts = String(text||'').split('**');
+    if(parts.length < 3) return document.createTextNode(text||'');
+    var frag = document.createDocumentFragment();
+    for(var i=0;i<parts.length;i++){
+      var t = parts[i];
+      if(!t) continue;
+      if(i%2===1){ var st=document.createElement('strong'); st.textContent=t; frag.appendChild(st); }
+      else frag.appendChild(document.createTextNode(t));
+    }
+    return frag;
+  }
+
+  // dedupe window (12s)
+  var _recent = Object.create(null);
+  function _sig(s){ return String(s||'').slice(0,220); }
+  function dedupeOk(text){
+    var k=_sig(text);
+    var now=Date.now();
+    for(var kk in _recent){ if(now - _recent[kk] > 12000) delete _recent[kk]; }
+    if(_recent[k]) return false;
+    _recent[k]=now;
+    return true;
+  }
+
+  function ensureUI(){
+    var host = dot1Host();
+    if(!host) return null;
+
+    // remove any previous overlay only (safe)
+    qa('#sqCommentaryWrap,#sqCommentaryBox', host).forEach(function(el){ try{ el.remove(); }catch(_){ } });
+
+    killDotMatrix();
+
+    // Do NOT touch host sizing/positioning beyond what the baseline already expects.
+    host.style.position = host.style.position || 'relative';
+    host.style.overflow = 'hidden';
+
+    var wrap=document.createElement('div');
+    wrap.id='sqCommentaryWrap';
+    wrap.style.position='absolute';
+    wrap.style.inset='0';
+    wrap.style.pointerEvents='none';
+    wrap.style.zIndex='50';
+
+    var box=document.createElement('div');
+    box.id='sqCommentaryBox';
+    box.style.position='absolute';
+    box.style.left='12px';
+    box.style.right='12px';
+    box.style.top='12px';
+    box.style.bottom='12px';
+    box.style.display='flex';
+    box.style.flexDirection='column';
+    box.style.justifyContent='flex-end';
+    box.style.gap='8px';
+    box.style.overflow='hidden';
+
+    wrap.appendChild(box);
+    host.appendChild(wrap);
+    return box;
+  }
+
+  function applyFades(box){
+    var pills=qa('.sqCommPill', box);
+    pills.forEach(function(p){ p.classList.remove('sqFade1','sqFade2'); });
+    if(pills[0]) pills[0].classList.add('sqFade1');
+    if(pills[1]) pills[1].classList.add('sqFade2');
+  }
+
+  function addPill(text){
+    text = safeText(text);
+    if(!text) return;
+    if(!dedupeOk(text)) return;
+
+    var host = dot1Host();
+    if(!host) return;
+
+    var box = q('#sqCommentaryBox', host);
+    if(!box) box = ensureUI();
+    if(!box) return;
+
+    var pill=document.createElement('div');
+    pill.className='sqCommPill sqEnter';
+
+    var body=document.createElement('div');
+    body.className='sqCommBody';
+    body.appendChild(renderInlineBold(text));
+    pill.appendChild(body);
+
+    box.appendChild(pill);
+    try{ requestAnimationFrame(function(){ pill.classList.remove('sqEnter'); }); }catch(_){ setTimeout(function(){ try{ pill.classList.remove('sqEnter'); }catch(__){} },0); }
+
+    var pills=qa('.sqCommPill', box);
+    while(pills.length > MAX_PILLS){
+      var first=pills[0];
+      first.classList.add('sqFadeOut');
+      (function(el){ setTimeout(function(){ try{ el.remove(); }catch(_){ } }, 180); })(first);
+      pills=qa('.sqCommPill', box);
+      if(pills.length<=MAX_PILLS) break;
+      try{ pills[0].remove(); }catch(_){}
+      pills=qa('.sqCommPill', box);
+    }
+    applyFades(box);
+  }
+
+  // Supabase wiring (reuse your ensureCloudInit)
+  function ensureSb(){
+    try{
+      if(window.sb && window.sb.from) return true;
+      if(typeof ensureCloudInit === 'function') return !!ensureCloudInit();
+      return false;
+    }catch(_){ return false; }
+  }
+
+  function ensureLiveGameId(){
+    var gid=null;
+    try{
+      gid = (window.state && window.state.match && window.state.match.id) ? window.state.match.id : null;
+      if(!gid && window.__sqLiveGameId) gid = window.__sqLiveGameId;
+      if(!gid){
+        gid = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (String(Date.now()) + '-' + Math.random()).replace('.','');
+        window.__sqLiveGameId = gid;
+        try{ if(window.state && window.state.match) window.state.match.id = gid; }catch(_e){}
+      }
+    }catch(_e){}
+    return gid;
+  }
+
+  var _ch=null, _gid=null;
+
+
+// >>> PATCH:SQ_EVENTS_WIRE_V1 START
+// game_events realtime channel (detect first dart + drive per-dart kickers)
+var _evCh=null, _evGid=null;
+
+// Studio (GPT) guard flags (per game_id; edge function also dedupes)
+var _studioIntroFired=false, _studioOutroFired=false;
+
+// Cost controls:
+// - GPT is ONLY invoked after the FIRST DART is thrown (not on screen load).
+// - Idle/pre-dart chatter is ALWAYS template-based.
+var ENABLE_STUDIO_GPT = true;
+var GPT_STUDIO_INTRO_ON_FIRST_DART = true;
+// >>> PATCH:SQ_EVENTS_WIRE_V1 END
+
+
+  function stop(){
+    try{ if(_ch && window.sb && typeof window.sb.removeChannel==='function') window.sb.removeChannel(_ch); }catch(_){}
+    _ch=null; _gid=null;
+
+    try{ if(_evCh && window.sb && typeof window.sb.removeChannel==='function') window.sb.removeChannel(_evCh); }catch(_){}
+    _evCh=null; _evGid=null;
+  }
+
+  // Intro/idle chatter until first throw
+  var introOn=true, introTimer=null, introSeq=0;
+  function playersList(){
+    try{
+      var ps = (window.state && window.state.players) ? window.state.players : ((window.state && window.state.match && window.state.match.players) ? window.state.match.players : []);
+      return (ps||[]).map(function(p){ return String(p && (p.name||p.initials||p.code) || '').trim(); }).filter(Boolean);
+    }catch(_){ return []; }
+  }
+  function introLine(){
+    var names=playersList();
+    var who = names.length ? names.join(' vs ') : 'a fresh set of throwers';
+    var lines=[
+      "BAZ: Evening everyone. Welcome to Shateki Quest.",
+      "GAZ: Yep. Darts. Where confidence goes to get humbled.",
+      "BAZ: Tonight we’ve got **" + who + "**.",
+      "GAZ: Form? Unknown. Vibes? Questionable. Perfect.",
+      "BAZ: Format’s 10 to 20… then Doubles, Triples, Bull.",
+      "GAZ: And yes — it can go wrong QUICKLY.",
+      "BAZ: Crowd looks lively. Someone’s already dropped a pint.",
+      "GAZ: That’s a warm-up round. Doesn’t count. Probably.",
+      "BAZ: Right then… first dart any moment.",
+      "GAZ: Take your time. Overthinking is free."
+    ];
+    var i=introSeq % lines.length; introSeq++;
+    return lines[i];
+  }
+  function scheduleIntro(){
+    if(!introOn) return;
+    var delay = (introSeq < 2) ? (650 + Math.floor(Math.random()*750)) : (1400 + Math.floor(Math.random()*3200));
+    introTimer=setTimeout(function(){
+      if(!introOn) return;
+      addPill(introLine());
+      scheduleIntro();
+    }, delay);
+  }
+  function stopIntro(){
+    introOn=false;
+    try{ if(introTimer) clearTimeout(introTimer); }catch(_){}
+    introTimer=null;
+  }
+  window.__sqStopIntro = stopIntro;
+
+
+// =======================================================================
+// BEHAVIOUR TUNING (SAFE TO EDIT)
+// - Intro/idle: introLine(), scheduleIntro(), stopIntro()
+// - Realtime render: addPill() + dedupeOk() window
+// - Game flow: window.__sqCommentaryLocal.started toggles intro->live
+// - Thresholds/variety: edit phrase banks + cooldowns; avoid hard repeats
+// DO NOT:
+// - Change dot1Host() target without verifying DOM in livev2
+// - Add CSS selectors outside #sqCommentary* (layout drift risk)
+// =======================================================================
+  // Local state for gameplay emitter
+  window.__sqCommentaryLocal = window.__sqCommentaryLocal || { idleTimer:null, lastGap:null, lastLeader:null, started:false };
+  window.__sqLastGazLine = window.__sqLastGazLine || '';
+
+
+// =======================================================================
+// GAME BOUNDARY / MULTI-GAME MATCH NOTE
+// Commentary is scoped to ensureLiveGameId() only.
+// start() must STOP old channel and SUBSCRIBE to new gid on game switch.
+// If you later add match_id: do NOT merge streams here; keep per-game_id.
+// =======================================================================
+  function start(){
+    var host = dot1Host();
+    if(!host) return;
+
+    ensureUI();
+
+    if(!ensureSb()) return;
+    var gid = ensureLiveGameId();
+    if(_ch && _gid===gid) return;
+    stop();
+    _gid = gid;
+
+    // Reset per-game studio flags when game_id changes
+    _studioIntroFired = false;
+    _studioOutroFired = false;
+
+
+    // seed last few
+    window.sb.from(TABLE).select('id,created_at,line').eq('game_id',gid).order('id',{ascending:false}).limit(10)
+      .then(function(res){
+        var data = (res && res.data) ? res.data.slice().reverse() : [];
+        data.forEach(function(r){ addPill(r.line); });
+      });
+
+    _ch = window.sb.channel('sq-commentary:'+gid)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:TABLE,filter:'game_id=eq.'+gid},function(payload){
+        var l = payload && payload.new && payload.new.line;
+        if(l) addPill(l);
+      })
+      .subscribe();
+
+
+    // >>> PATCH:SQ_GAME_EVENTS_SUB_V1 START
+    // Subscribe to game_events so commentary wakes up on first dart.
+    // IMPORTANT: prevents GPT usage when screen is left open with no play.
+    _evGid = gid;
+    _evCh = window.sb.channel('sq-events:'+gid)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'game_events',filter:'game_id=eq.'+gid},function(payload){
+        try{
+          var row = payload && payload.new ? payload.new : null;
+          if(!row) return;
+
+          // Stop idle chatter immediately once darts begin
+          window.__sqCommentaryLocal && (window.__sqCommentaryLocal.started = true);
+          introOn = false;
+          if(introTimer){ try{ clearTimeout(introTimer); }catch(_){ } introTimer = null; }
+
+          // GPT studio intro: ON FIRST DART ONLY (edge function dedupes in DB)
+          if(ENABLE_STUDIO_GPT && GPT_STUDIO_INTRO_ON_FIRST_DART && !_studioIntroFired){
+            _studioIntroFired = true;
+            try{
+              window.sb.functions.invoke('commentary_generate', { body:{ game_id: gid, mode:'studio_intro' } });
+            }catch(_){}
+          }
+
+          // Minimal per-dart kicker so it never feels dead (signals only)
+          var kind = String(row.kind||'');
+          var pts  = Number(row.points||0);
+          var di   = Number(row.dart_index||0);
+          var pn   = String(row.player_name||'').trim() || 'P';
+          var pnU  = pn.toUpperCase();
+          var rl   = String(row.round_label||'').toLowerCase();
+          var isBull = (rl==='bull') || (kind.toLowerCase().indexOf('bull')>=0);
+          var isDT = (kind==='D' || kind==='T');
+          var isMiss = (pts===0) || (kind.toLowerCase()==='miss');
+
+          if(isDT || isBull || pts>=60 || di===2 || isMiss){
+            var line="";
+            if(isBull) line = "GAZ: BULL’S LOOKING FRIENDLY… THAT’S DANGEROUS.";
+            else if(kind==='T') line = "BAZ: **" + pnU + ": TREBLE.** Lovely bed.";
+            else if(kind==='D') line = "GAZ: **" + pnU + ": DOUBLE.** Tidy.";
+            else if(isMiss && di===2) line = "GAZ: Last dart missing… that one stings.";
+            else if(isMiss) line = "BAZ: Miss. The board remains unmoved.";
+            else if(pts>=60) line = "BAZ: **" + pnU + ": " + pts + "!** That wakes the room up.";
+            else if(di===2) line = "BAZ: " + pnU + " gets something out of the visit.";
+            if(line && window.__sqCommentaryPush) window.__sqCommentaryPush(line, { kind:'evt' });
+          }
+
+          // GPT studio outro: Bull round, dart 3 (heuristic)
+          if(ENABLE_STUDIO_GPT && !_studioOutroFired && rl==='bull' && di===2){
+            _studioOutroFired = true;
+            try{
+              window.sb.functions.invoke('commentary_generate', { body:{ game_id: gid, mode:'studio_outro' } });
+            }catch(_){}
+          }
+        }catch(_e){}
+      })
+      .subscribe();
+    // >>> PATCH:SQ_GAME_EVENTS_SUB_V1 END
+
+
+    // start intro only if we haven't started gameplay yet
+    introOn = !window.__sqCommentaryLocal.started;
+    introSeq = 0;
+    if(introOn) scheduleIntro();
+  }
+
+  window.__sqCommentaryStart = start;
+  window.__sqCommentaryStop  = stop;
+  window.__sqCommentaryDebug = function(){
+    return {
+      cloudInit: !!(window.sb && window.sb.from),
+      game_id: ensureLiveGameId(),
+      table: TABLE,
+      match_id: __sqEnsureMatchId()
+    };
+  };
+
+  /* >>> PATCH:SQ_MATCH_ID_STATE_V1 START
+     Match continuity across multiple games:
+     - match_id persists across game_id changes (localStorage + TTL)
+     - narrative state persists per match_id (flavour only)
+     - reset via window.__sqMatchReset() at end of match-series
+  */
+  function __sqEnsureMatchId(){
+    try{
+      var KEY = 'sq_match_active_v1';
+      var ttlMs = 6 * 60 * 60 * 1000; // 6h
+      var raw = localStorage.getItem(KEY);
+      if(raw){
+        var o = JSON.parse(raw);
+        if(o && o.id && o.ts && (Date.now() - o.ts) < ttlMs) return o.id;
+      }
+      var id = (crypto && crypto.randomUUID) ? crypto.randomUUID()
+        : ('m_' + Date.now() + '_' + Math.random().toString(16).slice(2));
+      localStorage.setItem(KEY, JSON.stringify({ id: id, ts: Date.now() }));
+      return id;
+    }catch(_e){
+      return 'm_' + Date.now();
+    }
+  }
+  function __sqMatchStateKey(mid){ return 'sq_match_state_' + mid; }
+  function __sqLoadMatchState(mid){
+    try{
+      var raw = localStorage.getItem(__sqMatchStateKey(mid));
+      if(raw) return JSON.parse(raw) || null;
+    }catch(_e){}
+    return { v: 1, players: {}, lastJokeAt: 0, lastJokes: {} };
+  }
+  function __sqSaveMatchState(mid, st){
+    try{ localStorage.setItem(__sqMatchStateKey(mid), JSON.stringify(st || {})); }catch(_e){}
+  }
+  window.__sqMatchReset = function(){
+    try{
+      var KEY = 'sq_match_active_v1';
+      var raw = localStorage.getItem(KEY);
+      if(raw){
+        var o = JSON.parse(raw);
+        if(o && o.id) localStorage.removeItem(__sqMatchStateKey(o.id));
+      }
+      localStorage.removeItem(KEY);
+      return true;
+    }catch(_e){
+      return false;
+    }
+  };
+  /* <<< PATCH:SQ_MATCH_ID_STATE_V1 END */
+
+  window.__sqCommentaryPush = function(line, meta){
+    var txt = safeText(line);
+    if(txt) addPill(txt); // optimistic render (UI-first)
+    if(!ensureSb()) return Promise.resolve(false);
+
+    var gid = ensureLiveGameId();
+    var mid = __sqEnsureMatchId();
+
+    var m = (meta && typeof meta === 'object') ? meta : {};
+    if(!m.match_id) m.match_id = mid;
+
+    var row = { game_id: gid, line: txt, meta: m };
+    return window.sb.from(TABLE).insert(row).then(function(res){ return !(res && res.error); });
+  };
+
+  // Boot when livev2 exists (no layout touch)
+  function tryBoot(){ if(dot1Host()){ start(); return true; } return false; }
+  if(!tryBoot()){
+    var mo=new MutationObserver(function(){ if(tryBoot()) mo.disconnect(); });
+    mo.observe(document.documentElement,{childList:true,subtree:true});
+  }
+
+
+// =======================================================================
+// UI NOTE:
+// This CSS is COMMENTARY-ONLY. Do not touch Live Game layout here.
+// Keep changes scoped to #sqCommentary* selectors.
+// =======================================================================
+  // CSS only for pills/overlay (does not alter live screen layout)
+  var css = ''
+    + '#sqCommentaryWrap{position:absolute;inset:0;z-index:50;pointer-events:none}'
+    + '#sqCommentaryBox{position:absolute;left:12px;right:12px;top:12px;bottom:12px;display:flex;flex-direction:column;justify-content:flex-end;gap:8px;overflow:hidden}'
+    + '.sqCommPill{border:1px solid rgba(255,255,255,.08);background:rgba(15,17,22,.55);border-radius:12px;padding:10px 12px;color:rgba(255,255,255,.92);font-size:13px;line-height:1.25;box-shadow:0 10px 28px rgba(0,0,0,.22);transition:transform 220ms ease,opacity 220ms ease;will-change:transform,opacity}'
+    + '.sqCommPill strong{font-weight:800;letter-spacing:.02em}'
+    + '.sqCommPill.sqEnter{opacity:0;transform:translateY(10px)}'
+    + '.sqFade1{opacity:.38}'
+    + '.sqFade2{opacity:.62}'
+    + '.sqFadeOut{opacity:0;transform:translateY(-8px);transition:opacity 180ms ease,transform 180ms ease}';
+  var style=document.createElement('style');
+  style.id='sqCommentaryBackendPortV1Css';
+  style.textContent=css;
+  document.head.appendChild(style);
+})();
+/* >>> PATCH:SQ_COMMENTARY_BACKEND_PORT_V1 END */
+
+
+
 
 /*** CLOUD HIGH SCORES API — safe fallback implementations ***/
 (function(){
@@ -22674,7 +23896,8 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
     } catch(_) {}
     try { toast('Latest Scores not available'); } catch(_) {}
   });
-// Top 50 Scores (Official) — best single-game totals from cloud high scores
+// Top 50 Scores (Official) — canonical from Supabase view (no per-player dedupe)
+// Source: public.v_top50_scores_official (player_id, player_name, score, rounds=14, avg_round, ts)
 // ===== @JS:MODAL:TOP_50_SCORES =====
 window.openTop50ScoresDialog = async function openTop50ScoresDialog(){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
@@ -22698,74 +23921,72 @@ window.openTop50ScoresDialog = async function openTop50ScoresDialog(){
 
   body.innerHTML = '';
 
-  // If cloud is not ready, explain dependency (don’t silently fail)
   if (!window.sb){
     const p=document.createElement('p');
-    p.textContent = 'Cloud offline — Top 50 Scores requires official cloud data.';
+    p.textContent = 'Cloud offline — Top 50 Scores requires cloud data.';
     body.appendChild(p);
     return;
   }
 
-  let rows = [];
+  const VIEW = 'v_top50_scores_official';
+
   try{
-    // pull enough rows to dedupe + sort correctly, then slice top 50
-    rows = await cloudListHighScoresWithBackfill(false, 1000);
+    const { data, error } = await window.sb
+      .from(VIEW)
+      .select('player_id,player_name,score,rounds,avg_round,ts')
+      .order('score', { ascending: false })
+      .order('ts', { ascending: false })
+      .limit(50);
+
+    if (error) throw error;
+
+    const rows = (data||[]).filter(r => r && Number(r.score||0) > 0);
+
+    if (!rows.length){
+      const p=document.createElement('p');
+      p.textContent = `No rows returned from ${VIEW}.`;
+      body.appendChild(p);
+      return;
+    }
+
+    const table=document.createElement('table'); table.className='hs-table';
+    const thead=document.createElement('thead'); const trh=document.createElement('tr');
+    ['#','Player','Score','Avg / Round','When'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
+    thead.appendChild(trh); table.appendChild(thead);
+    const tb=document.createElement('tbody');
+
+    rows.forEach((r, idx)=>{
+      const tr=document.createElement('tr');
+      const td1=document.createElement('td'); td1.textContent=String(idx+1);
+      const td2=document.createElement('td'); td2.textContent=String(r.player_name||'');
+      const td3=document.createElement('td'); td3.textContent=String(r.score||0);
+
+      const td4=document.createElement('td');
+      td4.textContent = (r.avg_round!=null && !Number.isNaN(Number(r.avg_round)))
+        ? Number(r.avg_round).toFixed(1)
+        : (Number(r.score||0)/14).toFixed(1);
+
+      const td5=document.createElement('td');
+      const d=r.ts?new Date(r.ts):null;
+      td5.textContent = (d && !Number.isNaN(d.getTime()))
+        ? d.toLocaleString(undefined,{year:'2-digit',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'})
+        : '';
+      td5.style.fontSize='0.8rem';
+
+      tr.append(td1,td2,td3,td4,td5);
+      tb.appendChild(tr);
+    });
+
+    table.appendChild(tb);
+    body.appendChild(table);
+
+    try{ console.log('[SQ] Top50 using view:', VIEW, 'rows:', rows.length); }catch(_){}
   }catch(e){
-    console.error('openTop50ScoresDialog load failed', e);
+    console.error('openTop50ScoresDialog failed', e);
     const p=document.createElement('p');
-    p.textContent = 'Failed to load Top 50 Scores.';
+    p.textContent = `Failed to load Top 50 Scores from Supabase view (${VIEW}).`;
     body.appendChild(p);
-    return;
   }
-
-  // Safety: keep one row per (name,score), earliest timestamp
-  try{ rows = dedupeRowsByNameScoreKeepEarliest(rows); }catch(_){}
-
-  rows = (rows || []).filter(r => r && r.score != null);
-  rows.sort((a,b)=>{
-    const sa = Number(a.score||0), sb = Number(b.score||0);
-    if (sb!==sa) return sb-sa;
-    const ta = a.ts ? Date.parse(a.ts) : 0;
-    const tb = b.ts ? Date.parse(b.ts) : 0;
-    if (tb!==ta) return tb-ta;
-    return String(a.name||'').localeCompare(String(b.name||''));
-  });
-
-  rows = rows.slice(0, 50);
-
-  if (!rows.length){
-    const p=document.createElement('p');
-    p.textContent = 'No official scores found.';
-    body.appendChild(p);
-    return;
-  }
-
-  const table=document.createElement('table'); table.className='hs-table';
-  const thead=document.createElement('thead'); const trh=document.createElement('tr');
-  ['#','Player','Score','Avg / Round','When'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
-  thead.appendChild(trh); table.appendChild(thead);
-  const tb=document.createElement('tbody');
-
-  rows.forEach((r, idx)=>{
-    const tr=document.createElement('tr');
-    const td1=document.createElement('td'); td1.textContent=String(idx+1);
-    const td2=document.createElement('td'); td2.textContent=String(r.name||'');
-    const td3=document.createElement('td'); td3.textContent=String(r.score);
-    const td4=document.createElement('td');
-    const avg = (typeof MAX_ROUNDS==='number' && MAX_ROUNDS>0) ? (Number(r.score||0)/MAX_ROUNDS) : 0;
-    td4.textContent = avg.toFixed(1);
-    const td5=document.createElement('td');
-    const d=r.ts?new Date(r.ts):null;
-    td5.textContent = (d && !Number.isNaN(d.getTime()))
-      ? d.toLocaleString(undefined,{year:'2-digit',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'})
-      : '';
-    td5.style.fontSize='0.8rem';
-    tr.append(td1,td2,td3,td4,td5);
-    tb.appendChild(tr);
-  });
-
-  table.appendChild(tb);
-  body.appendChild(table);
 };};
 
 
@@ -24760,6 +25981,9 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
   const name = String(playerName || '').trim();
   if (!name) { try{ toast('Pick a player'); }catch(_){ } return; }
 
+  // Supabase client (single source of truth for ranks & windowed stats)
+  const SB = (typeof window !== 'undefined') ? (window.sb || window.__sb || window.supabase || window.supabaseClient || null) : null;
+
   // Modal shell
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
   const modal   = document.createElement('div'); modal.className   = 'modal';
@@ -24831,6 +26055,52 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
   const AVG   = GAMES ? (TOTAL / GAMES) : 0;
   const PB    = GAMES ? Math.max(...scores) : 0;
   const LOW   = GAMES ? Math.min(...scores) : 0;
+
+  // 2.1) Canonical ranks / windows from DB views
+  // - Power Rank: v_power_rank_last56_ranked
+  // - Highest Score place: v_player_best_official_ranked
+  // - Favorite/Worst: v_player_last30_targets (throw-universe)
+  let dbPower = null;
+  let dbBest  = null;
+  let dbFav   = null;
+  if (SB && typeof SB.from === 'function'){
+    try{
+      const pr = await SB.from('v_power_rank_last56_ranked')
+        .select('player,power_rank,power_rank_pos,last_played_at')
+        .ilike('player', name)
+        .limit(1);
+      dbPower = (pr && pr.data && pr.data[0]) ? pr.data[0] : null;
+    }catch(e){ console.warn('[SQ] power rank view read failed', e); }
+
+    try{
+      const bs = await SB.from('v_player_best_official_ranked')
+        .select('player_name,best_score,best_score_pos')
+        .ilike('player_name', name)
+        .limit(1);
+      dbBest = (bs && bs.data && bs.data[0]) ? bs.data[0] : null;
+    }catch(e){ console.warn('[SQ] best score rank view read failed', e); }
+
+    try{
+      const fk = name.toLowerCase();
+      const fv = await SB.from('v_player_last30_targets')
+        .select('player_key,favorite_number,favorite_pct,worst_number,worst_pct')
+        .eq('player_key', fk)
+        .limit(1);
+      dbFav = (fv && fv.data && fv.data[0]) ? fv.data[0] : null;
+
+    // Top/bottom 3 target rates (last 30 games) for Targets section
+    let dbRates = null;
+    try{
+      const fk2 = name.toLowerCase();
+      const tr = await SB.from('v_player_last30_target_rates')
+        .select('player_key,target_n,hit_pct,throws')
+        .eq('player_key', fk2)
+        .order('hit_pct', { ascending: false });
+      dbRates = (tr && Array.isArray(tr.data)) ? tr.data : null;
+    }catch(e){ /* view may not exist yet */ dbRates = null; }
+
+    }catch(e){ console.warn('[SQ] last30 targets view read failed', e); }
+  }
 
   // Per-game ranks (1st place detection) and per-month buckets
   const monthly = new Map(); // key -> { sum, n, wins }
@@ -25123,6 +26393,8 @@ const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     c.style.padding='8px 10px';
     const L = document.createElement('span'); L.textContent = label;
     const R = document.createElement('span'); R.textContent = value;
+    R.style.whiteSpace='pre-line';
+    R.style.textAlign='right';
     if (hint) R.title = hint;
     c.append(L,R);
     return c;
@@ -25136,14 +26408,19 @@ const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     return h;
   }
 
+  // Clear initial loading indicator before rendering the real content
+  body.innerHTML = '';
+
   // Top: Games / Current & Highest Power Rank
   body.appendChild(section('Overview'));
   grid.appendChild(card('Games', String(GAMES)));
-grid.appendChild(card(
-  'Current Power Rank',
-  (myPower && myPower.qualifies) ? `${myPower.avgRound.toFixed(2)}  (#${myPowerPos})` : '—',
-  myPower ? `${myPower.rounds} rounds (last ${WINDOW_ROUNDS} window)` : ''
-));
+  grid.appendChild(card(
+    'Current Power Rank',
+    (dbPower && Number.isFinite(Number(dbPower.power_rank)) && Number.isFinite(Number(dbPower.power_rank_pos)))
+      ? `${Number(dbPower.power_rank).toFixed(2)}  (#${Number(dbPower.power_rank_pos)})`
+      : '—',
+    dbPower ? `Last played ${dbPower.last_played_at || '—'}` : ''
+  ));
   grid.appendChild(card('Highest Power Rank', bestPowerPos ? `#${bestPowerPos}` : '—', 'Best historical position (requires rank history)'));
   body.appendChild(grid);
 
@@ -25161,7 +26438,7 @@ gridPL.appendChild(card('Highest Monthly Average', bestMonth ? `${bestMonth.avg.
   body.appendChild(section('Game Highs & Lows'));
   const gridGL = document.createElement('div');
   gridGL.style.display='grid'; gridGL.style.gridTemplateColumns='1fr 1fr'; gridGL.style.gap='10px';
-  gridGL.appendChild(card('Highest Score', myPB ? `${myPB}  (#${myPBPos||'—'})` : '—'));
+  gridGL.appendChild(card('Highest Score', PB ? `${PB}  (#${(dbBest && dbBest.best_score_pos) ? dbBest.best_score_pos : '—'})` : '—'));
   gridGL.appendChild(card('Lowest Score', GAMES ? String(LOW) : '—'));
 function lettersFromCounts(s,d,t){
   return `${'S'.repeat(s).split('').join('/')}${s&& (d||t)?'/':''}${'D'.repeat(d).split('').join('/')}${d&&t?'/':''}${'T'.repeat(t).split('').join('/')}`.replace(/^\/|\/$/g,'') || '—';
@@ -25174,16 +26451,42 @@ const brTxt = bestRound ? `${bestRound.round} • ${bestRound.sum}  (${lettersFr
   body.appendChild(section('Opponents'));
   const gridOP = document.createElement('div');
   gridOP.style.display='grid'; gridOP.style.gridTemplateColumns='1fr 1fr'; gridOP.style.gap='10px';
-gridOP.appendChild(card('Nemesis', nem ? `${nem.opp}  (${nem.pct.toFixed(1)}%)` : '—', '≥5 games'));
-gridOP.appendChild(card('BFF', bff ? `${bff.opp}  (${bff.pct.toFixed(1)}%)` : '—', '≥5 games'));
+  // Top 3 Nemesis/BFF
+  const topNem = qualifiedOpp.slice().sort((a,b)=> a.pct-b.pct || (b.n-a.n) || a.opp.localeCompare(b.opp)).slice(0,3);
+  const topBff = qualifiedOpp.slice().sort((a,b)=> b.pct-a.pct || (b.n-a.n) || a.opp.localeCompare(b.opp)).slice(0,3);
+  // Render vertically (card uses textContent + whiteSpace:pre-line)
+  const fmtOpp = (arr) => arr.length ? arr.map((r,i)=> `${i+1}. ${r.opp} (${r.pct.toFixed(1)}%)`).join('\n') : '—';
+  gridOP.appendChild(card('Nemesis', fmtOpp(topNem), '≥5 games'));
+  gridOP.appendChild(card('BFF', fmtOpp(topBff), '≥5 games'));
   body.appendChild(gridOP);
 
   // Targets
   body.appendChild(section('Targets'));
   const gridTG = document.createElement('div');
   gridTG.style.display='grid'; gridTG.style.gridTemplateColumns='1fr 1fr'; gridTG.style.gap='10px';
-  gridTG.appendChild(card('Favorite Number', fav ? `${fav.target}  (${fav.pct.toFixed(1)}%)` : '—', 'min 30 throws'));
-  gridTG.appendChild(card('Worst Number',   worst ? `${worst.target}  (${worst.pct.toFixed(1)}%)` : '—', 'min 30 throws'));
+  // Build top/bottom 3 from DB rates if available; fallback to single values
+  const MIN_THROWS_PER_TARGET_LOCAL = 30;
+  let top3Txt = null, bot3Txt = null;
+  if (typeof dbRates !== 'undefined' && Array.isArray(dbRates) && dbRates.length){
+    const cand = dbRates.filter(r => Number(r.throws||0) >= MIN_THROWS_PER_TARGET_LOCAL);
+    if (cand.length){
+      const top3 = cand.slice().sort((a,b)=> (Number(b.hit_pct)-Number(a.hit_pct)) || (Number(b.throws)-Number(a.throws)) || (Number(a.target_n)-Number(b.target_n))).slice(0,3);
+      const bot3 = cand.slice().sort((a,b)=> (Number(a.hit_pct)-Number(b.hit_pct)) || (Number(b.throws)-Number(a.throws)) || (Number(a.target_n)-Number(b.target_n))).slice(0,3);
+      const fmtT = (arr)=> arr.map((r,i)=>`${i+1}. ${r.target_n} (${Number(r.hit_pct).toFixed(1)}%)`).join('\n');
+      top3Txt = fmtT(top3);
+      bot3Txt = fmtT(bot3);
+    }
+  }
+  gridTG.appendChild(card(
+    'Top 3 Fav Numbers',
+    top3Txt || (dbFav ? `${dbFav.favorite_number}  (${Number(dbFav.favorite_pct).toFixed(1)}%)` : (fav ? `${fav.target}  (${fav.pct.toFixed(1)}%)` : '—')),
+    'Last 30 games'
+  ));
+  gridTG.appendChild(card(
+    'Bottom 3 Worst Numbers',
+    bot3Txt || (dbFav ? `${dbFav.worst_number}  (${Number(dbFav.worst_pct).toFixed(1)}%)` : (worst ? `${worst.target}  (${worst.pct.toFixed(1)}%)` : '—')),
+    'Last 30 games'
+  ));
   body.appendChild(gridTG);
 
   // Footer buttons
@@ -25262,11 +26565,25 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   title.className = 'menu-modal-title-text';
   title.textContent = 'PLAYER STATS';
 
-  const sub = document.createElement('div');
-  sub.className = 'menu-modal-title-sub';
-  sub.textContent = `Player — ${name}`;
+  const getNickForName = (nm)=>{
+    try{
+      const list = (typeof getSavedPlayers==='function' ? getSavedPlayers() : (window.savedPlayers||window.__savedPlayers||[])) || [];
+      const low = String(nm||'').trim().toLowerCase();
+      const p = list.find(x => String(x?.name||'').trim().toLowerCase()===low);
+      return String(p?.nickname || p?.nick || p?.alias || '').trim();
+    }catch(_){ return ''; }
+  };
+  const nick = getNickForName(name);
 
-  titleWrap.append(icon, title, sub);
+  const sub1 = document.createElement('div');
+  sub1.className = 'menu-modal-title-sub';
+  sub1.textContent = 'Name: ' + name;
+
+  const sub2 = document.createElement('div');
+  sub2.className = 'menu-modal-title-sub2';
+  sub2.textContent = 'Nickname: ' + (nick || '-');
+
+  titleWrap.append(icon, title, sub1, sub2);
   header.append(backBtn, titleWrap, closeBtn);
 
   const body = document.createElement('div');
@@ -25300,47 +26617,56 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   const svgBars  = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V5"/><path d="M8 19V9"/><path d="M12 19V3"/><path d="M16 19v-6"/><path d="M20 19V7"/></svg>';
 
   list.append(
-    mkRow('Latest Matches', 'Pos / Points / Avg', svgClock, () => {
-      // Close this menu first so Latest Matches behaves as a true modal (Close returns to main screen)
+    mkRow('Player Stats', 'AVERAGES, PB, RECENT GAMES', svgBars, () => {
+      try{ overlay && overlay.remove(); }catch(e){}
+      if (typeof window.openPlayerStatsDialog === 'function') return window.openPlayerStatsDialog(name);
+      if (typeof toast==='function') toast('Stats not available');
+    }),
+
+    mkRow('Latest Matches', 'POS / POINTS / AVG', svgClock, () => {
       try{ overlay && overlay.remove(); }catch(e){}
       if (typeof window.openPlayerLatestMatchesDialog === 'function') return window.openPlayerLatestMatchesDialog(name, 'official');
       if (typeof toast==='function') toast('Latest Matches not available');
     }),
-    mkRow('High Scores', 'Full Game History', svgTrophy, () => {
+
+    mkRow('Game High Scores', 'FULL GAME HISTORY', svgTrophy, () => {
       try{ overlay && overlay.remove(); }catch(e){}
       if (typeof window.openPlayerHighScoresDialog === 'function') return window.openPlayerHighScoresDialog(name);
       if (typeof toast==='function') toast('High Scores not available');
     }),
-    mkRow('Progression', 'Players scores mapped over time', svgTrend, () => {
+
+    mkRow('Progression', 'PLAYERS SCORES MAPPED OVER TIME', svgTrend, () => {
       try{ overlay && overlay.remove(); }catch(e){}
       if (typeof window.openPlayerProgressionDialog === 'function') return window.openPlayerProgressionDialog(name);
       if (typeof toast==='function') toast('Progression not available');
     }),
-    mkRow('Target Hit %', 'Target hits per round', svgTarget, () => {
+
+    mkRow('Target Hit %', 'TARGET HITS PER ROUND', svgTarget, () => {
       try{ overlay && overlay.remove(); }catch(e){}
       if (typeof window.openPlayerTargetHitDialog === 'function') return window.openPlayerTargetHitDialog(name);
       if (typeof toast==='function') toast('Target Hit % not available');
     }),
-    mkRow('Target Points %', 'Available points hit per round', svgTarget, () => {
+
+    mkRow('Target Points %', 'AVAILABLE POINTS HIT PER ROUND', svgTarget, () => {
       try{ overlay && overlay.remove(); }catch(e){}
       if (typeof window.openPlayerTargetPointsDialog === 'function') return window.openPlayerTargetPointsDialog(name);
       if (typeof toast==='function') toast('Target Points % not available');
     }),
-    mkRow('D T B %', 'Double or Treble hit rate by target', svgTarget, () => {
-      try{ overlay && overlay.remove(); }catch(e){}
-      if (typeof window.openPlayerDTBDialog === 'function') return window.openPlayerDTBDialog(name);
-      if (typeof toast==='function') toast('DTB % not available');
-    }),
-    mkRow('H2H', 'Record vs other players', svgVs, () => {
+
+    mkRow('H2H - League', 'RECORD VS OTHER PLAYERS', svgVs, () => {
       try{ overlay && overlay.remove(); }catch(e){}
       if (typeof window.openPlayerH2HDialog === 'function') return window.openPlayerH2HDialog(name);
       if (typeof toast==='function') toast('H2H not available');
     }),
-    mkRow('Player Stats', 'Averages, PB, recent games', svgBars, () => {
-      try{ overlay && overlay.remove(); }catch(e){}
-      if (typeof window.openPlayerStatsDialog === 'function') return window.openPlayerStatsDialog(name);
-      if (typeof toast==='function') toast('Stats not available');
-    })
+
+    (() => {
+      const r = mkRow('H2H - Vs (Coming Soon)', 'HEAD TO HEAD MATCHUPS', svgVs, () => {
+        try{ overlay && overlay.remove(); }catch(e){}
+        if (typeof toast==='function') toast('Coming Soon');
+      });
+      r.classList.add('is-disabled');
+      return r;
+    })()
   );
 
   body.appendChild(list);
@@ -31181,505 +32507,210 @@ __sqDmdInitV7();
 
   } catch(_){}
 })();
+</script>
+<!-- >>> PATCH:SQ_DMD_TOPBAR_JS_V1 END -->
 
 
-// >>> PATCH:PLAYER_STATS_TARGET_3MODALS_V1 START
-// Adds: Target Hit %, Target Points %, DTB %
-// Each modal has: ALL TIME (default) / POWER R (last 4 games) / MONTH (last 30 days)
-// Data source: Supabase views (throw_events_v + player_games_union)
-// Notes:
-// - Bulls only count in bucket_key='B' (Bulls round). Anywhere else: miss for Bulls logic.
-// - POWER R = rolling last 4 games for player (official only).
-// - MONTH = last 30 days by game timestamp.
-
-(function(){
-  function __sqNowMs(){ return Date.now(); }
-  function __sqDaysMs(n){ return n * 24 * 60 * 60 * 1000; }
-
-  function __sqIsCloudReady(){
-    try { return (typeof ensureCloudInit !== 'function') ? !!window.sb : !!ensureCloudInit(); }
-    catch(_){ return !!window.sb; }
+<!-- >>> PATCH:ROUND_HIGH_SCORES_V82 START -->
+<script>
+(()=> {
+  // One row per round. If multiple tied holders, rotate name every 3s and show +N in a suffix column.
+  function __sqClearRHSTicker(){
+    if (window.__rhsHolderTicker){ try{ clearInterval(window.__rhsHolderTicker); }catch(_){ } }
+    window.__rhsHolderTicker = null;
   }
 
-  function __sqGetPlayerGamesTable(){
-    try{
-      if (typeof TABLE_PLAYER_GAMES !== 'undefined' && TABLE_PLAYER_GAMES) return TABLE_PLAYER_GAMES;
-    }catch(_){}
-    return 'player_games_union';
-  }
-
-  async function __sqFetchPlayerGameIds(playerName, windowKey){
-    // Returns an array of games.id (uuid) for the given player and window.
-    // Prefer canonical events (throw_rules_v) to avoid partial history due to name mismatches in player_games_union.
-    if (!__sqIsCloudReady()) throw new Error('Cloud not initialised');
-    const sb = window.sb;
-    const table = __sqGetPlayerGamesTable();
-
-    const name = String(playerName||'').trim();
-    if (!name) return [];
-
-    const norm = (s)=>String(s||'').trim().toLowerCase();
-
-    async function fetchRows(selectStr){
-      const q = sb
-        .from(table)
-        .select(selectStr)
-        .ilike('player', name) // case-insensitive to prevent missing historical rows
-        .or('is_practice.is.null,is_practice.eq.false');
-
-      if (windowKey === 'POWER'){
-        const { data, error } = await q.order('ts', { ascending:false }).limit(4);
-        if (error) throw error;
-        return data || [];
-      }
-      if (windowKey === 'MONTH'){
-        const cutoffIso = new Date(__sqNowMs() - __sqDaysMs(30)).toISOString();
-        const { data, error } = await q.gte('ts', cutoffIso).order('ts', { ascending:false }).limit(5000);
-        if (error) throw error;
-        return data || [];
-      }
-      const { data, error } = await q.order('ts', { ascending:false }).limit(5000);
-      if (error) throw error;
-      return data || [];
+  function normKey(k){
+    const raw = (k ?? '').toString().trim();
+    if (!raw) return '';
+    const u = raw.toUpperCase();
+    if (u === 'D' || u.includes('DOUBLE')) return 'D';
+    if (u === 'T' || u.includes('TRIPLE') || u.includes('TREBLE')) return 'T';
+    if (u === 'B' || u.includes('BULL')) return 'B';
+    if (/^R\d+$/.test(u)) return String(Number(u.slice(1)));
+    const n = Number(raw);
+    if (Number.isFinite(n)){
+      if (n >= 10 && n <= 20) return String(n);
+      if (n === 21) return 'D';
+      if (n === 22) return 'T';
+      if (n === 23) return 'B';
     }
-
-    // 1) Try direct game_id if present
-    try{
-      const rows = await fetchRows('game_id, ts, is_practice');
-      const ids = (rows||[]).map(r => r.game_id).filter(Boolean);
-      if (ids.length) return ids;
-    }catch(_){ /* fallthrough */ }
-
-    // 2) Fallback: player_games_union sheet_id "<match_id>:<game_number>"
-    try{
-      const rows = await fetchRows('sheet_id, ts, is_practice');
-      const sheetIds = (rows||[]).map(r => String(r.sheet_id||'').trim()).filter(Boolean);
-      if (sheetIds.length){
-        const pairs = sheetIds.map(s=>{
-          const parts = s.split(':');
-          return { match_id: (parts[0]||'').trim(), game_number: Number(parts[1]||0) };
-        }).filter(p=>p.match_id && Number.isFinite(p.game_number) && p.game_number>0);
-
-        const matchIds = Array.from(new Set(pairs.map(p=>p.match_id)));
-        if (matchIds.length){
-          const { data: gamesRows, error: gamesErr } = await sb
-            .from('games')
-            .select('id, match_id, game_number')
-            .in('match_id', matchIds);
-          if (gamesErr) throw gamesErr;
-
-          const map = new Map();
-          (gamesRows||[]).forEach(g=>map.set(`${g.match_id}:${g.game_number}`, g.id));
-
-          const out = [];
-          for (const p of pairs){
-            const gid = map.get(`${p.match_id}:${p.game_number}`);
-            if (gid) out.push(gid);
-          }
-          if (out.length) return out;
-        }
-      }
-    }catch(_){ /* fallthrough */ }
-
-    // 3) Canonical fallback: scan throw_rules_v, dedupe to game_id
-    const cutoffIso = (windowKey === 'MONTH')
-      ? new Date(__sqNowMs() - __sqDaysMs(30)).toISOString()
-      : null;
-
-    let q = sb
-      .from('throw_rules_v')
-      .select('game_id, created_at, player_name')
-      .ilike('player_name', name)
-      .order('created_at', { ascending:false })
-      .limit(20000);
-
-    if (cutoffIso) q = q.gte('created_at', cutoffIso);
-
-    const { data, error } = await q;
-    if (error) throw error;
-
-    const seen = new Set();
-    const ordered = [];
-    for (const r of (data||[])){
-      if (!r?.game_id) continue;
-      if (norm(r.player_name) !== norm(name)) continue;
-      if (seen.has(r.game_id)) continue;
-      seen.add(r.game_id);
-      ordered.push(r.game_id);
-      if (windowKey === 'POWER' && ordered.length >= 4) break;
-    }
-
-    return ordered;
+    return raw;
   }
 
-  async function __sqFetchThrowEvents(gameIds){
-    // Pull rules-applied throws (hit_rules/ring_rules) so ALL TIME matches Supabase truth.
-    if (!__sqIsCloudReady()) throw new Error('Cloud not initialised');
-    const sb = window.sb;
+  async function openRoundHighScoresDialog_v82(){
+    __sqClearRHSTicker();
 
-    const ids = (gameIds||[]).filter(Boolean);
-    if (!ids.length) return [];
+    const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+    const modal   = document.createElement('div'); modal.className='modal sq-wide-modal';
+    const title   = document.createElement('h3');  title.textContent='Round High Scores';
+    const body    = document.createElement('div'); body.className='modal-body';
+    const footer  = document.createElement('div'); footer.className='modal-footer';
 
-    const out = [];
-    const CHUNK = 200;
+    const btnBack=document.createElement('button'); btnBack.className='btn sq-pill'; btnBack.textContent='Back';
+    btnBack.onclick=()=>{ __sqClearRHSTicker(); overlay.remove(); if (typeof openLeagueRankingsDialog==='function') openLeagueRankingsDialog(); };
 
-    for (let i=0; i<ids.length; i+=CHUNK){
-      const chunk = ids.slice(i, i+CHUNK);
-      const { data, error } = await sb
-        .from('throw_rules_v')
-        .select('game_id, created_at, player_name, bucket_key, target, points, ring_rules, hit_rules')
-        .in('game_id', chunk);
+    const btnClose=document.createElement('button'); btnClose.className='btn sq-pill'; btnClose.textContent='Close';
+    btnClose.onclick=()=>{ __sqClearRHSTicker(); overlay.remove(); };
 
-      if (error) throw error;
-      (data||[]).forEach(r => out.push(r));
-    }
-
-    return out;
-  }
-  function __sqBuckets(){
-    const arr = [];
-    for (let n=10; n<=20; n++) arr.push(String(n));
-    arr.push('D','T','B');
-    return arr;
-  }
-
-  function __sqBucketLabel(bk){ return bk; }
-
-  function __sqDenseRank(sortedRows, getScore){
-    let rank = 0;
-    let last = null;
-    for (const r of sortedRows){
-      const v = getScore(r);
-      if (last === null || v !== last){
-        rank += 1;
-        last = v;
-      }
-      r.__rank = rank;
-    }
-    return sortedRows;
-  }
-
-  function __sqBuildTopRightWindowButtons(activeKey, onPick){
-    const wrap = document.createElement('div');
-    wrap.style.display = 'flex';
-    wrap.style.gap = '8px';
-
-    const mk = (key, label) => {
-      const b = document.createElement('button');
-      b.className = 'btn small';
-      b.textContent = label;
-      b.dataset.key = key;
-      if (key === activeKey) b.classList.add('primary');
-      b.onclick = () => onPick(key);
-      return b;
-    };
-
-    wrap.append(
-      mk('ALL', 'ALL TIME'),
-      mk('POWER', 'POWER R'),
-      mk('MONTH', 'MONTH')
-    );
-    return wrap;
-  }
-
-  async function __sqFetchGameRanks(playerName, metric){
-    const map = new Map();
-    try{
-      if (!__sqIsCloudReady()) return map;
-      const sb = window.sb;
-
-      const view = (metric === 'points')
-        ? 'player_points_bucket_ranks_v'
-        : 'player_hit_bucket_ranks_v';
-
-      const { data, error } = await sb
-        .from(view)
-        .select('bucket_key, game_rank')
-        .eq('player', playerName)
-        .order('bucket_key', { ascending:true });
-
-      if (error) throw error;
-
-      (data||[]).forEach(r => {
-        const bk = String(r.bucket_key||'').trim();
-        const gr = (r.game_rank == null) ? null : Number(r.game_rank);
-        if (bk) map.set(bk, gr);
-      });
-    }catch(e){
-      console.warn('[Target Stats] game-rank view missing/unavailable:', e?.message || e);
-    }
-    return map;
-  }
-
-  function __sqMakeModalShell(titleText){
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-backdrop';
-
-    const modal = document.createElement('div');
-    modal.className = 'modal wide';
-    modal.style.maxWidth = '980px';
-    modal.style.width = 'min(980px, 96vw)';
-    modal.style.maxHeight = '90vh';
-    modal.style.overflow = 'hidden';
-
-    const header = document.createElement('div');
-    header.style.display = 'flex';
-    header.style.alignItems = 'center';
-    header.style.justifyContent = 'space-between';
-    header.style.gap = '12px';
-    header.style.padding = '10px 12px 0';
-
-    const title = document.createElement('h3');
-    title.textContent = titleText;
-    title.style.margin = '0';
-
-    const headerRight = document.createElement('div');
-
-    const body = document.createElement('div');
-    body.className = 'modal-body';
-    body.style.paddingTop = '8px';
-    body.style.overflow = 'auto';
-
-    const footer = document.createElement('div');
-    footer.className = 'modal-footer';
-    footer.style.display = 'flex';
-    footer.style.justifyContent = 'space-between';
-    footer.style.alignItems = 'center';
-
-    const left = document.createElement('div');
-    left.style.display = 'flex';
-    left.style.gap = '10px';
-
-    const backBtn = document.createElement('button');
-    backBtn.className = 'btn sq-pill';
-    backBtn.textContent = 'Back';
-
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'btn sq-pill';
-    closeBtn.textContent = 'Close';
-
-    left.append(backBtn, closeBtn);
-
-    const right = document.createElement('div');
-    right.style.display = 'flex';
-    right.style.gap = '10px';
-
-    footer.append(left, right);
-
-    header.append(title, headerRight);
-    modal.append(header, body, footer);
+    footer.append(btnBack, btnClose);
+    modal.append(title, body, footer);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
 
-    const close = () => { try{ overlay.remove(); }catch(_){ } };
-    overlay.addEventListener('click', (e)=>{ if (e.target === overlay) close(); });
-    overlay.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') close(); });
-    modal.tabIndex = 0;
-    modal.focus();
+    function closeAll(){ __sqClearRHSTicker(); try{ overlay.remove(); }catch(_){ } }
+    overlay.addEventListener('click', e=>{ if(e.target===overlay) closeAll(); });
+    overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') closeAll(); });
+    modal.tabIndex=0; modal.focus();
 
-    return { overlay, modal, header, headerRight, body, footer, backBtn, closeBtn, right, close };
-  }
-
-  function __sqTable(headers){
-    const table = document.createElement('table');
-    table.className = 'sq-table hs-table';
-
-    const thead = document.createElement('thead');
-    const tr = document.createElement('tr');
-    headers.forEach(h=>{
-      const th = document.createElement('th');
-      if (typeof h === 'string') th.textContent = h;
-      else th.innerHTML = h.html || '';
-      tr.appendChild(th);
-    });
-    thead.appendChild(tr);
-    table.appendChild(thead);
-
-    const tbody = document.createElement('tbody');
-    table.appendChild(tbody);
-
-    return { table, tbody };
-  }
-
-  function __sqPct(n){
-    if (!Number.isFinite(n)) return '0.0%';
-    return n.toFixed(1) + '%';
-  }
-
-  async function __sqOpenTargetModal(playerName, mode){
-    const name = String(playerName||'').trim();
-    if (!name) return;
-
-    const title = (mode === 'points')
-      ? `Target Points % — ${name}`
-      : (mode === 'dtb')
-        ? `DTB % — ${name}`
-        : `Target Hit % — ${name}`;
-
-    const shell = __sqMakeModalShell(title);
-
-    shell.backBtn.onclick = () => {
-      shell.close();
-      if (typeof window.openPlayerStatsHub === 'function') window.openPlayerStatsHub(name);
-    };
-
-    shell.closeBtn.onclick = () => { shell.close(); };
-
-    let activeWindow = 'ALL';
-
-    const render = async () => {
-      shell.body.innerHTML = '<p class="muted">Loading…</p>';
-      shell.headerRight.innerHTML = '';
-
-      const winBtns = __sqBuildTopRightWindowButtons(activeWindow, async (k)=>{
-        activeWindow = k;
-        await render();
-      });
-      shell.headerRight.appendChild(winBtns);
-
-      const gameIds = await __sqFetchPlayerGameIds(name, activeWindow);
-      if (!gameIds.length){
-        shell.body.innerHTML = '<p class="muted">No games found for this window.</p>';
-        return;
+    async function render(){
+      body.innerHTML = '';
+      const sb = window.sb || window.supabaseClient || window.supabase;
+      if (!sb || !sb.from){
+        const msg=document.createElement('div'); msg.className='muted'; msg.textContent='Unable to load right now.';
+        body.appendChild(msg); return;
       }
 
-      const ev = await __sqFetchThrowEvents(gameIds);
-      const mine = (ev||[]).filter(r => String(r.player_name||'').trim().toLowerCase() === name.toLowerCase());
+      const VIEW = 'v_round_high_scores_modal';
+      const { data, error } = await sb.from(VIEW)
+        .select('round_key,wr,holder,tie_idx')
+        .order('round_key', { ascending:true })
+        .order('tie_idx', { ascending:true });
 
-      const buckets = __sqBuckets();
-      const agg = new Map();
-      buckets.forEach(bk => {
-        agg.set(bk, { bucket_key: bk, throws: 0, hits: 0, points_scored: 0, max_points: 0, d_hits: 0, t_hits: 0 });
-      });
-
-      for (const r of mine){
-        const bk = String(r.bucket_key||'').trim();
-        if (!agg.has(bk)) continue;
-
-        const row = agg.get(bk);
-        const points = Number(r.points||0);
-        const hit = (r.hit_rules === true);
-
-        row.throws += 1;
-        if (hit) row.hits += 1;
-
-        let maxPerDart = 0;
-        let scored = 0;
-
-        if (/^\d+$/.test(bk)){
-          const target = Number(bk);
-          maxPerDart = target * 3;
-          scored = hit ? points : 0;
-        } else if (bk === 'D'){
-          maxPerDart = 40;
-          scored = hit ? points : 0;
-        } else if (bk === 'T'){
-          maxPerDart = 60;
-          scored = hit ? points : 0;
-        } else if (bk === 'B'){
-          maxPerDart = 50;
-          scored = hit ? points : 0;
-        }
-
-        row.max_points += maxPerDart;
-        row.points_scored += scored;
-
-        const ring = String(r.ring_rules||'').trim().toUpperCase();
-        if (hit){
-          if (ring === 'D') row.d_hits += 1;
-          if (ring === 'T') row.t_hits += 1;
-        }
+      if (error) throw error;
+      const rows = Array.isArray(data) ? data : [];
+      if (!rows.length){
+        const msg=document.createElement('div'); msg.className='muted';
+        msg.textContent = `No round high-score rows found in ${VIEW}.`;
+        body.appendChild(msg); return;
       }
 
-      const rows = buckets.map(bk=>{
-        const a = agg.get(bk);
-        const hit_pct = a.throws ? (100 * a.hits / a.throws) : 0;
-        const points_pct = a.max_points ? (100 * a.points_scored / a.max_points) : 0;
-        const d_pct = a.throws ? (100 * a.d_hits / a.throws) : 0;
-        const t_pct = a.throws ? (100 * a.t_hits / a.throws) : 0;
-        const dtb_pct = a.throws ? (100 * (a.d_hits + a.t_hits) / a.throws) : 0;
-
-        return { bucket_key: bk, label: __sqBucketLabel(bk), throws: a.throws, hits: a.hits, hit_pct, points_pct, d_hits: a.d_hits, t_hits: a.t_hits, d_pct, t_pct, dtb_pct };
-      });
-
-      const scoredRows = rows.filter(r => r.throws > 0);
-      const sortKey = (mode === 'points') ? 'points_pct' : (mode === 'dtb') ? 'dtb_pct' : 'hit_pct';
-
-      const sorted = scoredRows.slice().sort((a,b)=>{
-        return (b[sortKey] - a[sortKey]) || (b.throws - a.throws) || (String(a.bucket_key).localeCompare(String(b.bucket_key)));
-      });
-      __sqDenseRank(sorted, r => Number(r[sortKey].toFixed(6)));
-
-      const myRank = new Map(sorted.map(r => [r.bucket_key, r.__rank]));
-
-      let gameRankMap = new Map();
-      if (mode === 'hit') gameRankMap = await __sqFetchGameRanks(name, 'hit');
-      if (mode === 'points') gameRankMap = await __sqFetchGameRanks(name, 'points');
-
-      shell.body.innerHTML = '';
-      const content = document.createElement('div');
-      shell.body.appendChild(content);
-
-      let headers;
-      if (mode === 'dtb'){
-        headers = ['ROUND','THROWS',{ html:'D<br>HITS' },{ html:'D<br>%' },{ html:'T<br>HITS' },{ html:'T<br>%' },{ html:'MY<br>RANK' },{ html:'GAME<br>RANK' }];
-      } else {
-        headers = ['ROUND','THROWS',(mode === 'points') ? 'POINTS' : 'HITS','%',{ html:'MY<br>RANK' },{ html:'GAME<br>RANK' }];
-      }
-
-      const { table, tbody } = __sqTable(headers);
-
+      // Group by canonical key
+      const by = new Map();
       for (const r of rows){
-        const tr = document.createElement('tr');
+        const key = normKey(r.round_key);
+        if (!key) continue;
+        const arr = by.get(key) || [];
+        arr.push(r);
+        by.set(key, arr);
+      }
 
-        const tdRound = document.createElement('td'); tdRound.textContent = r.label;
-        const tdThrows= document.createElement('td'); tdThrows.textContent = String(r.throws);
+      const order = [...Array.from({length:11},(_,i)=>String(10+i)), 'D','T','B'];
 
-        tr.append(tdRound, tdThrows);
+      const table=document.createElement('table'); table.className='hs-table';
+      const thead=document.createElement('thead'); const trh=document.createElement('tr');
+      ['Round','WR','Holder',''].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
+      thead.appendChild(trh); table.appendChild(thead);
+      const tbody=document.createElement('tbody'); table.appendChild(tbody);
 
-        if (mode === 'dtb'){
-          const tdDH = document.createElement('td'); tdDH.textContent = String(r.d_hits);
-          const tdDP = document.createElement('td'); tdDP.textContent = __sqPct(r.d_pct);
-          const tdTH = document.createElement('td'); tdTH.textContent = String(r.t_hits);
-          const tdTP = document.createElement('td'); tdTP.textContent = __sqPct(r.t_pct);
-          const tdMy = document.createElement('td'); tdMy.textContent = (myRank.get(r.bucket_key) || '—');
-          const tdGr = document.createElement('td'); tdGr.textContent = (gameRankMap.get(r.bucket_key) ?? '—');
-          tr.append(tdDH, tdDP, tdTH, tdTP, tdMy, tdGr);
-        } else {
-          const tdHitsOrPoints = document.createElement('td');
-          tdHitsOrPoints.textContent = (mode === 'points') ? __sqPct(r.points_pct) : String(r.hits);
+      for (const key of order){
+        const arr = (by.get(String(key)) || []).slice().sort((a,b)=>(Number(a.tie_idx||1)-Number(b.tie_idx||1)));
+        const tr=document.createElement('tr');
 
-          const tdPct = document.createElement('td');
-          tdPct.textContent = (mode === 'points') ? __sqPct(r.points_pct) : __sqPct(r.hit_pct);
+        const tdR=document.createElement('td'); tdR.textContent=String(key); tr.appendChild(tdR);
 
-          const tdMy = document.createElement('td'); tdMy.textContent = (myRank.get(r.bucket_key) || '—');
-          const tdGr = document.createElement('td'); tdGr.textContent = (gameRankMap.get(r.bucket_key) ?? '—');
-
-          tr.append(tdHitsOrPoints, tdPct, tdMy, tdGr);
+        if (!arr.length){
+          const tdW=document.createElement('td'); tdW.textContent='—';
+          const tdH=document.createElement('td'); tdH.textContent='—';
+          const tdS=document.createElement('td'); tdS.textContent='';
+          tr.append(tdW, tdH, tdS);
+          tbody.appendChild(tr);
+          continue;
         }
 
+        const best = arr[0];
+        const tdW=document.createElement('td'); tdW.textContent=(best.wr==null || best.wr==='') ? '—' : String(best.wr);
+
+        const holdersRaw = arr.map(r => (r.holder || '').trim()).filter(Boolean);
+        const seen = new Set(); const holders=[];
+        for (const h of holdersRaw){ if(!seen.has(h)){ seen.add(h); holders.push(h);} }
+
+        const tdH=document.createElement('td');
+        const tdS=document.createElement('td');
+
+        if (holders.length <= 1){
+          tdH.textContent = holders[0] || '—';
+          tdS.textContent = '';
+        } else {
+          const span=document.createElement('span');
+          span.className='hs-holder-ticker';
+          span.textContent=holders[0];
+          span.dataset.holders = JSON.stringify(holders);
+          span.dataset.idx = '0';
+          tdH.appendChild(span);
+
+          const suf=document.createElement('span');
+          suf.className='hs-holder-suffix';
+          suf.textContent='';
+          suf.dataset.idx='0';
+          suf.dataset.total=String(holders.length);
+          tdS.appendChild(suf);
+        }
+
+        tr.append(tdW, tdH, tdS);
         tbody.appendChild(tr);
       }
 
-      content.appendChild(table);
-    };
+      body.appendChild(table);
 
-    try{ await render(); }
-    catch(e){
-      console.error('[Target Stats] render failed', e);
-      shell.body.innerHTML = `<p class="muted">Failed to load.</p><p class="tag">${String(e?.message || e)}</p>`;
+      const tickers = body.querySelectorAll('.hs-holder-ticker');
+      if (tickers.length){
+        window.__rhsHolderTicker = window.setInterval(()=>{
+          tickers.forEach(el=>{
+            try{
+              const arr = JSON.parse(el.dataset.holders || '[]');
+              if (!arr.length) return;
+              let idx = Number(el.dataset.idx || '0');
+              idx = (idx + 1) % arr.length;
+
+              el.style.opacity = '0';
+              setTimeout(()=>{
+                el.textContent = arr[idx];
+                el.dataset.idx = String(idx);
+                el.style.opacity = '1';
+
+                // suffix column: blank for first, +N for subsequent
+                const tr = el.closest('tr');
+                const suf = tr ? tr.querySelector('.hs-holder-suffix') : null;
+                if (suf){
+                  suf.textContent = (idx === 0) ? '' : ('+' + idx);
+                  suf.dataset.idx = String(idx);
+                }
+              }, 160);
+            } catch(_){}
+          });
+        }, 3000);
+      }
+    }
+
+    try { await render(); }
+    catch(err){
+      __sqClearRHSTicker();
+      body.innerHTML = '';
+      const msg=document.createElement('div'); msg.className='muted';
+      msg.textContent = 'Unable to load right now.';
+      body.appendChild(msg);
+      try{ console.error('[Round High Scores] render failed', err); }catch(_){}
     }
   }
 
-  window.openPlayerTargetHitDialog = function(playerName){ return __sqOpenTargetModal(playerName, 'hit'); };
-  window.openPlayerTargetPointsDialog = function(playerName){ return __sqOpenTargetModal(playerName, 'points'); };
-  window.openPlayerDTBDialog = function(playerName){ return __sqOpenTargetModal(playerName, 'dtb'); };
+  // Hard override (avoids old code paths)
+  window.openRoundHighScoresDialog = openRoundHighScoresDialog_v82;
+
+  // Add minimal fade styling if missing
+  try{
+    if (!document.getElementById('rhsTickerCss')){
+      const st=document.createElement('style'); st.id='rhsTickerCss';
+      st.textContent = `.hs-holder-ticker{transition:opacity .16s ease;}`;
+      document.head.appendChild(st);
+    }
+  }catch(_){}
 
 })();
-// >>> PATCH:PLAYER_STATS_TARGET_3MODALS_V1 END
-
 </script>
-<!-- >>> PATCH:SQ_DMD_TOPBAR_JS_V1 END -->
+<!-- >>> PATCH:ROUND_HIGH_SCORES_V82 END -->
+
+
 
 </body>
 </html>
