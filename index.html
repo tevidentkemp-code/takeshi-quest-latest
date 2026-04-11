@@ -370,6 +370,26 @@ body[data-page="game"] #settingsBtnGamePad{
 }
 /* <<< PATCH:C1_THROWPAD_HARD_SCALE_V2 END */
 
+
+/* >>> PATCH:VIDE_PB_OVERFLOW_STYLE_V1 START */
+.lp-row.lp-pboverflow .lp-line,
+.lp-row.lp-pboverflow .lp-ellipsis{
+  color: var(--lp-pb-color, #ffd36a) !important;
+  font-weight: 400 !important;
+}
+/* <<< PATCH:VIDE_PB_OVERFLOW_STYLE_V1 END */
+
+
+/* >>> PATCH:VIDE_PB_OVERFLOW_MATCH_PB_V2 START */
+.lp-row.lp-pboverflow .lp-line,
+.lp-row.lp-pboverflow .lp-line .lp-ellipsis,
+.lp-row.lp-roundpb.lp-pboverflow .lp-line,
+.lp-row.lp-roundpb.lp-pboverflow .lp-line .lp-ellipsis{
+  color: #ffd36a !important;
+  font-weight: 400 !important;
+}
+/* <<< PATCH:VIDE_PB_OVERFLOW_MATCH_PB_V2 END */
+
 </style>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
@@ -23625,6 +23645,52 @@ if(hsBody){
         return null;
       };
 
+      const lpOrdinal = (n) => {
+        const v = Number(n)||0;
+        if (!v) return '';
+        const mod10 = v % 10, mod100 = v % 100;
+        if (mod10 === 1 && mod100 !== 11) return `${v}st`;
+        if (mod10 === 2 && mod100 !== 12) return `${v}nd`;
+        if (mod10 === 3 && mod100 !== 13) return `${v}rd`;
+        return `${v}th`;
+      };
+
+      const lpGameRankSuffix = (rest) => {
+        try{
+          const r = String(rest || '').replace(/\s{2,}/g,' ').trim();
+          if (!/^GAME\s*PB\b/i.test(r)) return '';
+          const m = r.match(/^GAME\s*PB\s*(?:[\/\-–—]|—|–|-)+\s*([^()]+?)\s*\((\d+)\)/i);
+          if (!m) return '';
+          const score = Number(m[2]);
+          if (!Number.isFinite(score) || score <= 0) return '';
+
+          let scores = [];
+          const st = window.__homeLivePrinterState || {};
+          if (Array.isArray(st.allOfficialScores) && st.allOfficialScores.length) {
+            scores = st.allOfficialScores.slice();
+          } else {
+            try{
+              if (Array.isArray(window.__sqAllOfficialScoresCache) && window.__sqAllOfficialScoresCache.length) {
+                scores = window.__sqAllOfficialScoresCache.slice();
+              } else if (typeof window.__fetchOfficialGames === 'function' && typeof window.__normalizeGame === 'function') {
+                const games = [];
+                // Non-async fallback not possible here, so try cached globals only.
+              }
+            }catch(_e){}
+          }
+
+          if (!scores.length) return '';
+
+          let higher = 0;
+          for (const s of scores){
+            const n = Number(s);
+            if (Number.isFinite(n) && n > score) higher++;
+          }
+          return ` // GAME RANK ${lpOrdinal(higher + 1)}.`;
+        }catch(_e){}
+        return '';
+      };
+
 
       const lpFmtLine = (g) => {
         // Prefer server-provided line_text, but normalize formatting for UI.
@@ -23677,7 +23743,10 @@ if(hsBody){
             const roundPB = lpFmtRoundPB(rest);
             if (roundPB) return (`🚨 ${roundPB}`.trim());
 
-            if (/^GAME PB\b/i.test(rest)) return (`🚨 ${rest}`.trim());
+            if (/^GAME PB\b/i.test(rest)) {
+              const rank = lpGameRankSuffix(rest);
+              return (`🚨 ${rest}${rank}`.trim());
+            }
 
             // World record / WR etc: just return line without timestamp
             return (`🚨 ${rest}`.replace(/^🚨\s*🚨\s*/,'🚨 ').trim());
@@ -23712,7 +23781,10 @@ if(hsBody){
           if (rec) return (`🚨 ${rec}`.replace(/^🚨\s*🚨\s*/,'🚨 ').trim());
           const roundPB = lpFmtRoundPB(cleaned);
           if (roundPB) return (`🚨 ${roundPB}`.trim());
-          if (/^GAME PB\b/i.test(cleaned)) return (`🚨 ${cleaned}`.trim());
+          if (/^GAME PB\b/i.test(cleaned)) {
+            const rank = lpGameRankSuffix(cleaned);
+            return (`🚨 ${cleaned}${rank}`.trim());
+          }
           return cleaned;
         }
 
@@ -23766,6 +23838,7 @@ const lpUpdateMeta = async (games) => {
       const lpIsRecordLine = (line) => /^NEW GAME RECORD SCORE\b/i.test(lpStripBang(line));
       const lpIsRoundPBLine = (line) => /^ROUND PB\b/i.test(lpStripBang(line));
       const lpIsGamePBLine  = (line) => /^GAME PB\b/i.test(lpStripBang(line));
+      const lpIsPbOverflowLine = (line) => /^\+\s*\d+x\s+more\s+Round\s+PBs\.\.\.$/i.test(lpStripBang(line));
       const lpIsAlertLine   = (line) => /^🚨\s*/.test(String(line || '').trim());
 
       const lpIsDateHdrLine = (line) => /^[A-Z]+\s+\d{1,2}(?:st|nd|rd|th)\s+[A-Z]{3}\s+\d{2}\s+>>>\s*$/.test(String(line||'').trim());
@@ -23775,23 +23848,27 @@ const lpUpdateMeta = async (games) => {
         const isRecord = lpIsRecordLine(line);
         const isRoundPB = !isRecord && lpIsRoundPBLine(line);
         const isGamePB = !isRecord && lpIsGamePBLine(line);
+        const isPbOverflow = !isRecord && !isRoundPB && !isGamePB && lpIsPbOverflowLine(line);
         const isAlert = lpIsAlertLine(line);
         const isDateHdr = lpIsDateHdrLine(line);
         tr.classList.toggle('lp-record', isRecord);
-        tr.classList.toggle('lp-roundpb', isRoundPB);
+        tr.classList.toggle('lp-roundpb', isRoundPB || isPbOverflow);
         tr.classList.toggle('lp-gamepb', isGamePB);
+        tr.classList.toggle('lp-pboverflow', isPbOverflow);
         tr.classList.toggle('lp-alert', isAlert);
         tr.classList.toggle('lp-datehdr', isDateHdr);
         const td = tr.querySelector('.lp-line');
         const sp = tr.querySelector('.lp-ellipsis');
         try{
+          const textColor = isDateHdr ? '#ff7a00' : '';
+          const weight = isDateHdr ? '900' : '';
           if (td) {
-            td.style.color = isDateHdr ? '#ff7a00' : '';
-            td.style.fontWeight = isDateHdr ? '900' : '';
+            td.style.color = textColor;
+            td.style.fontWeight = weight;
           }
           if (sp) {
-            sp.style.color = isDateHdr ? '#ff7a00' : '';
-            sp.style.fontWeight = isDateHdr ? '900' : '';
+            sp.style.color = textColor;
+            sp.style.fontWeight = weight;
           }
         }catch(_e){}
       };
@@ -23908,16 +23985,68 @@ const lpUpdateMeta = async (games) => {
           const bestRoundByPlayer = new Map();
           const bestRoundGlobal = new Map();
           let globalGameBest = 0;
+          const allOfficialScores = [];
           const seen = new Set();
-          const pushEvent = (ts, line_text, event_kind) => {
+
+          // Cap PB spam in VIDE:
+          // - GAME PB does NOT count toward the round-PB limit
+          // - show max 2 ROUND PB lines per player per game
+          // - then add one summary line: "+ Xx more PBs."
+          const perGameRoundPbShown = new Map();
+          const perGameRoundPbOverflow = new Map();
+          const perGameRoundPbOverflowEvent = new Map();
+
+          const pbKeyFor = (game, nameKey) => {
+            const gid = String(
+              game?.event_id ??
+              game?.match_id ??
+              game?.game_id ??
+              game?.id ??
+              game?.ts ??
+              game?.created_at ??
+              ''
+            ).trim();
+            return `${gid}::${nameKey}`;
+          };
+
+          const pushEvent = (ts, line_text, event_kind, pbCapKey = '') => {
             const tsv = String(ts || '');
             const txt = String(line_text || '').trim();
             if (!tsv || !txt) return;
+
+            // Only ROUND PB lines count toward this cap.
+            if (event_kind === 'round_pb' && pbCapKey) {
+              const shown = Number(perGameRoundPbShown.get(pbCapKey) || 0);
+
+              if (shown < 2) {
+                perGameRoundPbShown.set(pbCapKey, shown + 1);
+              } else {
+                const extra = Number(perGameRoundPbOverflow.get(pbCapKey) || 0) + 1;
+                perGameRoundPbOverflow.set(pbCapKey, extra);
+
+                const existing = perGameRoundPbOverflowEvent.get(pbCapKey);
+                if (existing) {
+                  existing.line_text = `+ ${extra}x more Round PBs...`;
+                } else {
+                  const evt = {
+                    event_ts: tsv,
+                    ts: tsv,
+                    line_text: `+ ${extra}x more Round PBs...`,
+                    event_kind: 'pb_overflow'
+                  };
+                  perGameRoundPbOverflowEvent.set(pbCapKey, evt);
+                  events.push(evt);
+                }
+                return;
+              }
+            }
+
             const sig = `${tsv}::${event_kind || ''}::${txt}`;
             if (seen.has(sig)) return;
             seen.add(sig);
             events.push({ event_ts: tsv, ts: tsv, line_text: txt, event_kind: event_kind || 'derived' });
           };
+
           allGames.forEach(g => {
             const ts = g.ts || (g.raw && (g.raw.created_at || g.raw.ts)) || null;
             const board = Array.isArray(g.board) ? g.board : [];
@@ -23926,9 +24055,12 @@ const lpUpdateMeta = async (games) => {
               if (!nm) return;
               const score = Number((g.totals || [])[idx] || 0);
               const nameKey = nm.toLowerCase();
+              const pbCapKey = pbKeyFor(g, nameKey);
+              if (Number.isFinite(score) && score > 0) allOfficialScores.push(score);
+
               const priorGameBest = Number(bestGameByPlayer.get(nameKey) || 0);
               if (score > 0 && score > priorGameBest) {
-                pushEvent(ts, `GAME PB - ${nm} (${score})`, 'game_pb');
+                pushEvent(ts, `GAME PB - ${nm} (${score})`, 'game_pb', pbCapKey);
                 bestGameByPlayer.set(nameKey, score);
               }
               if (score > 0 && score > globalGameBest) {
@@ -23946,7 +24078,7 @@ const lpUpdateMeta = async (games) => {
                 const priorRoundPB = Number(bestRoundByPlayer.get(playerRoundKey) || 0);
                 const priorRoundWR = Number(bestRoundGlobal.get(roundKey) || 0);
                 if (total > priorRoundPB) {
-                  pushEvent(ts, `ROUND PB / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_pb');
+                  pushEvent(ts, `ROUND PB / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_pb', pbCapKey);
                   bestRoundByPlayer.set(playerRoundKey, total);
                 }
                 if (total > priorRoundWR) {
@@ -23963,6 +24095,8 @@ const lpUpdateMeta = async (games) => {
         }
         st.derivedItems = events;
         st.derivedFetchedAt = now;
+        st.allOfficialScores = allOfficialScores.slice().sort((a,b)=> b-a);
+        try{ window.__sqAllOfficialScoresCache = st.allOfficialScores.slice(); }catch(_e){}
         return events;
       };
 
