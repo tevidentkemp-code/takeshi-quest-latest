@@ -1,5 +1,8 @@
 <!DOCTYPE html>
 <!--
+  LOCKED BASE: DMD + MISS/X3 + B1/B3
+  Confirmed working after partial-row fix.
+
   CANONICAL BASE: LIVE GAME UI
   Locked base after DMD/B1/B3 sync, miss/skip cleanup, and hero-image pass.
 
@@ -52,96 +55,153 @@
     --sqDmdH: 74px;
   }
   /* Cell 3 INFO: tighten pill/row heights further (requested: -25% again) */
-  /* >>> PATCH:FOCUS_POWER_BARS_V1 START */
-.livev2panel .v2FocusHost{
-  display: contents;
-}
-.livev2panel .v2FocusSpacer{
-  min-height: 1px;
-}
-
-.livev2panel .v2FocusCell{
-  display:flex;
-  align-items:flex-start;
-  justify-content:center;
-  min-height: 118px;
-  padding-top: 8px;
-  --focus-bar-w: 22px;
-}
-.livev2panel .v2FocusCell[data-player-count="2"]{ --focus-bar-w: 28px; }
-.livev2panel .v2FocusCell[data-player-count="3"]{ --focus-bar-w: 24px; }
-.livev2panel .v2FocusCell[data-player-count="4"]{ --focus-bar-w: 20px; }
-.livev2panel .v2FocusCell[data-player-count="5"]{ --focus-bar-w: 16px; }
-.livev2panel .v2FocusCell[data-player-count="6"]{ --focus-bar-w: 14px; }
-
-.livev2panel .v2FocusBarWrap{
+  /* >>> PATCH:GAME_STREAK_DISPLAY_V2 START */
+/* B3c Game Streak — one digital display with per-player vertical bars aligned to player columns */
+.livev2panel .v2HighCell,
+.livev2panel .v2HighWrap{
   position: relative;
-  width: calc(var(--focus-bar-w) + 22px);
-  height: 96px;
+  overflow: hidden;
+}
+
+.livev2panel .v2High{
+  display: block !important;
+  grid-template-columns: none !important;
+  gap: 0 !important;
+  width: 100%;
+  height: 100%;
+}
+
+.livev2panel .v2StreakBoard{
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid !important;
+  grid-template-columns: repeat(var(--sqV2P, 2), minmax(0, 1fr));
+  align-items: end;
+  justify-items: center;
+  gap: 0;
+  padding: 10px 12px 14px;
+  box-sizing: border-box;
+}
+.livev2panel .v2StreakBoard::before{
+  content:"";
+  position:absolute; inset:0;
+  background:
+    radial-gradient(ellipse at center, rgba(48,130,255,.10) 0%, rgba(0,0,0,0) 58%),
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,0));
+  pointer-events:none;
+}
+
+.livev2panel .v2StreakLane{
+  width: 100%;
+  height: 100%;
+  display:flex;
+  justify-content:center;
+  align-items:flex-end;
+}
+
+.livev2panel .v2StreakStack{
+  position: relative;
+  width: 100%;
+  max-width: 78px;
+  height: 100%;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-end;
+  align-items:center;
+  gap: 8px;
+}
+
+.livev2panel .v2StreakLabel{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+  color: rgba(231,235,248,.88);
+  line-height: 1;
+}
+
+.livev2panel .v2StreakTubeWrap{
+  position: relative;
+  width: 34px;
+  height: 114px;
   display:flex;
   align-items:flex-end;
   justify-content:center;
-  margin: 0 auto;
 }
 
-.livev2panel .v2FocusBolt{
+.livev2panel .v2StreakTube{
   position:absolute;
-  bottom: -1px;
-  left: 50%;
+  left:50%;
+  bottom: 11px;
   transform: translateX(-50%);
-  width: 26px;
-  height: 26px;
-  color: rgba(255,196,92,.96);
-  filter: drop-shadow(0 0 8px rgba(255,190,80,.24));
-  z-index: 3;
-}
-.livev2panel .v2FocusBolt svg{
-  width:100%;
-  height:100%;
-  display:block;
-  fill: currentColor;
+  width: 20px;
+  height: 94px;
+  border-radius: 999px;
+  border: 2px solid rgba(191,109,54,.78);
+  background:
+    linear-gradient(180deg, rgba(92,42,22,.64), rgba(49,20,10,.74)),
+    rgba(0,0,0,.28);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.04),
+    0 0 12px rgba(255,122,26,.08);
+  overflow:hidden;
 }
 
-.livev2panel .v2FocusBar{
-  width: var(--focus-bar-w);
-  height: 88px;
-  border-radius: 999px;
-  border: 1px solid rgba(182,106,34,.58);
-  background: rgba(0,0,0,.20);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.04);
-  position: relative;
-  overflow: hidden;
-  transition: border-color .28s ease, box-shadow .28s ease;
-}
-.livev2panel .v2FocusFill{
+.livev2panel .v2StreakFill{
   position:absolute;
-  left: 1px;
-  right: 1px;
-  bottom: 0;
+  left:1px; right:1px; bottom:1px;
   height: 0%;
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255,226,122,.96) 0%, rgba(255,176,70,.92) 52%, rgba(152,58,10,.96) 100%);
-  transition: height .8s cubic-bezier(.22,.8,.22,1);
+  border-radius:999px;
+  background:
+    repeating-linear-gradient(180deg, rgba(61,222,255,.96) 0 7px, rgba(29,136,236,.92) 7px 14px);
+  box-shadow: 0 0 14px rgba(70,208,255,.26), inset 0 0 8px rgba(255,255,255,.18);
+  transition: height .55s cubic-bezier(.22,.8,.22,1);
   will-change: height;
 }
-@keyframes sqFocusBarGlowLow{
-  0%,100%{ box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 0 7px rgba(182,106,34,.10); border-color: rgba(182,106,34,.48); }
-  50%{ box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 0 11px rgba(210,132,48,.16); border-color: rgba(210,132,48,.62); }
+
+.livev2panel .v2StreakNode{
+  position:absolute;
+  left:50%;
+  bottom:0;
+  transform: translateX(-50%);
+  width:30px;
+  height:30px;
+  border-radius:999px;
+  border: 2px solid rgba(191,109,54,.86);
+  background:
+    radial-gradient(circle at 40% 35%, rgba(255,255,255,.10), rgba(255,255,255,0) 42%),
+    linear-gradient(180deg, rgba(82,34,18,.78), rgba(42,18,10,.86));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 0 10px rgba(255,122,26,.08);
 }
-@keyframes sqFocusBarGlowMid{
-  0%,100%{ box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 0 9px rgba(210,132,48,.14); border-color: rgba(210,132,48,.58); }
-  50%{ box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 0 18px rgba(238,162,68,.28); border-color: rgba(238,162,68,.80); }
+.livev2panel .v2StreakNodeCore{
+  position:absolute;
+  inset:5px;
+  border-radius:999px;
+  background: radial-gradient(circle at center, rgba(190,201,218,.88), rgba(107,122,152,.72));
+  transition: background .2s ease, box-shadow .2s ease, transform .2s ease;
 }
-@keyframes sqFocusBarGlowHigh{
-  0%,100%{ box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 0 11px rgba(222,144,56,.18); border-color: rgba(222,144,56,.68); }
-  50%{ box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 0 24px rgba(255,208,118,.38); border-color: rgba(255,208,118,.94); }
+.livev2panel .v2StreakNodeCore.pos{
+  background: radial-gradient(circle at center, rgba(74,224,255,.98), rgba(18,124,236,.94));
+  box-shadow: 0 0 12px rgba(74,224,255,.40);
 }
-.livev2panel .v2FocusCell[data-heat-tier="1"] .v2FocusBar{ animation: sqFocusBarGlowLow 1.25s ease-in-out infinite; }
-.livev2panel .v2FocusCell[data-heat-tier="2"] .v2FocusBar{ animation: sqFocusBarGlowMid .85s ease-in-out infinite; }
-.livev2panel .v2FocusCell[data-heat-tier="3"] .v2FocusBar,
-.livev2panel .v2FocusCell[data-heat-tier="4"] .v2FocusBar,
-.livev2panel .v2FocusCell[data-heat-tier="5"] .v2FocusBar{ animation: sqFocusBarGlowHigh .48s ease-in-out infinite; }
-/* <<< PATCH:FOCUS_POWER_BARS_V1 END */
+.livev2panel .v2StreakNodeCore.neg{
+  background: radial-gradient(circle at center, rgba(255,108,86,.98), rgba(182,38,23,.92));
+  box-shadow: 0 0 12px rgba(255,108,86,.32);
+}
+.livev2panel .v2StreakNodeCore.neu{
+  background: radial-gradient(circle at center, rgba(190,201,218,.88), rgba(107,122,152,.72));
+  box-shadow: 0 0 8px rgba(190,201,218,.16);
+}
+
+.livev2panel .v2HighWrap[data-streak-flash="pos"]{
+  box-shadow: inset 0 0 0 1px rgba(72,220,255,.18), 0 0 22px rgba(72,220,255,.12);
+}
+.livev2panel .v2HighWrap[data-streak-flash="neg"]{
+  box-shadow: inset 0 0 0 1px rgba(255,108,86,.14), 0 0 18px rgba(255,108,86,.10);
+}
+/* <<< PATCH:GAME_STREAK_DISPLAY_V2 END */
 
 .livev2panel .v2AvgWrap{
     padding: 4px 0;
@@ -17038,76 +17098,100 @@ const out2 = [];
   }
 
   // B3c Game Streak host
-  // B3b now has a single Game Stats page only.
   const highHost = document.getElementById("v2High");
 
-    // ---- B3c Game Streak: realtime power bars per player ----
+  // ---- B3c Game Streak: single digital display with per-player live streak bars ----
   if(highHost){
     try{
       const pc = pCount || 2;
+      const currentRound = Number(state.currentRound || 0);
+      const currentPlayer = Number(state.currentPlayer || 0);
 
-      function __focusHeatTier(v){
-        const n = Math.max(0, Math.min(12, Number(v)||0));
-        if (n >= 12) return 5;
-        if (n >= 10) return 4;
-        if (n >= 8) return 3;
-        if (n >= 6) return 2;
-        if (n >= 3) return 1;
-        return 0;
+      function __streakRoundDef(idx){
+        try{ return (Array.isArray(ROUNDS) && ROUNDS[idx]) ? ROUNDS[idx] : null; }catch(_){ return null; }
       }
-
-      function __focusPreviewHeatDelta(pIdx){
-        try{
-          const r = Number(state.currentRound || 0);
-          const def = (Array.isArray(ROUNDS) && ROUNDS[r]) ? ROUNDS[r] : null;
-          const entry = state.score?.[pIdx]?.[r];
-          const darts = Array.isArray(entry?.darts) ? entry.darts.filter(Boolean) : [];
-          const dartsThrown = darts.length;
-          if (!def || !dartsThrown) return 0;
-
-          const total = Number(entry?.roundTotal || 0);
-          const hits = darts.filter(d => Number(d && (d.points ?? d.pts ?? d.score) || 0) > 0).length;
-          const typ = String(def?.type || '');
-
-          if (typ === 'number') {
-            if (total <= 0) return Math.max(-3, -1 * dartsThrown);
-            if (total <= 19) return 0;
-            if (total <= 39) return 1;
-            if (total <= 59) return 2;
-            if (total <= 89) return 3;
-            return 4;
-          }
-          if (hits <= 0) return Math.max(-3, -1 * dartsThrown);
-          if (hits === 1) return 1;
-          if (hits === 2) return 3;
+      function __streakRoundScore(pIdx, rIdx){
+        try{ return Number(state?.score?.[pIdx]?.[rIdx]?.roundTotal || 0) || 0; }catch(_){ return 0; }
+      }
+      function __streakDeltaFromRound(def, total){
+        if (!def) return 0;
+        const typ = String(def.type || '');
+        if (typ === 'number'){
+          if (total === 0) return -3;
+          if (total <= 19) return 0;
+          if (total <= 39) return 1;
+          if (total <= 59) return 2;
+          if (total <= 89) return 3;
           return 4;
-        }catch(_){}
+        }
+        if (typ === 'doubles'){
+          if (total === 0) return -2;
+          if (total <= 20) return 0;
+          if (total <= 40) return 1;
+          return 2;
+        }
+        if (typ === 'triples'){
+          if (total === 0) return -2;
+          if (total <= 30) return 0;
+          if (total <= 60) return 1;
+          return 2;
+        }
+        if (typ === 'bull'){
+          if (total === 0) return -2;
+          if (total < 50) return 1;
+          return 2;
+        }
         return 0;
       }
 
-      const boltSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.2 1.5 5.7 12h4.6L8.8 22.5 18.3 10h-4.8z"/></svg>';
-
-      const out = [];
-      out.push(`<div class="v2FocusHost" style="--focus-pcount:${pc}">`);
-      out.push('<div class="v2FocusSpacer" aria-hidden="true"></div>');
+      const lanes = [];
       for(let i=0; i<pc; i++){
-        const baseHeat = Number((window.__sqHeatByPlayer || [])[i] || 0);
-        const liveHeat = (i === turn) ? Math.max(0, Math.min(12, baseHeat + __focusPreviewHeatDelta(i))) : baseHeat;
-        const tier = __focusHeatTier(liveHeat);
-        const pct = Math.max(0, Math.min(100, (liveHeat / 12) * 100));
+        const player = state.players?.[i];
+        const code = (player?.initials || player?.code || player?.name || String.fromCharCode(65+i)).toString().trim().slice(0,2).toUpperCase();
 
-        out.push(
-          `<div class="v2AvgCell v2FocusCell${i===turn ? ' active' : ''}" data-player-count="${pc}" data-heat-tier="${tier}" data-idx="${i}">` +
-            `<div class="v2FocusBarWrap">` +
-              `<div class="v2FocusBar"><div class="v2FocusFill" style="height:${pct}%"></div></div>` +
-              `<div class="v2FocusBolt">${boltSvg}</div>` +
+        let heat = 0;
+        for(let r=0; r<=currentRound; r++){
+          const def = __streakRoundDef(r);
+          const total = __streakRoundScore(i, r);
+          heat += __streakDeltaFromRound(def, total);
+        }
+        heat = Math.max(-12, Math.min(20, heat));
+        const pct = Math.max(4, Math.min(100, ((heat + 12) / 32) * 100));
+
+        let node = 'neu';
+        if (i === currentPlayer){
+          const def = __streakRoundDef(currentRound);
+          const total = __streakRoundScore(i, currentRound);
+          const delta = __streakDeltaFromRound(def, total);
+          if (delta > 0) node = 'pos';
+          else if (delta < 0) node = 'neg';
+        }
+
+        lanes.push(
+          `<div class="v2StreakLane" data-p="${i}">` +
+            `<div class="v2StreakStack">` +
+              `<div class="v2StreakLabel">${code}</div>` +
+              `<div class="v2StreakTubeWrap">` +
+                `<div class="v2StreakTube"><div class="v2StreakFill" style="height:${pct}%"></div></div>` +
+                `<div class="v2StreakNode"><div class="v2StreakNodeCore ${node}"></div></div>` +
+              `</div>` +
             `</div>` +
           `</div>`
         );
       }
-      out.push('</div>');
-      highHost.innerHTML = out.join('');
-    }catch(_){ highHost.innerHTML = ''; }
+
+      highHost.innerHTML = `<div class="v2StreakBoard" style="--sqV2P:${pc}">${lanes.join('')}</div>`;
+
+      const activeDef = __streakRoundDef(currentRound);
+      const activeTotal = __streakRoundScore(currentPlayer, currentRound);
+      const activeDelta = __streakDeltaFromRound(activeDef, activeTotal);
+      const wrap = highHost.closest('.v2HighWrap');
+      if (wrap){
+        wrap.setAttribute('data-streak-flash', activeDelta > 0 ? 'pos' : (activeDelta < 0 ? 'neg' : ''));
+      }
+    }catch(_){
+      try{ highHost.innerHTML = ''; }catch(__){}
+    }
   }
 }
 // <<< PATCH:livev2-panel-js END
@@ -17140,6 +17224,110 @@ function buildPad(){
     const r = ROUNDS[state.currentRound];
     if (!r) return;
 
+    // @CANONICAL:THROWPAD HELPERS (shared across number / doubles / triples / bull)
+    function __sqMissCountForCurrentThrow(){
+      try{
+        const dart = (typeof state !== 'undefined' && state && typeof state.currentDart === 'number') ? state.currentDart : 0;
+        const remaining = 3 - dart;
+        return Math.max(1, Math.min(3, remaining));
+      }catch(_){
+        return 3;
+      }
+    }
+
+    function __sqSetMissXLabel(btn){
+      try{
+        const n = __sqMissCountForCurrentThrow();
+        btn.textContent = `MISS\nx${n}`;
+        btn.dataset.missN = String(n);
+      }catch(_){}
+    }
+
+    // @CANONICAL:THROWPAD MISS / xN handler
+    async function pressMissN(n){
+      const __prevBulk = !!window.__sqDmdBulkMiss;
+      const dart =
+        (typeof state !== 'undefined' && state && typeof state.currentDart === 'number') ? state.currentDart :
+        (typeof state !== 'undefined' && state && typeof state.currentDartIndex === 'number') ? state.currentDartIndex :
+        (typeof state !== 'undefined' && state && typeof state.dartIndex === 'number') ? state.dartIndex : 0;
+
+      const specialMissSeq = (dart >= 0 && dart <= 2 && n >= 1);
+      const seqSlots = [' ', ' ', ' '];
+
+      try{
+        const rIdx = Number(state?.currentRound || 0);
+        const pIdx = Number(state?.currentPlayer || 0);
+        const entry = state?.score?.[pIdx]?.[rIdx];
+        const darts = Array.isArray(entry?.darts) ? entry.darts.slice(0, dart).filter(Boolean) : [];
+        const tokenFor = (d)=>{
+          const k = String(d?.kind || d?.type || '').trim();
+          const pts = Number(d?.points ?? d?.pts ?? d?.score ?? 0);
+          if (/^Miss$/i.test(k) || pts === 0) return 'X';
+          if (/^B$/i.test(k) || d?.bull) return 'B';
+
+          const rd = (typeof state !== 'undefined' && state && Array.isArray(state.rounds) && state.rounds[rIdx])
+            ? state.rounds[rIdx]
+            : (typeof ROUNDS !== 'undefined' ? ROUNDS[rIdx] : null);
+
+          if (rd && rd.type === 'number') {
+            const rn = Number(rd.target || 0);
+            if (rn > 0) {
+              if (pts === rn * 3) return 'T';
+              if (pts === rn * 2) return 'D';
+              if (pts === rn) return 'S';
+            }
+          }
+          if (rd && rd.type === 'doubles') return 'D';
+          if (rd && rd.type === 'triples') return 'T';
+          if (rd && rd.type === 'bull') return 'B';
+
+          if (/^(Triple|T)$/i.test(k)) return 'T';
+          if (/^(Double|D)$/i.test(k)) return 'D';
+          if (/^(Single|S)$/i.test(k)) return 'S';
+          return (k || ' ').slice(0,1).toUpperCase();
+        };
+        for (let i=0; i<Math.min(3, darts.length); i++) seqSlots[i] = tokenFor(darts[i]);
+      }catch(_){}
+
+      if (n >= 2 || specialMissSeq) window.__sqDmdBulkMiss = true;
+
+      let myToken = Number(window.__sqDmdFlowToken || 0);
+      if (specialMissSeq){
+        try{ window.__sqSuppressMissCallouts = true; }catch(_){}
+        const base = seqSlots.slice();
+        const label = `MISS x${n}`;
+
+        for (let i=0; i<n; i++){
+          if (Number(window.__sqDmdFlowToken || 0) !== myToken) return;
+          const idx = Math.min(2, dart + i);
+          base[idx] = 'X';
+          try{
+            const z3 = `${base[0]} / ${base[1]} / ${base[2]}`;
+            window.sqDmdShowZones?.({ z2: label, z3, z3Small:true }, { type:'flash', ms:260, fx:'impact' });
+          }catch(_){}
+          await new Promise(r=>setTimeout(r,280));
+        }
+      }
+
+      for (let i=0;i<n;i++){
+        if (specialMissSeq && Number(window.__sqDmdFlowToken || 0) !== myToken) return;
+        recordThrow({ kind:'Miss' });
+        if (!specialMissSeq){
+          await new Promise(r=>setTimeout(r,70));
+        }
+      }
+
+      if (specialMissSeq){
+        setTimeout(()=>{ try{ window.__sqSuppressMissCallouts = false; }catch(_){} }, 120);
+      }
+      window.__sqDmdBulkMiss = __prevBulk;
+    }
+
+    function __sqBindMissXButton(btn){
+      __sqSetMissXLabel(btn);
+      btn.onclick = ()=>{ try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } const n = __sqMissCountForCurrentThrow(); pressMissN(n); };
+    }
+
     // ----- NUMBER ROUNDS (10–20) -----
     if (r.type === 'number') {
       // Match D/T/B pad design + colours (grid layout + action buttons)
@@ -17149,7 +17337,7 @@ function buildPad(){
       dtWrap.style.boxSizing = 'border-box';
 
       // @CANONICAL:THROWPAD
-// Left: MISS xN control
+      // Left: MISS xN control
       const x3 = document.createElement('button');
       x3.className = 'dtX3';
       x3.type = 'button';
@@ -17175,6 +17363,7 @@ function buildPad(){
       }
 
       // @CANONICAL:THROWPAD MISS / xN handler
+      // LOCKED working path — do not reintroduce older miss/x3 branches.
       async function pressMissN(n){
         const __prevBulk = !!window.__sqDmdBulkMiss;
         const dart =
@@ -18887,7 +19076,7 @@ try {
 
   
   // @CANONICAL:DMD
-// CANONICAL DMD COMBO BLOCK
+  // CANONICAL DMD COMBO BLOCK
 // >>> PATCH:SQ_DMD_VOLDY_TRIGGER START
   const __isDoublesRound = (roundDef && roundDef.type === 'doubles');
   const __isTriplesRound = (roundDef && roundDef.type === 'triples');
