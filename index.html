@@ -7042,6 +7042,18 @@ body.livev2-on[data-page="game"] canvas#v2InfoDmd{
 }
 </style>
 <!-- <<< PATCH:FIX21_RACE_CHART_GEOMETRY_CSS END -->
+
+<style id="sq-fix71-practice-game-type-menu">
+/* >>> PATCH:FIX71_PRACTICE_GAME_TYPE_MENU START */
+.sg-practice-intro{padding:4px 4px 8px;text-align:left;}
+.sg-practice-title{color:var(--green,#43ff8b);font-weight:900;letter-spacing:.14em;font-size:14px;}
+.sg-practice-sub{margin-top:4px;color:rgba(231,233,245,.66);font-size:12px;letter-spacing:.04em;}
+.sg-practice-footer{margin-top:10px;justify-content:center;gap:10px;}
+#practiceClassicBtn .sg-opt-title::after{content:' LIVE';margin-left:8px;color:rgba(67,255,139,.95);font-size:10px;letter-spacing:.12em;}
+#practiceVsAiBtn,#practiceVsShadowBtn{opacity:.62;}
+/* <<< PATCH:FIX71_PRACTICE_GAME_TYPE_MENU END */
+</style>
+
 </head>
 <body data-page="details">
 <!-- ===== @HTML:SCREENS ===== -->
@@ -11845,7 +11857,22 @@ const HS_KEY_SP='shateki_quest_highscores_sp_v1'; // kept for backward-compat lo
 // Long-term history logs (not cleared when a match ends)
 const GAMES_LOG_KEY   = 'shateki_quest_games_log_v1';
 const MATCHES_LOG_KEY = 'shateki_quest_matches_log_v1';
-const safeSave=(k,o)=>{try{localStorage.setItem(k,JSON.stringify(o));}catch(e){}};
+function __sqIsRecoverableGameStateForLocalCache(o){
+  try{
+    if(!o || typeof o !== 'object') return false;
+    const players = Array.isArray(o.players) ? o.players : [];
+    if(!players.length) return false;
+    if(o.gameAwarded === true || o.finished === true || o.__sqCompleted === true || o.__sqGameCompleteOpen === true) return false;
+    return true;
+  }catch(_){ return false; }
+}
+const safeSave=(k,o)=>{try{
+  if(k===STORAGE_KEY && !__sqIsRecoverableGameStateForLocalCache(o)){
+    localStorage.removeItem(k);
+    return;
+  }
+  localStorage.setItem(k,JSON.stringify(o));
+}catch(e){}};
 const safeLoad=k=>{try{const r=localStorage.getItem(k);return r?JSON.parse(r):null;}catch(e){return null;}};
 const safeClear=k=>{try{localStorage.removeItem(k);}catch(e){}};
 
@@ -14915,7 +14942,8 @@ function getSavedState(){
     const raw=localStorage.getItem(STORAGE_KEY); 
     if(!raw) return null; 
     const saved=JSON.parse(raw); 
-    if(!saved||!Array.isArray(saved.players)||!saved.players.length) return null; 
+    if(!saved||!Array.isArray(saved.players)||!saved.players.length) { safeClear(STORAGE_KEY); return null; }
+    if(typeof __sqIsRecoverableGameStateForLocalCache === 'function' && !__sqIsRecoverableGameStateForLocalCache(saved)) { safeClear(STORAGE_KEY); return null; }
     return saved;
   }catch(e){ 
     return null; 
@@ -15498,6 +15526,7 @@ if (mlStartBtn) {
       id: genUuidV4(),
       mode: __selMode,
       forcePractice: (__selMode === 'practice'),
+      practiceType: (__selMode === 'practice' ? (window.__sqPracticeGameType || 'classic') : null),
       createdAtIso: _tsOverride || new Date().toISOString(),
       targetWins: games,
       gameNumber: 1,
@@ -17318,9 +17347,15 @@ function __sqV2SetPagerPage(panel, page, animate){
     const canvas = getCanvas();
     if (!canvas) return;
 
-    const labels = Array.from({length: roundsCount()}, (_,i)=>roundLabel(i));
-    const live = buildLiveSeries();
-    let rec = await getRecordSeries();
+    let labels = Array.from({length: roundsCount()}, (_,i)=>roundLabel(i));
+    let live = buildLiveSeries();
+    const __turboRace = (()=>{ try{ const m = state?.match || {}; const draft = window.__sqTournamentDraft || state?.__sqTournamentDraft || null; const type = String(m.tournamentType || m.type || draft?.type || state?.tournamentType || '').toLowerCase(); return !!(type === 'turbo' || m.strictTimer === true || m.throwLimitSeconds === 20 || state?.strictTimer === true || state?.throwLimitSeconds === 20); }catch(_){ return false; } })();
+    const __turboStartIdx = (()=>{ try{ const rules = state?.match?.tournamentRules || state?.__sqTournamentDraft?.rules || window.__sqTournamentDraft?.rules || {}; return Math.max(0, Math.min(roundsCount()-1, Number(rules.startRoundIndex ?? 7))); }catch(_){ return 7; } })();
+    if (__turboRace) {
+      labels = labels.slice(__turboStartIdx);
+      live = live.map(s => ({ ...s, data: Array.isArray(s.data) ? s.data.slice(__turboStartIdx) : [] }));
+    }
+    let rec = __turboRace ? null : await getRecordSeries();
     let records = null;
 
     // Solo Practice: Race chart should compare the live player against their PB pace
@@ -21198,16 +21233,45 @@ async function recordFullGameToSupabase(createdAtOverride) {
     const gameMode   = (typeof __sqComputeGameMode === 'function') ? __sqComputeGameMode() : (isOfficial ? 'official' : 'practice');
     const isPractice = (gameMode === 'practice');
 
+    // Supabase games.match_id is NOT NULL in the current schema.
+    // Practice therefore gets a real lightweight match row, but remains practice via state.mode/is_practice.
+    let practiceMatchId = null;
+    if (isPractice) {
+      try {
+        practiceMatchId = state?.match?.id || ((crypto && crypto.randomUUID) ? crypto.randomUUID() : ('practice-' + Date.now()));
+        state.match = Object.assign({}, state.match || {}, {
+          id: practiceMatchId,
+          mode: 'practice',
+          forcePractice: true,
+          createdAtIso: state?.match?.createdAtIso || ts,
+          history: Array.isArray(state?.match?.history) ? state.match.history : [],
+          wins: Array.isArray(state?.match?.wins) ? state.match.wins : []
+        });
+        await sb.from(TABLE_MATCHES).upsert({
+          id: practiceMatchId,
+          created_at: state.match.createdAtIso || ts,
+          total_games: Math.max(1, state.match.history.length || 1),
+          players: state.players.map(p => ({ name: p.name })),
+          wins: (state.match.wins || []).slice(),
+          history: [{ totals: totals.slice(), mode: 'practice' }]
+        });
+      } catch (e) {
+        console.warn('[SQ] practice match upsert failed', e);
+      }
+    }
+
     const payload = {
-      match_id:   isOfficial && !isPractice ? (state.match?.id || null) : null, // null for practice
-      game_number: state.match?.history?.length ? state.match.history.length : 1,
+      match_id:   isPractice ? practiceMatchId : (isOfficial ? (state.match?.id || null) : practiceMatchId),
+      game_number: isPractice ? 1 : (state.match?.history?.length ? state.match.history.length : 1),
       created_at: ts, // finish time (or backdated override)
       state:      {
         players: state.players.map(p => ({ name: p.name })),
         board: boardClone,
         mode: gameMode,
         is_practice: isPractice,
-        total_players: state.players.length
+        total_players: state.players.length,
+        match_id: isPractice ? practiceMatchId : (state.match?.id || null),
+        schema_version: isPractice ? 2 : undefined
       },
       totals,
       finished:   true
@@ -21216,6 +21280,7 @@ async function recordFullGameToSupabase(createdAtOverride) {
     const { data: _gRow, error } = await sb.from(TABLE_GAMES).insert(payload).select('id, created_at').single();
     if (error) throw error;
     const _gameId = _gRow && _gRow.id ? _gRow.id : null;
+    try { if (typeof __sqClearRecoveryCachesAfterCompletedSave === 'function') __sqClearRecoveryCachesAfterCompletedSave('recordFullGameToSupabase'); } catch(_) {}
 
     // >>> PATCH:HS_TS_ALIGN START
     // Write HS rows with the SAME ts as the game row, so deletes and audits remain consistent.
@@ -21430,6 +21495,76 @@ function updateLeaderboardTable(){
   addRow('WINS', perPlayer.map(p => String(p.wins)));
 }
 
+// >>> PATCH:FIX82_DIRECT_TOURNAMENT_LEADERBOARD HELPERS START
+function __sqFix82IsTournamentLeaderboardMatch(){
+  try {
+    const m = state && state.match ? state.match : {};
+    if (m.tournament === true || m.tournamentType || m.tournamentSize || m.tournamentMatch || m.tournamentRound) return true;
+    if (state && (state.__sqTournamentActive || state.__sqTournamentDraft || state.__sqTournamentTurboTimer)) return true;
+    if (window.__sqTournamentDraft) return true;
+    const players = Array.isArray(state && state.players) ? state.players : [];
+    if (players.some(p => p && (p.tournamentSeed || p.tournamentRank))) return true;
+    try {
+      const raw = sessionStorage.getItem('sq_tournament_runtime_v1');
+      if (raw) { const x = JSON.parse(raw); if (x && (x.active || x.draft || x.match)) return true; }
+    } catch(_) {}
+  } catch(_) {}
+  return false;
+}
+
+function __sqFix82ApplyTournamentLeaderboardButtons(){
+  try {
+    const lb = document.getElementById('leaderboard');
+    if (!lb) return false;
+    const isT = __sqFix82IsTournamentLeaderboardMatch();
+    const targetWins = state && state.match ? (state.match.targetWins || 1) : 1;
+    const winsArr = state && state.match && Array.isArray(state.match.wins) ? state.match.wins : [];
+    const maxWins = winsArr.length ? Math.max.apply(null, winsArr) : 0;
+    const done = maxWins >= targetWins;
+    if (!isT || !done) {
+      lb.classList.remove('sqTournamentLeaderboardActive');
+      const nb = document.getElementById('sqTournamentNextRoundBtnFix82');
+      if (nb) nb.classList.add('hidden');
+      return false;
+    }
+    lb.classList.add('sqTournamentLeaderboardActive');
+    const hs = document.getElementById('highScoresMenuBtnLB');
+    if (hs) { hs.classList.add('sqTournamentHideBtn'); hs.style.display = 'none'; }
+    const pl = document.getElementById('btnPremierLeague');
+    if (pl) { pl.classList.add('sqTournamentHideBtn'); pl.style.display = 'none'; }
+    const nextGame = document.getElementById('nextGameBtn');
+    if (nextGame) nextGame.classList.add('hidden');
+    const stack = lb.querySelector('.stacked-actions') || document.querySelector('.stacked-actions');
+    if (!stack) return false;
+    let btn = document.getElementById('sqTournamentNextRoundBtnFix82');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'sqTournamentNextRoundBtnFix82';
+      btn.className = 'btn primary big';
+      btn.type = 'button';
+      btn.textContent = 'NEXT ROUND';
+      const end = document.getElementById('newMatchBtn');
+      if (end && end.parentNode === stack) stack.insertBefore(btn, end);
+      else stack.appendChild(btn);
+    }
+    btn.classList.remove('hidden');
+    btn.style.display = '';
+    btn.textContent = 'NEXT ROUND';
+    btn.disabled = false;
+    btn.onclick = function(e){
+      e.preventDefault();
+      try {
+        if (typeof window.__sqOpenTournamentTreeFromLeaderboard === 'function') {
+          window.__sqOpenTournamentTreeFromLeaderboard();
+          return;
+        }
+        if (typeof toast === 'function') toast('Tournament tree runner not loaded.');
+      } catch(err) { console.error('[SQ] NEXT ROUND failed', err); }
+    };
+    return true;
+  } catch(e) { console.warn('[SQ] Fix82 direct tournament leaderboard failed', e); return false; }
+}
+// <<< PATCH:FIX82_DIRECT_TOURNAMENT_LEADERBOARD HELPERS END
 function showLeaderboard() {
   // Build table
   updateLeaderboardTable();
@@ -21453,11 +21588,11 @@ function showLeaderboard() {
   if (newMatchBtn) {
     newMatchBtn.classList.toggle('hidden', !matchDone);
     newMatchBtn.onclick = () => {
-      // reset to start a fresh match
+      // reset to the initial start screen, not Match Setup
       state = JSON.parse(JSON.stringify(baseState));
       save();
-      show('players');     // or: show('details');
-      try { if (typeof drawPsRows === 'function') drawPsRows(); } catch(_e) {}
+      if (typeof navigateToStartScreen === 'function') navigateToStartScreen();
+      else show('details');
     };
   }
 
@@ -21471,8 +21606,14 @@ function showLeaderboard() {
     lbMatchInfo.parentElement?.classList.remove('hidden');
   }
 
+  // Tournament completed-match leaderboard: direct source-level patch (not wrapper dependent).
+  try { __sqFix82ApplyTournamentLeaderboardButtons(); } catch(_) {}
+
   // Show the screen
   show('leaderboard');
+
+  // Re-apply after the leaderboard and Premier League injector finish rendering.
+  try { [0, 80, 250, 700].forEach(ms => setTimeout(__sqFix82ApplyTournamentLeaderboardButtons, ms)); } catch(_) {}
 }
 
 function openGameScoresDialog() {
@@ -23898,35 +24039,443 @@ if (typeof window.isPracticeGame !== 'function') {
   window.isPracticeGame = g => Array.isArray(g?.players) && g.players.length === 1;
 }
 
+/* >>> PATCH:PHASE1_CANONICAL_GAME_ADAPTER_V1 START
+   Purpose:
+   - One canonical reader for saved game rows.
+   - Supabase/cloud rows remain the source of truth.
+   - localStorage remains cache only.
+   - Keep this foundation non-invasive: it normalises + routes getGamesForMode first.
+*/
+(function(){
+  if (window.__sqPhase1GameAdapterV1) return;
+  window.__sqPhase1GameAdapterV1 = true;
+
+  function str(v){ return String(v == null ? '' : v).trim(); }
+  function lower(v){ return str(v).toLowerCase(); }
+  function asArr(v){ return Array.isArray(v) ? v : []; }
+  function pick(){
+    for (var i=0; i<arguments.length; i++){
+      var v = arguments[i];
+      if (v !== undefined && v !== null && v !== '') return v;
+    }
+    return null;
+  }
+
+  function playerNameSafe(p){
+    try{
+      if (typeof window.playerNameFrom === 'function') return str(window.playerNameFrom(p));
+    }catch(_){ }
+    if (p == null) return '';
+    if (typeof p === 'string') return str(p);
+    return str(p.name || p.player || p.player_name || p.display_name || p.nickname || p.nick || p.username || p.id || '');
+  }
+
+  function playerIdSafe(p){
+    if (!p || typeof p !== 'object') return null;
+    return pick(p.player_id, p.playerId, p.id, p.uuid, null);
+  }
+
+  function normalizePlayers(g, state){
+    var raw = asArr(pick(g && g.players, state && state.players, state && state.match && state.match.players, []));
+    return raw.map(function(p, idx){
+      if (p && typeof p === 'object'){
+        return Object.assign({}, p, { name: playerNameSafe(p), player_id: playerIdSafe(p), index: idx });
+      }
+      return { name: playerNameSafe(p), player_id: null, index: idx };
+    }).filter(function(p){ return !!p.name; });
+  }
+
+  function normalizeBoard(g, state){
+    return pick(g && g.board, g && g.score, state && state.board, state && state.score, null);
+  }
+
+  function roundScoreSafe(ent){
+    if (ent == null) return 0;
+    if (typeof ent === 'number') return Number(ent) || 0;
+    if (typeof ent === 'string') return Number(ent) || 0;
+    var keys = ['roundTotal','round_total','points','score','total','val','value'];
+    for (var i=0; i<keys.length; i++){
+      var n = Number(ent[keys[i]]);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    var darts = Array.isArray(ent) ? ent : (Array.isArray(ent.darts) ? ent.darts : (Array.isArray(ent.throws) ? ent.throws : []));
+    if (darts.length){
+      return darts.reduce(function(a,d){
+        if (typeof d === 'number') return a + (Number(d)||0);
+        return a + (Number(d && (d.points ?? d.score ?? d.val ?? d.value) || 0) || 0);
+      }, 0);
+    }
+    return 0;
+  }
+
+  function rowsForPlayer(board, idx){
+    if (!Array.isArray(board)) return [];
+    if (Array.isArray(board[idx])) return board[idx];
+    if (Array.isArray(board[0]) && board[0] && board[0][idx] != null){
+      return board.map(function(r){ return Array.isArray(r) ? r[idx] : null; });
+    }
+    return [];
+  }
+
+  function totalsFromBoard(board, playerCount){
+    var out = [];
+    for (var i=0; i<playerCount; i++){
+      out[i] = rowsForPlayer(board, i).reduce(function(a,r){ return a + roundScoreSafe(r); }, 0);
+    }
+    return out;
+  }
+
+  function normalizeTotals(g, state, players, board){
+    var raw = pick(g && g.totals, state && state.totals, null);
+    var totals = [];
+    if (Array.isArray(raw)){
+      totals = raw.map(function(v){
+        if (typeof v === 'number') return Number(v) || 0;
+        if (v && typeof v === 'object') return Number(pick(v.total, v.score, v.points, v.val, 0)) || 0;
+        return Number(v) || 0;
+      });
+    } else if (raw && typeof raw === 'object'){
+      totals = players.map(function(p, idx){
+        var v = pick(raw[p.name], raw[lower(p.name)], raw[String(idx)], raw[p.player_id], 0);
+        if (v && typeof v === 'object') v = pick(v.total, v.score, v.points, v.val, 0);
+        return Number(v) || 0;
+      });
+    }
+    if ((!totals.length || totals.every(function(v){ return !v; })) && Array.isArray(board)){
+      totals = totalsFromBoard(board, players.length);
+    }
+    while (totals.length < players.length) totals.push(0);
+    return totals.slice(0, players.length);
+  }
+
+  function normalizeMode(g, state, players, matchId){
+    var rawMode = lower(pick(g && g.mode, g && g.game_mode, g && g.type, state && state.mode, state && state.game_mode, state && state.type, ''));
+    var explicitPractice = !!(g && (g.is_practice === true || g.isPractice === true || g.practice === true || g.single_player === true)) ||
+      !!(state && (state.is_practice === true || state.isPractice === true || state.practice === true || state.single_player === true)) ||
+      rawMode.indexOf('practice') >= 0 || rawMode.indexOf('unofficial') >= 0 || rawMode === 'solo';
+    var explicitOfficial = !!(g && (g.is_practice === false || g.isPractice === false)) || !!(state && (state.is_practice === false || state.isPractice === false)) || rawMode === 'official' || rawMode === 'match';
+    if (explicitPractice) return 'practice';
+    if (matchId && players.length >= 2) return 'official';
+    if (explicitOfficial && players.length >= 2) return 'official';
+    if (players.length === 1) return 'practice';
+    if (!matchId && players.length >= 1) return 'practice';
+    return 'unknown';
+  }
+
+  function normalizeTs(g, state){
+    return pick(g && g.ts, g && g.created_at, g && g.inserted_at, g && g.completed_at, state && state.ts, state && state.created_at, state && state.completed_at, g && g.meta && (g.meta.ts || g.meta.date), null);
+  }
+
+  function stableKey(norm){
+    var id = str(norm.id || norm.game_id || '');
+    if (id && !/^recent-/i.test(id)) return 'cloud:' + id;
+    var names = norm.players.map(function(p){ return lower(p.name); }).join('|');
+    var totals = norm.totals.join('|');
+    var boardKey = '';
+    try{ boardKey = JSON.stringify(norm.board || []); }catch(_){ boardKey = ''; }
+    return ['game', norm.mode, norm.ts || '', names, totals, boardKey].join('::');
+  }
+
+  window.__sqNormalizeGameRow = function __sqNormalizeGameRow(g){
+    g = g || {};
+    var state = (g.state && typeof g.state === 'object') ? g.state : {};
+    var matchId = pick(g.match_id, g.matchId, g.match, state.match_id, state.matchId, state.match && state.match.id, null);
+    var players = normalizePlayers(g, state);
+    var board = normalizeBoard(g, state);
+    var totals = normalizeTotals(g, state, players, board);
+    var mode = normalizeMode(g, state, players, matchId);
+    var ts = normalizeTs(g, state);
+    var out = {
+      id: pick(g.id, g.game_id, g.gameId, null),
+      game_id: pick(g.game_id, g.gameId, g.id, null),
+      ts: ts,
+      created_at: pick(g.created_at, ts, null),
+      completed_at: pick(g.completed_at, state.completed_at, ts, null),
+      mode: mode,
+      isPractice: mode === 'practice',
+      is_practice: mode === 'practice',
+      isOfficial: mode === 'official',
+      is_official: mode === 'official',
+      players: players,
+      player_names: players.map(function(p){ return p.name; }),
+      totals: totals,
+      board: board,
+      match_id: matchId,
+      matchId: matchId,
+      game_number: pick(g.game_number, g.gameNumber, state.game_number, state.gameNumber, null),
+      archived_at: pick(g.archived_at, g.archivedAt, state.archived_at, state.archivedAt, null),
+      raw: g
+    };
+    out.stableKey = stableKey(out);
+    return out;
+  };
+
+  window.__sqNormalizeGameRows = function __sqNormalizeGameRows(rows){
+    return asArr(rows).map(function(g){ return window.__sqNormalizeGameRow(g); }).filter(function(g){ return g && g.players && g.players.length; });
+  };
+
+  window.__sqIsOfficialGame = function __sqIsOfficialGame(g){
+    var n = (g && g.mode && Array.isArray(g.players) && Array.isArray(g.totals)) ? g : window.__sqNormalizeGameRow(g);
+    return !!(n && n.isOfficial && n.players.length >= 2);
+  };
+
+  window.__sqIsPracticeGame = function __sqIsPracticeGame(g){
+    var n = (g && g.mode && Array.isArray(g.players) && Array.isArray(g.totals)) ? g : window.__sqNormalizeGameRow(g);
+    return !!(n && n.isPractice && n.players.length >= 1);
+  };
+
+  window.isOfficialGame = window.__sqIsOfficialGame;
+  window.isPracticeGame = window.__sqIsPracticeGame;
+  try{ isOfficialGame = window.__sqIsOfficialGame; isPracticeGame = window.__sqIsPracticeGame; }catch(_){ }
+
+  window.__sqDedupeNormalizedGames = function __sqDedupeNormalizedGames(rows){
+    var map = new Map();
+    asArr(rows).forEach(function(g){
+      var n = (g && g.stableKey) ? g : window.__sqNormalizeGameRow(g);
+      if (!n || !n.players.length) return;
+      if (n.archived_at) return;
+      if (!map.has(n.stableKey)) map.set(n.stableKey, n);
+    });
+    return Array.from(map.values()).sort(function(a,b){
+      var ta = Date.parse(a.ts || a.created_at || '') || 0;
+      var tb = Date.parse(b.ts || b.created_at || '') || 0;
+      return tb - ta;
+    });
+  };
+
+  window.__sqGetAllGamesNormalized = async function __sqGetAllGamesNormalized(){
+    var cloudGames = [];
+    if (typeof window.cloudFetchAllGamesAsLocal === 'function'){
+      cloudGames = await window.cloudFetchAllGamesAsLocal();
+    }
+    return window.__sqDedupeNormalizedGames(cloudGames || []);
+  };
+
+  window.__sqAuditLocalStorageAuthority = function __sqAuditLocalStorageAuthority(opts){
+    opts = opts || {};
+
+    function getPreview(value){
+      var raw = String(value == null ? '' : value);
+      var compact = raw.replace(/\s+/g, ' ').trim();
+      return compact.length > 120 ? compact.slice(0, 117) + '...' : compact;
+    }
+
+    function sniffShape(value){
+      var raw = String(value == null ? '' : value);
+      if (!raw) return 'empty';
+      try{
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return 'json-array[' + parsed.length + ']';
+        if (parsed && typeof parsed === 'object') return 'json-object{' + Object.keys(parsed).slice(0, 6).join(',') + (Object.keys(parsed).length > 6 ? ',...' : '') + '}';
+        return 'json-' + typeof parsed;
+      }catch(_){
+        return raw.length > 80 ? 'string-long' : 'string';
+      }
+    }
+
+    var authorityPatterns = [
+      { re: /(rank|ranking|leaderboard|league|premier)/i, reason: 'ranking/league-like key' },
+      { re: /(pb|personal.?best|wr|world.?record|record)/i, reason: 'PB/WR/record-like key' },
+      { re: /(h2h|head.?to.?head|versus|rival)/i, reason: 'H2H/rivalry-like key' },
+      { re: /(latest|recent|history|archive|result|results)/i, reason: 'history/latest-results-like key' },
+      { re: /(score|scores|total|totals|throw|throws|round|rounds)/i, reason: 'score/round-like key' },
+      { re: /(player|players|match|matches|game|games)/i, reason: 'player/match/game-like key' }
+    ];
+
+    var safePatterns = [
+      { re: /(debug|diag|diagnostic|log)/i, reason: 'debug/diagnostic' },
+      { re: /(theme|colour|color|accent|appearance|style)/i, reason: 'UI preference' },
+      { re: /(ui|pref|setting|settings|layout|tab|panel|menu)/i, reason: 'UI state/preference' },
+      { re: /(cache|cached|draft|tmp|temp|viewport|vh|scroll)/i, reason: 'cache/temp/browser layout state' }
+    ];
+
+    var rows = [];
+    try{
+      for (var i=0; i<localStorage.length; i++){
+        var key = localStorage.key(i);
+        var value = localStorage.getItem(key);
+        var lowerKey = String(key || '').toLowerCase();
+        var safeHit = safePatterns.find(function(p){ return p.re.test(lowerKey); });
+        var authorityHits = authorityPatterns.filter(function(p){ return p.re.test(lowerKey); });
+        var shape = sniffShape(value);
+        var bytes = String(value || '').length;
+        var risk = 'likely-safe-cache-or-pref';
+        var action = 'keep';
+        var reason = safeHit ? safeHit.reason : 'no authority pattern detected';
+
+        if (authorityHits.length && !safeHit){
+          risk = 'review-authority-risk';
+          action = 'inspect-read-write-path';
+          reason = authorityHits.map(function(p){ return p.reason; }).join('; ');
+        } else if (authorityHits.length && safeHit){
+          risk = 'mixed-name-review';
+          action = 'verify-cache-only';
+          reason = safeHit.reason + ' but also matches ' + authorityHits.map(function(p){ return p.reason; }).join('; ');
+        }
+
+        rows.push({
+          key: key,
+          risk: risk,
+          action: action,
+          reason: reason,
+          shape: shape,
+          bytes: bytes,
+          preview: opts.withPreview ? getPreview(value) : undefined
+        });
+      }
+    }catch(e){
+      rows.push({ key:'localStorage unavailable', risk:'error', action:'none', reason:String(e && (e.message || e)), shape:'error', bytes:0 });
+    }
+
+    rows.sort(function(a,b){
+      var order = { 'review-authority-risk':0, 'mixed-name-review':1, 'likely-safe-cache-or-pref':2, 'error':3 };
+      return ((order[a.risk] == null ? 9 : order[a.risk]) - (order[b.risk] == null ? 9 : order[b.risk])) || String(a.key).localeCompare(String(b.key));
+    });
+
+    var summary = rows.reduce(function(acc,r){ acc[r.risk] = (acc[r.risk] || 0) + 1; return acc; }, {});
+    try{
+      console.log('SQ localStorage authority audit summary', summary);
+      console.table(rows.map(function(r){
+        var out = { key:r.key, risk:r.risk, action:r.action, reason:r.reason, shape:r.shape, bytes:r.bytes };
+        if (opts.withPreview) out.preview = r.preview;
+        return out;
+      }));
+    }catch(_){ }
+
+    return { summary: summary, rows: rows };
+  };
+
+  window.__sqPrintLocalStorageAuthorityAudit = function __sqPrintLocalStorageAuthorityAudit(){
+    return window.__sqAuditLocalStorageAuthority({ withPreview:false });
+  };
+
+  window.__sqPrintLocalStorageAuthorityAuditVerbose = function __sqPrintLocalStorageAuthorityAuditVerbose(){
+    return window.__sqAuditLocalStorageAuthority({ withPreview:true });
+  };
+
+  window.__sqExportLocalStorageAuthorityAudit = function __sqExportLocalStorageAuthorityAudit(){
+    var report = window.__sqAuditLocalStorageAuthority({ withPreview:true });
+    var text = JSON.stringify(report, null, 2);
+    try{
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text);
+        console.log('SQ localStorage audit copied to clipboard');
+      } else {
+        console.log(text);
+      }
+    }catch(_){ console.log(text); }
+    return report;
+  };
+})();
+/* <<< PATCH:PHASE1_CANONICAL_GAME_ADAPTER_V1 END */
+
+/* >>> PATCH:PHASE1_LOCALSTORAGE_POLICY_WARNINGS_V1 START */
+(function(){
+  if(window.__sqLocalStoragePolicyPatchLoaded) return;
+  window.__sqLocalStoragePolicyPatchLoaded = true;
+
+  var POLICY = {
+    "hsLeaguePositions.v2": ["retired-ranking-cache-purged", "ranking movement cache retired; Supabase/canonical history is truth"],
+    "powerRankings.allTime.lastRanks": ["retired-ranking-cache-purged", "all-time rank movement cache retired; Supabase/canonical history is truth"],
+    "powerRankings.current.lastRanks": ["retired-ranking-cache-purged", "current rank movement cache retired; Supabase/canonical history is truth"],
+    "shateki_players": ["safe-player-cloud-cache", "player setup/display cache synced from Supabase players; not stats authority"],
+    "shateki_quest_scorer_v6": ["safe-recovery-cache", "in-progress recovery cache; guarded against completed/base state truth"],
+    "sq_match_active_v1": ["safe-recovery-cache", "active match recovery cache; guarded against completed/base state truth"],
+    "sq_playerhub_passwords": ["deprecated-do-not-use", "password-era player hub data; retire after checking current path"],
+    "sq_recent_completed_games_cache_v2": ["retired-inspection-only", "completed-game cache retired; Supabase games plus canonical adapter are truth"]
+  };
+  var SAFE = {
+    "sq_cloud_logons_disabled": "safe-debug-or-pref",
+    "sq_daily_logons": "safe-debug-or-pref",
+    "sq_device_id": "safe-device-cache",
+    "SQ_PSTICKER_CACHE_V1": "safe-visual-cache"
+  };
+
+  window.__sqLocalStoragePolicy = POLICY;
+  window.__sqLocalStorageSafePolicy = SAFE;
+
+  function policyFor(key){
+    key=String(key||'');
+    if(Object.prototype.hasOwnProperty.call(POLICY,key)) return {key:key, policy:POLICY[key][0], reason:POLICY[key][1]};
+    if(Object.prototype.hasOwnProperty.call(SAFE,key)) return {key:key, policy:SAFE[key], reason:'known safe cache/preference key'};
+    return null;
+  }
+  window.__sqGetLocalStoragePolicy = policyFor;
+
+  function shapeOf(raw){
+    if(raw==null) return 'missing';
+    try{
+      var p=JSON.parse(raw);
+      if(Array.isArray(p)) return 'json-array['+p.length+']';
+      if(p&&typeof p==='object') return 'json-object{'+Object.keys(p).slice(0,5).join(',')+'}';
+      return 'json-'+typeof p;
+    }catch(_){ return String(raw).length>80?'string-long':'string'; }
+  }
+
+  window.__sqGetLocalStoragePolicyReport = function(){
+    var keys = Object.keys(POLICY).concat(Object.keys(SAFE));
+    var rows = keys.map(function(key){
+      var raw=null, exists=false, bytes=0, shape='missing';
+      try{ raw=localStorage.getItem(key); exists=raw!=null; bytes=raw==null?0:String(raw).length; shape=shapeOf(raw); }catch(e){ shape='read-error'; }
+      var p=policyFor(key)||{};
+      var action = (p.policy&&/^safe/.test(p.policy)) ? 'keep' : 'inspect-read-write-path';
+      if(p.policy && /^(retired|purged)/.test(String(p.policy)) && !exists) action = 'retired-missing-ok';
+      return { key:key, exists:exists, policy:p.policy||'unclassified', action:action, reason:p.reason||'', bytes:bytes, shape:shape };
+    });
+    try{ console.table(rows); }catch(_){ console.log(rows); }
+    return rows;
+  };
+  window.__sqPrintLocalStoragePolicyReport = window.__sqGetLocalStoragePolicyReport;
+
+  var warnedRead=Object.create(null), warnedWrite=Object.create(null);
+  function risky(p, kind, value){
+    if(!p) return false;
+    var policy = String(p.policy || '');
+    if(/^safe/.test(policy)) return false;
+    // Retired/purged keys are intentionally inspected by old code during boot.
+    // If absent, do not warn: absence is the desired state.
+    if(kind === 'read' && value == null && /^(retired|purged)/.test(policy)) return false;
+    return true;
+  }
+  function warnOnce(kind,key,value){
+    var p=policyFor(key); if(!risky(p, kind, value)) return;
+    var b=kind==='read'?warnedRead:warnedWrite; var id=kind+':'+key; if(b[id]) return; b[id]=1;
+    try{ console.warn('[SQ localStorage authority warning]', {access:kind,key:key,policy:p.policy,reason:p.reason,valuePreview:value==null?null:String(value).slice(0,140)}); }catch(_){}
+  }
+
+  try{
+    var og=Storage.prototype.getItem, os=Storage.prototype.setItem;
+    if(og && !og.__sqPolicyWrapped){
+      var ng=function(key){ var value=og.apply(this,arguments); try{ if(this===window.localStorage) warnOnce('read',String(key),value); }catch(_){} return value; };
+      var ns=function(key,value){ try{ if(this===window.localStorage) warnOnce('write',String(key),value); }catch(_){} return os.apply(this,arguments); };
+      ng.__sqPolicyWrapped=true; ns.__sqPolicyWrapped=true;
+      Storage.prototype.getItem=ng; Storage.prototype.setItem=ns;
+      console.info('[SQ] localStorage policy warning layer active');
+    }
+  }catch(e){ console.warn('[SQ] localStorage policy warning layer failed', e); }
+})();
+/* <<< PATCH:PHASE1_LOCALSTORAGE_POLICY_WARNINGS_V1 END */
+
 // Override readers to fetch **only** from cloud and dedupe by a stable key
 window.getGamesForMode = async function getGamesForMode(mode){
   try {
-    let cloudGames = await cloudFetchAllGamesAsLocal();
-    cloudGames = Array.isArray(cloudGames) ? cloudGames : [];
+    var games = (typeof window.__sqGetAllGamesNormalized === 'function')
+      ? await window.__sqGetAllGamesNormalized()
+      : ((await cloudFetchAllGamesAsLocal()) || []);
 
-    // Hide archived games from all user-facing stats/rankings surfaces
-    cloudGames = cloudGames.filter(g => !(g && (g.archived_at || g.archivedAt)));
+    games = Array.isArray(games) ? games : [];
+    var wantOfficial = String(mode || '').toLowerCase() === 'official';
+    var filtered = games.filter(function(g){
+      return wantOfficial
+        ? (typeof window.__sqIsOfficialGame === 'function' ? window.__sqIsOfficialGame(g) : isOfficialGame(g))
+        : (typeof window.__sqIsPracticeGame === 'function' ? window.__sqIsPracticeGame(g) : isPracticeGame(g));
+    });
 
-    // Filter by mode
-    const filtered = cloudGames.filter(g =>
-      mode === 'official' ? isOfficialGame(g) : isPracticeGame(g)
-    );
-
-    // De-dup by stable key (ts | players(lowercased) | totals)
-    const map = new Map();
-    const stableKey = (g) => {
-      const players = (g.players || [])
-        .map(p => (p && p.name) ? String(p.name).trim().toLowerCase() : '')
-        .join(',');
-      return [g.ts || '', players, (g.totals || []).join(',')].join('|');
-    };
-    for (const g of filtered) {
-      const key = stableKey(g);
-      if (!map.has(key)) map.set(key, g);
-    }
-    return [...map.values()];
+    return (typeof window.__sqDedupeNormalizedGames === 'function')
+      ? window.__sqDedupeNormalizedGames(filtered)
+      : filtered;
   } catch (e) {
-    console.error('getGamesForMode (cloud-only) failed', e);
+    console.error('getGamesForMode (canonical cloud-only) failed', e);
     return [];
   }
 };
@@ -25452,38 +26001,91 @@ function arrangeStartActions(){
         return b;
       };
 
-      // MATCH PLAY = the existing NEW GAME logic (questBtn)
-      const matchPlay = document.getElementById('questBtn');
-      if (matchPlay){
-        matchPlay.className = 'sg-opt sg-opt--match';
-        matchPlay.disabled = false;
-        matchPlay.setAttribute('aria-disabled','false');
-        matchPlay.innerHTML =
-          '<div class="sg-ico">' + (ICONS.match || '') + '</div>' +
-          '<div class="sg-copy">' +
-            '<div class="sg-opt-top">'+
-              '<div class="sg-opt-title">MATCH PLAY</div>'+
-            '</div>'+
-            '<div class="sg-opt-desc">GAMES BETWEEN 1 AND 6 PEOPLE</div>' +
-          '</div>';
-        if (!matchPlay.dataset.modeBound){
-          matchPlay.dataset.modeBound = '1';
-          matchPlay.addEventListener('click', ()=>{
-            if (typeof __msResetSetupForMode === 'function') __msResetSetupForMode('match');
-            else window.__sqSelectedMode = 'match';
-          }, true);
-        }
+      // MATCH PLAY = existing NEW GAME logic.
+      // Fix72: Practice submenu clears startGameBody, removing original questBtn.
+      // Recreate/bind it here so Back from Practice always restores MATCH PLAY.
+      let matchPlay = document.getElementById("questBtn");
+      if (!matchPlay){
+        matchPlay = doc.createElement("button");
+        matchPlay.id = "questBtn";
+        matchPlay.type = "button";
       }
+      matchPlay.className = "sg-opt sg-opt--match";
+      matchPlay.disabled = false;
+      matchPlay.setAttribute("aria-disabled","false");
+      matchPlay.innerHTML =
+        '<div class="sg-ico">' + (ICONS.match || '') + '</div>' +
+        '<div class="sg-copy">' +
+          '<div class="sg-opt-top">'+
+            '<div class="sg-opt-title">MATCH PLAY</div>'+
+          '</div>'+
+          '<div class="sg-opt-desc">GAMES BETWEEN 1 AND 6 PEOPLE</div>' +
+        '</div>';
+      matchPlay.onclick = (e)=>{
+        e.preventDefault();
+        if (typeof __msResetSetupForMode === "function") __msResetSetupForMode("match");
+        else window.__sqSelectedMode = "match";
+        closeModal("startGameModal");
+        show("players");
+      };
 
-      const tournament = makeOpt('tournamentBtn', 'tournament', 'TOURNAMENT', 'COMING SOON', 'COMING SOON', false);
-      const practice  = makeOpt('practiceBtn', 'practice', 'PRACTICE', 'SCORES DO NOT COUNT TOWARDS HIGH SCORES OR STATS', '', true);
-      // Practice uses the same flow as Match Play, but forces non-official logging.
+      const openPracticeTypeMenu = () => {
+        startGameBody.innerHTML = '';
+
+        const intro = doc.createElement('div');
+        intro.className = 'sg-practice-intro';
+        intro.innerHTML = '<div class="sg-practice-title">PRACTICE MODE</div><div class="sg-practice-sub">Choose how you want to train.</div>';
+
+        const classic = makeOpt('practiceClassicBtn', 'practice', 'CLASSIC', 'STANDARD SOLO PRACTICE GAME', '', true);
+        classic.onclick = (e)=>{
+          e.preventDefault();
+          window.__sqPracticeGameType = 'classic';
+          if (typeof __msResetSetupForMode === 'function') __msResetSetupForMode('practice');
+          else window.__sqSelectedMode = 'practice';
+          closeModal('startGameModal');
+          show('players');
+        };
+
+        const vsAi = makeOpt('practiceVsAiBtn', 'practice', 'VS AI', 'COMING SOON - AI OPPONENT ENGINE NOT WIRED YET', 'COMING SOON', false);
+        vsAi.onclick = (e)=>{
+          e.preventDefault();
+          toast('VS AI coming soon - needs the AI opponent engine first.');
+        };
+
+        const vsShadow = makeOpt('practiceVsShadowBtn', 'practice', 'VS SHADOW', 'COMING SOON - PLAY AGAINST A PB / WR / PLAYER GHOST', 'COMING SOON', false);
+        vsShadow.onclick = (e)=>{
+          e.preventDefault();
+          toast('VS Shadow coming soon - needs ghost-game selection first.');
+        };
+
+        const footer = doc.createElement('div');
+        footer.className = 'modal-footer sg-practice-footer';
+        const back = doc.createElement('button');
+        back.type = 'button';
+        back.className = 'btn';
+        back.textContent = 'Back';
+        back.onclick = (e)=>{
+          e.preventDefault();
+          arrangeStartActions();
+        };
+        const close = doc.createElement('button');
+        close.type = 'button';
+        close.className = 'btn';
+        close.textContent = 'Close';
+        close.onclick = (e)=>{
+          e.preventDefault();
+          closeModal('startGameModal');
+        };
+        footer.append(back, close);
+
+        startGameBody.append(intro, classic, vsAi, vsShadow, footer);
+      };
+
+      const tournament = makeOpt('tournamentBtn', 'tournament', 'TOURNAMENT (BETA)', 'CLASSIC / TURBO KNOCKOUT', 'LIVE', true);
+      const practice  = makeOpt('practiceBtn', 'practice', 'PRACTICE', 'CLASSIC / VS AI / VS SHADOW', '', true);
       practice.onclick = (e)=>{
         e.preventDefault();
-        if (typeof __msResetSetupForMode === 'function') __msResetSetupForMode('practice');
-        else window.__sqSelectedMode = 'practice';
-        closeModal('startGameModal');
-        show('players');
+        openPracticeTypeMenu();
       };
       const training  = makeOpt('trainingBtn', 'training', 'TRAINING', 'HONE AND PRACTICE SPECIFIC SKILLS', 'COMING SOON', false);
 
@@ -25990,7 +26592,11 @@ if(hsBody){
           const winnerName = g.winner_name || '?';
           const winnerScore = (g.winner_score ?? '?');
           const opp = g.opponents_text || '';
-          return `${dt} ${winnerName} (${winnerScore})${opp ? ' bts ' + opp : ''}`;
+          const isPractice = !!(g && (g.isPractice || g.is_practice || g.practice ||
+            String(g.mode || g.gameMode || '').toLowerCase() === 'practice' ||
+            String(g.state?.mode || g.state?.gameMode || '').toLowerCase() === 'practice' ||
+            g.state?.is_practice === true || g.state?.isPractice === true));
+          return `${dt} ${winnerName} (${winnerScore})${opp ? ' bts ' + opp : ''}${isPractice ? ' - PRACTICE' : ''}`;
         };
 
         const src = raw || buildFallback();
@@ -26124,6 +26730,35 @@ const lpUpdateMeta = async (games) => {
       const lpIsAlertLine   = (line) => /^🚨\s*/.test(String(line || '').trim());
 
       const lpIsDateHdrLine = (line) => /^[A-Z]+\s+\d{1,2}(?:st|nd|rd|th)\s+[A-Z]{3}\s+\d{2}\s+>>>\s*$/.test(String(line||'').trim());
+
+      const lpCollapseRoundPBOverflow = (inputLines) => {
+        const linesIn = Array.isArray(inputLines) ? inputLines : [];
+        const out = [];
+        let group = [];
+        const playerFromRoundPB = (line) => {
+          const s = lpStripBang(line);
+          const m = s.match(/^ROUND\s*PB\s*\/\s*([^–—-]+?)\s*[–—-]\s*/i);
+          return m ? String(m[1] || '').trim() : '';
+        };
+        const flush = () => {
+          if (!group.length) return;
+          if (group.length <= 2) { out.push(...group.map(x => x.line)); }
+          else {
+            out.push(group[0].line, group[1].line);
+            out.push(`+ ${group.length - 2} more PBs.`);
+          }
+          group = [];
+        };
+        linesIn.forEach(line => {
+          const txt = String(line ?? '');
+          const player = playerFromRoundPB(txt);
+          if (!player) { flush(); out.push(txt); return; }
+          if (!group.length || group[0].player.toLowerCase() === player.toLowerCase()) group.push({ player, line: txt });
+          else { flush(); group.push({ player, line: txt }); }
+        });
+        flush();
+        return out;
+      };
 
       const lpApplyRowClasses = (tr, line) => {
         if (!tr) return;
@@ -26549,9 +27184,13 @@ const lpUpdateMeta = async (games) => {
                   })).sort((a,b)=> (b.score - a.score) || String(a.name).localeCompare(String(b.name)));
                   const winner = rows[0] || { name:'?', score:'?' };
                   const opp = rows.slice(1).map(r => `${r.name} (${r.score})`).join(', ');
-                  return { ts, winner_name: winner.name, winner_score: winner.score, opponents_text: opp };
+                  const isPractice = !!(g && (g.isPractice || g.is_practice || g.practice ||
+                    String(g.mode || g.gameMode || '').toLowerCase() === 'practice' ||
+                    String(g.state?.mode || g.state?.gameMode || '').toLowerCase() === 'practice' ||
+                    g.state?.is_practice === true || g.state?.isPractice === true));
+                  return { ts, winner_name: winner.name, winner_score: winner.score, opponents_text: opp, isPractice, mode: isPractice ? 'practice' : (g.mode || g.state?.mode || '') };
                 }catch(_e){
-                  return { ts: g.ts || null, winner_name: '?', winner_score: '?', opponents_text: '' };
+                  return { ts: g.ts || null, winner_name: '?', winner_score: '?', opponents_text: '', isPractice:false };
                 }
               }).filter(Boolean);
             }
@@ -26577,7 +27216,11 @@ const lpUpdateMeta = async (games) => {
                         .sort((a,b)=> (b.score - a.score) || String(a.name).localeCompare(String(b.name)));
                       const winner = rows[0] || { name:'?', score:'?' };
                       const opp = rows.slice(1).map(r => `${r.name} (${r.score})`).join(', ');
-                      return { ts, winner_name: winner.name, winner_score: winner.score, opponents_text: opp };
+                      const isPractice = !!(row && (row.isPractice || row.is_practice || row.practice ||
+                        String(row.mode || row.gameMode || '').toLowerCase() === 'practice' ||
+                        String(state?.mode || state?.gameMode || '').toLowerCase() === 'practice' ||
+                        state?.is_practice === true || state?.isPractice === true));
+                      return { ts, winner_name: winner.name, winner_score: winner.score, opponents_text: opp, isPractice, mode: isPractice ? 'practice' : (row.mode || state?.mode || '') };
                     } catch(_e) {
                       return null;
                     }
@@ -26673,11 +27316,12 @@ const lpUpdateMeta = async (games) => {
           });
           // <<< PATCH:LIVE_PRINTER_DATE_HEADERS END
 
+          const collapsedLines = lpCollapseRoundPBOverflow(lines);
           const sig0 = sorted[0] ? lpSig(sorted[0]) : '';
           const shouldRefresh = forceFull || (sig0 && sig0 !== st.lastSig) || !Array.isArray(st.bufLines);
 
           // Always keep the buffer for scrolling
-          st.bufLines = lines.slice(0, LP_BUFFER);
+          st.bufLines = collapsedLines.slice(0, LP_BUFFER);
           if (shouldRefresh) {
             st.lastSig = sig0 || st.lastSig;
           }
@@ -28535,19 +29179,14 @@ async function render(){
     thead.appendChild(trh);
     table.appendChild(thead);
     
-    // -- rank change arrows (persisted since last open) --
-const LS_KEY = (view==='current') ? 'powerRankings.current.lastRanks' : 'powerRankings.allTime.lastRanks';
-const LS_KEY_LEGACY = 'powerRankings.lastRanks';
-const LS_KEY_LEGACY2 = 'powerLeague.lastRanks';
+    // -- rank change arrows: visual-only memory snapshot, never localStorage authority --
+const LS_KEY = (view==='current') ? 'powerRankings.current.lastRanks' : 'powerRankings.allTime.lastRanks'; // legacy key name retained only for labels
+window.__sqPowerRankVisualSnapshots = window.__sqPowerRankVisualSnapshots || {};
 let prevRanks = new Map();
 try {
-  let raw = localStorage.getItem(LS_KEY);
-  if (!raw && view==='current') raw = localStorage.getItem(LS_KEY_LEGACY) || localStorage.getItem(LS_KEY_LEGACY2);
-  if (raw) {
-    const obj = JSON.parse(raw);
-    if (obj && obj.ranks && typeof obj.ranks === 'object') {
-      prevRanks = new Map(Object.entries(obj.ranks)); // nameLC -> rank (1-based)
-    }
+  const snap = window.__sqPowerRankVisualSnapshots[view];
+  if (snap && snap.ranks && typeof snap.ranks === 'object') {
+    prevRanks = new Map(Object.entries(snap.ranks)); // nameLC -> rank (1-based)
   }
 } catch (_) {}
 
@@ -28618,12 +29257,13 @@ rows.forEach((row) => {
     wrap.className = 'table-wrap';
     wrap.appendChild(table);
 
-// Persist current ranks snapshot for next comparison
+// Persist current ranks snapshot in memory only for next comparison while this app session is open.
 try {
-  localStorage.setItem(LS_KEY, JSON.stringify({
+  window.__sqPowerRankVisualSnapshots = window.__sqPowerRankVisualSnapshots || {};
+  window.__sqPowerRankVisualSnapshots[view] = {
     ts: new Date().toISOString(),
     ranks: currRanksObj
-  }));
+  };
 } catch (_) {}
 
     body.appendChild(wrap);
@@ -30010,24 +30650,35 @@ async function openLatestScoresDialog(initialMode){
     ]);
 
     let games = [];
+    let usedCloudTruth = false;
     try {
-      // Cloud-first, but don't hang forever if network stalls
-      games = await withTimeout(cloudFetchAllGamesAsLocal(), 5000);
+      // Phase 1: use the canonical game adapter as the authority for Latest Scores.
+      // Local/recent caches are fallback only; otherwise a just-saved practice game can appear twice
+      // (once from Supabase and once from the recent cache).
+      if (typeof getGamesForMode === 'function') {
+        games = await withTimeout(getGamesForMode(mode), 5000);
+      } else {
+        games = await withTimeout(cloudFetchAllGamesAsLocal(), 5000);
+      }
       games = Array.isArray(games) ? games : [];
+      usedCloudTruth = games.length > 0;
     } catch (e) {
       games = [];
+      usedCloudTruth = false;
     }
 
-    // Always merge immediate local completed-game caches as well.
-    // Practice games are often checked immediately after finish, before cloud reads settle.
-    try {
-      const localGames = (typeof getGameLog === 'function') ? (getGameLog() || []) : [];
-      if (Array.isArray(localGames) && localGames.length) games = games.concat(localGames);
-    } catch(_) {}
-    try {
-      const recentGames = (typeof window.__sqGetRecentCompletedGamesCache === 'function') ? window.__sqGetRecentCompletedGamesCache() : [];
-      if (Array.isArray(recentGames) && recentGames.length) games = games.concat(recentGames);
-    } catch(_) {}
+    // Fallback only: if cloud/canonical source has no rows, show immediate local cache so the UI
+    // still has a useful result during a network outage. Never merge local cache into cloud truth.
+    if (!usedCloudTruth) {
+      try {
+        const localGames = (typeof getGameLog === 'function') ? (getGameLog() || []) : [];
+        if (Array.isArray(localGames) && localGames.length) games = games.concat(localGames);
+      } catch(_) {}
+      try {
+        const recentGames = (typeof window.__sqGetRecentCompletedGamesCache === 'function') ? window.__sqGetRecentCompletedGamesCache() : [];
+        if (Array.isArray(recentGames) && recentGames.length) games = games.concat(recentGames);
+      } catch(_) {}
+    }
 
     games = games.filter(g => !(g && (g.archived_at || g.archivedAt))); // hide archived
 
@@ -30110,6 +30761,11 @@ async function openLatestScoresDialog(initialMode){
 
 try { window.openLatestScoresDialog = openLatestScoresDialog; } catch(_) {}
 // <<< PATCH:LATEST_SCORES_GAMES_TRUTH_V1 END
+/* >>> PATCH:PHASE1_FIX57_LATEST_SCORES_CLOUD_TRUTH START
+   Latest Scores now uses getGamesForMode(mode) as the authoritative source.
+   Local completed-game cache is fallback-only and is not merged with cloud rows.
+   This prevents the same newly saved practice game appearing twice.
+<<< PATCH:PHASE1_FIX57_LATEST_SCORES_CLOUD_TRUTH END */
 
 // === Player Stats — redesigned overview =====================================
 window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
@@ -33180,7 +33836,7 @@ document.addEventListener('DOMContentLoaded', function(){
 // === High Score League — rewritten: NEW + movement + even widths ============
 (function highScoreLeagueRewritten(){
   const TITLE_RX = /high\s*score\s*league/i;
-  const STORAGE_KEY = 'hsLeaguePositions.v2';
+  const STORAGE_KEY = 'hsLeaguePositions.v2'; // retired localStorage key; kept only as a legacy label
   const NEW_LIMIT_DAYS = 14;
 
   // ---- utilities ------------------------------------------------------------
@@ -33283,8 +33939,8 @@ document.addEventListener('DOMContentLoaded', function(){
     });
 
     // 3) Per-row: add movement cell; add NEW tag if first-game ≤ 14 days
-    const prevRaw = localStorage.getItem(STORAGE_KEY);
-    const prevMap = prevRaw ? JSON.parse(prevRaw) : {}; // nameLC -> prev position
+    window.__sqHSLeagueVisualSnapshot = window.__sqHSLeagueVisualSnapshot || {};
+    const prevMap = window.__sqHSLeagueVisualSnapshot.positions || {}; // nameLC -> previous position, memory-only
     const now = new Date();
     const firstMap = await earliestMap();
 
@@ -33339,8 +33995,8 @@ document.addEventListener('DOMContentLoaded', function(){
       }
     });
 
-    // 4) Save snapshot for next time
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(curMap)); } catch(_) {}
+    // 4) Save snapshot for next comparison in memory only; rankings remain Supabase/history-derived.
+    try { window.__sqHSLeagueVisualSnapshot = { ts: new Date().toISOString(), positions: curMap }; } catch(_) {}
   }
 
   // Debounced observer to apply when the league modal appears/updates
@@ -38508,57 +39164,18 @@ __sqDmdInitV7();
     try{ boardKey = JSON.stringify(board); }catch(_){ boardKey = String(board && board.length || ''); }
     return ['local', mode, ps, totals.join('|'), boardKey].join('::');
   }
-  function readCache(){
-    var t = Date.now();
-    var rows = safeParse(localStorage.getItem(CACHE_KEY));
-    rows = rows.filter(function(g){ var ms = Date.parse(getTs(g) || ''); return Number.isFinite(ms) && (t - ms) <= MAX_AGE_MS; });
-    var seen = Object.create(null);
-    rows = rows.filter(function(g){
-      var k = gameKey(g);
-      if (!k) return true;
-      if (seen[k]) return false;
-      seen[k] = true;
-      return true;
-    });
-    return rows;
-  }
-  function writeCache(rows){ try { localStorage.setItem(CACHE_KEY, JSON.stringify((rows || []).slice(0, 30))); } catch(_) {} }
-  function addGameToCache(g){ if (!g) return; var rows = readCache(); var key = gameKey(g); rows = rows.filter(function(x){ return gameKey(x) !== key; }); rows.unshift(g); writeCache(rows); }
-  window.__sqGetRecentCompletedGamesCache = function(){ return readCache(); };
-  // One-time repair for earlier builds that cached the same practice game multiple times.
-  try{ writeCache(readCache()); }catch(_){}
+  function readCache(){ return []; }
+  function writeCache(rows){ return; }
+  function addGameToCache(g){ return; }
+  window.__sqGetRecentCompletedGamesCache = function(){ return []; };
+  // Phase 1 Fix60: completed-game local cache retired from active reads/writes.
+  // Supabase games + canonical adapter are now the truth; this legacy key remains only for manual inspection.
   window.__sqCacheCompletedGameFromState = function(extra){
-    try{
-      if (typeof state === "undefined" || !state || !Array.isArray(state.players) || !state.players.length) return null;
-      var gameMode = (typeof __sqComputeGameMode === 'function') ? __sqComputeGameMode() : (state.players.length === 1 ? 'practice' : 'official');
-      var isPractice = gameMode === 'practice' || state.players.length === 1;
-      var totals = state.players.map(function(_, i){ try { return (typeof totalScoreForPlayer === 'function') ? totalScoreForPlayer(i) : 0; } catch(_) { return 0; } });
-      var board = []; try { board = JSON.parse(JSON.stringify(state.score || [])); } catch(_) { board = []; }
-      var ts = (extra && (extra.created_at || extra.ts)) || nowIso();
-      var rec = {
-        id: (extra && extra.id) || ('recent-' + Date.now()), ts: ts, created_at: ts,
-        match_id: isPractice ? null : ((state.match && state.match.id) || null), matchId: isPractice ? null : ((state.match && state.match.id) || null),
-        mode: gameMode, is_practice: isPractice, total_players: state.players.length,
-        players: state.players.map(function(p){ return { name: String((p && p.name) || '').trim() }; }),
-        totals: totals, board: board,
-        state: { players: state.players.map(function(p){ return { name: String((p && p.name) || '').trim() }; }), board: board, mode: gameMode, is_practice: isPractice, total_players: state.players.length },
-        finished: true
-      };
-      addGameToCache(rec); return rec;
-    }catch(e){ try { console.warn('[SQ] completed-game cache failed', e && (e.message || e)); } catch(_) {} return null; }
+    // Phase 1 Fix60: no completed games are written to localStorage.
+    // Recovery cache is not completed-game truth; Supabase games rows are authoritative.
+    return null;
   };
-  try{
-    if (typeof window.recordFullGameToSupabase === 'function' && !window.recordFullGameToSupabase.__sqCacheWrapped){
-      var original = window.recordFullGameToSupabase;
-      var wrapped = async function(createdAtOverride){
-        try { window.__sqCacheCompletedGameFromState({ ts: createdAtOverride || nowIso(), created_at: createdAtOverride || nowIso() }); } catch(_) {}
-        return original.apply(this, arguments);
-      };
-      wrapped.__sqCacheWrapped = true;
-      window.recordFullGameToSupabase = wrapped;
-      try { recordFullGameToSupabase = wrapped; } catch(_) {}
-    }
-  }catch(_) {}
+  // Phase 1 Fix60: do not wrap recordFullGameToSupabase for local completed-game cache writes.
 })();
 /* <<< PATCH:LATEST_SCORES_PRACTICE_COMPLETED_CACHE_V2 END */
 
@@ -38592,11 +39209,8 @@ __sqDmdInitV7();
   }
 
   function cachePracticeSnapshot(ts){
-    try{
-      if (typeof window.__sqCacheCompletedGameFromState === 'function'){
-        window.__sqCacheCompletedGameFromState({ ts: ts, created_at: ts });
-      }
-    }catch(_){ }
+    // Phase 1 Fix60: no local completed-game cache writes.
+    return null;
   }
 
   var rawRecord = null;
@@ -38674,6 +39288,167 @@ __sqDmdInitV7();
   }catch(_){ }
 })();
 /* <<< PATCH:PRACTICE_AUTOSAVE_TO_GAMES_V1 END */
+
+/* >>> PATCH:PRACTICE_CLOUD_SAVE_V2 START
+   Purpose:
+   - Latest Scores Practice was showing local/recent cached games, while Supabase.games had no practice rows.
+   - This writes solo/practice completions directly to TABLE_GAMES with an explicit practice payload.
+   - It runs before the older V1 autosave delay, and marks the state as saved to avoid duplicate legacy writes. */
+(function(){
+  if (window.__sqPracticeCloudSaveV2) return;
+  window.__sqPracticeCloudSaveV2 = true;
+
+  function isPracticeState(){
+    try{
+      if (!window.state || !Array.isArray(state.players) || !state.players.length) return false;
+      if (typeof __sqComputeGameMode === 'function') return __sqComputeGameMode() === 'practice';
+      if (state.match && (state.match.mode === 'practice' || state.match.forcePractice === true)) return true;
+      return state.players.length === 1;
+    }catch(_){ return false; }
+  }
+
+  function isCompleteEnough(){
+    try{
+      if (!window.state || !Array.isArray(state.players) || !state.players.length) return false;
+      if (state.finished === true || state.gameAwarded === true || state.__sqGameCompleteOpen === true) return true;
+      var rounds = (typeof roundsCount === 'function') ? roundsCount() : (Array.isArray(state.score && state.score[0]) ? state.score[0].length : 0);
+      var board = Array.isArray(state.score) ? state.score : [];
+      if (state.players.length === 1 && Array.isArray(board[0]) && rounds && board[0].filter(function(x){ return x != null; }).length >= rounds) return true;
+      return false;
+    }catch(_){ return false; }
+  }
+
+  function playerRows(){
+    try{ return state.players.map(function(p){ return { name: String((p && p.name) || '').trim() }; }).filter(function(p){ return !!p.name; }); }catch(_){ return []; }
+  }
+
+  function totalsNow(){
+    try{
+      return state.players.map(function(_, i){
+        if (typeof totalScoreForPlayer === 'function') return Number(totalScoreForPlayer(i) || 0);
+        var rows = Array.isArray(state.score && state.score[i]) ? state.score[i] : [];
+        return rows.reduce(function(a,r){
+          if (typeof r === 'number') return a + (Number(r)||0);
+          if (!r || typeof r !== 'object') return a;
+          return a + (Number(r.roundTotal ?? r.round_total ?? r.score ?? r.points ?? r.total ?? 0) || 0);
+        }, 0);
+      });
+    }catch(_){ return []; }
+  }
+
+  function cloneBoard(){
+    try{ return JSON.parse(JSON.stringify(state.score || [])); }catch(_){ return []; }
+  }
+
+  function cacheSnapshot(ts, payload){
+    // Phase 1 Fix60: no local completed-game cache writes. Supabase games row is truth.
+    return null;
+  }
+
+  async function savePracticeToGames(){
+    try{
+      if (!isPracticeState() || !isCompleteEnough()) return null;
+      if (state.__sqPracticeCloudSavedV2 || state.__sqPracticeSavedToGames) return null;
+      if (typeof sb === 'undefined' || !sb || typeof sb.from !== 'function') return null;
+
+      var players = playerRows();
+      if (!players.length) return null;
+      var totals = totalsNow();
+      var board = cloneBoard();
+      var ts = new Date().toISOString();
+      var table = (typeof TABLE_GAMES !== 'undefined' && TABLE_GAMES) ? TABLE_GAMES : 'games';
+      var matchTable = (typeof TABLE_MATCHES !== 'undefined' && TABLE_MATCHES) ? TABLE_MATCHES : 'matches';
+      var practiceMatchId = (state.match && state.match.id) || ((crypto && crypto.randomUUID) ? crypto.randomUUID() : ('practice-' + Date.now()));
+
+      state.__sqPracticeCloudSavedV2 = true;
+      state.__sqPracticeSavedToGames = true;
+      state.match = Object.assign({}, state.match || {}, {
+        id: practiceMatchId,
+        mode: 'practice',
+        forcePractice: true,
+        createdAtIso: (state.match && state.match.createdAtIso) || ts,
+        history: Array.isArray(state.match && state.match.history) ? state.match.history : [],
+        wins: Array.isArray(state.match && state.match.wins) ? state.match.wins : []
+      });
+
+      // games.match_id is NOT NULL, so practice gets a lightweight match row.
+      // Classification remains practice because the game state is explicit.
+      var matchRes = await sb.from(matchTable).upsert({
+        id: practiceMatchId,
+        created_at: state.match.createdAtIso || ts,
+        total_games: Math.max(1, state.match.history.length || 1),
+        players: players,
+        wins: (state.match.wins || []).slice(),
+        history: [{ totals: totals.slice(), mode: 'practice' }]
+      }).select('id').single();
+      if (matchRes && matchRes.error) throw matchRes.error;
+
+      var payload = {
+        match_id: practiceMatchId,
+        game_number: 1,
+        created_at: ts,
+        totals: totals,
+        finished: true,
+        state: {
+          players: players,
+          board: board,
+          totals: totals,
+          mode: 'practice',
+          is_practice: true,
+          total_players: players.length,
+          match_id: practiceMatchId,
+          matchId: practiceMatchId,
+          completed_at: ts,
+          schema_version: 2
+        }
+      };
+
+      // Do not add a local recent-cache copy here. The inserted Supabase row is now the truth.
+      // Adding cache as well causes duplicate rows in Latest Scores immediately after save.
+
+      var table = (typeof TABLE_GAMES !== 'undefined' && TABLE_GAMES) ? TABLE_GAMES : 'games';
+      var res = await sb.from(table).insert(payload).select('id, created_at').single();
+      if (res && res.error) throw res.error;
+      try{ console.info('[SQ] Practice cloud save V2 wrote games row', res && res.data); }catch(_){ }
+      return res && res.data ? res.data : null;
+    }catch(e){
+      try{ state.__sqPracticeCloudSavedV2 = false; state.__sqPracticeSavedToGames = false; }catch(_){ }
+      try{ console.error('[SQ] Practice cloud save V2 failed', e); }catch(_){ }
+      return null;
+    }
+  }
+
+  window.__sqSavePracticeToGamesNow = savePracticeToGames;
+
+  try{
+    if (typeof openGameCompleteDialog === 'function' && !openGameCompleteDialog.__sqPracticeCloudSaveV2Wrapped){
+      var oldOpenGameCompleteDialog = openGameCompleteDialog;
+      var wrappedOpenGameCompleteDialog = function(){
+        try{ if (window.state) state.__sqGameCompleteOpen = true; }catch(_){ }
+        var ret = oldOpenGameCompleteDialog.apply(this, arguments);
+        try{ setTimeout(savePracticeToGames, 20); }catch(_){ }
+        return ret;
+      };
+      wrappedOpenGameCompleteDialog.__sqPracticeCloudSaveV2Wrapped = true;
+      openGameCompleteDialog = wrappedOpenGameCompleteDialog;
+      try{ window.openGameCompleteDialog = wrappedOpenGameCompleteDialog; }catch(_){ }
+    }
+  }catch(_){ }
+
+  try{
+    if (typeof updateUI === 'function' && !updateUI.__sqPracticeCloudSaveV2Wrapped){
+      var oldUpdateUI = updateUI;
+      updateUI = function(){
+        var ret = oldUpdateUI.apply(this, arguments);
+        try{ if (isPracticeState() && isCompleteEnough()) setTimeout(savePracticeToGames, 40); }catch(_){ }
+        return ret;
+      };
+      updateUI.__sqPracticeCloudSaveV2Wrapped = true;
+      try{ window.updateUI = updateUI; }catch(_){ }
+    }
+  }catch(_){ }
+})();
+/* <<< PATCH:PRACTICE_CLOUD_SAVE_V2 END */
 
 </script>
 <!-- >>> PATCH:ROUND_HIGH_SCORES_V82 END -->
@@ -39198,6 +39973,1009 @@ __sqDmdInitV7();
 </style>
 <!-- <<< PATCH:FIX48_H2H_SINGLE_SORTED_LEAGUE END -->
 
+<!-- >>> PATCH:PHASE1_FIX60_RETIRE_RECENT_COMPLETED_CACHE START -->
+<script>
+(function(){
+  window.__sqRecentCompletedGameCacheRetired = true;
+  try{ console.info('[SQ] Recent completed-game local cache retired; Supabase games rows are authoritative.'); }catch(_){}
+})();
+</script>
+<!-- <<< PATCH:PHASE1_FIX60_RETIRE_RECENT_COMPLETED_CACHE END -->
+
+<!-- >>> PATCH:FIX62_RETIRE_RANKING_LOCALSTORAGE START -->
+<script>
+(function(){
+  if (window.__sqFix62RetireRankingLocalStorage) return;
+  window.__sqFix62RetireRankingLocalStorage = true;
+
+  const RETIRED_RANK_KEYS = [
+    'hsLeaguePositions.v2',
+    'powerRankings.allTime.lastRanks',
+    'powerRankings.current.lastRanks',
+    'powerRankings.lastRanks',
+    'powerLeague.lastRanks'
+  ];
+
+  function rawGet(k){
+    try{
+      const nativeGet = window.__sqNativeLocalStorageGetItem || Storage.prototype.getItem;
+      return nativeGet.call(localStorage, k);
+    }catch(_){ return null; }
+  }
+  function rawRemove(k){
+    try{
+      const nativeRemove = window.__sqNativeLocalStorageRemoveItem || Storage.prototype.removeItem;
+      nativeRemove.call(localStorage, k);
+      return true;
+    }catch(_){ return false; }
+  }
+
+  window.__sqPurgeRetiredRankingLocalStorageKeys = function __sqPurgeRetiredRankingLocalStorageKeys(){
+    const rows = RETIRED_RANK_KEYS.map(key => {
+      const before = rawGet(key);
+      const existed = before != null;
+      const removed = existed ? rawRemove(key) : false;
+      return { key, existed, removed, bytes: before ? String(before).length : 0 };
+    });
+    try{ console.table(rows); }catch(_){ console.log(rows); }
+    return rows;
+  };
+
+  try{
+    const rows = window.__sqPurgeRetiredRankingLocalStorageKeys();
+    if (rows.some(r => r.removed)) console.info('[SQ] Retired local ranking caches purged; rankings now use canonical/cloud-derived truth.');
+    else console.info('[SQ] No retired local ranking caches present.');
+  }catch(e){ console.warn('[SQ] Retired ranking cache purge failed', e); }
+})();
+</script>
+<!-- <<< PATCH:FIX62_RETIRE_RANKING_LOCALSTORAGE END -->
+
+
+<!-- >>> PATCH:PHASE1_PLAYER_CACHE_VERIFIED_V2 START -->
+<script>
+(function(){
+  if (window.__sqPlayerCacheVerifiedPatchLoaded) return;
+  window.__sqPlayerCacheVerifiedPatchLoaded = true;
+  var PLAYER_KEY = 'shateki_players';
+  var lastSyncMeta = window.__sqPlayerCacheLastSync || null;
+  function nowIso(){ try{ return new Date().toISOString(); }catch(_){ return ''; } }
+  function rawGet(k){ try{ var fn = window.__sqNativeLocalStorageGetItem || Storage.prototype.getItem; return fn.call(localStorage, k); }catch(_){ return null; } }
+  function rawSet(k,v){ try{ var fn = window.__sqNativeLocalStorageSetItem || Storage.prototype.setItem; fn.call(localStorage, k, v); return true; }catch(_){ return false; } }
+  function parsePlayers(raw){ try{ var arr = JSON.parse(raw || '[]'); return Array.isArray(arr) ? arr : []; }catch(_){ return []; } }
+  function normalizeCachePlayer(p){
+    if (!p) return null;
+    var name = String(p.name || '').trim();
+    if (!name) return null;
+    return { id:(p.id != null ? String(p.id).trim() : null), name:name, first_name:(p.first_name != null ? String(p.first_name) : ''), last_name:(p.last_name != null ? String(p.last_name) : ''), nickname:(p.nickname != null ? String(p.nickname) : ''), initials:(typeof window.__sqNormalizeInitials === 'function' ? window.__sqNormalizeInitials(p.initials, name) : String(p.initials || '').trim()), joinedAt:p.joinedAt || p.created_at || p.createdAt || null, _src:p._src || 'cloud-cache' };
+  }
+  function safeSetCache(arr, meta){
+    var clean = (Array.isArray(arr) ? arr : []).map(normalizeCachePlayer).filter(Boolean).sort(function(a,b){ return String(a.name).localeCompare(String(b.name)); });
+    try{ rawSet(PLAYER_KEY, JSON.stringify(clean)); lastSyncMeta = window.__sqPlayerCacheLastSync = Object.assign({ ts: nowIso(), count: clean.length }, meta || {}); }catch(e){ console.warn('[SQ] player cache write failed', e); }
+    return clean;
+  }
+  window.getSavedPlayers = function getSavedPlayers(){ try{ return parsePlayers(rawGet(PLAYER_KEY)); }catch(_){ return []; } };
+  window.setSavedPlayers = function setSavedPlayers(arr){ return safeSetCache(arr, { source:'setSavedPlayers-cache-write' }); };
+  window.__sqSyncPlayerCacheFromCloud = async function __sqSyncPlayerCacheFromCloud(){
+    if (typeof window.cloudListPlayers !== 'function') return { ok:false, reason:'cloudListPlayers missing', count:0 };
+    try{ var cloud = await window.cloudListPlayers(); var clean = safeSetCache(cloud || [], { source:'cloudListPlayers' }); try{ if (typeof window.populateSavedPlayersSelects === 'function') window.populateSavedPlayersSelects(clean); }catch(_){ } return { ok:true, source:'cloud', count:clean.length, ts:lastSyncMeta && lastSyncMeta.ts }; }
+    catch(e){ console.warn('[SQ] player cache cloud sync failed; existing cache remains display-only fallback', e); return { ok:false, reason:String(e && (e.message || e)), count:(window.getSavedPlayers ? window.getSavedPlayers().length : 0) }; }
+  };
+  window.__sqPlayerCacheReport = function __sqPlayerCacheReport(){
+    var arr = []; try{ arr = window.getSavedPlayers ? window.getSavedPlayers() : []; }catch(_){ arr = []; }
+    var report = { key:PLAYER_KEY, policy:'safe-player-cloud-cache', exists:arr.length > 0, count:arr.length, lastSync:lastSyncMeta, rule:'Supabase players table is canonical. localStorage is UI cache/dropdown fallback only.' };
+    try{ console.table([report]); console.table(arr.slice(0, 10).map(function(p){ return { id:p.id || '', name:p.name || '', initials:p.initials || '', nickname:p.nickname || '', src:p._src || '' }; })); }catch(_){ console.log(report, arr.slice(0,10)); }
+    return { report:report, sample:arr.slice(0,10) };
+  };
+  setTimeout(function(){ try{ window.__sqSyncPlayerCacheFromCloud(); }catch(_){ } }, 800);
+  console.info('[SQ] player cache verified as cloud-synced UI cache only');
+})();
+</script>
+<!-- <<< PATCH:PHASE1_PLAYER_CACHE_VERIFIED_V2 END -->
+
+<!-- >>> PATCH:FIX66_PLAYER_CACHE_ALIAS_RECURSION_FIX START -->
+<script>
+(function(){
+  var reportFn = window.__sqPlayerCacheReport;
+  var syncFn = window.__sqSyncPlayerCacheFromCloud;
+  window.sqPlayerCacheReport = function(){
+    if (typeof reportFn !== 'function') return { ok:false, reason:'__sqPlayerCacheReport missing' };
+    return reportFn.apply(window, arguments);
+  };
+  window.sqSyncPlayerCacheFromCloud = function(){
+    if (typeof syncFn !== 'function') return Promise.resolve({ ok:false, reason:'__sqSyncPlayerCacheFromCloud missing' });
+    return syncFn.apply(window, arguments);
+  };
+  console.info('[SQ] Player cache safe console aliases active: sqPlayerCacheReport(), sqSyncPlayerCacheFromCloud()');
+})();
+</script>
+<!-- <<< PATCH:FIX66_PLAYER_CACHE_ALIAS_RECURSION_FIX END -->
+
+
+<!-- >>> PATCH:FIX67_RECOVERY_CACHE_GUARD START -->
+<script>
+(function(){
+  if(window.__sqFix67RecoveryCacheGuard) return;
+  window.__sqFix67RecoveryCacheGuard = true;
+  var RECOVERY_KEYS = ['shateki_quest_scorer_v6','sq_match_active_v1'];
+  function rawGet(k){ try{ var fn = window.__sqNativeLocalStorageGetItem || Storage.prototype.getItem; return fn.call(localStorage, k); }catch(_){ return null; } }
+  function rawRemove(k){ try{ var fn = window.__sqNativeLocalStorageRemoveItem || Storage.prototype.removeItem; fn.call(localStorage, k); return true; }catch(_){ return false; } }
+  function parse(raw){ try{ return raw ? JSON.parse(raw) : null; }catch(_){ return null; } }
+  function isCompletedState(obj){ try{ return !!(obj && (obj.gameAwarded === true || obj.finished === true || obj.__sqCompleted === true || obj.__sqGameCompleteOpen === true || (obj.match && obj.match.completedLogged === true))); } catch(_){ return false; } }
+  function isRecoverableState(obj){ try{ if(!obj || typeof obj !== 'object') return false; if(isCompletedState(obj)) return false; var players = Array.isArray(obj.players) ? obj.players : []; if(!players.length) return false; return true; }catch(_){ return false; } }
+  window.__sqRecoveryCacheReport = function(){
+    var rows = RECOVERY_KEYS.map(function(k){ var raw = rawGet(k); var obj = parse(raw); return { key:k, exists:raw != null, bytes:raw ? String(raw).length : 0, players:Array.isArray(obj && obj.players) ? obj.players.length : null, finished:!!(obj && obj.finished), gameAwarded:!!(obj && obj.gameAwarded), matchCompleted:!!(obj && obj.match && obj.match.completedLogged), recoverable:isRecoverableState(obj), action:raw == null ? 'none' : (isRecoverableState(obj) ? 'keep-for-recovery' : 'purge-stale-or-completed') }; });
+    try{ console.table(rows); }catch(_){ console.log(rows); }
+    return rows;
+  };
+  window.__sqPurgeStaleRecoveryCaches = function(){
+    var rows = RECOVERY_KEYS.map(function(k){ var raw = rawGet(k); var obj = parse(raw); var shouldRemove = raw != null && !isRecoverableState(obj); var removed = shouldRemove ? rawRemove(k) : false; return { key:k, existed:raw != null, removed:removed, reason: raw == null ? 'missing' : (shouldRemove ? 'not recoverable/completed/base state' : 'valid in-progress recovery') }; });
+    try{ console.table(rows); }catch(_){ console.log(rows); }
+    return rows;
+  };
+  window.__sqClearRecoveryCachesAfterCompletedSave = function(source){
+    var rows = RECOVERY_KEYS.map(function(k){ var existed = rawGet(k) != null; var removed = existed ? rawRemove(k) : false; return { key:k, existed:existed, removed:removed, source:source || 'completed-save' }; });
+    try{ console.info('[SQ] Recovery cache cleared after completed save', rows); }catch(_){ }
+    return rows;
+  };
+  window.sqRecoveryCacheReport = window.__sqRecoveryCacheReport;
+  window.sqPurgeStaleRecoveryCaches = window.__sqPurgeStaleRecoveryCaches;
+  try{ window.__sqPurgeStaleRecoveryCaches(); }catch(_){ }
+})();
+</script>
+<!-- <<< PATCH:FIX67_RECOVERY_CACHE_GUARD END -->
+
+
+<!-- >>> PATCH:FIX73_TOURNAMENT_MODE_SETUP START -->
+<style id="sq-fix73-tournament-mode-setup">
+.sg-tournament-intro{padding:4px 4px 8px;text-align:left;}
+.sg-tournament-title{color:rgba(255,190,70,.98);font-weight:900;letter-spacing:.14em;font-size:14px;}
+.sg-tournament-sub{margin-top:4px;color:rgba(231,233,245,.66);font-size:12px;letter-spacing:.04em;}
+.sg-tournament-controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0;}
+.sg-tournament-pill{border:1px solid rgba(255,255,255,.13);border-radius:16px;background:rgba(255,255,255,.035);padding:12px;text-align:left;color:rgba(231,233,245,.9);cursor:pointer;}
+.sg-tournament-pill.active{border-color:rgba(255,122,0,.92);box-shadow:0 0 0 2px rgba(255,122,0,.14) inset;background:rgba(255,122,0,.075);}
+.sg-tournament-pill-title{font-weight:900;letter-spacing:.08em;font-size:13px;}
+.sg-tournament-pill-desc{margin-top:5px;color:rgba(231,233,245,.62);font-size:11px;line-height:1.35;}
+.sg-tournament-player-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px;max-height:290px;overflow:auto;padding-right:2px;}
+.sg-tournament-player{border:1px solid rgba(255,255,255,.11);border-radius:14px;background:rgba(255,255,255,.025);padding:9px 10px;text-align:left;color:rgba(231,233,245,.85);cursor:pointer;min-width:0;}
+.sg-tournament-player.active{border-color:rgba(255,122,0,.95);background:rgba(255,122,0,.09);}
+.sg-tournament-player-name{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sg-tournament-player-meta{margin-top:3px;font-size:10px;color:rgba(231,233,245,.58);letter-spacing:.05em;}
+.sg-tournament-bracket{margin-top:12px;border:1px solid rgba(255,255,255,.10);border-radius:16px;background:rgba(0,0,0,.18);padding:12px;}
+.sg-tournament-bracket-title{font-weight:900;letter-spacing:.10em;font-size:12px;color:rgba(255,190,70,.95);margin-bottom:8px;}
+.sg-bracket-round{display:grid;gap:8px;}
+.sg-bracket-match{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;}
+.sg-bracket-team{border:1px solid rgba(255,255,255,.13);border-radius:12px;background:rgba(255,255,255,.035);padding:8px 9px;font-weight:800;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sg-bracket-seed{color:rgba(255,122,0,.95);font-size:11px;margin-right:5px;}
+.sg-bracket-vs{font-size:10px;font-weight:900;color:rgba(231,233,245,.55);letter-spacing:.12em;}
+.sg-tournament-note{margin-top:10px;color:rgba(231,233,245,.58);font-size:11px;line-height:1.4;}
+@media(max-width:520px){.sg-tournament-controls,.sg-tournament-player-grid{grid-template-columns:1fr}.sg-bracket-match{grid-template-columns:1fr}.sg-bracket-vs{text-align:center}}
+</style>
+<script>
+(function(){
+  if (window.__sqFix73TournamentSetup) return;
+  window.__sqFix73TournamentSetup = true;
+
+  function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function norm(v){ return String(v || '').trim().toLowerCase(); }
+  function playerName(p){ return String((p && (p.name || p.player || p.label)) || p || '').trim(); }
+  function gameTs(g){ try{ return new Date(g.created_at || g.ts || g.completed_at || g.raw?.created_at || 0); }catch(_){ return new Date(0); } }
+  function gamePlayers(g){ return Array.isArray(g?.players) ? g.players : (Array.isArray(g?.state?.players) ? g.state.players : []); }
+  function gameTotals(g){ return Array.isArray(g?.totals) ? g.totals : (Array.isArray(g?.state?.totals) ? g.state.totals : []); }
+
+  async function getTournamentPlayers(){
+    try{ if (typeof cloudListPlayers === 'function'){ const rows = await cloudListPlayers(); if (Array.isArray(rows) && rows.length) return rows; } }catch(e){ console.warn('[SQ] tournament cloud players failed', e); }
+    try{ if (typeof getSavedPlayers === 'function') return getSavedPlayers() || []; }catch(_){ }
+    return [];
+  }
+
+  async function getMonthlyPremierRankMap(){
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    let games = [];
+    try{ if (typeof getGamesForMode === 'function') games = await getGamesForMode('official'); }catch(e){ console.warn('[SQ] tournament rank games failed', e); }
+    const agg = new Map();
+    (Array.isArray(games) ? games : []).forEach(function(g){
+      const d = gameTs(g);
+      if (!d || Number.isNaN(d.getTime()) || d.getFullYear() !== y || d.getMonth() !== m) return;
+      const ps = gamePlayers(g), totals = gameTotals(g);
+      if (!ps.length || !totals.length) return;
+      ps.forEach(function(p, idx){
+        const name = playerName(p); const key = norm(name); const score = Number(totals[idx] || 0);
+        if (!key || !Number.isFinite(score)) return;
+        const rec = agg.get(key) || { name:name, games:0, total:0, avg:0, rank:999 };
+        rec.games += 1; rec.total += score; rec.avg = rec.total / rec.games;
+        agg.set(key, rec);
+      });
+    });
+    const sorted = Array.from(agg.values()).sort(function(a,b){ return (b.avg-a.avg) || (b.games-a.games) || a.name.localeCompare(b.name); });
+    let rank = 0, lastAvg = null;
+    sorted.forEach(function(r, idx){ if (lastAvg === null || Math.abs(r.avg-lastAvg) > 1e-9) rank = idx + 1; r.rank = rank; lastAvg = r.avg; });
+    const map = new Map(); sorted.forEach(function(r){ map.set(norm(r.name), r); });
+    return map;
+  }
+
+  function seedPairs(players, size){
+    const seeds = players.slice(0, size);
+    const order = size === 8 ? [[0,7],[3,4],[1,6],[2,5]] : [[0,3],[1,2]];
+    return order.map(function(pair){ return [seeds[pair[0]], seeds[pair[1]]]; });
+  }
+
+  function renderStartMenuBack(){
+    try{ if (typeof arrangeStartActions === 'function') arrangeStartActions(); }catch(e){ console.warn('[SQ] tournament back failed', e); }
+  }
+
+  function makeChoiceButton(title, desc, active){
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sg-tournament-pill' + (active ? ' active' : '');
+    b.innerHTML = '<div class="sg-tournament-pill-title">'+esc(title)+'</div><div class="sg-tournament-pill-desc">'+esc(desc)+'</div>';
+    return b;
+  }
+
+  async function openTournamentSetupMenu(){
+    const body = document.getElementById('startGameModalBody');
+    if (!body) return;
+    body.innerHTML = '';
+    let tournamentType = 'classic';
+    let bracketSize = 4;
+    const selected = new Map();
+    const players = await getTournamentPlayers();
+    const ranks = await getMonthlyPremierRankMap();
+
+    const intro = document.createElement('div');
+    intro.className = 'sg-tournament-intro';
+    intro.innerHTML = '<div class="sg-tournament-title">TOURNAMENT MODE</div><div class="sg-tournament-sub">Choose format, select 4 or 8 players, then generate a seeded knockout tree.</div>';
+
+    const typeWrap = document.createElement('div'); typeWrap.className = 'sg-tournament-controls';
+    const sizeWrap = document.createElement('div'); sizeWrap.className = 'sg-tournament-controls';
+    const status = document.createElement('div'); status.className = 'sg-tournament-note';
+    const playerGrid = document.createElement('div'); playerGrid.className = 'sg-tournament-player-grid';
+    const bracket = document.createElement('div'); bracket.className = 'sg-tournament-bracket'; bracket.style.display = 'none';
+
+    function selectedSorted(){
+      return Array.from(selected.values()).sort(function(a,b){
+        const ra = a.rankData ? a.rankData.rank : 999;
+        const rb = b.rankData ? b.rankData.rank : 999;
+        return (ra-rb) || a.name.localeCompare(b.name);
+      });
+    }
+
+    function rulesText(){
+      return tournamentType === 'turbo'
+        ? 'TURBO: starts at round 8 / 17s. Strict 20 seconds per throw from completion of the previous player score.'
+        : 'CLASSIC: standard Shateki Quest knockout tournament using the normal game flow.';
+    }
+
+    function render(){
+      typeWrap.innerHTML = '';
+      const classic = makeChoiceButton('CLASSIC', 'Standard game, knockout tournament.', tournamentType === 'classic');
+      const turbo = makeChoiceButton('TURBO', 'Starts at round 8 / 17s. Strict 20 seconds per throw.', tournamentType === 'turbo');
+      classic.onclick = function(){ tournamentType = 'classic'; render(); };
+      turbo.onclick = function(){ tournamentType = 'turbo'; render(); };
+      typeWrap.append(classic, turbo);
+
+      sizeWrap.innerHTML = '';
+      const four = makeChoiceButton('4 PLAYERS', 'Semi-final → Final.', bracketSize === 4);
+      const eight = makeChoiceButton('8 PLAYERS', 'Quarter-final → Semi-final → Final.', bracketSize === 8);
+      four.onclick = function(){ bracketSize = 4; while(selected.size > 4){ const last = Array.from(selected.keys()).pop(); selected.delete(last); } render(); };
+      eight.onclick = function(){ bracketSize = 8; render(); };
+      sizeWrap.append(four, eight);
+
+      playerGrid.innerHTML = '';
+      const sortedPlayers = (players || []).slice().sort(function(a,b){
+        const an = playerName(a), bn = playerName(b);
+        const ar = ranks.get(norm(an)); const br = ranks.get(norm(bn));
+        const ra = ar ? ar.rank : 999; const rb = br ? br.rank : 999;
+        return (ra-rb) || an.localeCompare(bn);
+      });
+      sortedPlayers.forEach(function(p){
+        const name = playerName(p); if (!name) return;
+        const key = norm(name); const r = ranks.get(key);
+        const on = selected.has(key);
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'sg-tournament-player' + (on ? ' active' : '');
+        b.innerHTML = '<div class="sg-tournament-player-name">'+esc(name)+'</div><div class="sg-tournament-player-meta">MONTHLY PL: '+(r ? '#'+r.rank+' · AVG '+r.avg.toFixed(1)+' · '+r.games+' games' : 'UNRANKED')+'</div>';
+        b.onclick = function(){
+          if (selected.has(key)) selected.delete(key);
+          else {
+            if (selected.size >= bracketSize){ try{ toast('Tournament is full. Remove a player first.'); }catch(_){} return; }
+            selected.set(key, { raw:p, name:name, rankData:r || null });
+          }
+          render();
+        };
+        playerGrid.appendChild(b);
+      });
+
+      status.textContent = rulesText() + ' Selected ' + selected.size + '/' + bracketSize + '. Seeding uses current month Premier League rank; unranked players are seeded after ranked players.';
+
+      const seeded = selectedSorted();
+      if (seeded.length === bracketSize){
+        const pairs = seedPairs(seeded, bracketSize);
+        window.__sqTournamentDraft = {
+          type: tournamentType,
+          size: bracketSize,
+          players: seeded.map(function(x){ return { name:x.name, rank:x.rankData ? x.rankData.rank : null, avg:x.rankData ? x.rankData.avg : null }; }),
+          rules: tournamentType === 'turbo' ? { startRoundIndex:7, startTarget:'17', throwLimitSeconds:20, strictTimer:true } : { startRoundIndex:0, startTarget:'10', throwLimitSeconds:null, strictTimer:false },
+          createdAt: new Date().toISOString()
+        };
+        bracket.style.display = '';
+        bracket.innerHTML = '<div class="sg-tournament-bracket-title">SEEDED KNOCKOUT TREE</div><div class="sg-bracket-round">'+pairs.map(function(pair, idx){
+          return '<div class="sg-bracket-match">'+
+            '<div class="sg-bracket-team"><span class="sg-bracket-seed">#'+(idx*2+1)+'</span>'+esc(pair[0].name)+'</div>'+ 
+            '<div class="sg-bracket-vs">VS</div>'+ 
+            '<div class="sg-bracket-team"><span class="sg-bracket-seed">#'+(idx*2+2)+'</span>'+esc(pair[1].name)+'</div>'+ 
+          '</div>';
+        }).join('')+'</div><div class="sg-tournament-note">Bracket generated and stored in window.__sqTournamentDraft. Match runner is the next slice; no fake tournament games are written yet.</div>';
+      } else {
+        bracket.style.display = 'none'; bracket.innerHTML = '';
+        window.__sqTournamentDraft = null;
+      }
+    }
+
+    const footer = document.createElement('div'); footer.className = 'modal-footer sg-practice-footer';
+    const back = document.createElement('button'); back.type = 'button'; back.className = 'btn'; back.textContent = 'Back'; back.onclick = function(e){ e.preventDefault(); renderStartMenuBack(); };
+    const close = document.createElement('button'); close.type = 'button'; close.className = 'btn'; close.textContent = 'Close'; close.onclick = function(e){ e.preventDefault(); if (typeof closeModal === 'function') closeModal('startGameModal'); };
+    footer.append(back, close);
+
+    body.append(intro, typeWrap, sizeWrap, status, playerGrid, bracket, footer);
+    render();
+  }
+
+  function bindTournamentButton(){
+    const b = document.getElementById('tournamentBtn');
+    if (!b) return;
+    b.disabled = false;
+    b.setAttribute('aria-disabled','false');
+    b.classList.remove('disabled');
+    b.title = 'Tournament setup';
+    b.onclick = function(e){ e.preventDefault(); openTournamentSetupMenu(); };
+    try{
+      const soon = b.querySelector('.sg-opt-soon');
+      if (soon) soon.textContent = 'LIVE';
+      const desc = b.querySelector('.sg-opt-desc');
+      if (desc) desc.textContent = 'CLASSIC / TURBO KNOCKOUT';
+    }catch(_){ }
+  }
+
+  const oldArrange = window.arrangeStartActions;
+  if (typeof oldArrange === 'function' && !oldArrange.__sqFix73Wrapped){
+    window.arrangeStartActions = function(){
+      const ret = oldArrange.apply(this, arguments);
+      setTimeout(bindTournamentButton, 0);
+      return ret;
+    };
+    window.arrangeStartActions.__sqFix73Wrapped = true;
+    try{ arrangeStartActions = window.arrangeStartActions; }catch(_){ }
+  }
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(bindTournamentButton, 50); });
+  setTimeout(bindTournamentButton, 50);
+})();
+</script>
+<!-- <<< PATCH:FIX73_TOURNAMENT_MODE_SETUP END -->
+
+<!-- >>> PATCH:FIX74_TOURNAMENT_STEPPED_FLOW START -->
+<script>
+(function(){
+  if (window.__sqFix74TournamentSteppedFlow) return;
+  window.__sqFix74TournamentSteppedFlow = true;
+
+  function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function norm(v){ return String(v || '').trim().toLowerCase(); }
+  function playerName(p){ return String((p && (p.name || p.player || p.label)) || p || '').trim(); }
+  function gameTs(g){ try{ return new Date(g.created_at || g.ts || g.completed_at || (g.raw && g.raw.created_at) || 0); }catch(_){ return new Date(0); } }
+  function gamePlayers(g){ return Array.isArray(g && g.players) ? g.players : (Array.isArray(g && g.state && g.state.players) ? g.state.players : []); }
+  function gameTotals(g){ return Array.isArray(g && g.totals) ? g.totals : (Array.isArray(g && g.state && g.state.totals) ? g.state.totals : []); }
+
+  async function getTournamentPlayers(){
+    try{ if (typeof cloudListPlayers === 'function'){ const rows = await cloudListPlayers(); if (Array.isArray(rows) && rows.length) return rows; } }catch(e){ console.warn('[SQ] tournament cloud players failed', e); }
+    try{ if (typeof getSavedPlayers === 'function') return getSavedPlayers() || []; }catch(_){ }
+    return [];
+  }
+
+  async function getMonthlyPremierRankMap(){
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    let games = [];
+    try{ if (typeof getGamesForMode === 'function') games = await getGamesForMode('official'); }catch(e){ console.warn('[SQ] tournament rank games failed', e); }
+    const agg = new Map();
+    (Array.isArray(games) ? games : []).forEach(function(g){
+      const d = gameTs(g);
+      if (!d || Number.isNaN(d.getTime()) || d.getFullYear() !== y || d.getMonth() !== m) return;
+      const ps = gamePlayers(g), totals = gameTotals(g);
+      if (!ps.length || !totals.length) return;
+      ps.forEach(function(p, idx){
+        const name = playerName(p); const key = norm(name); const score = Number(totals[idx] || 0);
+        if (!key || !Number.isFinite(score)) return;
+        const rec = agg.get(key) || { name:name, games:0, total:0, avg:0, rank:999 };
+        rec.games += 1; rec.total += score; rec.avg = rec.total / rec.games;
+        agg.set(key, rec);
+      });
+    });
+    const sorted = Array.from(agg.values()).sort(function(a,b){ return (b.avg-a.avg) || (b.games-a.games) || a.name.localeCompare(b.name); });
+    let rank = 0, lastAvg = null;
+    sorted.forEach(function(r, idx){ if (lastAvg === null || Math.abs(r.avg-lastAvg) > 1e-9) rank = idx + 1; r.rank = rank; lastAvg = r.avg; });
+    const map = new Map(); sorted.forEach(function(r){ map.set(norm(r.name), r); });
+    return map;
+  }
+
+  function seedPairs(seedRows, size){
+    const half = Math.floor(size / 2);
+    const top = seedRows.slice(0, half);
+    const bottom = seedRows.slice(half);
+    for (let i = bottom.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); const t = bottom[i]; bottom[i] = bottom[j]; bottom[j] = t; }
+    return top.map(function(p, idx){ return [p, bottom[idx]]; }).filter(function(pair){ return pair[0] && pair[1]; });
+  }
+
+  function choiceButton(title, desc, active){
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sg-tournament-pill' + (active ? ' active' : '');
+    b.innerHTML = '<div class="sg-tournament-pill-title">'+esc(title)+'</div><div class="sg-tournament-pill-desc">'+esc(desc)+'</div>';
+    return b;
+  }
+
+  function restoreStartGameOptions(){
+    try{ if (typeof arrangeStartActions === 'function') arrangeStartActions(); }catch(e){ console.warn('[SQ] tournament main menu restore failed', e); }
+    setTimeout(function(){ try{ bindTournamentButton(); }catch(_){} }, 0);
+  }
+
+  async function openTournamentSteppedSetup(){
+    const body = document.getElementById('startGameModalBody');
+    if (!body) return;
+    const draft = {
+      step: 0,
+      type: null,
+      size: null,
+      selected: new Map(),
+      players: await getTournamentPlayers(),
+      ranks: await getMonthlyPremierRankMap(),
+      drawKey: null,
+      drawPairs: null
+    };
+
+    function selectedSeeded(){
+      return Array.from(draft.selected.values()).sort(function(a,b){
+        const ra = a.rankData ? a.rankData.rank : 999;
+        const rb = b.rankData ? b.rankData.rank : 999;
+        return (ra-rb) || a.name.localeCompare(b.name);
+      }).map(function(x, idx){ return Object.assign({}, x, { seed: idx + 1 }); });
+    }
+
+    function shuffleTournamentDraw(list){
+      const arr = (list || []).slice();
+      for (let i = arr.length - 1; i > 0; i--){
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+      }
+      return arr;
+    }
+
+    function tournamentDrawKey(seeded, size){
+      return String(size) + '|' + (seeded || []).map(function(p){ return String(p.seed)+':' + norm(p.name || ''); }).join('|');
+    }
+
+    function stableRandomSeedPairs(seeded, size){
+      const key = tournamentDrawKey(seeded, size);
+      if (!draft.drawPairs || draft.drawKey !== key){
+        const half = Math.floor(size / 2);
+        const top = seeded.slice(0, half);
+        const bottom = shuffleTournamentDraw(seeded.slice(half));
+        draft.drawPairs = top.map(function(p, idx){
+          return [Number(p.seed), Number(bottom[idx] && bottom[idx].seed)];
+        }).filter(function(pair){ return pair[0] && pair[1]; });
+        draft.drawKey = key;
+      }
+      const bySeed = new Map((seeded || []).map(function(p){ return [Number(p.seed), p]; }));
+      return (draft.drawPairs || []).map(function(pair){ return [bySeed.get(Number(pair[0])), bySeed.get(Number(pair[1]))]; }).filter(function(pair){ return pair[0] && pair[1]; });
+    }
+
+    function currentRules(){
+      return draft.type === 'turbo'
+        ? { startRoundIndex:7, startTarget:'17', throwLimitSeconds:20, strictTimer:true }
+        : { startRoundIndex:0, startTarget:'10', throwLimitSeconds:null, strictTimer:false };
+    }
+
+    function saveDraft(){
+      if (!draft.type || !draft.size || draft.selected.size !== draft.size){ window.__sqTournamentDraft = null; return null; }
+      const seeded = selectedSeeded();
+      window.__sqTournamentDraft = {
+        type: draft.type,
+        size: draft.size,
+        players: seeded.map(function(x){ return { name:x.name, seed:x.seed, rank:x.rankData ? x.rankData.rank : null, avg:x.rankData ? x.rankData.avg : null, games:x.rankData ? x.rankData.games : 0 }; }),
+        rules: currentRules(),
+        drawMode: 'random-top-half-vs-bottom-half',
+        bracket: stableRandomSeedPairs(seeded, draft.size).map(function(pair, idx){ return { match: idx + 1, a: pair[0], b: pair[1] }; }),
+        createdAt: new Date().toISOString()
+      };
+      return window.__sqTournamentDraft;
+    }
+
+    function setHead(title, sub){
+      return '<div class="sg-tournament-intro"><div class="sg-tournament-title">'+esc(title)+'</div><div class="sg-tournament-sub">'+esc(sub)+'</div></div>';
+    }
+
+    function footer(nextEnabled, onBack, onNext, nextText){
+      const ft = document.createElement('div');
+      ft.className = 'modal-footer sg-practice-footer';
+      const back = document.createElement('button');
+      back.type = 'button'; back.className = 'btn'; back.textContent = 'Back';
+      back.onclick = function(e){ e.preventDefault(); onBack(); };
+      const next = document.createElement('button');
+      next.type = 'button'; next.className = 'btn primary'; next.textContent = nextText || 'Next';
+      next.disabled = !nextEnabled;
+      next.title = nextEnabled ? '' : 'Complete this step first';
+      next.onclick = function(e){ e.preventDefault(); if (!nextEnabled){ try{ toast('Complete this step first.'); }catch(_){} return; } onNext(); };
+      ft.append(back, next);
+      return ft;
+    }
+
+    function renderType(){
+      draft.step = 0;
+      body.innerHTML = setHead('TOURNAMENT MODE', 'Choose the tournament format.');
+      const wrap = document.createElement('div'); wrap.className = 'sg-tournament-controls';
+      const classic = choiceButton('CLASSIC (BETA)', 'Standard Shateki Quest knockout tournament.', draft.type === 'classic');
+      const turbo = choiceButton('TURBO (BETA)', 'Starts at round 8 / 17s. Strict 20 seconds per throw.', draft.type === 'turbo');
+      classic.onclick = function(){ draft.type = 'classic'; renderType(); };
+      turbo.onclick = function(){ draft.type = 'turbo'; renderType(); };
+      wrap.append(classic, turbo);
+      const note = document.createElement('div'); note.className = 'sg-tournament-note';
+      note.textContent = draft.type === 'turbo'
+        ? 'Turbo rules: starts at 17s, strict 20 seconds per throw from completion of the previous player score.'
+        : (draft.type === 'classic' ? 'Classic rules: standard game, knockout bracket.' : 'Select Classic or Turbo to continue.');
+      body.append(wrap, note, footer(!!draft.type, restoreStartGameOptions, renderSize));
+    }
+
+    function renderSize(){
+      draft.step = 1;
+      body.innerHTML = setHead('TOURNAMENT SIZE', 'Choose a 4-player or 8-player knockout.');
+      const wrap = document.createElement('div'); wrap.className = 'sg-tournament-controls';
+      const four = choiceButton('4 PLAYERS', 'Semi-final → Final.', draft.size === 4);
+      const eight = choiceButton('8 PLAYERS', 'Quarter-final → Semi-final → Final.', draft.size === 8);
+      four.onclick = function(){ draft.size = 4; while(draft.selected.size > 4){ draft.selected.delete(Array.from(draft.selected.keys()).pop()); } renderSize(); };
+      eight.onclick = function(){ draft.size = 8; renderSize(); };
+      wrap.append(four, eight);
+      const note = document.createElement('div'); note.className = 'sg-tournament-note';
+      note.textContent = draft.size ? 'Selected: '+draft.size+' players.' : 'Select 4 or 8 players to continue.';
+      body.append(wrap, note, footer(!!draft.size, renderType, renderPlayers));
+    }
+
+    function renderPlayers(){
+      draft.step = 2;
+      body.innerHTML = setHead('SELECT PLAYERS', 'Select exactly '+draft.size+' players. Seeds use this month\'s Premier League position.');
+      const status = document.createElement('div'); status.className = 'sg-tournament-note';
+      status.textContent = 'Selected '+draft.selected.size+'/'+draft.size+'. Ranked players are ordered by current month Premier League position; unranked players seed after ranked players.';
+      const grid = document.createElement('div'); grid.className = 'sg-tournament-player-grid';
+      const sorted = (draft.players || []).slice().sort(function(a,b){
+        const an = playerName(a), bn = playerName(b);
+        const ar = draft.ranks.get(norm(an)); const br = draft.ranks.get(norm(bn));
+        const ra = ar ? ar.rank : 999; const rb = br ? br.rank : 999;
+        return (ra-rb) || an.localeCompare(bn);
+      });
+      sorted.forEach(function(p){
+        const name = playerName(p); if (!name) return;
+        const key = norm(name); const r = draft.ranks.get(key); const on = draft.selected.has(key);
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'sg-tournament-player' + (on ? ' active' : '');
+        b.innerHTML = '<div class="sg-tournament-player-name">'+esc(name)+'</div><div class="sg-tournament-player-meta">MONTHLY PL: '+(r ? '#'+r.rank+' · AVG '+r.avg.toFixed(1)+' · '+r.games+' games' : 'UNRANKED')+'</div>';
+        b.onclick = function(){
+          if (draft.selected.has(key)) draft.selected.delete(key);
+          else {
+            if (draft.selected.size >= draft.size){ try{ toast('Tournament is full. Remove a player first.'); }catch(_){} return; }
+            draft.selected.set(key, { raw:p, name:name, rankData:r || null });
+          }
+          renderPlayers();
+        };
+        grid.appendChild(b);
+      });
+      body.append(status, grid, footer(draft.selected.size === draft.size, renderSize, renderTree));
+    }
+
+    function tournamentRoundName(size, matchNo){
+      if (size === 4) return matchNo <= 2 ? 'Semi-final' : 'Final';
+      if (size === 8) return matchNo <= 4 ? 'Quarter-final' : (matchNo <= 6 ? 'Semi-final' : 'Final');
+      return 'Tournament Match';
+    }
+
+    function playerForTournamentGame(seedPlayer){
+      const name = String(seedPlayer && seedPlayer.name || '').trim();
+      const raw = seedPlayer && seedPlayer.raw ? seedPlayer.raw : {};
+      const parts = (typeof __sqNameParts === 'function') ? __sqNameParts(name) : { first:name, last:'' };
+      const first = String(raw.first_name || raw.first || '').trim() || parts.first || name;
+      const last  = String(raw.last_name || raw.last || '').trim() || parts.last || '';
+      const nick  = String(raw.nickname || '').trim();
+      const init  = (typeof __sqNormalizeInitials === 'function') ? __sqNormalizeInitials(raw.initials, name) : name.slice(0,2).toUpperCase();
+      return {
+        type: raw.type || 'registered',
+        id: raw.id != null ? raw.id : null,
+        name: name,
+        first_name: first,
+        last_name: last,
+        nickname: nick,
+        initials: init,
+        color: null,
+        tournamentSeed: seedPlayer && seedPlayer.seed ? seedPlayer.seed : null,
+        tournamentRank: seedPlayer && seedPlayer.rankData ? seedPlayer.rankData.rank : null
+      };
+    }
+
+    function startTournamentFirstMatch(){
+      const saved = saveDraft();
+      if (!saved || !Array.isArray(saved.bracket) || !saved.bracket.length){
+        try{ toast('Tournament draft is not ready.'); }catch(_){}
+        return;
+      }
+      const firstMatch = saved.bracket[0];
+      if (!firstMatch || !firstMatch.a || !firstMatch.b){
+        try{ toast('First tournament match is missing players.'); }catch(_){}
+        return;
+      }
+
+      try{ window.__sqSelectedMode = 'official'; }catch(_){}
+
+      state.players = [playerForTournamentGame(firstMatch.a), playerForTournamentGame(firstMatch.b)];
+      try{ assignUniqueColors(state.players); }catch(_){}
+
+      const matchId = (typeof genUuidV4 === 'function') ? genUuidV4() : ('tournament-' + Date.now());
+      state.match = {
+        id: matchId,
+        mode: 'official',
+        tournament: true,
+        tournamentType: saved.type,
+        tournamentSize: saved.size,
+        tournamentRound: tournamentRoundName(saved.size, firstMatch.match),
+        tournamentMatch: firstMatch.match,
+        tournamentRules: saved.rules || {},
+        forcePractice: false,
+        practiceType: null,
+        createdAtIso: (typeof _tsOverride !== 'undefined' && _tsOverride) ? _tsOverride : new Date().toISOString(),
+        targetWins: 1,
+        gameNumber: 1,
+        wins: Array.from({ length: state.players.length }, () => 0),
+        history: [],
+        completedLogged: false
+      };
+      state.__sqTournamentDraft = saved;
+      state.__sqTournamentActive = {
+        tournamentId: matchId,
+        type: saved.type,
+        size: saved.size,
+        currentMatch: firstMatch.match,
+        currentRound: state.match.tournamentRound,
+        bracket: saved.bracket
+      };
+      state.matchAgg = null;
+      try{ ensureMatchAgg(); }catch(_){}
+
+      try{
+        const p = document.getElementById('liveV2Panel');
+        if (p){ p.dataset.built = '0'; p.dataset.pcount = ''; p.innerHTML = ''; }
+      }catch(_){}
+
+      try{ if (typeof closeModal === 'function') closeModal('startGameModal'); }catch(_){}
+      try{ startNewGame(false); }catch(e){ console.error('[SQ] Tournament start failed', e); try{ toast('Tournament start failed. Check console.'); }catch(_){} }
+      try{ setupStartMenuButtons(); }catch(_){}
+      try{ save(); }catch(_){}
+    }
+
+    function renderTree(){
+      draft.step = 3;
+      const saved = saveDraft();
+      const seeded = selectedSeeded();
+      const pairs = (saved && Array.isArray(saved.bracket)) ? saved.bracket.map(function(m){ return [m.a, m.b]; }) : stableRandomSeedPairs(seeded, draft.size);
+      body.innerHTML = setHead('RANDOMISED KNOCKOUT TREE', 'Seeds are based on current month Premier League rank. Top half draw random opponents from the bottom half.');
+      const br = document.createElement('div'); br.className = 'sg-tournament-bracket';
+      br.innerHTML = '<div class="sg-tournament-bracket-title">'+esc((draft.type || '').toUpperCase())+' / '+draft.size+' PLAYERS</div><div class="sg-bracket-round">'+pairs.map(function(pair){
+        return '<div class="sg-bracket-match">'+
+          '<div class="sg-bracket-team"><span class="sg-bracket-seed">#'+esc(pair[0].seed)+'</span>'+esc(pair[0].name)+'</div>'+ 
+          '<div class="sg-bracket-vs">VS</div>'+ 
+          '<div class="sg-bracket-team"><span class="sg-bracket-seed">#'+esc(pair[1].seed)+'</span>'+esc(pair[1].name)+'</div>'+ 
+        '</div>';
+      }).join('')+'</div><div class="sg-tournament-note">Bracket stored in window.__sqTournamentDraft. Draw: top half seeds vs random bottom half seeds. Press START TOURNAMENT to set the first match throw order.</div>';
+      const note = document.createElement('div'); note.className = 'sg-tournament-note';
+      note.textContent = saved ? 'Draft ready. START TOURNAMENT opens throw order for the first drawn match.' : 'Draft not ready.';
+      body.append(br, note, footer(true, renderPlayers, startTournamentFirstMatch, 'START TOURNAMENT'));
+    }
+
+    renderType();
+  }
+
+  function bindTournamentButton(){
+    const b = document.getElementById('tournamentBtn');
+    if (!b) return;
+    b.disabled = false;
+    b.setAttribute('aria-disabled','false');
+    b.classList.remove('disabled');
+    b.title = 'Tournament setup';
+    b.onclick = function(e){ e.preventDefault(); openTournamentSteppedSetup(); };
+    try{
+      const soon = b.querySelector('.sg-opt-soon');
+      if (soon) soon.textContent = 'LIVE';
+      const desc = b.querySelector('.sg-opt-desc');
+      if (desc) desc.textContent = 'CLASSIC / TURBO KNOCKOUT';
+    }catch(_){ }
+  }
+
+  const oldArrange = window.arrangeStartActions;
+  if (typeof oldArrange === 'function' && !oldArrange.__sqFix74Wrapped){
+    window.arrangeStartActions = function(){
+      const ret = oldArrange.apply(this, arguments);
+      setTimeout(bindTournamentButton, 0);
+      return ret;
+    };
+    window.arrangeStartActions.__sqFix74Wrapped = true;
+    try{ arrangeStartActions = window.arrangeStartActions; }catch(_){ }
+  }
+
+  window.__sqOpenTournamentSteppedSetup = openTournamentSteppedSetup;
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(bindTournamentButton, 80); });
+  setTimeout(bindTournamentButton, 80);
+})();
+</script>
+<!-- <<< PATCH:FIX74_TOURNAMENT_STEPPED_FLOW END -->
+
+
+
+<!-- >>> PATCH:FIX75_TOURNAMENT_START_RUNNER START -->
+<script>
+(function(){
+  if (window.__sqFix75TournamentStartRunner) return;
+  window.__sqFix75TournamentStartRunner = true;
+
+  try{
+    if (typeof startNewGame === 'function' && !startNewGame.__sqTournamentStartWrapped){
+      const __sqOriginalStartNewGame = startNewGame;
+      startNewGame = function(setOrder){
+        const ret = __sqOriginalStartNewGame.apply(this, arguments);
+        try{
+          const rules = state && state.match && state.match.tournament ? (state.match.tournamentRules || {}) : null;
+          const startIdx = rules && Number.isFinite(+rules.startRoundIndex) ? Math.max(0, Math.min((typeof MAX_ROUNDS === 'number' ? MAX_ROUNDS - 1 : 13), +rules.startRoundIndex)) : 0;
+          if (setOrder && startIdx > 0){
+            state.currentRound = startIdx;
+            state.currentPlayer = 0;
+            state.currentDart = 0;
+            state.__sqTournamentTurboTimer = rules.strictTimer ? { seconds:Number(rules.throwLimitSeconds || 20), strict:true, pending:true } : null;
+            try{ save(); }catch(_){}
+            setTimeout(function(){ try{ updateUI(); }catch(_){} }, 0);
+          }
+        }catch(e){ console.warn('[SQ] Tournament starting round apply failed', e); }
+        return ret;
+      };
+      startNewGame.__sqTournamentStartWrapped = true;
+    }
+  }catch(e){ console.warn('[SQ] Tournament start wrapper failed', e); }
+})();
+</script>
+<!-- <<< PATCH:FIX75_TOURNAMENT_START_RUNNER END -->
+
+
+<!-- >>> PATCH:FIX76_TURBO_20SEC_TIMER START -->
+<style id="sq-fix76-turbo-20sec-timer-css">
+body[data-page="game"] .livev2panel .v2ScoreBox{ position:relative; isolation:isolate; }
+body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboTimerActive::after{
+  content:""; position:absolute; inset:-4px; border-radius:22px; padding:4px; pointer-events:none; z-index:3;
+  background:conic-gradient(from -90deg, rgba(255,36,45,.98) 0deg var(--sqTurboDeg,0deg), rgba(255,132,0,.92) var(--sqTurboDeg,0deg) 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude;
+  filter:drop-shadow(0 0 8px rgba(255,88,0,.30));
+}
+body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboWarn::after{ animation:sqTurboWarnPulse .95s ease-in-out infinite; }
+body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger::after{ animation:sqTurboDangerPulse .26s steps(2,end) infinite; }
+@keyframes sqTurboWarnPulse{0%,100%{filter:drop-shadow(0 0 8px rgba(255,88,0,.30));opacity:.92}50%{filter:drop-shadow(0 0 15px rgba(255,52,52,.58));opacity:1}}
+@keyframes sqTurboDangerPulse{0%,100%{filter:drop-shadow(0 0 10px rgba(255,30,30,.65));opacity:.72}50%{filter:drop-shadow(0 0 25px rgba(255,20,20,.98));opacity:1}}
+</style>
+<script id="sq-fix76-turbo-20sec-timer-js">
+(function(){
+  if (window.__sqTurbo20TimerPatch) return;
+  window.__sqTurbo20TimerPatch = true;
+  const LIMIT_MS = 20000;
+  let timer = null;
+  let raf = null;
+  let firing = false;
+  function isTurboGame(){
+    try{
+      const m = (typeof state !== 'undefined' && state) ? (state.match || {}) : {};
+      const draft = window.__sqTournamentDraft || state?.__sqTournamentDraft || null;
+      const type = String(m.tournamentType || m.type || draft?.type || state?.tournamentType || '').toLowerCase();
+      return !!(type === 'turbo' || m.strictTimer === true || m.throwLimitSeconds === 20 || state?.strictTimer === true || state?.throwLimitSeconds === 20);
+    }catch(_){ return false; }
+  }
+  function gameActive(){
+    try{
+      return document.body?.dataset?.page === 'game' && typeof state !== 'undefined' && state && !state.finished && !state?.suddenDeath?.active && Array.isArray(state.players) && state.players.length >= 2 && isTurboGame();
+    }catch(_){ return false; }
+  }
+  function turnKey(){
+    try{ return [state.currentRound,state.currentPlayer,state.currentDart].map(v=>String(v ?? '')).join('|'); }catch(_){ return ''; }
+  }
+  function clearBoxes(){
+    try{ document.querySelectorAll('.livev2panel .v2ScoreBox.sqTurboTimerActive,.livev2panel .v2ScoreBox.sqTurboWarn,.livev2panel .v2ScoreBox.sqTurboDanger').forEach(el=>{ el.classList.remove('sqTurboTimerActive','sqTurboWarn','sqTurboDanger'); el.style.removeProperty('--sqTurboDeg'); }); }catch(_){ }
+  }
+  function activeBox(){
+    try{ return document.querySelector('.livev2panel .v2ScoreBox[data-p="'+Number(state?.currentPlayer || 0)+'"]'); }catch(_){ return null; }
+  }
+  function ensureTimer(){
+    if (!gameActive()){ timer = null; clearBoxes(); return; }
+    if (Number(state?.currentDart || 0) !== 0){ timer = null; clearBoxes(); return; }
+    const key = turnKey();
+    if (!timer || timer.key !== key) timer = { key, startedAt: performance.now(), fired:false };
+  }
+  function renderTimer(){
+    try{
+      ensureTimer();
+      if (!timer) return;
+      const elapsed = performance.now() - timer.startedAt;
+      const pct = Math.max(0, Math.min(1, elapsed / LIMIT_MS));
+      const box = activeBox();
+      clearBoxes();
+      if (box){
+        box.style.setProperty('--sqTurboDeg', (pct * 360).toFixed(1) + 'deg');
+        box.classList.add('sqTurboTimerActive');
+        if (elapsed >= 15000) box.classList.add('sqTurboDanger');
+        else if (elapsed >= 10000) box.classList.add('sqTurboWarn');
+      }
+      if (elapsed >= LIMIT_MS && !timer.fired){ timer.fired = true; autoMissTurn(timer.key); }
+    }catch(e){ try{ console.warn('[SQ] turbo timer render failed', e); }catch(_){ } }
+  }
+  function autoMissTurn(key){
+    if (firing) return;
+    try{
+      if (!gameActive() || !timer || timer.key !== key || Number(state?.currentDart || 0) !== 0) return;
+      firing = true;
+      try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
+      try{ window.__sqDmdBulkMiss = true; }catch(_){ }
+      for (let i=0; i<3; i++){
+        if (state?.finished) break;
+        if (typeof window.recordThrow === 'function') window.recordThrow({ kind:'Miss' });
+        else if (typeof recordThrow === 'function') recordThrow({ kind:'Miss' });
+      }
+      setTimeout(()=>{ try{ window.__sqDmdBulkMiss = false; }catch(_){ } }, 120);
+    }catch(e){ try{ console.warn('[SQ] turbo auto MISS x3 failed', e); }catch(_){ } }
+    finally{ firing = false; timer = null; clearBoxes(); }
+  }
+  function loop(){ renderTimer(); raf = requestAnimationFrame(loop); }
+  try{
+    const oldRecordThrow = window.recordThrow || (typeof recordThrow === 'function' ? recordThrow : null);
+    if (oldRecordThrow && !oldRecordThrow.__sqTurboWrapped){
+      const wrapped = function(){ const ret = oldRecordThrow.apply(this, arguments); timer = null; setTimeout(renderTimer,0); return ret; };
+      wrapped.__sqTurboWrapped = true; window.recordThrow = wrapped; try{ recordThrow = wrapped; }catch(_){ }
+    }
+  }catch(_){ }
+  try{
+    const oldUpdateUI = window.updateUI || (typeof updateUI === 'function' ? updateUI : null);
+    if (oldUpdateUI && !oldUpdateUI.__sqTurboWrapped){
+      const wrappedUI = function(){ const ret = oldUpdateUI.apply(this, arguments); setTimeout(renderTimer,0); return ret; };
+      wrappedUI.__sqTurboWrapped = true; window.updateUI = wrappedUI; try{ updateUI = wrappedUI; }catch(_){ }
+    }
+  }catch(_){ }
+  window.__sqTurboTimerStatus = function(){ return { active:gameActive(), turbo:isTurboGame(), turnKey:turnKey(), currentRound:state?.currentRound, currentPlayer:state?.currentPlayer, currentDart:state?.currentDart, timer:timer ? { key:timer.key, elapsedMs:Math.round(performance.now()-timer.startedAt), fired:!!timer.fired } : null }; };
+  raf = requestAnimationFrame(loop);
+  window.addEventListener('pagehide', ()=>{ try{ cancelAnimationFrame(raf); }catch(_){ } }, { once:true });
+})();
+</script>
+<!-- <<< PATCH:FIX76_TURBO_20SEC_TIMER END -->
+
+
+<!-- >>> PATCH:FIX77_TURBO_TIMER_RACE_ROWS START -->
+<style id="sq-fix77-turbo-timer-race-rows-css">
+body[data-page="game"] .livev2panel .v2ScoreBox .sqTurboSvg{position:absolute;inset:-8px;width:calc(100% + 16px);height:calc(100% + 16px);pointer-events:none;z-index:5;overflow:visible}
+body[data-page="game"] .livev2panel .v2ScoreBox .sqTurboSvg .sqTurboBase{fill:none;stroke:rgba(255,132,0,.82);stroke-width:4.5;filter:drop-shadow(0 0 7px rgba(255,122,0,.28))}
+body[data-page="game"] .livev2panel .v2ScoreBox .sqTurboSvg .sqTurboProgress{fill:none;stroke:rgba(255,34,42,1);stroke-width:5;stroke-linecap:round;filter:drop-shadow(0 0 8px rgba(255,30,30,.52))}
+body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboWarn .sqTurboSvg .sqTurboProgress,body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboWarn .sqTurboSvg .sqTurboBase{animation:sqTurboFlashSlow .55s steps(2,end) infinite}
+body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger .sqTurboSvg .sqTurboProgress,body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger .sqTurboSvg .sqTurboBase{animation:sqTurboFlashViolent .13s steps(2,end) infinite}
+@keyframes sqTurboFlashSlow{0%,49%{opacity:1;filter:drop-shadow(0 0 18px rgba(255,28,28,.95))}50%,100%{opacity:.18;filter:drop-shadow(0 0 2px rgba(255,28,28,.12))}}
+@keyframes sqTurboFlashViolent{0%,49%{opacity:1;filter:drop-shadow(0 0 32px rgba(255,0,0,1))}50%,100%{opacity:.05;filter:drop-shadow(0 0 1px rgba(255,0,0,.10))}}
+body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboTimerActive::after{display:none!important}
+body[data-page="game"] .livev2panel .v2Cell.sqTurboPreStartCell{color:transparent!important;text-shadow:none!important}
+</style>
+<script id="sq-fix77-turbo-timer-race-rows-js">
+(function(){
+ if(window.__sqFix77TurboRefine)return; window.__sqFix77TurboRefine=true;
+ function isTurbo(){try{const m=state?.match||{},d=window.__sqTournamentDraft||state?.__sqTournamentDraft||null,t=String(m.tournamentType||m.type||d?.type||state?.tournamentType||'').toLowerCase();return !!(t==='turbo'||m.strictTimer===true||m.throwLimitSeconds===20||state?.strictTimer===true||state?.throwLimitSeconds===20)}catch(_){return false}}
+ function startIdx(){try{const r=state?.match?.tournamentRules||state?.__sqTournamentDraft?.rules||window.__sqTournamentDraft?.rules||{};const n=Number(r.startRoundIndex??7);return Number.isFinite(n)?Math.max(0,n):7}catch(_){return 7}}
+ window.__sqIsTurboTournamentGame=isTurbo;
+ function pathFor(w,h,r){const x=4,y=4,W=Math.max(10,w-8),H=Math.max(10,h-8),rr=Math.max(8,Math.min(r,W/2,H/2)),cx=x+W/2;return 'M '+cx+' '+y+' H '+(x+W-rr)+' Q '+(x+W)+' '+y+' '+(x+W)+' '+(y+rr)+' V '+(y+H-rr)+' Q '+(x+W)+' '+(y+H)+' '+(x+W-rr)+' '+(y+H)+' H '+(x+rr)+' Q '+x+' '+(y+H)+' '+x+' '+(y+H-rr)+' V '+(y+rr)+' Q '+x+' '+y+' '+(x+rr)+' '+y+' H '+cx}
+ function ensureSvg(box){if(!box)return null;let svg=box.querySelector(':scope > svg.sqTurboSvg');if(!svg){svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.classList.add('sqTurboSvg');svg.setAttribute('preserveAspectRatio','none');const b=document.createElementNS('http://www.w3.org/2000/svg','path');b.classList.add('sqTurboBase');const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.classList.add('sqTurboProgress');svg.append(b,p);box.appendChild(svg)}return svg}
+ function drawSvg(box,pct){try{if(!box||!isTurbo())return;const svg=ensureSvg(box),rect=box.getBoundingClientRect(),w=Math.max(40,rect.width+16),h=Math.max(30,rect.height+16);svg.setAttribute('viewBox','0 0 '+w+' '+h);const d=pathFor(w,h,24),base=svg.querySelector('.sqTurboBase'),prog=svg.querySelector('.sqTurboProgress');base.setAttribute('d',d);prog.setAttribute('d',d);const len=prog.getTotalLength?prog.getTotalLength():(2*w+2*h);prog.style.strokeDasharray=String(len);prog.style.strokeDashoffset=String(len*(1-Math.max(0,Math.min(1,pct))))}catch(_){}}
+ function activeBox(){try{return document.querySelector('.livev2panel .v2ScoreBox[data-p="'+Number(state?.currentPlayer||0)+'"]')}catch(_){return null}}
+ function tick(){try{document.querySelectorAll('.livev2panel .v2ScoreBox:not(.sqTurboTimerActive)>svg.sqTurboSvg').forEach(x=>x.remove());const st=window.__sqTurboTimerStatus?window.__sqTurboTimerStatus():null;if(st&&st.active&&st.timer&&Number.isFinite(st.timer.elapsedMs))drawSvg(activeBox(),Math.min(1,st.timer.elapsedMs/20000))}catch(_){} requestAnimationFrame(tick)}
+ requestAnimationFrame(tick);
+ function blankPreRows(){try{if(!isTurbo())return;const rows=document.getElementById('v2Rows');if(!rows)return;const pCount=Array.isArray(state?.players)?state.players.length:2,cutoff=startIdx(),kids=Array.from(rows.children);for(let i=0;i<kids.length;i++){const badge=kids[i];if(!badge.classList||!badge.classList.contains('v2Badge'))continue;const n=Number(String(badge.textContent||'').trim()),idx=Number.isFinite(n)?(n-10):-1;if(idx>=0&&idx<cutoff){for(let j=1;j<=pCount;j++){const cell=kids[i+j];if(cell&&cell.classList&&cell.classList.contains('v2Cell')){cell.classList.add('sqTurboPreStartCell');cell.querySelectorAll('.v2CellNum,.v2SoloScore').forEach(el=>{el.textContent=''})}}}}}catch(_){}}
+ const old=window.updateUI||(typeof updateUI==='function'?updateUI:null);if(old&&!old.__sqFix77Wrapped){const wrapped=function(){const ret=old.apply(this,arguments);setTimeout(blankPreRows,0);return ret};wrapped.__sqFix77Wrapped=true;window.updateUI=wrapped;try{updateUI=wrapped}catch(_){}}
+ setInterval(blankPreRows,300);
+})();
+</script>
+<!-- <<< PATCH:FIX77_TURBO_TIMER_RACE_ROWS END -->
+
+
+<!-- >>> PATCH:FIX80_TOURNAMENT_LEADERBOARD_FORCE_PATCH START -->
+<style id="sq-fix80-tournament-leaderboard-force-css">
+body[data-page="leaderboard"] #highScoresMenuBtnLB.sq-tournament-force-hide,
+body[data-page="leaderboard"] #btnPremierLeague.sq-tournament-force-hide{display:none!important;}
+</style>
+<script id="sq-fix80-tournament-leaderboard-force-js">
+(function(){
+  if(window.__sqFix80TournamentLeaderboardForce)return; window.__sqFix80TournamentLeaderboardForce=true;
+  function isTournament(){try{return !!(window.state && state.match && (state.match.tournament===true || state.match.tournamentType || state.__sqTournamentDraft || window.__sqTournamentDraft));}catch(_){return false}}
+  function isDone(){try{const w=Array.isArray(state.match&&state.match.wins)?state.match.wins:[], t=Number((state.match&&state.match.targetWins)||1); return !!(w.length && Math.max.apply(null,w)>=t);}catch(_){return false}}
+  function pname(p){return String((p&&(p.name||p.first_name||p.first||p.initials))||'TBC').trim()||'TBC'}
+  function ensureTournamentActive(){try{const d=state.__sqTournamentDraft||window.__sqTournamentDraft||{};const a=state.__sqTournamentActive||{};state.__sqTournamentActive=Object.assign({},d,a,{type:a.type||d.type||state.match?.tournamentType||'classic',size:Number(a.size||d.size||state.match?.tournamentSize||4),players:Array.isArray(a.players)?a.players:(Array.isArray(d.players)?d.players:[]),bracket:Array.isArray(a.bracket)?a.bracket:(Array.isArray(d.bracket)?d.bracket:[]),rules:a.rules||d.rules||state.match?.tournamentRules||{},results:a.results||{}});const mNo=Number(state.match?.tournamentMatch||state.__sqTournamentActive.currentMatch||1);if(isDone()&&!state.__sqTournamentActive.results[mNo]){const totals=Array.isArray(state.match?.history)&&state.match.history.length&&Array.isArray(state.match.history[state.match.history.length-1]?.totals)?state.match.history[state.match.history.length-1].totals:(Array.isArray(state.players)?state.players.map((_,i)=>typeof totalScoreForPlayer==='function'?totalScoreForPlayer(i):0):[]);let wi=0,max=-Infinity;totals.forEach((v,i)=>{const n=Number(v||0);if(n>max){max=n;wi=i;}});const wp=state.players&&state.players[wi];const lp=Array.isArray(state.players)?state.players.find((_,i)=>i!==wi):null;state.__sqTournamentActive.results[mNo]={match:mNo,winnerSeed:Number(wp&&wp.tournamentSeed||0)||null,winnerName:pname(wp),winnerTotal:max,loserSeed:Number(lp&&lp.tournamentSeed||0)||null,loserName:pname(lp),totals:totals.slice(),completedAt:new Date().toISOString()};try{save()}catch(_){}}window.__sqTournamentDraft=state.__sqTournamentDraft||window.__sqTournamentDraft||d;}catch(e){console.warn('[SQ] Fix80 tournament active ensure failed',e)}}
+  function patchLeaderboard(){try{if(document.body?.dataset?.page!=='leaderboard')return;if(!isTournament()||!isDone())return;ensureTournamentActive();const hs=document.getElementById('highScoresMenuBtnLB');if(hs){hs.classList.add('sq-tournament-force-hide','sq-tournament-hidden');}const pl=document.getElementById('btnPremierLeague');if(pl){pl.classList.add('sq-tournament-force-hide','sq-tournament-hidden');}const stack=document.querySelector('#leaderboard .stacked-actions')||document.querySelector('.stacked-actions');if(!stack)return;let btn=document.getElementById('sqTournamentNextRoundBtn');if(!btn){btn=document.createElement('button');btn.id='sqTournamentNextRoundBtn';btn.className='btn primary big';btn.type='button';btn.textContent='NEXT ROUND';const end=document.getElementById('newMatchBtn');if(end&&end.parentNode===stack)stack.insertBefore(btn,end);else stack.appendChild(btn);}btn.classList.remove('hidden');btn.textContent='NEXT ROUND';btn.disabled=false;btn.onclick=function(e){e.preventDefault();ensureTournamentActive();if(typeof window.__sqOpenTournamentTreeFromLeaderboard==='function')window.__sqOpenTournamentTreeFromLeaderboard();else{try{toast('Tournament tree runner not loaded.')}catch(_){}}};}catch(e){console.warn('[SQ] Fix80 tournament leaderboard patch failed',e)}}
+  const oldShow=window.showLeaderboard;if(typeof oldShow==='function'&&!oldShow.__sqFix80TournamentWrapped){window.showLeaderboard=function(){const ret=oldShow.apply(this,arguments);setTimeout(patchLeaderboard,0);setTimeout(patchLeaderboard,80);setTimeout(patchLeaderboard,250);return ret};window.showLeaderboard.__sqFix80TournamentWrapped=true;try{showLeaderboard=window.showLeaderboard}catch(_){}}
+  setInterval(patchLeaderboard,250);window.__sqPatchTournamentLeaderboardNow=patchLeaderboard;
+})();
+</script>
+<!-- <<< PATCH:FIX80_TOURNAMENT_LEADERBOARD_FORCE_PATCH END -->
+
+
+<!-- >>> PATCH:FIX83_TOURNAMENT_LEADERBOARD_BRACKET_MISSX3 START -->
+<style id="sq-fix83-tournament-bracket-css">
+body[data-page="leaderboard"] #highScoresMenuBtnLB,
+body[data-page="leaderboard"] #btnPremierLeague,
+body[data-page="leaderboard"] #sqTournamentNextRoundBtn,
+body[data-page="leaderboard"] #sqTournamentNextRoundBtnFix81,
+body[data-page="leaderboard"] #sqTournamentNextRoundBtnFix82{
+  display:none!important;
+}
+body[data-page="leaderboard"] #sqTournamentNextRoundBtnFix83{
+  display:block!important;
+  order:1;
+}
+body[data-page="leaderboard"] #sqFix83TournamentGap{order:2;height:12px;min-height:12px;display:block!important;pointer-events:none;}
+body[data-page="leaderboard"] #gameScoresBtnLB{order:3;}
+body[data-page="leaderboard"] #newMatchBtn{order:4;}
+.sq-classic-bracket-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding:6px 0 2px;}
+.sq-classic-bracket{display:grid;gap:14px;align-items:center;min-width:680px;}
+.sq-classic-bracket.bracket4{grid-template-columns:1fr 1fr 1fr;}
+.sq-classic-bracket.bracket8{grid-template-columns:1.15fr .95fr .9fr .95fr 1.15fr;}
+.sq-bracket-col{display:flex;flex-direction:column;gap:22px;justify-content:center;min-height:260px;}
+.sq-bracket-col.mid{align-items:center;gap:12px;}
+.sq-bracket-match{position:relative;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:10px;background:rgba(255,255,255,.035);box-shadow:inset 0 0 0 1px rgba(255,255,255,.025);}
+.sq-bracket-match-title{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:rgba(231,233,245,.55);font-weight:900;margin-bottom:7px;}
+.sq-bracket-team{border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:7px 9px;margin:6px 0;background:rgba(255,255,255,.045);font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sq-bracket-team.winner{border-color:rgba(70,255,140,.82);box-shadow:0 0 14px rgba(70,255,140,.18);}
+.sq-bracket-team.pending{opacity:.55;}
+.sq-bracket-seed{color:#ff8a00;font-weight:950;margin-right:4px;}
+.sq-bracket-final{min-width:180px;text-align:center;}
+.sq-bracket-cup{font-size:42px;line-height:1;filter:drop-shadow(0 0 10px rgba(255,178,59,.28));margin:4px 0;}
+.sq-bracket-note{font-size:12px;color:rgba(231,233,245,.62);line-height:1.35;margin-top:10px;}
+.sq-turbo-timer-svg{pointer-events:none!important;}
+</style>
+<script id="sq-fix83-tournament-bracket-js">
+(function(){
+  if(window.__sqFix83TournamentLeaderboardBracket)return; window.__sqFix83TournamentLeaderboardBracket=true;
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]);});}
+  function txt(el){return String(el&&el.textContent||'').replace(/\s+/g,' ').trim().toUpperCase();}
+  function isLeaderboard(){return document.body&&document.body.dataset&&document.body.dataset.page==='leaderboard'&&document.getElementById('leaderboard');}
+  function isTournament(){try{const m=window.state&&state.match?state.match:{}; if(m.tournament||m.tournamentType||m.tournamentSize||m.tournamentMatch)return true; if(state&& (state.__sqTournamentActive||state.__sqTournamentDraft))return true; if(window.__sqTournamentDraft)return true; const ss=sessionStorage.getItem('sq_tournament_runtime_v1'); if(ss)return true;}catch(_){} return false;}
+  function matchDone(){try{const w=Array.isArray(state?.match?.wins)?state.match.wins:[],t=Number(state?.match?.targetWins||1);return !!(w.length&&Math.max.apply(null,w)>=t)}catch(_){return false}}
+  function playerName(p){return String(p&&p.name||p&&p.player||'TBC').trim()||'TBC';}
+  function seedLabel(p){return p&&p.seed!=null?'#'+p.seed:(p&&p.tournamentSeed!=null?'#'+p.tournamentSeed:'');}
+  function active(){try{state.__sqTournamentActive=state.__sqTournamentActive||{};return state.__sqTournamentActive}catch(_){return {}}}
+  function draft(){try{return state?.__sqTournamentDraft||window.__sqTournamentDraft||active()||{}}catch(_){return {}}}
+  function currentWinner(){try{const players=Array.isArray(state?.players)?state.players:[]; const totals=(Array.isArray(state?.match?.history)&&state.match.history.length&&Array.isArray(state.match.history[state.match.history.length-1]?.totals))?state.match.history[state.match.history.length-1].totals:players.map((_,i)=>typeof totalScoreForPlayer==='function'?totalScoreForPlayer(i):0); let wi=0,max=-Infinity; totals.forEach((v,i)=>{const n=Number(v||0); if(n>max){max=n;wi=i}}); const p=players[wi]; return p?{seed:Number(p.tournamentSeed||p.seed||0)||null,name:playerName(p),raw:p,total:max}:null;}catch(_){return null}}
+  function captureResult(){try{const a=active(),m=state?.match||{}; a.results=a.results||{}; const no=Number(m.tournamentMatch||a.currentMatch||1); if(!a.results[no]){const w=currentWinner(); if(w&&w.name)a.results[no]=Object.assign({match:no,completedAt:new Date().toISOString()},w);} state.__sqTournamentActive=a; try{save()}catch(_){}}catch(e){console.warn('[SQ] Fix83 capture failed',e)}}
+  function seedMap(){const mp=new Map();try{(active().players||draft().players||[]).forEach(p=>{if(p&&p.seed!=null)mp.set(Number(p.seed),p);});(active().bracket||draft().bracket||[]).forEach(m=>[m.a,m.b].forEach(p=>{if(p&&p.seed!=null&&!mp.has(Number(p.seed)))mp.set(Number(p.seed),p)}));}catch(_){} return mp;}
+  function resultPlayer(matchNo){try{const r=active().results&&active().results[matchNo]; if(!r)return null; const p=seedMap().get(Number(r.seed||r.winnerSeed)); return p||{seed:r.seed||r.winnerSeed,name:r.name||r.winnerName};}catch(_){return null}}
+  function initialMatch(no){try{return (active().bracket||draft().bracket||[]).find(m=>Number(m.match)===Number(no))||null}catch(_){return null}}
+  function matchDef(no){const size=Number(active().size||draft().size||state?.match?.tournamentSize||4); const init=initialMatch(no); if(init)return init; if(size===4&&no===3)return{match:3,round:'Final',a:resultPlayer(1),b:resultPlayer(2)}; if(size===8){if(no===5)return{match:5,round:'Semi-final',a:resultPlayer(1),b:resultPlayer(2)}; if(no===6)return{match:6,round:'Semi-final',a:resultPlayer(3),b:resultPlayer(4)}; if(no===7)return{match:7,round:'Final',a:resultPlayer(5),b:resultPlayer(6)}} return null;}
+  function nextMatch(){captureResult(); const size=Number(active().size||draft().size||state?.match?.tournamentSize||4), max=size===8?7:3, res=active().results||{}; for(let i=1;i<=max;i++){if(res[i])continue; const md=matchDef(i); if(md&&md.a&&md.b)return md;} return null;}
+  function teamHtml(p, matchNo){const r=active().results&&active().results[matchNo]; const won=r&&((r.seed||r.winnerSeed)===(p&&p.seed)||String(r.name||r.winnerName).toLowerCase()===playerName(p).toLowerCase()); return '<div class="sq-bracket-team '+(p?'':'pending')+' '+(won?'winner':'')+'"><span class="sq-bracket-seed">'+esc(seedLabel(p))+'</span>'+esc(playerName(p))+'</div>';}
+  function matchHtml(no){const md=matchDef(no)||{match:no,a:null,b:null,round:'TBC'}; return '<div class="sq-bracket-match"><div class="sq-bracket-match-title">'+esc(md.round||'Match '+no)+' · Match '+no+'</div>'+teamHtml(md.a,no)+teamHtml(md.b,no)+'</div>';}
+  function renderClassicTree(){const size=Number(active().size||draft().size||state?.match?.tournamentSize||4); if(size===8){return '<div class="sq-classic-bracket-wrap"><div class="sq-classic-bracket bracket8"><div class="sq-bracket-col">'+matchHtml(1)+matchHtml(2)+'</div><div class="sq-bracket-col">'+matchHtml(5)+'</div><div class="sq-bracket-col mid"><div class="sq-bracket-cup">🏆</div>'+matchHtml(7)+'</div><div class="sq-bracket-col">'+matchHtml(6)+'</div><div class="sq-bracket-col">'+matchHtml(3)+matchHtml(4)+'</div></div></div>';} return '<div class="sq-classic-bracket-wrap"><div class="sq-classic-bracket bracket4"><div class="sq-bracket-col">'+matchHtml(1)+'</div><div class="sq-bracket-col mid"><div class="sq-bracket-cup">🏆</div>'+matchHtml(3)+'</div><div class="sq-bracket-col">'+matchHtml(2)+'</div></div></div>';}
+  function toGamePlayer(sp){const name=playerName(sp),raw=sp&&sp.raw?sp.raw:{};let parts={first:name,last:''};try{if(typeof __sqNameParts==='function')parts=__sqNameParts(name)}catch(_){}let init=name.slice(0,2).toUpperCase();try{if(typeof __sqNormalizeInitials==='function')init=__sqNormalizeInitials(raw.initials||sp.initials,name)}catch(_){}return{type:raw.type||'registered',id:raw.id!=null?raw.id:(sp&&sp.id!=null?sp.id:null),name:name,first_name:String(raw.first_name||raw.first||sp.first_name||'').trim()||parts.first,last_name:String(raw.last_name||raw.last||sp.last_name||'').trim()||parts.last,nickname:String(raw.nickname||sp.nickname||'').trim(),initials:init,color:null,tournamentSeed:sp&&sp.seed,tournamentRank:sp&&sp.rank};}
+  function startMatch(md){try{if(!md||!md.a||!md.b){try{toast('Next tournament match is not ready.')}catch(_){}return}const a=active(),d=draft();a.currentMatch=md.match;a.currentRound=md.round||'Tournament Match';state.__sqTournamentActive=a;state.__sqTournamentDraft=d;state.players=[toGamePlayer(md.a),toGamePlayer(md.b)];try{assignUniqueColors(state.players)}catch(_){}const id=typeof genUuidV4==='function'?genUuidV4():('tournament-'+Date.now());const rules=a.rules||d.rules||state?.match?.tournamentRules||{};state.match={id:id,mode:'official',tournament:true,tournamentType:a.type||d.type||state?.match?.tournamentType||'classic',tournamentSize:Number(a.size||d.size||state?.match?.tournamentSize||4),tournamentRound:md.round||'Tournament Match',tournamentMatch:md.match,tournamentRules:rules,forcePractice:false,practiceType:null,createdAtIso:new Date().toISOString(),targetWins:1,gameNumber:1,wins:[0,0],history:[],completedLogged:false};state.matchAgg=null;state.finished=false;state.gameAwarded=false;state.currentRound=0;state.currentPlayer=0;state.currentDart=0;state.history=[];state.score=[];try{ensureMatchAgg()}catch(_){}try{save()}catch(_){}try{startNewGame(false)}catch(e){console.error('[SQ] Fix83 start match failed',e);}}catch(e){console.error('[SQ] Fix83 start match failed',e)}}
+  function openTree(){captureResult();const next=nextMatch();const ov=document.createElement('div');ov.className='modal-backdrop sq-tournament-tree-modal';const md=document.createElement('div');md.className='modal';md.style.maxWidth='980px';const h=document.createElement('h3');h.textContent='Tournament Tree';const body=document.createElement('div');body.className='modal-body';body.innerHTML='<div class="sg-tournament-intro"><div class="sg-tournament-title">UPDATED KNOCKOUT TREE</div><div class="sg-tournament-sub">Winner has been advanced. Bracket flows into the final in the centre.</div></div>'+renderClassicTree()+'<div class="sq-bracket-note">Press Next to open throw order for the next available match.</div>';const ft=document.createElement('div');ft.className='modal-footer';const back=document.createElement('button');back.className='btn';back.textContent='Back';back.onclick=()=>ov.remove();const nxt=document.createElement('button');nxt.className='btn primary';nxt.textContent=next?'Next':'Tournament Complete';nxt.disabled=!next;nxt.onclick=function(){if(next){ov.remove();startMatch(next)}};ft.append(back,nxt);md.append(h,body,ft);ov.appendChild(md);document.body.appendChild(ov);md.tabIndex=0;md.focus();ov.addEventListener('click',e=>{if(e.target===ov)ov.remove()});}
+  function patchLeaderboard(){try{if(!isLeaderboard()||!isTournament()||!matchDone())return false; captureResult(); const stack=document.querySelector('#leaderboard .stacked-actions')||document.querySelector('.stacked-actions'); if(!stack)return false; Array.from(stack.querySelectorAll('button')).forEach(b=>{const t=txt(b); if(t==='HIGH SCORES'||t==='PREMIER LEAGUE'||b.id==='sqTournamentNextRoundBtn'||b.id==='sqTournamentNextRoundBtnFix81'||b.id==='sqTournamentNextRoundBtnFix82'){b.style.display='none';b.classList.add('hidden','sqTournamentHideBtn');}}); let next=document.getElementById('sqTournamentNextRoundBtnFix83'); if(!next){next=document.createElement('button');next.id='sqTournamentNextRoundBtnFix83';next.type='button';next.className='btn primary big';next.textContent='NEXT ROUND';}next.onclick=function(e){e.preventDefault();openTree();}; const gameScores=Array.from(stack.querySelectorAll('button')).find(b=>txt(b)==='GAME SCORES'); const end=document.getElementById('newMatchBtn')||Array.from(stack.querySelectorAll('button')).find(b=>txt(b)==='END MATCH'); let gap=document.getElementById('sqFix83TournamentGap'); if(!gap){gap=document.createElement('div');gap.id='sqFix83TournamentGap';} stack.appendChild(next); stack.appendChild(gap); if(gameScores)stack.appendChild(gameScores); if(end)stack.appendChild(end); return true;}catch(e){console.warn('[SQ] Fix83 leaderboard patch failed',e);return false;}}
+  window.__sqOpenTournamentTreeFromLeaderboard=openTree;
+  window.__sqFix83PatchTournamentLeaderboardNow=patchLeaderboard;
+  window.__sqFix83TournamentDebug=function(){return{page:document.body?.dataset?.page,isTournament:isTournament(),matchDone:matchDone(),active:active(),draft:draft(),next:nextMatch(),patched:patchLeaderboard()};};
+  setInterval(patchLeaderboard,250);
+  setTimeout(patchLeaderboard,0);setTimeout(patchLeaderboard,250);setTimeout(patchLeaderboard,1000);
+  document.addEventListener('click',function(e){try{const btn=e.target&&e.target.closest?e.target.closest('button'):null;if(!btn)return;const t=txt(btn);if(t.indexOf('MISS X')===0||t.replace(/\s+/g,'').indexOf('MISSX3')>=0||btn.classList.contains('dtX3')){const before=String((state?.currentRound||0)+'/'+(state?.currentPlayer||0)+'/'+(state?.currentDart||0)+'/'+JSON.stringify(state?.score||[]).length);setTimeout(function(){try{const after=String((state?.currentRound||0)+'/'+(state?.currentPlayer||0)+'/'+(state?.currentDart||0)+'/'+JSON.stringify(state?.score||[]).length);if(after===before&&typeof pressMissN==='function'){pressMissN(3);}}catch(_){}},120);}}catch(_){}},true);
+})();
+</script>
+<!-- <<< PATCH:FIX83_TOURNAMENT_LEADERBOARD_BRACKET_MISSX3 END -->
 </body>
 </html>
 
@@ -39333,3 +41111,411 @@ body[data-page="game"] .pad-bar button[title*="MISS x"]{
 }
 </style>
 <!-- <<< PATCH:FIX42_PAD_FORMAT_LAYOUT_CLEARANCE END -->
+
+<script>
+/* >>> PATCH:PHASE1_FIX61_LOCALSTORAGE_REPORT_NOISE_AND_PURGE START */
+(function(){
+  if (window.__sqLocalStoragePolicyFix61Loaded) return;
+  window.__sqLocalStoragePolicyFix61Loaded = true;
+
+  var RETIRED_KEYS = ['sq_recent_completed_games_cache_v2'];
+
+  function rawGetLS(key){
+    try{
+      // Deliberately avoid localStorage.getItem() because Fix59 wraps it to warn.
+      // Policy reports must not create their own authority warnings.
+      var v = window.localStorage[String(key)];
+      return (typeof v === 'undefined') ? null : v;
+    }catch(_){ return null; }
+  }
+
+  function shapeOf(raw){
+    if(raw == null) return 'missing';
+    try{
+      var p = JSON.parse(raw);
+      if(Array.isArray(p)) return 'json-array[' + p.length + ']';
+      if(p && typeof p === 'object') return 'json-object{' + Object.keys(p).slice(0,5).join(',') + '}';
+      return 'json-' + typeof p;
+    }catch(_){ return String(raw).length > 80 ? 'string-long' : 'string'; }
+  }
+
+  function actionFor(policy){
+    policy = String(policy || '');
+    if(/^safe/.test(policy)) return 'keep';
+    if(policy === 'retired-inspection-only') return 'purged-if-present';
+    if(policy === 'deprecated-do-not-use') return 'retire-reader-then-delete';
+    if(policy.indexOf('recovery') >= 0) return 'verify-recovery-only';
+    if(policy.indexOf('cache-only') >= 0) return 'verify-cache-only';
+    return 'inspect-read-write-path';
+  }
+
+  function policyFor(key){
+    try{
+      if (typeof window.__sqGetLocalStoragePolicy === 'function') return window.__sqGetLocalStoragePolicy(key);
+      var p = window.__sqLocalStoragePolicy && window.__sqLocalStoragePolicy[key];
+      if (p) return { key:key, policy:p[0], reason:p[1] };
+      var safe = window.__sqLocalStorageSafePolicy && window.__sqLocalStorageSafePolicy[key];
+      if (safe) return { key:key, policy:safe, reason:'known safe cache/preference key' };
+    }catch(_){ }
+    return { key:key, policy:'unclassified', reason:'' };
+  }
+
+  window.__sqPurgeRetiredLocalStorageKeys = function __sqPurgeRetiredLocalStorageKeys(){
+    var rows = RETIRED_KEYS.map(function(key){
+      var before = rawGetLS(key);
+      var existed = before != null;
+      try{ if (existed) window.localStorage.removeItem(key); }catch(_){ }
+      var after = rawGetLS(key);
+      return { key:key, existed:existed, removed:existed && after == null, bytes:before == null ? 0 : String(before).length };
+    });
+    try{ console.table(rows); }catch(_){ console.log(rows); }
+    return rows;
+  };
+
+  window.__sqGetLocalStoragePolicyReport = function __sqGetLocalStoragePolicyReport(){
+    var policyKeys = Object.keys(window.__sqLocalStoragePolicy || {});
+    var safeKeys = Object.keys(window.__sqLocalStorageSafePolicy || {});
+    var keys = policyKeys.concat(safeKeys).filter(function(k, i, arr){ return arr.indexOf(k) === i; });
+    var rows = keys.map(function(key){
+      var raw = rawGetLS(key);
+      var p = policyFor(key);
+      return {
+        key:key,
+        exists:raw != null,
+        policy:p.policy || 'unclassified',
+        action:actionFor(p.policy),
+        reason:p.reason || '',
+        bytes:raw == null ? 0 : String(raw).length,
+        shape:shapeOf(raw)
+      };
+    });
+    try{ console.table(rows); }catch(_){ console.log(rows); }
+    return rows;
+  };
+  window.__sqPrintLocalStoragePolicyReport = window.__sqGetLocalStoragePolicyReport;
+
+  // Purge the retired completed-game cache now that Supabase games rows are authoritative.
+  try{
+    var purgeRows = window.__sqPurgeRetiredLocalStorageKeys();
+    if (purgeRows.some(function(r){ return r.removed; })) console.info('[SQ] Retired completed-game cache key purged.');
+  }catch(_){ }
+})();
+/* <<< PATCH:PHASE1_FIX61_LOCALSTORAGE_REPORT_NOISE_AND_PURGE END */
+</script>
+
+<!-- >>> PATCH:FIX68_RECOVERY_WARNING_SILENCE START -->
+<script>
+(function(){
+  if(window.__sqFix68RecoveryWarningSilence) return;
+  window.__sqFix68RecoveryWarningSilence = true;
+  try{
+    if(window.__sqLocalStoragePolicy){
+      window.__sqLocalStoragePolicy['shateki_quest_scorer_v6'] = ['safe-recovery-cache', 'in-progress recovery cache; guarded against completed/base state truth'];
+      window.__sqLocalStoragePolicy['sq_match_active_v1'] = ['safe-recovery-cache', 'active match recovery cache; guarded against completed/base state truth'];
+    }
+    console.info('[SQ] Recovery localStorage warnings silenced for valid guarded recovery keys');
+  }catch(e){ console.warn('[SQ] Fix68 recovery warning policy update failed', e); }
+})();
+</script>
+<!-- <<< PATCH:FIX68_RECOVERY_WARNING_SILENCE END -->
+
+<!-- >>> PATCH:FIX78_TURBO_HS_AND_START_ROWS START -->
+<style id="sq-fix78-turbo-hs-startrows-css">
+body[data-page="game"] .livev2panel.sqTurboClampActive .v2Badge.sqTurboPreStartBadge{
+  color: transparent !important;
+  text-shadow: none !important;
+  border-color: rgba(255,255,255,.10) !important;
+  background: rgba(255,255,255,.045) !important;
+  box-shadow: none !important;
+}
+.sq-hs-mode-toggle{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin:-36px 0 10px auto;min-height:30px;}
+.sq-hs-mode-toggle .btn{padding:7px 14px;border-radius:999px;font-size:12px;font-weight:900;letter-spacing:.02em;}
+.sq-hs-mode-toggle .btn.active{border-color:rgba(255,122,0,.95);box-shadow:0 0 0 1px rgba(255,122,0,.25),0 0 14px rgba(255,122,0,.20);color:#fff;}
+@media(max-width:560px){.sq-hs-mode-toggle{margin:8px 0 10px;justify-content:flex-start}.sq-hs-mode-toggle .btn{padding:7px 11px}}
+</style>
+<script id="sq-fix78-turbo-hs-startrows-js">
+(function(){
+  if(window.__sqFix78TurboHsStartRows) return;
+  window.__sqFix78TurboHsStartRows = true;
+
+  function isTurbo(){
+    try{
+      const m=window.state?.match||{}, d=window.__sqTournamentDraft||window.state?.__sqTournamentDraft||null;
+      const t=String(m.tournamentType||m.type||d?.type||window.state?.tournamentType||'').toLowerCase();
+      return !!(t==='turbo'||m.strictTimer===true||m.throwLimitSeconds===20||window.state?.strictTimer===true||window.state?.throwLimitSeconds===20);
+    }catch(_){return false;}
+  }
+  function startIdx(){
+    try{
+      const r=window.state?.match?.tournamentRules||window.state?.__sqTournamentDraft?.rules||window.__sqTournamentDraft?.rules||{};
+      const n=Number(r.startRoundIndex ?? 7);
+      return Number.isFinite(n)?Math.max(0,n):7;
+    }catch(_){return 7;}
+  }
+  function markTurboPreStartRows(){
+    try{
+      const panel=document.querySelector('.livev2panel');
+      const rows=document.getElementById('v2Rows');
+      const wrap=document.querySelector('.livev2panel .v2RowsWrap');
+      if(!panel||!rows||!isTurbo()) return;
+      panel.classList.add('sqTurboClampActive');
+      const cutoff=startIdx();
+      const pCount=Array.isArray(window.state?.players)?window.state.players.length:2;
+      const kids=Array.from(rows.children);
+      let firstStartBadge=null;
+      for(let i=0;i<kids.length;i++){
+        const badge=kids[i];
+        if(!badge.classList||!badge.classList.contains('v2Badge')) continue;
+        const txt=String(badge.textContent||'').trim();
+        const n=Number(txt);
+        const idx=Number.isFinite(n)?(n-10):-1;
+        if(idx>=0 && idx<cutoff){
+          badge.textContent='';
+          badge.classList.add('sqTurboPreStartBadge');
+          for(let j=1;j<=pCount;j++){
+            const cell=kids[i+j];
+            if(cell&&cell.classList&&cell.classList.contains('v2Cell')){
+              cell.classList.add('sqTurboPreStartCell');
+              cell.querySelectorAll('.v2CellNum,.v2SoloScore').forEach(el=>{el.textContent='';});
+            }
+          }
+        } else if(idx===cutoff && !firstStartBadge){
+          firstStartBadge=badge;
+        }
+      }
+      // Prevent manual scroll back into pre-start Turbo rounds once the game is at/after the Turbo start.
+      if(wrap && firstStartBadge && Number(window.state?.currentRound||0) >= cutoff){
+        const minTop=Math.max(0, firstStartBadge.offsetTop-8);
+        if(wrap.scrollTop < minTop) wrap.scrollTop = minTop;
+        if(!wrap.__sqTurboClampBound){
+          wrap.__sqTurboClampBound=true;
+          wrap.addEventListener('scroll', function(){
+            try{
+              if(!isTurbo()) return;
+              const b=document.querySelector('.v2Badge:not(.sqTurboPreStartBadge)');
+              const min=b?Math.max(0,b.offsetTop-8):minTop;
+              if(wrap.scrollTop < min) wrap.scrollTop = min;
+            }catch(_){ }
+          }, {passive:true});
+        }
+      }
+    }catch(_){ }
+  }
+  const oldUpdate=window.updateUI||(typeof updateUI==='function'?updateUI:null);
+  if(oldUpdate && !oldUpdate.__sqFix78Wrapped){
+    const wrapped=function(){const ret=oldUpdate.apply(this,arguments);setTimeout(markTurboPreStartRows,0);return ret;};
+    wrapped.__sqFix78Wrapped=true; window.updateUI=wrapped; try{updateUI=wrapped;}catch(_){ }
+  }
+  setInterval(markTurboPreStartRows,250);
+
+  function esc(s){try{return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}catch(_){return '';}}
+  function parseTime(t){const n=Date.parse(t||'');return Number.isFinite(n)?n:0;}
+  function fmtWhen(ts){try{const d=new Date(ts);if(!Number.isFinite(d.getTime()))return '—';return d.toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(',', '');}catch(_){return '—';}}
+  function gameIsTurbo(g){
+    try{
+      const st=g?.state||g?.raw?.state||{};
+      const m=st.match||g?.match||{};
+      const type=String(st.tournamentType||st.tournament_type||m.tournamentType||m.type||m.tournament_type||st.__sqTournamentDraft?.type||g?.tournamentType||'').toLowerCase();
+      return !!(type==='turbo'||st.strictTimer===true||st.throwLimitSeconds===20||m.strictTimer===true||m.throwLimitSeconds===20||st.mode==='turbo');
+    }catch(_){return false;}
+  }
+  function norm(s){return String(s||'').trim().toLowerCase();}
+  async function savedSet(){
+    try{const rows=(typeof cloudListPlayers==='function')?await cloudListPlayers():[];return new Set((rows||[]).map(p=>norm(p?.name||p?.player_name||p?.display_name||p)).filter(Boolean));}catch(_){return new Set();}
+  }
+  async function getRows(kind){
+    const rows=(typeof window.__sqComputeOfficialPlayerGameRows==='function')?await window.__sqComputeOfficialPlayerGameRows():[];
+    return (rows||[]).filter(r=>kind==='turbo'?gameIsTurbo(r.game):!gameIsTurbo(r.game));
+  }
+
+  window.openHighScoreLeagueDialog = async function openHighScoreLeagueDialog(mode){
+    let hsMode = (mode==='turbo')?'turbo':'classic';
+    document.querySelectorAll('.sq-hs-league-backdrop').forEach(n=>n.remove());
+    const overlay=document.createElement('div'); overlay.className='modal-backdrop sq-hs-league-backdrop';
+    const modal=document.createElement('div'); modal.className='modal sq-wide-modal'; modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
+    const title=document.createElement('h3'); title.textContent='High Score League';
+    const body=document.createElement('div'); body.className='modal-body';
+    body.innerHTML='<div class="sq-hs-mode-toggle"><button id="sqHsClassic" class="btn">Classic</button><button id="sqHsTurbo" class="btn">Turbo</button></div><div id="sqHsHint" class="tag" style="margin:6px 0 10px;"></div><div class="table-wrap"><table class="hs-table hs-league-table"><thead><tr><th style="width:56px;">#</th><th>PLAYER</th><th style="width:140px;text-align:right;">HIGH SCORE</th><th style="width:180px;">WHEN</th></tr></thead><tbody id="hsLeagueBody"><tr><td colspan="4" style="opacity:.8;padding:14px;">Loading…</td></tr></tbody></table></div>';
+    const footer=document.createElement('div'); footer.className='modal-footer';
+    const backBtn=document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+    const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
+    footer.append(backBtn,closeBtn); modal.append(title,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+    function close(){overlay.remove();}
+    backBtn.onclick=function(){close();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}};
+    closeBtn.onclick=close; overlay.addEventListener('click',e=>{if(e.target===overlay)close();}); overlay.addEventListener('keydown',e=>{if(e.key==='Escape')close();}); modal.tabIndex=0; modal.focus();
+    const tbody=modal.querySelector('#hsLeagueBody'), hint=modal.querySelector('#sqHsHint'), bClassic=modal.querySelector('#sqHsClassic'), bTurbo=modal.querySelector('#sqHsTurbo');
+    async function render(){
+      bClassic.classList.toggle('active',hsMode==='classic'); bTurbo.classList.toggle('active',hsMode==='turbo');
+      hint.textContent = hsMode==='turbo'
+        ? 'Turbo tournament games only. Turbo records are separated from Classic because Turbo starts at 17s.'
+        : 'Classic official games only. Turbo tournament scores are stored separately under Turbo.';
+      tbody.innerHTML='<tr><td colspan="4" style="opacity:.8;padding:14px;">Loading…</td></tr>';
+      try{
+        const saved=await savedSet();
+        const rows=await getRows(hsMode);
+        const best=new Map();
+        rows.forEach(r=>{if(saved.size && !saved.has(r.playerKey))return;const prev=best.get(r.playerKey);if(!prev||r.score>prev.score||(r.score===prev.score&&parseTime(r.ts)>parseTime(prev.ts)))best.set(r.playerKey,r);});
+        const out=Array.from(best.values()).sort((a,b)=>(b.score-a.score)||(parseTime(b.ts)-parseTime(a.ts))||String(a.player).localeCompare(String(b.player)));
+        if(!out.length){tbody.innerHTML='<tr><td colspan="4" style="opacity:.85;padding:14px;">No '+(hsMode==='turbo'?'Turbo':'Classic')+' high scores found in saved game history.</td></tr>';return;}
+        tbody.innerHTML=out.map((r,i)=>'<tr><td style="color:#ff8a00;font-weight:800;">'+(i+1)+'</td><td>'+esc(r.player)+'</td><td style="text-align:right;font-weight:800;">'+Math.round(r.score)+'</td><td style="opacity:.85;">'+esc(fmtWhen(r.ts))+'</td></tr>').join('');
+      }catch(e){console.error('[SQ] High Score League mode render failed',e);tbody.innerHTML='<tr><td colspan="4" style="opacity:.85;padding:14px;">Failed to load high score league.</td></tr>';}
+    }
+    bClassic.onclick=function(){hsMode='classic';render();}; bTurbo.onclick=function(){hsMode='turbo';render();}; render();
+  };
+})();
+</script>
+<!-- <<< PATCH:FIX78_TURBO_HS_AND_START_ROWS END -->
+
+<!-- >>> PATCH:FIX79_TOURNAMENT_NEXT_ROUND_HSL_BUTTONS START -->
+<style id="sq-fix79-tournament-next-hsl-css">
+.sq-hs-mode-toggle{margin:0 0 10px auto!important;padding-top:0!important;position:relative!important;z-index:2!important}
+.sq-tournament-tree-modal .modal{max-width:760px}.sq-tournament-tree-box{border:1px solid rgba(255,255,255,.12);border-radius:16px;background:rgba(255,255,255,.035);padding:12px;margin-top:10px}.sq-tournament-tree-title{color:#ffb23b;letter-spacing:.16em;font-weight:900;font-size:13px;margin-bottom:10px}.sq-tournament-match-row{display:grid;grid-template-columns:minmax(0,1fr) 34px minmax(0,1fr);align-items:center;gap:8px;margin:7px 0}.sq-tournament-team-pill{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);border-radius:11px;padding:8px 10px;font-weight:800;min-height:19px}.sq-tournament-team-pill.winner{border-color:rgba(70,255,140,.75);box-shadow:0 0 14px rgba(70,255,140,.16)}.sq-tournament-team-pill.pending{opacity:.55}.sq-tournament-seed{color:#ff7a00;margin-right:4px;font-weight:900}.sq-tournament-vs{text-align:center;opacity:.72;font-weight:900}.sq-tournament-note{color:rgba(231,233,245,.62);font-size:12px;line-height:1.35;margin-top:10px}body[data-page="leaderboard"] #highScoresMenuBtnLB.sq-tournament-hidden,body[data-page="leaderboard"] #btnPremierLeague.sq-tournament-hidden{display:none!important}
+</style>
+<script id="sq-fix79-tournament-next-round-js">
+(function(){
+  if(window.__sqFix79TournamentNextRound)return; window.__sqFix79TournamentNextRound=true;
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]);});}
+  function isTournamentMatch(){try{return !!(window.state&&state.match&&state.match.tournament&&state.__sqTournamentActive);}catch(_){return false}}
+  function isMatchDone(){try{const w=Array.isArray(state.match?.wins)?state.match.wins:[],t=Number(state.match?.targetWins||1);return !!(w.length&&Math.max.apply(null,w)>=t)}catch(_){return false}}
+  function roundName(size,n){if(size===4)return n<=2?'Semi-final':'Final'; if(size===8)return n<=4?'Quarter-final':(n<=6?'Semi-final':'Final'); return 'Tournament Match'}
+  function active(){try{state.__sqTournamentActive=state.__sqTournamentActive||{};return state.__sqTournamentActive}catch(_){return {}}}
+  function draft(){try{return state.__sqTournamentDraft||window.__sqTournamentDraft||{}}catch(_){return {}}}
+  function seedMap(){const m=new Map();try{(draft().players||[]).forEach(p=>{if(p&&p.seed!=null)m.set(Number(p.seed),p)})}catch(_){} try{(active().bracket||[]).forEach(x=>{[x.a,x.b].forEach(p=>{if(p&&p.seed!=null&&!m.has(Number(p.seed)))m.set(Number(p.seed),p)})})}catch(_){} return m}
+  function playerName(p){return String(p&&p.name||'TBC').trim()||'TBC'}
+  function toGamePlayer(sp){const name=playerName(sp),raw=sp&&sp.raw?sp.raw:{};let parts={first:name,last:''};try{if(typeof __sqNameParts==='function')parts=__sqNameParts(name)}catch(_){}let init=name.slice(0,2).toUpperCase();try{if(typeof __sqNormalizeInitials==='function')init=__sqNormalizeInitials(raw.initials||sp.initials,name)}catch(_){}return{type:raw.type||'registered',id:raw.id!=null?raw.id:(sp&&sp.id!=null?sp.id:null),name:name,first_name:String(raw.first_name||raw.first||sp.first_name||'').trim()||parts.first||name,last_name:String(raw.last_name||raw.last||sp.last_name||'').trim()||parts.last||'',nickname:String(raw.nickname||sp.nickname||'').trim(),initials:init,color:null,tournamentSeed:sp&&sp.seed?sp.seed:null,tournamentRank:sp&&sp.rank?sp.rank:null}}
+  function getCurrentWinner(){try{const hist=Array.isArray(state.match?.history)?state.match.history:[],last=hist[hist.length-1]||null;const totals=Array.isArray(last?.totals)?last.totals:(Array.isArray(state.players)?state.players.map((_,i)=>typeof totalScoreForPlayer==='function'?totalScoreForPlayer(i):0):[]);if(!totals.length)return null;let wi=0,max=-Infinity;totals.forEach((t,i)=>{const n=Number(t||0);if(n>max){max=n;wi=i}});const p=state.players&&state.players[wi],seed=Number(p&&p.tournamentSeed||0);return{index:wi,seed:seed||null,name:playerName(p),total:max,totals:totals.slice()}}catch(_){return null}}
+  function ensureCurrentResult(){try{if(!isTournamentMatch()||!isMatchDone())return;const a=active();a.results=a.results||{};const mNo=Number(state.match?.tournamentMatch||a.currentMatch||1);if(a.results[mNo])return;const w=getCurrentWinner();if(!w)return;const players=Array.isArray(state.players)?state.players:[],loser=players.find((p,idx)=>idx!==w.index)||null;a.results[mNo]={match:mNo,winnerSeed:w.seed,winnerName:w.name,winnerTotal:w.total,loserSeed:loser&&loser.tournamentSeed?Number(loser.tournamentSeed):null,loserName:loser?playerName(loser):null,totals:w.totals,completedAt:new Date().toISOString()};state.__sqTournamentActive=a;try{save()}catch(_){}}catch(e){console.warn('[SQ] tournament result capture failed',e)}}
+  function seedByResult(n){const r=active().results&&active().results[n];if(!r||!r.winnerSeed)return null;return seedMap().get(Number(r.winnerSeed))||{seed:r.winnerSeed,name:r.winnerName}}
+  function initialMatch(n){return(active().bracket||[]).find(m=>Number(m.match)===Number(n))||null}
+  function matchDef(n){const size=Number(active().size||draft().size||state.match?.tournamentSize||4),init=initialMatch(n);if(init)return{match:n,a:init.a,b:init.b,round:roundName(size,n)};if(size===4&&n===3)return{match:3,a:seedByResult(1),b:seedByResult(2),round:'Final'};if(size===8){if(n===5)return{match:5,a:seedByResult(1),b:seedByResult(2),round:'Semi-final'};if(n===6)return{match:6,a:seedByResult(3),b:seedByResult(4),round:'Semi-final'};if(n===7)return{match:7,a:seedByResult(5),b:seedByResult(6),round:'Final'}}return null}
+  function nextMatchDef(){ensureCurrentResult();const size=Number(active().size||draft().size||state.match?.tournamentSize||4),max=size===8?7:3;for(let i=1;i<=max;i++){if(active().results&&active().results[i])continue;const md=matchDef(i);if(md&&md.a&&md.b)return md}return null}
+  function teamHtml(p,win){if(!p)return'<div class="sq-tournament-team-pill pending">TBC</div>';return'<div class="sq-tournament-team-pill '+(win?'winner':'')+'"><span class="sq-tournament-seed">#'+esc(p.seed||'?')+'</span>'+esc(playerName(p))+'</div>'}
+  function renderTreeHtml(){ensureCurrentResult();const size=Number(active().size||draft().size||state.match?.tournamentSize||4),max=size===8?7:3;let html='<div class="sq-tournament-tree-box"><div class="sq-tournament-tree-title">UPDATED KNOCKOUT TREE</div>';for(let i=1;i<=max;i++){const md=matchDef(i);if(!md)continue;const r=active().results&&active().results[i];const aw=r&&r.winnerSeed&&md.a&&Number(md.a.seed)===Number(r.winnerSeed);const bw=r&&r.winnerSeed&&md.b&&Number(md.b.seed)===Number(r.winnerSeed);html+='<div class="sq-tournament-note">'+esc(md.round)+' · Match '+i+'</div><div class="sq-tournament-match-row">'+teamHtml(md.a,aw)+'<div class="sq-tournament-vs">VS</div>'+teamHtml(md.b,bw)+'</div>'}html+='<div class="sq-tournament-note">Winner of the completed game has been advanced. Press Next to open throw order for the next available match.</div></div>';return html}
+  function openTournamentTreeFromLeaderboard(){ensureCurrentResult();const next=nextMatchDef();const ov=document.createElement('div');ov.className='modal-backdrop sq-tournament-tree-modal';const md=document.createElement('div');md.className='modal';const h=document.createElement('h3');h.textContent='Tournament Tree';const body=document.createElement('div');body.className='modal-body';body.innerHTML=renderTreeHtml();const ft=document.createElement('div');ft.className='modal-footer';const back=document.createElement('button');back.className='btn';back.textContent='Back';back.onclick=()=>ov.remove();const nxt=document.createElement('button');nxt.className='btn primary';nxt.textContent=next?'Next':'Tournament Complete';nxt.disabled=!next;nxt.onclick=function(){if(next){ov.remove();startTournamentMatch(next)}};ft.append(back,nxt);md.append(h,body,ft);ov.appendChild(md);document.body.appendChild(ov);md.tabIndex=0;md.focus();ov.addEventListener('click',e=>{if(e.target===ov)ov.remove()})}
+  function startTournamentMatch(md){try{if(!md||!md.a||!md.b){try{toast('Next tournament match is not ready.')}catch(_){}return}const a=active();a.currentMatch=md.match;a.currentRound=md.round;state.__sqTournamentActive=a;try{window.__sqSelectedMode='official'}catch(_){}state.players=[toGamePlayer(md.a),toGamePlayer(md.b)];try{assignUniqueColors(state.players)}catch(_){}const matchId=(typeof genUuidV4==='function')?genUuidV4():('tournament-'+Date.now());const d=draft(),prev=state.match||{};state.match={id:matchId,mode:'official',tournament:true,tournamentType:a.type||d.type||prev.tournamentType||'classic',tournamentSize:Number(a.size||d.size||prev.tournamentSize||4),tournamentRound:md.round,tournamentMatch:md.match,tournamentRules:d.rules||prev.tournamentRules||{},forcePractice:false,practiceType:null,createdAtIso:new Date().toISOString(),targetWins:1,gameNumber:1,wins:Array.from({length:state.players.length},()=>0),history:[],completedLogged:false};state.__sqTournamentDraft=d;state.matchAgg=null;state.finished=false;state.gameAwarded=false;state.currentRound=0;state.currentPlayer=0;state.currentDart=0;state.history=[];state.score=[];try{ensureMatchAgg()}catch(_){}try{const p=document.getElementById('liveV2Panel');if(p){p.dataset.built='0';p.dataset.pcount='';p.innerHTML=''}}catch(_){}try{save()}catch(_){}try{startNewGame(false)}catch(e){console.error('[SQ] tournament next match failed',e);try{toast('Next tournament match failed. Check console.')}catch(_){}}}catch(e){console.error('[SQ] tournament next match start failed',e)}}
+  function patchLeaderboard(){try{if(!isTournamentMatch()||!isMatchDone())return;ensureCurrentResult();const hs=document.getElementById('highScoresMenuBtnLB');if(hs)hs.classList.add('sq-tournament-hidden');const pl=document.getElementById('btnPremierLeague');if(pl)pl.classList.add('sq-tournament-hidden');const stack=document.querySelector('#leaderboard .stacked-actions');if(!stack)return;let btn=document.getElementById('sqTournamentNextRoundBtn');if(!btn){btn=document.createElement('button');btn.id='sqTournamentNextRoundBtn';btn.className='btn primary big';btn.type='button';btn.textContent='NEXT ROUND';const end=document.getElementById('newMatchBtn');if(end)stack.insertBefore(btn,end);else stack.appendChild(btn)}const next=nextMatchDef();btn.textContent=next?'NEXT ROUND':'TOURNAMENT COMPLETE';btn.disabled=!next;btn.onclick=function(e){e.preventDefault();openTournamentTreeFromLeaderboard()}}catch(e){console.warn('[SQ] tournament leaderboard patch failed',e)}}
+  const oldShow=window.showLeaderboard; if(typeof oldShow==='function'&&!oldShow.__sqTournamentNextWrapped){window.showLeaderboard=function(){const ret=oldShow.apply(this,arguments);setTimeout(patchLeaderboard,0);setTimeout(patchLeaderboard,150);return ret};window.showLeaderboard.__sqTournamentNextWrapped=true;try{showLeaderboard=window.showLeaderboard}catch(_){}}
+  setInterval(function(){try{if(document.body?.dataset?.page==='leaderboard')patchLeaderboard()}catch(_){}},500);
+  window.__sqOpenTournamentTreeFromLeaderboard=openTournamentTreeFromLeaderboard;
+})();
+</script>
+<!-- <<< PATCH:FIX79_TOURNAMENT_NEXT_ROUND_HSL_BUTTONS END -->
+
+<!-- >>> PATCH:FIX81_TOURNAMENT_LEADERBOARD_HARDENED START -->
+<style id="sq-fix81-tournament-leaderboard-css">
+#leaderboard.sqTournamentLeaderboardActive #highScoresMenuBtnLB,
+#leaderboard.sqTournamentLeaderboardActive #btnPremierLeague,
+#leaderboard.sqTournamentLeaderboardActive .sqTournamentHideBtn{
+  display:none!important;
+}
+#sqTournamentNextRoundBtnFix81{display:block!important;}
+</style>
+<script id="sq-fix81-tournament-leaderboard-js">
+(function(){
+  if (window.__sqFix81TournamentLeaderboard) return;
+  window.__sqFix81TournamentLeaderboard = true;
+  const STORE='sq_tournament_runtime_v2';
+  function safeParse(x){try{return JSON.parse(x||'null')}catch(_){return null}}
+  function store(obj){try{sessionStorage.setItem(STORE,JSON.stringify(Object.assign({ts:Date.now()},obj||{})))}catch(_){}}
+  function readStore(){try{return safeParse(sessionStorage.getItem(STORE))}catch(_){return null}}
+  function clearStore(){try{sessionStorage.removeItem(STORE)}catch(_){}}
+  function pname(p){return String((p&&(p.name||p.player||p.label))||'').trim()}
+  function norm(s){return String(s||'').trim().toLowerCase()}
+  function draft(){try{return state?.__sqTournamentDraft||window.__sqTournamentDraft||readStore()?.draft||null}catch(_){return readStore()?.draft||null}}
+  function active(){try{return state?.__sqTournamentActive||readStore()?.active||null}catch(_){return readStore()?.active||null}}
+  function match(){try{return state?.match||{} }catch(_){return {}}}
+  function currentPlayerNames(){try{return (state?.players||[]).map(pname).filter(Boolean)}catch(_){return []}}
+  function draftHasCurrentPlayers(){try{const d=draft(); if(!d||!Array.isArray(d.players))return false; const ds=new Set(d.players.map(p=>norm(pname(p)))); const names=currentPlayerNames(); return names.length>=2 && names.every(n=>ds.has(norm(n)));}catch(_){return false}}
+  function hasTournamentClue(){
+    try{
+      const m=match();
+      if(m.tournament===true||m.tournamentType||m.tournamentSize||m.tournamentMatch||m.tournamentRound)return true;
+      if(state?.__sqTournamentActive||state?.__sqTournamentDraft||window.__sqTournamentDraft)return draftHasCurrentPlayers() || !!(state?.__sqTournamentActive);
+      const st=readStore();
+      if(st&&st.active)return draftHasCurrentPlayers() || (Date.now()-Number(st.ts||0)<6*60*60*1000);
+      if((state?.players||[]).some(p=>p&&(p.tournamentSeed||p.tournamentRank)))return true;
+    }catch(_){ }
+    return false;
+  }
+  function isLeaderboardVisible(){
+    try{return document.body?.dataset?.page==='leaderboard'||!document.getElementById('leaderboard')?.classList.contains('hidden')}catch(_){return false}
+  }
+  function isEndMatchVisible(){try{const b=document.getElementById('newMatchBtn');return !!(b&&!b.classList.contains('hidden')&&b.offsetParent!==null)}catch(_){return false}}
+  function markRuntime(reason){
+    try{
+      const d=draft(); const a=active(); const m=match();
+      store({active:true,reason:reason||'unknown',draft:d,activeState:a,match:{tournament:!!m.tournament,tournamentType:m.tournamentType,tournamentSize:m.tournamentSize,tournamentMatch:m.tournamentMatch,tournamentRound:m.tournamentRound,tournamentRules:m.tournamentRules},players:(state?.players||[]).map(p=>({name:pname(p),seed:p?.tournamentSeed||null,rank:p?.tournamentRank||null}))});
+    }catch(_){store({active:true,reason:reason||'unknown'})}
+  }
+  document.addEventListener('click',function(e){
+    try{
+      const btn=e.target&&e.target.closest?e.target.closest('button,.btn,[role="button"]'):null;
+      if(!btn)return;
+      const txt=String(btn.textContent||'').trim().toUpperCase();
+      if(txt.includes('START TOURNAMENT')) markRuntime('start-tournament-click');
+      if(txt.includes('START GAME') && (hasTournamentClue()||readStore()?.active)) markRuntime('throw-order-start-game');
+      if(txt.includes('END MATCH')) { setTimeout(function(){ if(!isLeaderboardVisible()) clearStore(); }, 500); }
+    }catch(_){ }
+  },true);
+  function ensureRuntimeFromState(){try{if(hasTournamentClue())markRuntime('state-clue')}catch(_){}}
+  function ensureTournamentActive(){
+    try{
+      if(!state)return null;
+      const d=draft()||{}; const st=readStore()||{}; const m=match();
+      const a=state.__sqTournamentActive||st.activeState||{};
+      const size=Number(a.size||d.size||m.tournamentSize||4);
+      const type=a.type||d.type||m.tournamentType||'classic';
+      state.__sqTournamentDraft=state.__sqTournamentDraft||d;
+      state.__sqTournamentActive=Object.assign({},d,a,{active:true,type,size,players:Array.isArray(a.players)?a.players:(Array.isArray(d.players)?d.players:[]),bracket:Array.isArray(a.bracket)?a.bracket:(Array.isArray(d.bracket)?d.bracket:[]),rules:a.rules||d.rules||m.tournamentRules||{},results:a.results||{}});
+      if(!m.tournament){state.match=Object.assign({},m,{tournament:true,tournamentType:type,tournamentSize:size,tournamentMatch:m.tournamentMatch||state.__sqTournamentActive.currentMatch||1,tournamentRound:m.tournamentRound||state.__sqTournamentActive.currentRound||'Tournament Match'});}
+      return state.__sqTournamentActive;
+    }catch(e){console.warn('[SQ] Fix81 ensure active failed',e);return null}
+  }
+  function currentWinnerResult(){
+    try{
+      const totals=(Array.isArray(state?.match?.history)&&state.match.history.length&&Array.isArray(state.match.history[state.match.history.length-1]?.totals))?state.match.history[state.match.history.length-1].totals:(state.players||[]).map((_,i)=>typeof totalScoreForPlayer==='function'?totalScoreForPlayer(i):0);
+      let wi=0,max=-Infinity; totals.forEach((t,i)=>{const n=Number(t||0); if(n>max){max=n;wi=i}});
+      const wp=state.players?.[wi], lp=(state.players||[]).find((_,i)=>i!==wi);
+      return {winnerSeed:Number(wp?.tournamentSeed||0)||null,winnerName:pname(wp),winnerTotal:max,loserSeed:Number(lp?.tournamentSeed||0)||null,loserName:pname(lp),totals:totals.slice()};
+    }catch(_){return null}
+  }
+  function captureResult(){
+    try{
+      const a=ensureTournamentActive(); if(!a)return;
+      a.results=a.results||{}; const mNo=Number(state?.match?.tournamentMatch||a.currentMatch||1);
+      if(a.results[mNo])return;
+      const r=currentWinnerResult(); if(!r||!r.winnerName)return;
+      a.results[mNo]=Object.assign({match:mNo,completedAt:new Date().toISOString()},r);
+      state.__sqTournamentActive=a; try{save()}catch(_){ }
+    }catch(e){console.warn('[SQ] Fix81 result capture failed',e)}
+  }
+  function getSeedMap(){const map=new Map();try{(ensureTournamentActive()?.players||[]).forEach(p=>{if(p&&p.seed!=null)map.set(Number(p.seed),p)});(ensureTournamentActive()?.bracket||[]).forEach(m=>[m.a,m.b].forEach(p=>{if(p&&p.seed!=null&&!map.has(Number(p.seed)))map.set(Number(p.seed),p)}));}catch(_){}return map}
+  function seedByResult(n){try{const r=ensureTournamentActive()?.results?.[n];return r&&r.winnerSeed?(getSeedMap().get(Number(r.winnerSeed))||{seed:r.winnerSeed,name:r.winnerName}):null}catch(_){return null}}
+  function matchDef(n){const a=ensureTournamentActive()||{},size=Number(a.size||4),init=(a.bracket||[]).find(x=>Number(x.match)===Number(n)); if(init)return init; if(size===4&&n===3)return{match:3,a:seedByResult(1),b:seedByResult(2)}; if(size===8){if(n===5)return{match:5,a:seedByResult(1),b:seedByResult(2)}; if(n===6)return{match:6,a:seedByResult(3),b:seedByResult(4)}; if(n===7)return{match:7,a:seedByResult(5),b:seedByResult(6)}} return null}
+  function nextMatch(){captureResult(); const a=ensureTournamentActive()||{},max=Number(a.size||4)===8?7:3; for(let i=1;i<=max;i++){if(a.results&&a.results[i])continue; const md=matchDef(i); if(md&&md.a&&md.b)return md}return null}
+  function playerObj(sp){const name=pname(sp),raw=sp?.raw||{};let parts={first:name,last:''};try{if(typeof __sqNameParts==='function')parts=__sqNameParts(name)}catch(_){}let init=name.slice(0,2).toUpperCase();try{if(typeof __sqNormalizeInitials==='function')init=__sqNormalizeInitials(raw.initials||sp.initials,name)}catch(_){}return{type:raw.type||'registered',id:raw.id||sp?.id||null,name,first_name:raw.first_name||parts.first||name,last_name:raw.last_name||parts.last||'',nickname:raw.nickname||sp?.nickname||'',initials:init,color:null,tournamentSeed:sp?.seed||null,tournamentRank:sp?.rank||null}}
+  function startNext(md){try{if(!md||!md.a||!md.b){toast?.('Next tournament match is not ready.');return}const a=ensureTournamentActive();a.currentMatch=md.match;state.__sqTournamentActive=a;state.players=[playerObj(md.a),playerObj(md.b)];try{assignUniqueColors(state.players)}catch(_){}const id=typeof genUuidV4==='function'?genUuidV4():('tournament-'+Date.now());const rules=a.rules||draft()?.rules||{};state.match={id,mode:'official',tournament:true,tournamentType:a.type||'classic',tournamentSize:Number(a.size||4),tournamentRound:'Tournament Match',tournamentMatch:md.match,tournamentRules:rules,forcePractice:false,practiceType:null,createdAtIso:new Date().toISOString(),targetWins:1,gameNumber:1,wins:Array.from({length:2},()=>0),history:[],completedLogged:false};state.matchAgg=null;state.finished=false;state.gameAwarded=false;state.currentRound=0;state.currentPlayer=0;state.currentDart=0;state.history=[];state.score=[];markRuntime('next-match');try{ensureMatchAgg()}catch(_){}try{save()}catch(_){}startNewGame(false)}catch(e){console.error('[SQ] Fix81 start next failed',e)}}
+  function openTree(){captureResult();const next=nextMatch();const ov=document.createElement('div');ov.className='modal-backdrop';const md=document.createElement('div');md.className='modal';const body=document.createElement('div');body.className='modal-body';body.innerHTML='<div class="sg-tournament-intro"><div class="sg-tournament-title">UPDATED KNOCKOUT TREE</div><div class="sg-tournament-sub">Winner has been advanced. Next opens the next throw order.</div></div>'+(typeof window.__sqRenderTournamentTreeHtml==='function'?window.__sqRenderTournamentTreeHtml():''); if(!body.innerHTML.includes('sq-tournament-team')){body.innerHTML+='<div class="sg-tournament-note">Tournament active. Next match: '+(next?(pname(next.a)+' vs '+pname(next.b)):'Tournament complete')+'</div>'}const ft=document.createElement('div');ft.className='modal-footer';const back=document.createElement('button');back.className='btn';back.textContent='Back';back.onclick=()=>ov.remove();const nxt=document.createElement('button');nxt.className='btn primary';nxt.textContent=next?'Next':'Tournament Complete';nxt.disabled=!next;nxt.onclick=function(){if(next){ov.remove();startNext(next)}};ft.append(back,nxt);md.append(body,ft);ov.appendChild(md);document.body.appendChild(ov)}
+  function patchLeaderboard(){
+    try{
+      if(!isLeaderboardVisible())return false;
+      if(!hasTournamentClue()&&!readStore()?.active)return false;
+      ensureRuntimeFromState(); captureResult();
+      const lb=document.getElementById('leaderboard'); if(lb)lb.classList.add('sqTournamentLeaderboardActive');
+      const hs=document.getElementById('highScoresMenuBtnLB'); if(hs){hs.classList.add('sqTournamentHideBtn'); hs.style.display='none';}
+      const pl=document.getElementById('btnPremierLeague'); if(pl){pl.classList.add('sqTournamentHideBtn'); pl.style.display='none';}
+      const stack=document.querySelector('#leaderboard .stacked-actions')||document.querySelector('.stacked-actions'); if(!stack)return false;
+      let btn=document.getElementById('sqTournamentNextRoundBtnFix81')||document.getElementById('sqTournamentNextRoundBtn');
+      if(!btn){btn=document.createElement('button');btn.id='sqTournamentNextRoundBtnFix81';btn.className='btn primary big';btn.type='button';btn.textContent='NEXT ROUND';const end=document.getElementById('newMatchBtn'); if(end&&end.parentNode===stack)stack.insertBefore(btn,end); else stack.appendChild(btn);}
+      btn.style.display='block'; btn.classList.remove('hidden'); btn.textContent=nextMatch()?'NEXT ROUND':'TOURNAMENT COMPLETE'; btn.disabled=!nextMatch(); btn.onclick=function(e){e.preventDefault();openTree()};
+      return true;
+    }catch(e){console.warn('[SQ] Fix81 patch failed',e);return false}
+  }
+  const oldShow=window.showLeaderboard|| (typeof showLeaderboard==='function'?showLeaderboard:null);
+  if(oldShow&&!oldShow.__sqFix81Wrapped){const wrapped=function(){const r=oldShow.apply(this,arguments);[0,50,150,350,750,1200].forEach(ms=>setTimeout(patchLeaderboard,ms));return r};wrapped.__sqFix81Wrapped=true;window.showLeaderboard=wrapped;try{showLeaderboard=wrapped}catch(_){}}
+  setInterval(patchLeaderboard,250);
+  window.__sqPatchTournamentLeaderboardNow=patchLeaderboard;
+  window.__sqTournamentLeaderboardDebug=function(){return{page:document.body?.dataset?.page,leaderboardVisible:isLeaderboardVisible(),endVisible:isEndMatchVisible(),hasClue:hasTournamentClue(),store:readStore(),match:match(),players:currentPlayerNames(),draft:draft(),active:active(),patched:patchLeaderboard()}};
+})();
+</script>
+<!-- <<< PATCH:FIX81_TOURNAMENT_LEADERBOARD_HARDENED END -->
