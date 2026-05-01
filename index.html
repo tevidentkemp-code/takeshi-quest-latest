@@ -28626,98 +28626,8 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
     } catch(_) {}
     try { toast('Latest Scores not available'); } catch(_) {}
   });
-// Top 50 Scores (Official) — canonical from Supabase view (no per-player dedupe)
-// Source: public.v_top50_scores_official (player_id, player_name, score, rounds=14, avg_round, ts)
-// ===== @JS:MODAL:TOP_50_SCORES =====
-window.openTop50ScoresDialog = async function openTop50ScoresDialog(){
-  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal   = document.createElement('div'); modal.className = 'modal sq-wide-modal';
-  const title   = document.createElement('h3');  title.textContent = 'Top 50 Scores (Official)';
-  const body    = document.createElement('div'); body.className = 'modal-body';
-  const footer  = document.createElement('div'); footer.className = 'modal-footer';
 
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn primary';
-  closeBtn.textContent = 'Close';
-  closeBtn.onclick = ()=> overlay.remove();
-
-  modal.append(title, body, footer);
-  footer.appendChild(closeBtn);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-  modal.tabIndex = 0; modal.focus();
-  overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
-
-  body.innerHTML = '';
-
-  if (!window.sb){
-    const p=document.createElement('p');
-    p.textContent = 'Cloud offline — Top 50 Scores requires cloud data.';
-    body.appendChild(p);
-    return;
-  }
-
-  const VIEW = 'v_top50_scores_official';
-
-  try{
-    const { data, error } = await window.sb
-      .from(VIEW)
-      .select('player_id,player_name,score,rounds,avg_round,ts')
-      .order('score', { ascending: false })
-      .order('ts', { ascending: false })
-      .limit(50);
-
-    if (error) throw error;
-
-    const rows = (data||[]).filter(r => r && Number(r.score||0) > 0);
-
-    if (!rows.length){
-      const p=document.createElement('p');
-      p.textContent = `No rows returned from ${VIEW}.`;
-      body.appendChild(p);
-      return;
-    }
-
-    const table=document.createElement('table'); table.className='hs-table';
-    const thead=document.createElement('thead'); const trh=document.createElement('tr');
-    ['#','Player','Score','Avg / Round','When'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
-    thead.appendChild(trh); table.appendChild(thead);
-    const tb=document.createElement('tbody');
-
-    rows.forEach((r, idx)=>{
-      const tr=document.createElement('tr');
-      const td1=document.createElement('td'); td1.textContent=String(idx+1);
-      const td2=document.createElement('td'); td2.textContent=String(r.player_name||'');
-      const td3=document.createElement('td'); td3.textContent=String(r.score||0);
-
-      const td4=document.createElement('td');
-      td4.textContent = (r.avg_round!=null && !Number.isNaN(Number(r.avg_round)))
-        ? Number(r.avg_round).toFixed(1)
-        : (Number(r.score||0)/14).toFixed(1);
-
-      const td5=document.createElement('td');
-      const d=r.ts?new Date(r.ts):null;
-      td5.textContent = (d && !Number.isNaN(d.getTime()))
-        ? d.toLocaleString(undefined,{year:'2-digit',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'})
-        : '';
-      td5.style.fontSize='0.8rem';
-
-      tr.append(td1,td2,td3,td4,td5);
-      tb.appendChild(tr);
-    });
-
-    table.appendChild(tb);
-    body.appendChild(table);
-
-    try{ console.log('[SQ] Top50 using view:', VIEW, 'rows:', rows.length); }catch(_){}
-  }catch(e){
-    console.error('openTop50ScoresDialog failed', e);
-    const p=document.createElement('p');
-    p.textContent = `Failed to load Top 50 Scores from Supabase view (${VIEW}).`;
-    body.appendChild(p);
-  }
-};};
+};
 
 // === Power Rankings — official only (hard cap + min sample; grey-out unqualified) ===
 window.openPowerLeagueDialog = async function openPowerLeagueDialog(){
@@ -31285,21 +31195,7 @@ const brTxt = bestRound ? `${bestRound.round} • ${bestRound.sum}  (${lettersFr
 };
 
 // --- Player Stats menu compat aliases (buttons expect these names) ---
-// Keep the newer dialog implementations as the source of truth.
-window.openPlayerTargetHitDialog = window.openPlayerTargetHitDialog || (function(playerName){
-  try{
-    if (typeof window.openPlayerTargetPctDialog === 'function') return window.openPlayerTargetPctDialog(playerName);
-    if (typeof window.openTargetPctDialog === 'function') return window.openTargetPctDialog(playerName);
-  }catch(e){ console.error(e); }
-  try{ if (typeof toast==='function') toast('Target Hit % not available'); }catch(_){}
-});
-
-window.openPlayerTargetPointsDialog = window.openPlayerTargetPointsDialog || (function(playerName){
-  try{
-    if (typeof window.openPlayerTargetPointsPctDialog === 'function') return window.openPlayerTargetPointsPctDialog(playerName);
-  }catch(e){ console.error(e); }
-  try{ if (typeof toast==='function') toast('Target Points % not available'); }catch(_){}
-});
+// Target Hit % and Target Points % are defined once in the canonical Supabase-view section below.
 
 window.openPlayerDTBDialog = window.openPlayerDTBDialog || (function(playerName){
   try{
@@ -32629,622 +32525,776 @@ window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(
 }
 ;
 
-// ==== (4) Target % — per round (10→20 + D + T + B) ==========================
-window.openPlayerTargetPctDialog = async function openPlayerTargetPctDialog(playerName){
-  const name = String(playerName||'').trim();
-  const nameLC = name.toLowerCase();
-
-  // --- modal shell ---
-  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-  const modal   = document.createElement('div'); modal.className  ='modal';
-  modal.style.maxWidth='980px'; modal.style.width='94vw';
-
-  // Segmented filter: ALL TIME (default) | POWER R (last 4) | MONTH (last 30d)
-  const seg = document.createElement('div');
-  seg.className = 'segmented';
-  seg.style.display = 'flex';
-  seg.style.gap = '8px';
-
-  const mkSegBtn = (label, mode) => {
-    const b = document.createElement('button');
-    b.className = 'seg-btn';
-    b.dataset.mode = mode;
-    b.textContent = label;
-    b.style.padding = '8px 12px';
-    b.style.borderRadius = '999px';
-    b.style.border = '1px solid rgba(255,255,255,.14)';
-    b.style.background = 'rgba(10,12,24,.55)';
-    b.style.color = 'rgba(255,255,255,.85)';
-    b.style.fontWeight = '800';
-    b.style.letterSpacing = '.02em';
-    b.style.cursor = 'pointer';
-    b.style.userSelect = 'none';
-    return b;
-  };
-
-  const btnAll   = mkSegBtn('ALL TIME', 'ALL');
-  const btnPower = mkSegBtn('POWER R',  'P4');
-  const btnMonth = mkSegBtn('30 ROLL',  'M30');
-  seg.append(btnAll, btnPower, btnMonth);
-
-  const setActive = (mode) => {
-    seg.querySelectorAll('.seg-btn').forEach(btn=>{
-      const on = btn.dataset.mode === mode;
-      btn.style.borderColor = on ? 'rgba(255,123,26,.85)' : 'rgba(255,255,255,.14)';
-      btn.style.boxShadow   = on ? '0 0 0 2px rgba(255,123,26,.15) inset' : 'none';
-      btn.style.color       = on ? '#fff' : 'rgba(255,255,255,.85)';
-      btn.style.background  = on ? 'rgba(255,123,26,.12)' : 'rgba(10,12,24,.55)';
-    });
-  };
-
-  const header  = __sqStatsHeader(`Target Hit % — ${name}`, 'Throws / Hits / % / Ranks', seg);
-  const body    = document.createElement('div'); body.className   ='modal-body';
-  body.style.paddingTop='8px';
-  const footer  = document.createElement('div'); footer.className ='modal-footer';
-  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
-  body .style.maxHeight='none'; body .style.overflowY='visible';
-
-  const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
-  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
-  backBtn.onclick=()=>{ overlay.remove(); __sqGoBackToStatsMain(); };
-  closeBtn.onclick=()=>overlay.remove();
-  footer.style.display='flex';
-  footer.style.alignItems='center';
-  footer.style.justifyContent='space-between';
-  const leftWrap=document.createElement('div'); leftWrap.style.display='flex'; leftWrap.style.gap='10px';
-  const rightWrap=document.createElement('div'); rightWrap.style.display='flex'; rightWrap.style.gap='10px';
-
-  const spiderBtn=document.createElement('button'); spiderBtn.className='btn small'; spiderBtn.textContent='SPIDER';
-  const progBtn=document.createElement('button'); progBtn.className='btn small'; progBtn.textContent='PROGRESS';
-
-  // wire SPIDER / PROGRESS actions (hide this overlay only if the target dialog actually opens)
-  spiderBtn.onclick=()=>{
-    const prevDisplay = overlay.style.display || '';
-    try{
-      if (typeof window.openPlayerSpiderDialog==='function') {
-        window.openPlayerSpiderDialog(name,{parentOverlay:overlay});
-        overlay.style.display='none';
-      } else {
-        if (typeof toast==='function') toast('SPIDER not available');
-      }
-    }catch(e){
-      overlay.style.display = prevDisplay;
-      console.error('SPIDER click failed', e);
-      if (typeof toast==='function') toast('SPIDER failed');
-    }
-  };
-  progBtn.onclick=()=>{
-    const prevDisplay = overlay.style.display || '';
-    try{
-      if (typeof window.openPlayerProgressHitDialog==='function') {
-        window.openPlayerProgressHitDialog(name,{parentOverlay:overlay, mode:'hit', avgMode:'game4'});
-        overlay.style.display='none';
-      } else {
-        if (typeof toast==='function') toast('PROGRESS not available');
-      }
-    }catch(e){
-      overlay.style.display = prevDisplay;
-      console.error('PROGRESS click failed', e);
-      if (typeof toast==='function') toast('PROGRESS failed');
-    }
-  };
-
-  leftWrap.append(backBtn, closeBtn);
-  rightWrap.append(spiderBtn, progBtn);
-  footer.append(leftWrap, rightWrap);
-
-  modal.append(header,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
-  function closeToHub(){ overlay.remove(); }
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
-  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
-  modal.tabIndex=0; modal.focus();
-
-  const labels = __roundLabels();
-
-  // Cache: official games list (normalized) so toggles are instant
-  body.innerHTML = '<p class="muted">Loading…</p>';
-  let gamesAll = [];
-  try{
-    gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame);
-  }catch(e){
-    console.warn('Target Hit %: failed to fetch official games', e);
+// ==== (4) Target Hit % / Target Points % — canonical Supabase-view loaders =====
+function __sqTargetPctClient(){
+  try{ if (typeof ensureCloudInit === 'function') ensureCloudInit(); }catch(_){}
+  return window.sb || (typeof sb !== 'undefined' ? sb : null);
+}
+function __sqTargetPctValue(row, keys){
+  for (const k of keys){
+    if (row && row[k] != null && row[k] !== '') return row[k];
   }
-
-  // helper: does this game include player?
-  const hasPlayer = (g) => {
+  return null;
+}
+function __sqTargetPctKey(row){
+  const raw = __sqTargetPctValue(row, ['target_key','target_label','round_key','bucket_key','target_number','target_n','target']);
+  if (raw == null) return '';
+  const s = String(raw).trim().toUpperCase();
+  if (s === 'DOUBLES' || s === 'DOUBLE') return 'D';
+  if (s === 'TREBLES' || s === 'TRIPLES' || s === 'TREBLE' || s === 'TRIPLE') return 'T';
+  if (s === 'BULL' || s === 'BULLS') return 'B';
+  return s;
+}
+function __sqTargetPctOrder(k){
+  if (/^\d+$/.test(String(k))) return Number(k);
+  if (k === 'D') return 21;
+  if (k === 'T') return 22;
+  if (k === 'B') return 23;
+  return 999;
+}
+async function __sqFetchPlayerTargetPctView(viewName, playerName){
+  const client = __sqTargetPctClient();
+  if (!client || typeof client.from !== 'function') {
+    return { rows:[], source:viewName, missing:'Supabase client missing' };
+  }
+  const name = String(playerName || '').trim();
+  const nameLC = name.toLowerCase();
+  const attempts = [
+    { col:'player_key', op:'eq', value:nameLC },
+    { col:'player_name', op:'ilike', value:name },
+    { col:'player', op:'ilike', value:name },
+    { col:'name', op:'ilike', value:name },
+    { col:'player_id', op:'eq', value:nameLC }
+  ];
+  let lastError = null;
+  let emptySource = null;
+  let hadSuccessfulFilter = false;
+  for (const a of attempts){
     try{
-      const ps = Array.isArray(g.players) ? g.players : (g.raw && g.raw.players) ? g.raw.players : [];
-      return ps.some(p => String((p && (p.name||p.player||p.player_name)) || p || '').trim().toLowerCase()===nameLC);
-    }catch(_){ return false; }
-  };
-
-  const gameDate = (g) => {
-    const r = g && (g.raw || g);
-    const ts = r && (r.played_at || r.started_at || r.created_at || r.date || r.ts);
-    const d = ts ? new Date(ts) : null;
-    return (d && !Number.isNaN(d.getTime())) ? d : null;
-  };
-
-  const playerGames = gamesAll.filter(hasPlayer).sort((a,b)=>{
-    const da = gameDate(a), db = gameDate(b);
-    const ta = da ? da.getTime() : 0;
-    const tb = db ? db.getTime() : 0;
-    return tb - ta;
-  });
-
-  const renderForMode = async (mode) => {
-    setActive(mode);
-
-    const modeLabel = (mode === 'ALL') ? 'All Time'
-                    : (mode === 'P4')  ? 'Power R (Last 4)'
-                    : '30 Roll (Last 30d)';
-
-    // Update header title/subtitle
-    try{
-      const left = header.firstChild;
-      if (left && left.firstChild) left.firstChild.textContent = `Target Hit % — ${name} (${modeLabel})`;
-      if (left && left.children && left.children[1]) left.children[1].textContent = 'Throws / Hits / % / Rank';
-    }catch(_){ }
-
-    // Source-of-truth views (server-derived). Fallback computes from base views if missing.
-    const viewName = (mode === 'ALL') ? 'v_player_target_hit_alltime'
-                  : (mode === 'P4')  ? 'v_player_target_hit_power4'
-                  : 'v_player_target_hit_30d';
-
-    body.innerHTML = '<p class="muted">Loading…</p>';
-
-    // ---- fetch rows (prefer server view; fallback to computed) ----
-    async function __computeTargetHitRowsFallback(mode){
-      // Helper: make row object
-      const mk = (rk, thr, hit) => ({
-        round_key: String(rk),
-        throws: Number(thr)||0,
-        hits: Number(hit)||0,
-        hit_pct: (thr ? (Number(hit)||0) * 100 / thr : 0)
-      });
-
-      const rows = [];
-
-      // Determine game_id window for P4 / M30 using throw_events_v (canonical for per-game completeness).
-      let gameIds = null;
-      if (mode !== 'ALL'){
-        try{
-          const since = (mode === 'M30') ? new Date(Date.now() - 30*24*3600*1000).toISOString() : null;
-
-          const { data: gRows, error: gErr } = await sb
-            .from('throw_events_v')
-            .select('game_id, created_at, round_number')
-            .eq('player_name', String(playerName||'').trim())
-            .order('created_at', { ascending: false })
-            .limit(20000);
-          if (gErr) throw gErr;
-
-          // Group per game_id
-          const byG = new Map();
-          (gRows||[]).forEach(r=>{
-            const gid = r.game_id;
-            if (!gid) return;
-            const ts = r.created_at ? Date.parse(String(r.created_at).replace(' ','T')) : 0;
-            if (since && ts && ts < Date.parse(since)) return;
-            const o = byG.get(gid) || { maxRound: 0, n: 0, maxTs: 0 };
-            o.n += 1;
-            const rn = Number(r.round_number)||0;
-            if (rn > o.maxRound) o.maxRound = rn;
-            if (ts > o.maxTs) o.maxTs = ts;
-            byG.set(gid, o);
-          });
-
-          // complete games: 42 darts and includes bull round (>=14)
-          const complete = [];
-          byG.forEach((v,gid)=>{
-            if (v.n >= 42 && v.maxRound >= 14) complete.push([gid, v.maxTs]);
-          });
-          complete.sort((a,b)=>b[1]-a[1]);
-
-          gameIds = complete.slice(0, mode==='P4' ? 4 : 10000).map(x=>x[0]);
-        }catch(e){
-          console.warn('Target Hit % fallback: failed to build game window', e);
-          gameIds = [];
-        }
+      let q = client.from(viewName).select('*').limit(1000);
+      q = a.op === 'ilike' ? q.ilike(a.col, a.value) : q.eq(a.col, a.value);
+      const { data, error } = await q;
+      if (!error) {
+        const rows = Array.isArray(data) ? data : [];
+        hadSuccessfulFilter = true;
+        emptySource = emptySource || `${viewName}.${a.col}`;
+        if (rows.length) return { rows, source:`${viewName}.${a.col}` };
+        continue;
       }
-
-      // 10..20 from round_hit_counts_v (fast + correct)
-// NOTE: PostgREST often caps responses to 1000 rows; we page to avoid silent undercounts.
-async function __fetchAllPaged(builderFactory, pageSize=1000, maxPages=2000){
-  const out = [];
-  for (let page=0; page<maxPages; page++){
-    const from = page * pageSize;
-    const to   = from + pageSize - 1;
-    const { data, error } = await builderFactory().range(from, to);
+      lastError = error;
+      if (error && error.code === 'PGRST205') break;
+    }catch(e){
+      lastError = e;
+    }
+  }
+  if (hadSuccessfulFilter) return { rows:[], source:emptySource || viewName };
+  const msg = (lastError && (lastError.message || lastError.details || lastError.code)) || 'unknown error';
+  return { rows:[], source:viewName, missing:msg, error:lastError };
+}
+async function __sqFetchPlayerTargetHitPctRows(playerName){
+  const viewName = 'v_player_target_hit_pct';
+  const client = __sqTargetPctClient();
+  if (!client || typeof client.from !== 'function') {
+    return { rows:[], source:viewName, missing:'Supabase client missing' };
+  }
+  const name = String(playerName || '').trim();
+  const playerKey = name.toLowerCase();
+  try{
+    const { data, error } = await client
+      .from(viewName)
+      .select('player_key,player_name,target_key,target_label,target_sort,throws,hits,hit_pct,source_games,first_played_at,last_played_at')
+      .eq('player_key', playerKey)
+      .order('target_sort', { ascending:true })
+      .limit(20);
     if (error) throw error;
-    const chunk = Array.isArray(data) ? data : [];
-    out.push(...chunk);
-    if (chunk.length < pageSize) break;
+    return { rows:Array.isArray(data) ? data : [], source:`${viewName}.player_key` };
+  }catch(e){
+    const msg = (e && (e.message || e.details || e.code)) || 'unknown error';
+    return { rows:[], source:viewName, missing:msg, error:e };
+  }
+}
+async function __sqFetchPlayerTargetPointsPctRows(playerName){
+  const viewName = 'v_player_target_points_pct';
+  const client = __sqTargetPctClient();
+  if (!client || typeof client.from !== 'function') {
+    return { rows:[], source:viewName, missing:'Supabase client missing' };
+  }
+  const name = String(playerName || '').trim();
+  const playerKey = name.toLowerCase();
+  try{
+    const { data, error } = await client
+      .from(viewName)
+      .select('player_key,player_name,target_number,target_label,throws,actual_points,max_points,points_pct,source_games,first_played_at,last_played_at')
+      .eq('player_key', playerKey)
+      .gte('target_number', 10)
+      .lte('target_number', 20)
+      .order('target_number', { ascending:true })
+      .limit(20);
+    if (error) throw error;
+    return { rows:Array.isArray(data) ? data : [], source:`${viewName}.player_key` };
+  }catch(e){
+    const msg = (e && (e.message || e.details || e.code)) || 'unknown error';
+    return { rows:[], source:viewName, missing:msg, error:e };
+  }
+}
+function __sqSetTargetPctActionsEnabled(body, enabled, reason){
+  try{
+    const modal = body && body.closest ? body.closest('.modal') : null;
+    const buttons = modal ? modal.querySelectorAll('[data-target-pct-action]') : [];
+    buttons.forEach(btn => {
+      btn.disabled = !enabled;
+      btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+      btn.title = enabled ? '' : String(reason || 'Unavailable until required Supabase data is available.');
+      btn.style.opacity = enabled ? '' : '.45';
+      btn.style.cursor = enabled ? '' : 'not-allowed';
+    });
+  }catch(_){}
+}
+function __sqShowTargetPctUnavailable(body, message, formula, dependency){
+  __sqSetTargetPctActionsEnabled(body, false, dependency);
+  body.innerHTML = '';
+  const p = document.createElement('p');
+  p.className = 'muted';
+  p.textContent = message;
+  const f = document.createElement('p');
+  f.className = 'tag muted';
+  f.style.marginTop = '10px';
+  f.textContent = formula;
+  const d = document.createElement('p');
+  d.className = 'tag muted';
+  d.style.marginTop = '8px';
+  d.textContent = dependency;
+  body.append(p, f, d);
+}
+
+function __sqPctFmt(v, digits){
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toFixed(digits == null ? 1 : digits) + '%' : '0.0%';
+}
+function __sqCompletedWindowAveragePoints(values, windowSize){
+  const n = Math.max(1, Number(windowSize || 5));
+  const out = [];
+  for (let end = n; end <= values.length; end += n){
+    const slice = values.slice(end - n, end).filter(v => Number.isFinite(Number(v)));
+    if (slice.length !== n) continue;
+    out.push({ idx:end - 1, pct:slice.reduce((a,b) => a + Number(b), 0) / n });
   }
   return out;
 }
-
-try{
-  const data = await __fetchAllPaged(()=> {
-    let q = sb.from('round_hit_counts_v')
-      .select('round_number, s_hits, d_hits, t_hits, game_id, player_name')
-      .ilike('player_name', String(playerName||'').trim())
-      .gte('round_number', 1).lte('round_number', 11);
-
-    if (gameIds){ q = q.in('game_id', gameIds); }
-    return q;
-  });
-
-  const agg = new Map(); // round_number -> {rows,hits}
-  (data||[]).forEach(r=>{
-    const rn = Number(r.round_number)||0;
-    const a = agg.get(rn) || { rows:0, hits:0 };
-    a.rows += 1;
-    a.hits += (Number(r.s_hits)||0) + (Number(r.d_hits)||0) + (Number(r.t_hits)||0);
-    agg.set(rn, a);
-  });
-
-  for (let rn=1; rn<=11; rn++){
-    const a = agg.get(rn) || { rows:0, hits:0 };
-    rows.push(mk(rn+9, a.rows*3, a.hits));
-  }
-}catch(e){
-  console.warn('Target Hit % fallback: round_hit_counts_v failed', e);
+function __sqProgressScaleMax(values){
+  const maxRaw = Math.max(0, ...values.map(v => Number(v)).filter(v => Number.isFinite(v)));
+  const withHeadroom = Math.min(100, Math.max(25, maxRaw * 1.08));
+  const steps = [25,30,40,50,60,75,100];
+  return steps.find(step => withHeadroom <= step) || 100;
 }
-
-// D/T/B from throw_events_v (definition: any double/treble/bull)
-      async function addFromThrows(roundNum, rk){
-        try{
-          const data = await __fetchAllPaged(()=> {
-            let q = sb.from('throw_events_v')
-              .select('ring, points, game_id, player_name, created_at, round_number')
-              .ilike('player_name', String(playerName||'').trim())
-              .eq('round_number', roundNum);
-            if (gameIds){ q = q.in('game_id', gameIds); }
-            return q;
-          });
-
-          const thr = (data||[]).length;
-          let hit = 0;
-          (data||[]).forEach(r=>{
-            const ring = String(r.ring||'').toUpperCase();
-            if (roundNum===12){ if (ring==='D') hit += 1; }
-            else if (roundNum===13){ if (ring==='T') hit += 1; }
-            else if (roundNum===14){ const pts = Number(r.points)||0; if (pts===25 || pts===50) hit += 1; }
-          });
-          rows.push(mk(rk, thr, hit));
-        }catch(e){
-          console.warn('Target Hit % fallback: throw_events_v failed for', rk, e);
-          rows.push(mk(rk, 0, 0));
-        }
-      }
-
-      await addFromThrows(12, 'D');
-      await addFromThrows(13, 'T');
-      await addFromThrows(14, 'B');
-
-      // Rank within player: best hit_pct desc, hits desc, round order asc
-      const orderVal = (k)=>{
-        if (/^\d+$/.test(k)) return Number(k);
-        if (k==='D') return 21;
-        if (k==='T') return 22;
-        if (k==='B') return 23;
-        return 999;
-      };
-      const sorted = rows.slice().sort((a,b)=>{
-        const ap = Number(a.hit_pct)||0, bp = Number(b.hit_pct)||0;
-        if (bp!==ap) return bp-ap;
-        const ah = Number(a.hits)||0, bh = Number(b.hits)||0;
-        if (bh!==ah) return bh-ah;
-        return orderVal(String(a.round_key)) - orderVal(String(b.round_key));
-      });
-      const rank = new Map();
-      let lastKey = null; let rnk = 0;
-      sorted.forEach(it=>{
-        const key = `${Number(it.hit_pct||0).toFixed(6)}|${it.hits}|${it.round_key}`;
-        // dense_rank by hit_pct,hits,order
-        rnk += 1;
-        rank.set(String(it.round_key), rnk);
-      });
-      rows.forEach(it=>{ it.hit_rank = rank.get(String(it.round_key)) || null; it.hit_pct = Number(it.hit_pct); });
-      return rows;
-    }
-
-    let rows = [];
-    try{
-      const { data, error } = await sb
-        .from(viewName)
-        .select('round_key, throws, hits, hit_pct, hit_rank')
-        .eq('player_key', nameLC);
-
-      if (error) throw error;
-      rows = Array.isArray(data) ? data : [];
-    }catch(e){
-      console.warn(`Target Hit %: failed to load ${viewName} — falling back`, e);
-      rows = await __computeTargetHitRowsFallback(mode);
-      if (!rows.length){
-        body.innerHTML = '<p class="muted">Unable to load right now.</p>';
-        return;
-      }
-    }
-
-    // Index rows by round_key for stable ordering 10..20, D, T, B
-    const byKey = new Map();
-    rows.forEach(r=>{
-      const k = String(r.round_key||'').trim().toUpperCase();
-      if (!k) return;
-      byKey.set(k, r);
+function __sqProgressYAxisLabels(scaleMax){
+  const max = Math.max(25, Math.min(100, Number(scaleMax) || 100));
+  const step = max <= 25 ? 5 : (max <= 60 ? 10 : 25);
+  const labels = [];
+  for (let v = 0; v < max; v += step) labels.push(v);
+  if (labels[labels.length - 1] !== max) labels.push(max);
+  return labels;
+}
+function __sqPointsWeightedNorm(v){
+  const n = Math.max(0, Math.min(100, Number(v) || 0));
+  if (n <= 50) return (n / 50) * 0.66;
+  if (n <= 75) return 0.66 + ((n - 50) / 25) * 0.22;
+  return 0.88 + ((n - 75) / 25) * 0.12;
+}
+function __sqProgressBarGrey(i){
+  return i % 2 ? 'rgba(180,190,210,0.34)' : 'rgba(180,190,210,0.22)';
+}
+function __sqProgressTargetButtons(mode, grouped){
+  const keys = ['10','11','12','13','14','15','16','17','18','19','20','D','T','B'];
+  return keys.map(k => {
+    const hasRows = grouped && grouped.has(k) && grouped.get(k).length;
+    return {
+      key:k,
+      label:k,
+      disabled:!hasRows,
+      reason:hasRows ? '' : `No ${mode === 'points' ? 'Target Points %' : 'Target Hit %'} Progress rows are available for ${k}.`
+    };
+  });
+}
+function __sqProgressAvg(rows, key){
+  const vals = rows.map(r => Number(r && r[key])).filter(v => Number.isFinite(v));
+  return vals.length ? vals.reduce((a,b) => a + b, 0) / vals.length : null;
+}
+function __sqProgressPtsFmt(v){
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 'n/a';
+  const rounded = Math.round(n * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+function __sqProgressColor(key){
+  const colors = {
+    '10':'#38bdf8','11':'#a78bfa','12':'#fb7185','13':'#f59e0b','14':'#22c55e',
+    '15':'#f472b6','16':'#2dd4bf','17':'#eab308','18':'#60a5fa','19':'#c084fc',
+    '20':'#f97316','D':'#84cc16','T':'#06b6d4','B':'#ef4444'
+  };
+  return colors[String(key)] || '#f8fafc';
+}
+function __sqProgressSeriesStats(rows, windowSize){
+  const values = rows.map(r => Number(r.pct || 0));
+  const allAvg = values.length ? values.reduce((a,b) => a + b, 0) / values.length : 0;
+  const half = Math.ceil(values.length / 2);
+  const firstVals = values.slice(0, half);
+  const secondVals = values.slice(half);
+  const firstAvg = firstVals.length ? firstVals.reduce((a,b)=>a+b,0) / firstVals.length : allAvg;
+  const secondAvg = secondVals.length ? secondVals.reduce((a,b)=>a+b,0) / secondVals.length : firstAvg;
+  const avgPoints = __sqCompletedWindowAveragePoints(values, windowSize);
+  return { values, allAvg, half, firstAvg, secondAvg, avgPoints };
+}
+function __sqProgressSessionScale(grouped, enabledKeys){
+  const vals = [];
+  (enabledKeys || []).forEach(k => {
+    const rows = (grouped.get(k) || []).slice();
+    if (!rows.length) return;
+    const pctVals = rows.map(r => Number(r.pct || 0));
+    vals.push(...pctVals);
+    [5,10,20].forEach(win => {
+      const stats = __sqProgressSeriesStats(rows, win);
+      vals.push(stats.allAvg, stats.firstAvg, stats.secondAvg, ...stats.avgPoints.map(p => p.pct));
     });
+  });
+  return __sqProgressScaleMax(vals);
+}
+function __sqRenderProgressPills(host, items, seriesList){
+  if (!host) return;
+  host.innerHTML = '';
+  host.style.marginTop = '12px';
+  const grid = document.createElement('div');
+  grid.style.display = 'grid';
+  grid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(190px, 1fr))';
+  grid.style.gap = '10px';
+  grid.style.alignItems = 'stretch';
 
-    const order = [];
-    for (let n=10; n<=20; n++) order.push(String(n));
-    order.push('D','T','B');
-
-    // Build table
-    const table=document.createElement('table'); table.className='sq-table hs-table';
-    const thead=document.createElement('thead'); const trh=document.createElement('tr');
-    ['Round','Throws','Hits','%','Rank'].forEach(h=>{
-      const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);
-    });
-    thead.appendChild(trh); table.appendChild(thead);
-    const tbody=document.createElement('tbody');
-
-    order.forEach(k=>{
-      const r = byKey.get(k);
-      const tr=document.createElement('tr');
-
-      const tdR=document.createElement('td'); tdR.className='sq-rank-cell';
-      tdR.textContent = k;
-
-      const tdT=document.createElement('td'); tdT.textContent = r ? String(r.throws ?? '—') : '—';
-      const tdH=document.createElement('td'); tdH.textContent = r ? String(r.hits ?? '—') : '—';
-
-      const tdP=document.createElement('td');
-      if (r && r.hit_pct != null && r.hit_pct !== ''){
-        const pct = Number(r.hit_pct);
-        tdP.textContent = Number.isFinite(pct) ? pct.toFixed(2)+'%' : '—';
-      }else tdP.textContent='—';
-
-      const tdRank=document.createElement('td');
-      tdRank.textContent = (r && r.hit_rank != null) ? String(r.hit_rank) : '—';
-
-      tr.append(tdR, tdT, tdH, tdP, tdRank);
-      tbody.appendChild(tr);
-    });
-
-    table.appendChild(tbody);
-
-    const scroll=document.createElement('div');
-    scroll.style.maxHeight='56vh';
-    scroll.style.overflowY='auto';
-    __sqStyleStatsTableWrap(scroll);
-    scroll.appendChild(table);
-
-    body.innerHTML='';
-    body.appendChild(scroll);
+  const makePill = (labelText) => {
+    const pill = document.createElement('div');
+    pill.className = 'tag';
+    pill.style.padding = '10px 12px';
+    pill.style.minHeight = '58px';
+    pill.style.display = 'flex';
+    pill.style.flexDirection = 'column';
+    pill.style.justifyContent = 'center';
+    pill.style.gap = '5px';
+    const label = document.createElement('span');
+    label.className = 'muted';
+    label.style.fontSize = '11px';
+    label.textContent = labelText;
+    pill.appendChild(label);
+    return pill;
   };
 
-  // bind toggle clicks
-  seg.querySelectorAll('.seg-btn').forEach(btn=>{
-    btn.addEventListener('click', ()=>renderForMode(btn.dataset.mode || 'ALL'));
+  items.forEach(item => {
+    const pill = makePill(item.label);
+    const value = document.createElement('strong');
+    value.style.fontSize = '13px';
+    value.style.lineHeight = '1.25';
+    value.style.whiteSpace = 'pre-line';
+    value.textContent = item.value;
+    pill.appendChild(value);
+    grid.appendChild(pill);
   });
 
-  // default
-  renderForMode('ALL');
-};
+  const selected = makePill('Selected Targets');
+  const wrap = document.createElement('div');
+  wrap.style.display = 'flex';
+  wrap.style.flexWrap = 'wrap';
+  wrap.style.alignItems = 'center';
+  wrap.style.gap = '7px';
+  (seriesList || []).forEach(series => {
+    const tag = document.createElement('span');
+    tag.style.display = 'inline-flex';
+    tag.style.alignItems = 'center';
+    tag.style.gap = '4px';
+    tag.style.fontWeight = '700';
+    tag.style.fontSize = '12px';
+    const dot = document.createElement('span');
+    dot.style.width = '8px'; dot.style.height = '8px'; dot.style.borderRadius = '999px'; dot.style.background = series.color;
+    tag.append(dot, document.createTextNode(series.key));
+    wrap.appendChild(tag);
+  });
+  selected.appendChild(wrap);
+  grid.appendChild(selected);
+  host.appendChild(grid);
+}
+async function __sqFetchTargetProgressRows(mode, playerName){
+  const client = __sqTargetPctClient();
+  const viewName = mode === 'points' ? 'v_player_target_points_progress' : 'v_player_target_hit_progress';
+  if (!client || typeof client.from !== 'function') {
+    return { rows:[], source:viewName, missing:'Supabase client missing' };
+  }
+  const playerKey = String(playerName || '').trim().toLowerCase();
+  const selectCols = mode === 'points'
+    ? 'player_key,player_name,game_id,created_at,target_key,target_label,target_sort,target_number,round_score,max_round_score,round_pct'
+    : 'player_key,player_name,game_id,created_at,target_key,target_label,target_sort,throws,hits,hit_pct';
+  try{
+    const rows = [];
+    const pageSize = 1000;
+    for (let from = 0; from < 60000; from += pageSize){
+      const { data, error } = await client
+        .from(viewName)
+        .select(selectCols)
+        .eq('player_key', playerKey)
+        .order('target_sort', { ascending:true })
+        .order('created_at', { ascending:true })
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      const batch = Array.isArray(data) ? data : [];
+      rows.push(...batch);
+      if (batch.length < pageSize) break;
+    }
+    return { rows, source:`${viewName}.player_key` };
+  }catch(e){
+    const msg = (e && (e.message || e.details || e.code)) || 'unknown error';
+    return { rows:[], source:viewName, missing:msg, error:e };
+  }
+}
+function __sqNormalizeTargetProgressRows(mode, rows){
+  return (Array.isArray(rows) ? rows : []).map((r, idx) => {
+    const key = __sqTargetPctKey(r);
+    const pctRaw = mode === 'points' ? __sqTargetPctValue(r, ['round_pct','pct','percentage']) : __sqTargetPctValue(r, ['hit_pct','pct','percentage']);
+    const pct = Math.max(0, Math.min(100, Number(pctRaw || 0)));
+    return {
+      key,
+      label:String(__sqTargetPctValue(r, ['target_label','target_key','target_number']) || key),
+      sort:Number(__sqTargetPctValue(r, ['target_sort','target_number']) || __sqTargetPctOrder(key)),
+      pct:Number.isFinite(pct) ? pct : 0,
+      roundScore:Number(__sqTargetPctValue(r, ['round_score','actual_points','points']) || 0),
+      maxRoundScore:Number(__sqTargetPctValue(r, ['max_round_score','max_points']) || 0),
+      created_at:String(r.created_at || ''),
+      game_id:String(r.game_id || ''),
+      idx
+    };
+  }).filter(r => r.key).sort((a,b) => {
+    const ta = Date.parse(a.created_at || '') || 0;
+    const tb = Date.parse(b.created_at || '') || 0;
+    if (ta !== tb) return ta - tb;
+    if (a.game_id !== b.game_id) return a.game_id < b.game_id ? -1 : 1;
+    return a.idx - b.idx;
+  });
+}
+function __sqDrawTargetProgressCanvas(canvas, seriesList, windowSize, statsEl, emptyEl, mode, primaryKey, scaleMax){
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.max(320, Math.floor(rect.width || 720));
+  const height = Math.max(280, Math.floor(rect.height || 340));
+  canvas.width = Math.floor(width * dpr); canvas.height = Math.floor(height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = '#111827';
+  ctx.fillRect(0, 0, width, height);
 
-// ==== (4b) Target Points % — lifetime, per target (10..20) ===================
-window.openPlayerTargetPointsPctDialog = async function openPlayerTargetPointsPctDialog(playerName){
-  const name = String(playerName||'').trim();
+  const pad = { left:48, right:16, top:18, bottom:32 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  const isPoints = mode === 'points';
+  const labels = isPoints ? [0,25,50,75,100] : __sqProgressYAxisLabels(scaleMax);
+  const yFor = v => {
+    if (isPoints) return pad.top + (1 - __sqPointsWeightedNorm(v)) * plotH;
+    return pad.top + (scaleMax - Math.max(0, Math.min(scaleMax, Number(v) || 0))) / scaleMax * plotH;
+  };
+  const xFor = (rows, i) => pad.left + (rows.length <= 1 ? plotW / 2 : (i / (rows.length - 1)) * plotW);
+  const activeSeries = (seriesList || []).filter(s => s && s.rows && s.rows.length);
 
-  // Modal shell
-  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-  const modal   = document.createElement('div'); modal.className  ='modal';
-  modal.style.maxWidth='980px'; modal.style.width='94vw';
-  const header  = __sqStatsHeader(`Target Points % — ${name}`, 'Thrown / Points % / Ranks');
-const body    = document.createElement('div'); body.className   ='modal-body';
-  body.style.paddingTop='8px';
-  const footer  = document.createElement('div'); footer.className ='modal-footer';
-  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
-  body .style.maxHeight='none'; body .style.overflowY='visible';
+  ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 1;
+  ctx.fillStyle = 'rgba(255,255,255,.78)'; ctx.font = '12px system-ui, -apple-system, Segoe UI, sans-serif';
+  labels.forEach(v => {
+    const y = yFor(v);
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke();
+    ctx.fillText(String(v) + '%', 8, y + 4);
+  });
+  ctx.strokeStyle = 'rgba(255,255,255,.32)';
+  ctx.beginPath(); ctx.moveTo(pad.left, pad.top); ctx.lineTo(pad.left, height - pad.bottom); ctx.lineTo(width - pad.right, height - pad.bottom); ctx.stroke();
 
-  // Mount early so user always sees something
-  modal.append(header,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  if (!activeSeries.length){
+    if (emptyEl) emptyEl.textContent = 'Progress data is not available yet. Required Supabase view/data source is missing or empty.';
+    if (statsEl) statsEl.innerHTML = '';
+    return;
+  }
+  if (emptyEl) emptyEl.textContent = '';
 
-  function closeToHub(){ overlay.remove(); }
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
-  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
-  modal.tabIndex=0; modal.focus();
+  const multi = activeSeries.length > 1;
+  activeSeries.forEach((series, seriesIdx) => {
+    const rows = series.rows;
+    const stats = __sqProgressSeriesStats(rows, windowSize);
+    const values = stats.values;
+    const barW = multi ? 1.15 : Math.max(2, Math.min(12, plotW / Math.max(1, rows.length) * .55));
+    const offset = multi ? (seriesIdx - (activeSeries.length - 1) / 2) * Math.min(3, Math.max(1.2, plotW / Math.max(1, rows.length) * .08)) : 0;
+    values.forEach((v, i) => {
+      const x = xFor(rows, i) + offset;
+      const y = yFor(v);
+      const grey = __sqProgressBarGrey(i);
+      if (multi){
+        ctx.strokeStyle = grey; ctx.lineWidth = barW;
+        ctx.beginPath(); ctx.moveTo(x, yFor(0)); ctx.lineTo(x, y); ctx.stroke();
+      } else {
+        ctx.fillStyle = grey;
+        ctx.fillRect(x - barW / 2, y, barW, yFor(0) - y);
+      }
+    });
+  });
 
-  const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
-  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
-  backBtn.onclick=()=>{ overlay.remove(); __sqGoBackToStatsMain(); };
-  closeBtn.onclick=()=>overlay.remove();
-  const __spacer=document.createElement('div'); __spacer.style.flex='1';
-  const spiderBtn=document.createElement('button'); spiderBtn.className='btn small'; spiderBtn.textContent='SPIDER'; spiderBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerSpiderDialog==='function') window.openPlayerSpiderDialog(name,{parentOverlay:overlay, mode:'points', data: window.__lastPointsPctSpiderData}); else if (typeof toast==='function') toast('SPIDER not available'); };
-  const progBtn=document.createElement('button'); progBtn.className='btn small'; progBtn.textContent='PROGRESS'; progBtn.onclick=()=>{ overlay.style.display='none'; if (typeof window.openPlayerProgressHitDialog==='function') window.openPlayerProgressHitDialog(name,{parentOverlay:overlay,mode:'points'}); else if (typeof toast==='function') toast('PROGRESS not available'); };
-  footer.append(backBtn,closeBtn,__spacer,spiderBtn,progBtn);
+  activeSeries.forEach(series => {
+    const rows = series.rows;
+    const stats = __sqProgressSeriesStats(rows, windowSize);
+    ctx.save();
+    ctx.setLineDash([5,5]);
+    ctx.strokeStyle = '#f59e0b'; ctx.globalAlpha = multi ? .38 : .9; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(pad.left, yFor(stats.allAvg)); ctx.lineTo(width - pad.right, yFor(stats.allAvg)); ctx.stroke();
+    ctx.restore();
+
+    ctx.strokeStyle = '#22c55e'; ctx.globalAlpha = multi ? .38 : .9; ctx.lineWidth = multi ? 1.5 : 2.3;
+    ctx.beginPath(); ctx.moveTo(pad.left, yFor(stats.firstAvg)); ctx.lineTo(width - pad.right, yFor(stats.secondAvg)); ctx.stroke();
+    ctx.globalAlpha = 1;
+  });
+
+  activeSeries.forEach(series => {
+    const rows = series.rows;
+    const stats = __sqProgressSeriesStats(rows, windowSize);
+    const lineColor = multi ? series.color : '#f8fafc';
+    if (!stats.avgPoints.length) return;
+    ctx.strokeStyle = lineColor; ctx.lineWidth = multi ? 2.1 : 2.5;
+    ctx.beginPath();
+    stats.avgPoints.forEach((p, i) => { const x = xFor(rows, p.idx); const y = yFor(p.pct); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+    ctx.stroke();
+    ctx.fillStyle = lineColor;
+    stats.avgPoints.forEach(p => { const x = xFor(rows, p.idx); const y = yFor(p.pct); ctx.beginPath(); ctx.arc(x, y, multi ? 2 : 2.5, 0, Math.PI * 2); ctx.fill(); });
+  });
+
+  ctx.fillStyle = 'rgba(255,255,255,.72)';
+  ctx.fillText('Oldest', pad.left, height - 10);
+  const newest = 'Newest';
+  ctx.fillText(newest, width - pad.right - ctx.measureText(newest).width, height - 10);
+
+  const primary = activeSeries.find(s => s.key === primaryKey) || activeSeries[activeSeries.length - 1];
+  if (statsEl && primary) {
+    const rows = primary.rows;
+    const stats = __sqProgressSeriesStats(rows, windowSize);
+    const items = [
+      { label:`All Time Average — ${primary.key}`, value:__sqPctFmt(stats.allAvg, 1) }
+    ];
+    if (isPoints){
+      const firstPts = __sqProgressAvg(rows.slice(0, stats.half), 'roundScore');
+      const secondPts = __sqProgressAvg(rows.slice(stats.half), 'roundScore');
+      const allPts = __sqProgressAvg(rows, 'roundScore');
+      items[0].value = `${__sqPctFmt(stats.allAvg, 1)} · ${__sqProgressPtsFmt(allPts)} pts`;
+      items.push({ label:`Trajectory — ${primary.key}`, value:`${__sqPctFmt(stats.firstAvg, 1)} → ${__sqPctFmt(stats.secondAvg, 1)}\n${__sqProgressPtsFmt(firstPts)} → ${__sqProgressPtsFmt(secondPts)} pts` });
+    } else {
+      items.push({ label:`Trajectory % — ${primary.key}`, value:`${__sqPctFmt(stats.firstAvg, 1)} → ${__sqPctFmt(stats.secondAvg, 1)}` });
+    }
+    __sqRenderProgressPills(statsEl, items, activeSeries);
+  }
+}
+function __sqOpenTargetProgressDialog(mode, playerName, opts){
+  const name = String(playerName || '').trim();
+  const parentOverlay = opts && opts.parentOverlay;
+  const title = mode === 'points' ? `Target Points % Progress — ${name}` : `Target Hit % Progress — ${name}`;
+  const subtitle = mode === 'points' ? 'Round score percentage by target' : 'Round hit percentage by target';
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal = document.createElement('div'); modal.className = 'modal';
+  modal.style.maxWidth = '1020px'; modal.style.width = '94vw'; modal.style.maxHeight = '92vh'; modal.style.overflow = 'hidden';
+  const header = __sqStatsHeader(title, subtitle);
+  const body = document.createElement('div'); body.className = 'modal-body'; body.style.paddingTop = '8px'; body.style.overflowY = 'auto';
+  const footer = document.createElement('div'); footer.className = 'modal-footer';
+  const backBtn = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
+  const closeBtn = document.createElement('button'); closeBtn.className = 'btn sq-pill'; closeBtn.textContent = 'Close';
+  const spacer = document.createElement('div'); spacer.style.flex = '1';
+  backBtn.onclick = () => { overlay.remove(); if (parentOverlay) { parentOverlay.style.display = ''; try{ parentOverlay.querySelector('.modal').focus(); }catch(_){} } else { __sqGoBackToStatsMain(name); } };
+  closeBtn.onclick = () => { overlay.remove(); if (parentOverlay) parentOverlay.remove(); };
+  footer.append(backBtn, closeBtn, spacer); modal.append(header, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeBtn.click(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') closeBtn.click(); });
+  modal.tabIndex = 0; modal.focus();
 
   body.innerHTML = '<p class="muted">Loading…</p>';
-
-  try{
-    const safeDate = (ts) => {
-      if (!ts) return null;
-      const d = ts instanceof Date ? ts : new Date(ts);
-      return Number.isNaN(d.getTime()) ? null : d;
-    };
-
-    // Build official game IDs for this player (lifetime), fallback to scan official games
-    let ids = [];
-    const gameTs = new Map();
-    try {
-      const { data: pg } = await sb
-        .from(TABLE_PLAYER_GAMES)
-        .select('game_id, is_practice, ts')
-        .eq('player', name)
-        .or('is_practice.is.null,is_practice.eq.false')
-        .order('game_id', { ascending: true })
-        .limit(5000);
-      (pg || []).forEach(r => {
-        if (r.game_id) {
-          ids.push(r.game_id);
-          if (r.ts) gameTs.set(r.game_id, r.ts);
-        }
+  (async () => {
+    const result = await __sqFetchTargetProgressRows(mode, name);
+    if (result.missing || !result.rows.length){
+      console.warn('[SQ] Target progress dependency missing or empty', {
+        required_view: mode === 'points' ? 'v_player_target_points_progress' : 'v_player_target_hit_progress',
+        metric:mode,
+        player:name,
+        detail:result.missing || 'zero rows'
       });
-    } catch(_){}
-
-    if (!ids.length) {
-      const games = (await __fetchOfficialGames(50000)).map(__normalizeGame);
-      ids = games
-        .map(g => {
-          const gid = (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id;
-          if (gid && g.ts) gameTs.set(gid, g.ts);
-          return gid;
-        })
-        .filter(Boolean);
+      body.innerHTML = '';
+      const msg = document.createElement('p'); msg.className = 'muted';
+      msg.textContent = 'Progress data is not available yet. Required Supabase view/data source is missing or empty.';
+      const req = document.createElement('p'); req.className = 'tag muted'; req.style.marginTop = '8px';
+      req.textContent = mode === 'points' ? 'Missing dependency: v_player_target_points_progress.' : 'Missing dependency: v_player_target_hit_progress.';
+      body.append(msg, req);
+      return;
     }
 
-    // Fetch throws; fallback to reconstruct from boards
-    let throwsRows = ids.length ? await __fetchThrowsForGames(ids) : [];
-    if (!throwsRows.length) {
-      const gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame);
-      gamesAll.forEach(g => {
-        const gid = (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id;
-        if (gid && g.ts) gameTs.set(gid, g.ts);
-      });
-      throwsRows = __throwsFromGamesForPlayer(name, gamesAll);
-    }
+    console.debug('[SQ] Target progress source used', { source:result.source, metric:mode, rows:result.rows.length });
+    const normalized = __sqNormalizeTargetProgressRows(mode, result.rows);
+    const grouped = new Map();
+    normalized.forEach(r => { if (!grouped.has(r.key)) grouped.set(r.key, []); grouped.get(r.key).push(r); });
 
-    // Attach timestamps from the game map (if present)
-    throwsRows = (throwsRows || []).map(t => {
-      const ts = t.ts || gameTs.get(t.game_id) || null;
-      return Object.assign({}, t, { ts });
-    });
-
-    const mineAll = throwsRows.filter(t => String(t.player||'').trim().toLowerCase() === name.toLowerCase());
-    
-    // --- Clean view (no filters): All-time Target Points % (10..20)
-    const content = document.createElement('div');
     body.innerHTML = '';
-    body.appendChild(content);
+    const targetRow = document.createElement('div'); targetRow.className = 'sq-controls-row'; targetRow.style.display = 'flex'; targetRow.style.flexWrap = 'wrap'; targetRow.style.gap = '6px'; targetRow.style.marginBottom = '10px';
+    const avgRow = document.createElement('div'); avgRow.className = 'sq-controls-row'; avgRow.style.display = 'flex'; avgRow.style.flexWrap = 'wrap'; avgRow.style.gap = '6px'; avgRow.style.marginBottom = '10px';
+    const canvasWrap = document.createElement('div'); canvasWrap.style.width = '100%'; canvasWrap.style.height = '340px'; canvasWrap.style.border = '1px solid rgba(255,255,255,.14)'; canvasWrap.style.borderRadius = '8px'; canvasWrap.style.overflow = 'hidden'; canvasWrap.style.background = '#111827';
+    const canvas = document.createElement('canvas'); canvas.style.width = '100%'; canvas.style.height = '100%'; canvasWrap.appendChild(canvas);
+    const stats = document.createElement('div'); stats.className = 'sq-progress-pills';
+    const empty = document.createElement('p'); empty.className = 'muted'; empty.style.marginTop = '8px';
 
-    // Game Rank (across all players): prefer Supabase view (server-derived, backdated)
-    const gameRankByTarget = new Map(); // target_round -> game_rank
-    try{
-      const { data: grRows, error: grErr } = await sb
-        .from('player_points_bucket_ranks_v')
-        .select('target_round, game_rank')
-        .eq('player_name', name)
-        .order('target_round', { ascending: true });
-      if (grErr) throw grErr;
-      (grRows||[]).forEach(r=>{
-        const t = Number(r.target_round);
-        const v = Number(r.game_rank);
-        if (Number.isFinite(t)) gameRankByTarget.set(t, Number.isFinite(v) ? v : null);
-      });
-    }catch(e){
-      console.warn('Game Rank view not available (player_points_bucket_ranks_v).', e);
-    }
-
-    // Aggregate per target 10..20 for THIS player
-    const mine = mineAll.filter(t => typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 10);
-    const rows=[];
-    for (let r=0; r<=10; r++){
-      const target  = 10 + r;
-      const shots   = mine.filter(t => t.round_index === r);
-      const throwsN = shots.length;
-      const hitsUnits = shots.reduce((s,t)=>{
-        const k = String(t.kind||'').toLowerCase();
-        if (k.includes('treble') || k.includes('triple')) return s + 3;
-        if (k.includes('double')) return s + 2;
-        if (k.includes('single')) return s + (Number(t.points||0) > 0 ? 1 : 0);
-        const ratio = Number(t.points||0) / target;
-        if (ratio >= 2.5) return s + 3;
-        if (ratio >= 1.5) return s + 2;
-        if (ratio >= 0.5) return s + 1;
-        return s;
-      }, 0);
-      const available = 3 * throwsN;
-      const pct       = available ? (100 * hitsUnits / available) : 0;
-      rows.push({ target, throwsN, hitsUnits, available, pct });
-    }
-
-    // Player Rank: by Points% (desc). Tie: thrown, then lower target.
-    const pctRanks = rows
-      .filter(r => r.throwsN > 0)
-      .slice()
-      .sort((a,b) => (b.pct - a.pct) || (b.throwsN - a.throwsN) || (a.target - b.target))
-      .map((r, idx) => ({ target: r.target, rank: idx + 1 }));
-    const pctRankMap = new Map(pctRanks.map(x => [x.target, x.rank]));
-
-    // Table
-    const table=document.createElement('table'); table.className='sq-table hs-table';
-    const thead=document.createElement('thead'); const trh=document.createElement('tr');
-    ['#','THROWN','AVAIL','ACTUAL','%','My Rank','Game Rank']
-      .forEach(h => {
-        const th = document.createElement('th');
-        if (h === 'Game Rank') th.innerHTML = '<span>Game</span><span>Rank</span>';
-        else if (h === 'My Rank') th.innerHTML = '<span>My</span><span>Rank</span>';
-        else th.textContent = h;
-        trh.appendChild(th);
-      });
-    thead.appendChild(trh); table.appendChild(thead);
-
-    Array.from(trh.children).forEach((th,idx)=>{
-      Array.from(th.querySelectorAll('span')).forEach(sp=>{sp.style.display='block';sp.style.lineHeight='1.05';});
-      if (idx===5 || idx===6) th.style.textAlign='center';
-      th.style.position='sticky'; th.style.top='0'; th.style.zIndex='2'; th.style.background='rgba(0,0,0,0.4)';
+    const targetConfigs = __sqProgressTargetButtons(mode, grouped);
+    const enabledKeys = targetConfigs.filter(t => !t.disabled).map(t => t.key);
+    const stableScaleMax = __sqProgressSessionScale(grouped, enabledKeys);
+    let selectedTargets = [enabledKeys[0] || '10'];
+    let primaryTarget = selectedTargets[0];
+    let windowSize = 5;
+    const rowsForKey = key => (grouped.get(key) || []).slice().sort((a,b) => {
+      const ta = Date.parse(a.created_at || '') || 0;
+      const tb = Date.parse(b.created_at || '') || 0;
+      if (ta !== tb) return ta - tb;
+      return a.idx - b.idx;
     });
-
-    const tbody=document.createElement('tbody');
-    rows.forEach(r=>{
-      const tr=document.createElement('tr');
-      const tdTarget = document.createElement('td'); tdTarget.textContent = String(r.target);
-      const tdThrown = document.createElement('td'); tdThrown.textContent = String(r.throwsN);
-      const tdAvail  = document.createElement('td'); tdAvail.textContent  = String(r.available);
-      const tdHits   = document.createElement('td'); tdHits.textContent   = String(r.hitsUnits || 0);
-      const tdPct    = document.createElement('td'); tdPct.textContent    = (r.pct||0).toFixed(1)+'%';
-      const tdRank  = document.createElement('td'); tdRank.textContent   = String(pctRankMap.get(r.target) || '—'); tdRank.style.textAlign='center';
-      const tdGR     = document.createElement('td'); tdGR.style.textAlign='center';
-      const gr = gameRankByTarget.get(r.target);
-      tdGR.textContent = gr ? String(gr) : '—';
-      tr.append(tdTarget, tdThrown, tdAvail, tdHits, tdPct, tdRank, tdGR);
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-
-    const info=document.createElement('p');
-    info.className='tag';
-    info.style.marginTop='8px';
-    info.textContent = 'Actual Hits = single 1 • double 2 • treble 3 — Available Hits = 3 × thrown (9 per round) — Points % = Actual ÷ Available';
-
-    const scroll=document.createElement('div');
-    scroll.style.maxHeight='56vh';
-    scroll.style.overflowY='auto';
-    __sqStyleStatsTableWrap(scroll);
-    scroll.appendChild(table);
-
-    content.innerHTML='';
-    content.appendChild(scroll);
-    content.appendChild(info);
-
-    const grNote=document.createElement('div');
-    grNote.className='tag muted';
-    grNote.style.marginTop='10px';
-    grNote.textContent='Game Rank is shown only after 15+ throws (5 rounds) for that target.';
-    content.appendChild(grNote);
-
-    // (optional) Feed SPIDER with this table’s Points% (10..20, then D/T/B zeros)
-    window.__lastPointsPctSpiderData = {
-      labels: rows.map(r=>String(r.target)),
-      pct: rows.map(r=>Number(r.pct||0))
+    const draw = () => {
+      Array.from(targetRow.querySelectorAll('button')).forEach(b => {
+        const selected = selectedTargets.includes(b.dataset.target);
+        b.classList.toggle('primary', selected);
+        b.style.borderColor = selected ? __sqProgressColor(b.dataset.target) : '';
+      });
+      Array.from(avgRow.querySelectorAll('button')).forEach(b => b.classList.toggle('primary', Number(b.dataset.window) === windowSize));
+      const series = selectedTargets.map(key => ({ key, color:__sqProgressColor(key), rows:rowsForKey(key) })).filter(s => s.rows.length);
+      __sqDrawTargetProgressCanvas(canvas, series, windowSize, stats, empty, mode, primaryTarget, stableScaleMax);
     };
-}catch(e){
-    console.error('Target Points % failed', e);
-    body.innerHTML = '<p>Failed to load Target Points %.</p>';
-    try{ if (typeof toast==='function') toast('Failed to open Target Points %'); }catch(_){}
+
+    targetConfigs.forEach(t => {
+      const btn = document.createElement('button'); btn.className = 'btn small'; btn.textContent = t.label; btn.dataset.target = t.key;
+      if (t.disabled){ btn.disabled = true; btn.setAttribute('aria-disabled', 'true'); btn.title = t.reason; btn.style.opacity = '.45'; btn.style.cursor = 'not-allowed'; }
+      btn.onclick = () => {
+        if (t.disabled) return;
+        if (selectedTargets.includes(t.key)){
+          if (selectedTargets.length === 1) return;
+          selectedTargets = selectedTargets.filter(k => k !== t.key);
+          if (primaryTarget === t.key) primaryTarget = selectedTargets[selectedTargets.length - 1];
+        } else {
+          selectedTargets = selectedTargets.concat(t.key);
+          primaryTarget = t.key;
+        }
+        draw();
+      };
+      targetRow.appendChild(btn);
+    });
+    [5,10,20].forEach(n => {
+      const btn = document.createElement('button'); btn.className = 'btn small'; btn.textContent = `${n} Round AV`; btn.dataset.window = String(n);
+      btn.onclick = () => { windowSize = n; draw(); };
+      avgRow.appendChild(btn);
+    });
+    body.append(targetRow, avgRow, canvasWrap, stats, empty);
+    draw();
+    try{ new ResizeObserver(draw).observe(canvasWrap); }catch(_){ window.addEventListener('resize', draw, { passive:true }); }
+  })();
+  return overlay;
+}
+window.openPlayerTargetPointsProgressDialog = function openPlayerTargetPointsProgressDialog(playerName, opts){ return __sqOpenTargetProgressDialog('points', playerName, opts || {}); };
+window.openPlayerTargetHitProgressDialog = function openPlayerTargetHitProgressDialog(playerName, opts){ return __sqOpenTargetProgressDialog('hit', playerName, opts || {}); };
+
+function __sqBuildTargetPctShell(title, subtitle, playerName, metricMode){
+  const name = String(playerName || '').trim();
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal = document.createElement('div'); modal.className = 'modal';
+  modal.style.maxWidth = '980px'; modal.style.width = '94vw';
+  modal.style.maxHeight = '90vh'; modal.style.overflow = 'hidden';
+  const header = __sqStatsHeader(title, subtitle);
+  const body = document.createElement('div'); body.className = 'modal-body';
+  body.style.paddingTop = '8px'; body.style.maxHeight = 'none'; body.style.overflowY = 'visible';
+  const footer = document.createElement('div'); footer.className = 'modal-footer';
+  const backBtn = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
+  const closeBtn = document.createElement('button'); closeBtn.className = 'btn sq-pill'; closeBtn.textContent = 'Close';
+  const spacer = document.createElement('div'); spacer.style.flex = '1';
+  const spiderBtn = document.createElement('button'); spiderBtn.className = 'btn small'; spiderBtn.textContent = 'SPIDER'; spiderBtn.dataset.targetPctAction = 'spider';
+  const progBtn = document.createElement('button'); progBtn.className = 'btn small'; progBtn.textContent = 'PROGRESS'; progBtn.dataset.targetPctAction = 'progress';
+  spiderBtn.disabled = true; spiderBtn.setAttribute('aria-disabled', 'true'); spiderBtn.title = 'Available after target percentage data loads.'; spiderBtn.style.opacity = '.45'; spiderBtn.style.cursor = 'not-allowed';
+  progBtn.disabled = true; progBtn.setAttribute('aria-disabled', 'true'); progBtn.title = 'Progress requires a Supabase target percentage progression view.'; progBtn.style.opacity = '.45'; progBtn.style.cursor = 'not-allowed';
+  backBtn.onclick = () => { overlay.remove(); __sqGoBackToStatsMain(name); };
+  closeBtn.onclick = () => overlay.remove();
+  spiderBtn.onclick = () => {
+    const mode = String(metricMode || 'hit').toLowerCase();
+    const data = mode === 'points' ? window.__lastPointsPctSpiderData : window.__lastTargetHitPctSpiderData;
+    if (data && typeof window.openPlayerSpiderDialog === 'function') {
+      overlay.style.display = 'none';
+      window.openPlayerSpiderDialog(name, { parentOverlay:overlay, mode, data });
+      return;
+    }
+    try{ if (typeof toast === 'function') toast('SPIDER not available until target percentage data is loaded'); }catch(_){}
+  };
+  progBtn.onclick = () => {
+    const mode = String(metricMode || 'hit').toLowerCase();
+    const fn = mode === 'points' ? window.openPlayerTargetPointsProgressDialog : window.openPlayerTargetHitProgressDialog;
+    if (typeof fn === 'function') {
+      overlay.style.display = 'none';
+      fn(name, { parentOverlay:overlay });
+      return;
+    }
+    try{ if (typeof toast === 'function') toast('PROGRESS is not available until a Supabase target percentage progression view exists'); }catch(_){}
+  };
+  footer.append(backBtn, closeBtn, spacer, spiderBtn, progBtn);
+  modal.append(header, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0; modal.focus();
+  return { overlay, body };
+}
+
+window.openPlayerTargetHitDialog = async function openPlayerTargetHitDialog(playerName){
+  const name = String(playerName || '').trim();
+  if (!name) return;
+  const ui = __sqBuildTargetPctShell(`Target Hit % — ${name}`, 'Throws / Hits / %', name, 'hit');
+  const body = ui.body;
+  body.innerHTML = '<p class="muted">Loading…</p>';
+
+  const result = await __sqFetchPlayerTargetHitPctRows(name);
+  if (result.missing || !result.rows.length){
+    console.warn('[SQ] Target Hit % dependency missing or empty', {
+      required_view:'v_player_target_hit_pct',
+      player:name,
+      source:result.source,
+      detail:result.missing || 'zero rows'
+    });
+    __sqShowTargetPctUnavailable(
+      body,
+      'Target Hit % is not available yet. Accurate hit-rate data requires throw-level segment data or a Supabase view that records correct target hits.',
+      'Formula: Target Hit % = successful target hits / throws at that target. Number rounds require actual segment number truth; points alone are not used.',
+      'Missing dependency: v_player_target_hit_pct (player_id/player_key/player_name, target_key/target_label, throws, hits, hit_pct).'
+    );
+    return;
   }
+
+  console.debug('[SQ] Target Hit % source used', { source:result.source, rows:result.rows.length });
+  __sqSetTargetPctActionsEnabled(body, true);
+  const rows = result.rows.map(r => {
+    const throwsN = Number(__sqTargetPctValue(r, ['throws','throw_count','thrown']) || 0);
+    const hits = Number(__sqTargetPctValue(r, ['hits','successful_hits','hit_count']) || 0);
+    const pctRaw = __sqTargetPctValue(r, ['hit_pct','pct','percentage']);
+    const pct = Number.isFinite(Number(pctRaw)) ? Number(pctRaw) : (throwsN ? hits * 100 / throwsN : 0);
+    return {
+      key:__sqTargetPctKey(r),
+      throwsN,
+      hits,
+      pct,
+      games:__sqTargetPctValue(r, ['source_games','games','game_count'])
+    };
+  }).filter(r => r.key).sort((a,b) => __sqTargetPctOrder(a.key) - __sqTargetPctOrder(b.key));
+
+  const table = document.createElement('table'); table.className = 'sq-table hs-table';
+  const thead = document.createElement('thead'); const trh = document.createElement('tr');
+  ['Target','Throws','Hits','%'].forEach(h => { const th = document.createElement('th'); th.textContent = h; trh.appendChild(th); });
+  thead.appendChild(trh); table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    [r.key, r.throwsN, r.hits, (Number(r.pct)||0).toFixed(2)+'%'].forEach(v => {
+      const td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  const scroll = document.createElement('div'); scroll.style.maxHeight = '56vh'; scroll.style.overflowY = 'auto';
+  __sqStyleStatsTableWrap(scroll); scroll.appendChild(table);
+  const info = document.createElement('p'); info.className = 'tag muted'; info.style.marginTop = '8px';
+  info.textContent = 'Target Hit % = successful target hits / throws at that target.';
+  window.__lastTargetHitPctSpiderData = {
+    labels: rows.map(r => String(r.key)),
+    pct: rows.map(r => Number(r.pct || 0))
+  };
+  body.innerHTML = ''; body.append(scroll, info);
 };
+
+window.openPlayerTargetPointsDialog = async function openPlayerTargetPointsDialog(playerName){
+  const name = String(playerName || '').trim();
+  if (!name) return;
+  const ui = __sqBuildTargetPctShell(`Target Points % — ${name}`, 'Throws / Actual / Max / %', name, 'points');
+  const body = ui.body;
+  body.innerHTML = '<p class="muted">Loading…</p>';
+
+  const result = await __sqFetchPlayerTargetPointsPctRows(name);
+  if (result.missing || !result.rows.length){
+    console.warn('[SQ] Target Points % dependency missing or empty', {
+      required_view:'v_player_target_points_pct',
+      player:name,
+      source:result.source,
+      detail:result.missing || 'zero rows'
+    });
+    __sqShowTargetPctUnavailable(
+      body,
+      'Target Points % is not available yet. Required Supabase view/data source is missing or empty.',
+      'Formula: Target Points % = actual points scored / maximum available points. For targets 10-20, max points = target number x 3 x throws.',
+      'Missing dependency: v_player_target_points_pct (player_id/player_key/player_name, target_number, throws, actual_points, max_points, points_pct).'
+    );
+    return;
+  }
+
+  console.debug('[SQ] Target Points % source used', { source:result.source, rows:result.rows.length });
+  __sqSetTargetPctActionsEnabled(body, true);
+  const rows = result.rows.map(r => {
+    const target = Number(__sqTargetPctValue(r, ['target_number','target_n','target']));
+    const throwsN = Number(__sqTargetPctValue(r, ['throws','throw_count','thrown']) || 0);
+    const actual = Number(__sqTargetPctValue(r, ['actual_points','points','score','round_total']) || 0);
+    const max = Number(__sqTargetPctValue(r, ['max_points','available_points']) || (Number.isFinite(target) ? target * 3 * throwsN : 0));
+    const pctRaw = __sqTargetPctValue(r, ['points_pct','pct','percentage']);
+    const pct = Number.isFinite(Number(pctRaw)) ? Number(pctRaw) : (max ? actual * 100 / max : 0);
+    return {
+      target:Number.isFinite(target) ? target : __sqTargetPctKey(r),
+      throwsN,
+      actual,
+      max,
+      pct,
+      games:__sqTargetPctValue(r, ['source_games','games','game_count'])
+    };
+  }).filter(r => Number(r.target) >= 10 && Number(r.target) <= 20)
+    .sort((a,b) => Number(a.target) - Number(b.target));
+
+  if (!rows.length){
+    console.warn('[SQ] Target Points % dependency returned no numbered target rows', { required_view:'v_player_target_points_pct', player:name });
+    __sqShowTargetPctUnavailable(
+      body,
+      'Target Points % is not available yet. Required Supabase view/data source is missing or empty.',
+      'Formula: Target Points % = actual points scored / maximum available points. D/T/B rows are excluded.',
+      'Missing dependency: v_player_target_points_pct with numbered target rows 10-20.'
+    );
+    return;
+  }
+
+  const table = document.createElement('table'); table.className = 'sq-table hs-table';
+  const thead = document.createElement('thead'); const trh = document.createElement('tr');
+  ['Target','% Score','Avg Score'].forEach(h => { const th = document.createElement('th'); th.textContent = h; trh.appendChild(th); });
+  thead.appendChild(trh); table.appendChild(thead);
+  const fmtAvgScore = (actual, throwsN) => {
+    const avg = throwsN ? (Number(actual || 0) * 3 / throwsN) : 0;
+    const rounded = Math.round(avg * 10) / 10;
+    return (Number.isFinite(rounded) ? (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)) : '0') + ' pts';
+  };
+  const tbody = document.createElement('tbody');
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    [r.target, (Number(r.pct)||0).toFixed(2)+'%', fmtAvgScore(r.actual, r.throwsN)].forEach(v => {
+      const td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  const scroll = document.createElement('div'); scroll.style.maxHeight = '56vh'; scroll.style.overflowY = 'auto';
+  __sqStyleStatsTableWrap(scroll); scroll.appendChild(table);
+  const info = document.createElement('p'); info.className = 'tag muted'; info.style.marginTop = '8px';
+  info.textContent = 'Target Points % = actual points / (target number × 3 × throws). Avg Score = actual points ÷ target rounds played.';
+  body.innerHTML = ''; body.append(scroll, info);
+
+  window.__lastPointsPctSpiderData = {
+    labels: rows.map(r => String(r.target)),
+    pct: rows.map(r => Number(r.pct || 0))
+  };
+};
+
+window.openPlayerTargetPctDialog = window.openPlayerTargetHitDialog;
+window.openTargetPctDialog = window.openPlayerTargetHitDialog;
+window.openPlayerTargetPointsPctDialog = window.openPlayerTargetPointsDialog;
 
 // ==== (5) D T B Hit % — per number (10..20), lifetime =======================
 window.openPlayerDTBPctDialog = async function openPlayerDTBPctDialog(playerName){
@@ -41648,7 +41698,6 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     await render();
   }
   window.__sqOpenTop50ScoresTurboTabs=openTop50; window.__sqOpenTop50ScoresAllModes=openTop50; window.openTop50ScoresDialog=openTop50; try{openTop50ScoresDialog=openTop50;}catch(_){ }
-  document.addEventListener('click',function(e){var btn=e.target&&e.target.closest&&e.target.closest('#leagueTop50ScoresBtn');if(!btn)return;try{e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation();}catch(_){}try{document.querySelectorAll('.modal-backdrop').forEach(function(n){if(!n.classList.contains('sq-top50-fix99-backdrop'))n.remove();});}catch(_){}openTop50('official');},true);
   try{console.info('[SQ] Fix99 Top 50 Official/Turbo/Practice tabs active');}catch(_){ }
 })();
 </script>
@@ -41710,7 +41759,6 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
   function normaliseHeaders(root){try{(root||document).querySelectorAll('th').forEach(function(th){var t=String(th.textContent||'').trim().toLowerCase();if(t==='when')th.textContent='DATE/TIME';else if(t==='avg / round'||t==='avg/round')th.textContent='AVG';else th.textContent=String(th.textContent||'').toUpperCase();});(root||document).querySelectorAll('table.hs-table,table.sq-table').forEach(function(tbl){tbl.classList.add('sq-league-table');});}catch(_){}}
   var mo=new MutationObserver(function(ms){ms.forEach(function(m){Array.from(m.addedNodes||[]).forEach(function(n){if(n&&n.nodeType===1)normaliseHeaders(n);});});});
   try{mo.observe(document.documentElement,{childList:true,subtree:true});normaliseHeaders(document);}catch(_){}
-  document.addEventListener('click',function(e){var b=e.target&&e.target.closest&&e.target.closest('#leagueTop50ScoresBtn');if(!b)return;try{e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation();}catch(_){}window.openTop50ScoresDialog('official');},true);
   try{console.info('[SQ] Fix100 League & Ranks formatting/alignment active');}catch(_){ }
 })();
 </script>
@@ -41994,166 +42042,11 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
 <!-- <<< PATCH:FIX107_AUDIT_CLEANUP_VERIFIED END -->
 
 
-<!-- >>> PATCH:FIX108_LEAGUE_RANKS_UNIFORM_MODE_TABS START -->
-<style id="sq-fix108-league-tabs-css">
-  .sq108-bd{z-index:9998!important;}
-  .sq108-modal{width:min(94vw,980px)!important;max-height:88vh!important;overflow:auto!important;}
-  .sq108-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin:0 0 10px;}
-  .sq108-title h3{margin:0!important;font-size:20px!important;line-height:1.15!important;font-weight:900!important;letter-spacing:.01em!important;color:#eef2ff!important;}
-  .sq108-sub{font-size:11px!important;line-height:1.25!important;color:rgba(210,216,240,.64)!important;margin-top:3px!important;}
-  .sq108-tabs{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;min-width:max-content;}
-  .sq108-tabs button{border-radius:999px!important;padding:8px 13px!important;min-height:32px!important;border:1px solid rgba(255,255,255,.14)!important;background:rgba(10,12,24,.56)!important;color:rgba(240,244,255,.86)!important;font-size:12px!important;font-weight:850!important;letter-spacing:.02em!important;line-height:1!important;box-shadow:none!important;}
-  .sq108-tabs button.active{border-color:rgba(255,123,26,.95)!important;background:rgba(255,123,26,.14)!important;box-shadow:0 0 0 2px rgba(255,123,26,.13) inset!important;color:#fff!important;}
-  .sq108-note{border:1px solid rgba(255,255,255,.11)!important;border-radius:999px!important;padding:5px 9px!important;font-size:12px!important;color:rgba(230,235,255,.72)!important;margin:6px 0 10px!important;}
-  .sq108-table{width:100%!important;border-collapse:collapse!important;background:rgba(20,24,46,.74)!important;border-radius:12px!important;overflow:hidden!important;}
-  .sq108-table th{font-size:11px!important;line-height:1!important;text-transform:uppercase!important;letter-spacing:.28em!important;color:rgba(210,216,240,.64)!important;font-weight:850!important;padding:14px 12px!important;background:rgba(255,255,255,.035)!important;text-align:left!important;white-space:nowrap!important;}
-  .sq108-table td{padding:13px 12px!important;border-top:1px solid rgba(255,255,255,.1)!important;color:#e7ebfa!important;font-size:14px!important;vertical-align:middle!important;}
-  .sq108-table .rank-cell{color:#ff7a00!important;font-weight:950!important;text-align:left!important;width:64px!important;}
-  .sq108-table .num-cell,.sq108-table .score-cell,.sq108-table .avg-cell{text-align:center!important;font-variant-numeric:tabular-nums!important;font-weight:800!important;}
-  .sq108-table .date-cell{font-variant-numeric:tabular-nums!important;white-space:nowrap!important;color:rgba(230,235,255,.78)!important;}
-  .sq108-table .empty-row td{padding:16px!important;color:rgba(230,235,255,.68)!important;}
-  @media(max-width:680px){.sq108-head{flex-direction:column;align-items:stretch}.sq108-tabs{justify-content:flex-end}.sq108-tabs button{padding:7px 10px!important;font-size:11px!important}.sq108-modal{width:96vw!important}.sq108-table th,.sq108-table td{padding:11px 8px!important;font-size:12px!important}.sq108-table th{letter-spacing:.18em!important}}
-</style>
-<script id="sq-fix108-league-ranks-uniform-mode-tabs-js">
-(function(){
-  'use strict';
-  if(window.__sqFix108LeagueRanksUniformTabs) return;
-  window.__sqFix108LeagueRanksUniformTabs = true;
-
-  var MODES=[{mode:'official',label:'Official'},{mode:'turbo',label:'Turbo'},{mode:'practice',label:'Practice'}];
-  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-  function norm(s){return String(s||'').trim().toLowerCase();}
-  function key(s){return norm(s).replace(/[^a-z0-9]+/g,'');}
-  function parseMs(t){var n=Date.parse(t||'');return Number.isFinite(n)?n:0;}
-  function pad2(n){return String(n).padStart(2,'0');}
-  function fmtDateTime(ts){try{var d=new Date(ts||0);if(!Number.isFinite(d.getTime()))return '';return pad2(d.getDate())+'.'+pad2(d.getMonth()+1)+'.'+pad2(d.getFullYear()%100)+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());}catch(_){return '';}}
-  function playerName(p){if(p==null)return ''; if(typeof p==='string')return p.trim(); var n=String(p.name||p.player||p.player_name||p.playerName||p.display_name||'').trim(); if(n)return n; var f=String(p.first_name||p.firstName||'').trim(), l=String(p.last_name||p.lastName||'').trim(), nick=String(p.nickname||'').trim(); return f?(f+(nick?' "'+nick+'"':'')+(l?' '+l:'')):'';}
-  function playersOf(g){var ps=g&&(g.players||(g.state&&g.state.players)||(g.raw&&g.raw.state&&g.raw.state.players));return Array.isArray(ps)?ps:[];}
-  function totalsOf(g){var t=g&&(g.totals||(g.state&&g.state.totals)||(g.raw&&g.raw.totals)||(g.raw&&g.raw.state&&g.raw.state.totals));return Array.isArray(t)?t:[];}
-  function boardOf(g){return g&&(g.board||g.score||(g.state&&(g.state.board||g.state.score))||(g.raw&&g.raw.state&&(g.raw.state.board||g.raw.state.score)));}
-  function rowsForPlayer(board,pi){if(!Array.isArray(board))return[]; if(Array.isArray(board[pi]))return board[pi]; if(Array.isArray(board[0])&&board[0][pi]!=null)return board.map(function(r){return Array.isArray(r)?r[pi]:null;}); return[];}
-  function roundScore(ent){if(ent==null)return 0; if(typeof ent==='number'||typeof ent==='string')return Number(ent)||0; var keys=['roundTotal','round_total','points','score','total','val','value']; for(var i=0;i<keys.length;i++){var n=Number(ent[keys[i]]); if(Number.isFinite(n)&&n>0)return n;} var darts=Array.isArray(ent.darts)?ent.darts:(Array.isArray(ent.throws)?ent.throws:null); if(darts)return darts.reduce(function(a,d){return a+(Number(d&&(d.points??d.score??d.val??d.value)||0)||0);},0); return 0;}
-  function totalFor(g,pi){var totals=totalsOf(g), v=totals[pi]; if(typeof v==='number'||typeof v==='string'){var n=Number(v)||0;if(n>0)return n;} if(v&&typeof v==='object'){var no=Number(v.total??v.score??v.points??v.val); if(Number.isFinite(no)&&no>0)return no;} return rowsForPlayer(boardOf(g),pi).reduce(function(a,e){return a+roundScore(e);},0);}
-  function dartToken(d){if(!d)return'X'; var kind=String(d.kind||d.multiplier||d.type||'').toLowerCase(); var bull=String(d.bull||d.bull_type||'').toLowerCase(); var target=Number(d.sector??d.target??d.number??d.num??d.segment); var pts=Number(d.points??d.score??d.val??d.value??0)||0; if(!(pts>0))return'X'; if(kind.startsWith('tr')||kind.startsWith('tre')||kind==='t'||kind==='3')return Number.isFinite(target)&&target>0?'T'+target:'T'; if(kind.startsWith('do')||kind==='d'||kind==='2')return Number.isFinite(target)&&target>0?'D'+target:'D'; if(kind.startsWith('b')||bull||kind==='ib'||kind==='ob')return (bull.startsWith('inner')||bull==='ib'||pts>=50)?'IB':'OB'; if(kind.startsWith('s')||kind==='1')return Number.isFinite(target)&&target>0?'S'+target:'S'; return Number.isFinite(target)&&target>0?'S'+target:'S';}
-  function dartsText(ent){try{if(!ent)return''; if(typeof ent.dartsText==='string'&&ent.dartsText.trim())return ent.dartsText.trim(); if(typeof ent.darts==='string'&&ent.darts.trim())return ent.darts.trim(); var darts=Array.isArray(ent.darts)?ent.darts:(Array.isArray(ent.throws)?ent.throws:[]); return darts.slice(0,3).map(dartToken).join(' / ');}catch(_){return'';}}
-  function isTurboRow(g){try{var st=(g&&g.state)||{}, rawst=(g&&g.raw&&g.raw.state)||{}, m=st.match||rawst.match||g?.match||{}, rules=st.tournamentRules||m.tournamentRules||rawst.tournamentRules||{}; var type=String(g?.tournamentType||st.tournamentType||st.tournament_type||m.tournamentType||m.tournament_type||rawst.tournamentType||st.__sqTournamentDraft?.type||'').toLowerCase(); return type==='turbo'||st.strictTimer===true||m.strictTimer===true||rules.strictTimer===true||Number(rules.throwLimitSeconds||st.throwLimitSeconds||m.throwLimitSeconds)===20||String(rules.startTarget||st.startTarget||m.startTarget||'')==='17';}catch(_){return false;}}
-  function isPracticeRow(g){var st=(g&&g.state)||{}, rawst=(g&&g.raw&&g.raw.state)||{}; var mode=String(g?.mode||g?.game_mode||st.mode||st.gameMode||rawst.mode||'').toLowerCase(); if(mode.includes('practice')||mode.includes('unofficial')||mode==='solo')return true; if(g?.isPractice===true||g?.is_practice===true||g?.practice===true||st.isPractice===true||st.is_practice===true||st.practice===true||rawst.is_practice===true)return true; return playersOf(g).length===1;}
-  async function gamesFor(mode){mode=String(mode||'official').toLowerCase(); try{if(typeof window.getGamesForMode==='function'){var rows=await window.getGamesForMode(mode); if(Array.isArray(rows))return rows;}}catch(_){} try{if(typeof __sqGetAllGamesNormalized==='function'){var all=await __sqGetAllGamesNormalized(); return (all||[]).filter(function(g){var p=isPracticeRow(g), t=isTurboRow(g); if(mode==='practice')return p; if(mode==='turbo')return !p&&t; return !p&&!t;});}}catch(_){} return [];} 
-  function gameTs(g){return g?.ts||g?.created_at||g?.completed_at||(g?.state&&g.state.completed_at)||(g?.raw&&g.raw.created_at)||'';}
-  function gameId(g){return g?.id||g?.game_id||g?.raw?.id||g?.stableKey||'';}
-  function matchId(g){return g?.match_id||g?.matchId||g?.raw?.match_id||g?.state?.match_id||'';}
-  function labelMode(mode){return mode==='turbo'?'Turbo':mode==='practice'?'Practice':'Official';}
-  function modeNote(mode,thing){return (mode==='turbo'?'Turbo tournament ':mode==='practice'?'Practice ':'Classic official ')+(thing||'games only.');}
-  function buildModal(title,sub,mode,renderMode){
-    document.querySelectorAll('.sq108-bd').forEach(function(n){try{n.remove();}catch(_){}});
-    var bd=document.createElement('div'); bd.className='modal-backdrop sq108-bd';
-    var modal=document.createElement('div'); modal.className='modal sq108-modal';
-    modal.innerHTML='<div class="sq108-head"><div class="sq108-title"><h3>'+esc(title)+'</h3>'+(sub?'<div class="sq108-sub">'+esc(sub)+'</div>':'')+'</div><div class="sq108-tabs">'+MODES.map(function(m){return '<button type="button" data-mode="'+m.mode+'">'+m.label+'</button>';}).join('')+'</div></div><div class="sq108-body"></div><div style="display:flex;justify-content:center;margin-top:16px;"><button type="button" class="btn sq108-close">Close</button></div>';
-    bd.appendChild(modal); document.body.appendChild(bd);
-    function close(){bd.remove();}
-    bd.addEventListener('click',function(e){if(e.target===bd)close();}); modal.querySelector('.sq108-close').onclick=close;
-    var body=modal.querySelector('.sq108-body'), tabs=modal.querySelector('.sq108-tabs');
-    function setActive(m){tabs.querySelectorAll('button[data-mode]').forEach(function(b){b.classList.toggle('active',b.dataset.mode===m);});}
-    tabs.onclick=function(e){var b=e.target.closest('button[data-mode]'); if(!b)return; mode=b.dataset.mode; setActive(mode); renderMode(mode,body);};
-    setActive(mode); return {bd:bd,modal:modal,body:body,setActive:setActive,close:close};
-  }
-  function table(headers, colgroup){return '<div class="table-wrap"><table class="sq108-table"><colgroup>'+colgroup+'</colgroup><thead><tr>'+headers.map(function(h){return '<th>'+esc(h)+'</th>';}).join('')+'</tr></thead><tbody></tbody></table></div>';}
-  async function playerRows(mode){var out=[];(await gamesFor(mode)).forEach(function(g){var ps=playersOf(g), ts=gameTs(g); ps.forEach(function(p,i){var name=playerName(p)||('Player '+(i+1)); var score=totalFor(g,i); if(!(score>0))return; out.push({player:name,playerKey:key(name),score:score,avg:score/14,ts:ts,game:g,idx:i});});}); return out.sort(function(a,b){return (b.score-a.score)||(parseMs(b.ts)-parseMs(a.ts));});}
-  function targetLabels(mode){return mode==='turbo'?['17','18','19','20','D','T','B']:['10','11','12','13','14','15','16','17','18','19','20','D','T','B'];}
-  function labelForRound(i){var labels=['10','11','12','13','14','15','16','17','18','19','20','D','T','B']; return labels[i]||String(i+1);}
-  async function savedPlayerKeys(){try{var rows=typeof cloudListPlayers==='function'?await cloudListPlayers():[]; if(Array.isArray(rows)&&rows.length)return new Set(rows.map(function(p){return key(p.name||p.first_name||p.firstName||'');}).filter(Boolean));}catch(_){} try{var rows2=typeof getSavedPlayers==='function'?getSavedPlayers():[]; return new Set((rows2||[]).map(function(p){return key(p.name);}).filter(Boolean));}catch(_){} return new Set();}
-  function resultText(g){var ps=playersOf(g), arr=ps.map(function(p,i){return {name:playerName(p)||('Player '+(i+1)),score:totalFor(g,i)};}).filter(function(r){return r.name&&r.score>=0;}).sort(function(a,b){return b.score-a.score;}); if(!arr.length)return '—'; if(arr.length===1)return arr[0].name+' '+Math.round(arr[0].score); return arr[0].name+' '+Math.round(arr[0].score)+' Bt '+arr.slice(1).map(function(r){return r.name+' '+Math.round(r.score);}).join(' ');}
-
-  window.openLatestScoresDialog=async function(initialMode){var mode=['official','turbo','practice'].indexOf(String(initialMode||'').toLowerCase())>=0?String(initialMode).toLowerCase():'official'; var ui=buildModal('Latest Scores','Games history truth / Result / Date-Time',mode,render); async function render(m,body){body.innerHTML='<div class="sq108-note">'+esc(modeNote(m,'game results.'))+'</div>'+table(['#','RESULT',''], '<col style="width:64px"><col><col style="width:180px">'); var tb=body.querySelector('tbody'); var rows=(await gamesFor(m)).sort(function(a,b){return parseMs(gameTs(b))-parseMs(gameTs(a));}).slice(0,50); if(!rows.length){tb.innerHTML='<tr class="empty-row"><td colspan="3">No '+labelMode(m)+' games found.</td></tr>';return;} tb.innerHTML=rows.map(function(g,i){return '<tr><td class="rank-cell">'+(i+1)+'</td><td>'+esc(resultText(g)+(m==='turbo'?' - TURBO':m==='practice'?' - PRACTICE':''))+'</td><td class="date-cell">'+esc(fmtDateTime(gameTs(g)))+'</td></tr>';}).join('');} await render(mode,ui.body);};
-
-  window.openTop50ScoresDialog=async function(initialMode){var mode=['official','turbo','practice'].indexOf(String(initialMode||'').toLowerCase())>=0?String(initialMode).toLowerCase():'official'; var ui=buildModal('Top 50 Scores','Official, Turbo and Practice scores are stored separately.',mode,render); async function render(m,body){body.innerHTML='<div class="sq108-note">'+esc(modeNote(m,'player-game scores only.'))+'</div>'+table(['#','PLAYER','SCORE','AVG',''], '<col style="width:64px"><col><col style="width:140px"><col style="width:110px"><col style="width:180px">'); var tb=body.querySelector('tbody'); var rows=(await playerRows(m)).slice(0,50); if(!rows.length){tb.innerHTML='<tr class="empty-row"><td colspan="5">No '+labelMode(m)+' scores found.</td></tr>';return;} tb.innerHTML=rows.map(function(r,i){return '<tr><td class="rank-cell">'+(i+1)+'</td><td>'+esc(r.player)+'</td><td class="score-cell">'+Math.round(r.score)+'</td><td class="avg-cell">'+Number(r.avg||0).toFixed(1)+'</td><td class="date-cell">'+esc(fmtDateTime(r.ts))+'</td></tr>';}).join('');} await render(mode,ui.body);};
-
-  window.openHighScoreLeagueDialog=async function(initialMode){var mode=['official','turbo','practice'].indexOf(String(initialMode||'').toLowerCase())>=0?String(initialMode).toLowerCase():'official'; var ui=buildModal('High Score League','Highest verified match score per saved player.',mode,render); async function render(m,body){body.innerHTML='<div class="sq108-note">'+esc(modeNote(m,'high scores only.'))+'</div>'+table(['#','PLAYER','HIGH SCORE',''], '<col style="width:64px"><col><col style="width:150px"><col style="width:180px">'); var tb=body.querySelector('tbody'); var saved=await savedPlayerKeys(), best=new Map(); (await playerRows(m)).forEach(function(r){if(saved.size&&!saved.has(r.playerKey))return; var prev=best.get(r.playerKey); if(!prev||r.score>prev.score||(r.score===prev.score&&parseMs(r.ts)>parseMs(prev.ts)))best.set(r.playerKey,r);}); var rows=Array.from(best.values()).sort(function(a,b){return (b.score-a.score)||(parseMs(b.ts)-parseMs(a.ts));}); if(!rows.length){tb.innerHTML='<tr class="empty-row"><td colspan="4">No '+labelMode(m)+' high scores found.</td></tr>';return;} tb.innerHTML=rows.map(function(r,i){return '<tr><td class="rank-cell">'+(i+1)+'</td><td>'+esc(r.player)+'</td><td class="score-cell">'+Math.round(r.score)+'</td><td class="date-cell">'+esc(fmtDateTime(r.ts))+'</td></tr>';}).join('');} await render(mode,ui.body);};
-
-  window.openRoundHighScoresDialog=async function(initialMode){var mode=['official','turbo','practice'].indexOf(String(initialMode||'').toLowerCase())>=0?String(initialMode).toLowerCase():'official'; var ui=buildModal('Round High Scores','Best single-round scores by game type.',mode,render); async function render(m,body){body.innerHTML='<div class="sq108-note">'+esc(modeNote(m,'round highs only.'))+'</div>'+table(['ROUND','WR','DARTS','HOLDER'], '<col style="width:90px"><col style="width:130px"><col><col style="width:180px">'); var tb=body.querySelector('tbody'), best={}; targetLabels(m).forEach(function(l){best[l]={score:0,darts:'—',holders:[]};}); (await gamesFor(m)).forEach(function(g){var board=boardOf(g), ps=playersOf(g); ps.forEach(function(p,pi){var name=playerName(p)||('Player '+(pi+1)); rowsForPlayer(board,pi).forEach(function(ent,ri){var lab=labelForRound(ri); if(!best[lab])return; var sc=roundScore(ent); if(!(sc>0))return; var d=dartsText(ent)||'—'; if(sc>best[lab].score){best[lab]={score:sc,darts:d,holders:[name]};} else if(sc===best[lab].score && best[lab].holders.indexOf(name)<0){best[lab].holders.push(name);} });});}); tb.innerHTML=targetLabels(m).map(function(l){var r=best[l]||{score:0,darts:'—',holders:[]};return '<tr><td class="rank-cell">'+esc(l)+'</td><td class="score-cell">'+(r.score?Math.round(r.score):'—')+'</td><td>'+esc(r.score?r.darts:'—')+'</td><td>'+esc(r.score?r.holders.join(', '):'—')+'</td></tr>';}).join('');} await render(mode,ui.body);};
-
-  window.openPremierLeagueDialog=async function(initialMode){var mode=['official','turbo','practice'].indexOf(String(initialMode||'').toLowerCase())>=0?String(initialMode).toLowerCase():'official'; var ui=buildModal('Premier League','Average score league by game type.',mode,render); async function render(m,body){body.innerHTML='<div class="sq108-note">'+esc(modeNote(m,'average league.'))+'</div>'+table(['#','PLAYER','GP','AVG'], '<col style="width:64px"><col><col style="width:100px"><col style="width:130px">'); var tb=body.querySelector('tbody'), map=new Map(); (await playerRows(m)).forEach(function(r){var k=r.playerKey, x=map.get(k)||{player:r.player,gp:0,total:0}; x.gp++; x.total+=r.score; map.set(k,x);}); var rows=Array.from(map.values()).map(function(x){x.avg=x.gp?x.total/x.gp:0;return x;}).sort(function(a,b){return (b.avg-a.avg)||(b.gp-a.gp)||a.player.localeCompare(b.player);}); if(!rows.length){tb.innerHTML='<tr class="empty-row"><td colspan="4">No '+labelMode(m)+' Premier League rows found.</td></tr>';return;} tb.innerHTML=rows.map(function(r,i){return '<tr><td class="rank-cell">'+(i+1)+'</td><td>'+esc(r.player)+'</td><td class="num-cell">'+r.gp+'</td><td class="avg-cell">'+r.avg.toFixed(1)+'</td></tr>';}).join('');} await render(mode,ui.body);};
-
-  window.openPowerLeagueDialog=window.openPowerRankingsDialog=async function(initialMode){var mode=['official','turbo','practice'].indexOf(String(initialMode||'').toLowerCase())>=0?String(initialMode).toLowerCase():'official'; var ui=buildModal('Power Rankings','Recent form guide by game type.',mode,render); async function render(m,body){body.innerHTML='<div class="sq108-note">'+esc(modeNote(m,'recent form.'))+'</div>'+table(['#','PLAYER','GAMES','FORM AVG'], '<col style="width:64px"><col><col style="width:110px"><col style="width:140px">'); var tb=body.querySelector('tbody'), map=new Map(); (await playerRows(m)).sort(function(a,b){return parseMs(b.ts)-parseMs(a.ts);}).forEach(function(r){var x=map.get(r.playerKey)||{player:r.player,rows:[]}; if(x.rows.length<5)x.rows.push(r); map.set(r.playerKey,x);}); var rows=Array.from(map.values()).map(function(x){var total=x.rows.reduce(function(a,r){return a+r.score;},0); return {player:x.player,gp:x.rows.length,avg:x.rows.length?total/x.rows.length:0};}).filter(function(x){return x.gp>0;}).sort(function(a,b){return (b.avg-a.avg)||(b.gp-a.gp)||a.player.localeCompare(b.player);}); if(!rows.length){tb.innerHTML='<tr class="empty-row"><td colspan="4">No '+labelMode(m)+' Power Ranking rows found.</td></tr>';return;} tb.innerHTML=rows.map(function(r,i){return '<tr><td class="rank-cell">'+(i+1)+'</td><td>'+esc(r.player)+'</td><td class="num-cell">'+r.gp+'</td><td class="avg-cell">'+r.avg.toFixed(1)+'</td></tr>';}).join('');} await render(mode,ui.body);};
-
-  // Catch older menu branches and route them to the uniform implementations.
-  document.addEventListener('click',function(e){
-    var btn=e.target&&e.target.closest?e.target.closest('#leagueLatestScoresBtn,#leagueTop50ScoresBtn,#leagueRoundHighScoresBtn,#leagueHighScoreLeagueBtn,#leaguePremierLeagueBtn,#leaguePowerRankingsBtn'):null;
-    if(!btn)return;
-    try{e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation();}catch(_){}
-    var id=btn.id;
-    if(id==='leagueLatestScoresBtn')return window.openLatestScoresDialog('official');
-    if(id==='leagueTop50ScoresBtn')return window.openTop50ScoresDialog('official');
-    if(id==='leagueRoundHighScoresBtn')return window.openRoundHighScoresDialog('official');
-    if(id==='leagueHighScoreLeagueBtn')return window.openHighScoreLeagueDialog('official');
-    if(id==='leaguePremierLeagueBtn')return window.openPremierLeagueDialog('official');
-    if(id==='leaguePowerRankingsBtn')return window.openPowerLeagueDialog('official');
-  },true);
-
-  try{console.info('[SQ] Fix108 League & Ranks uniform Official/Turbo/Practice tabs active');}catch(_){ }
-})();
-</script>
-<!-- <<< PATCH:FIX108_LEAGUE_RANKS_UNIFORM_MODE_TABS END -->
 
 
 
-<!-- >>> PATCH:FIX109_HSL_TOP50_TABS_RHS START -->
-<style id="sq-fix109-hsl-top50-tabs-rhs-css">
-  .sq109-head{display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:12px!important;margin:0 0 10px!important;}
-  .sq109-title h3{margin:0!important;font-size:20px!important;line-height:1.15!important;font-weight:900!important;color:#eef2ff!important;}
-  .sq109-sub{font-size:11px!important;color:rgba(210,216,240,.64)!important;margin-top:3px!important;}
-  .sq109-tabs{margin-left:auto!important;display:flex!important;flex-direction:row!important;gap:8px!important;align-items:center!important;justify-content:flex-end!important;flex-wrap:nowrap!important;min-width:max-content!important;}
-  .sq109-tabs button{border-radius:999px!important;padding:8px 13px!important;min-height:32px!important;border:1px solid rgba(255,255,255,.14)!important;background:rgba(10,12,24,.56)!important;color:rgba(240,244,255,.86)!important;font-size:12px!important;font-weight:850!important;letter-spacing:.02em!important;line-height:1!important;box-shadow:none!important;}
-  .sq109-tabs button.active{border-color:rgba(255,123,26,.95)!important;background:rgba(255,123,26,.14)!important;box-shadow:0 0 0 2px rgba(255,123,26,.13) inset!important;color:#fff!important;}
-  .sq109-modal{width:min(94vw,980px)!important;max-height:88vh!important;overflow:auto!important;}
-  .sq109-note{border:1px solid rgba(255,255,255,.11)!important;border-radius:999px!important;padding:5px 9px!important;font-size:12px!important;color:rgba(230,235,255,.72)!important;margin:6px 0 10px!important;}
-  .sq109-table{width:100%!important;border-collapse:collapse!important;background:rgba(20,24,46,.74)!important;border-radius:12px!important;overflow:hidden!important;}
-  .sq109-table th{font-size:11px!important;line-height:1!important;text-transform:uppercase!important;letter-spacing:.28em!important;color:rgba(210,216,240,.64)!important;font-weight:850!important;padding:14px 12px!important;background:rgba(255,255,255,.035)!important;text-align:left!important;white-space:nowrap!important;}
-  .sq109-table td{padding:13px 12px!important;border-top:1px solid rgba(255,255,255,.1)!important;color:#e7ebfa!important;font-size:14px!important;vertical-align:middle!important;}
-  .sq109-table .rank-cell{color:#ff7a00!important;font-weight:950!important;width:64px!important;}
-  .sq109-table .score-cell,.sq109-table .avg-cell{text-align:center!important;font-variant-numeric:tabular-nums!important;font-weight:800!important;}
-  .sq109-table .date-cell{font-variant-numeric:tabular-nums!important;white-space:nowrap!important;color:rgba(230,235,255,.78)!important;}
-  @media(max-width:680px){.sq109-head{flex-direction:row!important;align-items:flex-start!important}.sq109-tabs{justify-content:flex-end!important;gap:6px!important}.sq109-tabs button{padding:7px 9px!important;font-size:11px!important}.sq109-modal{width:96vw!important}.sq109-table th,.sq109-table td{padding:11px 8px!important;font-size:12px!important}.sq109-table th{letter-spacing:.16em!important}}
-  /* Override Fix108 mobile column rule so Top 50 tabs stay top-right */
-  .sq108-head{flex-direction:row!important;align-items:flex-start!important;justify-content:space-between!important;}
-  .sq108-tabs{margin-left:auto!important;justify-content:flex-end!important;flex-direction:row!important;flex-wrap:nowrap!important;}
-</style>
-<script id="sq-fix109-hsl-top50-tabs-rhs-js">
-(function(){
-  'use strict';
-  if(window.__sqFix109HslTop50TabsRhs) return;
-  window.__sqFix109HslTop50TabsRhs = true;
-  var MODES=[{mode:'official',label:'Official'},{mode:'turbo',label:'Turbo'},{mode:'practice',label:'Practice'}];
-  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-  function key(s){return String(s||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'');}
-  function pad2(n){return String(n).padStart(2,'0');}
-  function fmtDateTime(ts){try{var d=new Date(ts||0);if(!Number.isFinite(d.getTime()))return '';return pad2(d.getDate())+'.'+pad2(d.getMonth()+1)+'.'+pad2(d.getFullYear()%100)+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());}catch(_){return '';}}
-  function parseMs(t){var n=Date.parse(t||'');return Number.isFinite(n)?n:0;}
-  function playerName(p){if(p==null)return ''; if(typeof p==='string')return p.trim(); var n=String(p.name||p.player||p.player_name||p.playerName||p.display_name||'').trim(); if(n)return n; var f=String(p.first_name||p.firstName||'').trim(), l=String(p.last_name||p.lastName||'').trim(); return (f+' '+l).trim();}
-  function playersOf(g){var ps=g&&(g.players||(g.state&&g.state.players)||(g.raw&&g.raw.state&&g.raw.state.players));return Array.isArray(ps)?ps:[];}
-  function totalsOf(g){var t=g&&(g.totals||(g.state&&g.state.totals)||(g.raw&&g.raw.totals)||(g.raw&&g.raw.state&&g.raw.state.totals));return Array.isArray(t)?t:[];}
-  function boardOf(g){return g&&(g.board||g.score||(g.state&&(g.state.board||g.state.score))||(g.raw&&g.raw.state&&(g.raw.state.board||g.raw.state.score)));}
-  function rowsForPlayer(board,pi){if(!Array.isArray(board))return[]; if(Array.isArray(board[pi]))return board[pi]; if(Array.isArray(board[0])&&board[0][pi]!=null)return board.map(function(r){return Array.isArray(r)?r[pi]:null;}); return[];}
-  function roundScore(ent){if(ent==null)return 0; if(typeof ent==='number'||typeof ent==='string')return Number(ent)||0; var keys=['roundTotal','round_total','points','score','total','val','value']; for(var i=0;i<keys.length;i++){var n=Number(ent[keys[i]]); if(Number.isFinite(n)&&n>0)return n;} var darts=Array.isArray(ent.darts)?ent.darts:(Array.isArray(ent.throws)?ent.throws:null); if(darts)return darts.reduce(function(a,d){return a+(Number(d&&(d.points??d.score??d.val??d.value)||0)||0);},0); return 0;}
-  function totalFor(g,pi){var totals=totalsOf(g), v=totals[pi]; if(typeof v==='number'||typeof v==='string'){var n=Number(v)||0;if(n>0)return n;} if(v&&typeof v==='object'){var no=Number(v.total??v.score??v.points??v.val); if(Number.isFinite(no)&&no>0)return no;} return rowsForPlayer(boardOf(g),pi).reduce(function(a,e){return a+roundScore(e);},0);}
-  function isTurboRow(g){try{var st=(g&&g.state)||{}, rawst=(g&&g.raw&&g.raw.state)||{}, m=st.match||rawst.match||g?.match||{}, rules=st.tournamentRules||m.tournamentRules||rawst.tournamentRules||{}; var type=String(g?.tournamentType||st.tournamentType||st.tournament_type||m.tournamentType||m.tournament_type||rawst.tournamentType||st.__sqTournamentDraft?.type||'').toLowerCase(); return type==='turbo'||st.strictTimer===true||m.strictTimer===true||rules.strictTimer===true||Number(rules.throwLimitSeconds||st.throwLimitSeconds||m.throwLimitSeconds)===20||String(rules.startTarget||st.startTarget||m.startTarget||'')==='17';}catch(_){return false;}}
-  function isPracticeRow(g){var st=(g&&g.state)||{}, rawst=(g&&g.raw&&g.raw.state)||{}; var mode=String(g?.mode||g?.game_mode||st.mode||st.gameMode||rawst.mode||'').toLowerCase(); if(mode.includes('practice')||mode.includes('unofficial')||mode==='solo')return true; if(g?.isPractice===true||g?.is_practice===true||g?.practice===true||st.isPractice===true||st.is_practice===true||st.practice===true||rawst.is_practice===true)return true; return playersOf(g).length===1;}
-  async function gamesFor(mode){mode=String(mode||'official').toLowerCase(); try{if(typeof window.getGamesForMode==='function'){var rows=await window.getGamesForMode(mode); if(Array.isArray(rows))return rows;}}catch(_){} try{if(typeof __sqGetAllGamesNormalized==='function'){var all=await __sqGetAllGamesNormalized(); return (all||[]).filter(function(g){var p=isPracticeRow(g), t=isTurboRow(g); if(mode==='practice')return p; if(mode==='turbo')return !p&&t; return !p&&!t;});}}catch(_){} return [];}
-  function gameTs(g){return g?.ts||g?.created_at||g?.completed_at||(g?.state&&g.state.completed_at)||(g?.raw&&g.raw.created_at)||'';}
-  async function playerRows(mode){var rows=[];(await gamesFor(mode)).forEach(function(g){playersOf(g).forEach(function(p,i){var name=playerName(p)||('Player '+(i+1)), score=totalFor(g,i); if(score>0)rows.push({player:name,playerKey:key(name),score:score,avg:score/14,ts:gameTs(g)});});}); return rows.sort(function(a,b){return (b.score-a.score)||(parseMs(b.ts)-parseMs(a.ts));});}
-  async function savedPlayerKeys(){try{var rows=typeof cloudListPlayers==='function'?await cloudListPlayers():[]; if(Array.isArray(rows)&&rows.length)return new Set(rows.map(function(p){return key(p.name||p.first_name||p.firstName||'');}).filter(Boolean));}catch(_){} try{var rows2=typeof getSavedPlayers==='function'?getSavedPlayers():[]; return new Set((rows2||[]).map(function(p){return key(p.name);}).filter(Boolean));}catch(_){} return new Set();}
-  function labelMode(mode){return mode==='turbo'?'Turbo':mode==='practice'?'Practice':'Official';}
-  function modeNote(mode,thing){return (mode==='turbo'?'Turbo tournament ':mode==='practice'?'Practice ':'Classic official ')+(thing||'games only.');}
-  function closeOld(){document.querySelectorAll('.sq109-bd,.sq108-bd,.sq-top50-backdrop,.sq-hs-league-backdrop,.modal-backdrop').forEach(function(n){var txt=(n.textContent||'').toLowerCase(); if(txt.includes('top 50 scores')||txt.includes('high score league')){try{n.remove();}catch(_){}}});}
-  function makeModal(title,sub,mode,render){closeOld(); var bd=document.createElement('div');bd.className='modal-backdrop sq109-bd'; var modal=document.createElement('div');modal.className='modal sq109-modal'; bd.appendChild(modal); modal.innerHTML='<div class="sq109-head"><div class="sq109-title"><h3>'+esc(title)+'</h3><div class="sq109-sub">'+esc(sub||'')+'</div></div><div class="sq109-tabs">'+MODES.map(function(m){return '<button type="button" data-mode="'+m.mode+'" class="'+(m.mode===mode?'active':'')+'">'+m.label+'</button>';}).join('')+'</div></div><div class="sq109-body">Loading…</div><div style="display:flex;justify-content:center;margin-top:14px"><button type="button" class="btn secondary sq109-close">Close</button></div>'; document.body.appendChild(bd); var body=modal.querySelector('.sq109-body'), tabs=modal.querySelector('.sq109-tabs'); modal.querySelector('.sq109-close').onclick=function(){bd.remove();}; bd.addEventListener('click',function(e){if(e.target===bd)bd.remove();}); tabs.onclick=function(e){var b=e.target.closest('button[data-mode]'); if(!b)return; mode=b.dataset.mode; tabs.querySelectorAll('button').forEach(function(x){x.classList.toggle('active',x.dataset.mode===mode);}); render(mode,body);}; render(mode,body); return {bd:bd,body:body,tabs:tabs};}
-  function table(headers, cols){return '<div class="sq109-table-wrap"><table class="sq109-table"><colgroup>'+cols+'</colgroup><thead><tr>'+headers.map(function(h){return '<th>'+esc(h)+'</th>';}).join('')+'</tr></thead><tbody></tbody></table></div>';}
-  window.openTop50ScoresDialog = async function(initialMode){var mode=['official','turbo','practice'].indexOf(String(initialMode||'').toLowerCase())>=0?String(initialMode).toLowerCase():'official'; makeModal('Top 50 Scores','Official, Turbo and Practice scores are stored separately.',mode,async function(m,body){body.innerHTML='<div class="sq109-note">'+esc(modeNote(m,'player-game scores only.'))+'</div>'+table(['#','PLAYER','SCORE','AVG',''], '<col style="width:64px"><col><col style="width:140px"><col style="width:110px"><col style="width:180px">'); var tb=body.querySelector('tbody'), rows=(await playerRows(m)).slice(0,50); if(!rows.length){tb.innerHTML='<tr><td colspan="5">No '+labelMode(m)+' scores found.</td></tr>';return;} tb.innerHTML=rows.map(function(r,i){return '<tr><td class="rank-cell">'+(i+1)+'</td><td>'+esc(r.player)+'</td><td class="score-cell">'+Math.round(r.score)+'</td><td class="avg-cell">'+Number(r.avg||0).toFixed(1)+'</td><td class="date-cell">'+esc(fmtDateTime(r.ts))+'</td></tr>';}).join('');});};
-  window.openHighScoreLeagueDialog = async function(initialMode){var mode=['official','turbo','practice'].indexOf(String(initialMode||'').toLowerCase())>=0?String(initialMode).toLowerCase():'official'; makeModal('High Score League','Highest verified match score per saved player.',mode,async function(m,body){body.innerHTML='<div class="sq109-note">'+esc(modeNote(m,'high scores only.'))+'</div>'+table(['#','PLAYER','HIGH SCORE',''], '<col style="width:64px"><col><col style="width:150px"><col style="width:180px">'); var tb=body.querySelector('tbody'), saved=await savedPlayerKeys(), best=new Map(); (await playerRows(m)).forEach(function(r){if(saved.size&&!saved.has(r.playerKey))return; var prev=best.get(r.playerKey); if(!prev||r.score>prev.score||(r.score===prev.score&&parseMs(r.ts)>parseMs(prev.ts)))best.set(r.playerKey,r);}); var rows=Array.from(best.values()).sort(function(a,b){return (b.score-a.score)||(parseMs(b.ts)-parseMs(a.ts));}); if(!rows.length){tb.innerHTML='<tr><td colspan="4">No '+labelMode(m)+' high scores found.</td></tr>';return;} tb.innerHTML=rows.map(function(r,i){return '<tr><td class="rank-cell">'+(i+1)+'</td><td>'+esc(r.player)+'</td><td class="score-cell">'+Math.round(r.score)+'</td><td class="date-cell">'+esc(fmtDateTime(r.ts))+'</td></tr>';}).join('');});};
-  document.addEventListener('click',function(e){var b=e.target&&e.target.closest?e.target.closest('#leagueTop50ScoresBtn,#leagueHighScoreLeagueBtn'):null; if(!b)return; try{e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation();}catch(_){} if(b.id==='leagueTop50ScoresBtn')return window.openTop50ScoresDialog('official'); if(b.id==='leagueHighScoreLeagueBtn')return window.openHighScoreLeagueDialog('official');},true);
-  try{console.info('[SQ] Fix109 High Score League + Top 50 Official/Turbo/Practice tabs normalised RHS');}catch(_){ }
-})();
-</script>
-<!-- <<< PATCH:FIX109_HSL_TOP50_TABS_RHS END -->
+
+
 
 
 <!-- >>> PATCH:FIX112_PRACTICE_ROUND_PB_CELL_GREY START -->
@@ -43082,6 +42975,615 @@ body.livev2-on[data-page="game"] .livev2panel .v2Rows .v2Cell.small.solo-complet
 })();
 </script>
 <!-- <<< PATCH:FIX131_MATCHPLAY_START_ROW_ANCHOR END -->
+
+
+<!-- >>> PATCH:FIX132_POWER_RANKINGS_PROPER_LAYOUT START -->
+<style id="sq-fix132-power-rankings-css">
+  .sq132-bd{z-index:410000!important;align-items:center!important;justify-content:center!important;}
+  .sq132-modal{width:min(94vw,980px)!important;max-width:980px!important;max-height:86vh!important;overflow:hidden!important;display:flex!important;flex-direction:column!important;}
+  .sq132-head{display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:14px!important;margin:0 0 10px!important;}
+  .sq132-title{min-width:0!important;flex:1 1 auto!important;}
+  .sq132-title h3{margin:0!important;font-size:20px!important;line-height:1.15!important;font-weight:900!important;color:#eef2ff!important;}
+  .sq132-sub{margin-top:3px!important;font-size:12px!important;line-height:1.25!important;color:rgba(210,216,240,.70)!important;}
+  .sq132-tabs{margin-left:auto!important;display:flex!important;align-items:center!important;justify-content:flex-end!important;gap:8px!important;flex:0 0 auto!important;white-space:nowrap!important;}
+  .sq132-tabs button{appearance:none!important;border-radius:999px!important;padding:8px 13px!important;min-height:32px!important;border:1px solid rgba(255,255,255,.14)!important;background:rgba(10,12,24,.56)!important;color:rgba(240,244,255,.86)!important;font-size:12px!important;font-weight:850!important;line-height:1!important;box-shadow:none!important;}
+  .sq132-tabs button.active{border-color:rgba(255,123,26,.95)!important;background:rgba(255,123,26,.14)!important;box-shadow:0 0 0 2px rgba(255,123,26,.13) inset!important;color:#fff!important;}
+  .sq132-body{flex:1 1 auto!important;min-height:0!important;overflow:auto!important;}
+  .sq132-note{border:1px solid rgba(255,255,255,.11)!important;border-radius:999px!important;padding:5px 9px!important;font-size:12px!important;color:rgba(230,235,255,.72)!important;margin:6px 0 10px!important;}
+  .sq132-table-wrap{border:1px solid rgba(255,255,255,.08)!important;border-radius:14px!important;overflow:auto!important;max-height:62vh!important;}
+  .sq132-table{width:100%!important;border-collapse:collapse!important;background:rgba(20,24,46,.74)!important;}
+  .sq132-table th{font-size:11px!important;line-height:1!important;text-transform:uppercase!important;letter-spacing:.24em!important;color:rgba(210,216,240,.64)!important;font-weight:850!important;padding:14px 12px!important;background:rgba(255,255,255,.035)!important;text-align:left!important;white-space:nowrap!important;}
+  .sq132-table td{padding:13px 12px!important;border-top:1px solid rgba(255,255,255,.10)!important;color:#e7ebfa!important;font-size:14px!important;vertical-align:middle!important;}
+  .sq132-table .rank-cell{color:#ff7a00!important;font-weight:950!important;width:64px!important;}
+  .sq132-table .power-cell{text-align:center!important;font-variant-numeric:tabular-nums!important;font-weight:900!important;}
+  .sq132-table tr.unqualified{opacity:.55!important;}
+  .sq132-table tr.inactive{opacity:.42!important;filter:grayscale(.85)!important;}
+  .sq132-table tr.inactive td{color:rgba(205,210,230,.55)!important;}
+  .sq132-table tr.inactive .rank-cell,.sq132-table tr.inactive .power-cell{color:rgba(205,210,230,.55)!important;}
+  .sq132-footer{display:flex!important;justify-content:center!important;gap:10px!important;margin-top:12px!important;padding-top:8px!important;}
+  .sq132-footer .btn{border-radius:999px!important;min-width:92px!important;}
+  @media(max-width:560px){.sq132-head{gap:10px!important}.sq132-tabs{gap:6px!important;flex-wrap:wrap!important}.sq132-tabs button{padding:7px 10px!important;font-size:11px!important}.sq132-table th,.sq132-table td{padding:11px 8px!important;font-size:12px!important}.sq132-table th{letter-spacing:.16em!important}}
+</style>
+<script id="sq-fix132-power-rankings-js">
+(function(){
+  'use strict';
+  if(window.__sqFix132PowerRankingsProperLayout) return;
+  window.__sqFix132PowerRankingsProperLayout = true;
+
+  var LIMIT_ROUNDS = 56;
+  var MIN_ROUNDS = 28;
+  var ACTIVE_DAYS = 14;
+  var MODES=[{mode:'official',label:'Official'},{mode:'turbo',label:'Turbo'},{mode:'practice',label:'Practice'}];
+
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function key(s){return String(s||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'');}
+  function parseMs(t){var n=Date.parse(t||'');return Number.isFinite(n)?n:0;}
+  function playerName(p){if(p==null)return'';if(typeof p==='string')return p.trim();var n=String(p.name||p.player||p.player_name||p.playerName||p.display_name||'').trim();if(n)return n;var f=String(p.first_name||p.firstName||'').trim(),l=String(p.last_name||p.lastName||'').trim(),nick=String(p.nickname||'').trim();return f?(f+(nick?' "'+nick+'"':'')+(l?' '+l:'')):'';}
+  function playersOf(g){var ps=g&&(g.players||(g.state&&g.state.players)||(g.raw&&g.raw.state&&g.raw.state.players));return Array.isArray(ps)?ps:[];}
+  function totalsOf(g){var t=g&&(g.totals||(g.state&&g.state.totals)||(g.raw&&g.raw.totals)||(g.raw&&g.raw.state&&g.raw.state.totals));return Array.isArray(t)?t:[];}
+  function boardOf(g){return g&&(g.board||g.score||(g.state&&(g.state.board||g.state.score))||(g.raw&&g.raw.state&&(g.raw.state.board||g.raw.state.score)));}
+  function rowsForPlayer(board,pi){if(!Array.isArray(board))return[];if(Array.isArray(board[pi]))return board[pi];if(Array.isArray(board[0])&&board[0][pi]!=null)return board.map(function(r){return Array.isArray(r)?r[pi]:null;});return[];}
+  function roundScore(ent){if(ent==null)return 0;if(typeof ent==='number'||typeof ent==='string')return Number(ent)||0;var keys=['roundTotal','round_total','points','score','total','val','value'];for(var i=0;i<keys.length;i++){var n=Number(ent[keys[i]]);if(Number.isFinite(n)&&n>=0)return n;}var darts=Array.isArray(ent.darts)?ent.darts:(Array.isArray(ent.throws)?ent.throws:null);if(darts)return darts.reduce(function(a,d){return a+(Number(d&&(d.points??d.score??d.val??d.value)||0)||0);},0);return 0;}
+  function isTurboRow(g){try{var st=(g&&g.state)||{},rawst=(g&&g.raw&&g.raw.state)||{},m=st.match||rawst.match||g?.match||{},rules=st.tournamentRules||m.tournamentRules||rawst.tournamentRules||{};var type=String(g?.tournamentType||st.tournamentType||st.tournament_type||m.tournamentType||m.tournament_type||rawst.tournamentType||st.__sqTournamentDraft?.type||'').toLowerCase();return type==='turbo'||st.strictTimer===true||m.strictTimer===true||rules.strictTimer===true||Number(rules.throwLimitSeconds||st.throwLimitSeconds||m.throwLimitSeconds)===20||String(rules.startTarget||st.startTarget||m.startTarget||'')==='17';}catch(_){return false;}}
+  function isPracticeRow(g){var st=(g&&g.state)||{},rawst=(g&&g.raw&&g.raw.state)||{};var mode=String(g?.mode||g?.game_mode||st.mode||st.gameMode||rawst.mode||'').toLowerCase();if(mode.includes('practice')||mode.includes('unofficial')||mode==='solo')return true;if(g?.isPractice===true||g?.is_practice===true||g?.practice===true||st.isPractice===true||st.is_practice===true||st.practice===true||rawst.is_practice===true)return true;return playersOf(g).length===1;}
+  async function gamesFor(mode){mode=String(mode||'official').toLowerCase();try{if(typeof window.getGamesForMode==='function'){var rows=await window.getGamesForMode(mode);if(Array.isArray(rows))return rows;}}catch(_){}try{if(typeof __sqGetAllGamesNormalized==='function'){var all=await __sqGetAllGamesNormalized();return(all||[]).filter(function(g){var p=isPracticeRow(g),t=isTurboRow(g);if(mode==='practice')return p;if(mode==='turbo')return !p&&t;return !p&&!t;});}}catch(_){}return[];}
+  function gameTs(g){return g?.ts||g?.created_at||g?.completed_at||(g?.state&&g.state.completed_at)||(g?.raw&&g.raw.created_at)||'';}
+  function activeCutoffMs(){return Date.now()-(ACTIVE_DAYS*24*60*60*1000);}
+  function isRecentlyActive(ms){return Number.isFinite(ms)&&ms>=activeCutoffMs();}
+  async function savedNameMap(){try{var rows=typeof cloudListPlayers==='function'?await cloudListPlayers():[];var map=new Map();(rows||[]).forEach(function(p){var n=String(p&&p.name||'').trim();if(n)map.set(key(n),n);});return map;}catch(_){return new Map();}}
+  async function officialSavedNameMap(){
+    var map=await savedNameMap();
+    if(map&&map.size)return map;
+    try{
+      var rows=typeof getSavedPlayers==='function'?getSavedPlayers():[];
+      (rows||[]).forEach(function(p){var n=String(p&&p.name||'').trim();if(n)map.set(key(n),n);});
+    }catch(_){}
+    return map;
+  }
+  function isOfficialSavedPlayer(k,saved){return !!(saved&&saved.size&&saved.has(k));}
+
+  async function rowsFromOfficialView(){
+    try{
+      if(typeof sb==='undefined') return null;
+      var saved=await savedNameMap();
+      var q=await sb.from('power_rankings_last56_official').select('player, rounds_used, total_points, avg_per_round, last_played_at').order('avg_per_round',{ascending:false}).limit(500);
+      if(q.error) throw q.error;
+      return (q.data||[]).filter(function(r){return isOfficialSavedPlayer(key(r.player),saved);}).map(function(r){
+        var k=key(r.player), name=saved.get(k)||String(r.player||'').trim();
+        var rounds=Math.min(LIMIT_ROUNDS,Math.max(0,Number(r.rounds_used||0)));
+        var total=Number(r.total_points);
+        var rank=Number.isFinite(total)&&rounds>0 ? total/rounds : Number(r.avg_per_round||0);
+        var lastMs=parseMs(r.last_played_at);return {player:name,playerKey:k,rounds:rounds,powerRank:rank,qualified:rounds>=MIN_ROUNDS,active:isRecentlyActive(lastMs),lastPlayedMs:lastMs,source:'view'};
+      }).filter(function(r){return r.player&&Number.isFinite(r.powerRank)&&r.powerRank>0;});
+    }catch(e){console.warn('[SQ] Power Rankings view fallback:',e);return null;}
+  }
+
+  async function computePowerRows(mode){
+    mode=String(mode||'official').toLowerCase();
+    if(mode==='official'){
+      var viewRows=await rowsFromOfficialView();
+      if(Array.isArray(viewRows)&&viewRows.length){
+        return viewRows.sort(function(a,b){return ((b.active!==false)-(a.active!==false))||(b.qualified-a.qualified)||(b.powerRank-a.powerRank)||(b.rounds-a.rounds)||a.player.localeCompare(b.player);});
+      }
+    }
+    var saved=await officialSavedNameMap();
+    var byPlayer=new Map();
+    (await gamesFor(mode)).sort(function(a,b){return parseMs(gameTs(a))-parseMs(gameTs(b));}).forEach(function(g){
+      var ps=playersOf(g), board=boardOf(g), ts=gameTs(g), totals=totalsOf(g);
+      ps.forEach(function(p,pi){
+        var name=playerName(p)||('Player '+(pi+1));
+        var k=key(name); if(!k||!isOfficialSavedPlayer(k,saved))return;
+        name=saved.get(k)||name;
+        var entry=byPlayer.get(k)||{player:name,playerKey:k,rounds:[]};
+        var rs=rowsForPlayer(board,pi).map(roundScore).filter(function(n){return Number.isFinite(n)&&n>=0;});
+        if(!rs.length){
+          var total=Number(totals[pi]||0);
+          if(total>0){var avg=total/14;rs=Array.from({length:14},function(){return avg;});}
+        }
+        rs.forEach(function(score,idx){entry.rounds.push({score:Number(score)||0,ts:parseMs(ts)+idx});});
+        byPlayer.set(k,entry);
+      });
+    });
+    var rows=[];
+    byPlayer.forEach(function(e){
+      var rounds=e.rounds.sort(function(a,b){return a.ts-b.ts;}).slice(-LIMIT_ROUNDS);
+      var count=rounds.length;
+      var total=rounds.reduce(function(a,r){return a+(Number(r.score)||0);},0);
+      var last=rounds.length?rounds[rounds.length-1].ts:0;if(count>0) rows.push({player:e.player,playerKey:e.playerKey,rounds:count,powerRank:total/count,qualified:count>=MIN_ROUNDS,active:isRecentlyActive(last),lastPlayedMs:last,source:'computed'});
+    });
+    return rows.sort(function(a,b){return ((b.active!==false)-(a.active!==false))||(b.qualified-a.qualified)||(b.powerRank-a.powerRank)||(b.rounds-a.rounds)||a.player.localeCompare(b.player);});
+  }
+
+  function modeNote(mode){
+    if(mode==='turbo')return 'Turbo Power Rank = saved players only; average points per round from each player’s latest '+LIMIT_ROUNDS+' Turbo rounds. Inactive players (no game in '+ACTIVE_DAYS+' days) are greyed out at the bottom.';
+    if(mode==='practice')return 'Practice Power Rank = saved players only; average points per round from the player’s latest '+LIMIT_ROUNDS+' Practice rounds. Inactive players (no game in '+ACTIVE_DAYS+' days) are greyed out at the bottom.';
+    return 'Official Power Rank = saved players only; average points per round from each player’s latest '+LIMIT_ROUNDS+' official rounds. Inactive players (no game in '+ACTIVE_DAYS+' days) are greyed out at the bottom.';
+  }
+
+  function buildModal(initialMode){
+    document.querySelectorAll('.sq132-bd,.sq108-bd').forEach(function(n){try{n.remove();}catch(_){}});
+    var mode=['official','turbo','practice'].indexOf(String(initialMode||'').toLowerCase())>=0?String(initialMode).toLowerCase():'official';
+    var bd=document.createElement('div');bd.className='modal-backdrop sq132-bd';
+    var modal=document.createElement('div');modal.className='modal sq132-modal';
+    bd.appendChild(modal);
+    modal.innerHTML='<div class="sq132-head"><div class="sq132-title"><h3>Power Rankings</h3><div class="sq132-sub">Recent form by round average.</div></div><div class="sq132-tabs">'+MODES.map(function(m){return '<button type="button" data-mode="'+m.mode+'" class="'+(m.mode===mode?'active':'')+'">'+m.label+'</button>';}).join('')+'</div></div><div class="sq132-body">Loading…</div><div class="sq132-footer"><button type="button" class="btn sq132-back">Back</button><button type="button" class="btn sq132-close">Close</button></div>';
+    document.body.appendChild(bd);
+    var body=modal.querySelector('.sq132-body'),tabs=modal.querySelector('.sq132-tabs');
+    function setMode(m){mode=m;tabs.querySelectorAll('button').forEach(function(b){b.classList.toggle('active',b.dataset.mode===mode);});render();}
+    tabs.onclick=function(e){var b=e.target.closest('button[data-mode]');if(b)setMode(b.dataset.mode);};
+    modal.querySelector('.sq132-back').onclick=function(){bd.remove();try{if(typeof window.openLeagueRankingsDialog==='function')window.openLeagueRankingsDialog();}catch(_){}};
+    modal.querySelector('.sq132-close').onclick=function(){bd.remove();};
+    bd.addEventListener('click',function(e){if(e.target===bd)bd.remove();});
+    async function render(){
+      body.innerHTML='<div class="sq132-note">'+esc(modeNote(mode))+'</div><div class="sq132-table-wrap"><table class="sq132-table"><colgroup><col style="width:64px"><col><col style="width:170px"></colgroup><thead><tr><th>#</th><th>PLAYER</th><th>POWER RANK</th></tr></thead><tbody><tr><td colspan="3">Loading…</td></tr></tbody></table></div>';
+      var tb=body.querySelector('tbody');
+      var rows=await computePowerRows(mode);
+      if(!rows.length){tb.innerHTML='<tr><td colspan="3">No Power Ranking rows found for '+esc(mode)+'.</td></tr>';return;}
+      var rank=0;
+      tb.innerHTML=rows.map(function(r){
+        var active=r.active!==false;
+        var qualified=r.qualified!==false;
+        var q=active&&qualified;
+        var shown=q?(++rank):'—';
+        var cls=(active?'':'inactive ')+(qualified?'':'unqualified');
+        var title=!active?' title="Inactive: no completed game in the last '+ACTIVE_DAYS+' days"':(qualified?'':' title="Needs '+Math.max(0,MIN_ROUNDS-(r.rounds||0))+' more round(s) to qualify"');
+        return '<tr class="'+cls.trim()+'"'+title+'><td class="rank-cell">'+shown+'</td><td>'+esc(r.player)+'</td><td class="power-cell">'+Number(r.powerRank||0).toFixed(2)+'</td></tr>';
+      }).join('');
+    }
+    render();
+  }
+
+  window.openPowerLeagueDialog=window.openPowerRankingsDialog=function(initialMode){buildModal(initialMode||'official');};
+  document.addEventListener('click',function(e){var b=e.target&&e.target.closest?e.target.closest('#leaguePowerRankingsBtn'):null;if(!b)return;try{e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation();}catch(_){}window.openPowerLeagueDialog('official');},true);
+  try{console.info('[SQ] Fix132 Power Rankings proper layout/rank active');}catch(_){ }
+})();
+</script>
+<!-- <<< PATCH:FIX132_POWER_RANKINGS_PROPER_LAYOUT END -->
+<!-- >>> PATCH:FIX133_POWER_RANKINGS_INACTIVE_14D START -->
+<script id="sq-fix133-power-rankings-inactive-14d-js">
+(function(){
+  'use strict';
+  window.__sqFix133PowerRankingsInactive14D = true;
+  try{console.info('[SQ] Fix133 Power Rankings inactive-14-day rule active: inactive rows greyed and sorted to bottom.');}catch(_){}
+})();
+</script>
+<!-- <<< PATCH:FIX133_POWER_RANKINGS_INACTIVE_14D END -->
+
+<!-- >>> PATCH:FIX134_POWER_RANKINGS_LOAD_REPAIR START -->
+<script id="sq-fix134-power-rankings-load-repair-js">
+(function(){
+  'use strict';
+  window.__sqFix134PowerRankingsLoadRepair = true;
+  try{console.info('[SQ] Fix134 Power Rankings load repair active: isRecentlyActive scoped inside Fix132.');}catch(_){}
+})();
+</script>
+<!-- <<< PATCH:FIX134_POWER_RANKINGS_LOAD_REPAIR END -->
+
+<!-- >>> PATCH:FIX135_POWER_RANKINGS_SAVED_PLAYERS_ONLY START -->
+<script id="sq-fix135-power-rankings-saved-players-only-js">
+(function(){
+  'use strict';
+  window.__sqFix135PowerRankingsSavedPlayersOnly=true;
+  try{console.info('[SQ] Fix135 Power Rankings saved players only active.');}catch(_){}
+})();
+</script>
+<!-- <<< PATCH:FIX135_POWER_RANKINGS_SAVED_PLAYERS_ONLY END -->
+
+
+<!-- >>> PATCH:FIX136_PREMIER_LEAGUE_RESTORE_FILTERS START -->
+<style id="sq-fix136-premier-league-css">
+.sq136-pl-bd{z-index:405000!important;align-items:center!important;justify-content:center!important}.sq136-pl-modal{width:min(94vw,980px)!important;max-width:980px!important;max-height:88vh!important;display:flex!important;flex-direction:column!important;overflow:hidden!important}.sq136-pl-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.sq136-pl-head h3{margin:0;font-size:20px;font-weight:900;color:#eef2ff}.sq136-pl-sub{font-size:12px;opacity:.68;margin-top:3px}.sq136-pl-body{min-height:0;overflow:hidden;display:flex;flex-direction:column}.sq136-pl-filters{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}.sq136-pl-filter-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-start}.sq136-pl-filter-row button{border-radius:999px!important;padding:8px 13px!important;min-height:32px!important;border:1px solid rgba(255,255,255,.14)!important;background:rgba(10,12,24,.56)!important;color:rgba(240,244,255,.86)!important;font-size:12px!important;font-weight:850!important;line-height:1!important}.sq136-pl-filter-row button.active{border-color:rgba(255,123,26,.95)!important;background:rgba(255,123,26,.14)!important;box-shadow:0 0 0 2px rgba(255,123,26,.13) inset!important;color:#fff!important}.sq136-pl-note{border:1px solid rgba(255,255,255,.11);border-radius:999px;padding:5px 9px;font-size:12px;color:rgba(230,235,255,.72);margin:0 0 8px}.sq136-pl-table-wrap{border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:auto;max-height:54vh}.sq136-pl-table{width:100%;border-collapse:collapse;table-layout:fixed;background:rgba(20,24,46,.74)}.sq136-pl-table th{position:sticky;top:0;z-index:2;font-size:11px;text-transform:uppercase;letter-spacing:.24em;color:rgba(210,216,240,.64);font-weight:850;padding:14px 12px;background:rgba(22,27,52,.98);text-align:left;white-space:nowrap}.sq136-pl-table td{padding:13px 12px;border-top:1px solid rgba(255,255,255,.1);color:#e7ebfa;font-size:14px}.sq136-pl-table .rank-cell{color:#ff7a00;font-weight:950;width:64px}.sq136-pl-table .num-cell,.sq136-pl-table .avg-cell,.sq136-pl-table .best-cell{text-align:center;font-variant-numeric:tabular-nums;font-weight:800}.sq136-pl-table tr.unqualified{opacity:.48}.sq136-pl-footer{display:flex;justify-content:center;gap:10px;margin-top:14px}.sq136-pl-footer .btn{border-radius:999px!important;min-width:92px!important}@media(max-width:560px){.sq136-pl-modal{width:96vw!important}.sq136-pl-table th,.sq136-pl-table td{padding:10px 7px;font-size:12px}.sq136-pl-table th{letter-spacing:.14em}.sq136-pl-filter-row{gap:6px}.sq136-pl-filter-row button{padding:7px 10px!important;font-size:11px!important}}
+</style>
+<script id="sq-fix136-premier-league-js">
+(function(){
+'use strict';
+if(window.__sqFix136PremierLeagueRestoreFilters)return;window.__sqFix136PremierLeagueRestoreFilters=true;
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function key(s){return String(s||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'');}
+function parseMs(t){var n=Date.parse(t||'');return Number.isFinite(n)?n:0;}
+function playerName(p){if(p==null)return'';if(typeof p==='string')return p.trim();var n=String(p.name||p.player||p.player_name||p.playerName||p.display_name||'').trim();if(n)return n;var f=String(p.first_name||p.firstName||'').trim(),l=String(p.last_name||p.lastName||'').trim(),nick=String(p.nickname||'').trim();return f?(f+(nick?' "'+nick+'"':'')+(l?' '+l:'')):'';}
+function playersOf(g){var ps=g&&(g.players||(g.state&&g.state.players)||(g.raw&&g.raw.state&&g.raw.state.players));return Array.isArray(ps)?ps:[];}
+function totalsOf(g){var t=g&&(g.totals||(g.state&&g.state.totals)||(g.raw&&g.raw.totals)||(g.raw&&g.raw.state&&g.raw.state.totals));return Array.isArray(t)?t:[];}
+function boardOf(g){return g&&(g.board||g.score||(g.state&&(g.state.board||g.state.score))||(g.raw&&g.raw.state&&(g.raw.state.board||g.raw.state.score)));}
+function rowsForPlayer(board,pi){if(!Array.isArray(board))return[];if(Array.isArray(board[pi]))return board[pi];if(Array.isArray(board[0])&&board[0][pi]!=null)return board.map(function(r){return Array.isArray(r)?r[pi]:null;});return[];}
+function roundScore(ent){if(ent==null)return 0;if(typeof ent==='number'||typeof ent==='string')return Number(ent)||0;var keys=['roundTotal','round_total','points','score','total','val','value'];for(var i=0;i<keys.length;i++){var n=Number(ent[keys[i]]);if(Number.isFinite(n)&&n>0)return n;}var darts=Array.isArray(ent.darts)?ent.darts:(Array.isArray(ent.throws)?ent.throws:null);if(darts)return darts.reduce(function(a,d){return a+(Number(d&&(d.points??d.score??d.val??d.value)||0)||0);},0);return 0;}
+function totalFor(g,pi){var totals=totalsOf(g),v=totals[pi];if(typeof v==='number'||typeof v==='string'){var n=Number(v)||0;if(n>0)return n;}if(v&&typeof v==='object'){var no=Number(v.total??v.score??v.points??v.val);if(Number.isFinite(no)&&no>0)return no;}return rowsForPlayer(boardOf(g),pi).reduce(function(a,e){return a+roundScore(e);},0);}
+function gameTs(g){return g?.ts||g?.created_at||g?.completed_at||(g?.state&&g.state.completed_at)||(g?.raw&&g.raw.created_at)||'';}
+async function savedKeys(){try{var rows=typeof cloudListPlayers==='function'?await cloudListPlayers():[];if(Array.isArray(rows)&&rows.length)return new Set(rows.map(function(p){return key(p.name||p.first_name||p.firstName||'');}).filter(Boolean));}catch(_){}try{var rows2=typeof getSavedPlayers==='function'?getSavedPlayers():[];return new Set((rows2||[]).map(function(p){return key(p.name);}).filter(Boolean));}catch(_){}return new Set();}
+async function officialRows(){var games=[];try{if(typeof getGamesForMode==='function')games=await getGamesForMode('official');}catch(_){}try{if((!games||!games.length)&&typeof __sqGetAllGamesNormalized==='function')games=(await __sqGetAllGamesNormalized()).filter(function(g){return !(g.isPractice||g.is_practice||g.practice) && String(g.mode||g.game_mode||g.state?.mode||'').toLowerCase()!=='practice';});}catch(_){}var saved=await savedKeys(), rows=[];(games||[]).forEach(function(g){var ps=playersOf(g), ts=gameTs(g);if(ps.length<2)return;ps.forEach(function(p,i){var name=playerName(p)||('Player '+(i+1)), k=key(name), score=totalFor(g,i);if(saved.size&&!saved.has(k))return;if(score>0)rows.push({player:name,key:k,score:score,ts:ts});});});return rows;}
+function startOfDay(d,off){return new Date(d.getFullYear(),d.getMonth(),d.getDate()+(off||0));}
+function filters(){var now=new Date(), out=[];out.push({id:'TODAY',label:'Today',match:function(ts){var ms=parseMs(ts),d=new Date(ms),a=startOfDay(now,0),b=startOfDay(now,1);return ms&&d>=a&&d<b;},min:2});out.push({id:'YESTERDAY',label:'Yesterday',match:function(ts){var ms=parseMs(ts),d=new Date(ms),a=startOfDay(now,-1),b=startOfDay(now,0);return ms&&d>=a&&d<b;},min:2});out.push({id:'THIS_WEEK',label:'This Week',match:function(ts){var ms=parseMs(ts),d=new Date(ms),dow=(now.getDay()+6)%7,a=startOfDay(now,-dow),b=new Date(a);b.setDate(a.getDate()+7);return ms&&d>=a&&d<b;},min:2});for(var i=0;i<6;i++){(function(i){var d=new Date(now.getFullYear(),now.getMonth()-i,1),y=d.getFullYear(),m=d.getMonth(),lab=d.toLocaleString('en-GB',{month:'short'}).toUpperCase();out.push({id:'M'+y+'-'+String(m+1).padStart(2,'0'),label:lab,match:function(ts){var ms=parseMs(ts),dt=new Date(ms);return ms&&dt.getFullYear()===y&&dt.getMonth()===m;},min:3});})(i);}out.push({id:'Y2026',label:'2026',match:function(ts){var ms=parseMs(ts),d=new Date(ms);return ms&&d.getFullYear()===2026;},min:10});out.push({id:'Y2025',label:'2025',match:function(ts){var ms=parseMs(ts),d=new Date(ms);return ms&&d.getFullYear()===2025;},min:10});out.push({id:'ALL',label:'All Time',match:function(){return true;},min:15});return out;}
+function aggregate(rows,filter){var map=new Map();rows.filter(function(r){return filter.match(r.ts);}).forEach(function(r){var x=map.get(r.key)||{player:r.player,games:0,total:0,best:0};x.games++;x.total+=r.score;if(r.score>x.best)x.best=r.score;map.set(r.key,x);});return Array.from(map.values()).map(function(x){x.avg=x.games?x.total/x.games:0;x.qualifies=x.games>=filter.min;return x;}).sort(function(a,b){if(a.qualifies!==b.qualifies)return a.qualifies?-1:1;return(b.avg-a.avg)||(b.games-a.games)||String(a.player).localeCompare(String(b.player));});}
+function openPremier(){document.querySelectorAll('.sq136-pl-bd').forEach(function(n){n.remove();});var fs=filters(), cur=fs.find(function(f){return /^M/.test(f.id);})||fs[0], allRows=null;var bd=document.createElement('div');bd.className='modal-backdrop sq136-pl-bd';var modal=document.createElement('div');modal.className='modal sq136-pl-modal';bd.appendChild(modal);modal.innerHTML='<div class="sq136-pl-head"><div><h3>Premier League</h3><div class="sq136-pl-sub">Average league by selected period.</div></div></div><div class="sq136-pl-body"><div class="sq136-pl-filters"><div class="sq136-pl-filter-row sq136-r1"></div><div class="sq136-pl-filter-row sq136-r2"></div><div class="sq136-pl-filter-row sq136-r3"></div></div><div class="sq136-pl-table-mount"><p class="tag">Loading Premier League…</p></div></div><div class="sq136-pl-footer"><button type="button" class="btn sq136-back">Back</button><button type="button" class="btn sq136-close">Close</button></div>';document.body.appendChild(bd);var mount=modal.querySelector('.sq136-pl-table-mount');function close(){bd.remove();}modal.querySelector('.sq136-close').onclick=close;modal.querySelector('.sq136-back').onclick=function(){close();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}};bd.addEventListener('click',function(e){if(e.target===bd)close();});function rowFor(f){if(f.id==='TODAY'||f.id==='YESTERDAY'||f.id==='THIS_WEEK')return modal.querySelector('.sq136-r1');if(/^M/.test(f.id))return modal.querySelector('.sq136-r2');return modal.querySelector('.sq136-r3');}fs.forEach(function(f){var b=document.createElement('button');b.type='button';b.textContent=f.label;b.dataset.filterId=f.id;b.onclick=function(){cur=f;render();};rowFor(f).appendChild(b);});async function render(){modal.querySelectorAll('[data-filter-id]').forEach(function(b){b.classList.toggle('active',b.dataset.filterId===cur.id);});if(!allRows)allRows=await officialRows();var rows=aggregate(allRows,cur);mount.innerHTML='<div class="sq136-pl-note">'+esc(cur.label)+' · '+cur.min+' Games Minimum</div><div class="sq136-pl-table-wrap"><table class="sq136-pl-table"><colgroup><col style="width:64px"><col><col style="width:110px"><col style="width:130px"><col style="width:130px"></colgroup><thead><tr><th>#</th><th>Player</th><th>Games</th><th>Avg</th><th>Best</th></tr></thead><tbody></tbody></table></div>';var tb=mount.querySelector('tbody');if(!rows.length){tb.innerHTML='<tr><td colspan="5">No official saved-player games found for '+esc(cur.label)+'.</td></tr>';return;}var rank=0;tb.innerHTML=rows.map(function(r){var q=r.qualifies;if(q)rank++;return '<tr class="'+(q?'':'unqualified')+'"><td class="rank-cell">'+(q?rank:'—')+'</td><td>'+esc(r.player)+'</td><td class="num-cell">'+r.games+'</td><td class="avg-cell">'+r.avg.toFixed(1)+'</td><td class="best-cell">'+Math.round(r.best)+'</td></tr>';}).join('');}
+render();}
+window.openPremierLeagueDialog=openPremier;window.openPremierLeaguePopup=openPremier;
+document.addEventListener('click',function(e){var b=e.target&&e.target.closest?e.target.closest('#leaguePremierLeagueBtn'):null;if(!b)return;try{e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation();}catch(_){}openPremier();},true);
+try{console.info('[SQ] Fix136 Premier League restored period filters active');}catch(_){ }
+})();
+</script>
+<!-- <<< PATCH:FIX136_PREMIER_LEAGUE_RESTORE_FILTERS END -->
+
+
+
+<!-- >>> PATCH:FIX139_START_SCREEN_RESTORE_ROLLBACK START -->
+<script id="sq-fix139-start-screen-restore-js">
+(function(){
+  'use strict';
+  if(window.__sqFix139StartScreenRestoreRollback) return;
+  window.__sqFix139StartScreenRestoreRollback = true;
+  try{ console.info('[SQ] Fix139 start screen restore: reverted Fix138 Premier League fast-filter patch; home VIDE/Power Rankings returned to known-good Fix137 baseline.'); }catch(_){ }
+})();
+</script>
+<!-- <<< PATCH:FIX139_START_SCREEN_RESTORE_ROLLBACK END -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- >>> PATCH:FIX145_LEAGUE_RANKS_MOT_CLEANUP START -->
+<script id="sq-fix145-league-ranks-mot-cleanup-js">
+(function(){
+  'use strict';
+  try{
+    console.info('[SQ] Fix145 MOT cleanup: removed failed League/Ranks child-popup branches FIX141/FIX143/FIX144; restored canonical menu button wiring.');
+  }catch(_){ }
+})();
+</script>
+<!-- <<< PATCH:FIX145_LEAGUE_RANKS_MOT_CLEANUP END -->
+
+<!-- >>> PATCH:FIX146_PL_FAST_TOP50_TABS_CANONICAL START -->
+<style id="sq-fix146-pl-top50-css">
+  .sq136-pl-bd .sq137-medal{display:inline-block;margin-left:7px;font-size:15px;line-height:1;vertical-align:-1px;}
+</style>
+<script id="sq-fix146-pl-fast-top50-tabs-canonical-js">
+(function(){
+  'use strict';
+  if(window.__sqFix146PlFastTop50TabsCanonical)return;window.__sqFix146PlFastTop50TabsCanonical=true;
+
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function norm(s){return String(s||'').trim().toLowerCase();}
+  function key(s){return norm(s).replace(/[^a-z0-9]+/g,'');}
+  function parseMs(t){var n=Date.parse(t||'');return Number.isFinite(n)?n:0;}
+  function pad2(n){return String(n).padStart(2,'0');}
+  function fmtDateTime(ts){try{var d=new Date(ts||0);if(!Number.isFinite(d.getTime()))return'';return pad2(d.getDate())+'.'+pad2(d.getMonth()+1)+'.'+pad2(d.getFullYear()%100)+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());}catch(_){return'';}}
+  function playerName(p){if(p==null)return'';if(typeof p==='string')return p.trim();var n=String(p.name||p.player||p.player_name||p.playerName||p.display_name||p.nick||'').trim();if(n)return n;var f=String(p.first_name||p.firstName||'').trim(),l=String(p.last_name||p.lastName||'').trim(),nick=String(p.nickname||'').trim();return f?(nick?(f+' "'+nick+'"'+(l?' '+l:'')):(f+(l?' '+l:''))):'';}
+  function playersOf(g){var ps=g&&(g.players||(g.state&&g.state.players)||(g.raw&&g.raw.state&&g.raw.state.players));return Array.isArray(ps)?ps:[];}
+  function totalsOf(g){var t=g&&(g.totals||(g.state&&g.state.totals)||(g.raw&&g.raw.totals)||(g.raw&&g.raw.state&&g.raw.state.totals));return Array.isArray(t)?t:[];}
+  function boardOf(g){return g&&(g.board||g.score||(g.state&&(g.state.board||g.state.score))||(g.raw&&g.raw.state&&(g.raw.state.board||g.raw.state.score)));}
+  function rowsForPlayer(board,pi){if(!Array.isArray(board))return[];if(Array.isArray(board[pi]))return board[pi];if(Array.isArray(board[0])&&board[0][pi]!=null)return board.map(function(r){return Array.isArray(r)?r[pi]:null;});return[];}
+  function roundScore(ent){if(ent==null)return 0;if(typeof ent==='number'||typeof ent==='string')return Number(ent)||0;var keys=['roundTotal','round_total','points','score','total','val','value'];for(var i=0;i<keys.length;i++){var n=Number(ent[keys[i]]);if(Number.isFinite(n)&&n>0)return n;}var darts=Array.isArray(ent.darts)?ent.darts:(Array.isArray(ent.throws)?ent.throws:null);if(darts)return darts.reduce(function(a,d){return a+(Number(d&&(d.points??d.score??d.val??d.value)||0)||0);},0);return 0;}
+  function totalFor(g,pi){var t=totalsOf(g),v=t[pi];if(typeof v==='number'||typeof v==='string'){var n=Number(v)||0;if(n>0)return n;}if(v&&typeof v==='object'){var no=Number(v.total??v.score??v.points??v.val);if(Number.isFinite(no)&&no>0)return no;}return rowsForPlayer(boardOf(g),pi).reduce(function(a,e){return a+roundScore(e);},0);}
+  function isPractice(g){var st=(g&&g.state)||{},raw=(g&&g.raw&&g.raw.state)||{};var mode=String((g&&g.mode)||(g&&g.game_mode)||st.mode||st.gameMode||raw.mode||'').toLowerCase();return mode.includes('practice')||mode.includes('unofficial')||mode==='solo'||(g&&g.isPractice===true)||(g&&g.is_practice===true)||st.isPractice===true||st.is_practice===true||playersOf(g).length===1;}
+  function isTurbo(g){try{var st=(g&&g.state)||{},raw=(g&&g.raw&&g.raw.state)||{},m=st.match||raw.match||(g&&g.match)||{},rules=st.tournamentRules||m.tournamentRules||raw.tournamentRules||{};var type=String((g&&g.tournamentType)||st.tournamentType||st.tournament_type||m.tournamentType||m.tournament_type||raw.tournamentType||(st.__sqTournamentDraft&&st.__sqTournamentDraft.type)||'').toLowerCase();return type==='turbo'||st.strictTimer===true||m.strictTimer===true||rules.strictTimer===true||Number(st.throwLimitSeconds||m.throwLimitSeconds||rules.throwLimitSeconds||0)===20||String(rules.startTarget||st.startTarget||m.startTarget||'')==='17';}catch(_){return false;}}
+  async function allGames(){try{if(typeof window.__sqGetAllGamesNormalized==='function'){var n=await window.__sqGetAllGamesNormalized();if(Array.isArray(n))return n;}}catch(_){}try{if(typeof cloudFetchAllGamesAsLocal==='function'){var c=await cloudFetchAllGamesAsLocal();if(Array.isArray(c))return c;}}catch(_){}return[];}
+  async function gamesFor(bucket){var gs=await allGames();return gs.filter(function(g){if(g&&(g.archived_at||g.archivedAt))return false;if(bucket==='turbo')return isTurbo(g)&&!isPractice(g);if(bucket==='practice')return isPractice(g)&&!isTurbo(g);return !isTurbo(g)&&!isPractice(g);}).sort(function(a,b){return parseMs(b.ts||b.created_at)-parseMs(a.ts||a.created_at);});}
+  function denom(bucket,g,pi){if(bucket==='turbo')return 7;var rows=rowsForPlayer(boardOf(g),pi).filter(function(x){return x!=null;});return rows.length>=7?rows.length:14;}
+  async function playerRows(bucket){var rows=[];(await gamesFor(bucket)).forEach(function(g){playersOf(g).forEach(function(p,pi){var name=playerName(p);if(!name)return;var score=totalFor(g,pi);if(!(score>0))return;rows.push({player:name,playerKey:key(name),score:score,avg:score/denom(bucket,g,pi),ts:g.ts||g.created_at||g.completed_at||'',game:g});});});return rows.sort(function(a,b){return(b.score-a.score)||(parseMs(b.ts)-parseMs(a.ts))||String(a.player).localeCompare(String(b.player));});}
+
+  // Premier League: keep Fix136 layout but remove sluggish medal observer; use cheap debounced medal pass.
+  function removeOldPremierMedalObserverNoise(){try{window.__sqFix137PremierAllTimeBestMedals=false;}catch(_){}}
+  removeOldPremierMedalObserverNoise();
+  var medalCache=null, medalCacheAt=0;
+  async function savedKeys(){try{var rows=typeof cloudListPlayers==='function'?await cloudListPlayers():[];return new Set((rows||[]).map(function(p){return key(playerName(p)||p.name||p.first_name||p.firstName||'');}).filter(Boolean));}catch(_){return new Set();}}
+  async function medalMap(){if(medalCache&&(Date.now()-medalCacheAt)<120000)return medalCache;var saved=await savedKeys(),scores=[];(await allGames()).forEach(function(g){if(isPractice(g)||isTurbo(g))return;playersOf(g).forEach(function(p,pi){var nm=playerName(p),pk=key(nm);if(saved.size&&!saved.has(pk))return;var sc=Math.round(Number(totalFor(g,pi))||0);if(sc>0)scores.push(sc);});});var top=Array.from(new Set(scores)).sort(function(a,b){return b-a;}).slice(0,3);var map=new Map();if(top[0]!=null)map.set(top[0],{m:'🥇',c:'gold'});if(top[1]!=null)map.set(top[1],{m:'🥈',c:'silver'});if(top[2]!=null)map.set(top[2],{m:'🥉',c:'bronze'});medalCache=map;medalCacheAt=Date.now();return map;}
+  function cellScore(td){var n=Number(String(td.textContent||'').replace(/[🥇🥈🥉]/g,'').replace(/[^0-9.-]/g,''));return Number.isFinite(n)?Math.round(n):null;}
+  var medalTimer=null;
+  function scheduleMedals(delay){clearTimeout(medalTimer);medalTimer=setTimeout(async function(){var bd=document.querySelector('.sq136-pl-bd');if(!bd)return;var map=await medalMap();bd.querySelectorAll('.best-cell').forEach(function(td){td.querySelectorAll('.sq137-medal').forEach(function(n){n.remove();});var info=map.get(cellScore(td));if(!info)return;var sp=document.createElement('span');sp.className='sq137-medal '+info.c;sp.textContent=info.m;td.appendChild(sp);});},delay||60);}
+  var oldPL=window.openPremierLeagueDialog;
+  if(typeof oldPL==='function'&&!oldPL.__sq146){window.openPremierLeagueDialog=function(){var r=oldPL.apply(this,arguments);scheduleMedals(160);setTimeout(function(){var bd=document.querySelector('.sq136-pl-bd');if(!bd||bd.__sq146Bound)return;bd.__sq146Bound=true;bd.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('[data-filter-id]'))scheduleMedals(40);},true);},80);return r;};window.openPremierLeagueDialog.__sq146=true;}
+  try{console.info('[SQ] Fix146 Premier League light medals active; Top50 canonical popup removed for Fix151.');}catch(_){ }
+})();
+</script>
+<!-- <<< PATCH:FIX146_PL_FAST_TOP50_TABS_CANONICAL END -->
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- >>> PATCH:FIX152_LEAGUE_DATA_REPAIR_CLEANUP START -->
+<style id="sq-fix152-cleanup-css">
+  /* Scope-only styling: use existing Fix100 Top 50 data loader; do not replace it. */
+  .sq-fix100-top50 .sq-league-clean-head{display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:14px!important;margin:0 0 10px!important;}
+  .sq-fix100-top50 .sq-league-clean-title{flex:1 1 auto!important;min-width:0!important;}
+  .sq-fix100-top50 .sq-league-tabs{margin-left:auto!important;display:flex!important;align-items:center!important;justify-content:flex-end!important;gap:8px!important;flex:0 0 auto!important;white-space:nowrap!important;}
+  .sq-fix100-top50 .sq-league-tabs button{appearance:none!important;-webkit-appearance:none!important;border-radius:999px!important;padding:8px 13px!important;min-height:32px!important;border:1px solid rgba(255,255,255,.14)!important;background:rgba(10,12,24,.56)!important;color:rgba(240,244,255,.86)!important;font-size:12px!important;font-weight:850!important;line-height:1!important;box-shadow:none!important;}
+  .sq-fix100-top50 .sq-league-tabs button.active{border-color:rgba(255,123,26,.95)!important;background:rgba(255,123,26,.14)!important;box-shadow:0 0 0 2px rgba(255,123,26,.13) inset!important;color:#fff!important;}
+</style>
+<script id="sq-fix152-league-data-repair-cleanup-js">
+(function(){
+  'use strict';
+  if(window.__sqFix152LeagueDataRepairCleanup)return;
+  window.__sqFix152LeagueDataRepairCleanup=true;
+  // Remove any duplicate Top 50 overlays left by prior branches on a hot reload.
+  window.__sqCleanupDuplicateTop50Overlays=function(){
+    try{
+      var seen=false;
+      Array.prototype.slice.call(document.querySelectorAll('.modal-backdrop')).forEach(function(bd){
+        var h=bd.querySelector&&bd.querySelector('h1,h2,h3');
+        var title=String((h&&h.textContent)||'').trim();
+        if(!/^Top 50 Scores/i.test(title))return;
+        if(!seen){seen=true;return;}
+        try{bd.remove();}catch(_){}
+      });
+    }catch(_){}
+  };
+  try{console.info('[SQ] Fix152 League data cleanup active: removed Top50 replacement branches; existing data loaders restored.');}catch(_){}
+})();
+</script>
+<!-- <<< PATCH:FIX152_LEAGUE_DATA_REPAIR_CLEANUP END -->
+
+<!-- >>> PATCH:FIX153_MOT_CACHE_MODAL_GUARD START -->
+<script id="sq-fix153-mot-cache-modal-guard-js">
+(function(){
+  'use strict';
+  if (window.__sqFix153MotCacheModalGuard) return;
+  window.__sqFix153MotCacheModalGuard = true;
+
+  var TTL_MS = 45000;
+  var cache = { at:0, rows:null, promise:null };
+
+  function now(){ return Date.now ? Date.now() : +(new Date()); }
+  function cloneRows(rows){ return Array.isArray(rows) ? rows.slice() : []; }
+
+  function clearGamesCache(){
+    cache.at = 0;
+    cache.rows = null;
+    cache.promise = null;
+  }
+
+  window.__sqClearGamesTruthCache = clearGamesCache;
+
+  var originalGetAll = window.__sqGetAllGamesNormalized;
+  var originalCloudFetch = window.cloudFetchAllGamesAsLocal;
+
+  async function fetchNormalizedFresh(){
+    var rows = [];
+    if (typeof originalCloudFetch === 'function') {
+      rows = await originalCloudFetch.call(window);
+    } else if (typeof originalGetAll === 'function' && originalGetAll !== window.__sqGetAllGamesNormalizedCached) {
+      rows = await originalGetAll.call(window);
+    }
+    if (typeof window.__sqDedupeNormalizedGames === 'function') {
+      return window.__sqDedupeNormalizedGames(rows || []);
+    }
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  window.__sqGetAllGamesNormalizedCached = async function __sqGetAllGamesNormalizedCached(force){
+    var age = now() - cache.at;
+    if (!force && cache.rows && age >= 0 && age < TTL_MS) return cloneRows(cache.rows);
+    if (!force && cache.promise) return cloneRows(await cache.promise);
+
+    cache.promise = fetchNormalizedFresh()
+      .then(function(rows){
+        cache.rows = Array.isArray(rows) ? rows : [];
+        cache.at = now();
+        return cache.rows;
+      })
+      .catch(function(e){
+        cache.promise = null;
+        throw e;
+      });
+
+    try { return cloneRows(await cache.promise); }
+    finally { cache.promise = null; }
+  };
+
+  window.__sqGetAllGamesNormalized = window.__sqGetAllGamesNormalizedCached;
+
+  // Mutating/saving game data must invalidate read cache. These wrappers are deliberately narrow.
+  [
+    'cloudInsertHighScore',
+    'cloudInsertHighScoreIfMissing',
+    'cloudDeleteGameCascade',
+    'saveGameToCloud',
+    'cloudSaveCompletedGame'
+  ].forEach(function(name){
+    var fn = window[name];
+    if (typeof fn !== 'function' || fn.__sqFix153CacheWrapped) return;
+    var wrapped = async function(){
+      try { return await fn.apply(this, arguments); }
+      finally { clearGamesCache(); }
+    };
+    wrapped.__sqFix153CacheWrapped = true;
+    window[name] = wrapped;
+    try { eval(name + ' = window[name]'); } catch(_) {}
+  });
+
+  function removeDuplicateLeagueOverlays(kind){
+    try{
+      var re = kind === 'top50' ? /^Top\s*50\s*Scores/i : kind === 'power' ? /^Power\s*Rankings/i : null;
+      if (!re) return;
+      var found = false;
+      Array.prototype.slice.call(document.querySelectorAll('.modal-backdrop')).forEach(function(bd){
+        var h = bd.querySelector && bd.querySelector('h1,h2,h3');
+        var title = String((h && h.textContent) || '').trim();
+        if (!re.test(title)) return;
+        if (!found) { found = true; return; }
+        try { bd.remove(); } catch(_) {}
+      });
+    }catch(_){}
+  }
+
+  function wrapModal(name, kind){
+    var fn = window[name];
+    if (typeof fn !== 'function' || fn.__sqFix153ModalGuard) return;
+    var wrapped = async function(){
+      removeDuplicateLeagueOverlays(kind);
+      var result = await fn.apply(this, arguments);
+      setTimeout(function(){ removeDuplicateLeagueOverlays(kind); }, 0);
+      setTimeout(function(){ removeDuplicateLeagueOverlays(kind); }, 120);
+      return result;
+    };
+    wrapped.__sqFix153ModalGuard = true;
+    window[name] = wrapped;
+    try { eval(name + ' = window[name]'); } catch(_) {}
+  }
+
+  wrapModal('openTop50ScoresDialog', 'top50');
+  wrapModal('openPowerLeagueDialog', 'power');
+  wrapModal('openPowerRankingsDialog', 'power');
+
+  try { console.info('[SQ] Fix153 MOT cache/modal guard active: one cloud games fetch per 45s window, guarded duplicate league overlays.'); } catch(_) {}
+})();
+</script>
+<!-- <<< PATCH:FIX153_MOT_CACHE_MODAL_GUARD END -->
+
+
+
+<!-- >>> PATCH:FIX160_HOME_POWER_FIRST_PLUS_NICKNAME START -->
+<script>
+(function(){
+  if (window.__sqFix160HomePowerFirstPlusNickname) return;
+  window.__sqFix160HomePowerFirstPlusNickname = true;
+
+  function escText(s){
+    try { return (typeof escHtml === 'function') ? escHtml(s) : String(s == null ? '' : s); }
+    catch(_) { return String(s == null ? '' : s); }
+  }
+
+  function playerDir(){
+    try { if (typeof _sqPlayerDir !== 'undefined' && _sqPlayerDir) return _sqPlayerDir; } catch(_) {}
+    return { byId:{}, byName:{}, list:[] };
+  }
+
+  function profileFor(raw){
+    var key = String(raw == null ? '' : raw).trim();
+    if (!key) return null;
+    var lc = key.toLowerCase();
+    var dir = playerDir();
+    var p = (dir.byId && dir.byId[key]) || (dir.byName && dir.byName[lc]) || null;
+    if (p) return p;
+
+    var list = Array.isArray(dir.list) ? dir.list : [];
+    var found = [];
+    list.forEach(function(x){
+      if (!x) return;
+      var firstWord = String(x.name || '').split(/\s+/)[0];
+      var vals = [x.id, x.name, x.first_name, x.last_name, x.nickname, x.initials, firstWord]
+        .map(function(v){ return String(v || '').trim().toLowerCase(); })
+        .filter(Boolean);
+      if (vals.indexOf(lc) !== -1) found.push(x);
+    });
+    return found.length === 1 ? found[0] : null;
+  }
+
+  function displayName(raw){
+    var p = profileFor(raw);
+    if (p){
+      var nick = String(p.nickname || '').trim();
+      var first = String(p.first_name || '').trim();
+      var name = String(p.name || '').trim();
+      if (!first && name) first = name.split(/\s+/)[0] || '';
+
+      // Home Power Rankings display rule: first name + nickname.
+      // Example: Chris \"The Inevitable\".
+      if (first && nick && first.toLowerCase() !== nick.toLowerCase()) return first + ' \"' + nick + '\"';
+      if (first) return first;
+      if (nick) return nick;
+      if (name) return name;
+    }
+    try { if (typeof sqDisplayNameForPlayerField === 'function') return sqDisplayNameForPlayerField(raw); } catch(_) {}
+    return String(raw == null ? '' : raw).trim();
+  }
+
+  async function refreshPlayers(){
+    try { if (typeof cloudRefreshPlayerDirectory === 'function') await cloudRefreshPlayerDirectory(false); } catch(_) {}
+  }
+
+  async function refreshPowerFast(){
+    var body = document.getElementById('homePowerLeagueRows');
+    if (!body) return;
+    try{
+      await refreshPlayers();
+      var rows = [];
+      if (typeof getOfficialPowerRows === 'function') rows = await getOfficialPowerRows();
+      rows = (rows || []).filter(function(r){ return r && r.player; }).slice(0, 5);
+      if (!rows.length) return;
+
+      var wrap = body.closest ? body.closest('.home-mini-printer') : null;
+      if (wrap){
+        var mid = wrap.querySelector('.lp-mid');
+        if (mid) mid.classList.remove('lp-mid-hold');
+        var ov = wrap.querySelector('.home-hold-overlay');
+        if (ov) ov.style.display = 'none';
+      }
+
+      body.innerHTML = rows.map(function(r, i){
+        var avg = Number(r.avgRound != null ? r.avgRound : (r.avg != null ? r.avg : (r.avg_per_round != null ? r.avg_per_round : 0)));
+        if (!Number.isFinite(avg)) avg = 0;
+        return '<tr><td class="mini-rank">' + (i + 1) + '</td><td class="mini-name">' + escText(displayName(r.player)) + '</td><td class="mini-val">' + avg.toFixed(2) + '</td></tr>';
+      }).join('');
+    }catch(e){
+      try { console.warn('[SQ] Fix160 power fast refresh failed:', e && e.message ? e.message : e); } catch(_) {}
+    }
+  }
+
+  function renderLiveImmediately(){
+    try{
+      var st = window.__homeLivePrinterState;
+      if (!st || !Array.isArray(st.bufLines) || !st.bufLines.length) return false;
+      var current = Array.isArray(st.displayLines) ? st.displayLines : [];
+      var empty = !current.length || current.every(function(x){ return !String(x || '').trim(); });
+      if (!empty) return true;
+
+      var lines = st.bufLines.slice(0, 9);
+      st.displayLines = lines;
+      var body = document.getElementById('homeLivePrinterRows');
+      if (body){
+        body.innerHTML = lines.map(function(line){
+          var s = String(line || '');
+          var cls = /^[A-Z]+DAY\s+\d+/i.test(s) ? ' lp-datehdr' : '';
+          return '<tr class="lp-row' + cls + '"><td class="lp-line"><span class="lp-ellipsis">' + escText(s) + '</span></td></tr>';
+        }).join('');
+      }
+      var printer = document.getElementById('homeLivePrinter');
+      if (printer) printer.classList.add('is-live');
+      var mid = document.querySelector('#homeLivePrinter .lp-mid');
+      if (mid) mid.classList.remove('lp-mid-hold');
+      var hold = document.querySelector('#homeLivePrinter .home-hold-overlay');
+      if (hold) hold.style.display = 'none';
+      return true;
+    }catch(_){ return false; }
+  }
+
+  function boot(){
+    setTimeout(refreshPowerFast, 80);
+    setTimeout(refreshPowerFast, 800);
+    setTimeout(refreshPowerFast, 2000);
+
+    var tries = 0;
+    var id = setInterval(function(){
+      tries += 1;
+      if (renderLiveImmediately() || tries > 24) clearInterval(id);
+    }, 250);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once:true });
+  else boot();
+
+  window.sqFix160RefreshHomePowerFast = refreshPowerFast;
+})();
+</script>
+<!-- <<< PATCH:FIX160_HOME_POWER_FIRST_PLUS_NICKNAME END -->
 
 </body>
 </html>
