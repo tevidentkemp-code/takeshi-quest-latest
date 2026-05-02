@@ -5839,6 +5839,33 @@ margin-bottom: var(--section-gap);
   text-transform:none;
 }
 
+.sq-player-stats-picker{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  width:100%;
+}
+.sq-player-stats-picker span{
+  white-space:nowrap;
+}
+.sq-player-stats-picker select{
+  min-width:150px;
+  max-width:230px;
+  padding:5px 30px 5px 10px;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,.18);
+  color:var(--text);
+  background:rgba(255,255,255,.07);
+  font:inherit;
+  font-weight:700;
+  outline:none;
+}
+.sq-player-stats-picker select:focus{
+  border-color:rgba(74,167,255,.7);
+  box-shadow:0 0 0 2px rgba(74,167,255,.18);
+}
+
 .menu-row.is-disabled{
   opacity:.45;
 }
@@ -7945,7 +7972,7 @@ window.openMainMenuDialog = window.openMainMenuDialog || function openMainMenuDi
 
     const items = [
       { title: 'NEW GAME', sub: 'Return to Home / start a new match', onClick: ()=>{ try{ if (typeof navigateToStartScreen==='function') navigateToStartScreen(); }catch(_){ } try{ if (window.__sqNav) window.__sqNav.clearAll(); }catch(_){ } } },
-      { title: 'PLAYER STATS', sub: 'Select player → stats hub', onClick: ()=>{ try{ if (typeof openPlayerStatsSelectDialog==='function') openPlayerStatsSelectDialog(); }catch(_){ } } },
+      { title: 'PLAYER STATS', sub: 'Open stats hub', onClick: ()=>{ try{ if (typeof openPlayerStatsHub==='function') openPlayerStatsHub(); else if (typeof openPlayerStatsSelectDialog==='function') openPlayerStatsSelectDialog(); }catch(_){ } } },
       { title: 'LEAGUE & RANKINGS', sub: 'High scores, round records, rankings', onClick: ()=>{ try{ if (typeof openLeagueRankingsDialog==='function') openLeagueRankingsDialog(); }catch(_){ } } },
       { title: 'ADMIN', sub: 'Tools + data (restricted)', onClick: ()=>{ try{ if (typeof openAdminHub==='function') openAdminHub(); else if (typeof openAdminHubDialog==='function') openAdminHubDialog(); else if (typeof toast==='function') toast('Admin not available'); }catch(_){ } } },
     ];
@@ -9345,7 +9372,10 @@ function openPlayerStatsSelectDialog(){
 // Ensure the Start screen button opens the Stats select flow
 document.addEventListener('DOMContentLoaded', function(){
   const btn = document.getElementById('playerStatsBtn');
-  if (btn) btn.onclick = () => openPlayerStatsSelectDialog();
+  if (btn) btn.onclick = () => {
+    if (typeof window.openPlayerStatsHub === 'function') return window.openPlayerStatsHub();
+    return openPlayerStatsSelectDialog();
+  };
 });
 
 // --- PB / GR Admin: open/close + minimal render ---
@@ -15229,7 +15259,10 @@ async function openPlayerStatsLookupDialog() {
 
   const playerStatsBtn = byId('playerStatsBtn');
   if (playerStatsBtn) {
-    playerStatsBtn.onclick = openPlayerStatsLookupDialog;
+    playerStatsBtn.onclick = function(){
+      if (typeof window.openPlayerStatsHub === 'function') return window.openPlayerStatsHub();
+      return openPlayerStatsLookupDialog();
+    };
   }
 }
 
@@ -25945,8 +25978,10 @@ function arrangeStartActions(){
     if (typeof window.openLatestScoresDialog === 'function') latest.onclick = window.openLatestScoresDialog;
     if (typeof window.openLeagueRankingsDialog === 'function') league.onclick = window.openLeagueRankingsDialog;
 
-    // STATS should always start at: Player Stats – Select Player
-    if (typeof openPlayerStatsSelectDialog === 'function') {
+    // STATS opens the Player Stats hub directly; player changes happen in the hub header.
+    if (typeof window.openPlayerStatsHub === 'function') {
+      stats.onclick = () => window.openPlayerStatsHub();
+    } else if (typeof openPlayerStatsSelectDialog === 'function') {
       stats.onclick = () => openPlayerStatsSelectDialog();
     } else if (typeof window.openPlayerStatsLookupDialog === 'function') {
       stats.onclick = window.openPlayerStatsLookupDialog;
@@ -28526,6 +28561,14 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
   }));
 
   list.appendChild(makeRow({
+    id:'streakLeagueBtn',
+    label:'Streak League',
+    desc:'Dart and round target-hit streaks',
+    accent:'#43ff8b',
+    svg:icons.chart
+  }));
+
+  list.appendChild(makeRow({
     id:'leagueRoundHighScoresBtn',
     label:'Round High Scores',
     desc:'Best single-round scores',
@@ -28600,6 +28643,15 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
     try { toast('High Score League not available'); } catch(_) {}
   });
 
+  document.getElementById('streakLeagueBtn')?.addEventListener('click', () => {
+    remove();
+    try {
+      if (typeof window.openStreakLeagueDialog === 'function') return window.openStreakLeagueDialog();
+      if (typeof openStreakLeagueDialog === 'function') return openStreakLeagueDialog();
+    } catch(_) {}
+    try { toast('Streak League not available'); } catch(_) {}
+  });
+
   document.getElementById('leagueRoundHighScoresBtn')?.addEventListener('click', () => {
     remove();
     try {
@@ -28627,6 +28679,163 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
     try { toast('Latest Scores not available'); } catch(_) {}
   });
 
+};
+
+window.openStreakLeagueDialog = async function openStreakLeagueDialog(initialMetric, initialMode){
+  const SB = (typeof window !== 'undefined') ? (window.sb || window.__sb || window.supabase || window.supabaseClient || null) : null;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fmtDate = ts => {
+    try{
+      const d = new Date(ts || 0);
+      if (!Number.isFinite(d.getTime())) return '—';
+      return d.toLocaleString('en-GB', { day:'2-digit', month:'short', year:'2-digit', hour:'2-digit', minute:'2-digit' }).replace(',', '');
+    }catch(_){ return '—'; }
+  };
+  const metricModes = [{key:'dart', label:'Dart Streak'}, {key:'round', label:'Round Streak'}];
+  const modeModes = [{key:'official', label:'Official'}, {key:'turbo', label:'Turbo'}, {key:'classic', label:'Practice'}];
+  let metric = metricModes.some(m => m.key === String(initialMetric || '').toLowerCase()) ? String(initialMetric).toLowerCase() : 'dart';
+  let mode = modeModes.some(m => m.key === String(initialMode || '').toLowerCase()) ? String(initialMode).toLowerCase() : 'official';
+
+  if (!document.getElementById('sq-streak-league-css')){
+    const st = document.createElement('style');
+    st.id = 'sq-streak-league-css';
+    st.textContent = `
+      .sq-streak-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
+      .sq-streak-title h3{margin:0;font-size:20px;line-height:1.1;font-weight:900}
+      .sq-streak-sub{font-size:11px;color:rgba(231,233,245,.66);margin-top:4px}
+      .sq-streak-controls{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:4px 0 10px}
+      .sq-streak-tabs{display:flex;gap:7px;flex-wrap:wrap}
+      .sq-streak-tabs button{border-radius:999px;border:1px solid rgba(255,255,255,.14);background:rgba(10,12,24,.58);color:rgba(245,247,255,.86);font-weight:850;font-size:12px;padding:8px 11px;cursor:pointer}
+      .sq-streak-tabs button.active{border-color:rgba(255,123,26,.92);background:rgba(255,123,26,.14);box-shadow:0 0 0 2px rgba(255,123,26,.12) inset;color:#fff}
+      .sq-streak-tabs button:disabled{opacity:.45;cursor:not-allowed}
+      .sq-streak-note{border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:9px 11px;color:rgba(231,233,245,.76);font-size:12px;margin:4px 0 10px;background:rgba(255,255,255,.035)}
+      .sq-streak-table{width:100%;border-collapse:collapse;table-layout:fixed}
+      .sq-streak-table th{font-size:11px;text-transform:uppercase;letter-spacing:.16em;color:rgba(220,224,240,.72);padding:12px 10px;background:rgba(255,255,255,.035);text-align:left}
+      .sq-streak-table td{font-size:14px;padding:12px 10px;border-top:1px solid rgba(255,255,255,.08);font-variant-numeric:tabular-nums}
+      .sq-streak-table .rank-cell{color:#ff8a00;font-weight:900}
+      .sq-streak-table .streak-cell{font-weight:900;text-align:center}
+      @media(max-width:620px){.sq-streak-head{display:block}.sq-streak-controls{display:block}.sq-streak-tabs{margin-bottom:8px}.sq-streak-table th,.sq-streak-table td{font-size:12px;padding:10px 7px}.sq-streak-table col:nth-child(5){width:0!important}.sq-streak-table th:nth-child(5),.sq-streak-table td:nth-child(5){display:none}}
+    `;
+    document.head.appendChild(st);
+  }
+
+  document.querySelectorAll('.sq-streak-league-backdrop').forEach(n => { try{ n.remove(); }catch(_){} });
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-backdrop sq-streak-league-backdrop';
+  const modal = document.createElement('div');
+  modal.className = 'modal sq-wide-modal';
+  modal.style.maxWidth = '980px';
+  modal.style.width = '94vw';
+  modal.style.maxHeight = '90vh';
+  modal.style.overflow = 'hidden';
+
+  const head = document.createElement('div');
+  head.className = 'sq-streak-head';
+  head.innerHTML = '<div class="sq-streak-title"><h3>Streak League</h3><div class="sq-streak-sub">Supabase target-hit streak rankings by mode.</div></div>';
+
+  const body = document.createElement('div');
+  body.className = 'modal-body';
+  body.style.overflowY = 'auto';
+  body.style.maxHeight = '64vh';
+  const controls = document.createElement('div');
+  controls.className = 'sq-streak-controls';
+  const metricTabs = document.createElement('div');
+  metricTabs.className = 'sq-streak-tabs';
+  metricModes.forEach(m => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.metric = m.key;
+    b.textContent = m.label;
+    metricTabs.appendChild(b);
+  });
+  const modeTabs = document.createElement('div');
+  modeTabs.className = 'sq-streak-tabs';
+  modeModes.forEach(m => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.mode = m.key;
+    b.textContent = m.label;
+    modeTabs.appendChild(b);
+  });
+  controls.append(metricTabs, modeTabs);
+  body.innerHTML = '<div class="sq-streak-note"></div><div class="table-wrap"><table class="sq-streak-table"><colgroup><col style="width:58px"><col><col style="width:110px"><col style="width:90px"><col style="width:160px"></colgroup><thead><tr><th>#</th><th>Player</th><th>Streak</th><th>Games</th><th>Last Played</th></tr></thead><tbody></tbody></table></div>';
+  body.prepend(controls);
+
+  const footer = document.createElement('div');
+  footer.className = 'modal-footer';
+  footer.style.justifyContent = 'flex-start';
+  const back = document.createElement('button');
+  back.className = 'btn sq-pill';
+  back.textContent = 'Back';
+  const close = document.createElement('button');
+  close.className = 'btn sq-pill';
+  close.textContent = 'Close';
+  footer.append(back, close);
+  modal.append(head, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  const note = body.querySelector('.sq-streak-note');
+  const tbody = body.querySelector('tbody');
+  function labelFor(list, key){ const row = list.find(x => x.key === key); return row ? row.label : key; }
+  function setActive(){
+    metricTabs.querySelectorAll('button[data-metric]').forEach(b => b.classList.toggle('active', b.dataset.metric === metric));
+    modeTabs.querySelectorAll('button[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  }
+  async function fetchRows(){
+    if (!SB || typeof SB.from !== 'function') throw new Error('Supabase client is not available');
+    const streakCol = metric === 'round' ? 'round_streak' : 'dart_streak';
+    const q = await SB.from('v_player_target_streaks')
+      .select('player_key,player_name,mode_key,mode_label,dart_streak,round_streak,source_games,last_played_at')
+      .eq('mode_key', mode)
+      .order(streakCol, { ascending:false, nullsFirst:false })
+      .order('source_games', { ascending:false, nullsFirst:false })
+      .order('last_played_at', { ascending:false, nullsFirst:false })
+      .order('player_name', { ascending:true })
+      .limit(250);
+    if (q && q.error) throw q.error;
+    return Array.isArray(q && q.data) ? q.data : [];
+  }
+  async function render(){
+    setActive();
+    note.textContent = labelFor(metricModes, metric) + ' · ' + labelFor(modeModes, mode);
+    tbody.innerHTML = '<tr><td colspan="5" style="padding:14px;opacity:.75;">Loading…</td></tr>';
+    try{
+      const streakCol = metric === 'round' ? 'round_streak' : 'dart_streak';
+      let rows = await fetchRows();
+      rows.sort((a,b) => (Number(b[streakCol] || 0) - Number(a[streakCol] || 0)) || (Number(b.source_games || 0) - Number(a.source_games || 0)) || (Date.parse(b.last_played_at || '') - Date.parse(a.last_played_at || '')) || String(a.player_name || '').localeCompare(String(b.player_name || '')));
+      const nonZero = rows.filter(r => Number(r[streakCol] || 0) > 0);
+      rows = nonZero.length ? nonZero : rows;
+      if (!rows.length){
+        tbody.innerHTML = '<tr><td colspan="5" style="padding:14px;opacity:.82;">Streak League data is not available yet. Required Supabase view/data source is missing or empty.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows.map((r,i) => '<tr><td class="rank-cell">'+(i+1)+'</td><td>'+esc(r.player_name || r.player_key || '—')+'</td><td class="streak-cell">'+esc(Number(r[streakCol] || 0))+'</td><td>'+esc(Number(r.source_games || 0))+'</td><td>'+esc(fmtDate(r.last_played_at))+'</td></tr>').join('');
+    }catch(e){
+      console.warn('[SQ] Streak League dependency missing or failed', e);
+      tbody.innerHTML = '<tr><td colspan="5" style="padding:14px;opacity:.82;">Streak League data is not available yet. Required Supabase view/data source is missing or empty.</td></tr>';
+      controls.querySelectorAll('button').forEach(b => { b.disabled = true; });
+    }
+  }
+
+  metricTabs.onclick = e => {
+    const b = e.target && e.target.closest ? e.target.closest('button[data-metric]') : null;
+    if (!b || b.disabled) return;
+    metric = b.dataset.metric;
+    render();
+  };
+  modeTabs.onclick = e => {
+    const b = e.target && e.target.closest ? e.target.closest('button[data-mode]') : null;
+    if (!b || b.disabled) return;
+    mode = b.dataset.mode;
+    render();
+  };
+  back.onclick = () => { overlay.remove(); try{ if (typeof window.openLeagueRankingsDialog === 'function') window.openLeagueRankingsDialog(); }catch(_){} };
+  close.onclick = () => overlay.remove();
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  modal.tabIndex = 0;
+  modal.focus();
+  await render();
 };
 
 // === Power Rankings — official only (hard cap + min sample; grey-out unqualified) ===
@@ -30686,7 +30895,8 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
   modal.style.maxWidth='980px'; modal.style.width='94vw';
   modal.style.maxHeight = '90vh'; modal.style.overflow = 'hidden';
 
-  const header  = __sqStatsHeader(`Player Stats — ${name}`, 'Overview / Premier League / Targets');
+  const header  = document.createElement('div');
+  header.style.display = 'none';
   const body    = document.createElement('div'); body.className    = 'modal-body';
   body.style.paddingTop='8px';
   body.style.maxHeight = 'none'; body.style.overflowY = 'auto';
@@ -30753,19 +30963,57 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
   const LOW   = GAMES ? Math.min(...scores) : 0;
 
   // 2.1) Canonical ranks / windows from DB views
-  // - Power Rank: v_power_rank_last56_ranked
+  // - Power Rank: power_rankings_last56_official, filtered to the same active 14-day Current rule
   // - Highest Score place: v_player_best_official_ranked
   // - Favorite/Worst: v_player_last30_targets (throw-universe)
   let dbPower = null;
   let dbBest  = null;
   let dbFav   = null;
+  let dbStreak = null;
   if (SB && typeof SB.from === 'function'){
     try{
-      const pr = await SB.from('v_power_rank_last56_ranked')
-        .select('player,power_rank,power_rank_pos,last_played_at')
-        .ilike('player', name)
-        .limit(1);
-      dbPower = (pr && pr.data && pr.data[0]) ? pr.data[0] : null;
+      const powerKey = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+      let savedRows = [];
+      try{
+        if (typeof cloudListPlayers === 'function') savedRows = await cloudListPlayers();
+      }catch(_){ savedRows = []; }
+      if ((!savedRows || !savedRows.length) && typeof getSavedPlayers === 'function'){
+        try{ savedRows = getSavedPlayers() || []; }catch(_){ savedRows = []; }
+      }
+      const savedMap = new Map((savedRows || []).map(p => {
+        const n = String((p && (p.name || p.player_name || p.player || p.display_name)) || '').trim();
+        return n ? [powerKey(n), n] : null;
+      }).filter(Boolean));
+      const parsePowerMs = ts => {
+        try{
+          if (!ts) return 0;
+          let s = String(ts).trim();
+          if (/^\d{4}-\d{2}-\d{2}\s/.test(s) && !s.includes('T')) s = s.replace(' ', 'T');
+          if (/[+-]\d{2}$/.test(s)) s += ':00';
+          const n = Date.parse(s);
+          return Number.isFinite(n) ? n : 0;
+        }catch(_){ return 0; }
+      };
+      const pr = await SB.from('power_rankings_last56_official')
+        .select('player,rounds_used,total_points,avg_per_round,last_played_at')
+        .order('avg_per_round', { ascending:false })
+        .limit(500);
+      if (pr && pr.error) throw pr.error;
+      const nowMs = Date.now();
+      const activeCutoff = nowMs - (14 * 24 * 60 * 60 * 1000);
+      const rows = ((pr && pr.data) || []).map(r => {
+        const k = powerKey(r.player);
+        if (savedMap.size && !savedMap.has(k)) return null;
+        const rounds = Math.max(0, Math.min(56, Number(r.rounds_used || 0)));
+        const total = Number(r.total_points);
+        const avg = (Number.isFinite(total) && rounds > 0) ? (total / rounds) : Number(r.avg_per_round || 0);
+        const lastMs = parsePowerMs(r.last_played_at);
+        const active = !lastMs || lastMs >= activeCutoff;
+        return { player: savedMap.get(k) || String(r.player || '').trim(), playerKey: k, rounds, avg, lastMs, active };
+      }).filter(r => r && r.player && r.rounds >= 28 && r.active && Number.isFinite(r.avg) && r.avg > 0)
+        .sort((a,b) => (b.avg - a.avg) || (b.rounds - a.rounds) || (b.lastMs - a.lastMs) || String(a.player).localeCompare(String(b.player)));
+      const mine = rows.find(r => r.playerKey === powerKey(name));
+      dbPower = mine ? { player: mine.player, power_rank: mine.avg, power_rank_pos: rows.indexOf(mine) + 1, last_played_at: mine.lastMs || null } : null;
     }catch(e){ console.warn('[SQ] power rank view read failed', e); }
 
     try{
@@ -30796,6 +31044,20 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
     }catch(e){ /* view may not exist yet */ dbRates = null; }
 
     }catch(e){ console.warn('[SQ] last30 targets view read failed', e); }
+
+    try{
+      const sk = name.toLowerCase().trim();
+      const st = await SB.from('v_player_target_streaks')
+        .select('player_key,player_name,mode_key,mode_label,dart_streak,round_streak,source_games,last_played_at')
+        .eq('player_key', sk)
+        .eq('mode_key', 'official')
+        .limit(1);
+      if (st && st.error) {
+        console.warn('[SQ] target streaks view is missing required mode columns', st.error);
+      } else {
+        dbStreak = (st && st.data && st.data[0]) ? st.data[0] : null;
+      }
+    }catch(e){ console.warn('[SQ] target streaks view read failed', e); }
   }
 
   // Per-game ranks (1st place detection) and per-month buckets
@@ -31076,91 +31338,23 @@ const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   const myPB = PB;
   const myPBPos = myPB ? (bestList.findIndex(x => x.p.toLowerCase()===name.toLowerCase()) + 1 || null) : null;
 
-  // ---- Render as a tidy two-column grid of “stat cards” ----
-  const grid = document.createElement('div');
-  grid.style.display = 'grid';
-  grid.style.gridTemplateColumns = '1fr 1fr';
-  grid.style.gap = '10px';
-
-  function card(label, value, hint){
-    const c = document.createElement('div');
-    c.className = 'tag';
-    c.style.display='flex'; c.style.justifyContent='space-between'; c.style.alignItems='center';
-    c.style.padding='8px 10px';
-    const L = document.createElement('span'); L.textContent = label;
-    const R = document.createElement('span'); R.textContent = value;
-    R.style.whiteSpace='pre-line';
-    R.style.textAlign='right';
-    if (hint) R.title = hint;
-    c.append(L,R);
-    return c;
+  // ---- Render as a mobile-first player profile screen ----------------------
+  const fmtValue = v => (v == null || v === '' || v === '—') ? '—' : String(v);
+  const rankValue = (dbPower && Number.isFinite(Number(dbPower.power_rank)) && Number.isFinite(Number(dbPower.power_rank_pos)))
+    ? `${Number(dbPower.power_rank).toFixed(2)} (#${Number(dbPower.power_rank_pos)})`
+    : '—';
+  const highestScoreValue = PB ? `${PB} (#${(dbBest && dbBest.best_score_pos) ? dbBest.best_score_pos : '—'})` : '—';
+  const highestPowerValue = bestPowerPos ? `#${bestPowerPos}` : '—';
+  const bestMonthValue = bestMonth ? `${bestMonth.avg.toFixed(1)} (${monthLabel(bestMonth.k)})` : '—';
+  const worstMonthValue = worstMonth ? `${worstMonth.avg.toFixed(1)} (${monthLabel(worstMonth.k)})` : '—';
+  function lettersFromCounts(s,d,t){
+    return `${'S'.repeat(s).split('').join('/')}${s&& (d||t)?'/':''}${'D'.repeat(d).split('').join('/')}${d&&t?'/':''}${'T'.repeat(t).split('').join('/')}`.replace(/^\/|\/$/g,'') || '—';
   }
-
-  // Section helper
-  function section(titleTxt){
-    const h = document.createElement('h4');
-    h.textContent = titleTxt;
-    h.style.margin = '12px 0 6px';
-    return h;
-  }
-
-  // Clear initial loading indicator before rendering the real content
-  body.innerHTML = '';
-
-  // Top: Games / Current & Highest Power Rank
-  body.appendChild(section('Overview'));
-  grid.appendChild(card('Games', String(GAMES)));
-  grid.appendChild(card(
-    'Current Power Rank',
-    (dbPower && Number.isFinite(Number(dbPower.power_rank)) && Number.isFinite(Number(dbPower.power_rank_pos)))
-      ? `${Number(dbPower.power_rank).toFixed(2)}  (#${Number(dbPower.power_rank_pos)})`
-      : '—',
-    dbPower ? `Last played ${dbPower.last_played_at || '—'}` : ''
-  ));
-  grid.appendChild(card('Highest Power Rank', bestPowerPos ? `#${bestPowerPos}` : '—', 'Best historical position (requires rank history)'));
-  body.appendChild(grid);
-
-  // Premier League style
-  body.appendChild(section('Premier League'));
-  const gridPL = document.createElement('div');
-  gridPL.style.display='grid'; gridPL.style.gridTemplateColumns='1fr 1fr'; gridPL.style.gap='10px';
-  gridPL.appendChild(card('PL Average', AVG.toFixed(1)));
-gridPL.appendChild(card('PL Monthly Wins', String(plMonthlyWins)));
-gridPL.appendChild(card('Highest Monthly Average', bestMonth ? `${bestMonth.avg.toFixed(1)} (${monthLabel(bestMonth.k)})` : '—'));
-  gridPL.appendChild(card('Lowest Monthly Average',  worstMonth ? `${worstMonth.avg.toFixed(1)} (${monthLabel(worstMonth.k)})` : '—'));
-  body.appendChild(gridPL);
-
-  // Game highs/lows + best round
-  body.appendChild(section('Game Highs & Lows'));
-  const gridGL = document.createElement('div');
-  gridGL.style.display='grid'; gridGL.style.gridTemplateColumns='1fr 1fr'; gridGL.style.gap='10px';
-  gridGL.appendChild(card('Highest Score', PB ? `${PB}  (#${(dbBest && dbBest.best_score_pos) ? dbBest.best_score_pos : '—'})` : '—'));
-  gridGL.appendChild(card('Lowest Score', GAMES ? String(LOW) : '—'));
-function lettersFromCounts(s,d,t){
-  return `${'S'.repeat(s).split('').join('/')}${s&& (d||t)?'/':''}${'D'.repeat(d).split('').join('/')}${d&&t?'/':''}${'T'.repeat(t).split('').join('/')}`.replace(/^\/|\/$/g,'') || '—';
-}
-const brTxt = bestRound ? `${bestRound.round} • ${bestRound.sum}  (${lettersFromCounts(bestRound.s, bestRound.d, bestRound.t)})` : '—';
-  gridGL.appendChild(card('Highest Scoring Round', brTxt, '10→20 rounds only'));
-  body.appendChild(gridGL);
-
-  // Opponents
-  body.appendChild(section('Opponents'));
-  const gridOP = document.createElement('div');
-  gridOP.style.display='grid'; gridOP.style.gridTemplateColumns='1fr 1fr'; gridOP.style.gap='10px';
-  // Top 3 Nemesis/BFF
+  const brTxt = bestRound ? `${bestRound.round} · ${bestRound.sum} (${lettersFromCounts(bestRound.s, bestRound.d, bestRound.t)})` : '—';
   const topNem = qualifiedOpp.slice().sort((a,b)=> a.pct-b.pct || (b.n-a.n) || a.opp.localeCompare(b.opp)).slice(0,3);
   const topBff = qualifiedOpp.slice().sort((a,b)=> b.pct-a.pct || (b.n-a.n) || a.opp.localeCompare(b.opp)).slice(0,3);
-  // Render vertically (card uses textContent + whiteSpace:pre-line)
-  const fmtOpp = (arr) => arr.length ? arr.map((r,i)=> `${i+1}. ${r.opp} (${r.pct.toFixed(1)}%)`).join('\n') : '—';
-  gridOP.appendChild(card('Nemesis', fmtOpp(topNem), '≥5 games'));
-  gridOP.appendChild(card('BFF', fmtOpp(topBff), '≥5 games'));
-  body.appendChild(gridOP);
+  const fmtOpp = arr => arr.length ? arr.map((r,i)=> `${i+1}. ${r.opp} (${r.pct.toFixed(1)}%)`).join('\n') : '—';
 
-  // Targets
-  body.appendChild(section('Targets'));
-  const gridTG = document.createElement('div');
-  gridTG.style.display='grid'; gridTG.style.gridTemplateColumns='1fr 1fr'; gridTG.style.gap='10px';
-  // Build top/bottom 3 from DB rates if available; fallback to single values
   const MIN_THROWS_PER_TARGET_LOCAL = 30;
   let top3Txt = null, bot3Txt = null;
   if (typeof dbRates !== 'undefined' && Array.isArray(dbRates) && dbRates.length){
@@ -31168,22 +31362,150 @@ const brTxt = bestRound ? `${bestRound.round} • ${bestRound.sum}  (${lettersFr
     if (cand.length){
       const top3 = cand.slice().sort((a,b)=> (Number(b.hit_pct)-Number(a.hit_pct)) || (Number(b.throws)-Number(a.throws)) || (Number(a.target_n)-Number(b.target_n))).slice(0,3);
       const bot3 = cand.slice().sort((a,b)=> (Number(a.hit_pct)-Number(b.hit_pct)) || (Number(b.throws)-Number(a.throws)) || (Number(a.target_n)-Number(b.target_n))).slice(0,3);
-      const fmtT = (arr)=> arr.map((r,i)=>`${i+1}. ${r.target_n} (${Number(r.hit_pct).toFixed(1)}%)`).join('\n');
+      const fmtT = arr => arr.map((r,i)=>`${i+1}. ${r.target_n} (${Number(r.hit_pct).toFixed(1)}%)`).join('\n');
       top3Txt = fmtT(top3);
       bot3Txt = fmtT(bot3);
     }
   }
-  gridTG.appendChild(card(
-    'Top 3 Fav Numbers',
-    top3Txt || (dbFav ? `${dbFav.favorite_number}  (${Number(dbFav.favorite_pct).toFixed(1)}%)` : (fav ? `${fav.target}  (${fav.pct.toFixed(1)}%)` : '—')),
-    'Last 30 games'
-  ));
-  gridTG.appendChild(card(
-    'Bottom 3 Worst Numbers',
-    bot3Txt || (dbFav ? `${dbFav.worst_number}  (${Number(dbFav.worst_pct).toFixed(1)}%)` : (worst ? `${worst.target}  (${worst.pct.toFixed(1)}%)` : '—')),
-    'Last 30 games'
-  ));
-  body.appendChild(gridTG);
+  const favValue = top3Txt || (dbFav ? `${dbFav.favorite_number} (${Number(dbFav.favorite_pct).toFixed(1)}%)` : (fav ? `${fav.target} (${fav.pct.toFixed(1)}%)` : '—'));
+  const weakValue = bot3Txt || (dbFav ? `${dbFav.worst_number} (${Number(dbFav.worst_pct).toFixed(1)}%)` : (worst ? `${worst.target} (${worst.pct.toFixed(1)}%)` : '—'));
+  const nick = (typeof __sqPlayerStatsNickname === 'function') ? __sqPlayerStatsNickname(name, window.__sqPlayerStatsPlayers || []) : '';
+  const streakValue = v => Number.isFinite(Number(v)) ? String(Math.max(0, Math.trunc(Number(v)))) : '—';
+  const dartStreakValue = dbStreak ? streakValue(dbStreak.dart_streak) : '—';
+  const roundStreakValue = dbStreak ? streakValue(dbStreak.round_streak) : '—';
+
+  body.innerHTML = '';
+  const profile = document.createElement('div');
+  profile.style.display = 'flex';
+  profile.style.flexDirection = 'column';
+  profile.style.gap = '12px';
+
+  const hero = document.createElement('div');
+  hero.className = 'tag';
+  hero.style.padding = '16px';
+  hero.style.borderRadius = '16px';
+  hero.style.background = 'linear-gradient(135deg, rgba(255,122,24,.20), rgba(255,255,255,.045))';
+  hero.style.border = '1px solid rgba(255,122,24,.28)';
+  hero.style.boxShadow = '0 12px 30px rgba(0,0,0,.22)';
+  const heroName = document.createElement('div');
+  heroName.textContent = name;
+  heroName.style.fontSize = '26px';
+  heroName.style.fontWeight = '900';
+  heroName.style.letterSpacing = '.01em';
+  const heroNick = document.createElement('div');
+  heroNick.textContent = nick || 'Player profile';
+  heroNick.className = 'muted';
+  heroNick.style.marginTop = '2px';
+  heroNick.style.fontWeight = '700';
+  const heroTiles = document.createElement('div');
+  heroTiles.style.display = 'grid';
+  heroTiles.style.gridTemplateColumns = 'repeat(auto-fit, minmax(120px, 1fr))';
+  heroTiles.style.gap = '8px';
+  heroTiles.style.marginTop = '14px';
+  const tile = (label, value) => {
+    const t = document.createElement('div');
+    t.style.padding = '10px';
+    t.style.borderRadius = '12px';
+    t.style.background = 'rgba(0,0,0,.22)';
+    t.style.border = '1px solid rgba(255,255,255,.08)';
+    const l = document.createElement('div'); l.className = 'muted'; l.style.fontSize = '11px'; l.style.textTransform = 'uppercase'; l.style.letterSpacing = '.08em'; l.textContent = label;
+    const v = document.createElement('div'); v.style.marginTop = '4px'; v.style.fontWeight = '900'; v.style.fontSize = '16px'; v.textContent = fmtValue(value);
+    t.append(l, v);
+    return t;
+  };
+  heroTiles.append(tile('Power Rank', rankValue), tile('Games', GAMES), tile('PL AVG', AVG.toFixed(1)));
+  hero.append(heroName, heroNick, heroTiles);
+  profile.appendChild(hero);
+
+  const cards = document.createElement('div');
+  cards.style.display = 'grid';
+  cards.style.gridTemplateColumns = 'repeat(auto-fit, minmax(260px, 1fr))';
+  cards.style.gap = '12px';
+
+  const iconSvg = {
+    quick:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z"/></svg>',
+    league:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v3a5 5 0 0 1-10 0V4z"/></svg>',
+    tournament:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M6 6v5a6 6 0 0 0 12 0V6"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>',
+    turbo:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 10-13h-7l0-7z"/></svg>',
+    target:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>',
+    rivals:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l16 16"/><path d="M7 7h.01"/><path d="M17 17h.01"/></svg>',
+    achievements:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v3a5 5 0 0 1-10 0V4z"/><path d="M5 5H3v2a4 4 0 0 0 4 4"/><path d="M19 5h2v2a4 4 0 0 1-4 4"/></svg>'
+  };
+  const statRow = (label, value, muted) => {
+    const row = document.createElement('div');
+    row.style.display = 'grid';
+    row.style.gridTemplateColumns = 'minmax(0,1fr) auto';
+    row.style.gap = '12px';
+    row.style.alignItems = 'start';
+    row.style.padding = '8px 0';
+    row.style.borderTop = '1px solid rgba(255,255,255,.075)';
+    const l = document.createElement('span'); l.textContent = label; l.style.fontWeight = '700'; if (muted) l.className = 'muted';
+    const v = document.createElement('span'); v.textContent = fmtValue(value); v.style.whiteSpace = 'pre-line'; v.style.textAlign = 'right'; v.style.fontWeight = '800'; if (muted) v.className = 'muted';
+    row.append(l, v);
+    return row;
+  };
+  const statCard = (titleTxt, icon, rows, opts={}) => {
+    const c = document.createElement('div');
+    c.className = 'tag';
+    c.style.padding = '12px';
+    c.style.borderRadius = '14px';
+    c.style.background = opts.muted ? 'rgba(255,255,255,.035)' : 'rgba(255,255,255,.052)';
+    c.style.border = opts.muted ? '1px dashed rgba(255,255,255,.15)' : '1px solid rgba(255,255,255,.09)';
+    if (opts.muted) c.style.opacity = '.84';
+    const head = document.createElement('div');
+    head.style.display = 'flex'; head.style.alignItems = 'center'; head.style.gap = '8px'; head.style.marginBottom = '4px';
+    const ico = document.createElement('span'); ico.style.color = '#f59e0b'; ico.innerHTML = icon || '';
+    const ttl = document.createElement('strong'); ttl.textContent = titleTxt; ttl.style.fontSize = '15px';
+    head.append(ico, ttl); c.appendChild(head);
+    rows.forEach(r => c.appendChild(statRow(r[0], r[1], opts.muted || r[2])));
+    if (opts.footer){ const f = document.createElement('p'); f.className = 'muted'; f.style.margin = '8px 0 0'; f.style.fontSize = '12px'; f.textContent = opts.footer; c.appendChild(f); }
+    return c;
+  };
+
+  cards.append(
+    statCard('Quick Stats', iconSvg.quick, [
+      ['Highest Score', highestScoreValue],
+      ['Lowest Score', GAMES ? String(LOW) : '—'],
+      ['Highest Power Rank', highestPowerValue],
+      ['Highest Scoring Round', brTxt],
+      ['Dart Streak', dartStreakValue, !dbStreak],
+      ['Round Streak', roundStreakValue, !dbStreak]
+    ]),
+    statCard('Premier League', iconSvg.league, [
+      ['PL Average', AVG.toFixed(1)],
+      ['PL Monthly Wins', String(plMonthlyWins)],
+      ['Best Month', bestMonthValue],
+      ['Worst Month', worstMonthValue]
+    ]),
+    statCard('Tournament', iconSvg.tournament, [
+      ['Played', 'Tracking soon', true],
+      ['Won', 'Tracking soon', true],
+      ['Lost', 'Tracking soon', true]
+    ]),
+    statCard('Turbo', iconSvg.turbo, [
+      ['Played', 'Tracking soon', true],
+      ['Won', 'Tracking soon', true],
+      ['Lost', 'Tracking soon', true],
+      ['Highest Score', 'Tracking soon', true],
+      ['Lowest Score', 'Tracking soon', true]
+    ]),
+    statCard('Targets', iconSvg.target, [
+      ['Favourite Numbers', favValue],
+      ['Weakest Numbers', weakValue]
+    ]),
+    statCard('Rivals', iconSvg.rivals, [
+      ['Nemesis', fmtOpp(topNem)],
+      ['Favourite Victims', fmtOpp(topBff)]
+    ]),
+    statCard('Achievements', iconSvg.achievements, [
+      ['Score Clubs', 'Coming soon\n400+, 500+, 600+, 700+'],
+      ['Shanghai', 'Coming soon\nSingle, double & treble'],
+      ['Streaks', 'Coming soon\nShot and round streaks'],
+      ['Target Mastery', 'Coming soon\nSpecialist numbers']
+    ], { muted:true, footer:'Achievements tracking will be added soon.' })
+  );
+  profile.appendChild(cards);
+  body.appendChild(profile);
 
   // Footer buttons
   const backBtn  = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
@@ -31205,12 +31527,62 @@ window.openPlayerDTBDialog = window.openPlayerDTBDialog || (function(playerName)
   try{ if (typeof toast==='function') toast('DTB % not available'); }catch(_){}
 });
 
+window.__sqPlayerStatsSelectedName = window.__sqPlayerStatsSelectedName || '';
+
+function __sqPlayerStatsKey(name){
+  return String(name || '').trim().toLowerCase();
+}
+function __sqPlayerStatsNameOf(p){
+  if (p == null) return '';
+  if (typeof p === 'string') return String(p).trim();
+  return String(p.name || p.player_name || p.player || p.display_name || '').trim();
+}
+function __sqPlayerStatsActiveName(){
+  try{
+    const players = Array.isArray(window.state && state.players) ? state.players : [];
+    const idx = Number(state && state.currentPlayer);
+    const p = players[Number.isFinite(idx) ? idx : 0] || players[0];
+    return __sqPlayerStatsNameOf(p);
+  }catch(_){ return ''; }
+}
+function __sqSetPlayerStatsSelectedName(name){
+  const n = String(name || '').trim();
+  if (!n) return '';
+  window.__sqPlayerStatsSelectedName = n;
+  window.__sqStatsReturnPlayer = n;
+  try{ if (typeof __sqSetStatsOrigin === 'function') __sqSetStatsOrigin('home', n); }catch(_){}
+  return n;
+}
+async function __sqLoadPlayerStatsPlayers(){
+  let items = [];
+  try{
+    if (typeof cloudListPlayers === 'function') items = await cloudListPlayers();
+  }catch(e){
+    console.warn('[SQ] Player Stats player list load failed', e);
+  }
+  const seen = new Set();
+  return (Array.isArray(items) ? items : [])
+    .map(p => ({ raw:p, name:__sqPlayerStatsNameOf(p), nickname:String((p && (p.nickname || p.nick || p.alias)) || '').trim() }))
+    .filter(p => {
+      const key = __sqPlayerStatsKey(p.name);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a,b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity:'base' }));
+}
+function __sqPlayerStatsNickname(name, players){
+  const key = __sqPlayerStatsKey(name);
+  const p = (players || []).find(x => __sqPlayerStatsKey(x.name) === key);
+  return String((p && p.nickname) || '').trim();
+}
+
 // === Player Hub — Latest Matches / High Scores / Progression / Target % / D T B % / H2H ===
 window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('home', playerName); }catch(_){ }
   try{ console.debug('[Popup]', window.__sqStatsDebugName || 'New Game Screen Stats'); }catch(_){ }
-  const name = String(playerName || '').trim();
-  if (!name){ try{ toast('Pick a player'); }catch(_){} return; }
+  let currentName = String(playerName || window.__sqPlayerStatsSelectedName || window.__sqStatsReturnPlayer || __sqPlayerStatsActiveName() || '').trim();
+  if (currentName) __sqSetPlayerStatsSelectedName(currentName);
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop';
@@ -31245,25 +31617,21 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   title.className = 'menu-modal-title-text';
   title.textContent = 'PLAYER STATS';
 
-  const getNickForName = (nm)=>{
-    try{
-      const list = (typeof getSavedPlayers==='function' ? getSavedPlayers() : (window.savedPlayers||window.__savedPlayers||[])) || [];
-      const low = String(nm||'').trim().toLowerCase();
-      const p = list.find(x => String(x?.name||'').trim().toLowerCase()===low);
-      return String(p?.nickname || p?.nick || p?.alias || '').trim();
-    }catch(_){ return ''; }
-  };
-  const nick = getNickForName(name);
-
-  const sub1 = document.createElement('div');
-  sub1.className = 'menu-modal-title-sub';
-  sub1.textContent = 'Name: ' + name;
+  let hubPlayers = [];
+  const playerLine = document.createElement('label');
+  playerLine.className = 'menu-modal-title-sub sq-player-stats-picker';
+  const playerLabel = document.createElement('span');
+  playerLabel.textContent = 'Player';
+  const playerSelect = document.createElement('select');
+  playerSelect.setAttribute('aria-label', 'Player');
+  playerSelect.innerHTML = '<option value="">Loading players...</option>';
+  playerLine.append(playerLabel, playerSelect);
 
   const sub2 = document.createElement('div');
   sub2.className = 'menu-modal-title-sub2';
-  sub2.textContent = 'Nickname: ' + (nick || '-');
+  sub2.textContent = 'Nickname: -';
 
-  titleWrap.append(icon, title, sub1, sub2);
+  titleWrap.append(icon, title, playerLine, sub2);
   header.append(backBtn, titleWrap, closeBtn);
 
   const body = document.createElement('div');
@@ -31289,6 +31657,24 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
     return row;
   };
 
+  const syncPlayerHeader = () => {
+    const n = String(currentName || playerSelect.value || '').trim();
+    if (n && playerSelect.value !== n) {
+      try{ playerSelect.value = n; }catch(_){}
+    }
+    sub2.textContent = 'Nickname: ' + (__sqPlayerStatsNickname(n, hubPlayers) || '-');
+  };
+  const selectedName = () => String(currentName || playerSelect.value || '').trim();
+  const openForSelected = (fnName, fallbackMessage, extraArgs) => {
+    const n = selectedName();
+    if (!n){ try{ if (typeof toast === 'function') toast('Pick a player'); }catch(_){} return; }
+    currentName = __sqSetPlayerStatsSelectedName(n);
+    try{ overlay && overlay.remove(); }catch(e){}
+    const fn = window[fnName];
+    if (typeof fn === 'function') return fn.apply(window, [n].concat(extraArgs || []));
+    if (typeof toast === 'function') toast(fallbackMessage);
+  };
+
   const svgClock = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg>';
   const svgTrophy= '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v3a5 5 0 0 1-10 0V4z"/><path d="M5 5H3v2a4 4 0 0 0 4 4"/><path d="M19 5h2v2a4 4 0 0 1-4 4"/></svg>';
   const svgTrend = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/></svg>';
@@ -31298,45 +31684,31 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
 
   list.append(
     mkRow('Player Stats', 'AVERAGES, PB, RECENT GAMES', svgBars, () => {
-      try{ overlay && overlay.remove(); }catch(e){}
-      if (typeof window.openPlayerStatsDialog === 'function') return window.openPlayerStatsDialog(name);
-      if (typeof toast==='function') toast('Stats not available');
+      return openForSelected('openPlayerStatsDialog', 'Stats not available');
     }),
 
     mkRow('Latest Matches', 'POS / POINTS / AVG', svgClock, () => {
-      try{ overlay && overlay.remove(); }catch(e){}
-      if (typeof window.openPlayerLatestMatchesDialog === 'function') return window.openPlayerLatestMatchesDialog(name, 'official');
-      if (typeof toast==='function') toast('Latest Matches not available');
+      return openForSelected('openPlayerLatestMatchesDialog', 'Latest Matches not available', ['official']);
     }),
 
     mkRow('Game High Scores', 'FULL GAME HISTORY', svgTrophy, () => {
-      try{ overlay && overlay.remove(); }catch(e){}
-      if (typeof window.openPlayerHighScoresDialog === 'function') return window.openPlayerHighScoresDialog(name);
-      if (typeof toast==='function') toast('High Scores not available');
+      return openForSelected('openPlayerHighScoresDialog', 'High Scores not available');
     }),
 
     mkRow('Progression', 'PLAYERS SCORES MAPPED OVER TIME', svgTrend, () => {
-      try{ overlay && overlay.remove(); }catch(e){}
-      if (typeof window.openPlayerProgressionDialog === 'function') return window.openPlayerProgressionDialog(name);
-      if (typeof toast==='function') toast('Progression not available');
+      return openForSelected('openPlayerProgressionDialog', 'Progression not available');
     }),
 
     mkRow('Target Hit %', 'TARGET HITS PER ROUND', svgTarget, () => {
-      try{ overlay && overlay.remove(); }catch(e){}
-      if (typeof window.openPlayerTargetHitDialog === 'function') return window.openPlayerTargetHitDialog(name);
-      if (typeof toast==='function') toast('Target Hit % not available');
+      return openForSelected('openPlayerTargetHitDialog', 'Target Hit % not available');
     }),
 
     mkRow('Target Points %', 'AVAILABLE POINTS HIT PER ROUND', svgTarget, () => {
-      try{ overlay && overlay.remove(); }catch(e){}
-      if (typeof window.openPlayerTargetPointsDialog === 'function') return window.openPlayerTargetPointsDialog(name);
-      if (typeof toast==='function') toast('Target Points % not available');
+      return openForSelected('openPlayerTargetPointsDialog', 'Target Points % not available');
     }),
 
     mkRow('H2H - League', 'RECORD VS OTHER PLAYERS', svgVs, () => {
-      try{ overlay && overlay.remove(); }catch(e){}
-      if (typeof window.openPlayerH2HDialog === 'function') return window.openPlayerH2HDialog(name);
-      if (typeof toast==='function') toast('H2H not available');
+      return openForSelected('openPlayerH2HDialog', 'H2H not available');
     }),
 
     (() => {
@@ -31353,6 +31725,42 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   modal.append(header, body);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
+
+  playerSelect.onchange = () => {
+    const n = String(playerSelect.value || '').trim();
+    if (!n) return;
+    currentName = __sqSetPlayerStatsSelectedName(n);
+    syncPlayerHeader();
+  };
+
+  (async () => {
+    hubPlayers = await __sqLoadPlayerStatsPlayers();
+    if (!hubPlayers.length){
+      playerSelect.innerHTML = '<option value="">No saved players</option>';
+      playerSelect.disabled = true;
+      currentName = '';
+      sub2.textContent = 'Nickname: -';
+      const empty = document.createElement('p');
+      empty.className = 'tag muted';
+      empty.textContent = 'No saved players found.';
+      body.insertBefore(empty, list);
+      return;
+    }
+    playerSelect.innerHTML = '';
+    hubPlayers.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      playerSelect.appendChild(opt);
+    });
+    const activeName = __sqPlayerStatsActiveName();
+    const preferred = [currentName, window.__sqPlayerStatsSelectedName, window.__sqStatsReturnPlayer, activeName]
+      .map(x => String(x || '').trim())
+      .find(x => hubPlayers.some(p => __sqPlayerStatsKey(p.name) === __sqPlayerStatsKey(x)));
+    window.__sqPlayerStatsPlayers = hubPlayers;
+    currentName = __sqSetPlayerStatsSelectedName(preferred || hubPlayers[0].name);
+    syncPlayerHeader();
+  })();
 
   const close = () => { try{ overlay.remove(); }catch(_){ overlay.parentNode && overlay.parentNode.removeChild(overlay); } };
   backBtn.onclick = close;
@@ -32081,8 +32489,8 @@ function __sqGoBackToStatsMain(playerName){
     const name = String(playerName || window.__sqStatsReturnPlayer || window.__sqSelectedPlayerName || '').trim();
 
     if (origin === 'home'){
-      // If we know the player, go back to the per-player hub; otherwise go back to the player select.
-      if (name && typeof window.openPlayerStatsHub === 'function') return window.openPlayerStatsHub(name);
+      // Home stats now return to the per-player hub; the hub owns player selection.
+      if (typeof window.openPlayerStatsHub === 'function') return window.openPlayerStatsHub(name);
       if (typeof window.openPlayerStatsSelectDialog === 'function') return window.openPlayerStatsSelectDialog();
       return;
     }
@@ -32697,8 +33105,8 @@ function __sqProgressYAxisLabels(scaleMax){
 }
 function __sqPointsWeightedNorm(v){
   const n = Math.max(0, Math.min(100, Number(v) || 0));
-  if (n <= 50) return (n / 50) * 0.66;
-  if (n <= 75) return 0.66 + ((n - 50) / 25) * 0.22;
+  if (n <= 25) return (n / 25) * 0.66;
+  if (n <= 75) return 0.66 + ((n - 25) / 50) * 0.22;
   return 0.88 + ((n - 75) / 25) * 0.12;
 }
 function __sqProgressBarGrey(i){
@@ -43584,6 +43992,422 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
 })();
 </script>
 <!-- <<< PATCH:FIX160_HOME_POWER_FIRST_PLUS_NICKNAME END -->
+
+<!-- >>> PATCH:FIX166_TOP50_NAMES_TARGET_HIT_HEATMAP START -->
+<script id="sq-fix166-top50-names-target-hit-heatmap-js">
+(function(){
+  'use strict';
+  if (window.__sqFix166Top50NamesTargetHitHeatmap) return;
+  window.__sqFix166Top50NamesTargetHitHeatmap = true;
+
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function client(){ try{ if (typeof ensureCloudInit === 'function') ensureCloudInit(); }catch(_){} return window.sb || (typeof sb !== 'undefined' ? sb : null); }
+  function pad2(n){ return String(n).padStart(2, '0'); }
+  function parseMs(ts){
+    try{
+      if (!ts) return 0;
+      var s = String(ts).trim();
+      if (/^\d{4}-\d{2}-\d{2}\s/.test(s) && s.indexOf('T') < 0) s = s.replace(' ', 'T');
+      if (/[+-]\d{2}$/.test(s)) s += ':00';
+      var n = Date.parse(s);
+      return Number.isFinite(n) ? n : 0;
+    }catch(_){ return 0; }
+  }
+  function fmtDateTime(ts){
+    try{
+      var d = new Date(parseMs(ts));
+      if (!Number.isFinite(d.getTime())) return '—';
+      return pad2(d.getDate()) + '.' + pad2(d.getMonth() + 1) + '.' + pad2(d.getFullYear() % 100) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+    }catch(_){ return '—'; }
+  }
+  function pctFmt(v, digits){ var n = Number(v); return Number.isFinite(n) ? n.toFixed(digits == null ? 2 : digits) + '%' : '0.00%'; }
+  function labelForMode(mode){ return mode === 'turbo' ? 'Turbo' : (mode === 'practice' ? 'Practice' : 'Official'); }
+  function rankKey(s){ return String(s || '').trim().toLowerCase(); }
+
+  async function fetchTop50Rows(mode){
+    var c = client();
+    if (!c || typeof c.from !== 'function') return { rows:[], missing:'Supabase client missing' };
+    var view = mode === 'practice' ? 'v_top50_scores_practice' : (mode === 'official' ? 'v_top50_scores_official' : '');
+    if (!view) return { rows:[], missing:'Required Supabase view/data source is missing for Turbo Top 50 Scores.' };
+    try{
+      var q = await c.from(view)
+        .select('player_name,score,rounds,avg_round,ts')
+        .order('score', { ascending:false })
+        .order('ts', { ascending:false })
+        .limit(50);
+      if (q.error) throw q.error;
+      var rows = (Array.isArray(q.data) ? q.data : []).map(function(r){
+        var rounds = Number(r.rounds || 0);
+        var score = Number(r.score || 0);
+        var avg = Number(r.avg_round);
+        if (!Number.isFinite(avg)) avg = rounds ? score / rounds : 0;
+        return {
+          player:String(r.player_name || '').trim(),
+          score:score,
+          avg:avg,
+          ts:r.ts || ''
+        };
+      }).filter(function(r){ return r.player && r.score > 0; });
+      return { rows:rows, source:view };
+    }catch(e){
+      console.warn('[SQ] Top 50 Scores view read failed', e);
+      return { rows:[], missing:(e && (e.message || e.details || e.code)) || 'Top 50 Scores view read failed' };
+    }
+  }
+
+  window.openTop50ScoresDialog = async function openTop50ScoresDialog(initialMode){
+    var mode = ['official','turbo','practice'].indexOf(String(initialMode || '').toLowerCase()) >= 0 ? String(initialMode).toLowerCase() : 'official';
+    document.querySelectorAll('.sq-top50-backdrop,.sq-top50-fix98-backdrop,.sq-top50-fix99-backdrop,.sq-fix100-top50,.sq-fix166-top50').forEach(function(n){ try{ n.remove(); }catch(_){} });
+
+    var overlay = document.createElement('div'); overlay.className = 'modal-backdrop sq-fix166-top50 sq-fix100-top50';
+    var modal = document.createElement('div'); modal.className = 'modal sq-wide-modal'; modal.style.maxWidth = '980px'; modal.style.width = '94vw'; modal.style.maxHeight = '90vh'; modal.style.overflow = 'hidden';
+    var head = document.createElement('div'); head.className = 'sq-league-clean-head';
+    head.innerHTML = '<div class="sq-league-clean-title"><h3>Top 50 Scores</h3><div class="sq-league-clean-sub">Official, Turbo and Practice scores are stored separately.</div></div>';
+    var tabs = document.createElement('div'); tabs.className = 'sq-league-tabs';
+    [['official','Official'],['turbo','Turbo'],['practice','Practice']].forEach(function(x){
+      var b = document.createElement('button'); b.type = 'button'; b.dataset.mode = x[0]; b.textContent = x[1]; tabs.appendChild(b);
+    });
+    head.appendChild(tabs);
+    var body = document.createElement('div'); body.className = 'modal-body';
+    body.innerHTML = '<div class="sq-league-note"></div><div class="table-wrap"><table class="sq-league-table"><colgroup><col style="width:64px"><col><col style="width:150px"><col style="width:120px"><col style="width:190px"></colgroup><thead><tr><th>#</th><th>PLAYER</th><th>SCORE</th><th>AVG</th><th>DATE/TIME</th></tr></thead><tbody></tbody></table></div>';
+    var footer = document.createElement('div'); footer.className = 'modal-footer';
+    var back = document.createElement('button'); back.className = 'btn sq-pill'; back.textContent = 'Back';
+    var close = document.createElement('button'); close.className = 'btn sq-pill'; close.textContent = 'Close';
+    footer.append(back, close); modal.append(head, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+    var note = body.querySelector('.sq-league-note'), tb = body.querySelector('tbody');
+    function setTabs(){ Array.prototype.slice.call(tabs.querySelectorAll('button[data-mode]')).forEach(function(b){ b.classList.toggle('active', b.dataset.mode === mode); }); }
+    async function render(){
+      setTabs();
+      note.textContent = mode === 'turbo' ? 'Turbo Top 50 requires a dedicated Supabase view.' : labelForMode(mode) + ' Top 50 Scores from Supabase player_name rows.';
+      tb.innerHTML = '<tr><td colspan="5" style="padding:14px;opacity:.75;">Loading...</td></tr>';
+      var result = await fetchTop50Rows(mode);
+      if (result.missing || !result.rows.length){
+        tb.innerHTML = '<tr><td colspan="5" style="padding:14px;opacity:.78;">Top 50 Scores data is not available yet. Required Supabase view/data source is missing or empty.</td></tr>';
+        return;
+      }
+      console.debug('[SQ] Top 50 Scores source used', { source:result.source, mode:mode, rows:result.rows.length });
+      tb.innerHTML = result.rows.map(function(r, i){
+        return '<tr><td class="rank-cell">'+(i+1)+'</td><td class="player-cell">'+esc(r.player)+'</td><td class="score-cell">'+Math.round(r.score)+'</td><td class="avg-cell">'+Number(r.avg || 0).toFixed(1)+'</td><td class="date-cell">'+esc(fmtDateTime(r.ts))+'</td></tr>';
+      }).join('');
+    }
+    tabs.onclick = function(e){ var b = e.target && e.target.closest ? e.target.closest('button[data-mode]') : null; if (!b) return; mode = b.dataset.mode; render(); };
+    back.onclick = function(){ overlay.remove(); try{ if (typeof window.openLeagueRankingsDialog === 'function') window.openLeagueRankingsDialog(); }catch(_){} };
+    close.onclick = function(){ overlay.remove(); };
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) overlay.remove(); });
+    modal.tabIndex = 0; modal.focus();
+    await render();
+  };
+
+  function heatStyle(v){
+    var n = Math.max(0, Math.min(100, Number(v) || 0));
+    if (n < 20) return { fill:'rgba(20,42,72,.72)', stroke:'rgba(112,158,198,.26)', glow:'', width:'1.05', label:'rgba(232,242,255,.86)' };
+    if (n < 35) return { fill:'rgba(14,135,148,.80)', stroke:'rgba(87,235,230,.48)', glow:'', width:'1.15', label:'rgba(245,255,255,.95)' };
+    if (n < 42) return { fill:'rgba(199,139,43,.88)', stroke:'rgba(255,198,91,.62)', glow:'', width:'1.3', label:'rgba(255,250,238,.98)' };
+    if (n < 48) return { fill:'rgba(249,118,24,.96)', stroke:'rgba(255,190,83,.78)', glow:'url(#sqHitGlowWarm)', width:'1.55', label:'rgba(255,250,240,.98)' };
+    if (n < 55) return { fill:'rgba(255,193,37,.99)', stroke:'rgba(255,238,132,.94)', glow:'url(#sqHitGlowHot)', width:'1.9', label:'#111827' };
+    return { fill:'rgba(115,240,126,.99)', stroke:'rgba(234,255,152,.98)', glow:'url(#sqHitGlowElite)', width:'2.25', label:'#06120b' };
+  }
+  function polar(cx, cy, r, deg){
+    var a = (deg - 90) * Math.PI / 180;
+    return { x:cx + r * Math.cos(a), y:cy + r * Math.sin(a) };
+  }
+  function wedgePath(cx, cy, r0, r1, a0, a1){
+    var p1 = polar(cx, cy, r1, a0), p2 = polar(cx, cy, r1, a1), p3 = polar(cx, cy, r0, a1), p4 = polar(cx, cy, r0, a0);
+    var large = Math.abs(a1 - a0) > 180 ? 1 : 0;
+    return 'M '+p1.x.toFixed(2)+' '+p1.y.toFixed(2)+' A '+r1+' '+r1+' 0 '+large+' 1 '+p2.x.toFixed(2)+' '+p2.y.toFixed(2)+' L '+p3.x.toFixed(2)+' '+p3.y.toFixed(2)+' A '+r0+' '+r0+' 0 '+large+' 0 '+p4.x.toFixed(2)+' '+p4.y.toFixed(2)+' Z';
+  }
+  function heatValueMap(rows){
+    var map = new Map();
+    (rows || []).forEach(function(r){ map.set(String(r.key).toUpperCase(), r); });
+    return map;
+  }
+  function svgEl(svg, name, attrs){
+    var el = document.createElementNS(svg.namespaceURI, name);
+    Object.keys(attrs || {}).forEach(function(k){ el.setAttribute(k, attrs[k]); });
+    return el;
+  }
+  function addSvgText(svg, x, y, text, attrs){
+    var shadow = svgEl(svg, 'text', Object.assign({
+      x:x, y:y, 'text-anchor':'middle', 'dominant-baseline':'middle',
+      fill:'rgba(0,0,0,.56)', 'font-size':'14', 'font-weight':'950',
+      stroke:'rgba(0,0,0,.42)', 'stroke-width':'2', 'paint-order':'stroke'
+    }, attrs || {}));
+    shadow.textContent = text;
+    var label = svgEl(svg, 'text', Object.assign({
+      x:x, y:y, 'text-anchor':'middle', 'dominant-baseline':'middle',
+      fill:'rgba(255,255,255,.96)', 'font-size':'14', 'font-weight':'950'
+    }, attrs || {}));
+    label.textContent = text;
+    svg.appendChild(shadow);
+    svg.appendChild(label);
+  }
+  function renderTargetHitHeatmap(rows){
+    var map = heatValueMap(rows);
+    var boardOrder = ['20','1','18','4','13','6','10','15','2','17','3','19','7','16','8','11','14','9','12','5'];
+    var tracked = new Set(['10','11','12','13','14','15','16','17','18','19','20']);
+    var hotRows = (rows || []).filter(function(r){ return tracked.has(String(r.key).toUpperCase()) && Number.isFinite(Number(r.pct)); })
+      .sort(function(a,b){ return Number(b.pct || 0) - Number(a.pct || 0); });
+    var hotKeys = new Set(hotRows.filter(function(r){ return Number(r.pct || 0) >= 48; }).map(function(r){ return String(r.key).toUpperCase(); }));
+    if (!hotKeys.size) hotRows.slice(0, 2).forEach(function(r){ hotKeys.add(String(r.key).toUpperCase()); });
+    var cx = 160, cy = 142, r0 = 32, r1 = 104, rLabel = 124, step = 360 / boardOrder.length;
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 320 320');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', 'Target Hit percentage heatmap');
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.display = 'block';
+
+    var defs = svgEl(svg, 'defs');
+    defs.innerHTML =
+      '<radialGradient id="sqHitBoardBg" cx="46%" cy="36%" r="70%"><stop offset="0%" stop-color="#253a72"/><stop offset="58%" stop-color="#111b3b"/><stop offset="100%" stop-color="#050915"/></radialGradient>' +
+      '<style>@keyframes sqHitPulse{0%,100%{opacity:.88;stroke-opacity:.86}50%{opacity:1;stroke-opacity:1}}.sq-hit-hot-pulse{animation:sqHitPulse 2.35s ease-in-out infinite}</style>' +
+      '<filter id="sqHitGlowWarm" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="2.4" result="b"/><feColorMatrix in="b" type="matrix" values="1 0 0 0 1  0 0.42 0 0 .38  0 0 0.04 0 0  0 0 0 .55 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+      '<filter id="sqHitGlowHot" x="-45%" y="-45%" width="190%" height="190%"><feGaussianBlur stdDeviation="3.4" result="b"/><feColorMatrix in="b" type="matrix" values="1 0 0 0 1  0 .72 0 0 .62  0 0 .08 0 0  0 0 0 .78 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+      '<filter id="sqHitGlowElite" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3.9" result="b"/><feColorMatrix in="b" type="matrix" values="0 0 0 0 .42  0 0 0 0 1  0 0 0 0 .38  0 0 0 .82 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+    svg.appendChild(defs);
+
+    svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:132, fill:'rgba(15,27,63,.34)', stroke:'rgba(190,215,255,.16)', 'stroke-width':'1' }));
+    svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:116, fill:'url(#sqHitBoardBg)', stroke:'rgba(218,234,255,.36)', 'stroke-width':'1.25' }));
+    svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:109, fill:'none', stroke:'rgba(108,165,230,.30)', 'stroke-width':'1' }));
+
+    boardOrder.forEach(function(k, i){
+      var row = tracked.has(k) ? map.get(k) : null;
+      var pct = row ? Number(row.pct || 0) : null;
+      var style = row ? heatStyle(pct) : { fill:(i % 2 ? 'rgba(45,61,101,.34)' : 'rgba(34,48,82,.38)'), stroke:'rgba(185,214,255,.18)', glow:'', width:'.85', label:'rgba(223,236,255,.76)' };
+      var a0 = i * step - (step / 2) + .28;
+      var a1 = i * step + (step / 2) - .28;
+      var path = svgEl(svg, 'path', { d:wedgePath(cx, cy, r0, r1, a0, a1), fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+      if (style.glow) path.setAttribute('filter', style.glow);
+      if (row && hotKeys.has(k)) path.setAttribute('class', 'sq-hit-hot-pulse');
+      var title = svgEl(svg, 'title');
+      title.textContent = row ? (k + ': ' + pctFmt(pct) + ' - ' + row.hits + '/' + row.throwsN) : (k + ': not tracked');
+      path.appendChild(title);
+      svg.appendChild(path);
+
+      var start = polar(cx, cy, r0 - 2, i * step - step / 2);
+      var end = polar(cx, cy, 109, i * step - step / 2);
+      svg.appendChild(svgEl(svg, 'line', { x1:start.x.toFixed(1), y1:start.y.toFixed(1), x2:end.x.toFixed(1), y2:end.y.toFixed(1), stroke:'rgba(212,232,255,.34)', 'stroke-width':'.65' }));
+
+      var labelPos = polar(cx, cy, rLabel, i * step);
+      var labelFill = row ? (pct >= 48 ? 'rgba(255,244,180,.98)' : 'rgba(248,252,255,.96)') : 'rgba(218,232,255,.72)';
+      addSvgText(svg, labelPos.x.toFixed(1), labelPos.y.toFixed(1), k, { fill:labelFill, 'font-size': row ? '13' : '12', 'font-weight': row ? '950' : '800' });
+    });
+
+    [r0, 50, 70, 88, r1, 116].forEach(function(r){
+      svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:r, fill:'none', stroke:r === r0 ? 'rgba(220,236,255,.32)' : 'rgba(200,224,255,.24)', 'stroke-width':r === r0 ? '1.3' : '.8' }));
+    });
+
+    var bull = map.get('B');
+    var bullPct = bull ? Number(bull.pct || 0) : null;
+    var bullStyle = bull ? heatStyle(bullPct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.4', label:'rgba(240,244,255,.8)' };
+    var bullOuter = svgEl(svg, 'circle', { cx:cx, cy:cy, r:31, fill:bullStyle.fill, stroke:bullStyle.stroke, 'stroke-width':'2.2' });
+    if (bullStyle.glow) bullOuter.setAttribute('filter', bullStyle.glow);
+    var bullTitle = svgEl(svg, 'title');
+    bullTitle.textContent = bull ? ('B: ' + pctFmt(bullPct) + ' - ' + bull.hits + '/' + bull.throwsN) : 'B: no data';
+    bullOuter.appendChild(bullTitle);
+    svg.appendChild(bullOuter);
+    svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:15, fill:'rgba(5,8,18,.42)', stroke:'rgba(255,255,255,.22)', 'stroke-width':'1.2' }));
+    addSvgText(svg, cx, cy - 4, 'B', { fill:bullStyle.label, 'font-size':'15' });
+    addSvgText(svg, cx, cy + 18, bull ? pctFmt(bullPct, 1) : '—', { fill:'rgba(232,242,255,.82)', 'font-size':'8.5', 'font-weight':'850' });
+
+    [['D',34,166],['T',286,166]].forEach(function(spec){
+      var k = spec[0], x = spec[1], y = spec[2], row = map.get(k), pct = row ? Number(row.pct || 0) : null;
+      var style = row ? heatStyle(pct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.2', label:'rgba(240,244,255,.8)' };
+      var g = svgEl(svg, 'g');
+      var halo = svgEl(svg, 'circle', { cx:x, cy:y, r:25, fill:'rgba(5,8,18,.58)', stroke:'rgba(160,190,245,.16)', 'stroke-width':'1' });
+      g.appendChild(halo);
+      var c = svgEl(svg, 'circle', { cx:x, cy:y - 7, r:16, fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+      if (style.glow) c.setAttribute('filter', style.glow);
+      var title = svgEl(svg, 'title');
+      title.textContent = row ? (k + ': ' + pctFmt(pct) + ' - ' + row.hits + '/' + row.throwsN) : (k + ': no data');
+      c.appendChild(title);
+      g.appendChild(c);
+      svg.appendChild(g);
+      addSvgText(svg, x, y - 6, k, { fill:style.label, 'font-size':'13' });
+      addSvgText(svg, x, y + 17, row ? pctFmt(pct, 0) : '—', { fill:'rgba(240,244,255,.88)', 'font-size':'10', 'font-weight':'850' });
+    });
+    return svg;
+  }
+
+  function rowFromHitPct(r){
+    var throwsN = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['throws','throw_count','thrown']) : r.throws) || 0);
+    var hits = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['hits','successful_hits','hit_count']) : r.hits) || 0);
+    var pctRaw = typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['hit_pct','pct','percentage']) : r.hit_pct;
+    var pct = Number.isFinite(Number(pctRaw)) ? Number(pctRaw) : (throwsN ? hits * 100 / throwsN : 0);
+    var key = typeof __sqTargetPctKey === 'function' ? __sqTargetPctKey(r) : String(r.target_key || r.target_label || '').toUpperCase();
+    var sort = Number(r.target_sort);
+    if (!Number.isFinite(sort)) sort = typeof __sqTargetPctOrder === 'function' ? __sqTargetPctOrder(key) : 999;
+    return { key:key, playerKey:rankKey(r.player_key || r.player_name), throwsN:throwsN, hits:hits, pct:pct, sort:sort };
+  }
+
+  function applyTargetHitPersonalRanks(rows){
+    var sorted = (rows || []).slice().sort(function(a,b){
+      return Number(b.pct || 0) - Number(a.pct || 0) ||
+        Number(b.hits || 0) - Number(a.hits || 0) ||
+        Number(b.throwsN || 0) - Number(a.throwsN || 0) ||
+        Number(a.sort || 999) - Number(b.sort || 999);
+    });
+    var rank = 0, prev = '';
+    sorted.forEach(function(r, i){
+      var sig = [Number(r.pct || 0).toFixed(8), Number(r.hits || 0), Number(r.throwsN || 0), Number(r.sort || 999)].join('|');
+      if (sig !== prev){ rank = i + 1; prev = sig; }
+      r.pRank = rank;
+    });
+  }
+
+  async function savedPlayerKeySet(){
+    try{
+      if (typeof cloudListPlayers !== 'function') return null;
+      var list = await cloudListPlayers();
+      var names = Array.isArray(list) ? list : [];
+      var set = new Set();
+      names.forEach(function(p){
+        var name = typeof p === 'string' ? p : (p && (p.name || p.player_name || p.playerName));
+        var k = rankKey(name);
+        if (k) set.add(k);
+      });
+      return set.size ? set : null;
+    }catch(e){
+      console.warn('[SQ] Target Hit % saved-player filter unavailable for global ranks', e);
+      return null;
+    }
+  }
+
+  async function fetchTargetHitGlobalRanks(rows){
+    var c = client();
+    if (!c || typeof c.from !== 'function') return new Map();
+    var keys = Array.from(new Set((rows || []).map(function(r){ return String(r.key || '').toUpperCase(); }).filter(Boolean)));
+    if (!keys.length) return new Map();
+    try{
+      var savedSet = await savedPlayerKeySet();
+      var q = await c.from('v_player_target_hit_pct')
+        .select('player_key,player_name,target_key,target_label,target_sort,throws,hits,hit_pct')
+        .in('target_key', keys)
+        .gt('throws', 0)
+        .limit(5000);
+      if (q.error) throw q.error;
+      var allRows = (Array.isArray(q.data) ? q.data : []).map(rowFromHitPct).filter(function(r){
+        if (!r.key || !r.playerKey) return false;
+        return !savedSet || savedSet.has(r.playerKey);
+      });
+      var byTarget = new Map();
+      allRows.forEach(function(r){
+        var k = String(r.key).toUpperCase();
+        if (!byTarget.has(k)) byTarget.set(k, []);
+        byTarget.get(k).push(r);
+      });
+      var ranks = new Map();
+      byTarget.forEach(function(list, targetKey){
+        list.sort(function(a,b){
+          return Number(b.pct || 0) - Number(a.pct || 0) ||
+            Number(b.hits || 0) - Number(a.hits || 0) ||
+            Number(b.throwsN || 0) - Number(a.throwsN || 0) ||
+            String(a.playerKey || '').localeCompare(String(b.playerKey || ''));
+        });
+        var rank = 0, prev = '';
+        list.forEach(function(r, i){
+          var sig = [Number(r.pct || 0).toFixed(8), Number(r.hits || 0), Number(r.throwsN || 0), String(r.playerKey || '')].join('|');
+          if (sig !== prev){ rank = i + 1; prev = sig; }
+          ranks.set(targetKey + '|' + r.playerKey, rank);
+        });
+      });
+      console.debug('[SQ] Target Hit % global rank source used', { source:'v_player_target_hit_pct', rows:allRows.length, saved_players_only:!!savedSet });
+      return ranks;
+    }catch(e){
+      console.warn('[SQ] Target Hit % global rank source unavailable', { required_view:'v_player_target_hit_pct', error:e });
+      return new Map();
+    }
+  }
+
+  window.openPlayerTargetHitDialog = async function openPlayerTargetHitDialog(playerName){
+    var name = String(playerName || '').trim();
+    if (!name) return;
+    var ui = __sqBuildTargetPctShell('Target Hit % - ' + name, 'Throws / Hits / %', name, 'hit');
+    var body = ui.body;
+    body.innerHTML = '<p class="muted">Loading...</p>';
+
+    var result = await __sqFetchPlayerTargetHitPctRows(name);
+    if (result.missing || !result.rows.length){
+      console.warn('[SQ] Target Hit % dependency missing or empty', { required_view:'v_player_target_hit_pct', player:name, source:result.source, detail:result.missing || 'zero rows' });
+      __sqShowTargetPctUnavailable(
+        body,
+        'Target Hit % is not available yet. Accurate hit-rate data requires throw-level segment data or a Supabase view that records correct target hits.',
+        'Formula: Target Hit % = successful target hits / throws at that target. Number rounds require actual segment number truth; points alone are not used.',
+        'Missing dependency: v_player_target_hit_pct (player_id/player_key/player_name, target_key/target_label, throws, hits, hit_pct).'
+      );
+      return;
+    }
+
+    console.debug('[SQ] Target Hit % source used', { source:result.source, rows:result.rows.length });
+    __sqSetTargetPctActionsEnabled(body, true);
+    var rows = result.rows.map(rowFromHitPct).filter(function(r){ return r.key; }).sort(function(a,b){ return __sqTargetPctOrder(a.key) - __sqTargetPctOrder(b.key); });
+    applyTargetHitPersonalRanks(rows);
+    var globalRanks = await fetchTargetHitGlobalRanks(rows);
+    rows.forEach(function(r){
+      var currentPlayerKey = r.playerKey || rankKey(name);
+      r.gRank = globalRanks.get(String(r.key).toUpperCase() + '|' + currentPlayerKey) || null;
+    });
+    var hasGlobalRanks = rows.some(function(r){ return r.gRank; });
+    window.__lastTargetHitPctSpiderData = { labels: rows.map(function(r){ return String(r.key); }), pct: rows.map(function(r){ return Number(r.pct || 0); }) };
+
+    body.innerHTML = '';
+    body.style.display = 'flex';
+    body.style.flexDirection = 'column';
+    body.style.gap = '10px';
+    body.style.height = 'min(68vh, 650px)';
+    body.style.minHeight = '520px';
+    body.style.overflow = 'hidden';
+
+    var heatPanel = document.createElement('div');
+    heatPanel.className = 'tag sq-target-hit-heatmap-panel';
+    heatPanel.style.flex = '0 0 63%';
+    heatPanel.style.minHeight = '310px';
+    heatPanel.style.padding = '10px';
+    heatPanel.style.borderRadius = '12px';
+    heatPanel.style.border = '1px solid rgba(255,255,255,.10)';
+    heatPanel.style.background = 'radial-gradient(circle at 48% 35%, rgba(72,111,205,.20), rgba(10,16,38,.94) 64%, rgba(4,7,18,.98))';
+    heatPanel.style.overflow = 'hidden';
+    heatPanel.appendChild(renderTargetHitHeatmap(rows));
+
+    var tablePanel = document.createElement('div');
+    tablePanel.className = 'sq-target-hit-table-panel';
+    tablePanel.style.flex = '1 1 0';
+    tablePanel.style.minHeight = '150px';
+    tablePanel.style.overflowY = 'auto';
+    tablePanel.style.border = '1px solid rgba(255,255,255,.10)';
+    tablePanel.style.borderRadius = '10px';
+
+    var table = document.createElement('table');
+    table.className = 'sq-table hs-table';
+    table.style.width = '100%';
+    table.style.tableLayout = 'fixed';
+    table.style.fontSize = 'clamp(11px, 2.7vw, 14px)';
+    table.innerHTML = '<colgroup><col style="width:17%"><col style="width:19%"><col style="width:16%"><col style="width:18%"><col style="width:15%"><col style="width:15%"></colgroup><thead><tr><th>Target</th><th>Throws</th><th>Hits</th><th>%</th><th><span style="display:block;line-height:1.05">P</span><span style="display:block;line-height:1.05">Rank</span></th><th><span style="display:block;line-height:1.05">G</span><span style="display:block;line-height:1.05">Rank</span></th></tr></thead><tbody></tbody>';
+    var tb = table.querySelector('tbody');
+    rows.forEach(function(r){
+      var tr = document.createElement('tr');
+      [r.key, r.throwsN, r.hits, pctFmt(r.pct), r.pRank ? ('#' + r.pRank) : '—', r.gRank ? ('#' + r.gRank) : '—'].forEach(function(v){
+        var td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    tablePanel.appendChild(table);
+
+    var info = document.createElement('p');
+    info.className = 'tag muted';
+    info.style.margin = '0';
+    info.textContent = 'Target Hit % = successful target hits / throws at that target.';
+    if (!hasGlobalRanks) info.textContent += ' G Rank is unavailable until v_player_target_hit_pct returns comparable player rows.';
+    body.append(heatPanel, tablePanel, info);
+  };
+  window.openPlayerTargetPctDialog = window.openPlayerTargetHitDialog;
+  window.openTargetPctDialog = window.openPlayerTargetHitDialog;
+
+  try{ console.info('[SQ] Fix166 Top50 names + Target Hit heatmap active'); }catch(_){}
+})();
+</script>
+<!-- <<< PATCH:FIX166_TOP50_NAMES_TARGET_HIT_HEATMAP END -->
 
 </body>
 </html>
