@@ -17658,6 +17658,7 @@ function __sqToggleLegacyUIForLiveV2(on){
 }
 
 // ===== @SEC:JS:GAME:LIVEV2 =====
+// @CANONICAL:LIVE_V2_BASE_RENDER
 function liveV2Render(){
   // Only runs on gameplay screen; prevents start/menu JS from crashing
   const page = document.body && (document.body.getAttribute('data-page') || document.body.dataset && document.body.dataset.page);
@@ -18600,6 +18601,7 @@ const out2 = [];
 /*****************
  * UI UPDATE
  *****************/
+// @CANONICAL:THROWPAD_BASE_RENDER
 function buildPad(){ 
   if (!pad) return; 
   pad.innerHTML = ''; 
@@ -18899,10 +18901,10 @@ function buildPad(){
 
       // keep xN label in sync with current dart
       try{
-        const obs = new MutationObserver(()=>{ try{ __sqSetMissXLabel(x3); }catch(_){ } });
-        obs.observe(document.querySelector('.livev2panel')||document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
-        // store to avoid GC (best-effort)
-        window.__sqNumPadX3Obs = obs;
+        if (window.__sqNumPadX3Obs && typeof window.__sqNumPadX3Obs.disconnect === 'function') {
+          window.__sqNumPadX3Obs.disconnect();
+        }
+        window.__sqNumPadX3Obs = null;
       }catch(_){}
 
       return;
@@ -20357,6 +20359,7 @@ function __sqGameRenderFailsafe(err){
 
 /* >>> INSERT THESE TWO NEW FUNCTIONS <<< */
 // ===== @SEC:JS:GAME:ENGINE =====
+// @CANONICAL:GAMEPLAY_RECORD_THROW_BASE
 function recordThrow(spec){
   try{ window.__sqDmdStopPreThrow?.(); }catch(_){ }
   // Ignore input if game is finished or in sudden death
@@ -28241,6 +28244,23 @@ window.setCloudStatus = function setCloudStatus(state, msg){
   window.refreshPBGRCloud = async function refreshPBGRCloud(){ window.__v2PBWRSnapshot = null; window.__v2PBWRSnapshotPromise = null; window.__pbgrSnapshot = null; window.__pbgrSnapshotPromise = null; await window.getPBGRSnapshot(); try{ if (typeof window.updatePBGRBadges === 'function') await window.updatePBGRBadges(); }catch(_){} return true; };
 })();
 // <<< PATCH:PBGR_ADMIN_ALWAYS_MERGE_GAMES_V1 END
+function __sqCleanupLeagueRankingsOverlays(){
+  [
+    '.sq-league-rankings-backdrop',
+    '.sq-top50-backdrop',
+    '.sq-top50-fix98-backdrop',
+    '.sq-top50-fix99-backdrop',
+    '.sq-fix100-top50',
+    '.sq-fix166-top50',
+    '.sq-hs-league-backdrop',
+    '.sq-fix100-hsl',
+    '.sq-streak-league-backdrop'
+  ].forEach(function(sel){
+    document.querySelectorAll(sel).forEach(function(n){ try{ n.remove(); }catch(_){} });
+  });
+}
+try{ window.__sqCleanupLeagueRankingsOverlays = __sqCleanupLeagueRankingsOverlays; }catch(_){}
+
 // High Score League — per-player best match score, rows clickable to open game
 // ===== @SEC:JS:MODALS =====
 // ===== @JS:MODAL:HIGH_SCORE_LEAGUE =====
@@ -28444,9 +28464,11 @@ window.openHighScoreLeagueDialog = async function openHighScoreLeagueDialog() {
 
 // League / Rankings popup (Power Rankings + High Score League)
 // ===== @JS:MODAL:LEAGUE_RANKINGS =====
+// @CANONICAL:LEAGUE_RANKINGS_MENU
 window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
+  try{ if (typeof window.__sqCleanupLeagueRankingsOverlays === 'function') window.__sqCleanupLeagueRankingsOverlays(); }catch(_){}
   const overlay = document.createElement('div');
-  overlay.className = 'modal-backdrop';
+  overlay.className = 'modal-backdrop sq-league-rankings-backdrop';
   try { window.__sqLeagueOverlay = overlay; } catch(_) {}
 
   const modal = document.createElement('div');
@@ -28681,6 +28703,7 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
 
 };
 
+// @CANONICAL:STREAK_LEAGUE_POPUP
 window.openStreakLeagueDialog = async function openStreakLeagueDialog(initialMetric, initialMode){
   const SB = (typeof window !== 'undefined') ? (window.sb || window.__sb || window.supabase || window.supabaseClient || null) : null;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -30882,6 +30905,7 @@ try { window.openLatestScoresDialog = openLatestScoresDialog; } catch(_) {}
 <<< PATCH:PHASE1_FIX57_LATEST_SCORES_CLOUD_TRUTH END */
 
 // === Player Stats — redesigned overview =====================================
+// @CANONICAL:PLAYER_STATS_PROFILE_CARDS
 window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
   const name = String(playerName || '').trim();
   if (!name) { try{ toast('Pick a player'); }catch(_){ } return; }
@@ -33615,6 +33639,7 @@ window.openPlayerTargetHitDialog = async function openPlayerTargetHitDialog(play
   body.innerHTML = ''; body.append(scroll, info);
 };
 
+// @CANONICAL:PLAYER_TARGET_POINTS_PCT
 window.openPlayerTargetPointsDialog = async function openPlayerTargetPointsDialog(playerName){
   const name = String(playerName || '').trim();
   if (!name) return;
@@ -37803,6 +37828,7 @@ if (!active || active.type === "idle") {
   // <<< PATCH:SQ_DMD_VOLDY_AUDIO END
 
   // expose
+  // @CANONICAL:DMD_PUBLIC_API
   window.sqDmdShow = show;
   window.sqDmdShowZones = showZones;
   window.sqDmdShowZ1 = (t, o) => showZones({ z1: t }, o);
@@ -42105,7 +42131,8 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     close.onclick=function(){overlay.remove();};overlay.onclick=function(e){if(e.target===overlay)overlay.remove();};
     await render();
   }
-  window.__sqOpenTop50ScoresTurboTabs=openTop50; window.__sqOpenTop50ScoresAllModes=openTop50; window.openTop50ScoresDialog=openTop50; try{openTop50ScoresDialog=openTop50;}catch(_){ }
+  window.__sqOpenTop50ScoresTurboTabs=function(){ return openTop50.apply(window, arguments); };
+  window.__sqOpenTop50ScoresAllModes=window.__sqOpenTop50ScoresTurboTabs;
   try{console.info('[SQ] Fix99 Top 50 Official/Turbo/Practice tabs active');}catch(_){ }
 })();
 </script>
@@ -43707,14 +43734,6 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
 
 
 <!-- >>> PATCH:FIX152_LEAGUE_DATA_REPAIR_CLEANUP START -->
-<style id="sq-fix152-cleanup-css">
-  /* Scope-only styling: use existing Fix100 Top 50 data loader; do not replace it. */
-  .sq-fix100-top50 .sq-league-clean-head{display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:14px!important;margin:0 0 10px!important;}
-  .sq-fix100-top50 .sq-league-clean-title{flex:1 1 auto!important;min-width:0!important;}
-  .sq-fix100-top50 .sq-league-tabs{margin-left:auto!important;display:flex!important;align-items:center!important;justify-content:flex-end!important;gap:8px!important;flex:0 0 auto!important;white-space:nowrap!important;}
-  .sq-fix100-top50 .sq-league-tabs button{appearance:none!important;-webkit-appearance:none!important;border-radius:999px!important;padding:8px 13px!important;min-height:32px!important;border:1px solid rgba(255,255,255,.14)!important;background:rgba(10,12,24,.56)!important;color:rgba(240,244,255,.86)!important;font-size:12px!important;font-weight:850!important;line-height:1!important;box-shadow:none!important;}
-  .sq-fix100-top50 .sq-league-tabs button.active{border-color:rgba(255,123,26,.95)!important;background:rgba(255,123,26,.14)!important;box-shadow:0 0 0 2px rgba(255,123,26,.13) inset!important;color:#fff!important;}
-</style>
 <script id="sq-fix152-league-data-repair-cleanup-js">
 (function(){
   'use strict';
@@ -43994,6 +44013,63 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
 <!-- <<< PATCH:FIX160_HOME_POWER_FIRST_PLUS_NICKNAME END -->
 
 <!-- >>> PATCH:FIX166_TOP50_NAMES_TARGET_HIT_HEATMAP START -->
+<style id="sq-fix168-top50-hit-ownership-css">
+  .sq-fix166-top50 .sq-league-clean-head{display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:14px!important;margin:0 0 10px!important;}
+  .sq-fix166-top50 .sq-league-clean-title{flex:1 1 auto!important;min-width:0!important;}
+  .sq-fix166-top50 .sq-league-tabs{margin-left:auto!important;display:flex!important;align-items:center!important;justify-content:flex-end!important;gap:8px!important;flex:0 0 auto!important;white-space:nowrap!important;}
+  .sq-fix166-top50 .sq-league-tabs button{appearance:none!important;-webkit-appearance:none!important;border-radius:999px!important;padding:8px 13px!important;min-height:32px!important;border:1px solid rgba(255,255,255,.14)!important;background:rgba(10,12,24,.56)!important;color:rgba(240,244,255,.86)!important;font-size:12px!important;font-weight:850!important;line-height:1!important;box-shadow:none!important;}
+  .sq-fix166-top50 .sq-league-tabs button.active{border-color:rgba(255,123,26,.95)!important;background:rgba(255,123,26,.14)!important;box-shadow:0 0 0 2px rgba(255,123,26,.13) inset!important;color:#fff!important;}
+  .sq-fix166-top50 .sq-league-table{
+    table-layout:fixed!important;
+  }
+  .sq-fix166-top50 .sq-league-table col:nth-child(1){width:48px!important;}
+  .sq-fix166-top50 .sq-league-table col:nth-child(2){width:auto!important;}
+  .sq-fix166-top50 .sq-league-table col:nth-child(3){width:94px!important;}
+  .sq-fix166-top50 .sq-league-table col:nth-child(4){width:72px!important;}
+  .sq-fix166-top50 .sq-league-table col:nth-child(5){width:132px!important;}
+  .sq-fix166-top50 .sq-league-table th,
+  .sq-fix166-top50 .sq-league-table td{
+    box-sizing:border-box!important;
+    white-space:nowrap!important;
+  }
+  .sq-fix166-top50 .sq-league-table th:nth-child(1),
+  .sq-fix166-top50 .sq-league-table td:nth-child(1){
+    width:48px!important;
+    text-align:left!important;
+    padding-left:12px!important;
+  }
+  .sq-fix166-top50 .sq-league-table th:nth-child(2),
+  .sq-fix166-top50 .sq-league-table td:nth-child(2){
+    text-align:left!important;
+  }
+  .sq-fix166-top50 .sq-league-table th:nth-child(3),
+  .sq-fix166-top50 .sq-league-table td:nth-child(3),
+  .sq-fix166-top50 .sq-league-table th:nth-child(4),
+  .sq-fix166-top50 .sq-league-table td:nth-child(4){
+    text-align:center!important;
+  }
+  .sq-fix166-top50 .sq-league-table th:nth-child(5),
+  .sq-fix166-top50 .sq-league-table td:nth-child(5){
+    text-align:left!important;
+  }
+  @media(max-width:560px){
+    .sq-fix166-top50 .sq-league-table col:nth-child(1){width:42px!important;}
+    .sq-fix166-top50 .sq-league-table col:nth-child(3){width:82px!important;}
+    .sq-fix166-top50 .sq-league-table col:nth-child(4){width:62px!important;}
+    .sq-fix166-top50 .sq-league-table col:nth-child(5){width:112px!important;}
+    .sq-fix166-top50 .sq-league-table th:nth-child(1),
+    .sq-fix166-top50 .sq-league-table td:nth-child(1){width:42px!important;}
+    .sq-fix166-top50 .sq-league-table th{
+      letter-spacing:.18em!important;
+      padding-left:8px!important;
+      padding-right:8px!important;
+    }
+    .sq-fix166-top50 .sq-league-table td{
+      padding-left:8px!important;
+      padding-right:8px!important;
+    }
+  }
+</style>
 <script id="sq-fix166-top50-names-target-hit-heatmap-js">
 (function(){
   'use strict';
@@ -44055,6 +44131,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     }
   }
 
+  // @CANONICAL:TOP_50_SCORES
   window.openTop50ScoresDialog = async function openTop50ScoresDialog(initialMode){
     var mode = ['official','turbo','practice'].indexOf(String(initialMode || '').toLowerCase()) >= 0 ? String(initialMode).toLowerCase() : 'official';
     document.querySelectorAll('.sq-top50-backdrop,.sq-top50-fix98-backdrop,.sq-top50-fix99-backdrop,.sq-fix100-top50,.sq-fix166-top50').forEach(function(n){ try{ n.remove(); }catch(_){} });
@@ -44097,6 +44174,10 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     modal.tabIndex = 0; modal.focus();
     await render();
   };
+  window.__sqCanonicalTop50ScoresDialog = window.openTop50ScoresDialog;
+  window.__sqOpenTop50ScoresTurboTabs = function(){ return window.__sqCanonicalTop50ScoresDialog.apply(window, arguments); };
+  window.__sqOpenTop50ScoresAllModes = window.__sqOpenTop50ScoresTurboTabs;
+  try{ openTop50ScoresDialog = window.openTop50ScoresDialog; }catch(_){}
 
   function heatStyle(v){
     var n = Math.max(0, Math.min(100, Number(v) || 0));
@@ -44320,6 +44401,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     }
   }
 
+  // @CANONICAL:PLAYER_TARGET_HIT_HEATMAP
   window.openPlayerTargetHitDialog = async function openPlayerTargetHitDialog(playerName){
     var name = String(playerName || '').trim();
     if (!name) return;
@@ -44383,11 +44465,11 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     table.style.width = '100%';
     table.style.tableLayout = 'fixed';
     table.style.fontSize = 'clamp(11px, 2.7vw, 14px)';
-    table.innerHTML = '<colgroup><col style="width:17%"><col style="width:19%"><col style="width:16%"><col style="width:18%"><col style="width:15%"><col style="width:15%"></colgroup><thead><tr><th>Target</th><th>Throws</th><th>Hits</th><th>%</th><th><span style="display:block;line-height:1.05">P</span><span style="display:block;line-height:1.05">Rank</span></th><th><span style="display:block;line-height:1.05">G</span><span style="display:block;line-height:1.05">Rank</span></th></tr></thead><tbody></tbody>';
+    table.innerHTML = '<colgroup><col style="width:24%"><col style="width:28%"><col style="width:24%"><col style="width:24%"></colgroup><thead><tr><th>Target</th><th>%</th><th><span style="display:block;line-height:1.05">P</span><span style="display:block;line-height:1.05">Rank</span></th><th><span style="display:block;line-height:1.05">G</span><span style="display:block;line-height:1.05">Rank</span></th></tr></thead><tbody></tbody>';
     var tb = table.querySelector('tbody');
     rows.forEach(function(r){
       var tr = document.createElement('tr');
-      [r.key, r.throwsN, r.hits, pctFmt(r.pct), r.pRank ? ('#' + r.pRank) : '—', r.gRank ? ('#' + r.gRank) : '—'].forEach(function(v){
+      [r.key, pctFmt(r.pct), r.pRank ? ('#' + r.pRank) : '—', r.gRank ? ('#' + r.gRank) : '—'].forEach(function(v){
         var td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
       });
       tb.appendChild(tr);
@@ -44401,13 +44483,183 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     if (!hasGlobalRanks) info.textContent += ' G Rank is unavailable until v_player_target_hit_pct returns comparable player rows.';
     body.append(heatPanel, tablePanel, info);
   };
-  window.openPlayerTargetPctDialog = window.openPlayerTargetHitDialog;
-  window.openTargetPctDialog = window.openPlayerTargetHitDialog;
+  window.__sqCanonicalPlayerTargetHitDialog = window.openPlayerTargetHitDialog;
+  window.openPlayerTargetPctDialog = function(){ return window.__sqCanonicalPlayerTargetHitDialog.apply(window, arguments); };
+  window.openTargetPctDialog = window.openPlayerTargetPctDialog;
+  try{ openPlayerTargetHitDialog = window.openPlayerTargetHitDialog; }catch(_){}
+  try{ openPlayerTargetPctDialog = window.openPlayerTargetPctDialog; }catch(_){}
+  try{ openTargetPctDialog = window.openTargetPctDialog; }catch(_){}
 
   try{ console.info('[SQ] Fix166 Top50 names + Target Hit heatmap active'); }catch(_){}
 })();
 </script>
 <!-- <<< PATCH:FIX166_TOP50_NAMES_TARGET_HIT_HEATMAP END -->
+
+<!-- >>> PATCH:FIX167_GAMEPLAY_PERF_MOT START -->
+<script id="sq-fix167-gameplay-perf-mot-js">
+(function(){
+  'use strict';
+  if (window.__sqFix167GameplayPerfMot) return;
+  window.__sqFix167GameplayPerfMot = true;
+
+  if (typeof window.SQ_PERF_DEBUG === 'undefined') window.SQ_PERF_DEBUG = false;
+  var samples = [];
+  function now(){ try{ return performance.now(); }catch(_){ return Date.now(); } }
+  function push(name, ms, meta){
+    if (!window.SQ_PERF_DEBUG) return;
+    var row = { name:name, ms:Math.round(Number(ms || 0) * 100) / 100, ts:Date.now(), meta:meta || null };
+    samples.push(row);
+    if (samples.length > 240) samples.shift();
+    try{ if (row.ms >= 12) console.debug('[SQ][PERF]', row.name, row.ms + 'ms', row.meta || ''); }catch(_){}
+  }
+  function measure(name, fn, meta){
+    var t = now();
+    try{ return fn(); }
+    finally{ push(name, now() - t, meta); }
+  }
+  window.sqPerfReport = function(){
+    var grouped = {};
+    samples.forEach(function(s){
+      var g = grouped[s.name] || (grouped[s.name] = { name:s.name, count:0, total:0, max:0, last:0 });
+      g.count++;
+      g.total += s.ms;
+      g.max = Math.max(g.max, s.ms);
+      g.last = s.ms;
+    });
+    var rows = Object.keys(grouped).map(function(k){
+      var g = grouped[k];
+      return {
+        name:g.name,
+        count:g.count,
+        avg:Math.round((g.total / Math.max(1, g.count)) * 100) / 100,
+        max:Math.round(g.max * 100) / 100,
+        last:g.last
+      };
+    }).sort(function(a,b){ return b.max - a.max; });
+    try{ console.table(rows); }catch(_){}
+    return { debug:!!window.SQ_PERF_DEBUG, rows:rows, samples:samples.slice() };
+  };
+
+  function pageKey(){
+    try{ return document.body && (document.body.getAttribute('data-page') || (document.body.dataset && document.body.dataset.page)) || ''; }
+    catch(_){ return ''; }
+  }
+  function padEl(){
+    try{ if (typeof pad !== 'undefined' && pad) return pad; }catch(_){}
+    return document.getElementById('pad');
+  }
+  function missCount(){
+    try{
+      var dart = (typeof state !== 'undefined' && state && typeof state.currentDart === 'number') ? state.currentDart : 0;
+      return Math.max(1, Math.min(3, 3 - dart));
+    }catch(_){ return 3; }
+  }
+  function refreshPadLight(){
+    try{
+      var el = padEl();
+      if (!el) return;
+      var n = missCount();
+      el.querySelectorAll('.dtX3').forEach(function(btn){
+        btn.textContent = 'MISS\nx' + n;
+        btn.dataset.missN = String(n);
+      });
+      try{
+        if (typeof padHint !== 'undefined' && padHint) padHint.textContent = (typeof state !== 'undefined' && state && state.finished) ? 'Game finished.' : '';
+      }catch(_){}
+    }catch(_){}
+  }
+  function padSig(){
+    try{
+      var rIdx = Number(state && state.currentRound || 0);
+      var r = (typeof ROUNDS !== 'undefined' && ROUNDS && ROUNDS[rIdx]) ? ROUNDS[rIdx] : null;
+      return [
+        pageKey(),
+        state && state.finished ? 'done' : 'live',
+        state && state.suddenDeath && state.suddenDeath.active ? 'sd' : '',
+        state && state.players ? state.players.length : 0,
+        rIdx,
+        state && Number.isFinite(Number(state.currentPlayer)) ? Number(state.currentPlayer) : 0,
+        r && r.type || '',
+        r && r.target || ''
+      ].join('|');
+    }catch(_){ return 'unknown|' + Date.now(); }
+  }
+
+  var oldBuildPad = window.buildPad || (typeof buildPad === 'function' ? buildPad : null);
+  if (oldBuildPad && !oldBuildPad.__sqFix167Wrapped){
+    var lastPadSig = '';
+    var wrappedBuildPad = function(){
+      var sig = padSig();
+      var el = padEl();
+      if (sig && sig === lastPadSig && el && el.children && el.children.length && pageKey() === 'game'){
+        refreshPadLight();
+        push('buildPad.skip', 0, { sig:sig });
+        return;
+      }
+      try{
+        if (window.__sqNumPadX3Obs && typeof window.__sqNumPadX3Obs.disconnect === 'function') {
+          window.__sqNumPadX3Obs.disconnect();
+        }
+        window.__sqNumPadX3Obs = null;
+      }catch(_){}
+      var ctx = this, args = arguments;
+      var ret = measure('buildPad', function(){ return oldBuildPad.apply(ctx, args); }, { sig:sig });
+      lastPadSig = padSig();
+      refreshPadLight();
+      return ret;
+    };
+    wrappedBuildPad.__sqFix167Wrapped = true;
+    // @CANONICAL:THROWPAD_PERF_WRAPPER
+    window.buildPad = wrappedBuildPad;
+    try{ buildPad = wrappedBuildPad; }catch(_){}
+  }
+
+  var oldLiveV2Render = window.liveV2Render || (typeof liveV2Render === 'function' ? liveV2Render : null);
+  if (oldLiveV2Render && !oldLiveV2Render.__sqFix167Wrapped){
+    var liveQueued = false, liveThis = null, liveArgs = null;
+    var wrappedLiveV2 = function(){
+      liveThis = this;
+      liveArgs = arguments;
+      if (window.__sqLiveV2Immediate === true) {
+        return measure('liveV2Render', function(){ return oldLiveV2Render.apply(liveThis, liveArgs); });
+      }
+      if (liveQueued) {
+        push('liveV2Render.coalesced', 0);
+        return;
+      }
+      liveQueued = true;
+      var raf = window.requestAnimationFrame || function(cb){ return setTimeout(cb, 16); };
+      return raf(function(){
+        liveQueued = false;
+        measure('liveV2Render', function(){ return oldLiveV2Render.apply(liveThis, liveArgs); });
+      });
+    };
+    wrappedLiveV2.__sqFix167Wrapped = true;
+    // @CANONICAL:LIVE_V2_PERF_WRAPPER
+    window.liveV2Render = wrappedLiveV2;
+    try{ liveV2Render = wrappedLiveV2; }catch(_){}
+  }
+
+  var oldRecordThrow = window.recordThrow || (typeof recordThrow === 'function' ? recordThrow : null);
+  if (oldRecordThrow && !oldRecordThrow.__sqFix167Wrapped){
+    var wrappedRecordThrow = function(spec){
+      var ctx = this, args = arguments;
+      return measure('recordThrow.total', function(){ return oldRecordThrow.apply(ctx, args); }, {
+        round:(typeof state !== 'undefined' && state) ? state.currentRound : null,
+        dart:(typeof state !== 'undefined' && state) ? state.currentDart : null,
+        kind:spec && (spec.kind || spec.sector || spec.bull)
+      });
+    };
+    wrappedRecordThrow.__sqFix167Wrapped = true;
+    // @CANONICAL:GAMEPLAY_RECORD_THROW_PERF_WRAPPER
+    window.recordThrow = wrappedRecordThrow;
+    try{ recordThrow = wrappedRecordThrow; }catch(_){}
+  }
+
+  try{ console.info('[SQ] Fix167 gameplay perf MOT active'); }catch(_){}
+})();
+</script>
+<!-- <<< PATCH:FIX167_GAMEPLAY_PERF_MOT END -->
 
 </body>
 </html>
