@@ -21691,12 +21691,45 @@ async function recordFullGameToSupabase(createdAtOverride) {
     const isTurbo    = (gameMode === 'turbo');
     const turboRules = (state && state.match && state.match.tournamentRules) || (state && state.tournamentRules) || {};
 
+    // >>> PATCH:practice-save-v4-recordfull-dedupe START
+    // recordFullGameToSupabase is still called from awardAndShowLeaderboard after
+    // the direct practice save wrapper. For practice games, do not let a stale
+    // state.match.id + game_number=1 reinsert collide with games_pkey. Dedupe by
+    // the completed board fingerprint, not by session-level booleans.
+    function __sqRecordFullPracticeKey(){
+      try{
+        var names = (state.players || []).map(function(p){ return String((p && p.name) || '').trim().toLowerCase(); }).join('|');
+        var totalStr = (totals || []).map(function(x){ return Number(x)||0; }).join('|');
+        var boardStr = JSON.stringify(boardClone || []);
+        var token = (state && state.__gameToken != null) ? String(state.__gameToken) : '';
+        return ['practice-v3', token, names, totalStr, boardStr].join('::');
+      }catch(_){ return ''; }
+    }
+
+    const __practiceSaveKeyForRecordFull = isPractice ? __sqRecordFullPracticeKey() : '';
+    if (isPractice && state && state.__sqPracticeSavedToGames && state.__sqPracticeSavedKeyV2 && state.__sqPracticeSavedKeyV2 === __practiceSaveKeyForRecordFull) {
+      try{ console.info('[SQ] recordFullGameToSupabase skipped: practice game already saved by direct practice path', { saveKey: __practiceSaveKeyForRecordFull }); }catch(_){ }
+      return null;
+    }
+    if (isPractice && state && (state.__sqPracticeSavedToGames || state.__sqPracticeCloudSavedV2) && state.__sqPracticeSavedKeyV2 && state.__sqPracticeSavedKeyV2 !== __practiceSaveKeyForRecordFull) {
+      try{ console.info('[SQ] recordFullGameToSupabase clearing stale practice save flags for new completed game'); }catch(_){ }
+      try{
+        delete state.__sqPracticeSavedToGames;
+        delete state.__sqPracticeCloudSavedV2;
+        delete state.__sqPracticeSaveMatchIdV2;
+      }catch(_){ }
+    }
+    // <<< PATCH:practice-save-v4-recordfull-dedupe END
+
     // Supabase games.match_id is NOT NULL in the current schema.
     // Practice therefore gets a real lightweight match row, but remains practice via state.mode/is_practice.
     let practiceMatchId = null;
     if (isPractice) {
       try {
-        practiceMatchId = state?.match?.id || ((crypto && crypto.randomUUID) ? crypto.randomUUID() : ('practice-' + Date.now()));
+        // Practice rows use a fresh lightweight match id per completed game.
+        // Reusing state.match.id with game_number=1 causes games_pkey collisions
+        // across back-to-back practice games in the current schema.
+        practiceMatchId = ((crypto && crypto.randomUUID) ? crypto.randomUUID() : ('practice-' + Date.now() + '-' + Math.random().toString(36).slice(2,8)));
         state.match = Object.assign({}, state.match || {}, {
           id: practiceMatchId,
           mode: 'practice',
@@ -21742,7 +21775,15 @@ async function recordFullGameToSupabase(createdAtOverride) {
     };
 
     const { data: _gRow, error } = await sb.from(TABLE_GAMES).insert(payload).select('id, created_at').single();
-    if (error) throw error;
+    if (error) {
+      // If the direct practice save path already inserted this exact completed game,
+      // do not surface a scary duplicate-key failure from the later leaderboard path.
+      if (isPractice && (error.code === '23505' || String(error.message || '').toLowerCase().indexOf('duplicate key') >= 0)) {
+        try{ console.warn('[SQ] recordFullGameToSupabase skipped duplicate practice insert', error); }catch(_){ }
+        return null;
+      }
+      throw error;
+    }
     const _gameId = _gRow && _gRow.id ? _gRow.id : null;
     try { if (typeof __sqClearRecoveryCachesAfterCompletedSave === 'function') __sqClearRecoveryCachesAfterCompletedSave('recordFullGameToSupabase'); } catch(_) {}
 
@@ -22719,6 +22760,8 @@ function startNewGame(setOrder=false){
     delete state.__sqPracticeSavedToGames;
     delete state.__sqPracticeSaveInFlightV2;
     delete state.__sqPracticeSaveMatchIdV2;
+    delete state.__sqPracticeSavedKeyV2;
+    delete state.__sqPracticeSaveInFlightKeyV2;
     delete state.__sqGameCompleteOpen;
   }catch(_){ }
   // <<< PATCH:practice-multi-game-save-reset END
@@ -39969,6 +40012,13 @@ __sqDmdInitV7();
 (function(){
   if (window.__sqPracticeAutosaveGamesV1) return;
   window.__sqPracticeAutosaveGamesV1 = true;
+  // >>> PATCH:practice-save-v3-disable-legacy-v1 START
+  // V2/V3 direct practice save is now the authority. The older V1 wrapper sets
+  // state.__sqPracticeSavedToGames before the direct insert path and can cause
+  // back-to-back practice games to be skipped. Keep the marker set, but do not
+  // install the legacy autosave wrappers.
+  return;
+  // <<< PATCH:practice-save-v3-disable-legacy-v1 END
 
   function isPracticeNow(){
     try{
@@ -40127,46 +40177,83 @@ __sqDmdInitV7();
     return null;
   }
 
+  function completedPracticeKey(players, totals, board){
+    try{
+      var names = (players || []).map(function(p){ return String((p && p.name) || '').trim().toLowerCase(); }).join('|');
+      var totalStr = (totals || []).map(function(x){ return Number(x)||0; }).join('|');
+      var boardStr = JSON.stringify(board || []);
+      var token = (window.state && state.__gameToken != null) ? String(state.__gameToken) : '';
+      return ['practice-v3', token, names, totalStr, boardStr].join('::');
+    }catch(_){
+      return 'practice-v3::' + Date.now() + '::' + Math.random().toString(36).slice(2,8);
+    }
+  }
+
   async function savePracticeToGames(){
+    var saveKey = '';
     try{
       if (!isPracticeState() || !isCompleteEnough()) return null;
-      if (state.__sqPracticeSaveInFlightV2){ try{ console.info('[SQ] Practice cloud save V2 skipped: save already in flight'); }catch(_){ } return null; }
-      if (state.__sqPracticeCloudSavedV2 || state.__sqPracticeSavedToGames){ try{ console.info('[SQ] Practice cloud save V2 skipped: current game already saved'); }catch(_){ } return null; }
-      if (typeof sb === 'undefined' || !sb || typeof sb.from !== 'function'){ try{ console.info('[SQ] Practice cloud save V2 skipped: Supabase unavailable'); }catch(_){ } return null; }
+      if (typeof sb === 'undefined' || !sb || typeof sb.from !== 'function'){
+        try{ console.info('[SQ] Practice cloud save V3 skipped: Supabase unavailable'); }catch(_){ }
+        return null;
+      }
 
       var players = playerRows();
       if (!players.length) return null;
       var totals = totalsNow();
       var board = cloneBoard();
+      saveKey = completedPracticeKey(players, totals, board);
+
+      // Dedupe only the exact same completed game. Do not let stale boolean flags
+      // from a previous practice completion block the next game.
+      if (state.__sqPracticeSaveInFlightKeyV2 === saveKey){
+        try{ console.info('[SQ] Practice cloud save V3 skipped: same game save already in flight'); }catch(_){ }
+        return null;
+      }
+      if (state.__sqPracticeSavedKeyV2 === saveKey){
+        try{ console.info('[SQ] Practice cloud save V3 skipped: exact completed game already saved'); }catch(_){ }
+        return null;
+      }
+      if ((state.__sqPracticeCloudSavedV2 || state.__sqPracticeSavedToGames) && state.__sqPracticeSavedKeyV2 !== saveKey){
+        try{ console.info('[SQ] Practice cloud save V3 continuing: stale saved flags belonged to previous practice game'); }catch(_){ }
+        try{
+          delete state.__sqPracticeCloudSavedV2;
+          delete state.__sqPracticeSavedToGames;
+          delete state.__sqPracticeSaveMatchIdV2;
+        }catch(_){ }
+      }
+
       var ts = new Date().toISOString();
       var table = (typeof TABLE_GAMES !== 'undefined' && TABLE_GAMES) ? TABLE_GAMES : 'games';
       var matchTable = (typeof TABLE_MATCHES !== 'undefined' && TABLE_MATCHES) ? TABLE_MATCHES : 'matches';
-      // Practice history expects each completed practice game to become its own distinct games row.
-      // Do not reuse state.match.id here: a multi-game practice session can otherwise create repeated
-      // match_id + game_number=1 rows that some history paths de-dupe down to the first game only.
-      var practiceMatchId = state.__sqPracticeSaveMatchIdV2 || ((crypto && crypto.randomUUID) ? crypto.randomUUID() : ('practice-' + Date.now() + '-' + Math.random().toString(36).slice(2,8)));
+      var practiceMatchId = ((typeof crypto !== 'undefined' && crypto && crypto.randomUUID) ? crypto.randomUUID() : ('practice-' + Date.now() + '-' + Math.random().toString(36).slice(2,8)));
 
       state.__sqPracticeSaveInFlightV2 = true;
+      state.__sqPracticeSaveInFlightKeyV2 = saveKey;
       state.__sqPracticeSaveMatchIdV2 = practiceMatchId;
+
+      // Mark the current exact game as guarded before the async insert to stop
+      // duplicate wrappers from saving the same board twice. If insert fails,
+      // the catch block removes this key so retry remains possible.
+      state.__sqPracticeSavedKeyV2 = saveKey;
       state.__sqPracticeCloudSavedV2 = true;
       state.__sqPracticeSavedToGames = true;
+
       state.match = Object.assign({}, state.match || {}, {
         id: practiceMatchId,
         mode: 'practice',
         forcePractice: true,
-        createdAtIso: (state.match && state.match.createdAtIso) || ts,
-        history: Array.isArray(state.match && state.match.history) ? state.match.history : [],
-        wins: Array.isArray(state.match && state.match.wins) ? state.match.wins : []
+        createdAtIso: ts,
+        history: [],
+        wins: Array.from({ length: players.length }, function(){ return 0; })
       });
 
-      // games.match_id is NOT NULL, so practice gets a lightweight match row.
-      // Classification remains practice because the game state is explicit.
       var matchRes = await sb.from(matchTable).upsert({
         id: practiceMatchId,
-        created_at: state.match.createdAtIso || ts,
-        total_games: Math.max(1, state.match.history.length || 1),
+        created_at: ts,
+        total_games: 1,
         players: players,
-        wins: (state.match.wins || []).slice(),
+        wins: Array.from({ length: players.length }, function(){ return 0; }),
         history: [{ totals: totals.slice(), mode: 'practice' }]
       }).select('id').single();
       if (matchRes && matchRes.error) throw matchRes.error;
@@ -40177,34 +40264,41 @@ __sqDmdInitV7();
         created_at: ts,
         totals: totals,
         finished: true,
+        mode: 'practice',
         state: {
           players: players,
           board: board,
           totals: totals,
           mode: 'practice',
+          gameMode: 'practice',
           is_practice: true,
           total_players: players.length,
           match_id: practiceMatchId,
           matchId: practiceMatchId,
           completed_at: ts,
-          schema_version: 2
+          practice_save_key: saveKey,
+          schema_version: 3
         }
       };
 
-      // Do not add a local recent-cache copy here. The inserted Supabase row is now the truth.
-      // Adding cache as well causes duplicate rows in Latest Scores immediately after save.
-
-      var table = (typeof TABLE_GAMES !== 'undefined' && TABLE_GAMES) ? TABLE_GAMES : 'games';
       var res = await sb.from(table).insert(payload).select('id, created_at').single();
       if (res && res.error) throw res.error;
-      try{ console.info('[SQ] Practice cloud save V2 wrote games row', { game: res && res.data, practiceMatchId: practiceMatchId, game_number: 1, created_at: ts }); }catch(_){ }
+      try{ console.info('[SQ] Practice cloud save V3 wrote games row', { game: res && res.data, practiceMatchId: practiceMatchId, game_number: 1, created_at: ts, saveKey: saveKey }); }catch(_){ }
       return res && res.data ? res.data : null;
     }catch(e){
-      try{ state.__sqPracticeCloudSavedV2 = false; state.__sqPracticeSavedToGames = false; delete state.__sqPracticeSaveMatchIdV2; }catch(_){ }
-      try{ console.error('[SQ] Practice cloud save V2 failed', e); }catch(_){ }
+      try{
+        if (!saveKey || state.__sqPracticeSavedKeyV2 === saveKey) delete state.__sqPracticeSavedKeyV2;
+        state.__sqPracticeCloudSavedV2 = false;
+        state.__sqPracticeSavedToGames = false;
+        delete state.__sqPracticeSaveMatchIdV2;
+      }catch(_){ }
+      try{ console.error('[SQ] Practice cloud save V3 failed', e); }catch(_){ }
       return null;
     }finally{
-      try{ delete state.__sqPracticeSaveInFlightV2; }catch(_){ }
+      try{
+        if (!saveKey || state.__sqPracticeSaveInFlightKeyV2 === saveKey) delete state.__sqPracticeSaveInFlightKeyV2;
+        delete state.__sqPracticeSaveInFlightV2;
+      }catch(_){ }
     }
   }
 
