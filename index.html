@@ -22709,6 +22709,20 @@ function showPlayerOrderDialog() {
 
 function startNewGame(setOrder=false){
   if(!setOrder){ showPlayerOrderDialog(); return; }
+
+  // >>> PATCH:practice-multi-game-save-reset START
+  // Practice save guards are per completed game, not per practice session/match.
+  // Reset them whenever a fresh game starts so back-to-back practice games each get
+  // their own Supabase games row and history entry.
+  try{
+    delete state.__sqPracticeCloudSavedV2;
+    delete state.__sqPracticeSavedToGames;
+    delete state.__sqPracticeSaveInFlightV2;
+    delete state.__sqPracticeSaveMatchIdV2;
+    delete state.__sqGameCompleteOpen;
+  }catch(_){ }
+  // <<< PATCH:practice-multi-game-save-reset END
+
   state.__gameToken = (state.__gameToken || 0) + 1;
   state._decider = null;
   state.score = Array.from({length:state.players.length},
@@ -40116,8 +40130,9 @@ __sqDmdInitV7();
   async function savePracticeToGames(){
     try{
       if (!isPracticeState() || !isCompleteEnough()) return null;
-      if (state.__sqPracticeCloudSavedV2 || state.__sqPracticeSavedToGames) return null;
-      if (typeof sb === 'undefined' || !sb || typeof sb.from !== 'function') return null;
+      if (state.__sqPracticeSaveInFlightV2){ try{ console.info('[SQ] Practice cloud save V2 skipped: save already in flight'); }catch(_){ } return null; }
+      if (state.__sqPracticeCloudSavedV2 || state.__sqPracticeSavedToGames){ try{ console.info('[SQ] Practice cloud save V2 skipped: current game already saved'); }catch(_){ } return null; }
+      if (typeof sb === 'undefined' || !sb || typeof sb.from !== 'function'){ try{ console.info('[SQ] Practice cloud save V2 skipped: Supabase unavailable'); }catch(_){ } return null; }
 
       var players = playerRows();
       if (!players.length) return null;
@@ -40126,8 +40141,13 @@ __sqDmdInitV7();
       var ts = new Date().toISOString();
       var table = (typeof TABLE_GAMES !== 'undefined' && TABLE_GAMES) ? TABLE_GAMES : 'games';
       var matchTable = (typeof TABLE_MATCHES !== 'undefined' && TABLE_MATCHES) ? TABLE_MATCHES : 'matches';
-      var practiceMatchId = (state.match && state.match.id) || ((crypto && crypto.randomUUID) ? crypto.randomUUID() : ('practice-' + Date.now()));
+      // Practice history expects each completed practice game to become its own distinct games row.
+      // Do not reuse state.match.id here: a multi-game practice session can otherwise create repeated
+      // match_id + game_number=1 rows that some history paths de-dupe down to the first game only.
+      var practiceMatchId = state.__sqPracticeSaveMatchIdV2 || ((crypto && crypto.randomUUID) ? crypto.randomUUID() : ('practice-' + Date.now() + '-' + Math.random().toString(36).slice(2,8)));
 
+      state.__sqPracticeSaveInFlightV2 = true;
+      state.__sqPracticeSaveMatchIdV2 = practiceMatchId;
       state.__sqPracticeCloudSavedV2 = true;
       state.__sqPracticeSavedToGames = true;
       state.match = Object.assign({}, state.match || {}, {
@@ -40177,12 +40197,14 @@ __sqDmdInitV7();
       var table = (typeof TABLE_GAMES !== 'undefined' && TABLE_GAMES) ? TABLE_GAMES : 'games';
       var res = await sb.from(table).insert(payload).select('id, created_at').single();
       if (res && res.error) throw res.error;
-      try{ console.info('[SQ] Practice cloud save V2 wrote games row', res && res.data); }catch(_){ }
+      try{ console.info('[SQ] Practice cloud save V2 wrote games row', { game: res && res.data, practiceMatchId: practiceMatchId, game_number: 1, created_at: ts }); }catch(_){ }
       return res && res.data ? res.data : null;
     }catch(e){
-      try{ state.__sqPracticeCloudSavedV2 = false; state.__sqPracticeSavedToGames = false; }catch(_){ }
+      try{ state.__sqPracticeCloudSavedV2 = false; state.__sqPracticeSavedToGames = false; delete state.__sqPracticeSaveMatchIdV2; }catch(_){ }
       try{ console.error('[SQ] Practice cloud save V2 failed', e); }catch(_){ }
       return null;
+    }finally{
+      try{ delete state.__sqPracticeSaveInFlightV2; }catch(_){ }
     }
   }
 
@@ -44497,7 +44519,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     if (!view) {
       if (mode === 'turbo' && typeof window.__sqFetchPlayerGameScoresFromCleanRoundScores === 'function') {
         try{
-          return { rows:(await window.__sqFetchPlayerGameScoresFromCleanRoundScores('turbo')).slice(0,50), source:'v_player_round_scores_mode_clean' };
+          return { rows:(await window.__sqFetchPlayerGameScoresFromCleanRoundScores('turbo')).slice(0,50), source:'mv_player_round_scores_mode_clean_app' };
         }catch(_turboFallback){}
       }
       return { rows:[], missing:'Required Supabase view/data source is missing for Turbo Top 50 Scores.' };
@@ -44525,7 +44547,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     }catch(e){
       if (mode === 'turbo' && typeof window.__sqFetchPlayerGameScoresFromCleanRoundScores === 'function') {
         try{
-          return { rows:(await window.__sqFetchPlayerGameScoresFromCleanRoundScores('turbo')).slice(0,50), source:'v_player_round_scores_mode_clean' };
+          return { rows:(await window.__sqFetchPlayerGameScoresFromCleanRoundScores('turbo')).slice(0,50), source:'mv_player_round_scores_mode_clean_app' };
         }catch(_turboFallback){}
       }
       try{ if (window.SQ_DEBUG) console.warn('[SQ] Top 50 Scores view read failed', e); }catch(_){}
@@ -45569,7 +45591,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     var m = modeKey(mode);
     if (typeof window.sb === 'undefined' || !window.sb || typeof window.sb.from !== 'function') return [];
     var q = await window.sb
-      .from('v_player_round_scores_mode_clean')
+      .from('mv_player_round_scores_mode_clean_app')
       .select('mode_key,player,player_key,game_id,created_at,round_index,round_score')
       .order('created_at', { ascending:false })
       .limit(5000);
@@ -45614,7 +45636,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
         qualified:true,
         active:true,
         lastPlayedMs:lastMs,
-        source:'v_player_round_scores_mode_clean'
+        source:'mv_player_round_scores_mode_clean_app'
       };
     }).filter(function(r){ return r.player && Number.isFinite(r.powerRank) && r.powerRank > 0; });
     rows.sort(function(a,b){
@@ -45633,7 +45655,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     var m = modeKey(mode);
     if (typeof window.sb === 'undefined' || !window.sb || typeof window.sb.from !== 'function') return [];
     var q = await window.sb
-      .from('v_player_round_scores_mode_clean')
+      .from('mv_player_round_scores_mode_clean_app')
       .select('mode_key,player,player_key,game_id,created_at,round_index,round_score')
       .order('created_at', { ascending:false })
       .limit(5000);
