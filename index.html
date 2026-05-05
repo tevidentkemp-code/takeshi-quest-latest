@@ -26538,6 +26538,22 @@ function arrangeStartActions(){
       };
 
       const tournament = makeOpt('tournamentBtn', 'tournament', 'TOURNAMENT (BETA)', 'CLASSIC / TURBO KNOCKOUT', 'LIVE', true);
+      // >>> PATCH:START_TOURNAMENT_ROUTE_RESTORE_V1 START
+      // arrangeStartActions() rebuilds this button after the later tournament patches bind it.
+      // Re-bind to the canonical stepped tournament setup here so TOURNAMENT does not fall
+      // through to an unrelated/old modal route such as Power Rankings.
+      tournament.onclick = function(e){
+        if (e){
+          e.preventDefault && e.preventDefault();
+          e.stopPropagation && e.stopPropagation();
+          e.stopImmediatePropagation && e.stopImmediatePropagation();
+        }
+        if (typeof window.__sqOpenTournamentSteppedSetup === 'function') return window.__sqOpenTournamentSteppedSetup();
+        if (typeof openTournamentSteppedSetup === 'function') return openTournamentSteppedSetup();
+        try { if (typeof toast === 'function') toast('Tournament setup is still loading. Try again in a moment.'); } catch(_) {}
+        return false;
+      };
+      // <<< PATCH:START_TOURNAMENT_ROUTE_RESTORE_V1 END
       const practice  = makeOpt('practiceBtn', 'practice', 'PRACTICE', 'CLASSIC / VS AI / VS SHADOW', '', true);
       practice.onclick = (e)=>{
         e.preventDefault();
@@ -26944,6 +26960,46 @@ if(hsBody){
         } catch(_e) { return !!window.sb; }
       };
 
+      // >>> PATCH:VIDE_TURBO_SUFFIX_SOURCE_FIX START
+      // Live Updates VIDE uses normalized fallback rows, so Turbo can be lost if we only inspect
+      // the final rendered line. Detect Turbo from the original game/state before formatting.
+      const lpIsTurboGame = (g) => {
+        try{
+          if (!g) return false;
+          if (typeof window.__sqGameModeKey === 'function' && window.__sqGameModeKey(g) === 'turbo') return true;
+          if (typeof window.__sqGameIsTurbo === 'function' && window.__sqGameIsTurbo(g)) return true;
+          const st = g.state || g.game_state || {};
+          const match = g.match || st.match || {};
+          const rules = g.rules || st.rules || match.rules || match.tournamentRules || {};
+          const vals = [
+            g.mode, g.gameMode, g.game_mode, g.type, g.tournamentType,
+            st.mode, st.gameMode, st.game_mode, st.type, st.tournamentType,
+            match.mode, match.gameMode, match.game_mode, match.type, match.tournamentType,
+            rules.mode, rules.gameMode, rules.game_mode, rules.type, rules.tournamentType
+          ].map(v => String(v || '').toLowerCase());
+          if (vals.some(v => v === 'turbo' || v.indexOf('turbo') >= 0)) return true;
+          if (g.strictTimer === true || st.strictTimer === true || match.strictTimer === true || rules.strictTimer === true) return true;
+          if (Number(g.throwLimitSeconds || st.throwLimitSeconds || match.throwLimitSeconds || rules.throwLimitSeconds || 0) === 20) return true;
+          if (String(g.startTarget || st.startTarget || match.startTarget || rules.startTarget || '') === '17') return true;
+        }catch(_e){}
+        return false;
+      };
+      // >>> PATCH:VIDE_CLASSIC_SUFFIX_AND_FIRST_BLANK_V1 START
+      const lpModeSuffix = (g) => {
+        if (g && (g.isPractice || g.is_practice || g.practice)) return ' - PRACTICE';
+        if (lpIsTurboGame(g) || (g && g.isTurbo)) return ' - TURBO';
+        return ' - CLASSIC';
+      };
+      const lpAppendModeSuffix = (line, g) => {
+        let out = String(line || '').trim();
+        const suffix = lpModeSuffix(g);
+        if (!suffix) return out;
+        if (/\s-\s(PRACTICE|TURBO|CLASSIC)\s*$/i.test(out)) return out;
+        return out + suffix;
+      };
+      // <<< PATCH:VIDE_CLASSIC_SUFFIX_AND_FIRST_BLANK_V1 END
+      // <<< PATCH:VIDE_TURBO_SUFFIX_SOURCE_FIX END
+
       const lpPad2 = (n) => String(Number(n) || 0).padStart(2, '0');
       const lpFmtDT = (g) => {
         const ts = g.event_ts || g.ts || g.created_at || g.createdAt;
@@ -27049,7 +27105,8 @@ if(hsBody){
             String(g.mode || g.gameMode || '').toLowerCase() === 'practice' ||
             String(g.state?.mode || g.state?.gameMode || '').toLowerCase() === 'practice' ||
             g.state?.is_practice === true || g.state?.isPractice === true));
-          return `${dt} ${winnerName} (${winnerScore})${opp ? ' bts ' + opp : ''}${isPractice ? ' - PRACTICE' : ''}`;
+          const base = `${dt} ${winnerName} (${winnerScore})${opp ? ' bts ' + opp : ''}`;
+          return base + (isPractice ? ' - PRACTICE' : (lpIsTurboGame(g) ? ' - TURBO' : ' - CLASSIC'));
         };
 
         const src = raw || buildFallback();
@@ -27098,7 +27155,7 @@ if(hsBody){
           }
 
           // Normal match line: "DD/MM / HH:MM ..."
-          return `${ddmm} / ${hhmm} ${rest}`;
+          return lpAppendModeSuffix(`${ddmm} / ${hhmm} ${rest}`, g);
         }
 
         // If it contains underscores but not the full pattern, clean them.
@@ -27130,7 +27187,7 @@ if(hsBody){
           return cleaned;
         }
 
-        return cleaned;
+        return lpAppendModeSuffix(cleaned, g);
       };
 
 const lpUpdateMeta = async (games) => {
@@ -27641,7 +27698,8 @@ const lpUpdateMeta = async (games) => {
                     String(g.mode || g.gameMode || '').toLowerCase() === 'practice' ||
                     String(g.state?.mode || g.state?.gameMode || '').toLowerCase() === 'practice' ||
                     g.state?.is_practice === true || g.state?.isPractice === true));
-                  return { ts, winner_name: winner.name, winner_score: winner.score, opponents_text: opp, isPractice, mode: isPractice ? 'practice' : (g.mode || g.state?.mode || '') };
+                  const isTurbo = !isPractice && lpIsTurboGame(g);
+                  return { ts, winner_name: winner.name, winner_score: winner.score, opponents_text: opp, isPractice, isTurbo, mode: isPractice ? 'practice' : (isTurbo ? 'turbo' : (g.mode || g.state?.mode || '')) };
                 }catch(_e){
                   return { ts: g.ts || null, winner_name: '?', winner_score: '?', opponents_text: '', isPractice:false };
                 }
@@ -27673,7 +27731,8 @@ const lpUpdateMeta = async (games) => {
                         String(row.mode || row.gameMode || '').toLowerCase() === 'practice' ||
                         String(state?.mode || state?.gameMode || '').toLowerCase() === 'practice' ||
                         state?.is_practice === true || state?.isPractice === true));
-                      return { ts, winner_name: winner.name, winner_score: winner.score, opponents_text: opp, isPractice, mode: isPractice ? 'practice' : (row.mode || state?.mode || '') };
+                      const isTurbo = !isPractice && lpIsTurboGame(Object.assign({}, row || {}, { state }));
+                      return { ts, winner_name: winner.name, winner_score: winner.score, opponents_text: opp, isPractice, isTurbo, mode: isPractice ? 'practice' : (isTurbo ? 'turbo' : (row.mode || state?.mode || '')) };
                     } catch(_e) {
                       return null;
                     }
@@ -27691,12 +27750,15 @@ const lpUpdateMeta = async (games) => {
                   .sort((a,b)=> b.score - a.score || String(a.name).localeCompare(String(b.name)));
                 const winner = rows[0] || { name: '?', score: '?' };
                 const opp = rows.slice(1).map(r => `${r.name} (${r.score})`).join(', ');
+                const isTurbo = lpIsTurboGame(mm);
                 return {
                   match_id: id,
                   ts: mm.ts || mm.createdAt || mm.created_at || mm.updatedAt || mm.updated_at,
                   winner_name: winner.name,
                   winner_score: winner.score,
-                  opponents_text: opp
+                  opponents_text: opp,
+                  isTurbo,
+                  mode: isTurbo ? 'turbo' : (mm.mode || mm.gameMode || '')
                 };
               }).filter(Boolean);
             }
@@ -27761,7 +27823,8 @@ const lpUpdateMeta = async (games) => {
             const d = ts ? new Date(ts) : null;
             const key = d ? (d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate()) : null;
             if(key && key !== _lpLastKey){
-              if (_lpLastKey !== null) lines.push('');
+              if (_lpLastKey === null) lines.push('');
+              else lines.push('');
               lines.push(_lpFmtHeader(d));
               _lpLastKey = key;
             }
@@ -32139,11 +32202,11 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
       return openForSelected('openPlayerLatestMatchesDialog', 'Latest Matches not available', ['official']);
     }),
 
-    mkRow('Game High Scores', 'FULL GAME HISTORY', svgTrophy, () => {
+    mkRow('Player High Scores', 'FULL GAME HISTORY', svgTrophy, () => {
       return openForSelected('openPlayerHighScoresDialog', 'High Scores not available');
     }),
 
-    mkRow('Progression', 'PLAYERS SCORES MAPPED OVER TIME', svgTrend, () => {
+    mkRow('Progression', 'PLAYER SCORES OVER TIME', svgTrend, () => {
       return openForSelected('openPlayerProgressionDialog', 'Progression not available');
     }),
 
@@ -32155,12 +32218,12 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
       return openForSelected('openPlayerTargetPointsDialog', 'Target Points % not available');
     }),
 
-    mkRow('H2H - League', 'RECORD VS OTHER PLAYERS', svgVs, () => {
+    mkRow('Player H2H', 'RECORD VS OTHER PLAYERS', svgVs, () => {
       return openForSelected('openPlayerH2HDialog', 'H2H not available');
     }),
 
     (() => {
-      const r = mkRow('H2H - Vs (Coming Soon)', 'HEAD TO HEAD MATCHUPS', svgVs, () => {
+      const r = mkRow('H2H Matchups (Coming Soon)', 'HEAD TO HEAD MATCHUPS', svgVs, () => {
         try{ overlay && overlay.remove(); }catch(e){}
         if (typeof toast==='function') toast('Coming Soon');
       });
@@ -40811,7 +40874,7 @@ __sqDmdInitV7();
     } else {
       var table = document.createElement('table'); table.className = 'hs-table sq-h2h-table';
       var thead = document.createElement('thead'); var trh = document.createElement('tr');
-      ['#','','GP','W','L','Win %','Avg Diff'].forEach(function(x){ var th=document.createElement('th'); th.textContent=x; trh.appendChild(th); });
+      ['#','Opponent','GP','W','L','Win %','Avg Diff'].forEach(function(x){ var th=document.createElement('th'); th.textContent=x; trh.appendChild(th); });
       thead.appendChild(trh); table.appendChild(thead);
       var tbody = document.createElement('tbody');
       var pos = 0;
@@ -41412,7 +41475,15 @@ __sqDmdInitV7();
     b.setAttribute('aria-disabled','false');
     b.classList.remove('disabled');
     b.title = 'Tournament setup';
-    b.onclick = function(e){ e.preventDefault(); openTournamentSteppedSetup(); };
+    b.onclick = function(e){
+      if (e){
+        e.preventDefault && e.preventDefault();
+        e.stopPropagation && e.stopPropagation();
+        e.stopImmediatePropagation && e.stopImmediatePropagation();
+      }
+      if (typeof window.__sqOpenTournamentSteppedSetup === 'function') return window.__sqOpenTournamentSteppedSetup();
+      return openTournamentSteppedSetup();
+    };
     try{
       const soon = b.querySelector('.sg-opt-soon');
       if (soon) soon.textContent = 'LIVE';
@@ -44471,33 +44542,27 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
   }
 
   function renderLiveImmediately(){
-    // >>> PATCH:VIDE_EMPTY_FIRST_LOAD_ONLY START
-    // START SCREEN > LIVE UPDATES VIDE must not prefill historic rows on page load.
-    // The main live-printer interval/sync below still fetches the feed, then scrolls/types
-    // entries up from the bottom in the normal way. This prevents duplicated first rows.
+    // >>> PATCH:VIDE_EMPTY_FIRST_LOAD START
+    // Keep START SCREEN > LIVE UPDATES VIDE empty on load.
+    // The normal printer loop will then scroll/type fresh lines up from the bottom.
+    // This prevents a prefilled table duplicating the first typed feed line.
     try{
-      var st = window.__homeLivePrinterState || (window.__homeLivePrinterState = {});
-      var visible = 9;
-      st.lpStarted = true;
-      st.lpCursor = 0;
-      st.displayLines = Array.from({ length: visible }, function(){ return ''; });
-
+      var st = window.__homeLivePrinterState;
       var body = document.getElementById('homeLivePrinterRows');
-      if (body){
-        body.innerHTML = st.displayLines.map(function(){
-          return '<tr class="lp-row"><td class="lp-line"><span class="lp-ellipsis"></span></td></tr>';
-        }).join('');
+      if (st && !st.__sqVideInitialBlanked){
+        st.__sqVideInitialBlanked = true;
+        st.lpStarted = false;
+        st.displayLines = Array.from({ length: 9 }, function(){ return ''; });
+        if (body){
+          body.innerHTML = '';
+          for (var i=0;i<9;i++){
+            body.insertAdjacentHTML('beforeend','<tr class="lp-row"><td class="lp-line"><span class="lp-ellipsis"></span></td></tr>');
+          }
+        }
       }
-
-      var printer = document.getElementById('homeLivePrinter');
-      if (printer) printer.classList.add('is-live');
-      var mid = document.querySelector('#homeLivePrinter .lp-mid');
-      if (mid) mid.classList.remove('lp-mid-hold');
-      var hold = document.querySelector('#homeLivePrinter .home-hold-overlay');
-      if (hold) hold.style.display = 'none';
-      return true;
-    }catch(_){ return false; }
-    // <<< PATCH:VIDE_EMPTY_FIRST_LOAD_ONLY END
+    }catch(_){ }
+    return false;
+    // <<< PATCH:VIDE_EMPTY_FIRST_LOAD END
   }
 
   function boot(){
@@ -45854,6 +45919,9 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
         var action = String(btn.getAttribute('data-action') || '');
         var id = String(btn.id || '');
         var hay = (id + ' ' + action + ' ' + label).toLowerCase();
+        // START GAME > TOURNAMENT contains the word TURBO in its description, but it is
+        // not a League & Rankings Turbo button. Exclude the Start Game modal from this catch-all.
+        if (id === 'tournamentBtn' || (btn.closest && btn.closest('#startGameModal, .sg-options'))) return;
         if (hay.indexOf('turbo') < 0) return;
         if (btn.closest && btn.closest('.sq132-tabs, .sq-fix100-top50, .sq-top50-backdrop, .sq-latest-scores, .sq-streak-controls')) return;
         btn.__sqTurboLeagueRoutingFix = true;
@@ -45888,6 +45956,9 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     var aria = String(btn.getAttribute && btn.getAttribute('aria-label') || '');
     var hay = (id + ' ' + action + ' ' + aria + ' ' + label).toLowerCase();
 
+    // Do not let League/Power routing claim Start Game modal options.
+    if (id === 'tournamentBtn' || (btn.closest && btn.closest('#startGameModal, .sg-options'))) return;
+
     if (id === 'powerRankingsBtn' || id === 'leaguePowerRankingsBtn' || /\bpower rankin(?:g|s|gs)\b/.test(hay)) {
       if (btn.closest && btn.closest('.sq-league-rankings-backdrop, #details, .home-mini-printer')) {
         claim(e);
@@ -45920,6 +45991,55 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
   window.__sqRankingsModeDataHardening = true;
 })();
 // >>> PATCH:rankings-mode-data-hardening END
+</script>
+
+
+<!-- >>> PATCH:MINOR_UX_CLEANUP_AND_VIDE_EMPTY_START START
+Changes:
+- START SCREEN > LIVE UPDATES VIDE now stays empty on first load before the normal bottom-up scroll/types begin.
+- Player Stats Hub labels clarified: Player High Scores, Player Scores Over Time, Player H2H.
+- Per-player H2H opponent header clarified.
+- If Global H2H Phase2 is present, Q column/sort cleanup is applied by string-compatible patching.
+Logic untouched: practice save, scoring, Supabase writes, rankings formulas.
+<<< PATCH:MINOR_UX_CLEANUP_AND_VIDE_EMPTY_START END -->
+
+
+<script id="sq-start-tournament-route-blocker-guard-v2">
+// >>> PATCH:START_TOURNAMENT_ROUTE_BLOCKER_GUARD_V2 START
+(function(){
+  'use strict';
+  if (window.__sqStartTournamentRouteBlockerGuardV2) return;
+  window.__sqStartTournamentRouteBlockerGuardV2 = true;
+  function openTournament(e){
+    try{
+      if (e){
+        e.preventDefault && e.preventDefault();
+        e.stopPropagation && e.stopPropagation();
+        e.stopImmediatePropagation && e.stopImmediatePropagation();
+      }
+    }catch(_){ }
+    if (typeof window.__sqOpenTournamentSteppedSetup === 'function') return window.__sqOpenTournamentSteppedSetup();
+    try{ if (typeof toast === 'function') toast('Tournament setup is still loading. Try again in a moment.'); }catch(_){ }
+  }
+  function bind(){
+    var b = document.getElementById('tournamentBtn');
+    if (!b) return;
+    b.disabled = false;
+    b.setAttribute('aria-disabled','false');
+    b.onclick = openTournament;
+  }
+  try{ document.addEventListener('click', function(e){
+    var b = e.target && e.target.closest ? e.target.closest('#tournamentBtn') : null;
+    if (!b) return;
+    return openTournament(e);
+  }, true); }catch(_){ }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind, { once:true });
+  else bind();
+  setTimeout(bind, 50);
+  setTimeout(bind, 250);
+  setTimeout(bind, 1000);
+})();
+// <<< PATCH:START_TOURNAMENT_ROUTE_BLOCKER_GUARD_V2 END
 </script>
 
 </body>
