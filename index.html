@@ -26615,7 +26615,7 @@ function arrangeStartActions(){
         '<div class="lp-rule"></div>'+
         '<div class="lp-bottom" aria-label="Scrolling live update ticker">'+
           '<div class="lp-marquee">'+
-            '<span id="homeLpBottomTrack" class="lp-marquee-track">•  •  • WELCOME TO  SHATEKIS QUEST •  •  •</span>'+
+            '<span id="homeLpBottomTrack" class="lp-marquee-track"></span>'+
           '</div>'+
         '</div>';
     }
@@ -44471,23 +44471,24 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
   }
 
   function renderLiveImmediately(){
+    // >>> PATCH:VIDE_EMPTY_FIRST_LOAD_ONLY START
+    // START SCREEN > LIVE UPDATES VIDE must not prefill historic rows on page load.
+    // The main live-printer interval/sync below still fetches the feed, then scrolls/types
+    // entries up from the bottom in the normal way. This prevents duplicated first rows.
     try{
-      var st = window.__homeLivePrinterState;
-      if (!st || !Array.isArray(st.bufLines) || !st.bufLines.length) return false;
-      var current = Array.isArray(st.displayLines) ? st.displayLines : [];
-      var empty = !current.length || current.every(function(x){ return !String(x || '').trim(); });
-      if (!empty) return true;
+      var st = window.__homeLivePrinterState || (window.__homeLivePrinterState = {});
+      var visible = 9;
+      st.lpStarted = true;
+      st.lpCursor = 0;
+      st.displayLines = Array.from({ length: visible }, function(){ return ''; });
 
-      var lines = st.bufLines.slice(0, 9);
-      st.displayLines = lines;
       var body = document.getElementById('homeLivePrinterRows');
       if (body){
-        body.innerHTML = lines.map(function(line){
-          var s = String(line || '');
-          var cls = /^[A-Z]+DAY\s+\d+/i.test(s) ? ' lp-datehdr' : '';
-          return '<tr class="lp-row' + cls + '"><td class="lp-line"><span class="lp-ellipsis">' + escText(s) + '</span></td></tr>';
+        body.innerHTML = st.displayLines.map(function(){
+          return '<tr class="lp-row"><td class="lp-line"><span class="lp-ellipsis"></span></td></tr>';
         }).join('');
       }
+
       var printer = document.getElementById('homeLivePrinter');
       if (printer) printer.classList.add('is-live');
       var mid = document.querySelector('#homeLivePrinter .lp-mid');
@@ -44496,6 +44497,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
       if (hold) hold.style.display = 'none';
       return true;
     }catch(_){ return false; }
+    // <<< PATCH:VIDE_EMPTY_FIRST_LOAD_ONLY END
   }
 
   function boot(){
