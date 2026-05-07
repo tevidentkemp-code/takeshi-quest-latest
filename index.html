@@ -26732,7 +26732,11 @@ async function __sqRefreshHomeMiniLeagues(){
       }
 
       const rows = (typeof getOfficialPowerRows === 'function') ? (await getOfficialPowerRows()) : [];
-      const prRows = (rows || []).slice(0,5);
+      // @MODE:HOME_POWER_RANKINGS_ACTIVE_ONLY
+      // VIDE/start-screen mini Power Rankings should show current active players only.
+      // Full League & Rankings popup can still show inactive players greyed at the bottom.
+      const activeRows = (rows || []).filter(r => r && r.player && r.active !== false && r.qualifiesRecent !== false && r.qualifiesRounds !== false);
+      const prRows = activeRows.slice(0,5);
 
       if (!prRows.length){
         tbody.innerHTML = `<tr><td colspan="3" class="home-mini-muted"><em>No data yet</em></td></tr>`;
@@ -26906,14 +26910,17 @@ if(hsBody){
       // If the query executed (even if empty), this panel is no longer "testing".
       unhold(prBody);
 
-      const list = (rows || []).filter(r => r && r.player);
+      // @MODE:HOME_POWER_RANKINGS_ACTIVE_ONLY
+      // VIDE/start-screen mini Power Rankings should show current active players only.
+      // Full League & Rankings popup can still show inactive players greyed at the bottom.
+      const list = (rows || []).filter(r => r && r.player && r.active !== false && r.qualifiesRecent !== false && r.qualifiesRounds !== false);
       const top = list.slice(0,5);
 
       if(!top.length){
         setMsg(prBody,'No data');
       }else{
         prBody.innerHTML = top.map((r,i)=>{
-          const avg = Number(r.avgRound ?? r.avg ?? 0);
+          const avg = Number(r.powerRank ?? r.avgRound ?? r.avg_per_round ?? r.avg ?? 0);
           return `<tr><td class="mini-rank">${i+1}</td><td class="mini-name">${esc(sqDisplayNameForPlayerField(r.player))}</td><td class="mini-val">${(Number.isFinite(avg) ? avg : 0).toFixed(2)}</td></tr>`;
         }).join('');
       }
@@ -44520,7 +44527,9 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
       await refreshPlayers();
       var rows = [];
       if (typeof getOfficialPowerRows === 'function') rows = await getOfficialPowerRows();
-      rows = (rows || []).filter(function(r){ return r && r.player; }).slice(0, 5);
+      rows = (rows || []).filter(function(r){
+        return r && r.player && r.active !== false && r.qualifiesRecent !== false && r.qualifiesRounds !== false;
+      }).slice(0, 5);
       if (!rows.length) return;
 
       var wrap = body.closest ? body.closest('.home-mini-printer') : null;
@@ -46040,6 +46049,214 @@ Logic untouched: practice save, scoring, Supabase writes, rankings formulas.
   setTimeout(bind, 1000);
 })();
 // <<< PATCH:START_TOURNAMENT_ROUTE_BLOCKER_GUARD_V2 END
+</script>
+
+
+<script id="sq-fix169-power-rankings-current-clean-source-js">
+// >>> PATCH:FIX169_POWER_RANKINGS_CURRENT_CLEAN_SOURCE START
+(function(){
+  'use strict';
+  if (window.__sqFix169PowerRankingsCurrentCleanSource) return;
+  window.__sqFix169PowerRankingsCurrentCleanSource = true;
+
+  var OFFICIAL_VIEW = 'v_power_rankings_official_current_clean';
+  var TURBO_VIEW = 'v_power_rankings_last56_turbo_clean';
+  var PRACTICE_VIEW = 'v_power_rankings_last56_practice_clean';
+  var ACTIVE_DAYS = 14;
+
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  function key(s){ return String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g,''); }
+  function parseTs(ts){
+    try{
+      if (!ts) return 0;
+      if (typeof window.__sqParsePowerRankTs === 'function') {
+        var n0 = Number(window.__sqParsePowerRankTs(ts));
+        if (Number.isFinite(n0) && n0 > 0) return n0;
+      }
+      var s = String(ts).trim();
+      if (/^\d{4}-\d{2}-\d{2}\s/.test(s) && s.indexOf('T') < 0) s = s.replace(' ', 'T');
+      if (/[+-]\d{2}$/.test(s)) s += ':00';
+      var n = Date.parse(s);
+      return Number.isFinite(n) ? n : 0;
+    }catch(_){ return 0; }
+  }
+  function isActive(ms){ return Number.isFinite(ms) && ms >= (Date.now() - ACTIVE_DAYS*24*60*60*1000); }
+  function modeView(mode){
+    var m = String(mode || 'official').toLowerCase();
+    if (m === 'turbo') return TURBO_VIEW;
+    if (m === 'practice' || m === 'classic') return PRACTICE_VIEW;
+    return OFFICIAL_VIEW;
+  }
+  window.__sqPowerRankingCleanViewForMode = modeView;
+
+  function mapPowerRow(row, mode, index){
+    var m = String(mode || 'official').toLowerCase();
+    var name = String(row.player || row.player_name || row.name || '').trim();
+    var playerKey = key(row.player_key || name);
+    var rounds = Number(row.rounds_used ?? row.rounds ?? 0);
+    var total = Number(row.total_points ?? row.totalPoints ?? 0);
+    var avg = Number(row.avg_per_round ?? row.power_rank ?? row.powerRank ?? row.avgRound ?? row.avg ?? NaN);
+    if (!Number.isFinite(avg) && Number.isFinite(total) && rounds > 0) avg = total / rounds;
+    var lastMs = parseTs(row.last_played_at || row.lastPlayedAt || row.best_ts || row.ts || row.created_at);
+    var rankPos = Number(row.rank_pos ?? row.rankPos ?? 0) || (index + 1);
+    return {
+      player: name,
+      playerKey: playerKey,
+      gamesUsed: Number(row.games_used ?? row.source_games ?? 0) || null,
+      rounds: Number.isFinite(rounds) ? rounds : 0,
+      totalPoints: Number.isFinite(total) ? total : 0,
+      powerRank: Number.isFinite(avg) ? avg : 0,
+      avgRound: Number.isFinite(avg) ? avg : 0,
+      avg_per_round: Number.isFinite(avg) ? avg : 0,
+      rankPos: rankPos,
+      qualified: m === 'official' ? (Number(rounds) >= 28) : (Number(rounds) > 0),
+      active: m === 'official' ? isActive(lastMs) : true,
+      lastPlayedMs: lastMs,
+      recentMs: lastMs,
+      latestScores: row.latest_scores || row.latestScores || null,
+      sourceGameIds: row.source_game_ids || row.sourceGameIds || null,
+      source: modeView(m)
+    };
+  }
+
+  async function ensureClient(){
+    try{ if (typeof window.ensureCloudInit === 'function') window.ensureCloudInit(); }catch(_){ }
+    return window.sb || (typeof sb !== 'undefined' ? sb : null);
+  }
+
+  async function fetchPowerRows(mode){
+    var m = String(mode || 'official').toLowerCase();
+    var client = await ensureClient();
+    if (!client || typeof client.from !== 'function') return [];
+    var view = modeView(m);
+    // @MODE:POWER_RANKINGS_CURRENT_CLEAN_SOURCE
+    // Official Power Rankings use latest 4 clean official games / 56 via v_power_rankings_official_current_clean.
+    // Do not call v_power_rankings_last56_official_clean or round-score fallbacks for Official display.
+    var q = await client.from(view)
+      .select('player_key,player,games_used,rounds_used,total_points,avg_per_round,last_played_at,latest_scores,source_game_ids,rank_pos')
+      .limit(500);
+    if (q.error) {
+      // Turbo/Practice legacy clean views do not have games_used/latest_scores. Retry with common columns.
+      q = await client.from(view)
+        .select('player,player_key,rounds_used,total_points,avg_per_round,last_played_at,rank_pos,source_games,source_game_ids')
+        .limit(500);
+    }
+    if (q.error) throw q.error;
+    var rows = (q.data || []).map(function(r,i){ return mapPowerRow(r,m,i); })
+      .filter(function(r){ return r.player && Number.isFinite(r.powerRank) && r.powerRank > 0; });
+    rows.sort(function(a,b){
+      return (Number(a.rankPos||9999) - Number(b.rankPos||9999)) ||
+        (b.powerRank - a.powerRank) ||
+        (b.rounds - a.rounds) ||
+        String(a.player).localeCompare(String(b.player));
+    });
+    rows.forEach(function(r,i){ if (!r.rankPos) r.rankPos = i + 1; });
+    return rows;
+  }
+
+  window.__sqPowerRankingRowsFromCleanView = fetchPowerRows;
+
+  window.getOfficialPowerRows = async function getOfficialPowerRows(){
+    try{
+      var rows = await fetchPowerRows('official');
+      return rows.map(function(r){
+        return {
+          player:r.player,
+          playerKey:r.playerKey,
+          rounds:r.rounds,
+          avgRound:r.powerRank,
+          powerRank:r.powerRank,
+          recentMs:r.lastPlayedMs,
+          lastPlayedMs:r.lastPlayedMs,
+          rankPos:r.rankPos,
+          qualifiesRounds:r.qualified,
+          qualifiesRecent:r.active,
+          active:r.active,
+          source:r.source
+        };
+      });
+    }catch(e){
+      try{ console.warn('[SQ] Official Power Rankings current clean source unavailable', e); }catch(_){ }
+      return [];
+    }
+  };
+
+  function note(mode){
+    if (mode === 'turbo') return 'Turbo Power Rank = DB-derived Turbo rows only. Turbo never appears in Official.';
+    if (mode === 'practice') return 'Practice Power Rank = DB-derived Practice rows only.';
+    return 'Official Power Rank = saved players only; latest 4 clean official games divided by 56. Inactive players are greyed out at the bottom.';
+  }
+
+  function __sqOpenPowerRankingsCurrentClean(initialMode){
+    var mode = ['official','turbo','practice'].indexOf(String(initialMode||'').toLowerCase()) >= 0 ? String(initialMode).toLowerCase() : 'official';
+    document.querySelectorAll('.sq132-bd,.sq108-bd').forEach(function(n){ try{ n.remove(); }catch(_){ } });
+    var bd = document.createElement('div');
+    bd.className = 'modal-backdrop sq132-bd';
+    var modal = document.createElement('div');
+    modal.className = 'modal sq132-modal';
+    bd.appendChild(modal);
+    modal.innerHTML = '<div class="sq132-head"><div class="sq132-title"><h3>Power Rankings</h3><div class="sq132-sub">Recent form by round average.</div></div><div class="sq132-tabs"><button type="button" data-mode="official">Official</button><button type="button" data-mode="turbo">Turbo</button><button type="button" data-mode="practice">Practice</button></div></div><div class="sq132-body">Loading…</div><div class="sq132-footer"><button type="button" class="btn sq132-back">Back</button><button type="button" class="btn sq132-close">Close</button></div>';
+    document.body.appendChild(bd);
+    var body = modal.querySelector('.sq132-body');
+    var tabs = modal.querySelector('.sq132-tabs');
+    function syncTabs(){ Array.prototype.forEach.call(tabs.querySelectorAll('button'), function(b){ b.classList.toggle('active', b.dataset.mode === mode); }); }
+    async function render(){
+      syncTabs();
+      body.innerHTML = '<div class="sq132-note">'+esc(note(mode))+'</div><div class="sq132-table-wrap"><table class="sq132-table"><colgroup><col style="width:64px"><col><col style="width:170px"></colgroup><thead><tr><th>#</th><th>PLAYER</th><th>POWER RANK</th></tr></thead><tbody><tr><td colspan="3">Loading…</td></tr></tbody></table></div>';
+      var tb = body.querySelector('tbody');
+      var rows = [];
+      try{ rows = await fetchPowerRows(mode); }catch(e){ try{ console.warn('[SQ] Power Rankings modal source unavailable', mode, e); }catch(_){ } rows = []; }
+      if (!rows.length){
+        tb.innerHTML = '<tr><td colspan="3">Power Rankings data is not available yet for '+esc(mode)+'. Required clean Supabase view/data source is missing or empty.</td></tr>';
+        return;
+      }
+      var display = rows.slice().sort(function(a,b){
+        return ((b.active !== false) - (a.active !== false)) ||
+          ((b.qualified ? 1 : 0) - (a.qualified ? 1 : 0)) ||
+          (Number(a.rankPos||9999) - Number(b.rankPos||9999)) ||
+          (b.powerRank - a.powerRank) ||
+          String(a.player).localeCompare(String(b.player));
+      });
+      tb.innerHTML = display.map(function(r,i){
+        var cls = (r.active === false || r.qualified === false) ? ' style="opacity:.45"' : '';
+        var pos = r.rankPos || (i+1);
+        return '<tr'+cls+'><td>'+esc(pos)+'</td><td>'+esc(r.player)+'</td><td class="num">'+Number(r.powerRank||0).toFixed(2)+'</td></tr>';
+      }).join('');
+    }
+    tabs.onclick = function(e){ var b = e.target.closest && e.target.closest('button[data-mode]'); if (!b) return; mode = b.dataset.mode; render(); };
+    modal.querySelector('.sq132-back').onclick = function(){ bd.remove(); try{ if (typeof window.openLeagueRankingsDialog === 'function') window.openLeagueRankingsDialog(); }catch(_){ } };
+    modal.querySelector('.sq132-close').onclick = function(){ bd.remove(); };
+    bd.addEventListener('click', function(e){ if (e.target === bd) bd.remove(); });
+    render();
+  };
+  window.openPowerLeagueDialog = __sqOpenPowerRankingsCurrentClean;
+  window.openPowerRankingsDialog = __sqOpenPowerRankingsCurrentClean;
+  try{ openPowerLeagueDialog = window.openPowerLeagueDialog; }catch(_){ }
+  try{ openPowerRankingsDialog = window.openPowerRankingsDialog; }catch(_){ }
+  document.addEventListener('click', function(e){
+    var b = e.target && e.target.closest ? e.target.closest('#leaguePowerRankingsBtn,[data-action="power-rankings"],[data-open="power-rankings"]') : null;
+    if (!b) return;
+    try{ e.preventDefault(); e.stopPropagation(); if(e.stopImmediatePropagation)e.stopImmediatePropagation(); }catch(_){ }
+    window.openPowerRankingsDialog('official');
+  }, true);
+
+  window.__sqDebugPowerRankings = async function __sqDebugPowerRankings(){
+    var out = {};
+    for (var i=0;i<['official','turbo','practice'].length;i++){
+      var m = ['official','turbo','practice'][i];
+      try{
+        var rows = await fetchPowerRows(m);
+        out[m] = { view: modeView(m), count: rows.length, top5: rows.slice(0,5) };
+      }catch(e){ out[m] = { view: modeView(m), error: String(e && (e.message || e) || e) }; }
+    }
+    return out;
+  };
+})();
+// <<< PATCH:FIX169_POWER_RANKINGS_CURRENT_CLEAN_SOURCE END
 </script>
 
 </body>
