@@ -2626,6 +2626,24 @@ body[data-page="game"] #gameScrollGate{
 
 /* Mode accents (icon colour only) */
 .sg-opt--match{ --sgAccent: var(--shatekiOrange, #ff7a00); }
+.sg-opt--turbo{
+  --sgAccent: #00F5FF;
+  background: linear-gradient(180deg, rgba(10,18,36,.96), rgba(7,26,47,.94));
+  border-color: rgba(0,245,255,.35);
+  box-shadow: 0 10px 26px rgba(0,0,0,.28), 0 0 24px rgba(0,163,255,.22);
+}
+.sg-opt--turbo:hover{
+  border-color: rgba(0,245,255,.55);
+  background: linear-gradient(180deg, rgba(10,25,50,.98), rgba(7,31,58,.96));
+  box-shadow: 0 12px 30px rgba(0,0,0,.32), 0 0 30px rgba(0,163,255,.34);
+}
+.sg-opt--turbo .sg-ico{
+  background: rgba(0,163,255,.12);
+  border-color: rgba(0,245,255,.35);
+  box-shadow: 0 0 18px rgba(0,163,255,.45);
+}
+.sg-opt--turbo .sg-opt-title{ color:#B8F3FF; }
+.sg-opt--turbo .sg-opt-desc{ color:#7FAEC8; }
 .sg-opt--tournament{ --sgAccent: rgba(255,255,255,.32); }
 .sg-opt--practice{ --sgAccent: #3aa5ff; }
 .sg-opt--training{ --sgAccent: #2fe07b; }
@@ -2642,6 +2660,36 @@ body[data-page="game"] #gameScrollGate{
   margin-top: 0;
   background: transparent;
   justify-content:center;
+}
+
+.sq-turbo-ready-modal{
+  max-width:420px;
+  text-align:center;
+  background:linear-gradient(180deg, rgba(10,18,36,.98), rgba(7,26,47,.98));
+  border:1px solid rgba(0,245,255,.35);
+  box-shadow:0 22px 60px rgba(0,0,0,.55), 0 0 34px rgba(0,163,255,.30);
+}
+.sq-turbo-ready-title{
+  font-size:24px;
+  line-height:1.08;
+  font-weight:950;
+  letter-spacing:.06em;
+  color:#B8F3FF;
+  text-transform:uppercase;
+}
+.sq-turbo-ready-sub{
+  margin-top:14px;
+  font-size:17px;
+  font-weight:850;
+  color:rgba(240,252,255,.92);
+}
+.sq-turbo-ready-start{
+  margin-top:18px;
+  min-width:190px;
+  border-color:rgba(0,245,255,.55)!important;
+  background:linear-gradient(180deg, #00A3FF, #0874c8)!important;
+  color:#061425!important;
+  box-shadow:0 0 26px rgba(0,163,255,.45)!important;
 }
 .sg-footer .btn{
   width: 140px;
@@ -15725,6 +15773,8 @@ let __msPlayers = []; // { type:'registered'|'guest', name:'' }
 function __msResetSetupForMode(mode){
   try{
     window.__sqSelectedMode = mode || window.__sqSelectedMode || 'match';
+    if (window.__sqSelectedMode !== 'match') window.__sqSelectedMatchVariant = 'classic';
+    else window.__sqSelectedMatchVariant = window.__sqSelectedMatchVariant || 'classic';
     __msPlayers = [];
     __mlSelectedGames = 0;
     const ml = byId('matchLengthModal');
@@ -15984,9 +16034,45 @@ if (mlStartBtn) {
     assignUniqueColors(state.players);
 
     const __selMode = (window.__sqSelectedMode || 'official');
+    const __matchVariant = (__selMode === 'match' && window.__sqSelectedMatchVariant === 'turbo') ? 'turbo' : 'classic';
+    const __isMatchTurbo = (__selMode === 'match' && __matchVariant === 'turbo');
+    try{
+      delete state.gameFormat;
+      delete state.gameVariant;
+      delete state.mode;
+      delete state.gameMode;
+      delete state.startTarget;
+      delete state.strictTimer;
+      delete state.throwLimitSeconds;
+      delete state.tournamentType;
+      delete state.tournamentRules;
+      if (__selMode === 'match') {
+        try{ window.__sqTournamentDraft = null; }catch(__){}
+        delete state.__sqTournamentDraft;
+        delete state.__sqTournamentActive;
+        delete state.__sqTournamentTurboTimer;
+        try{ sessionStorage.removeItem('sq_tournament_runtime_v1'); }catch(__){}
+      }
+    }catch(_){ }
+    if (__isMatchTurbo) {
+      state.gameFormat = 'match_play';
+      state.gameVariant = 'turbo';
+      state.mode = 'turbo';
+      state.gameMode = 'turbo';
+      state.startTarget = '17';
+      state.strictTimer = true;
+      state.throwLimitSeconds = 20;
+    }
     state.match = {
       id: genUuidV4(),
-      mode: __selMode,
+      mode: __isMatchTurbo ? 'turbo' : __selMode,
+      gameMode: __isMatchTurbo ? 'turbo' : undefined,
+      gameFormat: (__selMode === 'match') ? 'match_play' : undefined,
+      gameVariant: (__selMode === 'match') ? __matchVariant : undefined,
+      startTarget: __isMatchTurbo ? '17' : undefined,
+      strictTimer: __isMatchTurbo ? true : undefined,
+      throwLimitSeconds: __isMatchTurbo ? 20 : undefined,
+      tournament: __isMatchTurbo ? false : undefined,
       forcePractice: (__selMode === 'practice'),
       practiceType: (__selMode === 'practice' ? (window.__sqPracticeGameType || 'classic') : null),
       createdAtIso: _tsOverride || new Date().toISOString(),
@@ -21690,6 +21776,14 @@ async function recordFullGameToSupabase(createdAtOverride) {
     const isPractice = (gameMode === 'practice');
     const isTurbo    = (gameMode === 'turbo');
     const turboRules = (state && state.match && state.match.tournamentRules) || (state && state.tournamentRules) || {};
+    const matchState = (state && state.match) || {};
+    const isActualTournament = !!(matchState.tournament === true || matchState.tournamentType || matchState.tournamentSize || matchState.tournamentMatch || state?.__sqTournamentDraft || state?.__sqTournamentActive);
+    const isMatchPlayTurbo = !!(isTurbo && !isActualTournament && (
+      String(matchState.gameFormat || state?.gameFormat || '').toLowerCase() === 'match_play' ||
+      String(matchState.gameVariant || state?.gameVariant || '').toLowerCase() === 'turbo' ||
+      String(matchState.mode || matchState.gameMode || state?.mode || state?.gameMode || '').toLowerCase() === 'turbo' ||
+      String(matchState.startTarget || state?.startTarget || '').toLowerCase() === '17'
+    ));
 
     // >>> PATCH:practice-save-v4-recordfull-dedupe START
     // recordFullGameToSupabase is still called from awardAndShowLeaderboard after
@@ -21760,11 +21854,14 @@ async function recordFullGameToSupabase(createdAtOverride) {
         board: boardClone,
         mode: gameMode,
         gameMode: gameMode,
+        gameFormat: isMatchPlayTurbo ? 'match_play' : undefined,
+        gameVariant: isMatchPlayTurbo ? 'turbo' : undefined,
+        tournament: isMatchPlayTurbo ? false : undefined,
         is_practice: isPractice,
         total_players: state.players.length,
         match_id: isPractice ? practiceMatchId : (state.match?.id || null),
-        tournamentType: isTurbo ? 'turbo' : (state?.match?.tournamentType || state?.tournamentType || undefined),
-        tournamentRules: isTurbo ? Object.assign({ strictTimer:true, throwLimitSeconds:20, startTarget:'17' }, turboRules || {}) : undefined,
+        tournamentType: (isTurbo && isActualTournament) ? 'turbo' : (state?.match?.tournamentType || state?.tournamentType || undefined),
+        tournamentRules: (isTurbo && isActualTournament) ? Object.assign({ strictTimer:true, throwLimitSeconds:20, startTarget:'17' }, turboRules || {}) : undefined,
         strictTimer: isTurbo ? true : undefined,
         throwLimitSeconds: isTurbo ? 20 : undefined,
         startTarget: isTurbo ? '17' : undefined,
@@ -26428,6 +26525,7 @@ function arrangeStartActions(){
             const ICONS = {
         match: "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/><circle cx='8.5' cy='7' r='3'/><path d='M23 21v-2a4 4 0 0 0-3-3.87'/><path d='M16 3.13a3 3 0 0 1 0 5.74'/></svg>",
         tournament: "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M8 21h8'/><path d='M12 17v4'/><path d='M7 4h10v3a5 5 0 0 1-10 0V4z'/><path d='M5 6h2v2a4 4 0 0 1-2-2z'/><path d='M19 6h-2v2a4 4 0 0 0 2-2z'/></svg>",
+        turbo: "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M13 2L4 14h7l-1 8 10-13h-7l0-7z'/></svg>",
         practice: "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='8'/><circle cx='12' cy='12' r='4'/><path d='M12 2v2'/><path d='M22 12h-2'/><path d='M12 22v-2'/><path d='M2 12h2'/></svg>",
         training: "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M2 12h2'/><path d='M20 12h2'/><path d='M6 9v6'/><path d='M18 9v6'/><path d='M6 12h12'/><path d='M4 10v4'/><path d='M20 10v4'/></svg>"
       };
@@ -26460,12 +26558,13 @@ function arrangeStartActions(){
       // MATCH PLAY = existing NEW GAME logic.
       // Fix72: Practice submenu clears startGameBody, removing original questBtn.
       // Recreate/bind it here so Back from Practice always restores MATCH PLAY.
-      let matchPlay = document.getElementById("questBtn");
-      if (!matchPlay){
-        matchPlay = doc.createElement("button");
-        matchPlay.id = "questBtn";
-        matchPlay.type = "button";
+      const oldMatchPlay = document.getElementById("questBtn");
+      if (oldMatchPlay && oldMatchPlay.parentNode) {
+        try{ oldMatchPlay.parentNode.removeChild(oldMatchPlay); }catch(_){}
       }
+      let matchPlay = doc.createElement("button");
+      matchPlay.id = "questBtn";
+      matchPlay.type = "button";
       matchPlay.className = "sg-opt sg-opt--match";
       matchPlay.disabled = false;
       matchPlay.setAttribute("aria-disabled","false");
@@ -26477,12 +26576,59 @@ function arrangeStartActions(){
           '</div>'+
           '<div class="sg-opt-desc">GAMES BETWEEN 1 AND 6 PEOPLE</div>' +
         '</div>';
+      const openMatchVariantMenu = () => {
+        startGameBody.innerHTML = '';
+
+        const intro = doc.createElement('div');
+        intro.className = 'sg-practice-intro';
+        intro.innerHTML = '<div class="sg-practice-title">MATCH PLAY</div><div class="sg-practice-sub">Choose Classic or Turbo.</div>';
+
+        const classic = makeOpt('matchClassicBtn', 'match', 'CLASSIC', 'STANDARD MATCH PLAY GAME', '', true);
+        classic.onclick = (e)=>{
+          e.preventDefault();
+          window.__sqSelectedMode = 'match';
+          window.__sqSelectedMatchVariant = 'classic';
+          if (typeof __msResetSetupForMode === "function") __msResetSetupForMode("match");
+          closeModal("startGameModal");
+          show("players");
+        };
+
+        const turbo = makeOpt('matchTurboBtn', 'turbo', 'TURBO', 'STARTS AT 17S WITH STRICT 20 SECOND TURNS', '', true);
+        turbo.onclick = (e)=>{
+          e.preventDefault();
+          window.__sqSelectedMode = 'match';
+          window.__sqSelectedMatchVariant = 'turbo';
+          if (typeof __msResetSetupForMode === "function") __msResetSetupForMode("match");
+          closeModal("startGameModal");
+          show("players");
+        };
+
+        const footer = doc.createElement('div');
+        footer.className = 'modal-footer sg-practice-footer';
+        const back = doc.createElement('button');
+        back.type = 'button';
+        back.className = 'btn';
+        back.textContent = 'Back';
+        back.onclick = (e)=>{
+          e.preventDefault();
+          arrangeStartActions();
+        };
+        const close = doc.createElement('button');
+        close.type = 'button';
+        close.className = 'btn';
+        close.textContent = 'Close';
+        close.onclick = (e)=>{
+          e.preventDefault();
+          closeModal('startGameModal');
+        };
+        footer.append(back, close);
+
+        startGameBody.append(intro, classic, turbo, footer);
+      };
+
       matchPlay.onclick = (e)=>{
         e.preventDefault();
-        if (typeof __msResetSetupForMode === "function") __msResetSetupForMode("match");
-        else window.__sqSelectedMode = "match";
-        closeModal("startGameModal");
-        show("players");
+        openMatchVariantMenu();
       };
 
       const openPracticeTypeMenu = () => {
@@ -40808,105 +40954,98 @@ __sqDmdInitV7();
     ov.remove = function(){ try{ window.removeEventListener('resize', redraw); }catch(_){ } oldRemove(); };
   }
 
-  window.openPlayerH2HDialog = async function openPlayerH2HDialog(playerName){
-    var games = [];
-    try{ games = await getGamesForMode('official'); }catch(e){ console.error('H2H games fetch failed', e); games = []; }
-
-    var vs = new Map();
-    (games || []).forEach(function(g){
-      var players = sqPlayers(g);
-      var totals = sqTotals(g);
-      if (!Array.isArray(players) || !Array.isArray(totals)) return;
-      var me = players.findIndex(function(p){ return p && sqEqName(p.name, playerName); });
-      if (me === -1) return;
-      var myTotal = Number(totals[me] || 0);
-      var dt = sqGameDate(g);
-      players.forEach(function(p, j){
-        if (j === me || !p) return;
-        var oppName = String(p.name || '').trim();
-        if (!oppName) return;
-        var oppTotal = Number(totals[j] || 0);
-        var rec = vs.get(oppName) || { opp: oppName, games:0, wins:0, losses:0, draws:0, for:0, against:0, last:null };
-        rec.games++;
-        if (myTotal > oppTotal) rec.wins++; else if (myTotal < oppTotal) rec.losses++; else rec.draws++;
-        rec.for += myTotal; rec.against += oppTotal;
-        if (dt && (!rec.last || dt > rec.last)) rec.last = dt;
-        vs.set(oppName, rec);
-      });
-    });
-
-    var rows = Array.from(vs.values()).map(function(r){
-      return {
-        name:r.opp,
-        gp:r.games,
-        w:r.wins,
-        l:r.losses,
-        d:r.draws,
-        winPct:r.games ? (r.wins/r.games*100) : 0,
-        avgDiff:r.games ? ((r.for-r.against)/r.games) : 0,
-        last:r.last,
-        isEligible:(Number(r.games)||0) >= 4
-      };
-    }).sort(function(a,b){
-      /* @RANKING:H2H_SORT_ORDER
-         H2H League sort: eligible first, Win % desc, Avg Diff desc, Wins desc, GP desc, Name asc.
-         This table is a general H2H dominance table, not pure nemesis logic. */
-      if (a.isEligible !== b.isEligible) return a.isEligible ? -1 : 1;
-      if (a.isEligible && b.isEligible){
-        return (b.winPct-a.winPct) ||
-          (b.avgDiff-a.avgDiff) ||
-          (b.w-a.w) ||
-          (b.gp-a.gp) ||
-          a.name.localeCompare(b.name);
-      }
-      return (b.gp-a.gp) ||
-        (b.winPct-a.winPct) ||
-        (b.avgDiff-a.avgDiff) ||
-        a.name.localeCompare(b.name);
-    });
+	  window.openPlayerH2HDialog = async function openPlayerH2HDialog(playerName){
+	    var playerKey = String(playerName || '').trim().toLowerCase();
+	    var rows = [];
+	    var h2hUnavailable = false;
+	
+	    try{
+	      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) throw new Error('Supabase client unavailable');
+	      var client = window.sb || window.__sb || (typeof sb !== 'undefined' ? sb : null) || window.supabaseClient || null;
+	      if (!client || typeof client.rpc !== 'function') throw new Error('Supabase RPC client unavailable');
+	      var result = await client.rpc('rpc_h2h_official_summary', { p_range: 'all' });
+	      if (result && result.error) throw result.error;
+	      rows = ((result && result.data) || [])
+	        .filter(function(r){ return String((r && r.player_a_key) || '').trim().toLowerCase() === playerKey; })
+	        .map(function(r){
+	          var gp = Number(r && r.games_played || 0);
+	          var winPct = Number(r && r.player_a_win_pct);
+	          var avgDiff = Number(r && r.avg_score_diff);
+	          return {
+	            name:String((r && r.player_b_name) || '').trim(),
+	            gp:gp,
+	            w:Number(r && r.player_a_wins || 0),
+	            l:Number(r && r.player_b_wins || 0),
+	            winPct:winPct,
+	            hasWinPct:Number.isFinite(winPct),
+	            avgDiff:avgDiff,
+	            hasAvgDiff:Number.isFinite(avgDiff),
+	            isEligible:gp >= 4
+	          };
+	        })
+	        .filter(function(r){ return !!r.name; });
+	    }catch(e){
+	      h2hUnavailable = true;
+	      rows = [];
+	      try{ console.warn('[SQ] H2H League RPC unavailable', e); }catch(_){}
+	    }
+	
+	    rows.sort(function(a,b){
+	      /* @RANKING:H2H_DB_SORT_ORDER
+	         Clean Official H2H League sort: eligible first, Win % asc, Avg Diff asc, GP desc, Name asc. */
+	      if (a.isEligible !== b.isEligible) return a.isEligible ? -1 : 1;
+	      var aw = a.hasWinPct ? a.winPct : Infinity;
+	      var bw = b.hasWinPct ? b.winPct : Infinity;
+	      var ad = a.hasAvgDiff ? a.avgDiff : Infinity;
+	      var bd = b.hasAvgDiff ? b.avgDiff : Infinity;
+	      return (aw-bw) ||
+	        (ad-bd) ||
+	        (b.gp-a.gp) ||
+	        a.name.localeCompare(b.name);
+	    });
 
     var overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
     var modal = document.createElement('div'); modal.className = 'modal sq-wide-modal';
     var title = document.createElement('h3'); title.textContent = 'Head-to-Head — ' + playerName;
     var body = document.createElement('div'); body.className = 'modal-body';
 
-    var hint = document.createElement('div');
-    hint.className = 'muted';
-    hint.style.margin = '0 0 10px';
-    hint.textContent = 'Tap an opponent to view rolling win %. Players with fewer than 4 games stay greyed out until they qualify.';
-    body.appendChild(hint);
-
-    if (!rows.length){
-      var p = document.createElement('p'); p.textContent = 'No head-to-head data (official games only).'; body.appendChild(p);
-    } else {
-      var table = document.createElement('table'); table.className = 'hs-table sq-h2h-table';
-      var thead = document.createElement('thead'); var trh = document.createElement('tr');
-      ['#','Opponent','GP','W','L','Win %','Avg Diff'].forEach(function(x){ var th=document.createElement('th'); th.textContent=x; trh.appendChild(th); });
-      thead.appendChild(trh); table.appendChild(thead);
-      var tbody = document.createElement('tbody');
-      var pos = 0;
-      rows.forEach(function(r){
-        var tr = document.createElement('tr');
-        tr.style.cursor = 'pointer';
-        if (!r.isEligible){
-          tr.className = 'sq-h2h-ineligible';
-          tr.style.opacity = '.52';
-        }
-        tr.title = r.isEligible ? 'Open rolling win % graph' : 'Open rolling win % graph - needs 4 games to qualify';
-        var td = function(t,c){ var x=document.createElement('td'); x.textContent=t; if(c) x.className=c; return x; };
-        var rankText = r.isEligible ? String(++pos) : '—';
-        tr.append(
+	    var hint = document.createElement('div');
+	    hint.className = 'muted';
+	    hint.style.margin = '0 0 10px';
+	    hint.textContent = 'Clean official H2H League from Supabase. Rolling graph is unavailable in this DB-backed view.';
+	    body.appendChild(hint);
+	
+	    if (h2hUnavailable){
+	      var p = document.createElement('p'); p.textContent = 'H2H League data is not available yet. Required Supabase RPC/data source is missing.'; body.appendChild(p);
+	    } else if (!rows.length){
+	      var p = document.createElement('p'); p.textContent = 'No H2H records yet for this player.'; body.appendChild(p);
+	    } else {
+	      var table = document.createElement('table'); table.className = 'hs-table sq-h2h-table';
+	      var thead = document.createElement('thead'); var trh = document.createElement('tr');
+	      ['#','Name','Played','W','L','Win %','Avg Score Diff'].forEach(function(x){ var th=document.createElement('th'); th.textContent=x; trh.appendChild(th); });
+	      thead.appendChild(trh); table.appendChild(thead);
+	      var tbody = document.createElement('tbody');
+	      var pos = 0;
+	      rows.forEach(function(r){
+	        var tr = document.createElement('tr');
+	        if (!r.isEligible){
+	          tr.className = 'sq-h2h-ineligible';
+	          tr.style.opacity = '.52';
+	        }
+	        tr.title = r.isEligible ? 'Official H2H League row' : 'Needs 4 games to qualify';
+	        var td = function(t,c){ var x=document.createElement('td'); x.textContent=t; if(c) x.className=c; return x; };
+	        var rankText = r.isEligible ? String(++pos) : '—';
+	        tr.append(
           td(rankText,'num'),
-          td(r.name),
-          td(String(r.gp),'num'),
-          td(String(r.w),'num'),
-          td(String(r.l),'num'),
-          td(r.winPct.toFixed(1)+'%','num'),
-          td((r.avgDiff>=0?'+':'')+r.avgDiff.toFixed(1),'num')
-        );
-        tr.onclick = function(){ openH2HOpponentGraph(playerName, r.name, games); };
-        tbody.appendChild(tr);
-      });
+	          td(r.name),
+	          td(String(r.gp),'num'),
+	          td(String(r.w),'num'),
+	          td(String(r.l),'num'),
+	          td(r.hasWinPct ? (r.winPct.toFixed(1)+'%') : '—','num'),
+	          td(r.hasAvgDiff ? ((r.avgDiff>=0?'+':'')+r.avgDiff.toFixed(1)) : '—','num')
+	        );
+	        tbody.appendChild(tr);
+	      });
       table.appendChild(tbody);
       body.appendChild(table);
     }
@@ -41531,13 +41670,29 @@ __sqDmdInitV7();
       startNewGame = function(setOrder){
         const ret = __sqOriginalStartNewGame.apply(this, arguments);
         try{
-          const rules = state && state.match && state.match.tournament ? (state.match.tournamentRules || {}) : null;
-          const startIdx = rules && Number.isFinite(+rules.startRoundIndex) ? Math.max(0, Math.min((typeof MAX_ROUNDS === 'number' ? MAX_ROUNDS - 1 : 13), +rules.startRoundIndex)) : 0;
+          const m = state && state.match ? state.match : {};
+          const rules = (m && (m.tournamentRules || m.rules)) || {};
+          const turboLike = String(m.gameVariant || state?.gameVariant || '').toLowerCase() === 'turbo'
+            || String(m.mode || m.gameMode || state?.mode || state?.gameMode || '').toLowerCase() === 'turbo'
+            || String(m.startTarget || rules.startTarget || state?.startTarget || '').toLowerCase() === '17';
+          const rawStartIdx = Number.isFinite(+rules.startRoundIndex)
+            ? +rules.startRoundIndex
+            : (Number.isFinite(+m.startRoundIndex) ? +m.startRoundIndex : (turboLike ? 7 : 0));
+          const startIdx = Math.max(0, Math.min((typeof MAX_ROUNDS === 'number' ? MAX_ROUNDS - 1 : 13), rawStartIdx));
           if (setOrder && startIdx > 0){
             state.currentRound = startIdx;
             state.currentPlayer = 0;
             state.currentDart = 0;
-            state.__sqTournamentTurboTimer = rules.strictTimer ? { seconds:Number(rules.throwLimitSeconds || 20), strict:true, pending:true } : null;
+            if (turboLike) {
+              window.__sqTurboPreStartArmed = true;
+              window.__sqTurboPreStartReleased = false;
+              window.__sqTurboPreStartShowing = false;
+              window.__sqTurboPreStartToken = String(state?.__gameToken || '') + '|' + String(Date.now());
+              [80, 240, 600].forEach(function(ms){
+                setTimeout(function(){ try{ if (typeof window.__sqShowTurboReadyGate === 'function') window.__sqShowTurboReadyGate(); }catch(_){} }, ms);
+              });
+            }
+            if (m.tournament) state.__sqTournamentTurboTimer = rules.strictTimer ? { seconds:Number(rules.throwLimitSeconds || 20), strict:true, pending:true } : null;
             try{ save(); }catch(_){}
             setTimeout(function(){ try{ updateUI(); }catch(_){} }, 0);
           }
@@ -41579,12 +41734,20 @@ body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger::after{ animation:
       const m = (typeof state !== 'undefined' && state) ? (state.match || {}) : {};
       const draft = window.__sqTournamentDraft || state?.__sqTournamentDraft || null;
       const type = String(m.tournamentType || m.type || draft?.type || state?.tournamentType || '').toLowerCase();
-      return !!(type === 'turbo' || m.strictTimer === true || m.throwLimitSeconds === 20 || state?.strictTimer === true || state?.throwLimitSeconds === 20);
+      const mode = String(m.mode || m.gameMode || state?.mode || state?.gameMode || '').toLowerCase();
+      const variant = String(m.gameVariant || state?.gameVariant || '').toLowerCase();
+      const startTarget = String(m.startTarget || state?.startTarget || m.tournamentRules?.startTarget || draft?.rules?.startTarget || '').toLowerCase();
+      return !!(type === 'turbo' || variant === 'turbo' || mode === 'turbo' || startTarget === '17' || m.strictTimer === true || m.throwLimitSeconds === 20 || state?.strictTimer === true || state?.throwLimitSeconds === 20);
+    }catch(_){ return false; }
+  }
+  function turboGatePending(){
+    try{
+      return !!(isTurboGame() && window.__sqTurboPreStartArmed === true && window.__sqTurboPreStartReleased !== true);
     }catch(_){ return false; }
   }
   function gameActive(){
     try{
-      return document.body?.dataset?.page === 'game' && typeof state !== 'undefined' && state && !state.finished && !state?.suddenDeath?.active && Array.isArray(state.players) && state.players.length >= 2 && isTurboGame();
+      return document.body?.dataset?.page === 'game' && typeof state !== 'undefined' && state && !state.finished && !state?.suddenDeath?.active && Array.isArray(state.players) && state.players.length >= 2 && isTurboGame() && !turboGatePending();
     }catch(_){ return false; }
   }
   function turnKey(){
@@ -41604,6 +41767,9 @@ body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger::after{ animation:
   }
   function renderTimer(){
     try{
+      if (turboGatePending()) {
+        try{ if (document.body?.dataset?.page === 'game' && typeof window.__sqShowTurboReadyGate === 'function') window.__sqShowTurboReadyGate(); }catch(_){}
+      }
       ensureTimer();
       if (!timer) return;
       const elapsed = performance.now() - timer.startedAt;
@@ -41619,6 +41785,43 @@ body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger::after{ animation:
       if (elapsed >= LIMIT_MS && !timer.fired){ timer.fired = true; autoMissTurn(timer.key); }
     }catch(e){ try{ console.warn('[SQ] turbo timer render failed', e); }catch(_){ } }
   }
+  function releaseTurboGate(){
+    try{
+      if (window.__sqTurboPreStartReleased === true) return;
+      window.__sqTurboPreStartReleased = true;
+      window.__sqTurboPreStartArmed = false;
+      window.__sqTurboPreStartShowing = false;
+      timer = null;
+      clearBoxes();
+      document.querySelectorAll('.sq-turbo-ready-backdrop').forEach(n=>{ try{ n.remove(); }catch(_){} });
+      setTimeout(renderTimer, 0);
+    }catch(_){ }
+  }
+  window.__sqReleaseTurboReadyGate = releaseTurboGate;
+  window.__sqShowTurboReadyGate = function(){
+    try{
+      if (!turboGatePending()) return;
+      if (document.body?.dataset?.page !== 'game') return;
+      if (window.__sqTurboPreStartShowing === true || document.querySelector('.sq-turbo-ready-backdrop')) return;
+      window.__sqTurboPreStartShowing = true;
+      const bd = document.createElement('div');
+      bd.className = 'modal-backdrop sq-turbo-ready-backdrop';
+      const modal = document.createElement('div');
+      modal.className = 'modal sq-turbo-ready-modal';
+      modal.innerHTML = '<div class="sq-turbo-ready-title">TURBO GAME LOADED...</div><div class="sq-turbo-ready-sub">Players Ready?</div><button type="button" class="btn sq-turbo-ready-start">START GAME</button>';
+      bd.appendChild(modal);
+      document.body.appendChild(bd);
+      const start = modal.querySelector('.sq-turbo-ready-start');
+      const close = function(){
+        if (window.__sqTurboPreStartReleased === true) return;
+        releaseTurboGate();
+      };
+      if (start) start.onclick = function(e){ try{ e.preventDefault(); e.stopPropagation(); }catch(_){} close(); };
+      bd.addEventListener('click', function(e){ if (e.target === bd) close(); });
+      modal.tabIndex = 0;
+      setTimeout(function(){ try{ modal.focus(); }catch(_){} }, 0);
+    }catch(e){ try{ console.warn('[SQ] Turbo ready gate failed', e); }catch(_){} releaseTurboGate(); }
+  };
   function autoMissTurn(key){
     if (firing) return;
     try{
@@ -42712,56 +42915,112 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     // Official High Score League uses the DB-classified clean view only. Do not fall back to high_scores_sp,
     // high_score_league_official, legacy__high_score_league_official, or browser game aggregation.
     var res=await client.from('v_high_score_league_official_from_games_clean')
-      .select('player,best_score,best_ts,game_id')
+      .select('player,best_score,best_ts,game_id,avg_round,rounds')
       .order('best_score',{ascending:false})
       .order('best_ts',{ascending:false})
       .limit(5000);
+    if(res&&res.error){
+      res=await client.from('v_high_score_league_official_from_games_clean')
+        .select('player,best_score,best_ts,game_id,avg_round')
+        .order('best_score',{ascending:false})
+        .order('best_ts',{ascending:false})
+        .limit(5000);
+    }
+    if(res&&res.error){
+      res=await client.from('v_high_score_league_official_from_games_clean')
+        .select('player,best_score,best_ts,game_id,rounds')
+        .order('best_score',{ascending:false})
+        .order('best_ts',{ascending:false})
+        .limit(5000);
+    }
+    if(res&&res.error){
+      res=await client.from('v_high_score_league_official_from_games_clean')
+        .select('player,best_score,best_ts,game_id')
+        .order('best_score',{ascending:false})
+        .order('best_ts',{ascending:false})
+        .limit(5000);
+    }
     if(res&&res.error) throw res.error;
     var saved=await savedPlayerKeys();
     return (Array.isArray(res&&res.data)?res.data:[]).map(function(r){
-      return {player:String(r.player||'').trim(),playerKey:norm(r.player),score:Number(r.best_score||0),ts:r.best_ts||'',game_id:r.game_id||''};
+      var score=Number(r.best_score||0);
+      var hasAvg=r.avg_round!==null&&r.avg_round!==undefined&&r.avg_round!=='';
+      var hasRounds=r.rounds!==null&&r.rounds!==undefined&&r.rounds!=='';
+      var avg=hasAvg?Number(r.avg_round):NaN, rounds=hasRounds?Number(r.rounds):NaN;
+      if(!Number.isFinite(avg)&&Number.isFinite(score)&&Number.isFinite(rounds)&&rounds>0) avg=score/rounds;
+      return {player:String(r.player||'').trim(),playerKey:norm(r.player),score:score,avg:Number.isFinite(avg)?avg:null,ts:r.best_ts||'',game_id:r.game_id||''};
     }).filter(function(r){return r.player&&r.score>0&&(!saved.size||saved.has(r.playerKey));})
       .sort(function(a,b){return (b.score-a.score)||(parseMs(b.ts)-parseMs(a.ts))||String(a.player).localeCompare(String(b.player));});
-  }
-  async function fetchTurboHighScoreLeagueClean(){
-    if (typeof window.__sqFetchPlayerGameScoresFromCleanRoundScores !== 'function') return [];
-    var saved=await savedPlayerKeys();
-    var best=new Map();
-    (await window.__sqFetchPlayerGameScoresFromCleanRoundScores('turbo')).forEach(function(r){
-      var key=norm(r.playerKey||r.player);
-      if(!key||!r.player||!(Number(r.score)>0))return;
-      if(saved.size&&!saved.has(key))return;
-      var prev=best.get(key);
-      if(!prev||Number(r.score)>Number(prev.score)||((Number(r.score)===Number(prev.score))&&(parseMs(r.ts)>parseMs(prev.ts)))){
-        best.set(key,{player:r.player,playerKey:key,score:Number(r.score),ts:r.ts||'',game_id:r.game_id||''});
-      }
-    });
-    return Array.from(best.values()).sort(function(a,b){return (b.score-a.score)||(parseMs(b.ts)-parseMs(a.ts))||String(a.player).localeCompare(String(b.player));});
-  }
+	  }
+	  async function fetchTurboHighScoreLeagueClean(){
+	    var saved=await savedPlayerKeys();
+	    var client=null;
+	    try{ if(typeof ensureCloudInit==='function') ensureCloudInit(); }catch(_){}
+	    try{ client=window.sb||(typeof sb!=='undefined'?sb:null); }catch(_){ client=null; }
+	    if(!client||typeof client.from!=='function') throw new Error('Supabase client unavailable');
+	    // @MODE:HIGH_SCORE_LEAGUE_TURBO_CLEAN_SOURCE
+	    // Turbo High Score League uses the DB-classified clean view only. Do not fall back
+	    // to browser aggregation or Official sources for production Turbo rows.
+	    var res=await client.from('v_high_score_league_turbo_from_games_clean')
+	      .select('player,best_score,best_ts,game_id,avg_round,rounds')
+	      .order('best_score',{ascending:false})
+	      .order('best_ts',{ascending:false})
+	      .limit(5000);
+	    if(res&&res.error){
+	      res=await client.from('v_high_score_league_turbo_from_games_clean')
+	        .select('player,best_score,best_ts,game_id,avg_round')
+	        .order('best_score',{ascending:false})
+	        .order('best_ts',{ascending:false})
+	        .limit(5000);
+	    }
+	    if(res&&res.error){
+	      res=await client.from('v_high_score_league_turbo_from_games_clean')
+	        .select('player,best_score,best_ts,game_id,rounds')
+	        .order('best_score',{ascending:false})
+	        .order('best_ts',{ascending:false})
+	        .limit(5000);
+	    }
+	    if(res&&res.error){
+	      res=await client.from('v_high_score_league_turbo_from_games_clean')
+	        .select('player,best_score,best_ts,game_id')
+	        .order('best_score',{ascending:false})
+	        .order('best_ts',{ascending:false})
+	        .limit(5000);
+	    }
+	    if(res&&res.error) throw res.error;
+	    return (Array.isArray(res&&res.data)?res.data:[]).map(function(r){
+	      var score=Number(r.best_score||0);
+	      var hasAvg=r.avg_round!==null&&r.avg_round!==undefined&&r.avg_round!=='';
+	      var hasRounds=r.rounds!==null&&r.rounds!==undefined&&r.rounds!=='';
+	      var avg=hasAvg?Number(r.avg_round):NaN, rounds=hasRounds?Number(r.rounds):NaN;
+	      if(!Number.isFinite(avg)&&Number.isFinite(score)&&Number.isFinite(rounds)&&rounds>0) avg=score/rounds;
+	      return {player:String(r.player||'').trim(),playerKey:norm(r.player),score:score,avg:Number.isFinite(avg)?avg:null,ts:r.best_ts||'',game_id:r.game_id||''};
+	    }).filter(function(r){return r.player&&r.score>0&&(!saved.size||saved.has(r.playerKey));})
+	      .sort(function(a,b){return (b.score-a.score)||(parseMs(b.ts)-parseMs(a.ts))||String(a.player).localeCompare(String(b.player));});
+	  }
 
   window.openHighScoreLeagueDialog = async function(initialMode){
     var mode=String(initialMode||'official').toLowerCase()==='turbo'?'turbo':'official';
     try{if(typeof window.__sqCleanupLeagueRankingsOverlays==='function')window.__sqCleanupLeagueRankingsOverlays();}catch(_){}
     var ui=buildModal('High Score League','Highest verified match score per saved player.',[{mode:'official',label:'Official'},{mode:'turbo',label:'Turbo'}]);
     ui.overlay.classList.add('sq-hs-league-backdrop','sq-fix100-hsl');
-    ui.body.innerHTML='<div class="sq-league-note"></div><div class="table-wrap"><table class="sq-league-table hs-league-table"><colgroup><col style="width:44px"><col><col style="width:92px"><col style="width:122px"></colgroup><thead><tr><th>#</th><th>PLAYER</th><th>HIGH SCORE</th><th>DATE</th></tr></thead><tbody></tbody></table></div>';
-    var tb=ui.body.querySelector('tbody'),note=ui.body.querySelector('.sq-league-note');
+    ui.body.innerHTML='<div class="table-wrap"><table class="sq-league-table hs-league-table"><colgroup><col style="width:44px"><col><col style="width:92px"><col style="width:78px"><col style="width:122px"></colgroup><thead><tr><th>#</th><th>PLAYER</th><th>HIGH SCORE</th><th>AVG</th><th>DATE</th></tr></thead><tbody></tbody></table></div>';
+    var tb=ui.body.querySelector('tbody');
     async function render(){
       setTabs(ui.tabs,mode);
-      note.textContent=mode==='turbo'?'Turbo high scores from clean Supabase mode rows.':'Official high scores from v_high_score_league_official_from_games_clean.';
-      tb.innerHTML='<tr><td colspan="4" style="padding:14px;opacity:.75;">Loading…</td></tr>';
+      tb.innerHTML='<tr><td colspan="5" style="padding:14px;opacity:.75;">Loading…</td></tr>';
       var rows=[];
       try{ rows=mode==='turbo'?await fetchTurboHighScoreLeagueClean():await fetchOfficialHighScoreLeagueClean(); }
       catch(e){
         try{ if(window.SQ_DEBUG)console.warn('[SQ] High Score League clean source read failed', e); }catch(_){}
-        tb.innerHTML='<tr><td colspan="4" style="padding:14px;opacity:.78;">'+(mode==='turbo'?'Turbo':'Official')+' High Score League data is not available yet.</td></tr>';
+        tb.innerHTML='<tr><td colspan="5" style="padding:14px;opacity:.78;">'+(mode==='turbo'?'Turbo':'Official')+' High Score League data is not available yet.</td></tr>';
         return;
       }
       if(!rows.length){
-        tb.innerHTML='<tr><td colspan="4" style="padding:14px;opacity:.78;">'+(mode==='turbo'?'Turbo':'Official')+' High Score League data is not available yet.</td></tr>';
+        tb.innerHTML='<tr><td colspan="5" style="padding:14px;opacity:.78;">'+(mode==='turbo'?'Turbo':'Official')+' High Score League data is not available yet.</td></tr>';
         return;
       }
-      tb.innerHTML=rows.map(function(r,i){return '<tr><td class="rank-cell">'+(i+1)+'</td><td class="player-cell">'+esc(r.player)+'</td><td class="score-cell">'+Math.round(r.score)+'</td><td class="date-cell">'+esc(fmtDateTime(r.ts))+'</td></tr>';}).join('');
+      tb.innerHTML=rows.map(function(r,i){var hasAvg=r.avg!==null&&r.avg!==undefined&&r.avg!=='';var avg=hasAvg?Number(r.avg):NaN;var avgText=Number.isFinite(avg)?avg.toFixed(1):'—';return '<tr><td class="rank-cell">'+(i+1)+'</td><td class="player-cell">'+esc(r.player)+'</td><td class="score-cell">'+Math.round(r.score)+'</td><td class="avg-cell">'+esc(avgText)+'</td><td class="date-cell">'+esc(fmtDateTime(r.ts))+'</td></tr>';}).join('');
     }
     ui.tabs.onclick=function(e){var b=e.target.closest('button[data-mode]');if(!b)return;mode=b.dataset.mode;render();};
     await render();
@@ -44682,47 +44941,38 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
   function labelForMode(mode){ return mode === 'turbo' ? 'Turbo' : (mode === 'practice' ? 'Practice' : 'Official'); }
   function rankKey(s){ return String(s || '').trim().toLowerCase(); }
 
-  async function fetchTop50Rows(mode){
-    var c = client();
-    if (!c || typeof c.from !== 'function') return { rows:[], missing:'Supabase client missing' };
-    var view = mode === 'practice' ? 'v_top50_scores_practice' : (mode === 'official' ? 'v_top50_scores_official' : '');
-    if (!view) {
-      if (mode === 'turbo' && typeof window.__sqFetchPlayerGameScoresFromCleanRoundScores === 'function') {
-        try{
-          return { rows:(await window.__sqFetchPlayerGameScoresFromCleanRoundScores('turbo')).slice(0,50), source:'mv_player_round_scores_mode_clean_app' };
-        }catch(_turboFallback){}
-      }
-      return { rows:[], missing:'Required Supabase view/data source is missing for Turbo Top 50 Scores.' };
-    }
-    try{
-      var q = await c.from(view)
-        .select('player_name,score,rounds,avg_round,ts')
-        .order('score', { ascending:false })
-        .order('ts', { ascending:false })
-        .limit(50);
+	  async function fetchTop50Rows(mode){
+	    var c = client();
+	    if (!c || typeof c.from !== 'function') return { rows:[], missing:'Supabase client missing' };
+	    var view = mode === 'practice' ? 'v_top50_scores_practice' : (mode === 'turbo' ? 'v_top50_scores_turbo_clean' : (mode === 'official' ? 'v_top50_scores_official' : ''));
+	    if (!view) {
+	      return { rows:[], missing:'Required Supabase view/data source is missing for Turbo Top 50 Scores.' };
+	    }
+	    try{
+	      var q = await c.from(view)
+	        .select('player_name,score,rounds,avg_round,ts,game_id')
+	        .order('score', { ascending:false })
+	        .order('ts', { ascending:false })
+	        .limit(50);
       if (q.error) throw q.error;
       var rows = (Array.isArray(q.data) ? q.data : []).map(function(r){
         var rounds = Number(r.rounds || 0);
         var score = Number(r.score || 0);
         var avg = Number(r.avg_round);
         if (!Number.isFinite(avg)) avg = rounds ? score / rounds : 0;
-        return {
-          player:String(r.player_name || '').trim(),
-          score:score,
-          avg:avg,
-          ts:r.ts || ''
-        };
-      }).filter(function(r){ return r.player && r.score > 0; });
-      return { rows:rows, source:view };
-    }catch(e){
-      if (mode === 'turbo' && typeof window.__sqFetchPlayerGameScoresFromCleanRoundScores === 'function') {
-        try{
-          return { rows:(await window.__sqFetchPlayerGameScoresFromCleanRoundScores('turbo')).slice(0,50), source:'mv_player_round_scores_mode_clean_app' };
-        }catch(_turboFallback){}
-      }
-      try{ if (window.SQ_DEBUG) console.warn('[SQ] Top 50 Scores view read failed', e); }catch(_){}
-      return { rows:[], missing:(e && (e.message || e.details || e.code)) || 'Top 50 Scores view read failed' };
-    }
+	        return {
+	          player:String(r.player_name || '').trim(),
+	          score:score,
+	          avg:avg,
+	          ts:r.ts || '',
+	          game_id:r.game_id || ''
+	        };
+	      }).filter(function(r){ return r.player && r.score > 0; });
+	      return { rows:rows, source:view };
+	    }catch(e){
+	      try{ if (window.SQ_DEBUG) console.warn('[SQ] Top 50 Scores view read failed', e); }catch(_){}
+	      return { rows:[], missing:(e && (e.message || e.details || e.code)) || 'Top 50 Scores view read failed' };
+	    }
   }
 
   // @CANONICAL:TOP_50_SCORES
@@ -44740,16 +44990,15 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     });
     head.appendChild(tabs);
     var body = document.createElement('div'); body.className = 'modal-body';
-    body.innerHTML = '<div class="sq-league-note"></div><div class="table-wrap"><table class="sq-league-table"><colgroup><col style="width:64px"><col><col style="width:150px"><col style="width:120px"><col style="width:190px"></colgroup><thead><tr><th>#</th><th>PLAYER</th><th>SCORE</th><th>AVG</th><th>DATE/TIME</th></tr></thead><tbody></tbody></table></div>';
+    body.innerHTML = '<div class="table-wrap"><table class="sq-league-table"><colgroup><col style="width:64px"><col><col style="width:150px"><col style="width:120px"><col style="width:190px"></colgroup><thead><tr><th>#</th><th>PLAYER</th><th>SCORE</th><th>AVG</th><th>DATE/TIME</th></tr></thead><tbody></tbody></table></div>';
     var footer = document.createElement('div'); footer.className = 'modal-footer';
     var back = document.createElement('button'); back.className = 'btn sq-pill'; back.textContent = 'Back';
     var close = document.createElement('button'); close.className = 'btn sq-pill'; close.textContent = 'Close';
     footer.append(back, close); modal.append(head, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
-    var note = body.querySelector('.sq-league-note'), tb = body.querySelector('tbody');
+    var tb = body.querySelector('tbody');
     function setTabs(){ Array.prototype.slice.call(tabs.querySelectorAll('button[data-mode]')).forEach(function(b){ b.classList.toggle('active', b.dataset.mode === mode); }); }
     async function render(){
       setTabs();
-      note.textContent = mode === 'turbo' ? 'Turbo Top 50 Scores from clean Supabase mode rows.' : labelForMode(mode) + ' Top 50 Scores from Supabase player_name rows.';
       tb.innerHTML = '<tr><td colspan="5" style="padding:14px;opacity:.75;">Loading...</td></tr>';
       var result = await fetchTop50Rows(mode);
       if (result.missing || !result.rows.length){
