@@ -904,12 +904,14 @@ TOC (CTRL+F)
      a row as official; is_practice=false alone is not sufficient.
 
      - turbo
-       Explicit Turbo rows are identified by mode/gameMode/game_mode/type='turbo', tournamentType='turbo',
+       Explicit Turbo rows are identified by mode/gameMode/game_mode/type='turbo', gameVariant='turbo',
+       Tournament Turbo tournamentType='turbo',
        strictTimer=true, throwLimitSeconds=20, or startTarget='17' in the game row, state, match, or rules object.
        Legacy quarantine: older broken saves may be labelled official while rounds 10-16 are unplayed and rounds
        17-20/D/T/B contain play; browser fallback filters treat that board shape as Turbo to stop official leakage.
-       Future Turbo writes must include state.mode='turbo', state.gameMode='turbo', tournamentType='turbo',
-       strictTimer=true, throwLimitSeconds=20, and startTarget='17'.
+       Future Match Play Turbo writes must include state.gameVariant='turbo', state.mode='turbo',
+       state.gameMode='turbo', strictTimer=true, throwLimitSeconds=20, and startTarget='17'.
+       Future Tournament Turbo writes may also use tournamentType='turbo' where tournament logic requires it.
 
      - practice
        Explicit practice/unofficial/solo rows, is_practice=true rows, forced-practice match rows, or single-player rows.
@@ -2690,6 +2692,133 @@ body[data-page="game"] #gameScrollGate{
   background:linear-gradient(180deg, #00A3FF, #0874c8)!important;
   color:#061425!important;
   box-shadow:0 0 26px rgba(0,163,255,.45)!important;
+}
+
+body.sq-mode-turbo[data-page="game"]{
+  --sqTurboPrimary:#00A3FF;
+  --sqTurboAccent:#00F5FF;
+  --sqTurboNavy:#071A2F;
+  --sqTurboPanel:#0A1224;
+  --sqTurboGlow:rgba(0,163,255,.45);
+  --sqTurboBorder:rgba(0,245,255,.35);
+  --sqTurboText:#B8F3FF;
+  --sqTurboMuted:#7FAEC8;
+}
+
+body.sq-mode-turbo[data-page="game"] #floatWrap,
+body.sq-mode-turbo[data-page="game"] #floatHead,
+body.sq-mode-turbo[data-page="game"] .livev2panel{
+  position:relative;
+  border-color:var(--sqTurboBorder)!important;
+  box-shadow:0 0 0 1px rgba(0,245,255,.10), 0 0 24px rgba(0,163,255,.16)!important;
+}
+
+body.sq-mode-turbo[data-page="game"] .livev2panel::before{
+  content:"TURBO";
+  position:absolute;
+  top:8px;
+  right:10px;
+  z-index:7;
+  padding:3px 8px;
+  border:1px solid var(--sqTurboBorder);
+  border-radius:999px;
+  background:rgba(7,26,47,.78);
+  color:var(--sqTurboText);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.16em;
+  text-shadow:0 0 10px var(--sqTurboGlow);
+  pointer-events:none;
+}
+
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2GameCell,
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2InfoCell,
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2HighCell{
+  border-color:rgba(0,245,255,.18)!important;
+  background:linear-gradient(180deg, rgba(10,18,36,.86), rgba(7,26,47,.72))!important;
+}
+
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2ScoreBox.active{
+  border-color:rgba(0,245,255,.72)!important;
+  box-shadow:0 0 0 2px rgba(0,163,255,.20), 0 0 24px var(--sqTurboGlow), inset 0 0 18px rgba(0,245,255,.10)!important;
+  background:linear-gradient(180deg, rgba(0,163,255,.17), rgba(7,26,47,.94))!important;
+}
+
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2ScoreBox.active .v2Initial,
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2ScoreBox.active .v2Total{
+  color:var(--sqTurboText)!important;
+  text-shadow:0 0 14px var(--sqTurboGlow)!important;
+}
+
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2Dot:not(.off),
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2WinDot.on{
+  background:var(--sqTurboAccent)!important;
+  border-color:rgba(0,245,255,.70)!important;
+  box-shadow:0 0 12px var(--sqTurboGlow)!important;
+}
+
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2Badge.active,
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2Badge.liveRow,
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2Cell.active,
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2Cell.liveRow{
+  border-color:rgba(0,245,255,.58)!important;
+  box-shadow:0 0 0 1px rgba(0,245,255,.16), 0 0 18px rgba(0,163,255,.22)!important;
+}
+
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2Badge.active,
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2Badge.liveRow{
+  color:var(--sqTurboText)!important;
+  text-shadow:0 0 10px var(--sqTurboGlow)!important;
+}
+
+body.sq-mode-turbo[data-page="game"] #froundlabel .round-now{
+  border-color:var(--sqTurboBorder)!important;
+  background:linear-gradient(180deg, rgba(10,18,36,.90), rgba(7,26,47,.82))!important;
+  box-shadow:inset 0 0 0 1px rgba(0,245,255,.12), 0 0 18px rgba(0,163,255,.18)!important;
+}
+
+body.sq-mode-turbo[data-page="game"] #froundlabel .rn-label{
+  color:var(--sqTurboMuted)!important;
+}
+
+body.sq-mode-turbo[data-page="game"] #froundlabel .rn-value,
+body.sq-mode-turbo[data-page="game"] #scoreWrap tbody th.round-label.active-round-label{
+  color:var(--sqTurboText)!important;
+  text-shadow:0 0 13px var(--sqTurboGlow)!important;
+}
+
+body.sq-mode-turbo[data-page="game"] #scoreWrap td.current-cell{
+  background:rgba(0,163,255,.07)!important;
+  box-shadow:inset 0 0 0 1px rgba(0,245,255,.48), 0 0 16px rgba(0,163,255,.16)!important;
+}
+
+body.sq-mode-turbo[data-page="game"] #scoreWrap td.current-cell::after{
+  border-color:rgba(0,245,255,.86)!important;
+  box-shadow:0 0 0 1px rgba(0,163,255,.16), 0 0 20px rgba(0,163,255,.28)!important;
+}
+
+body.sq-mode-turbo[data-page="game"] .current-col{
+  background:rgba(0,163,255,.035)!important;
+}
+
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2ScoreBox.sqTurboTimerActive::after{
+  background:conic-gradient(from -90deg, rgba(0,245,255,.98) 0deg var(--sqTurboDeg,0deg), rgba(0,163,255,.92) var(--sqTurboDeg,0deg) 360deg)!important;
+  filter:drop-shadow(0 0 10px rgba(0,163,255,.45))!important;
+}
+
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2ScoreBox .sqTurboSvg .sqTurboBase{
+  stroke:rgba(0,245,255,.72)!important;
+  filter:drop-shadow(0 0 8px rgba(0,163,255,.30))!important;
+}
+
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2ScoreBox .sqTurboSvg .sqTurboProgress{
+  stroke:rgba(0,245,255,1)!important;
+  filter:drop-shadow(0 0 10px rgba(0,163,255,.55))!important;
+}
+
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2ScoreBox.sqTurboWarn .sqTurboSvg .sqTurboProgress,
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger .sqTurboSvg .sqTurboProgress{
+  stroke:rgba(255,34,42,1)!important;
 }
 .sg-footer .btn{
   width: 140px;
@@ -13251,6 +13380,55 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
           </div>
     `;
 
+    // Decider input is delegated at the modal level so score buttons remain live
+    // after each render and are not affected by stale inline handlers.
+    if (!modal.__sqDeciderInputBound) {
+      modal.__sqDeciderInputBound = true;
+      modal.__sqDeciderLastInput = { key:'', at:0 };
+      modal.addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest('button') : null;
+        if (!btn || !modal.contains(btn)) return;
+
+        let key = '';
+        if (btn.classList.contains('dec-kindBtn')) key = 'kind:' + (btn.getAttribute('data-kind') || '');
+        else if (btn.classList.contains('dtNumBtn')) key = 'sector:' + (btn.getAttribute('data-decider-sector') || btn.textContent || '');
+        else if (btn.hasAttribute('data-bull')) key = 'bull:' + (btn.getAttribute('data-bull') || '');
+        else if (btn.hasAttribute('data-act')) key = 'act:' + (btn.getAttribute('data-act') || '');
+        if (!key) return;
+
+        try { e.preventDefault(); e.stopPropagation(); if (e.stopImmediatePropagation) e.stopImmediatePropagation(); } catch(_) {}
+        const now = Date.now();
+        const last = modal.__sqDeciderLastInput || { key:'', at:0 };
+        if (last.key === key && (now - last.at) < 180) return;
+        modal.__sqDeciderLastInput = { key, at:now };
+
+        if (key.indexOf('kind:') === 0) {
+          dec.kind = btn.getAttribute('data-kind') || 'S';
+          render();
+          return;
+        }
+        if (key.indexOf('sector:') === 0) {
+          const sector = Number(btn.getAttribute('data-decider-sector') || btn.textContent || 0);
+          if (sector > 0) deciderRecordThrow({ sector });
+          return;
+        }
+        if (key.indexOf('bull:') === 0) {
+          deciderRecordThrow({ bull: btn.getAttribute('data-bull') });
+          return;
+        }
+        const act = btn.getAttribute('data-act');
+        if (act === 'miss') {
+          try{ window.sqDmdShowZones?.({ z2:'MISS' },{type:'flash',ms:650}); }catch(_){ }
+          deciderRecordThrow({ kind:'Miss' });
+        } else if (act === 'undo') {
+          try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ }
+          deciderUndo();
+        } else if (act === 'skip') {
+          deciderSkip();
+        }
+      }, true);
+    }
+
     // Kind buttons
     modal.querySelectorAll('.dec-kindBtn').forEach(b=>{
       b.onclick = ()=>{
@@ -13274,6 +13452,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
         b.className = 'dtNumBtn';
         b.type = 'button';
         b.textContent = String(s);
+        b.setAttribute('data-decider-sector', String(s));
         b.style.flex = '0 0 calc((100% - 40px) / 6)';
         b.style.scrollSnapAlign = 'start';
         b.onclick = ()=> deciderRecordThrow({ sector:s });
@@ -13624,10 +13803,33 @@ function markCloudError(err) {
 }
 
 // ===== @SEC:JS:UI:ROUTER =====
+function __sqIsTurboVisualRuntime(){
+  try{
+    const m = (typeof state !== 'undefined' && state && state.match) ? state.match : {};
+    const draft = (typeof window !== 'undefined' && (window.__sqTournamentDraft || state?.__sqTournamentDraft)) || null;
+    const rules = m.tournamentRules || m.rules || draft?.rules || {};
+    const mode = String(m.mode || m.gameMode || state?.mode || state?.gameMode || '').toLowerCase();
+    const variant = String(m.gameVariant || state?.gameVariant || '').toLowerCase();
+    const type = String(m.tournamentType || m.type || state?.tournamentType || draft?.type || '').toLowerCase();
+    const startTarget = String(m.startTarget || state?.startTarget || rules.startTarget || '').toLowerCase();
+    return !!(type === 'turbo' || variant === 'turbo' || mode === 'turbo' || startTarget === '17' || m.strictTimer === true || state?.strictTimer === true || Number(m.throwLimitSeconds || state?.throwLimitSeconds || rules.throwLimitSeconds || 0) === 20);
+  }catch(_){ return false; }
+}
+function __sqSyncTurboVisualState(page){
+  try{
+    const on = String(page || document.body?.dataset?.page || '') === 'game' && __sqIsTurboVisualRuntime();
+    document.body.classList.toggle('sq-mode-turbo', !!on);
+    if (on) document.body.setAttribute('data-sq-variant', 'turbo');
+    else document.body.removeAttribute('data-sq-variant');
+    const panel = document.getElementById('liveV2Panel');
+    if (panel) panel.classList.toggle('sq-game-turbo', !!on);
+  }catch(_){ }
+}
 function show(id){
   ['details','players','game','leaderboard'].forEach(x=>byId(x)?.classList.add('hidden'));
   byId(id)?.classList.remove('hidden');
   document.body.setAttribute('data-page', id);
+  try{ __sqSyncTurboVisualState(id); }catch(_){}
   updatePadSpacer();
   try{ bindFHCollapseScroll(); updateFHCollapse(id); }catch(e){}
   const fh=byId('floatHead');
@@ -13642,6 +13844,7 @@ function show(id){
   if (id === 'game') {
     // Ensure scoreboard DOM is built when resuming/loading live games
     try { if (typeof ensureGameBuilt === 'function') ensureGameBuilt(); } catch(_) {}
+    try{ __sqSyncTurboVisualState('game'); }catch(_){}
     try { if (typeof updateUI === 'function') updateUI(); } catch(_) {}
     if (window.__marksKick) { clearInterval(window.__marksKick); window.__marksKick = null; }
     try { if (typeof scanForTripleHatAndCelebrate === 'function') scanForTripleHatAndCelebrate(); } catch(_) {}
@@ -17897,13 +18100,15 @@ function __sqV2SetPagerPage(panel, page, animate){
 
     let labels = Array.from({length: roundsCount()}, (_,i)=>roundLabel(i));
     let live = buildLiveSeries();
-    const __turboRace = (()=>{ try{ const m = state?.match || {}; const draft = window.__sqTournamentDraft || state?.__sqTournamentDraft || null; const type = String(m.tournamentType || m.type || draft?.type || state?.tournamentType || '').toLowerCase(); return !!(type === 'turbo' || m.strictTimer === true || m.throwLimitSeconds === 20 || state?.strictTimer === true || state?.throwLimitSeconds === 20); }catch(_){ return false; } })();
-    const __turboStartIdx = (()=>{ try{ const rules = state?.match?.tournamentRules || state?.__sqTournamentDraft?.rules || window.__sqTournamentDraft?.rules || {}; return Math.max(0, Math.min(roundsCount()-1, Number(rules.startRoundIndex ?? 7))); }catch(_){ return 7; } })();
+    const __turboRace = (typeof __sqIsTurboRaceRuntimeState === 'function') ? __sqIsTurboRaceRuntimeState(state) : (()=>{ try{ const m = state?.match || {}; const draft = window.__sqTournamentDraft || state?.__sqTournamentDraft || null; const type = String(m.tournamentType || m.type || draft?.type || state?.tournamentType || '').toLowerCase(); return !!(type === 'turbo' || m.strictTimer === true || m.throwLimitSeconds === 20 || state?.strictTimer === true || state?.throwLimitSeconds === 20); }catch(_){ return false; } })();
+    const __turboStartIdx = (typeof __sqTurboRaceStartIndex === 'function') ? __sqTurboRaceStartIndex(state, roundsCount()) : (()=>{ try{ const rules = state?.match?.tournamentRules || state?.__sqTournamentDraft?.rules || window.__sqTournamentDraft?.rules || {}; return Math.max(0, Math.min(roundsCount()-1, Number(rules.startRoundIndex ?? 7))); }catch(_){ return 7; } })();
     if (__turboRace) {
       labels = labels.slice(__turboStartIdx);
       live = live.map(s => ({ ...s, data: Array.isArray(s.data) ? s.data.slice(__turboStartIdx) : [] }));
     }
-    let rec = __turboRace ? null : await getRecordSeries();
+    let rec = (typeof __sqBuildRaceReferenceSeriesForCurrentMode === 'function')
+      ? await __sqBuildRaceReferenceSeriesForCurrentMode(roundsCount(), __turboStartIdx)
+      : (__turboRace ? null : await getRecordSeries());
     let records = null;
 
     // Solo Practice: Race chart should compare the live player against their PB pace
@@ -18221,6 +18426,7 @@ function liveV2Render(){
 
   const panel = ensureLiveV2Panel();
   if(!panel) return;
+  try{ if (typeof __sqSyncTurboVisualState === 'function') __sqSyncTurboVisualState('game'); }catch(_){ }
 
   if(!eligible){
     panel.hidden = true;
@@ -20570,6 +20776,7 @@ function updateRoundBar(animateOverride, fromScroll=false){
 
 function updateUI() {
   try {
+  try{ if (typeof __sqSyncTurboVisualState === 'function') __sqSyncTurboVisualState(document.body?.dataset?.page || ''); }catch(_){}
   if (!tbody) return;
 
   // Clear previous highlights
@@ -22505,6 +22712,181 @@ async function buildRecordPaceSeries(roundsCount) {
   }
 }
 // <<< PATCH:FIX22_RACE_HS_GAMES_TRUTH END
+// >>> PATCH:FIX172_TURBO_RACE_DB_REFERENCE START
+async function __sqBuildTurboRecordPaceSeries(roundsCount, startRoundIndex) {
+  try {
+    const start = Math.max(0, Number(startRoundIndex ?? 7) || 7);
+    const end = Math.max(start, Math.min(Math.max(1, Number(roundsCount) || 14) - 1, 13));
+    const cacheKey = start + '|' + end;
+    const cached = window.__sqTurboRaceRecordCache;
+    if (cached && cached.key === cacheKey && (Date.now() - (cached.ts || 0)) < 60000) return cached.value;
+    if (cached && cached.key === cacheKey && cached.promise) return cached.promise;
+
+    const client = (() => {
+      try { if (typeof ensureCloudInit === 'function') ensureCloudInit(); } catch(_) {}
+      try { if (window.sb && typeof window.sb.from === 'function') return window.sb; } catch(_) {}
+      try { if (typeof sb !== 'undefined' && sb && typeof sb.from === 'function') return sb; } catch(_) {}
+      return null;
+    })();
+    if (!client) return null;
+
+    const promise = (async function(){
+      const hs = await client.from('v_high_score_league_turbo_from_games_clean')
+        .select('player,best_score,best_ts,game_id')
+        .order('best_score', { ascending:false })
+        .order('best_ts', { ascending:false })
+        .limit(1);
+      if (hs && hs.error) throw hs.error;
+      const top = Array.isArray(hs && hs.data) ? hs.data[0] : null;
+      if (!top || !top.game_id) return null;
+
+      let rr = await client.from('mv_player_round_scores_mode_clean_app')
+        .select('mode_key,player,player_key,game_id,created_at,round_index,round_score')
+        .eq('mode_key', 'turbo')
+        .eq('game_id', top.game_id)
+        .gte('round_index', start)
+        .lte('round_index', end)
+        .order('round_index', { ascending:true });
+      let rows = Array.isArray(rr && rr.data) ? rr.data : [];
+      if ((rr && rr.error) || !rows.length) {
+        rr = await client.from('v_player_round_scores_mode_clean')
+          .select('mode_key,player,player_key,game_id,created_at,round_index,round_score')
+          .eq('mode_key', 'turbo')
+          .eq('game_id', top.game_id)
+          .gte('round_index', start)
+          .lte('round_index', end)
+          .order('round_index', { ascending:true });
+        rows = Array.isArray(rr && rr.data) ? rr.data : [];
+      }
+      if (rr && rr.error) throw rr.error;
+
+      if (!rows.length) return null;
+      const norm = (s) => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+      const topPlayer = norm(top.player);
+      const byPlayer = new Map();
+      rows.forEach(function(r){
+        const player = String(r.player || '').trim();
+        const key = norm(r.player_key || player);
+        if (!key) return;
+        let bucket = byPlayer.get(key);
+        if (!bucket) {
+          bucket = { player:player || String(r.player_key || ''), key:key, roundScores:new Map(), total:0 };
+          byPlayer.set(key, bucket);
+        }
+        const roundIndex = Number(r.round_index);
+        const score = Number(r.round_score || 0);
+        if (!Number.isFinite(roundIndex) || roundIndex < start || roundIndex > end) return;
+        bucket.roundScores.set(roundIndex, score);
+        bucket.total += score;
+      });
+      let best = null;
+      byPlayer.forEach(function(bucket){
+        if (!best) best = bucket;
+        if (topPlayer && (bucket.key === topPlayer || norm(bucket.player) === topPlayer)) best = bucket;
+        else if (!topPlayer && bucket.total > (best.total || 0)) best = bucket;
+      });
+      if (!best) return null;
+      let running = 0;
+      const data = [];
+      for (let r = start; r <= end; r++) {
+        running += Number(best.roundScores.get(r) || 0);
+        data.push(running);
+      }
+      if (!data.some(function(v){ return Number(v) > 0; })) return null;
+      const total = Number(top.best_score || best.total || running) || running;
+      return {
+        name: 'Turbo HS: ' + (best.player || top.player || 'Record') + ' (' + total + ')',
+        label: 'THS',
+        color: 'rgba(0,245,255,.82)',
+        data: data,
+        dotted: true
+      };
+    })();
+
+    window.__sqTurboRaceRecordCache = { key:cacheKey, ts:Date.now(), promise:promise, value:null };
+    const value = await promise;
+    window.__sqTurboRaceRecordCache = { key:cacheKey, ts:Date.now(), promise:null, value:value };
+    return value;
+  } catch (e) {
+    try { console.warn('[SQ] Turbo race reference unavailable', e); } catch(_) {}
+    return null;
+  }
+}
+// <<< PATCH:FIX172_TURBO_RACE_DB_REFERENCE END
+// >>> PATCH:FIX173_RACE_REFERENCE_MODE_RESOLVER START
+function __sqIsTurboRaceRuntimeState(src) {
+  try {
+    src = src || window.state || {};
+    const m = src.match || {};
+    const draft = window.__sqTournamentDraft || src.__sqTournamentDraft || null;
+    const activeTournament = src.__sqTournamentActive || window.__sqTournamentActive || null;
+    const rules = m.tournamentRules || src.tournamentRules || (draft && draft.rules) || {};
+    if (typeof __sqIsTurboVisualRuntime === 'function' && __sqIsTurboVisualRuntime()) return true;
+    if (document.body && document.body.dataset && document.body.dataset.page === 'game') {
+      if (document.body.classList && document.body.classList.contains('sq-mode-turbo')) return true;
+      if (String(document.body.getAttribute('data-sq-variant') || '').toLowerCase() === 'turbo') return true;
+    }
+    const values = [
+      src.gameVariant,
+      src.variant,
+      src.mode,
+      src.gameMode,
+      src.game_mode,
+      src.gameFormat,
+      src.startTarget,
+      m.gameVariant,
+      m.variant,
+      m.mode,
+      m.gameMode,
+      m.game_mode,
+      m.gameFormat,
+      m.startTarget,
+      rules.gameVariant,
+      rules.mode,
+      rules.gameMode,
+      rules.startTarget,
+      window.__sqSelectedMatchVariant,
+      activeTournament && activeTournament.type
+    ].map(function(v){ return String(v == null ? '' : v).trim().toLowerCase(); });
+    if (values.indexOf('turbo') >= 0 || values.indexOf('17') >= 0) return true;
+    if (src.strictTimer === true || m.strictTimer === true || rules.strictTimer === true) return true;
+    if (Number(src.throwLimitSeconds || m.throwLimitSeconds || rules.throwLimitSeconds || 0) === 20) return true;
+    const legacyType = String(m.tournamentType || m.type || src.tournamentType || (draft && draft.type) || (activeTournament && activeTournament.type) || '').trim().toLowerCase();
+    return legacyType === 'turbo';
+  } catch(_) {
+    return false;
+  }
+}
+function __sqTurboRaceStartIndex(src, roundsCount) {
+  try {
+    src = src || window.state || {};
+    const m = src.match || {};
+    const draft = window.__sqTournamentDraft || src.__sqTournamentDraft || null;
+    const rules = m.tournamentRules || src.tournamentRules || (draft && draft.rules) || {};
+    const rc = Math.max(1, Number(roundsCount) || 14);
+    const n = Number(rules.startRoundIndex ?? src.startRoundIndex ?? m.startRoundIndex ?? 7);
+    return Math.max(0, Math.min(rc - 1, Number.isFinite(n) ? n : 7));
+  } catch(_) {
+    return 7;
+  }
+}
+async function __sqBuildRaceReferenceSeriesForCurrentMode(roundsCount, startRoundIndex) {
+  try {
+    const rc = Math.max(1, Number(roundsCount) || 14);
+    const start = __sqTurboRaceStartIndex(window.state, rc);
+    if (__sqIsTurboRaceRuntimeState(window.state)) {
+      return (typeof __sqBuildTurboRecordPaceSeries === 'function')
+        ? await __sqBuildTurboRecordPaceSeries(rc, startRoundIndex ?? start)
+        : null;
+    }
+    return (typeof buildRecordPaceSeries === 'function')
+      ? await buildRecordPaceSeries(rc).catch(function(){ return null; })
+      : null;
+  } catch(_) {
+    return null;
+  }
+}
+// <<< PATCH:FIX173_RACE_REFERENCE_MODE_RESOLVER END
 async function openGameRaceDialog() {
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop';
@@ -22565,7 +22947,12 @@ async function openGameRaceDialog() {
   });
 
   // --- Build series for current game ---
-  const roundsCount = MAX_ROUNDS;
+  const fullRoundsCount = MAX_ROUNDS;
+  const isTurboRace = (typeof __sqIsTurboRaceRuntimeState === 'function') ? __sqIsTurboRaceRuntimeState(state) : false;
+  const displayStartRound = isTurboRace && typeof __sqTurboRaceStartIndex === 'function'
+    ? __sqTurboRaceStartIndex(state, fullRoundsCount)
+    : 0;
+  const roundsCount = isTurboRace ? Math.max(1, fullRoundsCount - displayStartRound) : fullRoundsCount;
   const series = [];
 
   for (let p = 0; p < state.players.length; p++) {
@@ -22574,7 +22961,8 @@ async function openGameRaceDialog() {
     let running = 0;
 
     for (let r = 0; r < roundsCount; r++) {
-      const entry = state.score?.[p]?.[r];
+      const sourceRound = displayStartRound + r;
+      const entry = state.score?.[p]?.[sourceRound];
       const rt = entry ? (entry.roundTotal || 0) : 0;
       running += rt;
       data.push(running);
@@ -22588,9 +22976,12 @@ async function openGameRaceDialog() {
     });
   }
 // --- Add dotted #1 high score line using the actual round-by-round board ---
-const recordSeries = await buildRecordPaceSeries(roundsCount);
+const recordSeries = (typeof __sqBuildRaceReferenceSeriesForCurrentMode === 'function')
+  ? await __sqBuildRaceReferenceSeriesForCurrentMode(fullRoundsCount, displayStartRound)
+  : (isTurboRace ? null : await buildRecordPaceSeries(fullRoundsCount));
 if (recordSeries) {
   series.push(recordSeries);
+  if (isTurboRace) info.textContent = 'Round-by-round cumulative Turbo scores. Dotted line shows THS pace.';
 } else {
   info.textContent = 'Round-by-round cumulative scores.'; // no fake line
 }
@@ -22672,11 +23063,12 @@ if (recordSeries) {
   ctx.textAlign = 'center';
   for (let r = 0; r < roundsCount; r++) {
     const x = xForRound(r);
-    const label = ROUNDS[r].type === 'number'
-      ? String(ROUNDS[r].target)
-      : (ROUNDS[r].type === 'doubles'
+    const round = ROUNDS[displayStartRound + r] || ROUNDS[r] || {};
+    const label = round.type === 'number'
+      ? String(round.target)
+      : (round.type === 'doubles'
           ? 'D'
-          : (ROUNDS[r].type === 'triples' ? 'T' : 'B'));
+          : (round.type === 'triples' ? 'T' : 'B'));
     ctx.fillText(label, x, marginTop + plotH + 12);
   }
   ctx.textAlign = 'left';
@@ -40807,133 +41199,262 @@ __sqDmdInitV7();
     });
   }
 
-  function openH2HOpponentGraph(playerName, opponentName, games){
-    var series = buildH2HSeries(playerName, opponentName, games);
-    var current = series.length ? series[series.length-1].winPct : 0;
-    var wins = series.filter(function(x){ return x.result === 'W'; }).length;
-    var losses = series.filter(function(x){ return x.result === 'L'; }).length;
-    var draws = series.filter(function(x){ return x.result === 'D'; }).length;
-    var splitAvg = calcH2HSplitAverage(series);
+  function calcH2HDbProgression(rows){
+    rows = Array.isArray(rows) ? rows : [];
+    if (rows.length < 2) {
+      return { enough:false, firstGames:rows.length, secondGames:0, firstWinPct:null, secondWinPct:null, winPctDelta:null, firstAvgDiff:null, secondAvgDiff:null, avgDiffDelta:null };
+    }
+    var split = Math.floor(rows.length / 2);
+    var first = rows.slice(0, split);
+    var second = rows.slice(split);
+    function winPct(part){
+      var wins = 0, losses = 0;
+      part.forEach(function(r){
+        var result = String(r && r.player_a_result || '').toLowerCase();
+        if (result === 'win') wins += 1;
+        else if (result === 'loss') losses += 1;
+      });
+      return (wins + losses) ? (wins / (wins + losses) * 100) : null;
+    }
+    function avgDiff(part){
+      var total = 0, count = 0;
+      part.forEach(function(r){
+        var diff = Number(r && r.score_diff);
+        if (Number.isFinite(diff)){ total += diff; count += 1; }
+      });
+      return count ? (total / count) : null;
+    }
+    var firstWinPct = winPct(first);
+    var secondWinPct = winPct(second);
+    var firstAvgDiff = avgDiff(first);
+    var secondAvgDiff = avgDiff(second);
+    return {
+      enough:true,
+      firstGames:first.length,
+      secondGames:second.length,
+      firstWinPct:firstWinPct,
+      secondWinPct:secondWinPct,
+      winPctDelta:(firstWinPct == null || secondWinPct == null) ? null : (secondWinPct - firstWinPct),
+      firstAvgDiff:firstAvgDiff,
+      secondAvgDiff:secondAvgDiff,
+      avgDiffDelta:(firstAvgDiff == null || secondAvgDiff == null) ? null : (secondAvgDiff - firstAvgDiff)
+    };
+  }
 
+  function drawH2HDbTimelineCanvas(canvas, rows){
+    if (!canvas) return;
+    rows = Array.isArray(rows) ? rows : [];
+    var rect = canvas.getBoundingClientRect();
+    var dpr = Math.max(1, window.devicePixelRatio || 1);
+    var w = Math.max(320, Math.floor(rect.width || 720));
+    var h = Math.max(220, Math.floor(rect.height || 280));
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,w,h);
+
+    var padL = 44, padR = 150, padT = 18, padB = 34;
+    var x0 = padL, x1 = w - padR, y0 = padT, y1 = h - padB;
+    var grid = 'rgba(255,255,255,.10)';
+    var text = 'rgba(231,233,245,.72)';
+    var winBlue = 'rgba(90,220,255,.96)';
+    var progressBlue = 'rgba(55,135,255,.98)';
+    var diffOrange = 'rgba(255,170,28,.95)';
+
+    ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = grid;
+    ctx.fillStyle = text;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+
+    [0,25,50,75,100].forEach(function(v){
+      var y = y1 - ((v / 100) * (y1-y0));
+      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+      ctx.fillText(String(v) + '%', x0 - 8, y);
+    });
+
+    ctx.textAlign = 'center';
+    var n = Math.max(1, rows.length);
+    var tickStep = n <= 8 ? 1 : Math.ceil(n / 6);
+    for (var i=1; i<=n; i++){
+      if (i !== 1 && i !== n && ((i-1) % tickStep !== 0)) continue;
+      var xTick = n === 1 ? x0 : x0 + ((i-1)/(n-1))*(x1-x0);
+      ctx.beginPath(); ctx.moveTo(xTick, y0); ctx.lineTo(xTick, y1); ctx.stroke();
+      ctx.fillText(String(i), xTick, y1 + 18);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.fillText('Matches oldest to newest', (x0+x1)/2, h - 8);
+
+    if (!rows.length){
+      ctx.fillStyle = 'rgba(255,255,255,.62)';
+      ctx.font = '13px system-ui, -apple-system, Segoe UI, sans-serif';
+      ctx.fillText('No H2H timeline data available.', (x0+x1)/2, (y0+y1)/2);
+      return;
+    }
+
+    function px(idx){ return n === 1 ? x0 : x0 + (idx/(n-1))*(x1-x0); }
+    function pyPct(v){ return y1 - ((Math.max(0, Math.min(100, Number(v) || 0)) / 100) * (y1-y0)); }
+
+    var diffs = rows.map(function(r){ return Number(r && r.running_avg_diff); }).filter(function(v){ return Number.isFinite(v); });
+    var maxAbsDiff = Math.max(1, diffs.reduce(function(m,v){ return Math.max(m, Math.abs(v)); }, 0));
+    function pyDiff(v){
+      var normalized = 50 + ((Number(v) || 0) / maxAbsDiff * 50);
+      return pyPct(normalized);
+    }
+
+    ctx.save();
+    ctx.strokeStyle = diffOrange;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5,4]);
+    rows.forEach(function(r, idx){
+      var y = pyDiff(r.running_avg_diff);
+      var x = px(idx);
+      if (idx === 0){ ctx.beginPath(); ctx.moveTo(x, y); }
+      else { ctx.lineTo(x, y); }
+    });
+    ctx.stroke();
+    ctx.restore();
+
+    var progress = calcH2HDbProgression(rows);
+    if (progress.enough && progress.firstWinPct != null && progress.secondWinPct != null){
+      ctx.save();
+      ctx.strokeStyle = progressBlue;
+      ctx.fillStyle = progressBlue;
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.shadowColor = 'rgba(55,135,255,.35)';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(x0, pyPct(progress.firstWinPct));
+      ctx.lineTo(x1, pyPct(progress.secondWinPct));
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.arc(x0, pyPct(progress.firstWinPct), 4.5, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x1, pyPct(progress.secondWinPct), 4.5, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.strokeStyle = winBlue;
+    ctx.fillStyle = winBlue;
+    ctx.lineWidth = 2.8;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    rows.forEach(function(r, idx){
+      var x = px(idx), y = pyPct(r.running_win_pct);
+      if (idx === 0){ ctx.beginPath(); ctx.moveTo(x, y); }
+      else { ctx.lineTo(x, y); }
+    });
+    ctx.stroke();
+    rows.forEach(function(r, idx){
+      var result = String(r && r.player_a_result || '').toLowerCase();
+      ctx.beginPath();
+      ctx.fillStyle = result === 'win' ? 'rgba(60,255,134,.96)' : (result === 'loss' ? 'rgba(255,95,95,.92)' : 'rgba(255,255,255,.78)');
+      ctx.arc(px(idx), pyPct(r.running_win_pct), 3.4, 0, Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.45)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+    ctx.restore();
+
+    var last = rows[rows.length - 1] || {};
+    var lx = x1 + 22;
+    var ly = y0 + 20;
+    ctx.font = '12px system-ui, -apple-system, Segoe UI, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.strokeStyle = winBlue; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 18, ly); ctx.stroke();
+    ctx.fillStyle = 'rgba(231,233,245,.86)';
+    ctx.fillText('Running Win %', lx + 26, ly);
+    ctx.fillStyle = 'rgba(231,233,245,.68)';
+    ctx.fillText((Number(last.running_win_pct) || 0).toFixed(1) + '%', lx + 26, ly + 17);
+
+    ly += 48;
+    ctx.strokeStyle = progressBlue; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 18, ly); ctx.stroke();
+    ctx.fillStyle = 'rgba(231,233,245,.86)';
+    ctx.fillText('Progression', lx + 26, ly);
+    ctx.fillStyle = 'rgba(231,233,245,.68)';
+    var progressText = (!progress.enough || progress.firstWinPct == null || progress.secondWinPct == null)
+      ? 'Not enough games'
+      : (progress.firstWinPct.toFixed(1) + '% to ' + progress.secondWinPct.toFixed(1) + '%');
+    ctx.fillText(progressText, lx + 26, ly + 17);
+
+    ly += 48;
+    ctx.save();
+    ctx.strokeStyle = diffOrange; ctx.lineWidth = 2; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 18, ly); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = 'rgba(231,233,245,.86)';
+    ctx.fillText('Running Avg Diff', lx + 26, ly);
+    ctx.fillStyle = 'rgba(231,233,245,.68)';
+    var avg = Number(last.running_avg_diff);
+    ctx.fillText(Number.isFinite(avg) ? ((avg >= 0 ? '+' : '') + avg.toFixed(1)) : '—', lx + 26, ly + 17);
+  }
+
+  function makeH2HDbGraphControls(){
+    var wrap = document.createElement('div');
+    wrap.style.display = 'flex';
+    wrap.style.alignItems = 'center';
+    wrap.style.justifyContent = 'space-between';
+    wrap.style.gap = '12px';
+    wrap.style.flexWrap = 'wrap';
+    wrap.style.margin = '0 0 10px';
+    function group(){
+      var g = document.createElement('div');
+      g.className = 'sq-league-tabs';
+      g.style.justifyContent = 'flex-start';
+      g.style.marginLeft = '0';
+      return g;
+    }
+    function btn(label, active, disabled, title){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      if (active) b.className = 'active';
+      if (disabled){
+        b.disabled = true;
+        b.title = title || 'DB source not available yet';
+        b.style.opacity = '.42';
+        b.style.cursor = 'not-allowed';
+      }
+      return b;
+    }
+    var ranges = group();
+    ranges.append(
+      btn('ALL TIME', true, false, ''),
+      btn('1 MONTH', false, true, 'Disabled: rpc_h2h_official_pair_timeline does not support a 1 month DB range yet.'),
+      btn('1 WEEK', false, true, 'Disabled: rpc_h2h_official_pair_timeline does not support a 1 week DB range yet.')
+    );
+    var modes = group();
+    modes.style.justifyContent = 'flex-end';
+    modes.append(
+      btn('CLASSIC', true, false, ''),
+      btn('TURBO', false, true, 'Disabled: Turbo H2H DB views/RPCs are not available yet.')
+    );
+    wrap.append(ranges, modes);
+    return wrap;
+  }
+
+  async function openH2HOpponentGraph(playerName, row){
+    var opponentName = String((row && row.name) || '').trim();
+    var playerAKey = String((row && row.playerAKey) || '').trim().toLowerCase();
+    var playerBKey = String((row && row.playerBKey) || '').trim().toLowerCase();
     var ov = document.createElement('div'); ov.className = 'modal-backdrop';
     var md = document.createElement('div'); md.className = 'modal sq-wide-modal';
-    md.style.maxWidth = '820px';
-
-    var head = document.createElement('div');
-    head.style.display = 'flex';
-    head.style.alignItems = 'flex-start';
-    head.style.justifyContent = 'space-between';
-    head.style.gap = '12px';
-    head.style.marginBottom = '4px';
-
-    var titleWrap = document.createElement('div');
+    md.style.maxWidth = '860px';
     var h = document.createElement('h3');
     h.textContent = playerName + ' vs ' + opponentName;
-    titleWrap.append(h);
-    head.append(titleWrap);
-
     var body = document.createElement('div'); body.className = 'modal-body';
-
-    var summary = document.createElement('div');
-    summary.style.display = 'grid';
-    summary.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
-    summary.style.gap = '10px';
-    summary.style.margin = '0 0 10px';
-
-    function metricCard(label, value, tone){
-      var card = document.createElement('div');
-      card.style.border = '1px solid rgba(255,255,255,.10)';
-      card.style.borderRadius = '12px';
-      card.style.background = 'rgba(255,255,255,.035)';
-      card.style.padding = '9px 10px';
-      card.style.minWidth = '0';
-      var l = document.createElement('div');
-      l.textContent = label;
-      l.style.fontSize = '10px';
-      l.style.letterSpacing = '.14em';
-      l.style.textTransform = 'uppercase';
-      l.style.color = 'rgba(231,233,245,.58)';
-      l.style.fontWeight = '900';
-      var v = document.createElement('div');
-      v.textContent = value;
-      v.style.marginTop = '4px';
-      v.style.fontSize = '20px';
-      v.style.fontWeight = '900';
-      v.style.fontVariantNumeric = 'tabular-nums';
-      v.style.color = tone === 'good' ? 'rgba(60,255,134,.95)' : (tone === 'bad' ? 'rgba(255,95,95,.92)' : 'rgba(255,255,255,.92)');
-      card.append(l, v);
-      return card;
-    }
-
-    summary.append(
-      metricCard('Win %', current.toFixed(1) + '%', ''),
-      metricCard('Wins', String(wins), 'good'),
-      metricCard('Losses', String(losses), losses > wins ? 'bad' : '')
-    );
-
-    var split = document.createElement('div');
-    split.style.display = 'grid';
-    split.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
-    split.style.gap = '10px';
-    split.style.margin = '0 0 10px';
-    function splitCard(label, value, subText, tone){
-      var card = document.createElement('div');
-      card.style.border = '1px solid rgba(255,255,255,.10)';
-      card.style.borderRadius = '12px';
-      card.style.background = 'rgba(255,255,255,.035)';
-      card.style.padding = '9px 10px';
-      var l = document.createElement('div');
-      l.textContent = label;
-      l.style.fontSize = '10px';
-      l.style.letterSpacing = '.14em';
-      l.style.textTransform = 'uppercase';
-      l.style.color = 'rgba(231,233,245,.58)';
-      l.style.fontWeight = '900';
-      var v = document.createElement('div');
-      v.textContent = value;
-      v.style.marginTop = '4px';
-      v.style.fontSize = '20px';
-      v.style.fontWeight = '900';
-      v.style.fontVariantNumeric = 'tabular-nums';
-      v.style.color = tone === 'up' ? 'rgba(60,255,134,.95)' : (tone === 'down' ? 'rgba(255,95,95,.92)' : 'rgba(255,255,255,.92)');
-      var st = document.createElement('div');
-      st.textContent = subText;
-      st.style.marginTop = '2px';
-      st.style.fontSize = '11px';
-      st.style.color = 'rgba(231,233,245,.58)';
-      card.append(l, v, st);
-      return card;
-    }
-    function fmtPct(v){ return v == null ? '—' : v.toFixed(1) + '%'; }
-    var deltaTone = splitAvg.delta == null ? '' : (splitAvg.delta > 0 ? 'up' : (splitAvg.delta < 0 ? 'down' : ''));
-    var deltaText = splitAvg.delta == null ? '—' : ((splitAvg.delta > 0 ? '+' : '') + splitAvg.delta.toFixed(1) + ' pts');
-    split.append(
-      splitCard('First 50%', fmtPct(splitAvg.first), splitAvg.firstGames + ' games', ''),
-      splitCard('Second 50%', fmtPct(splitAvg.second), splitAvg.secondGames + ' games', ''),
-      splitCard('Change', deltaText, 'second half vs first', deltaTone)
-    );
-
-    var wrap = document.createElement('div');
-    wrap.style.border = '1px solid rgba(255,255,255,.10)';
-    wrap.style.borderRadius = '14px';
-    wrap.style.background = 'rgba(0,0,0,.16)';
-    wrap.style.padding = '10px';
-    wrap.style.height = '330px';
-    wrap.style.boxSizing = 'border-box';
-    wrap.style.overflowX = 'auto';
-    wrap.style.overflowY = 'hidden';
-    wrap.style.webkitOverflowScrolling = 'touch';
-
-    var canvas = document.createElement('canvas');
-    canvas.style.width = Math.max(720, Math.min(1600, 360 + (series.length * 4))) + 'px';
-    canvas.style.maxWidth = 'none';
-    canvas.style.height = '100%';
-    canvas.style.display = 'block';
-    canvas.setAttribute('aria-label', 'Rolling H2H win percentage line graph');
-    wrap.appendChild(canvas);
-
-    body.append(summary, split, wrap);
-
+    var loading = document.createElement('p');
+    loading.className = 'muted';
+    loading.textContent = 'Loading DB-backed H2H timeline...';
+    body.appendChild(loading);
     var ft = document.createElement('div'); ft.className = 'modal-footer';
     var back = document.createElement('button'); back.className = 'btn'; back.textContent = 'Back';
     back.onclick = function(){ ov.remove(); };
@@ -40943,15 +41464,131 @@ __sqDmdInitV7();
       try{ document.querySelectorAll('.modal-backdrop').forEach(function(x){ x.remove(); }); }catch(_){ }
     };
     ft.append(back, close);
-    md.append(head, body, ft); ov.appendChild(md); document.body.appendChild(ov);
+    md.append(h, body, ft); ov.appendChild(md); document.body.appendChild(ov);
     md.tabIndex = 0; md.focus();
-    setTimeout(function(){ drawH2HCanvas(canvas, series); }, 30);
-    var redraw = function(){ drawH2HCanvas(canvas, series); };
-    window.addEventListener('resize', redraw, { passive:true });
     ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
     ov.addEventListener('keydown', function(e){ if(e.key === 'Escape') ov.remove(); });
+
+    var redraw = null;
     var oldRemove = ov.remove.bind(ov);
-    ov.remove = function(){ try{ window.removeEventListener('resize', redraw); }catch(_){ } oldRemove(); };
+    ov.remove = function(){
+      try{ if (redraw) window.removeEventListener('resize', redraw); }catch(_){ }
+      oldRemove();
+    };
+
+    try{
+      if (!playerAKey || !playerBKey) throw new Error('Missing H2H player keys');
+      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) throw new Error('Supabase client unavailable');
+      var client = window.sb || window.__sb || (typeof sb !== 'undefined' ? sb : null) || window.supabaseClient || null;
+      if (!client || typeof client.rpc !== 'function') throw new Error('Supabase RPC client unavailable');
+      var result = await client.rpc('rpc_h2h_official_pair_timeline', {
+        p_player_a_key: playerAKey,
+        p_player_b_key: playerBKey,
+        p_range: 'all'
+      });
+      if (result && result.error) throw result.error;
+      var rows = ((result && result.data) || []).slice().sort(function(a,b){
+        return (Number(a && a.match_number || 0) - Number(b && b.match_number || 0));
+      });
+      body.textContent = '';
+      if (!rows.length){
+        var empty = document.createElement('p');
+        empty.textContent = 'No H2H timeline data available.';
+        body.appendChild(empty);
+        return;
+      }
+      var last = rows[rows.length - 1] || {};
+      var progress = calcH2HDbProgression(rows);
+      var summary = document.createElement('div');
+      summary.style.display = 'grid';
+      summary.style.gridTemplateColumns = 'repeat(4, minmax(0, 1fr))';
+      summary.style.gap = '10px';
+      summary.style.margin = '0 0 10px';
+      function card(label, value){
+        var c = document.createElement('div');
+        c.style.border = '1px solid rgba(255,255,255,.10)';
+        c.style.borderRadius = '12px';
+        c.style.background = 'rgba(255,255,255,.035)';
+        c.style.padding = '9px 10px';
+        var l = document.createElement('div');
+        l.textContent = label;
+        l.style.fontSize = '10px';
+        l.style.letterSpacing = '.14em';
+        l.style.textTransform = 'uppercase';
+        l.style.color = 'rgba(231,233,245,.58)';
+        l.style.fontWeight = '900';
+        var v = document.createElement('div');
+        v.textContent = value;
+        v.style.marginTop = '4px';
+        v.style.fontSize = '20px';
+        v.style.fontWeight = '900';
+        v.style.fontVariantNumeric = 'tabular-nums';
+        c.append(l, v);
+        return c;
+      }
+      var avg = Number(last.running_avg_diff);
+      summary.append(
+        card('Matches', String(rows.length)),
+        card('Win %', (Number(last.running_win_pct) || 0).toFixed(1) + '%'),
+        card('W-L-D', String(last.running_wins || 0) + '-' + String(last.running_losses || 0) + '-' + String(last.running_draws || 0)),
+        card('Avg Diff', Number.isFinite(avg) ? ((avg >= 0 ? '+' : '') + avg.toFixed(1)) : '—')
+      );
+
+      var progression = document.createElement('div');
+      progression.style.display = 'grid';
+      progression.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
+      progression.style.gap = '10px';
+      progression.style.margin = '0 0 10px';
+      function fmtPct(v){ return v == null ? '—' : v.toFixed(1) + '%'; }
+      function fmtDiff(v){ return v == null ? '—' : ((v >= 0 ? '+' : '') + v.toFixed(1)); }
+      if (progress.enough){
+        progression.append(
+          card('First 50%', fmtPct(progress.firstWinPct) + ' / ' + fmtDiff(progress.firstAvgDiff)),
+          card('Second 50%', fmtPct(progress.secondWinPct) + ' / ' + fmtDiff(progress.secondAvgDiff)),
+          card('Change', fmtPct(progress.winPctDelta) + ' / ' + fmtDiff(progress.avgDiffDelta))
+        );
+      } else {
+        var pNote = document.createElement('div');
+        pNote.className = 'muted';
+        pNote.textContent = 'Not enough games for progression.';
+        pNote.style.gridColumn = '1 / -1';
+        progression.appendChild(pNote);
+      }
+
+      var wrap = document.createElement('div');
+      wrap.style.border = '1px solid rgba(255,255,255,.10)';
+      wrap.style.borderRadius = '14px';
+      wrap.style.background = 'rgba(0,0,0,.16)';
+      wrap.style.padding = '10px';
+      wrap.style.height = '330px';
+      wrap.style.boxSizing = 'border-box';
+      wrap.style.overflowX = 'auto';
+      wrap.style.overflowY = 'hidden';
+      wrap.style.webkitOverflowScrolling = 'touch';
+      var canvas = document.createElement('canvas');
+      canvas.style.width = Math.max(720, Math.min(1800, 360 + (rows.length * 5))) + 'px';
+      canvas.style.maxWidth = 'none';
+      canvas.style.height = '100%';
+      canvas.style.display = 'block';
+      canvas.setAttribute('aria-label', 'DB-backed rolling H2H win percentage graph');
+      wrap.appendChild(canvas);
+
+      var recent = document.createElement('div');
+      recent.className = 'muted';
+      recent.style.margin = '10px 0 0';
+      var first = rows[0], newest = rows[rows.length - 1];
+      recent.textContent = 'Showing Classic / All Time DB timeline from match ' + String(first.match_number || 1) + ' to ' + String(newest.match_number || rows.length) + ', oldest to newest. 1 Month, 1 Week and Turbo are parked until DB-backed sources are available.';
+      body.append(makeH2HDbGraphControls(), summary, progression, wrap, recent);
+      setTimeout(function(){ drawH2HDbTimelineCanvas(canvas, rows); }, 30);
+      redraw = function(){ drawH2HDbTimelineCanvas(canvas, rows); };
+      window.addEventListener('resize', redraw, { passive:true });
+    }catch(e){
+      try{ console.warn('[SQ] H2H timeline RPC unavailable', e); }catch(_){}
+      body.textContent = '';
+      var p = document.createElement('p');
+      p.textContent = 'H2H timeline data is not available. Required Supabase RPC/data source returned an error.';
+      body.appendChild(p);
+    }
   }
 
 	  window.openPlayerH2HDialog = async function openPlayerH2HDialog(playerName){
@@ -40972,6 +41609,8 @@ __sqDmdInitV7();
 	          var winPct = Number(r && r.player_a_win_pct);
 	          var avgDiff = Number(r && r.avg_score_diff);
 	          return {
+	            playerAKey:String((r && r.player_a_key) || '').trim().toLowerCase(),
+	            playerBKey:String((r && r.player_b_key) || '').trim().toLowerCase(),
 	            name:String((r && r.player_b_name) || '').trim(),
 	            gp:gp,
 	            w:Number(r && r.player_a_wins || 0),
@@ -41012,7 +41651,7 @@ __sqDmdInitV7();
 	    var hint = document.createElement('div');
 	    hint.className = 'muted';
 	    hint.style.margin = '0 0 10px';
-	    hint.textContent = 'Clean official H2H League from Supabase. Rolling graph is unavailable in this DB-backed view.';
+	    hint.textContent = 'Clean official H2H League from Supabase. Click an opponent row for the DB-backed rolling graph.';
 	    body.appendChild(hint);
 	
 	    if (h2hUnavailable){
@@ -41032,7 +41671,9 @@ __sqDmdInitV7();
 	          tr.className = 'sq-h2h-ineligible';
 	          tr.style.opacity = '.52';
 	        }
-	        tr.title = r.isEligible ? 'Official H2H League row' : 'Needs 4 games to qualify';
+	        tr.title = r.isEligible ? 'Open DB-backed rolling graph' : 'Needs 4 games to qualify; click to inspect DB timeline';
+	        tr.style.cursor = 'pointer';
+	        tr.addEventListener('click', function(){ openH2HOpponentGraph(playerName, r); });
 	        var td = function(t,c){ var x=document.createElement('td'); x.textContent=t; if(c) x.className=c; return x; };
 	        var rankText = r.isEligible ? String(++pos) : '—';
 	        tr.append(
@@ -41945,10 +42586,11 @@ body[data-page="leaderboard"] #newMatchBtn{order:4;}
   function nextMatch(){captureResult(); const size=Number(active().size||draft().size||state?.match?.tournamentSize||4), max=size===8?7:3, res=active().results||{}; for(let i=1;i<=max;i++){if(res[i])continue; const md=matchDef(i); if(md&&md.a&&md.b)return md;} return null;}
   function teamHtml(p, matchNo){const r=active().results&&active().results[matchNo]; const won=r&&((r.seed||r.winnerSeed)===(p&&p.seed)||String(r.name||r.winnerName).toLowerCase()===playerName(p).toLowerCase()); return '<div class="sq-bracket-team '+(p?'':'pending')+' '+(won?'winner':'')+'"><span class="sq-bracket-seed">'+esc(seedLabel(p))+'</span>'+esc(playerName(p))+'</div>';}
   function matchHtml(no){const md=matchDef(no)||{match:no,a:null,b:null,round:'TBC'}; return '<div class="sq-bracket-match"><div class="sq-bracket-match-title">'+esc(md.round||'Match '+no)+' · Match '+no+'</div>'+teamHtml(md.a,no)+teamHtml(md.b,no)+'</div>';}
-  function renderClassicTree(){const size=Number(active().size||draft().size||state?.match?.tournamentSize||4); if(size===8){return '<div class="sq-classic-bracket-wrap"><div class="sq-classic-bracket bracket8"><div class="sq-bracket-col">'+matchHtml(1)+matchHtml(2)+'</div><div class="sq-bracket-col">'+matchHtml(5)+'</div><div class="sq-bracket-col mid"><div class="sq-bracket-cup">🏆</div>'+matchHtml(7)+'</div><div class="sq-bracket-col">'+matchHtml(6)+'</div><div class="sq-bracket-col">'+matchHtml(3)+matchHtml(4)+'</div></div></div>';} return '<div class="sq-classic-bracket-wrap"><div class="sq-classic-bracket bracket4"><div class="sq-bracket-col">'+matchHtml(1)+'</div><div class="sq-bracket-col mid"><div class="sq-bracket-cup">🏆</div>'+matchHtml(3)+'</div><div class="sq-bracket-col">'+matchHtml(2)+'</div></div></div>';}
+  function winnerHtml(matchNo){const p=resultPlayer(matchNo);return '<div class="sq-bracket-winner-card"><div class="sq-bracket-match-title">Winner</div><div class="sq-bracket-cup">🏆</div><div class="sq-bracket-team '+(p?'winner':'pending')+'"><span class="sq-bracket-seed">'+esc(seedLabel(p))+'</span>'+esc(playerName(p))+'</div></div>';}
+  function renderClassicTree(){const size=Number(active().size||draft().size||state?.match?.tournamentSize||4); if(size===8){return '<div class="sq-classic-bracket-wrap sq-ltr-bracket-wrap"><div class="sq-classic-bracket sq-ltr-bracket bracket8"><div class="sq-bracket-col sq-bracket-starts">'+matchHtml(1)+matchHtml(2)+matchHtml(3)+matchHtml(4)+'</div><div class="sq-bracket-col sq-bracket-semis">'+matchHtml(5)+matchHtml(6)+'</div><div class="sq-bracket-col sq-bracket-finals">'+matchHtml(7)+'</div><div class="sq-bracket-col sq-bracket-winner">'+winnerHtml(7)+'</div></div></div>';} return '<div class="sq-classic-bracket-wrap sq-ltr-bracket-wrap"><div class="sq-classic-bracket sq-ltr-bracket bracket4"><div class="sq-bracket-col sq-bracket-starts">'+matchHtml(1)+matchHtml(2)+'</div><div class="sq-bracket-col sq-bracket-finals">'+matchHtml(3)+'</div><div class="sq-bracket-col sq-bracket-winner">'+winnerHtml(3)+'</div></div></div>';}
   function toGamePlayer(sp){const name=playerName(sp),raw=sp&&sp.raw?sp.raw:{};let parts={first:name,last:''};try{if(typeof __sqNameParts==='function')parts=__sqNameParts(name)}catch(_){}let init=name.slice(0,2).toUpperCase();try{if(typeof __sqNormalizeInitials==='function')init=__sqNormalizeInitials(raw.initials||sp.initials,name)}catch(_){}return{type:raw.type||'registered',id:raw.id!=null?raw.id:(sp&&sp.id!=null?sp.id:null),name:name,first_name:String(raw.first_name||raw.first||sp.first_name||'').trim()||parts.first,last_name:String(raw.last_name||raw.last||sp.last_name||'').trim()||parts.last,nickname:String(raw.nickname||sp.nickname||'').trim(),initials:init,color:null,tournamentSeed:sp&&sp.seed,tournamentRank:sp&&sp.rank};}
   function startMatch(md){try{if(!md||!md.a||!md.b){try{toast('Next tournament match is not ready.')}catch(_){}return}const a=active(),d=draft();a.currentMatch=md.match;a.currentRound=md.round||'Tournament Match';state.__sqTournamentActive=a;state.__sqTournamentDraft=d;state.players=[toGamePlayer(md.a),toGamePlayer(md.b)];try{assignUniqueColors(state.players)}catch(_){}const id=typeof genUuidV4==='function'?genUuidV4():('tournament-'+Date.now());const rules=a.rules||d.rules||state?.match?.tournamentRules||{};state.match={id:id,mode:'official',tournament:true,tournamentType:a.type||d.type||state?.match?.tournamentType||'classic',tournamentSize:Number(a.size||d.size||state?.match?.tournamentSize||4),tournamentRound:md.round||'Tournament Match',tournamentMatch:md.match,tournamentRules:rules,forcePractice:false,practiceType:null,createdAtIso:new Date().toISOString(),targetWins:1,gameNumber:1,wins:[0,0],history:[],completedLogged:false};state.matchAgg=null;state.finished=false;state.gameAwarded=false;state.currentRound=0;state.currentPlayer=0;state.currentDart=0;state.history=[];state.score=[];try{ensureMatchAgg()}catch(_){}try{save()}catch(_){}try{startNewGame(false)}catch(e){console.error('[SQ] Fix83 start match failed',e);}}catch(e){console.error('[SQ] Fix83 start match failed',e)}}
-  function openTree(){captureResult();const next=nextMatch();const ov=document.createElement('div');ov.className='modal-backdrop sq-tournament-tree-modal';const md=document.createElement('div');md.className='modal';md.style.maxWidth='980px';const body=document.createElement('div');body.className='modal-body';body.innerHTML='<div class="sg-tournament-intro"><div class="sg-tournament-title">UPDATED KNOCKOUT TREE</div><div class="sg-tournament-sub">Winner has been advanced. Bracket flows into the final in the centre.</div></div>'+renderClassicTree();const ft=document.createElement('div');ft.className='modal-footer';const nxt=document.createElement('button');nxt.className='btn primary';nxt.textContent=next?'Next':'Tournament Complete';nxt.disabled=!next;nxt.onclick=function(){if(next){ov.remove();startMatch(next)}};ft.append(nxt);md.append(body,ft);ov.appendChild(md);document.body.appendChild(ov);md.tabIndex=0;md.focus();ov.addEventListener('click',e=>{if(e.target===ov)ov.remove()});}
+  function openTree(){captureResult();const next=nextMatch();const ov=document.createElement('div');ov.className='modal-backdrop sq-tournament-tree-modal';const md=document.createElement('div');md.className='modal';md.style.maxWidth='980px';const body=document.createElement('div');body.className='modal-body';body.innerHTML='<div class="sg-tournament-intro"><div class="sg-tournament-title">UPDATED KNOCKOUT TREE</div><div class="sg-tournament-sub">Bracket progresses left to right from starting matches to the winner.</div></div>'+renderClassicTree();const ft=document.createElement('div');ft.className='modal-footer';const nxt=document.createElement('button');nxt.className='btn primary';nxt.textContent=next?'Next':'Tournament Complete';nxt.disabled=!next;nxt.onclick=function(){if(next){ov.remove();startMatch(next)}};ft.append(nxt);md.append(body,ft);ov.appendChild(md);document.body.appendChild(ov);md.tabIndex=0;md.focus();ov.addEventListener('click',e=>{if(e.target===ov)ov.remove()});}
   function patchLeaderboard(){try{if(!isLeaderboard()||!isTournament()||!matchDone())return false; captureResult(); const stack=document.querySelector('#leaderboard .stacked-actions')||document.querySelector('.stacked-actions'); if(!stack)return false; Array.from(stack.querySelectorAll('button')).forEach(b=>{const t=txt(b); if(t==='HIGH SCORES'||t==='PREMIER LEAGUE'||b.id==='sqTournamentNextRoundBtn'||b.id==='sqTournamentNextRoundBtnFix81'||b.id==='sqTournamentNextRoundBtnFix82'){b.style.display='none';b.classList.add('hidden','sqTournamentHideBtn');}}); let next=document.getElementById('sqTournamentNextRoundBtnFix83'); if(!next){next=document.createElement('button');next.id='sqTournamentNextRoundBtnFix83';next.type='button';next.className='btn primary big';next.textContent='NEXT ROUND';}next.onclick=function(e){e.preventDefault();openTree();}; const gameScores=Array.from(stack.querySelectorAll('button')).find(b=>txt(b)==='GAME SCORES'); const end=document.getElementById('newMatchBtn')||Array.from(stack.querySelectorAll('button')).find(b=>txt(b)==='END MATCH'); let gap=document.getElementById('sqFix83TournamentGap'); if(!gap){gap=document.createElement('div');gap.id='sqFix83TournamentGap';} stack.appendChild(next); stack.appendChild(gap); if(gameScores)stack.appendChild(gameScores); if(end)stack.appendChild(end); return true;}catch(e){console.warn('[SQ] Fix83 leaderboard patch failed',e);return false;}}
   window.__sqOpenTournamentTreeFromLeaderboard=openTree;
   window.__sqFix83PatchTournamentLeaderboardNow=patchLeaderboard;
@@ -42327,8 +42969,8 @@ body[data-page="game"] .livev2panel.sqTurboClampActive .v2Badge.sqTurboPreStartB
     async function render(){
       bClassic.classList.toggle('active',hsMode==='classic'); bTurbo.classList.toggle('active',hsMode==='turbo');
       hint.textContent = hsMode==='turbo'
-        ? 'Turbo tournament games only. Turbo records are separated from Classic because Turbo starts at 17s.'
-        : 'Classic official games only. Turbo tournament scores are stored separately under Turbo.';
+        ? 'Turbo Match Play and Tournament games. Turbo records are separated from Classic because Turbo starts at 17s.'
+        : 'Classic official games only. Turbo scores are stored separately under Turbo.';
       tbody.innerHTML='<tr><td colspan="4" style="opacity:.8;padding:14px;">Loading…</td></tr>';
       try{
         const saved=await savedSet();
@@ -42391,17 +43033,16 @@ body[data-page="game"] .livev2panel.sqTurboClampActive .v2Badge.sqTurboPreStartB
   function buildClassicStartTree(){
     const got=draftPairs(); if(!got||!got.pairs.length)return '';
     const d=got.draft, pairs=got.pairs;
-    const left=[], right=[];
-    pairs.forEach(function(p,i){(i%2===0?left:right).push(p);});
-    if(!right.length&&left.length>1){right.push(left.pop());}
     const title=(String(d.type||'').toUpperCase()||'TOURNAMENT')+' / '+d.size+' PLAYERS';
-    const finalSlots = d.size===4 ? 'Semi winners meet here' : 'Semi-final winners meet here';
+    const semiSlots = d.size===8 ? '<div class="sq-fix86-final-slot">Semi-final 1</div><div class="sq-fix86-final-slot">Semi-final 2</div>' : '';
+    const finalSlots = d.size===4 ? 'Semi winners progress right' : 'Semi-final winners progress right';
     return '<div class="sq-fix86-start-bracket" data-sq-fix86-start-tree="1">'+
       '<div class="sq-fix86-start-bracket-title">'+esc(title)+'</div>'+ 
-      '<div class="sq-fix86-bracket-grid">'+
-        '<div class="sq-fix86-col sq-fix86-left">'+left.map(matchHtml).join('')+'</div>'+ 
+      '<div class="sq-fix86-bracket-grid sq-fix86-ltr-bracket">'+
+        '<div class="sq-fix86-col sq-fix86-left">'+pairs.map(matchHtml).join('')+'</div>'+ 
+        (semiSlots ? '<div class="sq-fix86-center"><div class="sq-fix86-final-card"><div class="sq-fix86-final-label">SEMI-FINALS</div>'+semiSlots+'</div></div>' : '')+
         '<div class="sq-fix86-center"><div class="sq-fix86-final-card"><div class="sq-fix86-final-label">FINAL</div><div class="sq-fix86-final-slot">TBC</div><div class="sq-fix86-final-slot">TBC</div><div class="sg-tournament-note" style="margin-top:8px">'+esc(finalSlots)+'</div></div></div>'+ 
-        '<div class="sq-fix86-col sq-fix86-right">'+right.map(matchHtml).join('')+'</div>'+ 
+        '<div class="sq-fix86-center"><div class="sq-fix86-final-card"><div class="sq-fix86-final-label">WINNER</div><div class="sq-fix86-final-slot">TBC</div></div></div>'+ 
       '</div>'+ 
     '</div>';
   }
@@ -42670,6 +43311,49 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     modes.forEach(function(x){var b=document.createElement('button'); b.className='seg-btn'; b.dataset.mode=x.mode; b.textContent=x.label; d.appendChild(b);});
     return d;
   }
+  function cleanDbClient(){
+    try{ if(typeof ensureCloudInit==='function') ensureCloudInit(); }catch(_){}
+    try{ if(window.sb&&typeof window.sb.from==='function') return window.sb; }catch(_){}
+    try{ if(typeof sb!=='undefined'&&sb&&typeof sb.from==='function') return sb; }catch(_){}
+    return null;
+  }
+  async function fetchTurboLatestScoresClean(){
+    var client=cleanDbClient();
+    if(!client) throw new Error('Supabase client unavailable');
+    var q=await client.from('v_latest_scores_turbo_clean')
+      .select('game_id,created_at,game_number,player_scores,winner_name,winner_score,total_players,result_text')
+      .order('created_at',{ascending:false})
+      .limit(50);
+    if(q&&q.error) throw q.error;
+    return Array.isArray(q&&q.data)?q.data:[];
+  }
+  async function fetchTurboRoundHighScoresClean(){
+    var client=cleanDbClient();
+    if(!client) throw new Error('Supabase client unavailable');
+    var q=await client.from('v_round_high_scores_turbo_clean')
+      .select('round_key,target_sort,wr,darts,holder,tie_idx,holder_suffix,game_id,created_at')
+      .order('target_sort',{ascending:true})
+      .order('tie_idx',{ascending:true});
+    if(q&&q.error) throw q.error;
+    return Array.isArray(q&&q.data)?q.data:[];
+  }
+  function turboLatestResultText(row){
+    var txt=String(row&&row.result_text||'').trim();
+    if(txt) return txt;
+    var scores=row&&row.player_scores;
+    if(typeof scores==='string'){try{scores=JSON.parse(scores);}catch(_){scores=[];}}
+    scores=Array.isArray(scores)?scores:[];
+    var ordered=scores.map(function(p,i){return {
+      name:String((p&& (p.player_name||p.player||p.name))||'').trim(),
+      score:Number(p&&p.score||0),
+      idx:Number(p&&p.player_index||i)
+    };}).filter(function(p){return p.name;}).sort(function(a,b){return (b.score-a.score)||(a.idx-b.idx)||a.name.localeCompare(b.name);});
+    if(!ordered.length) return '—';
+    if(ordered.length===1) return ordered[0].name+' '+ordered[0].score+' - TURBO';
+    var out=ordered[0].name+' '+ordered[0].score+' beat '+ordered[1].name+' '+ordered[1].score;
+    if(ordered.length>2) out+=' '+ordered.slice(2).map(function(p){return p.name+' '+p.score;}).join(' ');
+    return out+' - TURBO';
+  }
 
   window.openLatestScoresDialog = async function(initialMode){
     document.querySelectorAll('.sq-latest-scores-backdrop').forEach(function(n){n.remove();});
@@ -42697,6 +43381,23 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     }
     async function render(){
       setBtnStates(tabs,mode); tbody.innerHTML='<tr><td colspan="3" style="padding:18px;opacity:.7;">Loading…</td></tr>';
+      if(mode==='turbo'){
+        var rows=[];
+        try{ rows=await fetchTurboLatestScoresClean(); }
+        catch(e){
+          try{ console.warn('[SQ] Turbo Latest Scores clean view unavailable', e); }catch(_){}
+          tbody.innerHTML='<tr><td colspan="3" style="padding:18px;opacity:.78;">Turbo Latest Scores data is unavailable.</td></tr>';
+          return;
+        }
+        if(!rows.length){
+          tbody.innerHTML='<tr><td colspan="3" style="padding:18px;opacity:.78;">No Turbo games found.</td></tr>';
+          return;
+        }
+        tbody.innerHTML=rows.map(function(r,i){
+          return '<tr><td style="text-align:left;padding-left:14px;color:rgba(0,163,255,.95);font-weight:800;">'+(i+1)+'</td><td style="text-align:left;">'+esc(turboLatestResultText(r))+'</td><td style="text-align:right;padding-right:14px;opacity:.9;">'+esc(fmtWhen(r.created_at))+'</td></tr>';
+        }).join('');
+        return;
+      }
       var gs=await gamesFor(mode); gs=gs.filter(function(g){return playersOf(g).some(function(p){return !!pName(p);});}).slice(0,50);
       if(!gs.length){tbody.innerHTML='<tr><td colspan="3" style="padding:18px;opacity:.7;">No '+mode+' games found.</td></tr>';return;}
       tbody.innerHTML=gs.map(function(g,i){return '<tr style="cursor:pointer"><td style="text-align:left;padding-left:14px;color:rgba(255,123,26,.95);font-weight:800;">'+(i+1)+'</td><td style="text-align:left;">'+esc(format(g))+'</td><td style="text-align:right;padding-right:14px;opacity:.9;">'+esc(fmtWhen(g.ts||g.created_at))+'</td></tr>';}).join('');
@@ -42718,7 +43419,7 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     var footer=document.createElement('div'); footer.className='modal-footer'; var back=document.createElement('button'); back.className='btn'; back.textContent='Back'; var close=document.createElement('button'); close.className='btn primary'; close.textContent='Close'; footer.append(back,close); modal.append(head,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
     var tbody=body.querySelector('tbody'), note=body.querySelector('.sq-fix97-note');
     async function render(){
-      setBtnStates(tabs,mode); note.textContent = mode==='turbo'?'Turbo tournament player-game scores only.':'Classic official player-game scores only.'; tbody.innerHTML='<tr><td colspan="5" style="opacity:.8;padding:14px;">Loading…</td></tr>';
+      setBtnStates(tabs,mode); note.textContent = mode==='turbo'?'Turbo player-game scores only.':'Classic official player-game scores only.'; tbody.innerHTML='<tr><td colspan="5" style="opacity:.8;padding:14px;">Loading…</td></tr>';
       var rows=(await playerRows(mode)).slice(0,50);
       if(!rows.length){tbody.innerHTML='<tr><td colspan="5" style="opacity:.85;padding:14px;">No '+(mode==='turbo'?'Turbo':'Official')+' scores found.</td></tr>';return;}
       tbody.innerHTML=rows.map(function(r,i){return '<tr><td style="color:#ff8a00;font-weight:800;">'+(i+1)+'</td><td>'+esc(r.player)+'</td><td style="font-weight:800;">'+Math.round(r.score)+'</td><td>'+Number(r.avg_round||0).toFixed(1)+'</td><td style="font-size:.8rem;opacity:.85;">'+esc(fmtWhen(r.ts))+'</td></tr>';}).join('');
@@ -42758,6 +43459,30 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     var footer=document.createElement('div'); footer.className='modal-footer'; var back=document.createElement('button'); back.className='btn sq-pill'; back.textContent='Back'; var close=document.createElement('button'); close.className='btn sq-pill'; close.textContent='Close'; footer.append(back,close); modal.append(head,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
     async function render(){
       setBtnStates(tabs,mode); body.innerHTML='<div class="muted">Loading…</div>';
+      if(mode==='turbo'){
+        var rows=[];
+        try{ rows=await fetchTurboRoundHighScoresClean(); }
+        catch(e){
+          try{ console.warn('[SQ] Turbo Round High Scores clean view unavailable', e); }catch(_){}
+          body.innerHTML='<div class="muted">Turbo Round High Scores data is unavailable.</div>';
+          return;
+        }
+        if(!rows.length){
+          body.innerHTML='<div class="muted">No Turbo round high scores found.</div>';
+          return;
+        }
+        var turboTable=document.createElement('table'); turboTable.className='hs-table'; turboTable.innerHTML='<thead><tr><th>Round</th><th>WR</th><th>Darts</th><th>Holder</th></tr></thead><tbody></tbody>';
+        var turboBody=turboTable.querySelector('tbody');
+        rows.forEach(function(r){
+          var holder=String(r.holder||'').trim();
+          var suffix=String(r.holder_suffix||'').trim();
+          var tr=document.createElement('tr');
+          tr.innerHTML='<td>'+esc(r.round_key||'')+'</td><td>'+esc(r.wr==null?'—':r.wr)+'</td><td>'+esc(r.darts||'—')+'</td><td>'+esc(holder+(suffix?' '+suffix:''))+'</td>';
+          turboBody.appendChild(tr);
+        });
+        body.innerHTML=''; body.appendChild(turboTable);
+        return;
+      }
       var gs=await gamesFor(mode), by=recordsForRoundScores(gs,mode); var order = mode==='turbo' ? ['17','18','19','20','D','T','B'] : ['10','11','12','13','14','15','16','17','18','19','20','D','T','B'];
       var table=document.createElement('table'); table.className='hs-table'; table.innerHTML='<thead><tr><th>Round</th><th>WR</th><th>Darts</th><th>Holder</th></tr></thead><tbody></tbody>';
       var tb=table.querySelector('tbody');
@@ -42832,7 +43557,7 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     var tabs=head.querySelector('.sq-fix98-tabs'),tbody=body.querySelector('tbody'),note=body.querySelector('.sq-fix98-note');
     function label(){return mode==='turbo'?'Turbo':(mode==='practice'?'Practice':'Official');}
     function setTabs(){Array.from(tabs.querySelectorAll('button')).forEach(function(b){b.classList.toggle('active',b.dataset.mode===mode);});}
-    async function render(){setTabs();note.textContent=mode==='turbo'?'Turbo tournament player-game scores only.':(mode==='practice'?'Practice player-game scores only.':'Classic official player-game scores only.');tbody.innerHTML='<tr><td colspan="5" style="opacity:.8;padding:14px;">Loading…</td></tr>';var rows=await rowsFor(mode);if(!rows.length){tbody.innerHTML='<tr><td colspan="5" style="opacity:.85;padding:14px;">No '+label()+' scores found.</td></tr>';return;}tbody.innerHTML=rows.map(function(r,i){return '<tr><td style="color:#ff8a00;font-weight:800;">'+(i+1)+'</td><td>'+esc(r.player)+'</td><td style="font-weight:800;">'+Math.round(r.score)+'</td><td>'+Number(r.avg_round||0).toFixed(1)+'</td><td style="font-size:.8rem;opacity:.85;">'+esc(fmtWhen(r.ts))+'</td></tr>';}).join('');}
+    async function render(){setTabs();note.textContent=mode==='turbo'?'Turbo player-game scores only.':(mode==='practice'?'Practice player-game scores only.':'Classic official player-game scores only.');tbody.innerHTML='<tr><td colspan="5" style="opacity:.8;padding:14px;">Loading…</td></tr>';var rows=await rowsFor(mode);if(!rows.length){tbody.innerHTML='<tr><td colspan="5" style="opacity:.85;padding:14px;">No '+label()+' scores found.</td></tr>';return;}tbody.innerHTML=rows.map(function(r,i){return '<tr><td style="color:#ff8a00;font-weight:800;">'+(i+1)+'</td><td>'+esc(r.player)+'</td><td style="font-weight:800;">'+Math.round(r.score)+'</td><td>'+Number(r.avg_round||0).toFixed(1)+'</td><td style="font-size:.8rem;opacity:.85;">'+esc(fmtWhen(r.ts))+'</td></tr>';}).join('');}
     tabs.onclick=function(e){var b=e.target.closest('button[data-mode]');if(!b)return;mode=b.dataset.mode;render();};
     back.onclick=function(){overlay.remove();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}};
     close.onclick=function(){overlay.remove();};overlay.onclick=function(e){if(e.target===overlay)overlay.remove();};
@@ -42904,7 +43629,7 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
   function buildModal(title,sub,modes){var overlay=document.createElement('div');overlay.className='modal-backdrop sq-fix100-backdrop';var modal=document.createElement('div');modal.className='modal sq-wide-modal';var head=document.createElement('div');head.className='sq-league-clean-head';head.innerHTML='<div class="sq-league-clean-title"><h3>'+esc(title)+'</h3>'+(sub?'<div class="sq-league-clean-sub">'+esc(sub)+'</div>':'')+'</div>';var tabs=tabsEl(modes);head.appendChild(tabs);var body=document.createElement('div');body.className='modal-body';var footer=document.createElement('div');footer.className='modal-footer';var back=document.createElement('button');back.className='btn sq-pill';back.textContent='Back';var close=document.createElement('button');close.className='btn sq-pill';close.textContent='Close';footer.append(back,close);modal.append(head,body,footer);overlay.appendChild(modal);document.body.appendChild(overlay);back.onclick=function(){overlay.remove();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}};close.onclick=function(){overlay.remove();};overlay.onclick=function(e){if(e.target===overlay)overlay.remove();};return {overlay:overlay,modal:modal,head:head,tabs:tabs,body:body};}
   async function savedPlayerKeys(){try{if(typeof cloudListPlayers==='function'){var rows=await cloudListPlayers();return new Set((rows||[]).map(function(p){return norm(playerName(p)||p.name);}).filter(Boolean));}}catch(_){}return new Set();}
 
-  window.openTop50ScoresDialog = async function(initialMode){var mode=['official','turbo','practice'].indexOf(String(initialMode||'').toLowerCase())>=0?String(initialMode).toLowerCase():'official';document.querySelectorAll('.sq-top50-backdrop,.sq-top50-fix98-backdrop,.sq-top50-fix99-backdrop,.sq-fix100-top50').forEach(function(n){try{n.remove();}catch(_){}});var ui=buildModal('Top 50 Scores','Official, Turbo and Practice scores are stored separately.',[{mode:'official',label:'Official'},{mode:'turbo',label:'Turbo'},{mode:'practice',label:'Practice'}]);ui.overlay.classList.add('sq-fix100-top50');ui.body.innerHTML='<div class="sq-league-note"></div><div class="table-wrap"><table class="sq-league-table"><colgroup><col style="width:64px"><col><col style="width:150px"><col style="width:120px"><col style="width:190px"></colgroup><thead><tr><th>#</th><th>PLAYER</th><th>SCORE</th><th>AVG</th><th>DATE/TIME</th></tr></thead><tbody></tbody></table></div>';var tb=ui.body.querySelector('tbody'),note=ui.body.querySelector('.sq-league-note');function label(){return mode==='turbo'?'Turbo':mode==='practice'?'Practice':'Official';}async function render(){setTabs(ui.tabs,mode);note.textContent=mode==='turbo'?'Turbo tournament player-game scores only.':(mode==='practice'?'Practice player-game scores only.':'Classic official player-game scores only.');tb.innerHTML='<tr><td colspan="5" style="padding:14px;opacity:.75;">Loading…</td></tr>';var rows=(await playerRows(mode)).slice(0,50);if(!rows.length){tb.innerHTML='<tr><td colspan="5" style="padding:14px;opacity:.75;">No '+label()+' scores found.</td></tr>';return;}tb.innerHTML=rows.map(function(r,i){return '<tr><td class="rank-cell">'+(i+1)+'</td><td class="player-cell">'+esc(r.player)+'</td><td class="score-cell">'+Math.round(r.score)+'</td><td class="avg-cell">'+Number(r.avg||0).toFixed(1)+'</td><td class="date-cell">'+esc(fmtDateTime(r.ts))+'</td></tr>';}).join('');}ui.tabs.onclick=function(e){var b=e.target.closest('button[data-mode]');if(!b)return;mode=b.dataset.mode;render();};await render();};
+  window.openTop50ScoresDialog = async function(initialMode){var mode=['official','turbo','practice'].indexOf(String(initialMode||'').toLowerCase())>=0?String(initialMode).toLowerCase():'official';document.querySelectorAll('.sq-top50-backdrop,.sq-top50-fix98-backdrop,.sq-top50-fix99-backdrop,.sq-fix100-top50').forEach(function(n){try{n.remove();}catch(_){}});var ui=buildModal('Top 50 Scores','Official, Turbo and Practice scores are stored separately.',[{mode:'official',label:'Official'},{mode:'turbo',label:'Turbo'},{mode:'practice',label:'Practice'}]);ui.overlay.classList.add('sq-fix100-top50');ui.body.innerHTML='<div class="sq-league-note"></div><div class="table-wrap"><table class="sq-league-table"><colgroup><col style="width:64px"><col><col style="width:150px"><col style="width:120px"><col style="width:190px"></colgroup><thead><tr><th>#</th><th>PLAYER</th><th>SCORE</th><th>AVG</th><th>DATE/TIME</th></tr></thead><tbody></tbody></table></div>';var tb=ui.body.querySelector('tbody'),note=ui.body.querySelector('.sq-league-note');function label(){return mode==='turbo'?'Turbo':mode==='practice'?'Practice':'Official';}async function render(){setTabs(ui.tabs,mode);note.textContent=mode==='turbo'?'Turbo player-game scores only.':(mode==='practice'?'Practice player-game scores only.':'Classic official player-game scores only.');tb.innerHTML='<tr><td colspan="5" style="padding:14px;opacity:.75;">Loading…</td></tr>';var rows=(await playerRows(mode)).slice(0,50);if(!rows.length){tb.innerHTML='<tr><td colspan="5" style="padding:14px;opacity:.75;">No '+label()+' scores found.</td></tr>';return;}tb.innerHTML=rows.map(function(r,i){return '<tr><td class="rank-cell">'+(i+1)+'</td><td class="player-cell">'+esc(r.player)+'</td><td class="score-cell">'+Math.round(r.score)+'</td><td class="avg-cell">'+Number(r.avg||0).toFixed(1)+'</td><td class="date-cell">'+esc(fmtDateTime(r.ts))+'</td></tr>';}).join('');}ui.tabs.onclick=function(e){var b=e.target.closest('button[data-mode]');if(!b)return;mode=b.dataset.mode;render();};await render();};
 
   async function fetchOfficialHighScoreLeagueClean(){
     var client=null;
@@ -46507,6 +47232,288 @@ Logic untouched: practice save, scoring, Supabase writes, rankings formulas.
 })();
 // <<< PATCH:FIX169_POWER_RANKINGS_CURRENT_CLEAN_SOURCE END
 </script>
+
+<!-- >>> PATCH:FIX170_DECIDER_LEADERBOARD_CONFIRM START -->
+<style id="sq-fix170-match-leaderboard-actions-css">
+body[data-page="leaderboard"] #leaderboard .stacked-actions{
+  display:flex!important;
+  flex-direction:column!important;
+  gap:10px!important;
+}
+body[data-page="leaderboard"] #leaderboard .stacked-actions #nextGameBtn,
+body[data-page="leaderboard"] #leaderboard .stacked-actions #sqTournamentNextRoundBtnFix83{
+  order:1!important;
+  background:linear-gradient(180deg, rgba(32,190,93,.92), rgba(16,128,62,.92))!important;
+  border-color:rgba(88,255,150,.55)!important;
+  box-shadow:0 0 18px rgba(40,220,105,.20), inset 0 1px 0 rgba(255,255,255,.12)!important;
+  color:#06140b!important;
+}
+body[data-page="leaderboard"] #leaderboard .stacked-actions #gameScoresBtn{order:2!important;}
+body[data-page="leaderboard"] #leaderboard .stacked-actions #newMatchBtn{
+  order:3!important;
+  background:linear-gradient(180deg, rgba(220,48,64,.92), rgba(128,18,32,.94))!important;
+  border-color:rgba(255,88,108,.62)!important;
+  box-shadow:0 0 18px rgba(255,60,86,.18), inset 0 1px 0 rgba(255,255,255,.10)!important;
+  color:#fff!important;
+}
+.sq-endmatch-confirm-bd{z-index:410000!important;}
+.sq-endmatch-confirm .modal-body{font-size:16px;line-height:1.35;text-align:center;color:rgba(238,242,255,.94);}
+.sq-endmatch-confirm .modal-footer{display:flex!important;justify-content:center!important;gap:12px!important;}
+.sq-endmatch-confirm .sq-endmatch-yes{background:linear-gradient(180deg, rgba(220,48,64,.92), rgba(128,18,32,.94))!important;border-color:rgba(255,88,108,.62)!important;color:#fff!important;}
+.sq-endmatch-confirm .sq-endmatch-no{background:rgba(255,255,255,.08)!important;border-color:rgba(255,255,255,.16)!important;color:rgba(240,244,255,.94)!important;}
+</style>
+<script id="sq-fix170-decider-leaderboard-confirm-js">
+(function(){
+  'use strict';
+  if (window.__sqFix170DeciderLeaderboardConfirm) return;
+  window.__sqFix170DeciderLeaderboardConfirm = true;
+
+  function text(el){ return String(el && el.textContent || '').replace(/\s+/g,' ').trim().toUpperCase(); }
+  function hidden(el){ return !el || el.classList.contains('hidden') || el.style.display === 'none'; }
+
+  function openEndMatchConfirm(onYes){
+    document.querySelectorAll('.sq-endmatch-confirm-bd').forEach(function(n){ try{ n.remove(); }catch(_){ } });
+    var bd = document.createElement('div');
+    bd.className = 'modal-backdrop sq-endmatch-confirm-bd';
+    var modal = document.createElement('div');
+    modal.className = 'modal sq-endmatch-confirm';
+    modal.style.maxWidth = '440px';
+    modal.innerHTML =
+      '<h3>End Match</h3>' +
+      '<div class="modal-body">Are you sure you want to end the match completely?</div>' +
+      '<div class="modal-footer">' +
+        '<button type="button" class="btn sq-endmatch-yes">YES</button>' +
+        '<button type="button" class="btn sq-endmatch-no">NO</button>' +
+      '</div>';
+    bd.appendChild(modal);
+    document.body.appendChild(bd);
+    function close(){ try{ bd.remove(); }catch(_){ } }
+    modal.querySelector('.sq-endmatch-no').onclick = close;
+    modal.querySelector('.sq-endmatch-yes').onclick = function(){ close(); try{ if (typeof onYes === 'function') onYes(); }catch(e){ console.error('[SQ] End Match confirm action failed', e); } };
+    bd.addEventListener('click', function(e){ if (e.target === bd) close(); });
+    bd.addEventListener('keydown', function(e){ if (e.key === 'Escape') close(); });
+    modal.tabIndex = 0;
+    try{ modal.focus(); }catch(_){ }
+  }
+
+  function patchLeaderboardActions(){
+    try{
+      if (!document.body || document.body.dataset.page !== 'leaderboard') return false;
+      var stack = document.querySelector('#leaderboard .stacked-actions');
+      if (!stack) return false;
+
+      var next = document.getElementById('sqTournamentNextRoundBtnFix83') || document.getElementById('nextGameBtn');
+      var scores = document.getElementById('gameScoresBtn');
+      var end = document.getElementById('newMatchBtn');
+
+      if (next && !hidden(next)) {
+        next.textContent = 'NEXT ROUND >';
+        next.classList.add('sq-fix170-next-round');
+        stack.appendChild(next);
+      }
+      if (scores) stack.appendChild(scores);
+      if (end) {
+        end.textContent = 'END MATCH';
+        end.classList.add('sq-fix170-end-match');
+        end.classList.remove('hidden');
+        end.style.display = '';
+        stack.appendChild(end);
+
+        var current = end.onclick;
+        if (typeof current === 'function' && !current.__sqFix170ConfirmWrapper) {
+          end.__sqFix170OriginalEndMatch = current;
+          var wrapped = function(e){
+            try{ if (e) { e.preventDefault(); e.stopPropagation(); } }catch(_){ }
+            var original = end.__sqFix170OriginalEndMatch;
+            openEndMatchConfirm(function(){ if (typeof original === 'function') original.call(end); });
+            return false;
+          };
+          wrapped.__sqFix170ConfirmWrapper = true;
+          end.onclick = wrapped;
+        }
+      }
+      return true;
+    }catch(e){
+      try{ console.warn('[SQ] Fix170 leaderboard action patch failed', e); }catch(_){ }
+      return false;
+    }
+  }
+
+  var oldShowLeaderboard = window.showLeaderboard || (typeof showLeaderboard === 'function' ? showLeaderboard : null);
+  if (typeof oldShowLeaderboard === 'function' && !oldShowLeaderboard.__sqFix170Wrapped) {
+    var wrappedShowLeaderboard = function(){
+      var ret = oldShowLeaderboard.apply(this, arguments);
+      [0, 80, 250, 700].forEach(function(ms){ setTimeout(patchLeaderboardActions, ms); });
+      return ret;
+    };
+    wrappedShowLeaderboard.__sqFix170Wrapped = true;
+    window.showLeaderboard = wrappedShowLeaderboard;
+    try{ showLeaderboard = wrappedShowLeaderboard; }catch(_){ }
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(patchLeaderboardActions, 0); });
+  setInterval(function(){ if (document.body && document.body.dataset.page === 'leaderboard') patchLeaderboardActions(); }, 500);
+  try{ console.info('[SQ] Fix170 Decider input and leaderboard End Match confirmation active.'); }catch(_){ }
+})();
+</script>
+<!-- <<< PATCH:FIX170_DECIDER_LEADERBOARD_CONFIRM END -->
+
+<!-- >>> PATCH:FIX171_LEADERBOARD_BRACKET_VISUAL_REFRESH START -->
+<style id="sq-fix171-leaderboard-bracket-visual-css">
+body[data-page="leaderboard"] #leaderboard.card{
+  background:transparent!important;
+  border:0!important;
+  box-shadow:none!important;
+  padding:8px!important;
+}
+body[data-page="leaderboard"] #leaderboard .lb-box{
+  position:relative!important;
+  overflow:hidden!important;
+  padding:16px!important;
+  border-radius:20px!important;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(255,189,69,.16), transparent 34%),
+    linear-gradient(180deg, rgba(18,24,45,.96), rgba(8,12,26,.98))!important;
+  border:1px solid rgba(255,189,69,.26)!important;
+  box-shadow:0 24px 60px rgba(0,0,0,.46), inset 0 0 0 1px rgba(255,255,255,.04)!important;
+}
+body[data-page="leaderboard"] #leaderboard .lb-box::before{
+  content:"";position:absolute;left:14px;right:14px;top:0;height:2px;
+  background:linear-gradient(90deg, transparent, rgba(255,189,69,.72), transparent);
+  pointer-events:none;
+}
+body[data-page="leaderboard"] #leaderboard .lb-box h2{
+  margin:2px 0 14px!important;
+  color:#f4f7ff!important;
+  font-size:clamp(18px,4.8vw,24px)!important;
+  line-height:1.05!important;
+  letter-spacing:.16em!important;
+  text-shadow:0 0 18px rgba(255,122,0,.20)!important;
+}
+body[data-page="leaderboard"] #leaderboard .table-wrap{
+  margin-top:10px!important;
+  border:1px solid rgba(255,255,255,.10)!important;
+  border-radius:16px!important;
+  overflow:auto!important;
+  background:rgba(3,7,18,.34)!important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.025)!important;
+}
+body[data-page="leaderboard"] #leaderboard #lbTable{
+  min-width:360px!important;
+  border-collapse:separate!important;
+  border-spacing:0!important;
+}
+body[data-page="leaderboard"] #leaderboard #lbTable thead th{
+  background:rgba(255,255,255,.045)!important;
+  color:rgba(235,239,255,.76)!important;
+  font-size:11px!important;
+  letter-spacing:.16em!important;
+  padding:12px 10px!important;
+  border-bottom:1px solid rgba(255,255,255,.10)!important;
+}
+body[data-page="leaderboard"] #leaderboard #lbTable tbody td{
+  padding:12px 10px!important;
+  border-top:1px solid rgba(255,255,255,.075)!important;
+  color:rgba(244,247,255,.92)!important;
+  font-size:14px!important;
+}
+body[data-page="leaderboard"] #leaderboard #lbTable tbody td.lb-rowlabel{
+  color:#ffbd45!important;
+  background:rgba(255,189,69,.055)!important;
+  font-weight:950!important;
+}
+body[data-page="leaderboard"] #leaderboard #lbTable tbody tr:nth-child(odd) td{background-color:rgba(255,255,255,.018)!important;}
+body[data-page="leaderboard"] #leaderboard #lbTable tbody tr:last-child td{
+  border-top-color:rgba(255,189,69,.20)!important;
+  font-weight:950!important;
+}
+body[data-page="leaderboard"] #leaderboard .stacked-actions{
+  margin-top:14px!important;
+  gap:10px!important;
+}
+body[data-page="leaderboard"] #leaderboard .stacked-actions .btn.big{
+  min-height:52px!important;
+  border-radius:15px!important;
+  font-size:14px!important;
+  font-weight:950!important;
+  letter-spacing:.12em!important;
+  text-transform:uppercase!important;
+}
+body[data-page="leaderboard"] #leaderboard .stacked-actions #gameScoresBtn{
+  background:linear-gradient(180deg, rgba(255,255,255,.085), rgba(255,255,255,.035))!important;
+  border-color:rgba(255,255,255,.16)!important;
+  color:rgba(242,246,255,.94)!important;
+}
+
+.sq-tournament-tree-modal .modal{
+  width:min(96vw,1080px)!important;
+  max-width:1080px!important;
+}
+.sq-ltr-bracket-wrap{
+  padding:8px 2px 4px!important;
+  overflow-x:auto!important;
+  -webkit-overflow-scrolling:touch!important;
+}
+.sq-ltr-bracket{
+  position:relative!important;
+  align-items:center!important;
+  gap:22px!important;
+  min-width:760px!important;
+}
+.sq-ltr-bracket.bracket4{grid-template-columns:1.25fr 1fr .9fr!important;}
+.sq-ltr-bracket.bracket8{grid-template-columns:1.35fr 1fr .9fr .85fr!important;}
+.sq-ltr-bracket .sq-bracket-col{
+  position:relative!important;
+  min-height:270px!important;
+  gap:18px!important;
+  justify-content:center!important;
+}
+.sq-ltr-bracket .sq-bracket-col:not(:last-child)::after{
+  content:"";position:absolute;right:-18px;top:50%;width:18px;height:2px;
+  background:linear-gradient(90deg, rgba(255,189,69,.55), rgba(255,189,69,.18));
+}
+.sq-ltr-bracket .sq-bracket-match,
+.sq-ltr-bracket .sq-bracket-winner-card{
+  border-radius:14px!important;
+  border-color:rgba(255,255,255,.14)!important;
+  background:linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))!important;
+}
+.sq-ltr-bracket .sq-bracket-match::after{
+  content:"";position:absolute;right:-14px;top:50%;width:14px;height:1px;background:rgba(255,189,69,.35);
+}
+.sq-ltr-bracket .sq-bracket-team{
+  min-height:22px!important;
+}
+.sq-ltr-bracket .sq-bracket-winner-card{
+  padding:14px 12px!important;
+  text-align:center!important;
+  box-shadow:0 0 24px rgba(255,189,69,.12)!important;
+}
+.sq-ltr-bracket .sq-bracket-winner-card .sq-bracket-cup{
+  margin:2px 0 9px!important;
+}
+.sq-fix86-ltr-bracket{
+  grid-template-columns:minmax(240px,1.4fr) minmax(160px,.9fr) minmax(160px,.9fr) minmax(150px,.75fr)!important;
+  min-width:760px!important;
+  overflow:visible!important;
+}
+.sq-fix86-start-bracket{overflow-x:auto!important;-webkit-overflow-scrolling:touch!important;}
+.sq-fix86-ltr-bracket .sq-fix86-center,
+.sq-fix86-ltr-bracket .sq-fix86-col{min-height:170px!important;}
+.sq-fix86-ltr-bracket .sq-fix86-center:not(:last-child)::after,
+.sq-fix86-ltr-bracket .sq-fix86-left::after{
+  content:"";position:absolute;right:-14px;top:50%;width:14px;height:2px;background:rgba(255,189,69,.36);
+}
+.sq-fix86-ltr-bracket .sq-fix86-left,
+.sq-fix86-ltr-bracket .sq-fix86-center{position:relative!important;}
+@media(max-width:620px){
+  body[data-page="leaderboard"] #leaderboard .lb-box{padding:13px!important;border-radius:17px!important;}
+  body[data-page="leaderboard"] #leaderboard #lbTable tbody td,
+  body[data-page="leaderboard"] #leaderboard #lbTable thead th{padding:10px 8px!important;font-size:12px!important;}
+  .sq-ltr-bracket,.sq-fix86-ltr-bracket{min-width:720px!important;}
+}
+</style>
+<!-- <<< PATCH:FIX171_LEADERBOARD_BRACKET_VISUAL_REFRESH END -->
 
 </body>
 </html>
