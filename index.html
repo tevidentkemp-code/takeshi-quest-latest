@@ -7672,7 +7672,7 @@ body.livev2-on[data-page="game"] canvas#v2InfoDmd{
 .sg-practice-sub{margin-top:4px;color:rgba(231,233,245,.66);font-size:12px;letter-spacing:.04em;}
 .sg-practice-footer{margin-top:10px;justify-content:center;gap:10px;}
 #practiceClassicBtn .sg-opt-title::after{content:' LIVE';margin-left:8px;color:rgba(67,255,139,.95);font-size:10px;letter-spacing:.12em;}
-#practiceVsAiBtn,#practiceVsShadowBtn{opacity:.62;}
+#practiceVsAiBtn{opacity:.62;}
 /* <<< PATCH:FIX71_PRACTICE_GAME_TYPE_MENU END */
 </style>
 
@@ -8239,6 +8239,11 @@ body.livev2-on[data-page="game"] canvas#v2InfoDmd{
 </div>
 
   <!-- Round High Scores (public) -->
+  <!-- LEGACY ROUND HIGH SCORES STATIC MODAL — QUARANTINED
+       Current League & Rankings flow does not use this static modal.
+       Active path is Fix102 wrapper -> Fix97 dynamic modal.
+       Do not patch this block unless reactivating legacy static modal intentionally.
+  -->
   <div id="roundHighScoresModal" class="modal-backdrop hidden">
     <div class="modal compact">
       <h3>Round High Scores</h3>
@@ -9818,7 +9823,9 @@ function openLeagueLowsAdminDialog(){
         try{
           // Delete throws first, then game record
           try {
-            await sb.from(TABLE_GAME_THROWS).delete().eq('game_id', sheetId);
+            if (FEATURE_CLOUD_THROWS && !cloudIsTableMissing(TABLE_GAME_THROWS)) {
+              await sb.from(TABLE_GAME_THROWS).delete().eq('game_id', sheetId);
+            }
           } catch(e1){
             console.error('Delete game_throws failed', e1);
           }
@@ -10221,6 +10228,10 @@ async function renderPBGRTableInto(mountId){
   }
 }
 
+// LEGACY ROUND HIGH SCORES STATIC IMPLEMENTATION — QUARANTINED
+// Current active path is Fix102 wrapper -> Fix97 dynamic modal.
+// This block is tied to the old #roundHighScoresModal static markup.
+// Do not patch this implementation for current League & Rankings behaviour.
 // >>> PATCH:round_high_scores_use_wr_table START
 async function renderRoundHighScoresInto(mountId){
   const mount = document.getElementById(mountId);
@@ -11006,8 +11017,10 @@ if (!Array.isArray(games) || !games.length) {
 
     // Poll only for new games (delta), do not refetch history
     try{
-      if (window.SQ && SQ.boot && SQ.boot.poller && ticker.dataset.deltaPoller !== '1'){
+      if (window.SQ && SQ.boot && SQ.boot.poller && ticker.dataset.deltaPoller !== '1' && (!window.__sqPsTickerDeltaPollerActive || !(window.__sqPsTickerDeltaPollerTicker && window.__sqPsTickerDeltaPollerTicker.isConnected))){
         ticker.dataset.deltaPoller = '1';
+        window.__sqPsTickerDeltaPollerActive = true;
+        window.__sqPsTickerDeltaPollerTicker = ticker;
         SQ.boot.poller.register('psTicker.delta', async ()=>{
           if (!ticker.isConnected) return;
           if (document && document.hidden) return;
@@ -11053,7 +11066,7 @@ if (!Array.isArray(games) || !games.length) {
 
           // refresh cache
           try{ localStorage.setItem('SQ_PSTICKER_CACHE_V1', JSON.stringify({ t: Date.now(), items: arr })); }catch(_){}
-        }, 5000);
+        }, SQ_GAMES_VISIBLE_MIN_POLL_MS);
       }
     }catch(_){}
 if (!items.length) {
@@ -11175,6 +11188,7 @@ async function cloudRenamePlayerMerge(oldName, newName){
   const { error } = await sb.rpc('rename_player_merge', { old_name: o, new_name: n });
   if (error) { markCloudError(error); throw error; }
   markCloudOk();
+  try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('rename_player_merge'); }catch(_){}
 }
 // <<< PATCH:PLAYER_RENAME_RPC END
 
@@ -11277,6 +11291,7 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
     const { data, error } = await q2.select('id,name,initials').maybeSingle();
     if (error) { markCloudError(error); throw error; }
     markCloudOk();
+    try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_profile_fallback_update'); }catch(_){}
     return data || null;
   }
 }
@@ -11287,27 +11302,106 @@ const TABLE_PLAYERS_ARCHIVE = 'players_archive'; // create this table in Supabas
 
 let _sqPlayerDir = { byId:{}, byName:{}, list:[], loadedAt:0 };
 
+const SQ_PLAYERS_FETCH_TTL_MS = 60 * 1000;
+window.__sqPlayersFetchInFlight = window.__sqPlayersFetchInFlight || null;
+window.__sqPlayersFetchCache = Array.isArray(window.__sqPlayersFetchCache) ? window.__sqPlayersFetchCache : null;
+window.__sqPlayersFetchAt = Number(window.__sqPlayersFetchAt || 0);
+window.__sqPlayersFetchGeneration = Number(window.__sqPlayersFetchGeneration || 0);
+
+function __sqClonePlayersRows(rows){
+  return Array.isArray(rows) ? rows.map(p => Object.assign({}, p)) : [];
+}
+
+window.__sqInvalidatePlayersFetchCache = function(reason){
+  window.__sqPlayersFetchGeneration = Number(window.__sqPlayersFetchGeneration || 0) + 1;
+  window.__sqPlayersFetchInFlight = null;
+  window.__sqPlayersFetchCache = null;
+  window.__sqPlayersFetchAt = 0;
+  try{ _sqPlayerDir.loadedAt = 0; }catch(_){}
+  try{ console.debug && console.debug('[players] runtime fetch cache invalidated', reason || 'unspecified'); }catch(_){}
+};
+
+try{
+  if(!window.__sqPlayersChangedCacheListenerInstalled){
+    window.__sqPlayersChangedCacheListenerInstalled = true;
+    window.addEventListener('sq:players-changed', function(){
+      try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('sq:players-changed'); }catch(_){}
+    });
+  }
+}catch(_){}
+
 function sqIsUuidLike(v){
   return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.trim());
+}
+
+async function __sqFetchPlayersRows(force=false){
+  if(!ensureCloudInit()) return [];
+  const now = Date.now();
+  if(!force && window.__sqPlayersFetchCache && (now - window.__sqPlayersFetchAt) < SQ_PLAYERS_FETCH_TTL_MS){
+    return __sqClonePlayersRows(window.__sqPlayersFetchCache);
+  }
+  if(!force && window.__sqPlayersFetchInFlight){
+    return __sqClonePlayersRows(await window.__sqPlayersFetchInFlight);
+  }
+
+  const generation = Number(window.__sqPlayersFetchGeneration || 0);
+  const fetchPromise = (async function(){
+    let data = [];
+    try{
+      const r1 = await sb
+        .from(TABLE_PLAYERS)
+        .select('id, name, initials, nickname, first_name, last_name, created_at, deleted_at')
+        .is('deleted_at', null)
+        .order('name');
+      if(r1.error) throw r1.error;
+      data = r1.data || [];
+      markCloudOk();
+    }catch(e1){
+      const msg = String(e1?.message || e1 || '');
+      const code = String(e1?.code || '');
+      const isSchemaMismatch = (code === '42703') || /(initials|deleted_at|nickname|first_name|last_name)/i.test(msg);
+      if(!isSchemaMismatch){
+        markCloudError(e1);
+        throw e1;
+      }
+      try{
+        const r2 = await sb
+          .from(TABLE_PLAYERS)
+          .select('id, name, created_at')
+          .order('name');
+        if(r2.error) throw r2.error;
+        data = (r2.data || []).map(p => ({ ...p, initials: __sqComputeInitialsFromName(p?.name) }));
+        markCloudOk();
+      }catch(e2){
+        markCloudError(e2);
+        throw e2;
+      }
+    }
+
+    const rows = __sqClonePlayersRows(data);
+    if(generation === Number(window.__sqPlayersFetchGeneration || 0)){
+      window.__sqPlayersFetchCache = __sqClonePlayersRows(rows);
+      window.__sqPlayersFetchAt = Date.now();
+    }
+    return rows;
+  })();
+
+  window.__sqPlayersFetchInFlight = fetchPromise;
+  try{
+    return __sqClonePlayersRows(await fetchPromise);
+  }finally{
+    if(window.__sqPlayersFetchInFlight === fetchPromise) window.__sqPlayersFetchInFlight = null;
+  }
 }
 
 async function cloudRefreshPlayerDirectory(force=false){
   if (!ensureCloudInit()) return _sqPlayerDir;
 
   const now = Date.now();
-  if (!force && _sqPlayerDir.loadedAt && (now - _sqPlayerDir.loadedAt) < 30_000 && _sqPlayerDir.list?.length) return _sqPlayerDir;
+  if (!force && _sqPlayerDir.loadedAt && (now - _sqPlayerDir.loadedAt) < SQ_PLAYERS_FETCH_TTL_MS && _sqPlayerDir.list?.length) return _sqPlayerDir;
 
   try{
-    const sb = window.sb;
-    const { data, error } = await sb
-      .from(TABLE_PLAYERS)
-      .select('id,name,first_name,last_name,initials,nickname,created_at,deleted_at')
-      .order('created_at', { ascending: true });
-
-    if (error) throw error;
-
-    const list = (data || []).filter(p => !p?.deleted_at);
-
+    const list = await cloudListPlayers(!!force);
     const byId = {};
     const byName = {};
     for (const p of list){
@@ -11315,7 +11409,7 @@ async function cloudRefreshPlayerDirectory(force=false){
       if (p?.name) byName[String(p.name).trim().toLowerCase()] = p;
     }
 
-    _sqPlayerDir = { byId, byName, list, loadedAt: now };
+    _sqPlayerDir = { byId, byName, list, loadedAt: Date.now() };
   }catch(e){
     console.warn('[SQ] player directory refresh failed:', e?.message || e);
   }
@@ -11769,7 +11863,12 @@ const avgs = scores.map((_, idx) => {
 
     try {
       const gameIds = games.map(g => g.sheet_id).filter(Boolean);
-      if (gameIds.length && typeof TABLE_GAME_THROWS !== 'undefined') {
+      if (
+        gameIds.length &&
+        typeof TABLE_GAME_THROWS !== 'undefined' &&
+        FEATURE_CLOUD_THROWS &&
+        !cloudIsTableMissing(TABLE_GAME_THROWS)
+      ) {
         const { data: throwsRaw, error: tErr } = await sb
           .from(TABLE_GAME_THROWS)
           .select('game_id, points')
@@ -12386,13 +12485,384 @@ function openHighScoresHubDialog(){
 const SUPABASE_URL = "https://vvfqumgtasuacpggdmxx.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2ZnF1bWd0YXN1YWNwZ2dkbXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NTk0MDMsImV4cCI6MjA3ODUzNTQwM30.8NblWOwEsY1FP1hxvO6isQ908NyxkTgntnZZiXIFPHE";
 
+// Dev-only Supabase read instrumentation.
+// Enable with URL ?debug=1, localStorage.SQ_DEBUG='1', or localStorage.SQ_EGRESS_DEBUG='1'.
+// When disabled, clients are returned unchanged so production behaviour and overhead stay the same.
+(function(){
+  const MAX_EGRESS_LOG_ENTRIES = 200;
+  const CLIENT_WRAPS = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
+  const LABEL_STACK = [];
+  let ACTIVE_NOTICE_SHOWN = false;
+
+  function isEgressDebugEnabled(){
+    try {
+      if (window.SQ_DEBUG === true) return true;
+      if (window.SQ_EGRESS_DEBUG === true || String(window.SQ_EGRESS_DEBUG || '') === '1') return true;
+      if (window.localStorage) {
+        if (localStorage.getItem('SQ_EGRESS_DEBUG') === '1') return true;
+        if (localStorage.getItem('SQ_DEBUG') === '1') return true;
+      }
+      if (window.location && window.location.search) {
+        const qs = new URLSearchParams(window.location.search);
+        if (qs.get('debug') === '1' || qs.get('egress') === '1' || qs.get('egressDebug') === '1') return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  function ensureLog(){
+    if (!Array.isArray(window.__SQ_EGRESS_LOG)) window.__SQ_EGRESS_LOG = [];
+    return window.__SQ_EGRESS_LOG;
+  }
+  ensureLog();
+
+  function noteActive(){
+    if (!isEgressDebugEnabled() || ACTIVE_NOTICE_SHOWN) return;
+    ACTIVE_NOTICE_SHOWN = true;
+    try { console.info('[SQ EGRESS] logger active'); } catch (_) {}
+  }
+
+  function nowMs(){
+    try { return performance.now(); } catch (_) { return Date.now(); }
+  }
+
+  function approxJsonBytes(value){
+    try {
+      const json = JSON.stringify(value == null ? null : value);
+      if (typeof Blob !== 'undefined') return new Blob([json]).size;
+      return json ? json.length : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  function safeStack(stack){
+    try {
+      return String(stack || '').split('\n').slice(1, 7).map(s => s.trim()).join(' | ');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function inferLabel(stack){
+    try {
+      const lines = String(stack || '').split('\n').map(s => s.trim()).filter(Boolean);
+      const hit = lines.find(line =>
+        line !== 'Error' &&
+        line.indexOf('__sq') < 0 &&
+        line.indexOf('sqEgress') < 0 &&
+        line.indexOf('Proxy') < 0 &&
+        line.indexOf('instrument') < 0
+      );
+      return hit || '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function normaliseError(error){
+    if (!error) return '';
+    try {
+      return String(error.message || error.details || error.code || error.status || error);
+    } catch (_) {
+      return 'unknown error';
+    }
+  }
+
+  function responseRows(data){
+    if (Array.isArray(data)) return data.length;
+    if (data && typeof data === 'object') return 1;
+    if (data == null) return 0;
+    return null;
+  }
+
+  function addCallHint(meta, method, args){
+    const next = Object.assign({}, meta || {});
+    const filters = Array.isArray(next.filters) ? next.filters.slice() : [];
+    if (method === 'select') {
+      next.operation = 'select';
+      next.columns = String((args && args[0]) || '*');
+      if (args && args[1] && typeof args[1] === 'object') {
+        if (args[1].head) next.head = true;
+        if (args[1].count) next.count = String(args[1].count);
+      }
+    } else if (method === 'limit') {
+      next.limit = Number(args && args[0]);
+    } else if (method === 'range') {
+      next.range = String(args && args[0]) + '-' + String(args && args[1]);
+    } else if (method === 'order') {
+      filters.push('order(' + String(args && args[0]) + ')');
+    } else if (method === 'single' || method === 'maybeSingle') {
+      next.resultShape = method;
+    } else if (method === 'insert' || method === 'update' || method === 'upsert' || method === 'delete') {
+      next.mutation = method;
+    } else if (
+      method === 'eq' || method === 'neq' || method === 'gt' || method === 'gte' ||
+      method === 'lt' || method === 'lte' || method === 'is' || method === 'like' ||
+      method === 'ilike' || method === 'in' || method === 'contains' || method === 'overlaps'
+    ) {
+      filters.push(method + '(' + String(args && args[0]) + ')');
+    } else if (method === 'or' || method === 'match' || method === 'filter') {
+      filters.push(method + '(...)');
+    }
+    next.filters = filters.slice(-12);
+    return next;
+  }
+
+  function pushEntry(meta, result, durationMs, stack){
+    if (!isEgressDebugEnabled()) return;
+    const data = result && Object.prototype.hasOwnProperty.call(result, 'data') ? result.data : result;
+    const error = result && Object.prototype.hasOwnProperty.call(result, 'error') ? result.error : null;
+    const bytes = approxJsonBytes(data);
+    const entry = {
+      timestamp: new Date().toISOString(),
+      label: (LABEL_STACK.length ? LABEL_STACK[LABEL_STACK.length - 1] : '') || meta.label || inferLabel(meta.stack || stack),
+      object: meta.object || '',
+      kind: meta.kind || 'from',
+      operation: meta.operation || (meta.kind === 'rpc' ? 'rpc' : ''),
+      columns: meta.columns || '',
+      filters: Array.isArray(meta.filters) ? meta.filters.slice() : [],
+      limit: Number.isFinite(meta.limit) ? meta.limit : null,
+      range: meta.range || '',
+      count: meta.count || '',
+      head: !!meta.head,
+      mutation: meta.mutation || '',
+      resultShape: meta.resultShape || '',
+      rowCount: responseRows(data),
+      bytes,
+      kb: Math.round((bytes / 1024) * 10) / 10,
+      durationMs: Math.round(durationMs),
+      error: normaliseError(error),
+      stack: safeStack(meta.stack || stack)
+    };
+    const log = ensureLog();
+    log.push(entry);
+    while (log.length > MAX_EGRESS_LOG_ENTRIES) log.shift();
+    try { console.debug('[SQ EGRESS]', entry); } catch (_) {}
+  }
+
+  function shouldWrapBuilder(value){
+    return !!(value && typeof value === 'object');
+  }
+
+  function wrapBuilder(builder, meta){
+    if (!shouldWrapBuilder(builder)) return builder;
+    let currentMeta = Object.assign({}, meta || {});
+    let proxy = null;
+
+    function execute(target, stack){
+      const started = nowMs();
+      let logged = false;
+      function logOnce(result, error){
+        if (logged) return;
+        logged = true;
+        pushEntry(currentMeta, error ? { data:null, error:error } : result, nowMs() - started, stack);
+      }
+      try {
+        return target.then.call(target, function(result){
+          logOnce(result, null);
+          return result;
+        }, function(error){
+          logOnce(null, error);
+          throw error;
+        });
+      } catch (error) {
+        logOnce(null, error);
+        return Promise.reject(error);
+      }
+    }
+
+    proxy = new Proxy(builder, {
+      get(target, prop, receiver){
+        if (prop === '__sqEgressInstrumentedBuilder') return true;
+        if (prop === 'then') {
+          const thenFn = Reflect.get(target, prop, receiver);
+          if (typeof thenFn !== 'function') return thenFn;
+          return function(onFulfilled, onRejected){
+            const stack = (new Error()).stack;
+            return execute(target, stack).then(onFulfilled, onRejected);
+          };
+        }
+        if (prop === 'catch') {
+          if (typeof target.then === 'function') {
+            return function(onRejected){
+              const stack = (new Error()).stack;
+              return execute(target, stack).catch(onRejected);
+            };
+          }
+          const catchFn = Reflect.get(target, prop, receiver);
+          return catchFn;
+        }
+        if (prop === 'finally') {
+          if (typeof target.then === 'function') {
+            return function(onFinally){
+              const stack = (new Error()).stack;
+              return execute(target, stack).finally(onFinally);
+            };
+          }
+          const finallyFn = Reflect.get(target, prop, receiver);
+          return finallyFn;
+        }
+        const value = Reflect.get(target, prop, receiver);
+        if (typeof value !== 'function') return value;
+        return function(){
+          const args = Array.prototype.slice.call(arguments);
+          const nextMeta = addCallHint(currentMeta, String(prop), args);
+          const next = value.apply(target, args);
+          if (next === target) {
+            currentMeta = nextMeta;
+            return proxy;
+          }
+          return shouldWrapBuilder(next) ? wrapBuilder(next, nextMeta) : next;
+        };
+      }
+    });
+    return proxy;
+  }
+
+  function instrumentSupabaseClient(client){
+    if (!client || typeof client.from !== 'function') return client;
+    if (client.__sqEgressInstrumented) return client;
+    if (!isEgressDebugEnabled()) return client;
+    noteActive();
+    if (CLIENT_WRAPS && CLIENT_WRAPS.has(client)) return CLIENT_WRAPS.get(client);
+
+    const proxy = new Proxy(client, {
+      get(target, prop, receiver){
+        if (prop === '__sqEgressInstrumented') return true;
+        if (prop === 'from') {
+          return function(objectName){
+            const sourceStack = (new Error()).stack;
+            const builder = target.from.call(target, objectName);
+            return wrapBuilder(builder, {
+              kind: 'from',
+              object: String(objectName || ''),
+              stack: sourceStack
+            });
+          };
+        }
+        if (prop === 'rpc' && typeof target.rpc === 'function') {
+          return function(fnName, args, options){
+            const sourceStack = (new Error()).stack;
+            const keys = args && typeof args === 'object' ? Object.keys(args) : [];
+            const builder = target.rpc.call(target, fnName, args, options);
+            return wrapBuilder(builder, {
+              kind: 'rpc',
+              object: String(fnName || ''),
+              operation: 'rpc',
+              columns: 'rpc',
+              filters: keys.length ? ['args(' + keys.join(',') + ')'] : [],
+              stack: sourceStack
+            });
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      }
+    });
+    if (CLIENT_WRAPS) CLIENT_WRAPS.set(client, proxy);
+    return proxy;
+  }
+
+  function installCreateClientHook(){
+    if (!isEgressDebugEnabled()) return;
+    const ns = window.supabase;
+    if (!ns || typeof ns.createClient !== 'function') return;
+    if (ns.createClient.__sqEgressCreateClientWrapped) {
+      noteActive();
+      return;
+    }
+    const originalCreateClient = ns.createClient;
+    ns.createClient = function(){
+      const client = originalCreateClient.apply(this, arguments);
+      return instrumentSupabaseClient(client);
+    };
+    ns.createClient.__sqEgressCreateClientWrapped = true;
+    ns.createClient.__sqOriginalCreateClient = originalCreateClient;
+    noteActive();
+  }
+
+  function instrumentKnownSupabaseClients(){
+    if (!isEgressDebugEnabled()) return;
+    ['sb', '__sb', 'supabaseClient'].forEach(function(key){
+      try {
+        if (window[key] && typeof window[key].from === 'function') {
+          window[key] = instrumentSupabaseClient(window[key]);
+        }
+      } catch (_) {}
+    });
+  }
+
+  window.__sqInstrumentSupabaseClient = instrumentSupabaseClient;
+  window.__sqInstallEgressCreateClientHook = installCreateClientHook;
+  window.__sqInstrumentKnownSupabaseClients = instrumentKnownSupabaseClients;
+  window.__SQ_WITH_EGRESS_LABEL = function(label, fn){
+    LABEL_STACK.push(String(label || ''));
+    try {
+      const out = fn();
+      if (out && typeof out.finally === 'function') {
+        return out.finally(function(){ LABEL_STACK.pop(); });
+      }
+      LABEL_STACK.pop();
+      return out;
+    } catch (e) {
+      LABEL_STACK.pop();
+      throw e;
+    }
+  };
+  window.__SQ_PRINT_EGRESS_LOG = function(){
+    const log = ensureLog().slice();
+    const totalBytes = log.reduce((sum, row) => sum + (Number(row.bytes) || 0), 0);
+    const aggregate = function(key){
+      const map = new Map();
+      log.forEach(row => {
+        const name = row[key] || '(unknown)';
+        const rec = map.get(name) || { name, calls:0, bytes:0, kb:0, rows:0, errors:0, maxMs:0 };
+        rec.calls += 1;
+        rec.bytes += Number(row.bytes) || 0;
+        rec.rows += Number(row.rowCount) || 0;
+        rec.errors += row.error ? 1 : 0;
+        rec.maxMs = Math.max(rec.maxMs, Number(row.durationMs) || 0);
+        rec.kb = Math.round((rec.bytes / 1024) * 10) / 10;
+        map.set(name, rec);
+      });
+      return Array.from(map.values()).sort((a,b) => b.bytes - a.bytes).slice(0, 12);
+    };
+    const slowest = log.slice().sort((a,b) => (b.durationMs || 0) - (a.durationMs || 0)).slice(0, 12);
+    const biggest = log.slice().sort((a,b) => (b.bytes || 0) - (a.bytes || 0)).slice(0, 12);
+    const summary = {
+      totalCalls: log.length,
+      totalBytes,
+      totalKb: Math.round((totalBytes / 1024) * 10) / 10,
+      topObjectsByBytes: aggregate('object'),
+      topLabelsByBytes: aggregate('label'),
+      slowestCalls: slowest,
+      biggestResponses: biggest
+    };
+    try {
+      console.group('[SQ EGRESS] Summary');
+      console.log('total calls:', summary.totalCalls, 'total approx bytes:', summary.totalBytes, '(' + summary.totalKb + ' kB)');
+      console.group('Top objects by bytes'); console.table(summary.topObjectsByBytes); console.groupEnd();
+      console.group('Top labels/functions by bytes'); console.table(summary.topLabelsByBytes); console.groupEnd();
+      console.group('Slowest calls'); console.table(summary.slowestCalls); console.groupEnd();
+      console.group('Biggest single responses'); console.table(summary.biggestResponses); console.groupEnd();
+      console.groupEnd();
+    } catch (_) {}
+    return summary;
+  };
+  installCreateClientHook();
+  instrumentKnownSupabaseClients();
+})();
+
 // IMPORTANT: do NOT hard-crash the entire app if Supabase CDN is blocked (e.g., some online previewers).
 // We initialise lazily in ensureCloudInit() instead.
 let sb = null;
 try {
   if (window.supabase && typeof window.supabase.createClient === 'function') {
+    if (window.__sqInstallEgressCreateClientHook) window.__sqInstallEgressCreateClientHook();
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    if (window.__sqInstrumentSupabaseClient) sb = window.__sqInstrumentSupabaseClient(sb);
     window.sb = sb;
+    if (window.__sqInstrumentKnownSupabaseClients) window.__sqInstrumentKnownSupabaseClients();
   }
 } catch (e) {
   console.warn('Supabase client init deferred/failed', e);
@@ -12405,7 +12875,6 @@ const TABLE_PLAYER_GAMES = 'v_player_games_union_visible';
 const LEGACY_TABLE_PLAYER_GAMES = 'player_games_union';
 const TABLE_HS_LEAGUE = "high_scores_sp";
 const TABLE_HS_PRACTICE = "high_scores";
-const TABLE_LEAGUE_LOW_SCORES = "league_low_scores";
 const TABLE_GAME_THROWS = "game_throws";
 
 // Feature flag: the per-dart throws table/view (game_throws) is optional.
@@ -12414,9 +12883,29 @@ const FEATURE_CLOUD_THROWS = false;
 // Force LIVE V2 gameplay layout across all platforms (2–6 players).
 const FORCE_LIVEV2 = true;
 
-// PB/WR storage (targets for the backfill)
+// Legacy PB/WR storage (game_events-backed; retained only for legacy diagnostics/backfill context)
 const TABLE_PB_ROUNDS = 'v_pb_by_player_round';    // columns: player, cat, val, game_id, ridx, ts
 const TABLE_WR_ROUNDS = 'v_wr_by_round'; // columns: cat, val, player, game_id, ridx, ts
+// Runtime PB/WR views used by the app. These expose the same client-facing shape without game_events dependency.
+const TABLE_PB_ROUNDS_CLEAN_APP = 'v_pb_by_player_round_clean_app'; // columns: bucket_key, round_key, pb_points
+const TABLE_WR_ROUNDS_CLEAN_APP = 'v_wr_by_round_clean_app'; // columns: round_key, wr_points
+
+async function __sqGetPBWRCleanRowsFromSnapshot(){
+  const snap = (typeof __sqEnsureV2PBWR === 'function') ? await __sqEnsureV2PBWR() : null;
+  if (!snap || !snap.wrByRound || !snap.pbByBucket) return { wrRows:[], pbRows:[], error:'Clean PB/WR snapshot unavailable' };
+  const wrRows = [];
+  try{
+    snap.wrByRound.forEach((wr_points, round_key) => wrRows.push({ round_key, wr_points }));
+  }catch(_){}
+  const pbRows = [];
+  try{
+    snap.pbByBucket.forEach((roundMap, bucket_key) => {
+      if (!roundMap || typeof roundMap.forEach !== 'function') return;
+      roundMap.forEach((pb_points, round_key) => pbRows.push({ bucket_key, round_key, pb_points }));
+    });
+  }catch(_){}
+  return { wrRows, pbRows, error:'' };
+}
 
 // Extra tables used for cloud-backed stats
 const TABLE_GAMES   = "games";
@@ -12425,11 +12914,18 @@ const TABLE_MATCHES = "matches";
 /* >>> PATCH:CLOUD_TABLE_MISSING_GUARD START */
 const CLOUD_TABLE_MISSING = Object.create(null);
 const CLOUD_ONCE = Object.create(null);
-// >>> PATCH:pre-mark-game-throws-missing START
-// This Supabase project does not expose the legacy per-dart table "game_throws".
-// Pre-mark it missing so any legacy callers short-circuit without network spam or UI impact.
-try { CLOUD_TABLE_MISSING["game_throws"] = true; } catch (_) {}
-// >>> PATCH:pre-mark-game-throws-missing END
+// >>> PATCH:pre-mark-known-missing-supabase-objects START
+// This Supabase project does not expose these legacy/optional objects.
+// Pre-mark them missing so legacy callers short-circuit without network spam or UI impact.
+try {
+  [
+    "game_throws",
+    "league_low_scores",
+    "high_score_league_official",
+    "v_player_last30_target_rates"
+  ].forEach(name => { CLOUD_TABLE_MISSING[name] = true; });
+} catch (_) {}
+// >>> PATCH:pre-mark-known-missing-supabase-objects END
 function cloudIsTableMissing(tableName){
   return !!(tableName && CLOUD_TABLE_MISSING[tableName]);
 }
@@ -14104,37 +14600,10 @@ async function cloudSynthAllGamesFromHighScores(limit = 500) {
 
 // PLAYERS
 // PLAYERS
-async function cloudListPlayers(){
+async function cloudListPlayers(force=false){
   try{ if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) return []; }catch(_){ return []; }
 
-  // Cloud is canonical. Prefer to read initials if the column exists; fall back safely if not.
-  let data = null;
-  try{
-    const r1 = await sb
-      .from(TABLE_PLAYERS)
-      .select('id, name, initials, nickname, first_name, last_name, created_at, deleted_at')
-      .is('deleted_at', null)
-      .order('name');
-    if (r1.error) throw r1.error;
-    data = r1.data || [];
-    markCloudOk();
-  }catch(e1){
-    // Column may not exist yet on some deployments; fall back to the minimal schema.
-    const msg = String(e1?.message || e1 || '');
-    const code = String(e1?.code || '');
-    const isSchemaMismatch = (code === '42703') || /(initials|deleted_at|nickname|first_name|last_name)/i.test(msg);
-    if (!isSchemaMismatch){
-      markCloudError(e1);
-      throw e1;
-    }
-    const r2 = await sb
-      .from(TABLE_PLAYERS)
-      .select('id, name, created_at')
-      .order('name');
-    if (r2.error){ markCloudError(r2.error); throw r2.error; }
-    data = (r2.data || []).map(p => ({ ...p, initials: __sqComputeInitialsFromName(p?.name) }));
-    markCloudOk();
-  }
+  const data = await __sqFetchPlayersRows(!!force);
 
   // Cache active player names/ids for light UI (ticker etc.)
   try {
@@ -14170,6 +14639,7 @@ async function cloudCreatePlayer(name, profile){
       .upsert(row, { onConflict: 'name' });
     if (error) throw error;
     markCloudOk();
+    try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_upsert'); }catch(_){}
     return;
   }catch(e1){
     const msg = String(e1?.message || e1 || '');
@@ -14186,6 +14656,7 @@ async function cloudCreatePlayer(name, profile){
         .upsert({ name: nm, initials }, { onConflict: 'name' });
       if (error) throw error;
       markCloudOk();
+      try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_upsert_fallback'); }catch(_){}
       return;
     }catch(e2){
       const msg2 = String(e2?.message || e2 || '');
@@ -14197,6 +14668,7 @@ async function cloudCreatePlayer(name, profile){
         .upsert({ name: nm }, { onConflict: 'name' });
       if (error){ markCloudError(error); throw error; }
       markCloudOk();
+      try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_upsert_name_only'); }catch(_){}
     }
   }
 }
@@ -14221,6 +14693,7 @@ async function cloudUpdatePlayerInitials(playerOrName, initials){
     const { data, error } = await q.select('id, name, initials').maybeSingle();
     if (error) throw error;
     markCloudOk();
+    try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_initials_update'); }catch(_){}
     return data || null;
   }catch(e1){
     const msg = String(e1?.message || e1 || '');
@@ -14443,10 +14916,9 @@ async function cloudListHighScores(isPractice = false, limit = 500){
       }
       window.__v2PBWRNameToBucket = nameToId;
 
-      const [wrRes, pbRes] = await Promise.all([
-        sb.from('v_wr_by_round').select('*').limit(10000),
-        sb.from('v_pb_by_player_round').select('*').limit(100000)
-      ]);
+      const cleanRows = (typeof __sqGetPBWRCleanRowsFromSnapshot === 'function') ? await __sqGetPBWRCleanRowsFromSnapshot() : { wrRows:[], pbRows:[], error:'Clean PB/WR helper unavailable' };
+      const wrRes = { data: cleanRows.wrRows || [], error: cleanRows.error || null };
+      const pbRes = { data: cleanRows.pbRows || [], error: cleanRows.error || null };
 
       const byTargetMeta = {};
       const byPlayerMeta = new Map();
@@ -15174,13 +15646,69 @@ function mapCloudGameRowToLocal(row){
     gameNumber
   };
 }
-async function cloudFetchAllGamesAsLocal(){
-  const { data, error } = await sb
-    .from(TABLE_GAMES)
-    .select('id,created_at,archived_at,state,totals,match_id,game_number')
-    .order('created_at', { ascending: true });
-  if (error) throw error;
-  return (data || []).map(mapCloudGameRowToLocal);
+const SQ_ALL_GAMES_FETCH_TTL_MS = 5 * 60 * 1000;
+try { window.__sqAllGamesFetchTtlMs = SQ_ALL_GAMES_FETCH_TTL_MS; } catch (_) {}
+try { if (typeof window.__sqAllGamesFetchAt !== 'number') window.__sqAllGamesFetchAt = 0; } catch (_) {}
+try { if (typeof window.__sqAllGamesFetchGeneration !== 'number') window.__sqAllGamesFetchGeneration = 0; } catch (_) {}
+
+function __sqCloneAllGamesFetchRows(rows){
+  return Array.isArray(rows) ? rows.slice() : [];
+}
+
+function __sqAllGamesFetchCacheFresh(now){
+  try {
+    return Array.isArray(window.__sqAllGamesFetchCache) &&
+      window.__sqAllGamesFetchAt &&
+      (now - window.__sqAllGamesFetchAt) >= 0 &&
+      (now - window.__sqAllGamesFetchAt) < SQ_ALL_GAMES_FETCH_TTL_MS;
+  } catch (_) {
+    return false;
+  }
+}
+
+window.__sqInvalidateAllGamesFetchCache = function __sqInvalidateAllGamesFetchCache(reason){
+  try {
+    window.__sqAllGamesFetchCache = null;
+    window.__sqAllGamesFetchAt = 0;
+    window.__sqAllGamesFetchInFlight = null;
+    window.__sqAllGamesFetchGeneration = (Number(window.__sqAllGamesFetchGeneration) || 0) + 1;
+    window.__sqAllGamesFetchInvalidatedFor = String(reason || 'manual');
+  } catch (_) {}
+  return true;
+};
+
+async function cloudFetchAllGamesAsLocal(opts = null){
+  const force = opts === true || !!(opts && opts.force);
+  const now = Date.now();
+
+  if (!force && __sqAllGamesFetchCacheFresh(now)) {
+    return __sqCloneAllGamesFetchRows(window.__sqAllGamesFetchCache);
+  }
+  if (!force && window.__sqAllGamesFetchInFlight) {
+    return __sqCloneAllGamesFetchRows(await window.__sqAllGamesFetchInFlight);
+  }
+
+  const generation = Number(window.__sqAllGamesFetchGeneration) || 0;
+  const p = (async()=>{
+    const { data, error } = await sb
+      .from(TABLE_GAMES)
+      .select('id,created_at,archived_at,state,totals,match_id,game_number')
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    const rows = (data || []).map(mapCloudGameRowToLocal);
+    if ((Number(window.__sqAllGamesFetchGeneration) || 0) === generation) {
+      window.__sqAllGamesFetchCache = rows;
+      window.__sqAllGamesFetchAt = Date.now();
+    }
+    return rows;
+  })();
+
+  window.__sqAllGamesFetchInFlight = p;
+  try {
+    return __sqCloneAllGamesFetchRows(await p);
+  } finally {
+    if (window.__sqAllGamesFetchInFlight === p) window.__sqAllGamesFetchInFlight = null;
+  }
 }
 
 // Efficient: newest→oldest, limited (used by home live printer)
@@ -15198,31 +15726,168 @@ async function cloudFetchLatestGamesAsLocal(limit = 10){
 // >>> PATCH:MOT_TICKER_VISIBLE_GAMES_V2 START
 // Visible-games fetchers (exclude archived at the data source level via v_games_visible).
 // These MUST be top-level (not nested) so HOME "LIVE UPDATES" (VIDE printer) can see them.
-async function cloudFetchLatestVisibleGamesAsLocal(limit = 10){
+const SQ_GAMES_VISIBLE_MIN_POLL_MS = 15000;
+try { window.__sqGamesVisibleMinPollMs = SQ_GAMES_VISIBLE_MIN_POLL_MS; } catch (_) {}
+
+function __sqGamesVisiblePollState(){
+  const w = window;
+  if (!w.__sqGamesVisiblePollState) {
+    w.__sqGamesVisiblePollState = {
+      latestRows: null,
+      latestFetchedAt: 0,
+      sinceRows: null,
+      sinceFetchedAt: 0,
+      lastFetchAt: 0,
+      inFlightLatest: null,
+      inFlightSince: null
+    };
+  }
+  try {
+    w.__sqGamesVisiblePollerActive = true;
+    w.__sqGamesVisibleLastFetchAt = w.__sqGamesVisiblePollState.lastFetchAt || 0;
+    w.__sqGamesVisibleInFlight = w.__sqGamesVisiblePollState.inFlightLatest || w.__sqGamesVisiblePollState.inFlightSince || null;
+  } catch (_) {}
+  return w.__sqGamesVisiblePollState;
+}
+
+function __sqGamesVisibleTs(g){
+  const t = g && (g.ts || g.created_at || g.createdAt || g.inserted_at);
+  const n = t ? Date.parse(t) : NaN;
+  return Number.isFinite(n) ? n : 0;
+}
+
+function __sqGamesVisibleLatest(rows, limit){
+  const lim = Math.max(1, Math.min(100, Number(limit) || 10));
+  return (Array.isArray(rows) ? rows : [])
+    .slice()
+    .sort((a,b)=>__sqGamesVisibleTs(b) - __sqGamesVisibleTs(a))
+    .slice(0, lim);
+}
+
+function __sqGamesVisibleSince(rows, sinceIso, limit){
+  const sinceMs = Date.parse(String(sinceIso || '').trim());
+  if (!Number.isFinite(sinceMs)) return [];
+  const lim = Math.max(1, Math.min(100, Number(limit) || 50));
+  return (Array.isArray(rows) ? rows : [])
+    .filter(g => __sqGamesVisibleTs(g) > sinceMs)
+    .sort((a,b)=>__sqGamesVisibleTs(a) - __sqGamesVisibleTs(b))
+    .slice(0, lim);
+}
+
+function __sqMergeGamesVisibleRows(existing, incoming, cap){
+  const map = new Map();
+  const add = (g) => {
+    if (!g) return;
+    const key = String(g.id || g.game_id || g.sheet_id || g.ts || g.created_at || JSON.stringify(g));
+    if (key) map.set(key, g);
+  };
+  (Array.isArray(existing) ? existing : []).forEach(add);
+  (Array.isArray(incoming) ? incoming : []).forEach(add);
+  return __sqGamesVisibleLatest(Array.from(map.values()), Math.max(1, Math.min(100, Number(cap) || 50)));
+}
+
+function __sqGamesVisibleCacheFresh(ts, now){
+  return !!(ts && (now - ts) < SQ_GAMES_VISIBLE_MIN_POLL_MS);
+}
+
+async function cloudFetchLatestVisibleGamesAsLocal(limit = 10, opts = null){
   await ensureCloudInit();
-  const { data, error } = await sb
-    .from('v_games_visible')
-    .select('id,created_at,archived_at,state,totals,match_id,game_number')
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return (data || []).map(mapCloudGameRowToLocal);
+  const st = __sqGamesVisiblePollState();
+  const now = Date.now();
+  const lim = Math.max(1, Math.min(100, Number(limit) || 10));
+  const force = !!(opts && opts.force);
+
+  if (!force && Array.isArray(st.latestRows) && __sqGamesVisibleCacheFresh(st.latestFetchedAt, now)) {
+    return __sqGamesVisibleLatest(st.latestRows, lim);
+  }
+  if (!force && st.inFlightLatest) {
+    return st.inFlightLatest.then(rows => __sqGamesVisibleLatest(rows, lim));
+  }
+  if (!force && st.lastFetchAt && (now - st.lastFetchAt) < SQ_GAMES_VISIBLE_MIN_POLL_MS && Array.isArray(st.latestRows)) {
+    return __sqGamesVisibleLatest(st.latestRows, lim);
+  }
+
+  st.lastFetchAt = now;
+  try { window.__sqGamesVisibleLastFetchAt = st.lastFetchAt; } catch (_) {}
+  const p = (async()=>{
+    const { data, error } = await sb
+      .from('v_games_visible')
+      .select('id,created_at,archived_at,state,totals,match_id,game_number')
+      .order('created_at', { ascending: false })
+      .limit(lim);
+    if (error) throw error;
+    const rows = (data || []).map(mapCloudGameRowToLocal);
+    const doneAt = Date.now();
+    st.latestRows = rows;
+    st.latestFetchedAt = doneAt;
+    st.lastFetchAt = doneAt;
+    try { window.__sqGamesVisibleLastFetchAt = doneAt; } catch (_) {}
+    return rows;
+  })();
+  st.inFlightLatest = p;
+  try { window.__sqGamesVisibleInFlight = p; } catch (_) {}
+  try {
+    return __sqGamesVisibleLatest(await p, lim);
+  } finally {
+    if (st.inFlightLatest === p) st.inFlightLatest = null;
+    try { window.__sqGamesVisibleInFlight = st.inFlightLatest || st.inFlightSince || null; } catch (_) {}
+  }
 }
 
 // Efficient: fetch VISIBLE games created after a given timestamp (oldest→newest, limited)
 // Used for delta-updating the home Live Updates ticker without refetching history.
-async function cloudFetchVisibleGamesSinceAsLocal(sinceIso, limit = 50){
+async function cloudFetchVisibleGamesSinceAsLocal(sinceIso, limit = 50, opts = null){
   await ensureCloudInit();
   const iso = String(sinceIso || '').trim();
   if (!iso) return [];
-  const { data, error } = await sb
-    .from('v_games_visible')
-    .select('id,created_at,archived_at,state,totals,match_id,game_number')
-    .gt('created_at', iso)
-    .order('created_at', { ascending: true })
-    .limit(limit);
-  if (error) throw error;
-  return (data || []).map(mapCloudGameRowToLocal);
+  const st = __sqGamesVisiblePollState();
+  const now = Date.now();
+  const lim = Math.max(1, Math.min(100, Number(limit) || 50));
+  const force = !!(opts && opts.force);
+
+  if (!force && Array.isArray(st.latestRows) && __sqGamesVisibleCacheFresh(st.latestFetchedAt, now)) {
+    return __sqGamesVisibleSince(st.latestRows, iso, lim);
+  }
+  if (!force && st.inFlightLatest) {
+    return st.inFlightLatest.then(rows => __sqGamesVisibleSince(rows, iso, lim));
+  }
+  if (!force && st.inFlightSince) {
+    return st.inFlightSince.then(rows => __sqGamesVisibleSince(rows, iso, lim));
+  }
+  if (!force && st.lastFetchAt && (now - st.lastFetchAt) < SQ_GAMES_VISIBLE_MIN_POLL_MS) {
+    if (Array.isArray(st.latestRows)) return __sqGamesVisibleSince(st.latestRows, iso, lim);
+    if (Array.isArray(st.sinceRows)) return __sqGamesVisibleSince(st.sinceRows, iso, lim);
+    return [];
+  }
+
+  st.lastFetchAt = now;
+  try { window.__sqGamesVisibleLastFetchAt = st.lastFetchAt; } catch (_) {}
+  const p = (async()=>{
+    const { data, error } = await sb
+      .from('v_games_visible')
+      .select('id,created_at,archived_at,state,totals,match_id,game_number')
+      .gt('created_at', iso)
+      .order('created_at', { ascending: true })
+      .limit(lim);
+    if (error) throw error;
+    const rows = (data || []).map(mapCloudGameRowToLocal);
+    const doneAt = Date.now();
+    st.sinceRows = rows;
+    st.sinceFetchedAt = doneAt;
+    st.latestRows = __sqMergeGamesVisibleRows(st.latestRows, rows, Math.max(lim, Array.isArray(st.latestRows) ? st.latestRows.length : 0, 30));
+    st.latestFetchedAt = doneAt;
+    st.lastFetchAt = doneAt;
+    try { window.__sqGamesVisibleLastFetchAt = doneAt; } catch (_) {}
+    return rows;
+  })();
+  st.inFlightSince = p;
+  try { window.__sqGamesVisibleInFlight = p; } catch (_) {}
+  try {
+    return __sqGamesVisibleSince(await p, iso, lim);
+  } finally {
+    if (st.inFlightSince === p) st.inFlightSince = null;
+    try { window.__sqGamesVisibleInFlight = st.inFlightLatest || st.inFlightSince || null; } catch (_) {}
+  }
 }
 // <<< PATCH:MOT_TICKER_VISIBLE_GAMES_V2 END
 
@@ -15457,148 +16122,6 @@ async function openTargetHitRateDialog(playerName, mode){
   md.append(h, body, ft); ov.appendChild(md); document.body.appendChild(ov);
   md.tabIndex=0; md.focus(); ov.addEventListener('click', e=>{ if(e.target===ov) ov.remove(); });
   ov.addEventListener('keydown', e=>{ if(e.key==='Escape') ov.remove(); });
-}
-
-// Official-only head-to-head summary
-async function openH2HDialog(playerName){
-  const games = await getGamesForMode('official');   // uses official games
-
-  const vs = new Map(); // name -> aggregate
-  for (const g of (games || [])) {
-    if (!g || !Array.isArray(g.players) || !Array.isArray(g.totals)) continue;
-    const me = g.players.findIndex(p => p && eqName(p.name, playerName));
-    if (me === -1) continue;
-
-    const myTotal = Number(g.totals[me] || 0);
-    const dt = g.ts ? new Date(g.ts) : null;
-
-    for (let j = 0; j < g.players.length; j++){
-      if (j === me) continue;
-      const oppName = (g.players[j]?.name || '').trim();
-      if (!oppName) continue;
-
-      const oppTotal = Number(g.totals[j] || 0);
-      const rec = vs.get(oppName) || { opp: oppName, games: 0, wins: 0, losses: 0, for: 0, against: 0, last: null };
-      rec.games++;
-      if (myTotal > oppTotal) rec.wins++; else if (myTotal < oppTotal) rec.losses++;
-      rec.for += myTotal; rec.against += oppTotal;
-      if (dt && (!rec.last || dt > rec.last)) rec.last = dt;
-      vs.set(oppName, rec);
-    }
-  }
-
-  const rows = [...vs.values()].map(r => ({
-    name: r.opp,
-    gp: r.games,
-    w: r.wins,
-    l: r.losses,
-    winPct: r.games ? (r.wins / r.games * 100) : 0,
-    avgDiff: r.games ? ((r.for - r.against) / r.games) : 0,
-    last: r.last
-  })).sort((a,b)=> (b.gp - a.gp) || (b.winPct - a.winPct) || a.name.localeCompare(b.name));
-
-  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal   = document.createElement('div'); modal.className   = 'modal';
-  const title   = document.createElement('h3');  title.textContent = `Head-to-Head — ${playerName}`;
-  const body    = document.createElement('div'); body.className    = 'modal-body';
-
-  if (!rows.length) {
-    const p = document.createElement('p'); p.textContent = 'No head-to-head data (official games only).'; body.appendChild(p);
-  } else {
-    const ineligible = rows.filter(r => (Number(r.gp) || 0) < 4)
-      .sort((a,b)=> (b.gp - a.gp) || a.name.localeCompare(b.name));
-    const eligible = rows.filter(r => (Number(r.gp) || 0) >= 4)
-      .sort((a,b)=> (b.gp - a.gp) || (b.winPct - a.winPct) || a.name.localeCompare(b.name));
-
-    // Ineligible opponents (shown at top, NOT in league format)
-    if (ineligible.length) {
-      const cap = document.createElement('div');
-      cap.className = 'muted';
-      cap.style.margin = '2px 0 10px';
-      cap.textContent = 'Opponents need 4+ games to enter the H2H league table.';
-      body.appendChild(cap);
-
-      const t0 = document.createElement('table'); t0.className = 'hs-table';
-      const th0 = document.createElement('thead'); const tr0 = document.createElement('tr');
-      ['Opponent','GP'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; tr0.appendChild(th); });
-      th0.appendChild(tr0); t0.appendChild(th0);
-
-      const tb0 = document.createElement('tbody');
-      ineligible.forEach(r=>{
-        const tr = document.createElement('tr');
-        tr.style.opacity = '0.45';
-        const td = (t,c)=>Object.assign(document.createElement('td'),{textContent:t, className:c||''});
-        tr.append(td(r.name), td(String(r.gp),'num'));
-        tb0.appendChild(tr);
-      });
-      t0.appendChild(tb0);
-      body.appendChild(t0);
-
-      const rule = document.createElement('div');
-      rule.style.height='1px';
-      rule.style.background='rgba(255,255,255,0.08)';
-      rule.style.margin='12px 0';
-      body.appendChild(rule);
-    }
-
-    // Eligible opponents: league format
-    if (!eligible.length) {
-      const p = document.createElement('p');
-      p.className = 'muted';
-      p.textContent = 'No eligible opponents yet (need 4+ games).';
-      body.appendChild(p);
-    } else {
-      const table = document.createElement('table'); table.className = 'hs-table';
-      const thead = document.createElement('thead'); const trh = document.createElement('tr');
-      ['Opponent','GP','W','L','Win %','Avg Diff','Last'].forEach(h=>{
-        const th = document.createElement('th'); th.textContent = h; trh.appendChild(th);
-      });
-      thead.appendChild(trh); table.appendChild(thead);
-
-      const tbody = document.createElement('tbody');
-      eligible.forEach(r=>{
-        const tr = document.createElement('tr');
-        const td = (t,c)=>Object.assign(document.createElement('td'),{textContent:t, className:c||''});
-        tr.append(
-          td(r.name),
-          td(String(r.gp),'num'),
-          td(String(r.w),'num'),
-          td(String(r.l),'num'),
-          td(r.winPct.toFixed(1)+'%','num'),
-          td((r.avgDiff>=0?'+':'')+r.avgDiff.toFixed(1),'num'),
-          td(r.last && !Number.isNaN(r.last.getTime())
-            ? r.last.toLocaleDateString(undefined,{year:'2-digit',month:'short',day:'2-digit'})
-            : '—')
-        );
-        tbody.appendChild(tr);
-      });
-      table.appendChild(tbody); body.appendChild(table);
-    }
-  }
-
-  const footer = document.createElement('div'); footer.className = 'modal-footer';
-  const back   = document.createElement('button'); back.className='btn'; back.textContent='Return';
- back.onclick = () => {
-  overlay.remove();
-  if (typeof openPlayerStatsModePicker === 'function') {
-    openPlayerStatsModePicker(playerName);
-  } else {
-    // safe fallback: go to the player lookup
-    if (typeof openPlayerStatsLookupDialog === 'function') {
-      openPlayerStatsLookupDialog();
-    }
-  }
-};
-  const close  = document.createElement('button'); close.className='btn'; close.textContent='Close';
-  close.onclick = () => overlay.remove();
-  footer.append(back, close);
-
-  modal.append(title, body, footer);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-  modal.tabIndex = 0; modal.focus();
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
 }
 
 // === T-D-B ===
@@ -15997,6 +16520,18 @@ function __msNormalizeName(name, fallback){
   return s || fallback || '';
 }
 
+function __sqIsVsShadowSetup(){
+  return (window.__sqSelectedMode || 'match') === 'practice' && String(window.__sqPracticeGameType || '').toLowerCase() === 'vsshadow';
+}
+
+function __sqVsShadowSetupSlotTaken(){
+  return __sqIsVsShadowSetup() && Array.isArray(__msPlayers) && __msPlayers.length >= 1;
+}
+
+function __sqVsShadowHasExactlyOneRealPlayer(){
+  return __sqIsVsShadowSetup() && Array.isArray(__msPlayers) && __msPlayers.length === 1 && __msValidPlayerCount() === 1;
+}
+
 function __msRenderPlayers(){
   if (!msPlayersList) return;
   msPlayersList.innerHTML = '';
@@ -16057,6 +16592,7 @@ function __msValidPlayerCount(){
 function __msMinPlayersRequired(){
   // Practice allows 1–6 players. Match Play requires 2–6.
   const mode = (window.__sqSelectedMode || 'match');
+  if (__sqIsVsShadowSetup()) return 1;
   return (mode === 'practice') ? 1 : 2;
 }
 
@@ -16080,25 +16616,44 @@ function __msUpdateStartEnabled(){
   const n = __msValidPlayerCount();
   const startBtn = byId('startMatchBtn');
   const minP = __msMinPlayersRequired();
-  if (startBtn) startBtn.disabled = n < minP;
+  const vsShadow = __sqIsVsShadowSetup();
+  const vsShadowOk = !vsShadow || __sqVsShadowHasExactlyOneRealPlayer();
+  if (startBtn) startBtn.disabled = vsShadow ? !vsShadowOk : (n < minP);
+
+  const shadowSlotTaken = __sqVsShadowSetupSlotTaken();
+  if (msAddRegisteredBtn) msAddRegisteredBtn.disabled = shadowSlotTaken;
+  if (msAddGuestBtn) msAddGuestBtn.disabled = shadowSlotTaken;
 
   if (msMinHint) {
     const mode = (window.__sqSelectedMode || 'match');
-    const needTxt = (mode === 'practice') ? 'ADD 1+ PLAYER TO START PRACTICE' : 'ADD 2+ PLAYERS TO START MATCH';
+    let needTxt = (mode === 'practice') ? 'ADD 1+ PLAYER TO START PRACTICE' : 'ADD 2+ PLAYERS TO START MATCH';
+    if (vsShadow) {
+      needTxt = __sqVsShadowHasExactlyOneRealPlayer() ? 'VS SHADOW USES 1 REAL PLAYER ONLY' : 'ADD 1 PLAYER FOR VS SHADOW';
+      if (Array.isArray(__msPlayers) && __msPlayers.length > 1) needTxt = 'VS SHADOW USES 1 REAL PLAYER ONLY';
+    }
     if (msMinHint.textContent !== needTxt) msMinHint.textContent = needTxt;
-    msMinHint.style.opacity = (n < minP) ? '1' : '0';
+    const showHint = vsShadow ? !vsShadowOk : (n < minP);
+    msMinHint.style.opacity = showHint ? '1' : '0';
     msMinHint.style.pointerEvents = 'none';
-    msMinHint.style.height = (n < minP) ? '' : '0px';
-    msMinHint.style.marginTop = (n < minP) ? '' : '0px';
+    msMinHint.style.height = showHint ? '' : '0px';
+    msMinHint.style.marginTop = showHint ? '' : '0px';
   }
 }
 
 function __msAddGuest(){
+  if (__sqVsShadowSetupSlotTaken()) {
+    toast('Vs Shadow uses exactly 1 real player.');
+    return;
+  }
   __msPlayers.push({ type:'guest', name:'' });
   __msRenderPlayers();
 }
 
 if (msAddRegisteredBtn) msAddRegisteredBtn.addEventListener('click', async () => {
+  if (__sqVsShadowSetupSlotTaken()) {
+    toast('Vs Shadow uses exactly 1 real player.');
+    return;
+  }
   await showSelectPlayerDialog(0); // index==0 => add to list
 });
 
@@ -16151,7 +16706,10 @@ function __mlOpen(){
 
   const mode = (window.__sqSelectedMode || 'match');
   if (mlStartBtn) {
-    if (mode === 'practice') {
+    if (__sqIsVsShadowSetup()) {
+      mlStartBtn.className = 'btn ms-start ms-primary-blueLight practice-cta';
+      mlStartBtn.innerHTML = 'SELECT OPPONENT <span class="ms-arrow">▶</span>';
+    } else if (mode === 'practice') {
       mlStartBtn.className = 'btn ms-start ms-primary-blueLight practice-cta';
       mlStartBtn.innerHTML = 'SELECT THROWING ORDER <span class="ms-arrow">▶</span>';
     } else {
@@ -16178,6 +16736,10 @@ const psStartMatchBtn = byId('startMatchBtn');
 if (psStartMatchBtn) {
   psStartMatchBtn.addEventListener('click', () => {
     const minP = __msMinPlayersRequired();
+    if (__sqIsVsShadowSetup() && !__sqVsShadowHasExactlyOneRealPlayer()) {
+      toast('Vs Shadow uses exactly 1 real player.');
+      return;
+    }
     if (__msValidPlayerCount() < minP) {
       toast(minP === 1 ? 'Add 1+ player' : 'Add 2+ players');
       return;
@@ -16210,6 +16772,11 @@ if (mlStartBtn) {
     const minP = __msMinPlayersRequired();
     if (built.length < minP) {
       toast(minP === 1 ? 'Add 1+ player' : 'Add 2+ players');
+      return;
+    }
+    const __isVsShadow = __sqIsVsShadowSetup();
+    if (__isVsShadow && built.length !== 1) {
+      toast('Vs Shadow uses exactly 1 real player.');
       return;
     }
 
@@ -16297,11 +16864,453 @@ if (mlStartBtn) {
       if (p){ p.dataset.built = '0'; p.dataset.pcount = ''; p.innerHTML = ''; }
     }catch(_){ }
 
+    if (__isVsShadow) {
+      state.match.practiceType = 'vsShadow';
+      state.match.forcePractice = true;
+      state.shadow = __sqBuildVsShadowDraftConfig(games, state.players[0]);
+      if (typeof openPracticeVsShadowOpponentDialog === 'function') {
+        openPracticeVsShadowOpponentDialog();
+      } else {
+        toast('Vs Shadow opponent selector unavailable.');
+      }
+      setupStartMenuButtons();
+      return;
+    }
+
+    try{ delete state.shadow; }catch(_){ }
+
     // Open throw-order dialog first, then start game on confirm
     startNewGame(false);
     setupStartMenuButtons();
     save();
   });
+}
+
+const __SQ_VS_SHADOW_PHASE1_REASON = 'Shadow gameplay will be enabled in Phase 2 after real-only save filtering is patched.';
+
+function __sqBuildVsShadowDraftConfig(games, realPlayer){
+  const count = Math.max(1, parseInt(games, 10) || 1);
+  const realName = __sqVsShadowPlayerName(realPlayer) || 'Player';
+  return {
+    mode: 'vsShadow',
+    version: 1,
+    status: 'draft_phase1',
+    realPlayerIndex: 0,
+    shadowPlayerIndex: null,
+    phase1GameplayBlocked: true,
+    blockedReason: __SQ_VS_SHADOW_PHASE1_REASON,
+    games: Array.from({ length: count }, (_, i) => ({
+      gameNumber: i + 1,
+      opponentKind: 'player_pb',
+      opponentPlayerId: null,
+      opponentName: realName,
+      sourceGameId: null,
+      sourceScore: 0,
+      sourceTs: '',
+      sourcePlayerIndex: null,
+      replayAvailable: false
+    }))
+  };
+}
+
+function __sqVsShadowPlayerName(p){
+  if (p == null) return '';
+  if (typeof p === 'string') return p.trim();
+  const direct = String(p.name || p.player || p.player_name || p.playerName || p.display_name || '').trim();
+  if (direct) return direct;
+  const first = String(p.first_name || p.firstName || '').trim();
+  const last = String(p.last_name || p.lastName || '').trim();
+  return (first + (last ? ' ' + last : '')).trim();
+}
+
+function __sqVsShadowNameKey(v){
+  return String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function __sqVsShadowPickState(g){
+  return (g && g.state && typeof g.state === 'object') ? g.state : {};
+}
+
+function __sqVsShadowPickRawState(g){
+  return (g && g.raw && g.raw.state && typeof g.raw.state === 'object') ? g.raw.state : {};
+}
+
+function __sqVsShadowPlayersOfGame(g){
+  const st = __sqVsShadowPickState(g);
+  const raw = __sqVsShadowPickRawState(g);
+  const players = (g && (g.players || g.player_names)) || st.players || raw.players || [];
+  if (Array.isArray(players) && players.length) return players;
+  const fallbackName = __sqVsShadowPlayerName(g && (g.player || g.player_name || g.playerName));
+  return fallbackName ? [{ name: fallbackName }] : [];
+}
+
+function __sqVsShadowTotalsOfGame(g){
+  const st = __sqVsShadowPickState(g);
+  const raw = __sqVsShadowPickRawState(g);
+  const totals = (g && g.totals) || st.totals || raw.totals || [];
+  return Array.isArray(totals) ? totals : [];
+}
+
+function __sqVsShadowBoardOfGame(g){
+  const st = __sqVsShadowPickState(g);
+  const raw = __sqVsShadowPickRawState(g);
+  return (g && (g.board || g.score)) || st.board || st.score || raw.board || raw.score || [];
+}
+
+function __sqVsShadowRowsForPlayer(board, idx){
+  if (!Array.isArray(board)) return [];
+  if (Array.isArray(board[idx])) return board[idx];
+  if (Array.isArray(board[0]) && board[0] && board[0][idx] != null) {
+    return board.map(r => Array.isArray(r) ? r[idx] : null);
+  }
+  return [];
+}
+
+function __sqVsShadowRoundScore(entry){
+  if (entry == null) return 0;
+  if (typeof entry === 'number' || typeof entry === 'string') return Number(entry) || 0;
+  if (Array.isArray(entry)) return entry.reduce((sum, d) => sum + __sqVsShadowRoundScore(d), 0);
+  if (typeof entry !== 'object') return 0;
+  const keys = ['roundTotal','round_total','points','score','total','val','value'];
+  for (let i = 0; i < keys.length; i++) {
+    const n = Number(entry[keys[i]]);
+    if (Number.isFinite(n)) return n;
+  }
+  const darts = Array.isArray(entry.darts) ? entry.darts : (Array.isArray(entry.throws) ? entry.throws : null);
+  if (darts) {
+    return darts.reduce((sum, d) => sum + (Number(d && (d.points ?? d.score ?? d.val ?? d.value) || 0) || 0), 0);
+  }
+  return 0;
+}
+
+function __sqVsShadowHasReplayableBoard(board, playerIndex){
+  const rows = __sqVsShadowRowsForPlayer(board, playerIndex);
+  const minRounds = Math.max(1, (typeof MAX_ROUNDS === 'number' ? MAX_ROUNDS : 14));
+  if (!Array.isArray(rows) || rows.length < minRounds) return false;
+  return rows.some(entry => {
+    if (!entry || typeof entry !== 'object') return false;
+    if (Array.isArray(entry.darts) && entry.darts.some(Boolean)) return true;
+    if (Array.isArray(entry.throws) && entry.throws.some(Boolean)) return true;
+    return Number(entry.roundTotal ?? entry.round_total ?? entry.points ?? entry.score ?? entry.total ?? 0) > 0;
+  });
+}
+
+function __sqVsShadowGameId(g){
+  return String((g && (g.id || g.game_id || g.sheet_id)) || (g && g.raw && (g.raw.id || g.raw.game_id || g.raw.sheet_id)) || '').trim();
+}
+
+function __sqVsShadowGameTs(g){
+  const st = __sqVsShadowPickState(g);
+  const raw = g && g.raw ? g.raw : {};
+  return String((g && (g.ts || g.created_at || g.completed_at)) || st.completed_at || raw.created_at || raw.ts || '').trim();
+}
+
+function __sqVsShadowFormatTs(ts){
+  const ms = Date.parse(ts || '');
+  if (!Number.isFinite(ms)) return 'date unknown';
+  const d = new Date(ms);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  return dd + '.' + mm + '.' + yy;
+}
+
+function __sqVsShadowIsPracticeGame(g){
+  try{
+    if (typeof window.__sqGameModeKey === 'function') return window.__sqGameModeKey(g) === 'practice';
+    const st = __sqVsShadowPickState(g);
+    const raw = __sqVsShadowPickRawState(g);
+    const match = (g && g.match) || st.match || raw.match || {};
+    const mode = String((g && (g.mode || g.gameMode || g.game_mode)) || st.mode || st.gameMode || raw.mode || '').toLowerCase();
+    return mode.indexOf('practice') >= 0 || st.is_practice === true || raw.is_practice === true || match.forcePractice === true || __sqVsShadowPlayersOfGame(g).length === 1;
+  }catch(_){ return false; }
+}
+
+async function __sqVsShadowFetchPracticeGames(){
+  try{
+    if (typeof window.getGamesForMode === 'function') {
+      const rows = await window.getGamesForMode('practice');
+      if (Array.isArray(rows) && rows.length) return rows;
+    }
+  }catch(e){
+    try{ console.warn('[SQ] Vs Shadow practice game list via getGamesForMode failed', e); }catch(_){ }
+  }
+
+  if (typeof sb === 'undefined' || !sb || typeof sb.from !== 'function') return [];
+  const table = (typeof TABLE_GAMES !== 'undefined' && TABLE_GAMES) ? TABLE_GAMES : 'games';
+  const res = await sb.from(table)
+    .select('id,match_id,game_number,created_at,totals,state,finished')
+    .eq('finished', true)
+    .order('created_at', { ascending: false })
+    .limit(500);
+  if (res && res.error) throw res.error;
+  return (Array.isArray(res && res.data) ? res.data : []).filter(__sqVsShadowIsPracticeGame);
+}
+
+async function __sqVsShadowLoadPracticeCandidates(playerName){
+  const targetKey = __sqVsShadowNameKey(playerName);
+  if (!targetKey) return [];
+  const games = await __sqVsShadowFetchPracticeGames();
+  const candidates = [];
+
+  (games || []).forEach(g => {
+    const players = __sqVsShadowPlayersOfGame(g);
+    const totals = __sqVsShadowTotalsOfGame(g);
+    const board = __sqVsShadowBoardOfGame(g);
+    players.forEach((p, playerIndex) => {
+      const name = __sqVsShadowPlayerName(p);
+      if (__sqVsShadowNameKey(name) !== targetKey) return;
+      const rows = __sqVsShadowRowsForPlayer(board, playerIndex);
+      let score = Number(totals[playerIndex] || 0);
+      if (!Number.isFinite(score) || score <= 0) {
+        score = rows.reduce((sum, entry) => sum + __sqVsShadowRoundScore(entry), 0);
+      }
+      if (!Number.isFinite(score) || score <= 0) return;
+      const gameId = __sqVsShadowGameId(g);
+      const ts = __sqVsShadowGameTs(g);
+      const replayAvailable = __sqVsShadowHasReplayableBoard(board, playerIndex);
+      candidates.push({
+        key: [gameId || 'game', playerIndex, score, ts || 'no-ts'].join(':'),
+        playerName: name,
+        playerIndex,
+        gameId,
+        score,
+        ts,
+        replayAvailable
+      });
+    });
+  });
+
+  candidates.sort((a,b) => (Number(b.score || 0) - Number(a.score || 0)) || (Date.parse(b.ts || '') - Date.parse(a.ts || '')));
+  return candidates.slice(0, 10);
+}
+
+function openPracticeVsShadowOpponentDialog(){
+  try{ document.querySelectorAll('.sq-vs-shadow-overlay').forEach(el => el.remove()); }catch(_){ }
+
+  const games = Math.max(1, parseInt(state && state.match && state.match.targetWins, 10) || 1);
+  const realPlayer = state && Array.isArray(state.players) ? state.players[0] : null;
+  const realName = __sqVsShadowPlayerName(realPlayer) || 'Player';
+
+  state.match = Object.assign({}, state.match || {}, { practiceType:'vsShadow', forcePractice:true });
+  state.shadow = __sqBuildVsShadowDraftConfig(games, realPlayer);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-backdrop sq-vs-shadow-overlay';
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.style.maxWidth = '760px';
+
+  const title = document.createElement('h3');
+  title.textContent = 'Select Shadow Opponent';
+
+  const body = document.createElement('div');
+  body.className = 'modal-body';
+
+  const rowsWrap = document.createElement('div');
+  rowsWrap.className = 'stack';
+
+  const status = document.createElement('div');
+  status.className = 'tag';
+  status.textContent = 'Loading saved players from Supabase...';
+
+  const controls = [];
+
+  function syncDraft(){
+    const draftGames = controls.map((ctrl, i) => {
+      const opponentOption = ctrl.opponentSelect.options[ctrl.opponentSelect.selectedIndex] || null;
+      const opponentKind = ctrl.opponentSelect.value === '__player_pb__' ? 'player_pb' : 'saved_player';
+      const candidate = (ctrl.candidates || []).find(c => c.key === ctrl.scoreSelect.value) || null;
+      return {
+        gameNumber: i + 1,
+        opponentKind,
+        opponentPlayerId: opponentKind === 'saved_player' ? (opponentOption && opponentOption.dataset.playerId ? opponentOption.dataset.playerId : null) : null,
+        opponentName: opponentKind === 'player_pb' ? realName : String((opponentOption && opponentOption.dataset.playerName) || '').trim(),
+        sourceGameId: candidate ? candidate.gameId : null,
+        sourceScore: candidate ? candidate.score : 0,
+        sourceTs: candidate ? candidate.ts : '',
+        sourcePlayerIndex: candidate ? candidate.playerIndex : null,
+        replayAvailable: !!(candidate && candidate.replayAvailable)
+      };
+    });
+    state.match = Object.assign({}, state.match || {}, { practiceType:'vsShadow', forcePractice:true });
+    state.shadow = Object.assign({}, state.shadow || {}, {
+      mode: 'vsShadow',
+      version: 1,
+      status: 'draft_phase1',
+      realPlayerIndex: 0,
+      shadowPlayerIndex: null,
+      phase1GameplayBlocked: true,
+      blockedReason: __SQ_VS_SHADOW_PHASE1_REASON,
+      games: draftGames
+    });
+  }
+
+  function setScoreLoading(ctrl, text){
+    ctrl.scoreSelect.innerHTML = '';
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = text;
+    opt.disabled = true;
+    opt.selected = true;
+    ctrl.scoreSelect.appendChild(opt);
+  }
+
+  async function loadScoresForControl(ctrl){
+    const selected = ctrl.opponentSelect.options[ctrl.opponentSelect.selectedIndex] || null;
+    const sourceName = ctrl.opponentSelect.value === '__player_pb__'
+      ? realName
+      : String((selected && selected.dataset.playerName) || '').trim();
+    ctrl.candidates = [];
+    ctrl.scoreSelect.disabled = true;
+    setScoreLoading(ctrl, 'Loading Practice scores...');
+    syncDraft();
+
+    try{
+      const rows = await __sqVsShadowLoadPracticeCandidates(sourceName);
+      ctrl.candidates = rows;
+      ctrl.scoreSelect.innerHTML = '';
+      if (!rows.length) {
+        setScoreLoading(ctrl, 'No Practice scores found');
+        ctrl.scoreSelect.disabled = true;
+      } else {
+        rows.forEach((row, idx) => {
+          const opt = document.createElement('option');
+          opt.value = row.key;
+          opt.textContent = String(Math.round(row.score)) + ' - ' + __sqVsShadowFormatTs(row.ts) + (row.gameId ? ' - ' + row.gameId.slice(0, 8) : '') + (row.replayAvailable ? '' : ' - unavailable: no replay data');
+          opt.disabled = !row.replayAvailable;
+          if (idx === 0 && row.replayAvailable) opt.selected = true;
+          ctrl.scoreSelect.appendChild(opt);
+        });
+        const firstPlayable = rows.find(r => r.replayAvailable);
+        if (firstPlayable) {
+          ctrl.scoreSelect.value = firstPlayable.key;
+          ctrl.scoreSelect.disabled = false;
+        } else {
+          const opt = document.createElement('option');
+          opt.value = '';
+          opt.textContent = 'No replayable board data available';
+          opt.disabled = true;
+          opt.selected = true;
+          ctrl.scoreSelect.insertBefore(opt, ctrl.scoreSelect.firstChild);
+          ctrl.scoreSelect.disabled = true;
+        }
+      }
+    }catch(e){
+      try{ console.warn('[SQ] Vs Shadow score candidate load failed', e); }catch(_){ }
+      setScoreLoading(ctrl, 'Practice scores unavailable');
+      ctrl.scoreSelect.disabled = true;
+    }
+    syncDraft();
+  }
+
+  for (let i = 0; i < games; i++) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.alignItems = 'center';
+    row.style.gap = '8px';
+    row.style.flexWrap = 'wrap';
+
+    const label = document.createElement('div');
+    label.className = 'tag';
+    label.textContent = 'Game ' + (i + 1) + ' vs';
+
+    const opponentSelect = document.createElement('select');
+    opponentSelect.style.minWidth = '180px';
+    const pbOpt = document.createElement('option');
+    pbOpt.value = '__player_pb__';
+    pbOpt.textContent = 'Player PB';
+    pbOpt.dataset.playerName = realName;
+    opponentSelect.appendChild(pbOpt);
+
+    const inMatch = document.createElement('div');
+    inMatch.className = 'tag';
+    inMatch.textContent = 'in match';
+
+    const scoreSelect = document.createElement('select');
+    scoreSelect.style.minWidth = '260px';
+    setScoreLoading({ scoreSelect }, 'Loading Practice scores...');
+
+    const ctrl = { opponentSelect, scoreSelect, candidates: [] };
+    controls.push(ctrl);
+
+    opponentSelect.addEventListener('change', () => { loadScoresForControl(ctrl); });
+    scoreSelect.addEventListener('change', syncDraft);
+
+    row.append(label, opponentSelect, inMatch, scoreSelect);
+    rowsWrap.appendChild(row);
+  }
+
+  body.append(rowsWrap, status);
+
+  const reason = document.createElement('div');
+  reason.className = 'tag';
+  reason.textContent = __SQ_VS_SHADOW_PHASE1_REASON;
+
+  const footer = document.createElement('div');
+  footer.className = 'modal-footer';
+
+  const startBtn = document.createElement('button');
+  startBtn.type = 'button';
+  startBtn.className = 'btn primary';
+  startBtn.textContent = 'Start Game';
+  startBtn.disabled = true;
+  startBtn.title = __SQ_VS_SHADOW_PHASE1_REASON;
+
+  const backBtn = document.createElement('button');
+  backBtn.type = 'button';
+  backBtn.className = 'btn';
+  backBtn.textContent = 'Back';
+  backBtn.onclick = () => {
+    overlay.remove();
+    if (matchLengthModal) matchLengthModal.classList.remove('hidden');
+  };
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'btn';
+  closeBtn.textContent = 'Close';
+  closeBtn.onclick = () => {
+    overlay.remove();
+    show('details');
+  };
+
+  footer.append(startBtn, backBtn, closeBtn);
+  modal.append(title, body, reason, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  modal.tabIndex = 0;
+  modal.focus();
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+
+  Promise.resolve()
+    .then(async () => {
+      let saved = [];
+      try{
+        saved = (typeof cloudListPlayers === 'function') ? await cloudListPlayers() : [];
+      }catch(e){
+        try{ console.warn('[SQ] Vs Shadow saved player load failed', e); }catch(_){ }
+      }
+      const savedRows = (Array.isArray(saved) ? saved : [])
+        .filter(p => p && __sqVsShadowPlayerName(p))
+        .sort((a,b) => __sqVsShadowPlayerName(a).localeCompare(__sqVsShadowPlayerName(b)));
+      controls.forEach(ctrl => {
+        savedRows.forEach(p => {
+          const opt = document.createElement('option');
+          const name = __sqVsShadowPlayerName(p);
+          opt.value = 'saved:' + String((p && p.id) || name);
+          opt.textContent = name;
+          opt.dataset.playerId = p && p.id != null ? String(p.id) : '';
+          opt.dataset.playerName = name;
+          ctrl.opponentSelect.appendChild(opt);
+        });
+      });
+      status.textContent = savedRows.length ? 'Select a Practice score for each game. Gameplay remains disabled for Phase 1.' : 'Saved players unavailable from Supabase. Player PB remains available if replay data exists.';
+      controls.forEach(ctrl => { loadScoresForControl(ctrl); });
+      syncDraft();
+    });
 }
 
 /* ---- Saved players helpers (shared by Add + Select modals) ---- */
@@ -16532,6 +17541,10 @@ async function showAddPlayerDialog(index){
 async function showSelectPlayerDialog(index){
   const select = byId('existingPlayerSelect');
   if (!select) { toast('Select list missing'); return; }
+  if ((parseInt(index || '0', 10) || 0) === 0 && __sqVsShadowSetupSlotTaken()) {
+    toast('Vs Shadow uses exactly 1 real player.');
+    return;
+  }
   select.innerHTML = '<option value="">Select a saved player...</option>';
 
   let any = false;
@@ -16560,6 +17573,11 @@ async function showSelectPlayerDialog(index){
     any = !!(cloudList && cloudList.length);
   } catch (err) {
     console.error('cloudListPlayers failed', err);
+  }
+
+  if (!any && __sqIsVsShadowSetup()) {
+    toast('Saved players unavailable from Supabase. Add a guest player or try again.');
+    return;
   }
 
   // Fallback: local
@@ -16631,6 +17649,10 @@ async function showSelectPlayerDialog(index){
       const metaFinal = meta || meta2;
 
       if (idx === 0) {
+        if (__sqVsShadowSetupSlotTaken()) {
+          toast('Vs Shadow uses exactly 1 real player.');
+          return;
+        }
         // Add to Match Setup list
         __msPlayers.push({
           type: 'registered',
@@ -17570,7 +18592,7 @@ function __sqCatForRoundIdx(r){
   
 
 // >>> PATCH:v2-pbwr-views START
-// Prefer database-derived PB/WR (v_pb_by_player_round / v_wr_by_round) for Live V2 cell edging.
+// Prefer database-derived clean app PB/WR views for Live V2 cell edging.
 // Keeps UI consistent across devices and avoids client-side divergence.
 function __sqRoundKeyForIdx(r){
   const cat = __sqCatForRoundIdx(r);
@@ -17619,8 +18641,8 @@ async function __sqEnsureV2PBWR(){
 
       // Fetch WR + PB (views are small: 14-ish rows for WR, PB is per player x 14-ish)
       const [wrRes, pbRes] = await Promise.all([
-        sb.from('v_wr_by_round').select('round_key, wr_points'),
-        sb.from('v_pb_by_player_round').select('bucket_key, round_key, pb_points')
+        sb.from(TABLE_WR_ROUNDS_CLEAN_APP).select('round_key, wr_points'),
+        sb.from(TABLE_PB_ROUNDS_CLEAN_APP).select('bucket_key, round_key, pb_points')
       ]);
 
       if (wrRes?.error) throw wrRes.error;
@@ -22090,6 +23112,7 @@ async function recordFullGameToSupabase(createdAtOverride) {
     }
     const _gameId = _gRow && _gRow.id ? _gRow.id : null;
     try { if (typeof __sqClearRecoveryCachesAfterCompletedSave === 'function') __sqClearRecoveryCachesAfterCompletedSave('recordFullGameToSupabase'); } catch(_) {}
+    try { if (typeof window.__sqClearGamesTruthCache === 'function') window.__sqClearGamesTruthCache('recordFullGameToSupabase'); } catch(_) {}
 
     // >>> PATCH:HS_TS_ALIGN START
     // Write HS rows with the SAME ts as the game row, so deletes and audits remain consistent.
@@ -23887,10 +24910,6 @@ async function openLeagueLowsAdminDialog(){
         e.stopPropagation();
         if (!confirm(`Delete ${row.name}'s low score of ${row.score}?`)) return;
         try{
-          const tableName = (typeof TABLE_LEAGUE_LOW_SCORES !== 'undefined' && TABLE_LEAGUE_LOW_SCORES)
-            ? TABLE_LEAGUE_LOW_SCORES
-            : 'league_low_scores';
-
           // Derived list: delete the underlying game instead
           if (!row.__game) throw new Error('Missing game for delete');
           await cloudDeleteGameCascade(Object.assign({}, row.__game, { ts: row.ts }));// >>> PATCH:MOT3_2_LLS_DELETE_TS
@@ -24208,6 +25227,9 @@ Type DELETE to confirm:`;
   await render();
 }
 
+// LEGACY ROUND HIGH SCORES DYNAMIC IMPLEMENTATION — QUARANTINED
+// Superseded by v82, v85, and final Fix97/Fix102 path.
+// Do not patch this block for current UI unless caller tracing proves it is active.
 async function openRoundHighScoresDialog(){
   const overlay = document.createElement('div'); overlay.className='modal-backdrop';
   const modal   = document.createElement('div'); modal.className='modal sq-wide-modal';
@@ -24420,16 +25442,26 @@ function ensureCloudInit(){
         try { setCloudStatus && setCloudStatus('error', 'Cloud keys missing'); } catch(_) {}
         return false;
       }
+      if (window.__sqInstallEgressCreateClientHook) window.__sqInstallEgressCreateClientHook();
       // Make client if missing
       if (!window.sb) {
-        try { window.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON); sb = window.sb; }
+        try {
+          window.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+          if (window.__sqInstrumentSupabaseClient) window.sb = window.__sqInstrumentSupabaseClient(window.sb);
+          sb = window.sb;
+        }
         catch (e) {
           console.error('supabase createClient failed', e);
           try { setCloudStatus && setCloudStatus('error', 'Cloud not initialised'); } catch(_) {}
           return false;
         }
       }
+      else if (window.__sqInstrumentSupabaseClient) {
+        window.sb = window.__sqInstrumentSupabaseClient(window.sb);
+      }
       if (!sb && window.sb) sb = window.sb;
+      if (sb !== window.sb) sb = window.sb;
+      if (window.__sqInstrumentKnownSupabaseClients) window.__sqInstrumentKnownSupabaseClients();
       return true;
     } catch (e) {
       console.error('ensureCloudInit failed', e);
@@ -24461,8 +25493,8 @@ function ensureCloudInit(){
     { name: T('TABLE_PLAYER_GAMES', 'player_games_union'), kind: 'view', usedBy: ['player stats windows'] },
     { name: T('TABLE_HS_LEAGUE', 'high_scores_sp'), kind: 'table|view', usedBy: ['High Score League modal'] },
     { name: T('TABLE_HS_PRACTICE', 'high_scores'), kind: 'table', usedBy: ['practice highs'] },
-    { name: T('TABLE_PB_ROUNDS', 'v_pb_by_player_round'), kind: 'view', usedBy: ['PB rounds / records'] },
-    { name: T('TABLE_WR_ROUNDS', 'v_wr_by_round'), kind: 'view', usedBy: ['WR rounds / records'] },
+    { name: T('TABLE_PB_ROUNDS_CLEAN_APP', 'v_pb_by_player_round_clean_app'), kind: 'view', usedBy: ['PB rounds / records'] },
+    { name: T('TABLE_WR_ROUNDS_CLEAN_APP', 'v_wr_by_round_clean_app'), kind: 'view', usedBy: ['WR rounds / records'] },
     { name: 'v_round_high_scores_modal', kind: 'view', usedBy: ['Round High Scores modal'] },
     { name: 'v_top50_scores_official', kind: 'view', usedBy: ['Top 50 Scores modal'] }
   ];
@@ -24621,6 +25653,7 @@ async function cloudArchiveGame(game){
   if (!gid) throw new Error('cloudArchiveGame: missing game id');
   const { error } = await sb.from(TABLE_GAMES).update({ archived_at: new Date().toISOString() }).eq('id', gid);
   if (error) throw error;
+  try{ if (typeof window.__sqClearGamesTruthCache === 'function') window.__sqClearGamesTruthCache('cloudArchiveGame'); }catch(_){ }
   try{ localStorage.removeItem('SQ_PSTICKER_CACHE_V1'); }catch(_){ }
   try{ if (typeof window.__sqRefreshRecentMatchesTicker==='function') window.__sqRefreshRecentMatchesTicker(); }catch(_){ }
   try{ localStorage.removeItem('SQ_PSTICKER_CACHE_V1'); }catch(_){ }
@@ -24634,6 +25667,7 @@ async function cloudReinstateGame(game){
   if (!gid) throw new Error('cloudReinstateGame: missing game id');
   const { error } = await sb.from(TABLE_GAMES).update({ archived_at: null }).eq('id', gid);
   if (error) throw error;
+  try{ if (typeof window.__sqClearGamesTruthCache === 'function') window.__sqClearGamesTruthCache('cloudReinstateGame'); }catch(_){ }
   try{ localStorage.removeItem('SQ_PSTICKER_CACHE_V1'); }catch(_){ }
   try{ if (typeof window.__sqRefreshRecentMatchesTicker==='function') window.__sqRefreshRecentMatchesTicker(); }catch(_){ }
   return true;
@@ -24666,6 +25700,7 @@ async function cloudPurgeGameCascade(game){
 
   const { error: delErr } = await sb.from(TABLE_GAMES).delete().eq('id', gid);
   if (delErr) throw delErr;
+  try{ if (typeof window.__sqClearGamesTruthCache === 'function') window.__sqClearGamesTruthCache('cloudPurgeGameCascade'); }catch(_){ }
   return true;
 }
 // <<< PATCH:MOT5B3_ARCHIVE_REINSTATE_PURGE END
@@ -24686,9 +25721,9 @@ async function cloudPurgeGameCascade(game){
         { kind:'view',  name: 'v_top50_scores_official', usedBy:['Top 50 modal'], required:true },
         { kind:'view',  name: 'v_round_high_scores_modal', usedBy:['Round High Scores modal'], required:true },
 
-        // Optional (only probe when includeOptional=true). These currently 404 in your environment.
-        { kind:'table', name: (typeof TABLE_PB_ROUNDS!=='undefined'?TABLE_PB_ROUNDS:'v_pb_by_player_round'), usedBy:['PB rounds'], required:false },
-        { kind:'table', name: (typeof TABLE_WR_ROUNDS!=='undefined'?TABLE_WR_ROUNDS:'v_wr_by_round'), usedBy:['WR rounds'], required:false }
+        // Optional clean app PB/WR views for runtime edging/admin snapshots.
+        { kind:'view', name: (typeof TABLE_PB_ROUNDS_CLEAN_APP!=='undefined'?TABLE_PB_ROUNDS_CLEAN_APP:'v_pb_by_player_round_clean_app'), usedBy:['PB rounds'], required:false },
+        { kind:'view', name: (typeof TABLE_WR_ROUNDS_CLEAN_APP!=='undefined'?TABLE_WR_ROUNDS_CLEAN_APP:'v_wr_by_round_clean_app'), usedBy:['WR rounds'], required:false }
       ];
     }
 
@@ -27046,10 +28081,14 @@ function arrangeStartActions(){
           toast('VS AI coming soon - needs the AI opponent engine first.');
         };
 
-        const vsShadow = makeOpt('practiceVsShadowBtn', 'practice', 'VS SHADOW', 'COMING SOON - PLAY AGAINST A PB / WR / PLAYER GHOST', 'COMING SOON', false);
+        const vsShadow = makeOpt('practiceVsShadowBtn', 'practice', 'VS SHADOW', 'PICK A PLAYER AND A HIGH SCORE TO BATTLE AGAINST', '', true);
         vsShadow.onclick = (e)=>{
           e.preventDefault();
-          toast('VS Shadow coming soon - needs ghost-game selection first.');
+          window.__sqPracticeGameType = 'vsShadow';
+          if (typeof __msResetSetupForMode === 'function') __msResetSetupForMode('practice');
+          else window.__sqSelectedMode = 'practice';
+          closeModal('startGameModal');
+          show('players');
         };
 
         const footer = doc.createElement('div');
@@ -27222,7 +28261,7 @@ async function __sqRefreshHomeMiniLeagues(){
   // High Score League (Top 5)
   try{
     const tbody = document.getElementById('homeHsLeagueRows');
-    if (tbody){
+    if (tbody && (typeof cloudIsTableMissing !== 'function' || !cloudIsTableMissing('high_score_league_official'))){
       const { data, error } = await sb
         .from('high_score_league_official')
         .select('player,best_score,best_ts')
@@ -27497,6 +28536,7 @@ if(hsBody){
 
       const LP_BUFFER = 30;
       const LP_VISIBLE = 9;
+      const LP_SYNC_MS = Math.max(15000, (typeof SQ_GAMES_VISIBLE_MIN_POLL_MS !== 'undefined' ? SQ_GAMES_VISIBLE_MIN_POLL_MS : 15000));
       // Cloud availability helper (avoid ReferenceError on older builds)
       const lpCloudOK = () => {
         try {
@@ -27937,7 +28977,8 @@ const lpUpdateMeta = async (games) => {
       const lpBuildDerivedPrinterItems = async () => {
         const st = window.__homeLivePrinterState || {};
         const now = Date.now();
-        if (Array.isArray(st.derivedItems) && st.derivedItems.length && st.derivedFetchedAt && (now - st.derivedFetchedAt) < 60000) {
+        const derivedTtlMs = Math.max(5 * 60 * 1000, Number(window.__sqAllGamesFetchTtlMs) || 0);
+        if (Array.isArray(st.derivedItems) && st.derivedItems.length && st.derivedFetchedAt && (now - st.derivedFetchedAt) < derivedTtlMs) {
           return st.derivedItems;
         }
         let events = [];
@@ -28465,14 +29506,16 @@ if (!window.__homeLivePrinterInterval){
           try {
             if (st.tick % 5 === 0) lpScrollStep();
           } catch (_) {}
-// Sync every ~3 seconds
-          if (st.tick % 3 === 0) {
+          // Sync cloud rows at most every 15s; animation still ticks every second.
+          if (!st.lastSyncMs || (Date.now() - st.lastSyncMs) >= LP_SYNC_MS) {
+            st.lastSyncMs = Date.now();
             st.syncCount++;
             const force = (st.syncCount % st.forceFullEvery) === 0;
             lpSync(force);
           }
         }, 1000);
         // initial fill
+        try { const st0 = window.__homeLivePrinterState; if (st0) st0.lastSyncMs = Date.now(); } catch (_) {}
         lpSync(true);
       }
     }catch(_){ }
@@ -28978,9 +30021,9 @@ window.setCloudStatus = function setCloudStatus(state, msg){
 // ===== PB/GR snapshot + refresh (cloud-first; saved players, official-only) =====
 // >>> PATCH:pbgr-delegate-to-views START
 // NOTE: legacy getPBGRSnapshot previously depended on a per-dart table (game_throws).
-// This project now exposes PB/WR via views:
-//   - v_pb_by_player_round (bucket_key, round_key, pb_points)
-//   - v_wr_by_round        (round_key, wr_points)
+// This project now exposes runtime PB/WR via clean app views:
+//   - v_pb_by_player_round_clean_app (bucket_key, round_key, pb_points)
+//   - v_wr_by_round_clean_app        (round_key, wr_points)
 // To prevent schema-dependent crashes, we delegate legacy callers to the view snapshot.
 (function(){
   window.getPBGRSnapshot = async function getPBGRSnapshot(){
@@ -29087,7 +30130,7 @@ window.setCloudStatus = function setCloudStatus(state, msg){
 //   v_wr_by_round:        cat, val, player, game_id, ridx, ts
 // Newer builds may expose:
 //   bucket_key, round_key, pb_points / wr_points
-// This override reads select('*') and normalises both shapes for the Admin modal.
+// This override reads explicit clean app columns and normalises both shapes for the Admin modal.
 (function(){
   function normName(v){ return String(v || '').trim().toLowerCase(); }
   function readNum(row, keys){
@@ -29155,10 +30198,9 @@ window.setCloudStatus = function setCloudStatus(state, msg){
       }
       window.__v2PBWRNameToBucket = nameToId;
 
-      const [wrRes, pbRes] = await Promise.all([
-        sb.from('v_wr_by_round').select('*').limit(10000),
-        sb.from('v_pb_by_player_round').select('*').limit(100000)
-      ]);
+      const cleanRows = (typeof __sqGetPBWRCleanRowsFromSnapshot === 'function') ? await __sqGetPBWRCleanRowsFromSnapshot() : { wrRows:[], pbRows:[], error:'Clean PB/WR helper unavailable' };
+      const wrRes = { data: cleanRows.wrRows || [], error: cleanRows.error || null };
+      const pbRes = { data: cleanRows.pbRows || [], error: cleanRows.error || null };
       if (wrRes?.error) throw wrRes.error;
       if (pbRes?.error) throw pbRes.error;
 
@@ -29266,7 +30308,53 @@ window.setCloudStatus = function setCloudStatus(state, msg){
   function rowsForPlayer(board, pi){ if (!Array.isArray(board)) return []; if (Array.isArray(board[pi])) return board[pi]; if (Array.isArray(board[0]) && board[0][pi] != null) return board.map(r => Array.isArray(r) ? r[pi] : null); return []; }
   async function getSavedPlayersSafe(){ try{ return (typeof cloudListPlayers === 'function') ? (await cloudListPlayers()) : []; }catch(_){ return []; } }
   async function getGamesSafe(){ try{ if (typeof cloudFetchAllGamesAsLocal === 'function') return await cloudFetchAllGamesAsLocal(); }catch(e){ console.warn('[SQ] PBGR cloudFetchAllGamesAsLocal failed:', e && (e.message || e)); } const client = window.sb || (typeof sb !== 'undefined' ? sb : null); if (!client || !client.from) return []; const { data, error } = await client.from('games').select('id,created_at,state,totals,match_id,game_number,finished').order('created_at', { ascending:true }).limit(100000); if (error) throw error; return (data || []).map(r => ({ id:r.id, ts:r.created_at, created_at:r.created_at, players:r.state && r.state.players, board:r.state && r.state.board, match_id:r.match_id, finished:r.finished, raw:r })); }
-  async function mergeViews(byTargetMeta, byPlayerMeta, idToName){ const client = window.sb || (typeof sb !== 'undefined' ? sb : null); const counts = { wrRows:0, pbRows:0, wrError:'', pbError:'' }; if (!client || !client.from) return counts; const [wrRes, pbRes] = await Promise.allSettled([ client.from('v_wr_by_round').select('*').limit(10000), client.from('v_pb_by_player_round').select('*').limit(100000) ]); const wr = wrRes.status === 'fulfilled' ? wrRes.value : { error:wrRes.reason }; const pb = pbRes.status === 'fulfilled' ? pbRes.value : { error:pbRes.reason }; counts.wrError = wr && wr.error ? String(wr.error.message || wr.error) : ''; counts.pbError = pb && pb.error ? String(pb.error.message || pb.error) : ''; if (!wr?.error){ counts.wrRows = (wr.data || []).length; for (const row of (wr.data || [])){ const k = roundKey(text(row, ['round_key','cat','round','target','key']), row && (row.ridx ?? row.round_index)); const val = num(row, ['wr_points','wr','val','points','score','round_total']); const bucket = text(row, ['bucket_key','player_id','id']); maybeSet(byTargetMeta, k, { val, player:text(row, ['player','holder','name','player_name']) || idToName.get(bucket) || '', darts:text(row, ['darts','throws','dart_count']), game_id:row?.game_id || row?.game || null, ridx:row?.ridx ?? row?.round_index ?? null, ts:row?.ts || row?.created_at || row?.date || null }); } } if (!pb?.error){ counts.pbRows = (pb.data || []).length; for (const row of (pb.data || [])){ const k = roundKey(text(row, ['round_key','cat','round','target','key']), row && (row.ridx ?? row.round_index)); const val = num(row, ['pb_points','pb','val','points','score','round_total']); const bucket = text(row, ['bucket_key','player_id','id']); const name = text(row, ['player','name','player_name','holder']) || idToName.get(bucket) || bucket; const meta = { val, player:name, darts:text(row, ['darts','throws','dart_count']), game_id:row?.game_id || row?.game || null, ridx:row?.ridx ?? row?.round_index ?? null, ts:row?.ts || row?.created_at || row?.date || null }; maybeSetPlayer(byPlayerMeta, norm(name), k, meta); if (bucket) maybeSetPlayer(byPlayerMeta, norm(bucket), k, meta); } } return counts; }
+  async function mergeViews(byTargetMeta, byPlayerMeta, idToName){
+    const counts = { wrRows:0, pbRows:0, wrError:'', pbError:'' };
+    let snap = null;
+    try{
+      snap = (typeof __sqEnsureV2PBWR === 'function') ? await __sqEnsureV2PBWR() : null;
+    }catch(e){
+      const msg = String(e && (e.message || e) || '');
+      counts.wrError = msg;
+      counts.pbError = msg;
+    }
+    if (!snap || !snap.wrByRound || !snap.pbByBucket){
+      const msg = counts.wrError || 'Clean PB/WR snapshot unavailable';
+      counts.wrError = msg;
+      counts.pbError = counts.pbError || msg;
+      return counts;
+    }
+    try{
+      snap.wrByRound.forEach((value, rawKey) => {
+        const k = roundKey(rawKey, null);
+        const val = Number(value || 0);
+        if (!k || !(val > 0)) return;
+        counts.wrRows++;
+        maybeSet(byTargetMeta, k, { val, player:'', darts:'', game_id:null, ridx:null, ts:null });
+      });
+    }catch(e){
+      counts.wrError = String(e && (e.message || e) || '');
+    }
+    try{
+      snap.pbByBucket.forEach((roundMap, bucketRaw) => {
+        const bucket = String(bucketRaw || '').trim();
+        if (!roundMap || typeof roundMap.forEach !== 'function') return;
+        roundMap.forEach((value, rawKey) => {
+          const k = roundKey(rawKey, null);
+          const val = Number(value || 0);
+          if (!k || !(val > 0)) return;
+          counts.pbRows++;
+          const name = idToName.get(bucket) || bucket;
+          const meta = { val, player:name, darts:'', game_id:null, ridx:null, ts:null };
+          maybeSetPlayer(byPlayerMeta, norm(name), k, meta);
+          if (bucket) maybeSetPlayer(byPlayerMeta, norm(bucket), k, meta);
+        });
+      });
+    }catch(e){
+      counts.pbError = String(e && (e.message || e) || '');
+    }
+    return counts;
+  }
   async function mergeGames(byTargetMeta, byPlayerMeta, savedPlayers){ const savedNames = new Set((savedPlayers || []).map(p => norm(p && p.name)).filter(Boolean)); const games = await getGamesSafe(); let usedGames = 0, usedRows = 0; for (const g of (games || [])){ const ps = normalisePlayers(g); const board = normaliseBoard(g); if (!Array.isArray(ps) || ps.length < 1 || !Array.isArray(board)) continue; if (!(g.match_id || ps.length >= 2)) continue; usedGames++; for (let pi=0; pi<ps.length; pi++){ const name = String(ps[pi]?.name || ps[pi]?.player || ps[pi]?.display_name || '').trim(); if (!name) continue; const nk = norm(name); if (savedNames.size && !savedNames.has(nk)) continue; const rounds = rowsForPlayer(board, pi); if (!Array.isArray(rounds)) continue; for (let ri=0; ri<14; ri++){ const k = roundFromIndex(ri); const ent = rounds[ri]; const val = roundTotal(ent); if (!k || !(val > 0)) continue; usedRows++; const meta = { val, player:name, darts:darts(ent), game_id:g.id || g.game_id || null, ridx:ri, ts:g.ts || g.created_at || null }; maybeSet(byTargetMeta, k, meta); maybeSetPlayer(byPlayerMeta, nk, k, meta); } } } return { games:(games || []).length, usedGames, usedRows, playerKeys:byPlayerMeta.size }; }
   window.getPBGRSnapshot = async function getPBGRSnapshot(){ try{ if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) return { byTargetMeta:{}, byPlayerMeta:new Map() }; const savedPlayers = await getSavedPlayersSafe(); const idToName = new Map(); const nameToId = new Map(); for (const p of (savedPlayers || [])){ const name = String(p && p.name || '').trim(); const id = String((p && (p.id || p.player_id || p.bucket_key || p.bucketKey)) || '').trim(); if (name && id){ idToName.set(id, name); nameToId.set(norm(name), id); } } window.__v2PBWRNameToBucket = nameToId; const byTargetMeta = {}; const byPlayerMeta = new Map(); const viewCounts = await mergeViews(byTargetMeta, byPlayerMeta, idToName).catch(e => ({ wrRows:0, pbRows:0, wrError:String(e && (e.message || e)), pbError:String(e && (e.message || e)) })); const gameCounts = await mergeGames(byTargetMeta, byPlayerMeta, savedPlayers).catch(e => ({ games:0, usedGames:0, usedRows:0, error:String(e && (e.message || e)) })); try{ window.__sqPBGRAdminLastCounts = Object.assign({}, viewCounts, { playerKeys:byPlayerMeta.size }); }catch(_){} try{ window.__sqPBGRAdminLastFallback = gameCounts; }catch(_){} return { byTargetMeta, byPlayerMeta }; }catch(e){ console.warn('[SQ] PBGR Admin merged snapshot failed:', e && (e.message || e)); try{ window.__sqPBGRAdminLastError = e && (e.message || String(e)); }catch(_){} return { byTargetMeta:{}, byPlayerMeta:new Map() }; } };
   window.refreshPBGRCloud = async function refreshPBGRCloud(){ window.__v2PBWRSnapshot = null; window.__v2PBWRSnapshotPromise = null; window.__pbgrSnapshot = null; window.__pbgrSnapshotPromise = null; await window.getPBGRSnapshot(); try{ if (typeof window.updatePBGRBadges === 'function') await window.updatePBGRBadges(); }catch(_){} return true; };
@@ -29408,12 +30496,14 @@ window.openHighScoreLeagueDialog = async function openHighScoreLeagueDialog() {
     // Prefer deterministic DB view
     let rows = null;
     try {
-      const { data, error } = await sb
-        .from('high_score_league_official')
-        .select('player, best_score, best_ts')
-        .limit(5000);
-      if (error) { console.warn('HS League view query failed', error); }
-      if (!error && Array.isArray(data)) rows = data;
+      if (typeof cloudIsTableMissing !== 'function' || !cloudIsTableMissing('high_score_league_official')) {
+        const { data, error } = await sb
+          .from('high_score_league_official')
+          .select('player, best_score, best_ts')
+          .limit(5000);
+        if (error) { console.warn('HS League view query failed', error); }
+        if (!error && Array.isArray(data)) rows = data;
+      }
     } catch(_) {}
 
     // Fallback: compute from player_games_union.
@@ -30112,6 +31202,7 @@ if (typeof sb === 'undefined'
 
 // Helper: fetch throws in small chunks to avoid URL length / IN() limits
 async function fetchThrowsForGamesChunked(ids, chunkSize = 200){
+  if (!FEATURE_CLOUD_THROWS || cloudIsTableMissing(TABLE_GAME_THROWS)) return [];
   const all = [];
   for (let i = 0; i < ids.length; i += chunkSize) {
     const slice = ids.slice(i, i + chunkSize);
@@ -32092,11 +33183,13 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
     let dbRates = null;
     try{
       const fk2 = name.toLowerCase();
-      const tr = await SB.from('v_player_last30_target_rates')
-        .select('player_key,target_n,hit_pct,throws')
-        .eq('player_key', fk2)
-        .order('hit_pct', { ascending: false });
-      dbRates = (tr && Array.isArray(tr.data)) ? tr.data : null;
+      if (typeof cloudIsTableMissing !== 'function' || !cloudIsTableMissing('v_player_last30_target_rates')) {
+        const tr = await SB.from('v_player_last30_target_rates')
+          .select('player_key,target_n,hit_pct,throws')
+          .eq('player_key', fk2)
+          .order('hit_pct', { ascending: false });
+        dbRates = (tr && Array.isArray(tr.data)) ? tr.data : null;
+      }
     }catch(e){ /* view may not exist yet */ dbRates = null; }
 
     }catch(e){ console.warn('[SQ] last30 targets view read failed', e); }
@@ -32995,7 +34088,7 @@ async function __fetchThrowsForGames(gameIds){
     'throw_events_v', 'throw_events',
     (typeof TABLE_GAME_THROWS !== 'undefined') ? TABLE_GAME_THROWS : 'game_throws',
     'throws', 'shots', 'game_shots', 'game_darts'
-  ];
+  ].filter(table => table && !(typeof cloudIsTableMissing === 'function' && cloudIsTableMissing(table)));
   // Candidate game-id columns to try
   const idCols = ['game_id','game','gid','match_id','gameId','gameID'];
 
@@ -35005,177 +36098,6 @@ const body    = document.createElement('div'); body.className   ='modal-body';
   document.body.appendChild(overlay);
 
   function closeToHub(){ overlay.remove(); }
-  overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
-  overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
-  modal.tabIndex=0; modal.focus();
-};
-
-// ==== (6) H2H — wins/losses vs each opponent =================================
-window.openPlayerH2HDialog = async function openPlayerH2HDialog(playerName){
-  const nameLC = String(playerName||'').trim().toLowerCase();
-  const pretty = String(playerName||'').trim();
-
-  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
-  const modal   = document.createElement('div'); modal.className  ='modal';
-  modal.style.maxWidth='980px'; modal.style.width='94vw';
-  modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
-
-  const header  = __sqStatsHeader(`H2H — ${pretty}`, 'Matches / Wins / Losses / Win % / Avg Diff');
-  const body    = document.createElement('div'); body.className   ='modal-body';
-  body.style.paddingTop='8px';
-  const footer  = document.createElement('div'); footer.className ='modal-footer';
-
-  // Pull plenty then filter locally (cloud-first)
-  const games=(await __fetchOfficialGames(5000)).map(__normalizeGame)
-    .filter(g => Array.isArray(g.players) && g.players.some(p => String(p||'').trim().toLowerCase()===nameLC));
-
-  const vs=new Map(); // lc -> aggregate
-  games.forEach(g=>{
-    const i = g.players.findIndex(p => String(p||'').trim().toLowerCase()===nameLC);
-    if (i < 0) return;
-    const me=Number(g.totals[i]||0);
-
-    g.players.forEach((op,j)=>{
-      const lc=String(op||'').trim().toLowerCase();
-      if (!lc || lc===nameLC) return;
-
-      const their=Number(g.totals[j]||0);
-      const rec=vs.get(lc) || { opp: op, W:0, L:0, diffs:[], games:0 };
-      if (me>their) rec.W++; else if (me<their) rec.L++;
-      rec.games++; rec.diffs.push(me-their);
-      vs.set(lc,rec);
-    });
-  });
-
-  const allRows=Array.from(vs.values()).map(r=>({
-    opp:r.opp,
-    games: Number(r.games || (r.W + r.L) || 0),
-    W: Number(r.W||0),
-    L: Number(r.L||0),
-    winp: (r.W+r.L)? (100*r.W/(r.W+r.L)) : 0,
-    avgdiff: r.diffs.length ? (r.diffs.reduce((s,x)=>s+x,0)/r.diffs.length) : 0
-  }));
-
-  const ineligible = allRows
-    .filter(r => (r.games||0) < 4)
-    .sort((a,b)=> (b.games-a.games) || String(a.opp).localeCompare(String(b.opp)));
-
-  const eligible = allRows
-    .filter(r => (r.games||0) >= 4)
-    .sort((a,b)=> (b.winp-a.winp) || (b.avgdiff-a.avgdiff) || (b.games-a.games) || String(a.opp).localeCompare(String(b.opp)));
-
-  const wrap = document.createElement('div');
-  wrap.style.maxHeight='56vh';
-  wrap.style.overflowY='auto';
-  __sqStyleStatsTableWrap(wrap);
-
-  const makeTable = (headers, rows, rowFn) => {
-    const table=document.createElement('table'); table.className='sq-table hs-table';
-    const thead=document.createElement('thead'); const trh=document.createElement('tr');
-    headers.forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
-    thead.appendChild(trh); table.appendChild(thead);
-    const tbody=document.createElement('tbody');
-    rows.forEach((r, idx)=> tbody.appendChild(rowFn(r, idx)));
-    table.appendChild(tbody);
-    return table;
-  };
-
-  const orangeRankCell = (n) => {
-    const td=document.createElement('td');
-    td.textContent=String(n);
-    td.style.textAlign='left';
-    td.style.paddingLeft='14px';
-    td.style.color='rgba(255,123,26,.95)';
-    td.style.fontWeight='800';
-    return td;
-  };
-
-  if (!allRows.length){
-    const p = document.createElement('div');
-    p.style.padding='18px';
-    p.style.opacity='.75';
-    p.textContent = 'No head-to-head data (official games only).';
-    wrap.appendChild(p);
-  } else {
-
-    if (ineligible.length){
-      const cap = document.createElement('div');
-      cap.className = 'muted';
-      cap.style.margin = '2px 0 10px';
-      cap.textContent = 'Opponents need 4+ games to enter the H2H league table.';
-      wrap.appendChild(cap);
-
-      const t0 = makeTable(['#','Opponent','Matches','Wins','Losses','Win %','Avg Score Diff'], ineligible, (r,idx)=>{
-        const tr=document.createElement('tr');
-        tr.style.opacity='0.45';
-        tr.title='Greyed out until 4+ games played vs this opponent';
-
-        const tdO=document.createElement('td'); tdO.textContent=String(r.opp||'');
-        const tdM=document.createElement('td'); tdM.textContent=String(r.games||0); tdM.style.textAlign='center';
-        const tdW=document.createElement('td'); tdW.textContent=String(r.W||0); tdW.style.textAlign='center';
-        const tdL=document.createElement('td'); tdL.textContent=String(r.L||0); tdL.style.textAlign='center';
-        const tdP=document.createElement('td'); tdP.textContent=(Number(r.winp||0)).toFixed(1)+'%'; tdP.style.textAlign='center';
-
-        const tdD=document.createElement('td');
-        tdD.textContent = (r.avgdiff>=0?'+':'') + Number(r.avgdiff||0).toFixed(1);
-        tdD.style.textAlign='center';
-        if (r.avgdiff > 0) tdD.style.color = 'rgba(0,255,120,.85)';
-        else if (r.avgdiff < 0) tdD.style.color = 'var(--danger)';
-
-        tr.append(orangeRankCell(idx+1), tdO, tdM, tdW, tdL, tdP, tdD);
-        return tr;
-      });
-      wrap.appendChild(t0);
-
-      const rule = document.createElement('div');
-      rule.style.height='1px';
-      rule.style.background='rgba(255,255,255,0.08)';
-      rule.style.margin='12px 0';
-      wrap.appendChild(rule);
-    }
-
-    if (!eligible.length){
-      const p = document.createElement('div');
-      p.style.padding='12px 0 4px';
-      p.style.opacity='.75';
-      p.textContent = 'No eligible opponents yet (need 4+ games).';
-      wrap.appendChild(p);
-    } else {
-      const t1 = makeTable(['#','Opponent','Matches','Wins','Losses','Win %','Avg Score Diff'], eligible, (r,idx)=>{
-        const tr=document.createElement('tr');
-
-        const tdO=document.createElement('td'); tdO.textContent=String(r.opp||'');
-        const tdM=document.createElement('td'); tdM.textContent=String(r.games||0); tdM.style.textAlign='center';
-        const tdW=document.createElement('td'); tdW.textContent=String(r.W||0); tdW.style.textAlign='center';
-        const tdL=document.createElement('td'); tdL.textContent=String(r.L||0); tdL.style.textAlign='center';
-        const tdP=document.createElement('td'); tdP.textContent=r.winp.toFixed(1)+'%'; tdP.style.textAlign='center';
-
-        const tdD=document.createElement('td');
-        tdD.textContent = (r.avgdiff>=0?'+':'') + r.avgdiff.toFixed(1);
-        tdD.style.textAlign='center';
-        if (r.avgdiff > 0) tdD.style.color = 'rgba(0,255,120,.85)';
-        else if (r.avgdiff < 0) tdD.style.color = 'var(--danger)';
-
-        tr.append(orangeRankCell(idx+1), tdO, tdM, tdW, tdL, tdP, tdD);
-        return tr;
-      });
-      wrap.appendChild(t1);
-    }
-  }
-
-  body.appendChild(wrap);
-
-  const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
-  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
-  backBtn.onclick=()=>{ overlay.remove(); __sqGoBackToStatsMain(); };
-  closeBtn.onclick=()=>overlay.remove();
-  footer.append(backBtn,closeBtn);
-
-  modal.append(header,body,footer);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-
-  const closeToHub = ()=>overlay.remove();
   overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
   overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
   modal.tabIndex=0; modal.focus();
@@ -38954,6 +39876,10 @@ __sqDmdInitV7();
     return raw;
   }
 
+  // LEGACY ROUND HIGH SCORES v82 — QUARANTINED
+  // Superseded by v85 and final Fix97/Fix102 path.
+  // Kept temporarily for audit history only.
+  // Do not patch for current Round High Scores behaviour.
   async function openRoundHighScoresDialog_v82(){
     __sqClearRHSTicker();
 
@@ -39124,6 +40050,10 @@ __sqDmdInitV7();
 
 })();
 
+// LEGACY ROUND HIGH SCORES v85 / PBGR MERGE FALLBACK — QUARANTINED
+// Superseded by final Fix97/Fix102 path.
+// This block contains broad PB/GR, saved games, and game_throws fallback logic.
+// Do not reactivate without database-source verification.
 /* >>> PATCH:ROUND_HIGH_SCORES_MERGE_PBGR_V86 START */
 (()=> {
   function clearRHSTicker_v85(){
@@ -39301,7 +40231,7 @@ __sqDmdInitV7();
   async function mergeCloudThrowRows_v85(map){
     const client = window.sb || (typeof sb !== 'undefined' ? sb : null) || window.supabaseClient || window.supabase;
     const table = (typeof TABLE_GAME_THROWS !== 'undefined' && TABLE_GAME_THROWS) ? TABLE_GAME_THROWS : 'game_throws';
-    if (!client || !client.from || !table) return;
+    if (!client || !client.from || !table || (typeof cloudIsTableMissing === 'function' && cloudIsTableMissing(table))) return;
     try{
       const { data, error } = await client.from(table)
         .select('player,player_name,name,game_id,round_index,target,points,score,val,kind,type,multiplier,bull,bull_type,dart_index,ts,created_at')
@@ -40953,252 +41883,6 @@ __sqDmdInitV7();
   if (window.__sqH2HRollingGraphPatchV3) return;
   window.__sqH2HRollingGraphPatchV3 = true;
 
-  function sqEqName(a,b){
-    try{ if (typeof eqName === 'function') return eqName(a,b); }catch(_){ }
-    return String(a||'').trim().toLowerCase() === String(b||'').trim().toLowerCase();
-  }
-  function sqGameDate(g){
-    var raw = g && (g.ts || g.created_at || g.date || g.saved_at);
-    var d = raw ? new Date(raw) : null;
-    return d && !Number.isNaN(d.getTime()) ? d : null;
-  }
-  function sqPlayers(g){
-    return (g && Array.isArray(g.players)) ? g.players : (Array.isArray(g && g.state && g.state.players) ? g.state.players : []);
-  }
-  function sqTotals(g){
-    return (g && Array.isArray(g.totals)) ? g.totals : (Array.isArray(g && g.state && g.state.totals) ? g.state.totals : []);
-  }
-
-  function buildH2HSeries(playerName, opponentName, games){
-    var out = [];
-    var wins = 0;
-    var gp = 0;
-    (games || []).slice().sort(function(a,b){
-      var da = sqGameDate(a); var db = sqGameDate(b);
-      return (da ? da.getTime() : 0) - (db ? db.getTime() : 0);
-    }).forEach(function(g){
-      var players = sqPlayers(g);
-      var totals = sqTotals(g);
-      if (!Array.isArray(players) || !Array.isArray(totals)) return;
-      var me = players.findIndex(function(p){ return p && sqEqName(p.name, playerName); });
-      var opp = players.findIndex(function(p, idx){ return idx !== me && p && sqEqName(p.name, opponentName); });
-      if (me < 0 || opp < 0) return;
-      var myTotal = Number(totals[me] || 0);
-      var oppTotal = Number(totals[opp] || 0);
-      gp += 1;
-      var result = myTotal > oppTotal ? 'W' : (myTotal < oppTotal ? 'L' : 'D');
-      if (result === 'W') wins += 1;
-      out.push({
-        game: gp,
-        winPct: gp ? (wins / gp * 100) : 0,
-        result: result,
-        myTotal: myTotal,
-        oppTotal: oppTotal,
-        date: sqGameDate(g)
-      });
-    });
-    return out;
-  }
-
-  function calcH2HSplitAverage(series){
-    var n = Array.isArray(series) ? series.length : 0;
-    if (!n) return { first:null, second:null, delta:null, firstGames:0, secondGames:0 };
-    var split = Math.floor(n / 2);
-    if (split < 1) return { first:null, second:null, delta:null, firstGames:n, secondGames:0 };
-    var first = series.slice(0, split);
-    var second = series.slice(split);
-    function pct(rows){
-      if (!rows.length) return null;
-      var wins = rows.filter(function(x){ return x.result === 'W'; }).length;
-      return wins / rows.length * 100;
-    }
-    var a = pct(first);
-    var b = pct(second);
-    return { first:a, second:b, delta:(a == null || b == null) ? null : (b - a), firstGames:first.length, secondGames:second.length };
-  }
-
-  function rollingWinPct(series, windowSize){
-    var w = Math.max(1, Number(windowSize || 5));
-    return (series || []).map(function(_, idx){
-      var from = Math.max(0, idx - w + 1);
-      var rows = series.slice(from, idx + 1);
-      var wins = rows.filter(function(x){ return x.result === 'W'; }).length;
-      return {
-        index: idx,
-        from: from,
-        to: idx,
-        pct: rows.length ? (wins / rows.length * 100) : 0,
-        games: rows.length
-      };
-    });
-  }
-
-  function recentH2HGames(series, count){
-    return (series || []).slice(Math.max(0, (series || []).length - Number(count || 5)));
-  }
-
-  function drawH2HCanvas(canvas, series){
-    if (!canvas) return;
-    var rect = canvas.getBoundingClientRect();
-    var dpr = Math.max(1, window.devicePixelRatio || 1);
-    var w = Math.max(320, Math.floor(rect.width || 620));
-    var h = Math.max(220, Math.floor(rect.height || 280));
-    canvas.width = Math.floor(w * dpr);
-    canvas.height = Math.floor(h * dpr);
-    var ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    ctx.clearRect(0,0,w,h);
-
-    var padL = 44, padR = 154, padT = 18, padB = 34;
-    var x0 = padL, x1 = w - padR, y0 = padT, y1 = h - padB;
-    var grid = 'rgba(255,255,255,.10)';
-    var text = 'rgba(231,233,245,.72)';
-    var avgOrange = 'rgba(255,170,28,.96)';
-    var fiveBlue = 'rgba(90,220,255,.96)';
-    var trajGreen = 'rgba(60,255,134,.96)';
-
-    ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = grid;
-    ctx.fillStyle = text;
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-
-    [0,25,50,75,100].forEach(function(v){
-      var y = y1 - ((v / 100) * (y1-y0));
-      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
-      ctx.fillText(String(v) + '%', x0 - 8, y);
-    });
-
-    ctx.textAlign = 'center';
-    var n = Math.max(1, series.length);
-    var tickStep = n <= 8 ? 1 : Math.ceil(n / 6);
-    for (var i=1; i<=n; i++){
-      if (i !== 1 && i !== n && ((i-1) % tickStep !== 0)) continue;
-      var x = n === 1 ? x0 : x0 + ((i-1)/(n-1))*(x1-x0);
-      ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke();
-      ctx.fillText(String(i), x, y1 + 18);
-    }
-
-    ctx.fillStyle = 'rgba(255,255,255,.55)';
-    ctx.textAlign = 'center';
-    ctx.fillText('Games played', (x0+x1)/2, h - 8);
-
-    if (!series.length){
-      ctx.fillStyle = 'rgba(255,255,255,.62)';
-      ctx.textAlign = 'center';
-      ctx.font = '13px system-ui, -apple-system, Segoe UI, sans-serif';
-      ctx.fillText('No H2H games found.', (x0+x1)/2, (y0+y1)/2);
-      return;
-    }
-
-    function px(idx){ return n === 1 ? x0 : x0 + (idx/(n-1))*(x1-x0); }
-    function py(v){ return y1 - ((Math.max(0, Math.min(100, v)) / 100) * (y1-y0)); }
-
-    var wins = series.filter(function(x){ return x.result === 'W'; }).length;
-    var allTime = wins / series.length * 100;
-    var splitAvg = calcH2HSplitAverage(series);
-    var roll5 = rollingWinPct(series, 5);
-    var latestRoll5 = roll5.length ? roll5[roll5.length-1].pct : 0;
-    var recent5 = recentH2HGames(series, 5);
-
-    // All-time average = orange dotted horizontal line.
-    var yAvg = py(allTime);
-    ctx.save();
-    ctx.strokeStyle = avgOrange;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([4,4]);
-    ctx.beginPath(); ctx.moveTo(x0, yAvg); ctx.lineTo(x1, yAvg); ctx.stroke();
-    ctx.restore();
-
-    // First-half to second-half trajectory = green diagonal.
-    if (splitAvg.first != null && splitAvg.second != null){
-      ctx.save();
-      ctx.strokeStyle = trajGreen;
-      ctx.lineWidth = 3;
-      ctx.lineCap = 'round';
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.moveTo(x0, py(splitAvg.first));
-      ctx.lineTo(x1, py(splitAvg.second));
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // 5-game average: rolling past-five window at every game.
-    ctx.save();
-    ctx.strokeStyle = fiveBlue;
-    ctx.fillStyle = fiveBlue;
-    ctx.lineWidth = 2.5;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    roll5.forEach(function(p, idx){
-      var x = px(p.index), y = py(p.pct);
-      if (idx === 0){ ctx.beginPath(); ctx.moveTo(x, y); }
-      else { ctx.lineTo(x, y); }
-    });
-    if (roll5.length) ctx.stroke();
-    roll5.forEach(function(p){
-      ctx.beginPath(); ctx.arc(px(p.index), py(p.pct), 2.4, 0, Math.PI*2); ctx.fill();
-    });
-    ctx.restore();
-
-    // Match result points sit on the rolling 5-game average line, coloured by match result.
-    series.forEach(function(p, idx){
-      var r = roll5[idx];
-      if (!r) return;
-      var x = px(idx), y = py(r.pct);
-      ctx.beginPath();
-      ctx.fillStyle = p.result === 'W' ? 'rgba(60,255,134,.96)' : (p.result === 'L' ? 'rgba(255,95,95,.92)' : 'rgba(255,255,255,.78)');
-      ctx.arc(x,y,3.5,0,Math.PI*2); ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 1; ctx.stroke();
-    });
-
-    // Legend on the right, matching Player Stats progression style.
-    var lx = x1 + 22;
-    var ly = y0 + 18;
-    ctx.font = '12px system-ui, -apple-system, Segoe UI, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-
-    ctx.save();
-    ctx.strokeStyle = avgOrange; ctx.lineWidth = 2; ctx.setLineDash([4,4]);
-    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 18, ly); ctx.stroke();
-    ctx.restore();
-    ctx.fillStyle = 'rgba(231,233,245,.86)';
-    ctx.fillText('All Time AVG', lx + 26, ly);
-    ctx.fillStyle = 'rgba(231,233,245,.68)';
-    ctx.fillText(allTime.toFixed(1) + '%', lx + 26, ly + 17);
-
-    ly += 44;
-    ctx.strokeStyle = fiveBlue; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 18, ly); ctx.stroke();
-    ctx.fillStyle = 'rgba(231,233,245,.86)';
-    ctx.fillText('5 Game AV', lx + 26, ly);
-    ctx.fillStyle = 'rgba(231,233,245,.68)';
-    ctx.fillText(latestRoll5.toFixed(1) + '%', lx + 26, ly + 17);
-
-    ly += 44;
-    ctx.strokeStyle = trajGreen; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 18, ly); ctx.stroke();
-    ctx.fillStyle = 'rgba(231,233,245,.86)';
-    ctx.fillText('Trajectory', lx + 26, ly);
-    ctx.fillStyle = 'rgba(231,233,245,.68)';
-    var trText = (splitAvg.first == null || splitAvg.second == null) ? '—' : (splitAvg.first.toFixed(1) + '% → ' + splitAvg.second.toFixed(1) + '%');
-    ctx.fillText(trText, lx + 26, ly + 17);
-
-    ly += 46;
-    ctx.fillStyle = 'rgba(231,233,245,.86)';
-    ctx.fillText('Past 5 Games', lx, ly);
-    ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-    ctx.fillStyle = 'rgba(231,233,245,.66)';
-    recent5.forEach(function(g, idx){
-      var line = String(g.myTotal || 0) + ' - ' + String(g.oppTotal || 0);
-      ctx.fillText(line, lx, ly + 16 + (idx * 13));
-    });
-  }
-
   function calcH2HDbProgression(rows){
     rows = Array.isArray(rows) ? rows : [];
     if (rows.length < 2) {
@@ -41241,9 +41925,54 @@ __sqDmdInitV7();
     };
   }
 
-  function drawH2HDbTimelineCanvas(canvas, rows){
+  function buildH2HDbChartPoints(rows, graphMode){
+    rows = Array.isArray(rows) ? rows : [];
+    graphMode = String(graphMode || 'running').toLowerCase();
+    function gameWinValue(r){
+      var result = String(r && r.player_a_result || '').toLowerCase();
+      if (result === 'win') return 100;
+      if (result === 'loss') return 0;
+      if (result === 'draw') return 50;
+      return null;
+    }
+    function avg(values){
+      var total = 0, count = 0;
+      values.forEach(function(v){
+        v = Number(v);
+        if (Number.isFinite(v)){ total += v; count += 1; }
+      });
+      return count ? (total / count) : null;
+    }
+    if (graphMode === 'avg5' || graphMode === 'avg10' || graphMode === 'avg20'){
+      var size = graphMode === 'avg20' ? 20 : (graphMode === 'avg10' ? 10 : 5);
+      var points = [];
+      for (var start = 0; start + size <= rows.length; start += size){
+        var part = rows.slice(start, start + size);
+        points.push({
+          idx:start + size - 1,
+          game:start + size,
+          winPct:avg(part.map(gameWinValue)),
+          diff:avg(part.map(function(r){ return Number(r && r.score_diff); })),
+          result:'block'
+        });
+      }
+      return points;
+    }
+    return rows.map(function(r, idx){
+      return {
+        idx:idx,
+        game:idx + 1,
+        winPct:Number(r && r.running_win_pct),
+        diff:Number(r && r.running_avg_diff),
+        result:String(r && r.player_a_result || '').toLowerCase()
+      };
+    }).filter(function(p){ return Number.isFinite(p.winPct); });
+  }
+
+  function drawH2HDbTimelineCanvas(canvas, rows, graphMode){
     if (!canvas) return;
     rows = Array.isArray(rows) ? rows : [];
+    graphMode = String(graphMode || 'running').toLowerCase();
     var rect = canvas.getBoundingClientRect();
     var dpr = Math.max(1, window.devicePixelRatio || 1);
     var w = Math.max(320, Math.floor(rect.width || 720));
@@ -41255,7 +41984,7 @@ __sqDmdInitV7();
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.clearRect(0,0,w,h);
 
-    var padL = 44, padR = 150, padT = 18, padB = 34;
+    var padL = 18, padR = 150, padT = 18, padB = 34;
     var x0 = padL, x1 = w - padR, y0 = padT, y1 = h - padB;
     var grid = 'rgba(255,255,255,.10)';
     var text = 'rgba(231,233,245,.72)';
@@ -41273,14 +42002,16 @@ __sqDmdInitV7();
     [0,25,50,75,100].forEach(function(v){
       var y = y1 - ((v / 100) * (y1-y0));
       ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
-      ctx.fillText(String(v) + '%', x0 - 8, y);
     });
 
     ctx.textAlign = 'center';
     var n = Math.max(1, rows.length);
-    var tickStep = n <= 8 ? 1 : Math.ceil(n / 6);
     for (var i=1; i<=n; i++){
-      if (i !== 1 && i !== n && ((i-1) % tickStep !== 0)) continue;
+      if (n < 5) {
+        // Label every game in very small ranges.
+      } else if (i !== 1 && i % 5 !== 0) {
+        continue;
+      }
       var xTick = n === 1 ? x0 : x0 + ((i-1)/(n-1))*(x1-x0);
       ctx.beginPath(); ctx.moveTo(xTick, y0); ctx.lineTo(xTick, y1); ctx.stroke();
       ctx.fillText(String(i), xTick, y1 + 18);
@@ -41297,8 +42028,17 @@ __sqDmdInitV7();
 
     function px(idx){ return n === 1 ? x0 : x0 + (idx/(n-1))*(x1-x0); }
     function pyPct(v){ return y1 - ((Math.max(0, Math.min(100, Number(v) || 0)) / 100) * (y1-y0)); }
+    var chartPoints = buildH2HDbChartPoints(rows, graphMode);
+    var lowDataMsg = graphMode === 'avg5' && rows.length < 5 ? 'Not enough games for 5 Game Av.' : (graphMode === 'avg10' && rows.length < 10 ? 'Not enough games for 10 Game Av.' : (graphMode === 'avg20' && rows.length < 20 ? 'Not enough games for 20 Game Av.' : ''));
+    if (lowDataMsg){
+      ctx.fillStyle = 'rgba(255,255,255,.72)';
+      ctx.textAlign = 'center';
+      ctx.font = '13px system-ui, -apple-system, Segoe UI, sans-serif';
+      ctx.fillText(lowDataMsg, (x0+x1)/2, (y0+y1)/2);
+      return;
+    }
 
-    var diffs = rows.map(function(r){ return Number(r && r.running_avg_diff); }).filter(function(v){ return Number.isFinite(v); });
+    var diffs = chartPoints.map(function(p){ return Number(p && p.diff); }).filter(function(v){ return Number.isFinite(v); });
     var maxAbsDiff = Math.max(1, diffs.reduce(function(m,v){ return Math.max(m, Math.abs(v)); }, 0));
     function pyDiff(v){
       var normalized = 50 + ((Number(v) || 0) / maxAbsDiff * 50);
@@ -41309,13 +42049,13 @@ __sqDmdInitV7();
     ctx.strokeStyle = diffOrange;
     ctx.lineWidth = 2;
     ctx.setLineDash([5,4]);
-    rows.forEach(function(r, idx){
-      var y = pyDiff(r.running_avg_diff);
-      var x = px(idx);
+    chartPoints.forEach(function(p, idx){
+      var y = pyDiff(p.diff);
+      var x = px(p.idx);
       if (idx === 0){ ctx.beginPath(); ctx.moveTo(x, y); }
       else { ctx.lineTo(x, y); }
     });
-    ctx.stroke();
+    if (chartPoints.length) ctx.stroke();
     ctx.restore();
 
     var progress = calcH2HDbProgression(rows);
@@ -41343,17 +42083,17 @@ __sqDmdInitV7();
     ctx.lineWidth = 2.8;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    rows.forEach(function(r, idx){
-      var x = px(idx), y = pyPct(r.running_win_pct);
+    chartPoints.forEach(function(p, idx){
+      var x = px(p.idx), y = pyPct(p.winPct);
       if (idx === 0){ ctx.beginPath(); ctx.moveTo(x, y); }
       else { ctx.lineTo(x, y); }
     });
-    ctx.stroke();
-    rows.forEach(function(r, idx){
-      var result = String(r && r.player_a_result || '').toLowerCase();
+    if (chartPoints.length) ctx.stroke();
+    chartPoints.forEach(function(p){
+      var result = String(p && p.result || '').toLowerCase();
       ctx.beginPath();
-      ctx.fillStyle = result === 'win' ? 'rgba(60,255,134,.96)' : (result === 'loss' ? 'rgba(255,95,95,.92)' : 'rgba(255,255,255,.78)');
-      ctx.arc(px(idx), pyPct(r.running_win_pct), 3.4, 0, Math.PI*2);
+      ctx.fillStyle = result === 'win' ? 'rgba(60,255,134,.96)' : (result === 'loss' ? 'rgba(255,95,95,.92)' : (result === 'draw' ? 'rgba(255,255,255,.78)' : winBlue));
+      ctx.arc(px(p.idx), pyPct(p.winPct), 3.4, 0, Math.PI*2);
       ctx.fill();
       ctx.strokeStyle = 'rgba(0,0,0,.45)';
       ctx.lineWidth = 1;
@@ -41367,14 +42107,6 @@ __sqDmdInitV7();
     ctx.font = '12px system-ui, -apple-system, Segoe UI, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.strokeStyle = winBlue; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 18, ly); ctx.stroke();
-    ctx.fillStyle = 'rgba(231,233,245,.86)';
-    ctx.fillText('Running Win %', lx + 26, ly);
-    ctx.fillStyle = 'rgba(231,233,245,.68)';
-    ctx.fillText((Number(last.running_win_pct) || 0).toFixed(1) + '%', lx + 26, ly + 17);
-
-    ly += 48;
     ctx.strokeStyle = progressBlue; ctx.lineWidth = 4;
     ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 18, ly); ctx.stroke();
     ctx.fillStyle = 'rgba(231,233,245,.86)';
@@ -41391,25 +42123,136 @@ __sqDmdInitV7();
     ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 18, ly); ctx.stroke();
     ctx.restore();
     ctx.fillStyle = 'rgba(231,233,245,.86)';
-    ctx.fillText('Running Avg Diff', lx + 26, ly);
+    ctx.fillText('Avg Points Diff', lx + 26, ly);
     ctx.fillStyle = 'rgba(231,233,245,.68)';
     var avg = Number(last.running_avg_diff);
     ctx.fillText(Number.isFinite(avg) ? ((avg >= 0 ? '+' : '') + avg.toFixed(1)) : '—', lx + 26, ly + 17);
   }
 
-  function makeH2HDbGraphControls(){
+  function makeH2HDbRangeControls(activeRange, onSelect){
     var wrap = document.createElement('div');
     wrap.style.display = 'flex';
     wrap.style.alignItems = 'center';
-    wrap.style.justifyContent = 'space-between';
+    wrap.style.justifyContent = 'flex-start';
     wrap.style.gap = '12px';
     wrap.style.flexWrap = 'wrap';
     wrap.style.margin = '0 0 10px';
+    function btn(label, active, disabled, title){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      if (active) b.className = 'active';
+      if (disabled){
+        b.disabled = true;
+        b.title = title || 'DB source not available yet';
+        b.style.opacity = '.42';
+        b.style.cursor = 'not-allowed';
+      } else {
+        b.addEventListener('click', function(){
+          if (typeof onSelect === 'function') onSelect(b.dataset.range);
+        });
+      }
+      return b;
+    }
+    var ranges = document.createElement('div');
+    ranges.className = 'sq-league-tabs';
+    ranges.style.justifyContent = 'flex-start';
+    ranges.style.marginLeft = '0';
+    [
+      { key:'all', label:'ALL TIME', title:'All DB-backed H2H timeline rows.' },
+      { key:'last_6_months', label:'6 MONTHS', title:'Last 6 months from the DB-backed H2H timeline.' },
+      { key:'last_1_month', label:'1 MONTH', title:'Last 1 month from the DB-backed H2H timeline.' },
+      { key:'last_1_week', label:'1 WEEK', title:'Last 1 week from the DB-backed H2H timeline.' }
+    ].forEach(function(r){
+      var x = btn(r.label, activeRange === r.key, false, r.title);
+      x.dataset.range = r.key;
+      ranges.appendChild(x);
+    });
+    wrap.appendChild(ranges);
+    return wrap;
+  }
+
+  function makeH2HDbAverageControls(activeGraphMode, onSelect){
+    var wrap = document.createElement('div');
+    wrap.style.display = 'flex';
+    wrap.style.alignItems = 'center';
+    wrap.style.justifyContent = 'flex-start';
+    wrap.style.gap = '8px';
+    wrap.style.flexWrap = 'wrap';
+    wrap.style.margin = '-4px 0 10px';
+    var tabs = document.createElement('div');
+    tabs.className = 'sq-league-tabs';
+    tabs.style.justifyContent = 'flex-start';
+    tabs.style.marginLeft = '0';
+    [
+      { key:'running', label:'Running' },
+      { key:'avg5', label:'5 Game Av' },
+      { key:'avg10', label:'10 Game Av' },
+      { key:'avg20', label:'20 Game Av' }
+    ].forEach(function(m){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = m.label;
+      b.dataset.graphMode = m.key;
+      if (activeGraphMode === m.key) b.className = 'active';
+      b.addEventListener('click', function(){
+        if (typeof onSelect === 'function') onSelect(m.key);
+      });
+      tabs.appendChild(b);
+    });
+    wrap.appendChild(tabs);
+    return wrap;
+  }
+
+  function makeH2HDbYAxisPanel(){
+    var axis = document.createElement('div');
+    axis.style.flex = '0 0 54px';
+    axis.style.position = 'sticky';
+    axis.style.left = '0';
+    axis.style.zIndex = '2';
+    axis.style.height = '330px';
+    axis.style.border = '1px solid rgba(255,255,255,.10)';
+    axis.style.borderRight = '0';
+    axis.style.borderRadius = '14px 0 0 14px';
+    axis.style.background = 'rgba(7,9,16,.96)';
+    axis.style.boxSizing = 'border-box';
+    axis.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+    axis.style.fontSize = '11px';
+    axis.style.color = 'rgba(231,233,245,.72)';
+    axis.style.overflow = 'hidden';
+    var label = document.createElement('div');
+    label.textContent = 'WIN %';
+    label.style.position = 'absolute';
+    label.style.left = '8px';
+    label.style.top = '6px';
+    label.style.fontSize = '9px';
+    label.style.fontWeight = '900';
+    label.style.letterSpacing = '.08em';
+    label.style.color = 'rgba(231,233,245,.55)';
+    axis.appendChild(label);
+    [100,75,50,25,0].forEach(function(v){
+      var row = document.createElement('div');
+      row.textContent = String(v) + '%';
+      row.style.position = 'absolute';
+      row.style.right = '8px';
+      row.style.transform = 'translateY(-50%)';
+      row.style.top = String(18 + (((100 - v) / 100) * (330 - 18 - 34))) + 'px';
+      axis.appendChild(row);
+    });
+    return axis;
+  }
+
+  function makeH2HDbModeControls(){
+    var modes = group();
+    modes.append(
+      btn('CLASSIC', true, false, ''),
+      btn('TURBO', false, true, 'Disabled: Turbo H2H DB views/RPCs are not available yet.')
+    );
     function group(){
       var g = document.createElement('div');
       g.className = 'sq-league-tabs';
-      g.style.justifyContent = 'flex-start';
-      g.style.marginLeft = '0';
+      g.style.justifyContent = 'flex-end';
+      g.style.marginLeft = 'auto';
       return g;
     }
     function btn(label, active, disabled, title){
@@ -41425,20 +42268,7 @@ __sqDmdInitV7();
       }
       return b;
     }
-    var ranges = group();
-    ranges.append(
-      btn('ALL TIME', true, false, ''),
-      btn('1 MONTH', false, true, 'Disabled: rpc_h2h_official_pair_timeline does not support a 1 month DB range yet.'),
-      btn('1 WEEK', false, true, 'Disabled: rpc_h2h_official_pair_timeline does not support a 1 week DB range yet.')
-    );
-    var modes = group();
-    modes.style.justifyContent = 'flex-end';
-    modes.append(
-      btn('CLASSIC', true, false, ''),
-      btn('TURBO', false, true, 'Disabled: Turbo H2H DB views/RPCs are not available yet.')
-    );
-    wrap.append(ranges, modes);
-    return wrap;
+    return modes;
   }
 
   async function openH2HOpponentGraph(playerName, row){
@@ -41448,8 +42278,16 @@ __sqDmdInitV7();
     var ov = document.createElement('div'); ov.className = 'modal-backdrop';
     var md = document.createElement('div'); md.className = 'modal sq-wide-modal';
     md.style.maxWidth = '860px';
+    var head = document.createElement('div');
+    head.style.display = 'flex';
+    head.style.alignItems = 'center';
+    head.style.justifyContent = 'space-between';
+    head.style.gap = '12px';
+    head.style.marginBottom = '4px';
     var h = document.createElement('h3');
     h.textContent = playerName + ' vs ' + opponentName;
+    h.style.margin = '0';
+    head.append(h, makeH2HDbModeControls());
     var body = document.createElement('div'); body.className = 'modal-body';
     var loading = document.createElement('p');
     loading.className = 'muted';
@@ -41464,7 +42302,7 @@ __sqDmdInitV7();
       try{ document.querySelectorAll('.modal-backdrop').forEach(function(x){ x.remove(); }); }catch(_){ }
     };
     ft.append(back, close);
-    md.append(h, body, ft); ov.appendChild(md); document.body.appendChild(ov);
+    md.append(head, body, ft); ov.appendChild(md); document.body.appendChild(ov);
     md.tabIndex = 0; md.focus();
     ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
     ov.addEventListener('keydown', function(e){ if(e.key === 'Escape') ov.remove(); });
@@ -41476,32 +42314,68 @@ __sqDmdInitV7();
       oldRemove();
     };
 
-    try{
-      if (!playerAKey || !playerBKey) throw new Error('Missing H2H player keys');
-      if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) throw new Error('Supabase client unavailable');
-      var client = window.sb || window.__sb || (typeof sb !== 'undefined' ? sb : null) || window.supabaseClient || null;
-      if (!client || typeof client.rpc !== 'function') throw new Error('Supabase RPC client unavailable');
-      var result = await client.rpc('rpc_h2h_official_pair_timeline', {
-        p_player_a_key: playerAKey,
-        p_player_b_key: playerBKey,
-        p_range: 'all'
-      });
-      if (result && result.error) throw result.error;
-      var rows = ((result && result.data) || []).slice().sort(function(a,b){
-        return (Number(a && a.match_number || 0) - Number(b && b.match_number || 0));
-      });
+    var activeRange = 'all';
+    var activeGraphMode = 'running';
+    var activeRows = [];
+    function rangeLabel(rangeKey){
+      if (rangeKey === 'last_6_months') return '6 Months';
+      if (rangeKey === 'last_1_month') return '1 Month';
+      if (rangeKey === 'last_1_week') return '1 Week';
+      return 'All Time';
+    }
+
+    async function loadTimeline(rangeKey){
+      activeRange = rangeKey || 'all';
+      try{
+        if (!playerAKey || !playerBKey) throw new Error('Missing H2H player keys');
+        if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) throw new Error('Supabase client unavailable');
+        var client = window.sb || window.__sb || (typeof sb !== 'undefined' ? sb : null) || window.supabaseClient || null;
+        if (!client || typeof client.rpc !== 'function') throw new Error('Supabase RPC client unavailable');
+        body.textContent = '';
+        var loadMsg = document.createElement('p');
+        loadMsg.className = 'muted';
+        loadMsg.textContent = 'Loading DB-backed H2H timeline...';
+        body.appendChild(loadMsg);
+        var result = await client.rpc('rpc_h2h_official_pair_timeline', {
+          p_player_a_key: playerAKey,
+          p_player_b_key: playerBKey,
+          p_range: activeRange
+        });
+        if (result && result.error) throw result.error;
+        var rows = ((result && result.data) || []).slice().sort(function(a,b){
+          return (Number(a && a.match_number || 0) - Number(b && b.match_number || 0));
+        });
+        renderTimeline(rows);
+      }catch(e){
+        try{ console.warn('[SQ] H2H timeline RPC unavailable', e); }catch(_){}
+        body.textContent = '';
+        body.appendChild(makeH2HDbRangeControls(activeRange, loadTimeline));
+        var p = document.createElement('p');
+        p.textContent = 'H2H timeline range data is not available for ' + rangeLabel(activeRange) + '. Required Supabase RPC range support is missing or returned an error.';
+        body.appendChild(p);
+      }
+    }
+
+    function setGraphMode(modeKey){
+      activeGraphMode = modeKey || 'running';
+      renderTimeline(activeRows);
+    }
+
+    function renderTimeline(rows){
+      activeRows = Array.isArray(rows) ? rows : [];
       body.textContent = '';
-      if (!rows.length){
+      if (!activeRows.length){
+        body.appendChild(makeH2HDbRangeControls(activeRange, loadTimeline));
         var empty = document.createElement('p');
         empty.textContent = 'No H2H timeline data available.';
         body.appendChild(empty);
         return;
       }
-      var last = rows[rows.length - 1] || {};
-      var progress = calcH2HDbProgression(rows);
+      var last = activeRows[activeRows.length - 1] || {};
+      var progress = calcH2HDbProgression(activeRows);
       var summary = document.createElement('div');
       summary.style.display = 'grid';
-      summary.style.gridTemplateColumns = 'repeat(4, minmax(0, 1fr))';
+      summary.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
       summary.style.gap = '10px';
       summary.style.margin = '0 0 10px';
       function card(label, value){
@@ -41527,11 +42401,11 @@ __sqDmdInitV7();
         return c;
       }
       var avg = Number(last.running_avg_diff);
+      var combinedAvg = Number.isFinite(avg) ? ((avg >= 0 ? '+' : '') + avg.toFixed(1)) : '—';
       summary.append(
         card('Matches', String(rows.length)),
-        card('Win %', (Number(last.running_win_pct) || 0).toFixed(1) + '%'),
-        card('W-L-D', String(last.running_wins || 0) + '-' + String(last.running_losses || 0) + '-' + String(last.running_draws || 0)),
-        card('Avg Diff', Number.isFinite(avg) ? ((avg >= 0 ? '+' : '') + avg.toFixed(1)) : '—')
+        card('Win % / Avg Diff', (Number(last.running_win_pct) || 0).toFixed(1) + '% / ' + combinedAvg),
+        card('W-L-D', String(last.running_wins || 0) + '-' + String(last.running_losses || 0) + '-' + String(last.running_draws || 0))
       );
 
       var progression = document.createElement('div');
@@ -41557,38 +42431,40 @@ __sqDmdInitV7();
 
       var wrap = document.createElement('div');
       wrap.style.border = '1px solid rgba(255,255,255,.10)';
-      wrap.style.borderRadius = '14px';
+      wrap.style.borderRadius = '0 14px 14px 0';
+      wrap.style.borderLeft = '0';
       wrap.style.background = 'rgba(0,0,0,.16)';
       wrap.style.padding = '10px';
       wrap.style.height = '330px';
+      wrap.style.flex = '1 1 auto';
+      wrap.style.minWidth = '0';
       wrap.style.boxSizing = 'border-box';
       wrap.style.overflowX = 'auto';
       wrap.style.overflowY = 'hidden';
       wrap.style.webkitOverflowScrolling = 'touch';
       var canvas = document.createElement('canvas');
-      canvas.style.width = Math.max(720, Math.min(1800, 360 + (rows.length * 5))) + 'px';
+      canvas.style.width = Math.max(720, Math.min(1800, 360 + (activeRows.length * 5))) + 'px';
       canvas.style.maxWidth = 'none';
       canvas.style.height = '100%';
       canvas.style.display = 'block';
       canvas.setAttribute('aria-label', 'DB-backed rolling H2H win percentage graph');
       wrap.appendChild(canvas);
 
-      var recent = document.createElement('div');
-      recent.className = 'muted';
-      recent.style.margin = '10px 0 0';
-      var first = rows[0], newest = rows[rows.length - 1];
-      recent.textContent = 'Showing Classic / All Time DB timeline from match ' + String(first.match_number || 1) + ' to ' + String(newest.match_number || rows.length) + ', oldest to newest. 1 Month, 1 Week and Turbo are parked until DB-backed sources are available.';
-      body.append(makeH2HDbGraphControls(), summary, progression, wrap, recent);
-      setTimeout(function(){ drawH2HDbTimelineCanvas(canvas, rows); }, 30);
-      redraw = function(){ drawH2HDbTimelineCanvas(canvas, rows); };
+      var graphShell = document.createElement('div');
+      graphShell.style.display = 'flex';
+      graphShell.style.alignItems = 'stretch';
+      graphShell.style.width = '100%';
+      graphShell.style.minWidth = '0';
+      graphShell.append(makeH2HDbYAxisPanel(), wrap);
+
+      body.append(makeH2HDbRangeControls(activeRange, loadTimeline), makeH2HDbAverageControls(activeGraphMode, setGraphMode), summary, progression, graphShell);
+      try{ if (redraw) window.removeEventListener('resize', redraw); }catch(_){ }
+      setTimeout(function(){ drawH2HDbTimelineCanvas(canvas, activeRows, activeGraphMode); }, 30);
+      redraw = function(){ drawH2HDbTimelineCanvas(canvas, activeRows, activeGraphMode); };
       window.addEventListener('resize', redraw, { passive:true });
-    }catch(e){
-      try{ console.warn('[SQ] H2H timeline RPC unavailable', e); }catch(_){}
-      body.textContent = '';
-      var p = document.createElement('p');
-      p.textContent = 'H2H timeline data is not available. Required Supabase RPC/data source returned an error.';
-      body.appendChild(p);
     }
+
+    loadTimeline('all');
   }
 
 	  window.openPlayerH2HDialog = async function openPlayerH2HDialog(playerName){
@@ -43161,6 +44037,9 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
   .sq-fix97-tabs .seg-btn,.sq-fix97-tabs .btn{border-radius:999px;padding:8px 12px;border:1px solid rgba(255,255,255,.14);background:rgba(10,12,24,.55);color:rgba(255,255,255,.85);font-weight:800;letter-spacing:.02em;cursor:pointer;}
   .sq-fix97-tabs .seg-btn.active,.sq-fix97-tabs .btn.active{border-color:rgba(255,123,26,.9);box-shadow:0 0 0 2px rgba(255,123,26,.15) inset;background:rgba(255,123,26,.12);color:#fff;}
   .sq-fix97-note{border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:4px 8px;font-size:12px;opacity:.76;margin:6px 0 10px;}
+  .sq-rhs-fix97-backdrop .sq-rhs-table-scroll{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .sq-rhs-fix97-backdrop .sq-rhs-table-scroll table{min-width:760px;}
+  .sq-rhs-fix97-backdrop .sq-rhs-table-scroll th:last-child,.sq-rhs-fix97-backdrop .sq-rhs-table-scroll td:last-child{white-space:nowrap;}
   @media(max-width:620px){.sq-fix97-head{flex-direction:column;align-items:stretch}.sq-fix97-tabs{justify-content:flex-start}.sq-fix97-tabs .seg-btn,.sq-fix97-tabs .btn{padding:7px 10px;font-size:12px}}
 </style>
 <script id="sq-fix97-league-ranks-turbo-tabs-js">
@@ -43327,15 +44206,104 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     if(q&&q.error) throw q.error;
     return Array.isArray(q&&q.data)?q.data:[];
   }
+  async function fetchOfficialLatestScoresClean(){
+    var client=cleanDbClient();
+    if(!client) throw new Error('Supabase client unavailable');
+    var q=await client.from('v_player_game_scores_official_clean')
+      .select('game_id,ts,player_index,player_name,score')
+      .order('ts',{ascending:false})
+      .limit(260);
+    if(q&&q.error) throw q.error;
+    var rows = Array.isArray(q&&q.data) ? q.data : [];
+    var byGame = new Map();
+    rows.forEach(function(r){
+      var id = String(r&&r.game_id||'').trim();
+      if(!id) return;
+      var rec = byGame.get(id);
+      if(!rec){
+        rec = { game_id:id, ts:r.ts||'', players:[] };
+        byGame.set(id, rec);
+      }
+      rec.players.push({
+        name:String(r&&r.player_name||'').trim(),
+        score:Number(r&&r.score||0),
+        idx:Number(r&&r.player_index||0)
+      });
+      if(parseMs(r.ts)>parseMs(rec.ts)) rec.ts = r.ts || rec.ts;
+    });
+    return Array.from(byGame.values())
+      .sort(function(a,b){ return parseMs(b.ts)-parseMs(a.ts); })
+      .slice(0,50);
+  }
   async function fetchTurboRoundHighScoresClean(){
     var client=cleanDbClient();
     if(!client) throw new Error('Supabase client unavailable');
-    var q=await client.from('v_round_high_scores_turbo_clean')
-      .select('round_key,target_sort,wr,darts,holder,tie_idx,holder_suffix,game_id,created_at')
-      .order('target_sort',{ascending:true})
-      .order('tie_idx',{ascending:true});
+    var q=await client.from('v_round_high_scores_turbo_clean_app')
+      .select('mode,round_key,round_label,target_sort,wr_points,darts,holder,holders,tie_count,darts_detail,game_id,first_created_at,created_at,source_view_version')
+      .order('target_sort',{ascending:true});
     if(q&&q.error) throw q.error;
-    return Array.isArray(q&&q.data)?q.data:[];
+    return (Array.isArray(q&&q.data)?q.data:[]).map(function(r){
+      return {
+        mode:r&&r.mode,
+        round_key:(r&&r.round_key)||(r&&r.round_label)||'',
+        round_label:r&&r.round_label,
+        target_sort:r&&r.target_sort,
+        wr:r&&r.wr_points,
+        wr_points:r&&r.wr_points,
+        darts:r&&r.darts,
+        holder:r&&r.holder,
+        holders:r&&r.holders,
+        tie_count:r&&r.tie_count,
+        darts_detail:r&&r.darts_detail,
+        game_id:r&&r.game_id,
+        first_created_at:r&&r.first_created_at,
+        created_at:(r&&r.created_at)||(r&&r.first_created_at)||'',
+        source_view_version:r&&r.source_view_version,
+        holder_suffix:''
+      };
+    });
+  }
+  async function fetchOfficialRoundHighScoresClean(){
+    var client=cleanDbClient();
+    if(!client) throw new Error('Supabase client unavailable');
+    var q=await client.from('v_round_high_scores_official_clean_app')
+      .select('mode,round_key,round_label,target_sort,wr_points,darts,holder,holders,tie_count,darts_detail,game_id,first_created_at,created_at,source_view_version')
+      .order('target_sort',{ascending:true});
+    if(q&&q.error) throw q.error;
+    return (Array.isArray(q&&q.data)?q.data:[]).map(function(r){
+      var holders=r&&r.holders;
+      if(typeof holders==='string') holders=holders.split('/').map(function(h){return h.trim();}).filter(Boolean);
+      if(!Array.isArray(holders)) holders=[];
+      var holder=String(r&&r.holder||'').trim();
+      if(holder && holders.indexOf(holder)<0) holders.unshift(holder);
+      return {
+        mode:r&&r.mode,
+        round_key:(r&&r.round_key)||(r&&r.round_label)||'',
+        round_label:r&&r.round_label,
+        target_sort:r&&r.target_sort,
+        wr:r&&r.wr_points,
+        wr_points:r&&r.wr_points,
+        darts:r&&r.darts,
+        holder:holder,
+        holders:holders,
+        tie_count:r&&r.tie_count,
+        darts_detail:r&&r.darts_detail,
+        game_id:r&&r.game_id,
+        first_created_at:r&&r.first_created_at,
+        created_at:(r&&r.created_at)||(r&&r.first_created_at)||'',
+        source_view_version:r&&r.source_view_version
+      };
+    });
+  }
+  function roundDisplayKey(raw){
+    var s=String(raw||'').trim();
+    var low=s.toLowerCase();
+    if(!s || low==='unknown') return '';
+    if(low==='bull'||low==='b') return 'B';
+    if(low==='d'||low==='double'||low==='doubles') return 'D';
+    if(low==='t'||low==='treble'||low==='trebles') return 'T';
+    var m=low.match(/(\d+)/);
+    return m ? String(Number(m[1])) : s.toUpperCase();
   }
   function turboLatestResultText(row){
     var txt=String(row&&row.result_text||'').trim();
@@ -43353,6 +44321,15 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     var out=ordered[0].name+' '+ordered[0].score+' beat '+ordered[1].name+' '+ordered[1].score;
     if(ordered.length>2) out+=' '+ordered.slice(2).map(function(p){return p.name+' '+p.score;}).join(' ');
     return out+' - TURBO';
+  }
+  function officialLatestResultText(row){
+    var players=Array.isArray(row&&row.players)?row.players:[];
+    var ordered=players.filter(function(p){return p.name;}).sort(function(a,b){return (b.score-a.score)||(a.idx-b.idx)||a.name.localeCompare(b.name);});
+    if(!ordered.length) return '—';
+    if(ordered.length===1) return ordered[0].name+' '+ordered[0].score;
+    var out=ordered[0].name+' '+ordered[0].score+' Bt '+ordered[1].name+' '+ordered[1].score;
+    if(ordered.length>2) out+=' '+ordered.slice(2).map(function(p){return p.name+' '+p.score;}).join(' ');
+    return out;
   }
 
   window.openLatestScoresDialog = async function(initialMode){
@@ -43398,6 +44375,23 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
         }).join('');
         return;
       }
+      if(mode==='official'){
+        var officialRows=[];
+        try{ officialRows=await fetchOfficialLatestScoresClean(); }
+        catch(e){
+          try{ console.warn('[SQ] Official Latest Scores clean source unavailable', e); }catch(_){}
+          tbody.innerHTML='<tr><td colspan="3" style="padding:18px;opacity:.78;">Official Latest Scores data is unavailable.</td></tr>';
+          return;
+        }
+        if(!officialRows.length){
+          tbody.innerHTML='<tr><td colspan="3" style="padding:18px;opacity:.78;">No official games found.</td></tr>';
+          return;
+        }
+        tbody.innerHTML=officialRows.map(function(r,i){
+          return '<tr><td style="text-align:left;padding-left:14px;color:rgba(255,123,26,.95);font-weight:800;">'+(i+1)+'</td><td style="text-align:left;">'+esc(officialLatestResultText(r))+'</td><td style="text-align:right;padding-right:14px;opacity:.9;">'+esc(fmtWhen(r.ts))+'</td></tr>';
+        }).join('');
+        return;
+      }
       var gs=await gamesFor(mode); gs=gs.filter(function(g){return playersOf(g).some(function(p){return !!pName(p);});}).slice(0,50);
       if(!gs.length){tbody.innerHTML='<tr><td colspan="3" style="padding:18px;opacity:.7;">No '+mode+' games found.</td></tr>';return;}
       tbody.innerHTML=gs.map(function(g,i){return '<tr style="cursor:pointer"><td style="text-align:left;padding-left:14px;color:rgba(255,123,26,.95);font-weight:800;">'+(i+1)+'</td><td style="text-align:left;">'+esc(format(g))+'</td><td style="text-align:right;padding-right:14px;opacity:.9;">'+esc(fmtWhen(g.ts||g.created_at))+'</td></tr>';}).join('');
@@ -43428,26 +44422,11 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     back.onclick=function(){overlay.remove();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}}; close.onclick=function(){overlay.remove();}; overlay.onclick=function(e){if(e.target===overlay)overlay.remove();}; await render();
   };
 
-  function roundKeyFromIndex(i){ if(i>=0&&i<=10)return String(10+i); if(i===11)return 'D'; if(i===12)return 'T'; if(i===13)return 'B'; return ''; }
-  function recordsForRoundScores(gs, mode){
-    var start = mode==='turbo' ? 7 : 0; // 17s for Turbo
-    var end = 14;
-    var by=new Map();
-    gs.forEach(function(g){
-      var ps=playersOf(g), board=boardOf(g); if(!Array.isArray(ps)||!Array.isArray(board))return;
-      ps.forEach(function(p,pi){
-        var name=pName(p); if(!name)return;
-        var rows=rowsForPlayer(board,pi);
-        for(var ri=start;ri<end;ri++){
-          var key=roundKeyFromIndex(ri), ent=rows[ri], val=roundScore(ent); if(!key||!(val>0))continue;
-          var arr=by.get(key)||[], best=arr.length?arr[0].score:0, rec={score:val,holder:name,darts:dartsText(ent),ts:g.ts||g.created_at||''};
-          if(val>best){by.set(key,[rec]);}
-          else if(val===best){ if(!arr.some(function(x){return norm(x.holder)===norm(name)})) arr.push(rec); by.set(key,arr); }
-        }
-      });
-    });
-    return by;
-  }
+  // ACTIVE ROUND HIGH SCORES IMPLEMENTATION
+  // Current League & Rankings path uses Fix102 wrapper -> this Fix97 dynamic modal.
+  // Official source: v_round_high_scores_official_clean_app.
+  // Turbo source: v_round_high_scores_turbo_clean.
+  // Patch this path for current Round High Scores behaviour.
   window.openRoundHighScoresDialog = async function(initialMode){
     var mode=String(initialMode||'official').toLowerCase()==='turbo'?'turbo':'official';
     document.querySelectorAll('.sq-rhs-fix97-backdrop').forEach(function(n){n.remove();});
@@ -43480,19 +44459,33 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
           tr.innerHTML='<td>'+esc(r.round_key||'')+'</td><td>'+esc(r.wr==null?'—':r.wr)+'</td><td>'+esc(r.darts||'—')+'</td><td>'+esc(holder+(suffix?' '+suffix:''))+'</td>';
           turboBody.appendChild(tr);
         });
-        body.innerHTML=''; body.appendChild(turboTable);
+        var turboWrap=document.createElement('div'); turboWrap.className='sq-rhs-table-scroll'; turboWrap.appendChild(turboTable);
+        body.innerHTML=''; body.appendChild(turboWrap);
         return;
       }
-      var gs=await gamesFor(mode), by=recordsForRoundScores(gs,mode); var order = mode==='turbo' ? ['17','18','19','20','D','T','B'] : ['10','11','12','13','14','15','16','17','18','19','20','D','T','B'];
-      var table=document.createElement('table'); table.className='hs-table'; table.innerHTML='<thead><tr><th>Round</th><th>WR</th><th>Darts</th><th>Holder</th></tr></thead><tbody></tbody>';
-      var tb=table.querySelector('tbody');
-      order.forEach(function(k){
-        var arr=(by.get(k)||[]).slice(); var tr=document.createElement('tr'); tr.innerHTML='<td>'+esc(k)+'</td>';
-        if(!arr.length){tr.innerHTML+='<td>—</td><td>—</td><td>—</td>'; tb.appendChild(tr); return;}
-        var first=arr[0]; var holders=arr.map(function(x){return x.holder;}).filter(Boolean); var darts=(arr.find(function(x){return x.darts;})||first).darts||'—';
-        tr.innerHTML+='<td>'+esc(first.score)+'</td><td>'+esc(darts||'—')+'</td><td>'+esc(holders.join(' / ')||'—')+'</td>'; tb.appendChild(tr);
-      });
-      body.innerHTML=''; body.appendChild(table);
+      if(mode==='official'){
+        var officialRows=[];
+        try{ officialRows=await fetchOfficialRoundHighScoresClean(); }
+        catch(e){
+          try{ console.warn('[SQ] Official Round High Scores clean source unavailable', e); }catch(_){}
+          body.innerHTML='<div class="muted">Official Round High Scores data is unavailable.</div>';
+          return;
+        }
+        var officialBy=new Map();
+        officialRows.forEach(function(r){ officialBy.set(String(r.round_key||''), r); });
+        var officialTable=document.createElement('table'); officialTable.className='hs-table'; officialTable.innerHTML='<thead><tr><th>Round</th><th>WR</th><th>Darts</th><th>Holder</th></tr></thead><tbody></tbody>';
+        var officialBody=officialTable.querySelector('tbody');
+        ['10','11','12','13','14','15','16','17','18','19','20','D','T','B'].forEach(function(k){
+          var r=officialBy.get(k), holders=r&&Array.isArray(r.holders)?r.holders:[];
+          var tr=document.createElement('tr');
+          tr.innerHTML='<td>'+esc(k)+'</td><td>'+esc(r&&r.wr!=null?r.wr:'—')+'</td><td>'+esc(r&&r.darts?r.darts:'—')+'</td><td>'+esc(holders.length?holders.join(' / '):'—')+'</td>';
+          officialBody.appendChild(tr);
+        });
+        var officialWrap=document.createElement('div'); officialWrap.className='sq-rhs-table-scroll'; officialWrap.appendChild(officialTable);
+        body.innerHTML=''; body.appendChild(officialWrap);
+        return;
+      }
+      body.innerHTML='<div class="muted">Round High Scores source is unavailable for this mode.</div>';
     }
     tabs.onclick=function(e){var b=e.target.closest('[data-mode]'); if(!b)return; mode=b.dataset.mode; render();};
     back.onclick=function(){overlay.remove();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}}; close.onclick=function(){overlay.remove();}; overlay.onclick=function(e){if(e.target===overlay)overlay.remove();}; await render();
@@ -43824,6 +44817,9 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     }catch(e){ console.warn('[SQ] Fix102 League/Ranks cleanup failed', e); }
   }
   window.__sqLeagueRanksFormatCleanup = normalizeLeagueRanks;
+  // ACTIVE ROUND HIGH SCORES WRAPPER
+  // Final global wrapper for openRoundHighScoresDialog.
+  // Preserves active Fix97 implementation and applies shared League & Rankings formatting/normalisation.
   ['openLatestScoresDialog','openTop50ScoresDialog','openHighScoreLeagueDialog','openPremierLeagueDialog','openRoundHighScoresDialog'].forEach(function(name){
     var fn=window[name]; if(typeof fn!=='function' || fn.__sqFix102Wrapped) return;
     var wrapped=async function(){ var res=await fn.apply(this, arguments); [0,150,600].forEach(function(ms){setTimeout(function(){normalizeLeagueRanks(document);},ms);}); return res; };
@@ -45332,7 +46328,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
   if (window.__sqFix153MotCacheModalGuard) return;
   window.__sqFix153MotCacheModalGuard = true;
 
-  var TTL_MS = 45000;
+  var TTL_MS = Math.max(5 * 60 * 1000, Number(window.__sqAllGamesFetchTtlMs) || 0);
   var cache = { at:0, rows:null, promise:null };
 
   function now(){ return Date.now ? Date.now() : +(new Date()); }
@@ -45342,6 +46338,8 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     cache.at = 0;
     cache.rows = null;
     cache.promise = null;
+    try { if (typeof window.__sqInvalidateAllGamesFetchCache === 'function') window.__sqInvalidateAllGamesFetchCache('clearGamesTruthCache'); } catch(_) {}
+    try { if (typeof window.__sqInvalidatePowerOfficialFetchCache === 'function') window.__sqInvalidatePowerOfficialFetchCache('clearGamesTruthCache'); } catch(_) {}
   }
 
   window.__sqClearGamesTruthCache = clearGamesCache;
@@ -45349,10 +46347,10 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
   var originalGetAll = window.__sqGetAllGamesNormalized;
   var originalCloudFetch = window.cloudFetchAllGamesAsLocal;
 
-  async function fetchNormalizedFresh(){
+  async function fetchNormalizedFresh(force){
     var rows = [];
     if (typeof originalCloudFetch === 'function') {
-      rows = await originalCloudFetch.call(window);
+      rows = await originalCloudFetch.call(window, force ? { force:true } : undefined);
     } else if (typeof originalGetAll === 'function' && originalGetAll !== window.__sqGetAllGamesNormalizedCached) {
       rows = await originalGetAll.call(window);
     }
@@ -45367,7 +46365,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     if (!force && cache.rows && age >= 0 && age < TTL_MS) return cloneRows(cache.rows);
     if (!force && cache.promise) return cloneRows(await cache.promise);
 
-    cache.promise = fetchNormalizedFresh()
+    cache.promise = fetchNormalizedFresh(force)
       .then(function(rows){
         cache.rows = Array.isArray(rows) ? rows : [];
         cache.at = now();
@@ -45389,6 +46387,11 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     'cloudInsertHighScore',
     'cloudInsertHighScoreIfMissing',
     'cloudDeleteGameCascade',
+    'cloudArchiveGame',
+    'cloudReinstateGame',
+    'cloudPurgeGameCascade',
+    'cloudRemovePlayerFromGame',
+    'cloudRenamePlayerInGamesState',
     'saveGameToCloud',
     'cloudSaveCompletedGame'
   ].forEach(function(name){
@@ -46585,11 +47588,12 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
       return latePlayed && !earlyPlayed;
     }catch(_){ return false; }
   }
-  function explicitTurbo(g){
-    try{
-      var st = pickState(g), raw = pickRawState(g);
-      var draft = (g && g.__sqTournamentDraft) || st.__sqTournamentDraft || (typeof window !== 'undefined' && window.__sqTournamentDraft) || {};
-      var match = (g && g.match) || st.match || raw.match || {};
+	  function explicitTurbo(g){
+	    try{
+	      var st = pickState(g), raw = pickRawState(g);
+	      var isLiveState = !!(g && typeof window !== 'undefined' && (g === window.state || (typeof state !== 'undefined' && g === state)));
+	      var draft = (g && g.__sqTournamentDraft) || st.__sqTournamentDraft || (isLiveState && window.__sqTournamentDraft) || {};
+	      var match = (g && g.match) || st.match || raw.match || {};
       var rules = (g && g.tournamentRules) || st.tournamentRules || match.tournamentRules || draft.rules || raw.tournamentRules || {};
       var modes = [
         g && g.mode, g && g.gameMode, g && g.game_mode, g && g.type,
@@ -47097,15 +48101,33 @@ Logic untouched: practice save, scoring, Supabase writes, rankings formulas.
     };
   }
 
-  async function ensureClient(){
-    try{ if (typeof window.ensureCloudInit === 'function') window.ensureCloudInit(); }catch(_){ }
-    return window.sb || (typeof sb !== 'undefined' ? sb : null);
-  }
+	  async function ensureClient(){
+	    try{ if (typeof window.ensureCloudInit === 'function') window.ensureCloudInit(); }catch(_){ }
+	    return window.sb || (typeof sb !== 'undefined' ? sb : null);
+	  }
 
-  async function fetchPowerRows(mode){
-    var m = String(mode || 'official').toLowerCase();
-    var client = await ensureClient();
-    if (!client || typeof client.from !== 'function') return [];
+	  var POWER_OFFICIAL_FETCH_TTL_MS = 60 * 1000;
+	  window.__sqPowerOfficialFetchInFlight = window.__sqPowerOfficialFetchInFlight || null;
+	  window.__sqPowerOfficialFetchCache = Array.isArray(window.__sqPowerOfficialFetchCache) ? window.__sqPowerOfficialFetchCache : null;
+	  window.__sqPowerOfficialFetchAt = Number(window.__sqPowerOfficialFetchAt || 0);
+	  window.__sqPowerOfficialFetchGeneration = Number(window.__sqPowerOfficialFetchGeneration || 0);
+
+	  function clonePowerRows(rows){
+	    return Array.isArray(rows) ? rows.map(function(r){ return Object.assign({}, r); }) : [];
+	  }
+
+	  window.__sqInvalidatePowerOfficialFetchCache = function(reason){
+	    window.__sqPowerOfficialFetchGeneration = Number(window.__sqPowerOfficialFetchGeneration || 0) + 1;
+	    window.__sqPowerOfficialFetchInFlight = null;
+	    window.__sqPowerOfficialFetchCache = null;
+	    window.__sqPowerOfficialFetchAt = 0;
+	    try{ console.debug && console.debug('[power] official runtime fetch cache invalidated', reason || 'unspecified'); }catch(_){}
+	  };
+
+	  async function fetchPowerRowsUncached(mode){
+	    var m = String(mode || 'official').toLowerCase();
+	    var client = await ensureClient();
+	    if (!client || typeof client.from !== 'function') return [];
     var view = modeView(m);
     // @MODE:POWER_RANKINGS_CURRENT_CLEAN_SOURCE
     // Official Power Rankings use latest 4 clean official games / 56 via v_power_rankings_official_current_clean.
@@ -47128,11 +48150,43 @@ Logic untouched: practice save, scoring, Supabase writes, rankings formulas.
         (b.rounds - a.rounds) ||
         String(a.player).localeCompare(String(b.player));
     });
-    rows.forEach(function(r,i){ if (!r.rankPos) r.rankPos = i + 1; });
-    return rows;
-  }
+	    rows.forEach(function(r,i){ if (!r.rankPos) r.rankPos = i + 1; });
+	    return rows;
+	  }
 
-  window.__sqPowerRankingRowsFromCleanView = fetchPowerRows;
+	  async function fetchPowerRows(mode){
+	    var m = String(mode || 'official').toLowerCase();
+	    if (m !== 'official') return fetchPowerRowsUncached(mode);
+
+	    var now = Date.now();
+	    if (window.__sqPowerOfficialFetchCache && (now - window.__sqPowerOfficialFetchAt) < POWER_OFFICIAL_FETCH_TTL_MS){
+	      return clonePowerRows(window.__sqPowerOfficialFetchCache);
+	    }
+	    if (window.__sqPowerOfficialFetchInFlight){
+	      return clonePowerRows(await window.__sqPowerOfficialFetchInFlight);
+	    }
+
+	    var generation = Number(window.__sqPowerOfficialFetchGeneration || 0);
+	    var fetchPromise = fetchPowerRowsUncached(mode).then(function(rows){
+	      var cleanRows = clonePowerRows(rows);
+	      if (generation === Number(window.__sqPowerOfficialFetchGeneration || 0)){
+	        window.__sqPowerOfficialFetchCache = clonePowerRows(cleanRows);
+	        window.__sqPowerOfficialFetchAt = Date.now();
+	      }
+	      return cleanRows;
+	    }, function(err){
+	      throw err;
+	    });
+
+	    window.__sqPowerOfficialFetchInFlight = fetchPromise;
+	    try{
+	      return clonePowerRows(await fetchPromise);
+	    }finally{
+	      if (window.__sqPowerOfficialFetchInFlight === fetchPromise) window.__sqPowerOfficialFetchInFlight = null;
+	    }
+	  }
+
+	  window.__sqPowerRankingRowsFromCleanView = fetchPowerRows;
 
   window.getOfficialPowerRows = async function getOfficialPowerRows(){
     try{
