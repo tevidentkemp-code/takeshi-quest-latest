@@ -7455,6 +7455,27 @@ body[data-page="game"] .dtActBtn.undo.sq-padfx-undo{
 body[data-page="game"] .dtActBtn.skip.sq-padfx-skip{
   animation: sqPadFxSkip .32s ease-out 1;
 }
+body[data-page="game"] .dtBullBtn.sq-padfx-shadow-hit,
+body[data-page="game"] .dtNumBtn.sq-padfx-shadow-hit{
+  --sqPadFxShadowRgb: 255, 122, 0;
+  animation: sqPadFxShadowHit .58s cubic-bezier(.16,.88,.20,1) 1;
+  transform-origin:center center;
+  will-change:transform, filter, box-shadow, background, border-color;
+}
+body[data-page="game"] .dtBullBtn.sq-padfx-shadow-single,
+body[data-page="game"] .dtNumBtn.sq-padfx-shadow-single{ --sqPadFxShadowRgb: 80, 190, 255; }
+body[data-page="game"] .dtBullBtn.sq-padfx-shadow-double,
+body[data-page="game"] .dtNumBtn.sq-padfx-shadow-double{ --sqPadFxShadowRgb: 255, 190, 65; }
+body[data-page="game"] .dtBullBtn.sq-padfx-shadow-triple,
+body[data-page="game"] .dtNumBtn.sq-padfx-shadow-triple{ --sqPadFxShadowRgb: 255, 122, 0; }
+body[data-page="game"] .dtBullBtn.sq-padfx-shadow-bull,
+body[data-page="game"] .dtNumBtn.sq-padfx-shadow-bull{ --sqPadFxShadowRgb: 55, 214, 122; }
+@keyframes sqPadFxShadowHit{
+  0%{ transform:scale(1); filter:brightness(1) saturate(1); box-shadow:none; }
+  18%{ transform:scale(1.055); filter:brightness(1.75) saturate(1.45); background:rgba(var(--sqPadFxShadowRgb),.18); border-color:rgba(var(--sqPadFxShadowRgb),.88); box-shadow:0 0 0 3px rgba(var(--sqPadFxShadowRgb),.22), 0 0 26px rgba(var(--sqPadFxShadowRgb),.72), inset 0 0 18px rgba(255,255,255,.12); }
+  42%{ transform:scale(.985); filter:brightness(1.28) saturate(1.25); box-shadow:0 0 0 1px rgba(var(--sqPadFxShadowRgb),.20), 0 0 16px rgba(var(--sqPadFxShadowRgb),.42); }
+  100%{ transform:scale(1); filter:brightness(1) saturate(1); box-shadow:none; }
+}
 @keyframes sqPadFxMiss{
   0%{ transform: scale(1); filter: brightness(1); box-shadow: none; }
   22%{ transform: scale(1.025); filter: brightness(1.45); box-shadow: 0 0 18px rgba(255,80,90,.62), 0 0 34px rgba(255,80,90,.30); }
@@ -10421,6 +10442,12 @@ function __sqPlayerOptionLabel(p){
 }
 
 function __sqHeaderLabelForPlayer(pl){
+  try{
+    if (typeof __sqVsShadowDisplayLabelForPlayer === 'function') {
+      const shadowLabel = __sqVsShadowDisplayLabelForPlayer(pl);
+      if (shadowLabel) return shadowLabel;
+    }
+  }catch(_){ }
   const nm = pl && pl.name ? String(pl.name) : '';
   const init = pl && pl.initials ? String(pl.initials) : '';
   return __sqNormalizeInitials(init, nm) || nm || '';
@@ -12983,6 +13010,7 @@ function __sqIsRecoverableGameStateForLocalCache(o){
     if(!o || typeof o !== 'object') return false;
     const players = Array.isArray(o.players) ? o.players : [];
     if(!players.length) return false;
+    if (typeof __sqSavedStateIsVsShadow === 'function' && __sqSavedStateIsVsShadow(o)) return false;
     if(o.gameAwarded === true || o.finished === true || o.__sqCompleted === true || o.__sqGameCompleteOpen === true) return false;
     return true;
   }catch(_){ return false; }
@@ -13125,7 +13153,10 @@ function accumulateTargetCountersFromThrows(playerName, throws){
 function openScoreSheetFromHistory(gIndex){
   const game = state.match.history[gIndex];
   if (!game || !game.board) { toast('No score sheet for that game.'); return; }
-  const local = { ts: null, players: state.players.map(p=>({name:p.name})), board: game.board };
+  const players = (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime() && typeof __sqRealPlayersOnly === 'function')
+    ? __sqRealPlayersOnly(state.players || [])
+    : (state.players || []);
+  const local = { ts: null, players: players.map(p=>({name:p.name})), board: game.board };
   openSingleGameScoreSheet(local, -1);
 }
 
@@ -13560,6 +13591,12 @@ function markCloudOk() {
   setCloudStatus('ok', 'Cloud: connected');
 }
 function openGameCompleteDialog() {
+  if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) {
+    try{ state.finished = false; state.gameAwarded = false; }catch(_){ }
+    try{ __sqVsShadowBlockPhase2C(__SQ_VS_SHADOW_COMPLETION_BLOCK_REASON); }catch(_){ }
+    return;
+  }
+  const __isVsShadowComplete = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
   const totals = state.players.map((_, i) => totalScoreForPlayer(i));
   if (!totals.length) return;
   
@@ -13616,7 +13653,7 @@ function openGameCompleteDialog() {
     </div>
 
     <div class="gc-actions">
-      ${(!__drawResolved && isDraw) ? '<button class="btn dec-startDecider" type="button" data-action="startDecider">START DECIDER SHOUTOUT</button>' : ''}
+      ${(!__isVsShadowComplete && !__drawResolved && isDraw) ? '<button class="btn dec-startDecider" type="button" data-action="startDecider">START DECIDER SHOUTOUT</button>' : ''}
       <button class="btn gc-close" type="button" data-action="close">CLOSE</button>
     </div>
 `;
@@ -14322,6 +14359,10 @@ function __sqSyncTurboVisualState(page){
   }catch(_){ }
 }
 function show(id){
+  try{
+    if (id !== 'game' && typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('show:' + id);
+    if (id === 'game' && typeof __sqNormalizeVsShadowRuntimeState === 'function') __sqNormalizeVsShadowRuntimeState('show:game');
+  }catch(_){ }
   ['details','players','game','leaderboard'].forEach(x=>byId(x)?.classList.add('hidden'));
   byId(id)?.classList.remove('hidden');
   document.body.setAttribute('data-page', id);
@@ -14342,6 +14383,7 @@ function show(id){
     try { if (typeof ensureGameBuilt === 'function') ensureGameBuilt(); } catch(_) {}
     try{ __sqSyncTurboVisualState('game'); }catch(_){}
     try { if (typeof updateUI === 'function') updateUI(); } catch(_) {}
+    try { if (typeof __sqResumeVsShadowAutoTurnIfNeeded === 'function') __sqResumeVsShadowAutoTurnIfNeeded('show:game'); } catch(_) {}
     if (window.__marksKick) { clearInterval(window.__marksKick); window.__marksKick = null; }
     try { if (typeof scanForTripleHatAndCelebrate === 'function') scanForTripleHatAndCelebrate(); } catch(_) {}
   try { if (typeof updatePBGRBadges === 'function') updatePBGRBadges(); } catch(_) {}
@@ -14484,19 +14526,28 @@ function setMatchLog(arr) {
 function logCompletedGame(totals, winners, boardClone) {
   const games  = getGameLog();
   const nowIso = _tsOverride || new Date().toISOString();
+  const runtimePlayers = Array.isArray(state.players) ? state.players : [];
+  const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
+  const realPlayers = (typeof __sqRealPlayersOnly === 'function') ? __sqRealPlayersOnly(runtimePlayers) : runtimePlayers;
+  const realTotals = (typeof __sqRealOnlyTotals === 'function') ? __sqRealOnlyTotals(totals || [], runtimePlayers) : (totals || []).slice();
+  const realBoard = (typeof __sqRealOnlyBoard === 'function') ? __sqRealOnlyBoard(boardClone || [], runtimePlayers) : boardClone;
+  const realWinners = (typeof __sqRealOnlyWinnerIndexes === 'function') ? __sqRealOnlyWinnerIndexes(winners || [], runtimePlayers) : (winners || []).slice();
+  const mode = isVsShadow ? 'practice' : (__sqComputeGameMode ? __sqComputeGameMode() : ((runtimePlayers.length>=2)?'official':'practice'));
 
   // Build a single game record object we can reuse
   const gameRecord = {
     id: `g-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     ts: nowIso,
     matchId: state.match.id || null,
-    players: state.players.map(p => ({ name: p.name })),
-    totals: totals.slice(),
-    winners: winners.slice(),
-    board: boardClone,
-    mode: (__sqComputeGameMode ? __sqComputeGameMode() : (((state.players||[]).length>=2)?'official':'practice')),
-    is_practice: (__sqComputeGameMode ? (__sqComputeGameMode() === 'practice') : ((state.players||[]).length===1))
+    players: realPlayers.map(p => ({ name: p.name })),
+    totals: realTotals,
+    winners: isVsShadow ? [] : realWinners,
+    board: realBoard,
+    mode,
+    is_practice: (mode === 'practice')
   };
+
+  if (isVsShadow && typeof __sqAssertNoShadowPersistPayload === 'function' && !__sqAssertNoShadowPersistPayload(gameRecord, 'logCompletedGame')) return;
 
   games.push(gameRecord);
   setGameLog(games);
@@ -14511,14 +14562,18 @@ function logCompletedGame(totals, winners, boardClone) {
 };
 
 function logCompletedMatch() {
+  if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime()) return;
   const matches = getMatchLog();
   const nowIso = new Date().toISOString();
   const gamesInMatch = state.match.history.length;
 
-  const players = state.players.map(p => ({ name: p.name }));
-  const wins    = (state.match.wins || []).slice();
+  const runtimePlayers = Array.isArray(state.players) ? state.players : [];
+  const realPlayers = (typeof __sqRealPlayersOnly === 'function') ? __sqRealPlayersOnly(runtimePlayers) : runtimePlayers;
+  const players = realPlayers.map(p => ({ name: p.name }));
+  const wins    = (typeof __sqRealOnlyArray === 'function') ? __sqRealOnlyArray(state.match.wins || [], runtimePlayers) : (state.match.wins || []).slice();
 
-  const matchTotals = state.players.map((_, idx) =>
+  const realIndexes = (typeof __sqRealPlayerIndexes === 'function') ? __sqRealPlayerIndexes(runtimePlayers) : runtimePlayers.map((_, idx) => idx);
+  const matchTotals = realIndexes.map(idx =>
     state.match.history.reduce((sum, g) => sum + (g.totals?.[idx] || 0), 0)
   );
 
@@ -15154,6 +15209,11 @@ async function cloudInsertHighScoreIfMissing(table, playerId, name, score, ts, g
     if (!playerId || !gameId) return false;
 
     const payload = { player_id: playerId, name, score, ts, game_id: gameId };
+    if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime() &&
+        typeof __sqAssertNoShadowPersistPayload === 'function' &&
+        !__sqAssertNoShadowPersistPayload(payload, 'cloudInsertHighScoreIfMissing')) {
+      return false;
+    }
 
     // One HS row per (game_id, player_id). Ignore duplicates.
     const { error } = await sb
@@ -15172,7 +15232,12 @@ async function cloudInsertHighScoreIfMissing(table, playerId, name, score, ts, g
 // From a finished game, write one HS row per player to the correct table
 async function cloudSaveHighScoresForGame(totals, tsIso, gameId){
   try {
-    const gameMode = (typeof __sqComputeGameMode === 'function') ? __sqComputeGameMode() : (((state.players||[]).length===1) ? 'practice' : 'official');
+    const players = state.players || [];
+    const realPlayers = (typeof __sqRealPlayersOnly === 'function') ? __sqRealPlayersOnly(players) : players;
+    const realTotals = (typeof __sqRealOnlyTotals === 'function') ? __sqRealOnlyTotals(totals || [], players) : (totals || []);
+    const gameMode = (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime())
+      ? 'practice'
+      : ((typeof __sqComputeGameMode === 'function') ? __sqComputeGameMode() : ((realPlayers.length===1) ? 'practice' : 'official'));
     if (gameMode === 'turbo') {
       console.warn('[SQ] Turbo high-score write skipped: no dedicated Turbo high-score table is configured; Turbo rows must not enter official high_scores_sp.');
       return;
@@ -15184,11 +15249,11 @@ async function cloudSaveHighScoresForGame(totals, tsIso, gameId){
     // Require a concrete game id (UUID) for referential integrity.
     if (!gameId) return;
 
-    for (let i = 0; i < (state.players || []).length; i++){
-      const p = state.players[i] || {};
+    for (let i = 0; i < realPlayers.length; i++){
+      const p = realPlayers[i] || {};
       const playerId = p.id || p.player_id || null; // saved players only
       const name  = p.name || '';
-      const score = Number(totals?.[i] || 0);
+      const score = Number(realTotals?.[i] || 0);
 
       // High Score League is for saved players only.
       if (!playerId) continue;
@@ -15578,6 +15643,7 @@ function openHighScoresMenuDialog(){ openHighScoresDialog(false, 'all'); }
  *****************/
 async function upsertMatchToSupabase(createdAtOverride) {
   try {
+    if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime()) return;
     const payload = {
       id: state.match.id,                                                // uuid
       created_at: state.match.createdAtIso || createdAtOverride || new Date().toISOString(),
@@ -16201,10 +16267,18 @@ function setupStartMenuButtons(){
   resumeBtn.title    = hasSaved ? 'Resume last match' : 'No saved match';
 if (hasSaved){ 
     resumeBtn.onclick = () => {
+      try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('resume-before-load'); }catch(_){ }
+      if (typeof __sqSavedStateIsVsShadow === 'function' && __sqSavedStateIsVsShadow(saved)) {
+        try{ safeClear(STORAGE_KEY); }catch(_){ }
+        try{ setupStartMenuButtons(); }catch(_){ }
+        try{ toast('Vs Shadow recovery is not supported for this mode. Start a new Vs Shadow game instead.'); }catch(_){ }
+        return;
+      }
       __sqShowGameLoadOverlay('Resuming Game');
       __sqAfterPaint(async ()=>{
         try{
-          Object.assign(state, saved);
+          state = Object.assign(JSON.parse(JSON.stringify(baseState)), saved);
+          try{ if (typeof __sqNormalizeVsShadowRuntimeState === 'function') __sqNormalizeVsShadowRuntimeState('resume-after-load'); }catch(_){ }
           show('game');
           assignUniqueColors(state.players);
           await buildEverythingChunked();
@@ -16886,7 +16960,1308 @@ if (mlStartBtn) {
   });
 }
 
-const __SQ_VS_SHADOW_PHASE1_REASON = 'Shadow gameplay will be enabled in Phase 2 after real-only save filtering is patched.';
+const __SQ_VS_SHADOW_PHASE1_REASON = 'Select replayable Official source data for every game to start Vs Shadow.';
+const __SQ_VS_SHADOW_PHASE2C_REASON = 'Shadow is replaying its Official round. Manual input is disabled.';
+const __SQ_VS_SHADOW_COMPLETION_BLOCK_REASON = 'Vs Shadow completion/save is only available for a live fully replayed game.';
+const __SQ_VS_SHADOW_UNDO_BLOCK_REASON = 'Shadow undo is unavailable while the Shadow turn is in progress.';
+const __SQ_VS_SHADOW_PRE_THROW_DELAY_MS = 3000;
+const __SQ_VS_SHADOW_DART_STAGGER_MS = 800;
+const __SQ_VS_SHADOW_POST_DART_ADVANCE_MS = 900;
+
+function __sqIsShadowPlayer(p){
+  try{
+    return !!(p && typeof p === 'object' && (
+      p.isShadow === true ||
+      p.virtual === true ||
+      p.shadow === true ||
+      p.shadowId != null ||
+      String(p.type || '').toLowerCase() === 'shadow' ||
+      String(p.kind || '').toLowerCase() === 'shadow'
+    ));
+  }catch(_){ return false; }
+}
+
+function __sqIsVsShadowRuntime(){
+  try{
+    const st = (typeof state !== 'undefined' && state) ? state : (window.state || {});
+    const match = st.match || {};
+    const shadow = st.shadow || {};
+    return String(shadow.mode || '').toLowerCase() === 'vsshadow' ||
+      String(match.practiceType || '').toLowerCase() === 'vsshadow';
+  }catch(_){ return false; }
+}
+
+function __sqVsShadowCompletionBlocked(){
+  try{
+    if (!__sqIsVsShadowRuntime()) return false;
+    const shadow = (typeof state !== 'undefined' && state && state.shadow) ? state.shadow : {};
+    return !(shadow.autoTurnEnabled === true && shadow.completionEnabled === true);
+  }catch(_){ return false; }
+}
+
+function __sqVsShadowCurrentPlayerIsShadow(){
+  try{
+    if (!__sqIsVsShadowRuntime()) return false;
+    const idx = Number(state && state.currentPlayer);
+    return Number.isFinite(idx) && __sqIsShadowPlayer(state.players && state.players[idx]);
+  }catch(_){ return false; }
+}
+
+function __sqVsShadowBlockPhase2C(message){
+  const msg = message || __SQ_VS_SHADOW_PHASE2C_REASON;
+  try{ if (state && state.shadow) state.shadow.lastBlockedReason = msg; }catch(_){ }
+  try{ window.__sqVsShadowLastBlockMessage = msg; }catch(_){ }
+  try{ if (typeof toast === 'function') toast(msg); }catch(_){ }
+  try{ window.sqDmdShowZones?.({ z2:'SHADOW PAUSED', z3:'PHASE 2C' }, { type:'flash', ms:900, fx:'impact', z3Small:true }); }catch(_){ }
+  return true;
+}
+
+function __sqClearVsShadowTimers(reason){
+  try{
+    const timers = Array.isArray(window.__sqVsShadowTimers) ? window.__sqVsShadowTimers : [];
+    timers.forEach(id => { try{ clearTimeout(id); }catch(_){ } });
+    window.__sqVsShadowTimers = [];
+    if (state && state.shadow) {
+      state.shadow.autoTurnPending = false;
+      state.shadow.autoTurnInProgress = false;
+      state.shadow.autoTurnToken = null;
+      state.shadow.autoTurnClearReason = reason || '';
+    }
+  }catch(_){ window.__sqVsShadowTimers = []; }
+}
+
+function __sqSavedStateIsVsShadow(st){
+  try{
+    const s = (st && typeof st === 'object') ? st : {};
+    const match = s.match || {};
+    const players = Array.isArray(s.players) ? s.players : [];
+    const matchType = String(match.practiceType || match.practice_type || '').toLowerCase();
+    return matchType === 'vsshadow' || players.some(p => __sqIsShadowPlayer(p));
+  }catch(_){ return false; }
+}
+
+function __sqNormalizeVsShadowRuntimeState(reason){
+  try{
+    const match = (state && state.match) ? state.match : {};
+    const players = Array.isArray(state && state.players) ? state.players : [];
+    const hasShadowPlayer = players.some(p => __sqIsShadowPlayer(p));
+    const matchType = String(match.practiceType || match.practice_type || '').toLowerCase();
+    const isVsShadow = hasShadowPlayer || matchType === 'vsshadow';
+    if (!isVsShadow) {
+      try{ __sqClearVsShadowTimers(reason || 'normalize-non-shadow'); }catch(_){ }
+      try{ delete state.shadow; }catch(_){ }
+      return false;
+    }
+    if (!state.shadow || typeof state.shadow !== 'object') state.shadow = {};
+    try{ __sqClearVsShadowTimers(reason || 'normalize-shadow'); }catch(_){ }
+    const reasonText = String(reason || '').toLowerCase();
+    const liveRuntime = /^runtime_phase/i.test(String(state.shadow.status || '')) &&
+      state.shadow.autoTurnEnabled === true &&
+      !/(resume|recover|storage|load)/i.test(reasonText);
+    state.shadow.autoTurnPending = false;
+    state.shadow.autoTurnInProgress = false;
+    state.shadow.autoTurnToken = null;
+    state.shadow.autoTurnClearReason = reason || 'normalize';
+    state.shadow.completionEnabled = liveRuntime ? (state.shadow.completionEnabled === true) : false;
+    state.shadow.savePolicy = state.shadow.savePolicy || 'real-only';
+    return true;
+  }catch(_){ return false; }
+}
+
+function __sqSanitizeVsShadowForGenericStart(reason){
+  try{
+    const players = Array.isArray(state && state.players) ? state.players : [];
+    const wasVsShadow = (typeof __sqSavedStateIsVsShadow === 'function' && __sqSavedStateIsVsShadow(state)) ||
+      players.some(p => __sqIsShadowPlayer(p));
+    if (!wasVsShadow) return false;
+    try{ __sqClearVsShadowTimers(reason || 'sanitize-generic-start'); }catch(_){ }
+    const realIndexes = (typeof __sqRealPlayerIndexes === 'function') ? __sqRealPlayerIndexes(players) : players.map((_, i) => i);
+    const realPlayers = realIndexes.map(i => players[i]).filter(Boolean);
+    const realScore = Array.isArray(state.score)
+      ? realIndexes.map(i => __sqDeepCloneForPersist(state.score[i] || []))
+      : realPlayers.map(() => []);
+    state.players = realPlayers;
+    state.score = realScore;
+    state.currentPlayer = 0;
+    state.currentRound = 0;
+    state.currentDart = 0;
+    state.history = [];
+    state.finished = false;
+    state.gameAwarded = false;
+    state.match = Object.assign({}, state.match || {}, {
+      mode:'practice',
+      forcePractice:true,
+      practiceType:'classic',
+      gameMode:'practice',
+      wins:Array.from({ length: realPlayers.length }, () => 0)
+    });
+    delete state.shadow;
+    return true;
+  }catch(e){
+    try{ console.warn('[SQ] Vs Shadow generic-start sanitization failed', e); }catch(_){ }
+    return false;
+  }
+}
+
+function __sqRuntimePlayerDisplayEntries(opts){
+  try{
+    const players = Array.isArray(state && state.players) ? state.players : [];
+    const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
+    const page = String(document.body && document.body.dataset && document.body.dataset.page || '').toLowerCase();
+    const shadow = (state && state.shadow) ? state.shadow : {};
+    const liveShadowRuntime = /^runtime_phase/i.test(String(shadow.status || '')) && shadow.autoTurnEnabled === true;
+    const liveComparison = !!(isVsShadow && liveShadowRuntime && page === 'game' && state.finished !== true && state.gameAwarded !== true && !(opts && opts.persisted));
+    // Live gameplay comparison may show the runtime Shadow. Completed/report/history views stay real-only.
+    const indexes = (isVsShadow && !liveComparison && typeof __sqRealPlayerIndexes === 'function')
+      ? __sqRealPlayerIndexes(players)
+      : players.map((_, i) => i);
+    return indexes.map(i => ({ index:i, player:players[i] })).filter(x => !!x.player);
+  }catch(_){
+    return [];
+  }
+}
+
+function __sqVsShadowShadowDartsStarted(roundIndex){
+  try{
+    const shadowIndex = Number(state && state.shadow && state.shadow.shadowPlayerIndex);
+    const entry = state && state.score && state.score[shadowIndex] && state.score[shadowIndex][roundIndex];
+    const darts = entry && Array.isArray(entry.darts) ? entry.darts : [];
+    return darts.some(d => d && Number.isFinite(Number(d.points)));
+  }catch(_){ return false; }
+}
+
+function __sqVsShadowShadowRoundComplete(roundIndex){
+  try{
+    const shadowIndex = Number(state && state.shadow && state.shadow.shadowPlayerIndex);
+    const entry = state && state.score && state.score[shadowIndex] && state.score[shadowIndex][roundIndex];
+    const darts = entry && Array.isArray(entry.darts) ? entry.darts.slice(0, 3) : [];
+    return darts.length === 3 && darts.every(d => d && Number.isFinite(Number(d.points)));
+  }catch(_){ return false; }
+}
+
+function __sqResetVsShadowShadowRound(roundIndex){
+  try{
+    const shadowIndex = Number(state && state.shadow && state.shadow.shadowPlayerIndex);
+    const entry = state && state.score && state.score[shadowIndex] && state.score[shadowIndex][roundIndex];
+    if (!entry || !Array.isArray(entry.darts)) return false;
+    entry.darts = [null, null, null];
+    entry.roundTotal = 0;
+    state.currentDart = 0;
+    try{ __sqRecomputeVsShadowShadowTotals(); }catch(_){ }
+    return true;
+  }catch(_){ return false; }
+}
+
+function __sqResumeVsShadowAutoTurnIfNeeded(reason){
+  try{
+    if (!__sqIsVsShadowRuntime() || !__sqVsShadowCurrentPlayerIsShadow()) return false;
+    const shadow = state.shadow || {};
+    if (shadow.autoTurnPending || shadow.autoTurnInProgress || state.finished || state.gameAwarded) return false;
+    const roundIndex = Number(state.currentRound);
+    if (!Number.isFinite(roundIndex)) return false;
+    if (__sqVsShadowShadowRoundComplete(roundIndex)) return __sqAdvanceAfterVsShadowAutoTurn();
+    if (__sqVsShadowShadowDartsStarted(roundIndex)) __sqResetVsShadowShadowRound(roundIndex);
+    state.currentDart = 0;
+    return __sqScheduleVsShadowAutoTurn(roundIndex);
+  }catch(_){ return false; }
+}
+
+function __sqVsShadowSelectedRowsReady(controls){
+  try{
+    const rows = Array.isArray(controls) ? controls : [];
+    return rows.length > 0 && rows.every(ctrl => {
+      const candidate = (ctrl.candidates || []).find(c => c.key === ctrl.scoreSelect.value);
+      return !!(candidate && candidate.replayAvailable && candidate.gameId && Array.isArray(candidate.sourceRows) && candidate.sourceRows.length);
+    });
+  }catch(_){ return false; }
+}
+
+function __sqVsShadowCleanSourceName(value){
+  try{
+    return String(value || '')
+      .replace(/^Shadow:\s*/i, '')
+      .replace(/\s+(?:GHOST|👻)\s*$/i, '')
+      .trim();
+  }catch(_){ return ''; }
+}
+
+function __sqVsShadowGhostMarker(forDmd){
+  try{
+    if (forDmd) return 'GHOST';
+    if (!forDmd) return '👻';
+  }catch(_){ return forDmd ? 'GHOST' : '👻'; }
+}
+
+function __sqVsShadowDmdInitialsForName(name){
+  try{
+    const cleaned = __sqVsShadowCleanSourceName(name)
+      .replace(/\bPB\b/ig, ' ')
+      .replace(/[^A-Za-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!cleaned) return 'P';
+    const parts = cleaned.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return String(parts[0][0] || 'P').toUpperCase();
+    const first = String(parts[0][0] || '');
+    const last = String(parts[parts.length - 1][0] || '');
+    return (first + last).toUpperCase() || 'P';
+  }catch(_){ return 'P'; }
+}
+
+function __sqVsShadowDmdLabelForGame(gameConfig){
+  try{
+    const g = gameConfig || {};
+    const rawName = __sqVsShadowCleanSourceName(__sqVsShadowPlayerName(g.sourcePlayerName || g.opponentName || g.playerName || g.name)) || 'Player';
+    const isPb = String(g.opponentKind || '').toLowerCase() === 'player_pb' || /\bPB\b/i.test(rawName);
+    const initials = __sqVsShadowDmdInitialsForName(rawName);
+    return (initials + (isPb ? ' PB' : '') + ' GHOST').replace(/\s+/g, ' ').trim();
+  }catch(_){ return 'P GHOST'; }
+}
+
+function __sqVsShadowGraphLabelForGame(gameConfig){
+  try{
+    const g = gameConfig || {};
+    const rawName = __sqVsShadowCleanSourceName(__sqVsShadowPlayerName(g.sourcePlayerName || g.opponentName || g.playerName || g.name)) || 'Player';
+    const isPb = String(g.opponentKind || '').toLowerCase() === 'player_pb' || /\bPB\b/i.test(rawName);
+    const initials = __sqVsShadowDmdInitialsForName(rawName);
+    return (initials + (isPb ? ' PB' : ' GHOST')).replace(/\s+/g, ' ').trim();
+  }catch(_){ return 'P GHOST'; }
+}
+
+function __sqVsShadowDisplayLabelForGame(gameConfig, opts){
+  try{
+    const g = gameConfig || {};
+    const forDmd = !!(opts && opts.dmd);
+    const forGraph = !!(opts && (opts.graph || opts.race || opts.canvas || opts.compact));
+    const rawName = __sqVsShadowCleanSourceName(__sqVsShadowPlayerName(g.sourcePlayerName || g.opponentName || g.playerName || g.name)) || 'Player';
+    if (forDmd) return __sqVsShadowDmdLabelForGame(g);
+    if (forGraph) return __sqVsShadowGraphLabelForGame(g);
+    const marker = __sqVsShadowGhostMarker(forDmd);
+    const isPb = String(g.opponentKind || '').toLowerCase() === 'player_pb';
+    const pbName = (isPb && !/\bPB\b/i.test(rawName)) ? (rawName + ' PB') : rawName;
+    return (pbName + ' ' + marker).trim();
+  }catch(_){ return 'Player ' + __sqVsShadowGhostMarker(!!(opts && opts.dmd)); }
+}
+
+function __sqVsShadowDisplayLabelForPlayer(player, opts){
+  try{
+    if (typeof __sqIsShadowPlayer === 'function' && !__sqIsShadowPlayer(player)) return '';
+    const forDmd = !!(opts && opts.dmd);
+    const forGraph = !!(opts && (opts.graph || opts.race || opts.canvas || opts.compact));
+    const shadow = (typeof state !== 'undefined' && state && state.shadow) ? state.shadow : null;
+    const games = Array.isArray(shadow && shadow.games) ? shadow.games : [];
+    const gameIndex = Math.max(0, Number(shadow && shadow.activeGameIndex) || 0);
+    const fromGame = games[gameIndex] ? __sqVsShadowDisplayLabelForGame(games[gameIndex], opts || {}) : '';
+    if (fromGame) return fromGame;
+    if (forGraph) {
+      return String(player.shadowGraphName || '').trim() ||
+        __sqVsShadowGraphLabelForGame({ sourcePlayerName: player.shadowSourcePlayerName || player.shadowDisplayName || player.name || 'Player' });
+    }
+    return String((forDmd ? player.shadowDmdName : player.shadowDisplayName) || player.displayName || player.name || '').trim();
+  }catch(_){ return ''; }
+}
+
+function __sqVsShadowRuntimePlayer(config){
+  const games = (config && Array.isArray(config.games)) ? config.games : [];
+  const gameIndex = Math.max(0, Number(config && config.activeGameIndex) || 0);
+  const first = games[gameIndex] || games[0] || {};
+  const baseName = __sqVsShadowCleanSourceName(__sqVsShadowPlayerName(first.sourcePlayerName || first.opponentName)) || 'Player';
+  const displayName = __sqVsShadowDisplayLabelForGame(first, { dmd:false });
+  const dmdName = __sqVsShadowDisplayLabelForGame(first, { dmd:true });
+  const graphName = __sqVsShadowDisplayLabelForGame(first, { graph:true });
+  const sourceId = String(first.sourceGameId || 'shadow').trim() || 'shadow';
+  return {
+    name: displayName,
+    first_name: displayName,
+    last_name: '',
+    nickname: '',
+    initials: '👻',
+    displayName,
+    fullName: displayName,
+    shadowDisplayName: displayName,
+    shadowDmdName: dmdName,
+    shadowGraphName: graphName,
+    shadowSourcePlayerName: baseName,
+    color: null,
+    type: 'shadow',
+    kind: 'shadow',
+    id: null,
+    player_id: null,
+    isShadow: true,
+    virtual: true,
+    shadow: true,
+    shadowId: 'shadow:' + sourceId + ':' + gameIndex
+  };
+}
+
+function __sqStartPracticeVsShadowFromDraft(overlay){
+  if (!__sqIsVsShadowRuntime()) {
+    try{ toast('Vs Shadow setup is unavailable.'); }catch(_){ }
+    return false;
+  }
+  try{ __sqClearVsShadowTimers('runtime-start'); }catch(_){ }
+  const shadowState = state.shadow || {};
+  const draftGames = Array.isArray(shadowState.games) ? shadowState.games : [];
+  const ready = draftGames.length > 0 && draftGames.every(g => !!(g && g.replayAvailable && g.sourceGameId && Array.isArray(g.sourceRows) && g.sourceRows.length));
+  if (!ready) {
+    try{ toast(__SQ_VS_SHADOW_PHASE1_REASON); }catch(_){ }
+    return false;
+  }
+
+  const realPlayer = Array.isArray(state.players) ? state.players.find(p => !__sqIsShadowPlayer(p)) : null;
+  if (!realPlayer) {
+    try{ toast('Add 1 real player for Vs Shadow.'); }catch(_){ }
+    return false;
+  }
+
+  const runtimeConfig = Object.assign({}, shadowState, {
+    mode: 'vsShadow',
+    version: 2,
+    status: 'runtime_phase2d',
+    activeGameIndex: 0,
+    realPlayerIndex: 0,
+    shadowPlayerIndex: 1,
+    savePolicy: 'real-only',
+    autoTurnEnabled: true,
+    completionEnabled: true,
+    phase2BCompletionBlocked: false,
+    phase2CCompletionBlocked: false,
+    blockedReason: __SQ_VS_SHADOW_PHASE2C_REASON,
+    completionBlockedReason: '',
+    games: draftGames
+  });
+  const shadowPlayer = __sqVsShadowRuntimePlayer(runtimeConfig);
+
+  state.players = [realPlayer, shadowPlayer];
+  state.match = Object.assign({}, state.match || {}, {
+    mode: 'practice',
+    forcePractice: true,
+    practiceType: 'vsShadow',
+    gameMode: 'practice',
+    gameFormat: undefined,
+    gameVariant: undefined,
+    wins: Array.from({ length: 2 }, () => 0),
+    history: Array.isArray(state.match && state.match.history) ? state.match.history : [],
+    completedLogged: false
+  });
+  state.shadow = runtimeConfig;
+  try{ assignUniqueColors(state.players); }catch(_){ }
+
+  try{ if (overlay) overlay.remove(); }catch(_){ }
+  try{ document.querySelectorAll('.modal-throworder').forEach(el => el.closest('.modal-backdrop')?.remove()); }catch(_){ }
+  try{ startNewGame(true); }catch(e){ console.error('[SQ] Vs Shadow runtime start failed', e); try{ toast('Vs Shadow start failed.'); }catch(_){ } return false; }
+  try{ setupStartMenuButtons(); }catch(_){ }
+  return true;
+}
+
+function __sqGetVsShadowSourceRound(gameIndex, roundIndex){
+  try{
+    if (!__sqIsVsShadowRuntime()) return null;
+    const games = Array.isArray(state.shadow && state.shadow.games) ? state.shadow.games : [];
+    const g = games[Math.max(0, Number(gameIndex) || 0)] || null;
+    const rows = Array.isArray(g && g.sourceRows) ? g.sourceRows : [];
+    const round = rows[Math.max(0, Number(roundIndex) || 0)] || null;
+    return round ? __sqDeepCloneForPersist(round) : null;
+  }catch(_){ return null; }
+}
+
+function __sqNormalizeVsShadowReplayDarts(sourceRound, roundIndex){
+  try{
+    const roundDef = (typeof ROUNDS !== 'undefined' && ROUNDS[roundIndex]) ? ROUNDS[roundIndex] : {};
+    const rawDarts = Array.isArray(sourceRound && sourceRound.darts) ? sourceRound.darts
+      : (Array.isArray(sourceRound && sourceRound.throws) ? sourceRound.throws
+      : (Array.isArray(sourceRound) ? sourceRound : null));
+    if (!Array.isArray(rawDarts) || rawDarts.length !== 3) return null;
+
+    function finiteNumber(v){
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+    function rawKind(d){
+      return String((d && (d.kind ?? d.type ?? d.multiplier ?? d.mult)) || '').trim();
+    }
+    function inferFromPoints(points){
+      if (points === 0) return { kind:'Miss', points:0 };
+      if (roundDef.type === 'number') {
+        const t = Number(roundDef.target || 0);
+        if (t > 0 && points === t) return { kind:'S', points };
+        if (t > 0 && points === t * 2) return { kind:'D', points };
+        if (t > 0 && points === t * 3) return { kind:'T', points };
+      }
+      if (roundDef.type === 'doubles' && points > 0 && points % 2 === 0 && points / 2 >= 1 && points / 2 <= 20) {
+        return { kind:'Double', sector:points / 2, points };
+      }
+      if (roundDef.type === 'triples' && points > 0 && points % 3 === 0 && points / 3 >= 1 && points / 3 <= 20) {
+        return { kind:'Triple', sector:points / 3, points };
+      }
+      if (roundDef.type === 'bull' && (points === 25 || points === 50)) {
+        return { kind:'B', bull:points === 50 ? 'Inner' : 'Outer', points };
+      }
+      return null;
+    }
+    function pointsFromKind(kind, d){
+      const k = String(kind || '').toLowerCase();
+      const sector = finiteNumber(d && (d.sector ?? d.segment ?? d.target));
+      const bull = String((d && d.bull) || '').toLowerCase();
+      if (!k || k === 'miss' || k === 'x') return 0;
+      if (k === 'b' || k === 'bull') return bull === 'inner' ? 50 : (bull === 'outer' ? 25 : null);
+      if (roundDef.type === 'number') {
+        const t = Number(roundDef.target || 0);
+        if (!(t > 0)) return null;
+        if (k === 's' || k === 'single') return t;
+        if (k === 'd' || k === 'double') return t * 2;
+        if (k === 't' || k === 'triple' || k === 'treble') return t * 3;
+      }
+      if ((k === 'double' || k === 'd') && sector >= 1 && sector <= 20) return sector * 2;
+      if ((k === 'triple' || k === 'treble' || k === 't') && sector >= 1 && sector <= 20) return sector * 3;
+      return null;
+    }
+    function normalizeOne(raw){
+      if (raw == null) return null;
+      const obj = (typeof raw === 'object') ? __sqDeepCloneForPersist(raw) : {};
+      let points = (typeof raw === 'number' || typeof raw === 'string') ? finiteNumber(raw) : finiteNumber(obj.points ?? obj.pts ?? obj.score ?? obj.value ?? obj.val);
+      const kind = rawKind(obj);
+      if (points == null && kind) points = pointsFromKind(kind, obj);
+      if (points == null) return null;
+      let inferred = inferFromPoints(points);
+      if (!inferred && kind) {
+        const k = kind.toLowerCase();
+        if (points === 0 || k === 'miss' || k === 'x') inferred = { kind:'Miss', points:0 };
+        else if (k === 'b' || k === 'bull') inferred = { kind:'B', bull:obj.bull || (points === 50 ? 'Inner' : 'Outer'), points };
+        else if (k === 'double') inferred = { kind:'Double', sector:obj.sector ?? obj.segment, points };
+        else if (k === 'triple' || k === 'treble') inferred = { kind:'Triple', sector:obj.sector ?? obj.segment, points };
+        else if (k === 's' || k === 'single') inferred = { kind:'S', points };
+        else if (k === 'd') inferred = { kind:'D', points };
+        else if (k === 't') inferred = { kind:'T', points };
+      }
+      if (!inferred || !Number.isFinite(Number(inferred.points))) return null;
+      const out = Object.assign({}, obj, inferred, { points:Number(inferred.points) });
+      if (out.points === 0) out.kind = 'Miss';
+      return out;
+    }
+
+    const darts = rawDarts.map(normalizeOne);
+    if (darts.some(d => !d)) return null;
+    const roundTotal = darts.reduce((sum, d) => sum + (Number(d.points) || 0), 0);
+    const explicitTotal = finiteNumber(sourceRound && (sourceRound.roundTotal ?? sourceRound.round_total ?? sourceRound.total ?? sourceRound.points ?? sourceRound.score));
+    if (explicitTotal != null && Math.abs(explicitTotal - roundTotal) > 0.001) return null;
+    return { darts, roundTotal };
+  }catch(_){ return null; }
+}
+
+function __sqRecomputeVsShadowShadowTotals(){
+  try{
+    const idx = Number(state && state.shadow && state.shadow.shadowPlayerIndex);
+    if (!Number.isFinite(idx)) return;
+    ensureMatchAgg();
+    if (typeof recomputeMatchAggHitsForPlayer === 'function') recomputeMatchAggHitsForPlayer(idx);
+    if (typeof recomputeMatchAggTotalsForPlayer === 'function') recomputeMatchAggTotalsForPlayer(idx);
+  }catch(_){ }
+}
+
+function __sqVsShadowAutoTurnStillValid(token, roundIndex){
+  try{
+    if (!__sqIsVsShadowRuntime()) return false;
+    if (!state.shadow || state.shadow.autoTurnToken !== token) return false;
+    if (state.shadow.autoTurnEnabled !== true) return false;
+    if (state.finished || state.gameAwarded) return false;
+    if (!__sqVsShadowCurrentPlayerIsShadow()) return false;
+    if (Number(state.currentRound) !== Number(roundIndex)) return false;
+    return true;
+  }catch(_){ return false; }
+}
+
+function __sqPauseVsShadowAutoTurn(message){
+  try{ __sqClearVsShadowTimers('auto-turn-paused'); }catch(_){ }
+  try{
+    if (state && state.shadow) {
+      state.shadow.autoTurnFailed = true;
+      state.shadow.lastBlockedReason = message || __SQ_VS_SHADOW_PHASE2C_REASON;
+    }
+  }catch(_){ }
+  __sqVsShadowBlockPhase2C(message || 'Shadow replay data is unavailable for this round. Vs Shadow is paused.');
+}
+
+function __sqHandleVsShadowManualShadowInput(reason){
+  try{
+    if (!__sqIsVsShadowRuntime() || !__sqVsShadowCurrentPlayerIsShadow()) return false;
+    const shadow = state.shadow || {};
+    const roundIndex = Number(state.currentRound);
+    const shadowIndex = Number(shadow.shadowPlayerIndex);
+    const realIndex = Number.isFinite(Number(shadow.realPlayerIndex)) ? Number(shadow.realPlayerIndex) : 0;
+    if (!Number.isFinite(roundIndex) || !Number.isFinite(shadowIndex)) return true;
+
+    try{ __sqClearVsShadowTimers('manual-shadow-input:' + (reason || 'input')); }catch(_){ }
+    try{ __sqVsShadowClearDmdPreThrowState(); }catch(_){ }
+
+    const gameIndex = Number(shadow.activeGameIndex || 0);
+    const sourceRound = __sqGetVsShadowSourceRound(gameIndex, roundIndex);
+    const normalized = __sqNormalizeVsShadowReplayDarts(sourceRound, roundIndex);
+    const entry = state.score && state.score[shadowIndex] && state.score[shadowIndex][roundIndex];
+
+    if (entry && normalized && Array.isArray(normalized.darts) && normalized.darts.length === 3) {
+      entry.darts = normalized.darts.map(d => __sqDeepCloneForPersist(d));
+      entry.roundTotal = Number(normalized.roundTotal || 0);
+      if (state.shadow) {
+        state.shadow.autoTurnPending = false;
+        state.shadow.autoTurnInProgress = false;
+        state.shadow.autoTurnToken = null;
+        state.shadow.lastBlockedReason = '';
+      }
+      state.currentPlayer = shadowIndex;
+      state.currentRound = roundIndex;
+      state.currentDart = 3;
+      try{ __sqRecomputeVsShadowShadowTotals(); }catch(_){ }
+      try{ updateUI(); }catch(_){ }
+      try{ __sqAdvanceAfterVsShadowAutoTurn(); }catch(_){ }
+      return true;
+    }
+
+    try{ if (entry) __sqResetVsShadowShadowRound(roundIndex); }catch(_){ }
+    if (state.shadow) {
+      state.shadow.autoTurnPending = false;
+      state.shadow.autoTurnInProgress = false;
+      state.shadow.autoTurnToken = null;
+      state.shadow.lastBlockedReason = '';
+    }
+    state.currentPlayer = realIndex;
+    state.currentDart = 0;
+    if (roundIndex < ((typeof MAX_ROUNDS === 'number' ? MAX_ROUNDS : 14) - 1)) {
+      state.currentRound = roundIndex + 1;
+    } else {
+      state.currentRound = roundIndex;
+      state.finished = true;
+      state.gameAwarded = false;
+    }
+    try{ updateUI(); }catch(_){ }
+    try{
+      const realName = (typeof __sqVsShadowRealDmdName === 'function') ? __sqVsShadowRealDmdName(realIndex) : 'Player';
+      const infoLines = (typeof __sqVsShadowRealDmdInfoLines === 'function') ? __sqVsShadowRealDmdInfoLines(realIndex) : [];
+      window.sqDmdShowZones?.({ z2:realName, z3:'' }, { type:'hold', ms:1 });
+      window.__sqDmdStartPreThrow?.(realName, infoLines);
+    }catch(_){ }
+    return true;
+  }catch(e){
+    try{ console.warn('[SQ] Vs Shadow manual interruption cleanup failed', e); }catch(_){ }
+    try{ __sqClearVsShadowTimers('manual-shadow-input-error'); }catch(_){ }
+    return true;
+  }
+}
+
+function __sqVsShadowDmdRoundLabel(roundDef, roundIndex){
+  try{
+    if (roundDef && roundDef.type === 'number') return String(roundDef.target || '');
+    if (roundDef && roundDef.type === 'doubles') return 'DBL';
+    if (roundDef && roundDef.type === 'triples') return 'TRL';
+    if (roundDef && roundDef.type === 'bull') return 'BULL';
+    return String((Number(roundIndex) || 0) + 1);
+  }catch(_){ return String((Number(roundIndex) || 0) + 1); }
+}
+
+function __sqVsShadowDmdTokenForDart(dart, roundDef){
+  try{
+    if (!dart) return '';
+    const kind = String(dart.kind || dart.type || '').trim();
+    const points = Number(dart.points ?? dart.pts ?? dart.score ?? 0);
+    if (/^Miss$/i.test(kind) || points === 0) return 'X';
+    if (/^B$/i.test(kind) || dart.bull) return dart.bull === 'Inner' ? 'B50' : 'B25';
+    if (roundDef && roundDef.type === 'number') {
+      const n = Number(roundDef.target || 0);
+      if (n > 0) {
+        if (points === n * 3) return 'T' + n;
+        if (points === n * 2) return 'D' + n;
+        if (points === n) return 'S' + n;
+      }
+    }
+    if (roundDef && roundDef.type === 'doubles') {
+      const s = Number(dart.sector || dart.segment || 0);
+      return s ? ('D' + s) : (points > 0 ? 'D' : 'X');
+    }
+    if (roundDef && roundDef.type === 'triples') {
+      const s = Number(dart.sector || dart.segment || 0);
+      return s ? ('T' + s) : (points > 0 ? 'T' : 'X');
+    }
+    if (roundDef && roundDef.type === 'bull') return dart.bull === 'Inner' ? 'B50' : 'B25';
+    if (/^(Triple|T)$/i.test(kind)) return ('T' + (dart.sector || dart.segment || '')).trim();
+    if (/^(Double|D)$/i.test(kind)) return ('D' + (dart.sector || dart.segment || '')).trim();
+    if (/^(Single|S)$/i.test(kind)) return ('S' + (dart.sector || dart.segment || '')).trim();
+    return kind.toUpperCase();
+  }catch(_){ return ''; }
+}
+
+function __sqVsShadowDmdKindForDart(dart){
+  try{
+    if (!dart) return '';
+    const k = String(dart.kind || dart.type || '').trim();
+    const p = Number(dart.points ?? dart.pts ?? dart.score ?? 0);
+    if (/^Miss$/i.test(k) || p === 0) return 'Miss';
+    if (/^(Triple|Treble|T)$/i.test(k)) return 'T';
+    if (/^(Double|D)$/i.test(k)) return 'D';
+    if (/^(Single|S)$/i.test(k)) return 'S';
+    if (/^B$/i.test(k) || dart.bull) return 'B';
+    return k;
+  }catch(_){ return ''; }
+}
+
+function __sqVsShadowInputKindForDart(dart, roundDef){
+  try{
+    if (!dart) return '';
+    const kind = String(dart.kind || dart.type || '').trim();
+    const points = Number(dart.points ?? dart.pts ?? dart.score ?? 0);
+    if (/^Miss$/i.test(kind) || points === 0) return 'miss';
+    if (/^B$/i.test(kind) || dart.bull) return 'bull';
+    if (roundDef && roundDef.type === 'number') {
+      const n = Number(roundDef.target || 0);
+      if (n > 0) {
+        if (points === n * 3) return 'triple';
+        if (points === n * 2) return 'double';
+        if (points === n) return 'single';
+      }
+    }
+    if (roundDef && roundDef.type === 'doubles') return 'double';
+    if (roundDef && roundDef.type === 'triples') return 'triple';
+    if (roundDef && roundDef.type === 'bull') return 'bull';
+    if (/^(Triple|Treble|T)$/i.test(kind)) return 'triple';
+    if (/^(Double|D)$/i.test(kind)) return 'double';
+    if (/^(Single|S)$/i.test(kind)) return 'single';
+    return '';
+  }catch(_){ return ''; }
+}
+
+function __sqVsShadowVisiblePadButtons(selector){
+  try{
+    const root = document.getElementById('pad') || document;
+    return Array.from(root.querySelectorAll(selector)).filter(btn => {
+      try{
+        const rect = btn.getBoundingClientRect();
+        const css = window.getComputedStyle ? window.getComputedStyle(btn) : null;
+        return rect.width > 0 && rect.height > 0 && (!css || (css.display !== 'none' && css.visibility !== 'hidden'));
+      }catch(_){ return true; }
+    });
+  }catch(_){ return []; }
+}
+
+function __sqFindVsShadowInputButtonForDart(dart, kind){
+  try{
+    const clean = v => String(v || '').toUpperCase().replace(/\s+/g, ' ').trim();
+    if (kind === 'miss') {
+      return __sqVsShadowVisiblePadButtons('.dtActBtn.miss')[0] ||
+        __sqVsShadowVisiblePadButtons('.dtX3')[0] ||
+        null;
+    }
+    if (kind === 'single' || kind === 'double' || kind === 'triple') {
+      const letter = kind === 'single' ? 'S' : (kind === 'double' ? 'D' : 'T');
+      const direct = __sqVsShadowVisiblePadButtons('.dtBullBtn')
+        .find(btn => clean(btn.textContent) === letter);
+      if (direct) return direct;
+
+      const sector = Number(dart && (dart.sector ?? dart.segment ?? dart.target) || 0);
+      if (sector > 0) {
+        const sectorBtn = __sqVsShadowVisiblePadButtons('.dtNumBtn')
+          .find(btn => clean(btn.textContent) === String(sector));
+        if (sectorBtn) return sectorBtn;
+      }
+    }
+    if (kind === 'bull') {
+      const bullText = /inner/i.test(String(dart && dart.bull || '')) ? 'INNER' : (/outer/i.test(String(dart && dart.bull || '')) ? 'OUTER' : '');
+      const buttons = __sqVsShadowVisiblePadButtons('.dtBullBtn');
+      return buttons.find(btn => bullText && clean(btn.textContent).indexOf(bullText) >= 0) ||
+        buttons.find(btn => clean(btn.textContent).indexOf('BULL') >= 0) ||
+        null;
+    }
+    return null;
+  }catch(_){ return null; }
+}
+
+function __sqPulseVsShadowInputButton(btn, classes, ms){
+  try{
+    if (!btn || !btn.classList) return false;
+    const all = [
+      'sq-padfx-shadow-hit',
+      'sq-padfx-shadow-single',
+      'sq-padfx-shadow-double',
+      'sq-padfx-shadow-triple',
+      'sq-padfx-shadow-bull',
+      'sq-padfx-shadow-miss',
+      'sq-padfx-miss'
+    ];
+    all.forEach(cls => btn.classList.remove(cls));
+    void btn.offsetWidth;
+    (classes || []).forEach(cls => { if (cls) btn.classList.add(cls); });
+    try{ btn.dataset.sqVsShadowFx = '1'; }catch(_){ }
+    setTimeout(() => {
+      try{
+        all.forEach(cls => btn.classList.remove(cls));
+        delete btn.dataset.sqVsShadowFx;
+      }catch(_){ }
+    }, Number(ms || 680));
+    return true;
+  }catch(_){ return false; }
+}
+
+function __sqFlashVsShadowInputButton(dart, roundIndex){
+  try{
+    if (!__sqIsVsShadowRuntime()) return false;
+    const roundDef = (typeof ROUNDS !== 'undefined' && ROUNDS[roundIndex]) ? ROUNDS[roundIndex] : {};
+    const kind = __sqVsShadowInputKindForDart(dart, roundDef);
+    if (!kind) return false;
+    const btn = __sqFindVsShadowInputButtonForDart(dart, kind);
+    if (!btn) return false;
+    if (kind === 'miss') {
+      return __sqPulseVsShadowInputButton(btn, ['sq-padfx-miss', 'sq-padfx-shadow-miss'], 520);
+    }
+    return __sqPulseVsShadowInputButton(btn, ['sq-padfx-shadow-hit', 'sq-padfx-shadow-' + kind], 680);
+  }catch(_){ return false; }
+}
+
+function __sqVsShadowQueueDmdPhrase(phrase, opts){
+  try{
+    if (!window.sqDmdShowZones) return false;
+    const words = String(phrase || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return false;
+    const o = opts || {};
+    const stepMs = Number(o.stepMs || 340);
+    const finalHoldMs = stepMs + 500;
+    const restoreZ2 = String(o.restoreZ2 ?? '');
+    const restoreZ3 = String(o.restoreZ3 ?? '');
+
+    if (o.imageType) {
+      window.sqDmdShowZones({ z2:'', z3:'' }, { type:o.imageType, ms:Number(o.imageMs || 900), amp:Number(o.amp || 3.0) });
+    }
+    if (words.length === 1) {
+      window.sqDmdShowZones({ z2:words[0], z3:'' }, { type:'flash', ms:finalHoldMs, fx:'impact' });
+    } else if (words.length === 2) {
+      window.sqDmdShowZones({ z2:words[0], z3:'' }, { type:'flash', ms:stepMs, fx:'impact' });
+      window.sqDmdShowZones({ z2:words[0], z3:words[1] }, { type:'flash', ms:finalHoldMs, fx:'impact' });
+    } else {
+      window.sqDmdShowZones({ z2:words[0], z3:'' }, { type:'flash', ms:stepMs, fx:'impact' });
+      window.sqDmdShowZones({ z2:words.slice(0, -1).join(' '), z3:'' }, { type:'flash', ms:stepMs, fx:'impact' });
+      window.sqDmdShowZones({ z2:words.slice(0, -1).join(' '), z3:words[words.length - 1] }, { type:'flash', ms:finalHoldMs, fx:'impact' });
+    }
+    window.sqDmdShowZones({ z2:restoreZ2, z3:restoreZ3 }, { type:'hold', ms:1 });
+    return true;
+  }catch(_){ return false; }
+}
+
+function __sqVsShadowDmdCalloutForDart(dart, dartIndex, entry, roundDef){
+  try{
+    const kind = String((dart && (dart.kind || dart.type)) || '').trim();
+    const points = Number(dart && (dart.points ?? dart.pts ?? dart.score) || 0);
+    const prior = Array.isArray(entry && entry.darts) ? entry.darts.slice(0, Math.max(0, Number(dartIndex) || 0)) : [];
+    const kindFor = __sqVsShadowDmdKindForDart;
+    const turnKinds = prior.concat([dart]).map(kindFor);
+    const scoringKinds = turnKinds.filter(k => k && k !== 'Miss');
+    const hasS = scoringKinds.includes('S');
+    const hasD = scoringKinds.includes('D');
+    const hasT = scoringKinds.includes('T');
+    const hasMiss = turnKinds.includes('Miss');
+    const isFinalDart = Number(dartIndex) === 2;
+    const priorKinds = prior.map(kindFor);
+    const thirdMissAfterTwoTriples = isFinalDart && (kind === 'Miss' || points === 0) && priorKinds[0] === 'T' && priorKinds[1] === 'T';
+    const thirdMissAfterTwoDoubles = isFinalDart && (kind === 'Miss' || points === 0) && priorKinds[0] === 'D' && priorKinds[1] === 'D';
+    const thirdIsScoringAfterTwoMisses = isFinalDart && kind !== 'Miss' && points > 0 && priorKinds[0] === 'Miss' && priorKinds[1] === 'Miss';
+    const lastDartHeroImageHit = thirdIsScoringAfterTwoMisses && (kind === 'Double' || kind === 'D' || kind === 'Triple' || kind === 'T' || kind === 'B');
+    const isDesmondDelight = isFinalDart && turnKinds.filter(k => k === 'S').length === 2 && turnKinds.filter(k => k === 'D').length === 1 && !hasT && !hasMiss;
+    const roundTotalNow = prior.concat([dart]).reduce((sum, d) => sum + (Number(d && (d.points ?? d.pts ?? d.score) || 0) || 0), 0);
+    const distinctKinds = Array.from(new Set(scoringKinds));
+    const isDirtyTurn = isFinalDart && roundTotalNow > 0 && roundTotalNow <= 30 && !(hasS && hasD && hasT) && !isDesmondDelight && distinctKinds.length >= 2;
+    const isDoublesRound = roundDef && roundDef.type === 'doubles';
+    const isTriplesRound = roundDef && roundDef.type === 'triples';
+    const sector = Number(dart && (dart.sector ?? dart.segment ?? dart.target) || 0);
+    const low1234 = sector === 1 || sector === 2 || sector === 3 || sector === 4;
+    const voldyHit = low1234 && ((isDoublesRound && (kind === 'Double' || kind === 'D')) || (isTriplesRound && (kind === 'Triple' || kind === 'T')));
+
+    if (thirdMissAfterTwoTriples || thirdMissAfterTwoDoubles) return { phrase:'Boooooo!!', phraseOpts:{ stepMs:300 }, queueOnly:true };
+    if (isDesmondDelight) return { phrase:'DESMOND DELIGHT', phraseOpts:{ imageType:'desmondImg', imageMs:950, amp:3.6, stepMs:280 }, queueOnly:true };
+    if (isFinalDart && hasS && hasD && hasT) return { phrase:'SHANGHAI', phraseOpts:{ stepMs:320 }, queueOnly:true };
+    if (thirdIsScoringAfterTwoMisses) {
+      return {
+        phrase:'LAST DART HERO',
+        phraseOpts: lastDartHeroImageHit ? { imageType:'lastDartImg', imageMs:900, amp:3.4, stepMs:260 } : { stepMs:260 },
+        queueOnly:true
+      };
+    }
+    if (voldyHit) return { phrase:'HAHA HA HAH!', phraseOpts:{ imageType:'voldyImg', imageMs:900, amp:2.8, stepMs:300 }, queueOnly:true };
+    if (kind === 'Miss' || points === 0) return { z2:'MISS', fx:{ type:'flash', ms:650, fx:'smear' } };
+    if (kind === 'B') return { z2: dart.bull === 'Inner' ? 'INNER BULL!' : 'OUTER BULL!', fx:{ type:'shake', amp:2.2, ms:900, fx:'impact' } };
+    if (kind === 'Triple' || kind === 'T') {
+      const count = turnKinds.filter(k => k === 'T').length;
+      if (count === 2) return { phrase:'TREBLE TROUBLE', phraseOpts:{ stepMs:250 }, queueOnly:true };
+      if (count >= 3) return { phrase:'MAXI MAYHEM', phraseOpts:{ stepMs:250 }, queueOnly:true };
+      return { z2:'TRIPLE!', fx:{ type:'shake', amp:2.3, ms:900, fx:'impact' } };
+    }
+    if (kind === 'Double' || kind === 'D') {
+      const count = turnKinds.filter(k => k === 'D').length;
+      if (count === 2) return { phrase:'DOUBLE LOCK', phraseOpts:{ stepMs:250 }, queueOnly:true };
+      if (count >= 3) return { phrase:'DOUBLE DEVIL', phraseOpts:{ stepMs:250 }, queueOnly:true };
+      return { z2:'DOUBLE!', fx:{ type:'flash', ms:800, fx:'impact' } };
+    }
+    if (isDirtyTurn) return { phrase:'UGLY BUT IT COUNTS', phraseOpts:{ stepMs:250 }, queueOnly:true };
+    if (points >= 60) return { z2:'POWER DART', fx:{ type:'shake', amp:2.0, ms:850, fx:'impact' } };
+    if (isFinalDart && turnKinds.filter(k => k === 'S').length >= 3) {
+      const pool = ['STEADY HAND', 'DOING THE BASICS', 'SLOW AND STEADY'];
+      const pick = pool[Math.abs((Number(state && state.shadow && state.shadow.shadowPlayerIndex) || 1) + (Number(dartIndex) || 0) + roundTotalNow) % pool.length];
+      return { phrase:pick, phraseOpts:{ stepMs:250 }, queueOnly:true };
+    }
+    return { z2:'SINGLE', fx:{ type:'wipe', ms:650, fx:'smear' } };
+  }catch(_){
+    return { z2:'SINGLE', fx:{ type:'flash', ms:650, fx:'impact' } };
+  }
+}
+
+function __sqShowVsShadowDartFeedback(dart, dartIndex, roundIndex, entry){
+  try{
+    if (!window.sqDmdShowZones) return;
+    const roundDef = (typeof ROUNDS !== 'undefined' && ROUNDS[roundIndex]) ? ROUNDS[roundIndex] : {};
+    const z1 = 'ROUND\n' + __sqVsShadowDmdRoundLabel(roundDef, roundIndex);
+    const seq = (entry && Array.isArray(entry.darts) ? entry.darts : [])
+      .slice(0, Math.min(3, Math.max(0, Number(dartIndex) + 1)))
+      .map(d => __sqVsShadowDmdTokenForDart(d, roundDef))
+      .filter(Boolean)
+      .join(' / ');
+    const callout = __sqVsShadowDmdCalloutForDart(dart, dartIndex, entry, roundDef);
+    if (callout && callout.phrase) {
+      const queued = __sqVsShadowQueueDmdPhrase(callout.phrase, Object.assign({ restoreZ2:'', restoreZ3:seq }, callout.phraseOpts || {}));
+      if (queued && callout.queueOnly) return;
+    }
+    window.sqDmdShowZones({ z1, z2:(callout && callout.z2) || 'SINGLE', z3:seq }, (callout && callout.fx) || { type:'flash', ms:650, fx:'impact' });
+  }catch(_){ }
+}
+
+function __sqShowVsShadowDartDmd(dartIndex, roundIndex, entry, dart){
+  return __sqShowVsShadowDartFeedback(dart, dartIndex, roundIndex, entry);
+}
+
+function __sqVsShadowClearDmdPreThrowState(){
+  try{ window.__sqDmdStopPreThrow?.(); }catch(_){ }
+  try{ window.__sqDmdPinnedZ2Text = ''; }catch(_){ }
+  try{ window.__sqDmdNoScrollZ2 = false; }catch(_){ }
+  try{ window.__sqDmdZ3Small = false; }catch(_){ }
+}
+
+function __sqVsShadowRealDmdName(realIndex){
+  try{
+    const p = state && state.players ? state.players[realIndex] : null;
+    return String((p && (p.name || p.fullName || p.full || p.nickname || p.code || p.initials)) || 'Player').trim() || 'Player';
+  }catch(_){ return 'Player'; }
+}
+
+function __sqVsShadowRealDmdInfoLines(realIndex){
+  try{
+    const players = Array.isArray(state && state.players) ? state.players : [];
+    const pCount = Math.max(1, players.length || 1);
+    let total = 0;
+    let dartsThrown = 0;
+    for (let r = 0; r < (typeof MAX_ROUNDS === 'number' ? MAX_ROUNDS : 14); r++) {
+      const entry = state.score && state.score[realIndex] && state.score[realIndex][r];
+      if (!entry) continue;
+      total += Number(entry.roundTotal || 0) || 0;
+      const darts = Array.isArray(entry.darts) ? entry.darts : [];
+      darts.forEach(d => { if (d) dartsThrown++; });
+    }
+    const totals = players.map((_, i) => {
+      let t = 0;
+      for (let r = 0; r < (typeof MAX_ROUNDS === 'number' ? MAX_ROUNDS : 14); r++) {
+        t += Number(state.score && state.score[i] && state.score[i][r] && state.score[i][r].roundTotal || 0) || 0;
+      }
+      return t;
+    });
+    const ordered = totals.map((v, i) => ({ i, v })).sort((a,b) => (b.v - a.v) || (a.i - b.i));
+    const pos = Math.max(1, ordered.findIndex(x => x.i === realIndex) + 1);
+    const avg = dartsThrown ? (total * 3 / dartsThrown) : 0;
+    const avgTxt = (Math.round(avg * 10) / 10).toFixed(1);
+    return [
+      'SCORE: ' + total,
+      'POS: ' + pos + '/' + pCount,
+      'RND AVG: ' + avgTxt
+    ];
+  }catch(_){ return []; }
+}
+
+function __sqShowVsShadowAfterTurnDmd(roundIndex, roundTotal, realIndex){
+  try{
+    if (!window.sqDmdShowZones) return;
+    try{ __sqVsShadowClearDmdPreThrowState(); }catch(_){ }
+    window.sqDmdShowZones({ z2:'ROUND SCORE', z3:String(Number(roundTotal || 0)), z3Small:true, type:'roll' }, { type:'flash', ms:650, fx:'impact' });
+    const realName = __sqVsShadowRealDmdName(realIndex);
+    const infoLines = __sqVsShadowRealDmdInfoLines(realIndex);
+    const id = setTimeout(() => {
+      try{
+        if (!__sqIsVsShadowRuntime()) return;
+        if (Number(state && state.currentPlayer) !== Number(realIndex)) return;
+        if (Number(state && state.currentDart) !== 0) return;
+        try{ __sqVsShadowClearDmdPreThrowState(); }catch(_){ }
+        window.sqDmdShowZones?.({ z2:realName, z3:'' }, { type:'hold', ms:1 });
+        try{ window.__sqDmdStartPreThrow?.(realName, infoLines); }catch(_){ }
+      }catch(_){ }
+    }, 850);
+    (window.__sqVsShadowTimers || (window.__sqVsShadowTimers = [])).push(id);
+  }catch(_){ }
+}
+
+function __sqApplyVsShadowDart(dartIndex, dartValue, roundIndex){
+  try{
+    const shadowIndex = Number(state && state.shadow && state.shadow.shadowPlayerIndex);
+    if (!Number.isFinite(shadowIndex)) return false;
+    const entry = state.score && state.score[shadowIndex] && state.score[shadowIndex][roundIndex];
+    if (!entry || !Array.isArray(entry.darts)) return false;
+    const dart = __sqDeepCloneForPersist(dartValue);
+    if (!dart || !Number.isFinite(Number(dart.points))) return false;
+    entry.darts[dartIndex] = dart;
+    entry.roundTotal = (entry.darts || []).reduce((sum, d) => sum + (Number(d && d.points) || 0), 0);
+    state.currentDart = Math.min(3, Math.max(0, Number(dartIndex) + 1));
+    try{ if (state.uiLastGo && state.uiLastGo.player !== shadowIndex) state.uiLastGo = null; }catch(_){ }
+    try{ __sqRecomputeVsShadowShadowTotals(); }catch(_){ }
+    try{ updateUI(); }catch(_){ }
+    try{ __sqFlashVsShadowInputButton(dart, roundIndex); }catch(_){ }
+    try{ __sqShowVsShadowDartFeedback(dart, dartIndex, roundIndex, entry); }catch(_){ }
+    return true;
+  }catch(_){ return false; }
+}
+
+function __sqAdvanceAfterVsShadowAutoTurn(){
+  try{
+    if (!__sqIsVsShadowRuntime()) return false;
+    const shadow = state.shadow || {};
+    const shadowIndex = Number(shadow.shadowPlayerIndex);
+    const realIndex = Number.isFinite(Number(shadow.realPlayerIndex)) ? Number(shadow.realPlayerIndex) : 0;
+    const roundIndex = Number(state.currentRound);
+    if (!Number.isFinite(shadowIndex) || !Number.isFinite(roundIndex)) return false;
+    const entry = state.score && state.score[shadowIndex] && state.score[shadowIndex][roundIndex];
+    const darts = entry && Array.isArray(entry.darts) ? entry.darts.slice(0, 3) : [];
+    if (darts.length !== 3 || darts.some(d => !d || !Number.isFinite(Number(d.points)))) {
+      __sqPauseVsShadowAutoTurn('Shadow replay did not complete cleanly. Vs Shadow is paused.');
+      return false;
+    }
+    const gameIndex = Number(shadow.activeGameIndex || 0);
+    const sourceGameId = String((shadow.games && shadow.games[gameIndex] && shadow.games[gameIndex].sourceGameId) || '');
+    state.history.push({
+      type:'shadowAutoTurn',
+      player:shadowIndex,
+      round:roundIndex,
+      darts:__sqDeepCloneForPersist(darts),
+      roundTotal:Number(entry.roundTotal || 0),
+      sourceGameId
+    });
+    shadow.autoTurnPending = false;
+    shadow.autoTurnInProgress = false;
+    shadow.autoTurnToken = null;
+    shadow.lastCompletedRound = roundIndex;
+    shadow.lastBlockedReason = '';
+    state.currentPlayer = realIndex;
+    state.currentDart = 0;
+    if (roundIndex < ((typeof MAX_ROUNDS === 'number' ? MAX_ROUNDS : 14) - 1)) {
+      state.currentRound = roundIndex + 1;
+    } else {
+      state.currentRound = roundIndex;
+      state.finished = true;
+      state.gameAwarded = false;
+      shadow.visualCompleteBlocked = false;
+      shadow.completionReady = true;
+      shadow.lastBlockedReason = '';
+    }
+    try{ updateUI(); }catch(_){ }
+    try{ __sqShowVsShadowAfterTurnDmd(roundIndex, Number(entry.roundTotal || 0), realIndex); }catch(_){ }
+    if (state.finished) {
+      const id = setTimeout(() => {
+        try{
+          if (!__sqIsVsShadowRuntime() || !state.finished || state.gameAwarded) return;
+          if (typeof openGameCompleteDialog === 'function') openGameCompleteDialog();
+        }catch(_){ }
+      }, 1100);
+      (window.__sqVsShadowTimers || (window.__sqVsShadowTimers = [])).push(id);
+    }
+    return true;
+  }catch(e){
+    try{ console.warn('[SQ] Vs Shadow advance failed', e); }catch(_){ }
+    __sqPauseVsShadowAutoTurn('Shadow replay failed. Vs Shadow is paused.');
+    return false;
+  }
+}
+
+function __sqApplyVsShadowAutoTurn(roundIndex){
+  try{
+    const shadow = state.shadow || {};
+    const token = shadow.autoTurnToken;
+    if (!__sqVsShadowAutoTurnStillValid(token, roundIndex)) return false;
+    const gameIndex = Number(shadow.activeGameIndex || 0);
+    const sourceRound = __sqGetVsShadowSourceRound(gameIndex, roundIndex);
+    const normalized = __sqNormalizeVsShadowReplayDarts(sourceRound, roundIndex);
+    if (!normalized || !Array.isArray(normalized.darts) || normalized.darts.length !== 3) {
+      __sqPauseVsShadowAutoTurn('Shadow replay data is missing for this round. Vs Shadow is paused.');
+      return false;
+    }
+    shadow.autoTurnPending = false;
+    shadow.autoTurnInProgress = true;
+    shadow.autoTurnFailed = false;
+    state.currentDart = 0;
+    try{ window.__sqDmdStopPreThrow?.(); }catch(_){ }
+    try{ updateUI(); }catch(_){ }
+    [0, 1, 2].forEach((dartIndex) => {
+      const id = setTimeout(() => {
+        if (!__sqVsShadowAutoTurnStillValid(token, roundIndex)) return;
+        if (!__sqApplyVsShadowDart(dartIndex, normalized.darts[dartIndex], roundIndex)) {
+          __sqPauseVsShadowAutoTurn('Shadow replay dart could not be applied. Vs Shadow is paused.');
+        }
+      }, dartIndex * __SQ_VS_SHADOW_DART_STAGGER_MS);
+      (window.__sqVsShadowTimers || (window.__sqVsShadowTimers = [])).push(id);
+    });
+    const advanceId = setTimeout(() => {
+      if (!__sqVsShadowAutoTurnStillValid(token, roundIndex)) return;
+      __sqAdvanceAfterVsShadowAutoTurn();
+    }, (2 * __SQ_VS_SHADOW_DART_STAGGER_MS) + __SQ_VS_SHADOW_POST_DART_ADVANCE_MS);
+    (window.__sqVsShadowTimers || (window.__sqVsShadowTimers = [])).push(advanceId);
+    return true;
+  }catch(e){
+    try{ console.warn('[SQ] Vs Shadow auto-turn failed', e); }catch(_){ }
+    __sqPauseVsShadowAutoTurn('Shadow replay failed. Vs Shadow is paused.');
+    return false;
+  }
+}
+
+function __sqScheduleVsShadowAutoTurn(roundIndex){
+  try{
+    if (!__sqIsVsShadowRuntime()) return false;
+    const shadow = state.shadow || {};
+    if (shadow.autoTurnEnabled !== true) return false;
+    if (!__sqVsShadowCurrentPlayerIsShadow()) return false;
+    if (state.currentDart !== 0 || Number(state.currentRound) !== Number(roundIndex) || state.finished || state.gameAwarded) return false;
+    if (shadow.autoTurnPending || shadow.autoTurnInProgress) return false;
+    const gameIndex = Number(shadow.activeGameIndex || 0);
+    const game = Array.isArray(shadow.games) ? shadow.games[gameIndex] : null;
+    const token = [state.__gameToken || 0, gameIndex, roundIndex, game && game.sourceGameId || 'source'].join(':');
+    __sqClearVsShadowTimers('schedule-new');
+    state.shadow.autoTurnToken = token;
+    state.shadow.autoTurnPending = true;
+    state.shadow.autoTurnInProgress = false;
+    state.shadow.autoTurnFailed = false;
+    try{ updateUI(); }catch(_){ }
+    const id = setTimeout(() => {
+      if (!__sqVsShadowAutoTurnStillValid(token, roundIndex)) return;
+      __sqApplyVsShadowAutoTurn(roundIndex);
+    }, __SQ_VS_SHADOW_PRE_THROW_DELAY_MS);
+    (window.__sqVsShadowTimers || (window.__sqVsShadowTimers = [])).push(id);
+    return true;
+  }catch(e){
+    try{ console.warn('[SQ] Vs Shadow schedule failed', e); }catch(_){ }
+    __sqPauseVsShadowAutoTurn('Shadow replay could not be scheduled. Vs Shadow is paused.');
+    return false;
+  }
+}
+
+function __sqRealPlayerIndexes(players){
+  try{
+    const list = Array.isArray(players) ? players : [];
+    const out = [];
+    list.forEach((p, i) => { if (!__sqIsShadowPlayer(p)) out.push(i); });
+    return out;
+  }catch(_){ return []; }
+}
+
+function __sqRealPlayersOnly(players){
+  try{
+    const list = Array.isArray(players) ? players : [];
+    return __sqRealPlayerIndexes(list).map(i => list[i]);
+  }catch(_){ return []; }
+}
+
+function __sqRealOnlyArray(values, players){
+  try{
+    const arr = Array.isArray(values) ? values : [];
+    const realIndexes = __sqRealPlayerIndexes(players);
+    const playerCount = Array.isArray(players) ? players.length : 0;
+    if (arr.length === realIndexes.length && arr.length !== playerCount) return arr.slice();
+    return realIndexes.map(i => arr[i]);
+  }catch(_){ return []; }
+}
+
+function __sqRealOnlyTotals(totals, players){
+  try{
+    return __sqRealOnlyArray(totals, players).map(v => Number(v) || 0);
+  }catch(_){ return []; }
+}
+
+function __sqDeepCloneForPersist(value){
+  try{ return JSON.parse(JSON.stringify(value)); }catch(_){ return value; }
+}
+
+function __sqRealOnlyBoard(board, players){
+  try{
+    if (!Array.isArray(board)) return [];
+    const realIndexes = __sqRealPlayerIndexes(players);
+    if (!realIndexes.length) return [];
+    const playerCount = Array.isArray(players) ? players.length : 0;
+    const maxRounds = (typeof MAX_ROUNDS === 'number' && MAX_ROUNDS > 0) ? MAX_ROUNDS : 14;
+    const looksRoundFirst = board.length === maxRounds && Array.isArray(board[0]) && board[0].length === playerCount;
+
+    if (looksRoundFirst) {
+      return board.map(round => {
+        if (!Array.isArray(round)) return round;
+        return realIndexes.map(i => __sqDeepCloneForPersist(round[i]));
+      });
+    }
+
+    return realIndexes.map(i => __sqDeepCloneForPersist(board[i]));
+  }catch(_){ return []; }
+}
+
+function __sqRealOnlyWinnerIndexes(winners, players){
+  try{
+    const realIndexes = __sqRealPlayerIndexes(players);
+    const remap = new Map(realIndexes.map((original, compact) => [original, compact]));
+    return (Array.isArray(winners) ? winners : [])
+      .filter(i => remap.has(i))
+      .map(i => remap.get(i));
+  }catch(_){ return []; }
+}
+
+function __sqRealOnlyMatchHistory(history, players){
+  try{
+    const rows = Array.isArray(history) ? history : [];
+    return rows.map(g => {
+      const copy = Object.assign({}, g || {});
+      if (Array.isArray(copy.totals)) copy.totals = __sqRealOnlyTotals(copy.totals, players);
+      if (Array.isArray(copy.board)) copy.board = __sqRealOnlyBoard(copy.board, players);
+      return copy;
+    });
+  }catch(_){ return []; }
+}
+
+function __sqAssertNoShadowPersistPayload(payload, context){
+  try{
+    if (typeof __sqIsVsShadowRuntime === 'function' && !__sqIsVsShadowRuntime()) return true;
+    const text = JSON.stringify(payload || {});
+    const forbidden = [
+      /"isShadow"\s*:/i,
+      /"virtual"\s*:/i,
+      /"shadowId"\s*:/i,
+      /"shadow"\s*:/i,
+      /shadow:/i,
+      /\bGHOST\b/i,
+      /👻/,
+      /sourceGameId/i,
+      /sourceScore/i,
+      /sourceRows/i,
+      /opponentName/i,
+      /opponentKind/i
+    ];
+    const hit = forbidden.find(re => re.test(text));
+    if (!hit) return true;
+    const msg = 'Vs Shadow save blocked: Shadow data cannot be persisted.';
+    try{ if (typeof toast === 'function') toast(msg); }catch(_){ }
+    try{ console.warn('[SQ] ' + msg, { context: context || '', pattern: String(hit), payload }); }catch(_){ }
+    return false;
+  }catch(e){
+    try{ console.warn('[SQ] Vs Shadow save assertion failed closed', e); }catch(_){ }
+    try{ if (typeof toast === 'function') toast('Vs Shadow save blocked: payload could not be verified.'); }catch(_){ }
+    return false;
+  }
+}
+
+function __sqRefreshVsShadowRuntimePlayerForGame(gameIndex){
+  try{
+    if (!__sqIsVsShadowRuntime()) return false;
+    const shadow = state.shadow || {};
+    const games = Array.isArray(shadow.games) ? shadow.games : [];
+    const idx = Math.max(0, Number(gameIndex) || 0);
+    const cfg = games[idx] || null;
+    if (!cfg || !cfg.replayAvailable || !Array.isArray(cfg.sourceRows) || !cfg.sourceRows.length) return false;
+    state.shadow = Object.assign({}, shadow, {
+      status: 'runtime_phase2d',
+      activeGameIndex: idx,
+      autoTurnPending: false,
+      autoTurnInProgress: false,
+      autoTurnToken: null,
+      autoTurnFailed: false,
+      autoTurnEnabled: true,
+      completionEnabled: true,
+      savePolicy: 'real-only',
+      visualCompleteBlocked: false,
+      completionReady: false,
+      lastBlockedReason: ''
+    });
+    const existing = state.players && state.players[1] ? state.players[1] : {};
+    const next = __sqVsShadowRuntimePlayer(state.shadow);
+    next.color = existing.color || next.color || null;
+    state.players[1] = Object.assign({}, existing, next);
+    return true;
+  }catch(_){ return false; }
+}
+
+function __sqUndoVsShadowCompletedAutoTurn(){
+  try{
+    if (!__sqIsVsShadowRuntime()) return false;
+    if (state.gameAwarded || state.__sqPracticeSavedToGames || state.__sqPracticeCloudSavedV2 || state.__sqPracticeSavedKeyV2) {
+      try{ toast('Vs Shadow undo is locked after save.'); }catch(_){ }
+      return true;
+    }
+    const history = Array.isArray(state.history) ? state.history : [];
+    const marker = history[history.length - 1];
+    if (!marker || marker.type !== 'shadowAutoTurn') return false;
+    const shadow = state.shadow || {};
+    const round = Number(marker.round);
+    const realIndex = Number.isFinite(Number(shadow.realPlayerIndex)) ? Number(shadow.realPlayerIndex) : 0;
+    const shadowIndex = Number.isFinite(Number(shadow.shadowPlayerIndex)) ? Number(shadow.shadowPlayerIndex) : 1;
+    let realHistoryIndex = -1;
+    for (let i = history.length - 2; i >= 0; i--) {
+      const h = history[i];
+      if (!h || h.type === 'shadowAutoTurn') continue;
+      if (Number(h.player) === realIndex && Number(h.round) === round && Number(h.dartIndex) === 2) {
+        realHistoryIndex = i;
+        break;
+      }
+    }
+    if (realHistoryIndex < 0) {
+      try{ toast('Vs Shadow undo could not find the paired real dart.'); }catch(_){ }
+      return true;
+    }
+
+    try{ __sqClearVsShadowTimers('undo-completed-shadow-turn'); }catch(_){ }
+    history.pop();
+    const realThrow = history.splice(realHistoryIndex, 1)[0];
+
+    const shadowEntry = state.score && state.score[shadowIndex] && state.score[shadowIndex][round];
+    if (shadowEntry) {
+      shadowEntry.darts = [null, null, null];
+      shadowEntry.roundTotal = 0;
+    }
+
+    const realEntry = state.score && state.score[realIndex] && state.score[realIndex][round];
+    if (realEntry && Array.isArray(realEntry.darts)) {
+      realEntry.darts[2] = null;
+      realEntry.roundTotal = realEntry.darts.reduce((sum, d) => sum + (Number(d && d.points) || 0), 0);
+    }
+
+    state.currentPlayer = realIndex;
+    state.currentRound = round;
+    state.currentDart = 2;
+    state.finished = false;
+    state.gameAwarded = false;
+    try{ delete state.__sqGameCompleteOpen; }catch(_){ }
+    try{ document.querySelectorAll('.sq-gamecomplete-backdrop').forEach(n => n.remove()); }catch(_){ }
+    if (state.shadow) {
+      state.shadow.autoTurnPending = false;
+      state.shadow.autoTurnInProgress = false;
+      state.shadow.autoTurnToken = null;
+      state.shadow.visualCompleteBlocked = false;
+      state.shadow.completionReady = false;
+      state.shadow.lastBlockedReason = '';
+      if (Number(state.shadow.lastCompletedRound) === round) delete state.shadow.lastCompletedRound;
+    }
+
+    try{ recomputeMatchAggHitsForPlayer(realIndex); }catch(_){ }
+    try{ recomputeMatchAggTotalsForPlayer(realIndex); }catch(_){ }
+    try{ recomputeMatchAggHitsForPlayer(shadowIndex); }catch(_){ }
+    try{ recomputeMatchAggTotalsForPlayer(shadowIndex); }catch(_){ }
+    try{ updateUI(); }catch(_){ }
+    try{ window.sqDmdShowZones?.({ z2:'UNDO', z3:'REAL DART 3' }, { type:'wipe', dir:'rev', ms:420, revealMs:120, z3Small:true }); }catch(_){ }
+    return true;
+  }catch(e){
+    try{ console.warn('[SQ] Vs Shadow paired undo failed', e); }catch(_){ }
+    try{ toast('Vs Shadow undo failed safely.'); }catch(_){ }
+    return true;
+  }
+}
 
 function __sqBuildVsShadowDraftConfig(games, realPlayer){
   const count = Math.max(1, parseInt(games, 10) || 1);
@@ -17085,6 +18460,105 @@ async function __sqVsShadowLoadPracticeCandidates(playerName){
   return candidates.slice(0, 10);
 }
 
+function __sqVsShadowIsOfficialGame(g){
+  try{
+    if (typeof window.__sqGameModeKey === 'function') return window.__sqGameModeKey(g) === 'official';
+    const st = __sqVsShadowPickState(g);
+    const raw = __sqVsShadowPickRawState(g);
+    const match = (g && g.match) || st.match || raw.match || {};
+    const mode = String((g && (g.mode || g.gameMode || g.game_mode)) || st.mode || st.gameMode || raw.mode || '').toLowerCase();
+    if (mode.indexOf('practice') >= 0 || mode.indexOf('turbo') >= 0) return false;
+    if (st.is_practice === true || raw.is_practice === true || match.forcePractice === true) return false;
+    return __sqVsShadowPlayersOfGame(g).length >= 2;
+  }catch(_){ return false; }
+}
+
+async function __sqVsShadowFetchOfficialGames(){
+  if (typeof sb === 'undefined' || !sb || typeof sb.from !== 'function') return [];
+  const table = (typeof TABLE_GAMES !== 'undefined' && TABLE_GAMES) ? TABLE_GAMES : 'games';
+  const res = await sb.from(table)
+    .select('id,match_id,game_number,created_at,totals,state,finished')
+    .eq('finished', true)
+    .order('created_at', { ascending: false })
+    .limit(1000);
+  if (res && res.error) throw res.error;
+  return (Array.isArray(res && res.data) ? res.data : []).filter(__sqVsShadowIsOfficialGame);
+}
+
+function __sqVsShadowCandidateFromOfficialGame(g, playerIndex){
+  const players = __sqVsShadowPlayersOfGame(g);
+  const name = __sqVsShadowPlayerName(players[playerIndex]);
+  if (!name) return null;
+  const totals = __sqVsShadowTotalsOfGame(g);
+  const board = __sqVsShadowBoardOfGame(g);
+  const rows = __sqVsShadowRowsForPlayer(board, playerIndex);
+  let score = Number(totals[playerIndex] || 0);
+  if (!Number.isFinite(score) || score <= 0) {
+    score = rows.reduce((sum, entry) => sum + __sqVsShadowRoundScore(entry), 0);
+  }
+  if (!Number.isFinite(score) || score <= 0) return null;
+  const gameId = __sqVsShadowGameId(g);
+  const ts = __sqVsShadowGameTs(g);
+  const replayAvailable = __sqVsShadowHasReplayableBoard(board, playerIndex);
+  return {
+    key: ['official', gameId || 'game', playerIndex, score, ts || 'no-ts'].join(':'),
+    playerName: name,
+    playerIndex,
+    gameId,
+    score,
+    ts,
+    replayAvailable,
+    sourceRows: replayAvailable ? __sqDeepCloneForPersist(rows) : []
+  };
+}
+
+async function __sqVsShadowLoadOfficialPbCandidates(savedPlayers){
+  const savedKeys = new Set((Array.isArray(savedPlayers) ? savedPlayers : [])
+    .map(p => __sqVsShadowNameKey(__sqVsShadowPlayerName(p)))
+    .filter(Boolean));
+  if (!savedKeys.size) return [];
+  const games = await __sqVsShadowFetchOfficialGames();
+  const bestByPlayer = new Map();
+
+  (games || []).forEach(g => {
+    const players = __sqVsShadowPlayersOfGame(g);
+    players.forEach((p, playerIndex) => {
+      const nameKey = __sqVsShadowNameKey(__sqVsShadowPlayerName(p));
+      if (!savedKeys.has(nameKey)) return;
+      const candidate = __sqVsShadowCandidateFromOfficialGame(g, playerIndex);
+      if (!candidate) return;
+      const prev = bestByPlayer.get(nameKey);
+      if (!prev ||
+          Number(candidate.score || 0) > Number(prev.score || 0) ||
+          (Number(candidate.score || 0) === Number(prev.score || 0) && Date.parse(candidate.ts || '') > Date.parse(prev.ts || ''))) {
+        bestByPlayer.set(nameKey, candidate);
+      }
+    });
+  });
+
+  return Array.from(bestByPlayer.values())
+    .sort((a,b) => (Number(b.score || 0) - Number(a.score || 0)) || (Date.parse(b.ts || '') - Date.parse(a.ts || '')) || String(a.playerName).localeCompare(String(b.playerName)));
+}
+
+async function __sqVsShadowLoadOfficialCandidatesForPlayer(playerName){
+  const targetKey = __sqVsShadowNameKey(playerName);
+  if (!targetKey) return [];
+  const games = await __sqVsShadowFetchOfficialGames();
+  const candidates = [];
+
+  (games || []).forEach(g => {
+    const players = __sqVsShadowPlayersOfGame(g);
+    players.forEach((p, playerIndex) => {
+      if (__sqVsShadowNameKey(__sqVsShadowPlayerName(p)) !== targetKey) return;
+      const candidate = __sqVsShadowCandidateFromOfficialGame(g, playerIndex);
+      if (candidate) candidates.push(candidate);
+    });
+  });
+
+  candidates.sort((a,b) => (Number(b.score || 0) - Number(a.score || 0)) || (Date.parse(b.ts || '') - Date.parse(a.ts || '')));
+  return candidates.slice(0, 10);
+}
+
 function openPracticeVsShadowOpponentDialog(){
   try{ document.querySelectorAll('.sq-vs-shadow-overlay').forEach(el => el.remove()); }catch(_){ }
 
@@ -17115,22 +18589,29 @@ function openPracticeVsShadowOpponentDialog(){
   status.textContent = 'Loading saved players from Supabase...';
 
   const controls = [];
+  let savedPlayerRows = [];
+  let startBtn = null;
+  let reason = null;
 
   function syncDraft(){
     const draftGames = controls.map((ctrl, i) => {
       const opponentOption = ctrl.opponentSelect.options[ctrl.opponentSelect.selectedIndex] || null;
       const opponentKind = ctrl.opponentSelect.value === '__player_pb__' ? 'player_pb' : 'saved_player';
       const candidate = (ctrl.candidates || []).find(c => c.key === ctrl.scoreSelect.value) || null;
+      const selectedName = String((opponentOption && opponentOption.dataset.playerName) || '').trim();
+      const sourceName = __sqVsShadowPlayerName(candidate && candidate.playerName) || selectedName || (opponentKind === 'player_pb' ? 'Player PB' : '');
       return {
         gameNumber: i + 1,
         opponentKind,
         opponentPlayerId: opponentKind === 'saved_player' ? (opponentOption && opponentOption.dataset.playerId ? opponentOption.dataset.playerId : null) : null,
-        opponentName: opponentKind === 'player_pb' ? realName : String((opponentOption && opponentOption.dataset.playerName) || '').trim(),
+        opponentName: sourceName,
+        sourcePlayerName: sourceName,
         sourceGameId: candidate ? candidate.gameId : null,
         sourceScore: candidate ? candidate.score : 0,
         sourceTs: candidate ? candidate.ts : '',
         sourcePlayerIndex: candidate ? candidate.playerIndex : null,
-        replayAvailable: !!(candidate && candidate.replayAvailable)
+        replayAvailable: !!(candidate && candidate.replayAvailable),
+        sourceRows: candidate && candidate.replayAvailable ? __sqDeepCloneForPersist(candidate.sourceRows || []) : []
       };
     });
     state.match = Object.assign({}, state.match || {}, { practiceType:'vsShadow', forcePractice:true });
@@ -17144,6 +18625,16 @@ function openPracticeVsShadowOpponentDialog(){
       blockedReason: __SQ_VS_SHADOW_PHASE1_REASON,
       games: draftGames
     });
+    const ready = __sqVsShadowSelectedRowsReady(controls);
+    if (startBtn) {
+      startBtn.disabled = !ready;
+      startBtn.title = ready ? 'Start Vs Shadow practice game.' : __SQ_VS_SHADOW_PHASE1_REASON;
+    }
+    if (reason) {
+      reason.textContent = ready
+        ? 'Ready. Shadow gameplay will replay the selected Official source and save only the real Practice result.'
+        : __SQ_VS_SHADOW_PHASE1_REASON;
+    }
   }
 
   function setScoreLoading(ctrl, text){
@@ -17163,21 +18654,24 @@ function openPracticeVsShadowOpponentDialog(){
       : String((selected && selected.dataset.playerName) || '').trim();
     ctrl.candidates = [];
     ctrl.scoreSelect.disabled = true;
-    setScoreLoading(ctrl, 'Loading Practice scores...');
+    setScoreLoading(ctrl, 'Loading Official scores...');
     syncDraft();
 
     try{
-      const rows = await __sqVsShadowLoadPracticeCandidates(sourceName);
+      const rows = ctrl.opponentSelect.value === '__player_pb__'
+        ? await __sqVsShadowLoadOfficialPbCandidates(savedPlayerRows)
+        : await __sqVsShadowLoadOfficialCandidatesForPlayer(sourceName);
       ctrl.candidates = rows;
       ctrl.scoreSelect.innerHTML = '';
       if (!rows.length) {
-        setScoreLoading(ctrl, 'No Practice scores found');
+        setScoreLoading(ctrl, 'No Official scores found');
         ctrl.scoreSelect.disabled = true;
       } else {
         rows.forEach((row, idx) => {
           const opt = document.createElement('option');
           opt.value = row.key;
-          opt.textContent = String(Math.round(row.score)) + ' - ' + __sqVsShadowFormatTs(row.ts) + (row.gameId ? ' - ' + row.gameId.slice(0, 8) : '') + (row.replayAvailable ? '' : ' - unavailable: no replay data');
+          const playerPrefix = ctrl.opponentSelect.value === '__player_pb__' ? (__sqVsShadowPlayerName(row.playerName) + ' - ') : '';
+          opt.textContent = playerPrefix + String(Math.round(row.score)) + ' - ' + __sqVsShadowFormatTs(row.ts) + (row.gameId ? ' - ' + row.gameId.slice(0, 8) : '') + (row.replayAvailable ? '' : ' - unavailable: no replay data');
           opt.disabled = !row.replayAvailable;
           if (idx === 0 && row.replayAvailable) opt.selected = true;
           ctrl.scoreSelect.appendChild(opt);
@@ -17198,7 +18692,7 @@ function openPracticeVsShadowOpponentDialog(){
       }
     }catch(e){
       try{ console.warn('[SQ] Vs Shadow score candidate load failed', e); }catch(_){ }
-      setScoreLoading(ctrl, 'Practice scores unavailable');
+      setScoreLoading(ctrl, 'Official scores unavailable');
       ctrl.scoreSelect.disabled = true;
     }
     syncDraft();
@@ -17229,7 +18723,7 @@ function openPracticeVsShadowOpponentDialog(){
 
     const scoreSelect = document.createElement('select');
     scoreSelect.style.minWidth = '260px';
-    setScoreLoading({ scoreSelect }, 'Loading Practice scores...');
+    setScoreLoading({ scoreSelect }, 'Loading Official scores...');
 
     const ctrl = { opponentSelect, scoreSelect, candidates: [] };
     controls.push(ctrl);
@@ -17243,19 +18737,27 @@ function openPracticeVsShadowOpponentDialog(){
 
   body.append(rowsWrap, status);
 
-  const reason = document.createElement('div');
+  reason = document.createElement('div');
   reason.className = 'tag';
   reason.textContent = __SQ_VS_SHADOW_PHASE1_REASON;
 
   const footer = document.createElement('div');
   footer.className = 'modal-footer';
 
-  const startBtn = document.createElement('button');
+  startBtn = document.createElement('button');
   startBtn.type = 'button';
   startBtn.className = 'btn primary';
   startBtn.textContent = 'Start Game';
   startBtn.disabled = true;
   startBtn.title = __SQ_VS_SHADOW_PHASE1_REASON;
+  startBtn.onclick = () => {
+    syncDraft();
+    if (!__sqVsShadowSelectedRowsReady(controls)) {
+      try{ toast(__SQ_VS_SHADOW_PHASE1_REASON); }catch(_){ }
+      return;
+    }
+    __sqStartPracticeVsShadowFromDraft(overlay);
+  };
 
   const backBtn = document.createElement('button');
   backBtn.type = 'button';
@@ -17296,6 +18798,7 @@ function openPracticeVsShadowOpponentDialog(){
       const savedRows = (Array.isArray(saved) ? saved : [])
         .filter(p => p && __sqVsShadowPlayerName(p))
         .sort((a,b) => __sqVsShadowPlayerName(a).localeCompare(__sqVsShadowPlayerName(b)));
+      savedPlayerRows = savedRows;
       controls.forEach(ctrl => {
         savedRows.forEach(p => {
           const opt = document.createElement('option');
@@ -17307,7 +18810,7 @@ function openPracticeVsShadowOpponentDialog(){
           ctrl.opponentSelect.appendChild(opt);
         });
       });
-      status.textContent = savedRows.length ? 'Select a Practice score for each game. Gameplay remains disabled for Phase 1.' : 'Saved players unavailable from Supabase. Player PB remains available if replay data exists.';
+      status.textContent = savedRows.length ? 'Select a replayable Official score for each game.' : 'Saved players unavailable from Supabase. Official PB choices require saved-player data.';
       controls.forEach(ctrl => { loadScoresForControl(ctrl); });
       syncDraft();
     });
@@ -18521,6 +20024,13 @@ function roundLabelForIndex(r){
 }
 
 function getPlayerInitial(i){
+  try{
+    const p = state.players?.[i];
+    if (typeof __sqVsShadowDisplayLabelForPlayer === 'function') {
+      const shadowLabel = __sqVsShadowDisplayLabelForPlayer(p, { compact:true });
+      if (shadowLabel) return shadowLabel;
+    }
+  }catch(_){ }
   const name = (state.players?.[i]?.name || state.players?.[i] || "").toString().trim();
   // Two initials:
   // - If name has multiple words -> first letter of first + first letter of last
@@ -18544,6 +20054,12 @@ function getPlayerInitial(i){
 
 function getPlayerName(i){
   const p = state.players?.[i];
+  try{
+    if (typeof __sqVsShadowDisplayLabelForPlayer === 'function') {
+      const shadowLabel = __sqVsShadowDisplayLabelForPlayer(p, { graph:true });
+      if (shadowLabel) return shadowLabel;
+    }
+  }catch(_){ }
   const name = (p && typeof p === 'object' ? (p.name || p.fullName || p.displayName) : p);
   return String(name || '').trim();
 }
@@ -18891,6 +20407,7 @@ function __sqV2SetPagerPage(panel, page, animate){
       const s = String(name || '').trim();
       if (!s) return '--';
       if (/^Record:/i.test(s)) return 'HS';
+      if (/^[A-Z0-9]{1,3}\s+(?:PB|GHOST)$/i.test(s)) return s.toUpperCase();
       const parts = s.split(/\s+/).filter(Boolean);
       if (parts.length >= 2) return ((parts[0][0] || '') + (parts[parts.length-1][0] || '')).toUpperCase();
       return s.slice(0,2).toUpperCase();
@@ -18937,7 +20454,7 @@ function __sqV2SetPagerPage(panel, page, animate){
 
       out.push({
         key: 'p' + p,
-        name: String(player.name || player.fullName || player.displayName || ('P' + (p+1))),
+        name: String((typeof __sqVsShadowDisplayLabelForPlayer === 'function' && __sqVsShadowDisplayLabelForPlayer(player, { graph:true })) || player.name || player.fullName || player.displayName || ('P' + (p+1))),
         color: player.color || PALETTE[p % PALETTE.length],
         data: trimmed,
         dotted: false
@@ -20798,7 +22315,8 @@ function buildPad(){
   const finishBtn = document.createElement('button');
   finishBtn.className = 'btn good';
   finishBtn.style.minWidth = '220px';
-  finishBtn.textContent = 'Finish Game → Leaderboard';
+  const __sqVsShadowRetrySave = !!(typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime() && state.shadow && state.shadow.saveFailed === true);
+  finishBtn.textContent = __sqVsShadowRetrySave ? 'Retry Save → Leaderboard' : 'Finish Game → Leaderboard';
   finishBtn.onclick = async () => {
     state.finished = false;
     await awardAndShowLeaderboard();
@@ -20869,6 +22387,10 @@ function openStatsHubDialog(){
 }
 
 function openGameStatsDialog(){
+  const displayEntries = (typeof __sqRuntimePlayerDisplayEntries === 'function')
+    ? __sqRuntimePlayerDisplayEntries()
+    : (state.players || []).map((player, index) => ({ player, index }));
+  const displayPlayers = displayEntries.map(x => x.player);
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop';
 
@@ -20891,7 +22413,7 @@ function openGameStatsDialog(){
   metricTh.textContent = 'Metric';
   trh.appendChild(metricTh);
 
-  state.players.forEach(p => {
+  displayPlayers.forEach(p => {
     const th = document.createElement('th');
     th.textContent = p.name;
     th.style.textAlign = 'center';
@@ -20902,14 +22424,14 @@ function openGameStatsDialog(){
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
-  const statsByPlayer = state.players.map((_, i) => computeStatsForPlayerGame(i));
+  const statsByPlayer = displayEntries.map(x => computeStatsForPlayerGame(x.index));
   const winsArr = (state.match?.wins || []).slice();
 
   DISPLAY_METRICS.forEach(m => {
     if (m.sep) {
       const tr = document.createElement('tr');
       const td = document.createElement('td');
-      td.colSpan = 1 + state.players.length;
+      td.colSpan = 1 + displayPlayers.length;
       td.textContent = '';
       tr.appendChild(td);
       tbody.appendChild(tr);
@@ -20917,8 +22439,8 @@ function openGameStatsDialog(){
     }
 
     // Collect raw numeric values (for highlighting)
-    const rowNumeric = state.players.map((_, idx) => {
-      if (m.kind === 'wins') return winsArr[idx] || 0;
+    const rowNumeric = displayEntries.map((entry, idx) => {
+      if (m.kind === 'wins') return winsArr[entry.index] || 0;
       const v = statsByPlayer[idx][m.key];
       return (typeof v === 'number') ? v : Number.isFinite(Number(v)) ? Number(v) : -Infinity;
     });
@@ -20930,7 +22452,7 @@ function openGameStatsDialog(){
     th.textContent = m.label;
     tr.appendChild(th);
 
-    state.players.forEach((_, idx) => {
+    displayEntries.forEach((entry, idx) => {
       const td = document.createElement('td');
       td.className = 'center num';
 
@@ -20944,7 +22466,7 @@ function openGameStatsDialog(){
       } else {
         let val;
         if (m.kind === 'wins') {
-          val = winsArr[idx] || 0;
+          val = winsArr[entry.index] || 0;
         } else {
           const v = statsByPlayer[idx][m.key];
           val = m.fmt ? m.fmt(v) : String(v);
@@ -20953,7 +22475,7 @@ function openGameStatsDialog(){
       }
 
       // Highlight highest numeric value(s) in the row
-      const raw = (m.kind === 'wins') ? (winsArr[idx] || 0) : rowNumeric[idx];
+      const raw = (m.kind === 'wins') ? (winsArr[entry.index] || 0) : rowNumeric[idx];
       if (!m.multi && raw === maxVal && maxVal !== -Infinity) {
         td.style.color = 'var(--accent-2)';
         td.style.fontWeight = '800';
@@ -20992,6 +22514,10 @@ function openGameStatsDialog(){
 }
 
 function openMatchStatsDialog(){
+  const displayEntries = (typeof __sqRuntimePlayerDisplayEntries === 'function')
+    ? __sqRuntimePlayerDisplayEntries()
+    : (state.players || []).map((player, index) => ({ player, index }));
+  const displayPlayers = displayEntries.map(x => x.player);
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop';
 
@@ -21014,7 +22540,7 @@ function openMatchStatsDialog(){
   metricTh.textContent = 'Metric';
   trh.appendChild(metricTh);
 
-  state.players.forEach(p => {
+  displayPlayers.forEach(p => {
     const th = document.createElement('th');
     th.textContent = p.name;
     th.style.textAlign = 'center';
@@ -21025,14 +22551,14 @@ function openMatchStatsDialog(){
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
-  const vByP  = state.players.map((_, i) => computeStatsForPlayerMatch(i));
+  const vByP  = displayEntries.map(x => computeStatsForPlayerMatch(x.index));
   const winsArr = (state.match?.wins || []).slice();
 
   DISPLAY_METRICS.forEach(m => {
     if (m.sep) {
       const tr = document.createElement('tr');
       const td = document.createElement('td');
-      td.colSpan = 1 + state.players.length;
+      td.colSpan = 1 + displayPlayers.length;
       td.textContent = '';
       tr.appendChild(td);
       tbody.appendChild(tr);
@@ -21040,8 +22566,8 @@ function openMatchStatsDialog(){
     }
 
     // Gather raw numeric values for leader highlight
-    const rowNumeric = state.players.map((_, idx) => {
-      if (m.kind === 'wins') return winsArr[idx] || 0;
+    const rowNumeric = displayEntries.map((entry, idx) => {
+      if (m.kind === 'wins') return winsArr[entry.index] || 0;
       const v = vByP[idx][m.key];
       return (typeof v === 'number') ? v : Number.isFinite(Number(v)) ? Number(v) : -Infinity;
     });
@@ -21054,7 +22580,7 @@ function openMatchStatsDialog(){
     th.className   = 'stats-th';
     tr.appendChild(th);
 
-    state.players.forEach((_, idx) => {
+    displayEntries.forEach((entry, idx) => {
       const td = document.createElement('td');
       td.className = 'center num';
 
@@ -21068,7 +22594,7 @@ function openMatchStatsDialog(){
       } else {
         let val;
         if (m.kind === 'wins') {
-          val = winsArr[idx] || 0;
+          val = winsArr[entry.index] || 0;
         } else {
           const v = vByP[idx][m.key];
           val = m.fmt ? m.fmt(v) : String(v);
@@ -21077,7 +22603,7 @@ function openMatchStatsDialog(){
       }
 
       // Leader highlight
-      const raw = (m.kind === 'wins') ? (winsArr[idx] || 0) : rowNumeric[idx];
+      const raw = (m.kind === 'wins') ? (winsArr[entry.index] || 0) : rowNumeric[idx];
       if (!m.multi && raw === maxVal && maxVal !== -Infinity) {
         td.style.color = 'var(--accent-2)';
         td.style.fontWeight = '800';
@@ -22061,6 +23587,10 @@ function recordThrow(spec){
   try{ window.__sqDmdStopPreThrow?.(); }catch(_){ }
   // Ignore input if game is finished or in sudden death
   if (state.finished || state.suddenDeath.active) return;
+  if (typeof __sqVsShadowCurrentPlayerIsShadow === 'function' && __sqVsShadowCurrentPlayerIsShadow()) {
+    if (typeof __sqHandleVsShadowManualShadowInput === 'function') __sqHandleVsShadowManualShadowInput('recordThrow');
+    return;
+  }
 
   const rIndex    = state.currentRound;
   const pIndex    = state.currentPlayer;
@@ -22476,6 +24006,12 @@ setTimeout(() => {
       const p = players[idx];
       if (!p) return '';
       if (typeof p === 'string') return p;
+      try{
+        if (typeof __sqVsShadowDisplayLabelForPlayer === 'function') {
+          const shadowLabel = __sqVsShadowDisplayLabelForPlayer(p, { dmd:true });
+          if (shadowLabel) return shadowLabel;
+        }
+      }catch(_){ }
       return (p.name || p.full || p.nickname || p.code || p.initials || '').toString();
     }
 
@@ -22760,6 +24296,16 @@ setTimeout(() => {
 
   updateUI();
 
+  if (dartIndex === 2 &&
+      typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime() &&
+      typeof __sqIsShadowPlayer === 'function' && !__sqIsShadowPlayer(state.players && state.players[pIndex]) &&
+      typeof __sqVsShadowCurrentPlayerIsShadow === 'function' && __sqVsShadowCurrentPlayerIsShadow() &&
+      Number(state.currentRound) === Number(rIndex) &&
+      Number(state.currentDart) === 0 &&
+      !state.finished) {
+    try{ __sqScheduleVsShadowAutoTurn(rIndex); }catch(e){ try{ console.warn('[SQ] Vs Shadow auto-turn hook failed', e); }catch(_){ } }
+  }
+
   if (!wasFinished && state.finished) {
     openGameCompleteDialog();
   }
@@ -22824,7 +24370,28 @@ function undo(){
     return;
   }
 
-  const last = state.history.pop();
+  const last = state.history[state.history.length - 1];
+  if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime()) {
+    const shadow = state.shadow || {};
+    const lastIsRealDart = !!(last && last.type !== 'shadowAutoTurn' && typeof __sqIsShadowPlayer === 'function' && !__sqIsShadowPlayer(state.players && state.players[last.player]));
+    const shadowDartsStarted = (typeof __sqVsShadowShadowDartsStarted === 'function') ? __sqVsShadowShadowDartsStarted(Number(state.currentRound)) : false;
+    if (last && last.type === 'shadowAutoTurn') {
+      if (typeof __sqUndoVsShadowCompletedAutoTurn === 'function') {
+        __sqUndoVsShadowCompletedAutoTurn();
+      } else {
+        try{ toast(__SQ_VS_SHADOW_UNDO_BLOCK_REASON); }catch(_){ }
+      }
+      return;
+    }
+    if (shadow.autoTurnPending && lastIsRealDart && !shadowDartsStarted) {
+      try{ __sqClearVsShadowTimers('undo-real-before-shadow'); }catch(_){ }
+    } else if (shadow.autoTurnPending || shadow.autoTurnInProgress || ((typeof __sqVsShadowCurrentPlayerIsShadow === 'function' && __sqVsShadowCurrentPlayerIsShadow()) && (!lastIsRealDart || shadowDartsStarted))) {
+      try{ toast(__SQ_VS_SHADOW_UNDO_BLOCK_REASON); }catch(_){ }
+      return;
+    }
+  }
+
+  state.history.pop();
   const { player, round, dartIndex } = last;
 
   const entry = state.score?.[player]?.[round];
@@ -22852,6 +24419,10 @@ function undo(){
 
 function missGo(){
   if (state.finished || state.suddenDeath.active) return;
+  if (typeof __sqVsShadowCurrentPlayerIsShadow === 'function' && __sqVsShadowCurrentPlayerIsShadow()) {
+    if (typeof __sqHandleVsShadowManualShadowInput === 'function') __sqHandleVsShadowManualShadowInput('missGo');
+    return;
+  }
   // >>> PATCH:DMD_SUPPRESS_MISS_SEQ START
   // Bulk-miss actions (Skip Go / MISS xN) should NOT show X / X / X in Zone 3.
   // We set a short-lived flag consumed by the DMD renderer inside recordThrow.
@@ -22982,8 +24553,16 @@ function __sqComputeGameMode(){
 
 // --- GAME LOGGING TO SUPABASE (real) + HIGH SCORES ---
 async function recordFullGameToSupabase(createdAtOverride) {
+  let __sqVsShadowPracticeMatchCleanupId = null;
   try {
-    const isOfficial = (state.players?.length || 0) >= 2;
+    if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) {
+      try{ __sqVsShadowBlockPhase2C(__SQ_VS_SHADOW_COMPLETION_BLOCK_REASON); }catch(_){ }
+      return null;
+    }
+    const runtimePlayers = Array.isArray(state.players) ? state.players : [];
+    const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
+    const persistPlayers = (typeof __sqRealPlayersOnly === 'function') ? __sqRealPlayersOnly(runtimePlayers) : runtimePlayers;
+    const isOfficial = !isVsShadow && (persistPlayers.length >= 2);
 
     // Prefer caller-provided timestamp, then global backdate (if present), else now.
     const ts =
@@ -22999,10 +24578,11 @@ async function recordFullGameToSupabase(createdAtOverride) {
       }
     }
 
-    const totals     = state.players.map((_, i) => totalScoreForPlayer(i));
-    const boardClone = JSON.parse(JSON.stringify(state.score || []));
-    const gameMode   = (typeof __sqComputeGameMode === 'function') ? __sqComputeGameMode() : (isOfficial ? 'official' : 'practice');
-    const isPractice = (gameMode === 'practice');
+    const runtimeTotals = runtimePlayers.map((_, i) => totalScoreForPlayer(i));
+    const totals     = (typeof __sqRealOnlyTotals === 'function') ? __sqRealOnlyTotals(runtimeTotals, runtimePlayers) : runtimeTotals;
+    const boardClone = (typeof __sqRealOnlyBoard === 'function') ? __sqRealOnlyBoard(state.score || [], runtimePlayers) : JSON.parse(JSON.stringify(state.score || []));
+    const gameMode   = isVsShadow ? 'practice' : ((typeof __sqComputeGameMode === 'function') ? __sqComputeGameMode() : (isOfficial ? 'official' : 'practice'));
+    const isPractice = isVsShadow || (gameMode === 'practice');
     const isTurbo    = (gameMode === 'turbo');
     const turboRules = (state && state.match && state.match.tournamentRules) || (state && state.tournamentRules) || {};
     const matchState = (state && state.match) || {};
@@ -23021,7 +24601,7 @@ async function recordFullGameToSupabase(createdAtOverride) {
     // the completed board fingerprint, not by session-level booleans.
     function __sqRecordFullPracticeKey(){
       try{
-        var names = (state.players || []).map(function(p){ return String((p && p.name) || '').trim().toLowerCase(); }).join('|');
+        var names = (persistPlayers || []).map(function(p){ return String((p && p.name) || '').trim().toLowerCase(); }).join('|');
         var totalStr = (totals || []).map(function(x){ return Number(x)||0; }).join('|');
         var boardStr = JSON.stringify(boardClone || []);
         var token = (state && state.__gameToken != null) ? String(state.__gameToken) : '';
@@ -23059,17 +24639,28 @@ async function recordFullGameToSupabase(createdAtOverride) {
           forcePractice: true,
           createdAtIso: state?.match?.createdAtIso || ts,
           history: Array.isArray(state?.match?.history) ? state.match.history : [],
-          wins: Array.isArray(state?.match?.wins) ? state.match.wins : []
+          wins: isVsShadow
+            ? Array.from({ length: persistPlayers.length }, () => 0)
+            : (Array.isArray(state?.match?.wins) ? state.match.wins : [])
         });
-        await sb.from(TABLE_MATCHES).upsert({
+        const practiceMatchPayload = {
           id: practiceMatchId,
           created_at: state.match.createdAtIso || ts,
-          total_games: Math.max(1, state.match.history.length || 1),
-          players: state.players.map(p => ({ name: p.name })),
-          wins: (state.match.wins || []).slice(),
+          total_games: isVsShadow ? 1 : Math.max(1, state.match.history.length || 1),
+          players: persistPlayers.map(p => ({ name: p.name })),
+          wins: isVsShadow
+            ? Array.from({ length: persistPlayers.length }, () => 0)
+            : ((typeof __sqRealOnlyArray === 'function') ? __sqRealOnlyArray(state.match.wins || [], runtimePlayers) : (state.match.wins || []).slice()),
           history: [{ totals: totals.slice(), mode: 'practice' }]
-        });
+        };
+        if (isVsShadow && typeof __sqAssertNoShadowPersistPayload === 'function' && !__sqAssertNoShadowPersistPayload(practiceMatchPayload, 'recordFullGameToSupabase:matches')) {
+          throw new Error('Vs Shadow save blocked: Shadow data cannot be persisted.');
+        }
+        if (isVsShadow) __sqVsShadowPracticeMatchCleanupId = practiceMatchId;
+        await sb.from(TABLE_MATCHES).upsert(practiceMatchPayload);
       } catch (e) {
+        if (isVsShadow && /Vs Shadow save blocked/i.test(String(e && (e.message || e)))) throw e;
+        if (isVsShadow) throw e;
         console.warn('[SQ] practice match upsert failed', e);
       }
     }
@@ -23079,7 +24670,7 @@ async function recordFullGameToSupabase(createdAtOverride) {
       game_number: isPractice ? 1 : (state.match?.history?.length ? state.match.history.length : 1),
       created_at: ts, // finish time (or backdated override)
       state:      {
-        players: state.players.map(p => ({ name: p.name })),
+        players: persistPlayers.map(p => ({ name: p.name })),
         board: boardClone,
         mode: gameMode,
         gameMode: gameMode,
@@ -23087,7 +24678,7 @@ async function recordFullGameToSupabase(createdAtOverride) {
         gameVariant: isMatchPlayTurbo ? 'turbo' : undefined,
         tournament: isMatchPlayTurbo ? false : undefined,
         is_practice: isPractice,
-        total_players: state.players.length,
+        total_players: persistPlayers.length,
         match_id: isPractice ? practiceMatchId : (state.match?.id || null),
         tournamentType: (isTurbo && isActualTournament) ? 'turbo' : (state?.match?.tournamentType || state?.tournamentType || undefined),
         tournamentRules: (isTurbo && isActualTournament) ? Object.assign({ strictTimer:true, throwLimitSeconds:20, startTarget:'17' }, turboRules || {}) : undefined,
@@ -23100,6 +24691,10 @@ async function recordFullGameToSupabase(createdAtOverride) {
       finished:   true
     };
 
+    if (isVsShadow && typeof __sqAssertNoShadowPersistPayload === 'function' && !__sqAssertNoShadowPersistPayload(payload, 'recordFullGameToSupabase:games')) {
+      throw new Error('Vs Shadow save blocked: Shadow data cannot be persisted.');
+    }
+
     const { data: _gRow, error } = await sb.from(TABLE_GAMES).insert(payload).select('id, created_at').single();
     if (error) {
       // If the direct practice save path already inserted this exact completed game,
@@ -23110,15 +24705,24 @@ async function recordFullGameToSupabase(createdAtOverride) {
       }
       throw error;
     }
+    __sqVsShadowPracticeMatchCleanupId = null;
     const _gameId = _gRow && _gRow.id ? _gRow.id : null;
     try { if (typeof __sqClearRecoveryCachesAfterCompletedSave === 'function') __sqClearRecoveryCachesAfterCompletedSave('recordFullGameToSupabase'); } catch(_) {}
     try { if (typeof window.__sqClearGamesTruthCache === 'function') window.__sqClearGamesTruthCache('recordFullGameToSupabase'); } catch(_) {}
 
     // >>> PATCH:HS_TS_ALIGN START
     // Write HS rows with the SAME ts as the game row, so deletes and audits remain consistent.
-    try { if (typeof cloudSaveHighScoresForGame === 'function') await cloudSaveHighScoresForGame(totals, ts, _gameId); } catch(_e) {}
+    try { if (typeof cloudSaveHighScoresForGame === 'function') await cloudSaveHighScoresForGame(runtimeTotals, ts, _gameId); } catch(_e) {}
     // <<< PATCH:HS_TS_ALIGN END
   } catch (e) {
+    if (__sqVsShadowPracticeMatchCleanupId) {
+      try {
+        const cleanup = await sb.from(TABLE_MATCHES).delete().eq('id', __sqVsShadowPracticeMatchCleanupId);
+        if (cleanup && cleanup.error) console.warn('[SQ] Vs Shadow practice match cleanup failed', cleanup.error);
+      } catch (cleanupErr) {
+        console.warn('[SQ] Vs Shadow practice match cleanup threw', cleanupErr);
+      }
+    }
     console.error('recordFullGameToSupabase failed', e);
     throw e;
   }
@@ -23137,7 +24741,13 @@ async function awardAndShowLeaderboard(){
     showLeaderboard();
     return;
   }
-  state.gameAwarded = true;
+  const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
+  if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) {
+    try{ state.finished = false; state.gameAwarded = false; }catch(_){ }
+    try{ __sqVsShadowBlockPhase2C(__SQ_VS_SHADOW_COMPLETION_BLOCK_REASON); }catch(_){ }
+    return;
+  }
+  if (!isVsShadow) state.gameAwarded = true;
 
   const totals  = state.players.map((_,i)=> totalScoreForPlayer(i));
   const max     = Math.max(...totals);
@@ -23146,37 +24756,82 @@ async function awardAndShowLeaderboard(){
   if (state._decider && state._decider.resolved && typeof state._decider.winner === 'number') {
     winners = [state._decider.winner];
   }
+  if (isVsShadow && typeof __sqRealOnlyWinnerIndexes === 'function') {
+    winners = __sqRealOnlyWinnerIndexes(winners, state.players || []);
+  }
 
 // before recordFullGameToSupabase();
-if ((state.players?.length || 0) >= 2) {
-  try { await upsertMatchToSupabase(); } catch (e) { console.warn(e); }
-}
+  if (!isVsShadow && (state.players?.length || 0) >= 2) {
+    try { await upsertMatchToSupabase(); } catch (e) { console.warn(e); }
+  }
 
   // Ensure wins array exists
-  if (!state.match.wins || state.match.wins.length !== state.players.length) {
-    state.match.wins = Array.from({length: state.players.length}, () => 0);
+  const awardPlayerCount = isVsShadow && typeof __sqRealPlayersOnly === 'function'
+    ? __sqRealPlayersOnly(state.players || []).length
+    : state.players.length;
+  if (!state.match.wins || state.match.wins.length !== awardPlayerCount) {
+    state.match.wins = Array.from({length: awardPlayerCount}, () => 0);
   }
-  winners.forEach(i => state.match.wins[i]++);
+  if (!isVsShadow) winners.forEach(i => state.match.wins[i]++);
 
   // Snapshot board for history/stats
   const boardClone = JSON.parse(JSON.stringify(state.score));
-  state.match.history.push({ totals: totals.slice(), board: boardClone });
+  const historyTotals = isVsShadow && typeof __sqRealOnlyTotals === 'function' ? __sqRealOnlyTotals(totals, state.players || []) : totals.slice();
+  const historyBoard = isVsShadow && typeof __sqRealOnlyBoard === 'function' ? __sqRealOnlyBoard(boardClone, state.players || []) : boardClone;
+
+  if (isVsShadow) {
+    try {
+      if (state.shadow) {
+        state.shadow.saveFailed = false;
+        state.shadow.saveInFlight = true;
+        state.shadow.lastSaveError = '';
+      }
+      await recordFullGameToSupabase();
+      if (state.shadow) state.shadow.saveInFlight = false;
+      state.gameAwarded = true;
+    } catch (e) {
+      console.error(e);
+      try {
+        state.finished = true;
+        state.gameAwarded = false;
+        if (state.shadow) {
+          state.shadow.saveInFlight = false;
+          state.shadow.saveFailed = true;
+          state.shadow.lastSaveError = String((e && (e.message || e.details || e.hint)) || e || 'Save failed');
+        }
+        delete state.__sqPracticeSavedToGames;
+        delete state.__sqPracticeCloudSavedV2;
+        delete state.__sqPracticeSavedKeyV2;
+        delete state.__sqPracticeSaveMatchIdV2;
+      } catch(_) {}
+      try{ toast('Vs Shadow save failed. Your completed game is still on screen; retry Finish Game.'); }catch(_){ }
+      try{ window.sqDmdShowZones?.({ z2:'SAVE FAILED', z3:'RETRY FINISH' }, { type:'flash', ms:1200, fx:'impact', z3Small:true }); }catch(_){ }
+      try{ show('game'); }catch(_){ }
+      try{ updateUI(); }catch(_){ }
+      return;
+    }
+  }
+
+  state.match.history.push({ totals: historyTotals, board: historyBoard });
 
   // Long-term local logs
-  logCompletedGame(totals, winners, boardClone);
+  logCompletedGame(historyTotals, isVsShadow ? [] : winners, historyBoard);
 
   const targetWins = state.match.targetWins || 1;
+  const gamesPlayedNow = Array.isArray(state.match.history) ? state.match.history.length : 0;
   const maxWins    = state.match.wins.length ? Math.max(...state.match.wins) : 0;
-  const matchDone  = maxWins >= targetWins;
+  const matchDone  = isVsShadow ? (gamesPlayedNow >= targetWins) : (maxWins >= targetWins);
 
-  if (matchDone && !state.match.completedLogged) {
+  if (!isVsShadow && matchDone && !state.match.completedLogged) {
     logCompletedMatch();
     state.match.completedLogged = true;
   }
 
-  // Cloud writes (best-effort)
-  try { await recordFullGameToSupabase(); } catch (e) {
-    console.error(e); toast('Game saved to local only (cloud failed)');
+  // Cloud writes (best-effort for legacy modes; Vs Shadow must fail closed above)
+  if (!isVsShadow) {
+    try { await recordFullGameToSupabase(); } catch (e) {
+      console.error(e); toast('Game saved to local only (cloud failed)');
+    }
   }
   try { await recordGameToHighScores(); } catch (e) {
     console.error(e);
@@ -23207,6 +24862,10 @@ function updateLeaderboardTable(){
   lbTBody.innerHTML = '';
 
   const gamesPlayed = state.match.history.length;
+  const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
+  const displayPlayers = isVsShadow && typeof __sqRealPlayersOnly === 'function'
+    ? __sqRealPlayersOnly(state.players || [])
+    : (state.players || []);
 
   // Build a "vertical" leaderboard:
   //   columns = players
@@ -23226,15 +24885,15 @@ function updateLeaderboardTable(){
   colgroup.appendChild(cRow);
 
   // One column per player
-  const playerCols = Math.max(state.players.length, 1);
+  const playerCols = Math.max(displayPlayers.length, 1);
   for (let i = 0; i < playerCols; i++){
     const c = document.createElement('col');
-    c.style.width = (state.players.length <= 2 ? 'calc((100% - 120px)/2)' : 'calc((100% - 120px)/' + playerCols + ')');
+    c.style.width = (displayPlayers.length <= 2 ? 'calc((100% - 120px)/2)' : 'calc((100% - 120px)/' + playerCols + ')');
     colgroup.appendChild(c);
   }
 
   // ---------- gather data ----------
-  const perPlayer = state.players.map((player, idx) => {
+  const perPlayer = displayPlayers.map((player, idx) => {
     let total = 0;
     const perGame = [];
     for (let g = 0; g < gamesPlayed; g++){
@@ -23332,15 +24991,30 @@ function showLeaderboard() {
   updateLeaderboardTable();
 
   // Decide which CTA to show
+  const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
   const targetWins = state.match?.targetWins || 1;
   const winsArr    = state.match?.wins || [];
+  const gamesPlayed = state.match?.history?.length || 0;
   const maxWins    = winsArr.length ? Math.max(...winsArr) : 0;
-  const matchDone  = maxWins >= targetWins;
+  const matchDone  = isVsShadow ? (gamesPlayed >= targetWins) : (maxWins >= targetWins);
 
   // NEXT GAME button
   if (nextGameBtn) {
     nextGameBtn.classList.toggle('hidden', matchDone);
     nextGameBtn.onclick = () => {
+      if (isVsShadow) {
+        const nextIndex = state.match?.history?.length || 0;
+        const games = Array.isArray(state.shadow && state.shadow.games) ? state.shadow.games : [];
+        if (nextIndex >= games.length || !__sqRefreshVsShadowRuntimePlayerForGame(nextIndex)) {
+          try{ toast('No next Shadow source is available.'); }catch(_){ }
+          return;
+        }
+        state.finished = false;
+        state.gameAwarded = false;
+        try{ delete state.__sqGameCompleteOpen; }catch(_){ }
+        startNewGame(true);
+        return;
+      }
       state.finished = false;
       startNewGame();      // opens throw-order dialog, then goes to Game
     };
@@ -23360,11 +25034,12 @@ function showLeaderboard() {
 
   // Optional info line
   if (lbMatchInfo) {
-    const gamesPlayed = state.match?.history?.length || 0;
     const toWin = Math.max(0, targetWins - maxWins);
-    lbMatchInfo.textContent = matchDone
-      ? `Match complete — first to ${targetWins}`
-      : `Games: ${gamesPlayed} · First to ${targetWins} · ${toWin} to win`;
+    lbMatchInfo.textContent = isVsShadow
+      ? (matchDone ? `Match complete — ${gamesPlayed}/${targetWins} games` : `Games: ${gamesPlayed}/${targetWins}`)
+      : (matchDone
+        ? `Match complete — first to ${targetWins}`
+        : `Games: ${gamesPlayed} · First to ${targetWins} · ${toWin} to win`);
     lbMatchInfo.parentElement?.classList.remove('hidden');
   }
 
@@ -23383,6 +25058,9 @@ function openGameScoresDialog() {
     toast('No completed games yet.');
     return;
   }
+  const displayPlayers = (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime() && typeof __sqRealPlayersOnly === 'function')
+    ? __sqRealPlayersOnly(state.players || [])
+    : (state.players || []);
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop';
@@ -23417,7 +25095,7 @@ function openGameScoresDialog() {
     thRound.textContent = 'Round';
     trHead.appendChild(thRound);
 
-    state.players.forEach(p => {
+    displayPlayers.forEach(p => {
       const th = document.createElement('th');
       th.textContent = p.name;
       th.style.textAlign = 'center';
@@ -23429,7 +25107,7 @@ function openGameScoresDialog() {
 
     const tbody = document.createElement('tbody');
     const board = game.board || [];
-    const runningTotals = state.players.map(() => 0);
+    const runningTotals = displayPlayers.map(() => 0);
 
     for (let r = 0; r < MAX_ROUNDS; r++) {
       const tr = document.createElement('tr');
@@ -23444,7 +25122,7 @@ function openGameScoresDialog() {
               : (roundDef.type === 'triples' ? "T" : 'B'));
       tr.appendChild(roundTh);
 
-      for (let p = 0; p < state.players.length; p++) {
+      for (let p = 0; p < displayPlayers.length; p++) {
         const td = document.createElement('td');
         td.className = 'center num';
 
@@ -23977,9 +25655,13 @@ async function openGameRaceDialog() {
     : 0;
   const roundsCount = isTurboRace ? Math.max(1, fullRoundsCount - displayStartRound) : fullRoundsCount;
   const series = [];
+  const displayEntries = (typeof __sqRuntimePlayerDisplayEntries === 'function')
+    ? __sqRuntimePlayerDisplayEntries()
+    : (state.players || []).map((player, index) => ({ player, index }));
 
-  for (let p = 0; p < state.players.length; p++) {
-    const player = state.players[p];
+  for (const entryInfo of displayEntries) {
+    const p = entryInfo.index;
+    const player = entryInfo.player;
     const data = [];
     let running = 0;
 
@@ -23992,7 +25674,7 @@ async function openGameRaceDialog() {
     }
 
     series.push({
-      name: player.name,
+      name: (typeof __sqVsShadowDisplayLabelForPlayer === 'function' && __sqVsShadowDisplayLabelForPlayer(player, { graph:true })) || player.name,
       color: player.color || '#7bdcff',
       data,
       dotted: false
@@ -24261,7 +25943,17 @@ function showPlayerOrderDialog() {
 }
 
 function startNewGame(setOrder=false){
-  if(!setOrder){ showPlayerOrderDialog(); return; }
+  try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('startNewGame'); }catch(_){ }
+  try{
+    const savedVsShadow = (typeof __sqSavedStateIsVsShadow === 'function') ? __sqSavedStateIsVsShadow(state) : false;
+    const shadowReady = !!(state && state.shadow && /^runtime_phase/i.test(String(state.shadow.status || '')) && state.shadow.autoTurnEnabled === true);
+    if (savedVsShadow && !shadowReady) __sqSanitizeVsShadowForGenericStart('startNewGame-stale-shadow');
+  }catch(_){ }
+  if(!setOrder){
+    try{ if (typeof __sqSanitizeVsShadowForGenericStart === 'function') __sqSanitizeVsShadowForGenericStart('startNewGame-generic'); }catch(_){ }
+    showPlayerOrderDialog();
+    return;
+  }
 
   // >>> PATCH:practice-multi-game-save-reset START
   // Practice save guards are per completed game, not per practice session/match.
@@ -24297,7 +25989,7 @@ __sqAfterPaint(async ()=>{
     show('game');
     await buildEverythingChunked();
     updateUI();
-    save();
+    if (!(typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime())) save();
   } finally {
     __sqHideGameLoadOverlay();
   }
@@ -24306,8 +25998,13 @@ __sqAfterPaint(async ()=>{
 
 function restartGame() {
   if (!confirm('Are you sure you want to restart this game? All progress will be lost.')) return;
+  try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('restartGame'); }catch(_){ }
   state.finished = false;
   state.suddenDeath = {active:false, participants:[], turnIndex:0, throws:[], round:1};
+  if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime()) {
+    startNewGame(true);
+    return;
+  }
   startNewGame();
   show('game'); updateUI();
 }
@@ -38521,6 +40218,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
       function resetCurrentGameKeepPlayers(){
         // Keep players + match meta/history, reset only current game state
+        try{ if (typeof __sqSanitizeVsShadowForGenericStart === 'function') __sqSanitizeVsShadowForGenericStart('settings-reset-current-game'); }catch(_){ }
         const players = Array.isArray(state.players) ? state.players.slice() : [];
         const match   = state.match ? JSON.parse(JSON.stringify(state.match)) : JSON.parse(JSON.stringify(baseState.match));
         state = JSON.parse(JSON.stringify(baseState));
@@ -41567,6 +43265,7 @@ __sqDmdInitV7();
 
   function canAutosavePractice(){
     try{
+      if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) return false;
       return !!(
         state &&
         state.finished === true &&
@@ -41670,6 +43369,8 @@ __sqDmdInitV7();
 
   function isPracticeState(){
     try{
+      if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) return false;
+      if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime()) return false;
       if (!window.state || !Array.isArray(state.players) || !state.players.length) return false;
       if (typeof __sqComputeGameMode === 'function') return __sqComputeGameMode() === 'practice';
       if (state.match && (state.match.mode === 'practice' || state.match.forcePractice === true)) return true;
@@ -41689,12 +43390,16 @@ __sqDmdInitV7();
   }
 
   function playerRows(){
-    try{ return state.players.map(function(p){ return { name: String((p && p.name) || '').trim() }; }).filter(function(p){ return !!p.name; }); }catch(_){ return []; }
+    try{
+      var players = (typeof __sqRealPlayersOnly === 'function') ? __sqRealPlayersOnly(state.players || []) : (state.players || []);
+      return players.map(function(p){ return { name: String((p && p.name) || '').trim() }; }).filter(function(p){ return !!p.name; });
+    }catch(_){ return []; }
   }
 
   function totalsNow(){
     try{
-      return state.players.map(function(_, i){
+      var players = state.players || [];
+      var totals = players.map(function(_, i){
         if (typeof totalScoreForPlayer === 'function') return Number(totalScoreForPlayer(i) || 0);
         var rows = Array.isArray(state.score && state.score[i]) ? state.score[i] : [];
         return rows.reduce(function(a,r){
@@ -41703,11 +43408,16 @@ __sqDmdInitV7();
           return a + (Number(r.roundTotal ?? r.round_total ?? r.score ?? r.points ?? r.total ?? 0) || 0);
         }, 0);
       });
+      return (typeof __sqRealOnlyTotals === 'function') ? __sqRealOnlyTotals(totals, players) : totals;
     }catch(_){ return []; }
   }
 
   function cloneBoard(){
-    try{ return JSON.parse(JSON.stringify(state.score || [])); }catch(_){ return []; }
+    try{
+      return (typeof __sqRealOnlyBoard === 'function')
+        ? __sqRealOnlyBoard(state.score || [], state.players || [])
+        : JSON.parse(JSON.stringify(state.score || []));
+    }catch(_){ return []; }
   }
 
   function cacheSnapshot(ts, payload){
@@ -44948,6 +46658,7 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
 
   function resetCurrentGameKeepPlayers(){
     try{
+      try{ if(typeof __sqSanitizeVsShadowForGenericStart==='function') __sqSanitizeVsShadowForGenericStart('menu106-reset-current-game'); }catch(_){ }
       var players=Array.isArray(state.players)?state.players.slice():[];
       var match=state.match?JSON.parse(JSON.stringify(state.match)):JSON.parse(JSON.stringify(baseState.match));
       state=JSON.parse(JSON.stringify(baseState));
@@ -48568,6 +50279,137 @@ body[data-page="leaderboard"] #leaderboard .stacked-actions #gameScoresBtn{
 }
 </style>
 <!-- <<< PATCH:FIX171_LEADERBOARD_BRACKET_VISUAL_REFRESH END -->
+
+<!-- >>> PATCH:FIX172_TOURNAMENT_MODE_CARD START -->
+<style id="sq-fix172-tournament-mode-card-css">
+/* Tournament mode-selection (CLASSIC (BETA) / TURBO (BETA)) — visually align
+ * with Match Play mode-selection cards (.sg-opt). Scoped to the mode-selection
+ * step only via the .sg-tournament-controls-with-rules modifier, so the
+ * 4/8-player size step is unaffected.
+ *
+ * Layout: full-width stacked rows + left icon block + right text block.
+ * CLASSIC pill (1st child)  — orange people icon, orange accent when active.
+ * TURBO   pill (2nd child)  — cyan  lightning icon, cyan  accent when active.
+ * The bulky "Classic rules:" / "Turbo rules:" block is hidden on this step
+ * so the cards feel like mode buttons rather than info panels.
+ *
+ * Pill order maps to choiceButton() appends in renderType()
+ *   (indexEDIT.html:43195 Classic, indexEDIT.html:43196 Turbo).
+ *
+ * No JS, markup, or app-behaviour changes.
+ */
+
+/* Container: stack pills full-width */
+.sg-tournament-controls-with-rules{
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0 18px;
+}
+
+/* Pill base — match .sg-opt geometry; reserve left padding for the icon block */
+.sg-tournament-controls-with-rules .sg-tournament-pill{
+  position: relative;
+  width: 100%;
+  text-align: left;
+  padding: 16px 18px 16px 92px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(20,24,44,.82);
+  box-shadow: 0 10px 26px rgba(0,0,0,.28);
+  transition: transform .12s ease, border-color .12s ease, background .12s ease, box-shadow .12s ease;
+  cursor: pointer;
+}
+
+.sg-tournament-controls-with-rules .sg-tournament-pill:hover{
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,.22);
+}
+
+.sg-tournament-controls-with-rules .sg-tournament-pill:active{
+  transform: translateY(0);
+}
+
+/* Left icon block via ::before — mirrors .sg-opt .sg-ico geometry */
+.sg-tournament-controls-with-rules .sg-tournament-pill::before{
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.04) no-repeat center / 30px 30px;
+}
+
+/* CLASSIC pill (1st child) — orange people icon + orange icon-block border */
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(1)::before{
+  border-color: rgba(255,140,40,.45);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ff8c28' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='8.5' cy='7' r='3'/%3E%3Cpath d='M23 21v-2a4 4 0 0 0-3-3.87'/%3E%3Cpath d='M16 3.13a3 3 0 0 1 0 5.74'/%3E%3C/svg%3E");
+}
+
+/* TURBO pill (2nd child) — cyan lightning icon + cyan icon-block border */
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(2)::before{
+  border-color: rgba(120,220,255,.45);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2378dcff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 2L4 14h7l-1 8 10-13h-7l0-7z'/%3E%3C/svg%3E");
+}
+
+/* Active state — orange for CLASSIC, cyan for TURBO */
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(1).active{
+  border-color: rgba(255,140,40,.55);
+  background: rgba(60,38,16,.55);
+  box-shadow: 0 0 0 1px rgba(255,140,40,.35) inset, 0 12px 28px rgba(0,0,0,.32);
+}
+
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(2).active{
+  border-color: rgba(120,220,255,.55);
+  background: rgba(30,52,82,.55);
+  box-shadow: 0 0 0 1px rgba(120,220,255,.35) inset, 0 12px 28px rgba(0,0,0,.32);
+}
+
+/* Title — match .sg-opt-title weight/size */
+.sg-tournament-controls-with-rules .sg-tournament-pill-title{
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  line-height: 1.15;
+  color: rgba(245,247,255,.96);
+}
+
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(1).active .sg-tournament-pill-title{
+  color: #FFD18C;
+}
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(2).active .sg-tournament-pill-title{
+  color: #B8F3FF;
+}
+
+/* Description — uppercase, tight, mode-button feel */
+.sg-tournament-controls-with-rules .sg-tournament-pill-desc{
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.35;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: rgba(231,233,245,.66);
+}
+
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(1).active .sg-tournament-pill-desc{
+  color: rgba(255,210,160,.85);
+}
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(2).active .sg-tournament-pill-desc{
+  color: rgba(180,220,240,.85);
+}
+
+/* Hide the bulky "Classic rules:" / "Turbo rules:" block on the mode-selection
+ * step so cards feel like buttons. Rules content stays available implicitly
+ * in the description text and on later setup steps if needed. */
+.sg-tournament-controls-with-rules .sg-tournament-inline-rule{
+  display: none;
+}
+</style>
+<!-- <<< PATCH:FIX172_TOURNAMENT_MODE_CARD END -->
 
 </body>
 </html>
