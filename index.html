@@ -1314,29 +1314,56 @@ TOC (CTRL+F)
 }
 #details #appTitle {
   display: block;               /* override the display:none */
+  position: relative;
+  z-index: 1;
   text-transform: uppercase;
   text-align: center;
-  margin: 8px 0 24px;
+  margin: 14px 0 26px;
   line-height: 1.02;
 }
 
 #details #appTitle .titleMain{
   display:block;
-  font-size: 3.3rem;
+  font-size: 3.5rem;
   font-weight: 900;
-  letter-spacing: 0.06em;
-  color: #ff7a00;
+  font-style: italic;
+  letter-spacing: 0.05em;
+  background: linear-gradient(180deg, #ffffff 8%, #d4d9e6 42%, #8a92a8 56%, #f0f3fb 92%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 3px 8px rgba(0,0,0,.55));
 }
 
 #details #appTitle .titleSub{
   display:block;
-  margin-top: 6px;
-  font-size: 1.25rem;
+  margin-top: 8px;
+  font-size: 1.15rem;
   font-weight: 800;
-  letter-spacing: 0.55em;
-  color: #f2f4ff;
-  opacity: 0.92;
+  letter-spacing: 0.5em;
+  color: #ff7a00;
+  text-indent: 0.5em; /* balance trailing tracking */
 }
+#details #appTitle .titleSub::before{ content:'\2013'; margin-right: .55em; }
+#details #appTitle .titleSub::after{ content:'\2013'; margin-left: .05em; }
+
+/* Home hero dartboard backdrop */
+#details{ position: relative; overflow: hidden; }
+#details .hh-art{
+  position: absolute;
+  top: -52px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 130vw);
+  height: 470px;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .58;
+  -webkit-mask-image: linear-gradient(180deg, #000 52%, transparent 97%);
+  mask-image: linear-gradient(180deg, #000 52%, transparent 97%);
+}
+#details .start-actions,
+#details .home-footer-nav{ position: relative; z-index: 1; }
 /* Game Details screen: content aligned towards top with some breathing room */
 #details {
   display: flex;
@@ -4038,38 +4065,50 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   max-width: 92vw;
   margin: 12px auto 0;
 }
+/* Single segmented bar: icon over label, hairline dividers */
 .home-footer-nav .home-nav-row{
   display:flex;
-  gap: var(--navGap, 12px);
+  gap: 0;
   width: 100%;
   align-items: stretch;
   justify-content: space-between;
+  border-radius: 16px;
+  background: rgba(20,24,44,.82);
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 10px 30px rgba(0,0,0,0.35);
+  padding: 10px 0;
+  overflow: hidden;
 }
 .home-footer-nav .home-nav-row .navBtn{
   flex: 1 1 0;
-  height: 64px;
-  padding: 0 10px;
+  min-width: 0;
+  height: auto;
+  padding: 6px 4px;
   display:flex;
+  flex-direction: column;
   align-items:center;
   justify-content:center;
-  gap: 10px;
-  border-radius: 16px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.14);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 30px rgba(0,0,0,0.35);
+  gap: 8px;
+  border-radius: 0;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   letter-spacing: 0.08em;
   font-weight: 700;
   text-transform: uppercase;
 }
+.home-footer-nav .home-nav-row .navBtn + .navBtn{
+  border-left: 1px solid rgba(255,255,255,.10) !important;
+}
 .home-footer-nav .home-nav-row .navBtn .navIcon{
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   display:inline-flex;
 }
 .home-footer-nav .home-nav-row .navBtn .navIcon svg{
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
@@ -4077,15 +4116,16 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   stroke-linejoin: round;
 }
 .home-footer-nav .home-nav-row .navBtn .navLabel{
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
   text-align:center;
+  white-space: nowrap;
 }
 
-/* Color accents (edge + text) */
-.home-footer-nav .home-nav-row .navBtn.navGreen{ color:#3cff86; border-color: rgba(60,255,134,0.35); }
-.home-footer-nav .home-nav-row .navBtn.navBlue{  color:#4aa3ff; border-color: rgba(74,163,255,0.35); }
-.home-footer-nav .home-nav-row .navBtn.navOrange{color:#ffb14a; border-color: rgba(255,177,74,0.35); }
+/* Color accents (icon + text) */
+.home-footer-nav .home-nav-row .navBtn.navGreen{ color:#3cff86; }
+.home-footer-nav .home-nav-row .navBtn.navBlue{  color:#4aa3ff; }
+.home-footer-nav .home-nav-row .navBtn.navOrange{color:#ffb14a; }
 
 .home-footer-nav .home-nav-row .navBtn:hover{ transform: translateY(-1px); }
 .home-footer-nav .home-nav-row .navBtn:active{ transform: translateY(0); }
@@ -4927,50 +4967,118 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 }
 .ml-head{ flex:1; display:flex; flex-direction:column; align-items:center; }
 .ml-spacer{ width:44px; height:38px; }
+/* Radial games dial */
 .ml-grid{
   display:flex;
-  gap:10px;
   justify-content:center;
-  align-items:stretch;
-  padding: 14px 10px 2px;
+  padding: 8px 10px 2px;
 }
-.ml-tile{
-  width:92px;
-  height:110px;
-  border-radius:16px;
-  background: rgba(20,24,44,.82);
-  border:1px solid rgba(255,255,255,.12);
-  box-shadow: 0 8px 20px rgba(0,0,0,.20);
-  color:#e7e9f5;
+.mlw-svg{
+  width: min(320px, 78vw);
+  height: auto;
+  display:block;
+}
+.mlw-seg{ cursor:pointer; outline:none; }
+.mlw-seg-path{
+  fill: rgba(20,24,44,.88);
+  stroke: rgba(255,255,255,.13);
+  stroke-width: 1.4;
+  transition: fill .14s ease, stroke .14s ease;
+}
+.mlw-seg:hover .mlw-seg-path,
+.mlw-seg:focus-visible .mlw-seg-path{
+  fill: rgba(28,33,58,.92);
+  stroke: rgba(255,255,255,.22);
+}
+.mlw-seg-num{
+  fill: rgba(240,243,255,.92);
+  font-size: 24px;
+  font-weight: 900;
+  pointer-events: none;
+}
+.mlw-seg.selected .mlw-seg-path{
+  fill: rgba(255,122,0,.16);
+  stroke: #ff7a00;
+  stroke-width: 2.6;
+  filter: url(#mlwGlow);
+}
+.mlw-seg.selected .mlw-seg-num{ fill: #ffb46b; }
+.mlw-hub{
+  fill: rgba(10,13,26,.92);
+  stroke: rgba(255,255,255,.10);
+  stroke-width: 1.4;
+  pointer-events: none;
+}
+.mlw-trophy{ color: rgba(230,234,252,.38); pointer-events:none; }
+.mlw-hub-top, .mlw-hub-bot{
+  fill: rgba(230,234,252,.55);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .18em;
+  pointer-events: none;
+}
+.mlw-hub-num{
+  fill: #f2f4ff;
+  font-size: 34px;
+  font-weight: 900;
+  pointer-events: none;
+}
+/* Info strip */
+.ml-hint{
   display:flex;
-  flex-direction:column;
-  justify-content:center;
   align-items:center;
-  gap:6px;
-  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+  gap: 11px;
+  margin: 14px 8px 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(20,24,44,.82);
+  border: 1px solid rgba(255,255,255,.12);
+  color: rgba(231,235,250,.82);
+  font-size: 13px;
+  text-align:left;
 }
-.ml-tile:active{ transform: translateY(1px); }
-.ml-tile.selected{
-  background: rgba(255,122,0,.12);
-  border-color: rgba(255,122,0,.45);
-  box-shadow: 0 0 0 2px rgba(255,122,0,.14) inset, 0 8px 20px rgba(0,0,0,.20);
+.ml-hint-ico{
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display:grid;
+  place-items:center;
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.16);
+  color: rgba(231,235,250,.75);
+  font-size: 12px;
+  font-weight: 900;
+  font-style: italic;
 }
-.ml-n{
-  font-size:30px;
-  font-weight:900;
-}
-.ml-lab{
-  font-size:10px;
-  letter-spacing:.14em;
-  font-weight:900;
-  color: rgba(231,233,245,.70);
+.ml-foot-back{
+  flex: 0 0 auto;
+  min-width: 116px;
+  height: 52px;
+  border-radius: 16px;
+  background: rgba(20,24,44,.82);
+  border: 1px solid rgba(255,255,255,.12);
+  color: rgba(235,240,255,.92);
+  font-weight: 800;
+  letter-spacing: .06em;
 }
 .ml-footer{
   justify-content:center;
-  padding-bottom: 14px;
+  gap: 12px;
+  padding: 8px 14px 16px;
   width: 100%;
   box-sizing: border-box;
   background: transparent;
+}
+.ml-footer #mlStartBtn{
+  width: auto !important;
+  flex: 1 1 auto;
+  margin: 0 !important;
+  border-radius: 16px;
+  font-size: .92rem;
+  letter-spacing: .05em;
+  white-space: nowrap;
+  padding: 0 10px !important;
 }
 
 /* ===== NEW PLAYER MODAL (Add Player) ===== */
@@ -7177,7 +7285,7 @@ body[data-page="game"] #floatHead{
 }
 
 /* ===== Start Screen sizing (page: #details) ===== */
-#details #appTitle{ display:inline-flex; } /* measurable title width */
+#details #appTitle{ display:block; } /* stacked hero title (width still measurable) */
 
 #details .start-actions{ max-width:none; }
 
@@ -8257,6 +8365,49 @@ body.livev2-on[data-page="game"] canvas#v2InfoDmd{
 
     <!-- PAGE 1: GAME DETAILS -->
     <section id="details" class="card section">
+<div class="hh-art" aria-hidden="true">
+  <svg viewBox="0 0 400 400" width="100%" height="100%">
+    <defs>
+      <radialGradient id="hhGlow" cx="50%" cy="46%" r="55%">
+        <stop offset="0%" stop-color="#ff7a00" stop-opacity=".34"/>
+        <stop offset="55%" stop-color="#ff7a00" stop-opacity=".10"/>
+        <stop offset="100%" stop-color="#ff7a00" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="hhBarrel" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#8b93a8"/>
+        <stop offset="45%" stop-color="#e6eaf5"/>
+        <stop offset="100%" stop-color="#6d7488"/>
+      </linearGradient>
+    </defs>
+    <rect x="0" y="0" width="400" height="400" fill="url(#hhGlow)"/>
+    <circle cx="200" cy="200" r="158" fill="#0d1120" stroke="rgba(255,255,255,.10)" stroke-width="3"/>
+    <g stroke="rgba(255,255,255,.055)" stroke-width="1.6">
+      <line x1="200" y1="46" x2="200" y2="354"/>
+      <line x1="200" y1="46" x2="200" y2="354" transform="rotate(18,200,200)"/>
+      <line x1="200" y1="46" x2="200" y2="354" transform="rotate(36,200,200)"/>
+      <line x1="200" y1="46" x2="200" y2="354" transform="rotate(54,200,200)"/>
+      <line x1="200" y1="46" x2="200" y2="354" transform="rotate(72,200,200)"/>
+      <line x1="200" y1="46" x2="200" y2="354" transform="rotate(90,200,200)"/>
+      <line x1="200" y1="46" x2="200" y2="354" transform="rotate(108,200,200)"/>
+      <line x1="200" y1="46" x2="200" y2="354" transform="rotate(126,200,200)"/>
+      <line x1="200" y1="46" x2="200" y2="354" transform="rotate(144,200,200)"/>
+      <line x1="200" y1="46" x2="200" y2="354" transform="rotate(162,200,200)"/>
+    </g>
+    <circle cx="200" cy="200" r="146" fill="none" stroke="rgba(255,122,0,.20)" stroke-width="7"/>
+    <circle cx="200" cy="200" r="92" fill="none" stroke="rgba(255,122,0,.15)" stroke-width="7"/>
+    <circle cx="200" cy="200" r="26" fill="#141a2e" stroke="rgba(255,255,255,.10)" stroke-width="2"/>
+    <circle cx="200" cy="200" r="10" fill="#ff7a00" opacity=".85"/>
+    <circle cx="200" cy="200" r="18" fill="none" stroke="#ff7a00" stroke-width="2" opacity=".35"/>
+    <!-- dart, tip planted at the inner ring, flights up-right -->
+    <g transform="rotate(-46,240,186)">
+      <polygon points="226,186 246,181 246,191" fill="#cdd3e2"/>
+      <rect x="246" y="182.5" width="70" height="7" rx="3.5" fill="url(#hhBarrel)"/>
+      <rect x="316" y="181" width="24" height="10" rx="3" fill="#b64a16"/>
+      <polygon points="340,176 380,163 373,187 340,196" fill="#ff7a00"/>
+      <polygon points="340,181 371,171 366,185 340,191" fill="#ffb46b" opacity=".9"/>
+    </g>
+  </svg>
+</div>
 <h2 id="appTitle"><span class="titleMain">SHATEKI</span><span class="titleSub">QUEST</span></h2>
       <div class="start-actions column" style="gap:8px">
         <button id="questBtn" class="btn primary big" type="button">New game ▶</button>
@@ -8599,11 +8750,16 @@ body.livev2-on[data-page="game"] canvas#v2InfoDmd{
 
     <div class="modal-body">
       <div id="mlGrid" class="ml-grid" role="group" aria-label="Select number of games"></div>
+      <div id="mlHint" class="ml-hint">
+        <span class="ml-hint-ico" aria-hidden="true">i</span>
+        <span id="mlHintText"></span>
+      </div>
     </div>
 
     <div class="modal-footer ml-footer">
-      <!-- Styled to match Match Setup CTAs; label swaps via JS based on mode -->
-      <button id="mlStartBtn" class="btn ms-start ms-primary" type="button" disabled>THROW ORDER <span class="ms-arrow">▶</span></button>
+      <button id="mlFooterBackBtn" class="btn ml-foot-back" type="button">BACK</button>
+      <!-- Label swaps via JS based on mode -->
+      <button id="mlStartBtn" class="btn ms-start ms-primary" type="button" disabled>SET THROW ORDER <span class="ms-arrow">▶</span></button>
     </div>
   </div>
 </div>
@@ -16903,31 +17059,79 @@ const mlBackBtn = byId('mlBackBtn');
 
 let __mlSelectedGames = 0;
 
+function __mlModeKind(){
+  try{ if (__sqIsVsShadowSetup()) return 'shadow'; }catch(_){ }
+  return ((window.__sqSelectedMode || 'match') === 'practice') ? 'practice' : 'match';
+}
+
+function __mlHintTextFor(n){
+  const s = (n === 1) ? '' : 's';
+  const kind = __mlModeKind();
+  if (kind === 'shadow')   return `Shadow battle: you'll play ${n} game${s} against the shadow.`;
+  if (kind === 'practice') return `Practice session: you'll play ${n} game${s}.`;
+  // Match semantics are first-to-N wins (targetWins = games).
+  return `The first player to win ${n} game${s} is the match winner.`;
+}
+
 function __mlBuildGrid(){
   if (!mlGrid) return;
-  mlGrid.innerHTML = '';
-  const opts = [1,2,3,4,5];
 
-  opts.forEach(n => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'ml-tile';
-    b.dataset.value = String(n);
-    b.innerHTML = `
-      <div class="ml-n">${n}</div>
-      <div class="ml-lab">${n === 1 ? 'GAME' : 'GAMES'}</div>
-    `;
-    b.onclick = () => {
-      __mlSelectedGames = n;
-      [...mlGrid.querySelectorAll('.ml-tile')].forEach(x => x.classList.toggle('selected', x === b));
-      if (mlStartBtn) mlStartBtn.disabled = false;
-    };
-    mlGrid.appendChild(b);
+  // Radial dial: 5 ring segments around a centre readout.
+  const CX = 130, CY = 130, RO = 124, RI = 74, GAP = 2.6;
+  const rad = a => (a * Math.PI) / 180;
+  const px = (r, a) => (CX + r * Math.cos(rad(a))).toFixed(2);
+  const py = (r, a) => (CY + r * Math.sin(rad(a))).toFixed(2);
+  const segPath = (a1, a2) =>
+    `M ${px(RO,a1)} ${py(RO,a1)} A ${RO} ${RO} 0 0 1 ${px(RO,a2)} ${py(RO,a2)} ` +
+    `L ${px(RI,a2)} ${py(RI,a2)} A ${RI} ${RI} 0 0 0 ${px(RI,a1)} ${py(RI,a1)} Z`;
+
+  let svg = `<svg class="mlw-svg" viewBox="0 0 260 260" role="group" aria-label="Select number of games">`;
+  svg += `<defs><filter id="mlwGlow" x="-40%" y="-40%" width="180%" height="180%">` +
+         `<feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#ff7a00" flood-opacity=".55"/></filter></defs>`;
+  for (let n = 1; n <= 5; n++){
+    const mid = -90 + (n - 1) * 72;
+    const a1 = mid - 36 + GAP, a2 = mid + 36 - GAP;
+    const tr = (RO + RI) / 2;
+    svg += `<g class="mlw-seg" data-value="${n}" role="button" tabindex="0" aria-label="${n} game${n===1?'':'s'}">` +
+           `<path class="mlw-seg-path" d="${segPath(a1, a2)}"/>` +
+           `<text class="mlw-seg-num" x="${px(tr, mid)}" y="${py(tr, mid)}" text-anchor="middle" dominant-baseline="central">${n}</text>` +
+           `</g>`;
+  }
+  svg += `<circle class="mlw-hub" cx="${CX}" cy="${CY}" r="${RI - 10}"/>` +
+         `<g class="mlw-trophy" transform="translate(${CX - 11},${CY - 44}) scale(0.92)">` +
+         `<path d="M8 21h8M12 17v4M7 4h10v3a5 5 0 0 1-10 0V4ZM5 6H3v2a4 4 0 0 0 4 2M19 6h2v2a4 4 0 0 1-4 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>` +
+         `<text class="mlw-hub-top" x="${CX}" y="${CY - 8}" text-anchor="middle">FIRST TO</text>` +
+         `<text class="mlw-hub-num" id="mlwHubNum" x="${CX}" y="${CY + 24}" text-anchor="middle">3</text>` +
+         `<text class="mlw-hub-bot" id="mlwHubBot" x="${CX}" y="${CY + 46}" text-anchor="middle">WINS</text>` +
+         `</svg>`;
+  mlGrid.innerHTML = svg;
+
+  const hubTop = mlGrid.querySelector('.mlw-hub-top');
+  const hubNum = mlGrid.querySelector('#mlwHubNum');
+  const hubBot = mlGrid.querySelector('#mlwHubBot');
+  const hintEl = byId('mlHintText');
+
+  const select = (n) => {
+    __mlSelectedGames = n;
+    mlGrid.querySelectorAll('.mlw-seg').forEach(g => {
+      g.classList.toggle('selected', Number(g.dataset.value) === n);
+    });
+    const kind = __mlModeKind();
+    if (hubTop) hubTop.textContent = (kind === 'match') ? 'FIRST TO' : 'PLAY';
+    if (hubNum) hubNum.textContent = String(n);
+    if (hubBot) hubBot.textContent = (kind === 'match') ? (n === 1 ? 'WIN' : 'WINS') : (n === 1 ? 'GAME' : 'GAMES');
+    if (hintEl) hintEl.textContent = __mlHintTextFor(n);
+    if (mlStartBtn) mlStartBtn.disabled = false;
+  };
+
+  mlGrid.querySelectorAll('.mlw-seg').forEach(g => {
+    const pick = () => select(Number(g.dataset.value));
+    g.addEventListener('click', pick);
+    g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
   });
 
   // default selection: 3 games (matches old default)
-  const def = mlGrid.querySelector('.ml-tile[data-value="3"]');
-  if (def) def.click();
+  select(3);
 }
 
 function __mlOpen(){
@@ -16944,9 +17148,15 @@ function __mlOpen(){
     } else {
       // Match Play: keep CTA styling consistent with Match Setup
       mlStartBtn.className = 'btn ms-start ms-primary';
-      mlStartBtn.innerHTML = 'THROW ORDER <span class="ms-arrow">▶</span>';
+      mlStartBtn.innerHTML = 'SET THROW ORDER <span class="ms-arrow">▶</span>';
     }
     mlStartBtn.disabled = true;
+  }
+
+  const mlFootBack = byId('mlFooterBackBtn');
+  if (mlFootBack && !mlFootBack.__mlWired){
+    mlFootBack.__mlWired = true;
+    mlFootBack.onclick = () => { if (mlBackBtn) mlBackBtn.click(); else __mlClose(); };
   }
 
   __mlBuildGrid();
@@ -31647,8 +31857,8 @@ const svgTrophy = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8"
 const svgLock = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
 
 hub.innerHTML   = `<span class="navIcon">${svgUsers}</span><span class="navLabel">PLAYER HUB</span>`;
-stats.innerHTML = `<span class="navIcon">${svgBar}</span><span class="navLabel">PLAYER STATS</span>`;
-league.innerHTML= `<span class="navIcon">${svgTrophy}</span><span class="navLabel">LEAGUE &amp; RANKS</span>`;
+stats.innerHTML = `<span class="navIcon">${svgBar}</span><span class="navLabel">STATS</span>`;
+league.innerHTML= `<span class="navIcon">${svgTrophy}</span><span class="navLabel">LEAGUE</span>`;
 
 // Admin: clickable text + lock (no big button)
 admin.className = 'adminLink';
