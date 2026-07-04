@@ -8257,7 +8257,9 @@ body.livev2-on[data-page="game"] canvas#v2InfoDmd{
 
     <!-- PAGE 1: GAME DETAILS -->
     <section id="details" class="card section">
+<div class="home-arcade-hero">
 <h2 id="appTitle"><span class="titleMain">SHATEKI</span><span class="titleSub">QUEST</span></h2>
+</div>
       <div class="start-actions column" style="gap:8px">
         <button id="questBtn" class="btn primary big" type="button">New game ▶</button>
                 <button id="tournamentBtn" class="btn big" type="button">TOURNAMENT</button>
@@ -13875,7 +13877,7 @@ function openGameCompleteDialog() {
   overlay.className = 'modal-backdrop sq-gamecomplete-backdrop';
 
   const modal = document.createElement('div');
-  modal.className = 'modal modal-gamecomplete';
+  modal.className = 'modal modal-gamecomplete sq-gc-arcade';
 
   const winnerNames = winnerIdx.map(i => __sqPlayerPretty(state.players[i]) || state.players[i].name || ('Player ' + (i+1)));
   const isDraw = winnerNames.length > 1;
@@ -13895,28 +13897,264 @@ function openGameCompleteDialog() {
     return n + 'TH';
   };
 
-  modal.innerHTML = `
-    <div class="gc-top">
-      <div class="gc-title">GAME COMPLETE</div>
-      
-    </div>
+  const escGc = (v) => {
+    try { return (typeof escapeHtml === 'function') ? escapeHtml(String(v == null ? '' : v)) : String(v == null ? '' : v); }
+    catch(_) { return String(v == null ? '' : v); }
+  };
+  const primaryWinnerIndex = __drawResolved ? __dec.winner : winnerIdx[0];
+  const winnerDisplay = __drawResolved
+    ? (__sqPlayerPretty(state.players[__dec.winner]) || state.players[__dec.winner].name || ('Player ' + (__dec.winner+1)))
+    : winnerNames.join(' · ');
+  const winnerLabelHtml = __drawResolved
+    ? '<span class="gc-accent">WINNER</span>'
+    : (isDraw ? '<span class="gc-accent">DRAW</span>' : '<span class="gc-accent">WINNER</span>');
+  const winnerScores = (state && state.score && state.score[primaryWinnerIndex]) || [];
+  const winnerRoundTotals = Array.isArray(winnerScores)
+    ? winnerScores.map(r => Number(r && r.roundTotal || 0)).filter(n => Number.isFinite(n) && n > 0)
+    : [];
+  const completedRoundCount = (() => {
+    try {
+      const hs = (state && Array.isArray(state.history)) ? state.history : [];
+      const set = new Set();
+      hs.forEach(h => { if (h && h.round != null) set.add(h.round); });
+      return Math.max(1, set.size || (state.currentRound || 1));
+    } catch(_) {
+      return 1;
+    }
+  })();
+  const bestRound = winnerRoundTotals.length ? Math.max(...winnerRoundTotals) : max;
+  const avgScore = max / completedRoundCount;
+  const rankMovementText = 'Pending';
+  const ordinalLabel = (n) => {
+    const x = Number(n) || 0;
+    if (x === 1) return '1ST';
+    if (x === 2) return '2ND';
+    if (x === 3) return '3RD';
+    return String(x) + 'TH';
+  };
+  const completedRoundsForPlayer = (playerIndex) => {
+    try {
+      const rows = (state && state.score && state.score[playerIndex]) || [];
+      const count = Array.isArray(rows)
+        ? rows.reduce((n, row) => {
+            const darts = row && Array.isArray(row.darts) ? row.darts : [];
+            return n + (darts.some(d => d != null) ? 1 : 0);
+          }, 0)
+        : 0;
+      return Math.max(1, count || (typeof MAX_ROUNDS === 'number' ? MAX_ROUNDS : 1));
+    } catch(_) {
+      return 1;
+    }
+  };
+  const bestRoundForPlayer = (playerIndex) => {
+    try {
+      const rows = (state && state.score && state.score[playerIndex]) || [];
+      if (!Array.isArray(rows) || !rows.length) return 0;
+      return rows.reduce((best, row) => {
+        const n = Number(row && row.roundTotal || 0);
+        return Number.isFinite(n) && n > best ? n : best;
+      }, 0);
+    } catch(_) {
+      return 0;
+    }
+  };
+  const buildCurrentGameBreakdownRows = () => {
+    const rows = totals.map((score, index) => {
+      const player = (state.players && state.players[index]) || {};
+      const name = __sqPlayerPretty(player) || String(player.name || '').trim() || ('Player ' + (index + 1));
+      const rounds = completedRoundsForPlayer(index);
+      return {
+        index,
+        name,
+        score,
+        average: score / rounds,
+        bestRound: bestRoundForPlayer(index)
+      };
+    }).sort((a, b) => (b.score - a.score) || a.name.localeCompare(b.name));
 
-    <div class="gc-body">
-      <div class="gc-winnerCard">
-        <div class="gc-winnerLabel">${(__drawResolved ? '<span class="gc-accent">WINNER</span>' : (isDraw ? '<span class="gc-accent">DRAW</span>' : '<span class="gc-accent">WINNER</span>'))}</div>
-        <div class="gc-winnerName" title="${(__drawResolved ? (__sqPlayerPretty(state.players[__dec.winner]) || state.players[__dec.winner].name || ('Player ' + (__dec.winner+1))) : winnerNames.join(' · '))}">${(__drawResolved ? (__sqPlayerPretty(state.players[__dec.winner]) || state.players[__dec.winner].name || ('Player ' + (__dec.winner+1))) : winnerNames.join(' · '))}</div>
-        <div class="gc-roundAvg" data-role="gcRoundAvg"></div>
-        <div class="gc-winnerScore">${max}</div>
+    let lastScore = null;
+    let currentPosition = 0;
+    rows.forEach((row, idx) => {
+      if (lastScore === null || row.score !== lastScore) currentPosition = idx + 1;
+      row.position = currentPosition;
+      lastScore = row.score;
+    });
+    return rows;
+  };
+  const targetGamesForMatch = () => {
+    try { return Math.max(1, parseInt(state && state.match && state.match.targetWins, 10) || 1); }
+    catch(_) { return 1; }
+  };
+  const completedGamesInMatch = () => {
+    try { return Array.isArray(state && state.match && state.match.history) ? state.match.history.length : 0; }
+    catch(_) { return 0; }
+  };
+  const projectedMatchCompleteByGames = () => {
+    const alreadyAwarded = !!(state && state.gameAwarded);
+    const projectedPlayed = completedGamesInMatch() + (alreadyAwarded ? 0 : 1);
+    return projectedPlayed >= targetGamesForMatch();
+  };
+  const matchAdvanceLabel = projectedMatchCompleteByGames() ? 'End Match' : 'Next Round';
+  const openCurrentGameBreakdownDialog = () => {
+    document.querySelectorAll('.sq-gc-breakdown-backdrop').forEach(n => n.remove());
+    const rows = buildCurrentGameBreakdownRows();
+    const bdOverlay = document.createElement('div');
+    bdOverlay.className = 'modal-backdrop sq-gc-breakdown-backdrop';
+
+    const bdModal = document.createElement('div');
+    bdModal.className = 'modal sq-gc-breakdown-modal';
+    bdModal.setAttribute('role', 'dialog');
+    bdModal.setAttribute('aria-modal', 'true');
+    bdModal.innerHTML = `
+      <div class="gc-breakdownTitle">Game Scores</div>
+      <div class="gc-breakdownTableWrap">
+        <table class="gc-breakdownTable">
+          <thead>
+            <tr>
+              <th>Position</th>
+              <th>Name</th>
+              <th>Score</th>
+              <th>Average</th>
+              <th>Best Round</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(row => `
+              <tr${row.position === 1 ? ' class="isWinner"' : ''}>
+                <td>${escGc(ordinalLabel(row.position))}</td>
+                <td>${escGc(row.name)}</td>
+                <td>${escGc(row.score)}</td>
+                <td>${escGc(row.average.toFixed(1))}</td>
+                <td>${escGc(row.bestRound)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="gc-breakdownActions">
+        <button class="btn gc-breakdownBack" type="button" data-action="breakdownBack">Back</button>
+      </div>
+    `;
+
+    const closeBreakdown = () => bdOverlay.remove();
+    bdModal.querySelector('[data-action="breakdownBack"]')?.addEventListener('click', closeBreakdown);
+    bdOverlay.addEventListener('click', e => { if (e.target === bdOverlay) closeBreakdown(); });
+    bdOverlay.addEventListener('keydown', e => { if (e.key === 'Escape') closeBreakdown(); });
+    bdOverlay.appendChild(bdModal);
+    document.body.appendChild(bdOverlay);
+    bdModal.tabIndex = 0;
+    bdModal.focus();
+  };
+  const endMatchToClubhouse = () => {
+    try {
+      state = JSON.parse(JSON.stringify(baseState));
+      save();
+    } catch(_) {}
+    try {
+      if (typeof navigateToStartScreen === 'function') navigateToStartScreen();
+      else if (typeof show === 'function') show('details');
+    } catch(e) {
+      console.error(e);
+      try { toast('Could not return to clubhouse.'); } catch(_) {}
+    }
+  };
+  const completeGameAndAdvanceMatch = async (btn) => {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+    }
+    try {
+      const wasVsShadow = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
+      if (typeof awardAndShowLeaderboard === 'function') await awardAndShowLeaderboard();
+      const gamesPlayedAfterAward = completedGamesInMatch();
+      const matchComplete = gamesPlayedAfterAward >= targetGamesForMatch();
+
+      if (wasVsShadow && state && state.shadow && state.shadow.saveFailed === true && state.gameAwarded !== true) {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = matchAdvanceLabel;
+        }
+        return;
+      }
+
+      remove();
+
+      if (matchComplete) {
+        try {
+          if (!wasVsShadow && state && state.match && !state.match.completedLogged && typeof logCompletedMatch === 'function') {
+            logCompletedMatch();
+            state.match.completedLogged = true;
+            save();
+          }
+        } catch(e) {
+          console.warn('[SQ] Match completion log failed', e);
+        }
+        endMatchToClubhouse();
+        return;
+      }
+
+      if (wasVsShadow) {
+        const nextIndex = gamesPlayedAfterAward;
+        const games = Array.isArray(state && state.shadow && state.shadow.games) ? state.shadow.games : [];
+        if (nextIndex >= games.length || (typeof __sqRefreshVsShadowRuntimePlayerForGame === 'function' && !__sqRefreshVsShadowRuntimePlayerForGame(nextIndex))) {
+          try { toast('No next Shadow source is available.'); } catch(_) {}
+          return;
+        }
+        state.finished = false;
+        state.gameAwarded = false;
+        try { delete state.__sqGameCompleteOpen; } catch(_) {}
+        if (typeof startNewGame === 'function') startNewGame(true);
+        return;
+      }
+
+      state.finished = false;
+      if (typeof startNewGame === 'function') startNewGame();
+    } catch(e) {
+      console.error(e);
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = matchAdvanceLabel;
+      }
+      try { toast('Could not advance match.'); } catch(_) {}
+    }
+  };
+
+  modal.innerHTML = `
+    <div class="gc-arcade-shell">
+      <div class="gc-arcade-confetti" aria-hidden="true"></div>
+      <div class="gc-arcade-visual" aria-hidden="true"></div>
+      <div class="gc-arcade-content">
+        <div class="gc-arcade-kicker">MATCH COMPLETE</div>
+        <div class="gc-winnerLabel">${winnerLabelHtml}</div>
+        <div class="gc-winnerName" title="${escGc(winnerDisplay)}">${escGc(winnerDisplay)}</div>
+
+        <div class="gc-statPanel" aria-label="Match result summary">
+          <div class="gc-statRow">
+            <span class="gc-statLabel">Final Score</span>
+            <span class="gc-statValue">${escGc(max)}</span>
+          </div>
+          <div class="gc-statRow">
+            <span class="gc-statLabel">Best Round</span>
+            <span class="gc-statValue">${escGc(bestRound)}</span>
+          </div>
+          <div class="gc-statRow">
+            <span class="gc-statLabel">Average</span>
+            <span class="gc-statValue">${escGc(avgScore.toFixed(1))}</span>
+          </div>
+          <div class="gc-statRow">
+            <span class="gc-statLabel">Rank Movement</span>
+            <span class="gc-statValue gc-rankMovementValue" title="Power Rank movement is calculated from Supabase after this game is saved.">${escGc(rankMovementText)}</span>
+          </div>
+        </div>
       </div>
 
-      <div class="gc-divider"></div>
+      <div class="gc-ranks" data-role="gcRanks" aria-hidden="true"></div>
 
-      <div class="gc-ranks" data-role="gcRanks"></div>
-    </div>
-
-    <div class="gc-actions">
-      ${(!__isVsShadowComplete && !__drawResolved && isDraw) ? '<button class="btn dec-startDecider" type="button" data-action="startDecider">START DECIDER SHOUTOUT</button>' : ''}
-      <button class="btn gc-close" type="button" data-action="close">CLOSE</button>
+      <div class="gc-actions gc-arcade-actions">
+        ${(!__isVsShadowComplete && !__drawResolved && isDraw) ? '<button class="btn dec-startDecider" type="button" data-action="startDecider">START DECIDER SHOUTOUT</button>' : ''}
+        <button class="btn gc-breakdown" type="button" data-action="breakdown">VIEW BREAKDOWN</button>
+        <button class="btn gc-next-match" type="button" data-action="advanceMatch">${escGc(matchAdvanceLabel)}</button>
+      </div>
     </div>
 `;
 
@@ -13952,9 +14190,9 @@ function openGameCompleteDialog() {
       const avgPts = (row.score / 14);
       div.innerHTML = `
         <div class="gc-rankPos">${pos}</div>
-        <div class="gc-rankName">${nm}</div>
+        <div class="gc-rankName">${escGc(nm)}</div>
         <div class="gc-rankScore">
-          <span class="gc-rankScoreVal">${row.score}</span>
+          <span class="gc-rankScoreVal">${escGc(row.score)}</span>
           <span class="gc-rankAvg">${avgPts.toFixed(1)}</span>
         </div>
       `;
@@ -13967,7 +14205,17 @@ function openGameCompleteDialog() {
 
   const remove = () => overlay.remove();
   // Close handlers
-  modal.querySelector('[data-action="close"]')?.addEventListener('click', remove);
+  modal.querySelector('[data-action="breakdown"]')?.addEventListener('click', () => {
+    try {
+      openCurrentGameBreakdownDialog();
+    } catch(e) {
+      console.error(e);
+      try { toast('Could not open game breakdown.'); } catch(_) {}
+    }
+  });
+  modal.querySelector('[data-action="advanceMatch"]')?.addEventListener('click', (e) => {
+    completeGameAndAdvanceMatch(e.currentTarget);
+  });
   overlay.addEventListener('click', (e) => { if (e.target === overlay) remove(); });
   document.addEventListener('keydown', function __gcEsc(e){
     if (e.key === 'Escape') { try { remove(); } catch(_) {} document.removeEventListener('keydown', __gcEsc); }
@@ -29915,7 +30163,7 @@ function arrangeStartActions(){
       printer.className = 'home-live-printer';
       printer.innerHTML = ''+
         '<div class="lp-top">'+
-          '<span id="homeLpTopLine" class="lp-title">// LIVE UPDATES //</span>'+
+          '<span id="homeLpTopLine" class="lp-title">LIVE UPDATES</span>'+
           '<span class="lp-badge"><span class="lp-badgeText">CURRENTLY UNAVAILABLE</span><span class="lp-badgeSep">•</span><span class="lp-badgeText">UPGRADES IN PROCESS</span><span class="lp-dots"><i></i><i></i><i></i></span></span>'+
         '</div>'+
         '<div class="lp-mid lp-mid-hold">'+
@@ -31579,7 +31827,7 @@ if (!window.__homeLivePrinterInterval){
           // Top animation
           const topLine = document.getElementById('homeLpTopLine');
           if (topLine){
-            topLine.textContent = '// LIVE UPDATES //';
+            topLine.textContent = 'LIVE UPDATES';
           }
 
           
@@ -50488,6 +50736,496 @@ body[data-page="leaderboard"] #leaderboard .stacked-actions #gameScoresBtn{
 }
 </style>
 <!-- <<< PATCH:FIX172_TOURNAMENT_MODE_CARD END -->
+
+<!-- >>> PATCH:HOME_ARCADE_START_HERO START -->
+<style id="sq-home-arcade-start-hero-css">
+#details{
+  padding-top: clamp(12px, 2.5vh, 24px) !important;
+}
+
+#details .home-arcade-hero{
+  position: relative;
+  width: min(760px, 94vw);
+  aspect-ratio: 700 / 288;
+  height: auto;
+  margin: 0 auto 10px;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 132, 24, .34);
+  background:
+    linear-gradient(180deg, rgba(4, 5, 10, .04) 0%, rgba(4, 5, 10, 0) 46%, rgba(4, 5, 10, .42) 100%),
+    url("assets/start-arcade-hero-hd.png") center top / cover no-repeat;
+  box-shadow:
+    0 22px 60px rgba(0, 0, 0, .48),
+    0 0 36px rgba(255, 104, 0, .14),
+    inset 0 1px 0 rgba(255, 255, 255, .08);
+  isolation: isolate;
+}
+
+#details .home-arcade-hero::before{
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(180deg, rgba(255,255,255,.045) 0, rgba(255,255,255,.045) 1px, transparent 1px, transparent 7px),
+    radial-gradient(circle at 50% 58%, rgba(255,122,0,.13), transparent 44%);
+  mix-blend-mode: screen;
+  opacity: .42;
+}
+
+#details .home-arcade-hero::after{
+  content: "";
+  position: absolute;
+  left: 7%;
+  right: 7%;
+  bottom: -1px;
+  height: 2px;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255,122,0,.95), transparent);
+  box-shadow: 0 0 22px rgba(255,122,0,.7);
+}
+
+#details .home-arcade-hero #appTitle{
+  position: absolute !important;
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+  display: inline-flex !important;
+  width: max-content;
+  margin: 0 !important;
+  pointer-events: none;
+  opacity: 0;
+}
+
+#details .start-actions.column{
+  margin-top: 0 !important;
+  gap: 12px !important;
+  width: 100% !important;
+  max-width: 560px !important;
+}
+
+#details #startGameBtn,
+#details #resumeBtn{
+  width: min(92vw, 520px) !important;
+  max-width: 520px !important;
+  border-radius: 14px !important;
+  letter-spacing: .12em !important;
+}
+
+#details #startGameBtn{
+  min-height: 64px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 157, 42, .98) 0%, rgba(255, 111, 0, .98) 54%, rgba(226, 74, 0, .98) 100%) !important;
+  border: 1px solid rgba(255, 206, 120, .58) !important;
+  color: #fff !important;
+  box-shadow:
+    0 18px 36px rgba(0, 0, 0, .42),
+    0 0 26px rgba(255, 106, 0, .30),
+    inset 0 1px 0 rgba(255,255,255,.34),
+    inset 0 -2px 0 rgba(128,38,0,.32) !important;
+  text-shadow: 0 1px 0 rgba(0,0,0,.32), 0 0 16px rgba(255,255,255,.16);
+}
+
+#details #startGameBtn:hover{
+  transform: translateY(-1px);
+  box-shadow:
+    0 20px 40px rgba(0, 0, 0, .46),
+    0 0 34px rgba(255, 120, 0, .40),
+    inset 0 1px 0 rgba(255,255,255,.38),
+    inset 0 -2px 0 rgba(128,38,0,.32) !important;
+}
+
+#details #resumeBtn{
+  min-height: 58px !important;
+  background:
+    linear-gradient(180deg, rgba(25,31,43,.94), rgba(11,16,27,.96)) !important;
+  border: 1px solid rgba(151, 164, 190, .22) !important;
+  color: rgba(235, 239, 248, .82) !important;
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, .40),
+    inset 0 1px 0 rgba(255,255,255,.07) !important;
+}
+
+#details #resumeBtn[disabled],
+#details #resumeBtn.disabled{
+  opacity: .66;
+}
+
+#details #homeLpTopLine.lp-title{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+  font-size: 12px !important;
+  line-height: normal !important;
+  font-weight: 400 !important;
+  letter-spacing: .16em !important;
+  text-transform: uppercase !important;
+  color: rgba(54,255,122,.97) !important;
+  text-shadow: 0 0 14px rgba(54,255,122,.28) !important;
+}
+
+@media (max-width: 560px){
+  #details{
+    padding-top: 10px !important;
+  }
+  #details .home-arcade-hero{
+    width: min(760px, 96vw);
+    aspect-ratio: 700 / 288;
+    height: auto;
+    margin-bottom: 8px;
+    border-radius: 15px;
+    background-position: center top;
+  }
+  #details #startGameBtn,
+  #details #resumeBtn{
+    width: 92vw !important;
+  }
+}
+</style>
+<!-- <<< PATCH:HOME_ARCADE_START_HERO END -->
+
+<!-- >>> PATCH:GAME_COMPLETE_ARCADE_REDESIGN START -->
+<style id="sq-game-complete-arcade-css">
+.modal-gamecomplete.sq-gc-arcade{
+  width: min(640px, 94vw) !important;
+  max-height: 92dvh !important;
+  padding: 0 !important;
+  border-radius: 26px !important;
+  overflow: hidden !important;
+  border: 1px solid rgba(255,255,255,.16) !important;
+  background:
+    radial-gradient(circle at 86% 20%, rgba(255,122,0,.12), transparent 34%),
+    linear-gradient(180deg, rgba(16,20,27,.98), rgba(5,8,13,.98)) !important;
+  box-shadow:
+    0 26px 80px rgba(0,0,0,.66),
+    inset 0 0 0 1px rgba(255,255,255,.035) !important;
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-arcade-shell{
+  position: relative;
+  min-height: 540px;
+  padding: 34px 28px 24px;
+  isolation: isolate;
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-arcade-shell::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:2;
+  pointer-events:none;
+  background:
+    linear-gradient(90deg,
+      rgba(7,10,17,.98) 0%,
+      rgba(7,10,17,.92) 38%,
+      rgba(7,10,17,.66) 52%,
+      rgba(7,10,17,.22) 68%,
+      rgba(7,10,17,0) 82%),
+    radial-gradient(circle at 44% 44%, rgba(255,122,0,.05), transparent 30%);
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-arcade-confetti{
+  position:absolute;
+  inset:0;
+  z-index:0;
+  pointer-events:none;
+  opacity:.74;
+  background:
+    radial-gradient(ellipse at 18% 12%, rgba(255,122,0,.9) 0 2px, transparent 3px),
+    radial-gradient(ellipse at 78% 10%, rgba(255,122,0,.8) 0 2px, transparent 3px),
+    radial-gradient(ellipse at 88% 30%, rgba(255,122,0,.72) 0 3px, transparent 4px),
+    radial-gradient(ellipse at 58% 70%, rgba(255,122,0,.65) 0 2px, transparent 3px),
+    radial-gradient(ellipse at 20% 72%, rgba(255,122,0,.55) 0 2px, transparent 3px);
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-arcade-visual{
+  position:absolute;
+  z-index:1;
+  top: 8px;
+  right: -2%;
+  bottom: 92px;
+  left: 42%;
+  width: auto;
+  pointer-events:none;
+  background: url("assets/game-complete-celebration-hd.png") right top / auto 100% no-repeat;
+  filter: saturate(1.04) contrast(1.04);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.18) 14%, rgba(0,0,0,.76) 36%, #000 62%);
+  mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.18) 14%, rgba(0,0,0,.76) 36%, #000 62%);
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-arcade-content{
+  position:relative;
+  z-index:3;
+  width: 58%;
+  min-height: 392px;
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-arcade-kicker{
+  margin: 2px 0 24px;
+  font-size: clamp(20px, 4.2vw, 28px);
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: rgba(238,241,255,.92);
+  text-shadow: 0 2px 0 rgba(0,0,0,.42), 0 0 18px rgba(255,255,255,.10);
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-winnerLabel{
+  margin-bottom: 6px;
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: .18em;
+  color: rgba(238,241,255,.78);
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-winnerName{
+  margin: 0 0 22px;
+  max-width: min(430px, 92vw);
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  font-size: clamp(30px, 7vw, 48px);
+  line-height: .98;
+  font-weight: 950;
+  letter-spacing: .01em;
+  color: var(--shatekiOrange, #ff7a00);
+  text-transform: uppercase;
+  text-shadow: 0 2px 0 rgba(0,0,0,.48), 0 0 22px rgba(255,122,0,.16);
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-statPanel{
+  width: min(270px, 100%);
+  border-radius: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,.06);
+  background: linear-gradient(180deg, rgba(16,23,34,.74), rgba(9,14,22,.82));
+  box-shadow: 0 18px 42px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.035);
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-statRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  min-height: 42px;
+  border-bottom: 1px solid rgba(255,255,255,.055);
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-statRow:last-child{
+  border-bottom: 0;
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-statLabel{
+  color: rgba(238,241,255,.72);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-statValue{
+  color: rgba(248,249,255,.96);
+  font-size: 20px;
+  font-weight: 950;
+  letter-spacing: .02em;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 0 rgba(0,0,0,.4);
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-rankMovementValue{
+  font-size: 16px;
+  letter-spacing: .04em;
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-ranks{
+  display:none !important;
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-arcade-actions{
+  position:relative;
+  z-index:4;
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap:14px;
+  padding: 0;
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-arcade-actions .btn{
+  min-height: 66px;
+  width:100%;
+  border-radius: 12px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 950;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: rgba(238,241,255,.9);
+  background: linear-gradient(180deg, rgba(25,31,43,.96), rgba(12,17,26,.98));
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 12px 28px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.065);
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-arcade-actions .gc-breakdown{
+  color:#fff;
+  background: linear-gradient(180deg, rgba(255,143,27,.98), rgba(241,82,0,.98));
+  border-color: rgba(255,196,100,.46);
+  box-shadow: 0 16px 34px rgba(255,91,0,.22), inset 0 1px 0 rgba(255,255,255,.22);
+}
+
+.modal-gamecomplete.sq-gc-arcade .gc-arcade-actions .dec-startDecider{
+  grid-column: 1 / -1;
+  min-height: 56px;
+}
+
+.sq-gc-breakdown-backdrop{
+  z-index: 450000 !important;
+}
+
+.sq-gc-breakdown-modal{
+  width: min(700px, 94vw) !important;
+  max-height: 88dvh !important;
+  padding: 26px 24px 22px !important;
+  border-radius: 22px !important;
+  border: 1px solid rgba(255,255,255,.14) !important;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255,122,0,.13), transparent 35%),
+    linear-gradient(180deg, rgba(18,23,34,.98), rgba(7,10,17,.99)) !important;
+  box-shadow:
+    0 26px 80px rgba(0,0,0,.68),
+    inset 0 1px 0 rgba(255,255,255,.05) !important;
+}
+
+.sq-gc-breakdown-modal .gc-breakdownTitle{
+  margin: 0 0 18px;
+  color: rgba(238,241,255,.94);
+  font-size: clamp(22px, 5vw, 34px);
+  line-height: 1;
+  font-weight: 950;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 0 rgba(0,0,0,.44), 0 0 18px rgba(255,255,255,.10);
+}
+
+.sq-gc-breakdown-modal .gc-breakdownTableWrap{
+  overflow-x:auto;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.09);
+  background: linear-gradient(180deg, rgba(13,19,30,.86), rgba(8,12,20,.94));
+}
+
+.sq-gc-breakdown-modal .gc-breakdownTable{
+  width:100%;
+  min-width: 600px;
+  border-collapse: collapse;
+}
+
+.sq-gc-breakdown-modal .gc-breakdownTable th,
+.sq-gc-breakdown-modal .gc-breakdownTable td{
+  padding: 14px 12px;
+  border-bottom: 1px solid rgba(255,255,255,.065);
+  text-align:left;
+  vertical-align:middle;
+}
+
+.sq-gc-breakdown-modal .gc-breakdownTable th{
+  color: rgba(238,241,255,.62);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.sq-gc-breakdown-modal .gc-breakdownTable td{
+  color: rgba(242,245,255,.92);
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.sq-gc-breakdown-modal .gc-breakdownTable td:nth-child(1),
+.sq-gc-breakdown-modal .gc-breakdownTable td:nth-child(3),
+.sq-gc-breakdown-modal .gc-breakdownTable td:nth-child(4),
+.sq-gc-breakdown-modal .gc-breakdownTable td:nth-child(5){
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sq-gc-breakdown-modal .gc-breakdownTable td:nth-child(2){
+  max-width: 260px;
+  overflow-wrap:anywhere;
+}
+
+.sq-gc-breakdown-modal .gc-breakdownTable tr.isWinner td{
+  color:#fff;
+  background: rgba(255,122,0,.08);
+}
+
+.sq-gc-breakdown-modal .gc-breakdownTable tr.isWinner td:first-child{
+  color: var(--shatekiOrange, #ff7a00);
+}
+
+.sq-gc-breakdown-modal .gc-breakdownTable tbody tr:last-child td{
+  border-bottom:0;
+}
+
+.sq-gc-breakdown-modal .gc-breakdownActions{
+  display:flex;
+  justify-content:center;
+  margin-top:18px;
+}
+
+.sq-gc-breakdown-modal .gc-breakdownBack{
+  width:min(320px, 100%);
+  min-height:56px;
+  border-radius:12px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+@media (max-width: 560px){
+  .modal-gamecomplete.sq-gc-arcade .gc-arcade-shell{
+    min-height: 520px;
+    padding: 28px 22px 22px;
+  }
+  .modal-gamecomplete.sq-gc-arcade .gc-arcade-visual{
+    left: 34%;
+    right: -8%;
+    width: auto;
+    opacity:.52;
+    bottom: 106px;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.52) 28%, #000 58%);
+    mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.52) 28%, #000 58%);
+  }
+  .modal-gamecomplete.sq-gc-arcade .gc-arcade-content{
+    width: 100%;
+    min-height: 372px;
+  }
+  .modal-gamecomplete.sq-gc-arcade .gc-winnerName{
+    max-width: 78%;
+  }
+  .modal-gamecomplete.sq-gc-arcade .gc-statPanel{
+    width: min(270px, 62%);
+  }
+  .modal-gamecomplete.sq-gc-arcade .gc-arcade-actions{
+    gap:10px;
+  }
+  .modal-gamecomplete.sq-gc-arcade .gc-arcade-actions .btn{
+    min-height: 60px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+  .sq-gc-breakdown-modal{
+    padding: 22px 16px 18px !important;
+  }
+  .sq-gc-breakdown-modal .gc-breakdownTable{
+    min-width: 560px;
+  }
+}
+</style>
+<!-- <<< PATCH:GAME_COMPLETE_ARCADE_REDESIGN END -->
 
 </body>
 </html>
