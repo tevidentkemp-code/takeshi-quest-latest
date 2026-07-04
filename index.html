@@ -2663,6 +2663,92 @@ body[data-page="game"] #gameScrollGate{
   justify-content:center;
 }
 
+/* Select Player modal — same design language as the game-mode cards */
+.modal.sp-modal{
+  max-width: 440px;
+  border-radius: 18px;
+  background: rgba(15,18,32,.97);
+  border: 1px solid rgba(255,255,255,.10);
+  padding: 0 0 4px;
+}
+.sp-modal .modal-body{ padding: 2px 16px 6px; }
+.sp-modal .modal-footer{ background: transparent; }
+.sp-list{
+  display:flex;
+  flex-direction:column;
+  gap: 10px;
+  padding: 2px;
+}
+.sp-row{
+  width:100%;
+  text-align:left;
+  display:flex;
+  align-items:center;
+  gap: 12px;
+  border-radius: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(20,24,44,.82);
+  box-shadow: 0 8px 20px rgba(0,0,0,.20);
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+}
+.sp-row:hover{
+  transform: translateY(-1px);
+  border-color: rgba(255,122,0,.45);
+  background: rgba(22,27,50,.86);
+}
+.sp-row:active{ transform: translateY(0); }
+.sp-chip{
+  width:40px;
+  height:40px;
+  border-radius:12px;
+  display:grid;
+  place-items:center;
+  flex:0 0 40px;
+  background: rgba(255,122,0,.14);
+  border:1px solid rgba(255,122,0,.38);
+  color:#ff9b3d;
+  font-weight:900;
+  font-size:15px;
+  letter-spacing:.04em;
+}
+.sp-copy{
+  flex:1 1 auto;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+}
+.sp-name{
+  font-weight:900;
+  font-size:16px;
+  color: rgba(245,247,255,.97);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.sp-nick{
+  margin-top:3px;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color: rgba(255,255,255,.50);
+}
+.sp-row .sp-chev{
+  flex:0 0 auto;
+  font-size:22px;
+  color: rgba(255,255,255,.35);
+}
+.sp-native-select{
+  position:absolute;
+  width:1px;
+  height:1px;
+  opacity:0;
+  pointer-events:none;
+  left:-9999px;
+}
+.sp-hidden-confirm{ display:none !important; }
+
 .sq-turbo-ready-modal{
   max-width:420px;
   text-align:center;
@@ -8408,20 +8494,22 @@ body.livev2-on[data-page="game"] canvas#v2InfoDmd{
 
 <!-- Select Player Modal -->
 <div id="selectPlayerModal" class="modal-backdrop hidden">
-  <div class="modal">
-    <h3>Select Player</h3>
-    <div class="modal-body">
-      <div class="stack">
-        <label class="tag">Player Name</label>
-        <select id="existingPlayerSelect" style="width: 100%;">
-          <option value="">Select a saved player...</option>
-        </select>
-      </div>
+  <div class="modal sp-modal">
+    <div class="sg-head">
+      <div class="sg-title">SELECT PLAYER</div>
+      <div class="sg-sub">TAP A PLAYER TO ADD THEM</div>
     </div>
-    <div class="modal-footer">
+    <div class="modal-body">
+      <div id="spPlayerList" class="sp-list"></div>
+      <!-- Hidden native select stays as the canonical value carrier for legacy
+           hooks (fix129 dedupe, confirm handler reads its value). -->
+      <select id="existingPlayerSelect" class="sp-native-select" aria-hidden="true" tabindex="-1">
+        <option value="">Select a saved player...</option>
+      </select>
+    </div>
+    <div class="modal-footer sg-footer">
       <button id="cancelSelectPlayerBtn" class="btn" type="button">Cancel</button>
-<button id="confirmSelectPlayerBtn" class="btn primary" type="button">Enter</button>
-
+      <button id="confirmSelectPlayerBtn" class="btn primary sp-hidden-confirm" type="button">Enter</button>
     </div>
   </div>
 </div>
@@ -19188,6 +19276,55 @@ async function showSelectPlayerDialog(index){
       modal.classList.add('hidden');
       toast('Player selected');
     };
+  }
+
+  // Tap-to-select list rendered from resolvedList; the hidden native select
+  // stays the value carrier so the confirm handler and fix129 dedupe keep working.
+  const listWrap = byId('spPlayerList');
+  if (listWrap) {
+    listWrap.innerHTML = '';
+    const seen = new Set();
+    (resolvedList || []).forEach(p => {
+      if (!p || !p.name) return;
+      const key = String(p.id || p.name).trim().toLowerCase();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      const val = (p.id != null && String(p.id).trim()) ? String(p.id).trim() : p.name;
+
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'sp-row';
+
+      const chip = document.createElement('span');
+      chip.className = 'sp-chip';
+      chip.textContent = String(p.initials || p.name.trim().charAt(0) || '?').toUpperCase().slice(0, 3);
+
+      const copy = document.createElement('span');
+      copy.className = 'sp-copy';
+      const nm = document.createElement('span');
+      nm.className = 'sp-name';
+      nm.textContent = p.name;
+      copy.appendChild(nm);
+      if (p.nickname) {
+        const nick = document.createElement('span');
+        nick.className = 'sp-nick';
+        nick.textContent = '“' + p.nickname + '”';
+        copy.appendChild(nick);
+      }
+
+      const chev = document.createElement('span');
+      chev.className = 'sp-chev';
+      chev.setAttribute('aria-hidden', 'true');
+      chev.textContent = '›';
+
+      row.append(chip, copy, chev);
+      row.onclick = () => {
+        select.value = val;
+        const cb = byId('confirmSelectPlayerBtn');
+        if (cb) cb.click();
+      };
+      listWrap.appendChild(row);
+    });
   }
 }
 
