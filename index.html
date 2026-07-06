@@ -3327,12 +3327,11 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   height:auto;
   display: flex;
   flex-direction: column;
-  border-radius: 14px;
+  border-radius: 18px;
   border: 1px solid rgba(255,255,255,.10);
   background:
-    linear-gradient(180deg, rgba(10,16,32,.88), rgba(5,9,18,.84)),
-    rgba(6, 10, 20, .78);
-  box-shadow: 0 10px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.045);
+    linear-gradient(180deg, rgba(16,20,38,.94), rgba(10,13,26,.92));
+  box-shadow: 0 14px 34px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.05);
   overflow: hidden;
   width: min(420px, 94%);
   margin: 18px auto 8px;
@@ -3396,27 +3395,27 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 }
 
 /* Center hold content within panel content area (below panel headers) */
-#homeLivePrinter .home-hold-overlay{ inset: 34px 0 0 0; }
-.home-mini-printer .home-hold-overlay{ inset: 30px 0 0 0; }
+#homeLivePrinter .home-hold-overlay{ inset: 41px 0 0 0; }
+.home-mini-printer .home-hold-overlay{ inset: 41px 0 0 0; }
 
 .home-hold-overlay-mini{
   background: rgba(6,10,20,.78);
 }
 
 .home-hold-title{
-  font-size: 16px;
-  letter-spacing: .14em;
-  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: .22em;
+  font-weight: 800;
   text-transform: uppercase;
-  color: rgba(230,235,250,.92);
+  color: rgba(226,232,250,.72);
 }
 
 .home-hold-sub{
-  font-size: 12px;
-  letter-spacing: .12em;
+  font-size: 10px;
+  letter-spacing: .18em;
   font-weight: 800;
   text-transform: uppercase;
-  color: rgba(255,122,0,.92);
+  color: rgba(255,140,40,.78);
 }
 
 .home-hold-sim{
@@ -3494,13 +3493,14 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   display:flex;
   align-items:center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   font-size: 12px;
   font-weight: 900;
-  letter-spacing: .08em;
+  letter-spacing: .14em;
   text-transform: uppercase;
   color: #36ff7a;
-  background: rgba(0,0,0,.22);
+  background: rgba(0,0,0,.20);
+  border-bottom: 1px solid rgba(255,255,255,.07);
 }
 .home-live-printer .lp-dot{
   width: 10px;
@@ -3867,11 +3867,11 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   max-height:190px;
   display:flex;
   flex-direction:column;
-  border-radius:16px;
-  border:1px solid rgba(255,255,255,.11);
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.10);
   overflow:hidden;
-  background: rgba(6,10,20,.78);
-  box-shadow: 0 10px 40px rgba(0,0,0,.35), 0 0 20px rgba(255,255,255,.04) inset;
+  background: linear-gradient(180deg, rgba(16,20,38,.94), rgba(10,13,26,.92));
+  box-shadow: 0 14px 34px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.05);
 }
 .home-mini-printer .lp-top{
   display:flex;
@@ -3880,10 +3880,11 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   padding:12px 14px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size:12px;
-  letter-spacing:.08em;
+  letter-spacing:.14em;
   color: rgba(0,255,120,.85);
   text-transform:uppercase;
-  background: linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.08));
+  background: rgba(0,0,0,.20);
+  border-bottom: 1px solid rgba(255,255,255,.07);
 }
 .home-mini-printer .lp-dot{
   width:8px;
@@ -4285,6 +4286,12 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 }
 #details .home-mini-printer .lp-mid{
   padding: 8px 12px 12px;
+}
+/* While a panel is in its hold state, keep the empty feed screen invisible
+   (layout preserved); it reappears when live rows arrive and hold is lifted. */
+#details .lp-mid.lp-mid-hold .lp-table,
+#details .lp-mid.lp-mid-hold .mini-table{
+  visibility: hidden;
 }
 #details .home-live-printer .lp-table,
 #details .mini-table-plain{
@@ -7628,8 +7635,9 @@ body[data-page="game"] #floatHead{
 /* <<< PATCH:ticker-marquee END */
 
 /* --- MOT3_47 home layout fixes --- */
+/* Footer nav is in normal flow now; keep only a small safe-area cushion */
 #details{
-  padding-bottom: calc(260px + env(safe-area-inset-bottom));
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
 }
 .home-live-printer .lp-top,
 .home-mini-printer .lp-top{
@@ -50892,11 +50900,20 @@ body[data-page="leaderboard"] #leaderboard .stacked-actions #gameScoresBtn{
 <style id="sq-home-arcade-start-hero-css">
 #details{
   padding-top: clamp(12px, 2.5vh, 24px) !important;
+  /* One column width for every stacked home block (hero, CTAs, feeds, nav).
+     Legacy rules read --homeW, so alias it to the same token. */
+  --homeCol: min(440px, 100%);
+  --homeW: var(--homeCol);
+}
+
+/* Home page: drop the in-game pad reserve so the page ends at its content */
+body[data-page="details"] .wrap{
+  padding-bottom: 28px;
 }
 
 #details .home-arcade-hero{
   position: relative;
-  width: min(760px, 94vw);
+  width: var(--homeCol);
   aspect-ratio: 700 / 288;
   height: auto;
   margin: 0 auto 10px;
@@ -50923,7 +50940,7 @@ body[data-page="leaderboard"] #leaderboard .stacked-actions #gameScoresBtn{
     repeating-linear-gradient(180deg, rgba(255,255,255,.045) 0, rgba(255,255,255,.045) 1px, transparent 1px, transparent 7px),
     radial-gradient(circle at 50% 58%, rgba(255,122,0,.13), transparent 44%);
   mix-blend-mode: screen;
-  opacity: .42;
+  opacity: .30;
 }
 
 #details .home-arcade-hero::after{
@@ -50955,16 +50972,35 @@ body[data-page="leaderboard"] #leaderboard .stacked-actions #gameScoresBtn{
   margin-top: 0 !important;
   gap: 12px !important;
   width: 100% !important;
-  max-width: 560px !important;
+  max-width: var(--homeCol) !important;
 }
 
 #details #startGameBtn,
 #details #resumeBtn{
-  width: min(92vw, 520px) !important;
-  max-width: 520px !important;
-  border-radius: 14px !important;
+  width: 100% !important;
+  max-width: none !important;
+  border-radius: 16px !important;
   letter-spacing: .12em !important;
 }
+
+/* Feed cards and footer nav share the same column edge as the hero/CTAs */
+#details .home-live-printer{
+  width: 100% !important;
+  max-width: none !important;
+  margin: 4px auto 0 !important;
+}
+#details .home-mini-leagues{
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 auto !important;
+}
+#details .home-footer-nav{
+  width: var(--homeCol);
+  max-width: none;
+  margin: 16px auto 0;
+}
+#details .home-footer-nav .home-nav-row{ width: 100%; }
+#details .home-admin-row{ width: 100%; }
 
 #details #startGameBtn{
   min-height: 64px !important;
@@ -51021,16 +51057,9 @@ body[data-page="leaderboard"] #leaderboard .stacked-actions #gameScoresBtn{
     padding-top: 10px !important;
   }
   #details .home-arcade-hero{
-    width: min(760px, 96vw);
-    aspect-ratio: 700 / 288;
-    height: auto;
     margin-bottom: 8px;
-    border-radius: 15px;
+    border-radius: 16px;
     background-position: center top;
-  }
-  #details #startGameBtn,
-  #details #resumeBtn{
-    width: 92vw !important;
   }
 }
 </style>
