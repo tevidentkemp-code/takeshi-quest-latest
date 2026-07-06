@@ -4785,16 +4785,24 @@ body.livev3-on #gameTopRow{ display:none !important; }
 .v3-card-body{
   width:100%; margin-top:10px; border-top:1px solid rgba(255,255,255,.08); padding-top:9px;
   flex:1 1 auto;
+  display:flex; flex-direction:column;
 }
-.v3-rr{ display:flex; flex-direction:column; margin-bottom:9px; }
+.v3-rounds{ display:flex; flex-direction:column; }
+.v3-rr{ display:flex; flex-direction:column; align-items:center; text-align:center; margin-bottom:9px; }
 .v3-rr-lab{ font-size:10px; font-weight:800; letter-spacing:.1em; color:rgba(231,235,245,.5); }
 .v3-rr-tot{ font-size:18px; font-weight:900; color:#fff; line-height:1.15; }
 .v3-rr-marks{ font-size:11px; font-weight:700; color:rgba(231,235,245,.6); }
-.v3-rr-none{ font-size:9px; letter-spacing:.1em; color:rgba(231,235,245,.4); font-weight:800; text-align:center; }
-.v3-wr{ display:flex; flex-direction:column; align-items:center; text-align:center; margin-bottom:10px; }
-.v3-wr-lab{ font-size:10px; font-weight:800; letter-spacing:.12em; color:rgba(231,235,245,.6); }
-.v3-wr-tot{ font-size:17px; font-weight:900; color:#fff; line-height:1.2; }
-.v3-wr-marks{ font-size:11px; font-weight:700; color:rgba(231,235,245,.55); }
+.v3-rr.empty{ opacity:.32; }
+.v3-avg-sep{
+  height:1px; width:100%;
+  background:rgba(255,255,255,.12);
+  margin: 2px 0 9px;
+  flex:0 0 auto;
+}
+.v3-avgs{ display:flex; flex-direction:column; gap:9px; margin-top:auto; padding-bottom:2px; }
+.v3-avg{ display:flex; flex-direction:column; align-items:center; text-align:center; }
+.v3-avg-lab{ font-size:10px; font-weight:800; letter-spacing:.1em; color:rgba(231,235,245,.5); }
+.v3-avg-val{ font-size:18px; font-weight:900; color:#fff; line-height:1.1; }
 
 .v3-centre{ display:flex; flex-direction:column; gap:9px; min-width:0; }
 .v3-dartbox{
@@ -24270,22 +24278,45 @@ function __sqLiveV3Render(){
     return d >= 0 ? `<span class="v3-diff up">(+${d})</span>` : `<span class="v3-diff down">(${d})</span>`;
   };
 
-  // Active player: last three rounds with any data (most recent first)
-  const recentRounds = (p) => {
+  // A round entry counts as complete once all 3 darts are in, or it is a past
+  // round; the active player's in-progress round lives in the centre column.
+  const roundComplete = (p, ri, e) => {
+    if (!__sqV3RoundThrown(e)) return false;
+    const full = e.darts && e.darts.filter(d => d).length >= 3;
+    return full || ri < r;
+  };
+
+  // Both cards use the same format: the last three completed rounds, most
+  // recent first, centred. Padded with placeholders so the block is stable.
+  const lastRounds = (p) => {
     const items = [];
     for (let ri = r; ri >= 0 && items.length < 3; ri--){
       const e = entryOf(p, ri);
-      if (ri === r && p === cp) continue; // current round lives in the centre column
-      if (!__sqV3RoundThrown(e)) continue;
+      if (!roundComplete(p, ri, e)) continue;
       items.push(`<div class="v3-rr"><span class="v3-rr-lab">R${ri + 1}</span><span class="v3-rr-tot">${Number(e.roundTotal || 0)}</span><span class="v3-rr-marks">${__sqV3Marks(e)}</span></div>`);
     }
-    return items.join('') || '<div class="v3-rr v3-rr-none">NO ROUNDS YET</div>';
+    while (items.length < 3){
+      items.push('<div class="v3-rr empty"><span class="v3-rr-lab">--</span><span class="v3-rr-tot">--</span><span class="v3-rr-marks">-- / -- / --</span></div>');
+    }
+    return items.join('');
   };
 
-  const waitRound = (p, ri, label) => {
-    const e = entryOf(p, ri);
-    const thrown = __sqV3RoundThrown(e);
-    return `<div class="v3-wr"><span class="v3-wr-lab">${label}</span><span class="v3-wr-tot">${thrown ? Number(e.roundTotal || 0) : '--'}</span><span class="v3-wr-marks">${thrown ? __sqV3Marks(e) : '-- / -- / --'}</span></div>`;
+  // Averages: 3-dart avg = mean points per completed round; game avg = mean
+  // points per dart actually thrown. '--' until there is anything to average.
+  const playerAverages = (p) => {
+    const b = (state.score && state.score[p]) || [];
+    let rounds = 0, darts = 0, pts = 0;
+    b.forEach((e, ri) => {
+      if (!e || !e.darts) return;
+      const thrown = e.darts.filter(d => d).length;
+      if (!thrown) return;
+      pts += Number(e.roundTotal || 0);
+      darts += thrown;
+      if (roundComplete(p, ri, e)) rounds += 1;
+    });
+    const a3 = rounds > 0 ? (pts / rounds).toFixed(1) : '--';
+    const ga = darts > 0 ? (pts / darts).toFixed(1) : '--';
+    return { a3, ga };
   };
 
   const playerCard = (i) => {
@@ -24293,9 +24324,13 @@ function __sqLiveV3Render(){
     const crown = i === leader ? '<span class="v3-crown" aria-hidden="true">♛</span>' : '';
     const num = `<span class="v3-pnum">${i === 0 ? '①' : '②'}</span>`;
     const nick = pNick(i) ? `<div class="v3-nick">“${escV3(pNick(i).toUpperCase())}”</div>` : '<div class="v3-nick"></div>';
-    const body = active
-      ? `<div class="v3-recent">${recentRounds(i)}</div>`
-      : `${waitRound(i, r, 'THIS ROUND')}${r > 0 ? waitRound(i, r - 1, 'LAST ROUND') : ''}`;
+    const avg = playerAverages(i);
+    const body = `<div class="v3-rounds">${lastRounds(i)}</div>
+        <div class="v3-avg-sep"></div>
+        <div class="v3-avgs">
+          <div class="v3-avg"><span class="v3-avg-lab">3 DART AVG</span><span class="v3-avg-val">${avg.a3}</span></div>
+          <div class="v3-avg"><span class="v3-avg-lab">GAME AVG</span><span class="v3-avg-val">${avg.ga}</span></div>
+        </div>`;
     const dart = `<div class="v3-dartico" aria-hidden="true"><svg viewBox="0 0 56 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 8h9"/><rect x="10" y="5.4" width="13" height="5.2" rx="2.6" fill="currentColor" stroke="none"/><path d="M13 5.4v5.2M16.5 5.4v5.2M20 5.4v5.2" stroke="rgba(0,0,0,.45)" stroke-width="1"/><path d="M23 8h13"/><path d="M36 8 51 2.5 45.5 8 51 13.5 Z" fill="currentColor" stroke="none"/><path d="M36 8 47 4.6 43.5 8 47 11.4 Z" fill="rgba(0,0,0,.35)" stroke="none"/></svg></div>`;
     return `<div class="v3-side ${i === 0 ? 'p1' : 'p2'}">
       <div class="v3-windots-row">${winDots(i)}</div>
@@ -24312,7 +24347,8 @@ function __sqLiveV3Render(){
   };
 
   const curEntry = entryOf(cp, r);
-  const dartDots = [0,1,2].map(k => `<i class="${k < dart ? 'on' : ''}"></i>`).join('');
+  // All three dots start lit; one goes out (right-to-left) after each throw.
+  const dartDots = [0,1,2].map(k => `<i class="${k < (3 - dart) ? 'on' : ''}"></i>`).join('');
   const roundDef = ROUNDS[r] || {};
   const targetLabel = roundDef.type === 'number' ? String(roundDef.target)
     : roundDef.type === 'doubles' ? 'DOUBLES'
