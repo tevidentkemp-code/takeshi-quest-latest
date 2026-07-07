@@ -4903,15 +4903,27 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-dmd-frame{ flex:1 1 auto; min-height:80px; display:flex; }
 .v3-dmd-bezel{
   position:relative; flex:1; border-radius:12px; overflow:hidden;
-  background:#05070c;
+  background:
+    radial-gradient(120% 62% at 50% 44%, rgba(255,106,0,.10), rgba(255,106,0,0) 62%),
+    radial-gradient(140% 100% at 50% 50%, #0a0f19 0%, #05070c 66%, #02040a 100%);
   border:1px solid rgba(255,255,255,.08);
   box-shadow: inset 0 0 22px rgba(0,0,0,.7), inset 0 0 0 3px rgba(0,0,0,.5), 0 4px 14px rgba(0,0,0,.4);
   display:flex; align-items:center; justify-content:center;
 }
+/* Slow "backlight" breathe so the screen reads as lit, never dead-black */
+.v3-dmd-bezel::before{
+  content:''; position:absolute; inset:0; pointer-events:none; z-index:0;
+  background: radial-gradient(70% 44% at 50% 46%, rgba(255,140,40,.16), rgba(255,140,40,0) 70%);
+  animation: v3DmdGlow 4.2s ease-in-out infinite;
+}
+@keyframes v3DmdGlow{ 0%,100%{ opacity:.45; } 50%{ opacity:1; } }
+/* Scanlines + edge vignette on top */
 .v3-dmd-bezel::after{
-  content:''; position:absolute; inset:0; pointer-events:none;
-  background: repeating-linear-gradient(0deg, rgba(255,255,255,.03) 0 1px, transparent 1px 3px);
-  opacity:.5;
+  content:''; position:absolute; inset:0; pointer-events:none; z-index:2;
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,.03) 0 1px, transparent 1px 3px),
+    radial-gradient(130% 100% at 50% 50%, rgba(0,0,0,0) 52%, rgba(0,0,0,.55) 100%);
+  opacity:.6;
 }
 .v3-dmdslot{ position:relative; z-index:1; width:100%; height:100%; display:flex; align-items:center; }
 .v3-dmdslot .sq-dmd, .v3-dmdslot .sq-dmd-wrap, .v3-dmdslot .v2InfoDmdCell{
@@ -5019,6 +5031,15 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
   transform:translate(0,0) scale(1); opacity:1;
   transition: transform .52s cubic-bezier(.35,.05,.2,1), opacity .52s ease-in;
 }
+/* "+N" that slides sideways from the centre round score into a player's total */
+.v3-plusfly{
+  position:fixed; pointer-events:none; z-index:60;
+  transform:translate(-50%,-50%); opacity:1;
+  font-weight:900; font-size:22px; line-height:1; letter-spacing:-.02em;
+  color:#ffb14a; text-shadow:0 2px 12px rgba(0,0,0,.6);
+  transition: transform .43s cubic-bezier(.25,.7,.3,1), opacity .43s ease-in;
+}
+.v3-plusfly.big{ font-size:31px; color:#ffd24a; text-shadow:0 0 18px rgba(255,196,46,.9); }
 /* Round total landing in the history slot */
 @keyframes v3RrLand{
   0%{ transform:scale(1.5); }
@@ -5059,7 +5080,7 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-dot-out{ animation: v3DotOut .35s ease-out both; }
 
 @media (prefers-reduced-motion: reduce){
-  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly{ animation:none !important; transition:none !important; }
+  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly, .v3-dmd-bezel::before{ animation:none !important; transition:none !important; }
   #v3fxLayer{ display:none !important; }
 }
 
@@ -24465,21 +24486,34 @@ function __sqV3SlideInto(anchorEl, text, cls){
   }catch(_){ }
 }
 
-// Red "MISS" shake near an anchor + red shake on the anchor itself.
+// Miss — just a red negative shake on the round-score number (no text).
 function __sqV3MissShake(anchorEl){
+  try{ if (anchorEl) anchorEl.classList.add('v3-shake-red'); }catch(_){ }
+}
+
+// A "+N" that slides horizontally from the centre into a player's total.
+function __sqV3FlyPlus(fromEl, toEl, text, big){
   try{
-    if (!anchorEl) return;
-    anchorEl.classList.add('v3-shake-red');
-    if (__sqV3Reduced()) return;
+    if (!fromEl || !toEl) return;
+    if (__sqV3Reduced()){ toEl.classList.add('v3-pop'); return; }
     const layer = __sqV3FxLayer();
-    const rect = anchorEl.getBoundingClientRect();
+    const s = fromEl.getBoundingClientRect();
+    const d = toEl.getBoundingClientRect();
     const el = document.createElement('div');
-    el.className = 'v3-miss-fx';
-    el.textContent = 'MISS';
-    el.style.left = (rect.left + rect.width / 2) + 'px';
-    el.style.top = (rect.top + rect.height / 2) + 'px';
+    el.className = 'v3-plusfly' + (big ? ' big' : '');
+    el.textContent = text;
+    el.style.left = (s.left + s.width / 2) + 'px';
+    el.style.top = (s.top + s.height / 2) + 'px';
     layer.appendChild(el);
-    setTimeout(() => { try{ el.remove(); }catch(_){ } }, 720);
+    const dx = (d.left + d.width / 2) - (s.left + s.width / 2);
+    const dy = (d.top + d.height / 2) - (s.top + s.height / 2);
+    requestAnimationFrame(() => {
+      el.style.transform = `translate(-50%,-50%) translate(${dx}px, ${dy}px) scale(.68)`;
+      el.style.opacity = '0';
+    });
+    setTimeout(() => {
+      try{ el.remove(); toEl.classList.remove('v3-pop'); void toEl.offsetWidth; toEl.classList.add('v3-pop'); }catch(_){ }
+    }, 430);
   }catch(_){ }
 }
 
@@ -24544,11 +24578,16 @@ function __sqV3Animate(panel){
       }
     }
 
-    // Hit -> slide "+N" up into the centre round score (darts within a turn).
+    // Hit -> the centre round score pops and updates (stays central), and a
+    // "+N" slides sideways into the active player's total, which pops on land.
+    let plusFlyPlayer = -1;
+    const totalEls = panel.querySelectorAll('.v3-total');
     if (prev.turnKey === turnKey && roundScore > (prev.roundScore || 0)){
       const delta = roundScore - (prev.roundScore || 0);
       const big = delta >= 30;
-      if (sbNum){ sbNum.classList.add(big ? 'v3-pop-big' : 'v3-pop'); __sqV3SlideInto(sbNum, '+' + delta, big ? 'big' : ''); }
+      if (sbNum) sbNum.classList.add(big ? 'v3-pop-big' : 'v3-pop');
+      __sqV3FlyPlus(sbNum, totalEls[cp], '+' + delta, big);
+      plusFlyPlayer = cp;
       const marks = panel.querySelector('.v3-sb-marks'); if (marks) marks.classList.add('v3-flash');
     }
     // Miss -> red negative shake (a dart was used but added no points).
@@ -24557,10 +24596,10 @@ function __sqV3Animate(panel){
       const marks = panel.querySelector('.v3-sb-marks'); if (marks) marks.classList.add('v3-flash');
     }
 
-    // Player totals — subtle pop when a total climbs.
-    const totalEls = panel.querySelectorAll('.v3-total');
+    // Totals pop when they climb (the active player's pop is deferred to the
+    // moment the sliding "+N" lands, so it is skipped here).
     for (let i = 0; i < 2; i++){
-      if (totals[i] > ((prev.totals && prev.totals[i]) || 0) && totalEls[i]) totalEls[i].classList.add('v3-pop');
+      if (i !== plusFlyPlayer && totals[i] > ((prev.totals && prev.totals[i]) || 0) && totalEls[i]) totalEls[i].classList.add('v3-pop');
     }
 
     // A completed round that wasn't handled by a fly still slides in.
