@@ -4947,6 +4947,73 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-g-total.lead{ color:var(--v3-green) !important; }
 .v3-g-diff{ color:var(--v3-red); font-size:10px; }
 
+/* ---------------- Arcade animations ---------------- */
+/* Score / total pop */
+@keyframes v3Pop{
+  0%{ transform:scale(1); }
+  30%{ transform:scale(1.28); }
+  55%{ transform:scale(.94); }
+  75%{ transform:scale(1.06); }
+  100%{ transform:scale(1); }
+}
+.v3-pop{ animation: v3Pop .42s cubic-bezier(.2,.9,.25,1) both; transform-origin:center; }
+/* Big hit (treble / 30+) — bigger, gold flash + glow */
+@keyframes v3PopBig{
+  0%{ transform:scale(1); color:#fff; text-shadow:0 2px 16px rgba(0,0,0,.5); }
+  25%{ transform:scale(1.5); color:#ffd24a; text-shadow:0 0 26px rgba(255,196,46,.95); }
+  55%{ transform:scale(.9); color:#ffe08a; }
+  78%{ transform:scale(1.1); color:#ffd24a; }
+  100%{ transform:scale(1); color:#fff; text-shadow:0 2px 16px rgba(0,0,0,.5); }
+}
+.v3-pop-big{ animation: v3PopBig .58s cubic-bezier(.2,.9,.25,1) both; transform-origin:center; }
+/* Marks flash-in */
+@keyframes v3Flash{ 0%{ filter:brightness(2.4); } 100%{ filter:brightness(1); } }
+.v3-flash{ animation: v3Flash .4s ease-out both; }
+/* Floating "+N" callout */
+#v3fxLayer{ position:fixed; inset:0; pointer-events:none; z-index:9000; }
+.v3-float{
+  position:fixed; transform:translate(-50%,0);
+  font-weight:900; font-size:22px; letter-spacing:.02em;
+  color:#ffb14a; text-shadow:0 2px 10px rgba(0,0,0,.6);
+  animation: v3Float 1s cubic-bezier(.2,.7,.3,1) both;
+}
+.v3-float.big{ font-size:34px; color:#ffd24a; text-shadow:0 0 18px rgba(255,196,46,.9); }
+@keyframes v3Float{
+  0%{ opacity:0; transform:translate(-50%,6px) scale(.7); }
+  18%{ opacity:1; transform:translate(-50%,-6px) scale(1.1); }
+  100%{ opacity:0; transform:translate(-50%,-58px) scale(1); }
+}
+/* New completed round sliding into a card's history */
+@keyframes v3RrNew{
+  0%{ opacity:0; transform:translateY(-10px) scale(.9); }
+  60%{ opacity:1; transform:translateY(0) scale(1.05); }
+  100%{ opacity:1; transform:translateY(0) scale(1); }
+}
+.v3-rr-new{ animation: v3RrNew .5s cubic-bezier(.2,.9,.25,1) both; }
+.v3-rr-new.best .v3-rr-tot{ animation: v3BestFlash .8s ease-out both; }
+@keyframes v3BestFlash{
+  0%,100%{ text-shadow:none; }
+  30%{ text-shadow:0 0 16px rgba(47,208,107,.9); transform:scale(1.15); }
+}
+/* Active card sweep-in on turn change */
+@keyframes v3CardIn{
+  0%{ transform:scale(.985); }
+  50%{ transform:scale(1.012); }
+  100%{ transform:scale(1); }
+}
+.v3-card-in{ animation: v3CardIn .4s ease-out; }
+/* Extinguished dart dot */
+@keyframes v3DotOut{
+  0%{ transform:scale(1.5); border-color:var(--v3-orange); box-shadow:0 0 12px rgba(255,106,0,.8); }
+  100%{ transform:scale(1); }
+}
+.v3-dot-out{ animation: v3DotOut .35s ease-out both; }
+
+@media (prefers-reduced-motion: reduce){
+  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active{ animation:none !important; }
+  #v3fxLayer{ display:none !important; }
+}
+
 /* ---- Pad restyle when V3 is active (same buttons, new clothes) ---- */
 body.livev3-on .dtX3{
   background: rgba(120,20,30,.34) !important;
@@ -24324,6 +24391,80 @@ function __sqLiveV3LoadPBs(){
   })();
 }
 
+// Floating "+N" arcade callout that rises and fades from an anchor element.
+function __sqV3SpawnFloat(anchorEl, text, cls){
+  try{
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let layer = document.getElementById('v3fxLayer');
+    if (!layer){ layer = document.createElement('div'); layer.id = 'v3fxLayer'; document.body.appendChild(layer); }
+    const rect = anchorEl.getBoundingClientRect();
+    const el = document.createElement('div');
+    el.className = 'v3-float ' + (cls || '');
+    el.textContent = text;
+    el.style.left = (rect.left + rect.width / 2) + 'px';
+    el.style.top = (rect.top + rect.height * 0.28) + 'px';
+    layer.appendChild(el);
+    setTimeout(() => { try{ el.remove(); }catch(_){ } }, 1000);
+  }catch(_){ }
+}
+
+// Diff the fresh render against the previous snapshot and fire one-shot
+// arcade animations only where a value actually changed.
+function __sqV3Animate(panel){
+  try{
+    const prev = window.__sqV3Anim || {};
+    const cp = state.currentPlayer || 0;
+    const r = Math.max(0, Math.min(state.currentRound, MAX_ROUNDS - 1));
+    const turnKey = r + ':' + cp;
+    const ce = (state.score && state.score[cp] && state.score[cp][r]) || null;
+    const roundScore = Number((ce && ce.roundTotal) || 0);
+    const totals = [__sqV3TotalFor(0), __sqV3TotalFor(1)];
+    const dart = Math.max(0, Math.min(state.currentDart || 0, 3));
+    const full = p => { let c = 0; const b = (state.score && state.score[p]) || []; b.forEach(e => { if (e && e.darts && e.darts.filter(d => d).length >= 3) c++; }); return c; };
+    const fulls = [full(0), full(1)];
+
+    // ROUND SCORE — pop + floating "+N" when a dart adds points this turn.
+    if (prev.turnKey === turnKey && roundScore > (prev.roundScore || 0)){
+      const delta = roundScore - (prev.roundScore || 0);
+      const big = delta >= 30;
+      const sbNum = panel.querySelector('.v3-sb-num');
+      if (sbNum){ sbNum.classList.add(big ? 'v3-pop-big' : 'v3-pop'); __sqV3SpawnFloat(sbNum, '+' + delta, big ? 'big' : ''); }
+      const marks = panel.querySelector('.v3-sb-marks');
+      if (marks) marks.classList.add('v3-flash');
+    }
+
+    // Player totals — subtle pop when a total climbs.
+    const totalEls = panel.querySelectorAll('.v3-total');
+    for (let i = 0; i < 2; i++){
+      if (totals[i] > ((prev.totals && prev.totals[i]) || 0) && totalEls[i]) totalEls[i].classList.add('v3-pop');
+    }
+
+    // A completed round sliding into a card's history (green if it's the best).
+    for (let i = 0; i < 2; i++){
+      if (fulls[i] > ((prev.fulls && prev.fulls[i]) || 0)){
+        const side = panel.querySelector('.v3-side.' + (i === 0 ? 'p1' : 'p2'));
+        const firstRr = side && side.querySelector('.v3-rr');
+        if (firstRr) firstRr.classList.add('v3-rr-new');
+      }
+    }
+
+    // Turn change — sweep the newly active card in.
+    if (prev.cp !== undefined && prev.cp !== cp){
+      const card = panel.querySelector('.v3-card.active');
+      if (card) card.classList.add('v3-card-in');
+    }
+
+    // Dart used — flash the dot that just went dark.
+    if (prev.turnKey === turnKey && dart > (prev.dart || 0)){
+      const dots = panel.querySelectorAll('.v3-dartdots i');
+      const goneIdx = 3 - dart; // the dot that just turned off
+      if (dots[goneIdx]) dots[goneIdx].classList.add('v3-dot-out');
+    }
+
+    window.__sqV3Anim = { turnKey, roundScore, totals, dart, cp, fulls };
+  }catch(_){ }
+}
+
 function __sqLiveV3Render(){
   const escV3 = (typeof escapeHtml === 'function') ? escapeHtml : (s => String(s == null ? '' : s));
   const host = (document.getElementById('liveV2Panel') || {}).parentElement
@@ -24353,6 +24494,14 @@ function __sqLiveV3Render(){
   const pName = i => String((state.players[i] && (state.players[i].name || state.players[i].player)) || ('P' + (i + 1)));
   const pNick = i => String((state.players[i] && state.players[i].nickname) || '').trim();
   const entryOf = (p, ri) => (state.score && state.score[p] && state.score[p][ri]) || null;
+
+  // Render-signature guard: skip redundant re-renders (updateUI can fire more
+  // than once per throw) so in-flight one-shot animations are never cut short.
+  const curEntrySig = entryOf(cp, r);
+  const sig = [r, cp, dart, totals[0], totals[1], Number((curEntrySig && curEntrySig.roundTotal) || 0),
+               (wins[0] || 0) + 'x' + (wins[1] || 0), state.finished ? 1 : 0, pName(0), pName(1)].join('|');
+  if (panel.isConnected && panel.dataset.sig === sig && panel.childElementCount) return;
+  panel.dataset.sig = sig;
 
   const winDots = i => {
     let out = '';
@@ -24514,6 +24663,9 @@ function __sqLiveV3Render(){
     try{ if (typeof window.__sqOpenGameMenu106 === 'function') return window.__sqOpenGameMenu106(); }catch(_){ }
     try{ document.getElementById('settingsBtnGame')?.click(); }catch(_){ }
   };
+
+  // Fire one-shot arcade animations for anything that changed this render.
+  try{ __sqV3Animate(panel); }catch(_){ }
 
   // Keep the current-round column in view on narrow screens.
   try{
