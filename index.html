@@ -4903,15 +4903,27 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-dmd-frame{ flex:1 1 auto; min-height:80px; display:flex; }
 .v3-dmd-bezel{
   position:relative; flex:1; border-radius:12px; overflow:hidden;
-  background:#05070c;
+  background:
+    radial-gradient(120% 62% at 50% 44%, rgba(255,106,0,.10), rgba(255,106,0,0) 62%),
+    radial-gradient(140% 100% at 50% 50%, #0a0f19 0%, #05070c 66%, #02040a 100%);
   border:1px solid rgba(255,255,255,.08);
   box-shadow: inset 0 0 22px rgba(0,0,0,.7), inset 0 0 0 3px rgba(0,0,0,.5), 0 4px 14px rgba(0,0,0,.4);
   display:flex; align-items:center; justify-content:center;
 }
+/* Slow "backlight" breathe so the screen reads as lit, never dead-black */
+.v3-dmd-bezel::before{
+  content:''; position:absolute; inset:0; pointer-events:none; z-index:0;
+  background: radial-gradient(70% 44% at 50% 46%, rgba(255,140,40,.16), rgba(255,140,40,0) 70%);
+  animation: v3DmdGlow 4.2s ease-in-out infinite;
+}
+@keyframes v3DmdGlow{ 0%,100%{ opacity:.45; } 50%{ opacity:1; } }
+/* Scanlines + edge vignette on top */
 .v3-dmd-bezel::after{
-  content:''; position:absolute; inset:0; pointer-events:none;
-  background: repeating-linear-gradient(0deg, rgba(255,255,255,.03) 0 1px, transparent 1px 3px);
-  opacity:.5;
+  content:''; position:absolute; inset:0; pointer-events:none; z-index:2;
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,.03) 0 1px, transparent 1px 3px),
+    radial-gradient(130% 100% at 50% 50%, rgba(0,0,0,0) 52%, rgba(0,0,0,.55) 100%);
+  opacity:.6;
 }
 .v3-dmdslot{ position:relative; z-index:1; width:100%; height:100%; display:flex; align-items:center; }
 .v3-dmdslot .sq-dmd, .v3-dmdslot .sq-dmd-wrap, .v3-dmdslot .v2InfoDmdCell{
@@ -5068,7 +5080,7 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-dot-out{ animation: v3DotOut .35s ease-out both; }
 
 @media (prefers-reduced-motion: reduce){
-  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly{ animation:none !important; transition:none !important; }
+  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly, .v3-dmd-bezel::before{ animation:none !important; transition:none !important; }
   #v3fxLayer{ display:none !important; }
 }
 
