@@ -4861,6 +4861,9 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 
 /* ---------------- Centre column ---------------- */
 .v3-centre{ display:flex; flex-direction:column; gap:9px; min-width:0; }
+/* Dart indicator + ROUND SCORE are grouped and nudged down at runtime so the
+   score number lines up with the player total numbers either side. */
+.v3-ctop{ display:flex; flex-direction:column; gap:9px; flex:0 0 auto; }
 .v3-dartbox{
   border-radius:12px; background: var(--v3-panel); border:1px solid var(--v3-line);
   padding:8px; text-align:center; flex:0 0 auto;
@@ -4883,8 +4886,8 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
   border-radius:14px;
   background: linear-gradient(165deg,#171d2b 0%,#0c1019 100%);
   border:1px solid rgba(255,255,255,.10);
-  padding: 14px 8px; text-align:center;
-  flex:1 1 auto; min-height:0;
+  padding: 12px 8px 13px; text-align:center;
+  flex:0 0 auto;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 8px 20px rgba(0,0,0,.35);
 }
@@ -4896,8 +4899,8 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-sb-marks{ font-size:15px; font-weight:900; color:rgba(214,222,240,.72); margin-top:3px; letter-spacing:.08em; }
 .v3-sb-marks i{ font-style:normal; color:rgba(214,222,240,.34); }
 
-/* Framed DMD "screen" — a modest bottom strip, always looks intentional */
-.v3-dmd-frame{ flex:0 0 auto; height:96px; display:flex; }
+/* Framed DMD "screen" — fills the space below the aligned ROUND SCORE */
+.v3-dmd-frame{ flex:1 1 auto; min-height:80px; display:flex; }
 .v3-dmd-bezel{
   position:relative; flex:1; border-radius:12px; overflow:hidden;
   background:#05070c;
@@ -4969,20 +4972,66 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 /* Marks flash-in */
 @keyframes v3Flash{ 0%{ filter:brightness(2.4); } 100%{ filter:brightness(1); } }
 .v3-flash{ animation: v3Flash .4s ease-out both; }
-/* Floating "+N" callout */
+/* FX overlay + "+N" that slides UP INTO the round-score number */
 #v3fxLayer{ position:fixed; inset:0; pointer-events:none; z-index:9000; }
-.v3-float{
+.v3-slidein{
   position:fixed; transform:translate(-50%,0);
   font-weight:900; font-size:22px; letter-spacing:.02em;
   color:#ffb14a; text-shadow:0 2px 10px rgba(0,0,0,.6);
-  animation: v3Float 1s cubic-bezier(.2,.7,.3,1) both;
+  animation: v3SlideIn .6s cubic-bezier(.2,.8,.25,1) both;
 }
-.v3-float.big{ font-size:34px; color:#ffd24a; text-shadow:0 0 18px rgba(255,196,46,.9); }
-@keyframes v3Float{
-  0%{ opacity:0; transform:translate(-50%,6px) scale(.7); }
-  18%{ opacity:1; transform:translate(-50%,-6px) scale(1.1); }
-  100%{ opacity:0; transform:translate(-50%,-58px) scale(1); }
+.v3-slidein.big{ font-size:32px; color:#ffd24a; text-shadow:0 0 18px rgba(255,196,46,.9); }
+@keyframes v3SlideIn{
+  0%{ opacity:0; transform:translate(-50%,34px) scale(.6); }
+  40%{ opacity:1; transform:translate(-50%,6px) scale(1.05); }
+  100%{ opacity:0; transform:translate(-50%,-6px) scale(1.15); }
 }
+/* MISS — red negative shake in */
+.v3-miss-fx{
+  position:fixed; transform:translate(-50%,-50%);
+  font-weight:900; font-size:20px; letter-spacing:.06em;
+  color:#ff4d5e; text-shadow:0 0 14px rgba(255,77,94,.7);
+  animation: v3MissIn .7s cubic-bezier(.2,.8,.25,1) both;
+}
+@keyframes v3MissIn{
+  0%{ opacity:0; transform:translate(-50%,-50%) scale(1.4); }
+  14%{ opacity:1; transform:translate(-58%,-50%) scale(1); }
+  28%{ transform:translate(-44%,-50%) scale(1); }
+  42%{ transform:translate(-54%,-50%) scale(1); }
+  56%{ transform:translate(-48%,-50%) scale(1); }
+  70%{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+  100%{ opacity:0; transform:translate(-50%,-72%) scale(.9); }
+}
+@keyframes v3ShakeRed{
+  0%,100%{ transform:translateX(0); color:#fff; }
+  15%{ transform:translateX(-6px); color:#ff4d5e; }
+  30%{ transform:translateX(6px); color:#ff4d5e; }
+  45%{ transform:translateX(-5px); color:#ff6a76; }
+  60%{ transform:translateX(4px); color:#ff6a76; }
+  80%{ transform:translateX(-2px); }
+}
+.v3-shake-red{ animation: v3ShakeRed .5s ease-in-out both; }
+/* Flying round-total clone (round complete -> diagonal slide to history) */
+.v3-fly{
+  position:fixed; display:flex; align-items:center; justify-content:center;
+  font-weight:900; color:#fff; letter-spacing:-.02em;
+  text-shadow:0 2px 16px rgba(0,0,0,.6); pointer-events:none;
+  transform:translate(0,0) scale(1); opacity:1;
+  transition: transform .52s cubic-bezier(.35,.05,.2,1), opacity .52s ease-in;
+}
+/* Round total landing in the history slot */
+@keyframes v3RrLand{
+  0%{ transform:scale(1.5); }
+  55%{ transform:scale(.92); }
+  100%{ transform:scale(1); }
+}
+.v3-rr-land{ animation: v3RrLand .34s cubic-bezier(.2,.9,.25,1) both; }
+/* Older rounds dropping down one slot to make room */
+@keyframes v3RrDrop{
+  0%{ transform:translateY(-16px); opacity:.4; }
+  100%{ transform:translateY(0); opacity:1; }
+}
+.v3-rr-drop{ animation: v3RrDrop .4s cubic-bezier(.2,.9,.25,1) both; }
 /* New completed round sliding into a card's history */
 @keyframes v3RrNew{
   0%{ opacity:0; transform:translateY(-10px) scale(.9); }
@@ -5010,7 +5059,7 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-dot-out{ animation: v3DotOut .35s ease-out both; }
 
 @media (prefers-reduced-motion: reduce){
-  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active{ animation:none !important; }
+  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly{ animation:none !important; transition:none !important; }
   #v3fxLayer{ display:none !important; }
 }
 
@@ -24391,20 +24440,71 @@ function __sqLiveV3LoadPBs(){
   })();
 }
 
-// Floating "+N" arcade callout that rises and fades from an anchor element.
-function __sqV3SpawnFloat(anchorEl, text, cls){
+function __sqV3FxLayer(){
+  let l = document.getElementById('v3fxLayer');
+  if (!l){ l = document.createElement('div'); l.id = 'v3fxLayer'; document.body.appendChild(l); }
+  return l;
+}
+function __sqV3Reduced(){
+  return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+// "+N" that rises from below and slides into the round-score number.
+function __sqV3SlideInto(anchorEl, text, cls){
   try{
-    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    let layer = document.getElementById('v3fxLayer');
-    if (!layer){ layer = document.createElement('div'); layer.id = 'v3fxLayer'; document.body.appendChild(layer); }
+    if (__sqV3Reduced() || !anchorEl) return;
+    const layer = __sqV3FxLayer();
     const rect = anchorEl.getBoundingClientRect();
     const el = document.createElement('div');
-    el.className = 'v3-float ' + (cls || '');
+    el.className = 'v3-slidein ' + (cls || '');
     el.textContent = text;
     el.style.left = (rect.left + rect.width / 2) + 'px';
-    el.style.top = (rect.top + rect.height * 0.28) + 'px';
+    el.style.top = (rect.top + rect.height / 2) + 'px';
     layer.appendChild(el);
-    setTimeout(() => { try{ el.remove(); }catch(_){ } }, 1000);
+    setTimeout(() => { try{ el.remove(); }catch(_){ } }, 640);
+  }catch(_){ }
+}
+
+// Red "MISS" shake near an anchor + red shake on the anchor itself.
+function __sqV3MissShake(anchorEl){
+  try{
+    if (!anchorEl) return;
+    anchorEl.classList.add('v3-shake-red');
+    if (__sqV3Reduced()) return;
+    const layer = __sqV3FxLayer();
+    const rect = anchorEl.getBoundingClientRect();
+    const el = document.createElement('div');
+    el.className = 'v3-miss-fx';
+    el.textContent = 'MISS';
+    el.style.left = (rect.left + rect.width / 2) + 'px';
+    el.style.top = (rect.top + rect.height / 2) + 'px';
+    layer.appendChild(el);
+    setTimeout(() => { try{ el.remove(); }catch(_){ } }, 720);
+  }catch(_){ }
+}
+
+// Fly a value clone diagonally from one element to another, scaling to dest.
+function __sqV3Fly(fromEl, toEl, text){
+  try{
+    if (__sqV3Reduced() || !fromEl || !toEl) return;
+    const layer = __sqV3FxLayer();
+    const s = fromEl.getBoundingClientRect();
+    const d = toEl.getBoundingClientRect();
+    const el = document.createElement('div');
+    el.className = 'v3-fly';
+    el.textContent = text;
+    el.style.left = s.left + 'px'; el.style.top = s.top + 'px';
+    el.style.width = s.width + 'px'; el.style.height = s.height + 'px';
+    el.style.fontSize = getComputedStyle(fromEl).fontSize;
+    layer.appendChild(el);
+    const dx = (d.left + d.width / 2) - (s.left + s.width / 2);
+    const dy = (d.top + d.height / 2) - (s.top + s.height / 2);
+    const scale = Math.max(.32, Math.min(1, d.height / Math.max(1, s.height)));
+    requestAnimationFrame(() => {
+      el.style.transform = `translate(${dx}px, ${dy}px) scale(${scale})`;
+      el.style.opacity = '.1';
+    });
+    setTimeout(() => { try{ el.remove(); }catch(_){ } }, 560);
   }catch(_){ }
 }
 
@@ -24422,15 +24522,39 @@ function __sqV3Animate(panel){
     const dart = Math.max(0, Math.min(state.currentDart || 0, 3));
     const full = p => { let c = 0; const b = (state.score && state.score[p]) || []; b.forEach(e => { if (e && e.darts && e.darts.filter(d => d).length >= 3) c++; }); return c; };
     const fulls = [full(0), full(1)];
+    const sbNum = panel.querySelector('.v3-sb-num');
 
-    // ROUND SCORE — pop + floating "+N" when a dart adds points this turn.
+    // Round just completed by the previous thrower -> the round total flies
+    // diagonally from the centre down into that player's history; older rounds
+    // drop down a slot to make room.
+    const flew = [false, false];
+    for (let i = 0; i < 2; i++){
+      if (fulls[i] > ((prev.fulls && prev.fulls[i]) || 0) && prev.cp === i && sbNum){
+        const side = panel.querySelector('.v3-side.' + (i === 0 ? 'p1' : 'p2'));
+        const destRr = side && side.querySelector('.v3-rr');
+        const destTot = destRr && destRr.querySelector('.v3-rr-tot');
+        if (destRr && destTot){
+          const total = destTot.textContent;
+          destRr.style.visibility = 'hidden';
+          __sqV3Fly(sbNum, destTot, total);
+          setTimeout(() => { try{ destRr.style.visibility = ''; destRr.classList.add('v3-rr-land'); }catch(_){ } }, __sqV3Reduced() ? 0 : 470);
+          side.querySelectorAll('.v3-rr:nth-child(n+2)').forEach(rr => rr.classList.add('v3-rr-drop'));
+          flew[i] = true;
+        }
+      }
+    }
+
+    // Hit -> slide "+N" up into the centre round score (darts within a turn).
     if (prev.turnKey === turnKey && roundScore > (prev.roundScore || 0)){
       const delta = roundScore - (prev.roundScore || 0);
       const big = delta >= 30;
-      const sbNum = panel.querySelector('.v3-sb-num');
-      if (sbNum){ sbNum.classList.add(big ? 'v3-pop-big' : 'v3-pop'); __sqV3SpawnFloat(sbNum, '+' + delta, big ? 'big' : ''); }
-      const marks = panel.querySelector('.v3-sb-marks');
-      if (marks) marks.classList.add('v3-flash');
+      if (sbNum){ sbNum.classList.add(big ? 'v3-pop-big' : 'v3-pop'); __sqV3SlideInto(sbNum, '+' + delta, big ? 'big' : ''); }
+      const marks = panel.querySelector('.v3-sb-marks'); if (marks) marks.classList.add('v3-flash');
+    }
+    // Miss -> red negative shake (a dart was used but added no points).
+    else if (prev.turnKey === turnKey && dart > (prev.dart || 0) && roundScore === (prev.roundScore || 0)){
+      if (sbNum) __sqV3MissShake(sbNum);
+      const marks = panel.querySelector('.v3-sb-marks'); if (marks) marks.classList.add('v3-flash');
     }
 
     // Player totals — subtle pop when a total climbs.
@@ -24439,9 +24563,9 @@ function __sqV3Animate(panel){
       if (totals[i] > ((prev.totals && prev.totals[i]) || 0) && totalEls[i]) totalEls[i].classList.add('v3-pop');
     }
 
-    // A completed round sliding into a card's history (green if it's the best).
+    // A completed round that wasn't handled by a fly still slides in.
     for (let i = 0; i < 2; i++){
-      if (fulls[i] > ((prev.fulls && prev.fulls[i]) || 0)){
+      if (!flew[i] && fulls[i] > ((prev.fulls && prev.fulls[i]) || 0)){
         const side = panel.querySelector('.v3-side.' + (i === 0 ? 'p1' : 'p2'));
         const firstRr = side && side.querySelector('.v3-rr');
         if (firstRr) firstRr.classList.add('v3-rr-new');
@@ -24457,7 +24581,7 @@ function __sqV3Animate(panel){
     // Dart used — flash the dot that just went dark.
     if (prev.turnKey === turnKey && dart > (prev.dart || 0)){
       const dots = panel.querySelectorAll('.v3-dartdots i');
-      const goneIdx = 3 - dart; // the dot that just turned off
+      const goneIdx = 3 - dart;
       if (dots[goneIdx]) dots[goneIdx].classList.add('v3-dot-out');
     }
 
@@ -24626,15 +24750,17 @@ function __sqLiveV3Render(){
     <div class="v3-main">
       ${playerCard(0)}
       <div class="v3-centre">
-        <div class="v3-dartbox">
-          <div class="v3-dart-lab">DART ${Math.min(dart + 1, 3)} OF 3</div>
-          <div class="v3-dartdots">${dartDots}</div>
-        </div>
-        <div class="v3-scorebox">
-          <div class="v3-sb-glow" aria-hidden="true"></div>
-          <div class="v3-sb-lab">ROUND SCORE</div>
-          <div class="v3-sb-num">${Number((curEntry && curEntry.roundTotal) || 0)}</div>
-          <div class="v3-sb-marks">${__sqV3Marks(curEntry).replace(/ \/ /g, '<i>·</i>')}</div>
+        <div class="v3-ctop">
+          <div class="v3-dartbox">
+            <div class="v3-dart-lab">DART ${Math.min(dart + 1, 3)} OF 3</div>
+            <div class="v3-dartdots">${dartDots}</div>
+          </div>
+          <div class="v3-scorebox">
+            <div class="v3-sb-glow" aria-hidden="true"></div>
+            <div class="v3-sb-lab">ROUND SCORE</div>
+            <div class="v3-sb-num">${Number((curEntry && curEntry.roundTotal) || 0)}</div>
+            <div class="v3-sb-marks">${__sqV3Marks(curEntry).replace(/ \/ /g, '<i>·</i>')}</div>
+          </div>
         </div>
         <div class="v3-dmd-frame">
           <div class="v3-dmd-bezel"><div id="v3DmdSlot" class="v3-dmdslot"></div></div>
@@ -24663,6 +24789,21 @@ function __sqLiveV3Render(){
     try{ if (typeof window.__sqOpenGameMenu106 === 'function') return window.__sqOpenGameMenu106(); }catch(_){ }
     try{ document.getElementById('settingsBtnGame')?.click(); }catch(_){ }
   };
+
+  // Align the centre ROUND SCORE number with the player total numbers by
+  // nudging the dart+score group down to match (screen-size / font agnostic).
+  try{
+    const ctop = panel.querySelector('.v3-ctop');
+    const sbNum = panel.querySelector('.v3-sb-num');
+    const totalEl = panel.querySelector('.v3-side.p1 .v3-total');
+    if (ctop && sbNum && totalEl){
+      ctop.style.marginTop = '0px';
+      const nc = sbNum.getBoundingClientRect();
+      const tc = totalEl.getBoundingClientRect();
+      const delta = (tc.top + tc.height / 2) - (nc.top + nc.height / 2);
+      ctop.style.marginTop = Math.max(0, Math.round(delta)) + 'px';
+    }
+  }catch(_){ }
 
   // Fire one-shot arcade animations for anything that changed this render.
   try{ __sqV3Animate(panel); }catch(_){ }
