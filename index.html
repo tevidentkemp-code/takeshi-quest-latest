@@ -4708,9 +4708,9 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 /* ---------------- Top bar ---------------- */
 .v3-topbar{
   display:grid;
-  grid-template-columns: 1fr 1px 1fr 46px;
+  grid-template-columns: 1fr 1px 1fr auto auto;
   align-items:center;
-  gap:12px;
+  gap:10px;
   padding: 9px 8px;
   border-radius: 14px;
   background: var(--v3-panel);
@@ -4735,6 +4735,14 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 }
 .v3-tb-menu:active{ transform:translateY(1px); }
 .v3-tb-menu svg{ width:22px; height:22px; }
+.v3-tb-snd{
+  width:38px; height:38px; border-radius:11px; justify-self:end;
+  background: rgba(255,255,255,.05); border:1px solid var(--v3-line);
+  color:var(--v3-ink); display:grid; place-items:center; font-size:16px; line-height:1;
+}
+.v3-tb-snd:active{ transform:translateY(1px); }
+.v3-tb-snd svg{ width:20px; height:20px; }
+.v3-tb-snd.muted{ color:var(--v3-muted); background:rgba(255,255,255,.03); }
 
 /* ---------------- Main 3-column area ---------------- */
 .v3-main{
@@ -4762,6 +4770,13 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-windots{ display:flex; gap:5px; }
 .v3-windots i{ width:8px; height:8px; border-radius:50%; background:#333846; box-shadow: inset 0 1px 1px rgba(0,0,0,.5); }
 .v3-windots i.on{ background:var(--v3-orange); box-shadow:0 0 8px rgba(255,106,0,.75); }
+.v3-windot-win{ animation: v3WinDot 1.1s cubic-bezier(.2,.9,.25,1) both; }
+@keyframes v3WinDot{
+  0%{ transform:scale(1); background:var(--v3-orange); box-shadow:0 0 8px rgba(255,106,0,.75); }
+  22%{ transform:scale(2.6); background:#ffe27a; box-shadow:0 0 20px rgba(255,214,64,1), 0 0 34px rgba(255,196,46,.8); }
+  55%{ transform:scale(1.5); background:#ffd24a; box-shadow:0 0 16px rgba(255,214,64,.9); }
+  100%{ transform:scale(1); background:var(--v3-orange); box-shadow:0 0 8px rgba(255,106,0,.75); }
+}
 
 /* Player card */
 .v3-card{
@@ -4797,6 +4812,16 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
   50%{ box-shadow: 0 10px 26px rgba(0,0,0,.4), 0 0 26px rgba(255,106,0,.42), inset 0 1px 0 rgba(255,255,255,.06); }
 }
 .v3-card > *{ position:relative; z-index:1; }
+/* Turn-clock: a thin pulsing bar on the active card's inner edge to drive pace */
+.v3-turnbar{
+  position:absolute; left:10px; right:10px; top:0; height:3px; z-index:2;
+  border-radius:0 0 3px 3px; opacity:0; transform-origin:center;
+  background: linear-gradient(90deg, transparent, var(--v3-orange) 30% 70%, transparent);
+  box-shadow: 0 0 10px rgba(255,106,0,.6);
+}
+.v3-card.active .v3-turnbar{ opacity:1; animation: v3TurnBar 1.5s ease-in-out infinite; }
+.v3-card.active.p2 .v3-turnbar{ background: linear-gradient(90deg, transparent, var(--v3-blue) 30% 70%, transparent); box-shadow:0 0 10px rgba(74,144,255,.55); }
+@keyframes v3TurnBar{ 0%,100%{ opacity:.3; transform:scaleX(.55); } 50%{ opacity:1; transform:scaleX(1); } }
 
 .v3-id{ display:flex; align-items:center; justify-content:center; gap:6px; min-height:20px; }
 .v3-badge{
@@ -4925,6 +4950,32 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
     radial-gradient(130% 100% at 50% 50%, rgba(0,0,0,0) 52%, rgba(0,0,0,.55) 100%);
   opacity:.6;
 }
+/* Idle "attract" content: a faint reticle + the round target, behind the DMD */
+.v3-dmd-attract{
+  position:absolute; inset:0; z-index:0; pointer-events:none;
+  display:flex; align-items:center; justify-content:center;
+}
+.v3-dmd-attract::before{
+  content:''; position:absolute; left:50%; top:50%; width:70%; padding-bottom:70%;
+  transform:translate(-50%,-50%); border-radius:50%;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 0 37%, rgba(255,150,60,.16) 37% 38.5%, transparent 38.5%),
+    radial-gradient(circle at 50% 50%, transparent 0 58%, rgba(255,150,60,.11) 58% 59.5%, transparent 59.5%),
+    radial-gradient(circle at 50% 50%, transparent 0 79%, rgba(255,150,60,.07) 79% 80.5%, transparent 80.5%);
+  animation: v3Reticle 4.2s ease-in-out infinite;
+}
+.v3-dmd-attract::after{
+  content:''; position:absolute; left:50%; top:50%; width:74%; height:1px;
+  transform:translate(-50%,-50%);
+  background: linear-gradient(90deg, transparent, rgba(255,150,60,.14) 20% 80%, transparent);
+  box-shadow: 0 0 0 0 transparent;
+}
+.v3-dmd-target{
+  position:relative; z-index:1; font-weight:900; letter-spacing:-.02em; line-height:1;
+  font-size: clamp(30px, 12vw, 52px); color: rgba(255,150,60,.10);
+  text-shadow: 0 0 24px rgba(255,140,40,.14);
+}
+@keyframes v3Reticle{ 0%,100%{ opacity:.55; transform:translate(-50%,-50%) scale(.98); } 50%{ opacity:1; transform:translate(-50%,-50%) scale(1.02); } }
 .v3-dmdslot{ position:relative; z-index:1; width:100%; height:100%; display:flex; align-items:center; }
 .v3-dmdslot .sq-dmd, .v3-dmdslot .sq-dmd-wrap, .v3-dmdslot .v2InfoDmdCell{
   width:100% !important; max-width:none !important; margin:0 !important;
@@ -5080,7 +5131,8 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-dot-out{ animation: v3DotOut .35s ease-out both; }
 
 @media (prefers-reduced-motion: reduce){
-  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly, .v3-dmd-bezel::before{ animation:none !important; transition:none !important; }
+  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly, .v3-dmd-bezel::before, .v3-dmd-attract::before, .v3-turnbar, .v3-card.active .v3-turnbar, .v3-windot-win{ animation:none !important; transition:none !important; }
+  .v3-card.active .v3-turnbar{ opacity:1 !important; transform:none !important; }
   #v3fxLayer{ display:none !important; }
 }
 
@@ -24542,6 +24594,64 @@ function __sqV3Fly(fromEl, toEl, text){
   }catch(_){ }
 }
 
+// --- Live V3 sound + haptics: synthesized (no assets), opt-in via toggle ---
+var __sqV3Audio = null;
+function __sqV3SoundOn(){ try{ return localStorage.getItem('sq_livev3_sound') !== '0'; }catch(_){ return true; } }
+function __sqV3SetSound(on){ try{ localStorage.setItem('sq_livev3_sound', on ? '1' : '0'); }catch(_){ } }
+function __sqV3Ac(){
+  try{
+    if (!__sqV3Audio){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      __sqV3Audio = new AC();
+    }
+    if (__sqV3Audio.state === 'suspended') __sqV3Audio.resume();
+    return __sqV3Audio;
+  }catch(_){ return null; }
+}
+// One short synthesized note.
+function __sqV3Beep(freq, dur, type, gain, delay){
+  try{
+    const ac = __sqV3Ac(); if (!ac) return;
+    const t0 = ac.currentTime + (delay || 0);
+    const d = dur || 0.12;
+    const osc = ac.createOscillator();
+    const g = ac.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain || 0.13, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+    osc.connect(g); g.connect(ac.destination);
+    osc.start(t0); osc.stop(t0 + d + 0.02);
+  }catch(_){ }
+}
+function __sqV3Vibe(pattern){ try{ if (navigator.vibrate) navigator.vibrate(pattern); }catch(_){ } }
+function __sqV3SndHit(score){
+  if (!__sqV3SoundOn()) return;
+  const s = Math.max(0, Math.min(60, Number(score) || 0));
+  const freq = 520 + s * 8.6;                       // brighter for bigger hits
+  __sqV3Beep(freq, 0.10, 'triangle', 0.13);
+  if (s >= 30) __sqV3Beep(freq * 1.5, 0.12, 'triangle', 0.10, 0.05);
+  __sqV3Vibe(s >= 30 ? [12, 22, 12] : 12);
+}
+function __sqV3SndMiss(){
+  if (!__sqV3SoundOn()) return;
+  __sqV3Beep(150, 0.18, 'sawtooth', 0.09);
+  __sqV3Beep(104, 0.20, 'sawtooth', 0.07, 0.04);
+  __sqV3Vibe([28, 40, 28]);
+}
+function __sqV3SndRound(){
+  if (!__sqV3SoundOn()) return;
+  __sqV3Beep(660, 0.10, 'sine', 0.10);
+  __sqV3Beep(880, 0.12, 'sine', 0.10, 0.08);
+}
+function __sqV3SndGame(){
+  if (!__sqV3SoundOn()) return;
+  [523, 659, 784, 1047].forEach((f, i) => __sqV3Beep(f, 0.16, 'triangle', 0.13, i * 0.10));
+  __sqV3Vibe([18, 30, 18, 30, 60]);
+}
+
 // Diff the fresh render against the previous snapshot and fire one-shot
 // arcade animations only where a value actually changed.
 function __sqV3Animate(panel){
@@ -24556,6 +24666,7 @@ function __sqV3Animate(panel){
     const dart = Math.max(0, Math.min(state.currentDart || 0, 3));
     const full = p => { let c = 0; const b = (state.score && state.score[p]) || []; b.forEach(e => { if (e && e.darts && e.darts.filter(d => d).length >= 3) c++; }); return c; };
     const fulls = [full(0), full(1)];
+    const wins = (state.match && state.match.wins) || [0, 0];
     const sbNum = panel.querySelector('.v3-sb-num');
 
     // Round just completed by the previous thrower -> the round total flies
@@ -24589,11 +24700,13 @@ function __sqV3Animate(panel){
       __sqV3FlyPlus(sbNum, totalEls[cp], '+' + delta, big);
       plusFlyPlayer = cp;
       const marks = panel.querySelector('.v3-sb-marks'); if (marks) marks.classList.add('v3-flash');
+      __sqV3SndHit(delta);
     }
     // Miss -> red negative shake (a dart was used but added no points).
     else if (prev.turnKey === turnKey && dart > (prev.dart || 0) && roundScore === (prev.roundScore || 0)){
       if (sbNum) __sqV3MissShake(sbNum);
       const marks = panel.querySelector('.v3-sb-marks'); if (marks) marks.classList.add('v3-flash');
+      __sqV3SndMiss();
     }
 
     // Totals pop when they climb (the active player's pop is deferred to the
@@ -24603,11 +24716,29 @@ function __sqV3Animate(panel){
     }
 
     // A completed round that wasn't handled by a fly still slides in.
+    let roundCompleted = false;
     for (let i = 0; i < 2; i++){
+      if (fulls[i] > ((prev.fulls && prev.fulls[i]) || 0)) roundCompleted = true;
       if (!flew[i] && fulls[i] > ((prev.fulls && prev.fulls[i]) || 0)){
         const side = panel.querySelector('.v3-side.' + (i === 0 ? 'p1' : 'p2'));
         const firstRr = side && side.querySelector('.v3-rr');
         if (firstRr) firstRr.classList.add('v3-rr-new');
+      }
+    }
+    if (roundCompleted && prev.fulls !== undefined) __sqV3SndRound();
+
+    // Game won — pop the newly-lit win dot gold, flash GAMES, sound the fanfare.
+    if (prev.wins !== undefined){
+      for (let i = 0; i < 2; i++){
+        if ((wins[i] || 0) > ((prev.wins && prev.wins[i]) || 0)){
+          const side = panel.querySelector('.v3-side.' + (i === 0 ? 'p1' : 'p2'));
+          const dots = side ? side.querySelectorAll('.v3-windots i') : [];
+          const dot = dots[(wins[i] || 0) - 1];
+          if (dot) dot.classList.add('v3-windot-win');
+          const lab = side && side.querySelector('.v3-wins-lab');
+          if (lab) lab.classList.add('v3-flash');
+          __sqV3SndGame();
+        }
       }
     }
 
@@ -24624,7 +24755,7 @@ function __sqV3Animate(panel){
       if (dots[goneIdx]) dots[goneIdx].classList.add('v3-dot-out');
     }
 
-    window.__sqV3Anim = { turnKey, roundScore, totals, dart, cp, fulls };
+    window.__sqV3Anim = { turnKey, roundScore, totals, dart, cp, fulls, wins: [wins[0] || 0, wins[1] || 0] };
   }catch(_){ }
 }
 
@@ -24732,6 +24863,7 @@ function __sqLiveV3Render(){
       <div class="v3-windots-row">${winDots(i)}</div>
       <div class="v3-card ${active ? 'active' : 'waiting'} ${i === 0 ? 'p1' : 'p2'}">
         <div class="v3-card-sheen" aria-hidden="true"></div>
+        <div class="v3-turnbar" aria-hidden="true"></div>
         <div class="v3-id">${num}${crown}</div>
         ${dart}
         <div class="v3-name">${escV3(pName(i).split(' ')[0].toUpperCase())}</div>
@@ -24784,6 +24916,7 @@ function __sqLiveV3Render(){
       <div class="v3-tb-cell v3-tb-round"><span>ROUND</span><b>${r + 1}<em> / ${MAX_ROUNDS}</em></b></div>
       <div class="v3-tb-sep"></div>
       <div class="v3-tb-cell v3-tb-target"><span>TARGET</span><b>${targetLabel}</b></div>
+      <button id="v3SoundBtn" class="v3-tb-snd" type="button" aria-label="Toggle sound"></button>
       <button id="v3MenuBtn" class="v3-tb-menu" type="button" aria-label="Game menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </div>
     <div class="v3-main">
@@ -24802,7 +24935,7 @@ function __sqLiveV3Render(){
           </div>
         </div>
         <div class="v3-dmd-frame">
-          <div class="v3-dmd-bezel"><div id="v3DmdSlot" class="v3-dmdslot"></div></div>
+          <div class="v3-dmd-bezel"><div class="v3-dmd-attract" aria-hidden="true"><span class="v3-dmd-target">${targetLabel}</span></div><div id="v3DmdSlot" class="v3-dmdslot"></div></div>
         </div>
       </div>
       ${playerCard(1)}
@@ -24822,6 +24955,25 @@ function __sqLiveV3Render(){
       slot.appendChild(carrier);
     }
   }catch(_){ }
+
+  const sndBtn = document.getElementById('v3SoundBtn');
+  if (sndBtn){
+    const SND_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" stroke="none"/><path d="M16.5 8.6a5 5 0 0 1 0 6.8M19 6a8.6 8.6 0 0 1 0 12"/></svg>';
+    const SND_ICON_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" stroke="none"/><path d="M17 9.5l4.5 5M21.5 9.5l-4.5 5"/></svg>';
+    const paintSnd = () => {
+      const on = __sqV3SoundOn();
+      sndBtn.innerHTML = on ? SND_ICON : SND_ICON_OFF;
+      sndBtn.classList.toggle('muted', !on);
+      sndBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    };
+    paintSnd();
+    sndBtn.onclick = () => {
+      const next = !__sqV3SoundOn();
+      __sqV3SetSound(next);
+      paintSnd();
+      if (next){ __sqV3Ac(); __sqV3SndRound(); }   // confirm within the tap gesture
+    };
+  }
 
   const menuBtn = document.getElementById('v3MenuBtn');
   if (menuBtn) menuBtn.onclick = () => {
