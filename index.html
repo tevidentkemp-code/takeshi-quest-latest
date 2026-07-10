@@ -14978,20 +14978,37 @@ function openGameCompleteDialog() {
     __sqGcXpEnsureStyles();
     const actionsEl = modal.querySelector('.gc-actions');        // breakdown + advance (screen 2)
     const contentEl = modal.querySelector('.gc-arcade-content');  // hero (winner + stats)
-    const ranksEl2  = modal.querySelector('.gc-ranks');
-    const host = document.createElement('div'); host.className = 'gc-xp-reveal'; host.style.display = 'none';
+    const ranksEl2  = modal.querySelector('.gc-ranks');           // standings (everyone's results)
+    const visualEl  = modal.querySelector('.gc-arcade-visual');   // decorative hero photo
+    const confettiEl = modal.querySelector('.gc-arcade-confetti');
+    // Reveal host must sit ABOVE the z-index:1 hero photo, full width.
+    const host = document.createElement('div'); host.className = 'gc-xp-reveal';
+    host.style.display = 'none'; host.style.position = 'relative'; host.style.zIndex = '4'; host.style.width = '100%';
     if (actionsEl && actionsEl.parentNode) actionsEl.parentNode.insertBefore(host, actionsEl);
     else (contentEl || modal).appendChild(host);
     const nextWrap = document.createElement('div'); nextWrap.className = 'gc-actions gc-arcade-actions';
     const nextBtn = document.createElement('button'); nextBtn.className = 'btn gc-next-match'; nextBtn.type = 'button'; nextBtn.textContent = 'NEXT ▶';
     nextWrap.appendChild(nextBtn);
     if (actionsEl && actionsEl.parentNode) actionsEl.parentNode.insertBefore(nextWrap, actionsEl);
-    if (actionsEl) actionsEl.style.display = 'none';              // hidden until screen 2
+    if (actionsEl){ actionsEl.style.display = 'none'; actionsEl.style.position = 'relative'; actionsEl.style.zIndex = '4'; }
+    // SCORECARD button (screen 2) — toggles the standings so everyone's results show.
+    if (actionsEl && ranksEl2 && !actionsEl.querySelector('[data-action="scorecard"]')){
+      const scBtn = document.createElement('button'); scBtn.className = 'btn gc-breakdown'; scBtn.type = 'button'; scBtn.setAttribute('data-action','scorecard'); scBtn.textContent = 'SCORECARD';
+      ranksEl2.style.zIndex = '4'; ranksEl2.style.position = 'relative';
+      scBtn.onclick = () => {
+        const showing = ranksEl2.style.display !== 'none' && ranksEl2.getAttribute('aria-hidden') !== 'true';
+        if (showing){ ranksEl2.style.display = 'none'; ranksEl2.setAttribute('aria-hidden','true'); }
+        else { ranksEl2.style.display = ''; ranksEl2.setAttribute('aria-hidden','false'); try{ ranksEl2.scrollIntoView({behavior:'smooth', block:'nearest'}); }catch(_){ } }
+      };
+      actionsEl.insertBefore(scBtn, actionsEl.firstChild);
+    }
     const __tok = state.__gameToken || 0;
     const goToRewards = () => {
       nextWrap.style.display = 'none';
       if (contentEl) contentEl.style.display = 'none';
-      if (ranksEl2) ranksEl2.style.display = 'none';
+      if (ranksEl2){ ranksEl2.style.display = 'none'; ranksEl2.setAttribute('aria-hidden','true'); }
+      if (visualEl) visualEl.style.display = 'none';   // clean XP screen (no photo overlay)
+      if (confettiEl) confettiEl.style.display = 'none';
       host.style.display = '';
       if (actionsEl){ actionsEl.style.display = ''; actionsEl.classList.add('gc-actions-hidden'); }
       let __shown = false;
