@@ -5035,36 +5035,8 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 /* Marks flash-in */
 @keyframes v3Flash{ 0%{ filter:brightness(2.4); } 100%{ filter:brightness(1); } }
 .v3-flash{ animation: v3Flash .4s ease-out both; }
-/* FX overlay + "+N" that slides UP INTO the round-score number */
+/* Persistent FX overlay: hosts flying "+N" clones that must survive re-renders */
 #v3fxLayer{ position:fixed; inset:0; pointer-events:none; z-index:9000; }
-.v3-slidein{
-  position:fixed; transform:translate(-50%,0);
-  font-weight:900; font-size:22px; letter-spacing:.02em;
-  color:#ffb14a; text-shadow:0 2px 10px rgba(0,0,0,.6);
-  animation: v3SlideIn .6s cubic-bezier(.2,.8,.25,1) both;
-}
-.v3-slidein.big{ font-size:32px; color:#ffd24a; text-shadow:0 0 18px rgba(255,196,46,.9); }
-@keyframes v3SlideIn{
-  0%{ opacity:0; transform:translate(-50%,34px) scale(.6); }
-  40%{ opacity:1; transform:translate(-50%,6px) scale(1.05); }
-  100%{ opacity:0; transform:translate(-50%,-6px) scale(1.15); }
-}
-/* MISS — red negative shake in */
-.v3-miss-fx{
-  position:fixed; transform:translate(-50%,-50%);
-  font-weight:900; font-size:20px; letter-spacing:.06em;
-  color:#ff4d5e; text-shadow:0 0 14px rgba(255,77,94,.7);
-  animation: v3MissIn .7s cubic-bezier(.2,.8,.25,1) both;
-}
-@keyframes v3MissIn{
-  0%{ opacity:0; transform:translate(-50%,-50%) scale(1.4); }
-  14%{ opacity:1; transform:translate(-58%,-50%) scale(1); }
-  28%{ transform:translate(-44%,-50%) scale(1); }
-  42%{ transform:translate(-54%,-50%) scale(1); }
-  56%{ transform:translate(-48%,-50%) scale(1); }
-  70%{ opacity:1; transform:translate(-50%,-50%) scale(1); }
-  100%{ opacity:0; transform:translate(-50%,-72%) scale(.9); }
-}
 @keyframes v3ShakeRed{
   0%,100%{ transform:translateX(0); color:#fff; }
   15%{ transform:translateX(-6px); color:#ff4d5e; }
@@ -24433,10 +24405,70 @@ function updateRoundBar(animateOverride, fromScroll=false){
 
 /* =====================================================================
    LIVE V3 — Premium UI test layout (Figma yJ80MadUOk86xmfuWUEC09 66:626)
-   Scope: 2-player Match Play Classic only, opt-in via the in-game menu
-   toggle (localStorage sq_livev3_test). Pure presentation layer: the
-   existing pad/recordThrow pipeline stays the engine; V3 only replaces
-   the layout above the pad and relocates the DMD into its centre panel.
+   ---------------------------------------------------------------------
+   STATUS: PARKED / feature-complete for this phase (2026-07-10). Live in
+   test mode only. Safe to leave as-is; the notes below are the handover.
+
+   WHAT IT IS
+   A redesigned in-game screen for 2-player Match Play Classic. It is a
+   PURE PRESENTATION LAYER — it never touches scoring/engine logic. The
+   existing pad + recordThrow + updateUI pipeline stays the engine; V3
+   only replaces the layout above the pad and relocates the live DMD
+   canvas into its centre panel.
+
+   HOW TO ENABLE (opt-in, never changes the default live screen)
+     • localStorage 'sq_livev3_test' = '1'  (in-game menu toggle wires
+       this — search tag: sq_livev3_test near line ~48696).
+     • Only activates for a 2-player, mode=match, classic, non-turbo,
+       non-tournament, non-practice game — see __sqLiveV3Eligible below.
+     • When active, <body> gets class 'livev3-on' (CSS scope for the whole
+       feature). CSS block search tag: "LIVE V3 — Premium UI test layout".
+
+   ARCHITECTURE (all functions are __sqLiveV3* / __sqV3*; grep by name)
+     • __sqLiveV3Sync (window.*)  — called at the end of updateUI; adds/
+       removes the panel and the 'livev3-on' body class.
+     • __sqLiveV3Render           — builds the whole panel via one
+       innerHTML assignment each call, then relocates the DMD canvas into
+       #v3DmdSlot. Guarded by a render-signature (panel.dataset.sig) so
+       redundant updateUI calls don't cut in-flight animations short.
+     • __sqV3Animate(panel)       — runs AFTER each render; diffs the fresh
+       state against snapshot window.__sqV3Anim and fires one-shot arcade
+       animations ONLY where a value changed (hit/miss/round-done/game-won/
+       turn-change/dart-used). This is where sound + FX are triggered.
+     • FX helpers: __sqV3FxLayer (persistent #v3fxLayer overlay that
+       survives re-renders), __sqV3FlyPlus (sideways "+N" into a total),
+       __sqV3Fly (diagonal round-total into history), __sqV3MissShake,
+       __sqV3Reduced (prefers-reduced-motion opt-out).
+     • Sound/haptics: __sqV3Snd{Hit,Miss,Round,Game} + __sqV3Beep (WebAudio,
+       synthesized, no assets) + __sqV3Vibe. Opt-in, persisted to
+       localStorage 'sq_livev3_sound' ('0' = muted); topbar toggle #v3SoundBtn.
+
+   FEATURES SHIPPED THIS PHASE
+     • Central ROUND SCORE that accumulates; each hit flies a "+N" left/
+       right into the active player's total (gold for >=30), which pops.
+     • Miss = red shake on the round-score number (no text).
+     • Round complete = round total flies diagonally into that player's
+       history; older rounds drop one slot.
+     • Lit "attract" DMD screen: reticle rings + the round target ghosted
+       behind the canvas so the centre is never dead-black.
+     • Sound + haptics (see above).
+     • Turn-clock: pulsing accent bar on the active card edge (.v3-turnbar).
+     • Match progress: won GAMES dot pops gold + label flashes (.v3-windot-win).
+
+   INVARIANTS — DO NOT BREAK
+     • Never add scoring/engine logic here; presentation only.
+     • Every new animation must be added to the prefers-reduced-motion
+       reset (search "prefers-reduced-motion" in the V3 CSS block).
+     • Any new field an animation diffs on must be added to the
+       window.__sqV3Anim snapshot at the end of __sqV3Animate.
+     • Keep everything scoped to body.livev3-on so the default screen is
+       untouched.
+
+   KNOWN GAPS / NEXT IDEAS (not started)
+     • game-win fanfare + gold-dot path is wired but only fires on an
+       actual game win (not exercised by the quick harness test).
+     • idle DMD could show richer attract content (rotating reticle,
+       last-dart replay) if desired.
 ===================================================================== */
 function __sqLiveV3Enabled(){
   try{ return localStorage.getItem('sq_livev3_test') === '1'; }catch(_){ return false; }
@@ -24520,22 +24552,6 @@ function __sqV3FxLayer(){
 }
 function __sqV3Reduced(){
   return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-}
-
-// "+N" that rises from below and slides into the round-score number.
-function __sqV3SlideInto(anchorEl, text, cls){
-  try{
-    if (__sqV3Reduced() || !anchorEl) return;
-    const layer = __sqV3FxLayer();
-    const rect = anchorEl.getBoundingClientRect();
-    const el = document.createElement('div');
-    el.className = 'v3-slidein ' + (cls || '');
-    el.textContent = text;
-    el.style.left = (rect.left + rect.width / 2) + 'px';
-    el.style.top = (rect.top + rect.height / 2) + 'px';
-    layer.appendChild(el);
-    setTimeout(() => { try{ el.remove(); }catch(_){ } }, 640);
-  }catch(_){ }
 }
 
 // Miss — just a red negative shake on the round-score number (no text).
