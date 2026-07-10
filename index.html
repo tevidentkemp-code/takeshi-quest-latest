@@ -14972,22 +14972,38 @@ function openGameCompleteDialog() {
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
-  // Animated XP + rewards reveal, then reveal the NEXT GAME / END buttons.
+  // Two-step: the MATCH COMPLETE hero has a NEXT button that reveals a
+  // separate animated XP / Rewards screen, which then shows NEXT GAME / END.
   try{
     __sqGcXpEnsureStyles();
-    const actionsEl = modal.querySelector('.gc-actions');
-    const host = document.createElement('div'); host.className = 'gc-xp-reveal';
+    const actionsEl = modal.querySelector('.gc-actions');        // breakdown + advance (screen 2)
+    const contentEl = modal.querySelector('.gc-arcade-content');  // hero (winner + stats)
+    const ranksEl2  = modal.querySelector('.gc-ranks');
+    const host = document.createElement('div'); host.className = 'gc-xp-reveal'; host.style.display = 'none';
     if (actionsEl && actionsEl.parentNode) actionsEl.parentNode.insertBefore(host, actionsEl);
-    else (modal.querySelector('.gc-arcade-content') || modal).appendChild(host);
+    else (contentEl || modal).appendChild(host);
+    const nextWrap = document.createElement('div'); nextWrap.className = 'gc-actions gc-arcade-actions';
+    const nextBtn = document.createElement('button'); nextBtn.className = 'btn gc-next-match'; nextBtn.type = 'button'; nextBtn.textContent = 'NEXT ▶';
+    nextWrap.appendChild(nextBtn);
+    if (actionsEl && actionsEl.parentNode) actionsEl.parentNode.insertBefore(nextWrap, actionsEl);
+    if (actionsEl) actionsEl.style.display = 'none';              // hidden until screen 2
     const __tok = state.__gameToken || 0;
-    if (state.__sqXpRevealedTok !== __tok){
-      state.__sqXpRevealedTok = __tok;
-      if (actionsEl) actionsEl.classList.add('gc-actions-hidden');
+    const goToRewards = () => {
+      nextWrap.style.display = 'none';
+      if (contentEl) contentEl.style.display = 'none';
+      if (ranksEl2) ranksEl2.style.display = 'none';
+      host.style.display = '';
+      if (actionsEl){ actionsEl.style.display = ''; actionsEl.classList.add('gc-actions-hidden'); }
       let __shown = false;
       const showActions = () => { if (__shown) return; __shown = true; if (actionsEl) actionsEl.classList.remove('gc-actions-hidden'); };
-      __sqGcXpReveal(host, showActions);
-      setTimeout(showActions, 9000); // safety: never leave the buttons hidden
-    }
+      if (state.__sqXpRevealedTok !== __tok){
+        state.__sqXpRevealedTok = __tok;
+        __sqGcXpReveal(host, showActions);
+        setTimeout(showActions, 9000); // safety
+      } else { showActions(); }
+    };
+    nextBtn.onclick = goToRewards;
+    if (state.__sqXpRevealedTok === __tok) goToRewards(); // re-render after reveal: skip to screen 2
   }catch(_){ }
 
   const remove = () => overlay.remove();
@@ -37071,9 +37087,13 @@ const SQ_XP = {
   levelForXp(xp){ xp = Math.max(0, Number(xp) || 0); return Math.min(this.MAXLVL, Math.floor(Math.sqrt(xp / this.DIV)) + 1); },
   xpForLevel(l){ l = Math.max(1, l); return Math.round((l - 1) * (l - 1) * this.DIV); }, // cumulative XP to reach level l
   titleForLevel(l){
+    if (l >= 60) return 'Immortal';
     if (l >= 50) return 'Legend';
+    if (l >= 43) return 'Grandmaster';
     if (l >= 35) return 'Master';
-    if (l >= 20) return 'Sharpshooter';
+    if (l >= 28) return 'Ace';
+    if (l >= 22) return 'Sniper';
+    if (l >= 15) return 'Sharpshooter';
     if (l >= 10) return 'Marksman';
     if (l >= 5)  return 'Amateur';
     return 'Rookie';
@@ -37195,17 +37215,20 @@ const SQ_ACH = {
     { code:'hot_hand',       name:'Hot Hand',           icon:'🖐️', tier:'gold',      xp:70,  desc:'Win three games in a row' },
     { code:'decider',        name:'Decider',            icon:'⚔️', tier:'gold',      xp:80,  desc:'Win the deciding game of a match' },
     { code:'first_blood',    name:'First Blood',        icon:'🩸', tier:'silver',    xp:20,  desc:'Win the opening game of a series' },
-    { code:'club_700',       name:'The 700 Club',       icon:'7️⃣', tier:'legendary', xp:160, desc:'Score 700+ in a single game' },
+    { code:'score_700',      name:'The 700 Club',       icon:'7️⃣', tier:'legendary', xp:700, desc:'Score 700+ in a single game' },
+    { code:'score_600',      name:'The 600 Club',       icon:'6️⃣', tier:'legendary', xp:480, desc:'Score 600+ in a single game' },
+    { code:'score_500',      name:'The 500 Club',       icon:'5️⃣', tier:'gold',      xp:320, desc:'Score 500+ in a single game' },
+    { code:'score_400',      name:'The 400 Club',       icon:'4️⃣', tier:'gold',      xp:200, desc:'Score 400+ in a single game' },
+    { code:'score_300',      name:'Triple Ton',         icon:'🌠', tier:'silver',    xp:120, desc:'Score 300+ in a single game' },
+    { code:'score_200',      name:'Double Ton',         icon:'⭐', tier:'silver',    xp:60,  desc:'Score 200+ in a single game' },
+    { code:'score_100',      name:'Ton Up',             icon:'💯', tier:'bronze',    xp:30,  desc:'Score 100+ in a single game' },
     { code:'centurion',      name:'Centurion',          icon:'🏛️', tier:'legendary', xp:400, desc:'Play 250 games' },
     { code:'trophy_hunter',  name:'Trophy Hunter',      icon:'🗃️', tier:'legendary', xp:350, desc:'Unlock 20 different trophies' },
-    { code:'club_600',       name:'The 600 Club',       icon:'6️⃣', tier:'gold',      xp:110, desc:'Score 600+ in a single game' },
-    { code:'club_500',       name:'The 500 Club',       icon:'5️⃣', tier:'gold',      xp:70,  desc:'Score 500+ in a single game' },
     { code:'triple_threat',  name:'Triple Threat',      icon:'⚡', tier:'gold',      xp:60,  desc:'Three triples in the Triples round' },
     { code:'bull_run',       name:'Bull Run',           icon:'🐮', tier:'gold',      xp:60,  desc:'Three bulls in the Bull round' },
     { code:'double_trouble', name:'Double Trouble',     icon:'🎲', tier:'gold',      xp:45,  desc:'Three doubles in the Doubles round' },
     { code:'veteran',        name:'Veteran',            icon:'🎖️', tier:'gold',      xp:200, desc:'Play 100 games' },
     { code:'collector',      name:'Collector',          icon:'🧰', tier:'gold',      xp:150, desc:'Unlock 10 different trophies' },
-    { code:'club_400',       name:'The 400 Club',       icon:'4️⃣', tier:'silver',    xp:40,  desc:'Score 400+ in a single game' },
     { code:'strong_finish',  name:'Strong Finish',      icon:'🏁', tier:'silver',    xp:40,  desc:'Score 100+ on the Bull round' },
     { code:'regular',        name:'Regular',            icon:'📅', tier:'silver',    xp:100, desc:'Play 50 games' },
     { code:'full_house',     name:'Full House',         icon:'🏠', tier:'bronze',    xp:12,  desc:'All three darts on target in a round' },
@@ -37236,6 +37259,11 @@ const SQ_ACH = {
 };
 window.SQ_ACH = SQ_ACH;
 
+// Milestones are one-time unlocks (score PBs, career collections, volume,
+// meta); everything else is a repeatable Trophy you can stack.
+SQ_ACH.MILESTONES = new Set(['score_100','score_200','score_300','score_400','score_500','score_600','score_700','treble_sweep','double_sweep','bull_club','regular','veteran','centurion','collector','trophy_hunter']);
+SQ_ACH.isMilestone = function(code){ return SQ_ACH.MILESTONES.has(code); };
+
 // Everyone who has earned a given trophy, ranked by count (for the per-award
 // leaderboard shown when you tap a trophy).
 SQ_ACH.forCode = async function(code){
@@ -37262,9 +37290,12 @@ async function __sqTrophyDetail(code, earnedMap){
   const modal = document.createElement('div'); modal.className = 'modal';
   modal.style.cssText = 'max-width:460px;width:92vw;max-height:86vh;overflow:hidden;';
   const body = document.createElement('div'); body.className = 'modal-body'; body.style.cssText = 'overflow-y:auto;max-height:82vh;';
-  const tierName = (a.tier || 'bronze').toUpperCase();
-  const xpText = code === 'giant_slayer' ? 'Scales with the level gap' : ('+' + (a.xp || 0) + ' XP each');
-  const yours = got.cnt > 0 ? ('You’ve earned this ' + got.cnt + '×') : 'You haven’t earned this yet';
+  const milestone = SQ_ACH.isMilestone(code);
+  const tierName = (a.tier || 'bronze').toUpperCase() + (milestone ? ' · MILESTONE' : '');
+  const xpText = code === 'giant_slayer' ? 'Scales with the level gap' : ('+' + (a.xp || 0) + ' XP' + (milestone ? ' (one-time)' : ' each'));
+  const yours = milestone
+    ? (got.cnt > 0 ? 'Unlocked ✓' : 'Not yet unlocked')
+    : (got.cnt > 0 ? ('You’ve earned this ' + got.cnt + '×') : 'You haven’t earned this yet');
   body.innerHTML =
     '<div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:' + s.g + ';border:1px solid ' + s.b + ';">'
     + '<div style="font-size:40px;line-height:1">' + a.icon + '</div>'
@@ -37292,7 +37323,9 @@ async function __sqTrophyDetail(code, earnedMap){
       row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);';
       const rk = document.createElement('span'); rk.textContent = '#' + (i + 1); rk.style.cssText = 'font-weight:900;min-width:30px;color:' + medal(i);
       const nm = document.createElement('span'); nm.textContent = r.name; nm.style.cssText = 'flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-      const ct = document.createElement('span'); ct.textContent = '×' + r.cnt; ct.style.cssText = 'font-weight:900;color:#ffb14a;';
+      const ct = document.createElement('span');
+      ct.textContent = milestone ? '✓' : ('×' + r.cnt);
+      ct.style.cssText = 'font-weight:900;color:' + (milestone ? '#2fd06b' : '#ffb14a') + ';';
       row.append(rk, nm, ct); list.appendChild(row);
     });
     body.appendChild(list);
@@ -37356,8 +37389,7 @@ SQ_ACH.detectGame = function(board, opts){
       if (ri === 0 && fh) add('perfect_start');
       if (ri === 13 && rtot >= 100) add('strong_finish');
     }
-    const gt = totals[p];
-    if (gt >= 700) add('club_700'); else if (gt >= 600) add('club_600'); else if (gt >= 500) add('club_500'); else if (gt >= 400) add('club_400');
+    // Score milestones are one-time (shown in the profile), not per-game trophies.
     const won = totals[p] === maxTotal && maxTotal > 0;
     if (totMiss === 0 && totDarts > 0) add('flawless_game');
     if (scoredRounds >= 14) add('full_board');
@@ -37435,51 +37467,55 @@ window.__sqAchCelebrate = function(){
 // Render the trophy case: earned badges bright (with counts), locked badges dim.
 function __sqTrophyCase(earnedMap){
   const wrap = document.createElement('div');
-  wrap.className = 'tag';
-  wrap.style.cssText = 'padding:14px;border-radius:16px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);';
-  const earnedCodes = SQ_ACH.CATALOG.filter(a => (earnedMap[a.code]||{}).cnt > 0);
-  const head = document.createElement('div');
-  head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;';
-  const ttl = document.createElement('strong'); ttl.innerHTML = '🏆 Trophy Case'; ttl.style.fontSize = '15px';
-  const cnt = document.createElement('span'); cnt.className = 'muted'; cnt.style.fontWeight = '800'; cnt.style.fontSize = '12px';
-  cnt.textContent = earnedCodes.length + ' / ' + SQ_ACH.CATALOG.length + ' unlocked';
-  head.append(ttl, cnt);
-  const grid = document.createElement('div');
-  grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;';
-  const badge = (a, earned) => {
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
+  const badge = (a) => {
     const got = earnedMap[a.code] || { cnt:0 };
+    const earned = got.cnt > 0;
+    const milestone = SQ_ACH.isMilestone(a.code);
     const s = SQ_ACH.tierStyle(a.tier);
     const b = document.createElement('div');
-    b.title = a.desc + (earned && got.cnt > 1 ? `  (earned ${got.cnt}×)` : '');
-    b.style.cssText = 'position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;'
+    b.title = a.desc + (earned && !milestone && got.cnt > 1 ? `  (earned ${got.cnt}×)` : '');
+    b.style.cssText = 'position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;cursor:pointer;'
       + 'padding:10px 6px;border-radius:12px;'
       + (earned ? ('background:' + s.g + ';border:1px solid ' + s.b + ';')
                 : 'background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.12);opacity:.42;filter:grayscale(1);');
     const ic = document.createElement('div'); ic.textContent = a.icon; ic.style.cssText = 'font-size:26px;line-height:1;';
     const nm = document.createElement('div'); nm.textContent = a.name; nm.style.cssText = 'font-size:10px;font-weight:800;letter-spacing:.01em;color:' + (earned ? s.c : 'var(--v3-muted,#98a2b8)') + ';line-height:1.15;';
     b.append(ic, nm);
-    b.style.cursor = 'pointer';
     b.onclick = () => { try{ __sqTrophyDetail(a.code, earnedMap); }catch(_){ } };
-    if (earned && got.cnt > 1){
-      const badgeCount = document.createElement('div');
-      badgeCount.textContent = '×' + got.cnt;
-      badgeCount.style.cssText = 'position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;'
-        + 'background:#ff7a18;color:#160b03;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;'
-        + 'box-shadow:0 2px 6px rgba(0,0,0,.4);';
-      b.appendChild(badgeCount);
+    // Repeatable trophies show a ×count; milestones show a ✓ tick when unlocked.
+    if (earned && !milestone && got.cnt > 1){
+      const bc = document.createElement('div'); bc.textContent = '×' + got.cnt;
+      bc.style.cssText = 'position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#ff7a18;color:#160b03;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4);';
+      b.appendChild(bc);
+    } else if (earned && milestone){
+      const tk = document.createElement('div'); tk.textContent = '✓';
+      tk.style.cssText = 'position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:999px;background:#2fd06b;color:#05230f;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4);';
+      b.appendChild(tk);
     }
     return b;
   };
-  // Earned first (in catalogue order), then locked.
-  SQ_ACH.CATALOG.forEach(a => { if ((earnedMap[a.code]||{}).cnt > 0) grid.appendChild(badge(a, true)); });
-  SQ_ACH.CATALOG.forEach(a => { if (!((earnedMap[a.code]||{}).cnt > 0)) grid.appendChild(badge(a, false)); });
-  if (!earnedCodes.length){
-    const none = document.createElement('p'); none.className = 'muted'; none.style.cssText = 'margin:0 0 10px;font-size:12px;';
-    none.textContent = 'No trophies yet — play ranked games to start your collection.';
-    wrap.append(head, none, grid);
-  } else {
-    wrap.append(head, grid);
-  }
+  const section = (title, icon, codes) => {
+    const codeList = SQ_ACH.CATALOG.filter(a => codes.has(a.code));
+    const earnedN = codeList.filter(a => (earnedMap[a.code]||{}).cnt > 0).length;
+    const card = document.createElement('div'); card.className = 'tag';
+    card.style.cssText = 'padding:14px;border-radius:16px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);';
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;';
+    const ttl = document.createElement('strong'); ttl.innerHTML = icon + ' ' + title; ttl.style.fontSize = '15px';
+    const cnt = document.createElement('span'); cnt.className = 'muted'; cnt.style.cssText = 'font-weight:800;font-size:12px;';
+    cnt.textContent = earnedN + ' / ' + codeList.length + ' unlocked';
+    head.append(ttl, cnt);
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;';
+    codeList.forEach(a => { if ((earnedMap[a.code]||{}).cnt > 0) grid.appendChild(badge(a)); });
+    codeList.forEach(a => { if (!((earnedMap[a.code]||{}).cnt > 0)) grid.appendChild(badge(a)); });
+    card.append(head, grid);
+    return card;
+  };
+  const mset = new Set(SQ_ACH.CATALOG.filter(a => SQ_ACH.isMilestone(a.code)).map(a => a.code));
+  const tset = new Set(SQ_ACH.CATALOG.filter(a => !SQ_ACH.isMilestone(a.code)).map(a => a.code));
+  wrap.append(section('Milestones', '🎖️', mset), section('Trophies', '🏆', tset));
   return wrap;
 }
 
@@ -38080,8 +38116,8 @@ const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     return c;
   };
 
-  cards.append(
-    statCard('XP & Level', iconSvg.achievements, xpRow ? [
+  // XP & Level card (lives in the XP tab)
+  const xpCard = statCard('XP & Level', iconSvg.achievements, xpRow ? [
       ['Level', `${xpProg.level} · ${xpProg.title}`],
       ['Total XP', SQ_XP.fmt(xpProg.xp)],
       ['From Points', SQ_XP.fmt(Math.round((xpRow.points_scored||0) * SQ_XP.W.point)) + ` (${SQ_XP.fmt(xpRow.points_scored)} pts)`],
@@ -38091,7 +38127,9 @@ const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
       ['From Trophies', SQ_XP.fmt(xpRow.ach_xp||0) + ` (${xpRow.badges||0} badges)`]
     ] : [
       ['Level', 'No ranked games yet', true]
-    ], xpRow ? { footer: xpProg.atMax ? 'Max level reached — Legend.' : `${SQ_XP.fmt(xpProg.toNext)} XP to Level ${xpProg.level + 1}.` } : { muted: true }),
+    ], xpRow ? { footer: xpProg.atMax ? 'Max level reached — Legend.' : `${SQ_XP.fmt(xpProg.toNext)} XP to Level ${xpProg.level + 1}.` } : { muted: true });
+
+  cards.append(
     statCard('Quick Stats', iconSvg.quick, [
       ['Highest Score', highestScoreValue],
       ['Lowest Score', GAMES ? String(LOW) : '—'],
@@ -38132,10 +38170,46 @@ const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
       ['Champion', (achMap.champion ? `${achMap.champion.cnt}` : '—'), !achMap.champion]
     ])
   );
-  profile.appendChild(cards);
-  // Trophy case (real, backed by v_player_achievements)
-  profile.appendChild(__sqTrophyCase(achMap));
+  // ---- Tabbed content: Stats / XP / Achievements ----
+  const statsPanel = cards;
+  const xpPanel = document.createElement('div');
+  xpPanel.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;';
+  xpPanel.appendChild(xpCard);
+  {
+    const ladderCard = document.createElement('div'); ladderCard.className = 'tag';
+    ladderCard.style.cssText = 'padding:12px;border-radius:14px;background:rgba(255,255,255,.052);border:1px solid rgba(255,255,255,.09);display:flex;flex-direction:column;gap:10px;';
+    ladderCard.innerHTML = '<strong style="font-size:15px;color:#f59e0b">🏅 Level Ladder</strong><p class="muted" style="margin:0;font-size:12px">See how you rank against everyone by XP.</p>';
+    const lb = document.createElement('button'); lb.className = 'btn sq-pill'; lb.textContent = 'Open Level Ladder';
+    lb.onclick = () => { try{ if (typeof openXpLeaderboard === 'function') openXpLeaderboard(); }catch(_){ } };
+    ladderCard.appendChild(lb); xpPanel.appendChild(ladderCard);
+  }
+  const achPanel = __sqTrophyCase(achMap);
+
+  const tabBar = document.createElement('div');
+  tabBar.style.cssText = 'display:flex;gap:8px;margin:2px 0;';
+  const panelHost = document.createElement('div');
+  const tabs = [['Stats', statsPanel], ['XP', xpPanel], ['Achievements', achPanel]];
+  const btns = [];
+  const showTab = (idx) => {
+    while (panelHost.firstChild) panelHost.removeChild(panelHost.firstChild);
+    panelHost.appendChild(tabs[idx][1]);
+    btns.forEach((b, i) => {
+      const on = i === idx;
+      b.style.background = on ? 'linear-gradient(135deg,rgba(255,122,24,.30),rgba(255,183,64,.16))' : 'rgba(255,255,255,.04)';
+      b.style.color = on ? '#fff' : 'var(--v3-muted,#98a2b8)';
+      b.style.borderColor = on ? 'rgba(255,150,60,.55)' : 'rgba(255,255,255,.1)';
+    });
+  };
+  tabs.forEach(([label], idx) => {
+    const t = document.createElement('button'); t.type = 'button'; t.textContent = label;
+    t.style.cssText = 'flex:1;padding:11px 6px;border-radius:12px;font-weight:900;font-size:13px;letter-spacing:.04em;text-transform:uppercase;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:var(--v3-muted,#98a2b8);cursor:pointer;';
+    t.onclick = () => showTab(idx);
+    btns.push(t); tabBar.appendChild(t);
+  });
+  profile.appendChild(tabBar);
+  profile.appendChild(panelHost);
   body.appendChild(profile);
+  showTab(0);
 
   // Footer buttons
   const backBtn  = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
