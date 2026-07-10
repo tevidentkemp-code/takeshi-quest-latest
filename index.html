@@ -4831,6 +4831,7 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
   background:rgba(255,255,255,.05); border:1px solid var(--v3-line);
 }
 .v3-card.active .v3-badge{ color:#ffd9ae; border-color:rgba(255,106,0,.5); background:rgba(255,106,0,.14); }
+.v3-lvl{ font-size:9px; font-weight:900; letter-spacing:.04em; color:#ffd9ae; background:rgba(255,106,0,.16); border:1px solid rgba(255,106,0,.4); border-radius:999px; padding:1px 6px; line-height:1.5; white-space:nowrap; }
 .v3-crown{ color:#ffc53d; display:inline-flex; filter:drop-shadow(0 0 5px rgba(255,197,61,.5)); }
 .v3-crown svg{ width:19px; height:19px; }
 
@@ -9810,6 +9811,7 @@ window.openMainMenuDialog = window.openMainMenuDialog || function openMainMenuDi
     const items = [
       { title: 'NEW GAME', sub: 'Return to Home / start a new match', onClick: ()=>{ try{ if (typeof navigateToStartScreen==='function') navigateToStartScreen(); }catch(_){ } try{ if (window.__sqNav) window.__sqNav.clearAll(); }catch(_){ } } },
       { title: 'PLAYER STATS', sub: 'Open stats hub', onClick: ()=>{ try{ if (typeof openPlayerStatsHub==='function') openPlayerStatsHub(); else if (typeof openPlayerStatsSelectDialog==='function') openPlayerStatsSelectDialog(); }catch(_){ } } },
+      { title: 'LEVEL LADDER', sub: 'XP & levels leaderboard', onClick: ()=>{ try{ if (typeof openXpLeaderboard==='function') openXpLeaderboard(); else if (typeof toast==='function') toast('Ladder not available'); }catch(_){ } } },
       { title: 'LEAGUE & RANKINGS', sub: 'High scores, round records, rankings', onClick: ()=>{ try{ if (typeof openLeagueRankingsDialog==='function') openLeagueRankingsDialog(); }catch(_){ } } },
       { title: 'ADMIN', sub: 'Tools + data (restricted)', onClick: ()=>{ try{ if (typeof openAdminHub==='function') openAdminHub(); else if (typeof openAdminHubDialog==='function') openAdminHubDialog(); else if (typeof toast==='function') toast('Admin not available'); }catch(_){ } } },
     ];
@@ -24981,6 +24983,36 @@ function __sqV3Animate(panel){
   }catch(_){ }
 }
 
+// Fetch each player's level once and stamp a "LV n" chip on their V3 card.
+async function __sqV3EnsureLevels(panel){
+  try{
+    if (!window.SQ_XP || typeof SQ_XP.forName !== 'function') return;
+    window.__sqV3Levels = window.__sqV3Levels || {};
+    const rawName = i => String((state.players[i] && (state.players[i].name || state.players[i].player)) || '').trim();
+    let changed = false;
+    for (let i = 0; i < (state.players || []).length; i++){
+      const n = rawName(i); if (!n) continue;
+      const key = n.toLowerCase();
+      if (window.__sqV3Levels[key] == null){
+        try{ const xr = await SQ_XP.forName(n); window.__sqV3Levels[key] = (xr && Number(xr.total_xp) > 0) ? SQ_XP.levelForXp(xr.total_xp) : 0; }
+        catch(_){ window.__sqV3Levels[key] = 0; }
+        changed = true;
+      }
+    }
+    if (changed){
+      for (let i = 0; i < (state.players || []).length; i++){
+        const lvl = window.__sqV3Levels[rawName(i).toLowerCase()];
+        if (!lvl) continue;
+        const idEl = panel.querySelector('.v3-side.' + (i === 0 ? 'p1' : 'p2') + ' .v3-id');
+        if (!idEl) continue;
+        let chip = idEl.querySelector('.v3-lvl');
+        if (!chip){ chip = document.createElement('span'); chip.className = 'v3-lvl'; idEl.appendChild(chip); }
+        chip.textContent = 'LV ' + lvl;
+      }
+    }
+  }catch(_){ }
+}
+
 function __sqLiveV3Render(){
   const escV3 = (typeof escapeHtml === 'function') ? escapeHtml : (s => String(s == null ? '' : s));
   const host = (document.getElementById('liveV2Panel') || {}).parentElement
@@ -25078,6 +25110,8 @@ function __sqLiveV3Render(){
     const active = i === cp;
     const crown = i === leader ? '<span class="v3-crown" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 8l4.5 3.5L12 5l4.5 6.5L21 8l-1.6 10.2a1 1 0 0 1-1 .8H5.6a1 1 0 0 1-1-.8L3 8z"/></svg></span>' : '';
     const num = `<span class="v3-badge">${i + 1}</span>`;
+    const __lvl = (window.__sqV3Levels || {})[String(pName(i)).trim().toLowerCase()];
+    const lvlChip = __lvl ? `<span class="v3-lvl">LV ${__lvl}</span>` : '';
     const nick = pNick(i) ? `<div class="v3-nick">“${escV3(pNick(i).toUpperCase())}”</div>` : '';
     const avg = playerAverages(i);
     const dart = `<div class="v3-dartico" aria-hidden="true"><svg viewBox="0 0 60 16" fill="none"><path d="M2 8h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="12" y="4.6" width="15" height="6.8" rx="3.4" fill="currentColor"/><path d="M15.5 5.2v5.6M19 5.2v5.6M22.5 5.2v5.6" stroke="rgba(0,0,0,.4)" stroke-width="1.1" stroke-linecap="round"/><path d="M27 8l6-.001" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M33 8 54 1.5 47 8 54 14.5Z" fill="currentColor"/><path d="M33 8 49 3.4 44.5 8 49 12.6Z" fill="rgba(0,0,0,.32)"/></svg></div>`;
@@ -25086,7 +25120,7 @@ function __sqLiveV3Render(){
       <div class="v3-card ${active ? 'active' : 'waiting'} ${i === 0 ? 'p1' : 'p2'}">
         <div class="v3-card-sheen" aria-hidden="true"></div>
         <div class="v3-turnbar" aria-hidden="true"></div>
-        <div class="v3-id">${num}${crown}</div>
+        <div class="v3-id">${num}${crown}${lvlChip}</div>
         ${dart}
         <div class="v3-name">${escV3(pName(i).split(' ')[0].toUpperCase())}</div>
         <div class="v3-nick-slot">${nick}</div>
@@ -25220,6 +25254,7 @@ function __sqLiveV3Render(){
 
   // Fire one-shot arcade animations for anything that changed this render.
   try{ __sqV3Animate(panel); }catch(_){ }
+  try{ __sqV3EnsureLevels(panel); }catch(_){ }
 
   // Keep the current-round column in view on narrow screens.
   try{
@@ -37155,6 +37190,11 @@ const SQ_ACH = {
     { code:'hot_streak',     name:'Hot Streak',         icon:'🔥', tier:'silver',    xp:25,  desc:'Three full houses in a row' },
     { code:'full_board',     name:'Full Board',         icon:'🧩', tier:'silver',    xp:30,  desc:'Score on all 14 rounds of a game' },
     { code:'century',        name:'Century',            icon:'💯', tier:'silver',    xp:15,  desc:'Score 100+ in one round' },
+    { code:'unstoppable',    name:'Unstoppable',        icon:'🌟', tier:'legendary', xp:140, desc:'Win five games in a row' },
+    { code:'kingslayer',     name:'Kingslayer',         icon:'💀', tier:'legendary', xp:60,  desc:'Beat the current #1 ranked player in a game' },
+    { code:'hot_hand',       name:'Hot Hand',           icon:'🖐️', tier:'gold',      xp:70,  desc:'Win three games in a row' },
+    { code:'decider',        name:'Decider',            icon:'⚔️', tier:'gold',      xp:80,  desc:'Win the deciding game of a match' },
+    { code:'first_blood',    name:'First Blood',        icon:'🩸', tier:'silver',    xp:20,  desc:'Win the opening game of a series' },
     { code:'club_700',       name:'The 700 Club',       icon:'7️⃣', tier:'legendary', xp:160, desc:'Score 700+ in a single game' },
     { code:'centurion',      name:'Centurion',          icon:'🏛️', tier:'legendary', xp:400, desc:'Play 250 games' },
     { code:'trophy_hunter',  name:'Trophy Hunter',      icon:'🗃️', tier:'legendary', xp:350, desc:'Unlock 20 different trophies' },
