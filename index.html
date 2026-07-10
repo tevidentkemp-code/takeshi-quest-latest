@@ -5063,6 +5063,27 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
   transition: transform .43s cubic-bezier(.25,.7,.3,1), opacity .43s ease-in;
 }
 .v3-plusfly.big{ font-size:31px; color:#ffd24a; text-shadow:0 0 18px rgba(255,196,46,.9); }
+/* Live combo callout when a round completes (Full House, Shanghai, 180, …) */
+.v3-combo-pop{
+  position:fixed; left:50%; top:46%; transform:translate(-50%,-50%) scale(.6);
+  display:flex; align-items:center; gap:8px; padding:9px 16px; border-radius:14px;
+  font-weight:900; letter-spacing:.03em; white-space:nowrap; pointer-events:none; z-index:70;
+  background:linear-gradient(135deg,rgba(255,196,74,.30),rgba(255,140,40,.16));
+  border:1px solid rgba(255,196,74,.55); color:#ffe1a6; box-shadow:0 12px 30px rgba(0,0,0,.5);
+  animation: v3ComboPop 1.5s cubic-bezier(.2,.9,.25,1) both;
+}
+.v3-combo-pop .v3-combo-ic{ font-size:22px; line-height:1; }
+.v3-combo-pop .v3-combo-nm{ font-size:16px; color:#fff; }
+.v3-combo-legendary{ background:linear-gradient(135deg,rgba(180,123,255,.34),rgba(120,60,200,.18)); border-color:rgba(180,123,255,.6); color:#e9c6ff; }
+.v3-combo-silver{ background:linear-gradient(135deg,rgba(200,214,235,.24),rgba(150,170,200,.12)); border-color:rgba(200,214,235,.5); color:#e4ecf7; }
+.v3-combo-bronze{ background:linear-gradient(135deg,rgba(208,139,90,.24),rgba(160,100,60,.12)); border-color:rgba(208,139,90,.5); color:#f0c9a6; }
+@keyframes v3ComboPop{
+  0%{ opacity:0; transform:translate(-50%,-50%) scale(.6); }
+  14%{ opacity:1; transform:translate(-50%,-50%) scale(1.12); }
+  28%{ transform:translate(-50%,-50%) scale(1); }
+  80%{ opacity:1; transform:translate(-50%,-62%) scale(1); }
+  100%{ opacity:0; transform:translate(-50%,-80%) scale(.94); }
+}
 /* Round total landing in the history slot */
 @keyframes v3RrLand{
   0%{ transform:scale(1.5); }
@@ -5103,7 +5124,7 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-dot-out{ animation: v3DotOut .35s ease-out both; }
 
 @media (prefers-reduced-motion: reduce){
-  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly, .v3-dmd-bezel::before, .v3-dmd-attract::before, .v3-turnbar, .v3-card.active .v3-turnbar, .v3-windot-win{ animation:none !important; transition:none !important; }
+  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly, .v3-dmd-bezel::before, .v3-dmd-attract::before, .v3-turnbar, .v3-card.active .v3-turnbar, .v3-windot-win, .v3-combo-pop{ animation:none !important; transition:none !important; }
   .v3-card.active .v3-turnbar{ opacity:1 !important; transform:none !important; }
   #v3fxLayer{ display:none !important; }
 }
@@ -24671,6 +24692,43 @@ function __sqV3SndGame(){
   __sqV3Vibe([18, 30, 18, 30, 60]);
 }
 
+// Headline combo for a just-completed round (live V3 callout). Mirrors the
+// achievement rules; returns the rarest single combo meta, or null.
+function __sqV3RoundCombo(entry){
+  try{
+    if (!entry || !entry.darts) return null;
+    const darts = entry.darts;
+    if (darts.filter(d => d).length < 3) return null;
+    const norm = d => { const k = (d && d.kind) || 'Miss'; if (k==='S') return 'single'; if (k==='D'||k==='Double') return 'double'; if (k==='T'||k==='Triple') return 'treble'; if (k==='B'||k==='Bull') return 'bull'; return 'miss'; };
+    let tre=0, dou=0, sin=0; darts.forEach(d => { const nk = norm(d); if (nk==='treble') tre++; else if (nk==='double') dou++; else if (nk==='single') sin++; });
+    const mis = darts.filter(d => norm(d)==='miss' || (Number(d && d.points)||0)===0).length;
+    const rtot = Number(entry.roundTotal) || 0;
+    let code = null;
+    if (rtot === 180) code = 'the_180';
+    else if (tre === 3) code = 'treble_trouble';
+    else if (sin===1 && dou===1 && tre===1) code = 'shanghai';
+    else if (dou === 3) code = 'double_down';
+    else if (sin===2 && dou===1 && tre===0 && mis===0) code = 'desmond';
+    else if (rtot >= 100) code = 'century';
+    else if (tre >= 2) code = 'robin_hood';
+    else if (mis === 0) code = 'full_house';
+    if (!code) return null;
+    return (window.SQ_ACH && SQ_ACH.meta) ? SQ_ACH.meta(code) : { code, name: code, icon:'🎯', tier:'gold' };
+  }catch(_){ return null; }
+}
+// Float a combo callout in the persistent FX layer when a round completes.
+function __sqV3ComboCallout(meta){
+  try{
+    if (!meta) return;
+    const layer = __sqV3FxLayer();
+    const el = document.createElement('div');
+    el.className = 'v3-combo-pop v3-combo-' + (meta.tier || 'gold');
+    el.innerHTML = '<span class="v3-combo-ic">' + meta.icon + '</span><span class="v3-combo-nm">' + String(meta.name || '').toUpperCase() + '!</span>';
+    layer.appendChild(el);
+    setTimeout(() => { try{ el.remove(); }catch(_){ } }, 1500);
+  }catch(_){ }
+}
+
 // Diff the fresh render against the previous snapshot and fire one-shot
 // arcade animations only where a value actually changed.
 function __sqV3Animate(panel){
@@ -24737,7 +24795,15 @@ function __sqV3Animate(panel){
     // A completed round that wasn't handled by a fly still slides in.
     let roundCompleted = false;
     for (let i = 0; i < 2; i++){
-      if (fulls[i] > ((prev.fulls && prev.fulls[i]) || 0)) roundCompleted = true;
+      if (fulls[i] > ((prev.fulls && prev.fulls[i]) || 0)){
+        roundCompleted = true;
+        // Live combo callout for the round this player just completed.
+        try{
+          const b = (state.score && state.score[i]) || []; let last = -1;
+          for (let ri = b.length - 1; ri >= 0; ri--){ if (b[ri] && b[ri].darts && b[ri].darts.filter(d => d).length >= 3){ last = ri; break; } }
+          if (last >= 0){ const m = __sqV3RoundCombo(b[last]); if (m) __sqV3ComboCallout(m); }
+        }catch(_){ }
+      }
       if (!flew[i] && fulls[i] > ((prev.fulls && prev.fulls[i]) || 0)){
         const side = panel.querySelector('.v3-side.' + (i === 0 ? 'p1' : 'p2'));
         const firstRr = side && side.querySelector('.v3-rr');
@@ -36941,7 +37007,8 @@ const SQ_ACH = {
     { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in one round' },
     { code:'clutch',         name:'Clutch',             icon:'⏱️', tier:'gold',      xp:40,  desc:'Full house on the final round to win' },
     { code:'iceman',         name:'Iceman',             icon:'🧊', tier:'gold',      xp:50,  desc:'Win a tiebreak game' },
-    { code:'trifecta',       name:'Trifecta',           icon:'🎰', tier:'silver',    xp:30,  desc:'Single, double and treble of one number in a round' },
+    { code:'shanghai',       name:'Shanghai',           icon:'🏮', tier:'gold',      xp:50,  desc:'Single, double AND treble of one number in a round' },
+    { code:'desmond',        name:'Desmond',            icon:'👓', tier:'silver',    xp:18,  desc:'Two singles and a double in one round' },
     { code:'robin_hood',     name:'Robin Hood',         icon:'🏹', tier:'silver',    xp:20,  desc:'Two or more trebles of the same number in a round' },
     { code:'double_down',    name:'Double Down',        icon:'♊', tier:'silver',    xp:25,  desc:'Three doubles in one round' },
     { code:'hot_streak',     name:'Hot Streak',         icon:'🔥', tier:'silver',    xp:25,  desc:'Three full houses in a row' },
@@ -37018,7 +37085,8 @@ SQ_ACH.detectGame = function(board, opts){
       if (dou === 3) add('double_down');
       if (fh) add('full_house');
       if (rtot >= 100 && rtot < 180){ add('century'); centuryRounds++; }
-      if (target != null && sin === 1 && dou === 1 && tre === 1) add('trifecta');
+      if (target != null && sin === 1 && dou === 1 && tre === 1) add('shanghai');
+      if (target != null && sin === 2 && dou === 1 && tre === 0 && mis === 0) add('desmond');
       if (target != null && tre >= 2) add('robin_hood');
       if (b50 > 0) add('dead_centre', b50);
     }
