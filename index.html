@@ -37938,6 +37938,55 @@ function __sqPlayerStatsNickname(name, players){
 }
 
 // === Player Hub — Latest Matches / High Scores / Progression / Target % / D T B % / H2H ===
+// XP / Level ladder — ranks every player by total XP (base + trophies).
+window.openXpLeaderboard = async function openXpLeaderboard(){
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal = document.createElement('div'); modal.className = 'modal';
+  modal.style.cssText = 'max-width:560px;width:94vw;max-height:88vh;overflow:hidden;';
+  const body = document.createElement('div'); body.className = 'modal-body';
+  body.style.cssText = 'overflow-y:auto;max-height:84vh;';
+  body.innerHTML = '<h3 style="margin:0 0 4px">🏅 Level Ladder</h3>'
+    + '<p class="muted" style="margin:0 0 12px;font-size:12px">Ranked by XP — score points, win games and collect trophies to climb.</p>'
+    + '<p class="muted" id="xplbLoading">Loading…</p>';
+  modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0; modal.focus();
+  let rows = [];
+  try{ rows = await SQ_XP.all(true); }catch(_){ }
+  rows = (rows || []).filter(r => Number(r.total_xp) > 0).sort((a, b) => Number(b.total_xp) - Number(a.total_xp));
+  const loading = body.querySelector('#xplbLoading'); if (loading) loading.remove();
+  if (!rows.length){ const p = document.createElement('p'); p.className = 'muted'; p.textContent = 'No ranked players yet — play some games.'; body.appendChild(p); return; }
+  const listEl = document.createElement('div'); listEl.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
+  const medal = i => i === 0 ? '#ffd24a' : i === 1 ? '#cbd5e1' : i === 2 ? '#d08b5a' : 'var(--v3-muted,#98a2b8)';
+  rows.forEach((r, idx) => {
+    const prog = SQ_XP.progress(r.total_xp);
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;'
+      + 'background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08);'
+      + (idx < 3 ? 'box-shadow:inset 3px 0 0 ' + medal(idx) + ';' : '');
+    const rank = document.createElement('div'); rank.textContent = '#' + (idx + 1);
+    rank.style.cssText = 'font-weight:900;font-size:14px;min-width:34px;color:' + medal(idx) + ';';
+    const mid = document.createElement('div'); mid.style.cssText = 'flex:1;min-width:0;';
+    const nmeRow = document.createElement('div'); nmeRow.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
+    const nm = document.createElement('b'); nm.textContent = r.name;
+    nm.style.cssText = 'font-size:15px;';
+    nmeRow.append(nm, __sqXpChip(prog));
+    const sub = document.createElement('div'); sub.className = 'muted';
+    sub.style.cssText = 'font-size:11px;margin-top:2px;';
+    sub.textContent = SQ_XP.fmt(r.total_xp) + ' XP · ' + (r.badges || 0) + ' trophies';
+    mid.append(nmeRow, sub);
+    const go = document.createElement('button'); go.className = 'icon-btn'; go.type = 'button'; go.setAttribute('aria-label', 'Open ' + r.name);
+    go.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>';
+    go.onclick = () => { overlay.remove(); try{ if (typeof openPlayerStatsDialog === 'function') openPlayerStatsDialog(r.name); }catch(_){ } };
+    row.append(rank, mid, go); listEl.appendChild(row);
+  });
+  body.appendChild(listEl);
+  const foot = document.createElement('div'); foot.style.cssText = 'margin-top:14px;text-align:center;';
+  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Close'; cb.onclick = () => overlay.remove();
+  foot.appendChild(cb); body.appendChild(foot);
+};
+
 window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('home', playerName); }catch(_){ }
   try{ console.debug('[Popup]', window.__sqStatsDebugName || 'New Game Screen Stats'); }catch(_){ }
@@ -37991,7 +38040,22 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   sub2.className = 'menu-modal-title-sub2';
   sub2.textContent = 'Nickname: -';
 
-  titleWrap.append(icon, title, playerLine, sub2);
+  // Live level chip for the selected player (the "home" level badge).
+  const hubLevelWrap = document.createElement('div');
+  hubLevelWrap.style.cssText = 'margin-top:8px;min-height:26px;display:flex;justify-content:center;';
+  const updateHubLevel = async (nm) => {
+    try{
+      hubLevelWrap.innerHTML = '';
+      const n = String(nm || '').trim(); if (!n) return;
+      const xr = await SQ_XP.forName(n); if (!xr || !(Number(xr.total_xp) > 0)) return;
+      const chip = __sqXpChip(SQ_XP.progress(xr.total_xp));
+      chip.style.cursor = 'pointer'; chip.title = 'Open Level Ladder';
+      chip.onclick = () => { try{ openXpLeaderboard(); }catch(_){ } };
+      hubLevelWrap.appendChild(chip);
+    }catch(_){ }
+  };
+
+  titleWrap.append(icon, title, playerLine, sub2, hubLevelWrap);
   header.append(backBtn, titleWrap, closeBtn);
 
   const body = document.createElement('div');
@@ -38023,6 +38087,7 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
       try{ playerSelect.value = n; }catch(_){}
     }
     sub2.textContent = 'Nickname: ' + (__sqPlayerStatsNickname(n, hubPlayers) || '-');
+    try{ updateHubLevel(n); }catch(_){ }
   };
   const selectedName = () => String(currentName || playerSelect.value || '').trim();
   const openForSelected = (fnName, fallbackMessage, extraArgs) => {
@@ -38042,9 +38107,16 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   const svgVs    = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l16 16"/><path d="M7 7h.01"/><path d="M17 17h.01"/></svg>';
   const svgBars  = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V5"/><path d="M8 19V9"/><path d="M12 19V3"/><path d="M16 19v-6"/><path d="M20 19V7"/></svg>';
 
+  const svgLadder = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v18M18 3v18M6 7h12M6 12h12M6 17h12"/></svg>';
+
   list.append(
     mkRow('Player Stats', 'AVERAGES, PB, RECENT GAMES', svgBars, () => {
       return openForSelected('openPlayerStatsDialog', 'Stats not available');
+    }),
+
+    mkRow('Level Ladder', 'XP & LEVELS LEADERBOARD', svgLadder, () => {
+      try{ overlay && overlay.remove(); }catch(e){}
+      try{ openXpLeaderboard(); }catch(_){ if (typeof toast==='function') toast('Ladder not available'); }
     }),
 
     mkRow('Latest Matches', 'POS / POINTS / AVG', svgClock, () => {
