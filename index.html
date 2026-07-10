@@ -37014,7 +37014,21 @@ const SQ_ACH = {
     { code:'hot_streak',     name:'Hot Streak',         icon:'🔥', tier:'silver',    xp:25,  desc:'Three full houses in a row' },
     { code:'full_board',     name:'Full Board',         icon:'🧩', tier:'silver',    xp:30,  desc:'Score on all 14 rounds of a game' },
     { code:'century',        name:'Century',            icon:'💯', tier:'silver',    xp:15,  desc:'Score 100+ in one round' },
+    { code:'club_700',       name:'The 700 Club',       icon:'7️⃣', tier:'legendary', xp:160, desc:'Score 700+ in a single game' },
+    { code:'centurion',      name:'Centurion',          icon:'🏛️', tier:'legendary', xp:400, desc:'Play 250 games' },
+    { code:'trophy_hunter',  name:'Trophy Hunter',      icon:'🗃️', tier:'legendary', xp:350, desc:'Unlock 20 different trophies' },
+    { code:'club_600',       name:'The 600 Club',       icon:'6️⃣', tier:'gold',      xp:110, desc:'Score 600+ in a single game' },
+    { code:'club_500',       name:'The 500 Club',       icon:'5️⃣', tier:'gold',      xp:70,  desc:'Score 500+ in a single game' },
+    { code:'triple_threat',  name:'Triple Threat',      icon:'⚡', tier:'gold',      xp:60,  desc:'Three triples in the Triples round' },
+    { code:'bull_run',       name:'Bull Run',           icon:'🐮', tier:'gold',      xp:60,  desc:'Three bulls in the Bull round' },
+    { code:'double_trouble', name:'Double Trouble',     icon:'🎲', tier:'gold',      xp:45,  desc:'Three doubles in the Doubles round' },
+    { code:'veteran',        name:'Veteran',            icon:'🎖️', tier:'gold',      xp:200, desc:'Play 100 games' },
+    { code:'collector',      name:'Collector',          icon:'🧰', tier:'gold',      xp:150, desc:'Unlock 10 different trophies' },
+    { code:'club_400',       name:'The 400 Club',       icon:'4️⃣', tier:'silver',    xp:40,  desc:'Score 400+ in a single game' },
+    { code:'strong_finish',  name:'Strong Finish',      icon:'🏁', tier:'silver',    xp:40,  desc:'Score 100+ on the Bull round' },
+    { code:'regular',        name:'Regular',            icon:'📅', tier:'silver',    xp:100, desc:'Play 50 games' },
     { code:'full_house',     name:'Full House',         icon:'🏠', tier:'bronze',    xp:12,  desc:'All three darts on target in a round' },
+    { code:'perfect_start',  name:'Perfect Start',      icon:'🚀', tier:'bronze',    xp:20,  desc:'Full house on the opening 10s round' },
     { code:'dead_centre',    name:'Dead Centre',        icon:'🔴', tier:'bronze',    xp:5,   desc:'Hit the 50 bull' }
   ],
   meta(code){ return this.CATALOG.find(a => a.code === code) || { code, name: code, icon:'🎖️', tier:'bronze', desc:'' }; },
@@ -37134,8 +37148,8 @@ SQ_ACH.detectGame = function(board, opts){
     let finalFh = false;
     for (let ri = 0; ri < rounds.length; ri++){
       const r = rounds[ri] || {}; const darts = r.darts || [];
-      let tre = 0, dou = 0, sin = 0, b50 = 0;
-      darts.forEach(d => { const nk = norm(d); if (nk === 'treble') tre++; else if (nk === 'double') dou++; else if (nk === 'single') sin++; else if (nk === 'bull' && (Number(d.points) || 0) === 50) b50++; });
+      let tre = 0, dou = 0, sin = 0, b50 = 0, bany = 0;
+      darts.forEach(d => { const nk = norm(d); if (nk === 'treble') tre++; else if (nk === 'double') dou++; else if (nk === 'single') sin++; else if (nk === 'bull'){ bany++; if ((Number(d.points) || 0) === 50) b50++; } });
       const mis = darts.filter(d => norm(d) === 'miss' || (Number(d && d.points) || 0) === 0).length;
       const rtot = Number(r.roundTotal) || 0;
       const target = ri <= 10 ? 10 + ri : null;
@@ -37155,7 +37169,14 @@ SQ_ACH.detectGame = function(board, opts){
       if (target != null && sin === 2 && dou === 1 && tre === 0 && mis === 0) add('desmond');
       if (target != null && tre >= 2) add('robin_hood');
       if (b50 > 0) add('dead_centre', b50);
+      if (ri === 12 && tre === 3) add('triple_threat');
+      if (ri === 11 && dou === 3) add('double_trouble');
+      if (ri === 13 && bany === 3) add('bull_run');
+      if (ri === 0 && fh) add('perfect_start');
+      if (ri === 13 && rtot >= 100) add('strong_finish');
     }
+    const gt = totals[p];
+    if (gt >= 700) add('club_700'); else if (gt >= 600) add('club_600'); else if (gt >= 500) add('club_500'); else if (gt >= 400) add('club_400');
     const won = totals[p] === maxTotal && maxTotal > 0;
     if (totMiss === 0 && totDarts > 0) add('flawless_game');
     if (scoredRounds >= 14) add('full_board');
