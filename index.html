@@ -14497,6 +14497,9 @@ function openGameCompleteDialog() {
   // Remove any old instances
   document.querySelectorAll('.sq-gamecomplete-backdrop').forEach(n => n.remove());
 
+  // Celebrate any trophies earned in the just-finished game (once per game token).
+  try{ const __tok = state.__gameToken || 0; if (state.__sqAchCelebratedTok !== __tok){ state.__sqAchCelebratedTok = __tok; setTimeout(() => { try{ window.__sqAchCelebrate(); }catch(_){ } }, 650); } }catch(_){ }
+
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop sq-gamecomplete-backdrop';
 
@@ -36970,6 +36973,128 @@ const SQ_ACH = {
   }
 };
 window.SQ_ACH = SQ_ACH;
+
+// Per-game trophy detector for live celebration toasts. Mirrors the SQL rules
+// in v_ach_rounds / v_player_achievements (per-round, per-game, streak, 2p feats).
+// Career/match feats (sweeps, giant_slayer, champion, nemesis) are cross-game and
+// surface via the trophy case, not here. board = array[player] of array[round] of
+// { darts:[{kind,points}], roundTotal }.  opts: { players, is_tiebreak }.
+SQ_ACH.detectGame = function(board, opts){
+  opts = opts || {};
+  const players = opts.players || [];
+  const norm = d => {
+    const k = (d && d.kind) || 'Miss';
+    if (k === 'S') return 'single';
+    if (k === 'D' || k === 'Double') return 'double';
+    if (k === 'T' || k === 'Triple') return 'treble';
+    if (k === 'B' || k === 'Bull') return 'bull';
+    return 'miss';
+  };
+  if (!Array.isArray(board) || !board.length) return [];
+  const totals = board.map(rs => (rs || []).reduce((s, r) => s + (Number(r && r.roundTotal) || 0), 0));
+  const maxTotal = Math.max.apply(null, totals.concat([0]));
+  const out = [];
+  for (let p = 0; p < board.length; p++){
+    const rounds = board[p] || [];
+    const earned = {}; const add = (c, n) => { earned[c] = (earned[c] || 0) + (n || 1); };
+    let totMiss = 0, totDarts = 0, centuryRounds = 0, scoredRounds = 0, best = 0, run = 0;
+    let finalFh = false;
+    for (let ri = 0; ri < rounds.length; ri++){
+      const r = rounds[ri] || {}; const darts = r.darts || [];
+      let tre = 0, dou = 0, sin = 0, b50 = 0;
+      darts.forEach(d => { const nk = norm(d); if (nk === 'treble') tre++; else if (nk === 'double') dou++; else if (nk === 'single') sin++; else if (nk === 'bull' && (Number(d.points) || 0) === 50) b50++; });
+      const mis = darts.filter(d => norm(d) === 'miss' || (Number(d && d.points) || 0) === 0).length;
+      const rtot = Number(r.roundTotal) || 0;
+      const target = ri <= 10 ? 10 + ri : null;
+      const rmax = ri <= 10 ? 9 * (10 + ri) : (ri === 11 ? 120 : ri === 12 ? 180 : 150);
+      totMiss += mis; totDarts += darts.length;
+      if (rtot > 0) scoredRounds++;
+      const fh = (mis === 0 && darts.length === 3);
+      run = fh ? run + 1 : 0; if (run > best) best = run;
+      if (ri === 13) finalFh = fh;
+      if (rtot === 180) add('the_180');
+      else if (rtot === rmax && darts.length === 3) add('maximum');
+      if (tre === 3) add('treble_trouble');
+      if (dou === 3) add('double_down');
+      if (fh) add('full_house');
+      if (rtot >= 100 && rtot < 180){ add('century'); centuryRounds++; }
+      if (target != null && sin === 1 && dou === 1 && tre === 1) add('trifecta');
+      if (target != null && tre >= 2) add('robin_hood');
+      if (b50 > 0) add('dead_centre', b50);
+    }
+    const won = totals[p] === maxTotal && maxTotal > 0;
+    if (totMiss === 0 && totDarts > 0) add('flawless_game');
+    if (scoredRounds >= 14) add('full_board');
+    if (centuryRounds >= 3) add('ton_machine');
+    if (best >= 14) add('untouchable'); else if (best >= 5) add('inferno'); else if (best >= 3) add('hot_streak');
+    if (opts.is_tiebreak && won) add('iceman');
+    if (won && finalFh) add('clutch');
+    if (board.length === 2){
+      const opp = 1 - p, oppRounds = board[opp] || [];
+      let wonEvery = true, ca = 0, cb = 0, n = Math.max(rounds.length, oppRounds.length);
+      for (let ri = 0; ri < n; ri++){
+        const a = Number((rounds[ri] || {}).roundTotal) || 0, b = Number((oppRounds[ri] || {}).roundTotal) || 0;
+        if (!(a > b)) wonEvery = false;
+        if (ri <= 6){ ca += a; cb += b; }
+      }
+      if (won && wonEvery) add('whitewash');
+      if (won && ca < cb) add('comeback_kid');
+    }
+    const list = Object.keys(earned).map(c => ({ code: c, count: earned[c] }))
+      .sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
+    if (list.length) out.push({ player: p, name: (players[p] && (players[p].name || players[p])) || ('Player ' + (p + 1)), earned: list });
+  }
+  return out;
+};
+
+// Celebratory toast stack shown at game-complete for trophies earned this game.
+function __sqAchToast(results){
+  try{
+    if (!Array.isArray(results) || !results.length) return;
+    let layer = document.getElementById('sqAchToastLayer');
+    if (!layer){
+      layer = document.createElement('div'); layer.id = 'sqAchToastLayer';
+      layer.style.cssText = 'position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:100000;'
+        + 'display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:min(92vw,420px);';
+      document.body.appendChild(layer);
+    }
+    const flat = [];
+    results.forEach(r => r.earned.forEach(e => flat.push({ name: r.name, code: e.code, count: e.count })));
+    // Headline the rarest first, cap the stack.
+    flat.slice(0, 6).forEach((item, i) => {
+      const a = SQ_ACH.meta(item.code); const s = SQ_ACH.tierStyle(a.tier);
+      const el = document.createElement('div');
+      el.style.cssText = 'pointer-events:none;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:14px;'
+        + 'background:' + s.g + ';border:1px solid ' + s.b + ';box-shadow:0 10px 26px rgba(0,0,0,.45);'
+        + 'color:' + s.c + ';font-weight:800;opacity:0;transform:translateY(-10px) scale(.96);'
+        + 'transition:opacity .3s ease,transform .3s cubic-bezier(.2,.9,.25,1);max-width:100%;';
+      el.innerHTML = '<span style="font-size:24px;line-height:1">' + a.icon + '</span>'
+        + '<span style="display:flex;flex-direction:column;min-width:0">'
+        + '<b style="color:#fff;font-size:14px;letter-spacing:.02em">' + a.name + (item.count > 1 ? ' ×' + item.count : '') + '</b>'
+        + '<span style="font-size:11px;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (item.name || '') + ' · +' + ((a.xp || 0) * item.count) + ' XP</span>'
+        + '</span>';
+      layer.appendChild(el);
+      setTimeout(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0) scale(1)'; }, 80 + i * 140);
+      setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateY(-10px) scale(.96)'; setTimeout(() => { try{ el.remove(); if (!layer.childElementCount) layer.remove(); }catch(_){ } }, 350); }, 4200 + i * 140);
+    });
+    try{ if (typeof __sqV3SndGame === 'function') __sqV3SndGame(); }catch(_){ }
+  }catch(_){ }
+}
+
+// Detect + celebrate trophies for the just-finished game (uses live state).
+window.__sqAchCelebrate = function(){
+  try{
+    const board = (state && state.score) ? state.score : null;
+    if (!board) return;
+    const results = SQ_ACH.detectGame(board, {
+      players: (state.players || []).map(p => ({ name: (typeof __sqPlayerPretty === 'function' ? __sqPlayerPretty(p) : (p && p.name)) || (p && p.name) || '' })),
+      is_tiebreak: !!(state.is_tiebreak || state.currentGameIsTiebreak)
+    });
+    __sqAchToast(results);
+    // Freshen caches so the next Player Stats / leaderboard read reflects the new game.
+    try{ if (window.SQ_XP) { SQ_XP._cache = null; SQ_ACH._cache = {}; } }catch(_){ }
+  }catch(_){ }
+};
 
 // Render the trophy case: earned badges bright (with counts), locked badges dim.
 function __sqTrophyCase(earnedMap){
