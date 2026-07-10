@@ -37041,6 +37041,72 @@ const SQ_ACH = {
 };
 window.SQ_ACH = SQ_ACH;
 
+// Everyone who has earned a given trophy, ranked by count (for the per-award
+// leaderboard shown when you tap a trophy).
+SQ_ACH.forCode = async function(code){
+  try{
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return [];
+    const [res, names] = await Promise.all([
+      SB.from('v_player_achievements').select('player_id,cnt,xp').eq('code', code),
+      SQ_XP.all()
+    ]);
+    const rows = (res && res.data) || [];
+    const nameMap = {}; (names || []).forEach(n => { nameMap[n.player_id] = n.name; });
+    return rows.map(r => ({ player_id: r.player_id, name: nameMap[r.player_id] || '—', cnt: Number(r.cnt) || 0, xp: Number(r.xp) || 0 }))
+      .filter(r => r.cnt > 0)
+      .sort((a, b) => (b.cnt - a.cnt) || (b.xp - a.xp));
+  }catch(_){ return []; }
+};
+
+// Trophy detail popup: how to earn it + a leaderboard of everyone who has it.
+async function __sqTrophyDetail(code, earnedMap){
+  const a = SQ_ACH.meta(code); const s = SQ_ACH.tierStyle(a.tier);
+  const got = (earnedMap && earnedMap[code]) || { cnt: 0 };
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal = document.createElement('div'); modal.className = 'modal';
+  modal.style.cssText = 'max-width:460px;width:92vw;max-height:86vh;overflow:hidden;';
+  const body = document.createElement('div'); body.className = 'modal-body'; body.style.cssText = 'overflow-y:auto;max-height:82vh;';
+  const tierName = (a.tier || 'bronze').toUpperCase();
+  const xpText = code === 'giant_slayer' ? 'Scales with the level gap' : ('+' + (a.xp || 0) + ' XP each');
+  const yours = got.cnt > 0 ? ('You’ve earned this ' + got.cnt + '×') : 'You haven’t earned this yet';
+  body.innerHTML =
+    '<div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:' + s.g + ';border:1px solid ' + s.b + ';">'
+    + '<div style="font-size:40px;line-height:1">' + a.icon + '</div>'
+    + '<div style="min-width:0"><div style="font-weight:900;font-size:20px;color:#fff">' + a.name + '</div>'
+    + '<div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:' + s.c + '">' + tierName + ' · ' + xpText + '</div></div></div>'
+    + '<div style="margin:14px 2px 4px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">How to earn</div>'
+    + '<div style="font-size:15px;font-weight:600;margin:0 2px 10px">' + a.desc + '.</div>'
+    + '<div style="font-size:12px;font-weight:800;margin:0 2px 12px;color:' + (got.cnt>0 ? '#7be0a0' : 'var(--v3-muted,#98a2b8)') + '">' + yours + '</div>'
+    + '<div style="margin:6px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">Trophy leaderboard</div>'
+    + '<p class="muted" id="trophyLbLoading" style="font-size:13px">Loading…</p>';
+  modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0; modal.focus();
+  const rows = await SQ_ACH.forCode(code);
+  const loading = body.querySelector('#trophyLbLoading'); if (loading) loading.remove();
+  if (!rows.length){
+    const p = document.createElement('p'); p.className = 'muted'; p.style.fontSize = '13px';
+    p.textContent = 'No one has earned this yet — be the first!'; body.appendChild(p);
+  } else {
+    const list = document.createElement('div'); list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+    const medal = i => i === 0 ? '#ffd24a' : i === 1 ? '#cbd5e1' : i === 2 ? '#d08b5a' : 'var(--v3-muted,#98a2b8)';
+    rows.forEach((r, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);';
+      const rk = document.createElement('span'); rk.textContent = '#' + (i + 1); rk.style.cssText = 'font-weight:900;min-width:30px;color:' + medal(i);
+      const nm = document.createElement('span'); nm.textContent = r.name; nm.style.cssText = 'flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      const ct = document.createElement('span'); ct.textContent = '×' + r.cnt; ct.style.cssText = 'font-weight:900;color:#ffb14a;';
+      row.append(rk, nm, ct); list.appendChild(row);
+    });
+    body.appendChild(list);
+  }
+  const foot = document.createElement('div'); foot.style.cssText = 'margin-top:14px;text-align:center;';
+  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Close'; cb.onclick = () => overlay.remove();
+  foot.appendChild(cb); body.appendChild(foot);
+}
+
 // Per-game trophy detector for live celebration toasts. Mirrors the SQL rules
 // in v_ach_rounds / v_player_achievements (per-round, per-game, streak, 2p feats).
 // Career/match feats (sweeps, giant_slayer, champion, nemesis) are cross-game and
@@ -37190,6 +37256,8 @@ function __sqTrophyCase(earnedMap){
     const ic = document.createElement('div'); ic.textContent = a.icon; ic.style.cssText = 'font-size:26px;line-height:1;';
     const nm = document.createElement('div'); nm.textContent = a.name; nm.style.cssText = 'font-size:10px;font-weight:800;letter-spacing:.01em;color:' + (earned ? s.c : 'var(--v3-muted,#98a2b8)') + ';line-height:1.15;';
     b.append(ic, nm);
+    b.style.cursor = 'pointer';
+    b.onclick = () => { try{ __sqTrophyDetail(a.code, earnedMap); }catch(_){ } };
     if (earned && got.cnt > 1){
       const badgeCount = document.createElement('div');
       badgeCount.textContent = '×' + got.cnt;
