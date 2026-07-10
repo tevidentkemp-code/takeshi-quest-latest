@@ -36812,6 +36812,102 @@ try { window.openLatestScoresDialog = openLatestScoresDialog; } catch(_) {}
    This prevents the same newly saved practice game appearing twice.
 <<< PATCH:PHASE1_FIX57_LATEST_SCORES_CLOUD_TRUTH END */
 
+/* =====================================================================
+   SQ XP — player experience & levels (source of truth: Supabase view
+   v_player_xp, which derives XP from all match/game history).
+   IMPORTANT: the weights in SQ_XP.W MUST match the v_player_xp SQL view
+   (points x0.25, game +30, game win +50, match win +150, milestone +40).
+   Level curve is owned here: level = floor(sqrt(xp / DIV)) + 1.
+===================================================================== */
+const SQ_XP = {
+  W: { point: 0.25, game: 30, gameWin: 50, matchWin: 150, milestone: 40 },
+  DIV: 28,          // level-curve divisor (approved against real data 2026-07)
+  MAXLVL: 60,
+  levelForXp(xp){ xp = Math.max(0, Number(xp) || 0); return Math.min(this.MAXLVL, Math.floor(Math.sqrt(xp / this.DIV)) + 1); },
+  xpForLevel(l){ l = Math.max(1, l); return Math.round((l - 1) * (l - 1) * this.DIV); }, // cumulative XP to reach level l
+  titleForLevel(l){
+    if (l >= 50) return 'Legend';
+    if (l >= 35) return 'Master';
+    if (l >= 20) return 'Sharpshooter';
+    if (l >= 10) return 'Marksman';
+    if (l >= 5)  return 'Amateur';
+    return 'Rookie';
+  },
+  progress(xp){
+    xp = Math.max(0, Number(xp) || 0);
+    const level = this.levelForXp(xp);
+    const cur = this.xpForLevel(level), next = this.xpForLevel(level + 1);
+    const into = Math.max(0, xp - cur), span = Math.max(1, next - cur);
+    return { xp, level, title: this.titleForLevel(level), into, span,
+             pct: Math.max(0, Math.min(1, into / span)),
+             toNext: Math.max(0, next - xp), atMax: level >= this.MAXLVL };
+  },
+  // Projected XP for a single finished game (for the live "+XP" preview).
+  gameXp({ points = 0, gameWon = false, matchWon = false, milestones = 0 } = {}){
+    return Math.round((Number(points) || 0) * this.W.point)
+      + this.W.game
+      + (gameWon ? this.W.gameWin : 0)
+      + (matchWon ? this.W.matchWin : 0)
+      + (Number(milestones) || 0) * this.W.milestone;
+  },
+  _cache: null, _cacheAt: 0,
+  async all(force){
+    const now = Date.now();
+    if (!force && this._cache && (now - this._cacheAt) < 60000) return this._cache;
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return this._cache || [];
+    try{
+      const { data, error } = await SB.from('v_player_xp').select('*');
+      if (error || !Array.isArray(data)) return this._cache || [];
+      this._cache = data; this._cacheAt = now;
+      return data;
+    }catch(_){ return this._cache || []; }
+  },
+  async forName(name){
+    const rows = await this.all();
+    const n = String(name || '').trim().toLowerCase();
+    return rows.find(r => String(r.name || '').trim().toLowerCase() === n) || null;
+  },
+  fmt(n){ return (Number(n) || 0).toLocaleString(); }
+};
+window.SQ_XP = SQ_XP;
+
+// A reusable "LV n · TITLE" chip (inline-styled to match the stats hero).
+function __sqXpChip(prog){
+  const chip = document.createElement('span');
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;'
+    + 'background:linear-gradient(135deg,rgba(255,183,64,.28),rgba(255,122,24,.18));'
+    + 'border:1px solid rgba(255,183,64,.5);font-weight:900;font-size:12px;letter-spacing:.06em;'
+    + 'color:#ffe1b0;white-space:nowrap;';
+  const lv = document.createElement('b'); lv.textContent = 'LV ' + prog.level; lv.style.color = '#fff';
+  const ti = document.createElement('span'); ti.textContent = prog.title.toUpperCase(); ti.style.opacity = '.92';
+  chip.append(lv, ti);
+  return chip;
+}
+
+// A reusable XP progress bar with "x XP · y to Level n+1" caption.
+function __sqXpBar(prog){
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:12px;';
+  const top = document.createElement('div');
+  top.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;font-size:11px;'
+    + 'text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;';
+  const l = document.createElement('span'); l.className = 'muted'; l.textContent = SQ_XP.fmt(prog.xp) + ' XP';
+  const r = document.createElement('span'); r.className = 'muted';
+  r.textContent = prog.atMax ? 'MAX LEVEL' : (SQ_XP.fmt(prog.toNext) + ' to Level ' + (prog.level + 1));
+  top.append(l, r);
+  const track = document.createElement('div');
+  track.style.cssText = 'height:9px;border-radius:999px;background:rgba(0,0,0,.32);'
+    + 'border:1px solid rgba(255,255,255,.08);overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.style.cssText = 'height:100%;width:0;border-radius:999px;transition:width .7s cubic-bezier(.2,.8,.25,1);'
+    + 'background:linear-gradient(90deg,#ff7a18,#ffb14a);box-shadow:0 0 10px rgba(255,150,60,.6);';
+  track.appendChild(fill);
+  wrap.append(top, track);
+  requestAnimationFrame(() => { fill.style.width = Math.round(prog.pct * 100) + '%'; });
+  return wrap;
+}
+
 // === Player Stats — redesigned overview =====================================
 // @CANONICAL:PLAYER_STATS_PROFILE_CARDS
 window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
@@ -37349,7 +37445,18 @@ const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     return t;
   };
   heroTiles.append(tile('Power Rank', rankValue), tile('Games', GAMES), tile('PL AVG', AVG.toFixed(1)));
-  hero.append(heroName, heroNick, heroTiles);
+
+  // XP / level: a "LV n · TITLE" chip beside the name and a progress bar.
+  let xpProg = null, xpRow = null;
+  try{ xpRow = await SQ_XP.forName(name); if (xpRow) xpProg = SQ_XP.progress(xpRow.total_xp); }catch(_){ }
+  if (xpProg){
+    const nameRow = document.createElement('div');
+    nameRow.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;';
+    nameRow.append(heroName, __sqXpChip(xpProg));
+    hero.append(nameRow, heroNick, heroTiles, __sqXpBar(xpProg));
+  } else {
+    hero.append(heroName, heroNick, heroTiles);
+  }
   profile.appendChild(hero);
 
   const cards = document.createElement('div');
@@ -37398,6 +37505,16 @@ const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   };
 
   cards.append(
+    statCard('XP & Level', iconSvg.achievements, xpRow ? [
+      ['Level', `${xpProg.level} · ${xpProg.title}`],
+      ['Total XP', SQ_XP.fmt(xpProg.xp)],
+      ['From Points', SQ_XP.fmt(Math.round((xpRow.points_scored||0) * SQ_XP.W.point)) + ` (${SQ_XP.fmt(xpRow.points_scored)} pts)`],
+      ['From Games', SQ_XP.fmt((xpRow.games_played||0) * SQ_XP.W.game) + ` (${xpRow.games_played})`],
+      ['From Wins', SQ_XP.fmt((xpRow.games_won||0) * SQ_XP.W.gameWin + (xpRow.matches_won||0) * SQ_XP.W.matchWin) + ` (${xpRow.games_won}G / ${xpRow.matches_won}M)`],
+      ['From Milestones', SQ_XP.fmt((xpRow.milestones||0) * SQ_XP.W.milestone) + ` (${xpRow.milestones})`]
+    ] : [
+      ['Level', 'No ranked games yet', true]
+    ], xpRow ? { footer: xpProg.atMax ? 'Max level reached — Legend.' : `${SQ_XP.fmt(xpProg.toNext)} XP to Level ${xpProg.level + 1}.` } : { muted: true }),
     statCard('Quick Stats', iconSvg.quick, [
       ['Highest Score', highestScoreValue],
       ['Lowest Score', GAMES ? String(LOW) : '—'],
