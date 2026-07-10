@@ -36887,10 +36887,14 @@ try { window.openLatestScoresDialog = openLatestScoresDialog; } catch(_) {}
    IMPORTANT: the weights in SQ_XP.W MUST match the v_player_xp SQL view
    (points x0.25, game +30, game win +50, match win +150, milestone +40).
    Level curve is owned here: level = floor(sqrt(xp / DIV)) + 1.
-===================================================================== */
+   Scope: CLASSIC games only. The SQL views (v_ach_rounds / v_player_base_xp)
+   map board players by NAME via v_name_resolver (players + aliases) so EVERY
+   Classic game counts — not just those with match_players rows — and exclude
+   turbo/practice modes and guest/test names. Keep detectGame's per-game rules
+   in sync with v_ach_base. */
 const SQ_XP = {
   W: { point: 0.25, game: 30, gameWin: 50, matchWin: 150, milestone: 40 },
-  DIV: 28,          // level-curve divisor (approved against real data 2026-07)
+  DIV: 46,          // level-curve divisor (re-tuned after full Classic-game coverage)
   MAXLVL: 60,
   levelForXp(xp){ xp = Math.max(0, Number(xp) || 0); return Math.min(this.MAXLVL, Math.floor(Math.sqrt(xp / this.DIV)) + 1); },
   xpForLevel(l){ l = Math.max(1, l); return Math.round((l - 1) * (l - 1) * this.DIV); }, // cumulative XP to reach level l
