@@ -14499,6 +14499,128 @@ function markCloudOk() {
   window.__cloudEverOk = true;
   setCloudStatus('ok', 'Cloud: connected');
 }
+
+// ===== Animated end-of-game XP + rewards reveal =====
+function __sqGcXpEnsureStyles(){
+  if (document.getElementById('sqGcXpStyles')) return;
+  const st = document.createElement('style'); st.id = 'sqGcXpStyles';
+  st.textContent = `
+  .gc-xp-reveal{ margin:8px auto 12px; width:min(520px,94%); }
+  .gc-xp-title{ text-align:center; font-size:12px; font-weight:900; letter-spacing:.18em; color:#ffb14a; margin-bottom:8px; }
+  .gc-xp-row{ background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.09); border-radius:12px; padding:10px 12px; margin-bottom:8px; opacity:0; transform:translateY(10px); transition:opacity .35s ease, transform .35s cubic-bezier(.2,.9,.25,1); }
+  .gc-xp-row.in{ opacity:1; transform:none; }
+  .gc-xp-row.won{ border-color:rgba(255,196,74,.5); box-shadow:0 0 16px rgba(255,150,60,.18); }
+  .gc-xp-head{ display:flex; align-items:center; justify-content:space-between; gap:8px 10px; flex-wrap:wrap; }
+  .gc-xp-name{ font-weight:900; font-size:15px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex:1 1 auto; }
+  .gc-xp-name .nm{ white-space:nowrap; flex:0 0 auto; }
+  .gc-xp-gain{ font-weight:900; color:#7be0a0; font-size:15px; white-space:nowrap; }
+  .gc-xp-bar{ margin-top:8px; height:8px; border-radius:999px; background:rgba(0,0,0,.34); border:1px solid rgba(255,255,255,.08); overflow:hidden; }
+  .gc-xp-fill{ height:100%; width:0; border-radius:999px; background:linear-gradient(90deg,#ff7a18,#ffb14a); box-shadow:0 0 10px rgba(255,150,60,.6); transition:width .8s cubic-bezier(.2,.8,.25,1); }
+  .gc-xp-row.gc-levelup{ animation: gcLevelPulse .7s ease-out; }
+  @keyframes gcLevelPulse{ 0%,100%{ box-shadow:0 0 16px rgba(255,150,60,.18);} 40%{ box-shadow:0 0 30px rgba(255,214,64,.85);} }
+  .gc-xp-lvup{ display:inline-block; font-size:11px; font-weight:900; color:#ffd24a; letter-spacing:.06em; opacity:0; transform:scale(.7); transition:opacity .3s, transform .3s cubic-bezier(.2,.9,.25,1); }
+  .gc-xp-lvup.in{ opacity:1; transform:none; }
+  .gc-xp-trophies{ display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+  .gc-xp-trophy{ display:inline-flex; align-items:center; gap:5px; padding:4px 9px; border-radius:999px; font-size:11px; font-weight:800; color:#fff; opacity:0; transform:scale(.7) translateY(4px); transition:opacity .3s, transform .3s cubic-bezier(.2,.9,.25,1); }
+  .gc-xp-trophy.in{ opacity:1; transform:none; }
+  .gc-actions-hidden{ opacity:0; pointer-events:none; transform:translateY(8px); transition:opacity .45s ease, transform .45s ease; }
+  @media (prefers-reduced-motion: reduce){ .gc-xp-row,.gc-xp-fill,.gc-xp-trophy,.gc-xp-lvup,.gc-actions-hidden{ transition:none !important; animation:none !important; } }`;
+  document.head.appendChild(st);
+}
+function __sqAnimCount(el, from, to, dur, fmt){
+  const t0 = performance.now();
+  (function step(t){ const k = Math.min(1, (t - t0) / dur); const v = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 2))); el.textContent = fmt ? fmt(v) : String(v); if (k < 1) requestAnimationFrame(step); })(t0);
+}
+function __sqGcXpRow(panel, row, reduced){
+  return new Promise(resolve => {
+    const esc = (typeof escapeHtml === 'function') ? escapeHtml : (s => String(s == null ? '' : s));
+    const pre = SQ_XP.progress(row.pre), post = SQ_XP.progress(row.post);
+    const el = document.createElement('div'); el.className = 'gc-xp-row' + (row.won ? ' won' : '');
+    el.innerHTML = '<div class="gc-xp-head"><span class="gc-xp-name"><span class="nm">' + esc(row.nm) + '</span>'
+      + '<span class="gc-xp-lvholder"></span><span class="gc-xp-lvup">LEVEL UP!</span></span>'
+      + '<span class="gc-xp-gain">+0 XP</span></div>'
+      + '<div class="gc-xp-bar"><div class="gc-xp-fill"></div></div>'
+      + '<div class="gc-xp-trophies"></div>';
+    panel.appendChild(el);
+    const lvHolder = el.querySelector('.gc-xp-lvholder');
+    try{ lvHolder.appendChild(__sqXpChip(pre)); }catch(_){ }
+    const gainEl = el.querySelector('.gc-xp-gain');
+    const fill = el.querySelector('.gc-xp-fill');
+    const tw = el.querySelector('.gc-xp-trophies');
+    const levelUp = post.level > pre.level;
+    const addTrophies = () => {
+      row.troph.forEach((e, ti) => {
+        const a = SQ_ACH.meta(e.code); const s = SQ_ACH.tierStyle(a.tier);
+        const chip = document.createElement('span'); chip.className = 'gc-xp-trophy';
+        chip.style.background = s.g; chip.style.border = '1px solid ' + s.b; chip.style.color = s.c;
+        chip.innerHTML = '<span>' + a.icon + '</span><span>' + a.name + (e.count > 1 ? ' ×' + e.count : '') + '</span>';
+        tw.appendChild(chip);
+        setTimeout(() => chip.classList.add('in'), reduced ? 0 : 460 + ti * 120);
+      });
+    };
+    if (reduced){
+      el.classList.add('in'); gainEl.textContent = '+' + row.gained + ' XP';
+      fill.style.transition = 'none'; fill.style.width = (post.pct * 100) + '%';
+      if (levelUp){ try{ lvHolder.firstChild && lvHolder.firstChild.replaceWith(__sqXpChip(post)); }catch(_){ } el.querySelector('.gc-xp-lvup').classList.add('in'); }
+      addTrophies(); resolve(); return;
+    }
+    setTimeout(() => {
+      el.classList.add('in');
+      __sqAnimCount(gainEl, 0, row.gained, 900, v => '+' + v + ' XP');
+      requestAnimationFrame(() => {
+        fill.style.width = (pre.pct * 100) + '%';
+        requestAnimationFrame(() => {
+          if (levelUp){
+            fill.style.width = '100%';
+            setTimeout(() => {
+              try{ lvHolder.firstChild && lvHolder.firstChild.replaceWith(__sqXpChip(post)); }catch(_){ }
+              el.querySelector('.gc-xp-lvup').classList.add('in');
+              el.classList.add('gc-levelup');
+              try{ if (typeof __sqV3SndGame === 'function') __sqV3SndGame(); }catch(_){ }
+              fill.style.transition = 'none'; fill.style.width = '0%';
+              requestAnimationFrame(() => { fill.style.transition = ''; fill.style.width = (post.pct * 100) + '%'; });
+            }, 720);
+          } else {
+            fill.style.width = (post.pct * 100) + '%';
+          }
+        });
+      });
+      addTrophies();
+      setTimeout(resolve, 1100 + (levelUp ? 700 : 0) + row.troph.length * 120);
+    }, 120);
+  });
+}
+async function __sqGcXpReveal(host, onComplete){
+  try{
+    if (!window.SQ_XP || !window.SQ_ACH || !state || !state.score){ if (onComplete) onComplete(); return; }
+    const reduced = (typeof __sqV3Reduced === 'function') ? __sqV3Reduced() : false;
+    const board = state.score;
+    const players = (state.players || []).map(p => ({ name: (typeof __sqPlayerPretty === 'function' ? __sqPlayerPretty(p) : (p && p.name)) || (p && p.name) || '' }));
+    const totals = players.map((_, i) => (board[i] || []).reduce((s, r) => s + (Number(r && r.roundTotal) || 0), 0));
+    const maxTotal = Math.max(0, ...totals);
+    const results = SQ_ACH.detectGame(board, { players, is_tiebreak: !!(state.is_tiebreak || state.currentGameIsTiebreak) });
+    const trophiesByP = {}; results.forEach(r => { trophiesByP[r.player] = r.earned; });
+    const rows = [];
+    for (let p = 0; p < players.length; p++){
+      const nm = players[p].name || ('Player ' + (p + 1));
+      const won = totals[p] === maxTotal && maxTotal > 0;
+      const troph = trophiesByP[p] || [];
+      const trophyXp = troph.reduce((s, e) => s + (SQ_ACH.meta(e.code).xp || 0) * e.count, 0);
+      const gained = Math.round(totals[p] * SQ_XP.W.point) + SQ_XP.W.game + (won ? SQ_XP.W.gameWin : 0) + trophyXp;
+      let pre = 0; try{ const xr = await SQ_XP.forName(nm); pre = xr ? Number(xr.total_xp) || 0 : 0; }catch(_){ }
+      rows.push({ nm, won, troph, gained, pre, post: pre + gained });
+    }
+    rows.sort((a, b) => (Number(b.won) - Number(a.won)) || (b.gained - a.gained));
+    const panel = document.createElement('div'); panel.className = 'gc-xp-panel';
+    const title = document.createElement('div'); title.className = 'gc-xp-title'; title.textContent = 'XP EARNED';
+    panel.appendChild(title); host.appendChild(panel);
+    for (let i = 0; i < rows.length; i++){ await __sqGcXpRow(panel, rows[i], reduced); }
+    // Freshen caches so subsequent screens read the new totals.
+    try{ SQ_XP._cache = null; SQ_ACH._cache = {}; }catch(_){ }
+    if (onComplete) onComplete();
+  }catch(_){ if (onComplete) onComplete(); }
+}
+
 function openGameCompleteDialog() {
   if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) {
     try{ state.finished = false; state.gameAwarded = false; }catch(_){ }
@@ -14517,9 +14639,6 @@ function openGameCompleteDialog() {
 
   // Remove any old instances
   document.querySelectorAll('.sq-gamecomplete-backdrop').forEach(n => n.remove());
-
-  // Celebrate any trophies earned in the just-finished game (once per game token).
-  try{ const __tok = state.__gameToken || 0; if (state.__sqAchCelebratedTok !== __tok){ state.__sqAchCelebratedTok = __tok; setTimeout(() => { try{ window.__sqAchCelebrate(); }catch(_){ } }, 650); } }catch(_){ }
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop sq-gamecomplete-backdrop';
@@ -14850,6 +14969,24 @@ function openGameCompleteDialog() {
 
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
+
+  // Animated XP + rewards reveal, then reveal the NEXT GAME / END buttons.
+  try{
+    __sqGcXpEnsureStyles();
+    const actionsEl = modal.querySelector('.gc-actions');
+    const host = document.createElement('div'); host.className = 'gc-xp-reveal';
+    if (actionsEl && actionsEl.parentNode) actionsEl.parentNode.insertBefore(host, actionsEl);
+    else (modal.querySelector('.gc-arcade-content') || modal).appendChild(host);
+    const __tok = state.__gameToken || 0;
+    if (state.__sqXpRevealedTok !== __tok){
+      state.__sqXpRevealedTok = __tok;
+      if (actionsEl) actionsEl.classList.add('gc-actions-hidden');
+      let __shown = false;
+      const showActions = () => { if (__shown) return; __shown = true; if (actionsEl) actionsEl.classList.remove('gc-actions-hidden'); };
+      __sqGcXpReveal(host, showActions);
+      setTimeout(showActions, 9000); // safety: never leave the buttons hidden
+    }
+  }catch(_){ }
 
   const remove = () => overlay.remove();
   // Close handlers
