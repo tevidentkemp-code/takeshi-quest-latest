@@ -4541,21 +4541,24 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 .ms2-ic svg{ width:24px; height:24px; display:block; }
 .ms2-add-saved{
   flex:1 1 46%;
-  background:#ff6a00;
-  border:1px solid #fd8019;
+  background:rgba(255,106,0,.68);
+  border:1px solid #ffbd86;
+  color:#ffead9;
   box-shadow: 0 8px 18px rgba(0,0,0,.25), 0 0 24px rgba(255,106,0,.35);
 }
 .ms2-add-saved .ms2-ic svg{ width:32px; }
 .ms2-add-guest{
   flex:1 1 54%;
-  background:#0f151b;
-  border:1px solid #363a3d;
+  background:#101827;
+  border:1px solid rgba(35,164,255,.45);
+  color:#e8f4ff;
 }
 .ms2-save-new{
   width:100%;
   margin-top:13px;
-  background:#0f151b;
-  border:1px solid #363a3d;
+  background:#101827;
+  border:1px solid rgba(35,164,255,.45);
+  color:#e8f4ff;
 }
 
 /* Match card slots (6 fixed) */
@@ -4784,6 +4787,15 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   background:var(--shatekiBlueLight) !important;
   border:1px solid rgba(0,0,0,.25) !important;
   color:#fff !important;
+}
+/* Fully obscure the underlying screen behind the setup modals so previous
+   screens (match card, home) are never visible faded in the background. */
+#startGameModal.modal-backdrop,
+#matchLengthModal.modal-backdrop,
+.modal-backdrop:has(> .modal-throworder){
+  background:rgba(4,7,13,.97) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 /* =====================================================================
@@ -17879,9 +17891,12 @@ if (questBtnEl) questBtnEl.addEventListener('click', ()=>{
   });
 });
 // Match Card BACK -> step back to the Select Game Mode screen (one screen
-// back), not all the way out to the main/home screen.
+// back), not all the way out to the main/home screen. Switch the page under
+// the modal to home first, so the modal's own Back then lands on home (one
+// screen back again) instead of re-revealing the match card.
 document.querySelectorAll('#startScreenBtn').forEach(btn => {
   btn.addEventListener('click', () => {
+    try{ show('details'); }catch(_){}
     try{ if (typeof arrangeStartActions === 'function') arrangeStartActions(); }catch(_){}
     try{ (window.openModal || openModal)('startGameModal'); }catch(_){}
   });
@@ -31947,7 +31962,9 @@ function arrangeStartActions(){
     }
 // Close button in modal
     const closeStart = document.getElementById('closeStartGameModalBtn');
-    if (closeStart) closeStart.onclick = () => closeModal('startGameModal');
+    // Back = one screen back: always the home screen (the only screen before
+    // SELECT GAME MODE), even if the modal was reopened from the match card.
+    if (closeStart) closeStart.onclick = () => { closeModal('startGameModal'); try{ show('details'); }catch(_){} };
 
     // Backdrop + Esc close (bind once)
     const startGameModal = document.getElementById('startGameModal');
