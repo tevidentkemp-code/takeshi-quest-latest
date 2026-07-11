@@ -4703,6 +4703,90 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 .ms2-back-txt{ font-size:17px; font-weight:800; letter-spacing:.2em; text-indent:.2em; }
 
 /* =====================================================================
+   MATCH SETUP — UNIFIED BUTTON SYSTEM
+   Every initial-setup screen (Select Game Mode, Match Card, Match Length,
+   Throw Order) uses the SAME button size/layout as the Match Card design:
+   centred, vertically stacked (primary on top, Back below), each
+   min(300px,88%) wide × 52px tall, radius 8. Back = navy/blue-bordered
+   (.ms2-back); Primary CTA = orange (.ms-primary).
+   ===================================================================== */
+.sg-footer,
+.sg-practice-footer,
+.ml-footer,
+.to-actions{
+  display:flex !important;
+  align-items:center !important;
+  gap:12px !important;
+  width:100% !important;
+  align-self:stretch !important;
+  box-sizing:border-box !important;
+}
+/* DOM child order differs per screen; normalise so the primary CTA is
+   always on top and Back sits below. */
+.sg-footer,
+.sg-practice-footer,
+.to-actions{ flex-direction:column !important; }   /* [CTA, Back] */
+.ml-footer{ flex-direction:column-reverse !important; } /* [Back, CTA] */
+/* Back buttons — identical to the Match Card back (.ms2-back) */
+.sg-footer .btn,
+.sg-practice-footer .btn,
+.ml-footer .ml-foot-back,
+.to-actions .to-back,
+.sg-footer .ms2-back,
+.sg-practice-footer .ms2-back,
+.ml-footer .ms2-back,
+.to-actions .ms2-back{
+  width:min(300px,88%) !important;
+  min-width:0 !important;
+  height:52px !important;
+  border-radius:8px !important;
+  background:#101827 !important;
+  border:1px solid rgba(35,164,255,.7) !important;
+  color:#e8f4ff !important;
+  font-weight:800 !important;
+  letter-spacing:.2em !important;
+  text-transform:uppercase !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  padding:0 !important;
+  margin:0 auto !important;
+  box-shadow:0 8px 18px rgba(0,0,0,.25) !important;
+  position:relative !important;
+}
+/* Primary CTAs — identical to the Match Card CTA (.ms-primary) */
+.ml-footer #mlStartBtn.ms-primary,
+.to-actions .to-start{
+  width:min(300px,88%) !important;
+  min-width:0 !important;
+  height:52px !important;
+  border-radius:8px !important;
+  border:1px solid #ffbd86 !important;
+  color:#ffead9 !important;
+  font-size:16px !important;
+  font-weight:800 !important;
+  letter-spacing:.02em !important;
+  box-shadow:0 8px 18px rgba(0,0,0,.25), 0 0 24px rgba(255,106,0,.35) !important;
+  margin:0 auto !important;
+  padding:0 12px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  gap:8px !important;
+  flex:0 0 auto !important;
+}
+/* Standard (match) CTA = orange; keep the Practice VS-Shadow blue accent. */
+.ml-footer #mlStartBtn.ms-primary,
+.to-actions .to-start:not(.to-blueLight){
+  background:rgba(255,106,0,.68) !important;
+}
+.to-actions .to-start.to-blueLight{
+  background:var(--shatekiBlueLight) !important;
+  border:1px solid rgba(0,0,0,.25) !important;
+  color:#fff !important;
+}
+
+/* =====================================================================
    LIVE V3 — Premium UI test layout (2-player Match Play Classic, beta)
 ===================================================================== */
 body.livev3-on #liveV2Panel,
@@ -9245,7 +9329,7 @@ body.livev2-on[data-page="game"] canvas#v2InfoDmd{
       <div id="startGameModalBody" class="sg-options"></div>
     </div>
     <div class="modal-footer sg-footer">
-      <button id="closeStartGameModalBtn" class="btn" type="button">Back</button>
+      <button id="closeStartGameModalBtn" class="btn ms2-back" type="button"><span class="ms2-back-ar" aria-hidden="true">&#8592;</span><span class="ms2-back-txt">BACK</span></button>
     </div>
   </div>
 </div>
@@ -9271,7 +9355,7 @@ body.livev2-on[data-page="game"] canvas#v2InfoDmd{
     </div>
 
     <div class="modal-footer ml-footer">
-      <button id="mlFooterBackBtn" class="btn ml-foot-back" type="button">BACK</button>
+      <button id="mlFooterBackBtn" class="btn ml-foot-back ms2-back" type="button"><span class="ms2-back-ar" aria-hidden="true">&#8592;</span><span class="ms2-back-txt">BACK</span></button>
       <!-- Label swaps via JS based on mode -->
       <button id="mlStartBtn" class="btn ms-start ms-primary" type="button" disabled>SET THROW ORDER <span class="ms-arrow">▶</span></button>
     </div>
@@ -17789,9 +17873,17 @@ if (questBtnEl) questBtnEl.addEventListener('click', ()=>{
   window.__sqSelectedMode = 'official';
   show('players');
 });
-['startScreenBtn', 'startScreenBtnLB', 'backToDetailsBtn'].forEach(id => {
+['startScreenBtnLB', 'backToDetailsBtn'].forEach(id => {
   document.querySelectorAll('#' + id).forEach(btn => {
     btn.addEventListener('click', () => show('details'));
+  });
+});
+// Match Card BACK -> step back to the Select Game Mode screen (one screen
+// back), not all the way out to the main/home screen.
+document.querySelectorAll('#startScreenBtn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    try{ if (typeof arrangeStartActions === 'function') arrangeStartActions(); }catch(_){}
+    try{ (window.openModal || openModal)('startGameModal'); }catch(_){}
   });
 });
 
@@ -27954,9 +28046,9 @@ function showPlayerOrderDialog() {
   startBtn.onclick = () => { overlay.remove(); startNewGame(true); };
 
   const backBtn = document.createElement('button');
-  backBtn.className = 'btn to-back';
+  backBtn.className = 'btn to-back ms2-back';
   backBtn.type = 'button';
-  backBtn.textContent = '← BACK';
+  backBtn.innerHTML = '<span class="ms2-back-ar" aria-hidden="true">&#8592;</span><span class="ms2-back-txt">BACK</span>';
   backBtn.onclick = () => overlay.remove();
 
   actions.append(startBtn, backBtn);
@@ -31759,21 +31851,13 @@ function arrangeStartActions(){
         footer.className = 'modal-footer sg-practice-footer';
         const back = doc.createElement('button');
         back.type = 'button';
-        back.className = 'btn';
-        back.textContent = 'Back';
+        back.className = 'btn ms2-back';
+        back.innerHTML = '<span class="ms2-back-ar" aria-hidden="true">&#8592;</span><span class="ms2-back-txt">BACK</span>';
         back.onclick = (e)=>{
           e.preventDefault();
           arrangeStartActions();
         };
-        const close = doc.createElement('button');
-        close.type = 'button';
-        close.className = 'btn';
-        close.textContent = 'Close';
-        close.onclick = (e)=>{
-          e.preventDefault();
-          closeModal('startGameModal');
-        };
-        footer.append(back, close);
+        footer.append(back);
 
         startGameBody.append(intro, classic, turbo, footer);
       };
@@ -31820,21 +31904,13 @@ function arrangeStartActions(){
         footer.className = 'modal-footer sg-practice-footer';
         const back = doc.createElement('button');
         back.type = 'button';
-        back.className = 'btn';
-        back.textContent = 'Back';
+        back.className = 'btn ms2-back';
+        back.innerHTML = '<span class="ms2-back-ar" aria-hidden="true">&#8592;</span><span class="ms2-back-txt">BACK</span>';
         back.onclick = (e)=>{
           e.preventDefault();
           arrangeStartActions();
         };
-        const close = doc.createElement('button');
-        close.type = 'button';
-        close.className = 'btn';
-        close.textContent = 'Close';
-        close.onclick = (e)=>{
-          e.preventDefault();
-          closeModal('startGameModal');
-        };
-        footer.append(back, close);
+        footer.append(back);
 
         startGameBody.append(intro, classic, vsAi, vsShadow, footer);
       };
