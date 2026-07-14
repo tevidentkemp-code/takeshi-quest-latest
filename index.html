@@ -3467,6 +3467,38 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   color: rgba(255,140,40,.78);
 }
 
+/* Game-styled loading bar (home LIVE UPDATES hold state): navy track with a
+   blue hairline and a glowing orange sweep, matching the CTA palette. */
+.sq-loadbar{
+  width: min(220px, 70%);
+  height: 8px;
+  border-radius: 99px;
+  background: #101827;
+  border: 1px solid rgba(35,164,255,.35);
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 0 18px rgba(47,134,255,.15), inset 0 1px 2px rgba(0,0,0,.5);
+}
+.sq-loadbar-fill{ position:absolute; inset:0; }
+.sq-loadbar-fill::after{
+  content:'';
+  position:absolute;
+  top:0; bottom:0;
+  width:45%;
+  left:-45%;
+  border-radius:99px;
+  background: linear-gradient(90deg, rgba(255,122,0,0), rgba(255,122,0,.9), rgba(255,170,60,.95), rgba(255,122,0,0));
+  box-shadow: 0 0 12px rgba(255,122,0,.55);
+  animation: sqLoadSweep 1.4s cubic-bezier(.4,0,.6,1) infinite;
+}
+@keyframes sqLoadSweep{
+  0% { left:-45%; }
+  100% { left:100%; }
+}
+@media (prefers-reduced-motion: reduce){
+  .sq-loadbar-fill::after{ animation-duration: 2.8s; }
+}
+
 .home-hold-sim{
   display:flex;
   gap: 10px;
@@ -9367,12 +9399,7 @@ body.livev2-on[data-page="game"] canvas#v2InfoDmd{
       </select>
     </div>
     <div class="modal-footer sp2-footer">
-      <button id="spSaveNewBtn" class="btn ms2-btn ms2-save-new" type="button">
-        <span class="ms2-ic" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
-        </span>
-        <span>SAVE NEW PLAYER</span>
-      </button>
+      <!-- SAVE NEW PLAYER lives on the Match Card only; removed from this dialog. -->
       <button id="confirmSelectPlayerBtn" class="btn sp2-confirm" type="button">CONFIRM PLAYERS</button>
       <button id="cancelSelectPlayerBtn" class="btn ms2-back sp2-back" type="button"><span class="ms2-back-ar" aria-hidden="true">&#8592;</span><span class="ms2-back-txt">BACK</span></button>
     </div>
@@ -32059,13 +32086,10 @@ function arrangeStartActions(){
       printer.innerHTML = ''+
         '<div class="lp-top">'+
           '<span id="homeLpTopLine" class="lp-title">LIVE UPDATES</span>'+
-          '<span class="lp-badge"><span class="lp-badgeText">CURRENTLY UNAVAILABLE</span><span class="lp-badgeSep">•</span><span class="lp-badgeText">UPGRADES IN PROCESS</span><span class="lp-dots"><i></i><i></i><i></i></span></span>'+
         '</div>'+
         '<div class="lp-mid lp-mid-hold">'+
           '<div class="home-hold-overlay" aria-hidden="true">'+
-            '<div class="home-hold-title">CURRENTLY UNAVAILABLE</div>'+
-            '<div class="home-hold-sub">UPGRADES IN PROCESS</div>'+
-            '<div class="home-hold-sim"><span></span><span></span><span></span></div>'+
+            '<div class="sq-loadbar"><span class="sq-loadbar-fill"></span></div>'+
           '</div>'+
           '<table class="lp-table" aria-label="Latest games">'+
             '<tbody id="homeLivePrinterRows"></tbody>'+
@@ -32085,36 +32109,9 @@ function arrangeStartActions(){
 
     // (removed) NEW PLAYERS ticker in VIDE
 
-    // Mini league panels under VIDE
-    let mini = document.getElementById('homeMiniLeagues');
-    if (!mini) {
-      mini = document.createElement('div');
-      mini.id = 'homeMiniLeagues';
-      mini.className = 'home-mini-leagues';
-      mini.innerHTML = `
-        <div class="home-mini-printer" aria-label="Power Rankings">
-          <div class="lp-top">
-            <span class="lp-title">POWER RANKINGS</span>
-            <span class="lp-badge"><span class="lp-badgeText">CURRENTLY UNAVAILABLE</span><span class="lp-badgeSep">•</span><span class="lp-badgeText">UPGRADES IN PROCESS</span><span class="lp-dots"><i></i><i></i><i></i></span></span>
-          </div>
-          <div class="lp-mid lp-mid-hold">
-            <div class="home-hold-overlay home-hold-overlay-mini" aria-hidden="true">
-              <div class="home-hold-title">CURRENTLY UNAVAILABLE</div>
-              <div class="home-hold-sub">UPGRADES IN PROCESS</div>
-              <div class="home-hold-sim"><span></span><span></span><span></span></div>
-            </div>
-            <table class="mini-table mini-table-plain" aria-label="Power Rankings Top 5">
-              <tbody id="homePowerLeagueRows">
-                <tr class="mini-loading"><td colspan="3" class="home-mini-muted"><em>TESTING…</em></td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      `;
-      /* created; append below so existing panels are also preserved */
-    }
-    try { mini.querySelectorAll('.home-mini-printer > .lp-rule').forEach(n => n.remove()); } catch(_e) {}
-    if (mini) frag.appendChild(mini);
+    // POWER RANKINGS mini panel removed from the home screen; drop any
+    // instance an older layout pass may have left behind.
+    try { document.getElementById('homeMiniLeagues')?.remove(); } catch(_e) {}
 
     host.innerHTML = '';
     host.appendChild(frag);
@@ -49700,26 +49697,12 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     try{
       var host=document.querySelector('#details .start-actions.column')||document.querySelector('.start-actions.column');
       if(!host) return;
-      // If the old arrangeStartActions dropped the mini panel, recreate it.
+      // POWER RANKINGS mini panel removed from the home screen: no longer
+      // recreated here; remove any leftover instance instead.
       var printer=document.getElementById('homeLivePrinter');
-      var mini=document.getElementById('homeMiniLeagues');
-      if(!mini){
-        mini=document.createElement('div');
-        mini.id='homeMiniLeagues';
-        mini.className='home-mini-leagues';
-        mini.innerHTML='<div class="home-mini-printer" aria-label="Power Rankings"><div class="lp-top"><span class="lp-title">POWER RANKINGS</span></div><div class="lp-mid"><table class="mini-table mini-table-plain" aria-label="Power Rankings Top 5"><tbody id="homePowerLeagueRows"><tr class="mini-loading"><td colspan="3" class="home-mini-muted"><em>Loading…</em></td></tr></tbody></table></div></div>';
-      }
-      try{ mini.querySelectorAll('.home-mini-printer > .lp-rule').forEach(function(n){ n.remove(); }); }catch(_){}
-      // Desired home order: START GAME, RESUME(if any), VIDE, POWER RANKINGS, footer buttons.
-      var sr=document.querySelector('.start-secondary-row');
+      try{ document.getElementById('homeMiniLeagues')?.remove(); }catch(_){}
+      // Desired home order: START GAME, RESUME(if any), VIDE, footer buttons.
       if(printer && printer.parentNode!==host){ host.appendChild(printer); }
-      if(mini && mini.parentNode!==host){
-        if(sr && sr.parentNode===host) host.insertBefore(mini,sr); else host.appendChild(mini);
-      } else if(mini && sr && mini.compareDocumentPosition(sr)&Node.DOCUMENT_POSITION_PRECEDING){
-        host.insertBefore(mini,sr);
-      }
-      if(typeof window.__sqRefreshHomeMiniLeagues==='function') setTimeout(window.__sqRefreshHomeMiniLeagues,80);
-      if(typeof window.updateHomeMiniLeagues==='function') setTimeout(window.updateHomeMiniLeagues,140);
     }catch(e){ console.warn('[SQ] Fix106 ensureHomePanels failed',e); }
   }
   window.__sqFix106EnsureHomePanels = ensureHomePanels;
