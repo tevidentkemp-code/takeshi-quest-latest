@@ -4830,6 +4830,7 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 #matchLengthModal.modal-backdrop,
 .modal-backdrop:has(> .modal-throworder),
 .modal-backdrop:has(> .modal.menu-modal),
+.modal-backdrop.sq-stats-bd,
 body[data-page="players"]{
   background-color:#05080f !important;
   background-image:
@@ -4848,7 +4849,8 @@ body[data-page="players"]{
 .modal.sg-modal,
 .ml-modal,
 .modal-throworder,
-.modal.menu-modal{
+.modal.menu-modal,
+.modal.sq-stats-modal{
   position:relative;
   border:1px solid rgba(255,255,255,.05) !important;
   box-shadow:
@@ -4921,6 +4923,59 @@ body[data-page="details"] #details{
   padding:48px 0;
 }
 
+/* Player-Stats sub-dialogs (Level Ladder, Latest Matches, High Scores,
+   Progression, Target %, H2H, Spider…) — inner arcade theming. */
+.modal.sq-stats-modal{
+  background:rgba(15,18,32,.97);
+}
+.sq-stats-modal .modal-header{
+  border-bottom:1px solid rgba(35,164,255,.15);
+  padding-bottom:10px;
+}
+.sq-stats-modal h3{
+  text-transform:uppercase;
+  letter-spacing:.1em;
+  text-shadow:0 0 16px rgba(255,122,0,.28);
+}
+/* Tables: blue arcade headers, subtle zebra rows */
+.sq-stats-modal .sq-table thead th,
+.sq-stats-modal table thead th{
+  color:#7cc0ff;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  font-size:11px;
+  background:rgba(16,24,39,.92);
+  position:sticky;
+  top:0;
+}
+.sq-stats-modal .sq-table tbody tr:nth-child(odd),
+.sq-stats-modal table tbody tr:nth-child(odd){
+  background:rgba(255,255,255,.025);
+}
+/* Secondary buttons (pills, SPIDER/PROGRESS, chips) — navy/blue like the
+   rest of the game; the standardized BACK pill keeps its own style. */
+.sq-stats-modal .btn.sq-pill:not(.ms2-back),
+.sq-stats-modal .btn.small:not(.ms2-back){
+  background:#101827;
+  border:1px solid rgba(35,164,255,.45);
+  color:#e8f4ff;
+  border-radius:10px;
+  font-weight:800;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+}
+/* Footers: transparent, centered, wrapping when extra actions exist */
+.sq-stats-foot{
+  display:flex !important;
+  flex-wrap:wrap;
+  justify-content:center !important;
+  align-items:center;
+  gap:10px;
+  background:transparent !important;
+  border-top:0 !important;
+}
+.sq-stats-foot .ms2-back{ margin:8px auto 2px; order:99; flex:1 1 100%; max-width:min(300px,88%); }
+
 /* The throw-order dialog is programmatically focused (for Esc); suppress the
    browser focus ring that painted a bright outline around the card. */
 .modal-throworder:focus,
@@ -4932,7 +4987,8 @@ body[data-page="details"] #details{
 .modal.sg-modal::before,
 .ml-modal::before,
 .modal-throworder::before,
-.modal.menu-modal::before{
+.modal.menu-modal::before,
+.modal.sq-stats-modal::before{
   content:"";
   position:absolute;
   inset:0;
@@ -37829,10 +37885,9 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
 
     footer.innerHTML = '';
     const backBtn  = document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
-    const closeBtn = document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
     backBtn.onclick  = () => { overlay.remove(); __sqGoBackToStatsMain(); };
-    closeBtn.onclick = () => overlay.remove();
-    footer.append(backBtn, closeBtn);
+    footer.append(backBtn);
+    __sqStatsArcade(overlay, modal);
 
     modal.focus();
     return;
@@ -38468,10 +38523,9 @@ const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
 
   // Footer buttons
   const backBtn  = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
-  const closeBtn = document.createElement('button'); closeBtn.className = 'btn sq-pill'; closeBtn.textContent = 'Close';
   backBtn.onclick  = () => { overlay.remove(); __sqGoBackToStatsMain(); };
-  closeBtn.onclick = () => overlay.remove();
-  footer.append(backBtn, closeBtn);
+  footer.append(backBtn);
+  __sqStatsArcade(overlay, modal);
 
 };
 
@@ -38555,7 +38609,15 @@ window.openXpLeaderboard = async function openXpLeaderboard(){
   try{ rows = await SQ_XP.all(true); }catch(_){ }
   rows = (rows || []).filter(r => Number(r.total_xp) > 0).sort((a, b) => Number(b.total_xp) - Number(a.total_xp));
   const loading = body.querySelector('#xplbLoading'); if (loading) loading.remove();
-  if (!rows.length){ const p = document.createElement('p'); p.className = 'muted'; p.textContent = 'No ranked players yet — play some games.'; body.appendChild(p); return; }
+  if (!rows.length){
+    const p = document.createElement('p'); p.className = 'muted'; p.textContent = 'No ranked players yet — play some games.'; body.appendChild(p);
+    const ef = document.createElement('div'); ef.className = 'modal-footer';
+    const eb = document.createElement('button'); eb.className = 'btn sq-pill'; eb.textContent = 'Back';
+    eb.onclick = () => { overlay.remove(); __sqGoBackToStatsMain(); };
+    ef.appendChild(eb); body.appendChild(ef);
+    __sqStatsArcade(overlay, modal);
+    return;
+  }
   const listEl = document.createElement('div'); listEl.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
   const medal = i => i === 0 ? '#ffd24a' : i === 1 ? '#cbd5e1' : i === 2 ? '#d08b5a' : 'var(--v3-muted,#98a2b8)';
   rows.forEach((r, idx) => {
@@ -38581,9 +38643,11 @@ window.openXpLeaderboard = async function openXpLeaderboard(){
     row.append(rank, mid, go); listEl.appendChild(row);
   });
   body.appendChild(listEl);
-  const foot = document.createElement('div'); foot.style.cssText = 'margin-top:14px;text-align:center;';
-  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Close'; cb.onclick = () => overlay.remove();
+  const foot = document.createElement('div'); foot.className = 'modal-footer'; foot.style.cssText = 'margin-top:14px;';
+  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Back';
+  cb.onclick = () => { overlay.remove(); __sqGoBackToStatsMain(); };
   foot.appendChild(cb); body.appendChild(foot);
+  __sqStatsArcade(overlay, modal);
 };
 
 window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
@@ -39342,15 +39406,15 @@ window.openPlayerLatestMatchesDialog = async function openPlayerLatestMatchesDia
           </table>
         </div>
 
-        <div class="modal-footer" style="display:flex; justify-content:flex-start; gap:10px; margin-top:14px;">
-          <button class="btn small sq-pill" data-action="back" style="min-width:84px;">Back</button>
-          <button class="btn small sq-pill" data-action="close" style="min-width:84px;">Close</button>
+        <div class="modal-footer" style="margin-top:14px;">
+          <button class="btn small sq-pill" data-action="back">Back</button>
         </div>
       </div>
     `;
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
+    __sqStatsArcade(overlay, modal);
 
     // Styling hooks (reuses existing theme)
     const segBtns = modal.querySelectorAll('.seg-btn');
@@ -39536,6 +39600,28 @@ function __sqGoBackToStatsMain(playerName){
   }catch(_){ }
 }
 
+// Arcade skin for all Player-Stats sub-dialogs: opaque ambient backdrop +
+// neon card edge (via CSS classes), and one standardized BACK pill per
+// footer (Close buttons removed — Back always steps back one screen).
+function __sqStatsArcade(overlay, modal){
+  try{ overlay && overlay.classList.add('sq-stats-bd'); }catch(_){ }
+  try{ modal && modal.classList.add('sq-stats-modal'); }catch(_){ }
+  try{
+    (modal || overlay).querySelectorAll('.modal-footer').forEach(f => {
+      f.classList.add('sq-stats-foot');
+      f.querySelectorAll('button, .btn').forEach(b => {
+        const t = String(b.textContent || '').trim().toLowerCase();
+        if (t === 'close'){ b.remove(); return; }
+        if (t === 'back' || t === '← back'){
+          b.classList.add('ms2-back');
+          b.classList.remove('sq-pill');
+          b.innerHTML = '<span class="ms2-back-ar" aria-hidden="true">&#8592;</span><span class="ms2-back-txt">BACK</span>';
+        }
+      });
+    });
+  }catch(_){ }
+}
+
 // ==== (2) High Scores — per-player (Top 50 scores, official) ==================
 window.openPlayerHighScoresDialog = async function openPlayerHighScoresDialog(playerName){
   const name = String(playerName||'').trim();
@@ -39663,14 +39749,13 @@ window.openPlayerHighScoresDialog = async function openPlayerHighScoresDialog(pl
   }
 
   const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
-  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
   backBtn.onclick=()=>{ overlay.remove(); __sqGoBackToStatsMain(); };
-  closeBtn.onclick=()=>overlay.remove();
-  footer.append(backBtn, closeBtn);
+  footer.append(backBtn);
 
   modal.append(header, body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
+  __sqStatsArcade(overlay, modal);
 
   const close=()=>overlay.remove();
   overlay.addEventListener('click',e=>{ if(e.target===overlay) close(); });
@@ -39826,14 +39911,14 @@ window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(
 
   // Footer buttons
   const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
-  const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
   const close=()=>overlay.remove();
-  backBtn.onclick=()=>{ overlay.remove(); __sqGoBackToStatsMain(); }; closeBtn.onclick=close;
-  footer.append(backBtn, closeBtn);
+  backBtn.onclick=()=>{ overlay.remove(); __sqGoBackToStatsMain(); };
+  footer.append(backBtn);
 
   modal.append(header, body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
+  __sqStatsArcade(overlay, modal);
 
   // ---- Draw
   function draw(blockSize){
@@ -40441,13 +40526,12 @@ function __sqOpenTargetProgressDialog(mode, playerName, opts){
   const body = document.createElement('div'); body.className = 'modal-body'; body.style.paddingTop = '8px'; body.style.overflowY = 'auto';
   const footer = document.createElement('div'); footer.className = 'modal-footer';
   const backBtn = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
-  const closeBtn = document.createElement('button'); closeBtn.className = 'btn sq-pill'; closeBtn.textContent = 'Close';
   const spacer = document.createElement('div'); spacer.style.flex = '1';
   backBtn.onclick = () => { overlay.remove(); if (parentOverlay) { parentOverlay.style.display = ''; try{ parentOverlay.querySelector('.modal').focus(); }catch(_){} } else { __sqGoBackToStatsMain(name); } };
-  closeBtn.onclick = () => { overlay.remove(); if (parentOverlay) parentOverlay.remove(); };
-  footer.append(backBtn, closeBtn, spacer); modal.append(header, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
-  overlay.addEventListener('click', e => { if (e.target === overlay) closeBtn.click(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') closeBtn.click(); });
+  footer.append(backBtn, spacer); modal.append(header, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  __sqStatsArcade(overlay, modal);
+  overlay.addEventListener('click', e => { if (e.target === overlay) backBtn.click(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') backBtn.click(); });
   modal.tabIndex = 0; modal.focus();
 
   body.innerHTML = '<p class="muted">Loading…</p>';
@@ -40547,14 +40631,12 @@ function __sqBuildTargetPctShell(title, subtitle, playerName, metricMode){
   body.style.paddingTop = '8px'; body.style.maxHeight = 'none'; body.style.overflowY = 'visible';
   const footer = document.createElement('div'); footer.className = 'modal-footer';
   const backBtn = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
-  const closeBtn = document.createElement('button'); closeBtn.className = 'btn sq-pill'; closeBtn.textContent = 'Close';
   const spacer = document.createElement('div'); spacer.style.flex = '1';
   const spiderBtn = document.createElement('button'); spiderBtn.className = 'btn small'; spiderBtn.textContent = 'SPIDER'; spiderBtn.dataset.targetPctAction = 'spider';
   const progBtn = document.createElement('button'); progBtn.className = 'btn small'; progBtn.textContent = 'PROGRESS'; progBtn.dataset.targetPctAction = 'progress';
   spiderBtn.disabled = true; spiderBtn.setAttribute('aria-disabled', 'true'); spiderBtn.title = 'Available after target percentage data loads.'; spiderBtn.style.opacity = '.45'; spiderBtn.style.cursor = 'not-allowed';
   progBtn.disabled = true; progBtn.setAttribute('aria-disabled', 'true'); progBtn.title = 'Progress requires a Supabase target percentage progression view.'; progBtn.style.opacity = '.45'; progBtn.style.cursor = 'not-allowed';
   backBtn.onclick = () => { overlay.remove(); __sqGoBackToStatsMain(name); };
-  closeBtn.onclick = () => overlay.remove();
   spiderBtn.onclick = () => {
     const mode = String(metricMode || 'hit').toLowerCase();
     const data = mode === 'points' ? window.__lastPointsPctSpiderData : window.__lastTargetHitPctSpiderData;
@@ -40575,8 +40657,9 @@ function __sqBuildTargetPctShell(title, subtitle, playerName, metricMode){
     }
     try{ if (typeof toast === 'function') toast('PROGRESS is not available until a Supabase target percentage progression view exists'); }catch(_){}
   };
-  footer.append(backBtn, closeBtn, spacer, spiderBtn, progBtn);
+  footer.append(backBtn, spacer, spiderBtn, progBtn);
   modal.append(header, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  __sqStatsArcade(overlay, modal);
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
   modal.tabIndex = 0; modal.focus();
@@ -42770,7 +42853,6 @@ document.addEventListener('DOMContentLoaded', function(){
     body.appendChild(wrap);
 
     const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
-    const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
     const parentOverlay = opts && opts.parentOverlay ? opts.parentOverlay : null;
     const backToPrev = () => {
       overlay.remove();
@@ -42778,21 +42860,15 @@ document.addEventListener('DOMContentLoaded', function(){
       if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name);
       else if (typeof window.openPlayerStatsHub==='function') window.openPlayerStatsHub(name);
     };
-    const closeToHub = () => {
-      overlay.remove();
-      if (parentOverlay) parentOverlay.remove();
-      if (typeof window.openPlayerStatsHub==='function') window.openPlayerStatsHub(name);
-      else if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name);
-    };
     backBtn.onclick = backToPrev;
-    closeBtn.onclick = closeToHub;
-    footer.append(backBtn, closeBtn);
+    footer.append(backBtn);
 
     modal.append(title, body, footer);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
-    overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
-    overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
+    __sqStatsArcade(overlay, modal);
+    overlay.addEventListener('click',e=>{ if(e.target===overlay) backToPrev();});
+    overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') backToPrev();});
     modal.tabIndex=0; modal.focus();
 
     try{
@@ -42892,7 +42968,6 @@ document.addEventListener('DOMContentLoaded', function(){
 
     const footer = document.createElement('div'); footer.className='modal-footer';
     const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
-    const closeBtn=document.createElement('button'); closeBtn.className='btn sq-pill'; closeBtn.textContent='Close';
 
     const backToPrev = () => {
       overlay.remove();
@@ -42900,15 +42975,8 @@ document.addEventListener('DOMContentLoaded', function(){
       if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name);
       else if (typeof window.openPlayerStatsHub==='function') window.openPlayerStatsHub(name);
     };
-    const closeToHub = () => {
-      overlay.remove();
-      if (parentOverlay) parentOverlay.remove();
-      if (typeof window.openPlayerStatsHub==='function') window.openPlayerStatsHub(name);
-      else if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name);
-    };
     backBtn.onclick = backToPrev;
-    closeBtn.onclick = closeToHub;
-    footer.append(backBtn, closeBtn);
+    footer.append(backBtn);
 
     // --- controls ---
     const controls = document.createElement('div');
@@ -43001,8 +43069,9 @@ document.addEventListener('DOMContentLoaded', function(){
     modal.append(title, body, footer);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
-    overlay.addEventListener('click',e=>{ if(e.target===overlay) closeToHub();});
-    overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') closeToHub();});
+    __sqStatsArcade(overlay, modal);
+    overlay.addEventListener('click',e=>{ if(e.target===overlay) backToPrev();});
+    overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') backToPrev();});
     modal.tabIndex=0; modal.focus();
 
     // --- data ---
@@ -47473,10 +47542,9 @@ __sqDmdInitV7();
       if (typeof openPlayerStatsModePicker === 'function') openPlayerStatsModePicker(playerName);
       else if (typeof openPlayerStatsLookupDialog === 'function') openPlayerStatsLookupDialog();
     };
-    var close = document.createElement('button'); close.className='btn'; close.textContent='Close';
-    close.onclick = function(){ overlay.remove(); };
-    footer.append(back, close);
+    footer.append(back);
     modal.append(title, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+    __sqStatsArcade(overlay, modal);
     modal.tabIndex=0; modal.focus();
     overlay.addEventListener('click', function(e){ if(e.target === overlay) overlay.remove(); });
     overlay.addEventListener('keydown', function(e){ if(e.key === 'Escape') overlay.remove(); });
