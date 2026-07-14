@@ -4973,8 +4973,14 @@ body[data-page="details"] #details{
   gap:10px;
   background:transparent !important;
   border-top:0 !important;
+  width:100% !important;
+  align-self:stretch !important;
+  box-sizing:border-box !important;
 }
-.sq-stats-foot .ms2-back{ margin:8px auto 2px; order:99; flex:1 1 100%; max-width:min(300px,88%); }
+.sq-stats-foot .ms2-back{ margin:8px auto 2px; order:99; flex:1 1 100%; max-width:min(300px,88%); width:min(300px,88%); }
+/* Kill the legacy flex spacer so extra actions (SPIDER / PROGRESS) center */
+.sq-stats-foot > div:empty{ display:none; }
+.sq-stats-foot .btn.small{ min-width:132px; height:42px; }
 
 /* The throw-order dialog is programmatically focused (for Esc); suppress the
    browser focus ring that painted a bright outline around the card. */
@@ -42543,67 +42549,91 @@ document.addEventListener('DOMContentLoaded', function(){
     ctx.clearRect(0,0,W,H);
 
     const cx = W/2, cy = H/2;
-    const R  = Math.min(W,H)*0.38;
+    const R  = Math.min(W,H)*0.355;
     const N  = labels.length;
+    const ang = i => (-Math.PI/2) + (i*2*Math.PI/N);
 
-    // grid
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-    ctx.lineWidth = 1;
+    // ambient blue glow behind the web
+    const bg = ctx.createRadialGradient(cx,cy,R*0.1,cx,cy,R*1.45);
+    bg.addColorStop(0,'rgba(47,134,255,0.12)');
+    bg.addColorStop(0.65,'rgba(13,20,38,0)');
+    ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+    // rings (outer ring brighter)
     for (let g=1; g<=4; g++){
       const r = (R*g)/4;
       ctx.beginPath();
       for (let i=0;i<N;i++){
-        const a = (-Math.PI/2) + (i*2*Math.PI/N);
-        const x = cx + Math.cos(a)*r;
-        const y = cy + Math.sin(a)*r;
+        const x = cx + Math.cos(ang(i))*r, y = cy + Math.sin(ang(i))*r;
         if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
       }
       ctx.closePath();
+      ctx.strokeStyle = g===4 ? 'rgba(122,170,255,0.45)' : 'rgba(122,170,255,0.16)';
+      ctx.lineWidth = g===4 ? 1.4 : 1;
       ctx.stroke();
     }
 
     // spokes
+    ctx.strokeStyle = 'rgba(122,170,255,0.14)';
+    ctx.lineWidth = 1;
     for (let i=0;i<N;i++){
-      const a = (-Math.PI/2) + (i*2*Math.PI/N);
       ctx.beginPath();
       ctx.moveTo(cx,cy);
-      ctx.lineTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R);
+      ctx.lineTo(cx+Math.cos(ang(i))*R, cy+Math.sin(ang(i))*R);
       ctx.stroke();
     }
 
-    // polygon
-    ctx.strokeStyle = 'rgba(34,197,94,0.95)';
-    ctx.fillStyle   = 'rgba(34,197,94,0.18)';
-    ctx.lineWidth   = 2;
-    ctx.beginPath();
-    for (let i=0;i<N;i++){
-      const pct = Math.max(0, Math.min(100, Number(valuesPct[i]||0)))/100;
-      const a = (-Math.PI/2) + (i*2*Math.PI/N);
-      const x = cx + Math.cos(a)*R*pct;
-      const y = cy + Math.sin(a)*R*pct;
-      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    }
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    // value points
+    const pts = labels.map((_,i)=>{
+      const p = Math.max(0, Math.min(100, Number(valuesPct[i]||0)))/100;
+      return { x: cx + Math.cos(ang(i))*R*p, y: cy + Math.sin(ang(i))*R*p, v: p*100 };
+    });
+    let bi = 0; pts.forEach((p,i)=>{ if (p.v > pts[bi].v) bi = i; });
 
-    // labels
-    ctx.fillStyle = 'rgba(255,255,255,0.80)';
-    ctx.font = '11px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+    // polygon — Shateki orange fill with a neon stroke
+    const grad = ctx.createRadialGradient(cx,cy,0,cx,cy,R);
+    grad.addColorStop(0,'rgba(255,122,0,0.40)');
+    grad.addColorStop(1,'rgba(255,122,0,0.10)');
+    ctx.beginPath();
+    pts.forEach((p,i)=>{ if (i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); });
+    ctx.closePath();
+    ctx.fillStyle = grad; ctx.fill();
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,140,40,0.85)'; ctx.shadowBlur = 14;
+    ctx.strokeStyle = 'rgba(255,164,64,0.98)'; ctx.lineWidth = 2.4;
+    ctx.stroke();
+    ctx.restore();
+
+    // vertex dots (best target glows green)
+    pts.forEach((p,i)=>{
+      ctx.save();
+      ctx.shadowColor = i===bi ? 'rgba(115,240,126,0.9)' : 'rgba(255,160,60,0.8)';
+      ctx.shadowBlur = i===bi ? 12 : 8;
+      ctx.fillStyle = i===bi ? '#73f07e' : '#ffb347';
+      ctx.beginPath(); ctx.arc(p.x, p.y, i===bi ? 4.4 : 3.2, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+
+    // labels with per-target % underneath
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (let i=0;i<N;i++){
-      const a = (-Math.PI/2) + (i*2*Math.PI/N);
-      const x = cx + Math.cos(a)*(R+16);
-      const y = cy + Math.sin(a)*(R+16);
-      ctx.fillText(labels[i], x, y);
+      const lx = cx + Math.cos(ang(i))*(R+26);
+      const ly = cy + Math.sin(ang(i))*(R+26);
+      ctx.fillStyle = 'rgba(240,248,255,0.96)';
+      ctx.font = '800 13px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+      ctx.fillText(String(labels[i]), lx, ly-6);
+      ctx.fillStyle = i===bi ? 'rgba(115,240,126,0.95)' : 'rgba(150,185,230,0.85)';
+      ctx.font = '700 10px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+      ctx.fillText(Math.round(Number(valuesPct[i]||0)) + '%', lx, ly+7);
     }
 
-    // center % rings labels
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('100%', cx+6, cy-R+12);
-    ctx.fillText('50%',  cx+6, cy-(R/2)+12);
+    // subtle ring scale marks (offset left of the top spoke so they never
+    // collide with the 12-o'clock vertex dot)
+    ctx.fillStyle = 'rgba(160,190,235,0.5)';
+    ctx.font = '700 9px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+    ctx.fillText('50', cx - 16, cy - R/2 - 4);
+    ctx.fillText('100', cx - 18, cy - R + 10);
   }
 
   function drawMultiLine(canvas, xLabels, seriesMap){
@@ -42843,11 +42873,31 @@ document.addEventListener('DOMContentLoaded', function(){
     canvas.width = 360; canvas.height = 360;
     canvas.style.width = 'min(360px, 92vw)';
     canvas.style.height= 'auto';
+    canvas.style.borderRadius = '14px';
+    canvas.style.border = '1px solid rgba(35,164,255,.25)';
+    canvas.style.background = 'radial-gradient(circle at 50% 42%, rgba(37,58,114,.5), rgba(10,16,38,.95) 66%, rgba(4,7,18,.98))';
+    canvas.style.boxShadow = '0 10px 26px rgba(0,0,0,.4), 0 0 24px rgba(47,134,255,.10)';
 
-    const note = document.createElement('p');
+    const note = document.createElement('div');
     note.className='muted';
-    note.style.textAlign='center';
+    note.style.cssText='display:flex;justify-content:center;gap:10px;flex-wrap:wrap;min-height:30px;align-items:center;';
     note.textContent='Loading…';
+    // BEST / FOCUS summary chips for the current data set
+    const renderSummary = (labels, pct) => {
+      try{
+        const vals = (labels||[]).map((l,i)=>({ l:String(l), v:Number(pct && pct[i] || 0) })).filter(x=>Number.isFinite(x.v));
+        if (!vals.length){ note.textContent=''; return; }
+        const best = vals.reduce((a,b)=> b.v>a.v?b:a);
+        const worst = vals.reduce((a,b)=> b.v<a.v?b:a);
+        const chip = (label, val, color) =>
+          '<span style="display:inline-flex;align-items:center;gap:7px;padding:6px 14px;border-radius:99px;'
+          + 'background:#101827;border:1px solid ' + color + ';color:#e8f4ff;font-weight:800;font-size:12px;letter-spacing:.06em;">'
+          + label + ' <b style="color:' + color + ';font-size:13px;">' + val + '</b></span>';
+        note.innerHTML =
+          chip('BEST ' + best.l, Math.round(best.v) + '%', 'rgba(115,240,126,.9)') +
+          chip('FOCUS ' + worst.l, Math.round(worst.v) + '%', 'rgba(255,140,40,.9)');
+      }catch(_e){ note.textContent=''; }
+    };
 
     wrap.append(canvas, note);
     body.appendChild(wrap);
@@ -42879,7 +42929,7 @@ document.addEventListener('DOMContentLoaded', function(){
         const labels = data.labels.slice();
         const pct = data.pct.slice();
         drawRadar(canvas, labels, pct);
-        note.textContent = 'Points % by target (10–20).';
+        renderSummary(labels, pct);
         return;
       }
 
@@ -42903,11 +42953,11 @@ document.addEventListener('DOMContentLoaded', function(){
           if (which === 'd') {
             btnD.classList.add('primary'); btnT.classList.remove('primary');
             drawRadar(canvas, labels, pctD);
-            note.textContent = 'Doubles % by target (10–20) + outer bull.';
+            renderSummary(labels, pctD);
           } else {
             btnT.classList.add('primary'); btnD.classList.remove('primary');
             drawRadar(canvas, labels, pctT);
-            note.textContent = 'Trebles % by target (10–20) + inner bull.';
+            renderSummary(labels, pctT);
           }
         };
 
@@ -42940,7 +42990,7 @@ document.addEventListener('DOMContentLoaded', function(){
       }
 
       drawRadar(canvas, labels, pct);
-      note.textContent = 'Hit % by target (10–20, D, T, B).';
+      renderSummary(labels, pct);
     }catch(e){
       console.error('SPIDER failed', e);
       note.textContent = 'Could not load data.';
@@ -43057,7 +43107,7 @@ document.addEventListener('DOMContentLoaded', function(){
     note.style.gap='10px';
     note.style.marginTop='6px';
     note.style.fontSize='12px';
-    note.innerHTML = `<span>Single target selected; bars are per-game for that target.</span><span></span>`;
+    note.innerHTML = '';
 
     controls.appendChild(avgRow);
     controls.appendChild(targetRow);
@@ -51466,7 +51516,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     if (!hotKeys.size) hotRows.slice(0, 2).forEach(function(r){ hotKeys.add(String(r.key).toUpperCase()); });
     var cx = 160, cy = 142, r0 = 32, r1 = 104, rLabel = 124, step = 360 / boardOrder.length;
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 320 320');
+    svg.setAttribute('viewBox', '0 0 320 352');
     svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', 'Target Hit percentage heatmap');
     svg.style.width = '100%';
@@ -51526,7 +51576,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     addSvgText(svg, cx, cy - 4, 'B', { fill:bullStyle.label, 'font-size':'15' });
     addSvgText(svg, cx, cy + 18, bull ? pctFmt(bullPct, 1) : '—', { fill:'rgba(232,242,255,.82)', 'font-size':'8.5', 'font-weight':'850' });
 
-    [['D',34,166],['T',286,166]].forEach(function(spec){
+    [['D',56,322],['T',264,322]].forEach(function(spec){
       var k = spec[0], x = spec[1], y = spec[2], row = map.get(k), pct = row ? Number(row.pct || 0) : null;
       var style = row ? heatStyle(pct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.2', label:'rgba(240,244,255,.8)' };
       var g = svgEl(svg, 'g');
@@ -51542,6 +51592,17 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
       addSvgText(svg, x, y - 6, k, { fill:style.label, 'font-size':'13' });
       addSvgText(svg, x, y + 17, row ? pctFmt(pct, 0) : '—', { fill:'rgba(240,244,255,.88)', 'font-size':'10', 'font-weight':'850' });
     });
+    // Heat legend (LOW -> HIGH) centered between the D/T badges
+    var lg = svgEl(svg, 'linearGradient');
+    lg.setAttribute('id', 'sqHitLegendG');
+    lg.setAttribute('x1','0'); lg.setAttribute('y1','0'); lg.setAttribute('x2','1'); lg.setAttribute('y2','0');
+    [['0%','#16304f'],['24%','#0e8794'],['46%','#c78b2b'],['64%','#f97618'],['82%','#ffc125'],['100%','#73f07e']].forEach(function(st){
+      var stop = svgEl(svg, 'stop'); stop.setAttribute('offset', st[0]); stop.setAttribute('stop-color', st[1]); lg.appendChild(stop);
+    });
+    svg.querySelector('defs').appendChild(lg);
+    svg.appendChild(svgEl(svg, 'rect', { x:104, y:316, width:112, height:9, rx:4.5, fill:'url(#sqHitLegendG)', stroke:'rgba(255,255,255,.18)', 'stroke-width':'.6' }));
+    addSvgText(svg, 92, 321, 'LOW', { fill:'rgba(190,210,240,.75)', 'font-size':'8', 'font-weight':'800' });
+    addSvgText(svg, 230, 321, 'HIGH', { fill:'rgba(190,210,240,.75)', 'font-size':'8', 'font-weight':'800' });
     return svg;
   }
 
@@ -51699,7 +51760,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     table.style.width = '100%';
     table.style.tableLayout = 'fixed';
     table.style.fontSize = 'clamp(11px, 2.7vw, 14px)';
-    table.innerHTML = '<colgroup><col style="width:24%"><col style="width:28%"><col style="width:24%"><col style="width:24%"></colgroup><thead><tr><th>Target</th><th>%</th><th><span style="display:block;line-height:1.05">P</span><span style="display:block;line-height:1.05">Rank</span></th><th><span style="display:block;line-height:1.05">G</span><span style="display:block;line-height:1.05">Rank</span></th></tr></thead><tbody></tbody>';
+    table.innerHTML = '<colgroup><col style="width:24%"><col style="width:28%"><col style="width:24%"><col style="width:24%"></colgroup><thead><tr><th>Target</th><th>%</th><th>P Rank</th><th>G Rank</th></tr></thead><tbody></tbody>';
     var tb = table.querySelector('tbody');
     rows.forEach(function(r){
       var tr = document.createElement('tr');
@@ -51710,12 +51771,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     });
     tablePanel.appendChild(table);
 
-    var info = document.createElement('p');
-    info.className = 'tag muted';
-    info.style.margin = '0';
-    info.textContent = 'Target Hit % = successful target hits / throws at that target.';
-    if (!hasGlobalRanks) info.textContent += ' G Rank is unavailable until v_player_target_hit_pct returns comparable player rows.';
-    body.append(heatPanel, tablePanel, info);
+    body.append(heatPanel, tablePanel);
   };
   window.__sqCanonicalPlayerTargetHitDialog = window.openPlayerTargetHitDialog;
   window.openPlayerTargetPctDialog = function(){ return window.__sqCanonicalPlayerTargetHitDialog.apply(window, arguments); };
@@ -51832,7 +51888,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     if (!hotKeys.size) hotRows.slice(0, 2).forEach(function(r){ hotKeys.add(String(r.key).toUpperCase()); });
     var cx = 160, cy = 142, r0 = 32, r1 = 104, rLabel = 124, step = 360 / boardOrder.length;
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 320 320');
+    svg.setAttribute('viewBox', '0 0 320 352');
     svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', 'Target Points percentage heatmap');
     svg.style.width = '100%';
@@ -51892,7 +51948,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     addSvgText(svg, cx, cy - 4, 'B', { fill:bullStyle.label, 'font-size':'15' });
     addSvgText(svg, cx, cy + 18, bull ? pctFmt(bullPct, 1) : '—', { fill:'rgba(232,242,255,.82)', 'font-size':'8.5', 'font-weight':'850' });
 
-    [['D',34,166],['T',286,166]].forEach(function(spec){
+    [['D',56,322],['T',264,322]].forEach(function(spec){
       var k = spec[0], x = spec[1], y = spec[2], row = map.get(k), pct = row ? Number(row.pct || 0) : null;
       var style = row ? heatStyle(pct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.2', label:'rgba(240,244,255,.8)' };
       var g = svgEl(svg, 'g');
@@ -51908,6 +51964,17 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
       addSvgText(svg, x, y - 6, k, { fill:style.label, 'font-size':'13' });
       addSvgText(svg, x, y + 17, row ? pctFmt(pct, 0) : '—', { fill:'rgba(240,244,255,.88)', 'font-size':'10', 'font-weight':'850' });
     });
+    // Heat legend (LOW -> HIGH) centered between the D/T badges
+    var lg = svgEl(svg, 'linearGradient');
+    lg.setAttribute('id', 'sqPointsLegendG');
+    lg.setAttribute('x1','0'); lg.setAttribute('y1','0'); lg.setAttribute('x2','1'); lg.setAttribute('y2','0');
+    [['0%','#16304f'],['24%','#0e8794'],['46%','#c78b2b'],['64%','#f97618'],['82%','#ffc125'],['100%','#73f07e']].forEach(function(st){
+      var stop = svgEl(svg, 'stop'); stop.setAttribute('offset', st[0]); stop.setAttribute('stop-color', st[1]); lg.appendChild(stop);
+    });
+    svg.querySelector('defs').appendChild(lg);
+    svg.appendChild(svgEl(svg, 'rect', { x:104, y:316, width:112, height:9, rx:4.5, fill:'url(#sqPointsLegendG)', stroke:'rgba(255,255,255,.18)', 'stroke-width':'.6' }));
+    addSvgText(svg, 92, 321, 'LOW', { fill:'rgba(190,210,240,.75)', 'font-size':'8', 'font-weight':'800' });
+    addSvgText(svg, 230, 321, 'HIGH', { fill:'rgba(190,210,240,.75)', 'font-size':'8', 'font-weight':'800' });
     return svg;
   }
 
@@ -51987,7 +52054,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     table.style.width = '100%';
     table.style.tableLayout = 'fixed';
     table.style.fontSize = 'clamp(11px, 2.7vw, 14px)';
-    table.innerHTML = '<colgroup><col style="width:20%"><col style="width:23%"><col style="width:23%"><col style="width:17%"><col style="width:17%"></colgroup><thead><tr><th>Target</th><th>% Score</th><th>Avg Score</th><th><span style="display:block;line-height:1.05">P</span><span style="display:block;line-height:1.05">Rank</span></th><th><span style="display:block;line-height:1.05">G</span><span style="display:block;line-height:1.05">Rank</span></th></tr></thead><tbody></tbody>';
+    table.innerHTML = '<colgroup><col style="width:20%"><col style="width:23%"><col style="width:23%"><col style="width:17%"><col style="width:17%"></colgroup><thead><tr><th>Target</th><th>% Score</th><th>Avg Score</th><th>P Rank</th><th>G Rank</th></tr></thead><tbody></tbody>';
     var tb = table.querySelector('tbody');
     rows.forEach(function(r){
       var tr = document.createElement('tr');
@@ -51998,11 +52065,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     });
     tablePanel.appendChild(table);
 
-    var info = document.createElement('p');
-    info.className = 'tag muted';
-    info.style.margin = '0';
-    info.textContent = hasGlobalRanks ? 'Target Points % uses Supabase aggregate points rows.' : 'Target Points % uses Supabase aggregate points rows. G Rank is unavailable until v_player_target_points_pct returns comparable player rows.';
-    body.append(heatPanel, tablePanel, info);
+    body.append(heatPanel, tablePanel);
   };
   window.__sqCanonicalPlayerTargetPointsDialog = window.openPlayerTargetPointsDialog;
   window.openPlayerTargetPointsPctDialog = function(){ return window.__sqCanonicalPlayerTargetPointsDialog.apply(window, arguments); };
