@@ -40850,6 +40850,7 @@ function __sqOpenTargetProgressDialog(mode, playerName, opts){
       return { label:'COOLING', color:'#7cc0ff', glow:'rgba(124,192,255,.35)', arrow:'↓' };
     };
 
+    let gaugeFrom = 0; // needle rolls from the previous target's value
     const paintForm = (series, tv) => {
       const isSingle = series.length === 1;
       formRow.style.display = isSingle ? 'flex' : 'none';
@@ -40857,8 +40858,11 @@ function __sqOpenTargetProgressDialog(mode, playerName, opts){
       if (!isSingle || !series[0]) return;
       const st = __sqProgressSeriesStats(series[0].rows, windowSize);
       const cur = st.avgPoints.length ? st.avgPoints[st.avgPoints.length - 1].pct : st.allAvg;
-      __sqDrawFormGauge(gaugeCanvas, cur, st.allAvg, tv);
-      formValue.textContent = Math.round(cur * Math.max(0, Math.min(1, tv))) + '%';
+      const e = 1 - Math.pow(1 - Math.max(0, Math.min(1, tv)), 3);
+      const shown = gaugeFrom + (cur - gaugeFrom) * e;
+      __sqDrawFormGauge(gaugeCanvas, shown, st.allAvg, 1);
+      formValue.textContent = Math.round(shown) + '%';
+      if (tv >= 1) gaugeFrom = cur;
       const v = verdictFor(st);
       verdict.textContent = v.arrow + ' ' + v.label;
       verdict.style.background = '#0d1424';
@@ -40943,14 +40947,11 @@ function __sqOpenTargetProgressDialog(mode, playerName, opts){
       if (t.disabled){ btn.disabled = true; btn.setAttribute('aria-disabled', 'true'); btn.title = t.reason; btn.style.opacity = '.45'; btn.style.cursor = 'not-allowed'; }
       btn.onclick = () => {
         if (t.disabled) return;
-        if (selectedTargets.includes(t.key)){
-          if (selectedTargets.length === 1) return;
-          selectedTargets = selectedTargets.filter(k => k !== t.key);
-          if (primaryTarget === t.key) primaryTarget = selectedTargets[selectedTargets.length - 1];
-        } else {
-          selectedTargets = selectedTargets.concat(t.key);
-          primaryTarget = t.key;
-        }
+        // Single-select: tapping a new target rolls the whole view (line,
+        // gauge needle, verdict, strip) over to that target.
+        if (selectedTargets.length === 1 && selectedTargets[0] === t.key) return;
+        selectedTargets = [t.key];
+        primaryTarget = t.key;
         draw();
       };
       targetRow.appendChild(btn);
@@ -42886,7 +42887,10 @@ document.addEventListener('DOMContentLoaded', function(){
     return x;
   }
 
-  function drawRadar(canvas, labels, valuesPct){
+  function drawRadar(canvas, labels, valuesPct, opts){
+    const o = opts || {};
+    const t = Math.max(0, Math.min(1, Number.isFinite(o.t) ? o.t : 1));
+    const sel = Number.isFinite(o.sel) ? o.sel : null;
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
     ctx.clearRect(0,0,W,H);
@@ -42933,46 +42937,94 @@ document.addEventListener('DOMContentLoaded', function(){
     });
     let bi = 0; pts.forEach((p,i)=>{ if (p.v > pts[bi].v) bi = i; });
 
-    // polygon — Shateki orange fill with a neon stroke
     const grad = ctx.createRadialGradient(cx,cy,0,cx,cy,R);
     grad.addColorStop(0,'rgba(255,122,0,0.40)');
     grad.addColorStop(1,'rgba(255,122,0,0.10)');
-    ctx.beginPath();
-    pts.forEach((p,i)=>{ if (i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); });
-    ctx.closePath();
-    ctx.fillStyle = grad; ctx.fill();
-    ctx.save();
-    ctx.shadowColor = 'rgba(255,140,40,0.85)'; ctx.shadowBlur = 14;
-    ctx.strokeStyle = 'rgba(255,164,64,0.98)'; ctx.lineWidth = 2.4;
-    ctx.stroke();
-    ctx.restore();
 
-    // vertex dots (best target glows green)
-    pts.forEach((p,i)=>{
+    if (t < 1){
+      // Radar sweep: reveal the polygon around the dial like a scanner arm
+      const sweep = t * N;
+      const k = Math.max(1, Math.min(N, Math.ceil(sweep)));
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      for (let i=0;i<k;i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.closePath();
+      ctx.fillStyle = grad; ctx.globalAlpha = .9; ctx.fill(); ctx.globalAlpha = 1;
       ctx.save();
-      ctx.shadowColor = i===bi ? 'rgba(115,240,126,0.9)' : 'rgba(255,160,60,0.8)';
-      ctx.shadowBlur = i===bi ? 12 : 8;
-      ctx.fillStyle = i===bi ? '#73f07e' : '#ffb347';
-      ctx.beginPath(); ctx.arc(p.x, p.y, i===bi ? 4.4 : 3.2, 0, Math.PI*2); ctx.fill();
+      ctx.shadowColor = 'rgba(255,140,40,0.85)'; ctx.shadowBlur = 12;
+      ctx.strokeStyle = 'rgba(255,164,64,0.98)'; ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      for (let i=0;i<k;i++){ if (i===0) ctx.moveTo(pts[i].x, pts[i].y); else ctx.lineTo(pts[i].x, pts[i].y); }
+      ctx.stroke();
       ctx.restore();
-    });
+      // scanner arm
+      const armA = ang(0) + (t * 2 * Math.PI);
+      ctx.save();
+      ctx.shadowColor = 'rgba(255,180,80,1)'; ctx.shadowBlur = 14;
+      ctx.strokeStyle = 'rgba(255,200,120,.9)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx,cy);
+      ctx.lineTo(cx + Math.cos(armA)*R, cy + Math.sin(armA)*R);
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      // full polygon — Shateki orange fill with a neon stroke
+      ctx.beginPath();
+      pts.forEach((p,i)=>{ if (i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); });
+      ctx.closePath();
+      ctx.fillStyle = grad; ctx.fill();
+      ctx.save();
+      ctx.shadowColor = 'rgba(255,140,40,0.85)'; ctx.shadowBlur = 14;
+      ctx.strokeStyle = 'rgba(255,164,64,0.98)'; ctx.lineWidth = 2.4;
+      ctx.stroke();
+      ctx.restore();
 
-    // labels with per-target % underneath
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    for (let i=0;i<N;i++){
-      const lx = cx + Math.cos(ang(i))*(R+26);
-      const ly = cy + Math.sin(ang(i))*(R+26);
-      ctx.fillStyle = 'rgba(240,248,255,0.96)';
-      ctx.font = '800 13px system-ui, -apple-system, Segoe UI, Roboto, Arial';
-      ctx.fillText(String(labels[i]), lx, ly-6);
-      ctx.fillStyle = i===bi ? 'rgba(115,240,126,0.95)' : 'rgba(150,185,230,0.85)';
-      ctx.font = '700 10px system-ui, -apple-system, Segoe UI, Roboto, Arial';
-      ctx.fillText(Math.round(Number(valuesPct[i]||0)) + '%', lx, ly+7);
+      // selection spotlight: bright spoke + big dot
+      if (sel != null && pts[sel]){
+        ctx.save();
+        ctx.shadowColor = 'rgba(255,255,255,.7)'; ctx.shadowBlur = 8;
+        ctx.strokeStyle = 'rgba(240,248,255,.85)'; ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.moveTo(cx,cy);
+        ctx.lineTo(cx + Math.cos(ang(sel))*R, cy + Math.sin(ang(sel))*R);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // vertex dots (best target glows green; selected gets a white core)
+      pts.forEach((p,i)=>{
+        const isSel = sel === i;
+        ctx.save();
+        ctx.shadowColor = isSel ? 'rgba(255,255,255,.95)' : (i===bi ? 'rgba(115,240,126,0.9)' : 'rgba(255,160,60,0.8)');
+        ctx.shadowBlur = isSel ? 14 : (i===bi ? 12 : 8);
+        ctx.fillStyle = isSel ? '#ffffff' : (i===bi ? '#73f07e' : '#ffb347');
+        ctx.beginPath(); ctx.arc(p.x, p.y, isSel ? 5.6 : (i===bi ? 4.4 : 3.2), 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+        if (isSel){
+          ctx.strokeStyle = '#ffa440'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(p.x, p.y, 5.6, 0, Math.PI*2); ctx.stroke();
+        }
+      });
     }
 
-    // subtle ring scale marks (offset left of the top spoke so they never
-    // collide with the 12-o'clock vertex dot)
+    // labels with per-target % underneath (dim the rest while one is selected)
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const labelAlpha = .3 + .7 * t;
+    for (let i=0;i<N;i++){
+      const isSel = sel === i;
+      const dim = (sel != null && !isSel) ? .55 : 1;
+      const lx = cx + Math.cos(ang(i))*(R+26);
+      const ly = cy + Math.sin(ang(i))*(R+26);
+      ctx.globalAlpha = labelAlpha * dim;
+      ctx.fillStyle = isSel ? '#ffffff' : 'rgba(240,248,255,0.96)';
+      ctx.font = (isSel ? '900 15px' : '800 13px') + ' system-ui, -apple-system, Segoe UI, Roboto, Arial';
+      ctx.fillText(String(labels[i]), lx, ly-6);
+      ctx.fillStyle = isSel ? '#ffd9b0' : (i===bi ? 'rgba(115,240,126,0.95)' : 'rgba(150,185,230,0.85)');
+      ctx.font = (isSel ? '800 12px' : '700 10px') + ' system-ui, -apple-system, Segoe UI, Roboto, Arial';
+      ctx.fillText(Math.round(Number(valuesPct[i]||0)) + '%', lx, ly+8);
+      ctx.globalAlpha = 1;
+    }
+
+    // subtle ring scale marks
     ctx.fillStyle = 'rgba(160,190,235,0.5)';
     ctx.font = '700 9px system-ui, -apple-system, Segoe UI, Roboto, Arial';
     ctx.fillText('50', cx - 16, cy - R/2 - 4);
@@ -43225,8 +43277,8 @@ document.addEventListener('DOMContentLoaded', function(){
     note.className='muted';
     note.style.cssText='display:flex;justify-content:center;gap:10px;flex-wrap:wrap;min-height:30px;align-items:center;';
     note.textContent='Loading…';
-    // BEST / FOCUS summary chips for the current data set
-    const renderSummary = (labels, pct) => {
+    // Summary chips: selected target (when tapped) + BEST / FOCUS
+    const renderSummary = (labels, pct, selIdx) => {
       try{
         const vals = (labels||[]).map((l,i)=>({ l:String(l), v:Number(pct && pct[i] || 0) })).filter(x=>Number.isFinite(x.v));
         if (!vals.length){ note.textContent=''; return; }
@@ -43236,11 +43288,53 @@ document.addEventListener('DOMContentLoaded', function(){
           '<span style="display:inline-flex;align-items:center;gap:7px;padding:6px 14px;border-radius:99px;'
           + 'background:#101827;border:1px solid ' + color + ';color:#e8f4ff;font-weight:800;font-size:12px;letter-spacing:.06em;">'
           + label + ' <b style="color:' + color + ';font-size:13px;">' + val + '</b></span>';
-        note.innerHTML =
-          chip('BEST ' + best.l, Math.round(best.v) + '%', 'rgba(115,240,126,.9)') +
-          chip('FOCUS ' + worst.l, Math.round(worst.v) + '%', 'rgba(255,140,40,.9)');
+        let html = '';
+        if (selIdx != null && labels[selIdx] != null){
+          html += chip('TARGET ' + labels[selIdx], Math.round(Number(pct[selIdx]||0)) + '%', 'rgba(255,255,255,.9)');
+        }
+        html += chip('BEST ' + best.l, Math.round(best.v) + '%', 'rgba(115,240,126,.9)')
+             +  chip('FOCUS ' + worst.l, Math.round(worst.v) + '%', 'rgba(255,140,40,.9)');
+        note.innerHTML = html;
       }catch(_e){ note.textContent=''; }
     };
+
+    // Radar-sweep reveal + tap a spoke/label to spotlight one target
+    let spiderRaf = 0;
+    const showRadar = (labels, pct) => {
+      canvas.__sqSpider = { labels, pct, sel:null };
+      cancelAnimationFrame(spiderRaf);
+      let reduce = false;
+      try{ reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_e){}
+      const dur = reduce ? 0 : 780;
+      const start = performance.now();
+      const step = now => {
+        const raw = dur ? Math.min(1, (now - start) / dur) : 1;
+        drawRadar(canvas, labels, pct, { t:raw, sel:null });
+        if (raw < 1) spiderRaf = requestAnimationFrame(step);
+      };
+      spiderRaf = requestAnimationFrame(step);
+      renderSummary(labels, pct, null);
+    };
+    canvas.style.cursor = 'pointer';
+    canvas.addEventListener('click', e => {
+      const s = canvas.__sqSpider;
+      if (!s || !s.labels || !s.labels.length) return;
+      const r = canvas.getBoundingClientRect();
+      const scale = canvas.width / Math.max(1, r.width);
+      const x = (e.clientX - r.left) * scale, y = (e.clientY - r.top) * scale;
+      const cx = canvas.width / 2, cy = canvas.height / 2;
+      const dx = x - cx, dy = y - cy;
+      const R = Math.min(canvas.width, canvas.height) * 0.355;
+      if (Math.hypot(dx, dy) > R + 44) return;
+      const N = s.labels.length;
+      let theta = Math.atan2(dy, dx) + Math.PI / 2;
+      if (theta < 0) theta += Math.PI * 2;
+      const idx = Math.round(theta / (2 * Math.PI / N)) % N;
+      s.sel = (s.sel === idx) ? null : idx;
+      cancelAnimationFrame(spiderRaf);
+      drawRadar(canvas, s.labels, s.pct, { t:1, sel:s.sel });
+      renderSummary(s.labels, s.pct, s.sel);
+    });
 
     wrap.append(canvas, note);
     body.appendChild(wrap);
@@ -43271,8 +43365,7 @@ document.addEventListener('DOMContentLoaded', function(){
       if (mode === 'points' && data && Array.isArray(data.labels) && Array.isArray(data.pct)) {
         const labels = data.labels.slice();
         const pct = data.pct.slice();
-        drawRadar(canvas, labels, pct);
-        renderSummary(labels, pct);
+        showRadar(labels, pct);
         return;
       }
 
@@ -43295,12 +43388,10 @@ document.addEventListener('DOMContentLoaded', function(){
         const renderDTB = () => {
           if (which === 'd') {
             btnD.classList.add('primary'); btnT.classList.remove('primary');
-            drawRadar(canvas, labels, pctD);
-            renderSummary(labels, pctD);
+            showRadar(labels, pctD);
           } else {
             btnT.classList.add('primary'); btnD.classList.remove('primary');
-            drawRadar(canvas, labels, pctT);
-            renderSummary(labels, pctT);
+            showRadar(labels, pctT);
           }
         };
 
@@ -43332,8 +43423,7 @@ document.addEventListener('DOMContentLoaded', function(){
         pct = taken.map((n,i)=> n ? (100*hits[i]/n) : 0);
       }
 
-      drawRadar(canvas, labels, pct);
-      renderSummary(labels, pct);
+      showRadar(labels, pct);
     }catch(e){
       console.error('SPIDER failed', e);
       note.textContent = 'Could not load data.';
@@ -51886,6 +51976,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
       var a0 = i * step - (step / 2) + .28;
       var a1 = i * step + (step / 2) - .28;
       var path = svgEl(svg, 'path', { d:wedgePath(cx, cy, r0, r1, a0, a1), fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+      if (row){ path.setAttribute('data-sqkey', k); path.style.cursor = 'pointer'; }
       if (style.glow) path.setAttribute('filter', style.glow);
       if (row && hotKeys.has(k)) path.setAttribute('class', 'sq-hit-hot-pulse');
       var title = svgEl(svg, 'title');
@@ -51910,6 +52001,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     var bullPct = bull ? Number(bull.pct || 0) : null;
     var bullStyle = bull ? heatStyle(bullPct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.4', label:'rgba(240,244,255,.8)' };
     var bullOuter = svgEl(svg, 'circle', { cx:cx, cy:cy, r:31, fill:bullStyle.fill, stroke:bullStyle.stroke, 'stroke-width':'2.2' });
+    if (bull){ bullOuter.setAttribute('data-sqkey', 'B'); bullOuter.style.cursor = 'pointer'; }
     if (bullStyle.glow) bullOuter.setAttribute('filter', bullStyle.glow);
     var bullTitle = svgEl(svg, 'title');
     bullTitle.textContent = bull ? ('B: ' + pctFmt(bullPct) + ' - ' + bull.hits + '/' + bull.throwsN) : 'B: no data';
@@ -51926,6 +52018,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
       var halo = svgEl(svg, 'circle', { cx:x, cy:y, r:25, fill:'rgba(5,8,18,.58)', stroke:'rgba(160,190,245,.16)', 'stroke-width':'1' });
       g.appendChild(halo);
       var c = svgEl(svg, 'circle', { cx:x, cy:y - 7, r:16, fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+      if (row){ c.setAttribute('data-sqkey', k); c.style.cursor = 'pointer'; }
       if (style.glow) c.setAttribute('filter', style.glow);
       var title = svgEl(svg, 'title');
       title.textContent = row ? (k + ': ' + pctFmt(pct) + ' - ' + row.hits + '/' + row.throwsN) : (k + ': no data');
@@ -51958,6 +52051,97 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     var sort = Number(r.target_sort);
     if (!Number.isFinite(sort)) sort = typeof __sqTargetPctOrder === 'function' ? __sqTargetPctOrder(key) : 999;
     return { key:key, playerKey:rankKey(r.player_key || r.player_name), throwsN:throwsN, hits:hits, pct:pct, sort:sort };
+  }
+
+  // Tap-to-inspect for the dartboard heatmaps: tapping a wedge / D / T / B
+  // (or a table row) spotlights that one target — everything else dims, a
+  // floating card shows the counted-up % + ranks, and the table row lights.
+  function __sqWireBoardInspect(heatPanel, tablePanel, rows, mode){
+    var svg = heatPanel.querySelector('svg');
+    if (!svg) return;
+    heatPanel.style.position = 'relative';
+    var spot = document.createElement('div');
+    spot.style.cssText = 'position:absolute;top:8px;left:10px;display:none;align-items:center;gap:12px;'
+      + 'background:rgba(16,24,39,.95);border:1px solid rgba(255,164,64,.7);border-radius:12px;padding:8px 14px;'
+      + 'box-shadow:0 6px 18px rgba(0,0,0,.45), 0 0 18px rgba(255,140,40,.25);z-index:3;pointer-events:none;';
+    var spotKey = document.createElement('div');
+    spotKey.style.cssText = 'font-size:22px;font-weight:900;color:#fff;min-width:30px;text-align:center;';
+    var spotPct = document.createElement('div');
+    spotPct.style.cssText = 'font-size:22px;font-weight:900;color:#ffd9b0;';
+    var spotSub = document.createElement('div');
+    spotSub.style.cssText = 'font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:rgba(150,185,230,.9);line-height:1.5;';
+    spot.append(spotKey, spotPct, spotSub);
+    heatPanel.appendChild(spot);
+    var selected = null;
+    var countRaf = 0;
+    var els = Array.prototype.slice.call(svg.querySelectorAll('[data-sqkey]'));
+    els.forEach(function(el){ el.__sqStroke = el.getAttribute('stroke'); el.__sqSw = el.getAttribute('stroke-width'); });
+    var rowFor = function(k){ return (rows || []).find(function(r){ return String(r.key).toUpperCase() === k; }) || null; };
+    var highlightTableRow = function(k){
+      try{
+        Array.prototype.forEach.call(tablePanel.querySelectorAll('tbody tr'), function(tr){
+          var hit = String((tr.cells[0] && tr.cells[0].textContent) || '').trim().toUpperCase() === k;
+          tr.style.background = hit ? 'rgba(255,122,0,.14)' : '';
+          tr.style.boxShadow = hit ? 'inset 3px 0 0 rgba(255,164,64,.9)' : '';
+          if (hit && tr.scrollIntoView) tr.scrollIntoView({ block:'nearest' });
+        });
+      }catch(_e){}
+    };
+    var apply = function(){
+      els.forEach(function(el){
+        var k = el.getAttribute('data-sqkey');
+        if (selected == null){
+          el.setAttribute('opacity', '1');
+          if (el.__sqStroke != null) el.setAttribute('stroke', el.__sqStroke);
+          if (el.__sqSw != null) el.setAttribute('stroke-width', el.__sqSw);
+        } else if (k === selected){
+          el.setAttribute('opacity', '1');
+          el.setAttribute('stroke', '#ffffff');
+          el.setAttribute('stroke-width', String((parseFloat(el.__sqSw) || 1) + 1.2));
+        } else {
+          el.setAttribute('opacity', '.35');
+          if (el.__sqStroke != null) el.setAttribute('stroke', el.__sqStroke);
+          if (el.__sqSw != null) el.setAttribute('stroke-width', el.__sqSw);
+        }
+      });
+      if (selected == null){ spot.style.display = 'none'; highlightTableRow(' '); return; }
+      var r = rowFor(selected);
+      if (!r){ spot.style.display = 'none'; return; }
+      spot.style.display = 'flex';
+      spotKey.textContent = selected;
+      if (mode === 'points'){
+        spotSub.innerHTML = fmtAvgScore(r.avgScore) + ' avg<br>' + (r.pRank ? 'P #' + r.pRank : '') + (r.gRank ? ' · G #' + r.gRank : '');
+      } else {
+        spotSub.innerHTML = (r.hits || 0) + '/' + (r.throwsN || 0) + ' hits<br>' + (r.pRank ? 'P #' + r.pRank : '') + (r.gRank ? ' · G #' + r.gRank : '');
+      }
+      cancelAnimationFrame(countRaf);
+      var target = Number(r.pct || 0);
+      var start = performance.now(), dur = 420;
+      var step = function(now){
+        var tt = Math.min(1, (now - start) / dur);
+        var e = 1 - Math.pow(1 - tt, 3);
+        spotPct.textContent = (target * e).toFixed(1) + '%';
+        if (tt < 1) countRaf = requestAnimationFrame(step);
+      };
+      countRaf = requestAnimationFrame(step);
+      highlightTableRow(selected);
+    };
+    svg.addEventListener('click', function(e){
+      var el = e.target && e.target.closest ? e.target.closest('[data-sqkey]') : null;
+      if (!el) return;
+      var k = el.getAttribute('data-sqkey');
+      selected = (selected === k) ? null : k;
+      apply();
+    });
+    try{
+      tablePanel.addEventListener('click', function(e){
+        var tr = e.target && e.target.closest ? e.target.closest('tbody tr') : null;
+        if (!tr || !tr.cells || !tr.cells[0]) return;
+        var k = String(tr.cells[0].textContent || '').trim().toUpperCase();
+        selected = (selected === k) ? null : k;
+        apply();
+      });
+    }catch(_e){}
   }
 
   function applyTargetHitPersonalRanks(rows){
@@ -52115,6 +52299,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     tablePanel.appendChild(table);
 
     body.append(heatPanel, tablePanel);
+    __sqWireBoardInspect(heatPanel, tablePanel, rows, 'hit');
   };
   window.__sqCanonicalPlayerTargetHitDialog = window.openPlayerTargetHitDialog;
   window.openPlayerTargetPctDialog = function(){ return window.__sqCanonicalPlayerTargetHitDialog.apply(window, arguments); };
@@ -52258,6 +52443,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
       var a0 = i * step - (step / 2) + .28;
       var a1 = i * step + (step / 2) - .28;
       var path = svgEl(svg, 'path', { d:wedgePath(cx, cy, r0, r1, a0, a1), fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+      if (row){ path.setAttribute('data-sqkey', k); path.style.cursor = 'pointer'; }
       if (style.glow) path.setAttribute('filter', style.glow.replace('sqHit', 'sqPoints'));
       if (row && hotKeys.has(k)) path.setAttribute('class', 'sq-points-hot-pulse');
       var title = svgEl(svg, 'title');
@@ -52282,6 +52468,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     var bullPct = bull ? Number(bull.pct || 0) : null;
     var bullStyle = bull ? heatStyle(bullPct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.4', label:'rgba(240,244,255,.8)' };
     var bullOuter = svgEl(svg, 'circle', { cx:cx, cy:cy, r:31, fill:bullStyle.fill, stroke:bullStyle.stroke, 'stroke-width':'2.2' });
+    if (bull){ bullOuter.setAttribute('data-sqkey', 'B'); bullOuter.style.cursor = 'pointer'; }
     if (bullStyle.glow) bullOuter.setAttribute('filter', bullStyle.glow.replace('sqHit', 'sqPoints'));
     var bullTitle = svgEl(svg, 'title');
     bullTitle.textContent = bull ? ('B: ' + pctFmt(bullPct) + ' - ' + Math.round(bull.actual || 0) + '/' + Math.round(bull.max || 0) + ' pts') : 'B: no data';
@@ -52298,6 +52485,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
       var halo = svgEl(svg, 'circle', { cx:x, cy:y, r:25, fill:'rgba(5,8,18,.58)', stroke:'rgba(160,190,245,.16)', 'stroke-width':'1' });
       g.appendChild(halo);
       var c = svgEl(svg, 'circle', { cx:x, cy:y - 7, r:16, fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+      if (row){ c.setAttribute('data-sqkey', k); c.style.cursor = 'pointer'; }
       if (style.glow) c.setAttribute('filter', style.glow.replace('sqHit', 'sqPoints'));
       var title = svgEl(svg, 'title');
       title.textContent = row ? (k + ': ' + pctFmt(pct) + ' - ' + Math.round(row.actual || 0) + '/' + Math.round(row.max || 0) + ' pts') : (k + ': no data');
@@ -52409,6 +52597,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     tablePanel.appendChild(table);
 
     body.append(heatPanel, tablePanel);
+    __sqWireBoardInspect(heatPanel, tablePanel, rows, 'points');
   };
   window.__sqCanonicalPlayerTargetPointsDialog = window.openPlayerTargetPointsDialog;
   window.openPlayerTargetPointsPctDialog = function(){ return window.__sqCanonicalPlayerTargetPointsDialog.apply(window, arguments); };
