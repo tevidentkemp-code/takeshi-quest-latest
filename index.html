@@ -4788,14 +4788,63 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   border:1px solid rgba(0,0,0,.25) !important;
   color:#fff !important;
 }
-/* Fully obscure the underlying screen behind the setup modals so previous
-   screens (match card, home) are never visible faded in the background. */
+/* =====================================================================
+   MATCH SETUP — AMBIENT BACKDROP SYSTEM
+   Shared, fully opaque backdrop for every setup screen so previous screens
+   never show through, with depth instead of a flat void:
+   grain > dartboard motif > orange stage glow > blue stage glow > navy base.
+   ===================================================================== */
 #startGameModal.modal-backdrop,
 #matchLengthModal.modal-backdrop,
-.modal-backdrop:has(> .modal-throworder){
-  background:rgba(4,7,13,.97) !important;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+.modal-backdrop:has(> .modal-throworder),
+body[data-page="players"]{
+  background-color:#05080f !important;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 600'%3E%3Cg fill='none' stroke='%234aa3ff' stroke-opacity='0.07' stroke-width='1.5'%3E%3Ccircle cx='300' cy='300' r='58'/%3E%3Ccircle cx='300' cy='300' r='118'/%3E%3Ccircle cx='300' cy='300' r='178'/%3E%3Ccircle cx='300' cy='300' r='238'/%3E%3Ccircle cx='300' cy='300' r='292'/%3E%3Cpath d='M300 0v600M0 300h600'/%3E%3C/g%3E%3Ccircle cx='300' cy='300' r='7' fill='%234aa3ff' fill-opacity='0.10'/%3E%3C/svg%3E"),
+    radial-gradient(105% 75% at 12% 104%, rgba(255,122,0,.15) 0%, rgba(255,122,0,.05) 34%, transparent 60%),
+    radial-gradient(95% 70% at 90% -6%, rgba(47,134,255,.16) 0%, rgba(47,134,255,.05) 36%, transparent 62%),
+    linear-gradient(180deg, #0b1120 0%, #060a13 52%, #080b14 100%) !important;
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat !important;
+  background-size: 140px 140px, 560px 560px, auto, auto, auto !important;
+  background-position: 0 0, right -170px top -150px, center, center, center !important;
+  background-attachment: scroll, scroll, scroll, scroll, scroll !important;
+}
+/* Neon signage edge on the setup cards: hairline gradient border
+   (orange -> blue) with a faint dual glow, replacing the flat grey line. */
+.modal.sg-modal,
+.ml-modal,
+.modal-throworder{
+  position:relative;
+  border:1px solid rgba(255,255,255,.05) !important;
+  box-shadow:
+    0 26px 60px rgba(0,0,0,.62),
+    0 0 44px rgba(47,134,255,.10),
+    0 0 90px rgba(255,122,0,.07) !important;
+}
+/* The throw-order dialog is programmatically focused (for Esc); suppress the
+   browser focus ring that painted a bright outline around the card. */
+.modal-throworder:focus{ outline:none !important; }
+/* The variant submenu footer inherits the generic .modal-footer background;
+   keep it transparent so the Back button floats on the card like elsewhere. */
+.sg-practice-footer{ background:transparent !important; border-top:0 !important; }
+.modal.sg-modal::before,
+.ml-modal::before,
+.modal-throworder::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  padding:1px;
+  background:linear-gradient(150deg,
+    rgba(255,122,0,.55) 0%, rgba(255,122,0,.12) 26%,
+    rgba(47,134,255,.10) 62%, rgba(74,163,255,.55) 100%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+          mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask-composite:exclude;
+  pointer-events:none;
+  z-index:2;
 }
 
 /* =====================================================================
