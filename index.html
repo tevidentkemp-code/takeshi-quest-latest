@@ -4829,6 +4829,7 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 #startGameModal.modal-backdrop,
 #matchLengthModal.modal-backdrop,
 .modal-backdrop:has(> .modal-throworder),
+.modal-backdrop:has(> .modal.menu-modal),
 body[data-page="players"]{
   background-color:#05080f !important;
   background-image:
@@ -4846,7 +4847,8 @@ body[data-page="players"]{
    (orange -> blue) with a faint dual glow, replacing the flat grey line. */
 .modal.sg-modal,
 .ml-modal,
-.modal-throworder{
+.modal-throworder,
+.modal.menu-modal{
   position:relative;
   border:1px solid rgba(255,255,255,.05) !important;
   box-shadow:
@@ -4854,15 +4856,83 @@ body[data-page="players"]{
     0 0 44px rgba(47,134,255,.10),
     0 0 90px rgba(255,122,0,.07) !important;
 }
+/* Home: stretch the LIVE UPDATES panel so the footer nav sits at the bottom
+   of the screen with no dead space beneath it. */
+body[data-page="details"] #details{
+  display:flex;
+  flex-direction:column;
+}
+#details .start-actions.column{
+  flex:1 1 auto;
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+}
+#details #homeLivePrinter{
+  flex:1 1 auto;
+  display:flex;
+  flex-direction:column;
+  min-height:280px;
+}
+#details #homeLivePrinter .lp-mid{ flex:1 1 auto; }
+
+/* =====================================================================
+   MENU MODALS (Player Stats hub etc.) — arcade skin
+   Navy cards, blue hairline accents, orange chevrons; matches the setup
+   flow and CTA palette while keeping the streamlined list layout.
+   ===================================================================== */
+.modal.menu-modal{
+  background:rgba(15,18,32,.97);
+}
+.menu-modal-title-text{
+  letter-spacing:.14em;
+  text-shadow:0 0 16px rgba(255,122,0,.28);
+}
+.menu-modal-icon{ color:var(--shatekiOrange,#ff7a00); }
+.menu-row{
+  background:linear-gradient(180deg, rgba(21,28,46,.92), rgba(13,18,32,.92));
+  border:1px solid rgba(35,164,255,.22);
+  box-shadow:0 4px 12px rgba(0,0,0,.25);
+  transition:border-color .15s ease, box-shadow .15s ease, transform .12s ease;
+}
+.menu-row:hover{
+  border-color:rgba(35,164,255,.55);
+  box-shadow:0 4px 16px rgba(0,0,0,.3), 0 0 18px rgba(47,134,255,.18);
+}
+.menu-row-icon{
+  background:#101827;
+  border:1px solid rgba(35,164,255,.35);
+  color:var(--shatekiBlueLight,#4aa3ff);
+  box-shadow:inset 0 0 12px rgba(47,134,255,.12);
+}
+.menu-row-title{
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  font-weight:800;
+}
+.menu-row-sub{ color:rgba(151,178,214,.78); }
+.menu-row > .menu-row-chev{ color:var(--shatekiOrange,#ff7a00); }
+.menu-row.is-disabled{ opacity:.45; filter:grayscale(.4); }
+/* Centered loading state used while a stats dialog fetches its data */
+.sq-modal-loading{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  padding:48px 0;
+}
+
 /* The throw-order dialog is programmatically focused (for Esc); suppress the
    browser focus ring that painted a bright outline around the card. */
-.modal-throworder:focus{ outline:none !important; }
+.modal-throworder:focus,
+.modal.menu-modal:focus,
+.modal:focus{ outline:none !important; }
 /* The variant submenu footer inherits the generic .modal-footer background;
    keep it transparent so the Back button floats on the card like elsewhere. */
 .sg-practice-footer{ background:transparent !important; border-top:0 !important; }
 .modal.sg-modal::before,
 .ml-modal::before,
-.modal-throworder::before{
+.modal-throworder::before,
+.modal.menu-modal::before{
   content:"";
   position:absolute;
   inset:0;
@@ -37723,7 +37793,7 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
   footer.style.gap='10px';
 
   // Mount early so we never "flash" back to home between dialogs
-  body.innerHTML = '<p class="muted">Loading…</p>';
+  body.innerHTML = '<div class="sq-modal-loading"><div class="sq-loadbar"><span class="sq-loadbar-fill"></span></div></div>';
   modal.append(header, body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
@@ -37787,16 +37857,50 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
   let dbBest  = null;
   let dbFav   = null;
   let dbStreak = null;
+  let dbRates = null;
   if (SB && typeof SB.from === 'function'){
+    // All lookups are independent — run them in parallel (this used to be six
+    // sequential round-trips and dominated the dialog's load time).
+    const fkey = name.toLowerCase();
+    const safeQ = q => Promise.resolve(q).catch(e => ({ error: e }));
+    const [savedRows, pr, bs, fv, tr, st] = await Promise.all([
+      (async () => {
+        let rows = [];
+        try{
+          if (typeof cloudListPlayers === 'function') rows = await cloudListPlayers();
+        }catch(_){ rows = []; }
+        if ((!rows || !rows.length) && typeof getSavedPlayers === 'function'){
+          try{ rows = getSavedPlayers() || []; }catch(_){ rows = []; }
+        }
+        return rows || [];
+      })(),
+      safeQ(SB.from('v_power_rankings_last56_official_clean')
+        .select('player,player_key,rounds_used,total_points,avg_per_round,last_played_at,rank_pos')
+        .order('avg_per_round', { ascending:false })
+        .limit(500)),
+      safeQ(SB.from('v_player_best_official_ranked')
+        .select('player_name,best_score,best_score_pos')
+        .ilike('player_name', name)
+        .limit(1)),
+      safeQ(SB.from('v_player_last30_targets')
+        .select('player_key,favorite_number,favorite_pct,worst_number,worst_pct')
+        .eq('player_key', fkey)
+        .limit(1)),
+      (typeof cloudIsTableMissing !== 'function' || !cloudIsTableMissing('v_player_last30_target_rates'))
+        ? safeQ(SB.from('v_player_last30_target_rates')
+            .select('player_key,target_n,hit_pct,throws')
+            .eq('player_key', fkey)
+            .order('hit_pct', { ascending: false }))
+        : Promise.resolve(null),
+      safeQ(SB.from('v_player_target_streaks')
+        .select('player_key,player_name,mode_key,mode_label,dart_streak,round_streak,source_games,last_played_at')
+        .eq('player_key', fkey.trim())
+        .eq('mode_key', 'official')
+        .limit(1))
+    ]);
+
     try{
       const powerKey = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
-      let savedRows = [];
-      try{
-        if (typeof cloudListPlayers === 'function') savedRows = await cloudListPlayers();
-      }catch(_){ savedRows = []; }
-      if ((!savedRows || !savedRows.length) && typeof getSavedPlayers === 'function'){
-        try{ savedRows = getSavedPlayers() || []; }catch(_){ savedRows = []; }
-      }
       const savedMap = new Map((savedRows || []).map(p => {
         const n = String((p && (p.name || p.player_name || p.player || p.display_name)) || '').trim();
         return n ? [powerKey(n), n] : null;
@@ -37811,10 +37915,6 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
           return Number.isFinite(n) ? n : 0;
         }catch(_){ return 0; }
       };
-      const pr = await SB.from('v_power_rankings_last56_official_clean')
-        .select('player,player_key,rounds_used,total_points,avg_per_round,last_played_at,rank_pos')
-        .order('avg_per_round', { ascending:false })
-        .limit(500);
       if (pr && pr.error) throw pr.error;
       const nowMs = Date.now();
       const activeCutoff = nowMs - (14 * 24 * 60 * 60 * 1000);
@@ -37834,50 +37934,20 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
       dbPower = mine ? { player: mine.player, power_rank: mine.avg, power_rank_pos: mine.rankPos || (rows.indexOf(mine) + 1), last_played_at: mine.lastMs || null } : null;
     }catch(e){ try{ if(window.SQ_DEBUG) console.warn('[SQ] power rank view read failed', e); }catch(_){} }
 
-    try{
-      const bs = await SB.from('v_player_best_official_ranked')
-        .select('player_name,best_score,best_score_pos')
-        .ilike('player_name', name)
-        .limit(1);
-      dbBest = (bs && bs.data && bs.data[0]) ? bs.data[0] : null;
-    }catch(e){ console.warn('[SQ] best score rank view read failed', e); }
+    if (bs && bs.error) console.warn('[SQ] best score rank view read failed', bs.error);
+    dbBest = (bs && !bs.error && bs.data && bs.data[0]) ? bs.data[0] : null;
 
-    try{
-      const fk = name.toLowerCase();
-      const fv = await SB.from('v_player_last30_targets')
-        .select('player_key,favorite_number,favorite_pct,worst_number,worst_pct')
-        .eq('player_key', fk)
-        .limit(1);
-      dbFav = (fv && fv.data && fv.data[0]) ? fv.data[0] : null;
+    if (fv && fv.error) console.warn('[SQ] last30 targets view read failed', fv.error);
+    dbFav = (fv && !fv.error && fv.data && fv.data[0]) ? fv.data[0] : null;
 
     // Top/bottom 3 target rates (last 30 games) for Targets section
-    let dbRates = null;
-    try{
-      const fk2 = name.toLowerCase();
-      if (typeof cloudIsTableMissing !== 'function' || !cloudIsTableMissing('v_player_last30_target_rates')) {
-        const tr = await SB.from('v_player_last30_target_rates')
-          .select('player_key,target_n,hit_pct,throws')
-          .eq('player_key', fk2)
-          .order('hit_pct', { ascending: false });
-        dbRates = (tr && Array.isArray(tr.data)) ? tr.data : null;
-      }
-    }catch(e){ /* view may not exist yet */ dbRates = null; }
+    dbRates = (tr && !tr.error && Array.isArray(tr.data)) ? tr.data : null;
 
-    }catch(e){ console.warn('[SQ] last30 targets view read failed', e); }
-
-    try{
-      const sk = name.toLowerCase().trim();
-      const st = await SB.from('v_player_target_streaks')
-        .select('player_key,player_name,mode_key,mode_label,dart_streak,round_streak,source_games,last_played_at')
-        .eq('player_key', sk)
-        .eq('mode_key', 'official')
-        .limit(1);
-      if (st && st.error) {
-        console.warn('[SQ] target streaks view is missing required mode columns', st.error);
-      } else {
-        dbStreak = (st && st.data && st.data[0]) ? st.data[0] : null;
-      }
-    }catch(e){ console.warn('[SQ] target streaks view read failed', e); }
+    if (st && st.error) {
+      console.warn('[SQ] target streaks view is missing required mode columns', st.error);
+    } else {
+      dbStreak = (st && !st.error && st.data && st.data[0]) ? st.data[0] : null;
+    }
   }
 
   // Per-game ranks (1st place detection) and per-month buckets
@@ -38237,8 +38307,15 @@ const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
 
   // XP / level: a "LV n · TITLE" chip beside the name and a progress bar.
   let xpProg = null, xpRow = null, achMap = {};
-  try{ xpRow = await SQ_XP.forName(name); if (xpRow) xpProg = SQ_XP.progress(xpRow.total_xp); }catch(_){ }
-  try{ achMap = await SQ_ACH.forName(name) || {}; }catch(_){ }
+  try{
+    const [xr, am] = await Promise.all([
+      SQ_XP.forName(name).catch(()=>null),
+      SQ_ACH.forName(name).catch(()=>null)
+    ]);
+    xpRow = xr || null;
+    if (xpRow) xpProg = SQ_XP.progress(xpRow.total_xp);
+    achMap = am || {};
+  }catch(_){ }
   if (xpProg){
     const nameRow = document.createElement('div');
     nameRow.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;';
@@ -38512,6 +38589,10 @@ window.openXpLeaderboard = async function openXpLeaderboard(){
 window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('home', playerName); }catch(_){ }
   try{ console.debug('[Popup]', window.__sqStatsDebugName || 'New Game Screen Stats'); }catch(_){ }
+  // Warm the heavy caches in the background NOW, so the Player Stats dialog
+  // (which needs the full games list) opens near-instantly from the menu.
+  try{ if (typeof cloudFetchAllGamesAsLocal === 'function') cloudFetchAllGamesAsLocal().catch(()=>{}); }catch(_){ }
+  try{ if (typeof cloudListPlayers === 'function') cloudListPlayers().catch?.(()=>{}); }catch(_){ }
   let currentName = String(playerName || window.__sqPlayerStatsSelectedName || window.__sqStatsReturnPlayer || __sqPlayerStatsActiveName() || '').trim();
   if (currentName) __sqSetPlayerStatsSelectedName(currentName);
 
