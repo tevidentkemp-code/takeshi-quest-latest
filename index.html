@@ -40330,6 +40330,8 @@ function __sqRenderProgressPills(host, items, seriesList){
     grid.appendChild(pill);
   });
 
+  if (!(seriesList && seriesList.length) && !items.length){ return; }
+  if (!(seriesList && seriesList.length)){ host.appendChild(grid); return; }
   const selected = makePill('Selected Targets');
   const wrap = document.createElement('div');
   wrap.style.display = 'flex';
@@ -40408,8 +40410,11 @@ function __sqNormalizeTargetProgressRows(mode, rows){
     return a.idx - b.idx;
   });
 }
-function __sqDrawTargetProgressCanvas(canvas, seriesList, windowSize, statsEl, emptyEl, mode, primaryKey, scaleMax){
+function __sqDrawTargetProgressCanvas(canvas, seriesList, windowSize, statsEl, emptyEl, mode, primaryKey, scaleMax, opts){
   if (!canvas) return;
+  const o = opts || {};
+  const t = Math.max(0, Math.min(1, Number.isFinite(o.t) ? o.t : 1));
+  const scrubIdx = Number.isFinite(o.scrubIdx) ? o.scrubIdx : null;
   const ctx = canvas.getContext('2d');
   const rect = canvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
@@ -40418,7 +40423,7 @@ function __sqDrawTargetProgressCanvas(canvas, seriesList, windowSize, statsEl, e
   canvas.width = Math.floor(width * dpr); canvas.height = Math.floor(height * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, width, height);
-  // Arcade panel: vertical navy gradient with a faint blue glow up top
+  // Arcade panel: vertical navy gradient
   const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
   bgGrad.addColorStop(0, '#15203a');
   bgGrad.addColorStop(0.55, '#0d1424');
@@ -40445,10 +40450,10 @@ function __sqDrawTargetProgressCanvas(canvas, seriesList, windowSize, statsEl, e
     ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke();
     ctx.fillText(String(v) + '%', 10, y + 3);
   });
-  // soft baseline only (no hard white axis box)
   ctx.strokeStyle = 'rgba(122,170,255,.30)';
   ctx.beginPath(); ctx.moveTo(pad.left, height - pad.bottom); ctx.lineTo(width - pad.right, height - pad.bottom); ctx.stroke();
 
+  canvas.__sqHitMap = null;
   if (!activeSeries.length){
     if (emptyEl) emptyEl.textContent = 'No progress data yet for this target.';
     if (statsEl) statsEl.innerHTML = '';
@@ -40458,8 +40463,9 @@ function __sqDrawTargetProgressCanvas(canvas, seriesList, windowSize, statsEl, e
 
   const multi = activeSeries.length > 1;
   const baseY = yFor(0);
+  const ease = 1 - Math.pow(1 - t, 3);
 
-  // Per-game bars: cool blue gradient columns with rounded caps
+  // Per-game bars: cool blue gradient columns; they "grow" in with a stagger.
   const barGrad = ctx.createLinearGradient(0, pad.top, 0, baseY);
   barGrad.addColorStop(0, 'rgba(74,163,255,.34)');
   barGrad.addColorStop(1, 'rgba(74,163,255,.05)');
@@ -40471,13 +40477,17 @@ function __sqDrawTargetProgressCanvas(canvas, seriesList, windowSize, statsEl, e
     const offset = multi ? (seriesIdx - (activeSeries.length - 1) / 2) * Math.min(3, Math.max(1.2, plotW / Math.max(1, rows.length) * .08)) : 0;
     values.forEach((v, i) => {
       const x = xFor(rows, i) + offset;
-      const y = yFor(v);
+      // staggered grow-in: later bars start later
+      const local = multi ? 1 : Math.max(0, Math.min(1, (ease - (i / Math.max(1, values.length)) * .55) / .45));
+      if (local <= 0) return;
+      const y = baseY - (baseY - yFor(v)) * local;
       if (multi){
         ctx.strokeStyle = series.color; ctx.globalAlpha = .28; ctx.lineWidth = barW;
         ctx.beginPath(); ctx.moveTo(x, baseY); ctx.lineTo(x, y); ctx.stroke();
         ctx.globalAlpha = 1;
       } else {
-        ctx.fillStyle = barGrad;
+        const hot = scrubIdx === i;
+        ctx.fillStyle = hot ? 'rgba(255,164,64,.85)' : barGrad;
         const h = Math.max(0, baseY - y);
         if (h < .5) return;
         if (typeof ctx.roundRect === 'function'){
@@ -40489,40 +40499,53 @@ function __sqDrawTargetProgressCanvas(canvas, seriesList, windowSize, statsEl, e
     });
   });
 
-  // Reference lines: dashed all-time average (soft white), trajectory (green)
+  // Reference lines: dashed all-time average + green trajectory
   activeSeries.forEach(series => {
     const rows = series.rows;
     const stats = __sqProgressSeriesStats(rows, windowSize);
     ctx.save();
     ctx.setLineDash([5,5]);
-    ctx.strokeStyle = 'rgba(220,235,255,.4)'; ctx.globalAlpha = multi ? .35 : .9; ctx.lineWidth = 1.2;
-    ctx.beginPath(); ctx.moveTo(pad.left, yFor(stats.allAvg)); ctx.lineTo(width - pad.right, yFor(stats.allAvg)); ctx.stroke();
+    ctx.strokeStyle = 'rgba(220,235,255,.4)'; ctx.globalAlpha = (multi ? .35 : .9) * ease; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(pad.left, yFor(stats.allAvg)); ctx.lineTo(pad.left + plotW * ease, yFor(stats.allAvg)); ctx.stroke();
     ctx.restore();
 
     ctx.save();
-    ctx.strokeStyle = 'rgba(115,240,126,.9)'; ctx.globalAlpha = multi ? .35 : .85; ctx.lineWidth = multi ? 1.4 : 2;
+    ctx.strokeStyle = 'rgba(115,240,126,.9)'; ctx.globalAlpha = (multi ? .35 : .85) * ease; ctx.lineWidth = multi ? 1.4 : 2;
     ctx.shadowColor = 'rgba(115,240,126,.5)'; ctx.shadowBlur = multi ? 0 : 6;
-    ctx.beginPath(); ctx.moveTo(pad.left, yFor(stats.firstAvg)); ctx.lineTo(width - pad.right, yFor(stats.secondAvg)); ctx.stroke();
+    const trajY0 = yFor(stats.firstAvg), trajY1 = yFor(stats.secondAvg);
+    ctx.beginPath(); ctx.moveTo(pad.left, trajY0);
+    ctx.lineTo(pad.left + plotW * ease, trajY0 + (trajY1 - trajY0) * ease);
+    ctx.stroke();
     ctx.restore();
   });
 
-  // Hero moving-average line: Shateki orange glow + area fill (single series);
-  // per-target colors with a lighter glow when comparing multiple targets.
+  // Hero moving-average line (clipped by animation progress: it "draws in")
   activeSeries.forEach(series => {
     const rows = series.rows;
     const stats = __sqProgressSeriesStats(rows, windowSize);
     if (!stats.avgPoints.length) return;
     const lineColor = multi ? series.color : '#ffa440';
-    const pts = stats.avgPoints.map(p => ({ x:xFor(rows, p.idx), y:yFor(p.pct), pct:p.pct }));
+    const pts = stats.avgPoints.map(p => ({ x:xFor(rows, p.idx), y:yFor(p.pct), pct:p.pct, idx:p.idx }));
 
-    if (!multi && pts.length > 1){
+    // Partial polyline up to fraction `ease` (interpolating the last segment)
+    const seg = (pts.length - 1) * ease;
+    const full = Math.floor(seg);
+    const frac = seg - full;
+    const drawPts = pts.slice(0, full + 1);
+    if (frac > 0 && full < pts.length - 1){
+      const a = pts[full], b = pts[full + 1];
+      drawPts.push({ x:a.x + (b.x - a.x) * frac, y:a.y + (b.y - a.y) * frac, pct:a.pct + (b.pct - a.pct) * frac });
+    }
+    if (drawPts.length < 1) return;
+
+    if (!multi && drawPts.length > 1){
       const area = ctx.createLinearGradient(0, pad.top, 0, baseY);
       area.addColorStop(0, 'rgba(255,122,0,.24)');
       area.addColorStop(1, 'rgba(255,122,0,0)');
       ctx.beginPath();
-      pts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
-      ctx.lineTo(pts[pts.length - 1].x, baseY);
-      ctx.lineTo(pts[0].x, baseY);
+      drawPts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+      ctx.lineTo(drawPts[drawPts.length - 1].x, baseY);
+      ctx.lineTo(drawPts[0].x, baseY);
       ctx.closePath();
       ctx.fillStyle = area; ctx.fill();
     }
@@ -40533,15 +40556,25 @@ function __sqDrawTargetProgressCanvas(canvas, seriesList, windowSize, statsEl, e
     ctx.strokeStyle = lineColor; ctx.lineWidth = multi ? 2.2 : 3;
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     ctx.beginPath();
-    pts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+    drawPts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
     ctx.stroke();
     ctx.restore();
 
     ctx.fillStyle = lineColor;
-    pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, multi ? 2 : 2.6, 0, Math.PI * 2); ctx.fill(); });
+    drawPts.forEach((p, i) => { if (i < drawPts.length - (frac > 0 ? 1 : 0)) { ctx.beginPath(); ctx.arc(p.x, p.y, multi ? 2 : 2.6, 0, Math.PI * 2); ctx.fill(); } });
 
-    if (!multi){
-      // PEAK marker on the best stretch
+    // Comet head while animating
+    const tip = drawPts[drawPts.length - 1];
+    if (t < 1){
+      ctx.save();
+      ctx.shadowColor = 'rgba(255,180,80,1)'; ctx.shadowBlur = 16;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(tip.x, tip.y, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    if (!multi && t >= 1){
+      // PEAK marker
       let pk = 0; pts.forEach((p, i) => { if (p.pct > pts[pk].pct) pk = i; });
       if (pts.length > 2 && pk !== pts.length - 1){
         const p = pts[pk];
@@ -40556,7 +40589,7 @@ function __sqDrawTargetProgressCanvas(canvas, seriesList, windowSize, statsEl, e
         ctx.fillText('PEAK', p.x, Math.max(pad.top + 8, p.y - 11));
         ctx.textAlign = 'left';
       }
-      // Live end-value badge on the newest point
+      // Live end dot + value badge
       const lp = pts[pts.length - 1];
       ctx.save();
       ctx.shadowColor = 'rgba(255,140,40,.95)'; ctx.shadowBlur = 12;
@@ -40565,21 +40598,79 @@ function __sqDrawTargetProgressCanvas(canvas, seriesList, windowSize, statsEl, e
       ctx.restore();
       ctx.strokeStyle = lineColor; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(lp.x, lp.y, 4.4, 0, Math.PI * 2); ctx.stroke();
-      const txt = Math.round(lp.pct) + '%';
-      ctx.font = '800 12px system-ui, -apple-system, Segoe UI, sans-serif';
-      const tw = ctx.measureText(txt).width;
-      const bw = tw + 16, bh = 22;
-      let bx = Math.min(width - pad.right - bw, lp.x + 10);
-      let by = Math.max(pad.top, Math.min(baseY - bh, lp.y - bh - 8));
-      ctx.fillStyle = '#101827';
-      ctx.strokeStyle = 'rgba(255,164,64,.85)'; ctx.lineWidth = 1.2;
-      if (typeof ctx.roundRect === 'function'){
-        ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 7); ctx.fill(); ctx.stroke();
-      } else { ctx.fillRect(bx, by, bw, bh); ctx.strokeRect(bx, by, bw, bh); }
-      ctx.fillStyle = '#ffd9b0';
-      ctx.fillText(txt, bx + 8, by + 15);
+      if (scrubIdx == null){
+        const txt = Math.round(lp.pct) + '%';
+        ctx.font = '800 12px system-ui, -apple-system, Segoe UI, sans-serif';
+        const tw = ctx.measureText(txt).width;
+        const bw = tw + 16, bh = 22;
+        let bx = Math.min(width - pad.right - bw, lp.x + 10);
+        let by = Math.max(pad.top, Math.min(baseY - bh, lp.y - bh - 8));
+        ctx.fillStyle = '#101827';
+        ctx.strokeStyle = 'rgba(255,164,64,.85)'; ctx.lineWidth = 1.2;
+        if (typeof ctx.roundRect === 'function'){
+          ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 7); ctx.fill(); ctx.stroke();
+        } else { ctx.fillRect(bx, by, bw, bh); ctx.strokeRect(bx, by, bw, bh); }
+        ctx.fillStyle = '#ffd9b0';
+        ctx.fillText(txt, bx + 8, by + 15);
+      }
     }
   });
+
+  // Hit map for scrubbing (single-series only)
+  if (!multi){
+    const series = activeSeries[0];
+    const rows = series.rows;
+    const stats = __sqProgressSeriesStats(rows, windowSize);
+    canvas.__sqHitMap = {
+      xs: rows.map((r, i) => xFor(rows, i)),
+      rows,
+      values: stats.values,
+      maAt: (i) => {
+        let best = null;
+        stats.avgPoints.forEach(p => { if (p.idx <= i && (best == null || p.idx > best.idx)) best = p; });
+        return best ? best.pct : null;
+      }
+    };
+    // Scrub crosshair + info card
+    if (scrubIdx != null && rows[scrubIdx]){
+      const x = xFor(rows, scrubIdx);
+      ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1;
+      ctx.setLineDash([3,4]);
+      ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, baseY); ctx.stroke();
+      ctx.setLineDash([]);
+      const v = stats.values[scrubIdx];
+      const ma = canvas.__sqHitMap.maAt(scrubIdx);
+      const d = new Date(rows[scrubIdx].created_at || '');
+      const when = Number.isFinite(d.getTime()) ? d.toLocaleDateString(undefined, { day:'numeric', month:'short' }).toUpperCase() : '';
+      const l1 = 'GAME ' + (scrubIdx + 1) + (when ? ' · ' + when : '');
+      const l2 = 'ROUND ' + Math.round(v) + '%' + (ma != null ? ('   AV ' + Math.round(ma) + '%') : '');
+      ctx.font = '800 10px system-ui, -apple-system, Segoe UI, sans-serif';
+      const w1 = ctx.measureText(l1).width;
+      ctx.font = '800 12px system-ui, -apple-system, Segoe UI, sans-serif';
+      const w2 = ctx.measureText(l2).width;
+      const bw = Math.max(w1, w2) + 20, bh = 42;
+      let bx = x + 12; if (bx + bw > width - pad.right) bx = x - bw - 12;
+      bx = Math.max(pad.left, Math.min(width - pad.right - bw, bx));
+      const by = pad.top + 6;
+      ctx.fillStyle = 'rgba(16,24,39,.96)';
+      ctx.strokeStyle = 'rgba(35,164,255,.55)'; ctx.lineWidth = 1.2;
+      if (typeof ctx.roundRect === 'function'){
+        ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 9); ctx.fill(); ctx.stroke();
+      } else { ctx.fillRect(bx, by, bw, bh); ctx.strokeRect(bx, by, bw, bh); }
+      ctx.fillStyle = 'rgba(150,185,230,.9)';
+      ctx.font = '800 10px system-ui, -apple-system, Segoe UI, sans-serif';
+      ctx.fillText(l1, bx + 10, by + 16);
+      ctx.fillStyle = '#ffd9b0';
+      ctx.font = '800 12px system-ui, -apple-system, Segoe UI, sans-serif';
+      ctx.fillText(l2, bx + 10, by + 33);
+      // marker dot on the game bar top
+      ctx.save();
+      ctx.shadowColor = 'rgba(255,164,64,.9)'; ctx.shadowBlur = 10;
+      ctx.fillStyle = '#ffb347';
+      ctx.beginPath(); ctx.arc(x, yFor(v), 4, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  }
 
   ctx.fillStyle = 'rgba(150,185,230,.7)';
   ctx.font = '800 9px system-ui, -apple-system, Segoe UI, sans-serif';
@@ -40587,24 +40678,75 @@ function __sqDrawTargetProgressCanvas(canvas, seriesList, windowSize, statsEl, e
   const newest = 'LATEST';
   ctx.fillText(newest, width - pad.right - ctx.measureText(newest).width, height - 10);
 
+  // Stat pills: gauge + verdict carry the headline numbers now, so keep this
+  // row lean — points extras for points mode, legend chips when comparing.
   const primary = activeSeries.find(s => s.key === primaryKey) || activeSeries[activeSeries.length - 1];
   if (statsEl && primary) {
     const rows = primary.rows;
     const stats = __sqProgressSeriesStats(rows, windowSize);
-    const items = [
-      { label:`All Time Average — ${primary.key}`, value:__sqPctFmt(stats.allAvg, 1) }
-    ];
+    const items = [];
     if (isPoints){
-      const firstPts = __sqProgressAvg(rows.slice(0, stats.half), 'roundScore');
-      const secondPts = __sqProgressAvg(rows.slice(stats.half), 'roundScore');
       const allPts = __sqProgressAvg(rows, 'roundScore');
-      items[0].value = `${__sqPctFmt(stats.allAvg, 1)} · ${__sqProgressPtsFmt(allPts)} pts`;
-      items.push({ label:`Trajectory — ${primary.key}`, value:`${__sqPctFmt(stats.firstAvg, 1)} → ${__sqPctFmt(stats.secondAvg, 1)}\n${__sqProgressPtsFmt(firstPts)} → ${__sqProgressPtsFmt(secondPts)} pts` });
-    } else {
-      items.push({ label:`Trajectory % — ${primary.key}`, value:`${__sqPctFmt(stats.firstAvg, 1)} → ${__sqPctFmt(stats.secondAvg, 1)}` });
+      items.push({ label:'Round score — ' + primary.key, value: __sqProgressPtsFmt(allPts) + ' pts avg' });
     }
-    __sqRenderProgressPills(statsEl, items, activeSeries);
+    __sqRenderProgressPills(statsEl, items, multi ? activeSeries : []);
   }
+}
+
+// FORM gauge: arc dial with heat zones, a glowing needle for current form
+// (latest moving average) and a notch marking the all-time average.
+function __sqDrawFormGauge(canvas, value, avg, t){
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.max(150, Math.floor(rect.width || 170));
+  const height = Math.max(96, Math.floor(rect.height || 104));
+  canvas.width = Math.floor(width * dpr); canvas.height = Math.floor(height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  const cx = width / 2, cy = height - 14, R = Math.min(width / 2 - 10, height - 26);
+  const angFor = v => Math.PI + (Math.max(0, Math.min(100, v)) / 100) * Math.PI;
+  const zones = [
+    [0, 35, 'rgba(58,110,190,.85)'],
+    [35, 48, 'rgba(199,139,43,.9)'],
+    [48, 60, 'rgba(249,118,24,.95)'],
+    [60, 100, 'rgba(115,240,126,.95)']
+  ];
+  zones.forEach(z => {
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, angFor(z[0]), angFor(z[1]));
+    ctx.strokeStyle = z[2]; ctx.lineWidth = 7; ctx.lineCap = 'butt';
+    ctx.stroke();
+  });
+  // inner track
+  ctx.beginPath(); ctx.arc(cx, cy, R - 9, Math.PI, 2 * Math.PI);
+  ctx.strokeStyle = 'rgba(122,170,255,.14)'; ctx.lineWidth = 1; ctx.stroke();
+  // all-time average notch
+  if (Number.isFinite(avg)){
+    const a = angFor(avg);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(235,245,255,.9)'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * (R - 6), cy + Math.sin(a) * (R - 6));
+    ctx.lineTo(cx + Math.cos(a) * (R + 6), cy + Math.sin(a) * (R + 6));
+    ctx.stroke();
+    ctx.restore();
+  }
+  // needle (animated)
+  const shown = (Number.isFinite(value) ? value : 0) * Math.max(0, Math.min(1, t));
+  const na = angFor(shown);
+  ctx.save();
+  ctx.shadowColor = 'rgba(255,140,40,.9)'; ctx.shadowBlur = 10;
+  ctx.strokeStyle = '#ffa440'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(na) * (R - 14), cy + Math.sin(na) * (R - 14));
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = '#101827';
+  ctx.strokeStyle = 'rgba(255,164,64,.9)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
 }
 function __sqOpenTargetProgressDialog(mode, playerName, opts){
   const name = String(playerName || '').trim();
@@ -40618,9 +40760,8 @@ function __sqOpenTargetProgressDialog(mode, playerName, opts){
   const body = document.createElement('div'); body.className = 'modal-body'; body.style.paddingTop = '8px'; body.style.overflowY = 'auto';
   const footer = document.createElement('div'); footer.className = 'modal-footer';
   const backBtn = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
-  const spacer = document.createElement('div'); spacer.style.flex = '1';
   backBtn.onclick = () => { overlay.remove(); if (parentOverlay) { parentOverlay.style.display = ''; try{ parentOverlay.querySelector('.modal').focus(); }catch(_){} } else { __sqGoBackToStatsMain(name); } };
-  footer.append(backBtn, spacer); modal.append(header, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  footer.append(backBtn); modal.append(header, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
   __sqStatsArcade(overlay, modal);
   overlay.addEventListener('click', e => { if (e.target === overlay) backBtn.click(); });
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') backBtn.click(); });
@@ -40651,8 +40792,37 @@ function __sqOpenTargetProgressDialog(mode, playerName, opts){
     body.innerHTML = '';
     const targetRow = document.createElement('div'); targetRow.className = 'sq-controls-row'; targetRow.style.display = 'flex'; targetRow.style.flexWrap = 'wrap'; targetRow.style.gap = '6px'; targetRow.style.marginBottom = '10px';
     const avgRow = document.createElement('div'); avgRow.className = 'sq-controls-row'; avgRow.style.display = 'flex'; avgRow.style.flexWrap = 'wrap'; avgRow.style.gap = '6px'; avgRow.style.marginBottom = '10px';
+
+    // FORM strip: gauge + verdict stamp
+    const formRow = document.createElement('div');
+    formRow.style.cssText = 'display:flex;align-items:center;gap:14px;margin-bottom:10px;padding:10px 14px;'
+      + 'background:#101827;border:1px solid rgba(35,164,255,.3);border-radius:14px;box-shadow:0 6px 16px rgba(0,0,0,.3);';
+    const gaugeCanvas = document.createElement('canvas');
+    gaugeCanvas.style.cssText = 'width:170px;height:104px;flex:0 0 auto;';
+    const formInfo = document.createElement('div');
+    formInfo.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;align-items:flex-start;';
+    const formValue = document.createElement('div');
+    formValue.style.cssText = 'font-size:30px;font-weight:900;color:#ffd9b0;line-height:1;letter-spacing:.02em;';
+    const verdict = document.createElement('span');
+    verdict.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:5px 13px;border-radius:99px;font-weight:900;font-size:12px;letter-spacing:.1em;';
+    const formSub = document.createElement('div');
+    formSub.style.cssText = 'font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:rgba(150,185,230,.85);';
+    formInfo.append(formValue, verdict, formSub);
+    formRow.append(gaugeCanvas, formInfo);
+
     const canvasWrap = document.createElement('div'); canvasWrap.style.cssText = 'width:100%;height:340px;border:1px solid rgba(35,164,255,.25);border-radius:14px;overflow:hidden;background:#0d1424;box-shadow:0 10px 26px rgba(0,0,0,.4), 0 0 24px rgba(47,134,255,.08);';
-    const canvas = document.createElement('canvas'); canvas.style.width = '100%'; canvas.style.height = '100%'; canvasWrap.appendChild(canvas);
+    const canvas = document.createElement('canvas'); canvas.style.width = '100%'; canvas.style.height = '100%'; canvas.style.touchAction = 'pan-y'; canvasWrap.appendChild(canvas);
+
+    // Hot/cold streak strip: one cell per recent game, tap to inspect
+    const stripWrap = document.createElement('div');
+    stripWrap.style.cssText = 'margin-top:10px;';
+    const stripLabel = document.createElement('div');
+    stripLabel.style.cssText = 'font-size:10px;text-transform:uppercase;letter-spacing:.12em;font-weight:800;color:rgba(150,185,230,.85);margin-bottom:6px;';
+    stripLabel.textContent = 'Recent games — tap to inspect';
+    const strip = document.createElement('div');
+    strip.style.cssText = 'display:flex;gap:3px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;';
+    stripWrap.append(stripLabel, strip);
+
     const stats = document.createElement('div'); stats.className = 'sq-progress-pills';
     const empty = document.createElement('p'); empty.className = 'muted'; empty.style.marginTop = '8px';
 
@@ -40662,22 +40832,111 @@ function __sqOpenTargetProgressDialog(mode, playerName, opts){
     let selectedTargets = [enabledKeys[0] || '10'];
     let primaryTarget = selectedTargets[0];
     let windowSize = 5;
+    let scrubIdx = null;
+    let animRaf = 0;
     const rowsForKey = key => (grouped.get(key) || []).slice().sort((a,b) => {
       const ta = Date.parse(a.created_at || '') || 0;
       const tb = Date.parse(b.created_at || '') || 0;
       if (ta !== tb) return ta - tb;
       return a.idx - b.idx;
     });
-    const draw = () => {
+    const currentSeries = () => selectedTargets.map(key => ({ key, color:__sqProgressColor(key), rows:rowsForKey(key) })).filter(s => s.rows.length);
+
+    const verdictFor = (stats) => {
+      const d = stats.secondAvg - stats.firstAvg;
+      if (d >= 5)   return { label:'ON FIRE', color:'#ffa440', glow:'rgba(255,140,40,.45)', arrow:'↑' };
+      if (d >= 1.5) return { label:'CLIMBING', color:'#73f07e', glow:'rgba(115,240,126,.4)', arrow:'↑' };
+      if (d > -1.5) return { label:'STEADY', color:'#4aa3ff', glow:'rgba(74,163,255,.4)', arrow:'→' };
+      return { label:'COOLING', color:'#7cc0ff', glow:'rgba(124,192,255,.35)', arrow:'↓' };
+    };
+
+    const paintForm = (series, tv) => {
+      const isSingle = series.length === 1;
+      formRow.style.display = isSingle ? 'flex' : 'none';
+      stripWrap.style.display = isSingle ? '' : 'none';
+      if (!isSingle || !series[0]) return;
+      const st = __sqProgressSeriesStats(series[0].rows, windowSize);
+      const cur = st.avgPoints.length ? st.avgPoints[st.avgPoints.length - 1].pct : st.allAvg;
+      __sqDrawFormGauge(gaugeCanvas, cur, st.allAvg, tv);
+      formValue.textContent = Math.round(cur * Math.max(0, Math.min(1, tv))) + '%';
+      const v = verdictFor(st);
+      verdict.textContent = v.arrow + ' ' + v.label;
+      verdict.style.background = '#0d1424';
+      verdict.style.border = '1px solid ' + v.color;
+      verdict.style.color = v.color;
+      verdict.style.boxShadow = '0 0 16px ' + v.glow;
+      formSub.textContent = 'Form ' + windowSize + '-game av · all-time ' + Math.round(st.allAvg) + '% (notch)';
+    };
+
+    const buildStrip = (series) => {
+      strip.innerHTML = '';
+      if (series.length !== 1) return;
+      const rows = series[0].rows;
+      const st = __sqProgressSeriesStats(rows, windowSize);
+      const startIdx = Math.max(0, rows.length - 40);
+      for (let i = startIdx; i < rows.length; i++){
+        const v = st.values[i];
+        const hot = v >= st.allAvg;
+        const cell = document.createElement('button');
+        cell.type = 'button';
+        cell.setAttribute('aria-label', 'Game ' + (i + 1) + ': ' + Math.round(v) + '%');
+        const idx = i;
+        const active = scrubIdx === i;
+        cell.style.cssText = 'flex:0 0 auto;width:12px;height:20px;border-radius:4px;padding:0;cursor:pointer;'
+          + 'background:' + (hot ? 'linear-gradient(180deg,#ffb347,#f97618)' : 'rgba(74,163,255,.16)') + ';'
+          + 'border:1px solid ' + (active ? '#fff' : (hot ? 'rgba(255,190,110,.7)' : 'rgba(74,163,255,.25)')) + ';'
+          + (hot ? 'box-shadow:0 0 8px rgba(255,140,40,.35);' : '');
+        cell.onclick = () => { scrubIdx = (scrubIdx === idx) ? null : idx; drawStatic(); };
+        strip.appendChild(cell);
+      }
+    };
+
+    const paint = (tv) => {
+      const series = currentSeries();
+      __sqDrawTargetProgressCanvas(canvas, series, windowSize, stats, empty, mode, primaryTarget, stableScaleMax, { t:tv, scrubIdx });
+      paintForm(series, tv);
+    };
+    const syncChips = () => {
       Array.from(targetRow.querySelectorAll('button')).forEach(b => {
         const selected = selectedTargets.includes(b.dataset.target);
         b.classList.toggle('primary', selected);
         b.style.borderColor = selected ? __sqProgressColor(b.dataset.target) : '';
       });
       Array.from(avgRow.querySelectorAll('button')).forEach(b => b.classList.toggle('primary', Number(b.dataset.window) === windowSize));
-      const series = selectedTargets.map(key => ({ key, color:__sqProgressColor(key), rows:rowsForKey(key) })).filter(s => s.rows.length);
-      __sqDrawTargetProgressCanvas(canvas, series, windowSize, stats, empty, mode, primaryTarget, stableScaleMax);
     };
+    const drawStatic = () => { syncChips(); paint(1); buildStrip(currentSeries()); };
+    const draw = () => {
+      syncChips();
+      scrubIdx = null;
+      cancelAnimationFrame(animRaf);
+      let reduce = false;
+      try{ reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ }
+      const dur = reduce ? 0 : 850;
+      const start = performance.now();
+      const step = now => {
+        const raw = dur ? Math.min(1, (now - start) / dur) : 1;
+        paint(raw);
+        if (raw < 1) animRaf = requestAnimationFrame(step);
+        else buildStrip(currentSeries());
+      };
+      animRaf = requestAnimationFrame(step);
+    };
+
+    // Scrub-to-inspect: drag or move across the chart
+    let scrubbing = false;
+    const scrubTo = clientX => {
+      const hit = canvas.__sqHitMap;
+      if (!hit || !hit.xs.length) return;
+      const r = canvas.getBoundingClientRect();
+      const x = clientX - r.left;
+      let best = 0, bd = Infinity;
+      hit.xs.forEach((hx, i) => { const d = Math.abs(hx - x); if (d < bd){ bd = d; best = i; } });
+      if (scrubIdx !== best){ scrubIdx = best; paint(1); buildStrip(currentSeries()); }
+    };
+    canvas.addEventListener('pointerdown', e => { if (!canvas.__sqHitMap) return; scrubbing = true; scrubTo(e.clientX); });
+    canvas.addEventListener('pointermove', e => { if (scrubbing || e.pointerType === 'mouse') scrubTo(e.clientX); });
+    window.addEventListener('pointerup', () => { scrubbing = false; });
+    canvas.addEventListener('pointerleave', () => { if (!scrubbing && scrubIdx != null){ scrubIdx = null; paint(1); buildStrip(currentSeries()); } });
 
     targetConfigs.forEach(t => {
       const btn = document.createElement('button'); btn.className = 'btn small'; btn.textContent = t.label; btn.dataset.target = t.key;
@@ -40701,9 +40960,9 @@ function __sqOpenTargetProgressDialog(mode, playerName, opts){
       btn.onclick = () => { windowSize = n; draw(); };
       avgRow.appendChild(btn);
     });
-    body.append(targetRow, avgRow, canvasWrap, stats, empty);
+    body.append(targetRow, avgRow, formRow, canvasWrap, stripWrap, stats, empty);
     draw();
-    try{ new ResizeObserver(draw).observe(canvasWrap); }catch(_){ window.addEventListener('resize', draw, { passive:true }); }
+    try{ new ResizeObserver(() => drawStatic()).observe(canvasWrap); }catch(_){ window.addEventListener('resize', () => drawStatic(), { passive:true }); }
   })();
   return overlay;
 }
