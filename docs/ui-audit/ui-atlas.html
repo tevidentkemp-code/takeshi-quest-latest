@@ -1,0 +1,1337 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHATEKI-QUEST — UI Atlas</title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin:0; font: 15px/1.5 system-ui, sans-serif; background:#0d1022; color:#e7e9f5; padding:24px; }
+h1 { font-size: 26px; margin: 0 0 4px; }
+h2 { margin: 40px 0 12px; border-bottom: 1px solid #2b3050; padding-bottom: 6px; }
+.sub { color:#9aa3c0; margin-bottom: 18px; }
+nav.toc { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:13px; margin:14px 0 6px; }
+nav.toc a { color:#7fb4ff; text-decoration:none; }
+.grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(340px,1fr)); gap:18px; }
+.card { background:#131733; border:1px solid #23284a; border-radius:14px; padding:14px; }
+.card header { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+.card h3 { font-size:16px; margin:0; flex:1; }
+.uid { font: 11px ui-monospace,monospace; color:#8b93b8; background:#0d1022; border:1px solid #23284a; border-radius:6px; padding:1px 6px; }
+.badge { font-size:11px; font-weight:700; border-radius:999px; padding:2px 9px; }
+.badge.ok { background:#123d24; color:#48e08a; }
+.badge.part { background:#3d3312; color:#ffce6a; }
+.badge.no { background:#3d1216; color:#ff7a86; }
+.badge.na { background:#22263f; color:#9aa3c0; }
+.shots { display:flex; gap:8px; overflow-x:auto; margin-bottom:8px; }
+.shots img { height:230px; border-radius:8px; border:1px solid #23284a; }
+.noshot { height:120px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#8b93b8; border:1px dashed #2b3050; border-radius:8px; width:100%; text-align:center; padding:8px; }
+dl { display:grid; grid-template-columns: 130px 1fr; gap:2px 10px; font-size:13px; margin:0; }
+dt { color:#8b93b8; }
+dd { margin:0; overflow-wrap:anywhere; }
+code { font: 12px ui-monospace,monospace; color:#ffb24a; }
+footer { font-size:12px; color:#8b93b8; margin-top:10px; }
+footer a { color:#7fb4ff; }
+em { color:#9aa3c0; }
+</style></head><body>
+<h1>SHATEKI-QUEST — Visual UI Atlas</h1>
+<div class="sub">Generated from the UI architecture audit (2026-07-15) of <code>index.html</code> on branch <code>claude/ui-architecture-audit-bhc59x</code>.
+Cloud (Supabase) was unreachable in the audit sandbox, so cloud-fed content shows loading/empty states; write operations were blocked at the network layer.
+Full records: <a href="01-application-overview.md">overview</a> · <a href="02-file-and-function-map.md">function map</a> · <a href="05-screen-flow.mmd">screen flow</a> · <a href="06-popup-flow.mmd">popup flow</a> · <a href="10-refactoring-recommendations.md">recommendations</a></div>
+<nav class="toc"><a href="#SCR-HOME">Home / Clubhouse</a><a href="#SCR-MATCH-CARD">Match Card (player setup)</a><a href="#SCR-GAME">Live Game</a><a href="#SCR-LEADERBOARD">Match Leaderboard</a><a href="#OVL-BOOT-SPLASH">Boot splash (LOADING)</a><a href="#PARTIAL-LIVE-UPDATES">LIVE UPDATES panel</a><a href="#CHIP-CLOUD-STATUS">Cloud status chip</a><a href="#TOAST">Toast message</a><a href="#MOD-SELECT-GAME-MODE">SELECT GAME MODE</a><a href="#MOD-MATCH-PLAY-VARIANTS">MATCH PLAY (Classic/Turbo)</a><a href="#MOD-PRACTICE-TYPES">PRACTICE MODE (Classic/VS AI/VS Shadow)</a><a href="#MOD-TOURNAMENT-SETUP">TOURNAMENT setup (stepped)</a><a href="#MOD-TOURNAMENT-BRACKET">Tournament bracket/tree</a><a href="#MOD-ADD-PLAYER">NEW PLAYER</a><a href="#MOD-SELECT-PLAYER">SELECT PLAYERS</a><a href="#MOD-MATCH-LENGTH">MATCH LENGTH</a><a href="#MOD-THROW-ORDER">THROW ORDER</a><a href="#MOD-MAIN-MENU">Main Menu (in-game)</a><a href="#MOD-INGAME-STATS-HUB">Stats (in-game hub)</a><a href="#MOD-GAME-RACE">Game Race</a><a href="#MOD-GAME-STATS">Game Stats</a><a href="#MOD-MATCH-STATS">Match Stats</a><a href="#MOD-HS-OFFICIAL">High Scores (Official)</a><a href="#MOD-LOW-SCORES">Low Scores (Official)</a><a href="#MOD-REMOVE-PLAYER">Remove Player</a><a href="#MOD-RESTART-CONFIRM">Restart Game confirm</a><a href="#MOD-END-GAME-CONFIRM">End Game confirm</a><a href="#OVL-GAME-COMPLETE">GAME/MATCH COMPLETE celebration</a><a href="#MOD-BREAKDOWN">Match breakdown</a><a href="#MOD-DECIDER">Decider shootout</a><a href="#MOD-SHOOTOUT-COMPLETE">Shootout complete</a><a href="#MOD-GAME-SCORES">Game Scores</a><a href="#MOD-END-MATCH-CONFIRM">End Match confirm</a><a href="#MOD-PLAYER-HUB-GATE">PLAYER HUB (player select gate)</a><a href="#MOD-PLAYER-HUB">PLAYER HUB</a><a href="#MOD-STATS-HUB">PLAYER STATS hub</a><a href="#MOD-STATS-PLAYER-PROFILE">Player Stats (profile)</a><a href="#MOD-LEVEL-LADDER">Level Ladder (XP)</a><a href="#MOD-LATEST-MATCHES">Latest Matches</a><a href="#MOD-PLAYER-HIGH-SCORES">Player High Scores</a><a href="#MOD-PROGRESSION">Progression</a><a href="#MOD-TARGET-HIT">Target Hit %</a><a href="#MOD-TARGET-POINTS">Target Points %</a><a href="#MOD-PLAYER-H2H">Player H2H</a><a href="#MOD-LEAGUE-RANKS">LEAGUE / RANKINGS menu</a><a href="#MOD-POWER-RANKINGS">Power Rankings</a><a href="#MOD-PREMIER-LEAGUE">Premier League</a><a href="#MOD-HIGH-SCORE-LEAGUE">High Score League</a><a href="#MOD-STREAK-LEAGUE">Streak League</a><a href="#MOD-ROUND-HIGH-SCORES">Round High Scores</a><a href="#MOD-TOP50">Top 50 Scores</a><a href="#MOD-LATEST-SCORES">Latest Scores</a><a href="#MOD-ADMIN-KEYPAD">Admin Code keypad</a><a href="#MOD-ADMIN-HUB">ADMIN HUB</a><a href="#MOD-ALL-GAMES">All Games</a><a href="#MOD-ALL-SCORES">All Scores</a><a href="#MOD-HS-ADMIN">High Scores — Admin (League/Practice)</a><a href="#MOD-LEAGUE-LOWS-ADMIN">League Low Scores — Admin</a><a href="#MOD-SAVED-PLAYERS-ADMIN">Saved Players Admin</a><a href="#MOD-PBGR-ADMIN">PB / GR Admin</a><a href="#MOD-DATA-ADMIN">DATA (metrics)</a><a href="#MOD-DATA-CHART">Data chart (Daily Games / Unique Log Ons)</a><a href="#MOD-ROUND-HS-LEGACY">Round High Scores (static legacy)</a><a href="#MENU-SETTINGS-GAME">Settings menu (game; legacy)</a><a href="#MENU-SETTINGS-LB">Settings menu (leaderboard; legacy)</a><a href="#MOD-HS-MENU-START">High Scores chooser (home; legacy)</a><a href="#MOD-MODE-CHOOSER-LEGACY">Mode chooser (legacy)</a><a href="#MOD-VS-SHADOW-PICKER">Vs Shadow opponent picker</a><a href="#MOD-SCORE-SHEET">Score sheet (from history/high score)</a><a href="#MOD-H2H-OPPONENT-GRAPH">H2H opponent graph</a><a href="#MOD-SPIDER">Target Spider chart</a><a href="#MOD-PROGRESS-GRAPH">Target progress graphs</a><a href="#OVL-GIF-CELEBRATION">Celebration GIF overlay</a><a href="#MOD-DTB-PCT">D/T/B Hit % dialogs</a><a href="#MOD-SPRINT-LEAGUE">Sprint League (legacy)</a><a href="#MOD-STATS-MODE-PICKER">Player Stats mode picker (legacy)</a><a href="#OVL-GAME-LOAD">Game loading overlay</a><a href="#STATE-GAME-FINISHED">Game finished pad state</a><a href="#STATE-LOADING-LEAGUE">League loading state</a><a href="#STATE-EMPTY-PLAYERS">No saved players empty state</a><a href="#STATE-MISSING-VIEW">Required view missing state</a></nav>
+<h2 id="screens">Screens</h2><div class="grid">
+<article class="card" id="SCR-HOME">
+  <header><span class="uid">SCR-HOME</span><h3>Home / Clubhouse</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/home-details-mobile.png" target="_blank"><img loading="lazy" src="screenshots/home-details-mobile.png" alt="Home / Clubhouse screenshot"></a><a href="screenshots/desktop-home-details.png" target="_blank"><img loading="lazy" src="screenshots/desktop-home-details.png" alt="Home / Clubhouse screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Full screen</dd>
+    <dt>Parent area</dt><dd>(root)</dd>
+    <dt>Source</dt><dd><code>index.html:9230</code></dd>
+    <dt>Main function/component</dt><dd><code>section#details + arrangeStartActions() (31889)</code></dd>
+    <dt>Entry interactions</dt><dd>App boot; show(&#x27;details&#x27;) <em>(from: boot; BACK from Select Game Mode; End Match; admin gate cancel)</em></dd>
+    <dt>Exit interactions</dt><dd>n/a (navigate away) <em>(to: START GAME modal; PLAYER HUB gate; STATS hub; LEAGUE menu; ADMIN keypad)</em></dd>
+    <dt>Required state</dt><dd>none</dd>
+    <dt>Components used</dt><dd><code>admin-link</code>, <code>btn-primary-big</code>, <code>nav-square</code></dd>
+    <dt>Known notes / inconsistencies</dt><dd>Alt names in code: details, start screen, clubhouse. Static markup (questBtn &#x27;New game&#x27;,tournamentBtn,resumeBtn,latestScoresBtn) is rebuilt at boot; runtime buttons: startGameBtn/playerHubBtn/playerStatsBtn/leagueRankingsBtn/adminCodeBtn</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="SCR-MATCH-CARD">
+  <header><span class="uid">SCR-MATCH-CARD</span><h3>Match Card (player setup)</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/screen-match-card.png" target="_blank"><img loading="lazy" src="screenshots/screen-match-card.png" alt="Match Card (player setup) screenshot"></a><a href="screenshots/desktop-screen-match-card.png" target="_blank"><img loading="lazy" src="screenshots/desktop-screen-match-card.png" alt="Match Card (player setup) screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Full screen</dd>
+    <dt>Parent area</dt><dd>SCR-HOME</dd>
+    <dt>Source</dt><dd><code>index.html:9299</code></dd>
+    <dt>Main function/component</dt><dd><code>section#players</code></dd>
+    <dt>Entry interactions</dt><dd>show(&#x27;players&#x27;) from mode selection <em>(from: Select Game Mode&gt;MATCH PLAY&gt;Classic/Turbo; PRACTICE&gt;Classic/VS Shadow)</em></dd>
+    <dt>Exit interactions</dt><dd>BACK button -&gt; show(&#x27;details&#x27;) <em>(to: MATCH LENGTH modal; ADD PLAYER modal; SELECT PLAYER modal; BACK-&gt;Home)</em></dd>
+    <dt>Required state</dt><dd>selected mode (__sqSelectedMode)</dd>
+    <dt>Components used</dt><dd><code>back-footer-ms2</code>, <code>btn-ms-primary</code>, <code>btn-ms2</code>, <code>inline-input</code></dd>
+    <dt>Known notes / inconsistencies</dt><dd>Alt name: players page. 6 slot placeholders; hint &#x27;ADD 2+ PLAYERS TO START MATCH&#x27;</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="SCR-GAME">
+  <header><span class="uid">SCR-GAME</span><h3>Live Game</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/screen-game-live.png" target="_blank"><img loading="lazy" src="screenshots/screen-game-live.png" alt="Live Game screenshot"></a><a href="screenshots/screen-game-live-scored.png" target="_blank"><img loading="lazy" src="screenshots/screen-game-live-scored.png" alt="Live Game screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Full screen</dd>
+    <dt>Parent area</dt><dd>SCR-MATCH-CARD</dd>
+    <dt>Source</dt><dd><code>index.html:9338</code></dd>
+    <dt>Main function/component</dt><dd><code>section#game + LiveV2 + buildPad()</code></dd>
+    <dt>Entry interactions</dt><dd>show(&#x27;game&#x27;) after THROW ORDER START GAME; Resume <em>(from: THROW ORDER dialog; Resume; NEXT ROUND from leaderboard)</em></dd>
+    <dt>Exit interactions</dt><dd>End Game (menu) -&gt; leaderboard; End Match -&gt; home; match complete overlay <em>(to: MATCH/GAME COMPLETE overlay; Main Menu items; leaderboard)</em></dd>
+    <dt>Required state</dt><dd>players + match config</dd>
+    <dt>Components used</dt><dd><code>dmd-display</code>, <code>livev2-player-card</code></dd>
+    <dt>Known notes / inconsistencies</dt><dd>DMD canvas + Live V2 player cards + fixed throw pad. Legacy #scoreWrap/#turnBar hidden under LIVE_V2 flag</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="SCR-LEADERBOARD">
+  <header><span class="uid">SCR-LEADERBOARD</span><h3>Match Leaderboard</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/screen-leaderboard.png" target="_blank"><img loading="lazy" src="screenshots/screen-leaderboard.png" alt="Match Leaderboard screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Full screen</dd>
+    <dt>Parent area</dt><dd>SCR-GAME</dd>
+    <dt>Source</dt><dd><code>index.html:9412</code></dd>
+    <dt>Main function/component</dt><dd><code>section#leaderboard + showLeaderboard() (27340) + fix170 re-skin (53569)</code></dd>
+    <dt>Entry interactions</dt><dd>awardAndShowLeaderboard(); pad &#x27;Finish Game -&gt; Leaderboard&#x27;; Main Menu &#x27;End Game&#x27; <em>(from: Finish Game button; End Game menu row)</em></dd>
+    <dt>Exit interactions</dt><dd>NEXT ROUND &gt; (next game); END MATCH -&gt; confirm -&gt; Home <em>(to: Game Scores popup; End Match confirm; next game)</em></dd>
+    <dt>Required state</dt><dd>finished game in match</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Static top row (STATS/settings/Start Screen) hidden at runtime by 500ms patcher; actions re-skinned to NEXT ROUND &gt;/GAME SCORES/END MATCH</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article></div><h2 id="popups">Popups & Overlays</h2><div class="grid">
+<article class="card" id="OVL-BOOT-SPLASH">
+  <header><span class="uid">OVL-BOOT-SPLASH</span><h3>Boot splash (LOADING)</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>SHATEKI QUEST logo + animated dots</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Overlay</dd>
+    <dt>Parent area</dt><dd>(root)</dd>
+    <dt>Source</dt><dd><code>index.html:657</code></dd>
+    <dt>Main function/component</dt><dd><code>#bootSplash</code></dd>
+    <dt>Entry interactions</dt><dd>automatic on page load <em>(from: page load)</em></dd>
+    <dt>Exit interactions</dt><dd>auto-hidden when boot completes <em>(to: Home)</em></dd>
+    <dt>Required state</dt><dd>none</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>SHATEKI QUEST logo + animated dots</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="PARTIAL-LIVE-UPDATES">
+  <header><span class="uid">PARTIAL-LIVE-UPDATES</span><h3>LIVE UPDATES panel</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/home-details-mobile.png" target="_blank"><img loading="lazy" src="screenshots/home-details-mobile.png" alt="LIVE UPDATES panel screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Partial screen</dd>
+    <dt>Parent area</dt><dd>SCR-HOME</dd>
+    <dt>Source</dt><dd><code>index.html (ticker patches; #psTicker 9295)</code></dd>
+    <dt>Main function/component</dt><dd><code>buildStartTicker()</code></dd>
+    <dt>Entry interactions</dt><dd>automatic on Home <em>(from: Home)</em></dd>
+    <dt>Exit interactions</dt><dd>n/a <em>(to: none)</em></dd>
+    <dt>Required state</dt><dd>cloud games feed</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Shows loading shimmer bar; content requires cloud (v_games_visible) - UNVERIFIED data rows. Sound/menu buttons v3SoundBtn/v3MenuBtn in code</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="CHIP-CLOUD-STATUS">
+  <header><span class="uid">CHIP-CLOUD-STATUS</span><h3>Cloud status chip</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>Static &#x27;Checking cloud...&#x27; text element absent from runtime DOM; a colored dot (amber/red) renders top-right instead</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Status indicator</dd>
+    <dt>Parent area</dt><dd>(root)</dd>
+    <dt>Source</dt><dd><code>index.html:9848</code></dd>
+    <dt>Main function/component</dt><dd><code>#cloudStatus</code></dd>
+    <dt>Entry interactions</dt><dd>automatic <em>(from: boot)</em></dd>
+    <dt>Exit interactions</dt><dd>n/a <em>(to: none)</em></dd>
+    <dt>Required state</dt><dd>none</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Static &#x27;Checking cloud...&#x27; text element absent from runtime DOM; a colored dot (amber/red) renders top-right instead</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="TOAST">
+  <header><span class="uid">TOAST</span><h3>Toast message</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-toast-coming-soon.png" target="_blank"><img loading="lazy" src="screenshots/popup-toast-coming-soon.png" alt="Toast message screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Toast</dd>
+    <dt>Parent area</dt><dd>(any)</dd>
+    <dt>Source</dt><dd><code>index.html toast()</code></dd>
+    <dt>Main function/component</dt><dd><code>toast()</code></dd>
+    <dt>Entry interactions</dt><dd>programmatic <em>(from: various)</em></dd>
+    <dt>Exit interactions</dt><dd>auto-timeout <em>(to: n/a)</em></dd>
+    <dt>Required state</dt><dd>none</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Observed: &#x27;Coming soon!&#x27;,&#x27;Game saved to local only (cloud failed)&#x27;,&#x27;No saved players&#x27;</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-SELECT-GAME-MODE">
+  <header><span class="uid">MOD-SELECT-GAME-MODE</span><h3>SELECT GAME MODE</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/modal-select-game-mode.png" target="_blank"><img loading="lazy" src="screenshots/modal-select-game-mode.png" alt="SELECT GAME MODE screenshot"></a><a href="screenshots/desktop-modal-select-game-mode.png" target="_blank"><img loading="lazy" src="screenshots/desktop-modal-select-game-mode.png" alt="SELECT GAME MODE screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>SCR-HOME</dd>
+    <dt>Source</dt><dd><code>index.html:9550 + options built at 31997</code></dd>
+    <dt>Main function/component</dt><dd><code>#startGameModal + arrangeStartActions()</code></dd>
+    <dt>Entry interactions</dt><dd>START GAME button <em>(from: Home)</em></dd>
+    <dt>Exit interactions</dt><dd>BACK footer; backdrop click; Escape <em>(to: MATCH PLAY submenu; TOURNAMENT setup; PRACTICE submenu; TRAINING toast)</em></dd>
+    <dt>Required state</dt><dd>none</dd>
+    <dt>Components used</dt><dd><code>back-footer-ms2</code>, <code>option-badge</code></dd>
+    <dt>Known notes / inconsistencies</dt><dd>Options: MATCH PLAY / TOURNAMENT (BETA) / PRACTICE / TRAINING (coming soon)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-MATCH-PLAY-VARIANTS">
+  <header><span class="uid">MOD-MATCH-PLAY-VARIANTS</span><h3>MATCH PLAY (Classic/Turbo)</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/modal-match-play-variants.png" target="_blank"><img loading="lazy" src="screenshots/modal-match-play-variants.png" alt="MATCH PLAY (Classic/Turbo) screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal substate</dd>
+    <dt>Parent area</dt><dd>MOD-SELECT-GAME-MODE</dd>
+    <dt>Source</dt><dd><code>index.html:32054</code></dd>
+    <dt>Main function/component</dt><dd><code>openMatchVariantMenu()</code></dd>
+    <dt>Entry interactions</dt><dd>MATCH PLAY option <em>(from: Select Game Mode)</em></dd>
+    <dt>Exit interactions</dt><dd>BACK (rebuilds mode list via arrangeStartActions) <em>(to: Match Card)</em></dd>
+    <dt>Required state</dt><dd>none</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Same modal shell reused - body innerHTML swapped</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-PRACTICE-TYPES">
+  <header><span class="uid">MOD-PRACTICE-TYPES</span><h3>PRACTICE MODE (Classic/VS AI/VS Shadow)</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/modal-practice-types.png" target="_blank"><img loading="lazy" src="screenshots/modal-practice-types.png" alt="PRACTICE MODE (Classic/VS AI/VS Shadow) screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal substate</dd>
+    <dt>Parent area</dt><dd>MOD-SELECT-GAME-MODE</dd>
+    <dt>Source</dt><dd><code>index.html:32101</code></dd>
+    <dt>Main function/component</dt><dd><code>openPracticeTypeMenu()</code></dd>
+    <dt>Entry interactions</dt><dd>PRACTICE option <em>(from: Select Game Mode)</em></dd>
+    <dt>Exit interactions</dt><dd>BACK <em>(to: Match Card)</em></dd>
+    <dt>Required state</dt><dd>none</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>VS AI disabled (coming soon)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-TOURNAMENT-SETUP">
+  <header><span class="uid">MOD-TOURNAMENT-SETUP</span><h3>TOURNAMENT setup (stepped)</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/modal-tournament-setup.png" target="_blank"><img loading="lazy" src="screenshots/modal-tournament-setup.png" alt="TOURNAMENT setup (stepped) screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-SELECT-GAME-MODE</dd>
+    <dt>Source</dt><dd><code>index.html:48296</code></dd>
+    <dt>Main function/component</dt><dd><code>openTournamentSteppedSetup()</code></dd>
+    <dt>Entry interactions</dt><dd>TOURNAMENT (BETA) option <em>(from: Select Game Mode)</em></dd>
+    <dt>Exit interactions</dt><dd>BACK / close <em>(to: Tournament bracket flow)</em></dd>
+    <dt>Required state</dt><dd>none</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Route guarded by START_TOURNAMENT_ROUTE_RESTORE_V1 + route-blocker-guard-v2</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-TOURNAMENT-BRACKET">
+  <header><span class="uid">MOD-TOURNAMENT-BRACKET</span><h3>Tournament bracket/tree</h3><span class="badge no">Not verified</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>UNVERIFIED - full tournament not exercised in audit</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-TOURNAMENT-SETUP</dd>
+    <dt>Source</dt><dd><code>index.html:48911/53250</code></dd>
+    <dt>Main function/component</dt><dd><code>openTree()/openTournament()</code></dd>
+    <dt>Entry interactions</dt><dd>after tournament setup <em>(from: Tournament setup)</em></dd>
+    <dt>Exit interactions</dt><dd>close <em>(to: game)</em></dd>
+    <dt>Required state</dt><dd>4/8 players</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>UNVERIFIED - full tournament not exercised in audit</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-ADD-PLAYER">
+  <header><span class="uid">MOD-ADD-PLAYER</span><h3>NEW PLAYER</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-add-player-modal.png" target="_blank"><img loading="lazy" src="screenshots/popup-add-player-modal.png" alt="NEW PLAYER screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>SCR-MATCH-CARD</dd>
+    <dt>Source</dt><dd><code>index.html:9474</code></dd>
+    <dt>Main function/component</dt><dd><code>#addPlayerModal</code></dd>
+    <dt>Entry interactions</dt><dd>SAVE NEW PLAYER button <em>(from: Match Card)</em></dd>
+    <dt>Exit interactions</dt><dd>np-back arrow; np-close X; backdrop <em>(to: Match Card)</em></dd>
+    <dt>Required state</dt><dd>none</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>First/Nickname(+generate)/Last/Initials fields; SAVE PLAYER disabled until valid; save writes to cloud players table</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-SELECT-PLAYER">
+  <header><span class="uid">MOD-SELECT-PLAYER</span><h3>SELECT PLAYERS</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-select-player-modal.png" target="_blank"><img loading="lazy" src="screenshots/popup-select-player-modal.png" alt="SELECT PLAYERS screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>SCR-MATCH-CARD</dd>
+    <dt>Source</dt><dd><code>index.html:9517</code></dd>
+    <dt>Main function/component</dt><dd><code>#selectPlayerModal</code></dd>
+    <dt>Entry interactions</dt><dd>ADD SAVED button <em>(from: Match Card)</em></dd>
+    <dt>Exit interactions</dt><dd>CONFIRM PLAYERS; BACK; backdrop <em>(to: Match Card)</em></dd>
+    <dt>Required state</dt><dd>saved players (cloud/cache)</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Search + RECENT/A-Z/RANK sort chips; hidden native select kept for legacy fix129 dedupe</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-MATCH-LENGTH">
+  <header><span class="uid">MOD-MATCH-LENGTH</span><h3>MATCH LENGTH</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/modal-match-length.png" target="_blank"><img loading="lazy" src="screenshots/modal-match-length.png" alt="MATCH LENGTH screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>SCR-MATCH-CARD</dd>
+    <dt>Source</dt><dd><code>index.html:9566</code></dd>
+    <dt>Main function/component</dt><dd><code>#matchLengthModal</code></dd>
+    <dt>Entry interactions</dt><dd>SELECT MATCH LENGTH button <em>(from: Match Card)</em></dd>
+    <dt>Exit interactions</dt><dd>ml-back arrow; BACK footer; backdrop <em>(to: THROW ORDER dialog)</em></dd>
+    <dt>Required state</dt><dd>2+ players on card</dd>
+    <dt>Components used</dt><dd><code>back-footer-ms2</code>, <code>back-icon-ml</code>, <code>btn-ms-primary</code></dd>
+    <dt>Known notes / inconsistencies</dt><dd>Grid of game counts; primary label swaps by mode (SET THROW ORDER / START)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-THROW-ORDER">
+  <header><span class="uid">MOD-THROW-ORDER</span><h3>THROW ORDER</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/after-ml-start.png" target="_blank"><img loading="lazy" src="screenshots/after-ml-start.png" alt="THROW ORDER screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-MATCH-LENGTH</dd>
+    <dt>Source</dt><dd><code>index.html (dynamic; showPlayerOrderDialog)</code></dd>
+    <dt>Main function/component</dt><dd><code>showPlayerOrderDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>after MATCH LENGTH start <em>(from: Match Length)</em></dd>
+    <dt>Exit interactions</dt><dd>START GAME; BACK <em>(to: Live Game)</em></dd>
+    <dt>Required state</dt><dd>players + length</dd>
+    <dt>Components used</dt><dd><code>btn-practice-cta</code>, <code>order-row</code></dd>
+    <dt>Known notes / inconsistencies</dt><dd>Per-player up/down reorder; #1 THROWS FIRST</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-MAIN-MENU">
+  <header><span class="uid">MOD-MAIN-MENU</span><h3>Main Menu (in-game)</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-main-menu-game.png" target="_blank"><img loading="lazy" src="screenshots/popup-main-menu-game.png" alt="Main Menu (in-game) screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal / menu</dd>
+    <dt>Parent area</dt><dd>SCR-GAME</dd>
+    <dt>Source</dt><dd><code>index.html:10138</code></dd>
+    <dt>Main function/component</dt><dd><code>openMainMenuDialog() (fix106)</code></dd>
+    <dt>Entry interactions</dt><dd>settings/hamburger button (#settingsBtnGame) <em>(from: Game; Leaderboard)</em></dd>
+    <dt>Exit interactions</dt><dd>chevron back; X; Close footer; backdrop; Escape <em>(to: Restart confirm; End Game; End Match; Remove Player; Stats submenu)</em></dd>
+    <dt>Required state</dt><dd>in game (RESUME row elsewhere)</dd>
+    <dt>Components used</dt><dd><code>back-icon-menu-modal</code>, <code>close-icon-106</code>, <code>close-text-btn</code>, <code>menu-row</code></dd>
+    <dt>Known notes / inconsistencies</dt><dd>Rows: New Layout (Beta) toggle / Restart Game / End Game / End Match / Remove Player / Stats</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-INGAME-STATS-HUB">
+  <header><span class="uid">MOD-INGAME-STATS-HUB</span><h3>Stats (in-game hub)</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-ingame-stats-menu.png" target="_blank"><img loading="lazy" src="screenshots/popup-ingame-stats-menu.png" alt="Stats (in-game hub) screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal / menu</dd>
+    <dt>Parent area</dt><dd>MOD-MAIN-MENU</dd>
+    <dt>Source</dt><dd><code>index.html:24131</code></dd>
+    <dt>Main function/component</dt><dd><code>openStatsHubDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>Main Menu &gt; Stats; pad menu <em>(from: Main Menu)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close; Escape <em>(to: Game Race/Game Stats/Match Stats/High Scores/Low Scores)</em></dd>
+    <dt>Required state</dt><dd>in game</dd>
+    <dt>Components used</dt><dd><code>back-icon-menu-modal</code>, <code>cancel-text-btn</code>, <code>close-icon-menu-modal</code>, <code>menu-row</code></dd>
+    <dt>Known notes / inconsistencies</dt><dd>Origin-aware back routing (__sqSetStatsOrigin(&#x27;ingame&#x27;))</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-GAME-RACE">
+  <header><span class="uid">MOD-GAME-RACE</span><h3>Game Race</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-ingame-game-racescore-race-chart.png" target="_blank"><img loading="lazy" src="screenshots/popup-ingame-game-racescore-race-chart.png" alt="Game Race screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-INGAME-STATS-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:27942</code></dd>
+    <dt>Main function/component</dt><dd><code>openGameRaceDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>Stats hub row <em>(from: Stats hub)</em></dd>
+    <dt>Exit interactions</dt><dd>close/backdrop <em>(to: back to game)</em></dd>
+    <dt>Required state</dt><dd>in game</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Race chart of scores per round</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-GAME-STATS">
+  <header><span class="uid">MOD-GAME-STATS</span><h3>Game Stats</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-ingame-game-stats.png" target="_blank"><img loading="lazy" src="screenshots/popup-ingame-game-stats.png" alt="Game Stats screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-INGAME-STATS-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:24189</code></dd>
+    <dt>Main function/component</dt><dd><code>openGameStatsDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>Stats hub row <em>(from: Stats hub)</em></dd>
+    <dt>Exit interactions</dt><dd>close/backdrop <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>in game</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Current game breakdown</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-MATCH-STATS">
+  <header><span class="uid">MOD-MATCH-STATS</span><h3>Match Stats</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-ingame-match-stats.png" target="_blank"><img loading="lazy" src="screenshots/popup-ingame-match-stats.png" alt="Match Stats screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-INGAME-STATS-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:24316</code></dd>
+    <dt>Main function/component</dt><dd><code>openMatchStatsDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>Stats hub row <em>(from: Stats hub)</em></dd>
+    <dt>Exit interactions</dt><dd>close/backdrop <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>in game</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Match totals and averages</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-HS-OFFICIAL">
+  <header><span class="uid">MOD-HS-OFFICIAL</span><h3>High Scores (Official)</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-ingame-high-scores-official.png" target="_blank"><img loading="lazy" src="screenshots/popup-ingame-high-scores-official.png" alt="High Scores (Official) screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-INGAME-STATS-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:24565</code></dd>
+    <dt>Main function/component</dt><dd><code>openHighScoresDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>Stats hub row <em>(from: Stats hub)</em></dd>
+    <dt>Exit interactions</dt><dd>close/backdrop <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud data</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Shell verified; rows UNVERIFIED (cloud blocked)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-LOW-SCORES">
+  <header><span class="uid">MOD-LOW-SCORES</span><h3>Low Scores (Official)</h3><span class="badge no">Not verified</span></header>
+  <div class="shots"><a href="screenshots/popup-ingame-low-scores-official.png" target="_blank"><img loading="lazy" src="screenshots/popup-ingame-low-scores-official.png" alt="Low Scores (Official) screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-INGAME-STATS-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:24723</code></dd>
+    <dt>Main function/component</dt><dd><code>openLowScoresDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>Stats hub row <em>(from: Stats hub)</em></dd>
+    <dt>Exit interactions</dt><dd>close/backdrop <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud data</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>No modal shell rendered at runtime with cloud blocked - possible unguarded data dependency</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-REMOVE-PLAYER">
+  <header><span class="uid">MOD-REMOVE-PLAYER</span><h3>Remove Player</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-remove-player-menu.png" target="_blank"><img loading="lazy" src="screenshots/popup-remove-player-menu.png" alt="Remove Player screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal / menu</dd>
+    <dt>Parent area</dt><dd>MOD-MAIN-MENU</dd>
+    <dt>Source</dt><dd><code>index.html:50380</code></dd>
+    <dt>Main function/component</dt><dd><code>openRemovePlayerMenu()</code></dd>
+    <dt>Entry interactions</dt><dd>Main Menu &gt; Remove Player <em>(from: Main Menu)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: back to game)</em></dd>
+    <dt>Required state</dt><dd>in game 2+ players</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Removes player from current game only</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-RESTART-CONFIRM">
+  <header><span class="uid">MOD-RESTART-CONFIRM</span><h3>Restart Game confirm</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-ingame-restart-gamereset-this-game.png" target="_blank"><img loading="lazy" src="screenshots/popup-ingame-restart-gamereset-this-game.png" alt="Restart Game confirm screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Confirmation dialog</dd>
+    <dt>Parent area</dt><dd>MOD-MAIN-MENU</dd>
+    <dt>Source</dt><dd><code>index.html:50377-region</code></dd>
+    <dt>Main function/component</dt><dd><code>doRestart/confirm</code></dd>
+    <dt>Entry interactions</dt><dd>Main Menu &gt; Restart Game <em>(from: Main Menu)</em></dd>
+    <dt>Exit interactions</dt><dd>confirm/cancel <em>(to: game (reset))</em></dd>
+    <dt>Required state</dt><dd>in game</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd></dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-END-GAME-CONFIRM">
+  <header><span class="uid">MOD-END-GAME-CONFIRM</span><h3>End Game confirm</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>Uses window.confirm(&#x27;End game? ...&#x27;) - inconsistent with styled confirms elsewhere</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Confirmation dialog</dd>
+    <dt>Parent area</dt><dd>MOD-MAIN-MENU</dd>
+    <dt>Source</dt><dd><code>index.html:50377</code></dd>
+    <dt>Main function/component</dt><dd><code>doEndGame() (native confirm())</code></dd>
+    <dt>Entry interactions</dt><dd>Main Menu &gt; End Game <em>(from: Main Menu)</em></dd>
+    <dt>Exit interactions</dt><dd>OK/Cancel <em>(to: Leaderboard)</em></dd>
+    <dt>Required state</dt><dd>in game</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Uses window.confirm(&#x27;End game? ...&#x27;) - inconsistent with styled confirms elsewhere</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="OVL-GAME-COMPLETE">
+  <header><span class="uid">OVL-GAME-COMPLETE</span><h3>GAME/MATCH COMPLETE celebration</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-match-complete.png" target="_blank"><img loading="lazy" src="screenshots/popup-match-complete.png" alt="GAME/MATCH COMPLETE celebration screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Overlay / carousel</dd>
+    <dt>Parent area</dt><dd>SCR-GAME</dd>
+    <dt>Source</dt><dd><code>index.html:14960</code></dd>
+    <dt>Main function/component</dt><dd><code>openGameCompleteDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>automatic when final round finishes <em>(from: gameplay completion)</em></dd>
+    <dt>Exit interactions</dt><dd>backdrop click only (no close button) <em>(to: VIEW BREAKDOWN; advance-match; decider (draw); backdrop-dismiss -&gt; finished game screen)</em></dd>
+    <dt>Required state</dt><dd>finished game</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>3-page carousel (dots + NEXT). Winner panel/stats; RANK MOVEMENT &#x27;Pending&#x27; when cloud absent. Draw shows START DECIDER SHOUTOUT (sic)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-BREAKDOWN">
+  <header><span class="uid">MOD-BREAKDOWN</span><h3>Match breakdown</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-match-breakdown.png" target="_blank"><img loading="lazy" src="screenshots/popup-match-breakdown.png" alt="Match breakdown screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>OVL-GAME-COMPLETE</dd>
+    <dt>Source</dt><dd><code>index.html:15140-region</code></dd>
+    <dt>Main function/component</dt><dd><code>breakdown builder</code></dd>
+    <dt>Entry interactions</dt><dd>VIEW BREAKDOWN button <em>(from: Game Complete)</em></dd>
+    <dt>Exit interactions</dt><dd>breakdownBack; backdrop; Escape <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>finished game</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Button on carousel page not always visible at capture time</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-DECIDER">
+  <header><span class="uid">MOD-DECIDER</span><h3>Decider shootout</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/game-complete-or-end.png" target="_blank"><img loading="lazy" src="screenshots/game-complete-or-end.png" alt="Decider shootout screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>OVL-GAME-COMPLETE</dd>
+    <dt>Source</dt><dd><code>index.html:15395</code></dd>
+    <dt>Main function/component</dt><dd><code>openDeciderShootoutDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>START DECIDER SHOUTOUT on draw <em>(from: Game Complete (draw))</em></dd>
+    <dt>Exit interactions</dt><dd>per-flow <em>(to: Shootout complete)</em></dd>
+    <dt>Required state</dt><dd>drawn game</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Entry button verified on draw; shootout itself not played</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-SHOOTOUT-COMPLETE">
+  <header><span class="uid">MOD-SHOOTOUT-COMPLETE</span><h3>Shootout complete</h3><span class="badge no">Not verified</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>UNVERIFIED - decider not played</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-DECIDER</dd>
+    <dt>Source</dt><dd><code>index.html:15882</code></dd>
+    <dt>Main function/component</dt><dd><code>openShootoutCompleteDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>decider finish <em>(from: Decider)</em></dd>
+    <dt>Exit interactions</dt><dd>per-flow <em>(to: Leaderboard/advance)</em></dd>
+    <dt>Required state</dt><dd>decider played</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>UNVERIFIED - decider not played</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-GAME-SCORES">
+  <header><span class="uid">MOD-GAME-SCORES</span><h3>Game Scores</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-game-scores.png" target="_blank"><img loading="lazy" src="screenshots/popup-game-scores.png" alt="Game Scores screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>SCR-LEADERBOARD</dd>
+    <dt>Source</dt><dd><code>index.html:27407</code></dd>
+    <dt>Main function/component</dt><dd><code>openGameScoresDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>GAME SCORES button <em>(from: Leaderboard)</em></dd>
+    <dt>Exit interactions</dt><dd>Close/Back/backdrop/Escape <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>match history</dd>
+    <dt>Components used</dt><dd><code>close-text-btn</code></dd>
+    <dt>Known notes / inconsistencies</dt><dd>Per-game score table</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-END-MATCH-CONFIRM">
+  <header><span class="uid">MOD-END-MATCH-CONFIRM</span><h3>End Match confirm</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-end-match-confirm.png" target="_blank"><img loading="lazy" src="screenshots/popup-end-match-confirm.png" alt="End Match confirm screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Confirmation dialog</dd>
+    <dt>Parent area</dt><dd>SCR-LEADERBOARD</dd>
+    <dt>Source</dt><dd><code>index.html:53578</code></dd>
+    <dt>Main function/component</dt><dd><code>openEndMatchConfirm() (fix170)</code></dd>
+    <dt>Entry interactions</dt><dd>END MATCH button <em>(from: Leaderboard)</em></dd>
+    <dt>Exit interactions</dt><dd>YES/NO <em>(to: Home)</em></dd>
+    <dt>Required state</dt><dd>match in progress</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd></dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-PLAYER-HUB-GATE">
+  <header><span class="uid">MOD-PLAYER-HUB-GATE</span><h3>PLAYER HUB (player select gate)</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-player-hub-gate.png" target="_blank"><img loading="lazy" src="screenshots/popup-player-hub-gate.png" alt="PLAYER HUB (player select gate) screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>SCR-HOME</dd>
+    <dt>Source</dt><dd><code>index.html:46099</code></dd>
+    <dt>Main function/component</dt><dd><code>__sqOpenPlayerHubGate()</code></dd>
+    <dt>Entry interactions</dt><dd>PLAYER HUB button <em>(from: Home)</em></dd>
+    <dt>Exit interactions</dt><dd>cancel/backdrop <em>(to: Player Hub)</em></dd>
+    <dt>Required state</dt><dd>1+ players known</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>With zero players: toast &#x27;No saved players&#x27; and no modal (verified)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-PLAYER-HUB">
+  <header><span class="uid">MOD-PLAYER-HUB</span><h3>PLAYER HUB</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-player-hub-selected.png" target="_blank"><img loading="lazy" src="screenshots/popup-player-hub-selected.png" alt="PLAYER HUB screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-PLAYER-HUB-GATE</dd>
+    <dt>Source</dt><dd><code>index.html:45900-region</code></dd>
+    <dt>Main function/component</dt><dd><code>player hub builder</code></dd>
+    <dt>Entry interactions</dt><dd>after player pick <em>(from: Hub gate)</em></dd>
+    <dt>Exit interactions</dt><dd>close/back <em>(to: edit fields/save)</em></dd>
+    <dt>Required state</dt><dd>selected player</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Cloud-backed profile editing; data rows UNVERIFIED (cloud blocked)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-STATS-HUB">
+  <header><span class="uid">MOD-STATS-HUB</span><h3>PLAYER STATS hub</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-player-stats-hub.png" target="_blank"><img loading="lazy" src="screenshots/popup-player-stats-hub.png" alt="PLAYER STATS hub screenshot"></a><a href="screenshots/popup-stats-player-stats.png" target="_blank"><img loading="lazy" src="screenshots/popup-stats-player-stats.png" alt="PLAYER STATS hub screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>SCR-HOME</dd>
+    <dt>Source</dt><dd><code>index.html:38667</code></dd>
+    <dt>Main function/component</dt><dd><code>openPlayerStatsHub()</code></dd>
+    <dt>Entry interactions</dt><dd>STATS button <em>(from: Home; leaderboard STATS (legacy))</em></dd>
+    <dt>Exit interactions</dt><dd>chevron back; X; Escape; backdrop <em>(to: 9 stats sub-dialogs)</em></dd>
+    <dt>Required state</dt><dd>none (rows need cloud)</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Header player picker reads CLOUD only - shows &#x27;No saved players found.&#x27; even with local cache (verified). Rows: Player Stats/Level Ladder/Latest Matches/Player High Scores/Progression/Target Hit %/Target Points %/Player H2H/H2H Matchups (disabled)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-STATS-PLAYER-PROFILE">
+  <header><span class="uid">MOD-STATS-PLAYER-PROFILE</span><h3>Player Stats (profile)</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-stats-player-stats.png" target="_blank"><img loading="lazy" src="screenshots/popup-stats-player-stats.png" alt="Player Stats (profile) screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-STATS-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:37842</code></dd>
+    <dt>Main function/component</dt><dd><code>openPlayerStatsDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>hub row Player Stats <em>(from: Stats hub)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: sub-views)</em></dd>
+    <dt>Required state</dt><dd>cloud player+games</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Shell opens; data UNVERIFIED (cloud)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-LEVEL-LADDER">
+  <header><span class="uid">MOD-LEVEL-LADDER</span><h3>Level Ladder (XP)</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-stats-level-ladder.png" target="_blank"><img loading="lazy" src="screenshots/popup-stats-level-ladder.png" alt="Level Ladder (XP) screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-STATS-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:38609</code></dd>
+    <dt>Main function/component</dt><dd><code>openXpLeaderboard()</code></dd>
+    <dt>Entry interactions</dt><dd>hub row Level Ladder <em>(from: Stats hub)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud data</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Title &#x27;🏅 Level Ladder&#x27;; rows UNVERIFIED (cloud)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-LATEST-MATCHES">
+  <header><span class="uid">MOD-LATEST-MATCHES</span><h3>Latest Matches</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-stats-latest-matches.png" target="_blank"><img loading="lazy" src="screenshots/popup-stats-latest-matches.png" alt="Latest Matches screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-STATS-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:39359</code></dd>
+    <dt>Main function/component</dt><dd><code>openPlayerLatestMatchesDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>hub row <em>(from: Stats hub)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud data</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>rows UNVERIFIED (cloud)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-PLAYER-HIGH-SCORES">
+  <header><span class="uid">MOD-PLAYER-HIGH-SCORES</span><h3>Player High Scores</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-stats-player-high-scores.png" target="_blank"><img loading="lazy" src="screenshots/popup-stats-player-high-scores.png" alt="Player High Scores screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-STATS-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:39640</code></dd>
+    <dt>Main function/component</dt><dd><code>openPlayerHighScoresDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>hub row <em>(from: Stats hub)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: score sheet)</em></dd>
+    <dt>Required state</dt><dd>cloud data</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>rows UNVERIFIED (cloud)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-PROGRESSION">
+  <header><span class="uid">MOD-PROGRESSION</span><h3>Progression</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-stats-progression.png" target="_blank"><img loading="lazy" src="screenshots/popup-stats-progression.png" alt="Progression screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-STATS-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:39781 (final of 3 defs)</code></dd>
+    <dt>Main function/component</dt><dd><code>openPlayerProgressionDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>hub row <em>(from: Stats hub)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud data</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>3 competing definitions in file; last wins</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-TARGET-HIT">
+  <header><span class="uid">MOD-TARGET-HIT</span><h3>Target Hit %</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-stats-target-hit.png" target="_blank"><img loading="lazy" src="screenshots/popup-stats-target-hit.png" alt="Target Hit % screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-STATS-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:52227 (final of 2)</code></dd>
+    <dt>Main function/component</dt><dd><code>openPlayerTargetHitDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>hub row <em>(from: Stats hub)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: SPIDER/PROGRESS sub-popups)</em></dd>
+    <dt>Required state</dt><dd>v_player_target_hit_pct rows</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Actions disabled until cloud rows exist (per code)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-TARGET-POINTS">
+  <header><span class="uid">MOD-TARGET-POINTS</span><h3>Target Points %</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-stats-target-points.png" target="_blank"><img loading="lazy" src="screenshots/popup-stats-target-points.png" alt="Target Points % screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-STATS-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:52513 (final of 2)</code></dd>
+    <dt>Main function/component</dt><dd><code>openPlayerTargetPointsDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>hub row <em>(from: Stats hub)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: PROGRESS sub-popup)</em></dd>
+    <dt>Required state</dt><dd>v_player_target_points_pct rows</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd></dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-PLAYER-H2H">
+  <header><span class="uid">MOD-PLAYER-H2H</span><h3>Player H2H</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-stats-player-h2h.png" target="_blank"><img loading="lazy" src="screenshots/popup-stats-player-h2h.png" alt="Player H2H screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-STATS-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:47921</code></dd>
+    <dt>Main function/component</dt><dd><code>openPlayerH2HDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>hub row <em>(from: Stats hub)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: opponent graph)</em></dd>
+    <dt>Required state</dt><dd>cloud data</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>rows UNVERIFIED (cloud)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-LEAGUE-RANKS">
+  <header><span class="uid">MOD-LEAGUE-RANKS</span><h3>LEAGUE / RANKINGS menu</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-league-ranks.png" target="_blank"><img loading="lazy" src="screenshots/popup-league-ranks.png" alt="LEAGUE / RANKINGS menu screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal / menu</dd>
+    <dt>Parent area</dt><dd>SCR-HOME</dd>
+    <dt>Source</dt><dd><code>index.html:53184 (final override)</code></dd>
+    <dt>Main function/component</dt><dd><code>openLeagueRankingsDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>LEAGUE button <em>(from: Home)</em></dd>
+    <dt>Exit interactions</dt><dd>chevron back; X; Escape; backdrop <em>(to: 7 league dialogs)</em></dd>
+    <dt>Required state</dt><dd>none</dd>
+    <dt>Components used</dt><dd><code>back-icon-menu-modal</code>, <code>back-text-btn</code>, <code>close-icon-menu-modal</code>, <code>close-text-btn</code>, <code>menu-row</code></dd>
+    <dt>Known notes / inconsistencies</dt><dd>Rows: Power Rankings/Premier League/High Score League/Streak League/Round High Scores/Top 50 Scores/Latest Scores</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-POWER-RANKINGS">
+  <header><span class="uid">MOD-POWER-RANKINGS</span><h3>Power Rankings</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-league-power-rankings.png" target="_blank"><img loading="lazy" src="screenshots/popup-league-power-rankings.png" alt="Power Rankings screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-LEAGUE-RANKS</dd>
+    <dt>Source</dt><dd><code>index.html:51232 + 53283 source</code></dd>
+    <dt>Main function/component</dt><dd><code>openPowerRankingsDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>menu row <em>(from: League menu)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close buttons <em>(to: back to menu)</em></dd>
+    <dt>Required state</dt><dd>cloud v_power_rankings_* views</dd>
+    <dt>Components used</dt><dd><code>back-text-btn</code>, <code>tab-pill</code></dd>
+    <dt>Known notes / inconsistencies</dt><dd>Official/Turbo/Practice tabs verified; stuck &#x27;Loading...&#x27; with cloud blocked (no error state shown - finding)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-PREMIER-LEAGUE">
+  <header><span class="uid">MOD-PREMIER-LEAGUE</span><h3>Premier League</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-league-premier-league.png" target="_blank"><img loading="lazy" src="screenshots/popup-league-premier-league.png" alt="Premier League screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-LEAGUE-RANKS</dd>
+    <dt>Source</dt><dd><code>index.html:51452 (final of 2)</code></dd>
+    <dt>Main function/component</dt><dd><code>openPremierLeagueDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>menu row <em>(from: League menu)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud data</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>rows UNVERIFIED (cloud)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-HIGH-SCORE-LEAGUE">
+  <header><span class="uid">MOD-HIGH-SCORE-LEAGUE</span><h3>High Score League</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-league-high-score-league.png" target="_blank"><img loading="lazy" src="screenshots/popup-league-high-score-league.png" alt="High Score League screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-LEAGUE-RANKS</dd>
+    <dt>Source</dt><dd><code>index.html (final wrapper ~50162; 3 base defs)</code></dd>
+    <dt>Main function/component</dt><dd><code>openHighScoreLeagueDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>menu row <em>(from: League menu)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud data</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>4 window.* definitions in file; last wins</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-STREAK-LEAGUE">
+  <header><span class="uid">MOD-STREAK-LEAGUE</span><h3>Streak League</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-league-streak-league.png" target="_blank"><img loading="lazy" src="screenshots/popup-league-streak-league.png" alt="Streak League screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-LEAGUE-RANKS</dd>
+    <dt>Source</dt><dd><code>index.html:35186</code></dd>
+    <dt>Main function/component</dt><dd><code>openStreakLeagueDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>menu row <em>(from: League menu)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>v_player_target_streaks</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Required-view missing/empty state per code</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-ROUND-HIGH-SCORES">
+  <header><span class="uid">MOD-ROUND-HIGH-SCORES</span><h3>Round High Scores</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-league-round-high-scores.png" target="_blank"><img loading="lazy" src="screenshots/popup-league-round-high-scores.png" alt="Round High Scores screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-LEAGUE-RANKS</dd>
+    <dt>Source</dt><dd><code>index.html:45724 (v85; fix97 dynamic)</code></dd>
+    <dt>Main function/component</dt><dd><code>openRoundHighScoresDialog_v85()</code></dd>
+    <dt>Entry interactions</dt><dd>menu row <em>(from: League menu)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>v_round_high_scores_modal</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>3 versions retained (base/v82/v85); static #roundHighScoresModal QUARANTINED</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-TOP50">
+  <header><span class="uid">MOD-TOP50</span><h3>Top 50 Scores</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-league-top50-scores.png" target="_blank"><img loading="lazy" src="screenshots/popup-league-top50-scores.png" alt="Top 50 Scores screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-LEAGUE-RANKS</dd>
+    <dt>Source</dt><dd><code>index.html:51853 (final of 4)</code></dd>
+    <dt>Main function/component</dt><dd><code>openTop50ScoresDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>menu row <em>(from: League menu)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close <em>(to: score sheet)</em></dd>
+    <dt>Required state</dt><dd>v_top50_scores_official/practice</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Official/Practice (+Turbo tabs via fix97/168); 4 definitions in file</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-LATEST-SCORES">
+  <header><span class="uid">MOD-LATEST-SCORES</span><h3>Latest Scores</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-league-latest-scores.png" target="_blank"><img loading="lazy" src="screenshots/popup-league-latest-scores.png" alt="Latest Scores screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-LEAGUE-RANKS</dd>
+    <dt>Source</dt><dd><code>index.html:37067</code></dd>
+    <dt>Main function/component</dt><dd><code>openLatestScoresDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>menu row <em>(from: League menu)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close <em>(to: score sheet)</em></dd>
+    <dt>Required state</dt><dd>games rows</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Official/Practice classification logic fragile per header comment</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-ADMIN-KEYPAD">
+  <header><span class="uid">MOD-ADMIN-KEYPAD</span><h3>Admin Code keypad</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-admin-keypad.png" target="_blank"><img loading="lazy" src="screenshots/popup-admin-keypad.png" alt="Admin Code keypad screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>SCR-HOME</dd>
+    <dt>Source</dt><dd><code>index.html:375</code></dd>
+    <dt>Main function/component</dt><dd><code>showAdminKeypad()</code></dd>
+    <dt>Entry interactions</dt><dd>ADMIN link <em>(from: Home)</em></dd>
+    <dt>Exit interactions</dt><dd>Clear/backspace/Return; cancel via backdrop <em>(to: Admin Hub)</em></dd>
+    <dt>Required state</dt><dd>none</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Local code 4936; UI-gate only. Overrides older text-password modal (13540)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-ADMIN-HUB">
+  <header><span class="uid">MOD-ADMIN-HUB</span><h3>ADMIN HUB</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-admin-hub.png" target="_blank"><img loading="lazy" src="screenshots/popup-admin-hub.png" alt="ADMIN HUB screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal / menu</dd>
+    <dt>Parent area</dt><dd>MOD-ADMIN-KEYPAD</dd>
+    <dt>Source</dt><dd><code>index.html:9593</code></dd>
+    <dt>Main function/component</dt><dd><code>#adminHubModal + openAdminHub() (10855)</code></dd>
+    <dt>Entry interactions</dt><dd>correct admin code <em>(from: Admin keypad)</em></dd>
+    <dt>Exit interactions</dt><dd>back arrow; X; backdrop <em>(to: 9 admin tools)</em></dd>
+    <dt>Required state</dt><dd>admin authed (session)</dd>
+    <dt>Components used</dt><dd><code>back-icon-menu-modal</code>, <code>close-icon-menu-modal</code>, <code>menu-row</code></dd>
+    <dt>Known notes / inconsistencies</dt><dd>Sections GAMES/LEAGUE/PLAYERS/DATA; &#x27;Remove Duplicate High Scores&#x27; danger row NOT exercised (destructive)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-ALL-GAMES">
+  <header><span class="uid">MOD-ALL-GAMES</span><h3>All Games</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-admin-all-games.png" target="_blank"><img loading="lazy" src="screenshots/popup-admin-all-games.png" alt="All Games screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-ADMIN-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:9787</code></dd>
+    <dt>Main function/component</dt><dd><code>#allGamesModal + openAllGamesDialog() (29000)</code></dd>
+    <dt>Entry interactions</dt><dd>admin hub row <em>(from: Admin Hub)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud games</dd>
+    <dt>Components used</dt><dd><code>back-text-btn</code></dd>
+    <dt>Known notes / inconsistencies</dt><dd>rows UNVERIFIED (cloud)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-ALL-SCORES">
+  <header><span class="uid">MOD-ALL-SCORES</span><h3>All Scores</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-admin-all-scores.png" target="_blank"><img loading="lazy" src="screenshots/popup-admin-all-scores.png" alt="All Scores screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-ADMIN-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:10988</code></dd>
+    <dt>Main function/component</dt><dd><code>openAllScoresDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>admin hub row <em>(from: Admin Hub)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud games</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Remove player from a game (destructive rows not clicked)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-HS-ADMIN">
+  <header><span class="uid">MOD-HS-ADMIN</span><h3>High Scores — Admin (League/Practice)</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-admin-practice-high-scores.png" target="_blank"><img loading="lazy" src="screenshots/popup-admin-practice-high-scores.png" alt="High Scores — Admin (League/Practice) screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-ADMIN-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:28779</code></dd>
+    <dt>Main function/component</dt><dd><code>openHighScoresAdminDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>admin hub rows (League/Practice) <em>(from: Admin Hub)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud tables</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>One dialog serves both rows with mode param; modal stacking observed when reopened quickly (see 09)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-LEAGUE-LOWS-ADMIN">
+  <header><span class="uid">MOD-LEAGUE-LOWS-ADMIN</span><h3>League Low Scores — Admin</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-admin-league-low-scores.png" target="_blank"><img loading="lazy" src="screenshots/popup-admin-league-low-scores.png" alt="League Low Scores — Admin screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-ADMIN-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:9801</code></dd>
+    <dt>Main function/component</dt><dd><code>#leagueLowsAdminModal + openLeagueLowsAdminDialog() (28871)</code></dd>
+    <dt>Entry interactions</dt><dd>admin hub row <em>(from: Admin Hub)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud data</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>&#x27;Loading league low scores...&#x27; state captured</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-SAVED-PLAYERS-ADMIN">
+  <header><span class="uid">MOD-SAVED-PLAYERS-ADMIN</span><h3>Saved Players Admin</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-admin-saved-players.png" target="_blank"><img loading="lazy" src="screenshots/popup-admin-saved-players.png" alt="Saved Players Admin screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-ADMIN-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:9834</code></dd>
+    <dt>Main function/component</dt><dd><code>#savedPlayersAdminModal + openSavedPlayersAdminDialog() (11325)</code></dd>
+    <dt>Entry interactions</dt><dd>admin hub row <em>(from: Admin Hub)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud players</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd></dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-PBGR-ADMIN">
+  <header><span class="uid">MOD-PBGR-ADMIN</span><h3>PB / GR Admin</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-admin-pbgr.png" target="_blank"><img loading="lazy" src="screenshots/popup-admin-pbgr.png" alt="PB / GR Admin screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-ADMIN-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:43855</code></dd>
+    <dt>Main function/component</dt><dd><code>#pbgrAdminModal + openPBGRAdminDialog() (11266)</code></dd>
+    <dt>Entry interactions</dt><dd>admin hub row <em>(from: Admin Hub)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud PB/WR views</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd></dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-DATA-ADMIN">
+  <header><span class="uid">MOD-DATA-ADMIN</span><h3>DATA (metrics)</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-admin-data.png" target="_blank"><img loading="lazy" src="screenshots/popup-admin-data.png" alt="DATA (metrics) screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-ADMIN-HUB</dd>
+    <dt>Source</dt><dd><code>index.html:9743</code></dd>
+    <dt>Main function/component</dt><dd><code>#dataAdminModal</code></dd>
+    <dt>Entry interactions</dt><dd>admin hub row <em>(from: Admin Hub)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close <em>(to: Data chart)</em></dd>
+    <dt>Required state</dt><dd>none</dd>
+    <dt>Components used</dt><dd><code>back-text-btn</code></dd>
+    <dt>Known notes / inconsistencies</dt><dd>Counts read cloud; stray &lt;/div&gt; at 9784 makes #dataChartModal a sibling inside wrapper - fragile markup</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-DATA-CHART">
+  <header><span class="uid">MOD-DATA-CHART</span><h3>Data chart (Daily Games / Unique Log Ons)</h3><span class="badge part">Partially verified</span></header>
+  <div class="shots"><a href="screenshots/popup-admin-data-chart.png" target="_blank"><img loading="lazy" src="screenshots/popup-admin-data-chart.png" alt="Data chart (Daily Games / Unique Log Ons) screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-DATA-ADMIN</dd>
+    <dt>Source</dt><dd><code>index.html:9763</code></dd>
+    <dt>Main function/component</dt><dd><code>#dataChartModal + openChart() (42837)</code></dd>
+    <dt>Entry interactions</dt><dd>Daily Games / Unique Log Ons buttons <em>(from: DATA modal)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud data</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Daily/Weekly/Monthly/Yearly range chips</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-ROUND-HS-LEGACY">
+  <header><span class="uid">MOD-ROUND-HS-LEGACY</span><h3>Round High Scores (static legacy)</h3><span class="badge na">Not applicable (legacy/unreachable)</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>Self-labelled LEGACY/QUARANTINED at 9815; unreachable - kept for rollback</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>none</dd>
+    <dt>Source</dt><dd><code>index.html:9820</code></dd>
+    <dt>Main function/component</dt><dd><code>#roundHighScoresModal</code></dd>
+    <dt>Entry interactions</dt><dd>none (quarantined) <em>(from: none)</em></dd>
+    <dt>Exit interactions</dt><dd>Back/Close <em>(to: none)</em></dd>
+    <dt>Required state</dt><dd>n/a</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Self-labelled LEGACY/QUARANTINED at 9815; unreachable - kept for rollback</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MENU-SETTINGS-GAME">
+  <header><span class="uid">MENU-SETTINGS-GAME</span><h3>Settings menu (game; legacy)</h3><span class="badge na">Not applicable (legacy/unreachable)</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>Empty element at runtime; superseded by fix106 Main Menu</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Menu</dd>
+    <dt>Parent area</dt><dd>SCR-GAME</dd>
+    <dt>Source</dt><dd><code>index.html:9364</code></dd>
+    <dt>Main function/component</dt><dd><code>#settingsMenuGame</code></dd>
+    <dt>Entry interactions</dt><dd>legacy (settings button now opens Main Menu) <em>(from: none)</em></dd>
+    <dt>Exit interactions</dt><dd>n/a <em>(to: none)</em></dd>
+    <dt>Required state</dt><dd>n/a</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Empty element at runtime; superseded by fix106 Main Menu</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MENU-SETTINGS-LB">
+  <header><span class="uid">MENU-SETTINGS-LB</span><h3>Settings menu (leaderboard; legacy)</h3><span class="badge na">Not applicable (legacy/unreachable)</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>Items START SCREEN/RESTART GAME exist in DOM; opener hidden by fix170 re-skin</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Menu</dd>
+    <dt>Parent area</dt><dd>SCR-LEADERBOARD</dd>
+    <dt>Source</dt><dd><code>index.html:9427</code></dd>
+    <dt>Main function/component</dt><dd><code>#settingsMenuLB</code></dd>
+    <dt>Entry interactions</dt><dd>legacy <em>(from: none)</em></dd>
+    <dt>Exit interactions</dt><dd>n/a <em>(to: none)</em></dd>
+    <dt>Required state</dt><dd>n/a</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Items START SCREEN/RESTART GAME exist in DOM; opener hidden by fix170 re-skin</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-HS-MENU-START">
+  <header><span class="uid">MOD-HS-MENU-START</span><h3>High Scores chooser (home; legacy)</h3><span class="badge na">Not applicable (legacy/unreachable)</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>ORPHANED - opener button never exists in runtime DOM</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>SCR-HOME</dd>
+    <dt>Source</dt><dd><code>index.html:31797</code></dd>
+    <dt>Main function/component</dt><dd><code>openStartHighScoresMenu()</code></dd>
+    <dt>Entry interactions</dt><dd>hsMainBtn (absent at runtime) <em>(from: none)</em></dd>
+    <dt>Exit interactions</dt><dd>n/a <em>(to: none)</em></dd>
+    <dt>Required state</dt><dd>n/a</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>ORPHANED - opener button never exists in runtime DOM</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-MODE-CHOOSER-LEGACY">
+  <header><span class="uid">MOD-MODE-CHOOSER-LEGACY</span><h3>Mode chooser (legacy)</h3><span class="badge na">Not applicable (legacy/unreachable)</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>Superseded by MOD-SELECT-GAME-MODE options</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>SCR-HOME</dd>
+    <dt>Source</dt><dd><code>index.html:17576</code></dd>
+    <dt>Main function/component</dt><dd><code>openModeChooser()</code></dd>
+    <dt>Entry interactions</dt><dd>none (superseded) <em>(from: none)</em></dd>
+    <dt>Exit interactions</dt><dd>n/a <em>(to: none)</em></dd>
+    <dt>Required state</dt><dd>n/a</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Superseded by MOD-SELECT-GAME-MODE options</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-VS-SHADOW-PICKER">
+  <header><span class="uid">MOD-VS-SHADOW-PICKER</span><h3>Vs Shadow opponent picker</h3><span class="badge no">Not verified</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>UNVERIFIED - requires cloud high-score list</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>SCR-MATCH-CARD</dd>
+    <dt>Source</dt><dd><code>index.html:20250</code></dd>
+    <dt>Main function/component</dt><dd><code>openPracticeVsShadowOpponentDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>Practice &gt; VS SHADOW flow <em>(from: Practice types)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: Match Card)</em></dd>
+    <dt>Required state</dt><dd>cloud high scores</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>UNVERIFIED - requires cloud high-score list</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-SCORE-SHEET">
+  <header><span class="uid">MOD-SCORE-SHEET</span><h3>Score sheet (from history/high score)</h3><span class="badge no">Not verified</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>UNVERIFIED - requires cloud rows</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>various</dd>
+    <dt>Source</dt><dd><code>index.html:14398/28532</code></dd>
+    <dt>Main function/component</dt><dd><code>openScoreSheetFromHistory()/openSingleGameScoreSheet()</code></dd>
+    <dt>Entry interactions</dt><dd>row click in scores dialogs <em>(from: Latest Scores/Top 50/Player HS)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud game rows</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>UNVERIFIED - requires cloud rows</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-H2H-OPPONENT-GRAPH">
+  <header><span class="uid">MOD-H2H-OPPONENT-GRAPH</span><h3>H2H opponent graph</h3><span class="badge no">Not verified</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>UNVERIFIED (cloud)</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-PLAYER-H2H</dd>
+    <dt>Source</dt><dd><code>index.html:47725</code></dd>
+    <dt>Main function/component</dt><dd><code>openH2HOpponentGraph()</code></dd>
+    <dt>Entry interactions</dt><dd>opponent row click <em>(from: Player H2H)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>cloud data</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>UNVERIFIED (cloud)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-SPIDER">
+  <header><span class="uid">MOD-SPIDER</span><h3>Target Spider chart</h3><span class="badge no">Not verified</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>UNVERIFIED (cloud; action disabled without rows)</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Popup</dd>
+    <dt>Parent area</dt><dd>MOD-TARGET-HIT</dd>
+    <dt>Source</dt><dd><code>index.html:43250</code></dd>
+    <dt>Main function/component</dt><dd><code>openPlayerSpiderDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>SPIDER action <em>(from: Target Hit %)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>target hit rows</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>UNVERIFIED (cloud; action disabled without rows)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-PROGRESS-GRAPH">
+  <header><span class="uid">MOD-PROGRESS-GRAPH</span><h3>Target progress graphs</h3><span class="badge no">Not verified</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>UNVERIFIED (cloud). Code shows &#x27;Progress data is not available yet...&#x27; empty state</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Popup</dd>
+    <dt>Parent area</dt><dd>MOD-TARGET-HIT / MOD-TARGET-POINTS</dd>
+    <dt>Source</dt><dd><code>index.html:40970/40971</code></dd>
+    <dt>Main function/component</dt><dd><code>openPlayerTarget*ProgressDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>PROGRESS action <em>(from: Target dialogs)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: back)</em></dd>
+    <dt>Required state</dt><dd>progress view rows</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>UNVERIFIED (cloud). Code shows &#x27;Progress data is not available yet...&#x27; empty state</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="OVL-GIF-CELEBRATION">
+  <header><span class="uid">OVL-GIF-CELEBRATION</span><h3>Celebration GIF overlay</h3><span class="badge no">Not verified</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>Verification-pass addition. Not triggered during audit (needs qualifying in-game event)</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Overlay</dd>
+    <dt>Parent area</dt><dd>SCR-GAME</dd>
+    <dt>Source</dt><dd><code>index.html:9471</code></dd>
+    <dt>Main function/component</dt><dd><code>showTenorOnce()</code></dd>
+    <dt>Entry interactions</dt><dd>programmatic on gameplay celebrations (e.g. triple hat) <em>(from: gameplay events)</em></dd>
+    <dt>Exit interactions</dt><dd>auto-timeout <em>(to: none)</em></dd>
+    <dt>Required state</dt><dd>celebration trigger</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Verification-pass addition. Not triggered during audit (needs qualifying in-game event)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-DTB-PCT">
+  <header><span class="uid">MOD-DTB-PCT</span><h3>D/T/B Hit % dialogs</h3><span class="badge na">Not applicable (legacy/unreachable)</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>Verification-pass addition. ORPHANED - referenced only in doc comments</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>MOD-STATS-PLAYER-PROFILE</dd>
+    <dt>Source</dt><dd><code>index.html:41096/41190</code></dd>
+    <dt>Main function/component</dt><dd><code>openPlayerDTBPctDialog()/openPlayerDTBCombinedPctDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>none found (no live call sites) <em>(from: none)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: none)</em></dd>
+    <dt>Required state</dt><dd>cloud data</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Verification-pass addition. ORPHANED - referenced only in doc comments</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-SPRINT-LEAGUE">
+  <header><span class="uid">MOD-SPRINT-LEAGUE</span><h3>Sprint League (legacy)</h3><span class="badge na">Not applicable (legacy/unreachable)</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>Verification-pass addition. ORPHANED wrapper around openPowerLeagueDialog</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>SCR-HOME</dd>
+    <dt>Source</dt><dd><code>index.html:17176</code></dd>
+    <dt>Main function/component</dt><dd><code>openSprintLeagueDialog()</code></dd>
+    <dt>Entry interactions</dt><dd>none (no callers) <em>(from: none)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: none)</em></dd>
+    <dt>Required state</dt><dd>cloud data</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Verification-pass addition. ORPHANED wrapper around openPowerLeagueDialog</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="MOD-STATS-MODE-PICKER">
+  <header><span class="uid">MOD-STATS-MODE-PICKER</span><h3>Player Stats mode picker (legacy)</h3><span class="badge na">Not applicable (legacy/unreachable)</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>Verification-pass addition. LEGACY fallback chain</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Modal</dd>
+    <dt>Parent area</dt><dd>SCR-HOME</dd>
+    <dt>Source</dt><dd><code>index.html:41426</code></dd>
+    <dt>Main function/component</dt><dd><code>openPlayerStatsModePicker()</code></dd>
+    <dt>Entry interactions</dt><dd>fallback chains only <em>(from: legacy TDH/TargetHitRate back buttons)</em></dd>
+    <dt>Exit interactions</dt><dd>back/close <em>(to: legacy dialogs)</em></dd>
+    <dt>Required state</dt><dd>player name</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Verification-pass addition. LEGACY fallback chain</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article></div><h2 id="states">States</h2><div class="grid">
+<article class="card" id="OVL-GAME-LOAD">
+  <header><span class="uid">OVL-GAME-LOAD</span><h3>Game loading overlay</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>Messages: &#x27;Preparing Live Game&#x27;,&#x27;Resuming Game&#x27; (#gameLoadMsg)</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Overlay / loading state</dd>
+    <dt>Parent area</dt><dd>SCR-GAME</dd>
+    <dt>Source</dt><dd><code>index.html:665</code></dd>
+    <dt>Main function/component</dt><dd><code>__sqShowGameLoadOverlay()</code></dd>
+    <dt>Entry interactions</dt><dd>programmatic before game build/resume <em>(from: START GAME / Resume)</em></dd>
+    <dt>Exit interactions</dt><dd>auto-hidden after paint <em>(to: Live Game)</em></dd>
+    <dt>Required state</dt><dd>pending game build</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Messages: &#x27;Preparing Live Game&#x27;,&#x27;Resuming Game&#x27; (#gameLoadMsg)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="STATE-GAME-FINISHED">
+  <header><span class="uid">STATE-GAME-FINISHED</span><h3>Game finished pad state</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/match-complete-dismissed.png" target="_blank"><img loading="lazy" src="screenshots/match-complete-dismissed.png" alt="Game finished pad state screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Partial screen / state</dd>
+    <dt>Parent area</dt><dd>SCR-GAME</dd>
+    <dt>Source</dt><dd><code>index.html:24114</code></dd>
+    <dt>Main function/component</dt><dd><code>buildPad() finished branch</code></dd>
+    <dt>Entry interactions</dt><dd>automatic when state.finished <em>(from: game complete dismissal)</em></dd>
+    <dt>Exit interactions</dt><dd>n/a <em>(to: Leaderboard)</em></dd>
+    <dt>Required state</dt><dd>finished game</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>&#x27;Game finished.&#x27; hint + &#x27;Finish Game -&gt; Leaderboard&#x27; button (or &#x27;Retry Save -&gt; Leaderboard&#x27; for Vs Shadow save failure)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="STATE-LOADING-LEAGUE">
+  <header><span class="uid">STATE-LOADING-LEAGUE</span><h3>League loading state</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-league-power-rankings.png" target="_blank"><img loading="lazy" src="screenshots/popup-league-power-rankings.png" alt="League loading state screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Loading state</dd>
+    <dt>Parent area</dt><dd>MOD-POWER-RANKINGS</dd>
+    <dt>Source</dt><dd><code>index.html</code></dd>
+    <dt>Main function/component</dt><dd><code>fetch handlers</code></dd>
+    <dt>Entry interactions</dt><dd>open dialog with pending fetch <em>(from: league dialogs)</em></dd>
+    <dt>Exit interactions</dt><dd>replaced by rows or stuck <em>(to: n/a)</em></dd>
+    <dt>Required state</dt><dd>cloud latency</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>With cloud unreachable the &#x27;Loading...&#x27; state persists indefinitely (no timeout/error UI) - finding</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="STATE-EMPTY-PLAYERS">
+  <header><span class="uid">STATE-EMPTY-PLAYERS</span><h3>No saved players empty state</h3><span class="badge ok">Runtime verified</span></header>
+  <div class="shots"><a href="screenshots/popup-stats-player-stats.png" target="_blank"><img loading="lazy" src="screenshots/popup-stats-player-stats.png" alt="No saved players empty state screenshot"></a></div>
+  <dl>
+    <dt>UI type</dt><dd>Empty state</dd>
+    <dt>Parent area</dt><dd>MOD-STATS-HUB</dd>
+    <dt>Source</dt><dd><code>index.html</code></dd>
+    <dt>Main function/component</dt><dd><code>hub header builder</code></dd>
+    <dt>Entry interactions</dt><dd>open Stats hub without cloud players <em>(from: Stats hub)</em></dd>
+    <dt>Exit interactions</dt><dd>n/a <em>(to: n/a)</em></dd>
+    <dt>Required state</dt><dd>no cloud players</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>&#x27;No saved players found.&#x27; banner</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article>
+<article class="card" id="STATE-MISSING-VIEW">
+  <header><span class="uid">STATE-MISSING-VIEW</span><h3>Required view missing state</h3><span class="badge no">Not verified</span></header>
+  <div class="shots"><div class="noshot">No screenshot<br><small>Code: &#x27;Required Supabase view/data source is missing or empty.&#x27; - not reproducible here (network blocked before REST ans</small></div></div>
+  <dl>
+    <dt>UI type</dt><dd>Error state</dd>
+    <dt>Parent area</dt><dd>MOD-TOP50/MOD-STREAK-LEAGUE</dd>
+    <dt>Source</dt><dd><code>index.html:787/851</code></dd>
+    <dt>Main function/component</dt><dd><code>render guards</code></dd>
+    <dt>Entry interactions</dt><dd>open dialog with missing Supabase view <em>(from: league dialogs)</em></dd>
+    <dt>Exit interactions</dt><dd>n/a <em>(to: n/a)</em></dd>
+    <dt>Required state</dt><dd>view missing</dd>
+    
+    <dt>Known notes / inconsistencies</dt><dd>Code: &#x27;Required Supabase view/data source is missing or empty.&#x27; - not reproducible here (network blocked before REST answered)</dd>
+  </dl>
+  <footer>Records: <a href="03-screen-inventory.csv">screen inventory</a> · <a href="04-interaction-map.csv">interactions</a> · <a href="08-back-button-audit.csv">back buttons</a> · <a href="09-visual-inconsistencies.md">inconsistencies</a></footer>
+</article></div>
+</body></html>

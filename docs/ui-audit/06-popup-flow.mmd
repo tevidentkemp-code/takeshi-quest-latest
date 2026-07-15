@@ -1,0 +1,153 @@
+%% SHATEKI-QUEST — popup/modal flows per parent screen
+%% Solid = runtime-verified; dashed = code-confirmed only / cloud-dependent.
+%% Close paths: unless noted, dialogs close via Back/Close buttons, backdrop click and Escape,
+%% returning to their parent.
+flowchart TD
+
+    subgraph HOMEFLOW[From SCR-HOME]
+        HOME[SCR-HOME]
+        SGM[MOD-SELECT-GAME-MODE<br/>SELECT GAME MODE]
+        MPV[MOD-MATCH-PLAY-VARIANTS<br/>Classic / Turbo]
+        PRT[MOD-PRACTICE-TYPES<br/>Classic / VS AI / VS Shadow]
+        TSU[MOD-TOURNAMENT-SETUP<br/>Tournament stepped setup]
+        HUBGATE[MOD-PLAYER-HUB-GATE]
+        HUB[MOD-PLAYER-HUB]
+        SHUB[MOD-STATS-HUB<br/>PLAYER STATS hub]
+        LRM[MOD-LEAGUE-RANKS<br/>LEAGUE / RANKINGS menu]
+        KEY[MOD-ADMIN-KEYPAD<br/>code 4936]
+        AHUB[MOD-ADMIN-HUB]
+
+        HOME -->|START GAME| SGM
+        SGM -->|MATCH PLAY| MPV
+        SGM -->|PRACTICE| PRT
+        SGM -->|TOURNAMENT BETA| TSU
+        SGM -->|TRAINING| TOAST1[/Toast: Coming soon!/]
+        MPV -->|BACK - rebuilds option list| SGM
+        PRT -->|BACK| SGM
+        SGM -->|BACK / backdrop / Esc| HOME
+        MPV -->|CLASSIC or TURBO| CARD1[SCR-MATCH-CARD]
+        PRT -->|CLASSIC or VS SHADOW| CARD1
+
+        HOME -->|PLAYER HUB| HUBGATE
+        HUBGATE -->|player picked| HUB
+        HUBGATE -.->|zero players| TOAST2[/Toast: No saved players/]
+        HOME -->|STATS| SHUB
+        HOME -->|LEAGUE| LRM
+        HOME -->|ADMIN| KEY
+        KEY -->|Return with 4936| AHUB
+    end
+
+    subgraph STATSFLOW[Stats hub children - shells verified, data cloud-dependent]
+        SHUB --> PS[MOD-STATS-PLAYER-PROFILE]
+        SHUB --> XP[MOD-LEVEL-LADDER]
+        SHUB --> LM[MOD-LATEST-MATCHES]
+        SHUB --> PHS[MOD-PLAYER-HIGH-SCORES]
+        SHUB --> PRG[MOD-PROGRESSION]
+        SHUB --> THIT[MOD-TARGET-HIT]
+        SHUB --> TPTS[MOD-TARGET-POINTS]
+        SHUB --> H2H[MOD-PLAYER-H2H]
+        SHUB -.->|disabled| H2HM[H2H Matchups - coming soon]
+        THIT -.-> SPIDER[MOD-SPIDER]
+        THIT -.-> PROG1[MOD-PROGRESS-GRAPH]
+        TPTS -.-> PROG1
+        H2H -.-> H2HG[MOD-H2H-OPPONENT-GRAPH]
+    end
+
+    subgraph LEAGUEFLOW[League menu children - Back returns to menu, Close exits to Home]
+        LRM --> PR[MOD-POWER-RANKINGS<br/>tabs: Official/Turbo/Practice]
+        LRM --> PL[MOD-PREMIER-LEAGUE]
+        LRM --> HSL[MOD-HIGH-SCORE-LEAGUE]
+        LRM --> STK[MOD-STREAK-LEAGUE]
+        LRM --> RHS[MOD-ROUND-HIGH-SCORES]
+        LRM --> T50[MOD-TOP50<br/>tabs: Official/Practice]
+        LRM --> LS[MOD-LATEST-SCORES]
+        T50 -.->|row click| SHEET[MOD-SCORE-SHEET]
+        LS -.->|row click| SHEET
+    end
+
+    subgraph ADMINFLOW[Admin hub children]
+        AHUB --> AG[MOD-ALL-GAMES]
+        AHUB --> AS[MOD-ALL-SCORES]
+        AHUB --> HSA[MOD-HS-ADMIN<br/>League / Practice]
+        AHUB --> LLA[MOD-LEAGUE-LOWS-ADMIN]
+        AHUB --> SPA[MOD-SAVED-PLAYERS-ADMIN]
+        AHUB --> PBGR[MOD-PBGR-ADMIN]
+        AHUB --> DATA[MOD-DATA-ADMIN]
+        DATA --> CHART[MOD-DATA-CHART<br/>Daily/Weekly/Monthly/Yearly]
+        AHUB -.->|danger - not exercised| DUP[Remove Duplicate High Scores]
+    end
+
+    subgraph CARDFLOW[From SCR-MATCH-CARD]
+        CARD[SCR-MATCH-CARD]
+        AP[MOD-ADD-PLAYER<br/>NEW PLAYER]
+        SP[MOD-SELECT-PLAYER<br/>SELECT PLAYERS]
+        ML[MOD-MATCH-LENGTH]
+        TO[MOD-THROW-ORDER]
+        CARD -->|SAVE NEW PLAYER| AP
+        CARD -->|ADD SAVED| SP
+        CARD -->|SELECT MATCH LENGTH - needs 2+ players| ML
+        ML -->|SET THROW ORDER| TO
+        ML -->|ml-back arrow OR footer BACK - duplicate controls| CARD
+        TO -->|START GAME| GAME1[SCR-GAME]
+        TO -.->|BACK| ML
+        AP -->|np-back arrow OR np-close X - duplicate controls| CARD
+        SP -->|CONFIRM PLAYERS / BACK| CARD
+        AP -.->|SAVE PLAYER - cloud write, not exercised| CARD
+    end
+
+    subgraph GAMEFLOW[From SCR-GAME]
+        GAME[SCR-GAME]
+        MM[MOD-MAIN-MENU<br/>fix106 - via gear AND pad ☰]
+        IGS[MOD-INGAME-STATS-HUB]
+        GR[MOD-GAME-RACE]
+        GS[MOD-GAME-STATS]
+        MS[MOD-MATCH-STATS]
+        HSO[MOD-HS-OFFICIAL]
+        LSO[MOD-LOW-SCORES]
+        RP[MOD-REMOVE-PLAYER]
+        RC[MOD-RESTART-CONFIRM]
+        GC[OVL-GAME-COMPLETE<br/>carousel - closes ONLY via backdrop]
+        BD[MOD-BREAKDOWN]
+        DEC[MOD-DECIDER<br/>draw only]
+        FIN[STATE-GAME-FINISHED<br/>Finish Game → Leaderboard]
+
+        GAME -->|gear or ☰| MM
+        MM -->|Stats| IGS
+        MM -->|Restart Game| RC
+        MM -->|End Game - NATIVE confirm| LB1[SCR-LEADERBOARD]
+        MM -.->|End Match| HOME1[SCR-HOME]
+        MM -->|Remove Player| RP
+        IGS --> GR
+        IGS --> GS
+        IGS --> MS
+        IGS -.-> HSO
+        IGS -.->|no shell rendered when cloud blocked| LSO
+        GAME -->|last round finished - automatic| GC
+        GC -->|NEXT - carousel pages| GC
+        GC -.->|VIEW BREAKDOWN| BD
+        GC -.->|draw: START DECIDER SHOUTOUT| DEC
+        GC -->|backdrop click| FIN
+        GC -.->|advance: next game| GAME
+        GC -.->|advance: match done - skips leaderboard| HOME1
+        FIN --> LB1
+    end
+
+    subgraph LBFLOW[From SCR-LEADERBOARD]
+        LB2[SCR-LEADERBOARD]
+        GSC[MOD-GAME-SCORES]
+        EMC[MOD-END-MATCH-CONFIRM]
+        LB2 -->|GAME SCORES| GSC
+        LB2 -->|END MATCH| EMC
+        EMC -->|YES| HOME2[SCR-HOME]
+        EMC -->|NO| LB2
+        LB2 -. "hidden top-row STATS/HIGH SCORES/settings [dead]" .-> LB2
+    end
+
+    %% Unreachable / quarantined popups
+    subgraph DEADPOPUPS[Unreachable or legacy popups]
+        LEG1[#roundHighScoresModal static - QUARANTINED]
+        LEG2[MENU-SETTINGS-GAME - empty element]
+        LEG3[MENU-SETTINGS-LB - opener hidden]
+        LEG4[MOD-HS-MENU-START - opener hsMainBtn never exists]
+        LEG5[MOD-MODE-CHOOSER-LEGACY - superseded]
+    end

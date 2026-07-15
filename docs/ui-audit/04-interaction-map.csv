@@ -1,0 +1,113 @@
+Interaction ID,Current screen,Element label,Element type,Selector/component,Source file,Handler,Action performed,Destination screen or popup,Conditions,State changed,Back or return behaviour,Runtime verified,Notes
+INT-001,SCR-HOME,START GAME,Button (primary),#startGameBtn,index.html:31921,onclick -> openModal('startGameModal'),Open game-mode chooser,MOD-SELECT-GAME-MODE,none,none,BACK closes modal -> Home,YES,Built at runtime by arrangeStartActions
+INT-002,SCR-HOME,PLAYER HUB,Button (nav),#playerHubBtn,index.html:33918-region + 46315,onclick -> openPlayerHubGate,Open player-select gate,MOD-PLAYER-HUB-GATE,>=1 player known,none,cancel -> Home,YES,"Zero players: toast only (verified)"
+INT-003,SCR-HOME,STATS,Button (nav),#playerStatsBtn,index.html:31982,onclick -> openPlayerStatsHub(),Open stats hub,MOD-STATS-HUB,none,none,chevron/X -> Home,YES,Fallback chain to older lookup dialogs in code
+INT-004,SCR-HOME,LEAGUE,Button (nav),#leagueRankingsBtn,index.html:31978 + 53184,onclick -> openLeagueRankingsDialog(),Open league menu,MOD-LEAGUE-RANKS,none,none,chevron/X -> Home,YES,Final handler from sq-rankings-turbo-routing-fix-js
+INT-005,SCR-HOME,ADMIN,Button (text link),#adminCodeBtn,index.html:538 + 13627 interceptor,openAdminPasswordModal = showAdminKeypad,Open admin keypad,MOD-ADMIN-KEYPAD,none,none,backdrop cancel -> Home,YES,Document-level capture interceptor also guards legacy admin buttons
+INT-006,SCR-HOME,RESUME GAME,Button,#resumeBtn,index.html:17822,onclick (bound when save exists),Restore saved match,SCR-GAME,localStorage shateki_quest_scorer_v6 valid,state <- saved,n/a,PARTIAL,"Hidden with no save (verified); resume itself needs saved state - not exercised"
+INT-007,MOD-SELECT-GAME-MODE,MATCH PLAY,Button (option card),#questBtn (rebuilt),index.html:32096,onclick -> openMatchVariantMenu(),Swap modal body to variant list,MOD-MATCH-PLAY-VARIANTS,none,none,BACK re-runs arrangeStartActions,YES,questBtn id recycled from legacy home button
+INT-008,MOD-MATCH-PLAY-VARIANTS,CLASSIC,Button (option card),#matchClassicBtn,index.html:32062,onclick,Set mode match/classic; close modal,SCR-MATCH-CARD,none,__sqSelectedMode='match' variant classic,Match Card BACK -> Home,YES,
+INT-009,MOD-MATCH-PLAY-VARIANTS,TURBO,Button (option card),#matchTurboBtn,index.html:32072,onclick,Set mode match/turbo; close modal,SCR-MATCH-CARD,none,variant turbo (17s start; 20s turns),same,YES,Turbo gameplay itself not exercised
+INT-010,MOD-SELECT-GAME-MODE,TOURNAMENT (BETA),Button (option card),#tournamentBtn (rebuilt),index.html:32154,onclick -> __sqOpenTournamentSteppedSetup(),Open tournament setup,MOD-TOURNAMENT-SETUP,none,none,BACK,YES,Route-restore patch prevents old Power-Rankings misroute
+INT-011,MOD-SELECT-GAME-MODE,PRACTICE,Button (option card),#practiceBtn,index.html:32167,onclick -> openPracticeTypeMenu(),Swap body to practice types,MOD-PRACTICE-TYPES,none,none,BACK,YES,
+INT-012,MOD-SELECT-GAME-MODE,TRAINING,Button (option card; disabled),#trainingBtn,index.html:32028,onclick -> toast,Toast 'Coming soon!',TOAST,always,none,n/a,YES,aria-disabled=true but still clickable by design
+INT-013,MOD-PRACTICE-TYPES,CLASSIC,Button (option card),#practiceClassicBtn,index.html:32109,onclick,Practice classic setup,SCR-MATCH-CARD,none,__sqPracticeGameType='classic',BACK,YES,
+INT-014,MOD-PRACTICE-TYPES,VS AI,Button (disabled),#practiceVsAiBtn,index.html:32119,onclick -> toast,Toast coming soon,TOAST,always,none,n/a,YES,
+INT-015,MOD-PRACTICE-TYPES,VS SHADOW,Button (option card),#practiceVsShadowBtn,index.html:32125,onclick,Vs Shadow setup,SCR-MATCH-CARD (then picker),none,__sqPracticeGameType='vsShadow',BACK,PARTIAL,Downstream picker needs cloud
+INT-016,MOD-SELECT-GAME-MODE,BACK,Button (back),#closeStartGameModalBtn,index.html:32183,onclick,Close modal; show('details'),SCR-HOME,none,none,is the back action,YES,Also backdrop click + Escape (32189-32194)
+INT-017,SCR-MATCH-CARD,ADD SAVED,Button,#msAddRegisteredBtn,index.html (match-card wiring),onclick -> showSelectPlayerDialog,Open select-players modal,MOD-SELECT-PLAYER,none,none,BACK closes,YES,
+INT-018,SCR-MATCH-CARD,ADD GUEST,Button,#msAddGuestBtn,index.html,onclick,Append inline guest slot with name input,SCR-MATCH-CARD (inline),slots free,ms slot added,X chip removes slot,YES,No modal - inline row 'Guest - not saved'
+INT-019,SCR-MATCH-CARD,SAVE NEW PLAYER,Button,#msRegisterPlayerBtn,index.html,onclick -> showAddPlayerDialog,Open NEW PLAYER modal,MOD-ADD-PLAYER,none,none,np-back / np-close,YES,
+INT-020,SCR-MATCH-CARD,SELECT MATCH LENGTH,Button (primary),#startMatchBtn,index.html,onclick,Open match length modal,MOD-MATCH-LENGTH,>=2 players (else disabled),none,ml-back/BACK,YES,Disabled state verified with <2 players
+INT-021,SCR-MATCH-CARD,BACK,Button (back),#startScreenBtn,index.html:9334,onclick,Return to home,SCR-HOME,none,none,is the back action,YES,
+INT-022,MOD-ADD-PLAYER,Back arrow,Icon button,#npBackBtn,index.html:9477,onclick,Close modal (return to card),SCR-MATCH-CARD,none,none,same as close,YES,Duplicate of npCloseBtn behaviour
+INT-023,MOD-ADD-PLAYER,Close X,Icon button,#npCloseBtn,index.html:9482,onclick,Close modal,SCR-MATCH-CARD,none,none,same,YES,
+INT-024,MOD-ADD-PLAYER,Generate nickname,Icon button,#genNicknameBtn,index.html:9495,onclick,Random nickname into input,MOD-ADD-PLAYER,none,input value,n/a,NO,Not exercised (writes nothing)
+INT-025,MOD-ADD-PLAYER,SAVE PLAYER,Button (primary; disabled until valid),#savePlayerBtn,index.html:9511,onclick,Save player to cloud+cache,SCR-MATCH-CARD,valid fields,cloud players insert,closes on success,NO,NOT exercised - would attempt production write
+INT-026,MOD-SELECT-PLAYER,Search,Text input,#spSearchInput,index.html:9527,input listener,Filter list,MOD-SELECT-PLAYER,players listed,filter,n/a,PARTIAL,List empty with cloud blocked
+INT-027,MOD-SELECT-PLAYER,RECENT / A-Z / RANK,Chip buttons,.sp2-chip,index.html:9530,click,Re-sort list,MOD-SELECT-PLAYER,players listed,sort,n/a,PARTIAL,
+INT-028,MOD-SELECT-PLAYER,CONFIRM PLAYERS,Button (primary),#confirmSelectPlayerBtn,index.html:9543,onclick,Add selected to card,SCR-MATCH-CARD,selection,card slots,closes,PARTIAL,
+INT-029,MOD-SELECT-PLAYER,BACK,Button (back),#cancelSelectPlayerBtn,index.html:9544,onclick,Close without adding,SCR-MATCH-CARD,none,none,is back,YES,
+INT-030,MOD-MATCH-LENGTH,length cell,Button grid,#mlGrid button,index.html:9578 + builder,click,Select games count; enable primary,MOD-MATCH-LENGTH,none,selected length,n/a,YES,
+INT-031,MOD-MATCH-LENGTH,Back arrow (top),Icon button,#mlBackBtn,index.html:9569,onclick,Close to match card,SCR-MATCH-CARD,none,none,is back,YES,
+INT-032,MOD-MATCH-LENGTH,BACK (footer),Button (back),#mlFooterBackBtn,index.html:9586,onclick,Close to match card,SCR-MATCH-CARD,none,none,is back,YES,Duplicate control of INT-031
+INT-033,MOD-MATCH-LENGTH,SET THROW ORDER,Button (primary),#mlStartBtn,index.html:9588,onclick,Open throw-order dialog,MOD-THROW-ORDER,length selected (else disabled),match config,BACK in throw order,YES,Label swaps by mode
+INT-034,MOD-THROW-ORDER,up/down,Icon buttons,order row arrows,index.html showPlayerOrderDialog,click,Reorder players,MOD-THROW-ORDER,2+ players,order,n/a,YES,
+INT-035,MOD-THROW-ORDER,START GAME,Button (primary),.to-start,index.html,onclick,Create game; show('game'),SCR-GAME,order set,state init; localStorage save,n/a,YES,
+INT-036,MOD-THROW-ORDER,BACK,Button (back),dialog back,index.html,onclick,Return to match length,MOD-MATCH-LENGTH,none,none,is back,PARTIAL,Style-capture missed it; visible in after-ml-start.png
+INT-037,SCR-GAME,S / D / T (hit),Pad buttons,#pad .dtBullBtn,index.html:@THROWPAD builder,click -> recordThrow,Score dart (single/double/triple),SCR-GAME,in round,state.score; DMD FX; autosave,UNDO reverses,YES,Number rounds show S/D/T of target; D/T/Bull rounds differ
+INT-038,SCR-GAME,MISS,Pad button,#pad .dtActBtn.miss,index.html:24090,click -> pressMissN(1),Record missed dart,SCR-GAME,in round,state,UNDO,YES,
+INT-039,SCR-GAME,MISS x3,Pad button,#pad .dtX3,index.html:@THROWPAD + fix95,click,Record 3 misses (whole turn),SCR-GAME,turn start,state,UNDO,YES,DMD shows 'MISS X3 !!!'
+INT-040,SCR-GAME,UNDO,Pad button,#pad .dtActBtn.undo,index.html:24091,click -> undo(),Revert last dart,SCR-GAME,history,state,n/a,YES,
+INT-041,SCR-GAME,SKIP,Pad button,#pad .dtActBtn.skip,index.html:24092,click -> missGo(),Skip remaining darts in turn,SCR-GAME,in turn,state,UNDO,YES,
+INT-042,SCR-GAME,hamburger,Icon button,#settingsBtnGame,index.html:9358 + fix106 rebind,click -> openMainMenuDialog(),Open Main Menu,MOD-MAIN-MENU,none,none,chevron/X/Close/backdrop,YES,Static #settingsMenuGame dropdown bypassed
+INT-043,SCR-GAME,menu ☰ (pad),Pad button,#pad button (☰),index.html pad builder,click -> openMainMenuDialog(),Open Main Menu,MOD-MAIN-MENU,none,none,same,YES,Second route to same menu
+INT-044,MOD-MAIN-MENU,New Layout (Beta),Toggle row,.sq-menu106-bd row,index.html:50312-region,click,Toggle livev3 flag,SCR-GAME,2-player match,localStorage sq_livev3_test,n/a,PARTIAL,Toggle shown OFF; livev3 UI not exercised
+INT-045,MOD-MAIN-MENU,Restart Game,Menu row,.sq-menu106-bd row,index.html:50377-region,click -> confirm dialog,Reset current game,MOD-RESTART-CONFIRM -> SCR-GAME,in game,state reset,cancel returns,YES,
+INT-046,MOD-MAIN-MENU,End Game,Menu row,same,index.html:50377 doEndGame,click -> native confirm(),Clear game -> leaderboard,SCR-LEADERBOARD,in game,state.finished etc,cancel returns,YES,Native confirm() - styling inconsistency
+INT-047,MOD-MAIN-MENU,End Match,Menu row,same,index.html:50377-region,click -> confirm,End match -> home,SCR-HOME,in match,state cleared; save,cancel returns,PARTIAL,Confirmed flow exists; executed via End Game path in audit
+INT-048,MOD-MAIN-MENU,Remove Player,Menu row,same,index.html:50380 openRemovePlayerMenu,click,Open remove-player list,MOD-REMOVE-PLAYER,2+ players,none,back,YES,
+INT-049,MOD-MAIN-MENU,Stats,Menu row,same,index.html:24131 via fix106,click -> openStatsHubDialog(),Open in-game stats hub,MOD-INGAME-STATS-HUB,none,none,back/close,YES,
+INT-050,MOD-MAIN-MENU,RESUME,Menu row (contextual),same,index.html:10155,click -> _showPageSafe(game|leaderboard),Return to live game,SCR-GAME/SCR-LEADERBOARD,menu opened off-game,none,n/a,NO,Only when menu opened outside game page
+INT-051,MOD-INGAME-STATS-HUB,GAME RACE,Menu row,dyn,index.html:24164,click -> openGameRaceDialog,Race chart,MOD-GAME-RACE,in game,none,close -> game,YES,
+INT-052,MOD-INGAME-STATS-HUB,GAME STATS,Menu row,dyn,index.html,click -> openGameStatsDialog,Game breakdown,MOD-GAME-STATS,in game,none,close,YES,
+INT-053,MOD-INGAME-STATS-HUB,MATCH STATS,Menu row,dyn,index.html,click -> openMatchStatsDialog,Match totals,MOD-MATCH-STATS,in game,none,close,YES,
+INT-054,MOD-INGAME-STATS-HUB,HIGH SCORES (OFFICIAL),Menu row,dyn,index.html,click -> openHighScoresDialog,Official high scores,MOD-HS-OFFICIAL,cloud,none,close,PARTIAL,
+INT-055,MOD-INGAME-STATS-HUB,LOW SCORES (OFFICIAL),Menu row,dyn,index.html,click -> openLowScoresDialog,Official low scores,MOD-LOW-SCORES,cloud,none,close,NO,No shell rendered with cloud blocked
+INT-056,OVL-GAME-COMPLETE,NEXT ▶,Button (carousel),.gc pager,index.html:15225-region,click,Advance carousel page,OVL-GAME-COMPLETE,none,page dot,n/a,YES,3 pages
+INT-057,OVL-GAME-COMPLETE,SCORECARD,Button,.gc-breakdown[data-action=scorecard],index.html:15330,click,Toggle full standings,OVL-GAME-COMPLETE,page 2,none,n/a,PARTIAL,
+INT-058,OVL-GAME-COMPLETE,VIEW BREAKDOWN,Button,[data-action=breakdown],index.html:15258,click,Open breakdown modal,MOD-BREAKDOWN,none,none,breakdownBack/backdrop/Esc,PARTIAL,
+INT-059,OVL-GAME-COMPLETE,advance match (NEXT GAME/…),Button,[data-action=advanceMatch],index.html:15164,click -> completeGameAndAdvanceMatch,Award -> next game OR home,SCR-GAME (next) / SCR-HOME (match done),none,award; cloud writes,n/a,PARTIAL,"1-game match: goes HOME not leaderboard (code 15195)"
+INT-060,OVL-GAME-COMPLETE,START DECIDER SHOUTOUT,Button,[data-action=startDecider],index.html:15257,click -> openDeciderShootoutDialog,Decider mini-game,MOD-DECIDER,drawn game,none,per-flow,PARTIAL,Draw case verified; decider not played
+INT-061,OVL-GAME-COMPLETE,(backdrop),Backdrop click,.sq-gamecomplete-backdrop,index.html:14977-region,click,Dismiss celebration,STATE-GAME-FINISHED,none,none,n/a,YES,Only close mechanism - no visible close button (finding)
+INT-062,STATE-GAME-FINISHED,Finish Game → Leaderboard,Button,#pad .btn.good,index.html:24115,onclick -> awardAndShowLeaderboard,Award + leaderboard,SCR-LEADERBOARD,finished game,award; cloud writes (best effort),n/a,YES,"Label 'Retry Save → Leaderboard' on Vs Shadow save failure"
+INT-063,SCR-LEADERBOARD,NEXT ROUND >,Button (primary),#nextGameBtn (re-skinned),index.html:9446 + fix170 53569,click,Start next game,SCR-GAME,match not complete,new game state,n/a,PARTIAL,"Runtime label 'NEXT ROUND >' vs static 'NEXT GAME ▶' (naming finding)"
+INT-064,SCR-LEADERBOARD,GAME SCORES,Button,#gameScoresBtn,index.html:9442,click -> openGameScoresDialog,Scores popup,MOD-GAME-SCORES,history,none,Close/Back/Esc,YES,
+INT-065,SCR-LEADERBOARD,END MATCH,Button (danger),#newMatchBtn,index.html:9449 + fix170 openEndMatchConfirm,click,Confirm dialog,MOD-END-MATCH-CONFIRM,match ongoing/complete,none,NO returns,YES,
+INT-066,MOD-END-MATCH-CONFIRM,YES END MATCH,Button (danger),dyn,index.html:53578,click,Clear match -> home,SCR-HOME,none,state reset; save,NO cancels,YES,
+INT-067,SCR-LEADERBOARD,HIGH SCORES,Button,#highScoresMenuBtnLB,index.html:9443,click -> openHighScoresMenuDialog,High scores menu,(popup),visible only pre-reskin,none,close,NO,Hidden at runtime by fix170 re-skin - dead control (finding)
+INT-068,SCR-LEADERBOARD,STATS,Button,#statsHubBtnFinal,index.html:9415 + 13468 wiring,click -> openStatsHubSafe,Stats hub,MOD-STATS-HUB,visible only pre-reskin,none,close,NO,Hidden at runtime - dead control (finding)
+INT-069,SCR-LEADERBOARD,settings gear,Icon button,#settingsBtnLB,index.html:9416,click,Toggle #settingsMenuLB,MENU-SETTINGS-LB,visible only pre-reskin,none,re-click,NO,Hidden at runtime - dead control
+INT-070,MOD-STATS-HUB,Player picker,Select,hub header select,index.html:38667-region,change,Switch stats player,MOD-STATS-HUB,cloud players,selected player,n/a,PARTIAL,Cloud-only list; local cache ignored (finding)
+INT-071,MOD-STATS-HUB,Player Stats,Menu row,dyn .menu-row,index.html:38667-region,click -> openPlayerStatsDialog,Profile stats,MOD-STATS-PLAYER-PROFILE,player selected (cloud),none,back chevron,YES,Shell opens; data cloud-dependent
+INT-072,MOD-STATS-HUB,Level Ladder,Menu row,dyn,index.html -> openXpLeaderboard,click,XP leaderboard,MOD-LEVEL-LADDER,cloud,none,back,YES,
+INT-073,MOD-STATS-HUB,Latest Matches,Menu row,dyn,index.html:39359,click,Latest matches,MOD-LATEST-MATCHES,cloud,none,back,YES,
+INT-074,MOD-STATS-HUB,Player High Scores,Menu row,dyn,index.html:39640,click,Player HS history,MOD-PLAYER-HIGH-SCORES,cloud,none,back,YES,
+INT-075,MOD-STATS-HUB,Progression,Menu row,dyn,index.html:39781,click,Progression graphs,MOD-PROGRESSION,cloud,none,back,YES,
+INT-076,MOD-STATS-HUB,Target Hit %,Menu row,dyn,index.html:52227,click,Target hit table,MOD-TARGET-HIT,cloud view rows,none,back,YES,
+INT-077,MOD-STATS-HUB,Target Points %,Menu row,dyn,index.html:52513,click,Target points table,MOD-TARGET-POINTS,cloud view rows,none,back,YES,
+INT-078,MOD-STATS-HUB,Player H2H,Menu row,dyn,index.html:47921,click,H2H records,MOD-PLAYER-H2H,cloud,none,back,YES,
+INT-079,MOD-STATS-HUB,H2H Matchups,Menu row (disabled),dyn .is-disabled,index.html,none,Coming soon,none,always,none,n/a,YES,
+INT-080,MOD-LEAGUE-RANKS,Power Rankings,Menu row,#powerRankingsBtn,index.html:51232/53283,click,Power rankings,MOD-POWER-RANKINGS,cloud views,none,Back -> menu,YES,
+INT-081,MOD-LEAGUE-RANKS,Premier League,Menu row,#premierLeagueBtn,index.html:51452,click,Premier league,MOD-PREMIER-LEAGUE,cloud,none,Back,YES,
+INT-082,MOD-LEAGUE-RANKS,High Score League,Menu row,#highScoreLeagueBtn,index.html final wrapper,click,HS league,MOD-HIGH-SCORE-LEAGUE,cloud,none,Back,YES,
+INT-083,MOD-LEAGUE-RANKS,Streak League,Menu row,#streakLeagueBtn,index.html:35186,click,Streak league,MOD-STREAK-LEAGUE,v_player_target_streaks,none,Back,YES,
+INT-084,MOD-LEAGUE-RANKS,Round High Scores,Menu row,#leagueRoundHighScoresBtn,index.html:45724,click,Round HS,MOD-ROUND-HIGH-SCORES,cloud view,none,Back,YES,
+INT-085,MOD-LEAGUE-RANKS,Top 50 Scores,Menu row,#leagueTop50ScoresBtn,index.html:51853,click,Top 50,MOD-TOP50,cloud views,none,Back,YES,
+INT-086,MOD-LEAGUE-RANKS,Latest Scores,Menu row,#leagueLatestScoresBtn,index.html:37067,click,Latest scores,MOD-LATEST-SCORES,cloud,none,Back,YES,
+INT-087,MOD-POWER-RANKINGS,Official/Turbo/Practice,Tab chips,pill tabs,index.html fix132/169,click,Switch source view,MOD-POWER-RANKINGS,cloud,selected tab,n/a,PARTIAL,Tabs render; data loads blocked
+INT-088,MOD-POWER-RANKINGS,Back,Button,.sq132-back,index.html:51232-region,click,Return to league menu,MOD-LEAGUE-RANKS,none,none,is back,YES,
+INT-089,MOD-POWER-RANKINGS,Close,Button,.sq132-close,index.html,click,Close all league modals,SCR-HOME,none,none,n/a,YES,Back vs Close asymmetry consistent here
+INT-090,MOD-ADMIN-KEYPAD,digits 0-9,Buttons,keypad .btn,index.html:425-region,click,Append digit,MOD-ADMIN-KEYPAD,none,entry buffer,Clear/backspace,YES,
+INT-091,MOD-ADMIN-KEYPAD,Return,Button,keypad,index.html:466-region,click,Validate code 4936,MOD-ADMIN-HUB or error,code correct,__sqAdminAuthed,error shows inline,YES,
+INT-092,MOD-ADMIN-HUB,All Games,Menu row,#openAllGamesBtn,index.html:9613,click -> openAllGamesDialog,All games,MOD-ALL-GAMES,cloud,none,Back/Close,YES,
+INT-093,MOD-ADMIN-HUB,All Scores,Menu row,#openAllScoresBtn,index.html:9625,click -> openAllScoresDialog,All scores,MOD-ALL-SCORES,cloud,none,Back/Close,YES,
+INT-094,MOD-ADMIN-HUB,League High Scores,Menu row,#openHsLeagueAdmin,index.html:9641,click -> openHighScoresAdminDialog('league'),HS admin,MOD-HS-ADMIN,cloud,none,Back/Close,YES,
+INT-095,MOD-ADMIN-HUB,Practice High Scores,Menu row,#openHsPracticeAdmin,index.html:9654,click -> openHighScoresAdminDialog('practice'),HS admin,MOD-HS-ADMIN,cloud,none,Back/Close,YES,
+INT-096,MOD-ADMIN-HUB,League Low Scores,Menu row,#openLeagueLowsAdmin,index.html:9667,click -> openLeagueLowsAdminDialog,Lows admin,MOD-LEAGUE-LOWS-ADMIN,cloud,none,Back/Close,YES,Stacking with prior modal observed
+INT-097,MOD-ADMIN-HUB,Saved Player Admin,Menu row,#openSavedPlayersAdminBtn,index.html:9683,click,Saved players admin,MOD-SAVED-PLAYERS-ADMIN,cloud,none,Back/Close,YES,
+INT-098,MOD-ADMIN-HUB,PB / GR Admin,Menu row,#openPBGRAdminBtn,index.html:9696,click,PB/GR admin,MOD-PBGR-ADMIN,cloud,none,Back/Close,YES,
+INT-099,MOD-ADMIN-HUB,DATA,Menu row,#openDataAdminBtn,index.html:9712,click,Data metrics,MOD-DATA-ADMIN,cloud,none,Back/Close,YES,
+INT-100,MOD-ADMIN-HUB,Remove Duplicate High Scores,Menu row (danger),#fixDuplicatesBtn,index.html:9725,click,Dedupe cleanup (destructive),confirm -> cloud delete,admin,cloud rows deleted,n/a,NO,Intentionally NOT exercised (destructive)
+INT-101,MOD-ADMIN-HUB,back arrow / X,Icon buttons,#closeAdminHubBtn/#closeAdminHubBtnX,index.html:9596/9605,click,Close hub,SCR-HOME,none,none,both close identically,YES,Two controls same behaviour (naming: Back vs Close)
+INT-102,MOD-DATA-ADMIN,Daily Games / Unique Log Ons,Buttons,#dataDailyGamesBtn/#dataUniqueLogonsBtn,index.html:9751/9752,click -> openChart,Chart modal,MOD-DATA-CHART,cloud,none,Back -> DATA,YES,
+INT-103,MOD-DATA-CHART,Daily/Weekly/Monthly/Yearly,Range chips,.btn.small.range,index.html:9768-9771,click,Re-render chart,MOD-DATA-CHART,data,range,n/a,PARTIAL,
+INT-104,(any modal),backdrop,Click area,.modal-backdrop,per-dialog wiring,click on backdrop,Close topmost dialog,parent,most dialogs,none,n/a,YES,Not universal - gc overlay & some league modals differ
+INT-105,(any modal),Escape,Keyboard,document/overlay keydown,per-dialog wiring,keydown Escape,Close dialog,parent,most dialogs,none,n/a,YES,Bound per-dialog; some rely on modal focus (inconsistent)
+INT-106,SCR-GAME,scroll,Scroll behaviour,#gameScrollGate + autoscroll,@JS:UI:GAMEPLAY:AUTOSCROLL,scroll listeners,Keep last rounds visible above pad,SCR-GAME,in game,scroll pos,n/a,YES,fh-collapse on scroll also bound (bindFHCollapseScroll 16035)
+INT-107,SCR-HOME,LIVE UPDATES menu/sound,Icon buttons,#v3MenuBtn/#v3SoundBtn,index.html ticker patch,click,Ticker menu / mute,PARTIAL-LIVE-UPDATES,ticker built,sq_livev3_sound,n/a,NO,Not visible in cloud-blocked runtime
+INT-108,MOD-PLAYER-HUB-GATE,player select + confirm,Select+Button,#playerHubSelect,index.html:46099,change/click,Open hub for player,MOD-PLAYER-HUB,players listed,selected player,cancel,YES,
+INT-109,MOD-REMOVE-PLAYER,player row,Buttons,dyn,index.html:43999/50380,click -> confirm,Remove player from game,SCR-GAME,2+ players,state.players,cancel,PARTIAL,Not confirmed to completion (kept game intact)
+INT-110,MOD-TOP50 / MOD-LATEST-SCORES,score row,Row click,dyn rows,index.html:28532-region,click -> openSingleGameScoreSheet,Score sheet popup,MOD-SCORE-SHEET,cloud rows,none,back,NO,UNVERIFIED (no cloud rows)
+INT-111,SCR-GAME,(celebration trigger),Programmatic event,#gifOverlay,index.html:9471+26881,showTenorOnce(),Show celebration GIF overlay,OVL-GIF-CELEBRATION,qualifying in-game event,none,auto-dismiss,NO,Verification-pass addition; not triggered in audit
+INT-112,SCR-GAME,(triple-hat celebration),Programmatic event,scanForTripleHatAndCelebrate,index.html:16052,called from show(game),Celebration FX,SCR-GAME overlay FX,3 triples round,none,n/a,NO,Verification-pass addition

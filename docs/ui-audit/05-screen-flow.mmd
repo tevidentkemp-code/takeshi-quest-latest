@@ -1,0 +1,32 @@
+%% SHATEKI-QUEST — screen-level navigation (runtime-verified unless marked)
+%% Solid = runtime-verified transition; dashed = code-confirmed but not runtime-verified;
+%% [dead] = control exists but unreachable/hidden at runtime.
+flowchart TD
+    BOOT([Page load]) --> SPLASH[Boot splash LOADING]
+    SPLASH --> HOME
+
+    subgraph SCREENS[Router screens - body data-page]
+        HOME[SCR-HOME<br/>Home / Clubhouse<br/>#details]
+        CARD[SCR-MATCH-CARD<br/>Match Card<br/>#players]
+        GAME[SCR-GAME<br/>Live Game<br/>#game]
+        LB[SCR-LEADERBOARD<br/>Match Leaderboard<br/>#leaderboard]
+    end
+
+    HOME -->|START GAME &gt; mode chosen &gt; Classic/Turbo/Practice| CARD
+    HOME -.->|RESUME GAME - needs saved match| GAME
+    CARD -->|BACK #startScreenBtn| HOME
+    CARD -->|SELECT MATCH LENGTH &gt; THROW ORDER &gt; START GAME| GAME
+    GAME -->|Finish Game → Leaderboard - pad button after game ends| LB
+    GAME -->|Main Menu &gt; End Game + confirm| LB
+    GAME -.->|Main Menu &gt; End Match + confirm| HOME
+    GAME -.->|MATCH COMPLETE overlay &gt; advance when match done<br/>endMatchToClubhouse - skips leaderboard| HOME
+    GAME -.->|MATCH COMPLETE overlay &gt; advance when games remain<br/>startNewGame - next game| GAME
+    LB -->|NEXT ROUND &gt; - match ongoing| GAME
+    LB -->|END MATCH &gt; confirm YES| HOME
+
+    %% Dead ends / unreachable
+    LB -. "STATS / HIGH SCORES / settings top-row: present in DOM,<br/>hidden by fix170 re-skin [dead]" .-> LB
+    HOME -. "index.txt menu (New game/High Scores/Shotgun Leaderboard):<br/>matches no runtime UI [orphaned]" .-> HOME
+
+    %% Circular navigation
+    %% HOME -> CARD -> GAME -> LB -> GAME (next round) ... -> HOME (end match)
