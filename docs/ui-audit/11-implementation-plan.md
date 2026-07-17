@@ -129,6 +129,9 @@ Decision points requiring owner input before implementation:
 | bb51f89 | P2.3 | 3 duplicate header back controls removed |
 | 564fc2d | P4.1/P4.2 | NEXT GAME label, SHOOTOUT typo, toast aria-live |
 | 961d3d7 | P3.1 | Primary-action design tokens (zero visual change) |
+| abce034 | P5.2 | Native confirm() → styled __sqConfirm (4 call sites; role=dialog) |
+| 951070a | P3.3 | navAmber merged into navOrange |
+| (next) | P5.3 batch 1 | Dead DOM removed: quarantined #roundHighScoresModal, empty #settingsMenuGame, #settingsMenuLB, 4 hidden top-row buttons, index.txt. All JS refs null-guarded; smoke + P2.4/P5.2 verifiers green |
 
 All 8 change commits verified in a real browser; every commit kept the smoke suite green.
 Remaining work (P3.2/P3.3 visual restyle, P5 structural) is Medium/High-risk and paused here for
