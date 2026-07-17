@@ -9867,6 +9867,23 @@ const FLAGS = Object.freeze({
 // - Any "Old"/"Legacy" home/start builders (kept only for rollback).
 // <<< PATCH:SQ_STAGE2_FLAGS_DEPRECATIONS END
 
+// Cloud fetch guard: some cloud read chains never settle when the network is
+// down, leaving dialogs on "Loading…" forever. Race the read against a
+// timeout so every loading state can resolve into an error + retry UI.
+window.__sqWithCloudTimeout = function(promise, ms, label){
+  ms = Number(ms) || 12000;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise(function(_, rej){
+      setTimeout(function(){ rej(new Error('cloud-timeout' + (label ? ':' + label : ''))); }, ms);
+    })
+  ]);
+};
+window.__sqCloudErrorHtml = function(){
+  return 'Cloud data is unavailable right now (no connection, or the server did not respond). ' +
+    '<button type="button" class="btn" data-action="cloudRetry" style="margin-left:8px;">RETRY</button>';
+};
+
 // >>> PATCH:MOT_STAGE3_NAV_STACK_V1 START
 // Minimal, opt-in modal stack manager used ONLY by new MOT Stage 3+ modals.
 // Does not interfere with existing legacy modals that manage their own ESC handlers.
@@ -35306,7 +35323,7 @@ window.openStreakLeagueDialog = async function openStreakLeagueDialog(initialMet
     tbody.innerHTML = '<tr><td colspan="5" style="padding:14px;opacity:.75;">Loading…</td></tr>';
     try{
       const streakCol = metric === 'round' ? 'round_streak' : 'dart_streak';
-      let rows = await fetchRows();
+      let rows = await window.__sqWithCloudTimeout(fetchRows(), 12000, 'streak-league');
       rows.sort((a,b) => (Number(b[streakCol] || 0) - Number(a[streakCol] || 0)) || (Number(b.source_games || 0) - Number(a.source_games || 0)) || (Date.parse(b.last_played_at || '') - Date.parse(a.last_played_at || '')) || String(a.player_name || '').localeCompare(String(b.player_name || '')));
       const nonZero = rows.filter(r => Number(r[streakCol] || 0) > 0);
       rows = nonZero.length ? nonZero : rows;
@@ -45746,7 +45763,7 @@ __sqDmdInitV7();
       const client = window.sb || window.supabaseClient || window.supabase;
       if (client && client.from){
         try{
-          const { data, error } = await client.from('v_round_high_scores_modal').select('*').limit(50000);
+          const { data, error } = await window.__sqWithCloudTimeout(client.from('v_round_high_scores_modal').select('*').limit(50000), 12000, 'round-hs');
           if (error) throw error;
           for (const r of (Array.isArray(data) ? data : [])) pushBest_v85(by, r);
         }catch(e){ try{ console.warn('[Round High Scores] view read failed; using PB/GR fallback:', e && (e.message || e)); }catch(_){ } }
@@ -50172,7 +50189,7 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
       setTabs(ui.tabs,mode);
       tb.innerHTML='<tr><td colspan="5" style="padding:14px;opacity:.75;">Loading…</td></tr>';
       var rows=[];
-      try{ rows=mode==='turbo'?await fetchTurboHighScoreLeagueClean():await fetchOfficialHighScoreLeagueClean(); }
+      try{ rows=await window.__sqWithCloudTimeout(mode==='turbo'?fetchTurboHighScoreLeagueClean():fetchOfficialHighScoreLeagueClean(),12000,'hs-league'); }
       catch(e){
         try{ if(window.SQ_DEBUG)console.warn('[SQ] High Score League clean source read failed', e); }catch(_){}
         tb.innerHTML='<tr><td colspan="5" style="padding:14px;opacity:.78;">'+(mode==='turbo'?'Turbo':'Official')+' High Score League data is not available yet.</td></tr>';
@@ -51351,7 +51368,14 @@ body.livev2-on[data-page="game"] .livev2panel .v2Rows .v2Cell.small.solo-complet
     async function render(){
       body.innerHTML='<div class="sq132-note">'+esc(modeNote(mode))+'</div><div class="sq132-table-wrap"><table class="sq132-table"><colgroup><col style="width:64px"><col><col style="width:170px"></colgroup><thead><tr><th>#</th><th>PLAYER</th><th>POWER RANK</th></tr></thead><tbody><tr><td colspan="3">Loading…</td></tr></tbody></table></div>';
       var tb=body.querySelector('tbody');
-      var rows=await computePowerRows(mode);
+      var rows;
+      try{rows=await window.__sqWithCloudTimeout(computePowerRows(mode),12000,'power-rankings');}
+      catch(err){
+        try{console.warn('[SQ] Power Rankings cloud read failed/timed out',err);}catch(_){}
+        tb.innerHTML='<tr><td colspan="3" style="padding:14px;opacity:.85;">'+window.__sqCloudErrorHtml()+'</td></tr>';
+        var rb=tb.querySelector('[data-action="cloudRetry"]');if(rb)rb.onclick=function(){render();};
+        return;
+      }
       if(!rows.length){tb.innerHTML='<tr><td colspan="3">Power Rankings data is not available yet for '+esc(mode)+'. Required clean Supabase view/data source is missing or empty.</td></tr>';return;}
       var rank=0;
       tb.innerHTML=rows.map(function(r){
@@ -51400,7 +51424,7 @@ async function officialRows(){var games=[];try{if(typeof getGamesForMode==='func
 function startOfDay(d,off){return new Date(d.getFullYear(),d.getMonth(),d.getDate()+(off||0));}
 function filters(){var now=new Date(), out=[];out.push({id:'TODAY',label:'Today',match:function(ts){var ms=parseMs(ts),d=new Date(ms),a=startOfDay(now,0),b=startOfDay(now,1);return ms&&d>=a&&d<b;},min:2});out.push({id:'YESTERDAY',label:'Yesterday',match:function(ts){var ms=parseMs(ts),d=new Date(ms),a=startOfDay(now,-1),b=startOfDay(now,0);return ms&&d>=a&&d<b;},min:2});out.push({id:'THIS_WEEK',label:'This Week',match:function(ts){var ms=parseMs(ts),d=new Date(ms),dow=(now.getDay()+6)%7,a=startOfDay(now,-dow),b=new Date(a);b.setDate(a.getDate()+7);return ms&&d>=a&&d<b;},min:2});for(var i=0;i<6;i++){(function(i){var d=new Date(now.getFullYear(),now.getMonth()-i,1),y=d.getFullYear(),m=d.getMonth(),lab=d.toLocaleString('en-GB',{month:'short'}).toUpperCase();out.push({id:'M'+y+'-'+String(m+1).padStart(2,'0'),label:lab,match:function(ts){var ms=parseMs(ts),dt=new Date(ms);return ms&&dt.getFullYear()===y&&dt.getMonth()===m;},min:3});})(i);}out.push({id:'Y2026',label:'2026',match:function(ts){var ms=parseMs(ts),d=new Date(ms);return ms&&d.getFullYear()===2026;},min:10});out.push({id:'Y2025',label:'2025',match:function(ts){var ms=parseMs(ts),d=new Date(ms);return ms&&d.getFullYear()===2025;},min:10});out.push({id:'ALL',label:'All Time',match:function(){return true;},min:15});return out;}
 function aggregate(rows,filter){var map=new Map();rows.filter(function(r){return filter.match(r.ts);}).forEach(function(r){var x=map.get(r.key)||{player:r.player,games:0,total:0,best:0};x.games++;x.total+=r.score;if(r.score>x.best)x.best=r.score;map.set(r.key,x);});return Array.from(map.values()).map(function(x){x.avg=x.games?x.total/x.games:0;x.qualifies=x.games>=filter.min;return x;}).sort(function(a,b){if(a.qualifies!==b.qualifies)return a.qualifies?-1:1;return(b.avg-a.avg)||(b.games-a.games)||String(a.player).localeCompare(String(b.player));});}
-function openPremier(){document.querySelectorAll('.sq136-pl-bd').forEach(function(n){n.remove();});var fs=filters(), cur=fs.find(function(f){return /^M/.test(f.id);})||fs[0], allRows=null;var bd=document.createElement('div');bd.className='modal-backdrop sq136-pl-bd';var modal=document.createElement('div');modal.className='modal sq136-pl-modal';bd.appendChild(modal);modal.innerHTML='<div class="sq136-pl-head"><div><h3>Premier League</h3><div class="sq136-pl-sub">Average league by selected period.</div></div></div><div class="sq136-pl-body"><div class="sq136-pl-filters"><div class="sq136-pl-filter-row sq136-r1"></div><div class="sq136-pl-filter-row sq136-r2"></div><div class="sq136-pl-filter-row sq136-r3"></div></div><div class="sq136-pl-table-mount"><p class="tag">Loading Premier League…</p></div></div><div class="sq136-pl-footer"><button type="button" class="btn sq136-back">Back</button><button type="button" class="btn sq136-close">Close</button></div>';document.body.appendChild(bd);var mount=modal.querySelector('.sq136-pl-table-mount');function close(){bd.remove();}modal.querySelector('.sq136-close').onclick=close;modal.querySelector('.sq136-back').onclick=function(){close();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}};bd.addEventListener('click',function(e){if(e.target===bd)close();});function rowFor(f){if(f.id==='TODAY'||f.id==='YESTERDAY'||f.id==='THIS_WEEK')return modal.querySelector('.sq136-r1');if(/^M/.test(f.id))return modal.querySelector('.sq136-r2');return modal.querySelector('.sq136-r3');}fs.forEach(function(f){var b=document.createElement('button');b.type='button';b.textContent=f.label;b.dataset.filterId=f.id;b.onclick=function(){cur=f;render();};rowFor(f).appendChild(b);});async function render(){modal.querySelectorAll('[data-filter-id]').forEach(function(b){b.classList.toggle('active',b.dataset.filterId===cur.id);});if(!allRows)allRows=await officialRows();var rows=aggregate(allRows,cur);mount.innerHTML='<div class="sq136-pl-note">'+esc(cur.label)+' · '+cur.min+' Games Minimum</div><div class="sq136-pl-table-wrap"><table class="sq136-pl-table"><colgroup><col style="width:64px"><col><col style="width:110px"><col style="width:130px"><col style="width:130px"></colgroup><thead><tr><th>#</th><th>Player</th><th>Games</th><th>Avg</th><th>Best</th></tr></thead><tbody></tbody></table></div>';var tb=mount.querySelector('tbody');if(!rows.length){tb.innerHTML='<tr><td colspan="5">No official saved-player games found for '+esc(cur.label)+'.</td></tr>';return;}var rank=0;tb.innerHTML=rows.map(function(r){var q=r.qualifies;if(q)rank++;return '<tr class="'+(q?'':'unqualified')+'"><td class="rank-cell">'+(q?rank:'—')+'</td><td>'+esc(r.player)+'</td><td class="num-cell">'+r.games+'</td><td class="avg-cell">'+r.avg.toFixed(1)+'</td><td class="best-cell">'+Math.round(r.best)+'</td></tr>';}).join('');}
+function openPremier(){document.querySelectorAll('.sq136-pl-bd').forEach(function(n){n.remove();});var fs=filters(), cur=fs.find(function(f){return /^M/.test(f.id);})||fs[0], allRows=null;var bd=document.createElement('div');bd.className='modal-backdrop sq136-pl-bd';var modal=document.createElement('div');modal.className='modal sq136-pl-modal';bd.appendChild(modal);modal.innerHTML='<div class="sq136-pl-head"><div><h3>Premier League</h3><div class="sq136-pl-sub">Average league by selected period.</div></div></div><div class="sq136-pl-body"><div class="sq136-pl-filters"><div class="sq136-pl-filter-row sq136-r1"></div><div class="sq136-pl-filter-row sq136-r2"></div><div class="sq136-pl-filter-row sq136-r3"></div></div><div class="sq136-pl-table-mount"><p class="tag">Loading Premier League…</p></div></div><div class="sq136-pl-footer"><button type="button" class="btn sq136-back">Back</button><button type="button" class="btn sq136-close">Close</button></div>';document.body.appendChild(bd);var mount=modal.querySelector('.sq136-pl-table-mount');function close(){bd.remove();}modal.querySelector('.sq136-close').onclick=close;modal.querySelector('.sq136-back').onclick=function(){close();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}};bd.addEventListener('click',function(e){if(e.target===bd)close();});function rowFor(f){if(f.id==='TODAY'||f.id==='YESTERDAY'||f.id==='THIS_WEEK')return modal.querySelector('.sq136-r1');if(/^M/.test(f.id))return modal.querySelector('.sq136-r2');return modal.querySelector('.sq136-r3');}fs.forEach(function(f){var b=document.createElement('button');b.type='button';b.textContent=f.label;b.dataset.filterId=f.id;b.onclick=function(){cur=f;render();};rowFor(f).appendChild(b);});async function render(){modal.querySelectorAll('[data-filter-id]').forEach(function(b){b.classList.toggle('active',b.dataset.filterId===cur.id);});if(!allRows){try{allRows=await window.__sqWithCloudTimeout(officialRows(),12000,'premier-league');}catch(err){try{console.warn('[SQ] Premier League cloud read failed/timed out',err);}catch(_){}mount.innerHTML='<p class="tag">'+window.__sqCloudErrorHtml()+'</p>';var rb=mount.querySelector('[data-action="cloudRetry"]');if(rb)rb.onclick=function(){render();};return;}}var rows=aggregate(allRows,cur);mount.innerHTML='<div class="sq136-pl-note">'+esc(cur.label)+' · '+cur.min+' Games Minimum</div><div class="sq136-pl-table-wrap"><table class="sq136-pl-table"><colgroup><col style="width:64px"><col><col style="width:110px"><col style="width:130px"><col style="width:130px"></colgroup><thead><tr><th>#</th><th>Player</th><th>Games</th><th>Avg</th><th>Best</th></tr></thead><tbody></tbody></table></div>';var tb=mount.querySelector('tbody');if(!rows.length){tb.innerHTML='<tr><td colspan="5">No official saved-player games found for '+esc(cur.label)+'.</td></tr>';return;}var rank=0;tb.innerHTML=rows.map(function(r){var q=r.qualifies;if(q)rank++;return '<tr class="'+(q?'':'unqualified')+'"><td class="rank-cell">'+(q?rank:'—')+'</td><td>'+esc(r.player)+'</td><td class="num-cell">'+r.games+'</td><td class="avg-cell">'+r.avg.toFixed(1)+'</td><td class="best-cell">'+Math.round(r.best)+'</td></tr>';}).join('');}
 render();}
 window.openPremierLeagueDialog=openPremier;window.openPremierLeaguePopup=openPremier;
 document.addEventListener('click',function(e){var b=e.target&&e.target.closest?e.target.closest('#leaguePremierLeagueBtn'):null;if(!b)return;try{e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation();}catch(_){}openPremier();},true);
@@ -51876,7 +51900,14 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     async function render(){
       setTabs();
       tb.innerHTML = '<tr><td colspan="5" style="padding:14px;opacity:.75;">Loading...</td></tr>';
-      var result = await fetchTop50Rows(mode);
+      var result;
+      try{result=await window.__sqWithCloudTimeout(fetchTop50Rows(mode),12000,'top50');}
+      catch(err){
+        try{console.warn('[SQ] Top 50 cloud read failed/timed out',err);}catch(_){}
+        tb.innerHTML='<tr><td colspan="5" style="padding:14px;opacity:.85;">'+window.__sqCloudErrorHtml()+'</td></tr>';
+        var rb=tb.querySelector('[data-action="cloudRetry"]');if(rb)rb.onclick=function(){render();};
+        return;
+      }
       if (result.missing || !result.rows.length){
         tb.innerHTML = '<tr><td colspan="5" style="padding:14px;opacity:.78;">Top 50 Scores data is not available yet. Required Supabase view/data source is missing or empty.</td></tr>';
         return;

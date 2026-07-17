@@ -100,4 +100,5 @@ Decision points requiring owner input before implementation:
 | Decisions | RESOLVED (defaults) | — | Owner approved recommended defaults: P1.2 final game → leaderboard; P2.3 keep footer BACK / single close per dialog; P2.4 restore STATS; P3.2 flat 8px funnel primary style |
 | P0.1/P0.2 | DONE | 38f9a32 | tools/ui-smoke: 25/25 baseline green on unmodified app; DOM snapshot written |
 | P1.1 | VERIFIED | (this commit) | `.gc-close` ✕ with aria-label on MATCH COMPLETE shell; smoke asserts "dismissible (explicit control)"; screenshot popup-match-complete-with-close.png. Note: audit finding refined — Escape already closed the overlay (document-level, line 15374); the defect was visible-control-only |
+| P1.3 | VERIFIED | (this commit) | `__sqWithCloudTimeout` (12s) + retry UI; verify-cloud-errors.js: all 7 league dialogs settle with cloud blocked (no eternal "Loading…"); Premier League RETRY path exercised; smoke 25/25. Latest Scores already had its own timeout (audit note refined) |
 | (rest) | PLANNED | — | — |
