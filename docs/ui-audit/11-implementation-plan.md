@@ -139,7 +139,9 @@ Decision points requiring owner input before implementation:
 
 | (batch 4) | P5.3 batch 4 | v82 Round HS IIFE removed (198 lines). **Audit correction:** the v85 IIFE's "QUARANTINED" banner is wrong — it owns the LIVE `getPBGRSnapshot` (last-write-wins over 3 earlier defs), so it was deliberately kept; do not delete it without first relocating that definition |
 
-**Remaining backlog:** P5.1 full modal factory + role=dialog/focus-trap rollout (A-1),
+| (a11y) | A-1 (P4.2/P5.1 partial) | All modals now get role="dialog" + aria-modal + derived aria-label via a boot-time MutationObserver stamp — covers every dynamic builder without touching them. Verified on Select Game Mode / Stats hub / League menu / Power Rankings |
+
+**Remaining backlog:** P5.1 full modal factory + focus-trap rollout (remaining A-1 depth),
 P3.2 primary-family visual restyle (needs per-button screenshot sign-off), P5.4 stylesheet
 flattening, V-12 cloud-status text, v85 IIFE split (relocate live getPBGRSnapshot, then delete
 the dead Round HS parts).

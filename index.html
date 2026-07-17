@@ -9878,6 +9878,45 @@ window.__sqCloudErrorHtml = function(){
     '<button type="button" class="btn" data-action="cloudRetry" style="margin-left:8px;">RETRY</button>';
 };
 
+// Dialog a11y semantics for every modal, static or dynamic (audit A-1):
+// most of the ~30 dialog builders create bare divs with no role. Stamp
+// role="dialog" + aria-modal on the modal inside each .modal-backdrop as
+// it appears, and label it from its heading when one exists.
+(function(){
+  function stamp(bd){
+    try{
+      if (!bd || bd.nodeType !== 1 || !bd.classList || !bd.classList.contains('modal-backdrop')) return;
+      var modal = bd.querySelector(':scope > .modal, :scope > [class*="modal"]') || bd.firstElementChild;
+      if (!modal || modal.getAttribute('role') === 'dialog') return;
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      if (!modal.getAttribute('aria-label') && !modal.getAttribute('aria-labelledby')){
+        var cands = modal.querySelectorAll('h3, [class*="title-text"], [class*="-title"]');
+        for (var i = 0; i < cands.length; i++){
+          if (cands[i].children && cands[i].children.length) continue; // leaf headings only
+          var t = (cands[i].textContent || '').replace(/\s+/g, ' ').trim();
+          if (t && t.length <= 48){ modal.setAttribute('aria-label', t); break; }
+        }
+      }
+    }catch(_){ }
+  }
+  function boot(){
+    try{
+      document.querySelectorAll('.modal-backdrop').forEach(stamp);
+      new MutationObserver(function(muts){
+        muts.forEach(function(m){
+          (m.addedNodes || []).forEach(function(n){
+            stamp(n);
+            if (n.nodeType === 1 && n.querySelectorAll) n.querySelectorAll('.modal-backdrop').forEach(stamp);
+          });
+        });
+      }).observe(document.body, { childList: true, subtree: true });
+    }catch(e){ try{ console.warn('[SQ] dialog a11y stamp failed', e); }catch(_){ } }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
+  else boot();
+})();
+
 // Styled in-app confirm (replaces native window.confirm, which broke the
 // app's visual language). Reuses the fix170 End-Match confirm styling.
 window.__sqConfirm = function(opts, onYes, onNo){
