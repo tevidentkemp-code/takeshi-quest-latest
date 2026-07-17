@@ -134,10 +134,17 @@ Decision points requiring owner input before implementation:
 | 93c0635 | P5.3 batch 1 | Dead DOM removed: quarantined #roundHighScoresModal, empty #settingsMenuGame, #settingsMenuLB, 4 hidden top-row buttons, index.txt. All JS refs null-guarded; smoke + P2.4/P5.2 verifiers green |
 | 301d364 | P5.1 partial | Admin modal stacking fixed (N-5): openAdminHub clears sub-dialogs/stray backdrops; verify-n5-stacking.js green |
 
-**Remaining backlog:** P5.3 batch 2 (shadowed duplicate function definitions — needs per-IIFE
-scope analysis before deleting), P5.1 full modal factory + role=dialog/focus-trap rollout (A-1),
+| 63121c3 | P5.3 batch 2 | 1,466 lines of orphaned/shadowed functions removed (progression ×2 dead defs, DTB trio, Sprint League, player-games, summary stub). Script-block syntax check + window census + smoke/stats/cloud suites green |
+| 5816222 | P5.3 batch 3 | 753 lines of shadowed league-dialog defs removed (Top50 ×3, HS League ×2, Latest Scores base, Round HS base). **Audit refinement:** openLeagueRankingsDialog's final def is a delegating wrapper — its base def is LIVE and kept (02's "OVERRIDDEN" for it corrected here) |
+
+| (batch 4) | P5.3 batch 4 | v82 Round HS IIFE removed (198 lines). **Audit correction:** the v85 IIFE's "QUARANTINED" banner is wrong — it owns the LIVE `getPBGRSnapshot` (last-write-wins over 3 earlier defs), so it was deliberately kept; do not delete it without first relocating that definition |
+
+**Remaining backlog:** P5.1 full modal factory + role=dialog/focus-trap rollout (A-1),
 P3.2 primary-family visual restyle (needs per-button screenshot sign-off), P5.4 stylesheet
-flattening, V-12 cloud-status text.
+flattening, V-12 cloud-status text, v85 IIFE split (relocate live getPBGRSnapshot, then delete
+the dead Round HS parts).
+Note: P1.3's timeout wrap on the base Latest Scores def turned out to be on a dead def (removed in
+batch 3); the live fix97 def settles correctly on its own, as verify-cloud-errors.js confirms.
 
 All 8 change commits verified in a real browser; every commit kept the smoke suite green.
 Remaining work (P3.2/P3.3 visual restyle, P5 structural) is Medium/High-risk and paused here for
