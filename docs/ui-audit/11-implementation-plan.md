@@ -107,5 +107,29 @@ Decision points requiring owner input before implementation:
 | P2.1/P2.2 (visual back/close unification) | DEFERRED into P3 | — | Shared token-based restyle of the back/close families belongs with the P3 design-token pass; folded there to avoid a sprawling standalone commit |
 | P4.1 | VERIFIED | (this commit) | Match leaderboard "NEXT ROUND >" → "NEXT GAME ▶" (fix170; tournament fix83 "NEXT ROUND" left as it is a real bracket round); "START DECIDER SHOUTOUT" → "SHOOTOUT". verify-labels.js confirms no "NEXT ROUND" on match leaderboard; smoke 25/25 |
 | P4.2 | PARTIAL/VERIFIED | (this commit) | Toast now role=status + aria-live=polite (A-4). Audit A-2 items were already satisfied in current code: pad ☰ has aria-label="Settings" (46387/46596), Main Menu × has aria-label="Close" (50373). Remaining A-1 (role=dialog/focus trap) folded into the P5.1 modal-factory work; cloud-status text (V-12) deferred (entangled with ticker patches) |
-| P3.1/P3.2 | PLANNED | — | Design tokens + primary-button consolidation — next, with computed-style verification |
-| (rest) | PLANNED | — | — |
+| P3.1 | VERIFIED | (this commit) | --sq-primary-* tokens in :root; funnel CTAs (sp2-confirm, ms2-add-saved, to-start, mlStart) re-pointed. capture-primary-styles.js before/after: NO DRIFT (computed bg/border/color/radius identical); smoke 25/25 |
+| P3.2 (collapse button families onto one class) | PLANNED | — | Deferred: genuine visual restyle (Home hero 16px/gradient vs funnel 8px/flat, leaderboard green NEXT). Needs per-button screenshot sign-off; not a zero-change token swap |
+| P3.3 (navAmber/navOrange, tab systems) | PLANNED | — | Small; bundle with P3.2 |
+| P4.2 remainder (A-1 role=dialog/focus trap) | PLANNED | — | Folded into P5.1 modal factory |
+| V-12 cloud-status text | PLANNED | — | Entangled with ticker patches; low priority |
+| P5.1 modal factory + stack manager | PLANNED | — | Highest-effort structural refactor; strictly incremental |
+| P5.2 native confirm() → styled | PLANNED | — | Small, independent; good next pickup |
+| P5.3 dead-code removal (D-5/X-1..X-6) | PLANNED | — | Mechanical, behind smoke + snapshot diffs |
+| P5.4 stylesheet flattening | PLANNED | — | After P5.3 |
+
+### Session summary (commits on `ui-audit-fixes`)
+
+| Commit | Item | Outcome |
+|---|---|---|
+| 38f9a32 | P0 | Smoke suite (25/25) + snapshots, Supabase network-blocked |
+| 2b8767c | P1.1 | Visible ✕ close on completion overlay |
+| 3141aa8 | P1.3 | Cloud timeout + retry states, 7 league dialogs |
+| 6574604 | P1.2 | Final game routes to leaderboard (was Home) |
+| 84d3dd2 | P2.4 | Leaderboard STATS restored |
+| bb51f89 | P2.3 | 3 duplicate header back controls removed |
+| 564fc2d | P4.1/P4.2 | NEXT GAME label, SHOOTOUT typo, toast aria-live |
+| 961d3d7 | P3.1 | Primary-action design tokens (zero visual change) |
+
+All 8 change commits verified in a real browser; every commit kept the smoke suite green.
+Remaining work (P3.2/P3.3 visual restyle, P5 structural) is Medium/High-risk and paused here for
+review before continuing.

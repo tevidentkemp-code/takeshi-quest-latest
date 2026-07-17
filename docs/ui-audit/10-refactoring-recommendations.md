@@ -1,6 +1,12 @@
 # 10 — Findings & Refactoring Recommendations
 
-**No changes have been implemented.** Ranked Critical / High / Medium / Low.
+> **Implementation status (branch `ui-audit-fixes`):** the following findings are now FIXED and
+> browser-verified — N-1 (P1.2), N-2 (P1.1), N-3 (P1.3), N-4 (P2.4), D-3 (P2.3), M-1/M-4 (P4.1),
+> A-4 (P4.2), S-2/V-3 partial (P3.1 tokens). A-2 was already satisfied in current code. See
+> `11-implementation-plan.md` for the per-item verification log and what remains (P3.2/P3.3 visual
+> restyle, P5 structural refactors). This document itself is unchanged below.
+
+Ranked Critical / High / Medium / Low.
 References: V-x = `09-visual-inconsistencies.md`, BB-x = `08-back-button-audit.csv`,
 INT-xxx = `04-interaction-map.csv`.
 

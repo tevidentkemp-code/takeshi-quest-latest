@@ -1,5 +1,12 @@
 # 09 — Visual Inconsistencies
 
+> **Implementation status (branch `ui-audit-fixes`):** V-8 fixed (P1.1 close control), V-14 fixed
+> (P1.3 cloud error states), V-7 label fixed (P4.1), V-2 partially addressed for the three static
+> duplicate-control modals (P2.3), V-3/S-2 primary-token foundation added (P3.1). Remaining visual
+> items (V-1 full back-button unification, V-3 button-family collapse, V-4/V-6 accent/tab merges,
+> V-9 native confirm, V-10..V-13) are tracked in `11-implementation-plan.md`. Text below is unchanged.
+
+
 Severity: **Critical / High / Medium / Low**. Evidence tags as in `01-application-overview.md`.
 Measurements come from live `getComputedStyle` capture at 390×844 (see `08-back-button-audit.csv`
 and `07-component-inventory.csv` for full values).
