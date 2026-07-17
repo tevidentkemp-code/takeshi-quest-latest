@@ -10899,6 +10899,16 @@ function openAdminHub(){
   const hub = document.getElementById('adminHubModal');
   try { window.__sqNavContext = 'admin'; } catch(_) {}
   if (!hub) return;
+  // Close any admin sub-dialog still open so backdrops never stack when
+  // switching tools quickly (audit N-5). Static admin modals are hidden;
+  // stray dynamic (id-less) backdrops are removed.
+  try {
+    ['dataAdminModal','dataChartModal','allGamesModal','leagueLowsAdminModal','savedPlayersAdminModal','pbgrAdminModal']
+      .forEach(function(id){ const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
+    document.querySelectorAll('.modal-backdrop:not([id])').forEach(function(m){
+      if (m !== hub && !m.classList.contains('hidden')) m.remove();
+    });
+  } catch(_) {}
   hub.classList.remove('hidden');
 
   // Buttons
