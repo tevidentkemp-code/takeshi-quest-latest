@@ -9895,6 +9895,38 @@ window.__sqCloudErrorHtml = function(){
     '<button type="button" class="btn" data-action="cloudRetry" style="margin-left:8px;">RETRY</button>';
 };
 
+// Styled in-app confirm (replaces native window.confirm, which broke the
+// app's visual language). Reuses the fix170 End-Match confirm styling.
+window.__sqConfirm = function(opts, onYes, onNo){
+  if (typeof opts === 'string') opts = { message: opts };
+  opts = opts || {};
+  document.querySelectorAll('.sq-confirm-bd').forEach(function(n){ try{ n.remove(); }catch(_){ } });
+  var bd = document.createElement('div');
+  bd.className = 'modal-backdrop sq-endmatch-confirm-bd sq-confirm-bd';
+  var modal = document.createElement('div');
+  modal.className = 'modal sq-endmatch-confirm';
+  modal.style.maxWidth = '440px';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  var esc = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); };
+  modal.innerHTML =
+    '<h3>' + esc(opts.title || 'Are you sure?') + '</h3>' +
+    '<div class="modal-body">' + esc(opts.message || '') + '</div>' +
+    '<div class="modal-footer">' +
+      '<button type="button" class="btn sq-endmatch-yes">' + esc(opts.yesLabel || 'YES') + '</button>' +
+      '<button type="button" class="btn sq-endmatch-no">' + esc(opts.noLabel || 'NO') + '</button>' +
+    '</div>';
+  bd.appendChild(modal);
+  document.body.appendChild(bd);
+  function close(){ try{ bd.remove(); }catch(_){ } }
+  modal.querySelector('.sq-endmatch-no').onclick = function(){ close(); try{ if (typeof onNo === 'function') onNo(); }catch(_){ } };
+  modal.querySelector('.sq-endmatch-yes').onclick = function(){ close(); try{ if (typeof onYes === 'function') onYes(); }catch(e){ console.error('[SQ] confirm action failed', e); } };
+  bd.addEventListener('click', function(e){ if (e.target === bd){ close(); try{ if (typeof onNo === 'function') onNo(); }catch(_){ } } });
+  bd.addEventListener('keydown', function(e){ if (e.key === 'Escape'){ close(); try{ if (typeof onNo === 'function') onNo(); }catch(_){ } } });
+  modal.tabIndex = 0;
+  try{ modal.focus(); }catch(_){ }
+};
+
 // >>> PATCH:MOT_STAGE3_NAV_STACK_V1 START
 // Minimal, opt-in modal stack manager used ONLY by new MOT Stage 3+ modals.
 // Does not interfere with existing legacy modals that manage their own ESC handlers.
@@ -50408,9 +50440,9 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
       state.currentRound=0; state.currentPlayer=0; state.currentDart=0; state.history=[]; state.finished=false;
     }catch(e){ console.error('[SQ] reset game failed',e); }
   }
-  function doRestartGame(){ if(!confirm('Restart game? This clears current game data and returns to throw order.'))return; resetCurrentGameKeepPlayers(); try{save();}catch(_){} try{ if(typeof startNewGame==='function') startNewGame(); else if(typeof restartGameSafe==='function') restartGameSafe(); }catch(e){console.error(e);} }
-  function doEndGame(){ if(!confirm('End game? Current game data will be cleared and you will go to the end-game screen.'))return; resetCurrentGameKeepPlayers(); try{save();}catch(_){} try{ if(typeof showLeaderboard==='function') showLeaderboard(); else if(typeof _showPageSafe==='function') _showPageSafe('leaderboard'); }catch(e){console.error(e);} }
-  function doEndMatch(){ if(!confirm('End match? This will clear the current match state and return to the start screen.'))return; try{ clearTournamentRuntime('end match'); state=JSON.parse(JSON.stringify(baseState)); save(); }catch(_){} try{ if(typeof navigateToStartScreen==='function') navigateToStartScreen(); else show('details'); }catch(_){ } setTimeout(function(){try{ if(typeof arrangeStartActions==='function') arrangeStartActions(); ensureHomePanels(); }catch(_){ }},80); }
+  function doRestartGame(){ window.__sqConfirm({ title:'Restart Game', message:'Restart game? This clears current game data and returns to throw order.' }, function(){ resetCurrentGameKeepPlayers(); try{save();}catch(_){} try{ if(typeof startNewGame==='function') startNewGame(); else if(typeof restartGameSafe==='function') restartGameSafe(); }catch(e){console.error(e);} }); }
+  function doEndGame(){ window.__sqConfirm({ title:'End Game', message:'End game? Current game data will be cleared and you will go to the end-game screen.' }, function(){ resetCurrentGameKeepPlayers(); try{save();}catch(_){} try{ if(typeof showLeaderboard==='function') showLeaderboard(); else if(typeof _showPageSafe==='function') _showPageSafe('leaderboard'); }catch(e){console.error(e);} }); }
+  function doEndMatch(){ window.__sqConfirm({ title:'End Match', message:'End match? This will clear the current match state and return to the start screen.' }, function(){ try{ clearTournamentRuntime('end match'); state=JSON.parse(JSON.stringify(baseState)); save(); }catch(_){} try{ if(typeof navigateToStartScreen==='function') navigateToStartScreen(); else show('details'); }catch(_){ } setTimeout(function(){try{ if(typeof arrangeStartActions==='function') arrangeStartActions(); ensureHomePanels(); }catch(_){ }},80); }); }
 
   function openRemovePlayerMenu(prev){
     var m=openModalShell('Remove Player','Current game only');
@@ -50419,7 +50451,7 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     if(!pls.length){ var p=document.createElement('p'); p.className='tag'; p.textContent='No players available.'; m.body.appendChild(p); return; }
     pls.forEach(function(p,idx){
       var name=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p.name || ('Player '+(idx+1));
-      addRow(m.body,{ico:'−',label:'Remove '+name,desc:'Delete current-game data',cls:'danger',onClick:function(){ if(!confirm('Remove '+name+'? Their current-game data will be deleted and the match continues.')) return; try{state.players.splice(idx,1); if(Array.isArray(state.score))state.score.splice(idx,1); if(state.match&&Array.isArray(state.match.wins))state.match.wins.splice(idx,1); if(state.currentPlayer>=state.players.length)state.currentPlayer=0; save(); m.close(); if(typeof liveV2Render==='function') liveV2Render();}catch(e){console.error(e);} }});
+      addRow(m.body,{ico:'−',label:'Remove '+name,desc:'Delete current-game data',cls:'danger',onClick:function(){ window.__sqConfirm({ title:'Remove Player', message:'Remove '+name+'? Their current-game data will be deleted and the match continues.' }, function(){ try{state.players.splice(idx,1); if(Array.isArray(state.score))state.score.splice(idx,1); if(state.match&&Array.isArray(state.match.wins))state.match.wins.splice(idx,1); if(state.currentPlayer>=state.players.length)state.currentPlayer=0; save(); m.close(); if(typeof liveV2Render==='function') liveV2Render();}catch(e){console.error(e);} }); }});
     });
   }
 
