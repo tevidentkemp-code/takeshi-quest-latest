@@ -76,9 +76,18 @@ async function addGuests(page, names) {
 }
 async function startMatch(page, games = 1) {
   await page.click('#startMatchBtn'); await page.waitForTimeout(500);
-  const cells = await page.$$('#mlGrid button');
-  if (cells[games - 1]) await cells[games - 1].click(); else if (cells[0]) await cells[0].click();
-  await page.waitForTimeout(300);
+  // Match length is an SVG wheel: <g class="mlw-seg" data-value="N" role="button">.
+  const picked = await page.evaluate((g) => {
+    const seg = document.querySelector('#mlGrid .mlw-seg[data-value="' + g + '"]');
+    if (!seg) return false;
+    seg.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return true;
+  }, games);
+  if (!picked) { // fallback: any button-like child
+    const cells = await page.$$('#mlGrid [role="button"], #mlGrid button');
+    if (cells[games - 1]) await cells[games - 1].click(); else if (cells[0]) await cells[0].click();
+  }
+  await page.waitForTimeout(400);
   await page.click('#mlStartBtn'); await page.waitForTimeout(800);
   const btns = await page.$$('.modal-backdrop:not(.hidden) button');
   for (const bb of btns) {
