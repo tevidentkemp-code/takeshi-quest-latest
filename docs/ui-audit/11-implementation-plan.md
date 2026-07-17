@@ -131,7 +131,13 @@ Decision points requiring owner input before implementation:
 | 961d3d7 | P3.1 | Primary-action design tokens (zero visual change) |
 | abce034 | P5.2 | Native confirm() → styled __sqConfirm (4 call sites; role=dialog) |
 | 951070a | P3.3 | navAmber merged into navOrange |
-| (next) | P5.3 batch 1 | Dead DOM removed: quarantined #roundHighScoresModal, empty #settingsMenuGame, #settingsMenuLB, 4 hidden top-row buttons, index.txt. All JS refs null-guarded; smoke + P2.4/P5.2 verifiers green |
+| 93c0635 | P5.3 batch 1 | Dead DOM removed: quarantined #roundHighScoresModal, empty #settingsMenuGame, #settingsMenuLB, 4 hidden top-row buttons, index.txt. All JS refs null-guarded; smoke + P2.4/P5.2 verifiers green |
+| 301d364 | P5.1 partial | Admin modal stacking fixed (N-5): openAdminHub clears sub-dialogs/stray backdrops; verify-n5-stacking.js green |
+
+**Remaining backlog:** P5.3 batch 2 (shadowed duplicate function definitions — needs per-IIFE
+scope analysis before deleting), P5.1 full modal factory + role=dialog/focus-trap rollout (A-1),
+P3.2 primary-family visual restyle (needs per-button screenshot sign-off), P5.4 stylesheet
+flattening, V-12 cloud-status text.
 
 All 8 change commits verified in a real browser; every commit kept the smoke suite green.
 Remaining work (P3.2/P3.3 visual restyle, P5 structural) is Medium/High-risk and paused here for
