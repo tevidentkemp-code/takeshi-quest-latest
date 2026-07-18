@@ -5017,6 +5017,25 @@ body[data-page="details"] #details{
   background:linear-gradient(135deg,rgba(255,122,24,.30),rgba(255,183,64,.16));
   color:#fff; border-color:rgba(255,150,60,.55); box-shadow:0 0 18px rgba(255,122,0,.18);
 }
+/* motion: staggered card entrance, hero light sweep, growing bars */
+@keyframes ppIn{ from{ opacity:0; transform:translateY(12px); } to{ opacity:1; transform:none; } }
+.pp-anim .pp-hero, .pp-anim .pp-card, .pp-anim .pp-soon{
+  animation:ppIn .5s cubic-bezier(.2,.8,.25,1) both;
+}
+@keyframes ppSheen{ 0%{ transform:translateX(-130%) skewX(-18deg); } 60%,100%{ transform:translateX(260%) skewX(-18deg); } }
+.pp-hero::after{
+  content:''; position:absolute; top:0; bottom:0; left:0; width:45%;
+  background:linear-gradient(105deg, transparent, rgba(255,255,255,.07), transparent);
+  animation:ppSheen 6s ease-in-out 1.2s infinite; pointer-events:none;
+}
+.pp-bar > span{ width:0; transition:width .9s cubic-bezier(.2,.8,.25,1); }
+@keyframes ppFlame{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.18); } }
+.pp-hot::after{ display:inline-block; animation:ppFlame 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce){
+  .pp-anim .pp-hero, .pp-anim .pp-card, .pp-anim .pp-soon, .pp-hot::after{ animation:none !important; }
+  .pp-bar > span{ transition:none; }
+  .pp-hero::after{ display:none; }
+}
 /* collapsed coming-soon strip */
 .pp-soon{
   grid-column:1/-1; display:flex; align-items:center; gap:10px; padding:11px 14px;
@@ -36902,9 +36921,27 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
 
   body.innerHTML = '';
   const profile = document.createElement('div');
+  profile.className = 'pp-anim';
   profile.style.display = 'flex';
   profile.style.flexDirection = 'column';
   profile.style.gap = '12px';
+
+  // Count a numeric value up from 0 (skipped under prefers-reduced-motion)
+  const __ppReduced = (() => { try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ return false; } })();
+  const countUp = (el, txt, dur=650) => {
+    const m = String(txt).match(/^(\d+(?:\.\d+)?)([\s\S]*)$/);
+    if (__ppReduced || !m){ el.textContent = txt; return; }
+    const target = parseFloat(m[1]); const rest = m[2] || '';
+    const dec = (m[1].split('.')[1] || '').length;
+    const t0 = performance.now();
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = (target * eased).toFixed(dec) + rest;
+      if (p < 1) requestAnimationFrame(step); else el.textContent = txt;
+    };
+    requestAnimationFrame(step);
+  };
 
   const hero = document.createElement('div');
   hero.className = 'tag pp-hero';
@@ -36920,7 +36957,8 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     const t = document.createElement('div');
     t.className = 'pp-tile';
     const l = document.createElement('div'); l.className = 'muted pp-tile-label'; l.textContent = label;
-    const v = document.createElement('div'); v.className = 'pp-tile-value'; v.textContent = fmtValue(value);
+    const v = document.createElement('div'); v.className = 'pp-tile-value';
+    countUp(v, fmtValue(value));
     t.append(l, v);
     return t;
   };
@@ -36985,7 +37023,7 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   // "168 (#38)" with the rank chip coloured (gold/silver/bronze on the podium)
   const withRank = (mainTxt, pos) => {
     const wrap = document.createElement('span');
-    const main = document.createElement('span'); main.textContent = mainTxt;
+    const main = document.createElement('span'); countUp(main, mainTxt);
     wrap.appendChild(main);
     const p = Number(pos);
     if (Number.isFinite(p) && p > 0){
@@ -36999,7 +37037,7 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   // streak value with a flame once it starts getting spicy
   const streakNode = (txt) => {
     const s = document.createElement('span');
-    s.textContent = txt;
+    countUp(s, txt);
     if (Number(txt) >= 3) s.classList.add('pp-hot');
     return s;
   };
@@ -37013,7 +37051,9 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
       const bar = document.createElement('span'); bar.className = 'pp-bar' + (cold ? ' cold' : '');
       bar.style.display = 'block';
       const fill = document.createElement('span');
-      fill.style.width = Math.max(2, Math.min(100, Number(r.hit_pct) || 0)) + '%';
+      const w = Math.max(2, Math.min(100, Number(r.hit_pct) || 0)) + '%';
+      // set after mount so the CSS width transition plays the grow-in
+      requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = w; }));
       bar.appendChild(fill);
       box.append(line, bar);
     });
@@ -37079,6 +37119,8 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     soon.append(ic, tx);
     cards.appendChild(soon);
   }
+  // staggered entrance: hero leads, cards follow one by one
+  Array.prototype.forEach.call(cards.children, (c, i) => { c.style.animationDelay = (80 + i * 70) + 'ms'; });
   // ---- Tabbed content: Stats / XP / Achievements ----
   const statsPanel = cards;
   const xpPanel = document.createElement('div');
