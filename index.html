@@ -36109,6 +36109,7 @@ async function __sqTrophyDetail(code, earnedMap){
     + '<div style="margin:6px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">Trophy leaderboard</div>'
     + '<p class="muted" id="trophyLbLoading" style="font-size:13px">Loading…</p>';
   modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
+  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
   modal.tabIndex = 0; modal.focus();
@@ -36351,9 +36352,10 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
   modal.append(header, body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
+  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
-  modal.tabIndex = 0; 
+  modal.tabIndex = 0;
   modal.focus();
 
   // Helpers
@@ -36367,8 +36369,10 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
     return new Date(y, m-1, 1).toLocaleString(undefined,{ month:'short', year:'numeric' }).toUpperCase();
   };
 
-  // 1) All official games (normalized, oldest→newest)
-  const games = (await __fetchOfficialGames(50000)).map(__normalizeGame)
+  // 1) All official games — fetched ONCE and reused for both the player's
+  // slice and the local power-rank fallback (this used to be two full fetches).
+  const __allGamesNorm = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+  const games = __allGamesNorm
     .filter(g => Array.isArray(g.players) && g.players.some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()))
     .sort((a,b)=> (new Date(a.ts) - new Date(b.ts)));
 
@@ -36411,6 +36415,7 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
   let dbFav   = null;
   let dbStreak = null;
   let dbRates = null;
+  let savedPlayersRows = [];
   if (SB && typeof SB.from === 'function'){
     // All lookups are independent — run them in parallel (this used to be six
     // sequential round-trips and dominated the dialog's load time).
@@ -36452,6 +36457,7 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
         .limit(1))
     ]);
 
+    savedPlayersRows = savedRows || [];
     try{
       const powerKey = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
       const savedMap = new Map((savedRows || []).map(p => {
@@ -36664,12 +36670,16 @@ if (Array.isArray(myThrowsFromBoards) && myThrowsFromBoards.length) {
   const fav = favCandidates.length ? favCandidates.reduce((m,r)=> r.pct>m.pct?r:m, favCandidates[0]) : null;
   const worst = favCandidates.length ? favCandidates.reduce((m,r)=> r.pct<m.pct?r:m, favCandidates[0]) : null;
 
-// 6) Current Power Rank — mirror “Power Rankings — Last 56 Rounds (Official)”
+// 6) Current Power Rank — the DB view (dbPower) is the single source of
+// truth; this local recomputation runs ONLY when the view is unavailable,
+// so the Quick Stats row can never disagree with the hero tile.
+let myPower = null, myPowerPos = null;
+if (!dbPower){
 const MIN_ROUNDS_QUALIFY = 28;   // 2 games (28 rounds)
 const WINDOW_ROUNDS      = 56;   // last 56 rounds
 
-// Use ALL official games (not just this player's) so we can rank everyone
-const allGames = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+// All official games (reused from the single fetch at the top)
+const allGames = __allGamesNorm;
 
 // Map game_id -> timestamp (for ordering rounds)
 const gameTs = new Map();
@@ -36759,14 +36769,17 @@ const qualified = powerRows
   );
 
 // My row + absolute position among qualified
-const myPower = qualified.find(
+myPower = qualified.find(
   r => r.player.toLowerCase() === name.toLowerCase()
 ) || null;
 
-const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
+myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
+}
 
-  // Highest power rank (historical) — not tracked; show current as best for now.
-  const bestPowerPos = myPowerPos || null;
+  // Single-sourced Power Rank position (view first, local fallback)
+  const powerPosValue = (dbPower && Number.isFinite(Number(dbPower.power_rank_pos)))
+    ? `#${Number(dbPower.power_rank_pos)}`
+    : (myPowerPos ? `#${myPowerPos}` : '—');
 
   // Best-score leaderboard rank (use each player's PB across all games)
   const bestByPlayer = new Map();
@@ -36786,8 +36799,10 @@ const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   const rankValue = (dbPower && Number.isFinite(Number(dbPower.power_rank)) && Number.isFinite(Number(dbPower.power_rank_pos)))
     ? `${Number(dbPower.power_rank).toFixed(2)} (#${Number(dbPower.power_rank_pos)})`
     : '—';
-  const highestScoreValue = PB ? `${PB} (#${(dbBest && dbBest.best_score_pos) ? dbBest.best_score_pos : '—'})` : '—';
-  const highestPowerValue = bestPowerPos ? `#${bestPowerPos}` : '—';
+  // Rank falls back to the locally computed PB leaderboard position when the
+  // view is unreachable, and drops the "(#—)" noise when neither is known.
+  const pbRank = (dbBest && dbBest.best_score_pos) ? dbBest.best_score_pos : myPBPos;
+  const highestScoreValue = PB ? (pbRank ? `${PB} (#${pbRank})` : String(PB)) : '—';
   const bestMonthValue = bestMonth ? `${bestMonth.avg.toFixed(1)} (${monthLabel(bestMonth.k)})` : '—';
   const worstMonthValue = worstMonth ? `${worstMonth.avg.toFixed(1)} (${monthLabel(worstMonth.k)})` : '—';
   function lettersFromCounts(s,d,t){
@@ -36812,7 +36827,14 @@ const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   }
   const favValue = top3Txt || (dbFav ? `${dbFav.favorite_number} (${Number(dbFav.favorite_pct).toFixed(1)}%)` : (fav ? `${fav.target} (${fav.pct.toFixed(1)}%)` : '—'));
   const weakValue = bot3Txt || (dbFav ? `${dbFav.worst_number} (${Number(dbFav.worst_pct).toFixed(1)}%)` : (worst ? `${worst.target} (${worst.pct.toFixed(1)}%)` : '—'));
-  const nick = (typeof __sqPlayerStatsNickname === 'function') ? __sqPlayerStatsNickname(name, window.__sqPlayerStatsPlayers || []) : '';
+  // Nickname: picker cache first, then the saved-players rows we already
+  // fetched — so direct opens (leaderboard links etc.) still show it.
+  let nick = (typeof __sqPlayerStatsNickname === 'function') ? __sqPlayerStatsNickname(name, window.__sqPlayerStatsPlayers || []) : '';
+  if (!nick && savedPlayersRows.length){
+    const nk = name.trim().toLowerCase();
+    const row = savedPlayersRows.find(p => String((p && (p.name || p.player_name || p.player || p.display_name)) || '').trim().toLowerCase() === nk);
+    nick = String((row && (row.nickname || row.nick || row.alias)) || '').trim();
+  }
   const streakValue = v => Number.isFinite(Number(v)) ? String(Math.max(0, Math.trunc(Number(v)))) : '—';
   const dartStreakValue = dbStreak ? streakValue(dbStreak.dart_streak) : '—';
   const roundStreakValue = dbStreak ? streakValue(dbStreak.round_streak) : '—';
@@ -36941,7 +36963,7 @@ const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     statCard('Quick Stats', iconSvg.quick, [
       ['Highest Score', highestScoreValue],
       ['Lowest Score', GAMES ? String(LOW) : '—'],
-      ['Current Power Rank #', highestPowerValue],
+      ['Current Power Rank', powerPosValue],
       ['Highest Scoring Round', brTxt],
       ['Dart Streak', dartStreakValue, !dbStreak],
       ['Round Streak', roundStreakValue, !dbStreak]
@@ -36951,18 +36973,6 @@ const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
       ['PL Monthly Wins', String(plMonthlyWins)],
       ['Best Month', bestMonthValue],
       ['Worst Month', worstMonthValue]
-    ]),
-    statCard('Tournament', iconSvg.tournament, [
-      ['Played', 'Tracking soon', true],
-      ['Won', 'Tracking soon', true],
-      ['Lost', 'Tracking soon', true]
-    ]),
-    statCard('Turbo', iconSvg.turbo, [
-      ['Played', 'Tracking soon', true],
-      ['Won', 'Tracking soon', true],
-      ['Lost', 'Tracking soon', true],
-      ['Highest Score', 'Tracking soon', true],
-      ['Lowest Score', 'Tracking soon', true]
     ]),
     statCard('Targets', iconSvg.target, [
       ['Favourite Numbers', favValue],
@@ -36978,6 +36988,20 @@ const myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
       ['Champion', (achMap.champion ? `${achMap.champion.cnt}` : '—'), !achMap.champion]
     ])
   );
+  // Tournament + Turbo tracking isn't live yet — one slim teaser strip instead
+  // of two dead cards full of "Tracking soon" rows.
+  {
+    const soon = document.createElement('div');
+    soon.className = 'tag pp-soon';
+    soon.style.cssText = 'grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:11px 14px;'
+      + 'border-radius:14px;border:1px dashed rgba(255,255,255,.16);background:rgba(255,255,255,.03);opacity:.85;';
+    const ic = document.createElement('span'); ic.style.color = '#f59e0b'; ic.innerHTML = iconSvg.tournament;
+    const tx = document.createElement('span'); tx.className = 'muted';
+    tx.style.cssText = 'font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;';
+    tx.textContent = 'Tournament & Turbo stats — coming soon';
+    soon.append(ic, tx);
+    cards.appendChild(soon);
+  }
   // ---- Tabbed content: Stats / XP / Achievements ----
   const statsPanel = cards;
   const xpPanel = document.createElement('div');
@@ -37091,6 +37115,7 @@ window.openXpLeaderboard = async function openXpLeaderboard(){
     + '<p class="muted" style="margin:0 0 12px;font-size:12px">Ranked by XP — score points, win games and collect trophies to climb.</p>'
     + '<p class="muted" id="xplbLoading">Loading…</p>';
   modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
+  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
   modal.tabIndex = 0; modal.focus();
