@@ -77,9 +77,12 @@ function check(name, ok, detail) { if (!ok) failures++; console.log((ok ? 'PASS'
   await page.waitForTimeout(1200);
   const afterNav = await page.evaluate(() => ({
     stack: (window.__sqModalStack || []).length,
+    hubOpen: !!document.querySelector('.sq-menu106-bd'),
     raceOpen: !!Array.from(document.querySelectorAll('.modal-backdrop')).find((m) => !m.classList.contains('hidden') && /Game Race/i.test(m.textContent)),
   }));
-  check('GAME RACE nav-through works (hub closed, race open)', afterNav.stack === 0 && afterNav.raceOpen, JSON.stringify(afterNav));
+  // Game Race itself now registers on the stack (P5.1 batch 3), so the hub is
+  // gone and the race dialog is the sole stack entry.
+  check('GAME RACE nav-through works (hub closed, race open)', afterNav.stack === 1 && !afterNav.hubOpen && afterNav.raceOpen, JSON.stringify(afterNav));
   await page.keyboard.press('Escape'); await page.waitForTimeout(400);
   await page.evaluate(() => document.querySelectorAll('.modal-backdrop:not([id])').forEach((m) => m.remove()));
 

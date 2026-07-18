@@ -149,6 +149,8 @@ Decision points requiring owner input before implementation:
 
 | (factory 2) | P5.1 batch 2 | League-dialog family registered on the shared modal stack: League & Rankings menu, Latest Scores, Round High Scores, Top 50, High Score League, Power Rankings (both live builders), Premier League (sq136 + legacy def) — one `sqModal.register` line at each live builder's attach point. A removal MutationObserver in the factory retires stack entries whose overlay leaves the DOM, so all legacy close paths (Close/Back buttons, backdrop click, preemptive duplicate cleanup) stay valid with no stale entries. Every dialog now closes on Escape (topmost only) with focus restored. verify-p51b.js: 23/23; smoke 25/25; p51/p52/n5/p24/cloud-errors all green |
 
+| (factory 3) | P5.1 batch 3 | Five in-game stats dialogs (Game Race, Game Stats, Match Stats, High Scores, Low Scores) registered on the shared stack at their attach points — Escape closes each cleanly, no stale entries. verify-p51's nav-through assertion updated for the new state (race dialog is now itself the sole stack entry). All modal verifiers + smoke 25/25 green |
+
 **Remaining backlog:** migrate remaining hand-rolled league/admin dialog builders onto
 `sqModal`/`sqModal.register` incrementally (factory + stack now in place), and
 P5.4 stylesheet flattening. (V-12 and the v85 block are now done — see entries above.)
