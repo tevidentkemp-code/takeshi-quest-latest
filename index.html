@@ -1491,7 +1491,8 @@ TOC (CTRL+F)
   color: var(--muted);
 }
 
-.native-select-hidden {
+.native-select-hidden,
+.sr-only {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -33118,7 +33119,16 @@ window.setCloudStatus = function setCloudStatus(state, msg){
   dot.style.borderRadius = '50%';
   dot.style.background = colour;
   dot.title = msg || (state || '');
+  dot.setAttribute('aria-hidden', 'true');
   el.appendChild(dot);
+
+  // V-12: the dot alone is colour-only information — mirror the status as
+  // visually-hidden text and announce changes politely.
+  el.setAttribute('role', 'status');
+  var sr = document.createElement('span');
+  sr.className = 'sr-only';
+  sr.textContent = msg || ('Cloud status: ' + (state || 'unknown'));
+  el.appendChild(sr);
 };
 
 // ===== Match Stats helpers (avg throw/round + perfect rounds) =====

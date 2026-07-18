@@ -145,10 +145,11 @@ Decision points requiring owner input before implementation:
 
 | (factory) | P5.1 | Shared `sqModal(opts)` factory + document-level stack manager (`window.__sqModalStack`): Escape closes topmost only, Tab focus-trapped in top modal, focus restored on close. `sqModal.register()` retrofits externally-built modals onto the stack — `openModalShell` (the fix106 shared shell behind Main Menu, in-game Stats hub, Remove Player) now registers every modal it builds, so the whole family gains Escape/focus-trap/stack without per-dialog rewrites. `openGameScoresDialog` migrated fully to the factory. Note: the earlier bare `function openStatsHubDialog` def is shadowed by the fix106 `window.openStatsHubDialog`; its migration is retained but inert. verify-p51.js (10 checks), verify-p52, verify-n5-stacking, verify-p24-stats and the 25-check smoke suite all green |
 
+| (a11y) | V-12 | Cloud-status dot now mirrors its state as visually-hidden text (`role="status"` container, `.sr-only` span updated on every `setCloudStatus` call, dot marked `aria-hidden`) — colour is no longer the only signal. Runtime-verified; smoke 25/25 |
+
 **Remaining backlog:** migrate remaining hand-rolled league/admin dialog builders onto
-`sqModal`/`sqModal.register` incrementally (factory + stack now in place),
-P5.4 stylesheet flattening, V-12 cloud-status text, v85 IIFE split (relocate live
-getPBGRSnapshot, then delete the dead Round HS parts).
+`sqModal`/`sqModal.register` incrementally (factory + stack now in place), and
+P5.4 stylesheet flattening. (V-12 and the v85 block are now done — see entries above.)
 Note: P1.3's timeout wrap on the base Latest Scores def turned out to be on a dead def (removed in
 batch 3); the live fix97 def settles correctly on its own, as verify-cloud-errors.js confirms.
 
