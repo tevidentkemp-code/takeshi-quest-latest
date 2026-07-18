@@ -4961,6 +4961,69 @@ body[data-page="details"] #details{
 .sq-stats-modal table tbody tr:nth-child(odd){
   background:rgba(255,255,255,.025);
 }
+/* ===== Player profile (pp-*) — arcade skin for openPlayerStatsDialog ===== */
+.pp-hero{
+  position:relative; padding:16px; border-radius:16px; overflow:hidden;
+  background:linear-gradient(135deg, rgba(255,122,24,.22), rgba(16,24,39,.66) 55%, rgba(47,134,255,.10));
+  border:1px solid rgba(255,150,60,.35);
+  box-shadow:0 12px 30px rgba(0,0,0,.28), 0 0 40px rgba(255,122,0,.10), inset 0 0 60px rgba(255,122,0,.05);
+}
+.pp-hero-name{ font-size:26px; font-weight:900; letter-spacing:.01em; line-height:1.1; }
+.pp-hero-nick{ margin-top:2px; font-weight:700; }
+.pp-tiles{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:14px; }
+.pp-tile{ padding:10px 8px; border-radius:12px; background:rgba(0,0,0,.28); border:1px solid rgba(255,255,255,.08); text-align:center; }
+.pp-tile-label{ font-size:10px; text-transform:uppercase; letter-spacing:.09em; }
+.pp-tile-value{ margin-top:4px; font-weight:900; font-size:clamp(13px, 4.2vw, 17px); white-space:nowrap; color:#ffe9d2; text-shadow:0 0 14px rgba(255,150,60,.35); }
+.pp-cards{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
+.pp-card{
+  padding:12px 14px; border-radius:14px;
+  background:rgba(16,24,39,.60); border:1px solid rgba(35,164,255,.18);
+  box-shadow:0 8px 22px rgba(0,0,0,.25);
+}
+.pp-card-head{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.pp-card-head .pp-ico{ color:#f59e0b; display:inline-flex; filter:drop-shadow(0 0 6px rgba(255,150,60,.5)); }
+.pp-card-head strong{
+  font-size:12px; color:#7cc0ff; text-transform:uppercase; letter-spacing:.12em;
+  text-shadow:0 0 12px rgba(47,134,255,.35);
+}
+.pp-row{
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:start;
+  padding:9px 0; border-top:1px solid rgba(255,255,255,.06);
+}
+.pp-row-label{ font-weight:700; font-size:13px; }
+.pp-row-value{ white-space:pre-line; text-align:right; font-weight:900; font-size:15px; color:#f3f7ff; }
+.pp-row.muted .pp-row-label, .pp-row.muted .pp-row-value{ opacity:.6; font-weight:600; }
+/* rank chips: blue by default, medal colours for podium places */
+.pp-pos{ margin-left:6px; font-weight:800; color:#7cc0ff; }
+.pp-pos.g1{ color:#ffd24a; text-shadow:0 0 10px rgba(255,210,74,.45); }
+.pp-pos.g2{ color:#cbd5e1; text-shadow:0 0 10px rgba(203,213,225,.4); }
+.pp-pos.g3{ color:#d08b5a; text-shadow:0 0 10px rgba(208,139,90,.45); }
+/* streak flame (CSS-generated so it never pollutes the value text) */
+.pp-hot::after{ content:'🔥'; margin-left:5px; filter:drop-shadow(0 0 6px rgba(255,120,30,.7)); }
+/* mini hit-rate bars under target lines */
+.pp-tline{ display:block; }
+.pp-bar{ height:5px; border-radius:999px; background:rgba(255,255,255,.08); overflow:hidden; margin:3px 0 5px; }
+.pp-bar > span{ display:block; height:100%; border-radius:999px;
+  background:linear-gradient(90deg,#ff7a18,#ffb14a); box-shadow:0 0 8px rgba(255,150,60,.5); }
+.pp-bar.cold > span{ background:linear-gradient(90deg,#2f86ff,#7cc0ff); box-shadow:0 0 8px rgba(47,134,255,.5); }
+/* profile tabs */
+.pp-tabs{ display:flex; gap:8px; margin:2px 0; }
+.pp-tab{
+  flex:1; padding:11px 6px; border-radius:12px; font-weight:900; font-size:13px;
+  letter-spacing:.04em; text-transform:uppercase; cursor:pointer;
+  border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.04); color:var(--v3-muted,#98a2b8);
+}
+.pp-tab.active{
+  background:linear-gradient(135deg,rgba(255,122,24,.30),rgba(255,183,64,.16));
+  color:#fff; border-color:rgba(255,150,60,.55); box-shadow:0 0 18px rgba(255,122,0,.18);
+}
+/* collapsed coming-soon strip */
+.pp-soon{
+  grid-column:1/-1; display:flex; align-items:center; gap:10px; padding:11px 14px;
+  border-radius:14px; border:1px dashed rgba(255,255,255,.16); background:rgba(255,255,255,.03); opacity:.85;
+}
+.pp-soon .pp-soon-txt{ font-size:12px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
+
 /* Secondary buttons (pills, SPIDER/PROGRESS, chips) — navy/blue like the
    rest of the game; the standardized BACK pill keeps its own style. */
 .sq-stats-modal .btn.sq-pill:not(.ms2-back),
@@ -36814,19 +36877,17 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   const fmtOpp = arr => arr.length ? arr.map((r,i)=> `${i+1}. ${r.opp} (${r.pct.toFixed(1)}%)`).join('\n') : '—';
 
   const MIN_THROWS_PER_TARGET_LOCAL = 30;
-  let top3Txt = null, bot3Txt = null;
+  let top3Arr = null, bot3Arr = null;
   if (typeof dbRates !== 'undefined' && Array.isArray(dbRates) && dbRates.length){
     const cand = dbRates.filter(r => Number(r.throws||0) >= MIN_THROWS_PER_TARGET_LOCAL);
     if (cand.length){
-      const top3 = cand.slice().sort((a,b)=> (Number(b.hit_pct)-Number(a.hit_pct)) || (Number(b.throws)-Number(a.throws)) || (Number(a.target_n)-Number(b.target_n))).slice(0,3);
-      const bot3 = cand.slice().sort((a,b)=> (Number(a.hit_pct)-Number(b.hit_pct)) || (Number(b.throws)-Number(a.throws)) || (Number(a.target_n)-Number(b.target_n))).slice(0,3);
-      const fmtT = arr => arr.map((r,i)=>`${i+1}. ${r.target_n} (${Number(r.hit_pct).toFixed(1)}%)`).join('\n');
-      top3Txt = fmtT(top3);
-      bot3Txt = fmtT(bot3);
+      top3Arr = cand.slice().sort((a,b)=> (Number(b.hit_pct)-Number(a.hit_pct)) || (Number(b.throws)-Number(a.throws)) || (Number(a.target_n)-Number(b.target_n))).slice(0,3);
+      bot3Arr = cand.slice().sort((a,b)=> (Number(a.hit_pct)-Number(b.hit_pct)) || (Number(b.throws)-Number(a.throws)) || (Number(a.target_n)-Number(b.target_n))).slice(0,3);
     }
   }
-  const favValue = top3Txt || (dbFav ? `${dbFav.favorite_number} (${Number(dbFav.favorite_pct).toFixed(1)}%)` : (fav ? `${fav.target} (${fav.pct.toFixed(1)}%)` : '—'));
-  const weakValue = bot3Txt || (dbFav ? `${dbFav.worst_number} (${Number(dbFav.worst_pct).toFixed(1)}%)` : (worst ? `${worst.target} (${worst.pct.toFixed(1)}%)` : '—'));
+  // Plain-text fallbacks when the rates view has no qualifying sample
+  const favValue = dbFav ? `${dbFav.favorite_number} (${Number(dbFav.favorite_pct).toFixed(1)}%)` : (fav ? `${fav.target} (${fav.pct.toFixed(1)}%)` : '—');
+  const weakValue = dbFav ? `${dbFav.worst_number} (${Number(dbFav.worst_pct).toFixed(1)}%)` : (worst ? `${worst.target} (${worst.pct.toFixed(1)}%)` : '—');
   // Nickname: picker cache first, then the saved-players rows we already
   // fetched — so direct opens (leaderboard links etc.) still show it.
   let nick = (typeof __sqPlayerStatsNickname === 'function') ? __sqPlayerStatsNickname(name, window.__sqPlayerStatsPlayers || []) : '';
@@ -36846,35 +36907,20 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   profile.style.gap = '12px';
 
   const hero = document.createElement('div');
-  hero.className = 'tag';
-  hero.style.padding = '16px';
-  hero.style.borderRadius = '16px';
-  hero.style.background = 'linear-gradient(135deg, rgba(255,122,24,.20), rgba(255,255,255,.045))';
-  hero.style.border = '1px solid rgba(255,122,24,.28)';
-  hero.style.boxShadow = '0 12px 30px rgba(0,0,0,.22)';
+  hero.className = 'tag pp-hero';
   const heroName = document.createElement('div');
   heroName.textContent = name;
-  heroName.style.fontSize = '26px';
-  heroName.style.fontWeight = '900';
-  heroName.style.letterSpacing = '.01em';
+  heroName.className = 'pp-hero-name';
   const heroNick = document.createElement('div');
   heroNick.textContent = nick || 'Player profile';
-  heroNick.className = 'muted';
-  heroNick.style.marginTop = '2px';
-  heroNick.style.fontWeight = '700';
+  heroNick.className = 'muted pp-hero-nick';
   const heroTiles = document.createElement('div');
-  heroTiles.style.display = 'grid';
-  heroTiles.style.gridTemplateColumns = 'repeat(auto-fit, minmax(120px, 1fr))';
-  heroTiles.style.gap = '8px';
-  heroTiles.style.marginTop = '14px';
+  heroTiles.className = 'pp-tiles';
   const tile = (label, value) => {
     const t = document.createElement('div');
-    t.style.padding = '10px';
-    t.style.borderRadius = '12px';
-    t.style.background = 'rgba(0,0,0,.22)';
-    t.style.border = '1px solid rgba(255,255,255,.08)';
-    const l = document.createElement('div'); l.className = 'muted'; l.style.fontSize = '11px'; l.style.textTransform = 'uppercase'; l.style.letterSpacing = '.08em'; l.textContent = label;
-    const v = document.createElement('div'); v.style.marginTop = '4px'; v.style.fontWeight = '900'; v.style.fontSize = '16px'; v.textContent = fmtValue(value);
+    t.className = 'pp-tile';
+    const l = document.createElement('div'); l.className = 'muted pp-tile-label'; l.textContent = label;
+    const v = document.createElement('div'); v.className = 'pp-tile-value'; v.textContent = fmtValue(value);
     t.append(l, v);
     return t;
   };
@@ -36902,9 +36948,7 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   profile.appendChild(hero);
 
   const cards = document.createElement('div');
-  cards.style.display = 'grid';
-  cards.style.gridTemplateColumns = 'repeat(auto-fit, minmax(260px, 1fr))';
-  cards.style.gap = '12px';
+  cards.className = 'pp-cards';
 
   const iconSvg = {
     quick:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z"/></svg>',
@@ -36915,35 +36959,65 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     rivals:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l16 16"/><path d="M7 7h.01"/><path d="M17 17h.01"/></svg>',
     achievements:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v3a5 5 0 0 1-10 0V4z"/><path d="M5 5H3v2a4 4 0 0 0 4 4"/><path d="M19 5h2v2a4 4 0 0 1-4 4"/></svg>'
   };
+  // Value may be a string OR a prebuilt node (rank chips, target bars, …).
   const statRow = (label, value, muted) => {
     const row = document.createElement('div');
-    row.style.display = 'grid';
-    row.style.gridTemplateColumns = 'minmax(0,1fr) auto';
-    row.style.gap = '12px';
-    row.style.alignItems = 'start';
-    row.style.padding = '8px 0';
-    row.style.borderTop = '1px solid rgba(255,255,255,.075)';
-    const l = document.createElement('span'); l.textContent = label; l.style.fontWeight = '700'; if (muted) l.className = 'muted';
-    const v = document.createElement('span'); v.textContent = fmtValue(value); v.style.whiteSpace = 'pre-line'; v.style.textAlign = 'right'; v.style.fontWeight = '800'; if (muted) v.className = 'muted';
+    row.className = 'pp-row' + (muted ? ' muted' : '');
+    const l = document.createElement('span'); l.className = 'pp-row-label' + (muted ? ' muted' : ''); l.textContent = label;
+    const v = document.createElement('span'); v.className = 'pp-row-value' + (muted ? ' muted' : '');
+    if (value instanceof Node) v.appendChild(value); else v.textContent = fmtValue(value);
     row.append(l, v);
     return row;
   };
   const statCard = (titleTxt, icon, rows, opts={}) => {
     const c = document.createElement('div');
-    c.className = 'tag';
-    c.style.padding = '12px';
-    c.style.borderRadius = '14px';
-    c.style.background = opts.muted ? 'rgba(255,255,255,.035)' : 'rgba(255,255,255,.052)';
-    c.style.border = opts.muted ? '1px dashed rgba(255,255,255,.15)' : '1px solid rgba(255,255,255,.09)';
-    if (opts.muted) c.style.opacity = '.84';
+    c.className = 'tag pp-card';
+    if (opts.muted) { c.style.borderStyle = 'dashed'; c.style.opacity = '.84'; }
     const head = document.createElement('div');
-    head.style.display = 'flex'; head.style.alignItems = 'center'; head.style.gap = '8px'; head.style.marginBottom = '4px';
-    const ico = document.createElement('span'); ico.style.color = '#f59e0b'; ico.innerHTML = icon || '';
-    const ttl = document.createElement('strong'); ttl.textContent = titleTxt; ttl.style.fontSize = '15px';
+    head.className = 'pp-card-head';
+    const ico = document.createElement('span'); ico.className = 'pp-ico'; ico.innerHTML = icon || '';
+    const ttl = document.createElement('strong'); ttl.textContent = titleTxt;
     head.append(ico, ttl); c.appendChild(head);
     rows.forEach(r => c.appendChild(statRow(r[0], r[1], opts.muted || r[2])));
     if (opts.footer){ const f = document.createElement('p'); f.className = 'muted'; f.style.margin = '8px 0 0'; f.style.fontSize = '12px'; f.textContent = opts.footer; c.appendChild(f); }
     return c;
+  };
+  // "168 (#38)" with the rank chip coloured (gold/silver/bronze on the podium)
+  const withRank = (mainTxt, pos) => {
+    const wrap = document.createElement('span');
+    const main = document.createElement('span'); main.textContent = mainTxt;
+    wrap.appendChild(main);
+    const p = Number(pos);
+    if (Number.isFinite(p) && p > 0){
+      const chip = document.createElement('span');
+      chip.className = 'pp-pos' + (p <= 3 ? ' g' + p : '');
+      chip.textContent = `(#${p})`;
+      wrap.appendChild(chip);
+    }
+    return wrap;
+  };
+  // streak value with a flame once it starts getting spicy
+  const streakNode = (txt) => {
+    const s = document.createElement('span');
+    s.textContent = txt;
+    if (Number(txt) >= 3) s.classList.add('pp-hot');
+    return s;
+  };
+  // "1. 19 (61.1%)" lines with a mini hit-rate bar under each
+  const targetListNode = (arr, cold) => {
+    const box = document.createElement('span');
+    box.style.display = 'inline-block'; box.style.minWidth = '150px';
+    arr.forEach((r, i) => {
+      const line = document.createElement('span'); line.className = 'pp-tline';
+      line.textContent = `${i + 1}. ${r.target_n} (${Number(r.hit_pct).toFixed(1)}%)`;
+      const bar = document.createElement('span'); bar.className = 'pp-bar' + (cold ? ' cold' : '');
+      bar.style.display = 'block';
+      const fill = document.createElement('span');
+      fill.style.width = Math.max(2, Math.min(100, Number(r.hit_pct) || 0)) + '%';
+      bar.appendChild(fill);
+      box.append(line, bar);
+    });
+    return box;
   };
 
   // XP & Level card (lives in the XP tab)
@@ -36959,14 +37033,20 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
       ['Level', 'No ranked games yet', true]
     ], xpRow ? { footer: xpProg.atMax ? 'Max level reached — Legend.' : `${SQ_XP.fmt(xpProg.toNext)} XP to Level ${xpProg.level + 1}.` } : { muted: true });
 
+  const highestScoreNode = PB
+    ? (pbRank ? withRank(`${PB} `, pbRank) : String(PB))
+    : '—';
+  const powerPosNode = (powerPosValue !== '—')
+    ? (() => { const s = document.createElement('span'); const p = Number(powerPosValue.slice(1)); s.className = 'pp-pos' + (p <= 3 ? ' g' + p : ''); s.textContent = powerPosValue; return s; })()
+    : '—';
   cards.append(
     statCard('Quick Stats', iconSvg.quick, [
-      ['Highest Score', highestScoreValue],
+      ['Highest Score', highestScoreNode],
       ['Lowest Score', GAMES ? String(LOW) : '—'],
-      ['Current Power Rank', powerPosValue],
+      ['Current Power Rank', powerPosNode],
       ['Highest Scoring Round', brTxt],
-      ['Dart Streak', dartStreakValue, !dbStreak],
-      ['Round Streak', roundStreakValue, !dbStreak]
+      ['Dart Streak', dbStreak ? streakNode(dartStreakValue) : dartStreakValue, !dbStreak],
+      ['Round Streak', dbStreak ? streakNode(roundStreakValue) : roundStreakValue, !dbStreak]
     ]),
     statCard('Premier League', iconSvg.league, [
       ['PL Average', AVG.toFixed(1)],
@@ -36975,8 +37055,8 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
       ['Worst Month', worstMonthValue]
     ]),
     statCard('Targets', iconSvg.target, [
-      ['Favourite Numbers', favValue],
-      ['Weakest Numbers', weakValue]
+      ['Favourite Numbers', top3Arr ? targetListNode(top3Arr, false) : favValue],
+      ['Weakest Numbers', bot3Arr ? targetListNode(bot3Arr, true) : weakValue]
     ]),
     statCard('Rivals', iconSvg.rivals, [
       ['Nemesis', fmtOpp(topNem)],
@@ -36993,11 +37073,8 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   {
     const soon = document.createElement('div');
     soon.className = 'tag pp-soon';
-    soon.style.cssText = 'grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:11px 14px;'
-      + 'border-radius:14px;border:1px dashed rgba(255,255,255,.16);background:rgba(255,255,255,.03);opacity:.85;';
-    const ic = document.createElement('span'); ic.style.color = '#f59e0b'; ic.innerHTML = iconSvg.tournament;
-    const tx = document.createElement('span'); tx.className = 'muted';
-    tx.style.cssText = 'font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;';
+    const ic = document.createElement('span'); ic.className = 'pp-ico'; ic.innerHTML = iconSvg.tournament;
+    const tx = document.createElement('span'); tx.className = 'muted pp-soon-txt';
     tx.textContent = 'Tournament & Turbo stats — coming soon';
     soon.append(ic, tx);
     cards.appendChild(soon);
@@ -37005,7 +37082,7 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   // ---- Tabbed content: Stats / XP / Achievements ----
   const statsPanel = cards;
   const xpPanel = document.createElement('div');
-  xpPanel.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;';
+  xpPanel.className = 'pp-cards';
   xpPanel.appendChild(xpCard);
   {
     const ladderCard = document.createElement('div'); ladderCard.className = 'tag';
@@ -37018,23 +37095,18 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   const achPanel = __sqTrophyCase(achMap);
 
   const tabBar = document.createElement('div');
-  tabBar.style.cssText = 'display:flex;gap:8px;margin:2px 0;';
+  tabBar.className = 'pp-tabs';
   const panelHost = document.createElement('div');
   const tabs = [['Stats', statsPanel], ['XP', xpPanel], ['Achievements', achPanel]];
   const btns = [];
   const showTab = (idx) => {
     while (panelHost.firstChild) panelHost.removeChild(panelHost.firstChild);
     panelHost.appendChild(tabs[idx][1]);
-    btns.forEach((b, i) => {
-      const on = i === idx;
-      b.style.background = on ? 'linear-gradient(135deg,rgba(255,122,24,.30),rgba(255,183,64,.16))' : 'rgba(255,255,255,.04)';
-      b.style.color = on ? '#fff' : 'var(--v3-muted,#98a2b8)';
-      b.style.borderColor = on ? 'rgba(255,150,60,.55)' : 'rgba(255,255,255,.1)';
-    });
+    btns.forEach((b, i) => b.classList.toggle('active', i === idx));
   };
   tabs.forEach(([label], idx) => {
     const t = document.createElement('button'); t.type = 'button'; t.textContent = label;
-    t.style.cssText = 'flex:1;padding:11px 6px;border-radius:12px;font-weight:900;font-size:13px;letter-spacing:.04em;text-transform:uppercase;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:var(--v3-muted,#98a2b8);cursor:pointer;';
+    t.className = 'pp-tab';
     t.onclick = () => showTab(idx);
     btns.push(t); tabBar.appendChild(t);
   });
