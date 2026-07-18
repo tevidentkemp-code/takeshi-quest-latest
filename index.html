@@ -9950,6 +9950,155 @@ window.__sqConfirm = function(opts, onYes, onNo){
   try{ modal.focus(); }catch(_){ }
 };
 
+// ---------------------------------------------------------------------------
+// sqModal — the shared modal factory (audit P5.1 / D-1).
+// One place for the shell, Back-vs-Close semantics, backdrop/Escape closing,
+// focus trap, focus restore, and a modal stack so Escape always closes the
+// TOPMOST dialog only. Dialogs migrate onto this incrementally; hand-rolled
+// builders keep working untouched until their turn.
+//
+//   var m = sqModal({
+//     title: 'Game Scores', sub: 'optional subtitle',   // builds menu-modal header
+//     header: node,          // OR bring your own header node (skips title/sub)
+//     onBack: fn,            // renders ← in header; Back = one level up
+//     modalClass: '', backdropClass: '', maxWidth: '520px',
+//     closeButton: 'Close',  // adds a footer Close pill (omit for none)
+//     backdropClose: true, escapeClose: true,
+//     onClose: fn(reason)    // 'x' | 'back' | 'backdrop' | 'escape' | 'api' | footer label
+//   });
+//   m.body      — append content here
+//   m.footer    — footer element (created on demand via m.addFooterButton)
+//   m.close()   — programmatic close
+// ---------------------------------------------------------------------------
+(function(){
+  if (window.sqModal) return;
+  var stack = window.__sqModalStack = window.__sqModalStack || [];
+
+  function focusables(root){
+    try{
+      return Array.prototype.filter.call(
+        root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+        function(el){ return !el.disabled && el.offsetParent !== null; });
+    }catch(_){ return []; }
+  }
+
+  // One document-level handler for the whole stack: Escape closes the top
+  // dialog; Tab is trapped inside it.
+  document.addEventListener('keydown', function(e){
+    if (!stack.length) return;
+    var top = stack[stack.length - 1];
+    if (e.key === 'Escape' && top.escapeClose !== false){
+      e.stopPropagation();
+      top.close('escape');
+      return;
+    }
+    if (e.key === 'Tab'){
+      var f = focusables(top.modal);
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+      else if (!top.modal.contains(document.activeElement)){ e.preventDefault(); first.focus(); }
+    }
+  }, true);
+
+  window.sqModal = function(opts){
+    opts = opts || {};
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-backdrop' + (opts.backdropClass ? ' ' + opts.backdropClass : '');
+    var modal = document.createElement('div');
+    modal.className = 'modal' + (opts.modalClass ? ' ' + opts.modalClass : '');
+    if (opts.maxWidth){ modal.style.maxWidth = opts.maxWidth; modal.style.width = opts.width || '94vw'; }
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    if (opts.title) modal.setAttribute('aria-label', String(opts.title));
+
+    var header = opts.header || null;
+    var api = { overlay: overlay, modal: modal, closed: false, escapeClose: opts.escapeClose };
+    var prevFocus = document.activeElement;
+
+    function close(reason){
+      if (api.closed) return;
+      api.closed = true;
+      try{ overlay.remove(); }catch(_){ }
+      var ix = stack.indexOf(api); if (ix >= 0) stack.splice(ix, 1);
+      try{ if (prevFocus && prevFocus.focus && document.contains(prevFocus)) prevFocus.focus(); }catch(_){ }
+      try{ if (typeof opts.onClose === 'function') opts.onClose(reason || 'api'); }catch(e){ console.error('[sqModal] onClose failed', e); }
+    }
+    api.close = close;
+
+    if (!header && opts.title){
+      header = document.createElement('div');
+      header.className = 'menu-modal-header';
+      var left;
+      if (typeof opts.onBack === 'function'){
+        left = document.createElement('button');
+        left.type = 'button'; left.className = 'icon-btn'; left.setAttribute('aria-label', 'Back');
+        left.innerHTML = '<span style="font-size:18px;line-height:1;">←</span>';
+        left.onclick = function(){ close('back'); try{ opts.onBack(); }catch(e){ console.error(e); } };
+      } else {
+        left = document.createElement('span');
+        left.className = 'icon-btn'; left.setAttribute('aria-hidden', 'true'); left.style.visibility = 'hidden';
+      }
+      var mid = document.createElement('div'); mid.className = 'menu-modal-title';
+      var tt = document.createElement('div'); tt.className = 'menu-modal-title-text'; tt.textContent = String(opts.title);
+      mid.appendChild(tt);
+      if (opts.sub){ var ss = document.createElement('div'); ss.className = 'menu-modal-title-sub'; ss.textContent = String(opts.sub); mid.appendChild(ss); }
+      var x = document.createElement('button');
+      x.type = 'button'; x.className = 'icon-btn'; x.setAttribute('aria-label', 'Close');
+      x.innerHTML = '<span style="font-size:18px;line-height:1;">✕</span>';
+      x.onclick = function(){ close('x'); };
+      header.append(left, mid, x);
+    }
+
+    var body = document.createElement('div');
+    body.className = 'modal-body';
+    api.body = body;
+
+    var footer = null;
+    api.addFooterButton = function(label, className, onClick, closes){
+      if (!footer){ footer = document.createElement('div'); footer.className = 'modal-footer'; modal.appendChild(footer); api.footer = footer; }
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = className || 'btn sq-pill'; b.textContent = label;
+      b.onclick = function(){ if (closes !== false) close(String(label)); if (typeof onClick === 'function'){ try{ onClick(); }catch(e){ console.error(e); } } };
+      footer.appendChild(b);
+      return b;
+    };
+
+    if (header) modal.appendChild(header);
+    modal.appendChild(body);
+    if (opts.closeButton) api.addFooterButton(typeof opts.closeButton === 'string' ? opts.closeButton : 'Close');
+
+    overlay.appendChild(modal);
+    overlay.addEventListener('click', function(e){ if (e.target === overlay && opts.backdropClose !== false) close('backdrop'); });
+    document.body.appendChild(overlay);
+    stack.push(api);
+    modal.tabIndex = -1;
+    try{ modal.focus(); }catch(_){ }
+    return api;
+  };
+
+  // Register an externally-built modal (its own markup + close logic) onto the
+  // shared stack so it gains Escape-closes-topmost and Tab focus-trapping.
+  // Used to retrofit the fix106 menu family (openModalShell) without a rewrite.
+  // Returns an unregister function; call it from the modal's own close path.
+  window.sqModal.register = function(overlay, modal, closeFn, opts){
+    opts = opts || {};
+    var prevFocus = document.activeElement;
+    var api = { overlay: overlay, modal: modal, escapeClose: opts.escapeClose, closed: false };
+    api.body = modal.querySelector('.modal-body, .sq-menu106-body') || modal;
+    api.close = function(){
+      if (api.closed) return; api.closed = true;
+      var ix = stack.indexOf(api); if (ix >= 0) stack.splice(ix, 1);
+      try{ if (prevFocus && prevFocus.focus && document.contains(prevFocus)) prevFocus.focus(); }catch(_){ }
+      try{ if (typeof closeFn === 'function') closeFn(); }catch(e){ console.error('[sqModal.register] close failed', e); }
+    };
+    stack.push(api);
+    try{ modal.tabIndex = -1; modal.focus(); }catch(_){ }
+    return api;
+  };
+})();
+
 // >>> PATCH:MOT_STAGE3_NAV_STACK_V1 START
 // Minimal, opt-in modal stack manager used ONLY by new MOT Stage 3+ modals.
 // Does not interfere with existing legacy modals that manage their own ESC handlers.
@@ -23896,59 +24045,38 @@ function buildPad(){
 function openStatsHubDialog(){
   try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('ingame'); }catch(_){ }
   try{ console.debug('[Popup]', window.__sqStatsDebugName || 'In Game Player Stats'); }catch(_){ }
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-backdrop';
-
-  const modal = document.createElement('div');
-  modal.className = 'modal';
-  modal.style.maxWidth='520px';
-  modal.style.width='94vw';
-
-  const header = (typeof __sqStatsHeader==='function')
-    ? __sqStatsHeader('Player Stats', 'Choose a stats view')
-    : (()=>{ const h=document.createElement('h3'); h.textContent='Player Stats'; return h; })();
-
-  const body = document.createElement('div');
-  body.className = 'modal-body';
-  body.style.display='flex';
-  body.style.flexDirection='column';
-  body.style.alignItems='center';
-  body.style.gap='12px';
-  body.style.paddingTop='10px';
+  // Migrated to the shared sqModal factory (audit P5.1); identical visuals,
+  // shared close/Escape/stack/focus behaviour.
+  const m = sqModal({
+    header: (typeof __sqStatsHeader==='function')
+      ? __sqStatsHeader('Player Stats', 'Choose a stats view')
+      : (()=>{ const h=document.createElement('h3'); h.textContent='Player Stats'; return h; })(),
+    maxWidth: '520px',
+    closeButton: 'Close',
+  });
+  m.modal.setAttribute('aria-label', 'Player Stats');
+  m.body.style.display='flex';
+  m.body.style.flexDirection='column';
+  m.body.style.alignItems='center';
+  m.body.style.gap='12px';
+  m.body.style.paddingTop='10px';
+  if (m.footer) m.footer.style.justifyContent='flex-start';
 
   const mk = (label, cls, fn) => {
     const b = document.createElement('button');
     b.type='button';
     b.className = `sq-navBtn ${cls||''}`.trim();
     b.textContent = label;
-    b.onclick = () => { overlay.remove(); fn(); };
+    b.onclick = () => { m.close('nav'); fn(); };
     return b;
   };
 
   // Keep existing actions; just re-skin.
-  body.appendChild(mk('GAME RACE', 'navOrange', openGameRaceDialog));
-  body.appendChild(mk('GAME STATS', 'navBlue', openGameStatsDialog));
-  body.appendChild(mk('MATCH STATS', 'navBlue', openMatchStatsDialog));
-  body.appendChild(mk('HIGH SCORES (Official)', 'navGreen', openHighScoresDialog));
-  body.appendChild(mk('LOW SCORES (Official)', 'navGreen', openLowScoresDialog));
-
-  const footer = document.createElement('div');
-  footer.className = 'modal-footer';
-  footer.style.justifyContent='flex-start';
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn sq-pill';
-  closeBtn.textContent = 'Close';
-  closeBtn.onclick = () => overlay.remove();
-  footer.appendChild(closeBtn);
-
-  modal.append(header, body, footer);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-
-  modal.tabIndex = 0;
-  modal.focus();
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  m.body.appendChild(mk('GAME RACE', 'navOrange', openGameRaceDialog));
+  m.body.appendChild(mk('GAME STATS', 'navBlue', openGameStatsDialog));
+  m.body.appendChild(mk('MATCH STATS', 'navBlue', openMatchStatsDialog));
+  m.body.appendChild(mk('HIGH SCORES (Official)', 'navGreen', openHighScoresDialog));
+  m.body.appendChild(mk('LOW SCORES (Official)', 'navGreen', openLowScoresDialog));
 }
 
 function openGameStatsDialog(){
@@ -27073,17 +27201,14 @@ function openGameScoresDialog() {
     ? __sqRealPlayersOnly(state.players || [])
     : (state.players || []);
 
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-backdrop';
-
-  const modal = document.createElement('div');
-  modal.className = 'modal';
-
+  // Migrated to the shared sqModal factory (audit P5.1). Keeps the simple
+  // h3 title look; gains stack/Escape/focus behaviour.
+  const m = sqModal({ closeButton: 'Close' });
+  m.modal.setAttribute('aria-label', 'Game Scores');
   const title = document.createElement('h3');
   title.textContent = 'Game Scores';
-
-  const body = document.createElement('div');
-  body.className = 'modal-body';
+  m.modal.insertBefore(title, m.body);
+  const body = m.body;
 
   state.match.history.forEach((game, idx) => {
     const heading = document.createElement('h4');
@@ -27167,30 +27292,6 @@ function openGameScoresDialog() {
     table.appendChild(tbody);
     wrap.appendChild(table);
     body.appendChild(wrap);
-  });
-
-  const footer = document.createElement('div');
-  footer.className = 'modal-footer';
-
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn sq-pill';
-  closeBtn.textContent = 'Close';
-  closeBtn.onclick = () => overlay.remove();
-
-  footer.appendChild(closeBtn);
-
-  modal.append(title, body, footer);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-
-  modal.tabIndex = 0;
-  modal.focus();
-
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) overlay.remove();
-  });
-  overlay.addEventListener('keydown', e => {
-    if (e.key === 'Escape') overlay.remove();
   });
 }
 
@@ -48039,7 +48140,12 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
   window.__sqFix106EnsureHomePanels = ensureHomePanels;
 
   function openModalShell(title, sub){
-    document.querySelectorAll('.sq-menu106-bd').forEach(function(n){n.remove();});
+    document.querySelectorAll('.sq-menu106-bd').forEach(function(n){
+      // Close via the shared stack when registered so stack state stays true.
+      var st=window.__sqModalStack||[]; var handled=false;
+      for(var i=st.length-1;i>=0;i--){ if(st[i].overlay===n){ st[i].close(); handled=true; break; } }
+      if(!handled) n.remove();
+    });
     var bd=document.createElement('div');
     bd.className='modal-backdrop sq-menu106-bd';
     var modal=document.createElement('div');
@@ -48047,6 +48153,9 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     modal.innerHTML='<div class="sq-menu106-head"><button class="sq-menu106-back" type="button" aria-label="Back">‹</button><div><div class="sq-menu106-title">'+esc(title)+'</div>'+(sub?'<div class="sq-menu106-sub">'+esc(sub)+'</div>':'')+'</div><button class="sq-menu106-x" type="button" aria-label="Close">×</button></div><div class="sq-menu106-body"></div><div class="sq-menu106-footer"><button class="btn sq-menu106-close" type="button">Close</button></div>';
     bd.appendChild(modal); document.body.appendChild(bd);
     var close=function(){bd.remove();};
+    if(window.sqModal&&window.sqModal.register){
+      close=window.sqModal.register(bd,modal,function(){bd.remove();}).close;
+    }
     bd.addEventListener('click',function(e){if(e.target===bd)close();});
     modal.querySelector('.sq-menu106-x').onclick=close;
     modal.querySelector('.sq-menu106-close').onclick=close;
