@@ -151,6 +151,13 @@ Decision points requiring owner input before implementation:
 
 | (factory 3) | P5.1 batch 3 | Five in-game stats dialogs (Game Race, Game Stats, Match Stats, High Scores, Low Scores) registered on the shared stack at their attach points — Escape closes each cleanly, no stale entries. verify-p51's nav-through assertion updated for the new state (race dialog is now itself the sole stack entry). All modal verifiers + smoke 25/25 green |
 
+## Follow-on: Player Stats profile overhaul (user request, post-audit)
+
+| Commit | Scope | Notes |
+|---|---|---|
+| 858f9ba | Data + wiring | Power Rank single-sourced (view feeds hero AND Quick Stats; heavy local recompute is fallback-only — was a second full games+throws fetch), games fetched once, Highest Score rank local fallback (no more "(#—)"), nickname resolves on direct opens, Tournament/Turbo collapsed to one coming-soon strip (approved), profile + XP ladder + trophy leaderboard registered on the shared modal stack. New pstats-fixture.js stubs every cloud seam with deterministic data; verify-pstats.js asserts 26 rendered values/behaviours |
+| 8aab003 | Arcade restyle | Inline styles → pp-* CSS family: neon hero + glowing tiles, blue glowing card headers, tokenised tabs, podium-coloured rank chips, streak flames (CSS-generated), mini hit-rate bars on Targets. All 26 value checks unchanged; smoke 25/25 |
+
 **Remaining backlog:** migrate remaining hand-rolled league/admin dialog builders onto
 `sqModal`/`sqModal.register` incrementally (factory + stack now in place), and
 P5.4 stylesheet flattening. (V-12 and the v85 block are now done — see entries above.)
