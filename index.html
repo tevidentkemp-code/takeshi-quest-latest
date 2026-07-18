@@ -10098,6 +10098,27 @@ window.__sqConfirm = function(opts, onYes, onNo){
     try{ modal.tabIndex = -1; modal.focus(); }catch(_){ }
     return api;
   };
+
+  // Registered dialogs may close through their own legacy paths (button
+  // handlers calling overlay.remove(), preemptive duplicate cleanup, etc.).
+  // Watch for overlay removal and retire the matching stack entry so the
+  // stack never points at a detached dialog.
+  try{
+    new MutationObserver(function(muts){
+      if (!stack.length) return;
+      for (var i = 0; i < muts.length; i++){
+        var rm = muts[i].removedNodes;
+        for (var j = 0; j < rm.length; j++){
+          var n = rm[j];
+          if (!n || n.nodeType !== 1) continue;
+          for (var k = stack.length - 1; k >= 0; k--){
+            var ent = stack[k];
+            if (ent.overlay === n || (n.contains && n.contains(ent.overlay))) ent.close('removed');
+          }
+        }
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+  }catch(e){ console.warn('[sqModal] removal observer failed', e); }
 })();
 
 // >>> PATCH:MOT_STAGE3_NAV_STACK_V1 START
@@ -33866,6 +33887,7 @@ window.openLeagueRankingsDialog = async function openLeagueRankingsDialog(){
   modal.append(header, body);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
+  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
 
   const remove = () => overlay.remove();
 
@@ -34743,6 +34765,7 @@ body.style.overflowY = 'visible';
   modal.append(title, body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
+  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
 
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) overlay.remove();
@@ -47288,6 +47311,7 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     var back=document.createElement('button'); back.className='btn small sq-pill'; back.textContent='Back';
     var close=document.createElement('button'); close.className='btn small sq-pill'; close.textContent='Close'; footer.append(back,close);
     modal.append(head,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+    try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
     var tbody=body.querySelector('tbody');
     function format(g){
       try{ if(typeof window.formatGameResultLine==='function') return window.formatGameResultLine(g)+(mode==='turbo'?' - TURBO':''); }catch(_){ }
@@ -47361,6 +47385,7 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     var tabs=tabBar([{mode:'official',label:'Official'},{mode:'turbo',label:'Turbo'}]); head.appendChild(tabs);
     var body=document.createElement('div'); body.className='modal-body';
     var footer=document.createElement('div'); footer.className='modal-footer'; var back=document.createElement('button'); back.className='btn sq-pill'; back.textContent='Back'; var close=document.createElement('button'); close.className='btn sq-pill'; close.textContent='Close'; footer.append(back,close); modal.append(head,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+    try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
     async function render(){
       setBtnStates(tabs,mode); body.innerHTML='<div class="muted">Loading…</div>';
       if(mode==='turbo'){
@@ -47544,7 +47569,7 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
   async function playerRows(bucket){var rows=[];(await gamesFor(bucket)).forEach(function(g){playersOf(g).forEach(function(p,pi){var name=playerName(p);if(!name)return;var score=totalFor(g,pi);if(!(score>0))return;rows.push({player:name,playerKey:norm(name),score:score,avg:score/denominator(bucket,g,pi),ts:g.ts||g.created_at||"",game:g});});});return rows.sort(function(a,b){return (b.score-a.score)||(parseMs(b.ts)-parseMs(a.ts))||String(a.player).localeCompare(String(b.player));});}
   function tabsEl(modes){var tabs=document.createElement('div');tabs.className='sq-league-tabs';modes.forEach(function(m){var b=document.createElement('button');b.type='button';b.dataset.mode=m.mode;b.textContent=m.label;tabs.appendChild(b);});return tabs;}
   function setTabs(tabs,mode){Array.from(tabs.querySelectorAll('button[data-mode]')).forEach(function(b){b.classList.toggle('active',b.dataset.mode===mode);});}
-  function buildModal(title,sub,modes){var overlay=document.createElement('div');overlay.className='modal-backdrop sq-fix100-backdrop';var modal=document.createElement('div');modal.className='modal sq-wide-modal';var head=document.createElement('div');head.className='sq-league-clean-head';head.innerHTML='<div class="sq-league-clean-title"><h3>'+esc(title)+'</h3>'+(sub?'<div class="sq-league-clean-sub">'+esc(sub)+'</div>':'')+'</div>';var tabs=tabsEl(modes);head.appendChild(tabs);var body=document.createElement('div');body.className='modal-body';var footer=document.createElement('div');footer.className='modal-footer';var back=document.createElement('button');back.className='btn sq-pill';back.textContent='Back';var close=document.createElement('button');close.className='btn sq-pill';close.textContent='Close';footer.append(back,close);modal.append(head,body,footer);overlay.appendChild(modal);document.body.appendChild(overlay);back.onclick=function(){overlay.remove();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}};close.onclick=function(){overlay.remove();};overlay.onclick=function(e){if(e.target===overlay)overlay.remove();};return {overlay:overlay,modal:modal,head:head,tabs:tabs,body:body};}
+  function buildModal(title,sub,modes){var overlay=document.createElement('div');overlay.className='modal-backdrop sq-fix100-backdrop';var modal=document.createElement('div');modal.className='modal sq-wide-modal';var head=document.createElement('div');head.className='sq-league-clean-head';head.innerHTML='<div class="sq-league-clean-title"><h3>'+esc(title)+'</h3>'+(sub?'<div class="sq-league-clean-sub">'+esc(sub)+'</div>':'')+'</div>';var tabs=tabsEl(modes);head.appendChild(tabs);var body=document.createElement('div');body.className='modal-body';var footer=document.createElement('div');footer.className='modal-footer';var back=document.createElement('button');back.className='btn sq-pill';back.textContent='Back';var close=document.createElement('button');close.className='btn sq-pill';close.textContent='Close';footer.append(back,close);modal.append(head,body,footer);overlay.appendChild(modal);document.body.appendChild(overlay);try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}back.onclick=function(){overlay.remove();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}};close.onclick=function(){overlay.remove();};overlay.onclick=function(e){if(e.target===overlay)overlay.remove();};return {overlay:overlay,modal:modal,head:head,tabs:tabs,body:body};}
   async function savedPlayerKeys(){try{if(typeof cloudListPlayers==='function'){var rows=await cloudListPlayers();return new Set((rows||[]).map(function(p){return norm(playerName(p)||p.name);}).filter(Boolean));}}catch(_){}return new Set();}
 
 // [removed: openTop50ScoresDialog fix100 def] audit P5.3 batch 3 — shadowed by later canonical definition
@@ -48831,6 +48856,7 @@ body.livev2-on[data-page="game"] .livev2panel .v2Rows .v2Cell.small.solo-complet
     bd.appendChild(modal);
     modal.innerHTML='<div class="sq132-head"><div class="sq132-title"><h3>Power Rankings</h3><div class="sq132-sub">Recent form by round average.</div></div><div class="sq132-tabs">'+MODES.map(function(m){return '<button type="button" data-mode="'+m.mode+'" class="'+(m.mode===mode?'active':'')+'">'+m.label+'</button>';}).join('')+'</div></div><div class="sq132-body">Loading…</div><div class="sq132-footer"><button type="button" class="btn sq132-back">Back</button><button type="button" class="btn sq132-close">Close</button></div>';
     document.body.appendChild(bd);
+    try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(bd,modal,function(){bd.remove();});}catch(_){}
     var body=modal.querySelector('.sq132-body'),tabs=modal.querySelector('.sq132-tabs');
     function setMode(m){mode=m;tabs.querySelectorAll('button').forEach(function(b){b.classList.toggle('active',b.dataset.mode===mode);});render();}
     tabs.onclick=function(e){var b=e.target.closest('button[data-mode]');if(b)setMode(b.dataset.mode);};
@@ -48896,7 +48922,7 @@ async function officialRows(){var games=[];try{if(typeof getGamesForMode==='func
 function startOfDay(d,off){return new Date(d.getFullYear(),d.getMonth(),d.getDate()+(off||0));}
 function filters(){var now=new Date(), out=[];out.push({id:'TODAY',label:'Today',match:function(ts){var ms=parseMs(ts),d=new Date(ms),a=startOfDay(now,0),b=startOfDay(now,1);return ms&&d>=a&&d<b;},min:2});out.push({id:'YESTERDAY',label:'Yesterday',match:function(ts){var ms=parseMs(ts),d=new Date(ms),a=startOfDay(now,-1),b=startOfDay(now,0);return ms&&d>=a&&d<b;},min:2});out.push({id:'THIS_WEEK',label:'This Week',match:function(ts){var ms=parseMs(ts),d=new Date(ms),dow=(now.getDay()+6)%7,a=startOfDay(now,-dow),b=new Date(a);b.setDate(a.getDate()+7);return ms&&d>=a&&d<b;},min:2});for(var i=0;i<6;i++){(function(i){var d=new Date(now.getFullYear(),now.getMonth()-i,1),y=d.getFullYear(),m=d.getMonth(),lab=d.toLocaleString('en-GB',{month:'short'}).toUpperCase();out.push({id:'M'+y+'-'+String(m+1).padStart(2,'0'),label:lab,match:function(ts){var ms=parseMs(ts),dt=new Date(ms);return ms&&dt.getFullYear()===y&&dt.getMonth()===m;},min:3});})(i);}out.push({id:'Y2026',label:'2026',match:function(ts){var ms=parseMs(ts),d=new Date(ms);return ms&&d.getFullYear()===2026;},min:10});out.push({id:'Y2025',label:'2025',match:function(ts){var ms=parseMs(ts),d=new Date(ms);return ms&&d.getFullYear()===2025;},min:10});out.push({id:'ALL',label:'All Time',match:function(){return true;},min:15});return out;}
 function aggregate(rows,filter){var map=new Map();rows.filter(function(r){return filter.match(r.ts);}).forEach(function(r){var x=map.get(r.key)||{player:r.player,games:0,total:0,best:0};x.games++;x.total+=r.score;if(r.score>x.best)x.best=r.score;map.set(r.key,x);});return Array.from(map.values()).map(function(x){x.avg=x.games?x.total/x.games:0;x.qualifies=x.games>=filter.min;return x;}).sort(function(a,b){if(a.qualifies!==b.qualifies)return a.qualifies?-1:1;return(b.avg-a.avg)||(b.games-a.games)||String(a.player).localeCompare(String(b.player));});}
-function openPremier(){document.querySelectorAll('.sq136-pl-bd').forEach(function(n){n.remove();});var fs=filters(), cur=fs.find(function(f){return /^M/.test(f.id);})||fs[0], allRows=null;var bd=document.createElement('div');bd.className='modal-backdrop sq136-pl-bd';var modal=document.createElement('div');modal.className='modal sq136-pl-modal';bd.appendChild(modal);modal.innerHTML='<div class="sq136-pl-head"><div><h3>Premier League</h3><div class="sq136-pl-sub">Average league by selected period.</div></div></div><div class="sq136-pl-body"><div class="sq136-pl-filters"><div class="sq136-pl-filter-row sq136-r1"></div><div class="sq136-pl-filter-row sq136-r2"></div><div class="sq136-pl-filter-row sq136-r3"></div></div><div class="sq136-pl-table-mount"><p class="tag">Loading Premier League…</p></div></div><div class="sq136-pl-footer"><button type="button" class="btn sq136-back">Back</button><button type="button" class="btn sq136-close">Close</button></div>';document.body.appendChild(bd);var mount=modal.querySelector('.sq136-pl-table-mount');function close(){bd.remove();}modal.querySelector('.sq136-close').onclick=close;modal.querySelector('.sq136-back').onclick=function(){close();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}};bd.addEventListener('click',function(e){if(e.target===bd)close();});function rowFor(f){if(f.id==='TODAY'||f.id==='YESTERDAY'||f.id==='THIS_WEEK')return modal.querySelector('.sq136-r1');if(/^M/.test(f.id))return modal.querySelector('.sq136-r2');return modal.querySelector('.sq136-r3');}fs.forEach(function(f){var b=document.createElement('button');b.type='button';b.textContent=f.label;b.dataset.filterId=f.id;b.onclick=function(){cur=f;render();};rowFor(f).appendChild(b);});async function render(){modal.querySelectorAll('[data-filter-id]').forEach(function(b){b.classList.toggle('active',b.dataset.filterId===cur.id);});if(!allRows){try{allRows=await window.__sqWithCloudTimeout(officialRows(),12000,'premier-league');}catch(err){try{console.warn('[SQ] Premier League cloud read failed/timed out',err);}catch(_){}mount.innerHTML='<p class="tag">'+window.__sqCloudErrorHtml()+'</p>';var rb=mount.querySelector('[data-action="cloudRetry"]');if(rb)rb.onclick=function(){render();};return;}}var rows=aggregate(allRows,cur);mount.innerHTML='<div class="sq136-pl-note">'+esc(cur.label)+' · '+cur.min+' Games Minimum</div><div class="sq136-pl-table-wrap"><table class="sq136-pl-table"><colgroup><col style="width:64px"><col><col style="width:110px"><col style="width:130px"><col style="width:130px"></colgroup><thead><tr><th>#</th><th>Player</th><th>Games</th><th>Avg</th><th>Best</th></tr></thead><tbody></tbody></table></div>';var tb=mount.querySelector('tbody');if(!rows.length){tb.innerHTML='<tr><td colspan="5">No official saved-player games found for '+esc(cur.label)+'.</td></tr>';return;}var rank=0;tb.innerHTML=rows.map(function(r){var q=r.qualifies;if(q)rank++;return '<tr class="'+(q?'':'unqualified')+'"><td class="rank-cell">'+(q?rank:'—')+'</td><td>'+esc(r.player)+'</td><td class="num-cell">'+r.games+'</td><td class="avg-cell">'+r.avg.toFixed(1)+'</td><td class="best-cell">'+Math.round(r.best)+'</td></tr>';}).join('');}
+function openPremier(){document.querySelectorAll('.sq136-pl-bd').forEach(function(n){n.remove();});var fs=filters(), cur=fs.find(function(f){return /^M/.test(f.id);})||fs[0], allRows=null;var bd=document.createElement('div');bd.className='modal-backdrop sq136-pl-bd';var modal=document.createElement('div');modal.className='modal sq136-pl-modal';bd.appendChild(modal);modal.innerHTML='<div class="sq136-pl-head"><div><h3>Premier League</h3><div class="sq136-pl-sub">Average league by selected period.</div></div></div><div class="sq136-pl-body"><div class="sq136-pl-filters"><div class="sq136-pl-filter-row sq136-r1"></div><div class="sq136-pl-filter-row sq136-r2"></div><div class="sq136-pl-filter-row sq136-r3"></div></div><div class="sq136-pl-table-mount"><p class="tag">Loading Premier League…</p></div></div><div class="sq136-pl-footer"><button type="button" class="btn sq136-back">Back</button><button type="button" class="btn sq136-close">Close</button></div>';document.body.appendChild(bd);try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(bd,modal,function(){bd.remove();});}catch(_){}var mount=modal.querySelector('.sq136-pl-table-mount');function close(){bd.remove();}modal.querySelector('.sq136-close').onclick=close;modal.querySelector('.sq136-back').onclick=function(){close();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}};bd.addEventListener('click',function(e){if(e.target===bd)close();});function rowFor(f){if(f.id==='TODAY'||f.id==='YESTERDAY'||f.id==='THIS_WEEK')return modal.querySelector('.sq136-r1');if(/^M/.test(f.id))return modal.querySelector('.sq136-r2');return modal.querySelector('.sq136-r3');}fs.forEach(function(f){var b=document.createElement('button');b.type='button';b.textContent=f.label;b.dataset.filterId=f.id;b.onclick=function(){cur=f;render();};rowFor(f).appendChild(b);});async function render(){modal.querySelectorAll('[data-filter-id]').forEach(function(b){b.classList.toggle('active',b.dataset.filterId===cur.id);});if(!allRows){try{allRows=await window.__sqWithCloudTimeout(officialRows(),12000,'premier-league');}catch(err){try{console.warn('[SQ] Premier League cloud read failed/timed out',err);}catch(_){}mount.innerHTML='<p class="tag">'+window.__sqCloudErrorHtml()+'</p>';var rb=mount.querySelector('[data-action="cloudRetry"]');if(rb)rb.onclick=function(){render();};return;}}var rows=aggregate(allRows,cur);mount.innerHTML='<div class="sq136-pl-note">'+esc(cur.label)+' · '+cur.min+' Games Minimum</div><div class="sq136-pl-table-wrap"><table class="sq136-pl-table"><colgroup><col style="width:64px"><col><col style="width:110px"><col style="width:130px"><col style="width:130px"></colgroup><thead><tr><th>#</th><th>Player</th><th>Games</th><th>Avg</th><th>Best</th></tr></thead><tbody></tbody></table></div>';var tb=mount.querySelector('tbody');if(!rows.length){tb.innerHTML='<tr><td colspan="5">No official saved-player games found for '+esc(cur.label)+'.</td></tr>';return;}var rank=0;tb.innerHTML=rows.map(function(r){var q=r.qualifies;if(q)rank++;return '<tr class="'+(q?'':'unqualified')+'"><td class="rank-cell">'+(q?rank:'—')+'</td><td>'+esc(r.player)+'</td><td class="num-cell">'+r.games+'</td><td class="avg-cell">'+r.avg.toFixed(1)+'</td><td class="best-cell">'+Math.round(r.best)+'</td></tr>';}).join('');}
 render();}
 window.openPremierLeagueDialog=openPremier;window.openPremierLeaguePopup=openPremier;
 document.addEventListener('click',function(e){var b=e.target&&e.target.closest?e.target.closest('#leaguePremierLeagueBtn'):null;if(!b)return;try{e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation();}catch(_){}openPremier();},true);
@@ -49367,6 +49393,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     var back = document.createElement('button'); back.className = 'btn sq-pill'; back.textContent = 'Back';
     var close = document.createElement('button'); close.className = 'btn sq-pill'; close.textContent = 'Close';
     footer.append(back, close); modal.append(head, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+    try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
     var tb = body.querySelector('tbody');
     function setTabs(){ Array.prototype.slice.call(tabs.querySelectorAll('button[data-mode]')).forEach(function(b){ b.classList.toggle('active', b.dataset.mode === mode); }); }
     async function render(){
@@ -50984,6 +51011,7 @@ Logic untouched: practice save, scoring, Supabase writes, rankings formulas.
     bd.appendChild(modal);
     modal.innerHTML = '<div class="sq132-head"><div class="sq132-title"><h3>Power Rankings</h3><div class="sq132-sub">Recent form by round average.</div></div><div class="sq132-tabs"><button type="button" data-mode="official">Official</button><button type="button" data-mode="turbo">Turbo</button><button type="button" data-mode="practice">Practice</button></div></div><div class="sq132-body">Loading…</div><div class="sq132-footer"><button type="button" class="btn sq132-back">Back</button><button type="button" class="btn sq132-close">Close</button></div>';
     document.body.appendChild(bd);
+    try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(bd,modal,function(){bd.remove();});}catch(_){}
     var body = modal.querySelector('.sq132-body');
     var tabs = modal.querySelector('.sq132-tabs');
     function syncTabs(){ Array.prototype.forEach.call(tabs.querySelectorAll('button'), function(b){ b.classList.toggle('active', b.dataset.mode === mode); }); }
