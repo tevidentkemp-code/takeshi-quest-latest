@@ -88,6 +88,28 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
   check('Rivals: Nemesis', norm(snap.rows['Rivals|Nemesis']) === norm(E.rivalsNemesis), JSON.stringify(snap.rows['Rivals|Nemesis']));
   check('Rivals: Favourite Victims', norm(snap.rows['Rivals|Favourite Victims']) === norm(E.rivalsVictims), JSON.stringify(snap.rows['Rivals|Favourite Victims']));
 
+  // FORM panel (win-rate gauge + verdict + strip)
+  const form = await page.evaluate(() => {
+    const p = document.querySelector('.pp-form');
+    if (!p) return null;
+    const canvas = p.querySelector('canvas');
+    return {
+      value: (p.querySelector('.pp-form-value') || {}).textContent,
+      verdict: (p.querySelector('.pp-verdict') || {}).textContent,
+      sub: (p.querySelector('.pp-form-sub') || {}).textContent,
+      cells: p.querySelectorAll('.pp-strip-cell').length,
+      winCells: p.querySelectorAll('.pp-strip-cell.win').length,
+      gaugeDrawn: !!(canvas && canvas.width > 0),
+    };
+  });
+  check('FORM panel present with gauge canvas', !!form && form.gaugeDrawn, JSON.stringify(form));
+  if (form) {
+    check('FORM: win rate 60%', form.value === '60%', JSON.stringify(form.value));
+    check('FORM: verdict STEADY (recent avg == career avg)', /STEADY/.test(form.verdict || ''), JSON.stringify(form.verdict));
+    check('FORM: sub shows 3W / 2L', /3W \/ 2L/.test(form.sub || ''), JSON.stringify(form.sub));
+    check('FORM: strip has 5 cells, 3 wins', form.cells === 5 && form.winCells === 3, JSON.stringify({ cells: form.cells, wins: form.winCells }));
+  }
+
   // collapsed coming-soon (replaces the two placeholder cards)
   check('Tournament/Turbo collapsed into one coming-soon strip',
     !snap.cardTitles.includes('Tournament') && !snap.cardTitles.includes('Turbo') && /coming soon/i.test(snap.bodyText),

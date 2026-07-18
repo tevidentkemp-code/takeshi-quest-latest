@@ -5017,6 +5017,27 @@ body[data-page="details"] #details{
   background:linear-gradient(135deg,rgba(255,122,24,.30),rgba(255,183,64,.16));
   color:#fff; border-color:rgba(255,150,60,.55); box-shadow:0 0 18px rgba(255,122,0,.18);
 }
+/* FORM panel: win-rate gauge + verdict stamp + recent-games strip
+   (same arcade language as the Target Progress form arena) */
+.pp-form{
+  grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; gap:4px 14px;
+  padding:12px 14px; border-radius:14px; background:#101827;
+  border:1px solid rgba(35,164,255,.3);
+  box-shadow:0 6px 16px rgba(0,0,0,.3), 0 0 24px rgba(47,134,255,.08);
+}
+.pp-form-info{ flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; align-items:flex-start; }
+.pp-form-value{ font-size:30px; font-weight:900; color:#ffd9b0; line-height:1; letter-spacing:.02em; }
+.pp-form-sub{ font-size:10px; text-transform:uppercase; letter-spacing:.1em; font-weight:800; color:rgba(150,185,230,.85); }
+.pp-verdict{ display:inline-flex; align-items:center; gap:6px; padding:5px 13px; border-radius:99px; font-weight:900; font-size:12px; letter-spacing:.1em; }
+.pp-strip-wrap{ flex-basis:100%; margin-top:8px; }
+.pp-strip-label{ font-size:10px; text-transform:uppercase; letter-spacing:.12em; font-weight:800; color:rgba(150,185,230,.85); margin-bottom:6px; }
+.pp-strip{ display:flex; gap:3px; align-items:flex-end; overflow-x:auto; padding-bottom:2px; }
+.pp-strip-cell{
+  width:12px; min-height:8px; border-radius:3px 3px 1px 1px; flex:0 0 auto;
+  background:linear-gradient(180deg,#2f86ff,#1b4c94); box-shadow:0 0 6px rgba(47,134,255,.35);
+  transform-origin:bottom; transition:height .5s cubic-bezier(.2,.8,.25,1);
+}
+.pp-strip-cell.win{ background:linear-gradient(180deg,#ffb14a,#ff7a18); box-shadow:0 0 8px rgba(255,140,40,.5); }
 /* motion: staggered card entrance, hero light sweep, growing bars */
 @keyframes ppIn{ from{ opacity:0; transform:translateY(12px); } to{ opacity:1; transform:none; } }
 .pp-anim .pp-hero, .pp-anim .pp-card, .pp-anim .pp-soon{
@@ -37119,6 +37140,80 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     soon.append(ic, tx);
     cards.appendChild(soon);
   }
+
+  // ---- FORM panel: win-rate gauge + verdict stamp + recent-games strip ----
+  // Mirrors the Target Progress "form arena" (reuses __sqDrawFormGauge).
+  {
+    const winFlags = games.map(g => {
+      const i = idxOf(g); const s = Number(g.totals[i] || 0);
+      return s === Math.max(...(g.totals || []).map(Number)) ? 1 : 0;
+    });
+    const W = winFlags.reduce((a, b) => a + b, 0);
+    const winRate = GAMES ? (100 * W / GAMES) : 0;
+    const recent = scores.slice(-5);
+    const recentAvg = recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : 0;
+    const dPct = AVG ? ((recentAvg - AVG) / AVG) * 100 : 0;
+    const v = dPct >= 5   ? { label:'ON FIRE',  color:'#ffa440', glow:'rgba(255,140,40,.45)', arrow:'↑' }
+      :       dPct >= 1.5 ? { label:'CLIMBING', color:'#73f07e', glow:'rgba(115,240,126,.4)', arrow:'↑' }
+      :       dPct > -1.5 ? { label:'STEADY',   color:'#4aa3ff', glow:'rgba(74,163,255,.4)', arrow:'→' }
+      :                     { label:'COOLING',  color:'#7cc0ff', glow:'rgba(124,192,255,.35)', arrow:'↓' };
+
+    const panel = document.createElement('div');
+    panel.className = 'pp-form';
+    const gaugeCanvas = document.createElement('canvas');
+    gaugeCanvas.style.cssText = 'width:170px;height:104px;flex:0 0 auto;';
+    const info = document.createElement('div'); info.className = 'pp-form-info';
+    const val = document.createElement('div'); val.className = 'pp-form-value';
+    const stamp = document.createElement('span'); stamp.className = 'pp-verdict';
+    stamp.style.color = v.color; stamp.style.border = '1px solid ' + v.color;
+    stamp.style.boxShadow = '0 0 14px ' + v.glow + ', inset 0 0 10px ' + v.glow;
+    stamp.textContent = v.arrow + ' ' + v.label;
+    const sub = document.createElement('div'); sub.className = 'pp-form-sub';
+    sub.textContent = 'Win rate — official (' + W + 'W / ' + (GAMES - W) + 'L)';
+    info.append(val, stamp, sub);
+    panel.append(gaugeCanvas, info);
+
+    // hot/cold strip: one cell per recent game, height scaled by score vs PB
+    const stripWrap = document.createElement('div'); stripWrap.className = 'pp-strip-wrap';
+    const stripLabel = document.createElement('div'); stripLabel.className = 'pp-strip-label';
+    const lastGames = games.slice(-14);
+    stripLabel.textContent = 'Last ' + lastGames.length + ' games';
+    const strip = document.createElement('div'); strip.className = 'pp-strip';
+    lastGames.forEach((g, i) => {
+      const gi = games.length - lastGames.length + i;
+      const s = scores[gi] || 0;
+      const cell = document.createElement('span');
+      cell.className = 'pp-strip-cell' + (winFlags[gi] ? ' win' : '');
+      const h = Math.round(8 + 24 * (PB ? Math.max(0, Math.min(1, s / PB)) : 0));
+      cell.style.height = __ppReduced ? h + 'px' : '8px';
+      if (!__ppReduced) requestAnimationFrame(() => requestAnimationFrame(() => { cell.style.height = h + 'px'; }));
+      try{
+        const d = g.ts ? new Date(g.ts) : null;
+        cell.title = s + ' pts' + (d && !Number.isNaN(d.getTime()) ? ' · ' + d.toLocaleDateString() : '');
+      }catch(_){ }
+      strip.appendChild(cell);
+    });
+    stripWrap.append(stripLabel, strip);
+    panel.appendChild(stripWrap);
+
+    // needle sweep + value count-up
+    const finalTxt = winRate.toFixed(0) + '%';
+    if (typeof __sqDrawFormGauge === 'function'){
+      if (__ppReduced){ __sqDrawFormGauge(gaugeCanvas, winRate, 50, 1); val.textContent = finalTxt; }
+      else {
+        countUp(val, finalTxt, 900);
+        const t0 = performance.now();
+        const sweep = (t) => {
+          const p = Math.min(1, (t - t0) / 900);
+          __sqDrawFormGauge(gaugeCanvas, winRate, 50, 1 - Math.pow(1 - p, 3));
+          if (p < 1) requestAnimationFrame(sweep);
+        };
+        requestAnimationFrame(sweep);
+      }
+    } else { gaugeCanvas.remove(); val.textContent = finalTxt; }
+    cards.prepend(panel);
+  }
+
   // staggered entrance: hero leads, cards follow one by one
   Array.prototype.forEach.call(cards.children, (c, i) => { c.style.animationDelay = (80 + i * 70) + 'ms'; });
   // ---- Tabbed content: Stats / XP / Achievements ----
