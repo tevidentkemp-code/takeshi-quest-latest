@@ -5038,6 +5038,58 @@ body[data-page="details"] #details{
   transform-origin:bottom; transition:height .5s cubic-bezier(.2,.8,.25,1);
 }
 .pp-strip-cell.win{ background:linear-gradient(180deg,#ffb14a,#ff7a18); box-shadow:0 0 8px rgba(255,140,40,.5); }
+/* XP tab hero: "XP CORE" reactor — radial ring + orbiting sparks + igniting level */
+.pp-xporb{
+  grid-column:1/-1; display:flex; align-items:center; gap:16px; position:relative; overflow:hidden;
+  padding:14px 16px; border-radius:16px;
+  background:radial-gradient(120% 150% at 18% -30%, rgba(255,150,60,.16), transparent 60%), #0f1626;
+  border:1px solid rgba(255,150,60,.32);
+  box-shadow:0 6px 18px rgba(0,0,0,.34), 0 0 26px rgba(255,140,40,.10);
+}
+.pp-orb-stage{ position:relative; width:130px; height:130px; flex:0 0 auto; }
+.pp-orb-stage canvas{ position:absolute; inset:0; width:100%; height:100%; }
+.pp-orb-center{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; text-align:center; pointer-events:none; }
+.pp-orb-lvtag{ font-size:9px; font-weight:900; letter-spacing:.2em; color:#ffcaa0; text-transform:uppercase; }
+.pp-orb-level{ font-size:40px; font-weight:900; line-height:.86; color:#fff; text-shadow:0 0 20px rgba(255,150,60,.65); }
+.pp-orb-title{ font-size:10px; font-weight:900; letter-spacing:.12em; color:#ffb14a; text-transform:uppercase; }
+.pp-orb-info{ flex:1; min-width:0; display:flex; flex-direction:column; gap:7px; }
+.pp-orb-head{ font-size:11px; font-weight:900; letter-spacing:.16em; text-transform:uppercase; color:#7cc0ff; text-shadow:0 0 12px rgba(47,134,255,.35); }
+.pp-orb-xp{ font-size:27px; font-weight:900; color:#ffe4c4; line-height:1; }
+.pp-orb-next{ font-size:11px; font-weight:800; letter-spacing:.04em; color:rgba(150,185,230,.9); text-transform:uppercase; }
+.pp-orb-seg{ display:flex; gap:3px; }
+.pp-orb-seg i{ flex:1; height:7px; border-radius:2px; background:rgba(255,255,255,.08); position:relative; overflow:hidden; }
+.pp-orb-seg i.on::after{ content:''; position:absolute; inset:0; background:linear-gradient(90deg,#ff7a18,#ffcf6a); box-shadow:0 0 8px rgba(255,150,60,.6); }
+
+/* Achievements tab hero: "TROPHY VAULT" — completion meter + badge shelf */
+.pp-vault{
+  grid-column:1/-1; display:flex; align-items:center; gap:16px; flex-wrap:wrap; position:relative; overflow:hidden;
+  padding:14px 16px; border-radius:16px;
+  background:radial-gradient(120% 150% at 85% -30%, rgba(255,210,74,.15), transparent 55%), #0f1626;
+  border:1px solid rgba(255,210,74,.3);
+  box-shadow:0 6px 18px rgba(0,0,0,.34), 0 0 26px rgba(255,200,60,.09);
+}
+.pp-vault-meter{ flex:0 0 auto; min-width:148px; display:flex; flex-direction:column; gap:7px; }
+.pp-vault-head{ font-size:11px; font-weight:900; letter-spacing:.16em; text-transform:uppercase; color:#ffd24a; text-shadow:0 0 12px rgba(255,210,74,.4); }
+.pp-vault-count{ font-size:34px; font-weight:900; line-height:.9; color:#fff; }
+.pp-vault-count b{ color:#ffd24a; }
+.pp-vault-count small{ font-size:15px; font-weight:800; color:rgba(200,214,235,.7); }
+.pp-vault-sub{ font-size:10px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:rgba(150,185,230,.9); }
+.pp-vault-bar{ height:9px; border-radius:99px; background:rgba(0,0,0,.34); border:1px solid rgba(255,255,255,.08); overflow:hidden; }
+.pp-vault-bar > span{ display:block; height:100%; width:0; border-radius:99px; background:linear-gradient(90deg,#d08b5a,#cbd5e1 55%,#ffd24a); box-shadow:0 0 10px rgba(255,210,74,.5); transition:width 1s cubic-bezier(.2,.8,.25,1); }
+.pp-vault-shelf{ flex:1; min-width:120px; display:flex; gap:7px; flex-wrap:wrap; align-content:center; }
+.pp-vault-badge{
+  width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:22px;
+  position:relative; overflow:hidden; opacity:0; transform:translateY(8px) scale(.7);
+  transition:opacity .4s ease, transform .45s cubic-bezier(.2,.9,.25,1);
+}
+.pp-vault-badge.in{ opacity:1; transform:none; }
+.pp-vault-badge::after{ content:''; position:absolute; inset:0; transform:translateX(-140%) skewX(-18deg); background:linear-gradient(105deg, transparent 42%, rgba(255,255,255,.55) 50%, transparent 58%); }
+.pp-vault-badge.shine::after{ animation:ppSheen 1s ease-out; }
+.pp-vault-more{ font-size:12px; font-weight:900; color:rgba(200,214,235,.75); align-self:center; }
+@media (prefers-reduced-motion: reduce){
+  .pp-vault-badge{ opacity:1; transform:none; transition:none; }
+  .pp-vault-bar > span{ transition:none; }
+}
 /* motion: staggered card entrance, hero light sweep, growing bars */
 @keyframes ppIn{ from{ opacity:0; transform:translateY(12px); } to{ opacity:1; transform:none; } }
 .pp-anim .pp-hero, .pp-anim .pp-card, .pp-anim .pp-soon{
@@ -36953,15 +37005,18 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   // Count a numeric value up from 0 (skipped under prefers-reduced-motion)
   const __ppReduced = (() => { try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ return false; } })();
   const countUp = (el, txt, dur=650) => {
-    const m = String(txt).match(/^(\d+(?:\.\d+)?)([\s\S]*)$/);
+    const m = String(txt).match(/^([\d,]+(?:\.\d+)?)([\s\S]*)$/);
     if (__ppReduced || !m){ el.textContent = txt; return; }
-    const target = parseFloat(m[1]); const rest = m[2] || '';
-    const dec = (m[1].split('.')[1] || '').length;
+    const numStr = m[1].replace(/,/g, '');
+    const target = parseFloat(numStr); const rest = m[2] || '';
+    const dec = (numStr.split('.')[1] || '').length;
+    const hadComma = m[1].indexOf(',') >= 0;
     const t0 = performance.now();
     const step = (t) => {
       const p = Math.min(1, (t - t0) / dur);
       const eased = 1 - Math.pow(1 - p, 3);
-      el.textContent = (target * eased).toFixed(dec) + rest;
+      const cur = target * eased;
+      el.textContent = (hadComma ? Number(cur.toFixed(dec)).toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec }) : cur.toFixed(dec)) + rest;
       if (p < 1) requestAnimationFrame(step); else el.textContent = txt;
     };
     requestAnimationFrame(step);
@@ -37223,6 +37278,45 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   const statsPanel = cards;
   const xpPanel = document.createElement('div');
   xpPanel.className = 'pp-cards';
+
+  // ---- XP tab hero: "XP CORE" reactor (unique to the XP tab) ----
+  {
+    const prog = xpProg || { level:1, title:'Rookie', pct:0, xp:0, toNext:0, atMax:false };
+    const orb = document.createElement('div'); orb.className = 'pp-xporb';
+    const stage = document.createElement('div'); stage.className = 'pp-orb-stage';
+    const canvas = document.createElement('canvas');
+    const center = document.createElement('div'); center.className = 'pp-orb-center';
+    const lvtag = document.createElement('div'); lvtag.className = 'pp-orb-lvtag'; lvtag.textContent = 'Level';
+    const lvnum = document.createElement('div'); lvnum.className = 'pp-orb-level'; lvnum.textContent = String(prog.level);
+    const lvttl = document.createElement('div'); lvttl.className = 'pp-orb-title'; lvttl.textContent = prog.title;
+    center.append(lvtag, lvnum, lvttl); stage.append(canvas, center);
+    const info = document.createElement('div'); info.className = 'pp-orb-info';
+    const ohead = document.createElement('div'); ohead.className = 'pp-orb-head'; ohead.textContent = 'XP Core';
+    const oxp = document.createElement('div'); oxp.className = 'pp-orb-xp'; oxp.textContent = SQ_XP.fmt(prog.xp);
+    const oseg = document.createElement('div'); oseg.className = 'pp-orb-seg';
+    const SEGN = 12, onN = Math.round(prog.pct * SEGN);
+    for (let i = 0; i < SEGN; i++){ const s = document.createElement('i'); if (i < onN) s.className = 'on'; oseg.appendChild(s); }
+    const onext = document.createElement('div'); onext.className = 'pp-orb-next';
+    onext.textContent = prog.atMax ? 'Max level — Legend' : (SQ_XP.fmt(prog.toNext) + ' XP to Level ' + (prog.level + 1));
+    info.append(ohead, oxp, oseg, onext); orb.append(stage, info);
+    xpPanel.appendChild(orb);
+    let raf = 0;
+    xpPanel.__ppReplay = () => {
+      cancelAnimationFrame(raf);
+      if (__ppReduced){ __sqDrawXpReactor(canvas, prog.pct, 1, 0); lvnum.textContent = String(prog.level); oxp.textContent = SQ_XP.fmt(prog.xp); return; }
+      countUp(lvnum, String(prog.level), 850);
+      countUp(oxp, SQ_XP.fmt(prog.xp), 950);
+      const dur = 1400, t0 = performance.now();
+      const loop = (now) => {
+        const el = now - t0, tt = Math.min(1, el / dur);
+        __sqDrawXpReactor(canvas, prog.pct, 1 - Math.pow(1 - tt, 3), el);
+        if (el < 3200) raf = requestAnimationFrame(loop);
+        else __sqDrawXpReactor(canvas, prog.pct, 1, el);
+      };
+      raf = requestAnimationFrame(loop);
+    };
+  }
+
   xpPanel.appendChild(xpCard);
   {
     const ladderCard = document.createElement('div'); ladderCard.className = 'tag';
@@ -37232,7 +37326,57 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     lb.onclick = () => { try{ if (typeof openXpLeaderboard === 'function') openXpLeaderboard(); }catch(_){ } };
     ladderCard.appendChild(lb); xpPanel.appendChild(ladderCard);
   }
-  const achPanel = __sqTrophyCase(achMap);
+
+  // ---- Achievements tab hero: "TROPHY VAULT" (unique to the Achievements tab) ----
+  const achPanel = document.createElement('div');
+  achPanel.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
+  {
+    const catalog = (window.SQ_ACH && Array.isArray(SQ_ACH.CATALOG)) ? SQ_ACH.CATALOG : [];
+    const total = catalog.length;
+    const earnedCodes = catalog.filter(a => (achMap[a.code] || {}).cnt > 0);
+    const earnedN = earnedCodes.length;
+    const pctDone = total ? earnedN / total : 0;
+    const shelf = earnedCodes.slice().sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
+    const MAXSHELF = 8;
+
+    const vault = document.createElement('div'); vault.className = 'pp-vault';
+    const meter = document.createElement('div'); meter.className = 'pp-vault-meter';
+    const vhead = document.createElement('div'); vhead.className = 'pp-vault-head'; vhead.textContent = 'Trophy Vault';
+    const vcount = document.createElement('div'); vcount.className = 'pp-vault-count';
+    const vcB = document.createElement('b'); vcB.textContent = String(earnedN);
+    const vcS = document.createElement('small'); vcS.textContent = ' / ' + total;
+    vcount.append(vcB, vcS);
+    const vbar = document.createElement('div'); vbar.className = 'pp-vault-bar';
+    const vfill = document.createElement('span'); vbar.appendChild(vfill);
+    const vsub = document.createElement('div'); vsub.className = 'pp-vault-sub'; vsub.textContent = 'Trophies unlocked · ' + Math.round(pctDone * 100) + '%';
+    meter.append(vhead, vcount, vbar, vsub);
+
+    const shelfEl = document.createElement('div'); shelfEl.className = 'pp-vault-shelf';
+    const chips = [];
+    shelf.slice(0, MAXSHELF).forEach(a => {
+      const meta = SQ_ACH.meta(a.code); const s = SQ_ACH.tierStyle(meta.tier);
+      const chip = document.createElement('div'); chip.className = 'pp-vault-badge';
+      chip.style.background = s.g; chip.style.border = '1px solid ' + s.b; chip.textContent = meta.icon;
+      chip.title = meta.name + ((achMap[a.code].cnt > 1) ? (' ×' + achMap[a.code].cnt) : '');
+      shelfEl.appendChild(chip); chips.push(chip);
+    });
+    if (shelf.length > MAXSHELF){ const more = document.createElement('div'); more.className = 'pp-vault-more'; more.textContent = '+' + (shelf.length - MAXSHELF) + ' more'; shelfEl.appendChild(more); }
+    if (!shelf.length){ const none = document.createElement('div'); none.className = 'pp-vault-more'; none.textContent = 'No trophies yet — go earn some!'; shelfEl.appendChild(none); }
+    vault.append(meter, shelfEl);
+    achPanel.appendChild(vault);
+    achPanel.appendChild(__sqTrophyCase(achMap));
+
+    let timers = [];
+    achPanel.__ppReplay = () => {
+      timers.forEach(clearTimeout); timers = [];
+      if (__ppReduced){ vcB.textContent = String(earnedN); vfill.style.width = Math.round(pctDone * 100) + '%'; chips.forEach(c => c.classList.add('in')); return; }
+      vcB.textContent = '0'; vfill.style.width = '0%';
+      chips.forEach(c => c.classList.remove('in', 'shine'));
+      countUp(vcB, String(earnedN), 1000);
+      requestAnimationFrame(() => requestAnimationFrame(() => { vfill.style.width = Math.round(pctDone * 100) + '%'; }));
+      chips.forEach((c, i) => { timers.push(setTimeout(() => { c.classList.add('in', 'shine'); }, 120 + i * 90)); });
+    };
+  }
 
   const tabBar = document.createElement('div');
   tabBar.className = 'pp-tabs';
@@ -37243,6 +37387,8 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     while (panelHost.firstChild) panelHost.removeChild(panelHost.firstChild);
     panelHost.appendChild(tabs[idx][1]);
     btns.forEach((b, i) => b.classList.toggle('active', i === idx));
+    // Each tab's signature animation (re)plays on show.
+    try{ const fn = tabs[idx][1].__ppReplay; if (typeof fn === 'function') requestAnimationFrame(fn); }catch(_){ }
   };
   tabs.forEach(([label], idx) => {
     const t = document.createElement('button'); t.type = 'button'; t.textContent = label;
@@ -39513,6 +39659,54 @@ function __sqDrawFormGauge(canvas, value, avg, t){
   ctx.fillStyle = '#101827';
   ctx.strokeStyle = 'rgba(255,164,64,.9)'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+}
+
+// XP CORE reactor: a full 360° energy ring filling to level-progress, a glowing
+// tip, orbiting sparks and a pulsing core. (level number is a DOM overlay so it
+// stays crisp for the count-up). Unique to the XP tab — not a gauge/needle.
+function __sqDrawXpReactor(canvas, pct, fill, clockMs){
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const W = Math.max(120, Math.floor(rect.width || 130));
+  const H = Math.max(120, Math.floor(rect.height || 130));
+  canvas.width = Math.floor(W * dpr); canvas.height = Math.floor(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2, R = Math.min(W, H) / 2 - 11;
+  const start = -Math.PI / 2;
+  const p = Math.max(0, Math.min(1, pct)) * Math.max(0, Math.min(1, fill));
+  const ms = clockMs || 0;
+  // core glow (pulsing)
+  const pulse = 0.14 + 0.07 * Math.sin(ms / 360);
+  const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.85);
+  cg.addColorStop(0, 'rgba(255,150,60,' + pulse.toFixed(3) + ')');
+  cg.addColorStop(1, 'transparent');
+  ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(cx, cy, R * 0.85, 0, Math.PI * 2); ctx.fill();
+  // track ring
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(122,170,255,.14)'; ctx.lineWidth = 8; ctx.stroke();
+  // progress arc
+  const grad = ctx.createLinearGradient(cx - R, cy - R, cx + R, cy + R);
+  grad.addColorStop(0, '#ff7a18'); grad.addColorStop(1, '#ffd264');
+  ctx.save(); ctx.shadowColor = 'rgba(255,150,60,.7)'; ctx.shadowBlur = 12;
+  ctx.beginPath(); ctx.arc(cx, cy, R, start, start + p * Math.PI * 2);
+  ctx.strokeStyle = grad; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.stroke();
+  ctx.restore();
+  // tip dot
+  const tipA = start + p * Math.PI * 2;
+  ctx.save(); ctx.shadowColor = 'rgba(255,205,95,1)'; ctx.shadowBlur = 14; ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(cx + Math.cos(tipA) * R, cy + Math.sin(tipA) * R, 4.5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // orbiting sparks
+  for (let i = 0; i < 3; i++){
+    const a = ms / 1000 * 1.5 + i * (Math.PI * 2 / 3);
+    ctx.save(); ctx.shadowColor = 'rgba(255,180,80,.9)'; ctx.shadowBlur = 8;
+    ctx.fillStyle = 'rgba(255,206,120,.95)';
+    ctx.beginPath(); ctx.arc(cx + Math.cos(a) * (R + 3), cy + Math.sin(a) * (R + 3), 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
 }
 function __sqOpenTargetProgressDialog(mode, playerName, opts){
   const name = String(playerName || '').trim();

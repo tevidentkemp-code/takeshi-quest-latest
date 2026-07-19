@@ -120,6 +120,69 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
     !snap.cardTitles.includes('Tournament') && !snap.cardTitles.includes('Turbo') && /coming soon/i.test(snap.bodyText),
     JSON.stringify(snap.cardTitles));
 
+  // ---- XP tab hero: XP CORE reactor ----
+  await page.evaluate(() => {
+    const btns = Array.from(document.querySelectorAll('.sq-stats-modal .pp-tab'));
+    const xp = btns.find((b) => /^xp$/i.test(b.textContent.trim())); if (xp) xp.click();
+  });
+  await page.waitForTimeout(1600);
+  const xpHero = await page.evaluate(() => {
+    const orb = document.querySelector('.pp-xporb');
+    if (!orb) return null;
+    const c = orb.querySelector('canvas');
+    return {
+      level: (orb.querySelector('.pp-orb-level') || {}).textContent,
+      title: (orb.querySelector('.pp-orb-title') || {}).textContent,
+      xp: (orb.querySelector('.pp-orb-xp') || {}).textContent,
+      segOn: orb.querySelectorAll('.pp-orb-seg i.on').length,
+      next: (orb.querySelector('.pp-orb-next') || {}).textContent,
+      canvasDrawn: !!(c && c.width > 0),
+    };
+  });
+  check('XP hero: reactor present with drawn canvas', !!xpHero && xpHero.canvasDrawn, JSON.stringify(xpHero));
+  if (xpHero) {
+    check('XP hero: level 2 settled', xpHero.level === '2', JSON.stringify(xpHero.level));
+    check('XP hero: title ROOKIE', /rookie/i.test(xpHero.title || ''), JSON.stringify(xpHero.title));
+    check('XP hero: total XP 151 settled', xpHero.xp === '151', JSON.stringify(xpHero.xp));
+    check('XP hero: "33 XP to Level 3"', /33 XP to Level 3/i.test(xpHero.next || ''), JSON.stringify(xpHero.next));
+    check('XP hero: segments partially lit (not 0/full)', xpHero.segOn > 0 && xpHero.segOn < 12, JSON.stringify(xpHero.segOn));
+  }
+  await page.screenshot({ path: '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/pstats-xp-reactor.png' });
+
+  // ---- Achievements tab hero: TROPHY VAULT ----
+  await page.evaluate(() => {
+    const btns = Array.from(document.querySelectorAll('.sq-stats-modal .pp-tab'));
+    const a = btns.find((b) => /^achievements$/i.test(b.textContent.trim())); if (a) a.click();
+  });
+  await page.waitForTimeout(1400);
+  const achHero = await page.evaluate(() => {
+    const v = document.querySelector('.pp-vault');
+    if (!v) return null;
+    return {
+      count: (v.querySelector('.pp-vault-count b') || {}).textContent,
+      total: (v.querySelector('.pp-vault-count small') || {}).textContent,
+      sub: (v.querySelector('.pp-vault-sub') || {}).textContent,
+      badges: v.querySelectorAll('.pp-vault-badge').length,
+      badgesIn: v.querySelectorAll('.pp-vault-badge.in').length,
+      barWidth: (v.querySelector('.pp-vault-bar > span') || {}).style ? (v.querySelector('.pp-vault-bar > span').style.width || '') : '',
+    };
+  });
+  check('Achievements hero: vault present', !!achHero, JSON.stringify(achHero));
+  if (achHero) {
+    check('Achievements hero: earned count counted up to 2', achHero.count === '2', JSON.stringify(achHero.count));
+    check('Achievements hero: shows "/ N total"', /^ \/ \d+$/.test(achHero.total || ''), JSON.stringify(achHero.total));
+    check('Achievements hero: 2 badges popped in', achHero.badges === 2 && achHero.badgesIn === 2, JSON.stringify(achHero));
+    check('Achievements hero: completion bar filled (non-zero)', achHero.barWidth && achHero.barWidth !== '0%', JSON.stringify(achHero.barWidth));
+  }
+  await page.screenshot({ path: '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/pstats-trophy-vault.png' });
+
+  // back to Stats for the stack/escape checks
+  await page.evaluate(() => {
+    const btns = Array.from(document.querySelectorAll('.sq-stats-modal .pp-tab'));
+    const s = btns.find((b) => /^stats$/i.test(b.textContent.trim())); if (s) s.click();
+  });
+  await page.waitForTimeout(300);
+
   // stack + escape
   check('profile registered on the shared modal stack', snap.onStack);
   await page.keyboard.press('Escape');
