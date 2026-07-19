@@ -30,6 +30,9 @@ const FIXTURE = {
     { players: ['Alex S', 'Sam T'], totals: [130, 128], ts: '2026-01-12T20:00:00Z', board: null },
     { players: ['Alex S', 'Sam T'], totals: [115, 150], ts: '2026-02-02T20:00:00Z', board: null },
     { players: ['Alex S', 'Sam T'], totals: [140, 90], ts: '2026-02-20T20:00:00Z', board: null },
+    // TURBO game (must be excluded): explicit flag + a score lower than 77.
+    // If it leaked in, Lowest Score would drop to 40 and Games would show 6.
+    { players: ['Alex S', 'Sam T'], totals: [40, 55], ts: '2026-03-01T20:00:00Z', board: null, gameVariant: 'turbo', mode: 'turbo' },
   ],
   views: {
     v_power_rankings_last56_official_clean: [

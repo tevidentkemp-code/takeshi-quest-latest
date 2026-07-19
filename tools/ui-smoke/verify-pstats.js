@@ -74,6 +74,11 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
   const gotPower = snap.rows['Quick Stats|Current Power Rank'];
   check(`Quick Stats: Current Power Rank = ${E.quickPowerRank} (single-sourced with hero)`, norm(gotPower) === E.quickPowerRank, JSON.stringify(gotPower));
 
+  // Turbo exclusion: the fixture has a 6th (turbo) game with score 40. It must
+  // NOT appear — Lowest Score stays 77, Games stays 5.
+  check('Turbo game excluded: Lowest Score stays 77 (not 40)', norm(snap.rows['Quick Stats|Lowest Score']) === '77', JSON.stringify(snap.rows['Quick Stats|Lowest Score']));
+  check('Turbo game excluded: Games stays 5 (not 6)', snap.heroTiles['GAMES'] === '5', JSON.stringify(snap.heroTiles['GAMES']));
+
   // premier league rows
   for (const [label, want] of Object.entries(E.premier)) {
     const got = snap.rows['Premier League|' + label];

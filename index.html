@@ -36474,7 +36474,10 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
 
   // 1) All official games — fetched ONCE and reused for both the player's
   // slice and the local power-rank fallback (this used to be two full fetches).
-  const __allGamesNorm = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+  // Turbo games are excluded here so the whole profile is Standard-Official
+  // only ("official" fetch alone doesn't strip Turbo).
+  const __allGamesNorm = (await __fetchOfficialGames(50000)).map(__normalizeGame)
+    .filter(g => !__sqGameLooksTurbo(g.raw));
   const games = __allGamesNorm
     .filter(g => Array.isArray(g.players) && g.players.some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()))
     .sort((a,b)=> (new Date(a.ts) - new Date(b.ts)));
@@ -37617,6 +37620,60 @@ function __isSameLocalDay(a, b){
     da.getMonth()    === db.getMonth() &&
     da.getDate()     === db.getDate()
   );
+}
+// Turbo classifier for the Player Stats profile (scoped — does not touch the
+// shared official fetch/rank paths). Mirrors @MODE:CLASSIFICATION_RULES:
+// explicit turbo flags in the game/state/match/rules, OR the legacy board
+// shape where targets 10-16 are unplayed but 17-20/D/T/B contain play.
+function __sqGameLooksTurbo(raw){
+  try{
+    if (!raw) return false;
+    const st = raw.state || raw || {};
+    const m  = st.match || raw.match || {};
+    const rules = st.tournamentRules || m.tournamentRules || st.rules || m.rules || {};
+    const low = v => String(v == null ? '' : v).toLowerCase();
+    const modeStrings = [
+      raw.mode, raw.gameMode, raw.game_mode, raw.type, raw.gameVariant, raw.game_variant,
+      st.mode, st.gameMode, st.game_mode, st.type, st.gameVariant, st.game_variant,
+      m.mode, m.gameMode, m.game_mode, m.type, m.gameVariant,
+      st.tournamentType, st.tournament_type, m.tournamentType, m.tournament_type
+    ].map(low);
+    if (modeStrings.some(s => s.indexOf('turbo') >= 0)) return true;
+    const strict = o => !!o && (o.strictTimer === true || Number(o.throwLimitSeconds || 0) === 20 || String(o.startTarget || '') === '17');
+    if (strict(st) || strict(m) || strict(rules)) return true;
+    // Board-shape fallback: play only in the late (turbo) rounds.
+    const board = raw.board || st.board || null;
+    if (Array.isArray(board) && board.length){
+      const players = Array.isArray(st.players) ? st.players : (raw.players || []);
+      const pn = Math.max(1, players.length || 0);
+      const cellHasPlay = cell => {
+        if (!cell) return false;
+        const list = Array.isArray(cell) ? cell : (Array.isArray(cell.throws) ? cell.throws : (Array.isArray(cell.darts) ? cell.darts : []));
+        return !!(list && list.length);
+      };
+      const roundsForPlayer = pIdx => {
+        if (Array.isArray(board[pIdx])) return board[pIdx];
+        if (Array.isArray(board[0]) && board[0] && typeof board[0][pIdx] !== 'undefined') return board.map(r => r ? r[pIdx] : null);
+        return [];
+      };
+      // Strict: turbo-shaped only when NO early round (targets 10-16) is
+      // played anywhere AND every late round 17-20 (indices 7-10) is played
+      // by some player. This matches a real "start at 17" board and never
+      // fires on sparse/partial official boards.
+      let earlyPlay = false;
+      const lateHit = { 7:false, 8:false, 9:false, 10:false };
+      for (let p = 0; p < pn; p++){
+        const rounds = roundsForPlayer(p) || [];
+        for (let r = 0; r < rounds.length; r++){
+          if (!cellHasPlay(rounds[r])) continue;
+          if (r <= 6) earlyPlay = true;
+          else if (r <= 10) lateHit[r] = true;
+        }
+      }
+      if (!earlyPlay && lateHit[7] && lateHit[8] && lateHit[9] && lateHit[10]) return true;
+    }
+    return false;
+  }catch(_){ return false; }
 }
 function __normalizeGame(g){
   const players = Array.isArray(g.players)
