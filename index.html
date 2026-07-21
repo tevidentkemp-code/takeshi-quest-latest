@@ -5166,6 +5166,41 @@ body[data-page="details"] #details{
   .hs-record::after{ display:none; }
   .hs-meter > span{ transition:none; }
 }
+/* Top 50 score cascade (t5-*): violet tier bands — PODIUM / ELITE TEN / THE PACK */
+.t5-arena{ display:flex; flex-direction:column; gap:6px; overflow-y:auto; max-height:62vh; padding:2px; }
+.t5-band{
+  font-size:10px; font-weight:900; letter-spacing:.2em; text-transform:uppercase;
+  color:#c9a6ff; text-shadow:0 0 12px rgba(168,110,255,.45); padding:8px 2px 1px;
+}
+.t5-band.gold{ color:#ffd24a; text-shadow:0 0 12px rgba(255,210,74,.5); }
+.t5-band.pack{ color:#7cc0ff; text-shadow:0 0 12px rgba(47,134,255,.4); }
+.t5-row{
+  display:grid; grid-template-columns:40px minmax(0,1fr) auto; gap:10px; align-items:center;
+  padding:8px 12px; border-radius:12px; background:rgba(22,16,34,.66); border:1px solid rgba(168,110,255,.16);
+  opacity:0; transform:translateX(16px); animation:t5In .4s cubic-bezier(.2,.8,.25,1) forwards;
+}
+@keyframes t5In{ to{ opacity:1; transform:none; } }
+.t5-row.podium{ border-color:rgba(255,210,74,.32); background:linear-gradient(90deg, rgba(255,210,74,.07), rgba(22,16,34,.66) 55%); }
+.t5-row.pack{ background:rgba(15,20,34,.6); border-color:rgba(47,134,255,.14); }
+.t5-rank{ font-weight:900; font-size:14px; color:#c9a6ff; text-align:center; }
+.t5-rank.g1{ color:#ffd24a; text-shadow:0 0 10px rgba(255,210,74,.5); }
+.t5-rank.g2{ color:#cbd5e1; text-shadow:0 0 10px rgba(203,213,225,.4); }
+.t5-rank.g3{ color:#d08b5a; text-shadow:0 0 10px rgba(208,139,90,.45); }
+.t5-row.pack .t5-rank{ color:#7cc0ff; }
+.t5-main{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.t5-top{ display:flex; align-items:center; gap:6px; min-width:0; }
+.t5-name{ font-weight:800; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.t5-pb{ font-size:8px; font-weight:900; letter-spacing:.08em; padding:1px 5px; border-radius:6px; background:rgba(168,110,255,.2); color:#dcc6ff; border:1px solid rgba(168,110,255,.45); flex:0 0 auto; }
+.t5-date{ font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:rgba(190,170,230,.6); }
+.t5-side{ display:flex; align-items:center; gap:8px; }
+.t5-avg{ font-size:9px; font-weight:800; color:rgba(190,170,230,.7); text-transform:uppercase; letter-spacing:.05em; }
+.t5-cap{ padding:4px 11px; border-radius:10px; font-weight:900; font-size:15px; color:#0e0a18;
+  background:linear-gradient(135deg,#c9a6ff,#8b5cf6); box-shadow:0 0 12px rgba(139,92,246,.4); min-width:56px; text-align:center; }
+.t5-row.podium .t5-cap{ background:linear-gradient(135deg,#ffd76a,#ffb14a); box-shadow:0 0 14px rgba(255,190,70,.5); }
+.t5-row.pack .t5-cap{ background:rgba(16,24,39,.9); color:#dbe9ff; border:1px solid rgba(47,134,255,.35); box-shadow:none; }
+@media (prefers-reduced-motion: reduce){
+  .t5-row{ animation:none; opacity:1; transform:none; }
+}
 /* XP tab hero: "XP CORE" reactor — radial ring + orbiting sparks + igniting level */
 .pp-xporb{
   grid-column:1/-1; display:flex; align-items:center; gap:16px; position:relative; overflow:hidden;
@@ -50081,33 +50116,61 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     });
     head.appendChild(tabs);
     var body = document.createElement('div'); body.className = 'modal-body';
-    body.innerHTML = '<div class="table-wrap"><table class="sq-league-table"><colgroup><col style="width:64px"><col><col style="width:150px"><col style="width:120px"><col style="width:190px"></colgroup><thead><tr><th>#</th><th>PLAYER</th><th>SCORE</th><th>AVG</th><th>DATE/TIME</th></tr></thead><tbody></tbody></table></div>';
+    body.innerHTML = '<div class="t5-arena"><p class="tag">Loading...</p></div>';
     var footer = document.createElement('div'); footer.className = 'modal-footer';
     var back = document.createElement('button'); back.className = 'btn sq-pill'; back.textContent = 'Back';
     var close = document.createElement('button'); close.className = 'btn sq-pill'; close.textContent = 'Close';
     footer.append(back, close); modal.append(head, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
     try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
-    var tb = body.querySelector('tbody');
+    var arena = body.querySelector('.t5-arena');
+    var reduced = false; try{ reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ }
+    function t5Count(el, target, dur){ if (reduced || !Number.isFinite(target)){ el.textContent = String(Math.round(target || 0)); return; } var t0 = performance.now(); (function step(t){ var p = Math.min(1, (t - t0) / dur); el.textContent = String(Math.round(target * (1 - Math.pow(1 - p, 3)))); if (p < 1) requestAnimationFrame(step); })(t0); }
     function setTabs(){ Array.prototype.slice.call(tabs.querySelectorAll('button[data-mode]')).forEach(function(b){ b.classList.toggle('active', b.dataset.mode === mode); }); }
     async function render(){
       setTabs();
-      tb.innerHTML = '<tr><td colspan="5" style="padding:14px;opacity:.75;">Loading...</td></tr>';
+      arena.innerHTML = '<p class="tag">Loading...</p>';
       var result;
       try{result=await window.__sqWithCloudTimeout(fetchTop50Rows(mode),12000,'top50');}
       catch(err){
         try{console.warn('[SQ] Top 50 cloud read failed/timed out',err);}catch(_){}
-        tb.innerHTML='<tr><td colspan="5" style="padding:14px;opacity:.85;">'+window.__sqCloudErrorHtml()+'</td></tr>';
-        var rb=tb.querySelector('[data-action="cloudRetry"]');if(rb)rb.onclick=function(){render();};
+        arena.innerHTML='<p class="tag">'+window.__sqCloudErrorHtml()+'</p>';
+        var rb=arena.querySelector('[data-action="cloudRetry"]');if(rb)rb.onclick=function(){render();};
         return;
       }
       if (result.missing || !result.rows.length){
-        tb.innerHTML = '<tr><td colspan="5" style="padding:14px;opacity:.78;">Top 50 Scores data is not available yet. Required Supabase view/data source is missing or empty.</td></tr>';
+        arena.innerHTML = '<p class="tag">Top 50 Scores data is not available yet. Required Supabase view/data source is missing or empty.</p>';
         return;
       }
       console.debug('[SQ] Top 50 Scores source used', { source:result.source, mode:mode, rows:result.rows.length });
-      tb.innerHTML = result.rows.map(function(r, i){
-        return '<tr><td class="rank-cell">'+(i+1)+'</td><td class="player-cell">'+esc(r.player)+'</td><td class="score-cell">'+Math.round(r.score)+'</td><td class="avg-cell">'+Number(r.avg || 0).toFixed(1)+'</td><td class="date-cell">'+esc(fmtDateTime(r.ts))+'</td></tr>';
-      }).join('');
+      // Score cascade: PODIUM / ELITE TEN / THE PACK tier bands, rows sweeping
+      // in; 'PB' chip marks each player's best entry in the list.
+      arena.innerHTML = '';
+      var seen = {};
+      result.rows.forEach(function(r, i){
+        if (i === 0){ var b1 = document.createElement('div'); b1.className = 't5-band gold'; b1.textContent = 'Podium'; arena.appendChild(b1); }
+        else if (i === 3){ var b2 = document.createElement('div'); b2.className = 't5-band'; b2.textContent = 'Elite Ten'; arena.appendChild(b2); }
+        else if (i === 10){ var b3 = document.createElement('div'); b3.className = 't5-band pack'; b3.textContent = 'The Pack'; arena.appendChild(b3); }
+        var tier = i < 3 ? 'podium' : (i < 10 ? 'elite' : 'pack');
+        var row = document.createElement('div');
+        row.className = 't5-row' + (tier === 'podium' ? ' podium' : (tier === 'pack' ? ' pack' : ''));
+        row.style.animationDelay = Math.min(800, i * 35) + 'ms';
+        var rank = document.createElement('div'); rank.className = 't5-rank' + (i < 3 ? ' g' + (i + 1) : ''); rank.textContent = '#' + (i + 1);
+        var main = document.createElement('div'); main.className = 't5-main';
+        var top = document.createElement('div'); top.className = 't5-top';
+        var nm = document.createElement('div'); nm.className = 't5-name'; nm.textContent = r.player;
+        top.appendChild(nm);
+        var pk = rankKey(r.player);
+        if (!seen[pk]){ seen[pk] = true; var pb = document.createElement('span'); pb.className = 't5-pb'; pb.textContent = 'PB'; top.appendChild(pb); }
+        var dt = document.createElement('div'); dt.className = 't5-date'; dt.textContent = fmtDateTime(r.ts);
+        main.append(top, dt);
+        var side = document.createElement('div'); side.className = 't5-side';
+        var avg = document.createElement('div'); avg.className = 't5-avg'; avg.textContent = 'AVG ' + Number(r.avg || 0).toFixed(1);
+        var cap = document.createElement('div'); cap.className = 't5-cap';
+        if (i < 10) t5Count(cap, Math.round(r.score), 700); else cap.textContent = String(Math.round(r.score));
+        side.append(avg, cap);
+        row.append(rank, main, side);
+        arena.appendChild(row);
+      });
     }
     tabs.onclick = function(e){ var b = e.target && e.target.closest ? e.target.closest('button[data-mode]') : null; if (!b) return; mode = b.dataset.mode; render(); };
     back.onclick = function(){ overlay.remove(); try{ if (typeof window.openLeagueRankingsDialog === 'function') window.openLeagueRankingsDialog(); }catch(_){} };

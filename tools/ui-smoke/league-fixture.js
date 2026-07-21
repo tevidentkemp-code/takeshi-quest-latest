@@ -36,6 +36,21 @@ const FIXTURE = {
       { player: 'Mia K', best_score: 132, best_ts: days(5), game_id: 'g5', avg_round: 9.4, rounds: 14 },
     ],
     v_high_score_league_turbo_from_games_clean: [],
+    v_top50_scores_official: [
+      { player_name: 'Alex S', score: 168, rounds: 14, avg_round: 12.0, ts: days(6), game_id: 'g6' },
+      { player_name: 'Jo R', score: 150, rounds: 14, avg_round: 10.7, ts: days(2), game_id: 'g2' },
+      { player_name: 'Sam T', score: 140, rounds: 14, avg_round: 10.0, ts: days(7), game_id: 'g7' },
+      { player_name: 'Jo R', score: 138, rounds: 14, avg_round: 9.9, ts: days(9), game_id: 'g8' },
+      { player_name: 'Mia K', score: 132, rounds: 14, avg_round: 9.4, ts: days(5), game_id: 'g5' },
+      { player_name: 'Jo R', score: 130, rounds: 14, avg_round: 9.3, ts: days(3), game_id: 'g3' },
+      { player_name: 'Alex S', score: 130, rounds: 14, avg_round: 9.3, ts: days(12), game_id: 'g9' },
+      { player_name: 'Sam T', score: 128, rounds: 14, avg_round: 9.1, ts: days(13), game_id: 'g10' },
+      { player_name: 'Mia K', score: 126, rounds: 14, avg_round: 9.0, ts: days(14), game_id: 'g11' },
+      { player_name: 'Sam T', score: 122, rounds: 14, avg_round: 8.7, ts: days(15), game_id: 'g12' },
+      { player_name: 'Jo R', score: 120, rounds: 14, avg_round: 8.6, ts: days(16), game_id: 'g13' },
+      { player_name: 'Mia K', score: 118, rounds: 14, avg_round: 8.4, ts: days(17), game_id: 'g14' },
+    ],
+    v_top50_scores_turbo_clean: [],
   },
 };
 
@@ -66,6 +81,15 @@ const EXPECTED = {
     scores: ['168', '150', '140', '132'],
     avgs: ['AVG 12.0', 'AVG 9.9', 'AVG 8.8', 'AVG 9.4'],
     turboEmpty: /Turbo High Score League data is not available yet/i,
+  },
+  top50: {
+    total: 12,
+    bands: ['Podium', 'Elite Ten', 'The Pack'],
+    first: { name: 'Alex S', score: '168', avg: 'AVG 12.0' },
+    // first occurrence of each player in rank order gets the PB chip
+    pbRanks: [1, 2, 3, 5],
+    packStart: 11, // rank #11 is the first row after THE PACK band
+    turboEmpty: /Top 50 Scores data is not available yet/i,
   },
 };
 

@@ -184,6 +184,53 @@ function check(name, ok, detail) { if (!ok) failures++; console.log((ok ? 'PASS'
   await page.waitForTimeout(400);
   check('HS League: Escape closes clean', await page.evaluate(() => (window.__sqModalStack || []).length === 0 && !document.querySelector('.hs-arena')));
 
+  // ---- Top 50 Scores (Score Cascade) ----
+  await page.evaluate(() => window.openTop50ScoresDialog('official'));
+  await page.waitForTimeout(2000);
+  const t5 = await page.evaluate(() => {
+    const arena = document.querySelector('.t5-arena');
+    if (!arena) return null;
+    const rows = Array.from(arena.querySelectorAll('.t5-row'));
+    return {
+      onStack: (window.__sqModalStack || []).length === 1,
+      bands: Array.from(arena.querySelectorAll('.t5-band')).map((b) => b.textContent),
+      total: rows.length,
+      firstName: rows[0] ? (rows[0].querySelector('.t5-name') || {}).textContent : null,
+      firstScore: rows[0] ? (rows[0].querySelector('.t5-cap') || {}).textContent : null,
+      firstAvg: rows[0] ? (rows[0].querySelector('.t5-avg') || {}).textContent : null,
+      pbRanks: rows.map((r, i) => (r.querySelector('.t5-pb') ? i + 1 : null)).filter(Boolean),
+      packFirstRank: (() => { const p = arena.querySelector('.t5-row.pack .t5-rank'); return p ? p.textContent : null; })(),
+      podiumRows: arena.querySelectorAll('.t5-row.podium').length,
+      goldFirst: rows[0] ? /g1/.test(rows[0].querySelector('.t5-rank').className) : false,
+    };
+  });
+  check('Top50: cascade open + on stack', !!t5 && t5.onStack);
+  if (t5) {
+    check('Top50: tier bands present', JSON.stringify(t5.bands) === JSON.stringify(E.top50.bands), JSON.stringify(t5.bands));
+    check(`Top50: ${E.top50.total} rows`, t5.total === E.top50.total, JSON.stringify(t5.total));
+    check(`Top50: #1 ${E.top50.first.name} ${E.top50.first.score} (${E.top50.first.avg})`,
+      t5.firstName === E.top50.first.name && t5.firstScore === E.top50.first.score && t5.firstAvg === E.top50.first.avg && t5.goldFirst,
+      JSON.stringify({ n: t5.firstName, s: t5.firstScore, a: t5.firstAvg }));
+    check('Top50: PB chips on first entry per player', JSON.stringify(t5.pbRanks) === JSON.stringify(E.top50.pbRanks), JSON.stringify(t5.pbRanks));
+    check('Top50: 3 podium rows, pack starts at #' + E.top50.packStart,
+      t5.podiumRows === 3 && t5.packFirstRank === '#' + E.top50.packStart,
+      JSON.stringify({ podium: t5.podiumRows, pack: t5.packFirstRank }));
+  }
+  await page.screenshot({ path: '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/league-top50-cascade.png' });
+
+  // Turbo tab -> empty state
+  await page.evaluate(() => {
+    const b = Array.from(document.querySelectorAll('.sq-fix166-top50 button[data-mode]')).find((x) => x.dataset.mode === 'turbo');
+    if (b) b.click();
+  });
+  await page.waitForTimeout(700);
+  const t5Turbo = await page.evaluate(() => ((document.querySelector('.t5-arena') || {}).textContent) || '');
+  check('Top50: turbo empty state preserved', E.top50.turboEmpty.test(t5Turbo), JSON.stringify(t5Turbo.slice(0, 80)));
+
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  check('Top50: Escape closes clean', await page.evaluate(() => (window.__sqModalStack || []).length === 0 && !document.querySelector('.t5-arena')));
+
   await browser.close();
   console.log(failures ? `\n${failures} FAILURES` : '\nALL PASS');
   process.exit(failures ? 1 : 0);
