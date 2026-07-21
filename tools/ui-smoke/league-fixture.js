@@ -51,6 +51,13 @@ const FIXTURE = {
       { player_name: 'Mia K', score: 118, rounds: 14, avg_round: 8.4, ts: days(17), game_id: 'g14' },
     ],
     v_top50_scores_turbo_clean: [],
+    v_round_high_scores_official_clean_app: [
+      { mode: 'official', round_key: '14', round_label: '14', target_sort: 5, wr_points: 126, darts: 'T/T/T', holder: 'Alex S', holders: ['Alex S'], tie_count: 1 },
+      { mode: 'official', round_key: '19', round_label: '19', target_sort: 10, wr_points: 114, darts: 'T/S/D', holder: 'Jo R', holders: ['Jo R'], tie_count: 1 },
+      { mode: 'official', round_key: '20', round_label: '20', target_sort: 11, wr_points: 100, darts: 'T/D/X', holder: 'Sam T', holders: ['Sam T', 'Mia K'], tie_count: 2 },
+      { mode: 'official', round_key: 'B', round_label: 'Bull', target_sort: 14, wr_points: 125, darts: 'B/B/S', holder: 'Mia K', holders: ['Mia K'], tie_count: 1 },
+    ],
+    v_round_high_scores_turbo_clean_app: [],
   },
 };
 
@@ -90,6 +97,14 @@ const EXPECTED = {
     pbRanks: [1, 2, 3, 5],
     packStart: 11, // rank #11 is the first row after THE PACK band
     turboEmpty: /Top 50 Scores data is not available yet/i,
+  },
+  rhs: {
+    tiles: 14, // 10..20 + D/T/B
+    filled: { 14: '126', 19: '114', 20: '100', B: '125' },
+    bestKey: '14',
+    holders: { 14: 'Alex S', 20: 'Sam T / Mia K' },
+    pips14: ['t', 't', 't'],
+    turboEmpty: /No Turbo round high scores found/i,
   },
 };
 

@@ -5201,6 +5201,30 @@ body[data-page="details"] #details{
 @media (prefers-reduced-motion: reduce){
   .t5-row{ animation:none; opacity:1; transform:none; }
 }
+/* Round High Scores record wall (rh-*): cyan per-target record tiles */
+.rh-wall{ display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:8px; }
+.rh-tile{
+  position:relative; display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:10px 8px 9px; border-radius:14px; background:rgba(10,26,32,.7); border:1px solid rgba(45,212,191,.22);
+  --rh-op:1; opacity:0; transform:scale(.82); animation:rhPop .4s cubic-bezier(.2,.9,.3,1.2) forwards;
+}
+@keyframes rhPop{ to{ opacity:var(--rh-op); transform:scale(1); } }
+.rh-tile.empty{ --rh-op:.45; }
+.rh-tile.best{ border-color:rgba(255,210,74,.55); box-shadow:0 0 18px rgba(255,210,74,.22); }
+.rh-crown{ position:absolute; top:-9px; right:-4px; font-size:14px; filter:drop-shadow(0 0 6px rgba(255,210,74,.7)); animation:ppFlame 2.2s ease-in-out infinite; }
+.rh-key{ font-size:11px; font-weight:900; letter-spacing:.14em; color:#7ee7d8; text-transform:uppercase; }
+.rh-wr{ font-size:22px; font-weight:900; line-height:1; color:#d8fff7; text-shadow:0 0 14px rgba(45,212,191,.5); }
+.rh-darts{ display:flex; gap:3px; min-height:10px; }
+.rh-pip{ width:9px; height:9px; border-radius:3px; background:rgba(255,255,255,.16); }
+.rh-pip.t{ background:#ff7a18; box-shadow:0 0 5px rgba(255,122,24,.6); }
+.rh-pip.d{ background:#ffd24a; box-shadow:0 0 5px rgba(255,210,74,.55); }
+.rh-pip.s{ background:#4aa3ff; box-shadow:0 0 5px rgba(74,163,255,.55); }
+.rh-pip.b{ background:#ff4d5e; box-shadow:0 0 5px rgba(255,77,94,.6); }
+.rh-holder{ font-size:9px; font-weight:800; color:rgba(170,220,214,.85); text-align:center; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; letter-spacing:.03em; text-transform:uppercase; }
+@media (prefers-reduced-motion: reduce){
+  .rh-tile{ animation:none; opacity:var(--rh-op,1); transform:none; }
+  .rh-crown{ animation:none; }
+}
 /* XP tab hero: "XP CORE" reactor — radial ring + orbiting sparks + igniting level */
 .pp-xporb{
   grid-column:1/-1; display:flex; align-items:center; gap:16px; position:relative; overflow:hidden;
@@ -48039,6 +48063,39 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     var body=document.createElement('div'); body.className='modal-body';
     var footer=document.createElement('div'); footer.className='modal-footer'; var back=document.createElement('button'); back.className='btn sq-pill'; back.textContent='Back'; var close=document.createElement('button'); close.className='btn sq-pill'; close.textContent='Close'; footer.append(back,close); modal.append(head,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
     try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
+    var reduced=false;try{reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(_){ }
+    function rhCount(el,target,dur){if(reduced||!Number.isFinite(target)){el.textContent=String(Math.round(target||0));return;}var t0=performance.now();(function step(t){var p=Math.min(1,(t-t0)/dur);el.textContent=String(Math.round(target*(1-Math.pow(1-p,3))));if(p<1)requestAnimationFrame(step);})(t0);}
+    // Record wall: one tile per target, tiles popping in, crown on the top WR.
+    function buildWall(entries){
+      var wall=document.createElement('div'); wall.className='rh-wall';
+      var best=null;
+      entries.forEach(function(e){ var v=Number(e.wr); if(Number.isFinite(v)&&v>0&&(!best||v>Number(best.wr))) best=e; });
+      entries.forEach(function(e,i){
+        var has=e.wr!=null&&e.wr!==''&&Number.isFinite(Number(e.wr));
+        var tile=document.createElement('div');
+        tile.className='rh-tile'+(has?'':' empty')+(best===e?' best':'');
+        tile.style.animationDelay=Math.min(900,i*55)+'ms';
+        var key=document.createElement('div'); key.className='rh-key'; key.textContent=e.key;
+        tile.appendChild(key);
+        if(best===e){ var cr=document.createElement('span'); cr.className='rh-crown'; cr.textContent='👑'; tile.appendChild(cr); }
+        var wr=document.createElement('div'); wr.className='rh-wr';
+        if(has) rhCount(wr,Number(e.wr),700); else wr.textContent='—';
+        tile.appendChild(wr);
+        var darts=document.createElement('div'); darts.className='rh-darts';
+        String(e.darts||'').split('/').map(function(t){return t.trim();}).filter(Boolean).slice(0,3).forEach(function(tok){
+          var c=tok.charAt(0).toLowerCase();
+          var pip=document.createElement('span');
+          pip.className='rh-pip'+(('tdsb'.indexOf(c)>=0)?' '+c:'');
+          pip.title=tok;
+          darts.appendChild(pip);
+        });
+        tile.appendChild(darts);
+        var hold=document.createElement('div'); hold.className='rh-holder'; hold.textContent=e.holderText||'—'; hold.title=e.holderText||'';
+        tile.appendChild(hold);
+        wall.appendChild(tile);
+      });
+      return wall;
+    }
     async function render(){
       setBtnStates(tabs,mode); body.innerHTML='<div class="muted">Loading…</div>';
       if(mode==='turbo'){
@@ -48053,17 +48110,12 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
           body.innerHTML='<div class="muted">No Turbo round high scores found.</div>';
           return;
         }
-        var turboTable=document.createElement('table'); turboTable.className='hs-table'; turboTable.innerHTML='<thead><tr><th>Round</th><th>WR</th><th>Darts</th><th>Holder</th></tr></thead><tbody></tbody>';
-        var turboBody=turboTable.querySelector('tbody');
-        rows.forEach(function(r){
+        var tEntries=rows.map(function(r){
           var holder=String(r.holder||'').trim();
           var suffix=String(r.holder_suffix||'').trim();
-          var tr=document.createElement('tr');
-          tr.innerHTML='<td>'+esc(r.round_key||'')+'</td><td>'+esc(r.wr==null?'—':r.wr)+'</td><td>'+esc(r.darts||'—')+'</td><td>'+esc(holder+(suffix?' '+suffix:''))+'</td>';
-          turboBody.appendChild(tr);
+          return { key:String(r.round_key||''), wr:r.wr, darts:r.darts, holderText:holder+(suffix?' '+suffix:'') };
         });
-        var turboWrap=document.createElement('div'); turboWrap.className='sq-rhs-table-scroll'; turboWrap.appendChild(turboTable);
-        body.innerHTML=''; body.appendChild(turboWrap);
+        body.innerHTML=''; body.appendChild(buildWall(tEntries));
         return;
       }
       if(mode==='official'){
@@ -48076,16 +48128,11 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
         }
         var officialBy=new Map();
         officialRows.forEach(function(r){ officialBy.set(String(r.round_key||''), r); });
-        var officialTable=document.createElement('table'); officialTable.className='hs-table'; officialTable.innerHTML='<thead><tr><th>Round</th><th>WR</th><th>Darts</th><th>Holder</th></tr></thead><tbody></tbody>';
-        var officialBody=officialTable.querySelector('tbody');
-        ['10','11','12','13','14','15','16','17','18','19','20','D','T','B'].forEach(function(k){
+        var oEntries=['10','11','12','13','14','15','16','17','18','19','20','D','T','B'].map(function(k){
           var r=officialBy.get(k), holders=r&&Array.isArray(r.holders)?r.holders:[];
-          var tr=document.createElement('tr');
-          tr.innerHTML='<td>'+esc(k)+'</td><td>'+esc(r&&r.wr!=null?r.wr:'—')+'</td><td>'+esc(r&&r.darts?r.darts:'—')+'</td><td>'+esc(holders.length?holders.join(' / '):'—')+'</td>';
-          officialBody.appendChild(tr);
+          return { key:k, wr:r&&r.wr!=null?r.wr:null, darts:r&&r.darts?r.darts:'', holderText:holders.length?holders.join(' / '):'' };
         });
-        var officialWrap=document.createElement('div'); officialWrap.className='sq-rhs-table-scroll'; officialWrap.appendChild(officialTable);
-        body.innerHTML=''; body.appendChild(officialWrap);
+        body.innerHTML=''; body.appendChild(buildWall(oEntries));
         return;
       }
       body.innerHTML='<div class="muted">Round High Scores source is unavailable for this mode.</div>';
