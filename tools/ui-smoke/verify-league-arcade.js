@@ -69,6 +69,75 @@ function check(name, ok, detail) { if (!ok) failures++; console.log((ok ? 'PASS'
   await page.waitForTimeout(400);
   check('Power: Escape closes clean', await page.evaluate(() => (window.__sqModalStack || []).length === 0 && !document.querySelector('.sq132-bd')));
 
+  // ---- Premier League ----
+  await page.evaluate(() => window.openPremierLeagueDialog());
+  await page.waitForTimeout(2400); // rows slide + count-ups + medal pass
+
+  const pl = await page.evaluate(() => {
+    const bd = document.querySelector('.sq136-pl-bd');
+    if (!bd) return null;
+    const rows = Array.from(bd.querySelectorAll('.pl-row'));
+    const info = (r) => ({
+      name: (r.querySelector('.pl-name') || {}).textContent,
+      avg: (r.querySelector('.pl-avg') || {}).textContent,
+      best: ((r.querySelector('.pl-best') || {}).textContent || '').replace(/[🥇🥈🥉]/g, '').trim(),
+      medal: ((r.querySelector('.sq137-medal') || {}).textContent) || null,
+      rank: (r.querySelector('.pl-rank') || {}).textContent,
+      games: ((r.querySelector('.pl-sub') || {}).textContent || '').trim(),
+      unq: r.classList.contains('unq'),
+      lead: r.classList.contains('lead'),
+      trophy: !!r.querySelector('.pl-trophy'),
+      dotsOn: r.querySelectorAll('.pl-dots i.on').length,
+      dotsTotal: r.querySelectorAll('.pl-dots i').length,
+      barW: parseFloat(((r.querySelector('.pl-bar > span') || {}).style || {}).width || '0'),
+    });
+    return {
+      onStack: (window.__sqModalStack || []).length === 1,
+      note: ((bd.querySelector('.sq136-pl-note') || {}).textContent) || '',
+      rows: rows.map(info),
+    };
+  });
+
+  check('Premier: dialog open + on stack', !!pl && pl.onStack);
+  if (pl) {
+    const R = pl.rows;
+    check('Premier: 4 rows (3 qualified + 1 building)', R.length === 4, JSON.stringify(R.map((r) => r.name)));
+    E.premier.ranked.forEach((want, i) => {
+      const got = R[i] || {};
+      check(`Premier: #${i + 1} ${want.name} avg ${want.avg} (${want.games})`,
+        got.name === want.name && got.avg === want.avg && got.best === want.best && got.games === want.games && got.rank === '#' + (i + 1),
+        JSON.stringify(got));
+    });
+    check('Premier: leader row glows with trophy', R[0] && R[0].lead && R[0].trophy);
+    const unq = R.find((r) => r.unq);
+    const wantU = E.premier.unqualified;
+    check(`Premier: ${wantU.name} building — ${wantU.label}, dots ${wantU.dotsOn}/${wantU.dotsTotal}`,
+      !!unq && unq.name === wantU.name && unq.avg === wantU.avg && unq.rank === '—'
+      && unq.dotsOn === wantU.dotsOn && unq.dotsTotal === wantU.dotsTotal && unq.games.includes(wantU.label),
+      JSON.stringify(unq));
+    const medalsGot = {};
+    R.forEach((r) => { if (r.medal) medalsGot[r.best] = r.medal; });
+    const medalKeys = Object.keys(E.premier.medals);
+    const medalsOk = Object.keys(medalsGot).length === medalKeys.length && medalKeys.every((k) => medalsGot[k] === E.premier.medals[k]);
+    check('Premier: sq137 medals still attach to best scores', medalsOk, JSON.stringify(medalsGot));
+    check('Premier: all avg bars grown in', R.every((r) => r.barW > 0), JSON.stringify(R.map((r) => r.barW)));
+    check('Premier: month note pill retained', /Games Minimum/i.test(pl.note), JSON.stringify(pl.note));
+  }
+  await page.screenshot({ path: '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/league-premier-arena.png' });
+
+  // empty state on a filter with no games (2025 — all fixture games are 2026)
+  await page.evaluate(() => {
+    const b = Array.from(document.querySelectorAll('.sq136-pl-bd [data-filter-id]')).find((x) => x.dataset.filterId === 'Y2025');
+    if (b) b.click();
+  });
+  await page.waitForTimeout(600);
+  const plEmpty = await page.evaluate(() => ((document.querySelector('.pl-arena') || {}).textContent) || '');
+  check('Premier: empty-state wording preserved', /No official saved-player games found/i.test(plEmpty), JSON.stringify(plEmpty.slice(0, 80)));
+
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  check('Premier: Escape closes clean', await page.evaluate(() => (window.__sqModalStack || []).length === 0 && !document.querySelector('.sq136-pl-bd')));
+
   await browser.close();
   console.log(failures ? `\n${failures} FAILURES` : '\nALL PASS');
   process.exit(failures ? 1 : 0);

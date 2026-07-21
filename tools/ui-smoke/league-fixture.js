@@ -4,6 +4,18 @@
 const days = (n) => new Date(Date.now() - n * 24 * 3600 * 1000).toISOString();
 
 const FIXTURE = {
+  // Official games for the Premier League table (all in the current month so
+  // the default month filter shows them; Alex has 2 of the 3 needed to qualify).
+  games: [
+    { players: ['Jo R', 'Sam T'], totals: [140, 120], ts: days(1) },
+    { players: ['Jo R', 'Sam T'], totals: [150, 130], ts: days(2) },
+    { players: ['Jo R', 'Mia K'], totals: [130, 128], ts: days(3) },
+    { players: ['Jo R', 'Mia K'], totals: [136, 122], ts: days(4) },
+    { players: ['Mia K', 'Sam T'], totals: [132, 118], ts: days(5) },
+    { players: ['Alex S', 'Sam T'], totals: [168, 110], ts: days(6) },
+    { players: ['Alex S', 'Sam T'], totals: [96, 140], ts: days(7) },
+  ],
+  players: [{ name: 'Jo R' }, { name: 'Mia K' }, { name: 'Alex S' }, { name: 'Sam T' }],
   views: {
     v_power_rankings_official_current_clean: [
       { player: 'Jo R', player_key: 'jo r', games_used: 4, rounds_used: 56, total_points: 532, avg_per_round: 9.5, last_played_at: days(2), latest_scores: [142, 128, 135, 127], rank_pos: 1 },
@@ -31,6 +43,16 @@ const EXPECTED = {
     alexChips: ['168', '77', '130', '115'],
     totalRows: 6,
   },
+  premier: {
+    // this-month aggregates from FIXTURE.games (min 3 games to qualify)
+    ranked: [
+      { name: 'Jo R', avg: '139.0', best: 'BEST 150', games: '4 games' },
+      { name: 'Mia K', avg: '127.3', best: 'BEST 132', games: '3 games' },
+      { name: 'Sam T', avg: '123.6', best: 'BEST 140', games: '5 games' },
+    ],
+    unqualified: { name: 'Alex S', avg: '132.0', dotsOn: 2, dotsTotal: 3, label: '2/3 games to qualify' },
+    medals: { 'BEST 168': '🥇', 'BEST 150': '🥈', 'BEST 140': '🥉' },
+  },
 };
 
 async function install(page) {
@@ -53,6 +75,11 @@ async function install(page) {
     window.sb = fakeSb; window.__sb = fakeSb;
     // bust the power-rows cache so the stub is always consulted
     if (typeof window.__sqInvalidatePowerOfficialFetchCache === 'function') window.__sqInvalidatePowerOfficialFetchCache('fixture');
+    // Premier League / medal sources
+    window.getGamesForMode = async () => FX.games.map((g) => ({ ...g }));
+    window.cloudFetchAllGamesAsLocal = async () => FX.games.map((g) => ({ ...g }));
+    window.__sqGetAllGamesNormalized = undefined;
+    window.cloudListPlayers = async () => FX.players.map((p) => ({ ...p }));
   }, FIXTURE);
 }
 

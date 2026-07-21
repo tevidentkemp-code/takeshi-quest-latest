@@ -5084,6 +5084,46 @@ body[data-page="details"] #details{
   .pw-pod-block::after, .pw-pod-crown{ animation:none; }
   .pw-bar > span{ transition:none; }
 }
+/* Premier League arena (pl-*): championship table — zone stripes, dots, leader glow */
+.pl-arena{ display:flex; flex-direction:column; gap:6px; overflow-y:auto; max-height:54vh; padding:2px; }
+.pl-row{
+  display:grid; grid-template-columns:40px minmax(0,1fr) auto; gap:10px; align-items:center;
+  padding:9px 12px; border-radius:12px; background:rgba(14,26,22,.66); border:1px solid rgba(47,208,107,.14);
+  --pl-op:1; opacity:0; transform:translateY(12px); animation:plUp .45s cubic-bezier(.2,.8,.25,1) forwards;
+}
+@keyframes plUp{ to{ opacity:var(--pl-op); transform:none; } }
+.pl-row.zone{ border-left-width:3px; }
+.pl-row.z1{ border-left-color:#ffd24a; }
+.pl-row.z2{ border-left-color:#cbd5e1; }
+.pl-row.z3{ border-left-color:#d08b5a; }
+.pl-row.lead{ border-color:rgba(255,210,74,.5); animation:plUp .45s cubic-bezier(.2,.8,.25,1) forwards, plGlow 2.6s ease-in-out 1s infinite; }
+@keyframes plGlow{ 0%,100%{ box-shadow:0 0 0 rgba(255,210,74,0); } 50%{ box-shadow:0 0 18px rgba(255,210,74,.28); } }
+.pl-row.unq{ --pl-op:.55; filter:grayscale(.3); }
+.pl-rank{ font-weight:900; font-size:14px; color:#7ee2a8; text-align:center; }
+.pl-rank.g1{ color:#ffd24a; text-shadow:0 0 10px rgba(255,210,74,.5); }
+.pl-rank.g2{ color:#cbd5e1; text-shadow:0 0 10px rgba(203,213,225,.4); }
+.pl-rank.g3{ color:#d08b5a; text-shadow:0 0 10px rgba(208,139,90,.45); }
+.pl-main{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+.pl-top{ display:flex; align-items:center; gap:6px; min-width:0; }
+.pl-name{ font-weight:800; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pl-trophy{ font-size:13px; line-height:1; animation:ppFlame 2.2s ease-in-out infinite; filter:drop-shadow(0 0 6px rgba(255,210,74,.7)); }
+.pl-bar{ height:6px; border-radius:99px; background:rgba(255,255,255,.07); overflow:hidden; }
+.pl-bar > span{ display:block; height:100%; width:0; border-radius:99px; background:linear-gradient(90deg,#1f9e52,#7cf0a0); box-shadow:0 0 8px rgba(47,208,107,.45); transition:width .8s cubic-bezier(.2,.8,.25,1); }
+.pl-row.zone .pl-bar > span{ background:linear-gradient(90deg,#2fd06b,#ffd24a); box-shadow:0 0 8px rgba(255,210,74,.4); }
+.pl-row.unq .pl-bar > span{ background:rgba(150,170,190,.4); box-shadow:none; }
+.pl-sub{ display:flex; align-items:center; gap:6px; font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:rgba(150,220,180,.75); }
+.pl-dots{ display:inline-flex; gap:3px; }
+.pl-dots i{ width:7px; height:7px; border-radius:50%; border:1px solid rgba(150,220,180,.5); }
+.pl-dots i.on{ background:#2fd06b; border-color:#2fd06b; box-shadow:0 0 6px rgba(47,208,107,.6); }
+.pl-side{ display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+.pl-avg{ font-weight:900; font-size:16px; color:#d9ffe6; text-shadow:0 0 12px rgba(47,208,107,.3); }
+.pl-best{ font-size:10px; font-weight:800; letter-spacing:.05em; color:#9ecbff; white-space:nowrap; }
+@media (prefers-reduced-motion: reduce){
+  .pl-row{ animation:none; opacity:var(--pl-op,1); transform:none; }
+  .pl-row.lead{ animation:none; }
+  .pl-trophy{ animation:none; }
+  .pl-bar > span{ transition:none; }
+}
 /* XP tab hero: "XP CORE" reactor — radial ring + orbiting sparks + igniting level */
 .pp-xporb{
   grid-column:1/-1; display:flex; align-items:center; gap:16px; position:relative; overflow:hidden;
@@ -49458,7 +49498,46 @@ async function officialRows(){var games=[];try{if(typeof getGamesForMode==='func
 function startOfDay(d,off){return new Date(d.getFullYear(),d.getMonth(),d.getDate()+(off||0));}
 function filters(){var now=new Date(), out=[];out.push({id:'TODAY',label:'Today',match:function(ts){var ms=parseMs(ts),d=new Date(ms),a=startOfDay(now,0),b=startOfDay(now,1);return ms&&d>=a&&d<b;},min:2});out.push({id:'YESTERDAY',label:'Yesterday',match:function(ts){var ms=parseMs(ts),d=new Date(ms),a=startOfDay(now,-1),b=startOfDay(now,0);return ms&&d>=a&&d<b;},min:2});out.push({id:'THIS_WEEK',label:'This Week',match:function(ts){var ms=parseMs(ts),d=new Date(ms),dow=(now.getDay()+6)%7,a=startOfDay(now,-dow),b=new Date(a);b.setDate(a.getDate()+7);return ms&&d>=a&&d<b;},min:2});for(var i=0;i<6;i++){(function(i){var d=new Date(now.getFullYear(),now.getMonth()-i,1),y=d.getFullYear(),m=d.getMonth(),lab=d.toLocaleString('en-GB',{month:'short'}).toUpperCase();out.push({id:'M'+y+'-'+String(m+1).padStart(2,'0'),label:lab,match:function(ts){var ms=parseMs(ts),dt=new Date(ms);return ms&&dt.getFullYear()===y&&dt.getMonth()===m;},min:3});})(i);}out.push({id:'Y2026',label:'2026',match:function(ts){var ms=parseMs(ts),d=new Date(ms);return ms&&d.getFullYear()===2026;},min:10});out.push({id:'Y2025',label:'2025',match:function(ts){var ms=parseMs(ts),d=new Date(ms);return ms&&d.getFullYear()===2025;},min:10});out.push({id:'ALL',label:'All Time',match:function(){return true;},min:15});return out;}
 function aggregate(rows,filter){var map=new Map();rows.filter(function(r){return filter.match(r.ts);}).forEach(function(r){var x=map.get(r.key)||{player:r.player,games:0,total:0,best:0};x.games++;x.total+=r.score;if(r.score>x.best)x.best=r.score;map.set(r.key,x);});return Array.from(map.values()).map(function(x){x.avg=x.games?x.total/x.games:0;x.qualifies=x.games>=filter.min;return x;}).sort(function(a,b){if(a.qualifies!==b.qualifies)return a.qualifies?-1:1;return(b.avg-a.avg)||(b.games-a.games)||String(a.player).localeCompare(String(b.player));});}
-function openPremier(){document.querySelectorAll('.sq136-pl-bd').forEach(function(n){n.remove();});var fs=filters(), cur=fs.find(function(f){return /^M/.test(f.id);})||fs[0], allRows=null;var bd=document.createElement('div');bd.className='modal-backdrop sq136-pl-bd';var modal=document.createElement('div');modal.className='modal sq136-pl-modal';bd.appendChild(modal);modal.innerHTML='<div class="sq136-pl-head"><div><h3>Premier League</h3><div class="sq136-pl-sub">Average league by selected period.</div></div></div><div class="sq136-pl-body"><div class="sq136-pl-filters"><div class="sq136-pl-filter-row sq136-r1"></div><div class="sq136-pl-filter-row sq136-r2"></div><div class="sq136-pl-filter-row sq136-r3"></div></div><div class="sq136-pl-table-mount"><p class="tag">Loading Premier League…</p></div></div><div class="sq136-pl-footer"><button type="button" class="btn sq136-back">Back</button><button type="button" class="btn sq136-close">Close</button></div>';document.body.appendChild(bd);try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(bd,modal,function(){bd.remove();});}catch(_){}var mount=modal.querySelector('.sq136-pl-table-mount');function close(){bd.remove();}modal.querySelector('.sq136-close').onclick=close;modal.querySelector('.sq136-back').onclick=function(){close();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}};bd.addEventListener('click',function(e){if(e.target===bd)close();});function rowFor(f){if(f.id==='TODAY'||f.id==='YESTERDAY'||f.id==='THIS_WEEK')return modal.querySelector('.sq136-r1');if(/^M/.test(f.id))return modal.querySelector('.sq136-r2');return modal.querySelector('.sq136-r3');}fs.forEach(function(f){var b=document.createElement('button');b.type='button';b.textContent=f.label;b.dataset.filterId=f.id;b.onclick=function(){cur=f;render();};rowFor(f).appendChild(b);});async function render(){modal.querySelectorAll('[data-filter-id]').forEach(function(b){b.classList.toggle('active',b.dataset.filterId===cur.id);});if(!allRows){try{allRows=await window.__sqWithCloudTimeout(officialRows(),12000,'premier-league');}catch(err){try{console.warn('[SQ] Premier League cloud read failed/timed out',err);}catch(_){}mount.innerHTML='<p class="tag">'+window.__sqCloudErrorHtml()+'</p>';var rb=mount.querySelector('[data-action="cloudRetry"]');if(rb)rb.onclick=function(){render();};return;}}var rows=aggregate(allRows,cur);mount.innerHTML='<div class="sq136-pl-note">'+esc(cur.label)+' · '+cur.min+' Games Minimum</div><div class="sq136-pl-table-wrap"><table class="sq136-pl-table"><colgroup><col style="width:64px"><col><col style="width:110px"><col style="width:130px"><col style="width:130px"></colgroup><thead><tr><th>#</th><th>Player</th><th>Games</th><th>Avg</th><th>Best</th></tr></thead><tbody></tbody></table></div>';var tb=mount.querySelector('tbody');if(!rows.length){tb.innerHTML='<tr><td colspan="5">No official saved-player games found for '+esc(cur.label)+'.</td></tr>';return;}var rank=0;tb.innerHTML=rows.map(function(r){var q=r.qualifies;if(q)rank++;return '<tr class="'+(q?'':'unqualified')+'"><td class="rank-cell">'+(q?rank:'—')+'</td><td>'+esc(r.player)+'</td><td class="num-cell">'+r.games+'</td><td class="avg-cell">'+r.avg.toFixed(1)+'</td><td class="best-cell">'+Math.round(r.best)+'</td></tr>';}).join('');}
+function openPremier(){document.querySelectorAll('.sq136-pl-bd').forEach(function(n){n.remove();});var fs=filters(), cur=fs.find(function(f){return /^M/.test(f.id);})||fs[0], allRows=null;var bd=document.createElement('div');bd.className='modal-backdrop sq136-pl-bd';var modal=document.createElement('div');modal.className='modal sq136-pl-modal';bd.appendChild(modal);modal.innerHTML='<div class="sq136-pl-head"><div><h3>Premier League</h3><div class="sq136-pl-sub">Average league by selected period.</div></div></div><div class="sq136-pl-body"><div class="sq136-pl-filters"><div class="sq136-pl-filter-row sq136-r1"></div><div class="sq136-pl-filter-row sq136-r2"></div><div class="sq136-pl-filter-row sq136-r3"></div></div><div class="sq136-pl-table-mount"><p class="tag">Loading Premier League…</p></div></div><div class="sq136-pl-footer"><button type="button" class="btn sq136-back">Back</button><button type="button" class="btn sq136-close">Close</button></div>';document.body.appendChild(bd);try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(bd,modal,function(){bd.remove();});}catch(_){}var mount=modal.querySelector('.sq136-pl-table-mount');function close(){bd.remove();}modal.querySelector('.sq136-close').onclick=close;modal.querySelector('.sq136-back').onclick=function(){close();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}};bd.addEventListener('click',function(e){if(e.target===bd)close();});function rowFor(f){if(f.id==='TODAY'||f.id==='YESTERDAY'||f.id==='THIS_WEEK')return modal.querySelector('.sq136-r1');if(/^M/.test(f.id))return modal.querySelector('.sq136-r2');return modal.querySelector('.sq136-r3');}fs.forEach(function(f){var b=document.createElement('button');b.type='button';b.textContent=f.label;b.dataset.filterId=f.id;b.onclick=function(){cur=f;render();};rowFor(f).appendChild(b);});async function render(){modal.querySelectorAll('[data-filter-id]').forEach(function(b){b.classList.toggle('active',b.dataset.filterId===cur.id);});if(!allRows){try{allRows=await window.__sqWithCloudTimeout(officialRows(),12000,'premier-league');}catch(err){try{console.warn('[SQ] Premier League cloud read failed/timed out',err);}catch(_){}mount.innerHTML='<p class="tag">'+window.__sqCloudErrorHtml()+'</p>';var rb=mount.querySelector('[data-action="cloudRetry"]');if(rb)rb.onclick=function(){render();};return;}}var rows=aggregate(allRows,cur);
+// Arcade "championship table": zone-striped rows sliding in, count-up
+// averages, qualification progress dots. .best-cell retained so the sq137
+// medal decorator keeps working.
+mount.innerHTML='<div class="sq136-pl-note">'+esc(cur.label)+' · '+cur.min+' Games Minimum</div>';
+var arena=document.createElement('div');arena.className='pl-arena';mount.appendChild(arena);
+if(!rows.length){arena.innerHTML='<p class="tag">No official saved-player games found for '+esc(cur.label)+'.</p>';return;}
+var reduced=false;try{reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(_){ }
+function plCount(el,target,dec,dur){if(reduced||!Number.isFinite(target)){el.textContent=Number(target||0).toFixed(dec);return;}var t0=performance.now();(function step(t){var p=Math.min(1,(t-t0)/dur);el.textContent=(target*(1-Math.pow(1-p,3))).toFixed(dec);if(p<1)requestAnimationFrame(step);})(t0);}
+var maxAvg=rows.reduce(function(m,r){return r.qualifies?Math.max(m,r.avg):m;},0)||1;
+var rank=0;
+rows.forEach(function(r,i){
+  var q=r.qualifies;if(q)rank++;var myRank=rank;
+  var row=document.createElement('div');
+  row.className='pl-row'+(q&&myRank<=3?' zone z'+myRank:'')+(q&&myRank===1?' lead':'')+(q?'':' unq');
+  row.style.animationDelay=Math.min(700,i*45)+'ms';
+  var rk=document.createElement('div');rk.className='pl-rank'+(q&&myRank<=3?' g'+myRank:'');rk.textContent=q?('#'+myRank):'—';
+  var main=document.createElement('div');main.className='pl-main';
+  var top=document.createElement('div');top.className='pl-top';
+  var nm=document.createElement('div');nm.className='pl-name';nm.textContent=r.player;top.appendChild(nm);
+  if(q&&myRank===1){var tr=document.createElement('span');tr.className='pl-trophy';tr.textContent='🏆';top.appendChild(tr);}
+  var bar=document.createElement('div');bar.className='pl-bar';var fill=document.createElement('span');bar.appendChild(fill);
+  var w=Math.max(3,Math.min(100,(Number(r.avg)||0)/maxAvg*100))+'%';
+  if(reduced)fill.style.width=w;else requestAnimationFrame(function(){requestAnimationFrame(function(){fill.style.width=w;});});
+  var sub=document.createElement('div');sub.className='pl-sub';
+  if(q){sub.textContent=r.games+(r.games===1?' game':' games');}
+  else{
+    var dots=document.createElement('span');dots.className='pl-dots';
+    for(var d=0;d<cur.min;d++){var dot=document.createElement('i');if(d<r.games)dot.className='on';dots.appendChild(dot);}
+    var lbl=document.createElement('span');lbl.textContent=r.games+'/'+cur.min+' games to qualify';
+    sub.append(dots,lbl);
+  }
+  main.append(top,bar,sub);
+  var side=document.createElement('div');side.className='pl-side';
+  var av=document.createElement('div');av.className='pl-avg';plCount(av,Number(r.avg)||0,1,750);
+  var best=document.createElement('div');best.className='pl-best best-cell';best.textContent='BEST '+Math.round(r.best);
+  side.append(av,best);
+  row.append(rk,main,side);
+  arena.appendChild(row);
+});}
 render();}
 window.openPremierLeagueDialog=openPremier;window.openPremierLeaguePopup=openPremier;
 document.addEventListener('click',function(e){var b=e.target&&e.target.closest?e.target.closest('#leaguePremierLeagueBtn'):null;if(!b)return;try{e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation();}catch(_){}openPremier();},true);
