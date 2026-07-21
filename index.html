@@ -5038,6 +5038,52 @@ body[data-page="details"] #details{
   transform-origin:bottom; transition:height .5s cubic-bezier(.2,.8,.25,1);
 }
 .pp-strip-cell.win{ background:linear-gradient(180deg,#ffb14a,#ff7a18); box-shadow:0 0 8px rgba(255,140,40,.5); }
+/* Power Rankings arena (pw-*): podium + sliding ranked rows + power bars */
+.pw-arena{ display:flex; flex-direction:column; gap:12px; }
+.pw-podium{ display:grid; grid-template-columns:1fr 1.18fr 1fr; gap:8px; align-items:end; padding:8px 2px 0; }
+.pw-pod{ display:flex; flex-direction:column; align-items:center; gap:5px; min-width:0; }
+.pw-pod-crown{ font-size:17px; line-height:1; animation:ppFlame 2.2s ease-in-out infinite; filter:drop-shadow(0 0 8px rgba(255,210,74,.7)); }
+.pw-pod-name{ font-weight:900; font-size:12px; letter-spacing:.02em; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pw-pod-avg{ font-weight:900; font-size:21px; line-height:1; color:#ffe4c4; text-shadow:0 0 14px rgba(255,150,60,.4); }
+.pw-pod-block{ width:100%; position:relative; overflow:hidden; border-radius:10px 10px 4px 4px; transform-origin:bottom; animation:pwRise .7s cubic-bezier(.2,.8,.25,1) both; }
+.pw-pod-block::after{ content:''; position:absolute; inset:0; transform:translateX(-140%) skewX(-18deg); background:linear-gradient(105deg, transparent 42%, rgba(255,255,255,.4) 50%, transparent 58%); animation:ppSheen 3s ease-in-out 1.1s infinite; }
+.pw-pod-rank{ position:absolute; left:0; right:0; top:7px; text-align:center; font-weight:900; font-size:16px; color:rgba(10,10,16,.62); }
+.pw-pod.p1 .pw-pod-block{ height:66px; background:linear-gradient(180deg,#ffd76a,#b8860b); box-shadow:0 0 22px rgba(255,210,74,.35); }
+.pw-pod.p2 .pw-pod-block{ height:48px; background:linear-gradient(180deg,#e6edf7,#8b98ab); box-shadow:0 0 16px rgba(203,213,225,.25); }
+.pw-pod.p3 .pw-pod-block{ height:38px; background:linear-gradient(180deg,#e0a370,#8a5a2e); box-shadow:0 0 16px rgba(208,139,90,.28); }
+.pw-pod.p2 .pw-pod-block{ animation-delay:.08s; }
+.pw-pod.p1 .pw-pod-block{ animation-delay:.24s; }
+.pw-pod.p3 .pw-pod-block{ animation-delay:.4s; }
+@keyframes pwRise{ from{ transform:scaleY(0); } }
+.pw-list{ display:flex; flex-direction:column; gap:6px; }
+.pw-row{
+  display:grid; grid-template-columns:40px minmax(0,1fr) auto; gap:10px; align-items:center;
+  padding:9px 12px; border-radius:12px; background:rgba(16,24,39,.62); border:1px solid rgba(35,164,255,.14);
+  --pw-op:1; opacity:0; transform:translateX(-14px); animation:pwSlide .45s cubic-bezier(.2,.8,.25,1) forwards;
+}
+@keyframes pwSlide{ to{ opacity:var(--pw-op); transform:none; } }
+.pw-row.top3{ border-color:rgba(255,150,60,.3); background:linear-gradient(90deg, rgba(255,122,24,.09), rgba(16,24,39,.62) 55%); }
+.pw-row.benched{ --pw-op:.45; filter:grayscale(.35); }
+.pw-rank{ font-weight:900; font-size:14px; color:#7cc0ff; text-align:center; }
+.pw-rank.g1{ color:#ffd24a; text-shadow:0 0 10px rgba(255,210,74,.5); }
+.pw-rank.g2{ color:#cbd5e1; text-shadow:0 0 10px rgba(203,213,225,.4); }
+.pw-rank.g3{ color:#d08b5a; text-shadow:0 0 10px rgba(208,139,90,.45); }
+.pw-row-main{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+.pw-row-top{ display:flex; align-items:center; gap:7px; min-width:0; }
+.pw-row-name{ font-weight:800; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pw-chips{ display:flex; gap:3px; flex:0 0 auto; }
+.pw-chip{ font-size:9px; font-weight:800; padding:1px 5px; border-radius:6px; background:rgba(47,134,255,.14); color:#9ecbff; border:1px solid rgba(47,134,255,.25); }
+.pw-bar{ height:6px; border-radius:99px; background:rgba(255,255,255,.07); overflow:hidden; }
+.pw-bar > span{ display:block; height:100%; width:0; border-radius:99px; background:linear-gradient(90deg,#2f86ff,#7cc0ff); box-shadow:0 0 8px rgba(47,134,255,.45); transition:width .8s cubic-bezier(.2,.8,.25,1); }
+.pw-row.top3 .pw-bar > span{ background:linear-gradient(90deg,#ff7a18,#ffd264); box-shadow:0 0 8px rgba(255,150,60,.5); }
+.pw-avg{ font-weight:900; font-size:16px; color:#ffe4c4; text-align:right; }
+.pw-row-sub{ font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:rgba(150,185,230,.75); }
+.pw-tag{ font-size:8px; font-weight:900; letter-spacing:.1em; padding:2px 6px; border-radius:99px; border:1px solid rgba(255,255,255,.22); color:rgba(220,230,245,.75); text-transform:uppercase; flex:0 0 auto; }
+@media (prefers-reduced-motion: reduce){
+  .pw-pod-block, .pw-row{ animation:none; opacity:var(--pw-op,1); transform:none; }
+  .pw-pod-block::after, .pw-pod-crown{ animation:none; }
+  .pw-bar > span{ transition:none; }
+}
 /* XP tab hero: "XP CORE" reactor — radial ring + orbiting sparks + igniting level */
 .pp-xporb{
   grid-column:1/-1; display:flex; align-items:center; gap:16px; position:relative; overflow:hidden;
@@ -51505,14 +51551,32 @@ Logic untouched: practice save, scoring, Supabase writes, rankings formulas.
     var body = modal.querySelector('.sq132-body');
     var tabs = modal.querySelector('.sq132-tabs');
     function syncTabs(){ Array.prototype.forEach.call(tabs.querySelectorAll('button'), function(b){ b.classList.toggle('active', b.dataset.mode === mode); }); }
+    var reduced = false;
+    try{ reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ }
+    function pwCount(el, target, dec, dur){
+      if (reduced || !Number.isFinite(target)){ el.textContent = Number(target||0).toFixed(dec); return; }
+      var t0 = performance.now();
+      (function step(t){
+        var p = Math.min(1, (t - t0) / dur);
+        el.textContent = (target * (1 - Math.pow(1 - p, 3))).toFixed(dec);
+        if (p < 1) requestAnimationFrame(step);
+      })(t0);
+    }
+    function parseLatest(ls){
+      try{
+        if (!ls) return [];
+        var a = Array.isArray(ls) ? ls : (typeof ls === 'string' ? (ls.trim().charAt(0) === '[' ? JSON.parse(ls) : ls.split(/[,;\/]/)) : []);
+        return a.map(Number).filter(Number.isFinite).slice(0, 4);
+      }catch(_){ return []; }
+    }
     async function render(){
       syncTabs();
-      body.innerHTML = '<div class="sq132-note">'+esc(note(mode))+'</div><div class="sq132-table-wrap"><table class="sq132-table"><colgroup><col style="width:64px"><col><col style="width:170px"></colgroup><thead><tr><th>#</th><th>PLAYER</th><th>POWER RANK</th></tr></thead><tbody><tr><td colspan="3">Loading…</td></tr></tbody></table></div>';
-      var tb = body.querySelector('tbody');
+      body.innerHTML = '<div class="sq132-note">'+esc(note(mode))+'</div><div class="pw-arena"><p class="tag">Loading…</p></div>';
+      var arena = body.querySelector('.pw-arena');
       var rows = [];
       try{ rows = await fetchPowerRows(mode); }catch(e){ try{ console.warn('[SQ] Power Rankings modal source unavailable', mode, e); }catch(_){ } rows = []; }
       if (!rows.length){
-        tb.innerHTML = '<tr><td colspan="3">Power Rankings data is not available yet for '+esc(mode)+'. Required clean Supabase view/data source is missing or empty.</td></tr>';
+        arena.innerHTML = '<p class="tag">Power Rankings data is not available yet for '+esc(mode)+'. Required clean Supabase view/data source is missing or empty.</p>';
         return;
       }
       var display = rows.slice().sort(function(a,b){
@@ -51522,11 +51586,78 @@ Logic untouched: practice save, scoring, Supabase writes, rankings formulas.
           (b.powerRank - a.powerRank) ||
           String(a.player).localeCompare(String(b.player));
       });
-      tb.innerHTML = display.map(function(r,i){
-        var cls = (r.active === false || r.qualified === false) ? ' style="opacity:.45"' : '';
-        var pos = r.rankPos || (i+1);
-        return '<tr'+cls+'><td>'+esc(pos)+'</td><td>'+esc(r.player)+'</td><td class="num">'+Number(r.powerRank||0).toFixed(2)+'</td></tr>';
-      }).join('');
+      var ranked = display.filter(function(r){ return r.active !== false && r.qualified !== false; });
+      var benched = display.filter(function(r){ return !(r.active !== false && r.qualified !== false); });
+      var maxAvg = ranked.concat(benched).reduce(function(m,r){ return Math.max(m, Number(r.powerRank)||0); }, 0) || 1;
+      arena.innerHTML = '';
+
+      // Podium: 2nd | 1st | 3rd, medal blocks rising with a sheen; crown on #1.
+      var podium = ranked.slice(0, 3);
+      if (podium.length >= 2){
+        var pod = document.createElement('div'); pod.className = 'pw-podium';
+        var order = podium.length >= 3 ? [1, 0, 2] : [1, 0];
+        order.forEach(function(ix){
+          var r = podium[ix]; if (!r) return;
+          var col = document.createElement('div'); col.className = 'pw-pod p' + (ix + 1);
+          if (ix === 0){ var crown = document.createElement('div'); crown.className = 'pw-pod-crown'; crown.textContent = '👑'; col.appendChild(crown); }
+          var nm = document.createElement('div'); nm.className = 'pw-pod-name'; nm.textContent = r.player;
+          var av = document.createElement('div'); av.className = 'pw-pod-avg';
+          pwCount(av, Number(r.powerRank)||0, 2, 900 + ix * 150);
+          var blk = document.createElement('div'); blk.className = 'pw-pod-block';
+          var rk = document.createElement('div'); rk.className = 'pw-pod-rank'; rk.textContent = String(r.rankPos || (ix + 1));
+          blk.appendChild(rk);
+          col.append(nm, av, blk);
+          pod.appendChild(col);
+        });
+        arena.appendChild(pod);
+      }
+
+      // Full ranked list (podium included so the table stays complete), then
+      // inactive/unranked dimmed at the bottom.
+      var list = document.createElement('div'); list.className = 'pw-list';
+      var rowIx = 0;
+      function addRow(r, i, isBenched){
+        var pos = r.rankPos || (i + 1);
+        var row = document.createElement('div');
+        row.className = 'pw-row' + (!isBenched && pos <= 3 ? ' top3' : '') + (isBenched ? ' benched' : '');
+        row.style.animationDelay = Math.min(700, rowIx * 45) + 'ms';
+        var rank = document.createElement('div'); rank.className = 'pw-rank' + (!isBenched && pos <= 3 ? ' g' + pos : '');
+        rank.textContent = '#' + pos;
+        var main = document.createElement('div'); main.className = 'pw-row-main';
+        var top = document.createElement('div'); top.className = 'pw-row-top';
+        var nm = document.createElement('div'); nm.className = 'pw-row-name'; nm.textContent = r.player;
+        top.appendChild(nm);
+        var latest = parseLatest(r.latestScores);
+        if (latest.length){
+          var chips = document.createElement('div'); chips.className = 'pw-chips';
+          latest.forEach(function(s){ var c = document.createElement('span'); c.className = 'pw-chip'; c.textContent = String(Math.round(s)); chips.appendChild(c); });
+          top.appendChild(chips);
+        }
+        if (isBenched){
+          var tag = document.createElement('span'); tag.className = 'pw-tag';
+          tag.textContent = (r.qualified === false) ? 'Unranked' : 'Inactive';
+          top.appendChild(tag);
+        }
+        var bar = document.createElement('div'); bar.className = 'pw-bar';
+        var fill = document.createElement('span'); bar.appendChild(fill);
+        var w = Math.max(3, Math.min(100, (Number(r.powerRank)||0) / maxAvg * 100)) + '%';
+        if (reduced) fill.style.width = w;
+        else requestAnimationFrame(function(){ requestAnimationFrame(function(){ fill.style.width = w; }); });
+        main.append(top, bar);
+        if (r.gamesUsed || r.rounds){
+          var sub = document.createElement('div'); sub.className = 'pw-row-sub';
+          sub.textContent = (r.gamesUsed ? r.gamesUsed + (r.gamesUsed === 1 ? ' game' : ' games') : '') + (r.gamesUsed && r.rounds ? ' · ' : '') + (r.rounds ? r.rounds + (r.rounds === 1 ? ' round' : ' rounds') : '');
+          main.appendChild(sub);
+        }
+        var av = document.createElement('div'); av.className = 'pw-avg';
+        pwCount(av, Number(r.powerRank)||0, 2, 750);
+        row.append(rank, main, av);
+        list.appendChild(row);
+        rowIx++;
+      }
+      ranked.forEach(function(r, i){ addRow(r, i, false); });
+      benched.forEach(function(r, i){ addRow(r, ranked.length + i, true); });
+      arena.appendChild(list);
     }
     tabs.onclick = function(e){ var b = e.target.closest && e.target.closest('button[data-mode]'); if (!b) return; mode = b.dataset.mode; render(); };
     modal.querySelector('.sq132-back').onclick = function(){ bd.remove(); try{ if (typeof window.openLeagueRankingsDialog === 'function') window.openLeagueRankingsDialog(); }catch(_){ } };
