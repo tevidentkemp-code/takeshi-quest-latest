@@ -277,6 +277,45 @@ function check(name, ok, detail) { if (!ok) failures++; console.log((ok ? 'PASS'
   await page.waitForTimeout(400);
   check('RHS: Escape closes clean', await page.evaluate(() => (window.__sqModalStack || []).length === 0 && !document.querySelector('.sq-rhs-fix97-backdrop')));
 
+  // ---- Latest Scores (Results Feed) ----
+  await page.evaluate(() => window.openLatestScoresDialog('official'));
+  await page.waitForTimeout(1800);
+  const ls = await page.evaluate(() => {
+    const feed = document.querySelector('.ls-feed');
+    if (!feed) return null;
+    const cards = Array.from(feed.querySelectorAll('.ls-card'));
+    const c0 = cards[0];
+    return {
+      onStack: (window.__sqModalStack || []).length === 1,
+      cards: cards.length,
+      latestTag: !!(c0 && c0.querySelector('.ls-tag-latest')),
+      pulse: !!(c0 && c0.querySelector('.ls-dot')),
+      winner: c0 ? (c0.querySelector('.ls-line.win .ls-nm') || {}).textContent : null,
+      winScore: c0 ? (c0.querySelector('.ls-line.win .ls-sc') || {}).textContent : null,
+      winBadge: c0 ? ((c0.querySelector('.ls-w') || {}).textContent || null) : null,
+      loser: c0 ? (c0.querySelector('.ls-line.lose .ls-nm') || {}).textContent : null,
+      loseScore: c0 ? (c0.querySelector('.ls-line.lose .ls-sc') || {}).textContent : null,
+      winners: cards.map((c) => (c.querySelector('.ls-line.win .ls-nm') || {}).textContent),
+      whens: cards.every((c) => ((c.querySelector('.ls-when') || {}).textContent || '').length > 2),
+    };
+  });
+  check('Latest: results feed open + on stack', !!ls && ls.onStack);
+  if (ls) {
+    check(`Latest: ${E.latest.cards} match cards`, ls.cards === E.latest.cards, JSON.stringify(ls.cards));
+    check('Latest: newest card has pulsing LATEST tag', ls.latestTag && ls.pulse);
+    check(`Latest: scoreboard ${E.latest.first.winner} ${E.latest.first.winScore} beats ${E.latest.first.loser} ${E.latest.first.loseScore}`,
+      ls.winner === E.latest.first.winner && ls.winScore === E.latest.first.winScore
+      && ls.loser === E.latest.first.loser && ls.loseScore === E.latest.first.loseScore && ls.winBadge === 'WIN',
+      JSON.stringify({ w: ls.winner, ws: ls.winScore, l: ls.loser, lsc: ls.loseScore, badge: ls.winBadge }));
+    check('Latest: newest-first order by winner', JSON.stringify(ls.winners) === JSON.stringify(E.latest.order), JSON.stringify(ls.winners));
+    check('Latest: every card shows a timestamp', ls.whens);
+  }
+  await page.screenshot({ path: '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/league-latest-feed.png' });
+
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  check('Latest: Escape closes clean', await page.evaluate(() => (window.__sqModalStack || []).length === 0 && !document.querySelector('.sq-latest-scores-backdrop')));
+
   await browser.close();
   console.log(failures ? `\n${failures} FAILURES` : '\nALL PASS');
   process.exit(failures ? 1 : 0);

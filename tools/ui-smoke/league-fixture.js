@@ -58,6 +58,15 @@ const FIXTURE = {
       { mode: 'official', round_key: 'B', round_label: 'Bull', target_sort: 14, wr_points: 125, darts: 'B/B/S', holder: 'Mia K', holders: ['Mia K'], tie_count: 1 },
     ],
     v_round_high_scores_turbo_clean_app: [],
+    v_player_game_scores_official_clean: [
+      { game_id: 'g1', ts: days(1), player_index: 0, player_name: 'Jo R', score: 140 },
+      { game_id: 'g1', ts: days(1), player_index: 1, player_name: 'Sam T', score: 120 },
+      { game_id: 'g5', ts: days(5), player_index: 0, player_name: 'Mia K', score: 132 },
+      { game_id: 'g5', ts: days(5), player_index: 1, player_name: 'Sam T', score: 118 },
+      { game_id: 'g6', ts: days(6), player_index: 0, player_name: 'Alex S', score: 168 },
+      { game_id: 'g6', ts: days(6), player_index: 1, player_name: 'Sam T', score: 110 },
+    ],
+    v_latest_scores_turbo_clean: [],
   },
 };
 
@@ -105,6 +114,11 @@ const EXPECTED = {
     holders: { 14: 'Alex S', 20: 'Sam T / Mia K' },
     pips14: ['t', 't', 't'],
     turboEmpty: /No Turbo round high scores found/i,
+  },
+  latest: {
+    cards: 3,
+    first: { winner: 'Jo R', winScore: '140', loser: 'Sam T', loseScore: '120' },
+    order: ['Jo R', 'Mia K', 'Alex S'],
   },
 };
 

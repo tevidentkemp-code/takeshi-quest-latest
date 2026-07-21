@@ -5225,6 +5225,33 @@ body[data-page="details"] #details{
   .rh-tile{ animation:none; opacity:var(--rh-op,1); transform:none; }
   .rh-crown{ animation:none; }
 }
+/* Latest Scores results feed (ls-*): match ticker cards, winner/loser scoreboards */
+.ls-feed{ display:flex; flex-direction:column; gap:6px; max-height:56vh; overflow-y:auto; padding:2px; }
+.ls-card{
+  position:relative; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center;
+  padding:9px 12px; border-radius:12px; background:rgba(24,20,14,.6); border:1px solid rgba(255,170,60,.14);
+  opacity:0; --ls-x:-16px; transform:translateX(var(--ls-x)); animation:lsIn .4s cubic-bezier(.2,.8,.25,1) forwards;
+}
+.ls-card:nth-child(even){ --ls-x:16px; }
+@keyframes lsIn{ to{ opacity:1; transform:none; } }
+.ls-card.latest{ border-color:rgba(255,170,60,.45); box-shadow:0 0 16px rgba(255,150,40,.15); }
+.ls-tag-latest{ display:inline-flex; align-items:center; gap:5px; font-size:8px; font-weight:900; letter-spacing:.14em; color:#ffc06a; text-transform:uppercase; }
+.ls-dot{ width:6px; height:6px; border-radius:50%; background:#ffa440; box-shadow:0 0 8px rgba(255,150,40,.8); animation:lsPulse 1.6s ease-in-out infinite; }
+@keyframes lsPulse{ 0%,100%{ transform:scale(1); opacity:1; } 50%{ transform:scale(1.5); opacity:.6; } }
+.ls-main{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+.ls-line{ display:flex; align-items:center; gap:7px; min-width:0; }
+.ls-nm{ font-weight:800; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ls-sc{ font-weight:900; font-size:13px; padding:1px 8px; border-radius:8px; flex:0 0 auto; }
+.ls-line.win .ls-sc{ background:linear-gradient(135deg,#ff7a18,#ffb14a); color:#160b03; box-shadow:0 0 8px rgba(255,140,40,.4); }
+.ls-line.lose .ls-sc{ background:rgba(16,24,39,.9); color:#9ecbff; border:1px solid rgba(47,134,255,.3); }
+.ls-w{ font-size:8px; font-weight:900; color:#7cf0a0; letter-spacing:.12em; flex:0 0 auto; }
+.ls-text{ font-weight:700; font-size:13px; }
+.ls-extra{ font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:rgba(255,200,150,.6); }
+.ls-when{ text-align:right; font-size:9px; font-weight:800; letter-spacing:.05em; color:rgba(255,200,150,.65); text-transform:uppercase; white-space:nowrap; align-self:start; margin-top:2px; }
+@media (prefers-reduced-motion: reduce){
+  .ls-card{ animation:none; opacity:1; transform:none; }
+  .ls-dot{ animation:none; }
+}
 /* XP tab hero: "XP CORE" reactor — radial ring + orbiting sparks + igniting level */
 .pp-xporb{
   grid-column:1/-1; display:flex; align-items:center; gap:16px; position:relative; overflow:hidden;
@@ -47983,13 +48010,50 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     var head=document.createElement('div'); head.className='sq-fix97-head';
     head.innerHTML='<div class="sq-fix97-title"><h3>Latest Scores</h3><div class="sq-fix97-sub">Games history truth / Result / Date-Time</div></div>';
     var tabs=tabBar([{mode:'official',label:'Official'},{mode:'turbo',label:'Turbo'},{mode:'practice',label:'Practice'}]); head.appendChild(tabs);
-    var body=document.createElement('div'); body.className='modal-body'; body.innerHTML='<div class="latest-scores-table-wrap" style="border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:auto;max-height:56vh;"><table class="sq-table latest-scores" style="width:100%;border-collapse:collapse;table-layout:fixed;"><colgroup><col style="width:7%"><col style="width:70%"><col style="width:23%"></colgroup><thead><tr><th style="text-align:left;padding-left:14px;">#</th><th style="text-align:left;">RESULT</th><th style="text-align:right;padding-right:14px;">DATE/TIME</th></tr></thead><tbody></tbody></table></div>';
+    var body=document.createElement('div'); body.className='modal-body'; body.innerHTML='<div class="ls-feed"><p class="tag">Loading…</p></div>';
     var footer=document.createElement('div'); footer.className='modal-footer'; footer.style.justifyContent='flex-start';
     var back=document.createElement('button'); back.className='btn small sq-pill'; back.textContent='Back';
     var close=document.createElement('button'); close.className='btn small sq-pill'; close.textContent='Close'; footer.append(back,close);
     modal.append(head,body,footer); overlay.appendChild(modal); document.body.appendChild(overlay);
     try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
-    var tbody=body.querySelector('tbody');
+    var feed=body.querySelector('.ls-feed');
+    var reduced=false;try{reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(_){ }
+    // One result card: parses "A 140 beat B 120 …" into a winner/loser mini
+    // scoreboard; anything unparseable renders as a plain text line.
+    function lsCard(i,text,whenText,onClick){
+      var card=document.createElement('div');
+      card.className='ls-card'+(i===0?' latest':'');
+      card.style.animationDelay=Math.min(800,i*40)+'ms';
+      var main=document.createElement('div');main.className='ls-main';
+      if(i===0){
+        var tag=document.createElement('span');tag.className='ls-tag-latest';
+        var dot=document.createElement('span');dot.className='ls-dot';
+        tag.appendChild(dot);tag.appendChild(document.createTextNode('Latest result'));
+        main.appendChild(tag);
+      }
+      var m=String(text||'').match(/^(.+?)\s(\d+)\s(?:beat|Bt)\s(.+?)\s(\d+)(.*)$/i);
+      if(m){
+        var winLine=document.createElement('div');winLine.className='ls-line win';
+        var wn=document.createElement('span');wn.className='ls-nm';wn.textContent=m[1];
+        var ws=document.createElement('span');ws.className='ls-sc';ws.textContent=m[2];
+        var wtag=document.createElement('span');wtag.className='ls-w';wtag.textContent='WIN';
+        winLine.append(wn,ws,wtag);
+        var loseLine=document.createElement('div');loseLine.className='ls-line lose';
+        var ln=document.createElement('span');ln.className='ls-nm';ln.textContent=m[3];
+        var lsc=document.createElement('span');lsc.className='ls-sc';lsc.textContent=m[4];
+        loseLine.append(ln,lsc);
+        main.append(winLine,loseLine);
+        var extra=String(m[5]||'').trim();
+        if(extra){var ex=document.createElement('div');ex.className='ls-extra';ex.textContent=extra.replace(/^-\s*/,'');main.appendChild(ex);}
+      } else {
+        var tx=document.createElement('div');tx.className='ls-text';tx.textContent=String(text||'—');
+        main.appendChild(tx);
+      }
+      var when=document.createElement('div');when.className='ls-when';when.textContent=whenText||'—';
+      card.append(main,when);
+      if(typeof onClick==='function'){card.style.cursor='pointer';card.onclick=onClick;}
+      return card;
+    }
     function format(g){
       try{ if(typeof window.formatGameResultLine==='function') return window.formatGameResultLine(g)+(mode==='turbo'?' - TURBO':''); }catch(_){ }
       var ps=playersOf(g).map(pName).filter(Boolean), totals=totalsOf(g);
@@ -48001,22 +48065,21 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
       return out+(mode==='turbo'?' - TURBO':'');
     }
     async function render(){
-      setBtnStates(tabs,mode); tbody.innerHTML='<tr><td colspan="3" style="padding:18px;opacity:.7;">Loading…</td></tr>';
+      setBtnStates(tabs,mode); feed.innerHTML='<p class="tag">Loading…</p>';
       if(mode==='turbo'){
         var rows=[];
         try{ rows=await fetchTurboLatestScoresClean(); }
         catch(e){
           try{ console.warn('[SQ] Turbo Latest Scores clean view unavailable', e); }catch(_){}
-          tbody.innerHTML='<tr><td colspan="3" style="padding:18px;opacity:.78;">Turbo Latest Scores data is unavailable.</td></tr>';
+          feed.innerHTML='<p class="tag">Turbo Latest Scores data is unavailable.</p>';
           return;
         }
         if(!rows.length){
-          tbody.innerHTML='<tr><td colspan="3" style="padding:18px;opacity:.78;">No Turbo games found.</td></tr>';
+          feed.innerHTML='<p class="tag">No Turbo games found.</p>';
           return;
         }
-        tbody.innerHTML=rows.map(function(r,i){
-          return '<tr><td style="text-align:left;padding-left:14px;color:rgba(0,163,255,.95);font-weight:800;">'+(i+1)+'</td><td style="text-align:left;">'+esc(turboLatestResultText(r))+'</td><td style="text-align:right;padding-right:14px;opacity:.9;">'+esc(fmtWhen(r.created_at))+'</td></tr>';
-        }).join('');
+        feed.innerHTML='';
+        rows.forEach(function(r,i){ feed.appendChild(lsCard(i,turboLatestResultText(r),fmtWhen(r.created_at))); });
         return;
       }
       if(mode==='official'){
@@ -48024,22 +48087,23 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
         try{ officialRows=await fetchOfficialLatestScoresClean(); }
         catch(e){
           try{ console.warn('[SQ] Official Latest Scores clean source unavailable', e); }catch(_){}
-          tbody.innerHTML='<tr><td colspan="3" style="padding:18px;opacity:.78;">Official Latest Scores data is unavailable.</td></tr>';
+          feed.innerHTML='<p class="tag">Official Latest Scores data is unavailable.</p>';
           return;
         }
         if(!officialRows.length){
-          tbody.innerHTML='<tr><td colspan="3" style="padding:18px;opacity:.78;">No official games found.</td></tr>';
+          feed.innerHTML='<p class="tag">No official games found.</p>';
           return;
         }
-        tbody.innerHTML=officialRows.map(function(r,i){
-          return '<tr><td style="text-align:left;padding-left:14px;color:rgba(255,123,26,.95);font-weight:800;">'+(i+1)+'</td><td style="text-align:left;">'+esc(officialLatestResultText(r))+'</td><td style="text-align:right;padding-right:14px;opacity:.9;">'+esc(fmtWhen(r.ts))+'</td></tr>';
-        }).join('');
+        feed.innerHTML='';
+        officialRows.forEach(function(r,i){ feed.appendChild(lsCard(i,officialLatestResultText(r),fmtWhen(r.ts))); });
         return;
       }
       var gs=await gamesFor(mode); gs=gs.filter(function(g){return playersOf(g).some(function(p){return !!pName(p);});}).slice(0,50);
-      if(!gs.length){tbody.innerHTML='<tr><td colspan="3" style="padding:18px;opacity:.7;">No '+mode+' games found.</td></tr>';return;}
-      tbody.innerHTML=gs.map(function(g,i){return '<tr style="cursor:pointer"><td style="text-align:left;padding-left:14px;color:rgba(255,123,26,.95);font-weight:800;">'+(i+1)+'</td><td style="text-align:left;">'+esc(format(g))+'</td><td style="text-align:right;padding-right:14px;opacity:.9;">'+esc(fmtWhen(g.ts||g.created_at))+'</td></tr>';}).join('');
-      Array.from(tbody.querySelectorAll('tr')).forEach(function(tr,i){tr.onclick=function(){try{if(typeof openSingleGameScoreSheet==='function')openSingleGameScoreSheet(gs[i]);}catch(_){}};});
+      if(!gs.length){feed.innerHTML='<p class="tag">No '+mode+' games found.</p>';return;}
+      feed.innerHTML='';
+      gs.forEach(function(g,i){
+        feed.appendChild(lsCard(i,format(g),fmtWhen(g.ts||g.created_at),function(){try{if(typeof openSingleGameScoreSheet==='function')openSingleGameScoreSheet(gs[i]);}catch(_){}}));
+      });
     }
     tabs.onclick=function(e){var b=e.target.closest('[data-mode]'); if(!b)return; mode=b.dataset.mode; render();};
     back.onclick=function(){overlay.remove();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}}; close.onclick=function(){overlay.remove();}; overlay.onclick=function(e){if(e.target===overlay)overlay.remove();};
