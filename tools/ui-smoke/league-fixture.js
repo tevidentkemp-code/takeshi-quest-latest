@@ -29,6 +29,13 @@ const FIXTURE = {
     ],
     v_power_rankings_last56_turbo_clean: [],
     v_power_rankings_last56_practice_clean: [],
+    v_high_score_league_official_from_games_clean: [
+      { player: 'Alex S', best_score: 168, best_ts: days(6), game_id: 'g6', avg_round: 12.0, rounds: 14 },
+      { player: 'Jo R', best_score: 150, best_ts: days(2), game_id: 'g2', avg_round: 9.9, rounds: 14 },
+      { player: 'Sam T', best_score: 140, best_ts: days(7), game_id: 'g7', avg_round: 8.8, rounds: 14 },
+      { player: 'Mia K', best_score: 132, best_ts: days(5), game_id: 'g5', avg_round: 9.4, rounds: 14 },
+    ],
+    v_high_score_league_turbo_from_games_clean: [],
   },
 };
 
@@ -52,6 +59,13 @@ const EXPECTED = {
     ],
     unqualified: { name: 'Alex S', avg: '132.0', dotsOn: 2, dotsTotal: 3, label: '2/3 games to qualify' },
     medals: { 'BEST 168': '🥇', 'BEST 150': '🥈', 'BEST 140': '🥉' },
+  },
+  hs: {
+    record: { score: '168', holder: 'Alex S' },
+    order: ['Alex S', 'Jo R', 'Sam T', 'Mia K'],
+    scores: ['168', '150', '140', '132'],
+    avgs: ['AVG 12.0', 'AVG 9.9', 'AVG 8.8', 'AVG 9.4'],
+    turboEmpty: /Turbo High Score League data is not available yet/i,
   },
 };
 

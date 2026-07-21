@@ -138,6 +138,52 @@ function check(name, ok, detail) { if (!ok) failures++; console.log((ok ? 'PASS'
   await page.waitForTimeout(400);
   check('Premier: Escape closes clean', await page.evaluate(() => (window.__sqModalStack || []).length === 0 && !document.querySelector('.sq136-pl-bd')));
 
+  // ---- High Score League (Record Board) ----
+  await page.evaluate(() => window.openHighScoreLeagueDialog('official'));
+  await page.waitForTimeout(2200);
+  const hs = await page.evaluate(() => {
+    const arena = document.querySelector('.hs-arena');
+    if (!arena) return null;
+    const rows = Array.from(arena.querySelectorAll('.hs-row'));
+    return {
+      onStack: (window.__sqModalStack || []).length === 1,
+      recordScore: (arena.querySelector('.hs-record-score') || {}).textContent,
+      recordHolder: (arena.querySelector('.hs-record-holder') || {}).textContent,
+      eyebrow: (arena.querySelector('.hs-record-eyebrow') || {}).textContent,
+      names: rows.map((r) => (r.querySelector('.hs-name') || {}).textContent),
+      scores: rows.map((r) => (r.querySelector('.hs-score') || {}).textContent),
+      avgs: rows.map((r) => (r.querySelector('.hs-avgchip') || {}).textContent),
+      metersFilled: rows.every((r) => parseFloat(((r.querySelector('.hs-meter > span') || {}).style || {}).width || '0') > 0),
+      firstMeterFull: parseFloat(((rows[0] && rows[0].querySelector('.hs-meter > span')) || { style: {} }).style.width || '0') === 100,
+      goldRank: rows[0] ? /g1/.test(rows[0].querySelector('.hs-rank').className) : false,
+    };
+  });
+  check('HS League: record board open + on stack', !!hs && hs.onStack);
+  if (hs) {
+    check(`HS League: record banner ${E.hs.record.score} by ${E.hs.record.holder}`,
+      hs.recordScore === E.hs.record.score && hs.recordHolder === E.hs.record.holder && /All-Time Record — Official/i.test(hs.eyebrow || ''),
+      JSON.stringify({ s: hs.recordScore, h: hs.recordHolder, e: hs.eyebrow }));
+    check('HS League: ladder order', JSON.stringify(hs.names) === JSON.stringify(E.hs.order), JSON.stringify(hs.names));
+    check('HS League: scores counted up', JSON.stringify(hs.scores) === JSON.stringify(E.hs.scores), JSON.stringify(hs.scores));
+    check('HS League: AVG chips', JSON.stringify(hs.avgs) === JSON.stringify(E.hs.avgs), JSON.stringify(hs.avgs));
+    check('HS League: meters filled, record row at 100% with gold rank', hs.metersFilled && hs.firstMeterFull && hs.goldRank,
+      JSON.stringify({ filled: hs.metersFilled, full: hs.firstMeterFull, gold: hs.goldRank }));
+  }
+  await page.screenshot({ path: '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/league-hs-record-board.png' });
+
+  // Turbo tab -> empty state wording preserved
+  await page.evaluate(() => {
+    const b = Array.from(document.querySelectorAll('.sq-fix100-backdrop button[data-mode]')).find((x) => x.dataset.mode === 'turbo');
+    if (b) b.click();
+  });
+  await page.waitForTimeout(700);
+  const hsTurbo = await page.evaluate(() => ((document.querySelector('.hs-arena') || {}).textContent) || '');
+  check('HS League: turbo empty state preserved', E.hs.turboEmpty.test(hsTurbo), JSON.stringify(hsTurbo.slice(0, 80)));
+
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  check('HS League: Escape closes clean', await page.evaluate(() => (window.__sqModalStack || []).length === 0 && !document.querySelector('.hs-arena')));
+
   await browser.close();
   console.log(failures ? `\n${failures} FAILURES` : '\nALL PASS');
   process.exit(failures ? 1 : 0);

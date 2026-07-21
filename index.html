@@ -5124,6 +5124,48 @@ body[data-page="details"] #details{
   .pl-trophy{ animation:none; }
   .pl-bar > span{ transition:none; }
 }
+/* High Score League record board (hs-*): red/amber HIGH SCORE arcade theme */
+.hs-arena{ display:flex; flex-direction:column; gap:10px; }
+.hs-record{
+  position:relative; overflow:hidden; text-align:center; padding:14px 16px 12px; border-radius:16px;
+  background:radial-gradient(120% 160% at 50% -40%, rgba(255,80,40,.18), transparent 60%), #170f12;
+  border:1px solid rgba(255,120,60,.35);
+  box-shadow:0 6px 18px rgba(0,0,0,.35), 0 0 30px rgba(255,90,40,.12);
+}
+.hs-record::after{
+  content:''; position:absolute; top:0; bottom:0; left:0; width:45%; pointer-events:none;
+  background:linear-gradient(105deg, transparent, rgba(255,255,255,.08), transparent);
+  transform:translateX(-130%) skewX(-18deg); animation:ppSheen 5s ease-in-out .8s infinite;
+}
+.hs-record-eyebrow{ font-size:10px; letter-spacing:.22em; text-transform:uppercase; color:#ffb290; font-weight:900; }
+.hs-record-score{ font-size:44px; font-weight:900; line-height:1.05; color:#ffe9d2; text-shadow:0 0 22px rgba(255,120,50,.75), 0 0 44px rgba(255,90,40,.4); }
+.hs-record-holder{ font-weight:900; font-size:14px; color:#fff; }
+.hs-record-date{ font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:rgba(255,180,150,.7); font-weight:800; }
+.hs-list{ display:flex; flex-direction:column; gap:6px; }
+.hs-row{
+  display:grid; grid-template-columns:40px minmax(0,1fr) auto; gap:10px; align-items:center;
+  padding:9px 12px; border-radius:12px; background:rgba(26,16,14,.66); border:1px solid rgba(255,120,60,.14);
+  opacity:0; transform:translateY(10px); animation:hsUp .45s cubic-bezier(.2,.8,.25,1) forwards;
+}
+@keyframes hsUp{ to{ opacity:1; transform:none; } }
+.hs-row.top1{ border-color:rgba(255,150,60,.4); }
+.hs-rank{ font-weight:900; font-size:14px; color:#ff9d73; text-align:center; }
+.hs-rank.g1{ color:#ffd24a; text-shadow:0 0 10px rgba(255,210,74,.5); }
+.hs-rank.g2{ color:#cbd5e1; text-shadow:0 0 10px rgba(203,213,225,.4); }
+.hs-rank.g3{ color:#d08b5a; text-shadow:0 0 10px rgba(208,139,90,.45); }
+.hs-main{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+.hs-name{ font-weight:800; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hs-meter{ height:6px; border-radius:99px; background:rgba(255,255,255,.07); overflow:hidden; }
+.hs-meter > span{ display:block; height:100%; width:0; border-radius:99px; background:linear-gradient(90deg,#ff4d2e,#ffb14a); box-shadow:0 0 8px rgba(255,100,50,.5); transition:width .8s cubic-bezier(.2,.8,.25,1); }
+.hs-date{ font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:rgba(255,180,150,.65); }
+.hs-side{ display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+.hs-score{ font-weight:900; font-size:17px; color:#ffd9b0; text-shadow:0 0 12px rgba(255,120,50,.4); }
+.hs-avgchip{ font-size:9px; font-weight:800; padding:1px 6px; border-radius:6px; background:rgba(47,134,255,.14); color:#9ecbff; border:1px solid rgba(47,134,255,.25); }
+@media (prefers-reduced-motion: reduce){
+  .hs-row{ animation:none; opacity:1; transform:none; }
+  .hs-record::after{ display:none; }
+  .hs-meter > span{ transition:none; }
+}
 /* XP tab hero: "XP CORE" reactor — radial ring + orbiting sparks + igniting level */
 .pp-xporb{
   grid-column:1/-1; display:flex; align-items:center; gap:16px; position:relative; overflow:hidden;
@@ -48248,23 +48290,59 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     try{if(typeof window.__sqCleanupLeagueRankingsOverlays==='function')window.__sqCleanupLeagueRankingsOverlays();}catch(_){}
     var ui=buildModal('High Score League','Highest verified match score per saved player.',[{mode:'official',label:'Official'},{mode:'turbo',label:'Turbo'}]);
     ui.overlay.classList.add('sq-hs-league-backdrop','sq-fix100-hsl');
-    ui.body.innerHTML='<div class="table-wrap"><table class="sq-league-table hs-league-table"><colgroup><col style="width:44px"><col><col style="width:92px"><col style="width:78px"><col style="width:122px"></colgroup><thead><tr><th>#</th><th>PLAYER</th><th>HIGH SCORE</th><th>AVG</th><th>DATE</th></tr></thead><tbody></tbody></table></div>';
-    var tb=ui.body.querySelector('tbody');
+    ui.body.innerHTML='<div class="hs-arena"><p class="tag">Loading…</p></div>';
+    var arena=ui.body.querySelector('.hs-arena');
+    var reduced=false;try{reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(_){ }
+    function hsCount(el,target,dur){if(reduced||!Number.isFinite(target)){el.textContent=String(Math.round(target||0));return;}var t0=performance.now();(function step(t){var p=Math.min(1,(t-t0)/dur);el.textContent=String(Math.round(target*(1-Math.pow(1-p,3))));if(p<1)requestAnimationFrame(step);})(t0);}
     async function render(){
       setTabs(ui.tabs,mode);
-      tb.innerHTML='<tr><td colspan="5" style="padding:14px;opacity:.75;">Loading…</td></tr>';
+      arena.innerHTML='<p class="tag">Loading…</p>';
       var rows=[];
       try{ rows=await window.__sqWithCloudTimeout(mode==='turbo'?fetchTurboHighScoreLeagueClean():fetchOfficialHighScoreLeagueClean(),12000,'hs-league'); }
       catch(e){
         try{ if(window.SQ_DEBUG)console.warn('[SQ] High Score League clean source read failed', e); }catch(_){}
-        tb.innerHTML='<tr><td colspan="5" style="padding:14px;opacity:.78;">'+(mode==='turbo'?'Turbo':'Official')+' High Score League data is not available yet.</td></tr>';
+        arena.innerHTML='<p class="tag">'+(mode==='turbo'?'Turbo':'Official')+' High Score League data is not available yet.</p>';
         return;
       }
       if(!rows.length){
-        tb.innerHTML='<tr><td colspan="5" style="padding:14px;opacity:.78;">'+(mode==='turbo'?'Turbo':'Official')+' High Score League data is not available yet.</td></tr>';
+        arena.innerHTML='<p class="tag">'+(mode==='turbo'?'Turbo':'Official')+' High Score League data is not available yet.</p>';
         return;
       }
-      tb.innerHTML=rows.map(function(r,i){var hasAvg=r.avg!==null&&r.avg!==undefined&&r.avg!=='';var avg=hasAvg?Number(r.avg):NaN;var avgText=Number.isFinite(avg)?avg.toFixed(1):'—';return '<tr><td class="rank-cell">'+(i+1)+'</td><td class="player-cell">'+esc(r.player)+'</td><td class="score-cell">'+Math.round(r.score)+'</td><td class="avg-cell">'+esc(avgText)+'</td><td class="date-cell">'+esc(fmtDateTime(r.ts))+'</td></tr>';}).join('');
+      // Record board: all-time record banner + score-meter ladder.
+      arena.innerHTML='';
+      var record=rows[0];
+      var ban=document.createElement('div');ban.className='hs-record';
+      var eye=document.createElement('div');eye.className='hs-record-eyebrow';eye.textContent='All-Time Record — '+(mode==='turbo'?'Turbo':'Official');
+      var big=document.createElement('div');big.className='hs-record-score';hsCount(big,Math.round(record.score),1100);
+      var who=document.createElement('div');who.className='hs-record-holder';who.textContent=record.player;
+      var when=document.createElement('div');when.className='hs-record-date';when.textContent=fmtDateTime(record.ts);
+      ban.append(eye,big,who,when);
+      arena.appendChild(ban);
+      var list=document.createElement('div');list.className='hs-list';
+      var maxScore=Math.max(1,Math.round(record.score));
+      rows.forEach(function(r,i){
+        var row=document.createElement('div');
+        row.className='hs-row'+(i===0?' top1':'');
+        row.style.animationDelay=Math.min(700,i*45)+'ms';
+        var rank=document.createElement('div');rank.className='hs-rank'+(i<3?' g'+(i+1):'');rank.textContent='#'+(i+1);
+        var main=document.createElement('div');main.className='hs-main';
+        var nm=document.createElement('div');nm.className='hs-name';nm.textContent=r.player;
+        var meter=document.createElement('div');meter.className='hs-meter';
+        var fill=document.createElement('span');meter.appendChild(fill);
+        var w=Math.max(3,Math.min(100,Math.round(r.score)/maxScore*100))+'%';
+        if(reduced)fill.style.width=w;else requestAnimationFrame(function(){requestAnimationFrame(function(){fill.style.width=w;});});
+        var dt=document.createElement('div');dt.className='hs-date';dt.textContent=fmtDateTime(r.ts);
+        main.append(nm,meter,dt);
+        var side=document.createElement('div');side.className='hs-side';
+        var sc=document.createElement('div');sc.className='hs-score';hsCount(sc,Math.round(r.score),750);
+        side.appendChild(sc);
+        var hasAvg=r.avg!==null&&r.avg!==undefined&&r.avg!==''&&Number.isFinite(Number(r.avg));
+        var chip=document.createElement('div');chip.className='hs-avgchip';chip.textContent='AVG '+(hasAvg?Number(r.avg).toFixed(1):'—');
+        side.appendChild(chip);
+        row.append(rank,main,side);
+        list.appendChild(row);
+      });
+      arena.appendChild(list);
     }
     ui.tabs.onclick=function(e){var b=e.target.closest('button[data-mode]');if(!b)return;mode=b.dataset.mode;render();};
     await render();
