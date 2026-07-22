@@ -272,7 +272,7 @@ function check(name, ok, detail) { if (!ok) failures++; console.log((ok ? 'PASS'
     check('RHS: 10 unclaimed targets in strip', rh.unclaimed.length === 10, JSON.stringify(rh.unclaimed));
     check('RHS: all perfection meters grown in', rh.metersFilled);
   }
-  await page.screenshot({ path: '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/league-rhs-record-wall.png' });
+  await page.screenshot({ path: '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/league-rhs-perfection-board.png' });
 
   await page.evaluate(() => {
     const b = Array.from(document.querySelectorAll('.sq-rhs-fix97-backdrop [data-mode]')).find((x) => x.dataset.mode === 'turbo');
