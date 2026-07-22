@@ -231,37 +231,46 @@ function check(name, ok, detail) { if (!ok) failures++; console.log((ok ? 'PASS'
   await page.waitForTimeout(400);
   check('Top50: Escape closes clean', await page.evaluate(() => (window.__sqModalStack || []).length === 0 && !document.querySelector('.t5-arena')));
 
-  // ---- Round High Scores (Record Wall) ----
+  // ---- Round High Scores (Perfection Board) ----
   await page.evaluate(() => window.openRoundHighScoresDialog('official'));
   await page.waitForTimeout(2400);
   const rh = await page.evaluate(() => {
-    const wall = document.querySelector('.rh-wall');
-    if (!wall) return null;
-    const tiles = Array.from(wall.querySelectorAll('.rh-tile'));
+    const board = document.querySelector('.rh-board');
+    if (!board) return null;
+    const recs = Array.from(board.querySelectorAll('.rh-rec'));
     const byKey = {};
-    tiles.forEach((t) => { byKey[(t.querySelector('.rh-key') || {}).textContent] = t; });
+    recs.forEach((r) => { byKey[(r.querySelector('.rh-tgt') || {}).textContent] = r; });
     const val = (k) => byKey[k] ? (byKey[k].querySelector('.rh-wr') || {}).textContent : null;
+    const pct = (k) => byKey[k] ? (byKey[k].querySelector('.rh-pct') || {}).textContent : null;
     const holder = (k) => byKey[k] ? (byKey[k].querySelector('.rh-holder') || {}).textContent : null;
+    const champ = board.querySelector('.rh-champ');
     return {
       onStack: (window.__sqModalStack || []).length === 1,
-      tiles: tiles.length,
-      emptyTiles: wall.querySelectorAll('.rh-tile.empty').length,
-      wr14: val('14'), wr19: val('19'), wr20: val('20'), wrB: val('B'), wr10: val('10'),
-      holder14: holder('14'), holder20: holder('20'),
-      bestKey: (() => { const b = wall.querySelector('.rh-tile.best .rh-key'); return b ? b.textContent : null; })(),
-      crown: !!wall.querySelector('.rh-tile.best .rh-crown'),
-      pips14: byKey['14'] ? Array.from(byKey['14'].querySelectorAll('.rh-pip')).map((x) => (x.className.match(/rh-pip (\w)/) || [])[1] || '?') : null,
+      recs: recs.length,
+      keys: recs.map((r) => (r.querySelector('.rh-tgt') || {}).textContent),
+      champKey: champ ? (champ.querySelector('.rh-badge') || {}).textContent : null,
+      champWr: champ ? (champ.querySelector('.rh-champ-wr') || {}).textContent : null,
+      champPerfect: !!(champ && champ.classList.contains('perfect')),
+      champEyebrow: champ ? (champ.querySelector('.rh-champ-eyebrow') || {}).textContent : null,
+      wr14: val('14'), wr19: val('19'), wr20: val('20'), wrB: val('B'),
+      pct14: pct('14'), pct19: pct('19'),
+      holder20: holder('20'),
+      perfect14: byKey['14'] ? byKey['14'].classList.contains('perfect') : false,
+      combo14: byKey['14'] ? Array.from(byKey['14'].querySelectorAll('.rh-dc')).map((x) => x.textContent) : null,
+      unclaimed: Array.from(board.querySelectorAll('.rh-uchip')).map((c) => c.textContent),
+      metersFilled: recs.every((r) => parseFloat(((r.querySelector('.rh-meter > span') || {}).style || {}).width || '0') > 0),
     };
   });
-  check('RHS: record wall open + on stack', !!rh && rh.onStack);
+  check('RHS: perfection board open + on stack', !!rh && rh.onStack);
   if (rh) {
-    check('RHS: 14 tiles (10-20 + D/T/B), 10 empty dimmed', rh.tiles === E.rhs.tiles && rh.emptyTiles === 10, JSON.stringify({ t: rh.tiles, e: rh.emptyTiles }));
-    check('RHS: WR values counted up (14/19/20/B) and 10 empty',
-      rh.wr14 === E.rhs.filled[14] && rh.wr19 === E.rhs.filled[19] && rh.wr20 === E.rhs.filled[20] && rh.wrB === E.rhs.filled.B && rh.wr10 === '—',
-      JSON.stringify({ 14: rh.wr14, 19: rh.wr19, 20: rh.wr20, B: rh.wrB, 10: rh.wr10 }));
-    check('RHS: holders shown incl. shared record', rh.holder14 === E.rhs.holders[14] && rh.holder20 === E.rhs.holders[20], JSON.stringify({ h14: rh.holder14, h20: rh.holder20 }));
-    check('RHS: crown on top WR tile (' + E.rhs.bestKey + ')', rh.bestKey === E.rhs.bestKey && rh.crown, JSON.stringify({ best: rh.bestKey, crown: rh.crown }));
-    check('RHS: darts pips T/T/T on 14', JSON.stringify(rh.pips14) === JSON.stringify(E.rhs.pips14), JSON.stringify(rh.pips14));
+    check('RHS: 4 claimed record rows (14/19/20/B)', JSON.stringify(rh.keys) === JSON.stringify(['14', '19', '20', 'B']), JSON.stringify(rh.keys));
+    check('RHS: champion is target 14 PERFECT (126 = 9×14)', rh.champKey === '14' && rh.champWr === '126' && rh.champPerfect && /perfect/i.test(rh.champEyebrow || ''), JSON.stringify({ k: rh.champKey, wr: rh.champWr, p: rh.champPerfect, e: rh.champEyebrow }));
+    check('RHS: WR values counted up', rh.wr14 === '126' && rh.wr19 === '114' && rh.wr20 === '100' && rh.wrB === '125', JSON.stringify({ 14: rh.wr14, 19: rh.wr19, 20: rh.wr20, B: rh.wrB }));
+    check('RHS: perfection % (14 PERFECT, 19 = 67%)', rh.perfect14 && rh.pct14 === 'PERFECT' && rh.pct19 === '67%', JSON.stringify({ p14: rh.pct14, p19: rh.pct19 }));
+    check('RHS: shared holder shown on 20', rh.holder20 === 'Sam T / Mia K', JSON.stringify(rh.holder20));
+    check('RHS: readable dart combo T/T/T on 14', JSON.stringify(rh.combo14) === JSON.stringify(['T', 'T', 'T']), JSON.stringify(rh.combo14));
+    check('RHS: 10 unclaimed targets in strip', rh.unclaimed.length === 10, JSON.stringify(rh.unclaimed));
+    check('RHS: all perfection meters grown in', rh.metersFilled);
   }
   await page.screenshot({ path: '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/league-rhs-record-wall.png' });
 

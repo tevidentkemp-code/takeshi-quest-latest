@@ -5201,29 +5201,68 @@ body[data-page="details"] #details{
 @media (prefers-reduced-motion: reduce){
   .t5-row{ animation:none; opacity:1; transform:none; }
 }
-/* Round High Scores record wall (rh-*): cyan per-target record tiles */
-.rh-wall{ display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:8px; }
-.rh-tile{
-  position:relative; display:flex; flex-direction:column; align-items:center; gap:3px;
-  padding:10px 8px 9px; border-radius:14px; background:rgba(10,26,32,.7); border:1px solid rgba(45,212,191,.22);
-  --rh-op:1; opacity:0; transform:scale(.82); animation:rhPop .4s cubic-bezier(.2,.9,.3,1.2) forwards;
+/* Round High Scores — "Perfection Board" (rh-*): each target's record shown
+   against its theoretical perfect max, with a champion hero + dart combos. */
+.rh-board{ display:flex; flex-direction:column; gap:10px; }
+/* champion hero — the record closest to perfect */
+.rh-champ{
+  position:relative; overflow:hidden; display:grid; grid-template-columns:auto 1fr; gap:14px; align-items:center;
+  padding:14px 16px; border-radius:16px;
+  background:radial-gradient(120% 160% at 20% -40%, rgba(45,212,191,.2), transparent 60%), #0a1a20;
+  border:1px solid rgba(45,212,191,.4); box-shadow:0 6px 18px rgba(0,0,0,.35), 0 0 28px rgba(45,212,191,.14);
 }
-@keyframes rhPop{ to{ opacity:var(--rh-op); transform:scale(1); } }
-.rh-tile.empty{ --rh-op:.45; }
-.rh-tile.best{ border-color:rgba(255,210,74,.55); box-shadow:0 0 18px rgba(255,210,74,.22); }
-.rh-crown{ position:absolute; top:-9px; right:-4px; font-size:14px; filter:drop-shadow(0 0 6px rgba(255,210,74,.7)); animation:ppFlame 2.2s ease-in-out infinite; }
-.rh-key{ font-size:11px; font-weight:900; letter-spacing:.14em; color:#7ee7d8; text-transform:uppercase; }
-.rh-wr{ font-size:22px; font-weight:900; line-height:1; color:#d8fff7; text-shadow:0 0 14px rgba(45,212,191,.5); }
-.rh-darts{ display:flex; gap:3px; min-height:10px; }
-.rh-pip{ width:9px; height:9px; border-radius:3px; background:rgba(255,255,255,.16); }
-.rh-pip.t{ background:#ff7a18; box-shadow:0 0 5px rgba(255,122,24,.6); }
-.rh-pip.d{ background:#ffd24a; box-shadow:0 0 5px rgba(255,210,74,.55); }
-.rh-pip.s{ background:#4aa3ff; box-shadow:0 0 5px rgba(74,163,255,.55); }
-.rh-pip.b{ background:#ff4d5e; box-shadow:0 0 5px rgba(255,77,94,.6); }
-.rh-holder{ font-size:9px; font-weight:800; color:rgba(170,220,214,.85); text-align:center; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; letter-spacing:.03em; text-transform:uppercase; }
+.rh-champ.perfect{ border-color:rgba(255,210,74,.6); box-shadow:0 6px 18px rgba(0,0,0,.35), 0 0 30px rgba(255,210,74,.24); }
+.rh-champ::after{ content:''; position:absolute; top:0; bottom:0; left:0; width:45%; pointer-events:none;
+  background:linear-gradient(105deg, transparent, rgba(255,255,255,.09), transparent);
+  transform:translateX(-130%) skewX(-18deg); animation:ppSheen 5s ease-in-out .8s infinite; }
+.rh-badge{ width:66px; height:66px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  font-size:26px; font-weight:900; color:#0a1a20; background:radial-gradient(circle at 40% 35%, #a6f7ec, #2dd4bf 70%);
+  box-shadow:0 0 18px rgba(45,212,191,.55), inset 0 -4px 10px rgba(0,0,0,.25); flex:0 0 auto; }
+.rh-champ.perfect .rh-badge{ background:radial-gradient(circle at 40% 35%, #ffe9a8, #ffd24a 70%); box-shadow:0 0 20px rgba(255,210,74,.6), inset 0 -4px 10px rgba(0,0,0,.25); }
+.rh-champ-info{ min-width:0; display:flex; flex-direction:column; gap:3px; }
+.rh-champ-eyebrow{ font-size:10px; font-weight:900; letter-spacing:.18em; text-transform:uppercase; color:#7ee7d8; }
+.rh-champ.perfect .rh-champ-eyebrow{ color:#ffd24a; }
+.rh-champ-wr{ font-size:34px; font-weight:900; line-height:1; color:#d8fff7; text-shadow:0 0 18px rgba(45,212,191,.55); }
+.rh-champ.perfect .rh-champ-wr{ color:#fff2cf; text-shadow:0 0 18px rgba(255,210,74,.6); }
+.rh-champ-meta{ font-size:11px; font-weight:800; color:rgba(180,230,222,.85); }
+.rh-champ-combo{ display:flex; gap:4px; margin-top:3px; }
+/* per-target record rows */
+.rh-list{ display:flex; flex-direction:column; gap:6px; }
+.rh-rec{
+  display:grid; grid-template-columns:44px minmax(0,1fr) auto; gap:10px; align-items:center;
+  padding:8px 12px; border-radius:12px; background:rgba(10,26,32,.6); border:1px solid rgba(45,212,191,.16);
+  opacity:0; transform:translateY(8px); animation:rhUp .4s cubic-bezier(.2,.8,.25,1) forwards;
+}
+@keyframes rhUp{ to{ opacity:1; transform:none; } }
+.rh-rec.perfect{ border-color:rgba(255,210,74,.5); }
+.rh-tgt{ width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  font-weight:900; font-size:14px; color:#d8fff7; background:rgba(45,212,191,.14); border:1px solid rgba(45,212,191,.4); }
+.rh-rec.perfect .rh-tgt{ color:#fff2cf; background:rgba(255,210,74,.16); border-color:rgba(255,210,74,.5); }
+.rh-rec-main{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+.rh-rec-top{ display:flex; align-items:center; gap:7px; min-width:0; }
+.rh-combo{ display:flex; gap:3px; flex:0 0 auto; }
+.rh-dc{ font-size:9px; font-weight:900; width:15px; height:15px; border-radius:4px; display:flex; align-items:center; justify-content:center; color:#0a1116; }
+.rh-dc.t{ background:#ff7a18; } .rh-dc.d{ background:#ffd24a; } .rh-dc.s{ background:#4aa3ff; } .rh-dc.b{ background:#ff4d5e; }
+.rh-dc.x{ background:rgba(255,255,255,.14); color:rgba(255,255,255,.6); }
+.rh-holder{ font-size:11px; font-weight:800; color:rgba(180,230,222,.9); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rh-meter{ height:5px; border-radius:99px; background:rgba(255,255,255,.07); overflow:hidden; }
+.rh-meter > span{ display:block; height:100%; width:0; border-radius:99px; background:linear-gradient(90deg,#2dd4bf,#a6f7ec); box-shadow:0 0 7px rgba(45,212,191,.5); transition:width .8s cubic-bezier(.2,.8,.25,1); }
+.rh-rec.perfect .rh-meter > span{ background:linear-gradient(90deg,#ffb14a,#ffe9a8); box-shadow:0 0 8px rgba(255,210,74,.55); }
+.rh-side{ display:flex; flex-direction:column; align-items:flex-end; gap:1px; }
+.rh-wr{ font-weight:900; font-size:17px; color:#d8fff7; text-shadow:0 0 10px rgba(45,212,191,.4); }
+.rh-rec.perfect .rh-wr{ color:#fff2cf; }
+.rh-pct{ font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:rgba(150,220,210,.7); }
+.rh-pct.perfect{ color:#ffd24a; text-shadow:0 0 8px rgba(255,210,74,.5); }
+/* unclaimed strip */
+.rh-unclaimed{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:9px 12px; border-radius:12px;
+  border:1px dashed rgba(255,255,255,.14); background:rgba(255,255,255,.02); }
+.rh-unclaimed-label{ font-size:9px; font-weight:900; letter-spacing:.12em; text-transform:uppercase; color:rgba(150,220,210,.6); }
+.rh-uchip{ font-size:11px; font-weight:900; color:rgba(150,220,210,.55); width:24px; height:24px; border-radius:7px;
+  display:flex; align-items:center; justify-content:center; background:rgba(45,212,191,.06); border:1px solid rgba(45,212,191,.18); }
 @media (prefers-reduced-motion: reduce){
-  .rh-tile{ animation:none; opacity:var(--rh-op,1); transform:none; }
-  .rh-crown{ animation:none; }
+  .rh-rec{ animation:none; opacity:1; transform:none; }
+  .rh-champ::after{ display:none; }
+  .rh-meter > span{ transition:none; }
 }
 /* Latest Scores results feed (ls-*): match ticker cards, winner/loser scoreboards */
 .ls-feed{ display:flex; flex-direction:column; gap:6px; max-height:56vh; overflow-y:auto; padding:2px; }
@@ -48196,36 +48235,79 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
     var reduced=false;try{reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(_){ }
     function rhCount(el,target,dur){if(reduced||!Number.isFinite(target)){el.textContent=String(Math.round(target||0));return;}var t0=performance.now();(function step(t){var p=Math.min(1,(t-t0)/dur);el.textContent=String(Math.round(target*(1-Math.pow(1-p,3))));if(p<1)requestAnimationFrame(step);})(t0);}
-    // Record wall: one tile per target, tiles popping in, crown on the top WR.
-    function buildWall(entries){
-      var wall=document.createElement('div'); wall.className='rh-wall';
-      var best=null;
-      entries.forEach(function(e){ var v=Number(e.wr); if(Number.isFinite(v)&&v>0&&(!best||v>Number(best.wr))) best=e; });
-      entries.forEach(function(e,i){
-        var has=e.wr!=null&&e.wr!==''&&Number.isFinite(Number(e.wr));
-        var tile=document.createElement('div');
-        tile.className='rh-tile'+(has?'':' empty')+(best===e?' best':'');
-        tile.style.animationDelay=Math.min(900,i*55)+'ms';
-        var key=document.createElement('div'); key.className='rh-key'; key.textContent=e.key;
-        tile.appendChild(key);
-        if(best===e){ var cr=document.createElement('span'); cr.className='rh-crown'; cr.textContent='👑'; tile.appendChild(cr); }
-        var wr=document.createElement('div'); wr.className='rh-wr';
-        if(has) rhCount(wr,Number(e.wr),700); else wr.textContent='—';
-        tile.appendChild(wr);
-        var darts=document.createElement('div'); darts.className='rh-darts';
-        String(e.darts||'').split('/').map(function(t){return t.trim();}).filter(Boolean).slice(0,3).forEach(function(tok){
-          var c=tok.charAt(0).toLowerCase();
-          var pip=document.createElement('span');
-          pip.className='rh-pip'+(('tdsb'.indexOf(c)>=0)?' '+c:'');
-          pip.title=tok;
-          darts.appendChild(pip);
-        });
-        tile.appendChild(darts);
-        var hold=document.createElement('div'); hold.className='rh-holder'; hold.textContent=e.holderText||'—'; hold.title=e.holderText||'';
-        tile.appendChild(hold);
-        wall.appendChild(tile);
+    // Theoretical perfect max per target: numbers 10-20 = 3 trebles (9×N);
+    // D round = 3×D20 (120), T round = 3×T20 (180), B round = 3×bull (150).
+    function maxForKey(k){
+      var s=String(k||'').trim().toUpperCase();
+      if(s==='D') return 120; if(s==='T') return 180; if(s==='B') return 150;
+      var n=Number(s); return (Number.isFinite(n)&&n>0)?9*n:0;
+    }
+    function comboChips(darts){
+      var wrap=document.createElement('div'); wrap.className='rh-combo';
+      String(darts||'').split('/').map(function(t){return t.trim();}).filter(Boolean).slice(0,3).forEach(function(tok){
+        var c=tok.charAt(0).toLowerCase();
+        var chip=document.createElement('span');
+        chip.className='rh-dc '+('tdsb'.indexOf(c)>=0?c:'x');
+        chip.textContent=('tdsb'.indexOf(c)>=0?c.toUpperCase():'✕');
+        chip.title=tok;
+        wrap.appendChild(chip);
       });
-      return wall;
+      return wrap;
+    }
+    // Perfection Board: champion hero (record closest to its perfect max) +
+    // per-target records with a perfection meter + a compact unclaimed strip.
+    function buildBoard(entries){
+      var board=document.createElement('div'); board.className='rh-board';
+      var claimed=entries.filter(function(e){ return e.wr!=null&&e.wr!==''&&Number.isFinite(Number(e.wr))&&Number(e.wr)>0; });
+      var unclaimed=entries.filter(function(e){ return !(e.wr!=null&&e.wr!==''&&Number.isFinite(Number(e.wr))&&Number(e.wr)>0); });
+      claimed.forEach(function(e){ var mx=maxForKey(e.key); e.__mx=mx; e.__pct=mx?Math.min(100,Number(e.wr)/mx*100):0; e.__perfect=mx>0&&Number(e.wr)>=mx; });
+      // champion: highest perfection %, tie-break highest WR
+      var champ=claimed.slice().sort(function(a,b){ return (b.__pct-a.__pct)||(Number(b.wr)-Number(a.wr)); })[0];
+
+      if(champ){
+        var hero=document.createElement('div'); hero.className='rh-champ'+(champ.__perfect?' perfect':'');
+        var badge=document.createElement('div'); badge.className='rh-badge'; badge.textContent=champ.key;
+        var info=document.createElement('div'); info.className='rh-champ-info';
+        var eye=document.createElement('div'); eye.className='rh-champ-eyebrow'; eye.textContent=champ.__perfect?'★ Perfect Round':'Top Round';
+        var wr=document.createElement('div'); wr.className='rh-champ-wr'; rhCount(wr,Number(champ.wr),1000);
+        var meta=document.createElement('div'); meta.className='rh-champ-meta';
+        meta.textContent=(champ.__perfect?'Maximum on target '+champ.key:Math.round(champ.__pct)+'% of perfect on target '+champ.key)+(champ.holderText?' · '+champ.holderText:'');
+        info.append(eye,wr,meta,comboChips(champ.darts));
+        hero.append(badge,info);
+        board.appendChild(hero);
+      }
+
+      var list=document.createElement('div'); list.className='rh-list';
+      claimed.forEach(function(e,i){
+        var row=document.createElement('div'); row.className='rh-rec'+(e.__perfect?' perfect':'');
+        row.style.animationDelay=Math.min(700,i*45)+'ms';
+        var tgt=document.createElement('div'); tgt.className='rh-tgt'; tgt.textContent=e.key;
+        var main=document.createElement('div'); main.className='rh-rec-main';
+        var top=document.createElement('div'); top.className='rh-rec-top';
+        top.appendChild(comboChips(e.darts));
+        var hold=document.createElement('div'); hold.className='rh-holder'; hold.textContent=e.holderText||'—'; hold.title=e.holderText||'';
+        top.appendChild(hold);
+        var meter=document.createElement('div'); meter.className='rh-meter'; var fill=document.createElement('span'); meter.appendChild(fill);
+        var w=Math.max(3,Math.min(100,e.__pct))+'%';
+        if(reduced)fill.style.width=w;else requestAnimationFrame(function(){requestAnimationFrame(function(){fill.style.width=w;});});
+        main.append(top,meter);
+        var side=document.createElement('div'); side.className='rh-side';
+        var val=document.createElement('div'); val.className='rh-wr'; rhCount(val,Number(e.wr),700);
+        var pct=document.createElement('div'); pct.className='rh-pct'+(e.__perfect?' perfect':''); pct.textContent=e.__perfect?'PERFECT':(Math.round(e.__pct)+'%');
+        side.append(val,pct);
+        row.append(tgt,main,side);
+        list.appendChild(row);
+      });
+      board.appendChild(list);
+
+      if(unclaimed.length){
+        var strip=document.createElement('div'); strip.className='rh-unclaimed';
+        var lbl=document.createElement('span'); lbl.className='rh-unclaimed-label'; lbl.textContent='Unclaimed';
+        strip.appendChild(lbl);
+        unclaimed.forEach(function(e){ var c=document.createElement('span'); c.className='rh-uchip'; c.textContent=e.key; strip.appendChild(c); });
+        board.appendChild(strip);
+      }
+      return board;
     }
     async function render(){
       setBtnStates(tabs,mode); body.innerHTML='<div class="muted">Loading…</div>';
@@ -48246,7 +48328,7 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
           var suffix=String(r.holder_suffix||'').trim();
           return { key:String(r.round_key||''), wr:r.wr, darts:r.darts, holderText:holder+(suffix?' '+suffix:'') };
         });
-        body.innerHTML=''; body.appendChild(buildWall(tEntries));
+        body.innerHTML=''; body.appendChild(buildBoard(tEntries));
         return;
       }
       if(mode==='official'){
@@ -48263,7 +48345,7 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
           var r=officialBy.get(k), holders=r&&Array.isArray(r.holders)?r.holders:[];
           return { key:k, wr:r&&r.wr!=null?r.wr:null, darts:r&&r.darts?r.darts:'', holderText:holders.length?holders.join(' / '):'' };
         });
-        body.innerHTML=''; body.appendChild(buildWall(oEntries));
+        body.innerHTML=''; body.appendChild(buildBoard(oEntries));
         return;
       }
       body.innerHTML='<div class="muted">Round High Scores source is unavailable for this mode.</div>';
