@@ -21111,7 +21111,6 @@ async function showAddPlayerDialog(index){
 
   const finish = (msg) => {
     const idx = parseInt(modal.dataset.playerIndex || '0', 10) || 0;
-      const metaFinal = meta || meta2;
 
     // idx>0 => legacy: inject into old #psPlayerFields row (if it exists)
     if (idx > 0) {
@@ -21182,7 +21181,48 @@ async function showAddPlayerDialog(index){
         return;
       }
 
-      finish('Player saved');
+      // Saved from the Match Setup screen (index 0) => drop the new player
+      // straight onto the Match Card, then close this dialog. Repeats cleanly
+      // for each new player. Mirrors the "Add Saved" confirm path.
+      let cardMsg = 'Player saved';
+      try{
+        const fromSetup = (parseInt(String(index || 0), 10) || 0) === 0
+          && !!(msPlayersList && msPlayersList.offsetParent !== null)
+          && Array.isArray(__msPlayers) && typeof __msRenderPlayers === 'function';
+        if (fromSetup){
+          let meta = null;
+          try{
+            const list = (typeof cloudListPlayers === 'function') ? (await cloudListPlayers()) : [];
+            meta = (list || []).find(p => String(p && p.name || '').trim().toLowerCase() === fullName.toLowerCase()) || null;
+          }catch(_){ meta = null; }
+          const cand = {
+            type: 'registered',
+            id: (meta && meta.id != null) ? meta.id : null,
+            name: fullName,
+            first_name: (meta && meta.first_name) || first,
+            last_name:  (meta && meta.last_name)  || last,
+            nickname:   (meta && meta.nickname)   || nickname,
+            initials:   (meta && meta.initials)   || initials
+          };
+          const candKey = String(cand.id || cand.name).trim().toLowerCase();
+          const already = __msPlayers.some(p => String((p && (p.id || p.name)) || '').trim().toLowerCase() === candKey);
+          const cap = (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 6);
+          const vsBlocked = (typeof __sqVsShadowSetupSlotTaken === 'function') && __sqVsShadowSetupSlotTaken();
+          if (already){
+            cardMsg = 'Already on the match card';
+          } else if (vsBlocked){
+            cardMsg = 'Saved · Vs Shadow uses exactly 1 real player';
+          } else if (__msPlayers.length >= cap){
+            cardMsg = `Saved · match card is full (max ${cap})`;
+          } else {
+            __msPlayers.push(cand);
+            __msRenderPlayers();
+            cardMsg = 'Player added to match card';
+          }
+        }
+      }catch(err){ try{ console.warn('add-to-card after save failed', err); }catch(_){ } }
+
+      finish(cardMsg);
     };
   }
 }
