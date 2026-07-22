@@ -5291,6 +5291,64 @@ body[data-page="details"] #details{
   .ls-card{ animation:none; opacity:1; transform:none; }
   .ls-dot{ animation:none; }
 }
+/* ===== League & Rankings chrome continuity =====================================
+   Unifies title, tabs, footer and removes legacy subtitle/note text across all
+   seven league dialogs so they share one arcade identity (each keeps its own
+   data-colour in the body). */
+/* Titles → uppercase arcade header with a warm glow, consistent everywhere.
+   Selectors are prefixed with .modal-backdrop to out-specify the per-dialog
+   (and runtime-injected) rules regardless of source order. */
+.modal-backdrop .sq132-title h3, .modal-backdrop .sq136-pl-head h3,
+.modal-backdrop .sq-league-clean-title h3, .modal-backdrop .sq-fix97-title h3,
+.modal-backdrop .sq-streak-title h3{
+  margin:0 !important; font-weight:900 !important; font-size:clamp(15px, 4.4vw, 19px) !important; line-height:1.1 !important;
+  text-transform:uppercase !important; letter-spacing:.04em !important; white-space:nowrap !important;
+  color:#fff !important; text-shadow:0 0 18px rgba(255,122,0,.34) !important;
+}
+/* Let each header wrap its tabs below the title on narrow screens instead of
+   colliding (the title no longer collides with the mode pills). */
+.modal-backdrop .sq132-head, .modal-backdrop .sq-league-clean-head,
+.modal-backdrop .sq-fix97-head{
+  flex-wrap:wrap !important; row-gap:9px !important; align-items:center !important;
+}
+.modal-backdrop .sq132-title, .modal-backdrop .sq-league-clean-title,
+.modal-backdrop .sq-fix97-title{ flex:1 1 auto !important; min-width:0 !important; }
+.modal-backdrop .sq132-tabs, .modal-backdrop .sq-league-tabs, .modal-backdrop .sq-fix97-tabs{
+  flex:0 0 auto !important; justify-content:flex-start !important;
+}
+/* Remove legacy explanatory text at the top of the screens */
+.modal-backdrop .sq132-sub, .modal-backdrop .sq136-pl-sub, .modal-backdrop .sq-league-clean-sub,
+.modal-backdrop .sq-fix97-sub, .modal-backdrop .sq-streak-sub,
+.modal-backdrop .sq132-note, .modal-backdrop .sq-streak-note{ display:none !important; }
+/* Unified tab / mode pills — matches the profile pp-tab treatment */
+.modal-backdrop .sq132-tabs button, .modal-backdrop .sq-league-tabs button,
+.modal-backdrop .sq-fix97-tabs .seg-btn, .modal-backdrop .sq-fix97-tabs .btn,
+.modal-backdrop .sq-streak-tabs button, .modal-backdrop .sq136-pl-filter-row button{
+  appearance:none !important; border-radius:999px !important; padding:8px 13px !important; min-height:32px !important;
+  border:1px solid rgba(255,255,255,.12) !important; background:rgba(16,24,39,.7) !important;
+  color:var(--v3-muted,#98a2b8) !important; font-size:12px !important; font-weight:900 !important;
+  letter-spacing:.03em !important; text-transform:uppercase !important; line-height:1 !important;
+  box-shadow:none !important; cursor:pointer !important;
+}
+.modal-backdrop .sq132-tabs button.active, .modal-backdrop .sq-league-tabs button.active,
+.modal-backdrop .sq-fix97-tabs .seg-btn.active, .modal-backdrop .sq-fix97-tabs .btn.active,
+.modal-backdrop .sq-streak-tabs button.active, .modal-backdrop .sq136-pl-filter-row button.active{
+  background:linear-gradient(135deg,rgba(255,122,24,.30),rgba(255,183,64,.16)) !important;
+  color:#fff !important; border-color:rgba(255,150,60,.55) !important; box-shadow:0 0 14px rgba(255,122,0,.2) !important;
+}
+.modal-backdrop .sq132-tabs button:disabled, .modal-backdrop .sq-streak-tabs button:disabled{ opacity:.45 !important; cursor:not-allowed !important; }
+/* Footer Back/Close — consistent pills across the family */
+.modal-backdrop.sq132-bd .modal-footer, .modal-backdrop .sq136-pl-footer,
+.modal-backdrop.sq-fix100-backdrop .modal-footer, .modal-backdrop.sq-rhs-fix97-backdrop .modal-footer,
+.modal-backdrop.sq-latest-scores-backdrop .modal-footer, .modal-backdrop.sq-streak-league-backdrop .modal-footer{
+  justify-content:center !important; gap:10px !important;
+}
+.modal-backdrop.sq132-bd .modal-footer .btn, .modal-backdrop .sq136-pl-footer .btn,
+.modal-backdrop.sq-fix100-backdrop .modal-footer .btn, .modal-backdrop.sq-rhs-fix97-backdrop .modal-footer .btn,
+.modal-backdrop.sq-latest-scores-backdrop .modal-footer .btn, .modal-backdrop.sq-streak-league-backdrop .modal-footer .btn{
+  border-radius:999px !important; min-width:104px !important; font-weight:900 !important;
+  letter-spacing:.04em !important; text-transform:uppercase !important;
+}
 /* Streak League combo chains (sk-*): ember rows with segmented streak chains */
 .sk-list{ display:flex; flex-direction:column; gap:6px; }
 .sk-row{
@@ -34131,6 +34189,8 @@ window.setCloudStatus = function setCloudStatus(state, msg){
 })();
 // <<< PATCH:PBGR_ADMIN_ALWAYS_MERGE_GAMES_V1 END
 function __sqCleanupLeagueRankingsOverlays(){
+  // Remove EVERY league sub-dialog backdrop before a new one opens, so a
+  // lingering previous dialog can never flash under the incoming one.
   [
     '.sq-league-rankings-backdrop',
     '.sq-top50-backdrop',
@@ -34140,7 +34200,14 @@ function __sqCleanupLeagueRankingsOverlays(){
     '.sq-fix166-top50',
     '.sq-hs-league-backdrop',
     '.sq-fix100-hsl',
-    '.sq-streak-league-backdrop'
+    '.sq-streak-league-backdrop',
+    '.sq132-bd',
+    '.sq108-bd',
+    '.sq136-pl-bd',
+    '.sq-rhs-fix97-backdrop',
+    '.sq-latest-scores-backdrop',
+    '.sq-fix100-backdrop',
+    '.sq-latest-matches-backdrop'
   ].forEach(function(sel){
     document.querySelectorAll(sel).forEach(function(n){ try{ n.remove(); }catch(_){} });
   });
@@ -48109,7 +48176,7 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
   }
 
   window.openLatestScoresDialog = async function(initialMode){
-    document.querySelectorAll('.sq-latest-scores-backdrop').forEach(function(n){n.remove();});
+    try{if(typeof window.__sqCleanupLeagueRankingsOverlays==='function')window.__sqCleanupLeagueRankingsOverlays();}catch(_){}
     var mode = ['official','turbo','practice'].includes(String(initialMode||'').toLowerCase()) ? String(initialMode).toLowerCase() : 'official';
     var overlay=document.createElement('div'); overlay.className='modal-backdrop sq-latest-scores-backdrop';
     var modal=document.createElement('div'); modal.className='modal'; modal.style.maxWidth='980px'; modal.style.width='94vw';
@@ -48225,7 +48292,7 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
   // Patch this path for current Round High Scores behaviour.
   window.openRoundHighScoresDialog = async function(initialMode){
     var mode=String(initialMode||'official').toLowerCase()==='turbo'?'turbo':'official';
-    document.querySelectorAll('.sq-rhs-fix97-backdrop').forEach(function(n){n.remove();});
+    try{if(typeof window.__sqCleanupLeagueRankingsOverlays==='function')window.__sqCleanupLeagueRankingsOverlays();}catch(_){}
     var overlay=document.createElement('div'); overlay.className='modal-backdrop sq-rhs-fix97-backdrop';
     var modal=document.createElement('div'); modal.className='modal sq-wide-modal';
     var head=document.createElement('div'); head.className='sq-fix97-head'; head.innerHTML='<div class="sq-fix97-title"><h3>Round High Scores</h3></div>';
@@ -49871,7 +49938,7 @@ async function officialRows(){var games=[];try{if(typeof getGamesForMode==='func
 function startOfDay(d,off){return new Date(d.getFullYear(),d.getMonth(),d.getDate()+(off||0));}
 function filters(){var now=new Date(), out=[];out.push({id:'TODAY',label:'Today',match:function(ts){var ms=parseMs(ts),d=new Date(ms),a=startOfDay(now,0),b=startOfDay(now,1);return ms&&d>=a&&d<b;},min:2});out.push({id:'YESTERDAY',label:'Yesterday',match:function(ts){var ms=parseMs(ts),d=new Date(ms),a=startOfDay(now,-1),b=startOfDay(now,0);return ms&&d>=a&&d<b;},min:2});out.push({id:'THIS_WEEK',label:'This Week',match:function(ts){var ms=parseMs(ts),d=new Date(ms),dow=(now.getDay()+6)%7,a=startOfDay(now,-dow),b=new Date(a);b.setDate(a.getDate()+7);return ms&&d>=a&&d<b;},min:2});for(var i=0;i<6;i++){(function(i){var d=new Date(now.getFullYear(),now.getMonth()-i,1),y=d.getFullYear(),m=d.getMonth(),lab=d.toLocaleString('en-GB',{month:'short'}).toUpperCase();out.push({id:'M'+y+'-'+String(m+1).padStart(2,'0'),label:lab,match:function(ts){var ms=parseMs(ts),dt=new Date(ms);return ms&&dt.getFullYear()===y&&dt.getMonth()===m;},min:3});})(i);}out.push({id:'Y2026',label:'2026',match:function(ts){var ms=parseMs(ts),d=new Date(ms);return ms&&d.getFullYear()===2026;},min:10});out.push({id:'Y2025',label:'2025',match:function(ts){var ms=parseMs(ts),d=new Date(ms);return ms&&d.getFullYear()===2025;},min:10});out.push({id:'ALL',label:'All Time',match:function(){return true;},min:15});return out;}
 function aggregate(rows,filter){var map=new Map();rows.filter(function(r){return filter.match(r.ts);}).forEach(function(r){var x=map.get(r.key)||{player:r.player,games:0,total:0,best:0};x.games++;x.total+=r.score;if(r.score>x.best)x.best=r.score;map.set(r.key,x);});return Array.from(map.values()).map(function(x){x.avg=x.games?x.total/x.games:0;x.qualifies=x.games>=filter.min;return x;}).sort(function(a,b){if(a.qualifies!==b.qualifies)return a.qualifies?-1:1;return(b.avg-a.avg)||(b.games-a.games)||String(a.player).localeCompare(String(b.player));});}
-function openPremier(){document.querySelectorAll('.sq136-pl-bd').forEach(function(n){n.remove();});var fs=filters(), cur=fs.find(function(f){return /^M/.test(f.id);})||fs[0], allRows=null;var bd=document.createElement('div');bd.className='modal-backdrop sq136-pl-bd';var modal=document.createElement('div');modal.className='modal sq136-pl-modal';bd.appendChild(modal);modal.innerHTML='<div class="sq136-pl-head"><div><h3>Premier League</h3><div class="sq136-pl-sub">Average league by selected period.</div></div></div><div class="sq136-pl-body"><div class="sq136-pl-filters"><div class="sq136-pl-filter-row sq136-r1"></div><div class="sq136-pl-filter-row sq136-r2"></div><div class="sq136-pl-filter-row sq136-r3"></div></div><div class="sq136-pl-table-mount"><p class="tag">Loading Premier League…</p></div></div><div class="sq136-pl-footer"><button type="button" class="btn sq136-back">Back</button><button type="button" class="btn sq136-close">Close</button></div>';document.body.appendChild(bd);try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(bd,modal,function(){bd.remove();});}catch(_){}var mount=modal.querySelector('.sq136-pl-table-mount');function close(){bd.remove();}modal.querySelector('.sq136-close').onclick=close;modal.querySelector('.sq136-back').onclick=function(){close();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}};bd.addEventListener('click',function(e){if(e.target===bd)close();});function rowFor(f){if(f.id==='TODAY'||f.id==='YESTERDAY'||f.id==='THIS_WEEK')return modal.querySelector('.sq136-r1');if(/^M/.test(f.id))return modal.querySelector('.sq136-r2');return modal.querySelector('.sq136-r3');}fs.forEach(function(f){var b=document.createElement('button');b.type='button';b.textContent=f.label;b.dataset.filterId=f.id;b.onclick=function(){cur=f;render();};rowFor(f).appendChild(b);});async function render(){modal.querySelectorAll('[data-filter-id]').forEach(function(b){b.classList.toggle('active',b.dataset.filterId===cur.id);});if(!allRows){try{allRows=await window.__sqWithCloudTimeout(officialRows(),12000,'premier-league');}catch(err){try{console.warn('[SQ] Premier League cloud read failed/timed out',err);}catch(_){}mount.innerHTML='<p class="tag">'+window.__sqCloudErrorHtml()+'</p>';var rb=mount.querySelector('[data-action="cloudRetry"]');if(rb)rb.onclick=function(){render();};return;}}var rows=aggregate(allRows,cur);
+function openPremier(){try{if(typeof window.__sqCleanupLeagueRankingsOverlays==='function')window.__sqCleanupLeagueRankingsOverlays();}catch(_){}var fs=filters(), cur=fs.find(function(f){return /^M/.test(f.id);})||fs[0], allRows=null;var bd=document.createElement('div');bd.className='modal-backdrop sq136-pl-bd';var modal=document.createElement('div');modal.className='modal sq136-pl-modal';bd.appendChild(modal);modal.innerHTML='<div class="sq136-pl-head"><div><h3>Premier League</h3><div class="sq136-pl-sub">Average league by selected period.</div></div></div><div class="sq136-pl-body"><div class="sq136-pl-filters"><div class="sq136-pl-filter-row sq136-r1"></div><div class="sq136-pl-filter-row sq136-r2"></div><div class="sq136-pl-filter-row sq136-r3"></div></div><div class="sq136-pl-table-mount"><p class="tag">Loading Premier League…</p></div></div><div class="sq136-pl-footer"><button type="button" class="btn sq136-back">Back</button><button type="button" class="btn sq136-close">Close</button></div>';document.body.appendChild(bd);try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(bd,modal,function(){bd.remove();});}catch(_){}var mount=modal.querySelector('.sq136-pl-table-mount');function close(){bd.remove();}modal.querySelector('.sq136-close').onclick=close;modal.querySelector('.sq136-back').onclick=function(){close();try{if(typeof openLeagueRankingsDialog==='function')openLeagueRankingsDialog();}catch(_){}};bd.addEventListener('click',function(e){if(e.target===bd)close();});function rowFor(f){if(f.id==='TODAY'||f.id==='YESTERDAY'||f.id==='THIS_WEEK')return modal.querySelector('.sq136-r1');if(/^M/.test(f.id))return modal.querySelector('.sq136-r2');return modal.querySelector('.sq136-r3');}fs.forEach(function(f){var b=document.createElement('button');b.type='button';b.textContent=f.label;b.dataset.filterId=f.id;b.onclick=function(){cur=f;render();};rowFor(f).appendChild(b);});async function render(){modal.querySelectorAll('[data-filter-id]').forEach(function(b){b.classList.toggle('active',b.dataset.filterId===cur.id);});if(!allRows){try{allRows=await window.__sqWithCloudTimeout(officialRows(),12000,'premier-league');}catch(err){try{console.warn('[SQ] Premier League cloud read failed/timed out',err);}catch(_){}mount.innerHTML='<p class="tag">'+window.__sqCloudErrorHtml()+'</p>';var rb=mount.querySelector('[data-action="cloudRetry"]');if(rb)rb.onclick=function(){render();};return;}}var rows=aggregate(allRows,cur);
 // Arcade "championship table": zone-striped rows sliding in, count-up
 // averages, qualification progress dots. .best-cell retained so the sq137
 // medal decorator keeps working.
@@ -52019,7 +52086,7 @@ Logic untouched: practice save, scoring, Supabase writes, rankings formulas.
 
   function __sqOpenPowerRankingsCurrentClean(initialMode){
     var mode = ['official','turbo','practice'].indexOf(String(initialMode||'').toLowerCase()) >= 0 ? String(initialMode).toLowerCase() : 'official';
-    document.querySelectorAll('.sq132-bd,.sq108-bd').forEach(function(n){ try{ n.remove(); }catch(_){ } });
+    try{if(typeof window.__sqCleanupLeagueRankingsOverlays==='function')window.__sqCleanupLeagueRankingsOverlays();}catch(_){}
     var bd = document.createElement('div');
     bd.className = 'modal-backdrop sq132-bd';
     var modal = document.createElement('div');
