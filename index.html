@@ -5252,6 +5252,31 @@ body[data-page="details"] #details{
   .ls-card{ animation:none; opacity:1; transform:none; }
   .ls-dot{ animation:none; }
 }
+/* Streak League combo chains (sk-*): ember rows with segmented streak chains */
+.sk-list{ display:flex; flex-direction:column; gap:6px; }
+.sk-row{
+  display:grid; grid-template-columns:40px minmax(0,1fr) auto; gap:10px; align-items:center;
+  padding:9px 12px; border-radius:12px; background:rgba(26,18,10,.62); border:1px solid rgba(255,150,40,.14);
+  opacity:0; transform:translateY(10px); animation:skUp .45s cubic-bezier(.2,.8,.25,1) forwards;
+}
+@keyframes skUp{ to{ opacity:1; transform:none; } }
+.sk-row.hot{ border-color:rgba(255,170,60,.5); animation:skUp .45s cubic-bezier(.2,.8,.25,1) forwards, skGlow 2.4s ease-in-out .9s infinite; }
+@keyframes skGlow{ 0%,100%{ box-shadow:0 0 0 rgba(255,150,40,0); } 50%{ box-shadow:0 0 18px rgba(255,150,40,.26); } }
+.sk-rank{ font-weight:900; font-size:14px; color:#ffb076; text-align:center; }
+.sk-rank.g1{ color:#ffd24a; text-shadow:0 0 10px rgba(255,210,74,.5); }
+.sk-rank.g2{ color:#cbd5e1; text-shadow:0 0 10px rgba(203,213,225,.4); }
+.sk-rank.g3{ color:#d08b5a; text-shadow:0 0 10px rgba(208,139,90,.45); }
+.sk-main{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+.sk-name{ font-weight:800; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sk-chain{ display:flex; gap:3px; }
+.sk-seg{ height:8px; flex:1 1 0; max-width:18px; border-radius:2px; background:rgba(255,255,255,.07); }
+.sk-seg.on{ background:linear-gradient(180deg,#ffb14a,#ff7a18); box-shadow:0 0 6px rgba(255,140,40,.55); }
+.sk-seg.tip{ background:#fff3d6; box-shadow:0 0 9px rgba(255,225,160,.95); }
+.sk-sub{ font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:rgba(255,200,150,.65); }
+.sk-val{ font-weight:900; font-size:21px; line-height:1; color:#ffd9b0; text-shadow:0 0 14px rgba(255,140,40,.45); text-align:right; }
+@media (prefers-reduced-motion: reduce){
+  .sk-row, .sk-row.hot{ animation:none; opacity:1; transform:none; }
+}
 /* XP tab hero: "XP CORE" reactor — radial ring + orbiting sparks + igniting level */
 .pp-xporb{
   grid-column:1/-1; display:flex; align-items:center; gap:16px; position:relative; overflow:hidden;
@@ -34425,7 +34450,7 @@ window.openStreakLeagueDialog = async function openStreakLeagueDialog(initialMet
     modeTabs.appendChild(b);
   });
   controls.append(metricTabs, modeTabs);
-  body.innerHTML = '<div class="sq-streak-note"></div><div class="table-wrap"><table class="sq-streak-table"><colgroup><col style="width:58px"><col><col style="width:110px"><col style="width:90px"><col style="width:160px"></colgroup><thead><tr><th>#</th><th>Player</th><th>Streak</th><th>Games</th><th>Last Played</th></tr></thead><tbody></tbody></table></div>';
+  body.innerHTML = '<div class="sq-streak-note"></div><div class="sk-list"><p class="tag">Loading…</p></div>';
   body.prepend(controls);
 
   const footer = document.createElement('div');
@@ -34441,9 +34466,20 @@ window.openStreakLeagueDialog = async function openStreakLeagueDialog(initialMet
   modal.append(head, body, footer);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
+  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
 
   const note = body.querySelector('.sq-streak-note');
-  const tbody = body.querySelector('tbody');
+  const list = body.querySelector('.sk-list');
+  const reduced = (() => { try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ return false; } })();
+  const skCount = (el, target, dur) => {
+    if (reduced || !Number.isFinite(target)){ el.textContent = String(Math.round(target || 0)); return; }
+    const t0 = performance.now();
+    (function step(t){
+      const p = Math.min(1, (t - t0) / dur);
+      el.textContent = String(Math.round(target * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) requestAnimationFrame(step);
+    })(t0);
+  };
   function labelFor(list, key){ const row = list.find(x => x.key === key); return row ? row.label : key; }
   function setActive(){
     metricTabs.querySelectorAll('button[data-metric]').forEach(b => b.classList.toggle('active', b.dataset.metric === metric));
@@ -34466,7 +34502,7 @@ window.openStreakLeagueDialog = async function openStreakLeagueDialog(initialMet
   async function render(){
     setActive();
     note.textContent = labelFor(metricModes, metric) + ' · ' + labelFor(modeModes, mode);
-    tbody.innerHTML = '<tr><td colspan="5" style="padding:14px;opacity:.75;">Loading…</td></tr>';
+    list.innerHTML = '<p class="tag">Loading…</p>';
     try{
       const streakCol = metric === 'round' ? 'round_streak' : 'dart_streak';
       let rows = await window.__sqWithCloudTimeout(fetchRows(), 12000, 'streak-league');
@@ -34477,13 +34513,44 @@ window.openStreakLeagueDialog = async function openStreakLeagueDialog(initialMet
         var msg = mode === 'turbo'
           ? 'Turbo Streak League is not available yet because the streak source has no Turbo target-hit rows.'
           : 'Streak League data is not available yet. Required Supabase view/data source is missing or empty.';
-        tbody.innerHTML = '<tr><td colspan="5" style="padding:14px;opacity:.82;">'+esc(msg)+'</td></tr>';
+        list.innerHTML = '<p class="tag">'+esc(msg)+'</p>';
         return;
       }
-      tbody.innerHTML = rows.map((r,i) => '<tr><td class="rank-cell">'+(i+1)+'</td><td>'+esc(r.player_name || r.player_key || '—')+'</td><td class="streak-cell">'+esc(Number(r[streakCol] || 0))+'</td><td>'+esc(Number(r.source_games || 0))+'</td><td>'+esc(fmtDate(r.last_played_at))+'</td></tr>').join('');
+      // Combo chains: segmented streak meter per player, white-hot tip,
+      // pulsing leader row, count-up streak values.
+      list.innerHTML = '';
+      const maxStreak = rows.reduce((m, r) => Math.max(m, Number(r[streakCol] || 0)), 1);
+      const SEGS = 12;
+      rows.forEach((r, i) => {
+        const streak = Number(r[streakCol] || 0);
+        const row = document.createElement('div');
+        row.className = 'sk-row' + (i === 0 && streak > 0 ? ' hot' : '');
+        row.style.animationDelay = Math.min(700, i * 45) + 'ms';
+        const rank = document.createElement('div');
+        rank.className = 'sk-rank' + (i < 3 ? ' g' + (i + 1) : '');
+        rank.textContent = '#' + (i + 1);
+        const main = document.createElement('div'); main.className = 'sk-main';
+        const nm = document.createElement('div'); nm.className = 'sk-name'; nm.textContent = r.player_name || r.player_key || '—';
+        const chain = document.createElement('div'); chain.className = 'sk-chain';
+        const lit = streak > 0 ? Math.max(1, Math.round(streak / maxStreak * SEGS)) : 0;
+        for (let sIx = 0; sIx < SEGS; sIx++){
+          const seg = document.createElement('span');
+          seg.className = 'sk-seg' + (sIx < lit ? (sIx === lit - 1 ? ' on tip' : ' on') : '');
+          chain.appendChild(seg);
+        }
+        const sub = document.createElement('div'); sub.className = 'sk-sub';
+        const games = Number(r.source_games || 0);
+        sub.textContent = games + (games === 1 ? ' game' : ' games') + ' · ' + fmtDate(r.last_played_at);
+        main.append(nm, chain, sub);
+        const val = document.createElement('div'); val.className = 'sk-val';
+        if (i === 0 && streak >= 3) val.classList.add('pp-hot');
+        skCount(val, streak, 700);
+        row.append(rank, main, val);
+        list.appendChild(row);
+      });
     }catch(e){
       console.warn('[SQ] Streak League dependency missing or failed', e);
-      tbody.innerHTML = '<tr><td colspan="5" style="padding:14px;opacity:.82;">Streak League data is not available yet. Required Supabase view/data source is missing or empty.</td></tr>';
+      list.innerHTML = '<p class="tag">Streak League data is not available yet. Required Supabase view/data source is missing or empty.</p>';
       controls.querySelectorAll('button').forEach(b => { b.disabled = true; });
     }
   }

@@ -316,6 +316,60 @@ function check(name, ok, detail) { if (!ok) failures++; console.log((ok ? 'PASS'
   await page.waitForTimeout(400);
   check('Latest: Escape closes clean', await page.evaluate(() => (window.__sqModalStack || []).length === 0 && !document.querySelector('.sq-latest-scores-backdrop')));
 
+  // ---- Streak League (Combo Chains) ----
+  await page.evaluate(() => window.openStreakLeagueDialog());
+  await page.waitForTimeout(1800);
+  const sk = await page.evaluate(() => {
+    const list = document.querySelector('.sk-list');
+    if (!list) return null;
+    const rows = Array.from(list.querySelectorAll('.sk-row'));
+    const info = (r) => ({
+      name: (r.querySelector('.sk-name') || {}).textContent,
+      val: (r.querySelector('.sk-val') || {}).textContent,
+      lit: r.querySelectorAll('.sk-seg.on').length,
+      tip: r.querySelectorAll('.sk-seg.tip').length,
+      hot: r.classList.contains('hot'),
+      flame: !!r.querySelector('.sk-val.pp-hot'),
+      sub: ((r.querySelector('.sk-sub') || {}).textContent || ''),
+    });
+    return {
+      onStack: (window.__sqModalStack || []).length === 1,
+      rows: rows.map(info),
+      note: ((document.querySelector('.sq-streak-note') || {}).textContent) || '',
+    };
+  });
+  check('Streak: combo chains open + on stack', !!sk && sk.onStack);
+  if (sk) {
+    const R = sk.rows;
+    check('Streak: dart order + top value', JSON.stringify(R.map((r) => r.name)) === JSON.stringify(E.streak.dartOrder) && R[0].val === E.streak.dartTop,
+      JSON.stringify(R.map((r) => [r.name, r.val])));
+    check('Streak: leader row hot with flame + full chain tip', R[0].hot && R[0].flame && R[0].lit === 12 && R[0].tip === 1, JSON.stringify(R[0]));
+    check('Streak: chains scale down the ladder', R[1].lit < R[0].lit && R[2].lit < R[1].lit && R[3].lit < R[2].lit, JSON.stringify(R.map((r) => r.lit)));
+    check('Streak: games + last-played sublines', R.every((r) => /games ·/.test(r.sub)), JSON.stringify(R[0].sub));
+    check('Streak: note reads Dart Streak · Official', /Dart Streak · Official/.test(sk.note), JSON.stringify(sk.note));
+  }
+  await page.screenshot({ path: '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/league-streak-chains.png' });
+
+  // metric switch reorders (Round Streak)
+  await page.evaluate(() => { document.querySelector('.sq-streak-league-backdrop button[data-metric="round"]').click(); });
+  await page.waitForTimeout(1300);
+  const skRound = await page.evaluate(() => ({
+    names: Array.from(document.querySelectorAll('.sk-row .sk-name')).map((n) => n.textContent),
+    top: (document.querySelector('.sk-row .sk-val') || {}).textContent,
+  }));
+  check('Streak: Round Streak tab reorders correctly', JSON.stringify(skRound.names) === JSON.stringify(E.streak.roundOrder) && skRound.top === E.streak.roundTop,
+    JSON.stringify(skRound));
+
+  // turbo mode -> empty message (eq filter yields no turbo rows)
+  await page.evaluate(() => { document.querySelector('.sq-streak-league-backdrop button[data-mode="turbo"]').click(); });
+  await page.waitForTimeout(900);
+  const skTurbo = await page.evaluate(() => ((document.querySelector('.sk-list') || {}).textContent) || '');
+  check('Streak: turbo empty state preserved', E.streak.turboEmpty.test(skTurbo), JSON.stringify(skTurbo.slice(0, 90)));
+
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  check('Streak: Escape closes clean (now stack-registered)', await page.evaluate(() => (window.__sqModalStack || []).length === 0 && !document.querySelector('.sq-streak-league-backdrop')));
+
   await browser.close();
   console.log(failures ? `\n${failures} FAILURES` : '\nALL PASS');
   process.exit(failures ? 1 : 0);
