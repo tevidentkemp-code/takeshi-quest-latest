@@ -5241,7 +5241,7 @@ body[data-page="details"] #details{
 .rh-rec-main{ display:flex; flex-direction:column; gap:4px; min-width:0; }
 .rh-rec-top{ display:flex; align-items:center; gap:7px; min-width:0; }
 .rh-combo{ display:flex; gap:3px; flex:0 0 auto; }
-.rh-dc{ font-size:9px; font-weight:900; width:15px; height:15px; border-radius:4px; display:flex; align-items:center; justify-content:center; color:#0a1116; }
+.rh-dc{ font-size:10px; font-weight:900; min-width:16px; height:17px; padding:0 4px; border-radius:5px; display:inline-flex; align-items:center; justify-content:center; color:#0a1116; letter-spacing:.01em; }
 .rh-dc.t{ background:#ff7a18; } .rh-dc.d{ background:#ffd24a; } .rh-dc.s{ background:#4aa3ff; } .rh-dc.b{ background:#ff4d5e; }
 .rh-dc.x{ background:rgba(255,255,255,.14); color:rgba(255,255,255,.6); }
 .rh-holder{ font-size:11px; font-weight:800; color:rgba(180,230,222,.9); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -5253,6 +5253,25 @@ body[data-page="details"] #details{
 .rh-rec.perfect .rh-wr{ color:#fff2cf; }
 .rh-pct{ font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:rgba(150,220,210,.7); }
 .rh-pct.perfect{ color:#ffd24a; text-shadow:0 0 8px rgba(255,210,74,.5); }
+/* clickable records + per-target leaderboard (rt-*) */
+.rh-rec{ cursor:pointer; transition:border-color .15s ease, background .15s ease; }
+.rh-rec:hover{ border-color:rgba(45,212,191,.5); background:rgba(12,32,38,.75); }
+.rh-uchip{ cursor:pointer; }
+.rh-hint{ font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:rgba(150,220,210,.55); text-align:center; padding:2px 0 4px; }
+.rt-note{ font-size:10px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:rgba(150,220,210,.7); margin-bottom:8px; }
+.rt-list{ display:flex; flex-direction:column; gap:6px; }
+.rt-row{ display:grid; grid-template-columns:36px minmax(0,1fr) auto; gap:10px; align-items:center; padding:9px 12px; border-radius:12px;
+  background:rgba(10,26,32,.6); border:1px solid rgba(45,212,191,.16); opacity:0; transform:translateY(8px); animation:rhUp .4s cubic-bezier(.2,.8,.25,1) forwards; }
+.rt-row.top1{ border-color:rgba(255,210,74,.5); box-shadow:0 0 14px rgba(255,210,74,.14); }
+.rt-rank{ font-weight:900; font-size:14px; color:#7ee7d8; text-align:center; }
+.rt-rank.g1{ color:#ffd24a; text-shadow:0 0 10px rgba(255,210,74,.5); }
+.rt-rank.g2{ color:#cbd5e1; } .rt-rank.g3{ color:#d08b5a; }
+.rt-main{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+.rt-name{ font-weight:800; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rt-side{ display:flex; flex-direction:column; align-items:flex-end; gap:1px; }
+.rt-pts{ font-weight:900; font-size:17px; color:#d8fff7; text-shadow:0 0 10px rgba(45,212,191,.4); }
+.rt-hits{ font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:rgba(150,220,210,.75); }
+@media (prefers-reduced-motion: reduce){ .rt-row{ animation:none; opacity:1; transform:none; } }
 /* unclaimed strip */
 .rh-unclaimed{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:9px 12px; border-radius:12px;
   border:1px dashed rgba(255,255,255,.14); background:rgba(255,255,255,.02); }
@@ -48364,6 +48383,134 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
 
   // ACTIVE ROUND HIGH SCORES IMPLEMENTATION
   // Current League & Rankings path uses Fix102 wrapper -> this Fix97 dynamic modal.
+  // Per-target leaderboard: tap a round in Round High Scores to see every
+  // player's best round on that target. Ranked by TARGET HIT (darts on the
+  // target) first, then points — so three single 10s (3 hits) beat one treble
+  // and two misses (1 hit). D/T rounds show the exact double/treble hit.
+  window.openRoundTargetLeaderboard = async function(rawKey, mode){
+    var key = String(rawKey || '').trim().toUpperCase();
+    mode = String(mode || 'official').toLowerCase() === 'turbo' ? 'turbo' : 'official';
+    var roundIndex = key === 'D' ? 11 : key === 'T' ? 12 : key === 'B' ? 13 : (Number(key) - 10);
+    if (!Number.isFinite(roundIndex) || roundIndex < 0 || roundIndex > 13) return;
+    var titleLabel = key === 'D' ? 'Doubles Round' : key === 'T' ? 'Trebles Round' : key === 'B' ? 'Bull Round' : ('Target ' + key);
+
+    var overlay = document.createElement('div'); overlay.className = 'modal-backdrop sq-rhs-fix97-backdrop sq-rt-leaderboard';
+    var modal = document.createElement('div'); modal.className = 'modal sq-wide-modal';
+    var head = document.createElement('div'); head.className = 'sq-fix97-head';
+    head.innerHTML = '<div class="sq-fix97-title"><h3>' + esc(titleLabel) + '</h3></div>';
+    var body = document.createElement('div'); body.className = 'modal-body';
+    body.innerHTML = '<div class="sq-modal-loading"><div class="sq-loadbar"><span class="sq-loadbar-fill"></span></div></div>';
+    var footer = document.createElement('div'); footer.className = 'modal-footer';
+    var back = document.createElement('button'); back.className = 'btn sq-pill'; back.textContent = 'Back';
+    footer.append(back);
+    modal.append(head, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+    var reg = null; try{ if (window.sqModal && window.sqModal.register) reg = window.sqModal.register(overlay, modal, function(){ overlay.remove(); }); }catch(_){ }
+    var close = function(){ if (reg && reg.close) reg.close(); else overlay.remove(); };
+    back.onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+    modal.tabIndex = 0; modal.focus();
+
+    var reduced = false; try{ reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ }
+    // Tokenise a dart to its board notation (S10 / D11 / T14 / IB / OB / ✕).
+    function tok(d){
+      if (!d) return { t:'✕', c:'x', hit:false, pts:0 };
+      var kind = String(d.kind || d.type || d.ring || d.segment || d.multiplier || '').toLowerCase();
+      var bull = String(d.bull || d.bull_type || '').toLowerCase();
+      var target = Number(d.sector != null ? d.sector : d.target != null ? d.target : d.number != null ? d.number : d.num != null ? d.num : d.n != null ? d.n : d.value);
+      var mult = Number(d.mult != null ? d.mult : d.multiplier);
+      var pts = Number(d.points != null ? d.points : d.pts != null ? d.pts : d.score != null ? d.score : d.val);
+      if (!Number.isFinite(pts)) pts = (Number.isFinite(target) ? target : 0) * (Number.isFinite(mult) ? mult : 1);
+      if (!(pts > 0)) return { t:'✕', c:'x', hit:false, pts:0 };
+      if (kind.indexOf('tr') === 0 || kind === 't' || mult === 3) return { t:(Number.isFinite(target) && target > 0 ? 'T' + target : 'T'), c:'t', hit:true, pts:pts };
+      if (kind.indexOf('do') === 0 || kind === 'd' || mult === 2) return { t:(Number.isFinite(target) && target > 0 ? 'D' + target : 'D'), c:'d', hit:true, pts:pts };
+      if (kind.indexOf('b') === 0 || bull) return { t:(bull.indexOf('inner') === 0 || pts >= 50 ? 'IB' : 'OB'), c:'b', hit:true, pts:pts };
+      return { t:(Number.isFinite(target) && target > 0 ? 'S' + target : 'S'), c:'s', hit:true, pts:pts };
+    }
+    function rowsForPlayer(board, pi){
+      if (!Array.isArray(board) || !board.length) return [];
+      if (Array.isArray(board[pi])) return board[pi];
+      if (Array.isArray(board[0]) && typeof board[0][pi] !== 'undefined') return board.map(function(r){ return r ? r[pi] : null; });
+      return [];
+    }
+    function dartsOf(cell){
+      if (!cell) return [];
+      return Array.isArray(cell) ? cell : (Array.isArray(cell.throws) ? cell.throws : (Array.isArray(cell.darts) ? cell.darts : []));
+    }
+
+    try{
+      var raw = (typeof cloudFetchAllGamesAsLocal === 'function') ? await cloudFetchAllGamesAsLocal() : [];
+      var games = (raw || []).map(__normalizeGame).filter(function(g){
+        if (!(Array.isArray(g.players) && g.players.length >= 2)) return false;
+        var turbo = (typeof __sqGameLooksTurbo === 'function') ? __sqGameLooksTurbo(g.raw) : false;
+        return mode === 'turbo' ? turbo : !turbo;
+      });
+      // Optional saved-player filter (matches the Round High Scores view scope).
+      var savedKeys = null;
+      try{
+        if (typeof cloudListPlayers === 'function'){
+          var sp = await cloudListPlayers();
+          if (Array.isArray(sp) && sp.length) savedKeys = new Set(sp.map(function(p){ return String((p && (p.name || p.player_name || p.player)) || '').trim().toLowerCase(); }).filter(Boolean));
+        }
+      }catch(_){ }
+
+      var best = new Map(); // nameKey -> { player, hits, pts, tokens }
+      games.forEach(function(g){
+        (g.players || []).forEach(function(pname, pi){
+          var nm = String(pname || '').trim();
+          if (!nm) return;
+          var nk = nm.toLowerCase();
+          if (savedKeys && !savedKeys.has(nk)) return;
+          var darts = dartsOf(rowsForPlayer(g.board, pi)[roundIndex]);
+          if (!darts.length) return;
+          var toks = darts.slice(0, 3).map(tok);
+          var hits = toks.filter(function(x){ return x.hit; }).length;
+          var pts = toks.reduce(function(s, x){ return s + (x.hit ? (Number(x.pts) || 0) : 0); }, 0);
+          if (hits <= 0 && pts <= 0) return;
+          var prev = best.get(nk);
+          // "best" round = most hits, then most points
+          if (!prev || hits > prev.hits || (hits === prev.hits && pts > prev.pts)){
+            best.set(nk, { player: nm, hits: hits, pts: pts, tokens: toks });
+          }
+        });
+      });
+
+      var rows = Array.from(best.values()).sort(function(a, b){
+        return (b.hits - a.hits) || (b.pts - a.pts) || String(a.player).localeCompare(String(b.player));
+      });
+
+      body.innerHTML = '';
+      if (!rows.length){
+        var msg = document.createElement('p'); msg.className = 'tag';
+        msg.textContent = 'No ' + (mode === 'turbo' ? 'Turbo' : 'official') + ' rounds recorded on ' + (key === 'D' || key === 'T' || key === 'B' ? titleLabel.toLowerCase() : ('target ' + key)) + ' yet.';
+        body.appendChild(msg); return;
+      }
+      var note = document.createElement('div'); note.className = 'rt-note'; note.textContent = 'Ranked by darts on target, then points';
+      body.appendChild(note);
+      var list = document.createElement('div'); list.className = 'rt-list';
+      rows.forEach(function(r, i){
+        var row = document.createElement('div'); row.className = 'rt-row' + (i === 0 ? ' top1' : '');
+        row.style.animationDelay = Math.min(700, i * 45) + 'ms';
+        var rank = document.createElement('div'); rank.className = 'rt-rank' + (i < 3 ? ' g' + (i + 1) : ''); rank.textContent = '#' + (i + 1);
+        var main = document.createElement('div'); main.className = 'rt-main';
+        var nm = document.createElement('div'); nm.className = 'rt-name'; nm.textContent = r.player;
+        var combo = document.createElement('div'); combo.className = 'rh-combo';
+        r.tokens.forEach(function(x){ var c = document.createElement('span'); c.className = 'rh-dc ' + x.c; c.textContent = x.hit ? x.t : '✕'; c.title = x.t; combo.appendChild(c); });
+        main.append(nm, combo);
+        var side = document.createElement('div'); side.className = 'rt-side';
+        var pts = document.createElement('div'); pts.className = 'rt-pts';
+        if (reduced){ pts.textContent = String(r.pts); } else { var t0 = performance.now(); (function step(t){ var p = Math.min(1, (t - t0) / 650); pts.textContent = String(Math.round(r.pts * (1 - Math.pow(1 - p, 3)))); if (p < 1) requestAnimationFrame(step); })(t0); }
+        var hits = document.createElement('div'); hits.className = 'rt-hits'; hits.textContent = r.hits + (r.hits === 1 ? ' hit' : ' hits');
+        side.append(pts, hits);
+        row.append(rank, main, side);
+        list.appendChild(row);
+      });
+      body.appendChild(list);
+    }catch(e){
+      try{ console.warn('[SQ] Round target leaderboard failed', e); }catch(_){ }
+      body.innerHTML = '<p class="tag">Round data is unavailable.</p>';
+    }
+  };
+
   // Official source: v_round_high_scores_official_clean_app.
   // Turbo source: v_round_high_scores_turbo_clean.
   // Patch this path for current Round High Scores behaviour.
@@ -48440,15 +48587,20 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
         var pct=document.createElement('div'); pct.className='rh-pct'+(e.__perfect?' perfect':''); pct.textContent=e.__perfect?'PERFECT':(Math.round(e.__pct)+'%');
         side.append(val,pct);
         row.append(tgt,main,side);
+        row.setAttribute('role','button'); row.tabIndex=0;
+        row.onclick=function(){ try{ window.openRoundTargetLeaderboard(e.key, mode); }catch(_){ } };
         list.appendChild(row);
       });
       board.appendChild(list);
+
+      var hint=document.createElement('div'); hint.className='rh-hint'; hint.textContent='Tap a target for the full player leaderboard';
+      board.appendChild(hint);
 
       if(unclaimed.length){
         var strip=document.createElement('div'); strip.className='rh-unclaimed';
         var lbl=document.createElement('span'); lbl.className='rh-unclaimed-label'; lbl.textContent='Unclaimed';
         strip.appendChild(lbl);
-        unclaimed.forEach(function(e){ var c=document.createElement('span'); c.className='rh-uchip'; c.textContent=e.key; strip.appendChild(c); });
+        unclaimed.forEach(function(e){ var c=document.createElement('span'); c.className='rh-uchip'; c.textContent=e.key; c.setAttribute('role','button'); c.onclick=function(){ try{ window.openRoundTargetLeaderboard(e.key, mode); }catch(_){ } }; strip.appendChild(c); });
         board.appendChild(strip);
       }
       return board;

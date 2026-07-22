@@ -3,16 +3,29 @@
 // dialogs must render. Extended view-by-view as each dialog is redone.
 const days = (n) => new Date(Date.now() - n * 24 * 3600 * 1000).toISOString();
 
+// Dart + board helpers for the Round-target leaderboard fixture. Board shape A:
+// board[playerIdx][roundIndex] = array of dart objects. Round index 0..10 =
+// targets 10..20; 11 = Doubles round; 12 = Trebles; 13 = Bull.
+const S = (n) => ({ kind: 'single', target: n, points: n });
+const D = (n) => ({ kind: 'double', target: n, points: n * 2 });
+const T = (n) => ({ kind: 'treble', target: n, points: n * 3 });
+const MISS = { kind: 'miss', points: 0 };
+const mkBoard = (map) => { const b = new Array(14).fill(null); Object.keys(map).forEach((k) => { b[+k] = map[k]; }); return b; };
+
 const FIXTURE = {
   // Official games for the Premier League table (all in the current month so
   // the default month filter shows them; Alex has 2 of the 3 needed to qualify).
+  // Two games carry board data to drive the per-target leaderboard:
+  //  - target 14 (round idx 4): Alex T14×3 (3 hits,126), Sam T14+2 miss (1,42),
+  //    Jo S14×3 (3 hits,42) — proves 3 singles beat 1 treble + 2 misses.
+  //  - D round (round idx 11): Alex D10/D11/D12 — proves per-double detail.
   games: [
-    { players: ['Jo R', 'Sam T'], totals: [140, 120], ts: days(1) },
+    { players: ['Jo R', 'Sam T'], totals: [140, 120], ts: days(1), board: [mkBoard({ 4: [S(14), S(14), S(14)] }), mkBoard({})] },
     { players: ['Jo R', 'Sam T'], totals: [150, 130], ts: days(2) },
     { players: ['Jo R', 'Mia K'], totals: [130, 128], ts: days(3) },
     { players: ['Jo R', 'Mia K'], totals: [136, 122], ts: days(4) },
     { players: ['Mia K', 'Sam T'], totals: [132, 118], ts: days(5) },
-    { players: ['Alex S', 'Sam T'], totals: [168, 110], ts: days(6) },
+    { players: ['Alex S', 'Sam T'], totals: [168, 110], ts: days(6), board: [mkBoard({ 4: [T(14), T(14), T(14)], 11: [D(10), D(11), D(12)] }), mkBoard({ 4: [T(14), MISS, MISS] })] },
     { players: ['Alex S', 'Sam T'], totals: [96, 140], ts: days(7) },
   ],
   players: [{ name: 'Jo R' }, { name: 'Mia K' }, { name: 'Alex S' }, { name: 'Sam T' }],
@@ -120,6 +133,17 @@ const EXPECTED = {
     holders: { 14: 'Alex S', 20: 'Sam T / Mia K' },
     pips14: ['t', 't', 't'],
     turboEmpty: /No Turbo round high scores found/i,
+    // Per-target leaderboard for target 14 (from board data above)
+    t14board: {
+      order: ['Alex S', 'Jo R', 'Sam T'],
+      pts: ['126', '42', '42'],
+      hits: ['3 hits', '3 hits', '1 hit'],
+      alexCombo: ['T14', 'T14', 'T14'],
+      joCombo: ['S14', 'S14', 'S14'],
+      samCombo: ['T14', '✕', '✕'],
+    },
+    // D round leaderboard proves per-double detail
+    dBoard: { player: 'Alex S', combo: ['D10', 'D11', 'D12'], pts: '66' },
   },
   streak: {
     dartOrder: ['Jo R', 'Alex S', 'Mia K', 'Sam T'],

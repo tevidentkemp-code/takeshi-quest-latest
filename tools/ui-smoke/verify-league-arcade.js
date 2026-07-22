@@ -274,6 +274,68 @@ function check(name, ok, detail) { if (!ok) failures++; console.log((ok ? 'PASS'
   }
   await page.screenshot({ path: '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/league-rhs-perfection-board.png' });
 
+  // ---- Per-target leaderboard: tap target 14's record row ----
+  await page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('.rh-rec'));
+    const r14 = rows.find((r) => (r.querySelector('.rh-tgt') || {}).textContent === '14');
+    if (r14) r14.click();
+  });
+  await page.waitForTimeout(1600);
+  const lb = await page.evaluate(() => {
+    const bd = document.querySelector('.sq-rt-leaderboard');
+    if (!bd) return null;
+    const rows = Array.from(bd.querySelectorAll('.rt-row'));
+    const info = (r) => ({
+      name: (r.querySelector('.rt-name') || {}).textContent,
+      pts: (r.querySelector('.rt-pts') || {}).textContent,
+      hits: (r.querySelector('.rt-hits') || {}).textContent,
+      combo: Array.from(r.querySelectorAll('.rh-dc')).map((c) => c.textContent),
+    });
+    return {
+      onStack: (window.__sqModalStack || []).length === 2, // RHS + leaderboard
+      title: (bd.querySelector('.sq-fix97-title h3') || {}).textContent,
+      note: (bd.querySelector('.rt-note') || {}).textContent,
+      rows: rows.map(info),
+    };
+  });
+  check('RHS-LB: target leaderboard opens on the stack (modal-on-modal)', !!lb && lb.onStack, JSON.stringify(lb && { onStack: lb.onStack }));
+  if (lb) {
+    const T14 = E.rhs.t14board;
+    check('RHS-LB: title "Target 14" + hit-ranked note', /Target 14/i.test(lb.title || '') && /darts on target/i.test(lb.note || ''), JSON.stringify({ t: lb.title, n: lb.note }));
+    check('RHS-LB: order Alex/Jo/Sam (3 singles beat 1 treble+2 misses)', JSON.stringify(lb.rows.map((r) => r.name)) === JSON.stringify(T14.order), JSON.stringify(lb.rows.map((r) => r.name)));
+    check('RHS-LB: points counted up 126/42/42', JSON.stringify(lb.rows.map((r) => r.pts)) === JSON.stringify(T14.pts), JSON.stringify(lb.rows.map((r) => r.pts)));
+    check('RHS-LB: hits 3/3/1 (Jo #2 over Sam #3 on hits)', JSON.stringify(lb.rows.map((r) => r.hits)) === JSON.stringify(T14.hits), JSON.stringify(lb.rows.map((r) => r.hits)));
+    check('RHS-LB: dart combos exact', JSON.stringify(lb.rows[0].combo) === JSON.stringify(T14.alexCombo) && JSON.stringify(lb.rows[1].combo) === JSON.stringify(T14.joCombo) && JSON.stringify(lb.rows[2].combo) === JSON.stringify(T14.samCombo), JSON.stringify(lb.rows.map((r) => r.combo)));
+  }
+  await page.screenshot({ path: '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/league-rhs-target-leaderboard.png' });
+  // Escape closes the leaderboard, leaving the RHS board
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  check('RHS-LB: Escape closes leaderboard, RHS board remains', await page.evaluate(() => !document.querySelector('.sq-rt-leaderboard') && !!document.querySelector('.rh-board') && (window.__sqModalStack || []).length === 1));
+
+  // ---- Doubles-round detail: tap the unclaimed D chip ----
+  await page.evaluate(() => {
+    const c = Array.from(document.querySelectorAll('.rh-uchip')).find((x) => x.textContent === 'D');
+    if (c) c.click();
+  });
+  await page.waitForTimeout(1500);
+  const dlb = await page.evaluate(() => {
+    const bd = document.querySelector('.sq-rt-leaderboard');
+    if (!bd) return null;
+    const r = bd.querySelector('.rt-row');
+    return {
+      title: (bd.querySelector('.sq-fix97-title h3') || {}).textContent,
+      name: r ? (r.querySelector('.rt-name') || {}).textContent : null,
+      combo: r ? Array.from(r.querySelectorAll('.rh-dc')).map((c) => c.textContent) : null,
+      pts: r ? (r.querySelector('.rt-pts') || {}).textContent : null,
+    };
+  });
+  check('RHS-LB: doubles round shows which doubles (D10/D11/D12)',
+    !!dlb && /Doubles Round/i.test(dlb.title || '') && dlb.name === E.rhs.dBoard.player && JSON.stringify(dlb.combo) === JSON.stringify(E.rhs.dBoard.combo) && dlb.pts === E.rhs.dBoard.pts,
+    JSON.stringify(dlb));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+
   await page.evaluate(() => {
     const b = Array.from(document.querySelectorAll('.sq-rhs-fix97-backdrop [data-mode]')).find((x) => x.dataset.mode === 'turbo');
     if (b) b.click();
