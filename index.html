@@ -10889,7 +10889,7 @@ window.openMainMenuDialog = window.openMainMenuDialog || function openMainMenuDi
 
     const items = [
       { title: 'NEW GAME', sub: 'Return to Home / start a new match', onClick: ()=>{ try{ if (typeof navigateToStartScreen==='function') navigateToStartScreen(); }catch(_){ } try{ if (window.__sqNav) window.__sqNav.clearAll(); }catch(_){ } } },
-      { title: 'PLAYER STATS', sub: 'Open stats hub', onClick: ()=>{ try{ if (typeof openPlayerStatsHub==='function') openPlayerStatsHub(); else if (typeof openPlayerStatsSelectDialog==='function') openPlayerStatsSelectDialog(); }catch(_){ } } },
+      { title: 'PLAYER STATS', sub: 'Open stats hub', onClick: ()=>{ try{ if (typeof window.openPlayerStatsSelect==='function') window.openPlayerStatsSelect(); else if (typeof openPlayerStatsHub==='function') openPlayerStatsHub(); }catch(_){ } } },
       { title: 'LEVEL LADDER', sub: 'XP & levels leaderboard', onClick: ()=>{ try{ if (typeof openXpLeaderboard==='function') openXpLeaderboard(); else if (typeof toast==='function') toast('Ladder not available'); }catch(_){ } } },
       { title: 'LEAGUE & RANKINGS', sub: 'High scores, round records, rankings', onClick: ()=>{ try{ if (typeof openLeagueRankingsDialog==='function') openLeagueRankingsDialog(); }catch(_){ } } },
       { title: 'ADMIN', sub: 'Tools + data (restricted)', onClick: ()=>{ try{ if (typeof openAdminHub==='function') openAdminHub(); else if (typeof openAdminHubDialog==='function') openAdminHubDialog(); else if (typeof toast==='function') toast('Admin not available'); }catch(_){ } } },
@@ -12012,6 +12012,7 @@ function openPlayerStatsSelectDialog(){
 document.addEventListener('DOMContentLoaded', function(){
   const btn = document.getElementById('playerStatsBtn');
   if (btn) btn.onclick = () => {
+    if (typeof window.openPlayerStatsSelect === 'function') return window.openPlayerStatsSelect();
     if (typeof window.openPlayerStatsHub === 'function') return window.openPlayerStatsHub();
     return openPlayerStatsSelectDialog();
   };
@@ -18516,7 +18517,8 @@ async function openPlayerStatsLookupDialog() {
   const playerStatsBtn = byId('playerStatsBtn');
   if (playerStatsBtn) {
     playerStatsBtn.onclick = function(){
-      if (typeof window.openPlayerStatsHub === 'function') return window.openPlayerStatsHub();
+      if (typeof window.openPlayerStatsSelect === 'function') return window.openPlayerStatsSelect();
+    if (typeof window.openPlayerStatsHub === 'function') return window.openPlayerStatsHub();
       return openPlayerStatsLookupDialog();
     };
   }
@@ -31437,7 +31439,7 @@ function arrangeStartActions(){
 
     // STATS opens the Player Stats hub directly; player changes happen in the hub header.
     if (typeof window.openPlayerStatsHub === 'function') {
-      stats.onclick = () => window.openPlayerStatsHub();
+      stats.onclick = () => (window.openPlayerStatsSelect || window.openPlayerStatsHub)();
     } else if (typeof openPlayerStatsSelectDialog === 'function') {
       stats.onclick = () => openPlayerStatsSelectDialog();
     } else if (typeof window.openPlayerStatsLookupDialog === 'function') {
@@ -37909,7 +37911,68 @@ window.openXpLeaderboard = async function openXpLeaderboard(){
   __sqStatsArcade(overlay, modal);
 };
 
+// Step 1 of Player Stats: a clean player-name picker. The user chooses WHO
+// first, then openPlayerStatsHub(name) opens the stat-views menu for them.
+window.openPlayerStatsSelect = function openPlayerStatsSelect(){
+  var esc = function(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
+  // Warm the caches so the hub + profile open instantly after a name is picked.
+  try{ if (typeof cloudListPlayers === 'function') cloudListPlayers().catch?.(function(){}); }catch(_){ }
+  try{ if (typeof cloudFetchAllGamesAsLocal === 'function') cloudFetchAllGamesAsLocal().catch(function(){}); }catch(_){ }
+
+  var overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  var modal = document.createElement('div'); modal.className = 'modal menu-modal';
+  var header = document.createElement('div'); header.className = 'menu-modal-header';
+  var backBtn = document.createElement('button'); backBtn.className = 'icon-btn'; backBtn.type = 'button'; backBtn.setAttribute('aria-label', 'Back');
+  backBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
+  var closeBtn = document.createElement('button'); closeBtn.className = 'icon-btn'; closeBtn.type = 'button'; closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+  var titleWrap = document.createElement('div'); titleWrap.className = 'menu-modal-title';
+  var icon = document.createElement('div'); icon.className = 'menu-modal-icon';
+  icon.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>';
+  var title = document.createElement('div'); title.className = 'menu-modal-title-text'; title.textContent = 'PLAYER STATS';
+  var sub = document.createElement('div'); sub.className = 'menu-modal-title-sub2'; sub.textContent = 'Choose a player';
+  titleWrap.append(icon, title, sub);
+  header.append(backBtn, titleWrap, closeBtn);
+  var body = document.createElement('div'); body.className = 'menu-modal-body';
+  var list = document.createElement('div'); list.className = 'menu-list';
+  list.innerHTML = '<div class="sq-modal-loading"><div class="sq-loadbar"><span class="sq-loadbar-fill"></span></div></div>';
+  body.appendChild(list);
+  modal.append(header, body); overlay.appendChild(modal); document.body.appendChild(overlay);
+  try{ if (window.sqModal && window.sqModal.register) window.sqModal.register(overlay, modal, function(){ overlay.remove(); }); }catch(_){ }
+  var close = function(){ try{ overlay.remove(); }catch(_){ overlay.parentNode && overlay.parentNode.removeChild(overlay); } };
+  backBtn.onclick = close; closeBtn.onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+  modal.tabIndex = 0; modal.focus();
+
+  (async function(){
+    var players = [];
+    try{ players = await __sqLoadPlayerStatsPlayers(); }catch(_){ players = []; }
+    list.innerHTML = '';
+    if (!players.length){
+      var p = document.createElement('p'); p.className = 'tag muted'; p.style.padding = '14px'; p.textContent = 'No saved players found.';
+      list.appendChild(p); return;
+    }
+    window.__sqPlayerStatsPlayers = players;
+    var av = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>';
+    var chev = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>';
+    players.forEach(function(pl){
+      var row = document.createElement('button'); row.type = 'button'; row.className = 'menu-row';
+      row.innerHTML = '<span class="menu-row-icon">' + av + '</span>'
+        + '<span class="menu-row-text"><span class="menu-row-title">' + esc(pl.name) + '</span>'
+        + (pl.nickname ? '<span class="menu-row-sub">' + esc(pl.nickname) + '</span>' : '')
+        + '</span><span class="menu-row-chev">' + chev + '</span>';
+      row.onclick = function(){
+        close();
+        try{ if (typeof __sqSetPlayerStatsSelectedName === 'function') __sqSetPlayerStatsSelectedName(pl.name); }catch(_){ }
+        try{ if (typeof window.openPlayerStatsHub === 'function') window.openPlayerStatsHub(pl.name); }catch(e){ console.error('open hub failed', e); }
+      };
+      list.appendChild(row);
+    });
+  })();
+};
+
 window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
+  var __fromPicker = !!String(playerName || '').trim();
   try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('home', playerName); }catch(_){ }
   try{ console.debug('[Popup]', window.__sqStatsDebugName || 'New Game Screen Stats'); }catch(_){ }
   // Warm the heavy caches in the background NOW, so the Player Stats dialog
@@ -37981,7 +38044,18 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
     }catch(_){ }
   };
 
-  titleWrap.append(icon, title, playerLine, sub2, hubLevelWrap);
+  // When launched from the name-picker, the player is already chosen: hide the
+  // dropdown and show the name; Back returns to the picker to switch player.
+  const nameDisplay = document.createElement('div');
+  nameDisplay.className = 'menu-modal-title-sub sq-stats-hub-name';
+  nameDisplay.style.cssText = 'font-weight:900;font-size:16px;letter-spacing:.02em;color:#ffe4c4;text-shadow:0 0 14px rgba(255,150,60,.35);margin-top:2px;';
+  if (__fromPicker){
+    playerLine.style.display = 'none';
+    nameDisplay.textContent = String(playerName || '').trim();
+    titleWrap.append(icon, title, nameDisplay, sub2, hubLevelWrap);
+  } else {
+    titleWrap.append(icon, title, playerLine, sub2, hubLevelWrap);
+  }
   header.append(backBtn, titleWrap, closeBtn);
 
   const body = document.createElement('div');
@@ -38121,7 +38195,10 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   })();
 
   const close = () => { try{ overlay.remove(); }catch(_){ overlay.parentNode && overlay.parentNode.removeChild(overlay); } };
-  backBtn.onclick = close;
+  // From the picker, Back returns to the name list so you can switch player.
+  backBtn.onclick = __fromPicker
+    ? () => { close(); try{ if (typeof window.openPlayerStatsSelect === 'function') window.openPlayerStatsSelect(); }catch(_){ } }
+    : close;
   closeBtn.onclick = close;
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 modal.tabIndex = 0; modal.focus();
