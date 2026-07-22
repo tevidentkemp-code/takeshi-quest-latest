@@ -838,11 +838,12 @@ TOC (CTRL+F)
        Materialized/refresh: needs verification.
 
      - v_player_last30_target_rates
-       Used by: Player Stats profile top/bottom target-rate detail.
+       Used by: Player Stats profile top/bottom target-rate detail (Favourite/Weakest Numbers top-3).
        Required columns visible in code: player_key, target_n, hit_pct, throws.
-       Missing-data behaviour: silently treated as optional/missing.
+       Missing-data behaviour: silently treated as optional; card falls back to v_player_last30_targets fav/worst.
        Browser role: display DB-derived recent target rates only.
-       Materialized/refresh: needs verification.
+       Source: plain VIEW over throw_events_v + round_hit_counts_v, same last-30-games window as
+               v_player_last30_targets (its per-target CTE, un-collapsed). Always live, not materialized.
 
      - v_player_target_streaks
        Used by: Player Stats Quick Stats Dart/Round Streak, Streak League.
@@ -14668,8 +14669,7 @@ try {
   [
     "game_throws",
     "league_low_scores",
-    "high_score_league_official",
-    "v_player_last30_target_rates"
+    "high_score_league_official"
   ].forEach(name => { CLOUD_TABLE_MISSING[name] = true; });
 } catch (_) {}
 // >>> PATCH:pre-mark-known-missing-supabase-objects END
