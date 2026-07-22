@@ -47000,6 +47000,19 @@ __sqDmdInitV7();
       return ft;
     }
 
+    // Back-only footer: single-select steps advance the instant a choice is
+    // pushed (same as Match Play / Practice), so the only control is Back.
+    function backFooter(onBack){
+      const ft = document.createElement('div');
+      ft.className = 'modal-footer sg-practice-footer';
+      const back = document.createElement('button');
+      back.type = 'button'; back.className = 'btn ms2-back';
+      back.innerHTML = '<span class="ms2-back-ar" aria-hidden="true">&#8592;</span><span class="ms2-back-txt">BACK</span>';
+      back.onclick = function(e){ e.preventDefault(); onBack(); };
+      ft.append(back);
+      return ft;
+    }
+
     function renderType(){
       draft.step = 0;
       body.innerHTML = setHead('TOURNAMENT MODE');
@@ -47008,11 +47021,11 @@ __sqDmdInitV7();
       const turbo = choiceButton('TURBO (BETA)', 'Starts at round 8 / 17s. Strict 20 seconds per throw.', draft.type === 'turbo');
       classic.insertAdjacentHTML('beforeend', '<div class="sg-tournament-inline-rule"><b>Classic rules:</b><span>• Standard game</span><span>• Knockout format.</span></div>');
       turbo.insertAdjacentHTML('beforeend', '<div class="sg-tournament-inline-rule"><b>Turbo rules:</b><span>• Starts at 17s</span><span>• Strict 20 seconds per throw.</span></div>');
-      classic.onclick = function(){ draft.type = 'classic'; renderType(); };
-      turbo.onclick = function(){ draft.type = 'turbo'; renderType(); };
+      classic.onclick = function(){ draft.type = 'classic'; renderSize(); };
+      turbo.onclick = function(){ draft.type = 'turbo'; renderSize(); };
       wrap.append(classic, turbo);
       body.append(wrap);
-      body.append(footer(!!draft.type, restoreStartGameOptions, renderSize));
+      body.append(backFooter(restoreStartGameOptions));
     }
 
     function renderSize(){
@@ -47021,10 +47034,10 @@ __sqDmdInitV7();
       const wrap = document.createElement('div'); wrap.className = 'sg-tournament-controls';
       const four = choiceButton('4 PLAYERS', 'Semi-final → Final.', draft.size === 4);
       const eight = choiceButton('8 PLAYERS', 'Quarter-final → Semi-final → Final.', draft.size === 8);
-      four.onclick = function(){ draft.size = 4; while(draft.selected.size > 4){ draft.selected.delete(Array.from(draft.selected.keys()).pop()); } renderSize(); };
-      eight.onclick = function(){ draft.size = 8; renderSize(); };
+      four.onclick = function(){ draft.size = 4; while(draft.selected.size > 4){ draft.selected.delete(Array.from(draft.selected.keys()).pop()); } renderPlayers(); };
+      eight.onclick = function(){ draft.size = 8; renderPlayers(); };
       wrap.append(four, eight);
-      body.append(wrap, footer(!!draft.size, renderType, renderPlayers));
+      body.append(wrap, backFooter(renderType));
     }
 
     function renderPlayers(){
