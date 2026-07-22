@@ -5253,6 +5253,18 @@ body[data-page="details"] #details{
 .rh-rec.perfect .rh-wr{ color:#fff2cf; }
 .rh-pct{ font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:rgba(150,220,210,.7); }
 .rh-pct.perfect{ color:#ffd24a; text-shadow:0 0 8px rgba(255,210,74,.5); }
+/* Player-stats name picker controls (search / favourites / top) */
+.ps-pick-controls{ display:flex; flex-direction:column; gap:8px; padding:2px 2px 10px; position:sticky; top:0; z-index:2; background:rgba(15,18,32,.97); }
+.ps-pick-search{ width:100%; box-sizing:border-box; padding:11px 12px; border-radius:12px; background:rgba(16,24,39,.7); border:1px solid rgba(255,255,255,.12); color:#eaf0ff; font-size:14px; font-weight:700; outline:none; }
+.ps-pick-search:focus{ border-color:rgba(255,150,60,.55); box-shadow:0 0 12px rgba(255,122,0,.15); }
+.ps-pick-search::placeholder{ color:rgba(151,178,214,.6); }
+.ps-pick-chips{ display:flex; gap:7px; }
+.ps-pick-chip{ flex:1; padding:8px 6px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:rgba(16,24,39,.7); color:var(--v3-muted,#98a2b8); font-weight:900; font-size:11px; letter-spacing:.05em; text-transform:uppercase; cursor:pointer; }
+.ps-pick-chip.active{ background:linear-gradient(135deg,rgba(255,122,24,.3),rgba(255,183,64,.16)); color:#fff; border-color:rgba(255,150,60,.55); box-shadow:0 0 12px rgba(255,122,0,.18); }
+.ps-pick-star{ background:transparent; border:none; cursor:pointer; color:rgba(151,178,214,.45); font-size:19px; line-height:1; padding:4px 6px; flex:0 0 auto; }
+.ps-pick-star.on{ color:#ffd24a; text-shadow:0 0 10px rgba(255,210,74,.55); }
+.ps-pick-lvl{ font-size:9px; font-weight:900; color:#ffcaa0; letter-spacing:.06em; text-transform:uppercase; margin-left:6px; }
+.ps-pick-empty{ padding:18px; text-align:center; color:rgba(151,178,214,.7); font-weight:700; }
 /* clickable records + per-target leaderboard (rt-*) */
 .rh-rec{ cursor:pointer; transition:border-color .15s ease, background .15s ease; }
 .rh-rec:hover{ border-color:rgba(45,212,191,.5); background:rgba(12,32,38,.75); }
@@ -36899,12 +36911,15 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
   const modal   = document.createElement('div'); modal.className   = 'modal';
   modal.style.maxWidth='980px'; modal.style.width='94vw';
   modal.style.maxHeight = '90vh'; modal.style.overflow = 'hidden';
+  // Flex column so the body actually scrolls within the 90vh modal (the
+  // footer stays pinned; without this the body overflowed and clipped).
+  modal.style.display = 'flex'; modal.style.flexDirection = 'column';
 
   const header  = document.createElement('div');
   header.style.display = 'none';
   const body    = document.createElement('div'); body.className    = 'modal-body';
   body.style.paddingTop='8px';
-  body.style.maxHeight = 'none'; body.style.overflowY = 'auto';
+  body.style.flex = '1 1 auto'; body.style.minHeight = '0'; body.style.overflowY = 'auto';
 
   const footer  = document.createElement('div'); footer.className  = 'modal-footer';
   footer.style.justifyContent='flex-start';
@@ -37963,30 +37978,95 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
   overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
   modal.tabIndex = 0; modal.focus();
 
+  // Favourites persist in localStorage (keyed by lowercased name).
+  var FAV_KEY = 'sq_stats_fav_players_v1';
+  function loadFavs(){ try{ return new Set(JSON.parse(localStorage.getItem(FAV_KEY) || '[]')); }catch(_){ return new Set(); } }
+  function saveFavs(set){ try{ localStorage.setItem(FAV_KEY, JSON.stringify(Array.from(set))); }catch(_){ } }
+  var favs = loadFavs();
+
   (async function(){
     var players = [];
     try{ players = await __sqLoadPlayerStatsPlayers(); }catch(_){ players = []; }
-    list.innerHTML = '';
     if (!players.length){
+      list.innerHTML = '';
       var p = document.createElement('p'); p.className = 'tag muted'; p.style.padding = '14px'; p.textContent = 'No saved players found.';
       list.appendChild(p); return;
     }
     window.__sqPlayerStatsPlayers = players;
+
+    // XP map drives the TOP sort + level chips (best-effort; ok if absent).
+    var xpByName = {};
+    try{
+      var xrows = (typeof SQ_XP !== 'undefined' && SQ_XP.all) ? await SQ_XP.all() : [];
+      (xrows || []).forEach(function(r){ xpByName[String(r.name || '').trim().toLowerCase()] = Number(r.total_xp) || 0; });
+    }catch(_){ }
+    var xpOf = function(pl){ return xpByName[String(pl.name || '').trim().toLowerCase()] || 0; };
+
     var av = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>';
     var chev = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>';
-    players.forEach(function(pl){
-      var row = document.createElement('button'); row.type = 'button'; row.className = 'menu-row';
-      row.innerHTML = '<span class="menu-row-icon">' + av + '</span>'
-        + '<span class="menu-row-text"><span class="menu-row-title">' + esc(pl.name) + '</span>'
-        + (pl.nickname ? '<span class="menu-row-sub">' + esc(pl.nickname) + '</span>' : '')
-        + '</span><span class="menu-row-chev">' + chev + '</span>';
-      row.onclick = function(){
-        close();
-        try{ if (typeof __sqSetPlayerStatsSelectedName === 'function') __sqSetPlayerStatsSelectedName(pl.name); }catch(_){ }
-        try{ if (typeof window.openPlayerStatsHub === 'function') window.openPlayerStatsHub(pl.name); }catch(e){ console.error('open hub failed', e); }
-      };
-      list.appendChild(row);
+
+    // ---- controls: search + ALL / FAVOURITES / TOP ----
+    body.innerHTML = '';
+    var controls = document.createElement('div'); controls.className = 'ps-pick-controls';
+    var search = document.createElement('input'); search.type = 'search'; search.className = 'ps-pick-search';
+    search.placeholder = 'Search players…'; search.setAttribute('aria-label', 'Search players');
+    var chips = document.createElement('div'); chips.className = 'ps-pick-chips';
+    var filter = 'all';
+    var chipDefs = [['all', 'All'], ['fav', '★ Favourites'], ['top', 'Top']];
+    var chipEls = {};
+    chipDefs.forEach(function(c){
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'ps-pick-chip' + (c[0] === 'all' ? ' active' : '');
+      b.textContent = c[1]; b.dataset.f = c[0];
+      b.onclick = function(){ filter = c[0]; Object.keys(chipEls).forEach(function(k){ chipEls[k].classList.toggle('active', k === filter); }); render(); };
+      chipEls[c[0]] = b; chips.appendChild(b);
     });
+    controls.append(search, chips);
+    body.appendChild(controls);
+    var listWrap = document.createElement('div'); listWrap.className = 'menu-list'; body.appendChild(listWrap);
+    search.addEventListener('input', function(){ render(); });
+
+    function render(){
+      var q = String(search.value || '').trim().toLowerCase();
+      var arr = players.slice();
+      if (filter === 'fav') arr = arr.filter(function(pl){ return favs.has(String(pl.name || '').trim().toLowerCase()); });
+      if (q) arr = arr.filter(function(pl){ return (String(pl.name || '') + ' ' + String(pl.nickname || '')).toLowerCase().indexOf(q) >= 0; });
+      if (filter === 'top') arr.sort(function(a, b){ return (xpOf(b) - xpOf(a)) || String(a.name).localeCompare(String(b.name)); });
+      else arr.sort(function(a, b){ return String(a.name).localeCompare(String(b.name)); });
+
+      listWrap.innerHTML = '';
+      if (!arr.length){
+        var e = document.createElement('div'); e.className = 'ps-pick-empty';
+        e.textContent = filter === 'fav' ? 'No favourites yet — tap a ☆ to add one.' : 'No players match.';
+        listWrap.appendChild(e); return;
+      }
+      arr.forEach(function(pl){
+        var nk = String(pl.name || '').trim().toLowerCase();
+        var row = document.createElement('div'); row.className = 'menu-row'; row.setAttribute('role', 'button'); row.tabIndex = 0;
+        var lvl = xpOf(pl) > 0 && typeof SQ_XP !== 'undefined' && SQ_XP.progress ? SQ_XP.progress(xpOf(pl)).level : 0;
+        row.innerHTML = '<span class="menu-row-icon">' + av + '</span>'
+          + '<span class="menu-row-text"><span class="menu-row-title">' + esc(pl.name) + (filter === 'top' && lvl ? '<span class="ps-pick-lvl">LV ' + lvl + '</span>' : '') + '</span>'
+          + (pl.nickname ? '<span class="menu-row-sub">' + esc(pl.nickname) + '</span>' : '')
+          + '</span>'
+          + '<button type="button" class="ps-pick-star' + (favs.has(nk) ? ' on' : '') + '" aria-label="Favourite">' + (favs.has(nk) ? '★' : '☆') + '</button>'
+          + '<span class="menu-row-chev">' + chev + '</span>';
+        var star = row.querySelector('.ps-pick-star');
+        star.onclick = function(ev){
+          ev.stopPropagation();
+          if (favs.has(nk)) favs.delete(nk); else favs.add(nk);
+          saveFavs(favs);
+          star.classList.toggle('on', favs.has(nk)); star.textContent = favs.has(nk) ? '★' : '☆';
+          if (filter === 'fav') render();
+        };
+        row.onclick = function(ev){
+          if (ev.target && ev.target.closest && ev.target.closest('.ps-pick-star')) return;
+          close();
+          try{ if (typeof __sqSetPlayerStatsSelectedName === 'function') __sqSetPlayerStatsSelectedName(pl.name); }catch(_){ }
+          try{ if (typeof window.openPlayerStatsHub === 'function') window.openPlayerStatsHub(pl.name); }catch(e){ console.error('open hub failed', e); }
+        };
+        listWrap.appendChild(row);
+      });
+    }
+    render();
   })();
 };
 
