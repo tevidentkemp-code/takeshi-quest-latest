@@ -5617,11 +5617,13 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 
 /* ---------------- Main 3-column area ---------------- */
 .v3-main{
+  position:relative;
   display:grid;
   grid-template-columns: 1fr 1.12fr 1fr;
   gap: 9px;
   align-items: stretch;
   margin-bottom: 10px;
+  padding: 0 15px;        /* gutters for the thin FORM charge bars at each edge */
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -5711,8 +5713,8 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-card.active .v3-dartico{ color:var(--v3-orange); filter:drop-shadow(0 0 6px rgba(255,106,0,.4)); }
 
 .v3-name{
-  font-size: clamp(20px, 6.4vw, 27px);
-  font-weight: 900; letter-spacing:.01em; line-height:1.02;
+  font-size: clamp(16px, 5.5vw, 25px);
+  font-weight: 900; letter-spacing:0; line-height:1.02;
   max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .v3-card.active .v3-name{ color:var(--v3-orange); text-shadow:0 0 18px rgba(255,106,0,.35); }
@@ -5815,52 +5817,55 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-race{ position:absolute; inset:0; z-index:3; width:100%; height:100%; display:none; }
 .v3-dmd-frame.race-on .v3-race{ display:block; }
 .v3-dmd-frame.race-on #v3DmdSlot{ visibility:hidden; }
+/* v3-native LED dot-matrix fills the whole screen area (full width) */
+#v3DmdSlot{ position:absolute; inset:0; display:block; }
+.v3-dmd-canvas{ position:absolute; inset:0; width:100% !important; height:100% !important; max-height:none !important; display:block; }
 
-/* ============ FORM METERS (arcade) ============ */
-.v3-form{
-  flex:1 1 auto; min-height:64px; margin-top:8px;
-  display:flex; flex-direction:column; align-items:center; gap:5px;
-  position:relative;
+/* ============ FORM METERS — thin arcade CHARGE bars at the screen edges ============
+   Fill UP with good play; every on-target dart charges them, doubles/trebles/bull
+   and combos charge harder. Fill it and it POPS (gold burst) and banks a fire
+   streak. Pinned to the far left/right edges of the play area. */
+.v3-edge-form{
+  position:absolute; top:2px; bottom:2px; width:12px; z-index:4;
+  display:flex; flex-direction:column; align-items:center; gap:4px; pointer-events:none;
 }
-.v3-form-cap{ font-size:8px; font-weight:900; letter-spacing:.2em; color:rgba(214,222,240,.5); }
-.v3-form-track{
-  position:relative; flex:1 1 auto; width:34px; min-height:40px; border-radius:11px; overflow:hidden;
-  background:linear-gradient(180deg,#0a0e18,#05070d);
-  border:1.5px solid rgba(255,255,255,.10);
-  box-shadow: inset 0 0 16px rgba(0,0,0,.8), inset 0 0 0 1px rgba(255,255,255,.03);
+.v3-edge-form.p1{ left:0; }
+.v3-edge-form.p2{ right:0; }
+.v3-ef-cap{ font-size:7px; font-weight:900; letter-spacing:.18em; color:rgba(214,222,240,.45); writing-mode:vertical-rl; text-orientation:upright; letter-spacing:0; line-height:1; }
+.v3-ef-track{
+  position:relative; flex:1 1 auto; width:100%; min-height:60px; border-radius:9px; overflow:hidden;
+  background:linear-gradient(180deg,#0b0f1a,#04060c);
+  border:1.5px solid rgba(255,255,255,.09);
+  box-shadow: inset 0 0 14px rgba(0,0,0,.85);
 }
-.v3-form-fill{
-  position:absolute; left:0; right:0; bottom:0; height:100%;
-  border-radius:0 0 9px 9px;
-  background:linear-gradient(180deg,#4aa3ff 0%,#2f6bff 100%);
-  box-shadow:0 0 18px rgba(74,163,255,.6);
-  transition: height .5s cubic-bezier(.3,.9,.3,1), background .4s ease, box-shadow .4s ease;
+.v3-ef-fill{
+  position:absolute; left:0; right:0; bottom:0; height:0%;
+  background:linear-gradient(180deg,#69b7ff 0%,#2f6bff 100%);
+  box-shadow:0 0 16px rgba(74,163,255,.7);
+  transition: height .45s cubic-bezier(.25,.9,.3,1), background .4s ease, box-shadow .4s ease;
 }
-/* Hotter as it empties (good play is draining it toward a pop) */
-.v3-form.warm .v3-form-fill{ background:linear-gradient(180deg,#ffcf6a 0%,#ff9a2f 100%); box-shadow:0 0 20px rgba(255,160,50,.65); }
-.v3-form.hot  .v3-form-fill{ background:linear-gradient(180deg,#ff7a3c 0%,#ff2f6b 100%); box-shadow:0 0 26px rgba(255,80,90,.8); animation:v3FormHot .7s ease-in-out infinite; }
-@keyframes v3FormHot{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.35); } }
-.v3-form-fill::after{ /* liquid sheen top edge */
-  content:''; position:absolute; left:0; right:0; top:0; height:5px;
-  background:linear-gradient(180deg,rgba(255,255,255,.55),transparent);
-}
-/* segment ticks overlaid on the track */
-.v3-form-segs{ position:absolute; inset:0; z-index:2; pointer-events:none;
-  background-image:repeating-linear-gradient(180deg, rgba(0,0,0,.55) 0 2px, transparent 2px 10%); }
-.v3-form-track::after{ content:''; position:absolute; inset:0; z-index:3; pointer-events:none;
-  background:radial-gradient(120% 60% at 50% 0%, rgba(255,255,255,.06), transparent 60%); border-radius:11px; }
-.v3-form.pop .v3-form-track{ animation:v3FormPop .6s cubic-bezier(.2,.9,.25,1); }
-@keyframes v3FormPop{ 0%{ transform:scale(1); box-shadow:inset 0 0 16px rgba(0,0,0,.8); } 30%{ transform:scale(1.14); box-shadow:0 0 30px rgba(255,214,90,1), inset 0 0 16px rgba(0,0,0,.4); border-color:#ffe27a; } 100%{ transform:scale(1); } }
-.v3-form-streak{ display:flex; align-items:center; gap:2px; min-height:14px; }
-.v3-form-flame{ font-size:12px; line-height:1; filter:drop-shadow(0 0 5px rgba(255,140,40,.8)); }
-.v3-form-streak b{ font-size:11px; font-weight:900; color:#ffcf6a; }
-.v3-form.p2 .v3-form-fill{ background:linear-gradient(180deg,#7ad0ff 0%,#4a90ff 100%); }
-.v3-form.p2.warm .v3-form-fill{ background:linear-gradient(180deg,#ffcf6a 0%,#ff9a2f 100%); }
-.v3-form.p2.hot .v3-form-fill{ background:linear-gradient(180deg,#ff7a3c 0%,#ff2f6b 100%); }
+.v3-edge-form.p2 .v3-ef-fill{ background:linear-gradient(180deg,#7ad0ff 0%,#3a86ff 100%); box-shadow:0 0 16px rgba(90,180,255,.7); }
+/* the moving charge tip glows */
+.v3-ef-tip{ position:absolute; left:-2px; right:-2px; top:-2px; height:4px; border-radius:3px;
+  background:#fff; box-shadow:0 0 10px #fff, 0 0 18px rgba(120,200,255,.9); opacity:.9; }
+/* warmer and hotter as it nears a POP */
+.v3-edge-form.warm .v3-ef-fill{ background:linear-gradient(180deg,#ffe07a 0%,#ff9a2f 100%); box-shadow:0 0 20px rgba(255,170,60,.8); }
+.v3-edge-form.hot .v3-ef-fill{ background:linear-gradient(180deg,#ffd24a 0%,#ff3d6b 100%); box-shadow:0 0 26px rgba(255,90,90,.95); animation:v3EfHot .55s ease-in-out infinite; }
+@keyframes v3EfHot{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.4); } }
+/* LED segment ticks */
+.v3-ef-segs{ position:absolute; inset:0; z-index:2; pointer-events:none;
+  background-image:repeating-linear-gradient(180deg, rgba(0,0,0,.6) 0 1.5px, transparent 1.5px 7.5%); }
+.v3-ef-track::after{ content:''; position:absolute; inset:0; z-index:3; pointer-events:none;
+  background:radial-gradient(120% 40% at 50% 0%, rgba(255,255,255,.08), transparent 60%); }
+.v3-edge-form.pop .v3-ef-track{ animation:v3EfPop .6s cubic-bezier(.2,.9,.25,1); }
+@keyframes v3EfPop{ 0%{ transform:scale(1); } 26%{ transform:scaleX(1.9) scaleY(1.03); box-shadow:0 0 34px rgba(255,214,90,1); border-color:#ffe27a; } 100%{ transform:scale(1); } }
+.v3-ef-streak{ display:flex; flex-direction:column; align-items:center; min-height:12px; }
+.v3-ef-flame{ font-size:11px; line-height:1; filter:drop-shadow(0 0 5px rgba(255,140,40,.85)); }
+.v3-ef-streak b{ font-size:9px; font-weight:900; color:#ffcf6a; line-height:1; }
 @media (prefers-reduced-motion: reduce){
-  .v3-form.hot .v3-form-fill{ animation:none; }
-  .v3-form.pop .v3-form-track{ animation:none; }
-  .v3-form-fill{ transition:height .2s linear; }
+  .v3-edge-form.hot .v3-ef-fill{ animation:none; }
+  .v3-edge-form.pop .v3-ef-track{ animation:none; }
+  .v3-ef-fill{ transition:height .18s linear; }
 }
 .v3-dmd-bezel{
   position:relative; flex:1; border-radius:12px; overflow:hidden;
@@ -25736,6 +25741,7 @@ function __sqV3Animate(panel){
       __sqV3FlyPlus(sbNum, totalEls[cp], '+' + delta, big);
       plusFlyPlayer = cp;
       const marks = panel.querySelector('.v3-sb-marks'); if (marks) marks.classList.add('v3-flash');
+      try{ __sqV3DmdFlash('+' + delta, delta >= 45 ? '#8cff9e' : delta >= 20 ? '#ffd24a' : '#ffb020'); }catch(_){ }
       __sqV3SndHit(delta);
     }
     // Miss -> red negative shake (a dart was used but added no points).
@@ -25828,25 +25834,28 @@ function __sqV3FormData(p){
     }
   }
   const pops = Math.floor(du / CHARGE);
-  const frac = (du - pops * CHARGE) / CHARGE;
-  const fill = Math.max(0, Math.min(100, Math.round((1 - frac) * 100)));
+  const frac = (du - pops * CHARGE) / CHARGE;   // fraction of the current bar CHARGED
+  const fill = Math.max(0, Math.min(100, Math.round(frac * 100)));  // fills UP toward a pop
   return { fill, pops };
 }
 function __sqV3FormView(panel){
   try{
     if (!window.__sqV3FormPrev) window.__sqV3FormPrev = {};
     for (let i = 0; i < 2; i++){
-      const wrap = panel.querySelector('.v3-form[data-p="' + i + '"]');
+      const wrap = panel.querySelector('.v3-edge-form[data-p="' + i + '"]');
       if (!wrap) continue;
       const d = __sqV3FormData(i);
-      const fillEl = wrap.querySelector('.v3-form-fill');
-      if (fillEl) fillEl.style.height = d.fill + '%';
-      wrap.classList.toggle('warm', d.fill <= 55 && d.fill > 26);
-      wrap.classList.toggle('hot', d.fill <= 26);
-      const streak = wrap.querySelector('.v3-form-streak');
-      if (streak) streak.innerHTML = d.pops > 0 ? '<span class="v3-form-flame">🔥</span><b>x' + d.pops + '</b>' : '';
       const prevPops = window.__sqV3FormPrev[i] || 0;
-      if (d.pops > prevPops){ wrap.classList.remove('pop'); void wrap.offsetWidth; wrap.classList.add('pop'); }
+      // On a fresh pop, briefly show the bar brimming full before it resets.
+      const justPopped = d.pops > prevPops;
+      const shownFill = justPopped ? 100 : d.fill;
+      const fillEl = wrap.querySelector('.v3-ef-fill');
+      if (fillEl) fillEl.style.height = shownFill + '%';
+      wrap.classList.toggle('warm', shownFill >= 55 && shownFill < 82);
+      wrap.classList.toggle('hot', shownFill >= 82);
+      const streak = wrap.querySelector('.v3-ef-streak');
+      if (streak) streak.innerHTML = d.pops > 0 ? '<span class="v3-ef-flame">🔥</span><b>' + d.pops + '</b>' : '';
+      if (justPopped){ wrap.classList.remove('pop'); void wrap.offsetWidth; wrap.classList.add('pop'); }
       window.__sqV3FormPrev[i] = d.pops;
     }
     __sqV3WireViewTabs(panel);
@@ -25908,6 +25917,97 @@ function __sqV3DrawRace(panel){
     // labels: initials at the leading edge
     ctx.font = '900 10px system-ui, sans-serif'; ctx.textBaseline = 'bottom';
     ctx.fillStyle = 'rgba(214,222,240,.5)'; ctx.fillText('RACE', padL, cssH - 2);
+  }catch(_){ }
+}
+
+/* ---------- VIDE: v3-native LED dot-matrix ----------
+   A crisp, full-width dot-matrix that renders text by pixel-sampling an
+   offscreen draw (scales to any size, stays sharp). Amber LED grid with an
+   idle pulse + scan sweep; on-target throws + combos flash across it. One rAF
+   loop that always targets the current #v3DmdCanvas (the panel re-renders). */
+var __sqV3DmdState = { text: '', flashText: '', flashColor: null, flashUntil: 0, grid: null, raf: 0, lastDraw: 0, _off: null };
+function __sqV3Hex2Rgb(h){ try{ h = String(h).replace('#',''); if (h.length === 3) h = h.split('').map(x => x + x).join(''); const n = parseInt(h, 16); return [(n>>16)&255,(n>>8)&255,n&255]; }catch(_){ return [255,176,32]; } }
+function __sqV3DmdEnsure(){ if (!__sqV3DmdState.raf) __sqV3DmdState.raf = requestAnimationFrame(__sqV3DmdFrame); }
+function __sqV3DmdSetTarget(label){ __sqV3DmdState.text = String(label == null ? '' : label).toUpperCase(); }
+function __sqV3DmdFlash(text, color){ const st = __sqV3DmdState; st.flashText = String(text || '').toUpperCase(); st.flashColor = color || null; st.flashUntil = performance.now() + 1150; }
+function __sqV3DmdGrid(cssW, cssH, content){
+  const st = __sqV3DmdState;
+  const rows = Math.max(9, Math.min(22, Math.round(cssH / 12)));
+  const pitch = cssH / rows;
+  const cols = Math.max(9, Math.floor(cssW / pitch));
+  const key = content + '|' + cols + 'x' + rows;
+  if (st.grid && st.grid.key === key) return st.grid;
+  const SS = 3, ow = cols * SS, oh = rows * SS;
+  const off = st._off || (st._off = document.createElement('canvas'));
+  off.width = ow; off.height = oh;
+  const o = off.getContext('2d');
+  o.clearRect(0, 0, ow, oh);
+  o.fillStyle = '#fff'; o.textAlign = 'center'; o.textBaseline = 'middle';
+  let fs = oh * 0.96;
+  const setF = () => { o.font = '900 ' + fs + 'px "Arial Narrow", "Roboto Condensed", system-ui, sans-serif'; };
+  setF();
+  const w = o.measureText(content || ' ').width, maxW = ow * 0.96;
+  if (w > maxW && w > 0){ fs *= maxW / w; setF(); }
+  if (content) o.fillText(content, ow / 2, oh * 0.52);
+  const data = o.getImageData(0, 0, ow, oh).data;
+  const cov = new Float32Array(cols * rows);
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++){
+    let sum = 0;
+    for (let yy = 0; yy < SS; yy++) for (let xx = 0; xx < SS; xx++) sum += data[(((r*SS+yy)*ow)+(c*SS+xx))*4+3];
+    cov[r*cols+c] = sum / (SS*SS*255);
+  }
+  st.grid = { key, cols, rows, pitch, cov };
+  return st.grid;
+}
+function __sqV3DmdFrame(){
+  const st = __sqV3DmdState;
+  st.raf = 0;
+  const canvas = document.getElementById('v3DmdCanvas');
+  if (!canvas) return;                       // panel gone; a later Ensure restarts the loop
+  st.raf = requestAnimationFrame(__sqV3DmdFrame);
+  try{
+    const frame = canvas.closest('.v3-dmd-frame');
+    const onGame = document.body && document.body.dataset.page === 'game';
+    if (!onGame || (frame && frame.classList.contains('race-on'))) return;   // hidden -> skip
+    const now = performance.now();
+    if (now - st.lastDraw < 30) return;        // ~33fps throttle
+    st.lastDraw = now;
+    const host = canvas.parentElement || canvas;
+    const cssW = Math.max(40, host.clientWidth || 0), cssH = Math.max(40, host.clientHeight || 0);
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (canvas.width !== Math.round(cssW*dpr) || canvas.height !== Math.round(cssH*dpr)){
+      canvas.width = Math.round(cssW*dpr); canvas.height = Math.round(cssH*dpr);
+      canvas.style.width = cssW + 'px'; canvas.style.height = cssH + 'px'; st.grid = null;
+    }
+    const flashing = now < st.flashUntil && st.flashText;
+    const content = (flashing ? st.flashText : st.text) || '';
+    const rgb = __sqV3Hex2Rgb(flashing ? (st.flashColor || '#ffd24a') : '#ffb020');
+    const g = __sqV3DmdGrid(cssW, cssH, content);
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    const pitch = g.pitch, ox = (cssW - g.cols*pitch)/2, oy = (cssH - g.rows*pitch)/2, rad = pitch*0.36;
+    const pulse = 0.86 + 0.14*Math.sin(now/560);
+    const scan = (now/26) % (g.rows + 10);
+    const rc = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',';
+    // base pass: every LED (dim grid + text body)
+    for (let r = 0; r < g.rows; r++){
+      const sb = Math.max(0, 1 - Math.abs(r - scan)/2) * 0.45;
+      for (let c = 0; c < g.cols; c++){
+        const cov = g.cov[r*g.cols+c];
+        const b = cov > 0.06 ? Math.min(1, (0.42 + cov*0.58)*pulse + sb*cov) : (0.05 + sb*0.10);
+        ctx.beginPath(); ctx.arc(ox + c*pitch + pitch/2, oy + r*pitch + pitch/2, rad, 0, 6.283);
+        ctx.fillStyle = rc + b.toFixed(3) + ')'; ctx.fill();
+      }
+    }
+    // glow pass: only bright (text) LEDs, additive
+    ctx.globalCompositeOperation = 'lighter';
+    for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++){
+      const cov = g.cov[r*g.cols+c]; if (cov < 0.4) continue;
+      ctx.beginPath(); ctx.arc(ox + c*pitch + pitch/2, oy + r*pitch + pitch/2, rad*1.7, 0, 6.283);
+      ctx.fillStyle = rc + (0.16*cov*pulse).toFixed(3) + ')'; ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
   }catch(_){ }
 }
 
@@ -26061,13 +26161,16 @@ function __sqLiveV3Render(){
           <div class="v3-avg"><span class="v3-avg-val">${avg.ga}</span><span class="v3-avg-lab">GAME AVG</span></div>
         </div>
       </div>
-      <div class="v3-form ${i === 0 ? 'p1' : 'p2'}" data-p="${i}">
-        <div class="v3-form-cap">FORM</div>
-        <div class="v3-form-track"><div class="v3-form-fill"></div><div class="v3-form-segs" aria-hidden="true"></div></div>
-        <div class="v3-form-streak" aria-hidden="true"></div>
-      </div>
     </div>`;
   };
+  const edgeForm = (i) => `<div class="v3-edge-form ${i === 0 ? 'p1' : 'p2'}" data-p="${i}">
+      <div class="v3-ef-track">
+        <div class="v3-ef-fill"><span class="v3-ef-tip" aria-hidden="true"></span></div>
+        <div class="v3-ef-segs" aria-hidden="true"></div>
+      </div>
+      <div class="v3-ef-streak" aria-hidden="true"></div>
+      <div class="v3-ef-cap">FORM</div>
+    </div>`;
 
   const curEntry = entryOf(cp, r);
   // All three dots start lit; one goes out (right-to-left) after each throw.
@@ -26109,6 +26212,7 @@ function __sqLiveV3Render(){
       <button id="v3MenuBtn" class="v3-tb-menu" type="button" aria-label="Game menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </div>
     <div class="v3-main">
+      ${edgeForm(0)}
       ${playerCard(0)}
       <div class="v3-centre">
         <div class="v3-ctop">
@@ -26128,26 +26232,18 @@ function __sqLiveV3Render(){
           <button class="v3-vtab race" data-view="race" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 3 6-7"/><path d="M18 8h2v2"/></svg>RACE</button>
         </div>
         <div class="v3-dmd-frame">
-          <div class="v3-dmd-bezel"><div class="v3-dmd-attract" aria-hidden="true"><span class="v3-dmd-target">${targetLabel}</span></div><div id="v3DmdSlot" class="v3-dmdslot"></div><canvas class="v3-race" id="v3RaceCanvas" aria-hidden="true"></canvas></div>
+          <div class="v3-dmd-bezel"><div id="v3DmdSlot" class="v3-dmdslot"><canvas id="v3DmdCanvas" class="v3-dmd-canvas"></canvas></div><canvas class="v3-race" id="v3RaceCanvas" aria-hidden="true"></canvas></div>
         </div>
       </div>
       ${playerCard(1)}
+      ${edgeForm(1)}
     </div>
     <div class="v3-grid-wrap"><table class="v3-grid"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 
-  // Relocate the DMD into the centre slot (moved back on deactivate).
-  // LiveV2 may have re-homed or replaced the original wrap, so find the live
-  // canvas and carry its wrapper (or the canvas itself) across.
-  try{
-    const slot = document.getElementById('v3DmdSlot');
-    const canvas = document.getElementById('sqDmdCanvas') || document.getElementById('v2InfoDmd');
-    const carrier = document.getElementById('sqDmdWrap')
-      || (canvas && (canvas.closest('.v2InfoDmdCell') || canvas.closest('.sq-dmd') || canvas));
-    if (carrier && slot && carrier.parentElement !== slot){
-      if (!window.__sqV3DmdHome) window.__sqV3DmdHome = carrier.parentElement;
-      slot.appendChild(carrier);
-    }
-  }catch(_){ }
+  // Boot the v3-native LED dot-matrix (VIDE). Replaces the old relocated pinball
+  // canvas with a crisp, full-width, self-drawn matrix. Set the persistent
+  // "target" content each render; throws flash transient messages via animate.
+  try{ __sqV3DmdEnsure(); __sqV3DmdSetTarget(targetLabel); }catch(_){ }
 
   const sndBtn = document.getElementById('v3SoundBtn');
   if (sndBtn){
