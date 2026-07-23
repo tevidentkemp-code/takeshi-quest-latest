@@ -5616,16 +5616,23 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-tb-snd.muted{ color:var(--v3-muted); background:rgba(255,255,255,.03); }
 
 /* ---------------- Main 3-column area ---------------- */
+/* Body wraps the pills+score row AND the full-width screen; FORM bars span it. */
+.v3-body{
+  position:relative; flex:1 1 auto; min-height:0;
+  display:flex; flex-direction:column; gap:9px; margin-bottom:10px;
+}
 .v3-main{
-  position:relative;
   display:grid;
-  grid-template-columns: 1fr 1.12fr 1fr;
+  grid-template-columns: 1fr 1.06fr 1fr;
   gap: 9px;
   align-items: stretch;
-  margin-bottom: 10px;
-  padding: 0 15px;        /* gutters for the thin FORM charge bars at each edge */
-  flex: 1 1 auto;
-  min-height: 0;
+  margin: 0 16px;        /* leave the edges free for the FORM charge bars */
+  flex: 0 0 auto;
+}
+/* Full-width dot-matrix / race band, edge-to-edge between the FORM bars */
+.v3-screen{
+  flex:1 1 auto; min-height:110px; margin:0 16px;
+  display:flex; flex-direction:column; gap:0;
 }
 .v3-side{ display:flex; flex-direction:column; min-width:0; }
 
@@ -5850,8 +5857,12 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
   background:#fff; box-shadow:0 0 10px #fff, 0 0 18px rgba(120,200,255,.9); opacity:.9; }
 /* warmer and hotter as it nears a POP */
 .v3-edge-form.warm .v3-ef-fill{ background:linear-gradient(180deg,#ffe07a 0%,#ff9a2f 100%); box-shadow:0 0 20px rgba(255,170,60,.8); }
-.v3-edge-form.hot .v3-ef-fill{ background:linear-gradient(180deg,#ffd24a 0%,#ff3d6b 100%); box-shadow:0 0 26px rgba(255,90,90,.95); animation:v3EfHot .55s ease-in-out infinite; }
+.v3-edge-form.hot .v3-ef-fill{ background:linear-gradient(180deg,#ffd24a 0%,#ff3d6b 100%); box-shadow:0 0 26px rgba(255,90,90,.95); }
+/* Only the LIVE player's bar pulses — the idle player's stays steady. */
+.v3-edge-form.live.hot .v3-ef-fill{ animation:v3EfHot .55s ease-in-out infinite; }
+.v3-edge-form.live .v3-ef-tip{ animation:v3EfTip 1.1s ease-in-out infinite; }
 @keyframes v3EfHot{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.4); } }
+@keyframes v3EfTip{ 0%,100%{ opacity:.55; } 50%{ opacity:1; } }
 /* LED segment ticks */
 .v3-ef-segs{ position:absolute; inset:0; z-index:2; pointer-events:none;
   background-image:repeating-linear-gradient(180deg, rgba(0,0,0,.6) 0 1.5px, transparent 1.5px 7.5%); }
@@ -5931,11 +5942,13 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
   padding: 6px 8px 8px; flex: 0 0 auto;
   box-shadow: 0 8px 22px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
 }
-.v3-grid{ border-collapse:collapse; width:100%; min-width:520px; font-variant-numeric: tabular-nums; }
+.v3-grid{ border-collapse:collapse; width:100%; min-width:0; table-layout:fixed; font-variant-numeric: tabular-nums; }
 .v3-grid th, .v3-grid td{
-  font-size:13px; font-weight:800; text-align:center; padding:6px 5px;
+  font-size:12px; font-weight:800; text-align:center; padding:6px 2px;
   color:var(--v3-ink); white-space:nowrap;
 }
+.v3-grid .v3-g-init{ width:22px; }
+.v3-grid .v3-g-total{ width:34px; }
 .v3-grid thead th{ color:var(--v3-muted); font-size:11px; font-weight:900; letter-spacing:.04em; padding-bottom:7px; }
 .v3-grid thead th.cur{ background:linear-gradient(180deg,#8a5416,#5e390d); color:#ffe0bb; border-radius:7px 7px 0 0; box-shadow:0 0 12px rgba(255,138,20,.3); }
 .v3-grid tbody tr + tr td, .v3-grid tbody tr + tr th{ border-top:1px solid var(--v3-line); }
@@ -25766,7 +25779,17 @@ function __sqV3Animate(panel){
         try{
           const b = (state.score && state.score[i]) || []; let last = -1;
           for (let ri = b.length - 1; ri >= 0; ri--){ if (b[ri] && b[ri].darts && b[ri].darts.filter(d => d).length >= 3){ last = ri; break; } }
-          if (last >= 0){ const m = __sqV3RoundCombo(b[last]); if (m) __sqV3ComboCallout(m); }
+          if (last >= 0){
+            const m = __sqV3RoundCombo(b[last]);
+            if (m){ __sqV3ComboCallout(m); try{ __sqV3DmdPush(m, { color:'#8cff9e', scroll:true }); }catch(_){ } }
+            // Trophy: a round of three trebles on the target number.
+            try{
+              const ds = (b[last].darts || []);
+              if (ds.length >= 3 && ds.filter(d => d && (d.kind === 'T' || d.kind === 'Triple')).length === 3){
+                __sqV3DmdPush('* PERFECT ROUND *', { color:'#ffd24a', scroll:true });
+              }
+            }catch(_){ }
+          }
         }catch(_){ }
       }
       if (!flew[i] && fulls[i] > ((prev.fulls && prev.fulls[i]) || 0)){
@@ -25787,15 +25810,17 @@ function __sqV3Animate(panel){
           if (dot) dot.classList.add('v3-windot-win');
           const lab = side && side.querySelector('.v3-wins-lab');
           if (lab) lab.classList.add('v3-flash');
+          try{ const nm = String((state.players[i] && (state.players[i].name || state.players[i].player)) || '').split(' ')[0]; __sqV3DmdPush('* ' + (nm || 'PLAYER') + ' WINS *', { color:'#ffd24a', scroll:true, hold:3200 }); }catch(_){ }
           __sqV3SndGame();
         }
       }
     }
 
-    // Turn change — sweep the newly active card in.
+    // Turn change — sweep the newly active card in + announce on the DMD.
     if (prev.cp !== undefined && prev.cp !== cp){
       const card = panel.querySelector('.v3-card.active');
       if (card) card.classList.add('v3-card-in');
+      try{ const nm = String((state.players[cp] && (state.players[cp].name || state.players[cp].player)) || '').split(' ')[0]; if (nm) __sqV3DmdPush('>> ' + nm + ' >>', { color:'#7bdcff', scroll:true, hold:1600 }); }catch(_){ }
     }
 
     // Dart used — flash the dot that just went dark.
@@ -25841,9 +25866,12 @@ function __sqV3FormData(p){
 function __sqV3FormView(panel){
   try{
     if (!window.__sqV3FormPrev) window.__sqV3FormPrev = {};
+    const cp = state.currentPlayer || 0;   // only the live player's bar reacts
     for (let i = 0; i < 2; i++){
       const wrap = panel.querySelector('.v3-edge-form[data-p="' + i + '"]');
       if (!wrap) continue;
+      const live = (i === cp) && !state.finished;
+      wrap.classList.toggle('live', live);
       const d = __sqV3FormData(i);
       const prevPops = window.__sqV3FormPrev[i] || 0;
       // On a fresh pop, briefly show the bar brimming full before it resets.
@@ -25855,7 +25883,8 @@ function __sqV3FormView(panel){
       wrap.classList.toggle('hot', shownFill >= 82);
       const streak = wrap.querySelector('.v3-ef-streak');
       if (streak) streak.innerHTML = d.pops > 0 ? '<span class="v3-ef-flame">🔥</span><b>' + d.pops + '</b>' : '';
-      if (justPopped){ wrap.classList.remove('pop'); void wrap.offsetWidth; wrap.classList.add('pop'); }
+      // Pop burst only fires for the live player (only they can charge).
+      if (justPopped && live){ wrap.classList.remove('pop'); void wrap.offsetWidth; wrap.classList.add('pop'); try{ __sqV3DmdPush('* IN FORM x' + d.pops + ' *', { color:'#ff9a2f', scroll:true }); }catch(_){ } }
       window.__sqV3FormPrev[i] = d.pops;
     }
     __sqV3WireViewTabs(panel);
@@ -25925,30 +25954,39 @@ function __sqV3DrawRace(panel){
    offscreen draw (scales to any size, stays sharp). Amber LED grid with an
    idle pulse + scan sweep; on-target throws + combos flash across it. One rAF
    loop that always targets the current #v3DmdCanvas (the panel re-renders). */
-var __sqV3DmdState = { text: '', flashText: '', flashColor: null, flashUntil: 0, grid: null, raf: 0, lastDraw: 0, _off: null };
+var __sqV3DmdState = { text: '', q: [], cur: null, curUntil: 0, scrollX: null, grid: null, raf: 0, lastDraw: 0, _off: null };
 function __sqV3Hex2Rgb(h){ try{ h = String(h).replace('#',''); if (h.length === 3) h = h.split('').map(x => x + x).join(''); const n = parseInt(h, 16); return [(n>>16)&255,(n>>8)&255,n&255]; }catch(_){ return [255,176,32]; } }
 function __sqV3DmdEnsure(){ if (!__sqV3DmdState.raf) __sqV3DmdState.raf = requestAnimationFrame(__sqV3DmdFrame); }
 function __sqV3DmdSetTarget(label){ __sqV3DmdState.text = String(label == null ? '' : label).toUpperCase(); }
-function __sqV3DmdFlash(text, color){ const st = __sqV3DmdState; st.flashText = String(text || '').toUpperCase(); st.flashColor = color || null; st.flashUntil = performance.now() + 1150; }
-function __sqV3DmdGrid(cssW, cssH, content){
+// Queue a message; long ones scroll like a real DMD ticker.
+function __sqV3DmdPush(text, opts){
+  text = String(text || '').toUpperCase(); if (!text) return;
+  opts = opts || {};
+  const scroll = opts.scroll != null ? opts.scroll : (text.length > 6);
+  const hold = opts.hold || (scroll ? Math.max(1700, text.length * 200) : 1150);
   const st = __sqV3DmdState;
-  const rows = Math.max(9, Math.min(22, Math.round(cssH / 12)));
-  const pitch = cssH / rows;
-  const cols = Math.max(9, Math.floor(cssW / pitch));
-  const key = content + '|' + cols + 'x' + rows;
-  if (st.grid && st.grid.key === key) return st.grid;
-  const SS = 3, ow = cols * SS, oh = rows * SS;
+  st.q.push({ t: text, color: opts.color || '#ffd24a', scroll, hold });
+  if (st.q.length > 6) st.q.shift();
+}
+function __sqV3DmdFlash(text, color){ __sqV3DmdPush(text, { color, scroll: false, hold: 1050 }); }
+function __sqV3DmdCoverage(rows, content, natural, matrixCols){
+  const st = __sqV3DmdState;
+  const SS = 3, oh = rows * SS;
   const off = st._off || (st._off = document.createElement('canvas'));
+  const fontStr = f => '900 ' + f + 'px "Arial Narrow","Roboto Condensed",system-ui,sans-serif';
+  let fs = oh * 0.96;
+  off.width = 8; off.height = 8;
+  let m = off.getContext('2d'); m.font = fontStr(fs);
+  let tw = m.measureText(content || ' ').width;   // SS px
+  let cols;
+  if (natural){ cols = Math.max(matrixCols, Math.ceil(tw / SS) + 4); }
+  else { cols = matrixCols; const maxW = cols * SS * 0.96; if (tw > maxW && tw > 0) fs *= maxW / tw; }
+  const ow = cols * SS;
   off.width = ow; off.height = oh;
   const o = off.getContext('2d');
-  o.clearRect(0, 0, ow, oh);
-  o.fillStyle = '#fff'; o.textAlign = 'center'; o.textBaseline = 'middle';
-  let fs = oh * 0.96;
-  const setF = () => { o.font = '900 ' + fs + 'px "Arial Narrow", "Roboto Condensed", system-ui, sans-serif'; };
-  setF();
-  const w = o.measureText(content || ' ').width, maxW = ow * 0.96;
-  if (w > maxW && w > 0){ fs *= maxW / w; setF(); }
-  if (content) o.fillText(content, ow / 2, oh * 0.52);
+  o.clearRect(0, 0, ow, oh); o.fillStyle = '#fff'; o.textBaseline = 'middle'; o.font = fontStr(fs);
+  o.textAlign = natural ? 'left' : 'center';
+  if (content) o.fillText(content, natural ? SS * 2 : ow / 2, oh * 0.52);
   const data = o.getImageData(0, 0, ow, oh).data;
   const cov = new Float32Array(cols * rows);
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++){
@@ -25956,56 +25994,65 @@ function __sqV3DmdGrid(cssW, cssH, content){
     for (let yy = 0; yy < SS; yy++) for (let xx = 0; xx < SS; xx++) sum += data[(((r*SS+yy)*ow)+(c*SS+xx))*4+3];
     cov[r*cols+c] = sum / (SS*SS*255);
   }
-  st.grid = { key, cols, rows, pitch, cov };
-  return st.grid;
+  return { cols, rows, cov };
 }
 function __sqV3DmdFrame(){
   const st = __sqV3DmdState;
   st.raf = 0;
   const canvas = document.getElementById('v3DmdCanvas');
-  if (!canvas) return;                       // panel gone; a later Ensure restarts the loop
+  if (!canvas) return;
   st.raf = requestAnimationFrame(__sqV3DmdFrame);
   try{
     const frame = canvas.closest('.v3-dmd-frame');
     const onGame = document.body && document.body.dataset.page === 'game';
-    if (!onGame || (frame && frame.classList.contains('race-on'))) return;   // hidden -> skip
+    if (!onGame || (frame && frame.classList.contains('race-on'))) return;
     const now = performance.now();
     if (now - st.lastDraw < 30) return;        // ~33fps throttle
     st.lastDraw = now;
     const host = canvas.parentElement || canvas;
     const cssW = Math.max(40, host.clientWidth || 0), cssH = Math.max(40, host.clientHeight || 0);
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = Math.min(2.5, window.devicePixelRatio || 1);
     if (canvas.width !== Math.round(cssW*dpr) || canvas.height !== Math.round(cssH*dpr)){
       canvas.width = Math.round(cssW*dpr); canvas.height = Math.round(cssH*dpr);
       canvas.style.width = cssW + 'px'; canvas.style.height = cssH + 'px'; st.grid = null;
     }
-    const flashing = now < st.flashUntil && st.flashText;
-    const content = (flashing ? st.flashText : st.text) || '';
-    const rgb = __sqV3Hex2Rgb(flashing ? (st.flashColor || '#ffd24a') : '#ffb020');
-    const g = __sqV3DmdGrid(cssW, cssH, content);
+    // advance the message queue
+    if (st.cur && now > st.curUntil) st.cur = null;
+    if (!st.cur && st.q.length){ st.cur = st.q.shift(); st.curUntil = now + st.cur.hold; st.scrollX = null; st.grid = null; }
+    const cur = st.cur;
+    const content = cur ? cur.t : (st.text || '');
+    const natural = !!(cur && cur.scroll);
+    const rgb = __sqV3Hex2Rgb(cur ? cur.color : '#ffb020');
+    const rows = Math.max(12, Math.min(34, Math.round(cssH / 8)));
+    const pitch = cssH / rows, matrixCols = Math.max(12, Math.floor(cssW / pitch));
+    const key = content + '|' + natural + '|' + rows + 'x' + matrixCols;
+    if (!st.grid || st.grid.key !== key){ st.grid = Object.assign(__sqV3DmdCoverage(rows, content, natural, matrixCols), { key }); if (st.scrollX == null) st.scrollX = -matrixCols; }
+    const g = st.grid;
+    if (natural){ st.scrollX += 0.42; if (st.scrollX > g.cols) st.scrollX = -matrixCols; }
+    const srcOff = natural ? Math.floor(st.scrollX) : 0;
+    const covAt = (r, c) => { const sc = c + srcOff; return (sc < 0 || sc >= g.cols) ? 0 : g.cov[r*g.cols+sc]; };
     const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
-    const pitch = g.pitch, ox = (cssW - g.cols*pitch)/2, oy = (cssH - g.rows*pitch)/2, rad = pitch*0.36;
+    const ox = (cssW - matrixCols*pitch)/2, oy = (cssH - rows*pitch)/2, rad = pitch*0.36;
     const pulse = 0.86 + 0.14*Math.sin(now/560);
-    const scan = (now/26) % (g.rows + 10);
+    const scan = (now/26) % (rows + 10);
     const rc = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',';
-    // base pass: every LED (dim grid + text body)
-    for (let r = 0; r < g.rows; r++){
-      const sb = Math.max(0, 1 - Math.abs(r - scan)/2) * 0.45;
-      for (let c = 0; c < g.cols; c++){
-        const cov = g.cov[r*g.cols+c];
-        const b = cov > 0.06 ? Math.min(1, (0.42 + cov*0.58)*pulse + sb*cov) : (0.05 + sb*0.10);
-        ctx.beginPath(); ctx.arc(ox + c*pitch + pitch/2, oy + r*pitch + pitch/2, rad, 0, 6.283);
+    for (let r = 0; r < rows; r++){
+      const sb = Math.max(0, 1 - Math.abs(r - scan)/2) * 0.4, cy = oy + r*pitch + pitch/2;
+      for (let c = 0; c < matrixCols; c++){
+        const v = covAt(r, c);
+        const b = v > 0.06 ? Math.min(1, (0.42 + v*0.58)*pulse + sb*v) : (0.05 + sb*0.10);
+        ctx.beginPath(); ctx.arc(ox + c*pitch + pitch/2, cy, rad, 0, 6.283);
         ctx.fillStyle = rc + b.toFixed(3) + ')'; ctx.fill();
       }
     }
-    // glow pass: only bright (text) LEDs, additive
     ctx.globalCompositeOperation = 'lighter';
-    for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++){
-      const cov = g.cov[r*g.cols+c]; if (cov < 0.4) continue;
-      ctx.beginPath(); ctx.arc(ox + c*pitch + pitch/2, oy + r*pitch + pitch/2, rad*1.7, 0, 6.283);
-      ctx.fillStyle = rc + (0.16*cov*pulse).toFixed(3) + ')'; ctx.fill();
+    for (let r = 0; r < rows; r++){ const cy = oy + r*pitch + pitch/2;
+      for (let c = 0; c < matrixCols; c++){ const v = covAt(r, c); if (v < 0.4) continue;
+        ctx.beginPath(); ctx.arc(ox + c*pitch + pitch/2, cy, rad*1.7, 0, 6.283);
+        ctx.fillStyle = rc + (0.16*v*pulse).toFixed(3) + ')'; ctx.fill();
+      }
     }
     ctx.globalCompositeOperation = 'source-over';
   }catch(_){ }
@@ -26106,7 +26153,7 @@ function __sqLiveV3Render(){
   // two cards stay balanced without fake placeholder rows.
   const lastRounds = (p) => {
     const items = [];
-    for (let ri = r; ri >= 0 && items.length < 3; ri--){
+    for (let ri = r; ri >= 0 && items.length < 1; ri--){
       const e = entryOf(p, ri);
       if (!roundComplete(p, ri, e)) continue;
       const best = __sqV3RoundThrown(entryOf(1 - p, ri)) && Number(e.roundTotal || 0) > Number(entryOf(1 - p, ri).roundTotal || 0);
@@ -26180,15 +26227,14 @@ function __sqLiveV3Render(){
     : roundDef.type === 'doubles' ? 'DOUBLES'
     : roundDef.type === 'triples' ? 'TREBLES' : 'BULL';
 
-  // Score grid: one column per round + PB + TOTAL
-  let head = '<tr><th class="v3-g-init"></th><th class="v3-g-pb">PB</th>';
+  // Score grid: one column per round + TOTAL (no PB, so all rounds fit unscrolled)
+  let head = '<tr><th class="v3-g-init"></th>';
   for (let ri = 0; ri < MAX_ROUNDS; ri++) head += `<th class="${ri === r ? 'cur' : ''}">${__sqV3RoundLabel(ri)}</th>`;
-  head += '<th class="v3-g-total">TOTAL</th></tr>';
+  head += '<th class="v3-g-total">TOT</th></tr>';
   let rows = '';
   for (let i = 0; i < 2; i++){
-    const pb = pbs.get(pName(i).trim().toLowerCase());
     const arrow = leader < 0 ? '' : (i === leader ? '<span class="v3-arr up">▲</span>' : '<span class="v3-arr down">▼</span>');
-    let cells = `<td class="v3-g-pb">${pb || '–'}</td>`;
+    let cells = '';
     for (let ri = 0; ri < MAX_ROUNDS; ri++){
       const e = entryOf(i, ri);
       const thrown = __sqV3RoundThrown(e);
@@ -26198,8 +26244,7 @@ function __sqLiveV3Render(){
       const won = done && thrown && Number(e.roundTotal || 0) > Number((oppE && oppE.roundTotal) || 0);
       cells += `<td class="${ri === r ? 'cur' : ''} ${won ? 'won' : ''} ${val === 'x' || val === 0 ? 'zero' : ''}">${val === 0 && done ? 'x' : val}</td>`;
     }
-    const behind = leader >= 0 && i !== leader ? ` <span class="v3-g-diff">(${totals[i] - totals[leader]})</span>` : '';
-    cells += `<td class="v3-g-total ${i === leader ? 'lead' : ''}">${totals[i]}${behind}</td>`;
+    cells += `<td class="v3-g-total ${i === leader ? 'lead' : ''}">${totals[i]}</td>`;
     rows += `<tr class="${i === cp ? 'cur-p' : ''}"><th class="v3-g-init">${escV3(String(getPlayerInitial(i) || '').toUpperCase())}${arrow}</th>${cells}</tr>`;
   }
 
@@ -26211,22 +26256,28 @@ function __sqLiveV3Render(){
       <button id="v3SoundBtn" class="v3-tb-snd" type="button" aria-label="Toggle sound"></button>
       <button id="v3MenuBtn" class="v3-tb-menu" type="button" aria-label="Game menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </div>
-    <div class="v3-main">
+    <div class="v3-body">
       ${edgeForm(0)}
-      ${playerCard(0)}
-      <div class="v3-centre">
-        <div class="v3-ctop">
-          <div class="v3-dartbox">
-            <div class="v3-dart-lab">DART ${Math.min(dart + 1, 3)} OF 3</div>
-            <div class="v3-dartdots">${dartDots}</div>
-          </div>
-          <div class="v3-scorebox">
-            <div class="v3-sb-glow" aria-hidden="true"></div>
-            <div class="v3-sb-lab">ROUND SCORE</div>
-            <div class="v3-sb-num">${Number((curEntry && curEntry.roundTotal) || 0)}</div>
-            <div class="v3-sb-marks">${__sqV3Marks(curEntry).replace(/ \/ /g, '<i>·</i>')}</div>
+      ${edgeForm(1)}
+      <div class="v3-main">
+        ${playerCard(0)}
+        <div class="v3-centre">
+          <div class="v3-ctop">
+            <div class="v3-dartbox">
+              <div class="v3-dart-lab">DART ${Math.min(dart + 1, 3)} OF 3</div>
+              <div class="v3-dartdots">${dartDots}</div>
+            </div>
+            <div class="v3-scorebox">
+              <div class="v3-sb-glow" aria-hidden="true"></div>
+              <div class="v3-sb-lab">ROUND SCORE</div>
+              <div class="v3-sb-num">${Number((curEntry && curEntry.roundTotal) || 0)}</div>
+              <div class="v3-sb-marks">${__sqV3Marks(curEntry).replace(/ \/ /g, '<i>·</i>')}</div>
+            </div>
           </div>
         </div>
+        ${playerCard(1)}
+      </div>
+      <div class="v3-screen">
         <div class="v3-viewtabs">
           <button class="v3-vtab vide" data-view="vide" type="button"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="12" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>VIDE</button>
           <button class="v3-vtab race" data-view="race" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 3 6-7"/><path d="M18 8h2v2"/></svg>RACE</button>
@@ -26235,8 +26286,6 @@ function __sqLiveV3Render(){
           <div class="v3-dmd-bezel"><div id="v3DmdSlot" class="v3-dmdslot"><canvas id="v3DmdCanvas" class="v3-dmd-canvas"></canvas></div><canvas class="v3-race" id="v3RaceCanvas" aria-hidden="true"></canvas></div>
         </div>
       </div>
-      ${playerCard(1)}
-      ${edgeForm(1)}
     </div>
     <div class="v3-grid-wrap"><table class="v3-grid"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 
