@@ -53557,5 +53557,446 @@ body[data-page="details"] .wrap{
 </style>
 <!-- <<< PATCH:GAME_COMPLETE_ARCADE_REDESIGN END -->
 
+<!-- >>> PATCH:TRAINING_MODE_V1 START -->
+<style id="sq-training-css">
+.tr-overlay{position:fixed;inset:0;z-index:500000;display:flex;flex-direction:column;
+  background:radial-gradient(120% 90% at 50% -10%, rgba(47,134,255,.18), transparent 55%),
+    radial-gradient(120% 90% at 50% 110%, rgba(255,60,190,.16), transparent 55%),
+    linear-gradient(180deg,#05060f 0%,#0a0b1c 55%,#06070f 100%);
+  color:#eaf2ff;overflow:hidden;font-family:inherit;-webkit-tap-highlight-color:transparent;}
+.tr-overlay::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background-image:repeating-linear-gradient(0deg, rgba(120,180,255,.05) 0 1px, transparent 1px 3px);
+  animation:trScan 7s linear infinite;}
+@keyframes trScan{to{background-position:0 300px;}}
+.tr-overlay > *{position:relative;z-index:1;}
+.tr-head{display:flex;align-items:center;gap:10px;padding:14px 16px 6px;}
+.tr-quit{width:40px;height:40px;border-radius:12px;border:1px solid rgba(255,90,150,.4);
+  background:rgba(255,60,120,.1);color:#ff86b0;font-size:18px;font-weight:900;line-height:1;flex:0 0 auto;}
+.tr-mode{font-weight:900;letter-spacing:.22em;font-size:13px;color:#8fd0ff;text-shadow:0 0 16px rgba(60,180,255,.6);flex:1;text-align:center;}
+.tr-round{font-weight:800;font-size:13px;color:#cfe0ff;letter-spacing:.05em;}
+.tr-round b{font-size:18px;color:#fff;}
+.tr-round span{opacity:.6;}
+.tr-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:6px 14px 4px;}
+.tr-stat{background:linear-gradient(180deg,rgba(20,28,50,.85),rgba(10,14,28,.85));
+  border:1px solid rgba(70,140,255,.22);border-radius:14px;padding:9px 6px;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.3);}
+.tr-stat-v{display:block;font-weight:900;font-size:20px;line-height:1;color:#fff;}
+.tr-stat-l{display:block;margin-top:4px;font-size:9px;letter-spacing:.13em;color:#8fa5c8;font-weight:800;}
+.tr-stat.tr-score{border-color:rgba(255,170,40,.55);box-shadow:0 0 24px rgba(255,150,40,.18);}
+.tr-stat.tr-score .tr-stat-v{color:#ffcf6a;text-shadow:0 0 18px rgba(255,170,40,.55);font-size:24px;}
+.tr-stat.tr-avgbox{border-color:rgba(120,255,200,.3);}
+.tr-stat.tr-avgbox .tr-stat-v{color:#8affd0;}
+.tr-target{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:4px;}
+.tr-target-ring{width:min(46vw,190px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;position:relative;
+  background:radial-gradient(circle at 50% 42%, rgba(60,140,255,.28), rgba(10,16,34,.9) 70%);
+  border:3px solid rgba(90,180,255,.5);box-shadow:0 0 44px rgba(60,150,255,.4),inset 0 0 40px rgba(60,150,255,.25);
+  animation:trPulse 2.4s ease-in-out infinite;}
+@keyframes trPulse{0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(60,150,255,.35),inset 0 0 36px rgba(60,150,255,.22);}
+  50%{transform:scale(1.04);box-shadow:0 0 60px rgba(90,180,255,.6),inset 0 0 44px rgba(90,180,255,.35);}}
+.tr-target-ring.tr-flash{animation:trHitFlash .5s ease;}
+@keyframes trHitFlash{0%{box-shadow:0 0 70px rgba(120,255,170,.9),inset 0 0 60px rgba(120,255,170,.6);border-color:#7dffb0;}100%{}}
+.tr-target-num{font-weight:900;font-size:clamp(56px,17vw,96px);line-height:1;color:#fff;text-shadow:0 0 26px rgba(120,190,255,.8);}
+.tr-target-cue{font-weight:800;letter-spacing:.16em;font-size:13px;color:#9fd0ff;text-transform:uppercase;}
+.tr-target-sub{font-weight:800;letter-spacing:.1em;font-size:11px;color:#ffb0d8;margin-top:-4px;}
+.tr-pips{display:flex;justify-content:center;gap:10px;padding:4px 0 8px;}
+.tr-pip{width:52px;height:30px;border-radius:9px;border:1px solid rgba(120,160,255,.3);background:rgba(15,22,42,.7);
+  display:grid;place-items:center;font-weight:900;font-size:11px;letter-spacing:.06em;color:#7f93b8;}
+.tr-pip.tr-hit{color:#08130b;border-color:#6fe0a0;background:linear-gradient(180deg,#8dffbe,#38d67f);}
+.tr-pip.tr-miss{color:#ffd0dc;border-color:rgba(255,90,130,.5);background:rgba(120,20,50,.5);}
+.tr-pad{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:2px 14px;}
+.tr-pad button{border-radius:14px;border:1px solid rgba(90,150,255,.3);color:#eaf2ff;font-weight:900;font-size:14px;
+  letter-spacing:.05em;padding:16px 4px 12px;background:linear-gradient(180deg,rgba(30,42,72,.95),rgba(16,22,40,.95));
+  box-shadow:0 5px 16px rgba(0,0,0,.35);display:flex;flex-direction:column;align-items:center;gap:3px;transition:transform .08s,box-shadow .12s;}
+.tr-pad button small{font-size:11px;font-weight:800;color:#9fd0ff;opacity:.9;}
+.tr-pad button:active{transform:translateY(2px) scale(.97);}
+.tr-pad button[data-sec="miss"]{border-color:rgba(255,90,130,.45);background:linear-gradient(180deg,rgba(70,26,44,.95),rgba(38,14,26,.95));color:#ff9fbe;}
+.tr-pad button[data-sec="single"]{box-shadow:0 0 16px rgba(90,150,255,.2);}
+.tr-pad button[data-sec="double"]{border-color:rgba(120,255,200,.4);}
+.tr-pad button[data-sec="double"] small{color:#8affd0;}
+.tr-pad button[data-sec="treble"]{border-color:rgba(255,170,40,.55);box-shadow:0 0 18px rgba(255,150,40,.22);}
+.tr-pad button[data-sec="treble"] small{color:#ffcf6a;}
+.tr-actions{display:flex;gap:10px;padding:10px 14px calc(12px + env(safe-area-inset-bottom));}
+.tr-actions button{flex:1;border-radius:13px;padding:13px 8px;font-weight:900;letter-spacing:.08em;font-size:12px;
+  border:1px solid rgba(120,160,255,.3);background:rgba(18,26,46,.9);color:#cfe0ff;}
+.tr-actions .tr-end{border-color:rgba(255,170,40,.5);color:#ffcf6a;}
+.tr-actions .tr-undo:disabled{opacity:.4;}
+.tr-progress{display:flex;gap:3px;align-items:flex-end;height:34px;padding:0 14px 6px;overflow-x:auto;}
+.tr-bar{flex:0 0 8px;min-height:3px;border-radius:3px 3px 0 0;background:linear-gradient(180deg,#5ab0ff,#2f6bff);align-self:flex-end;
+  animation:trBarIn .3s ease;}
+@keyframes trBarIn{from{height:2px;opacity:.4;}}
+/* summary */
+.tr-summary{align-items:center;justify-content:flex-start;overflow-y:auto;}
+.tr-sum-inner{width:100%;max-width:460px;margin:0 auto;padding:26px 18px calc(20px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:16px;}
+.tr-sum-title{font-weight:900;letter-spacing:.24em;font-size:15px;color:#8fd0ff;text-shadow:0 0 18px rgba(60,180,255,.6);margin-top:8px;}
+.tr-sum-hero{width:100%;text-align:center;background:linear-gradient(180deg,rgba(26,34,60,.9),rgba(12,16,32,.9));
+  border:1px solid rgba(255,170,40,.4);border-radius:20px;padding:22px 14px;box-shadow:0 0 40px rgba(255,150,40,.15);}
+.tr-sum-pts{font-weight:900;font-size:64px;line-height:1;color:#ffcf6a;text-shadow:0 0 30px rgba(255,170,40,.6);}
+.tr-sum-pts-l{font-weight:800;letter-spacing:.2em;font-size:12px;color:#9fb3d4;margin-top:2px;}
+.tr-sum-delta{margin-top:12px;font-weight:900;font-size:15px;letter-spacing:.02em;}
+.tr-sum-delta.up{color:#7dffb0;}.tr-sum-delta.down{color:#ff9fbe;}.tr-sum-delta.flat{color:#cfe0ff;}
+.tr-sum-grid{width:100%;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.tr-sum-cell{background:rgba(18,26,46,.8);border:1px solid rgba(90,150,255,.22);border-radius:14px;padding:14px 6px;text-align:center;}
+.tr-sum-cell b{display:block;font-size:22px;font-weight:900;color:#fff;}
+.tr-sum-cell span{display:block;margin-top:4px;font-size:10px;letter-spacing:.12em;color:#8fa5c8;font-weight:800;}
+.tr-sum-prog{width:100%;display:flex;gap:4px;align-items:flex-end;height:70px;padding:8px 4px;background:rgba(10,14,28,.5);border-radius:14px;border:1px solid rgba(90,150,255,.15);overflow-x:auto;}
+.tr-sum-prog .tr-bar{flex:1 1 8px;background:linear-gradient(180deg,#ffcf6a,#ff8a3c);}
+.tr-sum-note{font-size:11px;color:#8fa5c8;letter-spacing:.05em;min-height:14px;}
+.tr-sum-actions{width:100%;display:flex;gap:10px;}
+.tr-sum-actions button{flex:1;border-radius:14px;padding:15px 8px;font-weight:900;letter-spacing:.08em;font-size:13px;}
+.tr-sum-actions .tr-again{border:1px solid rgba(120,255,200,.5);background:linear-gradient(180deg,rgba(40,120,90,.6),rgba(20,60,46,.6));color:#8affd0;}
+.tr-sum-actions .tr-done{border:1px solid rgba(90,150,255,.4);background:rgba(18,26,46,.9);color:#cfe0ff;}
+.tr-confirm{position:absolute;inset:0;z-index:5;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  background:rgba(4,6,14,.86);backdrop-filter:blur(3px);}
+.tr-confirm.on{display:flex;}
+.tr-confirm-q{font-weight:900;font-size:17px;color:#fff;letter-spacing:.03em;}
+.tr-confirm-row{display:flex;gap:12px;}
+.tr-confirm-row button{border-radius:13px;padding:14px 26px;font-weight:900;letter-spacing:.06em;font-size:13px;}
+.tr-confirm-yes{border:1px solid rgba(255,90,130,.5);background:rgba(120,20,50,.6);color:#ff9fbe;}
+.tr-confirm-no{border:1px solid rgba(90,150,255,.4);background:rgba(18,26,46,.9);color:#cfe0ff;}
+.sg-soon-tag{font-size:9px;letter-spacing:.1em;padding:2px 6px;border-radius:6px;background:rgba(255,170,40,.18);color:#ffcf6a;margin-left:6px;vertical-align:middle;}
+.sg-tournament-pill.sg-pill-soon{opacity:.72;}
+</style>
+<script>
+(function(){
+  if (window.__sqTrainingV1) return; window.__sqTrainingV1 = true;
+  var TARGET_MIN = 10, TARGET_MAX = 20, LIVE_MISS_WEIGHT = 16;
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function toastMsg(m){ try{ if (typeof window.toast === 'function') window.toast(m); }catch(_){ } }
+  function getSb(){ try{ return window.sb || window.__sb || null; }catch(_){ return null; } }
+  function norm(s){ return String(s==null?'':s).trim().toLowerCase(); }
+  function el(tag, cls, html){ var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+
+  // ---------------------------------------------------------------- SETUP
+  async function openTrainingSetup(){
+    var body = document.getElementById('startGameModalBody');
+    if (!body) return;
+    var draft = { player:null, mode:null, length:null, players:[] };
+    try{ draft.players = (typeof __sqLoadPlayerStatsPlayers === 'function') ? (await __sqLoadPlayerStatsPlayers()) : []; }catch(_){ draft.players = []; }
+
+    function head(title, sub){ return '<div class="sg-tournament-intro"><div class="sg-tournament-title">'+esc(title)+'</div>'+(sub?'<div class="sg-tournament-sub">'+esc(sub)+'</div>':'')+'</div>'; }
+    function backFooter(onBack){
+      var ft = el('div','modal-footer sg-practice-footer');
+      var back = el('button','btn ms2-back','<span class="ms2-back-ar" aria-hidden="true">&#8592;</span><span class="ms2-back-txt">BACK</span>');
+      back.type = 'button'; back.onclick = function(e){ e.preventDefault(); onBack(); };
+      ft.append(back); return ft;
+    }
+    function pill(title, desc, extraCls){
+      var b = el('button', 'sg-tournament-pill' + (extraCls ? ' '+extraCls : ''));
+      b.type = 'button';
+      b.innerHTML = '<div class="sg-tournament-pill-title">'+title+'</div>' + (desc?'<div class="sg-tournament-pill-desc">'+esc(desc)+'</div>':'');
+      return b;
+    }
+
+    function renderPlayer(){
+      body.innerHTML = head('TRAINING', 'Solo practice — choose a player');
+      var wrap = el('div','sg-tournament-controls');
+      if (!draft.players.length){ wrap.append(el('div','sg-tournament-sub', 'No saved players found. Add a player first.')); }
+      draft.players.forEach(function(p){
+        var b = pill(esc(p.name), p.nickname || '');
+        b.onclick = function(){ draft.player = p; renderMode(); };
+        wrap.append(b);
+      });
+      body.append(wrap, backFooter(function(){ try{ if (typeof arrangeStartActions === 'function') arrangeStartActions(); }catch(_){ } }));
+    }
+
+    function renderMode(){
+      body.innerHTML = head('TRAINING MODE', draft.player ? draft.player.name : '');
+      var wrap = el('div','sg-tournament-controls');
+      var modes = [
+        ['select','SELECT','Pick up to 5 targets to chase — they appear at random.', false],
+        ['standard','STANDARD','Your most-missed numbers, a fresh one each go.', true],
+        ['tdb','TDB','Most-missed numbers — score trebles, doubles &amp; bull only.', false]
+      ];
+      modes.forEach(function(m){
+        var live = m[3];
+        var b = pill(m[1] + (live ? '' : ' <span class="sg-soon-tag">SOON</span>'), m[2], live ? '' : 'sg-pill-soon');
+        b.onclick = function(){ if (!live){ toastMsg(m[1] + ' mode is coming next.'); return; } draft.mode = m[0]; renderLength(); };
+        wrap.append(b);
+      });
+      body.append(wrap, backFooter(renderPlayer));
+    }
+
+    function renderLength(){
+      body.innerHTML = head('SESSION LENGTH', 'How many goes this session?');
+      var wrap = el('div','sg-tournament-controls');
+      [['10 ROUNDS',10],['15 ROUNDS',15],['UNLIMITED',0]].forEach(function(l){
+        var b = pill(l[0], '');
+        b.onclick = function(){ draft.length = l[1]; startTraining({ player:draft.player, mode:draft.mode, length:draft.length }); };
+        wrap.append(b);
+      });
+      body.append(wrap, backFooter(renderMode));
+    }
+
+    renderPlayer();
+  }
+
+  // ---------------------------------------------------------------- SCORING
+  function dartPoints(section, n){
+    if (section === 'single') return n;
+    if (section === 'double') return 2 * n;
+    if (section === 'treble') return 3 * n;
+    return 0;
+  }
+  function pickTarget(st){
+    var nums = [], weights = [], total = 0;
+    for (var n = TARGET_MIN; n <= TARGET_MAX; n++){
+      var hist = (st.histWeight[n] != null) ? st.histWeight[n] : 50;
+      var w = hist + LIVE_MISS_WEIGHT * (st.sessionMiss[n] || 0);
+      if (n === st.lastTarget) w *= 0.15; // avoid immediate repeats but keep them possible
+      w = Math.max(1, w);
+      nums.push(n); weights.push(w); total += w;
+    }
+    var r = Math.random() * total;
+    for (var i = 0; i < nums.length; i++){ r -= weights[i]; if (r <= 0) return nums[i]; }
+    return nums[nums.length - 1];
+  }
+
+  // ---------------------------------------------------------------- GAME
+  async function startTraining(cfg){
+    try{ if (typeof closeModal === 'function') closeModal('startGameModal'); }catch(_){ }
+    var sb = getSb();
+    var pkey = norm(cfg.player && cfg.player.name);
+    var st = {
+      cfg: cfg, target: null, lastTarget: null, dartsThisGo: [], go: 0,
+      totalPoints: 0, totalDarts: 0, totalHits: 0, bestGo: 0, results: [],
+      histWeight: {}, sessionMiss: {}, avg: null, finished: false, el: {}
+    };
+
+    if (sb){
+      try{
+        var rr = await sb.from('v_player_last30_target_rates').select('target_n,hit_pct').eq('player_key', pkey);
+        ((rr && rr.data) || []).forEach(function(row){
+          var n = Number(row.target_n);
+          if (n >= TARGET_MIN && n <= TARGET_MAX) st.histWeight[n] = Math.max(5, Math.min(100, 100 - Number(row.hit_pct || 0)));
+        });
+      }catch(_){ }
+      try{
+        var sm = await sb.from('v_training_player_summary').select('avg_points,avg_hit_pct,sessions').eq('player_key', pkey).eq('mode', cfg.mode);
+        if (sm && sm.data && sm.data[0]) st.avg = sm.data[0];
+      }catch(_){ }
+    }
+
+    buildGameScreen(st);
+    nextGo(st);
+  }
+
+  function buildGameScreen(st){
+    var ov = el('div','tr-overlay');
+    var lenLabel = st.cfg.length > 0 ? ('<span>/'+st.cfg.length+'</span>') : '<span> ∞</span>';
+    ov.innerHTML =
+      '<div class="tr-head">' +
+        '<button class="tr-quit" type="button" aria-label="Quit training">✕</button>' +
+        '<div class="tr-mode">'+esc((st.cfg.mode||'').toUpperCase())+' TRAINING</div>' +
+        '<div class="tr-round">GO <b class="tr-go">1</b>'+lenLabel+'</div>' +
+      '</div>' +
+      '<div class="tr-stats">' +
+        '<div class="tr-stat tr-score"><span class="tr-stat-v tr-v-score">0</span><span class="tr-stat-l">Points</span></div>' +
+        '<div class="tr-stat"><span class="tr-stat-v tr-v-hit">0%</span><span class="tr-stat-l">Hit Rate</span></div>' +
+        '<div class="tr-stat"><span class="tr-stat-v tr-v-darts">0</span><span class="tr-stat-l">Darts</span></div>' +
+        '<div class="tr-stat tr-avgbox"><span class="tr-stat-v tr-v-avg">—</span><span class="tr-stat-l">Your Avg</span></div>' +
+      '</div>' +
+      '<div class="tr-target">' +
+        '<div class="tr-target-ring"><div class="tr-target-num">–</div></div>' +
+        '<div class="tr-target-cue">GET READY</div>' +
+        '<div class="tr-target-sub"></div>' +
+      '</div>' +
+      '<div class="tr-pips">' +
+        '<div class="tr-pip" data-d="0">D1</div><div class="tr-pip" data-d="1">D2</div><div class="tr-pip" data-d="2">D3</div>' +
+      '</div>' +
+      '<div class="tr-pad">' +
+        '<button type="button" data-sec="miss">MISS</button>' +
+        '<button type="button" data-sec="single">SINGLE<small class="tr-p-single">0</small></button>' +
+        '<button type="button" data-sec="double">DOUBLE<small class="tr-p-double">0</small></button>' +
+        '<button type="button" data-sec="treble">TREBLE<small class="tr-p-treble">0</small></button>' +
+      '</div>' +
+      '<div class="tr-actions">' +
+        '<button class="tr-undo" type="button" disabled>UNDO</button>' +
+        '<button class="tr-end" type="button">'+(st.cfg.length>0?'END EARLY':'END SESSION')+'</button>' +
+      '</div>' +
+      '<div class="tr-progress"></div>' +
+      '<div class="tr-confirm"><div class="tr-confirm-q">Quit this session?</div><div class="tr-confirm-row">' +
+        '<button class="tr-confirm-yes" type="button">QUIT</button><button class="tr-confirm-no" type="button">RESUME</button>' +
+      '</div></div>';
+    document.body.appendChild(ov);
+
+    var q = function(sel){ return ov.querySelector(sel); };
+    st.el = {
+      ov: ov, go: q('.tr-go'), score: q('.tr-v-score'), hit: q('.tr-v-hit'), darts: q('.tr-v-darts'),
+      avg: q('.tr-v-avg'), ring: q('.tr-target-ring'), num: q('.tr-target-num'), cue: q('.tr-target-cue'),
+      sub: q('.tr-target-sub'), pips: ov.querySelectorAll('.tr-pip'), undo: q('.tr-undo'), progress: q('.tr-progress'),
+      pSingle: q('.tr-p-single'), pDouble: q('.tr-p-double'), pTreble: q('.tr-p-treble'), confirm: q('.tr-confirm')
+    };
+    if (st.avg && st.avg.avg_points != null) st.el.avg.textContent = String(st.avg.avg_points);
+
+    ov.querySelectorAll('.tr-pad button').forEach(function(b){
+      b.onclick = function(){ recordDart(st, b.dataset.sec); };
+    });
+    st.el.undo.onclick = function(){ undoDart(st); };
+    q('.tr-end').onclick = function(){ if (!st.results.length && !st.dartsThisGo.length){ endSession(st); return; } endSession(st); };
+    q('.tr-quit').onclick = function(){ if (!st.results.length && !st.dartsThisGo.length){ closeTraining(st); return; } st.el.confirm.classList.add('on'); };
+    q('.tr-confirm-yes').onclick = function(){ closeTraining(st); };
+    q('.tr-confirm-no').onclick = function(){ st.el.confirm.classList.remove('on'); };
+    ov.tabIndex = -1;
+    ov.addEventListener('keydown', function(e){ if (e.key === 'Escape'){ e.stopPropagation(); q('.tr-quit').click(); } });
+    setTimeout(function(){ try{ ov.focus(); }catch(_){ } }, 30);
+  }
+
+  function nextGo(st){
+    if (st.finished) return;
+    var t = pickTarget(st);
+    st.target = t; st.lastTarget = t; st.dartsThisGo = [];
+    var e = st.el;
+    e.go.textContent = String(st.go + 1);
+    e.num.textContent = String(t);
+    e.cue.textContent = 'HIT THE ' + t;
+    e.sub.textContent = '';
+    e.pSingle.textContent = String(dartPoints('single', t));
+    e.pDouble.textContent = String(dartPoints('double', t));
+    e.pTreble.textContent = String(dartPoints('treble', t));
+    e.pips.forEach(function(p){ p.className = 'tr-pip'; p.textContent = 'D' + (Number(p.dataset.d) + 1); });
+    e.undo.disabled = true;
+  }
+
+  function recordDart(st, section){
+    if (st.finished || st.dartsThisGo.length >= 3) return;
+    var n = st.target;
+    var pts = dartPoints(section, n);
+    var hit = section !== 'miss';
+    st.dartsThisGo.push({ section: section, points: pts, hit: hit });
+    st.totalDarts++; st.totalPoints += pts;
+    if (hit){ st.totalHits++; } else { st.sessionMiss[n] = (st.sessionMiss[n] || 0) + 1; }
+    paintDart(st, st.dartsThisGo.length - 1, section, pts);
+    updateLive(st);
+    st.el.undo.disabled = false;
+    if (hit){ st.el.ring.classList.remove('tr-flash'); void st.el.ring.offsetWidth; st.el.ring.classList.add('tr-flash'); }
+    if (st.dartsThisGo.length >= 3){ st.el.undo.disabled = true; setTimeout(function(){ finishGo(st); }, 480); }
+  }
+
+  function undoDart(st){
+    if (st.finished || !st.dartsThisGo.length) return;
+    var d = st.dartsThisGo.pop();
+    st.totalDarts--; st.totalPoints -= d.points;
+    if (d.hit){ st.totalHits--; } else { st.sessionMiss[st.target] = Math.max(0, (st.sessionMiss[st.target] || 0) - 1); }
+    var idx = st.dartsThisGo.length;
+    var pip = st.el.pips[idx]; if (pip){ pip.className = 'tr-pip'; pip.textContent = 'D' + (idx + 1); }
+    updateLive(st);
+    st.el.undo.disabled = st.dartsThisGo.length === 0;
+  }
+
+  function paintDart(st, idx, section, pts){
+    var pip = st.el.pips[idx]; if (!pip) return;
+    if (section === 'miss'){ pip.className = 'tr-pip tr-miss'; pip.textContent = 'MISS'; }
+    else { pip.className = 'tr-pip tr-hit'; pip.textContent = (section === 'single' ? 'S' : section === 'double' ? 'D' : 'T') + '·' + pts; }
+  }
+
+  function updateLive(st){
+    st.el.score.textContent = String(st.totalPoints);
+    st.el.darts.textContent = String(st.totalDarts);
+    st.el.hit.textContent = (st.totalDarts ? Math.round((st.totalHits / st.totalDarts) * 100) : 0) + '%';
+  }
+
+  function finishGo(st){
+    if (st.finished) return;
+    var goPts = st.dartsThisGo.reduce(function(a, d){ return a + d.points; }, 0);
+    var goHits = st.dartsThisGo.filter(function(d){ return d.hit; }).length;
+    st.results.push({ target: st.target, section: 'number', darts: st.dartsThisGo.map(function(d){ return d.section; }), hits: goHits, points: goPts });
+    if (goPts > st.bestGo) st.bestGo = goPts;
+    st.go++;
+    addBar(st.el.progress, goPts);
+    if (st.cfg.length > 0 && st.go >= st.cfg.length){ endSession(st); return; }
+    nextGo(st);
+  }
+
+  function addBar(container, pts, max){
+    if (!container) return;
+    var b = el('div','tr-bar');
+    var h = Math.max(3, Math.min(34, (pts / (max || 60)) * 34));
+    b.style.height = h + 'px';
+    container.appendChild(b);
+    container.scrollLeft = container.scrollWidth;
+  }
+
+  async function endSession(st){
+    if (st.finished) return;
+    st.finished = true;
+    var hitPct = st.totalDarts ? Math.round((st.totalHits / st.totalDarts) * 1000) / 10 : 0;
+    var saveResult = await saveSession(st, hitPct);
+    showSummary(st, hitPct, saveResult);
+  }
+
+  async function saveSession(st, hitPct){
+    var sb = getSb();
+    if (!sb) return { saved: false, reason: 'offline' };
+    if (!st.results.length) return { saved: false, reason: 'empty' };
+    try{
+      var payload = {
+        player_name: st.cfg.player.name, mode: st.cfg.mode, length: st.cfg.length,
+        rounds_played: st.go, config: {}, results: st.results,
+        total_points: st.totalPoints, total_darts: st.totalDarts, total_hits: st.totalHits, hit_pct: hitPct
+      };
+      var res = await sb.from('training_sessions').insert(payload);
+      if (res && res.error) throw res.error;
+      return { saved: true };
+    }catch(e){ try{ console.warn('[SQ] training save failed', e); }catch(_){ } return { saved: false, reason: 'error' }; }
+  }
+
+  function showSummary(st, hitPct, saveResult){
+    var ov = st.el.ov;
+    var avgPts = (st.avg && st.avg.avg_points != null) ? Number(st.avg.avg_points) : null;
+    var deltaHtml = '', deltaCls = 'flat';
+    if (avgPts == null){ deltaHtml = 'First session — this is your benchmark!'; }
+    else { var d = st.totalPoints - avgPts; deltaCls = d > 0 ? 'up' : (d < 0 ? 'down' : 'flat');
+      deltaHtml = (d > 0 ? '▲ +' + d : d < 0 ? '▼ ' + d : '± 0') + ' vs your average (' + avgPts + ')'; }
+    var maxGo = st.results.reduce(function(m, r){ return Math.max(m, r.points); }, 0) || 60;
+    var bars = st.results.map(function(r){ var h = Math.max(4, Math.min(62, (r.points / maxGo) * 62)); return '<div class="tr-bar" style="height:'+h+'px"></div>'; }).join('');
+    var note = saveResult.saved ? 'Saved to your practice stats.' : (saveResult.reason === 'offline' ? 'Offline — session not saved.' : saveResult.reason === 'empty' ? '' : 'Could not save this session.');
+
+    var inner = el('div','tr-sum-inner');
+    inner.innerHTML =
+      '<div class="tr-sum-title">SESSION COMPLETE</div>' +
+      '<div class="tr-sum-hero"><div class="tr-sum-pts">'+st.totalPoints+'</div><div class="tr-sum-pts-l">TOTAL POINTS</div>' +
+        '<div class="tr-sum-delta '+deltaCls+'">'+deltaHtml+'</div></div>' +
+      '<div class="tr-sum-grid">' +
+        '<div class="tr-sum-cell"><b>'+hitPct+'%</b><span>HIT RATE</span></div>' +
+        '<div class="tr-sum-cell"><b>'+st.go+'</b><span>GOES</span></div>' +
+        '<div class="tr-sum-cell"><b>'+st.bestGo+'</b><span>BEST GO</span></div>' +
+      '</div>' +
+      '<div class="tr-sum-prog">'+bars+'</div>' +
+      '<div class="tr-sum-note">'+esc(note)+'</div>' +
+      '<div class="tr-sum-actions"><button class="tr-again" type="button">PLAY AGAIN</button><button class="tr-done" type="button">DONE</button></div>';
+    ov.className = 'tr-overlay tr-summary';
+    ov.innerHTML = '';
+    ov.appendChild(inner);
+    inner.querySelector('.tr-again').onclick = function(){ try{ ov.remove(); }catch(_){ } startTraining(st.cfg); };
+    inner.querySelector('.tr-done').onclick = function(){ closeTraining(st); };
+  }
+
+  function closeTraining(st){
+    try{ st.el.ov.remove(); }catch(_){ try{ document.querySelectorAll('.tr-overlay').forEach(function(x){ x.remove(); }); }catch(__){ } }
+    try{ if (typeof show === 'function') show('details'); }catch(_){ }
+  }
+
+  // ---------------------------------------------------------------- BUTTON
+  function bindTrainingButton(){
+    var b = document.getElementById('trainingBtn');
+    if (!b) return;
+    b.classList.remove('disabled'); b.disabled = false; b.setAttribute('aria-disabled', 'false');
+    try{ var soon = b.querySelector('.sg-opt-soon'); if (soon){ soon.textContent = 'LIVE'; } }catch(_){ }
+    try{ var desc = b.querySelector('.sg-opt-desc'); if (desc){ desc.textContent = 'SOLO PRACTICE — YOUR MOST-MISSED TARGETS'; } }catch(_){ }
+    b.onclick = function(e){ if (e){ e.preventDefault && e.preventDefault(); e.stopImmediatePropagation && e.stopImmediatePropagation(); } openTrainingSetup(); };
+  }
+  window.__sqOpenTrainingSetup = openTrainingSetup;
+
+  var _arr = window.arrangeStartActions;
+  if (typeof _arr === 'function' && !_arr.__sqTrainingWrapped){
+    window.arrangeStartActions = function(){ var r = _arr.apply(this, arguments); setTimeout(bindTrainingButton, 0); return r; };
+    window.arrangeStartActions.__sqTrainingWrapped = true;
+    try{ arrangeStartActions = window.arrangeStartActions; }catch(_){ }
+  }
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(bindTrainingButton, 90); });
+  setTimeout(bindTrainingButton, 90);
+})();
+</script>
+<!-- <<< PATCH:TRAINING_MODE_V1 END -->
+
 </body>
 </html>
