@@ -33633,8 +33633,13 @@ function __sqShowGameLoadOverlay(msg){
     if (window.__sqGameLoadHideT) { clearTimeout(window.__sqGameLoadHideT); window.__sqGameLoadHideT = null; }
 
     ov.classList.remove('sq-hide');
-    ov.classList.add('isOn');
     ov.setAttribute('aria-hidden','false');
+    // Appear instantly (no fade-in) so the underlying setup page can never show
+    // through a semi-transparent overlay; the fade-out on hide is preserved.
+    ov.style.transition = 'none';
+    ov.classList.add('isOn');
+    void ov.offsetWidth; // force the opaque state to apply before restoring transition
+    ov.style.transition = '';
   }catch(_){}
 }
 function __sqHideGameLoadOverlay(){
@@ -33645,7 +33650,11 @@ function __sqHideGameLoadOverlay(){
     const now = (performance && performance.now) ? performance.now() : Date.now();
     const t0 = window.__sqGameLoadShownAt || 0;
     const elapsed = now - t0;
-    const minMs = 3000;
+    // Floor only long enough to avoid a jarring instant flash — the overlay is
+    // always held until buildEverythingChunked() finishes anyway, so this is a
+    // minimum, not a fixed wait. (Was 3000ms, which made the live game appear to
+    // "open a couple of seconds later" even though it was ready almost at once.)
+    const minMs = 450;
     const wait = Math.max(0, minMs - elapsed);
 
     if (window.__sqGameLoadHideT) { clearTimeout(window.__sqGameLoadHideT); window.__sqGameLoadHideT = null; }
