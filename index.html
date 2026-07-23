@@ -38270,6 +38270,10 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
       return openForSelected('openPlayerProgressionDialog', 'Progression not available');
     }),
 
+    mkRow('Practice Stats', 'TRAINING SESSIONS & AVERAGES', svgTarget, () => {
+      return openForSelected('__sqOpenTrainingStats', 'Practice stats not available');
+    }),
+
     mkRow('Target Hit %', 'TARGET HITS PER ROUND', svgTarget, () => {
       return openForSelected('openPlayerTargetHitDialog', 'Target Hit % not available');
     }),
@@ -53654,6 +53658,47 @@ body[data-page="details"] .wrap{
 .tr-confirm-no{border:1px solid rgba(90,150,255,.4);background:rgba(18,26,46,.9);color:#cfe0ff;}
 .sg-soon-tag{font-size:9px;letter-spacing:.1em;padding:2px 6px;border-radius:6px;background:rgba(255,170,40,.18);color:#ffcf6a;margin-left:6px;vertical-align:middle;}
 .sg-tournament-pill.sg-pill-soon{opacity:.72;}
+/* SELECT config */
+.tr-sel-config{display:flex;flex-direction:column;gap:10px;padding:2px 2px 6px;}
+.tr-sel-chosen{display:flex;flex-wrap:wrap;gap:6px;min-height:34px;align-items:center;}
+.tr-sel-hint{font-size:12px;color:#8fa5c8;}
+.tr-sel-chip{border-radius:999px;padding:7px 12px;font-weight:900;font-size:12px;letter-spacing:.04em;
+  border:1px solid rgba(120,255,200,.5);background:linear-gradient(180deg,rgba(40,120,90,.55),rgba(20,60,46,.55));color:#8affd0;}
+.tr-sel-chip span{opacity:.7;margin-left:4px;}
+.tr-sel-label{font-size:10px;letter-spacing:.16em;font-weight:800;color:#8fa5c8;margin-top:2px;}
+.tr-sel-secs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+.tr-sel-sec{border-radius:11px;padding:11px 4px;font-weight:900;font-size:12px;letter-spacing:.03em;
+  border:1px solid rgba(90,150,255,.3);background:rgba(18,26,46,.85);color:#cfe0ff;}
+.tr-sel-sec.active{border-color:rgba(255,170,40,.7);background:linear-gradient(180deg,rgba(70,52,20,.7),rgba(40,30,12,.7));color:#ffcf6a;box-shadow:0 0 14px rgba(255,150,40,.2);}
+.tr-sel-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;}
+.tr-sel-num{border-radius:11px;padding:13px 2px;font-weight:900;font-size:15px;
+  border:1px solid rgba(90,150,255,.3);background:linear-gradient(180deg,rgba(30,42,72,.9),rgba(16,22,40,.9));color:#eaf2ff;}
+.tr-sel-num:active{transform:translateY(1px);}
+.tr-sel-bull{border-color:rgba(255,90,150,.5);color:#ff9fbe;font-size:12px;}
+.tr-sum-stats{background:none;border:none;color:#8fd0ff;font-weight:800;letter-spacing:.08em;font-size:12px;padding:2px 4px;}
+/* Practice Stats modal */
+.trs-head{margin-bottom:12px;}
+.trs-head h3{font-size:1.05rem;}
+.trs-sub{font-size:12px;color:#8fa5c8;margin-top:2px;}
+.trs-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;}
+.trs-card{background:linear-gradient(180deg,rgba(24,32,56,.85),rgba(12,16,32,.85));border:1px solid rgba(70,140,255,.24);border-radius:14px;padding:10px 8px;}
+.trs-card.trs-empty-card{opacity:.7;}
+.trs-card-h{font-weight:900;letter-spacing:.1em;font-size:11px;color:#8fd0ff;text-align:center;margin-bottom:8px;}
+.trs-mini{display:flex;justify-content:space-between;align-items:baseline;padding:2px 0;}
+.trs-mini b{font-size:15px;font-weight:900;color:#fff;}
+.trs-mini span{font-size:9px;letter-spacing:.08em;color:#8fa5c8;font-weight:800;}
+.trs-none{font-size:11px;color:#8fa5c8;text-align:center;padding:12px 0;}
+.trs-list-h{font-size:10px;letter-spacing:.16em;font-weight:800;color:#8fa5c8;margin:4px 0 8px;}
+.trs-list{display:flex;flex-direction:column;gap:6px;}
+.trs-sess{display:flex;align-items:center;gap:10px;background:rgba(18,26,46,.7);border:1px solid rgba(90,150,255,.16);border-radius:11px;padding:9px 12px;}
+.trs-sess-mode{font-weight:900;font-size:10px;letter-spacing:.08em;padding:3px 7px;border-radius:6px;background:rgba(90,150,255,.14);color:#9fd0ff;min-width:66px;text-align:center;}
+.trs-sess-mode.trs-m-tdb{background:rgba(255,170,40,.16);color:#ffcf6a;}
+.trs-sess-mode.trs-m-select{background:rgba(120,255,200,.14);color:#8affd0;}
+.trs-sess-pts{font-weight:900;font-size:17px;color:#fff;flex:1;}
+.trs-sess-pts small{font-size:10px;color:#8fa5c8;font-weight:700;margin-left:2px;}
+.trs-sess-hit{font-weight:800;font-size:13px;color:#cfe0ff;}
+.trs-sess-date{font-size:11px;color:#8fa5c8;min-width:48px;text-align:right;}
+.trs-listempty{font-size:12px;color:#8fa5c8;padding:14px;text-align:center;}
 </style>
 <script>
 (function(){
@@ -53702,17 +53747,80 @@ body[data-page="details"] .wrap{
       body.innerHTML = head('TRAINING MODE', draft.player ? draft.player.name : '');
       var wrap = el('div','sg-tournament-controls');
       var modes = [
-        ['select','SELECT','Pick up to 5 targets to chase — they appear at random.', false],
-        ['standard','STANDARD','Your most-missed numbers, a fresh one each go.', true],
-        ['tdb','TDB','Most-missed numbers — score trebles, doubles &amp; bull only.', false]
+        ['select','SELECT','Pick up to 5 targets to chase — they appear at random.'],
+        ['standard','STANDARD','Your most-missed numbers, a fresh one each go.'],
+        ['tdb','TDB','Most-missed numbers — score trebles, doubles &amp; bull only.']
       ];
       modes.forEach(function(m){
-        var live = m[3];
-        var b = pill(m[1] + (live ? '' : ' <span class="sg-soon-tag">SOON</span>'), m[2], live ? '' : 'sg-pill-soon');
-        b.onclick = function(){ if (!live){ toastMsg(m[1] + ' mode is coming next.'); return; } draft.mode = m[0]; renderLength(); };
+        var b = pill(m[1], m[2]);
+        b.onclick = function(){ draft.mode = m[0]; if (m[0] === 'select') renderSelectConfig(); else renderLength(); };
         wrap.append(b);
       });
       body.append(wrap, backFooter(renderPlayer));
+    }
+
+    // SELECT config: build up to 5 targets (number + section, or bull).
+    function renderSelectConfig(){
+      if (!draft.targets) draft.targets = [];
+      var SECS = [['any','FULL'],['single','SINGLE'],['double','DOUBLE'],['treble','TREBLE']];
+      var curSec = draft._selSec || 'any';
+      body.innerHTML = head('SELECT TARGETS', 'Pick up to 5 — they appear at random');
+      var box = el('div','tr-sel-config');
+
+      // chosen chips
+      var chosen = el('div','tr-sel-chosen');
+      function targetLabel(t){ return t.kind === 'bull' ? 'BULL' : ((t.req === 'any' ? '' : (t.req === 'single' ? 'S' : t.req === 'double' ? 'D' : 'T') + ' ') + t.n); }
+      function redrawChosen(){
+        chosen.innerHTML = draft.targets.length ? '' : '<span class="tr-sel-hint">No targets yet — choose a section, then tap numbers below.</span>';
+        draft.targets.forEach(function(t, i){
+          var c = el('button','tr-sel-chip on', esc(targetLabel(t)) + ' <span aria-hidden="true">✕</span>');
+          c.type = 'button'; c.onclick = function(){ draft.targets.splice(i, 1); redrawChosen(); syncStart(); };
+          chosen.appendChild(c);
+        });
+      }
+
+      // section selector
+      var secRow = el('div','tr-sel-secs');
+      SECS.forEach(function(s){
+        var b = el('button','tr-sel-sec' + (s[0] === curSec ? ' active' : ''), s[1]);
+        b.type = 'button';
+        b.onclick = function(){ curSec = s[0]; draft._selSec = s[0]; secRow.querySelectorAll('.tr-sel-sec').forEach(function(x){ x.classList.remove('active'); }); b.classList.add('active'); };
+        secRow.appendChild(b);
+      });
+
+      // number grid + bull
+      var grid = el('div','tr-sel-grid');
+      function addTarget(t){
+        if (draft.targets.length >= 5){ toastMsg('Up to 5 targets.'); return; }
+        var k = t.kind === 'bull' ? 'bull' : (t.req + ':' + t.n);
+        if (draft.targets.some(function(x){ return (x.kind === 'bull' ? 'bull' : (x.req + ':' + x.n)) === k; })){ toastMsg('Already added.'); return; }
+        draft.targets.push(t); redrawChosen(); syncStart();
+      }
+      for (var n = 10; n <= 20; n++){
+        (function(num){
+          var b = el('button','tr-sel-num', String(num));
+          b.type = 'button'; b.onclick = function(){ addTarget({ kind:'number', n:num, req:curSec }); };
+          grid.appendChild(b);
+        })(n);
+      }
+      var bullBtn = el('button','tr-sel-num tr-sel-bull','BULL');
+      bullBtn.type = 'button'; bullBtn.onclick = function(){ addTarget({ kind:'bull', req:'bull' }); };
+      grid.appendChild(bullBtn);
+
+      box.append(chosen, el('div','tr-sel-label','SECTION'), secRow, el('div','tr-sel-label','ADD NUMBER'), grid);
+      body.append(box);
+
+      // footer: Back + Start (needs >=1 target)
+      var ft = el('div','modal-footer sg-practice-footer');
+      var back = el('button','btn ms2-back','<span class="ms2-back-ar" aria-hidden="true">&#8592;</span><span class="ms2-back-txt">BACK</span>');
+      back.type = 'button'; back.onclick = function(e){ e.preventDefault(); renderMode(); };
+      var next = el('button','btn primary','NEXT');
+      next.type = 'button';
+      function syncStart(){ next.disabled = draft.targets.length === 0; next.title = draft.targets.length ? '' : 'Add at least one target'; }
+      next.onclick = function(e){ e.preventDefault(); if (!draft.targets.length){ toastMsg('Add at least one target.'); return; } renderLength(); };
+      ft.append(back, next);
+      body.append(ft);
+      redrawChosen(); syncStart();
     }
 
     function renderLength(){
@@ -53720,7 +53828,7 @@ body[data-page="details"] .wrap{
       var wrap = el('div','sg-tournament-controls');
       [['10 ROUNDS',10],['15 ROUNDS',15],['UNLIMITED',0]].forEach(function(l){
         var b = pill(l[0], '');
-        b.onclick = function(){ draft.length = l[1]; startTraining({ player:draft.player, mode:draft.mode, length:draft.length }); };
+        b.onclick = function(){ draft.length = l[1]; startTraining({ player:draft.player, mode:draft.mode, length:draft.length, targets:(draft.targets || []).slice() }); };
         wrap.append(b);
       });
       body.append(wrap, backFooter(renderMode));
@@ -53730,24 +53838,70 @@ body[data-page="details"] .wrap{
   }
 
   // ---------------------------------------------------------------- SCORING
-  function dartPoints(section, n){
-    if (section === 'single') return n;
-    if (section === 'double') return 2 * n;
-    if (section === 'treble') return 3 * n;
-    return 0;
+  // A target is a descriptor: {kind:'number', n, req} or {kind:'bull'}.
+  // req ∈ 'any' (Standard / Select full) | 'single' | 'double' | 'treble'
+  //     | 'dt' (TDB: double or treble only).
+  var SEC_LABEL = { single:'SINGLE', double:'DOUBLE', treble:'TREBLE' };
+  function targetKey(t){ return t.kind === 'bull' ? 'bull' : ('n' + t.n + (t.req && t.req !== 'any' ? ':' + t.req : '')); }
+  function targetBig(t){ return t.kind === 'bull' ? '◎' : String(t.n); }
+  function targetCue(t){
+    if (t.kind === 'bull') return 'HIT THE BULL';
+    if (t.req === 'single') return 'SINGLE ' + t.n + ' ONLY';
+    if (t.req === 'double') return 'DOUBLE ' + t.n;
+    if (t.req === 'treble') return 'TREBLE ' + t.n;
+    if (t.req === 'dt') return 'DOUBLE / TREBLE ' + t.n;
+    return 'HIT THE ' + t.n;
   }
-  function pickTarget(st){
+  // Pad buttons for the current target (MISS always first).
+  function padSpec(t){
+    var miss = { sec:'miss', label:'MISS' };
+    if (t.kind === 'bull') return [miss, { sec:'b25', label:'25', pts:25 }, { sec:'bull', label:'BULL', pts:50 }];
+    var n = t.n;
+    var S = { sec:'single', label:'SINGLE', pts:n }, D = { sec:'double', label:'DOUBLE', pts:2*n }, T = { sec:'treble', label:'TREBLE', pts:3*n };
+    if (t.req === 'single') return [miss, S];
+    if (t.req === 'double') return [miss, D];
+    if (t.req === 'treble') return [miss, T];
+    if (t.req === 'dt') return [miss, D, T];
+    return [miss, S, D, T];
+  }
+  function dartScore(t, sec){
+    if (sec === 'miss') return { pts:0, hit:false };
+    if (t.kind === 'bull') return sec === 'bull' ? { pts:50, hit:true } : sec === 'b25' ? { pts:25, hit:true } : { pts:0, hit:false };
+    if (sec === 'single') return { pts:t.n, hit:true };
+    if (sec === 'double') return { pts:2*t.n, hit:true };
+    if (sec === 'treble') return { pts:3*t.n, hit:true };
+    return { pts:0, hit:false };
+  }
+  function pipTag(sec, pts){
+    if (sec === 'miss') return 'MISS';
+    if (sec === 'b25') return '25';
+    if (sec === 'bull') return 'BULL';
+    return (sec === 'single' ? 'S' : sec === 'double' ? 'D' : 'T') + '·' + pts;
+  }
+  // Weighted pick of a most-missed number 10-20 (historical + live session).
+  function weightedNumber(st){
     var nums = [], weights = [], total = 0;
     for (var n = TARGET_MIN; n <= TARGET_MAX; n++){
       var hist = (st.histWeight[n] != null) ? st.histWeight[n] : 50;
-      var w = hist + LIVE_MISS_WEIGHT * (st.sessionMiss[n] || 0);
-      if (n === st.lastTarget) w *= 0.15; // avoid immediate repeats but keep them possible
+      var w = hist + LIVE_MISS_WEIGHT * (st.sessionMiss['n' + n] || 0) + LIVE_MISS_WEIGHT * (st.sessionMiss['n' + n + ':dt'] || 0);
+      if (n === st.lastNumber) w *= 0.15; // avoid immediate repeats but keep them possible
       w = Math.max(1, w);
       nums.push(n); weights.push(w); total += w;
     }
     var r = Math.random() * total;
     for (var i = 0; i < nums.length; i++){ r -= weights[i]; if (r <= 0) return nums[i]; }
     return nums[nums.length - 1];
+  }
+  function pickTarget(st){
+    if (st.cfg.mode === 'select'){
+      var list = (st.cfg.targets && st.cfg.targets.length) ? st.cfg.targets : [{ kind:'number', n:20, req:'any' }];
+      var pick = list[Math.floor(Math.random() * list.length)];
+      if (list.length > 1 && targetKey(pick) === st.lastKey){ pick = list[(list.indexOf(pick) + 1) % list.length]; }
+      return { kind:pick.kind, n:pick.n, req:pick.req || 'any' };
+    }
+    if (st.cfg.mode === 'tdb' && Math.random() < 0.12) return { kind:'bull', req:'bull' };
+    var num = weightedNumber(st);
+    return { kind:'number', n:num, req: st.cfg.mode === 'tdb' ? 'dt' : 'any' };
   }
 
   // ---------------------------------------------------------------- GAME
@@ -53756,7 +53910,7 @@ body[data-page="details"] .wrap{
     var sb = getSb();
     var pkey = norm(cfg.player && cfg.player.name);
     var st = {
-      cfg: cfg, target: null, lastTarget: null, dartsThisGo: [], go: 0,
+      cfg: cfg, target: null, lastKey: null, lastNumber: null, dartsThisGo: [], go: 0,
       totalPoints: 0, totalDarts: 0, totalHits: 0, bestGo: 0, results: [],
       histWeight: {}, sessionMiss: {}, avg: null, finished: false, el: {}
     };
@@ -53802,12 +53956,7 @@ body[data-page="details"] .wrap{
       '<div class="tr-pips">' +
         '<div class="tr-pip" data-d="0">D1</div><div class="tr-pip" data-d="1">D2</div><div class="tr-pip" data-d="2">D3</div>' +
       '</div>' +
-      '<div class="tr-pad">' +
-        '<button type="button" data-sec="miss">MISS</button>' +
-        '<button type="button" data-sec="single">SINGLE<small class="tr-p-single">0</small></button>' +
-        '<button type="button" data-sec="double">DOUBLE<small class="tr-p-double">0</small></button>' +
-        '<button type="button" data-sec="treble">TREBLE<small class="tr-p-treble">0</small></button>' +
-      '</div>' +
+      '<div class="tr-pad"></div>' +
       '<div class="tr-actions">' +
         '<button class="tr-undo" type="button" disabled>UNDO</button>' +
         '<button class="tr-end" type="button">'+(st.cfg.length>0?'END EARLY':'END SESSION')+'</button>' +
@@ -53823,13 +53972,10 @@ body[data-page="details"] .wrap{
       ov: ov, go: q('.tr-go'), score: q('.tr-v-score'), hit: q('.tr-v-hit'), darts: q('.tr-v-darts'),
       avg: q('.tr-v-avg'), ring: q('.tr-target-ring'), num: q('.tr-target-num'), cue: q('.tr-target-cue'),
       sub: q('.tr-target-sub'), pips: ov.querySelectorAll('.tr-pip'), undo: q('.tr-undo'), progress: q('.tr-progress'),
-      pSingle: q('.tr-p-single'), pDouble: q('.tr-p-double'), pTreble: q('.tr-p-treble'), confirm: q('.tr-confirm')
+      pad: q('.tr-pad'), confirm: q('.tr-confirm')
     };
     if (st.avg && st.avg.avg_points != null) st.el.avg.textContent = String(st.avg.avg_points);
 
-    ov.querySelectorAll('.tr-pad button').forEach(function(b){
-      b.onclick = function(){ recordDart(st, b.dataset.sec); };
-    });
     st.el.undo.onclick = function(){ undoDart(st); };
     q('.tr-end').onclick = function(){ if (!st.results.length && !st.dartsThisGo.length){ endSession(st); return; } endSession(st); };
     q('.tr-quit').onclick = function(){ if (!st.results.length && !st.dartsThisGo.length){ closeTraining(st); return; } st.el.confirm.classList.add('on'); };
@@ -53843,31 +53989,36 @@ body[data-page="details"] .wrap{
   function nextGo(st){
     if (st.finished) return;
     var t = pickTarget(st);
-    st.target = t; st.lastTarget = t; st.dartsThisGo = [];
+    st.target = t; st.lastKey = targetKey(t); if (t.kind === 'number') st.lastNumber = t.n;
+    st.dartsThisGo = [];
     var e = st.el;
     e.go.textContent = String(st.go + 1);
-    e.num.textContent = String(t);
-    e.cue.textContent = 'HIT THE ' + t;
-    e.sub.textContent = '';
-    e.pSingle.textContent = String(dartPoints('single', t));
-    e.pDouble.textContent = String(dartPoints('double', t));
-    e.pTreble.textContent = String(dartPoints('treble', t));
+    e.num.textContent = targetBig(t);
+    if (t.kind === 'bull') e.num.style.fontSize = 'clamp(40px,12vw,68px)'; else e.num.style.fontSize = '';
+    e.cue.textContent = targetCue(t);
+    e.sub.textContent = st.cfg.mode === 'tdb' && t.kind === 'number' ? 'Trebles & doubles only' : '';
+    // Build the pad for this target.
+    var spec = padSpec(t);
+    e.pad.style.gridTemplateColumns = 'repeat(' + spec.length + ', 1fr)';
+    e.pad.innerHTML = spec.map(function(s){
+      return '<button type="button" data-sec="' + s.sec + '">' + s.label + (s.pts != null ? '<small>' + s.pts + '</small>' : '') + '</button>';
+    }).join('');
+    e.pad.querySelectorAll('button').forEach(function(b){ b.onclick = function(){ recordDart(st, b.dataset.sec); }; });
     e.pips.forEach(function(p){ p.className = 'tr-pip'; p.textContent = 'D' + (Number(p.dataset.d) + 1); });
     e.undo.disabled = true;
   }
 
   function recordDart(st, section){
     if (st.finished || st.dartsThisGo.length >= 3) return;
-    var n = st.target;
-    var pts = dartPoints(section, n);
-    var hit = section !== 'miss';
-    st.dartsThisGo.push({ section: section, points: pts, hit: hit });
-    st.totalDarts++; st.totalPoints += pts;
-    if (hit){ st.totalHits++; } else { st.sessionMiss[n] = (st.sessionMiss[n] || 0) + 1; }
-    paintDart(st, st.dartsThisGo.length - 1, section, pts);
+    var sc = dartScore(st.target, section);
+    st.dartsThisGo.push({ section: section, points: sc.pts, hit: sc.hit });
+    st.totalDarts++; st.totalPoints += sc.pts;
+    var key = targetKey(st.target);
+    if (sc.hit){ st.totalHits++; } else { st.sessionMiss[key] = (st.sessionMiss[key] || 0) + 1; }
+    paintDart(st, st.dartsThisGo.length - 1, section, sc.pts);
     updateLive(st);
     st.el.undo.disabled = false;
-    if (hit){ st.el.ring.classList.remove('tr-flash'); void st.el.ring.offsetWidth; st.el.ring.classList.add('tr-flash'); }
+    if (sc.hit){ st.el.ring.classList.remove('tr-flash'); void st.el.ring.offsetWidth; st.el.ring.classList.add('tr-flash'); }
     if (st.dartsThisGo.length >= 3){ st.el.undo.disabled = true; setTimeout(function(){ finishGo(st); }, 480); }
   }
 
@@ -53875,7 +54026,8 @@ body[data-page="details"] .wrap{
     if (st.finished || !st.dartsThisGo.length) return;
     var d = st.dartsThisGo.pop();
     st.totalDarts--; st.totalPoints -= d.points;
-    if (d.hit){ st.totalHits--; } else { st.sessionMiss[st.target] = Math.max(0, (st.sessionMiss[st.target] || 0) - 1); }
+    var key = targetKey(st.target);
+    if (d.hit){ st.totalHits--; } else { st.sessionMiss[key] = Math.max(0, (st.sessionMiss[key] || 0) - 1); }
     var idx = st.dartsThisGo.length;
     var pip = st.el.pips[idx]; if (pip){ pip.className = 'tr-pip'; pip.textContent = 'D' + (idx + 1); }
     updateLive(st);
@@ -53885,7 +54037,7 @@ body[data-page="details"] .wrap{
   function paintDart(st, idx, section, pts){
     var pip = st.el.pips[idx]; if (!pip) return;
     if (section === 'miss'){ pip.className = 'tr-pip tr-miss'; pip.textContent = 'MISS'; }
-    else { pip.className = 'tr-pip tr-hit'; pip.textContent = (section === 'single' ? 'S' : section === 'double' ? 'D' : 'T') + '·' + pts; }
+    else { pip.className = 'tr-pip tr-hit'; pip.textContent = pipTag(section, pts); }
   }
 
   function updateLive(st){
@@ -53898,7 +54050,7 @@ body[data-page="details"] .wrap{
     if (st.finished) return;
     var goPts = st.dartsThisGo.reduce(function(a, d){ return a + d.points; }, 0);
     var goHits = st.dartsThisGo.filter(function(d){ return d.hit; }).length;
-    st.results.push({ target: st.target, section: 'number', darts: st.dartsThisGo.map(function(d){ return d.section; }), hits: goHits, points: goPts });
+    st.results.push({ target: st.target.kind === 'bull' ? 'bull' : st.target.n, req: st.target.req || 'any', darts: st.dartsThisGo.map(function(d){ return d.section; }), hits: goHits, points: goPts });
     if (goPts > st.bestGo) st.bestGo = goPts;
     st.go++;
     addBar(st.el.progress, goPts);
@@ -53930,7 +54082,7 @@ body[data-page="details"] .wrap{
     try{
       var payload = {
         player_name: st.cfg.player.name, mode: st.cfg.mode, length: st.cfg.length,
-        rounds_played: st.go, config: {}, results: st.results,
+        rounds_played: st.go, config: st.cfg.mode === 'select' ? { targets: st.cfg.targets || [] } : {}, results: st.results,
         total_points: st.totalPoints, total_darts: st.totalDarts, total_hits: st.totalHits, hit_pct: hitPct
       };
       var res = await sb.from('training_sessions').insert(payload);
@@ -53962,18 +54114,68 @@ body[data-page="details"] .wrap{
       '</div>' +
       '<div class="tr-sum-prog">'+bars+'</div>' +
       '<div class="tr-sum-note">'+esc(note)+'</div>' +
+      '<button class="tr-sum-stats" type="button">VIEW PRACTICE STATS ▸</button>' +
       '<div class="tr-sum-actions"><button class="tr-again" type="button">PLAY AGAIN</button><button class="tr-done" type="button">DONE</button></div>';
     ov.className = 'tr-overlay tr-summary';
     ov.innerHTML = '';
     ov.appendChild(inner);
     inner.querySelector('.tr-again').onclick = function(){ try{ ov.remove(); }catch(_){ } startTraining(st.cfg); };
     inner.querySelector('.tr-done').onclick = function(){ closeTraining(st); };
+    inner.querySelector('.tr-sum-stats').onclick = function(){ try{ openTrainingStats(st.cfg.player.name); }catch(_){ } };
   }
 
   function closeTraining(st){
     try{ st.el.ov.remove(); }catch(_){ try{ document.querySelectorAll('.tr-overlay').forEach(function(x){ x.remove(); }); }catch(__){ } }
     try{ if (typeof show === 'function') show('details'); }catch(_){ }
   }
+
+  // ---------------------------------------------------------------- STATS AREA
+  async function openTrainingStats(playerName){
+    var sb = getSb();
+    var name = String(playerName || '').trim();
+    var overlay = el('div','modal-backdrop');
+    overlay.style.zIndex = '600000'; // sit above the training overlay (z 500000) when opened from the summary
+    var modal = el('div','modal'); modal.style.cssText = 'max-width:560px;width:94vw;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;';
+    var body = el('div','modal-body'); body.style.cssText = 'overflow-y:auto;';
+    body.innerHTML = '<div class="sq-modal-loading"><div class="sq-loadbar"><span class="sq-loadbar-fill"></span></div></div>';
+    modal.appendChild(body); overlay.appendChild(modal); document.body.appendChild(overlay);
+    try{ if (window.sqModal && window.sqModal.register) window.sqModal.register(overlay, modal, function(){ overlay.remove(); }); }catch(_){ }
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) overlay.remove(); });
+    overlay.addEventListener('keydown', function(e){ if (e.key === 'Escape') overlay.remove(); });
+    modal.tabIndex = 0; modal.focus();
+
+    if (!name){ body.innerHTML = '<p class="muted" style="padding:16px">Pick a player to see their practice stats.</p>'; return; }
+    var pkey = norm(name);
+    var summary = [], sessions = [];
+    if (sb){
+      try{ var s = await sb.from('v_training_player_summary').select('mode,sessions,avg_points,best_points,avg_hit_pct,avg_darts,last_played_at').eq('player_key', pkey); summary = (s && s.data) || []; }catch(_){ }
+      try{ var r = await sb.from('training_sessions').select('mode,total_points,hit_pct,rounds_played,created_at').eq('player_key', pkey).order('created_at', { ascending: false }).limit(20); sessions = (r && r.data) || []; }catch(_){ }
+    }
+    var MODES = [['standard','STANDARD'],['tdb','TDB'],['select','SELECT']];
+    var byMode = {}; summary.forEach(function(m){ byMode[m.mode] = m; });
+    function fmtDate(v){ try{ var d = new Date(v); return isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { day:'2-digit', month:'short' }); }catch(_){ return ''; } }
+    var cards = MODES.map(function(m){
+      var d = byMode[m[0]];
+      if (!d) return '<div class="trs-card trs-empty-card"><div class="trs-card-h">'+m[1]+'</div><div class="trs-none">No sessions yet</div></div>';
+      return '<div class="trs-card"><div class="trs-card-h">'+m[1]+'</div>' +
+        '<div class="trs-mini"><b>'+d.sessions+'</b><span>SESS</span></div>' +
+        '<div class="trs-mini"><b>'+d.avg_points+'</b><span>AVG</span></div>' +
+        '<div class="trs-mini"><b>'+d.best_points+'</b><span>BEST</span></div>' +
+        '<div class="trs-mini"><b>'+d.avg_hit_pct+'%</b><span>HIT</span></div></div>';
+    }).join('');
+    var recent = sessions.length ? sessions.map(function(x){
+      return '<div class="trs-sess"><span class="trs-sess-mode trs-m-'+esc(x.mode)+'">'+esc((x.mode || '').toUpperCase())+'</span>' +
+        '<span class="trs-sess-pts">'+x.total_points+'<small>pts</small></span>' +
+        '<span class="trs-sess-hit">'+x.hit_pct+'%</span>' +
+        '<span class="trs-sess-date">'+fmtDate(x.created_at)+'</span></div>';
+    }).join('') : '<div class="trs-listempty">No practice sessions yet. Play a Training session to start your history.</div>';
+    var offNote = sb ? '' : '<div class="trs-listempty">Offline — practice stats unavailable.</div>';
+    body.innerHTML =
+      '<div class="trs-head"><h3 style="margin:0">🎯 Practice Stats</h3><div class="trs-sub">'+esc(name)+' · training only, separate from game stats</div></div>' +
+      '<div class="trs-cards">'+cards+'</div>' +
+      '<div class="trs-list-h">RECENT SESSIONS</div><div class="trs-list">'+(offNote || recent)+'</div>';
+  }
+  window.__sqOpenTrainingStats = openTrainingStats;
 
   // ---------------------------------------------------------------- BUTTON
   function bindTrainingButton(){
