@@ -25574,6 +25574,13 @@ function __sqV3TotalFor(p){
   return t;
 }
 
+// Shared per-player accent colour used for BOTH the name text and the race line,
+// so a player's name always matches their line on the chart.
+function __sqV3PlayerColor(i){
+  const PAL = ['#ff8a3c', '#4a90ff', '#2fd06b', '#b06bff'];
+  return (state.players && state.players[i] && state.players[i].color) || PAL[i % PAL.length];
+}
+
 function __sqV3RoundThrown(entry){
   return !!(entry && entry.darts && entry.darts.some(d => d));
 }
@@ -26193,9 +26200,8 @@ function __sqV3RaceFrame(){
         ctx.fillText('HS', Math.min(tip[0] + 3, cssW - 16), tip[1] - 2);
       }
     }
-    // player lines
-    const V3_LINE_COLORS = ['#ff8a3c', '#4a90ff', '#2fd06b', '#b06bff'];
-    const colors = Array.from({ length: NP }, (_, i) => (state.players[i] && state.players[i].color) || V3_LINE_COLORS[i % V3_LINE_COLORS.length]);
+    // player lines (same colours as each player's NAME on their pill)
+    const colors = Array.from({ length: NP }, (_, i) => __sqV3PlayerColor(i));
     series.forEach((pts, pi) => {
       const P = []; for (let i = 0; i < pts.length; i++) if (pts[i] != null) P.push([X(i), Y(pts[i])]);
       if (!P.length) return;
@@ -26412,6 +26418,7 @@ function __sqLiveV3Render(){
   const playerCard = (i, area) => {
     const active = i === cp;
     const lr = i % 2 === 0 ? 'p1' : 'p2';               // left column = p1, right = p2
+    const col = __sqV3PlayerColor(i);                   // name colour == race line colour
     const __lvl = (window.__sqV3Levels || {})[String(pName(i)).trim().toLowerCase()];
     const lvlChip = __lvl ? `<span class="v3-lvl">LV ${__lvl}</span>` : '';
     const avg = playerAverages(i);
@@ -26422,7 +26429,7 @@ function __sqLiveV3Render(){
       <div class="v3-card ${active ? 'active' : 'waiting'} ${lr}">
         <div class="v3-card-sheen" aria-hidden="true"></div>
         <div class="v3-cardtop">${winDots(i)}${lvlChip}</div>
-        <div class="v3-name">${escV3(pName(i).split(' ')[0].toUpperCase())}</div>
+        <div class="v3-name" style="color:${col}${active ? `;text-shadow:0 0 18px ${col}59` : ''}">${escV3(pName(i).split(' ')[0].toUpperCase())}</div>
         <div class="v3-total ${totalRecClass(i)}">${totals[i]}</div>
         ${diffBadge(i)}
         <div class="v3-foot ${lr}">
