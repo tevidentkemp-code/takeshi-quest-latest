@@ -5668,10 +5668,10 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-race{ position:absolute; inset:0; width:100%; height:100%; display:block; }
 .v3-side{ display:flex; flex-direction:column; min-width:0; }
 
-/* Games-won pill above each card */
-.v3-windots-row{
-  display:flex; justify-content:center; align-items:center;
-  min-height:22px; margin-bottom:6px; flex:0 0 auto;
+/* Games-won pill now sits at the TOP of each card (arrow + crown removed) */
+.v3-cardtop{
+  display:flex; justify-content:center; align-items:center; gap:6px;
+  min-height:22px; margin-bottom:4px; flex:0 0 auto;
 }
 .v3-wins{
   display:inline-flex; align-items:center; gap:7px;
@@ -5698,10 +5698,12 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
   border:1.5px solid rgba(255,255,255,.10);
   padding: 8px 9px 9px;
   display:flex; flex-direction:column; align-items:center;
-  min-width:0; flex: 0 0 auto; overflow:hidden;
+  min-width:0; flex: 1 1 auto; overflow:hidden;
   box-shadow: 0 10px 26px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.05);
   transition: border-color .2s ease, box-shadow .2s ease;
 }
+/* the footer (rounds + averages) sticks to the bottom of the pill */
+.v3-foot{ margin-top:auto; }
 /* Sharp corners on the screen-facing edge, rounded on the inside */
 .v3-card.p1{ border-radius: 3px 16px 16px 3px; }
 .v3-card.p2{ border-radius: 16px 3px 3px 16px; }
@@ -5812,9 +5814,9 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 
 /* ---------------- Centre column ---------------- */
 .v3-centre{ display:flex; flex-direction:column; gap:9px; min-width:0; }
-/* Dart indicator + ROUND SCORE are grouped and nudged down at runtime so the
-   score number lines up with the player total numbers either side. */
-.v3-ctop{ display:flex; flex-direction:column; gap:9px; flex:0 0 auto; }
+/* DART box sits flush with the top of the pills; the ROUND SCORE box grows to
+   fill the rest so its bottom lines up with the bottom of the pills. */
+.v3-ctop{ display:flex; flex-direction:column; gap:9px; flex:1 1 auto; }
 .v3-dartbox{
   border-radius:12px; background: var(--v3-panel); border:1px solid var(--v3-line);
   padding:8px; text-align:center; flex:0 0 auto;
@@ -5838,7 +5840,7 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
   background: linear-gradient(165deg,#1a2130 0%,#0b0f18 100%);
   border:1px solid rgba(255,255,255,.12);
   padding: 18px 10px 20px; text-align:center;
-  flex:0 0 auto;
+  flex:1 1 auto;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 10px 26px rgba(0,0,0,.4);
 }
@@ -5847,17 +5849,6 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-scorebox > *{ position:relative; z-index:1; }
 .v3-sb-lab{ font-size:12px; font-weight:900; letter-spacing:.2em; color:rgba(214,222,240,.78); }
 .v3-sb-num{ font-size: clamp(56px, 19vw, 84px); font-weight:900; color:#fff; line-height:1; margin-top:5px; letter-spacing:-.02em; text-shadow:0 2px 22px rgba(0,0,0,.55); }
-/* Awaiting-first-dart: a radar "ping" ring + the box breathes + READY pulses. */
-.v3-sb-ring{ position:absolute; left:50%; top:54%; width:74px; height:74px; margin:-37px 0 0 -37px; border-radius:50%;
-  border:2px solid rgba(255,106,0,.7); opacity:0; z-index:0; pointer-events:none; }
-.v3-scorebox.awaiting .v3-sb-ring{ animation:v3SbPing 1.5s ease-out infinite; }
-.v3-scorebox.awaiting .v3-sb-glow{ background: radial-gradient(96% 82% at 50% 50%, rgba(255,106,0,.22), transparent 66%); }
-.v3-scorebox.awaiting{ animation:v3SbBreathe 1.9s ease-in-out infinite; }
-.v3-scorebox.awaiting .v3-sb-lab{ color:var(--v3-orange); text-shadow:0 0 12px rgba(255,106,0,.6); }
-.v3-scorebox.awaiting .v3-sb-num{ animation:v3SbReady 1.6s ease-in-out infinite; }
-@keyframes v3SbPing{ 0%{ transform:scale(.45); opacity:.9; } 70%{ opacity:0; } 100%{ transform:scale(1.7); opacity:0; } }
-@keyframes v3SbBreathe{ 0%,100%{ box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 10px 26px rgba(0,0,0,.4), 0 0 0 rgba(255,106,0,0); } 50%{ box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 10px 26px rgba(0,0,0,.4), 0 0 24px rgba(255,106,0,.4); } }
-@keyframes v3SbReady{ 0%,100%{ opacity:.5; transform:scale(.96); } 50%{ opacity:.95; transform:scale(1.02); } }
 .v3-sb-marks{ font-size:17px; font-weight:900; color:rgba(214,222,240,.75); margin-top:6px; letter-spacing:.1em; }
 .v3-sb-marks i{ font-style:normal; color:rgba(214,222,240,.34); }
 
@@ -5868,7 +5859,6 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-edge-form{
   width:14px; align-self:stretch;                  /* as tall as the player pill it flanks */
   display:flex; flex-direction:column; align-items:center; gap:4px; pointer-events:none;
-  padding-top:28px;                                /* drop past the GAMES pill so it aligns with the card */
 }
 .v3-ef-cap{ font-size:7px; font-weight:900; letter-spacing:.18em; color:rgba(214,222,240,.45); writing-mode:vertical-rl; text-orientation:upright; letter-spacing:0; line-height:1; }
 .v3-ef-track{
@@ -6131,7 +6121,7 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-dot-out{ animation: v3DotOut .35s ease-out both; }
 
 @media (prefers-reduced-motion: reduce){
-  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-card-hit, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly, .v3-dmd-bezel::before, .v3-dmd-attract::before, .v3-windot-win, .v3-combo-pop, .v3-avg.rec-record .v3-avg-val, .v3-scorebox.awaiting, .v3-scorebox.awaiting .v3-sb-ring, .v3-scorebox.awaiting .v3-sb-num{ animation:none !important; transition:none !important; }
+  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-card-hit, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly, .v3-dmd-bezel::before, .v3-dmd-attract::before, .v3-windot-win, .v3-combo-pop, .v3-avg.rec-record .v3-avg-val{ animation:none !important; transition:none !important; }
   #v3fxLayer{ display:none !important; }
 }
 
@@ -26397,19 +26387,16 @@ function __sqLiveV3Render(){
 
   const playerCard = (i) => {
     const active = i === cp;
-    const crown = i === leader ? '<span class="v3-crown" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 8l4.5 3.5L12 5l4.5 6.5L21 8l-1.6 10.2a1 1 0 0 1-1 .8H5.6a1 1 0 0 1-1-.8L3 8z"/></svg></span>' : '';
     const __lvl = (window.__sqV3Levels || {})[String(pName(i)).trim().toLowerCase()];
     const lvlChip = __lvl ? `<span class="v3-lvl">LV ${__lvl}</span>` : '';
     const avg = playerAverages(i);
     const nmLower = String(pName(i)).trim().toLowerCase();
     const a3cls = __sqV3AvgRecClass('a3', avg.a3n, avg.done, nmLower);
     const gacls = __sqV3AvgRecClass('ga', avg.gan, avg.done, nmLower);
-    const dart = `<span class="v3-dartico" aria-hidden="true"><svg viewBox="0 0 60 16" fill="none"><path d="M2 8h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="12" y="4.6" width="15" height="6.8" rx="3.4" fill="currentColor"/><path d="M15.5 5.2v5.6M19 5.2v5.6M22.5 5.2v5.6" stroke="rgba(0,0,0,.4)" stroke-width="1.1" stroke-linecap="round"/><path d="M27 8l6-.001" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M33 8 54 1.5 47 8 54 14.5Z" fill="currentColor"/><path d="M33 8 49 3.4 44.5 8 49 12.6Z" fill="rgba(0,0,0,.32)"/></svg></span>`;
     return `<div class="v3-side ${i === 0 ? 'p1' : 'p2'}">
-      <div class="v3-windots-row">${winDots(i)}</div>
       <div class="v3-card ${active ? 'active' : 'waiting'} ${i === 0 ? 'p1' : 'p2'}">
         <div class="v3-card-sheen" aria-hidden="true"></div>
-        <div class="v3-dartrow">${crown}${dart}${lvlChip}</div>
+        <div class="v3-cardtop">${winDots(i)}${lvlChip}</div>
         <div class="v3-name">${escV3(pName(i).split(' ')[0].toUpperCase())}</div>
         <div class="v3-total ${totalRecClass(i)}">${totals[i]}</div>
         ${diffBadge(i)}
@@ -26434,9 +26421,6 @@ function __sqLiveV3Render(){
     </div>`;
 
   const curEntry = entryOf(cp, r);
-  // Fresh round = the active player hasn't thrown yet -> the centre box shows a
-  // "READY" ping instead of a dead 0.
-  const freshRound = !(curEntry && curEntry.darts && curEntry.darts.some(d => d != null)) && !state.finished;
   // All three dots start lit; one goes out (right-to-left) after each throw.
   const dartDots = [0,1,2].map(k => `<i class="${k < (3 - dart) ? 'on' : ''}"></i>`).join('');
   const roundDef = ROUNDS[r] || {};
@@ -26464,10 +26448,9 @@ function __sqLiveV3Render(){
               <div class="v3-dart-lab">DART ${Math.min(dart + 1, 3)} OF 3</div>
               <div class="v3-dartdots">${dartDots}</div>
             </div>
-            <div class="v3-scorebox ${freshRound ? 'awaiting' : ''}">
+            <div class="v3-scorebox">
               <div class="v3-sb-glow" aria-hidden="true"></div>
-              <div class="v3-sb-ring" aria-hidden="true"></div>
-              <div class="v3-sb-lab">${freshRound ? 'READY' : 'ROUND SCORE'}</div>
+              <div class="v3-sb-lab">ROUND SCORE</div>
               <div class="v3-sb-num">${Number((curEntry && curEntry.roundTotal) || 0)}</div>
               <div class="v3-sb-marks">${__sqV3Marks(curEntry).replace(/ \/ /g, '<i>·</i>')}</div>
             </div>
@@ -26510,21 +26493,6 @@ function __sqLiveV3Render(){
     try{ if (typeof window.__sqOpenGameMenu106 === 'function') return window.__sqOpenGameMenu106(); }catch(_){ }
     try{ document.getElementById('settingsBtnGame')?.click(); }catch(_){ }
   };
-
-  // Align the centre ROUND SCORE number with the player total numbers by
-  // nudging the dart+score group down to match (screen-size / font agnostic).
-  try{
-    const ctop = panel.querySelector('.v3-ctop');
-    const sbNum = panel.querySelector('.v3-sb-num');
-    const totalEl = panel.querySelector('.v3-side.p1 .v3-total');
-    if (ctop && sbNum && totalEl){
-      ctop.style.marginTop = '0px';
-      const nc = sbNum.getBoundingClientRect();
-      const tc = totalEl.getBoundingClientRect();
-      const delta = (tc.top + tc.height / 2) - (nc.top + nc.height / 2);
-      ctop.style.marginTop = Math.max(0, Math.round(delta)) + 'px';
-    }
-  }catch(_){ }
 
   // Fire one-shot arcade animations for anything that changed this render.
   try{ __sqV3Animate(panel); }catch(_){ }
