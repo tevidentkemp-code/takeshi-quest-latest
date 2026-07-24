@@ -5579,10 +5579,10 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 /* ---------------- Top bar ---------------- */
 .v3-topbar{
   display:grid;
-  grid-template-columns: 1fr auto 1fr;   /* ROUND | TARGET (centred) | actions */
+  grid-template-columns: auto 1fr auto;   /* SOUND | DIGITAL DISPLAY | MENU */
   align-items:center;
-  gap:10px;
-  padding: 9px 8px;
+  gap:8px;
+  padding: 7px 8px;
   border-radius: 14px;
   background: var(--v3-panel);
   border:1px solid var(--v3-line);
@@ -5590,30 +5590,32 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
   margin-bottom: 10px;
   flex: 0 0 auto;
 }
-.v3-tb-cell{ text-align:center; }
-.v3-tb-cell span{
-  display:block; font-size:10px; font-weight:800; letter-spacing:.18em;
-  color:var(--v3-muted); margin-bottom:1px;
+/* The whole middle is one digital readout: shows TARGET when idle, and
+   trophies / combos / callouts with an arcade flip-in animation. */
+.v3-tb-display{
+  position:relative; min-width:0; overflow:hidden;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  height:44px; border-radius:11px; padding:2px 10px;
+  background: linear-gradient(180deg, rgba(8,11,20,.7), rgba(5,7,13,.7));
+  border:1px solid rgba(120,150,220,.14);
+  box-shadow: inset 0 0 18px rgba(0,0,0,.6);
 }
-.v3-tb-cell b{ font-size:20px; font-weight:900; color:#fff; letter-spacing:.02em; }
-.v3-tb-round{ justify-self:start; text-align:left; }
-.v3-tb-round b em{ font-style:normal; font-size:13px; font-weight:800; color:var(--v3-muted); }
-.v3-tb-target{ justify-self:center; text-align:center; position:relative; padding:0 4px; }
-.v3-tb-target b{ color:var(--v3-orange-lt); }
-.v3-tb-actions{ justify-self:end; display:flex; align-items:center; gap:8px; }
-/* Combo callout pops right over the centred TARGET slot */
-.v3-tb-combo{
-  position:absolute; inset:-5px -10px; display:flex; align-items:center; justify-content:center;
-  border-radius:11px; padding:0 8px;
-  background:linear-gradient(180deg, rgba(47,208,107,.28), rgba(18,74,44,.42));
-  border:1px solid rgba(120,255,170,.6); box-shadow:0 0 22px rgba(60,220,120,.5);
-  font-weight:900; letter-spacing:.03em; font-size:15px; color:#b6ffce; text-transform:uppercase; white-space:nowrap;
-  opacity:0; transform:scale(.6); pointer-events:none; z-index:3;
-}
-.v3-tb-combo.gold{ background:linear-gradient(180deg, rgba(255,196,60,.3), rgba(120,74,10,.45)); border-color:rgba(255,205,100,.7); box-shadow:0 0 22px rgba(255,180,50,.55); color:#ffe6b0; }
-.v3-tb-target.combo-on .v3-tb-tval{ opacity:0; }
-.v3-tb-combo.show{ animation:v3TbCombo 1.75s cubic-bezier(.2,.9,.25,1) forwards; }
-@keyframes v3TbCombo{ 0%{ opacity:0; transform:scale(.5); } 12%{ opacity:1; transform:scale(1.14); } 22%{ transform:scale(1); } 80%{ opacity:1; transform:scale(1); } 100%{ opacity:0; transform:scale(1); } }
+.v3-tb-scan{ position:absolute; inset:0; pointer-events:none; z-index:0; opacity:.5;
+  background:repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 3px); }
+.v3-tb-lab{ position:relative; z-index:1; display:block; font-size:9px; font-weight:900; letter-spacing:.22em; color:var(--v3-muted); line-height:1.1; }
+.v3-tb-val{ position:relative; z-index:1; display:block; font-size:21px; font-weight:900; letter-spacing:.03em; color:var(--v3-orange-lt); line-height:1.02; white-space:nowrap; text-shadow:0 0 14px rgba(255,138,20,.35); }
+.v3-tb-display.event .v3-tb-val{ font-size:16px; }
+.v3-tb-display.green .v3-tb-val{ color:#b6ffce; text-shadow:0 0 16px rgba(80,240,140,.7); }
+.v3-tb-display.green .v3-tb-lab{ color:rgba(120,255,170,.75); }
+.v3-tb-display.gold .v3-tb-val{ color:#ffe6b0; text-shadow:0 0 18px rgba(255,190,60,.8); }
+.v3-tb-display.gold .v3-tb-lab{ color:rgba(255,205,120,.85); }
+/* arcade flip/glitch whenever the readout content changes */
+.v3-tb-display.anim .v3-tb-val{ animation:v3TbFlip .42s cubic-bezier(.2,.9,.25,1); }
+.v3-tb-display.anim.event .v3-tb-val{ animation:v3TbPop .55s cubic-bezier(.2,.9,.25,1); }
+.v3-tb-display.anim .v3-tb-lab{ animation:v3TbLab .42s ease; }
+@keyframes v3TbFlip{ 0%{ transform:translateY(-70%) scaleY(.15); opacity:0; filter:blur(1.5px); } 55%{ transform:translateY(9%) scaleY(1.12); opacity:1; filter:blur(0); } 100%{ transform:none; } }
+@keyframes v3TbPop{ 0%{ transform:scale(.4); opacity:0; } 45%{ transform:scale(1.18); opacity:1; } 68%{ transform:scale(.96); } 100%{ transform:scale(1); } }
+@keyframes v3TbLab{ 0%{ opacity:0; letter-spacing:.5em; } 100%{ opacity:1; } }
 .v3-tb-menu{
   width:44px; height:38px; border-radius:11px; justify-self:end;
   background: rgba(255,255,255,.05); border:1px solid var(--v3-line);
@@ -5694,7 +5696,7 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
   border-radius: 16px;
   background: var(--v3-panel);
   border:1.5px solid rgba(255,255,255,.10);
-  padding: 11px 9px 10px;
+  padding: 8px 9px 9px;
   display:flex; flex-direction:column; align-items:center;
   min-width:0; flex: 0 0 auto; overflow:hidden;
   box-shadow: 0 10px 26px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.05);
@@ -5745,9 +5747,13 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-crown{ color:#ffc53d; display:inline-flex; filter:drop-shadow(0 0 5px rgba(255,197,61,.5)); }
 .v3-crown svg{ width:19px; height:19px; }
 
-.v3-dartico{ color:rgba(214,222,240,.4); margin:7px 0 4px; }
-.v3-dartico svg{ width:58px; height:15px; display:block; }
+/* Crown + go-arrow indicator share one compact row (order number removed) */
+.v3-dartrow{ display:flex; align-items:center; justify-content:center; gap:7px; min-height:19px; margin:3px 0 2px; }
+.v3-dartico{ color:rgba(214,222,240,.4); display:inline-flex; }
+.v3-dartico svg{ width:52px; height:14px; display:block; }
 .v3-card.active .v3-dartico{ color:var(--v3-orange); filter:drop-shadow(0 0 6px rgba(255,106,0,.4)); }
+.v3-dartrow .v3-crown svg{ width:17px; height:17px; }
+.v3-dartrow .v3-lvl{ margin-left:1px; }
 
 .v3-name{
   font-size: clamp(16px, 5.5vw, 25px);
@@ -5851,37 +5857,35 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
   box-shadow: inset 0 0 14px rgba(0,0,0,.85);
 }
 .v3-ef-fill{
-  position:absolute; left:0; right:0; bottom:0; height:0%;
+  position:absolute; left:0; right:0; bottom:0; height:45%;
   background:linear-gradient(180deg,#69b7ff 0%,#2f6bff 100%);
-  box-shadow:0 0 16px rgba(74,163,255,.7);
-  transition: height .45s cubic-bezier(.25,.9,.3,1), background .4s ease, box-shadow .4s ease;
+  box-shadow:0 0 16px rgba(74,163,255,.65);
+  transition: height .5s cubic-bezier(.25,.9,.3,1), background .45s ease, box-shadow .45s ease;
 }
-.v3-edge-form.p2 .v3-ef-fill{ background:linear-gradient(180deg,#7ad0ff 0%,#3a86ff 100%); box-shadow:0 0 16px rgba(90,180,255,.7); }
-/* the moving charge tip glows */
 .v3-ef-tip{ position:absolute; left:-2px; right:-2px; top:-2px; height:4px; border-radius:3px;
   background:#fff; box-shadow:0 0 10px #fff, 0 0 18px rgba(120,200,255,.9); opacity:.9; }
-/* warmer and hotter as it nears a POP */
-.v3-edge-form.warm .v3-ef-fill{ background:linear-gradient(180deg,#ffe07a 0%,#ff9a2f 100%); box-shadow:0 0 20px rgba(255,170,60,.8); }
-.v3-edge-form.hot .v3-ef-fill{ background:linear-gradient(180deg,#ffd24a 0%,#ff3d6b 100%); box-shadow:0 0 26px rgba(255,90,90,.95); }
-/* Only the LIVE player's bar pulses — the idle player's stays steady. */
-.v3-edge-form.live.hot .v3-ef-fill{ animation:v3EfHot .55s ease-in-out infinite; }
-.v3-edge-form.live .v3-ef-tip{ animation:v3EfTip 1.1s ease-in-out infinite; }
-@keyframes v3EfHot{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.4); } }
-@keyframes v3EfTip{ 0%,100%{ opacity:.55; } 50%{ opacity:1; } }
-/* LED segment ticks */
+/* COLD -> mid -> WARM -> HOT ramp (a true form reading) */
+.v3-edge-form.cold .v3-ef-fill{ background:linear-gradient(180deg,#9fe0ff 0%,#4aa8e8 100%); box-shadow:0 0 14px rgba(120,200,255,.55); }
+.v3-edge-form.cold .v3-ef-tip{ background:#e8fbff; box-shadow:0 0 10px #cdefff, 0 0 16px rgba(150,220,255,.8); }
+.v3-edge-form.warm .v3-ef-fill{ background:linear-gradient(180deg,#ffe07a 0%,#ff9a2f 100%); box-shadow:0 0 20px rgba(255,170,60,.85); }
+.v3-edge-form.warm .v3-ef-tip{ background:#fff2c8; box-shadow:0 0 10px #ffdf8a, 0 0 18px rgba(255,180,60,.9); }
+.v3-edge-form.hot .v3-ef-fill{ background:linear-gradient(180deg,#ffe14a 0%,#ff7a1e 45%,#ff2f5a 100%); box-shadow:0 0 30px rgba(255,90,60,.95); }
+.v3-edge-form.hot .v3-ef-tip{ background:#fff; box-shadow:0 0 12px #ffd24a, 0 0 22px rgba(255,90,40,1); }
+/* Only the LIVE player's bar gets the intense arcade FX. */
+.v3-edge-form.live .v3-ef-tip{ animation:v3EfTip 1s ease-in-out infinite; }
+.v3-edge-form.live.hot .v3-ef-fill{ animation:v3EfHot .5s ease-in-out infinite; }
+.v3-edge-form.live.hot .v3-ef-track{ box-shadow: inset 0 0 14px rgba(0,0,0,.85), 0 0 20px rgba(255,80,40,.5); animation:v3EfHotBox .5s ease-in-out infinite; }
+@keyframes v3EfHot{ 0%,100%{ filter:brightness(1) saturate(1); } 50%{ filter:brightness(1.5) saturate(1.3); } }
+@keyframes v3EfHotBox{ 0%,100%{ box-shadow: inset 0 0 14px rgba(0,0,0,.85), 0 0 14px rgba(255,80,40,.35); } 50%{ box-shadow: inset 0 0 14px rgba(0,0,0,.85), 0 0 26px rgba(255,90,50,.7); } }
+@keyframes v3EfTip{ 0%,100%{ opacity:.5; transform:scaleX(.9); } 50%{ opacity:1; transform:scaleX(1.15); } }
 .v3-ef-segs{ position:absolute; inset:0; z-index:2; pointer-events:none;
   background-image:repeating-linear-gradient(180deg, rgba(0,0,0,.6) 0 1.5px, transparent 1.5px 7.5%); }
 .v3-ef-track::after{ content:''; position:absolute; inset:0; z-index:3; pointer-events:none;
   background:radial-gradient(120% 40% at 50% 0%, rgba(255,255,255,.08), transparent 60%); }
-.v3-edge-form.pop .v3-ef-track{ animation:v3EfPop .6s cubic-bezier(.2,.9,.25,1); }
-@keyframes v3EfPop{ 0%{ transform:scale(1); } 26%{ transform:scaleX(1.9) scaleY(1.03); box-shadow:0 0 34px rgba(255,214,90,1); border-color:#ffe27a; } 100%{ transform:scale(1); } }
-.v3-ef-streak{ display:flex; flex-direction:column; align-items:center; min-height:12px; }
-.v3-ef-flame{ font-size:11px; line-height:1; filter:drop-shadow(0 0 5px rgba(255,140,40,.85)); }
-.v3-ef-streak b{ font-size:9px; font-weight:900; color:#ffcf6a; line-height:1; }
+.v3-ef-streak{ min-height:13px; font-size:11px; line-height:1; filter:drop-shadow(0 0 5px rgba(255,140,40,.85)); }
 @media (prefers-reduced-motion: reduce){
-  .v3-edge-form.hot .v3-ef-fill{ animation:none; }
-  .v3-edge-form.pop .v3-ef-track{ animation:none; }
-  .v3-ef-fill{ transition:height .18s linear; }
+  .v3-edge-form.live.hot .v3-ef-fill, .v3-edge-form.live.hot .v3-ef-track, .v3-edge-form.live .v3-ef-tip{ animation:none; }
+  .v3-ef-fill{ transition:height .2s linear; }
 }
 .v3-dmd-bezel{
   position:relative; flex:1; border-radius:12px; overflow:hidden;
@@ -25698,16 +25702,33 @@ function __sqV3RoundCombo(entry){
     return (window.SQ_ACH && SQ_ACH.meta) ? SQ_ACH.meta(code) : { code, name: code, icon:'🎯', tier:'gold' };
   }catch(_){ return null; }
 }
-// Combo / trophy callout — pops over the centred TARGET slot in the top bar.
-function __sqV3TopbarCombo(panel, text, gold){
+// Digital top-bar display: shows TARGET when idle, and combo/trophy callouts
+// with an arcade flip. Events are queued in window.__sqV3Disp and rendered by
+// __sqV3DisplayTick (driven each frame by the race rAF, so it self-reverts).
+function __sqV3DisplayEvent(text, gold, lab, hold){
+  const st = window.__sqV3Disp || (window.__sqV3Disp = {});
+  st.event = { text: String(text || '').toUpperCase(), gold: !!gold, lab: String(lab || '').toUpperCase(), until: performance.now() + (hold || 1750) };
+}
+function __sqV3DisplayTick(){
   try{
-    const el = (panel || document).querySelector('.v3-tb-combo'); if (!el) return;
-    const cell = el.closest('.v3-tb-target');
-    el.textContent = String(text || '').toUpperCase();
-    el.classList.toggle('gold', !!gold);
-    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
-    if (cell) cell.classList.add('combo-on');
-    clearTimeout(el._t); el._t = setTimeout(() => { try{ el.classList.remove('show'); if (cell) cell.classList.remove('combo-on'); }catch(_){ } }, 1750);
+    const disp = document.getElementById('v3TbDisplay'); if (!disp) return;
+    const st = window.__sqV3Disp || (window.__sqV3Disp = {});
+    const now = performance.now();
+    const ev = (st.event && now < st.event.until) ? st.event : null;
+    if (!ev) st.event = null;
+    const mode = ev ? (ev.gold ? 'gold' : 'green') : 'target';
+    const lab = ev ? (ev.lab || '') : 'TARGET';
+    const val = ev ? ev.text : (disp.dataset.target || '');
+    const key = mode + '|' + lab + '|' + val;
+    if (key === st.shownKey) return;
+    st.shownKey = key;
+    const labEl = disp.querySelector('.v3-tb-lab'), valEl = disp.querySelector('.v3-tb-val');
+    if (labEl) labEl.textContent = lab;
+    if (valEl) valEl.textContent = val;
+    disp.classList.toggle('gold', mode === 'gold');
+    disp.classList.toggle('green', mode === 'green');
+    disp.classList.toggle('event', mode !== 'target');
+    disp.classList.remove('anim'); void disp.offsetWidth; disp.classList.add('anim');
   }catch(_){ }
 }
 
@@ -25789,10 +25810,10 @@ function __sqV3Animate(panel){
             try{
               const ds = (b[last].darts || []);
               if (ds.length >= 3 && ds.filter(d => d && (d.kind === 'T' || d.kind === 'Triple')).length === 3){
-                __sqV3TopbarCombo(panel, 'PERFECT ROUND!', true); shown = true;
+                __sqV3DisplayEvent('PERFECT ROUND!', true, 'TROPHY'); shown = true;
               }
             }catch(_){ }
-            if (!shown){ const m = __sqV3RoundCombo(b[last]); if (m) __sqV3TopbarCombo(panel, (m.name || '') + '!', (m.tier === 'gold' || m.tier === 'legendary')); }
+            if (!shown){ const m = __sqV3RoundCombo(b[last]); if (m) __sqV3DisplayEvent((m.name || '') + '!', (m.tier === 'gold' || m.tier === 'legendary'), 'COMBO'); }
           }
         }catch(_){ }
       }
@@ -25814,7 +25835,7 @@ function __sqV3Animate(panel){
           if (dot) dot.classList.add('v3-windot-win');
           const lab = side && side.querySelector('.v3-wins-lab');
           if (lab) lab.classList.add('v3-flash');
-          try{ const nm = String((state.players[i] && (state.players[i].name || state.players[i].player)) || '').split(' ')[0]; __sqV3TopbarCombo(panel, (nm || 'PLAYER') + ' WINS!', true); }catch(_){ }
+          try{ const nm = String((state.players[i] && (state.players[i].name || state.players[i].player)) || '').split(' ')[0]; __sqV3DisplayEvent((nm || 'PLAYER') + ' WINS!', true, 'WINNER', 3200); }catch(_){ }
           __sqV3SndGame();
         }
       }
@@ -25837,58 +25858,47 @@ function __sqV3Animate(panel){
   }catch(_){ }
 }
 
-/* ---------- FORM METERS + RACE/VIDE view (presentation only) ----------
-   FORM is an arcade "in-the-zone" gauge that DRAINS with good play: every
-   on-target dart chips it down, and consecutive hits (a combo) drain it faster.
-   Empty it and you POP — the bar bursts gold, refills, and banks a 🔥 streak.
-   Computed deterministically from state.score so it survives re-renders/undo. */
+/* ---------- FORM METERS — a true HOT/COLD "form" reading ----------
+   Like a Street-Fighter momentum gauge: good shots and combos (hits in a row)
+   heat the bar UP; missed shots cool it DOWN. It never resets — it's a live
+   reading of current form. Computed deterministically from state.score so it
+   survives re-renders and undo. */
 function __sqV3FormData(p){
-  const CHARGE = 16;            // depletion units to clear the bar once
   const b = (state.score && state.score[p]) || [];
-  let du = 0, combo = 0;
+  let heat = 45, streak = 0;
   for (let ri = 0; ri < b.length; ri++){
     const e = b[ri]; if (!e || !e.darts) continue;
     for (let d = 0; d < e.darts.length; d++){
       const dart = e.darts[d];
-      if (!dart) continue;                       // not thrown yet
-      const k = dart.kind;
-      if (k === 'Miss'){ combo = 0; continue; }  // a miss breaks the combo
-      // Perfect hits (double/treble/bull) drain harder than a single.
-      const base = (k === 'T' || k === 'Triple') ? 2.3
-                 : (k === 'D' || k === 'Double') ? 1.7
-                 : (k === 'B') ? 1.9 : 1;
-      combo += 1;
-      du += base + Math.min(2.2, (combo - 1) * 0.5); // combo escalation
+      if (!dart) continue;                                   // not thrown yet
+      if (dart.kind === 'Miss'){ streak = 0; heat -= 15; }   // a miss cools the bar
+      else {
+        streak++;
+        const mult = (dart.kind === 'T' || dart.kind === 'Triple') ? 2.2
+                   : (dart.kind === 'D' || dart.kind === 'Double') ? 1.6
+                   : (dart.kind === 'B') ? 1.8 : 1;
+        heat += 6 * mult + Math.min(10, (streak - 1) * 2.2); // combos heat faster
+      }
+      heat = Math.max(0, Math.min(100, heat));
     }
   }
-  const pops = Math.floor(du / CHARGE);
-  const frac = (du - pops * CHARGE) / CHARGE;   // fraction of the current bar CHARGED
-  const fill = Math.max(0, Math.min(100, Math.round(frac * 100)));  // fills UP toward a pop
-  return { fill, pops };
+  return { heat: Math.round(heat), streak };
 }
 function __sqV3FormView(panel){
   try{
-    if (!window.__sqV3FormPrev) window.__sqV3FormPrev = {};
-    const cp = state.currentPlayer || 0;   // only the live player's bar reacts
+    const cp = state.currentPlayer || 0;   // only the live player's bar gets the intense FX
     for (let i = 0; i < 2; i++){
       const wrap = panel.querySelector('.v3-edge-form[data-p="' + i + '"]');
       if (!wrap) continue;
-      const live = (i === cp) && !state.finished;
-      wrap.classList.toggle('live', live);
+      wrap.classList.toggle('live', (i === cp) && !state.finished);
       const d = __sqV3FormData(i);
-      const prevPops = window.__sqV3FormPrev[i] || 0;
-      // On a fresh pop, briefly show the bar brimming full before it resets.
-      const justPopped = d.pops > prevPops;
-      const shownFill = justPopped ? 100 : d.fill;
       const fillEl = wrap.querySelector('.v3-ef-fill');
-      if (fillEl) fillEl.style.height = shownFill + '%';
-      wrap.classList.toggle('warm', shownFill >= 55 && shownFill < 82);
-      wrap.classList.toggle('hot', shownFill >= 82);
+      if (fillEl) fillEl.style.height = d.heat + '%';
+      wrap.classList.toggle('cold', d.heat < 28);
+      wrap.classList.toggle('warm', d.heat >= 52 && d.heat < 80);
+      wrap.classList.toggle('hot', d.heat >= 80);
       const streak = wrap.querySelector('.v3-ef-streak');
-      if (streak) streak.innerHTML = d.pops > 0 ? '<span class="v3-ef-flame">🔥</span><b>' + d.pops + '</b>' : '';
-      // Pop burst only fires for the live player (only they can charge).
-      if (justPopped && live){ wrap.classList.remove('pop'); void wrap.offsetWidth; wrap.classList.add('pop'); }
-      window.__sqV3FormPrev[i] = d.pops;
+      if (streak) streak.textContent = d.heat >= 80 ? '🔥' : (d.heat < 22 ? '❄' : '');
     }
   }catch(_){ }
 }
@@ -25896,8 +25906,15 @@ function __sqV3FormView(panel){
    One rAF loop that always targets the current #v3RaceCanvas (the panel
    re-renders each throw). Draws grid lines + per-player cumulative-score
    lines with glow, pulsing leading dots, and eases the newest segment in. */
-var __sqV3RaceState = { raf: 0, last: 0, animStart: 0, lastLen: [-1, -1] };
-function __sqV3RaceEnsure(){ if (!__sqV3RaceState.raf) __sqV3RaceState.raf = requestAnimationFrame(__sqV3RaceFrame); }
+var __sqV3RaceState = { raf: 0, last: 0, animStart: 0, lastLen: [-1, -1], maxV: 0 };
+function __sqV3RaceEnsure(){
+  if (!__sqV3RaceState.raf) __sqV3RaceState.raf = requestAnimationFrame(__sqV3RaceFrame);
+  // Fetch the all-time high-score (record) pace once so it can be plotted.
+  if (window.__sqV3RecordPace === undefined){
+    window.__sqV3RecordPace = null;
+    try{ if (typeof buildRecordPaceSeries === 'function') buildRecordPaceSeries(MAX_ROUNDS).then(s => { window.__sqV3RecordPace = (s && Array.isArray(s.data)) ? s : null; }).catch(() => {}); }catch(_){ }
+  }
+}
 function __sqV3RaceSeries(){
   const rc = MAX_ROUNDS, cr = Number(state.currentRound || 0);
   return [0, 1].map(p => {
@@ -25917,6 +25934,7 @@ function __sqV3RaceFrame(){
   st.raf = requestAnimationFrame(__sqV3RaceFrame);
   try{
     if (!(document.body && document.body.dataset.page === 'game')) return;
+    __sqV3DisplayTick();                       // keep the top-bar digital readout live
     const now = performance.now();
     if (now - st.last < 24) return;           // ~40fps
     st.last = now;
@@ -25933,8 +25951,14 @@ function __sqV3RaceFrame(){
     const lens = series.map(p => { let n = 0; for (let i = 0; i < p.length; i++) if (p[i] != null) n = i + 1; return n; });
     if (lens[0] !== st.lastLen[0] || lens[1] !== st.lastLen[1]){ st.animStart = now; st.lastLen = lens; }
     const segT = Math.min(1, (now - st.animStart) / 450), ease = 1 - Math.pow(1 - segT, 3);
+    const rec = window.__sqV3RecordPace;
+    const recData = (rec && Array.isArray(rec.data)) ? rec.data : null;
     const flat = series.flat().filter(v => v != null);
-    const maxV = Math.max(20, ...flat);
+    if (recData) recData.forEach(v => { if (v != null) flat.push(v); });
+    const targetMax = Math.max(20, ...flat) * 1.08;
+    // Smoothly ease the vertical scale so the whole graph grows fluidly.
+    st.maxV = st.maxV ? st.maxV + (targetMax - st.maxV) * 0.14 : targetMax;
+    const maxV = st.maxV;
     const padL = 26, padR = 12, padT = 22, padB = 20, W = cssW - padL - padR, H = cssH - padT - padB;
     const X = i => padL + (rc <= 1 ? 0 : (i / (rc - 1)) * W);
     const Y = v => padT + H - (v / maxV) * H;
@@ -25954,6 +25978,20 @@ function __sqV3RaceFrame(){
       ctx.strokeStyle = isCur ? 'rgba(255,138,20,.4)' : 'rgba(150,170,210,.07)'; ctx.lineWidth = isCur ? 1.5 : 1;
       ctx.beginPath(); ctx.moveTo(xx, padT); ctx.lineTo(xx, padT + H); ctx.stroke();
       if (i % 2 === 0 || isCur){ ctx.fillStyle = isCur ? 'rgba(255,190,90,.95)' : 'rgba(160,178,208,.45)'; ctx.fillText(__sqV3RoundLabel(i), xx, padT + H + 4); }
+    }
+    // HIGH-SCORE (record) pace — dashed gold reference line to race against
+    if (recData){
+      const RP = []; for (let i = 0; i < recData.length && i < rc; i++){ if (recData[i] != null) RP.push([X(i), Y(recData[i])]); }
+      if (RP.length >= 2){
+        ctx.save();
+        ctx.setLineDash([5, 4]); ctx.strokeStyle = 'rgba(255,214,110,.9)'; ctx.lineWidth = 1.8; ctx.lineJoin = 'round';
+        ctx.shadowColor = 'rgba(255,200,90,.6)'; ctx.shadowBlur = 6;
+        ctx.beginPath(); RP.forEach((pt, i) => i ? ctx.lineTo(pt[0], pt[1]) : ctx.moveTo(pt[0], pt[1])); ctx.stroke();
+        ctx.restore();
+        const tip = RP[RP.length - 1];
+        ctx.fillStyle = 'rgba(255,224,150,.95)'; ctx.font = '900 8px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+        ctx.fillText('HS', Math.min(tip[0] + 3, cssW - 16), tip[1] - 2);
+      }
     }
     // player lines
     const colors = [(state.players[0] && state.players[0].color) || '#ff8a3c', (state.players[1] && state.players[1].color) || '#4a90ff'];
@@ -26088,45 +26126,40 @@ function __sqLiveV3Render(){
 
   // Averages: 3-dart avg = mean points per completed round; game avg = mean
   // points per dart actually thrown. '--' until there is anything to average.
+  // Both averages are in POINTS-PER-ROUND (a round = 3 darts), so the units match.
+  //  • 3 ROUND AVG = mean over the player's last up-to-3 completed rounds (form).
+  //  • GAME AVG    = mean over every completed round this game.
   const playerAverages = (p) => {
     const b = (state.score && state.score[p]) || [];
-    let rounds = 0, darts = 0, pts = 0;
-    b.forEach((e, ri) => {
-      if (!e || !e.darts) return;
-      const thrown = e.darts.filter(d => d).length;
-      if (!thrown) return;
-      pts += Number(e.roundTotal || 0);
-      darts += thrown;
-      if (roundComplete(p, ri, e)) rounds += 1;
-    });
-    const a3 = rounds > 0 ? (pts / rounds).toFixed(1) : '--';
-    const ga = darts > 0 ? (pts / darts).toFixed(1) : '--';
-    return { a3, ga };
+    const roundPts = [];
+    b.forEach((e, ri) => { if (e && e.darts && roundComplete(p, ri, e)) roundPts.push(Number(e.roundTotal || 0)); });
+    const mean = arr => arr.length ? (arr.reduce((a, c) => a + c, 0) / arr.length) : null;
+    const game = mean(roundPts);
+    const r3 = mean(roundPts.slice(-3));
+    return { a3: r3 == null ? '--' : r3.toFixed(1), ga: game == null ? '--' : game.toFixed(1) };
   };
 
   const playerCard = (i) => {
     const active = i === cp;
     const crown = i === leader ? '<span class="v3-crown" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 8l4.5 3.5L12 5l4.5 6.5L21 8l-1.6 10.2a1 1 0 0 1-1 .8H5.6a1 1 0 0 1-1-.8L3 8z"/></svg></span>' : '';
-    const num = `<span class="v3-badge">${i + 1}</span>`;
     const __lvl = (window.__sqV3Levels || {})[String(pName(i)).trim().toLowerCase()];
     const lvlChip = __lvl ? `<span class="v3-lvl">LV ${__lvl}</span>` : '';
     const nick = pNick(i) ? `<div class="v3-nick">“${escV3(pNick(i).toUpperCase())}”</div>` : '';
     const avg = playerAverages(i);
-    const dart = `<div class="v3-dartico" aria-hidden="true"><svg viewBox="0 0 60 16" fill="none"><path d="M2 8h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="12" y="4.6" width="15" height="6.8" rx="3.4" fill="currentColor"/><path d="M15.5 5.2v5.6M19 5.2v5.6M22.5 5.2v5.6" stroke="rgba(0,0,0,.4)" stroke-width="1.1" stroke-linecap="round"/><path d="M27 8l6-.001" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M33 8 54 1.5 47 8 54 14.5Z" fill="currentColor"/><path d="M33 8 49 3.4 44.5 8 49 12.6Z" fill="rgba(0,0,0,.32)"/></svg></div>`;
+    const dart = `<span class="v3-dartico" aria-hidden="true"><svg viewBox="0 0 60 16" fill="none"><path d="M2 8h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="12" y="4.6" width="15" height="6.8" rx="3.4" fill="currentColor"/><path d="M15.5 5.2v5.6M19 5.2v5.6M22.5 5.2v5.6" stroke="rgba(0,0,0,.4)" stroke-width="1.1" stroke-linecap="round"/><path d="M27 8l6-.001" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M33 8 54 1.5 47 8 54 14.5Z" fill="currentColor"/><path d="M33 8 49 3.4 44.5 8 49 12.6Z" fill="rgba(0,0,0,.32)"/></svg></span>`;
     return `<div class="v3-side ${i === 0 ? 'p1' : 'p2'}">
       <div class="v3-windots-row">${winDots(i)}</div>
       <div class="v3-card ${active ? 'active' : 'waiting'} ${i === 0 ? 'p1' : 'p2'}">
         <div class="v3-card-sheen" aria-hidden="true"></div>
         <div class="v3-turnbar" aria-hidden="true"></div>
-        <div class="v3-id">${num}${crown}${lvlChip}</div>
-        ${dart}
+        <div class="v3-dartrow">${crown}${dart}${lvlChip}</div>
         <div class="v3-name">${escV3(pName(i).split(' ')[0].toUpperCase())}</div>
         <div class="v3-nick-slot">${nick}</div>
         <div class="v3-total">${totals[i]}</div>
         ${diffBadge(i)}
         <div class="v3-rounds-zone"><div class="v3-rounds">${lastRounds(i)}</div></div>
         <div class="v3-stats">
-          <div class="v3-avg"><span class="v3-avg-val">${avg.a3}</span><span class="v3-avg-lab">3-DART AVG</span></div>
+          <div class="v3-avg"><span class="v3-avg-val">${avg.a3}</span><span class="v3-avg-lab">3-ROUND AVG</span></div>
           <div class="v3-avg-div"></div>
           <div class="v3-avg"><span class="v3-avg-val">${avg.ga}</span><span class="v3-avg-lab">GAME AVG</span></div>
         </div>
@@ -26173,12 +26206,13 @@ function __sqLiveV3Render(){
 
   panel.innerHTML = `
     <div class="v3-topbar">
-      <div class="v3-tb-cell v3-tb-round"><span>ROUND</span><b>${r + 1}<em> / ${MAX_ROUNDS}</em></b></div>
-      <div class="v3-tb-cell v3-tb-target"><span>TARGET</span><b class="v3-tb-tval">${targetLabel}</b><div class="v3-tb-combo" aria-hidden="true"></div></div>
-      <div class="v3-tb-actions">
-        <button id="v3SoundBtn" class="v3-tb-snd" type="button" aria-label="Toggle sound"></button>
-        <button id="v3MenuBtn" class="v3-tb-menu" type="button" aria-label="Game menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <button id="v3SoundBtn" class="v3-tb-snd" type="button" aria-label="Toggle sound"></button>
+      <div class="v3-tb-display" id="v3TbDisplay" data-target="${escV3(targetLabel)}">
+        <span class="v3-tb-scan" aria-hidden="true"></span>
+        <span class="v3-tb-lab">TARGET</span>
+        <span class="v3-tb-val">${targetLabel}</span>
       </div>
+      <button id="v3MenuBtn" class="v3-tb-menu" type="button" aria-label="Game menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </div>
     <div class="v3-body">
       <div class="v3-main">
