@@ -5646,12 +5646,23 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
   margin: 0;
   flex: 0 0 auto;
 }
+/* 4-player: a 2x2 grid of pills with the centre column spanning both rows down
+   the middle, and a FORM bar flanking each pill on its outer edge. */
+.v3-main.v3-4p{
+  grid-template-columns: 14px 1fr 1.12fr 1fr 14px;
+  grid-template-areas:
+    "f0 c0 mid c1 f1"
+    "f2 c2 mid c3 f3";
+  row-gap:8px;
+}
 /* The RACE band: a full-width animated race box (FORM bars now sit beside the
    player pills, on their outer edges). */
 .v3-screen{
   flex:1 1 auto; min-height:120px; margin:0 2px;
   display:flex; flex-direction:row; align-items:stretch; gap:6px;
 }
+/* 4-player leaves less room, so the race chart is shortened to a fixed band. */
+.v3-body.v3-4p .v3-screen{ flex:0 0 auto; height:132px; min-height:132px; }
 .v3-race-frame{ flex:1 1 auto; min-width:0; display:flex; }
 .v3-race-bezel{
   position:relative; flex:1; border-radius:14px; overflow:hidden;
@@ -25520,7 +25531,7 @@ function __sqLiveV3Enabled(){
 function __sqLiveV3Eligible(){
   try{
     if (!__sqLiveV3Enabled()) return false;
-    if (!state || !Array.isArray(state.players) || state.players.length !== 2) return false;
+    if (!state || !Array.isArray(state.players) || (state.players.length !== 2 && state.players.length !== 4)) return false;
     const m = state.match || {};
     if (m.tournament) return false;
     if (m.forcePractice || m.practiceType) return false;
@@ -25854,20 +25865,21 @@ function __sqV3Animate(panel){
     const turnKey = r + ':' + cp;
     const ce = (state.score && state.score[cp] && state.score[cp][r]) || null;
     const roundScore = Number((ce && ce.roundTotal) || 0);
-    const totals = [__sqV3TotalFor(0), __sqV3TotalFor(1)];
+    const NP = (state.players || []).length || 2;
+    const totals = Array.from({ length: NP }, (_, i) => __sqV3TotalFor(i));
     const dart = Math.max(0, Math.min(state.currentDart || 0, 3));
     const full = p => { let c = 0; const b = (state.score && state.score[p]) || []; b.forEach(e => { if (e && e.darts && e.darts.filter(d => d).length >= 3) c++; }); return c; };
-    const fulls = [full(0), full(1)];
+    const fulls = Array.from({ length: NP }, (_, i) => full(i));
     const wins = (state.match && state.match.wins) || [0, 0];
     const sbNum = panel.querySelector('.v3-sb-num');
 
     // Round just completed by the previous thrower -> the round total flies
     // diagonally from the centre down into that player's history; older rounds
     // drop down a slot to make room.
-    const flew = [false, false];
-    for (let i = 0; i < 2; i++){
+    const flew = new Array(NP).fill(false);
+    for (let i = 0; i < NP; i++){
       if (fulls[i] > ((prev.fulls && prev.fulls[i]) || 0) && prev.cp === i && sbNum){
-        const side = panel.querySelector('.v3-side.' + (i === 0 ? 'p1' : 'p2'));
+        const side = panel.querySelector('.v3-side[data-p="' + i + '"]');
         const destRr = side && side.querySelector('.v3-rr');
         const destTot = destRr && destRr.querySelector('.v3-rr-tot');
         if (destRr && destTot){
@@ -25909,13 +25921,13 @@ function __sqV3Animate(panel){
 
     // Totals pop when they climb (the active player's pop is deferred to the
     // moment the sliding "+N" lands, so it is skipped here).
-    for (let i = 0; i < 2; i++){
+    for (let i = 0; i < NP; i++){
       if (i !== plusFlyPlayer && totals[i] > ((prev.totals && prev.totals[i]) || 0) && totalEls[i]) totalEls[i].classList.add('v3-pop');
     }
 
     // A completed round that wasn't handled by a fly still slides in.
     let roundCompleted = false;
-    for (let i = 0; i < 2; i++){
+    for (let i = 0; i < NP; i++){
       if (fulls[i] > ((prev.fulls && prev.fulls[i]) || 0)){
         roundCompleted = true;
         // Live combo callout for the round this player just completed.
@@ -25936,7 +25948,7 @@ function __sqV3Animate(panel){
         }catch(_){ }
       }
       if (!flew[i] && fulls[i] > ((prev.fulls && prev.fulls[i]) || 0)){
-        const side = panel.querySelector('.v3-side.' + (i === 0 ? 'p1' : 'p2'));
+        const side = panel.querySelector('.v3-side[data-p="' + i + '"]');
         const firstRr = side && side.querySelector('.v3-rr');
         if (firstRr) firstRr.classList.add('v3-rr-new');
       }
@@ -25945,9 +25957,9 @@ function __sqV3Animate(panel){
 
     // Game won — pop the newly-lit win dot gold, flash GAMES, sound the fanfare.
     if (prev.wins !== undefined){
-      for (let i = 0; i < 2; i++){
+      for (let i = 0; i < NP; i++){
         if ((wins[i] || 0) > ((prev.wins && prev.wins[i]) || 0)){
-          const side = panel.querySelector('.v3-side.' + (i === 0 ? 'p1' : 'p2'));
+          const side = panel.querySelector('.v3-side[data-p="' + i + '"]');
           const dots = side ? side.querySelectorAll('.v3-windots i') : [];
           const dot = dots[(wins[i] || 0) - 1];
           if (dot) dot.classList.add('v3-windot-win');
@@ -25972,7 +25984,7 @@ function __sqV3Animate(panel){
       if (dots[goneIdx]) dots[goneIdx].classList.add('v3-dot-out');
     }
 
-    window.__sqV3Anim = { turnKey, roundScore, totals, dart, cp, fulls, wins: [wins[0] || 0, wins[1] || 0] };
+    window.__sqV3Anim = { turnKey, roundScore, totals, dart, cp, fulls, wins: Array.from({ length: NP }, (_, i) => wins[i] || 0) };
   }catch(_){ }
 }
 
@@ -26017,8 +26029,9 @@ function __sqV3FormApply(wrap, heat){
 function __sqV3FormView(panel){
   try{
     const cp = state.currentPlayer || 0;
+    const NP = (state.players || []).length || 2;
     const st = window.__sqV3Form || (window.__sqV3Form = { disp: [null, null] });
-    for (let i = 0; i < 2; i++){
+    for (let i = 0; i < NP; i++){
       const wrap = panel.querySelector('.v3-edge-form[data-p="' + i + '"]');
       if (!wrap) continue;
       wrap.classList.toggle('live', (i === cp) && !state.finished);
@@ -26034,9 +26047,10 @@ function __sqV3FormTick(){
   try{
     const panel = document.getElementById('liveV3Panel'); if (!panel) return;
     const cp = state.currentPlayer || 0;
+    const NP = (state.players || []).length || 2;
     const st = window.__sqV3Form || (window.__sqV3Form = { disp: [null, null], tgt: [null, null] });
     if (!st.tgt) st.tgt = [null, null];
-    for (let i = 0; i < 2; i++){
+    for (let i = 0; i < NP; i++){
       const wrap = panel.querySelector('.v3-edge-form[data-p="' + i + '"]'); if (!wrap) continue;
       wrap.classList.toggle('live', (i === cp) && !state.finished);
       const target = __sqV3FormData(i).heat;
@@ -26072,7 +26086,8 @@ function __sqV3RaceEnsure(){
 }
 function __sqV3RaceSeries(){
   const rc = MAX_ROUNDS, cr = Number(state.currentRound || 0);
-  return [0, 1].map(p => {
+  const NP = (state.players || []).length || 2;
+  return Array.from({ length: NP }, (_, p) => {
     const b = (state.score && state.score[p]) || []; let run = 0; const pts = [];
     for (let r = 0; r < rc; r++){
       const e = b[r];
@@ -26103,13 +26118,14 @@ function __sqV3RaceFrame(){
     }
     const ctx = canvas.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, cssW, cssH);
     const rc = MAX_ROUNDS;
+    const NP = (state.players || []).length || 2;
     const series = __sqV3RaceSeries();
     const lens = series.map(p => { let n = 0; for (let i = 0; i < p.length; i++) if (p[i] != null) n = i + 1; return n; });
     // Fully-thrown round count per player (all three darts landed) — used to grade
     // a round only once it's complete.
-    const fulls = [0, 1].map(p => { const b = (state.score && state.score[p]) || []; let n = 0;
+    const fulls = Array.from({ length: NP }, (_, p) => { const b = (state.score && state.score[p]) || []; let n = 0;
       for (let r = 0; r < b.length; r++){ const e = b[r]; if (e && e.darts && e.darts.length && e.darts.every(x => x != null)) n = r + 1; } return n; });
-    for (let p = 0; p < 2; p++){
+    for (let p = 0; p < NP; p++){
       // Smooth line growth: ease the newest segment whenever the line extends.
       if (lens[p] !== st.lastLen[p]){ st.grow[p] = { start: now }; st.lastLen[p] = lens[p]; }
       // Great-combo charge-then-zoom: fire once a round COMPLETES as a strong combo
@@ -26177,7 +26193,8 @@ function __sqV3RaceFrame(){
       }
     }
     // player lines
-    const colors = [(state.players[0] && state.players[0].color) || '#ff8a3c', (state.players[1] && state.players[1].color) || '#4a90ff'];
+    const V3_LINE_COLORS = ['#ff8a3c', '#4a90ff', '#2fd06b', '#b06bff'];
+    const colors = Array.from({ length: NP }, (_, i) => (state.players[i] && state.players[i].color) || V3_LINE_COLORS[i % V3_LINE_COLORS.length]);
     series.forEach((pts, pi) => {
       const P = []; for (let i = 0; i < pts.length; i++) if (pts[i] != null) P.push([X(i), Y(pts[i])]);
       if (!P.length) return;
@@ -26271,7 +26288,7 @@ async function __sqV3EnsureLevels(panel){
       for (let i = 0; i < (state.players || []).length; i++){
         const lvl = window.__sqV3Levels[rawName(i).toLowerCase()];
         if (!lvl) continue;
-        const idEl = panel.querySelector('.v3-side.' + (i === 0 ? 'p1' : 'p2') + ' .v3-id');
+        const idEl = panel.querySelector('.v3-side[data-p="' + i + '"] .v3-cardtop');
         if (!idEl) continue;
         let chip = idEl.querySelector('.v3-lvl');
         if (!chip){ chip = document.createElement('span'); chip.className = 'v3-lvl'; idEl.appendChild(chip); }
@@ -26298,10 +26315,12 @@ function __sqLiveV3Render(){
 
   const r  = Math.max(0, Math.min(state.currentRound, MAX_ROUNDS - 1));
   const cp = state.currentPlayer || 0;
-  const wp = 1 - cp;
+  const NP = (state.players || []).length || 2;         // 2 or 4 (see __sqLiveV3Eligible)
   const dart = Math.max(0, Math.min(state.currentDart || 0, 3));
-  const totals = [__sqV3TotalFor(0), __sqV3TotalFor(1)];
-  const leader = totals[0] === totals[1] ? -1 : (totals[0] > totals[1] ? 0 : 1);
+  const totals = Array.from({ length: NP }, (_, i) => __sqV3TotalFor(i));
+  const topTotal = Math.max(...totals);
+  const numAtTop = totals.filter(t => t === topTotal).length;
+  const leader = numAtTop > 1 ? -1 : totals.indexOf(topTotal);   // sole leader, or -1 if tied at top
   const wins = (state.match && state.match.wins) || [0, 0];
   const targetWins = Math.max(1, Number(state.match && state.match.targetWins) || 1);
   const pbs = window.__sqV3PBs || new Map();
@@ -26328,8 +26347,9 @@ function __sqLiveV3Render(){
   // Render-signature guard: skip redundant re-renders (updateUI can fire more
   // than once per throw) so in-flight one-shot animations are never cut short.
   const curEntrySig = entryOf(cp, r);
-  const sig = [r, cp, dart, totals[0], totals[1], Number((curEntrySig && curEntrySig.roundTotal) || 0),
-               (wins[0] || 0) + 'x' + (wins[1] || 0), state.finished ? 1 : 0, pName(0), pName(1)].join('|');
+  const sig = [r, cp, dart, NP, totals.join(','), Number((curEntrySig && curEntrySig.roundTotal) || 0),
+               (wins || []).slice(0, NP).join('x'), state.finished ? 1 : 0,
+               Array.from({ length: NP }, (_, i) => pName(i)).join('~')].join('|');
   if (panel.isConnected && panel.dataset.sig === sig && panel.childElementCount) return;
   panel.dataset.sig = sig;
 
@@ -26342,9 +26362,12 @@ function __sqLiveV3Render(){
   };
 
   const diffBadge = i => {
-    if (leader < 0) return '<span class="v3-diff even">EVEN</span>';
-    const d = totals[i] - totals[1 - i];
-    return d >= 0 ? `<span class="v3-diff up">▲ +${d}</span>` : `<span class="v3-diff down">▼ ${Math.abs(d)}</span>`;
+    // Sole leader: how far ahead of 2nd place. Everyone else: how far behind the top.
+    const sorted = [...totals].sort((a, b) => b - a);
+    const second = sorted[1] != null ? sorted[1] : 0;
+    if (leader === i){ const d = totals[i] - second; return `<span class="v3-diff up">▲ +${d}</span>`; }
+    if (totals[i] === topTotal) return '<span class="v3-diff even">EVEN</span>';   // tied at the top
+    return `<span class="v3-diff down">▼ ${topTotal - totals[i]}</span>`;
   };
 
   // A round entry counts as complete once all 3 darts are in, or it is a past
@@ -26385,22 +26408,23 @@ function __sqLiveV3Render(){
              a3n: r3, gan: game, done: roundPts.length };
   };
 
-  const playerCard = (i) => {
+  const playerCard = (i, area) => {
     const active = i === cp;
+    const lr = i % 2 === 0 ? 'p1' : 'p2';               // left column = p1, right = p2
     const __lvl = (window.__sqV3Levels || {})[String(pName(i)).trim().toLowerCase()];
     const lvlChip = __lvl ? `<span class="v3-lvl">LV ${__lvl}</span>` : '';
     const avg = playerAverages(i);
     const nmLower = String(pName(i)).trim().toLowerCase();
     const a3cls = __sqV3AvgRecClass('a3', avg.a3n, avg.done, nmLower);
     const gacls = __sqV3AvgRecClass('ga', avg.gan, avg.done, nmLower);
-    return `<div class="v3-side ${i === 0 ? 'p1' : 'p2'}">
-      <div class="v3-card ${active ? 'active' : 'waiting'} ${i === 0 ? 'p1' : 'p2'}">
+    return `<div class="v3-side ${lr}" data-p="${i}"${area ? ` style="grid-area:${area}"` : ''}>
+      <div class="v3-card ${active ? 'active' : 'waiting'} ${lr}">
         <div class="v3-card-sheen" aria-hidden="true"></div>
         <div class="v3-cardtop">${winDots(i)}${lvlChip}</div>
         <div class="v3-name">${escV3(pName(i).split(' ')[0].toUpperCase())}</div>
         <div class="v3-total ${totalRecClass(i)}">${totals[i]}</div>
         ${diffBadge(i)}
-        <div class="v3-foot ${i === 0 ? 'p1' : 'p2'}">
+        <div class="v3-foot ${lr}">
           <div class="v3-foot-prev">${lastRounds(i)}</div>
           <div class="v3-foot-div" aria-hidden="true"></div>
           <div class="v3-foot-avgs">
@@ -26411,7 +26435,7 @@ function __sqLiveV3Render(){
       </div>
     </div>`;
   };
-  const edgeForm = (i) => `<div class="v3-edge-form ${i === 0 ? 'p1' : 'p2'}" data-p="${i}">
+  const edgeForm = (i, area) => `<div class="v3-edge-form ${i % 2 === 0 ? 'p1' : 'p2'}" data-p="${i}"${area ? ` style="grid-area:${area}"` : ''}>
       <div class="v3-ef-track">
         <div class="v3-ef-fill"><span class="v3-ef-tip" aria-hidden="true"></span><span class="v3-ef-spark" aria-hidden="true"></span></div>
         <div class="v3-ef-segs" aria-hidden="true"></div>
@@ -26428,21 +26452,9 @@ function __sqLiveV3Render(){
     : roundDef.type === 'doubles' ? 'DOUBLES'
     : roundDef.type === 'triples' ? 'TREBLES' : 'BULL';
 
-  panel.innerHTML = `
-    <div class="v3-topbar">
-      <button id="v3SoundBtn" class="v3-tb-snd" type="button" aria-label="Toggle sound"></button>
-      <div class="v3-tb-display" id="v3TbDisplay" data-target="${escV3(targetLabel)}">
-        <span class="v3-tb-scan" aria-hidden="true"></span>
-        <span class="v3-tb-lab">TARGET</span>
-        <span class="v3-tb-val">${targetLabel}</span>
-      </div>
-      <button id="v3MenuBtn" class="v3-tb-menu" type="button" aria-label="Game menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-    </div>
-    <div class="v3-body">
-      <div class="v3-main">
-        ${edgeForm(0)}
-        ${playerCard(0)}
-        <div class="v3-centre">
+  // Centre column (DART indicator + ROUND SCORE). `area` sets its grid-area for
+  // the 4-player layout, where it spans both pill rows down the middle.
+  const centreHtml = (area) => `<div class="v3-centre"${area ? ` style="grid-area:${area}"` : ''}>
           <div class="v3-ctop">
             <div class="v3-dartbox">
               <div class="v3-dart-lab">DART ${Math.min(dart + 1, 3)} OF 3</div>
@@ -26455,9 +26467,24 @@ function __sqLiveV3Render(){
               <div class="v3-sb-marks">${__sqV3Marks(curEntry).replace(/ \/ /g, '<i>·</i>')}</div>
             </div>
           </div>
-        </div>
-        ${playerCard(1)}
-        ${edgeForm(1)}
+        </div>`;
+
+  panel.innerHTML = `
+    <div class="v3-topbar">
+      <button id="v3SoundBtn" class="v3-tb-snd" type="button" aria-label="Toggle sound"></button>
+      <div class="v3-tb-display" id="v3TbDisplay" data-target="${escV3(targetLabel)}">
+        <span class="v3-tb-scan" aria-hidden="true"></span>
+        <span class="v3-tb-lab">TARGET</span>
+        <span class="v3-tb-val">${targetLabel}</span>
+      </div>
+      <button id="v3MenuBtn" class="v3-tb-menu" type="button" aria-label="Game menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    </div>
+    <div class="v3-body${NP === 4 ? ' v3-4p' : ''}">
+      <div class="v3-main${NP === 4 ? ' v3-4p' : ''}">
+        ${NP === 4
+          ? `${edgeForm(0, 'f0')}${playerCard(0, 'c0')}${centreHtml('mid')}${playerCard(1, 'c1')}${edgeForm(1, 'f1')}` +
+            `${edgeForm(2, 'f2')}${playerCard(2, 'c2')}${playerCard(3, 'c3')}${edgeForm(3, 'f3')}`
+          : `${edgeForm(0)}${playerCard(0)}${centreHtml('')}${playerCard(1)}${edgeForm(1)}`}
       </div>
       <div class="v3-screen">
         <div class="v3-race-frame">
