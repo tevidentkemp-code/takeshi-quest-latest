@@ -5857,13 +5857,26 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
   box-shadow: inset 0 0 14px rgba(0,0,0,.85);
 }
 .v3-ef-fill{
-  position:absolute; left:0; right:0; bottom:0; height:45%;
+  position:absolute; left:0; right:0; bottom:0; height:0%;
   background:linear-gradient(180deg,#69b7ff 0%,#2f6bff 100%);
   box-shadow:0 0 16px rgba(74,163,255,.65);
-  transition: height .5s cubic-bezier(.25,.9,.3,1), background .45s ease, box-shadow .45s ease;
+  transition: background .45s ease, box-shadow .45s ease;   /* height is rAF-driven for smoothness */
 }
 .v3-ef-tip{ position:absolute; left:-2px; right:-2px; top:-2px; height:4px; border-radius:3px;
   background:#fff; box-shadow:0 0 10px #fff, 0 0 18px rgba(120,200,255,.9); opacity:.9; }
+/* Electric spark that crackles off the top of the fill when the bar is HOT */
+.v3-ef-spark{ position:absolute; top:-3px; left:50%; width:3px; height:3px; margin-left:-1.5px; border-radius:50%; background:#fff; opacity:0; z-index:4; pointer-events:none; }
+.v3-edge-form.hot .v3-ef-spark{ opacity:1; animation:v3Spark .5s linear infinite; }
+.v3-edge-form.hot .v3-ef-spark::after{ content:''; position:absolute; inset:0; border-radius:50%; background:#fff; animation:v3Spark2 .4s linear infinite .2s; }
+@keyframes v3Spark{
+  0%{ opacity:0; transform:translateY(0) scale(.4); box-shadow:0 0 0 transparent; }
+  18%{ opacity:1; box-shadow:-3px -2px 3px #ffe27a, 3px -3px 3px #fff, 0 -1px 5px #ffd24a; }
+  60%{ opacity:.85; transform:translateY(-6px) scale(1); box-shadow:-5px -6px 4px rgba(255,220,120,.6), 4px -7px 4px rgba(255,255,255,.75); }
+  100%{ opacity:0; transform:translateY(-12px) scale(.2); }
+}
+@keyframes v3Spark2{ 0%{ opacity:0; transform:translate(-3px,0) scale(.5); } 40%{ opacity:1; box-shadow:4px -3px 4px #fff, -4px -4px 3px #ffd24a; } 100%{ opacity:0; transform:translate(3px,-9px) scale(.2); } }
+.v3-edge-form.hot .v3-ef-tip{ animation:v3TipCrackle .1s steps(2) infinite; }
+@keyframes v3TipCrackle{ 0%{ opacity:.7; filter:brightness(1); } 50%{ opacity:1; filter:brightness(1.8); } 100%{ opacity:.85; } }
 /* COLD -> mid -> WARM -> HOT ramp (a true form reading) */
 .v3-edge-form.cold .v3-ef-fill{ background:linear-gradient(180deg,#9fe0ff 0%,#4aa8e8 100%); box-shadow:0 0 14px rgba(120,200,255,.55); }
 .v3-edge-form.cold .v3-ef-tip{ background:#e8fbff; box-shadow:0 0 10px #cdefff, 0 0 16px rgba(150,220,255,.8); }
@@ -5883,6 +5896,16 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-ef-track::after{ content:''; position:absolute; inset:0; z-index:3; pointer-events:none;
   background:radial-gradient(120% 40% at 50% 0%, rgba(255,255,255,.08), transparent 60%); }
 .v3-ef-streak{ min-height:13px; font-size:11px; line-height:1; filter:drop-shadow(0 0 5px rgba(255,140,40,.85)); }
+/* SURGE: a big combo lands -> a white power-flash rips up the whole bar. */
+.v3-ef-fill.surge{ animation:v3EfSurge .5s ease-out; }
+@keyframes v3EfSurge{
+  0%{ filter:brightness(2.6) saturate(1.6); box-shadow:0 0 40px #fff, 0 0 60px rgba(255,120,40,.9); }
+  35%{ filter:brightness(1.8) saturate(1.4); }
+  100%{ filter:brightness(1) saturate(1); }
+}
+.v3-ef-track.surge::before{ content:''; position:absolute; inset:0; z-index:5; pointer-events:none; border-radius:inherit;
+  background:radial-gradient(60% 30% at 50% 100%, rgba(255,255,255,.7), transparent 70%); animation:v3EfSurgeFlash .5s ease-out forwards; }
+@keyframes v3EfSurgeFlash{ 0%{ opacity:1; transform:translateY(0); } 100%{ opacity:0; transform:translateY(-40%); } }
 @media (prefers-reduced-motion: reduce){
   .v3-edge-form.live.hot .v3-ef-fill, .v3-edge-form.live.hot .v3-ef-track, .v3-edge-form.live .v3-ef-tip{ animation:none; }
   .v3-ef-fill{ transition:height .2s linear; }
@@ -25884,21 +25907,58 @@ function __sqV3FormData(p){
   }
   return { heat: Math.round(heat), streak };
 }
+// Apply a heat value to a bar (height + hot/cold classes + 🔥/❄ marker).
+function __sqV3FormApply(wrap, heat){
+  const fillEl = wrap.querySelector('.v3-ef-fill');
+  if (fillEl) fillEl.style.height = heat.toFixed(1) + '%';
+  wrap.classList.toggle('cold', heat < 28);
+  wrap.classList.toggle('warm', heat >= 52 && heat < 80);
+  wrap.classList.toggle('hot', heat >= 80);
+  const streak = wrap.querySelector('.v3-ef-streak');
+  if (streak){ const t = heat >= 80 ? '🔥' : (heat < 22 ? '❄' : ''); if (streak.textContent !== t) streak.textContent = t; }
+}
+// Called on each panel render: paint the CURRENT animated value immediately so a
+// freshly-rebuilt bar never flashes back to a default height (kills the flicker).
 function __sqV3FormView(panel){
   try{
-    const cp = state.currentPlayer || 0;   // only the live player's bar gets the intense FX
+    const cp = state.currentPlayer || 0;
+    const st = window.__sqV3Form || (window.__sqV3Form = { disp: [null, null] });
     for (let i = 0; i < 2; i++){
       const wrap = panel.querySelector('.v3-edge-form[data-p="' + i + '"]');
       if (!wrap) continue;
       wrap.classList.toggle('live', (i === cp) && !state.finished);
-      const d = __sqV3FormData(i);
-      const fillEl = wrap.querySelector('.v3-ef-fill');
-      if (fillEl) fillEl.style.height = d.heat + '%';
-      wrap.classList.toggle('cold', d.heat < 28);
-      wrap.classList.toggle('warm', d.heat >= 52 && d.heat < 80);
-      wrap.classList.toggle('hot', d.heat >= 80);
-      const streak = wrap.querySelector('.v3-ef-streak');
-      if (streak) streak.textContent = d.heat >= 80 ? '🔥' : (d.heat < 22 ? '❄' : '');
+      if (st.disp[i] == null) st.disp[i] = __sqV3FormData(i).heat;
+      __sqV3FormApply(wrap, st.disp[i]);
+    }
+  }catch(_){ }
+}
+// Driven every frame by the race rAF: eases each bar toward its target heat, so
+// movement is smooth + responsive and the amount/speed reflects the shot (a
+// treble climbs fast, a miss cools, a single nudges) — never a fixed-rate snap.
+function __sqV3FormTick(){
+  try{
+    const panel = document.getElementById('liveV3Panel'); if (!panel) return;
+    const cp = state.currentPlayer || 0;
+    const st = window.__sqV3Form || (window.__sqV3Form = { disp: [null, null], tgt: [null, null] });
+    if (!st.tgt) st.tgt = [null, null];
+    for (let i = 0; i < 2; i++){
+      const wrap = panel.querySelector('.v3-edge-form[data-p="' + i + '"]'); if (!wrap) continue;
+      wrap.classList.toggle('live', (i === cp) && !state.finished);
+      const target = __sqV3FormData(i).heat;
+      // A sharp climb in target heat = a strong combo just landed -> SURGE flash.
+      if (st.tgt[i] != null && target - st.tgt[i] >= 16){
+        const fillEl = wrap.querySelector('.v3-ef-fill'), trackEl = wrap.querySelector('.v3-ef-track');
+        [fillEl, trackEl].forEach(el => { if (!el) return; el.classList.remove('surge'); void el.offsetWidth; el.classList.add('surge'); });
+      }
+      st.tgt[i] = target;
+      if (st.disp[i] == null) st.disp[i] = target;
+      else {
+        const d = target - st.disp[i];
+        // ease toward target; bigger gaps move faster (snappy) but always smooth
+        st.disp[i] += d * (Math.abs(d) > 12 ? 0.22 : 0.13);
+        if (Math.abs(target - st.disp[i]) < 0.4) st.disp[i] = target;
+      }
+      __sqV3FormApply(wrap, st.disp[i]);
     }
   }catch(_){ }
 }
@@ -25906,7 +25966,7 @@ function __sqV3FormView(panel){
    One rAF loop that always targets the current #v3RaceCanvas (the panel
    re-renders each throw). Draws grid lines + per-player cumulative-score
    lines with glow, pulsing leading dots, and eases the newest segment in. */
-var __sqV3RaceState = { raf: 0, last: 0, animStart: 0, lastLen: [-1, -1], maxV: 0 };
+var __sqV3RaceState = { raf: 0, last: 0, grow: [null, null], combo: [null, null], burst: [null, null], lastLen: [-1, -1], lastFull: [-1, -1], maxV: 0 };
 function __sqV3RaceEnsure(){
   if (!__sqV3RaceState.raf) __sqV3RaceState.raf = requestAnimationFrame(__sqV3RaceFrame);
   // Fetch the all-time high-score (record) pace once so it can be plotted.
@@ -25935,6 +25995,7 @@ function __sqV3RaceFrame(){
   try{
     if (!(document.body && document.body.dataset.page === 'game')) return;
     __sqV3DisplayTick();                       // keep the top-bar digital readout live
+    __sqV3FormTick();                          // smoothly ease the FORM bars (flicker-free)
     const now = performance.now();
     if (now - st.last < 24) return;           // ~40fps
     st.last = now;
@@ -25949,8 +26010,32 @@ function __sqV3RaceFrame(){
     const rc = MAX_ROUNDS;
     const series = __sqV3RaceSeries();
     const lens = series.map(p => { let n = 0; for (let i = 0; i < p.length; i++) if (p[i] != null) n = i + 1; return n; });
-    if (lens[0] !== st.lastLen[0] || lens[1] !== st.lastLen[1]){ st.animStart = now; st.lastLen = lens; }
-    const segT = Math.min(1, (now - st.animStart) / 450), ease = 1 - Math.pow(1 - segT, 3);
+    // Fully-thrown round count per player (all three darts landed) — used to grade
+    // a round only once it's complete.
+    const fulls = [0, 1].map(p => { const b = (state.score && state.score[p]) || []; let n = 0;
+      for (let r = 0; r < b.length; r++){ const e = b[r]; if (e && e.darts && e.darts.length && e.darts.every(x => x != null)) n = r + 1; } return n; });
+    for (let p = 0; p < 2; p++){
+      // Smooth line growth: ease the newest segment whenever the line extends.
+      if (lens[p] !== st.lastLen[p]){ st.grow[p] = { start: now }; st.lastLen[p] = lens[p]; }
+      // Great-combo charge-then-zoom: fire once a round COMPLETES as a strong combo
+      // (trebles/doubles/bulls weigh heavy; weight >= 6.5 ~ 2+ trebles).
+      if (fulls[p] !== st.lastFull[p]){
+        if (fulls[p] > st.lastFull[p]){
+          let w = 0;
+          try{
+            const ds = (((state.score && state.score[p]) || [])[fulls[p] - 1] || {}).darts || [];
+            for (let k = 0; k < ds.length; k++){ const d = ds[k]; if (!d) continue;
+              w += (d.kind === 'T' || d.kind === 'Triple') ? 3
+                 : (d.kind === 'D' || d.kind === 'Double') ? 2
+                 : (d.kind === 'B') ? 2
+                 : (d.kind === 'Miss') ? 0 : 0.5;
+            }
+          }catch(_){ }
+          if (w >= 6.5) st.combo[p] = { start: now, dur: 720, w: w };
+        }
+        st.lastFull[p] = fulls[p];
+      }
+    }
     const rec = window.__sqV3RecordPace;
     const recData = (rec && Array.isArray(rec.data)) ? rec.data : null;
     const flat = series.flat().filter(v => v != null);
@@ -25998,22 +26083,71 @@ function __sqV3RaceFrame(){
     series.forEach((pts, pi) => {
       const P = []; for (let i = 0; i < pts.length; i++) if (pts[i] != null) P.push([X(i), Y(pts[i])]);
       if (!P.length) return;
+      // Resolve this player's segment animation into an ease + charge amount.
+      // A completed great combo (st.combo) overrides the ordinary growth ease with
+      // a "charge then zoom": the head holds + builds energy, then snaps out fast.
+      const combo = st.combo[pi], grow = st.grow[pi];
+      let segT = 1, ease = 1, charge = 0, zoomV = 0;
+      if (combo){
+        const t = (now - combo.start) / combo.dur;
+        const chargeFrac = 0.44;                            // hold + charge, then zoom
+        if (t < chargeFrac){ segT = 0; charge = Math.min(1, t / chargeFrac); }
+        else { const zt = Math.min(1, (t - chargeFrac) / (1 - chargeFrac)); segT = zt; ease = 1 - Math.pow(1 - zt, 2.6); charge = 1; zoomV = 1 - zt; }
+        if (t >= 1){ if (!combo.fired){ combo.fired = true; st.burst[pi] = { start: now, x: P[P.length-1][0], y: P[P.length-1][1] }; } st.combo[pi] = null; }
+      } else if (grow){
+        const t = (now - grow.start) / 450;
+        segT = Math.min(1, t); ease = 1 - Math.pow(1 - segT, 3);
+      }
       ctx.strokeStyle = colors[pi]; ctx.lineWidth = 2.7; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
       ctx.shadowColor = colors[pi]; ctx.shadowBlur = 10;
       ctx.beginPath();
-      let lx = P[P.length-1][0], ly = P[P.length-1][1];
+      let lx = P[P.length-1][0], ly = P[P.length-1][1], ppx = lx, ppy = ly;
       for (let i = 0; i < P.length; i++){
         let x = P[i][0], y = P[i][1];
-        if (i === P.length - 1 && P.length >= 2 && segT < 1){ const px = P[i-1][0], py = P[i-1][1]; x = px + (x-px)*ease; y = py + (y-py)*ease; lx = x; ly = y; }
+        if (i === P.length - 1 && P.length >= 2 && segT < 1){ const px = P[i-1][0], py = P[i-1][1]; ppx = px; ppy = py; x = px + (x-px)*ease; y = py + (y-py)*ease; lx = x; ly = y; }
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.stroke(); ctx.shadowBlur = 0;
+      // Comet trail: while a big segment zooms, streak a bright tail behind the head.
+      if (seg && seg.big && zoomV > 0 && P.length >= 2){
+        ctx.save();
+        const grd = ctx.createLinearGradient(ppx, ppy, lx, ly);
+        grd.addColorStop(0, 'rgba(255,255,255,0)'); grd.addColorStop(1, colors[pi]);
+        ctx.strokeStyle = grd; ctx.lineWidth = 5.5; ctx.lineCap = 'round';
+        ctx.shadowColor = '#fff'; ctx.shadowBlur = 18; ctx.globalAlpha = 0.6 + 0.4 * zoomV;
+        ctx.beginPath(); ctx.moveTo(ppx, ppy); ctx.lineTo(lx, ly); ctx.stroke();
+        ctx.restore();
+      }
+      // Charging glow: before the zoom, energy builds at the held head.
+      if (charge > 0 && charge < 1){
+        const cr2 = 4 + 6 * charge, a = 0.25 + 0.5 * charge;
+        ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2 + charge;
+        ctx.shadowColor = colors[pi]; ctx.shadowBlur = 10 + 18 * charge;
+        ctx.beginPath(); ctx.arc(lx, ly, cr2 + (now/60 % 6), 0, 7); ctx.stroke();
+        ctx.beginPath(); ctx.arc(lx, ly, cr2 * 0.6, 0, 7); ctx.stroke();
+        ctx.restore();
+      }
       // pulsing leading dot + halo
-      const pr = 3.6 + 1.5 * Math.sin(now/240 + pi);
-      ctx.fillStyle = colors[pi]; ctx.shadowColor = colors[pi]; ctx.shadowBlur = 14;
+      const pr = (3.6 + 1.5 * Math.sin(now/240 + pi)) * (1 + 0.5 * charge * (1 - charge) * 4);
+      ctx.fillStyle = colors[pi]; ctx.shadowColor = colors[pi]; ctx.shadowBlur = 14 + 16 * charge;
       ctx.beginPath(); ctx.arc(lx, ly, pr, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
       ctx.strokeStyle = colors[pi]; ctx.globalAlpha = 0.45; ctx.lineWidth = 1.4;
       ctx.beginPath(); ctx.arc(lx, ly, pr + 3 + 2*Math.sin(now/240 + pi), 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+      // Burst ring on a landed combo — an expanding shockwave that fades out.
+      const bu = st.burst[pi];
+      if (bu){
+        const bt = (now - bu.start) / 520;
+        if (bt >= 1){ st.burst[pi] = null; }
+        else {
+          const rr = 4 + bt * 26, al = (1 - bt);
+          ctx.save(); ctx.globalAlpha = al * 0.9; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.4 * (1 - bt) + 0.6;
+          ctx.shadowColor = colors[pi]; ctx.shadowBlur = 14;
+          ctx.beginPath(); ctx.arc(bu.x, bu.y, rr, 0, 7); ctx.stroke();
+          ctx.globalAlpha = al * 0.5; ctx.strokeStyle = colors[pi];
+          ctx.beginPath(); ctx.arc(bu.x, bu.y, rr * 0.6, 0, 7); ctx.stroke();
+          ctx.restore();
+        }
+      }
     });
   }catch(_){ }
 }
@@ -26168,7 +26302,7 @@ function __sqLiveV3Render(){
   };
   const edgeForm = (i) => `<div class="v3-edge-form ${i === 0 ? 'p1' : 'p2'}" data-p="${i}">
       <div class="v3-ef-track">
-        <div class="v3-ef-fill"><span class="v3-ef-tip" aria-hidden="true"></span></div>
+        <div class="v3-ef-fill"><span class="v3-ef-tip" aria-hidden="true"></span><span class="v3-ef-spark" aria-hidden="true"></span></div>
         <div class="v3-ef-segs" aria-hidden="true"></div>
       </div>
       <div class="v3-ef-streak" aria-hidden="true"></div>
