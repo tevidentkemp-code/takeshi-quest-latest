@@ -5561,7 +5561,7 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 
 #liveV3Panel{
   --v3-orange:#ff6a00; --v3-orange-lt:#ff9440;
-  --v3-blue:#4aa3ff; --v3-green:#2fd06b; --v3-red:#ff4d5e;
+  --v3-blue:#4aa3ff; --v3-green:#2fd06b; --v3-red:#ff4d5e; --v3-purple:#b06bff;
   --v3-ink:#eaf0fb; --v3-muted:rgba(214,222,240,.5);
   --v3-line:rgba(255,255,255,.09);
   --v3-panel: linear-gradient(165deg,#141924 0%,#0c0f17 100%);
@@ -5776,30 +5776,34 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-diff.even{ color:var(--v3-muted); background:rgba(255,255,255,.05); }
 
 /* Rounds zone — compact now the card no longer stretches full height */
-.v3-rounds-zone{
-  width:100%; flex:0 0 auto; min-height:0;
-  display:flex; align-items:center; justify-content:center;
-  border-top:1px solid var(--v3-line);
-  margin-top:8px; padding:7px 0 5px;
+/* Card footer: previous rounds hug the OUTER edge, averages the INNER edge. */
+.v3-foot{
+  width:100%; flex:0 0 auto; display:flex; align-items:stretch; gap:10px;
+  border-top:1px solid var(--v3-line); margin-top:8px; padding-top:8px;
 }
-.v3-rounds{ display:flex; flex-direction:column; gap:8px; width:100%; }
+.v3-foot.p2{ flex-direction:row-reverse; }              /* mirror: outer edge = right */
+.v3-foot-prev{ flex:0 0 auto; min-width:50px; display:flex; flex-direction:column; gap:6px; justify-content:center; }
+.v3-foot-avgs{ flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; justify-content:center; }
+/* previous-round stack (outer) */
 .v3-rr{ display:flex; flex-direction:column; align-items:center; text-align:center; }
-.v3-rr-lab{ font-size:9px; font-weight:900; letter-spacing:.12em; color:var(--v3-muted); }
-.v3-rr-tot{ font-size:19px; font-weight:900; color:#fff; line-height:1.1; }
+.v3-foot.p1 .v3-rr{ align-items:flex-start; text-align:left; }
+.v3-foot.p2 .v3-rr{ align-items:flex-end; text-align:right; }
+.v3-rr-lab{ font-size:8px; font-weight:900; letter-spacing:.12em; color:var(--v3-muted); }
+.v3-rr-tot{ font-size:17px; font-weight:900; color:#fff; line-height:1.05; }
 .v3-rr.best .v3-rr-tot{ color:var(--v3-green); }
-.v3-rr-marks{ font-size:11px; font-weight:800; color:rgba(214,222,240,.55); letter-spacing:.04em; }
-.v3-rr-marks i{ font-style:normal; color:rgba(214,222,240,.3); margin:0 2px; }
-.v3-rr-none{ font-size:9px; font-weight:900; letter-spacing:.14em; color:rgba(214,222,240,.3); text-align:center; }
-
-/* Averages pinned to the bottom of each card */
-.v3-stats{
-  width:100%; display:flex; align-items:stretch; gap:8px;
-  border-top:1px solid var(--v3-line); padding-top:9px; flex:0 0 auto;
-}
-.v3-avg{ flex:1; display:flex; flex-direction:column; align-items:center; text-align:center; gap:1px; }
-.v3-avg-div{ width:1px; background:var(--v3-line); }
-.v3-avg-val{ font-size:17px; font-weight:900; color:#fff; line-height:1.05; }
-.v3-avg-lab{ font-size:8px; font-weight:900; letter-spacing:.1em; color:var(--v3-muted); }
+.v3-rr-marks{ font-size:9px; font-weight:800; color:rgba(214,222,240,.5); letter-spacing:.03em; }
+.v3-rr-marks i{ font-style:normal; color:rgba(214,222,240,.3); margin:0 1px; }
+.v3-rr-none{ font-size:8px; font-weight:900; letter-spacing:.12em; color:rgba(214,222,240,.3); }
+/* averages stack (inner) */
+.v3-avg{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:0; }
+.v3-foot.p1 .v3-avg{ align-items:flex-end; text-align:right; }
+.v3-foot.p2 .v3-avg{ align-items:flex-start; text-align:left; }
+.v3-avg-val{ font-size:16px; font-weight:900; color:#fff; line-height:1.02; transition:color .3s ease, text-shadow .3s ease; }
+.v3-avg-lab{ font-size:8px; font-weight:900; letter-spacing:.08em; color:var(--v3-muted); }
+/* record highlighting: GREEN = player's own best ever, PURPLE = all-time record */
+.v3-avg.rec-best .v3-avg-val{ color:var(--v3-green); text-shadow:0 0 10px rgba(47,208,107,.55); }
+.v3-avg.rec-record .v3-avg-val{ color:var(--v3-purple); text-shadow:0 0 12px rgba(176,107,255,.75); animation:v3AvgRecord 1.4s ease-in-out infinite; }
+@keyframes v3AvgRecord{ 0%,100%{ text-shadow:0 0 10px rgba(176,107,255,.55); } 50%{ text-shadow:0 0 18px rgba(176,107,255,.95); } }
 
 /* ---------------- Centre column ---------------- */
 .v3-centre{ display:flex; flex-direction:column; gap:9px; min-width:0; }
@@ -6110,7 +6114,7 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-dot-out{ animation: v3DotOut .35s ease-out both; }
 
 @media (prefers-reduced-motion: reduce){
-  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly, .v3-dmd-bezel::before, .v3-dmd-attract::before, .v3-turnbar, .v3-card.active .v3-turnbar, .v3-windot-win, .v3-combo-pop{ animation:none !important; transition:none !important; }
+  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly, .v3-dmd-bezel::before, .v3-dmd-attract::before, .v3-turnbar, .v3-card.active .v3-turnbar, .v3-windot-win, .v3-combo-pop, .v3-avg.rec-record .v3-avg-val{ animation:none !important; transition:none !important; }
   .v3-card.active .v3-turnbar{ opacity:1 !important; transform:none !important; }
   #v3fxLayer{ display:none !important; }
 }
@@ -25578,6 +25582,85 @@ function __sqLiveV3LoadPBs(){
   })();
 }
 
+// All-time best 3-ROUND AVG and GAME AVG, per player and game-wide, from saved
+// official games. Powers the green (personal best) / purple (all-time record)
+// average highlighting. Best-effort + async; stays neutral offline.
+function __sqV3LoadAvgRecords(){
+  if (window.__sqV3AvgRecordsLoading || window.__sqV3AvgRecords) return;
+  window.__sqV3AvgRecordsLoading = true;
+  (async () => {
+    const per = new Map();                 // name(lower) -> { a3, ga }
+    let gA3 = 0, gGa = 0;                   // game-wide (all-time) records
+    const rc = (Array.isArray(window.ROUNDS) && window.ROUNDS.length) ? window.ROUNDS.length : 14;
+    const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+    const played = e => {
+      if (e == null) return false;
+      if (typeof e === 'number') return true;
+      if (Array.isArray(e.darts)) return e.darts.some(d => d != null);
+      return Number.isFinite(Number(e.roundTotal)) || Number.isFinite(Number(e.total)) || Number.isFinite(Number(e.score));
+    };
+    const total = e => {
+      if (e == null) return 0;
+      if (typeof e === 'number') return num(e);
+      if (Number.isFinite(Number(e.roundTotal))) return num(e.roundTotal);
+      if (Number.isFinite(Number(e.total))) return num(e.total);
+      if (Number.isFinite(Number(e.score))) return num(e.score);
+      if (Array.isArray(e.darts)) return e.darts.reduce((s, d) => s + (d == null ? 0 : (typeof d === 'number' ? num(d) : num(d.score ?? d.points ?? d.value ?? 0))), 0);
+      return 0;
+    };
+    const entryAt = (board, pIdx, rIdx, pc) => {
+      if (Array.isArray(board?.[pIdx])) return board[pIdx]?.[rIdx];
+      if (Array.isArray(board?.[rIdx]) && board.length >= rc && board.length !== pc) return board[rIdx]?.[pIdx];
+      return null;
+    };
+    try{
+      if (typeof cloudFetchAllGamesAsLocal === 'function'){
+        const games = await cloudFetchAllGamesAsLocal();
+        for (const g of (Array.isArray(games) ? games : [])){
+          try{
+            if (typeof isOfficialGame === 'function' && !isOfficialGame(g)) continue;
+            const ps = (g && (g.players || g.state?.players)) || [];
+            const board = (g && (g.board || g.score || g.state?.board || g.state?.score)) || [];
+            if (!Array.isArray(ps) || !ps.length) continue;
+            for (let pIdx = 0; pIdx < ps.length; pIdx++){
+              const pts = [];
+              for (let ri = 0; ri < rc; ri++){ const e = entryAt(board, pIdx, ri, ps.length); if (played(e)) pts.push(total(e)); }
+              if (!pts.length) continue;
+              const ga = pts.reduce((a, c) => a + c, 0) / pts.length;
+              let a3 = 0;
+              if (pts.length >= 3){ for (let i = 0; i + 3 <= pts.length; i++){ const m = (pts[i] + pts[i + 1] + pts[i + 2]) / 3; if (m > a3) a3 = m; } }
+              const nm = String(ps[pIdx]?.name || ps[pIdx]?.fullName || ps[pIdx]?.displayName || ps[pIdx]?.nick || '').trim().toLowerCase();
+              if (!nm) continue;
+              const cur = per.get(nm) || { a3: 0, ga: 0 };
+              if (a3 > cur.a3) cur.a3 = a3;
+              if (ga > cur.ga) cur.ga = ga;
+              per.set(nm, cur);
+              if (a3 > gA3) gA3 = a3;
+              if (ga > gGa) gGa = ga;
+            }
+          }catch(_){ }
+        }
+      }
+    }catch(_){ }
+    window.__sqV3AvgRecords = { per, global: { a3: gA3, ga: gGa } };
+    window.__sqV3AvgRecordsLoading = false;
+    // Force a re-render so the colours apply the moment records arrive.
+    try{ const p = document.getElementById('liveV3Panel'); if (p) p.dataset.sig = ''; if (typeof window.__sqLiveV3Sync === 'function') window.__sqLiveV3Sync(); }catch(_){ }
+  })();
+}
+// Classify a live average against the loaded records: '' | 'rec-best' | 'rec-record'.
+function __sqV3AvgRecClass(kind, valueNum, completedRounds, nameLower){
+  if (valueNum == null || !(completedRounds >= 3)) return '';
+  const rec = window.__sqV3AvgRecords; if (!rec) return '';
+  const EPS = 0.05;
+  const gRec = kind === 'a3' ? (rec.global && rec.global.a3) : (rec.global && rec.global.ga);
+  if (gRec && valueNum >= gRec - EPS) return 'rec-record';
+  const pr = rec.per && rec.per.get(nameLower);
+  const pRec = pr ? (kind === 'a3' ? pr.a3 : pr.ga) : 0;
+  if (pRec && valueNum >= pRec - EPS) return 'rec-best';
+  return '';
+}
+
 function __sqV3FxLayer(){
   let l = document.getElementById('v3fxLayer');
   if (!l){ l = document.createElement('div'); l.id = 'v3fxLayer'; document.body.appendChild(l); }
@@ -26208,6 +26291,7 @@ function __sqLiveV3Render(){
   const targetWins = Math.max(1, Number(state.match && state.match.targetWins) || 1);
   const pbs = window.__sqV3PBs || new Map();
   if (!window.__sqV3PBs) __sqLiveV3LoadPBs();
+  if (!window.__sqV3AvgRecords) __sqV3LoadAvgRecords();
 
   const pName = i => String((state.players[i] && (state.players[i].name || state.players[i].player)) || ('P' + (i + 1)));
   const pNick = i => String((state.players[i] && state.players[i].nickname) || '').trim();
@@ -26248,7 +26332,7 @@ function __sqLiveV3Render(){
   // two cards stay balanced without fake placeholder rows.
   const lastRounds = (p) => {
     const items = [];
-    for (let ri = r; ri >= 0 && items.length < 1; ri--){
+    for (let ri = r; ri >= 0 && items.length < 2; ri--){
       const e = entryOf(p, ri);
       if (!roundComplete(p, ri, e)) continue;
       const best = __sqV3RoundThrown(entryOf(1 - p, ri)) && Number(e.roundTotal || 0) > Number(entryOf(1 - p, ri).roundTotal || 0);
@@ -26270,7 +26354,8 @@ function __sqLiveV3Render(){
     const mean = arr => arr.length ? (arr.reduce((a, c) => a + c, 0) / arr.length) : null;
     const game = mean(roundPts);
     const r3 = mean(roundPts.slice(-3));
-    return { a3: r3 == null ? '--' : r3.toFixed(1), ga: game == null ? '--' : game.toFixed(1) };
+    return { a3: r3 == null ? '--' : r3.toFixed(1), ga: game == null ? '--' : game.toFixed(1),
+             a3n: r3, gan: game, done: roundPts.length };
   };
 
   const playerCard = (i) => {
@@ -26280,6 +26365,9 @@ function __sqLiveV3Render(){
     const lvlChip = __lvl ? `<span class="v3-lvl">LV ${__lvl}</span>` : '';
     const nick = pNick(i) ? `<div class="v3-nick">“${escV3(pNick(i).toUpperCase())}”</div>` : '';
     const avg = playerAverages(i);
+    const nmLower = String(pName(i)).trim().toLowerCase();
+    const a3cls = __sqV3AvgRecClass('a3', avg.a3n, avg.done, nmLower);
+    const gacls = __sqV3AvgRecClass('ga', avg.gan, avg.done, nmLower);
     const dart = `<span class="v3-dartico" aria-hidden="true"><svg viewBox="0 0 60 16" fill="none"><path d="M2 8h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="12" y="4.6" width="15" height="6.8" rx="3.4" fill="currentColor"/><path d="M15.5 5.2v5.6M19 5.2v5.6M22.5 5.2v5.6" stroke="rgba(0,0,0,.4)" stroke-width="1.1" stroke-linecap="round"/><path d="M27 8l6-.001" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M33 8 54 1.5 47 8 54 14.5Z" fill="currentColor"/><path d="M33 8 49 3.4 44.5 8 49 12.6Z" fill="rgba(0,0,0,.32)"/></svg></span>`;
     return `<div class="v3-side ${i === 0 ? 'p1' : 'p2'}">
       <div class="v3-windots-row">${winDots(i)}</div>
@@ -26291,11 +26379,12 @@ function __sqLiveV3Render(){
         <div class="v3-nick-slot">${nick}</div>
         <div class="v3-total">${totals[i]}</div>
         ${diffBadge(i)}
-        <div class="v3-rounds-zone"><div class="v3-rounds">${lastRounds(i)}</div></div>
-        <div class="v3-stats">
-          <div class="v3-avg"><span class="v3-avg-val">${avg.a3}</span><span class="v3-avg-lab">3-ROUND AVG</span></div>
-          <div class="v3-avg-div"></div>
-          <div class="v3-avg"><span class="v3-avg-val">${avg.ga}</span><span class="v3-avg-lab">GAME AVG</span></div>
+        <div class="v3-foot ${i === 0 ? 'p1' : 'p2'}">
+          <div class="v3-foot-prev">${lastRounds(i)}</div>
+          <div class="v3-foot-avgs">
+            <div class="v3-avg ${a3cls}"><span class="v3-avg-val">${avg.a3}</span><span class="v3-avg-lab">3-ROUND AVG</span></div>
+            <div class="v3-avg ${gacls}"><span class="v3-avg-val">${avg.ga}</span><span class="v3-avg-lab">GAME AVG</span></div>
+          </div>
         </div>
       </div>
     </div>`;
