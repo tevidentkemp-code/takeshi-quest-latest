@@ -5557,7 +5557,8 @@ body[data-page="details"] #details{
 body.livev3-on #liveV2Panel,
 body.livev3-on #floatHead,
 body.livev3-on #gameTopRow{ display:none !important; }
-body.livev3-on #settingsBtnGamePad{ display:none !important; }
+body.livev3-on #settingsBtnGamePad,
+body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has its own menu button */
 
 #liveV3Panel{
   --v3-orange:#ff6a00; --v3-orange-lt:#ff9440;
@@ -43802,7 +43803,12 @@ document.addEventListener('DOMContentLoaded', function(){
         bd.appendChild(m);
       }
 
-      btn.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); openMenu(); });
+      btn.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation();
+        // Prefer the single canonical in-game menu (FIX106) so the two menu
+        // systems can never stack; only fall back to this older one if it's absent.
+        if (typeof window.__sqOpenGameMenu106 === 'function') return window.__sqOpenGameMenu106();
+        openMenu();
+      });
     })();
     // >>> PATCH:game_settings_modal_v1 END
 
@@ -49795,7 +49801,7 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
   window.__sqOpenGameMenu106=function(){
     var m=openModalShell('Game Menu','Live game controls');
     var v3on=false; try{ v3on = localStorage.getItem('sq_livev3_test')==='1'; }catch(_){ }
-    addRow(m.body,{ico:'🧪',label:'New Layout (Beta): '+(v3on?'ON':'OFF'),desc:'2-player Match Play Classic only',cls:(v3on?'green':''),onClick:function(){
+    addRow(m.body,{ico:'🧪',label:'New Layout (Beta): '+(v3on?'ON':'OFF'),desc:'2 or 4 player Match Play Classic',cls:(v3on?'green':''),onClick:function(){
       try{ localStorage.setItem('sq_livev3_test', v3on?'0':'1'); }catch(_){ }
       m.close();
       try{ if(typeof updateUI==='function') updateUI(); else if(window.__sqLiveV3Sync) window.__sqLiveV3Sync(); }catch(_){ }
