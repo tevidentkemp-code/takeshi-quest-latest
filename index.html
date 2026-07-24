@@ -5712,28 +5712,26 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-card.active .v3-card-sheen{ opacity:1; }
 .v3-card.active.p1 .v3-card-sheen{ background: radial-gradient(120% 60% at 0% 20%, rgba(255,106,0,.16), transparent 60%); }
 .v3-card.active.p2 .v3-card-sheen{ background: radial-gradient(120% 60% at 100% 20%, rgba(255,106,0,.16), transparent 60%); }
+/* Active pill: the WHOLE card throbs (breathes) so whose-turn is unmistakable. */
 .v3-card.active{
   border-color:var(--v3-orange);
-  box-shadow: 0 10px 26px rgba(0,0,0,.4), 0 0 18px rgba(255,106,0,.22), inset 0 1px 0 rgba(255,255,255,.06);
-  animation: v3Pulse 2.4s ease-in-out infinite;
+  transform-origin:center;
+  animation: v3CardThrob 1.5s ease-in-out infinite;
 }
 .v3-card.active.p1{ border-left-width:3px; }
 .v3-card.active.p2{ border-right-width:3px; }
-@keyframes v3Pulse{
-  0%,100%{ box-shadow: 0 10px 26px rgba(0,0,0,.4), 0 0 16px rgba(255,106,0,.20), inset 0 1px 0 rgba(255,255,255,.06); }
-  50%{ box-shadow: 0 10px 26px rgba(0,0,0,.4), 0 0 26px rgba(255,106,0,.42), inset 0 1px 0 rgba(255,255,255,.06); }
+@keyframes v3CardThrob{
+  0%,100%{ transform:scale(1);      box-shadow: 0 10px 26px rgba(0,0,0,.4), 0 0 16px rgba(255,106,0,.22), inset 0 1px 0 rgba(255,255,255,.06); }
+  50%    { transform:scale(1.018);  box-shadow: 0 13px 32px rgba(0,0,0,.46), 0 0 32px rgba(255,106,0,.55), inset 0 1px 0 rgba(255,255,255,.08); }
+}
+/* Hit "reach": the active pill lunges forward when a dart scores (like a button press). */
+.v3-card-hit{ animation: v3CardHit .42s cubic-bezier(.2,.9,.25,1) !important; }
+@keyframes v3CardHit{
+  0%{ transform:scale(1); }
+  32%{ transform:scale(1.055); box-shadow: 0 16px 36px rgba(0,0,0,.5), 0 0 40px rgba(255,106,0,.7), inset 0 1px 0 rgba(255,255,255,.1); }
+  100%{ transform:scale(1); }
 }
 .v3-card > *{ position:relative; z-index:1; }
-/* Turn-clock: a thin pulsing bar on the active card's inner edge to drive pace */
-.v3-turnbar{
-  position:absolute; left:10px; right:10px; top:0; height:3px; z-index:2;
-  border-radius:0 0 3px 3px; opacity:0; transform-origin:center;
-  background: linear-gradient(90deg, transparent, var(--v3-orange) 30% 70%, transparent);
-  box-shadow: 0 0 10px rgba(255,106,0,.6);
-}
-.v3-card.active .v3-turnbar{ opacity:1; animation: v3TurnBar 1.5s ease-in-out infinite; }
-.v3-card.active.p2 .v3-turnbar{ background: linear-gradient(90deg, transparent, var(--v3-blue) 30% 70%, transparent); box-shadow:0 0 10px rgba(74,144,255,.55); }
-@keyframes v3TurnBar{ 0%,100%{ opacity:.3; transform:scaleX(.55); } 50%{ opacity:1; transform:scaleX(1); } }
 
 .v3-id{ display:flex; align-items:center; justify-content:center; gap:6px; min-height:20px; }
 .v3-badge{
@@ -5785,7 +5783,11 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 }
 .v3-foot.p2{ flex-direction:row-reverse; }              /* mirror: outer edge = right */
 .v3-foot-div{ flex:0 0 auto; width:1px; align-self:stretch; background:var(--v3-line); }  /* faint grey divider */
-.v3-foot-prev{ flex:0 0 auto; min-width:50px; display:flex; flex-direction:column; gap:6px; justify-content:center; }
+/* Outer column scrolls so every past round stays reachable (bottom grid removed). */
+.v3-foot-prev{ flex:0 0 auto; min-width:50px; max-height:104px; overflow-y:auto; overscroll-behavior:contain;
+  display:flex; flex-direction:column; gap:6px; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.18) transparent; pointer-events:auto; }
+.v3-foot-prev::-webkit-scrollbar{ width:3px; }
+.v3-foot-prev::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.18); border-radius:3px; }
 .v3-foot-avgs{ flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; justify-content:center; }
 /* previous-round stack (outer) */
 .v3-rr{ display:flex; flex-direction:column; align-items:center; text-align:center; }
@@ -5796,7 +5798,7 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-rr.best .v3-rr-tot{ color:var(--v3-green); }
 .v3-rr-marks{ font-size:9px; font-weight:800; color:rgba(214,222,240,.5); letter-spacing:.03em; }
 .v3-rr-marks i{ font-style:normal; color:rgba(214,222,240,.3); margin:0 1px; }
-.v3-rr-none{ font-size:8px; font-weight:900; letter-spacing:.12em; color:rgba(214,222,240,.3); }
+.v3-rr-none{ font-size:16px; font-weight:900; color:rgba(214,222,240,.28); white-space:nowrap; }
 /* averages stack (inner) */
 .v3-avg{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:0; }
 .v3-foot.p1 .v3-avg{ align-items:flex-end; text-align:right; }
@@ -5845,6 +5847,17 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-scorebox > *{ position:relative; z-index:1; }
 .v3-sb-lab{ font-size:12px; font-weight:900; letter-spacing:.2em; color:rgba(214,222,240,.78); }
 .v3-sb-num{ font-size: clamp(56px, 19vw, 84px); font-weight:900; color:#fff; line-height:1; margin-top:5px; letter-spacing:-.02em; text-shadow:0 2px 22px rgba(0,0,0,.55); }
+/* Awaiting-first-dart: a radar "ping" ring + the box breathes + READY pulses. */
+.v3-sb-ring{ position:absolute; left:50%; top:54%; width:74px; height:74px; margin:-37px 0 0 -37px; border-radius:50%;
+  border:2px solid rgba(255,106,0,.7); opacity:0; z-index:0; pointer-events:none; }
+.v3-scorebox.awaiting .v3-sb-ring{ animation:v3SbPing 1.5s ease-out infinite; }
+.v3-scorebox.awaiting .v3-sb-glow{ background: radial-gradient(96% 82% at 50% 50%, rgba(255,106,0,.22), transparent 66%); }
+.v3-scorebox.awaiting{ animation:v3SbBreathe 1.9s ease-in-out infinite; }
+.v3-scorebox.awaiting .v3-sb-lab{ color:var(--v3-orange); text-shadow:0 0 12px rgba(255,106,0,.6); }
+.v3-scorebox.awaiting .v3-sb-num{ animation:v3SbReady 1.6s ease-in-out infinite; }
+@keyframes v3SbPing{ 0%{ transform:scale(.45); opacity:.9; } 70%{ opacity:0; } 100%{ transform:scale(1.7); opacity:0; } }
+@keyframes v3SbBreathe{ 0%,100%{ box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 10px 26px rgba(0,0,0,.4), 0 0 0 rgba(255,106,0,0); } 50%{ box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 10px 26px rgba(0,0,0,.4), 0 0 24px rgba(255,106,0,.4); } }
+@keyframes v3SbReady{ 0%,100%{ opacity:.5; transform:scale(.96); } 50%{ opacity:.95; transform:scale(1.02); } }
 .v3-sb-marks{ font-size:17px; font-weight:900; color:rgba(214,222,240,.75); margin-top:6px; letter-spacing:.1em; }
 .v3-sb-marks i{ font-style:normal; color:rgba(214,222,240,.34); }
 
@@ -6118,8 +6131,7 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-dot-out{ animation: v3DotOut .35s ease-out both; }
 
 @media (prefers-reduced-motion: reduce){
-  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly, .v3-dmd-bezel::before, .v3-dmd-attract::before, .v3-turnbar, .v3-card.active .v3-turnbar, .v3-windot-win, .v3-combo-pop, .v3-avg.rec-record .v3-avg-val{ animation:none !important; transition:none !important; }
-  .v3-card.active .v3-turnbar{ opacity:1 !important; transform:none !important; }
+  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-card-hit, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly, .v3-dmd-bezel::before, .v3-dmd-attract::before, .v3-windot-win, .v3-combo-pop, .v3-avg.rec-record .v3-avg-val, .v3-scorebox.awaiting, .v3-scorebox.awaiting .v3-sb-ring, .v3-scorebox.awaiting .v3-sb-num{ animation:none !important; transition:none !important; }
   #v3fxLayer{ display:none !important; }
 }
 
@@ -25890,6 +25902,12 @@ function __sqV3Animate(panel){
       __sqV3FlyPlus(sbNum, totalEls[cp], '+' + delta, big);
       plusFlyPlayer = cp;
       const marks = panel.querySelector('.v3-sb-marks'); if (marks) marks.classList.add('v3-flash');
+      // The active pill lunges ("reaches") on a scoring dart.
+      try{
+        const hitCard = panel.querySelector('.v3-card.active');
+        if (hitCard && !__sqV3Reduced()){ hitCard.classList.remove('v3-card-hit'); void hitCard.offsetWidth; hitCard.classList.add('v3-card-hit');
+          setTimeout(() => { try{ hitCard.classList.remove('v3-card-hit'); }catch(_){ } }, 440); }
+      }catch(_){ }
       __sqV3SndHit(delta);
     }
     // Miss -> red negative shake (a dart was used but added no points).
@@ -26134,22 +26152,25 @@ function __sqV3RaceFrame(){
     const padL = 26, padR = 12, padT = 22, padB = 20, W = cssW - padL - padR, H = cssH - padT - padB;
     const X = i => padL + (rc <= 1 ? 0 : (i / (rc - 1)) * W);
     const Y = v => padT + H - (v / maxV) * H;
-    // horizontal value grid + labels
-    ctx.lineWidth = 1; ctx.font = '800 8px system-ui,sans-serif'; ctx.textBaseline = 'middle';
-    for (let g = 0; g <= 4; g++){
-      const val = maxV * g / 4, yy = Y(val);
-      ctx.strokeStyle = 'rgba(150,170,210,' + (g === 0 ? .22 : .09) + ')';
+    // horizontal value grid + labels: a line every 50, a STRONGER line every 100.
+    ctx.font = '800 8px system-ui,sans-serif'; ctx.textBaseline = 'middle';
+    const nLines = Math.floor(maxV / 50);
+    const labelEvery = nLines > 14 ? 100 : 50;   // thin the labels only when the scale is huge
+    for (let val = 0; val <= maxV; val += 50){
+      const yy = Y(val), strong = val % 100 === 0;
+      ctx.strokeStyle = 'rgba(150,170,210,' + (val === 0 ? .3 : (strong ? .19 : .07)) + ')';
+      ctx.lineWidth = strong ? 1.3 : 1;
       ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(padL + W, yy); ctx.stroke();
-      ctx.fillStyle = 'rgba(170,190,225,.5)'; ctx.textAlign = 'right'; ctx.fillText(String(Math.round(val)), padL - 4, yy);
+      if (val % labelEvery === 0){ ctx.fillStyle = strong ? 'rgba(184,202,234,.62)' : 'rgba(168,188,224,.4)'; ctx.textAlign = 'right'; ctx.fillText(String(val), padL - 4, yy); }
     }
-    // vertical round grid + labels (current round highlighted)
+    // vertical round grid + labels — every round labelled across the bottom.
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     const cr = Number(state.currentRound || 0);
     for (let i = 0; i < rc; i++){
       const xx = X(i), isCur = i === cr;
       ctx.strokeStyle = isCur ? 'rgba(255,138,20,.4)' : 'rgba(150,170,210,.07)'; ctx.lineWidth = isCur ? 1.5 : 1;
       ctx.beginPath(); ctx.moveTo(xx, padT); ctx.lineTo(xx, padT + H); ctx.stroke();
-      if (i % 2 === 0 || isCur){ ctx.fillStyle = isCur ? 'rgba(255,190,90,.95)' : 'rgba(160,178,208,.45)'; ctx.fillText(__sqV3RoundLabel(i), xx, padT + H + 4); }
+      ctx.fillStyle = isCur ? 'rgba(255,190,90,.95)' : 'rgba(160,178,208,.5)'; ctx.fillText(__sqV3RoundLabel(i), xx, padT + H + 4);
     }
     // HIGH-SCORE (record) pace — dashed gold reference line to race against
     if (recData){
@@ -26344,18 +26365,17 @@ function __sqLiveV3Render(){
     return full || ri < r;
   };
 
-  // Both cards use the same format: the last three completed rounds, most
-  // recent first. Real rounds only — the zone centres whatever exists so the
-  // two cards stay balanced without fake placeholder rows.
+  // Every completed round, most recent first — the outer column scrolls so older
+  // scores stay reachable (the bottom grid is gone).
   const lastRounds = (p) => {
     const items = [];
-    for (let ri = r; ri >= 0 && items.length < 2; ri--){
+    for (let ri = r; ri >= 0; ri--){
       const e = entryOf(p, ri);
       if (!roundComplete(p, ri, e)) continue;
       const best = __sqV3RoundThrown(entryOf(1 - p, ri)) && Number(e.roundTotal || 0) > Number(entryOf(1 - p, ri).roundTotal || 0);
       items.push(`<div class="v3-rr${best ? ' best' : ''}"><span class="v3-rr-lab">R${ri + 1}</span><span class="v3-rr-tot">${Number(e.roundTotal || 0)}</span><span class="v3-rr-marks">${__sqV3Marks(e).replace(/ \/ /g, '<i>·</i>')}</span></div>`);
     }
-    if (!items.length) return '<div class="v3-rr-none">AWAITING FIRST ROUND</div>';
+    if (!items.length) return '<div class="v3-rr-none">—</div>';
     return items.join('');
   };
 
@@ -26380,7 +26400,6 @@ function __sqLiveV3Render(){
     const crown = i === leader ? '<span class="v3-crown" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 8l4.5 3.5L12 5l4.5 6.5L21 8l-1.6 10.2a1 1 0 0 1-1 .8H5.6a1 1 0 0 1-1-.8L3 8z"/></svg></span>' : '';
     const __lvl = (window.__sqV3Levels || {})[String(pName(i)).trim().toLowerCase()];
     const lvlChip = __lvl ? `<span class="v3-lvl">LV ${__lvl}</span>` : '';
-    const nick = pNick(i) ? `<div class="v3-nick">“${escV3(pNick(i).toUpperCase())}”</div>` : '';
     const avg = playerAverages(i);
     const nmLower = String(pName(i)).trim().toLowerCase();
     const a3cls = __sqV3AvgRecClass('a3', avg.a3n, avg.done, nmLower);
@@ -26390,10 +26409,8 @@ function __sqLiveV3Render(){
       <div class="v3-windots-row">${winDots(i)}</div>
       <div class="v3-card ${active ? 'active' : 'waiting'} ${i === 0 ? 'p1' : 'p2'}">
         <div class="v3-card-sheen" aria-hidden="true"></div>
-        <div class="v3-turnbar" aria-hidden="true"></div>
         <div class="v3-dartrow">${crown}${dart}${lvlChip}</div>
         <div class="v3-name">${escV3(pName(i).split(' ')[0].toUpperCase())}</div>
-        <div class="v3-nick-slot">${nick}</div>
         <div class="v3-total ${totalRecClass(i)}">${totals[i]}</div>
         ${diffBadge(i)}
         <div class="v3-foot ${i === 0 ? 'p1' : 'p2'}">
@@ -26417,33 +26434,15 @@ function __sqLiveV3Render(){
     </div>`;
 
   const curEntry = entryOf(cp, r);
+  // Fresh round = the active player hasn't thrown yet -> the centre box shows a
+  // "READY" ping instead of a dead 0.
+  const freshRound = !(curEntry && curEntry.darts && curEntry.darts.some(d => d != null)) && !state.finished;
   // All three dots start lit; one goes out (right-to-left) after each throw.
   const dartDots = [0,1,2].map(k => `<i class="${k < (3 - dart) ? 'on' : ''}"></i>`).join('');
   const roundDef = ROUNDS[r] || {};
   const targetLabel = roundDef.type === 'number' ? String(roundDef.target)
     : roundDef.type === 'doubles' ? 'DOUBLES'
     : roundDef.type === 'triples' ? 'TREBLES' : 'BULL';
-
-  // Score grid: one column per round + TOTAL (no PB, so all rounds fit unscrolled)
-  let head = '<tr><th class="v3-g-init"></th>';
-  for (let ri = 0; ri < MAX_ROUNDS; ri++) head += `<th class="${ri === r ? 'cur' : ''}">${__sqV3RoundLabel(ri)}</th>`;
-  head += '<th class="v3-g-total">TOT</th></tr>';
-  let rows = '';
-  for (let i = 0; i < 2; i++){
-    const arrow = leader < 0 ? '' : (i === leader ? '<span class="v3-arr up">▲</span>' : '<span class="v3-arr down">▼</span>');
-    let cells = '';
-    for (let ri = 0; ri < MAX_ROUNDS; ri++){
-      const e = entryOf(i, ri);
-      const thrown = __sqV3RoundThrown(e);
-      const done = ri < r || (ri === r && thrown);
-      const val = thrown ? Number(e.roundTotal || 0) : (ri < r ? 'x' : '');
-      const oppE = entryOf(1 - i, ri);
-      const won = done && thrown && Number(e.roundTotal || 0) > Number((oppE && oppE.roundTotal) || 0);
-      cells += `<td class="${ri === r ? 'cur' : ''} ${won ? 'won' : ''} ${val === 'x' || val === 0 ? 'zero' : ''}">${val === 0 && done ? 'x' : val}</td>`;
-    }
-    cells += `<td class="v3-g-total ${i === leader ? 'lead' : ''}">${totals[i]}</td>`;
-    rows += `<tr class="${i === cp ? 'cur-p' : ''}"><th class="v3-g-init">${escV3(String(getPlayerInitial(i) || '').toUpperCase())}${arrow}</th>${cells}</tr>`;
-  }
 
   panel.innerHTML = `
     <div class="v3-topbar">
@@ -26465,9 +26464,10 @@ function __sqLiveV3Render(){
               <div class="v3-dart-lab">DART ${Math.min(dart + 1, 3)} OF 3</div>
               <div class="v3-dartdots">${dartDots}</div>
             </div>
-            <div class="v3-scorebox">
+            <div class="v3-scorebox ${freshRound ? 'awaiting' : ''}">
               <div class="v3-sb-glow" aria-hidden="true"></div>
-              <div class="v3-sb-lab">ROUND SCORE</div>
+              <div class="v3-sb-ring" aria-hidden="true"></div>
+              <div class="v3-sb-lab">${freshRound ? 'READY' : 'ROUND SCORE'}</div>
               <div class="v3-sb-num">${Number((curEntry && curEntry.roundTotal) || 0)}</div>
               <div class="v3-sb-marks">${__sqV3Marks(curEntry).replace(/ \/ /g, '<i>·</i>')}</div>
             </div>
@@ -26481,8 +26481,7 @@ function __sqLiveV3Render(){
           <div class="v3-race-bezel"><div class="v3-race-title">GAME RACE</div><canvas id="v3RaceCanvas" class="v3-race"></canvas></div>
         </div>
       </div>
-    </div>
-    <div class="v3-grid-wrap"><table class="v3-grid"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
+    </div>`;
 
   // Boot the animated GAME RACE (the only screen content now — dot-matrix removed).
   try{ __sqV3RaceEnsure(); }catch(_){ }
@@ -26531,13 +26530,6 @@ function __sqLiveV3Render(){
   try{ __sqV3Animate(panel); }catch(_){ }
   try{ __sqV3FormView(panel); }catch(_){ }
   try{ __sqV3EnsureLevels(panel); }catch(_){ }
-
-  // Keep the current-round column in view on narrow screens.
-  try{
-    const wrap = panel.querySelector('.v3-grid-wrap');
-    const cur = panel.querySelector('.v3-grid thead th.cur');
-    if (wrap && cur) wrap.scrollLeft = Math.max(0, cur.offsetLeft - wrap.clientWidth / 2 + cur.offsetWidth);
-  }catch(_){ }
 }
 
 window.__sqLiveV3Sync = function(){
