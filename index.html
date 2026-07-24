@@ -5640,14 +5640,14 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 }
 .v3-main{
   display:grid;
-  grid-template-columns: 1fr 1.06fr 1fr;
-  gap: 9px;
+  grid-template-columns: 14px 1fr 1.06fr 1fr 14px;   /* FORM bars flank each player pill */
+  gap: 8px;
   align-items: stretch;
   margin: 0;
   flex: 0 0 auto;
 }
-/* The RACE band: thin FORM bars flank a full-width animated race box. The FORM
-   bars are only as tall as this row (the race box), not the whole screen. */
+/* The RACE band: a full-width animated race box (FORM bars now sit beside the
+   player pills, on their outer edges). */
 .v3-screen{
   flex:1 1 auto; min-height:120px; margin:0 2px;
   display:flex; flex-direction:row; align-items:stretch; gap:6px;
@@ -5765,7 +5765,9 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
 .v3-card.waiting.p1 .v3-name{ color:#eaf0fb; }
 .v3-nick-slot{ min-height:13px; margin-top:2px; max-width:100%; }
 .v3-nick{ font-size:9px; font-weight:800; letter-spacing:.1em; color:var(--v3-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.v3-total{ font-size: clamp(32px, 10.5vw, 46px); font-weight:900; color:#fff; margin-top:6px; line-height:.98; letter-spacing:-.01em; }
+.v3-total{ font-size: clamp(32px, 10.5vw, 46px); font-weight:900; color:#fff; margin-top:6px; line-height:.98; letter-spacing:-.01em; transition:color .3s ease, text-shadow .3s ease; }
+.v3-total.leading{ color:var(--v3-green); text-shadow:0 0 14px rgba(47,208,107,.5); }
+.v3-total.lead-record{ color:var(--v3-purple); text-shadow:0 0 18px rgba(176,107,255,.7); animation:v3AvgRecord 1.4s ease-in-out infinite; }
 .v3-diff{
   display:inline-flex; align-items:center; gap:3px;
   font-size:12px; font-weight:900; letter-spacing:.02em; margin-top:5px;
@@ -5782,6 +5784,7 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
   border-top:1px solid var(--v3-line); margin-top:8px; padding-top:8px;
 }
 .v3-foot.p2{ flex-direction:row-reverse; }              /* mirror: outer edge = right */
+.v3-foot-div{ flex:0 0 auto; width:1px; align-self:stretch; background:var(--v3-line); }  /* faint grey divider */
 .v3-foot-prev{ flex:0 0 auto; min-width:50px; display:flex; flex-direction:column; gap:6px; justify-content:center; }
 .v3-foot-avgs{ flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; justify-content:center; }
 /* previous-round stack (outer) */
@@ -5850,8 +5853,9 @@ body.livev3-on #settingsBtnGamePad{ display:none !important; }
    and combos charge harder. Fill it and it POPS (gold burst) and banks a fire
    streak. Pinned to the far left/right edges of the play area. */
 .v3-edge-form{
-  flex:0 0 13px; width:13px; align-self:stretch;   /* only as tall as the race box */
+  width:14px; align-self:stretch;                  /* as tall as the player pill it flanks */
   display:flex; flex-direction:column; align-items:center; gap:4px; pointer-events:none;
+  padding-top:28px;                                /* drop past the GAMES pill so it aligns with the card */
 }
 .v3-ef-cap{ font-size:7px; font-weight:900; letter-spacing:.18em; color:rgba(214,222,240,.45); writing-mode:vertical-rl; text-orientation:upright; letter-spacing:0; line-height:1; }
 .v3-ef-track{
@@ -26055,7 +26059,7 @@ function __sqV3RaceEnsure(){
   // Fetch the all-time high-score (record) pace once so it can be plotted.
   if (window.__sqV3RecordPace === undefined){
     window.__sqV3RecordPace = null;
-    try{ if (typeof buildRecordPaceSeries === 'function') buildRecordPaceSeries(MAX_ROUNDS).then(s => { window.__sqV3RecordPace = (s && Array.isArray(s.data)) ? s : null; }).catch(() => {}); }catch(_){ }
+    try{ if (typeof buildRecordPaceSeries === 'function') buildRecordPaceSeries(MAX_ROUNDS).then(s => { window.__sqV3RecordPace = (s && Array.isArray(s.data)) ? s : null; try{ const p = document.getElementById('liveV3Panel'); if (p) p.dataset.sig = ''; if (typeof window.__sqLiveV3Sync === 'function') window.__sqLiveV3Sync(); }catch(_){ } }).catch(() => {}); }catch(_){ }
   }
 }
 function __sqV3RaceSeries(){
@@ -26192,7 +26196,7 @@ function __sqV3RaceFrame(){
       }
       ctx.stroke(); ctx.shadowBlur = 0;
       // Comet trail: while a big segment zooms, streak a bright tail behind the head.
-      if (seg && seg.big && zoomV > 0 && P.length >= 2){
+      if (combo && zoomV > 0 && P.length >= 2){
         ctx.save();
         const grd = ctx.createLinearGradient(ppx, ppy, lx, ly);
         grd.addColorStop(0, 'rgba(255,255,255,0)'); grd.addColorStop(1, colors[pi]);
@@ -26293,6 +26297,19 @@ function __sqLiveV3Render(){
   if (!window.__sqV3PBs) __sqLiveV3LoadPBs();
   if (!window.__sqV3AvgRecords) __sqV3LoadAvgRecords();
 
+  // Big-total colour: GREEN when a player is leading, PURPLE once their running
+  // total is ahead of the all-time record pace at the same number of rounds.
+  const recPace = (window.__sqV3RecordPace && Array.isArray(window.__sqV3RecordPace.data)) ? window.__sqV3RecordPace.data : null;
+  const totalRecClass = (i) => {
+    if (leader !== i) return '';                 // only the player out in front is coloured
+    if (recPace){
+      const b = (state.score && state.score[i]) || []; let done = 0;
+      for (let ri = 0; ri < b.length; ri++){ const e = b[ri]; if (e && e.darts && e.darts.some(d => d != null)) done = ri + 1; }
+      if (done > 0){ const rec = recPace[Math.min(done - 1, recPace.length - 1)]; if (rec != null && totals[i] > rec) return 'lead-record'; }  // ahead of world-record pace
+    }
+    return 'leading';
+  };
+
   const pName = i => String((state.players[i] && (state.players[i].name || state.players[i].player)) || ('P' + (i + 1)));
   const pNick = i => String((state.players[i] && state.players[i].nickname) || '').trim();
   const entryOf = (p, ri) => (state.score && state.score[p] && state.score[p][ri]) || null;
@@ -26377,12 +26394,13 @@ function __sqLiveV3Render(){
         <div class="v3-dartrow">${crown}${dart}${lvlChip}</div>
         <div class="v3-name">${escV3(pName(i).split(' ')[0].toUpperCase())}</div>
         <div class="v3-nick-slot">${nick}</div>
-        <div class="v3-total">${totals[i]}</div>
+        <div class="v3-total ${totalRecClass(i)}">${totals[i]}</div>
         ${diffBadge(i)}
         <div class="v3-foot ${i === 0 ? 'p1' : 'p2'}">
           <div class="v3-foot-prev">${lastRounds(i)}</div>
+          <div class="v3-foot-div" aria-hidden="true"></div>
           <div class="v3-foot-avgs">
-            <div class="v3-avg ${a3cls}"><span class="v3-avg-val">${avg.a3}</span><span class="v3-avg-lab">3-ROUND AVG</span></div>
+            <div class="v3-avg ${a3cls}"><span class="v3-avg-val">${avg.a3}</span><span class="v3-avg-lab">3 RND AVG</span></div>
             <div class="v3-avg ${gacls}"><span class="v3-avg-val">${avg.ga}</span><span class="v3-avg-lab">GAME AVG</span></div>
           </div>
         </div>
@@ -26439,6 +26457,7 @@ function __sqLiveV3Render(){
     </div>
     <div class="v3-body">
       <div class="v3-main">
+        ${edgeForm(0)}
         ${playerCard(0)}
         <div class="v3-centre">
           <div class="v3-ctop">
@@ -26455,13 +26474,12 @@ function __sqLiveV3Render(){
           </div>
         </div>
         ${playerCard(1)}
+        ${edgeForm(1)}
       </div>
       <div class="v3-screen">
-        ${edgeForm(0)}
         <div class="v3-race-frame">
           <div class="v3-race-bezel"><div class="v3-race-title">GAME RACE</div><canvas id="v3RaceCanvas" class="v3-race"></canvas></div>
         </div>
-        ${edgeForm(1)}
       </div>
     </div>
     <div class="v3-grid-wrap"><table class="v3-grid"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
