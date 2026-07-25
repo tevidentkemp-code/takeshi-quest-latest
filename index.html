@@ -5568,12 +5568,13 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
   --v3-panel: linear-gradient(165deg,#141924 0%,#0c0f17 100%);
   width: 100%;
   max-width: 560px;
-  margin: 0 auto 10px;
+  margin: 0 auto 2px;
   color: var(--v3-ink);
   display:flex;
   flex-direction:column;
-  /* Fill the space between the top of the page and the fixed throw pad */
-  min-height: calc((var(--sqVh, 1vh) * 100) - var(--pad-h, 175px) - 18px);
+  /* Fill the space between the top of the page and the fixed throw pad, so the
+     GAME RACE stretches all the way down to the buttons. */
+  min-height: calc((var(--sqVh, 1vh) * 100) - var(--pad-h, 175px) - 6px);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -5656,8 +5657,10 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
     "f2 c2 mid c3 f3";
   row-gap:8px;
 }
-/* 3-player: two pills stacked on the left, one on the right spanning both rows,
-   centre column down the middle; a FORM bar flanks each pill on its outer edge. */
+/* 3-player: two pills stacked on the left, one on the right, centre column down
+   the middle; a FORM bar flanks each pill on its outer edge. The right pill
+   claims both rows but is sized to ONE row and centred, so it matches the height
+   of the left pills while sitting midway up the screen. */
 .v3-main.v3-3p{
   grid-template-columns: 14px 1fr 1.12fr 1fr 14px;
   grid-template-areas:
@@ -5665,15 +5668,21 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
     "f2 c2 mid c1 f1";
   row-gap:8px;
 }
+.v3-main.v3-3p > [style*="grid-area:c1"],
+.v3-main.v3-3p > [style*="grid-area:f1"]{
+  align-self:center;                 /* midway up the screen */
+  height:calc(50% - 4px);            /* one row tall (half the span minus the 8px row gap) */
+}
 /* The RACE band: a full-width animated race box (FORM bars now sit beside the
    player pills, on their outer edges). */
 .v3-screen{
   flex:1 1 auto; min-height:120px; margin:0 2px;
   display:flex; flex-direction:row; align-items:stretch; gap:6px;
 }
-/* 3- and 4-player leave less room, so the race chart is shortened to a fixed band. */
+/* 3- and 4-player have taller pill stacks, so the race gets a smaller floor —
+   it still grows to fill whatever space is left down to the throw pad. */
 .v3-body.v3-4p .v3-screen,
-.v3-body.v3-3p .v3-screen{ flex:0 0 auto; height:132px; min-height:132px; }
+.v3-body.v3-3p .v3-screen{ min-height:104px; }
 .v3-race-frame{ flex:1 1 auto; min-width:0; display:flex; }
 .v3-race-bezel{
   position:relative; flex:1; border-radius:14px; overflow:hidden;
