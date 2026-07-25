@@ -5656,14 +5656,24 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
     "f2 c2 mid c3 f3";
   row-gap:8px;
 }
+/* 3-player: two pills stacked on the left, one on the right spanning both rows,
+   centre column down the middle; a FORM bar flanks each pill on its outer edge. */
+.v3-main.v3-3p{
+  grid-template-columns: 14px 1fr 1.12fr 1fr 14px;
+  grid-template-areas:
+    "f0 c0 mid c1 f1"
+    "f2 c2 mid c1 f1";
+  row-gap:8px;
+}
 /* The RACE band: a full-width animated race box (FORM bars now sit beside the
    player pills, on their outer edges). */
 .v3-screen{
   flex:1 1 auto; min-height:120px; margin:0 2px;
   display:flex; flex-direction:row; align-items:stretch; gap:6px;
 }
-/* 4-player leaves less room, so the race chart is shortened to a fixed band. */
-.v3-body.v3-4p .v3-screen{ flex:0 0 auto; height:132px; min-height:132px; }
+/* 3- and 4-player leave less room, so the race chart is shortened to a fixed band. */
+.v3-body.v3-4p .v3-screen,
+.v3-body.v3-3p .v3-screen{ flex:0 0 auto; height:132px; min-height:132px; }
 .v3-race-frame{ flex:1 1 auto; min-width:0; display:flex; }
 .v3-race-bezel{
   position:relative; flex:1; border-radius:14px; overflow:hidden;
@@ -25556,7 +25566,7 @@ function __sqLiveV3Enabled(){
 function __sqLiveV3Eligible(){
   try{
     if (!__sqLiveV3Enabled()) return false;
-    if (!state || !Array.isArray(state.players) || (state.players.length !== 2 && state.players.length !== 4)) return false;
+    if (!state || !Array.isArray(state.players) || [2, 3, 4].indexOf(state.players.length) < 0) return false;
     const m = state.match || {};
     if (m.tournament) return false;
     if (m.forcePractice || m.practiceType) return false;
@@ -26511,11 +26521,14 @@ function __sqLiveV3Render(){
       </div>
       <button id="v3MenuBtn" class="v3-tb-menu" type="button" aria-label="Game menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </div>
-    <div class="v3-body${NP === 4 ? ' v3-4p' : ''}">
-      <div class="v3-main${NP === 4 ? ' v3-4p' : ''}">
+    <div class="v3-body${NP === 4 ? ' v3-4p' : NP === 3 ? ' v3-3p' : ''}">
+      <div class="v3-main${NP === 4 ? ' v3-4p' : NP === 3 ? ' v3-3p' : ''}">
         ${NP === 4
           ? `${edgeForm(0, 'f0')}${playerCard(0, 'c0')}${centreHtml('mid')}${playerCard(1, 'c1')}${edgeForm(1, 'f1')}` +
             `${edgeForm(2, 'f2')}${playerCard(2, 'c2')}${playerCard(3, 'c3')}${edgeForm(3, 'f3')}`
+          : NP === 3
+          ? `${edgeForm(0, 'f0')}${playerCard(0, 'c0')}${centreHtml('mid')}${playerCard(1, 'c1')}${edgeForm(1, 'f1')}` +
+            `${edgeForm(2, 'f2')}${playerCard(2, 'c2')}`
           : `${edgeForm(0)}${playerCard(0)}${centreHtml('')}${playerCard(1)}${edgeForm(1)}`}
       </div>
       <div class="v3-screen">
