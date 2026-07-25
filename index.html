@@ -15469,8 +15469,15 @@ function __sqGcXpEnsureStyles(){
   @keyframes gcLevelPulse{ 0%,100%{ box-shadow:0 0 16px rgba(255,150,60,.18);} 40%{ box-shadow:0 0 30px rgba(255,214,64,.85);} }
   .gc-xp-lvup{ display:inline-block; font-size:11px; font-weight:900; color:#ffd24a; letter-spacing:.06em; opacity:0; transform:scale(.7); transition:opacity .3s, transform .3s cubic-bezier(.2,.9,.25,1); }
   .gc-xp-lvup.in{ opacity:1; transform:none; }
-  .gc-xp-trophies{ display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
-  .gc-xp-trophy{ display:inline-flex; align-items:center; gap:5px; padding:4px 9px; border-radius:999px; font-size:11px; font-weight:800; color:#fff; opacity:0; transform:scale(.7) translateY(4px); transition:opacity .3s, transform .3s cubic-bezier(.2,.9,.25,1); }
+  /* Trophies on one line, achievements on another — each scrolls sideways if it overflows */
+  .gc-xp-awards{ display:flex; flex-direction:column; gap:5px; margin-top:9px; }
+  .gc-xp-line{ display:flex; align-items:center; gap:7px; min-width:0; }
+  .gc-xp-line[data-empty]{ display:none; }
+  .gc-xp-linelab{ flex:0 0 auto; width:18px; text-align:center; font-size:13px; line-height:1; opacity:.9; filter:drop-shadow(0 0 4px rgba(255,180,74,.45)); }
+  .gc-xp-chips{ display:flex; flex-wrap:nowrap; gap:6px; min-width:0; overflow-x:auto; overflow-y:hidden; padding-bottom:2px; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.2) transparent; -webkit-overflow-scrolling:touch; }
+  .gc-xp-chips::-webkit-scrollbar{ height:3px; }
+  .gc-xp-chips::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.2); border-radius:3px; }
+  .gc-xp-trophy{ flex:0 0 auto; display:inline-flex; align-items:center; gap:5px; padding:4px 9px; border-radius:999px; font-size:11px; font-weight:800; color:#fff; white-space:nowrap; opacity:0; transform:scale(.7) translateY(4px); transition:opacity .3s, transform .3s cubic-bezier(.2,.9,.25,1); }
   .gc-xp-trophy.in{ opacity:1; transform:none; }
   .gc-actions-hidden{ opacity:0; pointer-events:none; transform:translateY(8px); transition:opacity .45s ease, transform .45s ease; }
   @media (prefers-reduced-motion: reduce){ .gc-xp-row,.gc-xp-fill,.gc-xp-trophy,.gc-xp-lvup,.gc-actions-hidden{ transition:none !important; animation:none !important; } }`;
@@ -15489,22 +15496,29 @@ function __sqGcXpRow(panel, row, reduced){
       + '<span class="gc-xp-lvholder"></span><span class="gc-xp-lvup">LEVEL UP!</span></span>'
       + '<span class="gc-xp-gain">+0 XP</span></div>'
       + '<div class="gc-xp-bar"><div class="gc-xp-fill"></div></div>'
-      + '<div class="gc-xp-trophies"></div>';
+      + '<div class="gc-xp-awards">'
+      +   '<div class="gc-xp-line gc-xp-trophies" data-empty="1"><span class="gc-xp-linelab" title="Trophies">🏆</span><div class="gc-xp-chips"></div></div>'
+      +   '<div class="gc-xp-line gc-xp-achis" data-empty="1"><span class="gc-xp-linelab" title="Achievements">🎖️</span><div class="gc-xp-chips"></div></div>'
+      + '</div>';
     panel.appendChild(el);
     const lvHolder = el.querySelector('.gc-xp-lvholder');
     try{ lvHolder.appendChild(__sqXpChip(pre)); }catch(_){ }
     const gainEl = el.querySelector('.gc-xp-gain');
     const fill = el.querySelector('.gc-xp-fill');
-    const tw = el.querySelector('.gc-xp-trophies');
+    const trophyLine = el.querySelector('.gc-xp-trophies'), achiLine = el.querySelector('.gc-xp-achis');
+    const trophyChips = trophyLine.querySelector('.gc-xp-chips'), achiChips = achiLine.querySelector('.gc-xp-chips');
     const levelUp = post.level > pre.level;
     const addTrophies = () => {
-      row.troph.forEach((e, ti) => {
+      let ti = 0;
+      row.troph.forEach((e) => {
+        const isMile = !!(window.SQ_ACH && SQ_ACH.isMilestone && SQ_ACH.isMilestone(e.code));
         const a = SQ_ACH.meta(e.code); const s = SQ_ACH.tierStyle(a.tier);
         const chip = document.createElement('span'); chip.className = 'gc-xp-trophy';
         chip.style.background = s.g; chip.style.border = '1px solid ' + s.b; chip.style.color = s.c;
         chip.innerHTML = '<span>' + a.icon + '</span><span>' + a.name + (e.count > 1 ? ' ×' + e.count : '') + '</span>';
-        tw.appendChild(chip);
-        setTimeout(() => chip.classList.add('in'), reduced ? 0 : 460 + ti * 120);
+        (isMile ? achiChips : trophyChips).appendChild(chip);
+        (isMile ? achiLine : trophyLine).removeAttribute('data-empty');
+        setTimeout(() => chip.classList.add('in'), reduced ? 0 : 460 + (ti++) * 100);
       });
     };
     if (reduced){
@@ -15947,9 +15961,19 @@ function openGameCompleteDialog() {
       const scBtn = document.createElement('button'); scBtn.className = 'btn gc-breakdown'; scBtn.type = 'button'; scBtn.setAttribute('data-action','scorecard'); scBtn.textContent = 'SCORECARD';
       ranksEl2.style.zIndex = '4'; ranksEl2.style.position = 'relative';
       scBtn.onclick = () => {
-        const showing = ranksEl2.style.display !== 'none' && ranksEl2.getAttribute('aria-hidden') !== 'true';
-        if (showing){ ranksEl2.style.display = 'none'; ranksEl2.setAttribute('aria-hidden','true'); }
-        else { ranksEl2.style.display = ''; ranksEl2.setAttribute('aria-hidden','false'); try{ ranksEl2.scrollIntoView({behavior:'smooth', block:'nearest'}); }catch(_){ } }
+        const showing = ranksEl2.getAttribute('aria-hidden') !== 'true';
+        if (showing){
+          // Arcade CSS hides .gc-ranks with !important, so toggle it with an
+          // important inline value the button can actually override.
+          ranksEl2.style.setProperty('display', 'none', 'important');
+          ranksEl2.setAttribute('aria-hidden','true');
+          scBtn.textContent = 'SCORECARD';
+        } else {
+          ranksEl2.style.setProperty('display', 'flex', 'important');
+          ranksEl2.setAttribute('aria-hidden','false');
+          scBtn.textContent = 'HIDE SCORECARD';
+          try{ ranksEl2.scrollIntoView({behavior:'smooth', block:'nearest'}); }catch(_){ }
+        }
       };
       actionsEl.insertBefore(scBtn, actionsEl.firstChild);
     }
@@ -53735,7 +53759,9 @@ body[data-page="details"] .wrap{
   max-height: 92dvh !important;
   padding: 0 !important;
   border-radius: 26px !important;
-  overflow: hidden !important;
+  overflow-y: auto !important;   /* let tall content (XP screen) scroll instead of clipping */
+  overflow-x: hidden !important;
+  overscroll-behavior: contain;
   border: 1px solid rgba(255,255,255,.16) !important;
   background:
     radial-gradient(circle at 86% 20%, rgba(255,122,0,.12), transparent 34%),
