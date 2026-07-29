@@ -24850,7 +24850,7 @@ function openGameStatsDialog(){
     : (state.players || []).map((player, index) => ({ player, index }));
   const displayPlayers = displayEntries.map(x => x.player);
   const overlay = document.createElement('div');
-  overlay.className = 'modal-backdrop';
+  overlay.className = 'modal-backdrop sq-arcade-dlg';
 
   const modal = document.createElement('div');
   modal.className = 'modal';
@@ -24978,7 +24978,7 @@ function openMatchStatsDialog(){
     : (state.players || []).map((player, index) => ({ player, index }));
   const displayPlayers = displayEntries.map(x => x.player);
   const overlay = document.createElement('div');
-  overlay.className = 'modal-backdrop';
+  overlay.className = 'modal-backdrop sq-arcade-dlg';
 
   const modal = document.createElement('div');
   modal.className = 'modal';
@@ -25118,7 +25118,7 @@ async function cloudListPlayerGames(playerName, sinceIso = null, limit = 200) {
 // [removed: openPlayerGamesDialog (orphaned)] audit P5.3 batch 2 — dead/shadowed definition, no live callers
 
 async function openHighScoresDialog(){ 
-  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop sq-arcade-dlg';
   const modal   = document.createElement('div'); modal.className   = 'modal';
   const title   = document.createElement('h3');  title.textContent = 'High Scores (Official)';
   const body    = document.createElement('div'); body.className    = 'modal-body';
@@ -25276,33 +25276,54 @@ async function openHighScoresDialog(){
   await render();
 
 }
-async function openLowScoresDialog(){ 
+async function openLowScoresDialog(){
   const overlay = document.createElement('div');
-  overlay.className = 'modal-backdrop'; 
+  overlay.className = 'modal-backdrop sq-arcade-dlg';
 
   const modal = document.createElement('div');
-  modal.className = 'modal'; 
+  modal.className = 'modal';
 
   const title = document.createElement('h3');
-  title.textContent = 'Low Scores (Official)'; 
+  title.textContent = 'Low Scores (Official)';
 
   const body = document.createElement('div');
-  body.className = 'modal-body'; 
+  body.className = 'modal-body';
+
+  // Paint the shell (with a loading line) BEFORE awaiting the cloud, so tapping
+  // the row always opens something instead of hanging on a blank screen.
+  const loadingP = document.createElement('p');
+  loadingP.textContent = 'Loading low scores…';
+  body.appendChild(loadingP);
+  const footer0 = document.createElement('div'); footer0.className = 'modal-footer';
+  const close0 = document.createElement('button'); close0.className = 'btn sq-pill'; close0.textContent = 'Close';
+  close0.onclick = () => overlay.remove(); footer0.appendChild(close0);
+  modal.append(title, body, footer0);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0; modal.focus();
 
   try {
-    // League low scores = official high_scores table sorted ASCENDING
-    const { data, error } = await sb
+    // League low scores = official high_scores table sorted ASCENDING.
+    // Raced against a timeout so a stalled connection can't hang the dialog.
+    const q = sb
       .from(TABLE_HS_LEAGUE)
       .select('name, score, ts, game_id')
       .order('score', { ascending: true })   // lowest first
       .order('ts',    { ascending: true })   // oldest first for ties
       .limit(20);                            // bottom 20
+    const { data, error } = await Promise.race([
+      q,
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
+    ]);
 
     if (error) throw error;
 
     const list = data || [];
+    body.innerHTML = '';
 
-    if (!list.length) { 
+    if (!list.length) {
       const p = document.createElement('p'); 
       p.textContent = 'No scores recorded yet.'; 
       body.appendChild(p); 
@@ -25362,34 +25383,17 @@ async function openLowScoresDialog(){
       table.appendChild(tb); 
       body.appendChild(table);
     }
-  } catch (err) { 
-    console.error(err); 
-    const p = document.createElement('p'); 
-    p.textContent = 'Failed to load low scores.'; 
-    body.appendChild(p); 
+  } catch (err) {
+    console.error(err);
+    body.innerHTML = '';
+    const p = document.createElement('p');
+    p.textContent = (err && err.message === 'timeout')
+      ? 'Could not reach the scores service. Check your connection and try again.'
+      : 'Failed to load low scores.';
+    body.appendChild(p);
   }
 
-  const footer = document.createElement('div'); 
-  footer.className = 'modal-footer'; 
-
-  const closeBtn = document.createElement('button'); 
-  closeBtn.className = 'btn sq-pill'; 
-  closeBtn.textContent = 'Close'; 
-  closeBtn.onclick = () => overlay.remove(); 
-
-  footer.appendChild(closeBtn); 
-
-  modal.append(title, body, footer); 
-  overlay.appendChild(modal); 
-  document.body.appendChild(overlay); 
   try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
-
-  modal.tabIndex = 0; 
-  modal.focus(); 
-
-  overlay.addEventListener('click', e => { 
-    if (e.target === overlay) overlay.remove();
-  }); 
 
   overlay.addEventListener('keydown', e => { 
     if (e.key === 'Escape') overlay.remove();
@@ -28843,7 +28847,7 @@ async function __sqBuildRaceReferenceSeriesForCurrentMode(roundsCount, startRoun
 // <<< PATCH:FIX173_RACE_REFERENCE_MODE_RESOLVER END
 async function openGameRaceDialog() {
   const overlay = document.createElement('div');
-  overlay.className = 'modal-backdrop';
+  overlay.className = 'modal-backdrop sq-arcade-dlg';
 
   const modal = document.createElement('div');
   modal.className = 'modal';
@@ -49770,6 +49774,15 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
 .sq-menu106-chev{font-size:24px;color:rgba(220,226,248,.4);justify-self:end;}
 /* Section divider between safe actions and the destructive group */
 .sq-menu106-sep{height:1px;margin:4px 6px 2px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.14),transparent);}
+/* In-game stats dialogs (Game Race / Game Stats / Match Stats / High + Low
+   Scores) share the menu's arcade look so every in-game popup matches. */
+.sq-arcade-dlg{background:rgba(4,6,12,.74)!important;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}
+.sq-arcade-dlg .modal{border-radius:18px!important;background:linear-gradient(165deg,#141924 0%,#0c0f17 100%)!important;border:1px solid rgba(255,255,255,.10)!important;box-shadow:0 22px 60px rgba(0,0,0,.6),0 0 42px rgba(255,106,0,.10),inset 0 1px 0 rgba(255,255,255,.05)!important;}
+.sq-arcade-dlg .modal>h3{text-align:center;text-transform:uppercase;letter-spacing:.18em;font-size:17px;font-weight:950;color:#ff9440;text-shadow:0 0 14px rgba(255,106,0,.55);margin:0 0 12px;padding:10px 8px;border-radius:12px;background:linear-gradient(180deg,#0b0f1a,#05070d);border:1px solid rgba(255,255,255,.09);box-shadow:inset 0 0 22px rgba(0,0,0,.75);}
+.sq-arcade-dlg .modal-footer .btn{border-radius:12px;text-transform:uppercase;letter-spacing:.12em;font-weight:900;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:#dfe5ff;}
+.sq-arcade-dlg .modal-footer .btn.primary{background:rgba(255,106,0,.16);border-color:rgba(255,106,0,.5);color:#ffb98a;}
+.sq-arcade-dlg .hs-table th{text-transform:uppercase;letter-spacing:.1em;font-size:10px;font-weight:900;color:rgba(214,222,240,.55);}
+.sq-arcade-dlg .hs-table td{color:#eef2ff;}
 .sq-menu106-footer{display:flex;justify-content:center;margin-top:14px;}
 .sq-menu106-close{min-width:130px;min-height:42px;border-radius:12px;text-transform:uppercase;letter-spacing:.14em;font-weight:900;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:#dfe5ff;}
 </style>
@@ -49865,7 +49878,7 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
     var v3on=false; try{ v3on = localStorage.getItem('sq_livev3_test')==='1'; }catch(_){ }
     // Safe / frequently-used actions first.
     addRow(m.body,{ico:'📊',label:'Stats',desc:'Race, game & match stats',cls:'blue',onClick:function(){m.close(); window.openStatsHubDialog();}});
-    addRow(m.body,{ico:'🧪',label:'New Layout (Beta): '+(v3on?'ON':'OFF'),desc:'2 or 4 player Match Play Classic',cls:(v3on?'green':''),onClick:function(){
+    addRow(m.body,{ico:'🧪',label:'New Layout (Beta): '+(v3on?'ON':'OFF'),desc:'2-4 player Match Play Classic',cls:(v3on?'green':''),onClick:function(){
       try{ localStorage.setItem('sq_livev3_test', v3on?'0':'1'); }catch(_){ }
       m.close();
       try{ if(typeof updateUI==='function') updateUI(); else if(window.__sqLiveV3Sync) window.__sqLiveV3Sync(); }catch(_){ }
