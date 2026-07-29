@@ -25146,7 +25146,46 @@ async function cloudListPlayerGames(playerName, sinceIso = null, limit = 200) {
 }
 // [removed: openPlayerGamesDialog (orphaned)] audit P5.3 batch 2 — dead/shadowed definition, no live callers
 
-async function openHighScoresDialog(){ 
+/* Official High/Low scores are derived from the `games` table, which is the
+   authoritative record. The legacy high_scores / high_scores_sp tables stopped
+   being written to and hold a stale, partial subset (they miss the real record
+   holders entirely), so reading them showed a handful of very old rows. */
+async function __sqScoresFromGames(sinceIso){
+  const out = [];
+  let games = [];
+  try{ if (typeof cloudFetchAllGamesAsLocal === 'function') games = await cloudFetchAllGamesAsLocal(); }catch(_){ games = []; }
+  const since = sinceIso ? new Date(sinceIso).getTime() : null;
+  for (const g of (Array.isArray(games) ? games : [])){
+    try{
+      if (typeof isOfficialGame === 'function' && !isOfficialGame(g)) continue;
+      const ps = (g && (g.players || g.state?.players)) || [];
+      if (!Array.isArray(ps) || ps.length < 2) continue;
+      const raw = g.ts || g.created_at || g.inserted_at || g.state?.ts;
+      const t = raw ? new Date(raw).getTime() : 0;
+      if (since && !(t >= since)) continue;
+      const totals = (g && (g.totals || g.state?.totals)) || [];
+      for (let i = 0; i < ps.length; i++){
+        const nm = String((ps[i] && (ps[i].name || ps[i].fullName || ps[i].displayName)) || '').trim();
+        const sc = Number(Array.isArray(totals) ? totals[i] : NaN);
+        if (!nm || !Number.isFinite(sc) || sc <= 0) continue;
+        out.push({ player_id: (ps[i] && (ps[i].id || ps[i].player_id)) || null, name: nm, score: sc, ts: raw || null, game_id: g.id || null });
+      }
+    }catch(_){ }
+  }
+  return out;
+}
+// Collapse to one row per player: best score for 'high', worst for 'low'.
+function __sqScoresBestPerPlayer(rows, mode){
+  const best = new Map();
+  const high = mode !== 'low';
+  for (const r of (rows || [])){
+    const key = r.player_id ? 'pid:' + r.player_id : 'nm:' + String(r.name || '').trim().toLowerCase();
+    const prev = best.get(key);
+    if (!prev || (high ? r.score > prev.score : r.score < prev.score)) best.set(key, r);
+  }
+  return Array.from(best.values()).sort((a, b) => high ? (b.score - a.score) : (a.score - b.score));
+}
+async function openHighScoresDialog(){
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop sq-arcade-dlg';
   const modal   = document.createElement('div'); modal.className   = 'modal';
   const title   = document.createElement('h3');  title.textContent = 'High Scores (Official)';
@@ -25169,7 +25208,9 @@ async function openHighScoresDialog(){
         since = periodStartIso(period);
       }
 
-      let list = await cloudListHighScoresWithBackfill(false, 20, since);
+      // Derived from games (authoritative) and genuinely filtered by period —
+      // the old helper ignored `since`, so every period showed the same list.
+      let list = __sqScoresBestPerPlayer(await __sqScoresFromGames(since), 'high').slice(0, 20);
 
       // If "Yesterday", filter to scores from that day only (local time)
       if (period === 'yesterday') {
@@ -25334,22 +25375,13 @@ async function openLowScoresDialog(){
   modal.tabIndex = 0; modal.focus();
 
   try {
-    // League low scores = official high_scores table sorted ASCENDING.
-    // Raced against a timeout so a stalled connection can't hang the dialog.
-    const q = sb
-      .from(TABLE_HS_LEAGUE)
-      .select('name, score, ts, game_id')
-      .order('score', { ascending: true })   // lowest first
-      .order('ts',    { ascending: true })   // oldest first for ties
-      .limit(20);                            // bottom 20
-    const { data, error } = await Promise.race([
-      q,
+    // Derived from games (authoritative), lowest per player first — same source
+    // as High Scores so the two views agree. Timed out so it can't hang.
+    const rows = await Promise.race([
+      __sqScoresFromGames(null),
       new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
     ]);
-
-    if (error) throw error;
-
-    const list = data || [];
+    const list = __sqScoresBestPerPlayer(rows, 'low').slice(0, 20);
     body.innerHTML = '';
 
     if (!list.length) {
