@@ -5612,6 +5612,25 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 .v3-tb-display.gold .v3-tb-val{ color:#ffe6b0; text-shadow:0 0 18px rgba(255,190,60,.8); }
 .v3-tb-display.gold .v3-tb-lab{ color:rgba(255,205,120,.85); }
 /* arcade flip/glitch whenever the readout content changes */
+/* Throw feedback: HIT flashes green + kicks, MISS flashes red + rumbles/shakes */
+.v3-tb-display.hit{ border-color:rgba(47,208,107,.6)!important; box-shadow:0 0 26px rgba(47,208,107,.45), inset 0 0 22px rgba(0,0,0,.75)!important; }
+.v3-tb-display.hit .v3-tb-val{ color:#8effb4; text-shadow:0 0 20px rgba(60,240,140,.9); }
+.v3-tb-display.hit .v3-tb-lab{ color:rgba(120,255,170,.8); }
+.v3-tb-display.miss{ border-color:rgba(255,77,94,.6)!important; box-shadow:0 0 26px rgba(255,77,94,.45), inset 0 0 22px rgba(0,0,0,.75)!important; }
+.v3-tb-display.miss .v3-tb-val{ color:#ff8a97; text-shadow:0 0 20px rgba(255,77,94,.9); }
+.v3-tb-display.miss .v3-tb-lab{ color:rgba(255,140,155,.85); }
+.v3-tb-display.anim.hit{ animation:v3TbHit .5s cubic-bezier(.2,.9,.25,1); }
+.v3-tb-display.anim.miss{ animation:v3TbMiss .52s cubic-bezier(.36,.07,.19,.97); }
+@keyframes v3TbHit{
+  0%{ transform:scale(1); } 18%{ transform:scale(1.09) translateY(-2px); }
+  42%{ transform:scale(.99) translateY(1px); } 70%{ transform:scale(1.03); } 100%{ transform:scale(1); }
+}
+@keyframes v3TbMiss{
+  0%,100%{ transform:translateX(0) rotate(0); }
+  12%{ transform:translateX(-7px) rotate(-.7deg); } 26%{ transform:translateX(6px) rotate(.6deg); }
+  40%{ transform:translateX(-5px) rotate(-.5deg); } 54%{ transform:translateX(4px) rotate(.4deg); }
+  68%{ transform:translateX(-3px); } 82%{ transform:translateX(2px); }
+}
 .v3-tb-display.anim .v3-tb-val{ animation:v3TbFlip .42s cubic-bezier(.2,.9,.25,1); }
 .v3-tb-display.anim.event .v3-tb-val{ animation:v3TbPop .55s cubic-bezier(.2,.9,.25,1); }
 .v3-tb-display.anim .v3-tb-lab{ animation:v3TbLab .42s ease; }
@@ -5878,6 +5897,16 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 .v3-sb-glow{ position:absolute; inset:0; pointer-events:none;
   background: radial-gradient(96% 78% at 50% 0%, rgba(255,106,0,.16), transparent 64%); }
 .v3-scorebox > *{ position:relative; z-index:1; }
+/* TARGET chip pinned to the top of the ROUND SCORE pill (moved off the top bar) */
+.v3-sb-target{
+  display:inline-flex; align-items:baseline; gap:7px; margin-bottom:8px;
+  padding:4px 12px; border-radius:999px;
+  background:linear-gradient(180deg,#0b0f1a,#05070d);
+  border:1px solid rgba(255,106,0,.32);
+  box-shadow: inset 0 0 14px rgba(0,0,0,.8), 0 0 16px rgba(255,106,0,.16);
+}
+.v3-sbt-lab{ font-size:8px; font-weight:900; letter-spacing:.2em; color:rgba(214,222,240,.5); }
+.v3-sbt-val{ font-size:15px; font-weight:900; letter-spacing:.04em; color:var(--v3-orange-lt); text-shadow:0 0 12px rgba(255,138,20,.45); }
 .v3-sb-lab{ font-size:12px; font-weight:900; letter-spacing:.2em; color:rgba(214,222,240,.78); }
 .v3-sb-num{ font-size: clamp(56px, 19vw, 84px); font-weight:900; color:#fff; line-height:1; margin-top:5px; letter-spacing:-.02em; text-shadow:0 2px 22px rgba(0,0,0,.55); }
 .v3-sb-marks{ font-size:17px; font-weight:900; color:rgba(214,222,240,.75); margin-top:6px; letter-spacing:.1em; }
@@ -6152,7 +6181,7 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 .v3-dot-out{ animation: v3DotOut .35s ease-out both; }
 
 @media (prefers-reduced-motion: reduce){
-  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-card-hit, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly, .v3-dmd-bezel::before, .v3-dmd-attract::before, .v3-windot-win, .v3-combo-pop, .v3-avg.rec-record .v3-avg-val{ animation:none !important; transition:none !important; }
+  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-card-hit, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly, .v3-dmd-bezel::before, .v3-dmd-attract::before, .v3-windot-win, .v3-combo-pop, .v3-avg.rec-record .v3-avg-val, .v3-tb-display.anim.hit, .v3-tb-display.anim.miss{ animation:none !important; transition:none !important; }
   #v3fxLayer{ display:none !important; }
 }
 
@@ -25083,7 +25112,7 @@ function openMatchStatsDialog(){
   const backBtn = document.createElement('button');
   backBtn.className = 'btn';
   backBtn.textContent = 'Back';
-  backBtn.onclick = () => overlay.remove();
+  backBtn.onclick = () => { overlay.remove(); try{ if (typeof openStatsHubDialog === 'function') openStatsHubDialog(); }catch(_){ } };
   footer.appendChild(backBtn);
 
   modal.append(title, body, footer);
@@ -25260,7 +25289,7 @@ async function openHighScoresDialog(){
   const backBtn = document.createElement('button');
   backBtn.className = 'btn';
   backBtn.textContent = 'Back';
-  backBtn.onclick = () => overlay.remove();
+  backBtn.onclick = () => { overlay.remove(); try{ if (typeof openStatsHubDialog === 'function') openStatsHubDialog(); }catch(_){ } };
   rightRegion.appendChild(backBtn);
 
   modal.append(title, body, footer);
@@ -25295,8 +25324,8 @@ async function openLowScoresDialog(){
   loadingP.textContent = 'Loading low scores…';
   body.appendChild(loadingP);
   const footer0 = document.createElement('div'); footer0.className = 'modal-footer';
-  const close0 = document.createElement('button'); close0.className = 'btn sq-pill'; close0.textContent = 'Close';
-  close0.onclick = () => overlay.remove(); footer0.appendChild(close0);
+  const close0 = document.createElement('button'); close0.className = 'btn sq-pill'; close0.textContent = 'Back';
+  close0.onclick = () => { overlay.remove(); try{ if (typeof openStatsHubDialog === 'function') openStatsHubDialog(); }catch(_){ } }; footer0.appendChild(close0);
   modal.append(title, body, footer0);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
@@ -25887,6 +25916,21 @@ function __sqV3DisplayEvent(text, gold, lab, hold){
   const st = window.__sqV3Disp || (window.__sqV3Disp = {});
   st.event = { text: String(text || '').toUpperCase(), gold: !!gold, lab: String(lab || '').toUpperCase(), until: performance.now() + (hold || 1750) };
 }
+// Per-dart throw feedback: S / D / T / BULL land as a HIT (green kick), a miss
+// lands as MISS (red rumble). Shown on the same top-bar display.
+function __sqV3DisplayThrow(dart){
+  const st = window.__sqV3Disp || (window.__sqV3Disp = {});
+  const k = dart && dart.kind;
+  const miss = !dart || k === 'Miss';
+  let text = 'MISS';
+  if (!miss){
+    text = (k === 'T' || k === 'Triple') ? 'TREBLE'
+         : (k === 'D' || k === 'Double') ? 'DOUBLE'
+         : (k === 'B') ? (dart.bull === 'Inner' ? 'BULL 50' : 'BULL 25')
+         : 'SINGLE';
+  }
+  st.event = { text, lab: miss ? 'MISS' : 'HIT', throwKind: miss ? 'miss' : 'hit', until: performance.now() + 1150 };
+}
 function __sqV3DisplayTick(){
   try{
     const disp = document.getElementById('v3TbDisplay'); if (!disp) return;
@@ -25894,19 +25938,36 @@ function __sqV3DisplayTick(){
     const now = performance.now();
     const ev = (st.event && now < st.event.until) ? st.event : null;
     if (!ev) st.event = null;
-    const mode = ev ? (ev.gold ? 'gold' : 'green') : 'target';
-    const lab = ev ? (ev.lab || '') : 'TARGET';
-    const val = ev ? ev.text : (disp.dataset.target || '');
+    // Idle = whose turn it is; events override with combos/trophies or throw feedback.
+    let idleLab = 'TO THROW', idleVal = '';
+    try{
+      const p = (state.players || [])[state.currentPlayer || 0];
+      idleVal = String((p && (p.name || p.player)) || '').split(' ')[0].toUpperCase();
+    }catch(_){ }
+    if (!idleVal){ idleLab = 'TARGET'; idleVal = disp.dataset.target || ''; }
+    const mode = ev ? (ev.throwKind ? ev.throwKind : (ev.gold ? 'gold' : 'green')) : 'idle';
+    const lab = ev ? (ev.lab || '') : idleLab;
+    const val = ev ? ev.text : idleVal;
     const key = mode + '|' + lab + '|' + val;
-    if (key === st.shownKey) return;
+    // The panel rebuilds its innerHTML on every render, which resets the top bar
+    // to the static template markup. Only trust the cached key when the DOM still
+    // shows it, otherwise a re-render would leave the stale text stuck forever.
+    const labEl0 = disp.querySelector('.v3-tb-lab'), valEl0 = disp.querySelector('.v3-tb-val');
+    const domMatches = labEl0 && valEl0 && labEl0.textContent === lab && valEl0.textContent === val;
+    if (key === st.shownKey && domMatches) return;
     st.shownKey = key;
-    const labEl = disp.querySelector('.v3-tb-lab'), valEl = disp.querySelector('.v3-tb-val');
+    const labEl = labEl0, valEl = valEl0;
     if (labEl) labEl.textContent = lab;
     if (valEl) valEl.textContent = val;
     disp.classList.toggle('gold', mode === 'gold');
     disp.classList.toggle('green', mode === 'green');
-    disp.classList.toggle('event', mode !== 'target');
+    disp.classList.toggle('hit', mode === 'hit');
+    disp.classList.toggle('miss', mode === 'miss');
+    disp.classList.toggle('event', mode !== 'idle');
     disp.classList.remove('anim'); void disp.offsetWidth; disp.classList.add('anim');
+    // Rumble the handset on a miss (where supported).
+    if (mode === 'miss'){ try{ if (navigator.vibrate && !__sqV3Reduced()) navigator.vibrate([18, 40, 26]); }catch(_){ } }
+    else if (mode === 'hit'){ try{ if (navigator.vibrate && !__sqV3Reduced()) navigator.vibrate(14); }catch(_){ } }
   }catch(_){ }
 }
 
@@ -25965,12 +26026,15 @@ function __sqV3Animate(panel){
         if (hitCard && !__sqV3Reduced()){ hitCard.classList.remove('v3-card-hit'); void hitCard.offsetWidth; hitCard.classList.add('v3-card-hit');
           setTimeout(() => { try{ hitCard.classList.remove('v3-card-hit'); }catch(_){ } }, 440); }
       }catch(_){ }
+      // Announce the dart that just landed on the top-bar display (HIT).
+      try{ __sqV3DisplayThrow((ce && ce.darts && ce.darts[Math.max(0, dart - 1)]) || null); }catch(_){ }
       __sqV3SndHit(delta);
     }
     // Miss -> red negative shake (a dart was used but added no points).
     else if (prev.turnKey === turnKey && dart > (prev.dart || 0) && roundScore === (prev.roundScore || 0)){
       if (sbNum) __sqV3MissShake(sbNum);
       const marks = panel.querySelector('.v3-sb-marks'); if (marks) marks.classList.add('v3-flash');
+      try{ __sqV3DisplayThrow(null); }catch(_){ }
       __sqV3SndMiss();
     }
 
@@ -26517,6 +26581,7 @@ function __sqLiveV3Render(){
             </div>
             <div class="v3-scorebox">
               <div class="v3-sb-glow" aria-hidden="true"></div>
+              <div class="v3-sb-target"><span class="v3-sbt-lab">TARGET</span><span class="v3-sbt-val">${targetLabel}</span></div>
               <div class="v3-sb-lab">ROUND SCORE</div>
               <div class="v3-sb-num">${Number((curEntry && curEntry.roundTotal) || 0)}</div>
               <div class="v3-sb-marks">${__sqV3Marks(curEntry).replace(/ \/ /g, '<i>·</i>')}</div>
@@ -26529,8 +26594,8 @@ function __sqLiveV3Render(){
       <button id="v3SoundBtn" class="v3-tb-snd" type="button" aria-label="Toggle sound"></button>
       <div class="v3-tb-display" id="v3TbDisplay" data-target="${escV3(targetLabel)}">
         <span class="v3-tb-scan" aria-hidden="true"></span>
-        <span class="v3-tb-lab">TARGET</span>
-        <span class="v3-tb-val">${targetLabel}</span>
+        <span class="v3-tb-lab">TO THROW</span>
+        <span class="v3-tb-val">${escV3(String(pName(cp) || '').split(' ')[0].toUpperCase())}</span>
       </div>
       <button id="v3MenuBtn" class="v3-tb-menu" type="button" aria-label="Game menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </div>
@@ -49781,8 +49846,17 @@ body[data-page="game"] .dtX3.sq-missx3-hit95{animation:sqMissX3Hit95 .48s steps(
 .sq-arcade-dlg .modal>h3{text-align:center;text-transform:uppercase;letter-spacing:.18em;font-size:17px;font-weight:950;color:#ff9440;text-shadow:0 0 14px rgba(255,106,0,.55);margin:0 0 12px;padding:10px 8px;border-radius:12px;background:linear-gradient(180deg,#0b0f1a,#05070d);border:1px solid rgba(255,255,255,.09);box-shadow:inset 0 0 22px rgba(0,0,0,.75);}
 .sq-arcade-dlg .modal-footer .btn{border-radius:12px;text-transform:uppercase;letter-spacing:.12em;font-weight:900;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:#dfe5ff;}
 .sq-arcade-dlg .modal-footer .btn.primary{background:rgba(255,106,0,.16);border-color:rgba(255,106,0,.5);color:#ffb98a;}
-.sq-arcade-dlg .hs-table th{text-transform:uppercase;letter-spacing:.1em;font-size:10px;font-weight:900;color:rgba(214,222,240,.55);}
-.sq-arcade-dlg .hs-table td{color:#eef2ff;}
+.sq-arcade-dlg .hs-table th{text-transform:uppercase;letter-spacing:.1em;font-size:10px;font-weight:900;color:rgba(214,222,240,.55);white-space:nowrap;}
+.sq-arcade-dlg .hs-table td{color:#eef2ff;white-space:nowrap;}
+/* Wide score tables must scroll inside the dialog, never clip a column off. */
+.sq-arcade-dlg .modal-body{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;}
+.sq-arcade-dlg .hs-table{min-width:max-content;font-size:13px;}
+.sq-arcade-dlg .hs-table th:last-child,.sq-arcade-dlg .hs-table td:last-child{font-size:11px;}
+/* The period + Back row must wrap instead of pushing Back off-screen. */
+.sq-arcade-dlg .modal-footer{flex-wrap:wrap!important;gap:8px;justify-content:center!important;}
+.sq-arcade-dlg .modal-footer>div{flex:0 1 auto!important;min-width:0;display:flex!important;flex-wrap:wrap!important;justify-content:center!important;gap:8px;}
+.sq-arcade-dlg .modal-footer>div:first-child{display:none!important;}   /* dead left spacer */
+.sq-arcade-dlg .modal-footer .btn{padding:8px 12px;font-size:12px;white-space:nowrap;}
 .sq-menu106-footer{display:flex;justify-content:center;margin-top:14px;}
 .sq-menu106-close{min-width:130px;min-height:42px;border-radius:12px;text-transform:uppercase;letter-spacing:.14em;font-weight:900;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:#dfe5ff;}
 </style>
