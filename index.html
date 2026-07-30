@@ -5690,8 +5690,10 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 .v3-main.v3-3p > [style*="grid-area:c1"],
 .v3-main.v3-3p > [style*="grid-area:f1"]{
   align-self:center;                 /* midway up the screen */
-  height:calc(50% - 4px);            /* one row tall (half the span minus the 8px row gap) */
+  height:auto;                       /* natural height — matches the left pills, never clips */
 }
+/* The single right-hand pill must not stretch to fill the two-row span. */
+.v3-main.v3-3p > [style*="grid-area:c1"] .v3-card{ flex:0 0 auto; }
 /* The RACE band: a full-width animated race box (FORM bars now sit beside the
    player pills, on their outer edges). */
 .v3-screen{
@@ -5836,11 +5838,17 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 .v3-foot.p2{ flex-direction:row-reverse; }              /* mirror: outer edge = right */
 .v3-foot-div{ flex:0 0 auto; width:1px; align-self:stretch; background:var(--v3-line); }  /* faint grey divider */
 /* Outer column scrolls so every past round stays reachable (bottom grid removed). */
-.v3-foot-prev{ flex:0 0 auto; min-width:50px; max-height:104px; overflow-y:auto; overscroll-behavior:contain;
+.v3-foot-prev{ flex:0 1 auto; min-width:38px; max-height:104px; overflow-y:auto; overscroll-behavior:contain;
   display:flex; flex-direction:column; gap:6px; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.18) transparent; pointer-events:auto; }
 .v3-foot-prev::-webkit-scrollbar{ width:3px; }
 .v3-foot-prev::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.18); border-radius:3px; }
-.v3-foot-avgs{ flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; justify-content:center; }
+.v3-foot-avgs{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:5px; justify-content:center; }
+/* 3- and 4-player pills are ~half width, so compact the footer to fit cleanly. */
+.v3-main.v3-3p .v3-avg-val, .v3-main.v3-4p .v3-avg-val{ font-size:14px; }
+.v3-main.v3-3p .v3-avg-lab, .v3-main.v3-4p .v3-avg-lab{ font-size:7px; letter-spacing:.04em; }
+.v3-main.v3-3p .v3-rr-tot,  .v3-main.v3-4p .v3-rr-tot{ font-size:15px; }
+.v3-main.v3-3p .v3-rr-marks,.v3-main.v3-4p .v3-rr-marks{ font-size:8px; }
+.v3-main.v3-3p .v3-foot,    .v3-main.v3-4p .v3-foot{ gap:6px; }
 /* previous-round stack (outer) */
 .v3-rr{ display:flex; flex-direction:column; align-items:center; text-align:center; }
 .v3-foot.p1 .v3-rr{ align-items:flex-start; text-align:left; }
@@ -5851,10 +5859,11 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 .v3-rr-marks{ font-size:9px; font-weight:800; color:rgba(214,222,240,.5); letter-spacing:.03em; }
 .v3-rr-marks i{ font-style:normal; color:rgba(214,222,240,.3); margin:0 1px; }
 .v3-rr-none{ font-size:16px; font-weight:900; color:rgba(214,222,240,.28); white-space:nowrap; }
-/* averages stack (inner) */
-.v3-avg{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:0; }
-.v3-foot.p1 .v3-avg{ align-items:flex-end; text-align:right; }
-.v3-foot.p2 .v3-avg{ align-items:flex-start; text-align:left; }
+/* averages stack — always right-aligned, never centred, so the numbers line up */
+.v3-foot-avgs{ align-items:flex-end; min-width:0; }
+.v3-avg{ display:flex; flex-direction:column; align-items:flex-end; text-align:right; gap:0; min-width:0; max-width:100%; }
+.v3-foot.p1 .v3-avg,
+.v3-foot.p2 .v3-avg{ align-items:flex-end; text-align:right; }
 .v3-avg-val{ font-size:16px; font-weight:900; color:#fff; line-height:1.02; transition:color .3s ease, text-shadow .3s ease; }
 .v3-avg-lab{ font-size:8px; font-weight:900; letter-spacing:.08em; color:var(--v3-muted); }
 /* record highlighting: GREEN = player's own best ever, PURPLE = all-time record */
@@ -5899,14 +5908,16 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 .v3-scorebox > *{ position:relative; z-index:1; }
 /* TARGET chip pinned to the top of the ROUND SCORE pill (moved off the top bar) */
 .v3-sb-target{
-  display:inline-flex; align-items:baseline; gap:7px; margin-bottom:8px;
-  padding:4px 12px; border-radius:999px;
+  display:flex; flex-direction:column; align-items:center; gap:1px; margin-bottom:8px;
+  padding:5px 16px; border-radius:14px;
   background:linear-gradient(180deg,#0b0f1a,#05070d);
-  border:1px solid rgba(255,106,0,.32);
-  box-shadow: inset 0 0 14px rgba(0,0,0,.8), 0 0 16px rgba(255,106,0,.16);
+  border:1.5px solid rgba(255,106,0,.5);
+  box-shadow: inset 0 0 14px rgba(0,0,0,.8), 0 0 22px rgba(255,106,0,.28);
 }
-.v3-sbt-lab{ font-size:8px; font-weight:900; letter-spacing:.2em; color:rgba(214,222,240,.5); }
-.v3-sbt-val{ font-size:15px; font-weight:900; letter-spacing:.04em; color:var(--v3-orange-lt); text-shadow:0 0 12px rgba(255,138,20,.45); }
+.v3-sbt-lab{ font-size:8px; font-weight:900; letter-spacing:.22em; color:rgba(214,222,240,.55); line-height:1; }
+/* Big and legible mid-throw — this is the number players glance at most. */
+.v3-sbt-val{ font-size:clamp(26px,7.5vw,34px); font-weight:950; letter-spacing:.02em; line-height:1.02;
+  color:var(--v3-orange-lt); text-shadow:0 0 18px rgba(255,138,20,.6); }
 .v3-sb-lab{ font-size:12px; font-weight:900; letter-spacing:.2em; color:rgba(214,222,240,.78); }
 .v3-sb-num{ font-size: clamp(56px, 19vw, 84px); font-weight:900; color:#fff; line-height:1; margin-top:5px; letter-spacing:-.02em; text-shadow:0 2px 22px rgba(0,0,0,.55); }
 .v3-sb-marks{ font-size:17px; font-weight:900; color:rgba(214,222,240,.75); margin-top:6px; letter-spacing:.1em; }
@@ -15503,16 +15514,29 @@ function __sqGcXpEnsureStyles(){
   const st = document.createElement('style'); st.id = 'sqGcXpStyles';
   st.textContent = `
   .gc-xp-reveal{ margin:8px auto 12px; width:min(520px,94%); }
-  .gc-xp-title{ text-align:center; font-size:12px; font-weight:900; letter-spacing:.18em; color:#ffb14a; margin-bottom:8px; }
-  .gc-xp-row{ background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.09); border-radius:12px; padding:10px 12px; margin-bottom:8px; opacity:0; transform:translateY(10px); transition:opacity .35s ease, transform .35s cubic-bezier(.2,.9,.25,1); }
+  /* Arcade marquee header for the XP screen */
+  .gc-xp-title{ position:relative; text-align:center; font-size:13px; font-weight:950; letter-spacing:.28em; color:#ff9440;
+    text-shadow:0 0 16px rgba(255,106,0,.7); margin-bottom:10px; padding:9px 8px; border-radius:12px; overflow:hidden;
+    background:linear-gradient(180deg,#0b0f1a,#05070d); border:1px solid rgba(255,106,0,.28);
+    box-shadow:inset 0 0 22px rgba(0,0,0,.8), 0 0 20px rgba(255,106,0,.14); }
+  .gc-xp-title::after{ content:''; position:absolute; inset:0; pointer-events:none;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.25) 0 1px,transparent 1px 3px); opacity:.4; }
+  .gc-xp-row{ position:relative; background:linear-gradient(165deg,#1a2030 0%,#10141f 100%); border:1px solid rgba(255,255,255,.09); border-radius:13px; padding:10px 12px 10px 15px; margin-bottom:8px; overflow:hidden; opacity:0; transform:translateY(10px); transition:opacity .35s ease, transform .35s cubic-bezier(.2,.9,.25,1); box-shadow:0 6px 16px rgba(0,0,0,.3); }
+  /* Rank accent bar: gold for the winner, orange otherwise */
+  .gc-xp-row::before{ content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:#ff6a00; box-shadow:0 0 12px rgba(255,106,0,.6); }
+  .gc-xp-row.won::before{ background:#ffc84a; box-shadow:0 0 14px rgba(255,200,74,.85); }
   .gc-xp-row.in{ opacity:1; transform:none; }
   .gc-xp-row.won{ border-color:rgba(255,196,74,.5); box-shadow:0 0 16px rgba(255,150,60,.18); }
   .gc-xp-head{ display:flex; align-items:center; justify-content:space-between; gap:8px 10px; flex-wrap:wrap; }
   .gc-xp-name{ font-weight:900; font-size:15px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex:1 1 auto; }
   .gc-xp-name .nm{ white-space:nowrap; flex:0 0 auto; }
   .gc-xp-gain{ font-weight:900; color:#7be0a0; font-size:15px; white-space:nowrap; }
-  .gc-xp-bar{ margin-top:8px; height:8px; border-radius:999px; background:rgba(0,0,0,.34); border:1px solid rgba(255,255,255,.08); overflow:hidden; }
-  .gc-xp-fill{ height:100%; width:0; border-radius:999px; background:linear-gradient(90deg,#ff7a18,#ffb14a); box-shadow:0 0 10px rgba(255,150,60,.6); transition:width .8s cubic-bezier(.2,.8,.25,1); }
+  .gc-xp-bar{ position:relative; margin-top:8px; height:11px; border-radius:999px; background:linear-gradient(180deg,#05070d,#0b0f1a); border:1px solid rgba(255,255,255,.10); overflow:hidden; box-shadow:inset 0 0 10px rgba(0,0,0,.9); }
+  /* segmented arcade energy bar */
+  .gc-xp-bar::after{ content:''; position:absolute; inset:0; z-index:2; pointer-events:none;
+    background:repeating-linear-gradient(90deg, rgba(0,0,0,.55) 0 1.5px, transparent 1.5px 6.5%); }
+  .gc-xp-fill{ position:relative; height:100%; width:0; border-radius:999px; background:linear-gradient(90deg,#ff5a18,#ffb14a 60%,#ffe27a); box-shadow:0 0 14px rgba(255,150,60,.85); transition:width .8s cubic-bezier(.2,.8,.25,1); }
+  .gc-xp-fill::after{ content:''; position:absolute; right:0; top:0; bottom:0; width:7px; background:#fff; filter:blur(2px); opacity:.85; }
   .gc-xp-row.gc-levelup{ animation: gcLevelPulse .7s ease-out; }
   @keyframes gcLevelPulse{ 0%,100%{ box-shadow:0 0 16px rgba(255,150,60,.18);} 40%{ box-shadow:0 0 30px rgba(255,214,64,.85);} }
   .gc-xp-lvup{ display:inline-block; font-size:11px; font-weight:900; color:#ffd24a; letter-spacing:.06em; opacity:0; transform:scale(.7); transition:opacity .3s, transform .3s cubic-bezier(.2,.9,.25,1); }
@@ -15606,7 +15630,14 @@ async function __sqGcXpReveal(host, onComplete){
     if (!window.SQ_XP || !window.SQ_ACH || !state || !state.score){ if (onComplete) onComplete(); return; }
     const reduced = (typeof __sqV3Reduced === 'function') ? __sqV3Reduced() : false;
     const board = state.score;
-    const players = (state.players || []).map(p => ({ name: (typeof __sqPlayerPretty === 'function' ? __sqPlayerPretty(p) : (p && p.name)) || (p && p.name) || '' }));
+    // Display uses the pretty name (with nickname); the XP lookup must use the
+    // RAW player name, because v_player_xp stores plain names — looking up
+    // 'Chris "The Inevitable"' always missed, so every player read back 0 XP and
+    // showed as a level-2 rookie regardless of their real total.
+    const players = (state.players || []).map(p => ({
+      name: (typeof __sqPlayerPretty === 'function' ? __sqPlayerPretty(p) : (p && p.name)) || (p && p.name) || '',
+      rawName: String((p && (p.name || p.player)) || '').trim(),
+    }));
     const totals = players.map((_, i) => (board[i] || []).reduce((s, r) => s + (Number(r && r.roundTotal) || 0), 0));
     const maxTotal = Math.max(0, ...totals);
     const results = SQ_ACH.detectGame(board, { players, is_tiebreak: !!(state.is_tiebreak || state.currentGameIsTiebreak) });
@@ -15618,7 +15649,7 @@ async function __sqGcXpReveal(host, onComplete){
       const troph = trophiesByP[p] || [];
       const trophyXp = troph.reduce((s, e) => s + (SQ_ACH.meta(e.code).xp || 0) * e.count, 0);
       const gained = Math.round(totals[p] * SQ_XP.W.point) + SQ_XP.W.game + (won ? SQ_XP.W.gameWin : 0) + trophyXp;
-      let pre = 0; try{ const xr = await SQ_XP.forName(nm); pre = xr ? Number(xr.total_xp) || 0 : 0; }catch(_){ }
+      let pre = 0; try{ const xr = await SQ_XP.forName(players[p].rawName || nm); pre = xr ? Number(xr.total_xp) || 0 : 0; }catch(_){ }
       rows.push({ nm, won, troph, gained, pre, post: pre + gained });
     }
     rows.sort((a, b) => (Number(b.won) - Number(a.won)) || (b.gained - a.gained));
@@ -26300,9 +26331,16 @@ function __sqV3RaceFrame(){
     }
     const rec = window.__sqV3RecordPace;
     const recData = (rec && Array.isArray(rec.data)) ? rec.data : null;
+    // Scale the axis to what has actually been PLAYED (plus one round of
+    // lookahead), not the whole 14-round record line. Otherwise round 1 is
+    // drawn against a ~700 ceiling and every player's line is a flat smudge
+    // along the bottom. Early rounds now zoom in so small gaps read clearly.
+    const playedTo = Math.max(1, ...lens);
     const flat = series.flat().filter(v => v != null);
-    if (recData) recData.forEach(v => { if (v != null) flat.push(v); });
-    const targetMax = Math.max(20, ...flat) * 1.08;
+    if (recData) for (let i = 0; i < Math.min(recData.length, playedTo + 1); i++){ if (recData[i] != null) flat.push(recData[i]); }
+    // Generous headroom early (keeps lines mid-panel), tightening as the game fills out.
+    const head = 1.35 - 0.27 * Math.min(1, playedTo / rc);
+    const targetMax = Math.max(20, ...flat) * head;
     // Smoothly ease the vertical scale so the whole graph grows fluidly.
     st.maxV = st.maxV ? st.maxV + (targetMax - st.maxV) * 0.14 : targetMax;
     const maxV = st.maxV;
@@ -26607,16 +26645,16 @@ function __sqLiveV3Render(){
   // the 4-player layout, where it spans both pill rows down the middle.
   const centreHtml = (area) => `<div class="v3-centre"${area ? ` style="grid-area:${area}"` : ''}>
           <div class="v3-ctop">
-            <div class="v3-dartbox">
-              <div class="v3-dart-lab">DART ${Math.min(dart + 1, 3)} OF 3</div>
-              <div class="v3-dartdots">${dartDots}</div>
-            </div>
             <div class="v3-scorebox">
               <div class="v3-sb-glow" aria-hidden="true"></div>
               <div class="v3-sb-target"><span class="v3-sbt-lab">TARGET</span><span class="v3-sbt-val">${targetLabel}</span></div>
               <div class="v3-sb-lab">ROUND SCORE</div>
               <div class="v3-sb-num">${Number((curEntry && curEntry.roundTotal) || 0)}</div>
               <div class="v3-sb-marks">${__sqV3Marks(curEntry).replace(/ \/ /g, '<i>·</i>')}</div>
+            </div>
+            <div class="v3-dartbox">
+              <div class="v3-dart-lab">DART ${Math.min(dart + 1, 3)} OF 3</div>
+              <div class="v3-dartdots">${dartDots}</div>
             </div>
           </div>
         </div>`;
