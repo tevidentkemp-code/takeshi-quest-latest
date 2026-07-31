@@ -5939,6 +5939,12 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 .v3-ctop.combo-out .v3-scorebox{ animation:v3ScoreBack .34s cubic-bezier(.2,.9,.25,1) both; }
 @keyframes v3ScoreBack{ from{ opacity:.15; transform:scale(.9); filter:blur(2px); } to{ opacity:1; transform:scale(1); filter:blur(0); } }
 .v3-ctop.comboing .v3-scorebox{ opacity:.14; filter:blur(2px); transform:scale(.9); animation:none; transition:opacity .2s ease, filter .2s ease, transform .2s ease; }
+/* Outro: the celebration recedes and the score glides back in — no jerk. */
+.v3-ctop.comboing.leaving .v3-scorebox{ opacity:1; filter:blur(0); transform:scale(1);
+  transition:opacity .42s cubic-bezier(.2,.9,.25,1), filter .42s ease, transform .42s cubic-bezier(.2,.9,.25,1); }
+.v3-combo-stage.leaving{ animation:v3CsOut .42s cubic-bezier(.4,0,.2,1) both; }
+@keyframes v3CsOut{ from{ opacity:1; transform:scale(1); } to{ opacity:0; transform:scale(1.14); } }
+.v3-ctop.comboing.leaving{ transition:border-color .42s ease, box-shadow .42s ease; }
 .v3-ctop.comboing.silver{ border-color:rgba(200,214,235,.75); box-shadow:inset 0 0 30px rgba(0,0,0,.8), 0 0 34px rgba(200,214,235,.4); }
 .v3-ctop.comboing.gold{ border-color:rgba(255,196,74,.8); box-shadow:inset 0 0 30px rgba(0,0,0,.8), 0 0 38px rgba(255,196,74,.5); }
 .v3-ctop.comboing.legendary{ border-color:rgba(180,123,255,.85); box-shadow:inset 0 0 30px rgba(0,0,0,.8), 0 0 44px rgba(180,123,255,.6); }
@@ -5964,6 +5970,55 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 .v3-combo-stage.silver .v3-cs-ring{ color:#c8d6eb; }
 .v3-combo-stage.gold .v3-cs-ring{ color:#ffc44a; }
 .v3-combo-stage.legendary .v3-cs-ring{ color:#b47bff; }
+/* ================= VOLDEMORT — full-screen 4th-wall break ================= */
+.v3-voldy{ position:fixed; inset:0; z-index:99999; pointer-events:none; perspective:900px; perspective-origin:50% 45%; overflow:hidden; }
+.v3-vy-flash{ position:absolute; inset:0; background:#fff; animation:v3VyFlash .55s ease-out both; }
+@keyframes v3VyFlash{ 0%{ opacity:1; } 18%{ opacity:.35; } 100%{ opacity:0; } }
+/* the void revealed behind the broken screen */
+.v3-vy-void{ position:absolute; inset:0; background:radial-gradient(circle at 50% 45%, #10021c 0%, #06000c 55%, #000 100%);
+  opacity:0; animation:v3VyVoid 3s ease-out both; }
+@keyframes v3VyVoid{ 0%{ opacity:0; } 12%{ opacity:1; } 78%{ opacity:1; } 100%{ opacity:0; } }
+.v3-vy-vortex{ position:absolute; left:50%; top:45%; width:170vmax; height:170vmax; margin:-85vmax 0 0 -85vmax;
+  background:conic-gradient(from 0deg, transparent 0deg 8deg, rgba(120,20,200,.5) 10deg 16deg, transparent 18deg 30deg,
+    rgba(40,220,140,.35) 32deg 38deg, transparent 40deg 60deg);
+  animation:v3VySpin 3s linear both; filter:blur(1px); }
+@keyframes v3VySpin{ 0%{ transform:rotate(0) scale(.15); opacity:0; } 15%{ opacity:.9; } 80%{ opacity:.5; } 100%{ transform:rotate(400deg) scale(1.2); opacity:0; } }
+/* eyes surging OUT of the display toward the viewer */
+.v3-vy-eyes{ position:absolute; left:50%; top:45%; transform:translate(-50%,-50%); display:flex; gap:12vw;
+  animation:v3VyEyes 3s cubic-bezier(.2,.8,.3,1) both; }
+.v3-vy-eyes b{ display:block; width:13vw; height:5.5vw; border-radius:50%;
+  background:radial-gradient(ellipse at 50% 50%, #eaffea 0%, #57ff9a 26%, #0b8f4a 60%, transparent 72%);
+  box-shadow:0 0 6vw rgba(60,255,150,.9), 0 0 14vw rgba(40,200,120,.55); }
+@keyframes v3VyEyes{ 0%{ opacity:0; transform:translate(-50%,-50%) scale(.06); }
+  22%{ opacity:1; transform:translate(-50%,-50%) scale(.5); }
+  62%{ opacity:1; transform:translate(-50%,-50%) scale(1.5); }
+  100%{ opacity:0; transform:translate(-50%,-50%) scale(4.2); } }
+/* the laugh screaming across the screen */
+.v3-vy-scroll{ position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); overflow:hidden; white-space:nowrap;
+  animation:v3VyScrollFade 3s ease-out both; }
+.v3-vy-scroll span{ display:inline-block; padding-left:100%; font-size:clamp(34px,11vw,90px); font-weight:950; letter-spacing:.04em;
+  color:#c6ffd8; text-shadow:0 0 18px rgba(60,255,150,.95), 0 0 46px rgba(30,190,110,.7), 0 6px 0 rgba(0,0,0,.6);
+  animation:v3VyScroll 2.6s linear both; }
+@keyframes v3VyScroll{ from{ transform:translateX(0); } to{ transform:translateX(-100%); } }
+@keyframes v3VyScrollFade{ 0%,8%{ opacity:0; } 16%{ opacity:1; } 82%{ opacity:1; } 100%{ opacity:0; } }
+/* the UI shattering into 3D shards, then snapping back together */
+.v3-vy-shards{ position:absolute; inset:0; transform-style:preserve-3d; }
+.v3-vy-shards i{ position:absolute; left:var(--l); top:var(--t); width:33.34%; height:16.67%;
+  background:linear-gradient(150deg, rgba(26,32,48,.97), rgba(10,14,24,.99));
+  border:1px solid rgba(180,220,255,.5);
+  box-shadow:inset 0 0 22px rgba(0,0,0,.85), 0 0 16px rgba(150,210,255,.28);
+  transform-style:preserve-3d; animation:v3VyShard 3s cubic-bezier(.3,.7,.3,1) both; animation-delay:var(--d); }
+@keyframes v3VyShard{
+  0%   { transform:translate3d(0,0,0) rotateX(0) rotateY(0); opacity:1; }
+  10%  { transform:translate3d(0,0,20px) rotateX(2deg) rotateY(-2deg); opacity:1; }
+  45%  { transform:translate3d(var(--tx),var(--ty),var(--tz)) rotateX(var(--rx)) rotateY(var(--ry)); opacity:.92; }
+  62%  { transform:translate3d(var(--tx),var(--ty),var(--tz)) rotateX(var(--rx)) rotateY(var(--ry)); opacity:.9; }
+  100% { transform:translate3d(0,0,0) rotateX(0) rotateY(0); opacity:0; }   /* reassemble + dissolve */
+}
+.v3-voldy.reduced .v3-vy-shards,
+.v3-voldy.reduced .v3-vy-vortex,
+.v3-voldy.reduced .v3-vy-scroll span{ animation:none !important; }
+.v3-voldy.reduced .v3-vy-shards{ display:none; }
 /* ---- BIG-COMBO FX: flash, anime speed-rays, lightning, sparks, quake ---- */
 .v3-cs-flash,.v3-cs-rays,.v3-cs-bolts,.v3-cs-spark{ position:absolute; inset:0; pointer-events:none; }
 .v3-cs-flash{ background:#fff; opacity:0; }
@@ -26111,6 +26166,59 @@ function __sqV3RoundCombo(entry){
     return (window.SQ_ACH && SQ_ACH.meta) ? SQ_ACH.meta(code) : { code, name: code, icon:'🎯', tier:'gold' };
   }catch(_){ return null; }
 }
+/* ---------- VOLDEMORT: the 4th-wall break ----------
+   A double/treble on 1-5 in the doubles/trebles round shatters the entire screen
+   in 3D: impact flash, the UI cracks into shards that fly out toward the viewer,
+   a void opens behind with a vortex and eyes surging out of the display, the
+   laugh scrolls across, then the shards snap back and reassemble. */
+function __sqV3Voldemort(){
+  try{
+    if (document.getElementById('v3Voldy')) return;
+    const reduced = (typeof __sqV3Reduced === 'function') ? __sqV3Reduced() : false;
+    const o = document.createElement('div');
+    o.id = 'v3Voldy'; o.className = 'v3-voldy' + (reduced ? ' reduced' : '');
+    const SH = 18;                                   // shard count
+    let shards = '';
+    for (let i = 0; i < SH; i++){
+      const col = i % 3, row = Math.floor(i / 3);
+      const rx = (Math.random() * 90 - 45).toFixed(1), ry = (Math.random() * 90 - 45).toFixed(1);
+      const tz = (160 + Math.random() * 420).toFixed(0);
+      const tx = ((col - 1) * (60 + Math.random() * 90)).toFixed(0);
+      const ty = ((row - 2.5) * (40 + Math.random() * 70)).toFixed(0);
+      shards += `<i style="--l:${(col*33.34).toFixed(2)}%;--t:${(row*16.67).toFixed(2)}%;`
+             +  `--rx:${rx}deg;--ry:${ry}deg;--tz:${tz}px;--tx:${tx}px;--ty:${ty}px;--d:${(i*14)}ms"></i>`;
+    }
+    o.innerHTML =
+      '<div class="v3-vy-flash"></div>' +
+      '<div class="v3-vy-void"><div class="v3-vy-vortex"></div><div class="v3-vy-eyes"><b></b><b></b></div></div>' +
+      '<div class="v3-vy-scroll"><span>HAHA HA HAH! &nbsp;·&nbsp; HAHA HA HAH! &nbsp;·&nbsp; HAHA HA HAH! &nbsp;·&nbsp;</span></div>' +
+      '<div class="v3-vy-shards">' + shards + '</div>';
+    document.body.appendChild(o);
+    try{ if (window.__sqPlayVoldyLaugh) window.__sqPlayVoldyLaugh(); }catch(_){ }
+    // Whole-app quake while the screen is broken.
+    try{ const p = document.getElementById('liveV3Panel');
+      if (p && !reduced){ p.classList.add('v3-quake-big');
+        setTimeout(() => { try{ p.classList.remove('v3-quake-big'); }catch(_){ } }, 900); } }catch(_){ }
+    setTimeout(() => { try{ o.remove(); }catch(_){ } }, reduced ? 900 : 3000);
+  }catch(_){ }
+}
+// Fires on a Double/Treble of sectors 1-5 during the Doubles or Trebles round.
+function __sqV3CheckVoldy(d){
+  try{
+    if (!d) return false;
+    const r = Math.max(0, Math.min(state.currentRound, MAX_ROUNDS - 1));
+    const def = (typeof ROUNDS !== 'undefined' && ROUNDS[r]) || {};
+    const isD = def.type === 'doubles', isT = def.type === 'triples';
+    if (!isD && !isT) return false;
+    const k = d.kind;
+    const hitD = (k === 'D' || k === 'Double'), hitT = (k === 'T' || k === 'Triple');
+    if (!((isD && hitD) || (isT && hitT))) return false;
+    const sec = Number(d.sector != null ? d.sector : (d.segment != null ? d.segment : 0));
+    if (!(sec >= 1 && sec <= 5)) return false;       // 1-5 only
+    __sqV3Voldemort();
+    return true;
+  }catch(_){ return false; }
+}
 // Stage a combo/trophy across the whole centre stem (the marquee keeps showing
 // the dart that caused it, so the two surfaces tell one story).
 function __sqV3StageCombo(name, tier, lab, hold){
@@ -26133,6 +26241,14 @@ function __sqV3StageCombo(name, tier, lab, hold){
           setTimeout(() => { try{ p.classList.remove('v3-quake','v3-quake-big'); }catch(_){ } }, 900); } }catch(_){ }
     }
     clearTimeout(window.__sqV3ComboT);
+    // Outro: flag the stage as leaving a beat early so it fades/recedes rather
+    // than being yanked off, then clear.
+    clearTimeout(window.__sqV3ComboOutT);
+    window.__sqV3ComboOutT = setTimeout(() => {
+      try{ if (window.__sqV3Combo) window.__sqV3Combo.leaving = true;
+        const p = document.getElementById('liveV3Panel'); if (p) p.dataset.sig = '';
+        if (typeof window.__sqLiveV3Sync === 'function') window.__sqLiveV3Sync(); }catch(_){ }
+    }, Math.max(0, dur - 420));
     window.__sqV3ComboT = setTimeout(() => {
       window.__sqV3Combo = null;
       window.__sqV3ComboOut = performance.now() + 420;
@@ -26330,8 +26446,8 @@ function __sqV3Animate(panel){
       const delta = roundScore - (prev.roundScore || 0);
       const big = delta >= 30;
       if (sbNum) sbNum.classList.add(big ? 'v3-pop-big' : 'v3-pop');
-      __sqV3FlyPlus(sbNum, totalEls[cp], '+' + delta, big);
-      plusFlyPlayer = cp;
+      // (the old "+N" fly-out from the middle number was removed — overkill now
+      // that the stem is the focus; the player's total still pops on its own)
       const marks = panel.querySelector('.v3-sb-marks'); if (marks) marks.classList.add('v3-flash');
       // The active pill lunges ("reaches") on a scoring dart.
       try{
@@ -26340,7 +26456,8 @@ function __sqV3Animate(panel){
           setTimeout(() => { try{ hitCard.classList.remove('v3-card-hit'); }catch(_){ } }, 440); }
       }catch(_){ }
       // Announce the dart that just landed on the top-bar display (HIT).
-      try{ __sqV3DisplayThrow((ce && ce.darts && ce.darts[Math.max(0, dart - 1)]) || null); }catch(_){ }
+      try{ const _d = (ce && ce.darts && ce.darts[Math.max(0, dart - 1)]) || null;
+        __sqV3DisplayThrow(_d); __sqV3CheckVoldy(_d); }catch(_){ }
       __sqV3SndHit(delta);
     }
     // Miss -> red negative shake (a dart was used but added no points).
@@ -26372,7 +26489,7 @@ function __sqV3Animate(panel){
             // Show it explicitly first; the combo then queues behind it.
             try{
               const ds0 = (b[last].darts || []);
-              for (let k = ds0.length - 1; k >= 0; k--){ if (ds0[k]){ __sqV3DisplayThrow(ds0[k]); break; } }
+              for (let k = ds0.length - 1; k >= 0; k--){ if (ds0[k]){ __sqV3DisplayThrow(ds0[k]); __sqV3CheckVoldy(ds0[k]); break; } }
             }catch(_){ }
             // Trophy: a round of three trebles on the target beats a normal combo.
             let shown = false;
@@ -26793,7 +26910,7 @@ function __sqLiveV3Render(){
   // Render-signature guard: skip redundant re-renders (updateUI can fire more
   // than once per throw) so in-flight one-shot animations are never cut short.
   const curEntrySig = entryOf(cp, r);
-  const sig = [r, cp, dart, NP, (window.__sqV3Hold && performance.now() < window.__sqV3Hold.until) ? 'H' : '-', totals.join(','), Number((curEntrySig && curEntrySig.roundTotal) || 0),
+  const sig = [r, cp, dart, NP, (window.__sqV3Hold && performance.now() < window.__sqV3Hold.until) ? 'H' : '-', (window.__sqV3Combo ? (window.__sqV3Combo.leaving ? 'CL' : 'C') : '-'), totals.join(','), Number((curEntrySig && curEntrySig.roundTotal) || 0),
                (wins || []).slice(0, NP).join('x'), state.finished ? 1 : 0,
                Array.from({ length: NP }, (_, i) => pName(i)).join('~')].join('|');
   if (panel.isConnected && panel.dataset.sig === sig && panel.childElementCount) return;
@@ -26926,7 +27043,7 @@ function __sqLiveV3Render(){
 
   // Combo takeover: the whole stem becomes the stage for a combo/trophy.
   const cb = (window.__sqV3Combo && performance.now() < window.__sqV3Combo.until) ? window.__sqV3Combo : null;
-  const comboStage = cb ? `<div class="v3-combo-stage ${escV3(cb.tier || 'gold')}${cb.big ? ' big' : ''}">
+  const comboStage = cb ? `<div class="v3-combo-stage ${escV3(cb.tier || 'gold')}${cb.big ? ' big' : ''}${cb.leaving ? ' leaving' : ''}">
               <span class="v3-cs-flash" aria-hidden="true"></span>
               <span class="v3-cs-rays" aria-hidden="true"></span>
               <span class="v3-cs-bolts" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
@@ -26939,7 +27056,7 @@ function __sqLiveV3Render(){
 
   const cOut = !cb && window.__sqV3ComboOut && performance.now() < window.__sqV3ComboOut;
   const centreHtml = (area) => `<div class="v3-centre"${area ? ` style="grid-area:${area}"` : ''}>
-          <div class="v3-ctop${cb ? ' comboing ' + escV3(cb.tier || 'gold') : (cOut ? ' combo-out' : '')}">
+          <div class="v3-ctop${cb ? ' comboing ' + escV3(cb.tier || 'gold') + (cb.leaving ? ' leaving' : '') : (cOut ? ' combo-out' : '')}">
             <div class="v3-stem-scan" aria-hidden="true"></div>
             ${comboStage}
             <div class="v3-sb-target"><span class="v3-sbt-lab">TARGET</span><span class="v3-sbt-val">${targetLabel}</span></div>
