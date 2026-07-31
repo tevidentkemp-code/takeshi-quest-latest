@@ -5822,7 +5822,11 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 .v3-card.waiting.p1 .v3-name{ color:#eaf0fb; }
 .v3-nick-slot{ min-height:13px; margin-top:2px; max-width:100%; }
 .v3-nick{ font-size:9px; font-weight:800; letter-spacing:.1em; color:var(--v3-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.v3-total{ font-size: clamp(32px, 10.5vw, 46px); font-weight:900; color:#fff; margin-top:6px; line-height:.98; letter-spacing:-.01em; transition:color .3s ease, text-shadow .3s ease; }
+.v3-total{ font-size: clamp(28px, 9vw, 44px); font-weight:900; color:#fff; margin-top:6px; line-height:.98;
+  letter-spacing:-.02em; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:clip;
+  font-variant-numeric:tabular-nums; transition:color .3s ease, text-shadow .3s ease; }
+/* half-width pills in 3/4-player: keep 3-digit totals inside the card */
+.v3-main.v3-3p .v3-total, .v3-main.v3-4p .v3-total{ font-size:clamp(24px, 7.4vw, 34px); }
 .v3-total.leading{ color:var(--v3-green); text-shadow:0 0 14px rgba(47,208,107,.5); }
 .v3-total.lead-record{ color:var(--v3-purple); text-shadow:0 0 18px rgba(176,107,255,.7); animation:v3AvgRecord 1.4s ease-in-out infinite; }
 .v3-diff{
@@ -5932,7 +5936,10 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 .v3-sbt-lab{ font-size:8px; font-weight:900; letter-spacing:.22em; color:rgba(214,222,240,.55); line-height:1; }
 /* Big and legible mid-throw — this is the number players glance at most. */
 .v3-sbt-val{ font-size:clamp(26px,7.5vw,34px); font-weight:950; letter-spacing:.02em; line-height:1.02;
+  max-width:100%; white-space:nowrap; overflow:hidden;
   color:var(--v3-orange-lt); text-shadow:0 0 18px rgba(255,138,20,.6); }
+.v3-sbt-val.mid{ font-size:clamp(20px,5.6vw,26px); }
+.v3-sbt-val.long{ font-size:clamp(14px,4.1vw,19px); letter-spacing:.06em; }
 /* ---- COMBO TAKEOVER: the whole stem becomes the stage ---- */
 /* The score recedes behind the celebration, then eases back — no hard cut.
    Scoped to the exit render only, so it never flickers on an ordinary throw. */
@@ -5964,6 +5971,14 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 .v3-combo-stage.silver .v3-cs-name{ color:#eaf1fb; text-shadow:0 0 20px rgba(200,214,235,.9); }
 .v3-combo-stage.gold .v3-cs-name{ color:#ffe1a6; text-shadow:0 0 22px rgba(255,196,74,.95); }
 .v3-combo-stage.legendary .v3-cs-name{ color:#e9c6ff; text-shadow:0 0 26px rgba(180,123,255,1); }
+/* WHIFF — a whole round missed. The opposite of a combo: cold, red, slumping. */
+.v3-ctop.comboing.whiff{ border-color:rgba(255,77,94,.7); box-shadow:inset 0 0 30px rgba(0,0,0,.85), 0 0 30px rgba(255,77,94,.35); }
+.v3-combo-stage.whiff .v3-cs-name{ color:#ff8a97; text-shadow:0 0 18px rgba(255,77,94,.8); animation:v3CsSlump .6s cubic-bezier(.3,.7,.4,1) both .04s; }
+.v3-combo-stage.whiff .v3-cs-lab{ color:rgba(255,150,160,.85); }
+.v3-combo-stage.whiff .v3-cs-ring{ color:#ff4d5e; animation:v3CsRingWeak .7s ease-out both; }
+@keyframes v3CsSlump{ 0%{ transform:translateY(-26px) scale(1.1); opacity:0; }
+  55%{ transform:translateY(4px) scale(1); opacity:1; } 100%{ transform:translateY(0) scale(1); opacity:1; } }
+@keyframes v3CsRingWeak{ 0%{ transform:scale(.4); opacity:.6; } 100%{ transform:scale(1.5); opacity:0; } }
 /* shockwave from the centre of the stem */
 .v3-cs-ring{ position:absolute; left:50%; top:50%; width:90px; height:90px; margin:-45px 0 0 -45px;
   border-radius:50%; border:2.5px solid currentColor; opacity:0; animation:v3CsRing .72s ease-out both; }
@@ -5976,48 +5991,60 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 @keyframes v3VyFlash{ 0%{ opacity:1; } 18%{ opacity:.35; } 100%{ opacity:0; } }
 /* the void revealed behind the broken screen */
 .v3-vy-void{ position:absolute; inset:0; background:radial-gradient(circle at 50% 45%, #10021c 0%, #06000c 55%, #000 100%);
-  opacity:0; animation:v3VyVoid 3s ease-out both; }
+  opacity:0; animation:v3VyVoid 3.4s ease-out both; }
 @keyframes v3VyVoid{ 0%{ opacity:0; } 12%{ opacity:1; } 78%{ opacity:1; } 100%{ opacity:0; } }
 .v3-vy-vortex{ position:absolute; left:50%; top:45%; width:170vmax; height:170vmax; margin:-85vmax 0 0 -85vmax;
   background:conic-gradient(from 0deg, transparent 0deg 8deg, rgba(120,20,200,.5) 10deg 16deg, transparent 18deg 30deg,
     rgba(40,220,140,.35) 32deg 38deg, transparent 40deg 60deg);
-  animation:v3VySpin 3s linear both; filter:blur(1px); }
+  animation:v3VySpin 3.4s linear both; filter:blur(1px); }
 @keyframes v3VySpin{ 0%{ transform:rotate(0) scale(.15); opacity:0; } 15%{ opacity:.9; } 80%{ opacity:.5; } 100%{ transform:rotate(400deg) scale(1.2); opacity:0; } }
-/* eyes surging OUT of the display toward the viewer */
-.v3-vy-eyes{ position:absolute; left:50%; top:45%; transform:translate(-50%,-50%); display:flex; gap:12vw;
-  animation:v3VyEyes 3s cubic-bezier(.2,.8,.3,1) both; }
-.v3-vy-eyes b{ display:block; width:13vw; height:5.5vw; border-radius:50%;
-  background:radial-gradient(ellipse at 50% 50%, #eaffea 0%, #57ff9a 26%, #0b8f4a 60%, transparent 72%);
-  box-shadow:0 0 6vw rgba(60,255,150,.9), 0 0 14vw rgba(40,200,120,.55); }
-@keyframes v3VyEyes{ 0%{ opacity:0; transform:translate(-50%,-50%) scale(.06); }
-  22%{ opacity:1; transform:translate(-50%,-50%) scale(.5); }
-  62%{ opacity:1; transform:translate(-50%,-50%) scale(1.5); }
-  100%{ opacity:0; transform:translate(-50%,-50%) scale(4.2); } }
-/* the laugh screaming across the screen */
-.v3-vy-scroll{ position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); overflow:hidden; white-space:nowrap;
-  animation:v3VyScrollFade 3s ease-out both; }
-.v3-vy-scroll span{ display:inline-block; padding-left:100%; font-size:clamp(34px,11vw,90px); font-weight:950; letter-spacing:.04em;
-  color:#c6ffd8; text-shadow:0 0 18px rgba(60,255,150,.95), 0 0 46px rgba(30,190,110,.7), 0 6px 0 rgba(0,0,0,.6);
-  animation:v3VyScroll 2.6s linear both; }
-@keyframes v3VyScroll{ from{ transform:translateX(0); } to{ transform:translateX(-100%); } }
-@keyframes v3VyScrollFade{ 0%,8%{ opacity:0; } 16%{ opacity:1; } 82%{ opacity:1; } 100%{ opacity:0; } }
+/* Voldemort rising OUT of the display toward the viewer */
+.v3-vy-face{ position:absolute; left:50%; top:52%; width:min(74vw,420px); transform:translate(-50%,-50%);
+  animation:v3VyFace 3.4s cubic-bezier(.16,.7,.24,1) both; transform-origin:50% 50%;
+  filter:drop-shadow(0 0 34px rgba(60,255,150,.5)) drop-shadow(0 22px 40px rgba(0,0,0,.85)); }
+.v3-vy-svg{ width:100%; height:auto; display:block; }
+@keyframes v3VyFace{
+  0%   { opacity:0; transform:translate(-50%,-50%) scale(.05) rotateX(28deg); }
+  16%  { opacity:1; transform:translate(-50%,-50%) scale(.42) rotateX(12deg); }
+  46%  { opacity:1; transform:translate(-50%,-50%) scale(.94) rotateX(0deg); }
+  62%  { opacity:1; transform:translate(-50%,-51%) scale(1.02) rotateX(-2deg); }
+  100% { opacity:0; transform:translate(-50%,-52%) scale(2.4) rotateX(-8deg); }
+}
+/* the laugh punching in word by word */
+.v3-vy-laugh{ position:absolute; left:0; right:0; top:7%; display:flex; justify-content:center; gap:2.2vw; flex-wrap:wrap; padding:0 4vw;
+  animation:v3VyLaughFade 3.4s ease-out both; }
+.v3-vy-laugh span{ font-size:clamp(26px,8.4vw,62px); font-weight:950; letter-spacing:.02em; color:#d8ffe6;
+  text-shadow:0 0 16px rgba(60,255,150,.95), 0 0 44px rgba(30,190,110,.8), 0 5px 0 rgba(0,0,0,.7);
+  opacity:0; animation:v3VyLaughPop .5s cubic-bezier(.2,.9,.25,1) both; }
+.v3-vy-laugh span:nth-child(1){ animation-delay:.42s; }
+.v3-vy-laugh span:nth-child(2){ animation-delay:.60s; }
+.v3-vy-laugh span:nth-child(3){ animation-delay:.78s; }
+.v3-vy-laugh span:nth-child(4){ animation-delay:.96s; }
+@keyframes v3VyLaughPop{ 0%{ opacity:0; transform:scale(2.1) rotate(-6deg); }
+  60%{ opacity:1; transform:scale(.92) rotate(2deg); } 100%{ opacity:1; transform:scale(1) rotate(0); } }
+@keyframes v3VyLaughFade{ 0%,10%{ opacity:0; } 18%{ opacity:1; } 84%{ opacity:1; } 100%{ opacity:0; } }
 /* the UI shattering into 3D shards, then snapping back together */
 .v3-vy-shards{ position:absolute; inset:0; transform-style:preserve-3d; }
 .v3-vy-shards i{ position:absolute; left:var(--l); top:var(--t); width:33.34%; height:16.67%;
   background:linear-gradient(150deg, rgba(26,32,48,.97), rgba(10,14,24,.99));
   border:1px solid rgba(180,220,255,.5);
   box-shadow:inset 0 0 22px rgba(0,0,0,.85), 0 0 16px rgba(150,210,255,.28);
-  transform-style:preserve-3d; animation:v3VyShard 3s cubic-bezier(.3,.7,.3,1) both; animation-delay:var(--d); }
+  transform-style:preserve-3d; animation:v3VyShard 3.4s cubic-bezier(.22,.68,.24,1) both; animation-delay:var(--d);
+  will-change:transform, opacity; backface-visibility:hidden; }
 @keyframes v3VyShard{
   0%   { transform:translate3d(0,0,0) rotateX(0) rotateY(0); opacity:1; }
-  10%  { transform:translate3d(0,0,20px) rotateX(2deg) rotateY(-2deg); opacity:1; }
-  45%  { transform:translate3d(var(--tx),var(--ty),var(--tz)) rotateX(var(--rx)) rotateY(var(--ry)); opacity:.92; }
-  62%  { transform:translate3d(var(--tx),var(--ty),var(--tz)) rotateX(var(--rx)) rotateY(var(--ry)); opacity:.9; }
+  8%   { transform:translate3d(0,0,26px) rotateX(2deg) rotateY(-2deg); opacity:1; }
+  38%  { transform:translate3d(var(--tx),var(--ty),var(--tz)) rotateX(var(--rx)) rotateY(var(--ry)); opacity:.85; }
+  58%  { transform:translate3d(calc(var(--tx) * 1.12),calc(var(--ty) * 1.12),calc(var(--tz) * 1.05))
+           rotateX(var(--rx)) rotateY(var(--ry)); opacity:.55; }   /* drift, so it never sits still */
+  82%  { transform:translate3d(calc(var(--tx) * .3),calc(var(--ty) * .3),60px)
+           rotateX(calc(var(--rx) * .25)) rotateY(calc(var(--ry) * .25)); opacity:.75; }
   100% { transform:translate3d(0,0,0) rotateX(0) rotateY(0); opacity:0; }   /* reassemble + dissolve */
 }
 .v3-voldy.reduced .v3-vy-shards,
 .v3-voldy.reduced .v3-vy-vortex,
-.v3-voldy.reduced .v3-vy-scroll span{ animation:none !important; }
+.v3-voldy.reduced .v3-vy-laugh span,
+.v3-voldy.reduced .v3-vy-face{ animation:none !important; opacity:1 !important; }
 .v3-voldy.reduced .v3-vy-shards{ display:none; }
 /* ---- BIG-COMBO FX: flash, anime speed-rays, lightning, sparks, quake ---- */
 .v3-cs-flash,.v3-cs-rays,.v3-cs-bolts,.v3-cs-spark{ position:absolute; inset:0; pointer-events:none; }
@@ -26188,10 +26215,43 @@ function __sqV3Voldemort(){
       shards += `<i style="--l:${(col*33.34).toFixed(2)}%;--t:${(row*16.67).toFixed(2)}%;`
              +  `--rx:${rx}deg;--ry:${ry}deg;--tz:${tz}px;--tx:${tx}px;--ty:${ty}px;--d:${(i*14)}ms"></i>`;
     }
+    // Voldemort, drawn as SVG (no asset in the build): pale skull-like head,
+    // slit nostrils, hooded red-green eyes, mouth open mid-laugh.
+    const FACE = '<svg class="v3-vy-svg" viewBox="0 0 200 250" aria-hidden="true">'
+      + '<defs>'
+      +   '<radialGradient id="vySkin" cx="50%" cy="38%" r="62%">'
+      +     '<stop offset="0%" stop-color="#f4f7f2"/><stop offset="55%" stop-color="#cfd8cd"/>'
+      +     '<stop offset="100%" stop-color="#68766a"/></radialGradient>'
+      +   '<radialGradient id="vyEye" cx="50%" cy="50%" r="50%">'
+      +     '<stop offset="0%" stop-color="#fff"/><stop offset="35%" stop-color="#8bffbe"/>'
+      +     '<stop offset="100%" stop-color="#0c8f4c"/></radialGradient>'
+      +   '<filter id="vyGlow"><feGaussianBlur stdDeviation="3" result="b"/>'
+      +     '<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>'
+      + '</defs>'
+      // head + jaw
+      + '<path d="M100 8c46 0 74 34 74 84 0 50-24 88-45 108-11 11-19 16-29 16s-18-5-29-16c-21-20-45-58-45-108C26 42 54 8 100 8Z" fill="url(#vySkin)"/>'
+      // cheek hollows
+      + '<path d="M46 104c10 22 16 44 14 66-16-18-24-44-24-66Zm108 0c-10 22-16 44-14 66 16-18 24-44 24-66Z" fill="rgba(20,30,22,.30)"/>'
+      // brow
+      + '<path d="M40 96c16-14 38-18 52-12M160 96c-16-14-38-18-52-12" stroke="rgba(20,28,20,.6)" stroke-width="6" fill="none" stroke-linecap="round"/>'
+      // eyes
+      + '<g filter="url(#vyGlow)">'
+      +   '<ellipse cx="68" cy="116" rx="19" ry="11" fill="url(#vyEye)"/>'
+      +   '<ellipse cx="132" cy="116" rx="19" ry="11" fill="url(#vyEye)"/>'
+      +   '<ellipse cx="68" cy="116" rx="5" ry="10" fill="#04140b"/>'
+      +   '<ellipse cx="132" cy="116" rx="5" ry="10" fill="#04140b"/>'
+      + '</g>'
+      // slit nostrils
+      + '<path d="M92 150c-3 8-3 13 0 17M108 150c3 8 3 13 0 17" stroke="rgba(15,22,16,.85)" stroke-width="7" stroke-linecap="round" fill="none"/>'
+      // laughing mouth
+      + '<path d="M70 186c12 16 48 16 60 0-8 26-52 26-60 0Z" fill="#160d12"/>'
+      + '<path d="M74 189c14 5 38 5 52 0" stroke="rgba(230,240,230,.5)" stroke-width="3" fill="none" stroke-linecap="round"/>'
+      + '</svg>';
     o.innerHTML =
       '<div class="v3-vy-flash"></div>' +
-      '<div class="v3-vy-void"><div class="v3-vy-vortex"></div><div class="v3-vy-eyes"><b></b><b></b></div></div>' +
-      '<div class="v3-vy-scroll"><span>HAHA HA HAH! &nbsp;·&nbsp; HAHA HA HAH! &nbsp;·&nbsp; HAHA HA HAH! &nbsp;·&nbsp;</span></div>' +
+      '<div class="v3-vy-void"><div class="v3-vy-vortex"></div></div>' +
+      '<div class="v3-vy-face">' + FACE + '</div>' +
+      '<div class="v3-vy-laugh"><span>HA</span><span>HA</span><span>HA</span><span>HAH!</span></div>' +
       '<div class="v3-vy-shards">' + shards + '</div>';
     document.body.appendChild(o);
     try{ if (window.__sqPlayVoldyLaugh) window.__sqPlayVoldyLaugh(); }catch(_){ }
@@ -26199,7 +26259,7 @@ function __sqV3Voldemort(){
     try{ const p = document.getElementById('liveV3Panel');
       if (p && !reduced){ p.classList.add('v3-quake-big');
         setTimeout(() => { try{ p.classList.remove('v3-quake-big'); }catch(_){ } }, 900); } }catch(_){ }
-    setTimeout(() => { try{ o.remove(); }catch(_){ } }, reduced ? 900 : 3000);
+    setTimeout(() => { try{ o.remove(); }catch(_){ } }, reduced ? 900 : 3450);
   }catch(_){ }
 }
 // Fires on a Double/Treble of sectors 1-5 during the Doubles or Trebles round.
@@ -26224,7 +26284,7 @@ function __sqV3CheckVoldy(d){
 function __sqV3StageCombo(name, tier, lab, hold){
   try{
     const big = (tier === 'legendary' || tier === 'gold');
-    const dur = hold || (tier === 'legendary' ? 2300 : tier === 'gold' ? 2000 : 1700);
+    const dur = hold || (tier === 'legendary' ? 2300 : tier === 'gold' ? 2000 : tier === 'whiff' ? 1500 : 1700);
     const until = performance.now() + dur;
     window.__sqV3Combo = { name: String(name || '').toUpperCase(), tier: tier || 'gold', lab: String(lab || 'COMBO').toUpperCase(), until, big };
     // Keep the round frozen for as long as the celebration runs — otherwise the
@@ -26234,12 +26294,13 @@ function __sqV3StageCombo(name, tier, lab, hold){
       clearTimeout(window.__sqV3HoldT);
       window.__sqV3HoldT = setTimeout(() => { try{ __sqV3ReleaseHold(); }catch(_){ } }, dur + 40); } }catch(_){ }
     // Screen shake for the big ones (Street-Fighter impact).
-    if (big && !__sqV3Reduced()){
+    if ((big || tier === 'whiff') && !__sqV3Reduced()){
       try{ const p = document.getElementById('liveV3Panel');
         if (p){ p.classList.remove('v3-quake','v3-quake-big'); void p.offsetWidth;
           p.classList.add(tier === 'legendary' ? 'v3-quake-big' : 'v3-quake');
           setTimeout(() => { try{ p.classList.remove('v3-quake','v3-quake-big'); }catch(_){ } }, 900); } }catch(_){ }
     }
+    if (tier === 'whiff'){ try{ __sqV3SndMiss(); if (navigator.vibrate && !__sqV3Reduced()) navigator.vibrate([30,60,30,60,50]); }catch(_){ } }
     clearTimeout(window.__sqV3ComboT);
     // Outro: flag the stage as leaving a beat early so it fades/recedes rather
     // than being yanked off, then clear.
@@ -26490,6 +26551,13 @@ function __sqV3Animate(panel){
             try{
               const ds0 = (b[last].darts || []);
               for (let k = ds0.length - 1; k >= 0; k--){ if (ds0[k]){ __sqV3DisplayThrow(ds0[k]); __sqV3CheckVoldy(ds0[k]); break; } }
+            }catch(_){ }
+            // A whole round missed — call it out (the opposite of a combo).
+            try{
+              const dsm = (b[last].darts || []);
+              if (dsm.length >= 3 && dsm.every(d => d && d.kind === 'Miss')){
+                __sqV3StageCombo('ALL THREE MISSED', 'whiff', 'WHIFF');
+              }
             }catch(_){ }
             // Trophy: a round of three trebles on the target beats a normal combo.
             let shown = false;
@@ -27015,6 +27083,9 @@ function __sqLiveV3Render(){
   const targetLabel = roundDef.type === 'number' ? String(roundDef.target)
     : roundDef.type === 'doubles' ? 'DOUBLES'
     : roundDef.type === 'triples' ? 'TREBLES' : 'BULL';
+  // Word targets (DOUBLES / TREBLES / BULL) need a smaller size than a 2-digit
+  // number or they run off the narrow stem.
+  const targetLong = targetLabel.length > 4 ? ' long' : (targetLabel.length > 2 ? ' mid' : '');
 
   // Centre column (DART indicator + ROUND SCORE). `area` sets its grid-area for
   // the 4-player layout, where it spans both pill rows down the middle.
@@ -27059,7 +27130,7 @@ function __sqLiveV3Render(){
           <div class="v3-ctop${cb ? ' comboing ' + escV3(cb.tier || 'gold') + (cb.leaving ? ' leaving' : '') : (cOut ? ' combo-out' : '')}">
             <div class="v3-stem-scan" aria-hidden="true"></div>
             ${comboStage}
-            <div class="v3-sb-target"><span class="v3-sbt-lab">TARGET</span><span class="v3-sbt-val">${targetLabel}</span></div>
+            <div class="v3-sb-target"><span class="v3-sbt-lab">TARGET</span><span class="v3-sbt-val${targetLong}">${targetLabel}</span></div>
             <div class="v3-scorebox">
               <div class="v3-sb-glow" aria-hidden="true"></div>
               <div class="v3-sb-lab">ROUND SCORE</div>
