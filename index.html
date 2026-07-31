@@ -5934,7 +5934,11 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 .v3-sbt-val{ font-size:clamp(26px,7.5vw,34px); font-weight:950; letter-spacing:.02em; line-height:1.02;
   color:var(--v3-orange-lt); text-shadow:0 0 18px rgba(255,138,20,.6); }
 /* ---- COMBO TAKEOVER: the whole stem becomes the stage ---- */
-.v3-ctop.comboing .v3-scorebox{ opacity:.16; filter:blur(1.5px); transition:opacity .2s ease, filter .2s ease; }
+/* The score recedes behind the celebration, then eases back — no hard cut.
+   Scoped to the exit render only, so it never flickers on an ordinary throw. */
+.v3-ctop.combo-out .v3-scorebox{ animation:v3ScoreBack .34s cubic-bezier(.2,.9,.25,1) both; }
+@keyframes v3ScoreBack{ from{ opacity:.15; transform:scale(.9); filter:blur(2px); } to{ opacity:1; transform:scale(1); filter:blur(0); } }
+.v3-ctop.comboing .v3-scorebox{ opacity:.14; filter:blur(2px); transform:scale(.9); animation:none; transition:opacity .2s ease, filter .2s ease, transform .2s ease; }
 .v3-ctop.comboing.silver{ border-color:rgba(200,214,235,.75); box-shadow:inset 0 0 30px rgba(0,0,0,.8), 0 0 34px rgba(200,214,235,.4); }
 .v3-ctop.comboing.gold{ border-color:rgba(255,196,74,.8); box-shadow:inset 0 0 30px rgba(0,0,0,.8), 0 0 38px rgba(255,196,74,.5); }
 .v3-ctop.comboing.legendary{ border-color:rgba(180,123,255,.85); box-shadow:inset 0 0 30px rgba(0,0,0,.8), 0 0 44px rgba(180,123,255,.6); }
@@ -5960,6 +5964,59 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 .v3-combo-stage.silver .v3-cs-ring{ color:#c8d6eb; }
 .v3-combo-stage.gold .v3-cs-ring{ color:#ffc44a; }
 .v3-combo-stage.legendary .v3-cs-ring{ color:#b47bff; }
+/* ---- BIG-COMBO FX: flash, anime speed-rays, lightning, sparks, quake ---- */
+.v3-cs-flash,.v3-cs-rays,.v3-cs-bolts,.v3-cs-spark{ position:absolute; inset:0; pointer-events:none; }
+.v3-cs-flash{ background:#fff; opacity:0; }
+.v3-combo-stage.big .v3-cs-flash{ animation:v3CsFlash .5s ease-out both; }
+@keyframes v3CsFlash{ 0%{ opacity:.85; } 22%{ opacity:.25; } 100%{ opacity:0; } }
+/* radial speed-lines, Street-Fighter engage */
+.v3-cs-rays{ opacity:0; background:repeating-conic-gradient(from 0deg at 50% 50%,
+  currentColor 0deg 2deg, transparent 2deg 11deg); mix-blend-mode:screen; }
+.v3-combo-stage.big .v3-cs-rays{ animation:v3CsRays .8s ease-out both; }
+@keyframes v3CsRays{ 0%{ opacity:.55; transform:scale(.35) rotate(0deg); } 100%{ opacity:0; transform:scale(2.1) rotate(26deg); } }
+/* lightning bolts striking in from the corners */
+.v3-cs-bolts i{ position:absolute; width:3px; top:-12%; height:124%; background:linear-gradient(180deg,transparent,#fff 22%,currentColor 55%,transparent);
+  filter:blur(.4px); opacity:0; transform-origin:top center; }
+.v3-cs-bolts i:nth-child(1){ left:16%; transform:rotate(13deg); }
+.v3-cs-bolts i:nth-child(2){ left:38%; transform:rotate(-9deg); }
+.v3-cs-bolts i:nth-child(3){ left:62%; transform:rotate(11deg); }
+.v3-cs-bolts i:nth-child(4){ left:84%; transform:rotate(-14deg); }
+.v3-combo-stage.big .v3-cs-bolts i{ animation:v3CsBolt .46s steps(3,end) both; }
+.v3-combo-stage.big .v3-cs-bolts i:nth-child(2){ animation-delay:.07s; }
+.v3-combo-stage.big .v3-cs-bolts i:nth-child(3){ animation-delay:.13s; }
+.v3-combo-stage.big .v3-cs-bolts i:nth-child(4){ animation-delay:.19s; }
+@keyframes v3CsBolt{ 0%{ opacity:0; } 30%{ opacity:.95; } 60%{ opacity:.35; } 100%{ opacity:0; } }
+/* particle sparks flung outward */
+.v3-cs-spark b{ position:absolute; left:50%; top:50%; width:4px; height:4px; border-radius:50%;
+  background:currentColor; box-shadow:0 0 8px currentColor; opacity:0; }
+.v3-combo-stage.big .v3-cs-spark b{ animation:v3CsSpark .8s ease-out both; }
+.v3-cs-spark b:nth-child(1){ --tx:-58px; --ty:-46px; animation-delay:.02s; }
+.v3-cs-spark b:nth-child(2){ --tx:56px;  --ty:-52px; animation-delay:.05s; }
+.v3-cs-spark b:nth-child(3){ --tx:-70px; --ty:26px;  animation-delay:.08s; }
+.v3-cs-spark b:nth-child(4){ --tx:66px;  --ty:34px;  animation-delay:.03s; }
+.v3-cs-spark b:nth-child(5){ --tx:-30px; --ty:72px;  animation-delay:.10s; }
+.v3-cs-spark b:nth-child(6){ --tx:34px;  --ty:-76px; animation-delay:.06s; }
+.v3-cs-spark b:nth-child(7){ --tx:-82px; --ty:-12px; animation-delay:.12s; }
+.v3-cs-spark b:nth-child(8){ --tx:78px;  --ty:-8px;  animation-delay:.09s; }
+.v3-cs-spark b:nth-child(9){ --tx:12px;  --ty:84px;  animation-delay:.14s; }
+.v3-cs-spark b:nth-child(10){ --tx:-16px; --ty:-88px; animation-delay:.04s; }
+@keyframes v3CsSpark{ 0%{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+  100%{ opacity:0; transform:translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(.3); } }
+.v3-cs-ring.r2{ animation-delay:.14s; }
+.v3-combo-stage.big .v3-cs-name{ animation:v3CsPopBig .62s cubic-bezier(.2,.9,.25,1) both .06s; }
+@keyframes v3CsPopBig{ 0%{ transform:scale(.35) rotate(-7deg); opacity:0; } 45%{ transform:scale(1.24) rotate(2deg); opacity:1; }
+  70%{ transform:scale(.96) rotate(-1deg); } 100%{ transform:scale(1) rotate(0); opacity:1; } }
+/* whole-panel impact shake */
+.v3-quake{ animation:v3Quake .42s cubic-bezier(.36,.07,.19,.97); }
+.v3-quake-big{ animation:v3QuakeBig .62s cubic-bezier(.36,.07,.19,.97); }
+@keyframes v3Quake{ 0%,100%{ transform:translate(0,0); } 20%{ transform:translate(-4px,2px); }
+  40%{ transform:translate(4px,-2px); } 60%{ transform:translate(-3px,-1px); } 80%{ transform:translate(2px,1px); } }
+@keyframes v3QuakeBig{ 0%,100%{ transform:translate(0,0) rotate(0); } 12%{ transform:translate(-8px,4px) rotate(-.5deg); }
+  26%{ transform:translate(8px,-5px) rotate(.5deg); } 42%{ transform:translate(-7px,-3px) rotate(-.35deg); }
+  58%{ transform:translate(6px,4px) rotate(.3deg); } 74%{ transform:translate(-4px,2px); } 88%{ transform:translate(3px,-1px); } }
+@media (prefers-reduced-motion: reduce){
+  .v3-quake,.v3-quake-big,.v3-cs-flash,.v3-cs-rays,.v3-cs-bolts i,.v3-cs-spark b{ animation:none !important; opacity:0 !important; }
+}
 @keyframes v3CsIn{ from{ opacity:0; } to{ opacity:1; } }
 @keyframes v3CsPop{ 0%{ transform:scale(.55); opacity:0; } 55%{ transform:scale(1.12); opacity:1; } 100%{ transform:scale(1); opacity:1; } }
 @keyframes v3CsRing{ 0%{ transform:scale(.3); opacity:.95; } 70%{ opacity:.25; } 100%{ transform:scale(2.5); opacity:0; } }
@@ -26058,11 +26115,27 @@ function __sqV3RoundCombo(entry){
 // the dart that caused it, so the two surfaces tell one story).
 function __sqV3StageCombo(name, tier, lab, hold){
   try{
-    const dur = hold || 1700;
-    window.__sqV3Combo = { name: String(name || '').toUpperCase(), tier: tier || 'gold', lab: String(lab || 'COMBO').toUpperCase(), until: performance.now() + dur };
+    const big = (tier === 'legendary' || tier === 'gold');
+    const dur = hold || (tier === 'legendary' ? 2300 : tier === 'gold' ? 2000 : 1700);
+    const until = performance.now() + dur;
+    window.__sqV3Combo = { name: String(name || '').toUpperCase(), tier: tier || 'gold', lab: String(lab || 'COMBO').toUpperCase(), until, big };
+    // Keep the round frozen for as long as the celebration runs — otherwise the
+    // hold released first and the stem rebuilt twice in quick succession, which
+    // is what made the middle feel jumpy.
+    try{ if (window.__sqV3Hold){ window.__sqV3Hold.until = Math.max(window.__sqV3Hold.until, until);
+      clearTimeout(window.__sqV3HoldT);
+      window.__sqV3HoldT = setTimeout(() => { try{ __sqV3ReleaseHold(); }catch(_){ } }, dur + 40); } }catch(_){ }
+    // Screen shake for the big ones (Street-Fighter impact).
+    if (big && !__sqV3Reduced()){
+      try{ const p = document.getElementById('liveV3Panel');
+        if (p){ p.classList.remove('v3-quake','v3-quake-big'); void p.offsetWidth;
+          p.classList.add(tier === 'legendary' ? 'v3-quake-big' : 'v3-quake');
+          setTimeout(() => { try{ p.classList.remove('v3-quake','v3-quake-big'); }catch(_){ } }, 900); } }catch(_){ }
+    }
     clearTimeout(window.__sqV3ComboT);
     window.__sqV3ComboT = setTimeout(() => {
       window.__sqV3Combo = null;
+      window.__sqV3ComboOut = performance.now() + 420;
       try{ const p = document.getElementById('liveV3Panel'); if (p) p.dataset.sig = '';
         if (typeof window.__sqLiveV3Sync === 'function') window.__sqLiveV3Sync(); }catch(_){ }
     }, dur + 30);
@@ -26165,7 +26238,7 @@ function __sqV3DisplayTick(){
       const s = slides[(st.slideIx || 0) % slides.length];
       idleLab = s.lab; idleVal = s.val;
       if (!idleVal){ idleLab = 'TARGET'; idleVal = disp.dataset.target || ''; }
-    } else { st.slideAt = null; st.slideIx = 0; }   // restart the rotation after any event
+    } else { st.slideAt = null; }   // resume the rotation where it left off (never restart)
     const mode = ev ? (ev.throwKind ? ev.throwKind : (ev.gold ? 'gold' : 'green')) : 'idle';
     const lab = ev ? (ev.lab || '') : idleLab;
     const val = ev ? ev.text : idleVal;
@@ -26852,14 +26925,20 @@ function __sqLiveV3Render(){
 
   // Combo takeover: the whole stem becomes the stage for a combo/trophy.
   const cb = (window.__sqV3Combo && performance.now() < window.__sqV3Combo.until) ? window.__sqV3Combo : null;
-  const comboStage = cb ? `<div class="v3-combo-stage ${escV3(cb.tier || 'gold')}">
+  const comboStage = cb ? `<div class="v3-combo-stage ${escV3(cb.tier || 'gold')}${cb.big ? ' big' : ''}">
+              <span class="v3-cs-flash" aria-hidden="true"></span>
+              <span class="v3-cs-rays" aria-hidden="true"></span>
+              <span class="v3-cs-bolts" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
               <span class="v3-cs-ring" aria-hidden="true"></span>
+              <span class="v3-cs-ring r2" aria-hidden="true"></span>
+              <span class="v3-cs-spark" aria-hidden="true">${'<b></b>'.repeat(10)}</span>
               <span class="v3-cs-lab">${escV3(cb.lab || 'COMBO')}</span>
               <span class="v3-cs-name">${escV3(cb.name || '')}</span>
             </div>` : '';
 
+  const cOut = !cb && window.__sqV3ComboOut && performance.now() < window.__sqV3ComboOut;
   const centreHtml = (area) => `<div class="v3-centre"${area ? ` style="grid-area:${area}"` : ''}>
-          <div class="v3-ctop${cb ? ' comboing ' + escV3(cb.tier || 'gold') : ''}">
+          <div class="v3-ctop${cb ? ' comboing ' + escV3(cb.tier || 'gold') : (cOut ? ' combo-out' : '')}">
             <div class="v3-stem-scan" aria-hidden="true"></div>
             ${comboStage}
             <div class="v3-sb-target"><span class="v3-sbt-lab">TARGET</span><span class="v3-sbt-val">${targetLabel}</span></div>
