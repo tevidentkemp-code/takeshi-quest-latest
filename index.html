@@ -5840,7 +5840,7 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
   width:100%; flex:0 0 auto; display:flex; align-items:stretch; gap:10px;
   border-top:1px solid var(--v3-line); margin-top:8px; padding-top:8px;
 }
-.v3-foot.p2{ flex-direction:row-reverse; }              /* mirror: outer edge = right */
+/* No mirroring: previous rounds always LEFT, averages always RIGHT, both sides. */
 .v3-foot-div{ flex:0 0 auto; width:1px; align-self:stretch; background:var(--v3-line); }  /* faint grey divider */
 /* Outer column scrolls so every past round stays reachable (bottom grid removed). */
 .v3-foot-prev{ flex:0 1 auto; min-width:38px; max-height:104px; overflow-y:auto; overscroll-behavior:contain;
@@ -5857,7 +5857,7 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 /* previous-round stack (outer) */
 .v3-rr{ display:flex; flex-direction:column; align-items:center; text-align:center; }
 .v3-foot.p1 .v3-rr{ align-items:flex-start; text-align:left; }
-.v3-foot.p2 .v3-rr{ align-items:flex-end; text-align:right; }
+.v3-foot.p2 .v3-rr{ align-items:flex-start; text-align:left; }
 .v3-rr-lab{ font-size:8px; font-weight:900; letter-spacing:.12em; color:var(--v3-muted); }
 .v3-rr-tot{ font-size:17px; font-weight:900; color:#fff; line-height:1.05; }
 .v3-rr.best .v3-rr-tot{ color:var(--v3-green); }
@@ -26601,7 +26601,7 @@ function __sqV3RaceFrame(){
     // Smoothly ease the vertical scale so the whole graph grows fluidly.
     st.maxV = st.maxV ? st.maxV + (targetMax - st.maxV) * 0.14 : targetMax;
     const maxV = st.maxV;
-    const padL = 26, padR = 12, padT = 22, padB = 20, W = cssW - padL - padR, H = cssH - padT - padB;
+    const padL = 26, padR = 12, padT = 8, padB = 18, W = cssW - padL - padR, H = cssH - padT - padB;
     const X = i => padL + (rc <= 1 ? 0 : (i / (rc - 1)) * W);
     const Y = v => padT + H - (v / maxV) * H;
     // horizontal value grid + labels: a line every 50, a STRONGER line every 100.
@@ -26626,7 +26626,8 @@ function __sqV3RaceFrame(){
     }
     // HIGH-SCORE (record) pace — dashed gold reference line to race against
     if (recData){
-      const RP = []; for (let i = 0; i < recData.length && i < rc; i++){ if (recData[i] != null) RP.push([X(i), Y(recData[i])]); }
+      const recTo = Math.min(recData.length, rc, playedTo + 1);   // never past the scaled range
+      const RP = []; for (let i = 0; i < recTo; i++){ if (recData[i] != null) RP.push([X(i), Y(recData[i])]); }
       if (RP.length >= 2){
         ctx.save();
         ctx.setLineDash([5, 4]); ctx.strokeStyle = 'rgba(255,214,110,.9)'; ctx.lineWidth = 1.8; ctx.lineJoin = 'round';
@@ -26973,7 +26974,7 @@ function __sqLiveV3Render(){
       </div>
       <div class="v3-screen">
         <div class="v3-race-frame">
-          <div class="v3-race-bezel"><div class="v3-race-title">GAME RACE</div><canvas id="v3RaceCanvas" class="v3-race"></canvas></div>
+          <div class="v3-race-bezel"><canvas id="v3RaceCanvas" class="v3-race"></canvas></div>
         </div>
       </div>
     </div>`;
