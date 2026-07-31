@@ -5933,6 +5933,40 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 /* Big and legible mid-throw — this is the number players glance at most. */
 .v3-sbt-val{ font-size:clamp(26px,7.5vw,34px); font-weight:950; letter-spacing:.02em; line-height:1.02;
   color:var(--v3-orange-lt); text-shadow:0 0 18px rgba(255,138,20,.6); }
+/* ---- COMBO TAKEOVER: the whole stem becomes the stage ---- */
+.v3-ctop.comboing .v3-scorebox{ opacity:.16; filter:blur(1.5px); transition:opacity .2s ease, filter .2s ease; }
+.v3-ctop.comboing.silver{ border-color:rgba(200,214,235,.75); box-shadow:inset 0 0 30px rgba(0,0,0,.8), 0 0 34px rgba(200,214,235,.4); }
+.v3-ctop.comboing.gold{ border-color:rgba(255,196,74,.8); box-shadow:inset 0 0 30px rgba(0,0,0,.8), 0 0 38px rgba(255,196,74,.5); }
+.v3-ctop.comboing.legendary{ border-color:rgba(180,123,255,.85); box-shadow:inset 0 0 30px rgba(0,0,0,.8), 0 0 44px rgba(180,123,255,.6); }
+.v3-combo-stage{
+  position:absolute; left:0; right:0; top:0; bottom:0; z-index:4; pointer-events:none;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:8px;
+  animation:v3CsIn .34s cubic-bezier(.2,.9,.25,1) both;
+}
+.v3-cs-lab{ font-size:9px; font-weight:900; letter-spacing:.26em; color:rgba(255,255,255,.7); }
+.v3-cs-name{
+  font-size:clamp(15px,4.6vw,23px); font-weight:950; line-height:1.06; text-align:center;
+  letter-spacing:0; text-transform:uppercase;
+  /* wrap between WORDS only — never split a word mid-letter in the narrow stem */
+  word-break:normal; overflow-wrap:break-word; hyphens:none; max-width:100%;
+  animation:v3CsPop .5s cubic-bezier(.2,.9,.25,1) both .06s;
+}
+.v3-combo-stage.silver .v3-cs-name{ color:#eaf1fb; text-shadow:0 0 20px rgba(200,214,235,.9); }
+.v3-combo-stage.gold .v3-cs-name{ color:#ffe1a6; text-shadow:0 0 22px rgba(255,196,74,.95); }
+.v3-combo-stage.legendary .v3-cs-name{ color:#e9c6ff; text-shadow:0 0 26px rgba(180,123,255,1); }
+/* shockwave from the centre of the stem */
+.v3-cs-ring{ position:absolute; left:50%; top:50%; width:90px; height:90px; margin:-45px 0 0 -45px;
+  border-radius:50%; border:2.5px solid currentColor; opacity:0; animation:v3CsRing .72s ease-out both; }
+.v3-combo-stage.silver .v3-cs-ring{ color:#c8d6eb; }
+.v3-combo-stage.gold .v3-cs-ring{ color:#ffc44a; }
+.v3-combo-stage.legendary .v3-cs-ring{ color:#b47bff; }
+@keyframes v3CsIn{ from{ opacity:0; } to{ opacity:1; } }
+@keyframes v3CsPop{ 0%{ transform:scale(.55); opacity:0; } 55%{ transform:scale(1.12); opacity:1; } 100%{ transform:scale(1); opacity:1; } }
+@keyframes v3CsRing{ 0%{ transform:scale(.3); opacity:.95; } 70%{ opacity:.25; } 100%{ transform:scale(2.5); opacity:0; } }
+@media (prefers-reduced-motion: reduce){
+  .v3-combo-stage,.v3-cs-name,.v3-cs-ring{ animation:none !important; }
+  .v3-cs-ring{ display:none; }
+}
 /* Round-complete freeze: the finished total holds, lit, before the reset. */
 .v3-sb-num.v3-held{ color:#ffe6b0; text-shadow:0 0 26px rgba(255,190,60,.75), 0 2px 22px rgba(0,0,0,.55); }
 /* DART TRACK — three slots that fill with what each dart actually scored */
@@ -5959,7 +5993,15 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 .v3-slot.done.miss{   border-color:rgba(255,77,94,.7);   background:rgba(255,77,94,.14);  color:#ff8a97; }
 @media (prefers-reduced-motion: reduce){ .v3-slot.next{ animation:none; } }
 .v3-sb-lab{ font-size:12px; font-weight:900; letter-spacing:.2em; color:rgba(214,222,240,.78); }
-.v3-sb-num{ font-size: clamp(56px, 19vw, 84px); font-weight:900; color:#fff; line-height:1; margin-top:5px; letter-spacing:-.02em; text-shadow:0 2px 22px rgba(0,0,0,.55); }
+/* The live round score is the CABINET's readout, not a player's total — so it
+   reads as cyan LED with tabular digits, clearly distinct from the players'
+   white/accent totals either side. */
+.v3-sb-num{
+  font-size: clamp(56px, 19vw, 84px); font-weight:900; line-height:1; margin-top:5px;
+  letter-spacing:.01em; font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1;
+  color:#b6ecff;
+  text-shadow:0 0 10px rgba(120,220,255,.75), 0 0 34px rgba(70,190,255,.45), 0 2px 22px rgba(0,0,0,.6);
+}
 .v3-sb-marks{ font-size:17px; font-weight:900; color:rgba(214,222,240,.75); margin-top:6px; letter-spacing:.1em; }
 .v3-sb-marks i{ font-style:normal; color:rgba(214,222,240,.34); }
 
@@ -26012,6 +26054,27 @@ function __sqV3RoundCombo(entry){
     return (window.SQ_ACH && SQ_ACH.meta) ? SQ_ACH.meta(code) : { code, name: code, icon:'🎯', tier:'gold' };
   }catch(_){ return null; }
 }
+// Stage a combo/trophy across the whole centre stem (the marquee keeps showing
+// the dart that caused it, so the two surfaces tell one story).
+function __sqV3StageCombo(name, tier, lab, hold){
+  try{
+    const dur = hold || 1700;
+    window.__sqV3Combo = { name: String(name || '').toUpperCase(), tier: tier || 'gold', lab: String(lab || 'COMBO').toUpperCase(), until: performance.now() + dur };
+    clearTimeout(window.__sqV3ComboT);
+    window.__sqV3ComboT = setTimeout(() => {
+      window.__sqV3Combo = null;
+      try{ const p = document.getElementById('liveV3Panel'); if (p) p.dataset.sig = '';
+        if (typeof window.__sqLiveV3Sync === 'function') window.__sqLiveV3Sync(); }catch(_){ }
+    }, dur + 30);
+    // Repaint on the next tick — this is called from inside __sqV3Animate, which
+    // itself runs at the end of a render, so syncing synchronously would re-enter
+    // the renderer and wipe the event that triggered us.
+    setTimeout(() => {
+      try{ const p = document.getElementById('liveV3Panel'); if (p) p.dataset.sig = '';
+        if (typeof window.__sqLiveV3Sync === 'function') window.__sqLiveV3Sync(); }catch(_){ }
+    }, 0);
+  }catch(_){ }
+}
 // Release the end-of-round freeze and repaint immediately.
 function __sqV3ReleaseHold(){
   if (!window.__sqV3Hold) return;
@@ -26243,10 +26306,10 @@ function __sqV3Animate(panel){
             try{
               const ds = (b[last].darts || []);
               if (ds.length >= 3 && ds.filter(d => d && (d.kind === 'T' || d.kind === 'Triple')).length === 3){
-                __sqV3DisplayEvent('PERFECT ROUND!', true, 'TROPHY'); shown = true;
+                __sqV3StageCombo('PERFECT ROUND!', 'legendary', 'TROPHY'); shown = true;
               }
             }catch(_){ }
-            if (!shown){ const m = __sqV3RoundCombo(b[last]); if (m) __sqV3DisplayEvent((m.name || '') + '!', (m.tier === 'gold' || m.tier === 'legendary'), 'COMBO'); }
+            if (!shown){ const m = __sqV3RoundCombo(b[last]); if (m) __sqV3StageCombo((m.name || '') + '!', (m.tier === 'legendary' ? 'legendary' : m.tier === 'silver' ? 'silver' : 'gold'), 'COMBO'); }
           }
         }catch(_){ }
       }
@@ -26787,9 +26850,18 @@ function __sqLiveV3Render(){
     return `<span class="v3-slot${next ? ' next' : ''}"><i></i></span>`;
   }).join('');
 
+  // Combo takeover: the whole stem becomes the stage for a combo/trophy.
+  const cb = (window.__sqV3Combo && performance.now() < window.__sqV3Combo.until) ? window.__sqV3Combo : null;
+  const comboStage = cb ? `<div class="v3-combo-stage ${escV3(cb.tier || 'gold')}">
+              <span class="v3-cs-ring" aria-hidden="true"></span>
+              <span class="v3-cs-lab">${escV3(cb.lab || 'COMBO')}</span>
+              <span class="v3-cs-name">${escV3(cb.name || '')}</span>
+            </div>` : '';
+
   const centreHtml = (area) => `<div class="v3-centre"${area ? ` style="grid-area:${area}"` : ''}>
-          <div class="v3-ctop">
+          <div class="v3-ctop${cb ? ' comboing ' + escV3(cb.tier || 'gold') : ''}">
             <div class="v3-stem-scan" aria-hidden="true"></div>
+            ${comboStage}
             <div class="v3-sb-target"><span class="v3-sbt-lab">TARGET</span><span class="v3-sbt-val">${targetLabel}</span></div>
             <div class="v3-scorebox">
               <div class="v3-sb-glow" aria-hidden="true"></div>
