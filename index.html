@@ -5933,6 +5933,8 @@ body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has 
 /* Big and legible mid-throw — this is the number players glance at most. */
 .v3-sbt-val{ font-size:clamp(26px,7.5vw,34px); font-weight:950; letter-spacing:.02em; line-height:1.02;
   color:var(--v3-orange-lt); text-shadow:0 0 18px rgba(255,138,20,.6); }
+/* Round-complete freeze: the finished total holds, lit, before the reset. */
+.v3-sb-num.v3-held{ color:#ffe6b0; text-shadow:0 0 26px rgba(255,190,60,.75), 0 2px 22px rgba(0,0,0,.55); }
 /* DART TRACK — three slots that fill with what each dart actually scored */
 .v3-darttrack{
   flex:0 0 auto; display:flex; align-items:center; justify-content:center; gap:8px;
@@ -26010,12 +26012,37 @@ function __sqV3RoundCombo(entry){
     return (window.SQ_ACH && SQ_ACH.meta) ? SQ_ACH.meta(code) : { code, name: code, icon:'🎯', tier:'gold' };
   }catch(_){ return null; }
 }
+// Release the end-of-round freeze and repaint immediately.
+function __sqV3ReleaseHold(){
+  if (!window.__sqV3Hold) return;
+  window.__sqV3Hold = null;
+  try{ clearTimeout(window.__sqV3HoldT); }catch(_){ }
+  try{
+    const p = document.getElementById('liveV3Panel'); if (p) p.dataset.sig = '';
+    if (typeof window.__sqLiveV3Sync === 'function') window.__sqLiveV3Sync();
+  }catch(_){ }
+}
+// Any throw-pad press skips the freeze straight away (capture, so it lands
+// before the game logic re-renders).
+if (!window.__sqV3HoldBound){
+  window.__sqV3HoldBound = true;
+  try{
+    document.addEventListener('pointerdown', function(e){
+      if (!window.__sqV3Hold) return;
+      const t = e.target && e.target.closest ? e.target.closest('#pad button, .dtPad button') : null;
+      if (t) __sqV3ReleaseHold();
+    }, true);
+  }catch(_){ }
+}
 // Digital top-bar display: shows TARGET when idle, and combo/trophy callouts
 // with an arcade flip. Events are queued in window.__sqV3Disp and rendered by
 // __sqV3DisplayTick (driven each frame by the race rAF, so it self-reverts).
+// Events QUEUE behind whatever is showing, so the dart that just landed is
+// always seen before a combo/trophy callout replaces it.
 function __sqV3DisplayEvent(text, gold, lab, hold){
   const st = window.__sqV3Disp || (window.__sqV3Disp = {});
-  st.event = { text: String(text || '').toUpperCase(), gold: !!gold, lab: String(lab || '').toUpperCase(), until: performance.now() + (hold || 1750) };
+  const ev = { text: String(text || '').toUpperCase(), gold: !!gold, lab: String(lab || '').toUpperCase(), dur: (hold || 1750) };
+  (st.queue || (st.queue = [])).push(ev);
 }
 // Per-dart throw feedback: S / D / T / BULL land as a HIT (green kick), a miss
 // lands as MISS (red rumble). Shown on the same top-bar display.
@@ -26030,22 +26057,52 @@ function __sqV3DisplayThrow(dart){
          : (k === 'B') ? (dart.bull === 'Inner' ? 'BULL 50' : 'BULL 25')
          : 'SINGLE';
   }
-  st.event = { text, lab: miss ? 'MISS' : 'HIT', throwKind: miss ? 'miss' : 'hit', until: performance.now() + 1150 };
+  // A throw preempts anything queued — it is the freshest thing that happened.
+  st.queue = [];
+  st.event = { text, lab: miss ? 'MISS' : 'HIT', throwKind: miss ? 'miss' : 'hit', until: performance.now() + 1000 };
+}
+// Idle rotation: TO THROW <name> -> 3RND/GAME AVG -> ROUND PB -> repeat.
+function __sqV3IdleSlides(){
+  const out = [];
+  try{
+    const cp = state.currentPlayer || 0;
+    const p = (state.players || [])[cp];
+    const nm = String((p && (p.name || p.player)) || '').split(' ')[0].toUpperCase();
+    if (nm) out.push({ lab: 'TO THROW', val: nm });
+    const b = (state.score && state.score[cp]) || [];
+    const pts = [];
+    b.forEach(e => { if (e && e.darts && e.darts.filter(d => d).length >= 3) pts.push(Number(e.roundTotal || 0)); });
+    if (pts.length){
+      const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+      out.push({ lab: '3 RND / GAME AVG', val: mean(pts.slice(-3)).toFixed(1) + '  ·  ' + mean(pts).toFixed(1) });
+      out.push({ lab: 'ROUND PB', val: String(Math.max(...pts)) });
+    }
+  }catch(_){ }
+  return out.length ? out : [{ lab: 'TARGET', val: '' }];
 }
 function __sqV3DisplayTick(){
   try{
     const disp = document.getElementById('v3TbDisplay'); if (!disp) return;
     const st = window.__sqV3Disp || (window.__sqV3Disp = {});
     const now = performance.now();
-    const ev = (st.event && now < st.event.until) ? st.event : null;
-    if (!ev) st.event = null;
-    // Idle = whose turn it is; events override with combos/trophies or throw feedback.
+    // Current event finished? Promote the next queued one (combo after the hit).
+    if (st.event && now >= st.event.until){
+      st.event = null;
+      if (st.queue && st.queue.length){
+        const nx = st.queue.shift();
+        st.event = Object.assign({}, nx, { until: now + (nx.dur || 1750) });
+      }
+    }
+    const ev = st.event || null;
+    // Idle rotates through TO THROW / averages / round PB.
     let idleLab = 'TO THROW', idleVal = '';
-    try{
-      const p = (state.players || [])[state.currentPlayer || 0];
-      idleVal = String((p && (p.name || p.player)) || '').split(' ')[0].toUpperCase();
-    }catch(_){ }
-    if (!idleVal){ idleLab = 'TARGET'; idleVal = disp.dataset.target || ''; }
+    if (!ev){
+      const slides = __sqV3IdleSlides();
+      if (st.slideAt == null || now - st.slideAt > 3200){ st.slideAt = now; st.slideIx = (st.slideIx == null ? 0 : st.slideIx + 1); }
+      const s = slides[(st.slideIx || 0) % slides.length];
+      idleLab = s.lab; idleVal = s.val;
+      if (!idleVal){ idleLab = 'TARGET'; idleVal = disp.dataset.target || ''; }
+    } else { st.slideAt = null; st.slideIx = 0; }   // restart the rotation after any event
     const mode = ev ? (ev.throwKind ? ev.throwKind : (ev.gold ? 'gold' : 'green')) : 'idle';
     const lab = ev ? (ev.lab || '') : idleLab;
     const val = ev ? ev.text : idleVal;
@@ -26093,6 +26150,25 @@ function __sqV3Animate(panel){
     // Round just completed by the previous thrower -> the round total flies
     // diagonally from the centre down into that player's history; older rounds
     // drop down a slot to make room.
+    // A round just completed -> freeze the centre stem on that finished round
+    // (score + full dart track) for a beat so the result is actually seen before
+    // the screen resets for the next thrower. Any pad press releases it early.
+    for (let i = 0; i < NP; i++){
+      if (fulls[i] > ((prev.fulls && prev.fulls[i]) || 0)){
+        try{
+          const b = (state.score && state.score[i]) || [];
+          const ri = fulls[i] - 1;
+          const done = b[ri];
+          if (done && done.darts){
+            window.__sqV3Hold = { until: performance.now() + 1400, entry: JSON.parse(JSON.stringify(done)) };
+            clearTimeout(window.__sqV3HoldT);
+            window.__sqV3HoldT = setTimeout(() => { try{ __sqV3ReleaseHold(); }catch(_){ } }, 1420);
+          }
+        }catch(_){ }
+        break;
+      }
+    }
+
     const flew = new Array(NP).fill(false);
     for (let i = 0; i < NP; i++){
       if (fulls[i] > ((prev.fulls && prev.fulls[i]) || 0) && prev.cp === i && sbNum){
@@ -26155,6 +26231,13 @@ function __sqV3Animate(panel){
           const b = (state.score && state.score[i]) || []; let last = -1;
           for (let ri = b.length - 1; ri >= 0; ri--){ if (b[ri] && b[ri].darts && b[ri].darts.filter(d => d).length >= 3){ last = ri; break; } }
           if (last >= 0){
+            // The dart that COMPLETED the round never reaches the hit branch
+            // above (the turn advances in the same tick, so turnKey changes).
+            // Show it explicitly first; the combo then queues behind it.
+            try{
+              const ds0 = (b[last].darts || []);
+              for (let k = ds0.length - 1; k >= 0; k--){ if (ds0[k]){ __sqV3DisplayThrow(ds0[k]); break; } }
+            }catch(_){ }
             // Trophy: a round of three trebles on the target beats a normal combo.
             let shown = false;
             try{
@@ -26573,7 +26656,7 @@ function __sqLiveV3Render(){
   // Render-signature guard: skip redundant re-renders (updateUI can fire more
   // than once per throw) so in-flight one-shot animations are never cut short.
   const curEntrySig = entryOf(cp, r);
-  const sig = [r, cp, dart, NP, totals.join(','), Number((curEntrySig && curEntrySig.roundTotal) || 0),
+  const sig = [r, cp, dart, NP, (window.__sqV3Hold && performance.now() < window.__sqV3Hold.until) ? 'H' : '-', totals.join(','), Number((curEntrySig && curEntrySig.roundTotal) || 0),
                (wins || []).slice(0, NP).join('x'), state.finished ? 1 : 0,
                Array.from({ length: NP }, (_, i) => pName(i)).join('~')].join('|');
   if (panel.isConnected && panel.dataset.sig === sig && panel.childElementCount) return;
@@ -26681,11 +26764,17 @@ function __sqLiveV3Render(){
 
   // Centre column (DART indicator + ROUND SCORE). `area` sets its grid-area for
   // the 4-player layout, where it spans both pill rows down the middle.
+  // End-of-round freeze: keep showing the round that just finished (score + full
+  // dart track) until the hold expires or a pad button is pressed.
+  const hold = (window.__sqV3Hold && performance.now() < window.__sqV3Hold.until) ? window.__sqV3Hold : null;
+  const stemEntry = hold ? hold.entry : curEntry;
+  const stemDart = hold ? 3 : dart;
+
   // Dart track: one slot per dart. A thrown dart shows what it actually scored
   // (T / D / S / 50 / X); the next slot to throw pulses; the rest sit empty.
   // Replaces the old DART x OF 3 label + pips + separate marks row.
   const trackSlots = [0, 1, 2].map(k => {
-    const d = (curEntry && curEntry.darts) ? curEntry.darts[k] : null;
+    const d = (stemEntry && stemEntry.darts) ? stemEntry.darts[k] : null;
     if (d){
       const mk = __sqV3Mark(d);
       const cls = (d.kind === 'Miss') ? 'miss'
@@ -26694,7 +26783,7 @@ function __sqLiveV3Render(){
                 : (d.kind === 'B') ? 'bull' : 'single';
       return `<span class="v3-slot done ${cls}">${escV3(mk)}</span>`;
     }
-    const next = (k === dart) && !state.finished;
+    const next = (k === stemDart) && !state.finished;
     return `<span class="v3-slot${next ? ' next' : ''}"><i></i></span>`;
   }).join('');
 
@@ -26705,7 +26794,7 @@ function __sqLiveV3Render(){
             <div class="v3-scorebox">
               <div class="v3-sb-glow" aria-hidden="true"></div>
               <div class="v3-sb-lab">ROUND SCORE</div>
-              <div class="v3-sb-num">${Number((curEntry && curEntry.roundTotal) || 0)}</div>
+              <div class="v3-sb-num${hold ? ' v3-held' : ''}">${Number((stemEntry && stemEntry.roundTotal) || 0)}</div>
             </div>
             <div class="v3-darttrack">${trackSlots}</div>
           </div>
