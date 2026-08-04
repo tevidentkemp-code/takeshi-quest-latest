@@ -3636,28 +3636,32 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
     linear-gradient(180deg, rgba(2,9,18,.72), rgba(2,6,14,.84));
   box-shadow: inset 0 0 18px rgba(0,0,0,.22), 0 0 0 1px rgba(0,0,0,.14);
 }
-.home-live-printer .lp-row{ height: 27px; }
+.home-live-printer .lp-row{ height: 20px; }
 .home-live-printer .lp-row td{
-  padding: 0;
+  padding: 1px 0;
   vertical-align: middle;
   background: transparent;
   border-bottom: 1px solid rgba(210,235,255,.055);
 }
 .home-live-printer .lp-row:last-child td{ border-bottom: 0; }
 .home-live-printer .lp-line{
-  padding: 5px 8px 5px 10px;
+  padding: 2px 8px 2px 10px;
   position: relative;
 }
 .home-live-printer .lp-ellipsis{
   display:block;
   overflow:hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   max-width: 100%;
+  /* long player lists wrap onto a second line instead of being cut off */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.15;
 }
 .home-live-printer .lp-ellipsis.lp-structured{
   display:flex;
   align-items:center;
+  flex-wrap: wrap;
+  row-gap: 1px;
   gap: 6px;
   min-width: 0;
 }
@@ -3687,16 +3691,14 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 }
 .home-live-printer .lp-result{
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   color: rgba(231,246,241,.95);
 }
 .home-live-printer .lp-scoreline{
-  min-width:0;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .home-live-printer .lp-row.lp-practice .lp-mode{
   border-color: rgba(69,184,255,.34);
@@ -3765,7 +3767,9 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 }
 .home-live-printer .lp-record-chip{
   flex:0 0 auto;
-  max-width: 132px;
+  /* wide enough for the longest label ("NEW GAME RECORD SCORE"); the row wraps
+     now, so a wider chip pushes the value to line two rather than off screen */
+  max-width: 100%;
   padding: 2px 6px;
   border-radius: 5px;
   border: 1px solid rgba(255,196,77,.36);
@@ -3886,6 +3890,25 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 .home-live-printer .lp-row.lp-alert .lp-ellipsis{ color: rgba(255, 220, 90, .98) !important; font-weight: 900; }
 
 /* Records (e.g., NEW GAME RECORD SCORE) */
+
+/* Record lines (ROUND PB / GAME PB / NEW GAME RECORD / ALERT) belong to the game
+   printed above them, so indent them and hang a connector rather than letting
+   them arrive looking like a brand-new result. */
+.home-live-printer .lp-row.lp-roundpb .lp-line,
+.home-live-printer .lp-row.lp-gamepb .lp-line,
+.home-live-printer .lp-row.lp-record .lp-line,
+.home-live-printer .lp-row.lp-alert .lp-line,
+.home-live-printer .lp-row.lp-alert-row .lp-line{ padding-left: 26px; }
+.home-live-printer .lp-row.lp-roundpb .lp-line::before,
+.home-live-printer .lp-row.lp-gamepb .lp-line::before,
+.home-live-printer .lp-row.lp-record .lp-line::before,
+.home-live-printer .lp-row.lp-alert .lp-line::before,
+.home-live-printer .lp-row.lp-alert-row .lp-line::before{
+  content:''; position:absolute; left:13px; top:-2px; bottom:50%;
+  border-left:1px solid rgba(255,220,90,.35);
+  border-bottom:1px solid rgba(255,220,90,.35);
+  border-bottom-left-radius:4px; width:8px;
+}
 .lp-record .lp-line, .lp-record .lp-ellipsis{
   color: rgba(255, 220, 90, .98) !important;
   font-weight: 900 !important;
@@ -3902,14 +3925,19 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
     font-size: 10.8px;
   }
   .home-live-printer .lp-row{
-    height: 28px;
+    height: 20px;
   }
   .home-live-printer .lp-line{
-    padding: 5px 7px 5px 8px;
+    padding: 1px 7px 1px 8px;
   }
   .home-live-printer .lp-row.lp-new .lp-line{
     padding-left: 28px;
   }
+  .home-live-printer .lp-row.lp-roundpb .lp-line,
+  .home-live-printer .lp-row.lp-gamepb .lp-line,
+  .home-live-printer .lp-row.lp-record .lp-line,
+  .home-live-printer .lp-row.lp-alert .lp-line,
+  .home-live-printer .lp-row.lp-alert-row .lp-line{ padding-left: 24px; }
   .home-live-printer .lp-ellipsis.lp-structured{
     gap: 5px;
   }
@@ -3929,7 +3957,7 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   .home-live-printer .lp-record-chip,
   .home-live-printer .lp-result-chip,
   .home-live-printer .lp-alert-chip{
-    max-width: 96px;
+    max-width: 100%;
     font-size: 8.4px;
     padding-left: 4px;
     padding-right: 4px;
@@ -33095,7 +33123,7 @@ if(hsBody){
       };
 
       const LP_BUFFER = 30;
-      const LP_VISIBLE = 9;
+      const LP_VISIBLE = 15;
       const LP_SYNC_MS = Math.max(15000, (typeof SQ_GAMES_VISIBLE_MIN_POLL_MS !== 'undefined' ? SQ_GAMES_VISIBLE_MIN_POLL_MS : 15000));
       // Cloud availability helper (avoid ReferenceError on older builds)
       const lpCloudOK = () => {
@@ -34121,6 +34149,15 @@ if(hsBody){
         const nextIdx = st.lpCursor % buf.length;
         const nextLine = String(buf[nextIdx] ?? '').trim();
         st.lpCursor = (st.lpCursor + 1) % buf.length;
+        // Pace the pause that follows this line by looking at what comes next: a
+        // record/PB/alert belongs to the game printed above it, so it should land
+        // almost immediately, while a fresh game result gets the fuller beat.
+        try{
+          const upcoming = String(buf[st.lpCursor % buf.length] ?? '').trim();
+          const follower = lpIsRecordLine(upcoming) || lpIsRoundPBLine(upcoming)
+                        || lpIsGamePBLine(upcoming) || lpIsAlertLine(upcoming) || lpIsBeerAlertLine(upcoming);
+          st.nextHold = follower ? 0 : 2;
+        }catch(_e){ st.nextHold = 2; }
 
         // Shift window (top drops, new line appears at bottom)
         try { st.displayLines.shift(); } catch(_e){ st.displayLines = st.displayLines.slice(1); }
@@ -34152,7 +34189,9 @@ if(hsBody){
 	            lastSp.textContent = '';
 	            // slower typing
 	            const lastLine = st.displayLines[LP_VISIBLE - 1];
-	            lpType(lastSp, lpDisplayText(lastLine), 42, () => lpSetLineContent(lastSp, lastLine));
+	            const fast = (()=>{ try{ return lpIsRecordLine(lastLine) || lpIsRoundPBLine(lastLine)
+              || lpIsGamePBLine(lastLine) || lpIsAlertLine(lastLine) || lpIsBeerAlertLine(lastLine); }catch(_e){ return false; } })();
+	            lpType(lastSp, lpDisplayText(lastLine), fast ? 8 : 22, () => lpSetLineContent(lastSp, lastLine));
 	          }
 	        });
 	      };
@@ -34419,7 +34458,9 @@ if (!window.__homeLivePrinterInterval){
           
           // Continuous feed: scroll through last 20 even when nothing new arrives
           try {
-            if (st.tick % 5 === 0) lpScrollStep();
+            if (!Number.isFinite(st.hold)) st.hold = 0;
+            if (st.hold > 0) st.hold--;
+            else { lpScrollStep(); const h = Number(st.nextHold); st.hold = Number.isFinite(h) ? h : 2; }
           } catch (_) {}
           // Sync cloud rows at most every 15s; animation still ticks every second.
           if (!st.lastSyncMs || (Date.now() - st.lastSyncMs) >= LP_SYNC_MS) {
