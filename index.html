@@ -15709,6 +15709,16 @@ function __sqGcXpEnsureStyles(){
     box-shadow:inset 0 0 22px rgba(0,0,0,.8), 0 0 20px rgba(255,106,0,.14); }
   .gc-xp-title::after{ content:''; position:absolute; inset:0; pointer-events:none;
     background:repeating-linear-gradient(0deg,rgba(0,0,0,.25) 0 1px,transparent 1px 3px); opacity:.4; }
+  /* Unranked modes (practice / turbo / vs-shadow) earn no XP — say so plainly
+     rather than showing an XP tally the server will never award. */
+  .gc-xp-noxp{ text-align:center; padding:16px 14px; border-radius:13px; margin-bottom:8px;
+    background:linear-gradient(165deg,#1a2030 0%,#10141f 100%); border:1px solid rgba(255,255,255,.09);
+    box-shadow:0 6px 16px rgba(0,0,0,.3); opacity:0; transform:translateY(10px);
+    transition:opacity .35s ease, transform .35s cubic-bezier(.2,.9,.25,1); }
+  .gc-xp-noxp.in{ opacity:1; transform:none; }
+  .gc-xp-noxp-mode{ font-size:12px; font-weight:950; letter-spacing:.22em; color:#45b8ff;
+    text-shadow:0 0 14px rgba(69,184,255,.5); }
+  .gc-xp-noxp-copy{ margin-top:7px; font-size:12px; line-height:1.45; color:rgba(255,255,255,.62); }
   .gc-xp-row{ position:relative; background:linear-gradient(165deg,#1a2030 0%,#10141f 100%); border:1px solid rgba(255,255,255,.09); border-radius:13px; padding:10px 12px 10px 15px; margin-bottom:8px; overflow:hidden; opacity:0; transform:translateY(10px); transition:opacity .35s ease, transform .35s cubic-bezier(.2,.9,.25,1); box-shadow:0 6px 16px rgba(0,0,0,.3); }
   /* Rank accent bar: gold for the winner, orange otherwise */
   .gc-xp-row::before{ content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:#ff6a00; box-shadow:0 0 12px rgba(255,106,0,.6); }
@@ -15813,9 +15823,44 @@ function __sqGcXpRow(panel, row, reduced){
     }, 120);
   });
 }
+// XP is only earned in ranked play. The Supabase views that own the real
+// totals (v_player_base_xp / v_ach_rounds) skip any game whose mode is
+// 'practice' or 'turbo', and Training never writes to `games` at all — so
+// showing an XP tally after those games promises points that are never
+// awarded. Returns the unranked mode label, or '' when the game does count.
+function __sqUnrankedXpMode(){
+  try{
+    if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime()) return 'PRACTICE';
+    const mode = String(
+      (typeof __sqComputeGameMode === 'function' ? __sqComputeGameMode() : '') ||
+      (state && (state.gameMode || state.mode)) || ''
+    ).toLowerCase();
+    if (mode === 'training') return 'TRAINING';
+    if (mode === 'turbo') return 'TURBO';
+    if (mode === 'practice') return 'PRACTICE';
+    if (state && (state.isPractice === true || state.is_practice === true)) return 'PRACTICE';
+    return '';
+  }catch(_){ return ''; }
+}
 async function __sqGcXpReveal(host, onComplete){
   try{
     if (!window.SQ_XP || !window.SQ_ACH || !state || !state.score){ if (onComplete) onComplete(); return; }
+    const unranked = __sqUnrankedXpMode();
+    if (unranked){
+      const panel = document.createElement('div'); panel.className = 'gc-xp-panel';
+      const title = document.createElement('div'); title.className = 'gc-xp-title';
+      title.textContent = 'NO XP EARNED';
+      const note = document.createElement('div'); note.className = 'gc-xp-noxp';
+      const mode = document.createElement('div'); mode.className = 'gc-xp-noxp-mode';
+      mode.textContent = unranked + ' GAME';
+      const copy = document.createElement('div'); copy.className = 'gc-xp-noxp-copy';
+      copy.textContent = 'Practice and Training don’t count towards XP, levels or trophies. Play a Match to rank up.';
+      note.appendChild(mode); note.appendChild(copy);
+      panel.appendChild(title); panel.appendChild(note); host.appendChild(panel);
+      requestAnimationFrame(() => note.classList.add('in'));
+      setTimeout(() => { if (onComplete) onComplete(); }, 700);
+      return;
+    }
     const reduced = (typeof __sqV3Reduced === 'function') ? __sqV3Reduced() : false;
     const board = state.score;
     // Display uses the pretty name (with nickname); the XP lookup must use the
@@ -37569,7 +37614,16 @@ if (rows.length) {
    map board players by NAME via v_name_resolver (players + aliases) so EVERY
    Classic game counts — not just those with match_players rows — and exclude
    turbo/practice modes and guest/test names. Keep detectGame's per-game rules
-   in sync with v_ach_base. */
+   in sync with v_ach_base.
+   No XP is earned outside ranked play:
+     - practice/turbo games are filtered out of v_player_base_xp AND v_ach_rounds
+       by mode, so they award neither base XP nor trophy XP;
+     - the milestones term counts high_scores_sp (LEAGUE) only — note the client
+       constants are inverted, TABLE_HS_PRACTICE = 'high_scores';
+     - Training never writes to `games`; it lives in training_sessions and has
+       its own summary screen.
+   __sqUnrankedXpMode() mirrors this on the client so the end-of-game screen
+   never promises XP the views will not award. */
 const SQ_XP = {
   W: { point: 0.25, game: 30, gameWin: 50, matchWin: 150, milestone: 40 },
   DIV: 46,          // level-curve divisor (re-tuned after full Classic-game coverage)
