@@ -1,0 +1,86 @@
+name: Apply Progression mode isolation
+
+on:
+  push:
+    branches:
+      - fix/progression-mode-isolation
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply bounded Progression function replacement
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          target = Path('index.html')
+          replacement = Path('tools/_progression_mode_replacement.js').read_text(encoding='utf-8').rstrip() + '\n'
+          text = target.read_text(encoding='utf-8')
+          start = '// ==== (3) Progression — per-game bar chart + avg overlay =================='
+          end = '// ==== (4) Target Hit % / Target Points % — canonical Supabase-view loaders ====='
+          if text.count(start) != 1 or text.count(end) != 1:
+              raise SystemExit(f'anchor mismatch: start={text.count(start)} end={text.count(end)}')
+          i = text.index(start)
+          j = text.index(end, i)
+          target.write_text(text[:i] + replacement + '\n' + text[j:], encoding='utf-8')
+          print('Progression function replaced between canonical anchors.')
+          PY
+          git diff --check -- index.html
+
+      - name: Verify expected mode-view routing is present
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('index.html').read_text(encoding='utf-8')
+          required = [
+            "data-progression-mode",
+            "v_player_game_scores_official_clean",
+            "v_player_game_scores_turbo_clean",
+            "activeBlockSize = 20",
+            "await loadMode('official')"
+          ]
+          missing = [x for x in required if x not in text]
+          if missing:
+              raise SystemExit('missing expected patch markers: ' + ', '.join(missing))
+          print('Static Progression routing checks passed.')
+          PY
+
+      - name: Install UI test dependencies
+        working-directory: tools/ui-smoke
+        run: npm install --no-package-lock --no-audit --no-fund
+
+      - name: Install Chromium
+        working-directory: tools/ui-smoke
+        run: npx playwright install --with-deps chromium
+
+      - name: Start local app server
+        run: |
+          python3 -m http.server 8123 >/tmp/sq-http.log 2>&1 &
+          echo $! >/tmp/sq-http.pid
+          sleep 2
+
+      - name: Run Progression mode-isolation verifier
+        working-directory: tools/ui-smoke
+        run: node verify-progression-modes.js
+
+      - name: Run full UI smoke suite
+        working-directory: tools/ui-smoke
+        run: node smoke.js
+
+      - name: Commit verified patch and remove temporary patch machinery
+        run: |
+          git config user.name "Shateki Coding"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html
+          git rm tools/_progression_mode_replacement.js .github/workflows/_apply_progression_mode_fix.yml
+          git commit -m "Fix Progression Official/Turbo mode isolation [skip ci]"
+          git push origin HEAD:fix/progression-mode-isolation
