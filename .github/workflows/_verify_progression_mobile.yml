@@ -1,0 +1,41 @@
+name: Verify Progression mobile controls
+
+on:
+  push:
+    branches:
+      - fix/progression-mode-isolation
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install UI test dependencies
+        working-directory: tools/ui-smoke
+        run: npm install --no-package-lock --no-audit --no-fund
+      - name: Install Chromium
+        working-directory: tools/ui-smoke
+        run: npx playwright install --with-deps chromium
+      - name: Start local app server
+        run: |
+          python3 -m http.server 8123 >/tmp/sq-http.log 2>&1 &
+          sleep 2
+      - name: Run strengthened Progression verifier
+        working-directory: tools/ui-smoke
+        run: node verify-progression-modes.js
+      - name: Run full UI smoke suite
+        working-directory: tools/ui-smoke
+        run: node smoke.js
+      - name: Remove temporary workflow after successful verification
+        run: |
+          git config user.name "Shateki Coding"
+          git config user.email "actions@users.noreply.github.com"
+          git rm .github/workflows/_verify_progression_mobile.yml
+          git commit -m "Verify Progression mobile controls [skip ci]"
+          git push origin HEAD:fix/progression-mode-isolation
