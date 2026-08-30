@@ -64,6 +64,22 @@ function check(name, ok, detail) {
 
   check('Official mode button visible', await official.isVisible());
   check('Turbo mode button visible', await turbo.isVisible());
+  const mobileGeom = await modal.evaluate((m) => {
+    const h = m.querySelector('.modal-header')?.getBoundingClientRect();
+    const t = m.querySelector('.sq-progression-mode-toggle')?.getBoundingClientRect();
+    const o = m.querySelector('button[data-progression-mode="official"]')?.getBoundingClientRect();
+    const u = m.querySelector('button[data-progression-mode="turbo"]')?.getBoundingClientRect();
+    const mr = m.getBoundingClientRect();
+    return {
+      headerRight: h?.right || 0, toggleRight: t?.right || 0,
+      modalLeft: mr.left, modalRight: mr.right,
+      toggleLeft: t?.left || 0, officialH: o?.height || 0, turboH: u?.height || 0,
+      scrollWidth: m.scrollWidth, clientWidth: m.clientWidth
+    };
+  });
+  check('mode controls meet 44px mobile tap target', mobileGeom.officialH >= 44 && mobileGeom.turboH >= 44, JSON.stringify(mobileGeom));
+  check('mode controls stay upper-right inside modal', mobileGeom.toggleLeft >= mobileGeom.modalLeft && mobileGeom.toggleRight <= mobileGeom.modalRight + 1 && Math.abs(mobileGeom.headerRight - mobileGeom.toggleRight) <= 20, JSON.stringify(mobileGeom));
+  check('Progression modal has no horizontal overflow at 390px', mobileGeom.scrollWidth <= mobileGeom.clientWidth + 1, JSON.stringify(mobileGeom));
   check('Official is selected by default', (await official.getAttribute('aria-pressed')) === 'true');
   check('Turbo is not selected by default', (await turbo.getAttribute('aria-pressed')) === 'false');
 
