@@ -23,72 +23,62 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('index.html')
           text = path.read_text(encoding='utf-8')
-          old = '''  async function fetchModeScores(mode){
-            const client = window.sb || (typeof sb !== 'undefined' ? sb : null);
-            if (!client || typeof client.from !== 'function') throw new Error('Supabase client unavailable');
-            const view = mode === 'turbo'
-              ? 'v_player_game_scores_turbo_clean'
-              : 'v_player_game_scores_official_clean';
-            const { data, error } = await client
-              .from(view)
-              .select('game_id,ts,player_name,score')
-              .ilike('player_name', name)
-              .order('ts', { ascending:true })
-              .limit(5000);
-            if (error) throw error;
-            return (Array.isArray(data) ? data : [])
-              .map(r=>Number(r && r.score))
-              .filter(v=>Number.isFinite(v) && v >= 0);
-          }
-          '''
-          new = '''  async function fetchModeScores(mode){
-            const client = window.sb || (typeof sb !== 'undefined' ? sb : null);
-            if (!client || typeof client.from !== 'function') throw new Error('Supabase client unavailable');
+          pattern = re.compile(
+              r"  async function fetchModeScores\(mode\)\{\n.*?\n  \}\n\n  async function loadMode\(mode\)\{",
+              re.S,
+          )
+          new_fetch = (
+              "  async function fetchModeScores(mode){\n"
+              "    const client = window.sb || (typeof sb !== 'undefined' ? sb : null);\n"
+              "    if (!client || typeof client.from !== 'function') throw new Error('Supabase client unavailable');\n"
+              "\n"
+              "    if (mode === 'turbo'){\n"
+              "      const { data, error } = await client\n"
+              "        .from('v_games_turbo_clean')\n"
+              "        .select('id,created_at,state,totals')\n"
+              "        .order('created_at', { ascending:true })\n"
+              "        .limit(5000);\n"
+              "      if (error) throw error;\n"
+              "\n"
+              "      const wanted = String(name || '').trim().toLowerCase();\n"
+              "      return (Array.isArray(data) ? data : [])\n"
+              "        .map(g=>{\n"
+              "          const state = g && g.state && typeof g.state === 'object' ? g.state : {};\n"
+              "          const players = Array.isArray(state.players) ? state.players : [];\n"
+              "          const idx = players.findIndex(p=>{\n"
+              "            const playerName = (p && typeof p === 'object') ? p.name : p;\n"
+              "            return String(playerName || '').trim().toLowerCase() === wanted;\n"
+              "          });\n"
+              "          if (idx < 0) return NaN;\n"
+              "          const totals = Array.isArray(g && g.totals) ? g.totals : [];\n"
+              "          return Number(totals[idx]);\n"
+              "        })\n"
+              "        .filter(v=>Number.isFinite(v) && v >= 0);\n"
+              "    }\n"
+              "\n"
+              "    const { data, error } = await client\n"
+              "      .from('v_player_game_scores_official_clean')\n"
+              "      .select('game_id,ts,player_name,score')\n"
+              "      .ilike('player_name', name)\n"
+              "      .order('ts', { ascending:true })\n"
+              "      .limit(5000);\n"
+              "    if (error) throw error;\n"
+              "    return (Array.isArray(data) ? data : [])\n"
+              "      .map(r=>Number(r && r.score))\n"
+              "      .filter(v=>Number.isFinite(v) && v >= 0);\n"
+              "  }"
+          )
 
-            if (mode === 'turbo'){
-              const { data, error } = await client
-                .from('v_games_turbo_clean')
-                .select('id,created_at,state,totals')
-                .order('created_at', { ascending:true })
-                .limit(5000);
-              if (error) throw error;
-
-              const wanted = String(name || '').trim().toLowerCase();
-              return (Array.isArray(data) ? data : [])
-                .map(g=>{
-                  const state = g && g.state && typeof g.state === 'object' ? g.state : {};
-                  const players = Array.isArray(state.players) ? state.players : [];
-                  const idx = players.findIndex(p=>{
-                    const playerName = (p && typeof p === 'object') ? p.name : p;
-                    return String(playerName || '').trim().toLowerCase() === wanted;
-                  });
-                  if (idx < 0) return NaN;
-                  const totals = Array.isArray(g && g.totals) ? g.totals : [];
-                  return Number(totals[idx]);
-                })
-                .filter(v=>Number.isFinite(v) && v >= 0);
-            }
-
-            const { data, error } = await client
-              .from('v_player_game_scores_official_clean')
-              .select('game_id,ts,player_name,score')
-              .ilike('player_name', name)
-              .order('ts', { ascending:true })
-              .limit(5000);
-            if (error) throw error;
-            return (Array.isArray(data) ? data : [])
-              .map(r=>Number(r && r.score))
-              .filter(v=>Number.isFinite(v) && v >= 0);
-          }
-          '''
-
-          count = text.count(old)
-          if count != 1:
-              raise SystemExit(f'Expected one Progression fetchModeScores block, found {count}')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          matches = list(pattern.finditer(text))
+          if len(matches) != 1:
+              raise SystemExit(f'Expected one bounded Progression fetchModeScores block, found {len(matches)}')
+          replacement = new_fetch + "\n\n  async function loadMode(mode){"
+          text = pattern.sub(lambda _m: replacement, text, count=1)
+          path.write_text(text, encoding='utf-8')
           PY
 
       - name: Diff integrity
