@@ -40621,11 +40621,33 @@ window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(
   async function fetchModeScores(mode){
     const client = window.sb || (typeof sb !== 'undefined' ? sb : null);
     if (!client || typeof client.from !== 'function') throw new Error('Supabase client unavailable');
-    const view = mode === 'turbo'
-      ? 'v_player_game_scores_turbo_clean'
-      : 'v_player_game_scores_official_clean';
+
+    if (mode === 'turbo'){
+      const { data, error } = await client
+        .from('v_games_turbo_clean')
+        .select('id,created_at,state,totals')
+        .order('created_at', { ascending:true })
+        .limit(5000);
+      if (error) throw error;
+
+      const wanted = String(name || '').trim().toLowerCase();
+      return (Array.isArray(data) ? data : [])
+        .map(g=>{
+          const state = g && g.state && typeof g.state === 'object' ? g.state : {};
+          const players = Array.isArray(state.players) ? state.players : [];
+          const idx = players.findIndex(p=>{
+            const playerName = (p && typeof p === 'object') ? p.name : p;
+            return String(playerName || '').trim().toLowerCase() === wanted;
+          });
+          if (idx < 0) return NaN;
+          const totals = Array.isArray(g && g.totals) ? g.totals : [];
+          return Number(totals[idx]);
+        })
+        .filter(v=>Number.isFinite(v) && v >= 0);
+    }
+
     const { data, error } = await client
-      .from(view)
+      .from('v_player_game_scores_official_clean')
       .select('game_id,ts,player_name,score')
       .ilike('player_name', name)
       .order('ts', { ascending:true })
