@@ -16,31 +16,39 @@ function check(name, ok, detail) {
   await H.boot(page, { settle: 2500 });
 
   await page.evaluate(() => {
-    const rowsByView = {
-      v_player_game_scores_official_clean: [100, 200, 300, 400, 500, 600].map((score, i) => ({
-        game_id: 'o' + i,
-        ts: `2026-08-${String(i + 1).padStart(2, '0')}T12:00:00Z`,
-        player_name: 'Thom',
-        score
-      })),
-      v_player_game_scores_turbo_clean: [40, 50, 60, 70, 80, 90].map((score, i) => ({
-        game_id: 't' + i,
-        ts: `2026-08-${String(i + 11).padStart(2, '0')}T12:00:00Z`,
-        player_name: 'Thom',
-        score
-      }))
-    };
+    const officialRows = [100, 200, 300, 400, 500, 600].map((score, i) => ({
+      game_id: 'o' + i,
+      ts: `2026-08-${String(i + 1).padStart(2, '0')}T12:00:00Z`,
+      player_name: 'Thom',
+      score
+    }));
+    const turboRows = [40, 50, 60, 70, 80, 90].map((score, i) => ({
+      id: 't' + i,
+      created_at: `2026-08-${String(i + 11).padStart(2, '0')}T12:00:00Z`,
+      state: {
+        players: i % 2 === 0
+          ? [{ name: 'Other' }, { name: 'Thom' }]
+          : [{ name: 'Thom' }, { name: 'Other' }]
+      },
+      totals: i % 2 === 0 ? [9000, score] : [score, 9000]
+    }));
 
     window.__progQueries = [];
+    const responseFor = (view) => {
+      if (view === 'v_player_game_scores_official_clean') return { data: officialRows, error: null };
+      if (view === 'v_games_turbo_clean') return { data: turboRows, error: null };
+      if (view === 'v_player_game_scores_turbo_clean') return { data: null, error: { message: 'canceling statement due to statement timeout' } };
+      return { data: [], error: null };
+    };
     const makeQuery = (view) => {
       let query;
       query = new Proxy({}, {
         get(_target, prop) {
           if (prop === 'then') {
-            return (resolve) => resolve({ data: rowsByView[view] || [], error: null });
+            return (resolve) => resolve(responseFor(view));
           }
           return (...args) => {
-            if (prop === 'ilike') window.__progQueries.push({ view, col: args[0], value: args[1] });
+            window.__progQueries.push({ view, op: String(prop), args });
             return query;
           };
         }
@@ -49,7 +57,10 @@ function check(name, ok, detail) {
     };
 
     window.sb = {
-      from(view) { return makeQuery(view); },
+      from(view) {
+        window.__progQueries.push({ view, op: 'from', args: [] });
+        return makeQuery(view);
+      },
       rpc() { return makeQuery('__rpc__'); }
     };
   });
@@ -107,13 +118,16 @@ function check(name, ok, detail) {
   check('Official deselects', (await official.getAttribute('aria-pressed')) === 'false');
   const turboStats = (await pillAll.textContent() || '').trim();
   check('Turbo fixture only drives summary', turboStats.includes('Avg 65.0') && turboStats.includes('Low 40') && turboStats.includes('High 90'), turboStats);
+  check('Turbo extracts selected player total by player index', !turboStats.includes('9000'), turboStats);
   const turboB5 = (await pillAvg.textContent() || '').trim();
   check('5 Game AV remains selected inside Turbo', turboB5.includes('Avg Low 60.0') && turboB5.includes('Avg High 90.0'), turboB5);
 
   const queries = await page.evaluate(() => window.__progQueries.slice());
-  check('Official reads canonical Official clean view', queries.some(q => q.view === 'v_player_game_scores_official_clean'));
-  check('Turbo reads canonical Turbo clean view', queries.some(q => q.view === 'v_player_game_scores_turbo_clean'));
-  check('no mixed/legacy progression source queried', queries.every(q => /v_player_game_scores_(official|turbo)_clean/.test(q.view)), JSON.stringify(queries));
+  const queriedViews = queries.filter(q => q.op === 'from').map(q => q.view);
+  check('Official reads canonical Official clean score view', queriedViews.includes('v_player_game_scores_official_clean'), JSON.stringify(queriedViews));
+  check('Turbo reads canonical Turbo clean games view', queriedViews.includes('v_games_turbo_clean'), JSON.stringify(queriedViews));
+  check('Turbo avoids heavy score view that times out in production', !queriedViews.includes('v_player_game_scores_turbo_clean'), JSON.stringify(queriedViews));
+  check('no mixed/unclassified progression source queried', queriedViews.every(v => v === 'v_player_game_scores_official_clean' || v === 'v_games_turbo_clean'), JSON.stringify(queriedViews));
 
   const realErrs = consoleErrs.filter((e) => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));
   check('no unexpected console errors', realErrs.length === 0, realErrs.slice(0, 3).join(' | '));
