@@ -1,0 +1,127 @@
+name: Progression Turbo timeout patch
+
+on:
+  push:
+    branches:
+      - fix/progression-turbo-timeout
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/progression-turbo-timeout
+          fetch-depth: 0
+
+      - name: Apply bounded Progression Turbo read patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('index.html')
+          text = path.read_text(encoding='utf-8')
+          old = '''  async function fetchModeScores(mode){
+            const client = window.sb || (typeof sb !== 'undefined' ? sb : null);
+            if (!client || typeof client.from !== 'function') throw new Error('Supabase client unavailable');
+            const view = mode === 'turbo'
+              ? 'v_player_game_scores_turbo_clean'
+              : 'v_player_game_scores_official_clean';
+            const { data, error } = await client
+              .from(view)
+              .select('game_id,ts,player_name,score')
+              .ilike('player_name', name)
+              .order('ts', { ascending:true })
+              .limit(5000);
+            if (error) throw error;
+            return (Array.isArray(data) ? data : [])
+              .map(r=>Number(r && r.score))
+              .filter(v=>Number.isFinite(v) && v >= 0);
+          }
+          '''
+          new = '''  async function fetchModeScores(mode){
+            const client = window.sb || (typeof sb !== 'undefined' ? sb : null);
+            if (!client || typeof client.from !== 'function') throw new Error('Supabase client unavailable');
+
+            if (mode === 'turbo'){
+              const { data, error } = await client
+                .from('v_games_turbo_clean')
+                .select('id,created_at,state,totals')
+                .order('created_at', { ascending:true })
+                .limit(5000);
+              if (error) throw error;
+
+              const wanted = String(name || '').trim().toLowerCase();
+              return (Array.isArray(data) ? data : [])
+                .map(g=>{
+                  const state = g && g.state && typeof g.state === 'object' ? g.state : {};
+                  const players = Array.isArray(state.players) ? state.players : [];
+                  const idx = players.findIndex(p=>{
+                    const playerName = (p && typeof p === 'object') ? p.name : p;
+                    return String(playerName || '').trim().toLowerCase() === wanted;
+                  });
+                  if (idx < 0) return NaN;
+                  const totals = Array.isArray(g && g.totals) ? g.totals : [];
+                  return Number(totals[idx]);
+                })
+                .filter(v=>Number.isFinite(v) && v >= 0);
+            }
+
+            const { data, error } = await client
+              .from('v_player_game_scores_official_clean')
+              .select('game_id,ts,player_name,score')
+              .ilike('player_name', name)
+              .order('ts', { ascending:true })
+              .limit(5000);
+            if (error) throw error;
+            return (Array.isArray(data) ? data : [])
+              .map(r=>Number(r && r.score))
+              .filter(v=>Number.isFinite(v) && v >= 0);
+          }
+          '''
+
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'Expected one Progression fetchModeScores block, found {count}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Diff integrity
+        run: git diff --check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install UI smoke dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Start local app server
+        run: |
+          python3 -m http.server 8123 >/tmp/shateki-http.log 2>&1 &
+          echo $! >/tmp/shateki-http.pid
+          sleep 2
+
+      - name: Verify Progression mode isolation and Turbo timeout path
+        working-directory: tools/ui-smoke
+        run: node verify-progression-modes.js
+
+      - name: Run full UI smoke suite
+        working-directory: tools/ui-smoke
+        run: node smoke.js
+
+      - name: Commit verified index patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git commit -m 'fix: avoid Turbo progression score-view timeout'
+          git push origin HEAD:fix/progression-turbo-timeout
