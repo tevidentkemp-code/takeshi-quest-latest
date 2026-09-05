@@ -1,0 +1,48 @@
+const mfCard = document.createElement('div');
+    mfCard.className = 'tag pp-misfires';
+    mfCard.style.cssText = 'padding:12px;border-radius:14px;background:rgba(239,68,68,.055);border:1px solid rgba(248,113,113,.22);display:flex;flex-direction:column;gap:10px;';
+    const mfHead = document.createElement('div');
+    mfHead.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:12px;';
+    const mfTitleWrap = document.createElement('div');
+    const mfTitle = document.createElement('strong'); mfTitle.textContent = 'Misfires'; mfTitle.style.cssText = 'font-size:15px;color:#fecaca;';
+    const mfSub = document.createElement('div'); mfSub.className = 'muted'; mfSub.style.cssText = 'font-size:11px;margin-top:2px;'; mfSub.textContent = 'Historical record · XP penalties are launch-forward only';
+    mfTitleWrap.append(mfTitle, mfSub);
+    const mfXp = document.createElement('div');
+    mfXp.className = 'pp-misfire-xp';
+    mfXp.style.cssText = 'font-weight:900;font-size:13px;white-space:nowrap;color:#fecaca;';
+    const mfXpKnown = !!(xpRow && Number.isFinite(Number(xpRow.misfire_xp)));
+    const mfXpValue = mfXpKnown ? Number(xpRow.misfire_xp) : null;
+    mfXp.textContent = mfXpKnown ? ((mfXpValue > 0 ? '+' : '') + String(mfXpValue) + ' XP') : 'XP —';
+    mfHead.append(mfTitleWrap, mfXp); mfCard.appendChild(mfHead);
+
+    if (!misfireState.available){
+      const unavailable = document.createElement('div'); unavailable.className = 'muted'; unavailable.style.fontSize = '12px';
+      unavailable.textContent = 'Misfire history is unavailable right now.'; mfCard.appendChild(unavailable);
+    } else {
+      const mfTotal = SQ_MISFIRE.CATALOG.reduce((sum, m) => sum + Number((misfireMap[m.code] || {}).cnt || 0), 0);
+      const totalLine = document.createElement('div'); totalLine.className = 'pp-misfire-total';
+      totalLine.style.cssText = 'font-size:12px;font-weight:800;'; totalLine.textContent = mfTotal + ' historical occurrence' + (mfTotal === 1 ? '' : 's');
+      mfCard.appendChild(totalLine);
+
+      const mfList = document.createElement('div'); mfList.style.cssText = 'display:flex;flex-direction:column;gap:7px;';
+      SQ_MISFIRE.CATALOG.forEach(m => {
+        const cnt = Number((misfireMap[m.code] || {}).cnt || 0);
+        const row = document.createElement('div'); row.className = 'pp-misfire-row';
+        row.style.cssText = 'display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:8px;border-radius:10px;background:rgba(0,0,0,.16);' + (cnt ? '' : 'opacity:.58;');
+        const ico = document.createElement('span'); ico.textContent = m.icon; ico.style.fontSize = '18px';
+        const info = document.createElement('div'); info.style.minWidth = '0';
+        const nm = document.createElement('div'); nm.style.cssText = 'font-size:12px;font-weight:900;'; nm.textContent = m.name;
+        const ds = document.createElement('div'); ds.className = 'muted'; ds.style.cssText = 'font-size:10px;line-height:1.25;margin-top:2px;'; ds.textContent = m.desc;
+        info.append(nm, ds);
+        const val = document.createElement('div'); val.style.cssText = 'text-align:right;font-size:11px;font-weight:900;white-space:nowrap;';
+        val.textContent = cnt + '× · ' + String(m.penalty) + ' XP';
+        row.append(ico, info, val); mfList.appendChild(row);
+      });
+      mfCard.appendChild(mfList);
+    }
+
+    const mfFoot = document.createElement('div'); mfFoot.className = 'muted pp-misfire-foot';
+    mfFoot.style.cssText = 'font-size:10px;line-height:1.35;';
+    mfFoot.textContent = 'Historical counts include earlier Official/Classic games. XP penalties apply only from 5 Sep 2026 20:13 UTC. If several Misfires occur in one game, only the worst penalty applies; the maximum deduction is 5 XP per game.';
+    mfCard.appendChild(mfFoot);
+    achPanel.appendChild(mfCard);

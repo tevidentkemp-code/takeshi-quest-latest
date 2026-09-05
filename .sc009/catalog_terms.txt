@@ -1,0 +1,1425 @@
+=== Photo Finish 1 chars 1507007:1511007 ===
+r_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Win the game without ever falling behind' },
+    { code:'special_forces', name:'Special Forces',     icon:'🪖', tier:'legendary', xp:180, desc:'Hit three doubles, three trebles and three bulls in the final three rounds' },
+    { code:'reverse_sweep',  name:'Reverse Sweep',      icon:'↩️', tier:'legendary', xp:150, desc:'Win a five-game match after losing the first two games' },
+    { code:'clean_sweep',    name:'Clean Sweep',        icon:'🧼', tier:'gold',      xp:80,  desc:'Win every game in a three- or five-game match' },
+    { code:'last_gasp',      name:'Last Gasp',          icon:'⏳', tier:'gold',      xp:50,  desc:'Win after trailing after the Doubles round' },
+    { code:'pb_smasher',     name:'PB Smasher',         icon:'🔨', tier:'silver',    xp:50,  desc:'Beat your previous game PB by 100+ points' },
+    { code:'century_streak', name:'Century Streak',     icon:'💯', tier:'silver',    xp:40,  desc:'Score 100+ in two consecutive rounds' },
+    { code:'runaway',        name:'Runaway',            icon:'💨', tier:'silver',    xp:30,  desc:'Win a game by 200+ points' },
+    { code:'steady_eddie',   name:'Steady Eddie',       icon:'📏', tier:'silver',    xp:25,  desc:'Score in 10 consecutive rounds in one game' },
+    { code:'photo_finish',   name:'Photo Finish',       icon:'🏁', tier:'silver',    xp:20,  desc:'Win a game by 1–10 points' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in a number round (10–20)' },
+    { code:'clutch',         name:'Clutch',             icon:'⏱️', tier:'gold',      xp:40,  desc:'Full house on the final round to win' },
+    { code:'iceman',         name:'Iceman',             icon:'🧊', tier:'gold',      xp:50,  desc:'Win a tiebreak game' },
+    { code:'shanghai',       name:'Shanghai',           icon:'🏮', tier:'gold',      xp:50,  desc:'S
+=== END ===
+
+=== Runaway 1 chars 1506734:1510734 ===
+e view
+   v_player_achievements (derived from all game history — auto-backfilled
+   and auto-updated as games are saved). This module holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Win the game without ever falling behind' },
+    { code:'special_forces', name:'Special Forces',     icon:'🪖', tier:'legendary', xp:180, desc:'Hit three doubles, three trebles and three bulls in the final three rounds' },
+    { code:'reverse_sweep',  name:'Reverse Sweep',      icon:'↩️', tier:'legendary', xp:150, desc:'Win a five-game match after losing the first two games' },
+    { code:'clean_sweep',    name:'Clean Sweep',        icon:'🧼', tier:'gold',      xp:80,  desc:'Win every game in a three- or five-game match' },
+    { code:'last_gasp',      name:'Last Gasp',          icon:'⏳', tier:'gold',      xp:50,  desc:'Win after trailing after the Doubles round' },
+    { code:'pb_smasher',     name:'PB Smasher',         icon:'🔨', tier:'silver',    xp:50,  desc:'Beat your previous game PB by 100+ points' },
+    { code:'century_streak', name:'Century Streak',     icon:'💯', tier:'silver',    xp:40,  desc:'Score 100+ in two consecutive rounds' },
+    { code:'runaway',        name:'Runaway',            icon:'💨', tier:'silver',    xp:30,  desc:'Win a game by 200+ points' },
+    { code:'steady_eddie',   name:'Steady Eddie',       icon:'📏', tier:'silver',    xp:25,  desc:'Score in 10 consecutive rounds in one game' },
+    { code:'photo_finish',   name:'Photo Finish',       icon:'🏁', tier:'silver',    xp:20,  desc:'Win a game by 1–10 points' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in a number round (10–20)' },
+    { code:'clutch',         name:'Clutch',             icon:'⏱️', tier:'gold',      xp:
+=== END ===
+
+=== Last Gasp 1 chars 1506306:1510306 ===
+r-gradient(90deg,#ff7a18,#ffb14a);box-shadow:0 0 10px rgba(255,150,60,.6);';
+  track.appendChild(fill);
+  wrap.append(top, track);
+  requestAnimationFrame(() => { fill.style.width = Math.round(prog.pct * 100) + '%'; });
+  return wrap;
+}
+
+/* =====================================================================
+   SQ ACH — trophies / achievements catalogue + trophy case.
+   Counts & XP are the single source of truth in Supabase view
+   v_player_achievements (derived from all game history — auto-backfilled
+   and auto-updated as games are saved). This module holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Win the game without ever falling behind' },
+    { code:'special_forces', name:'Special Forces',     icon:'🪖', tier:'legendary', xp:180, desc:'Hit three doubles, three trebles and three bulls in the final three rounds' },
+    { code:'reverse_sweep',  name:'Reverse Sweep',      icon:'↩️', tier:'legendary', xp:150, desc:'Win a five-game match after losing the first two games' },
+    { code:'clean_sweep',    name:'Clean Sweep',        icon:'🧼', tier:'gold',      xp:80,  desc:'Win every game in a three- or five-game match' },
+    { code:'last_gasp',      name:'Last Gasp',          icon:'⏳', tier:'gold',      xp:50,  desc:'Win after trailing after the Doubles round' },
+    { code:'pb_smasher',     name:'PB Smasher',         icon:'🔨', tier:'silver',    xp:50,  desc:'Beat your previous game PB by 100+ points' },
+    { code:'century_streak', name:'Century Streak',     icon:'💯', tier:'silver',    xp:40,  desc:'Score 100+ in two consecutive rounds' },
+    { code:'runaway',        name:'Runaway',            icon:'💨', tier:'silver',    xp:30,  desc:'Win a game by 200+ points' },
+    { code:'steady_eddie',   name:'Steady Eddie',       icon:'📏', tier:'silver',    xp:25,  desc:'Score in 10 consecutive rounds in one game' },
+    { code:'photo_finish',   name:'Photo Finish',       icon:'🏁', tier:'silver',    xp:20,  desc:'Win a game by 1–10 points' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',       
+=== END ===
+
+=== Special Forces 1 chars 1505823:1509823 ===
+g.atMax ? 'MAX LEVEL' : (SQ_XP.fmt(prog.toNext) + ' to Level ' + (prog.level + 1));
+  top.append(l, r);
+  const track = document.createElement('div');
+  track.style.cssText = 'height:9px;border-radius:999px;background:rgba(0,0,0,.32);'
+    + 'border:1px solid rgba(255,255,255,.08);overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.style.cssText = 'height:100%;width:0;border-radius:999px;transition:width .7s cubic-bezier(.2,.8,.25,1);'
+    + 'background:linear-gradient(90deg,#ff7a18,#ffb14a);box-shadow:0 0 10px rgba(255,150,60,.6);';
+  track.appendChild(fill);
+  wrap.append(top, track);
+  requestAnimationFrame(() => { fill.style.width = Math.round(prog.pct * 100) + '%'; });
+  return wrap;
+}
+
+/* =====================================================================
+   SQ ACH — trophies / achievements catalogue + trophy case.
+   Counts & XP are the single source of truth in Supabase view
+   v_player_achievements (derived from all game history — auto-backfilled
+   and auto-updated as games are saved). This module holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Win the game without ever falling behind' },
+    { code:'special_forces', name:'Special Forces',     icon:'🪖', tier:'legendary', xp:180, desc:'Hit three doubles, three trebles and three bulls in the final three rounds' },
+    { code:'reverse_sweep',  name:'Reverse Sweep',      icon:'↩️', tier:'legendary', xp:150, desc:'Win a five-game match after losing the first two games' },
+    { code:'clean_sweep',    name:'Clean Sweep',        icon:'🧼', tier:'gold',      xp:80,  desc:'Win every game in a three- or five-game match' },
+    { code:'last_gasp',      name:'Last Gasp',          icon:'⏳', tier:'gold',      xp:50,  desc:'Win after trailing after the Doubles round' },
+    { code:'pb_smasher',     name:'PB Smasher',         icon:'🔨', tier:'silver',    xp:50,  desc:'Beat your previous game PB by 100+ points' },
+    { code:'century_streak', name:'Century Streak',     icon:'💯', tier:'silver',    xp:40,  desc:'Score 100+ in two consecutive rounds' },
+    { code:'runaway',        name:'Runaway',            icon:'💨', tier:'silver',    xp:30,  desc:'Win a game by 200+ points' },
+    { code:'steady_eddie',   name:'Steady Eddie',       icon:'📏', tier:'silver',    xp:25,  desc:'Score in 10 consecutive rounds in one game' },
+    { code:'photo_finish',   name:'Photo Finish',       icon:'🏁', tier:'silver',    xp:20,  desc:'Win a game by 1–10 points' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:
+=== END ===
+
+=== Steady Eddie 1 chars 1506862:1510862 ===
+odule holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Win the game without ever falling behind' },
+    { code:'special_forces', name:'Special Forces',     icon:'🪖', tier:'legendary', xp:180, desc:'Hit three doubles, three trebles and three bulls in the final three rounds' },
+    { code:'reverse_sweep',  name:'Reverse Sweep',      icon:'↩️', tier:'legendary', xp:150, desc:'Win a five-game match after losing the first two games' },
+    { code:'clean_sweep',    name:'Clean Sweep',        icon:'🧼', tier:'gold',      xp:80,  desc:'Win every game in a three- or five-game match' },
+    { code:'last_gasp',      name:'Last Gasp',          icon:'⏳', tier:'gold',      xp:50,  desc:'Win after trailing after the Doubles round' },
+    { code:'pb_smasher',     name:'PB Smasher',         icon:'🔨', tier:'silver',    xp:50,  desc:'Beat your previous game PB by 100+ points' },
+    { code:'century_streak', name:'Century Streak',     icon:'💯', tier:'silver',    xp:40,  desc:'Score 100+ in two consecutive rounds' },
+    { code:'runaway',        name:'Runaway',            icon:'💨', tier:'silver',    xp:30,  desc:'Win a game by 200+ points' },
+    { code:'steady_eddie',   name:'Steady Eddie',       icon:'📏', tier:'silver',    xp:25,  desc:'Score in 10 consecutive rounds in one game' },
+    { code:'photo_finish',   name:'Photo Finish',       icon:'🏁', tier:'silver',    xp:20,  desc:'Win a game by 1–10 points' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in a number round (10–20)' },
+    { code:'clutch',         name:'Clutch',             icon:'⏱️', tier:'gold',      xp:40,  desc:'Full house on the final round to win' },
+    { code:'iceman',         name:'Iceman',             icon:'🧊', tier:'gold
+=== END ===
+
+=== Century Streak 1 chars 1506595:1510595 ===
+=====================
+   SQ ACH — trophies / achievements catalogue + trophy case.
+   Counts & XP are the single source of truth in Supabase view
+   v_player_achievements (derived from all game history — auto-backfilled
+   and auto-updated as games are saved). This module holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Win the game without ever falling behind' },
+    { code:'special_forces', name:'Special Forces',     icon:'🪖', tier:'legendary', xp:180, desc:'Hit three doubles, three trebles and three bulls in the final three rounds' },
+    { code:'reverse_sweep',  name:'Reverse Sweep',      icon:'↩️', tier:'legendary', xp:150, desc:'Win a five-game match after losing the first two games' },
+    { code:'clean_sweep',    name:'Clean Sweep',        icon:'🧼', tier:'gold',      xp:80,  desc:'Win every game in a three- or five-game match' },
+    { code:'last_gasp',      name:'Last Gasp',          icon:'⏳', tier:'gold',      xp:50,  desc:'Win after trailing after the Doubles round' },
+    { code:'pb_smasher',     name:'PB Smasher',         icon:'🔨', tier:'silver',    xp:50,  desc:'Beat your previous game PB by 100+ points' },
+    { code:'century_streak', name:'Century Streak',     icon:'💯', tier:'silver',    xp:40,  desc:'Score 100+ in two consecutive rounds' },
+    { code:'runaway',        name:'Runaway',            icon:'💨', tier:'silver',    xp:30,  desc:'Win a game by 200+ points' },
+    { code:'steady_eddie',   name:'Steady Eddie',       icon:'📏', tier:'silver',    xp:25,  desc:'Score in 10 consecutive rounds in one game' },
+    { code:'photo_finish',   name:'Photo Finish',       icon:'🏁', tier:'silver',    xp:20,  desc:'Win a game by 1–10 points' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40, 
+=== END ===
+
+=== PB Smasher 1 chars 1506451:1510451 ===
+tionFrame(() => { fill.style.width = Math.round(prog.pct * 100) + '%'; });
+  return wrap;
+}
+
+/* =====================================================================
+   SQ ACH — trophies / achievements catalogue + trophy case.
+   Counts & XP are the single source of truth in Supabase view
+   v_player_achievements (derived from all game history — auto-backfilled
+   and auto-updated as games are saved). This module holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Win the game without ever falling behind' },
+    { code:'special_forces', name:'Special Forces',     icon:'🪖', tier:'legendary', xp:180, desc:'Hit three doubles, three trebles and three bulls in the final three rounds' },
+    { code:'reverse_sweep',  name:'Reverse Sweep',      icon:'↩️', tier:'legendary', xp:150, desc:'Win a five-game match after losing the first two games' },
+    { code:'clean_sweep',    name:'Clean Sweep',        icon:'🧼', tier:'gold',      xp:80,  desc:'Win every game in a three- or five-game match' },
+    { code:'last_gasp',      name:'Last Gasp',          icon:'⏳', tier:'gold',      xp:50,  desc:'Win after trailing after the Doubles round' },
+    { code:'pb_smasher',     name:'PB Smasher',         icon:'🔨', tier:'silver',    xp:50,  desc:'Beat your previous game PB by 100+ points' },
+    { code:'century_streak', name:'Century Streak',     icon:'💯', tier:'silver',    xp:40,  desc:'Score 100+ in two consecutive rounds' },
+    { code:'runaway',        name:'Runaway',            icon:'💨', tier:'silver',    xp:30,  desc:'Win a game by 200+ points' },
+    { code:'steady_eddie',   name:'Steady Eddie',       icon:'📏', tier:'silver',    xp:25,  desc:'Score in 10 consecutive rounds in one game' },
+    { code:'photo_finish',   name:'Photo Finish',       icon:'🏁', tier:'silver',    xp:20,  desc:'Win a game by 1–10 points' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥',
+=== END ===
+
+=== Reverse Sweep 1 chars 1506000:1510000 ===
+eight:9px;border-radius:999px;background:rgba(0,0,0,.32);'
+    + 'border:1px solid rgba(255,255,255,.08);overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.style.cssText = 'height:100%;width:0;border-radius:999px;transition:width .7s cubic-bezier(.2,.8,.25,1);'
+    + 'background:linear-gradient(90deg,#ff7a18,#ffb14a);box-shadow:0 0 10px rgba(255,150,60,.6);';
+  track.appendChild(fill);
+  wrap.append(top, track);
+  requestAnimationFrame(() => { fill.style.width = Math.round(prog.pct * 100) + '%'; });
+  return wrap;
+}
+
+/* =====================================================================
+   SQ ACH — trophies / achievements catalogue + trophy case.
+   Counts & XP are the single source of truth in Supabase view
+   v_player_achievements (derived from all game history — auto-backfilled
+   and auto-updated as games are saved). This module holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Win the game without ever falling behind' },
+    { code:'special_forces', name:'Special Forces',     icon:'🪖', tier:'legendary', xp:180, desc:'Hit three doubles, three trebles and three bulls in the final three rounds' },
+    { code:'reverse_sweep',  name:'Reverse Sweep',      icon:'↩️', tier:'legendary', xp:150, desc:'Win a five-game match after losing the first two games' },
+    { code:'clean_sweep',    name:'Clean Sweep',        icon:'🧼', tier:'gold',      xp:80,  desc:'Win every game in a three- or five-game match' },
+    { code:'last_gasp',      name:'Last Gasp',          icon:'⏳', tier:'gold',      xp:50,  desc:'Win after trailing after the Doubles round' },
+    { code:'pb_smasher',     name:'PB Smasher',         icon:'🔨', tier:'silver',    xp:50,  desc:'Beat your previous game PB by 100+ points' },
+    { code:'century_streak', name:'Century Streak',     icon:'💯', tier:'silver',    xp:40,  desc:'Score 100+ in two consecutive rounds' },
+    { code:'runaway',        name:'Runaway',            icon:'💨', tier:'silver',    xp:30,  desc:'Win a game by 200+ points' },
+    { code:'steady_eddie',   name:'Steady Eddie',       icon:'📏', tier:'silver',    xp:25,  desc:'Score in 10 consecutive rounds in one game' },
+    { code:'photo_finish',   name:'Photo Finish',       icon:'🏁', tier:'silver',    xp:20,  desc:'Win a game by 1–10 points' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+   
+=== END ===
+
+=== Clean Sweep 1 chars 1506158:1510158 ===
+ent('div');
+  fill.style.cssText = 'height:100%;width:0;border-radius:999px;transition:width .7s cubic-bezier(.2,.8,.25,1);'
+    + 'background:linear-gradient(90deg,#ff7a18,#ffb14a);box-shadow:0 0 10px rgba(255,150,60,.6);';
+  track.appendChild(fill);
+  wrap.append(top, track);
+  requestAnimationFrame(() => { fill.style.width = Math.round(prog.pct * 100) + '%'; });
+  return wrap;
+}
+
+/* =====================================================================
+   SQ ACH — trophies / achievements catalogue + trophy case.
+   Counts & XP are the single source of truth in Supabase view
+   v_player_achievements (derived from all game history — auto-backfilled
+   and auto-updated as games are saved). This module holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Win the game without ever falling behind' },
+    { code:'special_forces', name:'Special Forces',     icon:'🪖', tier:'legendary', xp:180, desc:'Hit three doubles, three trebles and three bulls in the final three rounds' },
+    { code:'reverse_sweep',  name:'Reverse Sweep',      icon:'↩️', tier:'legendary', xp:150, desc:'Win a five-game match after losing the first two games' },
+    { code:'clean_sweep',    name:'Clean Sweep',        icon:'🧼', tier:'gold',      xp:80,  desc:'Win every game in a three- or five-game match' },
+    { code:'last_gasp',      name:'Last Gasp',          icon:'⏳', tier:'gold',      xp:50,  desc:'Win after trailing after the Doubles round' },
+    { code:'pb_smasher',     name:'PB Smasher',         icon:'🔨', tier:'silver',    xp:50,  desc:'Beat your previous game PB by 100+ points' },
+    { code:'century_streak', name:'Century Streak',     icon:'💯', tier:'silver',    xp:40,  desc:'Score 100+ in two consecutive rounds' },
+    { code:'runaway',        name:'Runaway',            icon:'💨', tier:'silver',    xp:30,  desc:'Win a game by 200+ points' },
+    { code:'steady_eddie',   name:'Steady Eddie',       icon:'📏', tier:'silver',    xp:25,  desc:'Score in 10 consecutive rounds in one game' },
+    { code:'photo_finish',   name:'Photo Finish',       icon:'🏁', tier:'silver',    xp:20,  desc:'Win a game by 1–10 points' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Come
+=== END ===
+
+=== Untouchable 1 chars 1505680:1509680 ===
+= 'muted'; l.textContent = SQ_XP.fmt(prog.xp) + ' XP';
+  const r = document.createElement('span'); r.className = 'muted';
+  r.textContent = prog.atMax ? 'MAX LEVEL' : (SQ_XP.fmt(prog.toNext) + ' to Level ' + (prog.level + 1));
+  top.append(l, r);
+  const track = document.createElement('div');
+  track.style.cssText = 'height:9px;border-radius:999px;background:rgba(0,0,0,.32);'
+    + 'border:1px solid rgba(255,255,255,.08);overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.style.cssText = 'height:100%;width:0;border-radius:999px;transition:width .7s cubic-bezier(.2,.8,.25,1);'
+    + 'background:linear-gradient(90deg,#ff7a18,#ffb14a);box-shadow:0 0 10px rgba(255,150,60,.6);';
+  track.appendChild(fill);
+  wrap.append(top, track);
+  requestAnimationFrame(() => { fill.style.width = Math.round(prog.pct * 100) + '%'; });
+  return wrap;
+}
+
+/* =====================================================================
+   SQ ACH — trophies / achievements catalogue + trophy case.
+   Counts & XP are the single source of truth in Supabase view
+   v_player_achievements (derived from all game history — auto-backfilled
+   and auto-updated as games are saved). This module holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Win the game without ever falling behind' },
+    { code:'special_forces', name:'Special Forces',     icon:'🪖', tier:'legendary', xp:180, desc:'Hit three doubles, three trebles and three bulls in the final three rounds' },
+    { code:'reverse_sweep',  name:'Reverse Sweep',      icon:'↩️', tier:'legendary', xp:150, desc:'Win a five-game match after losing the first two games' },
+    { code:'clean_sweep',    name:'Clean Sweep',        icon:'🧼', tier:'gold',      xp:80,  desc:'Win every game in a three- or five-game match' },
+    { code:'last_gasp',      name:'Last Gasp',          icon:'⏳', tier:'gold',      xp:50,  desc:'Win after trailing after the Doubles round' },
+    { code:'pb_smasher',     name:'PB Smasher',         icon:'🔨', tier:'silver',    xp:50,  desc:'Beat your previous game PB by 100+ points' },
+    { code:'century_streak', name:'Century Streak',     icon:'💯', tier:'silver',    xp:40,  desc:'Score 100+ in two consecutive rounds' },
+    { code:'runaway',        name:'Runaway',            icon:'💨', tier:'silver',    xp:30,  desc:'Win a game by 200+ points' },
+    { code:'steady_eddie',   name:'Steady Eddie',       icon:'📏', tier:'silver',    xp:25,  desc:'Score in 10 consecutive rounds in one game' },
+    { code:'photo_finish',   name:'Photo Finish',       icon:'🏁', tier:'silver',    xp:20,  desc:'Win a game by 1–10 points' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  d
+=== END ===
+
+=== Treble Trouble 1 chars 1508739:1512739 ===
+nsecutive rounds in one game' },
+    { code:'photo_finish',   name:'Photo Finish',       icon:'🏁', tier:'silver',    xp:20,  desc:'Win a game by 1–10 points' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in a number round (10–20)' },
+    { code:'clutch',         name:'Clutch',             icon:'⏱️', tier:'gold',      xp:40,  desc:'Full house on the final round to win' },
+    { code:'iceman',         name:'Iceman',             icon:'🧊', tier:'gold',      xp:50,  desc:'Win a tiebreak game' },
+    { code:'shanghai',       name:'Shanghai',           icon:'🏮', tier:'gold',      xp:50,  desc:'Single, double AND treble of one number in a round' },
+    { code:'desmond',        name:'Desmond',            icon:'👓', tier:'silver',    xp:18,  desc:'Two singles and a double in one round' },
+    { code:'robin_hood',     name:'Robin Hood',         icon:'🏹', tier:'silver',    xp:20,  desc:'Two or more trebles of the same number in a round' },
+    { code:'double_down',    name:'Double Down',        icon:'♊', tier:'silver',    xp:25,  desc:'Three doubles in a number round (10–20)' },
+    { code:'hot_streak',     name:'Hot Streak',         icon:'🔥', tier:'silver',    xp:25,  desc:'Three full houses in a row' },
+    { code:'full_board',     name:'Full Board',         icon:'🧩', tier:'silver',    xp:30,  desc:'Score on all 14 rounds of a game' },
+    { code:'century',        name:'Century',            icon:'💯', tier:'silver',    xp:15,  desc:'Score 100+ in one round' },
+    { code:'unstoppable',    name:'Unstoppable',        icon:'🌟', tier:'legendary', xp:140, desc:'Win five games in a row' },
+    { code:'kingslayer',     name:'Kingslayer',         icon:'💀', tier:'legendary', xp:60,  desc:'Beat the current #1 ranked player in a game' },
+    { code:'hot_hand',       name:'Hot Hand',           icon:'🖐️', tier:'gold',      xp:70,  desc:'Win three games in a row' },
+    { code:'decider',        name:'Decider',            icon:'⚔️', tier:'gold',      xp:80,  desc:'Win the deciding game of a match' },
+    { code:'first_blood',    name:'First Blood',        icon:'🩸', tier:'silver',    xp:20,  desc:'Win the opening game of a series' },
+    { code:'score_700',      name:'The 700 Club',       icon:'7️⃣', tier:'legendary', xp:700, desc:'Score 700+ in a single game' },
+    { code:'score_600',      name:'The 600 Club',  
+=== END ===
+
+=== Triple Threat 1 chars 1511959:1515959 ===
+gendary', xp:140, desc:'Win five games in a row' },
+    { code:'kingslayer',     name:'Kingslayer',         icon:'💀', tier:'legendary', xp:60,  desc:'Beat the current #1 ranked player in a game' },
+    { code:'hot_hand',       name:'Hot Hand',           icon:'🖐️', tier:'gold',      xp:70,  desc:'Win three games in a row' },
+    { code:'decider',        name:'Decider',            icon:'⚔️', tier:'gold',      xp:80,  desc:'Win the deciding game of a match' },
+    { code:'first_blood',    name:'First Blood',        icon:'🩸', tier:'silver',    xp:20,  desc:'Win the opening game of a series' },
+    { code:'score_700',      name:'The 700 Club',       icon:'7️⃣', tier:'legendary', xp:700, desc:'Score 700+ in a single game' },
+    { code:'score_600',      name:'The 600 Club',       icon:'6️⃣', tier:'legendary', xp:480, desc:'Score 600+ in a single game' },
+    { code:'score_500',      name:'The 500 Club',       icon:'5️⃣', tier:'gold',      xp:320, desc:'Score 500+ in a single game' },
+    { code:'score_400',      name:'The 400 Club',       icon:'4️⃣', tier:'gold',      xp:200, desc:'Score 400+ in a single game' },
+    { code:'score_300',      name:'Triple Ton',         icon:'🌠', tier:'silver',    xp:120, desc:'Score 300+ in a single game' },
+    { code:'score_200',      name:'Double Ton',         icon:'⭐', tier:'silver',    xp:60,  desc:'Score 200+ in a single game' },
+    { code:'score_100',      name:'Ton Up',             icon:'💯', tier:'bronze',    xp:30,  desc:'Score 100+ in a single game' },
+    { code:'centurion',      name:'Centurion',          icon:'🏛️', tier:'legendary', xp:400, desc:'Play 250 games' },
+    { code:'trophy_hunter',  name:'Trophy Hunter',      icon:'🗃️', tier:'legendary', xp:350, desc:'Unlock 20 different trophies' },
+    { code:'triple_threat',  name:'Triple Threat',      icon:'⚡', tier:'gold',      xp:60,  desc:'Three triples in the Triples round' },
+    { code:'bull_run',       name:'Bull Run',           icon:'🐮', tier:'gold',      xp:60,  desc:'Three bulls in the Bull round' },
+    { code:'double_trouble', name:'Double Trouble',     icon:'🎲', tier:'gold',      xp:45,  desc:'Three doubles in the Doubles round' },
+    { code:'veteran',        name:'Veteran',            icon:'🎖️', tier:'gold',      xp:200, desc:'Play 100 games' },
+    { code:'collector',      name:'Collector',          icon:'🧰', tier:'gold',      xp:150, desc:'Unlock 10 different trophies' },
+    { code:'strong_finish',  name:'Strong Finish',      icon:'🏁', tier:'silver',    xp:40,  desc:'Score 100+ on the Bull round' },
+    { code:'regular',        name:'Regular',            icon:'📅', tier:'silver',    xp:100, desc:'Play 50 games' },
+    { code:'full_house',     name:'Full House',         icon:'🏠', tier:'bronze',    xp:12,  desc:'All three darts on target in a round' },
+    { code:'perfect_start',  name:'Perfect Start',      icon:'🚀', tier:'bronze',    xp:20,  desc:'Full house on the opening 10s round' },
+    { code:'dead_centre',    name:'Dead Centre',        icon:'🔴', tier:'bronze',    xp:5,   desc:'Hit the 50 bull' }
+  ],
+  meta(code){ return this.CATALOG.find(a => a.code === code) || { code, name: code, icon:'🎖️', tier:'bronze', desc:'' }; },
+  tierStyle(tier){
+    switch(tier){
+      case 'legendary': return { c:'#e9c6ff', b:'rgba(180,123,255,.6)', g:'linear-gradient(135deg,rgba(180,123,255,.30),rgba(120,60,200,.16))' };
+      case 'gold':      return { c:'#ffe1a6', b:'rgba(255,196,74,.55)', g:'linear-gradient(135deg,rgba(255,196,74,.26),rgba(255,140,40,.14))' };
+      case 'silver':    return { c:'#e4ecf7', b:'rgba(200,214,235,.5)', g:'linear-gradient(135deg,rgba(200,214,235,.20),rgba(150,170,200,.10))' };
+      default:          return { c:'#f0c9a6', b:'rgba(208,139,90,.5)', g:'linear-gradient(135deg,rgba(208,139,90,.20),rgba(160,100,60,.10))' };
+    }
+  },
+  _cache:{},
+  async forName(name){
+    try{
+      const xr = await SQ_XP.forName(name); if (!xr) return {};
+      const SB = window.sb || window.__sb || null;
+      if (!SB || typ
+=== END ===
+
+=== Double Down 1 chars 1509588:1513588 ===
+   { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in a number round (10–20)' },
+    { code:'clutch',         name:'Clutch',             icon:'⏱️', tier:'gold',      xp:40,  desc:'Full house on the final round to win' },
+    { code:'iceman',         name:'Iceman',             icon:'🧊', tier:'gold',      xp:50,  desc:'Win a tiebreak game' },
+    { code:'shanghai',       name:'Shanghai',           icon:'🏮', tier:'gold',      xp:50,  desc:'Single, double AND treble of one number in a round' },
+    { code:'desmond',        name:'Desmond',            icon:'👓', tier:'silver',    xp:18,  desc:'Two singles and a double in one round' },
+    { code:'robin_hood',     name:'Robin Hood',         icon:'🏹', tier:'silver',    xp:20,  desc:'Two or more trebles of the same number in a round' },
+    { code:'double_down',    name:'Double Down',        icon:'♊', tier:'silver',    xp:25,  desc:'Three doubles in a number round (10–20)' },
+    { code:'hot_streak',     name:'Hot Streak',         icon:'🔥', tier:'silver',    xp:25,  desc:'Three full houses in a row' },
+    { code:'full_board',     name:'Full Board',         icon:'🧩', tier:'silver',    xp:30,  desc:'Score on all 14 rounds of a game' },
+    { code:'century',        name:'Century',            icon:'💯', tier:'silver',    xp:15,  desc:'Score 100+ in one round' },
+    { code:'unstoppable',    name:'Unstoppable',        icon:'🌟', tier:'legendary', xp:140, desc:'Win five games in a row' },
+    { code:'kingslayer',     name:'Kingslayer',         icon:'💀', tier:'legendary', xp:60,  desc:'Beat the current #1 ranked player in a game' },
+    { code:'hot_hand',       name:'Hot Hand',           icon:'🖐️', tier:'gold',      xp:70,  desc:'Win three games in a row' },
+    { code:'decider',        name:'Decider',            icon:'⚔️', tier:'gold',      xp:80,  desc:'Win the deciding game of a match' },
+    { code:'first_blood',    name:'First Blood',        icon:'🩸', tier:'silver',    xp:20,  desc:'Win the opening game of a series' },
+    { code:'score_700',      name:'The 700 Club',       icon:'7️⃣', tier:'legendary', xp:700, desc:'Score 700+ in a single game' },
+    { code:'score_600',      name:'The 600 Club',       icon:'6️⃣', tier:'legendary', xp:480, desc:'Score 600+ in a single game' },
+    { code:'score_500',      name:'The 500 Club',       icon:'5️⃣', tier:'gold',      xp:320, desc:'Score 500+ in a single game' },
+    { code:'score_400',      name:'The 400 Club',       icon:'4️⃣', tier:'gold',      xp:200, desc:'Score 400+ in a single game' },
+    { code:'score_300',      name:'Triple Ton',         icon:'🌠', tier:'silver',    xp:120, desc:'Score 300+ in a single game' },
+    { code:'score_200',      name:'Double Ton',         icon:'⭐', tier:'silver',    xp:60,  desc:'Score 200+ in a single game' },
+    { code:'score_100',      name:'Ton Up',             icon:'💯', tier:'bronze',    xp:30,  desc:'Score 100+ in a single game' },
+    { code:'centurion',      name:'Centurion',          icon:'🏛️', tier:'legendary', xp:400, desc:'Play 250 games'
+=== END ===
+
+=== Double Trouble 1 chars 1512228:1516228 ===
+:'gold',      xp:70,  desc:'Win three games in a row' },
+    { code:'decider',        name:'Decider',            icon:'⚔️', tier:'gold',      xp:80,  desc:'Win the deciding game of a match' },
+    { code:'first_blood',    name:'First Blood',        icon:'🩸', tier:'silver',    xp:20,  desc:'Win the opening game of a series' },
+    { code:'score_700',      name:'The 700 Club',       icon:'7️⃣', tier:'legendary', xp:700, desc:'Score 700+ in a single game' },
+    { code:'score_600',      name:'The 600 Club',       icon:'6️⃣', tier:'legendary', xp:480, desc:'Score 600+ in a single game' },
+    { code:'score_500',      name:'The 500 Club',       icon:'5️⃣', tier:'gold',      xp:320, desc:'Score 500+ in a single game' },
+    { code:'score_400',      name:'The 400 Club',       icon:'4️⃣', tier:'gold',      xp:200, desc:'Score 400+ in a single game' },
+    { code:'score_300',      name:'Triple Ton',         icon:'🌠', tier:'silver',    xp:120, desc:'Score 300+ in a single game' },
+    { code:'score_200',      name:'Double Ton',         icon:'⭐', tier:'silver',    xp:60,  desc:'Score 200+ in a single game' },
+    { code:'score_100',      name:'Ton Up',             icon:'💯', tier:'bronze',    xp:30,  desc:'Score 100+ in a single game' },
+    { code:'centurion',      name:'Centurion',          icon:'🏛️', tier:'legendary', xp:400, desc:'Play 250 games' },
+    { code:'trophy_hunter',  name:'Trophy Hunter',      icon:'🗃️', tier:'legendary', xp:350, desc:'Unlock 20 different trophies' },
+    { code:'triple_threat',  name:'Triple Threat',      icon:'⚡', tier:'gold',      xp:60,  desc:'Three triples in the Triples round' },
+    { code:'bull_run',       name:'Bull Run',           icon:'🐮', tier:'gold',      xp:60,  desc:'Three bulls in the Bull round' },
+    { code:'double_trouble', name:'Double Trouble',     icon:'🎲', tier:'gold',      xp:45,  desc:'Three doubles in the Doubles round' },
+    { code:'veteran',        name:'Veteran',            icon:'🎖️', tier:'gold',      xp:200, desc:'Play 100 games' },
+    { code:'collector',      name:'Collector',          icon:'🧰', tier:'gold',      xp:150, desc:'Unlock 10 different trophies' },
+    { code:'strong_finish',  name:'Strong Finish',      icon:'🏁', tier:'silver',    xp:40,  desc:'Score 100+ on the Bull round' },
+    { code:'regular',        name:'Regular',            icon:'📅', tier:'silver',    xp:100, desc:'Play 50 games' },
+    { code:'full_house',     name:'Full House',         icon:'🏠', tier:'bronze',    xp:12,  desc:'All three darts on target in a round' },
+    { code:'perfect_start',  name:'Perfect Start',      icon:'🚀', tier:'bronze',    xp:20,  desc:'Full house on the opening 10s round' },
+    { code:'dead_centre',    name:'Dead Centre',        icon:'🔴', tier:'bronze',    xp:5,   desc:'Hit the 50 bull' }
+  ],
+  meta(code){ return this.CATALOG.find(a => a.code === code) || { code, name: code, icon:'🎖️', tier:'bronze', desc:'' }; },
+  tierStyle(tier){
+    switch(tier){
+      case 'legendary': return { c:'#e9c6ff', b:'rgba(180,123,255,.6)', g:'linear-gradient(135deg,rgba(180,123,255,.30),rgba(120,60,200,.16))' };
+      case 'gold':      return { c:'#ffe1a6', b:'rgba(255,196,74,.55)', g:'linear-gradient(135deg,rgba(255,196,74,.26),rgba(255,140,40,.14))' };
+      case 'silver':    return { c:'#e4ecf7', b:'rgba(200,214,235,.5)', g:'linear-gradient(135deg,rgba(200,214,235,.20),rgba(150,170,200,.10))' };
+      default:          return { c:'#f0c9a6', b:'rgba(208,139,90,.5)', g:'linear-gradient(135deg,rgba(208,139,90,.20),rgba(160,100,60,.10))' };
+    }
+  },
+  _cache:{},
+  async forName(name){
+    try{
+      const xr = await SQ_XP.forName(name); if (!xr) return {};
+      const SB = window.sb || window.__sb || null;
+      if (!SB || typeof SB.from !== 'function') return {};
+      const { data, error } = await SB.from('v_player_achievements').select('code,cnt,xp').eq('player_id', xr.player_id);
+      if (error || !Array.isArray(data)) return {};
+      const map = {}; data.forEach(r => { map[r.code] = 
+=== END ===
+
+=== Sharpshooter 1 chars 1500910:1504910 ===
+e weights in SQ_XP.W MUST match the v_player_xp SQL view
+   (points x0.25, game +30, game win +50, match win +150, milestone +40).
+   Level curve is owned here: level = floor(sqrt(xp / DIV)) + 1.
+   Scope: CLASSIC games only. The SQL views (v_ach_rounds / v_player_base_xp)
+   map board players by NAME via v_name_resolver (players + aliases) so EVERY
+   Classic game counts — not just those with match_players rows — and exclude
+   turbo/practice modes and guest/test names. Keep detectGame's per-game rules
+   in sync with v_ach_base.
+   No XP is earned outside ranked play:
+     - practice/turbo games are filtered out of v_player_base_xp AND v_ach_rounds
+       by mode, so they award neither base XP nor trophy XP;
+     - the milestones term counts high_scores_sp (LEAGUE) only — note the client
+       constants are inverted, TABLE_HS_PRACTICE = 'high_scores';
+     - Training never writes to `games`; it lives in training_sessions and has
+       its own summary screen.
+   __sqUnrankedXpMode() mirrors this on the client so the end-of-game screen
+   never promises XP the views will not award. */
+const SQ_XP = {
+  W: { point: 0.25, game: 30, gameWin: 50, matchWin: 150, milestone: 40 },
+  DIV: 46,          // level-curve divisor (re-tuned after full Classic-game coverage)
+  MAXLVL: 60,
+  levelForXp(xp){ xp = Math.max(0, Number(xp) || 0); return Math.min(this.MAXLVL, Math.floor(Math.sqrt(xp / this.DIV)) + 1); },
+  xpForLevel(l){ l = Math.max(1, l); return Math.round((l - 1) * (l - 1) * this.DIV); }, // cumulative XP to reach level l
+  titleForLevel(l){
+    if (l >= 60) return 'Immortal';
+    if (l >= 50) return 'Legend';
+    if (l >= 43) return 'Grandmaster';
+    if (l >= 35) return 'Master';
+    if (l >= 28) return 'Ace';
+    if (l >= 22) return 'Sniper';
+    if (l >= 15) return 'Sharpshooter';
+    if (l >= 10) return 'Marksman';
+    if (l >= 5)  return 'Amateur';
+    return 'Rookie';
+  },
+  progress(xp){
+    xp = Math.max(0, Number(xp) || 0);
+    const level = this.levelForXp(xp);
+    const cur = this.xpForLevel(level), next = this.xpForLevel(level + 1);
+    const into = Math.max(0, xp - cur), span = Math.max(1, next - cur);
+    return { xp, level, title: this.titleForLevel(level), into, span,
+             pct: Math.max(0, Math.min(1, into / span)),
+             toNext: Math.max(0, next - xp), atMax: level >= this.MAXLVL };
+  },
+  // Projected XP for a single finished game (for the live "+XP" preview).
+  gameXp({ points = 0, gameWon = false, matchWon = false, milestones = 0 } = {}){
+    return Math.round((Number(points) || 0) * this.W.point)
+      + this.W.game
+      + (gameWon ? this.W.gameWin : 0)
+      + (matchWon ? this.W.matchWin : 0)
+      + (Number(milestones) || 0) * this.W.milestone;
+  },
+  _cache: null, _cacheAt: 0,
+  async all(force){
+    const now = Date.now();
+    if (!force && this._cache && (now - this._cacheAt) < 60000) return this._cache;
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return this._cache || [];
+    try{
+      const { data, error } = await SB.from('v_player_xp').select('*');
+      if (error || !Array.isArray(data)) return this._cache || [];
+      this._cache = data; this._cacheAt = now;
+      return data;
+    }catch(_){ return this._cache || []; }
+  },
+  async forName(name){
+    const rows = await this.all();
+    const n = String(name || '').trim().toLowerCase();
+    return rows.find(r => String(r.name || '').trim().toLowerCase() === n) || null;
+  },
+  fmt(n){ return (Number(n) || 0).toLocaleString(); }
+};
+window.SQ_XP = SQ_XP;
+
+// A reusable "LV n · TITLE" chip (inline-styled to match the stats hero).
+function __sqXpChip(prog){
+  const chip = document.createElement('span');
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;'
+    + 'background:linear-gradient(135deg,rgba(255,183,64,.28),rgba(255,122,24,.18));'
+    + 'border:1px solid rgba(255,183,64,.5);font-weight:900;font-size:12px;letter-spacing:.0
+=== END ===
+
+=== Sharpshooter 2 chars 1507135:1511135 ===
+============================================================= */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Win the game without ever falling behind' },
+    { code:'special_forces', name:'Special Forces',     icon:'🪖', tier:'legendary', xp:180, desc:'Hit three doubles, three trebles and three bulls in the final three rounds' },
+    { code:'reverse_sweep',  name:'Reverse Sweep',      icon:'↩️', tier:'legendary', xp:150, desc:'Win a five-game match after losing the first two games' },
+    { code:'clean_sweep',    name:'Clean Sweep',        icon:'🧼', tier:'gold',      xp:80,  desc:'Win every game in a three- or five-game match' },
+    { code:'last_gasp',      name:'Last Gasp',          icon:'⏳', tier:'gold',      xp:50,  desc:'Win after trailing after the Doubles round' },
+    { code:'pb_smasher',     name:'PB Smasher',         icon:'🔨', tier:'silver',    xp:50,  desc:'Beat your previous game PB by 100+ points' },
+    { code:'century_streak', name:'Century Streak',     icon:'💯', tier:'silver',    xp:40,  desc:'Score 100+ in two consecutive rounds' },
+    { code:'runaway',        name:'Runaway',            icon:'💨', tier:'silver',    xp:30,  desc:'Win a game by 200+ points' },
+    { code:'steady_eddie',   name:'Steady Eddie',       icon:'📏', tier:'silver',    xp:25,  desc:'Score in 10 consecutive rounds in one game' },
+    { code:'photo_finish',   name:'Photo Finish',       icon:'🏁', tier:'silver',    xp:20,  desc:'Win a game by 1–10 points' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in a number round (10–20)' },
+    { code:'clutch',         name:'Clutch',             icon:'⏱️', tier:'gold',      xp:40,  desc:'Full house on the final round to win' },
+    { code:'iceman',         name:'Iceman',             icon:'🧊', tier:'gold',      xp:50,  desc:'Win a tiebreak game' },
+    { code:'shanghai',       name:'Shanghai',           icon:'🏮', tier:'gold',      xp:50,  desc:'Single, double AND treble of one number in a round' },
+    { code:'desmond',        name:'Desmond',            icon:'👓', tier:'si
+=== END ===
+
+=== flawless_game 1 chars 1507112:1511112 ===
+d by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Win the game without ever falling behind' },
+    { code:'special_forces', name:'Special Forces',     icon:'🪖', tier:'legendary', xp:180, desc:'Hit three doubles, three trebles and three bulls in the final three rounds' },
+    { code:'reverse_sweep',  name:'Reverse Sweep',      icon:'↩️', tier:'legendary', xp:150, desc:'Win a five-game match after losing the first two games' },
+    { code:'clean_sweep',    name:'Clean Sweep',        icon:'🧼', tier:'gold',      xp:80,  desc:'Win every game in a three- or five-game match' },
+    { code:'last_gasp',      name:'Last Gasp',          icon:'⏳', tier:'gold',      xp:50,  desc:'Win after trailing after the Doubles round' },
+    { code:'pb_smasher',     name:'PB Smasher',         icon:'🔨', tier:'silver',    xp:50,  desc:'Beat your previous game PB by 100+ points' },
+    { code:'century_streak', name:'Century Streak',     icon:'💯', tier:'silver',    xp:40,  desc:'Score 100+ in two consecutive rounds' },
+    { code:'runaway',        name:'Runaway',            icon:'💨', tier:'silver',    xp:30,  desc:'Win a game by 200+ points' },
+    { code:'steady_eddie',   name:'Steady Eddie',       icon:'📏', tier:'silver',    xp:25,  desc:'Score in 10 consecutive rounds in one game' },
+    { code:'photo_finish',   name:'Photo Finish',       icon:'🏁', tier:'silver',    xp:20,  desc:'Win a game by 1–10 points' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in a number round (10–20)' },
+    { code:'clutch',         name:'Clutch',             icon:'⏱️', tier:'gold',      xp:40,  desc:'Full house on the final round to win' },
+    { code:'iceman',         name:'Iceman',             icon:'🧊', tier:'gold',      xp:50,  desc:'Win a tiebreak game' },
+    { code:'shanghai',       name:'Shanghai',           icon:'🏮', tier:'gold',      xp:50,  desc:'Single, double AND treble of one number in a round' },
+    { code:'desmond',        name:'Desmond',       
+=== END ===
+
+=== flawless_game 2 chars 1525686:1529686 ===
+n = 0, b50 = 0, bany = 0;
+      darts.forEach(d => { const nk = norm(d); if (nk === 'treble') tre++; else if (nk === 'double') dou++; else if (nk === 'single') sin++; else if (nk === 'bull'){ bany++; if ((Number(d.points) || 0) === 50) b50++; } });
+      const mis = darts.filter(d => norm(d) === 'miss' || (Number(d && d.points) || 0) === 0).length;
+      const rtot = Number(r.roundTotal) || 0;
+      const target = ri <= 10 ? 10 + ri : null;
+      const rmax = ri <= 10 ? 9 * (10 + ri) : (ri === 11 ? 120 : ri === 12 ? 180 : 150);
+      totMiss += mis; totDarts += darts.length;
+      if (rtot > 0) scoredRounds++;
+      const fh = (mis === 0 && darts.length === 3);
+      run = fh ? run + 1 : 0; if (run > best) best = run;
+      if (ri === 13) finalFh = fh;
+      if (rtot === 180) add('the_180');
+      else if (rtot === rmax && darts.length === 3) add('maximum');
+      if (tre === 3) add('treble_trouble');
+      if (dou === 3) add('double_down');
+      if (fh) add('full_house');
+      if (rtot >= 100 && rtot < 180){ add('century'); centuryRounds++; }
+      if (target != null && sin === 1 && dou === 1 && tre === 1) add('shanghai');
+      if (target != null && sin === 2 && dou === 1 && tre === 0 && mis === 0) add('desmond');
+      if (target != null && tre >= 2) add('robin_hood');
+      if (b50 > 0) add('dead_centre', b50);
+      if (ri === 12 && tre === 3) add('triple_threat');
+      if (ri === 11 && dou === 3) add('double_trouble');
+      if (ri === 13 && bany === 3) add('bull_run');
+      if (ri === 0 && fh) add('perfect_start');
+      if (ri === 13 && rtot >= 100) add('strong_finish');
+    }
+    // Score milestones are one-time (shown in the profile), not per-game trophies.
+    const won = totals[p] === maxTotal && maxTotal > 0;
+    if (totMiss === 0 && totDarts > 0) add('flawless_game');
+    if (scoredRounds >= 14) add('full_board');
+    if (centuryRounds >= 3) add('ton_machine');
+    if (best >= 14) add('untouchable'); else if (best >= 5) add('inferno'); else if (best >= 3) add('hot_streak');
+    if (opts.is_tiebreak && won) add('iceman');
+    if (won && finalFh) add('clutch');
+    if (board.length === 2){
+      const opp = 1 - p, oppRounds = board[opp] || [];
+      let wonEvery = true, ca = 0, cb = 0, n = Math.max(rounds.length, oppRounds.length);
+      for (let ri = 0; ri < n; ri++){
+        const a = Number((rounds[ri] || {}).roundTotal) || 0, b = Number((oppRounds[ri] || {}).roundTotal) || 0;
+        if (!(a > b)) wonEvery = false;
+        if (ri <= 6){ ca += a; cb += b; }
+      }
+      if (won && wonEvery) add('whitewash');
+      if (won && ca < cb) add('comeback_kid');
+    }
+    const list = Object.keys(earned).map(c => ({ code: c, count: earned[c] }))
+      .sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
+    if (list.length) out.push({ player: p, name: (players[p] && (players[p].name || players[p])) || ('Player ' + (p + 1)), earned: list });
+  }
+  return out;
+};
+
+// Celebratory toast stack shown at game-complete for trophies earned this game.
+function __sqAchToast(results){
+  try{
+    if (!Array.isArray(results) || !results.length) return;
+    let layer = document.getElementById('sqAchToastLayer');
+    if (!layer){
+      layer = document.createElement('div'); layer.id = 'sqAchToastLayer';
+      layer.style.cssText = 'position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:100000;'
+        + 'display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:min(92vw,420px);';
+      document.body.appendChild(layer);
+    }
+    const flat = [];
+    results.forEach(r => r.earned.forEach(e => flat.push({ name: r.name, code: e.code, count: e.count })));
+    // Headline the rarest first, cap the stack.
+    flat.slice(0, 6).forEach((item, i) => {
+      const a = SQ_ACH.meta(item.code); const s = SQ_ACH.tierStyle(a.tier);
+      const el = document.createElement('div');
+      el.style.cssText = 'pointer-events:none;display:flex;align-items:center;gap:10px;padding:10px
+=== END ===
+
+=== treble_trouble 1 chars 1017756:1021756 ===
+(score){
+  if (!__sqV3SoundOn()) return;
+  const s = Math.max(0, Math.min(60, Number(score) || 0));
+  const freq = 520 + s * 8.6;                       // brighter for bigger hits
+  __sqV3Beep(freq, 0.10, 'triangle', 0.13);
+  if (s >= 30) __sqV3Beep(freq * 1.5, 0.12, 'triangle', 0.10, 0.05);
+  __sqV3Vibe(s >= 30 ? [12, 22, 12] : 12);
+}
+function __sqV3SndMiss(){
+  if (!__sqV3SoundOn()) return;
+  __sqV3Beep(150, 0.18, 'sawtooth', 0.09);
+  __sqV3Beep(104, 0.20, 'sawtooth', 0.07, 0.04);
+  __sqV3Vibe([28, 40, 28]);
+}
+function __sqV3SndRound(){
+  if (!__sqV3SoundOn()) return;
+  __sqV3Beep(660, 0.10, 'sine', 0.10);
+  __sqV3Beep(880, 0.12, 'sine', 0.10, 0.08);
+}
+function __sqV3SndGame(){
+  if (!__sqV3SoundOn()) return;
+  [523, 659, 784, 1047].forEach((f, i) => __sqV3Beep(f, 0.16, 'triangle', 0.13, i * 0.10));
+  __sqV3Vibe([18, 30, 18, 30, 60]);
+}
+
+// Headline combo for a just-completed round (live V3 callout). Mirrors the
+// achievement rules; returns the rarest single combo meta, or null.
+function __sqV3RoundCombo(entry){
+  try{
+    if (!entry || !entry.darts) return null;
+    const darts = entry.darts;
+    if (darts.filter(d => d).length < 3) return null;
+    const norm = d => { const k = (d && d.kind) || 'Miss'; if (k==='S') return 'single'; if (k==='D'||k==='Double') return 'double'; if (k==='T'||k==='Triple') return 'treble'; if (k==='B'||k==='Bull') return 'bull'; return 'miss'; };
+    let tre=0, dou=0, sin=0; darts.forEach(d => { const nk = norm(d); if (nk==='treble') tre++; else if (nk==='double') dou++; else if (nk==='single') sin++; });
+    const mis = darts.filter(d => norm(d)==='miss' || (Number(d && d.points)||0)===0).length;
+    const rtot = Number(entry.roundTotal) || 0;
+    let code = null;
+    if (rtot === 180) code = 'the_180';
+    else if (tre === 3) code = 'treble_trouble';
+    else if (sin===1 && dou===1 && tre===1) code = 'shanghai';
+    else if (dou === 3) code = 'double_down';
+    else if (sin===2 && dou===1 && tre===0 && mis===0) code = 'desmond';
+    else if (rtot >= 100) code = 'century';
+    else if (tre >= 2) code = 'robin_hood';
+    else if (mis === 0) code = 'full_house';
+    if (!code) return null;
+    return (window.SQ_ACH && SQ_ACH.meta) ? SQ_ACH.meta(code) : { code, name: code, icon:'🎯', tier:'gold' };
+  }catch(_){ return null; }
+}
+// Stage a combo/trophy across the whole centre stem (the marquee keeps showing
+// the dart that caused it, so the two surfaces tell one story).
+function __sqV3StageCombo(name, tier, lab, hold){
+  try{
+    const big = (tier === 'legendary' || tier === 'gold');
+    const dur = hold || (tier === 'legendary' ? 2300 : tier === 'gold' ? 2000 : tier === 'whiff' ? 1500 : 1700);
+    const until = performance.now() + dur;
+    window.__sqV3Combo = { name: String(name || '').toUpperCase(), tier: tier || 'gold', lab: String(lab || 'COMBO').toUpperCase(), until, big };
+    // Keep the round frozen for as long as the celebration runs — otherwise the
+    // hold released first and the stem rebuilt twice in quick succession, which
+    // is what made the middle feel jumpy.
+    try{ if (window.__sqV3Hold){ window.__sqV3Hold.until = Math.max(window.__sqV3Hold.until, until);
+      clearTimeout(window.__sqV3HoldT);
+      window.__sqV3HoldT = setTimeout(() => { try{ __sqV3ReleaseHold(); }catch(_){ } }, dur + 40); } }catch(_){ }
+    // Screen shake for the big ones (Street-Fighter impact).
+    if ((big || tier === 'whiff') && !__sqV3Reduced()){
+      try{ const p = document.getElementById('liveV3Panel');
+        if (p){ p.classList.remove('v3-quake','v3-quake-big'); void p.offsetWidth;
+          p.classList.add(tier === 'legendary' ? 'v3-quake-big' : 'v3-quake');
+          setTimeout(() => { try{ p.classList.remove('v3-quake','v3-quake-big'); }catch(_){ } }, 900); } }catch(_){ }
+    }
+    if (tier === 'whiff'){ try{ __sqV3SndMiss(); if (navigator.vibrate && !__sqV3Reduced()) navigator.vibrate([30,60,30,60,50]); }catch(_){ } }
+    clearTimeout(window.__sqV3ComboT);
+    // Outro: flag the stage a
+=== END ===
+
+=== treble_trouble 2 chars 1508716:1512716 ===
+,  desc:'Score in 10 consecutive rounds in one game' },
+    { code:'photo_finish',   name:'Photo Finish',       icon:'🏁', tier:'silver',    xp:20,  desc:'Win a game by 1–10 points' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in a number round (10–20)' },
+    { code:'clutch',         name:'Clutch',             icon:'⏱️', tier:'gold',      xp:40,  desc:'Full house on the final round to win' },
+    { code:'iceman',         name:'Iceman',             icon:'🧊', tier:'gold',      xp:50,  desc:'Win a tiebreak game' },
+    { code:'shanghai',       name:'Shanghai',           icon:'🏮', tier:'gold',      xp:50,  desc:'Single, double AND treble of one number in a round' },
+    { code:'desmond',        name:'Desmond',            icon:'👓', tier:'silver',    xp:18,  desc:'Two singles and a double in one round' },
+    { code:'robin_hood',     name:'Robin Hood',         icon:'🏹', tier:'silver',    xp:20,  desc:'Two or more trebles of the same number in a round' },
+    { code:'double_down',    name:'Double Down',        icon:'♊', tier:'silver',    xp:25,  desc:'Three doubles in a number round (10–20)' },
+    { code:'hot_streak',     name:'Hot Streak',         icon:'🔥', tier:'silver',    xp:25,  desc:'Three full houses in a row' },
+    { code:'full_board',     name:'Full Board',         icon:'🧩', tier:'silver',    xp:30,  desc:'Score on all 14 rounds of a game' },
+    { code:'century',        name:'Century',            icon:'💯', tier:'silver',    xp:15,  desc:'Score 100+ in one round' },
+    { code:'unstoppable',    name:'Unstoppable',        icon:'🌟', tier:'legendary', xp:140, desc:'Win five games in a row' },
+    { code:'kingslayer',     name:'Kingslayer',         icon:'💀', tier:'legendary', xp:60,  desc:'Beat the current #1 ranked player in a game' },
+    { code:'hot_hand',       name:'Hot Hand',           icon:'🖐️', tier:'gold',      xp:70,  desc:'Win three games in a row' },
+    { code:'decider',        name:'Decider',            icon:'⚔️', tier:'gold',      xp:80,  desc:'Win the deciding game of a match' },
+    { code:'first_blood',    name:'First Blood',        icon:'🩸', tier:'silver',    xp:20,  desc:'Win the opening game of a series' },
+    { code:'score_700',      name:'The 700 Club',       icon:'7️⃣', tier:'legendary', xp:700, desc:'Score 700+ in a single game' },
+    { code:'score_600',     
+=== END ===
+
+=== treble_trouble 3 chars 1524783:1528783 ===
+ d.kind) || 'Miss';
+    if (k === 'S') return 'single';
+    if (k === 'D' || k === 'Double') return 'double';
+    if (k === 'T' || k === 'Triple') return 'treble';
+    if (k === 'B' || k === 'Bull') return 'bull';
+    return 'miss';
+  };
+  if (!Array.isArray(board) || !board.length) return [];
+  const totals = board.map(rs => (rs || []).reduce((s, r) => s + (Number(r && r.roundTotal) || 0), 0));
+  const maxTotal = Math.max.apply(null, totals.concat([0]));
+  const out = [];
+  for (let p = 0; p < board.length; p++){
+    const rounds = board[p] || [];
+    const earned = {}; const add = (c, n) => { earned[c] = (earned[c] || 0) + (n || 1); };
+    let totMiss = 0, totDarts = 0, centuryRounds = 0, scoredRounds = 0, best = 0, run = 0;
+    let finalFh = false;
+    for (let ri = 0; ri < rounds.length; ri++){
+      const r = rounds[ri] || {}; const darts = r.darts || [];
+      let tre = 0, dou = 0, sin = 0, b50 = 0, bany = 0;
+      darts.forEach(d => { const nk = norm(d); if (nk === 'treble') tre++; else if (nk === 'double') dou++; else if (nk === 'single') sin++; else if (nk === 'bull'){ bany++; if ((Number(d.points) || 0) === 50) b50++; } });
+      const mis = darts.filter(d => norm(d) === 'miss' || (Number(d && d.points) || 0) === 0).length;
+      const rtot = Number(r.roundTotal) || 0;
+      const target = ri <= 10 ? 10 + ri : null;
+      const rmax = ri <= 10 ? 9 * (10 + ri) : (ri === 11 ? 120 : ri === 12 ? 180 : 150);
+      totMiss += mis; totDarts += darts.length;
+      if (rtot > 0) scoredRounds++;
+      const fh = (mis === 0 && darts.length === 3);
+      run = fh ? run + 1 : 0; if (run > best) best = run;
+      if (ri === 13) finalFh = fh;
+      if (rtot === 180) add('the_180');
+      else if (rtot === rmax && darts.length === 3) add('maximum');
+      if (tre === 3) add('treble_trouble');
+      if (dou === 3) add('double_down');
+      if (fh) add('full_house');
+      if (rtot >= 100 && rtot < 180){ add('century'); centuryRounds++; }
+      if (target != null && sin === 1 && dou === 1 && tre === 1) add('shanghai');
+      if (target != null && sin === 2 && dou === 1 && tre === 0 && mis === 0) add('desmond');
+      if (target != null && tre >= 2) add('robin_hood');
+      if (b50 > 0) add('dead_centre', b50);
+      if (ri === 12 && tre === 3) add('triple_threat');
+      if (ri === 11 && dou === 3) add('double_trouble');
+      if (ri === 13 && bany === 3) add('bull_run');
+      if (ri === 0 && fh) add('perfect_start');
+      if (ri === 13 && rtot >= 100) add('strong_finish');
+    }
+    // Score milestones are one-time (shown in the profile), not per-game trophies.
+    const won = totals[p] === maxTotal && maxTotal > 0;
+    if (totMiss === 0 && totDarts > 0) add('flawless_game');
+    if (scoredRounds >= 14) add('full_board');
+    if (centuryRounds >= 3) add('ton_machine');
+    if (best >= 14) add('untouchable'); else if (best >= 5) add('inferno'); else if (best >= 3) add('hot_streak');
+    if (opts.is_tiebreak && won) add('iceman');
+    if (won && finalFh) add('clutch');
+    if (board.length === 2){
+      const opp = 1 - p, oppRounds = board[opp] || [];
+      let wonEvery = true, ca = 0, cb = 0, n = Math.max(rounds.length, oppRounds.length);
+      for (let ri = 0; ri < n; ri++){
+        const a = Number((rounds[ri] || {}).roundTotal) || 0, b = Number((oppRounds[ri] || {}).roundTotal) || 0;
+        if (!(a > b)) wonEvery = false;
+        if (ri <= 6){ ca += a; cb += b; }
+      }
+      if (won && wonEvery) add('whitewash');
+      if (won && ca < cb) add('comeback_kid');
+    }
+    const list = Object.keys(earned).map(c => ({ code: c, count: earned[c] }))
+      .sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
+    if (list.length) out.push({ player: p, name: (players[p] && (players[p].name || players[p])) || ('Player ' + (p + 1)), earned: list });
+  }
+  return out;
+};
+
+// Celebratory toast stack shown at game-complete for trophies earned this game.
+function __sqAchToast(results){
+  try{
+    if (!Array.isArray(
+=== END ===
+
+=== triple_threat 1 chars 1511936:1515936 ===
+     icon:'🌟', tier:'legendary', xp:140, desc:'Win five games in a row' },
+    { code:'kingslayer',     name:'Kingslayer',         icon:'💀', tier:'legendary', xp:60,  desc:'Beat the current #1 ranked player in a game' },
+    { code:'hot_hand',       name:'Hot Hand',           icon:'🖐️', tier:'gold',      xp:70,  desc:'Win three games in a row' },
+    { code:'decider',        name:'Decider',            icon:'⚔️', tier:'gold',      xp:80,  desc:'Win the deciding game of a match' },
+    { code:'first_blood',    name:'First Blood',        icon:'🩸', tier:'silver',    xp:20,  desc:'Win the opening game of a series' },
+    { code:'score_700',      name:'The 700 Club',       icon:'7️⃣', tier:'legendary', xp:700, desc:'Score 700+ in a single game' },
+    { code:'score_600',      name:'The 600 Club',       icon:'6️⃣', tier:'legendary', xp:480, desc:'Score 600+ in a single game' },
+    { code:'score_500',      name:'The 500 Club',       icon:'5️⃣', tier:'gold',      xp:320, desc:'Score 500+ in a single game' },
+    { code:'score_400',      name:'The 400 Club',       icon:'4️⃣', tier:'gold',      xp:200, desc:'Score 400+ in a single game' },
+    { code:'score_300',      name:'Triple Ton',         icon:'🌠', tier:'silver',    xp:120, desc:'Score 300+ in a single game' },
+    { code:'score_200',      name:'Double Ton',         icon:'⭐', tier:'silver',    xp:60,  desc:'Score 200+ in a single game' },
+    { code:'score_100',      name:'Ton Up',             icon:'💯', tier:'bronze',    xp:30,  desc:'Score 100+ in a single game' },
+    { code:'centurion',      name:'Centurion',          icon:'🏛️', tier:'legendary', xp:400, desc:'Play 250 games' },
+    { code:'trophy_hunter',  name:'Trophy Hunter',      icon:'🗃️', tier:'legendary', xp:350, desc:'Unlock 20 different trophies' },
+    { code:'triple_threat',  name:'Triple Threat',      icon:'⚡', tier:'gold',      xp:60,  desc:'Three triples in the Triples round' },
+    { code:'bull_run',       name:'Bull Run',           icon:'🐮', tier:'gold',      xp:60,  desc:'Three bulls in the Bull round' },
+    { code:'double_trouble', name:'Double Trouble',     icon:'🎲', tier:'gold',      xp:45,  desc:'Three doubles in the Doubles round' },
+    { code:'veteran',        name:'Veteran',            icon:'🎖️', tier:'gold',      xp:200, desc:'Play 100 games' },
+    { code:'collector',      name:'Collector',          icon:'🧰', tier:'gold',      xp:150, desc:'Unlock 10 different trophies' },
+    { code:'strong_finish',  name:'Strong Finish',      icon:'🏁', tier:'silver',    xp:40,  desc:'Score 100+ on the Bull round' },
+    { code:'regular',        name:'Regular',            icon:'📅', tier:'silver',    xp:100, desc:'Play 50 games' },
+    { code:'full_house',     name:'Full House',         icon:'🏠', tier:'bronze',    xp:12,  desc:'All three darts on target in a round' },
+    { code:'perfect_start',  name:'Perfect Start',      icon:'🚀', tier:'bronze',    xp:20,  desc:'Full house on the opening 10s round' },
+    { code:'dead_centre',    name:'Dead Centre',        icon:'🔴', tier:'bronze',    xp:5,   desc:'Hit the 50 bull' }
+  ],
+  meta(code){ return this.CATALOG.find(a => a.code === code) || { code, name: code, icon:'🎖️', tier:'bronze', desc:'' }; },
+  tierStyle(tier){
+    switch(tier){
+      case 'legendary': return { c:'#e9c6ff', b:'rgba(180,123,255,.6)', g:'linear-gradient(135deg,rgba(180,123,255,.30),rgba(120,60,200,.16))' };
+      case 'gold':      return { c:'#ffe1a6', b:'rgba(255,196,74,.55)', g:'linear-gradient(135deg,rgba(255,196,74,.26),rgba(255,140,40,.14))' };
+      case 'silver':    return { c:'#e4ecf7', b:'rgba(200,214,235,.5)', g:'linear-gradient(135deg,rgba(200,214,235,.20),rgba(150,170,200,.10))' };
+      default:          return { c:'#f0c9a6', b:'rgba(208,139,90,.5)', g:'linear-gradient(135deg,rgba(208,139,90,.20),rgba(160,100,60,.10))' };
+    }
+  },
+  _cache:{},
+  async forName(name){
+    try{
+      const xr = await SQ_XP.forName(name); if (!xr) return {};
+      const SB = window.sb || window.__sb || nul
+=== END ===
+
+=== triple_threat 2 chars 1525264:1529264 ===
+or (let p = 0; p < board.length; p++){
+    const rounds = board[p] || [];
+    const earned = {}; const add = (c, n) => { earned[c] = (earned[c] || 0) + (n || 1); };
+    let totMiss = 0, totDarts = 0, centuryRounds = 0, scoredRounds = 0, best = 0, run = 0;
+    let finalFh = false;
+    for (let ri = 0; ri < rounds.length; ri++){
+      const r = rounds[ri] || {}; const darts = r.darts || [];
+      let tre = 0, dou = 0, sin = 0, b50 = 0, bany = 0;
+      darts.forEach(d => { const nk = norm(d); if (nk === 'treble') tre++; else if (nk === 'double') dou++; else if (nk === 'single') sin++; else if (nk === 'bull'){ bany++; if ((Number(d.points) || 0) === 50) b50++; } });
+      const mis = darts.filter(d => norm(d) === 'miss' || (Number(d && d.points) || 0) === 0).length;
+      const rtot = Number(r.roundTotal) || 0;
+      const target = ri <= 10 ? 10 + ri : null;
+      const rmax = ri <= 10 ? 9 * (10 + ri) : (ri === 11 ? 120 : ri === 12 ? 180 : 150);
+      totMiss += mis; totDarts += darts.length;
+      if (rtot > 0) scoredRounds++;
+      const fh = (mis === 0 && darts.length === 3);
+      run = fh ? run + 1 : 0; if (run > best) best = run;
+      if (ri === 13) finalFh = fh;
+      if (rtot === 180) add('the_180');
+      else if (rtot === rmax && darts.length === 3) add('maximum');
+      if (tre === 3) add('treble_trouble');
+      if (dou === 3) add('double_down');
+      if (fh) add('full_house');
+      if (rtot >= 100 && rtot < 180){ add('century'); centuryRounds++; }
+      if (target != null && sin === 1 && dou === 1 && tre === 1) add('shanghai');
+      if (target != null && sin === 2 && dou === 1 && tre === 0 && mis === 0) add('desmond');
+      if (target != null && tre >= 2) add('robin_hood');
+      if (b50 > 0) add('dead_centre', b50);
+      if (ri === 12 && tre === 3) add('triple_threat');
+      if (ri === 11 && dou === 3) add('double_trouble');
+      if (ri === 13 && bany === 3) add('bull_run');
+      if (ri === 0 && fh) add('perfect_start');
+      if (ri === 13 && rtot >= 100) add('strong_finish');
+    }
+    // Score milestones are one-time (shown in the profile), not per-game trophies.
+    const won = totals[p] === maxTotal && maxTotal > 0;
+    if (totMiss === 0 && totDarts > 0) add('flawless_game');
+    if (scoredRounds >= 14) add('full_board');
+    if (centuryRounds >= 3) add('ton_machine');
+    if (best >= 14) add('untouchable'); else if (best >= 5) add('inferno'); else if (best >= 3) add('hot_streak');
+    if (opts.is_tiebreak && won) add('iceman');
+    if (won && finalFh) add('clutch');
+    if (board.length === 2){
+      const opp = 1 - p, oppRounds = board[opp] || [];
+      let wonEvery = true, ca = 0, cb = 0, n = Math.max(rounds.length, oppRounds.length);
+      for (let ri = 0; ri < n; ri++){
+        const a = Number((rounds[ri] || {}).roundTotal) || 0, b = Number((oppRounds[ri] || {}).roundTotal) || 0;
+        if (!(a > b)) wonEvery = false;
+        if (ri <= 6){ ca += a; cb += b; }
+      }
+      if (won && wonEvery) add('whitewash');
+      if (won && ca < cb) add('comeback_kid');
+    }
+    const list = Object.keys(earned).map(c => ({ code: c, count: earned[c] }))
+      .sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
+    if (list.length) out.push({ player: p, name: (players[p] && (players[p].name || players[p])) || ('Player ' + (p + 1)), earned: list });
+  }
+  return out;
+};
+
+// Celebratory toast stack shown at game-complete for trophies earned this game.
+function __sqAchToast(results){
+  try{
+    if (!Array.isArray(results) || !results.length) return;
+    let layer = document.getElementById('sqAchToastLayer');
+    if (!layer){
+      layer = document.createElement('div'); layer.id = 'sqAchToastLayer';
+      layer.style.cssText = 'position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:100000;'
+        + 'display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:min(92vw,420px);';
+      document.body.appendChild(layer);
+    }
+    const flat = [];
+  
+=== END ===
+
+=== double_down 1 chars 1017868:1021868 ===
+ = 520 + s * 8.6;                       // brighter for bigger hits
+  __sqV3Beep(freq, 0.10, 'triangle', 0.13);
+  if (s >= 30) __sqV3Beep(freq * 1.5, 0.12, 'triangle', 0.10, 0.05);
+  __sqV3Vibe(s >= 30 ? [12, 22, 12] : 12);
+}
+function __sqV3SndMiss(){
+  if (!__sqV3SoundOn()) return;
+  __sqV3Beep(150, 0.18, 'sawtooth', 0.09);
+  __sqV3Beep(104, 0.20, 'sawtooth', 0.07, 0.04);
+  __sqV3Vibe([28, 40, 28]);
+}
+function __sqV3SndRound(){
+  if (!__sqV3SoundOn()) return;
+  __sqV3Beep(660, 0.10, 'sine', 0.10);
+  __sqV3Beep(880, 0.12, 'sine', 0.10, 0.08);
+}
+function __sqV3SndGame(){
+  if (!__sqV3SoundOn()) return;
+  [523, 659, 784, 1047].forEach((f, i) => __sqV3Beep(f, 0.16, 'triangle', 0.13, i * 0.10));
+  __sqV3Vibe([18, 30, 18, 30, 60]);
+}
+
+// Headline combo for a just-completed round (live V3 callout). Mirrors the
+// achievement rules; returns the rarest single combo meta, or null.
+function __sqV3RoundCombo(entry){
+  try{
+    if (!entry || !entry.darts) return null;
+    const darts = entry.darts;
+    if (darts.filter(d => d).length < 3) return null;
+    const norm = d => { const k = (d && d.kind) || 'Miss'; if (k==='S') return 'single'; if (k==='D'||k==='Double') return 'double'; if (k==='T'||k==='Triple') return 'treble'; if (k==='B'||k==='Bull') return 'bull'; return 'miss'; };
+    let tre=0, dou=0, sin=0; darts.forEach(d => { const nk = norm(d); if (nk==='treble') tre++; else if (nk==='double') dou++; else if (nk==='single') sin++; });
+    const mis = darts.filter(d => norm(d)==='miss' || (Number(d && d.points)||0)===0).length;
+    const rtot = Number(entry.roundTotal) || 0;
+    let code = null;
+    if (rtot === 180) code = 'the_180';
+    else if (tre === 3) code = 'treble_trouble';
+    else if (sin===1 && dou===1 && tre===1) code = 'shanghai';
+    else if (dou === 3) code = 'double_down';
+    else if (sin===2 && dou===1 && tre===0 && mis===0) code = 'desmond';
+    else if (rtot >= 100) code = 'century';
+    else if (tre >= 2) code = 'robin_hood';
+    else if (mis === 0) code = 'full_house';
+    if (!code) return null;
+    return (window.SQ_ACH && SQ_ACH.meta) ? SQ_ACH.meta(code) : { code, name: code, icon:'🎯', tier:'gold' };
+  }catch(_){ return null; }
+}
+// Stage a combo/trophy across the whole centre stem (the marquee keeps showing
+// the dart that caused it, so the two surfaces tell one story).
+function __sqV3StageCombo(name, tier, lab, hold){
+  try{
+    const big = (tier === 'legendary' || tier === 'gold');
+    const dur = hold || (tier === 'legendary' ? 2300 : tier === 'gold' ? 2000 : tier === 'whiff' ? 1500 : 1700);
+    const until = performance.now() + dur;
+    window.__sqV3Combo = { name: String(name || '').toUpperCase(), tier: tier || 'gold', lab: String(lab || 'COMBO').toUpperCase(), until, big };
+    // Keep the round frozen for as long as the celebration runs — otherwise the
+    // hold released first and the stem rebuilt twice in quick succession, which
+    // is what made the middle feel jumpy.
+    try{ if (window.__sqV3Hold){ window.__sqV3Hold.until = Math.max(window.__sqV3Hold.until, until);
+      clearTimeout(window.__sqV3HoldT);
+      window.__sqV3HoldT = setTimeout(() => { try{ __sqV3ReleaseHold(); }catch(_){ } }, dur + 40); } }catch(_){ }
+    // Screen shake for the big ones (Street-Fighter impact).
+    if ((big || tier === 'whiff') && !__sqV3Reduced()){
+      try{ const p = document.getElementById('liveV3Panel');
+        if (p){ p.classList.remove('v3-quake','v3-quake-big'); void p.offsetWidth;
+          p.classList.add(tier === 'legendary' ? 'v3-quake-big' : 'v3-quake');
+          setTimeout(() => { try{ p.classList.remove('v3-quake','v3-quake-big'); }catch(_){ } }, 900); } }catch(_){ }
+    }
+    if (tier === 'whiff'){ try{ __sqV3SndMiss(); if (navigator.vibrate && !__sqV3Reduced()) navigator.vibrate([30,60,30,60,50]); }catch(_){ } }
+    clearTimeout(window.__sqV3ComboT);
+    // Outro: flag the stage as leaving a beat early so it fades/recedes rather
+    // than being yanked off, then clear.
+    clearTimeout(win
+=== END ===
+
+=== double_down 2 chars 1509565:1513565 ===
+les with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in a number round (10–20)' },
+    { code:'clutch',         name:'Clutch',             icon:'⏱️', tier:'gold',      xp:40,  desc:'Full house on the final round to win' },
+    { code:'iceman',         name:'Iceman',             icon:'🧊', tier:'gold',      xp:50,  desc:'Win a tiebreak game' },
+    { code:'shanghai',       name:'Shanghai',           icon:'🏮', tier:'gold',      xp:50,  desc:'Single, double AND treble of one number in a round' },
+    { code:'desmond',        name:'Desmond',            icon:'👓', tier:'silver',    xp:18,  desc:'Two singles and a double in one round' },
+    { code:'robin_hood',     name:'Robin Hood',         icon:'🏹', tier:'silver',    xp:20,  desc:'Two or more trebles of the same number in a round' },
+    { code:'double_down',    name:'Double Down',        icon:'♊', tier:'silver',    xp:25,  desc:'Three doubles in a number round (10–20)' },
+    { code:'hot_streak',     name:'Hot Streak',         icon:'🔥', tier:'silver',    xp:25,  desc:'Three full houses in a row' },
+    { code:'full_board',     name:'Full Board',         icon:'🧩', tier:'silver',    xp:30,  desc:'Score on all 14 rounds of a game' },
+    { code:'century',        name:'Century',            icon:'💯', tier:'silver',    xp:15,  desc:'Score 100+ in one round' },
+    { code:'unstoppable',    name:'Unstoppable',        icon:'🌟', tier:'legendary', xp:140, desc:'Win five games in a row' },
+    { code:'kingslayer',     name:'Kingslayer',         icon:'💀', tier:'legendary', xp:60,  desc:'Beat the current #1 ranked player in a game' },
+    { code:'hot_hand',       name:'Hot Hand',           icon:'🖐️', tier:'gold',      xp:70,  desc:'Win three games in a row' },
+    { code:'decider',        name:'Decider',            icon:'⚔️', tier:'gold',      xp:80,  desc:'Win the deciding game of a match' },
+    { code:'first_blood',    name:'First Blood',        icon:'🩸', tier:'silver',    xp:20,  desc:'Win the opening game of a series' },
+    { code:'score_700',      name:'The 700 Club',       icon:'7️⃣', tier:'legendary', xp:700, desc:'Score 700+ in a single game' },
+    { code:'score_600',      name:'The 600 Club',       icon:'6️⃣', tier:'legendary', xp:480, desc:'Score 600+ in a single game' },
+    { code:'score_500',      name:'The 500 Club',       icon:'5️⃣', tier:'gold',      xp:320, desc:'Score 500+ in a single game' },
+    { code:'score_400',      name:'The 400 Club',       icon:'4️⃣', tier:'gold',      xp:200, desc:'Score 400+ in a single game' },
+    { code:'score_300',      name:'Triple Ton',         icon:'🌠', tier:'silver',    xp:120, desc:'Score 300+ in a single game' },
+    { code:'score_200',      name:'Double Ton',         icon:'⭐', tier:'silver',    xp:60,  desc:'Score 200+ in a single game' },
+    { code:'score_100',      name:'Ton Up',             icon:'💯', tier:'bronze',    xp:30,  desc:'Score 100+ in a single game' },
+    { code:'centurion',      name:'Centurion',          icon:'🏛️', tier:'legendary', xp:400
+=== END ===
+
+=== double_down 3 chars 1524827:1528827 ===
+n 'single';
+    if (k === 'D' || k === 'Double') return 'double';
+    if (k === 'T' || k === 'Triple') return 'treble';
+    if (k === 'B' || k === 'Bull') return 'bull';
+    return 'miss';
+  };
+  if (!Array.isArray(board) || !board.length) return [];
+  const totals = board.map(rs => (rs || []).reduce((s, r) => s + (Number(r && r.roundTotal) || 0), 0));
+  const maxTotal = Math.max.apply(null, totals.concat([0]));
+  const out = [];
+  for (let p = 0; p < board.length; p++){
+    const rounds = board[p] || [];
+    const earned = {}; const add = (c, n) => { earned[c] = (earned[c] || 0) + (n || 1); };
+    let totMiss = 0, totDarts = 0, centuryRounds = 0, scoredRounds = 0, best = 0, run = 0;
+    let finalFh = false;
+    for (let ri = 0; ri < rounds.length; ri++){
+      const r = rounds[ri] || {}; const darts = r.darts || [];
+      let tre = 0, dou = 0, sin = 0, b50 = 0, bany = 0;
+      darts.forEach(d => { const nk = norm(d); if (nk === 'treble') tre++; else if (nk === 'double') dou++; else if (nk === 'single') sin++; else if (nk === 'bull'){ bany++; if ((Number(d.points) || 0) === 50) b50++; } });
+      const mis = darts.filter(d => norm(d) === 'miss' || (Number(d && d.points) || 0) === 0).length;
+      const rtot = Number(r.roundTotal) || 0;
+      const target = ri <= 10 ? 10 + ri : null;
+      const rmax = ri <= 10 ? 9 * (10 + ri) : (ri === 11 ? 120 : ri === 12 ? 180 : 150);
+      totMiss += mis; totDarts += darts.length;
+      if (rtot > 0) scoredRounds++;
+      const fh = (mis === 0 && darts.length === 3);
+      run = fh ? run + 1 : 0; if (run > best) best = run;
+      if (ri === 13) finalFh = fh;
+      if (rtot === 180) add('the_180');
+      else if (rtot === rmax && darts.length === 3) add('maximum');
+      if (tre === 3) add('treble_trouble');
+      if (dou === 3) add('double_down');
+      if (fh) add('full_house');
+      if (rtot >= 100 && rtot < 180){ add('century'); centuryRounds++; }
+      if (target != null && sin === 1 && dou === 1 && tre === 1) add('shanghai');
+      if (target != null && sin === 2 && dou === 1 && tre === 0 && mis === 0) add('desmond');
+      if (target != null && tre >= 2) add('robin_hood');
+      if (b50 > 0) add('dead_centre', b50);
+      if (ri === 12 && tre === 3) add('triple_threat');
+      if (ri === 11 && dou === 3) add('double_trouble');
+      if (ri === 13 && bany === 3) add('bull_run');
+      if (ri === 0 && fh) add('perfect_start');
+      if (ri === 13 && rtot >= 100) add('strong_finish');
+    }
+    // Score milestones are one-time (shown in the profile), not per-game trophies.
+    const won = totals[p] === maxTotal && maxTotal > 0;
+    if (totMiss === 0 && totDarts > 0) add('flawless_game');
+    if (scoredRounds >= 14) add('full_board');
+    if (centuryRounds >= 3) add('ton_machine');
+    if (best >= 14) add('untouchable'); else if (best >= 5) add('inferno'); else if (best >= 3) add('hot_streak');
+    if (opts.is_tiebreak && won) add('iceman');
+    if (won && finalFh) add('clutch');
+    if (board.length === 2){
+      const opp = 1 - p, oppRounds = board[opp] || [];
+      let wonEvery = true, ca = 0, cb = 0, n = Math.max(rounds.length, oppRounds.length);
+      for (let ri = 0; ri < n; ri++){
+        const a = Number((rounds[ri] || {}).roundTotal) || 0, b = Number((oppRounds[ri] || {}).roundTotal) || 0;
+        if (!(a > b)) wonEvery = false;
+        if (ri <= 6){ ca += a; cb += b; }
+      }
+      if (won && wonEvery) add('whitewash');
+      if (won && ca < cb) add('comeback_kid');
+    }
+    const list = Object.keys(earned).map(c => ({ code: c, count: earned[c] }))
+      .sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
+    if (list.length) out.push({ player: p, name: (players[p] && (players[p].name || players[p])) || ('Player ' + (p + 1)), earned: list });
+  }
+  return out;
+};
+
+// Celebratory toast stack shown at game-complete for trophies earned this game.
+function __sqAchToast(results){
+  try{
+    if (!Array.isArray(results) || !results.length) return;
+    let
+=== END ===
+
+=== double_trouble 1 chars 1512205:1516205 ===
+        icon:'🖐️', tier:'gold',      xp:70,  desc:'Win three games in a row' },
+    { code:'decider',        name:'Decider',            icon:'⚔️', tier:'gold',      xp:80,  desc:'Win the deciding game of a match' },
+    { code:'first_blood',    name:'First Blood',        icon:'🩸', tier:'silver',    xp:20,  desc:'Win the opening game of a series' },
+    { code:'score_700',      name:'The 700 Club',       icon:'7️⃣', tier:'legendary', xp:700, desc:'Score 700+ in a single game' },
+    { code:'score_600',      name:'The 600 Club',       icon:'6️⃣', tier:'legendary', xp:480, desc:'Score 600+ in a single game' },
+    { code:'score_500',      name:'The 500 Club',       icon:'5️⃣', tier:'gold',      xp:320, desc:'Score 500+ in a single game' },
+    { code:'score_400',      name:'The 400 Club',       icon:'4️⃣', tier:'gold',      xp:200, desc:'Score 400+ in a single game' },
+    { code:'score_300',      name:'Triple Ton',         icon:'🌠', tier:'silver',    xp:120, desc:'Score 300+ in a single game' },
+    { code:'score_200',      name:'Double Ton',         icon:'⭐', tier:'silver',    xp:60,  desc:'Score 200+ in a single game' },
+    { code:'score_100',      name:'Ton Up',             icon:'💯', tier:'bronze',    xp:30,  desc:'Score 100+ in a single game' },
+    { code:'centurion',      name:'Centurion',          icon:'🏛️', tier:'legendary', xp:400, desc:'Play 250 games' },
+    { code:'trophy_hunter',  name:'Trophy Hunter',      icon:'🗃️', tier:'legendary', xp:350, desc:'Unlock 20 different trophies' },
+    { code:'triple_threat',  name:'Triple Threat',      icon:'⚡', tier:'gold',      xp:60,  desc:'Three triples in the Triples round' },
+    { code:'bull_run',       name:'Bull Run',           icon:'🐮', tier:'gold',      xp:60,  desc:'Three bulls in the Bull round' },
+    { code:'double_trouble', name:'Double Trouble',     icon:'🎲', tier:'gold',      xp:45,  desc:'Three doubles in the Doubles round' },
+    { code:'veteran',        name:'Veteran',            icon:'🎖️', tier:'gold',      xp:200, desc:'Play 100 games' },
+    { code:'collector',      name:'Collector',          icon:'🧰', tier:'gold',      xp:150, desc:'Unlock 10 different trophies' },
+    { code:'strong_finish',  name:'Strong Finish',      icon:'🏁', tier:'silver',    xp:40,  desc:'Score 100+ on the Bull round' },
+    { code:'regular',        name:'Regular',            icon:'📅', tier:'silver',    xp:100, desc:'Play 50 games' },
+    { code:'full_house',     name:'Full House',         icon:'🏠', tier:'bronze',    xp:12,  desc:'All three darts on target in a round' },
+    { code:'perfect_start',  name:'Perfect Start',      icon:'🚀', tier:'bronze',    xp:20,  desc:'Full house on the opening 10s round' },
+    { code:'dead_centre',    name:'Dead Centre',        icon:'🔴', tier:'bronze',    xp:5,   desc:'Hit the 50 bull' }
+  ],
+  meta(code){ return this.CATALOG.find(a => a.code === code) || { code, name: code, icon:'🎖️', tier:'bronze', desc:'' }; },
+  tierStyle(tier){
+    switch(tier){
+      case 'legendary': return { c:'#e9c6ff', b:'rgba(180,123,255,.6)', g:'linear-gradient(135deg,rgba(180,123,255,.30),rgba(120,60,200,.16))' };
+      case 'gold':      return { c:'#ffe1a6', b:'rgba(255,196,74,.55)', g:'linear-gradient(135deg,rgba(255,196,74,.26),rgba(255,140,40,.14))' };
+      case 'silver':    return { c:'#e4ecf7', b:'rgba(200,214,235,.5)', g:'linear-gradient(135deg,rgba(200,214,235,.20),rgba(150,170,200,.10))' };
+      default:          return { c:'#f0c9a6', b:'rgba(208,139,90,.5)', g:'linear-gradient(135deg,rgba(208,139,90,.20),rgba(160,100,60,.10))' };
+    }
+  },
+  _cache:{},
+  async forName(name){
+    try{
+      const xr = await SQ_XP.forName(name); if (!xr) return {};
+      const SB = window.sb || window.__sb || null;
+      if (!SB || typeof SB.from !== 'function') return {};
+      const { data, error } = await SB.from('v_player_achievements').select('code,cnt,xp').eq('player_id', xr.player_id);
+      if (error || !Array.isArray(data)) return {};
+      const map = {}; data.forEac
+=== END ===
+
+=== double_trouble 2 chars 1525320:1529320 ===
+= board[p] || [];
+    const earned = {}; const add = (c, n) => { earned[c] = (earned[c] || 0) + (n || 1); };
+    let totMiss = 0, totDarts = 0, centuryRounds = 0, scoredRounds = 0, best = 0, run = 0;
+    let finalFh = false;
+    for (let ri = 0; ri < rounds.length; ri++){
+      const r = rounds[ri] || {}; const darts = r.darts || [];
+      let tre = 0, dou = 0, sin = 0, b50 = 0, bany = 0;
+      darts.forEach(d => { const nk = norm(d); if (nk === 'treble') tre++; else if (nk === 'double') dou++; else if (nk === 'single') sin++; else if (nk === 'bull'){ bany++; if ((Number(d.points) || 0) === 50) b50++; } });
+      const mis = darts.filter(d => norm(d) === 'miss' || (Number(d && d.points) || 0) === 0).length;
+      const rtot = Number(r.roundTotal) || 0;
+      const target = ri <= 10 ? 10 + ri : null;
+      const rmax = ri <= 10 ? 9 * (10 + ri) : (ri === 11 ? 120 : ri === 12 ? 180 : 150);
+      totMiss += mis; totDarts += darts.length;
+      if (rtot > 0) scoredRounds++;
+      const fh = (mis === 0 && darts.length === 3);
+      run = fh ? run + 1 : 0; if (run > best) best = run;
+      if (ri === 13) finalFh = fh;
+      if (rtot === 180) add('the_180');
+      else if (rtot === rmax && darts.length === 3) add('maximum');
+      if (tre === 3) add('treble_trouble');
+      if (dou === 3) add('double_down');
+      if (fh) add('full_house');
+      if (rtot >= 100 && rtot < 180){ add('century'); centuryRounds++; }
+      if (target != null && sin === 1 && dou === 1 && tre === 1) add('shanghai');
+      if (target != null && sin === 2 && dou === 1 && tre === 0 && mis === 0) add('desmond');
+      if (target != null && tre >= 2) add('robin_hood');
+      if (b50 > 0) add('dead_centre', b50);
+      if (ri === 12 && tre === 3) add('triple_threat');
+      if (ri === 11 && dou === 3) add('double_trouble');
+      if (ri === 13 && bany === 3) add('bull_run');
+      if (ri === 0 && fh) add('perfect_start');
+      if (ri === 13 && rtot >= 100) add('strong_finish');
+    }
+    // Score milestones are one-time (shown in the profile), not per-game trophies.
+    const won = totals[p] === maxTotal && maxTotal > 0;
+    if (totMiss === 0 && totDarts > 0) add('flawless_game');
+    if (scoredRounds >= 14) add('full_board');
+    if (centuryRounds >= 3) add('ton_machine');
+    if (best >= 14) add('untouchable'); else if (best >= 5) add('inferno'); else if (best >= 3) add('hot_streak');
+    if (opts.is_tiebreak && won) add('iceman');
+    if (won && finalFh) add('clutch');
+    if (board.length === 2){
+      const opp = 1 - p, oppRounds = board[opp] || [];
+      let wonEvery = true, ca = 0, cb = 0, n = Math.max(rounds.length, oppRounds.length);
+      for (let ri = 0; ri < n; ri++){
+        const a = Number((rounds[ri] || {}).roundTotal) || 0, b = Number((oppRounds[ri] || {}).roundTotal) || 0;
+        if (!(a > b)) wonEvery = false;
+        if (ri <= 6){ ca += a; cb += b; }
+      }
+      if (won && wonEvery) add('whitewash');
+      if (won && ca < cb) add('comeback_kid');
+    }
+    const list = Object.keys(earned).map(c => ({ code: c, count: earned[c] }))
+      .sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
+    if (list.length) out.push({ player: p, name: (players[p] && (players[p].name || players[p])) || ('Player ' + (p + 1)), earned: list });
+  }
+  return out;
+};
+
+// Celebratory toast stack shown at game-complete for trophies earned this game.
+function __sqAchToast(results){
+  try{
+    if (!Array.isArray(results) || !results.length) return;
+    let layer = document.getElementById('sqAchToastLayer');
+    if (!layer){
+      layer = document.createElement('div'); layer.id = 'sqAchToastLayer';
+      layer.style.cssText = 'position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:100000;'
+        + 'display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:min(92vw,420px);';
+      document.body.appendChild(layer);
+    }
+    const flat = [];
+    results.forEach(r => r.earned.forEach(e => flat.push({
+=== END ===
