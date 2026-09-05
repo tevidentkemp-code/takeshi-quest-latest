@@ -1,0 +1,3945 @@
+=== pstats occurrence 1 chars 23556:55556 ===
+scores (TABLE_HS_PRACTICE) [practice/high score storage]
+       - v_pb_by_player_round (TABLE_PB_ROUNDS)
+       - v_wr_by_round (TABLE_WR_ROUNDS)
+       - v_round_high_scores_modal (Round High Scores modal view)
+       - v_top50_scores_official (Top 50 Scores modal view)
+
+     @SUPABASE:VIEW_DEPENDENCY_INVENTORY
+     Production-facing Supabase dependencies observed in this file. This is a map only:
+     do not create browser fallbacks for ranked/historical stats unless explicitly documented.
+
+     - games
+       Used by: gameplay cloud load/save/archive/purge, normalized game fetchers, Player Stats profile fallback aggregates,
+                PB/WR admin snapshots, legacy league/high-score paths.
+       Required columns visible in code: id, created_at, archived_at, state, totals, match_id, game_number, finished, mode.
+       Missing-data behaviour: cloud read errors surface through callers or leave the relevant UI empty/unavailable.
+       Browser role: allowed to normalize/load gameplay records; should not be used for new ranked/stat history aggregation.
+       Materialized/refresh: table, no refresh.
+
+     - v_games_visible
+       Used by: Home Live Updates ticker visible-game fetchers.
+       Required columns visible in code: id, created_at, archived_at, state, totals, match_id, game_number.
+       Missing-data behaviour: fetch throws; ticker/start screen remains usable via caller guards.
+       Browser role: display/delta-load visible games only.
+       Materialized/refresh: needs verification.
+
+     - matches
+       Used by: cloudFetchAllMatchesAsLocal(), getMatchesOfficial().
+       Required columns visible in code: not fully visible in this inventory block; needs verification.
+       Missing-data behaviour: cloud probe marks failure/missing; match-dependent UI degrades.
+       Browser role: display/load match metadata only.
+       Materialized/refresh: table, no refresh.
+
+     - high_scores_sp / high_scores
+       Used by: official/practice high-score storage, legacy latest/high-score recovery paths.
+       Required columns visible in code: player_id, name, score, ts, game_id.
+       Missing-data behaviour: guarded by cloud probes/table-missing map; affected UI shows empty/unavailable.
+       Browser role: display/recover stored high scores; do not derive new ranked leagues from partial UI state.
+       Materialized/refresh: table or table|view depending deployment; needs verification.
+
+     - high_score_league_official
+       Used by: Home High Score League mini card.
+       Required columns visible in code: player, best_score, best_ts.
+       Missing-data behaviour: silent catch; home remains usable, card can show no data.
+       Browser role: display already-ranked/aggregated rows only.
+       Materialized/refresh: needs verification.
+
+     - v_power_rankings_last56_official_clean / v_power_rankings_last56_turbo_clean / v_power_rankings_last56_practice_clean
+       Used by: Home Power Rankings, Player Stats hero current Power Rank, Power Rankings modal/source.
+       Required columns visible in code: player, rounds_used, total_points, avg_per_round, last_played_at.
+       Missing-data behaviour: warnings/unavailable UI; active ranking fails closed if the clean view is missing or empty.
+       Browser role: display/filter DB-derived current rankings; browser applies saved-player and active-14-day filters where coded.
+       Materialized/refresh: needs verification.
+
+     - v_power_rank_last56_ranked
+       Used by: not referenced in this file as of this inventory.
+       Required columns visible in code: none.
+       Missing-data behaviour: n/a.
+       Browser role: n/a.
+       Materialized/refresh: n/a.
+
+     - v_top50_scores_official
+       Used by: canonical Top 50 Scores Official tab.
+       Required columns visible in code: player_name, score, rounds, avg_round, ts.
+       Missing-data behaviour: Top 50 modal shows "Required Supabase view/data source is missing or empty."
+       Browser role: display DB-derived Top 50 rows only; no game-history reconstruction.
+       Materialized/refresh: needs verification.
+
+     - v_top50_scores_practice
+       Used by: canonical Top 50 Scores Practice tab.
+       Required columns visible in code: player_name, score, rounds, avg_round, ts.
+       Missing-data behaviour: Top 50 modal shows "Required Supabase view/data source is missing or empty."
+       Browser role: display DB-derived Top 50 rows only.
+       Materialized/refresh: needs verification.
+
+     - v_round_high_scores_modal
+       Used by: Round High Scores modal and PB/WR admin enrichment.
+       Required columns visible in code: round_key, wr, darts, holder, tie_idx; other modal paths may select *.
+       Missing-data behaviour: modal/admin code shows no rows or falls back where guarded.
+       Browser role: display/enrich DB-derived round records; avoid inventing WR/PB rows.
+       Materialized/refresh: needs verification.
+
+     - v_pb_by_player_round
+       Used by: Live V2 PB edging, PB/GR admin, player/round record snapshots.
+       Required columns visible in code: bucket_key, round_key, pb_points; comments also mention player, cat, val, game_id, ridx, ts.
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived PB records; limited snapshot merging only in existing code.
+       Materialized/refresh: needs verification.
+
+     - v_wr_by_round
+       Used by: Live V2 WR edging, PB/GR admin, round record snapshots.
+       Required columns visible in code: round_key, wr_points; comments also mention cat, val, player, game_id, ridx, ts.
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived WR records.
+       Materialized/refresh: needs verification.
+
+     - v_player_games_union_visible
+       Used by: TABLE_PLAYER_GAMES / player stats windows contract.
+       Required columns visible in code: not fully visible at reference point; needs verification.
+       Missing-data behaviour: cloud probe marks failure/missing; stats windows should surface empty/unavailable states.
+       Browser role: display/limited player game windows; avoid new full-history ranking aggregation.
+       Materialized/refresh: needs verification.
+
+     - v_player_best_official_ranked
+       Used by: Player Stats profile Quick Stats / Highest Score rank.
+       Required columns visible in code: player_name, best_score, best_score_pos.
+       Missing-data behaviour: warning logged; profile falls back to existing score values without DB rank.
+       Browser role: display DB-derived rank only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_targets
+       Used by: Player Stats profile Targets card.
+       Required columns visible in code: player_key, favorite_number, favorite_pct, worst_number, worst_pct.
+       Missing-data behaviour: warning logged; card shows placeholder/available existing values.
+       Browser role: display DB-derived recent target summary only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_target_rates
+       Used by: Player Stats profile top/bottom target-rate detail (Favourite/Weakest Numbers top-3).
+       Required columns visible in code: player_key, target_n, hit_pct, throws.
+       Missing-data behaviour: silently treated as optional; card falls back to v_player_last30_targets fav/worst.
+       Browser role: display DB-derived recent target rates only.
+       Source: plain VIEW over throw_events_v + round_hit_counts_v, same last-30-games window as
+               v_player_last30_targets (its per-target CTE, un-collapsed). Always live, not materialized.
+
+     - v_player_target_streaks
+       Used by: Player Stats Quick Stats Dart/Round Streak, Streak League.
+       Required columns visible in code: player_key, player_name, mode_key, mode_label, dart_streak, round_streak,
+                                  source_games, last_played_at.
+       Missing-data behaviour: Streak League shows required-view missing/empty state; Player Stats shows placeholder if unavailable.
+       Browser role: display DB-derived streaks/ranks only; do not calculate streaks from full history in browser.
+       Materialized/refresh: intended DB-derived streak view; materialized/refresh status needs verification in this file.
+
+     - v_player_target_hit_pct
+       Used by: Target Hit % heatmap/table, Target Hit % G Rank lookup.
+       Required columns visible in code: player_key, player_name, target_key, target_label, target_sort, throws, hits,
+                                  hit_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Hit % unavailable message; SPIDER/PROGRESS disabled until rows exist.
+       Browser role: display DB-derived aggregate hit rates; browser may compute personal rank from returned 14 rows only.
+       Materialized/refresh: wrapper/view status needs verification; do not infer from points.
+
+     - v_player_target_points_pct
+       Used by: Target Points % table.
+       Required columns visible in code: player_key, player_name, target_number, target_label, throws, actual_points,
+                                  max_points, points_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Points % unavailable message; actions disabled until rows exist.
+       Browser role: display DB-derived aggregate points efficiency; no full-history reconstruction.
+       Materialized/refresh: wrapper/view status needs verification.
+
+     - v_player_target_hit_progress
+       Used by: Target Hit % Progress graph.
+       Required columns visible in code: player_key, player_name, game_id, created_at, target_key, target_label,
+                                  target_sort, throws, hits, hit_pct.
+       Missing-data behaviour: progress popup shows "Progress data is not available yet..."
+       Browser role: display DB-derived per-game/target progression rows; graph transforms only returned percentages.
+       Materialized/refresh: likely app-facing view; materialized backing/refresh needs verification.
+
+     - v_player_target_points_progress
+       Used by: Target Points % Progress graph.
+       Required columns visible in code: player_key, player_name, game_id, created_at, target_key, target_label,
+                                  target_sort, target_number, round_score, max_round_score, round_pct.
+       Missing-data behaviour: progress popup shows "Progress data is not available yet..."
+       Browser role: display DB-derived per-game/target progression rows; graph maps returned percentages only.
+       Materialized/refresh: likely app-facing view; materialized backing/refresh needs verification.
+
+     - throw_events_v
+       Used by: throw-level probes/helpers and legacy/diagnostic throw truth paths.
+       Required columns visible in code/comments: game_id, created_at, player_name, round_index, dart_number, dart_index,
+                                             target, bucket_key, points, ring, hit_number, hit, kind, bull.
+       Missing-data behaviour: warnings; some legacy helpers fall back to game boards. Do not use fallback for Target Hit % accuracy.
+       Browser role: diagnostic/source-truth reads only unless a DB view depends on it; avoid client full-history reconstruction.
+       Materialized/refresh: view; refresh status needs verification.
+
+     - player_dtb_bucket_ranks_v
+       Used by: D/T/B Hit % game-rank helpers.
+       Required columns visible in code: target_round, d_game_rank, t_game_rank, player_name.
+       Missing-data behaviour: rank helpers fall back to unavailable rank display.
+       Browser role: display DB-derived D/T rank columns only.
+       Materialized/refresh: needs verification.
+
+     @MODE:CLASSIFICATION_RULES
+     Production mode ownership for Official / Turbo / Practice. Official filters must exclude Turbo before accepting
+     a row as official; is_practice=false alone is not sufficient.
+
+     - turbo
+       Explicit Turbo rows are identified by mode/gameMode/game_mode/type='turbo', gameVariant='turbo',
+       Tournament Turbo tournamentType='turbo',
+       strictTimer=true, throwLimitSeconds=20, or startTarget='17' in the game row, state, match, or rules object.
+       Legacy quarantine: older broken saves may be labelled official while rounds 10-16 are unplayed and rounds
+       17-20/D/T/B contain play; browser fallback filters treat that board shape as Turbo to stop official leakage.
+       Future Match Play Turbo writes must include state.gameVariant='turbo', state.mode='turbo',
+       state.gameMode='turbo', strictTimer=true, throwLimitSeconds=20, and startTarget='17'.
+       Future Tournament Turbo writes may also use tournamentType='turbo' where tournament logic requires it.
+
+     - practice
+       Explicit practice/unofficial/solo rows, is_practice=true rows, forced-practice match rows, or single-player rows.
+       Turbo is never classified as Practice.
+
+     - official
+       Normal saved-player match rows only: not Turbo, not Practice, and at least two players.
+       Supabase official views should use the same Turbo exclusion rule, not only match_id/is_practice checks.
+
+     @RANKING:TERMINOLOGY_SOURCE_MAP
+     Production-facing rank labels observed in this file. This is a terminology/source map only:
+     do not change rank formulas or fetch paths without a scoped ranking task.
+
+     - Home Power Rankings / Power Rankings popup
+       UI label: Power Rankings, Power Rank, #.
+       Blocks/helpers: home mini Power Rankings, getOfficialPowerRows(), openPowerLeagueDialog().
+       Source: v_power_rankings_last56_official_clean for official/current; Turbo/Practice use mode-specific clean views.
+       Meaning: Power Rank is current active ranking metric; # is row position in the current filtered table.
+       Clarity: clear.
+
+     - Player Stats profile hero
+       UI label: Power Rank.
+       Block/helper: openPlayerStatsDialog() profile card render.
+       Source: v_power_rankings_last56_official_clean, filtered to saved players and the active 14-day current rule.
+       Meaning: current active Power Rank value and current active table position.
+       Clarity: clear.
+
+     - Player Stats profile Quick Stats
+       UI labels: Highest Score, Current Power Rank #.
+       Block/helper: openPlayerStatsDialog() Quick Stats card.
+       Sources: v_player_best_official_ranked for Highest Score rank; current Power Rank position is from v_power_rankings_last56_official_clean.
+       Meaning: Highest Score rank is historical PB table position; Current Power Rank # is not historical peak.
+       Clarity: label-only cleanup applied to avoid presenting current position as Highest/Peak Power Rank.
+       Needs follow-up: add a DB-derived historical Peak/Highest Power Rank source before showing that historical label again.
+
+     - Live V2 game info panel
+       UI labels: POS, P RANK, G RANK.
+       Block/helper: liveV2Render()/rank fill block.
+       Source: current game state for POS; sq_rank_score RPC is the only accepted P/G rank source.
+       Meaning: POS is current-game table position; P Rank is within-player historical score comparison; G Rank is cross-player historical score comparison.
+       Clarity: labels are clear in the live-game info table.
+       Fail-closed rule: if sq_rank_score is unavailable, P/G Rank shows unavailable instead of browser dense-rank fallback.
+
+     - Target Hit %
+       UI labels: P Rank, G Rank.
+       Block/helper: @CANONICAL:PLAYER_TARGET_HIT_HEATMAP, applyTargetHitPersonalRanks(), fetchTargetHitGlobalRanks().
+       Source: v_player_target_hit_pct aggregate rows.
+       Meaning: P Rank is within-player target comparison; G Rank is cross-player comparison for the same target.
+       Clarity: clear; no raw history reconstruction.
+
+     - Target Points % and Target Hit/Points Progress
+       UI label: no production rank label observed in current canonical target metric/progress popups.
+       Source: v_player_target_points_pct, v_player_target_points_progress, v_player_target_hit_progress.
+       Meaning: n/a for ranks.
+       Clarity: no rank terminology issue observed.
+
+     - D/T/B Hit % popups
+       UI labels: P Rank, My Rank, Game Rank.
+       Blocks/helpers: openPlayerDTBPctDialog(), openPlayerDTBCombinedPctDialog().
+       Source: within-player D/T rows for personal/my ranks; player_dtb_bucket_ranks_v for Game Rank when available.
+       Meaning: P/My Rank is within-player comparison; Game Rank is cross-player comparison.
+       Clarity: label-only cleanup applied to the simple D/T/B table's generic Rank header.
+
+     - League & Rankings popups
+       UI labels: #, Power Rank, Streak.
+       Blocks/helpers: Top 50 Scores, High Score League, Streak League, Premier League.
+       Sources: v_top50_scores_official/practice/turbo, high-score/player game helpers, v_player_target_streaks, official game rows.
+       Meaning: # is row position in that table/filter; Power Rank is the current Power Rankings metric; Streak is DB-derived streak value.
+       Clarity: table-context rank labels are clear.
+
+     - Round High Scores / PB / WR / Latest Matches
+       UI labels: Pos, PB, WR.
+       Blocks/helpers: Round High Scores modal, Latest Matches rows, Live V2 PB/WR helpers.
+       Sources: v_round_high_scores_modal, v_pb_by_player_round, v_wr_by_round, row-level position fields/helpers.
+       Meaning: Pos is row/table position for the displayed score context; PB/WR are records, not rank labels.
+       Clarity: generally clear; needs verification for every legacy Latest Matches branch before broad copy changes.
+
+     @RANKING:BROWSER_FALLBACK_AUDIT
+     Browser-side rank/position calculations observed in this file. This is an audit only:
+     do not remove fallbacks or change formulas without a scoped data-source replacement task.
+
+     - Live V2 POS
+       Block/helper: liveV2Render() info panel.
+       UI: live game info table POS row.
+       Type: table-position rank inside the current in-progress game.
+       Source used: current in-memory game totals only.
+       Completeness: complete for the visible current game.
+       Risk: acceptable table-position only.
+       Future fix: none required; keep separate from historical P/G ranks.
+
+     - Live V2 P RANK / G RANK fail-closed path
+       Block/helper: liveV2Render() __sqUpdateRanks().
+       UI: live game info table P RANK and G RANK rows.
+       Type: personal rank and global/cross-player rank from DB RPC only.
+       Source used: sq_rank_score RPC only; browser dense-rank fallback is disabled.
+       Completeness: DB-derived when RPC succeeds; unavailable otherwise.
+       Risk: safe fail-closed.
+       Future fix: keep sq_rank_score maintained or replace with an equivalent ranked-score RPC.
+
+     - getOfficialPowerRows() DB-view fallback
+       Block/helper: shared getOfficialPowerRows().
+       UI: Home Power Rankings and callers using shared current official rows.
+       Type: current active Power Rank table rows.
+       Source used: v_power_rankings_last56_official_clean only.
+       Completeness: DB-derived mode-classified rows.
+       Risk: safe fail-closed if the clean view is missing or empty.
+       Future fix: materialize/refresh the clean view if performance requires it.
+
+     - Power Rankings popup non-official rows
+       Block/helper: Fix132 computePowerRows(mode).
+       UI: Power Rankings popup Turbo/Practice tabs, and official if the official view path fails.
+       Type: current Power Rank table rows by mode.
+       Source used: v_power_rankings_last56_official_clean, v_power_rankings_last56_turbo_clean, v_power_rankings_last56_practice_clean.
+       Completeness: DB-derived mode-classified rows.
+       Risk: safe fail-closed if the relevant clean view is missing or empty.
+       Future fix: materialize/refresh mode-specific clean views if performance requires it.
+
+     - Player Stats profile current Power Rank fallback
+       Block/helper: openPlayerStatsDialog() "Current Power Rank" aggregation block.
+       UI: Player Stats profile hero/Quick Stats current Power Rank position.
+       Type: current active Power Rank position fallback.
+       Source used: dbPower from v_power_rankings_last56_official_clean is the displayed truth; older block still has broad local aggregate code for non-authoritative profile details.
+       Completeness: displayed current Power Rank is DB-derived.
+       Risk: needs follow-up cleanup to retire older non-displayed power-rank aggregation.
+       Future fix: keep current Power Rank display bound to the clean DB view only.
+
+     - Player Stats profile best-score fallback ranking
+       Block/helper: openPlayerStatsDialog() bestByPlayer/bestList.
+       UI: legacy support for Highest Score position; current display prefers v_player_best_official_ranked best_score_pos.
+       Type: historical PB leaderboard position fallback.
+       Source used: v_player_best_official_ranked preferred; fallback scans loaded games/totals.
+       Completeness: preferred view is DB-derived; fallback is browser-visible game data.
+       Risk: needs DB view/RPC if still active.
+       Future fix: keep v_player_best_official_ranked as the only PB rank source and show unavailable if missing.
+
+     - Target Hit % P Rank
+       Block/helper: applyTargetHitPersonalRanks().
+       UI: Target Hit % table P Rank.
+       Type: within-player target comparison.
+       Source used: selected player's 14 rows from v_player_target_hit_pct.
+       Completeness: complete for the selected player's target rows when the view returns rows.
+       Risk: safe.
+       Future fix: none required unless moving personal_rank into a ranked view for consistency.
+
+     - Target Hit % G Rank
+       Block/helper: fetchTargetHitGlobalRanks().
+       UI: Target Hit % table G Rank.
+       Type: global/cross-player target rank from aggregate rows.
+       Source used: v_player_target_hit_pct for matching target keys; optional saved-player filter from cloudListPlayers().
+       Completeness: DB-derived aggregate rows, but ranking is still performed in the browser over a limited select.
+       Risk: safe short-term; needs DB view/RPC for stricter production truth and eligibility control.
+       Future fix: add v_player_target_hit_ranked with personal_rank and game_rank/window-function columns.
+
+     - D/T/B Hit % personal ranks
+       Block/helper: openPlayerDTBPctDialog(), openPlayerDTBCombinedPctDialog().
+       UI: D/T/B Hit % P/My Rank columns.
+       Type: within-player comparison.
+       Source used: existing D/T/B rows; some legacy metric rows are built from throw/game helpers.
+       Completeness: rank is personal-only, but source path may depend on legacy broad fetches.
+       Risk: acceptable for personal rank; needs DB view/RPC for the underlying metric path if promoted.
+       Future fix: move D/T/B personal rank to a DB-derived target summary view if this popup remains production-facing.
+
+     - D/T/B Hit % Game Rank
+       Block/helper: openPlayerDTBCombinedPctDialog() game-rank helpers.
+       UI: D/T/B Hit % Game Rank columns.
+       Type: global/cross-player rank.
+       Source used: player_dtb_bucket_ranks_v when available.
+       Completeness: DB-derived when view exists; unavailable state when missing.
+       Risk: safe.
+       Future fix: document/refresh the backing view and eligibility/minimum-throw rule.
+
+     - Latest Matches Pos fallback
+       Block/helper: fetchLatestMatchesRows().
+       UI: Player Stats Latest Matches position column.
+       Type: per-game table-position rank.
+       Source used: TABLE_PLAYER_GAMES/player_games_union position preferred; fallback reads games rows and ranks totals within each complete game.
+       Completeness: complete for each loaded game row; fallback may be migration-only and broad.
+       Risk: acceptable table-position only.
+       Future fix: keep position in the player-game view; show unavailable if the fallback becomes slow or incomplete.
+
+     - Round High Scores / PB/WR fallback merges
+       Block/helper: openRoundHighScoresDialog_v85(), mergeSavedGameTies_v85(), mergeCloudThrowRows_v85().
+       UI: Round High Scores, WR/PB holder/tie displays.
+       Type: record table fallback, not a rank label, but uses browser-side best/tie reconstruction.
+       Source used: v_round_high_scores_modal preferred; fallback merges PB/GR snapshot, saved games, and throw rows.
+       Completeness: preferred view is DB-derived; fallback scans broad browser-visible history/throws.
+       Risk: needs DB view/RPC.
+       Future fix: make v_round_high_scores_modal carry all holder/tie/darts detail needed by the modal and remove browser history merge fallbacks.
+
+     - Top 50 Scores legacy row builders
+       Block/helper: older Fix99/Fix100 playerRows()/gamesFor() helpers; active canonical Top 50 uses @CANONICAL:TOP_50_SCORES.
+       UI: legacy Top 50 paths if directly invoked by old helpers.
+       Type: table-position score rank.
+       Source used: active canonical uses v_top50_scores_official/practice/turbo; legacy helpers compute from games rows.
+       Completeness: canonical DB views are complete for the modal; legacy helpers are browser-visible.
+       Risk: legacy/dead path if canonical ownership remains intact.
+       Future fix: keep legacy helpers routed away from the modal; remove once search proves no callers remain.
+
+     - High Score League row positions
+       Block/helper: openHighScoreLeagueDialog() active Fix100 path.
+       UI: High Score League table # column.
+       Type: cross-player PB table-position rank.
+       Source used: Official uses v_high_score_league_official_from_games_clean; Turbo fails closed until a clean Turbo view exists.
+       Completeness: Official DB-derived clean view; saved-player filtering remains browser-side display filtering.
+       Risk: Turbo HSL still needs DB view/RPC.
+       Future fix: add v_high_score_league_turbo app-facing ranked view with saved-player eligibility.
+
+     - Premier League row positions
+       Block/helper: Fix136 officialRows()/aggregate().
+       UI: Premier League period tables # column.
+       Type: league table-position rank by selected period.
+       Source used: official game rows aggregated in browser.
+       Completeness: browser-visible official rows; period/min-game rule is browser-side.
+       Risk: needs DB view/RPC.
+       Future fix: add period-aware Premier League ranked view/RPC that accepts period/filter or returns canonical period buckets.
+
+     - Streak League row positions
+       Block/helper: openStreakLeagueDialog() render().
+       UI: Streak League # column.
+       Type: table-position rank for selected streak metric/mode.
+       Source used: v_player_target_streaks DB-derived rows; browser applies sort/tie-breakers for display.
+       Completeness: complete if the view returns all mode rows.
+       Risk: acceptable table-position only.
+       Future fix: optional ranked wrapper view if server-side row position is desired.
+
+     - Tournament seeding monthly Premier rank
+       Block/helper: getMonthlyPremierRankMap() in tournament setup.
+       UI: tournament seed ordering / "MONTHLY PL" metadata.
+       Type: monthly league rank used for tournament seeding.
+       Source used: getGamesForMode('official') and browser aggregation/dense rank for current month.
+       Completeness: browser-visible official rows; affects tournament setup rather than a read-only table.
+       Risk: needs DB view/RPC.
+       Future fix: add v_monthly_premier_rankings or an RPC for tournament seeding, with month/timezone and saved-player rules defined server-side.
+
+     Cloud init + guards
+       - ensureCloudInit(): creates window.sb client if missing; sets cloud status chip
+       - CLOUD_TABLE_MISSING + cloudMarkTableMissing(): disables missing tables/views safely
+       - READS_CLOUD_ONLY=true is treated as "truth mode": localStorage is cache only
+
+     Cloud reads (roots)
+       - cloudFetchAllGamesAsLocal()
+       - cloudFetchLatestGamesAsLocal(limit)
+       - ((typeof cloudFetchVisibleGamesSinceAsLocal==='function')?cloudFetchVisibleGamesSinceAsLocal:cloudFetchGamesSinceAsLocal)(sinceIso, limit)
+       - cloudFetchAllMatchesAsLocal()
+       - getGamesForMode(mode) [cloud-only override + stable de-dupe]
+       - getMatchesOfficial() [cloud-only override + stable de-dupe]
+       - computePlayerWindowStatsAsync(playerName, mode) [merges sources; local is neutralised under READS_CLOUD_ONLY]
+
+     Cloud writes (observed)
+       - cloudInsertHighScore(), cloudInsertHighScoreIfMissing()
+       - cloudDeleteGameCascade(g)
+       - recoverHighScoresFromCloudWindow(hours)
+
+     Runtime state stores
+       - In-memory: state (game engine), LiveV2 runtime UI state
+       - LocalStorage: cache only; must never diverge from Supabase truth
+
+     Notes (truth rules)
+       - If a view returns 0 rows, diagnose the data pipeline (view/join/filters), not the UI.
+       - Do not add new historical/cross-player aggregation client-side; prefer Postgres views + window functions (dense_rank + explicit tie-breakers).
+<<< PATCH:MOT_SYSTEM_INVENTORY_V1 END -->
+<!-- >>> PATCH:MOT_STAGE2_BASELINE_V1 START
+     STABILITY & REGRESSION BASELINE (read-only)
+
+     Smoke tests (critical flows)
+       A) Boot / navigation
+          1) Load page: no red console errors
+          2) Home (details) renders; primary buttons clickable
+          3) Home -> League/Ranks -> each menu item opens -> Back returns -> Close returns to Home
+
+       B) Match setup -> live game
+          1) Home -> Players (setup)
+          2) Start match -> Game
+          3) Enter a few throws (score buttons) -> round advances
+          4) Open any in-game modal -> Back/Close returns correctly
+
+       C) End-of-match
+          1) Finish match -> Leaderboard
+          2) New match / back to Home works
+
+       D) Data truth checks (when Supabase connected)
+          1) League / High Scores loads deterministically
+          2) If a view returns 0 rows, UI shows an explanatory empty-state (not a broken graph)
+
+     Diagnostics (opt-in)
+       - Enable via: URL ?debug=1 OR localStorage.SQ_DEBUG='1'
+       - Helpers: window.sqGetDiagnostics(), window.sqClearDiagnostics()
+       - Captures: window.error + unhandledrejection + lightweight event marks
+<<< PATCH:MOT_STAGE2_BASELINE_V1 END -->
+
+<!-- >>> PATCH:MOT_STAGE3_IA_PLAN_V1 START
+     INFORMATION ARCHITECTURE (IA) + NAVIGATION PLAN (read-only)
+
+     Goals
+       - Clear top-level destinations: Home, Players/Match, Live Game, Stats, League, Admin
+       - Consistent Back vs Close semantics in every modal:
+           Back  = previous modal/menu within the same task
+           Close = exit task and return to the screen that launched the task (Home or Game)
+       - Always-available navigation entrypoint on every screen (Home + Game + Leaderboard)
+
+     Proposed menu structure (Main Menu)
+       - New Game (Home)
+       - Player Stats (Select Player -> Player Hub)
+       - League & Rankings
+       - Admin (if enabled)
+       - Resume Game (only when in-game)
+
+     Modal stack rules (standard)
+       - Only ONE modal receives focus at a time (focus trap)
+       - ESC closes the top-most modal (managed stack only)
+       - Overlay click closes top-most modal (managed stack only)
+       - Back pops one level; Close clears the task and returns to origin
+
+     Implementation approach (incremental)
+       Stage 3A: add a managed modal stack + Main Menu modal (no rewrites)
+       Stage 3B: wire an existing/optional MENU button on each screen to open Main Menu
+       Stage 3C: gradually migrate legacy (hidden) modals to the managed pattern where safe
+<<< PATCH:MOT_STAGE3_IA_PLAN_V1 END -->
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+<!-- ===== @SEC:JS:BOOT ===== -->
+<script defer src="https://cdn.jsdelivr.net/npm
+=== END ===
+
+=== pstats occurrence 2 chars 23941:55941 ===
+s is a map only:
+     do not create browser fallbacks for ranked/historical stats unless explicitly documented.
+
+     - games
+       Used by: gameplay cloud load/save/archive/purge, normalized game fetchers, Player Stats profile fallback aggregates,
+                PB/WR admin snapshots, legacy league/high-score paths.
+       Required columns visible in code: id, created_at, archived_at, state, totals, match_id, game_number, finished, mode.
+       Missing-data behaviour: cloud read errors surface through callers or leave the relevant UI empty/unavailable.
+       Browser role: allowed to normalize/load gameplay records; should not be used for new ranked/stat history aggregation.
+       Materialized/refresh: table, no refresh.
+
+     - v_games_visible
+       Used by: Home Live Updates ticker visible-game fetchers.
+       Required columns visible in code: id, created_at, archived_at, state, totals, match_id, game_number.
+       Missing-data behaviour: fetch throws; ticker/start screen remains usable via caller guards.
+       Browser role: display/delta-load visible games only.
+       Materialized/refresh: needs verification.
+
+     - matches
+       Used by: cloudFetchAllMatchesAsLocal(), getMatchesOfficial().
+       Required columns visible in code: not fully visible in this inventory block; needs verification.
+       Missing-data behaviour: cloud probe marks failure/missing; match-dependent UI degrades.
+       Browser role: display/load match metadata only.
+       Materialized/refresh: table, no refresh.
+
+     - high_scores_sp / high_scores
+       Used by: official/practice high-score storage, legacy latest/high-score recovery paths.
+       Required columns visible in code: player_id, name, score, ts, game_id.
+       Missing-data behaviour: guarded by cloud probes/table-missing map; affected UI shows empty/unavailable.
+       Browser role: display/recover stored high scores; do not derive new ranked leagues from partial UI state.
+       Materialized/refresh: table or table|view depending deployment; needs verification.
+
+     - high_score_league_official
+       Used by: Home High Score League mini card.
+       Required columns visible in code: player, best_score, best_ts.
+       Missing-data behaviour: silent catch; home remains usable, card can show no data.
+       Browser role: display already-ranked/aggregated rows only.
+       Materialized/refresh: needs verification.
+
+     - v_power_rankings_last56_official_clean / v_power_rankings_last56_turbo_clean / v_power_rankings_last56_practice_clean
+       Used by: Home Power Rankings, Player Stats hero current Power Rank, Power Rankings modal/source.
+       Required columns visible in code: player, rounds_used, total_points, avg_per_round, last_played_at.
+       Missing-data behaviour: warnings/unavailable UI; active ranking fails closed if the clean view is missing or empty.
+       Browser role: display/filter DB-derived current rankings; browser applies saved-player and active-14-day filters where coded.
+       Materialized/refresh: needs verification.
+
+     - v_power_rank_last56_ranked
+       Used by: not referenced in this file as of this inventory.
+       Required columns visible in code: none.
+       Missing-data behaviour: n/a.
+       Browser role: n/a.
+       Materialized/refresh: n/a.
+
+     - v_top50_scores_official
+       Used by: canonical Top 50 Scores Official tab.
+       Required columns visible in code: player_name, score, rounds, avg_round, ts.
+       Missing-data behaviour: Top 50 modal shows "Required Supabase view/data source is missing or empty."
+       Browser role: display DB-derived Top 50 rows only; no game-history reconstruction.
+       Materialized/refresh: needs verification.
+
+     - v_top50_scores_practice
+       Used by: canonical Top 50 Scores Practice tab.
+       Required columns visible in code: player_name, score, rounds, avg_round, ts.
+       Missing-data behaviour: Top 50 modal shows "Required Supabase view/data source is missing or empty."
+       Browser role: display DB-derived Top 50 rows only.
+       Materialized/refresh: needs verification.
+
+     - v_round_high_scores_modal
+       Used by: Round High Scores modal and PB/WR admin enrichment.
+       Required columns visible in code: round_key, wr, darts, holder, tie_idx; other modal paths may select *.
+       Missing-data behaviour: modal/admin code shows no rows or falls back where guarded.
+       Browser role: display/enrich DB-derived round records; avoid inventing WR/PB rows.
+       Materialized/refresh: needs verification.
+
+     - v_pb_by_player_round
+       Used by: Live V2 PB edging, PB/GR admin, player/round record snapshots.
+       Required columns visible in code: bucket_key, round_key, pb_points; comments also mention player, cat, val, game_id, ridx, ts.
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived PB records; limited snapshot merging only in existing code.
+       Materialized/refresh: needs verification.
+
+     - v_wr_by_round
+       Used by: Live V2 WR edging, PB/GR admin, round record snapshots.
+       Required columns visible in code: round_key, wr_points; comments also mention cat, val, player, game_id, ridx, ts.
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived WR records.
+       Materialized/refresh: needs verification.
+
+     - v_player_games_union_visible
+       Used by: TABLE_PLAYER_GAMES / player stats windows contract.
+       Required columns visible in code: not fully visible at reference point; needs verification.
+       Missing-data behaviour: cloud probe marks failure/missing; stats windows should surface empty/unavailable states.
+       Browser role: display/limited player game windows; avoid new full-history ranking aggregation.
+       Materialized/refresh: needs verification.
+
+     - v_player_best_official_ranked
+       Used by: Player Stats profile Quick Stats / Highest Score rank.
+       Required columns visible in code: player_name, best_score, best_score_pos.
+       Missing-data behaviour: warning logged; profile falls back to existing score values without DB rank.
+       Browser role: display DB-derived rank only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_targets
+       Used by: Player Stats profile Targets card.
+       Required columns visible in code: player_key, favorite_number, favorite_pct, worst_number, worst_pct.
+       Missing-data behaviour: warning logged; card shows placeholder/available existing values.
+       Browser role: display DB-derived recent target summary only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_target_rates
+       Used by: Player Stats profile top/bottom target-rate detail (Favourite/Weakest Numbers top-3).
+       Required columns visible in code: player_key, target_n, hit_pct, throws.
+       Missing-data behaviour: silently treated as optional; card falls back to v_player_last30_targets fav/worst.
+       Browser role: display DB-derived recent target rates only.
+       Source: plain VIEW over throw_events_v + round_hit_counts_v, same last-30-games window as
+               v_player_last30_targets (its per-target CTE, un-collapsed). Always live, not materialized.
+
+     - v_player_target_streaks
+       Used by: Player Stats Quick Stats Dart/Round Streak, Streak League.
+       Required columns visible in code: player_key, player_name, mode_key, mode_label, dart_streak, round_streak,
+                                  source_games, last_played_at.
+       Missing-data behaviour: Streak League shows required-view missing/empty state; Player Stats shows placeholder if unavailable.
+       Browser role: display DB-derived streaks/ranks only; do not calculate streaks from full history in browser.
+       Materialized/refresh: intended DB-derived streak view; materialized/refresh status needs verification in this file.
+
+     - v_player_target_hit_pct
+       Used by: Target Hit % heatmap/table, Target Hit % G Rank lookup.
+       Required columns visible in code: player_key, player_name, target_key, target_label, target_sort, throws, hits,
+                                  hit_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Hit % unavailable message; SPIDER/PROGRESS disabled until rows exist.
+       Browser role: display DB-derived aggregate hit rates; browser may compute personal rank from returned 14 rows only.
+       Materialized/refresh: wrapper/view status needs verification; do not infer from points.
+
+     - v_player_target_points_pct
+       Used by: Target Points % table.
+       Required columns visible in code: player_key, player_name, target_number, target_label, throws, actual_points,
+                                  max_points, points_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Points % unavailable message; actions disabled until rows exist.
+       Browser role: display DB-derived aggregate points efficiency; no full-history reconstruction.
+       Materialized/refresh: wrapper/view status needs verification.
+
+     - v_player_target_hit_progress
+       Used by: Target Hit % Progress graph.
+       Required columns visible in code: player_key, player_name, game_id, created_at, target_key, target_label,
+                                  target_sort, throws, hits, hit_pct.
+       Missing-data behaviour: progress popup shows "Progress data is not available yet..."
+       Browser role: display DB-derived per-game/target progression rows; graph transforms only returned percentages.
+       Materialized/refresh: likely app-facing view; materialized backing/refresh needs verification.
+
+     - v_player_target_points_progress
+       Used by: Target Points % Progress graph.
+       Required columns visible in code: player_key, player_name, game_id, created_at, target_key, target_label,
+                                  target_sort, target_number, round_score, max_round_score, round_pct.
+       Missing-data behaviour: progress popup shows "Progress data is not available yet..."
+       Browser role: display DB-derived per-game/target progression rows; graph maps returned percentages only.
+       Materialized/refresh: likely app-facing view; materialized backing/refresh needs verification.
+
+     - throw_events_v
+       Used by: throw-level probes/helpers and legacy/diagnostic throw truth paths.
+       Required columns visible in code/comments: game_id, created_at, player_name, round_index, dart_number, dart_index,
+                                             target, bucket_key, points, ring, hit_number, hit, kind, bull.
+       Missing-data behaviour: warnings; some legacy helpers fall back to game boards. Do not use fallback for Target Hit % accuracy.
+       Browser role: diagnostic/source-truth reads only unless a DB view depends on it; avoid client full-history reconstruction.
+       Materialized/refresh: view; refresh status needs verification.
+
+     - player_dtb_bucket_ranks_v
+       Used by: D/T/B Hit % game-rank helpers.
+       Required columns visible in code: target_round, d_game_rank, t_game_rank, player_name.
+       Missing-data behaviour: rank helpers fall back to unavailable rank display.
+       Browser role: display DB-derived D/T rank columns only.
+       Materialized/refresh: needs verification.
+
+     @MODE:CLASSIFICATION_RULES
+     Production mode ownership for Official / Turbo / Practice. Official filters must exclude Turbo before accepting
+     a row as official; is_practice=false alone is not sufficient.
+
+     - turbo
+       Explicit Turbo rows are identified by mode/gameMode/game_mode/type='turbo', gameVariant='turbo',
+       Tournament Turbo tournamentType='turbo',
+       strictTimer=true, throwLimitSeconds=20, or startTarget='17' in the game row, state, match, or rules object.
+       Legacy quarantine: older broken saves may be labelled official while rounds 10-16 are unplayed and rounds
+       17-20/D/T/B contain play; browser fallback filters treat that board shape as Turbo to stop official leakage.
+       Future Match Play Turbo writes must include state.gameVariant='turbo', state.mode='turbo',
+       state.gameMode='turbo', strictTimer=true, throwLimitSeconds=20, and startTarget='17'.
+       Future Tournament Turbo writes may also use tournamentType='turbo' where tournament logic requires it.
+
+     - practice
+       Explicit practice/unofficial/solo rows, is_practice=true rows, forced-practice match rows, or single-player rows.
+       Turbo is never classified as Practice.
+
+     - official
+       Normal saved-player match rows only: not Turbo, not Practice, and at least two players.
+       Supabase official views should use the same Turbo exclusion rule, not only match_id/is_practice checks.
+
+     @RANKING:TERMINOLOGY_SOURCE_MAP
+     Production-facing rank labels observed in this file. This is a terminology/source map only:
+     do not change rank formulas or fetch paths without a scoped ranking task.
+
+     - Home Power Rankings / Power Rankings popup
+       UI label: Power Rankings, Power Rank, #.
+       Blocks/helpers: home mini Power Rankings, getOfficialPowerRows(), openPowerLeagueDialog().
+       Source: v_power_rankings_last56_official_clean for official/current; Turbo/Practice use mode-specific clean views.
+       Meaning: Power Rank is current active ranking metric; # is row position in the current filtered table.
+       Clarity: clear.
+
+     - Player Stats profile hero
+       UI label: Power Rank.
+       Block/helper: openPlayerStatsDialog() profile card render.
+       Source: v_power_rankings_last56_official_clean, filtered to saved players and the active 14-day current rule.
+       Meaning: current active Power Rank value and current active table position.
+       Clarity: clear.
+
+     - Player Stats profile Quick Stats
+       UI labels: Highest Score, Current Power Rank #.
+       Block/helper: openPlayerStatsDialog() Quick Stats card.
+       Sources: v_player_best_official_ranked for Highest Score rank; current Power Rank position is from v_power_rankings_last56_official_clean.
+       Meaning: Highest Score rank is historical PB table position; Current Power Rank # is not historical peak.
+       Clarity: label-only cleanup applied to avoid presenting current position as Highest/Peak Power Rank.
+       Needs follow-up: add a DB-derived historical Peak/Highest Power Rank source before showing that historical label again.
+
+     - Live V2 game info panel
+       UI labels: POS, P RANK, G RANK.
+       Block/helper: liveV2Render()/rank fill block.
+       Source: current game state for POS; sq_rank_score RPC is the only accepted P/G rank source.
+       Meaning: POS is current-game table position; P Rank is within-player historical score comparison; G Rank is cross-player historical score comparison.
+       Clarity: labels are clear in the live-game info table.
+       Fail-closed rule: if sq_rank_score is unavailable, P/G Rank shows unavailable instead of browser dense-rank fallback.
+
+     - Target Hit %
+       UI labels: P Rank, G Rank.
+       Block/helper: @CANONICAL:PLAYER_TARGET_HIT_HEATMAP, applyTargetHitPersonalRanks(), fetchTargetHitGlobalRanks().
+       Source: v_player_target_hit_pct aggregate rows.
+       Meaning: P Rank is within-player target comparison; G Rank is cross-player comparison for the same target.
+       Clarity: clear; no raw history reconstruction.
+
+     - Target Points % and Target Hit/Points Progress
+       UI label: no production rank label observed in current canonical target metric/progress popups.
+       Source: v_player_target_points_pct, v_player_target_points_progress, v_player_target_hit_progress.
+       Meaning: n/a for ranks.
+       Clarity: no rank terminology issue observed.
+
+     - D/T/B Hit % popups
+       UI labels: P Rank, My Rank, Game Rank.
+       Blocks/helpers: openPlayerDTBPctDialog(), openPlayerDTBCombinedPctDialog().
+       Source: within-player D/T rows for personal/my ranks; player_dtb_bucket_ranks_v for Game Rank when available.
+       Meaning: P/My Rank is within-player comparison; Game Rank is cross-player comparison.
+       Clarity: label-only cleanup applied to the simple D/T/B table's generic Rank header.
+
+     - League & Rankings popups
+       UI labels: #, Power Rank, Streak.
+       Blocks/helpers: Top 50 Scores, High Score League, Streak League, Premier League.
+       Sources: v_top50_scores_official/practice/turbo, high-score/player game helpers, v_player_target_streaks, official game rows.
+       Meaning: # is row position in that table/filter; Power Rank is the current Power Rankings metric; Streak is DB-derived streak value.
+       Clarity: table-context rank labels are clear.
+
+     - Round High Scores / PB / WR / Latest Matches
+       UI labels: Pos, PB, WR.
+       Blocks/helpers: Round High Scores modal, Latest Matches rows, Live V2 PB/WR helpers.
+       Sources: v_round_high_scores_modal, v_pb_by_player_round, v_wr_by_round, row-level position fields/helpers.
+       Meaning: Pos is row/table position for the displayed score context; PB/WR are records, not rank labels.
+       Clarity: generally clear; needs verification for every legacy Latest Matches branch before broad copy changes.
+
+     @RANKING:BROWSER_FALLBACK_AUDIT
+     Browser-side rank/position calculations observed in this file. This is an audit only:
+     do not remove fallbacks or change formulas without a scoped data-source replacement task.
+
+     - Live V2 POS
+       Block/helper: liveV2Render() info panel.
+       UI: live game info table POS row.
+       Type: table-position rank inside the current in-progress game.
+       Source used: current in-memory game totals only.
+       Completeness: complete for the visible current game.
+       Risk: acceptable table-position only.
+       Future fix: none required; keep separate from historical P/G ranks.
+
+     - Live V2 P RANK / G RANK fail-closed path
+       Block/helper: liveV2Render() __sqUpdateRanks().
+       UI: live game info table P RANK and G RANK rows.
+       Type: personal rank and global/cross-player rank from DB RPC only.
+       Source used: sq_rank_score RPC only; browser dense-rank fallback is disabled.
+       Completeness: DB-derived when RPC succeeds; unavailable otherwise.
+       Risk: safe fail-closed.
+       Future fix: keep sq_rank_score maintained or replace with an equivalent ranked-score RPC.
+
+     - getOfficialPowerRows() DB-view fallback
+       Block/helper: shared getOfficialPowerRows().
+       UI: Home Power Rankings and callers using shared current official rows.
+       Type: current active Power Rank table rows.
+       Source used: v_power_rankings_last56_official_clean only.
+       Completeness: DB-derived mode-classified rows.
+       Risk: safe fail-closed if the clean view is missing or empty.
+       Future fix: materialize/refresh the clean view if performance requires it.
+
+     - Power Rankings popup non-official rows
+       Block/helper: Fix132 computePowerRows(mode).
+       UI: Power Rankings popup Turbo/Practice tabs, and official if the official view path fails.
+       Type: current Power Rank table rows by mode.
+       Source used: v_power_rankings_last56_official_clean, v_power_rankings_last56_turbo_clean, v_power_rankings_last56_practice_clean.
+       Completeness: DB-derived mode-classified rows.
+       Risk: safe fail-closed if the relevant clean view is missing or empty.
+       Future fix: materialize/refresh mode-specific clean views if performance requires it.
+
+     - Player Stats profile current Power Rank fallback
+       Block/helper: openPlayerStatsDialog() "Current Power Rank" aggregation block.
+       UI: Player Stats profile hero/Quick Stats current Power Rank position.
+       Type: current active Power Rank position fallback.
+       Source used: dbPower from v_power_rankings_last56_official_clean is the displayed truth; older block still has broad local aggregate code for non-authoritative profile details.
+       Completeness: displayed current Power Rank is DB-derived.
+       Risk: needs follow-up cleanup to retire older non-displayed power-rank aggregation.
+       Future fix: keep current Power Rank display bound to the clean DB view only.
+
+     - Player Stats profile best-score fallback ranking
+       Block/helper: openPlayerStatsDialog() bestByPlayer/bestList.
+       UI: legacy support for Highest Score position; current display prefers v_player_best_official_ranked best_score_pos.
+       Type: historical PB leaderboard position fallback.
+       Source used: v_player_best_official_ranked preferred; fallback scans loaded games/totals.
+       Completeness: preferred view is DB-derived; fallback is browser-visible game data.
+       Risk: needs DB view/RPC if still active.
+       Future fix: keep v_player_best_official_ranked as the only PB rank source and show unavailable if missing.
+
+     - Target Hit % P Rank
+       Block/helper: applyTargetHitPersonalRanks().
+       UI: Target Hit % table P Rank.
+       Type: within-player target comparison.
+       Source used: selected player's 14 rows from v_player_target_hit_pct.
+       Completeness: complete for the selected player's target rows when the view returns rows.
+       Risk: safe.
+       Future fix: none required unless moving personal_rank into a ranked view for consistency.
+
+     - Target Hit % G Rank
+       Block/helper: fetchTargetHitGlobalRanks().
+       UI: Target Hit % table G Rank.
+       Type: global/cross-player target rank from aggregate rows.
+       Source used: v_player_target_hit_pct for matching target keys; optional saved-player filter from cloudListPlayers().
+       Completeness: DB-derived aggregate rows, but ranking is still performed in the browser over a limited select.
+       Risk: safe short-term; needs DB view/RPC for stricter production truth and eligibility control.
+       Future fix: add v_player_target_hit_ranked with personal_rank and game_rank/window-function columns.
+
+     - D/T/B Hit % personal ranks
+       Block/helper: openPlayerDTBPctDialog(), openPlayerDTBCombinedPctDialog().
+       UI: D/T/B Hit % P/My Rank columns.
+       Type: within-player comparison.
+       Source used: existing D/T/B rows; some legacy metric rows are built from throw/game helpers.
+       Completeness: rank is personal-only, but source path may depend on legacy broad fetches.
+       Risk: acceptable for personal rank; needs DB view/RPC for the underlying metric path if promoted.
+       Future fix: move D/T/B personal rank to a DB-derived target summary view if this popup remains production-facing.
+
+     - D/T/B Hit % Game Rank
+       Block/helper: openPlayerDTBCombinedPctDialog() game-rank helpers.
+       UI: D/T/B Hit % Game Rank columns.
+       Type: global/cross-player rank.
+       Source used: player_dtb_bucket_ranks_v when available.
+       Completeness: DB-derived when view exists; unavailable state when missing.
+       Risk: safe.
+       Future fix: document/refresh the backing view and eligibility/minimum-throw rule.
+
+     - Latest Matches Pos fallback
+       Block/helper: fetchLatestMatchesRows().
+       UI: Player Stats Latest Matches position column.
+       Type: per-game table-position rank.
+       Source used: TABLE_PLAYER_GAMES/player_games_union position preferred; fallback reads games rows and ranks totals within each complete game.
+       Completeness: complete for each loaded game row; fallback may be migration-only and broad.
+       Risk: acceptable table-position only.
+       Future fix: keep position in the player-game view; show unavailable if the fallback becomes slow or incomplete.
+
+     - Round High Scores / PB/WR fallback merges
+       Block/helper: openRoundHighScoresDialog_v85(), mergeSavedGameTies_v85(), mergeCloudThrowRows_v85().
+       UI: Round High Scores, WR/PB holder/tie displays.
+       Type: record table fallback, not a rank label, but uses browser-side best/tie reconstruction.
+       Source used: v_round_high_scores_modal preferred; fallback merges PB/GR snapshot, saved games, and throw rows.
+       Completeness: preferred view is DB-derived; fallback scans broad browser-visible history/throws.
+       Risk: needs DB view/RPC.
+       Future fix: make v_round_high_scores_modal carry all holder/tie/darts detail needed by the modal and remove browser history merge fallbacks.
+
+     - Top 50 Scores legacy row builders
+       Block/helper: older Fix99/Fix100 playerRows()/gamesFor() helpers; active canonical Top 50 uses @CANONICAL:TOP_50_SCORES.
+       UI: legacy Top 50 paths if directly invoked by old helpers.
+       Type: table-position score rank.
+       Source used: active canonical uses v_top50_scores_official/practice/turbo; legacy helpers compute from games rows.
+       Completeness: canonical DB views are complete for the modal; legacy helpers are browser-visible.
+       Risk: legacy/dead path if canonical ownership remains intact.
+       Future fix: keep legacy helpers routed away from the modal; remove once search proves no callers remain.
+
+     - High Score League row positions
+       Block/helper: openHighScoreLeagueDialog() active Fix100 path.
+       UI: High Score League table # column.
+       Type: cross-player PB table-position rank.
+       Source used: Official uses v_high_score_league_official_from_games_clean; Turbo fails closed until a clean Turbo view exists.
+       Completeness: Official DB-derived clean view; saved-player filtering remains browser-side display filtering.
+       Risk: Turbo HSL still needs DB view/RPC.
+       Future fix: add v_high_score_league_turbo app-facing ranked view with saved-player eligibility.
+
+     - Premier League row positions
+       Block/helper: Fix136 officialRows()/aggregate().
+       UI: Premier League period tables # column.
+       Type: league table-position rank by selected period.
+       Source used: official game rows aggregated in browser.
+       Completeness: browser-visible official rows; period/min-game rule is browser-side.
+       Risk: needs DB view/RPC.
+       Future fix: add period-aware Premier League ranked view/RPC that accepts period/filter or returns canonical period buckets.
+
+     - Streak League row positions
+       Block/helper: openStreakLeagueDialog() render().
+       UI: Streak League # column.
+       Type: table-position rank for selected streak metric/mode.
+       Source used: v_player_target_streaks DB-derived rows; browser applies sort/tie-breakers for display.
+       Completeness: complete if the view returns all mode rows.
+       Risk: acceptable table-position only.
+       Future fix: optional ranked wrapper view if server-side row position is desired.
+
+     - Tournament seeding monthly Premier rank
+       Block/helper: getMonthlyPremierRankMap() in tournament setup.
+       UI: tournament seed ordering / "MONTHLY PL" metadata.
+       Type: monthly league rank used for tournament seeding.
+       Source used: getGamesForMode('official') and browser aggregation/dense rank for current month.
+       Completeness: browser-visible official rows; affects tournament setup rather than a read-only table.
+       Risk: needs DB view/RPC.
+       Future fix: add v_monthly_premier_rankings or an RPC for tournament seeding, with month/timezone and saved-player rules defined server-side.
+
+     Cloud init + guards
+       - ensureCloudInit(): creates window.sb client if missing; sets cloud status chip
+       - CLOUD_TABLE_MISSING + cloudMarkTableMissing(): disables missing tables/views safely
+       - READS_CLOUD_ONLY=true is treated as "truth mode": localStorage is cache only
+
+     Cloud reads (roots)
+       - cloudFetchAllGamesAsLocal()
+       - cloudFetchLatestGamesAsLocal(limit)
+       - ((typeof cloudFetchVisibleGamesSinceAsLocal==='function')?cloudFetchVisibleGamesSinceAsLocal:cloudFetchGamesSinceAsLocal)(sinceIso, limit)
+       - cloudFetchAllMatchesAsLocal()
+       - getGamesForMode(mode) [cloud-only override + stable de-dupe]
+       - getMatchesOfficial() [cloud-only override + stable de-dupe]
+       - computePlayerWindowStatsAsync(playerName, mode) [merges sources; local is neutralised under READS_CLOUD_ONLY]
+
+     Cloud writes (observed)
+       - cloudInsertHighScore(), cloudInsertHighScoreIfMissing()
+       - cloudDeleteGameCascade(g)
+       - recoverHighScoresFromCloudWindow(hours)
+
+     Runtime state stores
+       - In-memory: state (game engine), LiveV2 runtime UI state
+       - LocalStorage: cache only; must never diverge from Supabase truth
+
+     Notes (truth rules)
+       - If a view returns 0 rows, diagnose the data pipeline (view/join/filters), not the UI.
+       - Do not add new historical/cross-player aggregation client-side; prefer Postgres views + window functions (dense_rank + explicit tie-breakers).
+<<< PATCH:MOT_SYSTEM_INVENTORY_V1 END -->
+<!-- >>> PATCH:MOT_STAGE2_BASELINE_V1 START
+     STABILITY & REGRESSION BASELINE (read-only)
+
+     Smoke tests (critical flows)
+       A) Boot / navigation
+          1) Load page: no red console errors
+          2) Home (details) renders; primary buttons clickable
+          3) Home -> League/Ranks -> each menu item opens -> Back returns -> Close returns to Home
+
+       B) Match setup -> live game
+          1) Home -> Players (setup)
+          2) Start match -> Game
+          3) Enter a few throws (score buttons) -> round advances
+          4) Open any in-game modal -> Back/Close returns correctly
+
+       C) End-of-match
+          1) Finish match -> Leaderboard
+          2) New match / back to Home works
+
+       D) Data truth checks (when Supabase connected)
+          1) League / High Scores loads deterministically
+          2) If a view returns 0 rows, UI shows an explanatory empty-state (not a broken graph)
+
+     Diagnostics (opt-in)
+       - Enable via: URL ?debug=1 OR localStorage.SQ_DEBUG='1'
+       - Helpers: window.sqGetDiagnostics(), window.sqClearDiagnostics()
+       - Captures: window.error + unhandledrejection + lightweight event marks
+<<< PATCH:MOT_STAGE2_BASELINE_V1 END -->
+
+<!-- >>> PATCH:MOT_STAGE3_IA_PLAN_V1 START
+     INFORMATION ARCHITECTURE (IA) + NAVIGATION PLAN (read-only)
+
+     Goals
+       - Clear top-level destinations: Home, Players/Match, Live Game, Stats, League, Admin
+       - Consistent Back vs Close semantics in every modal:
+           Back  = previous modal/menu within the same task
+           Close = exit task and return to the screen that launched the task (Home or Game)
+       - Always-available navigation entrypoint on every screen (Home + Game + Leaderboard)
+
+     Proposed menu structure (Main Menu)
+       - New Game (Home)
+       - Player Stats (Select Player -> Player Hub)
+       - League & Rankings
+       - Admin (if enabled)
+       - Resume Game (only when in-game)
+
+     Modal stack rules (standard)
+       - Only ONE modal receives focus at a time (focus trap)
+       - ESC closes the top-most modal (managed stack only)
+       - Overlay click closes top-most modal (managed stack only)
+       - Back pops one level; Close clears the task and returns to origin
+
+     Implementation approach (incremental)
+       Stage 3A: add a managed modal stack + Main Menu modal (no rewrites)
+       Stage 3B: wire an existing/optional MENU button on each screen to open Main Menu
+       Stage 3C: gradually migrate legacy (hidden) modals to the managed pattern where safe
+<<< PATCH:MOT_STAGE3_IA_PLAN_V1 END -->
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+<!-- ===== @SEC:JS:BOOT ===== -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- ===== @SEC:CSS:TOKENS ===== -->
+<style>
+/* ===== @CSS:TOKENS | CSS: THEME TOKENS ===== */
+:root{
+  /* Theme */
+  --bg:#0f1220;
+  --card:#171a2b;
+  --ink:#e7e9f5;
+  --muted:#a8acc3;
+  --accent:#7bdcff;
+  --accent-2:#8cff9e;
+  --leader-lime:#9BFF2E;
+  --danger:#ff6b6b;
+  --warn:#ffcc66;
+  --good:#7fffd4;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+=== END ===
+
+=== pstats occurrence 3 chars 29604:61604 ===
+Missing-data behaviour: cloud probe marks failure/missing; stats windows should surface empty/unavailable states.
+       Browser role: display/limited player game windows; avoid new full-history ranking aggregation.
+       Materialized/refresh: needs verification.
+
+     - v_player_best_official_ranked
+       Used by: Player Stats profile Quick Stats / Highest Score rank.
+       Required columns visible in code: player_name, best_score, best_score_pos.
+       Missing-data behaviour: warning logged; profile falls back to existing score values without DB rank.
+       Browser role: display DB-derived rank only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_targets
+       Used by: Player Stats profile Targets card.
+       Required columns visible in code: player_key, favorite_number, favorite_pct, worst_number, worst_pct.
+       Missing-data behaviour: warning logged; card shows placeholder/available existing values.
+       Browser role: display DB-derived recent target summary only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_target_rates
+       Used by: Player Stats profile top/bottom target-rate detail (Favourite/Weakest Numbers top-3).
+       Required columns visible in code: player_key, target_n, hit_pct, throws.
+       Missing-data behaviour: silently treated as optional; card falls back to v_player_last30_targets fav/worst.
+       Browser role: display DB-derived recent target rates only.
+       Source: plain VIEW over throw_events_v + round_hit_counts_v, same last-30-games window as
+               v_player_last30_targets (its per-target CTE, un-collapsed). Always live, not materialized.
+
+     - v_player_target_streaks
+       Used by: Player Stats Quick Stats Dart/Round Streak, Streak League.
+       Required columns visible in code: player_key, player_name, mode_key, mode_label, dart_streak, round_streak,
+                                  source_games, last_played_at.
+       Missing-data behaviour: Streak League shows required-view missing/empty state; Player Stats shows placeholder if unavailable.
+       Browser role: display DB-derived streaks/ranks only; do not calculate streaks from full history in browser.
+       Materialized/refresh: intended DB-derived streak view; materialized/refresh status needs verification in this file.
+
+     - v_player_target_hit_pct
+       Used by: Target Hit % heatmap/table, Target Hit % G Rank lookup.
+       Required columns visible in code: player_key, player_name, target_key, target_label, target_sort, throws, hits,
+                                  hit_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Hit % unavailable message; SPIDER/PROGRESS disabled until rows exist.
+       Browser role: display DB-derived aggregate hit rates; browser may compute personal rank from returned 14 rows only.
+       Materialized/refresh: wrapper/view status needs verification; do not infer from points.
+
+     - v_player_target_points_pct
+       Used by: Target Points % table.
+       Required columns visible in code: player_key, player_name, target_number, target_label, throws, actual_points,
+                                  max_points, points_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Points % unavailable message; actions disabled until rows exist.
+       Browser role: display DB-derived aggregate points efficiency; no full-history reconstruction.
+       Materialized/refresh: wrapper/view status needs verification.
+
+     - v_player_target_hit_progress
+       Used by: Target Hit % Progress graph.
+       Required columns visible in code: player_key, player_name, game_id, created_at, target_key, target_label,
+                                  target_sort, throws, hits, hit_pct.
+       Missing-data behaviour: progress popup shows "Progress data is not available yet..."
+       Browser role: display DB-derived per-game/target progression rows; graph transforms only returned percentages.
+       Materialized/refresh: likely app-facing view; materialized backing/refresh needs verification.
+
+     - v_player_target_points_progress
+       Used by: Target Points % Progress graph.
+       Required columns visible in code: player_key, player_name, game_id, created_at, target_key, target_label,
+                                  target_sort, target_number, round_score, max_round_score, round_pct.
+       Missing-data behaviour: progress popup shows "Progress data is not available yet..."
+       Browser role: display DB-derived per-game/target progression rows; graph maps returned percentages only.
+       Materialized/refresh: likely app-facing view; materialized backing/refresh needs verification.
+
+     - throw_events_v
+       Used by: throw-level probes/helpers and legacy/diagnostic throw truth paths.
+       Required columns visible in code/comments: game_id, created_at, player_name, round_index, dart_number, dart_index,
+                                             target, bucket_key, points, ring, hit_number, hit, kind, bull.
+       Missing-data behaviour: warnings; some legacy helpers fall back to game boards. Do not use fallback for Target Hit % accuracy.
+       Browser role: diagnostic/source-truth reads only unless a DB view depends on it; avoid client full-history reconstruction.
+       Materialized/refresh: view; refresh status needs verification.
+
+     - player_dtb_bucket_ranks_v
+       Used by: D/T/B Hit % game-rank helpers.
+       Required columns visible in code: target_round, d_game_rank, t_game_rank, player_name.
+       Missing-data behaviour: rank helpers fall back to unavailable rank display.
+       Browser role: display DB-derived D/T rank columns only.
+       Materialized/refresh: needs verification.
+
+     @MODE:CLASSIFICATION_RULES
+     Production mode ownership for Official / Turbo / Practice. Official filters must exclude Turbo before accepting
+     a row as official; is_practice=false alone is not sufficient.
+
+     - turbo
+       Explicit Turbo rows are identified by mode/gameMode/game_mode/type='turbo', gameVariant='turbo',
+       Tournament Turbo tournamentType='turbo',
+       strictTimer=true, throwLimitSeconds=20, or startTarget='17' in the game row, state, match, or rules object.
+       Legacy quarantine: older broken saves may be labelled official while rounds 10-16 are unplayed and rounds
+       17-20/D/T/B contain play; browser fallback filters treat that board shape as Turbo to stop official leakage.
+       Future Match Play Turbo writes must include state.gameVariant='turbo', state.mode='turbo',
+       state.gameMode='turbo', strictTimer=true, throwLimitSeconds=20, and startTarget='17'.
+       Future Tournament Turbo writes may also use tournamentType='turbo' where tournament logic requires it.
+
+     - practice
+       Explicit practice/unofficial/solo rows, is_practice=true rows, forced-practice match rows, or single-player rows.
+       Turbo is never classified as Practice.
+
+     - official
+       Normal saved-player match rows only: not Turbo, not Practice, and at least two players.
+       Supabase official views should use the same Turbo exclusion rule, not only match_id/is_practice checks.
+
+     @RANKING:TERMINOLOGY_SOURCE_MAP
+     Production-facing rank labels observed in this file. This is a terminology/source map only:
+     do not change rank formulas or fetch paths without a scoped ranking task.
+
+     - Home Power Rankings / Power Rankings popup
+       UI label: Power Rankings, Power Rank, #.
+       Blocks/helpers: home mini Power Rankings, getOfficialPowerRows(), openPowerLeagueDialog().
+       Source: v_power_rankings_last56_official_clean for official/current; Turbo/Practice use mode-specific clean views.
+       Meaning: Power Rank is current active ranking metric; # is row position in the current filtered table.
+       Clarity: clear.
+
+     - Player Stats profile hero
+       UI label: Power Rank.
+       Block/helper: openPlayerStatsDialog() profile card render.
+       Source: v_power_rankings_last56_official_clean, filtered to saved players and the active 14-day current rule.
+       Meaning: current active Power Rank value and current active table position.
+       Clarity: clear.
+
+     - Player Stats profile Quick Stats
+       UI labels: Highest Score, Current Power Rank #.
+       Block/helper: openPlayerStatsDialog() Quick Stats card.
+       Sources: v_player_best_official_ranked for Highest Score rank; current Power Rank position is from v_power_rankings_last56_official_clean.
+       Meaning: Highest Score rank is historical PB table position; Current Power Rank # is not historical peak.
+       Clarity: label-only cleanup applied to avoid presenting current position as Highest/Peak Power Rank.
+       Needs follow-up: add a DB-derived historical Peak/Highest Power Rank source before showing that historical label again.
+
+     - Live V2 game info panel
+       UI labels: POS, P RANK, G RANK.
+       Block/helper: liveV2Render()/rank fill block.
+       Source: current game state for POS; sq_rank_score RPC is the only accepted P/G rank source.
+       Meaning: POS is current-game table position; P Rank is within-player historical score comparison; G Rank is cross-player historical score comparison.
+       Clarity: labels are clear in the live-game info table.
+       Fail-closed rule: if sq_rank_score is unavailable, P/G Rank shows unavailable instead of browser dense-rank fallback.
+
+     - Target Hit %
+       UI labels: P Rank, G Rank.
+       Block/helper: @CANONICAL:PLAYER_TARGET_HIT_HEATMAP, applyTargetHitPersonalRanks(), fetchTargetHitGlobalRanks().
+       Source: v_player_target_hit_pct aggregate rows.
+       Meaning: P Rank is within-player target comparison; G Rank is cross-player comparison for the same target.
+       Clarity: clear; no raw history reconstruction.
+
+     - Target Points % and Target Hit/Points Progress
+       UI label: no production rank label observed in current canonical target metric/progress popups.
+       Source: v_player_target_points_pct, v_player_target_points_progress, v_player_target_hit_progress.
+       Meaning: n/a for ranks.
+       Clarity: no rank terminology issue observed.
+
+     - D/T/B Hit % popups
+       UI labels: P Rank, My Rank, Game Rank.
+       Blocks/helpers: openPlayerDTBPctDialog(), openPlayerDTBCombinedPctDialog().
+       Source: within-player D/T rows for personal/my ranks; player_dtb_bucket_ranks_v for Game Rank when available.
+       Meaning: P/My Rank is within-player comparison; Game Rank is cross-player comparison.
+       Clarity: label-only cleanup applied to the simple D/T/B table's generic Rank header.
+
+     - League & Rankings popups
+       UI labels: #, Power Rank, Streak.
+       Blocks/helpers: Top 50 Scores, High Score League, Streak League, Premier League.
+       Sources: v_top50_scores_official/practice/turbo, high-score/player game helpers, v_player_target_streaks, official game rows.
+       Meaning: # is row position in that table/filter; Power Rank is the current Power Rankings metric; Streak is DB-derived streak value.
+       Clarity: table-context rank labels are clear.
+
+     - Round High Scores / PB / WR / Latest Matches
+       UI labels: Pos, PB, WR.
+       Blocks/helpers: Round High Scores modal, Latest Matches rows, Live V2 PB/WR helpers.
+       Sources: v_round_high_scores_modal, v_pb_by_player_round, v_wr_by_round, row-level position fields/helpers.
+       Meaning: Pos is row/table position for the displayed score context; PB/WR are records, not rank labels.
+       Clarity: generally clear; needs verification for every legacy Latest Matches branch before broad copy changes.
+
+     @RANKING:BROWSER_FALLBACK_AUDIT
+     Browser-side rank/position calculations observed in this file. This is an audit only:
+     do not remove fallbacks or change formulas without a scoped data-source replacement task.
+
+     - Live V2 POS
+       Block/helper: liveV2Render() info panel.
+       UI: live game info table POS row.
+       Type: table-position rank inside the current in-progress game.
+       Source used: current in-memory game totals only.
+       Completeness: complete for the visible current game.
+       Risk: acceptable table-position only.
+       Future fix: none required; keep separate from historical P/G ranks.
+
+     - Live V2 P RANK / G RANK fail-closed path
+       Block/helper: liveV2Render() __sqUpdateRanks().
+       UI: live game info table P RANK and G RANK rows.
+       Type: personal rank and global/cross-player rank from DB RPC only.
+       Source used: sq_rank_score RPC only; browser dense-rank fallback is disabled.
+       Completeness: DB-derived when RPC succeeds; unavailable otherwise.
+       Risk: safe fail-closed.
+       Future fix: keep sq_rank_score maintained or replace with an equivalent ranked-score RPC.
+
+     - getOfficialPowerRows() DB-view fallback
+       Block/helper: shared getOfficialPowerRows().
+       UI: Home Power Rankings and callers using shared current official rows.
+       Type: current active Power Rank table rows.
+       Source used: v_power_rankings_last56_official_clean only.
+       Completeness: DB-derived mode-classified rows.
+       Risk: safe fail-closed if the clean view is missing or empty.
+       Future fix: materialize/refresh the clean view if performance requires it.
+
+     - Power Rankings popup non-official rows
+       Block/helper: Fix132 computePowerRows(mode).
+       UI: Power Rankings popup Turbo/Practice tabs, and official if the official view path fails.
+       Type: current Power Rank table rows by mode.
+       Source used: v_power_rankings_last56_official_clean, v_power_rankings_last56_turbo_clean, v_power_rankings_last56_practice_clean.
+       Completeness: DB-derived mode-classified rows.
+       Risk: safe fail-closed if the relevant clean view is missing or empty.
+       Future fix: materialize/refresh mode-specific clean views if performance requires it.
+
+     - Player Stats profile current Power Rank fallback
+       Block/helper: openPlayerStatsDialog() "Current Power Rank" aggregation block.
+       UI: Player Stats profile hero/Quick Stats current Power Rank position.
+       Type: current active Power Rank position fallback.
+       Source used: dbPower from v_power_rankings_last56_official_clean is the displayed truth; older block still has broad local aggregate code for non-authoritative profile details.
+       Completeness: displayed current Power Rank is DB-derived.
+       Risk: needs follow-up cleanup to retire older non-displayed power-rank aggregation.
+       Future fix: keep current Power Rank display bound to the clean DB view only.
+
+     - Player Stats profile best-score fallback ranking
+       Block/helper: openPlayerStatsDialog() bestByPlayer/bestList.
+       UI: legacy support for Highest Score position; current display prefers v_player_best_official_ranked best_score_pos.
+       Type: historical PB leaderboard position fallback.
+       Source used: v_player_best_official_ranked preferred; fallback scans loaded games/totals.
+       Completeness: preferred view is DB-derived; fallback is browser-visible game data.
+       Risk: needs DB view/RPC if still active.
+       Future fix: keep v_player_best_official_ranked as the only PB rank source and show unavailable if missing.
+
+     - Target Hit % P Rank
+       Block/helper: applyTargetHitPersonalRanks().
+       UI: Target Hit % table P Rank.
+       Type: within-player target comparison.
+       Source used: selected player's 14 rows from v_player_target_hit_pct.
+       Completeness: complete for the selected player's target rows when the view returns rows.
+       Risk: safe.
+       Future fix: none required unless moving personal_rank into a ranked view for consistency.
+
+     - Target Hit % G Rank
+       Block/helper: fetchTargetHitGlobalRanks().
+       UI: Target Hit % table G Rank.
+       Type: global/cross-player target rank from aggregate rows.
+       Source used: v_player_target_hit_pct for matching target keys; optional saved-player filter from cloudListPlayers().
+       Completeness: DB-derived aggregate rows, but ranking is still performed in the browser over a limited select.
+       Risk: safe short-term; needs DB view/RPC for stricter production truth and eligibility control.
+       Future fix: add v_player_target_hit_ranked with personal_rank and game_rank/window-function columns.
+
+     - D/T/B Hit % personal ranks
+       Block/helper: openPlayerDTBPctDialog(), openPlayerDTBCombinedPctDialog().
+       UI: D/T/B Hit % P/My Rank columns.
+       Type: within-player comparison.
+       Source used: existing D/T/B rows; some legacy metric rows are built from throw/game helpers.
+       Completeness: rank is personal-only, but source path may depend on legacy broad fetches.
+       Risk: acceptable for personal rank; needs DB view/RPC for the underlying metric path if promoted.
+       Future fix: move D/T/B personal rank to a DB-derived target summary view if this popup remains production-facing.
+
+     - D/T/B Hit % Game Rank
+       Block/helper: openPlayerDTBCombinedPctDialog() game-rank helpers.
+       UI: D/T/B Hit % Game Rank columns.
+       Type: global/cross-player rank.
+       Source used: player_dtb_bucket_ranks_v when available.
+       Completeness: DB-derived when view exists; unavailable state when missing.
+       Risk: safe.
+       Future fix: document/refresh the backing view and eligibility/minimum-throw rule.
+
+     - Latest Matches Pos fallback
+       Block/helper: fetchLatestMatchesRows().
+       UI: Player Stats Latest Matches position column.
+       Type: per-game table-position rank.
+       Source used: TABLE_PLAYER_GAMES/player_games_union position preferred; fallback reads games rows and ranks totals within each complete game.
+       Completeness: complete for each loaded game row; fallback may be migration-only and broad.
+       Risk: acceptable table-position only.
+       Future fix: keep position in the player-game view; show unavailable if the fallback becomes slow or incomplete.
+
+     - Round High Scores / PB/WR fallback merges
+       Block/helper: openRoundHighScoresDialog_v85(), mergeSavedGameTies_v85(), mergeCloudThrowRows_v85().
+       UI: Round High Scores, WR/PB holder/tie displays.
+       Type: record table fallback, not a rank label, but uses browser-side best/tie reconstruction.
+       Source used: v_round_high_scores_modal preferred; fallback merges PB/GR snapshot, saved games, and throw rows.
+       Completeness: preferred view is DB-derived; fallback scans broad browser-visible history/throws.
+       Risk: needs DB view/RPC.
+       Future fix: make v_round_high_scores_modal carry all holder/tie/darts detail needed by the modal and remove browser history merge fallbacks.
+
+     - Top 50 Scores legacy row builders
+       Block/helper: older Fix99/Fix100 playerRows()/gamesFor() helpers; active canonical Top 50 uses @CANONICAL:TOP_50_SCORES.
+       UI: legacy Top 50 paths if directly invoked by old helpers.
+       Type: table-position score rank.
+       Source used: active canonical uses v_top50_scores_official/practice/turbo; legacy helpers compute from games rows.
+       Completeness: canonical DB views are complete for the modal; legacy helpers are browser-visible.
+       Risk: legacy/dead path if canonical ownership remains intact.
+       Future fix: keep legacy helpers routed away from the modal; remove once search proves no callers remain.
+
+     - High Score League row positions
+       Block/helper: openHighScoreLeagueDialog() active Fix100 path.
+       UI: High Score League table # column.
+       Type: cross-player PB table-position rank.
+       Source used: Official uses v_high_score_league_official_from_games_clean; Turbo fails closed until a clean Turbo view exists.
+       Completeness: Official DB-derived clean view; saved-player filtering remains browser-side display filtering.
+       Risk: Turbo HSL still needs DB view/RPC.
+       Future fix: add v_high_score_league_turbo app-facing ranked view with saved-player eligibility.
+
+     - Premier League row positions
+       Block/helper: Fix136 officialRows()/aggregate().
+       UI: Premier League period tables # column.
+       Type: league table-position rank by selected period.
+       Source used: official game rows aggregated in browser.
+       Completeness: browser-visible official rows; period/min-game rule is browser-side.
+       Risk: needs DB view/RPC.
+       Future fix: add period-aware Premier League ranked view/RPC that accepts period/filter or returns canonical period buckets.
+
+     - Streak League row positions
+       Block/helper: openStreakLeagueDialog() render().
+       UI: Streak League # column.
+       Type: table-position rank for selected streak metric/mode.
+       Source used: v_player_target_streaks DB-derived rows; browser applies sort/tie-breakers for display.
+       Completeness: complete if the view returns all mode rows.
+       Risk: acceptable table-position only.
+       Future fix: optional ranked wrapper view if server-side row position is desired.
+
+     - Tournament seeding monthly Premier rank
+       Block/helper: getMonthlyPremierRankMap() in tournament setup.
+       UI: tournament seed ordering / "MONTHLY PL" metadata.
+       Type: monthly league rank used for tournament seeding.
+       Source used: getGamesForMode('official') and browser aggregation/dense rank for current month.
+       Completeness: browser-visible official rows; affects tournament setup rather than a read-only table.
+       Risk: needs DB view/RPC.
+       Future fix: add v_monthly_premier_rankings or an RPC for tournament seeding, with month/timezone and saved-player rules defined server-side.
+
+     Cloud init + guards
+       - ensureCloudInit(): creates window.sb client if missing; sets cloud status chip
+       - CLOUD_TABLE_MISSING + cloudMarkTableMissing(): disables missing tables/views safely
+       - READS_CLOUD_ONLY=true is treated as "truth mode": localStorage is cache only
+
+     Cloud reads (roots)
+       - cloudFetchAllGamesAsLocal()
+       - cloudFetchLatestGamesAsLocal(limit)
+       - ((typeof cloudFetchVisibleGamesSinceAsLocal==='function')?cloudFetchVisibleGamesSinceAsLocal:cloudFetchGamesSinceAsLocal)(sinceIso, limit)
+       - cloudFetchAllMatchesAsLocal()
+       - getGamesForMode(mode) [cloud-only override + stable de-dupe]
+       - getMatchesOfficial() [cloud-only override + stable de-dupe]
+       - computePlayerWindowStatsAsync(playerName, mode) [merges sources; local is neutralised under READS_CLOUD_ONLY]
+
+     Cloud writes (observed)
+       - cloudInsertHighScore(), cloudInsertHighScoreIfMissing()
+       - cloudDeleteGameCascade(g)
+       - recoverHighScoresFromCloudWindow(hours)
+
+     Runtime state stores
+       - In-memory: state (game engine), LiveV2 runtime UI state
+       - LocalStorage: cache only; must never diverge from Supabase truth
+
+     Notes (truth rules)
+       - If a view returns 0 rows, diagnose the data pipeline (view/join/filters), not the UI.
+       - Do not add new historical/cross-player aggregation client-side; prefer Postgres views + window functions (dense_rank + explicit tie-breakers).
+<<< PATCH:MOT_SYSTEM_INVENTORY_V1 END -->
+<!-- >>> PATCH:MOT_STAGE2_BASELINE_V1 START
+     STABILITY & REGRESSION BASELINE (read-only)
+
+     Smoke tests (critical flows)
+       A) Boot / navigation
+          1) Load page: no red console errors
+          2) Home (details) renders; primary buttons clickable
+          3) Home -> League/Ranks -> each menu item opens -> Back returns -> Close returns to Home
+
+       B) Match setup -> live game
+          1) Home -> Players (setup)
+          2) Start match -> Game
+          3) Enter a few throws (score buttons) -> round advances
+          4) Open any in-game modal -> Back/Close returns correctly
+
+       C) End-of-match
+          1) Finish match -> Leaderboard
+          2) New match / back to Home works
+
+       D) Data truth checks (when Supabase connected)
+          1) League / High Scores loads deterministically
+          2) If a view returns 0 rows, UI shows an explanatory empty-state (not a broken graph)
+
+     Diagnostics (opt-in)
+       - Enable via: URL ?debug=1 OR localStorage.SQ_DEBUG='1'
+       - Helpers: window.sqGetDiagnostics(), window.sqClearDiagnostics()
+       - Captures: window.error + unhandledrejection + lightweight event marks
+<<< PATCH:MOT_STAGE2_BASELINE_V1 END -->
+
+<!-- >>> PATCH:MOT_STAGE3_IA_PLAN_V1 START
+     INFORMATION ARCHITECTURE (IA) + NAVIGATION PLAN (read-only)
+
+     Goals
+       - Clear top-level destinations: Home, Players/Match, Live Game, Stats, League, Admin
+       - Consistent Back vs Close semantics in every modal:
+           Back  = previous modal/menu within the same task
+           Close = exit task and return to the screen that launched the task (Home or Game)
+       - Always-available navigation entrypoint on every screen (Home + Game + Leaderboard)
+
+     Proposed menu structure (Main Menu)
+       - New Game (Home)
+       - Player Stats (Select Player -> Player Hub)
+       - League & Rankings
+       - Admin (if enabled)
+       - Resume Game (only when in-game)
+
+     Modal stack rules (standard)
+       - Only ONE modal receives focus at a time (focus trap)
+       - ESC closes the top-most modal (managed stack only)
+       - Overlay click closes top-most modal (managed stack only)
+       - Back pops one level; Close clears the task and returns to origin
+
+     Implementation approach (incremental)
+       Stage 3A: add a managed modal stack + Main Menu modal (no rewrites)
+       Stage 3B: wire an existing/optional MENU button on each screen to open Main Menu
+       Stage 3C: gradually migrate legacy (hidden) modals to the managed pattern where safe
+<<< PATCH:MOT_STAGE3_IA_PLAN_V1 END -->
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+<!-- ===== @SEC:JS:BOOT ===== -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- ===== @SEC:CSS:TOKENS ===== -->
+<style>
+/* ===== @CSS:TOKENS | CSS: THEME TOKENS ===== */
+:root{
+  /* Theme */
+  --bg:#0f1220;
+  --card:#171a2b;
+  --ink:#e7e9f5;
+  --muted:#a8acc3;
+  --accent:#7bdcff;
+  --accent-2:#8cff9e;
+  --leader-lime:#9BFF2E;
+  --danger:#ff6b6b;
+  --warn:#ffcc66;
+  --good:#7fffd4;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+  --radius:14px;
+
+  /* Primary action ("funnel" orange) — single source of truth for the
+     Match Card / Match Length / Throw Order / Select Player CTAs.
+     Values match the pre-existing literals exactly (design-token pass). */
+  --sq-primary-bg: rgba(255,106,0,.68);
+  --sq-primary-border: #ffbd86;
+  --sq-primary-ink: #ffead9;
+  --sq-primary-radius: 8px;
+
+  /* Layout */
+  --pad-h:148px;
+  --left-col-w:96px;
+  --start-btn-h:52px;
+  --title-w:640px;
+  --homeW: min(calc(var(--title-w) * 0.6667), 820px);
+  --navGap: 10px;      /* fallback until JS measures */
+  --section-gap:10px;   /* global vertical spacing */
+
+  /* Leaderboard widths */
+  --lb-num-w:72px;      /* each G# */
+  --lb-pct-w:86px;      /* Match % */
+  --lb-total-w:96px;    /* Match Total */
+  --lb-win-w:56px;      /* Win */
+}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; min-height:100dvh; overflow:hidden;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,"Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji";
+    background:radial-gradient(1000px 600px at 0% 0%,#1b1f36 0%,#0f1220 45%,#0b0e1a 100%); color:var(--ink);
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
+
+  /* Scroll guard */
+  @media (max-height: 820px), (max-width: 420px){
+    body{ overflow-y:auto; }
+  }
+
+  /* Start/Back buttons under the player box (scope to #players only) */
+#players #startMatchRow,
+#players #backRow{
+  max-width: 640px;
+  width: 100%;
+  margin: 12px auto 0;
+}
+
+/* Make the primary CTA fill its row (Back is a compact centred pill) */
+#players #startMatchBtn{
+  width: 100%;
+}
+
+#startMatchBtn{
+  width:100%;          /* same width as the box */
+}
+ .wrap{max-width:1100px;margin-inline:auto;padding:16px; padding-bottom:calc(var(--pad-h) + 16px)}
+.start-actions{
+  width: min(420px, 94%);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  margin:0 auto;
+  text-align:center;
+}
+/* Game Details layout tweaks */
+#details h2 {
+  display: none;
+}
+#details #appTitle {
+  display: block;               /* override the display:none */
+  position: relative;
+  z-index: 1;
+  text-transform: uppercase;
+  text-align: center;
+  margin: 14px 0 26px;
+  line-height: 1.02;
+}
+
+#details #appTitle .titleMain{
+  display:block;
+  font-size: 3.5rem;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.05em;
+  background: linear-gradient(180deg, #ffffff 8%, #d4d9e6 42%, #8a92a8 56%, #f0f3fb 92%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 3px 8px rgba(0,0,0,.55));
+}
+
+#details #appTitle .titleSub{
+  display:block;
+  margin-top: 8px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.5em;
+  color: #ff7a00;
+  text-indent: 0.5em; /* balance trailing tracking */
+}
+#details #appTitle .titleSub::before{ content:'\2013'; margin-right: .55em; }
+#details #appTitle .titleSub::after{ content:'\2013'; margin-left: .05em; }
+
+#details{ position: relative; }
+/* Game Details screen: content aligned towards top with some breathing room */
+#details {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;           /* no vertical centering */
+  min-height: calc((var(--sqVh) * 100) - var(--pad-h));
+  padding-top: 32px;                     /* move SHATEKI-QUEST / New / Resume closer to top */
+  --homeW: min(420px, 94%);
+}
+
+/* Center the main buttons block */
+#details .start-actions {
+  margin: 0 auto;
+}
+
+/* Player Select layout tweaks */
+#players h2{
+  display:none;              /* hide "Player Select" text */
+}
+
+/* Center the Player Select screen vertically like page 1 */
+#players{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;              /* vertical centering */
+  min-height:calc((var(--sqVh) * 100) - var(--pad-h));
+  padding: 24px 0;                     /* breathing room top/bottom */
+}
+
+/* Box wrappers on Player Select: games/players + player list */
+.ps-config-row{
+  padding:12px;
+  border-radius:12px;
+  background:#101533;
+  border:1px solid #23284a;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  max-width:640px;
+  width:100%;
+  margin:12px auto 0;
+}
+  /* Player Select: steppers for games/players instead of native selects */
+.setup-row {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 4px;
+}
+
+.setup-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.setup-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: center;
+}
+
+.setup-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 0 0, rgba(255,255,255,0.03), transparent 55%),
+    rgba(12, 15, 32, 0.95);
+  box-shadow:
+    0 0 0 1px rgba(124, 142, 255, 0.25),
+    var(--shadow);
+  gap: 8px;
+}
+
+.stepper-btn {
+  border: none;
+  outline: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  background: linear-gradient(
+    135deg,
+    rgba(123, 220, 255, 0.18),
+    rgba(140, 255, 158, 0.12)
+  );
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease,
+    background 0.15s ease;
+}
+
+.stepper-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.stepper-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.stepper-value {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  font-
+=== END ===
+
+=== pstats occurrence 4 chars 30306:62306 ===
+ Used by: Player Stats profile Targets card.
+       Required columns visible in code: player_key, favorite_number, favorite_pct, worst_number, worst_pct.
+       Missing-data behaviour: warning logged; card shows placeholder/available existing values.
+       Browser role: display DB-derived recent target summary only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_target_rates
+       Used by: Player Stats profile top/bottom target-rate detail (Favourite/Weakest Numbers top-3).
+       Required columns visible in code: player_key, target_n, hit_pct, throws.
+       Missing-data behaviour: silently treated as optional; card falls back to v_player_last30_targets fav/worst.
+       Browser role: display DB-derived recent target rates only.
+       Source: plain VIEW over throw_events_v + round_hit_counts_v, same last-30-games window as
+               v_player_last30_targets (its per-target CTE, un-collapsed). Always live, not materialized.
+
+     - v_player_target_streaks
+       Used by: Player Stats Quick Stats Dart/Round Streak, Streak League.
+       Required columns visible in code: player_key, player_name, mode_key, mode_label, dart_streak, round_streak,
+                                  source_games, last_played_at.
+       Missing-data behaviour: Streak League shows required-view missing/empty state; Player Stats shows placeholder if unavailable.
+       Browser role: display DB-derived streaks/ranks only; do not calculate streaks from full history in browser.
+       Materialized/refresh: intended DB-derived streak view; materialized/refresh status needs verification in this file.
+
+     - v_player_target_hit_pct
+       Used by: Target Hit % heatmap/table, Target Hit % G Rank lookup.
+       Required columns visible in code: player_key, player_name, target_key, target_label, target_sort, throws, hits,
+                                  hit_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Hit % unavailable message; SPIDER/PROGRESS disabled until rows exist.
+       Browser role: display DB-derived aggregate hit rates; browser may compute personal rank from returned 14 rows only.
+       Materialized/refresh: wrapper/view status needs verification; do not infer from points.
+
+     - v_player_target_points_pct
+       Used by: Target Points % table.
+       Required columns visible in code: player_key, player_name, target_number, target_label, throws, actual_points,
+                                  max_points, points_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Points % unavailable message; actions disabled until rows exist.
+       Browser role: display DB-derived aggregate points efficiency; no full-history reconstruction.
+       Materialized/refresh: wrapper/view status needs verification.
+
+     - v_player_target_hit_progress
+       Used by: Target Hit % Progress graph.
+       Required columns visible in code: player_key, player_name, game_id, created_at, target_key, target_label,
+                                  target_sort, throws, hits, hit_pct.
+       Missing-data behaviour: progress popup shows "Progress data is not available yet..."
+       Browser role: display DB-derived per-game/target progression rows; graph transforms only returned percentages.
+       Materialized/refresh: likely app-facing view; materialized backing/refresh needs verification.
+
+     - v_player_target_points_progress
+       Used by: Target Points % Progress graph.
+       Required columns visible in code: player_key, player_name, game_id, created_at, target_key, target_label,
+                                  target_sort, target_number, round_score, max_round_score, round_pct.
+       Missing-data behaviour: progress popup shows "Progress data is not available yet..."
+       Browser role: display DB-derived per-game/target progression rows; graph maps returned percentages only.
+       Materialized/refresh: likely app-facing view; materialized backing/refresh needs verification.
+
+     - throw_events_v
+       Used by: throw-level probes/helpers and legacy/diagnostic throw truth paths.
+       Required columns visible in code/comments: game_id, created_at, player_name, round_index, dart_number, dart_index,
+                                             target, bucket_key, points, ring, hit_number, hit, kind, bull.
+       Missing-data behaviour: warnings; some legacy helpers fall back to game boards. Do not use fallback for Target Hit % accuracy.
+       Browser role: diagnostic/source-truth reads only unless a DB view depends on it; avoid client full-history reconstruction.
+       Materialized/refresh: view; refresh status needs verification.
+
+     - player_dtb_bucket_ranks_v
+       Used by: D/T/B Hit % game-rank helpers.
+       Required columns visible in code: target_round, d_game_rank, t_game_rank, player_name.
+       Missing-data behaviour: rank helpers fall back to unavailable rank display.
+       Browser role: display DB-derived D/T rank columns only.
+       Materialized/refresh: needs verification.
+
+     @MODE:CLASSIFICATION_RULES
+     Production mode ownership for Official / Turbo / Practice. Official filters must exclude Turbo before accepting
+     a row as official; is_practice=false alone is not sufficient.
+
+     - turbo
+       Explicit Turbo rows are identified by mode/gameMode/game_mode/type='turbo', gameVariant='turbo',
+       Tournament Turbo tournamentType='turbo',
+       strictTimer=true, throwLimitSeconds=20, or startTarget='17' in the game row, state, match, or rules object.
+       Legacy quarantine: older broken saves may be labelled official while rounds 10-16 are unplayed and rounds
+       17-20/D/T/B contain play; browser fallback filters treat that board shape as Turbo to stop official leakage.
+       Future Match Play Turbo writes must include state.gameVariant='turbo', state.mode='turbo',
+       state.gameMode='turbo', strictTimer=true, throwLimitSeconds=20, and startTarget='17'.
+       Future Tournament Turbo writes may also use tournamentType='turbo' where tournament logic requires it.
+
+     - practice
+       Explicit practice/unofficial/solo rows, is_practice=true rows, forced-practice match rows, or single-player rows.
+       Turbo is never classified as Practice.
+
+     - official
+       Normal saved-player match rows only: not Turbo, not Practice, and at least two players.
+       Supabase official views should use the same Turbo exclusion rule, not only match_id/is_practice checks.
+
+     @RANKING:TERMINOLOGY_SOURCE_MAP
+     Production-facing rank labels observed in this file. This is a terminology/source map only:
+     do not change rank formulas or fetch paths without a scoped ranking task.
+
+     - Home Power Rankings / Power Rankings popup
+       UI label: Power Rankings, Power Rank, #.
+       Blocks/helpers: home mini Power Rankings, getOfficialPowerRows(), openPowerLeagueDialog().
+       Source: v_power_rankings_last56_official_clean for official/current; Turbo/Practice use mode-specific clean views.
+       Meaning: Power Rank is current active ranking metric; # is row position in the current filtered table.
+       Clarity: clear.
+
+     - Player Stats profile hero
+       UI label: Power Rank.
+       Block/helper: openPlayerStatsDialog() profile card render.
+       Source: v_power_rankings_last56_official_clean, filtered to saved players and the active 14-day current rule.
+       Meaning: current active Power Rank value and current active table position.
+       Clarity: clear.
+
+     - Player Stats profile Quick Stats
+       UI labels: Highest Score, Current Power Rank #.
+       Block/helper: openPlayerStatsDialog() Quick Stats card.
+       Sources: v_player_best_official_ranked for Highest Score rank; current Power Rank position is from v_power_rankings_last56_official_clean.
+       Meaning: Highest Score rank is historical PB table position; Current Power Rank # is not historical peak.
+       Clarity: label-only cleanup applied to avoid presenting current position as Highest/Peak Power Rank.
+       Needs follow-up: add a DB-derived historical Peak/Highest Power Rank source before showing that historical label again.
+
+     - Live V2 game info panel
+       UI labels: POS, P RANK, G RANK.
+       Block/helper: liveV2Render()/rank fill block.
+       Source: current game state for POS; sq_rank_score RPC is the only accepted P/G rank source.
+       Meaning: POS is current-game table position; P Rank is within-player historical score comparison; G Rank is cross-player historical score comparison.
+       Clarity: labels are clear in the live-game info table.
+       Fail-closed rule: if sq_rank_score is unavailable, P/G Rank shows unavailable instead of browser dense-rank fallback.
+
+     - Target Hit %
+       UI labels: P Rank, G Rank.
+       Block/helper: @CANONICAL:PLAYER_TARGET_HIT_HEATMAP, applyTargetHitPersonalRanks(), fetchTargetHitGlobalRanks().
+       Source: v_player_target_hit_pct aggregate rows.
+       Meaning: P Rank is within-player target comparison; G Rank is cross-player comparison for the same target.
+       Clarity: clear; no raw history reconstruction.
+
+     - Target Points % and Target Hit/Points Progress
+       UI label: no production rank label observed in current canonical target metric/progress popups.
+       Source: v_player_target_points_pct, v_player_target_points_progress, v_player_target_hit_progress.
+       Meaning: n/a for ranks.
+       Clarity: no rank terminology issue observed.
+
+     - D/T/B Hit % popups
+       UI labels: P Rank, My Rank, Game Rank.
+       Blocks/helpers: openPlayerDTBPctDialog(), openPlayerDTBCombinedPctDialog().
+       Source: within-player D/T rows for personal/my ranks; player_dtb_bucket_ranks_v for Game Rank when available.
+       Meaning: P/My Rank is within-player comparison; Game Rank is cross-player comparison.
+       Clarity: label-only cleanup applied to the simple D/T/B table's generic Rank header.
+
+     - League & Rankings popups
+       UI labels: #, Power Rank, Streak.
+       Blocks/helpers: Top 50 Scores, High Score League, Streak League, Premier League.
+       Sources: v_top50_scores_official/practice/turbo, high-score/player game helpers, v_player_target_streaks, official game rows.
+       Meaning: # is row position in that table/filter; Power Rank is the current Power Rankings metric; Streak is DB-derived streak value.
+       Clarity: table-context rank labels are clear.
+
+     - Round High Scores / PB / WR / Latest Matches
+       UI labels: Pos, PB, WR.
+       Blocks/helpers: Round High Scores modal, Latest Matches rows, Live V2 PB/WR helpers.
+       Sources: v_round_high_scores_modal, v_pb_by_player_round, v_wr_by_round, row-level position fields/helpers.
+       Meaning: Pos is row/table position for the displayed score context; PB/WR are records, not rank labels.
+       Clarity: generally clear; needs verification for every legacy Latest Matches branch before broad copy changes.
+
+     @RANKING:BROWSER_FALLBACK_AUDIT
+     Browser-side rank/position calculations observed in this file. This is an audit only:
+     do not remove fallbacks or change formulas without a scoped data-source replacement task.
+
+     - Live V2 POS
+       Block/helper: liveV2Render() info panel.
+       UI: live game info table POS row.
+       Type: table-position rank inside the current in-progress game.
+       Source used: current in-memory game totals only.
+       Completeness: complete for the visible current game.
+       Risk: acceptable table-position only.
+       Future fix: none required; keep separate from historical P/G ranks.
+
+     - Live V2 P RANK / G RANK fail-closed path
+       Block/helper: liveV2Render() __sqUpdateRanks().
+       UI: live game info table P RANK and G RANK rows.
+       Type: personal rank and global/cross-player rank from DB RPC only.
+       Source used: sq_rank_score RPC only; browser dense-rank fallback is disabled.
+       Completeness: DB-derived when RPC succeeds; unavailable otherwise.
+       Risk: safe fail-closed.
+       Future fix: keep sq_rank_score maintained or replace with an equivalent ranked-score RPC.
+
+     - getOfficialPowerRows() DB-view fallback
+       Block/helper: shared getOfficialPowerRows().
+       UI: Home Power Rankings and callers using shared current official rows.
+       Type: current active Power Rank table rows.
+       Source used: v_power_rankings_last56_official_clean only.
+       Completeness: DB-derived mode-classified rows.
+       Risk: safe fail-closed if the clean view is missing or empty.
+       Future fix: materialize/refresh the clean view if performance requires it.
+
+     - Power Rankings popup non-official rows
+       Block/helper: Fix132 computePowerRows(mode).
+       UI: Power Rankings popup Turbo/Practice tabs, and official if the official view path fails.
+       Type: current Power Rank table rows by mode.
+       Source used: v_power_rankings_last56_official_clean, v_power_rankings_last56_turbo_clean, v_power_rankings_last56_practice_clean.
+       Completeness: DB-derived mode-classified rows.
+       Risk: safe fail-closed if the relevant clean view is missing or empty.
+       Future fix: materialize/refresh mode-specific clean views if performance requires it.
+
+     - Player Stats profile current Power Rank fallback
+       Block/helper: openPlayerStatsDialog() "Current Power Rank" aggregation block.
+       UI: Player Stats profile hero/Quick Stats current Power Rank position.
+       Type: current active Power Rank position fallback.
+       Source used: dbPower from v_power_rankings_last56_official_clean is the displayed truth; older block still has broad local aggregate code for non-authoritative profile details.
+       Completeness: displayed current Power Rank is DB-derived.
+       Risk: needs follow-up cleanup to retire older non-displayed power-rank aggregation.
+       Future fix: keep current Power Rank display bound to the clean DB view only.
+
+     - Player Stats profile best-score fallback ranking
+       Block/helper: openPlayerStatsDialog() bestByPlayer/bestList.
+       UI: legacy support for Highest Score position; current display prefers v_player_best_official_ranked best_score_pos.
+       Type: historical PB leaderboard position fallback.
+       Source used: v_player_best_official_ranked preferred; fallback scans loaded games/totals.
+       Completeness: preferred view is DB-derived; fallback is browser-visible game data.
+       Risk: needs DB view/RPC if still active.
+       Future fix: keep v_player_best_official_ranked as the only PB rank source and show unavailable if missing.
+
+     - Target Hit % P Rank
+       Block/helper: applyTargetHitPersonalRanks().
+       UI: Target Hit % table P Rank.
+       Type: within-player target comparison.
+       Source used: selected player's 14 rows from v_player_target_hit_pct.
+       Completeness: complete for the selected player's target rows when the view returns rows.
+       Risk: safe.
+       Future fix: none required unless moving personal_rank into a ranked view for consistency.
+
+     - Target Hit % G Rank
+       Block/helper: fetchTargetHitGlobalRanks().
+       UI: Target Hit % table G Rank.
+       Type: global/cross-player target rank from aggregate rows.
+       Source used: v_player_target_hit_pct for matching target keys; optional saved-player filter from cloudListPlayers().
+       Completeness: DB-derived aggregate rows, but ranking is still performed in the browser over a limited select.
+       Risk: safe short-term; needs DB view/RPC for stricter production truth and eligibility control.
+       Future fix: add v_player_target_hit_ranked with personal_rank and game_rank/window-function columns.
+
+     - D/T/B Hit % personal ranks
+       Block/helper: openPlayerDTBPctDialog(), openPlayerDTBCombinedPctDialog().
+       UI: D/T/B Hit % P/My Rank columns.
+       Type: within-player comparison.
+       Source used: existing D/T/B rows; some legacy metric rows are built from throw/game helpers.
+       Completeness: rank is personal-only, but source path may depend on legacy broad fetches.
+       Risk: acceptable for personal rank; needs DB view/RPC for the underlying metric path if promoted.
+       Future fix: move D/T/B personal rank to a DB-derived target summary view if this popup remains production-facing.
+
+     - D/T/B Hit % Game Rank
+       Block/helper: openPlayerDTBCombinedPctDialog() game-rank helpers.
+       UI: D/T/B Hit % Game Rank columns.
+       Type: global/cross-player rank.
+       Source used: player_dtb_bucket_ranks_v when available.
+       Completeness: DB-derived when view exists; unavailable state when missing.
+       Risk: safe.
+       Future fix: document/refresh the backing view and eligibility/minimum-throw rule.
+
+     - Latest Matches Pos fallback
+       Block/helper: fetchLatestMatchesRows().
+       UI: Player Stats Latest Matches position column.
+       Type: per-game table-position rank.
+       Source used: TABLE_PLAYER_GAMES/player_games_union position preferred; fallback reads games rows and ranks totals within each complete game.
+       Completeness: complete for each loaded game row; fallback may be migration-only and broad.
+       Risk: acceptable table-position only.
+       Future fix: keep position in the player-game view; show unavailable if the fallback becomes slow or incomplete.
+
+     - Round High Scores / PB/WR fallback merges
+       Block/helper: openRoundHighScoresDialog_v85(), mergeSavedGameTies_v85(), mergeCloudThrowRows_v85().
+       UI: Round High Scores, WR/PB holder/tie displays.
+       Type: record table fallback, not a rank label, but uses browser-side best/tie reconstruction.
+       Source used: v_round_high_scores_modal preferred; fallback merges PB/GR snapshot, saved games, and throw rows.
+       Completeness: preferred view is DB-derived; fallback scans broad browser-visible history/throws.
+       Risk: needs DB view/RPC.
+       Future fix: make v_round_high_scores_modal carry all holder/tie/darts detail needed by the modal and remove browser history merge fallbacks.
+
+     - Top 50 Scores legacy row builders
+       Block/helper: older Fix99/Fix100 playerRows()/gamesFor() helpers; active canonical Top 50 uses @CANONICAL:TOP_50_SCORES.
+       UI: legacy Top 50 paths if directly invoked by old helpers.
+       Type: table-position score rank.
+       Source used: active canonical uses v_top50_scores_official/practice/turbo; legacy helpers compute from games rows.
+       Completeness: canonical DB views are complete for the modal; legacy helpers are browser-visible.
+       Risk: legacy/dead path if canonical ownership remains intact.
+       Future fix: keep legacy helpers routed away from the modal; remove once search proves no callers remain.
+
+     - High Score League row positions
+       Block/helper: openHighScoreLeagueDialog() active Fix100 path.
+       UI: High Score League table # column.
+       Type: cross-player PB table-position rank.
+       Source used: Official uses v_high_score_league_official_from_games_clean; Turbo fails closed until a clean Turbo view exists.
+       Completeness: Official DB-derived clean view; saved-player filtering remains browser-side display filtering.
+       Risk: Turbo HSL still needs DB view/RPC.
+       Future fix: add v_high_score_league_turbo app-facing ranked view with saved-player eligibility.
+
+     - Premier League row positions
+       Block/helper: Fix136 officialRows()/aggregate().
+       UI: Premier League period tables # column.
+       Type: league table-position rank by selected period.
+       Source used: official game rows aggregated in browser.
+       Completeness: browser-visible official rows; period/min-game rule is browser-side.
+       Risk: needs DB view/RPC.
+       Future fix: add period-aware Premier League ranked view/RPC that accepts period/filter or returns canonical period buckets.
+
+     - Streak League row positions
+       Block/helper: openStreakLeagueDialog() render().
+       UI: Streak League # column.
+       Type: table-position rank for selected streak metric/mode.
+       Source used: v_player_target_streaks DB-derived rows; browser applies sort/tie-breakers for display.
+       Completeness: complete if the view returns all mode rows.
+       Risk: acceptable table-position only.
+       Future fix: optional ranked wrapper view if server-side row position is desired.
+
+     - Tournament seeding monthly Premier rank
+       Block/helper: getMonthlyPremierRankMap() in tournament setup.
+       UI: tournament seed ordering / "MONTHLY PL" metadata.
+       Type: monthly league rank used for tournament seeding.
+       Source used: getGamesForMode('official') and browser aggregation/dense rank for current month.
+       Completeness: browser-visible official rows; affects tournament setup rather than a read-only table.
+       Risk: needs DB view/RPC.
+       Future fix: add v_monthly_premier_rankings or an RPC for tournament seeding, with month/timezone and saved-player rules defined server-side.
+
+     Cloud init + guards
+       - ensureCloudInit(): creates window.sb client if missing; sets cloud status chip
+       - CLOUD_TABLE_MISSING + cloudMarkTableMissing(): disables missing tables/views safely
+       - READS_CLOUD_ONLY=true is treated as "truth mode": localStorage is cache only
+
+     Cloud reads (roots)
+       - cloudFetchAllGamesAsLocal()
+       - cloudFetchLatestGamesAsLocal(limit)
+       - ((typeof cloudFetchVisibleGamesSinceAsLocal==='function')?cloudFetchVisibleGamesSinceAsLocal:cloudFetchGamesSinceAsLocal)(sinceIso, limit)
+       - cloudFetchAllMatchesAsLocal()
+       - getGamesForMode(mode) [cloud-only override + stable de-dupe]
+       - getMatchesOfficial() [cloud-only override + stable de-dupe]
+       - computePlayerWindowStatsAsync(playerName, mode) [merges sources; local is neutralised under READS_CLOUD_ONLY]
+
+     Cloud writes (observed)
+       - cloudInsertHighScore(), cloudInsertHighScoreIfMissing()
+       - cloudDeleteGameCascade(g)
+       - recoverHighScoresFromCloudWindow(hours)
+
+     Runtime state stores
+       - In-memory: state (game engine), LiveV2 runtime UI state
+       - LocalStorage: cache only; must never diverge from Supabase truth
+
+     Notes (truth rules)
+       - If a view returns 0 rows, diagnose the data pipeline (view/join/filters), not the UI.
+       - Do not add new historical/cross-player aggregation client-side; prefer Postgres views + window functions (dense_rank + explicit tie-breakers).
+<<< PATCH:MOT_SYSTEM_INVENTORY_V1 END -->
+<!-- >>> PATCH:MOT_STAGE2_BASELINE_V1 START
+     STABILITY & REGRESSION BASELINE (read-only)
+
+     Smoke tests (critical flows)
+       A) Boot / navigation
+          1) Load page: no red console errors
+          2) Home (details) renders; primary buttons clickable
+          3) Home -> League/Ranks -> each menu item opens -> Back returns -> Close returns to Home
+
+       B) Match setup -> live game
+          1) Home -> Players (setup)
+          2) Start match -> Game
+          3) Enter a few throws (score buttons) -> round advances
+          4) Open any in-game modal -> Back/Close returns correctly
+
+       C) End-of-match
+          1) Finish match -> Leaderboard
+          2) New match / back to Home works
+
+       D) Data truth checks (when Supabase connected)
+          1) League / High Scores loads deterministically
+          2) If a view returns 0 rows, UI shows an explanatory empty-state (not a broken graph)
+
+     Diagnostics (opt-in)
+       - Enable via: URL ?debug=1 OR localStorage.SQ_DEBUG='1'
+       - Helpers: window.sqGetDiagnostics(), window.sqClearDiagnostics()
+       - Captures: window.error + unhandledrejection + lightweight event marks
+<<< PATCH:MOT_STAGE2_BASELINE_V1 END -->
+
+<!-- >>> PATCH:MOT_STAGE3_IA_PLAN_V1 START
+     INFORMATION ARCHITECTURE (IA) + NAVIGATION PLAN (read-only)
+
+     Goals
+       - Clear top-level destinations: Home, Players/Match, Live Game, Stats, League, Admin
+       - Consistent Back vs Close semantics in every modal:
+           Back  = previous modal/menu within the same task
+           Close = exit task and return to the screen that launched the task (Home or Game)
+       - Always-available navigation entrypoint on every screen (Home + Game + Leaderboard)
+
+     Proposed menu structure (Main Menu)
+       - New Game (Home)
+       - Player Stats (Select Player -> Player Hub)
+       - League & Rankings
+       - Admin (if enabled)
+       - Resume Game (only when in-game)
+
+     Modal stack rules (standard)
+       - Only ONE modal receives focus at a time (focus trap)
+       - ESC closes the top-most modal (managed stack only)
+       - Overlay click closes top-most modal (managed stack only)
+       - Back pops one level; Close clears the task and returns to origin
+
+     Implementation approach (incremental)
+       Stage 3A: add a managed modal stack + Main Menu modal (no rewrites)
+       Stage 3B: wire an existing/optional MENU button on each screen to open Main Menu
+       Stage 3C: gradually migrate legacy (hidden) modals to the managed pattern where safe
+<<< PATCH:MOT_STAGE3_IA_PLAN_V1 END -->
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+<!-- ===== @SEC:JS:BOOT ===== -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- ===== @SEC:CSS:TOKENS ===== -->
+<style>
+/* ===== @CSS:TOKENS | CSS: THEME TOKENS ===== */
+:root{
+  /* Theme */
+  --bg:#0f1220;
+  --card:#171a2b;
+  --ink:#e7e9f5;
+  --muted:#a8acc3;
+  --accent:#7bdcff;
+  --accent-2:#8cff9e;
+  --leader-lime:#9BFF2E;
+  --danger:#ff6b6b;
+  --warn:#ffcc66;
+  --good:#7fffd4;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+  --radius:14px;
+
+  /* Primary action ("funnel" orange) — single source of truth for the
+     Match Card / Match Length / Throw Order / Select Player CTAs.
+     Values match the pre-existing literals exactly (design-token pass). */
+  --sq-primary-bg: rgba(255,106,0,.68);
+  --sq-primary-border: #ffbd86;
+  --sq-primary-ink: #ffead9;
+  --sq-primary-radius: 8px;
+
+  /* Layout */
+  --pad-h:148px;
+  --left-col-w:96px;
+  --start-btn-h:52px;
+  --title-w:640px;
+  --homeW: min(calc(var(--title-w) * 0.6667), 820px);
+  --navGap: 10px;      /* fallback until JS measures */
+  --section-gap:10px;   /* global vertical spacing */
+
+  /* Leaderboard widths */
+  --lb-num-w:72px;      /* each G# */
+  --lb-pct-w:86px;      /* Match % */
+  --lb-total-w:96px;    /* Match Total */
+  --lb-win-w:56px;      /* Win */
+}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; min-height:100dvh; overflow:hidden;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,"Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji";
+    background:radial-gradient(1000px 600px at 0% 0%,#1b1f36 0%,#0f1220 45%,#0b0e1a 100%); color:var(--ink);
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
+
+  /* Scroll guard */
+  @media (max-height: 820px), (max-width: 420px){
+    body{ overflow-y:auto; }
+  }
+
+  /* Start/Back buttons under the player box (scope to #players only) */
+#players #startMatchRow,
+#players #backRow{
+  max-width: 640px;
+  width: 100%;
+  margin: 12px auto 0;
+}
+
+/* Make the primary CTA fill its row (Back is a compact centred pill) */
+#players #startMatchBtn{
+  width: 100%;
+}
+
+#startMatchBtn{
+  width:100%;          /* same width as the box */
+}
+ .wrap{max-width:1100px;margin-inline:auto;padding:16px; padding-bottom:calc(var(--pad-h) + 16px)}
+.start-actions{
+  width: min(420px, 94%);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  margin:0 auto;
+  text-align:center;
+}
+/* Game Details layout tweaks */
+#details h2 {
+  display: none;
+}
+#details #appTitle {
+  display: block;               /* override the display:none */
+  position: relative;
+  z-index: 1;
+  text-transform: uppercase;
+  text-align: center;
+  margin: 14px 0 26px;
+  line-height: 1.02;
+}
+
+#details #appTitle .titleMain{
+  display:block;
+  font-size: 3.5rem;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.05em;
+  background: linear-gradient(180deg, #ffffff 8%, #d4d9e6 42%, #8a92a8 56%, #f0f3fb 92%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 3px 8px rgba(0,0,0,.55));
+}
+
+#details #appTitle .titleSub{
+  display:block;
+  margin-top: 8px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.5em;
+  color: #ff7a00;
+  text-indent: 0.5em; /* balance trailing tracking */
+}
+#details #appTitle .titleSub::before{ content:'\2013'; margin-right: .55em; }
+#details #appTitle .titleSub::after{ content:'\2013'; margin-left: .05em; }
+
+#details{ position: relative; }
+/* Game Details screen: content aligned towards top with some breathing room */
+#details {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;           /* no vertical centering */
+  min-height: calc((var(--sqVh) * 100) - var(--pad-h));
+  padding-top: 32px;                     /* move SHATEKI-QUEST / New / Resume closer to top */
+  --homeW: min(420px, 94%);
+}
+
+/* Center the main buttons block */
+#details .start-actions {
+  margin: 0 auto;
+}
+
+/* Player Select layout tweaks */
+#players h2{
+  display:none;              /* hide "Player Select" text */
+}
+
+/* Center the Player Select screen vertically like page 1 */
+#players{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;              /* vertical centering */
+  min-height:calc((var(--sqVh) * 100) - var(--pad-h));
+  padding: 24px 0;                     /* breathing room top/bottom */
+}
+
+/* Box wrappers on Player Select: games/players + player list */
+.ps-config-row{
+  padding:12px;
+  border-radius:12px;
+  background:#101533;
+  border:1px solid #23284a;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  max-width:640px;
+  width:100%;
+  margin:12px auto 0;
+}
+  /* Player Select: steppers for games/players instead of native selects */
+.setup-row {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 4px;
+}
+
+.setup-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.setup-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: center;
+}
+
+.setup-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 0 0, rgba(255,255,255,0.03), transparent 55%),
+    rgba(12, 15, 32, 0.95);
+  box-shadow:
+    0 0 0 1px rgba(124, 142, 255, 0.25),
+    var(--shadow);
+  gap: 8px;
+}
+
+.stepper-btn {
+  border: none;
+  outline: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  background: linear-gradient(
+    135deg,
+    rgba(123, 220, 255, 0.18),
+    rgba(140, 255, 158, 0.12)
+  );
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease,
+    background 0.15s ease;
+}
+
+.stepper-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.stepper-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.stepper-value {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stepper-number {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.stepper-suffix {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.native-select-hidden,
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  border: 0;
+}
+
+@media (max-width: 600px) {
+  .setup-row {
+    flex-direction: column;
+  }
+}
+
+/* Box each player row (guest name + select/save buttons) */
+#psPlayerFields .pf{
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid #23284a;
+  background:#101533;
+}
+.th-throws{
+  font-size: 11px;
+  line-height: 1;
+  color: var(--muted);
+  min-height: 14px;
+
+=== END ===
+
+=== pstats occurrence 5 chars 147966:179966 ===
+8em;
+}
+.ms-primary-blue:disabled{ opacity:.35; filter: grayscale(.3); }
+
+.ms-primary-blueLight{
+  background: var(--shatekiBlueLight) !important;
+  border: 1px solid rgba(0,0,0,.25) !important;
+  color:#fff !important;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+.ms-primary-blueLight:disabled{ opacity:.35; filter: grayscale(.3); }
+
+/* Practice CTA sizing to match Match Setup */
+.practice-cta{
+  height: 52px !important;
+  border-radius: 18px !important;
+  font-size: 1rem !important;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+/* Compact centred pill, same as the modal footer Back button */
+.ms-back-bottom{
+  width: auto !important;
+  min-width: 132px;
+  margin: 16px auto 0;
+  height: 46px !important;
+  border-radius:14px;
+  display:block;
+  padding: 0 28px !important;
+  line-height: 46px;
+  box-sizing:border-box;
+  font-size: .95rem;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.12);
+  color: rgba(230,232,255,.85);
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+.ms-spacer{ display:none; }
+
+/* ===== Match Card / Select Players — Premium UI v1 (Figma yJ80MadUOk86xmfuWUEC09) ===== */
+.ms-card{
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  width: min(420px, 94%);
+  margin: 0 auto 14px;
+  box-shadow: none;
+}
+.ms2-title{
+  color:#fff;
+  font-size:18px;
+  font-weight:800;
+  letter-spacing:.02em;
+  text-align:left;
+  margin: 2px 2px 14px;
+}
+.ms2-addrow{ display:flex; gap:13px; }
+.ms2-btn{
+  height:52px;
+  border-radius:8px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  font-weight:800;
+  font-size:15px;
+  letter-spacing:.02em;
+  color:#ffead9;
+  box-shadow: 0 8px 18px rgba(0,0,0,.25);
+  transition: transform .12s ease, filter .12s ease;
+}
+.ms2-btn:active{ transform: translateY(1px); }
+.ms2-btn:disabled{ opacity:.5; }
+.ms2-ic{ display:inline-flex; flex:0 0 auto; }
+.ms2-ic svg{ width:24px; height:24px; display:block; }
+.ms2-add-saved{
+  flex:1 1 46%;
+  background:var(--sq-primary-bg);
+  border:1px solid var(--sq-primary-border);
+  color:var(--sq-primary-ink);
+  box-shadow: 0 8px 18px rgba(0,0,0,.25), 0 0 24px rgba(255,106,0,.35);
+}
+.ms2-add-saved .ms2-ic svg{ width:32px; }
+.ms2-add-guest{
+  flex:1 1 54%;
+  background:#101827;
+  border:1px solid rgba(35,164,255,.45);
+  color:#e8f4ff;
+}
+.ms2-save-new{
+  width:100%;
+  margin-top:13px;
+  background:#101827;
+  border:1px solid rgba(35,164,255,.45);
+  color:#e8f4ff;
+}
+
+/* Match card slots (6 fixed) */
+.ms-players-list{
+  margin-top:14px;
+  display:flex;
+  flex-direction:column;
+  gap:11px;
+}
+.ms2-slot{
+  min-height:52px;
+  border-radius:9px;
+  background:#0f151b;
+  border:1px solid #363a3d;
+  box-shadow: 0 8px 18px rgba(0,0,0,.25);
+  display:flex;
+  align-items:center;
+  gap:11px;
+  padding:0 10px;
+  text-align:left;
+  box-sizing:border-box;
+}
+.ms2-slot.empty{ padding:0; }
+.ms2-slot.filled{
+  border-color:#ff6a00;
+  box-shadow: 0 8px 18px rgba(0,0,0,.25), 0 0 16px rgba(255,106,0,.20);
+}
+.ms2-ava{
+  width:36px;
+  height:36px;
+  border-radius:999px;
+  background:#eaddff;
+  color:#4f378a;
+  display:grid;
+  place-items:center;
+  flex:0 0 36px;
+}
+.ms2-ava svg{ width:24px; height:24px; }
+.ms2-info{
+  flex:1 1 auto;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  justify-content:center;
+}
+.ms2-nm{
+  color:#ff6a00;
+  font-weight:800;
+  font-size:14px;
+  letter-spacing:.02em;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.ms2-ranks{
+  display:flex;
+  gap:16px;
+  font-size:11.5px;
+  font-weight:700;
+  color:#fff;
+  letter-spacing:.02em;
+  white-space:nowrap;
+}
+.ms2-ranks b{ font-weight:800; color:rgba(255,255,255,.6); }
+.ms2-guest-input{
+  width:100%;
+  background:transparent;
+  border:0;
+  outline:none;
+  color:#ffead9;
+  font-weight:800;
+  font-size:14px;
+  padding:0;
+}
+.ms2-guest-input::placeholder{ color:rgba(255,234,217,.4); font-weight:700; }
+.ms2-x{
+  width:26px;
+  height:26px;
+  border-radius:999px;
+  border:1.6px solid #e5484d;
+  color:#e5484d;
+  background:transparent;
+  display:grid;
+  place-items:center;
+  font-size:12px;
+  font-weight:900;
+  line-height:1;
+  flex:0 0 26px;
+  padding:0;
+}
+.ms2-x:active{ transform: translateY(1px); }
+.ms-hint{
+  text-align:center;
+  color: rgba(231,233,245,.35);
+  font-size:11px;
+  letter-spacing:.12em;
+  font-weight:800;
+  margin-top:14px;
+  transition: opacity .2s ease;
+}
+.ms-start{
+  width: min(420px, 94%) !important;
+  margin: 0 auto 12px;
+  height: 52px !important;
+  border-radius:18px;
+  display:block;
+  padding: 0 18px !important;
+  line-height: 52px;
+  box-sizing:border-box;
+  font-size: 1rem;
+}
+.ms-start:disabled{
+  opacity:.35;
+  filter: grayscale(.4);
+}
+/* Match Card CTA + Back per design */
+#players #startMatchBtn.ms-primary{
+  background: rgba(255,106,0,.68) !important;
+  border: 1px solid #ffbd86 !important;
+  color:#ffead9 !important;
+  border-radius:8px !important;
+  width: min(300px, 88%) !important;
+  margin: 4px auto 0;
+  font-size:16px;
+  font-weight:800;
+  letter-spacing:.02em;
+  box-shadow: 0 8px 18px rgba(0,0,0,.25), 0 0 24px rgba(255,106,0,.35);
+}
+.ms2-back{
+  width: min(300px, 88%);
+  margin: 12px auto 0;
+  height: 52px;
+  border-radius: 8px;
+  background:#101827;
+  border:1px solid rgba(35,164,255,.7);
+  color:#e8f4ff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-shadow: 0 8px 18px rgba(0,0,0,.25);
+  position:relative;
+}
+.ms2-back-ar{ position:absolute; left:16px; font-size:20px; line-height:1; }
+.ms2-back-txt{ font-size:17px; font-weight:800; letter-spacing:.2em; text-indent:.2em; }
+
+/* =====================================================================
+   MATCH SETUP — UNIFIED BUTTON SYSTEM
+   Every initial-setup screen (Select Game Mode, Match Card, Match Length,
+   Throw Order) uses the SAME button size/layout as the Match Card design:
+   centred, vertically stacked (primary on top, Back below), each
+   min(300px,88%) wide × 52px tall, radius 8. Back = navy/blue-bordered
+   (.ms2-back); Primary CTA = orange (.ms-primary).
+   ===================================================================== */
+.sg-footer,
+.sg-practice-footer,
+.ml-footer,
+.to-actions{
+  display:flex !important;
+  align-items:center !important;
+  gap:12px !important;
+  width:100% !important;
+  align-self:stretch !important;
+  box-sizing:border-box !important;
+}
+/* DOM child order differs per screen; normalise so the primary CTA is
+   always on top and Back sits below. */
+.sg-footer,
+.sg-practice-footer,
+.to-actions{ flex-direction:column !important; }   /* [CTA, Back] */
+.ml-footer{ flex-direction:column-reverse !important; } /* [Back, CTA] */
+/* Back buttons — identical to the Match Card back (.ms2-back) */
+.sg-footer .btn,
+.sg-practice-footer .btn,
+.ml-footer .ml-foot-back,
+.to-actions .to-back,
+.sg-footer .ms2-back,
+.sg-practice-footer .ms2-back,
+.ml-footer .ms2-back,
+.to-actions .ms2-back{
+  width:min(300px,88%) !important;
+  min-width:0 !important;
+  height:52px !important;
+  border-radius:8px !important;
+  background:#101827 !important;
+  border:1px solid rgba(35,164,255,.7) !important;
+  color:#e8f4ff !important;
+  font-weight:800 !important;
+  letter-spacing:.2em !important;
+  text-transform:uppercase !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  padding:0 !important;
+  margin:0 auto !important;
+  box-shadow:0 8px 18px rgba(0,0,0,.25) !important;
+  position:relative !important;
+}
+/* Primary CTAs — identical to the Match Card CTA (.ms-primary) */
+.ml-footer #mlStartBtn.ms-primary,
+.to-actions .to-start{
+  width:min(300px,88%) !important;
+  min-width:0 !important;
+  height:52px !important;
+  border-radius:var(--sq-primary-radius) !important;
+  border:1px solid var(--sq-primary-border) !important;
+  color:var(--sq-primary-ink) !important;
+  font-size:16px !important;
+  font-weight:800 !important;
+  letter-spacing:.02em !important;
+  box-shadow:0 8px 18px rgba(0,0,0,.25), 0 0 24px rgba(255,106,0,.35) !important;
+  margin:0 auto !important;
+  padding:0 12px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  gap:8px !important;
+  flex:0 0 auto !important;
+}
+/* Standard (match) CTA = orange; keep the Practice VS-Shadow blue accent. */
+.ml-footer #mlStartBtn.ms-primary,
+.to-actions .to-start:not(.to-blueLight){
+  background:var(--sq-primary-bg) !important;
+}
+.to-actions .to-start.to-blueLight{
+  background:var(--shatekiBlueLight) !important;
+  border:1px solid rgba(0,0,0,.25) !important;
+  color:#fff !important;
+}
+/* =====================================================================
+   MATCH SETUP — AMBIENT BACKDROP SYSTEM
+   Shared, fully opaque backdrop for every setup screen so previous screens
+   never show through, with depth instead of a flat void:
+   grain > dartboard motif > orange stage glow > blue stage glow > navy base.
+   ===================================================================== */
+#startGameModal.modal-backdrop,
+#matchLengthModal.modal-backdrop,
+.modal-backdrop:has(> .modal-throworder),
+.modal-backdrop:has(> .modal.menu-modal),
+.modal-backdrop.sq-stats-bd,
+body[data-page="players"]{
+  background-color:#05080f !important;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 600'%3E%3Cg fill='none' stroke='%234aa3ff' stroke-opacity='0.07' stroke-width='1.5'%3E%3Ccircle cx='300' cy='300' r='58'/%3E%3Ccircle cx='300' cy='300' r='118'/%3E%3Ccircle cx='300' cy='300' r='178'/%3E%3Ccircle cx='300' cy='300' r='238'/%3E%3Ccircle cx='300' cy='300' r='292'/%3E%3Cpath d='M300 0v600M0 300h600'/%3E%3C/g%3E%3Ccircle cx='300' cy='300' r='7' fill='%234aa3ff' fill-opacity='0.10'/%3E%3C/svg%3E"),
+    radial-gradient(105% 75% at 12% 104%, rgba(255,122,0,.15) 0%, rgba(255,122,0,.05) 34%, transparent 60%),
+    radial-gradient(95% 70% at 90% -6%, rgba(47,134,255,.16) 0%, rgba(47,134,255,.05) 36%, transparent 62%),
+    linear-gradient(180deg, #0b1120 0%, #060a13 52%, #080b14 100%) !important;
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat !important;
+  background-size: 140px 140px, 560px 560px, auto, auto, auto !important;
+  background-position: 0 0, right -170px top -150px, center, center, center !important;
+  background-attachment: scroll, scroll, scroll, scroll, scroll !important;
+}
+/* Neon signage edge on the setup cards: hairline gradient border
+   (orange -> blue) with a faint dual glow, replacing the flat grey line. */
+.modal.sg-modal,
+.ml-modal,
+.modal-throworder,
+.modal.menu-modal,
+.modal.sq-stats-modal{
+  position:relative;
+  border:1px solid rgba(255,255,255,.05) !important;
+  box-shadow:
+    0 26px 60px rgba(0,0,0,.62),
+    0 0 44px rgba(47,134,255,.10),
+    0 0 90px rgba(255,122,0,.07) !important;
+}
+/* Home: stretch the LIVE UPDATES panel so the footer nav sits at the bottom
+   of the screen with no dead space beneath it. */
+body[data-page="details"] #details{
+  display:flex;
+  flex-direction:column;
+}
+#details .start-actions.column{
+  flex:1 1 auto;
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+}
+#details #homeLivePrinter{
+  flex:1 1 auto;
+  display:flex;
+  flex-direction:column;
+  min-height:280px;
+}
+#details #homeLivePrinter .lp-mid{ flex:1 1 auto; }
+
+/* =====================================================================
+   MENU MODALS (Player Stats hub etc.) — arcade skin
+   Navy cards, blue hairline accents, orange chevrons; matches the setup
+   flow and CTA palette while keeping the streamlined list layout.
+   ===================================================================== */
+.modal.menu-modal{
+  background:rgba(15,18,32,.97);
+}
+.menu-modal-title-text{
+  letter-spacing:.14em;
+  text-shadow:0 0 16px rgba(255,122,0,.28);
+}
+.menu-modal-icon{ color:var(--shatekiOrange,#ff7a00); }
+.menu-row{
+  background:linear-gradient(180deg, rgba(21,28,46,.92), rgba(13,18,32,.92));
+  border:1px solid rgba(35,164,255,.22);
+  box-shadow:0 4px 12px rgba(0,0,0,.25);
+  transition:border-color .15s ease, box-shadow .15s ease, transform .12s ease;
+}
+.menu-row:hover{
+  border-color:rgba(35,164,255,.55);
+  box-shadow:0 4px 16px rgba(0,0,0,.3), 0 0 18px rgba(47,134,255,.18);
+}
+.menu-row-icon{
+  background:#101827;
+  border:1px solid rgba(35,164,255,.35);
+  color:var(--shatekiBlueLight,#4aa3ff);
+  box-shadow:inset 0 0 12px rgba(47,134,255,.12);
+}
+.menu-row-title{
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  font-weight:800;
+}
+.menu-row-sub{ color:rgba(151,178,214,.78); }
+.menu-row > .menu-row-chev{ color:var(--shatekiOrange,#ff7a00); }
+.menu-row.is-disabled{ opacity:.45; filter:grayscale(.4); }
+/* Centered loading state used while a stats dialog fetches its data */
+.sq-modal-loading{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  padding:48px 0;
+}
+
+/* Player-Stats sub-dialogs (Level Ladder, Latest Matches, High Scores,
+   Progression, Target %, H2H, Spider…) — inner arcade theming. */
+.modal.sq-stats-modal{
+  background:rgba(15,18,32,.97);
+}
+.sq-stats-modal .modal-header{
+  border-bottom:1px solid rgba(35,164,255,.15);
+  padding-bottom:10px;
+}
+.sq-stats-modal h3{
+  text-transform:uppercase;
+  letter-spacing:.1em;
+  text-shadow:0 0 16px rgba(255,122,0,.28);
+}
+/* Tables: blue arcade headers, subtle zebra rows */
+.sq-stats-modal .sq-table thead th,
+.sq-stats-modal table thead th{
+  color:#7cc0ff;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  font-size:11px;
+  background:rgba(16,24,39,.92);
+  position:sticky;
+  top:0;
+}
+.sq-stats-modal .sq-table tbody tr:nth-child(odd),
+.sq-stats-modal table tbody tr:nth-child(odd){
+  background:rgba(255,255,255,.025);
+}
+/* ===== Player profile (pp-*) — arcade skin for openPlayerStatsDialog ===== */
+.pp-hero{
+  position:relative; padding:16px; border-radius:16px; overflow:hidden;
+  background:linear-gradient(135deg, rgba(255,122,24,.22), rgba(16,24,39,.66) 55%, rgba(47,134,255,.10));
+  border:1px solid rgba(255,150,60,.35);
+  box-shadow:0 12px 30px rgba(0,0,0,.28), 0 0 40px rgba(255,122,0,.10), inset 0 0 60px rgba(255,122,0,.05);
+}
+.pp-hero-name{ font-size:26px; font-weight:900; letter-spacing:.01em; line-height:1.1; }
+.pp-hero-nick{ margin-top:2px; font-weight:700; }
+.pp-tiles{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:14px; }
+.pp-tile{ padding:10px 8px; border-radius:12px; background:rgba(0,0,0,.28); border:1px solid rgba(255,255,255,.08); text-align:center; }
+.pp-tile-label{ font-size:10px; text-transform:uppercase; letter-spacing:.09em; }
+.pp-tile-value{ margin-top:4px; font-weight:900; font-size:clamp(13px, 4.2vw, 17px); white-space:nowrap; color:#ffe9d2; text-shadow:0 0 14px rgba(255,150,60,.35); }
+.pp-cards{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
+.pp-card{
+  padding:12px 14px; border-radius:14px;
+  background:rgba(16,24,39,.60); border:1px solid rgba(35,164,255,.18);
+  box-shadow:0 8px 22px rgba(0,0,0,.25);
+}
+.pp-card-head{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.pp-card-head .pp-ico{ color:#f59e0b; display:inline-flex; filter:drop-shadow(0 0 6px rgba(255,150,60,.5)); }
+.pp-card-head strong{
+  font-size:12px; color:#7cc0ff; text-transform:uppercase; letter-spacing:.12em;
+  text-shadow:0 0 12px rgba(47,134,255,.35);
+}
+.pp-row{
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:start;
+  padding:9px 0; border-top:1px solid rgba(255,255,255,.06);
+}
+.pp-row-label{ font-weight:700; font-size:13px; }
+.pp-row-value{ white-space:pre-line; text-align:right; font-weight:900; font-size:15px; color:#f3f7ff; }
+.pp-row.muted .pp-row-label, .pp-row.muted .pp-row-value{ opacity:.6; font-weight:600; }
+/* rank chips: blue by default, medal colours for podium places */
+.pp-pos{ margin-left:6px; font-weight:800; color:#7cc0ff; }
+.pp-pos.g1{ color:#ffd24a; text-shadow:0 0 10px rgba(255,210,74,.45); }
+.pp-pos.g2{ color:#cbd5e1; text-shadow:0 0 10px rgba(203,213,225,.4); }
+.pp-pos.g3{ color:#d08b5a; text-shadow:0 0 10px rgba(208,139,90,.45); }
+/* streak flame (CSS-generated so it never pollutes the value text) */
+.pp-hot::after{ content:'🔥'; margin-left:5px; filter:drop-shadow(0 0 6px rgba(255,120,30,.7)); }
+/* mini hit-rate bars under target lines */
+.pp-tline{ display:block; }
+.pp-bar{ height:5px; border-radius:999px; background:rgba(255,255,255,.08); overflow:hidden; margin:3px 0 5px; }
+.pp-bar > span{ display:block; height:100%; border-radius:999px;
+  background:linear-gradient(90deg,#ff7a18,#ffb14a); box-shadow:0 0 8px rgba(255,150,60,.5); }
+.pp-bar.cold > span{ background:linear-gradient(90deg,#2f86ff,#7cc0ff); box-shadow:0 0 8px rgba(47,134,255,.5); }
+/* profile tabs */
+.pp-tabs{ display:flex; gap:8px; margin:2px 0; }
+.pp-tab{
+  flex:1; padding:11px 6px; border-radius:12px; font-weight:900; font-size:13px;
+  letter-spacing:.04em; text-transform:uppercase; cursor:pointer;
+  border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.04); color:var(--v3-muted,#98a2b8);
+}
+.pp-tab.active{
+  background:linear-gradient(135deg,rgba(255,122,24,.30),rgba(255,183,64,.16));
+  color:#fff; border-color:rgba(255,150,60,.55); box-shadow:0 0 18px rgba(255,122,0,.18);
+}
+/* FORM panel: win-rate gauge + verdict stamp + recent-games strip
+   (same arcade language as the Target Progress form arena) */
+.pp-form{
+  grid-column:1/-1; display:flex; flex-wrap:wrap; align-items:center; gap:4px 14px;
+  padding:12px 14px; border-radius:14px; background:#101827;
+  border:1px solid rgba(35,164,255,.3);
+  box-shadow:0 6px 16px rgba(0,0,0,.3), 0 0 24px rgba(47,134,255,.08);
+}
+.pp-form-info{ flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; align-items:flex-start; }
+.pp-form-value{ font-size:30px; font-weight:900; color:#ffd9b0; line-height:1; letter-spacing:.02em; }
+.pp-form-sub{ font-size:10px; text-transform:uppercase; letter-spacing:.1em; font-weight:800; color:rgba(150,185,230,.85); }
+.pp-verdict{ display:inline-flex; align-items:center; gap:6px; padding:5px 13px; border-radius:99px; font-weight:900; font-size:12px; letter-spacing:.1em; }
+.pp-strip-wrap{ flex-basis:100%; margin-top:8px; }
+.pp-strip-label{ font-size:10px; text-transform:uppercase; letter-spacing:.12em; font-weight:800; color:rgba(150,185,230,.85); margin-bottom:6px; }
+.pp-strip{ display:flex; gap:3px; align-items:flex-end; overflow-x:auto; padding-bottom:2px; }
+.pp-strip-cell{
+  width:12px; min-height:8px; border-radius:3px 3px 1px 1px; flex:0 0 auto;
+  background:linear-gradient(180deg,#2f86ff,#1b4c94); box-shadow:0 0 6px rgba(47,134,255,.35);
+  transform-origin:bottom; transition:height .5s cubic-bezier(.2,.8,.25,1);
+}
+.pp-strip-cell.win{ background:linear-gradient(180deg,#ffb14a,#ff7a18); box-shadow:0 0 8px rgba(255,140,40,.5); }
+/* Power Rankings arena (pw-*): podium + sliding ranked rows + power bars */
+.pw-arena{ display:flex; flex-direction:column; gap:12px; }
+.pw-podium{ display:grid; grid-template-columns:1fr 1.18fr 1fr; gap:8px; align-items:end; padding:8px 2px 0; }
+.pw-pod{ display:flex; flex-direction:column; align-items:center; gap:5px; min-width:0; }
+.pw-pod-crown{ font-size:17px; line-height:1; animation:ppFlame 2.2s ease-in-out infinite; filter:drop-shadow(0 0 8px rgba(255,210,74,.7)); }
+.pw-pod-name{ font-weight:900; font-size:12px; letter-spacing:.02em; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pw-pod-avg{ font-weight:900; font-size:21px; line-height:1; color:#ffe4c4; text-shadow:0 0 14px rgba(255,150,60,.4); }
+.pw-pod-block{ width:100%; position:relative; overflow:hidden; border-radius:10px 10px 4px 4px; transform-origin:bottom; animation:pwRise .7s cubic-bezier(.2,.8,.25,1) both; }
+.pw-pod-block::after{ content:''; position:absolute; inset:0; transform:translateX(-140%) skewX(-18deg); background:linear-gradient(105deg, transparent 42%, rgba(255,255,255,.4) 50%, transparent 58%); animation:ppSheen 3s ease-in-out 1.1s infinite; }
+.pw-pod-rank{ position:absolute; left:0; right:0; top:7px; text-align:center; font-weight:900; font-size:16px; color:rgba(10,10,16,.62); }
+.pw-pod.p1 .pw-pod-block{ height:66px; background:linear-gradient(180deg,#ffd76a,#b8860b); box-shadow:0 0 22px rgba(255,210,74,.35); }
+.pw-pod.p2 .pw-pod-block{ height:48px; background:linear-gradient(180deg,#e6edf7,#8b98ab); box-shadow:0 0 16px rgba(203,213,225,.25); }
+.pw-pod.p3 .pw-pod-block{ height:38px; background:linear-gradient(180deg,#e0a370,#8a5a2e); box-shadow:0 0 16px rgba(208,139,90,.28); }
+.pw-pod.p2 .pw-pod-block{ animation-delay:.08s; }
+.pw-pod.p1 .pw-pod-block{ animation-delay:.24s; }
+.pw-pod.p3 .pw-pod-block{ animation-delay:.4s; }
+@keyframes pwRise{ from{ transform:scaleY(0); } }
+.pw-list{ display:flex; flex-direction:column; gap:6px; }
+.pw-row{
+  display:grid; grid-template-columns:40px minmax(0,1fr) auto; gap:10px; align-items:center;
+  padding:9px 12px; border-radius:12px; background:rgba(16,24,39,.62); border:1px solid rgba(35,164,255,.14);
+  --pw-op:1; opacity:0; transform:translateX(-14px); animation:pwSlide .45s cubic-bezier(.2,.8,.25,1) forwards;
+}
+@keyframes pwSlide{ to{ opacity:var(--pw-op); transform:none; } }
+.pw-row.top3{ border-color:rgba(255,150,60,.3); background:linear-gradient(90deg, rgba(255,122,24,.09), rgba(16,24,39,.62) 55%); }
+.pw-row.benched{ --pw-op:.45; filter:grayscale(.35); }
+.pw-rank{ font-weight:900; font-size:14px; color:#7cc0ff; text-align:center; }
+.pw-rank.g1{ color:#ffd24a; text-shadow:0 0 10px rgba(255,210,74,.5); }
+.pw-rank.g2{ color:#cbd5e1; text-shadow:0 0 10px rgba(203,213,225,.4); }
+.pw-rank.g3{ color:#d08b5a; text-shadow:0 0 10px rgba(208,139,90,.45); }
+.pw-row-main{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+.pw-row-top{ display:flex; align-items:center; gap:7px; min-width:0; }
+.pw-row-name{ font-weight:800; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pw-chips{ display:flex; gap:3px; flex:0 0 auto; }
+.pw-chip{ font-size:9px; font-weight:800; padding:1px 5px; border-radius:6px; background:rgba(47,134,255,.14); color:#9ecbff; border:1px solid rgba(47,134,255,.25); }
+.pw-bar{ height:6px; border-radius:99px; background:rgba(255,255,255,.07); overflow:hidden; }
+.pw-bar > span{ display:block; height:100%; width:0; border-radius:99px; background:linear-gradient(90deg,#2f86ff,#7cc0ff); box-shadow:0 0 8px rgba(47,134,255,.45); transition:width .8s cubic-bezier(.2,.8,.25,1); }
+.pw-row.top3 .pw-bar > span{ background:linear-gradient(90deg,#ff7a18,#ffd264); box-shadow:0 0 8px rgba(255,150,60,.5); }
+.pw-avg{ font-weight:900; font-size:16px; color:#ffe4c4; text-align:right; }
+.pw-row-sub{ font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:rgba(150,185,230,.75); }
+.pw-tag{ font-size:8px; font-weight:900; letter-spacing:.1em; padding:2px 6px; border-radius:99px; border:1px solid rgba(255,255,255,.22); color:rgba(220,230,245,.75); text-transform:uppercase; flex:0 0 auto; }
+@media (prefers-reduced-motion: reduce){
+  .pw-pod-block, .pw-row{ animation:none; opacity:var(--pw-op,1); transform:none; }
+  .pw-pod-block::after, .pw-pod-crown{ animation:none; }
+  .pw-bar > span{ transition:none; }
+}
+/* Premier League arena (pl-*): championship table — zone stripes, dots, leader glow */
+.pl-arena{ display:flex; flex-direction:column; gap:6px; overflow-y:auto; max-height:54vh; padding:2px; }
+.pl-row{
+  display:grid; grid-template-columns:40px minmax(0,1fr) auto; gap:10px; align-items:center;
+  padding:9px 12px; border-radius:12px; background:rgba(14,26,22,.66); border:1px solid rgba(47,208,107,.14);
+  --pl-op:1; opacity:0; transform:translateY(12px); animation:plUp .45s cubic-bezier(.2,.8,.25,1) forwards;
+}
+@keyframes plUp{ to{ opacity:var(--pl-op); transform:none; } }
+.pl-row.zone{ border-left-width:3px; }
+.pl-row.z1{ border-left-color:#ffd24a; }
+.pl-row.z2{ border-left-color:#cbd5e1; }
+.pl-row.z3{ border-left-color:#d08b5a; }
+.pl-row.lead{ border-color:rgba(255,210,74,.5); animation:plUp .45s cubic-bezier(.2,.8,.25,1) forwards, plGlow 2.6s ease-in-out 1s infinite; }
+@keyframes plGlow{ 0%,100%{ box-shadow:0 0 0 rgba(255,210,74,0); } 50%{ box-shadow:0 0 18px rgba(255,210,74,.28); } }
+.pl-row.unq{ --pl-op:.55; filter:grayscale(.3); }
+.pl-rank{ font-weight:900; font-size:14px; color:#7ee2a8; text-align:center; }
+.pl-rank.g1{ color:#ffd24a; text-shadow:0 0 10px rgba(255,210,74,.5); }
+.pl-rank.g2{ color:#cbd5e1; text-shadow:0 0 10px rgba(203,213,225,.4); }
+.pl-rank.g3{ color:#d08b5a; text-shadow:0 0 10px rgba(208,139,90,.45); }
+.pl-main{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+.pl-top{ display:flex; align-items:center; gap:6px; min-width:0; }
+.pl-name{ font-weight:800; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pl-trophy{ font-size:13px; line-height:1; animation:ppFlame 2.2s ease-in-out infinite; filter:drop-shadow(0 0 6px rgba(255,210,74,.7)); }
+.pl-bar{ height:6px; border-radius:99px; background:rgba(255,255,255,.07); overflow:hidden; }
+.pl-bar > span{ display:block; height:100%; width:0; border-radius:99px; background:linear-gradient(90deg,#1f9e52,#7cf0a0); box-shadow:0 0 8px rgba(47,208,107,.45); transition:width .8s cubic-bezier(.2,.8,.25,1); }
+.pl-row.zone .pl-bar > span{ background:linear-gradient(90deg,#2fd06b,#ffd24a); box-shadow:0 0 8px rgba(255,210,74,.4); }
+.pl-row.unq .pl-bar > span{ background:rgba(150,170,190,.4); box-shadow:none; }
+.pl-sub{ display:flex; align-items:center; gap:6px; font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:rgba(150,220,180,.75); }
+.pl-dots{ display:inline-flex; gap:3px; }
+.pl-dots i{ width:7px; height:7px; border-radius:50%; border:1px solid rgba(150,220,180,.5); }
+.pl-dots i.on{ background:#2fd06b; border-color:#2fd06b; box-shadow:0 0 6px rgba(47,208,107,.6); }
+.pl-side{ display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+.pl-avg{ font-weight:900; font-size:16px; color:#d9ffe6; text-shadow:0 0 12px rgba(47,208,107,.3); }
+.pl-best{ font-size:10px; font-weight:800; letter-spacing:.05em; color:#9ecbff; white-space:nowrap; }
+@media (prefers-reduced-motion: reduce){
+  .pl-row{ animation:none; opacity:var(--pl-op,1); transform:none; }
+  .pl-row.lead{ animation:none; }
+  .pl-trophy{ animation:none; }
+  .pl-bar > span{ transition:none; }
+}
+/* High Score League record board (hs-*): red/amber HIGH SCORE arcade theme */
+.hs-arena{ display:flex; flex-direction:column; gap:10px; }
+.hs-record{
+  position:relative; overflow:hidden; text-align:center; padding:14px 16px 12px; border-radius:16px;
+  background:radial-gradient(120% 160% at 50% -40%, rgba(255,80,40,.18), transparent 60%), #170f12;
+  border:1px solid rgba(255,120,60,.35);
+  box-shadow:0 6px 18px rgba(0,0,0,.35), 0 0 30px rgba(255,90,40,.12);
+}
+.hs-record::after{
+  content:''; position:absolute; top:0; bottom:0; left:0; width:45%; pointer-events:none;
+  background:linear-gradient(105deg, transparent, rgba(255,255,255,.08), transparent);
+  transform:translateX(-130%) skewX(-18deg); animation:ppSheen 5s ease-in-out .8s infinite;
+}
+.hs-record-eyebrow{ font-size:10px; letter-spacing:.22em; text-transform:uppercase; color:#ffb290; font-weight:900; }
+.hs-record-score{ font-size:44px; font-weight:900; line-height:1.05; color:#ffe9d2; text-shadow:0 0 22px rgba(255,120,50,.75), 0 0 44px rgba(255,90,40,.4); }
+.hs-record-holder{ font-weight:900; font-size:14px; color:#fff; }
+.hs-record-date{ font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:rgba(255,180,150,.7); font-weight:800; }
+.hs-list{ display:flex; flex-direction:column; gap:6px; }
+.hs-row{
+  display:grid; grid-template-columns:40px minmax(0,1fr) auto; gap:10px; align-items:center;
+  padding:9px 12px; border-radius:12px; background:rgba(26,16,14,.66); border:1px solid rgba(255,120,60,.14);
+  opacity:0; transform:translateY(10px); animation:hsUp .45s cubic-bezier(.2,.8,.25,1) forwards;
+}
+@keyframes hsUp{ to{ opacity:1; transform:none; } }
+.hs-row.top1{ border-color:rgba(255,150,60,.4); }
+.hs-rank{ font-weight:900; font-size:14px; color:#ff9d73; text-align:center; }
+.hs-rank.g1{ color:#ffd24a; text-shadow:0 0 10px rgba(255,210,74,.5); }
+.hs-rank.g2{ color:#cbd5e1; text-shadow:0 0 10px rgba(203,213,225,.4); }
+.hs-rank.g3{ color:#d08b5a; text-shadow:0 0 10px rgba(208,139,90,.45); }
+.hs-main{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+.hs-name{ font-weight:800; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hs-meter{ height:6px; border-radius:99px; background:rgba(255,255,255,.07); overflow:hidden; }
+.hs-meter > span{ display:block; height:100%; width:0; border-radius:99px; background:linear-gradient(90deg,#ff4d2e,#ffb14a); box-shadow:0 0 8px rgba(255,100,50,.5); transition:width .8s cubic-bezier(.2,.8,.25,1); }
+.hs-date{ font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:rgba(255,180,150,.65); }
+.hs-side{ display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+.hs-score{ font-weight:900; font-size:17px; color:#ffd9b0; text-shadow:0 0 12px rgba(255,120,50,.4); }
+.hs-avgchip{ font-size:9px; font-weight:800; padding:1px 6px; border-radius:6px; background:rgba(47,134,255,.14); color:#9ecbff; border:1px solid rgba(47,134,255,.25); }
+@media (prefers-reduced-motion: reduce){
+  .hs-row{ animation:none; opacity:1; transform:none; }
+  .hs-record::after{ display:none; }
+  .hs-meter > span{ transition:none; }
+}
+/* Top 50 score cascade (t5-*): violet tier bands — PODIUM / ELITE TEN / THE PACK */
+.t5-arena{ display:flex; flex-direction:column; gap:6px; overflow-y:auto; max-height:62vh; padding:2px; }
+.t5-band{
+  font-size:10px; font-weight:900; letter-spacing:.2em; text-transform:uppercase;
+  color:#c9a6ff; text-shadow:0 0 12px rgba(168,110,255,.45); padding:8px 2px 1px;
+}
+.t5-band.gold{ color:#ffd24a; text-shadow:0 0 12px rgba(255,210,74,.5); }
+.t5-band.pack{ color:#7cc0ff; text-shadow:0 0 12px rgba(47,134,255,.4); }
+.t5-row{
+  display:grid; grid-template-columns:40px minmax(0,1fr) auto; gap:10px; align-items:center;
+  padding:8px 12px; border-radius:12px; background:rgba(22,16,34,.66); border:1px solid rgba(168,110,255,.16);
+  opacity:0; transform:translateX(16px); animation:t5In .4s cubic-bezier(.2,.8,.25,1) forwards;
+}
+@keyframes t5In{ to{ opacity:1; transform:none; } }
+.t5-row.podium{ border-color:rgba(255,210,74,.32); background:linear-gradient(90deg, rgba(255,210,74,.07), rgba(22,16,34,.66) 55%); }
+.t5-row.pack{ background:rgba(15,20,34,.6); border-color:rgba(47,134,255,.14); }
+.t5-rank{ font-weight:900; font-size:14px; color:#c9a6ff; text-align:center; }
+.t5-rank.g1{ color:#ffd24a; text-shadow:0 0 10px rgba(255,210,74,.5); }
+.t5-rank.g2{ color:#cbd5e1; text-shadow:0 0 10px rgba(203,213,225,.4); }
+.t5-rank.g3{ color:#d08b5a; text-shadow:0 0 10px rgba(208,139,90,.45); }
+.t5-row.pack .t5-rank{ color:#7cc0ff; }
+.t5-main{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.t5-top{ display:flex; align-items:center; gap:6px; min-width:0; }
+.t5-name{ font-weight:800; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.t5-pb{ font-size:8px; font-weight:900; letter-spacing:.08em; padding:1px 5px; border-radius:6px; background:rgba(168,110,255,.2); color:#dcc6ff; border:1px solid rgba(168,110,255,.45); flex:0 0 auto; }
+.t5-date{ font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:rgba(190,170,230,.6); }
+.t5-side{ display:flex; align-items:center; gap:8px; }
+.t5-avg{ font-size:9px; font-weight:800; color:rgba(190,170,230,.7); text-transform:uppercase; letter-spacing:.05em; }
+.t5-cap{ padding:4px 11px; border-radius:10px; font-weight:900; font-size:15px; color:#0e0a18;
+  background:linear-gr
+=== END ===
+
+=== pstats occurrence 6 chars 451701:483701 ===
+lassList.add('hidden'); openAllGamesDialog(); };
+  if (btnScores) btnScores.onclick = ()=>{ hub.classList.add('hidden'); openAllScoresDialog(); };
+if (btnLHS)  btnLHS.onclick  = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(false); };
+if (btnPHS)  btnPHS.onclick  = ()=>{ hub.classList.add('hidden'); openHighScoresAdminDialog(true); };
+if (btnLLS)  btnLLS.onclick  = () => {
+  hub.classList.add('hidden');
+  openLeagueLowsAdminDialog();
+};
+if (btnSave) btnSave.onclick = ()=>{ hub.classList.add('hidden'); openSavedPlayersAdminDialog(); };
+  if (btnPBGR) btnPBGR.onclick = ()=>{ hub.classList.add('hidden'); openPBGRAdminDialog(); };
+
+  if (btnFix) btnFix.onclick = async ()=>{
+    hub.classList.add('hidden');
+    try{
+      const removed = await dedupeAllHighScores();
+      toast(`Removed ${removed} duplicate row${removed===1?'':'s'}.`);
+    }catch(e){
+      console.error(e);
+      toast('Dedupe failed');
+    }
+  };
+
+  if (btnClose) btnClose.onclick = ()=>{ hub.classList.add('hidden'); try{ window.__sqNavContext = null; }catch(_){} };
+  if (btnCloseX) btnCloseX.onclick = ()=>{ hub.classList.add('hidden'); try{ window.__sqNavContext = null; }catch(_){} };
+}
+
+// Export Admin Hub opener for any callers that use window.openAdminHub
+try { window.openAdminHub = openAdminHub; } catch(_) {}
+
+// === All Games modal (simple list) ===
+
+// >>> PATCH:ADMIN_ALL_SCORES_V1 START
+async function cloudRemovePlayerFromGame(gameId, playerId, playerName){
+  await ensureCloudInit();
+  if (!gameId || !playerId) throw new Error('cloudRemovePlayerFromGame: missing ids');
+
+  // 1) Attempt to remove player from the game row (best-effort)
+  try{
+    const { data: gRows, error: gErr } = await sb.from(TABLE_GAMES)
+      .select('id,state,stats,totals')
+      .eq('id', gameId)
+      .limit(1);
+
+    if (!gErr && gRows && gRows[0]){
+      const g = gRows[0];
+      const state = (g.state && typeof g.state === 'object') ? JSON.parse(JSON.stringify(g.state)) : null;
+      const stats = (g.stats && typeof g.stats === 'object') ? JSON.parse(JSON.stringify(g.stats)) : null;
+      const totals = Array.isArray(g.totals) ? g.totals.slice() : null;
+
+      // Determine player index from common patterns
+      let idx = -1;
+
+      const tryFindIdxInArray = (arr)=>{
+        if (!Array.isArray(arr)) return -1;
+        for (let i=0;i<arr.length;i++){
+          const it = arr[i];
+          if (it && typeof it === 'object'){
+            if (it.id === playerId || it.player_id === playerId) return i;
+            if (playerName && (it.name === playerName || it.player_name === playerName)) return i;
+          } else {
+            if (it === playerId) return i;
+            if (playerName && it === playerName) return i;
+          }
+        }
+        return -1;
+      };
+
+      if (state){
+        idx = tryFindIdxInArray(state.players);
+        if (idx<0) idx = tryFindIdxInArray(state.player_ids);
+        if (idx<0) idx = tryFindIdxInArray(state.playerIds);
+        if (idx<0) idx = tryFindIdxInArray(state.names);
+      }
+      if (idx<0 && stats){
+        idx = tryFindIdxInArray(stats.players);
+        if (idx<0) idx = tryFindIdxInArray(stats.player_ids);
+        if (idx<0) idx = tryFindIdxInArray(stats.names);
+      }
+
+      const stripIdx = (obj, key)=>{
+        if (!obj || !Array.isArray(obj[key]) || idx<0) return;
+        obj[key].splice(idx,1);
+      };
+
+      if (idx>=0){
+        // remove from known arrays
+        stripIdx(state,'players'); stripIdx(state,'player_ids'); stripIdx(state,'playerIds'); stripIdx(state,'names');
+        stripIdx(stats,'players'); stripIdx(stats,'player_ids'); stripIdx(stats,'playerIds'); stripIdx(stats,'names');
+
+        if (totals) totals.splice(idx,1);
+
+        // Also try nested common shapes
+        if (state && state.match && Array.isArray(state.match.players)) state.match.players.splice(idx,1);
+        if (stats && stats.perPlayer && Array.isArray(stats.perPlayer)) stats.perPlayer.splice(idx,1);
+
+        await sb.from(TABLE_GAMES).update({
+          state: state,
+          stats: stats,
+          totals: totals
+        }).eq('id', gameId);
+      } else {
+        console.warn('[AllScores] Could not determine player index in game row; skipping game JSON edit.');
+      }
+    }
+  }catch(e){
+    console.warn('[AllScores] Game-row edit failed; continuing to purge HS rows only.', e);
+  }
+
+  // 2) Purge HS rows for this player+game
+  try{ await sb.from(TABLE_HS_LEAGUE).delete().eq('game_id', gameId).eq('player_id', playerId); }catch(_){}
+  try{ await sb.from(TABLE_HS_PRACTICE).delete().eq('game_id', gameId).eq('player_id', playerId); }catch(_){}
+
+  return true;
+}
+
+async function openAllScoresDialog(){
+  const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+  const modal   = document.createElement('div'); modal.className='modal';
+  const title   = document.createElement('h3');  title.textContent='All Scores';
+  const body    = document.createElement('div'); body.className='modal-body';
+  const footer  = document.createElement('div'); footer.className='modal-footer';
+
+  const header = document.createElement('div');
+  header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
+  const controls = document.createElement('div');
+  controls.style.cssText = 'display:flex;gap:6px;';
+
+  const officialBtn = document.createElement('button'); officialBtn.className='btn primary'; officialBtn.textContent='Official';
+  const practiceBtn = document.createElement('button'); practiceBtn.className='btn'; practiceBtn.textContent='Practice';
+  controls.append(officialBtn, practiceBtn);
+  header.append(title, controls);
+
+  const table = document.createElement('table'); table.className='table';
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th style="width:140px;">When</th>
+        <th>Player</th>
+        <th style="width:90px;text-align:right;">Score</th>
+        <th style="width:110px;">Game</th>
+        <th style="width:170px;text-align:right;">Action</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  `;
+  const tbody = table.querySelector('tbody');
+
+  const pad2 = (n)=>String(n).padStart(2,'0');
+  const fmtWhen = (ts)=>{
+    if(!ts) return '';
+    const d = new Date(ts);
+    if(Number.isNaN(d.getTime())) return String(ts);
+    return `${pad2(d.getDate())}/${pad2(d.getMonth()+1)}/${String(d.getFullYear()).slice(-2)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  };
+  const shortId = (id)=> id ? String(id).slice(0,8) : '';
+
+  let filterMode = 'official';
+
+  async function fetchRows(){
+    await ensureCloudInit();
+    const tname = (filterMode==='practice') ? TABLE_HS_PRACTICE : TABLE_HS_LEAGUE;
+    const { data, error } = await sb
+      .from(tname)
+      .select('id,name,score,ts,player_id,game_id')
+      .order('ts',{ascending:false})
+      .limit(250);
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function render(){
+    tbody.innerHTML = '';
+    let rows = [];
+    try{
+      rows = await fetchRows();
+    }catch(e){
+      console.error(e);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="5" style="opacity:.8;">Failed to load scores.</td>`;
+      tbody.appendChild(tr);
+      return;
+    }
+
+    if (!rows.length){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="5" style="opacity:.8;">No scores found.</td>`;
+      tbody.appendChild(tr);
+      return;
+    }
+
+    for (const r of rows){
+      const tr = document.createElement('tr');
+      const when = fmtWhen(r.ts);
+      const player = r.name || '—';
+      const score = (r.score ?? 0);
+      const gid = r.game_id;
+
+      const btn = document.createElement('button');
+      btn.className = 'btn danger';
+      btn.textContent = 'Remove';
+      btn.style.minWidth = '110px';
+
+      btn.onclick = async ()=>{
+        const msg = `REMOVE PLAYER FROM GAME\n\nThis removes this player's data from this game and updates visible records.\n\nType REMOVE to confirm:`;
+        const ok = prompt(msg);
+        if (String(ok||'').trim().toUpperCase() !== 'REMOVE') return;
+
+        btn.disabled = true;
+        const old = btn.textContent;
+        btn.textContent = 'Working…';
+        try{
+          await cloudRemovePlayerFromGame(gid, r.player_id, r.name);
+          toast('Removed.');
+  // >>> PATCH:SQ_ALLSCORES_MOUNT_EARLY START
+  // <<< PATCH:SQ_ALLSCORES_MOUNT_EARLY END
+
+  await render();
+        }catch(e){
+          console.error(e);
+          toast('Remove failed');
+        }finally{
+          btn.disabled = false;
+          btn.textContent = old;
+        }
+      };
+
+      tr.innerHTML = `
+        <td>${when}</td>
+        <td>${escapeHtml(player)}</td>
+        <td style="text-align:right;">${score}</td>
+        <td>${shortId(gid)}</td>
+        <td style="text-align:right;"></td>
+      `;
+      tr.lastElementChild.appendChild(btn);
+      tbody.appendChild(tr);
+    }
+  }
+
+  const backBtn = document.createElement('button'); backBtn.className='btn'; backBtn.textContent='Back';
+  const closeBtn= document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Close';
+  footer.append(backBtn, closeBtn);
+
+  const close = ()=>{ overlay.remove(); modal.remove(); document.removeEventListener('keydown', esc); };
+  const esc = (e)=>{ if(e.key==='Escape'){ close(); } };
+
+  backBtn.onclick = ()=>{ close(); openAdminHub(); };
+  closeBtn.onclick= close;
+
+  officialBtn.onclick = ()=>{ filterMode='official'; officialBtn.classList.add('primary'); practiceBtn.classList.remove('primary'); render(); };
+  practiceBtn.onclick = ()=>{ filterMode='practice'; practiceBtn.classList.add('primary'); officialBtn.classList.remove('primary'); render(); };
+
+  modal.append(header, body, footer);
+  body.appendChild(table);
+  document.body.appendChild(overlay);
+  document.body.appendChild(modal);
+  overlay.onclick = close;
+  document.addEventListener('keydown', esc);
+
+  await render();
+}
+// <<< PATCH:ADMIN_ALL_SCORES_V1 END
+
+
+
+// Player Stats — Select Player flow (uses the generic Select Player modal)
+function openPlayerStatsSelectDialog(){
+  try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('home'); }catch(_){ }
+  try{ console.debug('[Popup]', window.__sqStatsDebugName || 'New Game Screen Stats'); }catch(_){ }
+  // New: dedicated Player Stats select modal (menu/data-input style)
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-backdrop';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal menu-modal';
+
+  const header = document.createElement('div');
+  header.className = 'menu-modal-header';
+
+  const backBtn = document.createElement('button');
+  backBtn.className = 'icon-btn';
+  backBtn.type = 'button';
+  backBtn.setAttribute('aria-label', 'Back');
+  backBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'icon-btn';
+  closeBtn.type = 'button';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+
+  const titleWrap = document.createElement('div');
+  titleWrap.className = 'menu-modal-title';
+
+  const icon = document.createElement('div');
+  icon.className = 'menu-modal-icon';
+  icon.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V5"/><path d="M8 19V9"/><path d="M12 19V3"/><path d="M16 19v-6"/><path d="M20 19V7"/></svg>';
+
+  const title = document.createElement('div');
+  title.className = 'menu-modal-title-text';
+  title.textContent = 'SELECT PLAYER';
+
+  titleWrap.append(icon, title);
+
+  header.append(backBtn, titleWrap, closeBtn);
+
+  const body = document.createElement('div');
+  body.className = 'menu-modal-body';
+
+  const form = document.createElement('div');
+  form.className = 'menu-modal-form';
+
+  const label = document.createElement('label');
+  label.textContent = 'Player Name';
+
+  const sel = document.createElement('select');
+  sel.innerHTML = '<option value="">Select a saved player...</option>';
+
+  form.append(label, sel);
+  body.appendChild(form);
+
+  const actions = document.createElement('div');
+  actions.className = 'menu-modal-actions';
+
+  const cancel = document.createElement('button');
+  cancel.className = 'btn';
+  cancel.type = 'button';
+  cancel.textContent = 'Cancel';
+
+  const go = document.createElement('button');
+  go.className = 'btn primary';
+  go.type = 'button';
+  go.textContent = 'View Stats';
+
+  actions.append(cancel, go);
+
+  modal.append(header, body, actions);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  const close = () => { try{ overlay.remove(); }catch(_){ overlay.parentNode && overlay.parentNode.removeChild(overlay); } };
+  backBtn.onclick = close;
+  closeBtn.onclick = close;
+  cancel.onclick  = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+  // Populate saved players
+  (async () => {
+    try{
+      const items = await cloudListPlayers(); // [{name}]
+      sel.innerHTML = '<option value="">Select a saved player...</option>' +
+        (items || []).map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+    }catch(e){
+      console.error('Stats: load players failed', e);
+      try{ if (typeof toast==='function') toast('Cloud offline'); }catch(_){}
+    }
+  })();
+
+  const openStats = () => {
+    const name = (sel.value || '').trim();
+    if (!name){ try{ toast('Pick a player'); }catch(_){} return; }
+    close();
+    try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('home', name); }catch(_){ }
+    try{
+      if (typeof openPlayerStatsHub === 'function') {
+        openPlayerStatsHub(name);
+      } else if (typeof openPlayerStatsDialog === 'function') {
+        openPlayerStatsDialog(name);
+      } else {
+        console.warn('No player stats dialog function found');
+      }
+    }catch(err){
+      console.error('Open Player Stats failed', err);
+    }
+  };
+
+  go.onclick = openStats;
+  sel.addEventListener('change', () => {
+    // Optional: enable only when selection is made (keeps UX tidy)
+    go.disabled = !String(sel.value || '').trim();
+  });
+  go.disabled = true;
+}
+
+// Ensure the Start screen button opens the Stats select flow
+document.addEventListener('DOMContentLoaded', function(){
+  const btn = document.getElementById('playerStatsBtn');
+  if (btn) btn.onclick = () => {
+    if (typeof window.openPlayerStatsSelect === 'function') return window.openPlayerStatsSelect();
+    if (typeof window.openPlayerStatsHub === 'function') return window.openPlayerStatsHub();
+    return openPlayerStatsSelectDialog();
+  };
+});
+
+// --- PB / GR Admin: open/close + minimal render ---
+function openPBGRAdminDialog(){
+  const modal = document.getElementById('pbgrAdminModal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+
+  const back  = document.getElementById('pbgrBackBtn');
+  const close = document.getElementById('pbgrCloseBtn');
+  const sel   = document.getElementById('pbgrPlayerSelect');
+  const ref   = document.getElementById('pbgrRefreshBtn');
+  const inner = modal.querySelector('.modal');
+
+  if (inner) inner.onclick = (e) => e.stopPropagation();
+  modal.onclick = (e) => { if (e.target === modal) { modal.classList.add('hidden'); openAdminHub(); } };
+
+  if (back)  back.onclick  = () => { modal.classList.add('hidden'); openAdminHub(); };
+  if (close) close.onclick = () => { modal.classList.add('hidden'); try{ window.__sqNavContext = null; }catch(_){} };
+
+  // Populate dropdown once per open
+  (async () => {
+    try{
+      const items = await cloudListPlayers(); // [{name}]
+      if (sel){
+        sel.innerHTML = '<option value="">Select a saved player…</option>' +
+          (items||[]).map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+        if (!sel.value && items && items.length) sel.value = items[0].name || '';
+        if (typeof renderPBGRPlayerTableInto === 'function') await renderPBGRPlayerTableInto('pbgrPlayer', sel.value);
+      }
+      if (typeof renderPBGRGlobalTable === 'function') await renderPBGRGlobalTable();
+    }catch(e){ console.error(e); }
+  })();
+
+  if (sel) sel.onchange = async () => {
+    try{ if (typeof renderPBGRPlayerTableInto === 'function') await renderPBGRPlayerTableInto('pbgrPlayer', sel.value); }
+    catch(e){ console.error(e); }
+  };
+
+  if (ref) ref.onclick = async () => {
+    try{
+      if (typeof refreshPBGRCloud === 'function') await refreshPBGRCloud();
+      if (typeof renderPBGRGlobalTable === 'function') await renderPBGRGlobalTable();
+      if (sel && typeof renderPBGRPlayerTableInto === 'function') await renderPBGRPlayerTableInto('pbgrPlayer', sel.value);
+    }catch(e){ console.error(e); }
+  };
+
+  const backfill = document.getElementById('pbgrBackfillBtn');
+  if (backfill) backfill.onclick = async () => {
+    backfill.disabled = true;
+    const oldText = backfill.textContent;
+    backfill.textContent = 'Refreshing…';
+    try{
+      if (typeof refreshPBGRCloud === 'function') await refreshPBGRCloud();
+      if (typeof renderPBGRGlobalTable === 'function') await renderPBGRGlobalTable();
+      if (sel && typeof renderPBGRPlayerTableInto === 'function') await renderPBGRPlayerTableInto('pbgrPlayer', sel.value);
+    }catch(e){ console.error(e); }
+    finally{ backfill.disabled = false; backfill.textContent = oldText; }
+  };
+}
+
+// Saved Players Admin
+async function openSavedPlayersAdminDialog(){
+  const modal = document.getElementById('savedPlayersAdminModal');
+  const body  = document.getElementById('savedPlayersAdminBody');
+  const back  = document.getElementById('backSavedPlayersAdminBtn');
+  const close = document.getElementById('closeSavedPlayersAdminBtn');
+  if (!modal || !body) return;
+
+  modal.classList.remove('hidden');
+  if (back)  back.onclick  = () => { modal.classList.add('hidden'); openAdminHub(); };
+  if (close) close.onclick = () => { modal.classList.add('hidden'); };
+
+  await renderSavedPlayersAdmin();
+}
+
+
+// >>> PATCH:PBGR_ADMIN_VIEW_KEYS_V1 START
+// PB/WR views store keys as N1..N11, D_ANY, T_ANY, BULL_ANY.
+// Admin UI displays friendly keys as 10..20, D, T, B.
+function __sqPBGRViewKey(displayKey){
+  const k = String(displayKey ?? '').trim().toUpperCase();
+  if (/^\d+$/.test(k)){
+    const n = Number(k);
+    if (n >= 10 && n <= 20) return 'N' + String(n - 9);
+  }
+  if (k === 'D') return 'D_ANY';
+  if (k === 'T') return 'T_ANY';
+  if (k === 'B') return 'BULL_ANY';
+  return k;
+}
+function __sqPBGRMetaFor(mapLike, displayKey){
+  if (!mapLike) return null;
+  const friendly = String(displayKey ?? '').trim();
+  const viewKey = __sqPBGRViewKey(displayKey);
+  return mapLike[friendly] || mapLike[viewKey] || mapLike[String(viewKey).toUpperCase()] || null;
+}
+function __sqPBGRValFor(mapLike, displayKey){
+  const m = __sqPBGRMetaFor(mapLike, displayKey);
+  return Number(m?.val ?? m?.pb_points ?? m?.wr_points ?? 0) || 0;
+}
+async function renderPBGRPlayerTableInto(mountId, playerName){
+  const mount = document.getElementById(mountId);
+  if (!mount) return;
+  const nameKey = String(playerName || '').trim().toLowerCase();
+  if (!nameKey){
+    mount.innerHTML = '<p class="tag">Select a saved player to view PBs.</p>';
+    return;
+  }
+  mount.innerHTML = '<p class="tag">Loading…</p>';
+  try{
+    const snap = await (typeof getPBGRSnapshot === 'function' ? getPBGRSnapshot() : Promise.resolve({ byPlayerMeta:new Map() }));
+    const playerMeta = (snap.byPlayerMeta && typeof snap.byPlayerMeta.get === 'function') ? (snap.byPlayerMeta.get(nameKey) || {}) : {};
+    const order = [...Array.from({length:11},(_,i)=>10+i), 'D','T','B'];
+
+    const table = document.createElement('table'); table.className='hs-table';
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ['Round','PB'].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; trh.appendChild(th); });
+    thead.appendChild(trh); table.appendChild(thead);
+    const tbody = document.createElement('tbody'); table.appendChild(tbody);
+
+    let any = false;
+    for (const key of order){
+      const val = __sqPBGRValFor(playerMeta, key);
+      if (val > 0) any = true;
+      const tr = document.createElement('tr');
+      const tdR = document.createElement('td'); tdR.textContent = String(key);
+      const tdV = document.createElement('td'); tdV.textContent = val ? String(val) : '—';
+      tr.append(tdR, tdV);
+      tbody.appendChild(tr);
+    }
+
+    mount.innerHTML = '';
+    if (!any){
+      const msg = document.createElement('p');
+      msg.className = 'tag';
+      msg.textContent = 'No PB rows found for this player in PB\/WR views or saved game history.';
+      mount.appendChild(msg);
+    }
+    mount.appendChild(table);
+  }catch(e){
+    console.error('renderPBGRPlayerTableInto failed', e);
+    mount.innerHTML = '<p>Unable to load Player PBs right now.</p>';
+  }
+}
+// <<< PATCH:PBGR_ADMIN_VIEW_KEYS_V1 END
+
+// Generic renderer that can write the PB/GR table into any mount id
+async function renderPBGRTableInto(mountId){
+  const mount = document.getElementById(mountId);
+  if (!mount) return;
+  mount.innerHTML = '<p class="tag">Loading…</p>';
+  try{
+    const snap = await (typeof getPBGRSnapshot === 'function' ? getPBGRSnapshot() : Promise.resolve({ byTargetMeta: {} }));
+    const order = [...Array.from({length:11},(_,i)=>10+i), 'D','T','B'];
+
+    // Build table with Date / Time column included
+    const table = document.createElement('table'); table.className='hs-table';
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ['Round','WR','Darts','Date / Time','Holder'].forEach(h=>{
+      const th = document.createElement('th');
+      th.textContent = h;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+
+    const fmtDate = (ts) => {
+      if (!ts) return '—';
+      const d = new Date(ts);
+      if (Number.isNaN(d.getTime())) return '—';
+      return d.toLocaleString('en-GB', {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    };
+
+    const pending = [];
+
+    order.forEach(key=>{
+      const meta = __sqPBGRMetaFor(snap.byTargetMeta, key) || { val:0, player:'', game_id:null, ridx:null, ts:null };
+      const tr   = document.createElement('tr');
+
+      const tdR  = document.createElement('td'); tdR.textContent = String(key);
+      const tdV  = document.createElement('td'); tdV.textContent = String(meta.val || 0);
+      const tdD  = document.createElement('td'); tdD.textContent = meta.darts ? String(meta.darts) : '—'; // async filled with S/D/T/x pattern where available
+      const tdT  = document.createElement('td'); tdT.textContent = fmtDate(meta.ts);
+      const tdN  = document.createElement('td');
+        // Holder: if multiple saved players share the WR value for this round, show "Name +X"
+        let holderText = meta.player ? String(meta.player) : '—';
+        try{
+          const bpm = snap.byPlayerMeta;
+          const wrVal = Number(meta.val||0);
+          if (bpm && typeof bpm.forEach === 'function' && wrVal > 0 && meta.player){
+            let cnt = 0;
+            bpm.forEach((m) => {
+              const rec = m && m[String(key)];
+              if (rec && Number(rec.val||0) === wrVal) cnt++;
+            });
+            if (cnt > 1) holderText = `${holderText} +${cnt-1}`;
+          }
+        }catch(_){}
+        tdN.textContent = holderText || '—';
+
+      tr.append(tdR, tdV, tdD, tdT, tdN);
+      tbody.appendChild(tr);
+
+      // Fetch the per-dart pattern (S/D/T etc.)
+      if (meta && meta.game_id != null && meta.player && (meta.ridx || meta.ridx === 0)){
+        pending.push(
+          fetchRoundPattern(meta.game_id, meta.player, meta.ridx)
+            .then(pat => { tdD.textContent = pat || '—'; })
+            .catch(()=>{ tdD.textContent = '—'; })
+        );
+      }
+
+      // Fill Date/Time if missing: try Games.ts -> earliest throw ts
+      if (!meta?.ts && meta?.game_id){
+        pending.push(
+          (async ()=>{
+            const gts = await fetchGameTS(meta.game_id);
+            if (gts){
+              tdT.textContent = fmtDate(gts);
+              return;
+            }
+            if (meta.player && (meta.ridx || meta.ridx === 0)){
+              const rts = await fetchRoundTS(meta.game_id, meta.player, meta.ridx);
+              if (rts) tdT.textContent = fmtDate(rts);
+            }
+          })()
+        );
+      }
+    });
+
+    if (pending.length){ try{ await Promise.allSettled(pending); }catch(_){ /* ignore */ } }
+    mount.innerHTML = '';
+    mount.appendChild(table);
+  }catch(e){
+    console.error('renderPBGRTableInto failed', e);
+    mount.innerHTML = '<p>Unable to load World Records right now.</p>';
+  }
+}
+
+// LEGACY ROUND HIGH SCORES STATIC IMPLEMENTATION — QUARANTINED
+// Current active path is Fix102 wrapper -> Fix97 dynamic modal.
+// This block is tied to the old #roundHighScoresModal static markup.
+// Do not patch this implementation for current League & Rankings behaviour.
+// >>> PATCH:round_high_scores_use_wr_table START
+async function renderRoundHighScoresInto(mountId){
+  const mount = document.getElementById(mountId);
+  if (!mount) return;
+  mount.innerHTML = '<p class="tag">Loading…</p>';
+
+  const orderKey = (rk) => {
+    const s = String(rk ?? '').trim().toUpperCase();
+    if (/^\d+$/.test(s)) return parseInt(s,10);
+    if (s === 'D') return 21;
+    if (s === 'T') return 22;
+    if (s === 'B') return 23;
+    return 999;
+  };
+
+  const safeText = (v, fallback='—') => {
+    const s = (v == null) ? '' : String(v).trim();
+    return s ? s : fallback;
+  };
+
+  const makeTable = () => {
+    const table = document.createElement('table'); table.className='hs-table';
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    ['Round','WR','Darts','Holder'].forEach(h=>{
+      const th = document.createElement('th');
+      th.textContent = h;
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+    return { table, tbody };
+  };
+
+  try{
+    // Canonical source: Supabase view (backdated + ties)
+    const { data, error } = await sb
+      .from('v_round_high_scores_modal')
+      .select('round_key,wr,darts,holder,tie_idx,holder_suffix')
+      .limit(50000);
+
+    if (error) throw error;
+
+    const rows = Array.isArray(data) ? data.slice() : [];
+    if (!rows.length){
+      mount.innerHTML = '<p>No round high-score rows found in v_round_high_scores_modal.</p>';
+      return;
+    }
+
+    rows.sort((a,b)=>{
+      const ka = orderKey(a.round_key);
+      const kb = orderKey(b.round_key);
+      if (ka !== kb) return ka - kb;
+      const ta = Number(a.tie_idx || 0);
+      const tb = Number(b.tie_idx || 0);
+      if (ta !== tb) return ta - tb;
+      return String(a.holder||'').localeCompare(String(b.holder||''));
+    });
+
+    const { table, tbody } = makeTable();
+
+    for (const r of rows){
+      const tr = document.createElement('tr');
+
+      const rk = String(r.round_key ?? '').toUpperCase();
+      const roundLabel = rk; // already '10'..'20' or 'D'/'T'/'B'
+      const wr = (r.wr == null) ? '—' : String(r.wr);
+      const darts = safeText(r.darts, '—');
+      const holder = safeText(r.holder, '—');
+      const suf = safeText(r.holder_suffix, '');
+
+      [roundLabel, wr, darts, holder, suf].forEach((v, idx)=>{
+        const td = document.createElement('td');
+        td.textContent = v;
+        if (idx === 4) td.className = 'hs-suffix';
+        tr.appendChild(td);
+      });
+
+      tbody.appendChild(tr);
+    }
+
+    mount.innerHTML = '';
+    mount.appendChild(table);
+
+  }catch(err){
+    const msg = (err && (err.message || err.error_description)) ? (err.message || err.error_description) : String(err||'');
+    mount.innerHTML = '<p>Unable to load right now.</p><p class="tag">Error: '+ escapeHtml(msg) +'</p>';
+  }
+}
+
+// >>> PATCH:round_high_scores_use_wr_table END
+// Keep admin renderer for pb/gr admin modal
+async function renderPBGRGlobalTable(){
+  return renderPBGRTableInto('pbgrGlobal');
+}
+
+function _normName(s){ return String(s||'').trim(); }
+
+// Initials helpers (cloud-first; name fallback)
+function __sqComputeInitialsFromName(name){
+  const s = String(name||'').trim();
+  if (!s) return '';
+  // Split on whitespace + hyphen; keep alphanumerics
+  const parts = s.split(/\s+|-/g).map(x=>x.replace(/[^A-Za-z0-9]/g,'')).filter(Boolean);
+  if (!parts.length) return '';
+  if (parts.length === 1){
+    const w = parts[0].toUpperCase();
+    return w.slice(0, Math.min(2, w.length));
+  }
+  const a = parts[0].toUpperCase().slice(0,1);
+  const b = parts[parts.length-1].toUpperCase().slice(0,1);
+  return (a+b).trim();
+}
+function __sqComputeInitials(first, last){
+  const f0 = String(first||'').trim();
+  const l0 = String(last||'').trim();
+  const f = f0.replace(/[^A-Za-z0-9]/g,'');
+  const l = l0.replace(/[^A-Za-z0-9]/g,'');
+  if (f && l){
+    return (f[0] + l[0]).toUpperCase();
+  }
+  if (f){
+    return f.toUpperCase().slice(0, Math.min(2, f.length));
+  }
+  return __sqComputeInitialsFromName((f0 + (l0 ? ' ' + l0 : '')).trim());
+}
+function __sqNormalizeInitials(init, nameFallback){
+  const raw = String(init||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if (raw) return raw.slice(0,3);
+  return __sqComputeInitialsFromName(nameFallback);
+}
+function __sqFindSavedPlayerMetaByName(name){
+  const key = String(name||'').trim().toLowerCase();
+  if (!key) return null;
+  try{
+    const arr = getSavedPlayers() || [];
+    return arr.find(p => p && String(p.name||'').trim().toLowerCase() === key) || null;
+  }catch(_){ return null; }
+}
+
+function __sqNameParts(name){
+  const s = String(name||'').trim();
+  if (!s) return { first:'', last:'' };
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return { first: parts[0] || '', last: '' };
+  return { first: parts[0] || '', last: parts.slice(1).join(' ') };
+}
+
+function __sqPlayerPretty(p){
+  const nm = (p && p.name != null) ? String(p.name).trim() : '';
+  const parts = __sqNameParts(nm);
+  const first = String((p && p.first_name) || '').trim() || parts.first;
+  const last  = String((p && p.last_name)  || '').trim() || parts.last;
+  const nick  = String((p && p.nickname)   || '').trim();
+
+  let out = first || nm || '';
+  if (nick) out += ' "' + nick + '"';
+  if (last) out += (out ? ' ' : '') + last;
+
+  out = out.trim();
+  return out || nm || '';
+}
+
+function __sqPlayerOptionLabel(p){
+  const pretty = __sqPlayerPretty(p);
+  const ini = __sqNormalizeInitials(p && p.initials, (p && p.name) || pretty);
+  return ini ? (pretty + ' (' + ini + ')') : pretty;
+}
+
+function __sqHeaderLabelForPlayer(pl){
+  try{
+    if (typeof __sqVsShadowDisplayLabelForPlayer === 'function') {
+      const shadowLabel = __sqVsShadowDisplayLabelForPlayer(pl);
+      if (shadowLabel) return shadowLabel;
+    }
+  }catch(_){ }
+  const nm = pl && pl.name ? String(pl.name) : '';
+  const init = pl && pl.initials ? String(pl.initials) : '';
+  return __sqNormalizeInitials(init, nm) || nm || '';
+}
+
+function __sqLoadPlayerAliases(){
+  try { return JSON.parse(localStorage.getItem('SQ_PLAYER_ALIASES') || '{}') || {}; } catch(e){ return {}; }
+}
+function __sqSavePlayerAliases(map){
+  try { localStorage.setItem('SQ_PLAYER_ALIASES', JSON.stringify(map || {})); } catch(e){}
+}
+function __sqRememberPlayerRename(oldName, newName){
+  const o = _normName(oldName), n = _normName(newName);
+  if (!o || !n || o === n) return;
+  const map = __sqLoadPlayerAliases();
+
+  // Collapse chains: if something already pointed to old, re
+=== END ===
