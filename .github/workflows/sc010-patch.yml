@@ -20,40 +20,9 @@ jobs:
           fetch-depth: 0
 
       - name: Apply bounded SC-010 patch
-        run: python3 tools/sc010_patch.py
-
-      - name: Preserve unavailable state during Trophy Vault replay
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('index.html')
-          s = p.read_text(encoding='utf-8')
-          old = """    achPanel.__ppReplay = () => {
-      timers.forEach(clearTimeout); timers = [];
-      if (__ppReduced){ vcB.textContent = String(earnedN); vfill.style.width = Math.round(pctDone * 100) + '%'; chips.forEach(c => c.classList.add('in')); return; }
-      vcB.textContent = '0'; vfill.style.width = '0%';
-      chips.forEach(c => c.classList.remove('in', 'shine'));
-      countUp(vcB, String(earnedN), 1000);
-      requestAnimationFrame(() => requestAnimationFrame(() => { vfill.style.width = Math.round(pctDone * 100) + '%'; }));
-      chips.forEach((c, i) => { timers.push(setTimeout(() => { c.classList.add('in', 'shine'); }, 120 + i * 90)); });
-    };
-"""
-          new = """    achPanel.__ppReplay = () => {
-      timers.forEach(clearTimeout); timers = [];
-      if (!achAvailable){ vcB.textContent = '—'; vfill.style.width = '0%'; chips.forEach(c => c.classList.remove('in', 'shine')); return; }
-      if (__ppReduced){ vcB.textContent = String(earnedN); vfill.style.width = Math.round(pctDone * 100) + '%'; chips.forEach(c => c.classList.add('in')); return; }
-      vcB.textContent = '0'; vfill.style.width = '0%';
-      chips.forEach(c => c.classList.remove('in', 'shine'));
-      countUp(vcB, String(earnedN), 1000);
-      requestAnimationFrame(() => requestAnimationFrame(() => { vfill.style.width = Math.round(pctDone * 100) + '%'; }));
-      chips.forEach((c, i) => { timers.push(setTimeout(() => { c.classList.add('in', 'shine'); }, 120 + i * 90)); });
-    };
-"""
-          if s.count(old) != 1:
-              raise SystemExit(f'vault replay patch expected 1 match, found {s.count(old)}')
-          p.write_text(s.replace(old, new, 1), encoding='utf-8')
-          print('patched vault unavailable replay state')
-          PY
+          python3 tools/sc010_patch.py
+          python3 tools/sc010_replay_patch.py
 
       - name: Static guards and SC-010 test syntax
         run: |
@@ -109,7 +78,7 @@ jobs:
 
       - name: Commit verified bounded patch and remove temporary helpers
         run: |
-          rm -f tools/sc010_patch.py tools/sc010-trigger.txt .github/workflows/sc010-patch.yml
+          rm -f tools/sc010_patch.py tools/sc010_replay_patch.py tools/sc010-trigger.txt .github/workflows/sc010-patch.yml
           rmdir .github/workflows 2>/dev/null || true
           rmdir .github 2>/dev/null || true
           git config user.name "github-actions[bot]"
