@@ -1,0 +1,85 @@
+name: SC-010 bounded patch QA
+
+on:
+  push:
+    branches:
+      - fix/sc010-achievement-read-path
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/sc010-achievement-read-path
+          fetch-depth: 0
+
+      - name: Apply bounded SC-010 patch
+        run: python3 tools/sc010_patch.py
+
+      - name: Syntax and static guards
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          s = Path('index.html').read_text(encoding='utf-8')
+          scripts = re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>', s, re.S | re.I)
+          Path('/tmp/sq-inline.js').write_text('\n;\n'.join(scripts), encoding='utf-8')
+          assert s.count("_inflight: null") >= 1
+          assert "SQ_ACH.forPlayerId(xpRow.player_id)" in s
+          assert "SQ_MISFIRE.forPlayerId(xpRow.player_id)" in s
+          assert "Achievement history is unavailable right now." in s
+          assert "const [xr, am, mf] = await Promise.all([" not in s
+          print('STATIC GUARDS PASS')
+          PY
+          node --check /tmp/sq-inline.js
+          node --check tools/ui-smoke/verify-sc010.js
+
+      - name: Install UI smoke dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Start local app server
+        run: |
+          python3 -m http.server 8123 >/tmp/sq-http.log 2>&1 &
+          echo $! >/tmp/sq-http.pid
+          sleep 2
+
+      - name: Player Stats regression
+        working-directory: tools/ui-smoke
+        run: node verify-pstats.js
+
+      - name: SC-008 regression
+        working-directory: tools/ui-smoke
+        run: node verify-sc008.js
+
+      - name: SC-009 regression
+        working-directory: tools/ui-smoke
+        run: node verify-sc009.js
+
+      - name: SC-010 regression
+        working-directory: tools/ui-smoke
+        run: node verify-sc010.js
+
+      - name: Full mobile smoke
+        working-directory: tools/ui-smoke
+        run: node smoke.js
+
+      - name: Commit verified bounded patch and remove temporary helpers
+        run: |
+          rm -f tools/sc010_patch.py .github/workflows/sc010-patch.yml
+          rmdir .github/workflows 2>/dev/null || true
+          rmdir .github 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git status --short
+          git commit -m "SC-010: harden achievement read path"
+          git push origin HEAD:fix/sc010-achievement-read-path
