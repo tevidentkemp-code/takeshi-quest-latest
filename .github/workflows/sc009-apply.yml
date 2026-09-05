@@ -1,0 +1,56 @@
+name: SC009 apply and QA
+on:
+  push:
+    branches:
+      - fix/sc009-achievement-ui-parity
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    if: ${{ !contains(github.event.head_commit.message, '[sc009-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply bounded SC-009 client patch
+        run: python tools/sc009_patch.py
+      - name: Static source guards
+        shell: python
+        run: |
+          from pathlib import Path
+          s=Path('index.html').read_text(encoding='utf-8')
+          req=["code:'david_and_goliath'","name:'Mini Maxi'","name:'Maxi'","name:'Mini D’s'","name:'Double D’s'","name:'Sharpshooter’s Game'","section('Trophies / Awards'",'function __sqMisfireCase','function __sqMisfireDetail','uniqueWon && neverBehind']
+          missing=[x for x in req if x not in s]
+          if missing: raise SystemExit('missing '+repr(missing))
+          if s.count("code:'david_and_goliath'") != 1: raise SystemExit('duplicate D&G')
+          if "if (best >= 14) add('untouchable')" in s: raise SystemExit('legacy Untouchable detector remains')
+          print('static guards PASS')
+      - name: Install smoke dependencies
+        working-directory: tools/ui-smoke
+        run: npm ci
+      - name: Install Chromium
+        working-directory: tools/ui-smoke
+        run: npx playwright install --with-deps chromium
+      - name: Prepare legacy screenshot directory
+        run: mkdir -p /home/user/takeshi-quest-latest/docs/ui-audit/screenshots
+      - name: Player Stats regression
+        working-directory: tools/ui-smoke
+        run: node verify-pstats.js
+      - name: SC-008 regression
+        working-directory: tools/ui-smoke
+        run: node verify-sc008.js
+      - name: SC-009 regression
+        working-directory: tools/ui-smoke
+        run: node verify-sc009.js
+      - name: Full mobile smoke
+        working-directory: tools/ui-smoke
+        run: node smoke.js
+      - name: Commit patched client
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html
+          git diff --cached --quiet && exit 0
+          git commit -m "[sc009-applied] canonical achievement UI parity"
+          git push
