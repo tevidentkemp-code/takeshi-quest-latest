@@ -19,7 +19,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Verify exact production file and capture targeted excerpts
+      - name: Verify exact production file and capture bounded source slices
         shell: bash
         run: |
           set -euo pipefail
@@ -28,48 +28,35 @@ jobs:
           from pathlib import Path
 
           text = Path('index.html').read_text(encoding='utf-8')
-          targets = [
-              'Trophy Vault',
-              'v_player_achievements',
-              'v_player_xp',
-              'player_achievements',
-              'Player Stats',
-              'Achievements',
-              'achievement',
-              'giftXp',
-              'giftXP',
-              'XP gift',
-              'Misfire',
-          ]
-          radius = 2600
-          max_matches = 8
-          out = [f'INDEX_BLOB=c5688cf19d2d8f7bf57cd9c991009f97292cb8a3', f'INDEX_CHARS={len(text)}']
-          for target in targets:
-              out.append(f'\n===== TARGET: {target!r} =====')
-              start = 0
-              found = 0
-              while found < max_matches:
-                  pos = text.find(target, start)
-                  if pos < 0:
-                      break
-                  found += 1
-                  lo = max(0, pos - radius)
-                  hi = min(len(text), pos + len(target) + radius)
-                  out.append(f'\n--- MATCH {found} @ {pos} [{lo}:{hi}] ---\n{text[lo:hi]}')
-                  start = pos + len(target)
-              out.append(f'COUNT_SHOWN={found}')
-          Path('.sc008').mkdir(exist_ok=True)
-          Path('.sc008/extract.txt').write_text('\n'.join(out), encoding='utf-8')
+          outdir = Path('.sc008'); outdir.mkdir(exist_ok=True)
+
+          def slice_file(name, needle, before, after):
+              positions=[]; start=0
+              while True:
+                  p=text.find(needle,start)
+                  if p < 0: break
+                  positions.append(p); start=p+len(needle)
+              chunks=[f'INDEX_BLOB=c5688cf19d2d8f7bf57cd9c991009f97292cb8a3',f'NEEDLE={needle!r}',f'POSITIONS={positions}']
+              for i,p in enumerate(positions,1):
+                  lo=max(0,p-before); hi=min(len(text),p+len(needle)+after)
+                  chunks.append(f'\n===== MATCH {i} @ {p} [{lo}:{hi}] =====\n{text[lo:hi]}')
+              (outdir/name).write_text('\n'.join(chunks),encoding='utf-8')
+
+          slice_file('catalog.txt','const SQ_ACH = {',1000,30000)
+          slice_file('trophy-case.txt','function __sqTrophyCase',1500,18000)
+          slice_file('pstats.txt','openPlayerStatsDialog',12000,18000)
+          slice_file('ach-fetch.txt','v_player_achievements',7000,7000)
+          slice_file('ach-map.txt','achMap',7000,7000)
           PY
 
-      - name: Commit diagnostic extract to recovery branch
+      - name: Commit diagnostic extracts to recovery branch
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .sc008/extract.txt
+          git add .sc008/catalog.txt .sc008/trophy-case.txt .sc008/pstats.txt .sc008/ach-fetch.txt .sc008/ach-map.txt
           if ! git diff --cached --quiet; then
-            git commit -m "chore(sc008): capture exact targeted source excerpts"
+            git commit -m "chore(sc008): capture bounded Player Stats source slices"
             git push
           fi
