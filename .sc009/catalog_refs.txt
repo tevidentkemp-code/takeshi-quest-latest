@@ -1,105 +1,5 @@
-=== catalog_refs occurrence 1 chars 1520111:1552111 ===
-{ cnt: 0 };
-  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal = document.createElement('div'); modal.className = 'modal';
-  modal.style.cssText = 'max-width:460px;width:92vw;max-height:86vh;overflow:hidden;';
-  const body = document.createElement('div'); body.className = 'modal-body'; body.style.cssText = 'overflow-y:auto;max-height:82vh;';
-  const milestone = SQ_ACH.isMilestone(code);
-  const tierName = (a.tier || 'bronze').toUpperCase() + (milestone ? ' · MILESTONE' : '');
-  const xpText = code === 'giant_slayer' ? 'Scales with the level gap' : ('+' + (a.xp || 0) + ' XP' + (milestone ? ' (one-time)' : ' each'));
-  const yours = milestone
-    ? (got.cnt > 0 ? 'Unlocked ✓' : 'Not yet unlocked')
-    : (got.cnt > 0 ? ('You’ve earned this ' + got.cnt + '×') : 'You haven’t earned this yet');
-  body.innerHTML =
-    '<div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:' + s.g + ';border:1px solid ' + s.b + ';">'
-    + '<div style="font-size:40px;line-height:1">' + a.icon + '</div>'
-    + '<div style="min-width:0"><div style="font-weight:900;font-size:20px;color:#fff">' + a.name + '</div>'
-    + '<div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:' + s.c + '">' + tierName + ' · ' + xpText + '</div></div></div>'
-    + '<div style="margin:14px 2px 4px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">How to earn</div>'
-    + '<div style="font-size:15px;font-weight:600;margin:0 2px 10px">' + a.desc + '.</div>'
-    + '<div style="font-size:12px;font-weight:800;margin:0 2px 12px;color:' + (got.cnt>0 ? '#7be0a0' : 'var(--v3-muted,#98a2b8)') + '">' + yours + '</div>'
-    + '<div style="margin:6px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">Trophy leaderboard</div>'
-    + '<p class="muted" id="trophyLbLoading" style="font-size:13px">Loading…</p>';
-  modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
-  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
-  modal.tabIndex = 0; modal.focus();
-  const rows = await SQ_ACH.forCode(code);
-  const loading = body.querySelector('#trophyLbLoading'); if (loading) loading.remove();
-  if (!rows.length){
-    const p = document.createElement('p'); p.className = 'muted'; p.style.fontSize = '13px';
-    p.textContent = 'No one has earned this yet — be the first!'; body.appendChild(p);
-  } else {
-    const list = document.createElement('div'); list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
-    const medal = i => i === 0 ? '#ffd24a' : i === 1 ? '#cbd5e1' : i === 2 ? '#d08b5a' : 'var(--v3-muted,#98a2b8)';
-    rows.forEach((r, i) => {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);';
-      const rk = document.createElement('span'); rk.textContent = '#' + (i + 1); rk.style.cssText = 'font-weight:900;min-width:30px;color:' + medal(i);
-      const nm = document.createElement('span'); nm.textContent = r.name; nm.style.cssText = 'flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-      const ct = document.createElement('span');
-      ct.textContent = milestone ? '✓' : ('×' + r.cnt);
-      ct.style.cssText = 'font-weight:900;color:' + (milestone ? '#2fd06b' : '#ffb14a') + ';';
-      row.append(rk, nm, ct); list.appendChild(row);
-    });
-    body.appendChild(list);
-  }
-  const foot = document.createElement('div'); foot.style.cssText = 'margin-top:14px;text-align:center;';
-  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Close'; cb.onclick = () => overlay.remove();
-  foot.appendChild(cb); body.appendChild(foot);
-}
-
-// Per-game trophy detector for live celebration toasts. Mirrors the SQL rules
-// in v_ach_rounds / v_player_achievements (per-round, per-game, streak, 2p feats).
-// Career/match feats (sweeps, giant_slayer, champion, nemesis) are cross-game and
-// surface via the trophy case, not here. board = array[player] of array[round] of
-// { darts:[{kind,points}], roundTotal }.  opts: { players, is_tiebreak }.
-SQ_ACH.detectGame = function(board, opts){
-  opts = opts || {};
-  const players = opts.players || [];
-  const norm = d => {
-    const k = (d && d.kind) || 'Miss';
-    if (k === 'S') return 'single';
-    if (k === 'D' || k === 'Double') return 'double';
-    if (k === 'T' || k === 'Triple') return 'treble';
-    if (k === 'B' || k === 'Bull') return 'bull';
-    return 'miss';
-  };
-  if (!Array.isArray(board) || !board.length) return [];
-  const totals = board.map(rs => (rs || []).reduce((s, r) => s + (Number(r && r.roundTotal) || 0), 0));
-  const maxTotal = Math.max.apply(null, totals.concat([0]));
-  const out = [];
-  for (let p = 0; p < board.length; p++){
-    const rounds = board[p] || [];
-    const earned = {}; const add = (c, n) => { earned[c] = (earned[c] || 0) + (n || 1); };
-    let totMiss = 0, totDarts = 0, centuryRounds = 0, scoredRounds = 0, best = 0, run = 0;
-    let finalFh = false;
-    for (let ri = 0; ri < rounds.length; ri++){
-      const r = rounds[ri] || {}; const darts = r.darts || [];
-      let tre = 0, dou = 0, sin = 0, b50 = 0, bany = 0;
-      darts.forEach(d => { const nk = norm(d); if (nk === 'treble') tre++; else if (nk === 'double') dou++; else if (nk === 'single') sin++; else if (nk === 'bull'){ bany++; if ((Number(d.points) || 0) === 50) b50++; } });
-      const mis = darts.filter(d => norm(d) === 'miss' || (Number(d && d.points) || 0) === 0).length;
-      const rtot = Number(r.roundTotal) || 0;
-      const target = ri <= 10 ? 10 + ri : null;
-      const rmax = ri <= 10 ? 9 * (10 + ri) : (ri === 11 ? 120 : ri === 12 ? 180 : 150);
-      totMiss += mis; totDarts += darts.length;
-      if (rtot > 0) scoredRounds++;
-      const fh = (mis === 0 && darts.length === 3);
-      run = fh ? run + 1 : 0; if (run > best) best = run;
-      if (ri === 13) finalFh = fh;
-      if (rtot === 180) add('the_180');
-      else if (rtot === rmax && darts.length === 3) add('maximum');
-      if (tre === 3) add('treble_trouble');
-      if (dou === 3) add('double_down');
-      if (fh) add('full_house');
-      if (rtot >= 100 && rtot < 180){ add('century'); centuryRounds++; }
-      if (target != null && sin === 1 && dou === 1 && tre === 1) add('shanghai');
-      if (target != null && sin === 2 && dou === 1 && tre === 0 && mis === 0) add('desmond');
-      if (target != null && tre >= 2) add('robin_hood');
-      if (b50 > 0) add('dead_centre', b50);
-      if (ri === 12 && tre === 3) add('triple_threat');
-      if (ri === 11 && dou === 3) add('double_trouble');
+=== catalog_refs occurrence 1 chars 1527111:1543111 ===
+ 3) add('double_trouble');
       if (ri === 13 && bany === 3) add('bull_run');
       if (ri === 0 && fh) add('perfect_start');
       if (ri === 13 && rtot >= 100) add('strong_finish');
@@ -394,6 +294,281 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
       };
       if (pr && pr.error) throw pr.error;
       const nowMs = Date.now();
+      const activeCutoff = nowMs - (14 * 
+=== END ===
+
+=== catalog_refs occurrence 2 chars 1528379:1544379 ===
+arned[c] }))
+      .sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
+    if (list.length) out.push({ player: p, name: (players[p] && (players[p].name || players[p])) || ('Player ' + (p + 1)), earned: list });
+  }
+  return out;
+};
+
+// Celebratory toast stack shown at game-complete for trophies earned this game.
+function __sqAchToast(results){
+  try{
+    if (!Array.isArray(results) || !results.length) return;
+    let layer = document.getElementById('sqAchToastLayer');
+    if (!layer){
+      layer = document.createElement('div'); layer.id = 'sqAchToastLayer';
+      layer.style.cssText = 'position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:100000;'
+        + 'display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:min(92vw,420px);';
+      document.body.appendChild(layer);
+    }
+    const flat = [];
+    results.forEach(r => r.earned.forEach(e => flat.push({ name: r.name, code: e.code, count: e.count })));
+    // Headline the rarest first, cap the stack.
+    flat.slice(0, 6).forEach((item, i) => {
+      const a = SQ_ACH.meta(item.code); const s = SQ_ACH.tierStyle(a.tier);
+      const el = document.createElement('div');
+      el.style.cssText = 'pointer-events:none;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:14px;'
+        + 'background:' + s.g + ';border:1px solid ' + s.b + ';box-shadow:0 10px 26px rgba(0,0,0,.45);'
+        + 'color:' + s.c + ';font-weight:800;opacity:0;transform:translateY(-10px) scale(.96);'
+        + 'transition:opacity .3s ease,transform .3s cubic-bezier(.2,.9,.25,1);max-width:100%;';
+      el.innerHTML = '<span style="font-size:24px;line-height:1">' + a.icon + '</span>'
+        + '<span style="display:flex;flex-direction:column;min-width:0">'
+        + '<b style="color:#fff;font-size:14px;letter-spacing:.02em">' + a.name + (item.count > 1 ? ' ×' + item.count : '') + '</b>'
+        + '<span style="font-size:11px;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (item.name || '') + ' · +' + ((a.xp || 0) * item.count) + ' XP</span>'
+        + '</span>';
+      layer.appendChild(el);
+      setTimeout(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0) scale(1)'; }, 80 + i * 140);
+      setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateY(-10px) scale(.96)'; setTimeout(() => { try{ el.remove(); if (!layer.childElementCount) layer.remove(); }catch(_){ } }, 350); }, 4200 + i * 140);
+    });
+    try{ if (typeof __sqV3SndGame === 'function') __sqV3SndGame(); }catch(_){ }
+  }catch(_){ }
+}
+
+// Detect + celebrate trophies for the just-finished game (uses live state).
+window.__sqAchCelebrate = function(){
+  try{
+    const board = (state && state.score) ? state.score : null;
+    if (!board) return;
+    const results = SQ_ACH.detectGame(board, {
+      players: (state.players || []).map(p => ({ name: (typeof __sqPlayerPretty === 'function' ? __sqPlayerPretty(p) : (p && p.name)) || (p && p.name) || '' })),
+      is_tiebreak: !!(state.is_tiebreak || state.currentGameIsTiebreak)
+    });
+    __sqAchToast(results);
+    // Freshen caches so the next Player Stats / leaderboard read reflects the new game.
+    try{ if (window.SQ_XP) { SQ_XP._cache = null; SQ_ACH._cache = {}; } }catch(_){ }
+  }catch(_){ }
+};
+
+// Render the trophy case: earned badges bright (with counts), locked badges dim.
+function __sqTrophyCase(earnedMap){
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
+  const badge = (a) => {
+    const got = earnedMap[a.code] || { cnt:0 };
+    const earned = got.cnt > 0;
+    const milestone = SQ_ACH.isMilestone(a.code);
+    const s = SQ_ACH.tierStyle(a.tier);
+    const b = document.createElement('div');
+    b.title = a.desc + (earned && !milestone && got.cnt > 1 ? `  (earned ${got.cnt}×)` : '');
+    b.style.cssText = 'position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;cursor:pointer;'
+      + 'padding:10px 6px;border-radius:12px;'
+      + (earned ? ('background:' + s.g + ';border:1px solid ' + s.b + ';')
+                : 'background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.12);opacity:.42;filter:grayscale(1);');
+    const ic = document.createElement('div'); ic.textContent = a.icon; ic.style.cssText = 'font-size:26px;line-height:1;';
+    const nm = document.createElement('div'); nm.textContent = a.name; nm.style.cssText = 'font-size:10px;font-weight:800;letter-spacing:.01em;color:' + (earned ? s.c : 'var(--v3-muted,#98a2b8)') + ';line-height:1.15;';
+    b.append(ic, nm);
+    b.onclick = () => { try{ __sqTrophyDetail(a.code, earnedMap); }catch(_){ } };
+    // Repeatable trophies show a ×count; milestones show a ✓ tick when unlocked.
+    if (earned && !milestone && got.cnt > 1){
+      const bc = document.createElement('div'); bc.textContent = '×' + got.cnt;
+      bc.style.cssText = 'position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#ff7a18;color:#160b03;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4);';
+      b.appendChild(bc);
+    } else if (earned && milestone){
+      const tk = document.createElement('div'); tk.textContent = '✓';
+      tk.style.cssText = 'position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:999px;background:#2fd06b;color:#05230f;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4);';
+      b.appendChild(tk);
+    }
+    return b;
+  };
+  const section = (title, icon, codes) => {
+    const codeList = SQ_ACH.CATALOG.filter(a => codes.has(a.code));
+    const earnedN = codeList.filter(a => (earnedMap[a.code]||{}).cnt > 0).length;
+    const card = document.createElement('div'); card.className = 'tag';
+    card.style.cssText = 'padding:14px;border-radius:16px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);';
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;';
+    const ttl = document.createElement('strong'); ttl.innerHTML = icon + ' ' + title; ttl.style.fontSize = '15px';
+    const cnt = document.createElement('span'); cnt.className = 'muted'; cnt.style.cssText = 'font-weight:800;font-size:12px;';
+    cnt.textContent = earnedN + ' / ' + codeList.length + ' unlocked';
+    head.append(ttl, cnt);
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;';
+    codeList.forEach(a => { if ((earnedMap[a.code]||{}).cnt > 0) grid.appendChild(badge(a)); });
+    codeList.forEach(a => { if (!((earnedMap[a.code]||{}).cnt > 0)) grid.appendChild(badge(a)); });
+    card.append(head, grid);
+    return card;
+  };
+  const mset = new Set(SQ_ACH.CATALOG.filter(a => SQ_ACH.isMilestone(a.code)).map(a => a.code));
+  const tset = new Set(SQ_ACH.CATALOG.filter(a => !SQ_ACH.isMilestone(a.code)).map(a => a.code));
+  wrap.append(section('Milestones', '🎖️', mset), section('Trophies', '🏆', tset));
+  return wrap;
+}
+
+// === Player Stats — redesigned overview =====================================
+// @CANONICAL:PLAYER_STATS_PROFILE_CARDS
+window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
+  const name = String(playerName || '').trim();
+  if (!name) { try{ toast('Pick a player'); }catch(_){ } return; }
+
+  // Supabase client (single source of truth for ranks & windowed stats)
+  const SB = (typeof window !== 'undefined') ? (window.sb || window.__sb || window.supabase || window.supabaseClient || null) : null;
+
+  // Modal shell
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal   = document.createElement('div'); modal.className   = 'modal';
+  modal.style.maxWidth='980px'; modal.style.width='94vw';
+  modal.style.maxHeight = '90vh'; modal.style.overflow = 'hidden';
+  // Flex column so the body actually scrolls within the 90vh modal (the
+  // footer stays pinned; without this the body overflowed and clipped).
+  modal.style.display = 'flex'; modal.style.flexDirection = 'column';
+
+  const header  = document.createElement('div');
+  header.style.display = 'none';
+  const body    = document.createElement('div'); body.className    = 'modal-body';
+  body.style.paddingTop='8px';
+  body.style.flex = '1 1 auto'; body.style.minHeight = '0'; body.style.overflowY = 'auto';
+
+  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
+  footer.style.justifyContent='flex-start';
+  footer.style.gap='10px';
+
+  // Mount early so we never "flash" back to home between dialogs
+  body.innerHTML = '<div class="sq-modal-loading"><div class="sq-loadbar"><span class="sq-loadbar-fill"></span></div></div>';
+  modal.append(header, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0;
+  modal.focus();
+
+  // Helpers
+  const monthKey = d => {
+    const x = (d instanceof Date) ? d : (d ? new Date(d) : null);
+    return x && !Number.isNaN(x.getTime()) ? `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}` : '';
+  };
+  const monthLabel = k => {
+    if (!k) return '—';
+    const [y,m] = k.split('-').map(Number);
+    return new Date(y, m-1, 1).toLocaleString(undefined,{ month:'short', year:'numeric' }).toUpperCase();
+  };
+
+  // 1) All official games — fetched ONCE and reused for both the player's
+  // slice and the local power-rank fallback (this used to be two full fetches).
+  // Turbo games are excluded here so the whole profile is Standard-Official
+  // only ("official" fetch alone doesn't strip Turbo).
+  const __allGamesNorm = (await __fetchOfficialGames(50000)).map(__normalizeGame)
+    .filter(g => !__sqGameLooksTurbo(g.raw));
+  const games = __allGamesNorm
+    .filter(g => Array.isArray(g.players) && g.players.some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()))
+    .sort((a,b)=> (new Date(a.ts) - new Date(b.ts)));
+
+  // Short-circuit if nothing
+  if (!games.length){
+    body.innerHTML = '';
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.style.opacity = '.8';
+    p.textContent = 'No official games found for this player.';
+    body.appendChild(p);
+
+    footer.innerHTML = '';
+    const backBtn  = document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
+    backBtn.onclick  = () => { overlay.remove(); __sqGoBackToStatsMain(); };
+    footer.append(backBtn);
+    __sqStatsArcade(overlay, modal);
+
+    modal.focus();
+    return;
+  }
+
+  // Index for this player and raw scores
+  const idxOf = g => g.players.findIndex(p => String(p||'').trim().toLowerCase()===name.toLowerCase());
+  const scores = games.map(g => Number(g.totals[idxOf(g)] || 0));
+
+  // 2) Basic aggregates
+  const GAMES = scores.length;
+  const TOTAL = scores.reduce((s,v)=>s+v,0);
+  const AVG   = GAMES ? (TOTAL / GAMES) : 0;
+  const PB    = GAMES ? Math.max(...scores) : 0;
+  const LOW   = GAMES ? Math.min(...scores) : 0;
+
+  // 2.1) Canonical ranks / windows from DB views
+  // - Power Rank: v_power_rankings_last56_official_clean, filtered to the same active 14-day Current rule
+  // - Highest Score place: v_player_best_official_ranked
+  // - Favorite/Worst: v_player_last30_targets (throw-universe)
+  let dbPower = null;
+  let dbBest  = null;
+  let dbFav   = null;
+  let dbStreak = null;
+  let dbRates = null;
+  let savedPlayersRows = [];
+  if (SB && typeof SB.from === 'function'){
+    // All lookups are independent — run them in parallel (this used to be six
+    // sequential round-trips and dominated the dialog's load time).
+    const fkey = name.toLowerCase();
+    const safeQ = q => Promise.resolve(q).catch(e => ({ error: e }));
+    const [savedRows, pr, bs, fv, tr, st] = await Promise.all([
+      (async () => {
+        let rows = [];
+        try{
+          if (typeof cloudListPlayers === 'function') rows = await cloudListPlayers();
+        }catch(_){ rows = []; }
+        if ((!rows || !rows.length) && typeof getSavedPlayers === 'function'){
+          try{ rows = getSavedPlayers() || []; }catch(_){ rows = []; }
+        }
+        return rows || [];
+      })(),
+      safeQ(SB.from('v_power_rankings_last56_official_clean')
+        .select('player,player_key,rounds_used,total_points,avg_per_round,last_played_at,rank_pos')
+        .order('avg_per_round', { ascending:false })
+        .limit(500)),
+      safeQ(SB.from('v_player_best_official_ranked')
+        .select('player_name,best_score,best_score_pos')
+        .ilike('player_name', name)
+        .limit(1)),
+      safeQ(SB.from('v_player_last30_targets')
+        .select('player_key,favorite_number,favorite_pct,worst_number,worst_pct')
+        .eq('player_key', fkey)
+        .limit(1)),
+      (typeof cloudIsTableMissing !== 'function' || !cloudIsTableMissing('v_player_last30_target_rates'))
+        ? safeQ(SB.from('v_player_last30_target_rates')
+            .select('player_key,target_n,hit_pct,throws')
+            .eq('player_key', fkey)
+            .order('hit_pct', { ascending: false }))
+        : Promise.resolve(null),
+      safeQ(SB.from('v_player_target_streaks')
+        .select('player_key,player_name,mode_key,mode_label,dart_streak,round_streak,source_games,last_played_at')
+        .eq('player_key', fkey.trim())
+        .eq('mode_key', 'official')
+        .limit(1))
+    ]);
+
+    savedPlayersRows = savedRows || [];
+    try{
+      const powerKey = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+      const savedMap = new Map((savedRows || []).map(p => {
+        const n = String((p && (p.name || p.player_name || p.player || p.display_name)) || '').trim();
+        return n ? [powerKey(n), n] : null;
+      }).filter(Boolean));
+      const parsePowerMs = ts => {
+        try{
+          if (!ts) return 0;
+          let s = String(ts).trim();
+          if (/^\d{4}-\d{2}-\d{2}\s/.test(s) && !s.includes('T')) s = s.replace(' ', 'T');
+          if (/[+-]\d{2}$/.test(s)) s += ':00';
+          const n = Date.parse(s);
+          return Number.isFinite(n) ? n : 0;
+        }catch(_){ return 0; }
+      };
+      if (pr && pr.error) throw pr.error;
+      const nowMs = Date.now();
       const activeCutoff = nowMs - (14 * 24 * 60 * 60 * 1000);
       const rows = ((pr && pr.data) || []).map(r => {
         const k = powerKey(r.player_key || r.player);
@@ -409,306 +584,11 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
         .sort((a,b) => (b.avg - a.avg) || (b.rounds - a.rounds) || (b.lastMs - a.lastMs) || String(a.player).localeCompare(String(b.player)));
       const mine = rows.find(r => r.playerKey === powerKey(name));
       dbPower = mine ? { player: mine.player, power_rank: mine.avg, power_rank_pos: mine.rankPos || (rows.indexOf(mine) + 1), last_played_at: mine.lastMs || null } : null;
-    }catch(e){ try{ if(window.SQ_DEBUG) console.warn('[SQ] power rank view read failed', e); }catch(_){} }
-
-    if (bs && bs.error) console.warn('[SQ] best score rank view read failed', bs.error);
-    dbBest = (bs && !bs.error && bs.data && bs.data[0]) ? bs.data[0] : null;
-
-    if (fv && fv.error) console.warn('[SQ] last30 targets view read failed', fv.error);
-    dbFav = (fv && !fv.error && fv.data && fv.data[0]) ? fv.data[0] : null;
-
-    // Top/bottom 3 target rates (last 30 games) for Targets section
-    dbRates = (tr && !tr.error && Array.isArray(tr.data)) ? tr.data : null;
-
-    if (st && st.error) {
-      console.warn('[SQ] target streaks view is missing required mode columns', st.error);
-    } else {
-      dbStreak = (st && !st.error && st.data && st.data[0]) ? st.data[0] : null;
-    }
-  }
-
-  // Per-game ranks (1st place detection) and per-month buckets
-  const monthly = new Map(); // key -> { sum, n, wins }
-  games.forEach((g,i)=>{
-    const meI = idxOf(g);
-    const meS = Number(g.totals[meI] || 0);
-    const max = Math.max(...(g.totals||[]).map(Number));
-    const win = meS === max ? 1 : 0;
-
-    const k = monthKey(g.ts);
-    const rec = monthly.get(k) || { sum:0, n:0, wins:0 };
-    rec.sum += meS; rec.n += 1; rec.wins += win;
-    monthly.set(k, rec);
-  });
-
-  // Highest/lowest monthly averages
-  const monthlyRows = Array.from(monthly.entries()).map(([k,rec])=>({ k, avg: rec.n ? rec.sum/rec.n : 0, wins: rec.wins }));
-  monthlyRows.sort((a,b)=> a.k.localeCompare(b.k));
-  const bestMonth = monthlyRows.length ? monthlyRows.reduce((m,r)=> r.avg>m.avg?r:m, monthlyRows[0]) : null;
-  const worstMonth= monthlyRows.length ? monthlyRows.reduce((m,r)=> r.avg<m.avg?r:m, monthlyRows[0]) : null;
-
-  // PL Average (career) & PL Monthly Wins (current month)
-const nowK = monthKey(new Date());
-
-// Premier League "Monthly Wins":
-// # of months this player finished 1st by monthly average (min 3 games)
-function computePLMonthlyWinsTop(games, minGames = 3, me = name){
-  const byMonthPlayer = new Map(); // `${month}|${player}` -> { sum, n }
-
-  games.forEach(g=>{
-    const mk = monthKey(g.ts);
-    (g.players||[]).forEach((p,i)=>{
-      const key = `${mk}|${p}`;
-      const rec = byMonthPlayer.get(key) || { sum:0, n:0 };
-      rec.sum += Number(g.totals[i] || 0);
-      rec.n   += 1;
-      byMonthPlayer.set(key, rec);
-    });
-  });
-
-  const months = new Set(Array.from(byMonthPlayer.keys()).map(k=>k.split('|')[0]));
-  let wins = 0;
-
-  months.forEach(mk=>{
-    const contenders = [];
-    byMonthPlayer.forEach((rec,key)=>{
-      const [k,p] = key.split('|');
-      if (k !== mk) return;
-      if (rec.n >= minGames) contenders.push({ player:p, avg: rec.sum/rec.n });
-    });
-    if (!contenders.length) return;
-    contenders.sort((a,b)=> b.avg - a.avg);
-    if (contenders[0].player.toLowerCase() === me.toLowerCase()) wins += 1;
-  });
-
-  return wins;
-}
-const plMonthlyWins = computePLMonthlyWinsTop(games, 3, name);
-
- // 3) Highest Scoring Round (10→20 only) with S/D/T breakdown — robust via boards
-function bestRoundFromBoards(playerName, games){
-  const nameLC = String(playerName||'').trim().toLowerCase();
-  let best = null;
-
-  games.forEach(g=>{
-    const pIdx = (g.players||[]).findIndex(p => String(p||'').trim().toLowerCase()===nameLC);
-    if (pIdx < 0) return;
-    const b = g.board; if (!b) return;
-
-    const looksA = Array.isArray(b[pIdx]);
-    const looksB = Array.isArray(b[0]) && Array.isArray(b[0][pIdx]);
-    const rounds = looksA ? b[pIdx] : (looksB ? b.map(r => r ? r[pIdx] : null) : []);
-
-    for (let r = 0; r < Math.min(14, rounds.length || 0); r++){
-      if (r > 10) break; // 10..20 only
-      const cell = rounds[r]; if (!cell) continue;
-
-      const list = Array.isArray(cell)
-        ? cell
-        : (Array.isArray(cell.throws) ? cell.throws : (Array.isArray(cell.darts) ? cell.darts : []));
-
-      let sum = 0, s = 0, d = 0, t = 0;
-      const target = 10 + r;
-
-      list.forEach(tw=>{
-        const ringRaw = (tw?.kind || tw?.type || tw?.segment || tw?.ring || '').toString().toLowerCase();
-        let mult = Number(tw?.mult ?? tw?.multiplier);
-        if (!mult || !Number.isFinite(mult)) {
-          // infer multiplier from points if needed
-          const pts = Number(tw?.points ?? tw?.score ?? 0);
-          const ratio = target ? (pts/target) : 0;
-          if (ratio >= 2.5) mult = 3;
-          else if (ratio >= 1.5) mult = 2;
-          else mult = pts>0 ? 1 : 0;
-        }
-        const pts = Number.isFinite(Number(tw?.points ?? tw?.score))
-          ? Number(tw?.points ?? tw?.score)
-          : (target * mult);
-
-        sum += pts;
-        if (mult === 3 || ringRaw.includes('treb')) t++;
-        else if (mult === 2 || ringRaw.includes('doub')) d++;
-        else if (mult === 1) s++;
-      });
-
-      if (!best || sum > best.sum) best = { round: 10+r, sum, s, d, t };
-    }
-  });
-
-  return best;
-}
-const bestRound = bestRoundFromBoards(name, games) || null;
-
-  // 4) H2H for Nemesis/BFF (>=10 games vs opponent)
-  const vs = new Map();
-  games.forEach(g=>{
-    const meI = idxOf(g), meS = Number(g.totals[meI]||0);
-    g.players.forEach((op,j)=>{
-      if (j===meI) return;
-      const opp = String(op||'').trim();
-      const theirs = Number(g.totals[j]||0);
-      const rec = vs.get(opp) || { opp, W:0, L:0, n:0 };
-      if (meS > theirs) rec.W++; else if (meS < theirs) rec.L++;
-      rec.n++; vs.set(opp, rec);
-    });
-  });
-const qualifiedOpp = Array.from(vs.values()).filter(r=> r.n >= 5).map(r=>({ ...r, pct: (r.W+r.L) ? (100*r.W/(r.W+r.L)) : 0 }));  const bff = qualifiedOpp.length ? qualifiedOpp.reduce((m,r)=> r.pct>m.pct?r:m, qualifiedOpp[0]) : null;
-  const nem = qualifiedOpp.length ? qualifiedOpp.reduce((m,r)=> r.pct<m.pct?r:m, qualifiedOpp[0]) : null;
-
-  // lifetime, from the games we already loaded at the top of this function
-const myThrowsFromBoards = __throwsFromGamesForPlayer(name, games);
-let onlyTargetRounds = [];
-if (Array.isArray(myThrowsFromBoards) && myThrowsFromBoards.length) {
-  onlyTargetRounds = myThrowsFromBoards.filter(
-    t => typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 10 // 10..20 only
-  );
-}
-
-  // Reuse same hits model: “marks per dart” (single=1, double=2, treble=3)
-  const markUnits = (t, target) => {
-    const k = String(t.kind||'').toLowerCase();
-    if (k.includes('treble') || k.includes('triple')) return 3;
-    if (k.includes('double')) return 2;
-    if (k.includes('single')) return Number(t.points||0)>0 ? 1 : 0;
-    const ratio = Number(t.points||0) / target; // fallback
-    if (ratio >= 2.5) return 3; if (ratio >= 1.5) return 2; if (ratio >= 0.5) return 1; return 0;
-  };
-  const favRows = [];
-  for (let r=0; r<=10; r++){
-    const target = 10 + r;
-    const shots  = onlyTargetRounds.filter(t => t.round_index === r);
-    const throwsN = shots.length;
-    const hitsUnits = shots.reduce((s,t)=> s + markUnits(t,target), 0);
-    const pct = throwsN ? (100 * hitsUnits / (3*throwsN)) : 0; // units ÷ (3 per throw)
-    favRows.push({ target, throwsN, pct });
-  }
-  // require a small sample to avoid noise
-  const MIN_THROWS_PER_TARGET = 30;
-  const favCandidates = favRows.filter(r => r.throwsN >= MIN_THROWS_PER_TARGET);
-  const fav = favCandidates.length ? favCandidates.reduce((m,r)=> r.pct>m.pct?r:m, favCandidates[0]) : null;
-  const worst = favCandidates.length ? favCandidates.reduce((m,r)=> r.pct<m.pct?r:m, favCandidates[0]) : null;
-
-// 6) Current Power Rank — the DB view (dbPower) is the single source of
-// truth; this local recomputation runs ONLY when the view is unavailable,
-// so the Quick Stats row can never disagree with the hero tile.
-let myPower = null, myPowerPos = null;
-if (!dbPower){
-const MIN_ROUNDS_QUALIFY = 28;   // 2 games (28 rounds)
-const WINDOW_ROUNDS 
+    }catch(e){ try{ if
 === END ===
 
-=== catalog_refs occurrence 2 chars 1521379:1553379 ===
-lor:' + s.c + '">' + tierName + ' · ' + xpText + '</div></div></div>'
-    + '<div style="margin:14px 2px 4px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">How to earn</div>'
-    + '<div style="font-size:15px;font-weight:600;margin:0 2px 10px">' + a.desc + '.</div>'
-    + '<div style="font-size:12px;font-weight:800;margin:0 2px 12px;color:' + (got.cnt>0 ? '#7be0a0' : 'var(--v3-muted,#98a2b8)') + '">' + yours + '</div>'
-    + '<div style="margin:6px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">Trophy leaderboard</div>'
-    + '<p class="muted" id="trophyLbLoading" style="font-size:13px">Loading…</p>';
-  modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
-  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
-  modal.tabIndex = 0; modal.focus();
-  const rows = await SQ_ACH.forCode(code);
-  const loading = body.querySelector('#trophyLbLoading'); if (loading) loading.remove();
-  if (!rows.length){
-    const p = document.createElement('p'); p.className = 'muted'; p.style.fontSize = '13px';
-    p.textContent = 'No one has earned this yet — be the first!'; body.appendChild(p);
-  } else {
-    const list = document.createElement('div'); list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
-    const medal = i => i === 0 ? '#ffd24a' : i === 1 ? '#cbd5e1' : i === 2 ? '#d08b5a' : 'var(--v3-muted,#98a2b8)';
-    rows.forEach((r, i) => {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);';
-      const rk = document.createElement('span'); rk.textContent = '#' + (i + 1); rk.style.cssText = 'font-weight:900;min-width:30px;color:' + medal(i);
-      const nm = document.createElement('span'); nm.textContent = r.name; nm.style.cssText = 'flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-      const ct = document.createElement('span');
-      ct.textContent = milestone ? '✓' : ('×' + r.cnt);
-      ct.style.cssText = 'font-weight:900;color:' + (milestone ? '#2fd06b' : '#ffb14a') + ';';
-      row.append(rk, nm, ct); list.appendChild(row);
-    });
-    body.appendChild(list);
-  }
-  const foot = document.createElement('div'); foot.style.cssText = 'margin-top:14px;text-align:center;';
-  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Close'; cb.onclick = () => overlay.remove();
-  foot.appendChild(cb); body.appendChild(foot);
-}
-
-// Per-game trophy detector for live celebration toasts. Mirrors the SQL rules
-// in v_ach_rounds / v_player_achievements (per-round, per-game, streak, 2p feats).
-// Career/match feats (sweeps, giant_slayer, champion, nemesis) are cross-game and
-// surface via the trophy case, not here. board = array[player] of array[round] of
-// { darts:[{kind,points}], roundTotal }.  opts: { players, is_tiebreak }.
-SQ_ACH.detectGame = function(board, opts){
-  opts = opts || {};
-  const players = opts.players || [];
-  const norm = d => {
-    const k = (d && d.kind) || 'Miss';
-    if (k === 'S') return 'single';
-    if (k === 'D' || k === 'Double') return 'double';
-    if (k === 'T' || k === 'Triple') return 'treble';
-    if (k === 'B' || k === 'Bull') return 'bull';
-    return 'miss';
-  };
-  if (!Array.isArray(board) || !board.length) return [];
-  const totals = board.map(rs => (rs || []).reduce((s, r) => s + (Number(r && r.roundTotal) || 0), 0));
-  const maxTotal = Math.max.apply(null, totals.concat([0]));
-  const out = [];
-  for (let p = 0; p < board.length; p++){
-    const rounds = board[p] || [];
-    const earned = {}; const add = (c, n) => { earned[c] = (earned[c] || 0) + (n || 1); };
-    let totMiss = 0, totDarts = 0, centuryRounds = 0, scoredRounds = 0, best = 0, run = 0;
-    let finalFh = false;
-    for (let ri = 0; ri < rounds.length; ri++){
-      const r = rounds[ri] || {}; const darts = r.darts || [];
-      let tre = 0, dou = 0, sin = 0, b50 = 0, bany = 0;
-      darts.forEach(d => { const nk = norm(d); if (nk === 'treble') tre++; else if (nk === 'double') dou++; else if (nk === 'single') sin++; else if (nk === 'bull'){ bany++; if ((Number(d.points) || 0) === 50) b50++; } });
-      const mis = darts.filter(d => norm(d) === 'miss' || (Number(d && d.points) || 0) === 0).length;
-      const rtot = Number(r.roundTotal) || 0;
-      const target = ri <= 10 ? 10 + ri : null;
-      const rmax = ri <= 10 ? 9 * (10 + ri) : (ri === 11 ? 120 : ri === 12 ? 180 : 150);
-      totMiss += mis; totDarts += darts.length;
-      if (rtot > 0) scoredRounds++;
-      const fh = (mis === 0 && darts.length === 3);
-      run = fh ? run + 1 : 0; if (run > best) best = run;
-      if (ri === 13) finalFh = fh;
-      if (rtot === 180) add('the_180');
-      else if (rtot === rmax && darts.length === 3) add('maximum');
-      if (tre === 3) add('treble_trouble');
-      if (dou === 3) add('double_down');
-      if (fh) add('full_house');
-      if (rtot >= 100 && rtot < 180){ add('century'); centuryRounds++; }
-      if (target != null && sin === 1 && dou === 1 && tre === 1) add('shanghai');
-      if (target != null && sin === 2 && dou === 1 && tre === 0 && mis === 0) add('desmond');
-      if (target != null && tre >= 2) add('robin_hood');
-      if (b50 > 0) add('dead_centre', b50);
-      if (ri === 12 && tre === 3) add('triple_threat');
-      if (ri === 11 && dou === 3) add('double_trouble');
-      if (ri === 13 && bany === 3) add('bull_run');
-      if (ri === 0 && fh) add('perfect_start');
-      if (ri === 13 && rtot >= 100) add('strong_finish');
-    }
-    // Score milestones are one-time (shown in the profile), not per-game trophies.
-    const won = totals[p] === maxTotal && maxTotal > 0;
-    if (totMiss === 0 && totDarts > 0) add('flawless_game');
-    if (scoredRounds >= 14) add('full_board');
-    if (centuryRounds >= 3) add('ton_machine');
-    if (best >= 14) add('untouchable'); else if (best >= 5) add('inferno'); else if (best >= 3) add('hot_streak');
-    if (opts.is_tiebreak && won) add('iceman');
-    if (won && finalFh) add('clutch');
-    if (board.length === 2){
-      const opp = 1 - p, oppRounds = board[opp] || [];
-      let wonEvery = true, ca = 0, cb = 0, n = Math.max(rounds.length, oppRounds.length);
-      for (let ri = 0; ri < n; ri++){
-        const a = Number((rounds[ri] || {}).roundTotal) || 0, b = Number((oppRounds[ri] || {}).roundTotal) || 0;
-        if (!(a > b)) wonEvery = false;
-        if (ri <= 6){ ca += a; cb += b; }
-      }
-      if (won && wonEvery) add('whitewash');
-      if (won && ca < cb) add('comeback_kid');
-    }
-    const list = Object.keys(earned).map(c => ({ code: c, count: earned[c] }))
-      .sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
+=== catalog_refs occurrence 3 chars 1528476:1544476 ===
+;
     if (list.length) out.push({ player: p, name: (players[p] && (players[p].name || players[p])) || ('Player ' + (p + 1)), earned: list });
   }
   return out;
@@ -995,994 +875,11 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
       dbPower = mine ? { player: mine.player, power_rank: mine.avg, power_rank_pos: mine.rankPos || (rows.indexOf(mine) + 1), last_played_at: mine.lastMs || null } : null;
     }catch(e){ try{ if(window.SQ_DEBUG) console.warn('[SQ] power rank view read failed', e); }catch(_){} }
 
-    if (bs && bs.error) console.warn('[SQ] best score rank view read failed', bs.error);
-    dbBest = (bs && !bs.error && bs.data && bs.data[0]) ? bs.data[0] : null;
-
-    if (fv && fv.error) console.warn('[SQ] last30 targets view read failed', fv.error);
-    dbFav = (fv && !fv.error && fv.data && fv.data[0]) ? fv.data[0] : null;
-
-    // Top/bottom 3 target rates (last 30 games) for Targets section
-    dbRates = (tr && !tr.error && Array.isArray(tr.data)) ? tr.data : null;
-
-    if (st && st.error) {
-      console.warn('[SQ] target streaks view is missing required mode columns', st.error);
-    } else {
-      dbStreak = (st && !st.error && st.data && st.data[0]) ? st.data[0] : null;
-    }
-  }
-
-  // Per-game ranks (1st place detection) and per-month buckets
-  const monthly = new Map(); // key -> { sum, n, wins }
-  games.forEach((g,i)=>{
-    const meI = idxOf(g);
-    const meS = Number(g.totals[meI] || 0);
-    const max = Math.max(...(g.totals||[]).map(Number));
-    const win = meS === max ? 1 : 0;
-
-    const k = monthKey(g.ts);
-    const rec = monthly.get(k) || { sum:0, n:0, wins:0 };
-    rec.sum += meS; rec.n += 1; rec.wins += win;
-    monthly.set(k, rec);
-  });
-
-  // Highest/lowest monthly averages
-  const monthlyRows = Array.from(monthly.entries()).map(([k,rec])=>({ k, avg: rec.n ? rec.sum/rec.n : 0, wins: rec.wins }));
-  monthlyRows.sort((a,b)=> a.k.localeCompare(b.k));
-  const bestMonth = monthlyRows.length ? monthlyRows.reduce((m,r)=> r.avg>m.avg?r:m, monthlyRows[0]) : null;
-  const worstMonth= monthlyRows.length ? monthlyRows.reduce((m,r)=> r.avg<m.avg?r:m, monthlyRows[0]) : null;
-
-  // PL Average (career) & PL Monthly Wins (current month)
-const nowK = monthKey(new Date());
-
-// Premier League "Monthly Wins":
-// # of months this player finished 1st by monthly average (min 3 games)
-function computePLMonthlyWinsTop(games, minGames = 3, me = name){
-  const byMonthPlayer = new Map(); // `${month}|${player}` -> { sum, n }
-
-  games.forEach(g=>{
-    const mk = monthKey(g.ts);
-    (g.players||[]).forEach((p,i)=>{
-      const key = `${mk}|${p}`;
-      const rec = byMonthPlayer.get(key) || { sum:0, n:0 };
-      rec.sum += Number(g.totals[i] || 0);
-      rec.n   += 1;
-      byMonthPlayer.set(key, rec);
-    });
-  });
-
-  const months = new Set(Array.from(byMonthPlayer.keys()).map(k=>k.split('|')[0]));
-  let wins = 0;
-
-  months.forEach(mk=>{
-    const contenders = [];
-    byMonthPlayer.forEach((rec,key)=>{
-      const [k,p] = key.split('|');
-      if (k !== mk) return;
-      if (rec.n >= minGames) contenders.push({ player:p, avg: rec.sum/rec.n });
-    });
-    if (!contenders.length) return;
-    contenders.sort((a,b)=> b.avg - a.avg);
-    if (contenders[0].player.toLowerCase() === me.toLowerCase()) wins += 1;
-  });
-
-  return wins;
-}
-const plMonthlyWins = computePLMonthlyWinsTop(games, 3, name);
-
- // 3) Highest Scoring Round (10→20 only) with S/D/T breakdown — robust via boards
-function bestRoundFromBoards(playerName, games){
-  const nameLC = String(playerName||'').trim().toLowerCase();
-  let best = null;
-
-  games.forEach(g=>{
-    const pIdx = (g.players||[]).findIndex(p => String(p||'').trim().toLowerCase()===nameLC);
-    if (pIdx < 0) return;
-    const b = g.board; if (!b) return;
-
-    const looksA = Array.isArray(b[pIdx]);
-    const looksB = Array.isArray(b[0]) && Array.isArray(b[0][pIdx]);
-    const rounds = looksA ? b[pIdx] : (looksB ? b.map(r => r ? r[pIdx] : null) : []);
-
-    for (let r = 0; r < Math.min(14, rounds.length || 0); r++){
-      if (r > 10) break; // 10..20 only
-      const cell = rounds[r]; if (!cell) continue;
-
-      const list = Array.isArray(cell)
-        ? cell
-        : (Array.isArray(cell.throws) ? cell.throws : (Array.isArray(cell.darts) ? cell.darts : []));
-
-      let sum = 0, s = 0, d = 0, t = 0;
-      const target = 10 + r;
-
-      list.forEach(tw=>{
-        const ringRaw = (tw?.kind || tw?.type || tw?.segment || tw?.ring || '').toString().toLowerCase();
-        let mult = Number(tw?.mult ?? tw?.multiplier);
-        if (!mult || !Number.isFinite(mult)) {
-          // infer multiplier from points if needed
-          const pts = Number(tw?.points ?? tw?.score ?? 0);
-          const ratio = target ? (pts/target) : 0;
-          if (ratio >= 2.5) mult = 3;
-          else if (ratio >= 1.5) mult = 2;
-          else mult = pts>0 ? 1 : 0;
-        }
-        const pts = Number.isFinite(Number(tw?.points ?? tw?.score))
-          ? Number(tw?.points ?? tw?.score)
-          : (target * mult);
-
-        sum += pts;
-        if (mult === 3 || ringRaw.includes('treb')) t++;
-        else if (mult === 2 || ringRaw.includes('doub')) d++;
-        else if (mult === 1) s++;
-      });
-
-      if (!best || sum > best.sum) best = { round: 10+r, sum, s, d, t };
-    }
-  });
-
-  return best;
-}
-const bestRound = bestRoundFromBoards(name, games) || null;
-
-  // 4) H2H for Nemesis/BFF (>=10 games vs opponent)
-  const vs = new Map();
-  games.forEach(g=>{
-    const meI = idxOf(g), meS = Number(g.totals[meI]||0);
-    g.players.forEach((op,j)=>{
-      if (j===meI) return;
-      const opp = String(op||'').trim();
-      const theirs = Number(g.totals[j]||0);
-      const rec = vs.get(opp) || { opp, W:0, L:0, n:0 };
-      if (meS > theirs) rec.W++; else if (meS < theirs) rec.L++;
-      rec.n++; vs.set(opp, rec);
-    });
-  });
-const qualifiedOpp = Array.from(vs.values()).filter(r=> r.n >= 5).map(r=>({ ...r, pct: (r.W+r.L) ? (100*r.W/(r.W+r.L)) : 0 }));  const bff = qualifiedOpp.length ? qualifiedOpp.reduce((m,r)=> r.pct>m.pct?r:m, qualifiedOpp[0]) : null;
-  const nem = qualifiedOpp.length ? qualifiedOpp.reduce((m,r)=> r.pct<m.pct?r:m, qualifiedOpp[0]) : null;
-
-  // lifetime, from the games we already loaded at the top of this function
-const myThrowsFromBoards = __throwsFromGamesForPlayer(name, games);
-let onlyTargetRounds = [];
-if (Array.isArray(myThrowsFromBoards) && myThrowsFromBoards.length) {
-  onlyTargetRounds = myThrowsFromBoards.filter(
-    t => typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 10 // 10..20 only
-  );
-}
-
-  // Reuse same hits model: “marks per dart” (single=1, double=2, treble=3)
-  const markUnits = (t, target) => {
-    const k = String(t.kind||'').toLowerCase();
-    if (k.includes('treble') || k.includes('triple')) return 3;
-    if (k.includes('double')) return 2;
-    if (k.includes('single')) return Number(t.points||0)>0 ? 1 : 0;
-    const ratio = Number(t.points||0) / target; // fallback
-    if (ratio >= 2.5) return 3; if (ratio >= 1.5) return 2; if (ratio >= 0.5) return 1; return 0;
-  };
-  const favRows = [];
-  for (let r=0; r<=10; r++){
-    const target = 10 + r;
-    const shots  = onlyTargetRounds.filter(t => t.round_index === r);
-    const throwsN = shots.length;
-    const hitsUnits = shots.reduce((s,t)=> s + markUnits(t,target), 0);
-    const pct = throwsN ? (100 * hitsUnits / (3*throwsN)) : 0; // units ÷ (3 per throw)
-    favRows.push({ target, throwsN, pct });
-  }
-  // require a small sample to avoid noise
-  const MIN_THROWS_PER_TARGET = 30;
-  const favCandidates = favRows.filter(r => r.throwsN >= MIN_THROWS_PER_TARGET);
-  const fav = favCandidates.length ? favCandidates.reduce((m,r)=> r.pct>m.pct?r:m, favCandidates[0]) : null;
-  const worst = favCandidates.length ? favCandidates.reduce((m,r)=> r.pct<m.pct?r:m, favCandidates[0]) : null;
-
-// 6) Current Power Rank — the DB view (dbPower) is the single source of
-// truth; this local recomputation runs ONLY when the view is unavailable,
-// so the Quick Stats row can never disagree with the hero tile.
-let myPower = null, myPowerPos = null;
-if (!dbPower){
-const MIN_ROUNDS_QUALIFY = 28;   // 2 games (28 rounds)
-const WINDOW_ROUNDS      = 56;   // last 56 rounds
-
-// All official games (reused from the single fetch at the top)
-const allGames = __allGamesNorm;
-
-// Map game_id -> timestamp (for ordering rounds)
-const gameTs = new Map();
-allGames.forEach(g => {
-  const gid = (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id;
-  if (gid) gameTs.set(gid, g.ts || null);
-});
-
-// Fetch throws for all those games; fallback to reconstruct from boards
-let allThrows = [];
-try {
-  const allIds = allGames
-    .map(g => (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id)
-    .filter(Boolean);
-  allThrows = await __fetchThrowsForGames(allIds);
-} catch (_) {}
-
-if (!allThrows.length) {
-  // fallback: synthesize from boards
-  allGames.forEach(g => {
-    (g.players || []).forEach(p => {
-      const rows = __throwsFromGamesForPlayer(p, [g]);
-      if (rows && rows.length) allThrows.push(...rows);
-    });
-  });
-}
-
-// Keep only real round rows and finite points
-allThrows = allThrows.filter(t =>
-  typeof t.round_index === 'number' &&
-  t.round_index >= 0 && t.round_index <= 13 &&
-  Number.isFinite(Number(t.points))
-);
-
-// Aggregate to per-player round totals, ordered by (game ts, round index)
-const roundsByPlayer = new Map(); // player -> [{ts, ri, pts}, ...]
-allThrows.forEach(t => 
+    if (bs 
 === END ===
 
-=== catalog_refs occurrence 3 chars 1521476:1553476 ===
-4px 2px 4px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">How to earn</div>'
-    + '<div style="font-size:15px;font-weight:600;margin:0 2px 10px">' + a.desc + '.</div>'
-    + '<div style="font-size:12px;font-weight:800;margin:0 2px 12px;color:' + (got.cnt>0 ? '#7be0a0' : 'var(--v3-muted,#98a2b8)') + '">' + yours + '</div>'
-    + '<div style="margin:6px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">Trophy leaderboard</div>'
-    + '<p class="muted" id="trophyLbLoading" style="font-size:13px">Loading…</p>';
-  modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
-  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
-  modal.tabIndex = 0; modal.focus();
-  const rows = await SQ_ACH.forCode(code);
-  const loading = body.querySelector('#trophyLbLoading'); if (loading) loading.remove();
-  if (!rows.length){
-    const p = document.createElement('p'); p.className = 'muted'; p.style.fontSize = '13px';
-    p.textContent = 'No one has earned this yet — be the first!'; body.appendChild(p);
-  } else {
-    const list = document.createElement('div'); list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
-    const medal = i => i === 0 ? '#ffd24a' : i === 1 ? '#cbd5e1' : i === 2 ? '#d08b5a' : 'var(--v3-muted,#98a2b8)';
-    rows.forEach((r, i) => {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);';
-      const rk = document.createElement('span'); rk.textContent = '#' + (i + 1); rk.style.cssText = 'font-weight:900;min-width:30px;color:' + medal(i);
-      const nm = document.createElement('span'); nm.textContent = r.name; nm.style.cssText = 'flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-      const ct = document.createElement('span');
-      ct.textContent = milestone ? '✓' : ('×' + r.cnt);
-      ct.style.cssText = 'font-weight:900;color:' + (milestone ? '#2fd06b' : '#ffb14a') + ';';
-      row.append(rk, nm, ct); list.appendChild(row);
-    });
-    body.appendChild(list);
-  }
-  const foot = document.createElement('div'); foot.style.cssText = 'margin-top:14px;text-align:center;';
-  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Close'; cb.onclick = () => overlay.remove();
-  foot.appendChild(cb); body.appendChild(foot);
-}
-
-// Per-game trophy detector for live celebration toasts. Mirrors the SQL rules
-// in v_ach_rounds / v_player_achievements (per-round, per-game, streak, 2p feats).
-// Career/match feats (sweeps, giant_slayer, champion, nemesis) are cross-game and
-// surface via the trophy case, not here. board = array[player] of array[round] of
-// { darts:[{kind,points}], roundTotal }.  opts: { players, is_tiebreak }.
-SQ_ACH.detectGame = function(board, opts){
-  opts = opts || {};
-  const players = opts.players || [];
-  const norm = d => {
-    const k = (d && d.kind) || 'Miss';
-    if (k === 'S') return 'single';
-    if (k === 'D' || k === 'Double') return 'double';
-    if (k === 'T' || k === 'Triple') return 'treble';
-    if (k === 'B' || k === 'Bull') return 'bull';
-    return 'miss';
-  };
-  if (!Array.isArray(board) || !board.length) return [];
-  const totals = board.map(rs => (rs || []).reduce((s, r) => s + (Number(r && r.roundTotal) || 0), 0));
-  const maxTotal = Math.max.apply(null, totals.concat([0]));
-  const out = [];
-  for (let p = 0; p < board.length; p++){
-    const rounds = board[p] || [];
-    const earned = {}; const add = (c, n) => { earned[c] = (earned[c] || 0) + (n || 1); };
-    let totMiss = 0, totDarts = 0, centuryRounds = 0, scoredRounds = 0, best = 0, run = 0;
-    let finalFh = false;
-    for (let ri = 0; ri < rounds.length; ri++){
-      const r = rounds[ri] || {}; const darts = r.darts || [];
-      let tre = 0, dou = 0, sin = 0, b50 = 0, bany = 0;
-      darts.forEach(d => { const nk = norm(d); if (nk === 'treble') tre++; else if (nk === 'double') dou++; else if (nk === 'single') sin++; else if (nk === 'bull'){ bany++; if ((Number(d.points) || 0) === 50) b50++; } });
-      const mis = darts.filter(d => norm(d) === 'miss' || (Number(d && d.points) || 0) === 0).length;
-      const rtot = Number(r.roundTotal) || 0;
-      const target = ri <= 10 ? 10 + ri : null;
-      const rmax = ri <= 10 ? 9 * (10 + ri) : (ri === 11 ? 120 : ri === 12 ? 180 : 150);
-      totMiss += mis; totDarts += darts.length;
-      if (rtot > 0) scoredRounds++;
-      const fh = (mis === 0 && darts.length === 3);
-      run = fh ? run + 1 : 0; if (run > best) best = run;
-      if (ri === 13) finalFh = fh;
-      if (rtot === 180) add('the_180');
-      else if (rtot === rmax && darts.length === 3) add('maximum');
-      if (tre === 3) add('treble_trouble');
-      if (dou === 3) add('double_down');
-      if (fh) add('full_house');
-      if (rtot >= 100 && rtot < 180){ add('century'); centuryRounds++; }
-      if (target != null && sin === 1 && dou === 1 && tre === 1) add('shanghai');
-      if (target != null && sin === 2 && dou === 1 && tre === 0 && mis === 0) add('desmond');
-      if (target != null && tre >= 2) add('robin_hood');
-      if (b50 > 0) add('dead_centre', b50);
-      if (ri === 12 && tre === 3) add('triple_threat');
-      if (ri === 11 && dou === 3) add('double_trouble');
-      if (ri === 13 && bany === 3) add('bull_run');
-      if (ri === 0 && fh) add('perfect_start');
-      if (ri === 13 && rtot >= 100) add('strong_finish');
-    }
-    // Score milestones are one-time (shown in the profile), not per-game trophies.
-    const won = totals[p] === maxTotal && maxTotal > 0;
-    if (totMiss === 0 && totDarts > 0) add('flawless_game');
-    if (scoredRounds >= 14) add('full_board');
-    if (centuryRounds >= 3) add('ton_machine');
-    if (best >= 14) add('untouchable'); else if (best >= 5) add('inferno'); else if (best >= 3) add('hot_streak');
-    if (opts.is_tiebreak && won) add('iceman');
-    if (won && finalFh) add('clutch');
-    if (board.length === 2){
-      const opp = 1 - p, oppRounds = board[opp] || [];
-      let wonEvery = true, ca = 0, cb = 0, n = Math.max(rounds.length, oppRounds.length);
-      for (let ri = 0; ri < n; ri++){
-        const a = Number((rounds[ri] || {}).roundTotal) || 0, b = Number((oppRounds[ri] || {}).roundTotal) || 0;
-        if (!(a > b)) wonEvery = false;
-        if (ri <= 6){ ca += a; cb += b; }
-      }
-      if (won && wonEvery) add('whitewash');
-      if (won && ca < cb) add('comeback_kid');
-    }
-    const list = Object.keys(earned).map(c => ({ code: c, count: earned[c] }))
-      .sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
-    if (list.length) out.push({ player: p, name: (players[p] && (players[p].name || players[p])) || ('Player ' + (p + 1)), earned: list });
-  }
-  return out;
-};
-
-// Celebratory toast stack shown at game-complete for trophies earned this game.
-function __sqAchToast(results){
-  try{
-    if (!Array.isArray(results) || !results.length) return;
-    let layer = document.getElementById('sqAchToastLayer');
-    if (!layer){
-      layer = document.createElement('div'); layer.id = 'sqAchToastLayer';
-      layer.style.cssText = 'position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:100000;'
-        + 'display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:min(92vw,420px);';
-      document.body.appendChild(layer);
-    }
-    const flat = [];
-    results.forEach(r => r.earned.forEach(e => flat.push({ name: r.name, code: e.code, count: e.count })));
-    // Headline the rarest first, cap the stack.
-    flat.slice(0, 6).forEach((item, i) => {
-      const a = SQ_ACH.meta(item.code); const s = SQ_ACH.tierStyle(a.tier);
-      const el = document.createElement('div');
-      el.style.cssText = 'pointer-events:none;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:14px;'
-        + 'background:' + s.g + ';border:1px solid ' + s.b + ';box-shadow:0 10px 26px rgba(0,0,0,.45);'
-        + 'color:' + s.c + ';font-weight:800;opacity:0;transform:translateY(-10px) scale(.96);'
-        + 'transition:opacity .3s ease,transform .3s cubic-bezier(.2,.9,.25,1);max-width:100%;';
-      el.innerHTML = '<span style="font-size:24px;line-height:1">' + a.icon + '</span>'
-        + '<span style="display:flex;flex-direction:column;min-width:0">'
-        + '<b style="color:#fff;font-size:14px;letter-spacing:.02em">' + a.name + (item.count > 1 ? ' ×' + item.count : '') + '</b>'
-        + '<span style="font-size:11px;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (item.name || '') + ' · +' + ((a.xp || 0) * item.count) + ' XP</span>'
-        + '</span>';
-      layer.appendChild(el);
-      setTimeout(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0) scale(1)'; }, 80 + i * 140);
-      setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateY(-10px) scale(.96)'; setTimeout(() => { try{ el.remove(); if (!layer.childElementCount) layer.remove(); }catch(_){ } }, 350); }, 4200 + i * 140);
-    });
-    try{ if (typeof __sqV3SndGame === 'function') __sqV3SndGame(); }catch(_){ }
-  }catch(_){ }
-}
-
-// Detect + celebrate trophies for the just-finished game (uses live state).
-window.__sqAchCelebrate = function(){
-  try{
-    const board = (state && state.score) ? state.score : null;
-    if (!board) return;
-    const results = SQ_ACH.detectGame(board, {
-      players: (state.players || []).map(p => ({ name: (typeof __sqPlayerPretty === 'function' ? __sqPlayerPretty(p) : (p && p.name)) || (p && p.name) || '' })),
-      is_tiebreak: !!(state.is_tiebreak || state.currentGameIsTiebreak)
-    });
-    __sqAchToast(results);
-    // Freshen caches so the next Player Stats / leaderboard read reflects the new game.
-    try{ if (window.SQ_XP) { SQ_XP._cache = null; SQ_ACH._cache = {}; } }catch(_){ }
-  }catch(_){ }
-};
-
-// Render the trophy case: earned badges bright (with counts), locked badges dim.
-function __sqTrophyCase(earnedMap){
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
-  const badge = (a) => {
-    const got = earnedMap[a.code] || { cnt:0 };
-    const earned = got.cnt > 0;
-    const milestone = SQ_ACH.isMilestone(a.code);
-    const s = SQ_ACH.tierStyle(a.tier);
-    const b = document.createElement('div');
-    b.title = a.desc + (earned && !milestone && got.cnt > 1 ? `  (earned ${got.cnt}×)` : '');
-    b.style.cssText = 'position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;cursor:pointer;'
-      + 'padding:10px 6px;border-radius:12px;'
-      + (earned ? ('background:' + s.g + ';border:1px solid ' + s.b + ';')
-                : 'background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.12);opacity:.42;filter:grayscale(1);');
-    const ic = document.createElement('div'); ic.textContent = a.icon; ic.style.cssText = 'font-size:26px;line-height:1;';
-    const nm = document.createElement('div'); nm.textContent = a.name; nm.style.cssText = 'font-size:10px;font-weight:800;letter-spacing:.01em;color:' + (earned ? s.c : 'var(--v3-muted,#98a2b8)') + ';line-height:1.15;';
-    b.append(ic, nm);
-    b.onclick = () => { try{ __sqTrophyDetail(a.code, earnedMap); }catch(_){ } };
-    // Repeatable trophies show a ×count; milestones show a ✓ tick when unlocked.
-    if (earned && !milestone && got.cnt > 1){
-      const bc = document.createElement('div'); bc.textContent = '×' + got.cnt;
-      bc.style.cssText = 'position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#ff7a18;color:#160b03;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4);';
-      b.appendChild(bc);
-    } else if (earned && milestone){
-      const tk = document.createElement('div'); tk.textContent = '✓';
-      tk.style.cssText = 'position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:999px;background:#2fd06b;color:#05230f;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4);';
-      b.appendChild(tk);
-    }
-    return b;
-  };
-  const section = (title, icon, codes) => {
-    const codeList = SQ_ACH.CATALOG.filter(a => codes.has(a.code));
-    const earnedN = codeList.filter(a => (earnedMap[a.code]||{}).cnt > 0).length;
-    const card = document.createElement('div'); card.className = 'tag';
-    card.style.cssText = 'padding:14px;border-radius:16px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);';
-    const head = document.createElement('div');
-    head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;';
-    const ttl = document.createElement('strong'); ttl.innerHTML = icon + ' ' + title; ttl.style.fontSize = '15px';
-    const cnt = document.createElement('span'); cnt.className = 'muted'; cnt.style.cssText = 'font-weight:800;font-size:12px;';
-    cnt.textContent = earnedN + ' / ' + codeList.length + ' unlocked';
-    head.append(ttl, cnt);
-    const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;';
-    codeList.forEach(a => { if ((earnedMap[a.code]||{}).cnt > 0) grid.appendChild(badge(a)); });
-    codeList.forEach(a => { if (!((earnedMap[a.code]||{}).cnt > 0)) grid.appendChild(badge(a)); });
-    card.append(head, grid);
-    return card;
-  };
-  const mset = new Set(SQ_ACH.CATALOG.filter(a => SQ_ACH.isMilestone(a.code)).map(a => a.code));
-  const tset = new Set(SQ_ACH.CATALOG.filter(a => !SQ_ACH.isMilestone(a.code)).map(a => a.code));
-  wrap.append(section('Milestones', '🎖️', mset), section('Trophies', '🏆', tset));
-  return wrap;
-}
-
-// === Player Stats — redesigned overview =====================================
-// @CANONICAL:PLAYER_STATS_PROFILE_CARDS
-window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
-  const name = String(playerName || '').trim();
-  if (!name) { try{ toast('Pick a player'); }catch(_){ } return; }
-
-  // Supabase client (single source of truth for ranks & windowed stats)
-  const SB = (typeof window !== 'undefined') ? (window.sb || window.__sb || window.supabase || window.supabaseClient || null) : null;
-
-  // Modal shell
-  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal   = document.createElement('div'); modal.className   = 'modal';
-  modal.style.maxWidth='980px'; modal.style.width='94vw';
-  modal.style.maxHeight = '90vh'; modal.style.overflow = 'hidden';
-  // Flex column so the body actually scrolls within the 90vh modal (the
-  // footer stays pinned; without this the body overflowed and clipped).
-  modal.style.display = 'flex'; modal.style.flexDirection = 'column';
-
-  const header  = document.createElement('div');
-  header.style.display = 'none';
-  const body    = document.createElement('div'); body.className    = 'modal-body';
-  body.style.paddingTop='8px';
-  body.style.flex = '1 1 auto'; body.style.minHeight = '0'; body.style.overflowY = 'auto';
-
-  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
-  footer.style.justifyContent='flex-start';
-  footer.style.gap='10px';
-
-  // Mount early so we never "flash" back to home between dialogs
-  body.innerHTML = '<div class="sq-modal-loading"><div class="sq-loadbar"><span class="sq-loadbar-fill"></span></div></div>';
-  modal.append(header, body, footer);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
-  modal.tabIndex = 0;
-  modal.focus();
-
-  // Helpers
-  const monthKey = d => {
-    const x = (d instanceof Date) ? d : (d ? new Date(d) : null);
-    return x && !Number.isNaN(x.getTime()) ? `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}` : '';
-  };
-  const monthLabel = k => {
-    if (!k) return '—';
-    const [y,m] = k.split('-').map(Number);
-    return new Date(y, m-1, 1).toLocaleString(undefined,{ month:'short', year:'numeric' }).toUpperCase();
-  };
-
-  // 1) All official games — fetched ONCE and reused for both the player's
-  // slice and the local power-rank fallback (this used to be two full fetches).
-  // Turbo games are excluded here so the whole profile is Standard-Official
-  // only ("official" fetch alone doesn't strip Turbo).
-  const __allGamesNorm = (await __fetchOfficialGames(50000)).map(__normalizeGame)
-    .filter(g => !__sqGameLooksTurbo(g.raw));
-  const games = __allGamesNorm
-    .filter(g => Array.isArray(g.players) && g.players.some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()))
-    .sort((a,b)=> (new Date(a.ts) - new Date(b.ts)));
-
-  // Short-circuit if nothing
-  if (!games.length){
-    body.innerHTML = '';
-    const p = document.createElement('p');
-    p.className = 'muted';
-    p.style.opacity = '.8';
-    p.textContent = 'No official games found for this player.';
-    body.appendChild(p);
-
-    footer.innerHTML = '';
-    const backBtn  = document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
-    backBtn.onclick  = () => { overlay.remove(); __sqGoBackToStatsMain(); };
-    footer.append(backBtn);
-    __sqStatsArcade(overlay, modal);
-
-    modal.focus();
-    return;
-  }
-
-  // Index for this player and raw scores
-  const idxOf = g => g.players.findIndex(p => String(p||'').trim().toLowerCase()===name.toLowerCase());
-  const scores = games.map(g => Number(g.totals[idxOf(g)] || 0));
-
-  // 2) Basic aggregates
-  const GAMES = scores.length;
-  const TOTAL = scores.reduce((s,v)=>s+v,0);
-  const AVG   = GAMES ? (TOTAL / GAMES) : 0;
-  const PB    = GAMES ? Math.max(...scores) : 0;
-  const LOW   = GAMES ? Math.min(...scores) : 0;
-
-  // 2.1) Canonical ranks / windows from DB views
-  // - Power Rank: v_power_rankings_last56_official_clean, filtered to the same active 14-day Current rule
-  // - Highest Score place: v_player_best_official_ranked
-  // - Favorite/Worst: v_player_last30_targets (throw-universe)
-  let dbPower = null;
-  let dbBest  = null;
-  let dbFav   = null;
-  let dbStreak = null;
-  let dbRates = null;
-  let savedPlayersRows = [];
-  if (SB && typeof SB.from === 'function'){
-    // All lookups are independent — run them in parallel (this used to be six
-    // sequential round-trips and dominated the dialog's load time).
-    const fkey = name.toLowerCase();
-    const safeQ = q => Promise.resolve(q).catch(e => ({ error: e }));
-    const [savedRows, pr, bs, fv, tr, st] = await Promise.all([
-      (async () => {
-        let rows = [];
-        try{
-          if (typeof cloudListPlayers === 'function') rows = await cloudListPlayers();
-        }catch(_){ rows = []; }
-        if ((!rows || !rows.length) && typeof getSavedPlayers === 'function'){
-          try{ rows = getSavedPlayers() || []; }catch(_){ rows = []; }
-        }
-        return rows || [];
-      })(),
-      safeQ(SB.from('v_power_rankings_last56_official_clean')
-        .select('player,player_key,rounds_used,total_points,avg_per_round,last_played_at,rank_pos')
-        .order('avg_per_round', { ascending:false })
-        .limit(500)),
-      safeQ(SB.from('v_player_best_official_ranked')
-        .select('player_name,best_score,best_score_pos')
-        .ilike('player_name', name)
-        .limit(1)),
-      safeQ(SB.from('v_player_last30_targets')
-        .select('player_key,favorite_number,favorite_pct,worst_number,worst_pct')
-        .eq('player_key', fkey)
-        .limit(1)),
-      (typeof cloudIsTableMissing !== 'function' || !cloudIsTableMissing('v_player_last30_target_rates'))
-        ? safeQ(SB.from('v_player_last30_target_rates')
-            .select('player_key,target_n,hit_pct,throws')
-            .eq('player_key', fkey)
-            .order('hit_pct', { ascending: false }))
-        : Promise.resolve(null),
-      safeQ(SB.from('v_player_target_streaks')
-        .select('player_key,player_name,mode_key,mode_label,dart_streak,round_streak,source_games,last_played_at')
-        .eq('player_key', fkey.trim())
-        .eq('mode_key', 'official')
-        .limit(1))
-    ]);
-
-    savedPlayersRows = savedRows || [];
-    try{
-      const powerKey = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
-      const savedMap = new Map((savedRows || []).map(p => {
-        const n = String((p && (p.name || p.player_name || p.player || p.display_name)) || '').trim();
-        return n ? [powerKey(n), n] : null;
-      }).filter(Boolean));
-      const parsePowerMs = ts => {
-        try{
-          if (!ts) return 0;
-          let s = String(ts).trim();
-          if (/^\d{4}-\d{2}-\d{2}\s/.test(s) && !s.includes('T')) s = s.replace(' ', 'T');
-          if (/[+-]\d{2}$/.test(s)) s += ':00';
-          const n = Date.parse(s);
-          return Number.isFinite(n) ? n : 0;
-        }catch(_){ return 0; }
-      };
-      if (pr && pr.error) throw pr.error;
-      const nowMs = Date.now();
-      const activeCutoff = nowMs - (14 * 24 * 60 * 60 * 1000);
-      const rows = ((pr && pr.data) || []).map(r => {
-        const k = powerKey(r.player_key || r.player);
-        if (savedMap.size && !savedMap.has(k)) return null;
-        const rounds = Math.max(0, Math.min(56, Number(r.rounds_used || 0)));
-        const total = Number(r.total_points);
-        const viewAvg = Number(r.avg_per_round);
-        const avg = Number.isFinite(viewAvg) ? viewAvg : ((Number.isFinite(total) && rounds > 0) ? (total / rounds) : 0);
-        const lastMs = parsePowerMs(r.last_played_at);
-        const active = !lastMs || lastMs >= activeCutoff;
-        return { player: savedMap.get(k) || String(r.player || '').trim(), playerKey: k, rounds, avg, lastMs, active, rankPos:Number(r.rank_pos || 0) || null };
-      }).filter(r => r && r.player && r.rounds >= 28 && r.active && Number.isFinite(r.avg) && r.avg > 0)
-        .sort((a,b) => (b.avg - a.avg) || (b.rounds - a.rounds) || (b.lastMs - a.lastMs) || String(a.player).localeCompare(String(b.player)));
-      const mine = rows.find(r => r.playerKey === powerKey(name));
-      dbPower = mine ? { player: mine.player, power_rank: mine.avg, power_rank_pos: mine.rankPos || (rows.indexOf(mine) + 1), last_played_at: mine.lastMs || null } : null;
-    }catch(e){ try{ if(window.SQ_DEBUG) console.warn('[SQ] power rank view read failed', e); }catch(_){} }
-
-    if (bs && bs.error) console.warn('[SQ] best score rank view read failed', bs.error);
-    dbBest = (bs && !bs.error && bs.data && bs.data[0]) ? bs.data[0] : null;
-
-    if (fv && fv.error) console.warn('[SQ] last30 targets view read failed', fv.error);
-    dbFav = (fv && !fv.error && fv.data && fv.data[0]) ? fv.data[0] : null;
-
-    // Top/bottom 3 target rates (last 30 games) for Targets section
-    dbRates = (tr && !tr.error && Array.isArray(tr.data)) ? tr.data : null;
-
-    if (st && st.error) {
-      console.warn('[SQ] target streaks view is missing required mode columns', st.error);
-    } else {
-      dbStreak = (st && !st.error && st.data && st.data[0]) ? st.data[0] : null;
-    }
-  }
-
-  // Per-game ranks (1st place detection) and per-month buckets
-  const monthly = new Map(); // key -> { sum, n, wins }
-  games.forEach((g,i)=>{
-    const meI = idxOf(g);
-    const meS = Number(g.totals[meI] || 0);
-    const max = Math.max(...(g.totals||[]).map(Number));
-    const win = meS === max ? 1 : 0;
-
-    const k = monthKey(g.ts);
-    const rec = monthly.get(k) || { sum:0, n:0, wins:0 };
-    rec.sum += meS; rec.n += 1; rec.wins += win;
-    monthly.set(k, rec);
-  });
-
-  // Highest/lowest monthly averages
-  const monthlyRows = Array.from(monthly.entries()).map(([k,rec])=>({ k, avg: rec.n ? rec.sum/rec.n : 0, wins: rec.wins }));
-  monthlyRows.sort((a,b)=> a.k.localeCompare(b.k));
-  const bestMonth = monthlyRows.length ? monthlyRows.reduce((m,r)=> r.avg>m.avg?r:m, monthlyRows[0]) : null;
-  const worstMonth= monthlyRows.length ? monthlyRows.reduce((m,r)=> r.avg<m.avg?r:m, monthlyRows[0]) : null;
-
-  // PL Average (career) & PL Monthly Wins (current month)
-const nowK = monthKey(new Date());
-
-// Premier League "Monthly Wins":
-// # of months this player finished 1st by monthly average (min 3 games)
-function computePLMonthlyWinsTop(games, minGames = 3, me = name){
-  const byMonthPlayer = new Map(); // `${month}|${player}` -> { sum, n }
-
-  games.forEach(g=>{
-    const mk = monthKey(g.ts);
-    (g.players||[]).forEach((p,i)=>{
-      const key = `${mk}|${p}`;
-      const rec = byMonthPlayer.get(key) || { sum:0, n:0 };
-      rec.sum += Number(g.totals[i] || 0);
-      rec.n   += 1;
-      byMonthPlayer.set(key, rec);
-    });
-  });
-
-  const months = new Set(Array.from(byMonthPlayer.keys()).map(k=>k.split('|')[0]));
-  let wins = 0;
-
-  months.forEach(mk=>{
-    const contenders = [];
-    byMonthPlayer.forEach((rec,key)=>{
-      const [k,p] = key.split('|');
-      if (k !== mk) return;
-      if (rec.n >= minGames) contenders.push({ player:p, avg: rec.sum/rec.n });
-    });
-    if (!contenders.length) return;
-    contenders.sort((a,b)=> b.avg - a.avg);
-    if (contenders[0].player.toLowerCase() === me.toLowerCase()) wins += 1;
-  });
-
-  return wins;
-}
-const plMonthlyWins = computePLMonthlyWinsTop(games, 3, name);
-
- // 3) Highest Scoring Round (10→20 only) with S/D/T breakdown — robust via boards
-function bestRoundFromBoards(playerName, games){
-  const nameLC = String(playerName||'').trim().toLowerCase();
-  let best = null;
-
-  games.forEach(g=>{
-    const pIdx = (g.players||[]).findIndex(p => String(p||'').trim().toLowerCase()===nameLC);
-    if (pIdx < 0) return;
-    const b = g.board; if (!b) return;
-
-    const looksA = Array.isArray(b[pIdx]);
-    const looksB = Array.isArray(b[0]) && Array.isArray(b[0][pIdx]);
-    const rounds = looksA ? b[pIdx] : (looksB ? b.map(r => r ? r[pIdx] : null) : []);
-
-    for (let r = 0; r < Math.min(14, rounds.length || 0); r++){
-      if (r > 10) break; // 10..20 only
-      const cell = rounds[r]; if (!cell) continue;
-
-      const list = Array.isArray(cell)
-        ? cell
-        : (Array.isArray(cell.throws) ? cell.throws : (Array.isArray(cell.darts) ? cell.darts : []));
-
-      let sum = 0, s = 0, d = 0, t = 0;
-      const target = 10 + r;
-
-      list.forEach(tw=>{
-        const ringRaw = (tw?.kind || tw?.type || tw?.segment || tw?.ring || '').toString().toLowerCase();
-        let mult = Number(tw?.mult ?? tw?.multiplier);
-        if (!mult || !Number.isFinite(mult)) {
-          // infer multiplier from points if needed
-          const pts = Number(tw?.points ?? tw?.score ?? 0);
-          const ratio = target ? (pts/target) : 0;
-          if (ratio >= 2.5) mult = 3;
-          else if (ratio >= 1.5) mult = 2;
-          else mult = pts>0 ? 1 : 0;
-        }
-        const pts = Number.isFinite(Number(tw?.points ?? tw?.score))
-          ? Number(tw?.points ?? tw?.score)
-          : (target * mult);
-
-        sum += pts;
-        if (mult === 3 || ringRaw.includes('treb')) t++;
-        else if (mult === 2 || ringRaw.includes('doub')) d++;
-        else if (mult === 1) s++;
-      });
-
-      if (!best || sum > best.sum) best = { round: 10+r, sum, s, d, t };
-    }
-  });
-
-  return best;
-}
-const bestRound = bestRoundFromBoards(name, games) || null;
-
-  // 4) H2H for Nemesis/BFF (>=10 games vs opponent)
-  const vs = new Map();
-  games.forEach(g=>{
-    const meI = idxOf(g), meS = Number(g.totals[meI]||0);
-    g.players.forEach((op,j)=>{
-      if (j===meI) return;
-      const opp = String(op||'').trim();
-      const theirs = Number(g.totals[j]||0);
-      const rec = vs.get(opp) || { opp, W:0, L:0, n:0 };
-      if (meS > theirs) rec.W++; else if (meS < theirs) rec.L++;
-      rec.n++; vs.set(opp, rec);
-    });
-  });
-const qualifiedOpp = Array.from(vs.values()).filter(r=> r.n >= 5).map(r=>({ ...r, pct: (r.W+r.L) ? (100*r.W/(r.W+r.L)) : 0 }));  const bff = qualifiedOpp.length ? qualifiedOpp.reduce((m,r)=> r.pct>m.pct?r:m, qualifiedOpp[0]) : null;
-  const nem = qualifiedOpp.length ? qualifiedOpp.reduce((m,r)=> r.pct<m.pct?r:m, qualifiedOpp[0]) : null;
-
-  // lifetime, from the games we already loaded at the top of this function
-const myThrowsFromBoards = __throwsFromGamesForPlayer(name, games);
-let onlyTargetRounds = [];
-if (Array.isArray(myThrowsFromBoards) && myThrowsFromBoards.length) {
-  onlyTargetRounds = myThrowsFromBoards.filter(
-    t => typeof t.round_index === 'number' && t.round_index >= 0 && t.round_index <= 10 // 10..20 only
-  );
-}
-
-  // Reuse same hits model: “marks per dart” (single=1, double=2, treble=3)
-  const markUnits = (t, target) => {
-    const k = String(t.kind||'').toLowerCase();
-    if (k.includes('treble') || k.includes('triple')) return 3;
-    if (k.includes('double')) return 2;
-    if (k.includes('single')) return Number(t.points||0)>0 ? 1 : 0;
-    const ratio = Number(t.points||0) / target; // fallback
-    if (ratio >= 2.5) return 3; if (ratio >= 1.5) return 2; if (ratio >= 0.5) return 1; return 0;
-  };
-  const favRows = [];
-  for (let r=0; r<=10; r++){
-    const target = 10 + r;
-    const shots  = onlyTargetRounds.filter(t => t.round_index === r);
-    const throwsN = shots.length;
-    const hitsUnits = shots.reduce((s,t)=> s + markUnits(t,target), 0);
-    const pct = throwsN ? (100 * hitsUnits / (3*throwsN)) : 0; // units ÷ (3 per throw)
-    favRows.push({ target, throwsN, pct });
-  }
-  // require a small sample to avoid noise
-  const MIN_THROWS_PER_TARGET = 30;
-  const favCandidates = favRows.filter(r => r.throwsN >= MIN_THROWS_PER_TARGET);
-  const fav = favCandidates.length ? favCandidates.reduce((m,r)=> r.pct>m.pct?r:m, favCandidates[0]) : null;
-  const worst = favCandidates.length ? favCandidates.reduce((m,r)=> r.pct<m.pct?r:m, favCandidates[0]) : null;
-
-// 6) Current Power Rank — the DB view (dbPower) is the single source of
-// truth; this local recomputation runs ONLY when the view is unavailable,
-// so the Quick Stats row can never disagree with the hero tile.
-let myPower = null, myPowerPos = null;
-if (!dbPower){
-const MIN_ROUNDS_QUALIFY = 28;   // 2 games (28 rounds)
-const WINDOW_ROUNDS      = 56;   // last 56 rounds
-
-// All official games (reused from the single fetch at the top)
-const allGames = __allGamesNorm;
-
-// Map game_id -> timestamp (for ordering rounds)
-const gameTs = new Map();
-allGames.forEach(g => {
-  const gid = (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id;
-  if (gid) gameTs.set(gid, g.ts || null);
-});
-
-// Fetch throws for all those games; fallback to reconstruct from boards
-let allThrows = [];
-try {
-  const allIds = allGames
-    .map(g => (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id)
-    .filter(Boolean);
-  allThrows = await __fetchThrowsForGames(allIds);
-} catch (_) {}
-
-if (!allThrows.length) {
-  // fallback: synthesize from boards
-  allGames.forEach(g => {
-    (g.players || []).forEach(p => {
-      const rows = __throwsFromGamesForPlayer(p, [g]);
-      if (rows && rows.length) allThrows.push(...rows);
-    });
-  });
-}
-
-// Keep only real round rows and finite points
-allThrows = allThrows.filter(t =>
-  typeof t.round_index === 'number' &&
-  t.round_index >= 0 && t.round_index <= 13 &&
-  Number.isFinite(Number(t.points))
-);
-
-// Aggregate to per-player round totals, ordered by (game ts, round index)
-const roundsByPlayer = new Map(); // player -> [{ts, ri, pts}, ...]
-allThrows.forEach(t => {
-  const player = String(t.player || '').trim();
-  if (!player) return;
-  const gid = t.game_id;
-=== END ===
-
-=== catalog_refs occurrence 4 chars 1564669:1596669 ===
-cument.createElement('div');
-    row.className = 'pp-row' + (muted ? ' muted' : '');
-    const l = document.createElement('span'); l.className = 'pp-row-label' + (muted ? ' muted' : ''); l.textContent = label;
-    const v = document.createElement('span'); v.className = 'pp-row-value' + (muted ? ' muted' : '');
-    if (value instanceof Node) v.appendChild(value); else v.textContent = fmtValue(value);
-    row.append(l, v);
-    return row;
-  };
-  const statCard = (titleTxt, icon, rows, opts={}) => {
-    const c = document.createElement('div');
-    c.className = 'tag pp-card';
-    if (opts.muted) { c.style.borderStyle = 'dashed'; c.style.opacity = '.84'; }
-    const head = document.createElement('div');
-    head.className = 'pp-card-head';
-    const ico = document.createElement('span'); ico.className = 'pp-ico'; ico.innerHTML = icon || '';
-    const ttl = document.createElement('strong'); ttl.textContent = titleTxt;
-    head.append(ico, ttl); c.appendChild(head);
-    rows.forEach(r => c.appendChild(statRow(r[0], r[1], opts.muted || r[2])));
-    if (opts.footer){ const f = document.createElement('p'); f.className = 'muted'; f.style.margin = '8px 0 0'; f.style.fontSize = '12px'; f.textContent = opts.footer; c.appendChild(f); }
-    return c;
-  };
-  // "168 (#38)" with the rank chip coloured (gold/silver/bronze on the podium)
-  const withRank = (mainTxt, pos) => {
-    const wrap = document.createElement('span');
-    const main = document.createElement('span'); countUp(main, mainTxt);
-    wrap.appendChild(main);
-    const p = Number(pos);
-    if (Number.isFinite(p) && p > 0){
-      const chip = document.createElement('span');
-      chip.className = 'pp-pos' + (p <= 3 ? ' g' + p : '');
-      chip.textContent = `(#${p})`;
-      wrap.appendChild(chip);
-    }
-    return wrap;
-  };
-  // streak value with a flame once it starts getting spicy
-  const streakNode = (txt) => {
-    const s = document.createElement('span');
-    countUp(s, txt);
-    if (Number(txt) >= 3) s.classList.add('pp-hot');
-    return s;
-  };
-  // "1. 19 (61.1%)" lines with a mini hit-rate bar under each
-  const targetListNode = (arr, cold) => {
-    const box = document.createElement('span');
-    box.style.display = 'inline-block'; box.style.minWidth = '150px';
-    arr.forEach((r, i) => {
-      const line = document.createElement('span'); line.className = 'pp-tline';
-      line.textContent = `${i + 1}. ${r.target_n} (${Number(r.hit_pct).toFixed(1)}%)`;
-      const bar = document.createElement('span'); bar.className = 'pp-bar' + (cold ? ' cold' : '');
-      bar.style.display = 'block';
-      const fill = document.createElement('span');
-      const w = Math.max(2, Math.min(100, Number(r.hit_pct) || 0)) + '%';
-      // set after mount so the CSS width transition plays the grow-in
-      requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = w; }));
-      bar.appendChild(fill);
-      box.append(line, bar);
-    });
-    return box;
-  };
-
-  // XP & Level card (lives in the XP tab)
-  const xpCard = statCard('XP & Level', iconSvg.achievements, xpRow ? [
-      ['Level', `${xpProg.level} · ${xpProg.title}`],
-      ['Total XP', SQ_XP.fmt(xpProg.xp)],
-      ['From Points', SQ_XP.fmt(Math.round((xpRow.points_scored||0) * SQ_XP.W.point)) + ` (${SQ_XP.fmt(xpRow.points_scored)} pts)`],
-      ['From Games', SQ_XP.fmt((xpRow.games_played||0) * SQ_XP.W.game) + ` (${xpRow.games_played})`],
-      ['From Wins', SQ_XP.fmt((xpRow.games_won||0) * SQ_XP.W.gameWin + (xpRow.matches_won||0) * SQ_XP.W.matchWin) + ` (${xpRow.games_won}G / ${xpRow.matches_won}M)`],
-      ['From Milestones', SQ_XP.fmt((xpRow.milestones||0) * SQ_XP.W.milestone) + ` (${xpRow.milestones})`],
-      ['From Trophies', SQ_XP.fmt(xpRow.ach_xp||0) + ` (${xpRow.badges||0} badges)`]
-    ] : [
-      ['Level', 'No ranked games yet', true]
-    ], xpRow ? { footer: xpProg.atMax ? 'Max level reached — Legend.' : `${SQ_XP.fmt(xpProg.toNext)} XP to Level ${xpProg.level + 1}.` } : { muted: true });
-
-  const highestScoreNode = PB
-    ? (pbRank ? withRank(`${PB} `, pbRank) : String(PB))
-    : '—';
-  const powerPosNode = (powerPosValue !== '—')
-    ? (() => { const s = document.createElement('span'); const p = Number(powerPosValue.slice(1)); s.className = 'pp-pos' + (p <= 3 ? ' g' + p : ''); s.textContent = powerPosValue; return s; })()
-    : '—';
-  cards.append(
-    statCard('Quick Stats', iconSvg.quick, [
-      ['Highest Score', highestScoreNode],
-      ['Lowest Score', GAMES ? String(LOW) : '—'],
-      ['Current Power Rank', powerPosNode],
-      ['Highest Scoring Round', brTxt],
-      ['Dart Streak', dbStreak ? streakNode(dartStreakValue) : dartStreakValue, !dbStreak],
-      ['Round Streak', dbStreak ? streakNode(roundStreakValue) : roundStreakValue, !dbStreak]
-    ]),
-    statCard('Premier League', iconSvg.league, [
-      ['PL Average', AVG.toFixed(1)],
-      ['PL Monthly Wins', String(plMonthlyWins)],
-      ['Best Month', bestMonthValue],
-      ['Worst Month', worstMonthValue]
-    ]),
-    statCard('Targets', iconSvg.target, [
-      ['Favourite Numbers', top3Arr ? targetListNode(top3Arr, false) : favValue],
-      ['Weakest Numbers', bot3Arr ? targetListNode(bot3Arr, true) : weakValue]
-    ]),
-    statCard('Rivals', iconSvg.rivals, [
-      ['Nemesis', fmtOpp(topNem)],
-      ['Favourite Victims', fmtOpp(topBff)]
-    ]),
-    statCard('Rivalry', iconSvg.rivals, [
-      ['Giant Slayer', (achMap.giant_slayer ? `${achMap.giant_slayer.cnt} upset${achMap.giant_slayer.cnt>1?'s':''}` : '—'), !achMap.giant_slayer],
-      ['Nemesis wins', (achMap.nemesis ? `${achMap.nemesis.cnt}` : '—'), !achMap.nemesis],
-      ['Champion', (achMap.champion ? `${achMap.champion.cnt}` : '—'), !achMap.champion]
-    ])
-  );
-  // Tournament + Turbo tracking isn't live yet — one slim teaser strip instead
-  // of two dead cards full of "Tracking soon" rows.
-  {
-    const soon = document.createElement('div');
-    soon.className = 'tag pp-soon';
-    const ic = document.createElement('span'); ic.className = 'pp-ico'; ic.innerHTML = iconSvg.tournament;
-    const tx = document.createElement('span'); tx.className = 'muted pp-soon-txt';
-    tx.textContent = 'Tournament & Turbo stats — coming soon';
-    soon.append(ic, tx);
-    cards.appendChild(soon);
-  }
-
-  // ---- FORM panel: win-rate gauge + verdict stamp + recent-games strip ----
-  // Mirrors the Target Progress "form arena" (reuses __sqDrawFormGauge).
-  {
-    const winFlags = games.map(g => {
-      const i = idxOf(g); const s = Number(g.totals[i] || 0);
-      return s === Math.max(...(g.totals || []).map(Number)) ? 1 : 0;
-    });
-    const W = winFlags.reduce((a, b) => a + b, 0);
-    const winRate = GAMES ? (100 * W / GAMES) : 0;
-    const recent = scores.slice(-5);
-    const recentAvg = recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : 0;
-    const dPct = AVG ? ((recentAvg - AVG) / AVG) * 100 : 0;
-    const v = dPct >= 5   ? { label:'ON FIRE',  color:'#ffa440', glow:'rgba(255,140,40,.45)', arrow:'↑' }
-      :       dPct >= 1.5 ? { label:'CLIMBING', color:'#73f07e', glow:'rgba(115,240,126,.4)', arrow:'↑' }
+=== catalog_refs occurrence 4 chars 1571669:1587669 ===
+label:'CLIMBING', color:'#73f07e', glow:'rgba(115,240,126,.4)', arrow:'↑' }
       :       dPct > -1.5 ? { label:'STEADY',   color:'#4aa3ff', glow:'rgba(74,163,255,.4)', arrow:'→' }
       :                     { label:'COOLING',  color:'#7cc0ff', glow:'rgba(124,192,255,.35)', arrow:'↓' };
 
@@ -2245,273 +1142,11 @@ function __sqPlayerStatsNameOf(p){
 }
 function __sqPlayerStatsActiveName(){
   try{
-    const players = Array.isArray(window.state && state.players) ? state.players : [];
-    const idx = Number(state && state.currentPlayer);
-    const p = players[Number.isFinite(idx) ? idx : 0] || players[0];
-    return __sqPlayerStatsNameOf(p);
-  }catch(_){ return ''; }
-}
-function __sqSetPlayerStatsSelectedName(name){
-  const n = String(name || '').trim();
-  if (!n) return '';
-  window.__sqPlayerStatsSelectedName = n;
-  window.__sqStatsReturnPlayer = n;
-  try{ if (typeof __sqSetStatsOrigin === 'function') __sqSetStatsOrigin('home', n); }catch(_){}
-  return n;
-}
-async function __sqLoadPlayerStatsPlayers(){
-  let items = [];
-  try{
-    if (typeof cloudListPlayers === 'function') items = await cloudListPlayers();
-  }catch(e){
-    console.warn('[SQ] Player Stats player list load failed', e);
-  }
-  const seen = new Set();
-  return (Array.isArray(items) ? items : [])
-    .map(p => ({ raw:p, name:__sqPlayerStatsNameOf(p), nickname:String((p && (p.nickname || p.nick || p.alias)) || '').trim() }))
-    .filter(p => {
-      const key = __sqPlayerStatsKey(p.name);
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((a,b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity:'base' }));
-}
-function __sqPlayerStatsNickname(name, players){
-  const key = __sqPlayerStatsKey(name);
-  const p = (players || []).find(x => __sqPlayerStatsKey(x.name) === key);
-  return String((p && p.nickname) || '').trim();
-}
-
-// === Player Hub — Latest Matches / High Scores / Progression / Target % / D T B % / H2H ===
-// XP / Level ladder — ranks every player by total XP (base + trophies).
-window.openXpLeaderboard = async function openXpLeaderboard(){
-  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal = document.createElement('div'); modal.className = 'modal';
-  modal.style.cssText = 'max-width:560px;width:94vw;max-height:88vh;overflow:hidden;';
-  const body = document.createElement('div'); body.className = 'modal-body';
-  body.style.cssText = 'overflow-y:auto;max-height:84vh;';
-  body.innerHTML = '<h3 style="margin:0 0 4px">🏅 Level Ladder</h3>'
-    + '<p class="muted" style="margin:0 0 12px;font-size:12px">Ranked by XP — score points, win games and collect trophies to climb.</p>'
-    + '<p class="muted" id="xplbLoading">Loading…</p>';
-  modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
-  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
-  modal.tabIndex = 0; modal.focus();
-  let rows = [];
-  try{ rows = await SQ_XP.all(true); }catch(_){ }
-  rows = (rows || []).filter(r => Number(r.total_xp) > 0).sort((a, b) => Number(b.total_xp) - Number(a.total_xp));
-  const loading = body.querySelector('#xplbLoading'); if (loading) loading.remove();
-  if (!rows.length){
-    const p = document.createElement('p'); p.className = 'muted'; p.textContent = 'No ranked players yet — play some games.'; body.appendChild(p);
-    const ef = document.createElement('div'); ef.className = 'modal-footer';
-    const eb = document.createElement('button'); eb.className = 'btn sq-pill'; eb.textContent = 'Back';
-    eb.onclick = () => { overlay.remove(); __sqGoBackToStatsMain(); };
-    ef.appendChild(eb); body.appendChild(ef);
-    __sqStatsArcade(overlay, modal);
-    return;
-  }
-  const listEl = document.createElement('div'); listEl.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
-  const medal = i => i === 0 ? '#ffd24a' : i === 1 ? '#cbd5e1' : i === 2 ? '#d08b5a' : 'var(--v3-muted,#98a2b8)';
-  rows.forEach((r, idx) => {
-    const prog = SQ_XP.progress(r.total_xp);
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;'
-      + 'background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08);'
-      + (idx < 3 ? 'box-shadow:inset 3px 0 0 ' + medal(idx) + ';' : '');
-    const rank = document.createElement('div'); rank.textContent = '#' + (idx + 1);
-    rank.style.cssText = 'font-weight:900;font-size:14px;min-width:34px;color:' + medal(idx) + ';';
-    const mid = document.createElement('div'); mid.style.cssText = 'flex:1;min-width:0;';
-    const nmeRow = document.createElement('div'); nmeRow.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
-    const nm = document.createElement('b'); nm.textContent = r.name;
-    nm.style.cssText = 'font-size:15px;';
-    nmeRow.append(nm, __sqXpChip(prog));
-    const sub = document.createElement('div'); sub.className = 'muted';
-    sub.style.cssText = 'font-size:11px;margin-top:2px;';
-    sub.textContent = SQ_XP.fmt(r.total_xp) + ' XP · ' + (r.badges || 0) + ' trophies';
-    mid.append(nmeRow, sub);
-    const go = document.createElement('button'); go.className = 'icon-btn'; go.type = 'button'; go.setAttribute('aria-label', 'Open ' + r.name);
-    go.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>';
-    go.onclick = () => { overlay.remove(); try{ if (typeof openPlayerStatsDialog === 'function') openPlayerStatsDialog(r.name); }catch(_){ } };
-    row.append(rank, mid, go); listEl.appendChild(row);
-  });
-  body.appendChild(listEl);
-  const foot = document.createElement('div'); foot.className = 'modal-footer'; foot.style.cssText = 'margin-top:14px;';
-  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Back';
-  cb.onclick = () => { overlay.remove(); __sqGoBackToStatsMain(); };
-  foot.appendChild(cb); body.appendChild(foot);
-  __sqStatsArcade(overlay, modal);
-};
-
-// Step 1 of Player Stats: a clean player-name picker. The user chooses WHO
-// first, then openPlayerStatsHub(name) opens the stat-views menu for them.
-window.openPlayerStatsSelect = function openPlayerStatsSelect(){
-  var esc = function(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
-  // Warm the caches so the hub + profile open instantly after a name is picked.
-  try{ if (typeof cloudListPlayers === 'function') cloudListPlayers().catch?.(function(){}); }catch(_){ }
-  try{ if (typeof cloudFetchAllGamesAsLocal === 'function') cloudFetchAllGamesAsLocal().catch(function(){}); }catch(_){ }
-
-  var overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  var modal = document.createElement('div'); modal.className = 'modal menu-modal';
-  var header = document.createElement('div'); header.className = 'menu-modal-header';
-  var backBtn = document.createElement('button'); backBtn.className = 'icon-btn'; backBtn.type = 'button'; backBtn.setAttribute('aria-label', 'Back');
-  backBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
-  var closeBtn = document.createElement('button'); closeBtn.className = 'icon-btn'; closeBtn.type = 'button'; closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
-  var titleWrap = document.createElement('div'); titleWrap.className = 'menu-modal-title';
-  var icon = document.createElement('div'); icon.className = 'menu-modal-icon';
-  icon.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>';
-  var title = document.createElement('div'); title.className = 'menu-modal-title-text'; title.textContent = 'PLAYER STATS';
-  var sub = document.createElement('div'); sub.className = 'menu-modal-title-sub2'; sub.textContent = 'Choose a player';
-  titleWrap.append(icon, title, sub);
-  header.append(backBtn, titleWrap, closeBtn);
-  var body = document.createElement('div'); body.className = 'menu-modal-body';
-  var list = document.createElement('div'); list.className = 'menu-list';
-  list.innerHTML = '<div class="sq-modal-loading"><div class="sq-loadbar"><span class="sq-loadbar-fill"></span></div></div>';
-  body.appendChild(list);
-  modal.append(header, body); overlay.appendChild(modal); document.body.appendChild(overlay);
-  try{ if (window.sqModal && window.sqModal.register) window.sqModal.register(overlay, modal, function(){ overlay.remove(); }); }catch(_){ }
-  var close = function(){ try{ overlay.remove(); }catch(_){ overlay.parentNode && overlay.parentNode.removeChild(overlay); } };
-  backBtn.onclick = close; closeBtn.onc
+    const players = Array.isArray(window.stat
 === END ===
 
-=== catalog_refs occurrence 5 chars 1564688:1596688 ===
-t('div');
-    row.className = 'pp-row' + (muted ? ' muted' : '');
-    const l = document.createElement('span'); l.className = 'pp-row-label' + (muted ? ' muted' : ''); l.textContent = label;
-    const v = document.createElement('span'); v.className = 'pp-row-value' + (muted ? ' muted' : '');
-    if (value instanceof Node) v.appendChild(value); else v.textContent = fmtValue(value);
-    row.append(l, v);
-    return row;
-  };
-  const statCard = (titleTxt, icon, rows, opts={}) => {
-    const c = document.createElement('div');
-    c.className = 'tag pp-card';
-    if (opts.muted) { c.style.borderStyle = 'dashed'; c.style.opacity = '.84'; }
-    const head = document.createElement('div');
-    head.className = 'pp-card-head';
-    const ico = document.createElement('span'); ico.className = 'pp-ico'; ico.innerHTML = icon || '';
-    const ttl = document.createElement('strong'); ttl.textContent = titleTxt;
-    head.append(ico, ttl); c.appendChild(head);
-    rows.forEach(r => c.appendChild(statRow(r[0], r[1], opts.muted || r[2])));
-    if (opts.footer){ const f = document.createElement('p'); f.className = 'muted'; f.style.margin = '8px 0 0'; f.style.fontSize = '12px'; f.textContent = opts.footer; c.appendChild(f); }
-    return c;
-  };
-  // "168 (#38)" with the rank chip coloured (gold/silver/bronze on the podium)
-  const withRank = (mainTxt, pos) => {
-    const wrap = document.createElement('span');
-    const main = document.createElement('span'); countUp(main, mainTxt);
-    wrap.appendChild(main);
-    const p = Number(pos);
-    if (Number.isFinite(p) && p > 0){
-      const chip = document.createElement('span');
-      chip.className = 'pp-pos' + (p <= 3 ? ' g' + p : '');
-      chip.textContent = `(#${p})`;
-      wrap.appendChild(chip);
-    }
-    return wrap;
-  };
-  // streak value with a flame once it starts getting spicy
-  const streakNode = (txt) => {
-    const s = document.createElement('span');
-    countUp(s, txt);
-    if (Number(txt) >= 3) s.classList.add('pp-hot');
-    return s;
-  };
-  // "1. 19 (61.1%)" lines with a mini hit-rate bar under each
-  const targetListNode = (arr, cold) => {
-    const box = document.createElement('span');
-    box.style.display = 'inline-block'; box.style.minWidth = '150px';
-    arr.forEach((r, i) => {
-      const line = document.createElement('span'); line.className = 'pp-tline';
-      line.textContent = `${i + 1}. ${r.target_n} (${Number(r.hit_pct).toFixed(1)}%)`;
-      const bar = document.createElement('span'); bar.className = 'pp-bar' + (cold ? ' cold' : '');
-      bar.style.display = 'block';
-      const fill = document.createElement('span');
-      const w = Math.max(2, Math.min(100, Number(r.hit_pct) || 0)) + '%';
-      // set after mount so the CSS width transition plays the grow-in
-      requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = w; }));
-      bar.appendChild(fill);
-      box.append(line, bar);
-    });
-    return box;
-  };
-
-  // XP & Level card (lives in the XP tab)
-  const xpCard = statCard('XP & Level', iconSvg.achievements, xpRow ? [
-      ['Level', `${xpProg.level} · ${xpProg.title}`],
-      ['Total XP', SQ_XP.fmt(xpProg.xp)],
-      ['From Points', SQ_XP.fmt(Math.round((xpRow.points_scored||0) * SQ_XP.W.point)) + ` (${SQ_XP.fmt(xpRow.points_scored)} pts)`],
-      ['From Games', SQ_XP.fmt((xpRow.games_played||0) * SQ_XP.W.game) + ` (${xpRow.games_played})`],
-      ['From Wins', SQ_XP.fmt((xpRow.games_won||0) * SQ_XP.W.gameWin + (xpRow.matches_won||0) * SQ_XP.W.matchWin) + ` (${xpRow.games_won}G / ${xpRow.matches_won}M)`],
-      ['From Milestones', SQ_XP.fmt((xpRow.milestones||0) * SQ_XP.W.milestone) + ` (${xpRow.milestones})`],
-      ['From Trophies', SQ_XP.fmt(xpRow.ach_xp||0) + ` (${xpRow.badges||0} badges)`]
-    ] : [
-      ['Level', 'No ranked games yet', true]
-    ], xpRow ? { footer: xpProg.atMax ? 'Max level reached — Legend.' : `${SQ_XP.fmt(xpProg.toNext)} XP to Level ${xpProg.level + 1}.` } : { muted: true });
-
-  const highestScoreNode = PB
-    ? (pbRank ? withRank(`${PB} `, pbRank) : String(PB))
-    : '—';
-  const powerPosNode = (powerPosValue !== '—')
-    ? (() => { const s = document.createElement('span'); const p = Number(powerPosValue.slice(1)); s.className = 'pp-pos' + (p <= 3 ? ' g' + p : ''); s.textContent = powerPosValue; return s; })()
-    : '—';
-  cards.append(
-    statCard('Quick Stats', iconSvg.quick, [
-      ['Highest Score', highestScoreNode],
-      ['Lowest Score', GAMES ? String(LOW) : '—'],
-      ['Current Power Rank', powerPosNode],
-      ['Highest Scoring Round', brTxt],
-      ['Dart Streak', dbStreak ? streakNode(dartStreakValue) : dartStreakValue, !dbStreak],
-      ['Round Streak', dbStreak ? streakNode(roundStreakValue) : roundStreakValue, !dbStreak]
-    ]),
-    statCard('Premier League', iconSvg.league, [
-      ['PL Average', AVG.toFixed(1)],
-      ['PL Monthly Wins', String(plMonthlyWins)],
-      ['Best Month', bestMonthValue],
-      ['Worst Month', worstMonthValue]
-    ]),
-    statCard('Targets', iconSvg.target, [
-      ['Favourite Numbers', top3Arr ? targetListNode(top3Arr, false) : favValue],
-      ['Weakest Numbers', bot3Arr ? targetListNode(bot3Arr, true) : weakValue]
-    ]),
-    statCard('Rivals', iconSvg.rivals, [
-      ['Nemesis', fmtOpp(topNem)],
-      ['Favourite Victims', fmtOpp(topBff)]
-    ]),
-    statCard('Rivalry', iconSvg.rivals, [
-      ['Giant Slayer', (achMap.giant_slayer ? `${achMap.giant_slayer.cnt} upset${achMap.giant_slayer.cnt>1?'s':''}` : '—'), !achMap.giant_slayer],
-      ['Nemesis wins', (achMap.nemesis ? `${achMap.nemesis.cnt}` : '—'), !achMap.nemesis],
-      ['Champion', (achMap.champion ? `${achMap.champion.cnt}` : '—'), !achMap.champion]
-    ])
-  );
-  // Tournament + Turbo tracking isn't live yet — one slim teaser strip instead
-  // of two dead cards full of "Tracking soon" rows.
-  {
-    const soon = document.createElement('div');
-    soon.className = 'tag pp-soon';
-    const ic = document.createElement('span'); ic.className = 'pp-ico'; ic.innerHTML = iconSvg.tournament;
-    const tx = document.createElement('span'); tx.className = 'muted pp-soon-txt';
-    tx.textContent = 'Tournament & Turbo stats — coming soon';
-    soon.append(ic, tx);
-    cards.appendChild(soon);
-  }
-
-  // ---- FORM panel: win-rate gauge + verdict stamp + recent-games strip ----
-  // Mirrors the Target Progress "form arena" (reuses __sqDrawFormGauge).
-  {
-    const winFlags = games.map(g => {
-      const i = idxOf(g); const s = Number(g.totals[i] || 0);
-      return s === Math.max(...(g.totals || []).map(Number)) ? 1 : 0;
-    });
-    const W = winFlags.reduce((a, b) => a + b, 0);
-    const winRate = GAMES ? (100 * W / GAMES) : 0;
-    const recent = scores.slice(-5);
-    const recentAvg = recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : 0;
-    const dPct = AVG ? ((recentAvg - AVG) / AVG) * 100 : 0;
-    const v = dPct >= 5   ? { label:'ON FIRE',  color:'#ffa440', glow:'rgba(255,140,40,.45)', arrow:'↑' }
-      :       dPct >= 1.5 ? { label:'CLIMBING', color:'#73f07e', glow:'rgba(115,240,126,.4)', arrow:'↑' }
+=== catalog_refs occurrence 5 chars 1571688:1587688 ===
+olor:'#73f07e', glow:'rgba(115,240,126,.4)', arrow:'↑' }
       :       dPct > -1.5 ? { label:'STEADY',   color:'#4aa3ff', glow:'rgba(74,163,255,.4)', arrow:'→' }
       :                     { label:'COOLING',  color:'#7cc0ff', glow:'rgba(124,192,255,.35)', arrow:'↓' };
 
@@ -2774,134 +1409,5 @@ function __sqPlayerStatsNameOf(p){
 }
 function __sqPlayerStatsActiveName(){
   try{
-    const players = Array.isArray(window.state && state.players) ? state.players : [];
-    const idx = Number(state && state.currentPlayer);
-    const p = players[Number.isFinite(idx) ? idx : 0] || players[0];
-    return __sqPlayerStatsNameOf(p);
-  }catch(_){ return ''; }
-}
-function __sqSetPlayerStatsSelectedName(name){
-  const n = String(name || '').trim();
-  if (!n) return '';
-  window.__sqPlayerStatsSelectedName = n;
-  window.__sqStatsReturnPlayer = n;
-  try{ if (typeof __sqSetStatsOrigin === 'function') __sqSetStatsOrigin('home', n); }catch(_){}
-  return n;
-}
-async function __sqLoadPlayerStatsPlayers(){
-  let items = [];
-  try{
-    if (typeof cloudListPlayers === 'function') items = await cloudListPlayers();
-  }catch(e){
-    console.warn('[SQ] Player Stats player list load failed', e);
-  }
-  const seen = new Set();
-  return (Array.isArray(items) ? items : [])
-    .map(p => ({ raw:p, name:__sqPlayerStatsNameOf(p), nickname:String((p && (p.nickname || p.nick || p.alias)) || '').trim() }))
-    .filter(p => {
-      const key = __sqPlayerStatsKey(p.name);
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((a,b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity:'base' }));
-}
-function __sqPlayerStatsNickname(name, players){
-  const key = __sqPlayerStatsKey(name);
-  const p = (players || []).find(x => __sqPlayerStatsKey(x.name) === key);
-  return String((p && p.nickname) || '').trim();
-}
-
-// === Player Hub — Latest Matches / High Scores / Progression / Target % / D T B % / H2H ===
-// XP / Level ladder — ranks every player by total XP (base + trophies).
-window.openXpLeaderboard = async function openXpLeaderboard(){
-  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal = document.createElement('div'); modal.className = 'modal';
-  modal.style.cssText = 'max-width:560px;width:94vw;max-height:88vh;overflow:hidden;';
-  const body = document.createElement('div'); body.className = 'modal-body';
-  body.style.cssText = 'overflow-y:auto;max-height:84vh;';
-  body.innerHTML = '<h3 style="margin:0 0 4px">🏅 Level Ladder</h3>'
-    + '<p class="muted" style="margin:0 0 12px;font-size:12px">Ranked by XP — score points, win games and collect trophies to climb.</p>'
-    + '<p class="muted" id="xplbLoading">Loading…</p>';
-  modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
-  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
-  modal.tabIndex = 0; modal.focus();
-  let rows = [];
-  try{ rows = await SQ_XP.all(true); }catch(_){ }
-  rows = (rows || []).filter(r => Number(r.total_xp) > 0).sort((a, b) => Number(b.total_xp) - Number(a.total_xp));
-  const loading = body.querySelector('#xplbLoading'); if (loading) loading.remove();
-  if (!rows.length){
-    const p = document.createElement('p'); p.className = 'muted'; p.textContent = 'No ranked players yet — play some games.'; body.appendChild(p);
-    const ef = document.createElement('div'); ef.className = 'modal-footer';
-    const eb = document.createElement('button'); eb.className = 'btn sq-pill'; eb.textContent = 'Back';
-    eb.onclick = () => { overlay.remove(); __sqGoBackToStatsMain(); };
-    ef.appendChild(eb); body.appendChild(ef);
-    __sqStatsArcade(overlay, modal);
-    return;
-  }
-  const listEl = document.createElement('div'); listEl.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
-  const medal = i => i === 0 ? '#ffd24a' : i === 1 ? '#cbd5e1' : i === 2 ? '#d08b5a' : 'var(--v3-muted,#98a2b8)';
-  rows.forEach((r, idx) => {
-    const prog = SQ_XP.progress(r.total_xp);
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;'
-      + 'background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08);'
-      + (idx < 3 ? 'box-shadow:inset 3px 0 0 ' + medal(idx) + ';' : '');
-    const rank = document.createElement('div'); rank.textContent = '#' + (idx + 1);
-    rank.style.cssText = 'font-weight:900;font-size:14px;min-width:34px;color:' + medal(idx) + ';';
-    const mid = document.createElement('div'); mid.style.cssText = 'flex:1;min-width:0;';
-    const nmeRow = document.createElement('div'); nmeRow.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
-    const nm = document.createElement('b'); nm.textContent = r.name;
-    nm.style.cssText = 'font-size:15px;';
-    nmeRow.append(nm, __sqXpChip(prog));
-    const sub = document.createElement('div'); sub.className = 'muted';
-    sub.style.cssText = 'font-size:11px;margin-top:2px;';
-    sub.textContent = SQ_XP.fmt(r.total_xp) + ' XP · ' + (r.badges || 0) + ' trophies';
-    mid.append(nmeRow, sub);
-    const go = document.createElement('button'); go.className = 'icon-btn'; go.type = 'button'; go.setAttribute('aria-label', 'Open ' + r.name);
-    go.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>';
-    go.onclick = () => { overlay.remove(); try{ if (typeof openPlayerStatsDialog === 'function') openPlayerStatsDialog(r.name); }catch(_){ } };
-    row.append(rank, mid, go); listEl.appendChild(row);
-  });
-  body.appendChild(listEl);
-  const foot = document.createElement('div'); foot.className = 'modal-footer'; foot.style.cssText = 'margin-top:14px;';
-  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Back';
-  cb.onclick = () => { overlay.remove(); __sqGoBackToStatsMain(); };
-  foot.appendChild(cb); body.appendChild(foot);
-  __sqStatsArcade(overlay, modal);
-};
-
-// Step 1 of Player Stats: a clean player-name picker. The user chooses WHO
-// first, then openPlayerStatsHub(name) opens the stat-views menu for them.
-window.openPlayerStatsSelect = function openPlayerStatsSelect(){
-  var esc = function(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
-  // Warm the caches so the hub + profile open instantly after a name is picked.
-  try{ if (typeof cloudListPlayers === 'function') cloudListPlayers().catch?.(function(){}); }catch(_){ }
-  try{ if (typeof cloudFetchAllGamesAsLocal === 'function') cloudFetchAllGamesAsLocal().catch(function(){}); }catch(_){ }
-
-  var overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  var modal = document.createElement('div'); modal.className = 'modal menu-modal';
-  var header = document.createElement('div'); header.className = 'menu-modal-header';
-  var backBtn = document.createElement('button'); backBtn.className = 'icon-btn'; backBtn.type = 'button'; backBtn.setAttribute('aria-label', 'Back');
-  backBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
-  var closeBtn = document.createElement('button'); closeBtn.className = 'icon-btn'; closeBtn.type = 'button'; closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
-  var titleWrap = document.createElement('div'); titleWrap.className = 'menu-modal-title';
-  var icon = document.createElement('div'); icon.className = 'menu-modal-icon';
-  icon.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>';
-  var title = document.createElement('div'); title.className = 'menu-modal-title-text'; title.textContent = 'PLAYER STATS';
-  var sub = document.createElement('div'); sub.className = 'menu-modal-title-sub2'; sub.textContent = 'Choose a player';
-  titleWrap.append(icon, title, sub);
-  header.append(backBtn, titleWrap, closeBtn);
-  var body = document.createElement('div'); body.className = 'menu-modal-body';
-  var list = document.createElement('div'); list.className = 'menu-list';
-  list.innerHTML = '<div class="sq-modal-loading"><div class="sq-loadbar"><span class="sq-loadbar-fill"></span></div></div>';
-  body.appendChild(list);
-  modal.append(header, body); overlay.appendChild(modal); document.body.appendChild(overlay);
-  try{ if (window.sqModal && window.sqModal.register) window.sqModal.register(overlay, modal, function(){ overlay.remove(); }); }catch(_){ }
-  var close = function(){ try{ overlay.remove(); }catch(_){ overlay.parentNode && overlay.parentNode.removeChild(overlay); } };
-  backBtn.onclick = close; closeBtn.onclick = close;
-  ove
+    const players = Array.isArray(window.state && state.players)
 === END ===
