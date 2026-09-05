@@ -1,85 +1,123 @@
 from pathlib import Path
+import re
 
 p = Path('index.html')
 s = p.read_text(encoding='utf-8')
+original = s
 
 
-def rep(old, new, label):
+def sub_one(pattern, repl, label, flags=0):
     global s
-    n = s.count(old)
+    s2, n = re.subn(pattern, repl, s, count=1, flags=flags)
     if n != 1:
-        raise SystemExit(f'{label}: expected 1 occurrence, found {n}')
-    s = s.replace(old, new, 1)
+        raise SystemExit(f'{label}: expected exactly 1 replacement, got {n}')
+    s = s2
     print('PATCH', label)
 
-# Canonical display names / descriptions.
-rep("{ code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Win the game without ever falling behind' },",
-    "{ code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Win a game without ever being behind after any completed round' },", 'untouchable copy')
-rep("{ code:'special_forces', name:'Special Forces',     icon:'🪖', tier:'legendary', xp:180, desc:'Hit three doubles, three trebles and three bulls in the final three rounds' },",
-    "{ code:'special_forces', name:'Special Forces',     icon:'🪖', tier:'legendary', xp:180, desc:\"Earn Double D’s + Maxi + Bull Run in one game\" },", 'special forces copy')
-rep("{ code:'last_gasp',      name:'Last Gasp',          icon:'⏳', tier:'gold',      xp:50,  desc:'Win after trailing after the Doubles round' },",
-    "{ code:'last_gasp',      name:'Last Gasp',          icon:'⏳', tier:'gold',      xp:50,  desc:'Be behind after round 12, then win' },", 'last gasp copy')
-rep("{ code:'flawless_game',  name:\"Sharpshooter's Game\",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },",
-    "{ code:'flawless_game',  name:\"Sharpshooter's Game\",icon:'✨', tier:'legendary', xp:120, desc:'No non-scoring darts for the entire game' },", 'sharpshooter copy')
-rep("{ code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in a number round (10–20)' },",
-    "{ code:'treble_trouble', name:'Mini Maxi',          icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in a number round 10–20 only' },", 'mini maxi')
-rep("{ code:'double_down',    name:'Double Down',        icon:'♊', tier:'silver',    xp:25,  desc:'Three doubles in a number round (10–20)' },",
-    "{ code:'double_down',    name:\"Mini D’s\",          icon:'♊', tier:'silver',    xp:25,  desc:'Three doubles in a number round 10–20 only' },", 'mini ds')
-rep("{ code:'triple_threat',  name:'Triple Threat',      icon:'⚡', tier:'gold',      xp:60,  desc:'Three triples in the Triples round' },",
-    "{ code:'triple_threat',  name:'Maxi',               icon:'⚡', tier:'gold',      xp:60,  desc:'Three trebles in the Trebles round only' },", 'maxi')
-rep("{ code:'double_trouble', name:'Double Trouble',     icon:'🎲', tier:'gold',      xp:45,  desc:'Three doubles in the Doubles round' },",
-    "{ code:'double_trouble', name:\"Double D’s\",        icon:'🎲', tier:'gold',      xp:45,  desc:'Three doubles in the Doubles round only' },", 'double ds')
 
-# David & Goliath is a separate award from Giant Slayer. Backend activation is a bounded DB change.
-giant = "{ code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },"
-rep(giant, giant + "\n    { code:'david_and_goliath',name:'David & Goliath',   icon:'🪨', tier:'gold',      xp:100, desc:\"Win when your pre-game 10-game average is 200+ points lower than an opponent’s\" },", 'david and goliath catalogue')
+def patch_catalog_entry(code, name=None, desc=None):
+    global s
+    pat = re.compile(r"\{ code:'" + re.escape(code) + r"',[^\n]*\}")
+    m = pat.search(s)
+    if not m:
+        raise SystemExit(f'catalog entry not found: {code}')
+    entry = m.group(0)
+    new = entry
+    if name is not None:
+        new, n = re.subn(r"name:(?:'[^']*'|\"[^\"]*\")", "name:'" + name + "'", new, count=1)
+        if n != 1:
+            raise SystemExit(f'{code}: name replacement failed')
+    if desc is not None:
+        new, n = re.subn(r"desc:(?:'[^']*'|\"[^\"]*\")", "desc:'" + desc + "'", new, count=1)
+        if n != 1:
+            raise SystemExit(f'{code}: desc replacement failed')
+    if new == entry:
+        raise SystemExit(f'{code}: entry was not changed')
+    s = s[:m.start()] + new + s[m.end():]
+    print('PATCH catalog', code)
 
-# Live toast detector must mirror the distinct number-round vs special-round rules.
-rep("if (tre === 3) add('treble_trouble');", "if (ri <= 10 && tre === 3) add('treble_trouble');", 'live mini maxi isolation')
-rep("if (dou === 3) add('double_down');", "if (ri <= 10 && dou === 3) add('double_down');", 'live mini ds isolation')
 
-# Untouchable is not a full-house streak: it is a win without ever being behind after a completed round.
-old = """    if (totMiss === 0 && totDarts > 0) add('flawless_game');
-    if (scoredRounds >= 14) add('full_board');
-    if (centuryRounds >= 3) add('ton_machine');
-    if (best >= 14) add('untouchable'); else if (best >= 5) add('inferno'); else if (best >= 3) add('hot_streak');"""
-new = """    if (totMiss === 0 && totDarts > 0) add('flawless_game');
-    if (scoredRounds >= 14) add('full_board');
-    if (centuryRounds >= 3) add('ton_machine');
-    let neverBehind = won;
-    if (won){
-      const running = new Array(board.length).fill(0);
-      const nRounds = Math.max.apply(null, board.map(rs => (rs || []).length).concat([0]));
-      for (let ri = 0; ri < nRounds && neverBehind; ri++){
-        for (let q = 0; q < board.length; q++) running[q] += Number((((board[q] || [])[ri] || {}).roundTotal)) || 0;
-        for (let q = 0; q < board.length; q++) if (q !== p && running[q] > running[p]) { neverBehind = false; break; }
-      }
-    }
-    if (won && neverBehind) add('untouchable');
-    if (best >= 5) add('inferno'); else if (best >= 3) add('hot_streak');"""
-rep(old, new, 'live untouchable rule')
+# Canonical display names / rule copy.
+patch_catalog_entry('treble_trouble', name='Mini Maxi', desc='Three trebles in a number round 10–20 only')
+patch_catalog_entry('triple_threat', name='Maxi', desc='Three trebles in the Trebles round only')
+patch_catalog_entry('double_down', name='Mini D’s', desc='Three doubles in a number round 10–20 only')
+patch_catalog_entry('double_trouble', name='Double D’s', desc='Three doubles in the Doubles round only')
+patch_catalog_entry('untouchable', name='Untouchable', desc='Win a game without ever being behind after any completed round')
+patch_catalog_entry('flawless_game', name='Sharpshooter’s Game', desc='No non-scoring darts for the entire game')
+patch_catalog_entry('special_forces', desc='Earn Double D’s, Maxi and Bull Run in one game')
+patch_catalog_entry('last_gasp', desc='Be behind after round 12, then win')
 
-# Reuse the existing modal system for Misfire detail.
-anchor = "window.SQ_MISFIRE = SQ_MISFIRE;"
-misfire_detail = r'''
+# David & Goliath is distinct from the existing Giant Slayer award.
+if "code:'david_and_goliath'" in s:
+    raise SystemExit('david_and_goliath already present before SC-009 patch')
+m = re.search(r"(^[ \t]*\{ code:'giant_slayer',[^\n]*\}\s*,?\n)", s, flags=re.M)
+if not m:
+    raise SystemExit('giant_slayer catalogue anchor not found')
+indent = re.match(r'^[ \t]*', m.group(1)).group(0)
+dg = indent + "{ code:'david_and_goliath',name:'David & Goliath',   icon:'🪨', tier:'gold',      xp:100, desc:'Win when your pre-game 10-game average is at least 200 points lower than an opponent’s' },\n"
+s = s[:m.end()] + dg + s[m.end():]
+print('PATCH David & Goliath catalogue')
 
-function __sqMisfireDetail(m, cnt){
-  const got = Math.max(0, Number(cnt) || 0);
+# Live toast detector must mirror the number-round/special-round distinction.
+sub_one(r"if \(tre === 3\) add\('treble_trouble'\);", "if (ri <= 10 && tre === 3) add('treble_trouble');", 'Mini Maxi round isolation')
+sub_one(r"if \(dou === 3\) add\('double_down'\);", "if (ri <= 10 && dou === 3) add('double_down');", 'Mini Ds round isolation')
+
+# Untouchable: unique game winner who was never behind after a completed round.
+sub_one(
+    r"const won = totals\[p\] === maxTotal && maxTotal > 0;\n",
+    "const won = totals[p] === maxTotal && maxTotal > 0;\n"
+    "    const topCount = totals.filter(t => t === maxTotal).length;\n"
+    "    const uniqueWon = won && topCount === 1;\n"
+    "    const running = Array(board.length).fill(0);\n"
+    "    let neverBehind = true;\n"
+    "    const roundN = Math.max.apply(null, board.map(rs => (rs || []).length).concat([0]));\n"
+    "    for (let ri = 0; ri < roundN; ri++){\n"
+    "      for (let q = 0; q < board.length; q++) running[q] += Number((((board[q] || [])[ri] || {}).roundTotal) || 0);\n"
+    "      const lead = Math.max.apply(null, running.concat([0]));\n"
+    "      if (running[p] < lead) { neverBehind = false; break; }\n"
+    "    }\n",
+    'Untouchable cumulative state insert'
+)
+sub_one(
+    r"if \(best >= 14\) add\('untouchable'\); else if \(best >= 5\) add\('inferno'\); else if \(best >= 3\) add\('hot_streak'\);",
+    "if (best >= 5) add('inferno'); else if (best >= 3) add('hot_streak');\n"
+    "    if (!opts.is_tiebreak && board.length >= 2 && uniqueWon && neverBehind) add('untouchable');",
+    'Untouchable obsolete streak removal'
+)
+
+# Canonical positive-section label and a stable section marker for regression tests.
+sub_one(
+    r"const card = document\.createElement\('div'\); card\.className = 'tag';\n    card\.style\.cssText = 'padding:14px;",
+    "const card = document.createElement('div'); card.className = 'tag';\n    card.dataset.achievementSection = title;\n    card.style.cssText = 'padding:14px;",
+    'positive section data marker'
+)
+sub_one(
+    r"wrap\.append\(section\('Milestones', '🎖️', mset\), section\('Trophies', '🏆', tset\)\);",
+    "wrap.append(section('Milestones', '🎖️', mset), section('Trophies / Awards', '🏆', tset));",
+    'Trophies Awards section label'
+)
+
+# Misfires use the same compact card-grid/click-detail model, but remain separate
+# from positive achievement progression and keep a distinct negative treatment.
+helpers = r'''
+function __sqMisfireDetail(code, misfireMap){
+  const m = (SQ_MISFIRE.CATALOG || []).find(x => x.code === code);
+  if (!m) return;
+  const got = (misfireMap && misfireMap[code]) || { cnt:0 };
+  const cnt = Math.max(0, Number(got.cnt) || 0);
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
   const modal = document.createElement('div'); modal.className = 'modal pp-misfire-detail';
   modal.style.cssText = 'max-width:460px;width:92vw;max-height:86vh;overflow:hidden;';
   const body = document.createElement('div'); body.className = 'modal-body'; body.style.cssText = 'overflow-y:auto;max-height:82vh;';
   body.innerHTML =
-    '<div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:linear-gradient(135deg,rgba(127,29,29,.52),rgba(69,10,10,.36));border:1px solid rgba(248,113,113,.48);">'
+    '<div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:linear-gradient(135deg,rgba(127,29,29,.52),rgba(69,10,10,.82));border:1px solid rgba(248,113,113,.42);">'
     + '<div style="font-size:40px;line-height:1">' + m.icon + '</div>'
     + '<div style="min-width:0"><div style="font-weight:900;font-size:20px;color:#fff">' + m.name + '</div>'
-    + '<div style="font-size:11px;font-weight:900;letter-spacing:.08em;color:#fecaca">MISFIRE · ' + String(m.penalty) + ' XP</div></div></div>'
+    + '<div style="font-size:11px;font-weight:900;letter-spacing:.08em;color:#fecaca">MISFIRE · ' + m.penalty + ' XP</div></div></div>'
     + '<div style="margin:14px 2px 4px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">How it happens</div>'
     + '<div style="font-size:15px;font-weight:600;margin:0 2px 10px">' + m.desc + '.</div>'
-    + '<div class="pp-misfire-detail-count" style="font-size:12px;font-weight:900;margin:0 2px 14px;color:' + (got ? '#fca5a5' : 'var(--v3-muted,#98a2b8)') + '">'
-    + (got ? ('You’ve recorded this ' + got + '×') : 'You haven’t recorded this yet') + '</div>'
-    + '<div style="margin:6px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">XP rule</div>'
-    + '<div class="muted pp-misfire-detail-rule" style="font-size:13px;line-height:1.45">Historical awards remain visible. XP penalties apply only from 5 Sep 2026 20:13 UTC. If several Misfires occur in one game, only the worst penalty applies, with a maximum deduction of 5 XP per game.</div>';
+    + '<div class="pp-misfire-detail-count" style="font-size:12px;font-weight:800;margin:0 2px 12px;color:' + (cnt > 0 ? '#fecaca' : 'var(--v3-muted,#98a2b8)') + '">' + (cnt > 0 ? ('Recorded ×' + cnt + ' historically') : 'Not recorded yet') + '</div>'
+    + '<div class="muted pp-misfire-detail-rule" style="font-size:10px;line-height:1.4;margin:0 2px">Historical counts can include earlier Official/Classic games. XP penalties apply only from 5 Sep 2026 20:13 UTC. Only the worst Misfire applies per game; the maximum deduction is 5 XP per game.</div>';
   const foot = document.createElement('div'); foot.style.cssText = 'margin-top:14px;text-align:center;';
   const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Close'; cb.onclick = () => overlay.remove();
   foot.appendChild(cb); body.appendChild(foot); modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
@@ -88,75 +126,98 @@ function __sqMisfireDetail(m, cnt){
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
   modal.tabIndex = 0; modal.focus();
 }
-'''
-rep(anchor, anchor + misfire_detail, 'misfire detail modal')
 
-# Replace the vertical Misfire list with the same card-grid anatomy as the Trophy Vault.
-start = s.find("const mfCard = document.createElement('div');")
-end_marker = "achPanel.appendChild(mfCard);"
+function __sqMisfireCase(misfireState, xpRow){
+  const map = (misfireState && misfireState.map) || {};
+  const card = document.createElement('div');
+  card.className = 'tag pp-misfires';
+  card.dataset.achievementSection = 'Misfires';
+  card.style.cssText = 'padding:14px;border-radius:16px;background:rgba(239,68,68,.055);border:1px solid rgba(248,113,113,.22);';
+  const head = document.createElement('div'); head.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px;';
+  const titleWrap = document.createElement('div');
+  const title = document.createElement('strong'); title.textContent = '⚠️ Misfires'; title.style.cssText = 'font-size:15px;color:#fecaca;';
+  const sub = document.createElement('div'); sub.className = 'muted'; sub.style.cssText = 'font-size:11px;margin-top:2px;'; sub.textContent = 'Historical record · XP penalties are launch-forward only';
+  titleWrap.append(title, sub);
+  const status = document.createElement('div'); status.style.cssText = 'text-align:right;white-space:nowrap;';
+  const unlocked = document.createElement('div'); unlocked.className = 'muted pp-misfire-unlocked'; unlocked.style.cssText = 'font-weight:800;font-size:12px;';
+  const xp = document.createElement('div'); xp.className = 'pp-misfire-xp'; xp.style.cssText = 'font-weight:900;font-size:11px;margin-top:2px;color:#fecaca;';
+  const xpKnown = !!(xpRow && Number.isFinite(Number(xpRow.misfire_xp)));
+  const xpValue = xpKnown ? Number(xpRow.misfire_xp) : null;
+  xp.textContent = xpKnown ? ((xpValue > 0 ? '+' : '') + String(xpValue) + ' XP') : 'XP —';
+  status.append(unlocked, xp); head.append(titleWrap, status); card.appendChild(head);
+  if (!misfireState || !misfireState.available){
+    unlocked.textContent = '— / ' + SQ_MISFIRE.CATALOG.length + ' unlocked';
+    const unavailable = document.createElement('div'); unavailable.className = 'muted'; unavailable.style.fontSize = '12px';
+    unavailable.textContent = 'Misfire history is unavailable right now.'; card.appendChild(unavailable);
+  } else {
+    const total = SQ_MISFIRE.CATALOG.reduce((sum, x) => sum + Number((map[x.code] || {}).cnt || 0), 0);
+    const earnedN = SQ_MISFIRE.CATALOG.filter(x => Number((map[x.code] || {}).cnt || 0) > 0).length;
+    unlocked.textContent = earnedN + ' / ' + SQ_MISFIRE.CATALOG.length + ' unlocked';
+    const totalLine = document.createElement('div'); totalLine.className = 'pp-misfire-total muted'; totalLine.style.cssText = 'font-size:11px;font-weight:800;margin:-3px 0 9px;';
+    totalLine.textContent = total + ' historical occurrence' + (total === 1 ? '' : 's'); card.appendChild(totalLine);
+    const grid = document.createElement('div'); grid.className = 'pp-misfire-grid';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;';
+    const badge = m => {
+      const cnt = Number((map[m.code] || {}).cnt || 0); const earned = cnt > 0;
+      const b = document.createElement('div'); b.className = 'pp-misfire-card'; b.dataset.code = m.code; b.dataset.count = String(cnt);
+      b.title = m.desc + (cnt > 1 ? ('  (recorded ' + cnt + '×)') : '');
+      b.style.cssText = 'position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;cursor:pointer;padding:10px 6px;border-radius:12px;'
+        + (earned ? 'background:linear-gradient(135deg,rgba(127,29,29,.48),rgba(69,10,10,.52));border:1px solid rgba(248,113,113,.45);'
+                  : 'background:rgba(255,255,255,.03);border:1px dashed rgba(248,113,113,.18);opacity:.42;filter:grayscale(1);');
+      const ic = document.createElement('div'); ic.textContent = m.icon; ic.style.cssText = 'font-size:26px;line-height:1;';
+      const nm = document.createElement('div'); nm.className = 'pp-misfire-name'; nm.textContent = m.name; nm.style.cssText = 'font-size:10px;font-weight:800;letter-spacing:.01em;color:' + (earned ? '#fecaca' : 'var(--v3-muted,#98a2b8)') + ';line-height:1.15;';
+      const pen = document.createElement('div'); pen.className = 'pp-misfire-penalty'; pen.textContent = m.penalty + ' XP'; pen.style.cssText = 'font-size:9px;font-weight:900;color:#fca5a5;';
+      b.append(ic, nm, pen); b.onclick = () => { try{ __sqMisfireDetail(m.code, map); }catch(_){ } };
+      if (earned && cnt > 1){
+        const bc = document.createElement('div'); bc.className = 'pp-misfire-count'; bc.textContent = '×' + cnt;
+        bc.style.cssText = 'position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#ef4444;color:#fff5f5;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4);';
+        b.appendChild(bc);
+      }
+      return b;
+    };
+    SQ_MISFIRE.CATALOG.forEach(m => { if (Number((map[m.code] || {}).cnt || 0) > 0) grid.appendChild(badge(m)); });
+    SQ_MISFIRE.CATALOG.forEach(m => { if (!(Number((map[m.code] || {}).cnt || 0) > 0)) grid.appendChild(badge(m)); });
+    card.appendChild(grid);
+  }
+  const foot = document.createElement('div'); foot.className = 'muted pp-misfire-foot'; foot.style.cssText = 'font-size:10px;line-height:1.35;margin-top:10px;';
+  foot.textContent = 'Historical counts include earlier Official/Classic games. XP penalties apply only from 5 Sep 2026 20:13 UTC. If several Misfires occur in one game, only the worst penalty applies; the maximum deduction is 5 XP per game.';
+  card.appendChild(foot);
+  return card;
+}
+
+'''
+marker = '// === Player Stats — redesigned overview'
+if s.count(marker) != 1:
+    raise SystemExit(f'Player Stats marker expected once, got {s.count(marker)}')
+if 'function __sqMisfireCase' in s:
+    raise SystemExit('Misfire helper already present before patch')
+s = s.replace(marker, helpers + marker, 1)
+print('PATCH Misfire card/detail helpers')
+
+start = s.find("    const mfCard = document.createElement('div');")
+end_marker = '    achPanel.appendChild(mfCard);'
 end = s.find(end_marker, start)
 if start < 0 or end < 0:
-    raise SystemExit('misfire panel block not found')
+    raise SystemExit('legacy Misfire panel block not found')
 end += len(end_marker)
-old_panel = s[start:end]
-new_panel = r'''const mfCard = document.createElement('div');
-    mfCard.className = 'tag pp-misfires';
-    mfCard.style.cssText = 'padding:14px;border-radius:16px;background:rgba(239,68,68,.055);border:1px solid rgba(248,113,113,.22);';
-    const mfHead = document.createElement('div');
-    mfHead.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px;';
-    const mfTitleWrap = document.createElement('div');
-    const mfTitle = document.createElement('strong'); mfTitle.textContent = '⚠️ Misfires'; mfTitle.style.cssText = 'font-size:15px;color:#fecaca;';
-    const mfSub = document.createElement('div'); mfSub.className = 'muted'; mfSub.style.cssText = 'font-size:11px;margin-top:2px;'; mfSub.textContent = 'Historical record · XP penalties are launch-forward only';
-    mfTitleWrap.append(mfTitle, mfSub);
-    const mfStatus = document.createElement('div'); mfStatus.style.cssText = 'text-align:right;white-space:nowrap;';
-    const mfUnlocked = document.createElement('div'); mfUnlocked.className = 'muted pp-misfire-unlocked'; mfUnlocked.style.cssText = 'font-weight:800;font-size:12px;';
-    const mfXp = document.createElement('div'); mfXp.className = 'pp-misfire-xp'; mfXp.style.cssText = 'font-weight:900;font-size:11px;margin-top:2px;color:#fecaca;';
-    const mfXpKnown = !!(xpRow && Number.isFinite(Number(xpRow.misfire_xp)));
-    const mfXpValue = mfXpKnown ? Number(xpRow.misfire_xp) : null;
-    mfXp.textContent = mfXpKnown ? ((mfXpValue > 0 ? '+' : '') + String(mfXpValue) + ' XP') : 'XP —';
-    mfStatus.append(mfUnlocked, mfXp); mfHead.append(mfTitleWrap, mfStatus); mfCard.appendChild(mfHead);
+s = s[:start] + "    const mfCard = __sqMisfireCase(misfireState, xpRow);\n    achPanel.appendChild(mfCard);" + s[end:]
+print('PATCH Misfire panel call')
 
-    if (!misfireState.available){
-      mfUnlocked.textContent = '— / ' + SQ_MISFIRE.CATALOG.length + ' unlocked';
-      const unavailable = document.createElement('div'); unavailable.className = 'muted'; unavailable.style.fontSize = '12px';
-      unavailable.textContent = 'Misfire history is unavailable right now.'; mfCard.appendChild(unavailable);
-    } else {
-      const mfTotal = SQ_MISFIRE.CATALOG.reduce((sum, m) => sum + Number((misfireMap[m.code] || {}).cnt || 0), 0);
-      const earnedN = SQ_MISFIRE.CATALOG.filter(m => Number((misfireMap[m.code] || {}).cnt || 0) > 0).length;
-      mfUnlocked.textContent = earnedN + ' / ' + SQ_MISFIRE.CATALOG.length + ' unlocked';
-      const totalLine = document.createElement('div'); totalLine.className = 'pp-misfire-total muted';
-      totalLine.style.cssText = 'font-size:11px;font-weight:800;margin:-3px 0 9px;'; totalLine.textContent = mfTotal + ' historical occurrence' + (mfTotal === 1 ? '' : 's');
-      mfCard.appendChild(totalLine);
-
-      const mfGrid = document.createElement('div'); mfGrid.className = 'pp-misfire-grid'; mfGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;';
-      const makeMisfireBadge = m => {
-        const cnt = Number((misfireMap[m.code] || {}).cnt || 0); const earned = cnt > 0;
-        const b = document.createElement('div'); b.className = 'pp-misfire-card'; b.dataset.code = m.code; b.title = m.desc + (earned && cnt > 1 ? ('  (recorded ' + cnt + '×)') : '');
-        b.style.cssText = 'position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;cursor:pointer;padding:10px 6px;border-radius:12px;'
-          + (earned ? 'background:linear-gradient(135deg,rgba(127,29,29,.48),rgba(69,10,10,.32));border:1px solid rgba(248,113,113,.45);'
-                    : 'background:rgba(255,255,255,.03);border:1px dashed rgba(248,113,113,.18);opacity:.42;filter:grayscale(1);');
-        const ic = document.createElement('div'); ic.textContent = m.icon; ic.style.cssText = 'font-size:26px;line-height:1;';
-        const nm = document.createElement('div'); nm.textContent = m.name; nm.style.cssText = 'font-size:10px;font-weight:800;letter-spacing:.01em;color:' + (earned ? '#fecaca' : 'var(--v3-muted,#98a2b8)') + ';line-height:1.15;';
-        b.append(ic, nm); b.onclick = () => { try{ __sqMisfireDetail(m, cnt); }catch(_){ } };
-        if (earned && cnt > 1){
-          const bc = document.createElement('div'); bc.className = 'pp-misfire-count'; bc.textContent = '×' + cnt;
-          bc.style.cssText = 'position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#ef4444;color:#fff5f5;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4);';
-          b.appendChild(bc);
-        }
-        return b;
-      };
-      SQ_MISFIRE.CATALOG.forEach(m => { if (Number((misfireMap[m.code] || {}).cnt || 0) > 0) mfGrid.appendChild(makeMisfireBadge(m)); });
-      SQ_MISFIRE.CATALOG.forEach(m => { if (!(Number((misfireMap[m.code] || {}).cnt || 0) > 0)) mfGrid.appendChild(makeMisfireBadge(m)); });
-      mfCard.appendChild(mfGrid);
-    }
-
-    const mfFoot = document.createElement('div'); mfFoot.className = 'muted pp-misfire-foot';
-    mfFoot.style.cssText = 'font-size:10px;line-height:1.35;margin-top:10px;';
-    mfFoot.textContent = 'Historical counts include earlier Official/Classic games. XP penalties apply only from 5 Sep 2026 20:13 UTC. If several Misfires occur in one game, only the worst penalty applies; the maximum deduction is 5 XP per game.';
-    mfCard.appendChild(mfFoot);
-    achPanel.appendChild(mfCard);'''
-s = s[:start] + new_panel + s[end:]
-print('PATCH misfire card grid')
+# Guardrails.
+for required in [
+    "name:'Mini Maxi'", "name:'Maxi'", "name:'Mini D’s'", "name:'Double D’s'",
+    "name:'Sharpshooter’s Game'", "code:'david_and_goliath'", "section('Trophies / Awards'",
+    'function __sqMisfireCase', 'function __sqMisfireDetail',
+    "if (ri <= 10 && tre === 3) add('treble_trouble');",
+    "if (ri <= 10 && dou === 3) add('double_down');",
+    "uniqueWon && neverBehind",
+]:
+    if required not in s:
+        raise SystemExit(f'missing required post-patch marker: {required}')
+if s.count("code:'david_and_goliath'") != 1:
+    raise SystemExit('David & Goliath catalogue count is not exactly 1')
+if "if (best >= 14) add('untouchable')" in s:
+    raise SystemExit('obsolete Untouchable detector remains')
 
 p.write_text(s, encoding='utf-8')
-print('DONE', len(s.encode('utf-8')))
+print('SC-009 index patch OK', len(original.encode('utf-8')), '->', len(s.encode('utf-8')))
