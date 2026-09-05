@@ -1,0 +1,405 @@
+INDEX_BLOB=c5688cf19d2d8f7bf57cd9c991009f97292cb8a3
+NEEDLE='function __sqTrophyCase'
+POSITIONS=[1528196]
+
+===== MATCH 1 @ 1528196 [1526696:1546219] =====
+unt : '') + '</b>'
+        + '<span style="font-size:11px;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (item.name || '') + ' · +' + ((a.xp || 0) * item.count) + ' XP</span>'
+        + '</span>';
+      layer.appendChild(el);
+      setTimeout(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0) scale(1)'; }, 80 + i * 140);
+      setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateY(-10px) scale(.96)'; setTimeout(() => { try{ el.remove(); if (!layer.childElementCount) layer.remove(); }catch(_){ } }, 350); }, 4200 + i * 140);
+    });
+    try{ if (typeof __sqV3SndGame === 'function') __sqV3SndGame(); }catch(_){ }
+  }catch(_){ }
+}
+
+// Detect + celebrate trophies for the just-finished game (uses live state).
+window.__sqAchCelebrate = function(){
+  try{
+    const board = (state && state.score) ? state.score : null;
+    if (!board) return;
+    const results = SQ_ACH.detectGame(board, {
+      players: (state.players || []).map(p => ({ name: (typeof __sqPlayerPretty === 'function' ? __sqPlayerPretty(p) : (p && p.name)) || (p && p.name) || '' })),
+      is_tiebreak: !!(state.is_tiebreak || state.currentGameIsTiebreak)
+    });
+    __sqAchToast(results);
+    // Freshen caches so the next Player Stats / leaderboard read reflects the new game.
+    try{ if (window.SQ_XP) { SQ_XP._cache = null; SQ_ACH._cache = {}; } }catch(_){ }
+  }catch(_){ }
+};
+
+// Render the trophy case: earned badges bright (with counts), locked badges dim.
+function __sqTrophyCase(earnedMap){
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
+  const badge = (a) => {
+    const got = earnedMap[a.code] || { cnt:0 };
+    const earned = got.cnt > 0;
+    const milestone = SQ_ACH.isMilestone(a.code);
+    const s = SQ_ACH.tierStyle(a.tier);
+    const b = document.createElement('div');
+    b.title = a.desc + (earned && !milestone && got.cnt > 1 ? `  (earned ${got.cnt}×)` : '');
+    b.style.cssText = 'position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;cursor:pointer;'
+      + 'padding:10px 6px;border-radius:12px;'
+      + (earned ? ('background:' + s.g + ';border:1px solid ' + s.b + ';')
+                : 'background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.12);opacity:.42;filter:grayscale(1);');
+    const ic = document.createElement('div'); ic.textContent = a.icon; ic.style.cssText = 'font-size:26px;line-height:1;';
+    const nm = document.createElement('div'); nm.textContent = a.name; nm.style.cssText = 'font-size:10px;font-weight:800;letter-spacing:.01em;color:' + (earned ? s.c : 'var(--v3-muted,#98a2b8)') + ';line-height:1.15;';
+    b.append(ic, nm);
+    b.onclick = () => { try{ __sqTrophyDetail(a.code, earnedMap); }catch(_){ } };
+    // Repeatable trophies show a ×count; milestones show a ✓ tick when unlocked.
+    if (earned && !milestone && got.cnt > 1){
+      const bc = document.createElement('div'); bc.textContent = '×' + got.cnt;
+      bc.style.cssText = 'position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#ff7a18;color:#160b03;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4);';
+      b.appendChild(bc);
+    } else if (earned && milestone){
+      const tk = document.createElement('div'); tk.textContent = '✓';
+      tk.style.cssText = 'position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:999px;background:#2fd06b;color:#05230f;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4);';
+      b.appendChild(tk);
+    }
+    return b;
+  };
+  const section = (title, icon, codes) => {
+    const codeList = SQ_ACH.CATALOG.filter(a => codes.has(a.code));
+    const earnedN = codeList.filter(a => (earnedMap[a.code]||{}).cnt > 0).length;
+    const card = document.createElement('div'); card.className = 'tag';
+    card.style.cssText = 'padding:14px;border-radius:16px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);';
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;';
+    const ttl = document.createElement('strong'); ttl.innerHTML = icon + ' ' + title; ttl.style.fontSize = '15px';
+    const cnt = document.createElement('span'); cnt.className = 'muted'; cnt.style.cssText = 'font-weight:800;font-size:12px;';
+    cnt.textContent = earnedN + ' / ' + codeList.length + ' unlocked';
+    head.append(ttl, cnt);
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;';
+    codeList.forEach(a => { if ((earnedMap[a.code]||{}).cnt > 0) grid.appendChild(badge(a)); });
+    codeList.forEach(a => { if (!((earnedMap[a.code]||{}).cnt > 0)) grid.appendChild(badge(a)); });
+    card.append(head, grid);
+    return card;
+  };
+  const mset = new Set(SQ_ACH.CATALOG.filter(a => SQ_ACH.isMilestone(a.code)).map(a => a.code));
+  const tset = new Set(SQ_ACH.CATALOG.filter(a => !SQ_ACH.isMilestone(a.code)).map(a => a.code));
+  wrap.append(section('Milestones', '🎖️', mset), section('Trophies', '🏆', tset));
+  return wrap;
+}
+
+// === Player Stats — redesigned overview =====================================
+// @CANONICAL:PLAYER_STATS_PROFILE_CARDS
+window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
+  const name = String(playerName || '').trim();
+  if (!name) { try{ toast('Pick a player'); }catch(_){ } return; }
+
+  // Supabase client (single source of truth for ranks & windowed stats)
+  const SB = (typeof window !== 'undefined') ? (window.sb || window.__sb || window.supabase || window.supabaseClient || null) : null;
+
+  // Modal shell
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal   = document.createElement('div'); modal.className   = 'modal';
+  modal.style.maxWidth='980px'; modal.style.width='94vw';
+  modal.style.maxHeight = '90vh'; modal.style.overflow = 'hidden';
+  // Flex column so the body actually scrolls within the 90vh modal (the
+  // footer stays pinned; without this the body overflowed and clipped).
+  modal.style.display = 'flex'; modal.style.flexDirection = 'column';
+
+  const header  = document.createElement('div');
+  header.style.display = 'none';
+  const body    = document.createElement('div'); body.className    = 'modal-body';
+  body.style.paddingTop='8px';
+  body.style.flex = '1 1 auto'; body.style.minHeight = '0'; body.style.overflowY = 'auto';
+
+  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
+  footer.style.justifyContent='flex-start';
+  footer.style.gap='10px';
+
+  // Mount early so we never "flash" back to home between dialogs
+  body.innerHTML = '<div class="sq-modal-loading"><div class="sq-loadbar"><span class="sq-loadbar-fill"></span></div></div>';
+  modal.append(header, body, footer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0;
+  modal.focus();
+
+  // Helpers
+  const monthKey = d => {
+    const x = (d instanceof Date) ? d : (d ? new Date(d) : null);
+    return x && !Number.isNaN(x.getTime()) ? `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}` : '';
+  };
+  const monthLabel = k => {
+    if (!k) return '—';
+    const [y,m] = k.split('-').map(Number);
+    return new Date(y, m-1, 1).toLocaleString(undefined,{ month:'short', year:'numeric' }).toUpperCase();
+  };
+
+  // 1) All official games — fetched ONCE and reused for both the player's
+  // slice and the local power-rank fallback (this used to be two full fetches).
+  // Turbo games are excluded here so the whole profile is Standard-Official
+  // only ("official" fetch alone doesn't strip Turbo).
+  const __allGamesNorm = (await __fetchOfficialGames(50000)).map(__normalizeGame)
+    .filter(g => !__sqGameLooksTurbo(g.raw));
+  const games = __allGamesNorm
+    .filter(g => Array.isArray(g.players) && g.players.some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()))
+    .sort((a,b)=> (new Date(a.ts) - new Date(b.ts)));
+
+  // Short-circuit if nothing
+  if (!games.length){
+    body.innerHTML = '';
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.style.opacity = '.8';
+    p.textContent = 'No official games found for this player.';
+    body.appendChild(p);
+
+    footer.innerHTML = '';
+    const backBtn  = document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
+    backBtn.onclick  = () => { overlay.remove(); __sqGoBackToStatsMain(); };
+    footer.append(backBtn);
+    __sqStatsArcade(overlay, modal);
+
+    modal.focus();
+    return;
+  }
+
+  // Index for this player and raw scores
+  const idxOf = g => g.players.findIndex(p => String(p||'').trim().toLowerCase()===name.toLowerCase());
+  const scores = games.map(g => Number(g.totals[idxOf(g)] || 0));
+
+  // 2) Basic aggregates
+  const GAMES = scores.length;
+  const TOTAL = scores.reduce((s,v)=>s+v,0);
+  const AVG   = GAMES ? (TOTAL / GAMES) : 0;
+  const PB    = GAMES ? Math.max(...scores) : 0;
+  const LOW   = GAMES ? Math.min(...scores) : 0;
+
+  // 2.1) Canonical ranks / windows from DB views
+  // - Power Rank: v_power_rankings_last56_official_clean, filtered to the same active 14-day Current rule
+  // - Highest Score place: v_player_best_official_ranked
+  // - Favorite/Worst: v_player_last30_targets (throw-universe)
+  let dbPower = null;
+  let dbBest  = null;
+  let dbFav   = null;
+  let dbStreak = null;
+  let dbRates = null;
+  let savedPlayersRows = [];
+  if (SB && typeof SB.from === 'function'){
+    // All lookups are independent — run them in parallel (this used to be six
+    // sequential round-trips and dominated the dialog's load time).
+    const fkey = name.toLowerCase();
+    const safeQ = q => Promise.resolve(q).catch(e => ({ error: e }));
+    const [savedRows, pr, bs, fv, tr, st] = await Promise.all([
+      (async () => {
+        let rows = [];
+        try{
+          if (typeof cloudListPlayers === 'function') rows = await cloudListPlayers();
+        }catch(_){ rows = []; }
+        if ((!rows || !rows.length) && typeof getSavedPlayers === 'function'){
+          try{ rows = getSavedPlayers() || []; }catch(_){ rows = []; }
+        }
+        return rows || [];
+      })(),
+      safeQ(SB.from('v_power_rankings_last56_official_clean')
+        .select('player,player_key,rounds_used,total_points,avg_per_round,last_played_at,rank_pos')
+        .order('avg_per_round', { ascending:false })
+        .limit(500)),
+      safeQ(SB.from('v_player_best_official_ranked')
+        .select('player_name,best_score,best_score_pos')
+        .ilike('player_name', name)
+        .limit(1)),
+      safeQ(SB.from('v_player_last30_targets')
+        .select('player_key,favorite_number,favorite_pct,worst_number,worst_pct')
+        .eq('player_key', fkey)
+        .limit(1)),
+      (typeof cloudIsTableMissing !== 'function' || !cloudIsTableMissing('v_player_last30_target_rates'))
+        ? safeQ(SB.from('v_player_last30_target_rates')
+            .select('player_key,target_n,hit_pct,throws')
+            .eq('player_key', fkey)
+            .order('hit_pct', { ascending: false }))
+        : Promise.resolve(null),
+      safeQ(SB.from('v_player_target_streaks')
+        .select('player_key,player_name,mode_key,mode_label,dart_streak,round_streak,source_games,last_played_at')
+        .eq('player_key', fkey.trim())
+        .eq('mode_key', 'official')
+        .limit(1))
+    ]);
+
+    savedPlayersRows = savedRows || [];
+    try{
+      const powerKey = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+      const savedMap = new Map((savedRows || []).map(p => {
+        const n = String((p && (p.name || p.player_name || p.player || p.display_name)) || '').trim();
+        return n ? [powerKey(n), n] : null;
+      }).filter(Boolean));
+      const parsePowerMs = ts => {
+        try{
+          if (!ts) return 0;
+          let s = String(ts).trim();
+          if (/^\d{4}-\d{2}-\d{2}\s/.test(s) && !s.includes('T')) s = s.replace(' ', 'T');
+          if (/[+-]\d{2}$/.test(s)) s += ':00';
+          const n = Date.parse(s);
+          return Number.isFinite(n) ? n : 0;
+        }catch(_){ return 0; }
+      };
+      if (pr && pr.error) throw pr.error;
+      const nowMs = Date.now();
+      const activeCutoff = nowMs - (14 * 24 * 60 * 60 * 1000);
+      const rows = ((pr && pr.data) || []).map(r => {
+        const k = powerKey(r.player_key || r.player);
+        if (savedMap.size && !savedMap.has(k)) return null;
+        const rounds = Math.max(0, Math.min(56, Number(r.rounds_used || 0)));
+        const total = Number(r.total_points);
+        const viewAvg = Number(r.avg_per_round);
+        const avg = Number.isFinite(viewAvg) ? viewAvg : ((Number.isFinite(total) && rounds > 0) ? (total / rounds) : 0);
+        const lastMs = parsePowerMs(r.last_played_at);
+        const active = !lastMs || lastMs >= activeCutoff;
+        return { player: savedMap.get(k) || String(r.player || '').trim(), playerKey: k, rounds, avg, lastMs, active, rankPos:Number(r.rank_pos || 0) || null };
+      }).filter(r => r && r.player && r.rounds >= 28 && r.active && Number.isFinite(r.avg) && r.avg > 0)
+        .sort((a,b) => (b.avg - a.avg) || (b.rounds - a.rounds) || (b.lastMs - a.lastMs) || String(a.player).localeCompare(String(b.player)));
+      const mine = rows.find(r => r.playerKey === powerKey(name));
+      dbPower = mine ? { player: mine.player, power_rank: mine.avg, power_rank_pos: mine.rankPos || (rows.indexOf(mine) + 1), last_played_at: mine.lastMs || null } : null;
+    }catch(e){ try{ if(window.SQ_DEBUG) console.warn('[SQ] power rank view read failed', e); }catch(_){} }
+
+    if (bs && bs.error) console.warn('[SQ] best score rank view read failed', bs.error);
+    dbBest = (bs && !bs.error && bs.data && bs.data[0]) ? bs.data[0] : null;
+
+    if (fv && fv.error) console.warn('[SQ] last30 targets view read failed', fv.error);
+    dbFav = (fv && !fv.error && fv.data && fv.data[0]) ? fv.data[0] : null;
+
+    // Top/bottom 3 target rates (last 30 games) for Targets section
+    dbRates = (tr && !tr.error && Array.isArray(tr.data)) ? tr.data : null;
+
+    if (st && st.error) {
+      console.warn('[SQ] target streaks view is missing required mode columns', st.error);
+    } else {
+      dbStreak = (st && !st.error && st.data && st.data[0]) ? st.data[0] : null;
+    }
+  }
+
+  // Per-game ranks (1st place detection) and per-month buckets
+  const monthly = new Map(); // key -> { sum, n, wins }
+  games.forEach((g,i)=>{
+    const meI = idxOf(g);
+    const meS = Number(g.totals[meI] || 0);
+    const max = Math.max(...(g.totals||[]).map(Number));
+    const win = meS === max ? 1 : 0;
+
+    const k = monthKey(g.ts);
+    const rec = monthly.get(k) || { sum:0, n:0, wins:0 };
+    rec.sum += meS; rec.n += 1; rec.wins += win;
+    monthly.set(k, rec);
+  });
+
+  // Highest/lowest monthly averages
+  const monthlyRows = Array.from(monthly.entries()).map(([k,rec])=>({ k, avg: rec.n ? rec.sum/rec.n : 0, wins: rec.wins }));
+  monthlyRows.sort((a,b)=> a.k.localeCompare(b.k));
+  const bestMonth = monthlyRows.length ? monthlyRows.reduce((m,r)=> r.avg>m.avg?r:m, monthlyRows[0]) : null;
+  const worstMonth= monthlyRows.length ? monthlyRows.reduce((m,r)=> r.avg<m.avg?r:m, monthlyRows[0]) : null;
+
+  // PL Average (career) & PL Monthly Wins (current month)
+const nowK = monthKey(new Date());
+
+// Premier League "Monthly Wins":
+// # of months this player finished 1st by monthly average (min 3 games)
+function computePLMonthlyWinsTop(games, minGames = 3, me = name){
+  const byMonthPlayer = new Map(); // `${month}|${player}` -> { sum, n }
+
+  games.forEach(g=>{
+    const mk = monthKey(g.ts);
+    (g.players||[]).forEach((p,i)=>{
+      const key = `${mk}|${p}`;
+      const rec = byMonthPlayer.get(key) || { sum:0, n:0 };
+      rec.sum += Number(g.totals[i] || 0);
+      rec.n   += 1;
+      byMonthPlayer.set(key, rec);
+    });
+  });
+
+  const months = new Set(Array.from(byMonthPlayer.keys()).map(k=>k.split('|')[0]));
+  let wins = 0;
+
+  months.forEach(mk=>{
+    const contenders = [];
+    byMonthPlayer.forEach((rec,key)=>{
+      const [k,p] = key.split('|');
+      if (k !== mk) return;
+      if (rec.n >= minGames) contenders.push({ player:p, avg: rec.sum/rec.n });
+    });
+    if (!contenders.length) return;
+    contenders.sort((a,b)=> b.avg - a.avg);
+    if (contenders[0].player.toLowerCase() === me.toLowerCase()) wins += 1;
+  });
+
+  return wins;
+}
+const plMonthlyWins = computePLMonthlyWinsTop(games, 3, name);
+
+ // 3) Highest Scoring Round (10→20 only) with S/D/T breakdown — robust via boards
+function bestRoundFromBoards(playerName, games){
+  const nameLC = String(playerName||'').trim().toLowerCase();
+  let best = null;
+
+  games.forEach(g=>{
+    const pIdx = (g.players||[]).findIndex(p => String(p||'').trim().toLowerCase()===nameLC);
+    if (pIdx < 0) return;
+    const b = g.board; if (!b) return;
+
+    const looksA = Array.isArray(b[pIdx]);
+    const looksB = Array.isArray(b[0]) && Array.isArray(b[0][pIdx]);
+    const rounds = looksA ? b[pIdx] : (looksB ? b.map(r => r ? r[pIdx] : null) : []);
+
+    for (let r = 0; r < Math.min(14, rounds.length || 0); r++){
+      if (r > 10) break; // 10..20 only
+      const cell = rounds[r]; if (!cell) continue;
+
+      const list = Array.isArray(cell)
+        ? cell
+        : (Array.isArray(cell.throws) ? cell.throws : (Array.isArray(cell.darts) ? cell.darts : []));
+
+      let sum = 0, s = 0, d = 0, t = 0;
+      const target = 10 + r;
+
+      list.forEach(tw=>{
+        const ringRaw = (tw?.kind || tw?.type || tw?.segment || tw?.ring || '').toString().toLowerCase();
+        let mult = Number(tw?.mult ?? tw?.multiplier);
+        if (!mult || !Number.isFinite(mult)) {
+          // infer multiplier from points if needed
+          const pts = Number(tw?.points ?? tw?.score ?? 0);
+          const ratio = target ? (pts/target) : 0;
+          if (ratio >= 2.5) mult = 3;
+          else if (ratio >= 1.5) mult = 2;
+          else mult = pts>0 ? 1 : 0;
+        }
+        const pts = Number.isFinite(Number(tw?.points ?? tw?.score))
+          ? Number(tw?.points ?? tw?.score)
+          : (target * mult);
+
+        sum += pts;
+        if (mult === 3 || ringRaw.includes('treb')) t++;
+        else if (mult === 2 || ringRaw.includes('doub')) d++;
+        else if (mult === 1) s++;
+      });
+
+      if (!best || sum > best.sum) best = { round: 10+r, sum, s, d, t };
+    }
+  });
+
+  return best;
+}
+const bestRound = bestRoundFromBoards(name, games) || null;
+
+  // 4) H2H for Nemesis/BFF (>=10 games vs opponent)
+  const vs = new Map();
+  games.forEach(g=>{
+    const meI = idxOf(g), meS = Number(g.totals[meI]||0);
+    g.players.forEach((op,j)=>{
+      if (j===meI) return;
+      const opp = String(op||'').trim();
+      const theirs = Number(g.totals[j]||0);
+      const rec = vs.get(opp) || { opp, W:0, L:0, n:0 };
+      if (meS > theirs) rec.W++; else if (meS < theirs) rec.L++;
+      rec.n++; vs.set(opp, rec);
+    });
+  });
+const qualifiedOpp = Array.from(vs.values()).fil
