@@ -1,0 +1,46 @@
+name: SC009 exact source extract
+on:
+  push:
+    branches:
+      - fix/sc009-achievement-ui-parity
+  workflow_dispatch:
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify and extract targeted UI source
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib
+          p = Path('index.html')
+          data = p.read_text(encoding='utf-8')
+          print('INDEX_BYTES', len(data.encode('utf-8')))
+          print('INDEX_SHA1', hashlib.sha1(data.encode('utf-8')).hexdigest())
+          needles = [
+              'SQ_ACH.CATALOG',
+              '__sqTrophyCase',
+              'pp-misfires',
+              'pp-misfire-row',
+              'Trophies',
+              'Milestones',
+              'openPlayerStatsDialog',
+              'SQ_MISFIRE',
+          ]
+          for needle in needles:
+              positions = []
+              start = 0
+              while True:
+                  i = data.find(needle, start)
+                  if i < 0: break
+                  positions.append(i)
+                  start = i + len(needle)
+              print(f'\n=== NEEDLE {needle!r} COUNT {len(positions)} POS {positions[:10]} ===')
+              for n, i in enumerate(positions[:4], 1):
+                  lo = max(0, i - 7000)
+                  hi = min(len(data), i + 9000)
+                  print(f'--- SLICE {n} {lo}:{hi} ---')
+                  print(data[lo:hi])
+                  print(f'--- END SLICE {n} ---')
