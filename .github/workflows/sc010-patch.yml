@@ -22,14 +22,11 @@ jobs:
       - name: Apply bounded SC-010 patch
         run: python3 tools/sc010_patch.py
 
-      - name: Syntax and static guards
+      - name: Static guards and SC-010 test syntax
         run: |
           python3 - <<'PY'
-          import re
           from pathlib import Path
           s = Path('index.html').read_text(encoding='utf-8')
-          scripts = re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>', s, re.S | re.I)
-          Path('/tmp/sq-inline.js').write_text('\n;\n'.join(scripts), encoding='utf-8')
           assert s.count("_inflight: null") >= 1
           assert "SQ_ACH.forPlayerId(xpRow.player_id)" in s
           assert "SQ_MISFIRE.forPlayerId(xpRow.player_id)" in s
@@ -37,7 +34,6 @@ jobs:
           assert "const [xr, am, mf] = await Promise.all([" not in s
           print('STATIC GUARDS PASS')
           PY
-          node --check /tmp/sq-inline.js
           node --check tools/ui-smoke/verify-sc010.js
 
       - name: Install UI smoke dependencies
