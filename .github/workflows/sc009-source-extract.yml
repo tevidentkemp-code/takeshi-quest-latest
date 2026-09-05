@@ -24,10 +24,9 @@ jobs:
           out.mkdir(exist_ok=True)
           meta = [f'INDEX_BYTES={len(data.encode("utf-8"))}', f'INDEX_SHA1={hashlib.sha1(data.encode("utf-8")).hexdigest()}']
           needles = {
-              'catalog': 'SQ_ACH.CATALOG',
+              'catalog_refs': 'SQ_ACH.CATALOG',
               'trophy': '__sqTrophyCase',
               'misfire': 'pp-misfires',
-              'misfire_row': 'pp-misfire-row',
               'pstats': 'openPlayerStatsDialog',
               'misfire_module': 'SQ_MISFIRE',
           }
@@ -43,6 +42,30 @@ jobs:
                   lo=max(0,i-14000); hi=min(len(data),i+18000)
                   parts.append(f'=== {key} occurrence {n} chars {lo}:{hi} ===\n{data[lo:hi]}\n=== END ===\n')
               (out/f'{key}.txt').write_text('\n'.join(parts),encoding='utf-8')
+          terms = ['Photo Finish','Runaway','Last Gasp','Special Forces','Steady Eddie','Century Streak','PB Smasher','Reverse Sweep','Clean Sweep','Untouchable','Treble Trouble','Triple Threat','Double Down','Double Trouble','Sharpshooter','flawless_game','treble_trouble','triple_threat','double_down','double_trouble']
+          pieces=[]
+          for term in terms:
+              positions=[]; start=0
+              while True:
+                  i=data.find(term,start)
+                  if i<0: break
+                  positions.append(i); start=i+len(term)
+              meta.append(f'term:{term}:{positions}')
+              for n,i in enumerate(positions[:4],1):
+                  lo=max(0,i-1800); hi=min(len(data),i+2200)
+                  pieces.append(f'=== {term} {n} chars {lo}:{hi} ===\n{data[lo:hi]}\n=== END ===\n')
+          (out/'catalog_terms.txt').write_text('\n'.join(pieces),encoding='utf-8')
+          # Exact reusable UI blocks, bounded by stable comments/markers.
+          for fname,start_marker,end_marker in [
+              ('trophy_block.txt','function __sqTrophyCase(earnedMap){','// ---- XP tab'),
+              ('misfire_panel_block.txt',"const mfCard = document.createElement('div');",'achPanel.appendChild(mfCard);'),
+              ('trophy_detail_block.txt','async function __sqTrophyDetail(code, earnedMap){','// Per-game trophy detector'),
+          ]:
+              s=data.find(start_marker)
+              e=data.find(end_marker,s+1) if s>=0 else -1
+              if s>=0 and e>=0:
+                  (out/fname).write_text(data[s:e+len(end_marker)],encoding='utf-8')
+                  meta.append(f'block:{fname}:{s}:{e+len(end_marker)}')
           (out/'meta.txt').write_text('\n'.join(meta)+'\n',encoding='utf-8')
       - name: Commit temporary extracts
         run: |
