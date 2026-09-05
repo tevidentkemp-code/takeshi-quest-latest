@@ -9,6 +9,7 @@
 //   2026-02-02  115 v 150
 //   2026-02-20  140 v  90
 // XP 151 -> LV 2 ROOKIE, 33 XP to level 3 (matches the reference shot).
+// Misfire fixture: 4 historical occurrences; launch-forward XP impact is -2.
 
 const FIXTURE = {
   players: [
@@ -58,12 +59,16 @@ const FIXTURE = {
       { player_key: 'alex s', player_name: 'Alex S', mode_key: 'official', mode_label: 'Official', dart_streak: 4, round_streak: 2, source_games: 5, last_played_at: null },
     ],
     v_player_xp: [
-      { player_id: 'p1', name: 'Alex S', total_xp: 151, points_scored: 630, games_played: 5, games_won: 3, matches_won: 1, milestones: 2, ach_xp: 20, badges: 2 },
-      { player_id: 'p2', name: 'Sam T', total_xp: 300, points_scored: 900, games_played: 5, games_won: 2, matches_won: 0, milestones: 1, ach_xp: 0, badges: 0 },
+      { player_id: 'p1', name: 'Alex S', total_xp: 151, points_scored: 630, games_played: 5, games_won: 3, matches_won: 1, milestones: 2, ach_xp: 20, badges: 2, misfire_xp: -2 },
+      { player_id: 'p2', name: 'Sam T', total_xp: 300, points_scored: 900, games_played: 5, games_won: 2, matches_won: 0, milestones: 1, ach_xp: 0, badges: 0, misfire_xp: 0 },
     ],
     v_player_achievements: [
       { code: 'giant_slayer', cnt: 1, xp: 10 },
       { code: 'champion', cnt: 1, xp: 10 },
+    ],
+    v_player_misfires: [
+      { code: 'bull_blind', cnt: 3 },
+      { code: 'cold_start', cnt: 1 },
     ],
   },
 };
@@ -96,6 +101,12 @@ const EXPECTED = {
   targetsWeak: '1. 12 (22.2%)\n2. 13 (25.0%)\n3. 14 (30.1%)',
   rivalsNemesis: '1. Sam T (60.0%)',
   rivalsVictims: '1. Sam T (60.0%)',
+  misfires: {
+    total: '4 historical occurrences',
+    xp: '-2 XP',
+    bullBlind: '3× · -1 XP',
+    coldStart: '1× · -1 XP',
+  },
 };
 
 // Install all stubs in the page. Run AFTER boot, BEFORE opening the dialog.
@@ -121,7 +132,7 @@ async function install(page) {
     };
     const fakeSb = { from: (t) => mkQuery(t) };
     window.sb = fakeSb; window.__sb = fakeSb;
-    // 5) bust XP cache so it re-reads through the stub
+    // 5) bust XP/achievement caches so they re-read through the stub
     if (window.SQ_XP) { window.SQ_XP._cache = null; window.SQ_XP._cacheAt = 0; }
     if (window.SQ_ACH) window.SQ_ACH._cache = {};
   }, FIXTURE);
