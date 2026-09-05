@@ -39,6 +39,17 @@ jobs:
       - name: Install Chromium
         working-directory: tools/ui-smoke
         run: npx playwright install --with-deps chromium
+      - name: Serve app
+        shell: bash
+        run: |
+          python3 -m http.server 8123 >/tmp/sc009-http.log 2>&1 &
+          echo $! >/tmp/sc009-http.pid
+          for i in {1..20}; do
+            curl -fsS http://127.0.0.1:8123/index.html >/dev/null && exit 0
+            sleep 0.5
+          done
+          cat /tmp/sc009-http.log
+          exit 1
       - name: Prepare legacy screenshot directory
         run: |
           sudo mkdir -p /home/user/takeshi-quest-latest/docs/ui-audit/screenshots
