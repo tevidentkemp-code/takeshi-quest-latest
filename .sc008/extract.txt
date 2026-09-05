@@ -1,0 +1,3120 @@
+INDEX_BLOB=c5688cf19d2d8f7bf57cd9c991009f97292cb8a3
+INDEX_CHARS=2488065
+
+===== TARGET: 'Trophy Vault' =====
+
+--- MATCH 1 @ 1575510 [1572910:1578122] ---
+— Legend' : (SQ_XP.fmt(prog.toNext) + ' XP to Level ' + (prog.level + 1));
+    info.append(ohead, oxp, oseg, onext); orb.append(stage, info);
+    xpPanel.appendChild(orb);
+    let raf = 0;
+    xpPanel.__ppReplay = () => {
+      cancelAnimationFrame(raf);
+      if (__ppReduced){ __sqDrawXpReactor(canvas, prog.pct, 1, 0); lvnum.textContent = String(prog.level); oxp.textContent = SQ_XP.fmt(prog.xp); return; }
+      countUp(lvnum, String(prog.level), 850);
+      countUp(oxp, SQ_XP.fmt(prog.xp), 950);
+      const dur = 1400, t0 = performance.now();
+      const loop = (now) => {
+        const el = now - t0, tt = Math.min(1, el / dur);
+        __sqDrawXpReactor(canvas, prog.pct, 1 - Math.pow(1 - tt, 3), el);
+        if (el < 3200) raf = requestAnimationFrame(loop);
+        else __sqDrawXpReactor(canvas, prog.pct, 1, el);
+      };
+      raf = requestAnimationFrame(loop);
+    };
+  }
+
+  xpPanel.appendChild(xpCard);
+  {
+    const ladderCard = document.createElement('div'); ladderCard.className = 'tag';
+    ladderCard.style.cssText = 'padding:12px;border-radius:14px;background:rgba(255,255,255,.052);border:1px solid rgba(255,255,255,.09);display:flex;flex-direction:column;gap:10px;';
+    ladderCard.innerHTML = '<strong style="font-size:15px;color:#f59e0b">🏅 Level Ladder</strong><p class="muted" style="margin:0;font-size:12px">See how you rank against everyone by XP.</p>';
+    const lb = document.createElement('button'); lb.className = 'btn sq-pill'; lb.textContent = 'Open Level Ladder';
+    lb.onclick = () => { try{ if (typeof openXpLeaderboard === 'function') openXpLeaderboard(); }catch(_){ } };
+    ladderCard.appendChild(lb); xpPanel.appendChild(ladderCard);
+  }
+
+  // ---- Achievements tab hero: "TROPHY VAULT" (unique to the Achievements tab) ----
+  const achPanel = document.createElement('div');
+  achPanel.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
+  {
+    const catalog = (window.SQ_ACH && Array.isArray(SQ_ACH.CATALOG)) ? SQ_ACH.CATALOG : [];
+    const total = catalog.length;
+    const earnedCodes = catalog.filter(a => (achMap[a.code] || {}).cnt > 0);
+    const earnedN = earnedCodes.length;
+    const pctDone = total ? earnedN / total : 0;
+    const shelf = earnedCodes.slice().sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
+    const MAXSHELF = 8;
+
+    const vault = document.createElement('div'); vault.className = 'pp-vault';
+    const meter = document.createElement('div'); meter.className = 'pp-vault-meter';
+    const vhead = document.createElement('div'); vhead.className = 'pp-vault-head'; vhead.textContent = 'Trophy Vault';
+    const vcount = document.createElement('div'); vcount.className = 'pp-vault-count';
+    const vcB = document.createElement('b'); vcB.textContent = String(earnedN);
+    const vcS = document.createElement('small'); vcS.textContent = ' / ' + total;
+    vcount.append(vcB, vcS);
+    const vbar = document.createElement('div'); vbar.className = 'pp-vault-bar';
+    const vfill = document.createElement('span'); vbar.appendChild(vfill);
+    const vsub = document.createElement('div'); vsub.className = 'pp-vault-sub'; vsub.textContent = 'Trophies unlocked · ' + Math.round(pctDone * 100) + '%';
+    meter.append(vhead, vcount, vbar, vsub);
+
+    const shelfEl = document.createElement('div'); shelfEl.className = 'pp-vault-shelf';
+    const chips = [];
+    shelf.slice(0, MAXSHELF).forEach(a => {
+      const meta = SQ_ACH.meta(a.code); const s = SQ_ACH.tierStyle(meta.tier);
+      const chip = document.createElement('div'); chip.className = 'pp-vault-badge';
+      chip.style.background = s.g; chip.style.border = '1px solid ' + s.b; chip.textContent = meta.icon;
+      chip.title = meta.name + ((achMap[a.code].cnt > 1) ? (' ×' + achMap[a.code].cnt) : '');
+      shelfEl.appendChild(chip); chips.push(chip);
+    });
+    if (shelf.length > MAXSHELF){ const more = document.createElement('div'); more.className = 'pp-vault-more'; more.textContent = '+' + (shelf.length - MAXSHELF) + ' more'; shelfEl.appendChild(more); }
+    if (!shelf.length){ const none = document.createElement('div'); none.className = 'pp-vault-more'; none.textContent = 'No trophies yet — go earn some!'; shelfEl.appendChild(none); }
+    vault.append(meter, shelfEl);
+    achPanel.appendChild(vault);
+    achPanel.appendChild(__sqTrophyCase(achMap));
+
+    let timers = [];
+    achPanel.__ppReplay = () => {
+      timers.forEach(clearTimeout); timers = [];
+      if (__ppReduced){ vcB.textContent = String(earnedN); vfill.style.width = Math.round(pctDone * 100) + '%'; chips.forEach(c => c.classList.add('in')); return; }
+      vcB.textContent = '0'; vfill.style.width = '0%';
+      chips.forEach(c => c.classList.remove('in', 'shine'));
+      countUp(vcB, String(earnedN), 1000);
+      requestAnimationFrame(() => requestAnimationFrame(() => { vfill.style.width = Math.round(pctDone * 100) + '%'; }));
+      chips.forEach((c, i) => { timers.push(setTimeout(() => { c.classList.add('in', 'shine'); }, 120 + i * 90)); });
+    };
+  }
+
+  const tabBar = document.createElement('div');
+  tabBar.className = 'pp-tabs';
+  const panelHost = document.createElement('div');
+  const tabs = [['Stats', statsPanel], ['XP', xpPanel], ['Achieve
+COUNT_SHOWN=1
+
+===== TARGET: 'v_player_achievements' =====
+
+--- MATCH 1 @ 1506744 [1504144:1509365] ---
+   }catch(_){ return this._cache || []; }
+  },
+  async forName(name){
+    const rows = await this.all();
+    const n = String(name || '').trim().toLowerCase();
+    return rows.find(r => String(r.name || '').trim().toLowerCase() === n) || null;
+  },
+  fmt(n){ return (Number(n) || 0).toLocaleString(); }
+};
+window.SQ_XP = SQ_XP;
+
+// A reusable "LV n · TITLE" chip (inline-styled to match the stats hero).
+function __sqXpChip(prog){
+  const chip = document.createElement('span');
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;'
+    + 'background:linear-gradient(135deg,rgba(255,183,64,.28),rgba(255,122,24,.18));'
+    + 'border:1px solid rgba(255,183,64,.5);font-weight:900;font-size:12px;letter-spacing:.06em;'
+    + 'color:#ffe1b0;white-space:nowrap;';
+  const lv = document.createElement('b'); lv.textContent = 'LV ' + prog.level; lv.style.color = '#fff';
+  const ti = document.createElement('span'); ti.textContent = prog.title.toUpperCase(); ti.style.opacity = '.92';
+  chip.append(lv, ti);
+  return chip;
+}
+
+// A reusable XP progress bar with "x XP · y to Level n+1" caption.
+function __sqXpBar(prog){
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:12px;';
+  const top = document.createElement('div');
+  top.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;font-size:11px;'
+    + 'text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;';
+  const l = document.createElement('span'); l.className = 'muted'; l.textContent = SQ_XP.fmt(prog.xp) + ' XP';
+  const r = document.createElement('span'); r.className = 'muted';
+  r.textContent = prog.atMax ? 'MAX LEVEL' : (SQ_XP.fmt(prog.toNext) + ' to Level ' + (prog.level + 1));
+  top.append(l, r);
+  const track = document.createElement('div');
+  track.style.cssText = 'height:9px;border-radius:999px;background:rgba(0,0,0,.32);'
+    + 'border:1px solid rgba(255,255,255,.08);overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.style.cssText = 'height:100%;width:0;border-radius:999px;transition:width .7s cubic-bezier(.2,.8,.25,1);'
+    + 'background:linear-gradient(90deg,#ff7a18,#ffb14a);box-shadow:0 0 10px rgba(255,150,60,.6);';
+  track.appendChild(fill);
+  wrap.append(top, track);
+  requestAnimationFrame(() => { fill.style.width = Math.round(prog.pct * 100) + '%'; });
+  return wrap;
+}
+
+/* =====================================================================
+   SQ ACH — trophies / achievements catalogue + trophy case.
+   Counts & XP are the single source of truth in Supabase view
+   v_player_achievements (derived from all game history — auto-backfilled
+   and auto-updated as games are saved). This module holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Hit all three darts in every round of a game' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in one round' },
+    { code:'clutch',         name:'Clutc
+
+--- MATCH 2 @ 1507000 [1504400:1509621] ---
+){ return (Number(n) || 0).toLocaleString(); }
+};
+window.SQ_XP = SQ_XP;
+
+// A reusable "LV n · TITLE" chip (inline-styled to match the stats hero).
+function __sqXpChip(prog){
+  const chip = document.createElement('span');
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;'
+    + 'background:linear-gradient(135deg,rgba(255,183,64,.28),rgba(255,122,24,.18));'
+    + 'border:1px solid rgba(255,183,64,.5);font-weight:900;font-size:12px;letter-spacing:.06em;'
+    + 'color:#ffe1b0;white-space:nowrap;';
+  const lv = document.createElement('b'); lv.textContent = 'LV ' + prog.level; lv.style.color = '#fff';
+  const ti = document.createElement('span'); ti.textContent = prog.title.toUpperCase(); ti.style.opacity = '.92';
+  chip.append(lv, ti);
+  return chip;
+}
+
+// A reusable XP progress bar with "x XP · y to Level n+1" caption.
+function __sqXpBar(prog){
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:12px;';
+  const top = document.createElement('div');
+  top.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;font-size:11px;'
+    + 'text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;';
+  const l = document.createElement('span'); l.className = 'muted'; l.textContent = SQ_XP.fmt(prog.xp) + ' XP';
+  const r = document.createElement('span'); r.className = 'muted';
+  r.textContent = prog.atMax ? 'MAX LEVEL' : (SQ_XP.fmt(prog.toNext) + ' to Level ' + (prog.level + 1));
+  top.append(l, r);
+  const track = document.createElement('div');
+  track.style.cssText = 'height:9px;border-radius:999px;background:rgba(0,0,0,.32);'
+    + 'border:1px solid rgba(255,255,255,.08);overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.style.cssText = 'height:100%;width:0;border-radius:999px;transition:width .7s cubic-bezier(.2,.8,.25,1);'
+    + 'background:linear-gradient(90deg,#ff7a18,#ffb14a);box-shadow:0 0 10px rgba(255,150,60,.6);';
+  track.appendChild(fill);
+  wrap.append(top, track);
+  requestAnimationFrame(() => { fill.style.width = Math.round(prog.pct * 100) + '%'; });
+  return wrap;
+}
+
+/* =====================================================================
+   SQ ACH — trophies / achievements catalogue + trophy case.
+   Counts & XP are the single source of truth in Supabase view
+   v_player_achievements (derived from all game history — auto-backfilled
+   and auto-updated as games are saved). This module holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Hit all three darts in every round of a game' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in one round' },
+    { code:'clutch',         name:'Clutch',             icon:'⏱️', tier:'gold',      xp:40,  desc:'Full house on the final round to win' },
+    { code:'iceman',         name:'Iceman',             icon:'🧊', tier:'gold',      xp:50,  desc:'Win a tiebreak game' },
+    { code:'shanghai',       name:
+
+--- MATCH 3 @ 1514709 [1512109:1517330] ---
+core 100+ in a single game' },
+    { code:'centurion',      name:'Centurion',          icon:'🏛️', tier:'legendary', xp:400, desc:'Play 250 games' },
+    { code:'trophy_hunter',  name:'Trophy Hunter',      icon:'🗃️', tier:'legendary', xp:350, desc:'Unlock 20 different trophies' },
+    { code:'triple_threat',  name:'Triple Threat',      icon:'⚡', tier:'gold',      xp:60,  desc:'Three triples in the Triples round' },
+    { code:'bull_run',       name:'Bull Run',           icon:'🐮', tier:'gold',      xp:60,  desc:'Three bulls in the Bull round' },
+    { code:'double_trouble', name:'Double Trouble',     icon:'🎲', tier:'gold',      xp:45,  desc:'Three doubles in the Doubles round' },
+    { code:'veteran',        name:'Veteran',            icon:'🎖️', tier:'gold',      xp:200, desc:'Play 100 games' },
+    { code:'collector',      name:'Collector',          icon:'🧰', tier:'gold',      xp:150, desc:'Unlock 10 different trophies' },
+    { code:'strong_finish',  name:'Strong Finish',      icon:'🏁', tier:'silver',    xp:40,  desc:'Score 100+ on the Bull round' },
+    { code:'regular',        name:'Regular',            icon:'📅', tier:'silver',    xp:100, desc:'Play 50 games' },
+    { code:'full_house',     name:'Full House',         icon:'🏠', tier:'bronze',    xp:12,  desc:'All three darts on target in a round' },
+    { code:'perfect_start',  name:'Perfect Start',      icon:'🚀', tier:'bronze',    xp:20,  desc:'Full house on the opening 10s round' },
+    { code:'dead_centre',    name:'Dead Centre',        icon:'🔴', tier:'bronze',    xp:5,   desc:'Hit the 50 bull' }
+  ],
+  meta(code){ return this.CATALOG.find(a => a.code === code) || { code, name: code, icon:'🎖️', tier:'bronze', desc:'' }; },
+  tierStyle(tier){
+    switch(tier){
+      case 'legendary': return { c:'#e9c6ff', b:'rgba(180,123,255,.6)', g:'linear-gradient(135deg,rgba(180,123,255,.30),rgba(120,60,200,.16))' };
+      case 'gold':      return { c:'#ffe1a6', b:'rgba(255,196,74,.55)', g:'linear-gradient(135deg,rgba(255,196,74,.26),rgba(255,140,40,.14))' };
+      case 'silver':    return { c:'#e4ecf7', b:'rgba(200,214,235,.5)', g:'linear-gradient(135deg,rgba(200,214,235,.20),rgba(150,170,200,.10))' };
+      default:          return { c:'#f0c9a6', b:'rgba(208,139,90,.5)', g:'linear-gradient(135deg,rgba(208,139,90,.20),rgba(160,100,60,.10))' };
+    }
+  },
+  _cache:{},
+  async forName(name){
+    try{
+      const xr = await SQ_XP.forName(name); if (!xr) return {};
+      const SB = window.sb || window.__sb || null;
+      if (!SB || typeof SB.from !== 'function') return {};
+      const { data, error } = await SB.from('v_player_achievements').select('code,cnt,xp').eq('player_id', xr.player_id);
+      if (error || !Array.isArray(data)) return {};
+      const map = {}; data.forEach(r => { map[r.code] = { cnt: Number(r.cnt) || 0, xp: Number(r.xp) || 0 }; });
+      return map;
+    }catch(_){ return {}; }
+  }
+};
+window.SQ_ACH = SQ_ACH;
+
+// Milestones are one-time unlocks (score PBs, career collections, volume,
+// meta); everything else is a repeatable Trophy you can stack.
+SQ_ACH.MILESTONES = new Set(['score_100','score_200','score_300','score_400','score_500','score_600','score_700','treble_sweep','double_sweep','bull_club','regular','veteran','centurion','collector','trophy_hunter']);
+SQ_ACH.isMilestone = function(code){ return SQ_ACH.MILESTONES.has(code); };
+
+// Everyone who has earned a given trophy, ranked by count (for the per-award
+// leaderboard shown when you tap a trophy).
+SQ_ACH.forCode = async function(code){
+  try{
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return [];
+    const [res, names] = await Promise.all([
+      SB.from('v_player_achievements').select('player_id,cnt,xp').eq('code', code),
+      SQ_XP.all()
+    ]);
+    const rows = (res && res.data) || [];
+    const nameMap = {}; (names || []).forEach(n => { nameMap[n.player_id] = n.name; });
+    return rows.map(r => ({ player_id: r.player_id, name: nameMap[r.player_id] || '—', cnt: Number(r.cnt) || 0, xp: Number(r.xp) || 0 }))
+      .filter(r => r.cnt > 0)
+      .sort((a, b) => (b.cnt - a.cnt) || (b.xp - a.xp));
+  }catch(_){ return []; }
+};
+
+// Trophy detail popup: how to earn it + a leaderboard of everyone who has it.
+async function __sqTrophyDetail(code, earnedMap){
+  const a = SQ_ACH.meta(code); const s = SQ_ACH.tierStyle(a.tier);
+  const got = (earnedMap && earnedMap[code]) || { cnt: 0 };
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal = document.createElement('div'); modal.className = 'modal';
+  modal.style.cssText = 'max-width:460px;width:92vw;max-height:86vh;overflow:hidden;';
+  const body = document.createElement('div'); body.className = 'modal-body'; body.style.cssText = 'overflow-y:auto;max-height:82vh;';
+  const milestone = SQ_ACH.isMilestone(code);
+  const tierName = (a.tier || 'bronze').toUpperCase() + (milestone ? ' · MILESTONE' : '');
+  const xpText = code === 'giant_slayer' ? 'Scales with the level gap' : ('+' + (a.xp || 0) + ' XP' + (milestone ? ' (one-time)' : ' each'));
+  const yours = milestone
+    ? (got.cnt > 0 ? 'Unlocked ✓' : 'Not yet unlocked')
+    : (got.cnt > 0 ? ('You’ve earned this ' + got.cnt 
+
+--- MATCH 4 @ 1515797 [1513197:1518418] ---
+        name:'Regular',            icon:'📅', tier:'silver',    xp:100, desc:'Play 50 games' },
+    { code:'full_house',     name:'Full House',         icon:'🏠', tier:'bronze',    xp:12,  desc:'All three darts on target in a round' },
+    { code:'perfect_start',  name:'Perfect Start',      icon:'🚀', tier:'bronze',    xp:20,  desc:'Full house on the opening 10s round' },
+    { code:'dead_centre',    name:'Dead Centre',        icon:'🔴', tier:'bronze',    xp:5,   desc:'Hit the 50 bull' }
+  ],
+  meta(code){ return this.CATALOG.find(a => a.code === code) || { code, name: code, icon:'🎖️', tier:'bronze', desc:'' }; },
+  tierStyle(tier){
+    switch(tier){
+      case 'legendary': return { c:'#e9c6ff', b:'rgba(180,123,255,.6)', g:'linear-gradient(135deg,rgba(180,123,255,.30),rgba(120,60,200,.16))' };
+      case 'gold':      return { c:'#ffe1a6', b:'rgba(255,196,74,.55)', g:'linear-gradient(135deg,rgba(255,196,74,.26),rgba(255,140,40,.14))' };
+      case 'silver':    return { c:'#e4ecf7', b:'rgba(200,214,235,.5)', g:'linear-gradient(135deg,rgba(200,214,235,.20),rgba(150,170,200,.10))' };
+      default:          return { c:'#f0c9a6', b:'rgba(208,139,90,.5)', g:'linear-gradient(135deg,rgba(208,139,90,.20),rgba(160,100,60,.10))' };
+    }
+  },
+  _cache:{},
+  async forName(name){
+    try{
+      const xr = await SQ_XP.forName(name); if (!xr) return {};
+      const SB = window.sb || window.__sb || null;
+      if (!SB || typeof SB.from !== 'function') return {};
+      const { data, error } = await SB.from('v_player_achievements').select('code,cnt,xp').eq('player_id', xr.player_id);
+      if (error || !Array.isArray(data)) return {};
+      const map = {}; data.forEach(r => { map[r.code] = { cnt: Number(r.cnt) || 0, xp: Number(r.xp) || 0 }; });
+      return map;
+    }catch(_){ return {}; }
+  }
+};
+window.SQ_ACH = SQ_ACH;
+
+// Milestones are one-time unlocks (score PBs, career collections, volume,
+// meta); everything else is a repeatable Trophy you can stack.
+SQ_ACH.MILESTONES = new Set(['score_100','score_200','score_300','score_400','score_500','score_600','score_700','treble_sweep','double_sweep','bull_club','regular','veteran','centurion','collector','trophy_hunter']);
+SQ_ACH.isMilestone = function(code){ return SQ_ACH.MILESTONES.has(code); };
+
+// Everyone who has earned a given trophy, ranked by count (for the per-award
+// leaderboard shown when you tap a trophy).
+SQ_ACH.forCode = async function(code){
+  try{
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return [];
+    const [res, names] = await Promise.all([
+      SB.from('v_player_achievements').select('player_id,cnt,xp').eq('code', code),
+      SQ_XP.all()
+    ]);
+    const rows = (res && res.data) || [];
+    const nameMap = {}; (names || []).forEach(n => { nameMap[n.player_id] = n.name; });
+    return rows.map(r => ({ player_id: r.player_id, name: nameMap[r.player_id] || '—', cnt: Number(r.cnt) || 0, xp: Number(r.xp) || 0 }))
+      .filter(r => r.cnt > 0)
+      .sort((a, b) => (b.cnt - a.cnt) || (b.xp - a.xp));
+  }catch(_){ return []; }
+};
+
+// Trophy detail popup: how to earn it + a leaderboard of everyone who has it.
+async function __sqTrophyDetail(code, earnedMap){
+  const a = SQ_ACH.meta(code); const s = SQ_ACH.tierStyle(a.tier);
+  const got = (earnedMap && earnedMap[code]) || { cnt: 0 };
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal = document.createElement('div'); modal.className = 'modal';
+  modal.style.cssText = 'max-width:460px;width:92vw;max-height:86vh;overflow:hidden;';
+  const body = document.createElement('div'); body.className = 'modal-body'; body.style.cssText = 'overflow-y:auto;max-height:82vh;';
+  const milestone = SQ_ACH.isMilestone(code);
+  const tierName = (a.tier || 'bronze').toUpperCase() + (milestone ? ' · MILESTONE' : '');
+  const xpText = code === 'giant_slayer' ? 'Scales with the level gap' : ('+' + (a.xp || 0) + ' XP' + (milestone ? ' (one-time)' : ' each'));
+  const yours = milestone
+    ? (got.cnt > 0 ? 'Unlocked ✓' : 'Not yet unlocked')
+    : (got.cnt > 0 ? ('You’ve earned this ' + got.cnt + '×') : 'You haven’t earned this yet');
+  body.innerHTML =
+    '<div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:' + s.g + ';border:1px solid ' + s.b + ';">'
+    + '<div style="font-size:40px;line-height:1">' + a.icon + '</div>'
+    + '<div style="min-width:0"><div style="font-weight:900;font-size:20px;color:#fff">' + a.name + '</div>'
+    + '<div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:' + s.c + '">' + tierName + ' · ' + xpText + '</div></div></div>'
+    + '<div style="margin:14px 2px 4px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">How to earn</div>'
+    + '<div style="font-size:15px;font-weight:600;margin:0 2px 10px">' + a.desc + '.</div>'
+    + '<div style="font-size:12px;font-weight:800;margin:0 2px 12px;color:' + (got.cnt>0 ? '#7be0a0' : 'var(--v3-muted,#98a2b8)') + '">' + yours + '</div>'
+    + '<div style="margin:6px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">Trophy leaderboard</div>'
+    + '<p class="muted" id="trophyLbLoading
+
+--- MATCH 5 @ 1520746 [1518146:1523367] ---
+2px;color:' + (got.cnt>0 ? '#7be0a0' : 'var(--v3-muted,#98a2b8)') + '">' + yours + '</div>'
+    + '<div style="margin:6px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">Trophy leaderboard</div>'
+    + '<p class="muted" id="trophyLbLoading" style="font-size:13px">Loading…</p>';
+  modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
+  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0; modal.focus();
+  const rows = await SQ_ACH.forCode(code);
+  const loading = body.querySelector('#trophyLbLoading'); if (loading) loading.remove();
+  if (!rows.length){
+    const p = document.createElement('p'); p.className = 'muted'; p.style.fontSize = '13px';
+    p.textContent = 'No one has earned this yet — be the first!'; body.appendChild(p);
+  } else {
+    const list = document.createElement('div'); list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+    const medal = i => i === 0 ? '#ffd24a' : i === 1 ? '#cbd5e1' : i === 2 ? '#d08b5a' : 'var(--v3-muted,#98a2b8)';
+    rows.forEach((r, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);';
+      const rk = document.createElement('span'); rk.textContent = '#' + (i + 1); rk.style.cssText = 'font-weight:900;min-width:30px;color:' + medal(i);
+      const nm = document.createElement('span'); nm.textContent = r.name; nm.style.cssText = 'flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      const ct = document.createElement('span');
+      ct.textContent = milestone ? '✓' : ('×' + r.cnt);
+      ct.style.cssText = 'font-weight:900;color:' + (milestone ? '#2fd06b' : '#ffb14a') + ';';
+      row.append(rk, nm, ct); list.appendChild(row);
+    });
+    body.appendChild(list);
+  }
+  const foot = document.createElement('div'); foot.style.cssText = 'margin-top:14px;text-align:center;';
+  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Close'; cb.onclick = () => overlay.remove();
+  foot.appendChild(cb); body.appendChild(foot);
+}
+
+// Per-game trophy detector for live celebration toasts. Mirrors the SQL rules
+// in v_ach_rounds / v_player_achievements (per-round, per-game, streak, 2p feats).
+// Career/match feats (sweeps, giant_slayer, champion, nemesis) are cross-game and
+// surface via the trophy case, not here. board = array[player] of array[round] of
+// { darts:[{kind,points}], roundTotal }.  opts: { players, is_tiebreak }.
+SQ_ACH.detectGame = function(board, opts){
+  opts = opts || {};
+  const players = opts.players || [];
+  const norm = d => {
+    const k = (d && d.kind) || 'Miss';
+    if (k === 'S') return 'single';
+    if (k === 'D' || k === 'Double') return 'double';
+    if (k === 'T' || k === 'Triple') return 'treble';
+    if (k === 'B' || k === 'Bull') return 'bull';
+    return 'miss';
+  };
+  if (!Array.isArray(board) || !board.length) return [];
+  const totals = board.map(rs => (rs || []).reduce((s, r) => s + (Number(r && r.roundTotal) || 0), 0));
+  const maxTotal = Math.max.apply(null, totals.concat([0]));
+  const out = [];
+  for (let p = 0; p < board.length; p++){
+    const rounds = board[p] || [];
+    const earned = {}; const add = (c, n) => { earned[c] = (earned[c] || 0) + (n || 1); };
+    let totMiss = 0, totDarts = 0, centuryRounds = 0, scoredRounds = 0, best = 0, run = 0;
+    let finalFh = false;
+    for (let ri = 0; ri < rounds.length; ri++){
+      const r = rounds[ri] || {}; const darts = r.darts || [];
+      let tre = 0, dou = 0, sin = 0, b50 = 0, bany = 0;
+      darts.forEach(d => { const nk = norm(d); if (nk === 'treble') tre++; else if (nk === 'double') dou++; else if (nk === 'single') sin++; else if (nk === 'bull'){ bany++; if ((Number(d.points) || 0) === 50) b50++; } });
+      const mis = darts.filter(d => norm(d) === 'miss' || (Number(d && d.points) || 0) === 0).length;
+      const rtot = Number(r.roundTotal) || 0;
+      const target = ri <= 10 ? 10 + ri : null;
+      const rmax = ri <= 10 ? 9 * (10 + ri) : (ri === 11 ? 120 : ri === 12 ? 180 : 150);
+      totMiss += mis; totDarts += darts.length;
+      if (rtot > 0) scoredRounds++;
+      const fh = (mis === 0 && darts.length === 3);
+      run = fh ? run + 1 : 0; if (run > best) best = run;
+      if (ri === 13) finalFh = fh;
+      if (rtot === 180) add('the_180');
+      else if (rtot === rmax && darts.length === 3) add('maximum');
+      if (tre === 3) add('treble_trouble');
+      if (dou === 3) add('double_down');
+      if (fh) add('full_house');
+      if (rtot >= 100 && rtot < 180){ add('century'); centuryRounds++; }
+      if (target != null && sin === 1 && dou === 1 && tre === 1) add('shanghai');
+      if (target != null && sin === 2 && dou === 1 && tre === 0 && mis === 0) add('desmond');
+      if (target != null && tre >
+COUNT_SHOWN=5
+
+===== TARGET: 'v_player_xp' =====
+
+--- MATCH 1 @ 598802 [596202:601413] ---
+pct * 100) + '%'; });
+            }, 720);
+          } else {
+            fill.style.width = (post.pct * 100) + '%';
+          }
+        });
+      });
+      addTrophies();
+      setTimeout(resolve, 1100 + (levelUp ? 700 : 0) + row.troph.length * 120);
+    }, 120);
+  });
+}
+// XP is only earned in ranked play. The Supabase views that own the real
+// totals (v_player_base_xp / v_ach_rounds) skip any game whose mode is
+// 'practice' or 'turbo', and Training never writes to `games` at all — so
+// showing an XP tally after those games promises points that are never
+// awarded. Returns the unranked mode label, or '' when the game does count.
+function __sqUnrankedXpMode(){
+  try{
+    if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime()) return 'PRACTICE';
+    const mode = String(
+      (typeof __sqComputeGameMode === 'function' ? __sqComputeGameMode() : '') ||
+      (state && (state.gameMode || state.mode)) || ''
+    ).toLowerCase();
+    if (mode === 'training') return 'TRAINING';
+    if (mode === 'turbo') return 'TURBO';
+    if (mode === 'practice') return 'PRACTICE';
+    if (state && (state.isPractice === true || state.is_practice === true)) return 'PRACTICE';
+    return '';
+  }catch(_){ return ''; }
+}
+async function __sqGcXpReveal(host, onComplete){
+  try{
+    if (!window.SQ_XP || !window.SQ_ACH || !state || !state.score){ if (onComplete) onComplete(); return; }
+    const unranked = __sqUnrankedXpMode();
+    if (unranked){
+      const panel = document.createElement('div'); panel.className = 'gc-xp-panel';
+      const title = document.createElement('div'); title.className = 'gc-xp-title';
+      title.textContent = 'NO XP EARNED';
+      const note = document.createElement('div'); note.className = 'gc-xp-noxp';
+      const mode = document.createElement('div'); mode.className = 'gc-xp-noxp-mode';
+      mode.textContent = unranked + ' GAME';
+      const copy = document.createElement('div'); copy.className = 'gc-xp-noxp-copy';
+      copy.textContent = 'Practice and Training don’t count towards XP, levels or trophies. Play a Match to rank up.';
+      note.appendChild(mode); note.appendChild(copy);
+      panel.appendChild(title); panel.appendChild(note); host.appendChild(panel);
+      requestAnimationFrame(() => note.classList.add('in'));
+      setTimeout(() => { if (onComplete) onComplete(); }, 700);
+      return;
+    }
+    const reduced = (typeof __sqV3Reduced === 'function') ? __sqV3Reduced() : false;
+    const board = state.score;
+    // Display uses the pretty name (with nickname); the XP lookup must use the
+    // RAW player name, because v_player_xp stores plain names — looking up
+    // 'Chris "The Inevitable"' always missed, so every player read back 0 XP and
+    // showed as a level-2 rookie regardless of their real total.
+    const players = (state.players || []).map(p => ({
+      name: (typeof __sqPlayerPretty === 'function' ? __sqPlayerPretty(p) : (p && p.name)) || (p && p.name) || '',
+      rawName: String((p && (p.name || p.player)) || '').trim(),
+    }));
+    const totals = players.map((_, i) => (board[i] || []).reduce((s, r) => s + (Number(r && r.roundTotal) || 0), 0));
+    const maxTotal = Math.max(0, ...totals);
+    const results = SQ_ACH.detectGame(board, { players, is_tiebreak: !!(state.is_tiebreak || state.currentGameIsTiebreak) });
+    const trophiesByP = {}; results.forEach(r => { trophiesByP[r.player] = r.earned; });
+    const rows = [];
+    for (let p = 0; p < players.length; p++){
+      const nm = players[p].name || ('Player ' + (p + 1));
+      const won = totals[p] === maxTotal && maxTotal > 0;
+      const troph = trophiesByP[p] || [];
+      const trophyXp = troph.reduce((s, e) => s + (SQ_ACH.meta(e.code).xp || 0) * e.count, 0);
+      const gained = Math.round(totals[p] * SQ_XP.W.point) + SQ_XP.W.game + (won ? SQ_XP.W.gameWin : 0) + trophyXp;
+      let pre = 0; try{ const xr = await SQ_XP.forName(players[p].rawName || nm); pre = xr ? Number(xr.total_xp) || 0 : 0; }catch(_){ }
+      rows.push({ nm, won, troph, gained, pre, post: pre + gained });
+    }
+    rows.sort((a, b) => (Number(b.won) - Number(a.won)) || (b.gained - a.gained));
+    const panel = document.createElement('div'); panel.className = 'gc-xp-panel';
+    const title = document.createElement('div'); title.className = 'gc-xp-title'; title.textContent = 'XP EARNED';
+    panel.appendChild(title); host.appendChild(panel);
+    for (let i = 0; i < rows.length; i++){ await __sqGcXpRow(panel, rows[i], reduced); }
+    // Freshen caches so subsequent screens read the new totals.
+    try{ SQ_XP._cache = null; SQ_ACH._cache = {}; }catch(_){ }
+    if (onComplete) onComplete();
+  }catch(_){ if (onComplete) onComplete(); }
+}
+
+function openGameCompleteDialog() {
+  if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) {
+    try{ state.finished = false; state.gameAwarded = false; }catch(_){ }
+    try{ __sqVsShadowBlockPhase2C(__SQ_VS_SHADOW_COMPLETION_BLOCK_REASON); }catch(_){ }
+    return;
+  }
+  const __isVsShadowComplete = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
+  const totals = state.players.map((_, i) => totalScoreForPlayer(i));
+  if (!totals.length) re
+
+--- MATCH 2 @ 1500834 [1498234:1503445] ---
+rn null;
+
+  // Months: compare to previous month button (next in list)
+  const idx = filters.indexOf(f);
+  if (idx < 0) return null;
+  const nextIdx = idx + 1;
+  if (nextIdx >= filters.length) return null;
+  const prev = filters[nextIdx];
+  if (!prev || prev.id === 'ALL' || prev.id === 'RECORDS' || prev.id === 'TODAY' || prev.id === 'YESTERDAY' || prev.id === 'THIS_WEEK') return null;
+  return prev;
+}
+
+renderFilters(filters, async f => {
+  currentFilter = f;
+
+  const reqId = ++__plReqSeq;
+  const label = (f && (f.label || f.id)) ? (f.label || f.id) : 'FILTER';
+
+  try {
+    rows = await __plWithTimeout(fetchRows(currentFilter), 8000);
+    if (reqId !== __plReqSeq) return;
+
+    if (!rows || !rows.length) {
+      tableMount.innerHTML = `<p class="tag">No games found for ${label}.</p>`;
+      return;
+    }
+
+    if (f.id === 'RECORDS') {
+      renderRecords(rows);
+    } else {
+      const prev = getPrevFilter(currentFilter);
+      await renderTable(rows, currentFilter, prev);
+    }
+  } catch (e) {
+    if (reqId !== __plReqSeq) return;
+    const msg = (e && (e.message || e.details || e.hint)) ? (e.message || e.details || e.hint) : String(e || '');
+    tableMount.innerHTML = `<p class="tag">Premier League failed to load for ${label}.</p><pre style="white-space:pre-wrap;opacity:.7;font-size:.75rem;margin-top:8px;">${__plEsc(msg).slice(0, 900)}</pre>`;
+  }
+});
+
+// Initial render = ALL TIME table
+const initialPrev = getPrevFilter(currentFilter);
+if (rows.length) {
+  await renderTable(rows, currentFilter, initialPrev);
+}
+  })();
+};
+
+// >>> PATCH:LATEST_SCORES_GAMES_TRUTH_V1 START
+// Latest Scores uses games history/cloud rows directly. Missing match_id must not demote 2+ player games to practice.
+// Latest Scores modal: overlay with # | Result | Date/Time + Official/Practice toggle + chart
+// ===== @JS:MODAL:LATEST_SCORES =====
+// [removed: openLatestScoresDialog base def] audit P5.3 batch 3 — shadowed by later canonical definition
+
+// [removed: openLatestScoresDialog base export] audit P5.3 batch 3 — shadowed by later canonical definition
+// <<< PATCH:LATEST_SCORES_GAMES_TRUTH_V1 END
+/* >>> PATCH:PHASE1_FIX57_LATEST_SCORES_CLOUD_TRUTH START
+   Latest Scores now uses getGamesForMode(mode) as the authoritative source.
+   Local completed-game cache is fallback-only and is not merged with cloud rows.
+   This prevents the same newly saved practice game appearing twice.
+<<< PATCH:PHASE1_FIX57_LATEST_SCORES_CLOUD_TRUTH END */
+
+/* =====================================================================
+   SQ XP — player experience & levels (source of truth: Supabase view
+   v_player_xp, which derives XP from all match/game history).
+   IMPORTANT: the weights in SQ_XP.W MUST match the v_player_xp SQL view
+   (points x0.25, game +30, game win +50, match win +150, milestone +40).
+   Level curve is owned here: level = floor(sqrt(xp / DIV)) + 1.
+   Scope: CLASSIC games only. The SQL views (v_ach_rounds / v_player_base_xp)
+   map board players by NAME via v_name_resolver (players + aliases) so EVERY
+   Classic game counts — not just those with match_players rows — and exclude
+   turbo/practice modes and guest/test names. Keep detectGame's per-game rules
+   in sync with v_ach_base.
+   No XP is earned outside ranked play:
+     - practice/turbo games are filtered out of v_player_base_xp AND v_ach_rounds
+       by mode, so they award neither base XP nor trophy XP;
+     - the milestones term counts high_scores_sp (LEAGUE) only — note the client
+       constants are inverted, TABLE_HS_PRACTICE = 'high_scores';
+     - Training never writes to `games`; it lives in training_sessions and has
+       its own summary screen.
+   __sqUnrankedXpMode() mirrors this on the client so the end-of-game screen
+   never promises XP the views will not award. */
+const SQ_XP = {
+  W: { point: 0.25, game: 30, gameWin: 50, matchWin: 150, milestone: 40 },
+  DIV: 46,          // level-curve divisor (re-tuned after full Classic-game coverage)
+  MAXLVL: 60,
+  levelForXp(xp){ xp = Math.max(0, Number(xp) || 0); return Math.min(this.MAXLVL, Math.floor(Math.sqrt(xp / this.DIV)) + 1); },
+  xpForLevel(l){ l = Math.max(1, l); return Math.round((l - 1) * (l - 1) * this.DIV); }, // cumulative XP to reach level l
+  titleForLevel(l){
+    if (l >= 60) return 'Immortal';
+    if (l >= 50) return 'Legend';
+    if (l >= 43) return 'Grandmaster';
+    if (l >= 35) return 'Master';
+    if (l >= 28) return 'Ace';
+    if (l >= 22) return 'Sniper';
+    if (l >= 15) return 'Sharpshooter';
+    if (l >= 10) return 'Marksman';
+    if (l >= 5)  return 'Amateur';
+    return 'Rookie';
+  },
+  progress(xp){
+    xp = Math.max(0, Number(xp) || 0);
+    const level = this.levelForXp(xp);
+    const cur = this.xpForLevel(level), next = this.xpForLevel(level + 1);
+    const into = Math.max(0, xp - cur), span = Math.max(1, next - cur);
+    return { xp, level, title: this.titleForLevel(level), into, span,
+             pct: Math.max(0, Math.min(1, into / span)),
+             toNext: Math.max(0, next - xp), atMax: level >= this.MAXLVL };
+  },
+  // Projected XP for a single finished game (for the live "+XP" preview).
+  gameXp({ points = 0, gameWon = false, matchWon = false, milestones = 0 } = {}){
+    return Math.r
+
+--- MATCH 3 @ 1500946 [1498346:1503557] ---
+dx < 0) return null;
+  const nextIdx = idx + 1;
+  if (nextIdx >= filters.length) return null;
+  const prev = filters[nextIdx];
+  if (!prev || prev.id === 'ALL' || prev.id === 'RECORDS' || prev.id === 'TODAY' || prev.id === 'YESTERDAY' || prev.id === 'THIS_WEEK') return null;
+  return prev;
+}
+
+renderFilters(filters, async f => {
+  currentFilter = f;
+
+  const reqId = ++__plReqSeq;
+  const label = (f && (f.label || f.id)) ? (f.label || f.id) : 'FILTER';
+
+  try {
+    rows = await __plWithTimeout(fetchRows(currentFilter), 8000);
+    if (reqId !== __plReqSeq) return;
+
+    if (!rows || !rows.length) {
+      tableMount.innerHTML = `<p class="tag">No games found for ${label}.</p>`;
+      return;
+    }
+
+    if (f.id === 'RECORDS') {
+      renderRecords(rows);
+    } else {
+      const prev = getPrevFilter(currentFilter);
+      await renderTable(rows, currentFilter, prev);
+    }
+  } catch (e) {
+    if (reqId !== __plReqSeq) return;
+    const msg = (e && (e.message || e.details || e.hint)) ? (e.message || e.details || e.hint) : String(e || '');
+    tableMount.innerHTML = `<p class="tag">Premier League failed to load for ${label}.</p><pre style="white-space:pre-wrap;opacity:.7;font-size:.75rem;margin-top:8px;">${__plEsc(msg).slice(0, 900)}</pre>`;
+  }
+});
+
+// Initial render = ALL TIME table
+const initialPrev = getPrevFilter(currentFilter);
+if (rows.length) {
+  await renderTable(rows, currentFilter, initialPrev);
+}
+  })();
+};
+
+// >>> PATCH:LATEST_SCORES_GAMES_TRUTH_V1 START
+// Latest Scores uses games history/cloud rows directly. Missing match_id must not demote 2+ player games to practice.
+// Latest Scores modal: overlay with # | Result | Date/Time + Official/Practice toggle + chart
+// ===== @JS:MODAL:LATEST_SCORES =====
+// [removed: openLatestScoresDialog base def] audit P5.3 batch 3 — shadowed by later canonical definition
+
+// [removed: openLatestScoresDialog base export] audit P5.3 batch 3 — shadowed by later canonical definition
+// <<< PATCH:LATEST_SCORES_GAMES_TRUTH_V1 END
+/* >>> PATCH:PHASE1_FIX57_LATEST_SCORES_CLOUD_TRUTH START
+   Latest Scores now uses getGamesForMode(mode) as the authoritative source.
+   Local completed-game cache is fallback-only and is not merged with cloud rows.
+   This prevents the same newly saved practice game appearing twice.
+<<< PATCH:PHASE1_FIX57_LATEST_SCORES_CLOUD_TRUTH END */
+
+/* =====================================================================
+   SQ XP — player experience & levels (source of truth: Supabase view
+   v_player_xp, which derives XP from all match/game history).
+   IMPORTANT: the weights in SQ_XP.W MUST match the v_player_xp SQL view
+   (points x0.25, game +30, game win +50, match win +150, milestone +40).
+   Level curve is owned here: level = floor(sqrt(xp / DIV)) + 1.
+   Scope: CLASSIC games only. The SQL views (v_ach_rounds / v_player_base_xp)
+   map board players by NAME via v_name_resolver (players + aliases) so EVERY
+   Classic game counts — not just those with match_players rows — and exclude
+   turbo/practice modes and guest/test names. Keep detectGame's per-game rules
+   in sync with v_ach_base.
+   No XP is earned outside ranked play:
+     - practice/turbo games are filtered out of v_player_base_xp AND v_ach_rounds
+       by mode, so they award neither base XP nor trophy XP;
+     - the milestones term counts high_scores_sp (LEAGUE) only — note the client
+       constants are inverted, TABLE_HS_PRACTICE = 'high_scores';
+     - Training never writes to `games`; it lives in training_sessions and has
+       its own summary screen.
+   __sqUnrankedXpMode() mirrors this on the client so the end-of-game screen
+   never promises XP the views will not award. */
+const SQ_XP = {
+  W: { point: 0.25, game: 30, gameWin: 50, matchWin: 150, milestone: 40 },
+  DIV: 46,          // level-curve divisor (re-tuned after full Classic-game coverage)
+  MAXLVL: 60,
+  levelForXp(xp){ xp = Math.max(0, Number(xp) || 0); return Math.min(this.MAXLVL, Math.floor(Math.sqrt(xp / this.DIV)) + 1); },
+  xpForLevel(l){ l = Math.max(1, l); return Math.round((l - 1) * (l - 1) * this.DIV); }, // cumulative XP to reach level l
+  titleForLevel(l){
+    if (l >= 60) return 'Immortal';
+    if (l >= 50) return 'Legend';
+    if (l >= 43) return 'Grandmaster';
+    if (l >= 35) return 'Master';
+    if (l >= 28) return 'Ace';
+    if (l >= 22) return 'Sniper';
+    if (l >= 15) return 'Sharpshooter';
+    if (l >= 10) return 'Marksman';
+    if (l >= 5)  return 'Amateur';
+    return 'Rookie';
+  },
+  progress(xp){
+    xp = Math.max(0, Number(xp) || 0);
+    const level = this.levelForXp(xp);
+    const cur = this.xpForLevel(level), next = this.xpForLevel(level + 1);
+    const into = Math.max(0, xp - cur), span = Math.max(1, next - cur);
+    return { xp, level, title: this.titleForLevel(level), into, span,
+             pct: Math.max(0, Math.min(1, into / span)),
+             toNext: Math.max(0, next - xp), atMax: level >= this.MAXLVL };
+  },
+  // Projected XP for a single finished game (for the live "+XP" preview).
+  gameXp({ points = 0, gameWon = false, matchWon = false, milestones = 0 } = {}){
+    return Math.round((Number(points) || 0) * this.W.point)
+      + this.W.game
+      + (gameWon ? this.W.gameWin : 0)
+      + (m
+
+--- MATCH 4 @ 1503983 [1501383:1506594] ---
+s. Keep detectGame's per-game rules
+   in sync with v_ach_base.
+   No XP is earned outside ranked play:
+     - practice/turbo games are filtered out of v_player_base_xp AND v_ach_rounds
+       by mode, so they award neither base XP nor trophy XP;
+     - the milestones term counts high_scores_sp (LEAGUE) only — note the client
+       constants are inverted, TABLE_HS_PRACTICE = 'high_scores';
+     - Training never writes to `games`; it lives in training_sessions and has
+       its own summary screen.
+   __sqUnrankedXpMode() mirrors this on the client so the end-of-game screen
+   never promises XP the views will not award. */
+const SQ_XP = {
+  W: { point: 0.25, game: 30, gameWin: 50, matchWin: 150, milestone: 40 },
+  DIV: 46,          // level-curve divisor (re-tuned after full Classic-game coverage)
+  MAXLVL: 60,
+  levelForXp(xp){ xp = Math.max(0, Number(xp) || 0); return Math.min(this.MAXLVL, Math.floor(Math.sqrt(xp / this.DIV)) + 1); },
+  xpForLevel(l){ l = Math.max(1, l); return Math.round((l - 1) * (l - 1) * this.DIV); }, // cumulative XP to reach level l
+  titleForLevel(l){
+    if (l >= 60) return 'Immortal';
+    if (l >= 50) return 'Legend';
+    if (l >= 43) return 'Grandmaster';
+    if (l >= 35) return 'Master';
+    if (l >= 28) return 'Ace';
+    if (l >= 22) return 'Sniper';
+    if (l >= 15) return 'Sharpshooter';
+    if (l >= 10) return 'Marksman';
+    if (l >= 5)  return 'Amateur';
+    return 'Rookie';
+  },
+  progress(xp){
+    xp = Math.max(0, Number(xp) || 0);
+    const level = this.levelForXp(xp);
+    const cur = this.xpForLevel(level), next = this.xpForLevel(level + 1);
+    const into = Math.max(0, xp - cur), span = Math.max(1, next - cur);
+    return { xp, level, title: this.titleForLevel(level), into, span,
+             pct: Math.max(0, Math.min(1, into / span)),
+             toNext: Math.max(0, next - xp), atMax: level >= this.MAXLVL };
+  },
+  // Projected XP for a single finished game (for the live "+XP" preview).
+  gameXp({ points = 0, gameWon = false, matchWon = false, milestones = 0 } = {}){
+    return Math.round((Number(points) || 0) * this.W.point)
+      + this.W.game
+      + (gameWon ? this.W.gameWin : 0)
+      + (matchWon ? this.W.matchWin : 0)
+      + (Number(milestones) || 0) * this.W.milestone;
+  },
+  _cache: null, _cacheAt: 0,
+  async all(force){
+    const now = Date.now();
+    if (!force && this._cache && (now - this._cacheAt) < 60000) return this._cache;
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return this._cache || [];
+    try{
+      const { data, error } = await SB.from('v_player_xp').select('*');
+      if (error || !Array.isArray(data)) return this._cache || [];
+      this._cache = data; this._cacheAt = now;
+      return data;
+    }catch(_){ return this._cache || []; }
+  },
+  async forName(name){
+    const rows = await this.all();
+    const n = String(name || '').trim().toLowerCase();
+    return rows.find(r => String(r.name || '').trim().toLowerCase() === n) || null;
+  },
+  fmt(n){ return (Number(n) || 0).toLocaleString(); }
+};
+window.SQ_XP = SQ_XP;
+
+// A reusable "LV n · TITLE" chip (inline-styled to match the stats hero).
+function __sqXpChip(prog){
+  const chip = document.createElement('span');
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;'
+    + 'background:linear-gradient(135deg,rgba(255,183,64,.28),rgba(255,122,24,.18));'
+    + 'border:1px solid rgba(255,183,64,.5);font-weight:900;font-size:12px;letter-spacing:.06em;'
+    + 'color:#ffe1b0;white-space:nowrap;';
+  const lv = document.createElement('b'); lv.textContent = 'LV ' + prog.level; lv.style.color = '#fff';
+  const ti = document.createElement('span'); ti.textContent = prog.title.toUpperCase(); ti.style.opacity = '.92';
+  chip.append(lv, ti);
+  return chip;
+}
+
+// A reusable XP progress bar with "x XP · y to Level n+1" caption.
+function __sqXpBar(prog){
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:12px;';
+  const top = document.createElement('div');
+  top.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;font-size:11px;'
+    + 'text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;';
+  const l = document.createElement('span'); l.className = 'muted'; l.textContent = SQ_XP.fmt(prog.xp) + ' XP';
+  const r = document.createElement('span'); r.className = 'muted';
+  r.textContent = prog.atMax ? 'MAX LEVEL' : (SQ_XP.fmt(prog.toNext) + ' to Level ' + (prog.level + 1));
+  top.append(l, r);
+  const track = document.createElement('div');
+  track.style.cssText = 'height:9px;border-radius:999px;background:rgba(0,0,0,.32);'
+    + 'border:1px solid rgba(255,255,255,.08);overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.style.cssText = 'height:100%;width:0;border-radius:999px;transition:width .7s cubic-bezier(.2,.8,.25,1);'
+    + 'background:linear-gradient(90deg,#ff7a18,#ffb14a);box-shadow:0 0 10px rgba(255,150,60,.6);';
+  track.appendChild(fill);
+  wrap.append(top, track);
+  requestAnimationFrame(() => { fill.style.width = Math.round(prog.pct * 100) + '%'; });
+  return wrap;
+}
+
+/* ===============================================
+COUNT_SHOWN=4
+
+===== TARGET: 'player_achievements' =====
+
+--- MATCH 1 @ 1506746 [1504146:1509365] ---
+ }catch(_){ return this._cache || []; }
+  },
+  async forName(name){
+    const rows = await this.all();
+    const n = String(name || '').trim().toLowerCase();
+    return rows.find(r => String(r.name || '').trim().toLowerCase() === n) || null;
+  },
+  fmt(n){ return (Number(n) || 0).toLocaleString(); }
+};
+window.SQ_XP = SQ_XP;
+
+// A reusable "LV n · TITLE" chip (inline-styled to match the stats hero).
+function __sqXpChip(prog){
+  const chip = document.createElement('span');
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;'
+    + 'background:linear-gradient(135deg,rgba(255,183,64,.28),rgba(255,122,24,.18));'
+    + 'border:1px solid rgba(255,183,64,.5);font-weight:900;font-size:12px;letter-spacing:.06em;'
+    + 'color:#ffe1b0;white-space:nowrap;';
+  const lv = document.createElement('b'); lv.textContent = 'LV ' + prog.level; lv.style.color = '#fff';
+  const ti = document.createElement('span'); ti.textContent = prog.title.toUpperCase(); ti.style.opacity = '.92';
+  chip.append(lv, ti);
+  return chip;
+}
+
+// A reusable XP progress bar with "x XP · y to Level n+1" caption.
+function __sqXpBar(prog){
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:12px;';
+  const top = document.createElement('div');
+  top.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;font-size:11px;'
+    + 'text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;';
+  const l = document.createElement('span'); l.className = 'muted'; l.textContent = SQ_XP.fmt(prog.xp) + ' XP';
+  const r = document.createElement('span'); r.className = 'muted';
+  r.textContent = prog.atMax ? 'MAX LEVEL' : (SQ_XP.fmt(prog.toNext) + ' to Level ' + (prog.level + 1));
+  top.append(l, r);
+  const track = document.createElement('div');
+  track.style.cssText = 'height:9px;border-radius:999px;background:rgba(0,0,0,.32);'
+    + 'border:1px solid rgba(255,255,255,.08);overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.style.cssText = 'height:100%;width:0;border-radius:999px;transition:width .7s cubic-bezier(.2,.8,.25,1);'
+    + 'background:linear-gradient(90deg,#ff7a18,#ffb14a);box-shadow:0 0 10px rgba(255,150,60,.6);';
+  track.appendChild(fill);
+  wrap.append(top, track);
+  requestAnimationFrame(() => { fill.style.width = Math.round(prog.pct * 100) + '%'; });
+  return wrap;
+}
+
+/* =====================================================================
+   SQ ACH — trophies / achievements catalogue + trophy case.
+   Counts & XP are the single source of truth in Supabase view
+   v_player_achievements (derived from all game history — auto-backfilled
+   and auto-updated as games are saved). This module holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Hit all three darts in every round of a game' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in one round' },
+    { code:'clutch',         name:'Clutc
+
+--- MATCH 2 @ 1507002 [1504402:1509621] ---
+ return (Number(n) || 0).toLocaleString(); }
+};
+window.SQ_XP = SQ_XP;
+
+// A reusable "LV n · TITLE" chip (inline-styled to match the stats hero).
+function __sqXpChip(prog){
+  const chip = document.createElement('span');
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;'
+    + 'background:linear-gradient(135deg,rgba(255,183,64,.28),rgba(255,122,24,.18));'
+    + 'border:1px solid rgba(255,183,64,.5);font-weight:900;font-size:12px;letter-spacing:.06em;'
+    + 'color:#ffe1b0;white-space:nowrap;';
+  const lv = document.createElement('b'); lv.textContent = 'LV ' + prog.level; lv.style.color = '#fff';
+  const ti = document.createElement('span'); ti.textContent = prog.title.toUpperCase(); ti.style.opacity = '.92';
+  chip.append(lv, ti);
+  return chip;
+}
+
+// A reusable XP progress bar with "x XP · y to Level n+1" caption.
+function __sqXpBar(prog){
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:12px;';
+  const top = document.createElement('div');
+  top.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;font-size:11px;'
+    + 'text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;';
+  const l = document.createElement('span'); l.className = 'muted'; l.textContent = SQ_XP.fmt(prog.xp) + ' XP';
+  const r = document.createElement('span'); r.className = 'muted';
+  r.textContent = prog.atMax ? 'MAX LEVEL' : (SQ_XP.fmt(prog.toNext) + ' to Level ' + (prog.level + 1));
+  top.append(l, r);
+  const track = document.createElement('div');
+  track.style.cssText = 'height:9px;border-radius:999px;background:rgba(0,0,0,.32);'
+    + 'border:1px solid rgba(255,255,255,.08);overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.style.cssText = 'height:100%;width:0;border-radius:999px;transition:width .7s cubic-bezier(.2,.8,.25,1);'
+    + 'background:linear-gradient(90deg,#ff7a18,#ffb14a);box-shadow:0 0 10px rgba(255,150,60,.6);';
+  track.appendChild(fill);
+  wrap.append(top, track);
+  requestAnimationFrame(() => { fill.style.width = Math.round(prog.pct * 100) + '%'; });
+  return wrap;
+}
+
+/* =====================================================================
+   SQ ACH — trophies / achievements catalogue + trophy case.
+   Counts & XP are the single source of truth in Supabase view
+   v_player_achievements (derived from all game history — auto-backfilled
+   and auto-updated as games are saved). This module holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Hit all three darts in every round of a game' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in one round' },
+    { code:'clutch',         name:'Clutch',             icon:'⏱️', tier:'gold',      xp:40,  desc:'Full house on the final round to win' },
+    { code:'iceman',         name:'Iceman',             icon:'🧊', tier:'gold',      xp:50,  desc:'Win a tiebreak game' },
+    { code:'shanghai',       name:
+
+--- MATCH 3 @ 1514711 [1512111:1517330] ---
+re 100+ in a single game' },
+    { code:'centurion',      name:'Centurion',          icon:'🏛️', tier:'legendary', xp:400, desc:'Play 250 games' },
+    { code:'trophy_hunter',  name:'Trophy Hunter',      icon:'🗃️', tier:'legendary', xp:350, desc:'Unlock 20 different trophies' },
+    { code:'triple_threat',  name:'Triple Threat',      icon:'⚡', tier:'gold',      xp:60,  desc:'Three triples in the Triples round' },
+    { code:'bull_run',       name:'Bull Run',           icon:'🐮', tier:'gold',      xp:60,  desc:'Three bulls in the Bull round' },
+    { code:'double_trouble', name:'Double Trouble',     icon:'🎲', tier:'gold',      xp:45,  desc:'Three doubles in the Doubles round' },
+    { code:'veteran',        name:'Veteran',            icon:'🎖️', tier:'gold',      xp:200, desc:'Play 100 games' },
+    { code:'collector',      name:'Collector',          icon:'🧰', tier:'gold',      xp:150, desc:'Unlock 10 different trophies' },
+    { code:'strong_finish',  name:'Strong Finish',      icon:'🏁', tier:'silver',    xp:40,  desc:'Score 100+ on the Bull round' },
+    { code:'regular',        name:'Regular',            icon:'📅', tier:'silver',    xp:100, desc:'Play 50 games' },
+    { code:'full_house',     name:'Full House',         icon:'🏠', tier:'bronze',    xp:12,  desc:'All three darts on target in a round' },
+    { code:'perfect_start',  name:'Perfect Start',      icon:'🚀', tier:'bronze',    xp:20,  desc:'Full house on the opening 10s round' },
+    { code:'dead_centre',    name:'Dead Centre',        icon:'🔴', tier:'bronze',    xp:5,   desc:'Hit the 50 bull' }
+  ],
+  meta(code){ return this.CATALOG.find(a => a.code === code) || { code, name: code, icon:'🎖️', tier:'bronze', desc:'' }; },
+  tierStyle(tier){
+    switch(tier){
+      case 'legendary': return { c:'#e9c6ff', b:'rgba(180,123,255,.6)', g:'linear-gradient(135deg,rgba(180,123,255,.30),rgba(120,60,200,.16))' };
+      case 'gold':      return { c:'#ffe1a6', b:'rgba(255,196,74,.55)', g:'linear-gradient(135deg,rgba(255,196,74,.26),rgba(255,140,40,.14))' };
+      case 'silver':    return { c:'#e4ecf7', b:'rgba(200,214,235,.5)', g:'linear-gradient(135deg,rgba(200,214,235,.20),rgba(150,170,200,.10))' };
+      default:          return { c:'#f0c9a6', b:'rgba(208,139,90,.5)', g:'linear-gradient(135deg,rgba(208,139,90,.20),rgba(160,100,60,.10))' };
+    }
+  },
+  _cache:{},
+  async forName(name){
+    try{
+      const xr = await SQ_XP.forName(name); if (!xr) return {};
+      const SB = window.sb || window.__sb || null;
+      if (!SB || typeof SB.from !== 'function') return {};
+      const { data, error } = await SB.from('v_player_achievements').select('code,cnt,xp').eq('player_id', xr.player_id);
+      if (error || !Array.isArray(data)) return {};
+      const map = {}; data.forEach(r => { map[r.code] = { cnt: Number(r.cnt) || 0, xp: Number(r.xp) || 0 }; });
+      return map;
+    }catch(_){ return {}; }
+  }
+};
+window.SQ_ACH = SQ_ACH;
+
+// Milestones are one-time unlocks (score PBs, career collections, volume,
+// meta); everything else is a repeatable Trophy you can stack.
+SQ_ACH.MILESTONES = new Set(['score_100','score_200','score_300','score_400','score_500','score_600','score_700','treble_sweep','double_sweep','bull_club','regular','veteran','centurion','collector','trophy_hunter']);
+SQ_ACH.isMilestone = function(code){ return SQ_ACH.MILESTONES.has(code); };
+
+// Everyone who has earned a given trophy, ranked by count (for the per-award
+// leaderboard shown when you tap a trophy).
+SQ_ACH.forCode = async function(code){
+  try{
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return [];
+    const [res, names] = await Promise.all([
+      SB.from('v_player_achievements').select('player_id,cnt,xp').eq('code', code),
+      SQ_XP.all()
+    ]);
+    const rows = (res && res.data) || [];
+    const nameMap = {}; (names || []).forEach(n => { nameMap[n.player_id] = n.name; });
+    return rows.map(r => ({ player_id: r.player_id, name: nameMap[r.player_id] || '—', cnt: Number(r.cnt) || 0, xp: Number(r.xp) || 0 }))
+      .filter(r => r.cnt > 0)
+      .sort((a, b) => (b.cnt - a.cnt) || (b.xp - a.xp));
+  }catch(_){ return []; }
+};
+
+// Trophy detail popup: how to earn it + a leaderboard of everyone who has it.
+async function __sqTrophyDetail(code, earnedMap){
+  const a = SQ_ACH.meta(code); const s = SQ_ACH.tierStyle(a.tier);
+  const got = (earnedMap && earnedMap[code]) || { cnt: 0 };
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal = document.createElement('div'); modal.className = 'modal';
+  modal.style.cssText = 'max-width:460px;width:92vw;max-height:86vh;overflow:hidden;';
+  const body = document.createElement('div'); body.className = 'modal-body'; body.style.cssText = 'overflow-y:auto;max-height:82vh;';
+  const milestone = SQ_ACH.isMilestone(code);
+  const tierName = (a.tier || 'bronze').toUpperCase() + (milestone ? ' · MILESTONE' : '');
+  const xpText = code === 'giant_slayer' ? 'Scales with the level gap' : ('+' + (a.xp || 0) + ' XP' + (milestone ? ' (one-time)' : ' each'));
+  const yours = milestone
+    ? (got.cnt > 0 ? 'Unlocked ✓' : 'Not yet unlocked')
+    : (got.cnt > 0 ? ('You’ve earned this ' + got.cnt 
+
+--- MATCH 4 @ 1515799 [1513199:1518418] ---
+      name:'Regular',            icon:'📅', tier:'silver',    xp:100, desc:'Play 50 games' },
+    { code:'full_house',     name:'Full House',         icon:'🏠', tier:'bronze',    xp:12,  desc:'All three darts on target in a round' },
+    { code:'perfect_start',  name:'Perfect Start',      icon:'🚀', tier:'bronze',    xp:20,  desc:'Full house on the opening 10s round' },
+    { code:'dead_centre',    name:'Dead Centre',        icon:'🔴', tier:'bronze',    xp:5,   desc:'Hit the 50 bull' }
+  ],
+  meta(code){ return this.CATALOG.find(a => a.code === code) || { code, name: code, icon:'🎖️', tier:'bronze', desc:'' }; },
+  tierStyle(tier){
+    switch(tier){
+      case 'legendary': return { c:'#e9c6ff', b:'rgba(180,123,255,.6)', g:'linear-gradient(135deg,rgba(180,123,255,.30),rgba(120,60,200,.16))' };
+      case 'gold':      return { c:'#ffe1a6', b:'rgba(255,196,74,.55)', g:'linear-gradient(135deg,rgba(255,196,74,.26),rgba(255,140,40,.14))' };
+      case 'silver':    return { c:'#e4ecf7', b:'rgba(200,214,235,.5)', g:'linear-gradient(135deg,rgba(200,214,235,.20),rgba(150,170,200,.10))' };
+      default:          return { c:'#f0c9a6', b:'rgba(208,139,90,.5)', g:'linear-gradient(135deg,rgba(208,139,90,.20),rgba(160,100,60,.10))' };
+    }
+  },
+  _cache:{},
+  async forName(name){
+    try{
+      const xr = await SQ_XP.forName(name); if (!xr) return {};
+      const SB = window.sb || window.__sb || null;
+      if (!SB || typeof SB.from !== 'function') return {};
+      const { data, error } = await SB.from('v_player_achievements').select('code,cnt,xp').eq('player_id', xr.player_id);
+      if (error || !Array.isArray(data)) return {};
+      const map = {}; data.forEach(r => { map[r.code] = { cnt: Number(r.cnt) || 0, xp: Number(r.xp) || 0 }; });
+      return map;
+    }catch(_){ return {}; }
+  }
+};
+window.SQ_ACH = SQ_ACH;
+
+// Milestones are one-time unlocks (score PBs, career collections, volume,
+// meta); everything else is a repeatable Trophy you can stack.
+SQ_ACH.MILESTONES = new Set(['score_100','score_200','score_300','score_400','score_500','score_600','score_700','treble_sweep','double_sweep','bull_club','regular','veteran','centurion','collector','trophy_hunter']);
+SQ_ACH.isMilestone = function(code){ return SQ_ACH.MILESTONES.has(code); };
+
+// Everyone who has earned a given trophy, ranked by count (for the per-award
+// leaderboard shown when you tap a trophy).
+SQ_ACH.forCode = async function(code){
+  try{
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return [];
+    const [res, names] = await Promise.all([
+      SB.from('v_player_achievements').select('player_id,cnt,xp').eq('code', code),
+      SQ_XP.all()
+    ]);
+    const rows = (res && res.data) || [];
+    const nameMap = {}; (names || []).forEach(n => { nameMap[n.player_id] = n.name; });
+    return rows.map(r => ({ player_id: r.player_id, name: nameMap[r.player_id] || '—', cnt: Number(r.cnt) || 0, xp: Number(r.xp) || 0 }))
+      .filter(r => r.cnt > 0)
+      .sort((a, b) => (b.cnt - a.cnt) || (b.xp - a.xp));
+  }catch(_){ return []; }
+};
+
+// Trophy detail popup: how to earn it + a leaderboard of everyone who has it.
+async function __sqTrophyDetail(code, earnedMap){
+  const a = SQ_ACH.meta(code); const s = SQ_ACH.tierStyle(a.tier);
+  const got = (earnedMap && earnedMap[code]) || { cnt: 0 };
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal = document.createElement('div'); modal.className = 'modal';
+  modal.style.cssText = 'max-width:460px;width:92vw;max-height:86vh;overflow:hidden;';
+  const body = document.createElement('div'); body.className = 'modal-body'; body.style.cssText = 'overflow-y:auto;max-height:82vh;';
+  const milestone = SQ_ACH.isMilestone(code);
+  const tierName = (a.tier || 'bronze').toUpperCase() + (milestone ? ' · MILESTONE' : '');
+  const xpText = code === 'giant_slayer' ? 'Scales with the level gap' : ('+' + (a.xp || 0) + ' XP' + (milestone ? ' (one-time)' : ' each'));
+  const yours = milestone
+    ? (got.cnt > 0 ? 'Unlocked ✓' : 'Not yet unlocked')
+    : (got.cnt > 0 ? ('You’ve earned this ' + got.cnt + '×') : 'You haven’t earned this yet');
+  body.innerHTML =
+    '<div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:' + s.g + ';border:1px solid ' + s.b + ';">'
+    + '<div style="font-size:40px;line-height:1">' + a.icon + '</div>'
+    + '<div style="min-width:0"><div style="font-weight:900;font-size:20px;color:#fff">' + a.name + '</div>'
+    + '<div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:' + s.c + '">' + tierName + ' · ' + xpText + '</div></div></div>'
+    + '<div style="margin:14px 2px 4px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">How to earn</div>'
+    + '<div style="font-size:15px;font-weight:600;margin:0 2px 10px">' + a.desc + '.</div>'
+    + '<div style="font-size:12px;font-weight:800;margin:0 2px 12px;color:' + (got.cnt>0 ? '#7be0a0' : 'var(--v3-muted,#98a2b8)') + '">' + yours + '</div>'
+    + '<div style="margin:6px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">Trophy leaderboard</div>'
+    + '<p class="muted" id="trophyLbLoading
+
+--- MATCH 5 @ 1520748 [1518148:1523367] ---
+x;color:' + (got.cnt>0 ? '#7be0a0' : 'var(--v3-muted,#98a2b8)') + '">' + yours + '</div>'
+    + '<div style="margin:6px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">Trophy leaderboard</div>'
+    + '<p class="muted" id="trophyLbLoading" style="font-size:13px">Loading…</p>';
+  modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
+  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0; modal.focus();
+  const rows = await SQ_ACH.forCode(code);
+  const loading = body.querySelector('#trophyLbLoading'); if (loading) loading.remove();
+  if (!rows.length){
+    const p = document.createElement('p'); p.className = 'muted'; p.style.fontSize = '13px';
+    p.textContent = 'No one has earned this yet — be the first!'; body.appendChild(p);
+  } else {
+    const list = document.createElement('div'); list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+    const medal = i => i === 0 ? '#ffd24a' : i === 1 ? '#cbd5e1' : i === 2 ? '#d08b5a' : 'var(--v3-muted,#98a2b8)';
+    rows.forEach((r, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);';
+      const rk = document.createElement('span'); rk.textContent = '#' + (i + 1); rk.style.cssText = 'font-weight:900;min-width:30px;color:' + medal(i);
+      const nm = document.createElement('span'); nm.textContent = r.name; nm.style.cssText = 'flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      const ct = document.createElement('span');
+      ct.textContent = milestone ? '✓' : ('×' + r.cnt);
+      ct.style.cssText = 'font-weight:900;color:' + (milestone ? '#2fd06b' : '#ffb14a') + ';';
+      row.append(rk, nm, ct); list.appendChild(row);
+    });
+    body.appendChild(list);
+  }
+  const foot = document.createElement('div'); foot.style.cssText = 'margin-top:14px;text-align:center;';
+  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Close'; cb.onclick = () => overlay.remove();
+  foot.appendChild(cb); body.appendChild(foot);
+}
+
+// Per-game trophy detector for live celebration toasts. Mirrors the SQL rules
+// in v_ach_rounds / v_player_achievements (per-round, per-game, streak, 2p feats).
+// Career/match feats (sweeps, giant_slayer, champion, nemesis) are cross-game and
+// surface via the trophy case, not here. board = array[player] of array[round] of
+// { darts:[{kind,points}], roundTotal }.  opts: { players, is_tiebreak }.
+SQ_ACH.detectGame = function(board, opts){
+  opts = opts || {};
+  const players = opts.players || [];
+  const norm = d => {
+    const k = (d && d.kind) || 'Miss';
+    if (k === 'S') return 'single';
+    if (k === 'D' || k === 'Double') return 'double';
+    if (k === 'T' || k === 'Triple') return 'treble';
+    if (k === 'B' || k === 'Bull') return 'bull';
+    return 'miss';
+  };
+  if (!Array.isArray(board) || !board.length) return [];
+  const totals = board.map(rs => (rs || []).reduce((s, r) => s + (Number(r && r.roundTotal) || 0), 0));
+  const maxTotal = Math.max.apply(null, totals.concat([0]));
+  const out = [];
+  for (let p = 0; p < board.length; p++){
+    const rounds = board[p] || [];
+    const earned = {}; const add = (c, n) => { earned[c] = (earned[c] || 0) + (n || 1); };
+    let totMiss = 0, totDarts = 0, centuryRounds = 0, scoredRounds = 0, best = 0, run = 0;
+    let finalFh = false;
+    for (let ri = 0; ri < rounds.length; ri++){
+      const r = rounds[ri] || {}; const darts = r.darts || [];
+      let tre = 0, dou = 0, sin = 0, b50 = 0, bany = 0;
+      darts.forEach(d => { const nk = norm(d); if (nk === 'treble') tre++; else if (nk === 'double') dou++; else if (nk === 'single') sin++; else if (nk === 'bull'){ bany++; if ((Number(d.points) || 0) === 50) b50++; } });
+      const mis = darts.filter(d => norm(d) === 'miss' || (Number(d && d.points) || 0) === 0).length;
+      const rtot = Number(r.roundTotal) || 0;
+      const target = ri <= 10 ? 10 + ri : null;
+      const rmax = ri <= 10 ? 9 * (10 + ri) : (ri === 11 ? 120 : ri === 12 ? 180 : 150);
+      totMiss += mis; totDarts += darts.length;
+      if (rtot > 0) scoredRounds++;
+      const fh = (mis === 0 && darts.length === 3);
+      run = fh ? run + 1 : 0; if (run > best) best = run;
+      if (ri === 13) finalFh = fh;
+      if (rtot === 180) add('the_180');
+      else if (rtot === rmax && darts.length === 3) add('maximum');
+      if (tre === 3) add('treble_trouble');
+      if (dou === 3) add('double_down');
+      if (fh) add('full_house');
+      if (rtot >= 100 && rtot < 180){ add('century'); centuryRounds++; }
+      if (target != null && sin === 1 && dou === 1 && tre === 1) add('shanghai');
+      if (target != null && sin === 2 && dou === 1 && tre === 0 && mis === 0) add('desmond');
+      if (target != null && tre >
+COUNT_SHOWN=5
+
+===== TARGET: 'Player Stats' =====
+
+--- MATCH 1 @ 24149 [21549:26761] ---
+      • @JS:UI:LIVE_UPDATES_VIDE   — ticker / alerts / NEW PLAYER announcements
+       • @JS:UI:GAMEPLAY:AUTOSCROLL — keep last rounds visible above pad
+       • @JS:UI:GAMEPLAY:THROWPAD   — throw pad builder (S/D/T/Bull)
+       • @JS:MODAL:LATEST_SCORES    — League & Ranks > Latest Scores (Official/Practice)
+       • @JS:MODAL:LEAGUE_RANKINGS  — Power Rankings / Premier League / High Score League / Top 50 / Round HS
+       • @JS:UI:STATS_ROUTER        — Home vs In‑game Stats back routing
+
+     Known fragile areas (treat as “edit-with-care”):
+       • Practice vs Official classification: prefer DB truth (match_id null) + support legacy mode="unofficial"
+       • Player identity migration (name → UUID): keep player_id mapped in games.state.players to avoid stats gaps
+       • Throw pad layouts (D/T/Bull): keep flex/full-width behavior consistent with number rounds
+       • Ticker “VIDE” alerts: keep formatting logic centralized (avoid duplicate escapeHtml/playerNameFrom helpers)
+===================================================================== -->
+
+<!-- Supabase JS v2 -->
+<!-- >>> PATCH:MOT_SYSTEM_INVENTORY_V1 START
+     SYSTEM INVENTORY & DEPENDENCY MAP (read-only)
+     Purpose: single source-of-truth documentation for screens, flows, and Supabase touchpoints.
+
+     Screens (router: body[data-page])
+       - details      Home / Start
+       - players      Match setup
+       - game         Live gameplay (Live V2)
+       - leaderboard  End-of-match leaderboard
+
+     Primary flows
+       1) details -> players -> game -> leaderboard
+       2) details -> Player Hub / Stats / League & Ranks -> modal(s) -> close -> details
+       3) game -> Settings -> modal(s) -> back/close -> game
+
+     Authoritative data (Supabase)
+       Tables / views referenced in this build:
+       - games (TABLE_GAMES)
+       - matches (TABLE_MATCHES)
+       - player_games_union (TABLE_PLAYER_GAMES) [read view/union]
+       - high_scores_sp (TABLE_HS_LEAGUE) [official high-score league]
+       - high_scores (TABLE_HS_PRACTICE) [practice/high score storage]
+       - v_pb_by_player_round (TABLE_PB_ROUNDS)
+       - v_wr_by_round (TABLE_WR_ROUNDS)
+       - v_round_high_scores_modal (Round High Scores modal view)
+       - v_top50_scores_official (Top 50 Scores modal view)
+
+     @SUPABASE:VIEW_DEPENDENCY_INVENTORY
+     Production-facing Supabase dependencies observed in this file. This is a map only:
+     do not create browser fallbacks for ranked/historical stats unless explicitly documented.
+
+     - games
+       Used by: gameplay cloud load/save/archive/purge, normalized game fetchers, Player Stats profile fallback aggregates,
+                PB/WR admin snapshots, legacy league/high-score paths.
+       Required columns visible in code: id, created_at, archived_at, state, totals, match_id, game_number, finished, mode.
+       Missing-data behaviour: cloud read errors surface through callers or leave the relevant UI empty/unavailable.
+       Browser role: allowed to normalize/load gameplay records; should not be used for new ranked/stat history aggregation.
+       Materialized/refresh: table, no refresh.
+
+     - v_games_visible
+       Used by: Home Live Updates ticker visible-game fetchers.
+       Required columns visible in code: id, created_at, archived_at, state, totals, match_id, game_number.
+       Missing-data behaviour: fetch throws; ticker/start screen remains usable via caller guards.
+       Browser role: display/delta-load visible games only.
+       Materialized/refresh: needs verification.
+
+     - matches
+       Used by: cloudFetchAllMatchesAsLocal(), getMatchesOfficial().
+       Required columns visible in code: not fully visible in this inventory block; needs verification.
+       Missing-data behaviour: cloud probe marks failure/missing; match-dependent UI degrades.
+       Browser role: display/load match metadata only.
+       Materialized/refresh: table, no refresh.
+
+     - high_scores_sp / high_scores
+       Used by: official/practice high-score storage, legacy latest/high-score recovery paths.
+       Required columns visible in code: player_id, name, score, ts, game_id.
+       Missing-data behaviour: guarded by cloud probes/table-missing map; affected UI shows empty/unavailable.
+       Browser role: display/recover stored high scores; do not derive new ranked leagues from partial UI state.
+       Materialized/refresh: table or table|view depending deployment; needs verification.
+
+     - high_score_league_official
+       Used by: Home High Score League mini card.
+       Required columns visible in code: player, best_score, best_ts.
+       Missing-data behaviour: silent catch; home remains usable, card can show no data.
+       Browser role: display already-ranked/aggregated rows only.
+       Materialized/refresh: needs verification.
+
+     - v_power_rankings_last56_official_clean / v_power_rankings_last56_turbo_clean / v_power_rankings_last56_practice_clean
+       Used by: Home Power Rankings, Player Stats hero current Power Rank, Power Rankings modal/source.
+       Required columns visible in code: player, rounds_used, total_points, avg_per_round, last_played_at.
+       Missing-data behaviour: warnings/unavailable UI; active ranking fa
+
+--- MATCH 2 @ 26514 [23914:29126] ---
+ observed in this file. This is a map only:
+     do not create browser fallbacks for ranked/historical stats unless explicitly documented.
+
+     - games
+       Used by: gameplay cloud load/save/archive/purge, normalized game fetchers, Player Stats profile fallback aggregates,
+                PB/WR admin snapshots, legacy league/high-score paths.
+       Required columns visible in code: id, created_at, archived_at, state, totals, match_id, game_number, finished, mode.
+       Missing-data behaviour: cloud read errors surface through callers or leave the relevant UI empty/unavailable.
+       Browser role: allowed to normalize/load gameplay records; should not be used for new ranked/stat history aggregation.
+       Materialized/refresh: table, no refresh.
+
+     - v_games_visible
+       Used by: Home Live Updates ticker visible-game fetchers.
+       Required columns visible in code: id, created_at, archived_at, state, totals, match_id, game_number.
+       Missing-data behaviour: fetch throws; ticker/start screen remains usable via caller guards.
+       Browser role: display/delta-load visible games only.
+       Materialized/refresh: needs verification.
+
+     - matches
+       Used by: cloudFetchAllMatchesAsLocal(), getMatchesOfficial().
+       Required columns visible in code: not fully visible in this inventory block; needs verification.
+       Missing-data behaviour: cloud probe marks failure/missing; match-dependent UI degrades.
+       Browser role: display/load match metadata only.
+       Materialized/refresh: table, no refresh.
+
+     - high_scores_sp / high_scores
+       Used by: official/practice high-score storage, legacy latest/high-score recovery paths.
+       Required columns visible in code: player_id, name, score, ts, game_id.
+       Missing-data behaviour: guarded by cloud probes/table-missing map; affected UI shows empty/unavailable.
+       Browser role: display/recover stored high scores; do not derive new ranked leagues from partial UI state.
+       Materialized/refresh: table or table|view depending deployment; needs verification.
+
+     - high_score_league_official
+       Used by: Home High Score League mini card.
+       Required columns visible in code: player, best_score, best_ts.
+       Missing-data behaviour: silent catch; home remains usable, card can show no data.
+       Browser role: display already-ranked/aggregated rows only.
+       Materialized/refresh: needs verification.
+
+     - v_power_rankings_last56_official_clean / v_power_rankings_last56_turbo_clean / v_power_rankings_last56_practice_clean
+       Used by: Home Power Rankings, Player Stats hero current Power Rank, Power Rankings modal/source.
+       Required columns visible in code: player, rounds_used, total_points, avg_per_round, last_played_at.
+       Missing-data behaviour: warnings/unavailable UI; active ranking fails closed if the clean view is missing or empty.
+       Browser role: display/filter DB-derived current rankings; browser applies saved-player and active-14-day filters where coded.
+       Materialized/refresh: needs verification.
+
+     - v_power_rank_last56_ranked
+       Used by: not referenced in this file as of this inventory.
+       Required columns visible in code: none.
+       Missing-data behaviour: n/a.
+       Browser role: n/a.
+       Materialized/refresh: n/a.
+
+     - v_top50_scores_official
+       Used by: canonical Top 50 Scores Official tab.
+       Required columns visible in code: player_name, score, rounds, avg_round, ts.
+       Missing-data behaviour: Top 50 modal shows "Required Supabase view/data source is missing or empty."
+       Browser role: display DB-derived Top 50 rows only; no game-history reconstruction.
+       Materialized/refresh: needs verification.
+
+     - v_top50_scores_practice
+       Used by: canonical Top 50 Scores Practice tab.
+       Required columns visible in code: player_name, score, rounds, avg_round, ts.
+       Missing-data behaviour: Top 50 modal shows "Required Supabase view/data source is missing or empty."
+       Browser role: display DB-derived Top 50 rows only.
+       Materialized/refresh: needs verification.
+
+     - v_round_high_scores_modal
+       Used by: Round High Scores modal and PB/WR admin enrichment.
+       Required columns visible in code: round_key, wr, darts, holder, tie_idx; other modal paths may select *.
+       Missing-data behaviour: modal/admin code shows no rows or falls back where guarded.
+       Browser role: display/enrich DB-derived round records; avoid inventing WR/PB rows.
+       Materialized/refresh: needs verification.
+
+     - v_pb_by_player_round
+       Used by: Live V2 PB edging, PB/GR admin, player/round record snapshots.
+       Required columns visible in code: bucket_key, round_key, pb_points; comments also mention player, cat, val, game_id, ridx, ts.
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived PB records; limited snapshot merging only in existing code.
+       Materialized/refresh: needs verification.
+
+     - v_wr_by_round
+       Used by: Live V2 WR edging, PB/GR admin, round record snapshots.
+       Required columns visible in code: round_key, wr_po
+
+--- MATCH 3 @ 29923 [27323:32535] ---
+       Required columns visible in code: player_name, score, rounds, avg_round, ts.
+       Missing-data behaviour: Top 50 modal shows "Required Supabase view/data source is missing or empty."
+       Browser role: display DB-derived Top 50 rows only; no game-history reconstruction.
+       Materialized/refresh: needs verification.
+
+     - v_top50_scores_practice
+       Used by: canonical Top 50 Scores Practice tab.
+       Required columns visible in code: player_name, score, rounds, avg_round, ts.
+       Missing-data behaviour: Top 50 modal shows "Required Supabase view/data source is missing or empty."
+       Browser role: display DB-derived Top 50 rows only.
+       Materialized/refresh: needs verification.
+
+     - v_round_high_scores_modal
+       Used by: Round High Scores modal and PB/WR admin enrichment.
+       Required columns visible in code: round_key, wr, darts, holder, tie_idx; other modal paths may select *.
+       Missing-data behaviour: modal/admin code shows no rows or falls back where guarded.
+       Browser role: display/enrich DB-derived round records; avoid inventing WR/PB rows.
+       Materialized/refresh: needs verification.
+
+     - v_pb_by_player_round
+       Used by: Live V2 PB edging, PB/GR admin, player/round record snapshots.
+       Required columns visible in code: bucket_key, round_key, pb_points; comments also mention player, cat, val, game_id, ridx, ts.
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived PB records; limited snapshot merging only in existing code.
+       Materialized/refresh: needs verification.
+
+     - v_wr_by_round
+       Used by: Live V2 WR edging, PB/GR admin, round record snapshots.
+       Required columns visible in code: round_key, wr_points; comments also mention cat, val, player, game_id, ridx, ts.
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived WR records.
+       Materialized/refresh: needs verification.
+
+     - v_player_games_union_visible
+       Used by: TABLE_PLAYER_GAMES / player stats windows contract.
+       Required columns visible in code: not fully visible at reference point; needs verification.
+       Missing-data behaviour: cloud probe marks failure/missing; stats windows should surface empty/unavailable states.
+       Browser role: display/limited player game windows; avoid new full-history ranking aggregation.
+       Materialized/refresh: needs verification.
+
+     - v_player_best_official_ranked
+       Used by: Player Stats profile Quick Stats / Highest Score rank.
+       Required columns visible in code: player_name, best_score, best_score_pos.
+       Missing-data behaviour: warning logged; profile falls back to existing score values without DB rank.
+       Browser role: display DB-derived rank only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_targets
+       Used by: Player Stats profile Targets card.
+       Required columns visible in code: player_key, favorite_number, favorite_pct, worst_number, worst_pct.
+       Missing-data behaviour: warning logged; card shows placeholder/available existing values.
+       Browser role: display DB-derived recent target summary only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_target_rates
+       Used by: Player Stats profile top/bottom target-rate detail (Favourite/Weakest Numbers top-3).
+       Required columns visible in code: player_key, target_n, hit_pct, throws.
+       Missing-data behaviour: silently treated as optional; card falls back to v_player_last30_targets fav/worst.
+       Browser role: display DB-derived recent target rates only.
+       Source: plain VIEW over throw_events_v + round_hit_counts_v, same last-30-games window as
+               v_player_last30_targets (its per-target CTE, un-collapsed). Always live, not materialized.
+
+     - v_player_target_streaks
+       Used by: Player Stats Quick Stats Dart/Round Streak, Streak League.
+       Required columns visible in code: player_key, player_name, mode_key, mode_label, dart_streak, round_streak,
+                                  source_games, last_played_at.
+       Missing-data behaviour: Streak League shows required-view missing/empty state; Player Stats shows placeholder if unavailable.
+       Browser role: display DB-derived streaks/ranks only; do not calculate streaks from full history in browser.
+       Materialized/refresh: intended DB-derived streak view; materialized/refresh status needs verification in this file.
+
+     - v_player_target_hit_pct
+       Used by: Target Hit % heatmap/table, Target Hit % G Rank lookup.
+       Required columns visible in code: player_key, player_name, target_key, target_label, target_sort, throws, hits,
+                                  hit_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Hit % unavailable message; SPIDER/PROGRESS disabled until rows exist.
+       Browser role: display DB-derived aggregate hit rates; browser may compute personal rank from returned 14 rows only.
+       Materialized/refresh: wrapper/view status needs ve
+
+--- MATCH 4 @ 30316 [27716:32928] ---
+50 Scores Practice tab.
+       Required columns visible in code: player_name, score, rounds, avg_round, ts.
+       Missing-data behaviour: Top 50 modal shows "Required Supabase view/data source is missing or empty."
+       Browser role: display DB-derived Top 50 rows only.
+       Materialized/refresh: needs verification.
+
+     - v_round_high_scores_modal
+       Used by: Round High Scores modal and PB/WR admin enrichment.
+       Required columns visible in code: round_key, wr, darts, holder, tie_idx; other modal paths may select *.
+       Missing-data behaviour: modal/admin code shows no rows or falls back where guarded.
+       Browser role: display/enrich DB-derived round records; avoid inventing WR/PB rows.
+       Materialized/refresh: needs verification.
+
+     - v_pb_by_player_round
+       Used by: Live V2 PB edging, PB/GR admin, player/round record snapshots.
+       Required columns visible in code: bucket_key, round_key, pb_points; comments also mention player, cat, val, game_id, ridx, ts.
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived PB records; limited snapshot merging only in existing code.
+       Materialized/refresh: needs verification.
+
+     - v_wr_by_round
+       Used by: Live V2 WR edging, PB/GR admin, round record snapshots.
+       Required columns visible in code: round_key, wr_points; comments also mention cat, val, player, game_id, ridx, ts.
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived WR records.
+       Materialized/refresh: needs verification.
+
+     - v_player_games_union_visible
+       Used by: TABLE_PLAYER_GAMES / player stats windows contract.
+       Required columns visible in code: not fully visible at reference point; needs verification.
+       Missing-data behaviour: cloud probe marks failure/missing; stats windows should surface empty/unavailable states.
+       Browser role: display/limited player game windows; avoid new full-history ranking aggregation.
+       Materialized/refresh: needs verification.
+
+     - v_player_best_official_ranked
+       Used by: Player Stats profile Quick Stats / Highest Score rank.
+       Required columns visible in code: player_name, best_score, best_score_pos.
+       Missing-data behaviour: warning logged; profile falls back to existing score values without DB rank.
+       Browser role: display DB-derived rank only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_targets
+       Used by: Player Stats profile Targets card.
+       Required columns visible in code: player_key, favorite_number, favorite_pct, worst_number, worst_pct.
+       Missing-data behaviour: warning logged; card shows placeholder/available existing values.
+       Browser role: display DB-derived recent target summary only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_target_rates
+       Used by: Player Stats profile top/bottom target-rate detail (Favourite/Weakest Numbers top-3).
+       Required columns visible in code: player_key, target_n, hit_pct, throws.
+       Missing-data behaviour: silently treated as optional; card falls back to v_player_last30_targets fav/worst.
+       Browser role: display DB-derived recent target rates only.
+       Source: plain VIEW over throw_events_v + round_hit_counts_v, same last-30-games window as
+               v_player_last30_targets (its per-target CTE, un-collapsed). Always live, not materialized.
+
+     - v_player_target_streaks
+       Used by: Player Stats Quick Stats Dart/Round Streak, Streak League.
+       Required columns visible in code: player_key, player_name, mode_key, mode_label, dart_streak, round_streak,
+                                  source_games, last_played_at.
+       Missing-data behaviour: Streak League shows required-view missing/empty state; Player Stats shows placeholder if unavailable.
+       Browser role: display DB-derived streaks/ranks only; do not calculate streaks from full history in browser.
+       Materialized/refresh: intended DB-derived streak view; materialized/refresh status needs verification in this file.
+
+     - v_player_target_hit_pct
+       Used by: Target Hit % heatmap/table, Target Hit % G Rank lookup.
+       Required columns visible in code: player_key, player_name, target_key, target_label, target_sort, throws, hits,
+                                  hit_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Hit % unavailable message; SPIDER/PROGRESS disabled until rows exist.
+       Browser role: display DB-derived aggregate hit rates; browser may compute personal rank from returned 14 rows only.
+       Materialized/refresh: wrapper/view status needs verification; do not infer from points.
+
+     - v_player_target_points_pct
+       Used by: Target Points % table.
+       Required columns visible in code: player_key, player_name, target_number, target_label, throws, actual_points,
+                                  max_points, points_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Points % unavailable
+
+--- MATCH 5 @ 30727 [28127:33339] ---
+n enrichment.
+       Required columns visible in code: round_key, wr, darts, holder, tie_idx; other modal paths may select *.
+       Missing-data behaviour: modal/admin code shows no rows or falls back where guarded.
+       Browser role: display/enrich DB-derived round records; avoid inventing WR/PB rows.
+       Materialized/refresh: needs verification.
+
+     - v_pb_by_player_round
+       Used by: Live V2 PB edging, PB/GR admin, player/round record snapshots.
+       Required columns visible in code: bucket_key, round_key, pb_points; comments also mention player, cat, val, game_id, ridx, ts.
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived PB records; limited snapshot merging only in existing code.
+       Materialized/refresh: needs verification.
+
+     - v_wr_by_round
+       Used by: Live V2 WR edging, PB/GR admin, round record snapshots.
+       Required columns visible in code: round_key, wr_points; comments also mention cat, val, player, game_id, ridx, ts.
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived WR records.
+       Materialized/refresh: needs verification.
+
+     - v_player_games_union_visible
+       Used by: TABLE_PLAYER_GAMES / player stats windows contract.
+       Required columns visible in code: not fully visible at reference point; needs verification.
+       Missing-data behaviour: cloud probe marks failure/missing; stats windows should surface empty/unavailable states.
+       Browser role: display/limited player game windows; avoid new full-history ranking aggregation.
+       Materialized/refresh: needs verification.
+
+     - v_player_best_official_ranked
+       Used by: Player Stats profile Quick Stats / Highest Score rank.
+       Required columns visible in code: player_name, best_score, best_score_pos.
+       Missing-data behaviour: warning logged; profile falls back to existing score values without DB rank.
+       Browser role: display DB-derived rank only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_targets
+       Used by: Player Stats profile Targets card.
+       Required columns visible in code: player_key, favorite_number, favorite_pct, worst_number, worst_pct.
+       Missing-data behaviour: warning logged; card shows placeholder/available existing values.
+       Browser role: display DB-derived recent target summary only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_target_rates
+       Used by: Player Stats profile top/bottom target-rate detail (Favourite/Weakest Numbers top-3).
+       Required columns visible in code: player_key, target_n, hit_pct, throws.
+       Missing-data behaviour: silently treated as optional; card falls back to v_player_last30_targets fav/worst.
+       Browser role: display DB-derived recent target rates only.
+       Source: plain VIEW over throw_events_v + round_hit_counts_v, same last-30-games window as
+               v_player_last30_targets (its per-target CTE, un-collapsed). Always live, not materialized.
+
+     - v_player_target_streaks
+       Used by: Player Stats Quick Stats Dart/Round Streak, Streak League.
+       Required columns visible in code: player_key, player_name, mode_key, mode_label, dart_streak, round_streak,
+                                  source_games, last_played_at.
+       Missing-data behaviour: Streak League shows required-view missing/empty state; Player Stats shows placeholder if unavailable.
+       Browser role: display DB-derived streaks/ranks only; do not calculate streaks from full history in browser.
+       Materialized/refresh: intended DB-derived streak view; materialized/refresh status needs verification in this file.
+
+     - v_player_target_hit_pct
+       Used by: Target Hit % heatmap/table, Target Hit % G Rank lookup.
+       Required columns visible in code: player_key, player_name, target_key, target_label, target_sort, throws, hits,
+                                  hit_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Hit % unavailable message; SPIDER/PROGRESS disabled until rows exist.
+       Browser role: display DB-derived aggregate hit rates; browser may compute personal rank from returned 14 rows only.
+       Materialized/refresh: wrapper/view status needs verification; do not infer from points.
+
+     - v_player_target_points_pct
+       Used by: Target Points % table.
+       Required columns visible in code: player_key, player_name, target_number, target_label, throws, actual_points,
+                                  max_points, points_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Points % unavailable message; actions disabled until rows exist.
+       Browser role: display DB-derived aggregate points efficiency; no full-history reconstruction.
+       Materialized/refresh: wrapper/view status needs verification.
+
+     - v_player_target_hit_progress
+       Used by: Target Hit % Progress graph.
+       Required columns visible in code: player_key, player_name, game_id, created_at, target_key, target_label,
+ 
+
+--- MATCH 6 @ 31325 [28725:33937] ---
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived PB records; limited snapshot merging only in existing code.
+       Materialized/refresh: needs verification.
+
+     - v_wr_by_round
+       Used by: Live V2 WR edging, PB/GR admin, round record snapshots.
+       Required columns visible in code: round_key, wr_points; comments also mention cat, val, player, game_id, ridx, ts.
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived WR records.
+       Materialized/refresh: needs verification.
+
+     - v_player_games_union_visible
+       Used by: TABLE_PLAYER_GAMES / player stats windows contract.
+       Required columns visible in code: not fully visible at reference point; needs verification.
+       Missing-data behaviour: cloud probe marks failure/missing; stats windows should surface empty/unavailable states.
+       Browser role: display/limited player game windows; avoid new full-history ranking aggregation.
+       Materialized/refresh: needs verification.
+
+     - v_player_best_official_ranked
+       Used by: Player Stats profile Quick Stats / Highest Score rank.
+       Required columns visible in code: player_name, best_score, best_score_pos.
+       Missing-data behaviour: warning logged; profile falls back to existing score values without DB rank.
+       Browser role: display DB-derived rank only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_targets
+       Used by: Player Stats profile Targets card.
+       Required columns visible in code: player_key, favorite_number, favorite_pct, worst_number, worst_pct.
+       Missing-data behaviour: warning logged; card shows placeholder/available existing values.
+       Browser role: display DB-derived recent target summary only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_target_rates
+       Used by: Player Stats profile top/bottom target-rate detail (Favourite/Weakest Numbers top-3).
+       Required columns visible in code: player_key, target_n, hit_pct, throws.
+       Missing-data behaviour: silently treated as optional; card falls back to v_player_last30_targets fav/worst.
+       Browser role: display DB-derived recent target rates only.
+       Source: plain VIEW over throw_events_v + round_hit_counts_v, same last-30-games window as
+               v_player_last30_targets (its per-target CTE, un-collapsed). Always live, not materialized.
+
+     - v_player_target_streaks
+       Used by: Player Stats Quick Stats Dart/Round Streak, Streak League.
+       Required columns visible in code: player_key, player_name, mode_key, mode_label, dart_streak, round_streak,
+                                  source_games, last_played_at.
+       Missing-data behaviour: Streak League shows required-view missing/empty state; Player Stats shows placeholder if unavailable.
+       Browser role: display DB-derived streaks/ranks only; do not calculate streaks from full history in browser.
+       Materialized/refresh: intended DB-derived streak view; materialized/refresh status needs verification in this file.
+
+     - v_player_target_hit_pct
+       Used by: Target Hit % heatmap/table, Target Hit % G Rank lookup.
+       Required columns visible in code: player_key, player_name, target_key, target_label, target_sort, throws, hits,
+                                  hit_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Hit % unavailable message; SPIDER/PROGRESS disabled until rows exist.
+       Browser role: display DB-derived aggregate hit rates; browser may compute personal rank from returned 14 rows only.
+       Materialized/refresh: wrapper/view status needs verification; do not infer from points.
+
+     - v_player_target_points_pct
+       Used by: Target Points % table.
+       Required columns visible in code: player_key, player_name, target_number, target_label, throws, actual_points,
+                                  max_points, points_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Points % unavailable message; actions disabled until rows exist.
+       Browser role: display DB-derived aggregate points efficiency; no full-history reconstruction.
+       Materialized/refresh: wrapper/view status needs verification.
+
+     - v_player_target_hit_progress
+       Used by: Target Hit % Progress graph.
+       Required columns visible in code: player_key, player_name, game_id, created_at, target_key, target_label,
+                                  target_sort, throws, hits, hit_pct.
+       Missing-data behaviour: progress popup shows "Progress data is not available yet..."
+       Browser role: display DB-derived per-game/target progression rows; graph transforms only returned percentages.
+       Materialized/refresh: likely app-facing view; materialized backing/refresh needs verification.
+
+     - v_player_target_points_progress
+       Used by: Target Points % Progress graph.
+       Required columns visible in code: player_key, player_name, game_id, created_at, target_key, target_label,
+                
+
+--- MATCH 7 @ 31649 [29049:34261] ---
+d record snapshots.
+       Required columns visible in code: round_key, wr_points; comments also mention cat, val, player, game_id, ridx, ts.
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived WR records.
+       Materialized/refresh: needs verification.
+
+     - v_player_games_union_visible
+       Used by: TABLE_PLAYER_GAMES / player stats windows contract.
+       Required columns visible in code: not fully visible at reference point; needs verification.
+       Missing-data behaviour: cloud probe marks failure/missing; stats windows should surface empty/unavailable states.
+       Browser role: display/limited player game windows; avoid new full-history ranking aggregation.
+       Materialized/refresh: needs verification.
+
+     - v_player_best_official_ranked
+       Used by: Player Stats profile Quick Stats / Highest Score rank.
+       Required columns visible in code: player_name, best_score, best_score_pos.
+       Missing-data behaviour: warning logged; profile falls back to existing score values without DB rank.
+       Browser role: display DB-derived rank only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_targets
+       Used by: Player Stats profile Targets card.
+       Required columns visible in code: player_key, favorite_number, favorite_pct, worst_number, worst_pct.
+       Missing-data behaviour: warning logged; card shows placeholder/available existing values.
+       Browser role: display DB-derived recent target summary only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_target_rates
+       Used by: Player Stats profile top/bottom target-rate detail (Favourite/Weakest Numbers top-3).
+       Required columns visible in code: player_key, target_n, hit_pct, throws.
+       Missing-data behaviour: silently treated as optional; card falls back to v_player_last30_targets fav/worst.
+       Browser role: display DB-derived recent target rates only.
+       Source: plain VIEW over throw_events_v + round_hit_counts_v, same last-30-games window as
+               v_player_last30_targets (its per-target CTE, un-collapsed). Always live, not materialized.
+
+     - v_player_target_streaks
+       Used by: Player Stats Quick Stats Dart/Round Streak, Streak League.
+       Required columns visible in code: player_key, player_name, mode_key, mode_label, dart_streak, round_streak,
+                                  source_games, last_played_at.
+       Missing-data behaviour: Streak League shows required-view missing/empty state; Player Stats shows placeholder if unavailable.
+       Browser role: display DB-derived streaks/ranks only; do not calculate streaks from full history in browser.
+       Materialized/refresh: intended DB-derived streak view; materialized/refresh status needs verification in this file.
+
+     - v_player_target_hit_pct
+       Used by: Target Hit % heatmap/table, Target Hit % G Rank lookup.
+       Required columns visible in code: player_key, player_name, target_key, target_label, target_sort, throws, hits,
+                                  hit_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Hit % unavailable message; SPIDER/PROGRESS disabled until rows exist.
+       Browser role: display DB-derived aggregate hit rates; browser may compute personal rank from returned 14 rows only.
+       Materialized/refresh: wrapper/view status needs verification; do not infer from points.
+
+     - v_player_target_points_pct
+       Used by: Target Points % table.
+       Required columns visible in code: player_key, player_name, target_number, target_label, throws, actual_points,
+                                  max_points, points_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Points % unavailable message; actions disabled until rows exist.
+       Browser role: display DB-derived aggregate points efficiency; no full-history reconstruction.
+       Materialized/refresh: wrapper/view status needs verification.
+
+     - v_player_target_hit_progress
+       Used by: Target Hit % Progress graph.
+       Required columns visible in code: player_key, player_name, game_id, created_at, target_key, target_label,
+                                  target_sort, throws, hits, hit_pct.
+       Missing-data behaviour: progress popup shows "Progress data is not available yet..."
+       Browser role: display DB-derived per-game/target progression rows; graph transforms only returned percentages.
+       Materialized/refresh: likely app-facing view; materialized backing/refresh needs verification.
+
+     - v_player_target_points_progress
+       Used by: Target Points % Progress graph.
+       Required columns visible in code: player_key, player_name, game_id, created_at, target_key, target_label,
+                                  target_sort, target_number, round_score, max_round_score, round_pct.
+       Missing-data behaviour: progress popup shows "Progress data is not available yet..."
+       Browser role: display DB-derived per-game/target progression rows; graph maps returned percentages only.
+       Materialized/refresh: like
+
+--- MATCH 8 @ 37480 [34880:40092] ---
+s on it; avoid client full-history reconstruction.
+       Materialized/refresh: view; refresh status needs verification.
+
+     - player_dtb_bucket_ranks_v
+       Used by: D/T/B Hit % game-rank helpers.
+       Required columns visible in code: target_round, d_game_rank, t_game_rank, player_name.
+       Missing-data behaviour: rank helpers fall back to unavailable rank display.
+       Browser role: display DB-derived D/T rank columns only.
+       Materialized/refresh: needs verification.
+
+     @MODE:CLASSIFICATION_RULES
+     Production mode ownership for Official / Turbo / Practice. Official filters must exclude Turbo before accepting
+     a row as official; is_practice=false alone is not sufficient.
+
+     - turbo
+       Explicit Turbo rows are identified by mode/gameMode/game_mode/type='turbo', gameVariant='turbo',
+       Tournament Turbo tournamentType='turbo',
+       strictTimer=true, throwLimitSeconds=20, or startTarget='17' in the game row, state, match, or rules object.
+       Legacy quarantine: older broken saves may be labelled official while rounds 10-16 are unplayed and rounds
+       17-20/D/T/B contain play; browser fallback filters treat that board shape as Turbo to stop official leakage.
+       Future Match Play Turbo writes must include state.gameVariant='turbo', state.mode='turbo',
+       state.gameMode='turbo', strictTimer=true, throwLimitSeconds=20, and startTarget='17'.
+       Future Tournament Turbo writes may also use tournamentType='turbo' where tournament logic requires it.
+
+     - practice
+       Explicit practice/unofficial/solo rows, is_practice=true rows, forced-practice match rows, or single-player rows.
+       Turbo is never classified as Practice.
+
+     - official
+       Normal saved-player match rows only: not Turbo, not Practice, and at least two players.
+       Supabase official views should use the same Turbo exclusion rule, not only match_id/is_practice checks.
+
+     @RANKING:TERMINOLOGY_SOURCE_MAP
+     Production-facing rank labels observed in this file. This is a terminology/source map only:
+     do not change rank formulas or fetch paths without a scoped ranking task.
+
+     - Home Power Rankings / Power Rankings popup
+       UI label: Power Rankings, Power Rank, #.
+       Blocks/helpers: home mini Power Rankings, getOfficialPowerRows(), openPowerLeagueDialog().
+       Source: v_power_rankings_last56_official_clean for official/current; Turbo/Practice use mode-specific clean views.
+       Meaning: Power Rank is current active ranking metric; # is row position in the current filtered table.
+       Clarity: clear.
+
+     - Player Stats profile hero
+       UI label: Power Rank.
+       Block/helper: openPlayerStatsDialog() profile card render.
+       Source: v_power_rankings_last56_official_clean, filtered to saved players and the active 14-day current rule.
+       Meaning: current active Power Rank value and current active table position.
+       Clarity: clear.
+
+     - Player Stats profile Quick Stats
+       UI labels: Highest Score, Current Power Rank #.
+       Block/helper: openPlayerStatsDialog() Quick Stats card.
+       Sources: v_player_best_official_ranked for Highest Score rank; current Power Rank position is from v_power_rankings_last56_official_clean.
+       Meaning: Highest Score rank is historical PB table position; Current Power Rank # is not historical peak.
+       Clarity: label-only cleanup applied to avoid presenting current position as Highest/Peak Power Rank.
+       Needs follow-up: add a DB-derived historical Peak/Highest Power Rank source before showing that historical label again.
+
+     - Live V2 game info panel
+       UI labels: POS, P RANK, G RANK.
+       Block/helper: liveV2Render()/rank fill block.
+       Source: current game state for POS; sq_rank_score RPC is the only accepted P/G rank source.
+       Meaning: POS is current-game table position; P Rank is within-player historical score comparison; G Rank is cross-player historical score comparison.
+       Clarity: labels are clear in the live-game info table.
+       Fail-closed rule: if sq_rank_score is unavailable, P/G Rank shows unavailable instead of browser dense-rank fallback.
+
+     - Target Hit %
+       UI labels: P Rank, G Rank.
+       Block/helper: @CANONICAL:PLAYER_TARGET_HIT_HEATMAP, applyTargetHitPersonalRanks(), fetchTargetHitGlobalRanks().
+       Source: v_player_target_hit_pct aggregate rows.
+       Meaning: P Rank is within-player target comparison; G Rank is cross-player comparison for the same target.
+       Clarity: clear; no raw history reconstruction.
+
+     - Target Points % and Target Hit/Points Progress
+       UI label: no production rank label observed in current canonical target metric/progress popups.
+       Source: v_player_target_points_pct, v_player_target_points_progress, v_player_target_hit_progress.
+       Meaning: n/a for ranks.
+       Clarity: no rank terminology issue observed.
+
+     - D/T/B Hit % popups
+       UI labels: P Rank, My Rank, Game Rank.
+       Blocks/helpers: openPlayerDTBPctDialog(), openPlayerDTBCombinedPctDialog().
+       Source: within-player D/T rows for personal/my ranks; player_dtb_bucket_ranks_v for Game Rank when available.
+       Meaning: P/My Rank is wi
+COUNT_SHOWN=8
+
+===== TARGET: 'Achievements' =====
+
+--- MATCH 1 @ 199540 [196940:202152] ---
+w:ellipsis; }
+.sk-chain{ display:flex; gap:3px; }
+.sk-seg{ height:8px; flex:1 1 0; max-width:18px; border-radius:2px; background:rgba(255,255,255,.07); }
+.sk-seg.on{ background:linear-gradient(180deg,#ffb14a,#ff7a18); box-shadow:0 0 6px rgba(255,140,40,.55); }
+.sk-seg.tip{ background:#fff3d6; box-shadow:0 0 9px rgba(255,225,160,.95); }
+.sk-sub{ font-size:9px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:rgba(255,200,150,.65); }
+.sk-val{ font-weight:900; font-size:21px; line-height:1; color:#ffd9b0; text-shadow:0 0 14px rgba(255,140,40,.45); text-align:right; }
+@media (prefers-reduced-motion: reduce){
+  .sk-row, .sk-row.hot{ animation:none; opacity:1; transform:none; }
+}
+/* XP tab hero: "XP CORE" reactor — radial ring + orbiting sparks + igniting level */
+.pp-xporb{
+  grid-column:1/-1; display:flex; align-items:center; gap:16px; position:relative; overflow:hidden;
+  padding:14px 16px; border-radius:16px;
+  background:radial-gradient(120% 150% at 18% -30%, rgba(255,150,60,.16), transparent 60%), #0f1626;
+  border:1px solid rgba(255,150,60,.32);
+  box-shadow:0 6px 18px rgba(0,0,0,.34), 0 0 26px rgba(255,140,40,.10);
+}
+.pp-orb-stage{ position:relative; width:130px; height:130px; flex:0 0 auto; }
+.pp-orb-stage canvas{ position:absolute; inset:0; width:100%; height:100%; }
+.pp-orb-center{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; text-align:center; pointer-events:none; }
+.pp-orb-lvtag{ font-size:9px; font-weight:900; letter-spacing:.2em; color:#ffcaa0; text-transform:uppercase; }
+.pp-orb-level{ font-size:40px; font-weight:900; line-height:.86; color:#fff; text-shadow:0 0 20px rgba(255,150,60,.65); }
+.pp-orb-title{ font-size:10px; font-weight:900; letter-spacing:.12em; color:#ffb14a; text-transform:uppercase; }
+.pp-orb-info{ flex:1; min-width:0; display:flex; flex-direction:column; gap:7px; }
+.pp-orb-head{ font-size:11px; font-weight:900; letter-spacing:.16em; text-transform:uppercase; color:#7cc0ff; text-shadow:0 0 12px rgba(47,134,255,.35); }
+.pp-orb-xp{ font-size:27px; font-weight:900; color:#ffe4c4; line-height:1; }
+.pp-orb-next{ font-size:11px; font-weight:800; letter-spacing:.04em; color:rgba(150,185,230,.9); text-transform:uppercase; }
+.pp-orb-seg{ display:flex; gap:3px; }
+.pp-orb-seg i{ flex:1; height:7px; border-radius:2px; background:rgba(255,255,255,.08); position:relative; overflow:hidden; }
+.pp-orb-seg i.on::after{ content:''; position:absolute; inset:0; background:linear-gradient(90deg,#ff7a18,#ffcf6a); box-shadow:0 0 8px rgba(255,150,60,.6); }
+
+/* Achievements tab hero: "TROPHY VAULT" — completion meter + badge shelf */
+.pp-vault{
+  grid-column:1/-1; display:flex; align-items:center; gap:16px; flex-wrap:wrap; position:relative; overflow:hidden;
+  padding:14px 16px; border-radius:16px;
+  background:radial-gradient(120% 150% at 85% -30%, rgba(255,210,74,.15), transparent 55%), #0f1626;
+  border:1px solid rgba(255,210,74,.3);
+  box-shadow:0 6px 18px rgba(0,0,0,.34), 0 0 26px rgba(255,200,60,.09);
+}
+.pp-vault-meter{ flex:0 0 auto; min-width:148px; display:flex; flex-direction:column; gap:7px; }
+.pp-vault-head{ font-size:11px; font-weight:900; letter-spacing:.16em; text-transform:uppercase; color:#ffd24a; text-shadow:0 0 12px rgba(255,210,74,.4); }
+.pp-vault-count{ font-size:34px; font-weight:900; line-height:.9; color:#fff; }
+.pp-vault-count b{ color:#ffd24a; }
+.pp-vault-count small{ font-size:15px; font-weight:800; color:rgba(200,214,235,.7); }
+.pp-vault-sub{ font-size:10px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:rgba(150,185,230,.9); }
+.pp-vault-bar{ height:9px; border-radius:99px; background:rgba(0,0,0,.34); border:1px solid rgba(255,255,255,.08); overflow:hidden; }
+.pp-vault-bar > span{ display:block; height:100%; width:0; border-radius:99px; background:linear-gradient(90deg,#d08b5a,#cbd5e1 55%,#ffd24a); box-shadow:0 0 10px rgba(255,210,74,.5); transition:width 1s cubic-bezier(.2,.8,.25,1); }
+.pp-vault-shelf{ flex:1; min-width:120px; display:flex; gap:7px; flex-wrap:wrap; align-content:center; }
+.pp-vault-badge{
+  width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:22px;
+  position:relative; overflow:hidden; opacity:0; transform:translateY(8px) scale(.7);
+  transition:opacity .4s ease, transform .45s cubic-bezier(.2,.9,.25,1);
+}
+.pp-vault-badge.in{ opacity:1; transform:none; }
+.pp-vault-badge::after{ content:''; position:absolute; inset:0; transform:translateX(-140%) skewX(-18deg); background:linear-gradient(105deg, transparent 42%, rgba(255,255,255,.55) 50%, transparent 58%); }
+.pp-vault-badge.shine::after{ animation:ppSheen 1s ease-out; }
+.pp-vault-more{ font-size:12px; font-weight:900; color:rgba(200,214,235,.75); align-self:center; }
+@media (prefers-reduced-motion: reduce){
+  .pp-vault-badge{ opacity:1; transform:none; transition:none; }
+  .pp-vault-bar > span{ transition:none; }
+}
+/* motion: staggered card entrance, hero light sweep, growing bars */
+@keyframes ppIn{ from{ opacity:0; transform:translateY(12px); } to{ opacity:1; transform:none; } }
+.pp-anim .pp-hero, .pp-anim .pp-card, .pp-anim .pp-soon{
+  animation
+
+--- MATCH 2 @ 593602 [591002:596214] ---
+:flex; align-items:center; gap:7px; min-width:0; }
+  .gc-xp-line[data-empty]{ display:none; }
+  .gc-xp-linelab{ flex:0 0 auto; width:18px; text-align:center; font-size:13px; line-height:1; opacity:.9; filter:drop-shadow(0 0 4px rgba(255,180,74,.45)); }
+  .gc-xp-chips{ display:flex; flex-wrap:nowrap; gap:6px; min-width:0; overflow-x:auto; overflow-y:hidden; padding-bottom:2px; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.2) transparent; -webkit-overflow-scrolling:touch; }
+  .gc-xp-chips::-webkit-scrollbar{ height:3px; }
+  .gc-xp-chips::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.2); border-radius:3px; }
+  .gc-xp-trophy{ flex:0 0 auto; display:inline-flex; align-items:center; gap:5px; padding:4px 9px; border-radius:999px; font-size:11px; font-weight:800; color:#fff; white-space:nowrap; opacity:0; transform:scale(.7) translateY(4px); transition:opacity .3s, transform .3s cubic-bezier(.2,.9,.25,1); }
+  .gc-xp-trophy.in{ opacity:1; transform:none; }
+  .gc-actions-hidden{ opacity:0; pointer-events:none; transform:translateY(8px); transition:opacity .45s ease, transform .45s ease; }
+  @media (prefers-reduced-motion: reduce){ .gc-xp-row,.gc-xp-fill,.gc-xp-trophy,.gc-xp-lvup,.gc-actions-hidden{ transition:none !important; animation:none !important; } }`;
+  document.head.appendChild(st);
+}
+function __sqAnimCount(el, from, to, dur, fmt){
+  const t0 = performance.now();
+  (function step(t){ const k = Math.min(1, (t - t0) / dur); const v = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 2))); el.textContent = fmt ? fmt(v) : String(v); if (k < 1) requestAnimationFrame(step); })(t0);
+}
+function __sqGcXpRow(panel, row, reduced){
+  return new Promise(resolve => {
+    const esc = (typeof escapeHtml === 'function') ? escapeHtml : (s => String(s == null ? '' : s));
+    const pre = SQ_XP.progress(row.pre), post = SQ_XP.progress(row.post);
+    const el = document.createElement('div'); el.className = 'gc-xp-row' + (row.won ? ' won' : '');
+    el.innerHTML = '<div class="gc-xp-head"><span class="gc-xp-name"><span class="nm">' + esc(row.nm) + '</span>'
+      + '<span class="gc-xp-lvholder"></span><span class="gc-xp-lvup">LEVEL UP!</span></span>'
+      + '<span class="gc-xp-gain">+0 XP</span></div>'
+      + '<div class="gc-xp-bar"><div class="gc-xp-fill"></div></div>'
+      + '<div class="gc-xp-awards">'
+      +   '<div class="gc-xp-line gc-xp-trophies" data-empty="1"><span class="gc-xp-linelab" title="Trophies">🏆</span><div class="gc-xp-chips"></div></div>'
+      +   '<div class="gc-xp-line gc-xp-achis" data-empty="1"><span class="gc-xp-linelab" title="Achievements">🎖️</span><div class="gc-xp-chips"></div></div>'
+      + '</div>';
+    panel.appendChild(el);
+    const lvHolder = el.querySelector('.gc-xp-lvholder');
+    try{ lvHolder.appendChild(__sqXpChip(pre)); }catch(_){ }
+    const gainEl = el.querySelector('.gc-xp-gain');
+    const fill = el.querySelector('.gc-xp-fill');
+    const trophyLine = el.querySelector('.gc-xp-trophies'), achiLine = el.querySelector('.gc-xp-achis');
+    const trophyChips = trophyLine.querySelector('.gc-xp-chips'), achiChips = achiLine.querySelector('.gc-xp-chips');
+    const levelUp = post.level > pre.level;
+    const addTrophies = () => {
+      let ti = 0;
+      row.troph.forEach((e) => {
+        const isMile = !!(window.SQ_ACH && SQ_ACH.isMilestone && SQ_ACH.isMilestone(e.code));
+        const a = SQ_ACH.meta(e.code); const s = SQ_ACH.tierStyle(a.tier);
+        const chip = document.createElement('span'); chip.className = 'gc-xp-trophy';
+        chip.style.background = s.g; chip.style.border = '1px solid ' + s.b; chip.style.color = s.c;
+        chip.innerHTML = '<span>' + a.icon + '</span><span>' + a.name + (e.count > 1 ? ' ×' + e.count : '') + '</span>';
+        (isMile ? achiChips : trophyChips).appendChild(chip);
+        (isMile ? achiLine : trophyLine).removeAttribute('data-empty');
+        setTimeout(() => chip.classList.add('in'), reduced ? 0 : 460 + (ti++) * 100);
+      });
+    };
+    if (reduced){
+      el.classList.add('in'); gainEl.textContent = '+' + row.gained + ' XP';
+      fill.style.transition = 'none'; fill.style.width = (post.pct * 100) + '%';
+      if (levelUp){ try{ lvHolder.firstChild && lvHolder.firstChild.replaceWith(__sqXpChip(post)); }catch(_){ } el.querySelector('.gc-xp-lvup').classList.add('in'); }
+      addTrophies(); resolve(); return;
+    }
+    setTimeout(() => {
+      el.classList.add('in');
+      __sqAnimCount(gainEl, 0, row.gained, 900, v => '+' + v + ' XP');
+      requestAnimationFrame(() => {
+        fill.style.width = (pre.pct * 100) + '%';
+        requestAnimationFrame(() => {
+          if (levelUp){
+            fill.style.width = '100%';
+            setTimeout(() => {
+              try{ lvHolder.firstChild && lvHolder.firstChild.replaceWith(__sqXpChip(post)); }catch(_){ }
+              el.querySelector('.gc-xp-lvup').classList.add('in');
+              el.classList.add('gc-levelup');
+              try{ if (typeof __sqV3SndGame === 'function') __sqV3SndGame(); }catch(_){ }
+              fill.style.transition = 'none'; fill.style.width = '0%';
+              requestAnimationFrame(() => { fill.style.transition = ''; fill.style.width = (post.pct * 100) +
+
+--- MATCH 3 @ 1571195 [1568595:1573807] ---
+p-verdict';
+    stamp.style.color = v.color; stamp.style.border = '1px solid ' + v.color;
+    stamp.style.boxShadow = '0 0 14px ' + v.glow + ', inset 0 0 10px ' + v.glow;
+    stamp.textContent = v.arrow + ' ' + v.label;
+    const sub = document.createElement('div'); sub.className = 'pp-form-sub';
+    sub.textContent = 'Win rate — official (' + W + 'W / ' + (GAMES - W) + 'L)';
+    info.append(val, stamp, sub);
+    panel.append(gaugeCanvas, info);
+
+    // hot/cold strip: one cell per recent game, height scaled by score vs PB
+    const stripWrap = document.createElement('div'); stripWrap.className = 'pp-strip-wrap';
+    const stripLabel = document.createElement('div'); stripLabel.className = 'pp-strip-label';
+    const lastGames = games.slice(-14);
+    stripLabel.textContent = 'Last ' + lastGames.length + ' games';
+    const strip = document.createElement('div'); strip.className = 'pp-strip';
+    lastGames.forEach((g, i) => {
+      const gi = games.length - lastGames.length + i;
+      const s = scores[gi] || 0;
+      const cell = document.createElement('span');
+      cell.className = 'pp-strip-cell' + (winFlags[gi] ? ' win' : '');
+      const h = Math.round(8 + 24 * (PB ? Math.max(0, Math.min(1, s / PB)) : 0));
+      cell.style.height = __ppReduced ? h + 'px' : '8px';
+      if (!__ppReduced) requestAnimationFrame(() => requestAnimationFrame(() => { cell.style.height = h + 'px'; }));
+      try{
+        const d = g.ts ? new Date(g.ts) : null;
+        cell.title = s + ' pts' + (d && !Number.isNaN(d.getTime()) ? ' · ' + d.toLocaleDateString() : '');
+      }catch(_){ }
+      strip.appendChild(cell);
+    });
+    stripWrap.append(stripLabel, strip);
+    panel.appendChild(stripWrap);
+
+    // needle sweep + value count-up
+    const finalTxt = winRate.toFixed(0) + '%';
+    if (typeof __sqDrawFormGauge === 'function'){
+      if (__ppReduced){ __sqDrawFormGauge(gaugeCanvas, winRate, 50, 1); val.textContent = finalTxt; }
+      else {
+        countUp(val, finalTxt, 900);
+        const t0 = performance.now();
+        const sweep = (t) => {
+          const p = Math.min(1, (t - t0) / 900);
+          __sqDrawFormGauge(gaugeCanvas, winRate, 50, 1 - Math.pow(1 - p, 3));
+          if (p < 1) requestAnimationFrame(sweep);
+        };
+        requestAnimationFrame(sweep);
+      }
+    } else { gaugeCanvas.remove(); val.textContent = finalTxt; }
+    cards.prepend(panel);
+  }
+
+  // staggered entrance: hero leads, cards follow one by one
+  Array.prototype.forEach.call(cards.children, (c, i) => { c.style.animationDelay = (80 + i * 70) + 'ms'; });
+  // ---- Tabbed content: Stats / XP / Achievements ----
+  const statsPanel = cards;
+  const xpPanel = document.createElement('div');
+  xpPanel.className = 'pp-cards';
+
+  // ---- XP tab hero: "XP CORE" reactor (unique to the XP tab) ----
+  {
+    const prog = xpProg || { level:1, title:'Rookie', pct:0, xp:0, toNext:0, atMax:false };
+    const orb = document.createElement('div'); orb.className = 'pp-xporb';
+    const stage = document.createElement('div'); stage.className = 'pp-orb-stage';
+    const canvas = document.createElement('canvas');
+    const center = document.createElement('div'); center.className = 'pp-orb-center';
+    const lvtag = document.createElement('div'); lvtag.className = 'pp-orb-lvtag'; lvtag.textContent = 'Level';
+    const lvnum = document.createElement('div'); lvnum.className = 'pp-orb-level'; lvnum.textContent = String(prog.level);
+    const lvttl = document.createElement('div'); lvttl.className = 'pp-orb-title'; lvttl.textContent = prog.title;
+    center.append(lvtag, lvnum, lvttl); stage.append(canvas, center);
+    const info = document.createElement('div'); info.className = 'pp-orb-info';
+    const ohead = document.createElement('div'); ohead.className = 'pp-orb-head'; ohead.textContent = 'XP Core';
+    const oxp = document.createElement('div'); oxp.className = 'pp-orb-xp'; oxp.textContent = SQ_XP.fmt(prog.xp);
+    const oseg = document.createElement('div'); oseg.className = 'pp-orb-seg';
+    const SEGN = 12, onN = Math.round(prog.pct * SEGN);
+    for (let i = 0; i < SEGN; i++){ const s = document.createElement('i'); if (i < onN) s.className = 'on'; oseg.appendChild(s); }
+    const onext = document.createElement('div'); onext.className = 'pp-orb-next';
+    onext.textContent = prog.atMax ? 'Max level — Legend' : (SQ_XP.fmt(prog.toNext) + ' XP to Level ' + (prog.level + 1));
+    info.append(ohead, oxp, oseg, onext); orb.append(stage, info);
+    xpPanel.appendChild(orb);
+    let raf = 0;
+    xpPanel.__ppReplay = () => {
+      cancelAnimationFrame(raf);
+      if (__ppReduced){ __sqDrawXpReactor(canvas, prog.pct, 1, 0); lvnum.textContent = String(prog.level); oxp.textContent = SQ_XP.fmt(prog.xp); return; }
+      countUp(lvnum, String(prog.level), 850);
+      countUp(oxp, SQ_XP.fmt(prog.xp), 950);
+      const dur = 1400, t0 = performance.now();
+      const loop = (now) => {
+        const el = now - t0, tt = Math.min(1, el / dur);
+        __sqDrawXpReactor(canvas, prog.pct, 1 - Math.pow(1 - tt, 3), el);
+        if (el < 3200) raf = requestAnimationFrame(loop);
+        else __sqDrawXpReactor(canvas, prog.pct, 1, el);
+      };
+      raf = requestAnimationFrame(loop);
+    };
+  }
+
+  xpPanel
+
+--- MATCH 4 @ 1574602 [1572002:1577214] ---
+String(prog.level);
+    const lvttl = document.createElement('div'); lvttl.className = 'pp-orb-title'; lvttl.textContent = prog.title;
+    center.append(lvtag, lvnum, lvttl); stage.append(canvas, center);
+    const info = document.createElement('div'); info.className = 'pp-orb-info';
+    const ohead = document.createElement('div'); ohead.className = 'pp-orb-head'; ohead.textContent = 'XP Core';
+    const oxp = document.createElement('div'); oxp.className = 'pp-orb-xp'; oxp.textContent = SQ_XP.fmt(prog.xp);
+    const oseg = document.createElement('div'); oseg.className = 'pp-orb-seg';
+    const SEGN = 12, onN = Math.round(prog.pct * SEGN);
+    for (let i = 0; i < SEGN; i++){ const s = document.createElement('i'); if (i < onN) s.className = 'on'; oseg.appendChild(s); }
+    const onext = document.createElement('div'); onext.className = 'pp-orb-next';
+    onext.textContent = prog.atMax ? 'Max level — Legend' : (SQ_XP.fmt(prog.toNext) + ' XP to Level ' + (prog.level + 1));
+    info.append(ohead, oxp, oseg, onext); orb.append(stage, info);
+    xpPanel.appendChild(orb);
+    let raf = 0;
+    xpPanel.__ppReplay = () => {
+      cancelAnimationFrame(raf);
+      if (__ppReduced){ __sqDrawXpReactor(canvas, prog.pct, 1, 0); lvnum.textContent = String(prog.level); oxp.textContent = SQ_XP.fmt(prog.xp); return; }
+      countUp(lvnum, String(prog.level), 850);
+      countUp(oxp, SQ_XP.fmt(prog.xp), 950);
+      const dur = 1400, t0 = performance.now();
+      const loop = (now) => {
+        const el = now - t0, tt = Math.min(1, el / dur);
+        __sqDrawXpReactor(canvas, prog.pct, 1 - Math.pow(1 - tt, 3), el);
+        if (el < 3200) raf = requestAnimationFrame(loop);
+        else __sqDrawXpReactor(canvas, prog.pct, 1, el);
+      };
+      raf = requestAnimationFrame(loop);
+    };
+  }
+
+  xpPanel.appendChild(xpCard);
+  {
+    const ladderCard = document.createElement('div'); ladderCard.className = 'tag';
+    ladderCard.style.cssText = 'padding:12px;border-radius:14px;background:rgba(255,255,255,.052);border:1px solid rgba(255,255,255,.09);display:flex;flex-direction:column;gap:10px;';
+    ladderCard.innerHTML = '<strong style="font-size:15px;color:#f59e0b">🏅 Level Ladder</strong><p class="muted" style="margin:0;font-size:12px">See how you rank against everyone by XP.</p>';
+    const lb = document.createElement('button'); lb.className = 'btn sq-pill'; lb.textContent = 'Open Level Ladder';
+    lb.onclick = () => { try{ if (typeof openXpLeaderboard === 'function') openXpLeaderboard(); }catch(_){ } };
+    ladderCard.appendChild(lb); xpPanel.appendChild(ladderCard);
+  }
+
+  // ---- Achievements tab hero: "TROPHY VAULT" (unique to the Achievements tab) ----
+  const achPanel = document.createElement('div');
+  achPanel.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
+  {
+    const catalog = (window.SQ_ACH && Array.isArray(SQ_ACH.CATALOG)) ? SQ_ACH.CATALOG : [];
+    const total = catalog.length;
+    const earnedCodes = catalog.filter(a => (achMap[a.code] || {}).cnt > 0);
+    const earnedN = earnedCodes.length;
+    const pctDone = total ? earnedN / total : 0;
+    const shelf = earnedCodes.slice().sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
+    const MAXSHELF = 8;
+
+    const vault = document.createElement('div'); vault.className = 'pp-vault';
+    const meter = document.createElement('div'); meter.className = 'pp-vault-meter';
+    const vhead = document.createElement('div'); vhead.className = 'pp-vault-head'; vhead.textContent = 'Trophy Vault';
+    const vcount = document.createElement('div'); vcount.className = 'pp-vault-count';
+    const vcB = document.createElement('b'); vcB.textContent = String(earnedN);
+    const vcS = document.createElement('small'); vcS.textContent = ' / ' + total;
+    vcount.append(vcB, vcS);
+    const vbar = document.createElement('div'); vbar.className = 'pp-vault-bar';
+    const vfill = document.createElement('span'); vbar.appendChild(vfill);
+    const vsub = document.createElement('div'); vsub.className = 'pp-vault-sub'; vsub.textContent = 'Trophies unlocked · ' + Math.round(pctDone * 100) + '%';
+    meter.append(vhead, vcount, vbar, vsub);
+
+    const shelfEl = document.createElement('div'); shelfEl.className = 'pp-vault-shelf';
+    const chips = [];
+    shelf.slice(0, MAXSHELF).forEach(a => {
+      const meta = SQ_ACH.meta(a.code); const s = SQ_ACH.tierStyle(meta.tier);
+      const chip = document.createElement('div'); chip.className = 'pp-vault-badge';
+      chip.style.background = s.g; chip.style.border = '1px solid ' + s.b; chip.textContent = meta.icon;
+      chip.title = meta.name + ((achMap[a.code].cnt > 1) ? (' ×' + achMap[a.code].cnt) : '');
+      shelfEl.appendChild(chip); chips.push(chip);
+    });
+    if (shelf.length > MAXSHELF){ const more = document.createElement('div'); more.className = 'pp-vault-more'; more.textContent = '+' + (shelf.length - MAXSHELF) + ' more'; shelfEl.appendChild(more); }
+    if (!shelf.length){ const none = document.createElement('div'); none.className = 'pp-vault-more'; none.textContent = 'No trophies yet — go earn some!'; shelfEl.appendChild(none); }
+    vault.append(meter, shelfEl);
+    achPanel.appendChild(vault);
+    achPanel.append
+
+--- MATCH 5 @ 1574655 [1572055:1577267] ---
+Element('div'); lvttl.className = 'pp-orb-title'; lvttl.textContent = prog.title;
+    center.append(lvtag, lvnum, lvttl); stage.append(canvas, center);
+    const info = document.createElement('div'); info.className = 'pp-orb-info';
+    const ohead = document.createElement('div'); ohead.className = 'pp-orb-head'; ohead.textContent = 'XP Core';
+    const oxp = document.createElement('div'); oxp.className = 'pp-orb-xp'; oxp.textContent = SQ_XP.fmt(prog.xp);
+    const oseg = document.createElement('div'); oseg.className = 'pp-orb-seg';
+    const SEGN = 12, onN = Math.round(prog.pct * SEGN);
+    for (let i = 0; i < SEGN; i++){ const s = document.createElement('i'); if (i < onN) s.className = 'on'; oseg.appendChild(s); }
+    const onext = document.createElement('div'); onext.className = 'pp-orb-next';
+    onext.textContent = prog.atMax ? 'Max level — Legend' : (SQ_XP.fmt(prog.toNext) + ' XP to Level ' + (prog.level + 1));
+    info.append(ohead, oxp, oseg, onext); orb.append(stage, info);
+    xpPanel.appendChild(orb);
+    let raf = 0;
+    xpPanel.__ppReplay = () => {
+      cancelAnimationFrame(raf);
+      if (__ppReduced){ __sqDrawXpReactor(canvas, prog.pct, 1, 0); lvnum.textContent = String(prog.level); oxp.textContent = SQ_XP.fmt(prog.xp); return; }
+      countUp(lvnum, String(prog.level), 850);
+      countUp(oxp, SQ_XP.fmt(prog.xp), 950);
+      const dur = 1400, t0 = performance.now();
+      const loop = (now) => {
+        const el = now - t0, tt = Math.min(1, el / dur);
+        __sqDrawXpReactor(canvas, prog.pct, 1 - Math.pow(1 - tt, 3), el);
+        if (el < 3200) raf = requestAnimationFrame(loop);
+        else __sqDrawXpReactor(canvas, prog.pct, 1, el);
+      };
+      raf = requestAnimationFrame(loop);
+    };
+  }
+
+  xpPanel.appendChild(xpCard);
+  {
+    const ladderCard = document.createElement('div'); ladderCard.className = 'tag';
+    ladderCard.style.cssText = 'padding:12px;border-radius:14px;background:rgba(255,255,255,.052);border:1px solid rgba(255,255,255,.09);display:flex;flex-direction:column;gap:10px;';
+    ladderCard.innerHTML = '<strong style="font-size:15px;color:#f59e0b">🏅 Level Ladder</strong><p class="muted" style="margin:0;font-size:12px">See how you rank against everyone by XP.</p>';
+    const lb = document.createElement('button'); lb.className = 'btn sq-pill'; lb.textContent = 'Open Level Ladder';
+    lb.onclick = () => { try{ if (typeof openXpLeaderboard === 'function') openXpLeaderboard(); }catch(_){ } };
+    ladderCard.appendChild(lb); xpPanel.appendChild(ladderCard);
+  }
+
+  // ---- Achievements tab hero: "TROPHY VAULT" (unique to the Achievements tab) ----
+  const achPanel = document.createElement('div');
+  achPanel.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
+  {
+    const catalog = (window.SQ_ACH && Array.isArray(SQ_ACH.CATALOG)) ? SQ_ACH.CATALOG : [];
+    const total = catalog.length;
+    const earnedCodes = catalog.filter(a => (achMap[a.code] || {}).cnt > 0);
+    const earnedN = earnedCodes.length;
+    const pctDone = total ? earnedN / total : 0;
+    const shelf = earnedCodes.slice().sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
+    const MAXSHELF = 8;
+
+    const vault = document.createElement('div'); vault.className = 'pp-vault';
+    const meter = document.createElement('div'); meter.className = 'pp-vault-meter';
+    const vhead = document.createElement('div'); vhead.className = 'pp-vault-head'; vhead.textContent = 'Trophy Vault';
+    const vcount = document.createElement('div'); vcount.className = 'pp-vault-count';
+    const vcB = document.createElement('b'); vcB.textContent = String(earnedN);
+    const vcS = document.createElement('small'); vcS.textContent = ' / ' + total;
+    vcount.append(vcB, vcS);
+    const vbar = document.createElement('div'); vbar.className = 'pp-vault-bar';
+    const vfill = document.createElement('span'); vbar.appendChild(vfill);
+    const vsub = document.createElement('div'); vsub.className = 'pp-vault-sub'; vsub.textContent = 'Trophies unlocked · ' + Math.round(pctDone * 100) + '%';
+    meter.append(vhead, vcount, vbar, vsub);
+
+    const shelfEl = document.createElement('div'); shelfEl.className = 'pp-vault-shelf';
+    const chips = [];
+    shelf.slice(0, MAXSHELF).forEach(a => {
+      const meta = SQ_ACH.meta(a.code); const s = SQ_ACH.tierStyle(meta.tier);
+      const chip = document.createElement('div'); chip.className = 'pp-vault-badge';
+      chip.style.background = s.g; chip.style.border = '1px solid ' + s.b; chip.textContent = meta.icon;
+      chip.title = meta.name + ((achMap[a.code].cnt > 1) ? (' ×' + achMap[a.code].cnt) : '');
+      shelfEl.appendChild(chip); chips.push(chip);
+    });
+    if (shelf.length > MAXSHELF){ const more = document.createElement('div'); more.className = 'pp-vault-more'; more.textContent = '+' + (shelf.length - MAXSHELF) + ' more'; shelfEl.appendChild(more); }
+    if (!shelf.length){ const none = document.createElement('div'); none.className = 'pp-vault-more'; none.textContent = 'No trophies yet — go earn some!'; shelfEl.appendChild(none); }
+    vault.append(meter, shelfEl);
+    achPanel.appendChild(vault);
+    achPanel.appendChild(__sqTrophyCase(achMap));
+
+    let timers = [];
+
+
+--- MATCH 6 @ 1578115 [1575515:1580727] ---
+y Vault';
+    const vcount = document.createElement('div'); vcount.className = 'pp-vault-count';
+    const vcB = document.createElement('b'); vcB.textContent = String(earnedN);
+    const vcS = document.createElement('small'); vcS.textContent = ' / ' + total;
+    vcount.append(vcB, vcS);
+    const vbar = document.createElement('div'); vbar.className = 'pp-vault-bar';
+    const vfill = document.createElement('span'); vbar.appendChild(vfill);
+    const vsub = document.createElement('div'); vsub.className = 'pp-vault-sub'; vsub.textContent = 'Trophies unlocked · ' + Math.round(pctDone * 100) + '%';
+    meter.append(vhead, vcount, vbar, vsub);
+
+    const shelfEl = document.createElement('div'); shelfEl.className = 'pp-vault-shelf';
+    const chips = [];
+    shelf.slice(0, MAXSHELF).forEach(a => {
+      const meta = SQ_ACH.meta(a.code); const s = SQ_ACH.tierStyle(meta.tier);
+      const chip = document.createElement('div'); chip.className = 'pp-vault-badge';
+      chip.style.background = s.g; chip.style.border = '1px solid ' + s.b; chip.textContent = meta.icon;
+      chip.title = meta.name + ((achMap[a.code].cnt > 1) ? (' ×' + achMap[a.code].cnt) : '');
+      shelfEl.appendChild(chip); chips.push(chip);
+    });
+    if (shelf.length > MAXSHELF){ const more = document.createElement('div'); more.className = 'pp-vault-more'; more.textContent = '+' + (shelf.length - MAXSHELF) + ' more'; shelfEl.appendChild(more); }
+    if (!shelf.length){ const none = document.createElement('div'); none.className = 'pp-vault-more'; none.textContent = 'No trophies yet — go earn some!'; shelfEl.appendChild(none); }
+    vault.append(meter, shelfEl);
+    achPanel.appendChild(vault);
+    achPanel.appendChild(__sqTrophyCase(achMap));
+
+    let timers = [];
+    achPanel.__ppReplay = () => {
+      timers.forEach(clearTimeout); timers = [];
+      if (__ppReduced){ vcB.textContent = String(earnedN); vfill.style.width = Math.round(pctDone * 100) + '%'; chips.forEach(c => c.classList.add('in')); return; }
+      vcB.textContent = '0'; vfill.style.width = '0%';
+      chips.forEach(c => c.classList.remove('in', 'shine'));
+      countUp(vcB, String(earnedN), 1000);
+      requestAnimationFrame(() => requestAnimationFrame(() => { vfill.style.width = Math.round(pctDone * 100) + '%'; }));
+      chips.forEach((c, i) => { timers.push(setTimeout(() => { c.classList.add('in', 'shine'); }, 120 + i * 90)); });
+    };
+  }
+
+  const tabBar = document.createElement('div');
+  tabBar.className = 'pp-tabs';
+  const panelHost = document.createElement('div');
+  const tabs = [['Stats', statsPanel], ['XP', xpPanel], ['Achievements', achPanel]];
+  const btns = [];
+  const showTab = (idx) => {
+    while (panelHost.firstChild) panelHost.removeChild(panelHost.firstChild);
+    panelHost.appendChild(tabs[idx][1]);
+    btns.forEach((b, i) => b.classList.toggle('active', i === idx));
+    // Each tab's signature animation (re)plays on show.
+    try{ const fn = tabs[idx][1].__ppReplay; if (typeof fn === 'function') requestAnimationFrame(fn); }catch(_){ }
+  };
+  tabs.forEach(([label], idx) => {
+    const t = document.createElement('button'); t.type = 'button'; t.textContent = label;
+    t.className = 'pp-tab';
+    t.onclick = () => showTab(idx);
+    btns.push(t); tabBar.appendChild(t);
+  });
+  profile.appendChild(tabBar);
+  profile.appendChild(panelHost);
+  body.appendChild(profile);
+  showTab(0);
+
+  // Footer buttons
+  const backBtn  = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
+  backBtn.onclick  = () => { overlay.remove(); __sqGoBackToStatsMain(); };
+  footer.append(backBtn);
+  __sqStatsArcade(overlay, modal);
+
+};
+
+// [removed: openPlayerDTBDialog alias (orphaned)] audit P5.3 batch 2 — dead/shadowed definition, no live callers
+
+window.__sqPlayerStatsSelectedName = window.__sqPlayerStatsSelectedName || '';
+
+function __sqPlayerStatsKey(name){
+  return String(name || '').trim().toLowerCase();
+}
+function __sqPlayerStatsNameOf(p){
+  if (p == null) return '';
+  if (typeof p === 'string') return String(p).trim();
+  return String(p.name || p.player_name || p.player || p.display_name || '').trim();
+}
+function __sqPlayerStatsActiveName(){
+  try{
+    const players = Array.isArray(window.state && state.players) ? state.players : [];
+    const idx = Number(state && state.currentPlayer);
+    const p = players[Number.isFinite(idx) ? idx : 0] || players[0];
+    return __sqPlayerStatsNameOf(p);
+  }catch(_){ return ''; }
+}
+function __sqSetPlayerStatsSelectedName(name){
+  const n = String(name || '').trim();
+  if (!n) return '';
+  window.__sqPlayerStatsSelectedName = n;
+  window.__sqStatsReturnPlayer = n;
+  try{ if (typeof __sqSetStatsOrigin === 'function') __sqSetStatsOrigin('home', n); }catch(_){}
+  return n;
+}
+async function __sqLoadPlayerStatsPlayers(){
+  let items = [];
+  try{
+    if (typeof cloudListPlayers === 'function') items = await cloudListPlayers();
+  }catch(e){
+    console.warn('[SQ] Player Stats player list load failed', e);
+  }
+  const seen = new Set();
+  return (Array.isArray(items) ? items : [])
+    .map(p => ({ raw:p, name:__sqPlayerStatsNameOf(p), nickname:String((p && (p.nickname || p.nick || p.alias)) || '').trim() }))
+    .filter
+COUNT_SHOWN=6
+
+===== TARGET: 'achievement' =====
+
+--- MATCH 1 @ 590832 [588232:593443] ---
+c-xp-noxp-copy{ margin-top:7px; font-size:12px; line-height:1.45; color:rgba(255,255,255,.62); }
+  .gc-xp-row{ position:relative; background:linear-gradient(165deg,#1a2030 0%,#10141f 100%); border:1px solid rgba(255,255,255,.09); border-radius:13px; padding:10px 12px 10px 15px; margin-bottom:8px; overflow:hidden; opacity:0; transform:translateY(10px); transition:opacity .35s ease, transform .35s cubic-bezier(.2,.9,.25,1); box-shadow:0 6px 16px rgba(0,0,0,.3); }
+  /* Rank accent bar: gold for the winner, orange otherwise */
+  .gc-xp-row::before{ content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:#ff6a00; box-shadow:0 0 12px rgba(255,106,0,.6); }
+  .gc-xp-row.won::before{ background:#ffc84a; box-shadow:0 0 14px rgba(255,200,74,.85); }
+  .gc-xp-row.in{ opacity:1; transform:none; }
+  .gc-xp-row.won{ border-color:rgba(255,196,74,.5); box-shadow:0 0 16px rgba(255,150,60,.18); }
+  .gc-xp-head{ display:flex; align-items:center; justify-content:space-between; gap:8px 10px; flex-wrap:wrap; }
+  .gc-xp-name{ font-weight:900; font-size:15px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex:1 1 auto; }
+  .gc-xp-name .nm{ white-space:nowrap; flex:0 0 auto; }
+  .gc-xp-gain{ font-weight:900; color:#7be0a0; font-size:15px; white-space:nowrap; }
+  .gc-xp-bar{ position:relative; margin-top:8px; height:11px; border-radius:999px; background:linear-gradient(180deg,#05070d,#0b0f1a); border:1px solid rgba(255,255,255,.10); overflow:hidden; box-shadow:inset 0 0 10px rgba(0,0,0,.9); }
+  /* segmented arcade energy bar */
+  .gc-xp-bar::after{ content:''; position:absolute; inset:0; z-index:2; pointer-events:none;
+    background:repeating-linear-gradient(90deg, rgba(0,0,0,.55) 0 1.5px, transparent 1.5px 6.5%); }
+  .gc-xp-fill{ position:relative; height:100%; width:0; border-radius:999px; background:linear-gradient(90deg,#ff5a18,#ffb14a 60%,#ffe27a); box-shadow:0 0 14px rgba(255,150,60,.85); transition:width .8s cubic-bezier(.2,.8,.25,1); }
+  .gc-xp-fill::after{ content:''; position:absolute; right:0; top:0; bottom:0; width:7px; background:#fff; filter:blur(2px); opacity:.85; }
+  .gc-xp-row.gc-levelup{ animation: gcLevelPulse .7s ease-out; }
+  @keyframes gcLevelPulse{ 0%,100%{ box-shadow:0 0 16px rgba(255,150,60,.18);} 40%{ box-shadow:0 0 30px rgba(255,214,64,.85);} }
+  .gc-xp-lvup{ display:inline-block; font-size:11px; font-weight:900; color:#ffd24a; letter-spacing:.06em; opacity:0; transform:scale(.7); transition:opacity .3s, transform .3s cubic-bezier(.2,.9,.25,1); }
+  .gc-xp-lvup.in{ opacity:1; transform:none; }
+  /* Trophies on one line, achievements on another — each scrolls sideways if it overflows */
+  .gc-xp-awards{ display:flex; flex-direction:column; gap:5px; margin-top:9px; }
+  .gc-xp-line{ display:flex; align-items:center; gap:7px; min-width:0; }
+  .gc-xp-line[data-empty]{ display:none; }
+  .gc-xp-linelab{ flex:0 0 auto; width:18px; text-align:center; font-size:13px; line-height:1; opacity:.9; filter:drop-shadow(0 0 4px rgba(255,180,74,.45)); }
+  .gc-xp-chips{ display:flex; flex-wrap:nowrap; gap:6px; min-width:0; overflow-x:auto; overflow-y:hidden; padding-bottom:2px; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.2) transparent; -webkit-overflow-scrolling:touch; }
+  .gc-xp-chips::-webkit-scrollbar{ height:3px; }
+  .gc-xp-chips::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.2); border-radius:3px; }
+  .gc-xp-trophy{ flex:0 0 auto; display:inline-flex; align-items:center; gap:5px; padding:4px 9px; border-radius:999px; font-size:11px; font-weight:800; color:#fff; white-space:nowrap; opacity:0; transform:scale(.7) translateY(4px); transition:opacity .3s, transform .3s cubic-bezier(.2,.9,.25,1); }
+  .gc-xp-trophy.in{ opacity:1; transform:none; }
+  .gc-actions-hidden{ opacity:0; pointer-events:none; transform:translateY(8px); transition:opacity .45s ease, transform .45s ease; }
+  @media (prefers-reduced-motion: reduce){ .gc-xp-row,.gc-xp-fill,.gc-xp-trophy,.gc-xp-lvup,.gc-actions-hidden{ transition:none !important; animation:none !important; } }`;
+  document.head.appendChild(st);
+}
+function __sqAnimCount(el, from, to, dur, fmt){
+  const t0 = performance.now();
+  (function step(t){ const k = Math.min(1, (t - t0) / dur); const v = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 2))); el.textContent = fmt ? fmt(v) : String(v); if (k < 1) requestAnimationFrame(step); })(t0);
+}
+function __sqGcXpRow(panel, row, reduced){
+  return new Promise(resolve => {
+    const esc = (typeof escapeHtml === 'function') ? escapeHtml : (s => String(s == null ? '' : s));
+    const pre = SQ_XP.progress(row.pre), post = SQ_XP.progress(row.post);
+    const el = document.createElement('div'); el.className = 'gc-xp-row' + (row.won ? ' won' : '');
+    el.innerHTML = '<div class="gc-xp-head"><span class="gc-xp-name"><span class="nm">' + esc(row.nm) + '</span>'
+      + '<span class="gc-xp-lvholder"></span><span class="gc-xp-lvup">LEVEL UP!</span></span>'
+      + '<span class="gc-xp-gain">+0 XP</span></div>'
+      + '<div class="gc-xp-bar"><div class="gc-xp-fill"></div></div>'
+      + '<div class="gc-xp-awards">'
+      +   '<div class="gc-xp-line gc-xp-trophies" data-empty="1"><span class="gc-xp-linelab" ti
+
+--- MATCH 2 @ 1018687 [1016087:1021298] ---
+t scale = Math.max(.32, Math.min(1, d.height / Math.max(1, s.height)));
+    requestAnimationFrame(() => {
+      el.style.transform = `translate(${dx}px, ${dy}px) scale(${scale})`;
+      el.style.opacity = '.1';
+    });
+    setTimeout(() => { try{ el.remove(); }catch(_){ } }, 560);
+  }catch(_){ }
+}
+
+// --- Live V3 sound + haptics: synthesized (no assets), opt-in via toggle ---
+var __sqV3Audio = null;
+function __sqV3SoundOn(){ try{ return localStorage.getItem('sq_livev3_sound') !== '0'; }catch(_){ return true; } }
+function __sqV3SetSound(on){ try{ localStorage.setItem('sq_livev3_sound', on ? '1' : '0'); }catch(_){ } }
+function __sqV3Ac(){
+  try{
+    if (!__sqV3Audio){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      __sqV3Audio = new AC();
+    }
+    if (__sqV3Audio.state === 'suspended') __sqV3Audio.resume();
+    return __sqV3Audio;
+  }catch(_){ return null; }
+}
+// One short synthesized note.
+function __sqV3Beep(freq, dur, type, gain, delay){
+  try{
+    const ac = __sqV3Ac(); if (!ac) return;
+    const t0 = ac.currentTime + (delay || 0);
+    const d = dur || 0.12;
+    const osc = ac.createOscillator();
+    const g = ac.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain || 0.13, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+    osc.connect(g); g.connect(ac.destination);
+    osc.start(t0); osc.stop(t0 + d + 0.02);
+  }catch(_){ }
+}
+function __sqV3Vibe(pattern){ try{ if (navigator.vibrate) navigator.vibrate(pattern); }catch(_){ } }
+function __sqV3SndHit(score){
+  if (!__sqV3SoundOn()) return;
+  const s = Math.max(0, Math.min(60, Number(score) || 0));
+  const freq = 520 + s * 8.6;                       // brighter for bigger hits
+  __sqV3Beep(freq, 0.10, 'triangle', 0.13);
+  if (s >= 30) __sqV3Beep(freq * 1.5, 0.12, 'triangle', 0.10, 0.05);
+  __sqV3Vibe(s >= 30 ? [12, 22, 12] : 12);
+}
+function __sqV3SndMiss(){
+  if (!__sqV3SoundOn()) return;
+  __sqV3Beep(150, 0.18, 'sawtooth', 0.09);
+  __sqV3Beep(104, 0.20, 'sawtooth', 0.07, 0.04);
+  __sqV3Vibe([28, 40, 28]);
+}
+function __sqV3SndRound(){
+  if (!__sqV3SoundOn()) return;
+  __sqV3Beep(660, 0.10, 'sine', 0.10);
+  __sqV3Beep(880, 0.12, 'sine', 0.10, 0.08);
+}
+function __sqV3SndGame(){
+  if (!__sqV3SoundOn()) return;
+  [523, 659, 784, 1047].forEach((f, i) => __sqV3Beep(f, 0.16, 'triangle', 0.13, i * 0.10));
+  __sqV3Vibe([18, 30, 18, 30, 60]);
+}
+
+// Headline combo for a just-completed round (live V3 callout). Mirrors the
+// achievement rules; returns the rarest single combo meta, or null.
+function __sqV3RoundCombo(entry){
+  try{
+    if (!entry || !entry.darts) return null;
+    const darts = entry.darts;
+    if (darts.filter(d => d).length < 3) return null;
+    const norm = d => { const k = (d && d.kind) || 'Miss'; if (k==='S') return 'single'; if (k==='D'||k==='Double') return 'double'; if (k==='T'||k==='Triple') return 'treble'; if (k==='B'||k==='Bull') return 'bull'; return 'miss'; };
+    let tre=0, dou=0, sin=0; darts.forEach(d => { const nk = norm(d); if (nk==='treble') tre++; else if (nk==='double') dou++; else if (nk==='single') sin++; });
+    const mis = darts.filter(d => norm(d)==='miss' || (Number(d && d.points)||0)===0).length;
+    const rtot = Number(entry.roundTotal) || 0;
+    let code = null;
+    if (rtot === 180) code = 'the_180';
+    else if (tre === 3) code = 'treble_trouble';
+    else if (sin===1 && dou===1 && tre===1) code = 'shanghai';
+    else if (dou === 3) code = 'double_down';
+    else if (sin===2 && dou===1 && tre===0 && mis===0) code = 'desmond';
+    else if (rtot >= 100) code = 'century';
+    else if (tre >= 2) code = 'robin_hood';
+    else if (mis === 0) code = 'full_house';
+    if (!code) return null;
+    return (window.SQ_ACH && SQ_ACH.meta) ? SQ_ACH.meta(code) : { code, name: code, icon:'🎯', tier:'gold' };
+  }catch(_){ return null; }
+}
+// Stage a combo/trophy across the whole centre stem (the marquee keeps showing
+// the dart that caused it, so the two surfaces tell one story).
+function __sqV3StageCombo(name, tier, lab, hold){
+  try{
+    const big = (tier === 'legendary' || tier === 'gold');
+    const dur = hold || (tier === 'legendary' ? 2300 : tier === 'gold' ? 2000 : tier === 'whiff' ? 1500 : 1700);
+    const until = performance.now() + dur;
+    window.__sqV3Combo = { name: String(name || '').toUpperCase(), tier: tier || 'gold', lab: String(lab || 'COMBO').toUpperCase(), until, big };
+    // Keep the round frozen for as long as the celebration runs — otherwise the
+    // hold released first and the stem rebuilt twice in quick succession, which
+    // is what made the middle feel jumpy.
+    try{ if (window.__sqV3Hold){ window.__sqV3Hold.until = Math.max(window.__sqV3Hold.until, until);
+      clearTimeout(window.__sqV3HoldT);
+      window.__sqV3HoldT = setTimeout(() => { try{ __sqV3ReleaseHold(); }catch(_){ } }, dur + 40); } }catch(_){ }
+    // Screen shake for the big ones (Street-Fighter impact).
+    if ((big || tier === 'whiff') && !__sqV3Reduced()){
+      try{ const p = document.getElementById('liveV3Panel');
+        if (p){ p.classList.remove('v3-qu
+
+--- MATCH 3 @ 1506640 [1504040:1509251] ---
+ray(data)) return this._cache || [];
+      this._cache = data; this._cacheAt = now;
+      return data;
+    }catch(_){ return this._cache || []; }
+  },
+  async forName(name){
+    const rows = await this.all();
+    const n = String(name || '').trim().toLowerCase();
+    return rows.find(r => String(r.name || '').trim().toLowerCase() === n) || null;
+  },
+  fmt(n){ return (Number(n) || 0).toLocaleString(); }
+};
+window.SQ_XP = SQ_XP;
+
+// A reusable "LV n · TITLE" chip (inline-styled to match the stats hero).
+function __sqXpChip(prog){
+  const chip = document.createElement('span');
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;'
+    + 'background:linear-gradient(135deg,rgba(255,183,64,.28),rgba(255,122,24,.18));'
+    + 'border:1px solid rgba(255,183,64,.5);font-weight:900;font-size:12px;letter-spacing:.06em;'
+    + 'color:#ffe1b0;white-space:nowrap;';
+  const lv = document.createElement('b'); lv.textContent = 'LV ' + prog.level; lv.style.color = '#fff';
+  const ti = document.createElement('span'); ti.textContent = prog.title.toUpperCase(); ti.style.opacity = '.92';
+  chip.append(lv, ti);
+  return chip;
+}
+
+// A reusable XP progress bar with "x XP · y to Level n+1" caption.
+function __sqXpBar(prog){
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:12px;';
+  const top = document.createElement('div');
+  top.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;font-size:11px;'
+    + 'text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;';
+  const l = document.createElement('span'); l.className = 'muted'; l.textContent = SQ_XP.fmt(prog.xp) + ' XP';
+  const r = document.createElement('span'); r.className = 'muted';
+  r.textContent = prog.atMax ? 'MAX LEVEL' : (SQ_XP.fmt(prog.toNext) + ' to Level ' + (prog.level + 1));
+  top.append(l, r);
+  const track = document.createElement('div');
+  track.style.cssText = 'height:9px;border-radius:999px;background:rgba(0,0,0,.32);'
+    + 'border:1px solid rgba(255,255,255,.08);overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.style.cssText = 'height:100%;width:0;border-radius:999px;transition:width .7s cubic-bezier(.2,.8,.25,1);'
+    + 'background:linear-gradient(90deg,#ff7a18,#ffb14a);box-shadow:0 0 10px rgba(255,150,60,.6);';
+  track.appendChild(fill);
+  wrap.append(top, track);
+  requestAnimationFrame(() => { fill.style.width = Math.round(prog.pct * 100) + '%'; });
+  return wrap;
+}
+
+/* =====================================================================
+   SQ ACH — trophies / achievements catalogue + trophy case.
+   Counts & XP are the single source of truth in Supabase view
+   v_player_achievements (derived from all game history — auto-backfilled
+   and auto-updated as games are saved). This module holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Hit all three darts in every round of a game' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',    
+
+--- MATCH 4 @ 1506753 [1504153:1509364] ---
+(_){ return this._cache || []; }
+  },
+  async forName(name){
+    const rows = await this.all();
+    const n = String(name || '').trim().toLowerCase();
+    return rows.find(r => String(r.name || '').trim().toLowerCase() === n) || null;
+  },
+  fmt(n){ return (Number(n) || 0).toLocaleString(); }
+};
+window.SQ_XP = SQ_XP;
+
+// A reusable "LV n · TITLE" chip (inline-styled to match the stats hero).
+function __sqXpChip(prog){
+  const chip = document.createElement('span');
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;'
+    + 'background:linear-gradient(135deg,rgba(255,183,64,.28),rgba(255,122,24,.18));'
+    + 'border:1px solid rgba(255,183,64,.5);font-weight:900;font-size:12px;letter-spacing:.06em;'
+    + 'color:#ffe1b0;white-space:nowrap;';
+  const lv = document.createElement('b'); lv.textContent = 'LV ' + prog.level; lv.style.color = '#fff';
+  const ti = document.createElement('span'); ti.textContent = prog.title.toUpperCase(); ti.style.opacity = '.92';
+  chip.append(lv, ti);
+  return chip;
+}
+
+// A reusable XP progress bar with "x XP · y to Level n+1" caption.
+function __sqXpBar(prog){
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:12px;';
+  const top = document.createElement('div');
+  top.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;font-size:11px;'
+    + 'text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;';
+  const l = document.createElement('span'); l.className = 'muted'; l.textContent = SQ_XP.fmt(prog.xp) + ' XP';
+  const r = document.createElement('span'); r.className = 'muted';
+  r.textContent = prog.atMax ? 'MAX LEVEL' : (SQ_XP.fmt(prog.toNext) + ' to Level ' + (prog.level + 1));
+  top.append(l, r);
+  const track = document.createElement('div');
+  track.style.cssText = 'height:9px;border-radius:999px;background:rgba(0,0,0,.32);'
+    + 'border:1px solid rgba(255,255,255,.08);overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.style.cssText = 'height:100%;width:0;border-radius:999px;transition:width .7s cubic-bezier(.2,.8,.25,1);'
+    + 'background:linear-gradient(90deg,#ff7a18,#ffb14a);box-shadow:0 0 10px rgba(255,150,60,.6);';
+  track.appendChild(fill);
+  wrap.append(top, track);
+  requestAnimationFrame(() => { fill.style.width = Math.round(prog.pct * 100) + '%'; });
+  return wrap;
+}
+
+/* =====================================================================
+   SQ ACH — trophies / achievements catalogue + trophy case.
+   Counts & XP are the single source of truth in Supabase view
+   v_player_achievements (derived from all game history — auto-backfilled
+   and auto-updated as games are saved). This module holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Hit all three darts in every round of a game' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in one round' },
+    { code:'clutch',         name:'Clut
+
+--- MATCH 5 @ 1507009 [1504409:1509620] ---
+ (Number(n) || 0).toLocaleString(); }
+};
+window.SQ_XP = SQ_XP;
+
+// A reusable "LV n · TITLE" chip (inline-styled to match the stats hero).
+function __sqXpChip(prog){
+  const chip = document.createElement('span');
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;'
+    + 'background:linear-gradient(135deg,rgba(255,183,64,.28),rgba(255,122,24,.18));'
+    + 'border:1px solid rgba(255,183,64,.5);font-weight:900;font-size:12px;letter-spacing:.06em;'
+    + 'color:#ffe1b0;white-space:nowrap;';
+  const lv = document.createElement('b'); lv.textContent = 'LV ' + prog.level; lv.style.color = '#fff';
+  const ti = document.createElement('span'); ti.textContent = prog.title.toUpperCase(); ti.style.opacity = '.92';
+  chip.append(lv, ti);
+  return chip;
+}
+
+// A reusable XP progress bar with "x XP · y to Level n+1" caption.
+function __sqXpBar(prog){
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:12px;';
+  const top = document.createElement('div');
+  top.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;font-size:11px;'
+    + 'text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;';
+  const l = document.createElement('span'); l.className = 'muted'; l.textContent = SQ_XP.fmt(prog.xp) + ' XP';
+  const r = document.createElement('span'); r.className = 'muted';
+  r.textContent = prog.atMax ? 'MAX LEVEL' : (SQ_XP.fmt(prog.toNext) + ' to Level ' + (prog.level + 1));
+  top.append(l, r);
+  const track = document.createElement('div');
+  track.style.cssText = 'height:9px;border-radius:999px;background:rgba(0,0,0,.32);'
+    + 'border:1px solid rgba(255,255,255,.08);overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.style.cssText = 'height:100%;width:0;border-radius:999px;transition:width .7s cubic-bezier(.2,.8,.25,1);'
+    + 'background:linear-gradient(90deg,#ff7a18,#ffb14a);box-shadow:0 0 10px rgba(255,150,60,.6);';
+  track.appendChild(fill);
+  wrap.append(top, track);
+  requestAnimationFrame(() => { fill.style.width = Math.round(prog.pct * 100) + '%'; });
+  return wrap;
+}
+
+/* =====================================================================
+   SQ ACH — trophies / achievements catalogue + trophy case.
+   Counts & XP are the single source of truth in Supabase view
+   v_player_achievements (derived from all game history — auto-backfilled
+   and auto-updated as games are saved). This module holds the display
+   metadata and the live per-game detector (for celebratory toasts).
+   The detector rules MUST mirror the SQL in v_player_achievements /
+   v_ach_rounds. XP values here are for the toast only; the authoritative
+   XP is summed by the view.
+===================================================================== */
+const SQ_ACH = {
+  // Ordered best-first. tier drives colour; xp is per-earn (mirrors the view).
+  CATALOG: [
+    { code:'the_180',        name:'The 180',            icon:'🎯', tier:'legendary', xp:100, desc:'Score a perfect 180 in one round' },
+    { code:'untouchable',    name:'Untouchable',        icon:'👑', tier:'legendary', xp:200, desc:'Hit all three darts in every round of a game' },
+    { code:'flawless_game',  name:"Sharpshooter's Game",icon:'✨', tier:'legendary', xp:120, desc:'No missed darts for a whole game' },
+    { code:'treble_sweep',   name:'Treble Sweep',       icon:'🔺', tier:'legendary', xp:250, desc:'Land a treble on every number 10–20' },
+    { code:'inferno',        name:'Inferno',            icon:'🌋', tier:'gold',      xp:60,  desc:'Five full houses in a row' },
+    { code:'whitewash',      name:'Whitewash',          icon:'🧹', tier:'gold',      xp:80,  desc:'Win every round of a game' },
+    { code:'giant_slayer',   name:'Giant Slayer',       icon:'🗡️', tier:'gold',      xp:0,   desc:'Beat a higher-level player (bonus scales with the gap)' },
+    { code:'champion',       name:'Champion',           icon:'🏆', tier:'gold',      xp:60,  desc:'Win a best-of-five (or longer) match' },
+    { code:'nemesis',        name:'Nemesis',            icon:'😈', tier:'gold',      xp:80,  desc:'Beat the same rival five times' },
+    { code:'double_sweep',   name:'Double Sweep',       icon:'🔷', tier:'gold',      xp:200, desc:'Land a double on every number 10–20' },
+    { code:'bull_club',      name:'Bull Club',          icon:'🐂', tier:'gold',      xp:150, desc:'Hit 30 career bulls' },
+    { code:'comeback_kid',   name:'Comeback Kid',       icon:'🔄', tier:'gold',      xp:60,  desc:'Win after trailing at halfway' },
+    { code:'ton_machine',    name:'Ton Machine',        icon:'💠', tier:'gold',      xp:40,  desc:'Three century rounds in one game' },
+    { code:'maximum',        name:'Maximum',            icon:'💥', tier:'gold',      xp:60,  desc:'Max out a round' },
+    { code:'treble_trouble', name:'Treble Trouble',     icon:'🔱', tier:'gold',      xp:40,  desc:'Three trebles in one round' },
+    { code:'clutch',         name:'Clutch',             icon:'⏱️', tier:'gold',      xp:40,  desc:'Full house on the final round to win' },
+    { code:'iceman',         name:'Iceman',             icon:'🧊', tier:'gold',      xp:50,  desc:'Win a tiebreak game' },
+    { code:'shanghai',       name
+
+--- MATCH 6 @ 1514718 [1512118:1517329] ---
+ in a single game' },
+    { code:'centurion',      name:'Centurion',          icon:'🏛️', tier:'legendary', xp:400, desc:'Play 250 games' },
+    { code:'trophy_hunter',  name:'Trophy Hunter',      icon:'🗃️', tier:'legendary', xp:350, desc:'Unlock 20 different trophies' },
+    { code:'triple_threat',  name:'Triple Threat',      icon:'⚡', tier:'gold',      xp:60,  desc:'Three triples in the Triples round' },
+    { code:'bull_run',       name:'Bull Run',           icon:'🐮', tier:'gold',      xp:60,  desc:'Three bulls in the Bull round' },
+    { code:'double_trouble', name:'Double Trouble',     icon:'🎲', tier:'gold',      xp:45,  desc:'Three doubles in the Doubles round' },
+    { code:'veteran',        name:'Veteran',            icon:'🎖️', tier:'gold',      xp:200, desc:'Play 100 games' },
+    { code:'collector',      name:'Collector',          icon:'🧰', tier:'gold',      xp:150, desc:'Unlock 10 different trophies' },
+    { code:'strong_finish',  name:'Strong Finish',      icon:'🏁', tier:'silver',    xp:40,  desc:'Score 100+ on the Bull round' },
+    { code:'regular',        name:'Regular',            icon:'📅', tier:'silver',    xp:100, desc:'Play 50 games' },
+    { code:'full_house',     name:'Full House',         icon:'🏠', tier:'bronze',    xp:12,  desc:'All three darts on target in a round' },
+    { code:'perfect_start',  name:'Perfect Start',      icon:'🚀', tier:'bronze',    xp:20,  desc:'Full house on the opening 10s round' },
+    { code:'dead_centre',    name:'Dead Centre',        icon:'🔴', tier:'bronze',    xp:5,   desc:'Hit the 50 bull' }
+  ],
+  meta(code){ return this.CATALOG.find(a => a.code === code) || { code, name: code, icon:'🎖️', tier:'bronze', desc:'' }; },
+  tierStyle(tier){
+    switch(tier){
+      case 'legendary': return { c:'#e9c6ff', b:'rgba(180,123,255,.6)', g:'linear-gradient(135deg,rgba(180,123,255,.30),rgba(120,60,200,.16))' };
+      case 'gold':      return { c:'#ffe1a6', b:'rgba(255,196,74,.55)', g:'linear-gradient(135deg,rgba(255,196,74,.26),rgba(255,140,40,.14))' };
+      case 'silver':    return { c:'#e4ecf7', b:'rgba(200,214,235,.5)', g:'linear-gradient(135deg,rgba(200,214,235,.20),rgba(150,170,200,.10))' };
+      default:          return { c:'#f0c9a6', b:'rgba(208,139,90,.5)', g:'linear-gradient(135deg,rgba(208,139,90,.20),rgba(160,100,60,.10))' };
+    }
+  },
+  _cache:{},
+  async forName(name){
+    try{
+      const xr = await SQ_XP.forName(name); if (!xr) return {};
+      const SB = window.sb || window.__sb || null;
+      if (!SB || typeof SB.from !== 'function') return {};
+      const { data, error } = await SB.from('v_player_achievements').select('code,cnt,xp').eq('player_id', xr.player_id);
+      if (error || !Array.isArray(data)) return {};
+      const map = {}; data.forEach(r => { map[r.code] = { cnt: Number(r.cnt) || 0, xp: Number(r.xp) || 0 }; });
+      return map;
+    }catch(_){ return {}; }
+  }
+};
+window.SQ_ACH = SQ_ACH;
+
+// Milestones are one-time unlocks (score PBs, career collections, volume,
+// meta); everything else is a repeatable Trophy you can stack.
+SQ_ACH.MILESTONES = new Set(['score_100','score_200','score_300','score_400','score_500','score_600','score_700','treble_sweep','double_sweep','bull_club','regular','veteran','centurion','collector','trophy_hunter']);
+SQ_ACH.isMilestone = function(code){ return SQ_ACH.MILESTONES.has(code); };
+
+// Everyone who has earned a given trophy, ranked by count (for the per-award
+// leaderboard shown when you tap a trophy).
+SQ_ACH.forCode = async function(code){
+  try{
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return [];
+    const [res, names] = await Promise.all([
+      SB.from('v_player_achievements').select('player_id,cnt,xp').eq('code', code),
+      SQ_XP.all()
+    ]);
+    const rows = (res && res.data) || [];
+    const nameMap = {}; (names || []).forEach(n => { nameMap[n.player_id] = n.name; });
+    return rows.map(r => ({ player_id: r.player_id, name: nameMap[r.player_id] || '—', cnt: Number(r.cnt) || 0, xp: Number(r.xp) || 0 }))
+      .filter(r => r.cnt > 0)
+      .sort((a, b) => (b.cnt - a.cnt) || (b.xp - a.xp));
+  }catch(_){ return []; }
+};
+
+// Trophy detail popup: how to earn it + a leaderboard of everyone who has it.
+async function __sqTrophyDetail(code, earnedMap){
+  const a = SQ_ACH.meta(code); const s = SQ_ACH.tierStyle(a.tier);
+  const got = (earnedMap && earnedMap[code]) || { cnt: 0 };
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal = document.createElement('div'); modal.className = 'modal';
+  modal.style.cssText = 'max-width:460px;width:92vw;max-height:86vh;overflow:hidden;';
+  const body = document.createElement('div'); body.className = 'modal-body'; body.style.cssText = 'overflow-y:auto;max-height:82vh;';
+  const milestone = SQ_ACH.isMilestone(code);
+  const tierName = (a.tier || 'bronze').toUpperCase() + (milestone ? ' · MILESTONE' : '');
+  const xpText = code === 'giant_slayer' ? 'Scales with the level gap' : ('+' + (a.xp || 0) + ' XP' + (milestone ? ' (one-time)' : ' each'));
+  const yours = milestone
+    ? (got.cnt > 0 ? 'Unlocked ✓' : 'Not yet unlocked')
+    : (got.cnt > 0 ? ('You’ve earned this ' + got.cnt
+
+--- MATCH 7 @ 1515806 [1513206:1518417] ---
+ame:'Regular',            icon:'📅', tier:'silver',    xp:100, desc:'Play 50 games' },
+    { code:'full_house',     name:'Full House',         icon:'🏠', tier:'bronze',    xp:12,  desc:'All three darts on target in a round' },
+    { code:'perfect_start',  name:'Perfect Start',      icon:'🚀', tier:'bronze',    xp:20,  desc:'Full house on the opening 10s round' },
+    { code:'dead_centre',    name:'Dead Centre',        icon:'🔴', tier:'bronze',    xp:5,   desc:'Hit the 50 bull' }
+  ],
+  meta(code){ return this.CATALOG.find(a => a.code === code) || { code, name: code, icon:'🎖️', tier:'bronze', desc:'' }; },
+  tierStyle(tier){
+    switch(tier){
+      case 'legendary': return { c:'#e9c6ff', b:'rgba(180,123,255,.6)', g:'linear-gradient(135deg,rgba(180,123,255,.30),rgba(120,60,200,.16))' };
+      case 'gold':      return { c:'#ffe1a6', b:'rgba(255,196,74,.55)', g:'linear-gradient(135deg,rgba(255,196,74,.26),rgba(255,140,40,.14))' };
+      case 'silver':    return { c:'#e4ecf7', b:'rgba(200,214,235,.5)', g:'linear-gradient(135deg,rgba(200,214,235,.20),rgba(150,170,200,.10))' };
+      default:          return { c:'#f0c9a6', b:'rgba(208,139,90,.5)', g:'linear-gradient(135deg,rgba(208,139,90,.20),rgba(160,100,60,.10))' };
+    }
+  },
+  _cache:{},
+  async forName(name){
+    try{
+      const xr = await SQ_XP.forName(name); if (!xr) return {};
+      const SB = window.sb || window.__sb || null;
+      if (!SB || typeof SB.from !== 'function') return {};
+      const { data, error } = await SB.from('v_player_achievements').select('code,cnt,xp').eq('player_id', xr.player_id);
+      if (error || !Array.isArray(data)) return {};
+      const map = {}; data.forEach(r => { map[r.code] = { cnt: Number(r.cnt) || 0, xp: Number(r.xp) || 0 }; });
+      return map;
+    }catch(_){ return {}; }
+  }
+};
+window.SQ_ACH = SQ_ACH;
+
+// Milestones are one-time unlocks (score PBs, career collections, volume,
+// meta); everything else is a repeatable Trophy you can stack.
+SQ_ACH.MILESTONES = new Set(['score_100','score_200','score_300','score_400','score_500','score_600','score_700','treble_sweep','double_sweep','bull_club','regular','veteran','centurion','collector','trophy_hunter']);
+SQ_ACH.isMilestone = function(code){ return SQ_ACH.MILESTONES.has(code); };
+
+// Everyone who has earned a given trophy, ranked by count (for the per-award
+// leaderboard shown when you tap a trophy).
+SQ_ACH.forCode = async function(code){
+  try{
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return [];
+    const [res, names] = await Promise.all([
+      SB.from('v_player_achievements').select('player_id,cnt,xp').eq('code', code),
+      SQ_XP.all()
+    ]);
+    const rows = (res && res.data) || [];
+    const nameMap = {}; (names || []).forEach(n => { nameMap[n.player_id] = n.name; });
+    return rows.map(r => ({ player_id: r.player_id, name: nameMap[r.player_id] || '—', cnt: Number(r.cnt) || 0, xp: Number(r.xp) || 0 }))
+      .filter(r => r.cnt > 0)
+      .sort((a, b) => (b.cnt - a.cnt) || (b.xp - a.xp));
+  }catch(_){ return []; }
+};
+
+// Trophy detail popup: how to earn it + a leaderboard of everyone who has it.
+async function __sqTrophyDetail(code, earnedMap){
+  const a = SQ_ACH.meta(code); const s = SQ_ACH.tierStyle(a.tier);
+  const got = (earnedMap && earnedMap[code]) || { cnt: 0 };
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal = document.createElement('div'); modal.className = 'modal';
+  modal.style.cssText = 'max-width:460px;width:92vw;max-height:86vh;overflow:hidden;';
+  const body = document.createElement('div'); body.className = 'modal-body'; body.style.cssText = 'overflow-y:auto;max-height:82vh;';
+  const milestone = SQ_ACH.isMilestone(code);
+  const tierName = (a.tier || 'bronze').toUpperCase() + (milestone ? ' · MILESTONE' : '');
+  const xpText = code === 'giant_slayer' ? 'Scales with the level gap' : ('+' + (a.xp || 0) + ' XP' + (milestone ? ' (one-time)' : ' each'));
+  const yours = milestone
+    ? (got.cnt > 0 ? 'Unlocked ✓' : 'Not yet unlocked')
+    : (got.cnt > 0 ? ('You’ve earned this ' + got.cnt + '×') : 'You haven’t earned this yet');
+  body.innerHTML =
+    '<div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:' + s.g + ';border:1px solid ' + s.b + ';">'
+    + '<div style="font-size:40px;line-height:1">' + a.icon + '</div>'
+    + '<div style="min-width:0"><div style="font-weight:900;font-size:20px;color:#fff">' + a.name + '</div>'
+    + '<div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:' + s.c + '">' + tierName + ' · ' + xpText + '</div></div></div>'
+    + '<div style="margin:14px 2px 4px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">How to earn</div>'
+    + '<div style="font-size:15px;font-weight:600;margin:0 2px 10px">' + a.desc + '.</div>'
+    + '<div style="font-size:12px;font-weight:800;margin:0 2px 12px;color:' + (got.cnt>0 ? '#7be0a0' : 'var(--v3-muted,#98a2b8)') + '">' + yours + '</div>'
+    + '<div style="margin:6px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">Trophy leaderboard</div>'
+    + '<p class="muted" id="trophyLbLoadin
+
+--- MATCH 8 @ 1520755 [1518155:1523366] ---
+:' + (got.cnt>0 ? '#7be0a0' : 'var(--v3-muted,#98a2b8)') + '">' + yours + '</div>'
+    + '<div style="margin:6px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">Trophy leaderboard</div>'
+    + '<p class="muted" id="trophyLbLoading" style="font-size:13px">Loading…</p>';
+  modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
+  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0; modal.focus();
+  const rows = await SQ_ACH.forCode(code);
+  const loading = body.querySelector('#trophyLbLoading'); if (loading) loading.remove();
+  if (!rows.length){
+    const p = document.createElement('p'); p.className = 'muted'; p.style.fontSize = '13px';
+    p.textContent = 'No one has earned this yet — be the first!'; body.appendChild(p);
+  } else {
+    const list = document.createElement('div'); list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+    const medal = i => i === 0 ? '#ffd24a' : i === 1 ? '#cbd5e1' : i === 2 ? '#d08b5a' : 'var(--v3-muted,#98a2b8)';
+    rows.forEach((r, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);';
+      const rk = document.createElement('span'); rk.textContent = '#' + (i + 1); rk.style.cssText = 'font-weight:900;min-width:30px;color:' + medal(i);
+      const nm = document.createElement('span'); nm.textContent = r.name; nm.style.cssText = 'flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      const ct = document.createElement('span');
+      ct.textContent = milestone ? '✓' : ('×' + r.cnt);
+      ct.style.cssText = 'font-weight:900;color:' + (milestone ? '#2fd06b' : '#ffb14a') + ';';
+      row.append(rk, nm, ct); list.appendChild(row);
+    });
+    body.appendChild(list);
+  }
+  const foot = document.createElement('div'); foot.style.cssText = 'margin-top:14px;text-align:center;';
+  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Close'; cb.onclick = () => overlay.remove();
+  foot.appendChild(cb); body.appendChild(foot);
+}
+
+// Per-game trophy detector for live celebration toasts. Mirrors the SQL rules
+// in v_ach_rounds / v_player_achievements (per-round, per-game, streak, 2p feats).
+// Career/match feats (sweeps, giant_slayer, champion, nemesis) are cross-game and
+// surface via the trophy case, not here. board = array[player] of array[round] of
+// { darts:[{kind,points}], roundTotal }.  opts: { players, is_tiebreak }.
+SQ_ACH.detectGame = function(board, opts){
+  opts = opts || {};
+  const players = opts.players || [];
+  const norm = d => {
+    const k = (d && d.kind) || 'Miss';
+    if (k === 'S') return 'single';
+    if (k === 'D' || k === 'Double') return 'double';
+    if (k === 'T' || k === 'Triple') return 'treble';
+    if (k === 'B' || k === 'Bull') return 'bull';
+    return 'miss';
+  };
+  if (!Array.isArray(board) || !board.length) return [];
+  const totals = board.map(rs => (rs || []).reduce((s, r) => s + (Number(r && r.roundTotal) || 0), 0));
+  const maxTotal = Math.max.apply(null, totals.concat([0]));
+  const out = [];
+  for (let p = 0; p < board.length; p++){
+    const rounds = board[p] || [];
+    const earned = {}; const add = (c, n) => { earned[c] = (earned[c] || 0) + (n || 1); };
+    let totMiss = 0, totDarts = 0, centuryRounds = 0, scoredRounds = 0, best = 0, run = 0;
+    let finalFh = false;
+    for (let ri = 0; ri < rounds.length; ri++){
+      const r = rounds[ri] || {}; const darts = r.darts || [];
+      let tre = 0, dou = 0, sin = 0, b50 = 0, bany = 0;
+      darts.forEach(d => { const nk = norm(d); if (nk === 'treble') tre++; else if (nk === 'double') dou++; else if (nk === 'single') sin++; else if (nk === 'bull'){ bany++; if ((Number(d.points) || 0) === 50) b50++; } });
+      const mis = darts.filter(d => norm(d) === 'miss' || (Number(d && d.points) || 0) === 0).length;
+      const rtot = Number(r.roundTotal) || 0;
+      const target = ri <= 10 ? 10 + ri : null;
+      const rmax = ri <= 10 ? 9 * (10 + ri) : (ri === 11 ? 120 : ri === 12 ? 180 : 150);
+      totMiss += mis; totDarts += darts.length;
+      if (rtot > 0) scoredRounds++;
+      const fh = (mis === 0 && darts.length === 3);
+      run = fh ? run + 1 : 0; if (run > best) best = run;
+      if (ri === 13) finalFh = fh;
+      if (rtot === 180) add('the_180');
+      else if (rtot === rmax && darts.length === 3) add('maximum');
+      if (tre === 3) add('treble_trouble');
+      if (dou === 3) add('double_down');
+      if (fh) add('full_house');
+      if (rtot >= 100 && rtot < 180){ add('century'); centuryRounds++; }
+      if (target != null && sin === 1 && dou === 1 && tre === 1) add('shanghai');
+      if (target != null && sin === 2 && dou === 1 && tre === 0 && mis === 0) add('desmond');
+      if (target != null && tre 
+COUNT_SHOWN=8
+
+===== TARGET: 'giftXp' =====
+COUNT_SHOWN=0
+
+===== TARGET: 'giftXP' =====
+COUNT_SHOWN=0
+
+===== TARGET: 'XP gift' =====
+COUNT_SHOWN=0
+
+===== TARGET: 'Misfire' =====
+COUNT_SHOWN=0
