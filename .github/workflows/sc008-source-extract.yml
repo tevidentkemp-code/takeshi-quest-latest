@@ -1,0 +1,65 @@
+name: SC-008 source extract
+
+on:
+  push:
+    branches:
+      - fix/sc008-achievement-ui
+    paths:
+      - '.github/workflows/sc008-source-extract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Verify production base and emit targeted excerpts
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "HEAD=$(git rev-parse HEAD)"
+          echo "INDEX_BLOB=$(git hash-object index.html)"
+          python - <<'PY'
+          from pathlib import Path
+
+          text = Path('index.html').read_text(encoding='utf-8')
+          print(f'INDEX_CHARS={len(text)}')
+
+          targets = [
+              'Trophy Vault',
+              'v_player_achievements',
+              'v_player_xp',
+              'player_achievements',
+              'Player Stats',
+              'Achievements',
+              'achievement',
+              'giftXp',
+              'giftXP',
+              'XP gift',
+              'Misfire',
+          ]
+
+          radius = 3500
+          max_matches = 12
+          for target in targets:
+              print(f'\n===== TARGET: {target!r} =====')
+              start = 0
+              found = 0
+              while found < max_matches:
+                  pos = text.find(target, start)
+                  if pos < 0:
+                      break
+                  found += 1
+                  lo = max(0, pos - radius)
+                  hi = min(len(text), pos + len(target) + radius)
+                  print(f'\n--- MATCH {found} @ {pos} [{lo}:{hi}] ---')
+                  print(text[lo:hi])
+                  start = pos + len(target)
+              print(f'COUNT_SHOWN={found}')
+          PY
