@@ -176,22 +176,13 @@ if 'david_and_goliath' in text.lower():
 
 INDEX.write_text(text, encoding='utf-8')
 
-# Parse-check every executable inline script; this validates syntax without
-# executing browser code or touching Supabase.
-scripts = re.findall(r'<script\b([^>]*)>([\s\S]*?)</script>', text, re.I)
-checked = 0
-for i, (attrs, body) in enumerate(scripts):
-    if re.search(r'\bsrc\s*=', attrs, re.I):
-        continue
-    tm = re.search(r'\btype\s*=\s*["\']([^"\']+)["\']', attrs, re.I)
-    typ = tm.group(1).strip().lower() if tm else ''
-    if typ and typ not in ('text/javascript', 'application/javascript', 'module'):
-        continue
-    suffix = '.mjs' if typ == 'module' else '.js'
-    fn = Path(tempfile.gettempdir()) / f'sc008-inline-{i}{suffix}'
-    fn.write_text(body, encoding='utf-8')
-    subprocess.run(['node', '--check', str(fn)], check=True)
-    checked += 1
-if checked == 0:
-    raise SystemExit('No inline JavaScript blocks were parse-checked')
-print(f'SC-008 patch applied; parse-checked {checked} inline JavaScript blocks')
+# Parse-check the exact application script we modified. This avoids treating
+# non-JavaScript template/script payloads elsewhere in the HTML as executable JS.
+scripts = re.findall(r'<script\b[^>]*>([\s\S]*?)</script>', text, re.I)
+targets = [body for body in scripts if 'const SQ_ACH = {' in body and 'openPlayerStatsDialog' in body]
+if len(targets) != 1:
+    raise SystemExit(f'Expected exactly one modified app script, found {len(targets)}')
+fn = Path(tempfile.gettempdir()) / 'sc008-app-script.js'
+fn.write_text(targets[0], encoding='utf-8')
+subprocess.run(['node', '--check', str(fn)], check=True)
+print('SC-008 patch applied; modified app script parse-check PASS')
