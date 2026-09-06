@@ -14,7 +14,18 @@ jobs:
         with:
           ref: feature/sc012-target-rankings-spider-compare
       - name: Apply bounded SC-012 patch
-        run: python3 tools/sc012_patch.py
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          literal="highlightTableRow('\x00')"
+          escaped="highlightTableRow('\\0')"
+          print('SC-012 board sentinel forms', {'literal_nul':s.count(literal), 'escaped':s.count(escaped)})
+          if s.count(literal)==1 and s.count(escaped)==0:
+              p.write_text(s.replace(literal, escaped, 1))
+          PY
+          python3 tools/sc012_patch.py
       - name: Diff guard before tests
         run: |
           git diff --check
