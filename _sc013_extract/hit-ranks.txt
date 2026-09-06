@@ -1,0 +1,760 @@
+800' });
+    addSvgText(svg, 230, 321, 'HIGH', { fill:'rgba(190,210,240,.75)', 'font-size':'8', 'font-weight':'800' });
+    return svg;
+  }
+
+  function rowFromHitPct(r){
+    var throwsN = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['throws','throw_count','thrown']) : r.throws) || 0);
+    var hits = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['hits','successful_hits','hit_count']) : r.hits) || 0);
+    var pctRaw = typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['hit_pct','pct','percentage']) : r.hit_pct;
+    var pct = Number.isFinite(Number(pctRaw)) ? Number(pctRaw) : (throwsN ? hits * 100 / throwsN : 0);
+    var key = typeof __sqTargetPctKey === 'function' ? __sqTargetPctKey(r) : String(r.target_key || r.target_label || '').toUpperCase();
+    var sort = Number(r.target_sort);
+    if (!Number.isFinite(sort)) sort = typeof __sqTargetPctOrder === 'function' ? __sqTargetPctOrder(key) : 999;
+    return { key:key, playerKey:rankKey(r.player_key || r.player_name), playerName:String(r.player_name || r.player_key || ''), throwsN:throwsN, hits:hits, pct:pct, sort:sort };
+  }
+
+  // Tap-to-inspect for the dartboard heatmaps: tapping a wedge / D / T / B
+  // (or a table row) spotlights that one target — everything else dims, a
+  // floating card shows the counted-up % + ranks, and the table row lights.
+  function __sqWireBoardInspect(heatPanel, tablePanel, rows, mode, globalRanks, currentPlayerName){
+    var svg = heatPanel.querySelector('svg');
+    if (!svg) return;
+    heatPanel.style.position = 'relative';
+    var spot = document.createElement('div');
+    spot.style.cssText = 'position:absolute;top:8px;left:10px;display:none;align-items:center;gap:12px;'
+      + 'background:rgba(16,24,39,.95);border:1px solid rgba(255,164,64,.7);border-radius:12px;padding:8px 14px;'
+      + 'box-shadow:0 6px 18px rgba(0,0,0,.45), 0 0 18px rgba(255,140,40,.25);z-index:3;pointer-events:none;';
+    var spotKey = document.createElement('div');
+    spotKey.style.cssText = 'font-size:22px;font-weight:900;color:#fff;min-width:30px;text-align:center;';
+    var spotPct = document.createElement('div');
+    spotPct.style.cssText = 'font-size:22px;font-weight:900;color:#ffd9b0;';
+    var spotSub = document.createElement('div');
+    spotSub.style.cssText = 'font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:rgba(150,185,230,.9);line-height:1.5;';
+    spot.append(spotKey, spotPct, spotSub);
+    heatPanel.appendChild(spot);
+
+    var rankPanel = document.createElement('div');
+    rankPanel.className = 'sq-target-global-ranking';
+    rankPanel.style.cssText = 'position:absolute;top:76px;left:10px;display:none;width:min(310px,calc(100% - 20px));max-height:158px;overflow-y:auto;overflow-x:hidden;'
+      + 'background:rgba(9,15,29,.97);border:1px solid rgba(125,211,252,.55);border-radius:10px;box-shadow:0 8px 22px rgba(0,0,0,.52);z-index:4;overscroll-behavior:contain;';
+    heatPanel.appendChild(rankPanel);
+
+    var selected = null;
+    var countRaf = 0;
+    var els = Array.prototype.slice.call(svg.querySelectorAll('[data-sqkey]'));
+    els.forEach(function(el){ el.__sqStroke = el.getAttribute('stroke'); el.__sqSw = el.getAttribute('stroke-width'); });
+    var rowFor = function(k){ return (rows || []).find(function(r){ return String(r.key).toUpperCase() === k; }) || null; };
+    var renderGlobalRanking = function(k){
+      var byTarget = globalRanks && globalRanks.__sqByTarget;
+      var list = byTarget && typeof byTarget.get === 'function' ? (byTarget.get(String(k || '').toUpperCase()) || []) : [];
+      rankPanel.innerHTML = '';
+      if (!list.length){ rankPanel.style.display = 'none'; return; }
+      rankPanel.style.display = 'block';
+      var head = document.createElement('div');
+      head.className = 'sq-target-global-ranking-head';
+      head.style.cssText = 'position:sticky;top:0;z-index:1;padding:7px 9px;background:rgba(12,20,38,.98);border-bottom:1px solid rgba(125,211,252,.28);font-size:10px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;color:#d9ecff;';
+      head.textContent = 'Target ' + k + ' - all players';
+      rankPanel.appendChild(head);
+      var tbl = document.createElement('table');
+      tbl.className = 'sq-table hs-table';
+      tbl.style.cssText = 'width:100%;font-size:10px;table-layout:fixed;';
+      tbl.innerHTML = '<colgroup><col style="width:18%"><col style="width:50%"><col style="width:32%"></colgroup><thead><tr><th>#</th><th>Player</th><th>' + (mode === 'points' ? '% Score' : 'Hit %') + '</th></tr></thead><tbody></tbody>';
+      var tbody = tbl.querySelector('tbody');
+      var currentKey = rankKey(currentPlayerName);
+      list.forEach(function(r, i){
+        var tr = document.createElement('tr');
+        if (String(r.playerKey || '') === currentKey){
+          tr.dataset.currentPlayer = '1';
+          tr.style.background = 'rgba(255,122,0,.14)';
+          tr.style.boxShadow = 'inset 3px 0 0 rgba(255,164,64,.9)';
+        }
+        var rankTd = document.createElement('td'); rankTd.textContent = '#' + String(r.gRank || (i + 1));
+        var playerTd = document.createElement('td');
+        var nm = document.createElement('div'); nm.textContent = String(r.playerName || r.playerKey || ''); nm.style.fontWeight = '850';
+        var sub = document.createElement('div'); sub.className = 'muted'; sub.style.fontSize = '8px';
+        sub.textContent = mode === 'points' ? (fmtAvgScore(r.avgScore) + ' avg') : ((r.hits || 0) + '/' + (r.throwsN || 0) + ' hits');
+        playerTd.append(nm, sub);
+        var metricTd = document.createElement('td'); metricTd.textContent = pctFmt(r.pct);
+        tr.append(rankTd, playerTd, metricTd); tbody.appendChild(tr);
+      });
+      rankPanel.appendChild(tbl);
+    };
+    var highlightTableRow = function(k){
+      try{
+        Array.prototype.forEach.call(tablePanel.querySelectorAll('tbody tr'), function(tr){
+          var hit = String((tr.cells[0] && tr.cells[0].textContent) || '').trim().toUpperCase() === k;
+          tr.style.background = hit ? 'rgba(255,122,0,.14)' : '';
+          tr.style.boxShadow = hit ? 'inset 3px 0 0 rgba(255,164,64,.9)' : '';
+          if (hit && tr.scrollIntoView) tr.scrollIntoView({ block:'nearest' });
+        });
+      }catch(_e){}
+    };
+    var apply = function(){
+      els.forEach(function(el){
+        var k = el.getAttribute('data-sqkey');
+        if (selected == null){
+          el.setAttribute('opacity', '1');
+          if (el.__sqStroke != null) el.setAttribute('stroke', el.__sqStroke);
+          if (el.__sqSw != null) el.setAttribute('stroke-width', el.__sqSw);
+        } else if (k === selected){
+          el.setAttribute('opacity', '1');
+          el.setAttribute('stroke', '#ffffff');
+          el.setAttribute('stroke-width', String((parseFloat(el.__sqSw) || 1) + 1.2));
+        } else {
+          el.setAttribute('opacity', '.35');
+          if (el.__sqStroke != null) el.setAttribute('stroke', el.__sqStroke);
+          if (el.__sqSw != null) el.setAttribute('stroke-width', el.__sqSw);
+        }
+      });
+      if (selected == null){ spot.style.display = 'none'; rankPanel.style.display = 'none'; highlightTableRow('\0'); return; }
+      var r = rowFor(selected);
+      if (!r){ spot.style.display = 'none'; return; }
+      spot.style.display = 'flex';
+      spotKey.textContent = selected;
+      if (mode === 'points'){
+        spotSub.innerHTML = fmtAvgScore(r.avgScore) + ' avg<br>' + (r.pRank ? 'P #' + r.pRank : '') + (r.gRank ? ' · G #' + r.gRank : '');
+      } else {
+        spotSub.innerHTML = (r.hits || 0) + '/' + (r.throwsN || 0) + ' hits<br>' + (r.pRank ? 'P #' + r.pRank : '') + (r.gRank ? ' · G #' + r.gRank : '');
+      }
+      renderGlobalRanking(selected);
+      cancelAnimationFrame(countRaf);
+      var target = Number(r.pct || 0);
+      var start = performance.now(), dur = 420;
+      var step = function(now){
+        var tt = Math.min(1, (now - start) / dur);
+        var e = 1 - Math.pow(1 - tt, 3);
+        spotPct.textContent = (target * e).toFixed(1) + '%';
+        if (tt < 1) countRaf = requestAnimationFrame(step);
+      };
+      countRaf = requestAnimationFrame(step);
+      highlightTableRow(selected);
+    };
+    svg.addEventListener('click', function(e){
+      var el = e.target && e.target.closest ? e.target.closest('[data-sqkey]') : null;
+      if (!el) return;
+      var k = el.getAttribute('data-sqkey');
+      selected = (selected === k) ? null : k;
+      apply();
+    });
+    try{
+      tablePanel.addEventListener('click', function(e){
+        var tr = e.target && e.target.closest ? e.target.closest('tbody tr') : null;
+        if (!tr || !tr.cells || !tr.cells[0]) return;
+        var k = String(tr.cells[0].textContent || '').trim().toUpperCase();
+        selected = (selected === k) ? null : k;
+        apply();
+      });
+    }catch(_e){}
+  }
+
+  function applyTargetHitPersonalRanks(rows){
+    var sorted = (rows || []).slice().sort(function(a,b){
+      return Number(b.pct || 0) - Number(a.pct || 0) ||
+        Number(b.hits || 0) - Number(a.hits || 0) ||
+        Number(b.throwsN || 0) - Number(a.throwsN || 0) ||
+        Number(a.sort || 999) - Number(b.sort || 999);
+    });
+    var rank = 0, prev = '';
+    sorted.forEach(function(r, i){
+      var sig = [Number(r.pct || 0).toFixed(8), Number(r.hits || 0), Number(r.throwsN || 0), Number(r.sort || 999)].join('|');
+      if (sig !== prev){ rank = i + 1; prev = sig; }
+      r.pRank = rank;
+    });
+  }
+
+  async function savedPlayerKeySet(){
+    try{
+      if (typeof cloudListPlayers !== 'function') return null;
+      var list = await cloudListPlayers();
+      var names = Array.isArray(list) ? list : [];
+      var set = new Set();
+      names.forEach(function(p){
+        var name = typeof p === 'string' ? p : (p && (p.name || p.player_name || p.playerName));
+        var k = rankKey(name);
+        if (k) set.add(k);
+      });
+      return set.size ? set : null;
+    }catch(e){
+      console.warn('[SQ] Target Hit % saved-player filter unavailable for global ranks', e);
+      return null;
+    }
+  }
+
+  async function fetchTargetHitGlobalRanks(rows){
+    var c = client();
+    if (!c || typeof c.from !== 'function') return new Map();
+    var keys = Array.from(new Set((rows || []).map(function(r){ return String(r.key || '').toUpperCase(); }).filter(Boolean)));
+    if (!keys.length) return new Map();
+    try{
+      var savedSet = await savedPlayerKeySet();
+      var q = await c.from('v_player_target_hit_pct')
+        .select('player_key,player_name,target_key,target_label,target_sort,throws,hits,hit_pct')
+        .in('target_key', keys)
+        .gt('throws', 0)
+        .limit(5000);
+      if (q.error) throw q.error;
+      var allRows = (Array.isArray(q.data) ? q.data : []).map(rowFromHitPct).filter(function(r){
+        if (!r.key || !r.playerKey) return false;
+        return !savedSet || savedSet.has(r.playerKey);
+      });
+      var byTarget = new Map();
+      allRows.forEach(function(r){
+        var k = String(r.key).toUpperCase();
+        if (!byTarget.has(k)) byTarget.set(k, []);
+        byTarget.get(k).push(r);
+      });
+      var ranks = new Map();
+      byTarget.forEach(function(list, targetKey){
+        list.sort(function(a,b){
+          return Number(b.pct || 0) - Number(a.pct || 0) ||
+            Number(b.hits || 0) - Number(a.hits || 0) ||
+            Number(b.throwsN || 0) - Number(a.throwsN || 0) ||
+            String(a.playerKey || '').localeCompare(String(b.playerKey || ''));
+        });
+        var rank = 0, prev = '';
+        list.forEach(function(r, i){
+          var sig = [Number(r.pct || 0).toFixed(8), Number(r.hits || 0), Number(r.throwsN || 0), String(r.playerKey || '')].join('|');
+          if (sig !== prev){ rank = i + 1; prev = sig; }
+          r.gRank = rank;
+          ranks.set(targetKey + '|' + r.playerKey, rank);
+        });
+      });
+      ranks.__sqByTarget = byTarget;
+      ranks.__sqAllRows = allRows;
+      console.debug('[SQ] Target Hit % global rank source used', { source:'v_player_target_hit_pct', rows:allRows.length, saved_players_only:!!savedSet });
+      return ranks;
+    }catch(e){
+      console.warn('[SQ] Target Hit % global rank source unavailable', { required_view:'v_player_target_hit_pct', error:e });
+      return new Map();
+    }
+  }
+
+  function __sqBuildTargetComparePlayers(globalRanks, labels){
+    var allRows = globalRanks && Array.isArray(globalRanks.__sqAllRows) ? globalRanks.__sqAllRows : [];
+    var byPlayer = new Map();
+    allRows.forEach(function(r){
+      var pk = String(r.playerKey || '').trim();
+      if (!pk) return;
+      if (!byPlayer.has(pk)) byPlayer.set(pk, { key:pk, name:String(r.playerName || r.playerKey || pk), rows:new Map() });
+      byPlayer.get(pk).rows.set(String(r.key || '').toUpperCase(), Number(r.pct));
+    });
+    return Array.from(byPlayer.values()).map(function(pl){
+      return {
+        key:pl.key,
+        name:pl.name,
+        pct:(labels || []).map(function(k){
+          var v = pl.rows.get(String(k || '').toUpperCase());
+          return Number.isFinite(v) ? v : null;
+        })
+      };
+    }).sort(function(a,b){ return String(a.name || '').localeCompare(String(b.name || '')); });
+  }
+
+  // @CANONICAL:PLAYER_TARGET_HIT_HEATMAP
+  window.openPlayerTargetHitDialog = async function openPlayerTargetHitDialog(playerName){
+    var name = String(playerName || '').trim();
+    if (!name) return;
+    var ui = __sqBuildTargetPctShell('Target Hit % - ' + name, 'Throws / Hits / %', name, 'hit');
+    var body = ui.body;
+    body.innerHTML = '<p class="muted">Loading...</p>';
+
+    var result = await __sqFetchPlayerTargetHitPctRows(name);
+    if (result.missing || !result.rows.length){
+      console.warn('[SQ] Target Hit % dependency missing or empty', { required_view:'v_player_target_hit_pct', player:name, source:result.source, detail:result.missing || 'zero rows' });
+      __sqShowTargetPctUnavailable(
+        body,
+        'Target Hit % is not available yet. Accurate hit-rate data requires throw-level segment data or a Supabase view that records correct target hits.',
+        'Formula: Target Hit % = successful target hits / throws at that target. Number rounds require actual segment number truth; points alone are not used.',
+        'Missing dependency: v_player_target_hit_pct (player_id/player_key/player_name, target_key/target_label, throws, hits, hit_pct).'
+      );
+      return;
+    }
+
+    console.debug('[SQ] Target Hit % source used', { source:result.source, rows:result.rows.length });
+    __sqSetTargetPctActionsEnabled(body, true);
+    var rows = result.rows.map(rowFromHitPct).filter(function(r){ return r.key; }).sort(function(a,b){ return __sqTargetPctOrder(a.key) - __sqTargetPctOrder(b.key); });
+    applyTargetHitPersonalRanks(rows);
+    var globalRanks = await fetchTargetHitGlobalRanks(rows);
+    rows.forEach(function(r){
+      var currentPlayerKey = r.playerKey || rankKey(name);
+      r.gRank = globalRanks.get(String(r.key).toUpperCase() + '|' + currentPlayerKey) || null;
+    });
+    var hasGlobalRanks = rows.some(function(r){ return r.gRank; });
+    var spiderLabels = rows.map(function(r){ return String(r.key); });
+    window.__lastTargetHitPctSpiderData = {
+      labels:spiderLabels,
+      pct:rows.map(function(r){ return Number(r.pct || 0); }),
+      comparePlayers:__sqBuildTargetComparePlayers(globalRanks, spiderLabels)
+    };
+
+    body.innerHTML = '';
+    body.style.display = 'flex';
+    body.style.flexDirection = 'column';
+    body.style.gap = '10px';
+    body.style.height = 'min(68vh, 650px)';
+    body.style.minHeight = '520px';
+    body.style.overflow = 'hidden';
+
+    var heatPanel = document.createElement('div');
+    heatPanel.className = 'tag sq-target-hit-heatmap-panel';
+    heatPanel.style.flex = '0 0 63%';
+    heatPanel.style.minHeight = '310px';
+    heatPanel.style.padding = '10px';
+    heatPanel.style.borderRadius = '12px';
+    heatPanel.style.border = '1px solid rgba(255,255,255,.10)';
+    heatPanel.style.background = 'radial-gradient(circle at 48% 35%, rgba(72,111,205,.20), rgba(10,16,38,.94) 64%, rgba(4,7,18,.98))';
+    heatPanel.style.overflow = 'hidden';
+    heatPanel.appendChild(renderTargetHitHeatmap(rows));
+
+    var tablePanel = document.createElement('div');
+    tablePanel.className = 'sq-target-hit-table-panel';
+    tablePanel.style.flex = '1 1 0';
+    tablePanel.style.minHeight = '150px';
+    tablePanel.style.overflowY = 'auto';
+    tablePanel.style.border = '1px solid rgba(255,255,255,.10)';
+    tablePanel.style.borderRadius = '10px';
+
+    var table = document.createElement('table');
+    table.className = 'sq-table hs-table';
+    table.style.width = '100%';
+    table.style.tableLayout = 'fixed';
+    table.style.fontSize = 'clamp(11px, 2.7vw, 14px)';
+    table.innerHTML = '<colgroup><col style="width:24%"><col style="width:28%"><col style="width:24%"><col style="width:24%"></colgroup><thead><tr><th>Target</th><th>%</th><th>P Rank</th><th>G Rank</th></tr></thead><tbody></tbody>';
+    var tb = table.querySelector('tbody');
+    rows.forEach(function(r){
+      var tr = document.createElement('tr');
+      [r.key, pctFmt(r.pct), r.pRank ? ('#' + r.pRank) : '—', r.gRank ? ('#' + r.gRank) : '—'].forEach(function(v){
+        var td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    tablePanel.appendChild(table);
+
+    body.append(heatPanel, tablePanel);
+    __sqWireBoardInspect(heatPanel, tablePanel, rows, 'hit', globalRanks, name);
+  };
+  window.__sqCanonicalPlayerTargetHitDialog = window.openPlayerTargetHitDialog;
+  window.openPlayerTargetPctDialog = function(){ return window.__sqCanonicalPlayerTargetHitDialog.apply(window, arguments); };
+  window.openTargetPctDialog = window.openPlayerTargetPctDialog;
+  try{ openPlayerTargetHitDialog = window.openPlayerTargetHitDialog; }catch(_){}
+  try{ openPlayerTargetPctDialog = window.openPlayerTargetPctDialog; }catch(_){}
+  try{ openTargetPctDialog = window.openTargetPctDialog; }catch(_){}
+
+  function pointsTargetKey(r){
+    var n = Number(typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['target_number','target_n','target']) : r.target_number);
+    if (Number.isFinite(n) && n >= 10 && n <= 20) return String(Math.trunc(n));
+    var raw = typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['target_label','target_key','bucket_key','target']) : (r.target_label || r.target_key || r.bucket_key || r.target);
+    var key = String(raw || '').trim().toUpperCase();
+    if (key === 'DOUBLE' || key === 'DOUBLES') key = 'D';
+    if (key === 'TREBLE' || key === 'TRIPLE' || key === 'TREBLES' || key === 'TRIPLES') key = 'T';
+    if (key === 'BULL' || key === 'BULLS' || key === 'IB' || key === 'OB') key = 'B';
+    return key;
+  }
+  function fmtAvgScore(v){
+    var n = Number(v);
+    if (!Number.isFinite(n)) return '—';
+    var rounded = Math.round(n * 10) / 10;
+    return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)) + ' pts';
+  }
+  function rowFromPointsPct(r){
+    var targetNumber = Number(typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['target_number','target_n','target']) : r.target_number);
+    var key = pointsTargetKey(r);
+    var throwsN = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['throws','throw_count','thrown']) : r.throws) || 0);
+    var actual = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['actual_points','points','score','round_total']) : r.actual_points) || 0);
+    var max = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['max_points','available_points']) : r.max_points) || 0);
+    if (!Number.isFinite(max) || max <= 0) max = Number.isFinite(targetNumber) ? targetNumber * 3 * throwsN : 0;
+    var sourceGames = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['source_games','games','game_count']) : r.source_games) || 0);
+    var pctRaw = typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['points_pct','pct','percentage']) : r.points_pct;
+    var pct = Number.isFinite(Number(pctRaw)) ? Number(pctRaw) : (max ? actual * 100 / max : 0);
+    var sort = Number.isFinite(targetNumber) ? targetNumber : (typeof __sqTargetPctOrder === 'function' ? __sqTargetPctOrder(key) : 999);
+    var avgScore = sourceGames > 0 ? actual / sourceGames : (throwsN ? actual / (throwsN / 3) : NaN);
+    return {
+      key:key,
+      playerKey:rankKey(r.player_key || r.player_name),
+      playerName:String(r.player_name || r.player_key || ''),
+      targetNumber:Number.isFinite(targetNumber) ? targetNumber : null,
+      throwsN:throwsN,
+      actual:actual,
+      max:max,
+      pct:Math.max(0, Math.min(100, Number(pct) || 0)),
+      sourceGames:sourceGames,
+      avgScore:avgScore,
+      sort:sort
+    };
+  }
+  function applyTargetPointsPersonalRanks(rows){
+    var sorted = (rows || []).slice().sort(function(a,b){
+      return Number(b.pct || 0) - Number(a.pct || 0) ||
+        Number(b.actual || 0) - Number(a.actual || 0) ||
+        Number(a.sort || 999) - Number(b.sort || 999);
+    });
+    var rank = 0, prev = '';
+    sorted.forEach(function(r, i){
+      var sig = [Number(r.pct || 0).toFixed(8), Number(r.actual || 0), Number(r.sort || 999)].join('|');
+      if (sig !== prev){ rank = i + 1; prev = sig; }
+      r.pRank = rank;
+    });
+  }
+  async function fetchTargetPointsGlobalRanks(rows){
+    var c = client();
+    if (!c || typeof c.from !== 'function') return new Map();
+    var keys = new Set((rows || []).map(function(r){ return String(r.key || '').toUpperCase(); }).filter(Boolean));
+    if (!keys.size) return new Map();
+    try{
+      var savedSet = await savedPlayerKeySet();
+      var q = await c.from('v_player_target_points_pct')
+        .select('player_key,player_name,target_number,target_label,throws,actual_points,max_points,points_pct,source_games')
+        .limit(10000);
+      if (q.error) throw q.error;
+      var allRows = (Array.isArray(q.data) ? q.data : []).map(rowFromPointsPct).filter(function(r){
+        if (!r.key || !r.playerKey || !keys.has(String(r.key).toUpperCase())) return false;
+        return !savedSet || savedSet.has(r.playerKey);
+      });
+      var byTarget = new Map();
+      allRows.forEach(function(r){
+        var k = String(r.key).toUpperCase();
+        if (!byTarget.has(k)) byTarget.set(k, []);
+        byTarget.get(k).push(r);
+      });
+      var ranks = new Map();
+      byTarget.forEach(function(list, targetKey){
+        list.sort(function(a,b){
+          return Number(b.pct || 0) - Number(a.pct || 0) ||
+            Number(b.actual || 0) - Number(a.actual || 0) ||
+            Number(b.sourceGames || 0) - Number(a.sourceGames || 0) ||
+            String(a.playerName || a.playerKey || '').localeCompare(String(b.playerName || b.playerKey || ''));
+        });
+        var rank = 0, prev = '';
+        list.forEach(function(r, i){
+          var sig = [Number(r.pct || 0).toFixed(8), Number(r.actual || 0), Number(r.sourceGames || 0), String(r.playerName || r.playerKey || '')].join('|');
+          if (sig !== prev){ rank = i + 1; prev = sig; }
+          r.gRank = rank;
+          ranks.set(targetKey + '|' + r.playerKey, rank);
+        });
+      });
+      ranks.__sqByTarget = byTarget;
+      ranks.__sqAllRows = allRows;
+      console.debug('[SQ] Target Points % global rank source used', { source:'v_player_target_points_pct', rows:allRows.length, saved_players_only:!!savedSet });
+      return ranks;
+    }catch(e){
+      console.warn('[SQ] Target Points % global rank source unavailable', { required_view:'v_player_target_points_pct', error:e });
+      return new Map();
+    }
+  }
+  function renderTargetPointsHeatmap(rows){
+    var map = heatValueMap(rows);
+    var boardOrder = ['20','1','18','4','13','6','10','15','2','17','3','19','7','16','8','11','14','9','12','5'];
+    var tracked = new Set(['10','11','12','13','14','15','16','17','18','19','20']);
+    var hotRows = (rows || []).filter(function(r){ return tracked.has(String(r.key).toUpperCase()) && Number.isFinite(Number(r.pct)); })
+      .sort(function(a,b){ return Number(b.pct || 0) - Number(a.pct || 0); });
+    var hotKeys = new Set(hotRows.filter(function(r){ return Number(r.pct || 0) >= 48; }).map(function(r){ return String(r.key).toUpperCase(); }));
+    if (!hotKeys.size) hotRows.slice(0, 2).forEach(function(r){ hotKeys.add(String(r.key).toUpperCase()); });
+    var cx = 160, cy = 142, r0 = 32, r1 = 104, rLabel = 124, step = 360 / boardOrder.length;
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 320 352');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', 'Target Points percentage heatmap');
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.display = 'block';
+
+    var defs = svgEl(svg, 'defs');
+    defs.innerHTML =
+      '<radialGradient id="sqPointsBoardBg" cx="46%" cy="36%" r="70%"><stop offset="0%" stop-color="#253a72"/><stop offset="58%" stop-color="#111b3b"/><stop offset="100%" stop-color="#050915"/></radialGradient>' +
+      '<style>@keyframes sqPointsPulse{0%,100%{opacity:.88;stroke-opacity:.86}50%{opacity:1;stroke-opacity:1}}.sq-points-hot-pulse{animation:sqPointsPulse 2.35s ease-in-out infinite}</style>' +
+      '<filter id="sqPointsGlowWarm" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="2.4" result="b"/><feColorMatrix in="b" type="matrix" values="1 0 0 0 1  0 0.42 0 0 .38  0 0 0.04 0 0  0 0 0 .55 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+      '<filter id="sqPointsGlowHot" x="-45%" y="-45%" width="190%" height="190%"><feGaussianBlur stdDeviation="3.4" result="b"/><feColorMatrix in="b" type="matrix" values="1 0 0 0 1  0 .72 0 0 .62  0 0 .08 0 0  0 0 0 .78 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+      '<filter id="sqPointsGlowElite" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3.9" result="b"/><feColorMatrix in="b" type="matrix" values="0 0 0 0 .42  0 0 0 0 1  0 0 0 0 .38  0 0 0 .82 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+    svg.appendChild(defs);
+
+    svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:132, fill:'rgba(15,27,63,.34)', stroke:'rgba(190,215,255,.16)', 'stroke-width':'1' }));
+    svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:116, fill:'url(#sqPointsBoardBg)', stroke:'rgba(218,234,255,.36)', 'stroke-width':'1.25' }));
+    svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:109, fill:'none', stroke:'rgba(108,165,230,.30)', 'stroke-width':'1' }));
+
+    boardOrder.forEach(function(k, i){
+      var row = tracked.has(k) ? map.get(k) : null;
+      var pct = row ? Number(row.pct || 0) : null;
+      var style = row ? heatStyle(pct) : { fill:(i % 2 ? 'rgba(45,61,101,.34)' : 'rgba(34,48,82,.38)'), stroke:'rgba(185,214,255,.18)', glow:'', width:'.85', label:'rgba(223,236,255,.76)' };
+      var a0 = i * step - (step / 2) + .28;
+      var a1 = i * step + (step / 2) - .28;
+      var path = svgEl(svg, 'path', { d:wedgePath(cx, cy, r0, r1, a0, a1), fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+      if (row){ path.setAttribute('data-sqkey', k); path.style.cursor = 'pointer'; }
+      if (style.glow) path.setAttribute('filter', style.glow.replace('sqHit', 'sqPoints'));
+      if (row && hotKeys.has(k)) path.setAttribute('class', 'sq-points-hot-pulse');
+      var title = svgEl(svg, 'title');
+      title.textContent = row ? (k + ': ' + pctFmt(pct) + ' - ' + Math.round(row.actual || 0) + '/' + Math.round(row.max || 0) + ' pts') : (k + ': not tracked');
+      path.appendChild(title);
+      svg.appendChild(path);
+
+      var start = polar(cx, cy, r0 - 2, i * step - step / 2);
+      var end = polar(cx, cy, 109, i * step - step / 2);
+      svg.appendChild(svgEl(svg, 'line', { x1:start.x.toFixed(1), y1:start.y.toFixed(1), x2:end.x.toFixed(1), y2:end.y.toFixed(1), stroke:'rgba(212,232,255,.34)', 'stroke-width':'.65' }));
+
+      var labelPos = polar(cx, cy, rLabel, i * step);
+      var labelFill = row ? (pct >= 48 ? 'rgba(255,244,180,.98)' : 'rgba(248,252,255,.96)') : 'rgba(218,232,255,.72)';
+      addSvgText(svg, labelPos.x.toFixed(1), labelPos.y.toFixed(1), k, { fill:labelFill, 'font-size': row ? '13' : '12', 'font-weight': row ? '950' : '800' });
+    });
+
+    [r0, 50, 70, 88, r1, 116].forEach(function(r){
+      svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:r, fill:'none', stroke:r === r0 ? 'rgba(220,236,255,.32)' : 'rgba(200,224,255,.24)', 'stroke-width':r === r0 ? '1.3' : '.8' }));
+    });
+
+    var bull = map.get('B');
+    var bullPct = bull ? Number(bull.pct || 0) : null;
+    var bullStyle = bull ? heatStyle(bullPct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.4', label:'rgba(240,244,255,.8)' };
+    var bullOuter = svgEl(svg, 'circle', { cx:cx, cy:cy, r:31, fill:bullStyle.fill, stroke:bullStyle.stroke, 'stroke-width':'2.2' });
+    if (bull){ bullOuter.setAttribute('data-sqkey', 'B'); bullOuter.style.cursor = 'pointer'; }
+    if (bullStyle.glow) bullOuter.setAttribute('filter', bullStyle.glow.replace('sqHit', 'sqPoints'));
+    var bullTitle = svgEl(svg, 'title');
+    bullTitle.textContent = bull ? ('B: ' + pctFmt(bullPct) + ' - ' + Math.round(bull.actual || 0) + '/' + Math.round(bull.max || 0) + ' pts') : 'B: no data';
+    bullOuter.appendChild(bullTitle);
+    svg.appendChild(bullOuter);
+    svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:15, fill:'rgba(5,8,18,.42)', stroke:'rgba(255,255,255,.22)', 'stroke-width':'1.2' }));
+    addSvgText(svg, cx, cy - 4, 'B', { fill:bullStyle.label, 'font-size':'15' });
+    addSvgText(svg, cx, cy + 18, bull ? pctFmt(bullPct, 1) : '—', { fill:'rgba(232,242,255,.82)', 'font-size':'8.5', 'font-weight':'850' });
+
+    [['D',56,322],['T',264,322]].forEach(function(spec){
+      var k = spec[0], x = spec[1], y = spec[2], row = map.get(k), pct = row ? Number(row.pct || 0) : null;
+      var style = row ? heatStyle(pct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.2', label:'rgba(240,244,255,.8)' };
+      var g = svgEl(svg, 'g');
+      var halo = svgEl(svg, 'circle', { cx:x, cy:y, r:25, fill:'rgba(5,8,18,.58)', stroke:'rgba(160,190,245,.16)', 'stroke-width':'1' });
+      g.appendChild(halo);
+      var c = svgEl(svg, 'circle', { cx:x, cy:y - 7, r:16, fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+      if (row){ c.setAttribute('data-sqkey', k); c.style.cursor = 'pointer'; }
+      if (style.glow) c.setAttribute('filter', style.glow.replace('sqHit', 'sqPoints'));
+      var title = svgEl(svg, 'title');
+      title.textContent = row ? (k + ': ' + pctFmt(pct) + ' - ' + Math.round(row.actual || 0) + '/' + Math.round(row.max || 0) + ' pts') : (k + ': no data');
+      c.appendChild(title);
+      g.appendChild(c);
+      svg.appendChild(g);
+      addSvgText(svg, x, y - 6, k, { fill:style.label, 'font-size':'13' });
+      addSvgText(svg, x, y + 17, row ? pctFmt(pct, 0) : '—', { fill:'rgba(240,244,255,.88)', 'font-size':'10', 'font-weight':'850' });
+    });
+    // Heat legend (LOW -> HIGH) centered between the D/T badges
+    var lg = svgEl(svg, 'linearGradient');
+    lg.setAttribute('id', 'sqPointsLegendG');
+    lg.setAttribute('x1','0'); lg.setAttribute('y1','0'); lg.setAttribute('x2','1'); lg.setAttribute('y2','0');
+    [['0%','#16304f'],['24%','#0e8794'],['46%','#c78b2b'],['64%','#f97618'],['82%','#ffc125'],['100%','#73f07e']].forEach(function(st){
+      var stop = svgEl(svg, 'stop'); stop.setAttribute('offset', st[0]); stop.setAttribute('stop-color', st[1]); lg.appendChild(stop);
+    });
+    svg.querySelector('defs').appendChild(lg);
+    svg.appendChild(svgEl(svg, 'rect', { x:104, y:316, width:112, height:9, rx:4.5, fill:'url(#sqPointsLegendG)', stroke:'rgba(255,255,255,.18)', 'stroke-width':'.6' }));
+    addSvgText(svg, 92, 321, 'LOW', { fill:'rgba(190,210,240,.75)', 'font-size':'8', 'font-weight':'800' });
+    addSvgText(svg, 230, 321, 'HIGH', { fill:'rgba(190,210,240,.75)', 'font-size':'8', 'font-weight':'800' });
+    return svg;
+  }
+
+  // @CANONICAL:PLAYER_TARGET_POINTS_PCT
+  window.openPlayerTargetPointsDialog = async function openPlayerTargetPointsDialog(playerName){
+    var name = String(playerName || '').trim();
+    if (!name) return;
+    var ui = __sqBuildTargetPctShell('Target Points % - ' + name, '% Score / Avg Score / Rank', name, 'points');
+    var body = ui.body;
+    body.innerHTML = '<p class="muted">Loading...</p>';
+
+    var result = await __sqFetchPlayerTargetPointsPctRows(name);
+    if (result.missing || !result.rows.length){
+      console.warn('[SQ] Target Points % dependency missing or empty', { required_view:'v_player_target_points_pct', player:name, source:result.source, detail:result.missing || 'zero rows' });
+      __sqShowTargetPctUnavailable(
+        body,
+        'Target Points % is not available yet. Required Supabase view/data source is missing or empty.',
+        'Formula: Target Points % = actual points scored / maximum available points. For targets 10-20, max points = target number x 3 x throws.',
+        'Missing dependency: v_player_target_points_pct (player_id/player_key/player_name, target_number, throws, actual_points, max_points, points_pct).'
+      );
+      return;
+    }
+
+    console.debug('[SQ] Target Points % source used', { source:result.source, rows:result.rows.length });
+    var allowed = new Set(['10','11','12','13','14','15','16','17','18','19','20','D','T','B']);
+    var rows = result.rows.map(rowFromPointsPct).filter(function(r){ return r.key && allowed.has(String(r.key).toUpperCase()); }).sort(function(a,b){ return __sqTargetPctOrder(a.key) - __sqTargetPctOrder(b.key); });
+    if (!rows.length){
+      console.warn('[SQ] Target Points % dependency returned no supported target rows', { required_view:'v_player_target_points_pct', player:name });
+      __sqShowTargetPctUnavailable(
+        body,
+        'Target Points % is not available yet. Required Supabase view/data source is missing or empty.',
+        'Formula: Target Points % = actual points scored / maximum available points.',
+        'Missing dependency: v_player_target_points_pct with target rows 10-20 or approved D/T/B rows.'
+      );
+      return;
+    }
+
+    __sqSetTargetPctActionsEnabled(body, true);
+    applyTargetPointsPersonalRanks(rows);
+    var globalRanks = await fetchTargetPointsGlobalRanks(rows);
+    rows.forEach(function(r){
+      var currentPlayerKey = r.playerKey || rankKey(name);
+      r.gRank = globalRanks.get(String(r.key).toUpperCase() + '|' + currentPlayerKey) || null;
+    });
+    var hasGlobalRanks = rows.some(function(r){ return r.gRank; });
+    var spiderLabels = rows.map(function(r){ return String(r.key); });
+    window.__lastPointsPctSpiderData = {
+      labels:spiderLabels,
+      pct:rows.map(function(r){ return Number(r.pct || 0); }),
+      comparePlayers:__sqBuildTargetComparePlayers(globalRanks, spiderLabels)
+    };
+
+    body.innerHTML = '';
+    body.style.display = 'flex';
+    body.style.flexDirection = 'column';
+    body.style.gap = '10px';
+    body.style.height = 'min(68vh, 650px)';
+    body.style.minHeight = '520px';
+    body.style.overflow = 'hidden';
+
+    var heatPanel = document.createElement('div');
+    heatPanel.className = 'tag sq-target-hit-heatmap-panel sq-target-points-heatmap-panel';
+    heatPanel.style.flex = '0 0 63%';
+    heatPanel.style.minHeight = '310px';
+    heatPanel.style.padding = '10px';
+    heatPanel.style.borderRadius = '12px';
+    heatPanel.style.border = '1px solid rgba(255,255,255,.10)';
+    heatPanel.style.background = 'radial-gradient(circle at 48% 35%, rgba(72,111,205,.20), rgba(10,16,38,.94) 64%, rgba(4,7,18,.98))';
+    heatPanel.style.overflow = 'hidden';
+    heatPanel.appendChild(renderTargetPointsHeatmap(rows));
+
+    var tablePanel = document.createElement('div');
+    tablePanel.className = 'sq-target-points-table-panel';
+    tablePanel.style.flex = '1 1 0';
+    tablePanel.style.minHeight = '150px';
+    tablePanel.style.overflowY = 'auto';
+    tablePanel.style.border = '1px solid rgba(255,255,255,.10)';
+    tablePanel.style.borderRadius = '10px';
+
+    var table = document.createElement('table');
+    table.className = 'sq-table hs-table';
+    table.style.width = '100%';
+    table.style.tableLayout = 'fixed';
+    table.style.fontSize = 'clamp(11px, 2.7vw, 14px)';
+    table.innerHTML = '<colgroup><col style="width:20%"><col style="width:23%"><col style="width:23%"><col style="width:17%"><col style="width:17%"></colgroup><thead><tr><th>Target</th><th>% Score</th><th>Avg Score</th><th>P Rank</th><th>G Rank</th></tr></thead><tbody></tbody>';
+    var tb = table.querySelector('tbody');
+    rows.forEach(function(r){
+      var tr = document.createElement('tr');
+      [r.key, pctFmt(r.pct), fmtAvgScore(r.avgScore), r.pRank ? ('#' + r.pRank) : '—', r.gRank ? ('#' + r.gRank) : '—'].forEach(function(v){
+        var td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    tablePanel.appendChild(table);
+
+    body.append(heatPanel, tablePanel);
+    __sqWireBoardInspect(heatPanel, tablePanel, rows, 'points', globalRanks, name);
+  };
+  window.__sqCanonicalPlayerTargetPointsDialog = window.openPlayerTargetPointsDialog;
+  window.openPlayerTargetPointsPctDialog = function(){ return window.__sqCanonicalPlayerTargetPointsDialog.apply(window, arguments); };
+  try{ openPlayerTargetPointsDialog = window.openPlayerTargetPointsDialog; }catch(_){}
+  try{ openPlayerTargetPointsPctDialog = window.openPlayerTargetPointsPctDialog; }catch(_){}
+
+  try{ console.info('[SQ] Fix166 Top50 names + Target Hit heatmap active'); }catch(_){}
+})();
+</script>
+<!-- <<< PATCH:FIX166_TOP50_NAMES_TARGET_HIT_HEATMAP END -->
+
+<!-- >>> PATCH:FIX167_GAMEPLAY_PERF_MOT START -->
+<script id="sq-fix167-gameplay-perf-mot-js">
+(function(){
+  'use strict';
+  if (window.__sqFix167GameplayPerfMot) return;
+  window.__sqFix167GameplayPerfMot = true;
+
+  if (typeof window.SQ_PERF_DEBUG === 'undefined') window.SQ_PERF_DEBUG = false;
+  var samples = [];
+  function now(){ try{ return performance.now(); }catch(_){ return Date.now(); } }
+  function push(name, ms, meta){
+    if (!window.SQ_PERF_DEBUG) return;
+    var row = { name:name, ms:Math.round(Number(ms || 0) * 100) / 100, ts:Date.now(), meta:meta || null };
+    samples.push(row);
+    if (samples.length > 240) samples.shift();
+    try{ if (row.ms >= 12) console.debug('[SQ][PERF]', row.name, row.ms + 'ms', row.meta || ''); }catch(_){}
+  }
+  function measure(name, fn, meta){
+    var t = now();
+    try{ return fn(); }
+    finally{ push(name, now() - t, meta); }
+  }
+  window.sqPerfReport = function(){
+    var grouped = {};
+    samples.forEach(function(s){
+      var g = grouped[s.name] || (grouped[s.name] = { name:s.name, count:0, total:0, max:0, last:0 });
+      g.count++;
+      g.total += s.ms;
+      g.max = Math.max(g.max, s.ms);
+      g.last = s.ms;
+    });
+    var rows = Object.keys(grouped).map(function(k){
+      var g = grouped[k];
+      return {
+        name:g.name,
+        count:g.count,
+        avg:Math.round((g.total / Math.max(1, g.count)) * 100) / 100,
+        max:Math.round(g.max * 100) / 100,
+        last:g.last
+      };
+    }).sort(function(a,b){ return b.max - a.max; });
+    try{ console.table(rows); }catch(_){}
+    return { debug:!!window.SQ_PERF_DEBUG, rows:rows, samples:samples.slice() };
+  };
+
+  function pageKey(){
+    try{ return document.body && (document.body.getAttribute('data-page') || (document.body.dataset && document.body.dataset.page)) || ''; }
+    catch(_){ return ''; }
+  }
+  function padEl(){
+    try{ if (typeof pad !== 'undefined' && pad) return pad; }catch(_){}
+    return document.getElementById('pad');
+  }
+  function missCount(){
+    try{
+      var dart = (typeof state !== 'undefined' && state && typeof state.currentDart === 'number') ? state.currentDart : 0;
+      return Math.max(1, Math.min(3, 3 - dart));
+    }catch(_){ return 3; }
+  }
+  function refreshPadLight(){
+    try{
+      var el = padEl();
+      if (!el) return;
+      var n = missCount();
+      el.querySelectorAll('.dtX3').forEach(function(btn){
+        btn.textContent = 'MISS\nx' + n;
+        btn.dataset.missN = String(n);
+      });
+      try{
+        if (typeof padHint !== 'undefined' && padHint) padHint.textContent = (typeof state !== 'undefined' && state && state.finished) ? 'Game finished.' : '';
+      }catch(_){}
+    }catch(_){}
+  }
+  function padSig(){
+    try{
+      var rIdx = Number(state && state.currentRound || 0);
+      var r = (typeof ROUNDS !== 'undefined' && ROUNDS && ROUNDS[rIdx]) ? ROUNDS[rIdx] : null;
+      return [
+        pageKey(),
+        state && state.finished ? 'done' : 'live',
+        state && state.suddenDeath && state.suddenDeath.active ? 'sd' : '',
+        state && state.players ? state.players.length : 0,
+        rIdx,
+        state && Number.isFinite(Number(state.currentPlayer)) ? Number(state.currentPlayer) : 0,
+        r && r.type || '',
+        r && r.target || ''
+      ].join('|');
+    }catch(_){ return 'unknown|' + Date.now(); }
+  }
+
+  var oldBuildPad = window.buildPad || (typeof buildPad === 'function' ? buildPad : null);
+  if (oldBuildPad && !oldBuildPad.__sqFix167Wrapped){
+    var lastPadSig = '';
+    var wrappedBuildPad = function(){
+      var sig = padSig();
+      var el = padEl();
+      if (sig && sig === lastPadSig && el && el.children && el.children.length && pageKey() === 'game'){
+        refreshPadLight();
+        push('buildPad.skip', 0, { sig:sig });
+        return;
+      }
+      try{
+        if (window.__sqNumPadX3Obs && typeof window.__sqNumPadX3Obs.disconnect === 'function') {
+          window.__sqNumPadX3Obs.disconnect();
+        }
+        window.__sqNumPadX3Obs = null;
+      }catch(_){}
+      var ctx = this, args = argu

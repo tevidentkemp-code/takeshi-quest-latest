@@ -1,0 +1,845 @@
+margin-bottom:10px;padding:10px 14px;'
+      + 'background:#101827;border:1px solid rgba(35,164,255,.3);border-radius:14px;box-shadow:0 6px 16px rgba(0,0,0,.3);';
+    const gaugeCanvas = document.createElement('canvas');
+    gaugeCanvas.style.cssText = 'width:170px;height:104px;flex:0 0 auto;';
+    const formInfo = document.createElement('div');
+    formInfo.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;align-items:flex-start;';
+    const formValue = document.createElement('div');
+    formValue.style.cssText = 'font-size:30px;font-weight:900;color:#ffd9b0;line-height:1;letter-spacing:.02em;';
+    const verdict = document.createElement('span');
+    verdict.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:5px 13px;border-radius:99px;font-weight:900;font-size:12px;letter-spacing:.1em;';
+    const formSub = document.createElement('div');
+    formSub.style.cssText = 'font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:rgba(150,185,230,.85);';
+    formInfo.append(formValue, verdict, formSub);
+    formRow.append(gaugeCanvas, formInfo);
+
+    const canvasWrap = document.createElement('div'); canvasWrap.style.cssText = 'width:100%;height:340px;border:1px solid rgba(35,164,255,.25);border-radius:14px;overflow:hidden;background:#0d1424;box-shadow:0 10px 26px rgba(0,0,0,.4), 0 0 24px rgba(47,134,255,.08);';
+    const canvas = document.createElement('canvas'); canvas.style.width = '100%'; canvas.style.height = '100%'; canvas.style.touchAction = 'pan-y'; canvasWrap.appendChild(canvas);
+
+    // Hot/cold streak strip: one cell per recent game, tap to inspect
+    const stripWrap = document.createElement('div');
+    stripWrap.style.cssText = 'margin-top:10px;';
+    const stripLabel = document.createElement('div');
+    stripLabel.style.cssText = 'font-size:10px;text-transform:uppercase;letter-spacing:.12em;font-weight:800;color:rgba(150,185,230,.85);margin-bottom:6px;';
+    stripLabel.textContent = 'Recent games — tap to inspect';
+    const strip = document.createElement('div');
+    strip.style.cssText = 'display:flex;gap:3px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;';
+    stripWrap.append(stripLabel, strip);
+
+    const stats = document.createElement('div'); stats.className = 'sq-progress-pills';
+    const empty = document.createElement('p'); empty.className = 'muted'; empty.style.marginTop = '8px';
+
+    const targetConfigs = __sqProgressTargetButtons(mode, grouped);
+    const enabledKeys = targetConfigs.filter(t => !t.disabled).map(t => t.key);
+    const stableScaleMax = __sqProgressSessionScale(grouped, enabledKeys);
+    let selectedTargets = [enabledKeys[0] || '10'];
+    let primaryTarget = selectedTargets[0];
+    let windowSize = 5;
+    let scrubIdx = null;
+    let animRaf = 0;
+    const rowsForKey = key => (grouped.get(key) || []).slice().sort((a,b) => {
+      const ta = Date.parse(a.created_at || '') || 0;
+      const tb = Date.parse(b.created_at || '') || 0;
+      if (ta !== tb) return ta - tb;
+      return a.idx - b.idx;
+    });
+    const currentSeries = () => selectedTargets.map(key => ({ key, color:__sqProgressColor(key), rows:rowsForKey(key) })).filter(s => s.rows.length);
+
+    const verdictFor = (stats) => {
+      const d = stats.secondAvg - stats.firstAvg;
+      if (d >= 5)   return { label:'ON FIRE', color:'#ffa440', glow:'rgba(255,140,40,.45)', arrow:'↑' };
+      if (d >= 1.5) return { label:'CLIMBING', color:'#73f07e', glow:'rgba(115,240,126,.4)', arrow:'↑' };
+      if (d > -1.5) return { label:'STEADY', color:'#4aa3ff', glow:'rgba(74,163,255,.4)', arrow:'→' };
+      return { label:'COOLING', color:'#7cc0ff', glow:'rgba(124,192,255,.35)', arrow:'↓' };
+    };
+
+    let gaugeFrom = 0; // needle rolls from the previous target's value
+    const paintForm = (series, tv) => {
+      const isSingle = series.length === 1;
+      formRow.style.display = isSingle ? 'flex' : 'none';
+      stripWrap.style.display = isSingle ? '' : 'none';
+      if (!isSingle || !series[0]) return;
+      const st = __sqProgressSeriesStats(series[0].rows, windowSize);
+      const cur = st.avgPoints.length ? st.avgPoints[st.avgPoints.length - 1].pct : st.allAvg;
+      const e = 1 - Math.pow(1 - Math.max(0, Math.min(1, tv)), 3);
+      const shown = gaugeFrom + (cur - gaugeFrom) * e;
+      __sqDrawFormGauge(gaugeCanvas, shown, st.allAvg, 1);
+      formValue.textContent = Math.round(shown) + '%';
+      if (tv >= 1) gaugeFrom = cur;
+      const v = verdictFor(st);
+      verdict.textContent = v.arrow + ' ' + v.label;
+      verdict.style.background = '#0d1424';
+      verdict.style.border = '1px solid ' + v.color;
+      verdict.style.color = v.color;
+      verdict.style.boxShadow = '0 0 16px ' + v.glow;
+      formSub.textContent = 'Form ' + windowSize + '-game av · all-time ' + Math.round(st.allAvg) + '% (notch)';
+    };
+
+    const buildStrip = (series) => {
+      strip.innerHTML = '';
+      if (series.length !== 1) return;
+      const rows = series[0].rows;
+      const st = __sqProgressSeriesStats(rows, windowSize);
+      const startIdx = Math.max(0, rows.length - 40);
+      for (let i = startIdx; i < rows.length; i++){
+        const v = st.values[i];
+        const hot = v >= st.allAvg;
+        const cell = document.createElement('button');
+        cell.type = 'button';
+        cell.setAttribute('aria-label', 'Game ' + (i + 1) + ': ' + Math.round(v) + '%');
+        const idx = i;
+        const active = scrubIdx === i;
+        cell.style.cssText = 'flex:0 0 auto;width:12px;height:20px;border-radius:4px;padding:0;cursor:pointer;'
+          + 'background:' + (hot ? 'linear-gradient(180deg,#ffb347,#f97618)' : 'rgba(74,163,255,.16)') + ';'
+          + 'border:1px solid ' + (active ? '#fff' : (hot ? 'rgba(255,190,110,.7)' : 'rgba(74,163,255,.25)')) + ';'
+          + (hot ? 'box-shadow:0 0 8px rgba(255,140,40,.35);' : '');
+        cell.onclick = () => { scrubIdx = (scrubIdx === idx) ? null : idx; drawStatic(); };
+        strip.appendChild(cell);
+      }
+    };
+
+    const paint = (tv) => {
+      const series = currentSeries();
+      __sqDrawTargetProgressCanvas(canvas, series, windowSize, stats, empty, mode, primaryTarget, stableScaleMax, { t:tv, scrubIdx });
+      paintForm(series, tv);
+    };
+    const syncChips = () => {
+      Array.from(targetRow.querySelectorAll('button')).forEach(b => {
+        const selected = selectedTargets.includes(b.dataset.target);
+        b.classList.toggle('primary', selected);
+        b.style.borderColor = selected ? __sqProgressColor(b.dataset.target) : '';
+      });
+      Array.from(avgRow.querySelectorAll('button')).forEach(b => b.classList.toggle('primary', Number(b.dataset.window) === windowSize));
+    };
+    const drawStatic = () => { syncChips(); paint(1); buildStrip(currentSeries()); };
+    const draw = () => {
+      syncChips();
+      scrubIdx = null;
+      cancelAnimationFrame(animRaf);
+      let reduce = false;
+      try{ reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ }
+      const dur = reduce ? 0 : 850;
+      const start = performance.now();
+      const step = now => {
+        const raw = dur ? Math.min(1, (now - start) / dur) : 1;
+        paint(raw);
+        if (raw < 1) animRaf = requestAnimationFrame(step);
+        else buildStrip(currentSeries());
+      };
+      animRaf = requestAnimationFrame(step);
+    };
+
+    // Scrub-to-inspect: drag or move across the chart
+    let scrubbing = false;
+    const scrubTo = clientX => {
+      const hit = canvas.__sqHitMap;
+      if (!hit || !hit.xs.length) return;
+      const r = canvas.getBoundingClientRect();
+      const x = clientX - r.left;
+      let best = 0, bd = Infinity;
+      hit.xs.forEach((hx, i) => { const d = Math.abs(hx - x); if (d < bd){ bd = d; best = i; } });
+      if (scrubIdx !== best){ scrubIdx = best; paint(1); buildStrip(currentSeries()); }
+    };
+    canvas.addEventListener('pointerdown', e => { if (!canvas.__sqHitMap) return; scrubbing = true; scrubTo(e.clientX); });
+    canvas.addEventListener('pointermove', e => { if (scrubbing || e.pointerType === 'mouse') scrubTo(e.clientX); });
+    window.addEventListener('pointerup', () => { scrubbing = false; });
+    canvas.addEventListener('pointerleave', () => { if (!scrubbing && scrubIdx != null){ scrubIdx = null; paint(1); buildStrip(currentSeries()); } });
+
+    targetConfigs.forEach(t => {
+      const btn = document.createElement('button'); btn.className = 'btn small'; btn.textContent = t.label; btn.dataset.target = t.key;
+      if (t.disabled){ btn.disabled = true; btn.setAttribute('aria-disabled', 'true'); btn.title = t.reason; btn.style.opacity = '.45'; btn.style.cursor = 'not-allowed'; }
+      btn.onclick = () => {
+        if (t.disabled) return;
+        // Single-select: tapping a new target rolls the whole view (line,
+        // gauge needle, verdict, strip) over to that target.
+        if (selectedTargets.length === 1 && selectedTargets[0] === t.key) return;
+        selectedTargets = [t.key];
+        primaryTarget = t.key;
+        draw();
+      };
+      targetRow.appendChild(btn);
+    });
+    [5,10,20].forEach(n => {
+      const btn = document.createElement('button'); btn.className = 'btn small'; btn.textContent = `${n} Round AV`; btn.dataset.window = String(n);
+      btn.onclick = () => { windowSize = n; draw(); };
+      avgRow.appendChild(btn);
+    });
+    body.append(targetRow, avgRow, formRow, canvasWrap, stripWrap, stats, empty);
+    draw();
+    try{ new ResizeObserver(() => drawStatic()).observe(canvasWrap); }catch(_){ window.addEventListener('resize', () => drawStatic(), { passive:true }); }
+  })();
+  return overlay;
+}
+window.openPlayerTargetPointsProgressDialog = function openPlayerTargetPointsProgressDialog(playerName, opts){ return __sqOpenTargetProgressDialog('points', playerName, opts || {}); };
+window.openPlayerTargetHitProgressDialog = function openPlayerTargetHitProgressDialog(playerName, opts){ return __sqOpenTargetProgressDialog('hit', playerName, opts || {}); };
+
+function __sqBuildTargetPctShell(title, subtitle, playerName, metricMode){
+  const name = String(playerName || '').trim();
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal = document.createElement('div'); modal.className = 'modal';
+  modal.style.maxWidth = '980px'; modal.style.width = '94vw';
+  modal.style.maxHeight = '90vh'; modal.style.overflow = 'hidden';
+  const header = __sqStatsHeader(title, subtitle);
+  const body = document.createElement('div'); body.className = 'modal-body';
+  body.style.paddingTop = '8px'; body.style.maxHeight = 'none'; body.style.overflowY = 'visible';
+  const footer = document.createElement('div'); footer.className = 'modal-footer';
+  const backBtn = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
+  const spacer = document.createElement('div'); spacer.style.flex = '1';
+  const spiderBtn = document.createElement('button'); spiderBtn.className = 'btn small'; spiderBtn.textContent = 'SPIDER'; spiderBtn.dataset.targetPctAction = 'spider';
+  const progBtn = document.createElement('button'); progBtn.className = 'btn small'; progBtn.textContent = 'PROGRESS'; progBtn.dataset.targetPctAction = 'progress';
+  spiderBtn.disabled = true; spiderBtn.setAttribute('aria-disabled', 'true'); spiderBtn.title = 'Available after target percentage data loads.'; spiderBtn.style.opacity = '.45'; spiderBtn.style.cursor = 'not-allowed';
+  progBtn.disabled = true; progBtn.setAttribute('aria-disabled', 'true'); progBtn.title = 'Progress requires a Supabase target percentage progression view.'; progBtn.style.opacity = '.45'; progBtn.style.cursor = 'not-allowed';
+  backBtn.onclick = () => { overlay.remove(); __sqGoBackToStatsMain(name); };
+  spiderBtn.onclick = () => {
+    const mode = String(metricMode || 'hit').toLowerCase();
+    const data = mode === 'points' ? window.__lastPointsPctSpiderData : window.__lastTargetHitPctSpiderData;
+    if (data && typeof window.openPlayerSpiderDialog === 'function') {
+      overlay.style.display = 'none';
+      window.openPlayerSpiderDialog(name, { parentOverlay:overlay, mode, data });
+      return;
+    }
+    try{ if (typeof toast === 'function') toast('SPIDER not available until target percentage data is loaded'); }catch(_){}
+  };
+  progBtn.onclick = () => {
+    const mode = String(metricMode || 'hit').toLowerCase();
+    const fn = mode === 'points' ? window.openPlayerTargetPointsProgressDialog : window.openPlayerTargetHitProgressDialog;
+    if (typeof fn === 'function') {
+      overlay.style.display = 'none';
+      fn(name, { parentOverlay:overlay });
+      return;
+    }
+    try{ if (typeof toast === 'function') toast('PROGRESS is not available until a Supabase target percentage progression view exists'); }catch(_){}
+  };
+  footer.append(backBtn, spacer, spiderBtn, progBtn);
+  modal.append(header, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  __sqStatsArcade(overlay, modal);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0; modal.focus();
+  return { overlay, body };
+}
+
+window.openPlayerTargetHitDialog = async function openPlayerTargetHitDialog(playerName){
+  const name = String(playerName || '').trim();
+  if (!name) return;
+  const ui = __sqBuildTargetPctShell(`Target Hit % — ${name}`, 'Throws / Hits / %', name, 'hit');
+  const body = ui.body;
+  body.innerHTML = '<p class="muted">Loading…</p>';
+
+  const result = await __sqFetchPlayerTargetHitPctRows(name);
+  if (result.missing || !result.rows.length){
+    console.warn('[SQ] Target Hit % dependency missing or empty', {
+      required_view:'v_player_target_hit_pct',
+      player:name,
+      source:result.source,
+      detail:result.missing || 'zero rows'
+    });
+    __sqShowTargetPctUnavailable(
+      body,
+      'Target Hit % is not available yet. Accurate hit-rate data requires throw-level segment data or a Supabase view that records correct target hits.',
+      'Formula: Target Hit % = successful target hits / throws at that target. Number rounds require actual segment number truth; points alone are not used.',
+      'Missing dependency: v_player_target_hit_pct (player_id/player_key/player_name, target_key/target_label, throws, hits, hit_pct).'
+    );
+    return;
+  }
+
+  console.debug('[SQ] Target Hit % source used', { source:result.source, rows:result.rows.length });
+  __sqSetTargetPctActionsEnabled(body, true);
+  const rows = result.rows.map(r => {
+    const throwsN = Number(__sqTargetPctValue(r, ['throws','throw_count','thrown']) || 0);
+    const hits = Number(__sqTargetPctValue(r, ['hits','successful_hits','hit_count']) || 0);
+    const pctRaw = __sqTargetPctValue(r, ['hit_pct','pct','percentage']);
+    const pct = Number.isFinite(Number(pctRaw)) ? Number(pctRaw) : (throwsN ? hits * 100 / throwsN : 0);
+    return {
+      key:__sqTargetPctKey(r),
+      throwsN,
+      hits,
+      pct,
+      games:__sqTargetPctValue(r, ['source_games','games','game_count'])
+    };
+  }).filter(r => r.key).sort((a,b) => __sqTargetPctOrder(a.key) - __sqTargetPctOrder(b.key));
+
+  const table = document.createElement('table'); table.className = 'sq-table hs-table';
+  const thead = document.createElement('thead'); const trh = document.createElement('tr');
+  ['Target','Throws','Hits','%'].forEach(h => { const th = document.createElement('th'); th.textContent = h; trh.appendChild(th); });
+  thead.appendChild(trh); table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    [r.key, r.throwsN, r.hits, (Number(r.pct)||0).toFixed(2)+'%'].forEach(v => {
+      const td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  const scroll = document.createElement('div'); scroll.style.maxHeight = '56vh'; scroll.style.overflowY = 'auto';
+  __sqStyleStatsTableWrap(scroll); scroll.appendChild(table);
+  const info = document.createElement('p'); info.className = 'tag muted'; info.style.marginTop = '8px';
+  info.textContent = 'Target Hit % = successful target hits / throws at that target.';
+  window.__lastTargetHitPctSpiderData = {
+    labels: rows.map(r => String(r.key)),
+    pct: rows.map(r => Number(r.pct || 0))
+  };
+  body.innerHTML = ''; body.append(scroll, info);
+};
+
+// @LEGACY:PLAYER_TARGET_POINTS_PCT (superseded by the final @CANONICAL:PLAYER_TARGET_POINTS_PCT heatmap opener in Fix166)
+window.openPlayerTargetPointsDialog = function openPlayerTargetPointsDialog(){
+  if (window.__sqCanonicalPlayerTargetPointsDialog && window.__sqCanonicalPlayerTargetPointsDialog !== window.openPlayerTargetPointsDialog) {
+    return window.__sqCanonicalPlayerTargetPointsDialog.apply(window, arguments);
+  }
+  try{ if (typeof toast === 'function') toast('Target Points % is still loading'); }catch(_){}
+};
+
+window.openPlayerTargetPctDialog = window.openPlayerTargetHitDialog;
+window.openTargetPctDialog = window.openPlayerTargetHitDialog;
+window.openPlayerTargetPointsPctDialog = window.openPlayerTargetPointsDialog;
+// [removed: openPlayerDTBPctDialog (orphaned)] audit P5.3 batch 2 — dead/shadowed definition, no live callers
+
+// [removed: openPlayerDTBCombinedPctDialog (orphaned)] audit P5.3 batch 2 — dead/shadowed definition, no live callers
+
+// === Player Stats — shim so the Select Player modal can open stats (always hub) ===
+window.openPlayerStatsModePicker = function openPlayerStatsModePicker(name) {
+  const n = String(name || '').trim();
+  if (!n) { if (typeof toast==='function') toast('Pick a player'); return; }
+  if (typeof window.openPlayerStatsHub === 'function') return window.openPlayerStatsHub(n);
+  // Fallback: open the detail dialog if hub is somehow missing
+  if (typeof window.openPlayerStatsDialog === 'function') return window.openPlayerStatsDialog(n);
+  if (typeof toast==='function') toast('Stats view not available in this build');
+};
+
+// ---- ensure "New Game" button always works ----
+document.addEventListener('DOMContentLoaded', function(){
+  const btn = document.getElementById('newGameBtn') || document.getElementById('startNewGameBtn');
+  if (!btn) return;
+  btn.onclick = function(){
+    try {
+      if (typeof window.openSelectPlayersDialog === 'function') {
+        window.openSelectPlayersDialog();
+      } else if (typeof window.startNewGame === 'function') {
+        window.startNewGame();
+      } else if (typeof window.openPlayerSelectDialog === 'function') {
+        window.openPlayerSelectDialog();
+      } else {
+        console.warn('No New Game opener found');
+      }
+      
+
+    } catch(e){
+      console.error('New Game failed', e);
+      try { if (typeof toast==='function') toast('Failed to open New Game'); } catch(_) {}
+    }
+  };
+});
+
+// === End Game (Leaderboard only): insert "PREMIER LEAGUE" below HIGH SCORES ===
+(function plBtnLeaderboardOnly(){
+  function onLeaderboard(){
+    return (document.body && (document.body.dataset.page || '').toLowerCase()) === 'leaderboard';
+  }
+  function findLeaderboardHighScoresButton(){
+    // search only within the leaderboard page
+    const root = document.querySelector('[data-page="leaderboard"]') || document.body;
+    return Array.from(root.querySelectorAll('button,.btn,[role="button"]'))
+      .find(el => /^\s*high\s*scores\s*$/i.test((el.textContent || '')));
+  }
+  function ensureOpener(){
+    // use existing opener if defined; otherwise click any visible UI that opens PL
+    return async function openPL(){
+      if (typeof window.openPremierLeagueDialog === 'function') { try { window.openPremierLeagueDialog(); return; } catch(_){} }
+      if (typeof window.openPremierLeaguePopup === 'function') { try { window.openPremierLeaguePopup(); return; } catch(_){} }
+      const trigger = Array.from(document.querySelectorAll('button,.btn,a,[role="button"]'))
+        .find(el => /premier\s*league|records/i.test((el.textContent||'')) && el.offsetParent);
+      if (trigger) trigger.click();
+    };
+  }
+  function ensureBtn(){
+    if (!onLeaderboard()) return;
+    const hs = findLeaderboardHighScoresButton();
+    if (!hs) return;
+    if (document.getElementById('btnPremierLeague')) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'btnPremierLeague';
+    btn.className = hs.className || 'btn';
+    btn.type = 'button';
+    btn.textContent = 'PREMIER LEAGUE';
+    const openPL = ensureOpener();
+    btn.addEventListener('click', (e)=>{ e.preventDefault(); openPL(); });
+
+    // place directly under the High Scores button on the leaderboard screen
+    hs.insertAdjacentElement('afterend', btn);
+  }
+  function tick(){ ensureBtn(); }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
+  try { window.__sqUIMutationBus?.on(()=>tick()); } catch(_) {}
+})();
+
+// === Premier League — TODAY (clone a month pill; no min-games rule) =========
+/* [MOVED] Premier League TODAY clone-month legacy patch moved to Legacy Quarantine (Stage 4A.1c) */;
+
+// === High Score League — rewritten: NEW + movement + even widths ============
+(function highScoreLeagueRewritten(){
+  const TITLE_RX = /high\s*score\s*league/i;
+  const STORAGE_KEY = 'hsLeaguePositions.v2'; // retired localStorage key; kept only as a legacy label
+  const NEW_LIMIT_DAYS = 14;
+
+  // ---- utilities ------------------------------------------------------------
+  const daysBetween = (a,b) => Math.floor((a - b) / 86400000);
+  const visible = el => !!(el && el.offsetParent !== null);
+
+  function findHSModal(){
+    const mods = document.querySelectorAll('.modal,[role="dialog"]');
+    for (const m of mods){
+      const ok = Array.from(m.querySelectorAll('h1,h2,h3'))
+        .some(h => TITLE_RX.test(h.textContent || ''));
+      if (ok) return m;
+    }
+    return null;
+  }
+
+  function getTable(modal){
+    if (!modal) return null;
+    const table = modal.querySelector('table.hs-table');
+    if (!table) return null;
+    const ths = Array.from(table.querySelectorAll('thead th'));
+    if (!ths.length) return null;
+
+    // Expected headers: "# | Player | High Score | When"
+    const idxPos    = 0; // "#"
+    const idxPlayer = ths.findIndex(th => /player/i.test(th.textContent||''));
+    const idxHigh   = ths.findIndex(th => /high\s*score/i.test(th.textContent||''));
+    const idxWhen   = ths.findIndex(th => /when/i.test(th.textContent||''));
+    if (idxPlayer < 0 || idxHigh < 0 || idxWhen < 0) return null;
+    return { table, ths, idxPos, idxPlayer, idxHigh, idxWhen };
+  }
+
+  async function earliestMap(){
+    if (window.__hsEarliestMap_v2) return window.__hsEarliestMap_v2;
+    let games = [];
+    try { games = (await __fetchOfficialGames(50000)).map(__normalizeGame); } catch(_){}
+    const map = new Map(); // nameLC -> earliest Date
+    games.forEach(g=>{
+      const t = __gameTs(g.raw || g); if (!t) return;
+      const d = new Date(t);
+      (g.players||[]).forEach(p=>{
+        const k = String(p||'').trim().toLowerCase(); if (!k) return;
+        const cur = map.get(k);
+        if (!cur || d < cur) map.set(k, d);
+      });
+    });
+    window.__hsEarliestMap_v2 = map;
+    return map;
+  }
+
+  function arrowHTML(delta){
+    if (delta > 0) return `<span title="+${delta}" style="color:#22c55e;font-weight:700">▲</span>`;
+    if (delta < 0) return `<span title="${delta}" style="color:#ef4444;font-weight:700">▼</span>`;
+    return `<span style="opacity:.5">–</span>`;
+  }
+
+  // ---- main apply -----------------------------------------------------------
+  async function apply(modal){
+    const refs = getTable(modal); if (!refs) return;
+    const { table, ths, idxPos, idxPlayer, idxHigh, idxWhen } = refs;
+
+    // 1) Insert movement header AFTER "#"
+    let thMove = table.querySelector('thead th[data-move-col="1"]');
+    if (!thMove){
+      thMove = document.createElement('th');
+      thMove.dataset.moveCol = '1';
+      thMove.style.textAlign = 'center';
+      thMove.style.width     = '26px';
+      thMove.style.minWidth  = '24px';
+      thMove.style.maxWidth  = '36px';
+      ths[idxPos].insertAdjacentElement('afterend', thMove);
+    }
+
+    // 2) Even spacing for Player / High Score / When
+    const headNow = Array.from(table.querySelectorAll('thead th'));
+    const idxMove = headNow.findIndex(th => th.dataset && th.dataset.moveCol === '1');
+
+    table.style.tableLayout = 'fixed';
+    table.style.width = '100%';
+    if (headNow[0]) {
+      headNow[0].style.width    = '36px';
+      headNow[0].style.minWidth = '32px';
+      headNow[0].style.maxWidth = '42px';
+    }
+    if (idxMove >= 0 && headNow[idxMove]) {
+      headNow[idxMove].style.width     = '26px';
+      headNow[idxMove].style.minWidth  = '24px';
+      headNow[idxMove].style.maxWidth  = '34px';
+      headNow[idxMove].style.textAlign = 'center';
+    }
+    // recompute indexes by text (header DOM may have shifted)
+    const idxPlayerNow = headNow.findIndex(th => /player/i.test(th.textContent||''));
+    const idxHighNow   = headNow.findIndex(th => /high\s*score/i.test(th.textContent||''));
+    const idxWhenNow   = headNow.findIndex(th => /when/i.test(th.textContent||''));
+
+    const fixedPx = 36 + (idxMove >= 0 ? 26 : 0);
+    const EVEN = `calc((100% - ${fixedPx}px) / 3)`;
+    [idxPlayerNow, idxHighNow, idxWhenNow].forEach(i => {
+      if (i >= 0 && headNow[i]) headNow[i].style.width = EVEN;
+    });
+
+    // 3) Per-row: add movement cell; add NEW tag if first-game ≤ 14 days
+    window.__sqHSLeagueVisualSnapshot = window.__sqHSLeagueVisualSnapshot || {};
+    const prevMap = window.__sqHSLeagueVisualSnapshot.positions || {}; // nameLC -> previous position, memory-only
+    const now = new Date();
+    const firstMap = await earliestMap();
+
+    const rows = Array.from(table.querySelectorAll('tbody tr'));
+    const seenPB = new Set(); // nameLC -> already tagged PB (show once)
+    const curMap = {}; // nameLC -> current position
+
+    rows.forEach((tr, i) => {
+      const pos = i + 1;
+      const tds = Array.from(tr.children);
+      const tdPos    = tds[idxPos];
+      // movement cell sits AFTER position; if not there, create
+      let tdMove = tds[idxMove];
+      if (!tdMove || tdMove === tdPos || tdMove.dataset.moveCell !== '1') {
+        tdMove = document.createElement('td');
+        tdMove.dataset.moveCell = '1';
+        tdMove.style.textAlign = 'center';
+        tdPos.insertAdjacentElement('afterend', tdMove);
+      }
+
+      // After inserting a new td, refresh children and resolve Player cell
+      const tds2 = Array.from(tr.children);
+      // Player column shifts by +1 if movement col was inserted before it
+      const tdPlayerCell = tds2[(idxPlayerNow >= 0 ? idxPlayerNow : idxPlayer) + (idxMove >= 0 ? 1 : 0)];
+      if (!tdPlayerCell) return;
+
+      // Player name (strip any existing "NEW")
+      const nameText = (tdPlayerCell.textContent || '').replace(/\bNEW\b/gi,'').trim();
+      const nameLC = nameText.toLowerCase();
+      curMap[nameLC] = pos;
+
+      // Movement arrow against previous snapshot
+      let html = '<span style="opacity:.5">–</span>';
+      const prevPos = prevMap[nameLC];
+      if (typeof prevPos === 'number') {
+        const delta = prevPos - pos; // positive = moved UP (better)
+        html = arrowHTML(delta);
+      }
+      tdMove.innerHTML = html;
+
+      // NEW tag (first official game within the last 14 days)
+      if (nameLC && firstMap.has(nameLC)) {
+        const first = firstMap.get(nameLC);
+        const isNew = daysBetween(now, first) <= NEW_LIMIT_DAYS && daysBetween(now, first) >= 0;
+        if (isNew && !/\bNEW\b/i.test(tdPlayerCell.innerHTML)) {
+          const tag = document.createElement('span');
+          tag.className = 'tag';
+          tag.textContent = 'NEW';
+          tag.style.marginLeft = '6px';
+          tdPlayerCell.appendChild(tag);
+        }
+      }
+    });
+
+    // 4) Save snapshot for next comparison in memory only; rankings remain Supabase/history-derived.
+    try { window.__sqHSLeagueVisualSnapshot = { ts: new Date().toISOString(), positions: curMap }; } catch(_) {}
+  }
+
+  // Debounced observer to apply when the league modal appears/updates
+  let scheduled = false;
+  function tick(){
+    const m = findHSModal();
+    if (!m || !visible(m)) return;
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(async ()=>{ scheduled = false; try { await apply(m); } catch(e){ console.error(e); } });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
+  try { window.__sqUIMutationBus?.on(()=>tick()); } catch(_) {}
+})();
+
+// === High Scores (Match) — v4: movement ▲/▼ (7d), NEW(7d), PB, date fmt =====
+(function enhanceHighScoresMatch_v4(){
+  const TITLE_RX = /^\s*high\s*scores\s*$/i;
+  // Expected header: "# | Player | Score | Avg / Round | When"
+  const COLS_RX  = [/^#$/i, /player/i, /^score$/i, /avg\s*\/\s*round/i, /when/i];
+  const NEW_MS   = 7 * 24 * 60 * 60 * 1000; // 7 days
+  const POS_KEY  = 'hsMatchEntryPositions.v1'; // entryKey -> {pos, delta, tISO}
+
+  // ---------- helpers ----------
+  function findModalAndTable(){
+    const mods = document.querySelectorAll('.modal,[role="dialog"]');
+    for (const m of mods){
+      const ok = Array.from(m.querySelectorAll('h1,h2,h3'))
+        .some(h => TITLE_RX.test(h.textContent||''));
+      if (!ok) continue;
+      const table = m.querySelector('table.hs-table'); if (!table) continue;
+      const ths = Array.from(table.querySelectorAll('thead th'));
+      if (ths.length < 5) continue;
+      const matches = COLS_RX.every((rx, idx)=> rx.test((ths[idx].textContent||'').trim()));
+      if (matches) return { modal: m, table, ths };
+    }
+    return null;
+  }
+
+  // "20 Nov 25 at 20:35" | "20 Nov 25 @ 20:35" → "20/11/25 @ 20:35"
+  function fmt_DDMMYY_HHMM(text){
+    if (!text) return text;
+    const m = text.match(/^\s*(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2})(?:\s+at|\s*@)\s+(\d{2}):(\d{2})\s*$/);
+    if (!m) return text;
+    const [, d, mon, yy, hh, mm] = m;
+    const MONTH = {JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
+    const mmNum = MONTH[mon.toUpperCase()];
+    if (!mmNum) return text;
+    const dd = String(d).padStart(2,'0');
+    return `${dd}/${mmNum}/${yy} @ ${hh}:${mm}`;
+  }
+
+  function yellowNEW(){
+    const span = document.createElement('span');
+    span.className = 'tag';
+    span.textContent = 'NEW';
+    span.style.color = '#facc15';
+    span.style.borderColor = 'rgba(250,204,21,.35)';
+    span.style.background = 'rgba(250,204,21,.08)';
+    return span;
+  }
+
+  function arrowHTML(delta){
+    if (delta > 0) return `<span title="+${delta}" style="color:#22c55e;font-weight:700">▲</span>`;
+    if (delta < 0) return `<span title="${delta}" style="color:#ef4444;font-weight:700">▼</span>`;
+    return `<span style="opacity:.5">–</span>`;
+  }
+
+  // Build PB map + (player|score)→latest timestamp
+  async function buildMaps(){
+    if (window.__hsMatchMaps_v4) return window.__hsMatchMaps_v4;
+
+    let games = [];
+    try { games = (await __fetchOfficialGames(50000)).map(__normalizeGame); } catch(_) {}
+
+    const pb = new Map();      // nameLC -> max score
+    const keyTs = new Map();   // `${nameLC}|${score}` -> latest Date
+    let globalMax = 0;
+
+    games.forEach(g=>{
+      const ts = __gameTs(g.raw || g);
+      const d  = ts ? new Date(ts) : null;
+      (g.players||[]).forEach((p,i)=>{
+        const name = String(p||'').trim(); if (!name) return;
+        const k = name.toLowerCase();
+        const score = Number(g.totals?.[i] || 0);
+        if (!Number.isFinite(score)) return;
+        if (score > (pb.get(k) || 0)) pb.set(k, score);
+        if (score > globalMax) globalMax = score;
+        if (d) {
+          const key = `${k}|${score}`;
+          const prev = keyTs.get(key);
+          if (!prev || d > prev) keyTs.set(key, d);
+        }
+      });
+    });
+
+    window.__hsMatchMaps_v4 = { pb, keyTs, globalMax };
+    return window.__hsMatchMaps_v4;
+  }
+
+  function loadPos(){ try { return JSON.parse(localStorage.getItem(POS_KEY) || '{}'); } catch(_) { return {}; } }
+  function savePos(m){ try { localStorage.setItem(POS_KEY, JSON.stringify(m)); } catch(_){} }
+
+  async function apply(){
+    const found = findModalAndTable(); if (!found) return;
+    const { table, ths } = found;
+
+    // Insert movement header AFTER "#"
+    let thMove = table.querySelector('thead th[data-move-col="1"]');
+    if (!thMove){
+      thMove = document.createElement('th');
+      thMove.dataset.moveCol = '1';
+      thMove.style.textAlign = 'center';
+      thMove.style.width     = '26px';
+      thMove.style.minWidth  = '22px';
+      thMove.style.maxWidth  = '34px';
+      ths[0].insertAdjacentElement('afterend', thMove);
+    }
+
+    // Insert NEW header AFTER movement
+    let headNow = Array.from(table.querySelectorAll('thead th'));
+    let idxRank = headNow.findIndex(th => /^#$/i.test((th.textContent||'').trim()));
+    let idxMove = headNow.findIndex(th => th.dataset && th.dataset.moveCol === '1');
+
+    let thNew = table.querySelector('thead th[data-newcol="1"]');
+    if (!thNew){
+      thNew = document.createElement('th');
+      thNew.dataset.newcol = '1';
+      thNew.style.textAlign = 'center';
+      thNew.style.width = '44px';
+      thNew.style.minWidth = '38px';
+      thNew.style.maxWidth = '60px';
+      headNow[idxMove].insertAdjacentElement('afterend', thNew);
+    }
+
+    // Narrow the "#" column
+    headNow = Array.from(table.querySelectorAll('thead th'));
+    idxRank = headNow.findIndex(th => /^#$/i.test((th.textContent||'').trim()));
+    idxMove = headNow.findIndex(th => th.dataset && th.dataset.moveCol === '1');
+    const idxNew = headNow.findIndex(th => th.dataset && th.dataset.newcol === '1');
+
+    if (headNow[idxRank]) {
+      headNow[idxRank].style.width     = '24px';
+      headNow[idxRank].style.minWidth  = '22px';
+      headNow[idxRank].style.maxWidth  = '28px';
+      headNow[idxRank].style.textAlign = 'center';
+    }
+    table.style.tableLayout = 'fixed';
+    table.style.width = '100%';
+
+    // Resolve main column indexes by header text (after our inserts)
+    const idxPlayer = headNow.findIndex(th => /player/i.test(th.textContent||''));
+    const idxScore  = headNow.findIndex(th => /^score$/i.test(th.textContent||''));
+    let   idxWhen   = headNow.findIndex(th => /when/i.test(th.textContent||''));
+    if (idxWhen < 0) idxWhen = headNow.length - 1;
+
+    const { pb, keyTs, globalMax } = await buildMaps();
+
+    // Load previous entry positions (per entry: nameLC|score)
+    const prev = loadPos();
+    const next = {};
+    const now = Date.now();
+
+    // Per-row updates
+    const rows = Array.from(table.querySelectorAll('tbody tr'));
+    rows.forEach((tr, i)=>{
+      const tds0 = Array.from(tr.children);
+      const tdRank = tds0[idxRank];
+
+      // Ensure movement cell immediately after rank
+      let tdMove = tds0[idxMove];
+      if (!tdMove || tdMove === tdRank || tdMove.dataset.moveCell !== '1') {
+        tdMove = document.createElement('td');
+        tdMove.dataset.moveCell = '1';
+        tdMove.style.textAlign = 'center';
+        tdRank.insertAdjacentElement('afterend', tdMove);
+      } else {
+        tdMove.innerHTML = '';
+      }
+
+      // Ensure NEW cell immediately after movement
+      const tds1 = Array.from(tr.children);
+      const tdAfterMove = tds1[idxMove + 1] || tdMove.nextElementSibling;
+      let tdNew = tds1[idxNew];
+      if (!tdNew || tdNew === tdRank || tdNew === tdMove || tdNew.dataset.newCell !== '1') {
+        tdNew = document.createElement('td');
+        tdNew.dataset.newCell = '1';
+        tdNew.style.textAlign = 'center';
+        (tdAfterMove || tdMove).insertAdjacentElement('afterend', tdNew);
+      } else {
+        tdNew.innerHTML = '';
+      }
+
+      // Refresh indexes after inserts and read data cells
+      const tds = Array.from(tr.children);
+      const tdPlayer = tds[idxPlayer];
+      const tdScore  = tds[idxScore];
+      const tdWhen   = tds[idxWhen] || tds[tds.length - 1];
+
+      // 1) Format When => DD/MM/YY @ HH:MM
+      if (tdWhen) {
+        const orig = tdWhen.textContent || '';
+        const fmt  = fmt_DDMMYY_HHMM(orig);
+        if (fmt && fmt !== orig) tdWhen.textContent = fmt;
+      }
+
+      // Entry key for movement & NEW: nameLC|score
+      const nameLC = (tdPlayer?.textContent || '').trim().toLowerCase();
+      const scoreN = Number((tdScore?.textContent || '').replace(/[^\d.]/g,''));
+      const entryKey = `${nameLC}|${Number.isFinite(scoreN) ? scoreN : -1}`;
+      const pos = i + 1;
+
+      // 2) Movement (persist 7 days if no further movement)
+      const prevRec = prev[entryKey];
+      let deltaToShow = 0;
+      if (prevRec && typeof prevRec.pos === 'number') {
+        if (prevRec.pos !== pos) {
+          // changed now
+          deltaToShow = prevRec.pos - pos; // + = moved up
+          next[entryKey] = { pos, delta: deltaToShow, tISO: new Date(now).toISOString() };
+        } else {
+          // unchanged; keep showing if within 7d and delta != 0
+          const ageOK = prevRec.tISO && (now - Date.parse(prevRec.tISO)) <= NEW_MS;
+          deltaToShow = ageOK ? (prevRec.delta || 0) : 0;
+          next[entryKey] = { pos, delta: prevRec.delta || 0, tISO: prevRec.tISO || new Date(now).toISOString() };
+        }
+      } else {
+        // first time seeing this entry
+        next[entryKey] = { pos, delta: 0, tISO: new Date(now).toISOString() };
+      }
+      tdMove.innerHTML = arrowHTML(deltaToShow);
+
+      // 3) NEW (≤7 days since that exact (player,score))
+      if (nameLC && Number.isFinite(scoreN)) {
+        const k = `${nameLC}|${scoreN}`;
+        const ts = keyTs.get(k);
+        if (ts && (Date.now() - ts.getTime()) <= NEW_MS) {
+          tdNew.appendChild(yellowNEW());
+        }
+      }
+
+      // 4) PB after Score — show ONLY ONCE per player (true PB occurrence), exclude global top score
+      const isGlobalTop = Number((tdScore?.textContent || '').replace(/[^\d.]/g,'')) === globalMax;
+      const best = pb.get(nameLC) || -Infinity;
+      const curScore = Number((tdScore?.textContent || '').replace(/[^\d.]/g,''));
+      const isPBScore = Number.isFinite(curScore) && curScore === best;
+
+      // Prefer tagging the latest occurrence of that PB score (so PB doesn't repeat across multiple equal-score rows)
+      function parseWhenMs(txt){
+        if (!txt) return NaN;
+        // Expect "DD/MM/YY @ HH:MM"
+        const m = String(txt).trim().match(/^(\d{2})\/(\d{2})\/(\d{2})\s*@\s*(\d{2}):(\d{2})$/);
+        if (!m) return NaN;
+        const dd = Number(m[1]), mm = Number(m[2]), yy = Number(m[3]), hh = Number(m[4]), mi = Number(m[5]);
+        if (![dd,mm,yy,hh,mi].every(Number.isFinite)) return NaN;
+        // Stored timestamps are UTC; treat display as UTC for matching.
+        return Date.UTC(2000 + yy, mm - 1, dd, hh, mi, 0, 0);
+      }
+
+      const pbKey = `${nameLC}|${best}`;
+      const latestPbTs = keyTs.get(pbKey) || null; // Date (latest occurrence from official games)
+      const rowWhenMs = parseWhenMs(tdWhen?.textContent || '');
+      const matchLatest = (latestPbTs && Number.isFinite(rowWhenMs))
+        ? Math.abs(latestPbTs.getTime() - rowWhenMs) <= 60 * 1000
+        : true; // if we can't parse, don't block tagging
+
+      if (!isGlobalTop && isPBScore && matchLatest && tdScore && !seenPB.has(nameLC) && !/\bPB\b/i.test(tdScore.innerHTML)) {
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = 'PB';
+        tag.style.marginLeft = '6px';
+        tdScore.appendChild(tag);
+        seenPB.add(nameLC);
+      }
+    });
+
+    // Save snapshot for next time
+    savePos(next);
+  }
+
+  function tick(){ try { apply(); } catch(e){ console.error('HS Match v4 failed', e); } }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
+  try { window.__sqUIMutationBus?.on(()=>tick()); } catch(_) {}
+})();
+
+// === T button flash + shake — v3 (Safari-safe; 1→2→3 only when T is pressed)
+(function tButtonFXv3(){
+  // CSS (proper injection)
+  if (!document.getElementById('tfx-css')) {
+    const s = document.createElement('style'); s.id = 'tfx-css';
+    s.textContent =
+`.tfx{will-change:transform,filter}
+@keyframes tFlashLow{0%{filter:brightness(1);box-shadow:none}12%{filter:brightness(1.4);box-shadow:0 0 10px rgba(255,255,255,.5),0 0 18px rgba(77,163,255,.3)}30%{filter:brightness(1.05);box-shadow:none}100%{filter:brightness(1);box-shadow:none}}
+@keyframes tFlashMed{0%{filter:brightness(1);box-shadow:none}10%{filter:brightness(1.9);box-shadow:0 0 16px rgba(255,255,255,.7),0 0 28px rgba(77,163,255,.4)}24%{filter:brightness(1.1);box-shadow:none}38%{filter:brightness(1.6);box-shadow:0 0 12px rgba(255,255,255,.5),0 0 22px rgba(77,163,255,.35)}100%{filter:brightness(1);box-shadow:none}}
+@keyframes tFlashHigh{0%{filter:brightness(1);box-shadow:none}8%{filter:brightness(2.6);box-shadow:0 0 22px rgba(255,255,255,.85),0 0 40px rgba(77,163,255,.5)}18%{filter:brightness(1.1);box-shadow:none}28%{filter:brightness(2.2);box-shadow:0 0 18px rgba(255,255,255,.7),0 0 34px rgba(77,163,255,.45)}42%{filter:brightness(1.15);box-shadow:none}100%{filter:brightness(1);box-shadow:none}}
+@keyframes tShakeLow{0%,100%{transform:translateX(0)}20%{transform:translateX(-2px)}40%{transform:translateX(2px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+@keyframes tShakeMed{0%,100%{transform:translateX(0)}15%{transform:translateX(-5px)}30%{transform:translateX(5px)}45%{transform:translateX(-4px)}60%{transform:translateX(4px)}75%{transform:translateX(-3px)}}
+@keyframes tShakeHigh{0%,100%{transform:translateX(0) rotate(0)}12%{transform:translateX(-8px) rotate(-1deg)}24%{transform:translateX(8px) rotate(1deg)}36%{transform:translateX(-7px) rotate(-.9deg)}48%{transform:translateX(7px) rotate(.9deg)}60%{transform:translateX(-6px) rotate(-.8deg)}72%{transform:translateX(6px) rota
