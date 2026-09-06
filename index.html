@@ -43522,6 +43522,13 @@ document.addEventListener('DOMContentLoaded', function(){
     return x;
   }
 
+  function __sqSpiderRadiusNorm(valuePct){
+    const p = Math.max(0, Math.min(100, Number(valuePct)||0));
+    if (p <= 25) return (p / 25) * 0.5;
+    if (p <= 75) return 0.5 + ((p - 25) / 50) * 0.25;
+    return 0.75 + ((p - 75) / 25) * 0.25;
+  }
+
   function drawRadar(canvas, labels, valuesPct, opts){
     const o = opts || {};
     const t = Math.max(0, Math.min(1, Number.isFinite(o.t) ? o.t : 1));
@@ -43541,17 +43548,18 @@ document.addEventListener('DOMContentLoaded', function(){
     bg.addColorStop(0.65,'rgba(13,20,38,0)');
     ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
 
-    // rings (outer ring brighter)
-    for (let g=1; g<=4; g++){
-      const r = (R*g)/4;
+    // percentage rings follow the same nonlinear radius scale as the data.
+    const ringPcts = [25, 50, 75, 100];
+    for (let g=1; g<=ringPcts.length; g++){
+      const r = R * __sqSpiderRadiusNorm(ringPcts[g-1]);
       ctx.beginPath();
       for (let i=0;i<N;i++){
         const x = cx + Math.cos(ang(i))*r, y = cy + Math.sin(ang(i))*r;
         if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
       }
       ctx.closePath();
-      ctx.strokeStyle = g===4 ? 'rgba(122,170,255,0.45)' : 'rgba(122,170,255,0.16)';
-      ctx.lineWidth = g===4 ? 1.4 : 1;
+      ctx.strokeStyle = g===ringPcts.length ? 'rgba(122,170,255,0.45)' : 'rgba(122,170,255,0.16)';
+      ctx.lineWidth = g===ringPcts.length ? 1.4 : 1;
       ctx.stroke();
     }
 
@@ -43565,10 +43573,11 @@ document.addEventListener('DOMContentLoaded', function(){
       ctx.stroke();
     }
 
-    // value points
+    // value points use the nonlinear display scale while retaining the real percentage.
     const pts = labels.map((_,i)=>{
-      const p = Math.max(0, Math.min(100, Number(valuesPct[i]||0)))/100;
-      return { x: cx + Math.cos(ang(i))*R*p, y: cy + Math.sin(ang(i))*R*p, v: p*100 };
+      const pct = Math.max(0, Math.min(100, Number(valuesPct[i]||0)));
+      const radius = __sqSpiderRadiusNorm(pct);
+      return { x: cx + Math.cos(ang(i))*R*radius, y: cy + Math.sin(ang(i))*R*radius, v:pct };
     });
     let bi = 0; pts.forEach((p,i)=>{ if (p.v > pts[bi].v) bi = i; });
 
@@ -43659,11 +43668,13 @@ document.addEventListener('DOMContentLoaded', function(){
       ctx.globalAlpha = 1;
     }
 
-    // subtle ring scale marks
+    // subtle ring scale marks; positions reflect the nonlinear display scale.
     ctx.fillStyle = 'rgba(160,190,235,0.5)';
     ctx.font = '700 9px system-ui, -apple-system, Segoe UI, Roboto, Arial';
-    ctx.fillText('50', cx - 16, cy - R/2 - 4);
-    ctx.fillText('100', cx - 18, cy - R + 10);
+    [25, 50, 75, 100].forEach(function(mark){
+      const y = cy - R * __sqSpiderRadiusNorm(mark) + (mark === 100 ? 10 : -4);
+      ctx.fillText(String(mark), cx - 18, y);
+    });
   }
 
   function drawMultiLine(canvas, xLabels, seriesMap){
@@ -43892,7 +43903,7 @@ document.addEventListener('DOMContentLoaded', function(){
     for (var i=0;i<N;i++){
       var raw = Number(valuesPct[i]);
       if (!Number.isFinite(raw)){ pts.push(null); continue; }
-      var v = Math.max(0, Math.min(100, raw)) / 100;
+      var v = __sqSpiderRadiusNorm(raw);
       var a = -Math.PI / 2 + (i * Math.PI * 2 / N);
       pts.push({ x:cx + Math.cos(a) * R * v * t, y:cy + Math.sin(a) * R * v * t });
     }
@@ -52546,7 +52557,8 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     var key = typeof __sqTargetPctKey === 'function' ? __sqTargetPctKey(r) : String(r.target_key || r.target_label || '').toUpperCase();
     var sort = Number(r.target_sort);
     if (!Number.isFinite(sort)) sort = typeof __sqTargetPctOrder === 'function' ? __sqTargetPctOrder(key) : 999;
-    return { key:key, playerKey:rankKey(r.player_key || r.player_name), playerName:String(r.player_name || r.player_key || ''), throwsN:throwsN, hits:hits, pct:pct, sort:sort };
+    var sourceGames = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['source_games','games','game_count']) : r.source_games) || 0);
+    return { key:key, playerKey:rankKey(r.player_key || r.player_name), playerName:String(r.player_name || r.player_key || ''), throwsN:throwsN, hits:hits, pct:pct, sourceGames:sourceGames, sort:sort };
   }
 
   // Tap-to-inspect for the dartboard heatmaps: tapping a wedge / D / T / B
@@ -52589,7 +52601,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
       var head = document.createElement('div');
       head.className = 'sq-target-global-ranking-head';
       head.style.cssText = 'position:sticky;top:0;z-index:1;padding:7px 9px;background:rgba(12,20,38,.98);border-bottom:1px solid rgba(125,211,252,.28);font-size:10px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;color:#d9ecff;';
-      head.textContent = 'Target ' + k + ' - all players';
+      head.textContent = 'Target ' + k + ' - 10+ games';
       rankPanel.appendChild(head);
       var tbl = document.createElement('table');
       tbl.className = 'sq-table hs-table';
@@ -52716,6 +52728,21 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     }
   }
 
+  var __SQ_TARGET_MIN_GAMES = 10;
+  function __sqFilterTargetEligiblePlayers(rows){
+    var maxGamesByPlayer = new Map();
+    (rows || []).forEach(function(r){
+      var pk = String(r.playerKey || '').trim();
+      if (!pk) return;
+      var games = Math.max(0, Number(r.sourceGames) || 0);
+      if (!maxGamesByPlayer.has(pk) || games > maxGamesByPlayer.get(pk)) maxGamesByPlayer.set(pk, games);
+    });
+    return (rows || []).filter(function(r){
+      var pk = String(r.playerKey || '').trim();
+      return pk && (maxGamesByPlayer.get(pk) || 0) >= __SQ_TARGET_MIN_GAMES;
+    });
+  }
+
   async function fetchTargetHitGlobalRanks(rows){
     var c = client();
     if (!c || typeof c.from !== 'function') return new Map();
@@ -52724,7 +52751,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
     try{
       var savedSet = await savedPlayerKeySet();
       var q = await c.from('v_player_target_hit_pct')
-        .select('player_key,player_name,target_key,target_label,target_sort,throws,hits,hit_pct')
+        .select('player_key,player_name,target_key,target_label,target_sort,throws,hits,hit_pct,source_games')
         .in('target_key', keys)
         .gt('throws', 0)
         .limit(5000);
@@ -52733,6 +52760,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
         if (!r.key || !r.playerKey) return false;
         return !savedSet || savedSet.has(r.playerKey);
       });
+      allRows = __sqFilterTargetEligiblePlayers(allRows);
       var byTarget = new Map();
       allRows.forEach(function(r){
         var k = String(r.key).toUpperCase();
@@ -52946,6 +52974,7 @@ try{console.info('[SQ] Fix136 Premier League restored period filters active');}c
         if (!r.key || !r.playerKey || !keys.has(String(r.key).toUpperCase())) return false;
         return !savedSet || savedSet.has(r.playerKey);
       });
+      allRows = __sqFilterTargetEligiblePlayers(allRows);
       var byTarget = new Map();
       allRows.forEach(function(r){
         var k = String(r.key).toUpperCase();
