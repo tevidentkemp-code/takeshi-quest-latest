@@ -31,7 +31,8 @@ stats_pattern = re.compile(
     r"    const blockMeans = \[\];\n.*?    pillAvg\.textContent = `Avg Low \$\{minAvg\.toFixed\(1\)\} · Avg High \$\{maxAvg\.toFixed\(1\)\}`;",
     re.S,
 )
-stats_replacement = """    const rollingMeans = blockAvgPoints(scores, activeBlockSize).map(p=>p.y);
+stats_replacement = """    pillAll.textContent = `Avg ${avgAll.toFixed(1)} · Low ${minV} · High ${maxV}`;
+    const rollingMeans = blockAvgPoints(scores, activeBlockSize).map(p=>p.y);
     if (!rollingMeans.length){
       pillAvg.textContent = `${activeBlockSize} Game AV needs ${activeBlockSize} games`;
       return;
