@@ -66,6 +66,12 @@ const FIXTURE = {
       { code: 'giant_slayer', cnt: 1, xp: 10 },
       { code: 'champion', cnt: 1, xp: 10 },
     ],
+    // SC-010 positive-history client path reads these two source views in parallel.
+    v_ach_base: [
+      { code: 'giant_slayer', cnt: 1, xp: 10 },
+      { code: 'champion', cnt: 1, xp: 10 },
+    ],
+    v_ach_david_goliath: [],
     v_player_misfires: [
       { code: 'bull_blind', cnt: 3 },
       { code: 'cold_start', cnt: 1 },
