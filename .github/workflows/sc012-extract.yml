@@ -1,0 +1,54 @@
+name: SC-012 temporary target source extract
+on:
+  push:
+    branches: [feature/sc012-target-rankings-spider-compare]
+    paths: [.github/workflows/sc012-extract.yml]
+permissions:
+  contents: write
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/sc012-target-rankings-spider-compare
+      - name: Extract relevant target UI source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          src=Path('index.html').read_text()
+          lines=src.splitlines()
+          needles=[
+            'function openPlayerTargetHitDialog(',
+            'function openPlayerTargetPointsDialog(',
+            'function showPlayerAreaSummary(',
+            'function showPlayerPointsAreaSummary(',
+            'function openPlayerTargetHitDialogV2(',
+            'function showPerformancePointHeatmap('
+          ]
+          out=[]
+          for needle in needles:
+            hits=[i for i,l in enumerate(lines) if needle in l]
+            out.append('\n\n===== '+needle+' HITS '+str([h+1 for h in hits])+' =====\n')
+            for h in hits:
+              a=max(0,h-180); b=min(len(lines),h+650)
+              out.append('\n'.join(f'{j+1}: {lines[j]}' for j in range(a,b)))
+          # Also capture ranking/source/view mentions for target stats.
+          for needle in ['v_player_last30_target_rates','target_n','hit_pct','points','P #','G #','spider']:
+            hits=[i for i,l in enumerate(lines) if needle in l]
+            target_hits=[h for h in hits if 50000 <= h+1 <= 54000]
+            out.append('\n\n===== SEARCH '+needle+' HITS '+str([h+1 for h in target_hits])+' =====\n')
+            for h in target_hits[:25]:
+              a=max(0,h-30); b=min(len(lines),h+70)
+              out.append('\n'.join(f'{j+1}: {lines[j]}' for j in range(a,b)))
+          p=Path('_sc012_extract')
+          p.mkdir(exist_ok=True)
+          (p/'target-ui.txt').write_text('\n'.join(out))
+          PY
+      - name: Commit extract
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add _sc012_extract/target-ui.txt
+          git commit -m 'SC-012: temporary extracted target UI source' || exit 0
+          git push
