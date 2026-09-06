@@ -16,11 +16,11 @@ function check(name, ok, detail) {
   await H.boot(page, { settle: 2500 });
 
   await page.evaluate(() => {
-    const officialRows = [100, 200, 300, 400, 500, 600].map((score, i) => ({
+    const officialRows = Array.from({ length: 21 }, (_, i) => ({
       game_id: 'o' + i,
       ts: `2026-08-${String(i + 1).padStart(2, '0')}T12:00:00Z`,
       player_name: 'Thom',
-      score
+      score: 100 + i * 10
     }));
     const turboRows = [40, 50, 60, 70, 80, 90].map((score, i) => ({
       id: 't' + i,
@@ -95,17 +95,25 @@ function check(name, ok, detail) {
   check('Turbo is not selected by default', (await turbo.getAttribute('aria-pressed')) === 'false');
 
   const officialStats = (await pillAll.textContent() || '').trim();
-  check('Official fixture only drives summary', officialStats.includes('Avg 350.0') && officialStats.includes('Low 100') && officialStats.includes('High 600'), officialStats);
+  check('Official fixture only drives summary', officialStats.includes('Avg 200.0') && officialStats.includes('Low 100') && officialStats.includes('High 300'), officialStats);
+
+  const officialB20Initial = (await pillAvg.textContent() || '').trim();
+  check('20 Game AV is a true rolling window', officialB20Initial.includes('Avg Low 195.0') && officialB20Initial.includes('Avg High 205.0'), officialB20Initial);
 
   await modal.locator('button[data-mode="B5"]').click();
   await page.waitForTimeout(150);
   const officialB5 = (await pillAvg.textContent() || '').trim();
-  check('5 Game AV uses Official series only', officialB5.includes('Avg Low 300.0') && officialB5.includes('Avg High 600.0'), officialB5);
+  check('5 Game AV is a true rolling window', officialB5.includes('Avg Low 120.0') && officialB5.includes('Avg High 280.0'), officialB5);
+
+  await modal.locator('button[data-mode="B10"]').click();
+  await page.waitForTimeout(150);
+  const officialB10 = (await pillAvg.textContent() || '').trim();
+  check('10 Game AV is a true rolling window', officialB10.includes('Avg Low 145.0') && officialB10.includes('Avg High 255.0'), officialB10);
 
   await page.setViewportSize({ width: 400, height: 844 });
   await page.waitForTimeout(250);
   const officialAfterResize = (await pillAvg.textContent() || '').trim();
-  check('resize preserves selected 5 Game AV', officialAfterResize.includes('Avg Low 300.0') && officialAfterResize.includes('Avg High 600.0'), officialAfterResize);
+  check('resize preserves selected 10 Game AV', officialAfterResize.includes('Avg Low 145.0') && officialAfterResize.includes('Avg High 255.0'), officialAfterResize);
 
   await turbo.click();
   await page.waitForFunction(() => {
@@ -119,8 +127,19 @@ function check(name, ok, detail) {
   const turboStats = (await pillAll.textContent() || '').trim();
   check('Turbo fixture only drives summary', turboStats.includes('Avg 65.0') && turboStats.includes('Low 40') && turboStats.includes('High 90'), turboStats);
   check('Turbo extracts selected player total by player index', !turboStats.includes('9000'), turboStats);
+
+  const turboB10 = (await pillAvg.textContent() || '').trim();
+  check('Incomplete 10-game tail is not presented as a 10 Game AV', turboB10.includes('10 Game AV needs 10 games'), turboB10);
+
+  await modal.locator('button[data-mode="B5"]').click();
+  await page.waitForTimeout(150);
   const turboB5 = (await pillAvg.textContent() || '').trim();
-  check('5 Game AV remains selected inside Turbo', turboB5.includes('Avg Low 60.0') && turboB5.includes('Avg High 90.0'), turboB5);
+  check('5 Game AV remains mode-isolated in Turbo', turboB5.includes('Avg Low 60.0') && turboB5.includes('Avg High 70.0'), turboB5);
+
+  await modal.locator('button[data-mode="B20"]').click();
+  await page.waitForTimeout(150);
+  const turboB20 = (await pillAvg.textContent() || '').trim();
+  check('Incomplete 20-game tail is not presented as a 20 Game AV', turboB20.includes('20 Game AV needs 20 games'), turboB20);
 
   const queries = await page.evaluate(() => window.__progQueries.slice());
   const queriedViews = queries.filter(q => q.op === 'from').map(q => q.view);

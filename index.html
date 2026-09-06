@@ -40658,20 +40658,13 @@ window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(
 
   function blockAvgPoints(arr, k){
     const pts = [];
-    if (!arr.length || !k) return pts;
     const n = arr.length;
-    const blocks = Math.ceil(n / k);
-    for (let bi=0; bi<blocks; bi++){
-      const s = bi*k;
-      const e = Math.min((bi+1)*k, n);
-      const slice = arr.slice(s, e);
-      const mean = slice.reduce((a,b)=>a+b,0) / slice.length;
-      const x = Math.min(bi*k, n-1);
-      pts.push({ x, y: mean });
-    }
-    if (pts.length){
-      const last = pts[pts.length-1];
-      if (last.x !== n-1) pts.push({ x: n-1, y: last.y });
+    if (!Number.isFinite(k) || k <= 0 || n < k) return pts;
+    let sum = 0;
+    for (let i=0; i<n; i++){
+      sum += Number(arr[i]) || 0;
+      if (i >= k) sum -= Number(arr[i-k]) || 0;
+      if (i >= k-1) pts.push({ x:i, y:sum/k });
     }
     return pts;
   }
@@ -40971,16 +40964,14 @@ window.openPlayerProgressionDialog = async function openPlayerProgressionDialog(
 
     const minV = Math.min(...scores);
     const maxV = Math.max(...scores);
-    const blockMeans = [];
-    for (let s=0; s<n; s+=activeBlockSize){
-      const slice = scores.slice(s, Math.min(s+activeBlockSize, n));
-      if (!slice.length) continue;
-      blockMeans.push(slice.reduce((a,b)=>a+b,0) / slice.length);
-    }
-    const minAvg = blockMeans.length ? Math.min(...blockMeans) : avgAll;
-    const maxAvg = blockMeans.length ? Math.max(...blockMeans) : avgAll;
-
     pillAll.textContent = `Avg ${avgAll.toFixed(1)} · Low ${minV} · High ${maxV}`;
+    const rollingMeans = blockAvgPoints(scores, activeBlockSize).map(p=>p.y);
+    if (!rollingMeans.length){
+      pillAvg.textContent = `${activeBlockSize} Game AV needs ${activeBlockSize} games`;
+      return;
+    }
+    const minAvg = Math.min(...rollingMeans);
+    const maxAvg = Math.max(...rollingMeans);
     pillAvg.textContent = `Avg Low ${minAvg.toFixed(1)} · Avg High ${maxAvg.toFixed(1)}`;
   }
 
