@@ -1,0 +1,3364 @@
+===== openPlayerSpiderDialog HITS [41955, 41957, 43885] =====
+
+41735:     if (result.missing || !result.rows.length){
+41736:       console.warn('[SQ] Target progress dependency missing or empty', {
+41737:         required_view: mode === 'points' ? 'v_player_target_points_progress' : 'v_player_target_hit_progress',
+41738:         metric:mode,
+41739:         player:name,
+41740:         detail:result.missing || 'zero rows'
+41741:       });
+41742:       body.innerHTML = '';
+41743:       const msg = document.createElement('p'); msg.className = 'muted';
+41744:       msg.textContent = 'No progress data yet — play more games to build the trend.';
+41745:       body.append(msg);
+41746:       return;
+41747:     }
+41748: 
+41749:     console.debug('[SQ] Target progress source used', { source:result.source, metric:mode, rows:result.rows.length });
+41750:     const normalized = __sqNormalizeTargetProgressRows(mode, result.rows);
+41751:     const grouped = new Map();
+41752:     normalized.forEach(r => { if (!grouped.has(r.key)) grouped.set(r.key, []); grouped.get(r.key).push(r); });
+41753: 
+41754:     body.innerHTML = '';
+41755:     const targetRow = document.createElement('div'); targetRow.className = 'sq-controls-row'; targetRow.style.display = 'flex'; targetRow.style.flexWrap = 'wrap'; targetRow.style.gap = '6px'; targetRow.style.marginBottom = '10px';
+41756:     const avgRow = document.createElement('div'); avgRow.className = 'sq-controls-row'; avgRow.style.display = 'flex'; avgRow.style.flexWrap = 'wrap'; avgRow.style.gap = '6px'; avgRow.style.marginBottom = '10px';
+41757: 
+41758:     // FORM strip: gauge + verdict stamp
+41759:     const formRow = document.createElement('div');
+41760:     formRow.style.cssText = 'display:flex;align-items:center;gap:14px;margin-bottom:10px;padding:10px 14px;'
+41761:       + 'background:#101827;border:1px solid rgba(35,164,255,.3);border-radius:14px;box-shadow:0 6px 16px rgba(0,0,0,.3);';
+41762:     const gaugeCanvas = document.createElement('canvas');
+41763:     gaugeCanvas.style.cssText = 'width:170px;height:104px;flex:0 0 auto;';
+41764:     const formInfo = document.createElement('div');
+41765:     formInfo.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;align-items:flex-start;';
+41766:     const formValue = document.createElement('div');
+41767:     formValue.style.cssText = 'font-size:30px;font-weight:900;color:#ffd9b0;line-height:1;letter-spacing:.02em;';
+41768:     const verdict = document.createElement('span');
+41769:     verdict.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:5px 13px;border-radius:99px;font-weight:900;font-size:12px;letter-spacing:.1em;';
+41770:     const formSub = document.createElement('div');
+41771:     formSub.style.cssText = 'font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:rgba(150,185,230,.85);';
+41772:     formInfo.append(formValue, verdict, formSub);
+41773:     formRow.append(gaugeCanvas, formInfo);
+41774: 
+41775:     const canvasWrap = document.createElement('div'); canvasWrap.style.cssText = 'width:100%;height:340px;border:1px solid rgba(35,164,255,.25);border-radius:14px;overflow:hidden;background:#0d1424;box-shadow:0 10px 26px rgba(0,0,0,.4), 0 0 24px rgba(47,134,255,.08);';
+41776:     const canvas = document.createElement('canvas'); canvas.style.width = '100%'; canvas.style.height = '100%'; canvas.style.touchAction = 'pan-y'; canvasWrap.appendChild(canvas);
+41777: 
+41778:     // Hot/cold streak strip: one cell per recent game, tap to inspect
+41779:     const stripWrap = document.createElement('div');
+41780:     stripWrap.style.cssText = 'margin-top:10px;';
+41781:     const stripLabel = document.createElement('div');
+41782:     stripLabel.style.cssText = 'font-size:10px;text-transform:uppercase;letter-spacing:.12em;font-weight:800;color:rgba(150,185,230,.85);margin-bottom:6px;';
+41783:     stripLabel.textContent = 'Recent games — tap to inspect';
+41784:     const strip = document.createElement('div');
+41785:     strip.style.cssText = 'display:flex;gap:3px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;';
+41786:     stripWrap.append(stripLabel, strip);
+41787: 
+41788:     const stats = document.createElement('div'); stats.className = 'sq-progress-pills';
+41789:     const empty = document.createElement('p'); empty.className = 'muted'; empty.style.marginTop = '8px';
+41790: 
+41791:     const targetConfigs = __sqProgressTargetButtons(mode, grouped);
+41792:     const enabledKeys = targetConfigs.filter(t => !t.disabled).map(t => t.key);
+41793:     const stableScaleMax = __sqProgressSessionScale(grouped, enabledKeys);
+41794:     let selectedTargets = [enabledKeys[0] || '10'];
+41795:     let primaryTarget = selectedTargets[0];
+41796:     let windowSize = 5;
+41797:     let scrubIdx = null;
+41798:     let animRaf = 0;
+41799:     const rowsForKey = key => (grouped.get(key) || []).slice().sort((a,b) => {
+41800:       const ta = Date.parse(a.created_at || '') || 0;
+41801:       const tb = Date.parse(b.created_at || '') || 0;
+41802:       if (ta !== tb) return ta - tb;
+41803:       return a.idx - b.idx;
+41804:     });
+41805:     const currentSeries = () => selectedTargets.map(key => ({ key, color:__sqProgressColor(key), rows:rowsForKey(key) })).filter(s => s.rows.length);
+41806: 
+41807:     const verdictFor = (stats) => {
+41808:       const d = stats.secondAvg - stats.firstAvg;
+41809:       if (d >= 5)   return { label:'ON FIRE', color:'#ffa440', glow:'rgba(255,140,40,.45)', arrow:'↑' };
+41810:       if (d >= 1.5) return { label:'CLIMBING', color:'#73f07e', glow:'rgba(115,240,126,.4)', arrow:'↑' };
+41811:       if (d > -1.5) return { label:'STEADY', color:'#4aa3ff', glow:'rgba(74,163,255,.4)', arrow:'→' };
+41812:       return { label:'COOLING', color:'#7cc0ff', glow:'rgba(124,192,255,.35)', arrow:'↓' };
+41813:     };
+41814: 
+41815:     let gaugeFrom = 0; // needle rolls from the previous target's value
+41816:     const paintForm = (series, tv) => {
+41817:       const isSingle = series.length === 1;
+41818:       formRow.style.display = isSingle ? 'flex' : 'none';
+41819:       stripWrap.style.display = isSingle ? '' : 'none';
+41820:       if (!isSingle || !series[0]) return;
+41821:       const st = __sqProgressSeriesStats(series[0].rows, windowSize);
+41822:       const cur = st.avgPoints.length ? st.avgPoints[st.avgPoints.length - 1].pct : st.allAvg;
+41823:       const e = 1 - Math.pow(1 - Math.max(0, Math.min(1, tv)), 3);
+41824:       const shown = gaugeFrom + (cur - gaugeFrom) * e;
+41825:       __sqDrawFormGauge(gaugeCanvas, shown, st.allAvg, 1);
+41826:       formValue.textContent = Math.round(shown) + '%';
+41827:       if (tv >= 1) gaugeFrom = cur;
+41828:       const v = verdictFor(st);
+41829:       verdict.textContent = v.arrow + ' ' + v.label;
+41830:       verdict.style.background = '#0d1424';
+41831:       verdict.style.border = '1px solid ' + v.color;
+41832:       verdict.style.color = v.color;
+41833:       verdict.style.boxShadow = '0 0 16px ' + v.glow;
+41834:       formSub.textContent = 'Form ' + windowSize + '-game av · all-time ' + Math.round(st.allAvg) + '% (notch)';
+41835:     };
+41836: 
+41837:     const buildStrip = (series) => {
+41838:       strip.innerHTML = '';
+41839:       if (series.length !== 1) return;
+41840:       const rows = series[0].rows;
+41841:       const st = __sqProgressSeriesStats(rows, windowSize);
+41842:       const startIdx = Math.max(0, rows.length - 40);
+41843:       for (let i = startIdx; i < rows.length; i++){
+41844:         const v = st.values[i];
+41845:         const hot = v >= st.allAvg;
+41846:         const cell = document.createElement('button');
+41847:         cell.type = 'button';
+41848:         cell.setAttribute('aria-label', 'Game ' + (i + 1) + ': ' + Math.round(v) + '%');
+41849:         const idx = i;
+41850:         const active = scrubIdx === i;
+41851:         cell.style.cssText = 'flex:0 0 auto;width:12px;height:20px;border-radius:4px;padding:0;cursor:pointer;'
+41852:           + 'background:' + (hot ? 'linear-gradient(180deg,#ffb347,#f97618)' : 'rgba(74,163,255,.16)') + ';'
+41853:           + 'border:1px solid ' + (active ? '#fff' : (hot ? 'rgba(255,190,110,.7)' : 'rgba(74,163,255,.25)')) + ';'
+41854:           + (hot ? 'box-shadow:0 0 8px rgba(255,140,40,.35);' : '');
+41855:         cell.onclick = () => { scrubIdx = (scrubIdx === idx) ? null : idx; drawStatic(); };
+41856:         strip.appendChild(cell);
+41857:       }
+41858:     };
+41859: 
+41860:     const paint = (tv) => {
+41861:       const series = currentSeries();
+41862:       __sqDrawTargetProgressCanvas(canvas, series, windowSize, stats, empty, mode, primaryTarget, stableScaleMax, { t:tv, scrubIdx });
+41863:       paintForm(series, tv);
+41864:     };
+41865:     const syncChips = () => {
+41866:       Array.from(targetRow.querySelectorAll('button')).forEach(b => {
+41867:         const selected = selectedTargets.includes(b.dataset.target);
+41868:         b.classList.toggle('primary', selected);
+41869:         b.style.borderColor = selected ? __sqProgressColor(b.dataset.target) : '';
+41870:       });
+41871:       Array.from(avgRow.querySelectorAll('button')).forEach(b => b.classList.toggle('primary', Number(b.dataset.window) === windowSize));
+41872:     };
+41873:     const drawStatic = () => { syncChips(); paint(1); buildStrip(currentSeries()); };
+41874:     const draw = () => {
+41875:       syncChips();
+41876:       scrubIdx = null;
+41877:       cancelAnimationFrame(animRaf);
+41878:       let reduce = false;
+41879:       try{ reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ }
+41880:       const dur = reduce ? 0 : 850;
+41881:       const start = performance.now();
+41882:       const step = now => {
+41883:         const raw = dur ? Math.min(1, (now - start) / dur) : 1;
+41884:         paint(raw);
+41885:         if (raw < 1) animRaf = requestAnimationFrame(step);
+41886:         else buildStrip(currentSeries());
+41887:       };
+41888:       animRaf = requestAnimationFrame(step);
+41889:     };
+41890: 
+41891:     // Scrub-to-inspect: drag or move across the chart
+41892:     let scrubbing = false;
+41893:     const scrubTo = clientX => {
+41894:       const hit = canvas.__sqHitMap;
+41895:       if (!hit || !hit.xs.length) return;
+41896:       const r = canvas.getBoundingClientRect();
+41897:       const x = clientX - r.left;
+41898:       let best = 0, bd = Infinity;
+41899:       hit.xs.forEach((hx, i) => { const d = Math.abs(hx - x); if (d < bd){ bd = d; best = i; } });
+41900:       if (scrubIdx !== best){ scrubIdx = best; paint(1); buildStrip(currentSeries()); }
+41901:     };
+41902:     canvas.addEventListener('pointerdown', e => { if (!canvas.__sqHitMap) return; scrubbing = true; scrubTo(e.clientX); });
+41903:     canvas.addEventListener('pointermove', e => { if (scrubbing || e.pointerType === 'mouse') scrubTo(e.clientX); });
+41904:     window.addEventListener('pointerup', () => { scrubbing = false; });
+41905:     canvas.addEventListener('pointerleave', () => { if (!scrubbing && scrubIdx != null){ scrubIdx = null; paint(1); buildStrip(currentSeries()); } });
+41906: 
+41907:     targetConfigs.forEach(t => {
+41908:       const btn = document.createElement('button'); btn.className = 'btn small'; btn.textContent = t.label; btn.dataset.target = t.key;
+41909:       if (t.disabled){ btn.disabled = true; btn.setAttribute('aria-disabled', 'true'); btn.title = t.reason; btn.style.opacity = '.45'; btn.style.cursor = 'not-allowed'; }
+41910:       btn.onclick = () => {
+41911:         if (t.disabled) return;
+41912:         // Single-select: tapping a new target rolls the whole view (line,
+41913:         // gauge needle, verdict, strip) over to that target.
+41914:         if (selectedTargets.length === 1 && selectedTargets[0] === t.key) return;
+41915:         selectedTargets = [t.key];
+41916:         primaryTarget = t.key;
+41917:         draw();
+41918:       };
+41919:       targetRow.appendChild(btn);
+41920:     });
+41921:     [5,10,20].forEach(n => {
+41922:       const btn = document.createElement('button'); btn.className = 'btn small'; btn.textContent = `${n} Round AV`; btn.dataset.window = String(n);
+41923:       btn.onclick = () => { windowSize = n; draw(); };
+41924:       avgRow.appendChild(btn);
+41925:     });
+41926:     body.append(targetRow, avgRow, formRow, canvasWrap, stripWrap, stats, empty);
+41927:     draw();
+41928:     try{ new ResizeObserver(() => drawStatic()).observe(canvasWrap); }catch(_){ window.addEventListener('resize', () => drawStatic(), { passive:true }); }
+41929:   })();
+41930:   return overlay;
+41931: }
+41932: window.openPlayerTargetPointsProgressDialog = function openPlayerTargetPointsProgressDialog(playerName, opts){ return __sqOpenTargetProgressDialog('points', playerName, opts || {}); };
+41933: window.openPlayerTargetHitProgressDialog = function openPlayerTargetHitProgressDialog(playerName, opts){ return __sqOpenTargetProgressDialog('hit', playerName, opts || {}); };
+41934: 
+41935: function __sqBuildTargetPctShell(title, subtitle, playerName, metricMode){
+41936:   const name = String(playerName || '').trim();
+41937:   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+41938:   const modal = document.createElement('div'); modal.className = 'modal';
+41939:   modal.style.maxWidth = '980px'; modal.style.width = '94vw';
+41940:   modal.style.maxHeight = '90vh'; modal.style.overflow = 'hidden';
+41941:   const header = __sqStatsHeader(title, subtitle);
+41942:   const body = document.createElement('div'); body.className = 'modal-body';
+41943:   body.style.paddingTop = '8px'; body.style.maxHeight = 'none'; body.style.overflowY = 'visible';
+41944:   const footer = document.createElement('div'); footer.className = 'modal-footer';
+41945:   const backBtn = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
+41946:   const spacer = document.createElement('div'); spacer.style.flex = '1';
+41947:   const spiderBtn = document.createElement('button'); spiderBtn.className = 'btn small'; spiderBtn.textContent = 'SPIDER'; spiderBtn.dataset.targetPctAction = 'spider';
+41948:   const progBtn = document.createElement('button'); progBtn.className = 'btn small'; progBtn.textContent = 'PROGRESS'; progBtn.dataset.targetPctAction = 'progress';
+41949:   spiderBtn.disabled = true; spiderBtn.setAttribute('aria-disabled', 'true'); spiderBtn.title = 'Available after target percentage data loads.'; spiderBtn.style.opacity = '.45'; spiderBtn.style.cursor = 'not-allowed';
+41950:   progBtn.disabled = true; progBtn.setAttribute('aria-disabled', 'true'); progBtn.title = 'Progress requires a Supabase target percentage progression view.'; progBtn.style.opacity = '.45'; progBtn.style.cursor = 'not-allowed';
+41951:   backBtn.onclick = () => { overlay.remove(); __sqGoBackToStatsMain(name); };
+41952:   spiderBtn.onclick = () => {
+41953:     const mode = String(metricMode || 'hit').toLowerCase();
+41954:     const data = mode === 'points' ? window.__lastPointsPctSpiderData : window.__lastTargetHitPctSpiderData;
+41955:     if (data && typeof window.openPlayerSpiderDialog === 'function') {
+41956:       overlay.style.display = 'none';
+41957:       window.openPlayerSpiderDialog(name, { parentOverlay:overlay, mode, data });
+41958:       return;
+41959:     }
+41960:     try{ if (typeof toast === 'function') toast('SPIDER not available until target percentage data is loaded'); }catch(_){}
+41961:   };
+41962:   progBtn.onclick = () => {
+41963:     const mode = String(metricMode || 'hit').toLowerCase();
+41964:     const fn = mode === 'points' ? window.openPlayerTargetPointsProgressDialog : window.openPlayerTargetHitProgressDialog;
+41965:     if (typeof fn === 'function') {
+41966:       overlay.style.display = 'none';
+41967:       fn(name, { parentOverlay:overlay });
+41968:       return;
+41969:     }
+41970:     try{ if (typeof toast === 'function') toast('PROGRESS is not available until a Supabase target percentage progression view exists'); }catch(_){}
+41971:   };
+41972:   footer.append(backBtn, spacer, spiderBtn, progBtn);
+41973:   modal.append(header, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+41974:   __sqStatsArcade(overlay, modal);
+41975:   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+41976:   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+41977:   modal.tabIndex = 0; modal.focus();
+41978:   return { overlay, body };
+41979: }
+41980: 
+41981: window.openPlayerTargetHitDialog = async function openPlayerTargetHitDialog(playerName){
+41982:   const name = String(playerName || '').trim();
+41983:   if (!name) return;
+41984:   const ui = __sqBuildTargetPctShell(`Target Hit % — ${name}`, 'Throws / Hits / %', name, 'hit');
+41985:   const body = ui.body;
+41986:   body.innerHTML = '<p class="muted">Loading…</p>';
+41987: 
+41988:   const result = await __sqFetchPlayerTargetHitPctRows(name);
+41989:   if (result.missing || !result.rows.length){
+41990:     console.warn('[SQ] Target Hit % dependency missing or empty', {
+41991:       required_view:'v_player_target_hit_pct',
+41992:       player:name,
+41993:       source:result.source,
+41994:       detail:result.missing || 'zero rows'
+41995:     });
+41996:     __sqShowTargetPctUnavailable(
+41997:       body,
+41998:       'Target Hit % is not available yet. Accurate hit-rate data requires throw-level segment data or a Supabase view that records correct target hits.',
+41999:       'Formula: Target Hit % = successful target hits / throws at that target. Number rounds require actual segment number truth; points alone are not used.',
+42000:       'Missing dependency: v_player_target_hit_pct (player_id/player_key/player_name, target_key/target_label, throws, hits, hit_pct).'
+42001:     );
+42002:     return;
+42003:   }
+42004: 
+42005:   console.debug('[SQ] Target Hit % source used', { source:result.source, rows:result.rows.length });
+42006:   __sqSetTargetPctActionsEnabled(body, true);
+42007:   const rows = result.rows.map(r => {
+42008:     const throwsN = Number(__sqTargetPctValue(r, ['throws','throw_count','thrown']) || 0);
+42009:     const hits = Number(__sqTargetPctValue(r, ['hits','successful_hits','hit_count']) || 0);
+42010:     const pctRaw = __sqTargetPctValue(r, ['hit_pct','pct','percentage']);
+42011:     const pct = Number.isFinite(Number(pctRaw)) ? Number(pctRaw) : (throwsN ? hits * 100 / throwsN : 0);
+42012:     return {
+42013:       key:__sqTargetPctKey(r),
+42014:       throwsN,
+42015:       hits,
+42016:       pct,
+42017:       games:__sqTargetPctValue(r, ['source_games','games','game_count'])
+42018:     };
+42019:   }).filter(r => r.key).sort((a,b) => __sqTargetPctOrder(a.key) - __sqTargetPctOrder(b.key));
+42020: 
+42021:   const table = document.createElement('table'); table.className = 'sq-table hs-table';
+42022:   const thead = document.createElement('thead'); const trh = document.createElement('tr');
+42023:   ['Target','Throws','Hits','%'].forEach(h => { const th = document.createElement('th'); th.textContent = h; trh.appendChild(th); });
+42024:   thead.appendChild(trh); table.appendChild(thead);
+42025:   const tbody = document.createElement('tbody');
+42026:   rows.forEach(r => {
+42027:     const tr = document.createElement('tr');
+42028:     [r.key, r.throwsN, r.hits, (Number(r.pct)||0).toFixed(2)+'%'].forEach(v => {
+42029:       const td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
+42030:     });
+42031:     tbody.appendChild(tr);
+42032:   });
+42033:   table.appendChild(tbody);
+42034:   const scroll = document.createElement('div'); scroll.style.maxHeight = '56vh'; scroll.style.overflowY = 'auto';
+42035:   __sqStyleStatsTableWrap(scroll); scroll.appendChild(table);
+42036:   const info = document.createElement('p'); info.className = 'tag muted'; info.style.marginTop = '8px';
+42037:   info.textContent = 'Target Hit % = successful target hits / throws at that target.';
+42038:   window.__lastTargetHitPctSpiderData = {
+42039:     labels: rows.map(r => String(r.key)),
+42040:     pct: rows.map(r => Number(r.pct || 0))
+42041:   };
+42042:   body.innerHTML = ''; body.append(scroll, info);
+42043: };
+42044: 
+42045: // @LEGACY:PLAYER_TARGET_POINTS_PCT (superseded by the final @CANONICAL:PLAYER_TARGET_POINTS_PCT heatmap opener in Fix166)
+42046: window.openPlayerTargetPointsDialog = function openPlayerTargetPointsDialog(){
+42047:   if (window.__sqCanonicalPlayerTargetPointsDialog && window.__sqCanonicalPlayerTargetPointsDialog !== window.openPlayerTargetPointsDialog) {
+42048:     return window.__sqCanonicalPlayerTargetPointsDialog.apply(window, arguments);
+42049:   }
+42050:   try{ if (typeof toast === 'function') toast('Target Points % is still loading'); }catch(_){}
+42051: };
+42052: 
+42053: window.openPlayerTargetPctDialog = window.openPlayerTargetHitDialog;
+42054: window.openTargetPctDialog = window.openPlayerTargetHitDialog;
+42055: window.openPlayerTargetPointsPctDialog = window.openPlayerTargetPointsDialog;
+42056: // [removed: openPlayerDTBPctDialog (orphaned)] audit P5.3 batch 2 — dead/shadowed definition, no live callers
+42057: 
+42058: // [removed: openPlayerDTBCombinedPctDialog (orphaned)] audit P5.3 batch 2 — dead/shadowed definition, no live callers
+42059: 
+42060: // === Player Stats — shim so the Select Player modal can open stats (always hub) ===
+42061: window.openPlayerStatsModePicker = function openPlayerStatsModePicker(name) {
+42062:   const n = String(name || '').trim();
+42063:   if (!n) { if (typeof toast==='function') toast('Pick a player'); return; }
+42064:   if (typeof window.openPlayerStatsHub === 'function') return window.openPlayerStatsHub(n);
+42065:   // Fallback: open the detail dialog if hub is somehow missing
+42066:   if (typeof window.openPlayerStatsDialog === 'function') return window.openPlayerStatsDialog(n);
+42067:   if (typeof toast==='function') toast('Stats view not available in this build');
+42068: };
+42069: 
+42070: // ---- ensure "New Game" button always works ----
+42071: document.addEventListener('DOMContentLoaded', function(){
+42072:   const btn = document.getElementById('newGameBtn') || document.getElementById('startNewGameBtn');
+42073:   if (!btn) return;
+42074:   btn.onclick = function(){
+42075:     try {
+42076:       if (typeof window.openSelectPlayersDialog === 'function') {
+42077:         window.openSelectPlayersDialog();
+42078:       } else if (typeof window.startNewGame === 'function') {
+42079:         window.startNewGame();
+42080:       } else if (typeof window.openPlayerSelectDialog === 'function') {
+42081:         window.openPlayerSelectDialog();
+42082:       } else {
+42083:         console.warn('No New Game opener found');
+42084:       }
+42085:       
+42086: 
+42087:     } catch(e){
+42088:       console.error('New Game failed', e);
+42089:       try { if (typeof toast==='function') toast('Failed to open New Game'); } catch(_) {}
+42090:     }
+42091:   };
+42092: });
+42093: 
+42094: // === End Game (Leaderboard only): insert "PREMIER LEAGUE" below HIGH SCORES ===
+42095: (function plBtnLeaderboardOnly(){
+42096:   function onLeaderboard(){
+42097:     return (document.body && (document.body.dataset.page || '').toLowerCase()) === 'leaderboard';
+42098:   }
+42099:   function findLeaderboardHighScoresButton(){
+42100:     // search only within the leaderboard page
+42101:     const root = document.querySelector('[data-page="leaderboard"]') || document.body;
+42102:     return Array.from(root.querySelectorAll('button,.btn,[role="button"]'))
+42103:       .find(el => /^\s*high\s*scores\s*$/i.test((el.textContent || '')));
+42104:   }
+42105:   function ensureOpener(){
+42106:     // use existing opener if defined; otherwise click any visible UI that opens PL
+42107:     return async function openPL(){
+42108:       if (typeof window.openPremierLeagueDialog === 'function') { try { window.openPremierLeagueDialog(); return; } catch(_){} }
+42109:       if (typeof window.openPremierLeaguePopup === 'function') { try { window.openPremierLeaguePopup(); return; } catch(_){} }
+42110:       const trigger = Array.from(document.querySelectorAll('button,.btn,a,[role="button"]'))
+42111:         .find(el => /premier\s*league|records/i.test((el.textContent||'')) && el.offsetParent);
+42112:       if (trigger) trigger.click();
+42113:     };
+42114:   }
+42115:   function ensureBtn(){
+42116:     if (!onLeaderboard()) return;
+42117:     const hs = findLeaderboardHighScoresButton();
+42118:     if (!hs) return;
+42119:     if (document.getElementById('btnPremierLeague')) return;
+42120: 
+42121:     const btn = document.createElement('button');
+42122:     btn.id = 'btnPremierLeague';
+42123:     btn.className = hs.className || 'btn';
+42124:     btn.type = 'button';
+42125:     btn.textContent = 'PREMIER LEAGUE';
+42126:     const openPL = ensureOpener();
+42127:     btn.addEventListener('click', (e)=>{ e.preventDefault(); openPL(); });
+42128: 
+42129:     // place directly under the High Scores button on the leaderboard screen
+42130:     hs.insertAdjacentElement('afterend', btn);
+42131:   }
+42132:   function tick(){ ensureBtn(); }
+42133: 
+42134:   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
+42135:   try { window.__sqUIMutationBus?.on(()=>tick()); } catch(_) {}
+42136: })();
+42137: 
+42138: // === Premier League — TODAY (clone a month pill; no min-games rule) =========
+42139: /* [MOVED] Premier League TODAY clone-month legacy patch moved to Legacy Quarantine (Stage 4A.1c) */;
+42140: 
+42141: // === High Score League — rewritten: NEW + movement + even widths ============
+42142: (function highScoreLeagueRewritten(){
+42143:   const TITLE_RX = /high\s*score\s*league/i;
+42144:   const STORAGE_KEY = 'hsLeaguePositions.v2'; // retired localStorage key; kept only as a legacy label
+42145:   const NEW_LIMIT_DAYS = 14;
+42146: 
+42147:   // ---- utilities ------------------------------------------------------------
+42148:   const daysBetween = (a,b) => Math.floor((a - b) / 86400000);
+42149:   const visible = el => !!(el && el.offsetParent !== null);
+42150: 
+42151:   function findHSModal(){
+42152:     const mods = document.querySelectorAll('.modal,[role="dialog"]');
+42153:     for (const m of mods){
+42154:       const ok = Array.from(m.querySelectorAll('h1,h2,h3'))
+42155:         .some(h => TITLE_RX.test(h.textContent || ''));
+42156:       if (ok) return m;
+42157:     }
+42158:     return null;
+42159:   }
+42160: 
+42161:   function getTable(modal){
+42162:     if (!modal) return null;
+42163:     const table = modal.querySelector('table.hs-table');
+42164:     if (!table) return null;
+42165:     const ths = Array.from(table.querySelectorAll('thead th'));
+42166:     if (!ths.length) return null;
+42167: 
+42168:     // Expected headers: "# | Player | High Score | When"
+42169:     const idxPos    = 0; // "#"
+42170:     const idxPlayer = ths.findIndex(th => /player/i.test(th.textContent||''));
+42171:     const idxHigh   = ths.findIndex(th => /high\s*score/i.test(th.textContent||''));
+42172:     const idxWhen   = ths.findIndex(th => /when/i.test(th.textContent||''));
+42173:     if (idxPlayer < 0 || idxHigh < 0 || idxWhen < 0) return null;
+42174:     return { table, ths, idxPos, idxPlayer, idxHigh, idxWhen };
+42175:   }
+42176: 
+42177:   async function earliestMap(){
+42178:     if (window.__hsEarliestMap_v2) return window.__hsEarliestMap_v2;
+42179:     let games = [];
+42180:     try { games = (await __fetchOfficialGames(50000)).map(__normalizeGame); } catch(_){}
+42181:     const map = new Map(); // nameLC -> earliest Date
+42182:     games.forEach(g=>{
+42183:       const t = __gameTs(g.raw || g); if (!t) return;
+42184:       const d = new Date(t);
+42185:       (g.players||[]).forEach(p=>{
+42186:         const k = String(p||'').trim().toLowerCase(); if (!k) return;
+42187:         const cur = map.get(k);
+42188:         if (!cur || d < cur) map.set(k, d);
+42189:       });
+42190:     });
+42191:     window.__hsEarliestMap_v2 = map;
+42192:     return map;
+42193:   }
+42194: 
+42195:   function arrowHTML(delta){
+42196:     if (delta > 0) return `<span title="+${delta}" style="color:#22c55e;font-weight:700">▲</span>`;
+42197:     if (delta < 0) return `<span title="${delta}" style="color:#ef4444;font-weight:700">▼</span>`;
+42198:     return `<span style="opacity:.5">–</span>`;
+42199:   }
+42200: 
+42201:   // ---- main apply -----------------------------------------------------------
+42202:   async function apply(modal){
+42203:     const refs = getTable(modal); if (!refs) return;
+42204:     const { table, ths, idxPos, idxPlayer, idxHigh, idxWhen } = refs;
+42205: 
+42206:     // 1) Insert movement header AFTER "#"
+42207:     let thMove = table.querySelector('thead th[data-move-col="1"]');
+42208:     if (!thMove){
+42209:       thMove = document.createElement('th');
+42210:       thMove.dataset.moveCol = '1';
+42211:       thMove.style.textAlign = 'center';
+42212:       thMove.style.width     = '26px';
+42213:       thMove.style.minWidth  = '24px';
+42214:       thMove.style.maxWidth  = '36px';
+42215:       ths[idxPos].insertAdjacentElement('afterend', thMove);
+42216:     }
+42217: 
+42218:     // 2) Even spacing for Player / High Score / When
+42219:     const headNow = Array.from(table.querySelectorAll('thead th'));
+42220:     const idxMove = headNow.findIndex(th => th.dataset && th.dataset.moveCol === '1');
+42221: 
+42222:     table.style.tableLayout = 'fixed';
+42223:     table.style.width = '100%';
+42224:     if (headNow[0]) {
+42225:       headNow[0].style.width    = '36px';
+42226:       headNow[0].style.minWidth = '32px';
+42227:       headNow[0].style.maxWidth = '42px';
+42228:     }
+42229:     if (idxMove >= 0 && headNow[idxMove]) {
+42230:       headNow[idxMove].style.width     = '26px';
+42231:       headNow[idxMove].style.minWidth  = '24px';
+42232:       headNow[idxMove].style.maxWidth  = '34px';
+42233:       headNow[idxMove].style.textAlign = 'center';
+42234:     }
+42235:     // recompute indexes by text (header DOM may have shifted)
+42236:     const idxPlayerNow = headNow.findIndex(th => /player/i.test(th.textContent||''));
+42237:     const idxHighNow   = headNow.findIndex(th => /high\s*score/i.test(th.textContent||''));
+42238:     const idxWhenNow   = headNow.findIndex(th => /when/i.test(th.textContent||''));
+42239: 
+42240:     const fixedPx = 36 + (idxMove >= 0 ? 26 : 0);
+42241:     const EVEN = `calc((100% - ${fixedPx}px) / 3)`;
+42242:     [idxPlayerNow, idxHighNow, idxWhenNow].forEach(i => {
+42243:       if (i >= 0 && headNow[i]) headNow[i].style.width = EVEN;
+42244:     });
+42245: 
+42246:     // 3) Per-row: add movement cell; add NEW tag if first-game ≤ 14 days
+42247:     window.__sqHSLeagueVisualSnapshot = window.__sqHSLeagueVisualSnapshot || {};
+42248:     const prevMap = window.__sqHSLeagueVisualSnapshot.positions || {}; // nameLC -> previous position, memory-only
+42249:     const now = new Date();
+42250:     const firstMap = await earliestMap();
+42251: 
+42252:     const rows = Array.from(table.querySelectorAll('tbody tr'));
+42253:     const seenPB = new Set(); // nameLC -> already tagged PB (show once)
+42254:     const curMap = {}; // nameLC -> current position
+42255: 
+42256:     rows.forEach((tr, i) => {
+42257:       const pos = i + 1;
+42258:       const tds = Array.from(tr.children);
+42259:       const tdPos    = tds[idxPos];
+42260:       // movement cell sits AFTER position; if not there, create
+42261:       let tdMove = tds[idxMove];
+42262:       if (!tdMove || tdMove === tdPos || tdMove.dataset.moveCell !== '1') {
+42263:         tdMove = document.createElement('td');
+42264:         tdMove.dataset.moveCell = '1';
+42265:         tdMove.style.textAlign = 'center';
+42266:         tdPos.insertAdjacentElement('afterend', tdMove);
+42267:       }
+42268: 
+42269:       // After inserting a new td, refresh children and resolve Player cell
+42270:       const tds2 = Array.from(tr.children);
+42271:       // Player column shifts by +1 if movement col was inserted before it
+42272:       const tdPlayerCell = tds2[(idxPlayerNow >= 0 ? idxPlayerNow : idxPlayer) + (idxMove >= 0 ? 1 : 0)];
+42273:       if (!tdPlayerCell) return;
+42274: 
+42275:       // Player name (strip any existing "NEW")
+42276:       const nameText = (tdPlayerCell.textContent || '').replace(/\bNEW\b/gi,'').trim();
+42277:       const nameLC = nameText.toLowerCase();
+42278:       curMap[nameLC] = pos;
+42279: 
+42280:       // Movement arrow against previous snapshot
+42281:       let html = '<span style="opacity:.5">–</span>';
+42282:       const prevPos = prevMap[nameLC];
+42283:       if (typeof prevPos === 'number') {
+42284:         const delta = prevPos - pos; // positive = moved UP (better)
+42285:         html = arrowHTML(delta);
+42286:       }
+42287:       tdMove.innerHTML = html;
+42288: 
+42289:       // NEW tag (first official game within the last 14 days)
+42290:       if (nameLC && firstMap.has(nameLC)) {
+42291:         const first = firstMap.get(nameLC);
+42292:         const isNew = daysBetween(now, first) <= NEW_LIMIT_DAYS && daysBetween(now, first) >= 0;
+42293:         if (isNew && !/\bNEW\b/i.test(tdPlayerCell.innerHTML)) {
+42294:           const tag = document.createElement('span');
+42295:           tag.className = 'tag';
+42296:           tag.textContent = 'NEW';
+42297:           tag.style.marginLeft = '6px';
+42298:           tdPlayerCell.appendChild(tag);
+42299:         }
+42300:       }
+42301:     });
+42302: 
+42303:     // 4) Save snapshot for next comparison in memory only; rankings remain Supabase/history-derived.
+42304:     try { window.__sqHSLeagueVisualSnapshot = { ts: new Date().toISOString(), positions: curMap }; } catch(_) {}
+42305:   }
+42306: 
+42307:   // Debounced observer to apply when the league modal appears/updates
+42308:   let scheduled = false;
+42309:   function tick(){
+42310:     const m = findHSModal();
+42311:     if (!m || !visible(m)) return;
+42312:     if (scheduled) return;
+42313:     scheduled = true;
+42314:     requestAnimationFrame(async ()=>{ scheduled = false; try { await apply(m); } catch(e){ console.error(e); } });
+42315:   }
+42316: 
+42317:   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
+42318:   try { window.__sqUIMutationBus?.on(()=>tick()); } catch(_) {}
+42319: })();
+42320: 
+42321: // === High Scores (Match) — v4: movement ▲/▼ (7d), NEW(7d), PB, date fmt =====
+42322: (function enhanceHighScoresMatch_v4(){
+42323:   const TITLE_RX = /^\s*high\s*scores\s*$/i;
+42324:   // Expected header: "# | Player | Score | Avg / Round | When"
+42325:   const COLS_RX  = [/^#$/i, /player/i, /^score$/i, /avg\s*\/\s*round/i, /when/i];
+42326:   const NEW_MS   = 7 * 24 * 60 * 60 * 1000; // 7 days
+42327:   const POS_KEY  = 'hsMatchEntryPositions.v1'; // entryKey -> {pos, delta, tISO}
+42328: 
+42329:   // ---------- helpers ----------
+42330:   function findModalAndTable(){
+42331:     const mods = document.querySelectorAll('.modal,[role="dialog"]');
+42332:     for (const m of mods){
+42333:       const ok = Array.from(m.querySelectorAll('h1,h2,h3'))
+42334:         .some(h => TITLE_RX.test(h.textContent||''));
+42335:       if (!ok) continue;
+42336:       const table = m.querySelector('table.hs-table'); if (!table) continue;
+42337:       const ths = Array.from(table.querySelectorAll('thead th'));
+42338:       if (ths.length < 5) continue;
+42339:       const matches = COLS_RX.every((rx, idx)=> rx.test((ths[idx].textContent||'').trim()));
+42340:       if (matches) return { modal: m, table, ths };
+42341:     }
+42342:     return null;
+42343:   }
+42344: 
+42345:   // "20 Nov 25 at 20:35" | "20 Nov 25 @ 20:35" → "20/11/25 @ 20:35"
+42346:   function fmt_DDMMYY_HHMM(text){
+42347:     if (!text) return text;
+42348:     const m = text.match(/^\s*(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2})(?:\s+at|\s*@)\s+(\d{2}):(\d{2})\s*$/);
+42349:     if (!m) return text;
+42350:     const [, d, mon, yy, hh, mm] = m;
+42351:     const MONTH = {JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
+42352:     const mmNum = MONTH[mon.toUpperCase()];
+42353:     if (!mmNum) return text;
+42354:     const dd = String(d).padStart(2,'0');
+42355:     return `${dd}/${mmNum}/${yy} @ ${hh}:${mm}`;
+42356:   }
+42357: 
+42358:   function yellowNEW(){
+42359:     const span = document.createElement('span');
+42360:     span.className = 'tag';
+42361:     span.textContent = 'NEW';
+42362:     span.style.color = '#facc15';
+42363:     span.style.borderColor = 'rgba(250,204,21,.35)';
+42364:     span.style.background = 'rgba(250,204,21,.08)';
+42365:     return span;
+42366:   }
+42367: 
+42368:   function arrowHTML(delta){
+42369:     if (delta > 0) return `<span title="+${delta}" style="color:#22c55e;font-weight:700">▲</span>`;
+42370:     if (delta < 0) return `<span title="${delta}" style="color:#ef4444;font-weight:700">▼</span>`;
+42371:     return `<span style="opacity:.5">–</span>`;
+42372:   }
+42373: 
+42374:   // Build PB map + (player|score)→latest timestamp
+42375:   async function buildMaps(){
+42376:     if (window.__hsMatchMaps_v4) return window.__hsMatchMaps_v4;
+42377: 
+42378:     let games = [];
+42379:     try { games = (await __fetchOfficialGames(50000)).map(__normalizeGame); } catch(_) {}
+42380: 
+42381:     const pb = new Map();      // nameLC -> max score
+42382:     const keyTs = new Map();   // `${nameLC}|${score}` -> latest Date
+42383:     let globalMax = 0;
+42384: 
+42385:     games.forEach(g=>{
+42386:       const ts = __gameTs(g.raw || g);
+42387:       const d  = ts ? new Date(ts) : null;
+42388:       (g.players||[]).forEach((p,i)=>{
+42389:         const name = String(p||'').trim(); if (!name) return;
+42390:         const k = name.toLowerCase();
+42391:         const score = Number(g.totals?.[i] || 0);
+42392:         if (!Number.isFinite(score)) return;
+42393:         if (score > (pb.get(k) || 0)) pb.set(k, score);
+42394:         if (score > globalMax) globalMax = score;
+42395:         if (d) {
+42396:           const key = `${k}|${score}`;
+42397:           const prev = keyTs.get(key);
+42398:           if (!prev || d > prev) keyTs.set(key, d);
+42399:         }
+42400:       });
+42401:     });
+42402: 
+42403:     window.__hsMatchMaps_v4 = { pb, keyTs, globalMax };
+42404:     return window.__hsMatchMaps_v4;
+42405:   }
+42406: 
+42407:   function loadPos(){ try { return JSON.parse(localStorage.getItem(POS_KEY) || '{}'); } catch(_) { return {}; } }
+42408:   function savePos(m){ try { localStorage.setItem(POS_KEY, JSON.stringify(m)); } catch(_){} }
+42409: 
+42410:   async function apply(){
+42411:     const found = findModalAndTable(); if (!found) return;
+42412:     const { table, ths } = found;
+42413: 
+42414:     // Insert movement header AFTER "#"
+42415:     let thMove = table.querySelector('thead th[data-move-col="1"]');
+42416:     if (!thMove){
+42417:       thMove = document.createElement('th');
+42418:       thMove.dataset.moveCol = '1';
+42419:       thMove.style.textAlign = 'center';
+42420:       thMove.style.width     = '26px';
+42421:       thMove.style.minWidth  = '22px';
+42422:       thMove.style.maxWidth  = '34px';
+42423:       ths[0].insertAdjacentElement('afterend', thMove);
+42424:     }
+42425: 
+42426:     // Insert NEW header AFTER movement
+42427:     let headNow = Array.from(table.querySelectorAll('thead th'));
+42428:     let idxRank = headNow.findIndex(th => /^#$/i.test((th.textContent||'').trim()));
+42429:     let idxMove = headNow.findIndex(th => th.dataset && th.dataset.moveCol === '1');
+42430: 
+42431:     let thNew = table.querySelector('thead th[data-newcol="1"]');
+42432:     if (!thNew){
+42433:       thNew = document.createElement('th');
+42434:       thNew.dataset.newcol = '1';
+42435:       thNew.style.textAlign = 'center';
+42436:       thNew.style.width = '44px';
+42437:       thNew.style.minWidth = '38px';
+42438:       thNew.style.maxWidth = '60px';
+42439:       headNow[idxMove].insertAdjacentElement('afterend', thNew);
+42440:     }
+42441: 
+42442:     // Narrow the "#" column
+42443:     headNow = Array.from(table.querySelectorAll('thead th'));
+42444:     idxRank = headNow.findIndex(th => /^#$/i.test((th.textContent||'').trim()));
+42445:     idxMove = headNow.findIndex(th => th.dataset && th.dataset.moveCol === '1');
+42446:     const idxNew = headNow.findIndex(th => th.dataset && th.dataset.newcol === '1');
+42447: 
+42448:     if (headNow[idxRank]) {
+42449:       headNow[idxRank].style.width     = '24px';
+42450:       headNow[idxRank].style.minWidth  = '22px';
+42451:       headNow[idxRank].style.maxWidth  = '28px';
+42452:       headNow[idxRank].style.textAlign = 'center';
+42453:     }
+42454:     table.style.tableLayout = 'fixed';
+42455:     table.style.width = '100%';
+42456: 
+42457:     // Resolve main column indexes by header text (after our inserts)
+42458:     const idxPlayer = headNow.findIndex(th => /player/i.test(th.textContent||''));
+42459:     const idxScore  = headNow.findIndex(th => /^score$/i.test(th.textContent||''));
+42460:     let   idxWhen   = headNow.findIndex(th => /when/i.test(th.textContent||''));
+42461:     if (idxWhen < 0) idxWhen = headNow.length - 1;
+42462: 
+42463:     const { pb, keyTs, globalMax } = await buildMaps();
+42464: 
+42465:     // Load previous entry positions (per entry: nameLC|score)
+42466:     const prev = loadPos();
+42467:     const next = {};
+42468:     const now = Date.now();
+42469: 
+42470:     // Per-row updates
+42471:     const rows = Array.from(table.querySelectorAll('tbody tr'));
+42472:     rows.forEach((tr, i)=>{
+42473:       const tds0 = Array.from(tr.children);
+42474:       const tdRank = tds0[idxRank];
+42475: 
+42476:       // Ensure movement cell immediately after rank
+42477:       let tdMove = tds0[idxMove];
+42478:       if (!tdMove || tdMove === tdRank || tdMove.dataset.moveCell !== '1') {
+42479:         tdMove = document.createElement('td');
+42480:         tdMove.dataset.moveCell = '1';
+42481:         tdMove.style.textAlign = 'center';
+42482:         tdRank.insertAdjacentElement('afterend', tdMove);
+42483:       } else {
+42484:         tdMove.innerHTML = '';
+42485:       }
+42486: 
+42487:       // Ensure NEW cell immediately after movement
+42488:       const tds1 = Array.from(tr.children);
+42489:       const tdAfterMove = tds1[idxMove + 1] || tdMove.nextElementSibling;
+42490:       let tdNew = tds1[idxNew];
+42491:       if (!tdNew || tdNew === tdRank || tdNew === tdMove || tdNew.dataset.newCell !== '1') {
+42492:         tdNew = document.createElement('td');
+42493:         tdNew.dataset.newCell = '1';
+42494:         tdNew.style.textAlign = 'center';
+42495:         (tdAfterMove || tdMove).insertAdjacentElement('afterend', tdNew);
+42496:       } else {
+42497:         tdNew.innerHTML = '';
+42498:       }
+42499: 
+42500:       // Refresh indexes after inserts and read data cells
+42501:       const tds = Array.from(tr.children);
+42502:       const tdPlayer = tds[idxPlayer];
+42503:       const tdScore  = tds[idxScore];
+42504:       const tdWhen   = tds[idxWhen] || tds[tds.length - 1];
+42505: 
+42506:       // 1) Format When => DD/MM/YY @ HH:MM
+42507:       if (tdWhen) {
+42508:         const orig = tdWhen.textContent || '';
+42509:         const fmt  = fmt_DDMMYY_HHMM(orig);
+42510:         if (fmt && fmt !== orig) tdWhen.textContent = fmt;
+42511:       }
+42512: 
+42513:       // Entry key for movement & NEW: nameLC|score
+42514:       const nameLC = (tdPlayer?.textContent || '').trim().toLowerCase();
+42515:       const scoreN = Number((tdScore?.textContent || '').replace(/[^\d.]/g,''));
+42516:       const entryKey = `${nameLC}|${Number.isFinite(scoreN) ? scoreN : -1}`;
+42517:       const pos = i + 1;
+42518: 
+42519:       // 2) Movement (persist 7 days if no further movement)
+42520:       const prevRec = prev[entryKey];
+42521:       let deltaToShow = 0;
+42522:       if (prevRec && typeof prevRec.pos === 'number') {
+42523:         if (prevRec.pos !== pos) {
+42524:           // changed now
+42525:           deltaToShow = prevRec.pos - pos; // + = moved up
+42526:           next[entryKey] = { pos, delta: deltaToShow, tISO: new Date(now).toISOString() };
+42527:         } else {
+42528:           // unchanged; keep showing if within 7d and delta != 0
+42529:           const ageOK = prevRec.tISO && (now - Date.parse(prevRec.tISO)) <= NEW_MS;
+42530:           deltaToShow = ageOK ? (prevRec.delta || 0) : 0;
+42531:           next[entryKey] = { pos, delta: prevRec.delta || 0, tISO: prevRec.tISO || new Date(now).toISOString() };
+42532:         }
+42533:       } else {
+42534:         // first time seeing this entry
+42535:         next[entryKey] = { pos, delta: 0, tISO: new Date(now).toISOString() };
+42536:       }
+42537:       tdMove.innerHTML = arrowHTML(deltaToShow);
+42538: 
+42539:       // 3) NEW (≤7 days since that exact (player,score))
+42540:       if (nameLC && Number.isFinite(scoreN)) {
+42541:         const k = `${nameLC}|${scoreN}`;
+42542:         const ts = keyTs.get(k);
+42543:         if (ts && (Date.now() - ts.getTime()) <= NEW_MS) {
+42544:           tdNew.appendChild(yellowNEW());
+42545:         }
+42546:       }
+42547: 
+42548:       // 4) PB after Score — show ONLY ONCE per player (true PB occurrence), exclude global top score
+42549:       const isGlobalTop = Number((tdScore?.textContent || '').replace(/[^\d.]/g,'')) === globalMax;
+42550:       const best = pb.get(nameLC) || -Infinity;
+42551:       const curScore = Number((tdScore?.textContent || '').replace(/[^\d.]/g,''));
+42552:       const isPBScore = Number.isFinite(curScore) && curScore === best;
+42553: 
+42554:       // Prefer tagging the latest occurrence of that PB score (so PB doesn't repeat across multiple equal-score rows)
+42555:       function parseWhenMs(txt){
+42556:         if (!txt) return NaN;
+42557:         // Expect "DD/MM/YY @ HH:MM"
+42558:         const m = String(txt).trim().match(/^(\d{2})\/(\d{2})\/(\d{2})\s*@\s*(\d{2}):(\d{2})$/);
+42559:         if (!m) return NaN;
+42560:         const dd = Number(m[1]), mm = Number(m[2]), yy = Number(m[3]), hh = Number(m[4]), mi = Number(m[5]);
+42561:         if (![dd,mm,yy,hh,mi].every(Number.isFinite)) return NaN;
+42562:         // Stored timestamps are UTC; treat display as UTC for matching.
+42563:         return Date.UTC(2000 + yy, mm - 1, dd, hh, mi, 0, 0);
+42564:       }
+42565: 
+42566:       const pbKey = `${nameLC}|${best}`;
+42567:       const latestPbTs = keyTs.get(pbKey) || null; // Date (latest occurrence from official games)
+42568:       const rowWhenMs = parseWhenMs(tdWhen?.textContent || '');
+42569:       const matchLatest = (latestPbTs && Number.isFinite(rowWhenMs))
+42570:         ? Math.abs(latestPbTs.getTime() - rowWhenMs) <= 60 * 1000
+42571:         : true; // if we can't parse, don't block tagging
+42572: 
+42573:       if (!isGlobalTop && isPBScore && matchLatest && tdScore && !seenPB.has(nameLC) && !/\bPB\b/i.test(tdScore.innerHTML)) {
+42574:         const tag = document.createElement('span');
+42575:         tag.className = 'tag';
+42576:         tag.textContent = 'PB';
+42577:         tag.style.marginLeft = '6px';
+42578:         tdScore.appendChild(tag);
+42579:         seenPB.add(nameLC);
+42580:       }
+42581:     });
+42582: 
+42583:     // Save snapshot for next time
+42584:     savePos(next);
+42585:   }
+42586: 
+42587:   function tick(){ try { apply(); } catch(e){ console.error('HS Match v4 failed', e); } }
+42588:   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
+42589:   try { window.__sqUIMutationBus?.on(()=>tick()); } catch(_) {}
+42590: })();
+42591: 
+42592: // === T button flash + shake — v3 (Safari-safe; 1→2→3 only when T is pressed)
+42593: (function tButtonFXv3(){
+42594:   // CSS (proper injection)
+42595:   if (!document.getElementById('tfx-css')) {
+42596:     const s = document.createElement('style'); s.id = 'tfx-css';
+42597:     s.textContent =
+42598: `.tfx{will-change:transform,filter}
+42599: @keyframes tFlashLow{0%{filter:brightness(1);box-shadow:none}12%{filter:brightness(1.4);box-shadow:0 0 10px rgba(255,255,255,.5),0 0 18px rgba(77,163,255,.3)}30%{filter:brightness(1.05);box-shadow:none}100%{filter:brightness(1);box-shadow:none}}
+42600: @keyframes tFlashMed{0%{filter:brightness(1);box-shadow:none}10%{filter:brightness(1.9);box-shadow:0 0 16px rgba(255,255,255,.7),0 0 28px rgba(77,163,255,.4)}24%{filter:brightness(1.1);box-shadow:none}38%{filter:brightness(1.6);box-shadow:0 0 12px rgba(255,255,255,.5),0 0 22px rgba(77,163,255,.35)}100%{filter:brightness(1);box-shadow:none}}
+42601: @keyframes tFlashHigh{0%{filter:brightness(1);box-shadow:none}8%{filter:brightness(2.6);box-shadow:0 0 22px rgba(255,255,255,.85),0 0 40px rgba(77,163,255,.5)}18%{filter:brightness(1.1);box-shadow:none}28%{filter:brightness(2.2);box-shadow:0 0 18px rgba(255,255,255,.7),0 0 34px rgba(77,163,255,.45)}42%{filter:brightness(1.15);box-shadow:none}100%{filter:brightness(1);box-shadow:none}}
+42602: @keyframes tShakeLow{0%,100%{transform:translateX(0)}20%{transform:translateX(-2px)}40%{transform:translateX(2px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+42603: @keyframes tShakeMed{0%,100%{transform:translateX(0)}15%{transform:translateX(-5px)}30%{transform:translateX(5px)}45%{transform:translateX(-4px)}60%{transform:translateX(4px)}75%{transform:translateX(-3px)}}
+42604: @keyframes tShakeHigh{0%,100%{transform:translateX(0) rotate(0)}12%{transform:translateX(-8px) rotate(-1deg)}24%{transform:translateX(8px) rotate(1deg)}36%{transform:translateX(-7px) rotate(-.9deg)}48%{transform:translateX(7px) rotate(.9deg)}60%{transform:translateX(-6px) rotate(-.8deg)}72%{transform:translateX(6px) rotate(.8deg)}84%{transform:translateX(-4px) rotate(-.6deg)}}
+42605: .tfx.flash-low{animation:tFlashLow .22s ease-in-out,tShakeLow .22s linear}
+42606: .tfx.flash-med{animation:tFlashMed .34s ease-in-out,tShakeMed .34s linear}
+42607: .tfx.flash-high{animation:tFlashHigh .50s ease-in-out,tShakeHigh .50s linear}`;
+42608:     document.head.appendChild(s);
+42609:   }
+42610: 
+42611:   // Find the visible T button (label "T" or treble)
+42612:   function isT(el){
+42613:     if (!el) return false;
+42614:     const label = (el.textContent || el.getAttribute('aria-label') || el.title || '').trim().toUpperCase();
+42615:     const data  = ((el.dataset && (el.dataset.shot || el.dataset.kind || '')) || '').toUpperCase();
+42616:     const isBtn = /^(BUTTON|A)$/i.test(el.tagName) || el.hasAttribute('role');
+42617:     return isBtn && (label === 'T' || data === 'T' || /TREB|TREBLE/.test(label+data));
+42618:   }
+42619:   function findT(){ return Array.from(document.querySelectorAll('button,.btn,a,[role="button"]')).find(el => isT(el) && el.offsetParent); }
+42620: 
+42621:   // Press-order only: 1 -> 2 -> 3 -> 1 ... (only T presses advance)
+42622:   let count = 0;
+42623: 
+42624:   function animate(el){
+42625:     el.classList.add('tfx');
+42626:     el.classList.remove('flash-low','flash-med','flash-high');
+42627:     void el.offsetWidth; // restart
+42628:     el.classList.add(count===1 ? 'flash-low' : count===2 ? 'flash-med' : 'flash-high');
+42629:     setTimeout(() => el.classList.remove('flash-low','flash-med','flash-high'), 700);
+42630:   }
+42631: 
+42632:   function onPress(){
+42633:     const el = findT(); if (!el) return;
+42634:     count = (count % 3) + 1;     // 1→2→3→1…
+42635:     animate(el);
+42636:   }
+42637: 
+42638:   // Wire clicks only on T; keyboard 't' also triggers it
+42639:   function wire(){
+42640:     const btn = findT(); if (!btn || btn.dataset.tFxWired==='1') return;
+42641:     btn.dataset.tFxWired = '1';
+42642:     btn.addEventListener('click', onPress);
+42643:   }
+42644:   document.addEventListener('keydown', e => { if ((e.key||'').toLowerCase() === 't') onPress(); });
+42645: 
+42646:   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
+42647:   try { window.__sqUIMutationBus?.on(()=>wire()); } catch(_) {}
+42648: })();
+42649: 
+42650: // === D button flash + shake — v1 (1→2→3: Ultra-low → Low → Medium)
+42651: (function dButtonFX(){
+42652:   // CSS for D (kept separate from T)
+42653:   if (!document.getElementById('dfx-css')) {
+42654:     const s = document.createElement('style'); s.id = 'dfx-css';
+42655:     s.textContent =
+42656: `.dfx{will-change:transform,filter}
+42657: @keyframes dFlashUltra{0%{filter:brightness(1);box-shadow:none}18%{filter:brightness(1.2);box-shadow:0 0 6px rgba(255,255,255,.35),0 0 12px rgba(77,163,255,.20)}100%{filter:brightness(1);box-shadow:none}}
+42658: @keyframes dFlashLow{0%{filter:brightness(1);box-shadow:none}14%{filter:brightness(1.45);box-shadow:0 0 10px rgba(255,255,255,.45),0 0 18px rgba(77,163,255,.28)}100%{filter:brightness(1);box-shadow:none}}
+42659: @keyframes dFlashMed{0%{filter:brightness(1);box-shadow:none}12%{filter:brightness(1.7);box-shadow:0 0 14px rgba(255,255,255,.6),0 0 24px rgba(77,163,255,.35)}32%{filter:brightness(1.1);box-shadow:none}100%{filter:brightness(1);box-shadow:none}}
+42660: @keyframes dShakeUltra{0%,100%{transform:translateX(0)}25%{transform:translateX(-1px)}75%{transform:translateX(1px)}}
+42661: @keyframes dShakeLow{0%,100%{transform:translateX(0)}20%{transform:translateX(-3px)}40%{transform:translateX(3px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+42662: @keyframes dShakeMed{0%,100%{transform:translateX(0)}15%{transform:translateX(-5px)}30%{transform:translateX(5px)}45%{transform:translateX(-4px)}60%{transform:translateX(4px)}}
+42663: .dfx.flash-ultra{animation:dFlashUltra .18s ease-in-out,dShakeUltra .18s linear}
+42664: .dfx.flash-low{animation:dFlashLow .26s ease-in-out,dShakeLow .26s linear}
+42665: .dfx.flash-med{animation:dFlashMed .34s ease-in-out,dShakeMed .34s linear}`;
+42666:     document.head.appendChild(s);
+42667:   }
+42668: 
+42669:   // Find the visible D button (label "D" or "Double")
+42670:   function isD(el){
+42671:     if (!el) return false;
+42672:     const label = (el.textContent || el.getAttribute('aria-label') || el.title || '').trim().toUpperCase();
+42673:     const data  = ((el.dataset && (el.dataset.shot || el.dataset.kind || '')) || '').toUpperCase();
+42674:     const isBtn = /^(BUTTON|A)$/i.test(el.tagName) || el.hasAttribute('role');
+42675:     return isBtn && (label === 'D' || data === 'D' || /DOUBLE/.test(label+data));
+42676:   }
+42677:   function findD(){ return Array.from(document.querySelectorAll('button,.btn,a,[role="button"]')).find(el => isD(el) && el.offsetParent); }
+42678: 
+42679:   // Press-order only for D (independent of T/S)
+42680:   let dCount = 0;
+42681: 
+42682:   function animate(el){
+42683:     el.classList.add('dfx');
+42684:     el.classList.remove('flash-ultra','flash-low','flash-med');
+42685:     void el.offsetWidth; // restart
+42686:     el.classList.add(dCount===1 ? 'flash-ultra' : dCount===2 ? 'flash-low' : 'flash-med');
+42687:     setTimeout(()=> el.classList.remove('flash-ultra','flash-low','flash-med'), 600);
+42688:   }
+42689: 
+42690:   function onPressD(){
+42691:     const el = findD(); if (!el) return;
+42692:     dCount = (dCount % 3) + 1;   // 1 (ultra-low) → 2 (low) → 3 (medium)
+42693:     animate(el);
+42694:   }
+42695: 
+42696:   // Wire clicks only on D; keyboard 'd' also triggers it
+42697:   function wire(){
+42698:     const btn = findD(); if (!btn || btn.dataset.dFxWired==='1') return;
+42699:     btn.dataset.dFxWired = '1';
+42700:     btn.addEventListener('click', onPressD);
+42701:   }
+42702:   document.addEventListener('keydown', e => { if ((e.key||'').toLowerCase() === 'd') onPressD(); });
+42703: 
+42704:   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
+42705:   try { window.__sqUIMutationBus?.on(()=>wire()); } catch(_) {}
+42706: })();
+42707: 
+42708: // === S button flash + shake — v1 (1→2→3: Ultra-ultra low → Ultra low → Low)
+42709: (function sButtonFX(){
+42710:   // CSS for S
+42711:   if (!document.getElementById('sfx-css')) {
+42712:     const s = document.createElement('style'); s.id = 'sfx-css';
+42713:     s.textContent =
+42714: `.sfx{will-change:transform,filter}
+42715: @keyframes sFlashXXL{0%{filter:brightness(1);box-shadow:none}
+42716:   18%{filter:brightness(1.12);box-shadow:0 0 4px rgba(255,255,255,.25),0 0 8px rgba(77,163,255,.15)}
+42717:   100%{filter:brightness(1);box-shadow:none}}
+42718: @keyframes sFlashUltra{0%{filter:brightness(1);box-shadow:none}
+42719:   16%{filter:brightness(1.25);box-shadow:0 0 6px rgba(255,255,255,.35),0 0 12px rgba(77,163,255,.20)}
+42720:   100%{filter:brightness(1);box-shadow:none}}
+42721: @keyframes sFlashLow{0%{filter:brightness(1);box-shadow:none}
+42722:   14%{filter:brightness(1.4);box-shadow:0 0 9px rgba(255,255,255,.45),0 0 16px rgba(77,163,255,.25)}
+42723:   100%{filter:brightness(1);box-shadow:none}}
+42724: @keyframes sShakeXXL{0%,100%{transform:translateX(0)}
+42725:   50%{transform:translateX(.4px)}}
+42726: @keyframes sShakeUltra{0%,100%{transform:translateX(0)}
+42727:   25%{transform:translateX(-.8px)}75%{transform:translateX(.8px)}}
+42728: @keyframes sShakeLow{0%,100%{transform:translateX(0)}
+42729:   20%{transform:translateX(-2px)}40%{transform:translateX(2px)}}
+42730: .sfx.flash-xxl{animation:sFlashXXL .16s ease-in-out, sShakeXXL .16s linear}
+42731: .sfx.flash-ultra{animation:sFlashUltra .20s ease-in-out, sShakeUltra .20s linear}
+42732: .sfx.flash-low{animation:sFlashLow .26s ease-in-out, sShakeLow .26s linear}`;
+42733:     document.head.appendChild(s);
+42734:   }
+42735: 
+42736:   // Find the visible S button (label "S" or "Single")
+42737:   function isS(el){
+42738:     if (!el) return false;
+42739:     const label = (el.textContent || el.getAttribute('aria-label') || el.title || '').trim().toUpperCase();
+42740:     const data  = ((el.dataset && (el.dataset.shot || el.dataset.kind || '')) || '').toUpperCase();
+42741:     const isBtn = /^(BUTTON|A)$/i.test(el.tagName) || el.hasAttribute('role');
+42742:     return isBtn && (label === 'S' || /SINGLE/.test(label+data) || data === 'S');
+42743:   }
+42744:   function findS(){
+42745:     return Array.from(document.querySelectorAll('button,.btn,a,[role="button"]'))
+42746:       .find(el => isS(el) && el.offsetParent);
+42747:   }
+42748: 
+42749:   // Press-order only for S (independent of T/D)
+42750:   let sCount = 0;
+42751: 
+42752:   function animate(el){
+42753:     el.classList.add('sfx');
+42754:     el.classList.remove('flash-xxl','flash-ultra','flash-low');
+42755:     void el.offsetWidth; // restart
+42756:     el.classList.add(sCount===1 ? 'flash-xxl' : sCount===2 ? 'flash-ultra' : 'flash-low');
+42757:     setTimeout(()=> el.classList.remove('flash-xxl','flash-ultra','flash-low'), 500);
+42758:   }
+42759: 
+42760:   function onPressS(){
+42761:     const el = findS(); if (!el) return;
+42762:     sCount = (sCount % 3) + 1;   // 1 (XXL) → 2 (Ultra) → 3 (Low)
+42763:     animate(el);
+42764:   }
+42765: 
+42766:   // Wire clicks on S; keyboard 's' also triggers it
+42767:   function wire(){
+42768:     const btn = findS(); if (!btn || btn.dataset.sFxWired==='1') return;
+42769:     btn.dataset.sFxWired = '1';
+42770:     btn.addEventListener('click', onPressS);
+42771:   }
+42772:   document.addEventListener('keydown', e => { if ((e.key||'').toLowerCase() === 's') onPressS(); });
+42773: 
+42774:   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
+42775:   try { window.__sqUIMutationBus?.on(()=>wire()); } catch(_) {}
+42776: })();
+42777: 
+42778: // === MISS button — red glow (1→2→3: soft → medium → high) ==================
+42779: (function missButtonFX(){
+42780:   // CSS for MISS
+42781:   if (!document.getElementById('mfx-css')) {
+42782:     const s = document.createElement('style'); s.id = 'mfx-css';
+42783:     s.textContent =
+42784:     ` .missfx{will-change:filter,box-shadow,transform,background-color}
+42785: 
+42786: /* existing glow tweaked to pair with bg pulse */
+42787: @keyframes mGlowSoft{
+42788:   0%{filter:brightness(1);box-shadow:none}
+42789:   20%{filter:brightness(1.15);box-shadow:0 0 10px rgba(244,63,94,.45),0 0 20px rgba(244,63,94,.25)}
+42790:   100%{filter:brightness(1);box-shadow:none}
+42791: }
+42792: @keyframes mGlowMed{
+42793:   0%{filter:brightness(1);box-shadow:none}
+42794:   18%{filter:brightness(1.35);box-shadow:0 0 16px rgba(244,63,94,.6),0 0 28px rgba(244,63,94,.35)}
+42795:   40%{filter:brightness(1.1);box-shadow:none}
+42796:   100%{filter:brightness(1);box-shadow:none}
+42797: }
+42798: @keyframes mGlowHigh{
+42799:   0%{filter:brightness(1);box-shadow:none;transform:scale(1)}
+42800:   14%{filter:brightness(1.6);box-shadow:0 0 22px rgba(244,63,94,.75),0 0 40px rgba(244,63,94,.45);transform:scale(1.02)}
+42801:   30%{filter:brightness(1.2);box-shadow:0 0 12px rgba(244,63,94,.45),0 0 26px rgba(244,63,94,.30);transform:scale(1.01)}
+42802:   100%{filter:brightness(1);box-shadow:none;transform:scale(1)}
+42803: }
+42804: 
+42805: /* pulse the actual red background from --miss-from to --miss-to and back */
+42806: @keyframes mBgPulse{
+42807:   0%  { background-color: var(--miss-from); }
+42808:   22% { background-color: var(--miss-to);   }
+42809:   100%{ background-color: var(--miss-from); }
+42810: }
+42811: 
+42812: /* combine glow + bg pulse; durations match levels */
+42813: .missfx.glow-soft{animation: mGlowSoft .26s ease-out, mBgPulse .26s ease-in-out}
+42814: .missfx.glow-med {animation: mGlowMed  .34s ease-out, mBgPulse .34s ease-in-out}
+42815: .missfx.glow-high{animation: mGlowHigh .44s ease-out, mBgPulse .44s ease-in-out}`
+42816:     
+42817:     document.head.appendChild(s);
+42818:   }
+42819: 
+42820:   // Find the visible MISS button (label "MISS"; allow 'X' only if marked as miss)
+42821:   function isMISS(el){
+42822:     if (!el) return false;
+42823:     const label = (el.textContent || el.getAttribute('aria-label') || el.title || '').trim();
+42824:     const up    = label.toUpperCase();
+42825:     const data  = ((el.dataset && (el.dataset.kind || el.dataset.shot || '')) || '').toLowerCase();
+42826:     const isBtn = /^(BUTTON|A)$/i.test(el.tagName) || el.hasAttribute('role');
+42827:     if (!isBtn) return false;
+42828:     if (up === 'MISS') return true;
+42829:     // Accept "X" only if metadata indicates miss
+42830:     if (up === 'X' && /miss/.test(data + ' ' + (el.getAttribute('aria-label')||'').toLowerCase())) return true;
+42831:     return /miss/.test(data);
+42832:   }
+42833:   function findMISS(){
+42834:     return Array.from(document.querySelectorAll('button,.btn,a,[role="button"]'))
+42835:       .find(el => isMISS(el) && el.offsetParent);
+42836:   }
+42837: 
+42838:   // Press-order only for MISS (independent)
+42839:   let mCount = 0;
+42840: 
+42841:   function animate(el){
+42842:     el.classList.add('missfx');
+42843:     el.classList.remove('glow-soft','glow-med','glow-high');
+42844:     void el.offsetWidth; // restart
+42845:     el.classList.add(mCount===1 ? 'glow-soft' : mCount===2 ? 'glow-med' : 'glow-high');
+42846:   }
+42847: 
+42848:   function onPressMISS(){
+42849:     const el = findMISS(); if (!el) return;
+42850:     mCount = (mCount % 3) + 1; // 1 soft → 2 med → 3 high
+42851:     animate(el);
+42852:   }
+42853: 
+42854:   // Wire clicks on MISS; keyboard 'm' also triggers it
+
+41737:         required_view: mode === 'points' ? 'v_player_target_points_progress' : 'v_player_target_hit_progress',
+41738:         metric:mode,
+41739:         player:name,
+41740:         detail:result.missing || 'zero rows'
+41741:       });
+41742:       body.innerHTML = '';
+41743:       const msg = document.createElement('p'); msg.className = 'muted';
+41744:       msg.textContent = 'No progress data yet — play more games to build the trend.';
+41745:       body.append(msg);
+41746:       return;
+41747:     }
+41748: 
+41749:     console.debug('[SQ] Target progress source used', { source:result.source, metric:mode, rows:result.rows.length });
+41750:     const normalized = __sqNormalizeTargetProgressRows(mode, result.rows);
+41751:     const grouped = new Map();
+41752:     normalized.forEach(r => { if (!grouped.has(r.key)) grouped.set(r.key, []); grouped.get(r.key).push(r); });
+41753: 
+41754:     body.innerHTML = '';
+41755:     const targetRow = document.createElement('div'); targetRow.className = 'sq-controls-row'; targetRow.style.display = 'flex'; targetRow.style.flexWrap = 'wrap'; targetRow.style.gap = '6px'; targetRow.style.marginBottom = '10px';
+41756:     const avgRow = document.createElement('div'); avgRow.className = 'sq-controls-row'; avgRow.style.display = 'flex'; avgRow.style.flexWrap = 'wrap'; avgRow.style.gap = '6px'; avgRow.style.marginBottom = '10px';
+41757: 
+41758:     // FORM strip: gauge + verdict stamp
+41759:     const formRow = document.createElement('div');
+41760:     formRow.style.cssText = 'display:flex;align-items:center;gap:14px;margin-bottom:10px;padding:10px 14px;'
+41761:       + 'background:#101827;border:1px solid rgba(35,164,255,.3);border-radius:14px;box-shadow:0 6px 16px rgba(0,0,0,.3);';
+41762:     const gaugeCanvas = document.createElement('canvas');
+41763:     gaugeCanvas.style.cssText = 'width:170px;height:104px;flex:0 0 auto;';
+41764:     const formInfo = document.createElement('div');
+41765:     formInfo.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;align-items:flex-start;';
+41766:     const formValue = document.createElement('div');
+41767:     formValue.style.cssText = 'font-size:30px;font-weight:900;color:#ffd9b0;line-height:1;letter-spacing:.02em;';
+41768:     const verdict = document.createElement('span');
+41769:     verdict.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:5px 13px;border-radius:99px;font-weight:900;font-size:12px;letter-spacing:.1em;';
+41770:     const formSub = document.createElement('div');
+41771:     formSub.style.cssText = 'font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:rgba(150,185,230,.85);';
+41772:     formInfo.append(formValue, verdict, formSub);
+41773:     formRow.append(gaugeCanvas, formInfo);
+41774: 
+41775:     const canvasWrap = document.createElement('div'); canvasWrap.style.cssText = 'width:100%;height:340px;border:1px solid rgba(35,164,255,.25);border-radius:14px;overflow:hidden;background:#0d1424;box-shadow:0 10px 26px rgba(0,0,0,.4), 0 0 24px rgba(47,134,255,.08);';
+41776:     const canvas = document.createElement('canvas'); canvas.style.width = '100%'; canvas.style.height = '100%'; canvas.style.touchAction = 'pan-y'; canvasWrap.appendChild(canvas);
+41777: 
+41778:     // Hot/cold streak strip: one cell per recent game, tap to inspect
+41779:     const stripWrap = document.createElement('div');
+41780:     stripWrap.style.cssText = 'margin-top:10px;';
+41781:     const stripLabel = document.createElement('div');
+41782:     stripLabel.style.cssText = 'font-size:10px;text-transform:uppercase;letter-spacing:.12em;font-weight:800;color:rgba(150,185,230,.85);margin-bottom:6px;';
+41783:     stripLabel.textContent = 'Recent games — tap to inspect';
+41784:     const strip = document.createElement('div');
+41785:     strip.style.cssText = 'display:flex;gap:3px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;';
+41786:     stripWrap.append(stripLabel, strip);
+41787: 
+41788:     const stats = document.createElement('div'); stats.className = 'sq-progress-pills';
+41789:     const empty = document.createElement('p'); empty.className = 'muted'; empty.style.marginTop = '8px';
+41790: 
+41791:     const targetConfigs = __sqProgressTargetButtons(mode, grouped);
+41792:     const enabledKeys = targetConfigs.filter(t => !t.disabled).map(t => t.key);
+41793:     const stableScaleMax = __sqProgressSessionScale(grouped, enabledKeys);
+41794:     let selectedTargets = [enabledKeys[0] || '10'];
+41795:     let primaryTarget = selectedTargets[0];
+41796:     let windowSize = 5;
+41797:     let scrubIdx = null;
+41798:     let animRaf = 0;
+41799:     const rowsForKey = key => (grouped.get(key) || []).slice().sort((a,b) => {
+41800:       const ta = Date.parse(a.created_at || '') || 0;
+41801:       const tb = Date.parse(b.created_at || '') || 0;
+41802:       if (ta !== tb) return ta - tb;
+41803:       return a.idx - b.idx;
+41804:     });
+41805:     const currentSeries = () => selectedTargets.map(key => ({ key, color:__sqProgressColor(key), rows:rowsForKey(key) })).filter(s => s.rows.length);
+41806: 
+41807:     const verdictFor = (stats) => {
+41808:       const d = stats.secondAvg - stats.firstAvg;
+41809:       if (d >= 5)   return { label:'ON FIRE', color:'#ffa440', glow:'rgba(255,140,40,.45)', arrow:'↑' };
+41810:       if (d >= 1.5) return { label:'CLIMBING', color:'#73f07e', glow:'rgba(115,240,126,.4)', arrow:'↑' };
+41811:       if (d > -1.5) return { label:'STEADY', color:'#4aa3ff', glow:'rgba(74,163,255,.4)', arrow:'→' };
+41812:       return { label:'COOLING', color:'#7cc0ff', glow:'rgba(124,192,255,.35)', arrow:'↓' };
+41813:     };
+41814: 
+41815:     let gaugeFrom = 0; // needle rolls from the previous target's value
+41816:     const paintForm = (series, tv) => {
+41817:       const isSingle = series.length === 1;
+41818:       formRow.style.display = isSingle ? 'flex' : 'none';
+41819:       stripWrap.style.display = isSingle ? '' : 'none';
+41820:       if (!isSingle || !series[0]) return;
+41821:       const st = __sqProgressSeriesStats(series[0].rows, windowSize);
+41822:       const cur = st.avgPoints.length ? st.avgPoints[st.avgPoints.length - 1].pct : st.allAvg;
+41823:       const e = 1 - Math.pow(1 - Math.max(0, Math.min(1, tv)), 3);
+41824:       const shown = gaugeFrom + (cur - gaugeFrom) * e;
+41825:       __sqDrawFormGauge(gaugeCanvas, shown, st.allAvg, 1);
+41826:       formValue.textContent = Math.round(shown) + '%';
+41827:       if (tv >= 1) gaugeFrom = cur;
+41828:       const v = verdictFor(st);
+41829:       verdict.textContent = v.arrow + ' ' + v.label;
+41830:       verdict.style.background = '#0d1424';
+41831:       verdict.style.border = '1px solid ' + v.color;
+41832:       verdict.style.color = v.color;
+41833:       verdict.style.boxShadow = '0 0 16px ' + v.glow;
+41834:       formSub.textContent = 'Form ' + windowSize + '-game av · all-time ' + Math.round(st.allAvg) + '% (notch)';
+41835:     };
+41836: 
+41837:     const buildStrip = (series) => {
+41838:       strip.innerHTML = '';
+41839:       if (series.length !== 1) return;
+41840:       const rows = series[0].rows;
+41841:       const st = __sqProgressSeriesStats(rows, windowSize);
+41842:       const startIdx = Math.max(0, rows.length - 40);
+41843:       for (let i = startIdx; i < rows.length; i++){
+41844:         const v = st.values[i];
+41845:         const hot = v >= st.allAvg;
+41846:         const cell = document.createElement('button');
+41847:         cell.type = 'button';
+41848:         cell.setAttribute('aria-label', 'Game ' + (i + 1) + ': ' + Math.round(v) + '%');
+41849:         const idx = i;
+41850:         const active = scrubIdx === i;
+41851:         cell.style.cssText = 'flex:0 0 auto;width:12px;height:20px;border-radius:4px;padding:0;cursor:pointer;'
+41852:           + 'background:' + (hot ? 'linear-gradient(180deg,#ffb347,#f97618)' : 'rgba(74,163,255,.16)') + ';'
+41853:           + 'border:1px solid ' + (active ? '#fff' : (hot ? 'rgba(255,190,110,.7)' : 'rgba(74,163,255,.25)')) + ';'
+41854:           + (hot ? 'box-shadow:0 0 8px rgba(255,140,40,.35);' : '');
+41855:         cell.onclick = () => { scrubIdx = (scrubIdx === idx) ? null : idx; drawStatic(); };
+41856:         strip.appendChild(cell);
+41857:       }
+41858:     };
+41859: 
+41860:     const paint = (tv) => {
+41861:       const series = currentSeries();
+41862:       __sqDrawTargetProgressCanvas(canvas, series, windowSize, stats, empty, mode, primaryTarget, stableScaleMax, { t:tv, scrubIdx });
+41863:       paintForm(series, tv);
+41864:     };
+41865:     const syncChips = () => {
+41866:       Array.from(targetRow.querySelectorAll('button')).forEach(b => {
+41867:         const selected = selectedTargets.includes(b.dataset.target);
+41868:         b.classList.toggle('primary', selected);
+41869:         b.style.borderColor = selected ? __sqProgressColor(b.dataset.target) : '';
+41870:       });
+41871:       Array.from(avgRow.querySelectorAll('button')).forEach(b => b.classList.toggle('primary', Number(b.dataset.window) === windowSize));
+41872:     };
+41873:     const drawStatic = () => { syncChips(); paint(1); buildStrip(currentSeries()); };
+41874:     const draw = () => {
+41875:       syncChips();
+41876:       scrubIdx = null;
+41877:       cancelAnimationFrame(animRaf);
+41878:       let reduce = false;
+41879:       try{ reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ }
+41880:       const dur = reduce ? 0 : 850;
+41881:       const start = performance.now();
+41882:       const step = now => {
+41883:         const raw = dur ? Math.min(1, (now - start) / dur) : 1;
+41884:         paint(raw);
+41885:         if (raw < 1) animRaf = requestAnimationFrame(step);
+41886:         else buildStrip(currentSeries());
+41887:       };
+41888:       animRaf = requestAnimationFrame(step);
+41889:     };
+41890: 
+41891:     // Scrub-to-inspect: drag or move across the chart
+41892:     let scrubbing = false;
+41893:     const scrubTo = clientX => {
+41894:       const hit = canvas.__sqHitMap;
+41895:       if (!hit || !hit.xs.length) return;
+41896:       const r = canvas.getBoundingClientRect();
+41897:       const x = clientX - r.left;
+41898:       let best = 0, bd = Infinity;
+41899:       hit.xs.forEach((hx, i) => { const d = Math.abs(hx - x); if (d < bd){ bd = d; best = i; } });
+41900:       if (scrubIdx !== best){ scrubIdx = best; paint(1); buildStrip(currentSeries()); }
+41901:     };
+41902:     canvas.addEventListener('pointerdown', e => { if (!canvas.__sqHitMap) return; scrubbing = true; scrubTo(e.clientX); });
+41903:     canvas.addEventListener('pointermove', e => { if (scrubbing || e.pointerType === 'mouse') scrubTo(e.clientX); });
+41904:     window.addEventListener('pointerup', () => { scrubbing = false; });
+41905:     canvas.addEventListener('pointerleave', () => { if (!scrubbing && scrubIdx != null){ scrubIdx = null; paint(1); buildStrip(currentSeries()); } });
+41906: 
+41907:     targetConfigs.forEach(t => {
+41908:       const btn = document.createElement('button'); btn.className = 'btn small'; btn.textContent = t.label; btn.dataset.target = t.key;
+41909:       if (t.disabled){ btn.disabled = true; btn.setAttribute('aria-disabled', 'true'); btn.title = t.reason; btn.style.opacity = '.45'; btn.style.cursor = 'not-allowed'; }
+41910:       btn.onclick = () => {
+41911:         if (t.disabled) return;
+41912:         // Single-select: tapping a new target rolls the whole view (line,
+41913:         // gauge needle, verdict, strip) over to that target.
+41914:         if (selectedTargets.length === 1 && selectedTargets[0] === t.key) return;
+41915:         selectedTargets = [t.key];
+41916:         primaryTarget = t.key;
+41917:         draw();
+41918:       };
+41919:       targetRow.appendChild(btn);
+41920:     });
+41921:     [5,10,20].forEach(n => {
+41922:       const btn = document.createElement('button'); btn.className = 'btn small'; btn.textContent = `${n} Round AV`; btn.dataset.window = String(n);
+41923:       btn.onclick = () => { windowSize = n; draw(); };
+41924:       avgRow.appendChild(btn);
+41925:     });
+41926:     body.append(targetRow, avgRow, formRow, canvasWrap, stripWrap, stats, empty);
+41927:     draw();
+41928:     try{ new ResizeObserver(() => drawStatic()).observe(canvasWrap); }catch(_){ window.addEventListener('resize', () => drawStatic(), { passive:true }); }
+41929:   })();
+41930:   return overlay;
+41931: }
+41932: window.openPlayerTargetPointsProgressDialog = function openPlayerTargetPointsProgressDialog(playerName, opts){ return __sqOpenTargetProgressDialog('points', playerName, opts || {}); };
+41933: window.openPlayerTargetHitProgressDialog = function openPlayerTargetHitProgressDialog(playerName, opts){ return __sqOpenTargetProgressDialog('hit', playerName, opts || {}); };
+41934: 
+41935: function __sqBuildTargetPctShell(title, subtitle, playerName, metricMode){
+41936:   const name = String(playerName || '').trim();
+41937:   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+41938:   const modal = document.createElement('div'); modal.className = 'modal';
+41939:   modal.style.maxWidth = '980px'; modal.style.width = '94vw';
+41940:   modal.style.maxHeight = '90vh'; modal.style.overflow = 'hidden';
+41941:   const header = __sqStatsHeader(title, subtitle);
+41942:   const body = document.createElement('div'); body.className = 'modal-body';
+41943:   body.style.paddingTop = '8px'; body.style.maxHeight = 'none'; body.style.overflowY = 'visible';
+41944:   const footer = document.createElement('div'); footer.className = 'modal-footer';
+41945:   const backBtn = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
+41946:   const spacer = document.createElement('div'); spacer.style.flex = '1';
+41947:   const spiderBtn = document.createElement('button'); spiderBtn.className = 'btn small'; spiderBtn.textContent = 'SPIDER'; spiderBtn.dataset.targetPctAction = 'spider';
+41948:   const progBtn = document.createElement('button'); progBtn.className = 'btn small'; progBtn.textContent = 'PROGRESS'; progBtn.dataset.targetPctAction = 'progress';
+41949:   spiderBtn.disabled = true; spiderBtn.setAttribute('aria-disabled', 'true'); spiderBtn.title = 'Available after target percentage data loads.'; spiderBtn.style.opacity = '.45'; spiderBtn.style.cursor = 'not-allowed';
+41950:   progBtn.disabled = true; progBtn.setAttribute('aria-disabled', 'true'); progBtn.title = 'Progress requires a Supabase target percentage progression view.'; progBtn.style.opacity = '.45'; progBtn.style.cursor = 'not-allowed';
+41951:   backBtn.onclick = () => { overlay.remove(); __sqGoBackToStatsMain(name); };
+41952:   spiderBtn.onclick = () => {
+41953:     const mode = String(metricMode || 'hit').toLowerCase();
+41954:     const data = mode === 'points' ? window.__lastPointsPctSpiderData : window.__lastTargetHitPctSpiderData;
+41955:     if (data && typeof window.openPlayerSpiderDialog === 'function') {
+41956:       overlay.style.display = 'none';
+41957:       window.openPlayerSpiderDialog(name, { parentOverlay:overlay, mode, data });
+41958:       return;
+41959:     }
+41960:     try{ if (typeof toast === 'function') toast('SPIDER not available until target percentage data is loaded'); }catch(_){}
+41961:   };
+41962:   progBtn.onclick = () => {
+41963:     const mode = String(metricMode || 'hit').toLowerCase();
+41964:     const fn = mode === 'points' ? window.openPlayerTargetPointsProgressDialog : window.openPlayerTargetHitProgressDialog;
+41965:     if (typeof fn === 'function') {
+41966:       overlay.style.display = 'none';
+41967:       fn(name, { parentOverlay:overlay });
+41968:       return;
+41969:     }
+41970:     try{ if (typeof toast === 'function') toast('PROGRESS is not available until a Supabase target percentage progression view exists'); }catch(_){}
+41971:   };
+41972:   footer.append(backBtn, spacer, spiderBtn, progBtn);
+41973:   modal.append(header, body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+41974:   __sqStatsArcade(overlay, modal);
+41975:   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+41976:   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+41977:   modal.tabIndex = 0; modal.focus();
+41978:   return { overlay, body };
+41979: }
+41980: 
+41981: window.openPlayerTargetHitDialog = async function openPlayerTargetHitDialog(playerName){
+41982:   const name = String(playerName || '').trim();
+41983:   if (!name) return;
+41984:   const ui = __sqBuildTargetPctShell(`Target Hit % — ${name}`, 'Throws / Hits / %', name, 'hit');
+41985:   const body = ui.body;
+41986:   body.innerHTML = '<p class="muted">Loading…</p>';
+41987: 
+41988:   const result = await __sqFetchPlayerTargetHitPctRows(name);
+41989:   if (result.missing || !result.rows.length){
+41990:     console.warn('[SQ] Target Hit % dependency missing or empty', {
+41991:       required_view:'v_player_target_hit_pct',
+41992:       player:name,
+41993:       source:result.source,
+41994:       detail:result.missing || 'zero rows'
+41995:     });
+41996:     __sqShowTargetPctUnavailable(
+41997:       body,
+41998:       'Target Hit % is not available yet. Accurate hit-rate data requires throw-level segment data or a Supabase view that records correct target hits.',
+41999:       'Formula: Target Hit % = successful target hits / throws at that target. Number rounds require actual segment number truth; points alone are not used.',
+42000:       'Missing dependency: v_player_target_hit_pct (player_id/player_key/player_name, target_key/target_label, throws, hits, hit_pct).'
+42001:     );
+42002:     return;
+42003:   }
+42004: 
+42005:   console.debug('[SQ] Target Hit % source used', { source:result.source, rows:result.rows.length });
+42006:   __sqSetTargetPctActionsEnabled(body, true);
+42007:   const rows = result.rows.map(r => {
+42008:     const throwsN = Number(__sqTargetPctValue(r, ['throws','throw_count','thrown']) || 0);
+42009:     const hits = Number(__sqTargetPctValue(r, ['hits','successful_hits','hit_count']) || 0);
+42010:     const pctRaw = __sqTargetPctValue(r, ['hit_pct','pct','percentage']);
+42011:     const pct = Number.isFinite(Number(pctRaw)) ? Number(pctRaw) : (throwsN ? hits * 100 / throwsN : 0);
+42012:     return {
+42013:       key:__sqTargetPctKey(r),
+42014:       throwsN,
+42015:       hits,
+42016:       pct,
+42017:       games:__sqTargetPctValue(r, ['source_games','games','game_count'])
+42018:     };
+42019:   }).filter(r => r.key).sort((a,b) => __sqTargetPctOrder(a.key) - __sqTargetPctOrder(b.key));
+42020: 
+42021:   const table = document.createElement('table'); table.className = 'sq-table hs-table';
+42022:   const thead = document.createElement('thead'); const trh = document.createElement('tr');
+42023:   ['Target','Throws','Hits','%'].forEach(h => { const th = document.createElement('th'); th.textContent = h; trh.appendChild(th); });
+42024:   thead.appendChild(trh); table.appendChild(thead);
+42025:   const tbody = document.createElement('tbody');
+42026:   rows.forEach(r => {
+42027:     const tr = document.createElement('tr');
+42028:     [r.key, r.throwsN, r.hits, (Number(r.pct)||0).toFixed(2)+'%'].forEach(v => {
+42029:       const td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
+42030:     });
+42031:     tbody.appendChild(tr);
+42032:   });
+42033:   table.appendChild(tbody);
+42034:   const scroll = document.createElement('div'); scroll.style.maxHeight = '56vh'; scroll.style.overflowY = 'auto';
+42035:   __sqStyleStatsTableWrap(scroll); scroll.appendChild(table);
+42036:   const info = document.createElement('p'); info.className = 'tag muted'; info.style.marginTop = '8px';
+42037:   info.textContent = 'Target Hit % = successful target hits / throws at that target.';
+42038:   window.__lastTargetHitPctSpiderData = {
+42039:     labels: rows.map(r => String(r.key)),
+42040:     pct: rows.map(r => Number(r.pct || 0))
+42041:   };
+42042:   body.innerHTML = ''; body.append(scroll, info);
+42043: };
+42044: 
+42045: // @LEGACY:PLAYER_TARGET_POINTS_PCT (superseded by the final @CANONICAL:PLAYER_TARGET_POINTS_PCT heatmap opener in Fix166)
+42046: window.openPlayerTargetPointsDialog = function openPlayerTargetPointsDialog(){
+42047:   if (window.__sqCanonicalPlayerTargetPointsDialog && window.__sqCanonicalPlayerTargetPointsDialog !== window.openPlayerTargetPointsDialog) {
+42048:     return window.__sqCanonicalPlayerTargetPointsDialog.apply(window, arguments);
+42049:   }
+42050:   try{ if (typeof toast === 'function') toast('Target Points % is still loading'); }catch(_){}
+42051: };
+42052: 
+42053: window.openPlayerTargetPctDialog = window.openPlayerTargetHitDialog;
+42054: window.openTargetPctDialog = window.openPlayerTargetHitDialog;
+42055: window.openPlayerTargetPointsPctDialog = window.openPlayerTargetPointsDialog;
+42056: // [removed: openPlayerDTBPctDialog (orphaned)] audit P5.3 batch 2 — dead/shadowed definition, no live callers
+42057: 
+42058: // [removed: openPlayerDTBCombinedPctDialog (orphaned)] audit P5.3 batch 2 — dead/shadowed definition, no live callers
+42059: 
+42060: // === Player Stats — shim so the Select Player modal can open stats (always hub) ===
+42061: window.openPlayerStatsModePicker = function openPlayerStatsModePicker(name) {
+42062:   const n = String(name || '').trim();
+42063:   if (!n) { if (typeof toast==='function') toast('Pick a player'); return; }
+42064:   if (typeof window.openPlayerStatsHub === 'function') return window.openPlayerStatsHub(n);
+42065:   // Fallback: open the detail dialog if hub is somehow missing
+42066:   if (typeof window.openPlayerStatsDialog === 'function') return window.openPlayerStatsDialog(n);
+42067:   if (typeof toast==='function') toast('Stats view not available in this build');
+42068: };
+42069: 
+42070: // ---- ensure "New Game" button always works ----
+42071: document.addEventListener('DOMContentLoaded', function(){
+42072:   const btn = document.getElementById('newGameBtn') || document.getElementById('startNewGameBtn');
+42073:   if (!btn) return;
+42074:   btn.onclick = function(){
+42075:     try {
+42076:       if (typeof window.openSelectPlayersDialog === 'function') {
+42077:         window.openSelectPlayersDialog();
+42078:       } else if (typeof window.startNewGame === 'function') {
+42079:         window.startNewGame();
+42080:       } else if (typeof window.openPlayerSelectDialog === 'function') {
+42081:         window.openPlayerSelectDialog();
+42082:       } else {
+42083:         console.warn('No New Game opener found');
+42084:       }
+42085:       
+42086: 
+42087:     } catch(e){
+42088:       console.error('New Game failed', e);
+42089:       try { if (typeof toast==='function') toast('Failed to open New Game'); } catch(_) {}
+42090:     }
+42091:   };
+42092: });
+42093: 
+42094: // === End Game (Leaderboard only): insert "PREMIER LEAGUE" below HIGH SCORES ===
+42095: (function plBtnLeaderboardOnly(){
+42096:   function onLeaderboard(){
+42097:     return (document.body && (document.body.dataset.page || '').toLowerCase()) === 'leaderboard';
+42098:   }
+42099:   function findLeaderboardHighScoresButton(){
+42100:     // search only within the leaderboard page
+42101:     const root = document.querySelector('[data-page="leaderboard"]') || document.body;
+42102:     return Array.from(root.querySelectorAll('button,.btn,[role="button"]'))
+42103:       .find(el => /^\s*high\s*scores\s*$/i.test((el.textContent || '')));
+42104:   }
+42105:   function ensureOpener(){
+42106:     // use existing opener if defined; otherwise click any visible UI that opens PL
+42107:     return async function openPL(){
+42108:       if (typeof window.openPremierLeagueDialog === 'function') { try { window.openPremierLeagueDialog(); return; } catch(_){} }
+42109:       if (typeof window.openPremierLeaguePopup === 'function') { try { window.openPremierLeaguePopup(); return; } catch(_){} }
+42110:       const trigger = Array.from(document.querySelectorAll('button,.btn,a,[role="button"]'))
+42111:         .find(el => /premier\s*league|records/i.test((el.textContent||'')) && el.offsetParent);
+42112:       if (trigger) trigger.click();
+42113:     };
+42114:   }
+42115:   function ensureBtn(){
+42116:     if (!onLeaderboard()) return;
+42117:     const hs = findLeaderboardHighScoresButton();
+42118:     if (!hs) return;
+42119:     if (document.getElementById('btnPremierLeague')) return;
+42120: 
+42121:     const btn = document.createElement('button');
+42122:     btn.id = 'btnPremierLeague';
+42123:     btn.className = hs.className || 'btn';
+42124:     btn.type = 'button';
+42125:     btn.textContent = 'PREMIER LEAGUE';
+42126:     const openPL = ensureOpener();
+42127:     btn.addEventListener('click', (e)=>{ e.preventDefault(); openPL(); });
+42128: 
+42129:     // place directly under the High Scores button on the leaderboard screen
+42130:     hs.insertAdjacentElement('afterend', btn);
+42131:   }
+42132:   function tick(){ ensureBtn(); }
+42133: 
+42134:   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
+42135:   try { window.__sqUIMutationBus?.on(()=>tick()); } catch(_) {}
+42136: })();
+42137: 
+42138: // === Premier League — TODAY (clone a month pill; no min-games rule) =========
+42139: /* [MOVED] Premier League TODAY clone-month legacy patch moved to Legacy Quarantine (Stage 4A.1c) */;
+42140: 
+42141: // === High Score League — rewritten: NEW + movement + even widths ============
+42142: (function highScoreLeagueRewritten(){
+42143:   const TITLE_RX = /high\s*score\s*league/i;
+42144:   const STORAGE_KEY = 'hsLeaguePositions.v2'; // retired localStorage key; kept only as a legacy label
+42145:   const NEW_LIMIT_DAYS = 14;
+42146: 
+42147:   // ---- utilities ------------------------------------------------------------
+42148:   const daysBetween = (a,b) => Math.floor((a - b) / 86400000);
+42149:   const visible = el => !!(el && el.offsetParent !== null);
+42150: 
+42151:   function findHSModal(){
+42152:     const mods = document.querySelectorAll('.modal,[role="dialog"]');
+42153:     for (const m of mods){
+42154:       const ok = Array.from(m.querySelectorAll('h1,h2,h3'))
+42155:         .some(h => TITLE_RX.test(h.textContent || ''));
+42156:       if (ok) return m;
+42157:     }
+42158:     return null;
+42159:   }
+42160: 
+42161:   function getTable(modal){
+42162:     if (!modal) return null;
+42163:     const table = modal.querySelector('table.hs-table');
+42164:     if (!table) return null;
+42165:     const ths = Array.from(table.querySelectorAll('thead th'));
+42166:     if (!ths.length) return null;
+42167: 
+42168:     // Expected headers: "# | Player | High Score | When"
+42169:     const idxPos    = 0; // "#"
+42170:     const idxPlayer = ths.findIndex(th => /player/i.test(th.textContent||''));
+42171:     const idxHigh   = ths.findIndex(th => /high\s*score/i.test(th.textContent||''));
+42172:     const idxWhen   = ths.findIndex(th => /when/i.test(th.textContent||''));
+42173:     if (idxPlayer < 0 || idxHigh < 0 || idxWhen < 0) return null;
+42174:     return { table, ths, idxPos, idxPlayer, idxHigh, idxWhen };
+42175:   }
+42176: 
+42177:   async function earliestMap(){
+42178:     if (window.__hsEarliestMap_v2) return window.__hsEarliestMap_v2;
+42179:     let games = [];
+42180:     try { games = (await __fetchOfficialGames(50000)).map(__normalizeGame); } catch(_){}
+42181:     const map = new Map(); // nameLC -> earliest Date
+42182:     games.forEach(g=>{
+42183:       const t = __gameTs(g.raw || g); if (!t) return;
+42184:       const d = new Date(t);
+42185:       (g.players||[]).forEach(p=>{
+42186:         const k = String(p||'').trim().toLowerCase(); if (!k) return;
+42187:         const cur = map.get(k);
+42188:         if (!cur || d < cur) map.set(k, d);
+42189:       });
+42190:     });
+42191:     window.__hsEarliestMap_v2 = map;
+42192:     return map;
+42193:   }
+42194: 
+42195:   function arrowHTML(delta){
+42196:     if (delta > 0) return `<span title="+${delta}" style="color:#22c55e;font-weight:700">▲</span>`;
+42197:     if (delta < 0) return `<span title="${delta}" style="color:#ef4444;font-weight:700">▼</span>`;
+42198:     return `<span style="opacity:.5">–</span>`;
+42199:   }
+42200: 
+42201:   // ---- main apply -----------------------------------------------------------
+42202:   async function apply(modal){
+42203:     const refs = getTable(modal); if (!refs) return;
+42204:     const { table, ths, idxPos, idxPlayer, idxHigh, idxWhen } = refs;
+42205: 
+42206:     // 1) Insert movement header AFTER "#"
+42207:     let thMove = table.querySelector('thead th[data-move-col="1"]');
+42208:     if (!thMove){
+42209:       thMove = document.createElement('th');
+42210:       thMove.dataset.moveCol = '1';
+42211:       thMove.style.textAlign = 'center';
+42212:       thMove.style.width     = '26px';
+42213:       thMove.style.minWidth  = '24px';
+42214:       thMove.style.maxWidth  = '36px';
+42215:       ths[idxPos].insertAdjacentElement('afterend', thMove);
+42216:     }
+42217: 
+42218:     // 2) Even spacing for Player / High Score / When
+42219:     const headNow = Array.from(table.querySelectorAll('thead th'));
+42220:     const idxMove = headNow.findIndex(th => th.dataset && th.dataset.moveCol === '1');
+42221: 
+42222:     table.style.tableLayout = 'fixed';
+42223:     table.style.width = '100%';
+42224:     if (headNow[0]) {
+42225:       headNow[0].style.width    = '36px';
+42226:       headNow[0].style.minWidth = '32px';
+42227:       headNow[0].style.maxWidth = '42px';
+42228:     }
+42229:     if (idxMove >= 0 && headNow[idxMove]) {
+42230:       headNow[idxMove].style.width     = '26px';
+42231:       headNow[idxMove].style.minWidth  = '24px';
+42232:       headNow[idxMove].style.maxWidth  = '34px';
+42233:       headNow[idxMove].style.textAlign = 'center';
+42234:     }
+42235:     // recompute indexes by text (header DOM may have shifted)
+42236:     const idxPlayerNow = headNow.findIndex(th => /player/i.test(th.textContent||''));
+42237:     const idxHighNow   = headNow.findIndex(th => /high\s*score/i.test(th.textContent||''));
+42238:     const idxWhenNow   = headNow.findIndex(th => /when/i.test(th.textContent||''));
+42239: 
+42240:     const fixedPx = 36 + (idxMove >= 0 ? 26 : 0);
+42241:     const EVEN = `calc((100% - ${fixedPx}px) / 3)`;
+42242:     [idxPlayerNow, idxHighNow, idxWhenNow].forEach(i => {
+42243:       if (i >= 0 && headNow[i]) headNow[i].style.width = EVEN;
+42244:     });
+42245: 
+42246:     // 3) Per-row: add movement cell; add NEW tag if first-game ≤ 14 days
+42247:     window.__sqHSLeagueVisualSnapshot = window.__sqHSLeagueVisualSnapshot || {};
+42248:     const prevMap = window.__sqHSLeagueVisualSnapshot.positions || {}; // nameLC -> previous position, memory-only
+42249:     const now = new Date();
+42250:     const firstMap = await earliestMap();
+42251: 
+42252:     const rows = Array.from(table.querySelectorAll('tbody tr'));
+42253:     const seenPB = new Set(); // nameLC -> already tagged PB (show once)
+42254:     const curMap = {}; // nameLC -> current position
+42255: 
+42256:     rows.forEach((tr, i) => {
+42257:       const pos = i + 1;
+42258:       const tds = Array.from(tr.children);
+42259:       const tdPos    = tds[idxPos];
+42260:       // movement cell sits AFTER position; if not there, create
+42261:       let tdMove = tds[idxMove];
+42262:       if (!tdMove || tdMove === tdPos || tdMove.dataset.moveCell !== '1') {
+42263:         tdMove = document.createElement('td');
+42264:         tdMove.dataset.moveCell = '1';
+42265:         tdMove.style.textAlign = 'center';
+42266:         tdPos.insertAdjacentElement('afterend', tdMove);
+42267:       }
+42268: 
+42269:       // After inserting a new td, refresh children and resolve Player cell
+42270:       const tds2 = Array.from(tr.children);
+42271:       // Player column shifts by +1 if movement col was inserted before it
+42272:       const tdPlayerCell = tds2[(idxPlayerNow >= 0 ? idxPlayerNow : idxPlayer) + (idxMove >= 0 ? 1 : 0)];
+42273:       if (!tdPlayerCell) return;
+42274: 
+42275:       // Player name (strip any existing "NEW")
+42276:       const nameText = (tdPlayerCell.textContent || '').replace(/\bNEW\b/gi,'').trim();
+42277:       const nameLC = nameText.toLowerCase();
+42278:       curMap[nameLC] = pos;
+42279: 
+42280:       // Movement arrow against previous snapshot
+42281:       let html = '<span style="opacity:.5">–</span>';
+42282:       const prevPos = prevMap[nameLC];
+42283:       if (typeof prevPos === 'number') {
+42284:         const delta = prevPos - pos; // positive = moved UP (better)
+42285:         html = arrowHTML(delta);
+42286:       }
+42287:       tdMove.innerHTML = html;
+42288: 
+42289:       // NEW tag (first official game within the last 14 days)
+42290:       if (nameLC && firstMap.has(nameLC)) {
+42291:         const first = firstMap.get(nameLC);
+42292:         const isNew = daysBetween(now, first) <= NEW_LIMIT_DAYS && daysBetween(now, first) >= 0;
+42293:         if (isNew && !/\bNEW\b/i.test(tdPlayerCell.innerHTML)) {
+42294:           const tag = document.createElement('span');
+42295:           tag.className = 'tag';
+42296:           tag.textContent = 'NEW';
+42297:           tag.style.marginLeft = '6px';
+42298:           tdPlayerCell.appendChild(tag);
+42299:         }
+42300:       }
+42301:     });
+42302: 
+42303:     // 4) Save snapshot for next comparison in memory only; rankings remain Supabase/history-derived.
+42304:     try { window.__sqHSLeagueVisualSnapshot = { ts: new Date().toISOString(), positions: curMap }; } catch(_) {}
+42305:   }
+42306: 
+42307:   // Debounced observer to apply when the league modal appears/updates
+42308:   let scheduled = false;
+42309:   function tick(){
+42310:     const m = findHSModal();
+42311:     if (!m || !visible(m)) return;
+42312:     if (scheduled) return;
+42313:     scheduled = true;
+42314:     requestAnimationFrame(async ()=>{ scheduled = false; try { await apply(m); } catch(e){ console.error(e); } });
+42315:   }
+42316: 
+42317:   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
+42318:   try { window.__sqUIMutationBus?.on(()=>tick()); } catch(_) {}
+42319: })();
+42320: 
+42321: // === High Scores (Match) — v4: movement ▲/▼ (7d), NEW(7d), PB, date fmt =====
+42322: (function enhanceHighScoresMatch_v4(){
+42323:   const TITLE_RX = /^\s*high\s*scores\s*$/i;
+42324:   // Expected header: "# | Player | Score | Avg / Round | When"
+42325:   const COLS_RX  = [/^#$/i, /player/i, /^score$/i, /avg\s*\/\s*round/i, /when/i];
+42326:   const NEW_MS   = 7 * 24 * 60 * 60 * 1000; // 7 days
+42327:   const POS_KEY  = 'hsMatchEntryPositions.v1'; // entryKey -> {pos, delta, tISO}
+42328: 
+42329:   // ---------- helpers ----------
+42330:   function findModalAndTable(){
+42331:     const mods = document.querySelectorAll('.modal,[role="dialog"]');
+42332:     for (const m of mods){
+42333:       const ok = Array.from(m.querySelectorAll('h1,h2,h3'))
+42334:         .some(h => TITLE_RX.test(h.textContent||''));
+42335:       if (!ok) continue;
+42336:       const table = m.querySelector('table.hs-table'); if (!table) continue;
+42337:       const ths = Array.from(table.querySelectorAll('thead th'));
+42338:       if (ths.length < 5) continue;
+42339:       const matches = COLS_RX.every((rx, idx)=> rx.test((ths[idx].textContent||'').trim()));
+42340:       if (matches) return { modal: m, table, ths };
+42341:     }
+42342:     return null;
+42343:   }
+42344: 
+42345:   // "20 Nov 25 at 20:35" | "20 Nov 25 @ 20:35" → "20/11/25 @ 20:35"
+42346:   function fmt_DDMMYY_HHMM(text){
+42347:     if (!text) return text;
+42348:     const m = text.match(/^\s*(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2})(?:\s+at|\s*@)\s+(\d{2}):(\d{2})\s*$/);
+42349:     if (!m) return text;
+42350:     const [, d, mon, yy, hh, mm] = m;
+42351:     const MONTH = {JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
+42352:     const mmNum = MONTH[mon.toUpperCase()];
+42353:     if (!mmNum) return text;
+42354:     const dd = String(d).padStart(2,'0');
+42355:     return `${dd}/${mmNum}/${yy} @ ${hh}:${mm}`;
+42356:   }
+42357: 
+42358:   function yellowNEW(){
+42359:     const span = document.createElement('span');
+42360:     span.className = 'tag';
+42361:     span.textContent = 'NEW';
+42362:     span.style.color = '#facc15';
+42363:     span.style.borderColor = 'rgba(250,204,21,.35)';
+42364:     span.style.background = 'rgba(250,204,21,.08)';
+42365:     return span;
+42366:   }
+42367: 
+42368:   function arrowHTML(delta){
+42369:     if (delta > 0) return `<span title="+${delta}" style="color:#22c55e;font-weight:700">▲</span>`;
+42370:     if (delta < 0) return `<span title="${delta}" style="color:#ef4444;font-weight:700">▼</span>`;
+42371:     return `<span style="opacity:.5">–</span>`;
+42372:   }
+42373: 
+42374:   // Build PB map + (player|score)→latest timestamp
+42375:   async function buildMaps(){
+42376:     if (window.__hsMatchMaps_v4) return window.__hsMatchMaps_v4;
+42377: 
+42378:     let games = [];
+42379:     try { games = (await __fetchOfficialGames(50000)).map(__normalizeGame); } catch(_) {}
+42380: 
+42381:     const pb = new Map();      // nameLC -> max score
+42382:     const keyTs = new Map();   // `${nameLC}|${score}` -> latest Date
+42383:     let globalMax = 0;
+42384: 
+42385:     games.forEach(g=>{
+42386:       const ts = __gameTs(g.raw || g);
+42387:       const d  = ts ? new Date(ts) : null;
+42388:       (g.players||[]).forEach((p,i)=>{
+42389:         const name = String(p||'').trim(); if (!name) return;
+42390:         const k = name.toLowerCase();
+42391:         const score = Number(g.totals?.[i] || 0);
+42392:         if (!Number.isFinite(score)) return;
+42393:         if (score > (pb.get(k) || 0)) pb.set(k, score);
+42394:         if (score > globalMax) globalMax = score;
+42395:         if (d) {
+42396:           const key = `${k}|${score}`;
+42397:           const prev = keyTs.get(key);
+42398:           if (!prev || d > prev) keyTs.set(key, d);
+42399:         }
+42400:       });
+42401:     });
+42402: 
+42403:     window.__hsMatchMaps_v4 = { pb, keyTs, globalMax };
+42404:     return window.__hsMatchMaps_v4;
+42405:   }
+42406: 
+42407:   function loadPos(){ try { return JSON.parse(localStorage.getItem(POS_KEY) || '{}'); } catch(_) { return {}; } }
+42408:   function savePos(m){ try { localStorage.setItem(POS_KEY, JSON.stringify(m)); } catch(_){} }
+42409: 
+42410:   async function apply(){
+42411:     const found = findModalAndTable(); if (!found) return;
+42412:     const { table, ths } = found;
+42413: 
+42414:     // Insert movement header AFTER "#"
+42415:     let thMove = table.querySelector('thead th[data-move-col="1"]');
+42416:     if (!thMove){
+42417:       thMove = document.createElement('th');
+42418:       thMove.dataset.moveCol = '1';
+42419:       thMove.style.textAlign = 'center';
+42420:       thMove.style.width     = '26px';
+42421:       thMove.style.minWidth  = '22px';
+42422:       thMove.style.maxWidth  = '34px';
+42423:       ths[0].insertAdjacentElement('afterend', thMove);
+42424:     }
+42425: 
+42426:     // Insert NEW header AFTER movement
+42427:     let headNow = Array.from(table.querySelectorAll('thead th'));
+42428:     let idxRank = headNow.findIndex(th => /^#$/i.test((th.textContent||'').trim()));
+42429:     let idxMove = headNow.findIndex(th => th.dataset && th.dataset.moveCol === '1');
+42430: 
+42431:     let thNew = table.querySelector('thead th[data-newcol="1"]');
+42432:     if (!thNew){
+42433:       thNew = document.createElement('th');
+42434:       thNew.dataset.newcol = '1';
+42435:       thNew.style.textAlign = 'center';
+42436:       thNew.style.width = '44px';
+42437:       thNew.style.minWidth = '38px';
+42438:       thNew.style.maxWidth = '60px';
+42439:       headNow[idxMove].insertAdjacentElement('afterend', thNew);
+42440:     }
+42441: 
+42442:     // Narrow the "#" column
+42443:     headNow = Array.from(table.querySelectorAll('thead th'));
+42444:     idxRank = headNow.findIndex(th => /^#$/i.test((th.textContent||'').trim()));
+42445:     idxMove = headNow.findIndex(th => th.dataset && th.dataset.moveCol === '1');
+42446:     const idxNew = headNow.findIndex(th => th.dataset && th.dataset.newcol === '1');
+42447: 
+42448:     if (headNow[idxRank]) {
+42449:       headNow[idxRank].style.width     = '24px';
+42450:       headNow[idxRank].style.minWidth  = '22px';
+42451:       headNow[idxRank].style.maxWidth  = '28px';
+42452:       headNow[idxRank].style.textAlign = 'center';
+42453:     }
+42454:     table.style.tableLayout = 'fixed';
+42455:     table.style.width = '100%';
+42456: 
+42457:     // Resolve main column indexes by header text (after our inserts)
+42458:     const idxPlayer = headNow.findIndex(th => /player/i.test(th.textContent||''));
+42459:     const idxScore  = headNow.findIndex(th => /^score$/i.test(th.textContent||''));
+42460:     let   idxWhen   = headNow.findIndex(th => /when/i.test(th.textContent||''));
+42461:     if (idxWhen < 0) idxWhen = headNow.length - 1;
+42462: 
+42463:     const { pb, keyTs, globalMax } = await buildMaps();
+42464: 
+42465:     // Load previous entry positions (per entry: nameLC|score)
+42466:     const prev = loadPos();
+42467:     const next = {};
+42468:     const now = Date.now();
+42469: 
+42470:     // Per-row updates
+42471:     const rows = Array.from(table.querySelectorAll('tbody tr'));
+42472:     rows.forEach((tr, i)=>{
+42473:       const tds0 = Array.from(tr.children);
+42474:       const tdRank = tds0[idxRank];
+42475: 
+42476:       // Ensure movement cell immediately after rank
+42477:       let tdMove = tds0[idxMove];
+42478:       if (!tdMove || tdMove === tdRank || tdMove.dataset.moveCell !== '1') {
+42479:         tdMove = document.createElement('td');
+42480:         tdMove.dataset.moveCell = '1';
+42481:         tdMove.style.textAlign = 'center';
+42482:         tdRank.insertAdjacentElement('afterend', tdMove);
+42483:       } else {
+42484:         tdMove.innerHTML = '';
+42485:       }
+42486: 
+42487:       // Ensure NEW cell immediately after movement
+42488:       const tds1 = Array.from(tr.children);
+42489:       const tdAfterMove = tds1[idxMove + 1] || tdMove.nextElementSibling;
+42490:       let tdNew = tds1[idxNew];
+42491:       if (!tdNew || tdNew === tdRank || tdNew === tdMove || tdNew.dataset.newCell !== '1') {
+42492:         tdNew = document.createElement('td');
+42493:         tdNew.dataset.newCell = '1';
+42494:         tdNew.style.textAlign = 'center';
+42495:         (tdAfterMove || tdMove).insertAdjacentElement('afterend', tdNew);
+42496:       } else {
+42497:         tdNew.innerHTML = '';
+42498:       }
+42499: 
+42500:       // Refresh indexes after inserts and read data cells
+42501:       const tds = Array.from(tr.children);
+42502:       const tdPlayer = tds[idxPlayer];
+42503:       const tdScore  = tds[idxScore];
+42504:       const tdWhen   = tds[idxWhen] || tds[tds.length - 1];
+42505: 
+42506:       // 1) Format When => DD/MM/YY @ HH:MM
+42507:       if (tdWhen) {
+42508:         const orig = tdWhen.textContent || '';
+42509:         const fmt  = fmt_DDMMYY_HHMM(orig);
+42510:         if (fmt && fmt !== orig) tdWhen.textContent = fmt;
+42511:       }
+42512: 
+42513:       // Entry key for movement & NEW: nameLC|score
+42514:       const nameLC = (tdPlayer?.textContent || '').trim().toLowerCase();
+42515:       const scoreN = Number((tdScore?.textContent || '').replace(/[^\d.]/g,''));
+42516:       const entryKey = `${nameLC}|${Number.isFinite(scoreN) ? scoreN : -1}`;
+42517:       const pos = i + 1;
+42518: 
+42519:       // 2) Movement (persist 7 days if no further movement)
+42520:       const prevRec = prev[entryKey];
+42521:       let deltaToShow = 0;
+42522:       if (prevRec && typeof prevRec.pos === 'number') {
+42523:         if (prevRec.pos !== pos) {
+42524:           // changed now
+42525:           deltaToShow = prevRec.pos - pos; // + = moved up
+42526:           next[entryKey] = { pos, delta: deltaToShow, tISO: new Date(now).toISOString() };
+42527:         } else {
+42528:           // unchanged; keep showing if within 7d and delta != 0
+42529:           const ageOK = prevRec.tISO && (now - Date.parse(prevRec.tISO)) <= NEW_MS;
+42530:           deltaToShow = ageOK ? (prevRec.delta || 0) : 0;
+42531:           next[entryKey] = { pos, delta: prevRec.delta || 0, tISO: prevRec.tISO || new Date(now).toISOString() };
+42532:         }
+42533:       } else {
+42534:         // first time seeing this entry
+42535:         next[entryKey] = { pos, delta: 0, tISO: new Date(now).toISOString() };
+42536:       }
+42537:       tdMove.innerHTML = arrowHTML(deltaToShow);
+42538: 
+42539:       // 3) NEW (≤7 days since that exact (player,score))
+42540:       if (nameLC && Number.isFinite(scoreN)) {
+42541:         const k = `${nameLC}|${scoreN}`;
+42542:         const ts = keyTs.get(k);
+42543:         if (ts && (Date.now() - ts.getTime()) <= NEW_MS) {
+42544:           tdNew.appendChild(yellowNEW());
+42545:         }
+42546:       }
+42547: 
+42548:       // 4) PB after Score — show ONLY ONCE per player (true PB occurrence), exclude global top score
+42549:       const isGlobalTop = Number((tdScore?.textContent || '').replace(/[^\d.]/g,'')) === globalMax;
+42550:       const best = pb.get(nameLC) || -Infinity;
+42551:       const curScore = Number((tdScore?.textContent || '').replace(/[^\d.]/g,''));
+42552:       const isPBScore = Number.isFinite(curScore) && curScore === best;
+42553: 
+42554:       // Prefer tagging the latest occurrence of that PB score (so PB doesn't repeat across multiple equal-score rows)
+42555:       function parseWhenMs(txt){
+42556:         if (!txt) return NaN;
+42557:         // Expect "DD/MM/YY @ HH:MM"
+42558:         const m = String(txt).trim().match(/^(\d{2})\/(\d{2})\/(\d{2})\s*@\s*(\d{2}):(\d{2})$/);
+42559:         if (!m) return NaN;
+42560:         const dd = Number(m[1]), mm = Number(m[2]), yy = Number(m[3]), hh = Number(m[4]), mi = Number(m[5]);
+42561:         if (![dd,mm,yy,hh,mi].every(Number.isFinite)) return NaN;
+42562:         // Stored timestamps are UTC; treat display as UTC for matching.
+42563:         return Date.UTC(2000 + yy, mm - 1, dd, hh, mi, 0, 0);
+42564:       }
+42565: 
+42566:       const pbKey = `${nameLC}|${best}`;
+42567:       const latestPbTs = keyTs.get(pbKey) || null; // Date (latest occurrence from official games)
+42568:       const rowWhenMs = parseWhenMs(tdWhen?.textContent || '');
+42569:       const matchLatest = (latestPbTs && Number.isFinite(rowWhenMs))
+42570:         ? Math.abs(latestPbTs.getTime() - rowWhenMs) <= 60 * 1000
+42571:         : true; // if we can't parse, don't block tagging
+42572: 
+42573:       if (!isGlobalTop && isPBScore && matchLatest && tdScore && !seenPB.has(nameLC) && !/\bPB\b/i.test(tdScore.innerHTML)) {
+42574:         const tag = document.createElement('span');
+42575:         tag.className = 'tag';
+42576:         tag.textContent = 'PB';
+42577:         tag.style.marginLeft = '6px';
+42578:         tdScore.appendChild(tag);
+42579:         seenPB.add(nameLC);
+42580:       }
+42581:     });
+42582: 
+42583:     // Save snapshot for next time
+42584:     savePos(next);
+42585:   }
+42586: 
+42587:   function tick(){ try { apply(); } catch(e){ console.error('HS Match v4 failed', e); } }
+42588:   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
+42589:   try { window.__sqUIMutationBus?.on(()=>tick()); } catch(_) {}
+42590: })();
+42591: 
+42592: // === T button flash + shake — v3 (Safari-safe; 1→2→3 only when T is pressed)
+42593: (function tButtonFXv3(){
+42594:   // CSS (proper injection)
+42595:   if (!document.getElementById('tfx-css')) {
+42596:     const s = document.createElement('style'); s.id = 'tfx-css';
+42597:     s.textContent =
+42598: `.tfx{will-change:transform,filter}
+42599: @keyframes tFlashLow{0%{filter:brightness(1);box-shadow:none}12%{filter:brightness(1.4);box-shadow:0 0 10px rgba(255,255,255,.5),0 0 18px rgba(77,163,255,.3)}30%{filter:brightness(1.05);box-shadow:none}100%{filter:brightness(1);box-shadow:none}}
+42600: @keyframes tFlashMed{0%{filter:brightness(1);box-shadow:none}10%{filter:brightness(1.9);box-shadow:0 0 16px rgba(255,255,255,.7),0 0 28px rgba(77,163,255,.4)}24%{filter:brightness(1.1);box-shadow:none}38%{filter:brightness(1.6);box-shadow:0 0 12px rgba(255,255,255,.5),0 0 22px rgba(77,163,255,.35)}100%{filter:brightness(1);box-shadow:none}}
+42601: @keyframes tFlashHigh{0%{filter:brightness(1);box-shadow:none}8%{filter:brightness(2.6);box-shadow:0 0 22px rgba(255,255,255,.85),0 0 40px rgba(77,163,255,.5)}18%{filter:brightness(1.1);box-shadow:none}28%{filter:brightness(2.2);box-shadow:0 0 18px rgba(255,255,255,.7),0 0 34px rgba(77,163,255,.45)}42%{filter:brightness(1.15);box-shadow:none}100%{filter:brightness(1);box-shadow:none}}
+42602: @keyframes tShakeLow{0%,100%{transform:translateX(0)}20%{transform:translateX(-2px)}40%{transform:translateX(2px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+42603: @keyframes tShakeMed{0%,100%{transform:translateX(0)}15%{transform:translateX(-5px)}30%{transform:translateX(5px)}45%{transform:translateX(-4px)}60%{transform:translateX(4px)}75%{transform:translateX(-3px)}}
+42604: @keyframes tShakeHigh{0%,100%{transform:translateX(0) rotate(0)}12%{transform:translateX(-8px) rotate(-1deg)}24%{transform:translateX(8px) rotate(1deg)}36%{transform:translateX(-7px) rotate(-.9deg)}48%{transform:translateX(7px) rotate(.9deg)}60%{transform:translateX(-6px) rotate(-.8deg)}72%{transform:translateX(6px) rotate(.8deg)}84%{transform:translateX(-4px) rotate(-.6deg)}}
+42605: .tfx.flash-low{animation:tFlashLow .22s ease-in-out,tShakeLow .22s linear}
+42606: .tfx.flash-med{animation:tFlashMed .34s ease-in-out,tShakeMed .34s linear}
+42607: .tfx.flash-high{animation:tFlashHigh .50s ease-in-out,tShakeHigh .50s linear}`;
+42608:     document.head.appendChild(s);
+42609:   }
+42610: 
+42611:   // Find the visible T button (label "T" or treble)
+42612:   function isT(el){
+42613:     if (!el) return false;
+42614:     const label = (el.textContent || el.getAttribute('aria-label') || el.title || '').trim().toUpperCase();
+42615:     const data  = ((el.dataset && (el.dataset.shot || el.dataset.kind || '')) || '').toUpperCase();
+42616:     const isBtn = /^(BUTTON|A)$/i.test(el.tagName) || el.hasAttribute('role');
+42617:     return isBtn && (label === 'T' || data === 'T' || /TREB|TREBLE/.test(label+data));
+42618:   }
+42619:   function findT(){ return Array.from(document.querySelectorAll('button,.btn,a,[role="button"]')).find(el => isT(el) && el.offsetParent); }
+42620: 
+42621:   // Press-order only: 1 -> 2 -> 3 -> 1 ... (only T presses advance)
+42622:   let count = 0;
+42623: 
+42624:   function animate(el){
+42625:     el.classList.add('tfx');
+42626:     el.classList.remove('flash-low','flash-med','flash-high');
+42627:     void el.offsetWidth; // restart
+42628:     el.classList.add(count===1 ? 'flash-low' : count===2 ? 'flash-med' : 'flash-high');
+42629:     setTimeout(() => el.classList.remove('flash-low','flash-med','flash-high'), 700);
+42630:   }
+42631: 
+42632:   function onPress(){
+42633:     const el = findT(); if (!el) return;
+42634:     count = (count % 3) + 1;     // 1→2→3→1…
+42635:     animate(el);
+42636:   }
+42637: 
+42638:   // Wire clicks only on T; keyboard 't' also triggers it
+42639:   function wire(){
+42640:     const btn = findT(); if (!btn || btn.dataset.tFxWired==='1') return;
+42641:     btn.dataset.tFxWired = '1';
+42642:     btn.addEventListener('click', onPress);
+42643:   }
+42644:   document.addEventListener('keydown', e => { if ((e.key||'').toLowerCase() === 't') onPress(); });
+42645: 
+42646:   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
+42647:   try { window.__sqUIMutationBus?.on(()=>wire()); } catch(_) {}
+42648: })();
+42649: 
+42650: // === D button flash + shake — v1 (1→2→3: Ultra-low → Low → Medium)
+42651: (function dButtonFX(){
+42652:   // CSS for D (kept separate from T)
+42653:   if (!document.getElementById('dfx-css')) {
+42654:     const s = document.createElement('style'); s.id = 'dfx-css';
+42655:     s.textContent =
+42656: `.dfx{will-change:transform,filter}
+42657: @keyframes dFlashUltra{0%{filter:brightness(1);box-shadow:none}18%{filter:brightness(1.2);box-shadow:0 0 6px rgba(255,255,255,.35),0 0 12px rgba(77,163,255,.20)}100%{filter:brightness(1);box-shadow:none}}
+42658: @keyframes dFlashLow{0%{filter:brightness(1);box-shadow:none}14%{filter:brightness(1.45);box-shadow:0 0 10px rgba(255,255,255,.45),0 0 18px rgba(77,163,255,.28)}100%{filter:brightness(1);box-shadow:none}}
+42659: @keyframes dFlashMed{0%{filter:brightness(1);box-shadow:none}12%{filter:brightness(1.7);box-shadow:0 0 14px rgba(255,255,255,.6),0 0 24px rgba(77,163,255,.35)}32%{filter:brightness(1.1);box-shadow:none}100%{filter:brightness(1);box-shadow:none}}
+42660: @keyframes dShakeUltra{0%,100%{transform:translateX(0)}25%{transform:translateX(-1px)}75%{transform:translateX(1px)}}
+42661: @keyframes dShakeLow{0%,100%{transform:translateX(0)}20%{transform:translateX(-3px)}40%{transform:translateX(3px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+42662: @keyframes dShakeMed{0%,100%{transform:translateX(0)}15%{transform:translateX(-5px)}30%{transform:translateX(5px)}45%{transform:translateX(-4px)}60%{transform:translateX(4px)}}
+42663: .dfx.flash-ultra{animation:dFlashUltra .18s ease-in-out,dShakeUltra .18s linear}
+42664: .dfx.flash-low{animation:dFlashLow .26s ease-in-out,dShakeLow .26s linear}
+42665: .dfx.flash-med{animation:dFlashMed .34s ease-in-out,dShakeMed .34s linear}`;
+42666:     document.head.appendChild(s);
+42667:   }
+42668: 
+42669:   // Find the visible D button (label "D" or "Double")
+42670:   function isD(el){
+42671:     if (!el) return false;
+42672:     const label = (el.textContent || el.getAttribute('aria-label') || el.title || '').trim().toUpperCase();
+42673:     const data  = ((el.dataset && (el.dataset.shot || el.dataset.kind || '')) || '').toUpperCase();
+42674:     const isBtn = /^(BUTTON|A)$/i.test(el.tagName) || el.hasAttribute('role');
+42675:     return isBtn && (label === 'D' || data === 'D' || /DOUBLE/.test(label+data));
+42676:   }
+42677:   function findD(){ return Array.from(document.querySelectorAll('button,.btn,a,[role="button"]')).find(el => isD(el) && el.offsetParent); }
+42678: 
+42679:   // Press-order only for D (independent of T/S)
+42680:   let dCount = 0;
+42681: 
+42682:   function animate(el){
+42683:     el.classList.add('dfx');
+42684:     el.classList.remove('flash-ultra','flash-low','flash-med');
+42685:     void el.offsetWidth; // restart
+42686:     el.classList.add(dCount===1 ? 'flash-ultra' : dCount===2 ? 'flash-low' : 'flash-med');
+42687:     setTimeout(()=> el.classList.remove('flash-ultra','flash-low','flash-med'), 600);
+42688:   }
+42689: 
+42690:   function onPressD(){
+42691:     const el = findD(); if (!el) return;
+42692:     dCount = (dCount % 3) + 1;   // 1 (ultra-low) → 2 (low) → 3 (medium)
+42693:     animate(el);
+42694:   }
+42695: 
+42696:   // Wire clicks only on D; keyboard 'd' also triggers it
+42697:   function wire(){
+42698:     const btn = findD(); if (!btn || btn.dataset.dFxWired==='1') return;
+42699:     btn.dataset.dFxWired = '1';
+42700:     btn.addEventListener('click', onPressD);
+42701:   }
+42702:   document.addEventListener('keydown', e => { if ((e.key||'').toLowerCase() === 'd') onPressD(); });
+42703: 
+42704:   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
+42705:   try { window.__sqUIMutationBus?.on(()=>wire()); } catch(_) {}
+42706: })();
+42707: 
+42708: // === S button flash + shake — v1 (1→2→3: Ultra-ultra low → Ultra low → Low)
+42709: (function sButtonFX(){
+42710:   // CSS for S
+42711:   if (!document.getElementById('sfx-css')) {
+42712:     const s = document.createElement('style'); s.id = 'sfx-css';
+42713:     s.textContent =
+42714: `.sfx{will-change:transform,filter}
+42715: @keyframes sFlashXXL{0%{filter:brightness(1);box-shadow:none}
+42716:   18%{filter:brightness(1.12);box-shadow:0 0 4px rgba(255,255,255,.25),0 0 8px rgba(77,163,255,.15)}
+42717:   100%{filter:brightness(1);box-shadow:none}}
+42718: @keyframes sFlashUltra{0%{filter:brightness(1);box-shadow:none}
+42719:   16%{filter:brightness(1.25);box-shadow:0 0 6px rgba(255,255,255,.35),0 0 12px rgba(77,163,255,.20)}
+42720:   100%{filter:brightness(1);box-shadow:none}}
+42721: @keyframes sFlashLow{0%{filter:brightness(1);box-shadow:none}
+42722:   14%{filter:brightness(1.4);box-shadow:0 0 9px rgba(255,255,255,.45),0 0 16px rgba(77,163,255,.25)}
+42723:   100%{filter:brightness(1);box-shadow:none}}
+42724: @keyframes sShakeXXL{0%,100%{transform:translateX(0)}
+42725:   50%{transform:translateX(.4px)}}
+42726: @keyframes sShakeUltra{0%,100%{transform:translateX(0)}
+42727:   25%{transform:translateX(-.8px)}75%{transform:translateX(.8px)}}
+42728: @keyframes sShakeLow{0%,100%{transform:translateX(0)}
+42729:   20%{transform:translateX(-2px)}40%{transform:translateX(2px)}}
+42730: .sfx.flash-xxl{animation:sFlashXXL .16s ease-in-out, sShakeXXL .16s linear}
+42731: .sfx.flash-ultra{animation:sFlashUltra .20s ease-in-out, sShakeUltra .20s linear}
+42732: .sfx.flash-low{animation:sFlashLow .26s ease-in-out, sShakeLow .26s linear}`;
+42733:     document.head.appendChild(s);
+42734:   }
+42735: 
+42736:   // Find the visible S button (label "S" or "Single")
+42737:   function isS(el){
+42738:     if (!el) return false;
+42739:     const label = (el.textContent || el.getAttribute('aria-label') || el.title || '').trim().toUpperCase();
+42740:     const data  = ((el.dataset && (el.dataset.shot || el.dataset.kind || '')) || '').toUpperCase();
+42741:     const isBtn = /^(BUTTON|A)$/i.test(el.tagName) || el.hasAttribute('role');
+42742:     return isBtn && (label === 'S' || /SINGLE/.test(label+data) || data === 'S');
+42743:   }
+42744:   function findS(){
+42745:     return Array.from(document.querySelectorAll('button,.btn,a,[role="button"]'))
+42746:       .find(el => isS(el) && el.offsetParent);
+42747:   }
+42748: 
+42749:   // Press-order only for S (independent of T/D)
+42750:   let sCount = 0;
+42751: 
+42752:   function animate(el){
+42753:     el.classList.add('sfx');
+42754:     el.classList.remove('flash-xxl','flash-ultra','flash-low');
+42755:     void el.offsetWidth; // restart
+42756:     el.classList.add(sCount===1 ? 'flash-xxl' : sCount===2 ? 'flash-ultra' : 'flash-low');
+42757:     setTimeout(()=> el.classList.remove('flash-xxl','flash-ultra','flash-low'), 500);
+42758:   }
+42759: 
+42760:   function onPressS(){
+42761:     const el = findS(); if (!el) return;
+42762:     sCount = (sCount % 3) + 1;   // 1 (XXL) → 2 (Ultra) → 3 (Low)
+42763:     animate(el);
+42764:   }
+42765: 
+42766:   // Wire clicks on S; keyboard 's' also triggers it
+42767:   function wire(){
+42768:     const btn = findS(); if (!btn || btn.dataset.sFxWired==='1') return;
+42769:     btn.dataset.sFxWired = '1';
+42770:     btn.addEventListener('click', onPressS);
+42771:   }
+42772:   document.addEventListener('keydown', e => { if ((e.key||'').toLowerCase() === 's') onPressS(); });
+42773: 
+42774:   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else wire();
+42775:   try { window.__sqUIMutationBus?.on(()=>wire()); } catch(_) {}
+42776: })();
+42777: 
+42778: // === MISS button — red glow (1→2→3: soft → medium → high) ==================
+42779: (function missButtonFX(){
+42780:   // CSS for MISS
+42781:   if (!document.getElementById('mfx-css')) {
+42782:     const s = document.createElement('style'); s.id = 'mfx-css';
+42783:     s.textContent =
+42784:     ` .missfx{will-change:filter,box-shadow,transform,background-color}
+42785: 
+42786: /* existing glow tweaked to pair with bg pulse */
+42787: @keyframes mGlowSoft{
+42788:   0%{filter:brightness(1);box-shadow:none}
+42789:   20%{filter:brightness(1.15);box-shadow:0 0 10px rgba(244,63,94,.45),0 0 20px rgba(244,63,94,.25)}
+42790:   100%{filter:brightness(1);box-shadow:none}
+42791: }
+42792: @keyframes mGlowMed{
+42793:   0%{filter:brightness(1);box-shadow:none}
+42794:   18%{filter:brightness(1.35);box-shadow:0 0 16px rgba(244,63,94,.6),0 0 28px rgba(244,63,94,.35)}
+42795:   40%{filter:brightness(1.1);box-shadow:none}
+42796:   100%{filter:brightness(1);box-shadow:none}
+42797: }
+42798: @keyframes mGlowHigh{
+42799:   0%{filter:brightness(1);box-shadow:none;transform:scale(1)}
+42800:   14%{filter:brightness(1.6);box-shadow:0 0 22px rgba(244,63,94,.75),0 0 40px rgba(244,63,94,.45);transform:scale(1.02)}
+42801:   30%{filter:brightness(1.2);box-shadow:0 0 12px rgba(244,63,94,.45),0 0 26px rgba(244,63,94,.30);transform:scale(1.01)}
+42802:   100%{filter:brightness(1);box-shadow:none;transform:scale(1)}
+42803: }
+42804: 
+42805: /* pulse the actual red background from --miss-from to --miss-to and back */
+42806: @keyframes mBgPulse{
+42807:   0%  { background-color: var(--miss-from); }
+42808:   22% { background-color: var(--miss-to);   }
+42809:   100%{ background-color: var(--miss-from); }
+42810: }
+42811: 
+42812: /* combine glow + bg pulse; durations match levels */
+42813: .missfx.glow-soft{animation: mGlowSoft .26s ease-out, mBgPulse .26s ease-in-out}
+42814: .missfx.glow-med {animation: mGlowMed  .34s ease-out, mBgPulse .34s ease-in-out}
+42815: .missfx.glow-high{animation: mGlowHigh .44s ease-out, mBgPulse .44s ease-in-out}`
+42816:     
+42817:     document.head.appendChild(s);
+42818:   }
+42819: 
+42820:   // Find the visible MISS button (label "MISS"; allow 'X' only if marked as miss)
+42821:   function isMISS(el){
+42822:     if (!el) return false;
+42823:     const label = (el.textContent || el.getAttribute('aria-label') || el.title || '').trim();
+42824:     const up    = label.toUpperCase();
+42825:     const data  = ((el.dataset && (el.dataset.kind || el.dataset.shot || '')) || '').toLowerCase();
+42826:     const isBtn = /^(BUTTON|A)$/i.test(el.tagName) || el.hasAttribute('role');
+42827:     if (!isBtn) return false;
+42828:     if (up === 'MISS') return true;
+42829:     // Accept "X" only if metadata indicates miss
+42830:     if (up === 'X' && /miss/.test(data + ' ' + (el.getAttribute('aria-label')||'').toLowerCase())) return true;
+42831:     return /miss/.test(data);
+42832:   }
+42833:   function findMISS(){
+42834:     return Array.from(document.querySelectorAll('button,.btn,a,[role="button"]'))
+42835:       .find(el => isMISS(el) && el.offsetParent);
+42836:   }
+42837: 
+42838:   // Press-order only for MISS (independent)
+42839:   let mCount = 0;
+42840: 
+42841:   function animate(el){
+42842:     el.classList.add('missfx');
+42843:     el.classList.remove('glow-soft','glow-med','glow-high');
+42844:     void el.offsetWidth; // restart
+42845:     el.classList.add(mCount===1 ? 'glow-soft' : mCount===2 ? 'glow-med' : 'glow-high');
+42846:   }
+42847: 
+42848:   function onPressMISS(){
+42849:     const el = findMISS(); if (!el) return;
+42850:     mCount = (mCount % 3) + 1; // 1 soft → 2 med → 3 high
+42851:     animate(el);
+42852:   }
+42853: 
+42854:   // Wire clicks on MISS; keyboard 'm' also triggers it
+42855:   function wire(){
+42856:     const btn = findMISS(); if (!btn || btn.dataset.mFxWired==='1') return;
+
+43665:     ctx.fillText('50', cx - 16, cy - R/2 - 4);
+43666:     ctx.fillText('100', cx - 18, cy - R + 10);
+43667:   }
+43668: 
+43669:   function drawMultiLine(canvas, xLabels, seriesMap){
+43670:     const ctx = canvas.getContext('2d');
+43671:     const W = canvas.width, H = canvas.height;
+43672:     ctx.clearRect(0,0,W,H);
+43673: 
+43674:     const padL=44, padR=10, padT=12, padB=34;
+43675:     const chartW = W - padL - padR;
+43676:     const chartH = H - padT - padB;
+43677: 
+43678:     // Y max fixed at 100%
+43679:     const maxY = 100;
+43680: 
+43681:     // axes
+43682:     ctx.globalAlpha = 0.35;
+43683:     ctx.strokeStyle = '#ffffff';
+43684:     ctx.lineWidth = 1;
+43685:     ctx.beginPath();
+43686:     ctx.moveTo(padL, padT);
+43687:     ctx.lineTo(padL, H-padB);
+43688:     ctx.lineTo(W-padR, H-padB);
+43689:     ctx.stroke();
+43690:     ctx.globalAlpha = 1;
+43691: 
+43692:     // y labels
+43693:     ctx.fillStyle = 'rgba(255,255,255,0.75)';
+43694:     ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+43695:     ctx.textAlign = 'right';
+43696:     ctx.fillText('100', padL-6, padT+12);
+43697:     ctx.fillText('50',  padL-6, padT + chartH/2 + 4);
+43698:     ctx.fillText('0',   padL-6, H-padB);
+43699: 
+43700:     const n = xLabels.length || 1;
+43701:     const stepX = (n<=1) ? chartW : (chartW/(n-1));
+43702: 
+43703:     // x labels sparse
+43704:     ctx.textAlign = 'center';
+43705:     const step = Math.ceil(n/6);
+43706:     for (let i=0;i<n;i+=step){
+43707:       const lab = xLabels[i] || '';
+43708:       const x = padL + i*stepX;
+43709:       ctx.fillText(lab, x, H-10);
+43710:     }
+43711: 
+43712:     const keys = Object.keys(seriesMap||{});
+43713:     const palette = ['#34d399','#60a5fa','#f472b6','#fbbf24','#a78bfa','#fb7185','#22d3ee','#c084fc','#86efac','#fde047','#93c5fd','#fda4af','#fca5a5','#67e8f9'];
+43714:     keys.forEach((k, idx)=>{
+43715:       const vals = seriesMap[k] || [];
+43716:       const col = palette[idx % palette.length];
+43717:       ctx.strokeStyle = col;
+43718:       ctx.lineWidth = (idx===0? 2.8 : 2.2);
+43719:       ctx.beginPath();
+43720:       for (let i=0;i<n;i++){
+43721:         const v = Number(vals[i]);
+43722:         const yy = Number.isFinite(v) ? v : 0;
+43723:         const x = padL + i*stepX;
+43724:         const y = (H-padB) - (yy/maxY)*chartH;
+43725:         if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+43726:       }
+43727:       ctx.stroke();
+43728:     });
+43729:   }
+43730: 
+43731:   async function fetchPlayerThrowsWithTs(playerName){
+43732:     const name = String(playerName||'').trim();
+43733:     const nameLC = safeLower(name);
+43734: 
+43735:     // --- Preferred: Supabase canonical view (one row per throw) ---
+43736:     // Columns (confirmed): match_id, game_number, created_at, player_index, player_name,
+43737:     // round_number, target, ring, hit
+43738:     // NOTE: This view is read-only; ideal for analytics.
+43739:     try{
+43740:       if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) throw new Error('Cloud not initialised');
+43741:       if (!sb) throw new Error('Supabase client missing');
+43742: 
+43743:       const VIEW = 'throw_events_v';
+43744: 
+43745:       const selectCols = 'created_at,player_name,round_number,target,ring,hit';
+43746:       const rows = [];
+43747:       const PAGE = 1000;
+43748:       const MAX = 50000;
+43749: 
+43750:       for (let from = 0; from < MAX; from += PAGE){
+43751:         const to = from + PAGE - 1;
+43752:         const { data, error } = await sb
+43753:           .from(VIEW)
+43754:           .select(selectCols)
+43755:           .ilike('player_name', name)
+43756:           .order('created_at', { ascending: true })
+43757:           .range(from, to);
+43758:         if (error) throw error;
+43759:         if (Array.isArray(data) && data.length) rows.push(...data);
+43760:         if (!Array.isArray(data) || data.length < PAGE) break;
+43761:       }
+43762: 
+43763:       // Map view row -> internal throw row used by SPIDER/PROGRESS
+43764:       const mapped = (rows||[]).map(r => {
+43765:         const rn = Number(r.round_number);
+43766:         let round_index = null;
+43767: 
+43768:         // Robust mapping: different schemas encode rounds differently.
+43769:         // Supported encodings:
+43770:         //  A) round_number = 10..20 (numbers), 21 (Doubles), 22 (Triples), 23 (Bull)
+43771:         //  B) round_number = 1..11 (maps to 10..20), 12 (Doubles), 13 (Triples), 14 (Bull)
+43772:         //  C) round_number = 0..13 (direct index)
+43773: 
+43774:         if (Number.isFinite(rn)) {
+43775:           // C) direct index
+43776:           if (rn >= 0 && rn <= 13) {
+43777:             round_index = rn;
+43778:           }
+43779:           // B) 1..11 -> 10..20, then 12/13/14
+43780:           else if (rn >= 1 && rn <= 11) {
+43781:             round_index = rn - 1;
+43782:           } else if (rn === 12) {
+43783:             round_index = 11;
+43784:           } else if (rn === 13) {
+43785:             round_index = 12;
+43786:           } else if (rn === 14) {
+43787:             round_index = 13;
+43788:           }
+43789:           // A) 10..20, 21/22/23
+43790:           else if (rn >= 10 && rn <= 20) {
+43791:             round_index = rn - 10;
+43792:           } else if (rn === 21) {
+43793:             round_index = 11;
+43794:           } else if (rn === 22) {
+43795:             round_index = 12;
+43796:           } else if (rn === 23) {
+43797:             round_index = 13;
+43798:           }
+43799:         }
+43800: 
+43801:         // Last-resort fallback: infer from target/ring
+43802:         if (round_index == null) {
+43803:           const ring = String(r.ring || '').trim().toUpperCase();
+43804:           const target = Number(r.target);
+43805:           if (Number.isFinite(target) && target >= 10 && target <= 20) round_index = target - 10;
+43806:           else if (ring === 'D') round_index = 11;
+43807:           else if (ring === 'T') round_index = 12;
+43808:           else if (ring === 'B' || ring === 'IB' || ring === 'OB') round_index = 13;
+43809:         }
+43810: 
+43811:                 const ts = r.created_at || null;
+43812: 
+43813:         const ri = (typeof round_index === 'number') ? round_index : null;
+43814:         const ringU = String(r.ring || '').trim().toUpperCase();
+43815:         const targetN = Number(r.target);
+43816: 
+43817:         // Normalise ring -> kind used by the app
+43818:         const kind =
+43819:           (ringU === 'D')  ? 'd'  :
+43820:           (ringU === 'T')  ? 't'  :
+43821:           (ringU === 'IB') ? 'ib' :
+43822:           (ringU === 'OB') ? 'ob' :
+43823:           (ringU === 'B')  ? 'b'  :
+43824:           's';
+43825: 
+43826:         // Canonical Target Hit% "hit" definition (do NOT trust view.hit)
+43827:         const hit =
+43828:           (ri != null && ri >= 0 && ri <= 10) ? (ringU === 'S' || ringU === 'D' || ringU === 'T') :
+43829:           (ri === 11) ? (ringU === 'D') :
+43830:           (ri === 12) ? (ringU === 'T') :
+43831:           (ri === 13) ? (ringU === 'IB' || ringU === 'OB' || ringU === 'B') :
+43832:           false;
+43833: 
+43834:         // Points (robust for any points-based stat elsewhere)
+43835:         let points = 0;
+43836:         if (hit && ri != null) {
+43837:           if (ri >= 0 && ri <= 10) {
+43838:             const base = 10 + ri;
+43839:             points = (ringU === 'D') ? base * 2 : (ringU === 'T') ? base * 3 : base;
+43840:           } else if (ri === 11) {
+43841:             points = Number.isFinite(targetN) ? targetN * 2 : 0;
+43842:           } else if (ri === 12) {
+43843:             points = Number.isFinite(targetN) ? targetN * 3 : 0;
+43844:           } else if (ri === 13) {
+43845:             if (ringU === 'IB') points = 50;
+43846:             else if (ringU === 'OB') points = 25;
+43847:             else if (ringU === 'B') points = (targetN === 25) ? 25 : 50;
+43848:           }
+43849:         }
+43850: 
+43851:         return {
+43852:           game_id: r.match_id || null,
+43853:           player: r.player_name || name,
+43854:           round_index,
+43855:           dart_index: null,
+43856:           points,
+43857:           kind,
+43858:           hit,
+43859:           ts
+43860:         };
+43861:       }).filter(x => safeLower(x.player) === nameLC);
+43862: 
+43863:       return mapped;
+43864:     }catch(e){
+43865:       console.warn('[throws] throw_events_v not available, falling back to game boards', e);
+43866:     }
+43867: 
+43868:     // --- Fallback: reconstruct from official games (local-normalised) ---
+43869:     const gamesAll = (await __fetchOfficialGames(50000)).map(__normalizeGame);
+43870:     const rows = __throwsFromGamesForPlayer(name, gamesAll);
+43871:     // Attach timestamps from games if available
+43872:     const gameTs = new Map();
+43873:     gamesAll.forEach(g => {
+43874:       const gid = (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id;
+43875:       if (gid && g.ts) gameTs.set(gid, g.ts);
+43876:     });
+43877: 
+43878:     return (rows||[]).map(r => {
+43879:       const ts = r.ts || gameTs.get(r.game_id) || null;
+43880:       const hit = Number(r.points||0) > 0;
+43881:       return Object.assign({}, r, { ts, hit });
+43882:     }).filter(r => safeLower(r.player) === nameLC);
+43883:   }
+43884: 
+43885:   window.openPlayerSpiderDialog = async function openPlayerSpiderDialog(playerName, opts){
+43886:     const name = String(playerName||'').trim();
+43887:     const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+43888:     const modal   = document.createElement('div'); modal.className  ='modal';
+43889:   modal.style.maxWidth='980px'; modal.style.width='94vw';
+43890:     const title   = document.createElement('h3');  title.textContent=`SPIDER — ${name}`;
+43891:     const body    = document.createElement('div'); body.className   ='modal-body';
+43892:     const footer  = document.createElement('div'); footer.className ='modal-footer';
+43893:     modal.style.maxHeight='90vh'; modal.style.overflow='hidden';
+43894:     body.style.maxHeight='none'; body.style.overflowY='visible';
+43895: 
+43896:     const wrap = document.createElement('div');
+43897:     wrap.style.display='flex';
+43898:     wrap.style.flexDirection='column';
+43899:     wrap.style.alignItems='center';
+43900:     wrap.style.gap='10px';
+43901: 
+43902:     const canvas = document.createElement('canvas');
+43903:     canvas.width = 360; canvas.height = 360;
+43904:     canvas.style.width = 'min(360px, 92vw)';
+43905:     canvas.style.height= 'auto';
+43906:     canvas.style.borderRadius = '14px';
+43907:     canvas.style.border = '1px solid rgba(35,164,255,.25)';
+43908:     canvas.style.background = 'radial-gradient(circle at 50% 42%, rgba(37,58,114,.5), rgba(10,16,38,.95) 66%, rgba(4,7,18,.98))';
+43909:     canvas.style.boxShadow = '0 10px 26px rgba(0,0,0,.4), 0 0 24px rgba(47,134,255,.10)';
+43910: 
+43911:     const note = document.createElement('div');
+43912:     note.className='muted';
+43913:     note.style.cssText='display:flex;justify-content:center;gap:10px;flex-wrap:wrap;min-height:30px;align-items:center;';
+43914:     note.textContent='Loading…';
+43915:     // Summary chips: selected target (when tapped) + BEST / FOCUS
+43916:     const renderSummary = (labels, pct, selIdx) => {
+43917:       try{
+43918:         const vals = (labels||[]).map((l,i)=>({ l:String(l), v:Number(pct && pct[i] || 0) })).filter(x=>Number.isFinite(x.v));
+43919:         if (!vals.length){ note.textContent=''; return; }
+43920:         const best = vals.reduce((a,b)=> b.v>a.v?b:a);
+43921:         const worst = vals.reduce((a,b)=> b.v<a.v?b:a);
+43922:         const chip = (label, val, color) =>
+43923:           '<span style="display:inline-flex;align-items:center;gap:7px;padding:6px 14px;border-radius:99px;'
+43924:           + 'background:#101827;border:1px solid ' + color + ';color:#e8f4ff;font-weight:800;font-size:12px;letter-spacing:.06em;">'
+43925:           + label + ' <b style="color:' + color + ';font-size:13px;">' + val + '</b></span>';
+43926:         let html = '';
+43927:         if (selIdx != null && labels[selIdx] != null){
+43928:           html += chip('TARGET ' + labels[selIdx], Math.round(Number(pct[selIdx]||0)) + '%', 'rgba(255,255,255,.9)');
+43929:         }
+43930:         html += chip('BEST ' + best.l, Math.round(best.v) + '%', 'rgba(115,240,126,.9)')
+43931:              +  chip('FOCUS ' + worst.l, Math.round(worst.v) + '%', 'rgba(255,140,40,.9)');
+43932:         note.innerHTML = html;
+43933:       }catch(_e){ note.textContent=''; }
+43934:     };
+43935: 
+43936:     // Radar-sweep reveal + tap a spoke/label to spotlight one target
+43937:     let spiderRaf = 0;
+43938:     const showRadar = (labels, pct) => {
+43939:       canvas.__sqSpider = { labels, pct, sel:null };
+43940:       cancelAnimationFrame(spiderRaf);
+43941:       let reduce = false;
+43942:       try{ reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_e){}
+43943:       const dur = reduce ? 0 : 780;
+43944:       const start = performance.now();
+43945:       const step = now => {
+43946:         const raw = dur ? Math.min(1, (now - start) / dur) : 1;
+43947:         drawRadar(canvas, labels, pct, { t:raw, sel:null });
+43948:         if (raw < 1) spiderRaf = requestAnimationFrame(step);
+43949:       };
+43950:       spiderRaf = requestAnimationFrame(step);
+43951:       renderSummary(labels, pct, null);
+43952:     };
+43953:     canvas.style.cursor = 'pointer';
+43954:     canvas.addEventListener('click', e => {
+43955:       const s = canvas.__sqSpider;
+43956:       if (!s || !s.labels || !s.labels.length) return;
+43957:       const r = canvas.getBoundingClientRect();
+43958:       const scale = canvas.width / Math.max(1, r.width);
+43959:       const x = (e.clientX - r.left) * scale, y = (e.clientY - r.top) * scale;
+43960:       const cx = canvas.width / 2, cy = canvas.height / 2;
+43961:       const dx = x - cx, dy = y - cy;
+43962:       const R = Math.min(canvas.width, canvas.height) * 0.355;
+43963:       if (Math.hypot(dx, dy) > R + 44) return;
+43964:       const N = s.labels.length;
+43965:       let theta = Math.atan2(dy, dx) + Math.PI / 2;
+43966:       if (theta < 0) theta += Math.PI * 2;
+43967:       const idx = Math.round(theta / (2 * Math.PI / N)) % N;
+43968:       s.sel = (s.sel === idx) ? null : idx;
+43969:       cancelAnimationFrame(spiderRaf);
+43970:       drawRadar(canvas, s.labels, s.pct, { t:1, sel:s.sel });
+43971:       renderSummary(s.labels, s.pct, s.sel);
+43972:     });
+43973: 
+43974:     wrap.append(canvas, note);
+43975:     body.appendChild(wrap);
+43976: 
+43977:     const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
+43978:     const parentOverlay = opts && opts.parentOverlay ? opts.parentOverlay : null;
+43979:     const backToPrev = () => {
+43980:       overlay.remove();
+43981:       if (parentOverlay){ parentOverlay.style.display=''; try{ parentOverlay.querySelector('.modal')?.focus?.(); }catch(_e){} return; }
+43982:       if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name);
+43983:       else if (typeof window.openPlayerStatsHub==='function') window.openPlayerStatsHub(name);
+43984:     };
+43985:     backBtn.onclick = backToPrev;
+43986:     footer.append(backBtn);
+43987: 
+43988:     modal.append(title, body, footer);
+43989:     overlay.appendChild(modal);
+43990:     document.body.appendChild(overlay);
+43991:     __sqStatsArcade(overlay, modal);
+43992:     overlay.addEventListener('click',e=>{ if(e.target===overlay) backToPrev();});
+43993:     overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') backToPrev();});
+43994:     modal.tabIndex=0; modal.focus();
+43995: 
+43996:     try{
+43997:       const mode = (opts && opts.mode) ? String(opts.mode).toLowerCase() : 'hit';
+43998:       const data = (opts && opts.data) ? opts.data : null;
+43999: 
+44000:       if (mode === 'points' && data && Array.isArray(data.labels) && Array.isArray(data.pct)) {
+44001:         const labels = data.labels.slice();
+44002:         const pct = data.pct.slice();
+44003:         showRadar(labels, pct);
+44004:         return;
+44005:       }
+44006: 
+44007:       if (mode === 'dtb' && data && Array.isArray(data.labels) && Array.isArray(data.pctD) && Array.isArray(data.pctT)) {
+44008:         const labels = data.labels.slice();
+44009:         const pctD = data.pctD.slice();
+44010:         const pctT = data.pctT.slice();
+44011: 
+44012:         const toggleRow = document.createElement('div');
+44013:         toggleRow.className='row';
+44014:         toggleRow.style.gap='8px';
+44015:         toggleRow.style.justifyContent='center';
+44016:         toggleRow.style.flexWrap='wrap';
+44017:         toggleRow.dataset.dtbToggle='1';
+44018: 
+44019:         const btnD = document.createElement('button'); btnD.className='btn small primary'; btnD.textContent='DOUBLES';
+44020:         const btnT = document.createElement('button'); btnT.className='btn small'; btnT.textContent='TREBLES';
+44021: 
+44022:         let which = 'd';
+44023:         const renderDTB = () => {
+44024:           if (which === 'd') {
+44025:             btnD.classList.add('primary'); btnT.classList.remove('primary');
+44026:             showRadar(labels, pctD);
+44027:           } else {
+44028:             btnT.classList.add('primary'); btnD.classList.remove('primary');
+44029:             showRadar(labels, pctT);
+44030:           }
+44031:         };
+44032: 
+44033:         btnD.onclick = ()=>{ which='d'; renderDTB(); };
+44034:         btnT.onclick = ()=>{ which='t'; renderDTB(); };
+44035: 
+44036:         if (!wrap.querySelector('[data-dtb-toggle="1"]')) {
+44037:           toggleRow.append(btnD, btnT);
+44038:           wrap.insertBefore(toggleRow, canvas);
+44039:         }
+44040: 
+44041:         renderDTB();
+44042:         return;
+44043:       }
+44044: 
+44045:       // Default: Hit % spider (10–20, D, T, B)
+44046:       const labels = (data && Array.isArray(data.labels)) ? data.labels : __roundLabels();
+44047:       let pct = (data && Array.isArray(data.pct)) ? data.pct.slice(0, labels.length) : null;
+44048: 
+44049:       if (!pct){
+44050:         const rows = await fetchPlayerThrowsWithTs(name);
+44051:         const taken = Array(14).fill(0), hits = Array(14).fill(0);
+44052:         rows.forEach(t=>{
+44053:           const r = (typeof t.round_index==='number') ? t.round_index : null;
+44054:           if (r==null || r<0 || r>13) return;
+44055:           taken[r] += 1;
+44056:           if ((t.hit===true) || (Number(t.points||0)>0)) hits[r] += 1;
+44057:         });
+44058:         pct = taken.map((n,i)=> n ? (100*hits[i]/n) : 0);
+44059:       }
+44060: 
+44061:       showRadar(labels, pct);
+44062:     }catch(e){
+44063:       console.error('SPIDER failed', e);
+44064:       note.textContent = 'Could not load data.';
+44065:     }
+44066:   };
+44067: 
+44068:   window.openPlayerProgressHitDialog = async function openPlayerProgressHitDialog(playerName, opts={}){
+44069:     const name = String(playerName||'').trim();
+44070:     const mode = String((opts && opts.mode) || 'hit').toLowerCase(); // hit | points | dtb
+44071:     const parentOverlay = opts && opts.parentOverlay ? opts.parentOverlay : null;
+44072: 
+44073:     // --- modal shell (match Game Race / Progression styling) ---
+44074:     const overlay = document.createElement('div'); overlay.className='modal-backdrop';
+44075:     const modal   = document.createElement('div'); modal.className='modal wide';
+44076:     modal.style.maxWidth = '920px';
+44077:     modal.style.width = 'min(920px, 96vw)';
+44078:     modal.style.maxHeight = '90vh';
+44079:     modal.style.overflow = 'hidden';
+44080: 
+44081:     const title = document.createElement('h3');
+44082:     title.textContent = (mode==='points') ? `TARGET POINTS % — ${name}` : (mode==='dtb' ? `DTB % — ${name}` : `TARGET HIT % — ${name}`);
+44083: 
+44084:     const body = document.createElement('div'); body.className='modal-body';
+44085:     body.style.overflow = 'auto'; body.style.overflowY = 'hidden';
+44086: 
+44087:     const footer = document.createElement('div'); footer.className='modal-footer';
+44088:     const backBtn=document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
+44089: 
+44090:     const backToPrev = () => {
+44091:       overlay.remove();
+44092:       if (parentOverlay){ parentOverlay.style.display=''; try{ parentOverlay.querySelector('.modal')?.focus?.(); }catch(_e){} return; }
+44093:       if (typeof window.openPlayerStatsModePicker==='function') window.openPlayerStatsModePicker(name);
+44094:       else if (typeof window.openPlayerStatsHub==='function') window.openPlayerStatsHub(name);
+44095:     };
+44096:     backBtn.onclick = backToPrev;
+44097:     footer.append(backBtn);
+44098: 
+44099:     // --- controls ---
+44100:     const controls = document.createElement('div');
+44101:     controls.style.display='flex';
+44102:     controls.style.flexDirection='column';
+44103:     controls.style.gap='10px';
+44104: 
+44105:     const avgRow = document.createElement('div');
+44106:     avgRow.style.display='flex';
+44107:     avgRow.style.gap='8px';
+44108:     avgRow.style.flexWrap='wrap';
+44109: 
+44110:     const avgBtns = [
+44111:       { key:'game4', label:'4 Game AV' },
+44112:       { key:'avg10', label:'10 Game AV' },
+44113:       { key:'avg20', label:'20 Game AV' }
+44114:     ];
+44115: 
+44116:     const targetRow = document.createElement('div');
+44117:     targetRow.style.display='flex';
+44118:     targetRow.style.gap='8px';
+44119:     targetRow.style.flexWrap='wrap';
+44120: 
+44121:     // Targets: 10..20 plus D/T/B (single-select)
+44122:     const targets = [];
+44123:     for (let n=10;n<=20;n++) targets.push({ key:String(n), label:String(n) });
+44124:     targets.push({ key:'D', label:'D' }, { key:'T', label:'T' }, { key:'B', label:'B' });
+44125: 
+44126:     let selectedTarget = '10';
+44127:     let avgMode = (opts && opts.avgMode) ? String(opts.avgMode) : 'game4';
+44128:     if (!['game4','avg10','avg20'].includes(avgMode)) avgMode = 'game4';
+44129: 
+44130:     function makePillButton(label, isActive=false){
+44131:       const b=document.createElement('button');
+44132:       b.className='btn tiny';
+44133:       b.textContent=label;
+44134:       b.style.borderRadius='999px';
+44135:       b.style.padding='6px 10px';
+44136:       b.style.fontSize='12px';
+44137:       b.style.letterSpacing='.06em';
+44138:       b.style.textTransform='uppercase';
+44139:       b.style.opacity = isActive ? '1' : '.75';
+44140:       b.style.borderColor = isActive ? 'rgba(255,140,0,.65)' : 'rgba(255,255,255,.14)';
+44141:       b.style.boxShadow = isActive ? '0 0 0 2px rgba(255,140,0,.10) inset' : 'none';
+44142:       return b;
+44143:     }
+44144: 
+44145:     function renderButtons(){
+44146:       avgRow.innerHTML='';
+44147:       avgBtns.forEach(it=>{
+44148:         const b = makePillButton(it.label, avgMode===it.key);
+44149:         b.onclick = () => { avgMode = it.key; renderButtons(); draw(); };
+44150:         avgRow.appendChild(b);
+44151:       });
+44152: 
+44153:       targetRow.innerHTML='';
+44154:       targets.forEach(it=>{
+44155:         const b = makePillButton(it.label, selectedTarget===it.key);
+44156:         b.onclick = () => { selectedTarget = it.key; renderButtons(); draw(); };
+44157:         targetRow.appendChild(b);
+44158:       });
+44159:     }
+44160: 
+44161:     // --- chart ---
+44162:     const canvas = document.createElement('canvas');
+44163:     canvas.width = 860;
+44164:     canvas.height = 420;
+44165:     canvas.style.width = 'auto'; canvas.style.display='block';
+44166:     canvas.style.height = 'auto';
+44167:     canvas.style.borderRadius = '14px';
+44168:     canvas.style.background = 'rgba(0,0,0,.18)';
+44169:     canvas.style.border = '1px solid rgba(255,255,255,.08)';
+44170: 
+44171:     const note = document.createElement('div');
+44172:     note.className='muted';
+44173:     note.style.display='flex';
+44174:     note.style.justifyContent='space-between';
+44175:     note.style.gap='10px';
+44176:     note.style.marginTop='6px';
+44177:     note.style.fontSize='12px';
+44178:     note.innerHTML = '';
+44179: 
+44180:     controls.appendChild(avgRow);
+44181:     controls.appendChild(targetRow);
+44182: 
+44183:     body.appendChild(controls);
+44184:     body.appendChild(canvas);
+44185:     body.appendChild(note);
+44186: 
+44187:     modal.append(title, body, footer);
+44188:     overlay.appendChild(modal);
+44189:     document.body.appendChild(overlay);
+44190:     __sqStatsArcade(overlay, modal);
+44191:     overlay.addEventListener('click',e=>{ if(e.target===overlay) backToPrev();});
+44192:     overlay.addEventListener('keydown',e=>{ if(e.key==='Escape') backToPrev();});
+44193:     modal.tabIndex=0; modal.focus();
+44194: 
+44195:     // --- data ---
+44196:     let rows = null;
+44197:     try{
+44198:       if (opts && opts.data && Array.isArray(opts.data.throws)) rows = opts.data.throws;
+44199:       else rows = await fetchPlayerThrowsWithTs(name);
+44200:     }catch(e){
+44201:       console.warn('progress fetch failed', e);
+44202:       rows = [];
+44203:     }
+44204: 
+44205:     // Normalise game ordering (old data may not include game_id; treat null as one bucket)
+44206:     const games = new Map(); // gid -> { tsMax, byRound: Map(ri -> [throws]) }
+44207:     const safeGid = (r, i) => (r && r.game_id) ? String(r.game_id) : `local_${i}`;
+44208: 
+44209:     (rows||[]).forEach((r,i)=>{
+44210:       const gid = safeGid(r,i);
+44211:       if (!games.has(gid)) games.set(gid, { tsMax: null, byRound: new Map() });
+44212:       const g = games.get(gid);
+44213:       const ts = r && r.ts ? new Date(r.ts).getTime() : null;
+44214:       if (ts!=null && (g.tsMax==null || ts>g.tsMax)) g.tsMax = ts;
+44215: 
+44216:       const ri = Number(r.round_index);
+44217:       if (!Number.isFinite(ri)) return;
+44218:       if (!g.byRound.has(ri)) g.byRound.set(ri, []);
+44219:       g.byRound.get(ri).push(r);
+44220:     });
+44221: 
+44222:     // Order games by timestamp asc (fallback to insertion order)
+44223:     const gameList = Array.from(games.entries()).map(([gid, g]) => ({ gid, tsMax: g.tsMax, byRound: g.byRound }));
+44224:     gameList.sort((a,b)=>{
+44225:       const at=a.tsMax??0, bt=b.tsMax??0;
+44226:       return at-bt;
+44227:     });
+44228: 
+44229:     function roundIndexFromKey(key){
+44230:       if (key==='D') return 11;
+44231:       if (key==='T') return 12;
+44232:       if (key==='B') return 13;
+44233:       const n = Number(key);
+44234:       if (Number.isFinite(n) && n>=10 && n<=20) return n-10;
+44235:       return 0;
+44236:     }
+44237: 
+44238:     function pointsForThrow(r){
+44239:       const hit = !!(r && (r.hit || Number(r.points||0)>0));
+44240:       if (!hit) return 0;
+44241:       const ri = Number(r.round_index);
+44242:       const base = (ri>=0 && ri<=10) ? (10+ri) : (ri===11 ? 20 : (ri===12 ? 20 : (ri===13 ? 50 : 0)));
+44243:       const k = String(r.kind||'').toLowerCase();
+44244:       if (k==='d') return base*2;
+44245:       if (k==='t') return base*3;
+44246:       if (k==='ib') return 50;
+44247:       if (k==='ob') return 25;
+44248:       if (k==='b') return base; // if base is 50
+44249:       return base; // single/default
+44250:     }
+44251: 
+44252:     function maxPointsPerDart(ri){
+44253:       if (ri>=0 && ri<=10) return (10+ri)*3;
+44254:       if (ri===11) return 40;
+44255:       if (ri===12) return 60;
+44256:       if (ri===13) return 50;
+44257:       return 0;
+44258:     }
+44259: 
+44260:     function calcValueForRound(ri, throws){
+44261:       const darts = (throws||[]);
+44262:       const attempts = darts.length || 0;
+44263:       if (!attempts) return null;
+44264: 
+44265:       if (mode === 'points'){
+44266:         const sumPts = darts.reduce((a,r)=>a+pointsForThrow(r),0);
+44267:         const maxPts = attempts * maxPointsPerDart(ri);
+44268:         return maxPts>0 ? (sumPts/maxPts)*100 : 0;
+44269:       }
+44270: 
+44271:       if (mode === 'dtb'){
+44272:         let ok = 0;
+44273:         darts.forEach(r=>{
+44274:           const hit = !!(r && (r.hit || Number(r.points||0)>0));
+44275:           if (!hit) return;
+44276:           const k = String(r.kind||'').toLowerCase();
+44277:           if (ri>=0 && ri<=10){
+44278:             if (k==='d' || k==='t') ok++;
+44279:           }else if (ri===11){
+44280:             if (k==='d') ok++;
+44281:           }else if (ri===12){
+44282:             if (k==='t') ok++;
+44283:           }else if (ri===13){
+44284:             if (k==='ib' || k==='ob' || k==='b') ok++;
+44285:           }
+44286:         });
+44287:         return (ok/attempts)*100;
+44288:       }
+44289: 
+44290:       // default: hit%
+44291:       const hits = darts.reduce((a,r)=>a + ( (r && (r.hit || Number(r.points||0)>0)) ? 1 : 0 ), 0);
+44292:       return (hits/attempts)*100;
+44293:     }
+44294: 
+44295:     function computeSeries(targetKey){
+44296:       const ri = roundIndexFromKey(targetKey);
+44297:       const xs = []; // game indices (1..N)
+44298:       const ys = []; // values (0..100)
+44299:       gameList.forEach((g, idx)=>{
+44300:         const arr = g.byRound.get(ri) || [];
+44301:         const v = calcValueForRound(ri, arr);
+44302:         if (v==null) return; // skip games missing that round (rare)
+44303:         xs.push(idx+1);
+44304:         ys.push({ i: idx+1, v });
+44305:       });
+44306:       return { xs, ys, ri };
+44307:     }
+44308: 
+44309:     function rollingAvg(ys, win){
+44310:       const out=[];
+44311:       for (let i=0;i<ys.length;i++){
+44312:         const s = Math.max(0, i-win+1);
+44313:         let sum=0, c=0;
+44314:         for (let j=s;j<=i;j++){ const v=ys[j]; if (Number.isFinite(v)){ sum+=v; c++; } }
+44315:         out.push(c?sum/c:null);
+44316:       }
+44317:       return out;
+44318:     }
+44319: 
+44320:     function bucketLine(ys, bucketSize){
+44321:       const pts=[]; // {xIndex, y}
+44322:       for (let i=0;i<ys.length;i+=bucketSize){
+44323:         const slice=ys.slice(i, i+bucketSize);
+44324:         const vals=slice.filter(v=>Number.isFinite(v));
+44325:         const avg=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;
+44326:         pts.push({ x:i, y:avg });
+44327:       }
+44328:       return pts;
+44329:     }
+44330: 
+44331:     function trajectoryLine(ys){
+44332:       const n=ys.length;
+44333:       if (!n) return null;
+44334:       const mid = Math.floor(n/2);
+44335:       const a1 = ys.slice(0, mid).filter(v=>Number.isFinite(v));
+44336:       const a2 = ys.slice(mid).filter(v=>Number.isFinite(v));
+44337:       const y1 = a1.length? a1.reduce((a,b)=>a+b,0)/a1.length : null;
+44338:       const y2 = a2.length? a2.reduce((a,b)=>a+b,0)/a2.length : null;
+44339:       return { y1, y2 };
+44340:     }
+44341: 
+44342:     function drawChart(series){
+44343:       series = Array.isArray(series) ? series : [];
+44344:       const ys = series.map(d=>d.v);
+44345:       const n = ys.length;
+44346: 
+44347:       // Bar chart like Progression: squeeze bars to fit the popup (no horizontal scroll)
+44348:       const BASE_W = 920;
+44349:       const BASE_H = 420;
+44350:       const host = canvas.parentElement || canvas;
+44351:       const cssW = Math.max(320, Math.min(BASE_W, host.clientWidth || BASE_W));
+44352:       const cssH = BASE_H;
+44353: 
+44354:       const dpr = window.devicePixelRatio || 1;
+44355:       canvas.width = Math.round(cssW * dpr);
+44356:       canvas.height = Math.round(cssH * dpr);
+44357:       canvas.style.width = cssW + 'px';
+44358:       canvas.style.height = cssH + 'px';
+44359: 
+44360:       const ctx = canvas.getContext('2d');
+44361: 
+44362:       ctx.setTransform(dpr,0,0,dpr,0,0);
+44363:       const W = cssW, H = cssH;
+44364:       ctx.clearRect(0,0,W,H);
+44365: 
+44366:       const padL = 44, padR = 18, padT = 18, padB = 34;
+44367: 
+44368:       const innerW = W - padL - padR;
+44369:       const innerH = H - padT - padB;
+44370: 
+44371:       // Percent-style charts: fixed axis
+44372:       const yMin = 0, yMax = 100;
+44373: 
+44374:       const step = innerW / Math.max(1, n);
+44375:       const barW = Math.max(1, Math.min(6, step * 0.85));
+44376:       const xLeftForIndex = (i) => padL + i*step + (step - barW)/2;
+44377:       const xForIndex = (i) => xLeftForIndex(i) + barW/2;
+44378:       const yForVal = (v) => padT + (1 - ((v - yMin)/(yMax-yMin))) * innerH;
+44379: 
+44380:       // grid
+44381:       ctx.strokeStyle='rgba(255,255,255,.08)';
+44382:       ctx.lineWidth=1;
+44383:       for (let g=0; g<=5; g++){
+44384:         const y = padT + (innerH*(g/5));
+44385:         ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+44386:       }
+44387: 
+44388:       // bars
+44389:       ctx.fillStyle='rgba(255,255,255,.35)';
+44390:       for (let i=0;i<n;i++){
+44391:         const v = ys[i];
+44392:         const x = xLeftForIndex(i);
+44393:         const y = yForVal(v);
+44394:         const h = (padT+innerH) - y;
+44395:         ctx.fillRect(x, y, barW, h);
+44396:       }
+44397: 
+44398:       // average line modes
+44399:       const mode = (avgMode==='avg10' || avgMode==='avg20' || avgMode==='game4') ? avgMode : 'game4';
+44400:       const linePts = [];
+44401:       const winMap = { game4:4, avg10:10, avg20:20 };
+44402:       const win = winMap[mode] || 4;
+44403:       if (n){
+44404:         for (let i=0;i<n;i++){
+44405:           const s = Math.max(0, i-win+1);
+44406:           const seg = ys.slice(s, i+1);
+44407:           const av = seg.reduce((a,b)=>a+b,0) / seg.length;
+44408:           linePts.push({x:xForIndex(i), y:yForVal(av)});
+44409:         }
+44410:       }
+44411: // Always show all-time avg as dotted orange
+44412:       if (allTimeAvg != null){
+44413:         const y = yForVal(allTimeAvg);
+44414:         ctx.setLineDash([3,4]);
+44415:         ctx.strokeStyle='rgba(255,140,0,.95)';
+44416:         ctx.lineWidth=2;
+44417:         ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+44418:         ctx.setLineDash([]);
+44419:       }
+44420: 
+44421:       // green line (selected mode)
+44422:       if (linePts.length){
+44423:         ctx.strokeStyle='rgba(140,255,140,.85)';
+44424:         ctx.lineWidth=2;
+44425:         ctx.beginPath();
+44426:         ctx.moveTo(linePts[0].x, linePts[0].y);
+44427:         for (let i=1;i<linePts.length;i++) ctx.lineTo(linePts[i].x, linePts[i].y);
+44428:         ctx.stroke();
+44429:       }
+44430: 
+44431:       // x labels (sparse, like progression)
+44432:       ctx.fillStyle='rgba(255,255,255,.35)';
+44433:       ctx.font='11px system-ui, -apple-system, Segoe UI, Roboto';
+44434:       const stepLab = (n<=40)?5:(n<=120?10:20);
+44435:       for (let i=0;i<n;i++){
+44436:         if (i===0 || i===n-1 || (i%stepLab===0)){
+44437:           const tx = xForIndex(i);
+44438:           const lbl = String(series[i].i);
+44439:           ctx.fillText(lbl, Math.max(padL, tx-6), H-12);
+44440:         }
+44441:       }
+44442:     }
+44443: 
+44444:     function draw(){
+44445:       if (!canvas) return;
+44446:       const series = computeSeries(selectedTarget);
+44447:       if (!series.ys.length){
+44448:         const ctx = canvas.getContext('2d');
+44449:         ctx.clearRect(0,0,canvas.width,canvas.height);
+44450:         ctx.fillStyle='rgba(255,255,255,.65)';
+44451:         ctx.font='14px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+44452:         ctx.textAlign='center';
+44453:         ctx.fillText('No data yet for this target.', canvas.width/2, canvas.height/2);
+44454:         return;
+44455:       }
+44456:       // draw expects the per-game point series array [{i,v}, ...]
+44457:       drawChart(series.ys);
+44458:     }
+44459: 
+44460:     renderButtons();
+44461:     draw();
+44462:   };;
+44463: })();
+44464: // >>> PATCH:player_stats_spider_progress END
+44465: 
+44466: // ===== @PATCHES:REGISTRY =====
+44467: // Active patch blocks in this file (keep this list current):
+44468: // - ADMIN_PASSWORD_GATE
+44469: // - SUPABASE_CLOUD_INIT
+44470: // - ALL_GAMES_OFFICIAL_PRACTICE_FILTER
+44471: // - LATEST_SCORES_OFFICIAL_PRACTICE
+44472: // - STATS_BACK_ROUTER_HOME_VS_INGAME
+44473: // - LIVE_UPDATES_VIDE_ALERTS
+44474: // - THROWPAD_DT_BULL_LAYOUT
+44475: // - GAMEPLAY_AUTOSCROLL_PAD_SAFE
+44476: // - LEAGUE_POPUPS_LATEST_STYLE
+44477: //
+44478: // Patch rules:
+44479: // 1) Patches must be named and small.
+44480: // 2) Avoid redefining whole modals unless unavoidable.
+44481: // 3) If a patch becomes permanent, merge it into core code and delete the patch.
+44482: // 4) Patches should log once (not spam) when they fail.
+44483: 
+44484: /* >>> PATCH:ADMIN_DUP_GATE_REMOVED START
+44485:    Removed duplicate admin gate patches v12.4.57/v12.4.58 to prevent double password prompts.
+44486:    <<< PATCH:ADMIN_DUP_GATE_REMOVED END */
+44487: 
+44488: </script>
+44489: <!-- PB / GR Admin Modal -->
+44490: <div id="pbgrAdminModal" class="modal-backdrop hidden">
+44491:   <div class="modal compact" role="dialog" aria-modal="true" aria-labelledby="pbgrTitle">
+44492:     <h3 id="pbgrTitle">PB / GR Admin</h3>
+44493:     <div class="modal-body">
+44494:       <p class="muted" style="margin-top:-6px;margin-bottom:10px;">
+44495:         Manage Personal Bests and Game Records. Deleting a row will remove the underlying round from the cloud.
+44496:       </p>
+44497: 
+44498:       <h4 style="margin:8px 0 6px;">World Records (All Players)</h4>
+44499:       <div id="pbgrGlobal" class="table-wrap"></div>
+44500: 
+44501:       <hr style="border:0;border-top:1px solid rgba(255,255,255,.08);margin:12px 0;">
+44502: 
+44503:       <h4 style="margin:8px 0 6px;">Player PBs</h4>
+44504:       <label for="pbgrPlayerSelect" class="muted" style="display:block;margin-bottom:6px;">Select saved player:</label>
+44505:       <select id="pbgrPlayerSelect" class="input" style="min-width:220px;"></select>
+44506:       <div class="row" id="pbgrBackfillRow" style="margin-top:10px; gap:8px; align-items:center;">
+44507:         <button id="pbgrBackfillBtn" class="btn warn" type="button">Backdate PB / WR</button>
+44508:         <span class="muted">Scan cloud throws (saved players, official only) and write PBs + WRs.</span>
+44509:       </div>
+44510:       <div id="pbgrPlayer" class="table-wrap" style="margin-top:8px;"></div>
+44511:     </div>
+44512:     <div class="modal-footer">
+44513:       <button id="pbgrBackBtn" class="btn" type="button">Back</button>
+44514:       <button id="pbgrRefreshBtn" class="btn" type="button">Refresh</button>
+44515:       <button id="pbgrCloseBtn" class="btn" type="button">Close</button>
+44516:     </div>
+44517:   </div>
+44518: </div>
+44519: 
+44520: <script>
+44521: (function(){
+44522:   function wireSettings(btnId, menuId, actions){
+44523:     const btn = document.getElementById(btnId);
+44524:     const menu = document.getElementById(menuId);
+44525:     if(!btn || !menu) return;
+44526: 
+44527:     function close(){ menu.classList.add('hidden'); btn.setAttribute('aria-expanded','false'); }
+44528:     function open(){ menu.classList.remove('hidden'); btn.setAttribute('aria-expanded','true'); }
+44529:     function toggle(){ (menu.classList.contains('hidden') ? open() : close()); }
+44530: 
+44531:     btn.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); toggle(); });
+44532: 
+44533:     menu.addEventListener('click', (e)=>{
+44534:       const item = e.target.closest('[data-sq-action]');
+44535:       if(!item) return;
+44536:       const key = item.getAttribute('data-sq-action');
+44537:       const targetBtnId = actions[key];
+44538:       const targetBtn = targetBtnId ? document.getElementById(targetBtnId) : null;
+44539:       if(targetBtn){ targetBtn.click(); }
+44540:       close();
+44541:     });
+44542: 
+44543:     document.addEventListener('click', (e)=>{
+44544:       if(menu.classList.contains('hidden')) return;
+44545:       if(e.target.closest('#'+menuId) || e.target.closest('#'+btnId)) return;
+44546:       close();
+44547:     });
+44548: 
+44549:     document.addEventListener('keydown', (e)=>{
+44550:       if(e.key === 'Escape') close();
+44551:     });
+44552: 
+44553:     close();
+44554:   }
+44555: 
+44556:   document.addEventListener('DOMContentLoaded', ()=>{
+44557:     // >>> PATCH:game_settings_modal_v1 START
+44558:     (function(){
+44559:       const btn = document.getElementById('settingsBtnGame');
+44560:       if(!btn) return;
+44561: 
+44562:       function mkBackdrop(){
+44563:         const bd = document.createElement('div');
+44564:         bd.className = 'modal-backdrop';
+44565:         bd.style.zIndex = '9999';
+44566:         return bd;
+44567:       }
+44568: 
+44569:       function mkModal(title){
+44570:         const m = document.createElement('div');
+44571:         m.className = 'modal';
+44572:         m.style.maxWidth = '520px';
+44573:         m.style.width = 'min(92vw, 520px)';
+44574:         m.innerHTML = `
+44575:           <div class="modal-title">${title}</div>
+44576:           <div class="modal-body" style="display:flex;flex-direction:column;gap:10px"></div>
+44577:           <div class="modal-actions" style="display:flex;gap:12px;justify-content:center;margin-top:14px">
+44578:             <button class="btn" data-x="close">Close</button>
+44579:           </div>
+44580:         `;
+44581:         return m;
+44582:       }
+44583: 
+44584:       function closeAny(){
+44585:         document.querySelectorAll('.sq-gsettings-bd,.sq-rmplayer-bd').forEach(n=>n.remove());
+44586:       }
+44587: 
+44588:       function confirmThen(msg, fn){
+44589:         if(confirm(msg)) {
+44590:           try{ fn(); }
+44591:           catch(e){ console.error(e); if(typeof toast==='function') toast('Action failed'); }
+44592:         }
+44593:       }
+44594: 
+44595:       function resetCurrentGameKeepPlayers(){
+44596:         // Keep players + match meta/history, reset only current game state
+44597:         try{ if (typeof __sqSanitizeVsShadowForGenericStart === 'function') __sqSanitizeVsShadowForGenericStart('settings-reset-current-game'); }catch(_){ }
+44598:         const players = Array.isArray(state.players) ? state.players.slice() : [];
+44599:         const match   = state.match ? JSON.parse(JSON.stringify(state.match)) : JSON.parse(JSON.stringify(baseState.match));
+44600:         state = JSON.parse(JSON.stringify(baseState));
+44601:         state.players = players;
+44602:         state.match = match;
+44603:         state.score = players.map(()=>[]);
+44604:         state.currentRound = 0;
+44605:         state.currentPlayer = 0;
+44606:         state.currentDart = 0;
+44607:         state.history = [];
+44608:         state.finished = false;
+44609:       }
+44610: 
+44611:       function doRestartGame(){
+44612:         resetCurrentGameKeepPlayers();
+44613:         save();
+44614:         if(typeof startNewGame === 'function') startNewGame();
+44615:         else restartGameSafe();
+44616:       }
+44617: 
+44618:       function doEndGame(){
+44619:         // Abandon current game and go to leaderboard/next match screen
+44620:         resetCurrentGameKeepPlayers();
+44621:         save();
+44622:         if(typeof showLeaderboard === 'function') showLeaderboard();
+44623:         else _showPageSafe('leaderboard');
+44624:       }
+44625: 
+44626:       function doEndMatch(){
+44627:         confirmThen('End match? This will clear the current match state and return to the start screen.', ()=>{
+44628:           state = JSON.parse(JSON.stringify(baseState));
+44629:           save();
+44630:           navigateToStartScreen();
+44631:         });
+44632:       }
+44633: 
+44634:       function openRemovePlayer(){
+44635:         closeAny();
+44636:         const bd = mkBackdrop();
+44637:         bd.classList.add('sq-rmplayer-bd');
+44638:         const m  = mkModal('Remove player');
+44639:         const body = m.querySelector('.modal-body');
+44640: 
+44641:         const pls = Array.isArray(state.players) ? state.players : [];
+44642:         pls.forEach((p, idx)=>{
+44643:           const name = (__sqPlayerPretty(p) || p.name || ('Player ' + (idx+1)));
+44644:           const b = document.createElement('button');
+44645:           b.className = 'btn danger';
+44646:           b.textContent = 'Remove ' + name;
+44647:           b.onclick = ()=>{
+44648:             confirmThen('Remove ' + name + '? Their current-game data will be deleted and the match continues.', ()=>{
+44649:               state.players.splice(idx,1);
+44650:               if(Array.isArray(state.score)) state.score.splice(idx,1);
+44651:               if(state.match && Array.isArray(state.match.wins)) state.match.wins.splice(idx,1);
+44652:               if(state.currentPlayer >= state.players.length) state.currentPlayer = 0;
+44653:               save();
+44654:               closeAny();
+44655:               try{ liveV2Render(); }catch(_e){}
+44656:             });
+44657:           };
+44658:           body.appendChild(b);
+44659:         });
+44660: 
+44661:         m.querySelector('[data-x=close]').onclick = closeAny;
+44662:         bd.addEventListener('click', (e)=>{ if(e.target===bd) closeAny(); });
+44663:         document.body.appendChild(bd);
+44664:         bd.appendChild(m);
+44665:       }
+44666: 
+44667:       function openMenu(){
+44668:         closeAny();
+44669:         const bd = mkBackdrop();
+44670:         bd.classList.add('sq-gsettings-bd');
+44671:         const m  = mkModal('Game menu');
+44672:         const body = m.querySelector('.modal-body');
+44673: 
+44674:         function addBtn(label, cls, onClick){
+44675:           const b = document.createElement('button');
+44676:           b.className = 'btn ' + (cls||'');
+44677:           b.textContent = label;
+44678:           b.onclick = ()=>{ closeAny(); onClick(); };
+44679:           body.appendChild(b);
+44680:         }
+44681: 
+44682:         addBtn('Restart Game', 'danger', ()=>confirmThen('Restart game? This clears current game data and returns to throw order.', doRestartGame));
+44683:         addBtn('End Game', 'danger', ()=>confirmThen('End game? Current game data will be cleared and you will go to the end-game screen.', doEndGame));
+44684:         addBtn('End Match', 'danger', doEndMatch);
+44685:         addBtn('Remove player', '', openRemovePlayer);
+44686:         addBtn('Stats', '', openStatsHubSafe);
+44687: 
+44688:         m.querySelector('[data-x=close]').onclick = closeAny;
+44689:         bd.addEventListener('click', (e)=>{ if(e.target===bd) closeAny(); });
+44690:         document.body.appendChild(bd);
+44691:         bd.appendChild(m);
+44692:       }
+44693: 
+44694:       btn.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation();
+44695:         // Prefer the single canonical in-game menu (FIX106) so the two menu
+44696:         // systems can never stack; only fall back to this older one if it's absent.
+44697:         if (typeof window.__sqOpenGameMenu106 === 'function') return window.__sqOpenGameMenu106();
+44698:         openMenu();
+44699:       });
+44700:     })();
+44701:     // >>> PATCH:game_settings_modal_v1 END
+44702: 
+44703:     wireSettings('settingsBtnLB','settingsMenuLB',{
+44704:       startScreenLB: 'startScreenBtnLB',
+44705:       restartGameLB: 'restartGameBtnLB'
+44706:     });
+44707:   });
+44708: })();
+44709: 
+44710: // >>> PATCH:admin-password-enforce START
+44711: (function(){
+44712:   function enforce(){
+44713:     try{
+44714:       if (typeof window.openAdminPasswordModal === 'function'){
+44715:         const b = document.getElementById('adminCodeBtn');
+44716:         if (b) b.onclick = window.openAdminPasswordModal;
+44717:       }
+44718:       if (typeof window.openAdminHub === 'function' && typeof window.openAdminPasswordModal === 'function'){
+44719:         // If something overwrote the gated wrapper, re-wrap now.
+44720:         if (!window.openAdminHub.__sqIsGated && window.__openAdminHubUnsafe){
+44721:           const unsafe = window.__openAdminHubUnsafe;
+44722:           window.openAdminHub = function(){
+44723:             if (window.__sqAdminAuthed) return unsafe();
+44724:             return window.openAdminPasswordModal();
+44725:           };
+44726:           window.openAdminHub.__sqIsGated = true;
+44727:         }
+44728:       }
+44729:     }catch(_e){}
+44730:   }
+44731:   document.addEventListener('DOMContentLoaded', enforce);
+44732:   window.addEventListener('load', enforce);
+44733: })();
+44734: // >>> PATCH:admin-password-enforce END
+44735: 
+44736: </script>
+44737: 
+44738: <!-- >>> PATCH:SQ_DMD_TOPBAR_JS_V1 START -->
+44739: <script>
+44740: /*
+44741:   SQ Pinball DMD (Round-Dot, HiDPI) — Top Bar Display
+44742:   --------------------------------------------------
+44743:   - Native buffer: 256×64 (hi-def DMD)
+44744:   - Round-dot mask: precomputed at output resolution
+44745:   - HiDPI: output canvas = CSS px × devicePixelRatio
+44746:   - Crisp scaling: imageSmoothingEnabled=false
+44747:   - Idle loop never stops
+44748:   - Public API:
+44749:       window.sqDmdShow(top, bottom, opts)
+44750:       window.sqDmdSetIdle(text)
+44751:       window.sqDmdStop()
+44752:       window.sqDmdSetPlayerMeta(meta)
+44753: */
+44754: 
+44755: function __sqDmdInitV7(){
+44756:   "use strict";
+44757: 
+44758:   // ---------- Config ----------
+44759:   // Double-density native buffer for smoother DMD text (still dot-matrix after masking)
+44760:   const NATIVE_W = 640;
+44761:   const NATIVE_H = 160;
+44762: 
+44763:   const DEFAULTS = {
+44764:     fps: 60,
+44765:     stepMs: 1000 / 30,      // DMD frame-step cadence (30fps feel inside 60fps loop)
+44766:     glowAlpha: 0.45,
+44767:     glowPasses: 2,
+44768:     // speed is in NATIVE pixels/sec; doubled to maintain similar on-screen scroll speed
+44769:     idleSpeedPxPerSec: 52,
+44770:     flashMs: 900,
+44771:     holdMs: 900,
+44772:     paddingPx: 2
+44773:   };
+44774: 
+44775:   // ---------- DOM ----------
+44776:   const wrap = document.getElementById("sqDmdWrap");
+44777:   const canvas = document.getElementById("sqDmdCanvas");
+44778: 
+44779:   // Late-init safe: header/game UI may be constructed AFTER this script executes.
+44780:   if (!wrap || !canvas){
+44781:     if (!window.__sqDmdInitV7_hooked){
+44782:       window.__sqDmdInitV7_hooked = true;
+44783: 
+44784:       const retry = () => {

@@ -1,0 +1,2243 @@
+===== P # HITS [52524, 52526] =====
+
+52304:   };
+52305:   window.__sqCanonicalTop50ScoresDialog = window.openTop50ScoresDialog;
+52306:   window.__sqOpenTop50ScoresTurboTabs = function(){ return window.__sqCanonicalTop50ScoresDialog.apply(window, arguments); };
+52307:   window.__sqOpenTop50ScoresAllModes = window.__sqOpenTop50ScoresTurboTabs;
+52308:   try{ openTop50ScoresDialog = window.openTop50ScoresDialog; }catch(_){}
+52309: 
+52310:   function heatStyle(v){
+52311:     var n = Math.max(0, Math.min(100, Number(v) || 0));
+52312:     if (n < 20) return { fill:'rgba(20,42,72,.72)', stroke:'rgba(112,158,198,.26)', glow:'', width:'1.05', label:'rgba(232,242,255,.86)' };
+52313:     if (n < 35) return { fill:'rgba(14,135,148,.80)', stroke:'rgba(87,235,230,.48)', glow:'', width:'1.15', label:'rgba(245,255,255,.95)' };
+52314:     if (n < 42) return { fill:'rgba(199,139,43,.88)', stroke:'rgba(255,198,91,.62)', glow:'', width:'1.3', label:'rgba(255,250,238,.98)' };
+52315:     if (n < 48) return { fill:'rgba(249,118,24,.96)', stroke:'rgba(255,190,83,.78)', glow:'url(#sqHitGlowWarm)', width:'1.55', label:'rgba(255,250,240,.98)' };
+52316:     if (n < 55) return { fill:'rgba(255,193,37,.99)', stroke:'rgba(255,238,132,.94)', glow:'url(#sqHitGlowHot)', width:'1.9', label:'#111827' };
+52317:     return { fill:'rgba(115,240,126,.99)', stroke:'rgba(234,255,152,.98)', glow:'url(#sqHitGlowElite)', width:'2.25', label:'#06120b' };
+52318:   }
+52319:   function polar(cx, cy, r, deg){
+52320:     var a = (deg - 90) * Math.PI / 180;
+52321:     return { x:cx + r * Math.cos(a), y:cy + r * Math.sin(a) };
+52322:   }
+52323:   function wedgePath(cx, cy, r0, r1, a0, a1){
+52324:     var p1 = polar(cx, cy, r1, a0), p2 = polar(cx, cy, r1, a1), p3 = polar(cx, cy, r0, a1), p4 = polar(cx, cy, r0, a0);
+52325:     var large = Math.abs(a1 - a0) > 180 ? 1 : 0;
+52326:     return 'M '+p1.x.toFixed(2)+' '+p1.y.toFixed(2)+' A '+r1+' '+r1+' 0 '+large+' 1 '+p2.x.toFixed(2)+' '+p2.y.toFixed(2)+' L '+p3.x.toFixed(2)+' '+p3.y.toFixed(2)+' A '+r0+' '+r0+' 0 '+large+' 0 '+p4.x.toFixed(2)+' '+p4.y.toFixed(2)+' Z';
+52327:   }
+52328:   function heatValueMap(rows){
+52329:     var map = new Map();
+52330:     (rows || []).forEach(function(r){ map.set(String(r.key).toUpperCase(), r); });
+52331:     return map;
+52332:   }
+52333:   function svgEl(svg, name, attrs){
+52334:     var el = document.createElementNS(svg.namespaceURI, name);
+52335:     Object.keys(attrs || {}).forEach(function(k){ el.setAttribute(k, attrs[k]); });
+52336:     return el;
+52337:   }
+52338:   function addSvgText(svg, x, y, text, attrs){
+52339:     var shadow = svgEl(svg, 'text', Object.assign({
+52340:       x:x, y:y, 'text-anchor':'middle', 'dominant-baseline':'middle',
+52341:       fill:'rgba(0,0,0,.56)', 'font-size':'14', 'font-weight':'950',
+52342:       stroke:'rgba(0,0,0,.42)', 'stroke-width':'2', 'paint-order':'stroke'
+52343:     }, attrs || {}));
+52344:     shadow.textContent = text;
+52345:     var label = svgEl(svg, 'text', Object.assign({
+52346:       x:x, y:y, 'text-anchor':'middle', 'dominant-baseline':'middle',
+52347:       fill:'rgba(255,255,255,.96)', 'font-size':'14', 'font-weight':'950'
+52348:     }, attrs || {}));
+52349:     label.textContent = text;
+52350:     svg.appendChild(shadow);
+52351:     svg.appendChild(label);
+52352:   }
+52353:   function renderTargetHitHeatmap(rows){
+52354:     var map = heatValueMap(rows);
+52355:     var boardOrder = ['20','1','18','4','13','6','10','15','2','17','3','19','7','16','8','11','14','9','12','5'];
+52356:     var tracked = new Set(['10','11','12','13','14','15','16','17','18','19','20']);
+52357:     var hotRows = (rows || []).filter(function(r){ return tracked.has(String(r.key).toUpperCase()) && Number.isFinite(Number(r.pct)); })
+52358:       .sort(function(a,b){ return Number(b.pct || 0) - Number(a.pct || 0); });
+52359:     var hotKeys = new Set(hotRows.filter(function(r){ return Number(r.pct || 0) >= 48; }).map(function(r){ return String(r.key).toUpperCase(); }));
+52360:     if (!hotKeys.size) hotRows.slice(0, 2).forEach(function(r){ hotKeys.add(String(r.key).toUpperCase()); });
+52361:     var cx = 160, cy = 142, r0 = 32, r1 = 104, rLabel = 124, step = 360 / boardOrder.length;
+52362:     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+52363:     svg.setAttribute('viewBox', '0 0 320 352');
+52364:     svg.setAttribute('role', 'img');
+52365:     svg.setAttribute('aria-label', 'Target Hit percentage heatmap');
+52366:     svg.style.width = '100%';
+52367:     svg.style.height = '100%';
+52368:     svg.style.display = 'block';
+52369: 
+52370:     var defs = svgEl(svg, 'defs');
+52371:     defs.innerHTML =
+52372:       '<radialGradient id="sqHitBoardBg" cx="46%" cy="36%" r="70%"><stop offset="0%" stop-color="#253a72"/><stop offset="58%" stop-color="#111b3b"/><stop offset="100%" stop-color="#050915"/></radialGradient>' +
+52373:       '<style>@keyframes sqHitPulse{0%,100%{opacity:.88;stroke-opacity:.86}50%{opacity:1;stroke-opacity:1}}.sq-hit-hot-pulse{animation:sqHitPulse 2.35s ease-in-out infinite}</style>' +
+52374:       '<filter id="sqHitGlowWarm" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="2.4" result="b"/><feColorMatrix in="b" type="matrix" values="1 0 0 0 1  0 0.42 0 0 .38  0 0 0.04 0 0  0 0 0 .55 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+52375:       '<filter id="sqHitGlowHot" x="-45%" y="-45%" width="190%" height="190%"><feGaussianBlur stdDeviation="3.4" result="b"/><feColorMatrix in="b" type="matrix" values="1 0 0 0 1  0 .72 0 0 .62  0 0 .08 0 0  0 0 0 .78 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+52376:       '<filter id="sqHitGlowElite" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3.9" result="b"/><feColorMatrix in="b" type="matrix" values="0 0 0 0 .42  0 0 0 0 1  0 0 0 0 .38  0 0 0 .82 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+52377:     svg.appendChild(defs);
+52378: 
+52379:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:132, fill:'rgba(15,27,63,.34)', stroke:'rgba(190,215,255,.16)', 'stroke-width':'1' }));
+52380:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:116, fill:'url(#sqHitBoardBg)', stroke:'rgba(218,234,255,.36)', 'stroke-width':'1.25' }));
+52381:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:109, fill:'none', stroke:'rgba(108,165,230,.30)', 'stroke-width':'1' }));
+52382: 
+52383:     boardOrder.forEach(function(k, i){
+52384:       var row = tracked.has(k) ? map.get(k) : null;
+52385:       var pct = row ? Number(row.pct || 0) : null;
+52386:       var style = row ? heatStyle(pct) : { fill:(i % 2 ? 'rgba(45,61,101,.34)' : 'rgba(34,48,82,.38)'), stroke:'rgba(185,214,255,.18)', glow:'', width:'.85', label:'rgba(223,236,255,.76)' };
+52387:       var a0 = i * step - (step / 2) + .28;
+52388:       var a1 = i * step + (step / 2) - .28;
+52389:       var path = svgEl(svg, 'path', { d:wedgePath(cx, cy, r0, r1, a0, a1), fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+52390:       if (row){ path.setAttribute('data-sqkey', k); path.style.cursor = 'pointer'; }
+52391:       if (style.glow) path.setAttribute('filter', style.glow);
+52392:       if (row && hotKeys.has(k)) path.setAttribute('class', 'sq-hit-hot-pulse');
+52393:       var title = svgEl(svg, 'title');
+52394:       title.textContent = row ? (k + ': ' + pctFmt(pct) + ' - ' + row.hits + '/' + row.throwsN) : (k + ': not tracked');
+52395:       path.appendChild(title);
+52396:       svg.appendChild(path);
+52397: 
+52398:       var start = polar(cx, cy, r0 - 2, i * step - step / 2);
+52399:       var end = polar(cx, cy, 109, i * step - step / 2);
+52400:       svg.appendChild(svgEl(svg, 'line', { x1:start.x.toFixed(1), y1:start.y.toFixed(1), x2:end.x.toFixed(1), y2:end.y.toFixed(1), stroke:'rgba(212,232,255,.34)', 'stroke-width':'.65' }));
+52401: 
+52402:       var labelPos = polar(cx, cy, rLabel, i * step);
+52403:       var labelFill = row ? (pct >= 48 ? 'rgba(255,244,180,.98)' : 'rgba(248,252,255,.96)') : 'rgba(218,232,255,.72)';
+52404:       addSvgText(svg, labelPos.x.toFixed(1), labelPos.y.toFixed(1), k, { fill:labelFill, 'font-size': row ? '13' : '12', 'font-weight': row ? '950' : '800' });
+52405:     });
+52406: 
+52407:     [r0, 50, 70, 88, r1, 116].forEach(function(r){
+52408:       svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:r, fill:'none', stroke:r === r0 ? 'rgba(220,236,255,.32)' : 'rgba(200,224,255,.24)', 'stroke-width':r === r0 ? '1.3' : '.8' }));
+52409:     });
+52410: 
+52411:     var bull = map.get('B');
+52412:     var bullPct = bull ? Number(bull.pct || 0) : null;
+52413:     var bullStyle = bull ? heatStyle(bullPct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.4', label:'rgba(240,244,255,.8)' };
+52414:     var bullOuter = svgEl(svg, 'circle', { cx:cx, cy:cy, r:31, fill:bullStyle.fill, stroke:bullStyle.stroke, 'stroke-width':'2.2' });
+52415:     if (bull){ bullOuter.setAttribute('data-sqkey', 'B'); bullOuter.style.cursor = 'pointer'; }
+52416:     if (bullStyle.glow) bullOuter.setAttribute('filter', bullStyle.glow);
+52417:     var bullTitle = svgEl(svg, 'title');
+52418:     bullTitle.textContent = bull ? ('B: ' + pctFmt(bullPct) + ' - ' + bull.hits + '/' + bull.throwsN) : 'B: no data';
+52419:     bullOuter.appendChild(bullTitle);
+52420:     svg.appendChild(bullOuter);
+52421:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:15, fill:'rgba(5,8,18,.42)', stroke:'rgba(255,255,255,.22)', 'stroke-width':'1.2' }));
+52422:     addSvgText(svg, cx, cy - 4, 'B', { fill:bullStyle.label, 'font-size':'15' });
+52423:     addSvgText(svg, cx, cy + 18, bull ? pctFmt(bullPct, 1) : '—', { fill:'rgba(232,242,255,.82)', 'font-size':'8.5', 'font-weight':'850' });
+52424: 
+52425:     [['D',56,322],['T',264,322]].forEach(function(spec){
+52426:       var k = spec[0], x = spec[1], y = spec[2], row = map.get(k), pct = row ? Number(row.pct || 0) : null;
+52427:       var style = row ? heatStyle(pct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.2', label:'rgba(240,244,255,.8)' };
+52428:       var g = svgEl(svg, 'g');
+52429:       var halo = svgEl(svg, 'circle', { cx:x, cy:y, r:25, fill:'rgba(5,8,18,.58)', stroke:'rgba(160,190,245,.16)', 'stroke-width':'1' });
+52430:       g.appendChild(halo);
+52431:       var c = svgEl(svg, 'circle', { cx:x, cy:y - 7, r:16, fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+52432:       if (row){ c.setAttribute('data-sqkey', k); c.style.cursor = 'pointer'; }
+52433:       if (style.glow) c.setAttribute('filter', style.glow);
+52434:       var title = svgEl(svg, 'title');
+52435:       title.textContent = row ? (k + ': ' + pctFmt(pct) + ' - ' + row.hits + '/' + row.throwsN) : (k + ': no data');
+52436:       c.appendChild(title);
+52437:       g.appendChild(c);
+52438:       svg.appendChild(g);
+52439:       addSvgText(svg, x, y - 6, k, { fill:style.label, 'font-size':'13' });
+52440:       addSvgText(svg, x, y + 17, row ? pctFmt(pct, 0) : '—', { fill:'rgba(240,244,255,.88)', 'font-size':'10', 'font-weight':'850' });
+52441:     });
+52442:     // Heat legend (LOW -> HIGH) centered between the D/T badges
+52443:     var lg = svgEl(svg, 'linearGradient');
+52444:     lg.setAttribute('id', 'sqHitLegendG');
+52445:     lg.setAttribute('x1','0'); lg.setAttribute('y1','0'); lg.setAttribute('x2','1'); lg.setAttribute('y2','0');
+52446:     [['0%','#16304f'],['24%','#0e8794'],['46%','#c78b2b'],['64%','#f97618'],['82%','#ffc125'],['100%','#73f07e']].forEach(function(st){
+52447:       var stop = svgEl(svg, 'stop'); stop.setAttribute('offset', st[0]); stop.setAttribute('stop-color', st[1]); lg.appendChild(stop);
+52448:     });
+52449:     svg.querySelector('defs').appendChild(lg);
+52450:     svg.appendChild(svgEl(svg, 'rect', { x:104, y:316, width:112, height:9, rx:4.5, fill:'url(#sqHitLegendG)', stroke:'rgba(255,255,255,.18)', 'stroke-width':'.6' }));
+52451:     addSvgText(svg, 92, 321, 'LOW', { fill:'rgba(190,210,240,.75)', 'font-size':'8', 'font-weight':'800' });
+52452:     addSvgText(svg, 230, 321, 'HIGH', { fill:'rgba(190,210,240,.75)', 'font-size':'8', 'font-weight':'800' });
+52453:     return svg;
+52454:   }
+52455: 
+52456:   function rowFromHitPct(r){
+52457:     var throwsN = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['throws','throw_count','thrown']) : r.throws) || 0);
+52458:     var hits = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['hits','successful_hits','hit_count']) : r.hits) || 0);
+52459:     var pctRaw = typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['hit_pct','pct','percentage']) : r.hit_pct;
+52460:     var pct = Number.isFinite(Number(pctRaw)) ? Number(pctRaw) : (throwsN ? hits * 100 / throwsN : 0);
+52461:     var key = typeof __sqTargetPctKey === 'function' ? __sqTargetPctKey(r) : String(r.target_key || r.target_label || '').toUpperCase();
+52462:     var sort = Number(r.target_sort);
+52463:     if (!Number.isFinite(sort)) sort = typeof __sqTargetPctOrder === 'function' ? __sqTargetPctOrder(key) : 999;
+52464:     return { key:key, playerKey:rankKey(r.player_key || r.player_name), throwsN:throwsN, hits:hits, pct:pct, sort:sort };
+52465:   }
+52466: 
+52467:   // Tap-to-inspect for the dartboard heatmaps: tapping a wedge / D / T / B
+52468:   // (or a table row) spotlights that one target — everything else dims, a
+52469:   // floating card shows the counted-up % + ranks, and the table row lights.
+52470:   function __sqWireBoardInspect(heatPanel, tablePanel, rows, mode){
+52471:     var svg = heatPanel.querySelector('svg');
+52472:     if (!svg) return;
+52473:     heatPanel.style.position = 'relative';
+52474:     var spot = document.createElement('div');
+52475:     spot.style.cssText = 'position:absolute;top:8px;left:10px;display:none;align-items:center;gap:12px;'
+52476:       + 'background:rgba(16,24,39,.95);border:1px solid rgba(255,164,64,.7);border-radius:12px;padding:8px 14px;'
+52477:       + 'box-shadow:0 6px 18px rgba(0,0,0,.45), 0 0 18px rgba(255,140,40,.25);z-index:3;pointer-events:none;';
+52478:     var spotKey = document.createElement('div');
+52479:     spotKey.style.cssText = 'font-size:22px;font-weight:900;color:#fff;min-width:30px;text-align:center;';
+52480:     var spotPct = document.createElement('div');
+52481:     spotPct.style.cssText = 'font-size:22px;font-weight:900;color:#ffd9b0;';
+52482:     var spotSub = document.createElement('div');
+52483:     spotSub.style.cssText = 'font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:rgba(150,185,230,.9);line-height:1.5;';
+52484:     spot.append(spotKey, spotPct, spotSub);
+52485:     heatPanel.appendChild(spot);
+52486:     var selected = null;
+52487:     var countRaf = 0;
+52488:     var els = Array.prototype.slice.call(svg.querySelectorAll('[data-sqkey]'));
+52489:     els.forEach(function(el){ el.__sqStroke = el.getAttribute('stroke'); el.__sqSw = el.getAttribute('stroke-width'); });
+52490:     var rowFor = function(k){ return (rows || []).find(function(r){ return String(r.key).toUpperCase() === k; }) || null; };
+52491:     var highlightTableRow = function(k){
+52492:       try{
+52493:         Array.prototype.forEach.call(tablePanel.querySelectorAll('tbody tr'), function(tr){
+52494:           var hit = String((tr.cells[0] && tr.cells[0].textContent) || '').trim().toUpperCase() === k;
+52495:           tr.style.background = hit ? 'rgba(255,122,0,.14)' : '';
+52496:           tr.style.boxShadow = hit ? 'inset 3px 0 0 rgba(255,164,64,.9)' : '';
+52497:           if (hit && tr.scrollIntoView) tr.scrollIntoView({ block:'nearest' });
+52498:         });
+52499:       }catch(_e){}
+52500:     };
+52501:     var apply = function(){
+52502:       els.forEach(function(el){
+52503:         var k = el.getAttribute('data-sqkey');
+52504:         if (selected == null){
+52505:           el.setAttribute('opacity', '1');
+52506:           if (el.__sqStroke != null) el.setAttribute('stroke', el.__sqStroke);
+52507:           if (el.__sqSw != null) el.setAttribute('stroke-width', el.__sqSw);
+52508:         } else if (k === selected){
+52509:           el.setAttribute('opacity', '1');
+52510:           el.setAttribute('stroke', '#ffffff');
+52511:           el.setAttribute('stroke-width', String((parseFloat(el.__sqSw) || 1) + 1.2));
+52512:         } else {
+52513:           el.setAttribute('opacity', '.35');
+52514:           if (el.__sqStroke != null) el.setAttribute('stroke', el.__sqStroke);
+52515:           if (el.__sqSw != null) el.setAttribute('stroke-width', el.__sqSw);
+52516:         }
+52517:       });
+52518:       if (selected == null){ spot.style.display = 'none'; highlightTableRow(' '); return; }
+52519:       var r = rowFor(selected);
+52520:       if (!r){ spot.style.display = 'none'; return; }
+52521:       spot.style.display = 'flex';
+52522:       spotKey.textContent = selected;
+52523:       if (mode === 'points'){
+52524:         spotSub.innerHTML = fmtAvgScore(r.avgScore) + ' avg<br>' + (r.pRank ? 'P #' + r.pRank : '') + (r.gRank ? ' · G #' + r.gRank : '');
+52525:       } else {
+52526:         spotSub.innerHTML = (r.hits || 0) + '/' + (r.throwsN || 0) + ' hits<br>' + (r.pRank ? 'P #' + r.pRank : '') + (r.gRank ? ' · G #' + r.gRank : '');
+52527:       }
+52528:       cancelAnimationFrame(countRaf);
+52529:       var target = Number(r.pct || 0);
+52530:       var start = performance.now(), dur = 420;
+52531:       var step = function(now){
+52532:         var tt = Math.min(1, (now - start) / dur);
+52533:         var e = 1 - Math.pow(1 - tt, 3);
+52534:         spotPct.textContent = (target * e).toFixed(1) + '%';
+52535:         if (tt < 1) countRaf = requestAnimationFrame(step);
+52536:       };
+52537:       countRaf = requestAnimationFrame(step);
+52538:       highlightTableRow(selected);
+52539:     };
+52540:     svg.addEventListener('click', function(e){
+52541:       var el = e.target && e.target.closest ? e.target.closest('[data-sqkey]') : null;
+52542:       if (!el) return;
+52543:       var k = el.getAttribute('data-sqkey');
+52544:       selected = (selected === k) ? null : k;
+52545:       apply();
+52546:     });
+52547:     try{
+52548:       tablePanel.addEventListener('click', function(e){
+52549:         var tr = e.target && e.target.closest ? e.target.closest('tbody tr') : null;
+52550:         if (!tr || !tr.cells || !tr.cells[0]) return;
+52551:         var k = String(tr.cells[0].textContent || '').trim().toUpperCase();
+52552:         selected = (selected === k) ? null : k;
+52553:         apply();
+52554:       });
+52555:     }catch(_e){}
+52556:   }
+52557: 
+52558:   function applyTargetHitPersonalRanks(rows){
+52559:     var sorted = (rows || []).slice().sort(function(a,b){
+52560:       return Number(b.pct || 0) - Number(a.pct || 0) ||
+52561:         Number(b.hits || 0) - Number(a.hits || 0) ||
+52562:         Number(b.throwsN || 0) - Number(a.throwsN || 0) ||
+52563:         Number(a.sort || 999) - Number(b.sort || 999);
+52564:     });
+52565:     var rank = 0, prev = '';
+52566:     sorted.forEach(function(r, i){
+52567:       var sig = [Number(r.pct || 0).toFixed(8), Number(r.hits || 0), Number(r.throwsN || 0), Number(r.sort || 999)].join('|');
+52568:       if (sig !== prev){ rank = i + 1; prev = sig; }
+52569:       r.pRank = rank;
+52570:     });
+52571:   }
+52572: 
+52573:   async function savedPlayerKeySet(){
+52574:     try{
+52575:       if (typeof cloudListPlayers !== 'function') return null;
+52576:       var list = await cloudListPlayers();
+52577:       var names = Array.isArray(list) ? list : [];
+52578:       var set = new Set();
+52579:       names.forEach(function(p){
+52580:         var name = typeof p === 'string' ? p : (p && (p.name || p.player_name || p.playerName));
+52581:         var k = rankKey(name);
+52582:         if (k) set.add(k);
+52583:       });
+52584:       return set.size ? set : null;
+52585:     }catch(e){
+52586:       console.warn('[SQ] Target Hit % saved-player filter unavailable for global ranks', e);
+52587:       return null;
+52588:     }
+52589:   }
+52590: 
+52591:   async function fetchTargetHitGlobalRanks(rows){
+52592:     var c = client();
+52593:     if (!c || typeof c.from !== 'function') return new Map();
+52594:     var keys = Array.from(new Set((rows || []).map(function(r){ return String(r.key || '').toUpperCase(); }).filter(Boolean)));
+52595:     if (!keys.length) return new Map();
+52596:     try{
+52597:       var savedSet = await savedPlayerKeySet();
+52598:       var q = await c.from('v_player_target_hit_pct')
+52599:         .select('player_key,player_name,target_key,target_label,target_sort,throws,hits,hit_pct')
+52600:         .in('target_key', keys)
+52601:         .gt('throws', 0)
+52602:         .limit(5000);
+52603:       if (q.error) throw q.error;
+52604:       var allRows = (Array.isArray(q.data) ? q.data : []).map(rowFromHitPct).filter(function(r){
+52605:         if (!r.key || !r.playerKey) return false;
+52606:         return !savedSet || savedSet.has(r.playerKey);
+52607:       });
+52608:       var byTarget = new Map();
+52609:       allRows.forEach(function(r){
+52610:         var k = String(r.key).toUpperCase();
+52611:         if (!byTarget.has(k)) byTarget.set(k, []);
+52612:         byTarget.get(k).push(r);
+52613:       });
+52614:       var ranks = new Map();
+52615:       byTarget.forEach(function(list, targetKey){
+52616:         list.sort(function(a,b){
+52617:           return Number(b.pct || 0) - Number(a.pct || 0) ||
+52618:             Number(b.hits || 0) - Number(a.hits || 0) ||
+52619:             Number(b.throwsN || 0) - Number(a.throwsN || 0) ||
+52620:             String(a.playerKey || '').localeCompare(String(b.playerKey || ''));
+52621:         });
+52622:         var rank = 0, prev = '';
+52623:         list.forEach(function(r, i){
+52624:           var sig = [Number(r.pct || 0).toFixed(8), Number(r.hits || 0), Number(r.throwsN || 0), String(r.playerKey || '')].join('|');
+52625:           if (sig !== prev){ rank = i + 1; prev = sig; }
+52626:           ranks.set(targetKey + '|' + r.playerKey, rank);
+52627:         });
+52628:       });
+52629:       console.debug('[SQ] Target Hit % global rank source used', { source:'v_player_target_hit_pct', rows:allRows.length, saved_players_only:!!savedSet });
+52630:       return ranks;
+52631:     }catch(e){
+52632:       console.warn('[SQ] Target Hit % global rank source unavailable', { required_view:'v_player_target_hit_pct', error:e });
+52633:       return new Map();
+52634:     }
+52635:   }
+52636: 
+52637:   // @CANONICAL:PLAYER_TARGET_HIT_HEATMAP
+52638:   window.openPlayerTargetHitDialog = async function openPlayerTargetHitDialog(playerName){
+52639:     var name = String(playerName || '').trim();
+52640:     if (!name) return;
+52641:     var ui = __sqBuildTargetPctShell('Target Hit % - ' + name, 'Throws / Hits / %', name, 'hit');
+52642:     var body = ui.body;
+52643:     body.innerHTML = '<p class="muted">Loading...</p>';
+52644: 
+52645:     var result = await __sqFetchPlayerTargetHitPctRows(name);
+52646:     if (result.missing || !result.rows.length){
+52647:       console.warn('[SQ] Target Hit % dependency missing or empty', { required_view:'v_player_target_hit_pct', player:name, source:result.source, detail:result.missing || 'zero rows' });
+52648:       __sqShowTargetPctUnavailable(
+52649:         body,
+52650:         'Target Hit % is not available yet. Accurate hit-rate data requires throw-level segment data or a Supabase view that records correct target hits.',
+52651:         'Formula: Target Hit % = successful target hits / throws at that target. Number rounds require actual segment number truth; points alone are not used.',
+52652:         'Missing dependency: v_player_target_hit_pct (player_id/player_key/player_name, target_key/target_label, throws, hits, hit_pct).'
+52653:       );
+52654:       return;
+52655:     }
+52656: 
+52657:     console.debug('[SQ] Target Hit % source used', { source:result.source, rows:result.rows.length });
+52658:     __sqSetTargetPctActionsEnabled(body, true);
+52659:     var rows = result.rows.map(rowFromHitPct).filter(function(r){ return r.key; }).sort(function(a,b){ return __sqTargetPctOrder(a.key) - __sqTargetPctOrder(b.key); });
+52660:     applyTargetHitPersonalRanks(rows);
+52661:     var globalRanks = await fetchTargetHitGlobalRanks(rows);
+52662:     rows.forEach(function(r){
+52663:       var currentPlayerKey = r.playerKey || rankKey(name);
+52664:       r.gRank = globalRanks.get(String(r.key).toUpperCase() + '|' + currentPlayerKey) || null;
+52665:     });
+52666:     var hasGlobalRanks = rows.some(function(r){ return r.gRank; });
+52667:     window.__lastTargetHitPctSpiderData = { labels: rows.map(function(r){ return String(r.key); }), pct: rows.map(function(r){ return Number(r.pct || 0); }) };
+52668: 
+52669:     body.innerHTML = '';
+52670:     body.style.display = 'flex';
+52671:     body.style.flexDirection = 'column';
+52672:     body.style.gap = '10px';
+52673:     body.style.height = 'min(68vh, 650px)';
+52674:     body.style.minHeight = '520px';
+52675:     body.style.overflow = 'hidden';
+52676: 
+52677:     var heatPanel = document.createElement('div');
+52678:     heatPanel.className = 'tag sq-target-hit-heatmap-panel';
+52679:     heatPanel.style.flex = '0 0 63%';
+52680:     heatPanel.style.minHeight = '310px';
+52681:     heatPanel.style.padding = '10px';
+52682:     heatPanel.style.borderRadius = '12px';
+52683:     heatPanel.style.border = '1px solid rgba(255,255,255,.10)';
+52684:     heatPanel.style.background = 'radial-gradient(circle at 48% 35%, rgba(72,111,205,.20), rgba(10,16,38,.94) 64%, rgba(4,7,18,.98))';
+52685:     heatPanel.style.overflow = 'hidden';
+52686:     heatPanel.appendChild(renderTargetHitHeatmap(rows));
+52687: 
+52688:     var tablePanel = document.createElement('div');
+52689:     tablePanel.className = 'sq-target-hit-table-panel';
+52690:     tablePanel.style.flex = '1 1 0';
+52691:     tablePanel.style.minHeight = '150px';
+52692:     tablePanel.style.overflowY = 'auto';
+52693:     tablePanel.style.border = '1px solid rgba(255,255,255,.10)';
+52694:     tablePanel.style.borderRadius = '10px';
+52695: 
+52696:     var table = document.createElement('table');
+52697:     table.className = 'sq-table hs-table';
+52698:     table.style.width = '100%';
+52699:     table.style.tableLayout = 'fixed';
+52700:     table.style.fontSize = 'clamp(11px, 2.7vw, 14px)';
+52701:     table.innerHTML = '<colgroup><col style="width:24%"><col style="width:28%"><col style="width:24%"><col style="width:24%"></colgroup><thead><tr><th>Target</th><th>%</th><th>P Rank</th><th>G Rank</th></tr></thead><tbody></tbody>';
+52702:     var tb = table.querySelector('tbody');
+52703:     rows.forEach(function(r){
+52704:       var tr = document.createElement('tr');
+52705:       [r.key, pctFmt(r.pct), r.pRank ? ('#' + r.pRank) : '—', r.gRank ? ('#' + r.gRank) : '—'].forEach(function(v){
+52706:         var td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
+52707:       });
+52708:       tb.appendChild(tr);
+52709:     });
+52710:     tablePanel.appendChild(table);
+52711: 
+52712:     body.append(heatPanel, tablePanel);
+52713:     __sqWireBoardInspect(heatPanel, tablePanel, rows, 'hit');
+52714:   };
+52715:   window.__sqCanonicalPlayerTargetHitDialog = window.openPlayerTargetHitDialog;
+52716:   window.openPlayerTargetPctDialog = function(){ return window.__sqCanonicalPlayerTargetHitDialog.apply(window, arguments); };
+52717:   window.openTargetPctDialog = window.openPlayerTargetPctDialog;
+52718:   try{ openPlayerTargetHitDialog = window.openPlayerTargetHitDialog; }catch(_){}
+52719:   try{ openPlayerTargetPctDialog = window.openPlayerTargetPctDialog; }catch(_){}
+52720:   try{ openTargetPctDialog = window.openTargetPctDialog; }catch(_){}
+52721: 
+52722:   function pointsTargetKey(r){
+52723:     var n = Number(typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['target_number','target_n','target']) : r.target_number);
+52724:     if (Number.isFinite(n) && n >= 10 && n <= 20) return String(Math.trunc(n));
+52725:     var raw = typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['target_label','target_key','bucket_key','target']) : (r.target_label || r.target_key || r.bucket_key || r.target);
+52726:     var key = String(raw || '').trim().toUpperCase();
+52727:     if (key === 'DOUBLE' || key === 'DOUBLES') key = 'D';
+52728:     if (key === 'TREBLE' || key === 'TRIPLE' || key === 'TREBLES' || key === 'TRIPLES') key = 'T';
+52729:     if (key === 'BULL' || key === 'BULLS' || key === 'IB' || key === 'OB') key = 'B';
+52730:     return key;
+52731:   }
+52732:   function fmtAvgScore(v){
+52733:     var n = Number(v);
+52734:     if (!Number.isFinite(n)) return '—';
+52735:     var rounded = Math.round(n * 10) / 10;
+52736:     return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)) + ' pts';
+52737:   }
+52738:   function rowFromPointsPct(r){
+52739:     var targetNumber = Number(typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['target_number','target_n','target']) : r.target_number);
+52740:     var key = pointsTargetKey(r);
+52741:     var throwsN = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['throws','throw_count','thrown']) : r.throws) || 0);
+52742:     var actual = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['actual_points','points','score','round_total']) : r.actual_points) || 0);
+52743:     var max = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['max_points','available_points']) : r.max_points) || 0);
+52744:     if (!Number.isFinite(max) || max <= 0) max = Number.isFinite(targetNumber) ? targetNumber * 3 * throwsN : 0;
+52745:     var sourceGames = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['source_games','games','game_count']) : r.source_games) || 0);
+52746:     var pctRaw = typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['points_pct','pct','percentage']) : r.points_pct;
+52747:     var pct = Number.isFinite(Number(pctRaw)) ? Number(pctRaw) : (max ? actual * 100 / max : 0);
+52748:     var sort = Number.isFinite(targetNumber) ? targetNumber : (typeof __sqTargetPctOrder === 'function' ? __sqTargetPctOrder(key) : 999);
+52749:     var avgScore = sourceGames > 0 ? actual / sourceGames : (throwsN ? actual / (throwsN / 3) : NaN);
+52750:     return {
+52751:       key:key,
+52752:       playerKey:rankKey(r.player_key || r.player_name),
+52753:       playerName:String(r.player_name || r.player_key || ''),
+52754:       targetNumber:Number.isFinite(targetNumber) ? targetNumber : null,
+52755:       throwsN:throwsN,
+52756:       actual:actual,
+52757:       max:max,
+52758:       pct:Math.max(0, Math.min(100, Number(pct) || 0)),
+52759:       sourceGames:sourceGames,
+52760:       avgScore:avgScore,
+52761:       sort:sort
+52762:     };
+52763:   }
+52764:   function applyTargetPointsPersonalRanks(rows){
+52765:     var sorted = (rows || []).slice().sort(function(a,b){
+52766:       return Number(b.pct || 0) - Number(a.pct || 0) ||
+52767:         Number(b.actual || 0) - Number(a.actual || 0) ||
+52768:         Number(a.sort || 999) - Number(b.sort || 999);
+52769:     });
+52770:     var rank = 0, prev = '';
+52771:     sorted.forEach(function(r, i){
+52772:       var sig = [Number(r.pct || 0).toFixed(8), Number(r.actual || 0), Number(r.sort || 999)].join('|');
+52773:       if (sig !== prev){ rank = i + 1; prev = sig; }
+52774:       r.pRank = rank;
+52775:     });
+52776:   }
+52777:   async function fetchTargetPointsGlobalRanks(rows){
+52778:     var c = client();
+52779:     if (!c || typeof c.from !== 'function') return new Map();
+52780:     var keys = new Set((rows || []).map(function(r){ return String(r.key || '').toUpperCase(); }).filter(Boolean));
+52781:     if (!keys.size) return new Map();
+52782:     try{
+52783:       var savedSet = await savedPlayerKeySet();
+52784:       var q = await c.from('v_player_target_points_pct')
+52785:         .select('player_key,player_name,target_number,target_label,throws,actual_points,max_points,points_pct,source_games')
+52786:         .limit(10000);
+52787:       if (q.error) throw q.error;
+52788:       var allRows = (Array.isArray(q.data) ? q.data : []).map(rowFromPointsPct).filter(function(r){
+52789:         if (!r.key || !r.playerKey || !keys.has(String(r.key).toUpperCase())) return false;
+52790:         return !savedSet || savedSet.has(r.playerKey);
+52791:       });
+52792:       var byTarget = new Map();
+52793:       allRows.forEach(function(r){
+52794:         var k = String(r.key).toUpperCase();
+52795:         if (!byTarget.has(k)) byTarget.set(k, []);
+52796:         byTarget.get(k).push(r);
+52797:       });
+52798:       var ranks = new Map();
+52799:       byTarget.forEach(function(list, targetKey){
+52800:         list.sort(function(a,b){
+52801:           return Number(b.pct || 0) - Number(a.pct || 0) ||
+52802:             Number(b.actual || 0) - Number(a.actual || 0) ||
+52803:             Number(b.sourceGames || 0) - Number(a.sourceGames || 0) ||
+52804:             String(a.playerName || a.playerKey || '').localeCompare(String(b.playerName || b.playerKey || ''));
+52805:         });
+52806:         var rank = 0, prev = '';
+52807:         list.forEach(function(r, i){
+52808:           var sig = [Number(r.pct || 0).toFixed(8), Number(r.actual || 0), Number(r.sourceGames || 0), String(r.playerName || r.playerKey || '')].join('|');
+52809:           if (sig !== prev){ rank = i + 1; prev = sig; }
+52810:           ranks.set(targetKey + '|' + r.playerKey, rank);
+52811:         });
+52812:       });
+52813:       console.debug('[SQ] Target Points % global rank source used', { source:'v_player_target_points_pct', rows:allRows.length, saved_players_only:!!savedSet });
+52814:       return ranks;
+52815:     }catch(e){
+52816:       console.warn('[SQ] Target Points % global rank source unavailable', { required_view:'v_player_target_points_pct', error:e });
+52817:       return new Map();
+52818:     }
+52819:   }
+52820:   function renderTargetPointsHeatmap(rows){
+52821:     var map = heatValueMap(rows);
+52822:     var boardOrder = ['20','1','18','4','13','6','10','15','2','17','3','19','7','16','8','11','14','9','12','5'];
+52823:     var tracked = new Set(['10','11','12','13','14','15','16','17','18','19','20']);
+52824:     var hotRows = (rows || []).filter(function(r){ return tracked.has(String(r.key).toUpperCase()) && Number.isFinite(Number(r.pct)); })
+52825:       .sort(function(a,b){ return Number(b.pct || 0) - Number(a.pct || 0); });
+52826:     var hotKeys = new Set(hotRows.filter(function(r){ return Number(r.pct || 0) >= 48; }).map(function(r){ return String(r.key).toUpperCase(); }));
+52827:     if (!hotKeys.size) hotRows.slice(0, 2).forEach(function(r){ hotKeys.add(String(r.key).toUpperCase()); });
+52828:     var cx = 160, cy = 142, r0 = 32, r1 = 104, rLabel = 124, step = 360 / boardOrder.length;
+52829:     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+52830:     svg.setAttribute('viewBox', '0 0 320 352');
+52831:     svg.setAttribute('role', 'img');
+52832:     svg.setAttribute('aria-label', 'Target Points percentage heatmap');
+52833:     svg.style.width = '100%';
+52834:     svg.style.height = '100%';
+52835:     svg.style.display = 'block';
+52836: 
+52837:     var defs = svgEl(svg, 'defs');
+52838:     defs.innerHTML =
+52839:       '<radialGradient id="sqPointsBoardBg" cx="46%" cy="36%" r="70%"><stop offset="0%" stop-color="#253a72"/><stop offset="58%" stop-color="#111b3b"/><stop offset="100%" stop-color="#050915"/></radialGradient>' +
+52840:       '<style>@keyframes sqPointsPulse{0%,100%{opacity:.88;stroke-opacity:.86}50%{opacity:1;stroke-opacity:1}}.sq-points-hot-pulse{animation:sqPointsPulse 2.35s ease-in-out infinite}</style>' +
+52841:       '<filter id="sqPointsGlowWarm" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="2.4" result="b"/><feColorMatrix in="b" type="matrix" values="1 0 0 0 1  0 0.42 0 0 .38  0 0 0.04 0 0  0 0 0 .55 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+52842:       '<filter id="sqPointsGlowHot" x="-45%" y="-45%" width="190%" height="190%"><feGaussianBlur stdDeviation="3.4" result="b"/><feColorMatrix in="b" type="matrix" values="1 0 0 0 1  0 .72 0 0 .62  0 0 .08 0 0  0 0 0 .78 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+52843:       '<filter id="sqPointsGlowElite" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3.9" result="b"/><feColorMatrix in="b" type="matrix" values="0 0 0 0 .42  0 0 0 0 1  0 0 0 0 .38  0 0 0 .82 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+52844:     svg.appendChild(defs);
+52845: 
+52846:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:132, fill:'rgba(15,27,63,.34)', stroke:'rgba(190,215,255,.16)', 'stroke-width':'1' }));
+52847:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:116, fill:'url(#sqPointsBoardBg)', stroke:'rgba(218,234,255,.36)', 'stroke-width':'1.25' }));
+52848:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:109, fill:'none', stroke:'rgba(108,165,230,.30)', 'stroke-width':'1' }));
+52849: 
+52850:     boardOrder.forEach(function(k, i){
+52851:       var row = tracked.has(k) ? map.get(k) : null;
+52852:       var pct = row ? Number(row.pct || 0) : null;
+52853:       var style = row ? heatStyle(pct) : { fill:(i % 2 ? 'rgba(45,61,101,.34)' : 'rgba(34,48,82,.38)'), stroke:'rgba(185,214,255,.18)', glow:'', width:'.85', label:'rgba(223,236,255,.76)' };
+52854:       var a0 = i * step - (step / 2) + .28;
+52855:       var a1 = i * step + (step / 2) - .28;
+52856:       var path = svgEl(svg, 'path', { d:wedgePath(cx, cy, r0, r1, a0, a1), fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+52857:       if (row){ path.setAttribute('data-sqkey', k); path.style.cursor = 'pointer'; }
+52858:       if (style.glow) path.setAttribute('filter', style.glow.replace('sqHit', 'sqPoints'));
+52859:       if (row && hotKeys.has(k)) path.setAttribute('class', 'sq-points-hot-pulse');
+52860:       var title = svgEl(svg, 'title');
+52861:       title.textContent = row ? (k + ': ' + pctFmt(pct) + ' - ' + Math.round(row.actual || 0) + '/' + Math.round(row.max || 0) + ' pts') : (k + ': not tracked');
+52862:       path.appendChild(title);
+52863:       svg.appendChild(path);
+52864: 
+52865:       var start = polar(cx, cy, r0 - 2, i * step - step / 2);
+52866:       var end = polar(cx, cy, 109, i * step - step / 2);
+52867:       svg.appendChild(svgEl(svg, 'line', { x1:start.x.toFixed(1), y1:start.y.toFixed(1), x2:end.x.toFixed(1), y2:end.y.toFixed(1), stroke:'rgba(212,232,255,.34)', 'stroke-width':'.65' }));
+52868: 
+52869:       var labelPos = polar(cx, cy, rLabel, i * step);
+52870:       var labelFill = row ? (pct >= 48 ? 'rgba(255,244,180,.98)' : 'rgba(248,252,255,.96)') : 'rgba(218,232,255,.72)';
+52871:       addSvgText(svg, labelPos.x.toFixed(1), labelPos.y.toFixed(1), k, { fill:labelFill, 'font-size': row ? '13' : '12', 'font-weight': row ? '950' : '800' });
+52872:     });
+52873: 
+52874:     [r0, 50, 70, 88, r1, 116].forEach(function(r){
+52875:       svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:r, fill:'none', stroke:r === r0 ? 'rgba(220,236,255,.32)' : 'rgba(200,224,255,.24)', 'stroke-width':r === r0 ? '1.3' : '.8' }));
+52876:     });
+52877: 
+52878:     var bull = map.get('B');
+52879:     var bullPct = bull ? Number(bull.pct || 0) : null;
+52880:     var bullStyle = bull ? heatStyle(bullPct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.4', label:'rgba(240,244,255,.8)' };
+52881:     var bullOuter = svgEl(svg, 'circle', { cx:cx, cy:cy, r:31, fill:bullStyle.fill, stroke:bullStyle.stroke, 'stroke-width':'2.2' });
+52882:     if (bull){ bullOuter.setAttribute('data-sqkey', 'B'); bullOuter.style.cursor = 'pointer'; }
+52883:     if (bullStyle.glow) bullOuter.setAttribute('filter', bullStyle.glow.replace('sqHit', 'sqPoints'));
+52884:     var bullTitle = svgEl(svg, 'title');
+52885:     bullTitle.textContent = bull ? ('B: ' + pctFmt(bullPct) + ' - ' + Math.round(bull.actual || 0) + '/' + Math.round(bull.max || 0) + ' pts') : 'B: no data';
+52886:     bullOuter.appendChild(bullTitle);
+52887:     svg.appendChild(bullOuter);
+52888:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:15, fill:'rgba(5,8,18,.42)', stroke:'rgba(255,255,255,.22)', 'stroke-width':'1.2' }));
+52889:     addSvgText(svg, cx, cy - 4, 'B', { fill:bullStyle.label, 'font-size':'15' });
+52890:     addSvgText(svg, cx, cy + 18, bull ? pctFmt(bullPct, 1) : '—', { fill:'rgba(232,242,255,.82)', 'font-size':'8.5', 'font-weight':'850' });
+52891: 
+52892:     [['D',56,322],['T',264,322]].forEach(function(spec){
+52893:       var k = spec[0], x = spec[1], y = spec[2], row = map.get(k), pct = row ? Number(row.pct || 0) : null;
+52894:       var style = row ? heatStyle(pct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.2', label:'rgba(240,244,255,.8)' };
+52895:       var g = svgEl(svg, 'g');
+52896:       var halo = svgEl(svg, 'circle', { cx:x, cy:y, r:25, fill:'rgba(5,8,18,.58)', stroke:'rgba(160,190,245,.16)', 'stroke-width':'1' });
+52897:       g.appendChild(halo);
+52898:       var c = svgEl(svg, 'circle', { cx:x, cy:y - 7, r:16, fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+52899:       if (row){ c.setAttribute('data-sqkey', k); c.style.cursor = 'pointer'; }
+52900:       if (style.glow) c.setAttribute('filter', style.glow.replace('sqHit', 'sqPoints'));
+52901:       var title = svgEl(svg, 'title');
+52902:       title.textContent = row ? (k + ': ' + pctFmt(pct) + ' - ' + Math.round(row.actual || 0) + '/' + Math.round(row.max || 0) + ' pts') : (k + ': no data');
+52903:       c.appendChild(title);
+52904:       g.appendChild(c);
+52905:       svg.appendChild(g);
+52906:       addSvgText(svg, x, y - 6, k, { fill:style.label, 'font-size':'13' });
+52907:       addSvgText(svg, x, y + 17, row ? pctFmt(pct, 0) : '—', { fill:'rgba(240,244,255,.88)', 'font-size':'10', 'font-weight':'850' });
+52908:     });
+52909:     // Heat legend (LOW -> HIGH) centered between the D/T badges
+52910:     var lg = svgEl(svg, 'linearGradient');
+52911:     lg.setAttribute('id', 'sqPointsLegendG');
+52912:     lg.setAttribute('x1','0'); lg.setAttribute('y1','0'); lg.setAttribute('x2','1'); lg.setAttribute('y2','0');
+52913:     [['0%','#16304f'],['24%','#0e8794'],['46%','#c78b2b'],['64%','#f97618'],['82%','#ffc125'],['100%','#73f07e']].forEach(function(st){
+52914:       var stop = svgEl(svg, 'stop'); stop.setAttribute('offset', st[0]); stop.setAttribute('stop-color', st[1]); lg.appendChild(stop);
+52915:     });
+52916:     svg.querySelector('defs').appendChild(lg);
+52917:     svg.appendChild(svgEl(svg, 'rect', { x:104, y:316, width:112, height:9, rx:4.5, fill:'url(#sqPointsLegendG)', stroke:'rgba(255,255,255,.18)', 'stroke-width':'.6' }));
+52918:     addSvgText(svg, 92, 321, 'LOW', { fill:'rgba(190,210,240,.75)', 'font-size':'8', 'font-weight':'800' });
+52919:     addSvgText(svg, 230, 321, 'HIGH', { fill:'rgba(190,210,240,.75)', 'font-size':'8', 'font-weight':'800' });
+52920:     return svg;
+52921:   }
+52922: 
+52923:   // @CANONICAL:PLAYER_TARGET_POINTS_PCT
+52924:   window.openPlayerTargetPointsDialog = async function openPlayerTargetPointsDialog(playerName){
+52925:     var name = String(playerName || '').trim();
+52926:     if (!name) return;
+52927:     var ui = __sqBuildTargetPctShell('Target Points % - ' + name, '% Score / Avg Score / Rank', name, 'points');
+52928:     var body = ui.body;
+52929:     body.innerHTML = '<p class="muted">Loading...</p>';
+52930: 
+52931:     var result = await __sqFetchPlayerTargetPointsPctRows(name);
+52932:     if (result.missing || !result.rows.length){
+52933:       console.warn('[SQ] Target Points % dependency missing or empty', { required_view:'v_player_target_points_pct', player:name, source:result.source, detail:result.missing || 'zero rows' });
+52934:       __sqShowTargetPctUnavailable(
+52935:         body,
+52936:         'Target Points % is not available yet. Required Supabase view/data source is missing or empty.',
+52937:         'Formula: Target Points % = actual points scored / maximum available points. For targets 10-20, max points = target number x 3 x throws.',
+52938:         'Missing dependency: v_player_target_points_pct (player_id/player_key/player_name, target_number, throws, actual_points, max_points, points_pct).'
+52939:       );
+52940:       return;
+52941:     }
+52942: 
+52943:     console.debug('[SQ] Target Points % source used', { source:result.source, rows:result.rows.length });
+52944:     var allowed = new Set(['10','11','12','13','14','15','16','17','18','19','20','D','T','B']);
+52945:     var rows = result.rows.map(rowFromPointsPct).filter(function(r){ return r.key && allowed.has(String(r.key).toUpperCase()); }).sort(function(a,b){ return __sqTargetPctOrder(a.key) - __sqTargetPctOrder(b.key); });
+52946:     if (!rows.length){
+52947:       console.warn('[SQ] Target Points % dependency returned no supported target rows', { required_view:'v_player_target_points_pct', player:name });
+52948:       __sqShowTargetPctUnavailable(
+52949:         body,
+52950:         'Target Points % is not available yet. Required Supabase view/data source is missing or empty.',
+52951:         'Formula: Target Points % = actual points scored / maximum available points.',
+52952:         'Missing dependency: v_player_target_points_pct with target rows 10-20 or approved D/T/B rows.'
+52953:       );
+52954:       return;
+52955:     }
+52956: 
+52957:     __sqSetTargetPctActionsEnabled(body, true);
+52958:     applyTargetPointsPersonalRanks(rows);
+52959:     var globalRanks = await fetchTargetPointsGlobalRanks(rows);
+52960:     rows.forEach(function(r){
+52961:       var currentPlayerKey = r.playerKey || rankKey(name);
+52962:       r.gRank = globalRanks.get(String(r.key).toUpperCase() + '|' + currentPlayerKey) || null;
+52963:     });
+52964:     var hasGlobalRanks = rows.some(function(r){ return r.gRank; });
+52965:     window.__lastPointsPctSpiderData = { labels: rows.map(function(r){ return String(r.key); }), pct: rows.map(function(r){ return Number(r.pct || 0); }) };
+52966: 
+52967:     body.innerHTML = '';
+52968:     body.style.display = 'flex';
+52969:     body.style.flexDirection = 'column';
+52970:     body.style.gap = '10px';
+52971:     body.style.height = 'min(68vh, 650px)';
+52972:     body.style.minHeight = '520px';
+52973:     body.style.overflow = 'hidden';
+52974: 
+52975:     var heatPanel = document.createElement('div');
+52976:     heatPanel.className = 'tag sq-target-hit-heatmap-panel sq-target-points-heatmap-panel';
+52977:     heatPanel.style.flex = '0 0 63%';
+52978:     heatPanel.style.minHeight = '310px';
+52979:     heatPanel.style.padding = '10px';
+52980:     heatPanel.style.borderRadius = '12px';
+52981:     heatPanel.style.border = '1px solid rgba(255,255,255,.10)';
+52982:     heatPanel.style.background = 'radial-gradient(circle at 48% 35%, rgba(72,111,205,.20), rgba(10,16,38,.94) 64%, rgba(4,7,18,.98))';
+52983:     heatPanel.style.overflow = 'hidden';
+52984:     heatPanel.appendChild(renderTargetPointsHeatmap(rows));
+52985: 
+52986:     var tablePanel = document.createElement('div');
+52987:     tablePanel.className = 'sq-target-points-table-panel';
+52988:     tablePanel.style.flex = '1 1 0';
+52989:     tablePanel.style.minHeight = '150px';
+52990:     tablePanel.style.overflowY = 'auto';
+52991:     tablePanel.style.border = '1px solid rgba(255,255,255,.10)';
+52992:     tablePanel.style.borderRadius = '10px';
+52993: 
+52994:     var table = document.createElement('table');
+52995:     table.className = 'sq-table hs-table';
+52996:     table.style.width = '100%';
+52997:     table.style.tableLayout = 'fixed';
+52998:     table.style.fontSize = 'clamp(11px, 2.7vw, 14px)';
+52999:     table.innerHTML = '<colgroup><col style="width:20%"><col style="width:23%"><col style="width:23%"><col style="width:17%"><col style="width:17%"></colgroup><thead><tr><th>Target</th><th>% Score</th><th>Avg Score</th><th>P Rank</th><th>G Rank</th></tr></thead><tbody></tbody>';
+53000:     var tb = table.querySelector('tbody');
+53001:     rows.forEach(function(r){
+53002:       var tr = document.createElement('tr');
+53003:       [r.key, pctFmt(r.pct), fmtAvgScore(r.avgScore), r.pRank ? ('#' + r.pRank) : '—', r.gRank ? ('#' + r.gRank) : '—'].forEach(function(v){
+53004:         var td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
+53005:       });
+53006:       tb.appendChild(tr);
+53007:     });
+53008:     tablePanel.appendChild(table);
+53009: 
+53010:     body.append(heatPanel, tablePanel);
+53011:     __sqWireBoardInspect(heatPanel, tablePanel, rows, 'points');
+53012:   };
+53013:   window.__sqCanonicalPlayerTargetPointsDialog = window.openPlayerTargetPointsDialog;
+53014:   window.openPlayerTargetPointsPctDialog = function(){ return window.__sqCanonicalPlayerTargetPointsDialog.apply(window, arguments); };
+53015:   try{ openPlayerTargetPointsDialog = window.openPlayerTargetPointsDialog; }catch(_){}
+53016:   try{ openPlayerTargetPointsPctDialog = window.openPlayerTargetPointsPctDialog; }catch(_){}
+53017: 
+53018:   try{ console.info('[SQ] Fix166 Top50 names + Target Hit heatmap active'); }catch(_){}
+53019: })();
+53020: </script>
+53021: <!-- <<< PATCH:FIX166_TOP50_NAMES_TARGET_HIT_HEATMAP END -->
+53022: 
+53023: <!-- >>> PATCH:FIX167_GAMEPLAY_PERF_MOT START -->
+53024: <script id="sq-fix167-gameplay-perf-mot-js">
+53025: (function(){
+53026:   'use strict';
+53027:   if (window.__sqFix167GameplayPerfMot) return;
+53028:   window.__sqFix167GameplayPerfMot = true;
+53029: 
+53030:   if (typeof window.SQ_PERF_DEBUG === 'undefined') window.SQ_PERF_DEBUG = false;
+53031:   var samples = [];
+53032:   function now(){ try{ return performance.now(); }catch(_){ return Date.now(); } }
+53033:   function push(name, ms, meta){
+53034:     if (!window.SQ_PERF_DEBUG) return;
+53035:     var row = { name:name, ms:Math.round(Number(ms || 0) * 100) / 100, ts:Date.now(), meta:meta || null };
+53036:     samples.push(row);
+53037:     if (samples.length > 240) samples.shift();
+53038:     try{ if (row.ms >= 12) console.debug('[SQ][PERF]', row.name, row.ms + 'ms', row.meta || ''); }catch(_){}
+53039:   }
+53040:   function measure(name, fn, meta){
+53041:     var t = now();
+53042:     try{ return fn(); }
+53043:     finally{ push(name, now() - t, meta); }
+53044:   }
+53045:   window.sqPerfReport = function(){
+53046:     var grouped = {};
+53047:     samples.forEach(function(s){
+53048:       var g = grouped[s.name] || (grouped[s.name] = { name:s.name, count:0, total:0, max:0, last:0 });
+53049:       g.count++;
+53050:       g.total += s.ms;
+53051:       g.max = Math.max(g.max, s.ms);
+53052:       g.last = s.ms;
+53053:     });
+53054:     var rows = Object.keys(grouped).map(function(k){
+53055:       var g = grouped[k];
+53056:       return {
+53057:         name:g.name,
+53058:         count:g.count,
+53059:         avg:Math.round((g.total / Math.max(1, g.count)) * 100) / 100,
+53060:         max:Math.round(g.max * 100) / 100,
+53061:         last:g.last
+53062:       };
+53063:     }).sort(function(a,b){ return b.max - a.max; });
+53064:     try{ console.table(rows); }catch(_){}
+53065:     return { debug:!!window.SQ_PERF_DEBUG, rows:rows, samples:samples.slice() };
+53066:   };
+53067: 
+53068:   function pageKey(){
+53069:     try{ return document.body && (document.body.getAttribute('data-page') || (document.body.dataset && document.body.dataset.page)) || ''; }
+53070:     catch(_){ return ''; }
+53071:   }
+53072:   function padEl(){
+53073:     try{ if (typeof pad !== 'undefined' && pad) return pad; }catch(_){}
+53074:     return document.getElementById('pad');
+53075:   }
+53076:   function missCount(){
+53077:     try{
+53078:       var dart = (typeof state !== 'undefined' && state && typeof state.currentDart === 'number') ? state.currentDart : 0;
+53079:       return Math.max(1, Math.min(3, 3 - dart));
+53080:     }catch(_){ return 3; }
+53081:   }
+53082:   function refreshPadLight(){
+53083:     try{
+53084:       var el = padEl();
+53085:       if (!el) return;
+53086:       var n = missCount();
+53087:       el.querySelectorAll('.dtX3').forEach(function(btn){
+53088:         btn.textContent = 'MISS\nx' + n;
+53089:         btn.dataset.missN = String(n);
+53090:       });
+53091:       try{
+53092:         if (typeof padHint !== 'undefined' && padHint) padHint.textContent = (typeof state !== 'undefined' && state && state.finished) ? 'Game finished.' : '';
+53093:       }catch(_){}
+53094:     }catch(_){}
+53095:   }
+53096:   function padSig(){
+53097:     try{
+53098:       var rIdx = Number(state && state.currentRound || 0);
+53099:       var r = (typeof ROUNDS !== 'undefined' && ROUNDS && ROUNDS[rIdx]) ? ROUNDS[rIdx] : null;
+53100:       return [
+53101:         pageKey(),
+53102:         state && state.finished ? 'done' : 'live',
+53103:         state && state.suddenDeath && state.suddenDeath.active ? 'sd' : '',
+53104:         state && state.players ? state.players.length : 0,
+53105:         rIdx,
+53106:         state && Number.isFinite(Number(state.currentPlayer)) ? Number(state.currentPlayer) : 0,
+53107:         r && r.type || '',
+53108:         r && r.target || ''
+53109:       ].join('|');
+53110:     }catch(_){ return 'unknown|' + Date.now(); }
+53111:   }
+53112: 
+53113:   var oldBuildPad = window.buildPad || (typeof buildPad === 'function' ? buildPad : null);
+53114:   if (oldBuildPad && !oldBuildPad.__sqFix167Wrapped){
+53115:     var lastPadSig = '';
+53116:     var wrappedBuildPad = function(){
+53117:       var sig = padSig();
+53118:       var el = padEl();
+53119:       if (sig && sig === lastPadSig && el && el.children && el.children.length && pageKey() === 'game'){
+53120:         refreshPadLight();
+53121:         push('buildPad.skip', 0, { sig:sig });
+53122:         return;
+53123:       }
+53124:       try{
+53125:         if (window.__sqNumPadX3Obs && typeof window.__sqNumPadX3Obs.disconnect === 'function') {
+53126:           window.__sqNumPadX3Obs.disconnect();
+53127:         }
+53128:         window.__sqNumPadX3Obs = null;
+53129:       }catch(_){}
+53130:       var ctx = this, args = arguments;
+53131:       var ret = measure('buildPad', function(){ return oldBuildPad.apply(ctx, args); }, { sig:sig });
+53132:       lastPadSig = padSig();
+53133:       refreshPadLight();
+53134:       return ret;
+53135:     };
+53136:     wrappedBuildPad.__sqFix167Wrapped = true;
+53137:     // @CANONICAL:THROWPAD_PERF_WRAPPER
+53138:     window.buildPad = wrappedBuildPad;
+53139:     try{ buildPad = wrappedBuildPad; }catch(_){}
+53140:   }
+53141: 
+53142:   var oldLiveV2Render = window.liveV2Render || (typeof liveV2Render === 'function' ? liveV2Render : null);
+53143:   if (oldLiveV2Render && !oldLiveV2Render.__sqFix167Wrapped){
+53144:     var liveQueued = false, liveThis = null, liveArgs = null;
+53145:     var wrappedLiveV2 = function(){
+53146:       liveThis = this;
+53147:       liveArgs = arguments;
+53148:       if (window.__sqLiveV2Immediate === true) {
+53149:         return measure('liveV2Render', function(){ return oldLiveV2Render.apply(liveThis, liveArgs); });
+53150:       }
+53151:       if (liveQueued) {
+53152:         push('liveV2Render.coalesced', 0);
+53153:         return;
+53154:       }
+53155:       liveQueued = true;
+53156:       var raf = window.requestAnimationFrame || function(cb){ return setTimeout(cb, 16); };
+53157:       return raf(function(){
+53158:         liveQueued = false;
+53159:         measure('liveV2Render', function(){ return oldLiveV2Render.apply(liveThis, liveArgs); });
+53160:       });
+53161:     };
+53162:     wrappedLiveV2.__sqFix167Wrapped = true;
+53163:     // @CANONICAL:LIVE_V2_PERF_WRAPPER
+53164:     window.liveV2Render = wrappedLiveV2;
+53165:     try{ liveV2Render = wrappedLiveV2; }catch(_){}
+53166:   }
+53167: 
+53168:   var oldRecordThrow = window.recordThrow || (typeof recordThrow === 'function' ? recordThrow : null);
+53169:   if (oldRecordThrow && !oldRecordThrow.__sqFix167Wrapped){
+53170:     var wrappedRecordThrow = function(spec){
+53171:       var ctx = this, args = arguments;
+53172:       return measure('recordThrow.total', function(){ return oldRecordThrow.apply(ctx, args); }, {
+53173:         round:(typeof state !== 'undefined' && state) ? state.currentRound : null,
+53174:         dart:(typeof state !== 'undefined' && state) ? state.currentDart : null,
+53175:         kind:spec && (spec.kind || spec.sector || spec.bull)
+53176:       });
+53177:     };
+53178:     wrappedRecordThrow.__sqFix167Wrapped = true;
+53179:     // @CANONICAL:GAMEPLAY_RECORD_THROW_PERF_WRAPPER
+53180:     window.recordThrow = wrappedRecordThrow;
+53181:     try{ recordThrow = wrappedRecordThrow; }catch(_){}
+53182:   }
+53183: 
+53184:   try{ console.info('[SQ] Fix167 gameplay perf MOT active'); }catch(_){}
+53185: })();
+53186: </script>
+53187: <!-- <<< PATCH:FIX167_GAMEPLAY_PERF_MOT END -->
+53188: 
+53189: <!-- >>> PATCH:FIX168_MODE_CLASSIFICATION_TURBO_GUARD START -->
+53190: <script id="sq-fix168-mode-classification-turbo-guard-js">
+53191: (function(){
+53192:   'use strict';
+53193:   if (window.__sqFix168ModeClassificationTurboGuard) return;
+53194:   window.__sqFix168ModeClassificationTurboGuard = true;
+53195: 
+53196:   function asArr(v){ return Array.isArray(v) ? v : []; }
+53197:   function low(v){ return String(v == null ? '' : v).trim().toLowerCase(); }
+53198:   function num(v){ var n = Number(v); return Number.isFinite(n) ? n : null; }
+53199:   function pickState(g){
+53200:     if (!g) return {};
+53201:     if (g.state && typeof g.state === 'object') return g.state;
+53202:     if (g.raw && g.raw.state && typeof g.raw.state === 'object') return g.raw.state;
+53203:     return {};
+53204:   }
+53205:   function pickRawState(g){
+53206:     return (g && g.raw && g.raw.state && typeof g.raw.state === 'object') ? g.raw.state : {};
+53207:   }
+53208:   function playersOf(g){
+53209:     var st = pickState(g), raw = pickRawState(g);
+53210:     var ps = (g && (g.players || g.player_names)) || st.players || raw.players;
+53211:     return asArr(ps);
+53212:   }
+53213:   function boardOf(g){
+53214:     var st = pickState(g), raw = pickRawState(g);
+53215:     return (g && (g.board || g.score)) || st.board || st.score || raw.board || raw.score || [];
+53216:   }
+53217:   function rowsForPlayer(board, idx){
+53218:     if (!Array.isArray(board)) return [];
+53219:     if (Array.isArray(board[idx])) return board[idx];
+53220:     if (Array.isArray(board[0]) && board[0] && board[0][idx] != null){
+53221:       return board.map(function(r){ return Array.isArray(r) ? r[idx] : null; });
+53222:     }
+53223:     return [];
+53224:   }
+53225:   function roundHasPlayed(ent){
+53226:     if (ent == null) return false;
+53227:     if (typeof ent === 'number') return true;
+53228:     if (typeof ent === 'string') return ent.trim() !== '';
+53229:     if (Array.isArray(ent)) return ent.length > 0;
+53230:     if (typeof ent !== 'object') return false;
+53231:     var darts = Array.isArray(ent.darts) ? ent.darts : (Array.isArray(ent.throws) ? ent.throws : null);
+53232:     if (darts) return darts.some(function(d){ return d != null; });
+53233:     var scoreKeys = ['roundTotal','round_total','points','score','total','val','value'];
+53234:     for (var i=0; i<scoreKeys.length; i++){
+53235:       if (Object.prototype.hasOwnProperty.call(ent, scoreKeys[i])) {
+53236:         var n = Number(ent[scoreKeys[i]]);
+53237:         if (Number.isFinite(n) && n !== 0) return true;
+53238:       }
+53239:     }
+53240:     return Object.keys(ent).some(function(k){
+53241:       if (k === 'darts' || k === 'throws' || scoreKeys.indexOf(k) >= 0) return false;
+53242:       return ent[k] != null && ent[k] !== '';
+53243:     });
+53244:   }
+53245:   function gameLooksLikeLegacyTurboBoard(g){
+53246:     try{
+53247:       var board = boardOf(g);
+53248:       var players = playersOf(g);
+53249:       var count = Math.max(players.length || 0, Array.isArray(board) ? board.length : 0);
+53250:       if (!Array.isArray(board) || count < 1) return false;
+53251:       var earlyPlayed = false, latePlayed = false;
+53252:       for (var pi=0; pi<count; pi++){
+53253:         var rows = rowsForPlayer(board, pi);
+53254:         for (var ri=0; ri<7; ri++) if (roundHasPlayed(rows[ri])) earlyPlayed = true;
+53255:         for (var rj=7; rj<14; rj++) if (roundHasPlayed(rows[rj])) latePlayed = true;
+53256:       }
+53257:       return latePlayed && !earlyPlayed;
+53258:     }catch(_){ return false; }
+53259:   }
+53260: 	  function explicitTurbo(g){
+53261: 	    try{
+53262: 	      var st = pickState(g), raw = pickRawState(g);
+53263: 	      var isLiveState = !!(g && typeof window !== 'undefined' && (g === window.state || (typeof state !== 'undefined' && g === state)));
+53264: 	      var draft = (g && g.__sqTournamentDraft) || st.__sqTournamentDraft || (isLiveState && window.__sqTournamentDraft) || {};
+53265: 	      var match = (g && g.match) || st.match || raw.match || {};
+53266:       var rules = (g && g.tournamentRules) || st.tournamentRules || match.tournamentRules || draft.rules || raw.tournamentRules || {};
+53267:       var modes = [
+53268:         g && g.mode, g && g.gameMode, g && g.game_mode, g && g.type,
+53269:         st.mode, st.gameMode, st.game_mode, st.type,
+53270:         raw.mode, raw.gameMode, raw.game_mode, raw.type,
+53271:         g && g.tournamentType, g && g.tournament_type,
+53272:         st.tournamentType, st.tournament_type,
+53273:         match.tournamentType, match.tournament_type,
+53274:         raw.tournamentType, raw.tournament_type,
+53275:         draft.type
+53276:       ];
+53277:       if (modes.some(function(v){ return low(v) === 'turbo'; })) return true;
+53278:       if (st.strictTimer === true || match.strictTimer === true || rules.strictTimer === true || raw.strictTimer === true) return true;
+53279:       if (num(st.throwLimitSeconds) === 20 || num(match.throwLimitSeconds) === 20 || num(rules.throwLimitSeconds) === 20 || num(raw.throwLimitSeconds) === 20) return true;
+53280:       if (low(st.startTarget) === '17' || low(match.startTarget) === '17' || low(rules.startTarget) === '17' || low(raw.startTarget) === '17') return true;
+53281:       return false;
+53282:     }catch(_){ return false; }
+53283:   }
+53284:   function explicitPractice(g){
+53285:     try{
+53286:       var st = pickState(g), raw = pickRawState(g);
+53287:       var match = (g && g.match) || st.match || raw.match || {};
+53288:       var mode = low([g && g.mode, g && g.gameMode, g && g.game_mode, g && g.type, st.mode, st.gameMode, st.game_mode, raw.mode, raw.gameMode].filter(Boolean).join(' '));
+53289:       if (mode.indexOf('practice') >= 0 || mode.indexOf('unofficial') >= 0 || mode === 'solo' || mode === 'classic') return true;
+53290:       if ((g && (g.is_practice === true || g.isPractice === true || g.practice === true || g.single_player === true)) ||
+53291:           st.is_practice === true || st.isPractice === true || st.practice === true || st.single_player === true ||
+53292:           raw.is_practice === true || raw.isPractice === true || raw.practice === true ||
+53293:           match.forcePractice === true || low(match.mode) === 'practice') return true;
+53294:       return false;
+53295:     }catch(_){ return false; }
+53296:   }
+53297:   function isArchived(g){
+53298:     var st = pickState(g), raw = pickRawState(g);
+53299:     return !!(g && (g.archived_at || g.archivedAt || st.archived_at || st.archivedAt || raw.archived_at || raw.archivedAt));
+53300:   }
+53301:   function gameModeKey(g){
+53302:     if (!g || isArchived(g)) return 'archived';
+53303:     if (explicitTurbo(g) || gameLooksLikeLegacyTurboBoard(g)) return 'turbo';
+53304:     if (explicitPractice(g) || playersOf(g).length === 1) return 'practice';
+53305:     if (playersOf(g).length >= 2) return 'official';
+53306:     return 'unknown';
+53307:   }
+53308: 
+53309:   window.__sqGameLooksLikeLegacyTurboBoard = gameLooksLikeLegacyTurboBoard;
+53310:   window.__sqIsTurboRuntimeState = function(src){ return explicitTurbo(src) || gameLooksLikeLegacyTurboBoard(src); };
+53311:   window.__sqGameModeKey = gameModeKey;
+53312:   window.__sqGameIsTurbo = function(g){ return gameModeKey(g) === 'turbo'; };
+53313:   window.__sqGameBucketOf = gameModeKey;
+53314:   window.__sqIsOfficialGame = function(g){ return gameModeKey(g) === 'official'; };
+53315:   window.__sqIsPracticeGame = function(g){ return gameModeKey(g) === 'practice'; };
+53316:   window.isOfficialGame = window.__sqIsOfficialGame;
+53317:   window.isPracticeGame = window.__sqIsPracticeGame;
+53318:   try{ isOfficialGame = window.__sqIsOfficialGame; isPracticeGame = window.__sqIsPracticeGame; }catch(_){}
+53319: 
+53320:   async function allGames(){
+53321:     try{
+53322:       if (typeof window.__sqGetAllGamesNormalized === 'function'){
+53323:         var n = await window.__sqGetAllGamesNormalized();
+53324:         if (Array.isArray(n)) return n;
+53325:       }
+53326:     }catch(_){}
+53327:     try{
+53328:       if (typeof cloudFetchAllGamesAsLocal === 'function'){
+53329:         var c = await cloudFetchAllGamesAsLocal();
+53330:         if (Array.isArray(c)) return c;
+53331:       }
+53332:     }catch(_){}
+53333:     return [];
+53334:   }
+53335:   function parseMs(t){ var ms = Date.parse(t || ''); return Number.isFinite(ms) ? ms : 0; }
+53336: 
+53337:   // @MODE:CLASSIFICATION_RULES runtime owner. Official excludes Turbo before any "not practice" acceptance.
+53338:   window.getGamesForMode = async function(mode){
+53339:     var m = low(mode || 'official');
+53340:     if (m === 'classic') m = 'practice';
+53341:     if (m !== 'official' && m !== 'turbo' && m !== 'practice') m = 'official';
+53342:     var rows = await allGames();
+53343:     return rows.filter(function(g){ return gameModeKey(g) === m; }).sort(function(a,b){
+53344:       return parseMs(b && (b.ts || b.created_at || b.completed_at)) - parseMs(a && (a.ts || a.created_at || a.completed_at));
+53345:     });
+53346:   };
+53347:   try{ getGamesForMode = window.getGamesForMode; }catch(_){}
+53348: 
+53349:   try{ console.info('[SQ] Fix168 mode classification active: Turbo guarded out of official browser fallbacks.'); }catch(_){}
+53350: })();
+53351: </script>
+53352: <!-- <<< PATCH:FIX168_MODE_CLASSIFICATION_TURBO_GUARD END -->
+53353: 
+53354: <script id="sq-rankings-turbo-routing-fix-js">
+53355: // >>> PATCH:rankings-turbo-routing-fix START
+53356: (function(){
+53357:   'use strict';
+53358:   if (window.__sqRankingsTurboRoutingFix) return;
+53359:   window.__sqRankingsTurboRoutingFix = true;
+53360: 
+53361:   function warn(name){
+53362:     try { console.warn('[SQ] Rankings route unavailable:', name); } catch(_) {}
+53363:   }
+53364:   function modeKey(mode){
+53365:     var m = String(mode || 'official').trim().toLowerCase();
+53366:     if (m === 'classic') return 'practice';
+53367:     return (m === 'turbo' || m === 'practice') ? m : 'official';
+53368:   }
+53369:   function playerKey(s){
+53370:     return String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+53371:   }
+53372:   function parseTs(ts){
+53373:     try{
+53374:       if (typeof window.__sqParsePowerRankTs === 'function') return window.__sqParsePowerRankTs(ts);
+53375:       var n = Date.parse(ts || '');
+53376:       return Number.isFinite(n) ? n : 0;
+53377:     }catch(_){ return 0; }
+53378:   }
+53379:   async function classifiedModeMapForRoundRows(rows){
+53380:     var ids = Array.from(new Set((rows || []).map(function(r){ return String(r && r.game_id || '').trim(); }).filter(Boolean)));
+53381:     var map = new Map();
+53382:     if (!ids.length) return map;
+53383:     if (typeof window.sb === 'undefined' || !window.sb || typeof window.sb.from !== 'function') return map;
+53384:     for (var i = 0; i < ids.length; i += 80) {
+53385:       var chunk = ids.slice(i, i + 80);
+53386:       var q = await window.sb
+53387:         .from('v_games_mode_classified')
+53388:         .select('id,mode_key')
+53389:         .in('id', chunk);
+53390:       if (q && q.error) throw q.error;
+53391:       (q.data || []).forEach(function(r){
+53392:         var id = String(r.id || '').trim();
+53393:         if (id) map.set(id, modeKey(r.mode_key));
+53394:       });
+53395:     }
+53396:     return map;
+53397:   }
+53398:   function rowMatchesCleanMode(row, mode, modeMap){
+53399:     var id = String(row && row.game_id || '').trim();
+53400:     var classified = id ? modeMap.get(id) : '';
+53401:     // @MODE:ROUND_SCORE_MODE_CLASSIFICATION_GUARD
+53402:     // Do not trust v_player_round_scores_mode_clean.mode_key by itself for Official rows:
+53403:     // legacy Turbo-shaped games must be excluded through v_games_mode_classified.
+53404:     if (!classified) return false;
+53405:     return classified === modeKey(mode);
+53406:   }
+53407:   window.__sqFetchPowerRowsFromCleanRoundScores = async function(mode){
+53408:     var m = modeKey(mode);
+53409:     if (typeof window.sb === 'undefined' || !window.sb || typeof window.sb.from !== 'function') return [];
+53410:     var q = await window.sb
+53411:       .from('mv_player_round_scores_mode_clean_app')
+53412:       .select('mode_key,player,player_key,game_id,created_at,round_index,round_score')
+53413:       .order('created_at', { ascending:false })
+53414:       .limit(5000);
+53415:     if (q.error) throw q.error;
+53416:     var modeMap = await classifiedModeMapForRoundRows(q.data || []);
+53417:     var cleanRows = (q.data || []).filter(function(r){ return rowMatchesCleanMode(r, m, modeMap); });
+53418:     var grouped = new Map();
+53419:     cleanRows.forEach(function(r){
+53420:       var name = String(r.player || '').trim();
+53421:       var key = playerKey(r.player_key || name);
+53422:       if (!name || !key) return;
+53423:       var bucket = grouped.get(key);
+
+52306:   window.__sqOpenTop50ScoresTurboTabs = function(){ return window.__sqCanonicalTop50ScoresDialog.apply(window, arguments); };
+52307:   window.__sqOpenTop50ScoresAllModes = window.__sqOpenTop50ScoresTurboTabs;
+52308:   try{ openTop50ScoresDialog = window.openTop50ScoresDialog; }catch(_){}
+52309: 
+52310:   function heatStyle(v){
+52311:     var n = Math.max(0, Math.min(100, Number(v) || 0));
+52312:     if (n < 20) return { fill:'rgba(20,42,72,.72)', stroke:'rgba(112,158,198,.26)', glow:'', width:'1.05', label:'rgba(232,242,255,.86)' };
+52313:     if (n < 35) return { fill:'rgba(14,135,148,.80)', stroke:'rgba(87,235,230,.48)', glow:'', width:'1.15', label:'rgba(245,255,255,.95)' };
+52314:     if (n < 42) return { fill:'rgba(199,139,43,.88)', stroke:'rgba(255,198,91,.62)', glow:'', width:'1.3', label:'rgba(255,250,238,.98)' };
+52315:     if (n < 48) return { fill:'rgba(249,118,24,.96)', stroke:'rgba(255,190,83,.78)', glow:'url(#sqHitGlowWarm)', width:'1.55', label:'rgba(255,250,240,.98)' };
+52316:     if (n < 55) return { fill:'rgba(255,193,37,.99)', stroke:'rgba(255,238,132,.94)', glow:'url(#sqHitGlowHot)', width:'1.9', label:'#111827' };
+52317:     return { fill:'rgba(115,240,126,.99)', stroke:'rgba(234,255,152,.98)', glow:'url(#sqHitGlowElite)', width:'2.25', label:'#06120b' };
+52318:   }
+52319:   function polar(cx, cy, r, deg){
+52320:     var a = (deg - 90) * Math.PI / 180;
+52321:     return { x:cx + r * Math.cos(a), y:cy + r * Math.sin(a) };
+52322:   }
+52323:   function wedgePath(cx, cy, r0, r1, a0, a1){
+52324:     var p1 = polar(cx, cy, r1, a0), p2 = polar(cx, cy, r1, a1), p3 = polar(cx, cy, r0, a1), p4 = polar(cx, cy, r0, a0);
+52325:     var large = Math.abs(a1 - a0) > 180 ? 1 : 0;
+52326:     return 'M '+p1.x.toFixed(2)+' '+p1.y.toFixed(2)+' A '+r1+' '+r1+' 0 '+large+' 1 '+p2.x.toFixed(2)+' '+p2.y.toFixed(2)+' L '+p3.x.toFixed(2)+' '+p3.y.toFixed(2)+' A '+r0+' '+r0+' 0 '+large+' 0 '+p4.x.toFixed(2)+' '+p4.y.toFixed(2)+' Z';
+52327:   }
+52328:   function heatValueMap(rows){
+52329:     var map = new Map();
+52330:     (rows || []).forEach(function(r){ map.set(String(r.key).toUpperCase(), r); });
+52331:     return map;
+52332:   }
+52333:   function svgEl(svg, name, attrs){
+52334:     var el = document.createElementNS(svg.namespaceURI, name);
+52335:     Object.keys(attrs || {}).forEach(function(k){ el.setAttribute(k, attrs[k]); });
+52336:     return el;
+52337:   }
+52338:   function addSvgText(svg, x, y, text, attrs){
+52339:     var shadow = svgEl(svg, 'text', Object.assign({
+52340:       x:x, y:y, 'text-anchor':'middle', 'dominant-baseline':'middle',
+52341:       fill:'rgba(0,0,0,.56)', 'font-size':'14', 'font-weight':'950',
+52342:       stroke:'rgba(0,0,0,.42)', 'stroke-width':'2', 'paint-order':'stroke'
+52343:     }, attrs || {}));
+52344:     shadow.textContent = text;
+52345:     var label = svgEl(svg, 'text', Object.assign({
+52346:       x:x, y:y, 'text-anchor':'middle', 'dominant-baseline':'middle',
+52347:       fill:'rgba(255,255,255,.96)', 'font-size':'14', 'font-weight':'950'
+52348:     }, attrs || {}));
+52349:     label.textContent = text;
+52350:     svg.appendChild(shadow);
+52351:     svg.appendChild(label);
+52352:   }
+52353:   function renderTargetHitHeatmap(rows){
+52354:     var map = heatValueMap(rows);
+52355:     var boardOrder = ['20','1','18','4','13','6','10','15','2','17','3','19','7','16','8','11','14','9','12','5'];
+52356:     var tracked = new Set(['10','11','12','13','14','15','16','17','18','19','20']);
+52357:     var hotRows = (rows || []).filter(function(r){ return tracked.has(String(r.key).toUpperCase()) && Number.isFinite(Number(r.pct)); })
+52358:       .sort(function(a,b){ return Number(b.pct || 0) - Number(a.pct || 0); });
+52359:     var hotKeys = new Set(hotRows.filter(function(r){ return Number(r.pct || 0) >= 48; }).map(function(r){ return String(r.key).toUpperCase(); }));
+52360:     if (!hotKeys.size) hotRows.slice(0, 2).forEach(function(r){ hotKeys.add(String(r.key).toUpperCase()); });
+52361:     var cx = 160, cy = 142, r0 = 32, r1 = 104, rLabel = 124, step = 360 / boardOrder.length;
+52362:     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+52363:     svg.setAttribute('viewBox', '0 0 320 352');
+52364:     svg.setAttribute('role', 'img');
+52365:     svg.setAttribute('aria-label', 'Target Hit percentage heatmap');
+52366:     svg.style.width = '100%';
+52367:     svg.style.height = '100%';
+52368:     svg.style.display = 'block';
+52369: 
+52370:     var defs = svgEl(svg, 'defs');
+52371:     defs.innerHTML =
+52372:       '<radialGradient id="sqHitBoardBg" cx="46%" cy="36%" r="70%"><stop offset="0%" stop-color="#253a72"/><stop offset="58%" stop-color="#111b3b"/><stop offset="100%" stop-color="#050915"/></radialGradient>' +
+52373:       '<style>@keyframes sqHitPulse{0%,100%{opacity:.88;stroke-opacity:.86}50%{opacity:1;stroke-opacity:1}}.sq-hit-hot-pulse{animation:sqHitPulse 2.35s ease-in-out infinite}</style>' +
+52374:       '<filter id="sqHitGlowWarm" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="2.4" result="b"/><feColorMatrix in="b" type="matrix" values="1 0 0 0 1  0 0.42 0 0 .38  0 0 0.04 0 0  0 0 0 .55 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+52375:       '<filter id="sqHitGlowHot" x="-45%" y="-45%" width="190%" height="190%"><feGaussianBlur stdDeviation="3.4" result="b"/><feColorMatrix in="b" type="matrix" values="1 0 0 0 1  0 .72 0 0 .62  0 0 .08 0 0  0 0 0 .78 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+52376:       '<filter id="sqHitGlowElite" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3.9" result="b"/><feColorMatrix in="b" type="matrix" values="0 0 0 0 .42  0 0 0 0 1  0 0 0 0 .38  0 0 0 .82 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+52377:     svg.appendChild(defs);
+52378: 
+52379:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:132, fill:'rgba(15,27,63,.34)', stroke:'rgba(190,215,255,.16)', 'stroke-width':'1' }));
+52380:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:116, fill:'url(#sqHitBoardBg)', stroke:'rgba(218,234,255,.36)', 'stroke-width':'1.25' }));
+52381:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:109, fill:'none', stroke:'rgba(108,165,230,.30)', 'stroke-width':'1' }));
+52382: 
+52383:     boardOrder.forEach(function(k, i){
+52384:       var row = tracked.has(k) ? map.get(k) : null;
+52385:       var pct = row ? Number(row.pct || 0) : null;
+52386:       var style = row ? heatStyle(pct) : { fill:(i % 2 ? 'rgba(45,61,101,.34)' : 'rgba(34,48,82,.38)'), stroke:'rgba(185,214,255,.18)', glow:'', width:'.85', label:'rgba(223,236,255,.76)' };
+52387:       var a0 = i * step - (step / 2) + .28;
+52388:       var a1 = i * step + (step / 2) - .28;
+52389:       var path = svgEl(svg, 'path', { d:wedgePath(cx, cy, r0, r1, a0, a1), fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+52390:       if (row){ path.setAttribute('data-sqkey', k); path.style.cursor = 'pointer'; }
+52391:       if (style.glow) path.setAttribute('filter', style.glow);
+52392:       if (row && hotKeys.has(k)) path.setAttribute('class', 'sq-hit-hot-pulse');
+52393:       var title = svgEl(svg, 'title');
+52394:       title.textContent = row ? (k + ': ' + pctFmt(pct) + ' - ' + row.hits + '/' + row.throwsN) : (k + ': not tracked');
+52395:       path.appendChild(title);
+52396:       svg.appendChild(path);
+52397: 
+52398:       var start = polar(cx, cy, r0 - 2, i * step - step / 2);
+52399:       var end = polar(cx, cy, 109, i * step - step / 2);
+52400:       svg.appendChild(svgEl(svg, 'line', { x1:start.x.toFixed(1), y1:start.y.toFixed(1), x2:end.x.toFixed(1), y2:end.y.toFixed(1), stroke:'rgba(212,232,255,.34)', 'stroke-width':'.65' }));
+52401: 
+52402:       var labelPos = polar(cx, cy, rLabel, i * step);
+52403:       var labelFill = row ? (pct >= 48 ? 'rgba(255,244,180,.98)' : 'rgba(248,252,255,.96)') : 'rgba(218,232,255,.72)';
+52404:       addSvgText(svg, labelPos.x.toFixed(1), labelPos.y.toFixed(1), k, { fill:labelFill, 'font-size': row ? '13' : '12', 'font-weight': row ? '950' : '800' });
+52405:     });
+52406: 
+52407:     [r0, 50, 70, 88, r1, 116].forEach(function(r){
+52408:       svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:r, fill:'none', stroke:r === r0 ? 'rgba(220,236,255,.32)' : 'rgba(200,224,255,.24)', 'stroke-width':r === r0 ? '1.3' : '.8' }));
+52409:     });
+52410: 
+52411:     var bull = map.get('B');
+52412:     var bullPct = bull ? Number(bull.pct || 0) : null;
+52413:     var bullStyle = bull ? heatStyle(bullPct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.4', label:'rgba(240,244,255,.8)' };
+52414:     var bullOuter = svgEl(svg, 'circle', { cx:cx, cy:cy, r:31, fill:bullStyle.fill, stroke:bullStyle.stroke, 'stroke-width':'2.2' });
+52415:     if (bull){ bullOuter.setAttribute('data-sqkey', 'B'); bullOuter.style.cursor = 'pointer'; }
+52416:     if (bullStyle.glow) bullOuter.setAttribute('filter', bullStyle.glow);
+52417:     var bullTitle = svgEl(svg, 'title');
+52418:     bullTitle.textContent = bull ? ('B: ' + pctFmt(bullPct) + ' - ' + bull.hits + '/' + bull.throwsN) : 'B: no data';
+52419:     bullOuter.appendChild(bullTitle);
+52420:     svg.appendChild(bullOuter);
+52421:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:15, fill:'rgba(5,8,18,.42)', stroke:'rgba(255,255,255,.22)', 'stroke-width':'1.2' }));
+52422:     addSvgText(svg, cx, cy - 4, 'B', { fill:bullStyle.label, 'font-size':'15' });
+52423:     addSvgText(svg, cx, cy + 18, bull ? pctFmt(bullPct, 1) : '—', { fill:'rgba(232,242,255,.82)', 'font-size':'8.5', 'font-weight':'850' });
+52424: 
+52425:     [['D',56,322],['T',264,322]].forEach(function(spec){
+52426:       var k = spec[0], x = spec[1], y = spec[2], row = map.get(k), pct = row ? Number(row.pct || 0) : null;
+52427:       var style = row ? heatStyle(pct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.2', label:'rgba(240,244,255,.8)' };
+52428:       var g = svgEl(svg, 'g');
+52429:       var halo = svgEl(svg, 'circle', { cx:x, cy:y, r:25, fill:'rgba(5,8,18,.58)', stroke:'rgba(160,190,245,.16)', 'stroke-width':'1' });
+52430:       g.appendChild(halo);
+52431:       var c = svgEl(svg, 'circle', { cx:x, cy:y - 7, r:16, fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+52432:       if (row){ c.setAttribute('data-sqkey', k); c.style.cursor = 'pointer'; }
+52433:       if (style.glow) c.setAttribute('filter', style.glow);
+52434:       var title = svgEl(svg, 'title');
+52435:       title.textContent = row ? (k + ': ' + pctFmt(pct) + ' - ' + row.hits + '/' + row.throwsN) : (k + ': no data');
+52436:       c.appendChild(title);
+52437:       g.appendChild(c);
+52438:       svg.appendChild(g);
+52439:       addSvgText(svg, x, y - 6, k, { fill:style.label, 'font-size':'13' });
+52440:       addSvgText(svg, x, y + 17, row ? pctFmt(pct, 0) : '—', { fill:'rgba(240,244,255,.88)', 'font-size':'10', 'font-weight':'850' });
+52441:     });
+52442:     // Heat legend (LOW -> HIGH) centered between the D/T badges
+52443:     var lg = svgEl(svg, 'linearGradient');
+52444:     lg.setAttribute('id', 'sqHitLegendG');
+52445:     lg.setAttribute('x1','0'); lg.setAttribute('y1','0'); lg.setAttribute('x2','1'); lg.setAttribute('y2','0');
+52446:     [['0%','#16304f'],['24%','#0e8794'],['46%','#c78b2b'],['64%','#f97618'],['82%','#ffc125'],['100%','#73f07e']].forEach(function(st){
+52447:       var stop = svgEl(svg, 'stop'); stop.setAttribute('offset', st[0]); stop.setAttribute('stop-color', st[1]); lg.appendChild(stop);
+52448:     });
+52449:     svg.querySelector('defs').appendChild(lg);
+52450:     svg.appendChild(svgEl(svg, 'rect', { x:104, y:316, width:112, height:9, rx:4.5, fill:'url(#sqHitLegendG)', stroke:'rgba(255,255,255,.18)', 'stroke-width':'.6' }));
+52451:     addSvgText(svg, 92, 321, 'LOW', { fill:'rgba(190,210,240,.75)', 'font-size':'8', 'font-weight':'800' });
+52452:     addSvgText(svg, 230, 321, 'HIGH', { fill:'rgba(190,210,240,.75)', 'font-size':'8', 'font-weight':'800' });
+52453:     return svg;
+52454:   }
+52455: 
+52456:   function rowFromHitPct(r){
+52457:     var throwsN = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['throws','throw_count','thrown']) : r.throws) || 0);
+52458:     var hits = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['hits','successful_hits','hit_count']) : r.hits) || 0);
+52459:     var pctRaw = typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['hit_pct','pct','percentage']) : r.hit_pct;
+52460:     var pct = Number.isFinite(Number(pctRaw)) ? Number(pctRaw) : (throwsN ? hits * 100 / throwsN : 0);
+52461:     var key = typeof __sqTargetPctKey === 'function' ? __sqTargetPctKey(r) : String(r.target_key || r.target_label || '').toUpperCase();
+52462:     var sort = Number(r.target_sort);
+52463:     if (!Number.isFinite(sort)) sort = typeof __sqTargetPctOrder === 'function' ? __sqTargetPctOrder(key) : 999;
+52464:     return { key:key, playerKey:rankKey(r.player_key || r.player_name), throwsN:throwsN, hits:hits, pct:pct, sort:sort };
+52465:   }
+52466: 
+52467:   // Tap-to-inspect for the dartboard heatmaps: tapping a wedge / D / T / B
+52468:   // (or a table row) spotlights that one target — everything else dims, a
+52469:   // floating card shows the counted-up % + ranks, and the table row lights.
+52470:   function __sqWireBoardInspect(heatPanel, tablePanel, rows, mode){
+52471:     var svg = heatPanel.querySelector('svg');
+52472:     if (!svg) return;
+52473:     heatPanel.style.position = 'relative';
+52474:     var spot = document.createElement('div');
+52475:     spot.style.cssText = 'position:absolute;top:8px;left:10px;display:none;align-items:center;gap:12px;'
+52476:       + 'background:rgba(16,24,39,.95);border:1px solid rgba(255,164,64,.7);border-radius:12px;padding:8px 14px;'
+52477:       + 'box-shadow:0 6px 18px rgba(0,0,0,.45), 0 0 18px rgba(255,140,40,.25);z-index:3;pointer-events:none;';
+52478:     var spotKey = document.createElement('div');
+52479:     spotKey.style.cssText = 'font-size:22px;font-weight:900;color:#fff;min-width:30px;text-align:center;';
+52480:     var spotPct = document.createElement('div');
+52481:     spotPct.style.cssText = 'font-size:22px;font-weight:900;color:#ffd9b0;';
+52482:     var spotSub = document.createElement('div');
+52483:     spotSub.style.cssText = 'font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:rgba(150,185,230,.9);line-height:1.5;';
+52484:     spot.append(spotKey, spotPct, spotSub);
+52485:     heatPanel.appendChild(spot);
+52486:     var selected = null;
+52487:     var countRaf = 0;
+52488:     var els = Array.prototype.slice.call(svg.querySelectorAll('[data-sqkey]'));
+52489:     els.forEach(function(el){ el.__sqStroke = el.getAttribute('stroke'); el.__sqSw = el.getAttribute('stroke-width'); });
+52490:     var rowFor = function(k){ return (rows || []).find(function(r){ return String(r.key).toUpperCase() === k; }) || null; };
+52491:     var highlightTableRow = function(k){
+52492:       try{
+52493:         Array.prototype.forEach.call(tablePanel.querySelectorAll('tbody tr'), function(tr){
+52494:           var hit = String((tr.cells[0] && tr.cells[0].textContent) || '').trim().toUpperCase() === k;
+52495:           tr.style.background = hit ? 'rgba(255,122,0,.14)' : '';
+52496:           tr.style.boxShadow = hit ? 'inset 3px 0 0 rgba(255,164,64,.9)' : '';
+52497:           if (hit && tr.scrollIntoView) tr.scrollIntoView({ block:'nearest' });
+52498:         });
+52499:       }catch(_e){}
+52500:     };
+52501:     var apply = function(){
+52502:       els.forEach(function(el){
+52503:         var k = el.getAttribute('data-sqkey');
+52504:         if (selected == null){
+52505:           el.setAttribute('opacity', '1');
+52506:           if (el.__sqStroke != null) el.setAttribute('stroke', el.__sqStroke);
+52507:           if (el.__sqSw != null) el.setAttribute('stroke-width', el.__sqSw);
+52508:         } else if (k === selected){
+52509:           el.setAttribute('opacity', '1');
+52510:           el.setAttribute('stroke', '#ffffff');
+52511:           el.setAttribute('stroke-width', String((parseFloat(el.__sqSw) || 1) + 1.2));
+52512:         } else {
+52513:           el.setAttribute('opacity', '.35');
+52514:           if (el.__sqStroke != null) el.setAttribute('stroke', el.__sqStroke);
+52515:           if (el.__sqSw != null) el.setAttribute('stroke-width', el.__sqSw);
+52516:         }
+52517:       });
+52518:       if (selected == null){ spot.style.display = 'none'; highlightTableRow(' '); return; }
+52519:       var r = rowFor(selected);
+52520:       if (!r){ spot.style.display = 'none'; return; }
+52521:       spot.style.display = 'flex';
+52522:       spotKey.textContent = selected;
+52523:       if (mode === 'points'){
+52524:         spotSub.innerHTML = fmtAvgScore(r.avgScore) + ' avg<br>' + (r.pRank ? 'P #' + r.pRank : '') + (r.gRank ? ' · G #' + r.gRank : '');
+52525:       } else {
+52526:         spotSub.innerHTML = (r.hits || 0) + '/' + (r.throwsN || 0) + ' hits<br>' + (r.pRank ? 'P #' + r.pRank : '') + (r.gRank ? ' · G #' + r.gRank : '');
+52527:       }
+52528:       cancelAnimationFrame(countRaf);
+52529:       var target = Number(r.pct || 0);
+52530:       var start = performance.now(), dur = 420;
+52531:       var step = function(now){
+52532:         var tt = Math.min(1, (now - start) / dur);
+52533:         var e = 1 - Math.pow(1 - tt, 3);
+52534:         spotPct.textContent = (target * e).toFixed(1) + '%';
+52535:         if (tt < 1) countRaf = requestAnimationFrame(step);
+52536:       };
+52537:       countRaf = requestAnimationFrame(step);
+52538:       highlightTableRow(selected);
+52539:     };
+52540:     svg.addEventListener('click', function(e){
+52541:       var el = e.target && e.target.closest ? e.target.closest('[data-sqkey]') : null;
+52542:       if (!el) return;
+52543:       var k = el.getAttribute('data-sqkey');
+52544:       selected = (selected === k) ? null : k;
+52545:       apply();
+52546:     });
+52547:     try{
+52548:       tablePanel.addEventListener('click', function(e){
+52549:         var tr = e.target && e.target.closest ? e.target.closest('tbody tr') : null;
+52550:         if (!tr || !tr.cells || !tr.cells[0]) return;
+52551:         var k = String(tr.cells[0].textContent || '').trim().toUpperCase();
+52552:         selected = (selected === k) ? null : k;
+52553:         apply();
+52554:       });
+52555:     }catch(_e){}
+52556:   }
+52557: 
+52558:   function applyTargetHitPersonalRanks(rows){
+52559:     var sorted = (rows || []).slice().sort(function(a,b){
+52560:       return Number(b.pct || 0) - Number(a.pct || 0) ||
+52561:         Number(b.hits || 0) - Number(a.hits || 0) ||
+52562:         Number(b.throwsN || 0) - Number(a.throwsN || 0) ||
+52563:         Number(a.sort || 999) - Number(b.sort || 999);
+52564:     });
+52565:     var rank = 0, prev = '';
+52566:     sorted.forEach(function(r, i){
+52567:       var sig = [Number(r.pct || 0).toFixed(8), Number(r.hits || 0), Number(r.throwsN || 0), Number(r.sort || 999)].join('|');
+52568:       if (sig !== prev){ rank = i + 1; prev = sig; }
+52569:       r.pRank = rank;
+52570:     });
+52571:   }
+52572: 
+52573:   async function savedPlayerKeySet(){
+52574:     try{
+52575:       if (typeof cloudListPlayers !== 'function') return null;
+52576:       var list = await cloudListPlayers();
+52577:       var names = Array.isArray(list) ? list : [];
+52578:       var set = new Set();
+52579:       names.forEach(function(p){
+52580:         var name = typeof p === 'string' ? p : (p && (p.name || p.player_name || p.playerName));
+52581:         var k = rankKey(name);
+52582:         if (k) set.add(k);
+52583:       });
+52584:       return set.size ? set : null;
+52585:     }catch(e){
+52586:       console.warn('[SQ] Target Hit % saved-player filter unavailable for global ranks', e);
+52587:       return null;
+52588:     }
+52589:   }
+52590: 
+52591:   async function fetchTargetHitGlobalRanks(rows){
+52592:     var c = client();
+52593:     if (!c || typeof c.from !== 'function') return new Map();
+52594:     var keys = Array.from(new Set((rows || []).map(function(r){ return String(r.key || '').toUpperCase(); }).filter(Boolean)));
+52595:     if (!keys.length) return new Map();
+52596:     try{
+52597:       var savedSet = await savedPlayerKeySet();
+52598:       var q = await c.from('v_player_target_hit_pct')
+52599:         .select('player_key,player_name,target_key,target_label,target_sort,throws,hits,hit_pct')
+52600:         .in('target_key', keys)
+52601:         .gt('throws', 0)
+52602:         .limit(5000);
+52603:       if (q.error) throw q.error;
+52604:       var allRows = (Array.isArray(q.data) ? q.data : []).map(rowFromHitPct).filter(function(r){
+52605:         if (!r.key || !r.playerKey) return false;
+52606:         return !savedSet || savedSet.has(r.playerKey);
+52607:       });
+52608:       var byTarget = new Map();
+52609:       allRows.forEach(function(r){
+52610:         var k = String(r.key).toUpperCase();
+52611:         if (!byTarget.has(k)) byTarget.set(k, []);
+52612:         byTarget.get(k).push(r);
+52613:       });
+52614:       var ranks = new Map();
+52615:       byTarget.forEach(function(list, targetKey){
+52616:         list.sort(function(a,b){
+52617:           return Number(b.pct || 0) - Number(a.pct || 0) ||
+52618:             Number(b.hits || 0) - Number(a.hits || 0) ||
+52619:             Number(b.throwsN || 0) - Number(a.throwsN || 0) ||
+52620:             String(a.playerKey || '').localeCompare(String(b.playerKey || ''));
+52621:         });
+52622:         var rank = 0, prev = '';
+52623:         list.forEach(function(r, i){
+52624:           var sig = [Number(r.pct || 0).toFixed(8), Number(r.hits || 0), Number(r.throwsN || 0), String(r.playerKey || '')].join('|');
+52625:           if (sig !== prev){ rank = i + 1; prev = sig; }
+52626:           ranks.set(targetKey + '|' + r.playerKey, rank);
+52627:         });
+52628:       });
+52629:       console.debug('[SQ] Target Hit % global rank source used', { source:'v_player_target_hit_pct', rows:allRows.length, saved_players_only:!!savedSet });
+52630:       return ranks;
+52631:     }catch(e){
+52632:       console.warn('[SQ] Target Hit % global rank source unavailable', { required_view:'v_player_target_hit_pct', error:e });
+52633:       return new Map();
+52634:     }
+52635:   }
+52636: 
+52637:   // @CANONICAL:PLAYER_TARGET_HIT_HEATMAP
+52638:   window.openPlayerTargetHitDialog = async function openPlayerTargetHitDialog(playerName){
+52639:     var name = String(playerName || '').trim();
+52640:     if (!name) return;
+52641:     var ui = __sqBuildTargetPctShell('Target Hit % - ' + name, 'Throws / Hits / %', name, 'hit');
+52642:     var body = ui.body;
+52643:     body.innerHTML = '<p class="muted">Loading...</p>';
+52644: 
+52645:     var result = await __sqFetchPlayerTargetHitPctRows(name);
+52646:     if (result.missing || !result.rows.length){
+52647:       console.warn('[SQ] Target Hit % dependency missing or empty', { required_view:'v_player_target_hit_pct', player:name, source:result.source, detail:result.missing || 'zero rows' });
+52648:       __sqShowTargetPctUnavailable(
+52649:         body,
+52650:         'Target Hit % is not available yet. Accurate hit-rate data requires throw-level segment data or a Supabase view that records correct target hits.',
+52651:         'Formula: Target Hit % = successful target hits / throws at that target. Number rounds require actual segment number truth; points alone are not used.',
+52652:         'Missing dependency: v_player_target_hit_pct (player_id/player_key/player_name, target_key/target_label, throws, hits, hit_pct).'
+52653:       );
+52654:       return;
+52655:     }
+52656: 
+52657:     console.debug('[SQ] Target Hit % source used', { source:result.source, rows:result.rows.length });
+52658:     __sqSetTargetPctActionsEnabled(body, true);
+52659:     var rows = result.rows.map(rowFromHitPct).filter(function(r){ return r.key; }).sort(function(a,b){ return __sqTargetPctOrder(a.key) - __sqTargetPctOrder(b.key); });
+52660:     applyTargetHitPersonalRanks(rows);
+52661:     var globalRanks = await fetchTargetHitGlobalRanks(rows);
+52662:     rows.forEach(function(r){
+52663:       var currentPlayerKey = r.playerKey || rankKey(name);
+52664:       r.gRank = globalRanks.get(String(r.key).toUpperCase() + '|' + currentPlayerKey) || null;
+52665:     });
+52666:     var hasGlobalRanks = rows.some(function(r){ return r.gRank; });
+52667:     window.__lastTargetHitPctSpiderData = { labels: rows.map(function(r){ return String(r.key); }), pct: rows.map(function(r){ return Number(r.pct || 0); }) };
+52668: 
+52669:     body.innerHTML = '';
+52670:     body.style.display = 'flex';
+52671:     body.style.flexDirection = 'column';
+52672:     body.style.gap = '10px';
+52673:     body.style.height = 'min(68vh, 650px)';
+52674:     body.style.minHeight = '520px';
+52675:     body.style.overflow = 'hidden';
+52676: 
+52677:     var heatPanel = document.createElement('div');
+52678:     heatPanel.className = 'tag sq-target-hit-heatmap-panel';
+52679:     heatPanel.style.flex = '0 0 63%';
+52680:     heatPanel.style.minHeight = '310px';
+52681:     heatPanel.style.padding = '10px';
+52682:     heatPanel.style.borderRadius = '12px';
+52683:     heatPanel.style.border = '1px solid rgba(255,255,255,.10)';
+52684:     heatPanel.style.background = 'radial-gradient(circle at 48% 35%, rgba(72,111,205,.20), rgba(10,16,38,.94) 64%, rgba(4,7,18,.98))';
+52685:     heatPanel.style.overflow = 'hidden';
+52686:     heatPanel.appendChild(renderTargetHitHeatmap(rows));
+52687: 
+52688:     var tablePanel = document.createElement('div');
+52689:     tablePanel.className = 'sq-target-hit-table-panel';
+52690:     tablePanel.style.flex = '1 1 0';
+52691:     tablePanel.style.minHeight = '150px';
+52692:     tablePanel.style.overflowY = 'auto';
+52693:     tablePanel.style.border = '1px solid rgba(255,255,255,.10)';
+52694:     tablePanel.style.borderRadius = '10px';
+52695: 
+52696:     var table = document.createElement('table');
+52697:     table.className = 'sq-table hs-table';
+52698:     table.style.width = '100%';
+52699:     table.style.tableLayout = 'fixed';
+52700:     table.style.fontSize = 'clamp(11px, 2.7vw, 14px)';
+52701:     table.innerHTML = '<colgroup><col style="width:24%"><col style="width:28%"><col style="width:24%"><col style="width:24%"></colgroup><thead><tr><th>Target</th><th>%</th><th>P Rank</th><th>G Rank</th></tr></thead><tbody></tbody>';
+52702:     var tb = table.querySelector('tbody');
+52703:     rows.forEach(function(r){
+52704:       var tr = document.createElement('tr');
+52705:       [r.key, pctFmt(r.pct), r.pRank ? ('#' + r.pRank) : '—', r.gRank ? ('#' + r.gRank) : '—'].forEach(function(v){
+52706:         var td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
+52707:       });
+52708:       tb.appendChild(tr);
+52709:     });
+52710:     tablePanel.appendChild(table);
+52711: 
+52712:     body.append(heatPanel, tablePanel);
+52713:     __sqWireBoardInspect(heatPanel, tablePanel, rows, 'hit');
+52714:   };
+52715:   window.__sqCanonicalPlayerTargetHitDialog = window.openPlayerTargetHitDialog;
+52716:   window.openPlayerTargetPctDialog = function(){ return window.__sqCanonicalPlayerTargetHitDialog.apply(window, arguments); };
+52717:   window.openTargetPctDialog = window.openPlayerTargetPctDialog;
+52718:   try{ openPlayerTargetHitDialog = window.openPlayerTargetHitDialog; }catch(_){}
+52719:   try{ openPlayerTargetPctDialog = window.openPlayerTargetPctDialog; }catch(_){}
+52720:   try{ openTargetPctDialog = window.openTargetPctDialog; }catch(_){}
+52721: 
+52722:   function pointsTargetKey(r){
+52723:     var n = Number(typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['target_number','target_n','target']) : r.target_number);
+52724:     if (Number.isFinite(n) && n >= 10 && n <= 20) return String(Math.trunc(n));
+52725:     var raw = typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['target_label','target_key','bucket_key','target']) : (r.target_label || r.target_key || r.bucket_key || r.target);
+52726:     var key = String(raw || '').trim().toUpperCase();
+52727:     if (key === 'DOUBLE' || key === 'DOUBLES') key = 'D';
+52728:     if (key === 'TREBLE' || key === 'TRIPLE' || key === 'TREBLES' || key === 'TRIPLES') key = 'T';
+52729:     if (key === 'BULL' || key === 'BULLS' || key === 'IB' || key === 'OB') key = 'B';
+52730:     return key;
+52731:   }
+52732:   function fmtAvgScore(v){
+52733:     var n = Number(v);
+52734:     if (!Number.isFinite(n)) return '—';
+52735:     var rounded = Math.round(n * 10) / 10;
+52736:     return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)) + ' pts';
+52737:   }
+52738:   function rowFromPointsPct(r){
+52739:     var targetNumber = Number(typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['target_number','target_n','target']) : r.target_number);
+52740:     var key = pointsTargetKey(r);
+52741:     var throwsN = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['throws','throw_count','thrown']) : r.throws) || 0);
+52742:     var actual = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['actual_points','points','score','round_total']) : r.actual_points) || 0);
+52743:     var max = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['max_points','available_points']) : r.max_points) || 0);
+52744:     if (!Number.isFinite(max) || max <= 0) max = Number.isFinite(targetNumber) ? targetNumber * 3 * throwsN : 0;
+52745:     var sourceGames = Number((typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['source_games','games','game_count']) : r.source_games) || 0);
+52746:     var pctRaw = typeof __sqTargetPctValue === 'function' ? __sqTargetPctValue(r, ['points_pct','pct','percentage']) : r.points_pct;
+52747:     var pct = Number.isFinite(Number(pctRaw)) ? Number(pctRaw) : (max ? actual * 100 / max : 0);
+52748:     var sort = Number.isFinite(targetNumber) ? targetNumber : (typeof __sqTargetPctOrder === 'function' ? __sqTargetPctOrder(key) : 999);
+52749:     var avgScore = sourceGames > 0 ? actual / sourceGames : (throwsN ? actual / (throwsN / 3) : NaN);
+52750:     return {
+52751:       key:key,
+52752:       playerKey:rankKey(r.player_key || r.player_name),
+52753:       playerName:String(r.player_name || r.player_key || ''),
+52754:       targetNumber:Number.isFinite(targetNumber) ? targetNumber : null,
+52755:       throwsN:throwsN,
+52756:       actual:actual,
+52757:       max:max,
+52758:       pct:Math.max(0, Math.min(100, Number(pct) || 0)),
+52759:       sourceGames:sourceGames,
+52760:       avgScore:avgScore,
+52761:       sort:sort
+52762:     };
+52763:   }
+52764:   function applyTargetPointsPersonalRanks(rows){
+52765:     var sorted = (rows || []).slice().sort(function(a,b){
+52766:       return Number(b.pct || 0) - Number(a.pct || 0) ||
+52767:         Number(b.actual || 0) - Number(a.actual || 0) ||
+52768:         Number(a.sort || 999) - Number(b.sort || 999);
+52769:     });
+52770:     var rank = 0, prev = '';
+52771:     sorted.forEach(function(r, i){
+52772:       var sig = [Number(r.pct || 0).toFixed(8), Number(r.actual || 0), Number(r.sort || 999)].join('|');
+52773:       if (sig !== prev){ rank = i + 1; prev = sig; }
+52774:       r.pRank = rank;
+52775:     });
+52776:   }
+52777:   async function fetchTargetPointsGlobalRanks(rows){
+52778:     var c = client();
+52779:     if (!c || typeof c.from !== 'function') return new Map();
+52780:     var keys = new Set((rows || []).map(function(r){ return String(r.key || '').toUpperCase(); }).filter(Boolean));
+52781:     if (!keys.size) return new Map();
+52782:     try{
+52783:       var savedSet = await savedPlayerKeySet();
+52784:       var q = await c.from('v_player_target_points_pct')
+52785:         .select('player_key,player_name,target_number,target_label,throws,actual_points,max_points,points_pct,source_games')
+52786:         .limit(10000);
+52787:       if (q.error) throw q.error;
+52788:       var allRows = (Array.isArray(q.data) ? q.data : []).map(rowFromPointsPct).filter(function(r){
+52789:         if (!r.key || !r.playerKey || !keys.has(String(r.key).toUpperCase())) return false;
+52790:         return !savedSet || savedSet.has(r.playerKey);
+52791:       });
+52792:       var byTarget = new Map();
+52793:       allRows.forEach(function(r){
+52794:         var k = String(r.key).toUpperCase();
+52795:         if (!byTarget.has(k)) byTarget.set(k, []);
+52796:         byTarget.get(k).push(r);
+52797:       });
+52798:       var ranks = new Map();
+52799:       byTarget.forEach(function(list, targetKey){
+52800:         list.sort(function(a,b){
+52801:           return Number(b.pct || 0) - Number(a.pct || 0) ||
+52802:             Number(b.actual || 0) - Number(a.actual || 0) ||
+52803:             Number(b.sourceGames || 0) - Number(a.sourceGames || 0) ||
+52804:             String(a.playerName || a.playerKey || '').localeCompare(String(b.playerName || b.playerKey || ''));
+52805:         });
+52806:         var rank = 0, prev = '';
+52807:         list.forEach(function(r, i){
+52808:           var sig = [Number(r.pct || 0).toFixed(8), Number(r.actual || 0), Number(r.sourceGames || 0), String(r.playerName || r.playerKey || '')].join('|');
+52809:           if (sig !== prev){ rank = i + 1; prev = sig; }
+52810:           ranks.set(targetKey + '|' + r.playerKey, rank);
+52811:         });
+52812:       });
+52813:       console.debug('[SQ] Target Points % global rank source used', { source:'v_player_target_points_pct', rows:allRows.length, saved_players_only:!!savedSet });
+52814:       return ranks;
+52815:     }catch(e){
+52816:       console.warn('[SQ] Target Points % global rank source unavailable', { required_view:'v_player_target_points_pct', error:e });
+52817:       return new Map();
+52818:     }
+52819:   }
+52820:   function renderTargetPointsHeatmap(rows){
+52821:     var map = heatValueMap(rows);
+52822:     var boardOrder = ['20','1','18','4','13','6','10','15','2','17','3','19','7','16','8','11','14','9','12','5'];
+52823:     var tracked = new Set(['10','11','12','13','14','15','16','17','18','19','20']);
+52824:     var hotRows = (rows || []).filter(function(r){ return tracked.has(String(r.key).toUpperCase()) && Number.isFinite(Number(r.pct)); })
+52825:       .sort(function(a,b){ return Number(b.pct || 0) - Number(a.pct || 0); });
+52826:     var hotKeys = new Set(hotRows.filter(function(r){ return Number(r.pct || 0) >= 48; }).map(function(r){ return String(r.key).toUpperCase(); }));
+52827:     if (!hotKeys.size) hotRows.slice(0, 2).forEach(function(r){ hotKeys.add(String(r.key).toUpperCase()); });
+52828:     var cx = 160, cy = 142, r0 = 32, r1 = 104, rLabel = 124, step = 360 / boardOrder.length;
+52829:     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+52830:     svg.setAttribute('viewBox', '0 0 320 352');
+52831:     svg.setAttribute('role', 'img');
+52832:     svg.setAttribute('aria-label', 'Target Points percentage heatmap');
+52833:     svg.style.width = '100%';
+52834:     svg.style.height = '100%';
+52835:     svg.style.display = 'block';
+52836: 
+52837:     var defs = svgEl(svg, 'defs');
+52838:     defs.innerHTML =
+52839:       '<radialGradient id="sqPointsBoardBg" cx="46%" cy="36%" r="70%"><stop offset="0%" stop-color="#253a72"/><stop offset="58%" stop-color="#111b3b"/><stop offset="100%" stop-color="#050915"/></radialGradient>' +
+52840:       '<style>@keyframes sqPointsPulse{0%,100%{opacity:.88;stroke-opacity:.86}50%{opacity:1;stroke-opacity:1}}.sq-points-hot-pulse{animation:sqPointsPulse 2.35s ease-in-out infinite}</style>' +
+52841:       '<filter id="sqPointsGlowWarm" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="2.4" result="b"/><feColorMatrix in="b" type="matrix" values="1 0 0 0 1  0 0.42 0 0 .38  0 0 0.04 0 0  0 0 0 .55 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+52842:       '<filter id="sqPointsGlowHot" x="-45%" y="-45%" width="190%" height="190%"><feGaussianBlur stdDeviation="3.4" result="b"/><feColorMatrix in="b" type="matrix" values="1 0 0 0 1  0 .72 0 0 .62  0 0 .08 0 0  0 0 0 .78 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+52843:       '<filter id="sqPointsGlowElite" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3.9" result="b"/><feColorMatrix in="b" type="matrix" values="0 0 0 0 .42  0 0 0 0 1  0 0 0 0 .38  0 0 0 .82 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+52844:     svg.appendChild(defs);
+52845: 
+52846:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:132, fill:'rgba(15,27,63,.34)', stroke:'rgba(190,215,255,.16)', 'stroke-width':'1' }));
+52847:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:116, fill:'url(#sqPointsBoardBg)', stroke:'rgba(218,234,255,.36)', 'stroke-width':'1.25' }));
+52848:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:109, fill:'none', stroke:'rgba(108,165,230,.30)', 'stroke-width':'1' }));
+52849: 
+52850:     boardOrder.forEach(function(k, i){
+52851:       var row = tracked.has(k) ? map.get(k) : null;
+52852:       var pct = row ? Number(row.pct || 0) : null;
+52853:       var style = row ? heatStyle(pct) : { fill:(i % 2 ? 'rgba(45,61,101,.34)' : 'rgba(34,48,82,.38)'), stroke:'rgba(185,214,255,.18)', glow:'', width:'.85', label:'rgba(223,236,255,.76)' };
+52854:       var a0 = i * step - (step / 2) + .28;
+52855:       var a1 = i * step + (step / 2) - .28;
+52856:       var path = svgEl(svg, 'path', { d:wedgePath(cx, cy, r0, r1, a0, a1), fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+52857:       if (row){ path.setAttribute('data-sqkey', k); path.style.cursor = 'pointer'; }
+52858:       if (style.glow) path.setAttribute('filter', style.glow.replace('sqHit', 'sqPoints'));
+52859:       if (row && hotKeys.has(k)) path.setAttribute('class', 'sq-points-hot-pulse');
+52860:       var title = svgEl(svg, 'title');
+52861:       title.textContent = row ? (k + ': ' + pctFmt(pct) + ' - ' + Math.round(row.actual || 0) + '/' + Math.round(row.max || 0) + ' pts') : (k + ': not tracked');
+52862:       path.appendChild(title);
+52863:       svg.appendChild(path);
+52864: 
+52865:       var start = polar(cx, cy, r0 - 2, i * step - step / 2);
+52866:       var end = polar(cx, cy, 109, i * step - step / 2);
+52867:       svg.appendChild(svgEl(svg, 'line', { x1:start.x.toFixed(1), y1:start.y.toFixed(1), x2:end.x.toFixed(1), y2:end.y.toFixed(1), stroke:'rgba(212,232,255,.34)', 'stroke-width':'.65' }));
+52868: 
+52869:       var labelPos = polar(cx, cy, rLabel, i * step);
+52870:       var labelFill = row ? (pct >= 48 ? 'rgba(255,244,180,.98)' : 'rgba(248,252,255,.96)') : 'rgba(218,232,255,.72)';
+52871:       addSvgText(svg, labelPos.x.toFixed(1), labelPos.y.toFixed(1), k, { fill:labelFill, 'font-size': row ? '13' : '12', 'font-weight': row ? '950' : '800' });
+52872:     });
+52873: 
+52874:     [r0, 50, 70, 88, r1, 116].forEach(function(r){
+52875:       svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:r, fill:'none', stroke:r === r0 ? 'rgba(220,236,255,.32)' : 'rgba(200,224,255,.24)', 'stroke-width':r === r0 ? '1.3' : '.8' }));
+52876:     });
+52877: 
+52878:     var bull = map.get('B');
+52879:     var bullPct = bull ? Number(bull.pct || 0) : null;
+52880:     var bullStyle = bull ? heatStyle(bullPct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.4', label:'rgba(240,244,255,.8)' };
+52881:     var bullOuter = svgEl(svg, 'circle', { cx:cx, cy:cy, r:31, fill:bullStyle.fill, stroke:bullStyle.stroke, 'stroke-width':'2.2' });
+52882:     if (bull){ bullOuter.setAttribute('data-sqkey', 'B'); bullOuter.style.cursor = 'pointer'; }
+52883:     if (bullStyle.glow) bullOuter.setAttribute('filter', bullStyle.glow.replace('sqHit', 'sqPoints'));
+52884:     var bullTitle = svgEl(svg, 'title');
+52885:     bullTitle.textContent = bull ? ('B: ' + pctFmt(bullPct) + ' - ' + Math.round(bull.actual || 0) + '/' + Math.round(bull.max || 0) + ' pts') : 'B: no data';
+52886:     bullOuter.appendChild(bullTitle);
+52887:     svg.appendChild(bullOuter);
+52888:     svg.appendChild(svgEl(svg, 'circle', { cx:cx, cy:cy, r:15, fill:'rgba(5,8,18,.42)', stroke:'rgba(255,255,255,.22)', 'stroke-width':'1.2' }));
+52889:     addSvgText(svg, cx, cy - 4, 'B', { fill:bullStyle.label, 'font-size':'15' });
+52890:     addSvgText(svg, cx, cy + 18, bull ? pctFmt(bullPct, 1) : '—', { fill:'rgba(232,242,255,.82)', 'font-size':'8.5', 'font-weight':'850' });
+52891: 
+52892:     [['D',56,322],['T',264,322]].forEach(function(spec){
+52893:       var k = spec[0], x = spec[1], y = spec[2], row = map.get(k), pct = row ? Number(row.pct || 0) : null;
+52894:       var style = row ? heatStyle(pct) : { fill:'rgba(54,62,82,.34)', stroke:'rgba(255,255,255,.14)', glow:'', width:'1.2', label:'rgba(240,244,255,.8)' };
+52895:       var g = svgEl(svg, 'g');
+52896:       var halo = svgEl(svg, 'circle', { cx:x, cy:y, r:25, fill:'rgba(5,8,18,.58)', stroke:'rgba(160,190,245,.16)', 'stroke-width':'1' });
+52897:       g.appendChild(halo);
+52898:       var c = svgEl(svg, 'circle', { cx:x, cy:y - 7, r:16, fill:style.fill, stroke:style.stroke, 'stroke-width':style.width });
+52899:       if (row){ c.setAttribute('data-sqkey', k); c.style.cursor = 'pointer'; }
+52900:       if (style.glow) c.setAttribute('filter', style.glow.replace('sqHit', 'sqPoints'));
+52901:       var title = svgEl(svg, 'title');
+52902:       title.textContent = row ? (k + ': ' + pctFmt(pct) + ' - ' + Math.round(row.actual || 0) + '/' + Math.round(row.max || 0) + ' pts') : (k + ': no data');
+52903:       c.appendChild(title);
+52904:       g.appendChild(c);
+52905:       svg.appendChild(g);
+52906:       addSvgText(svg, x, y - 6, k, { fill:style.label, 'font-size':'13' });
+52907:       addSvgText(svg, x, y + 17, row ? pctFmt(pct, 0) : '—', { fill:'rgba(240,244,255,.88)', 'font-size':'10', 'font-weight':'850' });
+52908:     });
+52909:     // Heat legend (LOW -> HIGH) centered between the D/T badges
+52910:     var lg = svgEl(svg, 'linearGradient');
+52911:     lg.setAttribute('id', 'sqPointsLegendG');
+52912:     lg.setAttribute('x1','0'); lg.setAttribute('y1','0'); lg.setAttribute('x2','1'); lg.setAttribute('y2','0');
+52913:     [['0%','#16304f'],['24%','#0e8794'],['46%','#c78b2b'],['64%','#f97618'],['82%','#ffc125'],['100%','#73f07e']].forEach(function(st){
+52914:       var stop = svgEl(svg, 'stop'); stop.setAttribute('offset', st[0]); stop.setAttribute('stop-color', st[1]); lg.appendChild(stop);
+52915:     });
+52916:     svg.querySelector('defs').appendChild(lg);
+52917:     svg.appendChild(svgEl(svg, 'rect', { x:104, y:316, width:112, height:9, rx:4.5, fill:'url(#sqPointsLegendG)', stroke:'rgba(255,255,255,.18)', 'stroke-width':'.6' }));
+52918:     addSvgText(svg, 92, 321, 'LOW', { fill:'rgba(190,210,240,.75)', 'font-size':'8', 'font-weight':'800' });
+52919:     addSvgText(svg, 230, 321, 'HIGH', { fill:'rgba(190,210,240,.75)', 'font-size':'8', 'font-weight':'800' });
+52920:     return svg;
+52921:   }
+52922: 
+52923:   // @CANONICAL:PLAYER_TARGET_POINTS_PCT
+52924:   window.openPlayerTargetPointsDialog = async function openPlayerTargetPointsDialog(playerName){
+52925:     var name = String(playerName || '').trim();
+52926:     if (!name) return;
+52927:     var ui = __sqBuildTargetPctShell('Target Points % - ' + name, '% Score / Avg Score / Rank', name, 'points');
+52928:     var body = ui.body;
+52929:     body.innerHTML = '<p class="muted">Loading...</p>';
+52930: 
+52931:     var result = await __sqFetchPlayerTargetPointsPctRows(name);
+52932:     if (result.missing || !result.rows.length){
+52933:       console.warn('[SQ] Target Points % dependency missing or empty', { required_view:'v_player_target_points_pct', player:name, source:result.source, detail:result.missing || 'zero rows' });
+52934:       __sqShowTargetPctUnavailable(
+52935:         body,
+52936:         'Target Points % is not available yet. Required Supabase view/data source is missing or empty.',
+52937:         'Formula: Target Points % = actual points scored / maximum available points. For targets 10-20, max points = target number x 3 x throws.',
+52938:         'Missing dependency: v_player_target_points_pct (player_id/player_key/player_name, target_number, throws, actual_points, max_points, points_pct).'
+52939:       );
+52940:       return;
+52941:     }
+52942: 
+52943:     console.debug('[SQ] Target Points % source used', { source:result.source, rows:result.rows.length });
+52944:     var allowed = new Set(['10','11','12','13','14','15','16','17','18','19','20','D','T','B']);
+52945:     var rows = result.rows.map(rowFromPointsPct).filter(function(r){ return r.key && allowed.has(String(r.key).toUpperCase()); }).sort(function(a,b){ return __sqTargetPctOrder(a.key) - __sqTargetPctOrder(b.key); });
+52946:     if (!rows.length){
+52947:       console.warn('[SQ] Target Points % dependency returned no supported target rows', { required_view:'v_player_target_points_pct', player:name });
+52948:       __sqShowTargetPctUnavailable(
+52949:         body,
+52950:         'Target Points % is not available yet. Required Supabase view/data source is missing or empty.',
+52951:         'Formula: Target Points % = actual points scored / maximum available points.',
+52952:         'Missing dependency: v_player_target_points_pct with target rows 10-20 or approved D/T/B rows.'
+52953:       );
+52954:       return;
+52955:     }
+52956: 
+52957:     __sqSetTargetPctActionsEnabled(body, true);
+52958:     applyTargetPointsPersonalRanks(rows);
+52959:     var globalRanks = await fetchTargetPointsGlobalRanks(rows);
+52960:     rows.forEach(function(r){
+52961:       var currentPlayerKey = r.playerKey || rankKey(name);
+52962:       r.gRank = globalRanks.get(String(r.key).toUpperCase() + '|' + currentPlayerKey) || null;
+52963:     });
+52964:     var hasGlobalRanks = rows.some(function(r){ return r.gRank; });
+52965:     window.__lastPointsPctSpiderData = { labels: rows.map(function(r){ return String(r.key); }), pct: rows.map(function(r){ return Number(r.pct || 0); }) };
+52966: 
+52967:     body.innerHTML = '';
+52968:     body.style.display = 'flex';
+52969:     body.style.flexDirection = 'column';
+52970:     body.style.gap = '10px';
+52971:     body.style.height = 'min(68vh, 650px)';
+52972:     body.style.minHeight = '520px';
+52973:     body.style.overflow = 'hidden';
+52974: 
+52975:     var heatPanel = document.createElement('div');
+52976:     heatPanel.className = 'tag sq-target-hit-heatmap-panel sq-target-points-heatmap-panel';
+52977:     heatPanel.style.flex = '0 0 63%';
+52978:     heatPanel.style.minHeight = '310px';
+52979:     heatPanel.style.padding = '10px';
+52980:     heatPanel.style.borderRadius = '12px';
+52981:     heatPanel.style.border = '1px solid rgba(255,255,255,.10)';
+52982:     heatPanel.style.background = 'radial-gradient(circle at 48% 35%, rgba(72,111,205,.20), rgba(10,16,38,.94) 64%, rgba(4,7,18,.98))';
+52983:     heatPanel.style.overflow = 'hidden';
+52984:     heatPanel.appendChild(renderTargetPointsHeatmap(rows));
+52985: 
+52986:     var tablePanel = document.createElement('div');
+52987:     tablePanel.className = 'sq-target-points-table-panel';
+52988:     tablePanel.style.flex = '1 1 0';
+52989:     tablePanel.style.minHeight = '150px';
+52990:     tablePanel.style.overflowY = 'auto';
+52991:     tablePanel.style.border = '1px solid rgba(255,255,255,.10)';
+52992:     tablePanel.style.borderRadius = '10px';
+52993: 
+52994:     var table = document.createElement('table');
+52995:     table.className = 'sq-table hs-table';
+52996:     table.style.width = '100%';
+52997:     table.style.tableLayout = 'fixed';
+52998:     table.style.fontSize = 'clamp(11px, 2.7vw, 14px)';
+52999:     table.innerHTML = '<colgroup><col style="width:20%"><col style="width:23%"><col style="width:23%"><col style="width:17%"><col style="width:17%"></colgroup><thead><tr><th>Target</th><th>% Score</th><th>Avg Score</th><th>P Rank</th><th>G Rank</th></tr></thead><tbody></tbody>';
+53000:     var tb = table.querySelector('tbody');
+53001:     rows.forEach(function(r){
+53002:       var tr = document.createElement('tr');
+53003:       [r.key, pctFmt(r.pct), fmtAvgScore(r.avgScore), r.pRank ? ('#' + r.pRank) : '—', r.gRank ? ('#' + r.gRank) : '—'].forEach(function(v){
+53004:         var td = document.createElement('td'); td.textContent = String(v); tr.appendChild(td);
+53005:       });
+53006:       tb.appendChild(tr);
+53007:     });
+53008:     tablePanel.appendChild(table);
+53009: 
+53010:     body.append(heatPanel, tablePanel);
+53011:     __sqWireBoardInspect(heatPanel, tablePanel, rows, 'points');
+53012:   };
+53013:   window.__sqCanonicalPlayerTargetPointsDialog = window.openPlayerTargetPointsDialog;
+53014:   window.openPlayerTargetPointsPctDialog = function(){ return window.__sqCanonicalPlayerTargetPointsDialog.apply(window, arguments); };
+53015:   try{ openPlayerTargetPointsDialog = window.openPlayerTargetPointsDialog; }catch(_){}
+53016:   try{ openPlayerTargetPointsPctDialog = window.openPlayerTargetPointsPctDialog; }catch(_){}
+53017: 
+53018:   try{ console.info('[SQ] Fix166 Top50 names + Target Hit heatmap active'); }catch(_){}
+53019: })();
+53020: </script>
+53021: <!-- <<< PATCH:FIX166_TOP50_NAMES_TARGET_HIT_HEATMAP END -->
+53022: 
+53023: <!-- >>> PATCH:FIX167_GAMEPLAY_PERF_MOT START -->
+53024: <script id="sq-fix167-gameplay-perf-mot-js">
+53025: (function(){
+53026:   'use strict';
+53027:   if (window.__sqFix167GameplayPerfMot) return;
+53028:   window.__sqFix167GameplayPerfMot = true;
+53029: 
+53030:   if (typeof window.SQ_PERF_DEBUG === 'undefined') window.SQ_PERF_DEBUG = false;
+53031:   var samples = [];
+53032:   function now(){ try{ return performance.now(); }catch(_){ return Date.now(); } }
+53033:   function push(name, ms, meta){
+53034:     if (!window.SQ_PERF_DEBUG) return;
+53035:     var row = { name:name, ms:Math.round(Number(ms || 0) * 100) / 100, ts:Date.now(), meta:meta || null };
+53036:     samples.push(row);
+53037:     if (samples.length > 240) samples.shift();
+53038:     try{ if (row.ms >= 12) console.debug('[SQ][PERF]', row.name, row.ms + 'ms', row.meta || ''); }catch(_){}
+53039:   }
+53040:   function measure(name, fn, meta){
+53041:     var t = now();
+53042:     try{ return fn(); }
+53043:     finally{ push(name, now() - t, meta); }
+53044:   }
+53045:   window.sqPerfReport = function(){
+53046:     var grouped = {};
+53047:     samples.forEach(function(s){
+53048:       var g = grouped[s.name] || (grouped[s.name] = { name:s.name, count:0, total:0, max:0, last:0 });
+53049:       g.count++;
+53050:       g.total += s.ms;
+53051:       g.max = Math.max(g.max, s.ms);
+53052:       g.last = s.ms;
+53053:     });
+53054:     var rows = Object.keys(grouped).map(function(k){
+53055:       var g = grouped[k];
+53056:       return {
+53057:         name:g.name,
+53058:         count:g.count,
+53059:         avg:Math.round((g.total / Math.max(1, g.count)) * 100) / 100,
+53060:         max:Math.round(g.max * 100) / 100,
+53061:         last:g.last
+53062:       };
+53063:     }).sort(function(a,b){ return b.max - a.max; });
+53064:     try{ console.table(rows); }catch(_){}
+53065:     return { debug:!!window.SQ_PERF_DEBUG, rows:rows, samples:samples.slice() };
+53066:   };
+53067: 
+53068:   function pageKey(){
+53069:     try{ return document.body && (document.body.getAttribute('data-page') || (document.body.dataset && document.body.dataset.page)) || ''; }
+53070:     catch(_){ return ''; }
+53071:   }
+53072:   function padEl(){
+53073:     try{ if (typeof pad !== 'undefined' && pad) return pad; }catch(_){}
+53074:     return document.getElementById('pad');
+53075:   }
+53076:   function missCount(){
+53077:     try{
+53078:       var dart = (typeof state !== 'undefined' && state && typeof state.currentDart === 'number') ? state.currentDart : 0;
+53079:       return Math.max(1, Math.min(3, 3 - dart));
+53080:     }catch(_){ return 3; }
+53081:   }
+53082:   function refreshPadLight(){
+53083:     try{
+53084:       var el = padEl();
+53085:       if (!el) return;
+53086:       var n = missCount();
+53087:       el.querySelectorAll('.dtX3').forEach(function(btn){
+53088:         btn.textContent = 'MISS\nx' + n;
+53089:         btn.dataset.missN = String(n);
+53090:       });
+53091:       try{
+53092:         if (typeof padHint !== 'undefined' && padHint) padHint.textContent = (typeof state !== 'undefined' && state && state.finished) ? 'Game finished.' : '';
+53093:       }catch(_){}
+53094:     }catch(_){}
+53095:   }
+53096:   function padSig(){
+53097:     try{
+53098:       var rIdx = Number(state && state.currentRound || 0);
+53099:       var r = (typeof ROUNDS !== 'undefined' && ROUNDS && ROUNDS[rIdx]) ? ROUNDS[rIdx] : null;
+53100:       return [
+53101:         pageKey(),
+53102:         state && state.finished ? 'done' : 'live',
+53103:         state && state.suddenDeath && state.suddenDeath.active ? 'sd' : '',
+53104:         state && state.players ? state.players.length : 0,
+53105:         rIdx,
+53106:         state && Number.isFinite(Number(state.currentPlayer)) ? Number(state.currentPlayer) : 0,
+53107:         r && r.type || '',
+53108:         r && r.target || ''
+53109:       ].join('|');
+53110:     }catch(_){ return 'unknown|' + Date.now(); }
+53111:   }
+53112: 
+53113:   var oldBuildPad = window.buildPad || (typeof buildPad === 'function' ? buildPad : null);
+53114:   if (oldBuildPad && !oldBuildPad.__sqFix167Wrapped){
+53115:     var lastPadSig = '';
+53116:     var wrappedBuildPad = function(){
+53117:       var sig = padSig();
+53118:       var el = padEl();
+53119:       if (sig && sig === lastPadSig && el && el.children && el.children.length && pageKey() === 'game'){
+53120:         refreshPadLight();
+53121:         push('buildPad.skip', 0, { sig:sig });
+53122:         return;
+53123:       }
+53124:       try{
+53125:         if (window.__sqNumPadX3Obs && typeof window.__sqNumPadX3Obs.disconnect === 'function') {
+53126:           window.__sqNumPadX3Obs.disconnect();
+53127:         }
+53128:         window.__sqNumPadX3Obs = null;
+53129:       }catch(_){}
+53130:       var ctx = this, args = arguments;
+53131:       var ret = measure('buildPad', function(){ return oldBuildPad.apply(ctx, args); }, { sig:sig });
+53132:       lastPadSig = padSig();
+53133:       refreshPadLight();
+53134:       return ret;
+53135:     };
+53136:     wrappedBuildPad.__sqFix167Wrapped = true;
+53137:     // @CANONICAL:THROWPAD_PERF_WRAPPER
+53138:     window.buildPad = wrappedBuildPad;
+53139:     try{ buildPad = wrappedBuildPad; }catch(_){}
+53140:   }
+53141: 
+53142:   var oldLiveV2Render = window.liveV2Render || (typeof liveV2Render === 'function' ? liveV2Render : null);
+53143:   if (oldLiveV2Render && !oldLiveV2Render.__sqFix167Wrapped){
+53144:     var liveQueued = false, liveThis = null, liveArgs = null;
+53145:     var wrappedLiveV2 = function(){
+53146:       liveThis = this;
+53147:       liveArgs = arguments;
+53148:       if (window.__sqLiveV2Immediate === true) {
+53149:         return measure('liveV2Render', function(){ return oldLiveV2Render.apply(liveThis, liveArgs); });
+53150:       }
+53151:       if (liveQueued) {
+53152:         push('liveV2Render.coalesced', 0);
+53153:         return;
+53154:       }
+53155:       liveQueued = true;
+53156:       var raf = window.requestAnimationFrame || function(cb){ return setTimeout(cb, 16); };
+53157:       return raf(function(){
+53158:         liveQueued = false;
+53159:         measure('liveV2Render', function(){ return oldLiveV2Render.apply(liveThis, liveArgs); });
+53160:       });
+53161:     };
+53162:     wrappedLiveV2.__sqFix167Wrapped = true;
+53163:     // @CANONICAL:LIVE_V2_PERF_WRAPPER
+53164:     window.liveV2Render = wrappedLiveV2;
+53165:     try{ liveV2Render = wrappedLiveV2; }catch(_){}
+53166:   }
+53167: 
+53168:   var oldRecordThrow = window.recordThrow || (typeof recordThrow === 'function' ? recordThrow : null);
+53169:   if (oldRecordThrow && !oldRecordThrow.__sqFix167Wrapped){
+53170:     var wrappedRecordThrow = function(spec){
+53171:       var ctx = this, args = arguments;
+53172:       return measure('recordThrow.total', function(){ return oldRecordThrow.apply(ctx, args); }, {
+53173:         round:(typeof state !== 'undefined' && state) ? state.currentRound : null,
+53174:         dart:(typeof state !== 'undefined' && state) ? state.currentDart : null,
+53175:         kind:spec && (spec.kind || spec.sector || spec.bull)
+53176:       });
+53177:     };
+53178:     wrappedRecordThrow.__sqFix167Wrapped = true;
+53179:     // @CANONICAL:GAMEPLAY_RECORD_THROW_PERF_WRAPPER
+53180:     window.recordThrow = wrappedRecordThrow;
+53181:     try{ recordThrow = wrappedRecordThrow; }catch(_){}
+53182:   }
+53183: 
+53184:   try{ console.info('[SQ] Fix167 gameplay perf MOT active'); }catch(_){}
+53185: })();
+53186: </script>
+53187: <!-- <<< PATCH:FIX167_GAMEPLAY_PERF_MOT END -->
+53188: 
+53189: <!-- >>> PATCH:FIX168_MODE_CLASSIFICATION_TURBO_GUARD START -->
+53190: <script id="sq-fix168-mode-classification-turbo-guard-js">
+53191: (function(){
+53192:   'use strict';
+53193:   if (window.__sqFix168ModeClassificationTurboGuard) return;
+53194:   window.__sqFix168ModeClassificationTurboGuard = true;
+53195: 
+53196:   function asArr(v){ return Array.isArray(v) ? v : []; }
+53197:   function low(v){ return String(v == null ? '' : v).trim().toLowerCase(); }
+53198:   function num(v){ var n = Number(v); return Number.isFinite(n) ? n : null; }
+53199:   function pickState(g){
+53200:     if (!g) return {};
+53201:     if (g.state && typeof g.state === 'object') return g.state;
+53202:     if (g.raw && g.raw.state && typeof g.raw.state === 'object') return g.raw.state;
+53203:     return {};
+53204:   }
+53205:   function pickRawState(g){
+53206:     return (g && g.raw && g.raw.state && typeof g.raw.state === 'object') ? g.raw.state : {};
+53207:   }
+53208:   function playersOf(g){
+53209:     var st = pickState(g), raw = pickRawState(g);
+53210:     var ps = (g && (g.players || g.player_names)) || st.players || raw.players;
+53211:     return asArr(ps);
+53212:   }
+53213:   function boardOf(g){
+53214:     var st = pickState(g), raw = pickRawState(g);
+53215:     return (g && (g.board || g.score)) || st.board || st.score || raw.board || raw.score || [];
+53216:   }
+53217:   function rowsForPlayer(board, idx){
+53218:     if (!Array.isArray(board)) return [];
+53219:     if (Array.isArray(board[idx])) return board[idx];
+53220:     if (Array.isArray(board[0]) && board[0] && board[0][idx] != null){
+53221:       return board.map(function(r){ return Array.isArray(r) ? r[idx] : null; });
+53222:     }
+53223:     return [];
+53224:   }
+53225:   function roundHasPlayed(ent){
+53226:     if (ent == null) return false;
+53227:     if (typeof ent === 'number') return true;
+53228:     if (typeof ent === 'string') return ent.trim() !== '';
+53229:     if (Array.isArray(ent)) return ent.length > 0;
+53230:     if (typeof ent !== 'object') return false;
+53231:     var darts = Array.isArray(ent.darts) ? ent.darts : (Array.isArray(ent.throws) ? ent.throws : null);
+53232:     if (darts) return darts.some(function(d){ return d != null; });
+53233:     var scoreKeys = ['roundTotal','round_total','points','score','total','val','value'];
+53234:     for (var i=0; i<scoreKeys.length; i++){
+53235:       if (Object.prototype.hasOwnProperty.call(ent, scoreKeys[i])) {
+53236:         var n = Number(ent[scoreKeys[i]]);
+53237:         if (Number.isFinite(n) && n !== 0) return true;
+53238:       }
+53239:     }
+53240:     return Object.keys(ent).some(function(k){
+53241:       if (k === 'darts' || k === 'throws' || scoreKeys.indexOf(k) >= 0) return false;
+53242:       return ent[k] != null && ent[k] !== '';
+53243:     });
+53244:   }
+53245:   function gameLooksLikeLegacyTurboBoard(g){
+53246:     try{
+53247:       var board = boardOf(g);
+53248:       var players = playersOf(g);
+53249:       var count = Math.max(players.length || 0, Array.isArray(board) ? board.length : 0);
+53250:       if (!Array.isArray(board) || count < 1) return false;
+53251:       var earlyPlayed = false, latePlayed = false;
+53252:       for (var pi=0; pi<count; pi++){
+53253:         var rows = rowsForPlayer(board, pi);
+53254:         for (var ri=0; ri<7; ri++) if (roundHasPlayed(rows[ri])) earlyPlayed = true;
+53255:         for (var rj=7; rj<14; rj++) if (roundHasPlayed(rows[rj])) latePlayed = true;
+53256:       }
+53257:       return latePlayed && !earlyPlayed;
+53258:     }catch(_){ return false; }
+53259:   }
+53260: 	  function explicitTurbo(g){
+53261: 	    try{
+53262: 	      var st = pickState(g), raw = pickRawState(g);
+53263: 	      var isLiveState = !!(g && typeof window !== 'undefined' && (g === window.state || (typeof state !== 'undefined' && g === state)));
+53264: 	      var draft = (g && g.__sqTournamentDraft) || st.__sqTournamentDraft || (isLiveState && window.__sqTournamentDraft) || {};
+53265: 	      var match = (g && g.match) || st.match || raw.match || {};
+53266:       var rules = (g && g.tournamentRules) || st.tournamentRules || match.tournamentRules || draft.rules || raw.tournamentRules || {};
+53267:       var modes = [
+53268:         g && g.mode, g && g.gameMode, g && g.game_mode, g && g.type,
+53269:         st.mode, st.gameMode, st.game_mode, st.type,
+53270:         raw.mode, raw.gameMode, raw.game_mode, raw.type,
+53271:         g && g.tournamentType, g && g.tournament_type,
+53272:         st.tournamentType, st.tournament_type,
+53273:         match.tournamentType, match.tournament_type,
+53274:         raw.tournamentType, raw.tournament_type,
+53275:         draft.type
+53276:       ];
+53277:       if (modes.some(function(v){ return low(v) === 'turbo'; })) return true;
+53278:       if (st.strictTimer === true || match.strictTimer === true || rules.strictTimer === true || raw.strictTimer === true) return true;
+53279:       if (num(st.throwLimitSeconds) === 20 || num(match.throwLimitSeconds) === 20 || num(rules.throwLimitSeconds) === 20 || num(raw.throwLimitSeconds) === 20) return true;
+53280:       if (low(st.startTarget) === '17' || low(match.startTarget) === '17' || low(rules.startTarget) === '17' || low(raw.startTarget) === '17') return true;
+53281:       return false;
+53282:     }catch(_){ return false; }
+53283:   }
+53284:   function explicitPractice(g){
+53285:     try{
+53286:       var st = pickState(g), raw = pickRawState(g);
+53287:       var match = (g && g.match) || st.match || raw.match || {};
+53288:       var mode = low([g && g.mode, g && g.gameMode, g && g.game_mode, g && g.type, st.mode, st.gameMode, st.game_mode, raw.mode, raw.gameMode].filter(Boolean).join(' '));
+53289:       if (mode.indexOf('practice') >= 0 || mode.indexOf('unofficial') >= 0 || mode === 'solo' || mode === 'classic') return true;
+53290:       if ((g && (g.is_practice === true || g.isPractice === true || g.practice === true || g.single_player === true)) ||
+53291:           st.is_practice === true || st.isPractice === true || st.practice === true || st.single_player === true ||
+53292:           raw.is_practice === true || raw.isPractice === true || raw.practice === true ||
+53293:           match.forcePractice === true || low(match.mode) === 'practice') return true;
+53294:       return false;
+53295:     }catch(_){ return false; }
+53296:   }
+53297:   function isArchived(g){
+53298:     var st = pickState(g), raw = pickRawState(g);
+53299:     return !!(g && (g.archived_at || g.archivedAt || st.archived_at || st.archivedAt || raw.archived_at || raw.archivedAt));
+53300:   }
+53301:   function gameModeKey(g){
+53302:     if (!g || isArchived(g)) return 'archived';
+53303:     if (explicitTurbo(g) || gameLooksLikeLegacyTurboBoard(g)) return 'turbo';
+53304:     if (explicitPractice(g) || playersOf(g).length === 1) return 'practice';
+53305:     if (playersOf(g).length >= 2) return 'official';
+53306:     return 'unknown';
+53307:   }
+53308: 
+53309:   window.__sqGameLooksLikeLegacyTurboBoard = gameLooksLikeLegacyTurboBoard;
+53310:   window.__sqIsTurboRuntimeState = function(src){ return explicitTurbo(src) || gameLooksLikeLegacyTurboBoard(src); };
+53311:   window.__sqGameModeKey = gameModeKey;
+53312:   window.__sqGameIsTurbo = function(g){ return gameModeKey(g) === 'turbo'; };
+53313:   window.__sqGameBucketOf = gameModeKey;
+53314:   window.__sqIsOfficialGame = function(g){ return gameModeKey(g) === 'official'; };
+53315:   window.__sqIsPracticeGame = function(g){ return gameModeKey(g) === 'practice'; };
+53316:   window.isOfficialGame = window.__sqIsOfficialGame;
+53317:   window.isPracticeGame = window.__sqIsPracticeGame;
+53318:   try{ isOfficialGame = window.__sqIsOfficialGame; isPracticeGame = window.__sqIsPracticeGame; }catch(_){}
+53319: 
+53320:   async function allGames(){
+53321:     try{
+53322:       if (typeof window.__sqGetAllGamesNormalized === 'function'){
+53323:         var n = await window.__sqGetAllGamesNormalized();
+53324:         if (Array.isArray(n)) return n;
+53325:       }
+53326:     }catch(_){}
+53327:     try{
+53328:       if (typeof cloudFetchAllGamesAsLocal === 'function'){
+53329:         var c = await cloudFetchAllGamesAsLocal();
+53330:         if (Array.isArray(c)) return c;
+53331:       }
+53332:     }catch(_){}
+53333:     return [];
+53334:   }
+53335:   function parseMs(t){ var ms = Date.parse(t || ''); return Number.isFinite(ms) ? ms : 0; }
+53336: 
+53337:   // @MODE:CLASSIFICATION_RULES runtime owner. Official excludes Turbo before any "not practice" acceptance.
+53338:   window.getGamesForMode = async function(mode){
+53339:     var m = low(mode || 'official');
+53340:     if (m === 'classic') m = 'practice';
+53341:     if (m !== 'official' && m !== 'turbo' && m !== 'practice') m = 'official';
+53342:     var rows = await allGames();
+53343:     return rows.filter(function(g){ return gameModeKey(g) === m; }).sort(function(a,b){
+53344:       return parseMs(b && (b.ts || b.created_at || b.completed_at)) - parseMs(a && (a.ts || a.created_at || a.completed_at));
+53345:     });
+53346:   };
+53347:   try{ getGamesForMode = window.getGamesForMode; }catch(_){}
+53348: 
+53349:   try{ console.info('[SQ] Fix168 mode classification active: Turbo guarded out of official browser fallbacks.'); }catch(_){}
+53350: })();
+53351: </script>
+53352: <!-- <<< PATCH:FIX168_MODE_CLASSIFICATION_TURBO_GUARD END -->
+53353: 
+53354: <script id="sq-rankings-turbo-routing-fix-js">
+53355: // >>> PATCH:rankings-turbo-routing-fix START
+53356: (function(){
+53357:   'use strict';
+53358:   if (window.__sqRankingsTurboRoutingFix) return;
+53359:   window.__sqRankingsTurboRoutingFix = true;
+53360: 
+53361:   function warn(name){
+53362:     try { console.warn('[SQ] Rankings route unavailable:', name); } catch(_) {}
+53363:   }
+53364:   function modeKey(mode){
+53365:     var m = String(mode || 'official').trim().toLowerCase();
+53366:     if (m === 'classic') return 'practice';
+53367:     return (m === 'turbo' || m === 'practice') ? m : 'official';
+53368:   }
+53369:   function playerKey(s){
+53370:     return String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+53371:   }
+53372:   function parseTs(ts){
+53373:     try{
+53374:       if (typeof window.__sqParsePowerRankTs === 'function') return window.__sqParsePowerRankTs(ts);
+53375:       var n = Date.parse(ts || '');
+53376:       return Number.isFinite(n) ? n : 0;
+53377:     }catch(_){ return 0; }
+53378:   }
+53379:   async function classifiedModeMapForRoundRows(rows){
+53380:     var ids = Array.from(new Set((rows || []).map(function(r){ return String(r && r.game_id || '').trim(); }).filter(Boolean)));
+53381:     var map = new Map();
+53382:     if (!ids.length) return map;
+53383:     if (typeof window.sb === 'undefined' || !window.sb || typeof window.sb.from !== 'function') return map;
+53384:     for (var i = 0; i < ids.length; i += 80) {
+53385:       var chunk = ids.slice(i, i + 80);
+53386:       var q = await window.sb
+53387:         .from('v_games_mode_classified')
+53388:         .select('id,mode_key')
+53389:         .in('id', chunk);
+53390:       if (q && q.error) throw q.error;
+53391:       (q.data || []).forEach(function(r){
+53392:         var id = String(r.id || '').trim();
+53393:         if (id) map.set(id, modeKey(r.mode_key));
+53394:       });
+53395:     }
+53396:     return map;
+53397:   }
+53398:   function rowMatchesCleanMode(row, mode, modeMap){
+53399:     var id = String(row && row.game_id || '').trim();
+53400:     var classified = id ? modeMap.get(id) : '';
+53401:     // @MODE:ROUND_SCORE_MODE_CLASSIFICATION_GUARD
+53402:     // Do not trust v_player_round_scores_mode_clean.mode_key by itself for Official rows:
+53403:     // legacy Turbo-shaped games must be excluded through v_games_mode_classified.
+53404:     if (!classified) return false;
+53405:     return classified === modeKey(mode);
+53406:   }
+53407:   window.__sqFetchPowerRowsFromCleanRoundScores = async function(mode){
+53408:     var m = modeKey(mode);
+53409:     if (typeof window.sb === 'undefined' || !window.sb || typeof window.sb.from !== 'function') return [];
+53410:     var q = await window.sb
+53411:       .from('mv_player_round_scores_mode_clean_app')
+53412:       .select('mode_key,player,player_key,game_id,created_at,round_index,round_score')
+53413:       .order('created_at', { ascending:false })
+53414:       .limit(5000);
+53415:     if (q.error) throw q.error;
+53416:     var modeMap = await classifiedModeMapForRoundRows(q.data || []);
+53417:     var cleanRows = (q.data || []).filter(function(r){ return rowMatchesCleanMode(r, m, modeMap); });
+53418:     var grouped = new Map();
+53419:     cleanRows.forEach(function(r){
+53420:       var name = String(r.player || '').trim();
+53421:       var key = playerKey(r.player_key || name);
+53422:       if (!name || !key) return;
+53423:       var bucket = grouped.get(key);
+53424:       if (!bucket) {
+53425:         bucket = { player:name, playerKey:key, items:[] };
