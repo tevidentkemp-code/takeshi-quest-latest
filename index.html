@@ -37822,9 +37822,22 @@ const SQ_ACH = {
       if (!playerId) return { available:false, map:{} };
       const SB = window.sb || window.__sb || null;
       if (!SB || typeof SB.from !== 'function') return { available:false, map:{} };
-      const { data, error } = await SB.from('v_player_achievements').select('code,cnt,xp').eq('player_id', playerId);
-      if (error || !Array.isArray(data)) return { available:false, map:{} };
-      const map = {}; data.forEach(r => { map[r.code] = { cnt: Number(r.cnt) || 0, xp: Number(r.xp) || 0 }; });
+      const [baseRes, dgRes] = await Promise.all([
+        SB.from('v_ach_base').select('code,cnt,xp').eq('player_id', playerId),
+        SB.from('v_ach_david_goliath').select('code,cnt,xp').eq('player_id', playerId)
+      ]);
+      if (!baseRes || baseRes.error || !Array.isArray(baseRes.data) || !dgRes || dgRes.error || !Array.isArray(dgRes.data)) {
+        return { available:false, map:{} };
+      }
+      const rows = [...baseRes.data, ...dgRes.data];
+      const map = {};
+      rows.forEach(r => {
+        if (!r || !r.code) return;
+        map[r.code] = { cnt:Number(r.cnt) || 0, xp:Number(r.xp) || 0 };
+      });
+      const distinctBaseCodes = new Set(rows.map(r => r && r.code).filter(Boolean)).size;
+      if (distinctBaseCodes >= 10) map.collector = { cnt:1, xp:150 };
+      if (distinctBaseCodes >= 20) map.trophy_hunter = { cnt:1, xp:350 };
       return { available:true, map };
     }catch(_){ return { available:false, map:{} }; }
   },
