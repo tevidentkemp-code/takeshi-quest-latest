@@ -136,7 +136,9 @@ async function inspectMode(page, mode){
   await install(page);
   await inspectMode(page,'hit');
   await inspectMode(page,'points');
-  const errs=consoleErrs.filter(e=>!/favicon|Failed to load resource|net::/i.test(e));
+  // CI cannot reach the production Supabase endpoint reliably; this matches the established
+  // smoke/regression policy and still fails on non-network console errors from SC-012 itself.
+  const errs=consoleErrs.filter(e=>!/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));
   check('no unexpected console errors', errs.length===0, errs.slice(0,5).join(' | '));
   await browser.close();
   console.log(failures?`\n${failures} FAILURES`:'\nALL PASS');
