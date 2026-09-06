@@ -1,0 +1,26 @@
+name: SC-013 cleanup temporary build artifacts
+on:
+  push:
+    branches: [fix/sc013-spider-scale-eligibility]
+    paths: [.github/workflows/sc013-cleanup.yml]
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/sc013-spider-scale-eligibility
+      - name: Remove temporary SC-013 artifacts
+        run: |
+          rm -rf _sc013_extract
+          rm -f tools/sc013_patch.py
+          rm -f .github/workflows/sc013-extract.yml
+          rm -f .github/workflows/sc013-build.yml
+          rm -f .github/workflows/sc013-cleanup.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'SC-013: remove temporary build artifacts'
+          git push
