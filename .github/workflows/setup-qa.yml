@@ -1,0 +1,46 @@
+name: Setup regression QA
+on:
+  pull_request:
+    paths:
+      - index.html
+      - tools/ui-smoke/**
+      - .github/workflows/setup-qa.yml
+  push:
+    branches: [sc014-setup-intake-polish]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install existing test dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          npm install --no-package-lock --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Check patch whitespace
+        run: git diff --check HEAD^ HEAD -- .github/workflows/setup-qa.yml tools/ui-smoke
+      - name: Run setup and full scoring journey offline
+        env:
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts
+        run: |
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          node tools/ui-smoke/verify-sc014.js | tee setup-results.txt
+          node tools/ui-smoke/smoke.js | tee smoke-results.txt
+          node tools/ui-smoke/verify-saveplayer-card.js | tee saved-player-results.txt
+      - name: Keep review evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-qa-evidence
+          path: |
+            qa-artifacts
+            *-results.txt

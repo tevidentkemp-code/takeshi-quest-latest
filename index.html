@@ -4775,6 +4775,66 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 .ms2-back-ar{ position:absolute; left:16px; font-size:20px; line-height:1; }
 .ms2-back-txt{ font-size:17px; font-weight:800; letter-spacing:.2em; text-indent:.2em; }
 
+/* >>> PATCH:SC014_MATCH_CARD_INTAKE START
+   Scoped to the setup owner; shared saved-player rows and gameplay stay unchanged. */
+#players .ms-card{ width:min(420px,94%); }
+#players .ms-intake-heading{
+  position:relative; padding:4px 0 18px; margin-bottom:16px;
+  border-bottom:1px solid rgba(255,138,0,.28);
+}
+#players .ms-intake-kicker{
+  display:block; padding-right:100px; color:#ff9f1c;
+  font-size:10px; font-weight:800; letter-spacing:.16em;
+}
+#players .ms-mode-label{
+  position:absolute; right:0; top:0; border:1px solid rgba(255,159,28,.4);
+  border-radius:6px; padding:6px 9px; color:#ffb758; background:#1c1b1c;
+  font-size:10px; font-weight:800; letter-spacing:.08em;
+}
+#players .ms2-title{
+  margin:10px 0 6px; padding:0; color:#f7f8fa; text-align:left;
+  font-size:28px; line-height:1.1; letter-spacing:.035em;
+}
+#players .ms-intake-intro{ margin:0; color:#b8c0cc; font-size:13px; line-height:1.5; }
+#players .ms2-addrow{ gap:10px; }
+#players .ms2-btn{ font-size:13px; min-width:0; gap:7px; box-shadow:0 4px 12px rgba(0,0,0,.2); }
+#players .ms2-save-new{ margin-top:10px; height:44px; color:#b8c0cc; border-color:#344254; }
+#players .ms-roster-heading{
+  display:flex; justify-content:space-between; align-items:center; gap:10px;
+  margin-top:22px; color:#b8c0cc; font-size:10px; font-weight:800; letter-spacing:.12em;
+}
+#players #msRosterCount{ color:#f7f8fa; font-variant-numeric:tabular-nums; letter-spacing:.02em; }
+#players .ms-players-list{ margin-top:10px; gap:8px; }
+#players .ms2-slot.filled{
+  min-height:68px; padding:6px 8px; border-color:#455064;
+  background:#121826; box-shadow:0 4px 12px rgba(0,0,0,.18);
+}
+#players .ms2-slot.filled:focus-within{ border-color:#ff9f1c; }
+#players .ms2-slot.empty{
+  min-height:26px; padding:0 12px; border:1px dashed #344254;
+  background:rgba(16,24,39,.3); color:#aab4c3; box-shadow:none;
+  font-size:9px; letter-spacing:.14em; font-variant-numeric:tabular-nums;
+}
+#players .ms2-ava{ width:32px; height:32px; flex-basis:32px; background:#273142; color:#ffb758; }
+#players .ms2-nm{ color:#f7f8fa; }
+#players .ms2-ranks{ color:#b8c0cc; font-size:10px; gap:8px; flex-wrap:wrap; white-space:normal; }
+#players .ms2-ranks b{ color:#f7f8fa; }
+#players .ms2-guest-input{
+  min-height:38px; font-size:16px; line-height:1.3; color:#f7f8fa; border-radius:4px;
+}
+#players .ms2-guest-input::placeholder{ color:#aab4c3; font-weight:500; }
+#players .ms2-x{ width:44px; height:44px; flex-basis:44px; border-radius:8px; border-color:#713b45; color:#ff9198; }
+#players :is(button,input):focus-visible{ outline:2px solid #ffb758; outline-offset:3px; }
+#players .ms-hint{
+  margin-top:14px; padding:10px 12px; min-height:40px; border-radius:8px;
+  background:#101827; border-left:3px solid #ff9f1c; color:#d4dbe5;
+  text-align:left; font-size:12px; line-height:1.5; font-weight:500; letter-spacing:0;
+}
+#players .ms-hint[data-ready="true"]{ border-left-color:#34d399; }
+#players #startMatchBtn:disabled{ opacity:1; filter:none; background:#222c3a !important; border-color:#465264 !important; color:#b8c0cc !important; box-shadow:none; }
+#players #startScreenBtn{ margin-bottom:12px; }
+/* <<< PATCH:SC014_MATCH_CARD_INTAKE END */
+
 /* =====================================================================
    MATCH SETUP — UNIFIED BUTTON SYSTEM
    Every initial-setup screen (Select Game Mode, Match Card, Match Length,
@@ -10216,7 +10276,12 @@ body.livev2-on[data-page="game"] canvas#v2InfoDmd{
 <!-- PAGE 2: PLAYER SELECT -->
 <section id="players" class="card section hidden">
   <div class="ms-card">
-    <div class="ms2-title">MATCH CARD</div>
+    <div class="ms-intake-heading">
+      <span class="ms-intake-kicker">SET UP YOUR GAME</span>
+      <span id="msModeLabel" class="ms-mode-label">CLASSIC</span>
+      <h2 class="ms2-title">MATCH CARD</h2>
+      <p class="ms-intake-intro">Add your players, then choose the match length.</p>
+    </div>
 
     <div class="ms2-addrow">
       <button id="msAddRegisteredBtn" class="btn ms2-btn ms2-add-saved" type="button">
@@ -10240,12 +10305,13 @@ body.livev2-on[data-page="game"] canvas#v2InfoDmd{
       <span>SAVE NEW PLAYER</span>
     </button>
 
-    <div id="msPlayersList" class="ms-players-list ms2-slots"></div>
+    <div class="ms-roster-heading"><span>YOUR LINE-UP</span><span id="msRosterCount">0 / 6 selected</span></div>
+    <div id="msPlayersList" class="ms-players-list ms2-slots" role="group" aria-label="Selected players"></div>
 
-    <div id="msMinHint" class="ms-hint">ADD 2+ PLAYERS TO START MATCH</div>
+    <div id="msMinHint" class="ms-hint" role="status" aria-live="polite" aria-atomic="true">Add 2 players to continue.</div>
   </div>
 
-  <button id="startMatchBtn" class="btn ms-start ms-primary" type="button" disabled>
+  <button id="startMatchBtn" class="btn ms-start ms-primary" type="button" aria-describedby="msMinHint" disabled>
     SELECT MATCH LENGTH
   </button>
 
@@ -19160,6 +19226,8 @@ function __ms2RankLine(name){
   const po = document.createElement('span');
   po.textContent = 'Power Rank: ';
   const pob = document.createElement('b'); pob.textContent = pr != null ? String(pr) : '–';
+  pob.className = 'ms2-power-rank';
+  pob.dataset.playerKey = key;
   po.appendChild(pob);
   ranks.append(mo, po);
   return ranks;
@@ -19183,11 +19251,20 @@ function __msRenderPlayers(){
       const inp = document.createElement('input');
       inp.className = 'ms2-guest-input ms-player-input';
       inp.type = 'text';
+      inp.setAttribute('aria-label', `Guest player ${i + 1} name`);
+      inp.autocomplete = 'off';
+      inp.enterKeyHint = 'done';
       inp.placeholder = 'Guest player name';
       inp.value = p.name || '';
       inp.addEventListener('input', () => {
         __msPlayers[i].name = inp.value;
         __msUpdateStartEnabled();
+      });
+      inp.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.isComposing) {
+          event.preventDefault();
+          inp.blur();
+        }
       });
       info.appendChild(inp);
       const tag = document.createElement('span');
@@ -19206,29 +19283,42 @@ function __msRenderPlayers(){
     const remove = document.createElement('button');
     remove.className = 'ms2-x ms-remove';
     remove.type = 'button';
-    remove.setAttribute('aria-label', 'Remove player');
+    remove.setAttribute('aria-label', `Remove player ${i + 1}`);
     remove.textContent = '✕';
     remove.onclick = () => {
       __msPlayers.splice(i, 1);
       __msRenderPlayers();
       __msUpdateStartEnabled();
+      const next = msPlayersList.querySelectorAll('.ms-remove')[i]
+        || msPlayersList.querySelectorAll('.ms-remove')[i - 1]
+        || msAddGuestBtn;
+      if (next) next.focus();
     };
     row.appendChild(remove);
 
     msPlayersList.appendChild(row);
   });
 
-  // Fixed match card: pad with empty slots up to the 6-player cap.
-  for (let i = __msPlayers.length; i < MS2_MAX_PLAYERS; i++){
+  // Keep available places visible; Vs Shadow has one real-player place.
+  const slotCap = __sqIsVsShadowSetup() ? 1 : MS2_MAX_PLAYERS;
+  for (let i = __msPlayers.length; i < slotCap; i++){
     const slot = document.createElement('div');
     slot.className = 'ms2-slot empty';
     slot.setAttribute('aria-hidden', 'true');
+    slot.textContent = `${String(i + 1).padStart(2, '0')}  /  OPEN SLOT`;
     msPlayersList.appendChild(slot);
   }
 
   // Fill Power Rank values once rankings arrive (offline -> dashes stay).
   if (!window.__ms2PowerRanks && __msPlayers.some(p => p.type !== 'guest')){
-    __ms2EnsurePowerRanks().then(m => { if (m && m.size) __msRenderPlayers(); }).catch(()=>{});
+    __ms2EnsurePowerRanks().then(m => {
+      // Update only rank text: replacing the list steals focus/caret from guest inputs.
+      if (!m) return;
+      msPlayersList.querySelectorAll('.ms2-power-rank').forEach(el => {
+        const rank = m.get(el.dataset.playerKey);
+        el.textContent = rank != null ? String(rank) : '–';
+      });
+    }).catch(()=>{});
   }
 
   __msUpdateStartEnabled();
@@ -19268,25 +19358,39 @@ function __msUpdateStartEnabled(){
   const minP = __msMinPlayersRequired();
   const vsShadow = __sqIsVsShadowSetup();
   const vsShadowOk = !vsShadow || __sqVsShadowHasExactlyOneRealPlayer();
-  if (startBtn) startBtn.disabled = vsShadow ? !vsShadowOk : (n < minP);
+  const cap = vsShadow ? 1 : MS2_MAX_PLAYERS;
+  const overCap = __msPlayers.length > cap;
+  const ready = n >= minP && vsShadowOk && !overCap;
+  if (startBtn) startBtn.disabled = !ready;
 
-  const shadowSlotTaken = __sqVsShadowSetupSlotTaken();
-  if (msAddRegisteredBtn) msAddRegisteredBtn.disabled = shadowSlotTaken;
-  if (msAddGuestBtn) msAddGuestBtn.disabled = shadowSlotTaken;
+  const full = __msPlayers.length >= cap;
+  const fullReason = vsShadow ? 'Vs Shadow uses exactly 1 real player.' : 'All 6 places are filled. Remove a player to add another.';
+  [msAddRegisteredBtn, msAddGuestBtn].forEach(btn => {
+    if (!btn) return;
+    btn.disabled = full;
+    btn.title = full ? fullReason : '';
+    btn.setAttribute('aria-describedby', 'msMinHint');
+  });
+  const count = byId('msRosterCount');
+  if (count) count.textContent = `${__msPlayers.length} / ${cap} selected`;
+  const modeLabel = byId('msModeLabel');
+  if (modeLabel) {
+    const practice = (window.__sqSelectedMode || 'match') === 'practice';
+    modeLabel.textContent = vsShadow ? 'VS SHADOW' : practice ? 'PRACTICE'
+      : window.__sqSelectedMatchVariant === 'turbo' ? 'TURBO' : 'CLASSIC';
+  }
 
   if (msMinHint) {
-    const mode = (window.__sqSelectedMode || 'match');
-    let needTxt = (mode === 'practice') ? 'ADD 1+ PLAYER TO START PRACTICE' : 'ADD 2+ PLAYERS TO START MATCH';
-    if (vsShadow) {
-      needTxt = __sqVsShadowHasExactlyOneRealPlayer() ? 'VS SHADOW USES 1 REAL PLAYER ONLY' : 'ADD 1 PLAYER FOR VS SHADOW';
-      if (Array.isArray(__msPlayers) && __msPlayers.length > 1) needTxt = 'VS SHADOW USES 1 REAL PLAYER ONLY';
-    }
+    const unnamed = __msPlayers.length - n;
+    const needed = Math.max(0, minP - n);
+    let needTxt = ready ? `${n} player${n === 1 ? '' : 's'} ready. Choose the match length.`
+      : `Add ${needed} ${n ? 'more ' : ''}player${needed === 1 ? '' : 's'} to continue.`;
+    if (!ready && unnamed && !overCap) needTxt = `Name your guest${unnamed === 1 ? '' : 's'} to continue. ${minP} named player${minP === 1 ? '' : 's'} required.`;
+    if (ready && unnamed) needTxt += ` ${unnamed} unnamed guest${unnamed === 1 ? '' : 's'} will be left out.`;
+    if (full) needTxt += ` ${fullReason}`;
+    if (overCap) needTxt = `Remove ${__msPlayers.length - cap} player${__msPlayers.length - cap === 1 ? '' : 's'} to continue. Maximum ${cap}.`;
     if (msMinHint.textContent !== needTxt) msMinHint.textContent = needTxt;
-    const showHint = vsShadow ? !vsShadowOk : (n < minP);
-    msMinHint.style.opacity = showHint ? '1' : '0';
-    msMinHint.style.pointerEvents = 'none';
-    msMinHint.style.height = showHint ? '' : '0px';
-    msMinHint.style.marginTop = showHint ? '' : '0px';
+    msMinHint.dataset.ready = String(ready);
   }
 }
 
@@ -19295,8 +19399,14 @@ function __msAddGuest(){
     toast('Vs Shadow uses exactly 1 real player.');
     return;
   }
+  if (__msPlayers.length >= MS2_MAX_PLAYERS) {
+    toast(`Match card is full (max ${MS2_MAX_PLAYERS} players)`);
+    return;
+  }
   __msPlayers.push({ type:'guest', name:'' });
   __msRenderPlayers();
+  const input = msPlayersList.querySelector(`[data-index="${__msPlayers.length - 1}"] .ms-player-input`);
+  if (input) input.focus();
 }
 
 if (msAddRegisteredBtn) msAddRegisteredBtn.addEventListener('click', async () => {
@@ -19440,6 +19550,10 @@ const psStartMatchBtn = byId('startMatchBtn');
 if (psStartMatchBtn) {
   psStartMatchBtn.addEventListener('click', () => {
     const minP = __msMinPlayersRequired();
+    if (__msPlayers.length > MS2_MAX_PLAYERS) {
+      toast(`Match card is full (max ${MS2_MAX_PLAYERS} players)`);
+      return;
+    }
     if (__sqIsVsShadowSetup() && !__sqVsShadowHasExactlyOneRealPlayer()) {
       toast('Vs Shadow uses exactly 1 real player.');
       return;
@@ -32686,7 +32800,7 @@ function arrangeStartActions(){
           '<div class="sg-opt-top">'+
             '<div class="sg-opt-title">MATCH PLAY</div>'+
           '</div>'+
-          '<div class="sg-opt-desc">GAMES BETWEEN 1 AND 6 PEOPLE</div>' +
+          '<div class="sg-opt-desc">GAMES BETWEEN 2 AND 6 PEOPLE</div>' +
         '</div>';
       const openMatchVariantMenu = () => {
         startGameBody.innerHTML = '';
