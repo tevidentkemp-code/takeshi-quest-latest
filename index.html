@@ -10501,29 +10501,67 @@ body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow{
   grid-template-columns:repeat(3,minmax(0,1fr)) !important;
   gap:clamp(6px,1.6vw,8px) !important;
 }
-/* At comfortable widths, the lower row uses the same three-column geometry
-   as S / D / T. Skip and Settings share the T column as a compact pair. The
-   four-column fallback above preserves the 44px tap-target floor on phones. */
-@media (min-width:361px){
+/* At compact widths, reserve enough width in T for two 44px tap targets. The
+   first two action columns stay the same width as S / D, while Skip and
+   Settings occupy the two halves of T. */
+@media (min-width:361px) and (max-width:429px){
+  body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow{
+    grid-template-columns:
+      minmax(0,1fr)
+      minmax(0,1fr)
+      minmax(calc(88px + clamp(6px,1.6vw,8px)),1fr) !important;
+  }
+  body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow + .dtActions{
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr) repeat(2,minmax(44px,1fr)) !important;
+    gap:clamp(6px,1.6vw,8px) !important;
+  }
+  body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow + .dtActions .dtActBtn.miss{
+    grid-column:1;
+    grid-row:1;
+  }
+  body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow + .dtActions .dtActBtn.undo{
+    grid-column:2;
+    grid-row:1;
+  }
+  body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow + .dtActions .dtActBtn.skip{
+    grid-column:3;
+    grid-row:1;
+    width:100% !important;
+  }
+  body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow + .dtActions #settingsBtnGamePad{
+    grid-column:4;
+    grid-row:1;
+    width:100% !important;
+  }
+}
+/* Once the T column can hold the pair without shrinking below 44px, use a
+   shared three-column grid and split T into two compact controls. */
+@media (min-width:430px){
   body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow + .dtActions{
     grid-template-columns:repeat(3,minmax(0,1fr)) !important;
     gap:clamp(6px,1.6vw,8px) !important;
   }
   body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow + .dtActions .dtActBtn.miss{
     grid-column:1;
+    grid-row:1;
   }
   body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow + .dtActions .dtActBtn.undo{
     grid-column:2;
+    grid-row:1;
   }
   body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow + .dtActions .dtActBtn.skip{
     grid-column:3;
+    grid-row:1;
     justify-self:start;
     width:calc((100% - clamp(6px,1.6vw,8px)) / 2) !important;
+    min-width:44px !important;
   }
   body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow + .dtActions #settingsBtnGamePad{
     grid-column:3;
+    grid-row:1;
     justify-self:end;
     width:calc((100% - clamp(6px,1.6vw,8px)) / 2) !important;
+    min-width:44px !important;
   }
 }
 body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn{
