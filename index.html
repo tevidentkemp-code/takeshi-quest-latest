@@ -23880,6 +23880,13 @@ function __sqV2SetPagerPage(panel, page, animate){
 
     let labels = Array.from({length: roundsCount()}, (_,i)=>roundLabel(i));
     let live = buildLiveSeries();
+
+    // Paint the live/empty state before any cloud-backed reference lookup.
+    // Reference data is additive; it must never hold the first B3 frame hostage.
+    try{
+      drawRace(canvas, { series: live, record: null, records: null, labels });
+    }catch(_){}
+
     const __turboRace = (typeof __sqIsTurboRaceRuntimeState === 'function') ? __sqIsTurboRaceRuntimeState(state) : (()=>{ try{ const m = state?.match || {}; const draft = window.__sqTournamentDraft || state?.__sqTournamentDraft || null; const type = String(m.tournamentType || m.type || draft?.type || state?.tournamentType || '').toLowerCase(); return !!(type === 'turbo' || m.strictTimer === true || m.throwLimitSeconds === 20 || state?.strictTimer === true || state?.throwLimitSeconds === 20); }catch(_){ return false; } })();
     const __turboStartIdx = (typeof __sqTurboRaceStartIndex === 'function') ? __sqTurboRaceStartIndex(state, roundsCount()) : (()=>{ try{ const rules = state?.match?.tournamentRules || state?.__sqTournamentDraft?.rules || window.__sqTournamentDraft?.rules || {}; return Math.max(0, Math.min(roundsCount()-1, Number(rules.startRoundIndex ?? 7))); }catch(_){ return 7; } })();
     if (__turboRace) {
