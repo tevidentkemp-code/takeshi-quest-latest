@@ -11,10 +11,12 @@ const { createThrowpadChecks, checkScoreControls } = require('./throwpad-layout'
 const results = [];
 let failures = 0;
 const shots = process.env.SQ_SCREENSHOTS;
-async function screenshot(page, name) {
+async function screenshot(page, name, selector) {
   if (!shots) return;
   fs.mkdirSync(shots, { recursive: true });
-  await page.screenshot({ path: path.join(shots, name + '.png'), fullPage: false });
+  const file = path.join(shots, name + '.png');
+  if (selector) await page.locator(selector).screenshot({ path: file });
+  else await page.screenshot({ path: file, fullPage: false });
 }
 function check(name, ok, detail) {
   results.push({ name, ok: !!ok, detail: detail || '' });
@@ -63,6 +65,10 @@ function check(name, ok, detail) {
   await page.locator('#settingsBtnGamePad').click();
   await page.waitForTimeout(800);
   check('Main Menu opens (fix106)', !!(await page.$('.sq-menu106-bd')));
+  check('Pad Settings opens only the canonical menu', await page.evaluate(() => {
+    const open = [...document.querySelectorAll('.modal-backdrop:not(.hidden)')].filter(m => getComputedStyle(m).display !== 'none');
+    return open.length === 1 && open[0].classList.contains('sq-menu106-bd');
+  }));
   // Known limitation (audit N-7): Main Menu does not close on Escape; backdrop works.
   await page.evaluate(() => {
     const m = document.querySelector('.sq-menu106-bd');
@@ -70,6 +76,7 @@ function check(name, ok, detail) {
   });
   await page.waitForTimeout(400);
   check('Main Menu closes via backdrop', !(await page.$('.sq-menu106-bd')));
+  check('Closing Settings leaves no blocking overlay', await page.evaluate(() => !document.querySelector('.modal-backdrop:not(.hidden)')));
 
   // -- Play to completion
   await H.playToCompletion(page, { onTurn: throwpadChecks.onTurn });

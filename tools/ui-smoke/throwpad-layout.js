@@ -48,6 +48,8 @@ function createThrowpadChecks(check, screenshot) {
         check(`${type} throwpad at ${width}px: labels fit, controls stay reachable`, !problems.length, problems.join('; '));
         if (width === 390 || (width === 320 && type === 'number'))
           await screenshot(page, `sc015-throwpad-${type}-${width}`);
+        if (width === 390 && type === 'number')
+          await screenshot(page, 'sc015-classic-throwpad-detail', '.pad-bar');
       }
       await page.setViewportSize(viewport);
     },
