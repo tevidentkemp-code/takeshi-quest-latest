@@ -10211,7 +10211,9 @@ body.livev2-on[data-page="game"]{
   --sqClassicLine:rgba(139,166,210,.22);
   --sqClassicInk:#eef3ff;
   --sqClassicMuted:rgba(218,226,244,.62);
-  --sqClassicOrange:#ff9f1c;
+  --sqClassicOrange:#ff9500;
+  --sqClassicOrangeBorder:rgba(255,149,0,.78);
+  --sqClassicOrangeGlow:rgba(255,149,0,.28);
   --sqClassicBlue:#4aa3ff;
   --sqClassicGreen:#2fd06b;
   --sqClassicRed:#ff4d5e;
@@ -10286,14 +10288,21 @@ body.livev2-on[data-page="game"] #liveV2Panel .v2ScoreBox{
     box-shadow .18s ease,
     background .18s ease !important;
 }
+/* Match beta's asymmetric outer-edge card geometry: first card is flat on the left, last card mirrors on the right. */
+body.livev2-on[data-page="game"] #liveV2Panel .v2ScoreBox[data-p="0"]{
+  border-radius:3px 14px 14px 3px !important;
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2ScoreBox[data-p]:last-of-type{
+  border-radius:14px 3px 3px 14px !important;
+}
 body.livev2-on[data-page="game"] #liveV2Panel .v2ScoreBox.active{
   background:
-    linear-gradient(180deg,rgba(91,52,15,.72),rgba(28,20,14,.98)) !important;
-  border-color:rgba(255,159,28,.92) !important;
+    linear-gradient(180deg,rgba(26,38,58,.95),rgba(8,15,28,.98)) !important;
+  border-color:var(--sqClassicOrangeBorder) !important;
   box-shadow:
-    0 0 0 2px rgba(255,159,28,.18),
-    0 0 22px rgba(255,122,0,.22),
-    inset 0 1px 0 rgba(255,232,188,.12) !important;
+    0 0 0 1px rgba(255,149,0,.16),
+    0 0 14px var(--sqClassicOrangeGlow),
+    inset 0 1px 0 rgba(255,255,255,.09) !important;
 }
 body.livev2-on[data-page="game"] #liveV2Panel .v2ScoreBox.active::before{
   content:"";
@@ -10354,12 +10363,12 @@ body.livev2-on[data-page="game"] #liveV2Panel .v2Cell.active,
 body.livev2-on[data-page="game"] #liveV2Panel .v2Badge.liveRow,
 body.livev2-on[data-page="game"] #liveV2Panel .v2Cell.liveRow{
   background:
-    linear-gradient(180deg,rgba(79,48,17,.78),rgba(26,19,14,.94)) !important;
-  border-color:rgba(255,159,28,.82) !important;
+    linear-gradient(180deg,rgba(24,35,54,.88),rgba(8,15,28,.96)) !important;
+  border-color:var(--sqClassicOrangeBorder) !important;
   box-shadow:
-    0 0 0 1px rgba(255,159,28,.14),
-    0 0 16px rgba(255,122,0,.14),
-    inset 0 1px 0 rgba(255,232,188,.10) !important;
+    0 0 0 1px rgba(255,149,0,.14),
+    0 0 14px rgba(255,149,0,.24),
+    inset 0 1px 0 rgba(255,255,255,.08) !important;
 }
 body.livev2-on[data-page="game"] #liveV2Panel .v2Badge.active{
   color:#ffd18a !important;
@@ -45391,7 +45400,7 @@ function __sqDmdInitV7(){
 // We render text with canvas fillText at native resolution, then threshold to on/off pixels.
 // This gives smoother curves while still remaining true dot-matrix once masked.
 const TEXT = {
-  family: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
+  family: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
   // keep proportions consistent as native resolution changes
   topPx: Math.max(18, Math.round(NATIVE_H * 0.375)),   // 24 @ 64, 48 @ 128
   botPx: Math.max(16, Math.round(NATIVE_H * 0.3125)),  // 20 @ 64, 40 @ 128
@@ -45445,7 +45454,7 @@ function drawZ1Target(z1Text, rect){
   if (!target) return;
 
   // Bigger, perfectly centered target (no label).
-  drawTextInRect(target, rect, 52, "center", "middle", 800);
+  drawTextInRect(target, rect, 48, "center", "middle", 700);
 }
 
 function drawTextInRect(str, rect, px, align="center", v="middle", weight, yOff=0){
