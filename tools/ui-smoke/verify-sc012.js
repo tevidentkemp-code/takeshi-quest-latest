@@ -9,7 +9,7 @@ const norm = s => String(s == null ? '' : s).replace(/\s+/g,' ').trim();
 function sourceGuards(){
   const src = fs.readFileSync(path.join(__dirname,'..','..','index.html'),'utf8');
   check('board inspect receives global rank data', /__sqWireBoardInspect\(heatPanel, tablePanel, rows, 'hit', globalRanks, name\)/.test(src) && /__sqWireBoardInspect\(heatPanel, tablePanel, rows, 'points', globalRanks, name\)/.test(src));
-  check('selected-target ranking panel exists', /sq-target-global-ranking/.test(src) && /Target ' \+ k \+ ' - all players/.test(src));
+  check('selected-target ranking panel exists', /sq-target-global-ranking/.test(src) && /Target ' \+ k \+ ' - 10\+ games/.test(src));
   check('global ranking rows preserve player names', /playerName:String\(r\.player_name \|\| r\.player_key \|\| ''\)/.test(src));
   check('Spider comparison dropdown exists', /sq-spider-compare-select/.test(src) && /Compare player/.test(src));
   check('Spider comparison is non-colour-only', /setLineDash\(\[8,5\]\)/.test(src) && /strokeRect\(p\.x - 3\.5/.test(src) && /dashed #7dd3fc/.test(src));
@@ -96,7 +96,7 @@ async function inspectMode(page, mode){
   check(mode+' ranking panel lists all fixture players', !!rank && rank.rows === 12, rank && String(rank.rows));
   check(mode+' current player is identifiable', !!rank && /Thom/i.test(rank.current||''), rank && rank.current);
   check(mode+' ranking table is mobile-contained and scrollable', !!rank && rank.right <= rank.vw + 1 && rank.clientHeight <= 160 && rank.scrollHeight > rank.clientHeight && /auto|scroll/.test(rank.overflowY), JSON.stringify(rank));
-  check(mode+' selected target ranking heading is correct', !!rank && /Target 14 - all players/i.test(rank.text||''), rank && norm(rank.text).slice(0,160));
+  check(mode+' selected target ranking heading is correct', !!rank && /Target 14 - 10\+ games/i.test(rank.text||''), rank && norm(rank.text).slice(0,160));
 
   await page.evaluate(() => {
     const b=document.querySelector('button[data-target-pct-action="spider"]');
