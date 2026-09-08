@@ -10490,6 +10490,55 @@ body.livev2-on[data-page="game"] .dtActBtn.skip{
 body.livev2-on[data-page="game"] .dtActBtn.miss .dtIcon{ color:#ff8290 !important; }
 body.livev2-on[data-page="game"] .dtActBtn.undo .dtIcon{ color:#ffb02e !important; }
 body.livev2-on[data-page="game"] .dtActBtn.skip .dtIcon{ color:#74b8ff !important; }
+/* Classic throwpad label fit: retain the two rows and control order. The
+   narrow Skip / Settings slots have a 44px floor; no scoring handler changes. */
+body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActions{
+  grid-template-columns:minmax(44px,2fr) minmax(44px,2fr) repeat(2,minmax(44px,1fr)) !important;
+  gap:clamp(6px,1.6vw,8px) !important;
+}
+body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn{
+  box-sizing:border-box;
+  padding:4px !important;
+  gap:4px !important;
+}
+body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn .dtLbl{
+  font-size:12px !important;
+  line-height:1.1 !important;
+  letter-spacing:.04em !important;
+  white-space:nowrap;
+}
+body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn .dtIcon{
+  flex-shrink:0;
+  font-size:13px !important;
+  line-height:1 !important;
+}
+body.livev2-on:not(.livev3-on)[data-page="game"] #settingsBtnGamePad{
+  font-size:20px !important;
+}
+body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtBullBtn[data-score-label]{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:3px;
+}
+body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtBullBtn[data-score-label]::after{
+  content:attr(data-score-label);
+  font-size:8px;
+  font-weight:800;
+  line-height:1;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+@media (max-width:520px){
+  body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn{
+    flex-direction:column !important;
+    gap:4px !important;
+  }
+  body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn .dtLbl{
+    font-size:clamp(10px,2.8vw,12px) !important;
+  }
+}
 body.livev2-on[data-page="game"] .dtX3:active,
 body.livev2-on[data-page="game"] .dtBullBtn:active,
 body.livev2-on[data-page="game"] .dtActBtn:active,
@@ -25325,6 +25374,8 @@ function buildPad(){
         b.className = 'dtBullBtn';
         b.type = 'button';
         b.textContent = k;
+        b.dataset.scoreLabel = { S:'Single', D:'Double', T:'Treble' }[k];
+        b.setAttribute('aria-label', b.dataset.scoreLabel);
         b.onclick = ()=>{ try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } recordThrow({ kind: k }); };
         sdtRow.appendChild(b);
       });

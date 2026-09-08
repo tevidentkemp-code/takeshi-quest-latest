@@ -6,6 +6,7 @@
 const H = require('./harness');
 const fs = require('fs');
 const path = require('path');
+const { createThrowpadChecks, checkScoreControls } = require('./throwpad-layout');
 
 const results = [];
 let failures = 0;
@@ -54,9 +55,12 @@ function check(name, ok, detail) {
   check('throw pad built', await page.evaluate(() => document.querySelectorAll('#pad button').length >= 5));
   await page.waitForTimeout(700);
   await screenshot(page, 'sc015-live-classic-mobile');
+  const throwpadChecks = createThrowpadChecks(check, screenshot);
+  await throwpadChecks.onTurn(page);
+  await checkScoreControls(page, check);
 
   // -- In-game Main Menu
-  await page.evaluate(() => document.getElementById('settingsBtnGame').click());
+  await page.locator('#settingsBtnGamePad').click();
   await page.waitForTimeout(800);
   check('Main Menu opens (fix106)', !!(await page.$('.sq-menu106-bd')));
   // Known limitation (audit N-7): Main Menu does not close on Escape; backdrop works.
@@ -68,7 +72,8 @@ function check(name, ok, detail) {
   check('Main Menu closes via backdrop', !(await page.$('.sq-menu106-bd')));
 
   // -- Play to completion
-  await H.playToCompletion(page);
+  await H.playToCompletion(page, { onTurn: throwpadChecks.onTurn });
+  throwpadChecks.finish();
   const gc = await page.$('.sq-gamecomplete-backdrop');
   check('completion overlay appears', !!gc);
 
