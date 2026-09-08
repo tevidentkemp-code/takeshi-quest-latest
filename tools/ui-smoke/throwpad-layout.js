@@ -32,6 +32,34 @@ async function inspectLayout(page) {
   });
 }
 
+async function inspectNumberAlignment(page) {
+  return page.evaluate(() => {
+    const pad = document.getElementById('pad');
+    const top = pad?.querySelector('.dtScoreRow');
+    const actions = top?.nextElementSibling?.classList.contains('dtActions')
+      ? top.nextElementSibling : null;
+    if (!top || !actions) return { error: 'score/action rows missing' };
+    const center = el => {
+      const box = el.getBoundingClientRect();
+      return box.left + box.width / 2;
+    };
+    const tops = [...top.querySelectorAll('.dtBullBtn')];
+    const miss = actions.querySelector('.dtActBtn.miss');
+    const undo = actions.querySelector('.dtActBtn.undo');
+    const skip = actions.querySelector('.dtActBtn.skip');
+    const settings = actions.querySelector('#settingsBtnGamePad');
+    if (tops.length !== 3 || !miss || !undo || !skip || !settings)
+      return { error: 'score/action controls missing' };
+    return {
+      missDelta: Math.abs(center(tops[0]) - center(miss)),
+      undoDelta: Math.abs(center(tops[1]) - center(undo)),
+      tGroupDelta: Math.abs(center(tops[2]) - ((center(skip) + center(settings)) / 2)),
+      skipWidth: skip.getBoundingClientRect().width,
+      settingsWidth: settings.getBoundingClientRect().width,
+    };
+  });
+}
+
 function createThrowpadChecks(check, screenshot) {
   const seen = new Set();
   return {
@@ -46,6 +74,15 @@ function createThrowpadChecks(check, screenshot) {
         await page.waitForTimeout(1200);
         const problems = await inspectLayout(page);
         check(`${type} throwpad at ${width}px: labels fit, controls stay reachable`, !problems.length, problems.join('; '));
+        if (type === 'number' && width >= 390) {
+          const alignment = await inspectNumberAlignment(page);
+          const aligned = !alignment.error &&
+            alignment.missDelta <= 2.5 && alignment.undoDelta <= 2.5 &&
+            alignment.tGroupDelta <= 2.5 &&
+            alignment.skipWidth >= 43.9 && alignment.settingsWidth >= 43.9;
+          check(`number throwpad at ${width}px: lower controls align under S/D/T`, aligned,
+            alignment.error || JSON.stringify(alignment));
+        }
         if (width === 390 || (width === 320 && type === 'number'))
           await screenshot(page, `sc015-throwpad-${type}-${width}`);
         if (width === 390 && type === 'number')

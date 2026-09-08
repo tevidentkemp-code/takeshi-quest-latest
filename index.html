@@ -10496,6 +10496,36 @@ body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActions{
   grid-template-columns:minmax(44px,2fr) minmax(44px,2fr) repeat(2,minmax(44px,1fr)) !important;
   gap:clamp(6px,1.6vw,8px) !important;
 }
+body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow{
+  display:grid !important;
+  grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+  gap:clamp(6px,1.6vw,8px) !important;
+}
+/* At comfortable widths, the lower row uses the same three-column geometry
+   as S / D / T. Skip and Settings share the T column as a compact pair. The
+   four-column fallback above preserves the 44px tap-target floor on phones. */
+@media (min-width:361px){
+  body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow + .dtActions{
+    grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+    gap:clamp(6px,1.6vw,8px) !important;
+  }
+  body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow + .dtActions .dtActBtn.miss{
+    grid-column:1;
+  }
+  body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow + .dtActions .dtActBtn.undo{
+    grid-column:2;
+  }
+  body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow + .dtActions .dtActBtn.skip{
+    grid-column:3;
+    justify-self:start;
+    width:calc((100% - clamp(6px,1.6vw,8px)) / 2) !important;
+  }
+  body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow + .dtActions #settingsBtnGamePad{
+    grid-column:3;
+    justify-self:end;
+    width:calc((100% - clamp(6px,1.6vw,8px)) / 2) !important;
+  }
+}
 body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn{
   box-sizing:border-box;
   padding:4px !important;
@@ -25368,7 +25398,7 @@ function buildPad(){
       right.className = 'dtRight';
 
       const sdtRow = document.createElement('div');
-      sdtRow.className = 'dtBullRow';
+      sdtRow.className = 'dtBullRow dtScoreRow';
       ['S','D','T'].forEach(k=>{
         const b = document.createElement('button');
         b.className = 'dtBullBtn';
