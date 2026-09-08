@@ -23710,8 +23710,11 @@ function __sqV2SetPagerPage(panel, page, animate){
     if (!canvas || !packet) return;
 
     const host = canvas.parentElement || canvas;
-    const cssW = Math.max(320, host.clientWidth || 320);
-    const cssH = Math.max(150, host.clientHeight || 150);
+    // The classic B3 window is intentionally compact on mobile; size the canvas
+    // from its actual host instead of forcing the old 150px minimum.
+    const cssW = Math.max(280, host.clientWidth || 280);
+    const cssH = Math.max(96, host.clientHeight || 96);
+    const compact = cssH < 150;
     const dpr = window.devicePixelRatio || 1;
 
     canvas.width = Math.round(cssW * dpr);
@@ -23735,17 +23738,15 @@ function __sqV2SetPagerPage(panel, page, animate){
     const maxYRaw = Math.max(10, ...numericVals);
     const maxY = Math.ceil(maxYRaw / 50) * 50;
 
-    // >>> PATCH:FIX21_RACE_CHART_GEOMETRY START
-    // Widen and deepen the Game Race plot so its RHS aligns with the score-pill edge
-    // and the round labels sit low inside the B3 panel, just above the pager dots.
-    const mL = 52;
-    const mR = 16;
-    const mT = 28;
-    const mB = 40;
-    const xLabelY = cssH - 14;
-    const plotW = cssW - mL - mR;
-    const plotH = cssH - mT - mB;
-    // <<< PATCH:FIX21_RACE_CHART_GEOMETRY END
+    // Responsive plot margins keep the legend, grid and round labels readable
+    // when the B3 window is reduced to the beta-like mobile footprint.
+    const mL = compact ? 30 : 52;
+    const mR = compact ? 8 : 16;
+    const mT = compact ? 18 : 28;
+    const mB = compact ? 22 : 40;
+    const xLabelY = cssH - (compact ? 7 : 14);
+    const plotW = Math.max(1, cssW - mL - mR);
+    const plotH = Math.max(1, cssH - mT - mB);
 
     // top horizontal key
     const legendItems = series.map(s => ({
@@ -23773,9 +23774,9 @@ function __sqV2SetPagerPage(panel, page, animate){
     // top horizontal key
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.font = '11px system-ui';
+    ctx.font = compact ? '8px system-ui' : '11px system-ui';
     let lx = mL;
-    const ly = 12;
+    const ly = compact ? 8 : 12;
     for (const item of legendItems){
       ctx.fillStyle = 'rgba(231,233,245,.82)';
       ctx.fillText(item.label, lx, ly);
@@ -23796,7 +23797,7 @@ function __sqV2SetPagerPage(panel, page, animate){
     // grid + y labels in 50s
     ctx.strokeStyle = 'rgba(255,255,255,.08)';
     ctx.fillStyle = 'rgba(231,233,245,.56)';
-    ctx.font = '10px system-ui';
+    ctx.font = compact ? '7px system-ui' : '10px system-ui';
     ctx.textAlign = 'left';
     for(let v=0; v<=maxY; v+=50){
       const y = yFor(v);
@@ -56266,6 +56267,25 @@ body[data-page="details"] .wrap{
 })();
 </script>
 <!-- <<< PATCH:TRAINING_MODE_V1 END -->
+
+<!-- >>> PATCH:LIVE_CLASSIC_STAGE2_B3_COMPACT START -->
+<style id="sq-live-classic-stage2-b3-css">
+/*
+  Stage 2 visual refinement: keep B3/race data in the classic layout, but
+  restore the compact mobile footprint seen in the beta reference.
+  No pager, chart data, or scoring behaviour changes here.
+*/
+body.livev2-on[data-page="game"] #liveV2Panel{
+  --sqV2InfoH:clamp(126px,16vh,150px) !important;
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2InfoPager{
+  margin-top:8px !important;
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2PagerDots{
+  padding:5px 0 2px !important;
+}
+</style>
+<!-- <<< PATCH:LIVE_CLASSIC_STAGE2_B3_COMPACT END -->
 
 </body>
 </html>
