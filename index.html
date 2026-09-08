@@ -23747,6 +23747,8 @@ function __sqV2SetPagerPage(panel, page, animate){
     const xLabelY = cssH - (compact ? 7 : 14);
     const plotW = Math.max(1, cssW - mL - mR);
     const plotH = Math.max(1, cssH - mT - mB);
+    const hasRacePoint = series.some(s => (s.data || []).some(v => Number.isFinite(v))) ||
+      records.some(r => (r.data || []).some(v => Number.isFinite(v)));
 
     // top horizontal key
     const legendItems = series.map(s => ({
@@ -23837,6 +23839,21 @@ function __sqV2SetPagerPage(panel, page, animate){
       ctx.stroke();
       ctx.restore();
     });
+
+    // Keep an empty race surface explicit until the first real score point exists.
+    // This is a state label, not placeholder data; it disappears as soon as a
+    // live or reference series contains a finite point.
+    if (!hasRacePoint) {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = compact
+        ? '700 8px ui-monospace, SFMono-Regular, Menlo, monospace'
+        : '700 11px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.fillStyle = 'rgba(218,226,244,.42)';
+      ctx.fillText('AWAITING SCORES', mL + (plotW / 2), mT + (plotH / 2));
+      ctx.restore();
+    }
 
     // player lines
     series.forEach(s=>{
