@@ -98,7 +98,7 @@ async function startMatch(page, games = 1) {
   await page.waitForTimeout(2000);
 }
 // Asymmetric scoring so games never end in a draw.
-async function playToCompletion(page) {
+async function playToCompletion(page, opts = {}) {
   let turn = 0;
   for (let i = 0; i < 160; i++) {
     const info = await page.evaluate(() => ({
@@ -106,6 +106,7 @@ async function playToCompletion(page) {
       modal: !!document.querySelector('.modal-backdrop:not(.hidden)'),
     }));
     if (info.pg !== 'game' || info.modal) break;
+    if (opts.onTurn) await opts.onTurn(page);
     if (turn % 2 === 1) {
       const x3 = await page.$('#pad button.dtX3:not([disabled])');
       if (x3) await x3.click().catch(() => {});

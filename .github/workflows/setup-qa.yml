@@ -29,9 +29,11 @@ jobs:
       - name: Check patch whitespace
         run: git diff --check HEAD^ HEAD -- .github/workflows/setup-qa.yml tools/ui-smoke
       - name: Run setup and full scoring journey offline
+        shell: bash
         env:
           SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts
         run: |
+          set -o pipefail
           python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
           node tools/ui-smoke/verify-sc014.js | tee setup-results.txt
           node tools/ui-smoke/smoke.js | tee smoke-results.txt
