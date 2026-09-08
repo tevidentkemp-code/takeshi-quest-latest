@@ -10197,6 +10197,328 @@ body.livev2-on[data-page="game"] canvas#v2InfoDmd{
 /* <<< PATCH:FIX71_PRACTICE_GAME_TYPE_MENU END */
 </style>
 
+<!-- >>> PATCH:LIVE_CLASSIC_STAGE1_VISUAL_V1 START -->
+<style id="sq-live-classic-stage1-css">
+/*
+  Stage 1 visual skin for the canonical Live V2 classic layout.
+  Geometry, scoring semantics and control order stay with Live V2.
+  The top DMD canvas remains owned by its existing animated renderer.
+*/
+body.livev2-on[data-page="game"]{
+  --sqClassicBg:#050812;
+  --sqClassicPanel:#0d1627;
+  --sqClassicPanelDeep:#08101f;
+  --sqClassicLine:rgba(139,166,210,.22);
+  --sqClassicInk:#eef3ff;
+  --sqClassicMuted:rgba(218,226,244,.62);
+  --sqClassicOrange:#ff9f1c;
+  --sqClassicBlue:#4aa3ff;
+  --sqClassicGreen:#2fd06b;
+  --sqClassicRed:#ff4d5e;
+  background:
+    radial-gradient(780px 420px at 50% -12%, rgba(255,122,0,.10), transparent 62%),
+    linear-gradient(180deg,#0b1221 0%,#050812 82%) !important;
+}
+
+body.livev2-on[data-page="game"] .wrap,
+body.livev2-on[data-page="game"] #game,
+body.livev2-on[data-page="game"] #game > .card.section,
+body.livev2-on[data-page="game"] #gameScrollGate{
+  background:transparent !important;
+}
+
+/* Keep the DMD as a live display; this only upgrades its bezel and cabinet frame. */
+body.livev2-on[data-page="game"] .sq-dmd-wrap{
+  padding:6px 10px 4px !important;
+}
+body.livev2-on[data-page="game"] .sq-dmd{
+  background:
+    linear-gradient(180deg,rgba(18,27,45,.98),rgba(5,8,16,.99)) !important;
+  border:1px solid var(--sqClassicLine) !important;
+  border-radius:14px !important;
+  box-shadow:
+    0 9px 24px rgba(0,0,0,.42),
+    0 0 0 1px rgba(255,122,0,.14),
+    inset 0 1px 0 rgba(255,255,255,.07),
+    inset 0 -18px 26px rgba(0,0,0,.24) !important;
+}
+body.livev2-on[data-page="game"] .sq-dmd-overlay{
+  opacity:.22 !important;
+}
+
+/* Classic Live V2 cabinet and gameplay cell. */
+body.livev2-on[data-page="game"] #liveV2Panel.livev2panel{
+  box-sizing:border-box;
+  background:
+    linear-gradient(180deg,rgba(15,25,43,.98),rgba(6,11,22,.98)) !important;
+  border:1px solid var(--sqClassicLine) !important;
+  border-radius:18px !important;
+  box-shadow:
+    0 16px 36px rgba(0,0,0,.42),
+    inset 0 1px 0 rgba(255,255,255,.06),
+    inset 0 -24px 40px rgba(0,0,0,.18) !important;
+  padding:14px 12px 12px !important;
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2GameCell{
+  background:
+    linear-gradient(180deg,rgba(16,28,48,.82),rgba(7,14,27,.88)) !important;
+  border:1px solid rgba(139,166,210,.18) !important;
+  border-radius:16px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    inset 0 -16px 24px rgba(0,0,0,.16) !important;
+  padding:12px 10px 10px !important;
+}
+
+/* Player total pills: beta card lighting, classic positions. */
+body.livev2-on[data-page="game"] #liveV2Panel .v2ScoreBox{
+  position:relative;
+  overflow:hidden;
+  background:
+    linear-gradient(180deg,rgba(31,43,65,.88),rgba(11,18,32,.96)) !important;
+  border:1px solid rgba(139,166,210,.24) !important;
+  border-radius:14px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.07),
+    0 8px 18px rgba(0,0,0,.18) !important;
+  transition:
+    border-color .18s ease,
+    box-shadow .18s ease,
+    background .18s ease !important;
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2ScoreBox.active{
+  background:
+    linear-gradient(180deg,rgba(91,52,15,.72),rgba(28,20,14,.98)) !important;
+  border-color:rgba(255,159,28,.92) !important;
+  box-shadow:
+    0 0 0 2px rgba(255,159,28,.18),
+    0 0 22px rgba(255,122,0,.22),
+    inset 0 1px 0 rgba(255,232,188,.12) !important;
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2ScoreBox.active::before{
+  content:"";
+  position:absolute;
+  top:8px;
+  right:8px;
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:var(--sqClassicOrange);
+  box-shadow:0 0 0 2px rgba(255,159,28,.14),0 0 10px rgba(255,159,28,.82);
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2ScoreBox.active .v2Initial{
+  color:#ffd18a !important;
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2Initial{
+  color:var(--sqClassicInk);
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2Total{
+  color:#f5f8ff;
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2Total.leaderTotal{
+  color:#a9ffc3;
+  text-shadow:0 0 14px rgba(47,208,107,.28);
+}
+
+/* Round grid: one quiet frame, clear live row, fewer competing borders. */
+body.livev2-on[data-page="game"] #liveV2Panel .v2RowsWrap{
+  box-sizing:border-box;
+  padding:4px !important;
+  border:1px solid rgba(139,166,210,.16);
+  border-radius:13px;
+  background:rgba(4,10,20,.52);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    inset 0 -12px 18px rgba(0,0,0,.16);
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2Rows{
+  gap:6px 8px !important;
+  padding:4px 2px !important;
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2Badge,
+body.livev2-on[data-page="game"] #liveV2Panel .v2Cell{
+  background:
+    linear-gradient(180deg,rgba(24,36,57,.72),rgba(10,17,30,.88)) !important;
+  border:1px solid rgba(139,166,210,.18) !important;
+  border-radius:10px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    0 5px 12px rgba(0,0,0,.14) !important;
+  transition:
+    border-color .18s ease,
+    box-shadow .18s ease,
+    background .18s ease !important;
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2Badge.active,
+body.livev2-on[data-page="game"] #liveV2Panel .v2Cell.active,
+body.livev2-on[data-page="game"] #liveV2Panel .v2Badge.liveRow,
+body.livev2-on[data-page="game"] #liveV2Panel .v2Cell.liveRow{
+  background:
+    linear-gradient(180deg,rgba(79,48,17,.78),rgba(26,19,14,.94)) !important;
+  border-color:rgba(255,159,28,.82) !important;
+  box-shadow:
+    0 0 0 1px rgba(255,159,28,.14),
+    0 0 16px rgba(255,122,0,.14),
+    inset 0 1px 0 rgba(255,232,188,.10) !important;
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2Badge.active{
+  color:#ffd18a !important;
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2Cell.hi .v2CellNum{
+  color:#9cffba !important;
+  text-shadow:0 0 10px rgba(47,208,107,.24);
+}
+
+/* B3/chart pager: integrate it into the same cabinet instead of a separate widget. */
+body.livev2-on[data-page="game"] #liveV2Panel .v2InfoPager{
+  box-sizing:border-box;
+  padding:5px 5px 4px !important;
+  border:1px solid rgba(139,166,210,.18) !important;
+  border-radius:15px !important;
+  background:
+    linear-gradient(180deg,rgba(13,24,42,.92),rgba(6,12,24,.96)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.055),
+    0 8px 18px rgba(0,0,0,.18) !important;
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2InfoViewport{
+  border-radius:10px !important;
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2PagerDots{
+  gap:8px !important;
+  padding:7px 0 2px !important;
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2PagerDot{
+  width:7px;
+  height:7px;
+  background:rgba(218,226,244,.22);
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2PagerDot.on{
+  background:var(--sqClassicOrange);
+  box-shadow:0 0 12px rgba(255,159,28,.46);
+}
+
+/* Fixed throwpad: same geometry, stronger beta-style grouping and lighting. */
+body.livev2-on[data-page="game"] .pad-bar{
+  background:
+    linear-gradient(180deg,rgba(11,18,32,.94),rgba(4,8,17,.99)) !important;
+  border-top:1px solid rgba(139,166,210,.30) !important;
+  box-shadow:
+    0 -12px 30px rgba(0,0,0,.42),
+    inset 0 1px 0 rgba(255,255,255,.06) !important;
+  backdrop-filter:blur(14px) saturate(1.08);
+}
+body.livev2-on[data-page="game"] .pad-inner{
+  box-sizing:border-box;
+}
+body.livev2-on[data-page="game"] .dtX3{
+  background:
+    linear-gradient(180deg,rgba(105,23,38,.72),rgba(48,10,24,.94)) !important;
+  border:1.5px solid rgba(255,77,94,.72) !important;
+  border-radius:14px !important;
+  color:#ffb4bd !important;
+  box-shadow:
+    0 0 0 1px rgba(255,77,94,.10),
+    0 8px 18px rgba(0,0,0,.24),
+    inset 0 1px 0 rgba(255,220,224,.10) !important;
+}
+body.livev2-on[data-page="game"] .dtBullRow .dtBullBtn{
+  border-radius:12px !important;
+  box-shadow:
+    0 7px 14px rgba(0,0,0,.18),
+    inset 0 1px 0 rgba(255,255,255,.08) !important;
+  transition:
+    border-color .16s ease,
+    box-shadow .16s ease,
+    transform .16s ease,
+    filter .16s ease !important;
+}
+body.livev2-on[data-page="game"] .dtBullRow .dtBullBtn:nth-child(1){
+  background:rgba(122,74,18,.58) !important;
+  border:1.5px solid rgba(255,176,46,.72) !important;
+  color:#ffd18a !important;
+}
+body.livev2-on[data-page="game"] .dtBullRow .dtBullBtn:nth-child(2){
+  background:rgba(16,44,86,.70) !important;
+  border:1.5px solid rgba(74,163,255,.70) !important;
+  color:#b8d9ff !important;
+}
+body.livev2-on[data-page="game"] .dtBullRow .dtBullBtn:nth-child(3){
+  background:rgba(14,66,38,.70) !important;
+  border:1.5px solid rgba(47,208,107,.70) !important;
+  color:#a8f6c4 !important;
+}
+body.livev2-on[data-page="game"] .dtBullRow .dtBullBtn.inner{
+  background:rgba(122,74,18,.58) !important;
+  border-color:rgba(255,176,46,.72) !important;
+  color:#ffd18a !important;
+}
+body.livev2-on[data-page="game"] .dtActions{
+  gap:8px !important;
+}
+body.livev2-on[data-page="game"] .dtActBtn{
+  border-radius:12px !important;
+  box-shadow:
+    0 7px 14px rgba(0,0,0,.18),
+    inset 0 1px 0 rgba(255,255,255,.08) !important;
+  transition:
+    border-color .16s ease,
+    box-shadow .16s ease,
+    transform .16s ease,
+    filter .16s ease !important;
+}
+body.livev2-on[data-page="game"] .dtActBtn.miss{
+  background:rgba(105,23,38,.64) !important;
+  border:1.5px solid rgba(255,77,94,.68) !important;
+  color:#ffb4bd !important;
+}
+body.livev2-on[data-page="game"] .dtActBtn.undo{
+  background:rgba(92,63,14,.66) !important;
+  border:1.5px solid rgba(255,176,46,.68) !important;
+  color:#ffd18a !important;
+}
+body.livev2-on[data-page="game"] .dtActBtn.skip{
+  background:rgba(16,44,86,.72) !important;
+  border:1.5px solid rgba(74,163,255,.68) !important;
+  color:#b8d9ff !important;
+}
+body.livev2-on[data-page="game"] .dtActBtn.miss .dtIcon{ color:#ff8290 !important; }
+body.livev2-on[data-page="game"] .dtActBtn.undo .dtIcon{ color:#ffb02e !important; }
+body.livev2-on[data-page="game"] .dtActBtn.skip .dtIcon{ color:#74b8ff !important; }
+body.livev2-on[data-page="game"] .dtX3:active,
+body.livev2-on[data-page="game"] .dtBullBtn:active,
+body.livev2-on[data-page="game"] .dtActBtn:active,
+body.livev2-on[data-page="game"] #settingsBtnGamePad:active{
+  transform:translateY(1px);
+  filter:brightness(1.12);
+}
+body.livev2-on[data-page="game"] #settingsBtnGamePad{
+  background:rgba(255,255,255,.05) !important;
+  border:1px solid rgba(139,166,210,.30) !important;
+  border-radius:12px !important;
+  color:#dbe5f8 !important;
+  box-shadow:
+    0 7px 14px rgba(0,0,0,.18),
+    inset 0 1px 0 rgba(255,255,255,.08) !important;
+}
+body.livev2-on[data-page="game"] .pad-bar button:focus-visible,
+body.livev2-on[data-page="game"] #settingsBtnGamePad:focus-visible{
+  outline:2px solid rgba(255,159,28,.92);
+  outline-offset:2px;
+}
+
+@media (prefers-reduced-motion:reduce){
+  body.livev2-on[data-page="game"] #liveV2Panel .v2ScoreBox,
+  body.livev2-on[data-page="game"] #liveV2Panel .v2Badge,
+  body.livev2-on[data-page="game"] #liveV2Panel .v2Cell,
+  body.livev2-on[data-page="game"] .dtBullRow .dtBullBtn,
+  body.livev2-on[data-page="game"] .dtActBtn{
+    transition:none !important;
+  }
+}
+</style>
+<!-- <<< PATCH:LIVE_CLASSIC_STAGE1_VISUAL_V1 END -->
+
 </head>
 <body data-page="details">
 <!-- ===== @HTML:SCREENS ===== -->
