@@ -10487,6 +10487,13 @@ body.livev2-on[data-page="game"] .dtActBtn.skip{
   border:1.5px solid rgba(74,163,255,.68) !important;
   color:#b8d9ff !important;
 }
+/* Secondary actions retain their colour cues with a darker interior. */
+body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn.undo{
+  background:linear-gradient(180deg,#241c10,#14120f) !important;
+}
+body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn.skip{
+  background:linear-gradient(180deg,#101b2c,#0c111b) !important;
+}
 body.livev2-on[data-page="game"] .dtActBtn.miss .dtIcon{ color:#ff8290 !important; }
 body.livev2-on[data-page="game"] .dtActBtn.undo .dtIcon{ color:#ffb02e !important; }
 body.livev2-on[data-page="game"] .dtActBtn.skip .dtIcon{ color:#74b8ff !important; }
@@ -23823,186 +23830,33 @@ function __sqV2SetPagerPage(panel, page, animate){
     return arr;
   }
 
-  function drawRace(canvas, packet){
-    if (!canvas || !packet) return;
-
-    const host = canvas.parentElement || canvas;
-    // The classic B3 window is intentionally compact on mobile; size the canvas
-    // from its actual host instead of forcing the old 150px minimum.
-    const cssW = Math.max(280, host.clientWidth || 280);
-    const cssH = Math.max(96, host.clientHeight || 96);
-    const compact = cssH < 150;
-    const dpr = window.devicePixelRatio || 1;
-
-    canvas.width = Math.round(cssW * dpr);
-    canvas.height = Math.round(cssH * dpr);
-    canvas.style.width = cssW + 'px';
-    canvas.style.height = cssH + 'px';
-
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    ctx.clearRect(0,0,cssW,cssH);
-
-    const series = packet.series || [];
-    const rec = packet.record || null;
-    const records = Array.isArray(packet.records) ? packet.records.filter(r => r && Array.isArray(r.data)) : (rec && Array.isArray(rec.data) ? [rec] : []);
-    const labels = packet.labels || [];
-    const numericVals = [
-      ...series.flatMap(s => (s.data || []).filter(v => Number.isFinite(v))),
-      ...records.flatMap(r => (r.data || []).filter(v => Number.isFinite(v))),
-      0
-    ];
-    const maxYRaw = Math.max(10, ...numericVals);
-    const maxY = Math.ceil(maxYRaw / 50) * 50;
-
-    // Responsive plot margins keep the legend, grid and round labels readable
-    // when the B3 window is reduced to the beta-like mobile footprint.
-    const mL = compact ? 30 : 52;
-    const mR = compact ? 8 : 16;
-    const mT = compact ? 18 : 28;
-    const mB = compact ? 22 : 40;
-    const xLabelY = cssH - (compact ? 7 : 14);
-    const plotW = Math.max(1, cssW - mL - mR);
-    const plotH = Math.max(1, cssH - mT - mB);
-    const hasRacePoint = series.some(s => (s.data || []).some(v => Number.isFinite(v))) ||
-      records.some(r => (r.data || []).some(v => Number.isFinite(v)));
-
-    // top horizontal key
-    const legendItems = series.map(s => ({
-      label: legendLabelForSeriesName(s.name),
-      color: s.color || '#7bdcff',
-      dotted: !!s.dotted
-    }));
-    records.forEach((r)=>{
-      legendItems.push({
-        label: String(r.label || r.name || 'HS'),
-        color: r.color || 'rgba(255,255,255,.50)',
-        dotted: true
-      });
-    });
-
-    const xFor = (i) => {
-      if (labels.length <= 1) return mL + plotW * 0.02;
-      const leftPad = plotW * 0.005;
-      const rightPad = plotW * 0.045;
-      const usable = Math.max(1, plotW - leftPad - rightPad);
-      return mL + leftPad + (i / (labels.length - 1)) * usable;
-    };
-    const yFor = (v) => mT + (1 - (v / maxY)) * plotH;
-
-    // top horizontal key
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.font = compact ? '8px system-ui' : '11px system-ui';
-    let lx = mL;
-    const ly = compact ? 8 : 12;
-    for (const item of legendItems){
-      ctx.fillStyle = 'rgba(231,233,245,.82)';
-      ctx.fillText(item.label, lx, ly);
-      const w = ctx.measureText(item.label).width;
-      ctx.save();
-      ctx.strokeStyle = item.color;
-      ctx.lineWidth = 2;
-      if (item.dotted) ctx.setLineDash([5,4]); else ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.moveTo(lx, ly + 10);
-      ctx.lineTo(lx + Math.max(16, w), ly + 10);
-      ctx.stroke();
-      ctx.restore();
-      lx += Math.max(28, w + 24);
-      if (lx > cssW - 60) break;
-    }
-
-    // grid + y labels in 50s
-    ctx.strokeStyle = 'rgba(255,255,255,.08)';
-    ctx.fillStyle = 'rgba(231,233,245,.56)';
-    ctx.font = compact ? '7px system-ui' : '10px system-ui';
-    ctx.textAlign = 'left';
-    for(let v=0; v<=maxY; v+=50){
-      const y = yFor(v);
-      ctx.beginPath();
-      ctx.moveTo(mL, y);
-      ctx.lineTo(cssW - mR, y);
-      ctx.stroke();
-      ctx.fillText(String(v), 2, y + 3);
-    }
-
-    // x labels
-    ctx.textAlign = 'center';
-    for(let i=0; i<labels.length; i++){
-      const x = xFor(i);
-      ctx.fillText(labels[i], x, xLabelY);
-      ctx.strokeStyle = 'rgba(255,255,255,.05)';
-      ctx.beginPath();
-      ctx.moveTo(x, mT);
-      ctx.lineTo(x, cssH - mB);
-      ctx.stroke();
-    }
-
-    // record / pace lines
-    records.forEach((r)=>{
-      ctx.save();
-      ctx.setLineDash([5,4]);
-      ctx.strokeStyle = r.color || 'rgba(255,255,255,.38)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      let started = false;
-      (r.data || []).forEach((v,i)=>{
-        if (!Number.isFinite(v)) return;
-        const x = xFor(i), y = yFor(v);
-        if (!started){ ctx.moveTo(x,y); started = true; }
-        else ctx.lineTo(x,y);
-      });
-      ctx.stroke();
-      ctx.restore();
-    });
-
-    // Keep an empty race surface explicit until the first real score point exists.
-    // This is a state label, not placeholder data; it disappears as soon as a
-    // live or reference series contains a finite point.
-    if (!hasRacePoint) {
-      ctx.save();
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.font = compact
-        ? '700 8px ui-monospace, SFMono-Regular, Menlo, monospace'
-        : '700 11px ui-monospace, SFMono-Regular, Menlo, monospace';
-      ctx.fillStyle = 'rgba(218,226,244,.42)';
-      ctx.fillText('AWAITING SCORES', mL + (plotW / 2), mT + (plotH / 2));
-      ctx.restore();
-    }
-
-    // player lines
-    series.forEach(s=>{
-      ctx.save();
-      ctx.setLineDash([]);
-      ctx.strokeStyle = s.color || '#7bdcff';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      let started = false;
-      s.data.forEach((v,i)=>{
-        if (!Number.isFinite(v)) return;
-        const x = xFor(i), y = yFor(v);
-        if (!started){ ctx.moveTo(x,y); started = true; }
-        else ctx.lineTo(x,y);
-      });
-      ctx.stroke();
-      ctx.restore();
-    });
+  // Both live layouts use the beta renderer; Classic retains its canonical
+  // mode-aware reference packets and never starts a second record query.
+  let racePacket = null, raceCanvas = null, raceRaf = 0, raceBoard = null;
+  const raceMotion = {grow:[],combo:[],burst:[],lastLen:[],lastFull:[],maxV:0};
+  function raceFrame(now){
+    raceRaf = 0;
+    if (!raceCanvas || !raceCanvas.isConnected || document.body.dataset.page !== 'game' || document.body.classList.contains('livev3-on')) return;
+    if (raceCanvas.getBoundingClientRect().width) __sqDrawArcadeRace(raceCanvas, racePacket, raceMotion, now);
+    raceRaf = requestAnimationFrame(raceFrame);
   }
+  function drawRace(canvas, packet){
+    if (raceBoard !== state.score) {
+      raceBoard = state.score;
+      Object.assign(raceMotion, {grow:[],combo:[],burst:[],lastLen:[],lastFull:[],maxV:0});
+    }
+    raceCanvas = canvas; racePacket = packet;
+    if (!raceRaf) raceRaf = requestAnimationFrame(raceFrame);
+  }
+  let renderVersion = 0;
 
   async function render(){
+    const version = ++renderVersion;
     const canvas = getCanvas();
     if (!canvas) return;
 
     let labels = Array.from({length: roundsCount()}, (_,i)=>roundLabel(i));
     let live = buildLiveSeries();
-
-    // Paint the live/empty state before any cloud-backed reference lookup.
-    // Reference data is additive; it must never hold the first B3 frame hostage.
-    try{
-      drawRace(canvas, { series: live, record: null, records: null, labels });
-    }catch(_){}
 
     const __turboRace = (typeof __sqIsTurboRaceRuntimeState === 'function') ? __sqIsTurboRaceRuntimeState(state) : (()=>{ try{ const m = state?.match || {}; const draft = window.__sqTournamentDraft || state?.__sqTournamentDraft || null; const type = String(m.tournamentType || m.type || draft?.type || state?.tournamentType || '').toLowerCase(); return !!(type === 'turbo' || m.strictTimer === true || m.throwLimitSeconds === 20 || state?.strictTimer === true || state?.throwLimitSeconds === 20); }catch(_){ return false; } })();
     const __turboStartIdx = (typeof __sqTurboRaceStartIndex === 'function') ? __sqTurboRaceStartIndex(state, roundsCount()) : (()=>{ try{ const rules = state?.match?.tournamentRules || state?.__sqTournamentDraft?.rules || window.__sqTournamentDraft?.rules || {}; return Math.max(0, Math.min(roundsCount()-1, Number(rules.startRoundIndex ?? 7))); }catch(_){ return 7; } })();
@@ -24010,6 +23864,8 @@ function __sqV2SetPagerPage(panel, page, animate){
       labels = labels.slice(__turboStartIdx);
       live = live.map(s => ({ ...s, data: Array.isArray(s.data) ? s.data.slice(__turboStartIdx) : [] }));
     }
+    const offset = __turboRace ? __turboStartIdx : 0;
+    drawRace(canvas, {series:live, record:null, records:null, labels, offset});
     let rec = (typeof __sqBuildRaceReferenceSeriesForCurrentMode === 'function')
       ? await __sqBuildRaceReferenceSeriesForCurrentMode(roundsCount(), __turboStartIdx)
       : (__turboRace ? null : await getRecordSeries());
@@ -24029,71 +23885,9 @@ function __sqV2SetPagerPage(panel, page, animate){
       }
     }catch(_){ }
 
-    const target = { series: live, record: rec, records, labels };
-    const nextSig = sigFor(live, rec, records);
-    const now = performance.now();
-
-    const prev = window.__sqV2RaceState?.display || target;
-    if (!window.__sqV2RaceState || window.__sqV2RaceState.sig !== nextSig){
-      window.__sqV2RaceState = {
-        sig: nextSig,
-        from: prev,
-        to: target,
-        start: now,
-        dur: 520,
-        display: prev
-      };
-    }
-
-    const st = window.__sqV2RaceState;
-    const t = Math.max(0, Math.min(1, (now - st.start) / st.dur));
-    const ease = 1 - Math.pow(1 - t, 3);
-
-    const interpSeries = st.to.series.map((s, idx)=>{
-      const fromS = st.from.series[idx] || { data: Array(s.data.length).fill(null) };
-      return {
-        ...s,
-        data: s.data.map((v, i)=>{
-          if (!Number.isFinite(v)) return null;
-          const a0 = fromS.data?.[i];
-          const a = Number.isFinite(a0) ? a0 : v;
-          return a + (v - a) * ease;
-        })
-      };
-    });
-
-    const interpRec = st.to.record && Array.isArray(st.to.record.data)
-      ? {
-          ...st.to.record,
-          data: st.to.record.data.map((v,i)=>{
-            if (!Number.isFinite(v)) return null;
-            const a0 = st.from.record?.data?.[i];
-            const a = Number.isFinite(a0) ? a0 : v;
-            return a + (v - a) * ease;
-          })
-        }
-      : st.to.record;
-
-    const interpRecords = Array.isArray(st.to.records) ? st.to.records.map((r, ridx)=>{
-      const fromR = Array.isArray(st.from.records) ? st.from.records[ridx] : null;
-      return {
-        ...r,
-        data: (r.data || []).map((v,i)=>{
-          if (!Number.isFinite(v)) return null;
-          const a0 = fromR?.data?.[i];
-          const a = Number.isFinite(a0) ? a0 : v;
-          return a + (v - a) * ease;
-        })
-      };
-    }) : null;
-
-    st.display = { series: interpSeries, record: interpRec, records: interpRecords, labels };
-    drawRace(canvas, st.display);
-
-    if (t < 1){
-      cancelAnimationFrame(window.__sqV2RaceRaf || 0);
-      window.__sqV2RaceRaf = requestAnimationFrame(render);
-    }
+    // A late cloud response must never replace a newer throw or a new game.
+    if (version !== renderVersion || canvas !== getCanvas()) return;
+    drawRace(canvas, {series:live, record:rec, records, labels, offset});
   }
 
   window.__sqV2InfoDmdUpdate = function(){
@@ -27253,6 +27047,11 @@ function __sqV3RaceFrame(){
     const now = performance.now();
     if (now - st.last < 24) return;           // ~40fps
     st.last = now;
+    __sqDrawArcadeRace(canvas, null, st, now);
+  }catch(_){ }
+}
+
+function __sqDrawArcadeRace(canvas, packet, st, now){
     const host = canvas.parentElement || canvas;
     const cssW = Math.max(80, host.clientWidth || 0), cssH = Math.max(60, host.clientHeight || 0);
     const dpr = Math.min(2.5, window.devicePixelRatio || 1);
@@ -27261,13 +27060,14 @@ function __sqV3RaceFrame(){
       canvas.style.width = cssW + 'px'; canvas.style.height = cssH + 'px';
     }
     const ctx = canvas.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, cssW, cssH);
-    const rc = MAX_ROUNDS;
-    const NP = (state.players || []).length || 2;
-    const series = __sqV3RaceSeries();
+    const rc = packet ? packet.labels.length : MAX_ROUNDS;
+    const offset = packet ? packet.offset || 0 : 0;
+    const NP = packet ? packet.series.length : (state.players || []).length || 2;
+    const series = packet ? packet.series.map(s => s.data) : __sqV3RaceSeries();
     const lens = series.map(p => { let n = 0; for (let i = 0; i < p.length; i++) if (p[i] != null) n = i + 1; return n; });
     // Fully-thrown round count per player (all three darts landed) — used to grade
     // a round only once it's complete.
-    const fulls = Array.from({ length: NP }, (_, p) => { const b = (state.score && state.score[p]) || []; let n = 0;
+    const fulls = Array.from({ length: NP }, (_, p) => { const b = ((state.score && state.score[p]) || []).slice(offset); let n = 0;
       for (let r = 0; r < b.length; r++){ const e = b[r]; if (e && e.darts && e.darts.length && e.darts.every(x => x != null)) n = r + 1; } return n; });
     for (let p = 0; p < NP; p++){
       // Smooth line growth: ease the newest segment whenever the line extends.
@@ -27278,7 +27078,7 @@ function __sqV3RaceFrame(){
         if (fulls[p] > st.lastFull[p]){
           let w = 0;
           try{
-            const ds = (((state.score && state.score[p]) || [])[fulls[p] - 1] || {}).darts || [];
+            const ds = (((state.score && state.score[p]) || [])[fulls[p] - 1 + offset] || {}).darts || [];
             for (let k = 0; k < ds.length; k++){ const d = ds[k]; if (!d) continue;
               w += (d.kind === 'T' || d.kind === 'Triple') ? 3
                  : (d.kind === 'D' || d.kind === 'Double') ? 2
@@ -27291,28 +27091,38 @@ function __sqV3RaceFrame(){
         st.lastFull[p] = fulls[p];
       }
     }
-    const rec = window.__sqV3RecordPace;
-    const recData = (rec && Array.isArray(rec.data)) ? rec.data : null;
+    const rec = packet ? packet.record : window.__sqV3RecordPace;
+    const records = (packet && Array.isArray(packet.records) ? packet.records : [rec]).filter(r => r && Array.isArray(r.data));
     // Scale the axis to what has actually been PLAYED (plus one round of
     // lookahead), not the whole 14-round record line. Otherwise round 1 is
     // drawn against a ~700 ceiling and every player's line is a flat smudge
     // along the bottom. Early rounds now zoom in so small gaps read clearly.
     const playedTo = Math.max(1, ...lens);
     const flat = series.flat().filter(v => v != null);
-    if (recData) for (let i = 0; i < Math.min(recData.length, playedTo + 1); i++){ if (recData[i] != null) flat.push(recData[i]); }
+    for (const record of records) for (const value of record.data.slice(0, playedTo + 1)) if (Number.isFinite(value)) flat.push(value);
     // Generous headroom early (keeps lines mid-panel), tightening as the game fills out.
     const head = 1.35 - 0.27 * Math.min(1, playedTo / rc);
     const targetMax = Math.max(20, ...flat) * head;
     // Smoothly ease the vertical scale so the whole graph grows fluidly.
     st.maxV = st.maxV ? st.maxV + (targetMax - st.maxV) * 0.14 : targetMax;
     const maxV = st.maxV;
-    const padL = 26, padR = 12, padT = 8, padB = 18, W = cssW - padL - padR, H = cssH - padT - padB;
+    // Classic still identifies each series, including dotted Shadow references.
+    if (packet) {
+      ctx.font = '800 9px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      let keyX = 26;
+      for (const s of packet.series) {
+        const label = String(s.name || '').replace(/^Record:/i,'HS').slice(0,12);
+        ctx.fillStyle = s.color || '#7bdcff'; ctx.fillText(label, keyX, 3);
+        keyX += ctx.measureText(label).width + 12;
+      }
+    }
+    const padL = 26, padR = 12, padT = packet ? 19 : 8, padB = 18, W = cssW - padL - padR, H = cssH - padT - padB;
     const X = i => padL + (rc <= 1 ? 0 : (i / (rc - 1)) * W);
     const Y = v => padT + H - (v / maxV) * H;
     // horizontal value grid + labels: a line every 50, a STRONGER line every 100.
     ctx.font = '800 8px system-ui,sans-serif'; ctx.textBaseline = 'middle';
-    const nLines = Math.floor(maxV / 50);
-    const labelEvery = nLines > 14 ? 100 : 50;   // thin the labels only when the scale is huge
+    const nLines = Math.max(1, Math.floor(H / 24));
+    const labelEvery = Math.max(50, Math.ceil(maxV / nLines / 50) * 50);   // thin the labels only when the scale is huge
     for (let val = 0; val <= maxV; val += 50){
       const yy = Y(val), strong = val % 100 === 0;
       ctx.strokeStyle = 'rgba(150,170,210,' + (val === 0 ? .3 : (strong ? .19 : .07)) + ')';
@@ -27322,30 +27132,31 @@ function __sqV3RaceFrame(){
     }
     // vertical round grid + labels — every round labelled across the bottom.
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    const cr = Number(state.currentRound || 0);
+    const cr = Number(state.currentRound || 0) - offset;
     for (let i = 0; i < rc; i++){
       const xx = X(i), isCur = i === cr;
       ctx.strokeStyle = isCur ? 'rgba(255,138,20,.4)' : 'rgba(150,170,210,.07)'; ctx.lineWidth = isCur ? 1.5 : 1;
       ctx.beginPath(); ctx.moveTo(xx, padT); ctx.lineTo(xx, padT + H); ctx.stroke();
-      ctx.fillStyle = isCur ? 'rgba(255,190,90,.95)' : 'rgba(160,178,208,.5)'; ctx.fillText(__sqV3RoundLabel(i), xx, padT + H + 4);
+      ctx.fillStyle = isCur ? 'rgba(255,190,90,.95)' : 'rgba(160,178,208,.5)'; ctx.fillText(packet ? packet.labels[i] : __sqV3RoundLabel(i), xx, padT + H + 4);
     }
     // HIGH-SCORE (record) pace — dashed gold reference line to race against
-    if (recData){
+    for (const record of records){
+      const recData = record.data;
       const recTo = Math.min(recData.length, rc, playedTo + 1);   // never past the scaled range
       const RP = []; for (let i = 0; i < recTo; i++){ if (recData[i] != null) RP.push([X(i), Y(recData[i])]); }
       if (RP.length >= 2){
         ctx.save();
-        ctx.setLineDash([5, 4]); ctx.strokeStyle = 'rgba(255,214,110,.9)'; ctx.lineWidth = 1.8; ctx.lineJoin = 'round';
+        ctx.setLineDash([5, 4]); ctx.strokeStyle = record.color || 'rgba(255,214,110,.9)'; ctx.lineWidth = 1.8; ctx.lineJoin = 'round';
         ctx.shadowColor = 'rgba(255,200,90,.6)'; ctx.shadowBlur = 6;
         ctx.beginPath(); RP.forEach((pt, i) => i ? ctx.lineTo(pt[0], pt[1]) : ctx.moveTo(pt[0], pt[1])); ctx.stroke();
         ctx.restore();
         const tip = RP[RP.length - 1];
         ctx.fillStyle = 'rgba(255,224,150,.95)'; ctx.font = '900 8px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-        ctx.fillText('HS', Math.min(tip[0] + 3, cssW - 16), tip[1] - 2);
+        ctx.fillText(String(record.label || 'HS'), Math.min(tip[0] + 3, cssW - 16), tip[1] - 2);
       }
     }
     // player lines (same colours as each player's NAME on their pill)
-    const colors = Array.from({ length: NP }, (_, i) => __sqV3PlayerColor(i));
+    const colors = Array.from({ length: NP }, (_, i) => packet ? packet.series[i].color || __sqV3PlayerColor(i) : __sqV3PlayerColor(i));
     series.forEach((pts, pi) => {
       const P = []; for (let i = 0; i < pts.length; i++) if (pts[i] != null) P.push([X(i), Y(pts[i])]);
       if (!P.length) return;
@@ -27364,6 +27175,7 @@ function __sqV3RaceFrame(){
         const t = (now - grow.start) / 450;
         segT = Math.min(1, t); ease = 1 - Math.pow(1 - segT, 3);
       }
+      ctx.setLineDash(packet && packet.series[pi].dotted ? [5,4] : []);
       ctx.strokeStyle = colors[pi]; ctx.lineWidth = 2.7; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
       ctx.shadowColor = colors[pi]; ctx.shadowBlur = 10;
       ctx.beginPath();
@@ -27373,7 +27185,7 @@ function __sqV3RaceFrame(){
         if (i === P.length - 1 && P.length >= 2 && segT < 1){ const px = P[i-1][0], py = P[i-1][1]; ppx = px; ppy = py; x = px + (x-px)*ease; y = py + (y-py)*ease; lx = x; ly = y; }
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
-      ctx.stroke(); ctx.shadowBlur = 0;
+      ctx.stroke(); ctx.setLineDash([]); ctx.shadowBlur = 0;
       // Comet trail: while a big segment zooms, streak a bright tail behind the head.
       if (combo && zoomV > 0 && P.length >= 2){
         ctx.save();
@@ -27415,7 +27227,6 @@ function __sqV3RaceFrame(){
         }
       }
     });
-  }catch(_){ }
 }
 
 
@@ -45601,10 +45412,17 @@ function drawTextInRect(str, rect, px, align="center", v="middle", weight, yOff=
   const t = (str || "").toString().toUpperCase();
   if (!t) return;
 
-  const w = measureTextPx(t, px, weight);
-  let x = rect.x;
+  // Fit complete callouts/names inside their zone. Clipping alone used to cut
+  // off both ends of longer messages, especially with the monospace font.
+  const inset = 6;
+  const available = Math.max(1, rect.w - inset * 2);
+  while (px > 8 && measureTextPx(t, px, weight) > available) px -= 1;
+  const measured = measureTextPx(t, px, weight);
+  const scaleX = Math.min(1, available / Math.max(1, measured));
+  const w = measured * scaleX;
+  let x = rect.x + inset;
   if (align === "center") x = Math.floor(rect.x + (rect.w - w) / 2);
-  else if (align === "right") x = Math.floor(rect.x + rect.w - w);
+  else if (align === "right") x = Math.floor(rect.x + rect.w - inset - w);
 
   // baseline handling
   let yBase = rect.y + rect.h - 6; // default bottom-ish
@@ -45617,7 +45435,9 @@ function drawTextInRect(str, rect, px, align="center", v="middle", weight, yOff=
   nctx.rect(rect.x, rect.y, rect.w, rect.h);
   nctx.clip();
 
-  drawTextPx(t, x, yBase, px, weight);
+  nctx.translate(x, yBase);
+  nctx.scale(scaleX, 1);
+  drawTextPx(t, 0, 0, px, weight);
 
   nctx.restore();
 }
@@ -45633,8 +45453,10 @@ function measureTextPx(str, px, weight){
   setFont(px, weight);
   // simple letter spacing approximation
   const t = (str || "").toUpperCase();
-  const m = nctx.measureText(t);
-  return Math.ceil(m.width + Math.max(0, t.length-1) * TEXT.letterSpacingPx);
+  // drawTextPx paints individual characters, so measure those same advances
+  // rather than a differently kerned whole string.
+  const width = Array.from(t).reduce((sum, ch) => sum + nctx.measureText(ch).width, 0);
+  return Math.ceil(width + Math.max(0, t.length-1) * TEXT.letterSpacingPx);
 }
 
 function drawTextPx(str, x, yBaseline, px, weight){
@@ -46111,6 +45933,27 @@ function thresholdNativeToAmber(){
     }
   }
 
+  // Fit the complete image AND its maximum shake/pulse inside the display.
+  function drawDmdSceneImage(im, age, amp, rateX, rateY, pulseAmp, yAmp){
+    if (!im || !im.complete || !im.naturalWidth || !im.naturalHeight) return;
+    amp = Math.min(12, Math.max(0, Number(amp) || 0));
+    const inset = 6;
+    const scale = Math.min(
+      (NATIVE_W - 2 * (inset + amp)) / im.naturalWidth,
+      (NATIVE_H - 2 * (inset + amp * yAmp)) / im.naturalHeight
+    ) / (1 + pulseAmp);
+    const pulse = 1 + Math.sin(age * .028) * pulseAmp;
+    const w = im.naturalWidth * scale * pulse;
+    const h = im.naturalHeight * scale * pulse;
+    const x = (NATIVE_W - w) / 2 + Math.sin(age * rateX) * amp;
+    const y = (NATIVE_H - h) / 2 + Math.cos(age * rateY) * amp * yAmp;
+    nctx.save();
+    nctx.globalAlpha = 1;
+    nctx.imageSmoothingEnabled = true;
+    nctx.drawImage(im, x, y, w, h);
+    nctx.restore();
+  }
+
   function drawNative(now) {
     nctx.clearRect(0, 0, NATIVE_W, NATIVE_H);
 
@@ -46154,23 +45997,7 @@ function thresholdNativeToAmber(){
     // Special scene type: lastDartImg (juddering Last Dart Hero image)
     if (active && active.type === 'lastDartImg') {
       const im = __sqLoadLastDartHero();
-      if (im && im.complete && im.naturalWidth) {
-        const age = now - active.start;
-        const amp = (active.amp != null) ? active.amp : 3.4;
-        const jx = Math.round(Math.sin(age*0.060) * amp);
-        const jy = Math.round(Math.cos(age*0.082) * (amp * 0.75));
-        const pulse = 1 + (Math.sin(age * 0.028) * 0.03);
-        const pad2 = 2;
-        const w0 = Math.floor((NATIVE_W - pad2*2) * pulse);
-        const h0 = Math.floor((NATIVE_H - pad2*2) * pulse);
-        const x0 = Math.floor((NATIVE_W - w0)/2) + jx;
-        const y0 = Math.floor((NATIVE_H - h0)/2) + jy;
-        nctx.save();
-        nctx.globalAlpha = 1.0;
-        nctx.imageSmoothingEnabled = true;
-        nctx.drawImage(im, x0, y0, w0, h0);
-        nctx.restore();
-      }
+      drawDmdSceneImage(im, now - active.start, active.amp ?? 3.4, .060, .082, .03, .75);
       return;
     }
     // <<< PATCH:SQ_DMD_LASTDART_RENDER END
@@ -46179,23 +46006,7 @@ function thresholdNativeToAmber(){
     // Special scene type: desmondImg (juddering Desmond image)
     if (active && active.type === 'desmondImg') {
       const im = __sqLoadDesmond();
-      if (im && im.complete && im.naturalWidth) {
-        const age = now - active.start;
-        const amp = (active.amp != null) ? active.amp : 3.4;
-        const jx = Math.round(Math.sin(age*0.060) * amp);
-        const jy = Math.round(Math.cos(age*0.082) * (amp * 0.75));
-        const pulse = 1 + (Math.sin(age * 0.028) * 0.03);
-        const pad2 = 2;
-        const w0 = Math.floor((NATIVE_W - pad2*2) * pulse);
-        const h0 = Math.floor((NATIVE_H - pad2*2) * pulse);
-        const x0 = Math.floor((NATIVE_W - w0)/2) + jx;
-        const y0 = Math.floor((NATIVE_H - h0)/2) + jy;
-        nctx.save();
-        nctx.globalAlpha = 1.0;
-        nctx.imageSmoothingEnabled = true;
-        nctx.drawImage(im, x0, y0, w0, h0);
-        nctx.restore();
-      }
+      drawDmdSceneImage(im, now - active.start, active.amp ?? 3.4, .060, .082, .03, .75);
       return;
     }
     // <<< PATCH:SQ_DMD_DESMOND_RENDER END
@@ -46204,22 +46015,7 @@ function thresholdNativeToAmber(){
     // Special scene type: voldyImg (draw Voldemort face with shake)
     if (active && active.type === 'voldyImg') {
       const im = __sqLoadVoldy();
-      if (im && im.complete && im.naturalWidth) {
-        const age = now - active.start;
-        const amp = (active.amp != null) ? active.amp : 2.6;
-        const jx = Math.round(Math.sin(age*0.045) * amp);
-        const jy = Math.round(Math.cos(age*0.055) * amp);
-        const pad2 = 2;
-        const x0 = pad2 + jx;
-        const y0 = pad2 + jy;
-        const w0 = NATIVE_W - pad2*2;
-        const h0 = NATIVE_H - pad2*2;
-        nctx.save();
-        nctx.globalAlpha = 1.0;
-        nctx.imageSmoothingEnabled = true;
-        nctx.drawImage(im, x0, y0, w0, h0);
-        nctx.restore();
-      }
+      drawDmdSceneImage(im, now - active.start, active.amp ?? 2.6, .045, .055, 0, 1);
       return;
     }
     // <<< PATCH:SQ_DMD_VOLDY_RENDER END
@@ -56421,7 +56217,7 @@ body[data-page="details"] .wrap{
   No pager, chart data, or scoring behaviour changes here.
 */
 body.livev2-on[data-page="game"] #liveV2Panel{
-  --sqV2InfoH:clamp(126px,16vh,150px) !important;
+  --sqV2InfoH:var(--sqClassicRaceHeight,clamp(126px,16vh,150px)) !important;
 }
 body.livev2-on[data-page="game"] #liveV2Panel .v2InfoPager{
   margin-top:8px !important;
@@ -56431,6 +56227,47 @@ body.livev2-on[data-page="game"] #liveV2Panel .v2PagerDots{
 }
 </style>
 <!-- <<< PATCH:LIVE_CLASSIC_STAGE2_B3_COMPACT END -->
+
+<style id="sq-classic-viewport-fit">
+body.livev2-on:not(.livev3-on)[data-page="game"] #gameScrollGate{
+  margin-bottom:0 !important;
+  padding-bottom:0 !important;
+}
+body.livev2-on:not(.livev3-on)[data-page="game"] #liveV2Panel{
+  margin-bottom:0 !important;
+}
+body.livev2-on:not(.livev3-on)[data-page="game"] .wrap{
+  padding-bottom:calc(var(--pad-h,148px) + env(safe-area-inset-bottom) + 12px) !important;
+}
+</style>
+<script>
+// Measure the fixed controls instead of assuming their height: D/T/B layouts
+// and Safari's changing viewport leave different amounts of usable space.
+(function(){
+  let raf = 0;
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(fit); };
+  function fit(){
+    raf = 0;
+    if (document.body.dataset.page !== 'game' || !document.body.classList.contains('livev2-on') || document.body.classList.contains('livev3-on')) return;
+    const panel = document.getElementById('liveV2Panel');
+    const pager = panel && panel.querySelector('.v2InfoPager');
+    const pad = document.getElementById('padBar');
+    if (!pager || !pad || !pager.offsetHeight || !pad.offsetHeight) return;
+    const box = panel.getBoundingClientRect(), pageBox = pager.getBoundingClientRect();
+    const scale = pageBox.height / pager.offsetHeight || 1;
+    const viewport = window.visualViewport;
+    const bottom = Math.min(pad.getBoundingClientRect().top, viewport ? viewport.height + viewport.offsetTop : innerHeight);
+    const height = Math.max(126, Math.min(900, Math.floor(pager.offsetHeight + (bottom - box.bottom - 10) / scale)));
+    if (Math.abs(height - pager.offsetHeight) > 1) panel.style.setProperty('--sqClassicRaceHeight', height + 'px');
+  }
+  const observer = new ResizeObserver(schedule);
+  ['liveV2Panel','padBar'].forEach(id => { const node = document.getElementById(id); if (node) observer.observe(node); });
+  new MutationObserver(schedule).observe(document.body, {attributes:true, attributeFilter:['class','data-page']});
+  window.addEventListener('resize', schedule, {passive:true});
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', schedule, {passive:true});
+  schedule();
+})();
+</script>
 
 </body>
 </html>
