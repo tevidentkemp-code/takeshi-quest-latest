@@ -13,28 +13,38 @@ old = '''    await page.locator('#pad .dtBullBtn').first().click();
     assert.equal(miniAv.r3, miniAv.mtc, '3R AV and MTC AV agree after the first completed round');
     console.log('PASS compact 3R AV / MTC AV strip');'''
 new = '''    const miniAv = await page.evaluate(() => {
+      const pIdx = 0;
       const cr = Number(state.currentRound || 0);
-      const beforeEntry = structuredClone(state.score?.[0]?.[cr] || { darts:[], roundTotal:0 });
+      const beforeEntry = structuredClone(state.score?.[pIdx]?.[cr] || { darts:[], roundTotal:0 });
       const beforeDart = state.currentDart;
       try{
-        const entry = state.score[0][cr];
-        const first = structuredClone((entry.darts && entry.darts[0]) || { kind:'S', points:10 });
-        entry.darts = [structuredClone(first), structuredClone(first), structuredClone(first)];
-        entry.roundTotal = entry.darts.reduce((sum,d)=>sum+Number(d?.points||0),0);
+        state.score[pIdx][cr] = {
+          darts:[
+            { kind:'S', points:10 },
+            { kind:'S', points:10 },
+            { kind:'S', points:10 }
+          ],
+          roundTotal:30
+        };
         state.currentDart = 3;
+        const pair = __sqV2LiveAveragePair(pIdx, cr);
         liveV2Render();
         return {
+          pairR3: __sqFmtAvg(pair.r3),
+          pairMtc: __sqFmtAvg(pair.mtc),
           r3: document.getElementById('v2Mini3R0')?.textContent || '',
           mtc: document.getElementById('v2MiniMtc0')?.textContent || ''
         };
       } finally {
-        state.score[0][cr] = beforeEntry;
+        state.score[pIdx][cr] = beforeEntry;
         state.currentDart = beforeDart;
         liveV2Render();
       }
     });
-    assert(miniAv.r3 && miniAv.r3 !== '–', '3R AV populated for a completed-round state');
-    assert.equal(miniAv.r3, miniAv.mtc, '3R AV and MTC AV agree after the first completed round');
+    assert.equal(miniAv.pairR3, '30', '3R helper uses completed-round score');
+    assert.equal(miniAv.pairMtc, '30', 'MTC helper uses completed-round score');
+    assert.equal(miniAv.r3, miniAv.pairR3, 'rendered 3R AV matches helper');
+    assert.equal(miniAv.mtc, miniAv.pairMtc, 'rendered MTC AV matches helper');
     console.log('PASS compact 3R AV / MTC AV strip');'''
 if s.count(old) != 1:
     raise RuntimeError(f'isolation anchor count={s.count(old)}')
