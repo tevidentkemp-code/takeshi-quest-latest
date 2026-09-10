@@ -24,6 +24,51 @@ const assert = require('assert/strict');
     await page.waitForTimeout(650);
     assert(await page.locator('#liveV2Panel .v2Total').allTextContents().then(v=>v.some(x=>Number(x)>0)), 'score totals update');
     console.log('PASS score totals update after a real button press');
+    assert.equal(await page.locator('#liveV2Panel .v2MiniAvg').count(), 2, 'one mini-average strip per player');
+    assert((await page.locator('#liveV2Panel .v2MiniAvg').first().innerText()).includes('3R AV'), '3R AV label present');
+    assert((await page.locator('#liveV2Panel .v2MiniAvg').first().innerText()).includes('MTC AV'), 'MTC AV label present');
+    const avgAttachGap = await page.evaluate(() => {
+      const score=document.querySelector('#liveV2Panel .v2ScoreBox[data-p="0"]')?.getBoundingClientRect();
+      const avg=document.querySelector('#liveV2Panel .v2MiniAvg[data-p="0"]')?.getBoundingClientRect();
+      return score&&avg ? Math.abs(avg.top-score.bottom) : 999;
+    });
+    assert(avgAttachGap<2,'mini-average strip attaches directly below player cell');
+    const miniAv = await page.evaluate(async () => {
+      const pIdx = 0;
+      const cr = Number(state.currentRound || 0);
+      const beforeEntry = structuredClone(state.score?.[pIdx]?.[cr] || { darts:[], roundTotal:0 });
+      const beforeDart = state.currentDart;
+      try{
+        state.score[pIdx][cr] = {
+          darts:[
+            { kind:'S', points:10 },
+            { kind:'S', points:10 },
+            { kind:'S', points:10 }
+          ],
+          roundTotal:30
+        };
+        state.currentDart = 3;
+        const pair = __sqV2LiveAveragePair(pIdx, cr);
+        liveV2Render();
+        await new Promise(resolve => setTimeout(resolve, 140));
+        return {
+          pairR3: __sqFmtAvg(pair.r3),
+          pairMtc: __sqFmtAvg(pair.mtc),
+          r3: document.getElementById('v2Mini3R0')?.textContent || '',
+          mtc: document.getElementById('v2MiniMtc0')?.textContent || ''
+        };
+      } finally {
+        state.score[pIdx][cr] = beforeEntry;
+        state.currentDart = beforeDart;
+        liveV2Render();
+        await new Promise(resolve => setTimeout(resolve, 140));
+      }
+    });
+    assert.equal(miniAv.pairR3, '30', '3R helper uses completed-round score');
+    assert.equal(miniAv.pairMtc, '30', 'MTC helper uses completed-round score');
+    assert.equal(miniAv.r3, miniAv.pairR3, 'rendered 3R AV matches helper');
+    assert.equal(miniAv.mtc, miniAv.pairMtc, 'rendered MTC AV matches helper');
+    console.log('PASS compact 3R AV / MTC AV strip');
     for (const size of [{width:390,height:844},{width:430,height:932},{width:320,height:568},{width:1366,height:936}]) {
       await page.setViewportSize(size);
       await page.waitForTimeout(900);
@@ -48,12 +93,23 @@ const assert = require('assert/strict');
     const graph = await page.evaluate(() => {
       const c=document.createElement('canvas'); const host=document.createElement('div');
       host.style.cssText='width:390px;height:180px';host.append(c);document.body.append(host);
+      const ctx=c.getContext('2d'); const dashed=[]; let dash=[]; let path=[];
+      const setDash=ctx.setLineDash.bind(ctx), begin=ctx.beginPath.bind(ctx), move=ctx.moveTo.bind(ctx), line=ctx.lineTo.bind(ctx), stroke=ctx.stroke.bind(ctx);
+      ctx.setLineDash=(v)=>{dash=Array.from(v||[]);return setDash(v);};
+      ctx.beginPath=()=>{path=[];return begin();};
+      ctx.moveTo=(x,y)=>{path.push([x,y]);return move(x,y);};
+      ctx.lineTo=(x,y)=>{path.push([x,y]);return line(x,y);};
+      ctx.stroke=()=>{if(dash.join(',')==='5,4'&&path.length)dashed.push(path.slice());return stroke();};
       const motion={grow:[],combo:[],burst:[],lastLen:[],lastFull:[],maxV:0};
       __sqDrawArcadeRace(c,{labels:Array.from({length:14},(_,i)=>String(i+10)),series:[{data:[10,...Array(13).fill(null)],color:'#7bdcff'}],record:{data:Array.from({length:14},(_,i)=>(i+1)*50)}},motion,performance.now());
-      const max=motion.maxV;host.remove();return max;
+      const recordPath=dashed.sort((a,b)=>b.length-a.length)[0]||[];
+      const out={max:motion.maxV,last:recordPath[recordPath.length-1]||null,minY:recordPath.length?Math.min(...recordPath.map(p=>p[1])):null};
+      host.remove();return out;
     });
-    assert(graph<150,'early scores scale against played rounds, not full-game record');
-    console.log('PASS beta graph early-round scaling');
+    assert(graph.max<150,'early scores scale against played rounds, not full-game record');
+    assert(graph.last&&graph.last[0]>370,'high-score reference reaches the final round');
+    assert(graph.minY>=18,'off-scale high-score continuation stays visibly inside the chart');
+    console.log('PASS local graph scale with full high-score reference');
     await page.setViewportSize({width:390,height:844});
     for (const type of ['lastDartImg','desmondImg','voldyImg']) {
       await page.evaluate(type=>{window.__sqDmdHardClearQueue?.();window.__imageBounds=[];window.sqDmdShowZones({z2:'',z3:''},{type,ms:1500,amp:3.6});},type);

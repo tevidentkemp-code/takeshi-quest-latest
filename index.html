@@ -8424,6 +8424,47 @@ body.livev2-on[data-page="game"] .livev2panel[style*="--sqV2P: 1"] .v2Rows .v2Ce
   color: rgba(255,90,90,.88);
 }
 
+/* SC-017: compact live averages directly beneath each player information cell. */
+.livev2panel .v2ScoreGrid{ row-gap:0; }
+.livev2panel .v2MiniAvg{
+  min-height:24px;
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:stretch;
+  background:rgba(7,13,24,.96);
+  border:1px solid rgba(139,166,210,.20);
+  border-top:0;
+  border-radius:0 0 8px 8px;
+  overflow:hidden;
+  font-variant-numeric:tabular-nums;
+}
+.livev2panel .v2MiniMetric{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  padding:3px 3px 2px;
+  white-space:nowrap;
+}
+.livev2panel .v2MiniMetric + .v2MiniMetric{border-left:1px solid rgba(139,166,210,.14);}
+.livev2panel .v2MiniLab{
+  font-size:7px;
+  line-height:1;
+  font-weight:800;
+  letter-spacing:.035em;
+  color:rgba(180,196,222,.66);
+}
+.livev2panel .v2MiniMetric strong{
+  font-size:10px;
+  line-height:1;
+  font-weight:900;
+  color:rgba(245,248,255,.94);
+}
+body.livev2-on[data-page="game"] #liveV2Panel .v2MiniAvg[data-p]{
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
+}
+
 /* Averages box (under 3-round viewport) */
 .livev2panel .v2AvgWrap{
   margin-top: 0;
@@ -23280,6 +23321,12 @@ function ensureLiveV2Panel(){
       <div class="v2WinDots" id="v2WinDots${i}"></div>
     </div>
   `).join("");
+  const miniAvgBoxes = Array.from({length: Math.max(1, Math.min(6, pCount))}).map((_,i)=>`
+    <div class="v2MiniAvg" data-p="${i}" aria-label="Player averages">
+      <span class="v2MiniMetric"><span class="v2MiniLab">3R AV</span><strong id="v2Mini3R${i}">–</strong></span>
+      <span class="v2MiniMetric"><span class="v2MiniLab">MTC AV</span><strong id="v2MiniMtc${i}">–</strong></span>
+    </div>
+  `).join("");
 
   panel.innerHTML = `
     <div class="v2GameCell" aria-label="Gameplay">
@@ -23291,6 +23338,7 @@ function ensureLiveV2Panel(){
         </div>
         <div class="v2ScoreGrid">
           ${scoreBoxes}
+          ${miniAvgBoxes}
         </div>
         <div class="v2SoloRecords" id="v2SoloRecords" aria-label="Solo practice PB and WR pace">
           <div class="v2SoloRecordPill is-empty" id="v2SoloPB"><span class="v2SoloRecLabel">PB</span><span class="v2SoloRecValue">– / –</span></div>
@@ -23584,6 +23632,22 @@ function __sqFmtAvg(n){
   if(!Number.isFinite(+n)) return "–";
   const v = Math.round((+n) * 10) / 10;
   return (Math.abs(v - Math.round(v)) < 1e-9) ? String(Math.round(v)) : v.toFixed(1);
+}
+
+function __sqV2LiveAveragePair(pIdx, currentRound){
+  try{
+    const vals = [];
+    const cr = Math.max(0, Number(currentRound) || 0);
+    for(let r = 0; r <= cr; r++){
+      const entry = state.score?.[pIdx]?.[r];
+      const done = (r < cr) || (entry && entry.darts && entry.darts[2] != null);
+      if(!done) continue;
+      const v = getPerRoundScore(r, pIdx);
+      if(Number.isFinite(+v)) vals.push(+v);
+    }
+    const mean = arr => arr.length ? arr.reduce((a,b)=>a+b,0) / arr.length : NaN;
+    return { r3: mean(vals.slice(-3)), mtc: mean(vals), count: vals.length };
+  }catch(_){ return { r3:NaN, mtc:NaN, count:0 }; }
 }
 
 function __sqSetupLiveV2Sizing(panel){
@@ -24194,6 +24258,15 @@ function liveV2Render(){
     const p = parseInt(el.getAttribute("data-p") || "0", 10);
     el.classList.toggle("active", p === turn);
   });
+
+  // SC-017: duplicate the canonical live 3R/MTC averages beneath each player card.
+  for(let i=0; i<pCount; i++){
+    const av = __sqV2LiveAveragePair(i, cr);
+    const a3 = document.getElementById('v2Mini3R' + i);
+    const mt = document.getElementById('v2MiniMtc' + i);
+    if(a3) a3.textContent = __sqFmtAvg(av.r3);
+    if(mt) mt.textContent = __sqFmtAvg(av.mtc);
+  }
 
   // Solo Practice: PB/WR total + rolling pace and live variance beside the player score pill.
   try{ if(pCount === 1) __sqUpdateSoloPracticePacePanel(__v2Totals[0] || 0, cr || 0); }catch(_){ }
@@ -27142,8 +27215,8 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
     // HIGH-SCORE (record) pace — dashed gold reference line to race against
     for (const record of records){
       const recData = record.data;
-      const recTo = Math.min(recData.length, rc, playedTo + 1);   // never past the scaled range
-      const RP = []; for (let i = 0; i < recTo; i++){ if (recData[i] != null) RP.push([X(i), Y(recData[i])]); }
+      const recTo = Math.min(recData.length, rc);                  // plot the complete reference series
+      const RP = []; for (let i = 0; i < recTo; i++){ if (recData[i] != null) RP.push([X(i), Math.max(padT, Y(recData[i]))]); }
       if (RP.length >= 2){
         ctx.save();
         ctx.setLineDash([5, 4]); ctx.strokeStyle = record.color || 'rgba(255,214,110,.9)'; ctx.lineWidth = 1.8; ctx.lineJoin = 'round';
@@ -56217,7 +56290,7 @@ body[data-page="details"] .wrap{
   No pager, chart data, or scoring behaviour changes here.
 */
 body.livev2-on[data-page="game"] #liveV2Panel{
-  --sqV2InfoH:var(--sqClassicRaceHeight,clamp(126px,16vh,150px)) !important;
+  --sqV2InfoH:var(--sqClassicRaceHeight,clamp(104px,13vh,126px)) !important;
 }
 body.livev2-on[data-page="game"] #liveV2Panel .v2InfoPager{
   margin-top:8px !important;
