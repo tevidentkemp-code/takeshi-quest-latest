@@ -108,13 +108,14 @@ const assert = require('assert/strict');
       const motion={grow:[],combo:[],burst:[],lastLen:[],lastFull:[],maxV:0};
       __sqDrawArcadeRace(c,{labels:Array.from({length:14},(_,i)=>String(i+10)),series:[{data:[10,...Array(13).fill(null)],color:'#7bdcff'}],record:{data:Array.from({length:14},(_,i)=>(i+1)*50)}},motion,performance.now());
       const recordPath=dashed.sort((a,b)=>b.length-a.length)[0]||[];
-      const out={max:motion.maxV,last:recordPath[recordPath.length-1]||null,minY:recordPath.length?Math.min(...recordPath.map(p=>p[1])):null};
+      const topY=19; const out={max:motion.maxV,last:recordPath[recordPath.length-1]||null,topHits:recordPath.filter(p=>Math.abs(p[1]-topY)<.75).length,pathLen:recordPath.length};
       host.remove();return out;
     });
     assert(graph.max<150,'early scores scale against played rounds, not full-game record');
-    assert(graph.last&&graph.last[0]>370,'high-score reference reaches the final round');
-    assert(graph.minY>=18,'off-scale high-score continuation stays visibly inside the chart');
-    console.log('PASS local graph scale with full high-score reference');
+    assert(graph.last&&Math.abs(graph.last[1]-19)<.75,'high-score reference terminates at chart ceiling');
+    assert.equal(graph.topHits,1,'high-score reference hits the chart ceiling once without a horizontal plateau');
+    assert(graph.pathLen<14,'off-scale high-score continuation is not drawn across later rounds');
+    console.log('PASS local graph scale with clipped high-score reference');
     await page.setViewportSize({width:390,height:844});
     for (const type of ['lastDartImg','desmondImg','voldyImg']) {
       await page.evaluate(type=>{window.__sqDmdHardClearQueue?.();window.__imageBounds=[];window.sqDmdShowZones({z2:'',z3:''},{type,ms:1500,amp:3.6});},type);
