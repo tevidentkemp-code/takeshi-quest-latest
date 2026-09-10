@@ -12,7 +12,7 @@ old = '''    await page.locator('#pad .dtBullBtn').first().click();
     assert(miniAv.r3 && miniAv.r3 !== '–', '3R AV populated after a completed round');
     assert.equal(miniAv.r3, miniAv.mtc, '3R AV and MTC AV agree after the first completed round');
     console.log('PASS compact 3R AV / MTC AV strip');'''
-new = '''    const miniAv = await page.evaluate(() => {
+new = '''    const miniAv = await page.evaluate(async () => {
       const pIdx = 0;
       const cr = Number(state.currentRound || 0);
       const beforeEntry = structuredClone(state.score?.[pIdx]?.[cr] || { darts:[], roundTotal:0 });
@@ -29,6 +29,7 @@ new = '''    const miniAv = await page.evaluate(() => {
         state.currentDart = 3;
         const pair = __sqV2LiveAveragePair(pIdx, cr);
         liveV2Render();
+        await new Promise(resolve => setTimeout(resolve, 140));
         return {
           pairR3: __sqFmtAvg(pair.r3),
           pairMtc: __sqFmtAvg(pair.mtc),
@@ -39,6 +40,7 @@ new = '''    const miniAv = await page.evaluate(() => {
         state.score[pIdx][cr] = beforeEntry;
         state.currentDart = beforeDart;
         liveV2Render();
+        await new Promise(resolve => setTimeout(resolve, 140));
       }
     });
     assert.equal(miniAv.pairR3, '30', '3R helper uses completed-round score');
