@@ -25,17 +25,56 @@ jobs:
         run: |
           npm install --no-package-lock --ignore-scripts
           npx playwright install --with-deps chromium
-      - name: Run focused and scoring regressions
+      - name: Run focused visual regression
         run: |
           python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
-          node tools/ui-smoke/verify-classic-visual-fit.js
-          node tools/ui-smoke/smoke.js
-          node tools/ui-smoke/verify-saveplayer-card.js
-      - name: Commit tested patch
+          set +e
+          node tools/ui-smoke/verify-classic-visual-fit.js >/tmp/sc017-focused.txt 2>&1
+          echo $? >/tmp/sc017-focused.exit
+          cat /tmp/sc017-focused.txt
+          exit 0
+      - name: Run scoring journey regression
         run: |
+          set +e
+          node tools/ui-smoke/smoke.js >/tmp/sc017-smoke.txt 2>&1
+          echo $? >/tmp/sc017-smoke.exit
+          cat /tmp/sc017-smoke.txt
+          exit 0
+      - name: Run saved-player regression
+        run: |
+          set +e
+          node tools/ui-smoke/verify-saveplayer-card.js >/tmp/sc017-saveplayer.txt 2>&1
+          echo $? >/tmp/sc017-saveplayer.exit
+          cat /tmp/sc017-saveplayer.txt
+          exit 0
+      - name: Commit tested patch or safe diagnostic
+        run: |
+          focused=$(cat /tmp/sc017-focused.exit)
+          smoke=$(cat /tmp/sc017-smoke.exit)
+          saveplayer=$(cat /tmp/sc017-saveplayer.exit)
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/sc017-apply.yml tools/sc017_apply.py
+          if [ "$focused" != "0" ] || [ "$smoke" != "0" ] || [ "$saveplayer" != "0" ]; then
+            git checkout -- index.html tools/ui-smoke/verify-classic-visual-fit.js
+            {
+              echo "SC-017 TEST DIAGNOSTICS"
+              echo "focused=$focused smoke=$smoke saveplayer=$saveplayer"
+              echo
+              echo "=== verify-classic-visual-fit.js ==="
+              cat /tmp/sc017-focused.txt
+              echo
+              echo "=== smoke.js ==="
+              cat /tmp/sc017-smoke.txt
+              echo
+              echo "=== verify-saveplayer-card.js ==="
+              cat /tmp/sc017-saveplayer.txt
+            } > tools/sc017-diagnostics.txt
+            git add tools/sc017-diagnostics.txt
+            git commit -m "SC-017: record failed regression diagnostics"
+            git push origin HEAD:sc017-live-race-avgs
+            exit 1
+          fi
           git add index.html tools/ui-smoke/verify-classic-visual-fit.js
           git diff --check
           git commit -m "SC-017: extend race reference and add live averages"
