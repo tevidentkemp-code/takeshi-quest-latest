@@ -18,7 +18,9 @@ jobs:
         with:
           node-version: 22
       - name: Apply exact SC-017 replacements
-        run: python3 tools/sc017_apply.py
+        run: |
+          python3 tools/sc017_apply.py
+          python3 tools/sc017_adjust.py
       - name: Check bounded diff
         run: |
           git diff --check -- index.html tools/ui-smoke/verify-classic-visual-fit.js
@@ -35,6 +37,16 @@ jobs:
           python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
           node tools/ui-smoke/verify-classic-visual-fit.js | tee /tmp/sc017-visual.txt
           node tools/ui-smoke/smoke.js | tee /tmp/sc017-smoke.txt
+      - name: Keep SC-017 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sc017-qa-diagnostics
+          path: |
+            /tmp/sc017-visual.txt
+            /tmp/sc017-smoke.txt
+            /tmp/sq-http.log
+          if-no-files-found: ignore
       - name: Commit tested patch to branch
         run: |
           git config user.name "github-actions[bot]"
