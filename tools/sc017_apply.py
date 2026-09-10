@@ -1,0 +1,236 @@
+from pathlib import Path
+
+
+def replace_one(text, old, new, label):
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f'{label}: expected exactly 1 match, found {count}')
+    return text.replace(old, new, 1)
+
+
+path = Path('index.html')
+s = path.read_text(encoding='utf-8')
+
+# Add the compact average strip directly below each existing player info pill.
+s = replace_one(
+    s,
+    '''      <div class=\"v2WinDots\" id=\"v2WinDots${i}\"></div>\n    </div>\n  `).join(\"\");''',
+    '''      <div class=\"v2WinDots\" id=\"v2WinDots${i}\"></div>\n      <div class=\"v2MiniAvg\" aria-label=\"Player 3-dart averages\">\n        <span class=\"v2MiniAvgMetric\"><span class=\"v2MiniAvgLab\">3R AV</span><span class=\"v2MiniAvgVal\" id=\"v2Mini3R${i}\">–</span></span>\n        <span class=\"v2MiniAvgMetric\"><span class=\"v2MiniAvgLab\">MTC AV</span><span class=\"v2MiniAvgVal\" id=\"v2MiniMtc${i}\">–</span></span>\n      </div>\n    </div>\n  `).join(\"\");''',
+    'player average strip markup',
+)
+
+# Add tightly-scoped styling. Existing B1 geometry remains intact; the strip is absolute,
+# and the existing 12px gap is expanded only enough to clear its 20px height.
+css_marker = '/* Averages box (under 3-round viewport) */'
+css = r'''/* >>> PATCH:SC017_PLAYER_AVG_STRIP START */
+.livev2panel .v2Scores{
+  margin-bottom: 24px;
+}
+.livev2panel .v2ScoreBox{
+  position: relative;
+}
+.livev2panel .v2MiniAvg{
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 3px);
+  height: 20px;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(0,0,0,.18);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.045);
+  color: rgba(245,247,255,.88);
+  pointer-events: none;
+}
+.livev2panel .v2MiniAvgMetric{
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.livev2panel .v2MiniAvgMetric + .v2MiniAvgMetric{
+  border-left: 1px solid rgba(255,255,255,.08);
+}
+.livev2panel .v2MiniAvgLab{
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  color: rgba(184,192,204,.76);
+}
+.livev2panel .v2MiniAvgVal{
+  font-size: 10px;
+  font-weight: 900;
+  color: rgba(247,248,250,.96);
+}
+.livev2panel[style*=\"--sqV2P: 5\"] .v2MiniAvgMetric,
+.livev2panel[style*=\"--sqV2P: 6\"] .v2MiniAvgMetric{
+  flex-direction: column;
+  gap: 0;
+}
+.livev2panel[style*=\"--sqV2P: 5\"] .v2MiniAvgLab,
+.livev2panel[style*=\"--sqV2P: 6\"] .v2MiniAvgLab{ font-size: 6px; }
+.livev2panel[style*=\"--sqV2P: 5\"] .v2MiniAvgVal,
+.livev2panel[style*=\"--sqV2P: 6\"] .v2MiniAvgVal{ font-size: 8px; }
+/* Reclaim the strip's extra vertical footprint from B3. This trims Game Race by
+   ~12-14px across supported portrait sizes while preserving its local score scale. */
+body.livev2-on[data-page=\"game\"] #liveV2Panel{
+  --sqV2InfoH: clamp(198px, 24.5vh, 248px);
+}
+/* <<< PATCH:SC017_PLAYER_AVG_STRIP END */
+
+'''
+if s.count(css_marker) != 1:
+    raise SystemExit(f'average strip CSS marker: expected exactly 1 match, found {s.count(css_marker)}')
+s = s.replace(css_marker, css + css_marker, 1)
+
+# Shared display helper using the same completed-round and getPerRoundScore semantics
+# as the existing B3 3R/MTC rows. Partial rounds are intentionally excluded.
+helper_marker = 'function __sqSetupLiveV2Sizing(panel){'
+helper = r'''function __sqV2PlayerAverages(pIdx, currentRound){
+  try{
+    const cr0 = Math.max(0, Number.isFinite(+currentRound) ? +currentRound : 0);
+    const done = [];
+    for(let r=0; r<=cr0; r++){
+      const entry = state.score?.[pIdx]?.[r];
+      const complete = (r < cr0) || (entry && entry.darts && entry.darts[2] != null);
+      if(complete) done.push(r);
+    }
+    const meanFor = (rounds)=>{
+      let sum = 0, n = 0;
+      rounds.forEach((r)=>{
+        const v = getPerRoundScore(r, pIdx);
+        if(Number.isFinite(+v)){ sum += +v; n++; }
+      });
+      return n ? (sum / n) : NaN;
+    };
+    return { r3: meanFor(done.slice(-3)), mtc: meanFor(done) };
+  }catch(_){ return { r3: NaN, mtc: NaN }; }
+}
+
+'''
+if s.count(helper_marker) != 1:
+    raise SystemExit(f'average helper marker: expected exactly 1 match, found {s.count(helper_marker)}')
+s = s.replace(helper_marker, helper + helper_marker, 1)
+
+# Paint the always-visible average strip during the existing player-total update loop.
+update_old = '''    if(v2w){\n      const wins = Math.max(0, Number(__v2MatchWins[i] || 0) || 0);\n      const totalDots = Math.max(__v2GamesInMatch, wins);\n      v2w.innerHTML = Array.from({length: totalDots}, (_,k)=>`<i class=\\\"v2WinDot${k < wins ? ' on' : ''}\\\"></i>`).join('');\n    }\n  }'''
+update_new = '''    if(v2w){\n      const wins = Math.max(0, Number(__v2MatchWins[i] || 0) || 0);\n      const totalDots = Math.max(__v2GamesInMatch, wins);\n      v2w.innerHTML = Array.from({length: totalDots}, (_,k)=>`<i class=\\\"v2WinDot${k < wins ? ' on' : ''}\\\"></i>`).join('');\n    }\n\n    const __miniAvg = __sqV2PlayerAverages(i, cr);\n    const __mini3R = document.getElementById(\"v2Mini3R\" + i);\n    const __miniMtc = document.getElementById(\"v2MiniMtc\" + i);\n    if(__mini3R) __mini3R.textContent = __sqFmtAvg(__miniAvg.r3);\n    if(__miniMtc) __miniMtc.textContent = __sqFmtAvg(__miniAvg.mtc);\n  }'''
+s = replace_one(s, update_old, update_new, 'average strip live update')
+
+# Draw the complete HS/PB/WR reference path across all rounds. Leave the Y-axis calculation
+# untouched: only played rounds + one lookahead affect maxV, keeping player lines local/readable.
+s = replace_one(
+    s,
+    'const recTo = Math.min(recData.length, rc, playedTo + 1);   // never past the scaled range',
+    'const recTo = Math.min(recData.length, rc);   // full reference path; Y-axis remains local to played rounds',
+    'full high-score reference path',
+)
+
+path.write_text(s, encoding='utf-8')
+
+# Extend the existing focused visual-fit regression rather than creating a parallel suite.
+tpath = Path('tools/ui-smoke/verify-classic-visual-fit.js')
+t = tpath.read_text(encoding='utf-8')
+
+old = """    await page.locator('#pad .dtBullBtn').first().click();
+    await page.waitForTimeout(650);
+    assert(await page.locator('#liveV2Panel .v2Total').allTextContents().then(v=>v.some(x=>Number(x)>0)), 'score totals update');
+    console.log('PASS score totals update after a real button press');"""
+new = """    await page.locator('#pad .dtBullBtn').first().click();
+    await page.waitForTimeout(650);
+    assert(await page.locator('#liveV2Panel .v2Total').allTextContents().then(v=>v.some(x=>Number(x)>0)), 'score totals update');
+    console.log('PASS score totals update after a real button press');
+    await page.locator('#pad .dtBullBtn').first().click();
+    await page.locator('#pad .dtBullBtn').first().click();
+    await page.waitForTimeout(500);
+    const miniAvgs = await page.evaluate(() => ({
+      r3: document.getElementById('v2Mini3R0')?.textContent || '',
+      mtc: document.getElementById('v2MiniMtc0')?.textContent || '',
+      box: document.querySelector('.v2ScoreBox[data-p=\"0\"]')?.getBoundingClientRect() || null,
+      mini: document.querySelector('.v2ScoreBox[data-p=\"0\"] .v2MiniAvg')?.getBoundingClientRect() || null,
+      rows: document.querySelector('.v2RowsWrap')?.getBoundingClientRect() || null
+    }));
+    assert(miniAvgs.r3 && miniAvgs.r3 !== '–', '3R AV appears after a completed round');
+    assert(miniAvgs.mtc && miniAvgs.mtc !== '–', 'MTC AV appears after a completed round');
+    assert.equal(miniAvgs.r3, miniAvgs.mtc, 'single completed round yields matching 3R and MTC averages');
+    assert(miniAvgs.box && miniAvgs.mini && miniAvgs.rows, 'average-strip geometry is measurable');
+    assert(miniAvgs.mini.top >= miniAvgs.box.bottom, 'average strip sits below player info cell');
+    assert(miniAvgs.mini.bottom <= miniAvgs.rows.top + 2, 'average strip does not overlap round rows');
+    console.log('PASS compact 3R AV / MTC AV strip');"""
+if t.count(old) != 1:
+    raise SystemExit(f'test average insertion: expected 1 match, found {t.count(old)}')
+t = t.replace(old, new, 1)
+
+old = "return {gap:pad.top-panel.bottom, height:host.height, width:host.width, canvasWidth:canvas.getBoundingClientRect().width, overflow:document.documentElement.scrollWidth>innerWidth+1};"
+new = "return {gap:pad.top-panel.bottom, height:host.height, pagerHeight:document.querySelector('.v2InfoPager')?.getBoundingClientRect().height || 0, width:host.width, canvasWidth:canvas.getBoundingClientRect().width, overflow:document.documentElement.scrollWidth>innerWidth+1};"
+if t.count(old) != 1:
+    raise SystemExit(f'test pager geometry: expected 1 match, found {t.count(old)}')
+t = t.replace(old, new, 1)
+
+old = "      assert(fit.height>=80,'graph retains readable height');"
+new = """      assert(fit.height>=80,'graph retains readable height');
+      if (size.width===390 && size.height===844) assert(fit.pagerHeight<210,'Game Race/B3 panel height reduced to make room for average strip');
+      if (size.width===320 && size.height===568) assert(fit.pagerHeight<205,'short-screen Game Race/B3 panel height reduced');"""
+if t.count(old) != 1:
+    raise SystemExit(f'test reduced graph height: expected 1 match, found {t.count(old)}')
+t = t.replace(old, new, 1)
+
+old = """    const graph = await page.evaluate(() => {
+      const c=document.createElement('canvas'); const host=document.createElement('div');
+      host.style.cssText='width:390px;height:180px';host.append(c);document.body.append(host);
+      const motion={grow:[],combo:[],burst:[],lastLen:[],lastFull:[],maxV:0};
+      __sqDrawArcadeRace(c,{labels:Array.from({length:14},(_,i)=>String(i+10)),series:[{data:[10,...Array(13).fill(null)],color:'#7bdcff'}],record:{data:Array.from({length:14},(_,i)=>(i+1)*50)}},motion,performance.now());
+      const max=motion.maxV;host.remove();return max;
+    });
+    assert(graph<150,'early scores scale against played rounds, not full-game record');
+    console.log('PASS beta graph early-round scaling');"""
+new = """    const graph = await page.evaluate(() => {
+      const proto=CanvasRenderingContext2D.prototype;
+      const oldDash=proto.setLineDash, oldLine=proto.lineTo;
+      let dashed=false; const recordXs=[];
+      proto.setLineDash=function(v){ dashed=Array.isArray(v)&&v.length===2&&v[0]===5&&v[1]===4; return oldDash.call(this,v); };
+      proto.lineTo=function(x,y){ if(dashed) recordXs.push(x); return oldLine.call(this,x,y); };
+      const c=document.createElement('canvas'); const host=document.createElement('div');
+      host.style.cssText='width:390px;height:180px';host.append(c);document.body.append(host);
+      try{
+        const motion={grow:[],combo:[],burst:[],lastLen:[],lastFull:[],maxV:0};
+        __sqDrawArcadeRace(c,{labels:Array.from({length:14},(_,i)=>String(i+10)),series:[{data:[10,...Array(13).fill(null)],color:'#7bdcff'}],record:{data:Array.from({length:14},(_,i)=>(i+1)*50)}},motion,performance.now());
+        return {max:motion.maxV,maxRecordX:recordXs.length?Math.max(...recordXs):0};
+      } finally { proto.setLineDash=oldDash; proto.lineTo=oldLine; host.remove(); }
+    });
+    assert(graph.max<150,'early scores scale against played rounds, not full-game record');
+    assert(graph.maxRecordX>360,'high-score reference path is plotted through the final round');
+    console.log('PASS beta graph local scale + full high-score path');"""
+if t.count(old) != 1:
+    raise SystemExit(f'test graph replacement: expected 1 match, found {t.count(old)}')
+t = t.replace(old, new, 1)
+
+anchor = """    await page.setViewportSize({width:390,height:844});
+    for (const type of ['lastDartImg','desmondImg','voldyImg']) {"""
+insert = """    await page.setViewportSize({width:390,height:844});
+    await page.waitForTimeout(250);
+    const statsFit = await page.evaluate(() => {
+      const card=document.getElementById('v2InfoCell');
+      const grid=document.getElementById('v2Avg');
+      const last=grid&&grid.lastElementChild;
+      if(!card||!grid||!last)return null;
+      const c=card.getBoundingClientRect(), l=last.getBoundingClientRect();
+      return {cardBottom:c.bottom,lastBottom:l.bottom};
+    });
+    assert(statsFit && statsFit.lastBottom<=statsFit.cardBottom+2,'Game Stats rows remain inside B3 after height reduction');
+    console.log('PASS reduced B3 keeps Game Stats content contained');
+    for (const type of ['lastDartImg','desmondImg','voldyImg']) {"""
+if t.count(anchor) != 1:
+    raise SystemExit(f'test stats-fit insertion: expected 1 match, found {t.count(anchor)}')
+t = t.replace(anchor, insert, 1)
+
+tpath.write_text(t, encoding='utf-8')
