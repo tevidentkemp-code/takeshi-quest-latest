@@ -118,7 +118,7 @@ const assert = require('assert/strict');
     await page.setViewportSize({width:390,height:844});
     for (const type of ['lastDartImg','desmondImg','voldyImg']) {
       await page.evaluate(type=>{window.__sqDmdHardClearQueue?.();window.__imageBounds=[];window.sqDmdShowZones({z2:'',z3:''},{type,ms:1500,amp:3.6});},type);
-      await page.waitForTimeout(900);
+      await page.waitForFunction(() => Array.isArray(window.__imageBounds) && window.__imageBounds.length > 0, undefined, {timeout:4000,polling:50});
       const boxes=await page.evaluate(()=>window.__imageBounds);
       assert(boxes.length>0,type+' drew frames');
       assert(boxes.every(([x,y,w,h])=>x>=0&&y>=0&&x+w<=640&&y+h<=160),type+' stays inside display');
