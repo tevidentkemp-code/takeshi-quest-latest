@@ -1,0 +1,45 @@
+name: SC-017 bounded Live UI patch
+on:
+  push:
+    branches: [sc017-live-race-avg-strip]
+    paths:
+      - .github/workflows/sc017-patch.yml
+permissions:
+  contents: write
+jobs:
+  patch-and-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply exact SC-017 replacements
+        run: python3 tools/sc017_apply.py
+      - name: Check bounded diff
+        run: |
+          git diff --check -- index.html tools/ui-smoke/verify-classic-visual-fit.js
+          git diff --stat -- index.html tools/ui-smoke/verify-classic-visual-fit.js
+      - name: Install smoke-test dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          npm install --no-package-lock --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Run Classic visual regression and scoring smoke
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee /tmp/sc017-visual.txt
+          node tools/ui-smoke/smoke.js | tee /tmp/sc017-smoke.txt
+      - name: Commit tested patch to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html tools/ui-smoke/verify-classic-visual-fit.js
+          git diff --cached --quiet && exit 1
+          git commit -m "fix(sc017): finish live race and player averages"
+          git push origin HEAD:sc017-live-race-avg-strip
