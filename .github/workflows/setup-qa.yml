@@ -46,9 +46,28 @@ jobs:
           }"""
           if old in text:
             text = text.replace(old, new, 1)
-            index.write_text(text)
           elif 'const x = X(i), rawY = Y(recData[i]);' not in text:
             raise SystemExit('SC-020 index target not found')
+
+          bad_indent = """      const RP = [];
+          for (let i = 0; i < recTo; i++){
+          if (recData[i] == null) continue;
+          const x = X(i), rawY = Y(recData[i]);
+          if (rawY >= padT){ RP.push([x, rawY]); continue; }
+          if (RP.length){
+          const prev = RP[RP.length - 1], span = rawY - prev[1];
+          const t = span ? Math.max(0, Math.min(1, (padT - prev[1]) / span)) : 1;
+          RP.push([prev[0] + (x - prev[0]) * t, padT]);
+          } else RP.push([x, padT]);
+          break;
+          }"""
+          good_indent = "      const RP = [];\n      for (let i = 0; i < recTo; i++){\n        if (recData[i] == null) continue;\n        const x = X(i), rawY = Y(recData[i]);\n        if (rawY >= padT){ RP.push([x, rawY]); continue; }\n        if (RP.length){\n          const prev = RP[RP.length - 1], span = rawY - prev[1];\n          const t = span ? Math.max(0, Math.min(1, (padT - prev[1]) / span)) : 1;\n          RP.push([prev[0] + (x - prev[0]) * t, padT]);\n        } else RP.push([x, padT]);\n        break;\n      }"
+          # YAML block indentation can strip the visual leading whitespace above;
+          # normalise the generated JS block to the source file's six-space level.
+          raw_bad = "      const RP = [];\nfor (let i = 0; i < recTo; i++){\n  if (recData[i] == null) continue;\n  const x = X(i), rawY = Y(recData[i]);\n  if (rawY >= padT){ RP.push([x, rawY]); continue; }\n  if (RP.length){\n    const prev = RP[RP.length - 1], span = rawY - prev[1];\n    const t = span ? Math.max(0, Math.min(1, (padT - prev[1]) / span)) : 1;\n    RP.push([prev[0] + (x - prev[0]) * t, padT]);\n  } else RP.push([x, padT]);\n  break;\n}"
+          if raw_bad in text:
+            text = text.replace(raw_bad, good_indent, 1)
+          index.write_text(text)
 
           test = Path('tools/ui-smoke/verify-classic-visual-fit.js')
           t = test.read_text()
@@ -73,7 +92,7 @@ jobs:
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add index.html tools/ui-smoke/verify-classic-visual-fit.js
-            git commit -m 'fix(sc020): stop race reference at chart ceiling'
+            git commit -m 'style(sc020): align bounded race-reference patch'
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
           fi
       - name: Install existing test dependencies
