@@ -12,11 +12,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Find Turbo timer/race introduction
+      - name: Inspect original Turbo timer block
+        shell: bash
         run: |
-          echo '=== FIX76 introduction ==='
-          git log --all --reverse --format='%H %ad %s' --date=iso -S'FIX76_TURBO_20SEC_TIMER' -- index.html | head -20
-          echo '=== sqTurboSvg introduction ==='
-          git log --all --reverse --format='%H %ad %s' --date=iso -S'sqTurboSvg' -- index.html | head -20
-          echo '=== Turbo ready/countdown text history ==='
-          git log --all --format='%H %ad %s' --date=iso -G'countdown|COUNTDOWN|20.SEC|sqTurboTimer|sqTurboSvg' -- index.html | head -40
+          git show e9f2f5986a56506547dc63ce3d22fbd502f20740:index.html > /tmp/old.html
+          line=$(grep -n 'PATCH:FIX76_TURBO_20SEC_TIMER START' /tmp/old.html | head -1 | cut -d: -f1)
+          echo "FIX76 line=$line"
+          if [ -n "$line" ]; then sed -n "${line},$((line+190))p" /tmp/old.html; fi
+          echo '=== countdown-related identifiers ==='
+          grep -Ein 'countdown|timer-count|seconds-left|time-left|sqTurbo.*count' /tmp/old.html | head -80 || true
