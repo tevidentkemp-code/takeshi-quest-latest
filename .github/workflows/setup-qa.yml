@@ -9,19 +9,58 @@ on:
     branches: [sc014-setup-intake-polish]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   setup:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
-      - name: Temporary SC-021 live chart source extraction
-        run: python3 tools/ui-smoke/extract-sc021-live-chart.py | tee sc021-extract.txt
-      - name: Keep temporary inspection evidence
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply bounded SC-021 chart patch
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: python3 tools/ui-smoke/apply-sc021.py
+      - name: Commit bounded SC-021 patch if needed
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        shell: bash
+        run: |
+          if git diff --quiet -- index.html tools/ui-smoke/verify-classic-visual-fit.js; then
+            echo 'SC-021 patch already present.'
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add index.html tools/ui-smoke/verify-classic-visual-fit.js
+            git commit -m 'feat(sc021): add per-throw Classic race motion'
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          fi
+      - name: Install existing test dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          npm install --no-package-lock --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Check patch whitespace
+        run: git diff --check HEAD^ HEAD -- index.html tools/ui-smoke/verify-classic-visual-fit.js
+      - name: Run setup and full scoring journey offline
+        shell: bash
+        env:
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts
+        run: |
+          set -o pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          node tools/ui-smoke/verify-sc014.js | tee setup-results.txt
+          node tools/ui-smoke/smoke.js | tee smoke-results.txt
+          node tools/ui-smoke/verify-saveplayer-card.js | tee saved-player-results.txt
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee classic-visual-results.txt
+      - name: Keep review evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sc021-source-extract
-          path: sc021-extract.txt
+          name: setup-qa-evidence
+          path: |
+            qa-artifacts
+            *-results.txt
