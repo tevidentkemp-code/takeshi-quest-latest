@@ -24004,7 +24004,9 @@ function __sqV2SetPagerPage(panel, page, animate){
       __raceMatch.forcePractice === true || __raceMatch.isPractice === true || __raceMatch.is_practice === true || __raceMatch.practice === true;
     const __shadowRace = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() :
       !!(state?.practiceVsShadow || state?.vsShadow || state?.vs_shadow || String(state?.shadow?.mode || '').toLowerCase() === 'vsshadow' || String(__raceMatch.practiceType || '').toLowerCase() === 'vsshadow' || __raceModeKeys.includes('vsshadow'));
-    const __classicThrowRace = live.length >= 2 && !__turboRace && !__practiceRace && !__shadowRace;
+    // Current throw-by-throw race presentation is shared by competitive Classic and Turbo.
+    // Practice and Vs Shadow remain deliberately isolated from this path.
+    const __classicThrowRace = live.length >= 2 && !__practiceRace && !__shadowRace;
     const __turboStartIdx = (typeof __sqTurboRaceStartIndex === 'function') ? __sqTurboRaceStartIndex(state, roundsCount()) : (()=>{ try{ const rules = state?.match?.tournamentRules || state?.__sqTournamentDraft?.rules || window.__sqTournamentDraft?.rules || {}; return Math.max(0, Math.min(roundsCount()-1, Number(rules.startRoundIndex ?? 7))); }catch(_){ return 7; } })();
     if (__turboRace) {
       labels = labels.slice(__turboStartIdx);
@@ -29883,13 +29885,31 @@ async function __sqBuildTurboRecordPaceSeries(roundsCount, startRoundIndex) {
     if (!client) return null;
 
     const promise = (async function(){
-      const hs = await client.from('v_high_score_league_turbo_from_games_clean')
-        .select('player,best_score,best_ts,game_id')
-        .order('best_score', { ascending:false })
-        .order('best_ts', { ascending:false })
-        .limit(1);
+      // The direct Turbo ranking view can exceed the client-role statement timeout.
+      // Use the existing clean materialized game-score feed to identify the all-time Turbo PB,
+      // then keep the established round-score views below for the record's actual pace.
+      const hs = await client.from('v_latest_scores_turbo_clean')
+        .select('game_id,created_at,player_scores')
+        .order('created_at', { ascending:false })
+        .limit(5000);
       if (hs && hs.error) throw hs.error;
-      const top = Array.isArray(hs && hs.data) ? hs.data[0] : null;
+      let top = null;
+      (Array.isArray(hs && hs.data) ? hs.data : []).forEach(function(g){
+        let scores = g && g.player_scores;
+        if (typeof scores === 'string') { try{ scores = JSON.parse(scores); }catch(_){ scores = []; } }
+        if (!Array.isArray(scores)) return;
+        scores.forEach(function(r){
+          const player = String((r && (r.player_name || r.player)) || '').trim();
+          const score = Number(r && r.score);
+          if (!player || !Number.isFinite(score) || score <= 0) return;
+          const candidate = { player:player, best_score:score, best_ts:(g && g.created_at) || '', game_id:(g && g.game_id) || '' };
+          const ct = Date.parse(candidate.best_ts || '') || 0;
+          const tt = top ? (Date.parse(top.best_ts || '') || 0) : 0;
+          if (!top || score > Number(top.best_score || 0) ||
+              (score === Number(top.best_score || 0) && ct > tt) ||
+              (score === Number(top.best_score || 0) && ct === tt && String(candidate.game_id) > String(top.game_id || ''))) top = candidate;
+        });
+      });
       if (!top || !top.game_id) return null;
 
       let rr = await client.from('mv_player_round_scores_mode_clean_app')
@@ -49468,7 +49488,8 @@ body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger::after{ animation:
     }catch(_){ return false; }
   }
   function turnKey(){
-    try{ return [state.currentRound,state.currentPlayer,state.currentDart].map(v=>String(v ?? '')).join('|'); }catch(_){ return ''; }
+    // Turbo's strict clock is per 3-dart turn, not per individual dart.
+    try{ return [state.currentRound,state.currentPlayer].map(v=>String(v ?? '')).join('|'); }catch(_){ return ''; }
   }
   function clearBoxes(){
     try{ document.querySelectorAll('.livev2panel .v2ScoreBox.sqTurboTimerActive,.livev2panel .v2ScoreBox.sqTurboWarn,.livev2panel .v2ScoreBox.sqTurboDanger').forEach(el=>{ el.classList.remove('sqTurboTimerActive','sqTurboWarn','sqTurboDanger'); el.style.removeProperty('--sqTurboDeg'); }); }catch(_){ }
@@ -49478,7 +49499,6 @@ body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger::after{ animation:
   }
   function ensureTimer(){
     if (!gameActive()){ timer = null; clearBoxes(); return; }
-    if (Number(state?.currentDart || 0) !== 0){ timer = null; clearBoxes(); return; }
     const key = turnKey();
     if (!timer || timer.key !== key) timer = { key, startedAt: performance.now(), fired:false };
   }
@@ -49542,11 +49562,13 @@ body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger::after{ animation:
   function autoMissTurn(key){
     if (firing) return;
     try{
-      if (!gameActive() || !timer || timer.key !== key || Number(state?.currentDart || 0) !== 0) return;
+      if (!gameActive() || !timer || timer.key !== key) return;
+      const remaining = Math.max(0, 3 - Math.max(0, Math.min(3, Number(state?.currentDart || 0))));
+      if (!remaining) return;
       firing = true;
       try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
       try{ window.__sqDmdBulkMiss = true; }catch(_){ }
-      for (let i=0; i<3; i++){
+      for (let i=0; i<remaining; i++){
         if (state?.finished) break;
         if (typeof window.recordThrow === 'function') window.recordThrow({ kind:'Miss' });
         else if (typeof recordThrow === 'function') recordThrow({ kind:'Miss' });
@@ -49559,7 +49581,7 @@ body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger::after{ animation:
   try{
     const oldRecordThrow = window.recordThrow || (typeof recordThrow === 'function' ? recordThrow : null);
     if (oldRecordThrow && !oldRecordThrow.__sqTurboWrapped){
-      const wrapped = function(){ const ret = oldRecordThrow.apply(this, arguments); timer = null; setTimeout(renderTimer,0); return ret; };
+      const wrapped = function(){ const ret = oldRecordThrow.apply(this, arguments); setTimeout(renderTimer,0); return ret; };
       wrapped.__sqTurboWrapped = true; window.recordThrow = wrapped; try{ recordThrow = wrapped; }catch(_){ }
     }
   }catch(_){ }
