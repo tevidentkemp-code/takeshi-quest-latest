@@ -6,9 +6,8 @@ permissions:
   contents: write
 jobs:
   refine:
-    if: github.event.head_commit.message == 'SC-023: run final semantic refinement'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,7 +21,6 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           index_path = Path('index.html')
           text = index_path.read_text()
@@ -69,8 +67,6 @@ jobs:
           new_hs = """      // The live Turbo leaderboard sources were verified against the current Supabase schema.\n      // v_top50_scores_turbo_clean is mode-isolated and already ordered as the all-time\n      // Turbo score table; it identifies the same record as the heavier Turbo league view.\n      const hs = await client.from('v_top50_scores_turbo_clean')\n        .select('player_name,score,ts,game_id')\n        .order('score', { ascending:false })\n        .order('ts', { ascending:false })\n        .limit(1);\n      if (hs && hs.error) throw hs.error;\n      const topRow = Array.isArray(hs && hs.data) ? hs.data[0] : null;\n      const top = topRow ? {\n        player:String(topRow.player_name || '').trim(),\n        best_score:Number(topRow.score || 0),\n        best_ts:topRow.ts || '',\n        game_id:topRow.game_id || ''\n      } : null;\n      if (!top || !top.player || !top.game_id || !Number.isFinite(top.best_score) || top.best_score <= 0) return null;"""
           text = text[:hs_start] + new_hs + text[hs_end:]
 
-          # Guard the already-confirmed strict-turn timer fix: one clock per 3-dart visit,
-          # and a timeout fills only the remaining darts.
           required = [
               "return [state.currentRound,state.currentPlayer].map(v=>String(v ?? '')).join('|');",
               "const remaining = Math.max(0, 3 - Math.max(0, Math.min(3, Number(state?.currentDart || 0))));",
