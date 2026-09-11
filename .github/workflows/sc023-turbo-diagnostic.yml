@@ -62,14 +62,21 @@ jobs:
                     timer:ts,
                     box:box?{className:box.className,deg:box.style.getPropertyValue('--sqTurboDeg'),svg:!!box.querySelector('svg.sqTurboSvg'),dash:box.querySelector('.sqTurboProgress')?.style.strokeDashoffset||''}:null,
                     readyModal:!!document.querySelector('.sq-turbo-ready-backdrop'),
-                    packets:(window.__sc023Packets||[]).slice(-4)
+                    packets:(window.__sc023Packets||[]).slice(-2)
                   };
                 });
                 console.log(label,JSON.stringify(x,null,2));
               };
-              await snap('SNAP0');
-              await page.waitForTimeout(1200); await snap('SNAP1');
-              await page.waitForTimeout(1200); await snap('SNAP2');
+              await snap('BEFORE_READY_START');
+              const ready=page.locator('.sq-turbo-ready-start');
+              if(await ready.count()) await ready.click();
+              await page.waitForTimeout(150);
+              await snap('AFTER_READY_START_150MS');
+              await page.waitForTimeout(1100); await snap('AFTER_READY_START_1250MS');
+              await page.waitForTimeout(1100); await snap('AFTER_READY_START_2350MS');
+              const single=page.locator('#pad [data-score-label="Single"]').first();
+              if(await single.count()) await single.click();
+              await page.waitForTimeout(250); await snap('AFTER_FIRST_DART');
               console.log('CONSOLE',consoleErrs);
             }finally{await browser.close();}
           })().catch(e=>{console.error(e);process.exit(1)});
