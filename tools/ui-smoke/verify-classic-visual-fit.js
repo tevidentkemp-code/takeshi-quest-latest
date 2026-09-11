@@ -141,7 +141,7 @@ const assert = require('assert/strict');
         const start=texts.find(t=>t.text==='START'), ten=texts.find(t=>t.text==='10');
         const out={
           texts:texts.map(t=>t.text),start,ten,player:player.path,record:record.path,
-          topHits:record.path.filter(p=>Math.abs(p[1]-(classicThrowRace?25:19))<.75).length,
+          topHits:record.path.filter(p=>Math.abs(p[1]-(classicThrowRace?29:19))<.75).length,
           dotted:strokes.some(s=>s.dash.join(',')==='1.5,3.5')
         };
         host.remove(); return out;
