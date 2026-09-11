@@ -1,0 +1,489 @@
+name: SC-025 league average toggle
+on:
+  push:
+    branches:
+      - sc025-league-average-toggle
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sc025-league-average-toggle
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply bounded SC-025 patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('index.html')
+          text = path.read_text()
+
+          def replace_range(src, start_marker, end_marker, replacement):
+              start = src.index(start_marker)
+              end = src.index(end_marker, start)
+              return src[:start] + replacement + src[end:]
+
+          misfire_for_code = r'''SQ_MISFIRE.forCode = async function(code){
+  try{
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return { available:false, rows:[] };
+    const [res, names] = await Promise.all([
+      SB.from('v_player_misfires').select('player_id,cnt').eq('code', code),
+      SQ_XP.all()
+    ]);
+    if (!res || res.error || !Array.isArray(res.data)) return { available:false, rows:[] };
+    const nameMap = {}, gamesMap = {};
+    (names || []).forEach(n => {
+      nameMap[n.player_id] = n.name;
+      gamesMap[n.player_id] = Math.max(0, Number(n.games_played) || 0);
+    });
+    const rows = res.data.map(r => ({
+      player_id: r.player_id,
+      name: nameMap[r.player_id] || '—',
+      cnt: Number(r.cnt) || 0,
+      games_played: gamesMap[r.player_id] || 0
+    })).filter(r => r.cnt > 0)
+      .sort((a, b) => (b.cnt - a.cnt)
+        || String(a.name || '').localeCompare(String(b.name || ''))
+        || String(a.player_id || '').localeCompare(String(b.player_id || '')));
+    return { available:true, rows };
+  }catch(_){ return { available:false, rows:[] }; }
+};
+'''
+          text = replace_range(text, 'SQ_MISFIRE.forCode = async function(code){', 'window.SQ_MISFIRE = SQ_MISFIRE;', misfire_for_code)
+
+          ach_for_code_and_helpers = r'''SQ_ACH.forCode = async function(code){
+  try{
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return [];
+    const [res, names] = await Promise.all([
+      SB.from('v_player_achievements').select('player_id,cnt,xp').eq('code', code),
+      SQ_XP.all()
+    ]);
+    const rows = (res && res.data) || [];
+    const nameMap = {}, gamesMap = {};
+    (names || []).forEach(n => {
+      nameMap[n.player_id] = n.name;
+      gamesMap[n.player_id] = Math.max(0, Number(n.games_played) || 0);
+    });
+    return rows.map(r => ({
+      player_id: r.player_id,
+      name: nameMap[r.player_id] || '—',
+      cnt: Number(r.cnt) || 0,
+      xp: Number(r.xp) || 0,
+      games_played: gamesMap[r.player_id] || 0
+    }))
+      .filter(r => r.cnt > 0)
+      .sort((a, b) => (b.cnt - a.cnt) || (b.xp - a.xp));
+  }catch(_){ return []; }
+};
+
+// SC-025: shared per-award league helpers. ALL TIME preserves the existing
+// occurrence ranking; AVERAGE ranks the same holders by occurrences per
+// eligible Classic game from v_player_xp.games_played.
+function __sqLeagueAverageValue(row){
+  const games = Math.max(0, Number(row && row.games_played) || 0);
+  const cnt = Math.max(0, Number(row && row.cnt) || 0);
+  return games > 0 ? (cnt / games) : null;
+}
+function __sqLeagueAverageRows(rows){
+  return (rows || []).slice().sort((a, b) => {
+    const av = __sqLeagueAverageValue(a), bv = __sqLeagueAverageValue(b);
+    if (av == null && bv != null) return 1;
+    if (av != null && bv == null) return -1;
+    if (av != null && bv != null && Math.abs(bv - av) > 1e-12) return bv - av;
+    const cnt = (Number(b && b.cnt) || 0) - (Number(a && a.cnt) || 0);
+    if (cnt) return cnt;
+    const nm = String((a && a.name) || '').localeCompare(String((b && b.name) || ''));
+    if (nm) return nm;
+    return String((a && a.player_id) || '').localeCompare(String((b && b.player_id) || ''));
+  });
+}
+function __sqLeagueAverageText(row){
+  const avg = __sqLeagueAverageValue(row);
+  return avg == null ? '—' : (avg.toFixed(2) + '/game');
+}
+function __sqLeagueModeBar(titleText, activeColor, activeBg){
+  const head = document.createElement('div'); head.className = 'pp-league-mode-bar';
+  head.style.cssText = 'display:flex;align-items:center;gap:6px;margin:6px 2px 6px;min-width:0;';
+  const title = document.createElement('div'); title.className = 'pp-league-title'; title.textContent = titleText;
+  title.style.cssText = 'flex:1 1 auto;min-width:0;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6;line-height:1.2;';
+  const controls = document.createElement('div'); controls.className = 'pp-league-mode-switch';
+  controls.style.cssText = 'margin-left:auto;display:flex;gap:4px;flex:0 0 auto;';
+  const make = (mode, label) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'pp-league-mode-btn';
+    b.dataset.leagueMode = mode; b.textContent = label;
+    b.style.cssText = 'min-height:44px;min-width:58px;padding:0 7px;border-radius:9px;border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.035);color:var(--v3-muted,#a7b0c8);font-size:9px;font-weight:900;letter-spacing:.04em;white-space:nowrap;';
+    controls.appendChild(b); return b;
+  };
+  const allBtn = make('all', 'ALL TIME');
+  const avgBtn = make('average', 'AVERAGE');
+  const setActive = mode => {
+    [allBtn, avgBtn].forEach(b => {
+      const on = b.dataset.leagueMode === mode;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.style.color = on ? activeColor : 'var(--v3-muted,#a7b0c8)';
+      b.style.borderColor = on ? activeColor : 'rgba(255,255,255,.13)';
+      b.style.background = on ? activeBg : 'rgba(255,255,255,.035)';
+    });
+  };
+  head.append(title, controls); setActive('all');
+  return { el:head, title, controls, allBtn, avgBtn, setActive };
+}
+
+// Trophy detail popup: how to earn it + a leaderboard of everyone who has it.
+'''
+          text = replace_range(text, 'SQ_ACH.forCode = async function(code){', '// Trophy detail popup: how to earn it + a leaderboard of everyone who has it.', ach_for_code_and_helpers)
+
+          trophy_detail = r'''async function __sqTrophyDetail(code, earnedMap){
+  const a = SQ_ACH.meta(code); const s = SQ_ACH.tierStyle(a.tier);
+  const got = (earnedMap && earnedMap[code]) || { cnt: 0 };
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal = document.createElement('div'); modal.className = 'modal pp-trophy-detail';
+  modal.style.cssText = 'max-width:460px;width:92vw;max-height:86vh;overflow:hidden;';
+  const body = document.createElement('div'); body.className = 'modal-body'; body.style.cssText = 'overflow-y:auto;max-height:82vh;';
+  const milestone = SQ_ACH.isMilestone(code);
+  const tierName = (a.tier || 'bronze').toUpperCase() + (milestone ? ' · MILESTONE' : '');
+  const xpText = code === 'giant_slayer' ? 'Scales with the level gap' : ('+' + (a.xp || 0) + ' XP' + (milestone ? ' (one-time)' : ' each'));
+  const yours = milestone
+    ? (got.cnt > 0 ? 'Unlocked ✓' : 'Not yet unlocked')
+    : (got.cnt > 0 ? ('You’ve earned this ' + got.cnt + '×') : 'You haven’t earned this yet');
+  body.innerHTML =
+    '<div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:' + s.g + ';border:1px solid ' + s.b + ';">'
+    + '<div style="font-size:40px;line-height:1">' + a.icon + '</div>'
+    + '<div style="min-width:0"><div style="font-weight:900;font-size:20px;color:#fff">' + a.name + '</div>'
+    + '<div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:' + s.c + '">' + tierName + ' · ' + xpText + '</div></div></div>'
+    + '<div style="margin:14px 2px 4px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">How to earn</div>'
+    + '<div style="font-size:15px;font-weight:600;margin:0 2px 10px">' + a.desc + '.</div>'
+    + '<div style="font-size:12px;font-weight:800;margin:0 2px 12px;color:' + (got.cnt>0 ? '#7be0a0' : 'var(--v3-muted,#98a2b8)') + '">' + yours + '</div>';
+
+  const modeBar = __sqLeagueModeBar(milestone ? 'Milestone leaderboard' : 'Trophy leaderboard', s.c, 'rgba(255,177,74,.12)');
+  modeBar.title.classList.add('pp-trophy-leaderboard-title');
+  const loading = document.createElement('p'); loading.className = 'muted'; loading.id = 'trophyLbLoading'; loading.style.fontSize = '13px'; loading.textContent = 'Loading…';
+  const mount = document.createElement('div'); mount.className = 'pp-trophy-lb-mount';
+  body.append(modeBar.el, loading, mount);
+
+  modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
+  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0; modal.focus();
+
+  const rows = await SQ_ACH.forCode(code);
+  if (!overlay.isConnected) return;
+  loading.remove();
+  const medal = i => i === 0 ? '#ffd24a' : i === 1 ? '#cbd5e1' : i === 2 ? '#d08b5a' : 'var(--v3-muted,#98a2b8)';
+  const render = mode => {
+    modeBar.setActive(mode); mount.innerHTML = '';
+    const ordered = mode === 'average' ? __sqLeagueAverageRows(rows) : (rows || []).slice();
+    if (!ordered.length){
+      const p = document.createElement('p'); p.className = 'muted pp-trophy-lb-empty'; p.style.fontSize = '13px';
+      p.textContent = 'No one has earned this yet — be the first!'; mount.appendChild(p); return;
+    }
+    const list = document.createElement('div'); list.className = 'pp-trophy-lb'; list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+    ordered.forEach((r, i) => {
+      const row = document.createElement('div'); row.className = 'pp-trophy-lb-row';
+      row.dataset.games = String(Math.max(0, Number(r.games_played) || 0));
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);';
+      const rk = document.createElement('span'); rk.className = 'pp-trophy-lb-rank'; rk.textContent = '#' + (i + 1); rk.style.cssText = 'font-weight:900;min-width:30px;color:' + medal(i);
+      const nm = document.createElement('span'); nm.className = 'pp-trophy-lb-name'; nm.textContent = r.name; nm.style.cssText = 'flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      const ct = document.createElement('span'); ct.className = 'pp-trophy-lb-value';
+      ct.textContent = mode === 'average' ? __sqLeagueAverageText(r) : (milestone ? '✓' : ('×' + r.cnt));
+      ct.title = mode === 'average' ? ((Number(r.cnt)||0) + ' occurrence(s) over ' + (Number(r.games_played)||0) + ' eligible games') : '';
+      ct.style.cssText = 'font-weight:900;color:' + (mode === 'average' ? s.c : (milestone ? '#2fd06b' : '#ffb14a')) + ';white-space:nowrap;';
+      row.append(rk, nm, ct); list.appendChild(row);
+    });
+    mount.appendChild(list);
+  };
+  modeBar.allBtn.onclick = () => render('all');
+  modeBar.avgBtn.onclick = () => render('average');
+  render('all');
+
+  const foot = document.createElement('div'); foot.style.cssText = 'margin-top:14px;text-align:center;';
+  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Close'; cb.onclick = () => overlay.remove();
+  foot.appendChild(cb); body.appendChild(foot);
+}
+'''
+          text = replace_range(text, 'async function __sqTrophyDetail(code, earnedMap){', '// Per-game trophy detector for live celebration toasts.', trophy_detail + '\n// Per-game trophy detector for live celebration toasts.')
+
+          misfire_detail = r'''async function __sqMisfireDetail(code, misfireMap){
+  const m = (SQ_MISFIRE.CATALOG || []).find(x => x.code === code);
+  if (!m) return;
+  const got = (misfireMap && misfireMap[code]) || { cnt:0 };
+  const cnt = Math.max(0, Number(got.cnt) || 0);
+  const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
+  const modal = document.createElement('div'); modal.className = 'modal pp-misfire-detail';
+  modal.style.cssText = 'max-width:460px;width:92vw;max-height:86vh;overflow:hidden;';
+  const body = document.createElement('div'); body.className = 'modal-body'; body.style.cssText = 'overflow-y:auto;max-height:82vh;';
+  body.innerHTML =
+    '<div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:linear-gradient(135deg,rgba(127,29,29,.52),rgba(69,10,10,.82));border:1px solid rgba(248,113,113,.42);">'
+    + '<div style="font-size:40px;line-height:1">' + m.icon + '</div>'
+    + '<div style="min-width:0"><div style="font-weight:900;font-size:20px;color:#fff">' + m.name + '</div>'
+    + '<div style="font-size:11px;font-weight:900;letter-spacing:.08em;color:#fecaca">MISFIRE · ' + m.penalty + ' XP</div></div></div>'
+    + '<div style="margin:14px 2px 4px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">How it happens</div>'
+    + '<div style="font-size:15px;font-weight:600;margin:0 2px 10px">' + m.desc + '.</div>'
+    + '<div class="pp-misfire-detail-count" style="font-size:12px;font-weight:800;margin:0 2px 12px;color:' + (cnt > 0 ? '#fecaca' : 'var(--v3-muted,#98a2b8)') + '">' + (cnt > 0 ? ('Recorded ×' + cnt + ' historically') : 'Not recorded yet') + '</div>';
+
+  const modeBar = __sqLeagueModeBar('Misfire leaderboard', '#fca5a5', 'rgba(248,113,113,.13)');
+  modeBar.title.classList.add('pp-misfire-leaderboard-title');
+  const loading = document.createElement('p'); loading.className = 'muted'; loading.id = 'misfireLbLoading'; loading.style.fontSize = '13px'; loading.textContent = 'Loading…';
+  const mount = document.createElement('div'); mount.className = 'pp-misfire-lb-mount';
+  const rule = document.createElement('div'); rule.className = 'muted pp-misfire-detail-rule'; rule.style.cssText = 'font-size:10px;line-height:1.4;margin:12px 2px 0';
+  rule.textContent = 'Historical counts can include earlier Official/Classic games. XP penalties apply only from 5 Sep 2026 20:13 UTC. Only the worst Misfire applies per game; the maximum deduction is 5 XP per game.';
+  body.append(modeBar.el, loading, mount, rule);
+
+  modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
+  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  modal.tabIndex = 0; modal.focus();
+
+  const lbState = await SQ_MISFIRE.forCode(code);
+  if (!overlay.isConnected) return;
+  loading.remove();
+  const medal = i => i === 0 ? '#ffd24a' : i === 1 ? '#cbd5e1' : i === 2 ? '#d08b5a' : 'var(--v3-muted,#98a2b8)';
+  const render = mode => {
+    modeBar.setActive(mode); mount.innerHTML = '';
+    if (!lbState || !lbState.available){
+      const p = document.createElement('p'); p.className = 'muted pp-misfire-lb-unavailable'; p.style.fontSize = '13px';
+      p.textContent = 'Misfire leaderboard is unavailable right now.'; mount.appendChild(p); return;
+    }
+    const ordered = mode === 'average' ? __sqLeagueAverageRows(lbState.rows) : (lbState.rows || []).slice();
+    if (!ordered.length){
+      const p = document.createElement('p'); p.className = 'muted pp-misfire-lb-empty'; p.style.fontSize = '13px';
+      p.textContent = 'No one has recorded this Misfire yet.'; mount.appendChild(p); return;
+    }
+    const list = document.createElement('div'); list.className = 'pp-misfire-lb'; list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+    ordered.forEach((r, i) => {
+      const row = document.createElement('div'); row.className = 'pp-misfire-lb-row';
+      row.dataset.games = String(Math.max(0, Number(r.games_played) || 0));
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(127,29,29,.16);border:1px solid rgba(248,113,113,.16);';
+      const rk = document.createElement('span'); rk.className = 'pp-misfire-lb-rank'; rk.textContent = '#' + (i + 1); rk.style.cssText = 'font-weight:900;min-width:30px;color:' + medal(i);
+      const nm = document.createElement('span'); nm.className = 'pp-misfire-lb-name'; nm.textContent = r.name; nm.style.cssText = 'flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      const ct = document.createElement('span'); ct.className = 'pp-misfire-lb-count';
+      ct.textContent = mode === 'average' ? __sqLeagueAverageText(r) : ('×' + r.cnt);
+      ct.title = mode === 'average' ? ((Number(r.cnt)||0) + ' occurrence(s) over ' + (Number(r.games_played)||0) + ' eligible games') : '';
+      ct.style.cssText = 'font-weight:900;color:#fca5a5;white-space:nowrap;';
+      row.append(rk, nm, ct); list.appendChild(row);
+    });
+    mount.appendChild(list);
+  };
+  modeBar.allBtn.onclick = () => render('all');
+  modeBar.avgBtn.onclick = () => render('average');
+  render('all');
+
+  const foot = document.createElement('div'); foot.style.cssText = 'margin-top:14px;text-align:center;';
+  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Close'; cb.onclick = () => overlay.remove();
+  foot.appendChild(cb); body.appendChild(foot);
+}
+'''
+          text = replace_range(text, 'async function __sqMisfireDetail(code, misfireMap){', 'function __sqMisfireCase(misfireState, xpRow){', misfire_detail + '\nfunction __sqMisfireCase(misfireState, xpRow){')
+
+          path.write_text(text)
+
+          test_path = Path('tools/ui-smoke/verify-sc009.js')
+          test = test_path.read_text()
+
+          before_click = "  await page.click('.sq-stats-modal .pp-misfire-card[data-code=\"bull_blind\"]');"
+          inject_cache = r'''  // SC-025: give the two fixture players different eligible-game denominators so
+  // ALL TIME and AVERAGE have provably different rankings.
+  await page.evaluate(() => {
+    if (!window.SQ_XP) return;
+    window.SQ_XP._cache = [
+      { player_id:'p1', name:'Alex S', games_played:12, total_xp:151 },
+      { player_id:'p2', name:'Sam T',  games_played:2,  total_xp:300 },
+    ];
+    window.SQ_XP._cacheAt = Date.now();
+  });
+
+'''
+          if test.count(before_click) != 1:
+              raise SystemExit(f'expected one Bull Blind click, found {test.count(before_click)}')
+          test = test.replace(before_click, inject_cache + before_click, 1)
+
+          close_old = "  await page.click('.pp-misfire-detail button');\n  await page.waitForFunction(() => !document.querySelector('.pp-misfire-detail'));\n  check('Misfire leaderboard Close dismisses modal', true);"
+          close_new = r'''  const mfModes = await page.evaluate(() => {
+    const d = document.querySelector('.pp-misfire-detail');
+    const buttons = d ? Array.from(d.querySelectorAll('.pp-league-mode-btn')).map(b => ({
+      text:(b.textContent || '').trim(), mode:b.dataset.leagueMode || '', pressed:b.getAttribute('aria-pressed')
+    })) : [];
+    return buttons;
+  });
+  check('Misfire leaderboard exposes ALL TIME / AVERAGE with ALL TIME default', mfModes.length === 2 && mfModes[0].text === 'ALL TIME' && mfModes[0].pressed === 'true' && mfModes[1].text === 'AVERAGE' && mfModes[1].pressed === 'false', JSON.stringify(mfModes));
+
+  await page.click('.pp-misfire-detail .pp-league-mode-btn[data-league-mode="average"]');
+  const mfAverage = await page.evaluate(() => Array.from(document.querySelectorAll('.pp-misfire-detail .pp-misfire-lb-row')).map(row => ({
+    rank:(row.querySelector('.pp-misfire-lb-rank')||{}).textContent || '',
+    name:(row.querySelector('.pp-misfire-lb-name')||{}).textContent || '',
+    value:(row.querySelector('.pp-misfire-lb-count')||{}).textContent || '',
+    games:Number(row.dataset.games || 0),
+  })));
+  check('Misfire AVERAGE ranks occurrences per eligible game', mfAverage[0] && mfAverage[0].name === 'Sam T' && mfAverage[0].value === '1.00/game' && mfAverage[0].games === 2 && mfAverage[1] && mfAverage[1].name === 'Alex S' && mfAverage[1].value === '0.25/game' && mfAverage[1].games === 12, JSON.stringify(mfAverage));
+
+  await page.click('.pp-misfire-detail .pp-league-mode-btn[data-league-mode="all"]');
+  const mfAllAgain = await page.evaluate(() => Array.from(document.querySelectorAll('.pp-misfire-detail .pp-misfire-lb-row')).map(row => ({
+    name:(row.querySelector('.pp-misfire-lb-name')||{}).textContent || '', value:(row.querySelector('.pp-misfire-lb-count')||{}).textContent || ''
+  })));
+  check('Misfire ALL TIME restores existing count ranking', mfAllAgain[0] && mfAllAgain[0].name === 'Alex S' && mfAllAgain[0].value === '×3' && mfAllAgain[1] && mfAllAgain[1].name === 'Sam T' && mfAllAgain[1].value === '×2', JSON.stringify(mfAllAgain));
+
+  await page.evaluate(() => {
+    const d = document.querySelector('.pp-misfire-detail');
+    const b = d && Array.from(d.querySelectorAll('button')).find(x => /^close$/i.test((x.textContent || '').trim()));
+    if (b) b.click();
+  });
+  await page.waitForFunction(() => !document.querySelector('.pp-misfire-detail'));
+  check('Misfire leaderboard Close dismisses modal', true);'''
+          if test.count(close_old) != 1:
+              raise SystemExit(f'expected one old Misfire close block, found {test.count(close_old)}')
+          test = test.replace(close_old, close_new, 1)
+
+          insertion_marker = "\n  const realErrs = consoleErrs.filter"
+          if test.count(insertion_marker) != 1:
+              raise SystemExit(f'expected one final error marker, found {test.count(insertion_marker)}')
+          positive_tests = r'''
+
+  // SC-025 positive Trophy/Award and Milestone parity. Reuse the existing
+  // player-name/game denominator truth while making award counts deterministic.
+  await page.evaluate(() => {
+    const baseSb = window.sb;
+    const byCode = {
+      giant_slayer: [
+        { player_id:'p1', cnt:3, xp:30 },
+        { player_id:'p2', cnt:2, xp:20 },
+      ],
+      score_100: [
+        { player_id:'p1', cnt:1, xp:30 },
+        { player_id:'p2', cnt:1, xp:30 },
+      ],
+    };
+    const wrapped = {
+      from(table){
+        if (table !== 'v_player_achievements') return baseSb.from(table);
+        let selectedCode = '';
+        const q = {
+          select(){ return q; },
+          eq(col, value){ if (col === 'code') selectedCode = String(value || ''); return q; },
+          then(resolve){ resolve({ data:(byCode[selectedCode] || []).map(r => ({ ...r })), error:null }); },
+          catch(){ return q; },
+        };
+        return q;
+      }
+    };
+    window.sb = wrapped; window.__sb = wrapped;
+    if (window.SQ_XP){
+      window.SQ_XP._cache = [
+        { player_id:'p1', name:'Alex S', games_played:12, total_xp:151 },
+        { player_id:'p2', name:'Sam T', games_played:2, total_xp:300 },
+      ];
+      window.SQ_XP._cacheAt = Date.now();
+    }
+  });
+
+  await page.evaluate(() => __sqTrophyDetail('giant_slayer', { giant_slayer:{ cnt:3, xp:30 } }));
+  await page.waitForFunction(() => {
+    const d = document.querySelector('.pp-trophy-detail');
+    return !!d && !d.querySelector('#trophyLbLoading') && d.querySelectorAll('.pp-trophy-lb-row').length === 2;
+  });
+  const trophyAll = await page.evaluate(() => {
+    const d = document.querySelector('.pp-trophy-detail');
+    return {
+      modes:Array.from(d.querySelectorAll('.pp-league-mode-btn')).map(b => ({ text:(b.textContent||'').trim(), pressed:b.getAttribute('aria-pressed') })),
+      rows:Array.from(d.querySelectorAll('.pp-trophy-lb-row')).map(row => ({
+        name:(row.querySelector('.pp-trophy-lb-name')||{}).textContent || '',
+        value:(row.querySelector('.pp-trophy-lb-value')||{}).textContent || '',
+        games:Number(row.dataset.games || 0),
+      })),
+    };
+  });
+  check('Trophy/Award popup exposes ALL TIME / AVERAGE with ALL TIME default', trophyAll.modes.length === 2 && trophyAll.modes[0].text === 'ALL TIME' && trophyAll.modes[0].pressed === 'true' && trophyAll.modes[1].text === 'AVERAGE' && trophyAll.modes[1].pressed === 'false', JSON.stringify(trophyAll));
+  check('Trophy/Award ALL TIME preserves existing count ranking', trophyAll.rows[0] && trophyAll.rows[0].name === 'Alex S' && trophyAll.rows[0].value === '×3' && trophyAll.rows[1] && trophyAll.rows[1].name === 'Sam T' && trophyAll.rows[1].value === '×2', JSON.stringify(trophyAll.rows));
+
+  await page.click('.pp-trophy-detail .pp-league-mode-btn[data-league-mode="average"]');
+  const trophyAvg = await page.evaluate(() => Array.from(document.querySelectorAll('.pp-trophy-detail .pp-trophy-lb-row')).map(row => ({
+    name:(row.querySelector('.pp-trophy-lb-name')||{}).textContent || '',
+    value:(row.querySelector('.pp-trophy-lb-value')||{}).textContent || '',
+    games:Number(row.dataset.games || 0),
+  })));
+  check('Trophy/Award AVERAGE ranks occurrences per eligible game', trophyAvg[0] && trophyAvg[0].name === 'Sam T' && trophyAvg[0].value === '1.00/game' && trophyAvg[0].games === 2 && trophyAvg[1] && trophyAvg[1].name === 'Alex S' && trophyAvg[1].value === '0.25/game' && trophyAvg[1].games === 12, JSON.stringify(trophyAvg));
+
+  await page.setViewportSize({ width:320, height:844 });
+  const compact = await page.evaluate(() => {
+    const d = document.querySelector('.pp-trophy-detail');
+    const bar = d && d.querySelector('.pp-league-mode-bar');
+    const controls = d && d.querySelector('.pp-league-mode-switch');
+    if (!d || !bar || !controls) return null;
+    const dr=d.getBoundingClientRect(), cr=controls.getBoundingClientRect();
+    return { modalLeft:dr.left, modalRight:dr.right, controlsLeft:cr.left, controlsRight:cr.right, width:innerWidth };
+  });
+  check('League mode controls fit 320px mobile width', !!compact && compact.modalLeft >= -1 && compact.modalRight <= compact.width + 1 && compact.controlsLeft >= compact.modalLeft - 1 && compact.controlsRight <= compact.modalRight + 1, JSON.stringify(compact));
+  await page.setViewportSize({ width:390, height:844 });
+
+  await page.evaluate(() => {
+    const d = document.querySelector('.pp-trophy-detail');
+    const b = d && Array.from(d.querySelectorAll('button')).find(x => /^close$/i.test((x.textContent || '').trim()));
+    if (b) b.click();
+  });
+  await page.waitForFunction(() => !document.querySelector('.pp-trophy-detail'));
+
+  await page.evaluate(() => __sqTrophyDetail('score_100', { score_100:{ cnt:1, xp:30 } }));
+  await page.waitForFunction(() => {
+    const d = document.querySelector('.pp-trophy-detail');
+    return !!d && !d.querySelector('#trophyLbLoading') && d.querySelectorAll('.pp-trophy-lb-row').length === 2;
+  });
+  const milestoneAll = await page.evaluate(() => ({
+    title:(document.querySelector('.pp-trophy-detail .pp-trophy-leaderboard-title')||{}).textContent || '',
+    rows:Array.from(document.querySelectorAll('.pp-trophy-detail .pp-trophy-lb-row')).map(row => ({
+      name:(row.querySelector('.pp-trophy-lb-name')||{}).textContent || '', value:(row.querySelector('.pp-trophy-lb-value')||{}).textContent || ''
+    }))
+  }));
+  check('Milestone popup uses the same two-mode league and preserves ALL TIME ticks', /Milestone leaderboard/i.test(milestoneAll.title) && milestoneAll.rows.length === 2 && milestoneAll.rows.every(r => r.value === '✓'), JSON.stringify(milestoneAll));
+  await page.click('.pp-trophy-detail .pp-league-mode-btn[data-league-mode="average"]');
+  const milestoneAvg = await page.evaluate(() => Array.from(document.querySelectorAll('.pp-trophy-detail .pp-trophy-lb-row')).map(row => ({
+    name:(row.querySelector('.pp-trophy-lb-name')||{}).textContent || '', value:(row.querySelector('.pp-trophy-lb-value')||{}).textContent || ''
+  })));
+  check('Milestone AVERAGE ranks unlocks per eligible game', milestoneAvg[0] && milestoneAvg[0].name === 'Sam T' && milestoneAvg[0].value === '0.50/game' && milestoneAvg[1] && milestoneAvg[1].name === 'Alex S' && milestoneAvg[1].value === '0.08/game', JSON.stringify(milestoneAvg));
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('.pp-trophy-detail'));
+'''
+          test = test.replace(insertion_marker, positive_tests + insertion_marker, 1)
+          test_path.write_text(test)
+          PY
+          git diff --check
+          node --check tools/ui-smoke/verify-sc009.js
+          git diff --stat
+      - name: Install UI test dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          npm install --no-package-lock --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Run SC-025 and standard regressions
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          node tools/ui-smoke/verify-sc008.js
+          node tools/ui-smoke/verify-sc009.js
+          node tools/ui-smoke/verify-sc010.js
+          node tools/ui-smoke/verify-sc014.js
+          node tools/ui-smoke/smoke.js
+          node tools/ui-smoke/verify-saveplayer-card.js
+      - name: Commit bounded SC-025 product and regression files
+        shell: bash
+        run: |
+          git diff --check
+          git rm .github/workflows/sc025-build.yml
+          git add index.html tools/ui-smoke/verify-sc009.js
+          git status --short
+          git config user.name 'tevidentkemp-code'
+          git config user.email 'tevidentkemp@gmail.com'
+          git commit -m 'SC-025: add all-time and average award leagues'
+          git push origin HEAD:sc025-league-average-toggle
