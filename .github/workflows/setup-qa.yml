@@ -24,7 +24,18 @@ jobs:
           node-version: 22
       - name: Apply bounded SC-021 chart patch
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        run: python3 tools/ui-smoke/apply-sc021.py
+        shell: bash
+        run: |
+          if grep -q 'classicThrowRace' index.html; then
+            echo 'SC-021 base patch already present.'
+          else
+            python3 tools/ui-smoke/apply-sc021.py
+          fi
+          if grep -q "classicThrowRace ? 29" index.html; then
+            echo 'SC-021 spacing refinement already present.'
+          else
+            python3 tools/ui-smoke/refine-sc021.py
+          fi
       - name: Commit bounded SC-021 patch if needed
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         shell: bash
@@ -35,7 +46,7 @@ jobs:
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add index.html tools/ui-smoke/verify-classic-visual-fit.js
-            git commit -m 'feat(sc021): add per-throw Classic race motion'
+            git commit -m 'fix(sc021): refine chart legend spacing'
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
           fi
       - name: Install existing test dependencies
