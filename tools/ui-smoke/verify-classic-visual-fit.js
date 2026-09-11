@@ -138,9 +138,10 @@ const assert = require('assert/strict');
         },motion,performance.now()+1000);
         const player=strokes.filter(s=>s.dash.join(',')==='1.5,3.5').sort((a,b)=>b.path.length-a.path.length)[0]||{path:[]};
         const record=strokes.filter(s=>s.dash.join(',')==='5,4'&&s.path.length>2).sort((a,b)=>b.path.length-a.path.length)[0]||{path:[]};
-        const start=texts.find(t=>t.text==='START'), ten=texts.find(t=>t.text==='10');
+        const legend=strokes.find(s=>s.dash.join(',')==='5,4'&&s.path.length===2)||{path:[]};
+        const start=texts.find(t=>t.text==='START'), ten=texts.find(t=>t.text==='10'), highScore=texts.find(t=>t.text==='High Score');
         const out={
-          texts:texts.map(t=>t.text),start,ten,player:player.path,record:record.path,
+          texts:texts.map(t=>t.text),start,ten,highScore,legend:legend.path,player:player.path,record:record.path,
           topHits:record.path.filter(p=>Math.abs(p[1]-(classicThrowRace?29:19))<.75).length,
           dotted:strokes.some(s=>s.dash.join(',')==='1.5,3.5')
         };
@@ -151,6 +152,7 @@ const assert = require('assert/strict');
     assert(sc021.classic.texts.includes('START'),'Classic race labels START origin');
     assert(sc021.classic.texts.includes('High Score'),'Classic race moves High Score into legend');
     assert(!sc021.classic.texts.includes('HS'),'Classic race removes in-chart HS tip');
+    assert(sc021.classic.highScore && sc021.classic.legend.length===2 && sc021.classic.legend[0][0] > sc021.classic.highScore.x,'Classic legend renders High Score before its dashed key');
     assert(sc021.classic.start && sc021.classic.ten && sc021.classic.start.x < sc021.classic.ten.x,'10 is first target notch after START');
     assert(sc021.classic.dotted,'Classic player trajectory is faint dotted');
     assert.equal(sc021.classic.player.length,4,'START plus three throw positions are plotted');
@@ -160,7 +162,7 @@ const assert = require('assert/strict');
     assert(sc021.classic.player[3][1] < sc021.classic.player[2][1],'scoring dart advances horizontally and upward');
     assert.equal(sc021.classic.topHits,1,'Classic high-score reference still terminates once at chart ceiling');
     assert(!sc021.legacy.texts.includes('START') && !sc021.legacy.texts.includes('High Score') && !sc021.legacy.dotted,'non-Classic renderer path stays unchanged');
-    console.log('PASS SC-021 START / per-throw motion / dotted trajectory / HS legend isolation');
+    console.log('PASS SC-021 START / per-throw motion / dotted trajectory / High Score --- legend isolation');
 
     await page.setViewportSize({width:390,height:844});
     for (const type of ['lastDartImg','desmondImg','voldyImg']) {
