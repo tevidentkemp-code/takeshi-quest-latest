@@ -2883,15 +2883,10 @@ body.sq-mode-turbo[data-page="game"] .livev2panel .v2ScoreBox.active .v2Total{
   text-shadow:0 0 14px var(--sqTurboGlow)!important;
 }
 
-body.sq-mode-turbo[data-page="game"] .livev2panel .v2Dot.next,
 body.sq-mode-turbo[data-page="game"] .livev2panel .v2WinDot.on{
   background:var(--sqTurboAccent)!important;
   border-color:rgba(0,245,255,.70)!important;
   box-shadow:0 0 12px var(--sqTurboGlow)!important;
-}
-body.sq-mode-turbo[data-page="game"] .livev2panel .v2Dot.next::before{
-  background:var(--sqTurboAccent)!important;
-  box-shadow:0 0 8px var(--sqTurboGlow)!important;
 }
 
 body.sq-mode-turbo[data-page="game"] .livev2panel .v2Badge.active,
@@ -7983,7 +7978,8 @@ body.livev2-on[data-page="game"] .sqMomentumRow.is-active .sqMomentumMeta{
   align-items:center;
   justify-content: center;
   gap: 7px;
-  padding: 0;
+  padding: 0 0 48px;
+  box-sizing:border-box;
 }
 .livev2panel .v2Dot{
   width:22px; height:22px; border-radius:7px;
@@ -8004,6 +8000,16 @@ body.livev2-on[data-page="game"] .sqMomentumRow.is-active .sqMomentumMeta{
   content:"";
   width:7px; height:7px; border-radius:50%;
   background:rgba(214,222,240,.22);
+}
+.livev2panel .v2Dot.idle{
+  border-color:rgba(255,106,0,.72);
+  background:rgba(255,106,0,.06);
+  box-shadow:0 0 8px rgba(255,106,0,.24);
+  opacity:.92;
+}
+.livev2panel .v2Dot.idle::before{
+  background:#ff6a00;
+  box-shadow:0 0 6px rgba(255,106,0,.7);
 }
 .livev2panel .v2Dot.next{
   border-color:#ff6a00;
@@ -8487,7 +8493,7 @@ body.livev2-on[data-page="game"] .livev2panel[style*="--sqV2P: 1"] .v2Rows .v2Ce
   color:rgba(180,196,222,.66);
 }
 .livev2panel .v2MiniMetric strong{
-  font-size:10px;
+  font-size:12px;
   line-height:1;
   font-weight:900;
   color:rgba(245,248,255,.94);
@@ -10667,12 +10673,23 @@ body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn.skip .dtIcon{
   padding-right:.14em;
 }
 body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn.miss .dtIcon{
-  font-size:17px !important;
+  font-size:19px !important;
   line-height:.75 !important;
   -webkit-text-stroke:.3px currentColor;
 }
 body.livev2-on:not(.livev3-on)[data-page="game"] #settingsBtnGamePad{
   font-size:20px !important;
+  flex-direction:column !important;
+  gap:2px !important;
+  line-height:.9 !important;
+}
+body.livev2-on:not(.livev3-on)[data-page="game"] #settingsBtnGamePad::after{
+  content:"SET" !important;
+  display:block;
+  font-size:clamp(10px,2.8vw,12px) !important;
+  line-height:1.1 !important;
+  font-weight:900;
+  letter-spacing:.04em;
 }
 body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtBullBtn[data-score-label]{
   display:flex;
@@ -27274,23 +27291,39 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
     // Smoothly ease the vertical scale so the whole graph grows fluidly.
     st.maxV = st.maxV ? st.maxV + (targetMax - st.maxV) * 0.14 : targetMax;
     const maxV = st.maxV;
-    // Classic still identifies each series, including dotted Shadow references.
+    // Classic keeps the High Score key on the same compact row as player keys.
+    // Player labels are proportionally constrained only when the available
+    // canvas width would otherwise push the gold dash beyond the right edge.
     if (packet) {
       ctx.font = '800 9px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      const legendLabels = packet.series.map(s => String(s.name || '').replace(/^Record:/i,'HS').slice(0,12));
       let keyX = 26;
-      for (const s of packet.series) {
-        const label = String(s.name || '').replace(/^Record:/i,'HS').slice(0,12);
-        ctx.fillStyle = s.color || '#7bdcff'; ctx.fillText(label, keyX, 3);
-        keyX += ctx.measureText(label).width + 12;
+      const singleRowHs = classicThrowRace && records.length;
+      const keyGap = singleRowHs ? 6 : 12;
+      const naturalWidths = legendLabels.map(label => ctx.measureText(label).width);
+      let playerScale = 1;
+      if (singleRowHs){
+        const hsWidth = ctx.measureText('High Score').width;
+        const playerWidth = naturalWidths.reduce((sum, width) => sum + width, 0);
+        const playerSpace = Math.max(1, (cssW - 12) - keyX - hsWidth - 5 - 18 - (keyGap * legendLabels.length));
+        if (playerWidth > playerSpace) playerScale = playerSpace / playerWidth;
       }
-      if (classicThrowRace && records.length){
+      packet.series.forEach((s, i) => {
+        const label = legendLabels[i];
+        const drawWidth = naturalWidths[i] * playerScale;
+        ctx.fillStyle = s.color || '#7bdcff';
+        if (playerScale < 1) ctx.fillText(label, keyX, 3, Math.max(1, drawWidth));
+        else ctx.fillText(label, keyX, 3);
+        keyX += drawWidth + keyGap;
+      });
+      if (singleRowHs){
         ctx.save();
         ctx.setLineDash([]); ctx.fillStyle = 'rgba(255,224,150,.88)';
         const hsLabel = 'High Score';
-        ctx.fillText(hsLabel, 26, 14);
-        const hsDashX = 31 + ctx.measureText(hsLabel).width;
+        ctx.fillText(hsLabel, keyX, 3);
+        const hsDashX = keyX + ctx.measureText(hsLabel).width + 5;
         ctx.setLineDash([5,4]); ctx.strokeStyle = records[0].color || 'rgba(255,214,110,.9)'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(hsDashX, 19); ctx.lineTo(hsDashX + 18, 19); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(hsDashX, 8); ctx.lineTo(hsDashX + 18, 8); ctx.stroke();
         ctx.restore();
       }
     }
