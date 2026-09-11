@@ -3,7 +3,184 @@ const H = require('./harness');
 const fs = require('fs');
 const path = require('path');
 const assert = require('assert/strict');
+
+const GAME_STORAGE_KEY = 'shateki_quest_scorer_v6';
+const BROWSER_NOISE = /supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource|Content Security Policy|connect-src/i;
+
+async function installRacePacketCapture(page){
+  await page.evaluate(() => {
+    const original = window.__sqDrawArcadeRace;
+    if (typeof original !== 'function') throw new Error('Race renderer unavailable');
+    window.__sc021RacePackets = [];
+    window.__sqDrawArcadeRace = function(canvas, packet, st, now){
+      if (packet){
+        const currentState = (typeof state !== 'undefined' && state) ? state : (window.state || {});
+        const match = currentState.match || {};
+        const packets = window.__sc021RacePackets;
+        packets.push({
+          classicThrowRace: packet.classicThrowRace === true,
+          mode: currentState.mode ?? null,
+          gameMode: currentState.gameMode ?? null,
+          game_mode: currentState.game_mode ?? null,
+          matchMode: match.mode ?? null,
+          matchGameMode: match.gameMode ?? null,
+          matchGame_mode: match.game_mode ?? null,
+          forcePractice: match.forcePractice === true,
+          practiceType: match.practiceType ?? null,
+          shadowRuntime: (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false
+        });
+        if (packets.length > 24) packets.shift();
+      }
+      return original.apply(this, arguments);
+    };
+  });
+}
+
+async function clearRacePackets(page){
+  await page.evaluate(() => { window.__sc021RacePackets = []; });
+}
+
+async function waitForRacePacket(page, classicThrowRace, markers = {}){
+  await page.waitForFunction(({ expected, markers }) => {
+    return Array.isArray(window.__sc021RacePackets) && window.__sc021RacePackets.some(packet =>
+      packet.classicThrowRace === expected && Object.entries(markers).every(([key, value]) => packet[key] === value)
+    );
+  }, { expected: classicThrowRace, markers });
+  return page.evaluate(({ expected, markers }) => {
+    return window.__sc021RacePackets.slice().reverse().find(packet =>
+      packet.classicThrowRace === expected && Object.entries(markers).every(([key, value]) => packet[key] === value)
+    );
+  }, { expected: classicThrowRace, markers });
+}
+
+function assertNoUnexpectedErrors(consoleErrs, label){
+  const unexpected = consoleErrs.filter(error => !BROWSER_NOISE.test(error));
+  assert.deepEqual(unexpected, [], `${label}: ${unexpected.join('\n')}`);
+}
+
+async function startNewRaceGame(page, mode){
+  await page.click('#startGameBtn'); await page.waitForTimeout(400);
+  await page.click(mode === 'practice' ? '#practiceBtn' : '#questBtn'); await page.waitForTimeout(400);
+  await page.click(mode === 'practice' ? '#practiceClassicBtn' : '#matchTurboBtn'); await page.waitForTimeout(700);
+  await H.addGuests(page, ['QA ALPHA', 'QA BETA']);
+  await H.startMatch(page);
+}
+
+async function verifyNewRaceRoute(mode, expected){
+  const {browser, page, consoleErrs} = await H.launch({width:390,height:844});
+  try {
+    await H.boot(page);
+    await installRacePacketCapture(page);
+    await startNewRaceGame(page, mode);
+    const packet = await waitForRacePacket(page, expected, {matchMode:mode});
+    assert.equal(packet.classicThrowRace, expected, `${mode} new-game routing`);
+    assertNoUnexpectedErrors(consoleErrs, `${mode} new-game routing`);
+    const savedState = await page.evaluate(key => localStorage.getItem(key), GAME_STORAGE_KEY);
+    assert(savedState, `${mode} new game writes a resumable cache`);
+    console.log(`PASS SC-021 new-game ${mode} routes classicThrowRace=${expected}`);
+    return savedState;
+  } finally { await browser.close(); }
+}
+
+async function verifyResumedRaceRoute(label, savedState, expected){
+  const {browser, ctx, page, consoleErrs} = await H.launch({width:390,height:844});
+  try {
+    await ctx.addInitScript(({key, value}) => localStorage.setItem(key, value), {key:GAME_STORAGE_KEY, value:savedState});
+    await H.boot(page);
+    await installRacePacketCapture(page);
+    assert(await page.isVisible('#resumeBtn'), `${label}: Resume Game is visible`);
+    await page.click('#resumeBtn');
+    await page.waitForFunction(() => document.body.dataset.page === 'game');
+    const packet = await waitForRacePacket(page, expected);
+    assert.equal(packet.classicThrowRace, expected, `${label} Resume routing`);
+    assertNoUnexpectedErrors(consoleErrs, `${label} Resume routing`);
+    console.log(`PASS SC-021 resumed ${label} routes classicThrowRace=${expected}`);
+  } finally { await browser.close(); }
+}
+
+async function verifyVsShadowAndPracticeAliasRoutes(){
+  const {browser, page, consoleErrs} = await H.launch({width:390,height:844});
+  try {
+    await H.boot(page);
+    await installRacePacketCapture(page);
+    await H.toMatchCard(page);
+    await H.addGuests(page, ['QA ALPHA', 'QA BETA']);
+    await H.startMatch(page);
+    await waitForRacePacket(page, true, {matchMode:'match'});
+
+    await clearRacePackets(page);
+    await page.evaluate(() => {
+      state.match = Object.assign({}, state.match || {}, {mode:'match', forcePractice:false, practiceType:'vsShadow'});
+      state.shadow = {mode:'vsShadow'};
+      window.__sqV2InfoDmdUpdate();
+    });
+    await waitForRacePacket(page, false, {shadowRuntime:true, practiceType:'vsShadow'});
+    console.log('PASS SC-021 Vs Shadow runtime helper routes classicThrowRace=false');
+
+    for (const field of ['gameMode', 'game_mode']){
+      await clearRacePackets(page);
+      await page.evaluate(field => {
+        delete state.shadow;
+        state.match = Object.assign({}, state.match || {}, {mode:'match', forcePractice:false, practiceType:null});
+        delete state.match.gameMode;
+        delete state.match.game_mode;
+        state.match[field] = 'practice';
+        window.__sqV2InfoDmdUpdate();
+      }, field);
+      await waitForRacePacket(page, false, {[field === 'gameMode' ? 'matchGameMode' : 'matchGame_mode']:'practice'});
+    }
+    assertNoUnexpectedErrors(consoleErrs, 'Vs Shadow and Practice alias routing');
+    console.log('PASS SC-021 match.gameMode and match.game_mode route classicThrowRace=false');
+  } finally { await browser.close(); }
+}
+
+async function verifyTrainingRoute(){
+  const {browser, page, consoleErrs} = await H.launch({width:390,height:844});
+  try {
+    await H.boot(page);
+    await installRacePacketCapture(page);
+    await page.evaluate(() => {
+      const makeQuery = () => {
+        const base = {then:resolve => resolve({data:[], error:null}), catch(){ return query; }};
+        const query = new Proxy(base, {get(target, property){ return property in target ? target[property] : () => query; }});
+        return query;
+      };
+      const offlineSb = {from:() => makeQuery()};
+      window.sb = offlineSb;
+      window.__sb = offlineSb;
+      const loadPlayers = async () => [{id:'qa-training', name:'QA TRAINER', nickname:'Route Fixture'}];
+      window.__sqLoadPlayerStatsPlayers = loadPlayers;
+      try{ __sqLoadPlayerStatsPlayers = loadPlayers; }catch(_){ }
+    });
+    await page.click('#startGameBtn'); await page.waitForTimeout(500);
+    await page.click('#trainingBtn');
+    const clickTrainingPill = label => page.evaluate(text => {
+      const button = Array.from(document.querySelectorAll('#startGameModalBody .sg-tournament-pill'))
+        .find(node => String(node.textContent || '').toUpperCase().includes(text));
+      if (button) button.click();
+      return !!button;
+    }, label);
+    await page.waitForFunction(() => /TRAINING/.test(document.querySelector('#startGameModalBody .sg-tournament-title')?.textContent || ''));
+    assert(await clickTrainingPill('QA TRAINER'), 'Training player route available');
+    await page.waitForFunction(() => /TRAINING MODE/.test(document.querySelector('#startGameModalBody .sg-tournament-title')?.textContent || ''));
+    assert(await clickTrainingPill('STANDARD'), 'Training mode route available');
+    await page.waitForFunction(() => /SESSION LENGTH/.test(document.querySelector('#startGameModalBody .sg-tournament-title')?.textContent || ''));
+    assert(await clickTrainingPill('10 ROUNDS'), 'Training length route available');
+    await page.waitForFunction(() => !!document.querySelector('.tr-overlay'));
+    await page.waitForTimeout(300);
+    const rendering = await page.evaluate(() => ({
+      training: !!document.querySelector('.tr-overlay'),
+      liveRaceVisible: !!document.querySelector('#liveV2Panel')?.offsetParent,
+      packets: (window.__sc021RacePackets || []).length
+    }));
+    assert.deepEqual(rendering, {training:true, liveRaceVisible:false, packets:0}, 'Training stays on its separate renderer');
+    assertNoUnexpectedErrors(consoleErrs, 'Training routing');
+    console.log('PASS SC-021 Training stays on its separate rendering path');
+  } finally { await browser.close(); }
+}
+
 (async () => {
+  let classicSavedState = null;
   const {browser, page, consoleErrs} = await H.launch({width:390,height:844});
   try {
     await page.addInitScript(() => {
@@ -17,11 +194,17 @@ const assert = require('assert/strict');
       };
     });
     await H.boot(page);
+    await installRacePacketCapture(page);
     await H.toMatchCard(page);
     await H.addGuests(page,['QA ALPHA','QA BETA']);
     await H.startMatch(page);
+    const classicRoute = await waitForRacePacket(page, true, {matchMode:'match'});
+    assert.equal(classicRoute.classicThrowRace, true, 'two-player Classic with guests enables SC-021');
+    console.log('PASS SC-021 new-game Classic with guests routes classicThrowRace=true');
     await page.locator('#pad .dtBullBtn').first().click();
     await page.waitForTimeout(650);
+    classicSavedState = await page.evaluate(key => localStorage.getItem(key), GAME_STORAGE_KEY);
+    assert(classicSavedState, 'Classic game writes a resumable cache');
     assert(await page.locator('#liveV2Panel .v2Total').allTextContents().then(v=>v.some(x=>Number(x)>0)), 'score totals update');
     console.log('PASS score totals update after a real button press');
     assert.equal(await page.locator('#liveV2Panel .v2MiniAvg').count(), 2, 'one mini-average strip per player');
@@ -180,4 +363,22 @@ const assert = require('assert/strict');
     assert(!consoleErrs.some(x=>x.startsWith('pageerror:')),consoleErrs.filter(x=>x.startsWith('pageerror:')).join('\n'));
     console.log('PASS no uncaught browser errors');
   } finally { await browser.close(); }
+
+  await verifyResumedRaceRoute('Classic', classicSavedState, true);
+  const practiceSavedState = await verifyNewRaceRoute('practice', false);
+  const resumedPractice = JSON.parse(practiceSavedState);
+  resumedPractice.match = Object.assign({}, resumedPractice.match || {}, {mode:'practice'});
+  delete resumedPractice.match.forcePractice;
+  delete resumedPractice.match.gameMode;
+  delete resumedPractice.match.game_mode;
+  delete resumedPractice.mode;
+  delete resumedPractice.gameMode;
+  delete resumedPractice.game_mode;
+  delete resumedPractice.isPractice;
+  delete resumedPractice.is_practice;
+  delete resumedPractice.practice;
+  await verifyResumedRaceRoute('Practice without forcePractice', JSON.stringify(resumedPractice), false);
+  await verifyNewRaceRoute('turbo', false);
+  await verifyVsShadowAndPracticeAliasRoutes();
+  await verifyTrainingRoute();
 })().catch(e=>{console.error(e);process.exit(1);});
