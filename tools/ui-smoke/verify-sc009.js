@@ -84,17 +84,87 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
   check('Cold Start remains recorded once', ui.byCode.cold_start && ui.byCode.cold_start.count === 1 && norm(ui.byCode.cold_start.penalty) === '-1 XP', JSON.stringify(ui.byCode));
   check('Player Stats navigation remains Stats / XP / Achievements', JSON.stringify(ui.tabs) === JSON.stringify(['Stats','XP','Achievements']), JSON.stringify(ui.tabs));
 
+  // SC-024: use the existing Player Stats fixture for the selected player's card,
+  // then make the all-player Misfire source deterministic for leaderboard checks.
+  await page.evaluate(() => {
+    const baseSb = window.sb;
+    window.__sc024MisfireSourceAudit = [];
+    const byCode = {
+      bull_blind: [
+        { player_id:'p1', code:'bull_blind', cnt:3 },
+        { player_id:'p2', code:'bull_blind', cnt:2 },
+      ],
+      century_drought: [],
+    };
+    const wrapped = {
+      from(table){
+        if (table !== 'v_player_misfires') return baseSb.from(table);
+        let selectedCode = '';
+        const q = {
+          select(){ return q; },
+          eq(col, value){ if (col === 'code') selectedCode = String(value || ''); return q; },
+          then(resolve){
+            window.__sc024MisfireSourceAudit.push({ table, code:selectedCode });
+            resolve({ data:(byCode[selectedCode] || []).map(r => ({ ...r })), error:null });
+          },
+          catch(){ return q; },
+        };
+        return q;
+      }
+    };
+    window.sb = wrapped; window.__sb = wrapped;
+  });
+
   await page.click('.sq-stats-modal .pp-misfire-card[data-code="bull_blind"]');
-  await page.waitForTimeout(300);
+  await page.waitForFunction(() => {
+    const d = document.querySelector('.pp-misfire-detail');
+    return !!d && !d.querySelector('#misfireLbLoading');
+  });
   const detail = await page.evaluate(() => {
     const d = document.querySelector('.pp-misfire-detail');
-    return d ? { text: d.textContent, count: (d.querySelector('.pp-misfire-detail-count') || {}).textContent || '', rule: (d.querySelector('.pp-misfire-detail-rule') || {}).textContent || '' } : null;
+    if (!d) return null;
+    return {
+      text: d.textContent,
+      count: (d.querySelector('.pp-misfire-detail-count') || {}).textContent || '',
+      rule: (d.querySelector('.pp-misfire-detail-rule') || {}).textContent || '',
+      title: (d.querySelector('.pp-misfire-leaderboard-title') || {}).textContent || '',
+      rows: Array.from(d.querySelectorAll('.pp-misfire-lb-row')).map(row => ({
+        rank: (row.querySelector('.pp-misfire-lb-rank') || {}).textContent || '',
+        name: (row.querySelector('.pp-misfire-lb-name') || {}).textContent || '',
+        count: (row.querySelector('.pp-misfire-lb-count') || {}).textContent || '',
+      })),
+      fits: d.getBoundingClientRect().left >= -1 && d.getBoundingClientRect().right <= innerWidth + 1,
+      hasClose: !!Array.from(d.querySelectorAll('button')).find(b => /^close$/i.test((b.textContent || '').trim())),
+      sourceAudit: (window.__sc024MisfireSourceAudit || []).slice(),
+    };
   });
   check('Misfire card opens detail modal', !!detail && /Bull Blind/.test(detail.text || ''), JSON.stringify(detail));
   if (detail) {
     check('Misfire detail carries repeat count', /Recorded ×3 historically/i.test(detail.count), detail.count);
     check('Misfire detail preserves launch-forward/worst/-5 rule', /5 Sep 2026 20:13 UTC/i.test(detail.rule) && /Only the worst Misfire applies per game/i.test(detail.rule) && /maximum deduction is 5 XP per game/i.test(detail.rule), detail.rule);
+    check('Misfire detail now includes all-player leaderboard', norm(detail.title) === 'Misfire leaderboard' && detail.rows.length === 2, JSON.stringify(detail.rows));
+    check('Misfire leaderboard ranks historical counts descending', detail.rows[0] && detail.rows[0].rank === '#1' && detail.rows[0].name === 'Alex S' && detail.rows[0].count === '×3' && detail.rows[1] && detail.rows[1].rank === '#2' && detail.rows[1].name === 'Sam T' && detail.rows[1].count === '×2', JSON.stringify(detail.rows));
+    check('Misfire leaderboard reads the verified Misfire source only', detail.sourceAudit.some(x => x.table === 'v_player_misfires' && x.code === 'bull_blind'), JSON.stringify(detail.sourceAudit));
+    check('Misfire leaderboard modal fits mobile and retains Close', detail.fits && detail.hasClose, JSON.stringify(detail));
   }
+
+  await page.click('.pp-misfire-detail button');
+  await page.waitForFunction(() => !document.querySelector('.pp-misfire-detail'));
+  check('Misfire leaderboard Close dismisses modal', true);
+
+  await page.evaluate(() => __sqMisfireDetail('century_drought', {}));
+  const empty = await page.evaluate(() => {
+    const d = document.querySelector('.pp-misfire-detail');
+    return d ? {
+      title: (d.querySelector('.pp-misfire-leaderboard-title') || {}).textContent || '',
+      empty: (d.querySelector('.pp-misfire-lb-empty') || {}).textContent || '',
+      rows: d.querySelectorAll('.pp-misfire-lb-row').length,
+    } : null;
+  });
+  check('Misfire leaderboard has truthful zero-history state', !!empty && norm(empty.title) === 'Misfire leaderboard' && /No one has recorded this Misfire yet/i.test(empty.empty) && empty.rows === 0, JSON.stringify(empty));
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('.pp-misfire-detail'));
+  check('Misfire leaderboard Escape dismisses modal', true);
 
   const realErrs = consoleErrs.filter(e => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));
   check('no unexpected console errors', realErrs.length === 0, realErrs.slice(0,5).join(' | '));

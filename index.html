@@ -38554,6 +38554,32 @@ const SQ_MISFIRE = {
     }catch(_){ return { available:false, map:{} }; }
   }
 };
+
+// Everyone who has recorded a given Misfire, ranked by historical occurrence
+// count. This is display/read parity with positive trophy leaderboards only:
+// XP penalties remain authoritative in v_player_xp and are never derived here.
+SQ_MISFIRE.forCode = async function(code){
+  try{
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return { available:false, rows:[] };
+    const [res, names] = await Promise.all([
+      SB.from('v_player_misfires').select('player_id,cnt').eq('code', code),
+      SQ_XP.all()
+    ]);
+    if (!res || res.error || !Array.isArray(res.data)) return { available:false, rows:[] };
+    const nameMap = {};
+    (names || []).forEach(n => { nameMap[n.player_id] = n.name; });
+    const rows = res.data.map(r => ({
+      player_id: r.player_id,
+      name: nameMap[r.player_id] || '—',
+      cnt: Number(r.cnt) || 0
+    })).filter(r => r.cnt > 0)
+      .sort((a, b) => (b.cnt - a.cnt)
+        || String(a.name || '').localeCompare(String(b.name || ''))
+        || String(a.player_id || '').localeCompare(String(b.player_id || '')));
+    return { available:true, rows };
+  }catch(_){ return { available:false, rows:[] }; }
+};
 window.SQ_MISFIRE = SQ_MISFIRE;
 
 // Milestones are one-time unlocks (score PBs, career collections, volume,
@@ -38821,7 +38847,7 @@ function __sqTrophyCase(earnedMap, available = true){
 }
 
 
-function __sqMisfireDetail(code, misfireMap){
+async function __sqMisfireDetail(code, misfireMap){
   const m = (SQ_MISFIRE.CATALOG || []).find(x => x.code === code);
   if (!m) return;
   const got = (misfireMap && misfireMap[code]) || { cnt:0 };
@@ -38838,14 +38864,41 @@ function __sqMisfireDetail(code, misfireMap){
     + '<div style="margin:14px 2px 4px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">How it happens</div>'
     + '<div style="font-size:15px;font-weight:600;margin:0 2px 10px">' + m.desc + '.</div>'
     + '<div class="pp-misfire-detail-count" style="font-size:12px;font-weight:800;margin:0 2px 12px;color:' + (cnt > 0 ? '#fecaca' : 'var(--v3-muted,#98a2b8)') + '">' + (cnt > 0 ? ('Recorded ×' + cnt + ' historically') : 'Not recorded yet') + '</div>'
-    + '<div class="muted pp-misfire-detail-rule" style="font-size:10px;line-height:1.4;margin:0 2px">Historical counts can include earlier Official/Classic games. XP penalties apply only from 5 Sep 2026 20:13 UTC. Only the worst Misfire applies per game; the maximum deduction is 5 XP per game.</div>';
-  const foot = document.createElement('div'); foot.style.cssText = 'margin-top:14px;text-align:center;';
-  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Close'; cb.onclick = () => overlay.remove();
-  foot.appendChild(cb); body.appendChild(foot); modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
+    + '<div class="pp-misfire-leaderboard-title" style="margin:6px 2px 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">Misfire leaderboard</div>'
+    + '<p class="muted" id="misfireLbLoading" style="font-size:13px">Loading…</p>'
+    + '<div class="muted pp-misfire-detail-rule" style="font-size:10px;line-height:1.4;margin:12px 2px 0">Historical counts can include earlier Official/Classic games. XP penalties apply only from 5 Sep 2026 20:13 UTC. Only the worst Misfire applies per game; the maximum deduction is 5 XP per game.</div>';
+  modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
   try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
   modal.tabIndex = 0; modal.focus();
+
+  const lbState = await SQ_MISFIRE.forCode(code);
+  if (!overlay.isConnected) return;
+  const loading = body.querySelector('#misfireLbLoading'); if (loading) loading.remove();
+  if (!lbState || !lbState.available){
+    const p = document.createElement('p'); p.className = 'muted pp-misfire-lb-unavailable'; p.style.fontSize = '13px';
+    p.textContent = 'Misfire leaderboard is unavailable right now.'; body.insertBefore(p, body.querySelector('.pp-misfire-detail-rule'));
+  } else if (!lbState.rows.length){
+    const p = document.createElement('p'); p.className = 'muted pp-misfire-lb-empty'; p.style.fontSize = '13px';
+    p.textContent = 'No one has recorded this Misfire yet.'; body.insertBefore(p, body.querySelector('.pp-misfire-detail-rule'));
+  } else {
+    const list = document.createElement('div'); list.className = 'pp-misfire-lb'; list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+    const medal = i => i === 0 ? '#ffd24a' : i === 1 ? '#cbd5e1' : i === 2 ? '#d08b5a' : 'var(--v3-muted,#98a2b8)';
+    lbState.rows.forEach((r, i) => {
+      const row = document.createElement('div'); row.className = 'pp-misfire-lb-row';
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(127,29,29,.16);border:1px solid rgba(248,113,113,.16);';
+      const rk = document.createElement('span'); rk.className = 'pp-misfire-lb-rank'; rk.textContent = '#' + (i + 1); rk.style.cssText = 'font-weight:900;min-width:30px;color:' + medal(i);
+      const nm = document.createElement('span'); nm.className = 'pp-misfire-lb-name'; nm.textContent = r.name; nm.style.cssText = 'flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      const ct = document.createElement('span'); ct.className = 'pp-misfire-lb-count'; ct.textContent = '×' + r.cnt; ct.style.cssText = 'font-weight:900;color:#fca5a5;';
+      row.append(rk, nm, ct); list.appendChild(row);
+    });
+    body.insertBefore(list, body.querySelector('.pp-misfire-detail-rule'));
+  }
+
+  const foot = document.createElement('div'); foot.style.cssText = 'margin-top:14px;text-align:center;';
+  const cb = document.createElement('button'); cb.className = 'btn sq-pill'; cb.textContent = 'Close'; cb.onclick = () => overlay.remove();
+  foot.appendChild(cb); body.appendChild(foot);
 }
 
 function __sqMisfireCase(misfireState, xpRow){
