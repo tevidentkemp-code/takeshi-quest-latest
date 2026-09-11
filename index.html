@@ -24004,14 +24004,35 @@ function __sqV2SetPagerPage(panel, page, animate){
       __raceMatch.forcePractice === true || __raceMatch.isPractice === true || __raceMatch.is_practice === true || __raceMatch.practice === true;
     const __shadowRace = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() :
       !!(state?.practiceVsShadow || state?.vsShadow || state?.vs_shadow || String(state?.shadow?.mode || '').toLowerCase() === 'vsshadow' || String(__raceMatch.practiceType || '').toLowerCase() === 'vsshadow' || __raceModeKeys.includes('vsshadow'));
+    // Keep the SC-021 Classic routing contract intact. Turbo gets the same modern
+    // per-throw presentation through its own mode-isolated packet flag.
     const __classicThrowRace = live.length >= 2 && !__turboRace && !__practiceRace && !__shadowRace;
+    const __turboThrowRace = live.length >= 2 && __turboRace && !__practiceRace && !__shadowRace;
     const __turboStartIdx = (typeof __sqTurboRaceStartIndex === 'function') ? __sqTurboRaceStartIndex(state, roundsCount()) : (()=>{ try{ const rules = state?.match?.tournamentRules || state?.__sqTournamentDraft?.rules || window.__sqTournamentDraft?.rules || {}; return Math.max(0, Math.min(roundsCount()-1, Number(rules.startRoundIndex ?? 7))); }catch(_){ return 7; } })();
     if (__turboRace) {
       labels = labels.slice(__turboStartIdx);
-      live = live.map(s => ({ ...s, data: Array.isArray(s.data) ? s.data.slice(__turboStartIdx) : [] }));
+      live = live.map((s, pIdx) => {
+        // Turbo starts at its configured round. Rebuild the per-dart cumulative
+        // path from that point so resumed games can never inherit pre-Turbo X/Y data.
+        let run = 0;
+        const throwData = [0];
+        for (let r = __turboStartIdx; r < roundsCount(); r++){
+          const darts = Array.isArray(state.score?.[pIdx]?.[r]?.darts)
+            ? state.score[pIdx][r].darts.filter(v => v != null)
+            : [];
+          for (const dart of darts){
+            const pts = (typeof __sqV2DartPoints === 'function')
+              ? __sqV2DartPoints(dart)
+              : Number(dart && (dart.points ?? dart.score ?? dart.value ?? dart.total)) || 0;
+            run += Number.isFinite(Number(pts)) ? Number(pts) : 0;
+            throwData.push(run);
+          }
+        }
+        return { ...s, data: Array.isArray(s.data) ? s.data.slice(__turboStartIdx) : [], throwData };
+      });
     }
     const offset = __turboRace ? __turboStartIdx : 0;
-    drawRace(canvas, {series:live, record:null, records:null, labels, offset, classicThrowRace:__classicThrowRace});
+    drawRace(canvas, {series:live, record:null, records:null, labels, offset, classicThrowRace:__classicThrowRace, turboThrowRace:__turboThrowRace});
     let rec = (typeof __sqBuildRaceReferenceSeriesForCurrentMode === 'function')
       ? await __sqBuildRaceReferenceSeriesForCurrentMode(roundsCount(), __turboStartIdx)
       : (__turboRace ? null : await getRecordSeries());
@@ -24033,7 +24054,7 @@ function __sqV2SetPagerPage(panel, page, animate){
 
     // A late cloud response must never replace a newer throw or a new game.
     if (version !== renderVersion || canvas !== getCanvas()) return;
-    drawRace(canvas, {series:live, record:rec, records, labels, offset, classicThrowRace:__classicThrowRace});
+    drawRace(canvas, {series:live, record:rec, records, labels, offset, classicThrowRace:__classicThrowRace, turboThrowRace:__turboThrowRace});
   }
 
   window.__sqV2InfoDmdUpdate = function(){
@@ -27244,8 +27265,10 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
     const offset = packet ? packet.offset || 0 : 0;
     const NP = packet ? packet.series.length : (state.players || []).length || 2;
     const classicThrowRace = !!(packet && packet.classicThrowRace);
+    const turboThrowRace = !!(packet && packet.turboThrowRace);
+    const perThrowRace = classicThrowRace || turboThrowRace;
     const series = packet ? packet.series.map(s => {
-      const src = classicThrowRace && Array.isArray(s.throwData) ? s.throwData : s.data;
+      const src = perThrowRace && Array.isArray(s.throwData) ? s.throwData : s.data;
       return Array.isArray(src) ? src : [];
     }) : __sqV3RaceSeries();
     const lens = series.map(p => { let n = 0; for (let i = 0; i < p.length; i++) if (p[i] != null) n = i + 1; return n; });
@@ -27270,7 +27293,7 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
                  : (d.kind === 'Miss') ? 0 : 0.5;
             }
           }catch(_){ }
-          if (!classicThrowRace && w >= 6.5) st.combo[p] = { start: now, dur: 720, w: w };
+          if (!perThrowRace && w >= 6.5) st.combo[p] = { start: now, dur: 720, w: w };
         }
         st.lastFull[p] = fulls[p];
       }
@@ -27282,7 +27305,7 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
     // drawn against a ~700 ceiling and every player's line is a flat smudge
     // along the bottom. Early rounds now zoom in so small gaps read clearly.
     const maxSeriesLen = Math.max(1, ...lens);
-    const playedTo = classicThrowRace ? Math.max(1, Math.ceil(Math.max(0, maxSeriesLen - 1) / 3)) : maxSeriesLen;
+    const playedTo = perThrowRace ? Math.max(1, Math.ceil(Math.max(0, maxSeriesLen - 1) / 3)) : maxSeriesLen;
     const flat = series.flat().filter(v => v != null);
     for (const record of records) for (const value of record.data.slice(0, playedTo + 1)) if (Number.isFinite(value)) flat.push(value);
     // Generous headroom early (keeps lines mid-panel), tightening as the game fills out.
@@ -27298,7 +27321,7 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
       ctx.font = '800 9px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
       const legendLabels = packet.series.map(s => String(s.name || '').replace(/^Record:/i,'HS').slice(0,12));
       let keyX = 26;
-      const singleRowHs = classicThrowRace && records.length;
+      const singleRowHs = perThrowRace && records.length;
       const keyGap = singleRowHs ? 6 : 12;
       const naturalWidths = legendLabels.map(label => ctx.measureText(label).width);
       let playerScale = 1;
@@ -27327,10 +27350,10 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
         ctx.restore();
       }
     }
-    const padL = 26, padR = 12, padT = classicThrowRace ? 29 : (packet ? 19 : 8), padB = 18, W = cssW - padL - padR, H = cssH - padT - padB;
+    const padL = 26, padR = 12, padT = perThrowRace ? 29 : (packet ? 19 : 8), padB = 18, W = cssW - padL - padR, H = cssH - padT - padB;
     const throwSteps = Math.max(1, rc * 3);
     const XStep = step => padL + (Math.max(0, Math.min(throwSteps, Number(step) || 0)) / throwSteps) * W;
-    const X = i => classicThrowRace ? XStep((i + 1) * 3) : padL + (rc <= 1 ? 0 : (i / (rc - 1)) * W);
+    const X = i => perThrowRace ? XStep((i + 1) * 3) : padL + (rc <= 1 ? 0 : (i / (rc - 1)) * W);
     const Y = v => padT + H - (v / maxV) * H;
     // horizontal value grid + labels: a line every 50, a STRONGER line every 100.
     ctx.font = '800 8px system-ui,sans-serif'; ctx.textBaseline = 'middle';
@@ -27347,7 +27370,7 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
     // round into three equal throw steps; other modes retain the existing grid.
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     const cr = Number(state.currentRound || 0) - offset;
-    if (classicThrowRace){
+    if (perThrowRace){
       const sx = XStep(0);
       ctx.strokeStyle = 'rgba(150,170,210,.11)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(sx, padT); ctx.lineTo(sx, padT + H); ctx.stroke();
@@ -27376,7 +27399,7 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
     for (const record of records){
       const recData = record.data;
       const recTo = Math.min(recData.length, rc);                  // plot the complete reference series
-      const RP = classicThrowRace ? [[XStep(0), Y(0)]] : [];
+      const RP = perThrowRace ? [[XStep(0), Y(0)]] : [];
       for (let i = 0; i < recTo; i++){
         if (recData[i] == null) continue;
         const x = X(i), rawY = Y(recData[i]);
@@ -27394,7 +27417,7 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
         ctx.shadowColor = 'rgba(255,200,90,.6)'; ctx.shadowBlur = 6;
         ctx.beginPath(); RP.forEach((pt, i) => i ? ctx.lineTo(pt[0], pt[1]) : ctx.moveTo(pt[0], pt[1])); ctx.stroke();
         ctx.restore();
-        if (!classicThrowRace){
+        if (!perThrowRace){
           const tip = RP[RP.length - 1];
           ctx.fillStyle = 'rgba(255,224,150,.95)'; ctx.font = '900 8px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
           ctx.fillText(String(record.label || 'HS'), Math.min(tip[0] + 3, cssW - 16), tip[1] - 2);
@@ -27404,7 +27427,7 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
     // player lines (same colours as each player's NAME on their pill)
     const colors = Array.from({ length: NP }, (_, i) => packet ? packet.series[i].color || __sqV3PlayerColor(i) : __sqV3PlayerColor(i));
     series.forEach((pts, pi) => {
-      const P = []; for (let i = 0; i < pts.length; i++) if (pts[i] != null) P.push([classicThrowRace ? XStep(i) : X(i), Y(pts[i])]);
+      const P = []; for (let i = 0; i < pts.length; i++) if (pts[i] != null) P.push([perThrowRace ? XStep(i) : X(i), Y(pts[i])]);
       if (!P.length) return;
       // Resolve this player's segment animation into an ease + charge amount.
       // A completed great combo (st.combo) overrides the ordinary growth ease with
@@ -27421,10 +27444,10 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
         const t = (now - grow.start) / 450;
         segT = Math.min(1, t); ease = 1 - Math.pow(1 - segT, 3);
       }
-      ctx.setLineDash(classicThrowRace ? [1.5,3.5] : (packet && packet.series[pi].dotted ? [5,4] : []));
-      ctx.strokeStyle = colors[pi]; ctx.lineWidth = classicThrowRace ? 1.7 : 2.7; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-      ctx.globalAlpha = classicThrowRace ? 0.58 : 1;
-      ctx.shadowColor = colors[pi]; ctx.shadowBlur = classicThrowRace ? 4 : 10;
+      ctx.setLineDash(perThrowRace ? [1.5,3.5] : (packet && packet.series[pi].dotted ? [5,4] : []));
+      ctx.strokeStyle = colors[pi]; ctx.lineWidth = perThrowRace ? 1.7 : 2.7; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.globalAlpha = perThrowRace ? 0.58 : 1;
+      ctx.shadowColor = colors[pi]; ctx.shadowBlur = perThrowRace ? 4 : 10;
       ctx.beginPath();
       let lx = P[P.length-1][0], ly = P[P.length-1][1], ppx = lx, ppy = ly;
       for (let i = 0; i < P.length; i++){
@@ -29883,14 +29906,23 @@ async function __sqBuildTurboRecordPaceSeries(roundsCount, startRoundIndex) {
     if (!client) return null;
 
     const promise = (async function(){
-      const hs = await client.from('v_high_score_league_turbo_from_games_clean')
-        .select('player,best_score,best_ts,game_id')
-        .order('best_score', { ascending:false })
-        .order('best_ts', { ascending:false })
+      // The live Turbo leaderboard sources were verified against the current Supabase schema.
+      // v_top50_scores_turbo_clean is mode-isolated and already ordered as the all-time
+      // Turbo score table; it identifies the same record as the heavier Turbo league view.
+      const hs = await client.from('v_top50_scores_turbo_clean')
+        .select('player_name,score,ts,game_id')
+        .order('score', { ascending:false })
+        .order('ts', { ascending:false })
         .limit(1);
       if (hs && hs.error) throw hs.error;
-      const top = Array.isArray(hs && hs.data) ? hs.data[0] : null;
-      if (!top || !top.game_id) return null;
+      const topRow = Array.isArray(hs && hs.data) ? hs.data[0] : null;
+      const top = topRow ? {
+        player:String(topRow.player_name || '').trim(),
+        best_score:Number(topRow.score || 0),
+        best_ts:topRow.ts || '',
+        game_id:topRow.game_id || ''
+      } : null;
+      if (!top || !top.player || !top.game_id || !Number.isFinite(top.best_score) || top.best_score <= 0) return null;
 
       let rr = await client.from('mv_player_round_scores_mode_clean_app')
         .select('mode_key,player,player_key,game_id,created_at,round_index,round_score')
@@ -49468,7 +49500,8 @@ body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger::after{ animation:
     }catch(_){ return false; }
   }
   function turnKey(){
-    try{ return [state.currentRound,state.currentPlayer,state.currentDart].map(v=>String(v ?? '')).join('|'); }catch(_){ return ''; }
+    // Turbo's strict clock is per 3-dart turn, not per individual dart.
+    try{ return [state.currentRound,state.currentPlayer].map(v=>String(v ?? '')).join('|'); }catch(_){ return ''; }
   }
   function clearBoxes(){
     try{ document.querySelectorAll('.livev2panel .v2ScoreBox.sqTurboTimerActive,.livev2panel .v2ScoreBox.sqTurboWarn,.livev2panel .v2ScoreBox.sqTurboDanger').forEach(el=>{ el.classList.remove('sqTurboTimerActive','sqTurboWarn','sqTurboDanger'); el.style.removeProperty('--sqTurboDeg'); }); }catch(_){ }
@@ -49478,7 +49511,6 @@ body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger::after{ animation:
   }
   function ensureTimer(){
     if (!gameActive()){ timer = null; clearBoxes(); return; }
-    if (Number(state?.currentDart || 0) !== 0){ timer = null; clearBoxes(); return; }
     const key = turnKey();
     if (!timer || timer.key !== key) timer = { key, startedAt: performance.now(), fired:false };
   }
@@ -49542,11 +49574,13 @@ body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger::after{ animation:
   function autoMissTurn(key){
     if (firing) return;
     try{
-      if (!gameActive() || !timer || timer.key !== key || Number(state?.currentDart || 0) !== 0) return;
+      if (!gameActive() || !timer || timer.key !== key) return;
+      const remaining = Math.max(0, 3 - Math.max(0, Math.min(3, Number(state?.currentDart || 0))));
+      if (!remaining) return;
       firing = true;
       try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
       try{ window.__sqDmdBulkMiss = true; }catch(_){ }
-      for (let i=0; i<3; i++){
+      for (let i=0; i<remaining; i++){
         if (state?.finished) break;
         if (typeof window.recordThrow === 'function') window.recordThrow({ kind:'Miss' });
         else if (typeof recordThrow === 'function') recordThrow({ kind:'Miss' });
@@ -49559,7 +49593,7 @@ body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger::after{ animation:
   try{
     const oldRecordThrow = window.recordThrow || (typeof recordThrow === 'function' ? recordThrow : null);
     if (oldRecordThrow && !oldRecordThrow.__sqTurboWrapped){
-      const wrapped = function(){ const ret = oldRecordThrow.apply(this, arguments); timer = null; setTimeout(renderTimer,0); return ret; };
+      const wrapped = function(){ const ret = oldRecordThrow.apply(this, arguments); setTimeout(renderTimer,0); return ret; };
       wrapped.__sqTurboWrapped = true; window.recordThrow = wrapped; try{ recordThrow = wrapped; }catch(_){ }
     }
   }catch(_){ }

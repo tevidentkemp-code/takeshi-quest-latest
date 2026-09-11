@@ -27,7 +27,12 @@ async function installRacePacketCapture(page){
           matchGame_mode: match.game_mode ?? null,
           forcePractice: match.forcePractice === true,
           practiceType: match.practiceType ?? null,
-          shadowRuntime: (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false
+          shadowRuntime: (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false,
+          turboThrowRace: packet.turboThrowRace === true,
+          labels: Array.isArray(packet.labels) ? packet.labels.slice() : [],
+          offset: Number(packet.offset || 0),
+          record: packet.record ? {name:packet.record.name || '', label:packet.record.label || '', data:Array.isArray(packet.record.data) ? packet.record.data.slice() : []} : null,
+          series: (packet.series || []).map(s => ({name:s.name || '', data:Array.isArray(s.data) ? s.data.slice() : [], throwData:Array.isArray(s.throwData) ? s.throwData.slice() : []}))
         });
         if (packets.length > 24) packets.shift();
       }
@@ -255,6 +260,75 @@ async function verifyNewRaceRoute(mode, expected){
     assert(savedState, `${mode} new game writes a resumable cache`);
     console.log(`PASS SC-021 new-game ${mode} routes classicThrowRace=${expected}`);
     return savedState;
+  } finally { await browser.close(); }
+}
+
+async function verifySc023TurboLiveRecovery(){
+  const {browser, page, consoleErrs} = await H.launch({width:390,height:844});
+  try {
+    await H.boot(page);
+    await installRacePacketCapture(page);
+    await page.evaluate(() => {
+      window.__sc023Tables = [];
+      const top50 = [{player_name:'RECORD ACE',score:359,ts:'2026-09-10T19:59:03.349Z',game_id:'turbo-record-game'}];
+      const pace = [85,18,57,120,0,54,25].map((round_score,i)=>({mode_key:'turbo',player:'RECORD ACE',player_key:'record ace',game_id:'turbo-record-game',created_at:'2026-09-10T19:59:03.349Z',round_index:i+7,round_score}));
+      const rowsFor = table => table === 'v_top50_scores_turbo_clean' ? top50 : (table === 'mv_player_round_scores_mode_clean_app' || table === 'v_player_round_scores_mode_clean') ? pace : [];
+      const from = table => {
+        window.__sc023Tables.push(table);
+        let q;
+        const base={select(){return q;},order(){return q;},limit(){return q;},eq(){return q;},gte(){return q;},lte(){return q;},then(resolve){resolve({data:rowsFor(table),error:null});},catch(){return q;}};
+        q=new Proxy(base,{get(target,prop){return prop in target?target[prop]:(()=>q);}});
+        return q;
+      };
+      window.sb={from}; window.__sb=window.sb; window.__sqTurboRaceRecordCache=null;
+    });
+    await startNewRaceGame(page,'turbo');
+    assert(await page.isVisible('.sq-turbo-ready-start'),'Turbo ready gate is shown before the strict turn clock starts');
+    await page.click('.sq-turbo-ready-start');
+    await page.waitForFunction(()=>{const s=window.__sqTurboTimerStatus?.();const b=document.querySelector('.livev2panel .v2ScoreBox[data-p="'+Number(state?.currentPlayer||0)+'"]');return !!(s?.active&&s.timer&&b?.classList.contains('sqTurboTimerActive')&&b.querySelector('svg.sqTurboSvg'));});
+    await page.waitForTimeout(700);
+    const before=await page.evaluate(()=>{const s=window.__sqTurboTimerStatus();const b=document.querySelector('.livev2panel .v2ScoreBox[data-p="'+Number(state.currentPlayer||0)+'"]');return {key:s.timer.key,elapsed:s.timer.elapsedMs,dash:b.querySelector('.sqTurboProgress')?.style.strokeDashoffset||'',deg:b.style.getPropertyValue('--sqTurboDeg')};});
+    assert(before.elapsed>=500,'Turbo 20-second turn clock advances after START GAME');
+    await page.waitForTimeout(350);
+    const moving=await page.evaluate(()=>{const s=window.__sqTurboTimerStatus();const b=document.querySelector('.livev2panel .v2ScoreBox[data-p="'+Number(state.currentPlayer||0)+'"]');return {elapsed:s.timer.elapsedMs,dash:b.querySelector('.sqTurboProgress')?.style.strokeDashoffset||'',deg:b.style.getPropertyValue('--sqTurboDeg')};});
+    assert(moving.elapsed>before.elapsed&&(moving.dash!==before.dash||moving.deg!==before.deg),'Turbo perimeter light visibly progresses with the same turn clock');
+    const openingPacket=await waitForRacePacket(page,false,{matchMode:'turbo',turboThrowRace:true});
+    assert.equal(openingPacket.classicThrowRace,false,'Turbo does not reuse the SC-021 Classic routing flag');
+    assert.equal(openingPacket.turboThrowRace,true,'Turbo uses its own modern per-throw race flag');
+    assert.deepEqual(openingPacket.labels,['17','18','19','20','D','T','B'],'Turbo modern race uses the actual seven-round Turbo window');
+    assert.equal(openingPacket.offset,7,'Turbo race keeps its round offset');
+    await page.locator('#pad [data-score-label="Single"]').click();
+    await page.waitForFunction(()=>state.currentDart===1); await page.waitForTimeout(220);
+    const dart1=await page.evaluate(()=>{const s=window.__sqTurboTimerStatus();const b=document.querySelector('.livev2panel .v2ScoreBox[data-p="'+Number(state.currentPlayer||0)+'"]');return {key:s.timer?.key||'',elapsed:s.timer?.elapsedMs||0,svg:!!b?.querySelector('svg.sqTurboSvg')};});
+    assert.equal(dart1.key,before.key,'Turbo clock remains the same clock after Dart 1');
+    assert(dart1.elapsed>before.elapsed&&dart1.svg,'Turbo countdown/perimeter remains active after Dart 1');
+    await page.locator('#pad .dtActBtn.miss').click();
+    await page.waitForFunction(()=>state.currentDart===2); await page.waitForTimeout(160);
+    const dart2=await page.evaluate(()=>window.__sqTurboTimerStatus());
+    assert.equal(dart2.timer.key,before.key,'Turbo clock remains the same clock after Dart 2');
+    assert(dart2.timer.elapsedMs>dart1.elapsed,'Turbo strict turn countdown does not restart per dart');
+    await page.waitForFunction(()=>(window.__sc021RacePackets||[]).some(p=>p.matchMode==='turbo'&&!p.classicThrowRace&&p.turboThrowRace&&p.series?.[0]?.throwData?.length>=3));
+    const livePacket=await page.evaluate(()=>(window.__sc021RacePackets||[]).slice().reverse().find(p=>p.matchMode==='turbo'&&!p.classicThrowRace&&p.turboThrowRace&&p.series?.[0]?.throwData?.length>=3));
+    assert.deepEqual(livePacket.series[0].throwData.slice(0,3),[0,17,17],'Turbo race advances once per dart and a miss keeps Y unchanged');
+    await page.locator('#pad [data-score-label="Single"]').click();
+    await page.waitForFunction(()=>state.currentPlayer===1&&state.currentDart===0);
+    await page.waitForFunction(oldKey=>{const s=window.__sqTurboTimerStatus?.();return !!(s?.timer&&s.timer.key!==oldKey);},before.key);
+    const nextTurn=await page.evaluate(()=>window.__sqTurboTimerStatus());
+    assert.notEqual(nextTurn.timer.key,before.key,'Turbo clock resets only when the player turn changes');
+    const record=await page.evaluate(()=>__sqBuildTurboRecordPaceSeries(14,7));
+    assert(record,'Turbo race record reference resolves');
+    assert.equal(record.name,'Turbo HS: RECORD ACE (359)','Turbo race labels the isolated Turbo record');
+    assert.deepEqual(record.data,[85,103,160,280,280,334,359],'Turbo race uses the record game round-by-round cumulative pace');
+    const sourceAudit=await page.evaluate(()=>window.__sc023Tables.slice());
+    assert(sourceAudit.includes('v_top50_scores_turbo_clean'),'Turbo race record uses the verified mode-isolated Turbo top-score source');
+    assert(!sourceAudit.includes('v_high_score_league_official_from_games_clean'),'Turbo race never queries the Official high-score source');
+    assert(!sourceAudit.includes('v_high_score_league_official_clean'),'Turbo race never queries any Official league source');
+    await page.evaluate(()=>{window.__sqTurboRaceRecordCache=null;window.__sqV2InfoDmdUpdate();});
+    await page.waitForFunction(()=>(window.__sc021RacePackets||[]).some(p=>p.matchMode==='turbo'&&!p.classicThrowRace&&p.turboThrowRace&&p.record&&p.record.data?.at(-1)===359));
+    const recordPacket=await page.evaluate(()=>(window.__sc021RacePackets||[]).slice().reverse().find(p=>p.matchMode==='turbo'&&!p.classicThrowRace&&p.turboThrowRace&&p.record&&p.record.data?.at(-1)===359));
+    assert.deepEqual(recordPacket.record.data,[85,103,160,280,280,334,359],'Turbo High Score reference reaches the live Game Race packet');
+    assertNoUnexpectedErrors(consoleErrs,'SC-023 Turbo live recovery');
+    console.log('PASS SC-023 Turbo 20-second turn clock / moving perimeter / modern per-dart race / Turbo High Score reference');
   } finally { await browser.close(); }
 }
 
@@ -575,6 +649,7 @@ async function verifyTrainingRoute(){
   delete resumedPractice.is_practice;
   delete resumedPractice.practice;
   await verifyResumedRaceRoute('Practice without forcePractice', JSON.stringify(resumedPractice), false);
+  await verifySc023TurboLiveRecovery();
   await verifyNewRaceRoute('turbo', false);
   await verifyVsShadowAndPracticeAliasRoutes();
   await verifyTrainingRoute();
