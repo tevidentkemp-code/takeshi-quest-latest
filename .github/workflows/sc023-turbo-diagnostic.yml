@@ -1,0 +1,76 @@
+name: SC-023 Turbo diagnostic
+on:
+  push:
+    branches: [sc023-turbo-live-recovery]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install UI test dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          npm install --no-package-lock --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Diagnose Turbo runtime
+        shell: bash
+        run: |
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          node <<'NODE'
+          const H=require('./tools/ui-smoke/harness');
+          (async()=>{
+            const {browser,page,consoleErrs}=await H.launch({width:390,height:844});
+            try{
+              await H.boot(page);
+              await page.evaluate(()=>{
+                const original=window.__sqDrawArcadeRace;
+                window.__sc023Packets=[];
+                window.__sqDrawArcadeRace=function(canvas,packet,st,now){
+                  if(packet) window.__sc023Packets.push({
+                    classicThrowRace:packet.classicThrowRace===true,
+                    labels:Array.isArray(packet.labels)?packet.labels.slice():[],
+                    offset:packet.offset||0,
+                    record:packet.record?{label:packet.record.label,data:Array.isArray(packet.record.data)?packet.record.data.slice():null}:null,
+                    series:(packet.series||[]).map(s=>({name:s.name,data:s.data,throwData:s.throwData}))
+                  });
+                  return original.apply(this,arguments);
+                };
+              });
+              await page.click('#startGameBtn'); await page.waitForTimeout(400);
+              await page.click('#questBtn'); await page.waitForTimeout(400);
+              await page.click('#matchTurboBtn'); await page.waitForTimeout(700);
+              await H.addGuests(page,['TURBO QA A','TURBO QA B']);
+              await H.startMatch(page);
+              const snap=async(label)=>{
+                const x=await page.evaluate(()=>{
+                  const box=document.querySelector('.livev2panel .v2ScoreBox[data-p="'+Number(state?.currentPlayer||0)+'"]');
+                  const ts=window.__sqTurboTimerStatus?window.__sqTurboTimerStatus():null;
+                  return {
+                    page:document.body.dataset.page,
+                    bodyClass:document.body.className,
+                    variant:document.body.getAttribute('data-sq-variant'),
+                    state:{currentRound:state?.currentRound,currentPlayer:state?.currentPlayer,currentDart:state?.currentDart,mode:state?.mode,gameMode:state?.gameMode,match:state?.match},
+                    visualRuntime:typeof __sqIsTurboVisualRuntime==='function'?__sqIsTurboVisualRuntime():null,
+                    raceRuntime:typeof __sqIsTurboRaceRuntimeState==='function'?__sqIsTurboRaceRuntimeState(state):null,
+                    pre:{armed:window.__sqTurboPreStartArmed,released:window.__sqTurboPreStartReleased,showing:window.__sqTurboPreStartShowing},
+                    timer:ts,
+                    box:box?{className:box.className,deg:box.style.getPropertyValue('--sqTurboDeg'),svg:!!box.querySelector('svg.sqTurboSvg'),dash:box.querySelector('.sqTurboProgress')?.style.strokeDashoffset||''}:null,
+                    readyModal:!!document.querySelector('.sq-turbo-ready-backdrop'),
+                    packets:(window.__sc023Packets||[]).slice(-4)
+                  };
+                });
+                console.log(label,JSON.stringify(x,null,2));
+              };
+              await snap('SNAP0');
+              await page.waitForTimeout(1200); await snap('SNAP1');
+              await page.waitForTimeout(1200); await snap('SNAP2');
+              console.log('CONSOLE',consoleErrs);
+            }finally{await browser.close();}
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
