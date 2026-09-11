@@ -2883,11 +2883,15 @@ body.sq-mode-turbo[data-page="game"] .livev2panel .v2ScoreBox.active .v2Total{
   text-shadow:0 0 14px var(--sqTurboGlow)!important;
 }
 
-body.sq-mode-turbo[data-page="game"] .livev2panel .v2Dot:not(.off),
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2Dot.next,
 body.sq-mode-turbo[data-page="game"] .livev2panel .v2WinDot.on{
   background:var(--sqTurboAccent)!important;
   border-color:rgba(0,245,255,.70)!important;
   box-shadow:0 0 12px var(--sqTurboGlow)!important;
+}
+body.sq-mode-turbo[data-page="game"] .livev2panel .v2Dot.next::before{
+  background:var(--sqTurboAccent)!important;
+  box-shadow:0 0 8px var(--sqTurboGlow)!important;
 }
 
 body.sq-mode-turbo[data-page="game"] .livev2panel .v2Badge.active,
@@ -7975,25 +7979,50 @@ body.livev2-on[data-page="game"] .sqMomentumRow.is-active .sqMomentumMeta{
   grid-column: 1 / 2;
   display:flex;
   flex-direction: column;
+  align-self:stretch;
+  align-items:center;
   justify-content: center;
-  gap: 10px;
+  gap: 7px;
   padding: 0;
 }
 .livev2panel .v2Dot{
-  width:18px; height:18px; border-radius:50%;
-  border: 2px solid rgba(255,255,255,.22);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
-  opacity:.9;
-  margin-left: 6px;
-  background: rgba(255,132,0,.55);
-  border-color: rgba(255,132,0,.65);
-  box-shadow: 0 0 0 2px rgba(255,132,0,.18), inset 0 1px 0 rgba(255,255,255,.10);
+  width:22px; height:22px; border-radius:7px;
+  display:grid; place-items:center;
+  box-sizing:border-box;
+  border:1.5px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.03);
+  color:rgba(214,222,240,.5);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+  font-size:10px;
+  line-height:1;
+  font-weight:950;
+  letter-spacing:.01em;
+  opacity:.85;
+  transition:all .18s ease;
 }
-.livev2panel .v2Dot.off{
-  background: transparent;
-  border-color: rgba(255,255,255,.20);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
-  opacity: .55;
+.livev2panel .v2Dot::before{
+  content:"";
+  width:7px; height:7px; border-radius:50%;
+  background:rgba(214,222,240,.22);
+}
+.livev2panel .v2Dot.next{
+  border-color:#ff6a00;
+  box-shadow:0 0 14px rgba(255,106,0,.5);
+  animation:v3SlotNext 1.1s ease-in-out infinite;
+}
+.livev2panel .v2Dot.next::before{
+  background:#ff6a00;
+  box-shadow:0 0 8px rgba(255,106,0,.9);
+}
+.livev2panel .v2Dot.done::before{display:none;}
+.livev2panel .v2Dot.done{color:#fff;opacity:1;}
+.livev2panel .v2Dot.done.treble{border-color:rgba(47,208,107,.75);background:rgba(47,208,107,.16);color:#8effb4;box-shadow:0 0 12px rgba(47,208,107,.35);}
+.livev2panel .v2Dot.done.double{border-color:rgba(74,163,255,.75);background:rgba(74,163,255,.16);color:#9ccbff;box-shadow:0 0 12px rgba(74,163,255,.3);}
+.livev2panel .v2Dot.done.bull{border-color:rgba(255,196,74,.8);background:rgba(255,196,74,.16);color:#ffe1a6;box-shadow:0 0 12px rgba(255,196,74,.35);}
+.livev2panel .v2Dot.done.single{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.07);color:#eef2ff;}
+.livev2panel .v2Dot.done.miss{border-color:rgba(255,77,94,.7);background:rgba(255,77,94,.14);color:#ff8a97;}
+@media (prefers-reduced-motion:reduce){
+  .livev2panel .v2Dot.next{animation:none;}
 }
 
 /* Player totals grid: always fit 2–6 players across screen (no horizontal scroll). */
@@ -8441,10 +8470,12 @@ body.livev2-on[data-page="game"] .livev2panel[style*="--sqV2P: 1"] .v2Rows .v2Ce
 .livev2panel .v2MiniMetric{
   min-width:0;
   display:flex;
+  flex-direction:column;
   align-items:center;
   justify-content:center;
-  gap:4px;
+  gap:2px;
   padding:3px 3px 2px;
+  text-align:center;
   white-space:nowrap;
 }
 .livev2panel .v2MiniMetric + .v2MiniMetric{border-left:1px solid rgba(139,166,210,.14);}
@@ -10615,7 +10646,8 @@ body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtScoreRow{
 body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn{
   box-sizing:border-box;
   padding:4px !important;
-  gap:4px !important;
+  flex-direction:column !important;
+  gap:2px !important;
 }
 body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn .dtLbl{
   font-size:12px !important;
@@ -10626,7 +10658,18 @@ body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn .dtLbl{
 body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn .dtIcon{
   flex-shrink:0;
   font-size:13px !important;
-  line-height:1 !important;
+  line-height:.9 !important;
+  font-weight:950 !important;
+}
+body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn.undo .dtIcon,
+body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn.skip .dtIcon{
+  letter-spacing:-.14em;
+  padding-right:.14em;
+}
+body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn.miss .dtIcon{
+  font-size:17px !important;
+  line-height:.75 !important;
+  -webkit-text-stroke:.3px currentColor;
 }
 body.livev2-on:not(.livev3-on)[data-page="game"] #settingsBtnGamePad{
   font-size:20px !important;
@@ -10649,7 +10692,7 @@ body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtBullBtn[data-score-labe
 @media (max-width:520px){
   body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn{
     flex-direction:column !important;
-    gap:4px !important;
+    gap:2px !important;
   }
   body.livev2-on:not(.livev3-on)[data-page="game"] #pad .dtActBtn .dtLbl{
     font-size:clamp(10px,2.8vw,12px) !important;
@@ -24293,13 +24336,38 @@ function liveV2Render(){
   // Solo Practice: PB/WR total + rolling pace and live variance beside the player score pill.
   try{ if(pCount === 1) __sqUpdateSoloPracticePacePanel(__v2Totals[0] || 0, cr || 0); }catch(_){ }
 
-  // Dots (dart-in-turn)
-  // Use state.currentDart as the number of darts already thrown in this turn (0→1→2→0 on next player)
+  // Live V2 shot track: reuse the current Beta/V3 dart notation and state.
+  // A completed go briefly uses the engine's existing uiLastGo hold, then the
+  // first slot resets for the next player/round. This is presentation only.
   const dartN = Math.max(0, Math.min(3, Number.isFinite(+state.currentDart) ? +state.currentDart : 0));
+  const heldGo = state.uiLastGo && Date.now() < Number(state.uiLastGo.showUntil || 0) &&
+    Number(state.uiLastGo.player) !== turn && dartN === 0;
+  const shotDarts = heldGo
+    ? (Array.isArray(state.uiLastGo.darts) ? state.uiLastGo.darts : [])
+    : (Array.isArray(state.score?.[turn]?.[cr]?.darts) ? state.score[turn][cr].darts : []);
+  const nextShot = heldGo ? 3 : dartN;
   panel.querySelectorAll(".v2Dot").forEach((el)=>{
     const k = parseInt(el.getAttribute("data-dot") || "0", 10);
-    // Dots represent remaining darts in this player's turn.
-    el.classList.toggle("off", k < dartN);
+    const dart = shotDarts[k] || null;
+    el.classList.remove("off", "idle", "next", "done", "single", "double", "treble", "bull", "miss");
+    el.textContent = "";
+    if(dart){
+      const kind = dart.kind;
+      const visual = kind === "Miss" ? "miss"
+        : (kind === "T" || kind === "Triple") ? "treble"
+        : (kind === "D" || kind === "Double") ? "double"
+        : kind === "B" ? "bull" : "single";
+      const mark = (typeof __sqV3Mark === "function") ? __sqV3Mark(dart) : __sqV2DartToken(dart, cr);
+      el.classList.add("done", visual);
+      el.dataset.shotState = "done";
+      el.textContent = mark;
+    }else if(!state.finished && k === nextShot){
+      el.classList.add("next");
+      el.dataset.shotState = "next";
+    }else{
+      el.classList.add("idle");
+      el.dataset.shotState = "idle";
+    }
   });
 
   // Rounds list: 3-row viewport. At game start show current + next 2; later show current + previous 2.
@@ -25350,8 +25418,8 @@ function buildPad(){
       };
 
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ pressMissN(1); }catch(_){ try{ __sqHandleMissTap(); }catch(_){ } } }));
-      actions.appendChild(mkAct('undo', '↶', 'UNDO', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); }));
-      actions.appendChild(mkAct('skip', '▶', 'SKIP', () => {
+      actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); }));
+      actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => {
         try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
         try{ window.__sqSkipInProgress = true; }catch(_){ }
         try{ window.sqDmdShowZones?.({ z2:'SKIP GO', z3:'>>>' }, { type:'flash', ms:500, fx:'impact' }); }catch(_){ }
@@ -25452,8 +25520,8 @@ function buildPad(){
       };
 
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ pressMissN(1); }catch(_){ try{ __sqHandleMissTap(); }catch(_){ } } }));
-      actions.appendChild(mkAct('undo', '↶', 'UNDO', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); }));
-      actions.appendChild(mkAct('skip', '▶', 'SKIP', () => {
+      actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); }));
+      actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => {
         try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
         try{ window.__sqSkipInProgress = true; }catch(_){ }
         try{ window.sqDmdShowZones?.({ z2:'SKIP GO', z3:'>>>' }, { type:'flash', ms:500, fx:'impact' }); }catch(_){ }
@@ -25544,8 +25612,8 @@ function buildPad(){
       };
 
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ pressMissN(1); }catch(_){ try{ __sqHandleMissTap(); }catch(_){ } } }));
-      actions.appendChild(mkAct('undo', '↶', 'UNDO', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); }));
-      actions.appendChild(mkAct('skip', '▶', 'SKIP', () => {
+      actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); }));
+      actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => {
         try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
         try{ window.__sqSkipInProgress = true; }catch(_){ }
         try{ window.sqDmdShowZones?.({ z2:'SKIP GO', z3:'>>>' }, { type:'flash', ms:500, fx:'impact' }); }catch(_){ }

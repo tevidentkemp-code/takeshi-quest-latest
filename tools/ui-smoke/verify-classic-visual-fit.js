@@ -58,6 +58,143 @@ function assertNoUnexpectedErrors(consoleErrs, label){
   assert.deepEqual(unexpected, [], `${label}: ${unexpected.join('\n')}`);
 }
 
+async function waitForV2Shots(page, expected){
+  await page.waitForFunction(expectedTokens => {
+    const actual = [...document.querySelectorAll('#liveV2Panel .v2Dot')]
+      .map(slot => `${slot.dataset.shotState || ''}:${String(slot.textContent || '').trim()}`);
+    return actual.length === expectedTokens.length && actual.every((token, i) => token === expectedTokens[i]);
+  }, expected);
+  return page.evaluate(() => [...document.querySelectorAll('#liveV2Panel .v2Dot')].map(slot => ({
+    state: slot.dataset.shotState || '',
+    mark: String(slot.textContent || '').trim(),
+    classes: [...slot.classList]
+  })));
+}
+
+async function verifySc022HudPolish(){
+  const {browser, page, consoleErrs} = await H.launch({width:390,height:844});
+  try {
+    await H.boot(page);
+    await H.toMatchCard(page);
+    await H.addGuests(page, ['HUD ALPHA', 'HUD BETA']);
+    await H.startMatch(page);
+
+    let shots = await waitForV2Shots(page, ['next:', 'idle:', 'idle:']);
+    assert(shots[0].classes.includes('next'), 'first shot position starts active');
+    assert.equal(await page.locator('#liveV2Panel .v2Dot.next').evaluate(slot => getComputedStyle(slot).animationName), 'v3SlotNext', 'current shot reuses the Beta pulse');
+
+    for (const size of [{width:390,height:844},{width:320,height:844}]) {
+      await page.setViewportSize(size);
+      await page.waitForTimeout(900);
+      const layout = await page.evaluate(() => {
+        const rect = el => el && el.getBoundingClientRect();
+        const centre = r => ({x:r.left+r.width/2,y:r.top+r.height/2});
+        const panel = rect(document.getElementById('liveV2Panel'));
+        const pad = rect(document.getElementById('padBar'));
+        const scoreGrid = rect(document.querySelector('#liveV2Panel .v2ScoreGrid'));
+        const shotRects = [...document.querySelectorAll('#liveV2Panel .v2Dot')].map(rect);
+        const shotGroupCentre = (Math.min(...shotRects.map(r => r.top)) + Math.max(...shotRects.map(r => r.bottom))) / 2;
+        const mini = document.querySelector('#liveV2Panel .v2MiniAvg[data-p="0"]');
+        const metrics = [...mini.querySelectorAll('.v2MiniMetric')].map(metric => {
+          const mr=rect(metric), lr=rect(metric.querySelector('.v2MiniLab')), vr=rect(metric.querySelector('strong'));
+          return {
+            width:mr.width,
+            direction:getComputedStyle(metric).flexDirection,
+            labelAbove:lr.bottom <= vr.top + .5,
+            centred:Math.abs(centre(lr).x-centre(vr).x) <= 1
+          };
+        });
+        const actions = ['miss','undo','skip'].map(name => {
+          const button = document.querySelector(`#pad .dtActBtn.${name}`);
+          const br=rect(button), ir=rect(button.querySelector('.dtIcon')), lr=rect(button.querySelector('.dtLbl'));
+          return {
+            name,
+            icon:String(button.querySelector('.dtIcon').textContent || '').trim(),
+            direction:getComputedStyle(button).flexDirection,
+            vertical:ir.bottom <= lr.top + .5,
+            centred:Math.abs(centre(br).x-centre(ir).x) <= 1.5 && Math.abs(centre(br).x-centre(lr).x) <= 1.5,
+            fits:br.width >= 43.9 && br.height >= 43.9 && ir.left >= br.left && ir.right <= br.right && lr.left >= br.left && lr.right <= br.right
+          };
+        });
+        return {
+          overflow:document.documentElement.scrollWidth > innerWidth + 1,
+          padFits:pad.left >= -.5 && pad.right <= innerWidth + .5 && pad.top >= -.5 && pad.bottom <= innerHeight + .5,
+          panelPadGap:pad.top-panel.bottom,
+          shotCentreDelta:Math.abs(shotGroupCentre-centre(scoreGrid).y),
+          miniHeight:rect(mini).height,
+          equalMetricWidths:Math.abs(metrics[0].width-metrics[1].width) <= 1,
+          metrics,
+          actions
+        };
+      });
+      assert(!layout.overflow, `${size.width}px HUD has no horizontal overflow`);
+      assert(layout.padFits, `${size.width}px throwpad stays inside the viewport`);
+      assert(layout.panelPadGap >= 5, `${size.width}px live panel does not push into the throwpad`);
+      assert(layout.shotCentreDelta <= 1.5, `${size.width}px shot track is vertically centred on player info`);
+      assert(layout.miniHeight >= 47.5 && layout.miniHeight <= 49.5, `${size.width}px average strip keeps its 48px footprint`);
+      assert(layout.equalMetricWidths, `${size.width}px average metrics keep equal widths`);
+      assert(layout.metrics.every(metric => metric.direction === 'column' && metric.labelAbove && metric.centred), `${size.width}px 3AV/MAV labels stack above centred values`);
+      assert.deepEqual(layout.actions.map(action => action.icon), ['⊘','◀◀','▶▶'], `${size.width}px action glyphs`);
+      assert(layout.actions.every(action => action.direction === 'column' && action.vertical && action.centred && action.fits), `${size.width}px action icons stack above labels inside existing tap targets`);
+      if (process.env.SQ_SCREENSHOTS) {
+        fs.mkdirSync(process.env.SQ_SCREENSHOTS,{recursive:true});
+        await page.screenshot({path:path.join(process.env.SQ_SCREENSHOTS,`sc022-hud-${size.width}.png`)});
+      }
+    }
+    await page.setViewportSize({width:390,height:844});
+
+    await page.locator('#pad [data-score-label="Single"]').click();
+    shots = await waitForV2Shots(page, ['done:S', 'next:', 'idle:']);
+    assert(shots[0].classes.includes('single'), 'Dart 1 uses the Beta single-hit mapping');
+
+    await page.locator('#pad [data-score-label="Double"]').click();
+    shots = await waitForV2Shots(page, ['done:S', 'done:D', 'next:']);
+    assert(shots[1].classes.includes('double'), 'Dart 2 uses the Beta double-hit mapping');
+
+    await page.locator('#pad .dtActBtn.undo').click();
+    await waitForV2Shots(page, ['done:S', 'next:', 'idle:']);
+    await page.locator('#pad .dtActBtn.miss').click();
+    shots = await waitForV2Shots(page, ['done:S', 'done:X', 'next:']);
+    assert(shots[1].classes.includes('miss'), 'MISS uses the Beta miss mapping');
+    await page.locator('#pad .dtActBtn.undo').click();
+    await waitForV2Shots(page, ['done:S', 'next:', 'idle:']);
+
+    await page.locator('#pad [data-score-label="Double"]').click();
+    await waitForV2Shots(page, ['done:S', 'done:D', 'next:']);
+    await page.locator('#pad [data-score-label="Treble"]').click();
+    await page.waitForFunction(() => state.currentPlayer === 1 && state.currentRound === 0 && state.currentDart === 0);
+    shots = await waitForV2Shots(page, ['done:S', 'done:D', 'done:T']);
+    assert(shots[2].classes.includes('treble'), 'Dart 3 uses the Beta treble-hit mapping');
+    const liveAverages = await page.evaluate(() => {
+      const pair = __sqV2LiveAveragePair(0, state.currentRound);
+      return {expected3:__sqFmtAvg(pair.r3), expectedMatch:__sqFmtAvg(pair.mtc), actual3:document.getElementById('v2Mini3R0').textContent, actualMatch:document.getElementById('v2MiniMtc0').textContent};
+    });
+    assert.notEqual(liveAverages.actual3, '–', '3AV updates after a completed round');
+    assert.equal(liveAverages.actual3, liveAverages.expected3, '3AV display keeps the existing calculation');
+    assert.equal(liveAverages.actualMatch, liveAverages.expectedMatch, 'MAV display keeps the existing calculation');
+    await page.waitForTimeout(1150);
+    await waitForV2Shots(page, ['next:', 'idle:', 'idle:']);
+
+    await page.locator('#pad .dtActBtn.miss').click();
+    await waitForV2Shots(page, ['done:X', 'next:', 'idle:']);
+    await page.locator('#pad .dtX3').click();
+    await page.waitForFunction(() => state.currentPlayer === 0 && state.currentRound === 1 && state.currentDart === 0);
+    await waitForV2Shots(page, ['done:X', 'done:X', 'done:X']);
+    await page.waitForTimeout(1150);
+    await waitForV2Shots(page, ['next:', 'idle:', 'idle:']);
+
+    await page.locator('#pad .dtActBtn.skip').click();
+    await page.waitForFunction(() => state.currentPlayer === 1 && state.currentRound === 1 && state.currentDart === 0);
+    await waitForV2Shots(page, ['done:X', 'done:X', 'done:X']);
+    await page.locator('#pad .dtActBtn.undo').click();
+    await page.waitForFunction(() => state.currentPlayer === 0 && state.currentRound === 1 && state.currentDart === 2);
+    await waitForV2Shots(page, ['done:X', 'done:X', 'next:']);
+
+    assertNoUnexpectedErrors(consoleErrs, 'SC-022 HUD polish');
+    console.log('PASS SC-022 stacked averages / action controls / shot state, reset and Undo');
+  } finally { await browser.close(); }
+}
+
 async function startNewRaceGame(page, mode){
   await page.click('#startGameBtn'); await page.waitForTimeout(400);
   await page.click(mode === 'practice' ? '#practiceBtn' : '#questBtn'); await page.waitForTimeout(400);
@@ -218,20 +355,17 @@ async function verifyTrainingRoute(){
     assert(avgAttachGap<2,'mini-average strip attaches directly below player cell');
     const miniAv = await page.evaluate(async () => {
       const pIdx = 0;
-      const cr = Number(state.currentRound || 0);
-      const beforeEntry = structuredClone(state.score?.[pIdx]?.[cr] || { darts:[], roundTotal:0 });
+      const beforeScores = structuredClone(state.score?.[pIdx] || []);
+      const beforeRound = state.currentRound;
       const beforeDart = state.currentDart;
       try{
-        state.score[pIdx][cr] = {
-          darts:[
-            { kind:'S', points:10 },
-            { kind:'S', points:10 },
-            { kind:'S', points:10 }
-          ],
-          roundTotal:30
-        };
+        state.score[pIdx] = [10,11,12,13].map(points => ({
+          darts:[{kind:'S',points},{kind:'S',points},{kind:'S',points}],
+          roundTotal:points*3
+        }));
+        state.currentRound = 3;
         state.currentDart = 3;
-        const pair = __sqV2LiveAveragePair(pIdx, cr);
+        const pair = __sqV2LiveAveragePair(pIdx, 3);
         liveV2Render();
         await new Promise(resolve => setTimeout(resolve, 140));
         return {
@@ -241,17 +375,19 @@ async function verifyTrainingRoute(){
           mtc: document.getElementById('v2MiniMtc0')?.textContent || ''
         };
       } finally {
-        state.score[pIdx][cr] = beforeEntry;
+        state.score[pIdx] = beforeScores;
+        state.currentRound = beforeRound;
         state.currentDart = beforeDart;
         liveV2Render();
         await new Promise(resolve => setTimeout(resolve, 140));
       }
     });
-    assert.equal(miniAv.pairR3, '30', '3R helper uses completed-round score');
-    assert.equal(miniAv.pairMtc, '30', 'MTC helper uses completed-round score');
+    assert.equal(miniAv.pairR3, '36', '3R helper uses the latest three completed rounds');
+    assert.equal(miniAv.pairMtc, '34.5', 'MTC helper uses every completed round');
+    assert.notEqual(miniAv.pairR3, miniAv.pairMtc, '3AV and MAV fixtures remain independently testable');
     assert.equal(miniAv.r3, miniAv.pairR3, 'rendered 3AV matches helper');
     assert.equal(miniAv.mtc, miniAv.pairMtc, 'rendered MAV matches helper');
-    console.log('PASS doubled 3AV / MAV strip');
+    console.log('PASS distinct 3AV / MAV values and compact strip');
     for (const size of [{width:390,height:844},{width:430,height:932},{width:320,height:568},{width:1366,height:936}]) {
       await page.setViewportSize(size);
       await page.waitForTimeout(900);
@@ -364,6 +500,7 @@ async function verifyTrainingRoute(){
     console.log('PASS no uncaught browser errors');
   } finally { await browser.close(); }
 
+  await verifySc022HudPolish();
   await verifyResumedRaceRoute('Classic', classicSavedState, true);
   const practiceSavedState = await verifyNewRaceRoute('practice', false);
   const resumedPractice = JSON.parse(practiceSavedState);
