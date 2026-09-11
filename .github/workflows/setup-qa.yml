@@ -21,6 +21,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: SC-019 exact-source diagnostic
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('index.html').read_text()
+          for needle in ['fetchTurboHighScoreLeagueClean', 'fetchOfficialHighScoreLeagueClean', 'openHighScoreLeagueDialog']:
+            i = text.find(needle)
+            print(f'===== {needle} @ {i} =====')
+            if i >= 0:
+              print(text[max(0,i-1200):i+4200])
+          PY
       - name: Install existing test dependencies
         working-directory: tools/ui-smoke
         run: |
