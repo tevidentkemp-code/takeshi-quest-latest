@@ -1,0 +1,26 @@
+name: SC-023 clean final branch
+on:
+  push:
+    branches: [sc023-turbo-live-recovery]
+permissions:
+  contents: write
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sc023-turbo-live-recovery
+          fetch-depth: 0
+      - name: Remove branch-only QA artifacts and cleanup workflow
+        shell: bash
+        run: |
+          rm -rf qa-artifacts
+          rm -f .github/workflows/sc023-clean-final.yml
+          git diff --check
+          git status --short
+          git add -A
+          git config user.name 'tevidentkemp-code'
+          git config user.email 'tevidentkemp@gmail.com'
+          git commit -m 'SC-023: remove temporary QA artifacts'
+          git push origin HEAD:sc023-turbo-live-recovery
