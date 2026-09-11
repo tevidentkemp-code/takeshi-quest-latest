@@ -23834,7 +23834,9 @@ function __sqV2SetPagerPage(panel, page, animate){
     for(let p=0; p<pList.length; p++){
       const player = pList[p] || {};
       let running = 0;
+      let throwRunning = 0;
       const data = [];
+      const throwData = [0];
       let startedAny = false;
 
       for(let r=0; r<rc; r++){
@@ -23842,6 +23844,16 @@ function __sqV2SetPagerPage(panel, page, animate){
         const darts = Array.isArray(entry?.darts) ? entry.darts.filter(v => v != null) : [];
         const started = !!entry && (darts.length > 0 || Number(entry?.roundTotal || 0) > 0);
         const done = (r < cr) || darts.length >= 3;
+        // SC-021: retain canonical round totals, but expose a read-only per-throw
+        // cumulative path for Classic race motion. Misses append the same Y value
+        // while still advancing one X step.
+        for (const dart of darts){
+          const pts = (typeof __sqV2DartPoints === 'function')
+            ? __sqV2DartPoints(dart)
+            : Number(dart && (dart.points ?? dart.score ?? dart.value ?? dart.total)) || 0;
+          throwRunning += Number.isFinite(Number(pts)) ? Number(pts) : 0;
+          throwData.push(throwRunning);
+        }
 
         if (r > cr && !started) {
           data.push(null);
@@ -23868,6 +23880,7 @@ function __sqV2SetPagerPage(panel, page, animate){
         name: String((typeof __sqVsShadowDisplayLabelForPlayer === 'function' && __sqVsShadowDisplayLabelForPlayer(player, { graph:true })) || player.name || player.fullName || player.displayName || ('P' + (p+1))),
         color: player.color || PALETTE[p % PALETTE.length],
         data: trimmed,
+        throwData,
         dotted: false
       });
     }
@@ -23890,7 +23903,7 @@ function __sqV2SetPagerPage(panel, page, animate){
     const recSig = Array.isArray(records)
       ? records.map(r => (r && r.data ? r.data.join(',') : '')).join('||')
       : ((rec && rec.data) ? rec.data.join(',') : '');
-    const arr = series.map(s => s.data.join(',')).join('|') + '||' + recSig;
+    const arr = series.map(s => s.data.join(',') + '>' + (Array.isArray(s.throwData) ? s.throwData.join(',') : '')).join('|') + '||' + recSig;
     return arr;
   }
 
@@ -23923,13 +23936,17 @@ function __sqV2SetPagerPage(panel, page, animate){
     let live = buildLiveSeries();
 
     const __turboRace = (typeof __sqIsTurboRaceRuntimeState === 'function') ? __sqIsTurboRaceRuntimeState(state) : (()=>{ try{ const m = state?.match || {}; const draft = window.__sqTournamentDraft || state?.__sqTournamentDraft || null; const type = String(m.tournamentType || m.type || draft?.type || state?.tournamentType || '').toLowerCase(); return !!(type === 'turbo' || m.strictTimer === true || m.throwLimitSeconds === 20 || state?.strictTimer === true || state?.throwLimitSeconds === 20); }catch(_){ return false; } })();
+    const __raceModeKey = String(state?.mode || state?.gameMode || state?.game_mode || '').toLowerCase();
+    const __practiceRace = ['practice','unofficial','solo'].includes(__raceModeKey) || state?.isPractice === true || state?.is_practice === true || state?.practice === true || state?.match?.forcePractice === true;
+    const __shadowRace = (typeof __sqIsVsShadow === 'function') ? __sqIsVsShadow() : !!(state?.practiceVsShadow || state?.vsShadow || state?.vs_shadow || __raceModeKey === 'vsshadow');
+    const __classicThrowRace = live.length >= 2 && !__turboRace && !__practiceRace && !__shadowRace;
     const __turboStartIdx = (typeof __sqTurboRaceStartIndex === 'function') ? __sqTurboRaceStartIndex(state, roundsCount()) : (()=>{ try{ const rules = state?.match?.tournamentRules || state?.__sqTournamentDraft?.rules || window.__sqTournamentDraft?.rules || {}; return Math.max(0, Math.min(roundsCount()-1, Number(rules.startRoundIndex ?? 7))); }catch(_){ return 7; } })();
     if (__turboRace) {
       labels = labels.slice(__turboStartIdx);
       live = live.map(s => ({ ...s, data: Array.isArray(s.data) ? s.data.slice(__turboStartIdx) : [] }));
     }
     const offset = __turboRace ? __turboStartIdx : 0;
-    drawRace(canvas, {series:live, record:null, records:null, labels, offset});
+    drawRace(canvas, {series:live, record:null, records:null, labels, offset, classicThrowRace:__classicThrowRace});
     let rec = (typeof __sqBuildRaceReferenceSeriesForCurrentMode === 'function')
       ? await __sqBuildRaceReferenceSeriesForCurrentMode(roundsCount(), __turboStartIdx)
       : (__turboRace ? null : await getRecordSeries());
@@ -23951,7 +23968,7 @@ function __sqV2SetPagerPage(panel, page, animate){
 
     // A late cloud response must never replace a newer throw or a new game.
     if (version !== renderVersion || canvas !== getCanvas()) return;
-    drawRace(canvas, {series:live, record:rec, records, labels, offset});
+    drawRace(canvas, {series:live, record:rec, records, labels, offset, classicThrowRace:__classicThrowRace});
   }
 
   window.__sqV2InfoDmdUpdate = function(){
@@ -27136,7 +27153,11 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
     const rc = packet ? packet.labels.length : MAX_ROUNDS;
     const offset = packet ? packet.offset || 0 : 0;
     const NP = packet ? packet.series.length : (state.players || []).length || 2;
-    const series = packet ? packet.series.map(s => s.data) : __sqV3RaceSeries();
+    const classicThrowRace = !!(packet && packet.classicThrowRace);
+    const series = packet ? packet.series.map(s => {
+      const src = classicThrowRace && Array.isArray(s.throwData) ? s.throwData : s.data;
+      return Array.isArray(src) ? src : [];
+    }) : __sqV3RaceSeries();
     const lens = series.map(p => { let n = 0; for (let i = 0; i < p.length; i++) if (p[i] != null) n = i + 1; return n; });
     // Fully-thrown round count per player (all three darts landed) — used to grade
     // a round only once it's complete.
@@ -27159,7 +27180,7 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
                  : (d.kind === 'Miss') ? 0 : 0.5;
             }
           }catch(_){ }
-          if (w >= 6.5) st.combo[p] = { start: now, dur: 720, w: w };
+          if (!classicThrowRace && w >= 6.5) st.combo[p] = { start: now, dur: 720, w: w };
         }
         st.lastFull[p] = fulls[p];
       }
@@ -27170,7 +27191,8 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
     // lookahead), not the whole 14-round record line. Otherwise round 1 is
     // drawn against a ~700 ceiling and every player's line is a flat smudge
     // along the bottom. Early rounds now zoom in so small gaps read clearly.
-    const playedTo = Math.max(1, ...lens);
+    const maxSeriesLen = Math.max(1, ...lens);
+    const playedTo = classicThrowRace ? Math.max(1, Math.ceil(Math.max(0, maxSeriesLen - 1) / 3)) : maxSeriesLen;
     const flat = series.flat().filter(v => v != null);
     for (const record of records) for (const value of record.data.slice(0, playedTo + 1)) if (Number.isFinite(value)) flat.push(value);
     // Generous headroom early (keeps lines mid-panel), tightening as the game fills out.
@@ -27188,9 +27210,18 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
         ctx.fillStyle = s.color || '#7bdcff'; ctx.fillText(label, keyX, 3);
         keyX += ctx.measureText(label).width + 12;
       }
+      if (classicThrowRace && records.length){
+        ctx.save();
+        ctx.setLineDash([5,4]); ctx.strokeStyle = records[0].color || 'rgba(255,214,110,.9)'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(26, 15); ctx.lineTo(44, 15); ctx.stroke();
+        ctx.setLineDash([]); ctx.fillStyle = 'rgba(255,224,150,.88)'; ctx.fillText('High Score', 49, 10);
+        ctx.restore();
+      }
     }
-    const padL = 26, padR = 12, padT = packet ? 19 : 8, padB = 18, W = cssW - padL - padR, H = cssH - padT - padB;
-    const X = i => padL + (rc <= 1 ? 0 : (i / (rc - 1)) * W);
+    const padL = 26, padR = 12, padT = classicThrowRace ? 25 : (packet ? 19 : 8), padB = 18, W = cssW - padL - padR, H = cssH - padT - padB;
+    const throwSteps = Math.max(1, rc * 3);
+    const XStep = step => padL + (Math.max(0, Math.min(throwSteps, Number(step) || 0)) / throwSteps) * W;
+    const X = i => classicThrowRace ? XStep((i + 1) * 3) : padL + (rc <= 1 ? 0 : (i / (rc - 1)) * W);
     const Y = v => padT + H - (v / maxV) * H;
     // horizontal value grid + labels: a line every 50, a STRONGER line every 100.
     ctx.font = '800 8px system-ui,sans-serif'; ctx.textBaseline = 'middle';
@@ -27203,20 +27234,40 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
       ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(padL + W, yy); ctx.stroke();
       if (val % labelEvery === 0){ ctx.fillStyle = strong ? 'rgba(184,202,234,.62)' : 'rgba(168,188,224,.4)'; ctx.textAlign = 'right'; ctx.fillText(String(val), padL - 4, yy); }
     }
-    // vertical round grid + labels — every round labelled across the bottom.
+    // vertical round grid + labels. Classic starts at START and divides every
+    // round into three equal throw steps; other modes retain the existing grid.
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     const cr = Number(state.currentRound || 0) - offset;
-    for (let i = 0; i < rc; i++){
-      const xx = X(i), isCur = i === cr;
-      ctx.strokeStyle = isCur ? 'rgba(255,138,20,.4)' : 'rgba(150,170,210,.07)'; ctx.lineWidth = isCur ? 1.5 : 1;
-      ctx.beginPath(); ctx.moveTo(xx, padT); ctx.lineTo(xx, padT + H); ctx.stroke();
-      ctx.fillStyle = isCur ? 'rgba(255,190,90,.95)' : 'rgba(160,178,208,.5)'; ctx.fillText(packet ? packet.labels[i] : __sqV3RoundLabel(i), xx, padT + H + 4);
+    if (classicThrowRace){
+      const sx = XStep(0);
+      ctx.strokeStyle = 'rgba(150,170,210,.11)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(sx, padT); ctx.lineTo(sx, padT + H); ctx.stroke();
+      ctx.font = '800 7px system-ui,sans-serif'; ctx.fillStyle = 'rgba(160,178,208,.58)'; ctx.textAlign = 'left'; ctx.fillText('START', sx, padT + H + 4);
+      ctx.font = '800 8px system-ui,sans-serif'; ctx.textAlign = 'center';
+      for (let i = 0; i < rc; i++){
+        for (let d = 1; d <= 2; d++){
+          const subX = XStep(i * 3 + d);
+          ctx.strokeStyle = 'rgba(150,170,210,.035)'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(subX, padT); ctx.lineTo(subX, padT + H); ctx.stroke();
+        }
+        const xx = X(i), isCur = i === cr;
+        ctx.strokeStyle = isCur ? 'rgba(255,138,20,.4)' : 'rgba(150,170,210,.08)'; ctx.lineWidth = isCur ? 1.5 : 1;
+        ctx.beginPath(); ctx.moveTo(xx, padT); ctx.lineTo(xx, padT + H); ctx.stroke();
+        ctx.fillStyle = isCur ? 'rgba(255,190,90,.95)' : 'rgba(160,178,208,.5)'; ctx.fillText(packet ? packet.labels[i] : __sqV3RoundLabel(i), xx, padT + H + 4);
+      }
+    } else {
+      for (let i = 0; i < rc; i++){
+        const xx = X(i), isCur = i === cr;
+        ctx.strokeStyle = isCur ? 'rgba(255,138,20,.4)' : 'rgba(150,170,210,.07)'; ctx.lineWidth = isCur ? 1.5 : 1;
+        ctx.beginPath(); ctx.moveTo(xx, padT); ctx.lineTo(xx, padT + H); ctx.stroke();
+        ctx.fillStyle = isCur ? 'rgba(255,190,90,.95)' : 'rgba(160,178,208,.5)'; ctx.fillText(packet ? packet.labels[i] : __sqV3RoundLabel(i), xx, padT + H + 4);
+      }
     }
     // HIGH-SCORE (record) pace — dashed gold reference line to race against
     for (const record of records){
       const recData = record.data;
       const recTo = Math.min(recData.length, rc);                  // plot the complete reference series
-      const RP = [];
+      const RP = classicThrowRace ? [[XStep(0), Y(0)]] : [];
       for (let i = 0; i < recTo; i++){
         if (recData[i] == null) continue;
         const x = X(i), rawY = Y(recData[i]);
@@ -27234,15 +27285,17 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
         ctx.shadowColor = 'rgba(255,200,90,.6)'; ctx.shadowBlur = 6;
         ctx.beginPath(); RP.forEach((pt, i) => i ? ctx.lineTo(pt[0], pt[1]) : ctx.moveTo(pt[0], pt[1])); ctx.stroke();
         ctx.restore();
-        const tip = RP[RP.length - 1];
-        ctx.fillStyle = 'rgba(255,224,150,.95)'; ctx.font = '900 8px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-        ctx.fillText(String(record.label || 'HS'), Math.min(tip[0] + 3, cssW - 16), tip[1] - 2);
+        if (!classicThrowRace){
+          const tip = RP[RP.length - 1];
+          ctx.fillStyle = 'rgba(255,224,150,.95)'; ctx.font = '900 8px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+          ctx.fillText(String(record.label || 'HS'), Math.min(tip[0] + 3, cssW - 16), tip[1] - 2);
+        }
       }
     }
     // player lines (same colours as each player's NAME on their pill)
     const colors = Array.from({ length: NP }, (_, i) => packet ? packet.series[i].color || __sqV3PlayerColor(i) : __sqV3PlayerColor(i));
     series.forEach((pts, pi) => {
-      const P = []; for (let i = 0; i < pts.length; i++) if (pts[i] != null) P.push([X(i), Y(pts[i])]);
+      const P = []; for (let i = 0; i < pts.length; i++) if (pts[i] != null) P.push([classicThrowRace ? XStep(i) : X(i), Y(pts[i])]);
       if (!P.length) return;
       // Resolve this player's segment animation into an ease + charge amount.
       // A completed great combo (st.combo) overrides the ordinary growth ease with
@@ -27259,9 +27312,10 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
         const t = (now - grow.start) / 450;
         segT = Math.min(1, t); ease = 1 - Math.pow(1 - segT, 3);
       }
-      ctx.setLineDash(packet && packet.series[pi].dotted ? [5,4] : []);
-      ctx.strokeStyle = colors[pi]; ctx.lineWidth = 2.7; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-      ctx.shadowColor = colors[pi]; ctx.shadowBlur = 10;
+      ctx.setLineDash(classicThrowRace ? [1.5,3.5] : (packet && packet.series[pi].dotted ? [5,4] : []));
+      ctx.strokeStyle = colors[pi]; ctx.lineWidth = classicThrowRace ? 1.7 : 2.7; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.globalAlpha = classicThrowRace ? 0.58 : 1;
+      ctx.shadowColor = colors[pi]; ctx.shadowBlur = classicThrowRace ? 4 : 10;
       ctx.beginPath();
       let lx = P[P.length-1][0], ly = P[P.length-1][1], ppx = lx, ppy = ly;
       for (let i = 0; i < P.length; i++){
@@ -27269,7 +27323,7 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
         if (i === P.length - 1 && P.length >= 2 && segT < 1){ const px = P[i-1][0], py = P[i-1][1]; ppx = px; ppy = py; x = px + (x-px)*ease; y = py + (y-py)*ease; lx = x; ly = y; }
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
-      ctx.stroke(); ctx.setLineDash([]); ctx.shadowBlur = 0;
+      ctx.stroke(); ctx.setLineDash([]); ctx.shadowBlur = 0; ctx.globalAlpha = 1;
       // Comet trail: while a big segment zooms, streak a bright tail behind the head.
       if (combo && zoomV > 0 && P.length >= 2){
         ctx.save();
