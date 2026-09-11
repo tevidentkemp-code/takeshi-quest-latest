@@ -20,7 +20,9 @@ jobs:
       - name: Apply bounded SC-025 patch
         run: |
           python3 tools/ui-smoke/sc025-patch.py
+          python3 tools/ui-smoke/sc025-fix-test.py
           git diff --check
+          node --check tools/ui-smoke/verify-sc009.js
           node --check tools/ui-smoke/verify-sc025.js
           git diff --stat
       - name: Install UI test dependencies
@@ -42,8 +44,8 @@ jobs:
       - name: Commit bounded product and regression files only
         run: |
           git diff --check
-          git rm .github/workflows/sc025-build.yml tools/ui-smoke/sc025-patch.py
-          git add index.html tools/ui-smoke/verify-sc025.js
+          git rm .github/workflows/sc025-build.yml tools/ui-smoke/sc025-patch.py tools/ui-smoke/sc025-fix-test.py
+          git add index.html tools/ui-smoke/verify-sc009.js tools/ui-smoke/verify-sc025.js
           git status --short
           git config user.name 'tevidentkemp-code'
           git config user.email 'tevidentkemp@gmail.com'
