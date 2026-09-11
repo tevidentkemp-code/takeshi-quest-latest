@@ -91,7 +91,6 @@ const FIXTURE = {
       { game_id: 'g6', ts: days(6), player_index: 0, player_name: 'Alex S', score: 168 },
       { game_id: 'g6', ts: days(6), player_index: 1, player_name: 'Sam T', score: 110 },
     ],
-    v_latest_scores_turbo_clean: [],
     v_player_target_streaks: [
       { player_key: 'jo r', player_name: 'Jo R', mode_key: 'official', mode_label: 'Official', dart_streak: 9, round_streak: 4, source_games: 12, last_played_at: days(2) },
       { player_key: 'alex s', player_name: 'Alex S', mode_key: 'official', mode_label: 'Official', dart_streak: 7, round_streak: 6, source_games: 10, last_played_at: days(1) },

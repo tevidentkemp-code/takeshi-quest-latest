@@ -176,7 +176,7 @@ function check(name, ok, detail) { if (!ok) failures++; console.log((ok ? 'PASS'
     const b = Array.from(document.querySelectorAll('.sq-fix100-backdrop button[data-mode]')).find((x) => x.dataset.mode === 'turbo');
     if (b) b.click();
   });
-  await page.waitForTimeout(900);
+  await page.waitForFunction((expected) => (document.querySelector('.hs-record-score') || {}).textContent === expected, E.hs.turbo.record.score, { timeout: 3000 });
   const hsTurbo = await page.evaluate(() => {
     const arena = document.querySelector('.hs-arena');
     if (!arena) return null;
@@ -200,13 +200,29 @@ function check(name, ok, detail) { if (!ok) failures++; console.log((ok ? 'PASS'
     const b = Array.from(document.querySelectorAll('.sq-fix100-backdrop button[data-mode]')).find((x) => x.dataset.mode === 'official');
     if (b) b.click();
   });
-  await page.waitForTimeout(900);
+  await page.waitForFunction((expected) => (document.querySelector('.hs-record-score') || {}).textContent === expected, E.hs.record.score, { timeout: 3000 });
   const hsOfficialAgain = await page.evaluate(() => ({
     score: (document.querySelector('.hs-record-score') || {}).textContent,
     holder: (document.querySelector('.hs-record-holder') || {}).textContent,
     eyebrow: (document.querySelector('.hs-record-eyebrow') || {}).textContent,
   }));
   check('HS League: switching back restores Official source', hsOfficialAgain.score === E.hs.record.score && hsOfficialAgain.holder === E.hs.record.holder && /All-Time Record — Official/i.test(hsOfficialAgain.eyebrow || ''), JSON.stringify(hsOfficialAgain));
+
+  // Successful zero-row Turbo response must be a truthful empty state, not a cloud-error state.
+  await page.evaluate(() => {
+    window.__sqSc019From = window.sb.from;
+    window.sb.from = (table) => {
+      if (table !== 'v_latest_scores_turbo_clean') return window.__sqSc019From(table);
+      const q = { select(){return q;}, order(){return q;}, limit(){return q;}, then(resolve){ resolve({data:[], error:null}); }, catch(){return q;} };
+      return q;
+    };
+    const b = Array.from(document.querySelectorAll('.sq-fix100-backdrop button[data-mode]')).find((x) => x.dataset.mode === 'turbo');
+    if (b) b.click();
+  });
+  await page.waitForFunction(() => /No Turbo high scores found/i.test((document.querySelector('.hs-arena') || {}).textContent || ''), undefined, { timeout: 3000 });
+  const hsTurboEmpty = await page.evaluate(() => ((document.querySelector('.hs-arena') || {}).textContent) || '');
+  check('HS League: genuine Turbo zero rows show empty state', /No Turbo high scores found/i.test(hsTurboEmpty) && !/not available yet/i.test(hsTurboEmpty), JSON.stringify(hsTurboEmpty));
+  await page.evaluate(() => { if (window.__sqSc019From) { window.sb.from = window.__sqSc019From; delete window.__sqSc019From; } });
 
   await page.keyboard.press('Escape');
   await page.waitForTimeout(400);
