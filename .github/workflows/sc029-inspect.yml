@@ -1,12 +1,12 @@
 name: SC-029 bounded patch and QA
 on:
   push:
-    branches: [sc029-player-stats-hub-polish]
+    branches:
+      - sc029-player-stats-hub-polish
 permissions:
   contents: write
 jobs:
   patch:
-    if: github.event.head_commit.message == 'SC-029: arm bounded Player Stats hub patch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -22,17 +22,14 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           p = Path('index.html')
           s = p.read_text()
-
           def once(old, new, label):
               global s
               n = s.count(old)
               if n != 1:
                   raise SystemExit(f'{label}: expected exactly 1 match, found {n}')
               s = s.replace(old, new, 1)
-
           once(
               ".sq-player-stats-profile{ margin-bottom:12px; }\n"
               ".sq-player-stats-profile .pp-hero-name{ overflow-wrap:anywhere; }\n"
@@ -48,12 +45,11 @@ jobs:
               ".sq-player-stats-profile .pp-tabs{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }\n"
               ".sq-player-stats-profile .pp-tab{ min-width:0; width:100%; flex:none; }",
               'sticky/equal-tabs CSS')
-
           once(
               "      dbPower = mine ? { player: mine.player, power_rank: mine.avg, power_rank_pos: mine.rankPos || (rows.indexOf(mine) + 1), last_played_at: mine.lastMs || null } : null;",
               "      dbPower = mine ? { player: mine.player, power_rank: mine.avg, power_rank_pos: mine.rankPos || (rows.indexOf(mine) + 1), last_played_at: mine.lastMs || null } : null;\n"
-              "      // If the saved-player directory is stale or differently shaped, do not hide\n"
-              "      // this selected player's canonical Power Rank. The clean DB view remains truth.\n"
+              "      // A stale saved-player directory must not suppress the selected player's\n"
+              "      // canonical Power Rank. The clean DB view remains the source of truth.\n"
               "      if (!dbPower){\n"
               "        const rawMine = ((pr && pr.data) || []).find(r => powerKey(r.player_key || r.player) === powerKey(name)) || null;\n"
               "        if (rawMine){\n"
@@ -68,7 +64,6 @@ jobs:
               "        }\n"
               "      }",
               'Power Rank fallback')
-
           once(
               "    const nameRow = document.createElement('div');\n"
               "    nameRow.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;';\n"
@@ -79,18 +74,14 @@ jobs:
               "    levelChip.style.marginLeft = 'auto'; levelChip.style.flex = '0 0 auto';\n"
               "    nameRow.append(heroName, levelChip);",
               'level badge alignment')
-
           p.write_text(s)
-
           qa = Path('.github/workflows/setup-qa.yml')
           q = qa.read_text()
           needle = "          node tools/ui-smoke/verify-sc028.js | tee sc028-results.txt\n"
           if q.count(needle) != 1:
               raise SystemExit('setup-qa insertion point not unique')
-          q = q.replace(needle, needle + "          node tools/ui-smoke/verify-sc029.js | tee sc029-results.txt\n", 1)
-          qa.write_text(q)
+          qa.write_text(q.replace(needle, needle + "          node tools/ui-smoke/verify-sc029.js | tee sc029-results.txt\n", 1))
           PY
-
           cat > tools/ui-smoke/verify-sc029.js <<'JS'
           // SC-029: sticky Player Stats profile hub, equal primary tabs, right-aligned level badge,
           // and Power Rank must remain sourced from the canonical clean DB view.
@@ -107,14 +98,11 @@ jobs:
               await H.boot(page);
               await FX.install(page);
               await page.evaluate(() => {
-                // Reproduce the live failure class: a stale/differently-shaped saved-player
-                // directory must not suppress a valid row from the canonical Power Rank view.
                 window.cloudListPlayers = async () => [{ name:'Someone Else' }];
                 window.openPlayerStatsHub('Alex S');
               });
               await page.waitForSelector('.sq-player-stats-hub .pp-hero');
               await page.waitForTimeout(1000);
-
               const before = await page.locator('.sq-player-stats-hub').evaluate(el => {
                 const body = el.querySelector('.menu-modal-body');
                 const profile = el.querySelector('.sq-player-stats-profile');
@@ -122,45 +110,32 @@ jobs:
                 const name = el.querySelector('.pp-hero-name');
                 const nameRow = name && name.parentElement;
                 const badge = nameRow && nameRow.children[1];
-                const tiles = [...el.querySelectorAll('.pp-tile')].map(t => ({
-                  label:(t.querySelector('.pp-tile-label')||{}).textContent || '',
-                  value:(t.querySelector('.pp-tile-value')||{}).textContent || ''
-                }));
+                const tiles = [...el.querySelectorAll('.pp-tile')].map(t => ({ label:(t.querySelector('.pp-tile-label')||{}).textContent || '', value:(t.querySelector('.pp-tile-value')||{}).textContent || '' }));
                 const pr = tiles.find(t => /power rank/i.test(t.label));
                 const br = body.getBoundingClientRect(), prr = profile.getBoundingClientRect();
                 const nr = nameRow && nameRow.getBoundingClientRect();
                 const bgr = badge && badge.getBoundingClientRect();
-                return {
-                  bodyTop:br.top, profileTop:prr.top,
-                  tabWidths:tabs.map(t => t.getBoundingClientRect().width),
-                  rank:pr && pr.value,
+                return { bodyTop:br.top, profileTop:prr.top, tabWidths:tabs.map(t => t.getBoundingClientRect().width), rank:pr && pr.value,
                   badgeRight:nr && bgr ? nr.right - bgr.right : 999,
-                  badgeAfterName:!!(bgr && name && bgr.left >= name.getBoundingClientRect().right - 1),
-                  overflow:el.scrollWidth > el.clientWidth + 1
-                };
+                  badgeAfterName:!!(bgr && name && bgr.left >= name.getBoundingClientRect().right - 1), overflow:el.scrollWidth > el.clientWidth + 1 };
               });
-
               check(width + ': Power Rank pulls from canonical view', before.rank === '8.75 (#3)', before);
               check(width + ': STATS / XP / ACHIEVEMENTS are equal width', Math.max(...before.tabWidths) - Math.min(...before.tabWidths) <= 1.5, before.tabWidths);
-              check(width + ': level badge is aligned to the right of the name row', Math.abs(before.badgeRight) <= 2 && before.badgeAfterName, before);
+              check(width + ': level badge is aligned to the right', Math.abs(before.badgeRight) <= 2 && before.badgeAfterName, before);
               check(width + ': no horizontal overflow', !before.overflow, before);
-
               await page.locator('.sq-player-stats-hub .menu-modal-body').evaluate(el => { el.scrollTop = el.scrollHeight; });
               await page.waitForTimeout(100);
               const after = await page.locator('.sq-player-stats-hub').evaluate(el => {
-                const body = el.querySelector('.menu-modal-body');
-                const profile = el.querySelector('.sq-player-stats-profile');
+                const body = el.querySelector('.menu-modal-body'); const profile = el.querySelector('.sq-player-stats-profile');
                 return { scrollTop:body.scrollTop, bodyTop:body.getBoundingClientRect().top, profileTop:profile.getBoundingClientRect().top };
               });
               check(width + ': submenu rows scroll beneath fixed profile header', after.scrollTop > 0 && Math.abs(after.profileTop - after.bodyTop) <= 2, { before, after });
-
               const unexpected = consoleErrs.filter(e => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));
               check(width + ': no new console or JavaScript errors', !unexpected.length && !pageErrors.length, { unexpected, pageErrors });
             } finally { await browser.close(); }
           }
           (async () => { for (const w of [390,320]) await scenario(w); console.log(`ALL PASS (${checks} checks)`); })().catch(e => { console.error(e); process.exit(1); });
           JS
-
       - name: Install existing test dependencies
         working-directory: tools/ui-smoke
         run: |
@@ -179,10 +154,11 @@ jobs:
           node tools/ui-smoke/verify-sc025.js | tee sc025-results.txt
           node tools/ui-smoke/smoke.js | tee smoke-results.txt
           git diff --check
-      - name: Commit verified product patch
+      - name: Commit verified product patch and remove temporary workflow
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/sc029-inspect.yml
           git add index.html tools/ui-smoke/verify-sc029.js .github/workflows/setup-qa.yml
           git commit -m "SC-029: polish Player Stats hub header"
           git push origin HEAD:sc029-player-stats-hub-polish
