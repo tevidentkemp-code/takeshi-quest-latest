@@ -1,0 +1,100 @@
+name: TEMP achievement runner
+
+on:
+  push:
+    branches:
+      - fix/achievements-average-integration
+    paths:
+      - .github/workflows/temp-achievement-runner.yml
+      - index.html
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply bounded achievement integration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('index.html')
+          text = p.read_text(encoding='utf-8')
+          marker = '// SC-026 — split positive achievement reads + lightweight award directory.'
+
+          if marker not in text:
+              payload = Path('.github/workflows/temp-achievement-integration.yml').read_text(encoding='utf-8')
+              token = "block = r'''"
+              start = payload.index(token) + len(token)
+              end = payload.index("'''", start)
+              block = payload[start:end]
+              needle = '// Trophy detail popup: how to earn it + a leaderboard of everyone who has it.\n'
+              if text.count(needle) != 1:
+                  raise SystemExit(f'Expected exactly one trophy-detail insertion point, found {text.count(needle)}')
+              text = text.replace(needle, block + needle, 1)
+
+          old_avg = "return avg == null ? '—' : (avg.toFixed(2) + '/game');"
+          new_avg = "return avg == null ? '—' : (avg.toFixed(3) + ' / game');"
+          if old_avg in text:
+              text = text.replace(old_avg, new_avg, 1)
+          elif new_avg not in text:
+              raise SystemExit('SC-025 average text helper was not found')
+
+          mode_line = "const modeBar = __sqLeagueModeBar(milestone ? 'Milestone leaderboard' : 'Trophy leaderboard', s.c, 'rgba(255,177,74,.12)');"
+          hide_line = "  if (milestone) modeBar.controls.style.display = 'none';"
+          if hide_line not in text:
+              if text.count(mode_line) != 1:
+                  raise SystemExit(f'Expected exactly one trophy mode bar, found {text.count(mode_line)}')
+              text = text.replace(mode_line, mode_line + "\n" + hide_line, 1)
+
+          p.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Assert bounded source contract
+        run: |
+          grep -q "SC-026 — split positive achievement reads" index.html
+          grep -q "from('v_ach_base')" index.html
+          grep -q "from('v_ach_david_goliath')" index.html
+          grep -q "from('v_player_base_xp').select('player_id,name,games_played')" index.html
+          grep -q "avg.toFixed(3) + ' / game'" index.html
+          git diff --check
+
+      - name: Install UI smoke dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          npm install --no-package-lock --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run focused achievement regressions
+        run: |
+          node tools/ui-smoke/verify-sc009.js
+          node tools/ui-smoke/verify-sc010.js
+          node tools/ui-smoke/verify-sc025.js
+
+      - name: Run core scoring regression
+        run: node tools/ui-smoke/smoke.js
+
+      - name: Commit verified bounded patch
+        shell: bash
+        run: |
+          if git diff --quiet -- index.html; then
+            echo "index.html already patched; nothing to commit"
+            exit 0
+          fi
+          git config user.name "shateki-bounded-build"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html
+          git commit -m "SC-026: restore achievement reads and award averages"
+          git push origin HEAD:fix/achievements-average-integration
