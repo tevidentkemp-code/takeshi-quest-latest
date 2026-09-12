@@ -148,7 +148,12 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
     check('Misfire leaderboard modal fits mobile and retains Close', detail.fits && detail.hasClose, JSON.stringify(detail));
   }
 
-  await page.click('.pp-misfire-detail button');
+  await page.evaluate(() => {
+    const d = document.querySelector('.pp-misfire-detail');
+    const close = d && Array.from(d.querySelectorAll('button')).find(b => /^close$/i.test((b.textContent || '').trim()));
+    if (!close) throw new Error('Misfire Close button missing');
+    close.click();
+  });
   await page.waitForFunction(() => !document.querySelector('.pp-misfire-detail'));
   check('Misfire leaderboard Close dismisses modal', true);
 
