@@ -1,0 +1,165 @@
+from pathlib import Path
+
+p = Path('index.html')
+s = p.read_text()
+
+def once(old, new, label):
+    global s
+    n = s.count(old)
+    if n != 1:
+        raise SystemExit(f'{label}: expected exactly 1 match, found {n}')
+    s = s.replace(old, new, 1)
+
+once(
+    ".sq-player-stats-profile{ margin-bottom:12px; }\n.sq-player-stats-profile .pp-hero-name{ overflow-wrap:anywhere; }\n.sq-player-stats-profile .pp-tile-value{ white-space:normal; }\n.sq-player-stats-profile .pp-tab{ min-width:0; flex:1 1 auto; }",
+    ".sq-player-stats-hub .menu-modal-body{ position:relative; }\n.sq-player-stats-profile{\n  position:sticky; top:0; z-index:6; margin:0 0 12px; padding:0 0 12px;\n  background:rgba(15,18,32,.99); box-shadow:0 12px 18px rgba(5,8,15,.38);\n}\n.sq-player-stats-profile .pp-hero-name{ overflow-wrap:anywhere; min-width:0; }\n.sq-player-stats-profile .pp-tile-value{ white-space:normal; }\n.sq-player-stats-profile .pp-tabs{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }\n.sq-player-stats-profile .pp-tab{ min-width:0; width:100%; flex:none; font-size:11px; letter-spacing:.02em; padding-inline:4px; }",
+    'sticky profile and equal tabs')
+
+once(
+    "  // - Power Rank: v_power_rankings_last56_official_clean, filtered to the same active 14-day Current rule",
+    "  // - Power Rank: exact last-56 Official ranking rebuilt from the lightweight DB-derived\n  //   v_player_game_scores_official_clean source, then filtered to the same active 14-day Current rule",
+    'Power Rank source comment')
+
+helper = (
+    "    const safeQ = q => Promise.resolve(q).catch(e => ({ error: e }));\n"
+    "    // The canonical last-56 view currently times out in the browser. This lighter DB-derived\n"
+    "    // source is equivalent for completed Official games: four games x 14 rounds = 56 rounds.\n"
+    "    // Keep the exact canonical ordering/rank semantics; do not substitute a different ranking view.\n"
+    "    const __sqFetchPlayerStatsPowerRows = async () => {\n"
+    "      const pageSize = 1000;\n"
+    "      const sourceRows = [];\n"
+    "      for (let from = 0, pageNo = 0; ; from += pageSize, pageNo++){\n"
+    "        if (pageNo >= 100) throw new Error('Player Stats Power Rank source exceeded safe page limit');\n"
+    "        const res = await SB.from('v_player_game_scores_official_clean')\n"
+    "          .select('game_id,ts,player_name,score')\n"
+    "          .order('ts', { ascending:false })\n"
+    "          .order('game_id', { ascending:false })\n"
+    "          .range(from, from + pageSize - 1);\n"
+    "        if (res && res.error) throw res.error;\n"
+    "        const page = (res && Array.isArray(res.data)) ? res.data : [];\n"
+    "        sourceRows.push(...page);\n"
+    "        if (page.length < pageSize) break;\n"
+    "      }\n"
+    "      const sourceKey = value => String(value || '').trim().toLowerCase();\n"
+    "      const sourceMs = value => { const n = Date.parse(String(value || '')); return Number.isFinite(n) ? n : 0; };\n"
+    "      const byPlayer = new Map();\n"
+    "      sourceRows.forEach(row => {\n"
+    "        const player = String((row && row.player_name) || '').trim();\n"
+    "        const score = Number(row && row.score);\n"
+    "        const key = sourceKey(player);\n"
+    "        if (!key || !Number.isFinite(score) || score <= 0) return;\n"
+    "        const list = byPlayer.get(key) || []; list.push(row); byPlayer.set(key, list);\n"
+    "      });\n"
+    "      const ranked = [];\n"
+    "      byPlayer.forEach((list, playerKey) => {\n"
+    "        list.sort((a,b) => (sourceMs(b.ts) - sourceMs(a.ts)) || String(b.game_id || '').localeCompare(String(a.game_id || '')));\n"
+    "        const latest = list.slice(0, 4); if (!latest.length) return;\n"
+    "        const total = latest.reduce((sum, row) => sum + Number(row.score || 0), 0);\n"
+    "        const rounds = latest.length * 14; const newest = latest[0];\n"
+    "        ranked.push({ player:String(newest.player_name || '').trim(), player_key:playerKey, rounds_used:rounds, total_points:total, avg_per_round:rounds ? Number((total / rounds).toFixed(2)) : 0, last_played_at:newest.ts || null, rank_pos:null });\n"
+    "      });\n"
+    "      ranked.sort((a,b) => (Number(b.avg_per_round) - Number(a.avg_per_round)) || (Number(b.rounds_used) - Number(a.rounds_used)) || (sourceMs(b.last_played_at) - sourceMs(a.last_played_at)) || String(a.player).localeCompare(String(b.player)));\n"
+    "      ranked.forEach((row, idx) => { row.rank_pos = idx + 1; });\n"
+    "      return { data: ranked, error: null };\n"
+    "    };\n"
+    "    const [savedRows, pr, bs, fv, tr, st] = await Promise.all(["
+)
+once(
+    "    const safeQ = q => Promise.resolve(q).catch(e => ({ error: e }));\n    const [savedRows, pr, bs, fv, tr, st] = await Promise.all([",
+    helper,
+    'Power Rank helper insertion')
+
+once(
+    "      safeQ(SB.from('v_power_rankings_last56_official_clean')\n        .select('player,player_key,rounds_used,total_points,avg_per_round,last_played_at,rank_pos')\n        .order('avg_per_round', { ascending:false })\n        .limit(500)),",
+    "      safeQ(__sqFetchPlayerStatsPowerRows()),",
+    'replace timing-out Power Rank view read')
+
+once(
+    "    const nameRow = document.createElement('div');\n    nameRow.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;';\n    nameRow.append(heroName, __sqXpChip(xpProg));",
+    "    const nameRow = document.createElement('div');\n    nameRow.style.cssText = 'display:flex;align-items:center;gap:10px;width:100%;flex-wrap:nowrap;justify-content:space-between;';\n    const levelChip = __sqXpChip(xpProg);\n    levelChip.style.marginLeft = 'auto';\n    levelChip.style.flex = '0 0 auto';\n    nameRow.append(heroName, levelChip);",
+    'right-align level badge')
+p.write_text(s)
+
+f = Path('tools/ui-smoke/pstats-fixture.js')
+q = f.read_text()
+marker = "  views: {\n    v_power_rankings_last56_official_clean: ["
+rows = (
+    "  views: {\n"
+    "    v_player_game_scores_official_clean: [\n"
+    "      { game_id:'jo-4', ts:'2026-09-11T20:04:00Z', player_name:'Jo R', score:133 },\n"
+    "      { game_id:'jo-3', ts:'2026-09-10T20:04:00Z', player_name:'Jo R', score:133 },\n"
+    "      { game_id:'jo-2', ts:'2026-09-09T20:04:00Z', player_name:'Jo R', score:133 },\n"
+    "      { game_id:'jo-1', ts:'2026-09-08T20:04:00Z', player_name:'Jo R', score:133 },\n"
+    "      { game_id:'mia-4', ts:'2026-09-11T20:03:00Z', player_name:'Mia K', score:128 },\n"
+    "      { game_id:'mia-3', ts:'2026-09-10T20:03:00Z', player_name:'Mia K', score:128 },\n"
+    "      { game_id:'mia-2', ts:'2026-09-09T20:03:00Z', player_name:'Mia K', score:127 },\n"
+    "      { game_id:'mia-1', ts:'2026-09-08T20:03:00Z', player_name:'Mia K', score:127 },\n"
+    "      { game_id:'alex-4', ts:'2026-09-11T20:02:00Z', player_name:'Alex S', score:125 },\n"
+    "      { game_id:'alex-3', ts:'2026-09-10T20:02:00Z', player_name:'Alex S', score:125 },\n"
+    "      { game_id:'alex-2', ts:'2026-09-09T20:02:00Z', player_name:'Alex S', score:120 },\n"
+    "      { game_id:'alex-1', ts:'2026-09-08T20:02:00Z', player_name:'Alex S', score:120 },\n"
+    "      { game_id:'sam-4', ts:'2026-09-11T20:01:00Z', player_name:'Sam T', score:100 },\n"
+    "      { game_id:'sam-3', ts:'2026-09-10T20:01:00Z', player_name:'Sam T', score:100 },\n"
+    "      { game_id:'sam-2', ts:'2026-09-09T20:01:00Z', player_name:'Sam T', score:100 },\n"
+    "      { game_id:'sam-1', ts:'2026-09-08T20:01:00Z', player_name:'Sam T', score:100 },\n"
+    "    ],\n"
+    "    v_power_rankings_last56_official_clean: ["
+)
+if q.count(marker) != 1:
+    raise SystemExit('fixture source insertion point not unique')
+q = q.replace(marker, rows, 1)
+old = "      const q = {\n        _t: table,\n        select() { return q; }, eq() { return q; }, ilike() { return q; },\n        or() { return q; }, order() { return q; }, limit() { return q; },\n        then(res) { res({ data: (FX.views[q._t] || []).map((r) => ({ ...r })), error: null }); },\n        catch() { return q; },\n      };"
+new = "      const q = {\n        _t: table, _from: null, _to: null,\n        select() { return q; }, eq() { return q; }, ilike() { return q; },\n        or() { return q; }, order() { return q; }, limit() { return q; },\n        range(from, to) { q._from = from; q._to = to; return q; },\n        then(res) {\n          let rows = (FX.views[q._t] || []).map((r) => ({ ...r }));\n          if (Number.isFinite(q._from)) rows = rows.slice(q._from, Number.isFinite(q._to) ? q._to + 1 : undefined);\n          res({ data: rows, error: null });\n        },\n        catch() { return q; },\n      };"
+if q.count(old) != 1:
+    raise SystemExit('fixture query stub insertion point not unique')
+f.write_text(q.replace(old, new, 1))
+
+qa = Path('.github/workflows/setup-qa.yml')
+a = qa.read_text()
+needle = "          node tools/ui-smoke/verify-sc028.js | tee sc028-results.txt\n"
+if a.count(needle) != 1:
+    raise SystemExit('setup-qa SC-028 line not unique')
+qa.write_text(a.replace(needle, needle + "          node tools/ui-smoke/verify-sc029.js | tee sc029-results.txt\n", 1))
+
+Path('tools/ui-smoke/verify-sc029.js').write_text(r'''const H = require('./harness');
+const FX = require('./pstats-fixture');
+const assert = require('assert/strict');
+let checks = 0;
+const hub = '.sq-player-stats-hub';
+function check(label, ok, detail){ assert.ok(ok, label + (detail ? ': ' + JSON.stringify(detail) : '')); checks++; console.log('PASS  ' + label); }
+async function scenario(width){
+  const { browser, page, consoleErrs } = await H.launch({ width, height:844 });
+  const pageErrors = []; page.on('pageerror', e => pageErrors.push(e.message));
+  try{
+    await H.boot(page); await FX.install(page);
+    await page.evaluate(() => {
+      const from = window.sb.from.bind(window.sb); window.__sc029Reads = {};
+      window.sb.from = table => { window.__sc029Reads[table] = (window.__sc029Reads[table] || 0) + 1; return from(table); };
+      openPlayerStatsHub('Alex S');
+    });
+    await page.waitForSelector(hub + ' .pp-hero'); await page.waitForTimeout(900);
+    const before = await page.locator(hub).evaluate(el => {
+      const body=el.querySelector('.menu-modal-body'), profile=el.querySelector('.sq-player-stats-profile');
+      const tabs=[...profile.querySelectorAll('.pp-tab')], name=profile.querySelector('.pp-hero-name'), nameRow=name&&name.parentElement, chip=nameRow&&nameRow.children[1];
+      const nr=nameRow&&nameRow.getBoundingClientRect(), cr=chip&&chip.getBoundingClientRect();
+      return { profileTop:profile.getBoundingClientRect().top, menuTop:el.querySelector('.menu-list').getBoundingClientRect().top,
+        tabWidths:tabs.map(t=>t.getBoundingClientRect().width), power:profile.querySelector('.pp-tile-value')?.textContent||'',
+        chipRight:nr&&cr?nr.right-cr.right:999, chipAfterName:!!(cr&&name&&cr.left>=name.getBoundingClientRect().right-1),
+        overflow:[el,...el.querySelectorAll('*')].filter(e=>e.clientWidth&&e.scrollWidth>e.clientWidth+1&&!['hidden','clip'].includes(getComputedStyle(e).overflowX)).map(e=>({cls:e.className,w:e.clientWidth,sw:e.scrollWidth})),
+        reads:{...(window.__sc029Reads||{})}, bodyScroll:body.scrollTop };
+    });
+    check(width + ': Power Rank renders canonical fixture value', before.power === '8.75 (#3)', before);
+    check(width + ': hero uses lightweight official-game source', (before.reads.v_player_game_scores_official_clean||0)>=1 && !before.reads.v_power_rankings_last56_official_clean, before.reads);
+    check(width + ': STATS / XP / ACHIEVEMENTS are equal width', Math.max(...before.tabWidths)-Math.min(...before.tabWidths)<=1.5, before.tabWidths);
+    check(width + ': level chip is at right edge of name row', Math.abs(before.chipRight)<=2 && before.chipAfterName, before);
+    check(width + ': no horizontal overflow', !before.overflow.length, before.overflow);
+    await page.locator(hub + ' .menu-row').last().scrollIntoViewIfNeeded(); await page.waitForTimeout(100);
+    const after = await page.locator(hub).evaluate(el => { const body=el.querySelector('.menu-modal-body'), profile=el.querySelector('.sq-player-stats-profile'); return {profileTop:profile.getBoundingClientRect().top,menuTop:el.querySelector('.menu-list').getBoundingClientRect().top,scrollTop:body.scrollTop}; });
+    check(width + ': submenu rows scroll', after.scrollTop>0 && after.menuTop<before.menuTop, {before,after});
+    check(width + ': profile and tabs stay fixed', Math.abs(after.profileTop-before.profileTop)<=2, {before,after});
+    const unexpected=consoleErrs.filter(e=>!/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));
+    check(width + ': no new console or JavaScript errors', !unexpected.length&&!pageErrors.length, {unexpected,pageErrors});
+  } finally { await browser.close(); }
+}
+(async()=>{ for(const width of [390,320]) await scenario(width); console.log(`ALL PASS (${checks} checks)`); })().catch(e=>{console.error(e);process.exit(1);});
+''')
