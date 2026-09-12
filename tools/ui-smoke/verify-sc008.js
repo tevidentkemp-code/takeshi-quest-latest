@@ -13,7 +13,7 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
   const { browser, page, consoleErrs } = await H.launch({ width: 390, height: 844 });
   await H.boot(page, { settle: 3000 });
   await FX.install(page);
-  await page.evaluate(() => window.openPlayerStatsDialog('Alex S'));
+  await page.evaluate(() => window.openPlayerStatsHub('Alex S'));
   await page.waitForTimeout(1800);
 
   const catalogue = await page.evaluate(() => {
@@ -41,7 +41,8 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
   check('legacy Giant Slayer remains separate', !!refined.giant, JSON.stringify(refined));
 
   await page.evaluate(() => {
-    const btn = Array.from(document.querySelectorAll('.sq-stats-modal .pp-tab')).find((b) => /^achievements$/i.test(b.textContent.trim()));
+    window.__testProfileTabs = Array.from(document.querySelectorAll('.sq-player-stats-hub .pp-tab')).map(b => b.textContent.trim());
+    const btn = Array.from(document.querySelectorAll('.sq-player-stats-hub .pp-tab')).find((b) => /^achievements$/i.test(b.textContent.trim()));
     if (btn) btn.click();
   });
   await page.waitForTimeout(900);
@@ -64,7 +65,7 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
       footer: (card.querySelector('.pp-misfire-foot') || {}).textContent || '',
       cardCount: card.querySelectorAll('.pp-misfire-card').length,
       byCode,
-      tabs: Array.from(document.querySelectorAll('.sq-stats-modal .pp-tab')).map((b) => b.textContent.trim()),
+      tabs: window.__testProfileTabs,
     };
   });
 
@@ -77,7 +78,7 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
     check('Misfires: Cold Start count from DB aggregate', misfires.byCode.cold_start && misfires.byCode.cold_start.count === 1, JSON.stringify(misfires.byCode));
     check('Misfires: footer explicitly says launch-forward', /apply only from 5 Sep 2026 20:13 UTC/i.test(misfires.footer), misfires.footer);
     check('Misfires: footer states worst-only / -5 cap', /only the worst penalty applies/i.test(misfires.footer) && /maximum deduction is 5 XP per game/i.test(misfires.footer), misfires.footer);
-    check('Player Stats navigation unchanged (3 tabs)', JSON.stringify(misfires.tabs) === JSON.stringify(['Stats','XP','Achievements']), JSON.stringify(misfires.tabs));
+    check('Hub navigation retains Stats / XP / Achievements', JSON.stringify(misfires.tabs) === JSON.stringify(['Stats','XP','Achievements']), JSON.stringify(misfires.tabs));
   }
 
   const realErrs = consoleErrs.filter((e) => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));

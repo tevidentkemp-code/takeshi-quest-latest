@@ -11,15 +11,17 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
   const { browser, page } = await H.launch({ width: 390, height: 844 });
   await H.boot(page, { settle: 3000 });
   await FX.install(page);
-  await page.evaluate(() => window.openPlayerStatsDialog('Alex S'));
+  await page.evaluate(() => window.openPlayerStatsHub('Alex S'));
   await page.waitForTimeout(4500);
 
-  const snap = await page.evaluate(() => {
+  const heroSnapshot = await page.locator('.pp-hero').evaluate(el => ({ html:el.outerHTML, text:el.innerText }));
+  await page.locator('.sq-player-stats-hub .pp-tab').filter({ hasText:/^Stats$/i }).click();
+  const snap = await page.evaluate((heroSnapshot) => {
     const modal = document.querySelector('.sq-stats-modal');
     if (!modal) return null;
     const txt = (el) => (el ? el.innerText : null);
     // hero
-    const hero = modal.querySelector('.pp-hero') || modal.querySelector('.modal-body > div > div');
+    const hero = document.createElement('div'); hero.innerHTML = heroSnapshot.html;
     const tiles = {};
     modal.querySelectorAll('.pp-tile, .modal-body [class]').forEach(() => {});
     // generic: find label/value rows in cards by walking all cards
@@ -38,13 +40,13 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
     // hero tiles (label/value pairs)
     const heroTiles = {};
     (hero ? hero.querySelectorAll(':scope div') : []).forEach(() => {});
-    modal.querySelectorAll('.modal-body div').forEach((d) => {
+    hero.querySelectorAll('div').forEach((d) => {
       const kids = Array.from(d.children);
       if (kids.length === 2 && /power rank|games|pl avg/i.test(kids[0].textContent) && kids[0].className.includes('muted')) {
         heroTiles[norm2(kids[0].textContent).toUpperCase()] = norm2(kids[1].textContent);
       }
     });
-    const bodyText = modal.innerText;
+    const bodyText = heroSnapshot.text + "\n" + modal.innerText;
     return {
       heroTiles,
       rows,
@@ -53,7 +55,7 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
       onStack: (window.__sqModalStack || []).length === 1,
       chipText: (modal.querySelector('.modal-body span b') || {}).textContent || '',
     };
-  });
+  }, heroSnapshot);
 
   check('dialog rendered', !!snap);
   if (!snap) { await browser.close(); process.exit(1); }
@@ -121,8 +123,9 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
     JSON.stringify(snap.cardTitles));
 
   // ---- XP tab hero: XP CORE reactor ----
+  await page.locator('.sq-stats-modal .modal-footer button').filter({ hasText:/BACK/i }).click();
   await page.evaluate(() => {
-    const btns = Array.from(document.querySelectorAll('.sq-stats-modal .pp-tab'));
+    const btns = Array.from(document.querySelectorAll('.sq-player-stats-hub .pp-tab'));
     const xp = btns.find((b) => /^xp$/i.test(b.textContent.trim())); if (xp) xp.click();
   });
   await page.waitForTimeout(1600);
@@ -147,11 +150,12 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
     check('XP hero: "33 XP to Level 3"', /33 XP to Level 3/i.test(xpHero.next || ''), JSON.stringify(xpHero.next));
     check('XP hero: segments partially lit (not 0/full)', xpHero.segOn > 0 && xpHero.segOn < 12, JSON.stringify(xpHero.segOn));
   }
-  await page.screenshot({ path: '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/pstats-xp-reactor.png' });
+  if (process.env.SQ_SCREENSHOTS) await page.screenshot({ path: require('path').join(process.env.SQ_SCREENSHOTS, 'pstats-xp-reactor.png') });
 
   // ---- Achievements tab hero: TROPHY VAULT ----
+  await page.locator('.sq-stats-modal .modal-footer button').filter({ hasText:/BACK/i }).click();
   await page.evaluate(() => {
-    const btns = Array.from(document.querySelectorAll('.sq-stats-modal .pp-tab'));
+    const btns = Array.from(document.querySelectorAll('.sq-player-stats-hub .pp-tab'));
     const a = btns.find((b) => /^achievements$/i.test(b.textContent.trim())); if (a) a.click();
   });
   await page.waitForTimeout(1400);
@@ -174,11 +178,12 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
     check('Achievements hero: 2 badges popped in', achHero.badges === 2 && achHero.badgesIn === 2, JSON.stringify(achHero));
     check('Achievements hero: completion bar filled (non-zero)', achHero.barWidth && achHero.barWidth !== '0%', JSON.stringify(achHero.barWidth));
   }
-  await page.screenshot({ path: '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/pstats-trophy-vault.png' });
+  if (process.env.SQ_SCREENSHOTS) await page.screenshot({ path: require('path').join(process.env.SQ_SCREENSHOTS, 'pstats-trophy-vault.png') });
 
   // back to Stats for the stack/escape checks
+  await page.locator('.sq-stats-modal .modal-footer button').filter({ hasText:/BACK/i }).click();
   await page.evaluate(() => {
-    const btns = Array.from(document.querySelectorAll('.sq-stats-modal .pp-tab'));
+    const btns = Array.from(document.querySelectorAll('.sq-player-stats-hub .pp-tab'));
     const s = btns.find((b) => /^stats$/i.test(b.textContent.trim())); if (s) s.click();
   });
   await page.waitForTimeout(300);
@@ -192,6 +197,8 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
     open: !!document.querySelector('.sq-stats-modal'),
   }));
   check('Escape closes the profile via the stack', afterEsc.stack === 0 && !afterEsc.open, JSON.stringify(afterEsc));
+
+  await page.locator('.sq-player-stats-hub [aria-label="Close"]').click();
 
   // XP ladder registers too
   await FX.install(page);

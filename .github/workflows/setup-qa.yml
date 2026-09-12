@@ -18,6 +18,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -35,6 +36,12 @@ jobs:
         run: |
           set -o pipefail
           python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          node tools/ui-smoke/verify-sc028.js | tee sc028-results.txt
+          node tools/ui-smoke/verify-pstats.js | tee pstats-results.txt
+          node tools/ui-smoke/verify-sc008.js | tee sc008-results.txt
+          node tools/ui-smoke/verify-sc009.js | tee sc009-results.txt
+          node tools/ui-smoke/verify-sc010.js | tee sc010-results.txt
+          node tools/ui-smoke/verify-sc025.js | tee sc025-results.txt
           node tools/ui-smoke/verify-sc014.js | tee setup-results.txt
           node tools/ui-smoke/smoke.js | tee smoke-results.txt
           node tools/ui-smoke/verify-saveplayer-card.js | tee saved-player-results.txt

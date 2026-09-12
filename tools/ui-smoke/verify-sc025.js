@@ -1,11 +1,10 @@
-const { chromium } = require('playwright');
+const H = require('./harness');
 const assert = require('assert');
 
 (async()=>{
-  const browser = await chromium.launch({headless:true});
-  const page = await browser.newPage({viewport:{width:390,height:844}});
+  const { browser, page } = await H.launch({width:390,height:844});
   const errors=[]; page.on('pageerror',e=>errors.push(String(e)));
-  await page.goto('http://127.0.0.1:8123/?sc027=1',{waitUntil:'domcontentloaded'});
+  await H.boot(page);
   await page.waitForFunction(()=>typeof window.__sqTrophyDetail==='function' && typeof window.__sqMisfireDetail==='function' && typeof window.__sqLeagueAverageRows==='function' && typeof window.__sqLeagueAverageEligible==='function');
 
   await page.evaluate(()=>{

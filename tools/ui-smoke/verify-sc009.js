@@ -43,10 +43,11 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
   check('live detector isolates Mini D’s to number rounds', /ri <= 10 && dou === 3/.test(canon.detector), 'detector mismatch');
   check('live detector uses unique-win never-behind Untouchable', /uniqueWon && neverBehind/.test(canon.detector) && !/best >= 14[^\n]*untouchable/.test(canon.detector), 'detector mismatch');
 
-  await page.evaluate(() => window.openPlayerStatsDialog('Alex S'));
+  await page.evaluate(() => window.openPlayerStatsHub('Alex S'));
   await page.waitForTimeout(1800);
   await page.evaluate(() => {
-    const btn = Array.from(document.querySelectorAll('.sq-stats-modal .pp-tab')).find(b => /^achievements$/i.test(b.textContent.trim()));
+    window.__testProfileTabs = Array.from(document.querySelectorAll('.sq-player-stats-hub .pp-tab')).map(b => b.textContent.trim());
+    const btn = Array.from(document.querySelectorAll('.sq-player-stats-hub .pp-tab')).find(b => /^achievements$/i.test(b.textContent.trim()));
     if (btn) btn.click();
   });
   await page.waitForTimeout(900);
@@ -71,7 +72,7 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
       unlocked: card ? (card.querySelector('.pp-misfire-unlocked') || {}).textContent || '' : '',
       xp: card ? (card.querySelector('.pp-misfire-xp') || {}).textContent || '' : '',
       byCode,
-      tabs: Array.from(root.querySelectorAll('.pp-tab')).map(b => b.textContent.trim()),
+      tabs: window.__testProfileTabs,
     };
   });
 
