@@ -185,7 +185,7 @@ jobs:
           JS
       - name: Install test dependencies
         run: |
-          npm install --no-package-lock --ignore-scripts
+          npm install --no-package-lock --ignore-scripts --no-save playwright
           npx playwright install --with-deps chromium
       - name: Run focused and regression QA
         shell: bash
@@ -221,12 +221,11 @@ jobs:
             await browser.close();
           })().catch(e=>{console.error(e);process.exit(1);});
           JS
-      - name: Commit verified product patch and remove temporary workflow
+      - name: Commit verified product patch
         shell: bash
         run: |
-          rm .github/workflows/sc029-release.yml
           git config user.name "tevidentkemp-code"
           git config user.email "tevidentkemp@gmail.com"
-          git add -A
+          git add index.html tools/ui-smoke/pstats-fixture.js tools/ui-smoke/verify-sc029.js .github/workflows/setup-qa.yml
           git commit -m "SC-029: polish Player Stats hub and restore Power Rank"
           git push origin HEAD:sc029-player-stats-hub-polish-v2
