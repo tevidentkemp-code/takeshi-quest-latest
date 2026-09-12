@@ -71,8 +71,7 @@ async function scenario(mode){
 
 (async () => {
   const success = await scenario('success');
-  check('cold Player Stats performs one v_player_xp read for XP presentation', success.ui.calls.v_player_xp === 1, JSON.stringify(success.ui.calls));
-  check('display identity/game denominator reads lightweight v_player_base_xp once', success.ui.calls.v_player_base_xp === 1, JSON.stringify(success.ui.calls));
+  check('cold Player Stats performs one v_player_xp read for existing profile XP/player identity', success.ui.calls.v_player_xp === 1, JSON.stringify(success.ui.calls));
   check('success reads v_ach_base once by resolved player id', success.ui.calls.v_ach_base === 1, JSON.stringify(success.ui.calls));
   check('success reads v_ach_david_goliath once by resolved player id', success.ui.calls.v_ach_david_goliath === 1, JSON.stringify(success.ui.calls));
   check('success does not use combined v_player_achievements hot path', !success.ui.calls.v_player_achievements, JSON.stringify(success.ui.calls));
