@@ -1,4 +1,4 @@
-name: SC-029 live read diagnosis
+name: SC-029 live fallback diagnosis
 on:
   push:
     branches:
@@ -29,40 +29,29 @@ jobs:
             const ctx = await browser.newContext({ viewport:{width:390,height:844}, isMobile:true, hasTouch:true, deviceScaleFactor:2 });
             await ctx.route('**/*', async route => {
               const req = route.request();
-              if (req.url().includes('supabase.co') && !['GET','HEAD','OPTIONS'].includes(req.method())) {
-                console.log('BLOCKED_WRITE', req.method(), req.url());
-                return route.abort('blockedbyclient');
-              }
+              if (req.url().includes('supabase.co') && !['GET','HEAD','OPTIONS'].includes(req.method())) return route.abort('blockedbyclient');
               return route.continue();
             });
             const page = await ctx.newPage();
-            page.on('console', m => console.log('CONSOLE', m.type(), m.text()));
-            page.on('pageerror', e => console.log('PAGEERROR', String(e)));
+            page.on('console', m => { if (/power rank/i.test(m.text()) || m.type()==='error') console.log('CONSOLE', m.type(), m.text()); });
             page.on('response', async r => {
               if (r.url().includes('v_power_rankings_last56_official_clean')) {
-                let body=''; try{ body=(await r.text()).slice(0,5000); }catch(_){}
-                console.log('POWER_RESPONSE', r.status(), r.url(), body);
+                let body=''; try{ body=(await r.text()).slice(0,1000); }catch(_){}
+                console.log('POWER_RESPONSE', r.status(), body);
               }
             });
             await page.goto('https://tevidentkemp-code.github.io/takeshi-quest-latest/', {waitUntil:'domcontentloaded', timeout:30000});
             await page.waitForTimeout(5000);
-            const info = await page.evaluate(async () => {
-              const result = {hasOpen:typeof window.openPlayerStatsHub==='function'};
-              if (!result.hasOpen) return result;
-              window.SQ_DEBUG = true;
-              window.openPlayerStatsHub('Thom');
-              return result;
-            });
-            console.log('OPEN_INFO', JSON.stringify(info));
-            await page.waitForSelector('.sq-player-stats-hub .pp-hero', {timeout:20000});
-            await page.waitForTimeout(3500);
-            const snap = await page.locator('.sq-player-stats-hub').evaluate(el => ({
-              text:el.innerText,
-              tiles:[...el.querySelectorAll('.pp-tile')].map(t=>({label:t.querySelector('.pp-tile-label')?.textContent,value:t.querySelector('.pp-tile-value')?.textContent})),
-              name:el.querySelector('.pp-hero-name')?.textContent,
-              nick:el.querySelector('.pp-hero-nick')?.textContent,
-            }));
-            console.log('HUB_SNAPSHOT', JSON.stringify(snap));
+            await page.evaluate(() => { window.SQ_DEBUG=true; window.openPlayerStatsHub('Thom'); });
+            await page.waitForSelector('.sq-player-stats-hub .pp-hero', {timeout:25000});
+            await page.waitForTimeout(2500);
+            console.log('HERO_POWER', await page.locator('.sq-player-stats-hub .pp-tile').first().innerText());
+            await page.locator('.sq-player-stats-hub .pp-tab').first().click();
+            await page.waitForSelector('.sq-stats-modal', {timeout:10000});
+            const txt = await page.locator('.sq-stats-modal').innerText();
+            const lines = txt.split(/\n+/).map(s=>s.trim()).filter(Boolean);
+            const i = lines.findIndex(s=>/Current Power Rank/i.test(s));
+            console.log('CURRENT_POWER_RANK_LINES', JSON.stringify(lines.slice(Math.max(0,i-2), i+4)));
             await browser.close();
           })().catch(e => { console.error(e); process.exit(1); });
           JS
