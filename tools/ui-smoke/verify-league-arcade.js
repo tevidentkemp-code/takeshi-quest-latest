@@ -171,14 +171,58 @@ function check(name, ok, detail) { if (!ok) failures++; console.log((ok ? 'PASS'
   }
   await page.screenshot({ path: '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/league-hs-record-board.png' });
 
-  // Turbo tab -> empty state wording preserved
+  // Turbo tab -> real isolated Turbo PB ladder
   await page.evaluate(() => {
     const b = Array.from(document.querySelectorAll('.sq-fix100-backdrop button[data-mode]')).find((x) => x.dataset.mode === 'turbo');
     if (b) b.click();
   });
-  await page.waitForTimeout(700);
-  const hsTurbo = await page.evaluate(() => ((document.querySelector('.hs-arena') || {}).textContent) || '');
-  check('HS League: turbo empty state preserved', E.hs.turboEmpty.test(hsTurbo), JSON.stringify(hsTurbo.slice(0, 80)));
+  await page.waitForFunction((expected) => (document.querySelector('.hs-record-score') || {}).textContent === expected, E.hs.turbo.record.score, { timeout: 3000 });
+  const hsTurbo = await page.evaluate(() => {
+    const arena = document.querySelector('.hs-arena');
+    if (!arena) return null;
+    const rows = Array.from(arena.querySelectorAll('.hs-row'));
+    return {
+      recordScore: (arena.querySelector('.hs-record-score') || {}).textContent,
+      recordHolder: (arena.querySelector('.hs-record-holder') || {}).textContent,
+      eyebrow: (arena.querySelector('.hs-record-eyebrow') || {}).textContent,
+      names: rows.map((r) => (r.querySelector('.hs-name') || {}).textContent),
+      scores: rows.map((r) => (r.querySelector('.hs-score') || {}).textContent),
+      avgs: rows.map((r) => (r.querySelector('.hs-avgchip') || {}).textContent),
+    };
+  });
+  check('HS League: Turbo record banner uses Turbo data only', !!hsTurbo && hsTurbo.recordScore === E.hs.turbo.record.score && hsTurbo.recordHolder === E.hs.turbo.record.holder && /All-Time Record — Turbo/i.test(hsTurbo.eyebrow || ''), JSON.stringify(hsTurbo));
+  check('HS League: Turbo ladder order', !!hsTurbo && JSON.stringify(hsTurbo.names) === JSON.stringify(E.hs.turbo.order), JSON.stringify(hsTurbo && hsTurbo.names));
+  check('HS League: Turbo scores', !!hsTurbo && JSON.stringify(hsTurbo.scores) === JSON.stringify(E.hs.turbo.scores), JSON.stringify(hsTurbo && hsTurbo.scores));
+  check('HS League: Turbo AVG chips', !!hsTurbo && JSON.stringify(hsTurbo.avgs) === JSON.stringify(E.hs.turbo.avgs), JSON.stringify(hsTurbo && hsTurbo.avgs));
+  check('HS League: Official values do not leak into Turbo', !!hsTurbo && !hsTurbo.scores.includes(E.hs.record.score), JSON.stringify(hsTurbo && hsTurbo.scores));
+
+  await page.evaluate(() => {
+    const b = Array.from(document.querySelectorAll('.sq-fix100-backdrop button[data-mode]')).find((x) => x.dataset.mode === 'official');
+    if (b) b.click();
+  });
+  await page.waitForFunction((expected) => (document.querySelector('.hs-record-score') || {}).textContent === expected, E.hs.record.score, { timeout: 3000 });
+  const hsOfficialAgain = await page.evaluate(() => ({
+    score: (document.querySelector('.hs-record-score') || {}).textContent,
+    holder: (document.querySelector('.hs-record-holder') || {}).textContent,
+    eyebrow: (document.querySelector('.hs-record-eyebrow') || {}).textContent,
+  }));
+  check('HS League: switching back restores Official source', hsOfficialAgain.score === E.hs.record.score && hsOfficialAgain.holder === E.hs.record.holder && /All-Time Record — Official/i.test(hsOfficialAgain.eyebrow || ''), JSON.stringify(hsOfficialAgain));
+
+  // Successful zero-row Turbo response must be a truthful empty state, not a cloud-error state.
+  await page.evaluate(() => {
+    window.__sqSc019From = window.sb.from;
+    window.sb.from = (table) => {
+      if (table !== 'v_latest_scores_turbo_clean') return window.__sqSc019From(table);
+      const q = { select(){return q;}, order(){return q;}, limit(){return q;}, then(resolve){ resolve({data:[], error:null}); }, catch(){return q;} };
+      return q;
+    };
+    const b = Array.from(document.querySelectorAll('.sq-fix100-backdrop button[data-mode]')).find((x) => x.dataset.mode === 'turbo');
+    if (b) b.click();
+  });
+  await page.waitForFunction(() => /No Turbo high scores found/i.test((document.querySelector('.hs-arena') || {}).textContent || ''), undefined, { timeout: 3000 });
+  const hsTurboEmpty = await page.evaluate(() => ((document.querySelector('.hs-arena') || {}).textContent) || '');
+  check('HS League: genuine Turbo zero rows show empty state', /No Turbo high scores found/i.test(hsTurboEmpty) && !/not available yet/i.test(hsTurboEmpty), JSON.stringify(hsTurboEmpty));
+  await page.evaluate(() => { if (window.__sqSc019From) { window.sb.from = window.__sqSc019From; delete window.__sqSc019From; } });
 
   await page.keyboard.press('Escape');
   await page.waitForTimeout(400);

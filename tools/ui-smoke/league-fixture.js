@@ -49,6 +49,18 @@ const FIXTURE = {
       { player: 'Mia K', best_score: 132, best_ts: days(5), game_id: 'g5', avg_round: 9.4, rounds: 14 },
     ],
     v_high_score_league_turbo_from_games_clean: [],
+    v_latest_scores_turbo_clean: [
+      { game_id: 'tg1', created_at: days(1), player_scores: [
+        { player_key: 'alex s', player_name: 'Alex S', score: 220, rounds: 7, avg_round: 31.4 },
+        { player_key: 'sam t', player_name: 'Sam T', score: 205, rounds: 7, avg_round: 29.3 },
+        { player_key: 'mia k', player_name: 'Mia K', score: 190, rounds: 7, avg_round: 27.1 },
+        { player_key: 'jo r', player_name: 'Jo R', score: 175, rounds: 7, avg_round: 25.0 },
+      ] },
+      { game_id: 'tg0', created_at: days(8), player_scores: [
+        { player_key: 'alex s', player_name: 'Alex S', score: 180, rounds: 7, avg_round: 25.7 },
+        { player_key: 'sam t', player_name: 'Sam T', score: 160, rounds: 7, avg_round: 22.9 },
+      ] },
+    ],
     v_top50_scores_official: [
       { player_name: 'Alex S', score: 168, rounds: 14, avg_round: 12.0, ts: days(6), game_id: 'g6' },
       { player_name: 'Jo R', score: 150, rounds: 14, avg_round: 10.7, ts: days(2), game_id: 'g2' },
@@ -79,7 +91,6 @@ const FIXTURE = {
       { game_id: 'g6', ts: days(6), player_index: 0, player_name: 'Alex S', score: 168 },
       { game_id: 'g6', ts: days(6), player_index: 1, player_name: 'Sam T', score: 110 },
     ],
-    v_latest_scores_turbo_clean: [],
     v_player_target_streaks: [
       { player_key: 'jo r', player_name: 'Jo R', mode_key: 'official', mode_label: 'Official', dart_streak: 9, round_streak: 4, source_games: 12, last_played_at: days(2) },
       { player_key: 'alex s', player_name: 'Alex S', mode_key: 'official', mode_label: 'Official', dart_streak: 7, round_streak: 6, source_games: 10, last_played_at: days(1) },
@@ -115,7 +126,12 @@ const EXPECTED = {
     order: ['Alex S', 'Jo R', 'Sam T', 'Mia K'],
     scores: ['168', '150', '140', '132'],
     avgs: ['AVG 12.0', 'AVG 9.9', 'AVG 8.8', 'AVG 9.4'],
-    turboEmpty: /Turbo High Score League data is not available yet/i,
+    turbo: {
+      record: { score: '220', holder: 'Alex S' },
+      order: ['Alex S', 'Sam T', 'Mia K', 'Jo R'],
+      scores: ['220', '205', '190', '175'],
+      avgs: ['AVG 31.4', 'AVG 29.3', 'AVG 27.1', 'AVG 25.0'],
+    },
   },
   top50: {
     total: 12,
