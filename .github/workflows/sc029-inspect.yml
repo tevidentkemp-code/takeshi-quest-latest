@@ -1,164 +1,68 @@
-name: SC-029 bounded patch and QA
+name: SC-029 live read diagnosis
 on:
   push:
     branches:
       - sc029-player-stats-hub-polish
 permissions:
-  contents: write
+  contents: read
 jobs:
-  patch:
+  diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: sc029-player-stats-hub-polish
-          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Apply bounded SC-029 patch
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('index.html')
-          s = p.read_text()
-          def once(old, new, label):
-              global s
-              n = s.count(old)
-              if n != 1:
-                  raise SystemExit(f'{label}: expected exactly 1 match, found {n}')
-              s = s.replace(old, new, 1)
-          once(
-              ".sq-player-stats-profile{ margin-bottom:12px; }\n"
-              ".sq-player-stats-profile .pp-hero-name{ overflow-wrap:anywhere; }\n"
-              ".sq-player-stats-profile .pp-tile-value{ white-space:normal; }\n"
-              ".sq-player-stats-profile .pp-tab{ min-width:0; flex:1 1 auto; }",
-              ".sq-player-stats-hub .menu-modal-body{ position:relative; }\n"
-              ".sq-player-stats-profile{\n"
-              "  position:sticky; top:0; z-index:6; margin:0 0 12px; padding:0 0 12px;\n"
-              "  background:rgba(15,18,32,.99); box-shadow:0 12px 18px rgba(5,8,15,.38);\n"
-              "}\n"
-              ".sq-player-stats-profile .pp-hero-name{ overflow-wrap:anywhere; min-width:0; }\n"
-              ".sq-player-stats-profile .pp-tile-value{ white-space:normal; }\n"
-              ".sq-player-stats-profile .pp-tabs{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }\n"
-              ".sq-player-stats-profile .pp-tab{ min-width:0; width:100%; flex:none; }",
-              'sticky/equal-tabs CSS')
-          once(
-              "      dbPower = mine ? { player: mine.player, power_rank: mine.avg, power_rank_pos: mine.rankPos || (rows.indexOf(mine) + 1), last_played_at: mine.lastMs || null } : null;",
-              "      dbPower = mine ? { player: mine.player, power_rank: mine.avg, power_rank_pos: mine.rankPos || (rows.indexOf(mine) + 1), last_played_at: mine.lastMs || null } : null;\n"
-              "      // A stale saved-player directory must not suppress the selected player's\n"
-              "      // canonical Power Rank. The clean DB view remains the source of truth.\n"
-              "      if (!dbPower){\n"
-              "        const rawMine = ((pr && pr.data) || []).find(r => powerKey(r.player_key || r.player) === powerKey(name)) || null;\n"
-              "        if (rawMine){\n"
-              "          const rounds = Math.max(0, Math.min(56, Number(rawMine.rounds_used || 0)));\n"
-              "          const avg = Number(rawMine.avg_per_round);\n"
-              "          const lastMs = parsePowerMs(rawMine.last_played_at);\n"
-              "          const active = !lastMs || lastMs >= activeCutoff;\n"
-              "          const rankPos = Number(rawMine.rank_pos || 0) || null;\n"
-              "          if (rounds >= 28 && active && Number.isFinite(avg) && avg > 0){\n"
-              "            dbPower = { player:String(rawMine.player || name).trim(), power_rank:avg, power_rank_pos:rankPos, last_played_at:lastMs || null };\n"
-              "          }\n"
-              "        }\n"
-              "      }",
-              'Power Rank fallback')
-          once(
-              "    const nameRow = document.createElement('div');\n"
-              "    nameRow.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;';\n"
-              "    nameRow.append(heroName, __sqXpChip(xpProg));",
-              "    const nameRow = document.createElement('div');\n"
-              "    nameRow.style.cssText = 'display:flex;align-items:center;gap:10px;width:100%;flex-wrap:nowrap;justify-content:space-between;';\n"
-              "    const levelChip = __sqXpChip(xpProg);\n"
-              "    levelChip.style.marginLeft = 'auto'; levelChip.style.flex = '0 0 auto';\n"
-              "    nameRow.append(heroName, levelChip);",
-              'level badge alignment')
-          p.write_text(s)
-          qa = Path('.github/workflows/setup-qa.yml')
-          q = qa.read_text()
-          needle = "          node tools/ui-smoke/verify-sc028.js | tee sc028-results.txt\n"
-          if q.count(needle) != 1:
-              raise SystemExit('setup-qa insertion point not unique')
-          qa.write_text(q.replace(needle, needle + "          node tools/ui-smoke/verify-sc029.js | tee sc029-results.txt\n", 1))
-          PY
-          cat > tools/ui-smoke/verify-sc029.js <<'JS'
-          // SC-029: sticky Player Stats profile hub, equal primary tabs, right-aligned level badge,
-          // and Power Rank must remain sourced from the canonical clean DB view.
-          const H = require('./harness');
-          const FX = require('./pstats-fixture');
-          const assert = require('assert/strict');
-          let checks = 0;
-          function check(label, ok, detail){ assert.ok(ok, label + (detail ? ': ' + JSON.stringify(detail) : '')); checks++; console.log('PASS  ' + label); }
-          async function scenario(width){
-            const { browser, page, consoleErrs } = await H.launch({ width, height:844 });
-            const pageErrors = [];
-            page.on('pageerror', e => pageErrors.push(e.message));
-            try{
-              await H.boot(page);
-              await FX.install(page);
-              await page.evaluate(() => {
-                window.cloudListPlayers = async () => [{ name:'Someone Else' }];
-                window.openPlayerStatsHub('Alex S');
-              });
-              await page.waitForSelector('.sq-player-stats-hub .pp-hero');
-              await page.waitForTimeout(1000);
-              const before = await page.locator('.sq-player-stats-hub').evaluate(el => {
-                const body = el.querySelector('.menu-modal-body');
-                const profile = el.querySelector('.sq-player-stats-profile');
-                const tabs = [...el.querySelectorAll('.sq-player-stats-profile .pp-tab')];
-                const name = el.querySelector('.pp-hero-name');
-                const nameRow = name && name.parentElement;
-                const badge = nameRow && nameRow.children[1];
-                const tiles = [...el.querySelectorAll('.pp-tile')].map(t => ({ label:(t.querySelector('.pp-tile-label')||{}).textContent || '', value:(t.querySelector('.pp-tile-value')||{}).textContent || '' }));
-                const pr = tiles.find(t => /power rank/i.test(t.label));
-                const br = body.getBoundingClientRect(), prr = profile.getBoundingClientRect();
-                const nr = nameRow && nameRow.getBoundingClientRect();
-                const bgr = badge && badge.getBoundingClientRect();
-                return { bodyTop:br.top, profileTop:prr.top, tabWidths:tabs.map(t => t.getBoundingClientRect().width), rank:pr && pr.value,
-                  badgeRight:nr && bgr ? nr.right - bgr.right : 999,
-                  badgeAfterName:!!(bgr && name && bgr.left >= name.getBoundingClientRect().right - 1), overflow:el.scrollWidth > el.clientWidth + 1 };
-              });
-              check(width + ': Power Rank pulls from canonical view', before.rank === '8.75 (#3)', before);
-              check(width + ': STATS / XP / ACHIEVEMENTS are equal width', Math.max(...before.tabWidths) - Math.min(...before.tabWidths) <= 1.5, before.tabWidths);
-              check(width + ': level badge is aligned to the right', Math.abs(before.badgeRight) <= 2 && before.badgeAfterName, before);
-              check(width + ': no horizontal overflow', !before.overflow, before);
-              await page.locator('.sq-player-stats-hub .menu-modal-body').evaluate(el => { el.scrollTop = el.scrollHeight; });
-              await page.waitForTimeout(100);
-              const after = await page.locator('.sq-player-stats-hub').evaluate(el => {
-                const body = el.querySelector('.menu-modal-body'); const profile = el.querySelector('.sq-player-stats-profile');
-                return { scrollTop:body.scrollTop, bodyTop:body.getBoundingClientRect().top, profileTop:profile.getBoundingClientRect().top };
-              });
-              check(width + ': submenu rows scroll beneath fixed profile header', after.scrollTop > 0 && Math.abs(after.profileTop - after.bodyTop) <= 2, { before, after });
-              const unexpected = consoleErrs.filter(e => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));
-              check(width + ': no new console or JavaScript errors', !unexpected.length && !pageErrors.length, { unexpected, pageErrors });
-            } finally { await browser.close(); }
-          }
-          (async () => { for (const w of [390,320]) await scenario(w); console.log(`ALL PASS (${checks} checks)`); })().catch(e => { console.error(e); process.exit(1); });
-          JS
-      - name: Install existing test dependencies
+      - name: Install browser
         working-directory: tools/ui-smoke
         run: |
           npm install --no-package-lock --ignore-scripts
           npx playwright install --with-deps chromium
-      - name: Run focused and regression QA
+      - name: Read-only production diagnosis
         shell: bash
         run: |
-          set -o pipefail
-          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
-          node tools/ui-smoke/verify-sc029.js | tee sc029-results.txt
-          node tools/ui-smoke/verify-sc028.js | tee sc028-results.txt
-          node tools/ui-smoke/verify-pstats.js | tee pstats-results.txt
-          node tools/ui-smoke/verify-sc009.js | tee sc009-results.txt
-          node tools/ui-smoke/verify-sc010.js | tee sc010-results.txt
-          node tools/ui-smoke/verify-sc025.js | tee sc025-results.txt
-          node tools/ui-smoke/smoke.js | tee smoke-results.txt
-          git diff --check
-      - name: Commit verified product patch and remove temporary workflow
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/sc029-inspect.yml
-          git add index.html tools/ui-smoke/verify-sc029.js .github/workflows/setup-qa.yml
-          git commit -m "SC-029: polish Player Stats hub header"
-          git push origin HEAD:sc029-player-stats-hub-polish
+          node - <<'JS'
+          const { chromium } = require('./tools/ui-smoke/node_modules/playwright');
+          (async () => {
+            const browser = await chromium.launch();
+            const ctx = await browser.newContext({ viewport:{width:390,height:844}, isMobile:true, hasTouch:true, deviceScaleFactor:2 });
+            await ctx.route('**/*', async route => {
+              const req = route.request();
+              if (req.url().includes('supabase.co') && !['GET','HEAD','OPTIONS'].includes(req.method())) {
+                console.log('BLOCKED_WRITE', req.method(), req.url());
+                return route.abort('blockedbyclient');
+              }
+              return route.continue();
+            });
+            const page = await ctx.newPage();
+            page.on('console', m => console.log('CONSOLE', m.type(), m.text()));
+            page.on('pageerror', e => console.log('PAGEERROR', String(e)));
+            page.on('response', async r => {
+              if (r.url().includes('v_power_rankings_last56_official_clean')) {
+                let body=''; try{ body=(await r.text()).slice(0,5000); }catch(_){}
+                console.log('POWER_RESPONSE', r.status(), r.url(), body);
+              }
+            });
+            await page.goto('https://tevidentkemp-code.github.io/takeshi-quest-latest/', {waitUntil:'domcontentloaded', timeout:30000});
+            await page.waitForTimeout(5000);
+            const info = await page.evaluate(async () => {
+              const result = {hasOpen:typeof window.openPlayerStatsHub==='function'};
+              if (!result.hasOpen) return result;
+              window.SQ_DEBUG = true;
+              window.openPlayerStatsHub('Thom');
+              return result;
+            });
+            console.log('OPEN_INFO', JSON.stringify(info));
+            await page.waitForSelector('.sq-player-stats-hub .pp-hero', {timeout:20000});
+            await page.waitForTimeout(3500);
+            const snap = await page.locator('.sq-player-stats-hub').evaluate(el => ({
+              text:el.innerText,
+              tiles:[...el.querySelectorAll('.pp-tile')].map(t=>({label:t.querySelector('.pp-tile-label')?.textContent,value:t.querySelector('.pp-tile-value')?.textContent})),
+              name:el.querySelector('.pp-hero-name')?.textContent,
+              nick:el.querySelector('.pp-hero-nick')?.textContent,
+            }));
+            console.log('HUB_SNAPSHOT', JSON.stringify(snap));
+            await browser.close();
+          })().catch(e => { console.error(e); process.exit(1); });
+          JS
