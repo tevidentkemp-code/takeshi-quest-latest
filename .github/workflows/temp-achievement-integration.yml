@@ -1,0 +1,252 @@
+name: TEMP achievement integration
+
+on:
+  push:
+    branches:
+      - fix/achievements-average-integration
+    paths:
+      - .github/workflows/temp-achievement-integration.yml
+      - index.html
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply bounded achievement read-path integration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('index.html')
+          text = p.read_text(encoding='utf-8')
+          marker = '// SC-026 — split positive achievement reads + lightweight award directory.'
+
+          if marker not in text:
+              needle = '// Trophy detail popup: how to earn it + a leaderboard of everyone who has it.\n'
+              if text.count(needle) != 1:
+                  raise SystemExit(f'Expected exactly one trophy-detail insertion point, found {text.count(needle)}')
+
+              block = r'''// SC-026 — split positive achievement reads + lightweight award directory.
+// Positive Trophy Vault history no longer depends on v_player_achievements / v_player_xp.
+// Canonical occurrence sources remain v_ach_base + v_ach_david_goliath; Collector
+// and Trophy Hunter are derived with the same 10/20 distinct-code thresholds as the DB view.
+SQ_ACH._playerDirectoryCache = null;
+SQ_ACH._playerDirectoryCacheAt = 0;
+SQ_ACH._playerDirectoryInflight = null;
+SQ_ACH.playerDirectory = async function(force){
+  const now = Date.now();
+  if (!force && this._playerDirectoryCache && (now - this._playerDirectoryCacheAt) < 60000) return this._playerDirectoryCache;
+  if (!force && this._playerDirectoryInflight) return this._playerDirectoryInflight;
+  const SB = window.sb || window.__sb || null;
+  if (!SB || typeof SB.from !== 'function') return this._playerDirectoryCache || [];
+  const run = (async () => {
+    try{
+      const { data, error } = await SB.from('v_player_base_xp').select('player_id,name,games_played');
+      if (error || !Array.isArray(data)) return this._playerDirectoryCache || [];
+      const rows = data.map(r => ({
+        player_id: r.player_id,
+        name: String(r.name || '').trim(),
+        games_played: Math.max(0, Number(r.games_played) || 0)
+      })).filter(r => r.player_id);
+      this._playerDirectoryCache = rows;
+      this._playerDirectoryCacheAt = Date.now();
+      return rows;
+    }catch(_){ return this._playerDirectoryCache || []; }
+  })();
+  if (!force) this._playerDirectoryInflight = run;
+  try{ return await run; }
+  finally{ if (!force && this._playerDirectoryInflight === run) this._playerDirectoryInflight = null; }
+};
+SQ_ACH.playerForName = async function(name){
+  const key = String(name || '').trim().toLowerCase();
+  if (!key) return null;
+  const rows = await this.playerDirectory();
+  return rows.find(r => String(r.name || '').trim().toLowerCase() === key) || null;
+};
+SQ_ACH._mergeSourceRows = function(rows){
+  const by = new Map();
+  (rows || []).forEach(r => {
+    const playerId = r && r.player_id;
+    const code = String((r && r.code) || '').trim();
+    if (!playerId || !code) return;
+    const key = String(playerId) + '|' + code;
+    const prev = by.get(key) || { player_id:playerId, code, cnt:0, xp:0 };
+    prev.cnt += Math.max(0, Number(r.cnt) || 0);
+    prev.xp += Number(r.xp) || 0;
+    by.set(key, prev);
+  });
+  return Array.from(by.values());
+};
+SQ_ACH._sourceRows = async function(opts){
+  opts = opts || {};
+  try{
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return { available:false, rows:[] };
+    const meta = opts.code === 'collector' || opts.code === 'trophy_hunter';
+    let baseQ = SB.from('v_ach_base').select('player_id,code,cnt,xp');
+    let dgQ = SB.from('v_ach_david_goliath').select('player_id,code,cnt,xp');
+    if (opts.playerId){ baseQ = baseQ.eq('player_id', opts.playerId); dgQ = dgQ.eq('player_id', opts.playerId); }
+    if (opts.code && !meta){ baseQ = baseQ.eq('code', opts.code); dgQ = dgQ.eq('code', opts.code); }
+    const [base, dg] = await Promise.all([baseQ, dgQ]);
+    if (!base || base.error || !Array.isArray(base.data) || !dg || dg.error || !Array.isArray(dg.data)) return { available:false, rows:[] };
+    return { available:true, rows:this._mergeSourceRows(base.data.concat(dg.data)) };
+  }catch(_){ return { available:false, rows:[] }; }
+};
+SQ_ACH._metaForRows = function(rows, playerId){
+  const source = (rows || []).filter(r => !playerId || String(r.player_id) === String(playerId));
+  const codes = new Set(source.filter(r => Number(r.cnt) > 0 && r.code !== 'collector' && r.code !== 'trophy_hunter').map(r => r.code));
+  const out = [];
+  if (codes.size >= 10) out.push({ player_id:playerId, code:'collector', cnt:1, xp:150 });
+  if (codes.size >= 20) out.push({ player_id:playerId, code:'trophy_hunter', cnt:1, xp:350 });
+  return out;
+};
+SQ_ACH.forPlayerId = async function(playerId){
+  try{
+    if (!playerId) return { available:false, map:{} };
+    const state = await this._sourceRows({ playerId });
+    if (!state.available) return { available:false, map:{} };
+    const rows = this._mergeSourceRows(state.rows.concat(this._metaForRows(state.rows, playerId)));
+    const map = {};
+    rows.forEach(r => { if (Number(r.cnt) > 0) map[r.code] = { cnt:Number(r.cnt)||0, xp:Number(r.xp)||0 }; });
+    return { available:true, map };
+  }catch(_){ return { available:false, map:{} }; }
+};
+SQ_ACH.forName = async function(name){
+  try{
+    const player = await this.playerForName(name);
+    if (!player) return {};
+    const state = await this.forPlayerId(player.player_id);
+    const map = state.map || {};
+    try{ Object.defineProperty(map, '__available', { value:!!state.available, enumerable:false, configurable:true }); }catch(_){ }
+    return map;
+  }catch(_){
+    const map = {};
+    try{ Object.defineProperty(map, '__available', { value:false, enumerable:false, configurable:true }); }catch(__){ }
+    return map;
+  }
+};
+SQ_ACH.forCode = async function(code){
+  try{
+    const [state, directory] = await Promise.all([this._sourceRows({ code }), this.playerDirectory()]);
+    if (!state.available) return [];
+    let rows;
+    if (code === 'collector' || code === 'trophy_hunter'){
+      const ids = Array.from(new Set(state.rows.map(r => r.player_id).filter(Boolean)));
+      rows = ids.flatMap(id => this._metaForRows(state.rows, id)).filter(r => r.code === code);
+    } else {
+      rows = state.rows.filter(r => r.code === code);
+    }
+    const byPlayer = new Map((directory || []).map(r => [String(r.player_id), r]));
+    return rows.map(r => {
+      const p = byPlayer.get(String(r.player_id));
+      return {
+        player_id:r.player_id,
+        name:(p && p.name) || '—',
+        cnt:Number(r.cnt)||0,
+        xp:Number(r.xp)||0,
+        games_played:(p && Math.max(0, Number(p.games_played)||0)) || 0
+      };
+    }).filter(r => r.cnt > 0)
+      .sort((a,b) => (b.cnt-a.cnt) || (b.xp-a.xp) || String(a.name||'').localeCompare(String(b.name||'')) || String(a.player_id||'').localeCompare(String(b.player_id||'')));
+  }catch(_){ return []; }
+};
+SQ_MISFIRE.forName = async function(name){
+  try{
+    const player = await SQ_ACH.playerForName(name);
+    if (!player) return { available:false, map:{} };
+    return await this.forPlayerId(player.player_id);
+  }catch(_){ return { available:false, map:{} }; }
+};
+SQ_MISFIRE.forCode = async function(code){
+  try{
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return { available:false, rows:[] };
+    const [res, directory] = await Promise.all([
+      SB.from('v_player_misfires').select('player_id,cnt').eq('code', code),
+      SQ_ACH.playerDirectory()
+    ]);
+    if (!res || res.error || !Array.isArray(res.data)) return { available:false, rows:[] };
+    const byPlayer = new Map((directory || []).map(r => [String(r.player_id), r]));
+    const rows = res.data.map(r => {
+      const p = byPlayer.get(String(r.player_id));
+      return {
+        player_id:r.player_id,
+        name:(p && p.name) || '—',
+        cnt:Number(r.cnt)||0,
+        games_played:(p && Math.max(0, Number(p.games_played)||0)) || 0
+      };
+    }).filter(r => r.cnt > 0)
+      .sort((a,b) => (b.cnt-a.cnt) || String(a.name||'').localeCompare(String(b.name||'')) || String(a.player_id||'').localeCompare(String(b.player_id||'')));
+    return { available:true, rows };
+  }catch(_){ return { available:false, rows:[] }; }
+};
+
+'''
+              text = text.replace(needle, block + needle, 1)
+
+          old_avg = "return avg == null ? '—' : (avg.toFixed(2) + '/game');"
+          new_avg = "return avg == null ? '—' : (avg.toFixed(3) + ' / game');"
+          if old_avg in text:
+              text = text.replace(old_avg, new_avg, 1)
+          elif new_avg not in text:
+              raise SystemExit('SC-025 average text helper was not found')
+
+          mode_line = "const modeBar = __sqLeagueModeBar(milestone ? 'Milestone leaderboard' : 'Trophy leaderboard', s.c, 'rgba(255,177,74,.12)');"
+          hide_line = "  if (milestone) modeBar.controls.style.display = 'none';"
+          if hide_line not in text:
+              if text.count(mode_line) != 1:
+                  raise SystemExit(f'Expected exactly one trophy mode bar, found {text.count(mode_line)}')
+              text = text.replace(mode_line, mode_line + "\n" + hide_line, 1)
+
+          p.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Assert bounded source contract
+        run: |
+          grep -q "SC-026 — split positive achievement reads" index.html
+          grep -q "from('v_ach_base')" index.html
+          grep -q "from('v_ach_david_goliath')" index.html
+          grep -q "from('v_player_base_xp').select('player_id,name,games_played')" index.html
+          grep -q "avg.toFixed(3) + ' / game'" index.html
+          git diff --check
+
+      - name: Install UI smoke dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          npm install --no-package-lock --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run focused achievement and award-league regressions
+        run: |
+          node tools/ui-smoke/verify-sc009.js
+          node tools/ui-smoke/verify-sc010.js
+          node tools/ui-smoke/verify-sc025.js
+
+      - name: Run core scoring regression
+        run: node tools/ui-smoke/smoke.js
+
+      - name: Commit verified bounded patch
+        shell: bash
+        run: |
+          if git diff --quiet -- index.html; then
+            echo "index.html already patched; nothing to commit"
+            exit 0
+          fi
+          git config user.name "shateki-bounded-build"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html
+          git commit -m "SC-026: restore achievement reads and award averages"
+          git push origin HEAD:fix/achievements-average-integration
