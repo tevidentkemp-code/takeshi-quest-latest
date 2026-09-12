@@ -62,6 +62,19 @@ const FIXTURE = {
       { player_id: 'p1', name: 'Alex S', total_xp: 151, points_scored: 630, games_played: 5, games_won: 3, matches_won: 1, milestones: 2, ach_xp: 20, badges: 2, misfire_xp: -2 },
       { player_id: 'p2', name: 'Sam T', total_xp: 300, points_scored: 900, games_played: 5, games_won: 2, matches_won: 0, milestones: 1, ach_xp: 0, badges: 0, misfire_xp: 0 },
     ],
+    // SC-026 display hot paths resolve identity + Classic game denominator from
+    // the lightweight base-XP view, then read positive occurrences from the two
+    // canonical split sources. Keep v_player_achievements below only as a legacy
+    // fixture for tests that still exercise the DB-combined view directly.
+    v_player_base_xp: [
+      { player_id: 'p1', name: 'Alex S', games_played: 5 },
+      { player_id: 'p2', name: 'Sam T', games_played: 5 },
+    ],
+    v_ach_base: [
+      { player_id: 'p1', code: 'giant_slayer', cnt: 1, xp: 10 },
+      { player_id: 'p1', code: 'champion', cnt: 1, xp: 10 },
+    ],
+    v_ach_david_goliath: [],
     v_player_achievements: [
       { code: 'giant_slayer', cnt: 1, xp: 10 },
       { code: 'champion', cnt: 1, xp: 10 },
@@ -134,7 +147,12 @@ async function install(page) {
     window.sb = fakeSb; window.__sb = fakeSb;
     // 5) bust XP/achievement caches so they re-read through the stub
     if (window.SQ_XP) { window.SQ_XP._cache = null; window.SQ_XP._cacheAt = 0; }
-    if (window.SQ_ACH) window.SQ_ACH._cache = {};
+    if (window.SQ_ACH) {
+      window.SQ_ACH._cache = {};
+      window.SQ_ACH._playerDirectoryCache = null;
+      window.SQ_ACH._playerDirectoryCacheAt = 0;
+      window.SQ_ACH._playerDirectoryInflight = null;
+    }
   }, FIXTURE);
 }
 
