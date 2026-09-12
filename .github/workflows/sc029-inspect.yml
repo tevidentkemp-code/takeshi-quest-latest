@@ -10,16 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Print exact relevant source
+      - name: Print exact Power Rank implementation
         shell: bash
         run: |
           set -e
-          echo '=== scoped CSS ==='
-          grep -n -A45 -B12 "sq-player-stats-profile" index.html | head -n 140
-          echo '=== build profile function / power query ==='
-          LINE=$(grep -n "v_power_rankings_last56_official_clean" index.html | head -1 | cut -d: -f1)
-          START=$((LINE-90)); END=$((LINE+260)); sed -n "${START},${END}p" index.html
-          echo '=== rank value ==='
-          grep -n -A35 -B20 "const rankValue" index.html | head -n 100
-          echo '=== name row ==='
-          grep -n -A20 -B12 "nameRow.style.cssText" index.html | head -n 80
+          grep -n "from('v_power_rankings_last56_official_clean')" index.html || true
+          grep -n 'from("v_power_rankings_last56_official_clean")' index.html || true
+          grep -n "const savedPlayersRows" index.html || true
+          grep -n "let dbPower" index.html || true
+          L=$(grep -n "let dbPower" index.html | tail -1 | cut -d: -f1)
+          S=$((L-80)); E=$((L+190)); sed -n "${S},${E}p" index.html
