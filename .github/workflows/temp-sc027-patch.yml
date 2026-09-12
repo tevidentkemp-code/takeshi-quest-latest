@@ -1,0 +1,367 @@
+name: SC-027 branch patch and regression
+on:
+  push:
+    branches: [sc027-milestone-percentage-averages]
+permissions:
+  contents: write
+jobs:
+  patch-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply SC-027 targeted patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text()
+
+          def must(old, new, label):
+              global s
+              n = s.count(old)
+              if n != 1:
+                  raise SystemExit(f'{label}: expected 1 match, found {n}')
+              s = s.replace(old, new, 1)
+
+          old = """// SC-025 — per-award league display helpers. AVERAGE is occurrence count divided
+          // by the existing eligible Classic game count from v_player_xp.games_played.
+          function __sqLeagueAverageValue(row){
+            const games = Math.max(0, Number(row && row.games_played) || 0);
+            const cnt = Math.max(0, Number(row && row.cnt) || 0);
+            return games > 0 ? (cnt / games) : null;
+          }
+          function __sqLeagueAverageRows(rows){
+            return (rows || []).slice().sort((a, b) => {
+              const av = __sqLeagueAverageValue(a), bv = __sqLeagueAverageValue(b);
+              if (av == null && bv != null) return 1;
+              if (av != null && bv == null) return -1;
+              if (av != null && bv != null && Math.abs(bv - av) > 1e-12) return bv - av;
+              const byCount = (Number(b && b.cnt) || 0) - (Number(a && a.cnt) || 0);
+              if (byCount) return byCount;
+              const byName = String((a && a.name) || '').localeCompare(String((b && b.name) || ''));
+              if (byName) return byName;
+              return String((a && a.player_id) || '').localeCompare(String((b && b.player_id) || ''));
+            });
+          }
+          function __sqLeagueAverageText(row){
+            const avg = __sqLeagueAverageValue(row);
+            return avg == null ? '—' : (avg.toFixed(3) + ' / game');
+          }
+          """
+          new = """// SC-027 — percentage average boards with a six-game minimum sample.
+          // Every player remains visible, but only players with more than five eligible
+          // Official/Classic games are actively ranked in AVERAGE mode.
+          function __sqLeagueAverageEligible(row){
+            return Math.max(0, Number(row && row.games_played) || 0) > 5;
+          }
+          function __sqLeagueAverageValue(row){
+            const games = Math.max(0, Number(row && row.games_played) || 0);
+            const cnt = Math.max(0, Number(row && row.cnt) || 0);
+            return games > 0 ? (cnt / games) : null;
+          }
+          function __sqLeagueAverageRows(rows){
+            return (rows || []).slice().sort((a, b) => {
+              const ae = __sqLeagueAverageEligible(a), be = __sqLeagueAverageEligible(b);
+              if (ae !== be) return ae ? -1 : 1;
+              const av = __sqLeagueAverageValue(a), bv = __sqLeagueAverageValue(b);
+              if (ae && be){
+                if (av == null && bv != null) return 1;
+                if (av != null && bv == null) return -1;
+                if (av != null && bv != null && Math.abs(bv - av) > 1e-12) return bv - av;
+              } else {
+                const byGames = (Number(b && b.games_played) || 0) - (Number(a && a.games_played) || 0);
+                if (byGames) return byGames;
+              }
+              const byCount = (Number(b && b.cnt) || 0) - (Number(a && a.cnt) || 0);
+              if (byCount) return byCount;
+              const byName = String((a && a.name) || '').localeCompare(String((b && b.name) || ''));
+              if (byName) return byName;
+              return String((a && a.player_id) || '').localeCompare(String((b && b.player_id) || ''));
+            });
+          }
+          function __sqLeagueAverageText(row){
+            const avg = __sqLeagueAverageValue(row);
+            return avg == null ? '—' : ((avg * 100).toFixed(1) + '%');
+          }
+          """
+          must(old, new, 'average helper block')
+
+          marker = """SQ_MISFIRE.forName = async function(name){"""
+          addition = """SQ_ACH.forMilestones = async function(){
+            try{
+              const [state, directory] = await Promise.all([this._sourceRows({}), this.playerDirectory()]);
+              if (!state.available) return [];
+              const milestoneCodes = new Map();
+              const addMilestone = r => {
+                const playerId = r && r.player_id;
+                const code = String((r && r.code) || '').trim();
+                if (!playerId || !code || Number(r.cnt) <= 0 || !this.isMilestone(code)) return;
+                const key = String(playerId);
+                if (!milestoneCodes.has(key)) milestoneCodes.set(key, new Set());
+                milestoneCodes.get(key).add(code);
+              };
+              (state.rows || []).forEach(addMilestone);
+              const sourceByPlayer = new Map();
+              (state.rows || []).forEach(r => {
+                const key = String((r && r.player_id) || '');
+                if (!key) return;
+                if (!sourceByPlayer.has(key)) sourceByPlayer.set(key, []);
+                sourceByPlayer.get(key).push(r);
+              });
+              (directory || []).forEach(p => {
+                const key = String(p.player_id || '');
+                this._metaForRows(sourceByPlayer.get(key) || [], p.player_id).forEach(addMilestone);
+              });
+              return (directory || []).map(p => ({
+                player_id:p.player_id,
+                name:p.name || '—',
+                cnt:(milestoneCodes.get(String(p.player_id)) || new Set()).size,
+                games_played:Math.max(0, Number(p.games_played) || 0)
+              })).sort((a,b) => (b.cnt-a.cnt)
+                || String(a.name||'').localeCompare(String(b.name||''))
+                || String(a.player_id||'').localeCompare(String(b.player_id||'')));
+            }catch(_){ return []; }
+          };
+
+          SQ_MISFIRE.forName = async function(name){"""
+          must(marker, addition, 'milestone leaderboard helper')
+
+          must("  if (milestone) modeBar.controls.style.display = 'none';\n", "", 'milestone mode switch')
+          must("  const rows = await SQ_ACH.forCode(code);\n", "  const rows = milestone ? await SQ_ACH.forMilestones() : await SQ_ACH.forCode(code);\n", 'milestone rows source')
+
+          must(
+          """    const list = document.createElement('div'); list.className = 'pp-trophy-lb'; list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+              ordered.forEach((r, i) => {
+                const row = document.createElement('div'); row.className = 'pp-trophy-lb-row'; row.dataset.games = String(Math.max(0, Number(r.games_played) || 0));
+                row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);';
+                const rk = document.createElement('span'); rk.className = 'pp-trophy-lb-rank'; rk.textContent = '#' + (i + 1); rk.style.cssText = 'font-weight:900;min-width:30px;color:' + medal(i);
+                const nm = document.createElement('span'); nm.className = 'pp-trophy-lb-name'; nm.textContent = r.name; nm.style.cssText = 'flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+                const val = document.createElement('span'); val.className = 'pp-trophy-lb-value';
+                val.textContent = mode === 'average' ? __sqLeagueAverageText(r) : (milestone ? '✓' : ('×' + r.cnt));
+                val.title = mode === 'average' ? ((Number(r.cnt)||0) + ' occurrence(s) over ' + (Number(r.games_played)||0) + ' eligible games') : '';
+                val.style.cssText = 'font-weight:900;color:' + (mode === 'average' ? s.c : (milestone ? '#2fd06b' : '#ffb14a')) + ';white-space:nowrap;';
+                row.append(rk, nm, val); list.appendChild(row);
+              });
+          """,
+          """    const list = document.createElement('div'); list.className = 'pp-trophy-lb'; list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+              let rankedIndex = 0;
+              ordered.forEach((r, i) => {
+                const eligible = mode !== 'average' || __sqLeagueAverageEligible(r);
+                const rankIndex = mode === 'average' ? (eligible ? rankedIndex++ : -1) : i;
+                const row = document.createElement('div'); row.className = 'pp-trophy-lb-row'; row.dataset.games = String(Math.max(0, Number(r.games_played) || 0));
+                row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);';
+                if (mode === 'average' && !eligible){ row.classList.add('is-average-ineligible'); row.style.opacity = '.38'; row.title = 'Minimum 6 eligible games required to rank'; }
+                const rk = document.createElement('span'); rk.className = 'pp-trophy-lb-rank'; rk.textContent = rankIndex >= 0 ? ('#' + (rankIndex + 1)) : '—'; rk.style.cssText = 'font-weight:900;min-width:30px;color:' + (rankIndex >= 0 ? medal(rankIndex) : 'var(--v3-muted,#98a2b8)');
+                const nm = document.createElement('span'); nm.className = 'pp-trophy-lb-name'; nm.textContent = r.name; nm.style.cssText = 'flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+                const val = document.createElement('span'); val.className = 'pp-trophy-lb-value';
+                val.textContent = mode === 'average' ? __sqLeagueAverageText(r) : (milestone ? String(Number(r.cnt)||0) : ('×' + r.cnt));
+                val.title = mode === 'average'
+                  ? ((Number(r.cnt)||0) + ' occurrence(s) over ' + (Number(r.games_played)||0) + ' eligible games' + (eligible ? '' : ' · Not ranked until 6 eligible games'))
+                  : (milestone ? 'Milestones achieved' : '');
+                val.style.cssText = 'font-weight:900;color:' + (mode === 'average' ? s.c : (milestone ? '#2fd06b' : '#ffb14a')) + ';white-space:nowrap;';
+                row.append(rk, nm, val); list.appendChild(row);
+              });
+          """, 'trophy leaderboard render')
+
+          must(
+          """    const list=document.createElement('div'); list.className='pp-misfire-lb'; list.style.cssText='display:flex;flex-direction:column;gap:6px;';
+              ordered.forEach((r,i)=>{
+                const row=document.createElement('div'); row.className='pp-misfire-lb-row'; row.dataset.games=String(Math.max(0,Number(r.games_played)||0)); row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(127,29,29,.16);border:1px solid rgba(248,113,113,.16);';
+                const rk=document.createElement('span'); rk.className='pp-misfire-lb-rank'; rk.textContent='#'+(i+1); rk.style.cssText='font-weight:900;min-width:30px;color:'+medal(i);
+                const nm=document.createElement('span'); nm.className='pp-misfire-lb-name'; nm.textContent=r.name; nm.style.cssText='flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+                const val=document.createElement('span'); val.className='pp-misfire-lb-count'; val.textContent=mode==='average'?__sqLeagueAverageText(r):('×'+r.cnt); val.title=mode==='average'?((Number(r.cnt)||0)+' occurrence(s) over '+(Number(r.games_played)||0)+' eligible games'):''; val.style.cssText='font-weight:900;color:#fca5a5;white-space:nowrap;';
+                row.append(rk,nm,val); list.appendChild(row);
+              }); mount.appendChild(list);
+          """,
+          """    const list=document.createElement('div'); list.className='pp-misfire-lb'; list.style.cssText='display:flex;flex-direction:column;gap:6px;';
+              let rankedIndex=0;
+              ordered.forEach((r,i)=>{
+                const eligible=mode!=='average'||__sqLeagueAverageEligible(r);
+                const rankIndex=mode==='average'?(eligible?rankedIndex++:-1):i;
+                const row=document.createElement('div'); row.className='pp-misfire-lb-row'; row.dataset.games=String(Math.max(0,Number(r.games_played)||0)); row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(127,29,29,.16);border:1px solid rgba(248,113,113,.16);';
+                if(mode==='average'&&!eligible){row.classList.add('is-average-ineligible');row.style.opacity='.38';row.title='Minimum 6 eligible games required to rank';}
+                const rk=document.createElement('span'); rk.className='pp-misfire-lb-rank'; rk.textContent=rankIndex>=0?('#'+(rankIndex+1)):'—'; rk.style.cssText='font-weight:900;min-width:30px;color:'+(rankIndex>=0?medal(rankIndex):'var(--v3-muted,#98a2b8)');
+                const nm=document.createElement('span'); nm.className='pp-misfire-lb-name'; nm.textContent=r.name; nm.style.cssText='flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+                const val=document.createElement('span'); val.className='pp-misfire-lb-count'; val.textContent=mode==='average'?__sqLeagueAverageText(r):('×'+r.cnt); val.title=mode==='average'?((Number(r.cnt)||0)+' occurrence(s) over '+(Number(r.games_played)||0)+' eligible games'+(eligible?'':' · Not ranked until 6 eligible games')):''; val.style.cssText='font-weight:900;color:#fca5a5;white-space:nowrap;';
+                row.append(rk,nm,val); list.appendChild(row);
+              }); mount.appendChild(list);
+          """, 'misfire leaderboard render')
+
+          p.write_text(s)
+          PY
+
+          cat > tools/ui-smoke/verify-sc025.js <<'JS'
+          const { chromium } = require('playwright');
+          const assert = require('assert');
+
+          (async()=>{
+            const browser = await chromium.launch({headless:true});
+            const page = await browser.newPage({viewport:{width:390,height:844}});
+            const errors=[]; page.on('pageerror',e=>errors.push(String(e)));
+            await page.goto('http://127.0.0.1:8123/?sc027=1',{waitUntil:'domcontentloaded'});
+            await page.waitForFunction(()=>typeof window.__sqTrophyDetail==='function' && typeof window.__sqMisfireDetail==='function' && typeof window.__sqLeagueAverageRows==='function' && typeof window.__sqLeagueAverageEligible==='function');
+
+            await page.evaluate(()=>{
+              const directory=[
+                {player_id:'p1',name:'Alex S',games_played:12},
+                {player_id:'p2',name:'Sam T',games_played:8},
+                {player_id:'p3',name:'Short S',games_played:5},
+                {player_id:'p4',name:'Zero G',games_played:0},
+              ];
+              window.SQ_ACH.playerDirectory=async()=>directory.map(r=>({...r}));
+              const base=window.sb;
+              window.__sc027Calls={};
+              const milestoneRows=[
+                {player_id:'p1',code:'score_100',cnt:1,xp:30},
+                {player_id:'p1',code:'score_200',cnt:1,xp:30},
+                {player_id:'p2',code:'score_100',cnt:1,xp:30},
+                {player_id:'p2',code:'score_200',cnt:1,xp:30},
+                {player_id:'p2',code:'score_300',cnt:1,xp:30},
+                {player_id:'p3',code:'score_100',cnt:1,xp:30},
+                {player_id:'p3',code:'score_200',cnt:1,xp:30},
+                {player_id:'p3',code:'score_300',cnt:1,xp:30},
+                {player_id:'p3',code:'score_400',cnt:1,xp:30},
+              ];
+              window.sb=window.__sb={
+                from(table){
+                  window.__sc027Calls[table]=(window.__sc027Calls[table]||0)+1;
+                  if(table!=='v_ach_base' && table!=='v_ach_david_goliath' && table!=='v_player_misfires') return base.from(table);
+                  let code='';
+                  const q={
+                    select(){return q;},
+                    eq(col,val){if(col==='code') code=String(val||''); return q;},
+                    then(resolve){
+                      if(table==='v_ach_david_goliath') return resolve({data:[],error:null});
+                      if(table==='v_ach_base'){
+                        if(!code) return resolve({data:milestoneRows,error:null});
+                        if(code==='giant_slayer') return resolve({data:[
+                          {player_id:'p1',code,cnt:3,xp:30},
+                          {player_id:'p2',code,cnt:4,xp:40},
+                          {player_id:'p3',code,cnt:10,xp:100},
+                          {player_id:'p4',code,cnt:1,xp:10},
+                        ],error:null});
+                        return resolve({data:[],error:null});
+                      }
+                      resolve({data:[
+                        {player_id:'p1',cnt:3},
+                        {player_id:'p2',cnt:4},
+                        {player_id:'p3',cnt:10},
+                        {player_id:'p4',cnt:1},
+                      ],error:null});
+                    },
+                    catch(){return q;}
+                  };
+                  return q;
+                }
+              };
+            });
+
+            async function read(selector,rowSelector,valueSelector){
+              return page.evaluate(({selector,rowSelector,valueSelector})=>{
+                const d=document.querySelector(selector); if(!d) return null;
+                const sw=d.querySelector('.pp-league-mode-switch');
+                const misfire=rowSelector.includes('misfire');
+                return {
+                  switchDisplay:sw?getComputedStyle(sw).display:null,
+                  buttons:Array.from(d.querySelectorAll('.pp-league-mode-btn')).map(b=>({text:(b.textContent||'').trim(),mode:b.dataset.leagueMode,pressed:b.getAttribute('aria-pressed')})),
+                  rows:Array.from(d.querySelectorAll(rowSelector)).map(r=>({
+                    name:(r.querySelector(misfire?'.pp-misfire-lb-name':'.pp-trophy-lb-name')||{}).textContent||'',
+                    value:(r.querySelector(valueSelector)||{}).textContent||'',
+                    rank:(r.querySelector(misfire?'.pp-misfire-lb-rank':'.pp-trophy-lb-rank')||{}).textContent||'',
+                    games:Number(r.dataset.games||0),
+                    ineligible:r.classList.contains('is-average-ineligible'),
+                    opacity:getComputedStyle(r).opacity,
+                  }))
+                };
+              },{selector,rowSelector,valueSelector});
+            }
+
+            await page.evaluate(()=>window.__sqTrophyDetail('giant_slayer',{giant_slayer:{cnt:3,xp:30}}));
+            await page.waitForFunction(()=>document.querySelectorAll('.pp-trophy-detail .pp-trophy-lb-row').length===4);
+            let t=await read('.pp-trophy-detail','.pp-trophy-lb-row','.pp-trophy-lb-value');
+            assert.deepEqual(t.buttons.map(x=>x.text),['ALL TIME','AVERAGE']);
+            assert.equal(t.buttons[0].pressed,'true');
+            assert.equal(t.rows[0].name,'Short S'); assert.equal(t.rows[0].value,'×10');
+            await page.click('.pp-trophy-detail [data-league-mode="average"]');
+            t=await read('.pp-trophy-detail','.pp-trophy-lb-row','.pp-trophy-lb-value');
+            assert.equal(t.rows[0].name,'Sam T'); assert.equal(t.rows[0].value,'50.0%'); assert.equal(t.rows[0].rank,'#1'); assert.equal(t.rows[0].ineligible,false);
+            assert.equal(t.rows[1].name,'Alex S'); assert.equal(t.rows[1].value,'25.0%'); assert.equal(t.rows[1].rank,'#2');
+            assert.equal(t.rows[2].name,'Short S'); assert.equal(t.rows[2].value,'200.0%'); assert.equal(t.rows[2].rank,'—'); assert.equal(t.rows[2].ineligible,true); assert(Number(t.rows[2].opacity)<0.5);
+            assert.equal(t.rows[3].value,'—'); assert.equal(t.rows[3].rank,'—'); assert.equal(t.rows[3].ineligible,true);
+            await page.keyboard.press('Escape'); await page.waitForFunction(()=>!document.querySelector('.pp-trophy-detail'));
+
+            await page.evaluate(()=>window.__sqTrophyDetail('score_100',{score_100:{cnt:1,xp:30}}));
+            await page.waitForFunction(()=>document.querySelectorAll('.pp-trophy-detail .pp-trophy-lb-row').length===4);
+            t=await read('.pp-trophy-detail','.pp-trophy-lb-row','.pp-trophy-lb-value');
+            assert.notEqual(t.switchDisplay,'none');
+            assert.deepEqual(t.buttons.map(x=>x.text),['ALL TIME','AVERAGE']);
+            assert.equal(t.rows[0].name,'Short S'); assert.equal(t.rows[0].value,'4');
+            assert.equal(t.rows[1].name,'Sam T'); assert.equal(t.rows[1].value,'3');
+            assert.equal(t.rows[2].name,'Alex S'); assert.equal(t.rows[2].value,'2');
+            assert.equal(t.rows[3].name,'Zero G'); assert.equal(t.rows[3].value,'0');
+            await page.click('.pp-trophy-detail [data-league-mode="average"]');
+            t=await read('.pp-trophy-detail','.pp-trophy-lb-row','.pp-trophy-lb-value');
+            assert.equal(t.rows[0].name,'Sam T'); assert.equal(t.rows[0].value,'37.5%'); assert.equal(t.rows[0].rank,'#1');
+            assert.equal(t.rows[1].name,'Alex S'); assert.equal(t.rows[1].value,'16.7%'); assert.equal(t.rows[1].rank,'#2');
+            assert.equal(t.rows[2].name,'Short S'); assert.equal(t.rows[2].value,'80.0%'); assert.equal(t.rows[2].rank,'—'); assert.equal(t.rows[2].ineligible,true);
+            assert.equal(t.rows[3].name,'Zero G'); assert.equal(t.rows[3].value,'—'); assert.equal(t.rows[3].rank,'—'); assert.equal(t.rows[3].ineligible,true);
+            await page.keyboard.press('Escape'); await page.waitForFunction(()=>!document.querySelector('.pp-trophy-detail'));
+
+            await page.evaluate(()=>window.__sqMisfireDetail('bull_blind',{bull_blind:{cnt:3}}));
+            await page.waitForFunction(()=>document.querySelectorAll('.pp-misfire-detail .pp-misfire-lb-row').length===4);
+            let m=await read('.pp-misfire-detail','.pp-misfire-lb-row','.pp-misfire-lb-count');
+            assert.deepEqual(m.buttons.map(x=>x.text),['ALL TIME','AVERAGE']);
+            assert.equal(m.rows[0].name,'Short S'); assert.equal(m.rows[0].value,'×10');
+            await page.click('.pp-misfire-detail [data-league-mode="average"]');
+            m=await read('.pp-misfire-detail','.pp-misfire-lb-row','.pp-misfire-lb-count');
+            assert.equal(m.rows[0].name,'Sam T'); assert.equal(m.rows[0].value,'50.0%'); assert.equal(m.rows[0].rank,'#1');
+            assert.equal(m.rows[1].name,'Alex S'); assert.equal(m.rows[1].value,'25.0%'); assert.equal(m.rows[1].rank,'#2');
+            assert.equal(m.rows[2].name,'Short S'); assert.equal(m.rows[2].value,'200.0%'); assert.equal(m.rows[2].rank,'—'); assert.equal(m.rows[2].ineligible,true);
+
+            const calls=await page.evaluate(()=>({...window.__sc027Calls}));
+            assert(calls.v_ach_base>=2,'trophy and milestone details must use v_ach_base');
+            assert(calls.v_ach_david_goliath>=2,'trophy and milestone details must include v_ach_david_goliath');
+            assert(!calls.v_player_achievements,'positive details must not use combined v_player_achievements');
+            assert(calls.v_player_misfires>=1,'misfire detail must use v_player_misfires');
+
+            await page.setViewportSize({width:320,height:844});
+            const fit=await page.evaluate(()=>{const d=document.querySelector('.pp-misfire-detail'),s=d.querySelector('.pp-league-mode-switch'); const dr=d.getBoundingClientRect(),sr=s.getBoundingClientRect(); return dr.left>=-1&&dr.right<=innerWidth+1&&sr.left>=dr.left-1&&sr.right<=dr.right+1;});
+            assert(fit,'SC-027 controls overflow 320px modal');
+            assert.equal(errors.length,0,errors.join('\n'));
+            console.log('SC-027 milestone + percentage ALL TIME / AVERAGE regression: PASS');
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1);});
+          JS
+      - name: Install UI smoke dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          npm install --no-package-lock --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Run focused and core regressions
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          sleep 1
+          node tools/ui-smoke/verify-sc009.js
+          node tools/ui-smoke/verify-sc010.js
+          node tools/ui-smoke/verify-sc025.js
+          node tools/ui-smoke/smoke.js
+          git diff --check
+      - name: Commit verified SC-027 patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html tools/ui-smoke/verify-sc025.js
+          git diff --cached --quiet && exit 0
+          git commit -m "SC-027: add milestone and percentage average boards"
+          git push origin HEAD:sc027-milestone-percentage-averages
