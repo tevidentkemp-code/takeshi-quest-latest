@@ -1,0 +1,34 @@
+name: SC-029 release QA bootstrap fix
+on:
+  push:
+    branches: [sc029-player-stats-hub-polish-v2]
+permissions:
+  contents: write
+jobs:
+  patch-bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sc029-player-stats-hub-polish-v2
+          fetch-depth: 2
+      - name: Fix local Playwright install and remove bootstrap workflow
+        shell: bash
+        run: |
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/sc029-release.yml')
+          s = p.read_text()
+          old = '          npm install --no-package-lock --ignore-scripts\n'
+          new = '          npm install --no-package-lock --ignore-scripts --no-save playwright\n'
+          if s.count(old) != 1:
+              raise SystemExit(f'expected one dependency bootstrap line, found {s.count(old)}')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          rm .github/workflows/sc029-bootstrap-fix.yml
+          git config user.name "tevidentkemp-code"
+          git config user.email "tevidentkemp@gmail.com"
+          git add -A
+          git commit -m "SC-029: fix release QA Playwright bootstrap"
+          git push origin HEAD:sc029-player-stats-hub-polish-v2
