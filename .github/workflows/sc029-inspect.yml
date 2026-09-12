@@ -1,0 +1,30 @@
+name: SC-029 source inspection
+on:
+  push:
+    branches: [sc029-player-stats-hub-polish]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract relevant current source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          lines=p.read_text().splitlines()
+          ranges=[(5085,5145),(39280,39480),(39680,39980),(40420,40680)]
+          out=[]
+          for a,b in ranges:
+              out.append(f'\n===== {a}-{b} =====\n')
+              for i in range(a-1,min(b,len(lines))):
+                  out.append(f'{i+1}: {lines[i]}')
+          Path('sc029-source.txt').write_text('\n'.join(out))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sc029-source
+          path: sc029-source.txt
