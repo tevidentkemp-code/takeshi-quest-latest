@@ -1,4 +1,4 @@
-// SC-010 regression: cold-read coalescing + honest positive-achievement failure state.
+// SC-010/SC-026 regression: honest positive-achievement state on the split read path.
 const H = require('./harness');
 const FX = require('./pstats-fixture');
 let failures = 0;
@@ -25,13 +25,22 @@ async function scenario(mode){
     const wrapped = {
       from(table){
         window.__sc010Calls[table] = (window.__sc010Calls[table] || 0) + 1;
-        if (table === 'v_player_achievements' && mode === 'error') return resultQuery(null, { message:'statement timeout' });
-        if (table === 'v_player_achievements' && mode === 'empty') return resultQuery([], null);
+        if ((table === 'v_ach_base' || table === 'v_ach_david_goliath') && mode === 'error') {
+          return resultQuery(null, { message:'statement timeout' });
+        }
+        if ((table === 'v_ach_base' || table === 'v_ach_david_goliath') && mode === 'empty') {
+          return resultQuery([], null);
+        }
         return baseFrom(table);
       }
     };
     window.sb = wrapped; window.__sb = wrapped;
     if (window.SQ_XP){ window.SQ_XP._cache = null; window.SQ_XP._cacheAt = 0; window.SQ_XP._inflight = null; }
+    if (window.SQ_ACH){
+      window.SQ_ACH._playerDirectoryCache = null;
+      window.SQ_ACH._playerDirectoryCacheAt = 0;
+      window.SQ_ACH._playerDirectoryInflight = null;
+    }
   }, mode);
 
   await page.evaluate(() => window.openPlayerStatsDialog('Alex S'));
@@ -62,22 +71,25 @@ async function scenario(mode){
 
 (async () => {
   const success = await scenario('success');
-  check('cold Player Stats performs one v_player_xp read', success.ui.calls.v_player_xp === 1, JSON.stringify(success.ui.calls));
-  check('success reads positive achievements once by resolved player id', success.ui.calls.v_player_achievements === 1, JSON.stringify(success.ui.calls));
+  check('cold Player Stats performs one v_player_xp read for XP presentation', success.ui.calls.v_player_xp === 1, JSON.stringify(success.ui.calls));
+  check('display identity/game denominator reads lightweight v_player_base_xp once', success.ui.calls.v_player_base_xp === 1, JSON.stringify(success.ui.calls));
+  check('success reads v_ach_base once by resolved player id', success.ui.calls.v_ach_base === 1, JSON.stringify(success.ui.calls));
+  check('success reads v_ach_david_goliath once by resolved player id', success.ui.calls.v_ach_david_goliath === 1, JSON.stringify(success.ui.calls));
+  check('success does not use combined v_player_achievements hot path', !success.ui.calls.v_player_achievements, JSON.stringify(success.ui.calls));
   check('success reads Misfires once by resolved player id', success.ui.calls.v_player_misfires === 1, JSON.stringify(success.ui.calls));
   check('successful history renders earned Trophy Vault count', success.ui.vaultCount === '2 / 58', success.ui.vaultCount);
   check('successful history preserves real section counts', /0 \/ 15 unlocked/.test(success.ui.milestones) && /2 \/ 43 unlocked/.test(success.ui.trophies), success.ui.milestones + ' | ' + success.ui.trophies);
   check('Misfires remain available on success', /2 \/ 8 unlocked/.test(success.ui.misfires) && /4 historical occurrences/.test(success.ui.misfires), success.ui.misfires);
 
   const failed = await scenario('error');
-  check('achievement fetch failure is not rendered as 0/58', failed.ui.vaultCount === '— / 58', failed.ui.vaultCount);
-  check('achievement fetch failure is explicitly labelled unavailable', /Achievement history unavailable/i.test(failed.ui.vaultSub) && /Achievement history is unavailable right now/i.test(failed.ui.vaultShelf), failed.ui.vaultSub + ' | ' + failed.ui.vaultShelf);
+  check('split achievement fetch failure is not rendered as 0/58', failed.ui.vaultCount === '— / 58', failed.ui.vaultCount);
+  check('split achievement fetch failure is explicitly labelled unavailable', /Achievement history unavailable/i.test(failed.ui.vaultSub) && /Achievement history is unavailable right now/i.test(failed.ui.vaultShelf), failed.ui.vaultSub + ' | ' + failed.ui.vaultShelf);
   check('failed history uses dash counts, not false zero section counts', /— \/ 15 unlocked/.test(failed.ui.milestones) && /— \/ 43 unlocked/.test(failed.ui.trophies), failed.ui.milestones + ' | ' + failed.ui.trophies);
-  check('Misfires still render when positive achievement read fails', /2 \/ 8 unlocked/.test(failed.ui.misfires) && /4 historical occurrences/.test(failed.ui.misfires), failed.ui.misfires);
-  check('failure path still performs only one XP read', failed.ui.calls.v_player_xp === 1, JSON.stringify(failed.ui.calls));
+  check('Misfires still render when positive split reads fail', /2 \/ 8 unlocked/.test(failed.ui.misfires) && /4 historical occurrences/.test(failed.ui.misfires), failed.ui.misfires);
+  check('failure path still avoids combined v_player_achievements', !failed.ui.calls.v_player_achievements, JSON.stringify(failed.ui.calls));
 
   const empty = await scenario('empty');
-  check('successful empty history remains a genuine zero state', empty.ui.vaultCount === '0 / 58' && /No trophies yet/i.test(empty.ui.vaultShelf), empty.ui.vaultCount + ' | ' + empty.ui.vaultShelf);
+  check('successful empty split history remains a genuine zero state', empty.ui.vaultCount === '0 / 58' && /No trophies yet/i.test(empty.ui.vaultShelf), empty.ui.vaultCount + ' | ' + empty.ui.vaultShelf);
   check('successful empty sections remain real zero counts', /0 \/ 15 unlocked/.test(empty.ui.milestones) && /0 \/ 43 unlocked/.test(empty.ui.trophies), empty.ui.milestones + ' | ' + empty.ui.trophies);
 
   const errs = [...success.consoleErrs, ...failed.consoleErrs, ...empty.consoleErrs].filter(e => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));
