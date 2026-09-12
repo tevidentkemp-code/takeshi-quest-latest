@@ -5105,6 +5105,17 @@ body[data-page="details"] #details{
   background:linear-gradient(135deg,rgba(255,122,24,.30),rgba(255,183,64,.16));
   color:#fff; border-color:rgba(255,150,60,.55); box-shadow:0 0 18px rgba(255,122,0,.18);
 }
+.sq-player-stats-content .pp-form-info{ min-width:100px; }
+.sq-player-stats-hub .menu-modal-header{ flex-shrink:0; }
+.sq-player-stats-profile{ margin-bottom:12px; }
+.sq-player-stats-profile .pp-hero-name{ overflow-wrap:anywhere; }
+.sq-player-stats-profile .pp-tile-value{ white-space:normal; }
+.sq-player-stats-profile .pp-tab{ min-width:0; flex:1 1 auto; }
+.sq-player-stats-hub .menu-row-title, .sq-player-stats-hub .menu-row-sub{ white-space:normal; overflow-wrap:anywhere; }
+@media(max-width:360px){
+  .sq-player-stats-profile .pp-tabs{ gap:4px; }
+  .sq-player-stats-profile .pp-tab{ padding-inline:4px; font-size:11px; }
+}
 /* FORM panel: win-rate gauge + verdict stamp + recent-games strip
    (same arcade language as the Target Progress form arena) */
 .pp-form{
@@ -39243,44 +39254,71 @@ function __sqMisfireCase(misfireState, xpRow){
   return card;
 }
 
-// === Player Stats — redesigned overview =====================================
-// @CANONICAL:PLAYER_STATS_PROFILE_CARDS
-window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
+// === Player Stats — one renderer shared by the hub and its content views ===
+window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, options){
   const name = String(playerName || '').trim();
   if (!name) { try{ toast('Pick a player'); }catch(_){ } return; }
-
-  // Supabase client (single source of truth for ranks & windowed stats)
-  const SB = (typeof window !== 'undefined') ? (window.sb || window.__sb || window.supabase || window.supabaseClient || null) : null;
-
-  // Modal shell
+  const opts = options || {};
   const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  const modal   = document.createElement('div'); modal.className   = 'modal';
-  modal.style.maxWidth='980px'; modal.style.width='94vw';
-  modal.style.maxHeight = '90vh'; modal.style.overflow = 'hidden';
-  // Flex column so the body actually scrolls within the 90vh modal (the
-  // footer stays pinned; without this the body overflowed and clipped).
-  modal.style.display = 'flex'; modal.style.flexDirection = 'column';
-
-  const header  = document.createElement('div');
-  header.style.display = 'none';
-  const body    = document.createElement('div'); body.className    = 'modal-body';
-  body.style.paddingTop='8px';
-  body.style.flex = '1 1 auto'; body.style.minHeight = '0'; body.style.overflowY = 'auto';
-
-  const footer  = document.createElement('div'); footer.className  = 'modal-footer';
-  footer.style.justifyContent='flex-start';
-  footer.style.gap='10px';
-
-  // Mount early so we never "flash" back to home between dialogs
+  const modal = document.createElement('div'); modal.className = 'modal sq-player-stats-content';
+  modal.style.cssText = 'max-width:980px;width:94vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;';
+  const body = document.createElement('div'); body.className = 'modal-body pp-anim';
+  body.style.cssText = 'padding-top:8px;flex:1 1 auto;min-height:0;overflow-y:auto;';
+  const footer = document.createElement('div'); footer.className = 'modal-footer';
+  footer.style.cssText = 'justify-content:flex-start;gap:10px;flex-shrink:0;';
+  let returned = false;
+  const returnToHub = () => {
+    if (returned) return;
+    returned = true;
+    overlay.remove();
+    if (typeof opts.onReturn === 'function') opts.onReturn();
+    else __sqGoBackToStatsMain(name);
+  };
+  const backBtn = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
+  backBtn.onclick = returnToHub;
+  footer.appendChild(backBtn);
   body.innerHTML = '<div class="sq-modal-loading"><div class="sq-loadbar"><span class="sq-loadbar-fill"></span></div></div>';
-  modal.append(header, body, footer);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-  try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
-  modal.tabIndex = 0;
-  modal.focus();
+  modal.append(body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  __sqStatsArcade(overlay, modal);
+  // SC-028: both child controls return to the profile hub; hub Close exits.
+  const closeBtn = document.createElement('button'); closeBtn.className = 'btn sq-pill'; closeBtn.textContent = 'Close';
+  closeBtn.onclick = returnToHub; footer.appendChild(closeBtn);
+  try{ if (window.sqModal && window.sqModal.register) window.sqModal.register(overlay, modal, returnToHub); }catch(_){}
+  overlay.addEventListener('click', e => { if (e.target === overlay) returnToHub(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') returnToHub(); });
+  modal.tabIndex = 0; modal.focus();
+  try{
+    const view = opts.view || await __sqBuildPlayerStatsProfile(name);
+    if (returned || !overlay.isConnected) return;
+    view.showTab(body, Number(opts.tab) || 0);
+  }catch(e){
+    if (returned || !overlay.isConnected) return;
+    body.textContent = 'Player stats could not be loaded. Return to the hub to try again.';
+    console.warn('[SQ] Player stats load failed', e);
+  }
+};
+
+// Keep the existing markup, active states and panel animations in one place.
+function __sqPlayerStatsView(profile, panels){
+  const tabBar = document.createElement('div'); tabBar.className = 'pp-tabs';
+  const tabs = ['Stats', 'XP', 'Achievements'].map((label, idx) => {
+    const t = document.createElement('button'); t.type = 'button'; t.textContent = label;
+    t.className = 'pp-tab' + (idx === 0 ? ' active' : '');
+    tabBar.appendChild(t); return t;
+  });
+  profile.appendChild(tabBar);
+  return { profile, tabs, showTab(host, idx){
+    const panel = panels[idx] || panels[0];
+    host.replaceChildren(panel);
+    tabs.forEach((b, i) => b.classList.toggle('active', i === idx));
+    try{ if (typeof panel.__ppReplay === 'function') requestAnimationFrame(panel.__ppReplay); }catch(_){}
+  } };
+}
+
+// @CANONICAL:PLAYER_STATS_PROFILE_CARDS
+async function __sqBuildPlayerStatsProfile(name){
+  // Supabase client and all calculations below retain their existing sources.
+  const SB = (typeof window !== 'undefined') ? (window.sb || window.__sb || window.supabase || window.supabaseClient || null) : null;
 
   // Helpers
   const monthKey = d => {
@@ -39303,23 +39341,13 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName){
     .filter(g => Array.isArray(g.players) && g.players.some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()))
     .sort((a,b)=> (new Date(a.ts) - new Date(b.ts)));
 
-  // Short-circuit if nothing
+  // Preserve the existing empty state without inventing profile values.
   if (!games.length){
-    body.innerHTML = '';
-    const p = document.createElement('p');
-    p.className = 'muted';
-    p.style.opacity = '.8';
+    const profile = document.createElement('div');
+    const p = document.createElement('p'); p.className = 'muted';
     p.textContent = 'No official games found for this player.';
-    body.appendChild(p);
-
-    footer.innerHTML = '';
-    const backBtn  = document.createElement('button'); backBtn.className='btn sq-pill'; backBtn.textContent='Back';
-    backBtn.onclick  = () => { overlay.remove(); __sqGoBackToStatsMain(); };
-    footer.append(backBtn);
-    __sqStatsArcade(overlay, modal);
-
-    modal.focus();
-    return;
+    profile.appendChild(p);
+    return __sqPlayerStatsView(profile, [p.cloneNode(true), p.cloneNode(true), p.cloneNode(true)]);
   }
 
   // Index for this player and raw scores
@@ -39764,7 +39792,6 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   const dartStreakValue = dbStreak ? streakValue(dbStreak.dart_streak) : '—';
   const roundStreakValue = dbStreak ? streakValue(dbStreak.round_streak) : '—';
 
-  body.innerHTML = '';
   const profile = document.createElement('div');
   profile.className = 'pp-anim';
   profile.style.display = 'flex';
@@ -40161,36 +40188,8 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     };
   }
 
-  const tabBar = document.createElement('div');
-  tabBar.className = 'pp-tabs';
-  const panelHost = document.createElement('div');
-  const tabs = [['Stats', statsPanel], ['XP', xpPanel], ['Achievements', achPanel]];
-  const btns = [];
-  const showTab = (idx) => {
-    while (panelHost.firstChild) panelHost.removeChild(panelHost.firstChild);
-    panelHost.appendChild(tabs[idx][1]);
-    btns.forEach((b, i) => b.classList.toggle('active', i === idx));
-    // Each tab's signature animation (re)plays on show.
-    try{ const fn = tabs[idx][1].__ppReplay; if (typeof fn === 'function') requestAnimationFrame(fn); }catch(_){ }
-  };
-  tabs.forEach(([label], idx) => {
-    const t = document.createElement('button'); t.type = 'button'; t.textContent = label;
-    t.className = 'pp-tab';
-    t.onclick = () => showTab(idx);
-    btns.push(t); tabBar.appendChild(t);
-  });
-  profile.appendChild(tabBar);
-  profile.appendChild(panelHost);
-  body.appendChild(profile);
-  showTab(0);
-
-  // Footer buttons
-  const backBtn  = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
-  backBtn.onclick  = () => { overlay.remove(); __sqGoBackToStatsMain(); };
-  footer.append(backBtn);
-  __sqStatsArcade(overlay, modal);
-
-};
+  return __sqPlayerStatsView(profile, [statsPanel, xpPanel, achPanel]);
+}
 
 // [removed: openPlayerDTBDialog alias (orphaned)] audit P5.3 batch 2 — dead/shadowed definition, no live callers
 
@@ -40434,10 +40433,6 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   var __fromPicker = !!String(playerName || '').trim();
   try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('home', playerName); }catch(_){ }
   try{ console.debug('[Popup]', window.__sqStatsDebugName || 'New Game Screen Stats'); }catch(_){ }
-  // Warm the heavy caches in the background NOW, so the Player Stats dialog
-  // (which needs the full games list) opens near-instantly from the menu.
-  try{ if (typeof cloudFetchAllGamesAsLocal === 'function') cloudFetchAllGamesAsLocal().catch(()=>{}); }catch(_){ }
-  try{ if (typeof cloudListPlayers === 'function') cloudListPlayers().catch?.(()=>{}); }catch(_){ }
   let currentName = String(playerName || window.__sqPlayerStatsSelectedName || window.__sqStatsReturnPlayer || __sqPlayerStatsActiveName() || '').trim();
   if (currentName) __sqSetPlayerStatsSelectedName(currentName);
 
@@ -40445,7 +40440,7 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   overlay.className = 'modal-backdrop';
 
   const modal = document.createElement('div');
-  modal.className = 'modal menu-modal';
+  modal.className = 'modal menu-modal sq-player-stats-hub';
 
   // Header
   const header = document.createElement('div');
@@ -40484,41 +40479,17 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   playerSelect.innerHTML = '<option value="">Loading players...</option>';
   playerLine.append(playerLabel, playerSelect);
 
-  const sub2 = document.createElement('div');
-  sub2.className = 'menu-modal-title-sub2';
-  sub2.textContent = 'Nickname: -';
-
-  // Live level chip for the selected player (the "home" level badge).
-  const hubLevelWrap = document.createElement('div');
-  hubLevelWrap.style.cssText = 'margin-top:8px;min-height:26px;display:flex;justify-content:center;';
-  const updateHubLevel = async (nm) => {
-    try{
-      hubLevelWrap.innerHTML = '';
-      const n = String(nm || '').trim(); if (!n) return;
-      const xr = await SQ_XP.forName(n); if (!xr || !(Number(xr.total_xp) > 0)) return;
-      const chip = __sqXpChip(SQ_XP.progress(xr.total_xp));
-      chip.style.cursor = 'pointer'; chip.title = 'Open Level Ladder';
-      chip.onclick = () => { try{ openXpLeaderboard(); }catch(_){ } };
-      hubLevelWrap.appendChild(chip);
-    }catch(_){ }
-  };
-
-  // When launched from the name-picker, the player is already chosen: hide the
-  // dropdown and show the name; Back returns to the picker to switch player.
-  const nameDisplay = document.createElement('div');
-  nameDisplay.className = 'menu-modal-title-sub sq-stats-hub-name';
-  nameDisplay.style.cssText = 'font-weight:900;font-size:16px;letter-spacing:.02em;color:#ffe4c4;text-shadow:0 0 14px rgba(255,150,60,.35);margin-top:2px;';
-  if (__fromPicker){
-    playerLine.style.display = 'none';
-    nameDisplay.textContent = String(playerName || '').trim();
-    titleWrap.append(icon, title, nameDisplay, sub2, hubLevelWrap);
-  } else {
-    titleWrap.append(icon, title, playerLine, sub2, hubLevelWrap);
-  }
+  // Identity, nickname and level now live in the canonical profile below.
+  // Keep the selector for callers that enter without a chosen player.
+  if (__fromPicker) playerLine.style.display = 'none';
+  titleWrap.append(icon, title, playerLine);
   header.append(backBtn, titleWrap, closeBtn);
 
   const body = document.createElement('div');
   body.className = 'menu-modal-body';
+  const profileHost = document.createElement('div');
+  profileHost.className = 'sq-player-stats-profile';
+  body.appendChild(profileHost);
 
   const list = document.createElement('div');
   list.className = 'menu-list';
@@ -40540,13 +40511,33 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
     return row;
   };
 
-  const syncPlayerHeader = () => {
+  let profileRequest = 0;
+  const syncPlayerHeader = async () => {
     const n = String(currentName || playerSelect.value || '').trim();
-    if (n && playerSelect.value !== n) {
-      try{ playerSelect.value = n; }catch(_){}
+    if (n && playerSelect.value !== n) playerSelect.value = n;
+    const request = ++profileRequest;
+    profileHost.innerHTML = '<div class="sq-modal-loading"><div class="sq-loadbar"><span class="sq-loadbar-fill"></span></div></div>';
+    try{
+      const view = await __sqBuildPlayerStatsProfile(n);
+      if (request !== profileRequest || !overlay.isConnected) return;
+      profileHost.replaceChildren(view.profile);
+      view.tabs.forEach((button, tab) => {
+        button.onclick = () => {
+          overlay.remove();
+          openPlayerStatsDialog(n, { view, tab, onReturn: () => {
+            document.body.appendChild(overlay);
+            modal.focus();
+            button.focus();
+          } });
+        };
+      });
+    }catch(e){
+      if (request !== profileRequest || !overlay.isConnected) return;
+      profileHost.textContent = 'Player profile could not be loaded.';
+      const retry = document.createElement('button'); retry.className = 'btn sq-pill'; retry.textContent = 'Retry';
+      retry.onclick = syncPlayerHeader; profileHost.appendChild(retry);
+      console.warn('[SQ] Player profile load failed', e);
     }
-    sub2.textContent = 'Nickname: ' + (__sqPlayerStatsNickname(n, hubPlayers) || '-');
-    try{ updateHubLevel(n); }catch(_){ }
   };
   const selectedName = () => String(currentName || playerSelect.value || '').trim();
   const openForSelected = (fnName, fallbackMessage, extraArgs) => {
@@ -40564,15 +40555,10 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   const svgTrend = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/></svg>';
   const svgTarget= '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M2 12h2"/><path d="M20 12h2"/></svg>';
   const svgVs    = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l16 16"/><path d="M7 7h.01"/><path d="M17 17h.01"/></svg>';
-  const svgBars  = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V5"/><path d="M8 19V9"/><path d="M12 19V3"/><path d="M16 19v-6"/><path d="M20 19V7"/></svg>';
 
   const svgLadder = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v18M18 3v18M6 7h12M6 12h12M6 17h12"/></svg>';
 
   list.append(
-    mkRow('Player Stats', 'AVERAGES, PB, RECENT GAMES', svgBars, () => {
-      return openForSelected('openPlayerStatsDialog', 'Stats not available');
-    }),
-
     mkRow('Level Ladder', 'XP & LEVELS LEADERBOARD', svgLadder, () => {
       try{ overlay && overlay.remove(); }catch(e){}
       try{ openXpLeaderboard(); }catch(_){ if (typeof toast==='function') toast('Ladder not available'); }
@@ -40634,7 +40620,7 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
       playerSelect.innerHTML = '<option value="">No saved players</option>';
       playerSelect.disabled = true;
       currentName = '';
-      sub2.textContent = 'Nickname: -';
+      profileHost.replaceChildren();
       const empty = document.createElement('p');
       empty.className = 'tag muted';
       empty.textContent = 'No saved players found.';
