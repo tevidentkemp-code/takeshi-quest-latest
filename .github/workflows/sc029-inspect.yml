@@ -1,4 +1,4 @@
-name: SC-029 live fallback diagnosis
+name: SC-029 source inspection
 on:
   push:
     branches:
@@ -6,52 +6,20 @@ on:
 permissions:
   contents: read
 jobs:
-  diagnose:
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Install browser
-        working-directory: tools/ui-smoke
-        run: |
-          npm install --no-package-lock --ignore-scripts
-          npx playwright install --with-deps chromium
-      - name: Read-only production diagnosis
+      - name: Print exact relevant source
         shell: bash
         run: |
-          node - <<'JS'
-          const { chromium } = require('./tools/ui-smoke/node_modules/playwright');
-          (async () => {
-            const browser = await chromium.launch();
-            const ctx = await browser.newContext({ viewport:{width:390,height:844}, isMobile:true, hasTouch:true, deviceScaleFactor:2 });
-            await ctx.route('**/*', async route => {
-              const req = route.request();
-              if (req.url().includes('supabase.co') && !['GET','HEAD','OPTIONS'].includes(req.method())) return route.abort('blockedbyclient');
-              return route.continue();
-            });
-            const page = await ctx.newPage();
-            page.on('console', m => { if (/power rank/i.test(m.text()) || m.type()==='error') console.log('CONSOLE', m.type(), m.text()); });
-            page.on('response', async r => {
-              if (r.url().includes('v_power_rankings_last56_official_clean')) {
-                let body=''; try{ body=(await r.text()).slice(0,1000); }catch(_){}
-                console.log('POWER_RESPONSE', r.status(), body);
-              }
-            });
-            await page.goto('https://tevidentkemp-code.github.io/takeshi-quest-latest/', {waitUntil:'domcontentloaded', timeout:30000});
-            await page.waitForTimeout(5000);
-            await page.evaluate(() => { window.SQ_DEBUG=true; window.openPlayerStatsHub('Thom'); });
-            await page.waitForSelector('.sq-player-stats-hub .pp-hero', {timeout:25000});
-            await page.waitForTimeout(2500);
-            console.log('HERO_POWER', await page.locator('.sq-player-stats-hub .pp-tile').first().innerText());
-            await page.locator('.sq-player-stats-hub .pp-tab').first().click();
-            await page.waitForSelector('.sq-stats-modal', {timeout:10000});
-            const txt = await page.locator('.sq-stats-modal').innerText();
-            const lines = txt.split(/\n+/).map(s=>s.trim()).filter(Boolean);
-            const i = lines.findIndex(s=>/Current Power Rank/i.test(s));
-            console.log('CURRENT_POWER_RANK_LINES', JSON.stringify(lines.slice(Math.max(0,i-2), i+4)));
-            await browser.close();
-          })().catch(e => { console.error(e); process.exit(1); });
-          JS
+          set -e
+          echo '=== scoped CSS ==='
+          grep -n -A45 -B12 "sq-player-stats-profile" index.html | head -n 140
+          echo '=== build profile function / power query ==='
+          LINE=$(grep -n "v_power_rankings_last56_official_clean" index.html | head -1 | cut -d: -f1)
+          START=$((LINE-90)); END=$((LINE+260)); sed -n "${START},${END}p" index.html
+          echo '=== rank value ==='
+          grep -n -A35 -B20 "const rankValue" index.html | head -n 100
+          echo '=== name row ==='
+          grep -n -A20 -B12 "nameRow.style.cssText" index.html | head -n 80
