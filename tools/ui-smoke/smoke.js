@@ -1,6 +1,7 @@
 // SHATEKI-QUEST smoke suite.
-// Full journey: home -> mode tree -> match card -> match length -> throw order
-// -> live game 1 -> leaderboard/NEXT GAME -> live game 2 -> leaderboard/END MATCH
+// Full canonical journey: home -> mode tree -> match card -> FT3 match length
+// -> throw order -> live game 1 -> leaderboard/NEXT GAME -> live game 2
+// -> leaderboard/NEXT GAME -> live game 3 -> leaderboard/END MATCH
 // -> game scores -> end match -> home.
 // Run: node smoke.js   (serve the repo root first, default http://localhost:8123)
 // Exit code 0 = pass. All Supabase traffic is network-blocked by the harness.
@@ -74,6 +75,19 @@ async function leaderboardState(page) {
   });
 }
 
+async function continueMatch(page, label, nextGameNumber) {
+  const lb = await leaderboardState(page);
+  check(`${label} leaderboard has player rows`, lb.rows >= 2, JSON.stringify(lb));
+  check(`${label} leaderboard shows NEXT GAME`, lb.nextVisible, JSON.stringify(lb));
+  check(`${label} leaderboard hides END MATCH`, !lb.endVisible, JSON.stringify(lb));
+
+  await page.click('#nextGameBtn');
+  await page.waitForFunction(() => document.body.dataset.page === 'game', { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(900);
+  check(`NEXT GAME starts Game ${nextGameNumber}`, await page.evaluate(() => document.body.dataset.page === 'game'));
+  check(`Game ${nextGameNumber} throw pad built`, await page.evaluate(() => document.querySelectorAll('#pad button').length >= 5));
+}
+
 (async () => {
   const { browser, page, consoleErrs } = await H.launch({ width: 390, height: 844 });
   await H.boot(page, { settle: 3000 });
@@ -102,9 +116,10 @@ async function leaderboardState(page) {
   await H.addGuests(page, ['TESTA', 'TESTB']);
   check('SELECT MATCH LENGTH enabled with 2 players', await page.evaluate(() => !document.getElementById('startMatchBtn').disabled));
 
-  // Two-game match deliberately exercises both post-game leaderboard states.
-  await H.startMatch(page, 2);
-  check('Live Game reached', await page.evaluate(() => document.body.dataset.page === 'game'));
+  // Canonical official match: first to 3 wins. The asymmetric fixture deliberately
+  // keeps one intended player stronger while the starting throw rotates each game.
+  await H.startMatch(page, 3);
+  check('FT3 Live Game reached', await page.evaluate(() => document.body.dataset.page === 'game'));
   check('throw pad built', await page.evaluate(() => document.querySelectorAll('#pad button').length >= 5));
   await page.waitForTimeout(700);
   await screenshot(page, 'sc015-live-classic-mobile');
@@ -129,33 +144,29 @@ async function leaderboardState(page) {
   check('Main Menu closes via backdrop', !(await page.$('.sq-menu106-bd')));
   check('Closing Settings leaves no blocking overlay', await page.evaluate(() => !document.querySelector('.modal-backdrop:not(.hidden)')));
 
-  // -- Game 1: play to completion and prove intermediate Leaderboard state.
-  await H.playToCompletion(page, { onTurn: throwpadChecks.onTurn });
+  // -- Game 1: first legitimate intermediate Leaderboard state.
+  await H.playToCompletion(page, { onTurn: throwpadChecks.onTurn, strongTurnParity: 0 });
   throwpadChecks.finish();
   await dismissCompletion(page, 'Game 1');
   await finishToLeaderboard(page, 'Game 1');
+  await continueMatch(page, 'Game 1', 2);
 
-  let lb = await leaderboardState(page);
-  check('Game 1 leaderboard has player rows', lb.rows >= 2, JSON.stringify(lb));
-  check('Game 1 leaderboard shows NEXT GAME', lb.nextVisible, JSON.stringify(lb));
-  check('Game 1 leaderboard hides END MATCH', !lb.endVisible, JSON.stringify(lb));
-
-  // -- NEXT GAME must return to a fresh live game, not Home/setup.
-  await page.click('#nextGameBtn');
-  await page.waitForFunction(() => document.body.dataset.page === 'game', { timeout: 15000 }).catch(() => {});
-  await page.waitForTimeout(900);
-  check('NEXT GAME returns to Live Game', await page.evaluate(() => document.body.dataset.page === 'game'));
-  check('Game 2 throw pad built', await page.evaluate(() => document.querySelectorAll('#pad button').length >= 5));
-
-  // -- Game 2: final game must swap NEXT GAME for END MATCH.
-  await H.playToCompletion(page);
+  // -- Game 2: start rotates, so invert strong turn parity to keep the same
+  // intended player winning without mutating app state.
+  await H.playToCompletion(page, { strongTurnParity: 1 });
   await dismissCompletion(page, 'Game 2');
   await finishToLeaderboard(page, 'Game 2');
+  await continueMatch(page, 'Game 2', 3);
 
-  lb = await leaderboardState(page);
-  check('Final leaderboard has player rows', lb.rows >= 2, JSON.stringify(lb));
-  check('Final leaderboard hides NEXT GAME', !lb.nextVisible, JSON.stringify(lb));
-  check('Final leaderboard shows END MATCH', lb.endVisible, JSON.stringify(lb));
+  // -- Game 3: the same player reaches the canonical FT3 winning threshold.
+  await H.playToCompletion(page, { strongTurnParity: 0 });
+  await dismissCompletion(page, 'Game 3');
+  await finishToLeaderboard(page, 'Game 3');
+
+  const lb = await leaderboardState(page);
+  check('Final FT3 leaderboard has player rows', lb.rows >= 2, JSON.stringify(lb));
+  check('Final FT3 leaderboard hides NEXT GAME', !lb.nextVisible, JSON.stringify(lb));
+  check('Final FT3 leaderboard shows END MATCH', lb.endVisible, JSON.stringify(lb));
 
   // -- Game Scores popup from final leaderboard
   await page.click('#gameScoresBtn').catch(() => {});
@@ -166,7 +177,7 @@ async function leaderboardState(page) {
 
   // -- End match -> home
   const end = await page.$('#newMatchBtn:not(.hidden)');
-  check('END MATCH control available after final game', !!end);
+  check('END MATCH control available after FT3 win', !!end);
   if (end) {
     await end.click(); await page.waitForTimeout(700);
     const btns = await page.$$('.modal-backdrop:not(.hidden) button');
