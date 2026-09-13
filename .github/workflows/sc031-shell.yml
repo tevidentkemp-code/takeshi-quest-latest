@@ -1,0 +1,174 @@
+name: SC-031 deterministic shell
+
+on:
+  push:
+    branches: [sc031-modular-architecture-migration]
+    paths:
+      - scripts/generate-index-shell.mjs
+      - .github/workflows/sc031-shell.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sc031-deterministic-shell
+  cancel-in-progress: false
+
+jobs:
+  verify-shell:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm production ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+
+      - name: Install deterministic migration tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --prefix scripts --ignore-scripts
+
+      - name: Rebuild verified semantic sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/migrate-inline-assets.mjs
+          node scripts/split-core-domains.mjs
+          node scripts/verify-modularization.mjs
+          node scripts/verify-core-domains.mjs
+          node scripts/map-legacy-ownership.mjs
+          node scripts/map-css-ownership.mjs
+          node scripts/map-core-css-sections.mjs
+          node scripts/split-core-styles.mjs
+          node scripts/verify-core-styles.mjs
+          node scripts/promote-css-domains.mjs
+          node scripts/verify-css-domains.mjs
+          node scripts/adopt-css-domain-paths.mjs
+          node scripts/verify-css-runtime-paths.mjs
+          node scripts/promote-html-screen-sources.mjs
+          node scripts/promote-admin-modal-sources.mjs
+
+      - name: Generate deterministic index shell
+        run: node scripts/generate-index-shell.mjs
+
+      - name: Guard shell-only generated changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //')"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^src/shell/.*$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected generated changes outside deterministic shell scope:"
+            echo "$bad"
+            exit 1
+          fi
+          test -n "$changed"
+          git diff --check
+
+      - name: Install deterministic UI test dependencies
+        shell: bash
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run full behaviour-regression gate
+        shell: bash
+        env:
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          node tools/ui-smoke/verify-sc014.js | tee sc031-shell-setup-results.txt
+          node tools/ui-smoke/smoke.js | tee sc031-shell-smoke-results.txt
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sc031-shell-classic-results.txt
+          node tools/ui-smoke/verify-training-modes.js | tee sc031-shell-training-results.txt
+          node tools/ui-smoke/verify-progression-modes.js | tee sc031-shell-progression-results.txt
+          node tools/ui-smoke/verify-pstats.js | tee sc031-shell-pstats-results.txt
+          node tools/ui-smoke/verify-p23.js | tee sc031-shell-admin-close-results.txt
+          node tools/ui-smoke/verify-n5-stacking.js | tee sc031-shell-admin-stacking-results.txt
+
+      - name: Package verified shell source
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sc031-verified-shell-source
+          retention-days: 1
+          path: |
+            src/shell/index.template.html
+            src/shell/shell-manifest.json
+
+      - name: Keep deterministic-shell QA evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sc031-shell-evidence
+          path: |
+            qa-artifacts
+            sc031-shell-*-results.txt
+            src/shell/shell-manifest.json
+            src/ui/status/html-source-manifest.json
+            src/services/supabase-contract.json
+
+  commit-verified-shell:
+    needs: verify-shell
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Confirm branch has not advanced
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin sc031-modular-architecture-migration
+          test "$(git rev-parse origin/sc031-modular-architecture-migration)" = "${GITHUB_SHA}"
+
+      - name: Download verified shell source
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sc031-verified-shell-source
+          path: .
+
+      - name: Commit verified shell only
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //')"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^src/shell/.*$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Refusing write: unexpected files in verified shell artifact:"
+            echo "$bad"
+            exit 1
+          fi
+          test -n "$changed"
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/shell
+          git commit -m "SC-031: commit verified deterministic shell [skip ci]"
+          git push origin HEAD:sc031-modular-architecture-migration
