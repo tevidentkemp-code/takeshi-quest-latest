@@ -7,6 +7,7 @@ on:
       - index.html
       - scripts/migrate-inline-assets.mjs
       - scripts/verify-modularization.mjs
+      - scripts/package.json
       - docs/architecture/**
       - src/legacy/**
       - .github/workflows/sc031-modularize.yml
@@ -39,7 +40,10 @@ jobs:
           git fetch origin main
           git merge-base --is-ancestor origin/main HEAD
 
-      - name: Mechanically extract inline assets
+      - name: Install pinned migration tooling
+        run: npm install --prefix scripts --no-package-lock --ignore-scripts
+
+      - name: Mechanically extract parsed inline assets
         run: node scripts/migrate-inline-assets.mjs
 
       - name: Verify generated structure and JavaScript syntax
