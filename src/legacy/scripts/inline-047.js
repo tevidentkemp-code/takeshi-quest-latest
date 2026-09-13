@@ -15,7 +15,7 @@
     const scale = pageBox.height / pager.offsetHeight || 1;
     const viewport = window.visualViewport;
     const bottom = Math.min(pad.getBoundingClientRect().top, viewport ? viewport.height + viewport.offsetTop : innerHeight);
-    const height = Math.max(126, Math.min(900, Math.floor(pager.offsetHeight + (bottom - box.bottom - 10) / scale));
+    const height = Math.max(126, Math.min(900, Math.floor(pager.offsetHeight + (bottom - box.bottom - 10) / scale)));
     if (Math.abs(height - pager.offsetHeight) > 1) panel.style.setProperty('--sqClassicRaceHeight', height + 'px');
   }
   const observer = new ResizeObserver(schedule);
