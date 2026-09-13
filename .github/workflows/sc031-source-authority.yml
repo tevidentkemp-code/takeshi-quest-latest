@@ -1,0 +1,97 @@
+name: SC-031 source authority candidate
+
+on:
+  push:
+    branches: [sc031-modular-architecture-migration]
+    paths:
+      - scripts/render-index-from-source.mjs
+      - src/shell/**
+      - src/ui/**/*.html
+      - src/live-game/**/*.html
+      - .github/workflows/sc031-source-authority.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sc031-source-authority-candidate
+  cancel-in-progress: false
+
+jobs:
+  verify-source-authority-candidate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm production ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+
+      - name: Render runtime candidate from committed split source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/render-index-from-source.mjs --output .sc031-source-index.html | tee sc031-source-authority-results.txt
+          cmp -s .sc031-source-index.html index.html
+
+      - name: Use generated candidate as test runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .sc031-source-index.html index.html
+          git diff --exit-code -- index.html
+          git diff --check
+
+      - name: Install deterministic UI test dependencies
+        shell: bash
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run full behaviour regression against source-rendered runtime
+        shell: bash
+        env:
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          node tools/ui-smoke/verify-sc014.js | tee sc031-source-setup-results.txt
+          node tools/ui-smoke/smoke.js | tee sc031-source-smoke-results.txt
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sc031-source-classic-results.txt
+          node tools/ui-smoke/verify-training-modes.js | tee sc031-source-training-results.txt
+          node tools/ui-smoke/verify-progression-modes.js | tee sc031-source-progression-results.txt
+          node tools/ui-smoke/verify-pstats.js | tee sc031-source-pstats-results.txt
+          node tools/ui-smoke/verify-p23.js | tee sc031-source-admin-close-results.txt
+          node tools/ui-smoke/verify-n5-stacking.js | tee sc031-source-admin-stacking-results.txt
+
+      - name: Keep source-authority candidate evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sc031-source-authority-candidate-evidence
+          retention-days: 7
+          path: |
+            .sc031-source-index.html
+            sc031-source-*-results.txt
+            sc031-source-authority-results.txt
+            src/shell/shell-manifest.json
+            src/services/supabase-contract.json
+            qa-artifacts
