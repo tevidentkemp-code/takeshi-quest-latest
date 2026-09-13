@@ -1,0 +1,104 @@
+name: SC-031 modular migration
+
+on:
+  push:
+    branches: [sc031-modular-architecture-migration]
+    paths:
+      - index.html
+      - scripts/migrate-inline-assets.mjs
+      - scripts/verify-modularization.mjs
+      - docs/architecture/**
+      - src/legacy/**
+      - .github/workflows/sc031-modularize.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sc031-modular-migration
+  cancel-in-progress: false
+
+jobs:
+  split-and-regress:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Confirm production ancestry
+        shell: bash
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+
+      - name: Mechanically extract inline assets
+        run: node scripts/migrate-inline-assets.mjs
+
+      - name: Verify generated structure and JavaScript syntax
+        run: node scripts/verify-modularization.mjs
+
+      - name: Guard migration scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          bad="$(git diff --name-only | grep -Ev '^(index\.html|src/legacy/)' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected generated changes outside index.html/src/legacy/:"
+            echo "$bad"
+            exit 1
+          fi
+          git diff --check
+
+      - name: Install existing UI test dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          npm install --no-package-lock --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run behaviour-regression gate against split source
+        shell: bash
+        env:
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          node tools/ui-smoke/verify-sc014.js | tee sc031-setup-results.txt
+          node tools/ui-smoke/smoke.js | tee sc031-smoke-results.txt
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sc031-classic-results.txt
+          node tools/ui-smoke/verify-training-modes.js | tee sc031-training-results.txt
+          node tools/ui-smoke/verify-progression-modes.js | tee sc031-progression-results.txt
+          node tools/ui-smoke/verify-pstats.js | tee sc031-pstats-results.txt
+
+      - name: Commit generated split only after green regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- index.html src/legacy; then
+            echo "No generated migration changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html src/legacy
+          git commit -m "SC-031: mechanically split inline CSS and JS [skip ci]"
+          git push origin HEAD:sc031-modular-architecture-migration
+
+      - name: Keep SC-031 QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sc031-modular-migration-evidence
+          path: |
+            qa-artifacts
+            sc031-*-results.txt
+            src/legacy/migration-manifest.json
