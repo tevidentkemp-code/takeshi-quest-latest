@@ -59,11 +59,13 @@
         statsFinal.classList.add('btn', 'big', 'sq-fix170-stats');
         if (statsFinal.parentElement !== stack) stack.appendChild(statsFinal);
       }
-      if (end) {
+
+      // The game engine owns whether END MATCH is visible. Do not override
+      // its FT3/FT5 matchDone decision here; only style/wrap the control once
+      // the engine has made it visible on the final leaderboard.
+      if (end && !hidden(end)) {
         end.textContent = 'END MATCH';
         end.classList.add('sq-fix170-end-match');
-        end.classList.remove('hidden');
-        end.style.display = '';
         stack.appendChild(end);
 
         var current = end.onclick;
