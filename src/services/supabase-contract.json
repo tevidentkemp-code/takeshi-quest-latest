@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-09-13",
+  "backend": {
+    "project": "Shateki-Quest",
+    "schema": "public",
+    "verificationMode": "read-only"
+  },
+  "boundaries": {
+    "cloudStatusView": "src/ui/status/cloud-status.html",
+    "statusOwner": "src/app/state.js",
+    "supabaseOwner": "src/services/cloud.js",
+    "constantsOwner": "src/app/util.js",
+    "compatibilityRuntime": "src/legacy/scripts/inline-005.js"
+  },
+  "activeBindings": {
+    "TABLE_GAMES": "games",
+    "TABLE_MATCHES": "matches",
+    "TABLE_PLAYER_GAMES": "v_player_games_union_visible",
+    "TABLE_HS_LEAGUE": "high_scores_sp",
+    "TABLE_HS_PRACTICE": "high_scores",
+    "TABLE_PB_ROUNDS_CLEAN_APP": "v_pb_by_player_round_clean_app",
+    "TABLE_WR_ROUNDS_CLEAN_APP": "v_wr_by_round_clean_app"
+  },
+  "legacyOnly": {
+    "LEGACY_TABLE_PLAYER_GAMES": "player_games_union"
+  },
+  "liveObjects": [
+    {
+      "name": "games",
+      "kind": "table",
+      "rlsEnabled": true,
+      "verifiedFields": ["id", "match_id", "game_number", "stats", "created_at", "finished", "state", "totals", "is_tiebreak", "mode", "is_practice", "archived_at"]
+    },
+    {
+      "name": "matches",
+      "kind": "table",
+      "rlsEnabled": true,
+      "verifiedFields": ["id", "total_games", "players", "wins", "history", "created_at", "mode", "is_practice", "target_wins"]
+    },
+    {
+      "name": "players",
+      "kind": "table",
+      "rlsEnabled": true,
+      "verifiedFields": ["id", "name", "first_name", "last_name", "nickname", "initials", "created_at", "deleted_at"]
+    },
+    {
+      "name": "high_scores",
+      "kind": "table",
+      "rlsEnabled": true,
+      "verifiedFields": ["id", "game_id", "player_id", "name", "score", "ts"]
+    },
+    {
+      "name": "high_scores_sp",
+      "kind": "table",
+      "rlsEnabled": true,
+      "verifiedFields": ["id", "game_id", "player_id", "name", "score", "ts"]
+    },
+    {
+      "name": "v_player_games_union_visible",
+      "kind": "view",
+      "verifiedFields": ["sheet_id", "player", "score", "position", "ts", "is_practice", "rounds", "total_players"]
+    },
+    {
+      "name": "v_pb_by_player_round_clean_app",
+      "kind": "view",
+      "verifiedFields": ["bucket_key", "round_key", "pb_points"]
+    },
+    {
+      "name": "v_wr_by_round_clean_app",
+      "kind": "view",
+      "verifiedFields": ["round_key", "wr_points"]
+    },
+    {
+      "name": "v_round_high_scores_modal",
+      "kind": "view",
+      "verifiedFields": ["round_key", "wr", "darts", "holder", "tie_idx", "holder_suffix"]
+    },
+    {
+      "name": "v_top50_scores_official",
+      "kind": "view",
+      "verifiedFields": ["player_id", "game_id", "player_name", "score", "rounds", "avg_round", "ts"]
+    },
+    {
+      "name": "v_power_rankings_last56_official_clean",
+      "kind": "view",
+      "verifiedFields": ["player", "rounds_used", "total_points", "avg_per_round", "last_played_at", "rank_pos", "player_key", "source_games", "source_game_ids"]
+    }
+  ],
+  "routines": ["sq_rank_score"],
+  "invariants": [
+    "Supabase remains the persistent source of truth; local storage is cache or intentionally local state only.",
+    "Do not rename or infer tables, views, RPCs, columns, relationships or returned fields without fresh live verification.",
+    "Cloud Status view owns presentation only and must not execute Supabase client code.",
+    "src/app/state.js owns Cloud Status DOM references and setCloudStatus().",
+    "src/services/cloud.js owns Supabase initialization and cloud access behavior.",
+    "src/app/util.js currently owns the compatibility-era table/view constants used by the classic global runtime.",
+    "The classic compatibility runtime remains authoritative until an explicit module-adoption slice passes full parity testing."
+  ]
+}

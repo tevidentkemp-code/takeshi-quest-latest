@@ -1,0 +1,219 @@
+name: SC-031 CSS source authority
+
+on:
+  push:
+    branches: [sc031-modular-architecture-migration]
+    paths:
+      - scripts/build-core-styles-from-source.mjs
+      - scripts/verify-core-styles-v2.mjs
+      - src/styles/core-source-contract.json
+      - src/styles/core/**
+      - src/styles/live-game/**
+      - src/styles/league/**
+      - src/styles/modals/**
+      - src/styles/home/**
+      - src/styles/setup/**
+      - src/styles/player-stats/**
+      - src/styles/practice/**
+      - .github/workflows/sc031-css-authority.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sc031-css-source-authority
+  cancel-in-progress: false
+
+jobs:
+  verify-css-source-build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm production ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+
+      - name: Install deterministic architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Record CSS authority transition state
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f src/styles/core-source-contract.json ]; then
+            echo established > /tmp/sc031-css-authority-state
+          else
+            echo bootstrap > /tmp/sc031-css-authority-state
+          fi
+
+      - name: Build compatibility CSS from semantic source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf sc031-css-generated sc031-css-write
+          mkdir -p sc031-css-generated sc031-css-write
+          node scripts/build-core-styles-from-source.mjs \
+            --bootstrap-contract \
+            --output sc031-css-generated/inline-002.css \
+            --evidence sc031-css-generated/build-evidence.json \
+            | tee sc031-css-authority-results.txt
+          if [ "$(cat /tmp/sc031-css-authority-state)" = bootstrap ]; then
+            cmp -s sc031-css-generated/inline-002.css src/legacy/styles/inline-002.css
+          fi
+
+      - name: Stage exact generated CSS write set
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp sc031-css-generated/inline-002.css sc031-css-write/inline-002.css
+          cp src/styles/core-source-contract.json sc031-css-write/core-source-contract.json
+          cp sc031-css-generated/build-evidence.json sc031-css-write/build-evidence.json
+          test "$(find sc031-css-write -maxdepth 1 -type f | wc -l | tr -d ' ')" = "3"
+
+      - name: Use source-generated CSS for verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp sc031-css-generated/inline-002.css src/legacy/styles/inline-002.css
+          node scripts/verify-core-styles-v2.mjs
+          git diff --check -- src/styles src/legacy/styles/inline-002.css scripts/build-core-styles-from-source.mjs scripts/verify-core-styles-v2.mjs
+
+      - name: Materialize HTML runtime from split source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f src/shell/source-contract.json ]; then
+            node scripts/render-index-from-source.mjs --output .sc031-css-index.html --evidence sc031-css-html-evidence.json
+          else
+            node scripts/render-index-from-source.mjs --bootstrap-contract --output .sc031-css-index.html --evidence sc031-css-html-evidence.json --verify-current
+          fi
+          cp .sc031-css-index.html index.html
+
+      - name: Install deterministic UI test dependencies
+        shell: bash
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run full behaviour regression against source-generated CSS
+        shell: bash
+        env:
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sc014.js | tee sc031-css-setup-results.txt
+          node tools/ui-smoke/smoke.js | tee sc031-css-smoke-results.txt
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sc031-css-classic-results.txt
+          node tools/ui-smoke/verify-training-modes.js | tee sc031-css-training-results.txt
+          node tools/ui-smoke/verify-progression-modes.js | tee sc031-css-progression-results.txt
+          node tools/ui-smoke/verify-pstats.js | tee sc031-css-pstats-results.txt
+          node tools/ui-smoke/verify-p23.js | tee sc031-css-admin-close-results.txt
+          node tools/ui-smoke/verify-n5-stacking.js | tee sc031-css-admin-stacking-results.txt
+
+      - name: Package verified generated CSS
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sc031-css-authority-write
+          retention-days: 1
+          path: sc031-css-write/
+
+      - name: Keep CSS source-authority evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sc031-css-authority-evidence
+          retention-days: 7
+          path: |
+            sc031-css-generated/build-evidence.json
+            sc031-css-html-evidence.json
+            sc031-css-authority-results.txt
+            sc031-css-*-results.txt
+            src/styles/core-source-contract.json
+            qa-artifacts
+
+  commit-generated-css:
+    needs: verify-css-source-build
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Confirm branch has not advanced
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin sc031-modular-architecture-migration
+          test "$(git rev-parse origin/sc031-modular-architecture-migration)" = "${GITHUB_SHA}"
+
+      - name: Download verified generated CSS
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sc031-css-authority-write
+          path: sc031-css-write
+
+      - name: Validate and apply generated CSS write set
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=$'build-evidence.json\ncore-source-contract.json\ninline-002.css'
+          actual="$(find sc031-css-write -maxdepth 1 -type f -printf '%f\n' | sort)"
+          test "$actual" = "$expected"
+          node - <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const evidence = JSON.parse(fs.readFileSync('sc031-css-write/build-evidence.json', 'utf8'));
+          const runtime = fs.readFileSync('sc031-css-write/inline-002.css');
+          const contract = fs.readFileSync('sc031-css-write/core-source-contract.json');
+          const sha = value => crypto.createHash('sha256').update(value).digest('hex');
+          if (evidence.authority !== 'semantic-css-source') throw new Error('unexpected CSS source authority');
+          if (evidence.runtimeTarget !== 'src/legacy/styles/inline-002.css') throw new Error('unexpected CSS runtime target');
+          if (evidence.domainCount !== 27) throw new Error('unexpected CSS domain count');
+          if (sha(runtime) !== evidence.runtimeSha256) throw new Error('CSS runtime artifact hash mismatch');
+          if (sha(contract) !== evidence.contractSha256) throw new Error('CSS contract artifact hash mismatch');
+          NODE
+          mkdir -p src/legacy/styles src/styles
+          cp sc031-css-write/inline-002.css src/legacy/styles/inline-002.css
+          cp sc031-css-write/core-source-contract.json src/styles/core-source-contract.json
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //' | grep -v '^sc031-css-write/' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(src/legacy/styles/inline-002\.css|src/styles/core-source-contract\.json)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Refusing write: unexpected CSS generated files:"
+            echo "$bad"
+            exit 1
+          fi
+          git diff --check -- src/legacy/styles/inline-002.css src/styles/core-source-contract.json
+          if [ -z "$changed" ]; then
+            echo "Source-generated CSS runtime is already current; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/legacy/styles/inline-002.css src/styles/core-source-contract.json
+          git commit -m "SC-031: commit source-generated core CSS [skip ci]"
+          git push origin HEAD:sc031-modular-architecture-migration

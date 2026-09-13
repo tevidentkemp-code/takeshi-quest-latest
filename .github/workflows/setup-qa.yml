@@ -1,41 +1,126 @@
 name: Setup regression QA
+
 on:
   pull_request:
     paths:
+      - .node-version
       - index.html
+      - src/**
+      - scripts/render-index-from-source.mjs
+      - scripts/build-core-js-from-source.mjs
+      - scripts/verify-core-domains.mjs
+      - scripts/build-core-styles-from-source.mjs
+      - scripts/verify-core-styles-v2.mjs
       - tools/ui-smoke/**
+      - package.json
+      - package-lock.json
+      - vite.config.*
       - .github/workflows/setup-qa.yml
   push:
     branches: [sc014-setup-intake-polish]
   workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
   setup:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-node@v4
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
-      - name: Install existing test dependencies
+          node-version-file: .node-version
+
+      - name: Install deterministic architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Materialize compatibility runtime from split source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f src/shell/source-contract.json ]; then
+            node scripts/render-index-from-source.mjs \
+              --output .sc031-setup-index.html \
+              --evidence sc031-setup-source-build.json
+          elif [ -f src/shell/shell-manifest.json ]; then
+            node scripts/render-index-from-source.mjs \
+              --bootstrap-contract \
+              --output .sc031-setup-index.html \
+              --evidence sc031-setup-source-build.json
+          else
+            echo "SC-031 source contract/shell evidence missing"
+            exit 1
+          fi
+          cp .sc031-setup-index.html index.html
+
+      - name: Materialize compatibility JS from semantic source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f src/core-js-source-contract.json ]; then
+            node scripts/build-core-js-from-source.mjs \
+              --output .sc031-setup-core.js \
+              --evidence sc031-setup-js-build.json
+          elif [ -f src/core-domain-manifest.json ]; then
+            node scripts/build-core-js-from-source.mjs \
+              --bootstrap-contract \
+              --output .sc031-setup-core.js \
+              --evidence sc031-setup-js-build.json
+          else
+            echo "SC-031 JS source contract/bootstrap evidence missing"
+            exit 1
+          fi
+          cp .sc031-setup-core.js src/legacy/scripts/inline-005.js
+          node scripts/verify-core-domains.mjs
+
+      - name: Materialize compatibility CSS from semantic source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f src/styles/core-source-contract.json ]; then
+            node scripts/build-core-styles-from-source.mjs \
+              --output .sc031-setup-core.css \
+              --evidence sc031-setup-css-build.json
+          elif [ -f src/styles/core-source-manifest.json ]; then
+            node scripts/build-core-styles-from-source.mjs \
+              --bootstrap-contract \
+              --output .sc031-setup-core.css \
+              --evidence sc031-setup-css-build.json
+          else
+            echo "SC-031 CSS source contract/bootstrap evidence missing"
+            exit 1
+          fi
+          cp .sc031-setup-core.css src/legacy/styles/inline-002.css
+          node scripts/verify-core-styles-v2.mjs
+
+      - name: Install deterministic test dependencies
         working-directory: tools/ui-smoke
         run: |
-          npm install --no-package-lock --ignore-scripts
+          set -euo pipefail
+          npm ci --ignore-scripts
           npx playwright install --with-deps chromium
+
       - name: Check patch whitespace
-        run: git diff --check HEAD^ HEAD -- .github/workflows/setup-qa.yml tools/ui-smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check HEAD^ HEAD -- .github/workflows/setup-qa.yml scripts/render-index-from-source.mjs scripts/build-core-js-from-source.mjs scripts/verify-core-domains.mjs scripts/build-core-styles-from-source.mjs scripts/verify-core-styles-v2.mjs tools/ui-smoke src index.html
+
       - name: Run setup and full scoring journey offline
         shell: bash
         env:
           SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts
         run: |
-          set -o pipefail
+          set -euo pipefail
           python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
           node tools/ui-smoke/verify-sc028.js | tee sc028-results.txt
           node tools/ui-smoke/verify-pstats.js | tee pstats-results.txt
           node tools/ui-smoke/verify-sc008.js | tee sc008-results.txt
@@ -46,11 +131,16 @@ jobs:
           node tools/ui-smoke/smoke.js | tee smoke-results.txt
           node tools/ui-smoke/verify-saveplayer-card.js | tee saved-player-results.txt
           node tools/ui-smoke/verify-classic-visual-fit.js | tee classic-visual-results.txt
+
       - name: Keep review evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: setup-qa-evidence
+          retention-days: 14
           path: |
             qa-artifacts
             *-results.txt
+            sc031-setup-source-build.json
+            sc031-setup-js-build.json
+            sc031-setup-css-build.json

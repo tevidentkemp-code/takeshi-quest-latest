@@ -1,0 +1,519 @@
+/* >>> PATCH:livev2-panel-css START */
+/* LIVE V2: tiebreak-style panel (2–6 players, mobile portrait). */
+.livev2panel{
+  max-width: 560px;
+  width:100%;
+  border-radius: 26px;
+  background: linear-gradient(180deg, rgba(18,24,44,.92), rgba(10,13,25,.92));
+  box-shadow: 0 18px 60px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.08);
+  padding: 16px 14px 14px;
+  margin: 10px auto 0;
+}
+
+/* Split into Gameplay Cell + Info Cell (separate modules) */
+.livev2panel .v2GameCell{
+  border-radius: 22px;
+  background: rgba(0,0,0,.10);
+  border: 1px solid rgba(255,255,255,.06);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+  padding: 14px 12px 12px;
+}
+
+/* >>> PATCH:livev2-scoringcell-css START */
+.livev2panel .v2ScoringCell{
+  margin-top: 10px;
+  border-radius: 22px;
+  background: rgba(0,0,0,.08);
+  border: 1px solid rgba(255,255,255,.06);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+  padding: 12px;
+}
+.livev2panel .v2NextRow{
+
+  border-radius: 18px;
+  background: rgba(10,20,45,.22);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+  padding: 10px 10px;
+display:grid;
+  grid-template-columns: 34px repeat(var(--sqV2P, 2), minmax(0, 1fr));
+  gap: 10px var(--sqV2Gap, 10px);
+  align-items: stretch;
+}
+/* <<< PATCH:livev2-scoringcell-css END */
+
+.livev2panel .v2InfoCell{
+  margin-top: 34px;
+  border-radius: 22px;
+  background: rgba(0,0,0,.08);
+  border: 1px solid rgba(255,255,255,.06);
+  box-shadow: 0 0 0 1px rgba(170,90,255,.18), 0 0 26px rgba(170,90,255,.10), inset 0 1px 0 rgba(255,255,255,.05);
+  padding: 12px;
+}
+
+/* >>> PATCH:STATS_SCROLL_PAGE2 START */
+/* Stats box becomes vertically scrollable: page 1 (current 5) -> swipe up -> page 2 (next 5). */
+.livev2panel .v2InfoCell{ display:flex; flex-direction:column; }
+.livev2panel .v2InfoCell .v2AvgWrap{ flex:1; min-height:0; }
+.livev2panel .v2AvgScroll{ height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; scroll-snap-type:y mandatory; }
+.livev2panel .v2AvgPage{ min-height:100%; scroll-snap-align:start; }
+/* <<< PATCH:STATS_SCROLL_PAGE2 END */
+
+/* >>> PATCH:STATS_SCROLL_CONSTRAIN_HEIGHT CONSOLIDATED INTO B3_LAYOUT_CONSOLIDATED_V1 <<< */
+
+.livev2panel .v2HighCell{
+  margin-top: 12px;
+  border-radius: 22px;
+  background: rgba(0,0,0,.07);
+  border: 1px solid rgba(255,255,255,.06);
+  box-shadow: 0 0 0 1px rgba(170,90,255,.18), 0 0 26px rgba(170,90,255,.10), inset 0 1px 0 rgba(255,255,255,.05);
+  padding: 12px;
+}
+
+/* High Score Cell inner box (same geometry as averages, separate module). */
+.livev2panel .v2HighWrap{
+  margin-top: 0;
+  border-radius: 18px;
+  background: rgba(40,20,60,.18);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 0 18px rgba(170,90,255,.16);
+  padding: 10px 0;
+}
+.livev2panel .v2High{
+  display:grid;
+  grid-template-columns: 34px repeat(var(--sqV2P, 2), minmax(0, 1fr));
+  gap: 10px var(--sqV2Gap, 10px);
+  align-items: stretch;
+}
+
+/* >>> PATCH:B3C_MOMENTUM_LANE_CSS_V1 START */
+body.livev2-on[data-page="game"] .livev2panel .v2HighCell{
+  overflow: visible;
+}
+body.livev2-on[data-page="game"] .livev2panel .v2HighWrap{
+  height: 100%;
+  padding: 10px 10px 8px;
+}
+body.livev2-on[data-page="game"] .livev2panel .v2High{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+body.livev2-on[data-page="game"] .sqMomentumBoard{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap: 8px;
+  width:100%;
+  height:100%;
+}
+body.livev2-on[data-page="game"] .sqMomentumRow{
+  --sqLanePct: 0%;
+  --sqLaneGlow: .18;
+  --sqPulseA: 1.8s;
+  --sqSweepA: 1.85s;
+  --sqSweepOpacity: .36;
+  --sqSweepScale: 1.03;
+  --sqPulseBoost: .08;
+  --sqPulseLift: .035;
+  --sqArrowA: 1.9s;
+  --sqArrowOpacity: .32;
+  --sqArrowSize: 24px;
+  position:relative;
+  display:grid;
+  grid-template-columns: 34px minmax(0,1fr);
+  align-items:center;
+  gap: 8px;
+  min-height: 0;
+}
+body.livev2-on[data-page="game"] .sqMomentumInit{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  height: 28px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+  border: 1px solid rgba(255,255,255,.08);
+  color: rgba(255,255,255,.88);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+body.livev2-on[data-page="game"] .sqMomentumTrack{
+  position:relative;
+  height: 24px;
+  border-radius: 999px;
+  overflow:hidden;
+  background:
+    linear-gradient(180deg, rgba(4,6,11,.988), rgba(10,13,23,.965)),
+    linear-gradient(90deg, rgba(5,1,1,.92) 0%, rgba(10,4,4,.54) 18%, rgba(14,9,12,.16) 40%, rgba(16,12,18,.02) 60%),
+    radial-gradient(circle at 8% 50%, rgba(110,26,0,.05), transparent 52%);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    inset 0 0 24px rgba(0,0,0,.38),
+    0 0 0 1px rgba(255,122,0,.03);
+}
+body.livev2-on[data-page="game"] .sqMomentumTrack::before{content:none !important;}
+body.livev2-on[data-page="game"] .sqMomentumTrack::after{
+  content:"";
+  position:absolute;
+  top:2px;
+  bottom:2px;
+  left: var(--sqLanePct);
+  width: calc(100% - var(--sqLanePct));
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg,
+      transparent 0%,
+      rgba(255,228,182,0) 8%,
+      rgba(255,228,182,.20) 18%,
+      rgba(255,244,214,.42) 32%,
+      rgba(255,228,182,.20) 46%,
+      rgba(255,228,182,0) 58%,
+      transparent 100%);
+  background-repeat: repeat-x;
+  background-size: 92px 100%;
+  background-position: 0 0;
+  filter: blur(.15px) drop-shadow(0 0 5px rgba(255,188,82,.12));
+  opacity: 0;
+  animation: none;
+  pointer-events:none;
+}
+body.livev2-on[data-page="game"] .sqMomentumFill,
+body.livev2-on[data-page="game"] .sqMomentumGlow,
+body.livev2-on[data-page="game"] .sqMomentumEdge{
+  position:absolute;
+  top:0; left:0;
+  height:100%;
+  width:0%;
+  border-radius:999px;
+}
+body.livev2-on[data-page="game"] .sqMomentumFill,
+body.livev2-on[data-page="game"] .sqMomentumGlow{
+  transition:
+    width 980ms cubic-bezier(.18,.74,.18,1),
+    opacity 260ms ease,
+    transform 260ms ease,
+    filter 260ms ease;
+}
+body.livev2-on[data-page="game"] .sqMomentumGlow{
+  opacity: calc(.12 + (var(--sqLaneGlow) * .46));
+  background: linear-gradient(90deg, rgba(68,10,0,.16) 0%, rgba(224,86,0,.30) 52%, rgba(255,214,120,.40) 100%);
+  filter: blur(12px);
+  transform: scaleY(.80);
+}
+body.livev2-on[data-page="game"] .sqMomentumFill{
+  background:
+    linear-gradient(90deg, rgba(36,4,0,.99) 0%, rgba(84,12,0,1) 18%, rgba(212,68,0,1) 52%, rgba(255,154,28,1) 80%, rgba(255,226,138,.98) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.14),
+    inset 0 -1px 0 rgba(120,24,0,.32);
+  animation: sqMomentumPulse var(--sqPulseA) ease-in-out infinite;
+  transform-origin:center;
+}
+body.livev2-on[data-page="game"] .sqMomentumFill::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:
+    radial-gradient(circle at 14% 50%, rgba(255,255,255,.12), transparent 26%),
+    linear-gradient(180deg, rgba(255,244,214,.16), transparent 50%, rgba(86,10,0,.12));
+  opacity:.85;
+}
+body.livev2-on[data-page="game"] .sqMomentumFill::after{
+  content:"";
+  position:absolute;
+  inset:1px 0 1px 0;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg,
+      transparent 0%,
+      rgba(255,246,208,0) 8%,
+      rgba(255,246,208,.20) 18%,
+      rgba(255,249,224,.62) 32%,
+      rgba(255,226,160,.24) 46%,
+      rgba(255,246,208,0) 58%,
+      transparent 100%);
+  background-repeat: repeat-x;
+  background-size: 92px 100%;
+  background-position: 0 0;
+  mix-blend-mode: screen;
+  filter: blur(.1px);
+  opacity:0;
+  animation:none;
+  pointer-events:none;
+}
+body.livev2-on[data-page="game"] .sqMomentumEdge{
+  left: calc(var(--sqLanePct) - 1px);
+  width: 3px;
+  min-width: 0;
+  opacity: .88;
+  background: linear-gradient(180deg, rgba(255,247,220,.94) 0%, rgba(255,184,72,.98) 52%, rgba(255,98,12,.82) 100%);
+  box-shadow: 0 0 8px rgba(255,132,24,.30);
+  filter: none;
+  transform: translateX(0);
+  transition:
+    left 1080ms cubic-bezier(.16,.72,.18,1),
+    opacity 240ms ease,
+    box-shadow 240ms ease,
+    transform 240ms ease;
+}
+body.livev2-on[data-page="game"] .sqMomentumMeta{
+  display:none !important;
+}
+body.livev2-on[data-page="game"] .sqMomentumRow.is-active .sqMomentumInit{
+  border-color: rgba(255,122,0,.34);
+  color: rgba(255,255,255,.98);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 0 18px rgba(255,122,0,.16);
+}
+body.livev2-on[data-page="game"] .sqMomentumRow.is-active .sqMomentumTrack{
+  border-color: rgba(255,122,0,.26);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 0 1px rgba(255,122,0,.09),
+    0 0 18px rgba(255,94,0,.12),
+    inset 0 0 24px rgba(0,0,0,.34);
+}
+body.livev2-on[data-page="game"] .sqMomentumRow.is-warm{
+  --sqLaneGlow: .46;
+  --sqPulseA: 1.55s;
+  --sqSweepA: 1.55s;
+  --sqSweepOpacity: .42;
+  --sqSweepScale: 1.08;
+  --sqPulseBoost: .11;
+  --sqPulseLift: .045;
+}
+body.livev2-on[data-page="game"] .sqMomentumRow.is-hot{
+  --sqLaneGlow: .82;
+  --sqPulseA: 1.2s;
+  --sqSweepA: 1.22s;
+  --sqSweepOpacity: .60;
+  --sqSweepScale: 1.18;
+  --sqPulseBoost: .16;
+  --sqPulseLift: .06;
+}
+body.livev2-on[data-page="game"] .sqMomentumRow.is-peak{
+  --sqLaneGlow: 1;
+  --sqPulseA: .9s;
+  --sqSweepA: .98s;
+  --sqSweepOpacity: .78;
+  --sqSweepScale: 1.28;
+  --sqPulseBoost: .22;
+  --sqPulseLift: .075;
+}
+body.livev2-on[data-page="game"] .sqMomentumRow.is-warm .sqMomentumFill{
+  background:
+    linear-gradient(90deg, rgba(42,4,0,.99) 0%, rgba(98,14,0,1) 18%, rgba(236,88,0,1) 54%, rgba(255,168,40,1) 82%, rgba(255,231,158,1) 100%);
+}
+body.livev2-on[data-page="game"] .sqMomentumRow.is-hot .sqMomentumFill{
+  background:
+    linear-gradient(90deg, rgba(48,2,0,1) 0%, rgba(120,12,0,1) 16%, rgba(255,102,0,1) 48%, rgba(255,176,30,1) 78%, rgba(255,239,180,1) 100%);
+}
+body.livev2-on[data-page="game"] .sqMomentumRow.is-peak .sqMomentumFill{
+  background:
+    linear-gradient(90deg, rgba(56,1,0,1) 0%, rgba(138,8,0,1) 14%, rgba(255,118,0,1) 42%, rgba(255,190,24,1) 72%, rgba(255,247,194,1) 100%);
+}
+body.livev2-on[data-page="game"] .sqMomentumRow.is-rising .sqMomentumTrack{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 0 1px rgba(255,122,0,.14),
+    0 0 24px rgba(255,92,0,.14),
+    inset 0 0 24px rgba(0,0,0,.34);
+}
+body.livev2-on[data-page="game"] .sqMomentumRow.is-rising .sqMomentumEdge{
+  opacity: 1;
+  box-shadow: 0 0 10px rgba(255,144,30,.34);
+}
+body.livev2-on[data-page="game"] .sqMomentumRow.is-rising .sqMomentumFill::after{
+  opacity: 0 !important;
+  animation: none !important;
+}
+body.livev2-on[data-page="game"] .sqMomentumRow.is-falling .sqMomentumFill{
+  filter: saturate(.94) brightness(.98);
+}
+body.livev2-on[data-page="game"] .sqMomentumRow.is-falling .sqMomentumTrack::after{
+  opacity: 0 !important;
+  animation: none !important;
+}
+body.livev2-on[data-page="game"] .sqMomentumRow.is-falling .sqMomentumFill::after{
+  opacity: 0;
+  animation: none;
+}
+body.livev2-on[data-page="game"] .sqMomentumRow.is-active .sqMomentumMeta{
+  color: rgba(255,255,255,.76);
+}
+@keyframes sqWaveForward{
+  from{ background-position: 0 0; }
+  to{ background-position: 92px 0; }
+}
+@keyframes sqWaveReverse{
+  from{ background-position: 0 0; }
+  to{ background-position: -92px 0; }
+}
+@keyframes sqMomentumPulse{
+  0%,100%{
+    filter: saturate(1) brightness(1);
+    transform: scaleY(1);
+  }
+  50%{
+    filter: saturate(calc(1 + (var(--sqPulseBoost, .08)))) brightness(calc(1 + (var(--sqPulseBoost, .08))));
+    transform: scaleY(calc(1 + var(--sqPulseLift, .035)));
+  }
+}
+@media (max-width: 480px){
+  body.livev2-on[data-page="game"] .sqMomentumRow{
+    grid-template-columns: 30px minmax(0,1fr) 42px;
+    gap: 7px;
+  }
+  body.livev2-on[data-page="game"] .sqMomentumTrack{ height: 22px; }
+  body.livev2-on[data-page="game"] .sqMomentumInit{ height: 26px; font-size: 10px; }
+  body.livev2-on[data-page="game"] .sqMomentumMeta{ font-size: 9px; }
+}
+/* <<< PATCH:B3C_MOMENTUM_LANE_CSS_V1 END */
+
+/* Top area: left dart dots + responsive player total pills */
+.livev2panel .v2Scores{
+  display:grid;
+  grid-template-columns: 34px 1fr;
+  gap: 14px var(--sqV2Gap, 10px);
+  margin-bottom: 12px;
+  align-items: center;
+  box-sizing: border-box;
+  padding-right: 6px; /* PATCH:ALIGN_TOTALS_WITH_ROWS_PADDING */
+}
+
+.livev2panel .v2DotsCol{
+  grid-column: 1 / 2;
+  display:flex;
+  flex-direction: column;
+  align-self:stretch;
+  align-items:center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 0 48px;
+  box-sizing:border-box;
+}
+.livev2panel .v2Dot{
+  width:22px; height:22px; border-radius:7px;
+  display:grid; place-items:center;
+  box-sizing:border-box;
+  border:1.5px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.03);
+  color:rgba(214,222,240,.5);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+  font-size:10px;
+  line-height:1;
+  font-weight:950;
+  letter-spacing:.01em;
+  opacity:.85;
+  transition:all .18s ease;
+}
+.livev2panel .v2Dot::before{
+  content:"";
+  width:7px; height:7px; border-radius:50%;
+  background:rgba(214,222,240,.22);
+}
+.livev2panel .v2Dot.idle{
+  border-color:rgba(255,106,0,.72);
+  background:rgba(255,106,0,.06);
+  box-shadow:0 0 8px rgba(255,106,0,.24);
+  opacity:.92;
+}
+.livev2panel .v2Dot.idle::before{
+  background:#ff6a00;
+  box-shadow:0 0 6px rgba(255,106,0,.7);
+}
+.livev2panel .v2Dot.next{
+  border-color:#ff6a00;
+  box-shadow:0 0 14px rgba(255,106,0,.5);
+  animation:v3SlotNext 1.1s ease-in-out infinite;
+}
+.livev2panel .v2Dot.next::before{
+  background:#ff6a00;
+  box-shadow:0 0 8px rgba(255,106,0,.9);
+}
+.livev2panel .v2Dot.done::before{display:none;}
+.livev2panel .v2Dot.done{color:#fff;opacity:1;}
+.livev2panel .v2Dot.done.treble{border-color:rgba(47,208,107,.75);background:rgba(47,208,107,.16);color:#8effb4;box-shadow:0 0 12px rgba(47,208,107,.35);}
+.livev2panel .v2Dot.done.double{border-color:rgba(74,163,255,.75);background:rgba(74,163,255,.16);color:#9ccbff;box-shadow:0 0 12px rgba(74,163,255,.3);}
+.livev2panel .v2Dot.done.bull{border-color:rgba(255,196,74,.8);background:rgba(255,196,74,.16);color:#ffe1a6;box-shadow:0 0 12px rgba(255,196,74,.35);}
+.livev2panel .v2Dot.done.single{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.07);color:#eef2ff;}
+.livev2panel .v2Dot.done.miss{border-color:rgba(255,77,94,.7);background:rgba(255,77,94,.14);color:#ff8a97;}
+@media (prefers-reduced-motion:reduce){
+  .livev2panel .v2Dot.next{animation:none;}
+}
+
+/* Player totals grid: always fit 2–6 players across screen (no horizontal scroll). */
+.livev2panel .v2ScoreGrid{
+  grid-column: 2 / 3;
+  display:grid;
+  grid-template-columns: repeat(var(--sqV2P, 2), minmax(0,1fr));
+  gap: var(--sqV2Gap, 10px);
+  align-items: stretch;
+}
+.livev2panel .v2ScoreBox{
+  border-radius: 18px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+  padding: var(--sqV2ScorePadY, 12px) var(--sqV2ScorePadX, 8px);
+  min-height: var(--sqV2ScoreH, 86px);
+  text-align:center;
+
+  /* Keep the big total visually centered within the pill (initials top, delta bottom). */
+
+  /* Center name, total, and delta as a single stack (requested). */
+  display:flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+}
+.livev2panel .v2ScoreBox.active{
+  border-color: rgba(255,132,0,.78);
+  box-shadow:
+    0 0 0 2px rgba(255,132,0,.20),
+    0 0 18px rgba(255,132,0,.18),
+    inset 0 1px 0 rgba(255,255,255,.06);
+}
+.livev2panel .v2Initial{
+  font-weight: 800; letter-spacing:.18em; font-size: var(--sqV2InitF, 16px); opacity:.95;
+}
+.livev2panel .v2Total{
+  font-weight: 900; font-size: var(--sqV2TotalF, 36px); line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  margin-top: 0;
+}
+.livev2panel .v2Total.leaderTotal{
+  color: rgba(150,255,150,.98);
+  text-shadow: 0 0 14px rgba(120,255,120,.22);
+}
+.livev2panel .v2Sub{
+  margin-top: 0px;
+  font-size: var(--sqV2SubF, 12px);
+  opacity: .55;
+  line-height: 1.1;
+}
+.livev2panel .v2Sub.leader{
+  opacity: 1;
+  color: rgba(120,255,120,.95);
+  text-shadow: 0 0 10px rgba(120,255,120,.18);
+}
+.livev2panel .v2Sub.crown::before{
+  content: "👑";
+  display: inline-block;
+  font-size: 14px;
+  line-height: 1;
+  transform: translateY(-1px);
+  filter: drop-shadow(0 0 10px rgba(255,200,60,.25));
+}
+
+

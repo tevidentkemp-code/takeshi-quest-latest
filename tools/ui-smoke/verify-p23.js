@@ -1,9 +1,14 @@
 // P2.3 verification: duplicate header back controls removed; the surviving
 // single control still dismisses; header layout stays centred.
 const H = require('./harness');
+const fs = require('fs');
+const path = require('path');
 let failures = 0;
 function check(name, ok, detail) { if (!ok) failures++; console.log((ok ? 'PASS' : 'FAIL') + '  ' + name + (ok || !detail ? '' : '  — ' + detail)); }
-const SHOTS = '/home/user/takeshi-quest-latest/docs/ui-audit/screenshots/';
+const SHOTS = process.env.SQ_SCREENSHOTS
+  ? path.resolve(process.env.SQ_SCREENSHOTS) + path.sep
+  : path.resolve(__dirname, '../../docs/ui-audit/screenshots') + path.sep;
+fs.mkdirSync(SHOTS, { recursive: true });
 
 (async () => {
   // Match Length: header arrow gone, footer BACK works

@@ -97,17 +97,39 @@ async function startMatch(page, games = 1) {
   await page.waitForFunction(() => document.body.dataset.page === 'game', { timeout: 15000 });
   await page.waitForTimeout(2000);
 }
-// Asymmetric scoring so games never end in a draw.
+// Asymmetric scoring so games never end in a draw. Existing callers retain
+// parity-based scoring. Multi-game lifecycle tests can instead identify the
+// intended winner by player name, which stays deterministic if order changes.
 async function playToCompletion(page, opts = {}) {
   let turn = 0;
+  const strongTurnParity = Number.isInteger(opts.strongTurnParity) ? (opts.strongTurnParity & 1) : 0;
+  const strongPlayerName = String(opts.strongPlayerName || '').trim().toUpperCase();
   for (let i = 0; i < 160; i++) {
-    const info = await page.evaluate(() => ({
-      pg: document.body.dataset.page,
-      modal: !!document.querySelector('.modal-backdrop:not(.hidden)'),
-    }));
+    const info = await page.evaluate(() => {
+      let currentPlayerName = '';
+      try {
+        const p = (typeof state !== 'undefined' && state && Array.isArray(state.players))
+          ? state.players[state.currentPlayer]
+          : null;
+        currentPlayerName = typeof p === 'string'
+          ? p
+          : String((p && (p.name || p.displayName || p.nickname || p.initials)) || '');
+      } catch (_) {}
+      return {
+        pg: document.body.dataset.page,
+        modal: !!document.querySelector('.modal-backdrop:not(.hidden)'),
+        currentPlayerName,
+      };
+    });
     if (info.pg !== 'game' || info.modal) break;
+    if (strongPlayerName && !info.currentPlayerName) {
+      throw new Error('Unable to resolve current player identity for deterministic scoring');
+    }
     if (opts.onTurn) await opts.onTurn(page);
-    if (turn % 2 === 1) {
+    const isStrongTurn = strongPlayerName
+      ? info.currentPlayerName.trim().toUpperCase() === strongPlayerName
+      : ((turn & 1) === strongTurnParity);
+    if (!isStrongTurn) {
       const x3 = await page.$('#pad button.dtX3:not([disabled])');
       if (x3) await x3.click().catch(() => {});
     } else {

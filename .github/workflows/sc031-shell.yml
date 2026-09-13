@@ -1,0 +1,50 @@
+name: SC-031 historical shell provenance audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Explain retired write path
+        run: |
+          echo "The index-first shell writer is retired. Split source is authoritative."
+          echo "This workflow is a manual, read-only provenance audit only."
+
+      - name: Rebuild compatibility runtime from authoritative source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f src/shell/source-contract.json ]; then
+            node scripts/render-index-from-source.mjs \
+              --output .sc031-shell-audit-index.html \
+              --evidence sc031-shell-audit-evidence.json
+          else
+            node scripts/render-index-from-source.mjs \
+              --bootstrap-contract \
+              --output .sc031-shell-audit-index.html \
+              --evidence sc031-shell-audit-evidence.json \
+              --verify-current
+          fi
+          cmp -s .sc031-shell-audit-index.html index.html
+          git diff --exit-code
+
+      - name: Keep provenance evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sc031-shell-provenance-evidence
+          retention-days: 7
+          path: sc031-shell-audit-evidence.json
