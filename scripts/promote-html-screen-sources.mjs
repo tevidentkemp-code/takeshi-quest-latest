@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
   const indexPath = path.join(root, 'index.html');
@@ -10,7 +11,9 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
   const screenBoundaries = {
     homeStart: '    <!-- PAGE 1: GAME DETAILS -->',
     setupStart: '<!-- PAGE 2: PLAYER SELECT -->',
-    gameStart: '   <!--PAGE3: GAME -->'
+    gameStart: '   <!--PAGE3: GAME -->',
+    leaderboardStart: '<section id="leaderboard" class="card section hidden">',
+    wrapEnd: '  </div><!-- /.wrap -->'
   };
 
   const modalBoundaries = {
@@ -28,8 +31,10 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
   const homeStart = html.indexOf(screenBoundaries.homeStart);
   const setupStart = html.indexOf(screenBoundaries.setupStart);
   const gameStart = html.indexOf(screenBoundaries.gameStart);
-  if (!(homeStart < setupStart && setupStart < gameStart)) {
-    throw new Error(`SC-031 HTML boundary order invalid: home=${homeStart}, setup=${setupStart}, game=${gameStart}`);
+  const leaderboardStart = html.indexOf(screenBoundaries.leaderboardStart);
+  const wrapEnd = html.indexOf(screenBoundaries.wrapEnd);
+  if (!(homeStart < setupStart && setupStart < gameStart && gameStart < leaderboardStart && leaderboardStart < wrapEnd)) {
+    throw new Error(`SC-031 HTML boundary order invalid: home=${homeStart}, setup=${setupStart}, game=${gameStart}, leaderboard=${leaderboardStart}, wrap=${wrapEnd}`);
   }
 
   const addPlayerStart = html.indexOf(modalBoundaries.addPlayerStart);
@@ -37,8 +42,8 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
   const startGameStart = html.indexOf(modalBoundaries.startGameStart);
   const matchLengthStart = html.indexOf(modalBoundaries.matchLengthStart);
   const adminHubStart = html.indexOf(modalBoundaries.adminHubStart);
-  if (!(gameStart < addPlayerStart && addPlayerStart < selectPlayerStart && selectPlayerStart < startGameStart && startGameStart < matchLengthStart && matchLengthStart < adminHubStart)) {
-    throw new Error(`SC-031 setup-modal boundary order invalid: game=${gameStart}, add=${addPlayerStart}, select=${selectPlayerStart}, startGame=${startGameStart}, matchLength=${matchLengthStart}, admin=${adminHubStart}`);
+  if (!(wrapEnd < addPlayerStart && addPlayerStart < selectPlayerStart && selectPlayerStart < startGameStart && startGameStart < matchLengthStart && matchLengthStart < adminHubStart)) {
+    throw new Error(`SC-031 setup-modal boundary order invalid: wrap=${wrapEnd}, add=${addPlayerStart}, select=${selectPlayerStart}, startGame=${startGameStart}, matchLength=${matchLengthStart}, admin=${adminHubStart}`);
   }
 
   const screenSpecs = [
@@ -57,6 +62,14 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
       end: gameStart,
       rootId: 'players',
       protectedIds: ['players','msModeLabel','msAddRegisteredBtn','msAddGuestBtn','msRegisterPlayerBtn','msRosterCount','msPlayersList','msMinHint','startMatchBtn','startScreenBtn']
+    },
+    {
+      key: 'leaderboard',
+      file: 'src/ui/screens/leaderboard/leaderboard.html',
+      start: leaderboardStart,
+      end: wrapEnd,
+      rootId: 'leaderboard',
+      protectedIds: ['leaderboard','leaderboardTopRow','statsHubBtnFinal','settingsBtnLB','lbTable','gameScoresBtn','highScoresMenuBtnLB','nextGameBtn','newMatchBtn']
     }
   ];
 
@@ -97,12 +110,23 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
 
   const screenEntries = writeFragments(html, screenSpecs, root);
   const modalEntries = writeFragments(html, modalSpecs, root);
+  const homeSetupEntries = screenEntries.filter(entry => entry.key === 'home' || entry.key === 'match-setup');
+  const leaderboardEntries = screenEntries.filter(entry => entry.key === 'leaderboard');
+  const homeSetupSlice = html.slice(homeStart, gameStart);
+  const leaderboardSlice = html.slice(leaderboardStart, wrapEnd);
 
   verifyExactReconstruction({
     root,
-    entries: screenEntries,
-    expected: html.slice(homeStart, gameStart),
+    entries: homeSetupEntries,
+    expected: homeSetupSlice,
     label: 'Home + Match Setup'
+  });
+
+  verifyExactReconstruction({
+    root,
+    entries: leaderboardEntries,
+    expected: leaderboardSlice,
+    label: 'Leaderboard'
   });
 
   verifyExactReconstruction({
@@ -112,7 +136,8 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
     label: 'setup modal bank'
   });
 
-  assertNoCrossFragmentDuplicateIds(modalEntries);
+  assertNoCrossFragmentDuplicateIds(screenEntries, 'screen');
+  assertNoCrossFragmentDuplicateIds(modalEntries, 'setup modal');
 
   const screenManifest = {
     schemaVersion: 1,
@@ -121,8 +146,17 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
     runtimeChanged: false,
     indexChanged: false,
     protectedNextBoundary: screenBoundaries.gameStart,
-    combinedBytes: Buffer.byteLength(html.slice(homeStart, gameStart)),
-    combinedSha256: sha256(html.slice(homeStart, gameStart)),
+    combinedBytes: Buffer.byteLength(homeSetupSlice),
+    combinedSha256: sha256(homeSetupSlice),
+    additionalSlices: [
+      {
+        key: 'leaderboard',
+        protectedPreviousBoundary: screenBoundaries.leaderboardStart,
+        protectedNextBoundary: screenBoundaries.wrapEnd,
+        bytes: Buffer.byteLength(leaderboardSlice),
+        sha256: sha256(leaderboardSlice)
+      }
+    ],
     fragments: screenEntries
   };
   writeJson(path.join(root, 'src', 'ui', 'screens', 'html-source-manifest.json'), screenManifest);
@@ -184,12 +218,12 @@ function verifyExactReconstruction({ root, entries, expected, label }) {
   if (combined !== expected) throw new Error(`${label} fragments do not reconstruct their protected source slice exactly`);
 }
 
-function assertNoCrossFragmentDuplicateIds(entries) {
+function assertNoCrossFragmentDuplicateIds(entries, label) {
   const owners = new Map();
   for (const entry of entries) {
     for (const id of entry.ids) {
       if (owners.has(id)) {
-        throw new Error(`Setup modal id ${id} is duplicated across ${owners.get(id)} and ${entry.file}`);
+        throw new Error(`${label} id ${id} is duplicated across ${owners.get(id)} and ${entry.file}`);
       }
       owners.set(id, entry.file);
     }
@@ -226,4 +260,8 @@ function writeJson(outPath, value) {
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
+  promoteHtmlScreenSources();
 }
