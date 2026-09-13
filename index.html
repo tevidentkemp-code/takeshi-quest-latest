@@ -5108,14 +5108,19 @@ body[data-page="details"] #details{
 .sq-player-stats-content .pp-form-info{ min-width:100px; }
 .sq-player-stats-hub .menu-modal-header{ flex-shrink:0; }
 .sq-player-stats-hub .menu-modal-title-text{ white-space:normal; overflow-wrap:anywhere; }
-.sq-player-stats-profile{ margin-bottom:12px; }
-.sq-player-stats-profile .pp-hero-name{ overflow-wrap:anywhere; }
+.sq-player-stats-hub .menu-modal-body{ position:relative; }
+.sq-player-stats-profile{
+  position:sticky; top:0; z-index:6; margin:0 0 12px; padding:0 0 12px;
+  background:rgba(15,18,32,.99); box-shadow:0 12px 18px rgba(5,8,15,.38);
+}
+.sq-player-stats-profile .pp-hero-name{ overflow-wrap:anywhere; min-width:0; }
 .sq-player-stats-profile .pp-tile-value{ white-space:normal; }
-.sq-player-stats-profile .pp-tab{ min-width:0; flex:1 1 auto; }
+.sq-player-stats-profile .pp-tabs{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
+.sq-player-stats-profile .pp-tab{ min-width:0; width:100%; flex:none; font-size:11px; letter-spacing:.02em; padding-inline:4px; }
 .sq-player-stats-hub .menu-row-title, .sq-player-stats-hub .menu-row-sub{ white-space:normal; overflow-wrap:anywhere; }
 @media(max-width:360px){
   .sq-player-stats-profile .pp-tabs{ gap:4px; }
-  .sq-player-stats-profile .pp-tab{ padding-inline:4px; font-size:11px; }
+  .sq-player-stats-profile .pp-tab{ padding-inline:2px; font-size:9px; letter-spacing:0; }
 }
 /* FORM panel: win-rate gauge + verdict stamp + recent-games strip
    (same arcade language as the Target Progress form arena) */
@@ -39363,7 +39368,8 @@ async function __sqBuildPlayerStatsProfile(name){
   const LOW   = GAMES ? Math.min(...scores) : 0;
 
   // 2.1) Canonical ranks / windows from DB views
-  // - Power Rank: v_power_rankings_last56_official_clean, filtered to the same active 14-day Current rule
+  // - Power Rank: exact last-56 Official ranking rebuilt from the lightweight DB-derived
+  //   v_player_game_scores_official_clean source, then filtered to the same active 14-day Current rule
   // - Highest Score place: v_player_best_official_ranked
   // - Favorite/Worst: v_player_last30_targets (throw-universe)
   let dbPower = null;
@@ -39377,6 +39383,46 @@ async function __sqBuildPlayerStatsProfile(name){
     // sequential round-trips and dominated the dialog's load time).
     const fkey = name.toLowerCase();
     const safeQ = q => Promise.resolve(q).catch(e => ({ error: e }));
+    // The canonical last-56 view currently times out in the browser. This lighter DB-derived
+    // source is equivalent for completed Official games: four games x 14 rounds = 56 rounds.
+    // Keep the exact canonical ordering/rank semantics; do not substitute a different ranking view.
+    const __sqFetchPlayerStatsPowerRows = async () => {
+      const pageSize = 1000;
+      const sourceRows = [];
+      for (let from = 0, pageNo = 0; ; from += pageSize, pageNo++){
+        if (pageNo >= 100) throw new Error('Player Stats Power Rank source exceeded safe page limit');
+        const res = await SB.from('v_player_game_scores_official_clean')
+          .select('game_id,ts,player_name,score')
+          .order('ts', { ascending:false })
+          .order('game_id', { ascending:false })
+          .range(from, from + pageSize - 1);
+        if (res && res.error) throw res.error;
+        const page = (res && Array.isArray(res.data)) ? res.data : [];
+        sourceRows.push(...page);
+        if (page.length < pageSize) break;
+      }
+      const sourceKey = value => String(value || '').trim().toLowerCase();
+      const sourceMs = value => { const n = Date.parse(String(value || '')); return Number.isFinite(n) ? n : 0; };
+      const byPlayer = new Map();
+      sourceRows.forEach(row => {
+        const player = String((row && row.player_name) || '').trim();
+        const score = Number(row && row.score);
+        const key = sourceKey(player);
+        if (!key || !Number.isFinite(score) || score <= 0) return;
+        const list = byPlayer.get(key) || []; list.push(row); byPlayer.set(key, list);
+      });
+      const ranked = [];
+      byPlayer.forEach((list, playerKey) => {
+        list.sort((a,b) => (sourceMs(b.ts) - sourceMs(a.ts)) || String(b.game_id || '').localeCompare(String(a.game_id || '')));
+        const latest = list.slice(0, 4); if (!latest.length) return;
+        const total = latest.reduce((sum, row) => sum + Number(row.score || 0), 0);
+        const rounds = latest.length * 14; const newest = latest[0];
+        ranked.push({ player:String(newest.player_name || '').trim(), player_key:playerKey, rounds_used:rounds, total_points:total, avg_per_round:rounds ? Number((total / rounds).toFixed(2)) : 0, last_played_at:newest.ts || null, rank_pos:null });
+      });
+      ranked.sort((a,b) => (Number(b.avg_per_round) - Number(a.avg_per_round)) || (Number(b.rounds_used) - Number(a.rounds_used)) || (sourceMs(b.last_played_at) - sourceMs(a.last_played_at)) || String(a.player).localeCompare(String(b.player)));
+      ranked.forEach((row, idx) => { row.rank_pos = idx + 1; });
+      return { data: ranked, error: null };
+    };
     const [savedRows, pr, bs, fv, tr, st] = await Promise.all([
       (async () => {
         let rows = [];
@@ -39388,10 +39434,7 @@ async function __sqBuildPlayerStatsProfile(name){
         }
         return rows || [];
       })(),
-      safeQ(SB.from('v_power_rankings_last56_official_clean')
-        .select('player,player_key,rounds_used,total_points,avg_per_round,last_played_at,rank_pos')
-        .order('avg_per_round', { ascending:false })
-        .limit(500)),
+      safeQ(__sqFetchPlayerStatsPowerRows()),
       safeQ(SB.from('v_player_best_official_ranked')
         .select('player_name,best_score,best_score_pos')
         .ilike('player_name', name)
@@ -39859,8 +39902,11 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   const misfireMap = misfireState.map || {};
   if (xpProg){
     const nameRow = document.createElement('div');
-    nameRow.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;';
-    nameRow.append(heroName, __sqXpChip(xpProg));
+    nameRow.style.cssText = 'display:flex;align-items:center;gap:10px;width:100%;flex-wrap:nowrap;justify-content:space-between;';
+    const levelChip = __sqXpChip(xpProg);
+    levelChip.style.marginLeft = 'auto';
+    levelChip.style.flex = '0 0 auto';
+    nameRow.append(heroName, levelChip);
     hero.append(nameRow, heroNick, heroTiles, __sqXpBar(xpProg));
   } else {
     hero.append(heroName, heroNick, heroTiles);
