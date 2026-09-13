@@ -13,7 +13,8 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
     setupStart: '<!-- PAGE 2: PLAYER SELECT -->',
     gameStart: '   <!--PAGE3: GAME -->',
     leaderboardStart: '<section id="leaderboard" class="card section hidden">',
-    wrapEnd: '  </div><!-- /.wrap -->'
+    wrapEnd: '  </div><!-- /.wrap -->',
+    throwpadStart: '    <!-- Fixed Throw Pad (Game Stats / Match Stats / High Scores / Race appear here) -->'
   };
 
   const modalBoundaries = {
@@ -33,8 +34,9 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
   const gameStart = html.indexOf(screenBoundaries.gameStart);
   const leaderboardStart = html.indexOf(screenBoundaries.leaderboardStart);
   const wrapEnd = html.indexOf(screenBoundaries.wrapEnd);
-  if (!(homeStart < setupStart && setupStart < gameStart && gameStart < leaderboardStart && leaderboardStart < wrapEnd)) {
-    throw new Error(`SC-031 HTML boundary order invalid: home=${homeStart}, setup=${setupStart}, game=${gameStart}, leaderboard=${leaderboardStart}, wrap=${wrapEnd}`);
+  const throwpadStart = html.indexOf(screenBoundaries.throwpadStart);
+  if (!(homeStart < setupStart && setupStart < gameStart && gameStart < leaderboardStart && leaderboardStart < wrapEnd && wrapEnd < throwpadStart)) {
+    throw new Error(`SC-031 HTML boundary order invalid: home=${homeStart}, setup=${setupStart}, game=${gameStart}, leaderboard=${leaderboardStart}, wrap=${wrapEnd}, throwpad=${throwpadStart}`);
   }
 
   const addPlayerStart = html.indexOf(modalBoundaries.addPlayerStart);
@@ -42,8 +44,8 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
   const startGameStart = html.indexOf(modalBoundaries.startGameStart);
   const matchLengthStart = html.indexOf(modalBoundaries.matchLengthStart);
   const adminHubStart = html.indexOf(modalBoundaries.adminHubStart);
-  if (!(wrapEnd < addPlayerStart && addPlayerStart < selectPlayerStart && selectPlayerStart < startGameStart && startGameStart < matchLengthStart && matchLengthStart < adminHubStart)) {
-    throw new Error(`SC-031 setup-modal boundary order invalid: wrap=${wrapEnd}, add=${addPlayerStart}, select=${selectPlayerStart}, startGame=${startGameStart}, matchLength=${matchLengthStart}, admin=${adminHubStart}`);
+  if (!(throwpadStart < addPlayerStart && addPlayerStart < selectPlayerStart && selectPlayerStart < startGameStart && startGameStart < matchLengthStart && matchLengthStart < adminHubStart)) {
+    throw new Error(`SC-031 setup-modal boundary order invalid: throwpad=${throwpadStart}, add=${addPlayerStart}, select=${selectPlayerStart}, startGame=${startGameStart}, matchLength=${matchLengthStart}, admin=${adminHubStart}`);
   }
 
   const screenSpecs = [
@@ -70,6 +72,32 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
       end: wrapEnd,
       rootId: 'leaderboard',
       protectedIds: ['leaderboard','leaderboardTopRow','statsHubBtnFinal','settingsBtnLB','lbTable','gameScoresBtn','highScoresMenuBtnLB','nextGameBtn','newMatchBtn']
+    }
+  ];
+
+  const liveGameSpecs = [
+    {
+      key: 'live-game-shell',
+      file: 'src/live-game/view/live-game-shell.html',
+      start: gameStart,
+      end: leaderboardStart,
+      rootId: 'game',
+      protectedIds: [
+        'game','floatHead','sqDmdTopBar','sqDmdWrap','sqDmdCanvas','fhMenuWrap','gameTopRow','settingsBtnGame',
+        'fhMenuLine','floatWrap','floatThead','turnBar','gameScrollGate','liveV2Panel','scoreWrap','roundBar',
+        'roundSeamBar','thead','tbody','statsWrap','statsThead','statsTbody','mstatsWrap','mstatsThead','mstatsTbody','endBanner'
+      ]
+    }
+  ];
+
+  const throwpadSpecs = [
+    {
+      key: 'fixed-throwpad',
+      file: 'src/live-game/throwpad/throwpad.html',
+      start: throwpadStart,
+      end: addPlayerStart,
+      rootId: 'padBar',
+      protectedIds: ['padBar','padHint','pad','gifOverlay']
     }
   ];
 
@@ -109,17 +137,28 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
   ];
 
   const screenEntries = writeFragments(html, screenSpecs, root);
+  const liveGameEntries = writeFragments(html, liveGameSpecs, root);
+  const throwpadEntries = writeFragments(html, throwpadSpecs, root);
   const modalEntries = writeFragments(html, modalSpecs, root);
   const homeSetupEntries = screenEntries.filter(entry => entry.key === 'home' || entry.key === 'match-setup');
   const leaderboardEntries = screenEntries.filter(entry => entry.key === 'leaderboard');
   const homeSetupSlice = html.slice(homeStart, gameStart);
+  const liveGameSlice = html.slice(gameStart, leaderboardStart);
   const leaderboardSlice = html.slice(leaderboardStart, wrapEnd);
+  const throwpadSlice = html.slice(throwpadStart, addPlayerStart);
 
   verifyExactReconstruction({
     root,
     entries: homeSetupEntries,
     expected: homeSetupSlice,
     label: 'Home + Match Setup'
+  });
+
+  verifyExactReconstruction({
+    root,
+    entries: liveGameEntries,
+    expected: liveGameSlice,
+    label: 'Live Game shell'
   });
 
   verifyExactReconstruction({
@@ -131,6 +170,13 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
 
   verifyExactReconstruction({
     root,
+    entries: throwpadEntries,
+    expected: throwpadSlice,
+    label: 'fixed Throwpad'
+  });
+
+  verifyExactReconstruction({
+    root,
     entries: modalEntries,
     expected: html.slice(addPlayerStart, adminHubStart),
     label: 'setup modal bank'
@@ -138,6 +184,10 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
 
   assertNoCrossFragmentDuplicateIds(screenEntries, 'screen');
   assertNoCrossFragmentDuplicateIds(modalEntries, 'setup modal');
+  assertNoCrossFragmentDuplicateIds(
+    [...screenEntries, ...liveGameEntries, ...throwpadEntries],
+    'screen/live-game/throwpad'
+  );
 
   const screenManifest = {
     schemaVersion: 1,
@@ -161,6 +211,35 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
   };
   writeJson(path.join(root, 'src', 'ui', 'screens', 'html-source-manifest.json'), screenManifest);
 
+  const liveGameManifest = {
+    schemaVersion: 1,
+    generatedBy: 'scripts/promote-html-screen-sources.mjs',
+    stage: 'source-promotion-only',
+    runtimeChanged: false,
+    indexChanged: false,
+    protectedPreviousBoundary: screenBoundaries.gameStart,
+    protectedNextBoundary: screenBoundaries.leaderboardStart,
+    bytes: Buffer.byteLength(liveGameSlice),
+    sha256: sha256(liveGameSlice),
+    fragments: liveGameEntries
+  };
+  writeJson(path.join(root, 'src', 'live-game', 'view', 'html-source-manifest.json'), liveGameManifest);
+
+  const throwpadManifest = {
+    schemaVersion: 1,
+    generatedBy: 'scripts/promote-html-screen-sources.mjs',
+    stage: 'source-promotion-only',
+    runtimeChanged: false,
+    indexChanged: false,
+    outsideWrap: true,
+    protectedPreviousBoundary: screenBoundaries.throwpadStart,
+    protectedNextBoundary: modalBoundaries.addPlayerStart,
+    bytes: Buffer.byteLength(throwpadSlice),
+    sha256: sha256(throwpadSlice),
+    fragments: throwpadEntries
+  };
+  writeJson(path.join(root, 'src', 'live-game', 'throwpad', 'html-source-manifest.json'), throwpadManifest);
+
   const modalSlice = html.slice(addPlayerStart, adminHubStart);
   const modalManifest = {
     schemaVersion: 1,
@@ -176,8 +255,17 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
   };
   writeJson(path.join(root, 'src', 'ui', 'modals', 'setup', 'html-source-manifest.json'), modalManifest);
 
-  console.log(`SC-031 HTML source promotion PASS: ${screenEntries.length} screen fragments + ${modalEntries.length} setup modal fragments`);
-  return { screens: screenManifest, setupModals: modalManifest };
+  console.log(
+    `SC-031 HTML source promotion PASS: ${screenEntries.length} screen fragments + `
+    + `${liveGameEntries.length} Live Game fragment + ${throwpadEntries.length} Throwpad fragment + `
+    + `${modalEntries.length} setup modal fragments`
+  );
+  return {
+    screens: screenManifest,
+    liveGame: liveGameManifest,
+    throwpad: throwpadManifest,
+    setupModals: modalManifest
+  };
 }
 
 function writeFragments(html, specs, root) {
