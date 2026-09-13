@@ -1,0 +1,219 @@
+name: SC-031 JS source authority
+
+on:
+  push:
+    branches: [sc031-modular-architecture-migration]
+    paths:
+      - scripts/build-core-js-from-source.mjs
+      - scripts/verify-core-domains.mjs
+      - src/core-js-source-contract.json
+      - src/app/**
+      - src/live-game/**
+      - src/game/**
+      - src/services/**
+      - src/ui/**
+      - src/legacy/quarantine/**
+      - .github/workflows/sc031-js-authority.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sc031-js-source-authority
+  cancel-in-progress: false
+
+jobs:
+  verify-js-source-build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm production ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+
+      - name: Record JS authority transition state
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f src/core-js-source-contract.json ]; then
+            echo established > /tmp/sc031-js-authority-state
+          else
+            echo bootstrap > /tmp/sc031-js-authority-state
+          fi
+
+      - name: Build compatibility JS from semantic source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf sc031-js-generated sc031-js-write
+          mkdir -p sc031-js-generated sc031-js-write
+          node scripts/build-core-js-from-source.mjs \
+            --bootstrap-contract \
+            --output sc031-js-generated/inline-005.js \
+            --evidence sc031-js-generated/build-evidence.json \
+            | tee sc031-js-authority-results.txt
+          if [ "$(cat /tmp/sc031-js-authority-state)" = bootstrap ]; then
+            cmp -s sc031-js-generated/inline-005.js src/legacy/scripts/inline-005.js
+          fi
+
+      - name: Stage exact generated JS write set
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp sc031-js-generated/inline-005.js sc031-js-write/inline-005.js
+          cp src/core-js-source-contract.json sc031-js-write/core-js-source-contract.json
+          cp sc031-js-generated/build-evidence.json sc031-js-write/build-evidence.json
+          test "$(find sc031-js-write -maxdepth 1 -type f | wc -l | tr -d ' ')" = "3"
+
+      - name: Use source-generated JS for verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp sc031-js-generated/inline-005.js src/legacy/scripts/inline-005.js
+          node scripts/verify-core-domains.mjs
+          git diff --check -- src scripts/build-core-js-from-source.mjs scripts/verify-core-domains.mjs
+
+      - name: Materialize HTML runtime from split source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/render-index-from-source.mjs --output .sc031-js-index.html --evidence sc031-js-html-evidence.json
+          cp .sc031-js-index.html index.html
+
+      - name: Materialize CSS runtime from semantic source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build-core-styles-from-source.mjs --output .sc031-js-core.css --evidence sc031-js-css-evidence.json
+          cp .sc031-js-core.css src/legacy/styles/inline-002.css
+          node scripts/verify-core-styles-v2.mjs
+
+      - name: Install deterministic UI test dependencies
+        shell: bash
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run full behaviour regression against source-generated JS
+        shell: bash
+        env:
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sc014.js | tee sc031-js-setup-results.txt
+          node tools/ui-smoke/smoke.js | tee sc031-js-smoke-results.txt
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sc031-js-classic-results.txt
+          node tools/ui-smoke/verify-training-modes.js | tee sc031-js-training-results.txt
+          node tools/ui-smoke/verify-progression-modes.js | tee sc031-js-progression-results.txt
+          node tools/ui-smoke/verify-pstats.js | tee sc031-js-pstats-results.txt
+          node tools/ui-smoke/verify-p23.js | tee sc031-js-admin-close-results.txt
+          node tools/ui-smoke/verify-n5-stacking.js | tee sc031-js-admin-stacking-results.txt
+
+      - name: Package verified generated JS
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sc031-js-authority-write
+          retention-days: 1
+          path: sc031-js-write/
+
+      - name: Keep JS source-authority evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sc031-js-authority-evidence
+          retention-days: 7
+          path: |
+            sc031-js-generated/build-evidence.json
+            sc031-js-html-evidence.json
+            sc031-js-css-evidence.json
+            sc031-js-authority-results.txt
+            sc031-js-*-results.txt
+            src/core-js-source-contract.json
+            qa-artifacts
+
+  commit-generated-js: 
+    needs: verify-js-source-build
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Confirm branch has not advanced
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin sc031-modular-architecture-migration
+          test "$(git rev-parse origin/sc031-modular-architecture-migration)" = "${GITHUB_SHA}"
+
+      - name: Download verified generated JS
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sc031-js-authority-write
+          path: sc031-js-write
+
+      - name: Validate and apply generated JS write set
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=$'build-evidence.json\ncore-js-source-contract.json\ninline-005.js'
+          actual="$(find sc031-js-write -maxdepth 1 -type f -printf '%f\n' | sort)"
+          test "$actual" = "$expected"
+          node - <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const evidence = JSON.parse(fs.readFileSync('sc031-js-write/build-evidence.json', 'utf8'));
+          const runtime = fs.readFileSync('sc031-js-write/inline-005.js');
+          const contract = fs.readFileSync('sc031-js-write/core-js-source-contract.json');
+          const sha = value => crypto.createHash('sha256').update(value).digest('hex');
+          if (evidence.authority !== 'semantic-js-source') throw new Error('unexpected JS source authority');
+          if (evidence.runtimeTarget !== 'src/legacy/scripts/inline-005.js') throw new Error('unexpected JS runtime target');
+          if (evidence.domainCount !== 10) throw new Error('unexpected JS domain count');
+          if (sha(runtime) !== evidence.runtimeSha256) throw new Error('JS runtime artifact hash mismatch');
+          if (sha(contract) !== evidence.contractSha256) throw new Error('JS contract artifact hash mismatch');
+          NODE
+          mkdir -p src/legacy/scripts src
+          cp sc031-js-write/inline-005.js src/legacy/scripts/inline-005.js
+          cp sc031-js-write/core-js-source-contract.json src/core-js-source-contract.json
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //' | grep -v '^sc031-js-write/' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(src/legacy/scripts/inline-005\.js|src/core-js-source-contract\.json)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Refusing write: unexpected JS generated files:"
+            echo "$bad"
+            exit 1
+          fi
+          git diff --check -- src/legacy/scripts/inline-005.js src/core-js-source-contract.json
+          if [ -z "$changed" ]; then
+            echo "Source-generated JS runtime is already current; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/legacy/scripts/inline-005.js src/core-js-source-contract.json
+          git commit -m "SC-031: commit source-generated core JS [skip ci]"
+          git push origin HEAD:sc031-modular-architecture-migration

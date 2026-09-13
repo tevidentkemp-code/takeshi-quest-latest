@@ -7,6 +7,8 @@ on:
       - index.html
       - src/**
       - scripts/render-index-from-source.mjs
+      - scripts/build-core-js-from-source.mjs
+      - scripts/verify-core-domains.mjs
       - scripts/build-core-styles-from-source.mjs
       - scripts/verify-core-styles-v2.mjs
       - tools/ui-smoke/**
@@ -24,7 +26,7 @@ permissions:
 jobs:
   setup:
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -57,6 +59,26 @@ jobs:
           fi
           cp .sc031-setup-index.html index.html
 
+      - name: Materialize compatibility JS from semantic source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f src/core-js-source-contract.json ]; then
+            node scripts/build-core-js-from-source.mjs \
+              --output .sc031-setup-core.js \
+              --evidence sc031-setup-js-build.json
+          elif [ -f src/core-domain-manifest.json ]; then
+            node scripts/build-core-js-from-source.mjs \
+              --bootstrap-contract \
+              --output .sc031-setup-core.js \
+              --evidence sc031-setup-js-build.json
+          else
+            echo "SC-031 JS source contract/bootstrap evidence missing"
+            exit 1
+          fi
+          cp .sc031-setup-core.js src/legacy/scripts/inline-005.js
+          node scripts/verify-core-domains.mjs
+
       - name: Materialize compatibility CSS from semantic source
         shell: bash
         run: |
@@ -88,7 +110,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git diff --check HEAD^ HEAD -- .github/workflows/setup-qa.yml scripts/render-index-from-source.mjs scripts/build-core-styles-from-source.mjs scripts/verify-core-styles-v2.mjs tools/ui-smoke src index.html
+          git diff --check HEAD^ HEAD -- .github/workflows/setup-qa.yml scripts/render-index-from-source.mjs scripts/build-core-js-from-source.mjs scripts/verify-core-domains.mjs scripts/build-core-styles-from-source.mjs scripts/verify-core-styles-v2.mjs tools/ui-smoke src index.html
 
       - name: Run setup and full scoring journey offline
         shell: bash
@@ -120,4 +142,5 @@ jobs:
             qa-artifacts
             *-results.txt
             sc031-setup-source-build.json
+            sc031-setup-js-build.json
             sc031-setup-css-build.json
