@@ -1,11 +1,9 @@
 # Shateki Quest
 
-Production application repository for Shateki Quest.
+Static web app for the Shateki Quest darts game.
 
-## Engineering
+## Architecture
 
-Current production authority is the `main` branch. Material architecture work is performed on isolated branches and must pass the repository regression gates before release.
+SC-031 is migrating the historical single-file runtime to source-first HTML, CSS and JavaScript with generated compatibility outputs. The branch also contains a parity-tested Vite build candidate. Production remains the static GitHub Pages baseline until SC-031 is separately approved for release.
 
-Node-based repository tooling uses the version declared in `.node-version`. CI dependencies are installed deterministically from committed lockfiles. External GitHub Actions are pinned to immutable commit SHAs.
-
-See `docs/architecture/PUBLIC_RELEASE_ENGINEERING_STANDARD.md` for the public-release engineering standard and `docs/architecture/MODULAR_MIGRATION.md` for the active modular migration contract.
+See `docs/architecture/` for the current source-authority and build contracts. Persistent data is owned by the live Shateki-Quest Supabase project; do not create a competing local source of truth.
