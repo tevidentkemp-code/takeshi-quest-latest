@@ -25,18 +25,3 @@
   if (window.visualViewport) window.visualViewport.addEventListener('resize', schedule, {passive:true});
   schedule();
 })();
-
-/* >>> PATCH:SC031_ADMIN_SERVER_BOUNDARY_LOADER START */
-(function(){
-  if (window.__sqAdminSecurityScriptRequested) return;
-  window.__sqAdminSecurityScriptRequested = true;
-  var script = document.createElement('script');
-  script.src = './src/services/admin-security.js';
-  script.async = false;
-  script.onerror = function(){
-    window.__sqAdminAuthed = false;
-    console.error('SC-031 admin security service failed to load');
-  };
-  document.head.appendChild(script);
-})();
-/* <<< PATCH:SC031_ADMIN_SERVER_BOUNDARY_LOADER END */
