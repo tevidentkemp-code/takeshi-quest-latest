@@ -35,7 +35,7 @@ Generated compatibility runtimes may remain temporarily while source ownership i
 
 ## 3. Deterministic toolchain
 
-- Use an active Node.js LTS line for repository tooling and pin the CI version explicitly.
+- Use an active Node.js LTS line for repository tooling and pin the repository version in `.node-version`.
 - Commit npm lockfiles for every independently installed package tree.
 - CI installs dependencies with `npm ci`; dependency resolution is not allowed to drift silently between runs.
 - Package upgrades are deliberate changes with their own green regression evidence.
@@ -47,7 +47,7 @@ Generated compatibility runtimes may remain temporarily while source ownership i
 - Workflow token permissions are read-only by default.
 - A job that executes application or migration code does not receive repository write permission.
 - Repository writes happen only in a separate job after verification succeeds, with the smallest required permission.
-- External GitHub Actions are pinned to full commit SHAs. Human-readable release versions remain comments for reviewability.
+- External GitHub Actions are pinned to full commit SHAs and kept on maintained releases whose action runtime is supported by GitHub-hosted runners. Human-readable release versions remain comments for reviewability.
 - Generated-file writes are guarded by an explicit allow-list and `git diff --check`.
 - Build/deploy actions must consume verified artifacts rather than rebuilding unreviewed source with broader credentials.
 - Before public release, protect `main` with required status checks and an explicit review/merge policy.
