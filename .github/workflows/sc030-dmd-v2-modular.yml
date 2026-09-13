@@ -5,24 +5,35 @@ on:
     branches: [sc030-dmd-v2-modular]
     paths:
       - src/live-game/dmd/**
+      - src/live-game/view/live-game-shell.html
       - tools/ui-smoke/verify-sc030-dmd-v2.mjs
+      - tools/ui-smoke/verify-sc030-dmd-runtime.js
       - docs/SC-030-LIVE-GAME-DMD-V2-MODULAR.md
       - .github/workflows/sc030-dmd-v2-modular.yml
   pull_request:
     branches: [main]
     paths:
       - src/live-game/dmd/**
+      - src/live-game/view/live-game-shell.html
       - tools/ui-smoke/verify-sc030-dmd-v2.mjs
+      - tools/ui-smoke/verify-sc030-dmd-runtime.js
       - docs/SC-030-LIVE-GAME-DMD-V2-MODULAR.md
       - .github/workflows/sc030-dmd-v2-modular.yml
 
 permissions:
   contents: read
 
+concurrency:
+  group: sc030-dmd-v2-modular-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  dmd-controller-contract:
+  dmd-runtime-qa:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -39,24 +50,132 @@ jobs:
           git fetch origin main
           git merge-base --is-ancestor origin/main HEAD
 
-      - name: Verify DMD controller syntax and contract
+      - name: Verify DMD controller and bootstrap syntax
         shell: bash
         run: |
           set -euo pipefail
           node --check src/live-game/dmd/controller.mjs
+          node --check src/live-game/dmd/bootstrap.mjs
           node tools/ui-smoke/verify-sc030-dmd-v2.mjs
+          git diff --check origin/main...HEAD
 
-      - name: Confirm Phase 1 is source-only
+      - name: Build runtime from split source
         shell: bash
         run: |
           set -euo pipefail
-          git diff --check origin/main...HEAD
-          changed="$(git diff --name-only origin/main...HEAD | sort)"
-          bad="$(printf '%s\n' "$changed" | grep -Ev '^(\.github/workflows/sc030-dmd-v2-modular\.yml|docs/SC-030-LIVE-GAME-DMD-V2-MODULAR\.md|src/live-game/dmd/controller\.mjs|tools/ui-smoke/verify-sc030-dmd-v2\.mjs)$' || true)"
+          rm -rf sc030-generated sc030-write
+          mkdir -p sc030-generated sc030-write
+          node scripts/render-index-from-source.mjs \
+            --output sc030-generated/index.html \
+            --evidence sc030-generated/build-evidence.json \
+            | tee sc030-source-build-results.txt
+          cp sc030-generated/index.html index.html
+          cp sc030-generated/index.html sc030-write/index.html
+          cp sc030-generated/build-evidence.json sc030-write/build-evidence.json
+          git diff --check -- index.html src/live-game/dmd src/live-game/view/live-game-shell.html
+
+      - name: Install deterministic UI test dependencies
+        shell: bash
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run DMD integration and full regression
+        shell: bash
+        env:
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sc030-dmd-runtime.js | tee sc030-runtime-results.txt
+          node tools/ui-smoke/verify-sc014.js | tee sc030-setup-results.txt
+          node tools/ui-smoke/smoke.js | tee sc030-smoke-results.txt
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sc030-classic-results.txt
+          node tools/ui-smoke/verify-training-modes.js | tee sc030-training-results.txt
+          node tools/ui-smoke/verify-progression-modes.js | tee sc030-progression-results.txt
+          node tools/ui-smoke/verify-pstats.js | tee sc030-pstats-results.txt
+          node tools/ui-smoke/verify-p23.js | tee sc030-admin-close-results.txt
+          node tools/ui-smoke/verify-n5-stacking.js | tee sc030-admin-stacking-results.txt
+
+      - name: Package verified generated runtime
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sc030-generated-runtime
+          retention-days: 1
+          path: sc030-write/
+
+      - name: Keep QA evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sc030-dmd-qa-evidence
+          retention-days: 7
+          path: |
+            sc030-generated/build-evidence.json
+            sc030-*-results.txt
+            qa-artifacts
+
+  commit-generated-runtime:
+    needs: dmd-runtime-qa
+    if: github.actor != 'github-actions[bot]' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Confirm branch has not advanced
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin sc030-dmd-v2-modular
+          test "$(git rev-parse origin/sc030-dmd-v2-modular)" = "${GITHUB_SHA}"
+
+      - name: Download verified runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sc030-generated-runtime
+          path: sc030-write
+
+      - name: Validate and commit generated runtime only
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=$'build-evidence.json\nindex.html'
+          actual="$(find sc030-write -maxdepth 1 -type f -printf '%f\n' | sort)"
+          test "$actual" = "$expected"
+          node - <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const evidence = JSON.parse(fs.readFileSync('sc030-write/build-evidence.json', 'utf8'));
+          const runtime = fs.readFileSync('sc030-write/index.html');
+          const sha = value => crypto.createHash('sha256').update(value).digest('hex');
+          if (evidence.authority !== 'split-source') throw new Error('unexpected source authority');
+          if (sha(runtime) !== evidence.runtimeSha256) throw new Error('runtime artifact hash mismatch');
+          NODE
+          cp sc030-write/index.html index.html
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //' | grep -v '^sc030-write/' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^index\.html$' || true)"
           if [ -n "$bad" ]; then
-            echo "Unexpected SC-030 Phase 1 file(s):"
+            echo "Refusing write: unexpected generated files:"
             echo "$bad"
             exit 1
           fi
-          test ! -e src/live-game/dmd/bootstrap.mjs
-          echo "Phase 1 intentionally does not change the runtime or generated compatibility artifacts."
+          git diff --check -- index.html
+          if [ -z "$changed" ]; then
+            echo "Generated runtime already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "SC-030: commit source-generated DMD runtime [skip ci]"
+          git push origin HEAD:sc030-dmd-v2-modular
