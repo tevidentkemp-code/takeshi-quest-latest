@@ -1,41 +1,58 @@
 name: Setup regression QA
+
 on:
   pull_request:
     paths:
       - index.html
+      - src/**
       - tools/ui-smoke/**
+      - package.json
+      - package-lock.json
+      - vite.config.*
       - .github/workflows/setup-qa.yml
   push:
     branches: [sc014-setup-intake-polish]
   workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
   setup:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 2
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-node@v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 22
-      - name: Install existing test dependencies
+          node-version: 24.21.0
+
+      - name: Install deterministic test dependencies
         working-directory: tools/ui-smoke
         run: |
-          npm install --no-package-lock --ignore-scripts
+          set -euo pipefail
+          npm ci --ignore-scripts
           npx playwright install --with-deps chromium
+
       - name: Check patch whitespace
-        run: git diff --check HEAD^ HEAD -- .github/workflows/setup-qa.yml tools/ui-smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check HEAD^ HEAD -- .github/workflows/setup-qa.yml tools/ui-smoke src index.html
+
       - name: Run setup and full scoring journey offline
         shell: bash
         env:
           SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts
         run: |
-          set -o pipefail
+          set -euo pipefail
           python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
           node tools/ui-smoke/verify-sc028.js | tee sc028-results.txt
           node tools/ui-smoke/verify-pstats.js | tee pstats-results.txt
           node tools/ui-smoke/verify-sc008.js | tee sc008-results.txt
@@ -46,11 +63,13 @@ jobs:
           node tools/ui-smoke/smoke.js | tee smoke-results.txt
           node tools/ui-smoke/verify-saveplayer-card.js | tee saved-player-results.txt
           node tools/ui-smoke/verify-classic-visual-fit.js | tee classic-visual-results.txt
+
       - name: Keep review evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: setup-qa-evidence
+          retention-days: 14
           path: |
             qa-artifacts
             *-results.txt
