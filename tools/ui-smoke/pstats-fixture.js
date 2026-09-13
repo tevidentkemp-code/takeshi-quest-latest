@@ -36,6 +36,24 @@ const FIXTURE = {
     { players: ['Alex S', 'Sam T'], totals: [40, 55], ts: '2026-03-01T20:00:00Z', board: null, gameVariant: 'turbo', mode: 'turbo' },
   ],
   views: {
+    v_player_game_scores_official_clean: [
+      { game_id:'jo-4', ts:'2026-09-11T20:04:00Z', player_name:'Jo R', score:133 },
+      { game_id:'jo-3', ts:'2026-09-10T20:04:00Z', player_name:'Jo R', score:133 },
+      { game_id:'jo-2', ts:'2026-09-09T20:04:00Z', player_name:'Jo R', score:133 },
+      { game_id:'jo-1', ts:'2026-09-08T20:04:00Z', player_name:'Jo R', score:133 },
+      { game_id:'mia-4', ts:'2026-09-11T20:03:00Z', player_name:'Mia K', score:128 },
+      { game_id:'mia-3', ts:'2026-09-10T20:03:00Z', player_name:'Mia K', score:128 },
+      { game_id:'mia-2', ts:'2026-09-09T20:03:00Z', player_name:'Mia K', score:127 },
+      { game_id:'mia-1', ts:'2026-09-08T20:03:00Z', player_name:'Mia K', score:127 },
+      { game_id:'alex-4', ts:'2026-09-11T20:02:00Z', player_name:'Alex S', score:125 },
+      { game_id:'alex-3', ts:'2026-09-10T20:02:00Z', player_name:'Alex S', score:125 },
+      { game_id:'alex-2', ts:'2026-09-09T20:02:00Z', player_name:'Alex S', score:120 },
+      { game_id:'alex-1', ts:'2026-09-08T20:02:00Z', player_name:'Alex S', score:120 },
+      { game_id:'sam-4', ts:'2026-09-11T20:01:00Z', player_name:'Sam T', score:100 },
+      { game_id:'sam-3', ts:'2026-09-10T20:01:00Z', player_name:'Sam T', score:100 },
+      { game_id:'sam-2', ts:'2026-09-09T20:01:00Z', player_name:'Sam T', score:100 },
+      { game_id:'sam-1', ts:'2026-09-08T20:01:00Z', player_name:'Sam T', score:100 },
+    ],
     v_power_rankings_last56_official_clean: [
       { player: 'Jo R', player_key: 'jo r', rounds_used: 56, total_points: 532, avg_per_round: 9.5, last_played_at: null, rank_pos: 1 },
       { player: 'Mia K', player_key: 'mia k', rounds_used: 56, total_points: 510, avg_per_round: 9.1, last_played_at: null, rank_pos: 2 },
@@ -135,10 +153,15 @@ async function install(page) {
     // 4) fake supabase client: chainable, thenable, resolves per-table rows
     const mkQuery = (table) => {
       const q = {
-        _t: table,
+        _t: table, _from: null, _to: null,
         select() { return q; }, eq() { return q; }, ilike() { return q; },
         or() { return q; }, order() { return q; }, limit() { return q; },
-        then(res) { res({ data: (FX.views[q._t] || []).map((r) => ({ ...r })), error: null }); },
+        range(from, to) { q._from = from; q._to = to; return q; },
+        then(res) {
+          let rows = (FX.views[q._t] || []).map((r) => ({ ...r }));
+          if (Number.isFinite(q._from)) rows = rows.slice(q._from, Number.isFinite(q._to) ? q._to + 1 : undefined);
+          res({ data: rows, error: null });
+        },
         catch() { return q; },
       };
       return q;
