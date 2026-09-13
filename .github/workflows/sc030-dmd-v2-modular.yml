@@ -1,0 +1,62 @@
+name: SC-030 DMD V2 modular build
+
+on:
+  push:
+    branches: [sc030-dmd-v2-modular]
+    paths:
+      - src/live-game/dmd/**
+      - tools/ui-smoke/verify-sc030-dmd-v2.mjs
+      - docs/SC-030-LIVE-GAME-DMD-V2-MODULAR.md
+      - .github/workflows/sc030-dmd-v2-modular.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - src/live-game/dmd/**
+      - tools/ui-smoke/verify-sc030-dmd-v2.mjs
+      - docs/SC-030-LIVE-GAME-DMD-V2-MODULAR.md
+      - .github/workflows/sc030-dmd-v2-modular.yml
+
+permissions:
+  contents: read
+
+jobs:
+  dmd-controller-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm production ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+
+      - name: Verify DMD controller syntax and contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check src/live-game/dmd/controller.mjs
+          node tools/ui-smoke/verify-sc030-dmd-v2.mjs
+
+      - name: Confirm Phase 1 is source-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check origin/main...HEAD
+          changed="$(git diff --name-only origin/main...HEAD | sort)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(\.github/workflows/sc030-dmd-v2-modular\.yml|docs/SC-030-LIVE-GAME-DMD-V2-MODULAR\.md|src/live-game/dmd/controller\.mjs|tools/ui-smoke/verify-sc030-dmd-v2\.mjs)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected SC-030 Phase 1 file(s):"
+            echo "$bad"
+            exit 1
+          fi
+          test ! -e src/live-game/dmd/bootstrap.mjs
+          echo "Phase 1 intentionally does not change the runtime or generated compatibility artifacts."
