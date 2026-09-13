@@ -1,7 +1,7 @@
 // SHATEKI-QUEST smoke suite.
 // Full canonical journey: home -> mode tree -> match card -> FT3 match length
-// -> throw order -> live game 1 -> leaderboard/NEXT GAME -> live game 2
-// -> leaderboard/NEXT GAME -> live game 3 -> leaderboard/END MATCH
+// -> throw order -> live game 1 -> leaderboard/NEXT GAME -> throw order -> live game 2
+// -> leaderboard/NEXT GAME -> throw order -> live game 3 -> leaderboard/END MATCH
 // -> game scores -> end match -> home.
 // Run: node smoke.js   (serve the repo root first, default http://localhost:8123)
 // Exit code 0 = pass. All Supabase traffic is network-blocked by the harness.
@@ -82,6 +82,13 @@ async function continueMatch(page, label, nextGameNumber) {
   check(`${label} leaderboard hides END MATCH`, !lb.endVisible, JSON.stringify(lb));
 
   await page.click('#nextGameBtn');
+  await page.waitForFunction(() => !!document.querySelector('.modal-throworder'), { timeout: 8000 }).catch(() => {});
+  const orderModal = await page.$('.modal-throworder');
+  check(`${label}: NEXT GAME opens throw-order step`, !!orderModal);
+  const startNext = await page.$('.modal-throworder .to-start');
+  check(`${label}: throw-order step has START GAME`, !!startNext);
+  if (startNext) await startNext.click();
+
   await page.waitForFunction(() => document.body.dataset.page === 'game', { timeout: 15000 }).catch(() => {});
   await page.waitForTimeout(900);
   check(`NEXT GAME starts Game ${nextGameNumber}`, await page.evaluate(() => document.body.dataset.page === 'game'));
@@ -116,8 +123,8 @@ async function continueMatch(page, label, nextGameNumber) {
   await H.addGuests(page, ['TESTA', 'TESTB']);
   check('SELECT MATCH LENGTH enabled with 2 players', await page.evaluate(() => !document.getElementById('startMatchBtn').disabled));
 
-  // Canonical official match: first to 3 wins. The asymmetric fixture deliberately
-  // keeps one intended player stronger while the starting throw rotates each game.
+  // Canonical official match: first to 3 wins. Player-identity scoring keeps
+  // TESTA as the intended winner regardless of any inter-game order choice.
   await H.startMatch(page, 3);
   check('FT3 Live Game reached', await page.evaluate(() => document.body.dataset.page === 'game'));
   check('throw pad built', await page.evaluate(() => document.querySelectorAll('#pad button').length >= 5));
@@ -145,21 +152,20 @@ async function continueMatch(page, label, nextGameNumber) {
   check('Closing Settings leaves no blocking overlay', await page.evaluate(() => !document.querySelector('.modal-backdrop:not(.hidden)')));
 
   // -- Game 1: first legitimate intermediate Leaderboard state.
-  await H.playToCompletion(page, { onTurn: throwpadChecks.onTurn, strongTurnParity: 0 });
+  await H.playToCompletion(page, { onTurn: throwpadChecks.onTurn, strongPlayerName: 'TESTA' });
   throwpadChecks.finish();
   await dismissCompletion(page, 'Game 1');
   await finishToLeaderboard(page, 'Game 1');
   await continueMatch(page, 'Game 1', 2);
 
-  // -- Game 2: start rotates, so invert strong turn parity to keep the same
-  // intended player winning without mutating app state.
-  await H.playToCompletion(page, { strongTurnParity: 1 });
+  // -- Game 2: same intended player, independent of throw order.
+  await H.playToCompletion(page, { strongPlayerName: 'TESTA' });
   await dismissCompletion(page, 'Game 2');
   await finishToLeaderboard(page, 'Game 2');
   await continueMatch(page, 'Game 2', 3);
 
-  // -- Game 3: the same player reaches the canonical FT3 winning threshold.
-  await H.playToCompletion(page, { strongTurnParity: 0 });
+  // -- Game 3: TESTA reaches the canonical FT3 winning threshold.
+  await H.playToCompletion(page, { strongPlayerName: 'TESTA' });
   await dismissCompletion(page, 'Game 3');
   await finishToLeaderboard(page, 'Game 3');
 
