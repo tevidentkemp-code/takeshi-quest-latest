@@ -1,0 +1,199 @@
+name: SC-031 Vite build parity
+
+on:
+  push:
+    branches: [sc031-modular-architecture-migration]
+    paths:
+      - package.json
+      - package-lock.json
+      - vite.config.mjs
+      - scripts/materialize-runtime.mjs
+      - scripts/verify-vite-dist.mjs
+      - scripts/verify-modularization.mjs
+      - src/**
+      - assets/**
+      - .github/workflows/sc031-vite-parity.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sc031-vite-build-parity
+  cancel-in-progress: false
+
+jobs:
+  verify-vite-build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm production ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+
+      - name: Install architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Materialize and verify source-authority runtime
+        run: node scripts/materialize-runtime.mjs
+
+      - name: Install deterministic Vite dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then
+            echo established > /tmp/sc031-vite-lock-state
+            npm ci --ignore-scripts --no-audit --no-fund
+          else
+            echo bootstrap > /tmp/sc031-vite-lock-state
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+            npm ci --ignore-scripts --no-audit --no-fund
+          fi
+          node -e "const p=require('./node_modules/vite/package.json'); if(p.version!=='8.3.0') throw new Error('Unexpected Vite '+p.version); console.log('Vite '+p.version)"
+
+      - name: Build parity candidate
+        run: npm run build
+
+      - name: Verify build structure and paths
+        run: npm run verify:dist
+
+      - name: Stage exact lock write set
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf sc031-vite-write
+          mkdir -p sc031-vite-write
+          cp package-lock.json sc031-vite-write/package-lock.json
+          cp sc031-vite-build-evidence.json sc031-vite-write/build-evidence.json
+          test "$(find sc031-vite-write -maxdepth 1 -type f | wc -l | tr -d ' ')" = "2"
+
+      - name: Install deterministic UI test dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run full regression against dist
+        shell: bash
+        env:
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts-vite
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 --directory dist >/tmp/sq-vite-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sc028.js | tee sc031-vite-sc028-results.txt
+          node tools/ui-smoke/verify-pstats.js | tee sc031-vite-pstats-results.txt
+          node tools/ui-smoke/verify-sc008.js | tee sc031-vite-sc008-results.txt
+          node tools/ui-smoke/verify-sc009.js | tee sc031-vite-sc009-results.txt
+          node tools/ui-smoke/verify-sc010.js | tee sc031-vite-sc010-results.txt
+          node tools/ui-smoke/verify-sc025.js | tee sc031-vite-sc025-results.txt
+          node tools/ui-smoke/verify-sc014.js | tee sc031-vite-setup-results.txt
+          node tools/ui-smoke/smoke.js | tee sc031-vite-smoke-results.txt
+          node tools/ui-smoke/verify-saveplayer-card.js | tee sc031-vite-saved-player-results.txt
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sc031-vite-classic-results.txt
+          node tools/ui-smoke/verify-training-modes.js | tee sc031-vite-training-results.txt
+          node tools/ui-smoke/verify-progression-modes.js | tee sc031-vite-progression-results.txt
+          node tools/ui-smoke/verify-p23.js | tee sc031-vite-admin-close-results.txt
+          node tools/ui-smoke/verify-n5-stacking.js | tee sc031-vite-admin-stacking-results.txt
+
+      - name: Check repository hygiene
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check -- package.json package-lock.json vite.config.mjs scripts src .github/workflows/sc031-vite-parity.yml
+
+      - name: Package verified lock
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sc031-vite-lock-write
+          retention-days: 1
+          path: sc031-vite-write/
+
+      - name: Keep Vite parity evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sc031-vite-parity-evidence
+          retention-days: 7
+          path: |
+            sc031-vite-build-evidence.json
+            sc031-vite-*-results.txt
+            .sc031-build-*-evidence.json
+            qa-artifacts-vite
+            package-lock.json
+
+  commit-vite-lock:
+    needs: verify-vite-build
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Confirm branch has not advanced
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin sc031-modular-architecture-migration
+          test "$(git rev-parse origin/sc031-modular-architecture-migration)" = "${GITHUB_SHA}"
+
+      - name: Download verified lock
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sc031-vite-lock-write
+          path: sc031-vite-write
+
+      - name: Validate and apply package lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=$'build-evidence.json\npackage-lock.json'
+          actual="$(find sc031-vite-write -maxdepth 1 -type f -printf '%f\n' | sort)"
+          test "$actual" = "$expected"
+          node - <<'NODE'
+          const fs = require('fs');
+          const lock = JSON.parse(fs.readFileSync('sc031-vite-write/package-lock.json', 'utf8'));
+          const evidence = JSON.parse(fs.readFileSync('sc031-vite-write/build-evidence.json', 'utf8'));
+          if (lock.lockfileVersion !== 3) throw new Error('unexpected npm lockfileVersion');
+          if (lock.packages?.['node_modules/vite']?.version !== '8.3.0') throw new Error('package lock does not pin Vite 8.3.0');
+          if (evidence.buildSystem !== 'vite' || evidence.relativeBase !== true) throw new Error('unexpected Vite parity evidence');
+          NODE
+          cp sc031-vite-write/package-lock.json package-lock.json
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //' | grep -v '^sc031-vite-write/' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^package-lock\.json$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Refusing write: unexpected Vite generated files:"
+            echo "$bad"
+            exit 1
+          fi
+          git diff --check -- package-lock.json
+          if [ -z "$changed" ]; then
+            echo "Verified package lock is already current; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "SC-031: pin verified Vite build dependencies [skip ci]"
+          git push origin HEAD:sc031-modular-architecture-migration
