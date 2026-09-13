@@ -7,9 +7,10 @@ on:
       - index.html
       - scripts/migrate-inline-assets.mjs
       - scripts/verify-modularization.mjs
+      - scripts/map-legacy-ownership.mjs
       - scripts/package.json
       - docs/architecture/**
-      - src/legacy/**
+      - src/**
       - .github/workflows/sc031-modularize.yml
   workflow_dispatch:
 
@@ -43,19 +44,22 @@ jobs:
       - name: Install pinned migration tooling
         run: npm install --prefix scripts --no-package-lock --ignore-scripts
 
-      - name: Mechanically extract parsed inline assets
+      - name: Mechanically extract parsed inline assets when needed
         run: node scripts/migrate-inline-assets.mjs
 
-      - name: Verify generated structure and JavaScript syntax
+      - name: Verify split structure and JavaScript syntax
         run: node scripts/verify-modularization.mjs
 
-      - name: Guard migration scope
+      - name: Generate Phase 2 section and ownership map
+        run: node scripts/map-legacy-ownership.mjs
+
+      - name: Guard generated migration scope
         shell: bash
         run: |
           set -euo pipefail
-          bad="$(git diff --name-only | grep -Ev '^(index\.html|src/legacy/)' || true)"
+          bad="$(git diff --name-only | grep -Ev '^(index\.html|src/legacy/|docs/architecture/CORE_SECTION_MAP\.md)$' || true)"
           if [ -n "$bad" ]; then
-            echo "Unexpected generated changes outside index.html/src/legacy/:"
+            echo "Unexpected generated changes outside SC-031 generated scope:"
             echo "$bad"
             exit 1
           fi
@@ -83,18 +87,18 @@ jobs:
           node tools/ui-smoke/verify-progression-modes.js | tee sc031-progression-results.txt
           node tools/ui-smoke/verify-pstats.js | tee sc031-pstats-results.txt
 
-      - name: Commit generated split only after green regression
+      - name: Commit generated architecture evidence only after green regression
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- index.html src/legacy; then
+          if git diff --quiet -- index.html src/legacy docs/architecture/CORE_SECTION_MAP.md; then
             echo "No generated migration changes to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html src/legacy
-          git commit -m "SC-031: mechanically split inline CSS and JS [skip ci]"
+          git add index.html src/legacy docs/architecture/CORE_SECTION_MAP.md
+          git commit -m "SC-031: refresh verified split and ownership map [skip ci]"
           git push origin HEAD:sc031-modular-architecture-migration
 
       - name: Keep SC-031 QA evidence
@@ -106,3 +110,4 @@ jobs:
             qa-artifacts
             sc031-*-results.txt
             src/legacy/migration-manifest.json
+            docs/architecture/CORE_SECTION_MAP.md
