@@ -1,7 +1,7 @@
 # SC-031 Supabase Security and Data-Path Audit
 
-**Audit date:** 2026-09-13  
-**Project:** Shateki-Quest (`vvfqumgtasuacpggdmxx`)  
+**Audit date:** 2026-09-13
+**Project:** Shateki-Quest (`vvfqumgtasuacpggdmxx`)
 **Mode:** READ/AUDIT only — no DDL, policy, role, function or data writes were made.
 
 ## Executive finding
