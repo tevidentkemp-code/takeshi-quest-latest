@@ -953,6 +953,43 @@ function buildPad(){
   // Game page
   padHint.textContent = state.finished ? 'Game finished.' : '';
 
+  // SC-030: one verified Undo/DMD path for all Live V2 pad layouts.
+  // Scoring/state restoration stays owned by undo(); this helper only decides
+  // whether a presentation event is truthful after that state transition.
+  function __sqRunUndoActionWithDmd(){
+    const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') && __sqIsVsShadowRuntime();
+
+    // Preserve the existing Vs Shadow presentation path exactly. Its undo
+    // helper has mode-specific block/restore messages which must not be
+    // overwritten by the generic DMD V2 event.
+    if (isVsShadow){
+      try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
+      try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ }
+      undo();
+      return;
+    }
+
+    const before = Array.isArray(state?.history) ? state.history.length : 0;
+    if (before <= 0){
+      undo();
+      return;
+    }
+
+    try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
+    undo();
+
+    const after = Array.isArray(state?.history) ? state.history.length : before;
+    if (after >= before) return;
+
+    try{
+      if (window.__sqDmdV2 && typeof window.__sqDmdV2.emit === 'function'){
+        window.__sqDmdV2.emit({ kind:'UNDO' });
+      } else {
+        window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120});
+      }
+    }catch(_){ }
+  }
+
   if (!state.finished) {
     const r = ROUNDS[state.currentRound];
     if (!r) return;
@@ -1213,7 +1250,7 @@ function buildPad(){
       };
 
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ pressMissN(1); }catch(_){ try{ __sqHandleMissTap(); }catch(_){ } } }));
-      actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); }));
+      actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { __sqRunUndoActionWithDmd(); }));
       actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => {
         try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
         try{ window.__sqSkipInProgress = true; }catch(_){ }
@@ -1315,7 +1352,7 @@ function buildPad(){
       };
 
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ pressMissN(1); }catch(_){ try{ __sqHandleMissTap(); }catch(_){ } } }));
-      actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); }));
+      actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { __sqRunUndoActionWithDmd(); }));
       actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => {
         try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
         try{ window.__sqSkipInProgress = true; }catch(_){ }
@@ -1407,7 +1444,7 @@ function buildPad(){
       };
 
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ pressMissN(1); }catch(_){ try{ __sqHandleMissTap(); }catch(_){ } } }));
-      actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); }));
+      actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { __sqRunUndoActionWithDmd(); }));
       actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => {
         try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
         try{ window.__sqSkipInProgress = true; }catch(_){ }
