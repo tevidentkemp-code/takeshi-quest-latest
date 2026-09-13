@@ -11,6 +11,9 @@ on:
       - scripts/map-legacy-ownership.mjs
       - scripts/split-core-domains.mjs
       - scripts/verify-core-domains.mjs
+      - scripts/split-core-styles.mjs
+      - scripts/verify-core-styles.mjs
+      - scripts/map-css-ownership.mjs
       - scripts/package.json
       - docs/architecture/**
       - src/**
@@ -53,21 +56,30 @@ jobs:
       - name: Build byte-identical runtime from semantic core sources
         run: node scripts/split-core-domains.mjs
 
+      - name: Build byte-identical runtime from semantic core styles
+        run: node scripts/split-core-styles.mjs
+
       - name: Verify split structure and JavaScript syntax
         run: node scripts/verify-modularization.mjs
 
       - name: Verify semantic core domains and generated runtime
         run: node scripts/verify-core-domains.mjs
 
+      - name: Verify semantic core styles and generated runtime
+        run: node scripts/verify-core-styles.mjs
+
       - name: Generate Phase 2 section and ownership map
         run: node scripts/map-legacy-ownership.mjs
+
+      - name: Generate CSS ownership and cascade map
+        run: node scripts/map-css-ownership.mjs
 
       - name: Guard generated migration scope
         shell: bash
         run: |
           set -euo pipefail
           changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //')"
-          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index\.html|src/(legacy|app|game|live-game|services|ui)/.*|src/core-domain-manifest\.json|docs/architecture/CORE_SECTION_MAP\.md)$' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index\.html|src/(legacy|app|game|live-game|services|ui|styles)/.*|src/core-domain-manifest\.json|src/core-style-manifest\.json|docs/architecture/(CORE_SECTION_MAP|CSS_OWNERSHIP_MAP)\.md)$' || true)"
           if [ -n "$bad" ]; then
             echo "Unexpected generated changes outside SC-031 generated scope:"
             echo "$bad"
@@ -101,15 +113,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          generated="$(git status --porcelain --untracked-files=all -- index.html src/legacy src/app src/game src/live-game src/services src/ui src/core-domain-manifest.json docs/architecture/CORE_SECTION_MAP.md)"
+          generated="$(git status --porcelain --untracked-files=all -- index.html src/legacy src/app src/game src/live-game src/services src/ui src/styles src/core-domain-manifest.json src/core-style-manifest.json docs/architecture/CORE_SECTION_MAP.md docs/architecture/CSS_OWNERSHIP_MAP.md)"
           if [ -z "$generated" ]; then
             echo "No generated migration changes to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html src/legacy src/app src/game src/live-game src/services src/ui src/core-domain-manifest.json docs/architecture/CORE_SECTION_MAP.md
-          git commit -m "SC-031: split core into verified semantic domains [skip ci]"
+          git add index.html src/legacy src/app src/game src/live-game src/services src/ui src/styles src/core-domain-manifest.json src/core-style-manifest.json docs/architecture/CORE_SECTION_MAP.md docs/architecture/CSS_OWNERSHIP_MAP.md
+          git commit -m "SC-031: refresh verified semantic source split [skip ci]"
           git push origin HEAD:sc031-modular-architecture-migration
 
       - name: Keep SC-031 QA evidence
@@ -122,4 +134,6 @@ jobs:
             sc031-*-results.txt
             src/legacy/migration-manifest.json
             src/core-domain-manifest.json
+            src/core-style-manifest.json
             docs/architecture/CORE_SECTION_MAP.md
+            docs/architecture/CSS_OWNERSHIP_MAP.md
