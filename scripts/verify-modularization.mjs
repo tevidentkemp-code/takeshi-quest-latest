@@ -9,6 +9,7 @@ const HTML_NS = 'http://www.w3.org/1999/xhtml';
 const root = process.cwd();
 const indexPath = path.join(root, 'index.html');
 const migrationManifestPath = path.join(root, 'src', 'legacy', 'migration-manifest.json');
+const intentionalPatchesPath = path.join(root, 'src', 'legacy', 'intentional-patches.json');
 const domainManifestPath = path.join(root, 'src', 'styles', 'domain-manifest.json');
 const adoptionManifestPath = path.join(root, 'src', 'styles', 'runtime-adoption-manifest.json');
 
@@ -16,6 +17,9 @@ if (!fs.existsSync(migrationManifestPath)) fail('Missing src/legacy/migration-ma
 
 const html = fs.readFileSync(indexPath, 'utf8');
 const manifest = JSON.parse(fs.readFileSync(migrationManifestPath, 'utf8'));
+const intentionalPatches = fs.existsSync(intentionalPatchesPath)
+  ? JSON.parse(fs.readFileSync(intentionalPatchesPath, 'utf8'))
+  : { patches: [] };
 const domains = fs.existsSync(domainManifestPath)
   ? JSON.parse(fs.readFileSync(domainManifestPath, 'utf8'))
   : { entries: [] };
@@ -27,6 +31,15 @@ const document = parse(html, { sourceCodeLocationInfo: true });
 assert(manifest.schemaVersion === 2, 'Unexpected migration manifest schema');
 assert(manifest.parser === 'parse5@8.0.1', 'Unexpected migration parser/version');
 assert(manifest.source === 'index.html', 'Unexpected migration source');
+
+assert(intentionalPatches.schemaVersion === undefined || intentionalPatches.schemaVersion === 1,
+  'Unexpected intentional legacy patch manifest schema');
+assert(intentionalPatches.stage === undefined || intentionalPatches.stage === 'intentional-legacy-patch-evidence',
+  'Unexpected intentional legacy patch stage');
+assert(intentionalPatches.originalExtractionManifest === undefined
+  || intentionalPatches.originalExtractionManifest === 'src/legacy/migration-manifest.json',
+'Unexpected original extraction manifest reference');
+assert(Array.isArray(intentionalPatches.patches), 'Intentional legacy patches must be an array');
 
 if (adoption) {
   assert(adoption.schemaVersion === 1, 'Unexpected CSS runtime adoption manifest schema');
@@ -47,6 +60,29 @@ assert(manifest.scripts.length === manifest.extractedScriptBlocks, 'Script count
 
 const domainBySource = new Map((domains.entries || []).map(entry => [entry.source, entry]));
 const adoptedSources = new Set((adoption?.entries || []).map(entry => entry.source));
+const patchByFile = new Map();
+for (const patch of intentionalPatches.patches) {
+  assert(patch && typeof patch.file === 'string', 'Intentional patch is missing file');
+  assert(!patchByFile.has(patch.file), `Duplicate intentional patch entry: ${patch.file}`);
+  assertSafeGeneratedPath(patch.file, 'src/legacy/scripts/');
+  assert(typeof patch.originalSha256 === 'string' && /^[a-f0-9]{64}$/.test(patch.originalSha256),
+    `Invalid original hash for intentional patch ${patch.file}`);
+  assert(typeof patch.sha256 === 'string' && /^[a-f0-9]{64}$/.test(patch.sha256),
+    `Invalid current hash for intentional patch ${patch.file}`);
+  assert(Number.isInteger(patch.bytes) && patch.bytes >= 0, `Invalid byte count for intentional patch ${patch.file}`);
+  assert(typeof patch.task === 'string' && patch.task.trim(), `Missing task for intentional patch ${patch.file}`);
+  assert(typeof patch.reason === 'string' && patch.reason.trim(), `Missing reason for intentional patch ${patch.file}`);
+  patchByFile.set(patch.file, patch);
+}
+
+const scriptManifestByFile = new Map(manifest.scripts.map(entry => [entry.file, entry]));
+for (const [file, patch] of patchByFile) {
+  const original = scriptManifestByFile.get(file);
+  assert(original, `Intentional patch does not map to an extracted script: ${file}`);
+  assert(original.sha256 === patch.originalSha256,
+    `Intentional patch original hash does not match extraction manifest: ${file}`);
+}
+
 const expectedStyles = manifest.styles.map(entry => {
   const domain = domainBySource.get(entry.file);
   const useSemantic = domain && adoptedSources.has(entry.file);
@@ -88,14 +124,21 @@ for (const entry of manifest.scripts) {
   const abs = path.join(root, entry.file);
   assert(fs.existsSync(abs), `Missing extracted script ${entry.file}`);
   const body = fs.readFileSync(abs, 'utf8');
-  assert(sha256(body) === entry.sha256, `Script hash mismatch: ${entry.file}`);
+  const patch = patchByFile.get(entry.file);
+  const expectedHash = patch ? patch.sha256 : entry.sha256;
+  assert(sha256(body) === expectedHash, `Script hash mismatch: ${entry.file}`);
+  if (patch) {
+    assert(Buffer.byteLength(body, 'utf8') === patch.bytes,
+      `Intentional patch byte-count mismatch: ${entry.file}`);
+  }
   syntaxCheck(entry, abs, body);
 }
 
 console.log(
   `SC-031 structure verification PASS: ${manifest.styles.length} parsed styles, `
   + `${manifest.scripts.length} parsed scripts, 0 eligible inline JS, 0 parsed inline styles, `
-  + `${adoption?.entries?.length || 0} semantic CSS runtime paths.`
+  + `${adoption?.entries?.length || 0} semantic CSS runtime paths, `
+  + `${patchByFile.size} declared legacy patch override(s).`
 );
 
 function collectRelevantNodes(rootNode) {
