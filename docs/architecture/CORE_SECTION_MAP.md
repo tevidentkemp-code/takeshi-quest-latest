@@ -234,7 +234,7 @@ _No @SEC markers found._
 | 42 | `src/legacy/scripts/inline-042.js` | 11923 | 288 | league | id="sq-rankings-turbo-routing-fix-js" | — |
 | 43 | `src/legacy/scripts/inline-043.js` | 1370 | 37 | tournament | id="sq-start-tournament-route-blocker-guard-v2" | — |
 | 44 | `src/legacy/scripts/inline-044.js` | 17991 | 342 | league | id="sq-fix169-power-rankings-current-clean-source-js" | — |
-| 45 | `src/legacy/scripts/inline-045.js` | 4882 | 105 | tournament | id="sq-fix170-decider-leaderboard-confirm-js" | — |
+| 45 | `src/legacy/scripts/inline-045.js` | 5048 | 107 | tournament | id="sq-fix170-decider-leaderboard-confirm-js" | — |
 | 46 | `src/legacy/scripts/inline-046.js` | 28255 | 498 | tournament | — | — |
 | 47 | `src/legacy/scripts/inline-047.js` | 1720 | 28 | live-game | — | — |
 
