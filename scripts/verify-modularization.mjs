@@ -1,8 +1,11 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { parse } from 'parse5';
 
+const HTML_NS = 'http://www.w3.org/1999/xhtml';
 const root = process.cwd();
 const indexPath = path.join(root, 'index.html');
 const manifestPath = path.join(root, 'src', 'legacy', 'migration-manifest.json');
@@ -11,68 +14,99 @@ if (!fs.existsSync(manifestPath)) fail('Missing src/legacy/migration-manifest.js
 
 const html = fs.readFileSync(indexPath, 'utf8');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+const document = parse(html, { sourceCodeLocationInfo: true });
 
-assert(manifest.schemaVersion === 1, 'Unexpected migration manifest schema');
+assert(manifest.schemaVersion === 2, 'Unexpected migration manifest schema');
+assert(manifest.parser === 'parse5@8.0.1', 'Unexpected migration parser/version');
 assert(manifest.source === 'index.html', 'Unexpected migration source');
 assert(sha256(html) === manifest.indexSha256AfterMigration, 'index.html hash differs from migration manifest');
 
-const inlineStyleCount = (html.match(/<style\b/gi) || []).length;
-assert(inlineStyleCount === 0, `Expected 0 inline style tags, found ${inlineStyleCount}`);
+const parsed = collectRelevantNodes(document);
+assert(parsed.inlineStyles.length === 0, `Expected 0 parsed inline style elements, found ${parsed.inlineStyles.length}`);
+assert(parsed.inlineScripts.length === 0, `Expected 0 parsed eligible inline JS elements, found ${parsed.inlineScripts.length}`);
 
-const inlineExecutableScripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
-  .filter(([, attrs]) => !hasAttr(attrs, 'src') && isExecutableJavascript(attrs));
-assert(inlineExecutableScripts.length === 0, `Expected 0 eligible inline JS blocks, found ${inlineExecutableScripts.length}`);
-
+assert(Array.isArray(manifest.styles), 'Manifest styles must be an array');
+assert(Array.isArray(manifest.scripts), 'Manifest scripts must be an array');
 assert(manifest.styles.length === manifest.extractedStyleBlocks, 'Style count does not match manifest');
 assert(manifest.scripts.length === manifest.extractedScriptBlocks, 'Script count does not match manifest');
+assert(parsed.extractedStyleRefs.length === manifest.styles.length,
+  `Parsed stylesheet reference count mismatch: ${parsed.extractedStyleRefs.length} vs ${manifest.styles.length}`);
+assert(parsed.extractedScriptRefs.length === manifest.scripts.length,
+  `Parsed script reference count mismatch: ${parsed.extractedScriptRefs.length} vs ${manifest.scripts.length}`);
+
+const styleHrefs = new Set(parsed.extractedStyleRefs.map(node => getNodeAttr(node, 'href')));
+const scriptSrcs = new Set(parsed.extractedScriptRefs.map(node => getNodeAttr(node, 'src')));
 
 for (const entry of manifest.styles) {
+  assertSafeGeneratedPath(entry.file, 'src/legacy/styles/');
   const abs = path.join(root, entry.file);
   assert(fs.existsSync(abs), `Missing extracted stylesheet ${entry.file}`);
   const body = fs.readFileSync(abs, 'utf8');
   assert(sha256(body) === entry.sha256, `Stylesheet hash mismatch: ${entry.file}`);
-  const href = `./${entry.file}`;
-  assert(html.includes(`href="${href}"`), `index.html does not reference ${entry.file}`);
+  assert(styleHrefs.has(`./${entry.file}`), `index.html does not contain parsed reference to ${entry.file}`);
 }
 
 for (const entry of manifest.scripts) {
+  assertSafeGeneratedPath(entry.file, 'src/legacy/scripts/');
+  assert(['classic', 'module'].includes(entry.scriptMode), `Unknown script mode for ${entry.file}`);
   const abs = path.join(root, entry.file);
   assert(fs.existsSync(abs), `Missing extracted script ${entry.file}`);
   const body = fs.readFileSync(abs, 'utf8');
   assert(sha256(body) === entry.sha256, `Script hash mismatch: ${entry.file}`);
-  const src = `./${entry.file}`;
-  assert(html.includes(`src="${src}"`), `index.html does not reference ${entry.file}`);
-
-  const syntax = spawnSync(process.execPath, ['--check', abs], { encoding: 'utf8' });
-  if (syntax.status !== 0) {
-    fail(`JavaScript syntax check failed for ${entry.file}\n${syntax.stderr || syntax.stdout}`);
-  }
+  assert(scriptSrcs.has(`./${entry.file}`), `index.html does not contain parsed reference to ${entry.file}`);
+  syntaxCheck(entry, abs, body);
 }
 
-const styleRefs = (html.match(/href="\.\/src\/legacy\/styles\/inline-\d+\.css"/g) || []).length;
-const scriptRefs = (html.match(/src="\.\/src\/legacy\/scripts\/inline-\d+\.js"/g) || []).length;
-assert(styleRefs === manifest.styles.length, `index stylesheet reference count mismatch: ${styleRefs} vs ${manifest.styles.length}`);
-assert(scriptRefs === manifest.scripts.length, `index script reference count mismatch: ${scriptRefs} vs ${manifest.scripts.length}`);
+console.log(
+  `SC-031 structure verification PASS: ${manifest.styles.length} parsed styles, `
+  + `${manifest.scripts.length} parsed scripts, 0 eligible inline JS, 0 parsed inline styles.`
+);
 
-console.log(`SC-031 structure verification PASS: ${manifest.styles.length} styles, ${manifest.scripts.length} scripts, 0 executable inline JS, 0 inline style tags.`);
+function collectRelevantNodes(rootNode) {
+  const result = {
+    inlineStyles: [],
+    inlineScripts: [],
+    extractedStyleRefs: [],
+    extractedScriptRefs: []
+  };
 
-function sha256(value) {
-  return crypto.createHash('sha256').update(value).digest('hex');
+  const visit = node => {
+    if (!node || typeof node !== 'object') return;
+    const isHtmlElement = node.namespaceURI === HTML_NS && typeof node.tagName === 'string';
+
+    if (isHtmlElement && node.tagName === 'style' && node.sourceCodeLocation?.startTag) {
+      result.inlineStyles.push(node);
+    }
+
+    if (isHtmlElement && node.tagName === 'script' && node.sourceCodeLocation?.startTag) {
+      const src = getNodeAttr(node, 'src');
+      if (!src && isExecutableJavascriptNode(node)) result.inlineScripts.push(node);
+      if (src?.startsWith('./src/legacy/scripts/inline-')) result.extractedScriptRefs.push(node);
+    }
+
+    if (isHtmlElement && node.tagName === 'link') {
+      const rel = String(getNodeAttr(node, 'rel') || '').toLowerCase().split(/\s+/);
+      const href = getNodeAttr(node, 'href');
+      if (rel.includes('stylesheet') && href?.startsWith('./src/legacy/styles/inline-')) {
+        result.extractedStyleRefs.push(node);
+      }
+    }
+
+    // As in the migrator, do not traverse inert <template>.content in Phase 1.
+    for (const child of node.childNodes || []) visit(child);
+  };
+
+  visit(rootNode);
+  return result;
 }
 
-function hasAttr(attrs, name) {
-  return new RegExp(`(?:^|\\s)${name}(?:\\s*=|\\s|$)`, 'i').test(attrs);
+function getNodeAttr(node, name) {
+  const attr = (node.attrs || []).find(item => String(item.name).toLowerCase() === name.toLowerCase());
+  return attr ? attr.value : null;
 }
 
-function getAttr(attrs, name) {
-  const match = attrs.match(
-    new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i')
-  );
-  return match ? (match[1] ?? match[2] ?? match[3] ?? '') : null;
-}
-
-function isExecutableJavascript(attrs) {
-  const type = (getAttr(attrs, 'type') || '').trim().toLowerCase();
+function isExecutableJavascriptNode(node) {
+  const type = String(getNodeAttr(node, 'type') || '').trim().toLowerCase();
   if (!type) return true;
   return [
     'text/javascript',
@@ -81,6 +115,37 @@ function isExecutableJavascript(attrs) {
     'text/ecmascript',
     'module'
   ].includes(type);
+}
+
+function syntaxCheck(entry, abs, body) {
+  let checkPath = abs;
+  let tempPath = null;
+
+  if (entry.scriptMode === 'module') {
+    tempPath = path.join(os.tmpdir(), `shateki-sc031-${path.basename(entry.file, '.js')}-${process.pid}.mjs`);
+    fs.writeFileSync(tempPath, body, 'utf8');
+    checkPath = tempPath;
+  }
+
+  try {
+    const syntax = spawnSync(process.execPath, ['--check', checkPath], { encoding: 'utf8' });
+    if (syntax.status !== 0) {
+      fail(`JavaScript syntax check failed for ${entry.file}\n${syntax.stderr || syntax.stdout}`);
+    }
+  } finally {
+    if (tempPath) fs.rmSync(tempPath, { force: true });
+  }
+}
+
+function assertSafeGeneratedPath(file, prefix) {
+  assert(typeof file === 'string' && file.startsWith(prefix), `Unexpected generated path: ${String(file)}`);
+  const resolved = path.resolve(root, file);
+  const allowed = path.resolve(root, prefix);
+  assert(resolved.startsWith(`${allowed}${path.sep}`), `Generated path escapes expected directory: ${file}`);
+}
+
+function sha256(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
 }
 
 function assert(condition, message) {
