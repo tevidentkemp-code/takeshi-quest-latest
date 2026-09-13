@@ -14,6 +14,7 @@ on:
       - scripts/split-core-styles.mjs
       - scripts/verify-core-styles.mjs
       - scripts/map-css-ownership.mjs
+      - scripts/map-core-css-sections.mjs
       - scripts/promote-css-domains.mjs
       - scripts/verify-css-domains.mjs
       - scripts/adopt-css-domain-paths.mjs
@@ -27,8 +28,6 @@ on:
       - .github/workflows/sc031-modularize.yml
   workflow_dispatch:
 
-# Read-only by default. The separate commit job receives write permission only
-# after the verification job has completed successfully.
 permissions:
   contents: read
 
@@ -86,6 +85,9 @@ jobs:
       - name: Generate CSS ownership and cascade evidence
         run: node scripts/map-css-ownership.mjs
 
+      - name: Map exact core CSS section boundaries
+        run: node scripts/map-core-css-sections.mjs
+
       - name: Promote first high-confidence CSS domains without runtime changes
         run: node scripts/promote-css-domains.mjs
 
@@ -114,7 +116,7 @@ jobs:
         run: |
           set -euo pipefail
           changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //')"
-          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index\.html|scripts/package-lock\.json|tools/ui-smoke/package-lock\.json|src/(legacy|app|game|live-game|services|ui|styles)/.*|src/core-domain-manifest\.json|docs/architecture/(CORE_SECTION_MAP|CSS_OWNERSHIP_MAP)\.md)$' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index\.html|scripts/package-lock\.json|tools/ui-smoke/package-lock\.json|src/(legacy|app|game|live-game|services|ui|styles)/.*|src/core-domain-manifest\.json|docs/architecture/(CORE_SECTION_MAP|CSS_OWNERSHIP_MAP|CORE_CSS_SECTION_MAP)\.md)$' || true)"
           if [ -n "$bad" ]; then
             echo "Unexpected generated changes outside SC-031 source scope:"
             echo "$bad"
@@ -157,6 +159,7 @@ jobs:
             src/core-domain-manifest.json
             docs/architecture/CORE_SECTION_MAP.md
             docs/architecture/CSS_OWNERSHIP_MAP.md
+            docs/architecture/CORE_CSS_SECTION_MAP.md
 
       - name: Keep SC-031 QA evidence
         if: always()
@@ -170,8 +173,10 @@ jobs:
             src/core-domain-manifest.json
             src/styles/domain-manifest.json
             src/styles/runtime-adoption-manifest.json
+            src/styles/core-css-section-manifest.json
             docs/architecture/CORE_SECTION_MAP.md
             docs/architecture/CSS_OWNERSHIP_MAP.md
+            docs/architecture/CORE_CSS_SECTION_MAP.md
 
   commit-verified-source:
     needs: verify
@@ -204,7 +209,7 @@ jobs:
         run: |
           set -euo pipefail
           changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //')"
-          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index\.html|scripts/package-lock\.json|tools/ui-smoke/package-lock\.json|src/(legacy|app|game|live-game|services|ui|styles)/.*|src/core-domain-manifest\.json|docs/architecture/(CORE_SECTION_MAP|CSS_OWNERSHIP_MAP)\.md)$' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index\.html|scripts/package-lock\.json|tools/ui-smoke/package-lock\.json|src/(legacy|app|game|live-game|services|ui|styles)/.*|src/core-domain-manifest\.json|docs/architecture/(CORE_SECTION_MAP|CSS_OWNERSHIP_MAP|CORE_CSS_SECTION_MAP)\.md)$' || true)"
           if [ -n "$bad" ]; then
             echo "Refusing write: unexpected files in verified artifact:"
             echo "$bad"
@@ -219,6 +224,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add index.html scripts/package-lock.json tools/ui-smoke/package-lock.json \
             src/legacy src/app src/game src/live-game src/services src/ui src/styles \
-            src/core-domain-manifest.json docs/architecture/CORE_SECTION_MAP.md docs/architecture/CSS_OWNERSHIP_MAP.md
+            src/core-domain-manifest.json docs/architecture/CORE_SECTION_MAP.md docs/architecture/CSS_OWNERSHIP_MAP.md docs/architecture/CORE_CSS_SECTION_MAP.md
           git commit -m "SC-031: commit verified modular sources [skip ci]"
           git push origin HEAD:sc031-modular-architecture-migration
