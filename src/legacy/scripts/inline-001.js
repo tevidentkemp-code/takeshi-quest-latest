@@ -18,12 +18,19 @@
   try{ document.addEventListener('visibilitychange', function(){ if(!document.hidden) __sqSetVh(); }, { passive:true }); }catch(e){}
 })();
 
-/* >>> PATCH:ADMIN_KEYPAD_GATE_V1 START */
+/* >>> PATCH:ADMIN_KEYPAD_GATE_V2_SERVER_AUTH START */
 (function(){
   if (window.__sqAdminKeypadPatchLoaded) return;
   window.__sqAdminKeypadPatchLoaded = true;
-  window.__sqAdminAuthed = !!window.__sqAdminAuthed;
-  var SQ_ADMIN_LOCAL_CODE = '4936'; // UI gate only. Real write authority must remain with Supabase/RLS.
+  // UI state only. The actual admin session is held by src/services/admin-security.js
+  // and every destructive action is authorised again by the server.
+  window.__sqAdminAuthed = false;
+
+  function hasLiveAdminSession(){
+    try{
+      return !!(window.__sqAdminAuthed && typeof window.sqAdminSessionActive === 'function' && window.sqAdminSessionActive());
+    }catch(_){ return false; }
+  }
 
   function navigateBackToStart(){
     try{
@@ -70,7 +77,7 @@
 
     var hint = document.createElement('div');
     hint.className = 'muted';
-    hint.textContent = 'Enter local admin code';
+    hint.textContent = 'Enter admin code';
 
     var display = document.createElement('div');
     display.setAttribute('aria-live', 'polite');
@@ -85,7 +92,7 @@
     display.style.textAlign = 'center';
     display.style.fontSize = '1.25rem';
     display.style.fontWeight = '800';
-    display.style.letterSpacing = '.35em';
+    display.style.letterSpacing = '.22em';
     display.style.fontVariantNumeric = 'tabular-nums';
     display.style.boxSizing = 'border-box';
 
@@ -103,6 +110,7 @@
     pad.style.maxWidth = '240px';
 
     var code = '';
+    var pending = false;
 
     function refresh(){
       display.textContent = code.length ? Array(code.length).fill('•').join(' ') : '—';
@@ -119,8 +127,8 @@
       }
     }
 
-    function deny(){
-      error.textContent = 'Incorrect code';
+    function deny(message){
+      error.textContent = message || 'Incorrect code';
       code = '';
       refresh();
     }
@@ -133,16 +141,40 @@
       if (typeof window.openAdminHub === 'function' && !window.openAdminHub.__sqIsGated) return window.openAdminHub();
     }
 
-    function submit(){
-      if (code === SQ_ADMIN_LOCAL_CODE) grant(); else deny();
+    async function submit(){
+      if (pending || code.length !== 8) return;
+      if (typeof window.sqAdminLogin !== 'function'){
+        deny('Admin service unavailable');
+        return;
+      }
+      pending = true;
+      error.textContent = 'Checking…';
+      var attempt = code;
+      try{
+        var result = await window.sqAdminLogin(attempt);
+        if (result && result.ok === true){
+          grant();
+          return;
+        }
+        if (result && result.code === 'rate_limited'){
+          var secs = Number(result.retry_after_seconds || 0);
+          deny(secs > 0 ? ('Too many attempts. Try again in ' + Math.ceil(secs / 60) + ' min.') : 'Too many attempts. Try again later.');
+        } else {
+          deny('Incorrect code');
+        }
+      }catch(_){
+        deny('Admin service unavailable');
+      }finally{
+        pending = false;
+      }
     }
 
     function pushDigit(d){
-      if (code.length >= 4) return;
+      if (pending || code.length >= 8) return;
       error.textContent = '';
       code += String(d);
       refresh();
-      if (code.length === 4) submit();
+      if (code.length === 8) submit();
     }
 
     function makeKey(label, fn, cls){
@@ -159,9 +191,9 @@
     ['1','2','3','4','5','6','7','8','9'].forEach(function(n){
       pad.appendChild(makeKey(n, function(){ pushDigit(n); }));
     });
-    pad.appendChild(makeKey('Clear', function(){ code=''; error.textContent=''; refresh(); }));
+    pad.appendChild(makeKey('Clear', function(){ if (!pending){ code=''; error.textContent=''; refresh(); } }));
     pad.appendChild(makeKey('0', function(){ pushDigit('0'); }));
-    pad.appendChild(makeKey('⌫', function(){ code = code.slice(0,-1); error.textContent=''; refresh(); }));
+    pad.appendChild(makeKey('⌫', function(){ if (!pending){ code = code.slice(0,-1); error.textContent=''; refresh(); } }));
 
     var footer = document.createElement('div');
     footer.className = 'modal-footer';
@@ -170,7 +202,7 @@
     var ret = document.createElement('button');
     ret.className = 'btn';
     ret.textContent = 'Return';
-    ret.onclick = function(){ close(true); };
+    ret.onclick = function(){ if (!pending) close(true); };
     footer.appendChild(ret);
 
     body.append(hint, display, error, pad);
@@ -182,12 +214,12 @@
     modal.tabIndex = 0;
     modal.focus();
 
-    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(true); });
+    overlay.addEventListener('click', function(e){ if (e.target === overlay && !pending) close(true); });
     overlay.addEventListener('keydown', function(e){
-      if (e.key === 'Escape'){ close(true); return; }
+      if (e.key === 'Escape' && !pending){ close(true); return; }
       if (/^[0-9]$/.test(e.key)){ pushDigit(e.key); return; }
-      if (e.key === 'Backspace'){ code = code.slice(0,-1); error.textContent=''; refresh(); return; }
-      if (e.key === 'Enter' && code.length === 4){ submit(); }
+      if (e.key === 'Backspace' && !pending){ code = code.slice(0,-1); error.textContent=''; refresh(); return; }
+      if (e.key === 'Enter' && code.length === 8){ submit(); }
     });
   }
 
@@ -202,7 +234,8 @@
     if (!unsafe) return false;
 
     var gated = function(){
-      if (window.__sqAdminAuthed) return unsafe();
+      if (hasLiveAdminSession()) return unsafe();
+      window.__sqAdminAuthed = false;
       return showAdminKeypad();
     };
     gated.__sqIsGated = true;
@@ -218,6 +251,10 @@
       if (b){
         b.onclick = function(e){
           if (e){ e.preventDefault && e.preventDefault(); e.stopPropagation && e.stopPropagation(); }
+          if (hasLiveAdminSession()){
+            if (typeof window.openAdminHub === 'function') return window.openAdminHub();
+          }
+          window.__sqAdminAuthed = false;
           return showAdminKeypad();
         };
       }
@@ -237,7 +274,8 @@
     document.addEventListener('click', function(e){
       var el = e.target && e.target.closest ? e.target.closest('#adminBtn,#adminCodeBtn,button,a,.home-admin-row') : null;
       if (!looksLikeAdmin(el)) return;
-      if (!window.__sqAdminAuthed){
+      if (!hasLiveAdminSession()){
+        window.__sqAdminAuthed = false;
         e.preventDefault();
         e.stopPropagation();
         if (e.stopImmediatePropagation) e.stopImmediatePropagation();
@@ -262,5 +300,4 @@
   setTimeout(boot, 1000);
   setTimeout(boot, 2500);
 })();
-/* <<< PATCH:ADMIN_KEYPAD_GATE_V1 END */
-
+/* <<< PATCH:ADMIN_KEYPAD_GATE_V2_SERVER_AUTH END */
