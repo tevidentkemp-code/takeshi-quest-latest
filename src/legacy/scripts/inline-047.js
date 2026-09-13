@@ -15,7 +15,7 @@
     const scale = pageBox.height / pager.offsetHeight || 1;
     const viewport = window.visualViewport;
     const bottom = Math.min(pad.getBoundingClientRect().top, viewport ? viewport.height + viewport.offsetTop : innerHeight);
-    const height = Math.max(126, Math.min(900, Math.floor(pager.offsetHeight + (bottom - box.bottom - 10) / scale)));
+    const height = Math.max(126, Math.min(900, Math.floor(pager.offsetHeight + (bottom - box.bottom - 10) / scale));
     if (Math.abs(height - pager.offsetHeight) > 1) panel.style.setProperty('--sqClassicRaceHeight', height + 'px');
   }
   const observer = new ResizeObserver(schedule);
@@ -25,3 +25,18 @@
   if (window.visualViewport) window.visualViewport.addEventListener('resize', schedule, {passive:true});
   schedule();
 })();
+
+/* >>> PATCH:SC031_ADMIN_SERVER_BOUNDARY_LOADER START */
+(function(){
+  if (window.__sqAdminSecurityScriptRequested) return;
+  window.__sqAdminSecurityScriptRequested = true;
+  var script = document.createElement('script');
+  script.src = './src/services/admin-security.js';
+  script.async = false;
+  script.onerror = function(){
+    window.__sqAdminAuthed = false;
+    console.error('SC-031 admin security service failed to load');
+  };
+  document.head.appendChild(script);
+})();
+/* <<< PATCH:SC031_ADMIN_SERVER_BOUNDARY_LOADER END */
