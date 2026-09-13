@@ -97,9 +97,12 @@ async function startMatch(page, games = 1) {
   await page.waitForFunction(() => document.body.dataset.page === 'game', { timeout: 15000 });
   await page.waitForTimeout(2000);
 }
-// Asymmetric scoring so games never end in a draw.
+// Asymmetric scoring so games never end in a draw. strongTurnParity lets a
+// multi-game test keep the same intended winner while the canonical starting
+// player rotates between games; default 0 preserves all existing callers.
 async function playToCompletion(page, opts = {}) {
   let turn = 0;
+  const strongTurnParity = Number.isInteger(opts.strongTurnParity) ? (opts.strongTurnParity & 1) : 0;
   for (let i = 0; i < 160; i++) {
     const info = await page.evaluate(() => ({
       pg: document.body.dataset.page,
@@ -107,7 +110,7 @@ async function playToCompletion(page, opts = {}) {
     }));
     if (info.pg !== 'game' || info.modal) break;
     if (opts.onTurn) await opts.onTurn(page);
-    if (turn % 2 === 1) {
+    if ((turn & 1) !== strongTurnParity) {
       const x3 = await page.$('#pad button.dtX3:not([disabled])');
       if (x3) await x3.click().catch(() => {});
     } else {
