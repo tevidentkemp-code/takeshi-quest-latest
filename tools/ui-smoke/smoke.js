@@ -1,6 +1,7 @@
 // SHATEKI-QUEST smoke suite.
 // Full journey: home -> mode tree -> match card -> match length -> throw order
-// -> live game -> completion overlay -> leaderboard -> game scores -> end match -> home.
+// -> live game 1 -> leaderboard/NEXT GAME -> live game 2 -> leaderboard/END MATCH
+// -> game scores -> end match -> home.
 // Run: node smoke.js   (serve the repo root first, default http://localhost:8123)
 // Exit code 0 = pass. All Supabase traffic is network-blocked by the harness.
 const H = require('./harness');
@@ -22,6 +23,55 @@ function check(name, ok, detail) {
   results.push({ name, ok: !!ok, detail: detail || '' });
   if (!ok) failures++;
   console.log((ok ? 'PASS' : 'FAIL') + '  ' + name + (ok || !detail ? '' : '  — ' + detail));
+}
+
+async function dismissCompletion(page, label) {
+  const gc = await page.$('.sq-gamecomplete-backdrop');
+  check(`${label}: completion overlay appears`, !!gc);
+
+  let usedExplicit = false;
+  const closeBtn = await page.$('.sq-gamecomplete-backdrop [data-action="gcClose"]');
+  if (closeBtn) {
+    await closeBtn.click();
+    usedExplicit = true;
+  } else {
+    await page.evaluate(() => {
+      const ov = document.querySelector('.sq-gamecomplete-backdrop');
+      if (ov) ov.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+  }
+  await page.waitForTimeout(800);
+  check(`${label}: completion overlay dismissible${usedExplicit ? ' (explicit control)' : ' (backdrop only)'}`, !(await page.$('.sq-gamecomplete-backdrop')));
+}
+
+async function finishToLeaderboard(page, label) {
+  const buttons = await page.$$('#pad button');
+  let clicked = false;
+  for (const b of buttons) {
+    const t = (await b.textContent() || '').trim();
+    if (/Finish Game/i.test(t)) {
+      await b.click();
+      clicked = true;
+      break;
+    }
+  }
+  check(`${label}: Finish Game control available`, clicked);
+  await page.waitForFunction(() => document.body.dataset.page === 'leaderboard', { timeout: 15000 }).catch(() => {});
+  check(`${label}: leaderboard reached via Finish Game`, await page.evaluate(() => document.body.dataset.page === 'leaderboard'));
+}
+
+async function leaderboardState(page) {
+  return page.evaluate(() => {
+    const visible = (id) => {
+      const el = document.getElementById(id);
+      return !!el && !el.classList.contains('hidden') && el.offsetParent !== null && getComputedStyle(el).display !== 'none';
+    };
+    return {
+      nextVisible: visible('nextGameBtn'),
+      endVisible: visible('newMatchBtn'),
+      rows: document.querySelectorAll('#lbTable tbody tr').length,
+    };
+  });
 }
 
 (async () => {
@@ -52,7 +102,8 @@ function check(name, ok, detail) {
   await H.addGuests(page, ['TESTA', 'TESTB']);
   check('SELECT MATCH LENGTH enabled with 2 players', await page.evaluate(() => !document.getElementById('startMatchBtn').disabled));
 
-  await H.startMatch(page, 1);
+  // Two-game match deliberately exercises both post-game leaderboard states.
+  await H.startMatch(page, 2);
   check('Live Game reached', await page.evaluate(() => document.body.dataset.page === 'game'));
   check('throw pad built', await page.evaluate(() => document.querySelectorAll('#pad button').length >= 5));
   await page.waitForTimeout(700);
@@ -78,32 +129,35 @@ function check(name, ok, detail) {
   check('Main Menu closes via backdrop', !(await page.$('.sq-menu106-bd')));
   check('Closing Settings leaves no blocking overlay', await page.evaluate(() => !document.querySelector('.modal-backdrop:not(.hidden)')));
 
-  // -- Play to completion
+  // -- Game 1: play to completion and prove intermediate Leaderboard state.
   await H.playToCompletion(page, { onTurn: throwpadChecks.onTurn });
   throwpadChecks.finish();
-  const gc = await page.$('.sq-gamecomplete-backdrop');
-  check('completion overlay appears', !!gc);
+  await dismissCompletion(page, 'Game 1');
+  await finishToLeaderboard(page, 'Game 1');
 
-  // Dismiss overlay: prefer an explicit control (added by P1.1), fall back to backdrop.
-  let usedExplicit = false;
-  const closeBtn = await page.$('.sq-gamecomplete-backdrop [data-action="gcClose"]');
-  if (closeBtn) { await closeBtn.click(); usedExplicit = true; }
-  else {
-    await page.evaluate(() => {
-      const ov = document.querySelector('.sq-gamecomplete-backdrop');
-      if (ov) ov.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    });
-  }
-  await page.waitForTimeout(800);
-  check('completion overlay dismissible' + (usedExplicit ? ' (explicit control)' : ' (backdrop only)'), !(await page.$('.sq-gamecomplete-backdrop')));
+  let lb = await leaderboardState(page);
+  check('Game 1 leaderboard has player rows', lb.rows >= 2, JSON.stringify(lb));
+  check('Game 1 leaderboard shows NEXT GAME', lb.nextVisible, JSON.stringify(lb));
+  check('Game 1 leaderboard hides END MATCH', !lb.endVisible, JSON.stringify(lb));
 
-  // -- Finish to leaderboard
-  const fin = await page.$$('#pad button');
-  for (const b of fin) { const t = (await b.textContent() || '').trim(); if (/Finish Game/i.test(t)) { await b.click(); break; } }
-  await page.waitForFunction(() => document.body.dataset.page === 'leaderboard', { timeout: 15000 }).catch(() => {});
-  check('leaderboard reached via Finish Game', await page.evaluate(() => document.body.dataset.page === 'leaderboard'));
+  // -- NEXT GAME must return to a fresh live game, not Home/setup.
+  await page.click('#nextGameBtn');
+  await page.waitForFunction(() => document.body.dataset.page === 'game', { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(900);
+  check('NEXT GAME returns to Live Game', await page.evaluate(() => document.body.dataset.page === 'game'));
+  check('Game 2 throw pad built', await page.evaluate(() => document.querySelectorAll('#pad button').length >= 5));
 
-  // -- Game Scores popup
+  // -- Game 2: final game must swap NEXT GAME for END MATCH.
+  await H.playToCompletion(page);
+  await dismissCompletion(page, 'Game 2');
+  await finishToLeaderboard(page, 'Game 2');
+
+  lb = await leaderboardState(page);
+  check('Final leaderboard has player rows', lb.rows >= 2, JSON.stringify(lb));
+  check('Final leaderboard hides NEXT GAME', !lb.nextVisible, JSON.stringify(lb));
+  check('Final leaderboard shows END MATCH', lb.endVisible, JSON.stringify(lb));
+
+  // -- Game Scores popup from final leaderboard
   await page.click('#gameScoresBtn').catch(() => {});
   await page.waitForTimeout(800);
   check('Game Scores opens', await page.evaluate(() => !!document.querySelector('.modal-backdrop:not(.hidden)')));
@@ -112,10 +166,14 @@ function check(name, ok, detail) {
 
   // -- End match -> home
   const end = await page.$('#newMatchBtn:not(.hidden)');
+  check('END MATCH control available after final game', !!end);
   if (end) {
     await end.click(); await page.waitForTimeout(700);
     const btns = await page.$$('.modal-backdrop:not(.hidden) button');
-    for (const b of btns) { const t = (await b.textContent() || '').trim().toUpperCase(); if (/YES|END MATCH|CONFIRM/.test(t)) { await b.click(); break; } }
+    for (const b of btns) {
+      const t = (await b.textContent() || '').trim().toUpperCase();
+      if (/YES|END MATCH|CONFIRM/.test(t)) { await b.click(); break; }
+    }
     await page.waitForTimeout(1200);
   }
   check('END MATCH returns Home', await page.evaluate(() => document.body.dataset.page === 'details'));
