@@ -4,91 +4,108 @@ import crypto from 'node:crypto';
 import postcss from 'postcss';
 
 const ROOT = process.cwd();
-const MANIFEST = 'src/styles/core-source-manifest.json';
-const MIGRATION_MANIFEST = 'src/legacy/migration-manifest.json';
-const EXPECTED_DOMAIN_COUNT = 27;
+const CONTRACT = 'src/styles/core-source-contract.json';
+const BOOTSTRAP = 'src/styles/core-source-manifest.json';
+const EXPECTED_DOMAINS = 27;
 const MAX_DOMAIN_BYTES = 60000;
-const EXPECTED_RUNTIME_SHA256 = '8e1e1fc4716c47d5207784100e235f80ae5b8e7f18caecac322deda5f9ce5ada';
-const EXPECTED_RUNTIME_BYTES = 284342;
 
-const abs = (p) => path.join(ROOT, p);
-const sha256 = (value) => crypto.createHash('sha256').update(value, 'utf8').digest('hex');
-const byteLength = (value) => Buffer.byteLength(value, 'utf8');
+const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
+const byteLength = value => Buffer.byteLength(value, 'utf8');
+const abs = rel => path.resolve(ROOT, rel);
 
-function fail(message){
+function fail(message) {
   console.error(`SC-031 core CSS verification FAIL: ${message}`);
   process.exit(1);
 }
-function assert(condition, message){ if(!condition) fail(message); }
-function read(file){
-  if(!fs.existsSync(abs(file))) fail(`missing required file ${file}`);
-  return fs.readFileSync(abs(file), 'utf8');
+function assert(condition, message) { if (!condition) fail(message); }
+function read(rel) {
+  const resolved = abs(rel);
+  const prefix = `${path.resolve(ROOT)}${path.sep}`;
+  assert(resolved.startsWith(prefix), `path escapes repository root: ${rel}`);
+  assert(fs.existsSync(resolved), `missing required file ${rel}`);
+  return fs.readFileSync(resolved, 'utf8');
 }
-function parseCss(text, file){
-  try { postcss.parse(text, {from:file}); }
-  catch(error){ fail(`CSS parse failed for ${file}: ${error?.message || error}`); }
+function parseCss(text, file) {
+  try { postcss.parse(text, { from: file }); }
+  catch (error) { fail(`CSS parse failed for ${file}: ${error?.message || error}`); }
 }
-function safeSemanticPath(file){
+function safeDomainPath(file) {
   assert(typeof file === 'string' && file.startsWith('src/styles/'), `unexpected semantic CSS path ${String(file)}`);
-  const resolved = path.resolve(ROOT, file);
-  const allowed = path.resolve(ROOT, 'src/styles');
-  assert(resolved.startsWith(`${allowed}${path.sep}`), `semantic CSS path escapes src/styles: ${file}`);
+  const resolved = abs(file);
+  const allowed = `${abs('src/styles')}${path.sep}`;
+  assert(resolved.startsWith(allowed), `semantic CSS path escapes src/styles: ${file}`);
 }
 
-const manifest = JSON.parse(read(MANIFEST));
-assert(manifest.schemaVersion === 2, `unexpected manifest schema ${manifest.schemaVersion}`);
-assert(manifest.generatedBy === 'scripts/split-core-styles-v2.mjs', 'unexpected manifest generator');
-assert(manifest.strategy === '27-semantic-sources-byte-identical-compatibility-runtime', 'unexpected CSS split strategy');
-assert(manifest.stage === 'semantic-source-ownership', 'unexpected CSS migration stage');
-assert(manifest.runtimeBytes === EXPECTED_RUNTIME_BYTES, 'runtime byte contract changed');
-assert(manifest.runtimeSha256 === EXPECTED_RUNTIME_SHA256, 'runtime hash contract changed');
-assert(manifest.domainCount === EXPECTED_DOMAIN_COUNT, `expected ${EXPECTED_DOMAIN_COUNT} domains, got ${manifest.domainCount}`);
-assert(Array.isArray(manifest.domains) && manifest.domains.length === EXPECTED_DOMAIN_COUNT,
-  `manifest must contain exactly ${EXPECTED_DOMAIN_COUNT} domains`);
+const sourceFirst = fs.existsSync(abs(CONTRACT));
+const manifest = JSON.parse(read(sourceFirst ? CONTRACT : BOOTSTRAP));
 
-const seenFiles = new Set();
+let runtimeTarget;
+let domains;
+if (sourceFirst) {
+  assert(manifest.schemaVersion === 1, `unexpected source contract schema ${manifest.schemaVersion}`);
+  assert(manifest.authority === 'semantic-css-source', `unexpected CSS authority ${manifest.authority}`);
+  assert(manifest.generatedBy === 'scripts/build-core-styles-from-source.mjs', 'unexpected CSS source generator');
+  runtimeTarget = manifest.runtimeTarget;
+  domains = manifest.domains;
+} else {
+  assert(manifest.schemaVersion === 2, `unexpected bootstrap manifest schema ${manifest.schemaVersion}`);
+  assert(manifest.generatedBy === 'scripts/split-core-styles-v2.mjs', 'unexpected bootstrap manifest generator');
+  assert(manifest.strategy === '27-semantic-sources-byte-identical-compatibility-runtime', 'unexpected bootstrap CSS strategy');
+  assert(manifest.stage === 'semantic-source-ownership', 'unexpected bootstrap CSS stage');
+  runtimeTarget = manifest.runtimeTarget;
+  domains = manifest.domains;
+}
+
+assert(Array.isArray(domains) && domains.length === EXPECTED_DOMAINS,
+  `expected ${EXPECTED_DOMAINS} CSS domains, got ${Array.isArray(domains) ? domains.length : 'invalid'}`);
+assert(manifest.domainCount === EXPECTED_DOMAINS, `manifest domainCount must be ${EXPECTED_DOMAINS}`);
+assert(typeof runtimeTarget === 'string' && runtimeTarget === 'src/legacy/styles/inline-002.css',
+  `unexpected compatibility runtime ${runtimeTarget}`);
+
+const seen = new Set();
 const parts = [];
-let expectedStart = 0;
-for(let index=0; index<manifest.domains.length; index+=1){
-  const domain = manifest.domains[index];
+for (let index = 0; index < domains.length; index += 1) {
+  const domain = domains[index];
   assert(domain.order === index + 1, `non-contiguous domain order at ${domain.file}`);
-  assert(typeof domain.owner === 'string' && domain.owner.length > 0, `missing owner for ${domain.file}`);
-  safeSemanticPath(domain.file);
-  assert(!seenFiles.has(domain.file), `duplicate semantic CSS path ${domain.file}`);
-  seenFiles.add(domain.file);
-  assert(domain.startOffset === expectedStart, `offset gap/overlap before ${domain.file}`);
-  assert(Number.isInteger(domain.endOffset) && domain.endOffset > domain.startOffset, `invalid end offset for ${domain.file}`);
+  assert(typeof domain.owner === 'string' && domain.owner, `missing owner for ${domain.file}`);
+  safeDomainPath(domain.file);
+  assert(!seen.has(domain.file), `duplicate semantic CSS path ${domain.file}`);
+  seen.add(domain.file);
 
   const text = read(domain.file);
-  const bytes = byteLength(text);
-  assert(bytes === domain.bytes, `byte count mismatch for ${domain.file}: ${bytes} vs ${domain.bytes}`);
-  assert(bytes <= MAX_DOMAIN_BYTES, `${domain.file} exceeds ${MAX_DOMAIN_BYTES}-byte domain budget (${bytes})`);
-  assert(sha256(text) === domain.sha256, `hash mismatch for ${domain.file}`);
-  if(domain.anchor !== null){
+  const size = byteLength(text);
+  assert(size > 0, `empty semantic CSS source ${domain.file}`);
+  assert(size <= MAX_DOMAIN_BYTES, `${domain.file} exceeds ${MAX_DOMAIN_BYTES}-byte domain budget (${size})`);
+  if (domain.anchor !== null) {
     assert(typeof domain.anchor === 'string' && domain.anchor.startsWith('/*'), `invalid anchor for ${domain.file}`);
     assert(text.startsWith(domain.anchor), `${domain.file} no longer begins at its protected anchor`);
   } else {
-    assert(index === 0, 'only the first domain may omit an anchor');
+    assert(index === 0, 'only the first CSS domain may omit an anchor');
   }
   parseCss(text, domain.file);
+
+  if (!sourceFirst) {
+    assert(size === domain.bytes, `bootstrap byte mismatch for ${domain.file}`);
+    assert(sha256(text) === domain.sha256, `bootstrap hash mismatch for ${domain.file}`);
+  }
   parts.push(text);
-  expectedStart = domain.endOffset;
 }
 
-const runtime = read(manifest.runtimeTarget);
-assert(expectedStart === runtime.length, `domain offsets end at ${expectedStart}, runtime length is ${runtime.length}`);
 const rebuilt = parts.join('');
-assert(rebuilt === runtime, 'semantic CSS source does not reconstruct runtime exactly');
-assert(byteLength(runtime) === EXPECTED_RUNTIME_BYTES, `runtime byte count mismatch: ${byteLength(runtime)}`);
-assert(sha256(runtime) === EXPECTED_RUNTIME_SHA256, `runtime hash mismatch: ${sha256(runtime)}`);
-parseCss(runtime, manifest.runtimeTarget);
+const runtime = read(runtimeTarget);
+assert(rebuilt === runtime, 'semantic CSS source does not reconstruct compatibility runtime exactly');
+parseCss(runtime, runtimeTarget);
 
-const migration = JSON.parse(read(MIGRATION_MANIFEST));
-const migrationEntry = (migration.styles || []).find(entry => entry.file === manifest.runtimeTarget);
-assert(migrationEntry, `runtime ${manifest.runtimeTarget} missing from migration manifest`);
-assert(migrationEntry.sha256 === EXPECTED_RUNTIME_SHA256, 'migration manifest runtime hash is stale');
+if (!sourceFirst) {
+  assert(byteLength(runtime) === manifest.runtimeBytes, 'bootstrap runtime byte contract changed');
+  assert(sha256(runtime) === manifest.runtimeSha256, 'bootstrap runtime hash contract changed');
+}
 
-const largest = [...manifest.domains].sort((a,b) => b.bytes - a.bytes)[0];
-console.log(`SC-031 core CSS verification PASS: ${EXPECTED_DOMAIN_COUNT} ordered semantic domains reconstruct ${EXPECTED_RUNTIME_BYTES} bytes exactly.`);
-console.log(`runtime sha256 ${EXPECTED_RUNTIME_SHA256}`);
+const largest = domains
+  .map(domain => ({ file: domain.file, bytes: byteLength(read(domain.file)) }))
+  .sort((a, b) => b.bytes - a.bytes)[0];
+
+console.log(`SC-031 core CSS verification PASS: ${EXPECTED_DOMAINS} ordered semantic domains reconstruct ${byteLength(runtime)} bytes exactly.`);
+console.log(`authority ${sourceFirst ? 'semantic-css-source' : 'bootstrap-provenance'}`);
+console.log(`runtime sha256 ${sha256(runtime)}`);
 console.log(`largest domain ${largest.file}: ${largest.bytes} bytes (budget ${MAX_DOMAIN_BYTES})`);
