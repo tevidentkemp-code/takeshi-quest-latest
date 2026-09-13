@@ -7,22 +7,41 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
   if (!fs.existsSync(indexPath)) throw new Error('SC-031 HTML source promotion requires index.html');
   const html = fs.readFileSync(indexPath, 'utf8');
 
-  const boundaries = {
+  const screenBoundaries = {
     homeStart: '    <!-- PAGE 1: GAME DETAILS -->',
     setupStart: '<!-- PAGE 2: PLAYER SELECT -->',
     gameStart: '   <!--PAGE3: GAME -->'
   };
 
-  for (const [name, marker] of Object.entries(boundaries)) assertUnique(html, marker, name);
+  const modalBoundaries = {
+    addPlayerStart: '    <!-- Add Player Modal -->',
+    selectPlayerStart: '<!-- Select Player Modal -->',
+    startGameStart: '<!-- Start Game Modal (Home > START GAME >) -->',
+    matchLengthStart: '<!-- Match Length Modal (Players > Start Match) -->',
+    adminHubStart: '<!-- Admin Hub Modal -->'
+  };
 
-  const homeStart = html.indexOf(boundaries.homeStart);
-  const setupStart = html.indexOf(boundaries.setupStart);
-  const gameStart = html.indexOf(boundaries.gameStart);
+  for (const [name, marker] of Object.entries({ ...screenBoundaries, ...modalBoundaries })) {
+    assertUnique(html, marker, name);
+  }
+
+  const homeStart = html.indexOf(screenBoundaries.homeStart);
+  const setupStart = html.indexOf(screenBoundaries.setupStart);
+  const gameStart = html.indexOf(screenBoundaries.gameStart);
   if (!(homeStart < setupStart && setupStart < gameStart)) {
     throw new Error(`SC-031 HTML boundary order invalid: home=${homeStart}, setup=${setupStart}, game=${gameStart}`);
   }
 
-  const specs = [
+  const addPlayerStart = html.indexOf(modalBoundaries.addPlayerStart);
+  const selectPlayerStart = html.indexOf(modalBoundaries.selectPlayerStart);
+  const startGameStart = html.indexOf(modalBoundaries.startGameStart);
+  const matchLengthStart = html.indexOf(modalBoundaries.matchLengthStart);
+  const adminHubStart = html.indexOf(modalBoundaries.adminHubStart);
+  if (!(gameStart < addPlayerStart && addPlayerStart < selectPlayerStart && selectPlayerStart < startGameStart && startGameStart < matchLengthStart && matchLengthStart < adminHubStart)) {
+    throw new Error(`SC-031 setup-modal boundary order invalid: game=${gameStart}, add=${addPlayerStart}, select=${selectPlayerStart}, startGame=${startGameStart}, matchLength=${matchLengthStart}, admin=${adminHubStart}`);
+  }
+
+  const screenSpecs = [
     {
       key: 'home',
       file: 'src/ui/screens/home/home.html',
@@ -41,14 +60,108 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
     }
   ];
 
-  const entries = specs.map(spec => {
+  const modalSpecs = [
+    {
+      key: 'add-player-modal',
+      file: 'src/ui/modals/setup/add-player-modal.html',
+      start: addPlayerStart,
+      end: selectPlayerStart,
+      rootId: 'addPlayerModal',
+      protectedIds: ['addPlayerModal','npTitle','npCloseBtn','savePlayerBtn']
+    },
+    {
+      key: 'select-player-modal',
+      file: 'src/ui/modals/setup/select-player-modal.html',
+      start: selectPlayerStart,
+      end: startGameStart,
+      rootId: 'selectPlayerModal',
+      protectedIds: ['selectPlayerModal','confirmSelectPlayerBtn','cancelSelectPlayerBtn']
+    },
+    {
+      key: 'start-game-modal',
+      file: 'src/ui/modals/setup/start-game-modal.html',
+      start: startGameStart,
+      end: matchLengthStart,
+      rootId: 'startGameModal',
+      protectedIds: ['startGameModal','startGameModalBody','closeStartGameModalBtn']
+    },
+    {
+      key: 'match-length-modal',
+      file: 'src/ui/modals/setup/match-length-modal.html',
+      start: matchLengthStart,
+      end: adminHubStart,
+      rootId: 'matchLengthModal',
+      protectedIds: ['matchLengthModal','mlHintText','mlFooterBackBtn','mlStartBtn']
+    }
+  ];
+
+  const screenEntries = writeFragments(html, screenSpecs, root);
+  const modalEntries = writeFragments(html, modalSpecs, root);
+
+  verifyExactReconstruction({
+    root,
+    entries: screenEntries,
+    expected: html.slice(homeStart, gameStart),
+    label: 'Home + Match Setup'
+  });
+
+  verifyExactReconstruction({
+    root,
+    entries: modalEntries,
+    expected: html.slice(addPlayerStart, adminHubStart),
+    label: 'setup modal bank'
+  });
+
+  assertNoCrossFragmentDuplicateIds(modalEntries);
+
+  const screenManifest = {
+    schemaVersion: 1,
+    generatedBy: 'scripts/promote-html-screen-sources.mjs',
+    stage: 'source-promotion-only',
+    runtimeChanged: false,
+    indexChanged: false,
+    protectedNextBoundary: screenBoundaries.gameStart,
+    combinedBytes: Buffer.byteLength(html.slice(homeStart, gameStart)),
+    combinedSha256: sha256(html.slice(homeStart, gameStart)),
+    fragments: screenEntries
+  };
+  writeJson(path.join(root, 'src', 'ui', 'screens', 'html-source-manifest.json'), screenManifest);
+
+  const modalSlice = html.slice(addPlayerStart, adminHubStart);
+  const modalManifest = {
+    schemaVersion: 1,
+    generatedBy: 'scripts/promote-html-screen-sources.mjs',
+    stage: 'source-promotion-only',
+    runtimeChanged: false,
+    indexChanged: false,
+    protectedPreviousBoundary: modalBoundaries.addPlayerStart,
+    protectedNextBoundary: modalBoundaries.adminHubStart,
+    combinedBytes: Buffer.byteLength(modalSlice),
+    combinedSha256: sha256(modalSlice),
+    fragments: modalEntries
+  };
+  writeJson(path.join(root, 'src', 'ui', 'modals', 'setup', 'html-source-manifest.json'), modalManifest);
+
+  console.log(`SC-031 HTML source promotion PASS: ${screenEntries.length} screen fragments + ${modalEntries.length} setup modal fragments`);
+  return { screens: screenManifest, setupModals: modalManifest };
+}
+
+function writeFragments(html, specs, root) {
+  return specs.map(spec => {
     const body = html.slice(spec.start, spec.end);
     if (!body) throw new Error(`Empty HTML source fragment: ${spec.file}`);
     if (/<script\b|<link\b/i.test(body)) throw new Error(`Loader markup crossed into ${spec.file}`);
+
+    const allIds = extractIds(body);
+    const duplicateIds = duplicates(allIds);
+    if (duplicateIds.length) throw new Error(`Duplicate id(s) inside ${spec.file}: ${duplicateIds.join(', ')}`);
+
     for (const id of spec.protectedIds) {
-      const occurrences = countId(body, id);
+      const occurrences = allIds.filter(value => value === id).length;
       if (occurrences !== 1) throw new Error(`Protected id ${id} occurs ${occurrences} times in ${spec.file}`);
     }
+    if (!allIds.includes(spec.rootId)) throw new Error(`Root id ${spec.rootId} missing from ${spec.file}`);
+
     const outPath = path.join(root, spec.file);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, body, 'utf8');
@@ -59,32 +172,28 @@ export function promoteHtmlScreenSources({ root = process.cwd() } = {}) {
       bytes: Buffer.byteLength(body),
       sha256: sha256(body),
       protectedIds: spec.protectedIds,
+      ids: allIds,
       startOffset: spec.start,
       endOffset: spec.end
     };
   });
+}
 
+function verifyExactReconstruction({ root, entries, expected, label }) {
   const combined = entries.map(entry => fs.readFileSync(path.join(root, entry.file), 'utf8')).join('');
-  const protectedSlice = html.slice(homeStart, gameStart);
-  if (combined !== protectedSlice) throw new Error('Home + Match Setup fragments do not reconstruct the protected pre-Game screen slice exactly');
+  if (combined !== expected) throw new Error(`${label} fragments do not reconstruct their protected source slice exactly`);
+}
 
-  const manifest = {
-    schemaVersion: 1,
-    generatedBy: 'scripts/promote-html-screen-sources.mjs',
-    stage: 'source-promotion-only',
-    runtimeChanged: false,
-    indexChanged: false,
-    protectedNextBoundary: boundaries.gameStart,
-    combinedBytes: Buffer.byteLength(protectedSlice),
-    combinedSha256: sha256(protectedSlice),
-    fragments: entries
-  };
-  const manifestPath = path.join(root, 'src', 'ui', 'screens', 'html-source-manifest.json');
-  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
-  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-
-  console.log(`SC-031 HTML source promotion PASS: ${entries.length} exact fragments / ${manifest.combinedBytes} bytes`);
-  return manifest;
+function assertNoCrossFragmentDuplicateIds(entries) {
+  const owners = new Map();
+  for (const entry of entries) {
+    for (const id of entry.ids) {
+      if (owners.has(id)) {
+        throw new Error(`Setup modal id ${id} is duplicated across ${owners.get(id)} and ${entry.file}`);
+      }
+      owners.set(id, entry.file);
+    }
+  }
 }
 
 function assertUnique(body, marker, name) {
@@ -93,9 +202,26 @@ function assertUnique(body, marker, name) {
   if (first < 0 || first !== last) throw new Error(`SC-031 HTML marker ${name} must occur exactly once`);
 }
 
-function countId(body, id) {
-  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return (body.match(new RegExp(`\\bid=["']${escaped}["']`, 'g')) || []).length;
+function extractIds(body) {
+  const ids = [];
+  const pattern = /\bid=["']([^"']+)["']/g;
+  for (const match of body.matchAll(pattern)) ids.push(match[1]);
+  return ids;
+}
+
+function duplicates(values) {
+  const seen = new Set();
+  const dupes = new Set();
+  for (const value of values) {
+    if (seen.has(value)) dupes.add(value);
+    seen.add(value);
+  }
+  return [...dupes].sort();
+}
+
+function writeJson(outPath, value) {
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
 function sha256(value) {
