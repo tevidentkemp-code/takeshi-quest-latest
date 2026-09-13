@@ -14,41 +14,57 @@ on:
       - scripts/split-core-styles.mjs
       - scripts/verify-core-styles.mjs
       - scripts/map-css-ownership.mjs
+      - scripts/promote-css-domains.mjs
+      - scripts/verify-css-domains.mjs
       - scripts/package.json
+      - scripts/package-lock.json
+      - tools/ui-smoke/package.json
+      - tools/ui-smoke/package-lock.json
       - docs/architecture/**
       - src/**
       - .github/workflows/sc031-modularize.yml
   workflow_dispatch:
 
+# Read-only by default. The separate commit job receives write permission only
+# after the verification job has completed successfully.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: sc031-modular-migration
   cancel-in-progress: false
 
 jobs:
-  split-and-regress:
+  verify:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 22
+          node-version: 24.21.0
 
       - name: Confirm production ancestry
         shell: bash
         run: |
+          set -euo pipefail
           git fetch origin main
           git merge-base --is-ancestor origin/main HEAD
 
-      - name: Install pinned migration tooling
-        run: npm install --prefix scripts --no-package-lock --ignore-scripts
+      - name: Install deterministic migration tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f scripts/package-lock.json ]; then
+            npm install --prefix scripts --package-lock-only --ignore-scripts
+          fi
+          npm ci --prefix scripts --ignore-scripts
 
       - name: Mechanically extract parsed inline assets when needed
         run: node scripts/migrate-inline-assets.mjs
@@ -65,29 +81,40 @@ jobs:
       - name: Generate JavaScript section and ownership map
         run: node scripts/map-legacy-ownership.mjs
 
-      - name: Generate CSS ownership and cascade evidence before any CSS split
+      - name: Generate CSS ownership and cascade evidence
         run: node scripts/map-css-ownership.mjs
 
-      - name: Guard generated evidence scope
+      - name: Promote first high-confidence CSS domains without runtime changes
+        run: node scripts/promote-css-domains.mjs
+
+      - name: Verify promoted CSS domain sources
+        run: node scripts/verify-css-domains.mjs
+
+      - name: Install deterministic UI test dependencies
+        shell: bash
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          if [ ! -f package-lock.json ]; then
+            npm install --package-lock-only --ignore-scripts
+          fi
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Guard generated source scope
         shell: bash
         run: |
           set -euo pipefail
           changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //')"
-          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index\.html|src/(legacy|app|game|live-game|services|ui)/.*|src/core-domain-manifest\.json|docs/architecture/(CORE_SECTION_MAP|CSS_OWNERSHIP_MAP)\.md)$' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index\.html|scripts/package-lock\.json|tools/ui-smoke/package-lock\.json|src/(legacy|app|game|live-game|services|ui|styles)/.*|src/core-domain-manifest\.json|docs/architecture/(CORE_SECTION_MAP|CSS_OWNERSHIP_MAP)\.md)$' || true)"
           if [ -n "$bad" ]; then
-            echo "Unexpected generated changes outside SC-031 evidence scope:"
+            echo "Unexpected generated changes outside SC-031 source scope:"
             echo "$bad"
             exit 1
           fi
           git diff --check
 
-      - name: Install existing UI test dependencies
-        working-directory: tools/ui-smoke
-        run: |
-          npm install --no-package-lock --ignore-scripts
-          npx playwright install --with-deps chromium
-
-      - name: Run behaviour-regression gate against mapped source
+      - name: Run behaviour-regression gate against modular source
         shell: bash
         env:
           SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts
@@ -103,24 +130,29 @@ jobs:
           node tools/ui-smoke/verify-progression-modes.js | tee sc031-progression-results.txt
           node tools/ui-smoke/verify-pstats.js | tee sc031-pstats-results.txt
 
-      - name: Commit generated evidence only after green regression
-        shell: bash
-        run: |
-          set -euo pipefail
-          generated="$(git status --porcelain --untracked-files=all -- index.html src/legacy src/app src/game src/live-game src/services src/ui src/core-domain-manifest.json docs/architecture/CORE_SECTION_MAP.md docs/architecture/CSS_OWNERSHIP_MAP.md)"
-          if [ -z "$generated" ]; then
-            echo "No generated migration/evidence changes to commit."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html src/legacy src/app src/game src/live-game src/services src/ui src/core-domain-manifest.json docs/architecture/CORE_SECTION_MAP.md docs/architecture/CSS_OWNERSHIP_MAP.md
-          git commit -m "SC-031: add verified CSS cascade ownership evidence [skip ci]"
-          git push origin HEAD:sc031-modular-architecture-migration
+      - name: Package verified generated source
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sc031-generated-source
+          retention-days: 1
+          path: |
+            index.html
+            scripts/package-lock.json
+            tools/ui-smoke/package-lock.json
+            src/legacy
+            src/app
+            src/game
+            src/live-game
+            src/services
+            src/ui
+            src/styles
+            src/core-domain-manifest.json
+            docs/architecture/CORE_SECTION_MAP.md
+            docs/architecture/CSS_OWNERSHIP_MAP.md
 
       - name: Keep SC-031 QA evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sc031-modular-migration-evidence
           path: |
@@ -128,5 +160,56 @@ jobs:
             sc031-*-results.txt
             src/legacy/migration-manifest.json
             src/core-domain-manifest.json
+            src/styles/domain-manifest.json
             docs/architecture/CORE_SECTION_MAP.md
             docs/architecture/CSS_OWNERSHIP_MAP.md
+
+  commit-verified-source:
+    needs: verify
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Confirm branch has not advanced
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin sc031-modular-architecture-migration
+          test "$(git rev-parse origin/sc031-modular-architecture-migration)" = "${GITHUB_SHA}"
+
+      - name: Download verified generated source
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sc031-generated-source
+          path: .
+
+      - name: Commit verified source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //')"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index\.html|scripts/package-lock\.json|tools/ui-smoke/package-lock\.json|src/(legacy|app|game|live-game|services|ui|styles)/.*|src/core-domain-manifest\.json|docs/architecture/(CORE_SECTION_MAP|CSS_OWNERSHIP_MAP)\.md)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Refusing write: unexpected files in verified artifact:"
+            echo "$bad"
+            exit 1
+          fi
+          git diff --check
+          if [ -z "$changed" ]; then
+            echo "No verified generated source changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html scripts/package-lock.json tools/ui-smoke/package-lock.json \
+            src/legacy src/app src/game src/live-game src/services src/ui src/styles \
+            src/core-domain-manifest.json docs/architecture/CORE_SECTION_MAP.md docs/architecture/CSS_OWNERSHIP_MAP.md
+          git commit -m "SC-031: promote verified CSS domains and lock tooling [skip ci]"
+          git push origin HEAD:sc031-modular-architecture-migration
