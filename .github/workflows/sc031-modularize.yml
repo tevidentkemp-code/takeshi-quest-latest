@@ -16,6 +16,8 @@ on:
       - scripts/map-css-ownership.mjs
       - scripts/promote-css-domains.mjs
       - scripts/verify-css-domains.mjs
+      - scripts/adopt-css-domain-paths.mjs
+      - scripts/verify-css-runtime-paths.mjs
       - scripts/package.json
       - scripts/package-lock.json
       - tools/ui-smoke/package.json
@@ -90,6 +92,12 @@ jobs:
       - name: Verify promoted CSS domain sources
         run: node scripts/verify-css-domains.mjs
 
+      - name: Adopt verified semantic CSS paths into runtime
+        run: node scripts/adopt-css-domain-paths.mjs
+
+      - name: Verify semantic CSS runtime paths, bytes and cascade order
+        run: node scripts/verify-css-runtime-paths.mjs
+
       - name: Install deterministic UI test dependencies
         shell: bash
         working-directory: tools/ui-smoke
@@ -161,6 +169,7 @@ jobs:
             src/legacy/migration-manifest.json
             src/core-domain-manifest.json
             src/styles/domain-manifest.json
+            src/styles/runtime-adoption-manifest.json
             docs/architecture/CORE_SECTION_MAP.md
             docs/architecture/CSS_OWNERSHIP_MAP.md
 
@@ -211,5 +220,5 @@ jobs:
           git add index.html scripts/package-lock.json tools/ui-smoke/package-lock.json \
             src/legacy src/app src/game src/live-game src/services src/ui src/styles \
             src/core-domain-manifest.json docs/architecture/CORE_SECTION_MAP.md docs/architecture/CSS_OWNERSHIP_MAP.md
-          git commit -m "SC-031: promote verified CSS domains and lock tooling [skip ci]"
+          git commit -m "SC-031: commit verified modular sources [skip ci]"
           git push origin HEAD:sc031-modular-architecture-migration

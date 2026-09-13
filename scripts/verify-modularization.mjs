@@ -8,18 +8,33 @@ import { parse } from 'parse5';
 const HTML_NS = 'http://www.w3.org/1999/xhtml';
 const root = process.cwd();
 const indexPath = path.join(root, 'index.html');
-const manifestPath = path.join(root, 'src', 'legacy', 'migration-manifest.json');
+const migrationManifestPath = path.join(root, 'src', 'legacy', 'migration-manifest.json');
+const domainManifestPath = path.join(root, 'src', 'styles', 'domain-manifest.json');
+const adoptionManifestPath = path.join(root, 'src', 'styles', 'runtime-adoption-manifest.json');
 
-if (!fs.existsSync(manifestPath)) fail('Missing src/legacy/migration-manifest.json');
+if (!fs.existsSync(migrationManifestPath)) fail('Missing src/legacy/migration-manifest.json');
 
 const html = fs.readFileSync(indexPath, 'utf8');
-const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+const manifest = JSON.parse(fs.readFileSync(migrationManifestPath, 'utf8'));
+const domains = fs.existsSync(domainManifestPath)
+  ? JSON.parse(fs.readFileSync(domainManifestPath, 'utf8'))
+  : { entries: [] };
+const adoption = fs.existsSync(adoptionManifestPath)
+  ? JSON.parse(fs.readFileSync(adoptionManifestPath, 'utf8'))
+  : null;
 const document = parse(html, { sourceCodeLocationInfo: true });
 
 assert(manifest.schemaVersion === 2, 'Unexpected migration manifest schema');
 assert(manifest.parser === 'parse5@8.0.1', 'Unexpected migration parser/version');
 assert(manifest.source === 'index.html', 'Unexpected migration source');
-assert(sha256(html) === manifest.indexSha256AfterMigration, 'index.html hash differs from migration manifest');
+
+if (adoption) {
+  assert(adoption.schemaVersion === 1, 'Unexpected CSS runtime adoption manifest schema');
+  assert(adoption.generatedBy === 'scripts/adopt-css-domain-paths.mjs', 'Unexpected CSS runtime adoption generator');
+  assert(sha256(html) === adoption.indexSha256AfterAdoption, 'index.html hash differs from CSS runtime-adoption manifest');
+} else {
+  assert(sha256(html) === manifest.indexSha256AfterMigration, 'index.html hash differs from migration manifest');
+}
 
 const parsed = collectRelevantNodes(document);
 assert(parsed.inlineStyles.length === 0, `Expected 0 parsed inline style elements, found ${parsed.inlineStyles.length}`);
@@ -29,21 +44,42 @@ assert(Array.isArray(manifest.styles), 'Manifest styles must be an array');
 assert(Array.isArray(manifest.scripts), 'Manifest scripts must be an array');
 assert(manifest.styles.length === manifest.extractedStyleBlocks, 'Style count does not match manifest');
 assert(manifest.scripts.length === manifest.extractedScriptBlocks, 'Script count does not match manifest');
-assert(parsed.extractedStyleRefs.length === manifest.styles.length,
-  `Parsed stylesheet reference count mismatch: ${parsed.extractedStyleRefs.length} vs ${manifest.styles.length}`);
-assert(parsed.extractedScriptRefs.length === manifest.scripts.length,
-  `Parsed script reference count mismatch: ${parsed.extractedScriptRefs.length} vs ${manifest.scripts.length}`);
 
-const styleHrefs = new Set(parsed.extractedStyleRefs.map(node => getNodeAttr(node, 'href')));
-const scriptSrcs = new Set(parsed.extractedScriptRefs.map(node => getNodeAttr(node, 'src')));
+const domainBySource = new Map((domains.entries || []).map(entry => [entry.source, entry]));
+const adoptedSources = new Set((adoption?.entries || []).map(entry => entry.source));
+const expectedStyles = manifest.styles.map(entry => {
+  const domain = domainBySource.get(entry.file);
+  const useSemantic = domain && adoptedSources.has(entry.file);
+  return {
+    source: entry.file,
+    file: useSemantic ? domain.destination : entry.file,
+    sha256: entry.sha256,
+    semantic: Boolean(useSemantic)
+  };
+});
+const expectedStyleHrefs = expectedStyles.map(entry => `./${entry.file}`);
+const expectedScriptSrcs = manifest.scripts.map(entry => `./${entry.file}`);
 
-for (const entry of manifest.styles) {
-  assertSafeGeneratedPath(entry.file, 'src/legacy/styles/');
+const actualStyleHrefs = parsed.stylesheetRefs
+  .map(node => getNodeAttr(node, 'href'))
+  .filter(href => expectedStyleHrefs.includes(href));
+const actualScriptSrcs = parsed.scriptRefs
+  .map(node => getNodeAttr(node, 'src'))
+  .filter(src => expectedScriptSrcs.includes(src));
+
+assert(actualStyleHrefs.length === expectedStyleHrefs.length,
+  `Parsed stylesheet reference count mismatch: ${actualStyleHrefs.length} vs ${expectedStyleHrefs.length}`);
+assert(actualScriptSrcs.length === expectedScriptSrcs.length,
+  `Parsed script reference count mismatch: ${actualScriptSrcs.length} vs ${expectedScriptSrcs.length}`);
+assertSameOrder(actualStyleHrefs, expectedStyleHrefs, 'stylesheet');
+assertSameOrder(actualScriptSrcs, expectedScriptSrcs, 'script');
+
+for (const entry of expectedStyles) {
+  assertSafeGeneratedPath(entry.file, entry.semantic ? 'src/styles/' : 'src/legacy/styles/');
   const abs = path.join(root, entry.file);
-  assert(fs.existsSync(abs), `Missing extracted stylesheet ${entry.file}`);
+  assert(fs.existsSync(abs), `Missing stylesheet ${entry.file}`);
   const body = fs.readFileSync(abs, 'utf8');
   assert(sha256(body) === entry.sha256, `Stylesheet hash mismatch: ${entry.file}`);
-  assert(styleHrefs.has(`./${entry.file}`), `index.html does not contain parsed reference to ${entry.file}`);
 }
 
 for (const entry of manifest.scripts) {
@@ -53,21 +89,21 @@ for (const entry of manifest.scripts) {
   assert(fs.existsSync(abs), `Missing extracted script ${entry.file}`);
   const body = fs.readFileSync(abs, 'utf8');
   assert(sha256(body) === entry.sha256, `Script hash mismatch: ${entry.file}`);
-  assert(scriptSrcs.has(`./${entry.file}`), `index.html does not contain parsed reference to ${entry.file}`);
   syntaxCheck(entry, abs, body);
 }
 
 console.log(
   `SC-031 structure verification PASS: ${manifest.styles.length} parsed styles, `
-  + `${manifest.scripts.length} parsed scripts, 0 eligible inline JS, 0 parsed inline styles.`
+  + `${manifest.scripts.length} parsed scripts, 0 eligible inline JS, 0 parsed inline styles, `
+  + `${adoption?.entries?.length || 0} semantic CSS runtime paths.`
 );
 
 function collectRelevantNodes(rootNode) {
   const result = {
     inlineStyles: [],
     inlineScripts: [],
-    extractedStyleRefs: [],
-    extractedScriptRefs: []
+    stylesheetRefs: [],
+    scriptRefs: []
   };
 
   const visit = node => {
@@ -81,15 +117,13 @@ function collectRelevantNodes(rootNode) {
     if (isHtmlElement && node.tagName === 'script' && node.sourceCodeLocation?.startTag) {
       const src = getNodeAttr(node, 'src');
       if (!src && isExecutableJavascriptNode(node)) result.inlineScripts.push(node);
-      if (src?.startsWith('./src/legacy/scripts/inline-')) result.extractedScriptRefs.push(node);
+      if (src) result.scriptRefs.push(node);
     }
 
     if (isHtmlElement && node.tagName === 'link') {
       const rel = String(getNodeAttr(node, 'rel') || '').toLowerCase().split(/\s+/);
       const href = getNodeAttr(node, 'href');
-      if (rel.includes('stylesheet') && href?.startsWith('./src/legacy/styles/inline-')) {
-        result.extractedStyleRefs.push(node);
-      }
+      if (rel.includes('stylesheet') && href) result.stylesheetRefs.push(node);
     }
 
     // As in the migrator, do not traverse inert <template>.content in Phase 1.
@@ -134,6 +168,12 @@ function syntaxCheck(entry, abs, body) {
     }
   } finally {
     if (tempPath) fs.rmSync(tempPath, { force: true });
+  }
+}
+
+function assertSameOrder(actual, expected, label) {
+  for (let i = 0; i < expected.length; i += 1) {
+    assert(actual[i] === expected[i], `${label} load-order mismatch at position ${i + 1}: expected ${expected[i]}, got ${actual[i]}`);
   }
 }
 
