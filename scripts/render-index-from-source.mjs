@@ -3,167 +3,236 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 const root = process.cwd();
-const manifestRel = 'src/shell/shell-manifest.json';
-const manifestPath = path.join(root, manifestRel);
-const runtimeRel = 'index.html';
-const runtimePath = path.join(root, runtimeRel);
+const contractRel = 'src/shell/source-contract.json';
+const bootstrapRel = 'src/shell/shell-manifest.json';
+const defaultRuntimeRel = 'index.html';
 
 function fail(message) {
-  console.error(`SC-031 source-authority candidate FAILED: ${message}`);
+  console.error(`SC-031 source build FAILED: ${message}`);
   process.exit(1);
 }
 
-function sha256(text) {
-  return crypto.createHash('sha256').update(text).digest('hex');
+function sha256(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
 }
 
-function byteLength(text) {
-  return Buffer.byteLength(text, 'utf8');
+function bytes(value) {
+  return Buffer.byteLength(value, 'utf8');
 }
 
-function readText(rel) {
-  const abs = path.resolve(root, rel);
-  const rootPrefix = `${path.resolve(root)}${path.sep}`;
-  if (abs !== path.resolve(root) && !abs.startsWith(rootPrefix)) {
-    fail(`path escapes repository root: ${rel}`);
+function safeRel(rel, label) {
+  if (typeof rel !== 'string' || !rel) fail(`${label} path is missing`);
+  const normalized = path.posix.normalize(rel.replaceAll('\\', '/'));
+  if (normalized !== rel.replaceAll('\\', '/') || normalized.startsWith('../') || normalized.startsWith('/')) {
+    fail(`${label} path is unsafe or non-canonical: ${rel}`);
   }
-  if (!fs.existsSync(abs)) fail(`required source is missing: ${rel}`);
-  return fs.readFileSync(abs, 'utf8');
+  return normalized;
 }
 
-function countOccurrences(text, needle) {
-  if (!needle) return 0;
-  let count = 0;
+function abs(rel) {
+  const normalized = safeRel(rel, 'repository');
+  const resolved = path.resolve(root, normalized);
+  const rootPrefix = `${path.resolve(root)}${path.sep}`;
+  if (!resolved.startsWith(rootPrefix)) fail(`path escapes repository root: ${rel}`);
+  return resolved;
+}
+
+function read(rel) {
+  const file = abs(rel);
+  if (!fs.existsSync(file)) fail(`required file is missing: ${rel}`);
+  return fs.readFileSync(file, 'utf8');
+}
+
+function write(rel, content) {
+  const file = abs(rel);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, content, 'utf8');
+}
+
+function count(value, token) {
+  let total = 0;
   let from = 0;
   while (true) {
-    const at = text.indexOf(needle, from);
-    if (at < 0) return count;
-    count += 1;
-    from = at + needle.length;
+    const at = value.indexOf(token, from);
+    if (at < 0) return total;
+    total += 1;
+    from = at + token.length;
   }
 }
 
-function hasProtectedId(text, id) {
-  return text.includes(`id="${id}"`) || text.includes(`id='${id}'`);
+function hasId(html, id) {
+  return html.includes(`id="${id}"`) || html.includes(`id='${id}'`);
 }
 
 function parseArgs(argv) {
-  const args = { output: null, allowRuntimeWrite: false };
+  const options = {
+    bootstrapContract: false,
+    verifyCurrent: false,
+    output: null,
+    evidence: null,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === '--output') {
+    if (arg === '--bootstrap-contract') {
+      options.bootstrapContract = true;
+    } else if (arg === '--verify-current') {
+      options.verifyCurrent = true;
+    } else if (arg === '--output' || arg === '--evidence') {
       const value = argv[i + 1];
-      if (!value || value.startsWith('--')) fail('--output requires a repository-relative path');
-      args.output = value;
+      if (!value || value.startsWith('--')) fail(`${arg} requires a repository-relative path`);
+      options[arg.slice(2)] = safeRel(value, arg.slice(2));
       i += 1;
-    } else if (arg === '--allow-runtime-write') {
-      args.allowRuntimeWrite = true;
     } else {
       fail(`unknown argument: ${arg}`);
     }
   }
-  return args;
+  return options;
 }
 
-if (!fs.existsSync(manifestPath)) fail(`${manifestRel} is required`);
-if (!fs.existsSync(runtimePath)) fail(`${runtimeRel} is required`);
+function bootstrapContract() {
+  const bootstrap = JSON.parse(read(bootstrapRel));
+  if (bootstrap.schemaVersion !== 1) fail(`unsupported bootstrap shell schemaVersion: ${bootstrap.schemaVersion}`);
+  if (bootstrap.stage !== 'source-promotion-only') fail(`unexpected bootstrap shell stage: ${bootstrap.stage}`);
+  if (bootstrap.runtimeChanged !== false || bootstrap.sourceAuthorityChanged !== false) {
+    fail('bootstrap shell is not the verified pre-inversion checkpoint');
+  }
+  if (!Array.isArray(bootstrap.fragments) || bootstrap.fragments.length === 0) fail('bootstrap shell has no fragments');
+  if (bootstrap.fragmentCount !== bootstrap.fragments.length) fail('bootstrap fragmentCount mismatch');
 
-let manifest;
-try {
-  manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-} catch (error) {
-  fail(`cannot parse ${manifestRel}: ${error.message}`);
+  const template = read(bootstrap.template);
+  if (bytes(template) !== bootstrap.templateEvidence?.bytes || sha256(template) !== bootstrap.templateEvidence?.sha256) {
+    fail('bootstrap template differs from verified shell evidence');
+  }
+
+  for (const fragment of bootstrap.fragments) {
+    const source = read(fragment.file);
+    if (bytes(source) !== fragment.bytes || sha256(source) !== fragment.sha256) {
+      fail(`bootstrap fragment differs from verified shell evidence: ${fragment.file}`);
+    }
+  }
+
+  const contract = {
+    schemaVersion: 1,
+    authority: 'split-source',
+    generatedBy: 'scripts/render-index-from-source.mjs',
+    template: bootstrap.template,
+    generatedRuntime: bootstrap.currentRuntime || defaultRuntimeRel,
+    fragmentCount: bootstrap.fragments.length,
+    fragments: bootstrap.fragments.map((fragment) => ({
+      file: fragment.file,
+      token: fragment.token,
+      protectedIds: Array.isArray(fragment.protectedIds) ? fragment.protectedIds : [],
+    })),
+    bootstrapEvidence: {
+      source: bootstrapRel,
+      runtimeBytes: bootstrap.index?.bytes ?? null,
+      runtimeSha256: bootstrap.index?.sha256 ?? null,
+      templateBytes: bootstrap.templateEvidence?.bytes ?? null,
+      templateSha256: bootstrap.templateEvidence?.sha256 ?? null,
+    },
+  };
+  write(contractRel, `${JSON.stringify(contract, null, 2)}\n`);
+  return contract;
 }
 
-if (manifest.schemaVersion !== 1) fail(`unsupported shell manifest schemaVersion: ${manifest.schemaVersion}`);
-if (manifest.stage !== 'source-promotion-only') fail(`unexpected shell stage: ${manifest.stage}`);
-if (manifest.runtimeChanged !== false || manifest.sourceAuthorityChanged !== false) {
-  fail('candidate verifier requires the pre-inversion source-promotion checkpoint');
+function loadContract(options) {
+  if (fs.existsSync(abs(contractRel))) return JSON.parse(read(contractRel));
+  if (!options.bootstrapContract) fail(`${contractRel} is missing; use --bootstrap-contract only for the verified inversion checkpoint`);
+  return bootstrapContract();
 }
-if (manifest.currentRuntime !== runtimeRel) fail(`unexpected current runtime: ${manifest.currentRuntime}`);
-if (manifest.template !== 'src/shell/index.template.html') fail(`unexpected template path: ${manifest.template}`);
-if (!Array.isArray(manifest.fragments) || manifest.fragments.length === 0) fail('shell manifest has no fragments');
-if (manifest.fragmentCount !== manifest.fragments.length) fail('fragmentCount does not match fragments array');
 
-const template = readText(manifest.template);
-if (byteLength(template) !== manifest.templateEvidence?.bytes) fail('template byte count differs from pinned evidence');
-if (sha256(template) !== manifest.templateEvidence?.sha256) fail('template hash differs from pinned evidence');
+function validateContract(contract) {
+  if (contract.schemaVersion !== 1) fail(`unsupported source contract schemaVersion: ${contract.schemaVersion}`);
+  if (contract.authority !== 'split-source') fail(`unexpected source authority: ${contract.authority}`);
+  if (contract.generatedBy !== 'scripts/render-index-from-source.mjs') fail(`unexpected contract generator: ${contract.generatedBy}`);
+  safeRel(contract.template, 'template');
+  safeRel(contract.generatedRuntime, 'generatedRuntime');
+  if (!Array.isArray(contract.fragments) || contract.fragments.length === 0) fail('source contract has no fragments');
+  if (contract.fragmentCount !== contract.fragments.length) fail('source contract fragmentCount mismatch');
 
+  const files = new Set();
+  const tokens = new Set();
+  const protectedIds = new Set();
+  for (const fragment of contract.fragments) {
+    safeRel(fragment.file, 'fragment');
+    const expectedToken = `<!-- @SQ:SOURCE ${fragment.file} -->`;
+    if (fragment.token !== expectedToken) fail(`token/file mismatch for ${fragment.file}`);
+    if (files.has(fragment.file)) fail(`duplicate fragment file: ${fragment.file}`);
+    if (tokens.has(fragment.token)) fail(`duplicate source token: ${fragment.token}`);
+    files.add(fragment.file);
+    tokens.add(fragment.token);
+    if (!Array.isArray(fragment.protectedIds)) fail(`protectedIds must be an array: ${fragment.file}`);
+    for (const id of fragment.protectedIds) {
+      if (typeof id !== 'string' || !id) fail(`invalid protected id in ${fragment.file}`);
+      if (protectedIds.has(id)) fail(`protected id is owned by more than one fragment: ${id}`);
+      protectedIds.add(id);
+    }
+  }
+}
+
+const options = parseArgs(process.argv.slice(2));
+const contract = loadContract(options);
+validateContract(contract);
+
+const contractText = read(contractRel);
+const template = read(contract.template);
 const tokenRegex = /<!-- @SQ:SOURCE ([^>]+?) -->/g;
-const templateTokens = [...template.matchAll(tokenRegex)].map(match => match[0]);
-const expectedTokens = manifest.fragments.map(fragment => fragment.token);
+const templateTokens = [...template.matchAll(tokenRegex)].map((match) => match[0]);
+const expectedTokens = contract.fragments.map((fragment) => fragment.token);
 
-if (templateTokens.length !== manifest.fragments.length) {
-  fail(`template contains ${templateTokens.length} source tokens; manifest expects ${manifest.fragments.length}`);
+if (templateTokens.length !== expectedTokens.length) {
+  fail(`template contains ${templateTokens.length} source tokens; contract expects ${expectedTokens.length}`);
 }
-if (new Set(templateTokens).size !== templateTokens.length) fail('template contains duplicate source tokens');
-if (new Set(expectedTokens).size !== expectedTokens.length) fail('manifest contains duplicate source tokens');
-
 for (let i = 0; i < expectedTokens.length; i += 1) {
-  if (templateTokens[i] !== expectedTokens[i]) {
-    fail(`template token order differs from manifest at position ${i + 1}`);
-  }
+  if (templateTokens[i] !== expectedTokens[i]) fail(`template source-token order differs at position ${i + 1}`);
+  if (count(template, expectedTokens[i]) !== 1) fail(`source token must occur exactly once: ${expectedTokens[i]}`);
 }
 
-let candidate = template;
-const seenFiles = new Set();
-for (const [index, fragment] of manifest.fragments.entries()) {
-  if (!fragment || typeof fragment.file !== 'string' || !fragment.file) fail(`fragment ${index + 1} has no file`);
-  if (seenFiles.has(fragment.file)) fail(`fragment file is duplicated: ${fragment.file}`);
-  seenFiles.add(fragment.file);
-
-  const normalized = path.posix.normalize(fragment.file);
-  if (normalized !== fragment.file || normalized.startsWith('../') || normalized.startsWith('/')) {
-    fail(`unsafe or non-canonical fragment path: ${fragment.file}`);
+let runtime = template;
+const fragmentEvidence = [];
+for (const fragment of contract.fragments) {
+  const source = read(fragment.file);
+  for (const id of fragment.protectedIds) {
+    if (!hasId(source, id)) fail(`protected id ${id} is missing from ${fragment.file}`);
   }
-  const expectedToken = `<!-- @SQ:SOURCE ${fragment.file} -->`;
-  if (fragment.token !== expectedToken) fail(`token/file mismatch for ${fragment.file}`);
-  if (countOccurrences(template, fragment.token) !== 1) fail(`token must occur exactly once: ${fragment.file}`);
-
-  const source = readText(fragment.file);
-  if (byteLength(source) !== fragment.bytes) fail(`byte count differs from pinned evidence: ${fragment.file}`);
-  if (sha256(source) !== fragment.sha256) fail(`hash differs from pinned evidence: ${fragment.file}`);
-
-  for (const id of fragment.protectedIds || []) {
-    if (!hasProtectedId(source, id)) fail(`protected id ${id} missing from ${fragment.file}`);
-  }
-
-  candidate = candidate.replace(fragment.token, source);
+  runtime = runtime.replace(fragment.token, source);
+  fragmentEvidence.push({
+    file: fragment.file,
+    bytes: bytes(source),
+    sha256: sha256(source),
+    protectedIds: fragment.protectedIds.length,
+  });
 }
 
-if (tokenRegex.test(candidate)) fail('rendered candidate still contains source tokens');
+if ([...runtime.matchAll(tokenRegex)].length !== 0) fail('generated runtime still contains source tokens');
 
-const candidateBytes = byteLength(candidate);
-const candidateHash = sha256(candidate);
-if (candidateBytes !== manifest.index?.bytes) fail(`rendered byte count ${candidateBytes} differs from pinned runtime ${manifest.index?.bytes}`);
-if (candidateHash !== manifest.index?.sha256) fail(`rendered hash ${candidateHash} differs from pinned runtime ${manifest.index?.sha256}`);
-
-const currentRuntime = fs.readFileSync(runtimePath, 'utf8');
-if (candidate !== currentRuntime) fail('rendered split source is not byte-identical to current index.html');
-
-const args = parseArgs(process.argv.slice(2));
-if (args.output) {
-  const outputRel = path.posix.normalize(args.output.replaceAll('\\', '/'));
-  if (outputRel.startsWith('../') || outputRel.startsWith('/')) fail(`unsafe output path: ${args.output}`);
-  if (outputRel === runtimeRel && !args.allowRuntimeWrite) {
-    fail('refusing to write index.html in candidate stage without --allow-runtime-write');
-  }
-  const outputPath = path.resolve(root, outputRel);
-  const rootPrefix = `${path.resolve(root)}${path.sep}`;
-  if (!outputPath.startsWith(rootPrefix)) fail(`output escapes repository root: ${args.output}`);
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.writeFileSync(outputPath, candidate);
+let currentRuntimeMatch = null;
+const runtimeRel = contract.generatedRuntime || defaultRuntimeRel;
+if (options.verifyCurrent) {
+  const current = read(runtimeRel);
+  currentRuntimeMatch = runtime === current;
+  if (!currentRuntimeMatch) fail(`source-generated runtime differs from current ${runtimeRel}`);
 }
 
-console.log(JSON.stringify({
-  ok: true,
-  stage: 'source-authority-candidate',
-  runtimeChanged: false,
-  sourceAuthorityChanged: false,
-  template: manifest.template,
-  fragments: manifest.fragments.length,
-  renderedBytes: candidateBytes,
-  renderedSha256: candidateHash,
-  byteIdenticalToCurrentRuntime: true,
-  output: args.output || null
-}, null, 2));
+if (options.output) write(options.output, runtime);
+
+const evidence = {
+  schemaVersion: 1,
+  generatedBy: 'scripts/render-index-from-source.mjs',
+  authority: 'split-source',
+  contract: contractRel,
+  contractSha256: sha256(contractText),
+  template: contract.template,
+  templateBytes: bytes(template),
+  templateSha256: sha256(template),
+  generatedRuntime: runtimeRel,
+  runtimeBytes: bytes(runtime),
+  runtimeSha256: sha256(runtime),
+  fragmentCount: fragmentEvidence.length,
+  fragments: fragmentEvidence,
+  verifyCurrent: options.verifyCurrent,
+  currentRuntimeMatch,
+};
+
+if (options.evidence) write(options.evidence, `${JSON.stringify(evidence, null, 2)}\n`);
+console.log(JSON.stringify(evidence, null, 2));

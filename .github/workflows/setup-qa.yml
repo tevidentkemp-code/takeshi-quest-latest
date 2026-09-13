@@ -6,6 +6,7 @@ on:
       - .node-version
       - index.html
       - src/**
+      - scripts/render-index-from-source.mjs
       - tools/ui-smoke/**
       - package.json
       - package-lock.json
@@ -32,6 +33,25 @@ jobs:
         with:
           node-version-file: .node-version
 
+      - name: Materialize compatibility runtime from split source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f src/shell/source-contract.json ]; then
+            node scripts/render-index-from-source.mjs \
+              --output .sc031-setup-index.html \
+              --evidence sc031-setup-source-build.json
+          elif [ -f src/shell/shell-manifest.json ]; then
+            node scripts/render-index-from-source.mjs \
+              --bootstrap-contract \
+              --output .sc031-setup-index.html \
+              --evidence sc031-setup-source-build.json
+          else
+            echo "SC-031 source contract/shell evidence missing"
+            exit 1
+          fi
+          cp .sc031-setup-index.html index.html
+
       - name: Install deterministic test dependencies
         working-directory: tools/ui-smoke
         run: |
@@ -43,7 +63,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git diff --check HEAD^ HEAD -- .github/workflows/setup-qa.yml tools/ui-smoke src index.html
+          git diff --check HEAD^ HEAD -- .github/workflows/setup-qa.yml scripts/render-index-from-source.mjs tools/ui-smoke src index.html
 
       - name: Run setup and full scoring journey offline
         shell: bash
@@ -74,3 +94,4 @@ jobs:
           path: |
             qa-artifacts
             *-results.txt
+            sc031-setup-source-build.json

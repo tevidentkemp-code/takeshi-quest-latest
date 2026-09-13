@@ -1,11 +1,12 @@
-name: SC-031 source authority candidate
+name: SC-031 source authority
 
 on:
   push:
     branches: [sc031-modular-architecture-migration]
     paths:
       - scripts/render-index-from-source.mjs
-      - src/shell/**
+      - src/shell/index.template.html
+      - src/shell/source-contract.json
       - src/ui/**/*.html
       - src/live-game/**/*.html
       - .github/workflows/sc031-source-authority.yml
@@ -15,11 +16,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: sc031-source-authority-candidate
+  group: sc031-source-authority
   cancel-in-progress: false
 
 jobs:
-  verify-source-authority-candidate:
+  verify-source-build:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -41,20 +42,46 @@ jobs:
           git fetch origin main
           git merge-base --is-ancestor origin/main HEAD
 
-      - name: Render runtime candidate from committed split source
+      - name: Record authority transition state
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/render-index-from-source.mjs --output .sc031-source-index.html | tee sc031-source-authority-results.txt
-          cmp -s .sc031-source-index.html index.html
+          if [ -f src/shell/source-contract.json ]; then
+            echo established > /tmp/sc031-authority-state
+          else
+            echo bootstrap > /tmp/sc031-authority-state
+          fi
 
-      - name: Use generated candidate as test runtime
+      - name: Build compatibility runtime from split source
         shell: bash
         run: |
           set -euo pipefail
-          cp .sc031-source-index.html index.html
-          git diff --exit-code -- index.html
-          git diff --check
+          rm -rf sc031-generated sc031-authority-write
+          mkdir -p sc031-generated sc031-authority-write
+          node scripts/render-index-from-source.mjs \
+            --bootstrap-contract \
+            --output sc031-generated/index.html \
+            --evidence sc031-generated/build-evidence.json \
+            | tee sc031-source-authority-results.txt
+          if [ "$(cat /tmp/sc031-authority-state)" = bootstrap ]; then
+            cmp -s sc031-generated/index.html index.html
+          fi
+
+      - name: Stage exact generated write set
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp sc031-generated/index.html sc031-authority-write/index.html
+          cp src/shell/source-contract.json sc031-authority-write/source-contract.json
+          cp sc031-generated/build-evidence.json sc031-authority-write/build-evidence.json
+          test "$(find sc031-authority-write -maxdepth 1 -type f | wc -l | tr -d ' ')" = "3"
+
+      - name: Use source-generated runtime for regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp sc031-generated/index.html index.html
+          git diff --check -- index.html src/shell scripts/render-index-from-source.mjs
 
       - name: Install deterministic UI test dependencies
         shell: bash
@@ -64,7 +91,7 @@ jobs:
           npm ci --ignore-scripts
           npx playwright install --with-deps chromium
 
-      - name: Run full behaviour regression against source-rendered runtime
+      - name: Run full behaviour regression against generated runtime
         shell: bash
         env:
           SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts
@@ -72,7 +99,7 @@ jobs:
           set -euo pipefail
           python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
           server_pid=$!
-          trap 'kill $server_pid || true' EXIT
+          trap 'kill "$server_pid" || true' EXIT
           node tools/ui-smoke/verify-sc014.js | tee sc031-source-setup-results.txt
           node tools/ui-smoke/smoke.js | tee sc031-source-smoke-results.txt
           node tools/ui-smoke/verify-classic-visual-fit.js | tee sc031-source-classic-results.txt
@@ -82,16 +109,87 @@ jobs:
           node tools/ui-smoke/verify-p23.js | tee sc031-source-admin-close-results.txt
           node tools/ui-smoke/verify-n5-stacking.js | tee sc031-source-admin-stacking-results.txt
 
-      - name: Keep source-authority candidate evidence
+      - name: Package verified generated runtime
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sc031-source-authority-write
+          retention-days: 1
+          path: sc031-authority-write/
+
+      - name: Keep source-authority evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: sc031-source-authority-candidate-evidence
+          name: sc031-source-authority-evidence
           retention-days: 7
           path: |
-            .sc031-source-index.html
-            sc031-source-*-results.txt
+            sc031-generated/build-evidence.json
             sc031-source-authority-results.txt
-            src/shell/shell-manifest.json
-            src/services/supabase-contract.json
+            sc031-source-*-results.txt
+            src/shell/source-contract.json
             qa-artifacts
+
+  commit-generated-runtime:
+    needs: verify-source-build
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Confirm branch has not advanced
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin sc031-modular-architecture-migration
+          test "$(git rev-parse origin/sc031-modular-architecture-migration)" = "${GITHUB_SHA}"
+
+      - name: Download verified generated runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sc031-source-authority-write
+          path: sc031-authority-write
+
+      - name: Validate and apply generated write set
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=$'build-evidence.json\nindex.html\nsource-contract.json'
+          actual="$(find sc031-authority-write -maxdepth 1 -type f -printf '%f\n' | sort)"
+          test "$actual" = "$expected"
+          node - <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const evidence = JSON.parse(fs.readFileSync('sc031-authority-write/build-evidence.json', 'utf8'));
+          const runtime = fs.readFileSync('sc031-authority-write/index.html');
+          const contract = fs.readFileSync('sc031-authority-write/source-contract.json');
+          const sha = value => crypto.createHash('sha256').update(value).digest('hex');
+          if (evidence.authority !== 'split-source') throw new Error('unexpected source authority');
+          if (sha(runtime) !== evidence.runtimeSha256) throw new Error('runtime artifact hash mismatch');
+          if (sha(contract) !== evidence.contractSha256) throw new Error('contract artifact hash mismatch');
+          NODE
+          cp sc031-authority-write/index.html index.html
+          mkdir -p src/shell
+          cp sc031-authority-write/source-contract.json src/shell/source-contract.json
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //')"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index\.html|src/shell/source-contract\.json)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Refusing write: unexpected generated files:"
+            echo "$bad"
+            exit 1
+          fi
+          git diff --check -- index.html src/shell/source-contract.json
+          if [ -z "$changed" ]; then
+            echo "Source-generated runtime is already current; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html src/shell/source-contract.json
+          git commit -m "SC-031: commit source-generated runtime [skip ci]"
+          git push origin HEAD:sc031-modular-architecture-migration
