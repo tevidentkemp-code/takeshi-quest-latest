@@ -703,15 +703,17 @@ function thresholdNativeToAmber(){
     }
   }
 
-  // Fit the complete image AND its maximum shake/pulse inside the display.
+  // Special artwork is a DMD banner, not a contained thumbnail: keep its
+  // natural aspect ratio, fill the usable width at every pulse phase, and let
+  // the native canvas crop excess height symmetrically. Small shake/pulse
+  // excursions may crop a few horizontal edge pixels, which is intentional.
   function drawDmdSceneImage(im, age, amp, rateX, rateY, pulseAmp, yAmp){
     if (!im || !im.complete || !im.naturalWidth || !im.naturalHeight) return;
     amp = Math.min(12, Math.max(0, Number(amp) || 0));
-    const inset = 6;
-    const scale = Math.min(
-      (NATIVE_W - 2 * (inset + amp)) / im.naturalWidth,
-      (NATIVE_H - 2 * (inset + amp * yAmp)) / im.naturalHeight
-    ) / (1 + pulseAmp);
+    const insetX = 4;
+    const safeWidth = Math.max(1, NATIVE_W - insetX * 2);
+    const minPulse = Math.max(.8, 1 - Math.abs(Number(pulseAmp) || 0));
+    const scale = safeWidth / im.naturalWidth / minPulse;
     const pulse = 1 + Math.sin(age * .028) * pulseAmp;
     const w = im.naturalWidth * scale * pulse;
     const h = im.naturalHeight * scale * pulse;

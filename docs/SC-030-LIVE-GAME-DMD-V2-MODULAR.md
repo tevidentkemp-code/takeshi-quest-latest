@@ -1,6 +1,6 @@
 # SC-030 — Live Game / DMD V2 modular restart
 
-Status: BUILD/FIX — Phase 1 controller boundary under verification. Runtime integration and production release are not authorised by this document.
+Status: RELEASE CANDIDATE — runtime integration and final visual convergence implemented on the isolated SC-030 branch. Production release remains unauthorised until explicit release approval.
 
 Production baseline at restart: `f641c60002b9dc86ed98e156724200f2af57e2d1` (tree-identical to the SC-031 release tree `e19596c3946da680b24fd4fb990dbe1b9f078cd4`; the two intervening commits only added and immediately removed an accidental documentation marker).
 
@@ -48,7 +48,7 @@ Owns presentation sequencing only:
 - existing Last Dart Hero / Desmond / Voldy image type mapping;
 - visual-shell CSS for the actual top-bar DMD `#sqDmdWrap` / `#sqDmdCanvas`.
 
-It does **not** currently load in the app. Phase 1 must pass independently before any runtime bootstrap is introduced.
+The controller now loads through the source-authoritative DMD bootstrap. Runtime adoption, action responsiveness, Undo/Skip behaviour, semantic CSS ownership and reduced-motion handling are implemented and covered by dedicated regressions.
 
 ## Corrections versus parked PR #32
 
