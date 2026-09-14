@@ -111,6 +111,24 @@ function fakeDocument(){
   console.log('PASS idle baseline / transient separation');
 })();
 
+(function testTransientBackendAdapter(){
+  const calls = [];
+  const host = {
+    __sqDmdShowTransientZones(z,o){ calls.push(['transient',z,o]); },
+    __sqDmdCancelTransientScenes(){ calls.push(['cancel']); },
+    sqDmdShowZones(){ calls.push(['legacy-render']); },
+    __sqDmdHardClearQueue(){ calls.push(['hard-clear']); },
+    sqDmdSetIdle(){ calls.push(['legacy-idle']); }
+  };
+  const backend = DMD.detectExistingBackend(host);
+  assert.equal(backend.transient, true);
+  backend.render({z2:'SAFE',z3:'BASELINE'}, {type:'hold',ms:100});
+  backend.clear();
+  backend.restoreIdle();
+  assert.deepEqual(calls.map(x=>x[0]), ['transient','cancel','cancel']);
+  console.log('PASS non-destructive transient backend adapter');
+})();
+
 (function testVisibilityBinding(){
   const doc = fakeDocument();
   const states = [];

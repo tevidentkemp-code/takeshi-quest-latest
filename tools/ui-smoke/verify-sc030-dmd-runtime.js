@@ -21,6 +21,8 @@ function assertNoUnexpectedErrors(consoleErrs, label) {
       showZones: typeof window.sqDmdShowZones,
       setIdle: typeof window.sqDmdSetIdle,
       hardClear: typeof window.__sqDmdHardClearQueue,
+      transientShow: typeof window.__sqDmdShowTransientZones,
+      transientCancel: typeof window.__sqDmdCancelTransientScenes,
       injectedStyle: !!document.getElementById('sq-dmd-v2-shell-css'),
       version: window.__sqDmdV2?.snapshot?.().version || '',
     }));
@@ -30,6 +32,8 @@ function assertNoUnexpectedErrors(consoleErrs, label) {
     assert.equal(boot.showZones, 'function', 'legacy DMD backend remains available');
     assert.equal(boot.setIdle, 'function', 'legacy idle API remains available');
     assert.equal(boot.hardClear, 'function', 'legacy hard-clear API remains available');
+    assert.equal(boot.transientShow, 'function', 'safe transient renderer channel is available');
+    assert.equal(boot.transientCancel, 'function', 'safe transient cancellation channel is available');
     assert.equal(boot.injectedStyle, false, 'DMD appearance is owned by semantic CSS, not an injected style tag');
     assert.match(boot.version, /^2\.1\.0-sc030-modular$/);
 
@@ -61,6 +65,33 @@ function assertNoUnexpectedErrors(consoleErrs, label) {
     assert.match(before.skin.dotBackgroundImage, /radial-gradient/i, 'semantic dot-matrix surface treatment layers through Classic');
     assert.notEqual(before.skin.boxShadow, 'none', 'semantic cabinet depth is active');
     assert.notEqual(before.skin.canvasFilter, 'none', 'controlled amber canvas treatment is active');
+
+    // Establish a controlled legacy baseline, then prove a controller transient
+    // returns to the same rendered dot pattern rather than blank/stale V2 copy.
+    const amberSignature = () => page.evaluate(() => {
+      const canvas = document.getElementById('sqDmdCanvas');
+      const ctx = canvas.getContext('2d');
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let amber = 0;
+      for (let i=0; i<data.length; i+=4) {
+        if (data[i] > 175 && data[i+1] > 70 && data[i+1] < 225 && data[i+2] < 135 && data[i+3] > 80) amber++;
+      }
+      return amber;
+    });
+    await page.evaluate(() => {
+      window.__sqDmdHardClearQueue?.();
+      window.sqDmdSetIdle?.('BASELINE');
+      window.sqDmdShowZones?.({ z3:'TRUE STATE' }, { type:'hold', ms:40, z3Small:true });
+    });
+    await page.waitForTimeout(420);
+    const baselineAmber = await amberSignature();
+    assert(baselineAmber > 20, 'controlled legacy DMD baseline renders amber dots');
+    await page.evaluate(() => window.__sqDmdV2.emit({ kind:'UNDO' }));
+    await page.waitForFunction(() => window.__sqDmdV2?.snapshot?.().active?.headline === 'THROW UNDONE');
+    await page.waitForTimeout(900);
+    const restoredAmber = await amberSignature();
+    const delta = Math.abs(restoredAmber - baselineAmber);
+    assert(delta <= Math.max(40, baselineAmber * 0.15), 'controller scene restores the legacy DMD baseline');
 
     await page.evaluate(() => {
       window.__sqDmdV2.emit({ kind: 'HIT_SINGLE', points: 20, total: 20 });

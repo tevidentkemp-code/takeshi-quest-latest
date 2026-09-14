@@ -321,17 +321,26 @@ export function createController(options = {}) {
 }
 
 export function detectExistingBackend(host = globalThis) {
+  const hasTransientChannel = !!(
+    host &&
+    typeof host.__sqDmdShowTransientZones === 'function' &&
+    typeof host.__sqDmdCancelTransientScenes === 'function'
+  );
   return {
     render(zones, opts) {
+      if (hasTransientChannel) return host.__sqDmdShowTransientZones(zones, opts);
       if (typeof host.sqDmdShowZones === 'function') return host.sqDmdShowZones(zones, opts);
     },
     clear() {
+      if (hasTransientChannel) return host.__sqDmdCancelTransientScenes();
       if (typeof host.__sqDmdHardClearQueue === 'function') return host.__sqDmdHardClearQueue();
       if (typeof host.sqDmdStop === 'function') return host.sqDmdStop();
     },
     restoreIdle() {
-      if (typeof host.sqDmdSetIdle === 'function') return host.sqDmdSetIdle(host.__sqDmdIdleText || '');
-    }
+      if (hasTransientChannel) return host.__sqDmdCancelTransientScenes();
+      if (typeof host.sqDmdSetIdle === 'function') return host.sqDmdSetIdle('');
+    },
+    transient: hasTransientChannel
   };
 }
 

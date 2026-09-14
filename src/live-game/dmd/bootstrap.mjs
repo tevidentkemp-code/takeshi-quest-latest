@@ -9,7 +9,8 @@ function backendReady(host) {
   return !!(
     host &&
     typeof host.sqDmdShowZones === 'function' &&
-    (typeof host.__sqDmdHardClearQueue === 'function' || typeof host.sqDmdStop === 'function') &&
+    typeof host.__sqDmdShowTransientZones === 'function' &&
+    typeof host.__sqDmdCancelTransientScenes === 'function' &&
     typeof host.sqDmdSetIdle === 'function'
   );
 }

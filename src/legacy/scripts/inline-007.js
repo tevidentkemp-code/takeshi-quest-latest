@@ -1026,6 +1026,49 @@ if (!active || active.type === "idle") {
   window.__sqPlayVoldyLaugh = __sqPlayVoldyLaugh;
   // <<< PATCH:SQ_DMD_VOLDY_AUDIO END
 
+  // >>> PATCH:SC030_DMD_TRANSIENT_CHANNEL START
+  // Presentation-only channel used by the modular DMD controller.
+  // It deliberately does NOT update __sqDmdLastZ2/__sqDmdLastZ3, so once a
+  // transient scene ends the established renderer returns to its real baseline.
+  function __sqDmdShowTransientZones(z, opts){
+    const o = opts || {};
+    const hasZ2 = !!(z && (Object.prototype.hasOwnProperty.call(z,'z2') || Object.prototype.hasOwnProperty.call(z,'zone2')));
+    const hasZ3 = !!(z && (Object.prototype.hasOwnProperty.call(z,'z3') || Object.prototype.hasOwnProperty.call(z,'zone3')));
+    const scene = {
+      __sqControllerTransient: true,
+      type: o.type || 'hold',
+      dir: o.dir || 'fwd',
+      revealMs: (typeof o.revealMs === 'number' ? o.revealMs : undefined),
+      amp: (typeof o.amp === 'number' ? o.amp : undefined),
+      fx: (typeof o.fx === 'string' ? o.fx : undefined),
+      z3Small: !!o.z3Small,
+      z1: __sqDmdLastZ1,
+      z2: hasZ2 ? String((z.z2 ?? z.zone2) ?? '') : __sqDmdLastZ2,
+      z3: hasZ3 ? String((z.z3 ?? z.zone3) ?? '') : __sqDmdLastZ3,
+      ms: +o.ms || (o.type === 'flash' ? DEFAULTS.flashMs : DEFAULTS.holdMs),
+      start: performance.now()
+    };
+
+    // Remove only older controller transients. Preserve legitimate legacy queue
+    // entries that may have been scheduled by the existing end-of-turn flow.
+    for (let i = q.length - 1; i >= 0; i--) {
+      if (q[i] && q[i].__sqControllerTransient) q.splice(i, 1);
+    }
+    active = scene;
+    start();
+    return true;
+  }
+
+  function __sqDmdCancelTransientScenes(){
+    for (let i = q.length - 1; i >= 0; i--) {
+      if (q[i] && q[i].__sqControllerTransient) q.splice(i, 1);
+    }
+    if (active && active.__sqControllerTransient) nextScene();
+    start();
+    return true;
+  }
+  // <<< PATCH:SC030_DMD_TRANSIENT_CHANNEL END
+
   // expose
   // @CANONICAL:DMD_PUBLIC_API
   window.sqDmdShow = show;
@@ -1033,6 +1076,8 @@ if (!active || active.type === "idle") {
   window.sqDmdShowZ1 = (t, o) => showZones({ z1: t }, o);
   window.sqDmdShowZ2 = (t, o) => showZones({ z2: t }, o);
   window.sqDmdShowZ3 = (t, o) => showZones({ z3: t }, o);
+  window.__sqDmdShowTransientZones = __sqDmdShowTransientZones;
+  window.__sqDmdCancelTransientScenes = __sqDmdCancelTransientScenes;
   window.__sqDmdHardClearQueue = function(){
     try{
       window.__sqDmdFlowToken = (Number(window.__sqDmdFlowToken || 0) + 1);
