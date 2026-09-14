@@ -1,0 +1,83 @@
+name: SC-032 DMD V3 Phase 0 QA
+
+on:
+  push:
+    branches: [sc032-dmd-v3-phase0]
+    paths:
+      - src/live-game/dmd/v3/**
+      - tools/dmd-v3-lab/**
+      - tools/ui-smoke/verify-sc032-dmd-v3-*.js
+      - tools/ui-smoke/verify-sc032-dmd-v3-*.mjs
+      - docs/SC-032-**
+      - .github/workflows/sc032-dmd-v3-phase0.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sc032-dmd-v3-phase0
+  cancel-in-progress: true
+
+jobs:
+  phase0-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Verify V3 module syntax and deterministic scene contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check src/live-game/dmd/v3/primitives.mjs
+          node --check src/live-game/dmd/v3/scene-registry.mjs
+          node --check src/live-game/dmd/v3/renderer.mjs
+          node --check src/live-game/dmd/v3/treatment.mjs
+          node --check src/live-game/dmd/v3/engine.mjs
+          node --check tools/dmd-v3-lab/legacy-assets.mjs
+          node --check tools/dmd-v3-lab/lab.mjs
+          node tools/ui-smoke/verify-sc032-dmd-v3-units.mjs | tee sc032-phase0-units.txt
+          git diff --check
+
+      - name: Prove existing production build remains unaffected
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build | tee sc032-phase0-vite-build.txt
+          npm run verify:dist | tee sc032-phase0-dist-verify.txt
+
+      - name: Install browser QA dependencies
+        shell: bash
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run DMD V3 visual lab acceptance
+        shell: bash
+        env:
+          SQ_SCREENSHOTS: ${{ github.workspace }}/sc032-phase0-screenshots
+          SQ_DMD_V3_LAB_URL: http://127.0.0.1:8125/tools/dmd-v3-lab/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8125 --bind 127.0.0.1 >/tmp/sc032-lab-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sc032-dmd-v3-lab.js | tee sc032-phase0-browser.txt
+
+      - name: Keep Phase 0 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sc032-dmd-v3-phase0-evidence
+          retention-days: 14
+          path: |
+            sc032-phase0-*.txt
+            sc032-phase0-screenshots/
