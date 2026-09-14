@@ -9,14 +9,16 @@ import {
 
 assert.deepEqual(
   DMD_V3_RESOLUTIONS.DENSE_256,
-  { id: '256x64', width: 256, height: 64, dotColumns: 128, dotRows: 32 },
-  '256x64 candidate contract',
+  { id: '640x160@256x64', width: 640, height: 160, dotColumns: 256, dotRows: 64 },
+  'balanced candidate keeps 640x160 authoring with 256x64 dot treatment',
 );
 assert.deepEqual(
   DMD_V3_RESOLUTIONS.DENSE_320,
-  { id: '320x80', width: 320, height: 80, dotColumns: 160, dotRows: 40 },
-  '320x80 candidate contract',
+  { id: '640x160@320x80', width: 640, height: 160, dotColumns: 320, dotRows: 80 },
+  'digital candidate keeps 640x160 authoring with 320x80 dot treatment',
 );
+assert.equal(DMD_V3_RESOLUTIONS.DENSE_256.width, DMD_V3_RESOLUTIONS.DENSE_320.width, 'candidate comparison holds logical width constant');
+assert.equal(DMD_V3_RESOLUTIONS.DENSE_256.height, DMD_V3_RESOLUTIONS.DENSE_320.height, 'candidate comparison holds logical height constant');
 
 for (const sceneId of DMD_V3_SCENES) {
   const duration = getSceneDuration(sceneId);
@@ -62,4 +64,4 @@ for (const [sceneId, assetKey] of [['LAST_DART_HERO','lastDart'],['DESMOND','des
   assert.equal(frame.layers.find(layer => layer.kind === 'image')?.assetKey, assetKey, `${sceneId} maps to its own artwork asset`);
 }
 
-console.log('PASS SC-032 DMD V3 deterministic scene/resolution/reduced-motion contracts');
+console.log('PASS SC-032 DMD V3 deterministic scene/smooth-authoring/dot-density/reduced-motion contracts');
