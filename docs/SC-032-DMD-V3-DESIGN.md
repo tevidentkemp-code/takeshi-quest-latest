@@ -1,96 +1,132 @@
 # SC-032 — DMD V3 / Beta-quality digital display
 
-Status: **DESIGN / RESEARCH ONLY** — isolated from SC-030 implementation work. No runtime code changes are authorised on this branch while SC-030 is still being completed/released.
+Status: **PHASE 0 PROTOTYPE / ISOLATED** — runtime prototype exists only on `sc032-dmd-v3-phase0`. It is not imported by the production Live Game and must remain isolated while SC-030 is being completed/released.
 
-Baseline used for design research: SC-030 release-candidate commit `34adef8aa8097aa57cb0bb5fc9afca22cf437266`.
+Original design baseline: SC-030 release-candidate commit `34adef8aa8097aa57cb0bb5fc9afca22cf437266`.
 
 ## TASK
 
-Design the next-generation Shateki Quest Dot Matrix Display so it reaches the same visual quality bar as the Beta Live Game UI while retaining a recognisable arcade/pinball identity.
+Build the next-generation Shateki Quest Dot Matrix Display to the same visual quality bar as the Beta Live Game UI while retaining a recognisable arcade/pinball identity.
 
-The target is **modern digital display first, retro DMD character second**.
+Locked design line:
 
-Locked product direction:
+> **Beta visual quality, DMD personality.**
+
+Target balance:
 
 - approximately 65% modern digital / 35% retro arcade;
-- smoother, higher-density presentation than the current DMD;
-- dot-matrix texture remains visible, but dots are a display treatment rather than the design limitation;
-- motion should feel like the Beta UI: fast, clean, controlled and responsive;
-- 60 Hz-capable animation path using requestAnimationFrame timing, not deliberately stepped 30 fps motion;
-- selective Shateki orange/amber, dark negative space and restrained secondary colour;
+- smooth, high-density scene authoring;
+- dot-matrix texture remains visible, but dots are an output treatment rather than the design limitation;
+- fast, controlled Beta-style motion rather than stepped/juddering animation;
+- 60 Hz-capable timestamp-based animation using `requestAnimationFrame`;
+- Shateki amber/orange, dark negative space and restrained semantic colour;
 - no sci-fi HUD clutter;
-- no invented scoring mechanics, bonuses, momentum, PB pace or random gameplay systems;
-- no changes to scoring, game rules, persistence, Supabase, auth or mode routing;
-- the DMD must never delay the next throw or block the Throwpad;
-- reduced-motion support is mandatory from first implementation;
-- iPhone Safari is a first-class release target.
+- no invented scoring mechanics, bonuses, momentum or fake gameplay systems;
+- no changes to scoring, rules, persistence, Supabase, auth or mode routing;
+- DMD animation must never block the Throwpad or delay the next throw;
+- reduced motion is mandatory from first implementation;
+- iPhone Safari is a first-class eventual release target.
 
-## WHY V3 EXISTS
+---
 
-SC-030 successfully separates presentation sequencing from scoring/game rules and gives the DMD a controlled priority/queue model. That architecture should be preserved.
+# WHY V3 EXISTS
 
-The remaining weakness is the renderer itself. The existing legacy renderer is capable but visually mixed-generation:
+SC-030 gives the DMD the correct presentation boundary: explicit event priority, controlled queueing/pre-emption, stale-scene handling and separation from scoring/game rules.
 
-- native buffer is 640x160;
-- the animation loop uses requestAnimationFrame but intentionally advances DMD motion at a 30 fps-style cadence;
-- text is rendered to a canvas, thresholded into amber pixels and then passed through a round-dot mask;
-- output CSS explicitly uses `image-rendering: pixelated`;
-- special artwork lives inside the legacy renderer and is treated differently from normal text scenes;
-- the renderer contains historical patch layers, queue handling, audio hooks, image loaders, text layout and visual effects in one large ownership area;
-- the current dot mask is rebuilt procedurally on resize;
-- the result has character, but transitions can feel coarse and the display does not visually match the smoother Beta Live Game modules.
+The remaining weakness is primarily the renderer and visual language.
 
-V3 should therefore **retain SC-030 event sequencing while replacing the visual backend with a dedicated scene renderer**.
+The existing DMD:
 
-## EXTERNAL ENGINEERING RESEARCH
+- already uses a **640×160 native buffer specifically for smoother DMD text**;
+- runs through `requestAnimationFrame` but historically advances some motion at a deliberately stepped cadence;
+- renders content, thresholds it toward amber and applies a round-dot mask;
+- still carries legacy renderer ownership, image loaders, historical patch layers and special-case scene code;
+- uses CSS `image-rendering: pixelated` in the old path;
+- treats special artwork differently from normal authored scenes;
+- has character but can feel visually coarse beside the Beta Live Game UI.
 
-The architecture direction is informed by current pinball/display systems rather than copied literally.
+V3 therefore keeps the good high-density authoring idea and replaces the backend with a dedicated scene/treatment architecture.
 
-### Mission Pinball Framework
+A key Phase-0 discovery corrected an early assumption: **lowering the authored scene to 256×64 or 320×80 made the prototype visibly more retro/chunky, which conflicts with the requested product direction.**
 
-Useful ideas:
+The corrected V3 rule is:
+
+```text
+640×160 smooth authored scene
+        -> selectable physical dot treatment
+        -> glow / glass treatment
+        -> visible DMD
+```
+
+---
+
+# EXTERNAL ENGINEERING RESEARCH
+
+The design borrows principles from established pinball/display systems without importing heavyweight frameworks.
+
+## Mission Pinball Framework
+
+Useful principles:
 
 - displays are separate from gameplay logic;
-- slides/scenes have priorities and transitions;
-- reusable widgets are composed into scenes;
-- text, images, shapes and sub-displays are first-class elements;
-- widget properties can be animated;
-- animations can be named/reused.
+- slides/scenes have priority and transitions;
+- reusable widgets compose into scenes;
+- text/images/shapes are first-class objects;
+- animations can be named and reused.
 
-Adopt: declarative scenes, reusable layers/components, named motion primitives, explicit priorities.
+Adopt:
 
-Do not adopt: heavyweight framework/config complexity inappropriate for this web app.
+- declarative scenes;
+- reusable layers;
+- reusable motion primitives;
+- explicit presentation priority.
 
-### FlexDMD
+Do not adopt:
 
-Useful ideas:
+- framework/config complexity that does not suit this web app.
 
-- Stage -> Actors -> Actions model;
-- labels/images/groups are scene objects rather than special-case renderer branches;
+## FlexDMD
+
+Useful principles:
+
+- Stage -> Actors -> Actions;
+- scene elements are objects rather than renderer special cases;
 - actions compose into sequences;
-- render configuration is separate from game logic;
-- rendering can target different output modes.
+- renderer configuration is separate from gameplay logic.
 
-Adopt: small scene graph, composable actions/timelines, clean renderer boundary.
+Adopt:
 
-### DMD Extensions / modern virtual DMD tooling
+- small scene graph;
+- composable timeline actions;
+- clean render boundary.
 
-Useful ideas:
+## DMD Extensions / modern virtual-DMD tooling
 
-- logical source frames are separated from the physical/virtual output treatment;
-- high-resolution display rendering, shaders and scaling are output concerns;
-- colourisation can be a transformation layer rather than content logic;
-- frame pipelines can feed multiple output types.
+Useful principles:
 
-Adopt: scene content -> frame -> DMD treatment -> output.
+- logical source content is separate from physical/virtual output treatment;
+- high-resolution rendering and scaling are output concerns;
+- colour/treatment can be transformed after scene composition.
 
-### Web platform performance
+Adopt:
 
-Use requestAnimationFrame timestamps for time-based animation. Target a steady 60 fps presentation where hardware permits. Background/hidden pages must suspend rendering. Avoid geometry/layout work during every animation frame. Keep the main-thread render budget bounded and measurable.
+- **scene content -> frame -> DMD treatment -> output**.
 
-OffscreenCanvas/worker rendering may be investigated as an optimisation, but it is **not a hard architectural dependency**. The first releasable V3 must have a strong main-thread Canvas2D path on iPhone Safari.
+## Web platform
 
-## TARGET ARCHITECTURE
+Use `requestAnimationFrame` timestamps for time-based animation.
+
+Requirements:
+
+- progress is based on timestamps, not frame counting;
+- hidden/background pages suspend rendering;
+- no layout work in the hot render loop;
+- main-thread render cost stays bounded and measured;
+- OffscreenCanvas/worker rendering may be investigated later but is not required for the first releasable iPhone-safe implementation.
+
+---
+
+# TARGET ARCHITECTURE
 
 ```text
 existing gameplay state/events
@@ -99,24 +135,25 @@ existing gameplay state/events
 SC-030 controller / priority scheduler
           |
           v
-DMD V3 scene adapter
+DMD V3 semantic scene adapter
           |
           v
-scene registry + timeline
+scene registry + deterministic timeline
           |
           v
-logical scene canvas
+640×160 logical Canvas2D scene
           |
           v
-DMD treatment pipeline
+selectable physical dot treatment
+          |
+          v
+restrained glow / glass
           |
           v
 visible output canvas
 ```
 
-### Preserve
-
-Keep the SC-030 controller concepts:
+## Preserve from SC-030
 
 - explicit priorities;
 - equal/higher-priority pre-emption;
@@ -127,125 +164,164 @@ Keep the SC-030 controller concepts:
 - reduced-motion contract;
 - presentation-only ownership.
 
-### Replace / retire incrementally
-
-The legacy renderer should stop being the place where new V3 scenes are authored.
-
-V3 should own:
+## V3 owns
 
 - scene composition;
 - scene timelines;
-- DMD typography;
+- typography;
 - graphics/sprites;
-- per-scene colour treatment;
-- modern motion primitives;
-- frame rendering;
-- dot/glow/glass treatment;
+- semantic palette treatment;
+- motion primitives;
+- logical frame rendering;
+- dot/glow/glass output treatment;
 - V3 visual QA hooks.
 
-Legacy DMD APIs stay available behind a compatibility adapter until every required scene is migrated and parity-proven.
+## V3 never owns
 
-## RENDERING MODEL
+- scoring;
+- current player/dart/round truth;
+- mode semantics;
+- persistence;
+- cloud state;
+- Supabase writes;
+- navigation/game completion rules.
 
-### Logical scene resolution
+Legacy DMD APIs remain available through a compatibility/rollback path until V3 parity is proven.
 
-Initial engineering target: **320 x 80 logical pixels (4:1)**.
+---
+
+# RENDERING MODEL
+
+## Authored scene resolution
+
+**Locked Phase-0 authoring surface: 640×160 (4:1).**
 
 Why:
 
-- materially denser than a classic 128x32 DMD;
-- enough resolution for smoother Beta-quality typography and graphic motion;
-- maps efficiently to current mobile widths;
-- keeps the scene buffer small enough for reliable mobile Canvas2D performance;
-- preserves a genuine DMD texture when the output dot mask is applied.
+- it preserves the existing high-density text advantage;
+- it supports smooth Beta-style typography and number motion;
+- it prevents the dot grid from dictating scene design;
+- it maps directly to the existing DMD geometry;
+- it is still a tiny Canvas2D surface by modern UI standards.
 
-Do not hard-lock this until the prototype comparison includes 256x64 vs 320x80. The chosen resolution must be selected by visual evidence + performance data, not nostalgia.
+The authored scene resolution is **not** what Phase 0 is choosing anymore.
 
-### Important change from V2
+## Phase-0 dot treatments
 
-Do **not** binary-threshold every normal scene into hard on/off pixels before output.
+Both candidates receive the exact same 640×160 authored frame.
 
-Preserve luminance/alpha levels through the logical scene and let the DMD output layer produce the individual illuminated dots. This enables:
+### Candidate A — Balanced
 
-- smoother text edges;
-- softer fades;
-- controlled brightness gradients;
-- more polished score-count animations;
-- better photographic/sprite treatment;
-- modern digital motion without losing the dot matrix.
+- authored scene: 640×160;
+- dot grid: **256×64**;
+- stronger visible physical-dot identity;
+- intended to test the best balance of modern content and obvious DMD texture.
 
-### Dot treatment
+### Candidate B — Digital
 
-Use a cached/repeating dot mask or equivalent precomputed output treatment.
+- authored scene: 640×160;
+- dot grid: **320×80**;
+- finer dot texture;
+- intended to test the smoother/more digital end of the requested direction.
+
+No candidate wins automatically because it has more dots.
+
+The selected treatment must be judged at **actual phone CSS size**, not only enlarged desktop screenshots.
+
+## Luminance / alpha
+
+Do not binary-threshold normal V3 scene content before treatment.
+
+Preserve luminance and alpha through the logical frame so V3 can provide:
+
+- smooth text edges;
+- controlled fades;
+- brightness gradients;
+- number tweening;
+- better artwork processing;
+- smooth digital motion.
+
+The physical-dot layer supplies DMD character afterward.
+
+## Dot treatment
 
 Requirements:
 
-- no per-frame construction of thousands of radial gradients;
-- dot grid remains stable during animation;
-- dot size/spacing scales with DPR/output dimensions;
-- source animation moves behind/through a stable physical display grid;
-- optional low-strength persistence/glow is composited after the primary frame;
-- scanlines/glass are subtle; they must not lower readability.
+- stable dot grid;
+- cached/precomputed mask;
+- no per-frame construction of thousands of gradients;
+- authored content moves underneath a stationary physical display grid;
+- dot size/spacing scales from controlled treatment parameters;
+- restrained glow after primary dot composition;
+- glass/scan treatment must remain subtle and never lower readability.
 
-### Output scaling
+## Special-art processing
 
-- logical content should retain its aspect ratio;
-- visible canvas should be DPR aware;
-- remove the dependence on CSS `image-rendering: pixelated` for the modern path;
-- the dot treatment itself provides the pixel/DMD character;
-- never stretch typography non-uniformly merely to fill the shell.
+Last Dart Hero / Desmond / Voldy must not be re-filtered from full source artwork on every animation frame.
 
-## SCENE ENGINE
+Prototype requirement already adopted:
 
-Create a small declarative scene system, not a general game engine.
+- decode image once;
+- preprocess contrast/tint once per image+treatment;
+- cache result;
+- animate crop/scale/position only during frames.
 
-Recommended concepts:
+Production assets should eventually move out of legacy source-code blobs into explicit owned assets/manifests.
 
-### Scene
+## Output scaling
+
+- retain 4:1 aspect ratio;
+- canvas must remain DPR-aware when integrated;
+- no dependency on CSS `image-rendering: pixelated` in V3;
+- never non-uniformly stretch typography to fill the shell;
+- keep the accepted SC-030 shell footprint unless product review proves a shell change is necessary.
+
+---
+
+# SCENE ENGINE
+
+V3 uses a deliberately small declarative scene system.
+
+## Scene
 
 A scene defines:
 
 - id;
 - duration;
-- priority class inherited from controller;
-- background treatment;
+- controller priority class;
 - layers;
-- timeline;
+- deterministic timeline;
 - optional reduced-motion variant;
-- optional completion/restoration behaviour.
+- completion/restoration behaviour.
 
-### Layer types
-
-Keep the first implementation intentionally small:
+## Initial layer primitives
 
 - `text`
 - `number`
-- `shape`
+- `line/shape`
+- `ring`
 - `image`
-- `sprite`
-- `group`
+- later bounded `sprite/group` support only if required.
 
-Do not build an unconstrained particle engine. Any burst/ripple effect should be a bounded reusable primitive.
+Do not build a general particle engine.
 
-### Motion primitives
+## Initial motion primitives
 
-First releasable set:
+- fade;
+- translate;
+- scale;
+- reveal/wipe;
+- number tween;
+- brightness pulse;
+- bounded short jitter/glitch;
+- radial/ring pulse;
+- scan/sweep.
 
-- fade
-- translate
-- scale
-- reveal/wipe
-- number tween/count
-- brightness pulse
-- short shake/glitch (rare, amplitude-limited)
-- radial/ring pulse
-- scan/sweep
+All motion is timestamp-based and deterministic.
 
-Every primitive must be timestamp-based and deterministic.
+## Easing
 
-### Easing
-
-Default visual motion should use clean ease-out / cubic curves similar to the Beta Live Game UI.
+Default movement uses clean ease-out/cubic/quint curves comparable with the Beta UI.
 
 Avoid:
 
@@ -253,370 +329,306 @@ Avoid:
 - repeated wobble;
 - large shake;
 - slow cinematic transitions;
-- anything which makes input feel locked while a scene completes.
+- anything that makes the game feel locked behind animation.
 
-## VISUAL LANGUAGE
+---
+
+# VISUAL LANGUAGE
 
 Design line: **Beta visual quality, DMD personality**.
 
-### Palette
+## Palette
 
 Primary:
 
-- Shateki amber/orange for active DMD illumination.
+- Shateki amber/orange.
 
-Supporting colours should be rare and semantic:
+Rare semantic accents:
 
 - warm white / pale amber for highest-intensity numerics;
-- existing Beta green for strongly positive/confirmed states where useful;
-- restrained red for miss/error states;
-- no rainbow/RGB arcade treatment by default.
+- existing Beta green for genuinely positive/record states;
+- restrained red for miss/error states.
 
-The display should still read as one coherent machine, not a miniature LCD dashboard.
+No rainbow/RGB default treatment.
 
-### Typography
+## Typography
 
-- use the Beta UI as the quality reference;
-- large numeric score should be the strongest object in hit scenes;
-- labels should be short and secondary;
-- avoid long all-caps sentences where a two-beat scene works better;
-- use a locally available/bundled font path — no new runtime dependency on a remote font service;
-- evaluate a clean condensed/digital face against the existing Beta numeric language;
+- Beta UI is the quality reference;
+- score/number is the strongest object in ordinary hit scenes;
+- labels are short and secondary;
+- no long all-caps sentence when a short two-beat scene works better;
+- no new remote-font runtime dependency;
 - text must remain legible at the narrowest supported phone width.
 
-### Shell
+## Motion principles
 
-Keep the accepted SC-030 machine bezel footprint unless a later visual review proves a shell change is necessary.
+1. Immediate acknowledgement.
+2. Ordinary scenes settle in roughly 180–550ms.
+3. No input lock.
+4. 60 Hz-capable timestamp motion.
+5. Larger motion reserved for genuinely larger events.
+6. Reduced motion preserves information while removing unnecessary spatial motion.
+7. Idle state remains calm.
 
-V3 should improve the content inside the DMD before changing the entire Live Game layout again.
+---
 
-## MOTION PRINCIPLES
+# PHASE-0 SCENE CATALOGUE
 
-1. **Immediate response** — visual acknowledgement begins within the same interaction frame whenever possible.
-2. **Short scenes** — ordinary throws should settle in roughly 200-550 ms.
-3. **No input lock** — the user may continue throwing while low-priority animation finishes; controller pre-emption owns scene replacement.
-4. **60 Hz-capable** — motion is timestamp based and visually smooth.
-5. **Meaningful hierarchy** — bigger motion is reserved for Bull / achievements / records / game win.
-6. **Reduced motion** — preserve information, remove unnecessary spatial/flash motion.
-7. **No perpetual noise** — idle state should be alive but calm.
+The prototype currently authors these nine representative scenes:
 
-## EVENT / SCENE CATALOGUE
+- PLAYER UP;
+- SINGLE;
+- TREBLE;
+- BULLSEYE;
+- MISS;
+- PERSONAL BEST;
+- LAST DART HERO;
+- DESMOND;
+- VOLDY.
 
-These are the first required authored scenes.
+These are deliberately representative rather than the complete eventual production catalogue.
 
-### Idle / baseline
+## PLAYER UP
 
-#### PLAYER UP
+- player identity primary;
+- target secondary;
+- calm baseline composition;
+- no perpetual marquee.
 
-Visual:
-
-- player name/code resolves cleanly;
-- current target shown as secondary information;
-- subtle low-frequency scan/sweep or breathing intensity only;
-- no continuous marquee unless content genuinely cannot fit.
-
-Duration: persistent baseline.
-
-#### TARGET CHANGE / ROUND INTRO
-
-For standard numbered rounds:
-
-- target numeral takes focus;
-- concise `ROUND` context;
-- short lateral/reveal transition.
-
-For Doubles / Trebles / Bull:
-
-- stronger authored intro;
-- target symbol/word + round label;
-- 450-700 ms;
-- must not block immediate scoring input.
-
-### Ordinary scoring
-
-#### SINGLE
+## SINGLE
 
 - large points number;
-- small `SINGLE` label;
-- brief brightness resolve;
-- visit total updates underneath or as secondary numeric.
+- short `SINGLE` label;
+- visit/total secondary;
+- target 220–320ms.
 
-Target: 220-320 ms.
-
-#### DOUBLE
+## TREBLE
 
 - large points number;
-- short two-beat ring/pulse;
-- `DOUBLE` secondary label;
-- stronger than Single, still fast.
+- focused radial pulse;
+- visit total can tween;
+- smooth rather than explosive;
+- target 320–450ms.
 
-Target: 280-380 ms.
+## BULLSEYE
 
-#### TREBLE
+- `50` primary;
+- controlled ring language;
+- highest ordinary-hit intensity;
+- target 420–550ms.
 
-- large points number;
-- focused radial pulse / sweep;
-- `TREBLE` secondary label;
-- visit total tween/update;
-- smooth, not explosive.
+## MISS
 
-Target: 320-450 ms.
+- quick digital X/error cue;
+- concise `MISS`;
+- restrained red;
+- target 180–260ms.
 
-#### OUTER BULL
-
-- `25` large;
-- circular/ring language;
-- `OUTER BULL` secondary.
-
-Target: 360-460 ms.
-
-#### BULLSEYE
-
-- `50` large;
-- controlled circular pulse;
-- `BULLSEYE` resolve;
-- highest ordinary-hit intensity.
-
-Target: 420-550 ms.
-
-### Miss / control actions
-
-#### MISS
-
-- quick digital X / short error-line or micro-glitch;
-- `MISS` appears briefly;
-- next dart state follows immediately;
-- avoid a giant full-screen flashing red card.
-
-Target: 180-260 ms.
-
-#### SCRATCH / MISS X3
-
-- three compact X marks or progressive strike treatment;
-- `SCRATCH` / `NO SCORE`;
-- slightly stronger than ordinary Miss.
-
-Target: 320-480 ms.
-
-#### UNDO
-
-- score/mark reverses or retracts cleanly;
-- `UNDONE` / `RESTORED` secondary copy;
-- restored authoritative state becomes visible immediately.
-
-Target: 220-320 ms.
-
-#### SKIP
-
-- fast forward/sweep treatment;
-- `TURN SKIPPED`;
-- next player appears without waiting for scene completion.
-
-Target: 240-360 ms.
-
-### Visit / competitive scenes
-
-#### VISIT COMPLETE
-
-Only show when useful. Do not make every third dart feel slower.
-
-- visit score large;
-- optional total beneath;
-- transition straight into next player baseline.
-
-Target: 350-500 ms.
-
-#### NEW LEADER
-
-- leader name/code;
-- lead margin;
-- stronger highlight sweep;
-- no confetti.
-
-Target: 500-700 ms.
-
-#### LEVEL
-
-- symmetrical / centred presentation;
-- scoreline secondary.
-
-Target: 450-650 ms.
-
-### Achievement / record
-
-#### PERSONAL BEST
+## PERSONAL BEST
 
 - score first;
-- `PERSONAL BEST` resolves after/beneath;
-- premium but restrained brightness/pulse treatment.
+- premium restrained green/amber treatment;
+- number tween where appropriate;
+- target 850–1100ms.
 
-Target: 850-1100 ms.
+## Special scenes
 
-#### SHATEKI RECORD
+Last Dart Hero, Desmond and Voldy are retained as product identity moments.
 
-- highest record treatment;
-- score + `NEW SHATEKI RECORD`;
-- use full display confidently but keep copy readable.
+Common treatment:
 
-Target: 1000-1300 ms.
-
-#### GAME WON / MATCH WON
-
-- winner first;
-- final score secondary;
-- strongest clean completion scene;
-- no unnecessary prolonged lockout.
-
-Target: 1100-1500 ms.
-
-## SPECIAL SHATEKI SCENES
-
-Last Dart Hero, Desmond and Voldy remain part of the product identity.
-
-V3 treatment should stop thinking of these as raw photos placed into the DMD.
-
-Preferred pipeline:
-
-1. load/source artwork as a real asset rather than another renderer code blob where practical;
-2. crop intentionally for the scene;
-3. map contrast/brightness for DMD readability;
-4. pass it through the same physical dot treatment as every other V3 scene;
-5. use controlled pan/zoom/reveal rather than large random shake;
-6. preserve recognition of the source artwork;
-7. apply only minimal supporting text.
+1. real decoded source image;
+2. intentional crop;
+3. contrast/brightness mapping;
+4. cached tint/preprocessing;
+5. same physical dot treatment as all other V3 scenes;
+6. controlled reveal/pan/zoom;
+7. minimal supporting copy.
 
 ### Last Dart Hero
 
-- fast hero reveal;
-- subtle forward zoom / highlight sweep;
-- `LAST DART HERO` secondary if needed;
+- hero reveal;
+- subtle forward resolve;
 - no violent judder.
 
 ### Desmond
 
-- image resolves through dots;
-- short lateral/brightness reveal;
-- `DESMOND DELIGHT` as supporting copy;
-- comedic timing comes from reveal, not visual mess.
+- face/image resolves through dots;
+- comedic timing from reveal, not visual mess.
 
 ### Voldy
 
-- darker contrast / reveal treatment;
-- controlled short shake or glitch may be retained;
-- audio remains best-effort and must never block rendering/gameplay;
-- no remote-audio requirement for scene correctness.
+- darker/meaner treatment;
+- small bounded jitter may remain;
+- audio is best-effort only and never required for scene correctness.
 
-## COPY PRINCIPLES
+---
 
-- default to 1-4 words;
+# EVENTUAL PRODUCTION SCENE CATALOGUE
+
+Phase 1–3 must expand the engine to include:
+
+- DOUBLE;
+- OUTER BULL;
+- SCRATCH / MISS X3;
+- UNDO;
+- SKIP;
+- VISIT COMPLETE where useful;
+- numbered round intro;
+- DOUBLES / TREBLES / BULL round intro;
+- NEW LEADER;
+- LEVEL;
+- SHATEKI RECORD;
+- GAME WON;
+- MATCH WON;
+- calm idle/attract states.
+
+Copy rules:
+
+- default to 1–4 words;
 - score/number before explanation where useful;
 - avoid repeating information already obvious elsewhere in Live Game;
-- never scroll ordinary gameplay copy if it can be fitted/rephrased;
-- reserve marquee behaviour for attract/idle or genuinely exceptional content;
-- keep humour in named Shateki moments, not every normal dart.
+- do not scroll normal gameplay copy if it can be fitted/rephrased;
+- humour belongs in named Shateki moments, not every dart.
 
-## PERFORMANCE BUDGET
+---
 
-The V3 renderer must be designed and tested as a mobile UI component, not a desktop demo.
+# PERFORMANCE BUDGET
 
-Release targets:
+V3 is a mobile gameplay component, not a desktop animation demo.
 
-- animation path capable of 60 fps on supported devices;
-- no fixed 30 fps stepping in normal mode;
-- frame progress derived from requestAnimationFrame timestamps;
-- no DOM layout reads/writes inside the hot render loop except unavoidable canvas size/device checks outside active frames;
-- logical scene frame reuse where content is static;
-- dot mask/glass/persistence resources cached;
-- no dynamic allocation storm per frame;
-- no renderer-owned network fetch required for a scoring scene;
-- rendering suspends while document is hidden;
-- reduced-motion rendering uses materially less motion/work;
-- V3 must not degrade Throwpad response time.
+## Runtime principles
 
-Synthetic QA budget:
+- timestamp-based `requestAnimationFrame`;
+- no fixed 30fps stepping in normal mode;
+- no DOM layout reads/writes in the active render loop;
+- stable cached dot mask;
+- cached special-art preprocessing;
+- avoid high-frequency allocation storms;
+- no network fetch required for ordinary scoring scenes;
+- hidden document suspends rendering;
+- V3 must not degrade Throwpad response.
 
-- no DMD-triggered long task >= 50 ms during the standard interaction sequence in the automated environment;
-- collect frame interval/render-cost telemetry during a deterministic animation fixture;
-- investigate any p95 interval materially above a 60 Hz frame budget;
-- physical iPhone Safari smoke remains mandatory before release.
+## Phase-0 automated render gate
 
-## ACCESSIBILITY / REDUCED MOTION
+Benchmark methodology:
 
-Reduced-motion is a first-class scene variant.
+1. preload/decode all special assets;
+2. warm every scene/artwork path;
+3. take one render sample per `requestAnimationFrame` boundary;
+4. alternate candidate order to remove first/second bias;
+5. attribute worst samples back to scene/time.
 
-For reduced motion:
+Acceptance:
 
-- remove shake, large translation, zoom and repeated pulses;
-- retain information hierarchy and colour changes;
-- allow short opacity/brightness transitions where safe;
-- number/state changes can update directly;
-- never remove essential feedback.
+- each candidate renderer p95 < **8ms**;
+- each candidate renderer p99 < **16.67ms**;
+- no renderer-attributed call >= **50ms**;
+- at most one isolated >16.67ms call in the paced fixture;
+- rendering **both** comparison candidates in the same lab frame remains <16.67ms at p95.
 
-## SOURCE / ASSET OWNERSHIP
+The last comparison-pair rule is intentionally harsher than production, where only one backend would render.
 
-Target module shape after implementation begins:
+Physical iPhone Safari remains mandatory before release adoption.
+
+---
+
+# ACCESSIBILITY / REDUCED MOTION
+
+Reduced motion is a first-class scene variant.
+
+Remove/reduce:
+
+- shake;
+- large translation;
+- zoom;
+- repeated radial movement;
+- unnecessary flashes.
+
+Preserve:
+
+- score/state information;
+- hierarchy;
+- semantic colour;
+- short opacity/brightness response;
+- essential feedback.
+
+---
+
+# SOURCE / ASSET OWNERSHIP
+
+Current Phase-0 module shape:
 
 ```text
-src/live-game/dmd/
-  controller.mjs          # priority/scheduling authority
-  bootstrap.mjs
-  motion.mjs
-  v3/
-    engine.mjs            # frame/timeline engine
-    scene-registry.mjs    # semantic scene catalogue
-    renderer.mjs          # logical canvas render
-    treatment.mjs         # dot/glow/glass output
-    typography.mjs
-    palette.mjs
-    primitives.mjs        # bounded reusable motion primitives
-    assets.mjs            # owned asset manifest / preload
+src/live-game/dmd/v3/
+  engine.mjs
+  scene-registry.mjs
+  renderer.mjs
+  treatment.mjs
+  primitives.mjs
+
+tools/dmd-v3-lab/
+  index.html
+  styles.css
+  lab.mjs
+  legacy-assets.mjs
 ```
 
-Exact filenames may change, but ownership boundaries must remain clear.
+Likely production expansion:
 
-Do not put V3 scene definitions back into `src/legacy/scripts/inline-007.js`.
+```text
+src/live-game/dmd/v3/
+  adapter.mjs
+  typography.mjs
+  palette.mjs
+  assets.mjs
+```
 
-## MIGRATION STRATEGY
+Do not put new V3 scenes back into `src/legacy/scripts/inline-007.js`.
 
-### Phase 0 — prototype / comparison
+The Phase-0 legacy asset extractor is lab-only and must not become the production asset architecture.
 
-Build an isolated visual lab, not production adoption.
+---
+
+# MIGRATION STRATEGY
+
+## Phase 0 — isolated visual lab
+
+Current work.
 
 Compare:
 
-- current SC-030 renderer;
-- 256x64 V3 prototype;
-- 320x80 V3 prototype.
+- same 640×160 authored scene;
+- Balanced 256×64-dot treatment;
+- Digital 320×80-dot treatment;
+- same nine representative scenes;
+- desktop and 390px phone-scale visual evidence;
+- deterministic output;
+- reduced motion;
+- paced performance data.
 
-Use the same fixtures:
+Decision gate:
 
-- PLAYER UP / target;
-- Single;
-- Treble;
-- Bullseye;
-- Miss;
-- Last Dart Hero;
-- Desmond;
-- Voldy;
-- PB / record.
+**visual review + measured performance**.
 
-Decision gate: visual review + performance data.
+No production import.
 
-### Phase 1 — renderer foundation
+## Phase 1 — renderer foundation after SC-030 stable main
 
-Deliver:
+Rebase/recreate implementation work from the actual final production main.
 
-- logical surface;
-- treatment pipeline;
+Deliver behind a `DMD_V3` feature/backend flag:
+
+- selected dot treatment;
+- owned assets;
 - typography;
 - text/number/shape/image layers;
 - timestamp timeline;
 - reduced motion;
-- baseline + Single / Double / Treble / Bull / Miss.
+- baseline + Single / Double / Treble / Bull / Miss;
+- V2 backend retained as rollback.
 
-Keep legacy backend available as rollback.
-
-### Phase 2 — competitive / control scenes
+## Phase 2 — competitive/control scenes
 
 Add:
 
@@ -626,7 +638,7 @@ Add:
 - Undo / Skip;
 - special scenes.
 
-### Phase 3 — record / completion / polish
+## Phase 3 — records/completion/polish
 
 Add:
 
@@ -635,54 +647,53 @@ Add:
 - Game Won / Match Won;
 - idle/attract polish;
 - final performance tuning;
-- remove obsolete V3-replaced legacy scene branches only after parity proof.
+- remove obsolete legacy scene branches only after parity proof and stabilisation.
 
-## RELEASE / ROLLBACK ARCHITECTURE
+---
 
-V3 must be feature-gated during adoption.
+# RELEASE / ROLLBACK
 
-Recommended contract:
+V3 must be feature/backend gated during adoption.
 
-- `DMD_V3` off by default in production during development;
-- V3 and V2 backend selectable without changing scoring/game state;
-- QA can run identical interaction journeys against both backends;
-- rollback is a feature/backend switch or a single bounded release revert, not a gameplay rollback.
+Required contract:
 
-Do not remove the proven V2 backend until V3 has passed release and a stabilisation window.
+- V3 and V2 selectable without changing scoring/game state;
+- QA can run the same interaction journeys against both;
+- rollback is a backend switch or bounded release revert;
+- do not delete V2 until V3 has passed release and a stabilisation window.
 
-## AUTOMATED ACCEPTANCE
+---
 
-Permanent V3 tests must cover:
+# AUTOMATED ACCEPTANCE
 
-### Controller contract
+Permanent production V3 tests must eventually cover:
+
+## Controller boundary
 
 - priority/pre-emption unchanged;
 - queue bounds unchanged;
 - stale event handling unchanged;
 - visibility handling unchanged;
-- no scoring ownership imported into V3 renderer.
+- no scoring ownership imported into V3.
 
-### Scene identity
+## Scene identity
 
-For every registered event:
+For each registered event:
 
 - correct scene id;
-- correct priority class;
-- expected duration range;
-- required text/data visible;
+- expected duration;
+- required information visible;
 - no stale scene after completion/pre-emption.
 
-### Determinism
+## Determinism
 
-At fixed timestamps, scene output must be deterministic.
+At fixed timestamps, output is deterministic.
 
-Provide a test-only clock so frame snapshots can be generated at exact milestones such as 0 / 100 / 250 / 500 ms.
+A test-only clock must support exact milestones such as 0 / 100 / 250 / 500ms.
 
-### Visual regression
+## Visual regression
 
-Capture deterministic frame/screenshot evidence at representative phone widths.
-
-Must include at least:
+Capture representative phone-width evidence for:
 
 - baseline;
 - Single;
@@ -697,104 +708,146 @@ Must include at least:
 - Voldy;
 - reduced-motion variants.
 
-### Interaction regression
+## Interaction regression
 
-Rapid input fixture:
+Rapid fixture:
 
 - Dart 1 -> Dart 2 -> Dart 3;
 - Miss;
 - Undo;
 - Skip;
 - immediate next-player transition;
-- high-priority scene interrupting lower-priority animation.
+- high-priority interruption of low-priority animation.
 
-DMD animation must never corrupt scoring state or delay the Throwpad contract.
+DMD animation must never corrupt scoring or delay the Throwpad.
 
-### Source / dist parity
+## Source / dist parity
 
-All release acceptance must run against:
+All release acceptance runs against:
 
 - source runtime;
-- fresh production build (`dist`).
+- fresh production `dist`.
 
-### Cloud failure
+## Cloud failure
 
-DMD V3 must continue working if external/cloud calls fail.
+Ordinary V3 scenes must remain functional if external/cloud calls fail.
 
-No ordinary DMD scene may depend on Supabase availability.
+---
 
-## HUMAN ACCEPTANCE
+# HUMAN ACCEPTANCE
 
-Mandatory physical-device review before release:
+Mandatory before release:
 
-- current iPhone Safari;
-- ordinary fast scoring sequence;
-- 3 rapid darts;
+- current physical iPhone Safari;
+- ordinary fast scoring;
+- three rapid darts;
 - Miss / Undo / Skip;
 - player handover;
 - special scene;
 - reduced-motion setting;
 - background/foreground resume;
 - no flashing artefacts;
-- no visible frame hitch that interferes with scoring.
+- no visible hitch that interferes with scoring.
 
-## DEFINITION OF DONE
+---
+
+# DEFINITION OF DONE
 
 DMD V3 is release-ready only when:
 
-- it looks materially smoother and more digital than V2;
-- it visually belongs to the Beta Live Game UI;
-- dot-matrix identity remains obvious;
-- ordinary scoring feedback is faster/cleaner, not busier;
-- all required semantic scenes exist;
-- special Shateki scenes are upgraded and distinct;
-- V3 uses modular source ownership, not legacy inline renderer expansion;
-- controller/gameplay boundaries remain intact;
+- materially smoother/more digital than V2;
+- visually belongs to Beta Live Game;
+- DMD identity remains obvious;
+- ordinary feedback is faster/cleaner, not busier;
+- required semantic scenes exist;
+- special scenes are upgraded and distinct;
+- modular V3 source owns the renderer;
+- gameplay/controller boundaries remain intact;
 - reduced motion is complete;
-- source + dist regression suites are green at the exact candidate SHA;
+- source + fresh `dist` regression suites are green at exact candidate SHA;
 - deterministic visual evidence is accepted;
-- performance instrumentation is within the agreed budget;
+- performance is inside budget;
 - physical iPhone Safari smoke passes;
-- explicit RELEASE approval is given.
+- explicit `RELEASE` approval is given.
 
-## BUILD LOG
+---
 
-### 2026-09-14 — Design discovery
+# BUILD LOG
+
+## 2026-09-14 — Design discovery
 
 Completed:
 
-- isolated `sc032-dmd-v3-design` branch created from the frozen SC-030 candidate;
-- current SC-030 controller/renderer direction audited;
-- Mission Pinball Framework display/scene architecture researched;
-- FlexDMD Stage/Actor/Action model researched;
-- DMD Extensions / frame-pipeline and high-resolution output concepts researched;
-- web animation / requestAnimationFrame / visibility / Canvas performance guidance reviewed;
-- product direction changed from strict retro 128x32 emulation to smoother Beta-quality digital DMD;
-- initial logical-resolution recommendation set at 320x80, subject to direct 256x64 comparison;
-- migration, performance, scene, QA and rollback contracts defined.
+- isolated `sc032-dmd-v3-design` workstream created;
+- current controller/renderer direction audited;
+- MPF / FlexDMD / modern DMD pipeline concepts researched;
+- web animation / Canvas performance guidance reviewed;
+- strict retro 128×32 direction rejected;
+- product line locked: **Beta visual quality, DMD personality**.
 
-Not started:
+## 2026-09-14 — Phase 0 implementation
 
-- runtime prototype;
-- production integration;
-- V3 feature flag;
-- scene artwork production;
-- release PR.
+Completed on `sc032-dmd-v3-phase0`:
 
-## HANDOVER
+- deterministic scene model;
+- reusable motion primitives;
+- Canvas2D logical renderer;
+- stable dot-treatment renderer;
+- timestamp engine;
+- reduced-motion scene variants;
+- legacy special-art lab loader;
+- nine-scene side-by-side visual lab;
+- deterministic unit QA;
+- browser screenshot/performance QA;
+- CI workflow;
+- HOW TO USE + BUILD LOG controls.
 
-SC-032 is intentionally **design-only** while SC-030 is still active.
+Early prototype result:
 
-Do not merge this design branch into production and do not modify the SC-030 implementation branch from this workstream.
+- low authored resolutions (256×64 / 320×80) were visually too chunky relative to requested direction;
+- existing renderer audit confirmed 640×160 smooth authoring was worth preserving;
+- Phase 0 corrected to 640×160 authoring with **256×64 vs 320×80 dot treatment only**;
+- special-art preprocessing cached;
+- benchmark changed from invalid tight synchronous loop to paced post-warmup rAF methodology.
 
-Next authorised sequence after SC-030 reaches production/stable main:
+Current status:
 
-1. rebase/recreate SC-032 implementation branch from the final production main;
-2. build the isolated DMD V3 visual lab;
-3. compare 256x64 and 320x80 on the exact same fixtures;
-4. choose logical resolution using product review + measured performance;
-5. implement Phase 1 behind `DMD_V3` feature gate;
-6. run source/dist + physical iPhone acceptance;
-7. expand scenes only after Phase 1 is green.
+**Revised Phase-0 exact-head acceptance pending. No production integration.**
 
-The central design rule is fixed unless explicitly changed: **Beta visual quality, DMD personality — smoother digital presentation, not clunky retro imitation.**
+---
+
+# HANDOVER
+
+Active prototype branch:
+
+`sc032-dmd-v3-phase0`
+
+Design branch:
+
+`sc032-dmd-v3-design`
+
+The prototype branch must remain isolated from SC-030 and production.
+
+Central engineering rule:
+
+> **Author smooth at 640×160; apply DMD character as a selectable physical-dot output treatment.**
+
+Next sequence:
+
+1. get revised Phase-0 exact-head CI green;
+2. inspect desktop + phone-scale evidence;
+3. select Balanced 256×64-dot or Digital 320×80-dot treatment, or reject both;
+4. wait for stable SC-030 production main;
+5. recreate/rebase production implementation from that real main;
+6. integrate V3 behind feature/backend flag with V2 rollback;
+7. expand scene catalogue under source/dist/iPhone acceptance;
+8. release only after explicit approval.
+
+Do not:
+
+- merge Phase 0 directly to `main`;
+- modify SC-030 from this branch;
+- import gameplay state ownership into V3;
+- revert to low authored resolutions merely for nostalgia;
+- choose the denser treatment because its number is larger;
+- remove V2 during first V3 adoption.
