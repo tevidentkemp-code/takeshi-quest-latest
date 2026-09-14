@@ -57,6 +57,7 @@ Completed delivery:
 15. Updated Classic visual-fit acceptance so named DMD artwork must genuinely fill the display width.
 16. Extended the final release-candidate workflow so the convergence regression runs against both source runtime and Vite `dist` runtime.
 17. Removed all one-shot SC-030 writer/generator workflows and scripts from the delivery surface after use.
+18. Hardened the semantic Live V2/DMD shell selectors so later compatibility and Turbo styles cannot recreate the removed outer cabinets; the preserved legacy styles remain untouched and semantic Live Game CSS is authoritative.
 
 ## Release-candidate acceptance
 
