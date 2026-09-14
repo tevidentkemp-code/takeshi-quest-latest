@@ -96,16 +96,40 @@ const SCREENSHOTS = process.env.SQ_SCREENSHOTS || '';
 
     // Evidence must also be judged at an actual phone-sized CSS viewport. The
     // canvas keeps its high internal resolution; only physical display size changes.
+    // Validate against the actual bezel content box rather than an arbitrary
+    // absolute width, because the lab itself deliberately keeps page/card gutters.
     await page.setViewportSize({ width: 390, height: 844 });
     for (const sceneId of ['PLAYER_UP','TREBLE','PERSONAL_BEST','DESMOND']) {
       const t = checkpoints[sceneId];
       await page.evaluate(({ sceneId, t }) => window.SC032Lab.freeze(sceneId, t, false), { sceneId, t });
-      const mobileGeometry = await page.evaluate(() => [...document.querySelectorAll('.dmd-bezel canvas')].map(canvas => {
-        const rect = canvas.getBoundingClientRect();
-        return { width: rect.width, height: rect.height, ratio: rect.width / rect.height };
-      }));
-      assert(mobileGeometry.every(item => item.width >= 320 && item.width <= 380), `${sceneId} candidates render at realistic phone width`);
-      assert(mobileGeometry.every(item => Math.abs(item.ratio - 4) < 0.02), `${sceneId} phone DMDs retain 4:1 geometry`);
+      const mobileLayout = await page.evaluate(() => {
+        const viewportWidth = window.innerWidth;
+        const overflow = document.documentElement.scrollWidth > viewportWidth + 1;
+        const canvases = [...document.querySelectorAll('.dmd-bezel canvas')].map(canvas => {
+          const rect = canvas.getBoundingClientRect();
+          const bezel = canvas.closest('.dmd-bezel');
+          const bezelRect = bezel.getBoundingClientRect();
+          const style = getComputedStyle(bezel);
+          const insetX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) +
+            parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth);
+          const expectedCanvasWidth = bezelRect.width - insetX;
+          return {
+            width: rect.width,
+            height: rect.height,
+            left: rect.left,
+            right: rect.right,
+            ratio: rect.width / rect.height,
+            expectedCanvasWidth,
+          };
+        });
+        return { viewportWidth, overflow, canvases };
+      });
+      assert.equal(mobileLayout.overflow, false, `${sceneId} lab has no horizontal overflow at 390px`);
+      assert.equal(mobileLayout.canvases.length, 2, `${sceneId} renders both phone candidates`);
+      assert(mobileLayout.canvases.every(item => item.width >= mobileLayout.viewportWidth * 0.70), `${sceneId} DMDs use the available phone content width`);
+      assert(mobileLayout.canvases.every(item => Math.abs(item.width - item.expectedCanvasWidth) <= 2), `${sceneId} DMD canvases fit their bezel content boxes`);
+      assert(mobileLayout.canvases.every(item => item.left >= -0.5 && item.right <= mobileLayout.viewportWidth + 0.5), `${sceneId} DMD canvases stay inside the phone viewport`);
+      assert(mobileLayout.canvases.every(item => Math.abs(item.ratio - 4) < 0.02), `${sceneId} phone DMDs retain 4:1 geometry`);
       if (SCREENSHOTS) {
         await page.locator('.candidate-grid').screenshot({ path: path.join(SCREENSHOTS, `sc032-mobile-${sceneId.toLowerCase()}.png`) });
       }
