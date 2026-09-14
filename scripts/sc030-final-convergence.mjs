@@ -1,7 +1,9 @@
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 
 function read(path){ return fs.readFileSync(path, 'utf8'); }
 function write(path, value){ fs.writeFileSync(path, value, 'utf8'); }
+function sha256(value){ return crypto.createHash('sha256').update(value).digest('hex'); }
 function replaceOnce(path, from, to){
   const input = read(path);
   if (!input.includes(from)) throw new Error(`SC-030 convergence anchor missing in ${path}`);
@@ -17,6 +19,22 @@ replaceOnce(
 `  // Fit the complete image AND its maximum shake/pulse inside the display.\n  function drawDmdSceneImage(im, age, amp, rateX, rateY, pulseAmp, yAmp){\n    if (!im || !im.complete || !im.naturalWidth || !im.naturalHeight) return;\n    amp = Math.min(12, Math.max(0, Number(amp) || 0));\n    const inset = 6;\n    const scale = Math.min(\n      (NATIVE_W - 2 * (inset + amp)) / im.naturalWidth,\n      (NATIVE_H - 2 * (inset + amp * yAmp)) / im.naturalHeight\n    ) / (1 + pulseAmp);`,
 `  // Special artwork is a DMD banner, not a contained thumbnail: keep its\n  // natural aspect ratio, fill the usable width at every pulse phase, and let\n  // the native canvas crop excess height symmetrically. Small shake/pulse\n  // excursions may crop a few horizontal edge pixels, which is intentional.\n  function drawDmdSceneImage(im, age, amp, rateX, rateY, pulseAmp, yAmp){\n    if (!im || !im.complete || !im.naturalWidth || !im.naturalHeight) return;\n    amp = Math.min(12, Math.max(0, Number(amp) || 0));\n    const insetX = 4;\n    const safeWidth = Math.max(1, NATIVE_W - insetX * 2);\n    const minPulse = Math.max(.8, 1 - Math.abs(Number(pulseAmp) || 0));\n    const scale = safeWidth / im.naturalWidth / minPulse;`
 );
+
+// inline-007 is an explicitly declared legacy compatibility patch. Keep its
+// machine-enforced current hash/byte evidence in sync with this bounded SC-030
+// change; the original extraction hash stays immutable.
+{
+  const patchPath = 'src/legacy/intentional-patches.json';
+  const manifest = JSON.parse(read(patchPath));
+  const entry = manifest.patches?.find(p => p.file === 'src/legacy/scripts/inline-007.js');
+  if (!entry) throw new Error('SC-030 intentional-patch entry for inline-007.js is missing');
+  const body = read(entry.file);
+  entry.sha256 = sha256(body);
+  entry.bytes = Buffer.byteLength(body, 'utf8');
+  entry.task = 'SC-030 DMD transient presentation channel + final full-width artwork convergence';
+  entry.reason = 'Allow the modular DMD priority controller to pre-empt presentation without erasing the proven renderer baseline, and render named special artwork as aspect-correct full-width DMD banners rather than contained thumbnails.';
+  write(patchPath, `${JSON.stringify(manifest, null, 2)}\n`);
+}
 
 // 2) Remove the redundant outer Live V2 cabinet. The meaningful inner modules
 // retain their own borders, while the reclaimed 28px horizontal padding becomes
