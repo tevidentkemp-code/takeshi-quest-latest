@@ -6,6 +6,14 @@ import {
 } from '../../src/live-game/dmd/v3/scene-registry.mjs';
 import { loadLegacyDmdAssets } from './legacy-assets.mjs';
 
+const HYBRID_PROFILE = Object.freeze({
+  id: '640x160@288x72',
+  width: 640,
+  height: 160,
+  dotColumns: 288,
+  dotRows: 72,
+});
+
 const FIXTURES = Object.freeze({
   PLAYER_UP: { player: 'THOM', target: '20' },
   SINGLE: { points: 20, total: 180, target: '20' },
@@ -28,6 +36,7 @@ const metricsEl = document.getElementById('metrics');
 
 let assets = {};
 let engine256 = null;
+let engine288 = null;
 let engine320 = null;
 let activeScene = 'PLAYER_UP';
 let sceneStart = performance.now();
@@ -43,22 +52,24 @@ function reducedMotion() {
   return reducedMotionEl.checked === true;
 }
 
-function renderPair(sceneId, timeMs, isReduced = reducedMotion()) {
+function renderAll(sceneId, timeMs, isReduced = reducedMotion()) {
   const data = fixtureFor(sceneId);
   const opts = { reducedMotion: isReduced };
-  const frameA = engine256.renderAt(sceneId, timeMs, data, opts);
-  const frameB = engine320.renderAt(sceneId, timeMs, data, opts);
-  return { frameA, frameB };
+  return {
+    frame256: engine256.renderAt(sceneId, timeMs, data, opts),
+    frame288: engine288.renderAt(sceneId, timeMs, data, opts),
+    frame320: engine320.renderAt(sceneId, timeMs, data, opts),
+  };
 }
 
 function frameLoop(timestamp) {
-  if (!engine256 || !engine320) {
+  if (!engine256 || !engine288 || !engine320) {
     requestId = requestAnimationFrame(frameLoop);
     return;
   }
   const duration = getSceneDuration(activeScene);
   const elapsed = paused ? frozenTime : Math.max(0, timestamp - sceneStart) % Math.max(1, duration);
-  renderPair(activeScene, elapsed);
+  renderAll(activeScene, elapsed);
   requestId = requestAnimationFrame(frameLoop);
 }
 
@@ -113,28 +124,31 @@ function summariseSamples(samples) {
 }
 
 async function runBenchmark(iterations = 120) {
-  if (!engine256 || !engine320) throw new Error('DMD V3 engines are not ready');
+  if (!engine256 || !engine288 || !engine320) throw new Error('DMD V3 engines are not ready');
   const wasPaused = paused;
   const savedScene = activeScene;
   const savedFrozenTime = frozenTime;
   paused = true;
 
-  // Warm every code path and artwork cache before taking measurements. The live
-  // renderer similarly has assets decoded before gameplay scenes are eligible.
   for (const sceneId of DMD_V3_SCENES) {
     const duration = getSceneDuration(sceneId);
-    renderPair(sceneId, Math.round(duration * 0.42), false);
+    renderAll(sceneId, Math.round(duration * 0.42), false);
     await nextAnimationFrame();
   }
 
   const samples256 = [];
+  const samples288 = [];
   const samples320 = [];
-  const pairFrameMs = [];
+  const allFrameMs = [];
   const rafIntervals = [];
   let previousRaf = null;
 
-  // Pace measurements at the same scheduling boundary used by production.
-  // Alternate candidate order to remove first/second renderer bias.
+  const candidates = [
+    { engine: engine256, bucket: samples256, candidate: '256x64' },
+    { engine: engine288, bucket: samples288, candidate: '288x72' },
+    { engine: engine320, bucket: samples320, candidate: '320x80' },
+  ];
+
   for (let i = 0; i < iterations; i += 1) {
     const rafTime = await nextAnimationFrame();
     if (previousRaf != null) rafIntervals.push(rafTime - previousRaf);
@@ -145,38 +159,35 @@ async function runBenchmark(iterations = 120) {
     const t = (i * 37) % Math.max(1, duration);
     const data = fixtureFor(sceneId);
     const opts = { reducedMotion: false };
-    const pairStart = performance.now();
+    const allStart = performance.now();
 
-    const renderOne = (engine, bucket, candidate) => {
+    const renderOne = ({ engine, bucket, candidate }) => {
       const start = performance.now();
       engine.renderAt(sceneId, t, data, opts);
       bucket.push({ ms: performance.now() - start, sceneId, timeMs: t, candidate });
     };
 
-    if (i % 2 === 0) {
-      renderOne(engine256, samples256, '256x64');
-      renderOne(engine320, samples320, '320x80');
-    } else {
-      renderOne(engine320, samples320, '320x80');
-      renderOne(engine256, samples256, '256x64');
+    for (let offset = 0; offset < candidates.length; offset += 1) {
+      renderOne(candidates[(i + offset) % candidates.length]);
     }
-    pairFrameMs.push(performance.now() - pairStart);
+    allFrameMs.push(performance.now() - allStart);
   }
 
   paused = wasPaused;
   activeScene = savedScene;
   frozenTime = savedFrozenTime;
   if (!paused) sceneStart = performance.now();
-  else renderPair(activeScene, frozenTime);
+  else renderAll(activeScene, frozenTime);
 
   const result = {
     methodology: 'requestAnimationFrame-paced-after-warmup',
     candidate256: summariseSamples(samples256),
+    candidate288: summariseSamples(samples288),
     candidate320: summariseSamples(samples320),
-    comparisonPair: {
-      p95Ms: percentile(pairFrameMs, 0.95),
-      p99Ms: percentile(pairFrameMs, 0.99),
-      maxMs: Math.max(...pairFrameMs),
+    comparisonAll: {
+      p95Ms: percentile(allFrameMs, 0.95),
+      p99Ms: percentile(allFrameMs, 0.99),
+      maxMs: Math.max(...allFrameMs),
     },
     scheduler: {
       p95IntervalMs: percentile(rafIntervals, 0.95),
@@ -186,9 +197,9 @@ async function runBenchmark(iterations = 120) {
 
   metricsEl.innerHTML = [
     `<span>256 p95 ${result.candidate256.p95Ms.toFixed(2)} ms</span>`,
+    `<span>288 p95 ${result.candidate288.p95Ms.toFixed(2)} ms</span>`,
     `<span>320 p95 ${result.candidate320.p95Ms.toFixed(2)} ms</span>`,
-    `<span>256 p99 ${result.candidate256.p99Ms.toFixed(2)} ms</span>`,
-    `<span>320 p99 ${result.candidate320.p99Ms.toFixed(2)} ms</span>`,
+    `<span>all p95 ${result.comparisonAll.p95Ms.toFixed(2)} ms</span>`,
   ].join('');
   return result;
 }
@@ -208,6 +219,12 @@ async function boot() {
     assets: { ...assets },
     treatment: { outputWidth: 640, outputHeight: 160 },
   });
+  engine288 = createDmdV3Engine({
+    profile: HYBRID_PROFILE,
+    outputCanvas: document.getElementById('candidate288'),
+    assets: { ...assets },
+    treatment: { outputWidth: 640, outputHeight: 160 },
+  });
   engine320 = createDmdV3Engine({
     profile: DMD_V3_RESOLUTIONS.DENSE_320,
     outputCanvas: document.getElementById('candidate320'),
@@ -224,6 +241,7 @@ async function boot() {
     scenes: [...DMD_V3_SCENES],
     resolutions: {
       candidate256: engine256.treatment.snapshotMeta(),
+      candidate288: engine288.treatment.snapshotMeta(),
       candidate320: engine320.treatment.snapshotMeta(),
     },
     setScene(sceneId) {
@@ -240,13 +258,14 @@ async function boot() {
       setScene(sceneId);
       paused = true;
       frozenTime = Math.max(0, Math.min(getSceneDuration(sceneId), Number(timeMs) || 0));
-      renderPair(sceneId, frozenTime, isReduced === true);
+      renderAll(sceneId, frozenTime, isReduced === true);
       return {
         sceneId,
         timeMs: frozenTime,
         reducedMotion: isReduced === true,
         signatures: {
           candidate256: canvasSignature(document.getElementById('candidate256')),
+          candidate288: canvasSignature(document.getElementById('candidate288')),
           candidate320: canvasSignature(document.getElementById('candidate320')),
         },
       };
@@ -255,7 +274,7 @@ async function boot() {
       paused = false;
       sceneStart = performance.now();
     },
-    renderPair,
+    renderAll,
     runBenchmark,
     getState() {
       return { activeScene, paused, frozenTime, reducedMotion: reducedMotion() };
@@ -263,6 +282,7 @@ async function boot() {
     getSignatures() {
       return {
         candidate256: canvasSignature(document.getElementById('candidate256')),
+        candidate288: canvasSignature(document.getElementById('candidate288')),
         candidate320: canvasSignature(document.getElementById('candidate320')),
       };
     },
@@ -291,7 +311,7 @@ benchmarkBtn.addEventListener('click', async () => {
 });
 reducedMotionEl.addEventListener('change', () => {
   sceneStart = performance.now();
-  if (paused) renderPair(activeScene, frozenTime, reducedMotion());
+  if (paused) renderAll(activeScene, frozenTime, reducedMotion());
 });
 
 boot().catch(error => {
