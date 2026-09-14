@@ -37,21 +37,36 @@ for (const ref of scriptRefs) assertLocalRefExists(ref, 'script');
 const styleRefs = extractStylesheetRefs(distHtml);
 for (const ref of styleRefs) assertLocalRefExists(ref, 'stylesheet');
 
-const sourceClassicScripts = extractRefs(sourceHtml, 'script', 'src')
+// Classic scripts are intentionally preserved as discrete runtime files, so
+// their relative order/path must remain exact. ES-module entries are Vite
+// bundle inputs and are expected to become hashed assets in dist instead of
+// retaining their source path.
+const sourceClassicScripts = extractScriptRefsByMode(sourceHtml, false)
   .filter(isLocalRuntimeRef);
-const distClassicScripts = scriptRefs.filter(isLocalRuntimeRef);
+const distClassicScripts = extractScriptRefsByMode(distHtml, false)
+  .filter(isLocalRuntimeRef);
 assert(
   JSON.stringify(distClassicScripts) === JSON.stringify(sourceClassicScripts),
   `classic script load order/path drifted in Vite output\nsource=${JSON.stringify(sourceClassicScripts)}\ndist=${JSON.stringify(distClassicScripts)}`
 );
 
+const sourceModuleScripts = extractScriptRefsByMode(sourceHtml, true);
+const distModuleScripts = extractScriptRefsByMode(distHtml, true);
+assert(
+  distModuleScripts.length >= sourceModuleScripts.length,
+  `module script entry missing from Vite output\nsource=${JSON.stringify(sourceModuleScripts)}\ndist=${JSON.stringify(distModuleScripts)}`
+);
+for (const ref of distModuleScripts) assertLocalRefExists(ref, 'module script');
+
 const evidence = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   buildSystem: 'vite',
   sourceIndexSha256: sha256(Buffer.from(sourceHtml)),
   distIndexSha256: sha256(Buffer.from(distHtml)),
   distIndexBytes: Buffer.byteLength(distHtml, 'utf8'),
-  localScriptRefs: distClassicScripts.length,
+  classicLocalScriptRefs: distClassicScripts.length,
+  sourceModuleScriptRefs: sourceModuleScripts.length,
+  distModuleScriptRefs: distModuleScripts.length,
   stylesheetRefs: styleRefs.length,
   relativeBase: true,
 };
@@ -63,6 +78,20 @@ function extractRefs(html, tag, attr) {
   const refs = [];
   let match;
   while ((match = tagRe.exec(html))) refs.push(match[1]);
+  return refs;
+}
+
+function extractScriptRefsByMode(html, moduleMode) {
+  const tagRe = /<script\b([^>]*)>/gi;
+  const refs = [];
+  let match;
+  while ((match = tagRe.exec(html))) {
+    const attrs = match[1] || '';
+    const isModule = /\btype\s*=\s*["']module["']/i.test(attrs);
+    if (isModule !== moduleMode) continue;
+    const src = attrs.match(/\bsrc\s*=\s*["']([^"']+)["']/i)?.[1];
+    if (src) refs.push(src);
+  }
   return refs;
 }
 
