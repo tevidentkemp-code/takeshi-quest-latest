@@ -58,6 +58,7 @@ Completed delivery:
 16. Extended the final release-candidate workflow so the convergence regression runs against both source runtime and Vite `dist` runtime.
 17. Removed all one-shot SC-030 writer/generator workflows and scripts from the delivery surface after use.
 18. Hardened the semantic Live V2/DMD shell selectors so later compatibility and Turbo styles cannot recreate the removed outer cabinets; the preserved legacy styles remain untouched and semantic Live Game CSS is authoritative.
+19. Closed a release-evidence false-positive: added `tools/ui-smoke/verify-sc030-artwork-isolation.js`, which hard-isolates Last Dart Hero / Desmond / Voldy scenes, proves three distinct artwork sources, verifies repeated full-width frames and rejects stale artwork leaking into the following text-only scene. The release-candidate workflow runs this acceptance against both source and built `dist`.
 
 ## Release-candidate acceptance
 
@@ -70,12 +71,14 @@ It must pass, at the same candidate head:
 - modular source-authority verification;
 - deterministic HTML reconstruction;
 - Vite build and dist-parity verification;
-- source-runtime DMD, convergence, actions, Undo, setup, smoke, Classic visual fit, training, progression, player-stats and admin regressions;
+- source-runtime DMD, convergence, actions, Undo, setup, smoke, Classic visual fit, isolated artwork identity/stale-scene, training, progression, player-stats and admin regressions;
 - the same runtime suite against built `dist`;
 - synthetic cloud-failure resilience against source and dist;
 - generated screenshot/evidence capture for final product inspection.
 
 No green result from an older head authorises release after a subsequent candidate change.
+
+Final release evidence must identify the exact candidate SHA and successful RC workflow run. To avoid invalidating that exact-head evidence with a documentation-only commit, the immutable run/SHA evidence and final rollback packet are recorded on the release PR after the gate finishes, while this file defines the acceptance contract.
 
 ## HANDOVER
 
@@ -83,19 +86,20 @@ Current engineering state:
 
 - SC-031 modular architecture is already production baseline.
 - SC-030 remains isolated on `sc030-dmd-v2-modular`.
-- The DMD controller, bootstrap, event adoption, reduced motion, interaction responsiveness, Undo/Skip behaviour, semantic CSS ownership and final visual convergence are implemented.
+- The DMD controller, bootstrap, event adoption, reduced motion, interaction responsiveness, Undo/Skip behaviour, semantic CSS ownership, final visual convergence and isolated artwork acceptance are implemented.
 - The old Phase-1-only wording is superseded by this document.
 - The parked pre-SC-031 PR #32 remains non-mergeable evidence only.
 - No SC-030 production release has been performed.
 
 Remaining steps:
 
-1. Final release-candidate QA must finish green at the current candidate head.
-2. Inspect the generated 320 / 390 / 430 screenshots plus Last Dart Hero / Desmond / Voldy evidence for product fit.
-3. If visual evidence is below the locked direction, make only a bounded convergence fix and rerun the same full gate.
-4. When evidence is accepted, open the SC-030 release PR for explicit approval.
-5. Merge/release only after that approval.
-6. After SC-030 is closed, handle Shateki Engineering Hardening separately: path-specific agent instructions, enforceable dangerous-operation gates/hooks and a formal acceptance-criteria convergence gate. Do not mix that work into SC-030.
+1. Final release-candidate QA must finish green at the final candidate head, including isolated artwork acceptance against source and `dist`.
+2. Inspect the generated 320 / 390 / 430 screenshots plus isolated Last Dart Hero / Desmond / Voldy / text-only evidence for product fit.
+3. Complete one real-device iPhone-sized visual smoke test of the final candidate, with no scoring/persistence mutation beyond ordinary disposable test play.
+4. If visual evidence is below the locked direction, make only a bounded convergence fix and rerun the same full gate.
+5. When automated and real-device evidence are accepted, open the SC-030 release PR and record the exact candidate SHA, workflow run, production delta, risks and rollback packet there.
+6. Merge/release only after explicit release approval.
+7. After SC-030 is closed, handle Shateki Engineering Hardening separately: path-specific agent instructions, enforceable dangerous-operation gates/hooks and a formal acceptance-criteria convergence gate. Do not mix that work into SC-030.
 
 ## Security boundary
 
