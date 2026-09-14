@@ -75,12 +75,20 @@ const SCREENSHOTS = process.env.SQ_SCREENSHOTS || '';
     assert(geometry.every(item => item.width > 200 && item.height > 50), 'both candidate DMDs are visibly rendered');
     assert(geometry.every(item => Math.abs(item.ratio - 4) < 0.02), 'both candidate DMDs retain 4:1 geometry');
 
-    const benchmark = await page.evaluate(() => window.SC032Lab.runBenchmark(180));
+    // Performance is measured after all code/artwork paths are warm and one
+    // sample per animation frame. This catches renderer work that can actually
+    // consume a live frame without manufacturing GC pressure through a tight loop.
+    const benchmark = await page.evaluate(() => window.SC032Lab.runBenchmark(120));
     console.log('SC-032 BENCHMARK', JSON.stringify(benchmark));
-    assert.equal(benchmark.candidate256.longFrames50ms, 0, '256 candidate has no >=50ms render iteration in synthetic fixture');
-    assert.equal(benchmark.candidate320.longFrames50ms, 0, '320 candidate has no >=50ms render iteration in synthetic fixture');
-    assert(benchmark.candidate256.maxMs < 50, '256 candidate max render cost remains under long-task threshold');
-    assert(benchmark.candidate320.maxMs < 50, '320 candidate max render cost remains under long-task threshold');
+    assert.equal(benchmark.methodology, 'requestAnimationFrame-paced-after-warmup', 'benchmark models production scheduling');
+    for (const [label, result] of [['256', benchmark.candidate256], ['320', benchmark.candidate320]]) {
+      assert(result.p95Ms < 8, `${label} candidate p95 render cost stays comfortably inside a 60 Hz frame`);
+      assert(result.p99Ms < 16.67, `${label} candidate p99 render cost stays inside a 60 Hz frame`);
+      assert.equal(result.longFrames50ms, 0, `${label} candidate has no renderer-attributed >=50ms render`);
+      assert(result.maxMs < 50, `${label} candidate max renderer call stays under long-task threshold`);
+      assert(result.overBudget16ms <= 1, `${label} candidate has at most one isolated >16.67ms call across the paced fixture`);
+    }
+    assert(benchmark.comparisonPair.p95Ms < 16.67, 'even rendering both lab candidates in one frame remains inside the 60 Hz budget at p95');
 
     if (SCREENSHOTS) {
       await page.screenshot({ path: path.join(SCREENSHOTS, 'sc032-visual-lab-overview.png'), fullPage: true });
