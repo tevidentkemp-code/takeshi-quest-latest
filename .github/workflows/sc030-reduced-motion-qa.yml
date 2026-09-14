@@ -45,13 +45,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf sc030-motion-generated
+          mkdir -p sc030-motion-generated
           node --check src/live-game/dmd/controller.mjs
           node --check src/live-game/dmd/bootstrap.mjs
           node --check src/live-game/dmd/motion.mjs
           node tools/ui-smoke/verify-sc030-reduced-motion.mjs
           node scripts/verify-modularization.mjs
-          node scripts/render-index-from-source.mjs --output /tmp/sc030-motion-index.html --evidence /tmp/sc030-motion-html.json
-          cmp -s /tmp/sc030-motion-index.html index.html
+          node scripts/render-index-from-source.mjs --output sc030-motion-generated/index.html --evidence sc030-motion-generated/html-build-evidence.json
+          cmp -s sc030-motion-generated/index.html index.html
           git diff --check
 
       - name: Install deterministic UI test dependencies
