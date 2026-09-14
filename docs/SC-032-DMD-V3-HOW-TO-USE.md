@@ -2,9 +2,15 @@
 
 ## Purpose
 
-This visual lab exists to compare two next-generation Shateki Quest DMD rendering densities before any V3 renderer is adopted by the live game.
+This visual lab exists to compare two next-generation Shateki Quest DMD **dot-treatment densities** before any V3 renderer is adopted by the live game.
 
 It is intentionally isolated from production. Nothing under `src/live-game/dmd/v3/` is imported by the game at this stage.
+
+The key product rule is now explicit:
+
+**Both candidates are authored at 640×160.**
+
+The comparison is no longer low-resolution scene authoring. The smooth digital scene stays constant and only the visible dot treatment changes.
 
 ## Branch
 
@@ -30,21 +36,23 @@ The lab loads the existing Last Dart Hero, Desmond and Voldy artwork from the le
 
 ## What you are comparing
 
-### Candidate A — 256 × 64 logical surface
+### Candidate A — Balanced
 
-- logical scene: 256×64;
-- physical dot treatment: 128×32;
+- authored scene: **640×160**;
+- physical dot treatment: **256×64**;
 - visible output: 640×160 in the lab;
-- closest to traditional DMD density while retaining smoother authored content.
+- stronger visible DMD texture while retaining smooth high-density typography and animation.
 
-### Candidate B — 320 × 80 logical surface
+### Candidate B — Digital
 
-- logical scene: 320×80;
-- physical dot treatment: 160×40;
+- authored scene: **640×160**;
+- physical dot treatment: **320×80**;
 - visible output: 640×160 in the lab;
-- denser / smoother digital presentation while retaining visible dot structure.
+- finer dot texture and the smoother / more digital presentation closest to the Beta Live Game direction.
 
-Both candidates use the same scene model, timings, artwork and output size. The resolution/dot density is therefore the controlled variable.
+Both candidates use the same authored pixels, scene model, timings, artwork, palette, typography and visible output size. **Dot density is the controlled variable.**
+
+This correction matters because the existing DMD already uses a 640×160 native buffer specifically to improve text smoothness. Reducing V3 authoring to 256×64 or 320×80 would have made the redesign more retro/chunky, which conflicts with the requested product direction.
 
 ## Lab controls
 
@@ -64,7 +72,7 @@ Scene buttons switch between the Phase 0 fixtures:
 
 `Reduced motion` renders the same information hierarchy without large radial movement, image jitter or unnecessary spatial animation.
 
-`Run benchmark` repeatedly renders all Phase 0 fixtures through both candidates and reports median/p95/max render cost in the current browser.
+`Run benchmark` warms every scene/artwork path and then measures one render sample per `requestAnimationFrame`, matching the scheduling boundary used by the real animation engine. It reports median, p95, p99 and maximum renderer cost.
 
 ## What to judge visually
 
@@ -72,11 +80,11 @@ Prioritise these questions in this order:
 
 1. Is the content immediately readable while actually playing darts?
 2. Does it feel materially smoother and more digital than DMD V2?
-3. Does it still unmistakably look like a dot-matrix display?
+3. Does it still unmistakably look like a dot-matrix display rather than a normal OLED panel?
 4. Does it visually belong with the Beta Live Game UI?
 5. Are ordinary hit scenes fast and clean rather than busy?
 6. Do Last Dart Hero / Desmond / Voldy look integrated into the DMD rather than pasted on top?
-7. Is 320×80 meaningfully better than 256×64 at real phone size, or merely denser?
+7. Does 320×80 dot treatment produce a worthwhile improvement over 256×64 at **real phone display size**, or does it make the dot character too subtle?
 
 Do not choose a candidate because larger numbers sound better. The winning renderer must justify its density visually and in performance evidence.
 
@@ -94,6 +102,8 @@ Browser acceptance requires the UI-smoke dependencies and Chromium, then:
 SQ_DMD_V3_LAB_URL=http://127.0.0.1:8125/tools/dmd-v3-lab/index.html \
 node tools/ui-smoke/verify-sc032-dmd-v3-lab.js
 ```
+
+The browser suite captures both desktop comparison frames and phone-scale evidence at a 390px CSS viewport.
 
 The GitHub workflow `.github/workflows/sc032-dmd-v3-phase0.yml` runs the full Phase 0 gate automatically on this branch.
 
