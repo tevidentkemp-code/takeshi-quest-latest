@@ -21,7 +21,7 @@ function assertNoUnexpectedErrors(consoleErrs, label) {
       showZones: typeof window.sqDmdShowZones,
       setIdle: typeof window.sqDmdSetIdle,
       hardClear: typeof window.__sqDmdHardClearQueue,
-      styleInstalled: !!document.getElementById('sq-dmd-v2-shell-css'),
+      injectedStyle: !!document.getElementById('sq-dmd-v2-shell-css'),
       version: window.__sqDmdV2?.snapshot?.().version || '',
     }));
     assert.equal(boot.ready, true);
@@ -30,7 +30,7 @@ function assertNoUnexpectedErrors(consoleErrs, label) {
     assert.equal(boot.showZones, 'function', 'legacy DMD backend remains available');
     assert.equal(boot.setIdle, 'function', 'legacy idle API remains available');
     assert.equal(boot.hardClear, 'function', 'legacy hard-clear API remains available');
-    assert.equal(boot.styleInstalled, true, 'visual shell is installed');
+    assert.equal(boot.injectedStyle, false, 'DMD appearance is owned by semantic CSS, not an injected style tag');
     assert.match(boot.version, /^2\.1\.0-sc030-modular$/);
 
     await H.toMatchCard(page);
@@ -45,12 +45,22 @@ function assertNoUnexpectedErrors(consoleErrs, label) {
         canvas: { width: canvas.width, height: canvas.height },
         wrap: { width: wrap.width, height: wrap.height },
         pad: { top: pad.top, bottom: pad.bottom, width: pad.width },
+        skin: {
+          backgroundImage: getComputedStyle(document.getElementById('sqDmdWrap')).backgroundImage,
+          dotBackgroundImage: getComputedStyle(document.getElementById('sqDmdWrap'), '::before').backgroundImage,
+          boxShadow: getComputedStyle(document.getElementById('sqDmdWrap')).boxShadow,
+          canvasFilter: getComputedStyle(document.getElementById('sqDmdCanvas')).filter,
+        },
       };
     });
     assert(before.canvas.width > 250, 'DMD canvas has usable mobile width');
     assert(before.canvas.height >= 70 && before.canvas.height <= 90, `DMD portrait height preserved (${before.canvas.height})`);
     assert(before.wrap.width > 250, 'DMD wrapper remains full-width');
     assert(before.pad.width > 250, 'Throwpad remains usable');
+    assert.notEqual(before.skin.backgroundImage, 'none', 'active mode theme retains a cabinet background');
+    assert.match(before.skin.dotBackgroundImage, /radial-gradient/i, 'semantic dot-matrix surface treatment layers through Classic');
+    assert.notEqual(before.skin.boxShadow, 'none', 'semantic cabinet depth is active');
+    assert.notEqual(before.skin.canvasFilter, 'none', 'controlled amber canvas treatment is active');
 
     await page.evaluate(() => {
       window.__sqDmdV2.emit({ kind: 'HIT_SINGLE', points: 20, total: 20 });

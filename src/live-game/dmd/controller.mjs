@@ -320,60 +320,6 @@ export function createController(options = {}) {
   };
 }
 
-export function visualCss() {
-  return `
-body[data-page="game"] #sqDmdWrap{
-  isolation:isolate;
-  background:
-    radial-gradient(120% 150% at 50% -35%, rgba(255,176,54,.065), transparent 52%),
-    linear-gradient(180deg, #080604 0%, #050403 100%);
-  border-color:rgba(255,153,24,.30);
-  box-shadow:
-    inset 0 1px 0 rgba(255,210,128,.07),
-    inset 0 -12px 28px rgba(0,0,0,.48),
-    0 0 0 1px rgba(255,122,0,.10),
-    0 9px 24px rgba(0,0,0,.46),
-    0 0 14px rgba(255,133,16,.055);
-}
-body[data-page="game"] #sqDmdWrap::before{
-  content:"";
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  z-index:1;
-  opacity:.16;
-  background-image:radial-gradient(circle, rgba(255,154,35,.26) 0 .55px, transparent .7px);
-  background-size:4px 4px;
-  mix-blend-mode:screen;
-}
-body[data-page="game"] #sqDmdCanvas{
-  position:relative;
-  z-index:2;
-  filter:saturate(1.05) contrast(1.04) drop-shadow(0 0 3px rgba(255,143,28,.13));
-}
-body[data-page="game"] #sqDmdWrap .sq-dmd-overlay{
-  z-index:3;
-  opacity:.12;
-  background:
-    linear-gradient(to bottom, rgba(255,226,184,.055), transparent 22%),
-    repeating-linear-gradient(to bottom, rgba(255,255,255,.024) 0 1px, transparent 1px 4px);
-}
-@media (prefers-reduced-motion: reduce){
-  body[data-page="game"] #sqDmdCanvas{filter:saturate(1.02) contrast(1.02);}
-}
-`;
-}
-
-export function installVisualShell(doc = globalThis.document) {
-  if (!doc || typeof doc.createElement !== 'function') return false;
-  if (doc.getElementById('sq-dmd-v2-shell-css')) return true;
-  const style = doc.createElement('style');
-  style.id = 'sq-dmd-v2-shell-css';
-  style.textContent = visualCss();
-  (doc.head || doc.documentElement).appendChild(style);
-  return true;
-}
-
 export function detectExistingBackend(host = globalThis) {
   return {
     render(zones, opts) {
@@ -413,7 +359,6 @@ export function install(options = {}) {
     maxQueue: options.maxQueue ?? 2,
     staleLowPriorityMs: options.staleLowPriorityMs ?? 900
   });
-  if (options.visualShell !== false) installVisualShell(doc);
   const unbindVisibility = bindVisibility(controller, doc);
   controller.dispose = () => {
     unbindVisibility();

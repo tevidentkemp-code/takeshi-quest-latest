@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import * as DMD from '../../src/live-game/dmd/controller.mjs';
 
 function fakeScheduler(){
@@ -141,16 +142,21 @@ function fakeDocument(){
   console.log('PASS haptics capability-safe / disabled by default');
 })();
 
-(function testVisualShellContract(){
-  const css = DMD.visualCss();
-  assert(css.includes('#sqDmdWrap'));
-  assert(css.includes('#sqDmdCanvas'));
-  assert(css.includes('prefers-reduced-motion'));
-  assert(css.includes('radial-gradient'));
-  assert(!css.includes('#v2InfoDmd'), 'DMD visual shell must not style the Game Race canvas');
-  assert(!/\bheight\s*:/.test(css), 'module does not change fixed DMD height');
-  assert(!/rainbow|hsl\(/i.test(css), 'no rainbow/nightclub palette');
-  console.log('PASS DMD visual shell contract');
+(function testVisualOwnershipContract(){
+  assert.equal(typeof DMD.visualCss, 'undefined', 'controller must not own CSS');
+  assert.equal(typeof DMD.installVisualShell, 'undefined', 'controller must not inject style tags');
+  const css = fs.readFileSync('src/styles/live-game/topbar.css', 'utf8');
+  const start = css.indexOf('/* >>> SC-030 DMD V2 CABINET TREATMENT START */');
+  const end = css.indexOf('/* <<< SC-030 DMD V2 CABINET TREATMENT END */');
+  assert(start >= 0 && end > start, 'semantic DMD cabinet block exists');
+  const block = css.slice(start, end);
+  assert(block.includes('#sqDmdWrap'));
+  assert(block.includes('#sqDmdCanvas'));
+  assert(block.includes('prefers-reduced-motion'));
+  assert(block.includes('radial-gradient'));
+  assert(!/\bheight\s*:/.test(block), 'DMD skin does not alter the fixed footprint');
+  assert(!/mix-blend-mode|rainbow|hsl\(/i.test(block), 'DMD skin avoids flashing-prone/nightclub effects');
+  console.log('PASS semantic DMD visual ownership contract');
 })();
 
 console.log('SC-030 DMD V2 MODULAR CONTROLLER: ALL PASS');

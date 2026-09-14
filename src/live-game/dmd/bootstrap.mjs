@@ -37,7 +37,6 @@ function boot() {
     document,
     maxQueue: 2,
     hapticsEnabled: false,
-    visualShell: true,
   });
   window.__sqDmdV2Ready = true;
   return true;
