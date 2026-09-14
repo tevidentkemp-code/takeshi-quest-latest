@@ -623,8 +623,8 @@ async function verifyTrainingRoute(){
       await page.waitForFunction(() => Array.isArray(window.__imageBounds) && window.__imageBounds.length > 0, undefined, {timeout:4000,polling:50});
       const boxes=await page.evaluate(()=>window.__imageBounds);
       assert(boxes.length>0,type+' drew frames');
-      assert(boxes.every(([x,y,w,h])=>x>=0&&y>=0&&x+w<=640&&y+h<=160),type+' stays inside display');
-      console.log('PASS '+type+' animation bounds');
+      assert(boxes.every(([x,y,w,h])=>w>=630&&x<16&&x+w>624&&y<160&&y+h>0),type+' fills DMD width and remains vertically centred through canvas cropping');
+      console.log('PASS '+type+' full-width DMD artwork');
       if (process.env.SQ_SCREENSHOTS) await page.screenshot({path:path.join(process.env.SQ_SCREENSHOTS,`classic-${type}.png`)});
     }
     await page.evaluate(()=>{window.__sqDmdHardClearQueue?.();window.sqDmdShowZones({z2:'DESMOND DELIGHT',z3:'LAST DART HERO'},{type:'hold',ms:2000});});

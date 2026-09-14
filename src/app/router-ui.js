@@ -5827,6 +5827,11 @@ function ensureLiveV2Panel(){
         </div>
       </div>
 
+      <!-- Large mobile uses the same authoritative visit state in a two-player
+           strip beneath the current-round score cards.  The compact left-hand
+           dots remain the canonical presentation at smaller widths. -->
+      <div class="v2VisitProgress" id="v2VisitProgress" aria-label="Current round dart progress"></div>
+
       <div class="v2RowsWrap">
         <div class="v2RowsScroller">
           <div class="v2Rows" id="v2Rows"></div>
@@ -6618,13 +6623,16 @@ function __sqSetupLiveV2RowsWindow(panel){
     if(!badges || badges.length < 1) return;
     const r0 = badges[0].getBoundingClientRect();
     let wantH = 0;
-    // We want the viewport tall enough to show: 1x live row (full height) + 3x compact rows.
-    // Measure from the top of the first visible badge to the bottom of the 4th badge when available.
-    if(badges.length >= 4){
-      const r3 = badges[3].getBoundingClientRect();
-      wantH = Math.round(r3.bottom - r0.top);
+    // The smallest supported portrait layout deliberately shows two historic
+    // rows plus the live row. Larger layouts retain three historic rows.
+    const narrow = Number(window.innerWidth || document.documentElement.clientWidth || 0) <= 360;
+    const visibleRows = narrow ? 3 : 4;
+    const last = Math.min(badges.length - 1, visibleRows - 1);
+    if(last >= 0){
+      const target = badges[last].getBoundingClientRect();
+      wantH = Math.round(target.bottom - r0.top);
     }else if(badges.length >= 3){
-      const r2 = badges[2].getBoundingClientRect();
+      const r2 = badges[badges.length - 1].getBoundingClientRect();
       wantH = Math.round(r2.bottom - r0.top);
     }else{
       const rl = badges[badges.length-1].getBoundingClientRect();
@@ -6657,4 +6665,3 @@ function __sqToggleLegacyUIForLiveV2(on){
     }
   });
 }
-

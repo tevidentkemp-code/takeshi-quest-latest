@@ -141,7 +141,35 @@ function liveV2Render(){
     ? (Array.isArray(state.uiLastGo.darts) ? state.uiLastGo.darts : [])
     : (Array.isArray(state.score?.[turn]?.[cr]?.darts) ? state.score[turn][cr].darts : []);
   const nextShot = heldGo ? 3 : dartN;
-  panel.querySelectorAll(".v2Dot").forEach((el)=>{
+  const renderVisitDots = (nodes, darts, nextIndex, allowNext = true) => {
+    nodes.forEach((el)=>{
+      const k = parseInt(el.getAttribute("data-dot") || "0", 10);
+      const dart = darts[k] || null;
+      el.classList.remove("off", "idle", "next", "done", "single", "double", "treble", "bull", "miss");
+      el.textContent = "";
+      if(dart){
+        const kind = dart.kind;
+        const visual = kind === "Miss" ? "miss"
+          : (kind === "T" || kind === "Triple") ? "treble"
+          : (kind === "D" || kind === "Double") ? "double"
+          : kind === "B" ? "bull" : "single";
+        const mark = (typeof __sqV3Mark === "function") ? __sqV3Mark(dart) : __sqV2DartToken(dart, cr);
+        el.classList.add("done", visual);
+        el.dataset.shotState = "done";
+        el.textContent = mark;
+      }else if(allowNext && !state.finished && k === nextIndex){
+        el.classList.add("next");
+        el.dataset.shotState = "next";
+      }else{
+        el.classList.add("idle");
+        el.dataset.shotState = "idle";
+      }
+    });
+  };
+
+  // Preserve the original compact indicator behaviour at narrow and standard
+  // widths. The large layout gets its own player-aligned strip below.
+  panel.querySelectorAll(".v2DotsCol .v2Dot").forEach((el)=>{
     const k = parseInt(el.getAttribute("data-dot") || "0", 10);
     const dart = shotDarts[k] || null;
     el.classList.remove("off", "idle", "next", "done", "single", "double", "treble", "bull", "miss");
@@ -164,6 +192,36 @@ function liveV2Render(){
       el.dataset.shotState = "idle";
     }
   });
+
+  const visitHost = panel.querySelector("#v2VisitProgress");
+  if(visitHost){
+    const pKey = String(pCount);
+    if(visitHost.dataset.pcount !== pKey){
+      visitHost.innerHTML = Array.from({length:pCount}, (_,i)=>`
+        <div class="v2VisitPlayer" data-p="${i}">
+          <div class="v2VisitLabel" id="v2VisitLabel${i}">PLAYER ${escapeHtml(getPlayerInitial(i) || String.fromCharCode(65+i))}</div>
+          <div class="v2VisitDots" aria-label="${escapeHtml(getPlayerInitial(i) || `Player ${i+1}`)} dart progress">
+            <div class="v2VisitDot" data-dot="0"></div>
+            <div class="v2VisitDot" data-dot="1"></div>
+            <div class="v2VisitDot" data-dot="2"></div>
+          </div>
+        </div>`).join("");
+      visitHost.dataset.pcount = pKey;
+    }
+    for(let i=0;i<pCount;i++){
+      const visit = visitHost.querySelector(`.v2VisitPlayer[data-p="${i}"]`);
+      if(!visit) continue;
+      const label = visit.querySelector('.v2VisitLabel');
+      if(label) label.textContent = `PLAYER ${getPlayerInitial(i) || String.fromCharCode(65+i)}`;
+
+      const entryDarts = Array.isArray(state.score?.[i]?.[cr]?.darts) ? state.score[i][cr].darts : [];
+      const isHeld = state.uiLastGo && Date.now() < Number(state.uiLastGo.showUntil || 0)
+        && Number(state.uiLastGo.player) === i && dartN === 0;
+      const darts = isHeld && Array.isArray(state.uiLastGo.darts) ? state.uiLastGo.darts : entryDarts;
+      const next = i === turn ? dartN : 3;
+      renderVisitDots(visit.querySelectorAll('.v2VisitDot'), darts, next, i === turn);
+    }
+  }
 
   // Rounds list: 3-row viewport. At game start show current + next 2; later show current + previous 2.
   // >>> PATCH:LIVEV2_ROWS_GUARD START
@@ -462,6 +520,20 @@ const out2 = [];
   // - Round advance also snaps to bottom.
   const wrap = panel.querySelector(".v2RowsWrap");
   if(wrap){
+    if(!window.__sqLiveV2ResponsiveResizeBound){
+      window.__sqLiveV2ResponsiveResizeBound = true;
+      window.addEventListener('resize', ()=>{
+        setTimeout(()=>{
+          try{
+            const livePanel = document.getElementById('liveV2Panel');
+            const liveWrap = livePanel && livePanel.querySelector('.v2RowsWrap');
+            if(!liveWrap) return;
+            __sqSetupLiveV2RowsWindow(livePanel);
+            liveWrap.scrollTop = liveWrap.scrollHeight;
+          }catch(_){ }
+        }, 0);
+      }, {passive:true});
+    }
     // Bind once: track whether the user has scrolled away from bottom.
     if(!wrap.__sqBound){
       wrap.__sqBound = true;
@@ -953,6 +1025,113 @@ function buildPad(){
   // Game page
   padHint.textContent = state.finished ? 'Game finished.' : '';
 
+  // SC-030: one verified Undo/DMD path for all Live V2 pad layouts.
+  // Scoring/state restoration stays owned by undo(); this helper only decides
+  // whether a presentation event is truthful after that state transition.
+  function __sqRunUndoActionWithDmd(){
+    const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') && __sqIsVsShadowRuntime();
+
+    // Preserve the existing Vs Shadow presentation path exactly. Its undo
+    // helper has mode-specific block/restore messages which must not be
+    // overwritten by the generic DMD V2 event.
+    if (isVsShadow){
+      try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
+      try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ }
+      undo();
+      return;
+    }
+
+    const before = Array.isArray(state?.history) ? state.history.length : 0;
+    if (before <= 0){
+      undo();
+      return;
+    }
+
+    undo();
+
+    const after = Array.isArray(state?.history) ? state.history.length : before;
+    if (after >= before) return;
+
+    // Re-establish the truthful persistent DMD baseline from restored game state
+    // before the transient Undo message takes ownership of presentation.
+    try{
+      const rIdx = Number(state?.currentRound || 0);
+      const pIdx = Number(state?.currentPlayer || 0);
+      const rd = (typeof ROUNDS !== 'undefined' && Array.isArray(ROUNDS)) ? ROUNDS[rIdx] : null;
+      let z1 = String(rIdx + 1);
+      if (rd?.type === 'number') z1 = String(rd.target);
+      else if (rd?.type === 'doubles') z1 = 'DBL';
+      else if (rd?.type === 'triples') z1 = 'TRL';
+      else if (rd?.type === 'bull') z1 = 'BULL';
+      const darts = Array.isArray(state?.score?.[pIdx]?.[rIdx]?.darts)
+        ? state.score[pIdx][rIdx].darts.slice(0, Number(state?.currentDart || 0)).filter(Boolean)
+        : [];
+      const z3 = darts.map(d => {
+        try{ return (typeof __sqV2DartToken === 'function') ? __sqV2DartToken(d, rIdx) : String(d?.kind || ''); }catch(_){ return String(d?.kind || ''); }
+      }).filter(Boolean).join(' / ');
+      const z2 = (typeof getPlayerName === 'function') ? String(getPlayerName(pIdx) || '') : '';
+      window.sqDmdShowZones?.({ z1, z2, z3 }, { type:'hold', ms:1, z3Small:true });
+    }catch(_){ }
+
+    try{
+      if (window.__sqDmdV2 && typeof window.__sqDmdV2.emit === 'function'){
+        window.__sqDmdV2.emit({ kind:'UNDO' });
+      } else {
+        window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120});
+      }
+    }catch(_){ }
+  }
+
+  // SC-030 responsiveness: gameplay state changes immediately; DMD feedback is
+  // presentation-only and must never hold input hostage. Vs Shadow keeps its
+  // existing specialised timing until that mode has dedicated cloud-backed QA.
+  function __sqRunSkipActionWithDmd(){
+    const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') && __sqIsVsShadowRuntime();
+    if (isVsShadow){
+      try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
+      try{ window.__sqSkipInProgress = true; }catch(_){ }
+      try{ window.sqDmdShowZones?.({ z2:'SKIP GO', z3:'>>>' }, { type:'flash', ms:500, fx:'impact' }); }catch(_){ }
+      setTimeout(() => {
+        try{ missGo(); }catch(_){ }
+        setTimeout(() => { try{ window.__sqSkipInProgress = false; }catch(_){ } }, 120);
+      }, 500);
+      return;
+    }
+
+    const before = {
+      history: Array.isArray(state?.history) ? state.history.length : 0,
+      player: Number(state?.currentPlayer || 0),
+      round: Number(state?.currentRound || 0),
+      dart: Number(state?.currentDart || 0),
+      finished: !!state?.finished
+    };
+
+    try{ window.__sqSkipInProgress = true; }catch(_){ }
+    try{ missGo(); }catch(_){ }
+    finally { try{ window.__sqSkipInProgress = false; }catch(_){ } }
+
+    const afterHistory = Array.isArray(state?.history) ? state.history.length : before.history;
+    const changed = afterHistory > before.history ||
+      Number(state?.currentPlayer || 0) !== before.player ||
+      Number(state?.currentRound || 0) !== before.round ||
+      Number(state?.currentDart || 0) !== before.dart ||
+      !!state?.finished !== before.finished;
+    if (!changed) return;
+
+    let nextName = '';
+    try{
+      if (!state.finished && typeof getPlayerName === 'function') nextName = String(getPlayerName(Number(state.currentPlayer || 0)) || '');
+    }catch(_){ }
+
+    try{
+      if (window.__sqDmdV2 && typeof window.__sqDmdV2.emit === 'function'){
+        window.__sqDmdV2.emit({ kind:'SKIP', player:nextName });
+      } else {
+        window.sqDmdShowZones?.({ z2:'TURN SKIPPED', z3:(nextName ? (nextName + ' UP') : '') }, { type:'hold', ms:500 });
+      }
+    }catch(_){ }
+  }
+
   if (!state.finished) {
     const r = ROUNDS[state.currentRound];
     if (!r) return;
@@ -1213,16 +1392,8 @@ function buildPad(){
       };
 
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ pressMissN(1); }catch(_){ try{ __sqHandleMissTap(); }catch(_){ } } }));
-      actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); }));
-      actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => {
-        try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
-        try{ window.__sqSkipInProgress = true; }catch(_){ }
-        try{ window.sqDmdShowZones?.({ z2:'SKIP GO', z3:'>>>' }, { type:'flash', ms:500, fx:'impact' }); }catch(_){ }
-        setTimeout(() => {
-          try{ missGo(); }catch(_){ }
-          setTimeout(() => { try{ window.__sqSkipInProgress = false; }catch(_){ } }, 120);
-        }, 500);
-      }));
+      actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { __sqRunUndoActionWithDmd(); }));
+      actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => { __sqRunSkipActionWithDmd(); }));
 
       right.appendChild(sdtRow);
       right.appendChild(actions);
@@ -1315,16 +1486,8 @@ function buildPad(){
       };
 
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ pressMissN(1); }catch(_){ try{ __sqHandleMissTap(); }catch(_){ } } }));
-      actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); }));
-      actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => {
-        try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
-        try{ window.__sqSkipInProgress = true; }catch(_){ }
-        try{ window.sqDmdShowZones?.({ z2:'SKIP GO', z3:'>>>' }, { type:'flash', ms:500, fx:'impact' }); }catch(_){ }
-        setTimeout(() => {
-          try{ missGo(); }catch(_){ }
-          setTimeout(() => { try{ window.__sqSkipInProgress = false; }catch(_){ } }, 120);
-        }, 500);
-      }));
+      actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { __sqRunUndoActionWithDmd(); }));
+      actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => { __sqRunSkipActionWithDmd(); }));
 
       right.appendChild(scroller);
       right.appendChild(actions);
@@ -1407,16 +1570,8 @@ function buildPad(){
       };
 
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ pressMissN(1); }catch(_){ try{ __sqHandleMissTap(); }catch(_){ } } }));
-      actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ } undo(); }));
-      actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => {
-        try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
-        try{ window.__sqSkipInProgress = true; }catch(_){ }
-        try{ window.sqDmdShowZones?.({ z2:'SKIP GO', z3:'>>>' }, { type:'flash', ms:500, fx:'impact' }); }catch(_){ }
-        setTimeout(() => {
-          try{ missGo(); }catch(_){ }
-          setTimeout(() => { try{ window.__sqSkipInProgress = false; }catch(_){ } }, 120);
-        }, 500);
-      }));
+      actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { __sqRunUndoActionWithDmd(); }));
+      actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => { __sqRunSkipActionWithDmd(); }));
 
       right.appendChild(bullRow);
       right.appendChild(actions);
