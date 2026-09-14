@@ -1,0 +1,66 @@
+name: SC-030 authoritative shell cascade correction
+
+on:
+  push:
+    branches: [sc030-dmd-v2-modular]
+    paths:
+      - scripts/sc030-tighten-outer-shell.mjs
+      - .github/workflows/sc030-tighten-outer-shell-writer.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sc030-outer-shell-writer
+  cancel-in-progress: false
+
+jobs:
+  correct:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: sc030-dmd-v2-modular
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm branch ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "sc030-dmd-v2-modular"
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+
+      - name: Install architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Correct semantic shell authority
+        run: node scripts/sc030-tighten-outer-shell.mjs
+
+      - name: Rebuild generated runtime from source authority
+        run: node scripts/materialize-runtime.mjs
+
+      - name: Verify architecture and diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/verify-modularization.mjs
+          git diff --check
+
+      - name: Commit product/runtime correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .sc031-build-html-evidence.json .sc031-build-css-evidence.json .sc031-build-js-evidence.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/styles/live-game/v2-panel.css src/styles/live-game/v2-mobile.css src/legacy/styles/inline-002.css
+          git diff --cached --check
+          git diff --cached --quiet && { echo "No correction changes to commit"; exit 1; }
+          git commit -m "SC-030: make simplified shells authoritative"
+          git push origin HEAD:sc030-dmd-v2-modular
