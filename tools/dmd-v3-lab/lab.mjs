@@ -93,46 +93,102 @@ function percentile(values, p) {
   return sorted[index];
 }
 
-async function runBenchmark(iterations = 240) {
+function nextAnimationFrame() {
+  return new Promise(resolve => requestAnimationFrame(resolve));
+}
+
+function summariseSamples(samples) {
+  const values = samples.map(sample => sample.ms);
+  const worst = [...samples].sort((a, b) => b.ms - a.ms).slice(0, 5);
+  return {
+    count: values.length,
+    medianMs: percentile(values, 0.50),
+    p95Ms: percentile(values, 0.95),
+    p99Ms: percentile(values, 0.99),
+    maxMs: Math.max(...values),
+    overBudget16ms: values.filter(value => value >= 16.67).length,
+    longFrames50ms: values.filter(value => value >= 50).length,
+    worst,
+  };
+}
+
+async function runBenchmark(iterations = 120) {
   if (!engine256 || !engine320) throw new Error('DMD V3 engines are not ready');
   const wasPaused = paused;
+  const savedScene = activeScene;
+  const savedFrozenTime = frozenTime;
   paused = true;
+
+  // Warm every code path and artwork cache before taking measurements. The live
+  // renderer similarly has assets decoded before gameplay scenes are eligible.
+  for (const sceneId of DMD_V3_SCENES) {
+    const duration = getSceneDuration(sceneId);
+    renderPair(sceneId, Math.round(duration * 0.42), false);
+    await nextAnimationFrame();
+  }
+
   const samples256 = [];
   const samples320 = [];
+  const pairFrameMs = [];
+  const rafIntervals = [];
+  let previousRaf = null;
 
+  // Pace measurements at the same scheduling boundary used by production.
+  // Alternate candidate order to remove first/second renderer bias.
   for (let i = 0; i < iterations; i += 1) {
+    const rafTime = await nextAnimationFrame();
+    if (previousRaf != null) rafIntervals.push(rafTime - previousRaf);
+    previousRaf = rafTime;
+
     const sceneId = DMD_V3_SCENES[i % DMD_V3_SCENES.length];
     const duration = getSceneDuration(sceneId);
     const t = (i * 37) % Math.max(1, duration);
     const data = fixtureFor(sceneId);
     const opts = { reducedMotion: false };
+    const pairStart = performance.now();
 
-    let start = performance.now();
-    engine256.renderAt(sceneId, t, data, opts);
-    samples256.push(performance.now() - start);
+    const renderOne = (engine, bucket, candidate) => {
+      const start = performance.now();
+      engine.renderAt(sceneId, t, data, opts);
+      bucket.push({ ms: performance.now() - start, sceneId, timeMs: t, candidate });
+    };
 
-    start = performance.now();
-    engine320.renderAt(sceneId, t, data, opts);
-    samples320.push(performance.now() - start);
+    if (i % 2 === 0) {
+      renderOne(engine256, samples256, '256x64');
+      renderOne(engine320, samples320, '320x80');
+    } else {
+      renderOne(engine320, samples320, '320x80');
+      renderOne(engine256, samples256, '256x64');
+    }
+    pairFrameMs.push(performance.now() - pairStart);
   }
 
   paused = wasPaused;
+  activeScene = savedScene;
+  frozenTime = savedFrozenTime;
   if (!paused) sceneStart = performance.now();
   else renderPair(activeScene, frozenTime);
 
-  const summarise = (samples) => ({
-    count: samples.length,
-    medianMs: percentile(samples, 0.50),
-    p95Ms: percentile(samples, 0.95),
-    maxMs: Math.max(...samples),
-    longFrames50ms: samples.filter(value => value >= 50).length,
-  });
-  const result = { candidate256: summarise(samples256), candidate320: summarise(samples320) };
+  const result = {
+    methodology: 'requestAnimationFrame-paced-after-warmup',
+    candidate256: summariseSamples(samples256),
+    candidate320: summariseSamples(samples320),
+    comparisonPair: {
+      p95Ms: percentile(pairFrameMs, 0.95),
+      p99Ms: percentile(pairFrameMs, 0.99),
+      maxMs: Math.max(...pairFrameMs),
+    },
+    scheduler: {
+      p95IntervalMs: percentile(rafIntervals, 0.95),
+      maxIntervalMs: rafIntervals.length ? Math.max(...rafIntervals) : 0,
+    },
+  };
+
   metricsEl.innerHTML = [
     `<span>256 p95 ${result.candidate256.p95Ms.toFixed(2)} ms</span>`,
     `<span>320 p95 ${result.candidate320.p95Ms.toFixed(2)} ms</span>`,
-    `<span>256 max ${result.candidate256.maxMs.toFixed(2)} ms</span>`,
-    `<span>320 max ${result.candidate320.maxMs.toFixed(2)} ms</span>`,
+    `<span>256 p99 ${result.candidate256.p99Ms.toFixed(2)} ms</span>`,
+    `<span>320 p99 ${result.candidate320.p99Ms.toFixed(2)} ms</span>`,
   ].join('');
   return result;
 }
