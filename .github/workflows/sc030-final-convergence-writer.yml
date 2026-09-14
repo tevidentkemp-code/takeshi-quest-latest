@@ -56,12 +56,15 @@ jobs:
           node scripts/verify-modularization.mjs
           git diff --check
 
-      - name: Remove one-shot writer surface and commit candidate
+      - name: Commit bounded candidate without workflow mutations
         shell: bash
         run: |
           set -euo pipefail
-          rm -f scripts/sc030-final-convergence.mjs
-          rm -f .github/workflows/sc030-final-convergence-writer.yml
+          # The Actions token has contents:write but not workflows:write. The
+          # convergence script prepares the final RC workflow locally so it can
+          # be checked, but that workflow update is committed separately via the
+          # authorised GitHub connection after this product commit lands.
+          git restore .github/workflows/sc030-release-candidate-qa.yml
           rm -f .sc031-build-html-evidence.json .sc031-build-css-evidence.json .sc031-build-js-evidence.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
