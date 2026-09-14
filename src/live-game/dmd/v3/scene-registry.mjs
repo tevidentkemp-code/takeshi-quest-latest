@@ -10,9 +10,12 @@ import {
   translateIn,
 } from './primitives.mjs';
 
+// V3 deliberately keeps the existing smooth 640x160 authoring density and
+// varies only the physical dot treatment. This matches the product direction:
+// Beta-quality digital motion first, visible DMD texture second.
 export const DMD_V3_RESOLUTIONS = Object.freeze({
-  DENSE_256: Object.freeze({ id: '256x64', width: 256, height: 64, dotColumns: 128, dotRows: 32 }),
-  DENSE_320: Object.freeze({ id: '320x80', width: 320, height: 80, dotColumns: 160, dotRows: 40 }),
+  DENSE_256: Object.freeze({ id: '640x160@256x64', width: 640, height: 160, dotColumns: 256, dotRows: 64 }),
+  DENSE_320: Object.freeze({ id: '640x160@320x80', width: 640, height: 160, dotColumns: 320, dotRows: 80 }),
 });
 
 export const DMD_V3_PALETTE = Object.freeze({
