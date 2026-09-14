@@ -13847,17 +13847,87 @@ function buildPad(){
       return;
     }
 
-    try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
     undo();
 
     const after = Array.isArray(state?.history) ? state.history.length : before;
     if (after >= before) return;
+
+    // Re-establish the truthful persistent DMD baseline from restored game state
+    // before the transient Undo message takes ownership of presentation.
+    try{
+      const rIdx = Number(state?.currentRound || 0);
+      const pIdx = Number(state?.currentPlayer || 0);
+      const rd = (typeof ROUNDS !== 'undefined' && Array.isArray(ROUNDS)) ? ROUNDS[rIdx] : null;
+      let z1 = String(rIdx + 1);
+      if (rd?.type === 'number') z1 = String(rd.target);
+      else if (rd?.type === 'doubles') z1 = 'DBL';
+      else if (rd?.type === 'triples') z1 = 'TRL';
+      else if (rd?.type === 'bull') z1 = 'BULL';
+      const darts = Array.isArray(state?.score?.[pIdx]?.[rIdx]?.darts)
+        ? state.score[pIdx][rIdx].darts.slice(0, Number(state?.currentDart || 0)).filter(Boolean)
+        : [];
+      const z3 = darts.map(d => {
+        try{ return (typeof __sqV2DartToken === 'function') ? __sqV2DartToken(d, rIdx) : String(d?.kind || ''); }catch(_){ return String(d?.kind || ''); }
+      }).filter(Boolean).join(' / ');
+      const z2 = (typeof getPlayerName === 'function') ? String(getPlayerName(pIdx) || '') : '';
+      window.sqDmdShowZones?.({ z1, z2, z3 }, { type:'hold', ms:1, z3Small:true });
+    }catch(_){ }
 
     try{
       if (window.__sqDmdV2 && typeof window.__sqDmdV2.emit === 'function'){
         window.__sqDmdV2.emit({ kind:'UNDO' });
       } else {
         window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120});
+      }
+    }catch(_){ }
+  }
+
+  // SC-030 responsiveness: gameplay state changes immediately; DMD feedback is
+  // presentation-only and must never hold input hostage. Vs Shadow keeps its
+  // existing specialised timing until that mode has dedicated cloud-backed QA.
+  function __sqRunSkipActionWithDmd(){
+    const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') && __sqIsVsShadowRuntime();
+    if (isVsShadow){
+      try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
+      try{ window.__sqSkipInProgress = true; }catch(_){ }
+      try{ window.sqDmdShowZones?.({ z2:'SKIP GO', z3:'>>>' }, { type:'flash', ms:500, fx:'impact' }); }catch(_){ }
+      setTimeout(() => {
+        try{ missGo(); }catch(_){ }
+        setTimeout(() => { try{ window.__sqSkipInProgress = false; }catch(_){ } }, 120);
+      }, 500);
+      return;
+    }
+
+    const before = {
+      history: Array.isArray(state?.history) ? state.history.length : 0,
+      player: Number(state?.currentPlayer || 0),
+      round: Number(state?.currentRound || 0),
+      dart: Number(state?.currentDart || 0),
+      finished: !!state?.finished
+    };
+
+    try{ window.__sqSkipInProgress = true; }catch(_){ }
+    try{ missGo(); }catch(_){ }
+    finally { try{ window.__sqSkipInProgress = false; }catch(_){ } }
+
+    const afterHistory = Array.isArray(state?.history) ? state.history.length : before.history;
+    const changed = afterHistory > before.history ||
+      Number(state?.currentPlayer || 0) !== before.player ||
+      Number(state?.currentRound || 0) !== before.round ||
+      Number(state?.currentDart || 0) !== before.dart ||
+      !!state?.finished !== before.finished;
+    if (!changed) return;
+
+    let nextName = '';
+    try{
+      if (!state.finished && typeof getPlayerName === 'function') nextName = String(getPlayerName(Number(state.currentPlayer || 0)) || '');
+    }catch(_){ }
+
+    try{
+      if (window.__sqDmdV2 && typeof window.__sqDmdV2.emit === 'function'){
+        window.__sqDmdV2.emit({ kind:'SKIP', player:nextName });
+      } else {
+        window.sqDmdShowZones?.({ z2:'TURN SKIPPED', z3:(nextName ? (nextName + ' UP') : '') }, { type:'hold', ms:500 });
       }
     }catch(_){ }
   }
@@ -14123,15 +14193,7 @@ function buildPad(){
 
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ pressMissN(1); }catch(_){ try{ __sqHandleMissTap(); }catch(_){ } } }));
       actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { __sqRunUndoActionWithDmd(); }));
-      actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => {
-        try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
-        try{ window.__sqSkipInProgress = true; }catch(_){ }
-        try{ window.sqDmdShowZones?.({ z2:'SKIP GO', z3:'>>>' }, { type:'flash', ms:500, fx:'impact' }); }catch(_){ }
-        setTimeout(() => {
-          try{ missGo(); }catch(_){ }
-          setTimeout(() => { try{ window.__sqSkipInProgress = false; }catch(_){ } }, 120);
-        }, 500);
-      }));
+      actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => { __sqRunSkipActionWithDmd(); }));
 
       right.appendChild(sdtRow);
       right.appendChild(actions);
@@ -14225,15 +14287,7 @@ function buildPad(){
 
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ pressMissN(1); }catch(_){ try{ __sqHandleMissTap(); }catch(_){ } } }));
       actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { __sqRunUndoActionWithDmd(); }));
-      actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => {
-        try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
-        try{ window.__sqSkipInProgress = true; }catch(_){ }
-        try{ window.sqDmdShowZones?.({ z2:'SKIP GO', z3:'>>>' }, { type:'flash', ms:500, fx:'impact' }); }catch(_){ }
-        setTimeout(() => {
-          try{ missGo(); }catch(_){ }
-          setTimeout(() => { try{ window.__sqSkipInProgress = false; }catch(_){ } }, 120);
-        }, 500);
-      }));
+      actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => { __sqRunSkipActionWithDmd(); }));
 
       right.appendChild(scroller);
       right.appendChild(actions);
@@ -14317,15 +14371,7 @@ function buildPad(){
 
       actions.appendChild(mkAct('miss', '⊘', 'MISS', () => { try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } try{ pressMissN(1); }catch(_){ try{ __sqHandleMissTap(); }catch(_){ } } }));
       actions.appendChild(mkAct('undo', '◀◀', 'UNDO', () => { __sqRunUndoActionWithDmd(); }));
-      actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => {
-        try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
-        try{ window.__sqSkipInProgress = true; }catch(_){ }
-        try{ window.sqDmdShowZones?.({ z2:'SKIP GO', z3:'>>>' }, { type:'flash', ms:500, fx:'impact' }); }catch(_){ }
-        setTimeout(() => {
-          try{ missGo(); }catch(_){ }
-          setTimeout(() => { try{ window.__sqSkipInProgress = false; }catch(_){ } }, 120);
-        }, 500);
-      }));
+      actions.appendChild(mkAct('skip', '▶▶', 'SKIP', () => { __sqRunSkipActionWithDmd(); }));
 
       right.appendChild(bullRow);
       right.appendChild(actions);
