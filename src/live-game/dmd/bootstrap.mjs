@@ -1,4 +1,5 @@
-import { install } from './controller.mjs';
+import { detectExistingBackend, install } from './controller.mjs';
+import { createMotionSafeBackend } from './motion.mjs';
 
 const MAX_ATTEMPTS = 120;
 const RETRY_MS = 50;
@@ -33,9 +34,11 @@ function boot() {
     timer = null;
   }
 
+  const backend = createMotionSafeBackend(detectExistingBackend(window), window);
   window.__sqDmdV2 = install({
     host: window,
     document,
+    backend,
     maxQueue: 2,
     hapticsEnabled: false,
   });
