@@ -6805,7 +6805,8 @@ body.livev2-on[data-page="game"] .sqMomentumRow.is-active .sqMomentumMeta{
   padding: 0 0 48px;
   box-sizing:border-box;
 }
-.livev2panel .v2Dot{
+.livev2panel .v2Dot,
+.livev2panel .v2VisitDot{
   width:22px; height:22px; border-radius:7px;
   display:grid; place-items:center;
   box-sizing:border-box;
@@ -6820,39 +6821,124 @@ body.livev2-on[data-page="game"] .sqMomentumRow.is-active .sqMomentumMeta{
   opacity:.85;
   transition:all .18s ease;
 }
-.livev2panel .v2Dot::before{
+.livev2panel .v2Dot::before,
+.livev2panel .v2VisitDot::before{
   content:"";
   width:7px; height:7px; border-radius:50%;
   background:rgba(214,222,240,.22);
 }
-.livev2panel .v2Dot.idle{
+.livev2panel .v2Dot.idle,
+.livev2panel .v2VisitDot.idle{
   border-color:rgba(255,106,0,.72);
   background:rgba(255,106,0,.06);
   box-shadow:0 0 8px rgba(255,106,0,.24);
   opacity:.92;
 }
-.livev2panel .v2Dot.idle::before{
+.livev2panel .v2Dot.idle::before,
+.livev2panel .v2VisitDot.idle::before{
   background:#ff6a00;
   box-shadow:0 0 6px rgba(255,106,0,.7);
 }
-.livev2panel .v2Dot.next{
+.livev2panel .v2Dot.next,
+.livev2panel .v2VisitDot.next{
   border-color:#ff6a00;
   box-shadow:0 0 14px rgba(255,106,0,.5);
   animation:v3SlotNext 1.1s ease-in-out infinite;
 }
-.livev2panel .v2Dot.next::before{
+.livev2panel .v2Dot.next::before,
+.livev2panel .v2VisitDot.next::before{
   background:#ff6a00;
   box-shadow:0 0 8px rgba(255,106,0,.9);
 }
-.livev2panel .v2Dot.done::before{display:none;}
-.livev2panel .v2Dot.done{color:#fff;opacity:1;}
-.livev2panel .v2Dot.done.treble{border-color:rgba(47,208,107,.75);background:rgba(47,208,107,.16);color:#8effb4;box-shadow:0 0 12px rgba(47,208,107,.35);}
-.livev2panel .v2Dot.done.double{border-color:rgba(74,163,255,.75);background:rgba(74,163,255,.16);color:#9ccbff;box-shadow:0 0 12px rgba(74,163,255,.3);}
-.livev2panel .v2Dot.done.bull{border-color:rgba(255,196,74,.8);background:rgba(255,196,74,.16);color:#ffe1a6;box-shadow:0 0 12px rgba(255,196,74,.35);}
-.livev2panel .v2Dot.done.single{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.07);color:#eef2ff;}
-.livev2panel .v2Dot.done.miss{border-color:rgba(255,77,94,.7);background:rgba(255,77,94,.14);color:#ff8a97;}
+.livev2panel .v2Dot.done::before,
+.livev2panel .v2VisitDot.done::before{display:none;}
+.livev2panel .v2Dot.done,
+.livev2panel .v2VisitDot.done{color:#fff;opacity:1;}
+.livev2panel .v2Dot.done.treble,
+.livev2panel .v2VisitDot.done.treble{border-color:rgba(47,208,107,.75);background:rgba(47,208,107,.16);color:#8effb4;box-shadow:0 0 12px rgba(47,208,107,.35);}
+.livev2panel .v2Dot.done.double,
+.livev2panel .v2VisitDot.done.double{border-color:rgba(74,163,255,.75);background:rgba(74,163,255,.16);color:#9ccbff;box-shadow:0 0 12px rgba(74,163,255,.3);}
+.livev2panel .v2Dot.done.bull,
+.livev2panel .v2VisitDot.done.bull{border-color:rgba(255,196,74,.8);background:rgba(255,196,74,.16);color:#ffe1a6;box-shadow:0 0 12px rgba(255,196,74,.35);}
+.livev2panel .v2Dot.done.single,
+.livev2panel .v2VisitDot.done.single{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.07);color:#eef2ff;}
+.livev2panel .v2Dot.done.miss,
+.livev2panel .v2VisitDot.done.miss{border-color:rgba(255,77,94,.7);background:rgba(255,77,94,.14);color:#ff8a97;}
 @media (prefers-reduced-motion:reduce){
-  .livev2panel .v2Dot.next{animation:none;}
+  .livev2panel .v2Dot.next,
+  .livev2panel .v2VisitDot.next{animation:none;}
+}
+
+/* Responsive live-visit contract (SC-030 final patch).
+   The existing visit-slot state classes stay authoritative; the large mobile
+   strip only changes where those same three indicators are presented. */
+.livev2panel .v2VisitProgress{
+  display:none;
+}
+
+@media (min-width:430px) and (max-width:899px){
+  body.livev2-on[data-page="game"] #liveV2Panel .v2Scores{
+    grid-template-columns:minmax(0,1fr);
+    padding-right:0;
+  }
+  body.livev2-on[data-page="game"] #liveV2Panel .v2Scores .v2DotsCol{
+    display:none;
+  }
+  body.livev2-on[data-page="game"] #liveV2Panel .v2ScoreGrid{
+    grid-column:1;
+  }
+  body.livev2-on[data-page="game"] #liveV2Panel .v2VisitProgress{
+    display:grid;
+    grid-template-columns:repeat(var(--sqV2P, 2), minmax(0,1fr));
+    gap:var(--sqV2Gap,10px);
+    align-items:start;
+    margin:0 0 2px;
+    padding:8px 8px 9px;
+    border:1px solid rgba(139,166,210,.18);
+    border-radius:13px;
+    background:linear-gradient(180deg,rgba(13,24,42,.82),rgba(6,12,24,.9));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.045),0 6px 14px rgba(0,0,0,.14);
+  }
+  body.livev2-on[data-page="game"] #liveV2Panel .v2VisitPlayer{
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:6px;
+  }
+  body.livev2-on[data-page="game"] #liveV2Panel .v2VisitLabel{
+    min-height:18px;
+    color:rgba(231,238,252,.78);
+    font-size:10px;
+    font-weight:900;
+    letter-spacing:.08em;
+    line-height:1;
+    text-align:center;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  body.livev2-on[data-page="game"] #liveV2Panel .v2VisitDots{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:clamp(5px,1.5vw,8px);
+    align-items:center;
+  }
+  body.livev2-on[data-page="game"] #liveV2Panel .v2VisitDots .v2VisitDot{
+    width:100%;
+    height:22px;
+    min-width:0;
+    border-radius:7px;
+  }
+}
+
+@media (max-width:360px){
+  /* JS measures the same row geometry and sets this variable inline. Keep a
+     narrow fallback so the current score never gets pushed below the graph if
+     a browser delays the first layout measurement. */
+  body.livev2-on[data-page="game"] #liveV2Panel .v2RowsWrap{
+    max-height:176px !important;
+  }
 }
 
 /* Player totals grid: always fit 2–6 players across screen (no horizontal scroll). */
@@ -6920,8 +7006,6 @@ body.livev2-on[data-page="game"] .sqMomentumRow.is-active .sqMomentumMeta{
   transform: translateY(-1px);
   filter: drop-shadow(0 0 10px rgba(255,200,60,.25));
 }
-
-
 /* >>> PATCH:PRACTICE_SOLO_LIVEV2_V1 START */
 .livev2panel[style*="--sqV2P: 1"] .v2ScoreGrid{
   grid-template-columns: minmax(0, 1fr);
