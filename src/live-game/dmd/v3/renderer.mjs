@@ -1,6 +1,19 @@
 function pxX(value, width) { return Number(value || 0) * width; }
 function pxY(value, height) { return Number(value || 0) * height; }
 
+const processedAssetCache = new WeakMap();
+
+function createSurface(width, height, ctx) {
+  const doc = ctx.canvas && ctx.canvas.ownerDocument;
+  let canvas;
+  if (doc && typeof doc.createElement === 'function') canvas = doc.createElement('canvas');
+  else if (typeof OffscreenCanvas !== 'undefined') canvas = new OffscreenCanvas(width, height);
+  else return null;
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
 function applyTextStyle(ctx, layer, height) {
   const sizePx = Math.max(5, Number(layer.size || 0.12) * height);
   const weight = Math.max(100, Math.min(900, Number(layer.weight || 800)));
@@ -65,24 +78,6 @@ function drawCrossLayer(ctx, layer, width, height) {
   ctx.restore();
 }
 
-function scratchCanvasFor(ctx, width, height) {
-  const existing = ctx.__sqDmdV3ImageScratch;
-  if (existing && existing.width === width && existing.height === height) return existing;
-  let canvas;
-  const doc = ctx.canvas && ctx.canvas.ownerDocument;
-  if (doc && typeof doc.createElement === 'function') {
-    canvas = doc.createElement('canvas');
-  } else if (typeof OffscreenCanvas !== 'undefined') {
-    canvas = new OffscreenCanvas(width, height);
-  } else {
-    return null;
-  }
-  canvas.width = width;
-  canvas.height = height;
-  ctx.__sqDmdV3ImageScratch = canvas;
-  return canvas;
-}
-
 function drawCover(ctx, image, width, height, scale = 1, offsetX = 0, offsetY = 0) {
   const iw = Number(image.naturalWidth || image.videoWidth || image.width || 0);
   const ih = Number(image.naturalHeight || image.videoHeight || image.height || 0);
@@ -96,34 +91,46 @@ function drawCover(ctx, image, width, height, scale = 1, offsetX = 0, offsetY = 
   return true;
 }
 
+function processedAssetFor(ctx, image, tint) {
+  let byTint = processedAssetCache.get(image);
+  if (!byTint) {
+    byTint = new Map();
+    processedAssetCache.set(image, byTint);
+  }
+  const key = String(tint || '#ff8a1c');
+  if (byTint.has(key)) return byTint.get(key);
+
+  const iw = Number(image.naturalWidth || image.videoWidth || image.width || 0);
+  const ih = Number(image.naturalHeight || image.videoHeight || image.height || 0);
+  if (!iw || !ih) return image;
+  const surface = createSurface(iw, ih, ctx);
+  if (!surface) return image;
+  const sctx = surface.getContext('2d', { alpha: true });
+  sctx.clearRect(0, 0, iw, ih);
+  sctx.save();
+  sctx.imageSmoothingEnabled = true;
+  if ('filter' in sctx) sctx.filter = 'grayscale(1) contrast(1.45) brightness(.72)';
+  sctx.drawImage(image, 0, 0, iw, ih);
+  sctx.restore();
+  sctx.save();
+  sctx.globalCompositeOperation = 'source-atop';
+  sctx.globalAlpha = 0.62;
+  sctx.fillStyle = key;
+  sctx.fillRect(0, 0, iw, ih);
+  sctx.restore();
+  byTint.set(key, surface);
+  return surface;
+}
+
 function drawImageLayer(ctx, layer, width, height, assets) {
   const image = assets && assets[layer.assetKey];
   if (!image || !(image.complete || image.width) || !(image.naturalWidth || image.width)) return;
-
-  const scratch = scratchCanvasFor(ctx, width, height);
-  if (!scratch) return;
-  const sctx = scratch.getContext('2d', { alpha: true });
-  sctx.clearRect(0, 0, width, height);
-  sctx.save();
-  sctx.imageSmoothingEnabled = true;
-  if (layer.monochrome !== false && 'filter' in sctx) {
-    sctx.filter = 'grayscale(1) contrast(1.45) brightness(.72)';
-  }
-  drawCover(sctx, image, width, height, layer.scale, layer.offsetX, layer.offsetY);
-  sctx.restore();
-
-  if (layer.monochrome !== false) {
-    sctx.save();
-    sctx.globalCompositeOperation = 'source-atop';
-    sctx.globalAlpha = 0.62;
-    sctx.fillStyle = layer.tint || '#ff8a1c';
-    sctx.fillRect(0, 0, width, height);
-    sctx.restore();
-  }
-
+  const source = layer.monochrome === false ? image : processedAssetFor(ctx, image, layer.tint);
   ctx.save();
   ctx.globalAlpha = layer.alpha == null ? 1 : Number(layer.alpha);
-  ctx.drawImage(scratch, 0, 0, width, height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  drawCover(ctx, source, width, height, layer.scale, layer.offsetX, layer.offsetY);
   ctx.restore();
 }
 
