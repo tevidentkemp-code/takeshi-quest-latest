@@ -12039,9 +12039,9 @@ function ensureLiveV2Panel(){
         </div>
       </div>
 
-      <!-- Large mobile uses the same authoritative visit state in a two-player
-           strip beneath the current-round score cards.  The compact left-hand
-           dots remain the canonical presentation at smaller widths. -->
+      <!-- Large mobile uses the same authoritative visit state in player-aligned
+           shot cells beneath the player cards. The compact left-hand dots remain
+           the canonical presentation at smaller widths. -->
       <div class="v2VisitProgress" id="v2VisitProgress" aria-label="Current round dart progress"></div>
 
       <div class="v2RowsWrap">
@@ -13076,9 +13076,8 @@ function liveV2Render(){
   if(visitHost){
     const pKey = String(pCount);
     if(visitHost.dataset.pcount !== pKey){
-      visitHost.innerHTML = Array.from({length:pCount}, (_,i)=>`
+      visitHost.innerHTML = `<div class="v2VisitSpacer" aria-hidden="true"></div>` + Array.from({length:pCount}, (_,i)=>`
         <div class="v2VisitPlayer" data-p="${i}">
-          <div class="v2VisitLabel" id="v2VisitLabel${i}">PLAYER ${escapeHtml(getPlayerInitial(i) || String.fromCharCode(65+i))}</div>
           <div class="v2VisitDots" aria-label="${escapeHtml(getPlayerInitial(i) || `Player ${i+1}`)} dart progress">
             <div class="v2VisitDot" data-dot="0"></div>
             <div class="v2VisitDot" data-dot="1"></div>
@@ -13087,18 +13086,34 @@ function liveV2Render(){
         </div>`).join("");
       visitHost.dataset.pcount = pKey;
     }
+
+    const now = Date.now();
+    const holdActive = !!state.uiLastGo && now < Number(state.uiLastGo.showUntil || 0);
+    const lastPlayer = Math.max(0, pCount - 1);
+    const heldRound = !!state.finished ? Number(cr) : Number(cr) - 1;
+    const completedRoundEntries = Number.isFinite(heldRound) && heldRound >= 0 &&
+      Array.from({length:pCount}, (_,i)=>state.score?.[i]?.[heldRound]?.darts)
+        .every(darts => Array.isArray(darts) && darts.slice(0, 3).every(Boolean));
+    const isRoundCompleteHold = holdActive && dartN === 0 && turn === 0 && completedRoundEntries &&
+      Number(state.uiLastGo.player) === lastPlayer &&
+      (Number(cr) > heldRound || !!state.finished);
+    const visitRound = isRoundCompleteHold ? heldRound : Number(cr);
+    const finishedAndCleared = !!state.finished && !isRoundCompleteHold;
+    visitHost.dataset.roundHold = isRoundCompleteHold ? "true" : "false";
+    visitHost.dataset.displayRound = String(Math.max(0, visitRound));
+
     for(let i=0;i<pCount;i++){
       const visit = visitHost.querySelector(`.v2VisitPlayer[data-p="${i}"]`);
       if(!visit) continue;
-      const label = visit.querySelector('.v2VisitLabel');
-      if(label) label.textContent = `PLAYER ${getPlayerInitial(i) || String.fromCharCode(65+i)}`;
 
-      const entryDarts = Array.isArray(state.score?.[i]?.[cr]?.darts) ? state.score[i][cr].darts : [];
-      const isHeld = state.uiLastGo && Date.now() < Number(state.uiLastGo.showUntil || 0)
+      const entryDarts = !finishedAndCleared && Array.isArray(state.score?.[i]?.[visitRound]?.darts)
+        ? state.score[i][visitRound].darts : [];
+      const isHeld = !isRoundCompleteHold && state.uiLastGo && now < Number(state.uiLastGo.showUntil || 0)
         && Number(state.uiLastGo.player) === i && dartN === 0;
       const darts = isHeld && Array.isArray(state.uiLastGo.darts) ? state.uiLastGo.darts : entryDarts;
-      const next = i === turn ? dartN : 3;
-      renderVisitDots(visit.querySelectorAll('.v2VisitDot'), darts, next, i === turn);
+      const next = !isRoundCompleteHold && i === turn ? dartN : 3;
+      renderVisitDots(visit.querySelectorAll('.v2VisitDot'), darts, next,
+        !isRoundCompleteHold && !finishedAndCleared && i === turn);
     }
   }
 
