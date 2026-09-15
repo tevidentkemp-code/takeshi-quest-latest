@@ -1,6 +1,6 @@
 // SC-030 final responsive contract. Exercises the real Live V2 render path
-// against representative mobile widths and verifies the large-layout visit
-// strip mirrors the authoritative state after ordinary gameplay actions.
+// against representative mobile widths and verifies current-round target
+// squares embedded in the live score cells after ordinary gameplay actions.
 const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
@@ -35,11 +35,7 @@ async function layout(page, width, height){
     const currentRect = current?.getBoundingClientRect();
     const graphRect = graph?.getBoundingClientRect();
     const panelRect = panel?.getBoundingClientRect();
-    const progress = panel?.querySelector('.v2VisitProgress');
-    const scoreBoxes = [...(panel?.querySelectorAll('.v2ScoreBox') || [])];
-    const miniAvgs = [...(panel?.querySelectorAll('.v2MiniAvg') || [])];
     const liveCells = [...(panel?.querySelectorAll('.v2Rows .v2Cell.liveRow') || [])];
-    const liveBadge = panel?.querySelector('.v2Rows .v2Badge.liveRow');
     const box = el => {
       const r = el?.getBoundingClientRect();
       return r ? {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height} : null;
@@ -58,18 +54,18 @@ async function layout(page, width, height){
         return r.width > 0 && r.left >= -1 && r.right <= innerWidth + 1;
       }),
       oldDotsDisplay: panel ? getComputedStyle(panel.querySelector('.v2DotsCol')).display : 'none',
-      progressDisplay: progress ? getComputedStyle(progress).display : 'none',
-      progressBorderWidth: progress ? parseFloat(getComputedStyle(progress).borderTopWidth) : -1,
-      progressLabels: panel?.querySelectorAll('.v2VisitLabel').length || 0,
-      liveBadgeRect: box(liveBadge),
-      progressPlayers: [...(panel?.querySelectorAll('.v2VisitPlayer') || [])].map(player => ({
-        count: player.querySelectorAll('.v2VisitDot').length,
-        text: player.textContent.trim(),
-        borderWidth: parseFloat(getComputedStyle(player).borderTopWidth),
-        rect: box(player),
-        scoreRect: box(scoreBoxes[Number(player.dataset.p)]),
-        infoRect: box(miniAvgs[Number(player.dataset.p)]),
-        roundRect: box(liveCells[Number(player.dataset.p)]),
+      progressPresent: !!panel?.querySelector('.v2VisitProgress'),
+      historicTargetCells: panel?.querySelectorAll('.v2Cell:not(.liveRow) .v2CellShots').length || 0,
+      liveTargets: liveCells.map(cell => ({
+        player: Number(cell.dataset.p),
+        cellRect: box(cell),
+        scoreRect: box(cell.querySelector('.v2CellScore')),
+        shotsRect: box(cell.querySelector('.v2CellShots')),
+        count: cell.querySelectorAll('.v2CellShots .v2Dot').length,
+        dots: [...cell.querySelectorAll('.v2CellShots .v2Dot')].map(dot => ({
+          rect: box(dot),
+          state: dot.dataset.shotState || '',
+        })),
       })),
     };
   }, width);
@@ -77,67 +73,25 @@ async function layout(page, width, height){
 
 async function visitState(page){
   return page.evaluate(() => {
-    const host = document.querySelector('.v2VisitProgress');
-    const dots = player => [...document.querySelectorAll(`.v2VisitPlayer[data-p="${player}"] .v2VisitDot`)]
+    const dots = player => [...document.querySelectorAll(`.v2Cell.liveRow[data-p="${player}"] .v2CellShots .v2Dot`)]
       .map(dot => dot.dataset.shotState || '');
     const turn = Number(state.currentPlayer || 0);
     const round = Number(state.currentRound || 0);
-    const displayRound = Number(host?.dataset.displayRound ?? round);
-    const roundHold = host?.dataset.roundHold === 'true';
     const entries = (state.players || []).map((_, player) => ({
-      darts: Array.isArray(state.score?.[player]?.[displayRound]?.darts)
-        ? state.score[player][displayRound].darts.filter(dart => dart != null).length
+      darts: Array.isArray(state.score?.[player]?.[round]?.darts)
+        ? state.score[player][round].darts.filter(dart => dart != null).length
         : 0,
       dots: dots(player),
     }));
     return {
       turn,
       round,
-      displayRound,
-      roundHold,
+      displayRound: round,
+      roundHold: false,
       finished: !!state.finished,
       currentDart: Number(state.currentDart || 0),
       entries,
     };
-  });
-}
-
-async function gameplaySnapshot(page){
-  return page.evaluate(() => JSON.stringify({
-    score: state.score,
-    history: state.history,
-    currentPlayer: state.currentPlayer,
-    currentRound: state.currentRound,
-    currentDart: state.currentDart,
-    finished: state.finished,
-  }));
-}
-
-async function observeRoundWipe(page){
-  await page.evaluate(() => {
-    const host = document.querySelector('.v2VisitProgress');
-    const dots = [...document.querySelectorAll('.v2VisitDot')];
-    window.__sc030RoundWipeBatches = [];
-    window.__sc030RoundWipeStartedAt = performance.now();
-    window.__sc030RoundWipeObserver?.disconnect?.();
-    window.__sc030RoundWipeObserver = new MutationObserver(records => {
-      const changed = [...new Set(records
-        .filter(record => record.type === 'attributes' && record.attributeName === 'data-shot-state')
-        .map(record => dots.indexOf(record.target))
-        .filter(index => index >= 0))];
-      if (!changed.length) return;
-      window.__sc030RoundWipeBatches.push({
-        changed,
-        states: dots.map(dot => dot.dataset.shotState || ''),
-        roundHold: host?.dataset.roundHold || '',
-        elapsed: performance.now() - window.__sc030RoundWipeStartedAt,
-      });
-    });
-    window.__sc030RoundWipeObserver.observe(host, {
-      subtree:true,
-      attributes:true,
-      attributeFilter:['data-shot-state'],
-    });
   });
 }
 
@@ -174,6 +128,10 @@ function assertStateParity(snapshot, label){
     assert.equal(narrow.historicRows, 2, '320px shows two historic rows');
     assert(narrow.currentVisible, '320px current-round row is visible');
     assert(narrow.currentAboveGraph, '320px current-round row stays above graph');
+    assert.equal(narrow.progressPresent, false, '320px has no standalone target strip');
+    assert.equal(narrow.liveTargets.length, 2, '320px renders one current-round target group per player');
+    assert(narrow.liveTargets.every(player => player.count === 3), '320px renders three square targets per player');
+    assert.equal(narrow.historicTargetCells, 0, '320px keeps targets out of historic round cells');
     assert(!narrow.overflow, '320px has no horizontal overflow');
     assert(narrow.padWithinViewport && narrow.padButtonsFit, '320px Throwpad fits viewport');
 
@@ -181,35 +139,31 @@ function assertStateParity(snapshot, label){
     await capture(page, 'responsive-390');
     assert.equal(standard.historicRows, 3, '390px shows three historic rows');
     assert(standard.currentVisible && standard.currentAboveGraph, '390px current score remains visible');
-    assert.equal(standard.oldDotsDisplay, 'flex', '390px keeps the existing dart indicators');
-    assert.equal(standard.progressDisplay, 'none', '390px does not inherit the large strip');
+    assert.equal(standard.oldDotsDisplay, 'none', '390px removes the duplicate left-hand indicators');
+    assert.equal(standard.progressPresent, false, '390px has no standalone target strip');
+    assert.equal(standard.liveTargets.length, 2, '390px renders one current-round target group per player');
+    assert(standard.liveTargets.every(player => player.count === 3), '390px renders three square targets per player');
+    assert.equal(standard.historicTargetCells, 0, '390px keeps targets out of historic round cells');
     assert(!standard.overflow && standard.padButtonsFit, '390px has no layout regression');
 
     const large = await layout(page, 430, 932);
     await capture(page, 'large-zero-darts');
     assert.equal(large.historicRows, 3, '430px keeps three historic rows');
     assert(large.currentVisible && large.currentAboveGraph, '430px current score remains visible');
-    assert.equal(large.progressDisplay, 'grid', '430px renders the visit progress strip');
-    assert.equal(large.progressPlayers.length, 2, '430px renders one strip column per player');
-    assert(large.progressPlayers.every(player => player.count === 3), '430px renders exactly three indicators per player');
-    assert.equal(large.progressLabels, 0, '430px shot cells do not repeat player names');
-    assert(large.progressPlayers.every(player => player.text === ''), 'empty shot cells contain no visible name text');
-    assert.equal(large.progressBorderWidth, 0, 'shot cells are not wrapped in one shared bordered cell');
-    assert(large.progressPlayers.every(player => player.borderWidth > 0), 'each player owns a bordered shot cell');
-    assert.equal(large.oldDotsDisplay, 'none', '430px removes the old top-left indicators');
+    assert.equal(large.progressPresent, false, '430px has no standalone target strip');
+    assert.equal(large.liveTargets.length, 2, '430px renders one current-round target group per player');
+    assert(large.liveTargets.every(player => player.count === 3), '430px renders three square targets per player');
+    assert.equal(large.historicTargetCells, 0, '430px keeps targets out of historic round cells');
+    assert.equal(large.oldDotsDisplay, 'none', '430px removes the duplicate left-hand indicators');
     assert(!large.overflow && large.padButtonsFit, '430px has no layout regression');
-    assert(large.progressPlayers[0].rect.right < large.progressPlayers[1].rect.left, 'shot cells remain visually separate');
-    assert(large.liveBadgeRect.right < large.progressPlayers[0].rect.left, 'left gutter remains clear above round labels');
-    for (const [player, geometry] of large.progressPlayers.entries()) {
-      assert(Math.abs(geometry.scoreRect.left - geometry.rect.left) <= 1 &&
-        Math.abs(geometry.scoreRect.right - geometry.rect.right) <= 1,
-      `player ${player} info and shot cells align`);
-      assert(Math.abs(geometry.infoRect.left - geometry.rect.left) <= 1 &&
-        Math.abs(geometry.infoRect.right - geometry.rect.right) <= 1,
-      `player ${player} average info and shot cells align`);
-      assert(Math.abs(geometry.roundRect.left - geometry.rect.left) <= 1 &&
-        Math.abs(geometry.roundRect.right - geometry.rect.right) <= 1,
-      `player ${player} info and shot cells sit above their round scores`);
+    for (const [player, geometry] of large.liveTargets.entries()) {
+      assert(geometry.scoreRect.top < geometry.shotsRect.top, `player ${player} score sits above targets`);
+      assert(geometry.shotsRect.bottom <= geometry.cellRect.bottom + 1, `player ${player} targets stay inside score cell`);
+      assert(geometry.dots.every(dot => Math.abs(dot.rect.width - dot.rect.height) <= 1),
+        `player ${player} targets keep square shapes`);
+      assert(geometry.dots[0].rect.left < geometry.dots[1].rect.left &&
+        geometry.dots[1].rect.left < geometry.dots[2].rect.left,
+      `player ${player} targets remain evenly laid out`);
     }
 
     assertStateParity(await visitState(page), 'start of visit');
@@ -236,45 +190,28 @@ function assertStateParity(snapshot, label){
     assertStateParity(handover, 'after dart 3 and handover');
     await capture(page, 'large-after-handover');
 
-    await observeRoundWipe(page);
     await page.click('#pad .dtX3:not([disabled])');
     await page.waitForTimeout(450);
-    const heldRound = await visitState(page);
-    assert.equal(heldRound.round, 1, 'round cursor advances immediately');
-    assert.equal(heldRound.displayRound, 0, 'completed round remains displayed during the hold');
-    assert.equal(heldRound.roundHold, true, 'all shot cells share the round-complete hold');
-    assert.deepEqual(heldRound.entries.map(entry => entry.dots.filter(value => value === 'done').length), [3, 3],
-      'all completed target cells remain visible for one second');
-    assertStateParity(heldRound, 'during completed-round hold');
-    const stateDuringHold = await gameplaySnapshot(page);
-    await capture(page, 'large-round-complete-hold');
-
-    await page.waitForFunction(() => {
-      const host = document.querySelector('.v2VisitProgress');
-      const dots = [...document.querySelectorAll('.v2VisitDot')];
-      return host?.dataset.roundHold === 'false' && dots.length === 6 &&
-        dots.every(dot => dot.dataset.shotState !== 'done');
-    }, {timeout:2500});
-    const wipedRound = await visitState(page);
-    assert.equal(wipedRound.displayRound, 1, 'shot cells move to the new round after the hold');
-    assert.deepEqual(wipedRound.entries.map(entry => entry.dots.filter(value => value === 'done').length), [0, 0],
-      'all completed targets wipe together');
-    assertStateParity(wipedRound, 'after synchronized round wipe');
-    assert.equal(await gameplaySnapshot(page), stateDuringHold, 'the timed wipe does not mutate gameplay state');
-    const wipeEvidence = await page.evaluate(() => {
-      window.__sc030RoundWipeObserver?.disconnect?.();
-      const dots = [...document.querySelectorAll('.v2VisitDot')];
-      return {
-        batches: window.__sc030RoundWipeBatches || [],
-        pipColors: dots.map(dot => getComputedStyle(dot, '::before').backgroundColor),
-      };
-    });
-    assert(wipeEvidence.batches.some(batch => batch.elapsed >= 900 && batch.changed.length === 6 &&
-      batch.states.every(state => state === 'idle' || state === 'next')),
-    'all six targets hold for one second, then reset in one render batch');
-    assert(wipeEvidence.pipColors.every(color => color === 'rgb(255, 106, 0)'),
-      'wiped targets all return to orange dots');
-    await capture(page, 'large-round-wiped');
+    const resetRound = await visitState(page);
+    assert.equal(resetRound.round, 1, 'round cursor advances immediately');
+    assert.equal(resetRound.displayRound, 1, 'targets stay in the current round score after completion');
+    assert.equal(resetRound.roundHold, false, 'round completion does not create a separate target hold');
+    assert.deepEqual(resetRound.entries.map(entry => entry.dots.filter(value => value === 'done').length), [0, 0],
+      'all current-round targets reset in place for the new round');
+    assertStateParity(resetRound, 'after current-round target reset');
+    const resetSurface = await page.evaluate(() => ({
+      historicTargetCells: document.querySelectorAll('.v2Cell:not(.liveRow) .v2CellShots').length,
+      liveTargetCells: [...document.querySelectorAll('.v2Cell.liveRow .v2CellShots')].map(group => ({
+        count: group.querySelectorAll('.v2Dot').length,
+        states: [...group.querySelectorAll('.v2Dot')].map(dot => dot.dataset.shotState || ''),
+      })),
+    }));
+    assert.equal(resetSurface.historicTargetCells, 0, 'completed rounds never retain target cells');
+    assert.equal(resetSurface.liveTargetCells.length, 2, 'new current round keeps one target group per player');
+    assert(resetSurface.liveTargetCells.every(group => group.count === 3 &&
+      group.states.every(state => state === 'idle' || state === 'next')),
+    'new current-round target groups reset to orange idle/next squares');
+    await capture(page, 'large-round-complete-reset');
 
     await page.click('#pad .dtActBtn.skip');
     await page.waitForTimeout(500);
