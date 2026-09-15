@@ -263,6 +263,7 @@ function thresholdNativeToAmber(){
 
 // ---------- Layout / HiDPI ----------
   function resize() {
+    if (window.__sqDmdOwnership && !window.__sqDmdOwnership.canWrite('v2')) return;
     const rect = wrap.getBoundingClientRect();
     const cssW = Math.max(1, Math.floor(rect.width));
     const cssH = Math.max(1, Math.floor(rect.height));
@@ -350,6 +351,7 @@ function thresholdNativeToAmber(){
 
   // ---------- Scene Queue ----------
   function enqueue(scene) {
+    if (window.__sqDmdOwnership && !window.__sqDmdOwnership.canWrite('v2')) return;
     q.push(scene);
     // Idle is an infinite scene; it must be interruptible or queued messages will never show.
     if (!active || (active && active.type === "idle")) nextScene();
@@ -434,6 +436,7 @@ function thresholdNativeToAmber(){
   let lastStepAt = 0;
 
   function render(now) {
+    if (window.__sqDmdOwnership && !window.__sqDmdOwnership.canWrite('v2')) { stop(); return; }
     rafId = requestAnimationFrame(render);
     if (!active) nextScene();
 
@@ -931,6 +934,7 @@ if (!active || active.type === "idle") {
   let __sqDmdLastZ3 = "";
 
   function showZones(z, opts){
+    window.__sqDmdOwnership?.legacyScene(opts);
     const o = opts || {};
     // >>> PATCH:DMD_ZONE1_STRIP START
     // If callers attempt to set z1, treat it as a target update only, then strip it.
@@ -977,6 +981,7 @@ if (!active || active.type === "idle") {
   }
 
   function start() {
+    if (window.__sqDmdOwnership && !window.__sqDmdOwnership.canWrite('v2')) return;
     if (isRunning) return;
     isRunning = true;
     resize();

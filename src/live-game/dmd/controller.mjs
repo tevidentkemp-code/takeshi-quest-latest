@@ -79,9 +79,9 @@ export function makeMessage(event = {}) {
 
   switch (kind) {
     case 'PLAYER_UP':
-      return { priority: PRIORITY.IDLE, headline: player ? `${player} UP` : 'TO THROW', subline: target ? `TARGET ${target}` : '', type: 'hold', duration: 0, haptic: null };
+      return { kind, priority: PRIORITY.IDLE, headline: player ? `${player} UP` : 'TO THROW', subline: target ? `TARGET ${target}` : '', type: 'hold', duration: 0, haptic: null };
     case 'TARGET':
-      return { priority: PRIORITY.IDLE, headline: target ? `TARGET ${target}` : 'TARGET', subline: player ? `${player} UP` : '', type: 'hold', duration: 0, haptic: null };
+      return { kind, priority: PRIORITY.IDLE, headline: target ? `TARGET ${target}` : 'TARGET', subline: player ? `${player} UP` : '', type: 'hold', duration: 0, haptic: null };
     case 'HIT_SINGLE':
       return { priority: PRIORITY.THROW, headline: `SINGLE +${score}`, subline: total, type: 'hold', haptic: 'hit' };
     case 'HIT_DOUBLE':
@@ -199,7 +199,7 @@ export function createController(options = {}) {
     try {
       render(
         { z2: clean(msg.headline, 24), z3: clean(msg.subline, 24) },
-        { type: msg.type || 'hold', ms: ms || 2000, amp: Number.isFinite(Number(msg.amp)) ? Number(msg.amp) : 3.2 }
+        { type: msg.type || 'hold', ms: ms || 2000, amp: Number.isFinite(Number(msg.amp)) ? Number(msg.amp) : 3.2, eventKind: msg.eventKind || null, eventData: msg.eventData }
       );
     } catch (_) {}
     if (msg.haptic) haptics.pulse(msg.haptic);
@@ -262,6 +262,11 @@ export function createController(options = {}) {
 
   function emit(event) {
     const msg = makeMessage(event);
+    msg.eventKind = clean(event.kind, 40);
+    msg.eventData = Object.freeze({
+      player: event.player, target: event.target, points: event.points,
+      dart: event.dart, total: event.total, visitPoints: event.visitPoints,
+    });
     msg.priority = finite(msg.priority, PRIORITY.THROW);
     if (msg.priority === PRIORITY.IDLE) {
       idleBaseline = msg;

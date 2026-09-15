@@ -374,6 +374,22 @@ try {
   }
 
   // Render all three zones; Z3 always shows the running sequence unless a queued combo owns the display.
+  // Presentation metadata is derived only from the dart already written above.
+  // Keep the legacy path intact when V3 is disabled or unavailable.
+  try {
+    if (window.__sqDmdOwnership?.snapshot().selected === 'v3') {
+      const eventKind = pts === 0 ? 'MISS'
+        : kind === 'B' ? (dartObj.bull === 'Inner' ? 'BULLSEYE' : 'OUTER_BULL')
+        : (kind === 'D' || kind === 'Double') ? 'HIT_DOUBLE'
+        : (kind === 'T' || kind === 'Triple') ? 'HIT_TREBLE'
+        : (kind === 'S' || kind === 'Single') ? 'HIT_SINGLE' : null;
+      if (eventKind) window.__sqDmdV2?.emit({
+        kind: eventKind, points: pts, dart: dartIndex + 1,
+        player: who, target: roundDef.target ?? roundDef.type,
+        visitPoints: entry.roundTotal,
+      });
+    }
+  } catch (_) { /* Display failure must never interrupt scoring. */ }
   if (window.sqDmdShowZones) {
     // >>> PATCH:SQ_DMD_VOLDY_ENQUEUE START
     if (__voldyHit) {
