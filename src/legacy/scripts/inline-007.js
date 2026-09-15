@@ -413,6 +413,8 @@ function thresholdNativeToAmber(){
     }
     return __sqDesmondImg;
   }
+  window.__sqDmdSpecialAssets = window.__sqDmdSpecialAssets || {};
+  window.__sqDmdSpecialAssets.desmond = __sqLoadDesmond();
   // <<< PATCH:SQ_DMD_DESMOND_IMG END
 
   // >>> PATCH:SQ_DMD_LASTDART_IMG START

@@ -39,12 +39,16 @@ async function boot() {
   const canvas = document.getElementById('sqDmdCanvas');
   let spike;
   try {
-    spike = await createRendererSpike({ canvas, host: window, reducedMotion: () => window.matchMedia('(prefers-reduced-motion: reduce)').matches });
+    spike = await createRendererSpike({ canvas, visibleCanvas: canvas, host: window, reducedMotion: () => window.matchMedia('(prefers-reduced-motion: reduce)').matches });
   } catch (error) {
     window.__sqDmdSpikeUnavailable = String(error?.message || error);
     console.warn('[SC-032] Pixi WebGL spike unavailable; retaining V2 rollback.', error);
     window.__sqDmdV2 = install({ host: window, document, backend: v2, maxQueue: 2, hapticsEnabled: false });
     window.__sqDmdV2Ready = true;
+    if (new URLSearchParams(window.location.search).get('sc032SpikeTest') === '1') {
+      const panel = document.createElement('div'); panel.id = 'sc032SpikeDiagnostics'; panel.style.cssText = 'position:fixed;z-index:99999;left:8px;right:8px;bottom:8px;padding:8px;background:#160d06ee;color:#fff8e8;font:12px monospace;border:1px solid #ff5a4f;border-radius:6px';
+      panel.textContent = `V2 FALLBACK | owner: V2 | WebGL initialization error: ${window.__sqDmdSpikeUnavailable}`; document.body.append(panel);
+    }
     return true;
   }
   let owner = 'v2';
@@ -69,6 +73,19 @@ async function boot() {
     hapticsEnabled: false,
   });
   window.__sqDmdV2Ready = true;
+  if (new URLSearchParams(window.location.search).get('sc032SpikeTest') === '1') {
+    const panel = document.createElement('div');
+    panel.id = 'sc032SpikeDiagnostics';
+    panel.style.cssText = 'position:fixed;z-index:99999;left:8px;right:8px;bottom:8px;padding:8px;background:#160d06ee;color:#fff8e8;font:12px monospace;border:1px solid #ff9d2e;border-radius:6px';
+    const status = document.createElement('div'); panel.append(status);
+    for (const [label, action] of [['PLAYER UP', () => window.__sqDmdV2.emit({ kind:'PLAYER_UP', player:'SPIKE PLAYER', target:20 })], ['TREBLE', () => window.__sqDmdV2.emit({ kind:'HIT_TREBLE', points:60, target:20, total:60 })], ['DESMOND DELIGHT', () => window.__sqDmdV2.emit({ kind:'DESMOND_DELIGHT', total:80 })], ['V2 FALLBACK', () => window.__sqDmdOwnership.select('v2')]]) {
+      const button = document.createElement('button'); button.textContent = label; button.style.margin = '3px'; button.onclick = action; panel.append(button);
+    }
+    document.body.append(panel);
+    const update = () => { const d = spike.diagnostics; const s = window.__sqDmdOwnership.snapshot(); status.textContent = `${d.renderer} | owner: ${s.owner.toUpperCase()} | initialized:${d.initialized} rendered:${d.rendered} composited:${d.composited} | scene:${spike.active?.scene || 'IDLE'}${d.error ? ` | error:${d.error}` : ''}`; };
+    window.__sqDmdSpikeDiagnostics = { update };
+    window.setInterval(update, 100);
+  }
   return true;
 }
 
