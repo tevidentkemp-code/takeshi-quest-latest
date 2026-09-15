@@ -65,11 +65,16 @@ function assertNoUnexpectedErrors(consoleErrs, label){
 
 async function waitForV2Shots(page, expected){
   await page.waitForFunction(expectedTokens => {
-    const actual = [...document.querySelectorAll('#liveV2Panel .v2Dot')]
+    const player = state.uiLastGo && Number(state.uiLastGo.showUntil || 0) > Date.now()
+      ? Number(state.uiLastGo.player || 0) : Number(state.currentPlayer || 0);
+    const actual = [...document.querySelectorAll(`#liveV2Panel .v2Cell.liveRow[data-p="${player}"] .v2CellShots .v2Dot`)]
       .map(slot => `${slot.dataset.shotState || ''}:${String(slot.textContent || '').trim()}`);
     return actual.length === expectedTokens.length && actual.every((token, i) => token === expectedTokens[i]);
   }, expected);
-  return page.evaluate(() => [...document.querySelectorAll('#liveV2Panel .v2Dot')].map(slot => {
+  return page.evaluate(() => {
+    const player = state.uiLastGo && Number(state.uiLastGo.showUntil || 0) > Date.now()
+      ? Number(state.uiLastGo.player || 0) : Number(state.currentPlayer || 0);
+    return [...document.querySelectorAll(`#liveV2Panel .v2Cell.liveRow[data-p="${player}"] .v2CellShots .v2Dot`)].map(slot => {
     const style = getComputedStyle(slot);
     const pip = getComputedStyle(slot, '::before');
     return {
@@ -79,7 +84,8 @@ async function waitForV2Shots(page, expected){
       animation: style.animationName,
       pipColour: pip.backgroundColor
     };
-  }));
+    });
+  });
 }
 
 function assertOrangeUnthrown(shots, label){
@@ -108,9 +114,10 @@ async function verifySc022HudPolish(){
         const centre = r => ({x:r.left+r.width/2,y:r.top+r.height/2});
         const panel = rect(document.getElementById('liveV2Panel'));
         const pad = rect(document.getElementById('padBar'));
-        const scorePill = rect(document.querySelector('#liveV2Panel .v2ScoreBox[data-p="0"]'));
-        const shotRects = [...document.querySelectorAll('#liveV2Panel .v2Dot')].map(rect);
-        const shotGroupCentre = (Math.min(...shotRects.map(r => r.top)) + Math.max(...shotRects.map(r => r.bottom))) / 2;
+        const liveCell = document.querySelector('#liveV2Panel .v2Cell.liveRow[data-p="0"]');
+        const liveScore = liveCell && rect(liveCell.querySelector('.v2CellScore'));
+        const liveShots = liveCell && rect(liveCell.querySelector('.v2CellShots'));
+        const shotRects = [...document.querySelectorAll('#liveV2Panel .v2Cell.liveRow .v2CellShots .v2Dot')].map(rect);
         const mini = document.querySelector('#liveV2Panel .v2MiniAvg[data-p="0"]');
         const metrics = [...mini.querySelectorAll('.v2MiniMetric')].map(metric => {
           const mr=rect(metric), lr=rect(metric.querySelector('.v2MiniLab')), vr=rect(metric.querySelector('strong'));
@@ -144,7 +151,9 @@ async function verifySc022HudPolish(){
           overflow:document.documentElement.scrollWidth > innerWidth + 1,
           padFits:pad.left >= -.5 && pad.right <= innerWidth + .5 && pad.top >= -.5 && pad.bottom <= innerHeight + .5,
           panelPadGap:pad.top-panel.bottom,
-          shotCentreDelta:Math.abs(shotGroupCentre-centre(scorePill).y),
+          scoreAboveShots:!!(liveScore && liveShots && liveScore.bottom <= liveShots.top + 1),
+          shotsInsideCell:!!(liveCell && liveShots && liveShots.left >= rect(liveCell).left - 1 && liveShots.right <= rect(liveCell).right + 1 && liveShots.bottom <= rect(liveCell).bottom + 1),
+          shotSquares:shotRects.length === 6 && shotRects.every(r => Math.abs(r.width-r.height) <= .5 && r.width >= 20),
           miniHeight:rect(mini).height,
           equalMetricWidths:Math.abs(metrics[0].width-metrics[1].width) <= 1,
           metrics,
@@ -161,7 +170,9 @@ async function verifySc022HudPolish(){
       assert(!layout.overflow, `${size.width}px HUD has no horizontal overflow`);
       assert(layout.padFits, `${size.width}px throwpad stays inside the viewport`);
       assert(layout.panelPadGap >= 5, `${size.width}px live panel does not push into the throwpad`);
-      assert(layout.shotCentreDelta <= 1.5, `${size.width}px shot track is vertically centred on the upper player-info pill`);
+      assert(layout.scoreAboveShots, `${size.width}px current-round scores sit above their target squares`);
+      assert(layout.shotsInsideCell, `${size.width}px target squares stay inside their current-round score cells`);
+      assert(layout.shotSquares, `${size.width}px target squares keep their original square footprint`);
       assert(layout.miniHeight >= 47.5 && layout.miniHeight <= 49.5, `${size.width}px average strip keeps its 48px footprint`);
       assert(layout.equalMetricWidths, `${size.width}px average metrics keep equal widths`);
       assert(layout.metrics.every(metric => metric.direction === 'column' && metric.labelAbove && metric.centred), `${size.width}px 3AV/MAV labels stack above centred values`);
@@ -221,8 +232,6 @@ async function verifySc022HudPolish(){
     assertOrangeUnthrown(shots, 'after next-player MISS');
     await page.locator('#pad .dtX3').click();
     await page.waitForFunction(() => state.currentPlayer === 0 && state.currentRound === 1 && state.currentDart === 0);
-    await waitForV2Shots(page, ['done:X', 'done:X', 'done:X']);
-    await page.waitForTimeout(1150);
     shots = await waitForV2Shots(page, ['next:', 'idle:', 'idle:']);
     assertOrangeUnthrown(shots, 'next-round reset');
 

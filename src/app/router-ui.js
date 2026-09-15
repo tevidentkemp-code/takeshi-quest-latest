@@ -5827,11 +5827,6 @@ function ensureLiveV2Panel(){
         </div>
       </div>
 
-      <!-- Large mobile uses the same authoritative visit state in player-aligned
-           shot cells beneath the player cards. The compact left-hand dots remain
-           the canonical presentation at smaller widths. -->
-      <div class="v2VisitProgress" id="v2VisitProgress" aria-label="Current round dart progress"></div>
-
       <div class="v2RowsWrap">
         <div class="v2RowsScroller">
           <div class="v2Rows" id="v2Rows"></div>

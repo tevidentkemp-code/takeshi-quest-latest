@@ -1,6 +1,6 @@
 # SC-030 — Live Game / DMD V2 modular restart
 
-Status: **FOLLOW-UP RELEASE CANDIDATE** — SC-030 was released through PR #34 as squash commit `31c02a2cb7a0cf684e976cda4d14bef9d866e54f`. The bounded large-mobile shot-cell correction remains isolated until its exact-head QA and release approval are complete.
+Status: **FOLLOW-UP RELEASE CANDIDATE** — SC-030 was released through PR #34 as squash commit `31c02a2cb7a0cf684e976cda4d14bef9d866e54f`. The corrected current-round score-cell layout remains isolated until its exact-head QA and release approval are complete.
 
 Production baseline at restart: `f641c60002b9dc86ed98e156724200f2af57e2d1`, tree-identical to the SC-031 production release tree.
 
@@ -59,10 +59,10 @@ Completed delivery:
 17. Removed all one-shot SC-030 writer/generator workflows and scripts from the delivery surface after use.
 18. Hardened the semantic Live V2/DMD shell selectors so later compatibility and Turbo styles cannot recreate the removed outer cabinets; the preserved legacy styles remain untouched and semantic Live Game CSS is authoritative.
 19. Closed a release-evidence false-positive: added `tools/ui-smoke/verify-sc030-artwork-isolation.js`, which hard-isolates Last Dart Hero / Desmond / Voldy scenes, proves three distinct artwork sources, verifies repeated full-width frames and rejects stale artwork leaking into the following text-only scene. The release-candidate workflow runs this acceptance against both source and built `dist`.
-20. Applied the final bounded responsive Live Game patch: the narrowest mobile viewport shows two historic rows so the live score stays above the graph and Throwpad; standard mobile retains three historic rows and the existing compact dart indicators; large mobile relocates the same authoritative visit state beneath the player cards and removes the duplicate top-left indicators.
-21. Corrected the large-mobile shot layout after release: removed repeated player labels from the shot cells, gave every player a separate bordered shot cell, restored the blank round-label gutter and aligned player, average, shot and round-score cells on the same columns.
-22. The large-mobile renderer now derives a completed-round hold directly from `state.score`, the gameplay cursor and the existing one-second `uiLastGo` clock. Every player's completed targets remain visible for the hold and reset to orange dots in one render without delaying or mutating gameplay.
-23. Extended `tools/ui-smoke/verify-sc030-responsive-runtime.js` in both source and built-`dist` release stages. It now asserts row counts, score/graph/Throwpad geometry, exact column alignment, separate shot-cell ownership, absence of repeated names, synchronized one-second reset, orange idle dots, state immutability and live parity through darts, Miss, Undo, Skip, handover and the next visit.
+20. Applied the bounded responsive Live Game patch: the narrowest mobile viewport shows two historic rows so the live score stays above the graph and Throwpad; standard mobile retains three historic rows; the gameplay rows remain in their original position below the player cards and averages.
+21. Reworked the current-round score cells so each player has three original square target dots in the lower half of that player's own cell, with the score above them and the left-hand round-label gutter preserved. Historic rows contain scores only; the standalone target strip and duplicate indicators are removed.
+22. The live renderer derives each player's target state from `state.score[i][currentRound].darts` and the gameplay cursor. When the round advances, the new current-round cells immediately reset to orange idle/next dots without delaying or mutating gameplay.
+23. Extended `tools/ui-smoke/verify-sc030-responsive-runtime.js` and the Classic visual-fit regression in both source and built-`dist` release stages. They assert row counts, score/graph/Throwpad geometry, current-cell ownership, square target geometry, absence of repeated names and standalone strips, immediate next-round reset, state immutability and live parity through darts, Miss, Undo, Skip and handover.
 
 ## Release-candidate acceptance
 
@@ -79,7 +79,7 @@ It must pass, at the same candidate head:
 - the same runtime suite against built `dist`;
 - synthetic cloud-failure resilience against source and dist;
 - generated screenshot/evidence capture for final product inspection.
-- final responsive Live Game acceptance at 320 / 390 / 430px against source and built `dist`.
+- final responsive Live Game acceptance at 320 / 390 / 430px against source and built `dist`, including current-round square targets and immediate reset on round advance.
 
 No green result from an older head authorises release after a subsequent candidate change.
 
@@ -92,19 +92,19 @@ Current engineering state:
 - SC-031 modular architecture is already production baseline.
 - SC-030 shipped through PR #34; this responsive correction remains isolated from `main` pending its release gate.
 - The DMD controller, bootstrap, event adoption, reduced motion, interaction responsiveness, Undo/Skip behaviour, semantic CSS ownership, final visual convergence and isolated artwork acceptance are implemented.
-- The final responsive Live Game patch is implemented: two historic rows at 320px, three at 390px and 430px, and separate large-mobile player shot cells backed by existing score/cursor state and aligned above each player's round scores.
+- The final responsive Live Game correction is implemented: two historic rows at 320px, three at 390px and 430px, and three square current-round target cells embedded in each player's live score cell above the round scores and backed by existing score/cursor state.
 - The old Phase-1-only wording is superseded by this document.
 - The parked pre-SC-031 PR #32 remains non-mergeable evidence only.
 - The original SC-030 release is on `main`; the follow-up correction has not been released.
 
 Remaining steps:
 
-1. Final release-candidate QA must finish green at the follow-up candidate head, including isolated artwork and responsive acceptance against source and `dist`.
+1. Final release-candidate QA must finish green at the corrected follow-up candidate head, including isolated artwork and responsive acceptance against source and `dist`.
 2. Inspect the generated 320 / 390 / 430 screenshots plus isolated Last Dart Hero / Desmond / Voldy / text-only evidence for product fit.
 3. Complete one real-device iPhone-sized visual smoke test of the final candidate, with no scoring/persistence mutation beyond ordinary disposable test play.
 4. If visual evidence is below the locked direction, make only a bounded convergence fix and rerun the same full gate.
 5. Record the follow-up candidate SHA, workflow run, production delta, risks and rollback packet on its release PR.
-6. Merge the follow-up only after explicit release approval.
+6. Merge the follow-up after the explicit release approval already recorded for this candidate.
 7. After SC-030 is closed, handle Shateki Engineering Hardening separately: path-specific agent instructions, enforceable dangerous-operation gates/hooks and a formal acceptance-criteria convergence gate. Do not mix that work into SC-030.
 
 ## Security boundary

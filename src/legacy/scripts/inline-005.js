@@ -12039,11 +12039,6 @@ function ensureLiveV2Panel(){
         </div>
       </div>
 
-      <!-- Large mobile uses the same authoritative visit state in player-aligned
-           shot cells beneath the player cards. The compact left-hand dots remain
-           the canonical presentation at smaller widths. -->
-      <div class="v2VisitProgress" id="v2VisitProgress" aria-label="Current round dart progress"></div>
-
       <div class="v2RowsWrap">
         <div class="v2RowsScroller">
           <div class="v2Rows" id="v2Rows"></div>
@@ -13046,8 +13041,7 @@ function liveV2Render(){
     });
   };
 
-  // Preserve the original compact indicator behaviour at narrow and standard
-  // widths. The large layout gets its own player-aligned strip below.
+  // Keep the original left-hand indicators authoritative at every viewport.
   panel.querySelectorAll(".v2DotsCol .v2Dot").forEach((el)=>{
     const k = parseInt(el.getAttribute("data-dot") || "0", 10);
     const dart = shotDarts[k] || null;
@@ -13071,51 +13065,6 @@ function liveV2Render(){
       el.dataset.shotState = "idle";
     }
   });
-
-  const visitHost = panel.querySelector("#v2VisitProgress");
-  if(visitHost){
-    const pKey = String(pCount);
-    if(visitHost.dataset.pcount !== pKey){
-      visitHost.innerHTML = `<div class="v2VisitSpacer" aria-hidden="true"></div>` + Array.from({length:pCount}, (_,i)=>`
-        <div class="v2VisitPlayer" data-p="${i}">
-          <div class="v2VisitDots" aria-label="${escapeHtml(getPlayerInitial(i) || `Player ${i+1}`)} dart progress">
-            <div class="v2VisitDot" data-dot="0"></div>
-            <div class="v2VisitDot" data-dot="1"></div>
-            <div class="v2VisitDot" data-dot="2"></div>
-          </div>
-        </div>`).join("");
-      visitHost.dataset.pcount = pKey;
-    }
-
-    const now = Date.now();
-    const holdActive = !!state.uiLastGo && now < Number(state.uiLastGo.showUntil || 0);
-    const lastPlayer = Math.max(0, pCount - 1);
-    const heldRound = !!state.finished ? Number(cr) : Number(cr) - 1;
-    const completedRoundEntries = Number.isFinite(heldRound) && heldRound >= 0 &&
-      Array.from({length:pCount}, (_,i)=>state.score?.[i]?.[heldRound]?.darts)
-        .every(darts => Array.isArray(darts) && darts.slice(0, 3).every(Boolean));
-    const isRoundCompleteHold = holdActive && dartN === 0 && turn === 0 && completedRoundEntries &&
-      Number(state.uiLastGo.player) === lastPlayer &&
-      (Number(cr) > heldRound || !!state.finished);
-    const visitRound = isRoundCompleteHold ? heldRound : Number(cr);
-    const finishedAndCleared = !!state.finished && !isRoundCompleteHold;
-    visitHost.dataset.roundHold = isRoundCompleteHold ? "true" : "false";
-    visitHost.dataset.displayRound = String(Math.max(0, visitRound));
-
-    for(let i=0;i<pCount;i++){
-      const visit = visitHost.querySelector(`.v2VisitPlayer[data-p="${i}"]`);
-      if(!visit) continue;
-
-      const entryDarts = !finishedAndCleared && Array.isArray(state.score?.[i]?.[visitRound]?.darts)
-        ? state.score[i][visitRound].darts : [];
-      const isHeld = !isRoundCompleteHold && state.uiLastGo && now < Number(state.uiLastGo.showUntil || 0)
-        && Number(state.uiLastGo.player) === i && dartN === 0;
-      const darts = isHeld && Array.isArray(state.uiLastGo.darts) ? state.uiLastGo.darts : entryDarts;
-      const next = !isRoundCompleteHold && i === turn ? dartN : 3;
-      renderVisitDots(visit.querySelectorAll('.v2VisitDot'), darts, next,
-        !isRoundCompleteHold && !finishedAndCleared && i === turn);
-    }
-  }
 
   // Rounds list: 3-row viewport. At game start show current + next 2; later show current + previous 2.
   // >>> PATCH:LIVEV2_ROWS_GUARD START
@@ -13248,8 +13197,19 @@ const __soloLiveDarts = (pCount === 1) ? __sqV2DartsTextForEntry(state.score?.[i
 const __soloScoreBorderClass = (pCount === 1)
   ? (r === cr ? ' solo-current' : ((r < cr && val != null && pbVal > 0 && Number(val) > pbVal) ? ' solo-beat-pb' : (r < cr ? ' solo-complete' : ' solo-future')))
   : '';
-out.push(`<div class="v2Cell${rowClass} ${(isActiveCell ? "active":"")} ${(isHi ? "hi":"")} ${(isPB ? "pb":"")} ${(isWR ? "wr":"")}${__soloScoreBorderClass}">` +
-         `${val == null ? "–" : `<span class="v2CellNum">${escapeHtml(String(val))}</span>${__soloLiveDarts ? `<span class="v2CellDarts">${escapeHtml(__soloLiveDarts)}</span>` : ''}`}` +
+const __inlineScore = val == null ? "–" : `<span class="v2CellNum">${escapeHtml(String(val))}</span>${__soloLiveDarts ? `<span class="v2CellDarts">${escapeHtml(__soloLiveDarts)}</span>` : ''}`;
+const __inlineTargets = (r === cr)
+  ? `<div class="v2CellShots" data-p="${i}" data-round="${r}" aria-label="Current round targets">
+      <span class="v2Dot" data-p="${i}" data-dot="0" data-shot-state="idle"></span>
+      <span class="v2Dot" data-p="${i}" data-dot="1" data-shot-state="idle"></span>
+      <span class="v2Dot" data-p="${i}" data-dot="2" data-shot-state="idle"></span>
+    </div>`
+  : '';
+const __cellContents = (r === cr)
+  ? `<div class="v2CellScore">${__inlineScore}</div>${__inlineTargets}`
+  : __inlineScore;
+out.push(`<div class="v2Cell${rowClass} ${(isActiveCell ? "active":"")} ${(isHi ? "hi":"")} ${(isPB ? "pb":"")} ${(isWR ? "wr":"")}${__soloScoreBorderClass}" data-p="${i}" data-round="${r}">` +
+         __cellContents +
          `</div>`);
 
         // Solo Practice: player round score = 2/3 width, PB pill = 1/3 width.
@@ -13287,6 +13247,16 @@ out.push(`<div class="v2Cell${rowClass} ${(isActiveCell ? "active":"")} ${(isHi 
       }
     }
     rowsHost.innerHTML = out.join("");
+
+    // Current-round target cells live inside the live score cells only. They
+    // derive from the authoritative per-player round darts and reset in place
+    // when the round cursor advances; historic rows never receive targets.
+    for(let i=0;i<pCount;i++){
+      const targetNodes = rowsHost.querySelectorAll(`.v2Cell.liveRow[data-p="${i}"] .v2CellShots .v2Dot`);
+      const darts = Array.isArray(state.score?.[i]?.[cr]?.darts) ? state.score[i][cr].darts : [];
+      const next = i === turn ? dartN : 3;
+      renderVisitDots(targetNodes, darts, next, !state.finished && i === turn);
+    }
 
     // >>> PATCH:livev2-scoringcell-nextrow START
     // Live V2 should only show 3 score rows total (no extra "next" row).
