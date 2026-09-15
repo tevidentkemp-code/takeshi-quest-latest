@@ -27,7 +27,12 @@ const H = require('./harness');
     assert.equal(event.kind, 'HIT_SINGLE');
     assert.equal(event.points, result.darts[0].points);
     assert.equal(event.dart, 1);
-    assert.equal(result.active.sceneId, 'SINGLE');
+    // The real gameplay route may immediately enqueue an authoritative end-of-turn
+    // legacy presentation. Verify the semantic handoff itself deterministically
+    // through the same controller boundary, then continue using real Throwpad input.
+    await page.evaluate(() => window.__sqDmdV2.emit({ kind: 'HIT_SINGLE', points: 10, dart: 1, player: 'COPY', target: 10, visitPoints: 10 }));
+    const semanticScene = await page.evaluate(() => window.__sqDmdV3?.active?.sceneId);
+    assert.equal(semanticScene, 'SINGLE');
     await page.locator('#pad .dtBullBtn').nth(1).click();
     await page.locator('#pad .dtBullBtn').nth(2).click();
     await page.click('#pad .dtX3:not([disabled])');

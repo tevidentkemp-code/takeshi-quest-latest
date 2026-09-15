@@ -53,10 +53,12 @@ export function createOwnershipRouter({ host, canvas, v2, readBaseline }) {
     canWrite(backend) { return owner === backend; },
     refreshIdle() { if (!current && fallbackTimer == null && !host.document.hidden) restoreIdle(); },
     legacyScene(opts = {}) {
-      if (selected === 'v3' && /Img$/.test(opts.type || '')) {
-        take('v2');
-        fallbackTimer = host.setTimeout(restoreIdle, Number(opts.ms) || 950);
-      }
+      if (opts.__sqSemantic === true) return;
+      take('v2');
+      fallbackTimer = host.setTimeout(() => {
+        fallbackTimer = null;
+        restoreIdle();
+      }, Math.max(950, Number(opts.ms) || 0) + 80);
     },
     select(value) {
       if (value !== 'v2' && value !== 'v3') throw new Error('Expected v2 or v3');

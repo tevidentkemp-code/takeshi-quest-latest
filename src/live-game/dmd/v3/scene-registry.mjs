@@ -20,9 +20,9 @@ export const DMD_V3_RESOLUTIONS = Object.freeze({
 });
 
 export const DMD_V3_PALETTE = Object.freeze({
-  amber: '#ff8a1c',
-  amberHot: '#ffc66d',
-  warm: '#fff0cf',
+  amber: '#ff9d2e',
+  amberHot: '#ffd58a',
+  warm: '#fff8e8',
   green: '#74e2a8',
   red: '#ff5a4f',
   dim: '#7f4a1e',
@@ -136,9 +136,8 @@ function playerUpFrame(t, d, reduced) {
   const sweep = reduced ? 0 : segment(t, 120, 700);
   return scene('PLAYER_UP', 1400, [
     line(0.11 + drift, 0.77, 0.89, 0.77, { alpha: 0.22 + sweep * 0.34, width: 0.006 }),
-    text(d.player, 0.5 + drift, 0.43, 0.42, { color: DMD_V3_PALETTE.warm, alpha: enter, weight: 900 }),
-    text('UP', 0.86, 0.43, 0.13, { color: DMD_V3_PALETTE.amber, alpha: enter * 0.9, weight: 800 }),
-    text(`TARGET ${d.target}`, 0.5, 0.78, 0.13, { color: DMD_V3_PALETTE.amber, alpha: 0.62 + 0.28 * sweep, weight: 800 }),
+    text(`${d.player || 'PLAYER'} UP`, 0.5 + drift, 0.40, 0.35, { color: DMD_V3_PALETTE.warm, alpha: enter, weight: 900 }),
+    text(d.target ? `TARGET ${d.target}` : 'TARGET', 0.5, 0.76, 0.16, { color: DMD_V3_PALETTE.amberHot, alpha: 0.82 + 0.16 * sweep, weight: 800 }),
   ], { intensity: 0.9 });
 }
 
@@ -147,8 +146,8 @@ function singleFrame(t, d, reduced) {
   const y = 0.48 + (reduced ? 0 : translateIn(t, 0, 160, 0.07));
   return scene('SINGLE', 320, [
     number(d.points ?? '', 0.5, y, 0.56, { color: DMD_V3_PALETTE.warm, alpha: a, scale: reduced ? 1 : scaleIn(t, 0, 180, 1.06), weight: 900 }),
-    text('SINGLE', 0.18, 0.79, 0.11, { color: DMD_V3_PALETTE.amber, alpha: a * 0.8, align: 'left' }),
-    text(d.total == null ? '' : `TOTAL ${d.total}`, 0.82, 0.79, 0.11, { color: DMD_V3_PALETTE.amber, alpha: a * 0.76, align: 'right' }),
+    text('SINGLE', 0.5, 0.79, 0.14, { color: DMD_V3_PALETTE.amberHot, alpha: a * 0.9 }),
+    text(d.total == null ? '' : `TOTAL ${d.total}`, 0.5, 0.92, 0.11, { color: DMD_V3_PALETTE.amber, alpha: a * 0.9 }),
   ]);
 }
 
@@ -175,8 +174,8 @@ function trebleFrame(t, d, reduced) {
       ring(0.5, 0.46, 0.29 + p * 0.06, { alpha: (1 - p) * 0.18, width: 0.006 }),
     ]),
     number(d.points ?? '', 0.5, 0.45, 0.58, { color: DMD_V3_PALETTE.warm, alpha: a, scale: reduced ? 1 : scaleIn(t, 0, 180, 1.10), weight: 900 }),
-    text(`TREBLE ${d.target}`, 0.18, 0.80, 0.11, { color: DMD_V3_PALETTE.amber, alpha: a * 0.88, align: 'left' }),
-    text(d.total == null ? '' : `TOTAL ${total}`, 0.82, 0.80, 0.11, { color: DMD_V3_PALETTE.amberHot, alpha: a * 0.92, align: 'right' }),
+    text(`TREBLE${d.target ? ` ${d.target}` : ''}`, 0.5, 0.79, 0.14, { color: DMD_V3_PALETTE.amberHot, alpha: a * 0.95 }),
+    text(d.total == null ? '' : `TOTAL ${total}`, 0.5, 0.92, 0.11, { color: DMD_V3_PALETTE.amberHot, alpha: a * 0.95 }),
   ], { intensity: 1.05 });
 }
 
@@ -189,8 +188,8 @@ function bullFrame(t, d, reduced) {
       ring(0.5, 0.44, lerp(0.08, 0.24, p), { alpha: (1 - p) * 0.28, width: 0.008 }),
     ]),
     number(50, 0.5, 0.43, 0.60, { color: DMD_V3_PALETTE.warm, alpha: a, scale: reduced ? 1 : scaleIn(t, 0, 210, 1.12), weight: 900 }),
-    text('BULLSEYE', 0.18, 0.80, 0.11, { color: DMD_V3_PALETTE.amberHot, alpha: a * 0.9, align: 'left' }),
-    text(d.total == null ? '' : `TOTAL ${d.total}`, 0.82, 0.80, 0.11, { color: DMD_V3_PALETTE.amber, alpha: a * 0.8, align: 'right' }),
+    text('BULLSEYE', 0.5, 0.79, 0.14, { color: DMD_V3_PALETTE.amberHot, alpha: a * 0.95 }),
+    text(d.total == null ? '' : `TOTAL ${d.total}`, 0.5, 0.92, 0.11, { color: DMD_V3_PALETTE.amberHot, alpha: a * 0.9 }),
   ], { intensity: 1.08 });
 }
 
@@ -199,7 +198,7 @@ function missFrame(t, d, reduced) {
   const j = reduced ? { x: 0, y: 0 } : deterministicJitter(t, 0.006, 0.12);
   return scene('MISS', 250, [
     cross(0.5 + j.x, 0.43 + j.y, 0.22, { alpha: a, width: 0.022, color: DMD_V3_PALETTE.red }),
-    text('MISS', 0.5, 0.79, 0.13, { color: DMD_V3_PALETTE.red, alpha: a * 0.92, weight: 900 }),
+    text('MISS', 0.5, 0.79, 0.17, { color: DMD_V3_PALETTE.red, alpha: a, weight: 900 }),
   ], { intensity: 0.95 });
 }
 

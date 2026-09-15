@@ -398,7 +398,7 @@ try {
     }
     // <<< PATCH:SQ_DMD_VOLDY_ENQUEUE END
     if (!__queueOnlyCombo) {
-      window.sqDmdShowZones({ z1, z2, z3: (window.__sqDmdBulkMiss ? '' : seq) }, fx);
+      window.sqDmdShowZones({ z1, z2, z3: (window.__sqDmdBulkMiss ? '' : seq) }, { ...fx, __sqSemantic:true });
     }
     // >>> PATCH:SQ_DMD_CLEAR_Z3_ENDTURN
     // End-of-turn behaviour:
