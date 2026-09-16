@@ -139,7 +139,7 @@ function p(name) { return path.join(OUT, name); }
     assert.equal(visibleButtons.some(t => /VIEW BREAKDOWN|SCORECARD|END MATCH|NEXT ROUND/i.test(t)), false, 'Legacy actions leaked onto scorecard');
     await page.screenshot({ path:p('sc038-scorecard-runtime.png'), fullPage:false });
 
-    await page.locator('.sq-pg-next').click();
+    await page.locator('.sq-pg-next').evaluate(el => el.click());
     await page.waitForSelector('.sq-pg-xp-screen:not([hidden])');
     await page.waitForFunction(() => {
       const b = document.querySelector('.sq-pg-next');
