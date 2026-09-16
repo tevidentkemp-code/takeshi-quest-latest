@@ -181,7 +181,10 @@ function p(name) { return path.join(OUT, name); }
     assert.equal(await page.evaluate(() => window.__sqSc038XpCalls), 1, 'Existing XP renderer handoff did not run exactly once');
     await page.screenshot({ path:p('sc038-xp-runtime.png'), fullPage:false });
 
-    const unexpected = consoleErrs.filter(e => !/supabase|failed to fetch|networkerror|aborterror/i.test(e));
+    // The harness intentionally aborts all non-local requests (including production
+    // Supabase and decorative remote assets), which Chromium reports as generic
+    // ERR_FAILED console noise. Keep real application/page errors visible.
+    const unexpected = consoleErrs.filter(e => !/supabase|failed to fetch|networkerror|aborterror|failed to load resource:\s*net::err_failed/i.test(e));
     assert.deepEqual(unexpected, [], 'Unexpected console/page errors: ' + unexpected.join(' | '));
 
     console.log('SC-038 runtime UI PASS');
