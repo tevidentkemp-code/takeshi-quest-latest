@@ -82,18 +82,22 @@ function p(name) { return path.join(OUT, name); }
       // Bull-round cursor. This keeps colour QA presentation-only and deterministic.
       document.body.setAttribute('data-page', 'game');
       document.body.classList.add('livev2-on');
+      const pad = document.getElementById('pad');
+      if (!pad) throw new Error('Throwpad host missing');
+      pad.innerHTML = '';
+      pad.style.display = 'block';
       const probe = document.createElement('div');
       probe.id = 'sc038BullProbe';
       probe.className = 'dtBullRow';
       probe.style.cssText = 'position:fixed;left:12px;right:12px;top:12px;z-index:999999;background:#050812;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;border-radius:14px';
       probe.innerHTML = '<button class="dtBullBtn" type="button" data-bull="Outer">OUTER BULL</button><button class="dtBullBtn inner" type="button" data-bull="Inner">INNER BULL</button>';
-      document.body.appendChild(probe);
+      pad.appendChild(probe);
     });
 
-    await page.waitForSelector('#sc038BullProbe .dtBullBtn[data-bull="Outer"]');
+    await page.waitForSelector('#pad #sc038BullProbe .dtBullBtn[data-bull="Outer"]');
     const bullColors = await page.evaluate(() => {
-      const outer = document.querySelector('#sc038BullProbe .dtBullBtn[data-bull="Outer"]');
-      const inner = document.querySelector('#sc038BullProbe .dtBullBtn[data-bull="Inner"]');
+      const outer = document.querySelector('#pad #sc038BullProbe .dtBullBtn[data-bull="Outer"]');
+      const inner = document.querySelector('#pad #sc038BullProbe .dtBullBtn[data-bull="Inner"]');
       const a = getComputedStyle(outer);
       const b = getComputedStyle(inner);
       return { outerBg:a.backgroundImage, outerBorder:a.borderTopColor, innerBg:b.backgroundImage, innerBorder:b.borderTopColor };
