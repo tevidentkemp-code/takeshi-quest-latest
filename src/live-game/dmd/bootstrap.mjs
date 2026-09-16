@@ -1,3 +1,6 @@
+import '../postgame-flow.mjs';
+import '../postgame-release-guard.mjs';
+import '../bull-colours.mjs';
 import { detectExistingBackend, install } from './controller.mjs';
 import { createMotionSafeBackend } from './motion.mjs';
 
