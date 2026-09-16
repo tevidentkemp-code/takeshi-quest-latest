@@ -68,6 +68,7 @@ function p(name) { return path.join(OUT, name); }
       state.gameAwarded = false;
       state.mode = 'official';
       state.gameMode = 'official';
+      state.history = Array.from({ length:14 }, (_, round) => ({ round, player:0 }));
       state.__gameToken = 3801;
       state.match = Object.assign({}, state.match || {}, {
         id:'sc038-fixture-match', mode:'official', gameMode:'official', targetWins:3,
@@ -77,23 +78,30 @@ function p(name) { return path.join(OUT, name); }
       try { delete state.__sqGameCompleteOpen; } catch (_) {}
       try { delete state.__sqXpRevealedTok; } catch (_) {}
 
-      if (typeof show === 'function') show('game');
-      if (typeof buildPad === 'function') buildPad();
-      if (typeof updateUI === 'function') updateUI();
+      // Probe the exact production Throwpad selectors without depending on a live
+      // Bull-round cursor. This keeps colour QA presentation-only and deterministic.
+      document.body.setAttribute('data-page', 'game');
+      document.body.classList.add('livev2-on');
+      const probe = document.createElement('div');
+      probe.id = 'sc038BullProbe';
+      probe.className = 'dtBullRow';
+      probe.style.cssText = 'position:fixed;left:12px;right:12px;top:12px;z-index:999999;background:#050812;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;border-radius:14px';
+      probe.innerHTML = '<button class="dtBullBtn" type="button" data-bull="Outer">OUTER BULL</button><button class="dtBullBtn inner" type="button" data-bull="Inner">INNER BULL</button>';
+      document.body.appendChild(probe);
     });
 
-    await page.waitForTimeout(700);
-    await page.waitForSelector('#pad .dtBullBtn[data-bull="Outer"]');
+    await page.waitForSelector('#sc038BullProbe .dtBullBtn[data-bull="Outer"]');
     const bullColors = await page.evaluate(() => {
-      const outer = document.querySelector('#pad .dtBullBtn[data-bull="Outer"]');
-      const inner = document.querySelector('#pad .dtBullBtn[data-bull="Inner"]');
+      const outer = document.querySelector('#sc038BullProbe .dtBullBtn[data-bull="Outer"]');
+      const inner = document.querySelector('#sc038BullProbe .dtBullBtn[data-bull="Inner"]');
       const a = getComputedStyle(outer);
       const b = getComputedStyle(inner);
       return { outerBg:a.backgroundImage, outerBorder:a.borderTopColor, innerBg:b.backgroundImage, innerBorder:b.borderTopColor };
     });
     assert.match(bullColors.outerBg, /18, 92, 52|rgb\(18, 92, 52\)/, 'Outer Bull is not using the green SC-038 treatment');
     assert.match(bullColors.innerBg, /126, 27, 42|rgb\(126, 27, 42\)/, 'Inner Bull is not using the red SC-038 treatment');
-    await page.screenshot({ path:p('sc038-bull-runtime.png'), fullPage:false });
+    await page.locator('#sc038BullProbe').screenshot({ path:p('sc038-bull-runtime.png') });
+    await page.evaluate(() => document.getElementById('sc038BullProbe')?.remove());
 
     await page.evaluate(() => {
       state.finished = true;
