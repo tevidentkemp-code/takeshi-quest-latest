@@ -16,6 +16,9 @@ function ensureStatStyles() {
   line-height:1.05 !important;
   white-space:nowrap !important;
 }
+.modal-gamecomplete.sq-gc-arcade .sq-pg-xp-screen:not([hidden]){
+  min-height:120px;
+}
 `;
   document.head.appendChild(style);
 }
