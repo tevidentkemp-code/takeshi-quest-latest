@@ -54,7 +54,7 @@ function normalizeName(v) {
   return String(v == null ? '' : v).trim().toLowerCase();
 }
 
-export function recordFlagsFromSnapshot(snapshotRows, player, score) {
+export function recordFlagsFromSnapshot(snapshotRows, player, score, currentGameBest = null) {
   const rows = Array.isArray(snapshotRows) ? snapshotRows : [];
   const p = player || {};
   const playerId = String(p.player_id || p.id || '').trim();
@@ -74,9 +74,11 @@ export function recordFlagsFromSnapshot(snapshotRows, player, score) {
 
   const worldBest = rows.reduce((m, row) => Math.max(m, Number(row && row.best_score || 0)), 0);
   const previousBest = previous ? Number(previous.best_score || 0) : 0;
+  const gameBest = Number(currentGameBest || 0);
+  const isFinalGameBest = !(gameBest > 0) || current >= gameBest;
   return {
     pb: previousBest > 0 && current > previousBest,
-    wr: worldBest > 0 && current > worldBest,
+    wr: worldBest > 0 && current > worldBest && isFinalGameBest,
     previousBest: previousBest || null,
     worldBest: worldBest || null
   };
@@ -383,8 +385,9 @@ async function hydrateRecordBadges(st, rows, scorecard) {
       .from(WR_VIEW)
       .select('player_id,player_name,best_score,best_score_pos');
     if (error || !Array.isArray(data) || !data.length) return;
+    const currentGameBest = rows.reduce((m, row) => Math.max(m, Number(row && row.score || 0)), 0);
     rows.forEach(row => {
-      const flags = recordFlagsFromSnapshot(data, row.player, row.score);
+      const flags = recordFlagsFromSnapshot(data, row.player, row.score, currentGameBest);
       if (!flags.pb && !flags.wr) return;
       const host = scorecard.querySelector(`[data-records-for="${row.index}"]`);
       if (!host) return;
