@@ -1,4 +1,5 @@
 const GUARD_KEY = '__sqSc038ReleaseGuard';
+const BOUND_KEY = 'sqSc038ReleaseBound';
 
 function finalAdvanceLabel(existingText) {
   return /end\s*match|finish\s*match/i.test(String(existingText || '')) ? 'FINISH MATCH' : 'NEXT GAME';
@@ -53,10 +54,7 @@ function startXp(modal, next) {
   return true;
 }
 
-function onPostgameClick(event) {
-  const next = event.target?.closest?.('.sq-pg-next');
-  if (!next) return;
-
+function handleNext(event, next) {
   const modal = next.closest('.modal-gamecomplete.sq-gc-arcade');
   if (!modal) return;
 
@@ -86,11 +84,29 @@ function onPostgameClick(event) {
   }
 }
 
+function bindNext(next) {
+  if (!(next instanceof HTMLElement) || next.dataset[BOUND_KEY] === '1') return;
+  next.dataset[BOUND_KEY] = '1';
+  next.addEventListener('click', event => handleNext(event, next), true);
+}
+
+function scan(root = document) {
+  if (root instanceof Element && root.matches('.sq-pg-next')) bindNext(root);
+  root.querySelectorAll?.('.sq-pg-next').forEach(bindNext);
+}
+
 function install() {
   if (window[GUARD_KEY]) return;
   window[GUARD_KEY] = true;
   ensureStatStyles();
-  document.addEventListener('click', onPostgameClick, true);
+  scan();
+  const observer = new MutationObserver(records => {
+    records.forEach(record => record.addedNodes.forEach(node => {
+      if (node instanceof Element) scan(node);
+    }));
+  });
+  observer.observe(document.documentElement, { childList:true, subtree:true });
+  window.__sqSc038ReleaseObserver = observer;
 }
 
 if (document.readyState === 'loading') {
@@ -99,4 +115,4 @@ if (document.readyState === 'loading') {
   install();
 }
 
-export { install, ensureStatStyles };
+export { install, ensureStatStyles, bindNext };
