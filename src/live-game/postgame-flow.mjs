@@ -167,6 +167,7 @@ body .modal-decider .dtBullRow .dtBullBtn.inner[data-bull="Inner"]{
   letter-spacing:.08em;
   color:rgba(255,186,104,.92);
 }
+.modal-gamecomplete.sq-gc-arcade .gc-statRow .gc-statValue{ white-space:nowrap; }
 .modal-gamecomplete.sq-gc-arcade .gc-arcade-actions{ display:none !important; }
 .modal-gamecomplete.sq-gc-arcade .gc-ranks{ display:none !important; }
 .modal-gamecomplete.sq-gc-arcade .sq-pg-screen[hidden]{ display:none !important; }
@@ -307,7 +308,7 @@ body .modal-decider .dtBullRow .dtBullBtn.inner[data-bull="Inner"]{
   .modal-gamecomplete.sq-gc-arcade .gc-arcade-shell{ min-height:0; padding:28px 18px 20px; }
   .modal-gamecomplete.sq-gc-arcade .gc-arcade-content{ min-height:360px; }
   .modal-gamecomplete.sq-gc-arcade .gc-winnerName.sq-pg-winner-name{ max-width:75%; }
-  .modal-gamecomplete.sq-gc-arcade .gc-statPanel{ width:min(278px,70%); }
+  .modal-gamecomplete.sq-gc-arcade .gc-statPanel{ width:min(310px,82%); }
   .modal-gamecomplete.sq-gc-arcade .sq-pg-score-head,
   .modal-gamecomplete.sq-gc-arcade .sq-pg-score-row{ grid-template-columns:minmax(0,1fr) 44px 44px 76px; gap:5px; }
 }
@@ -456,13 +457,12 @@ function upgradePostGameOverlay(overlay) {
 
   hydrateRecordBadges(st, rows, scorecard);
 
-  let step = 0;
   let xpStarted = false;
   let xpReady = false;
   let xpSafety = null;
 
   const show = n => {
-    step = n;
+    next.dataset.pgStep = String(n);
     hero.hidden = n !== 0;
     scorecard.hidden = n !== 1;
     xpScreen.hidden = n !== 2;
@@ -496,21 +496,23 @@ function upgradePostGameOverlay(overlay) {
     }
   };
 
-  next.addEventListener('click', () => {
-    if (step === 0) {
+  next.onclick = event => {
+    try { event?.preventDefault?.(); event?.stopPropagation?.(); } catch (_) {}
+    const current = Number(next.dataset.pgStep || 0);
+    if (current === 0 || !hero.hidden) {
       show(1);
       next.textContent = 'NEXT ▶';
       return;
     }
-    if (step === 1) {
+    if (current === 1 || !scorecard.hidden) {
       show(2);
       startXp();
       return;
     }
-    if (step === 2 && xpReady) {
+    if ((current === 2 || !xpScreen.hidden) && xpReady) {
       advanceBtn.click();
     }
-  });
+  };
 
   show(0);
 }
