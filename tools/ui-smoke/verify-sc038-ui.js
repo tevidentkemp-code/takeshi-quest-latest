@@ -133,7 +133,7 @@ function p(name) { return path.join(OUT, name); }
     await page.waitForTimeout(500);
     assert.equal(await page.locator('.sq-pg-score-row').count(), 2);
     assert.equal((await page.locator('.sq-pg-score-row').first().locator('.sq-pg-best').textContent()).trim(), 'R11 / 60');
-    assert.equal(await page.locator('.sq-pg-badge.pb').count(), 1, 'Expected PB badge missing');
+    assert.equal(await page.locator('.sq-pg-badge.pb').count(), 2, 'Expected PB badges missing');
     assert.equal(await page.locator('.sq-pg-badge.wr').count(), 1, 'Expected WR badge missing');
     visibleButtons = (await page.locator('.modal-gamecomplete button:visible').allTextContents()).map(t => t.replace(/\s+/g,' ').trim());
     assert.equal(visibleButtons.some(t => /VIEW BREAKDOWN|SCORECARD|END MATCH|NEXT ROUND/i.test(t)), false, 'Legacy actions leaked onto scorecard');
