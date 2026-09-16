@@ -74,12 +74,15 @@ function p(name) { return path.join(OUT, name); }
         id:'sc038-fixture-match', mode:'official', gameMode:'official', targetWins:3,
         history:[], wins:[0,0], completedLogged:false
       });
+      // The production mode resolver verifies registered-player metadata. This
+      // fixture is deliberately offline, so pin only the fixture's mode result.
+      window.__sqComputeGameMode = () => 'official';
       try { delete state._decider; } catch (_) {}
       try { delete state.__sqGameCompleteOpen; } catch (_) {}
       try { delete state.__sqXpRevealedTok; } catch (_) {}
 
-      // Probe the exact production Throwpad selectors without depending on a live
-      // Bull-round cursor. This keeps colour QA presentation-only and deterministic.
+      // Mirror the exact canonical Bull-row markup inside the real Throwpad host.
+      // Canonical buildPad() does not add data-bull attributes to these controls.
       document.body.setAttribute('data-page', 'game');
       document.body.classList.add('livev2-on');
       const pad = document.getElementById('pad');
@@ -90,18 +93,20 @@ function p(name) { return path.join(OUT, name); }
       probe.id = 'sc038BullProbe';
       probe.className = 'dtBullRow';
       probe.style.cssText = 'position:fixed;left:12px;right:12px;top:12px;z-index:999999;background:#050812;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;border-radius:14px';
-      probe.innerHTML = '<button class="dtBullBtn" type="button" data-bull="Outer">OUTER BULL</button><button class="dtBullBtn inner" type="button" data-bull="Inner">INNER BULL</button>';
+      probe.innerHTML = '<button class="dtBullBtn" type="button">OUTER BULL</button><button class="dtBullBtn inner" type="button">INNER BULL</button>';
       pad.appendChild(probe);
     });
 
-    await page.waitForSelector('#pad #sc038BullProbe .dtBullBtn[data-bull="Outer"]');
-    const bullColors = await page.evaluate(() => {
-      const outer = document.querySelector('#pad #sc038BullProbe .dtBullBtn[data-bull="Outer"]');
-      const inner = document.querySelector('#pad #sc038BullProbe .dtBullBtn[data-bull="Inner"]');
+    const outerSel = '#pad #sc038BullProbe .dtBullBtn:first-child:not(.inner)';
+    const innerSel = '#pad #sc038BullProbe .dtBullBtn.inner';
+    await page.waitForSelector(outerSel);
+    const bullColors = await page.evaluate(({ outerSel, innerSel }) => {
+      const outer = document.querySelector(outerSel);
+      const inner = document.querySelector(innerSel);
       const a = getComputedStyle(outer);
       const b = getComputedStyle(inner);
       return { outerBg:a.backgroundImage, outerBorder:a.borderTopColor, innerBg:b.backgroundImage, innerBorder:b.borderTopColor };
-    });
+    }, { outerSel, innerSel });
     assert.match(bullColors.outerBg, /18, 92, 52|rgb\(18, 92, 52\)/, 'Outer Bull is not using the green SC-038 treatment');
     assert.match(bullColors.innerBg, /126, 27, 42|rgb\(126, 27, 42\)/, 'Inner Bull is not using the red SC-038 treatment');
     await page.locator('#sc038BullProbe').screenshot({ path:p('sc038-bull-runtime.png') });
