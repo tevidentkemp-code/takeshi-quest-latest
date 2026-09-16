@@ -96,6 +96,17 @@ function p(name) { return path.join(OUT, name); }
       try { delete state.__sqGameCompleteOpen; } catch (_) {}
       try { delete state.__sqXpRevealedTok; } catch (_) {}
 
+      // SC-038 owns navigation into the existing XP renderer, not the XP engine.
+      // Count that handoff directly so this offline fixture does not need to
+      // recreate every XP/achievement database dependency.
+      const originalXpReveal = window.__sqGcXpReveal;
+      if (typeof originalXpReveal !== 'function') throw new Error('Existing XP renderer missing');
+      window.__sqSc038XpCalls = 0;
+      window.__sqGcXpReveal = function(...args) {
+        window.__sqSc038XpCalls += 1;
+        return originalXpReveal.apply(this, args);
+      };
+
       // Mirror the exact canonical Bull-row markup inside the real Throwpad host.
       // Canonical buildPad() does not add data-bull attributes to these controls.
       document.body.setAttribute('data-page', 'game');
@@ -167,7 +178,7 @@ function p(name) { return path.join(OUT, name); }
       return b && !b.disabled && /NEXT GAME|FINISH MATCH/.test(b.textContent || '');
     }, { timeout:12000 });
     assert.equal((await page.locator('.sq-pg-next').textContent()).trim(), 'NEXT GAME');
-    assert.equal(await page.locator('.sq-pg-xp-screen .gc-xp-panel').count(), 1, 'Existing XP renderer was not restored');
+    assert.equal(await page.evaluate(() => window.__sqSc038XpCalls), 1, 'Existing XP renderer handoff did not run exactly once');
     await page.screenshot({ path:p('sc038-xp-runtime.png'), fullPage:false });
 
     const unexpected = consoleErrs.filter(e => !/supabase|failed to fetch|networkerror|aborterror/i.test(e));
