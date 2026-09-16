@@ -39,14 +39,29 @@ function p(name) { return path.join(OUT, name); }
 
       const alphaRounds = [30,33,36,39,42,45,48,51,54,57,60,40,54,50];
       const betaRounds  = [20,22,24,26,28,30,32,34,36,38,40,32,42,25];
-      const toRows = (arr) => arr.map((roundTotal, index) => ({
-        darts: [
-          { kind:index === 13 ? 'B' : 'S', bull:index === 13 ? 'Inner' : undefined, points:roundTotal },
-          null,
-          null
-        ],
-        roundTotal
-      }));
+      const regularDarts = (roundTotal) => {
+        let left = Number(roundTotal || 0);
+        const darts = [];
+        for (let i = 0; i < 3; i++) {
+          const points = Math.max(0, Math.min(20, left));
+          darts.push(points > 0 ? { kind:'S', sector:points, points } : { kind:'Miss', points:0 });
+          left -= points;
+        }
+        return darts;
+      };
+      const toRows = (arr) => arr.map((roundTotal, index) => {
+        let darts;
+        if (index === 11) {
+          darts = [{ kind:'D', sector:roundTotal / 2, points:roundTotal }, { kind:'Miss', points:0 }, { kind:'Miss', points:0 }];
+        } else if (index === 12) {
+          darts = [{ kind:'T', sector:roundTotal / 3, points:roundTotal }, { kind:'Miss', points:0 }, { kind:'Miss', points:0 }];
+        } else if (index === 13) {
+          darts = [{ kind:'B', bull:roundTotal === 50 ? 'Inner' : 'Outer', points:roundTotal }, { kind:'Miss', points:0 }, { kind:'Miss', points:0 }];
+        } else {
+          darts = regularDarts(roundTotal);
+        }
+        return { darts, roundTotal };
+      });
 
       state.players = [
         {
@@ -123,6 +138,12 @@ function p(name) { return path.join(OUT, name); }
     assert.equal((await page.locator('.sq-pg-mainname').textContent()).trim(), 'Test Alpha');
     assert.match((await page.locator('.sq-pg-nickname').textContent()).trim(), /Captain Double/);
     assert.equal((await page.locator('.gc-statRow').filter({ hasText:'Best Round' }).locator('.gc-statValue').textContent()).trim(), 'R11 / 60');
+    const statStyle = await page.locator('.gc-statRow').filter({ hasText:'Final Score' }).locator('.gc-statValue').evaluate(el => {
+      const s = getComputedStyle(el);
+      return { fontSize:parseFloat(s.fontSize), fontWeight:s.fontWeight };
+    });
+    assert.ok(statStyle.fontSize <= 24, 'Game Complete stat numbers are still too large');
+    assert.ok(Number(statStyle.fontWeight) <= 500, 'Game Complete stat numbers are still bold');
     let visibleButtons = (await page.locator('.modal-gamecomplete button:visible').allTextContents()).map(t => t.replace(/\s+/g,' ').trim());
     assert.equal(visibleButtons.some(t => /VIEW BREAKDOWN|SCORECARD|END MATCH|NEXT ROUND/i.test(t)), false, 'Legacy post-game actions are still visible on result screen');
     assert.equal(visibleButtons.some(t => /NEXT/.test(t)), true, 'Result NEXT button missing');
