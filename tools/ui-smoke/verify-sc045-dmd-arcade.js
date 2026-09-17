@@ -64,13 +64,15 @@ function diffRatio(a,b){
         await page.evaluate(s=>{ window.__sqDmdHardClearQueue?.(); window.sqDmdStop(); window.sqDmdShowZones({z2:s.z2,z3:''},{type:s.type,ms:s.ms}); },scene);
         await page.waitForTimeout(scene.times[i]);
         const m=await metrics();
+        const evidenceName=`sc045-${scene.type}-frame${i+1}.png`;
+        await page.locator('#sqDmdWrap').screenshot({path:path.join(out,evidenceName)});
+        console.log('SC045_VISUAL_METRIC', JSON.stringify({scene:scene.type,frame:i+1,targetMs:scene.times[i],ratio:m.ratio,bbox:m.bbox,canvas:{w:m.w,h:m.h},evidence:evidenceName}));
         assert(m.ratio>0.004,`${scene.type} frame ${i+1} too faint: ${m.ratio}`);
         assert(m.ratio<0.34,`${scene.type} frame ${i+1} overfilled: ${m.ratio}`);
-        assert(m.bbox.w>m.w*0.18,`${scene.type} frame ${i+1} lacks horizontal visual presence`);
-        assert(m.bbox.h>m.h*0.14,`${scene.type} frame ${i+1} lacks vertical visual presence`);
+        assert(m.bbox.w>m.w*0.18,`${scene.type} frame ${i+1} lacks horizontal visual presence: ${JSON.stringify(m.bbox)} canvas=${m.w}x${m.h}`);
+        assert(m.bbox.h>m.h*0.14,`${scene.type} frame ${i+1} lacks vertical visual presence: ${JSON.stringify(m.bbox)} canvas=${m.w}x${m.h}`);
         if(prev) maxMotion=Math.max(maxMotion,diffRatio(prev,m.signature));
         prev=m.signature;
-        await page.locator('#sqDmdWrap').screenshot({path:path.join(out,`sc045-${scene.type}-frame${i+1}.png`)});
       }
       assert(maxMotion>0.018,`${scene.type} must visibly animate across staged frames (motion=${maxMotion})`);
     }
@@ -81,9 +83,9 @@ function diffRatio(a,b){
       await page.evaluate(s=>{ window.__sqDmdHardClearQueue?.(); window.sqDmdStop(); window.sqDmdShowZones({z2:s.z2,z3:''},{type:s.type,ms:Math.max(s.ms,1400)}); },scene);
       await page.waitForTimeout(180); const a=await metrics();
       await page.waitForTimeout(260); const b=await metrics();
+      await page.locator('#sqDmdWrap').screenshot({path:path.join(out,`sc045-${scene.type}-reduced.png`)});
       assert(a.ratio>0.004,`${scene.type} reduced-motion art must remain visible`);
       assert(diffRatio(a.signature,b.signature)<0.09,`${scene.type} reduced-motion fallback should be essentially static`);
-      await page.locator('#sqDmdWrap').screenshot({path:path.join(out,`sc045-${scene.type}-reduced.png`)});
     }
 
     // Visibility gate across supported phone widths and a desktop/cabinet viewport.
@@ -93,9 +95,10 @@ function diffRatio(a,b){
       await page.evaluate(()=>{ window.__sqDmdHardClearQueue?.(); window.sqDmdStop(); window.sqDmdShowZones({z2:'CAN HE......?',z3:''},{type:'anticipationEyes',ms:1600}); });
       await page.waitForTimeout(160);
       const box=await page.locator('#sqDmdWrap').boundingBox();
-      assert(box && box.width>=Math.min(vp.w*0.78,720),`DMD too narrow at ${vp.w}px: ${box?.width}`);
-      const m=await metrics(); assert(m.ratio>0.004,`DMD art invisible at ${vp.w}px`);
+      const m=await metrics();
       await page.locator('#sqDmdWrap').screenshot({path:path.join(out,`sc045-visibility-${vp.w}.png`)});
+      assert(box && box.width>=Math.min(vp.w*0.78,720),`DMD too narrow at ${vp.w}px: ${box?.width}`);
+      assert(m.ratio>0.004,`DMD art invisible at ${vp.w}px`);
     }
 
     // Round/target information must remain legible alongside the upgraded art system.
