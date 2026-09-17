@@ -168,14 +168,16 @@ function zoneRects(){
 function drawZ1Target(z1Text, rect){
   const t = (z1Text || "").toString().toUpperCase().trim();
   if (!t) return;
-
-  // Zone 1 is target-only. If callers pass "ROUND\n12", we still only render the target.
   const parts = t.split(/\n/).filter(Boolean);
   const target = (parts.length ? parts[parts.length - 1] : t).trim();
   if (!target) return;
 
-  // Bigger, perfectly centered target (no label).
-  drawTextInRect(target, rect, 48, "center", "middle", 700);
+  // SC-045: make the visible pinball indicator actually read ROUND + target.
+  // The label stays small and the target remains the dominant element.
+  const top = { x:rect.x, y:rect.y + 3, w:rect.w, h:42 };
+  const body = { x:rect.x, y:rect.y + 38, w:rect.w, h:rect.h - 38 };
+  drawTextInRect('ROUND', top, 15, "center", "middle", 800);
+  drawTextInRect(target, body, 46, "center", "middle", 750);
 }
 
 function drawTextInRect(str, rect, px, align="center", v="middle", weight, yOff=0){
@@ -726,6 +728,92 @@ function thresholdNativeToAmber(){
     nctx.restore();
   }
 
+  // >>> PATCH:SC045_PINBALL_PROCEDURAL_SCENES START
+  // SC-045 premium pinball art direction.
+  // Special scenes are composed on a coarse 128x32 logical DMD grid (5 native
+  // pixels per logical dot), then passed through the existing amber-dot mask.
+  // This deliberately favours bold silhouettes, chunky 1-bit timing and staged
+  // impact beats over smooth web-canvas illustration.
+  const __sqSc045ReducedMotion = () => {
+    try{ return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches; }catch(_){ return false; }
+  };
+  const __SQ45_PX = 5;
+  const __sq45Rect = (x,y,w=1,h=1) => {
+    nctx.fillRect(Math.round(x)*__SQ45_PX, Math.round(y)*__SQ45_PX, Math.max(1,Math.round(w))*__SQ45_PX, Math.max(1,Math.round(h))*__SQ45_PX);
+  };
+  const __sq45Clear = (x,y,w=1,h=1) => {
+    nctx.clearRect(Math.round(x)*__SQ45_PX, Math.round(y)*__SQ45_PX, Math.max(1,Math.round(w))*__SQ45_PX, Math.max(1,Math.round(h))*__SQ45_PX);
+  };
+  const __sq45Line = (x0,y0,x1,y1,th=1) => {
+    x0=Math.round(x0); y0=Math.round(y0); x1=Math.round(x1); y1=Math.round(y1);
+    const dx=Math.abs(x1-x0), sx=x0<x1?1:-1, dy=-Math.abs(y1-y0), sy=y0<y1?1:-1;
+    let err=dx+dy;
+    while(true){
+      __sq45Rect(x0-Math.floor((th-1)/2), y0-Math.floor((th-1)/2), th, th);
+      if(x0===x1 && y0===y1) break;
+      const e2=2*err;
+      if(e2>=dy){ err+=dy; x0+=sx; }
+      if(e2<=dx){ err+=dx; y0+=sy; }
+    }
+  };
+  const __sq45Circle = (cx,cy,r,th=1) => {
+    let x=r, y=0, err=0;
+    const dot=(px,py)=>__sq45Rect(px-Math.floor((th-1)/2), py-Math.floor((th-1)/2), th, th);
+    while(x>=y){
+      [[x,y],[y,x],[-y,x],[-x,y],[-x,-y],[-y,-x],[y,-x],[x,-y]].forEach(([dx,dy])=>dot(cx+dx,cy+dy));
+      y+=1;
+      if(err<=0) err += 2*y+1;
+      if(err>0){ x-=1; err -= 2*x+1; }
+    }
+  };
+  const __sq45Poly = (pts, ox=0, oy=0, scale=1, flip=false) => {
+    if(!Array.isArray(pts) || !pts.length) return;
+    nctx.save();
+    nctx.translate(Math.round(ox*__SQ45_PX), Math.round(oy*__SQ45_PX));
+    nctx.scale((flip?-1:1)*scale, scale);
+    nctx.beginPath();
+    pts.forEach(([x,y],i)=>{
+      const px=Math.round(x*__SQ45_PX), py=Math.round(y*__SQ45_PX);
+      if(i===0) nctx.moveTo(px,py); else nctx.lineTo(px,py);
+    });
+    nctx.closePath(); nctx.fill();
+    nctx.restore();
+  };
+  const __sq45Eye = (x,y,pupil=0,blink=false) => {
+    if(blink){ __sq45Line(x,y+4,x+10,y+4,1); __sq45Line(x+1,y+3,x+9,y+3,1); return; }
+    __sq45Rect(x+2,y,6,1); __sq45Rect(x+1,y+1,8,1); __sq45Rect(x,y+2,10,5); __sq45Rect(x+1,y+7,8,1); __sq45Rect(x+2,y+8,6,1);
+    __sq45Clear(x+2,y+2,6,5);
+    __sq45Rect(x+4+pupil,y+3,2,3);
+  };
+  const __sq45Dolphin = (x,y,scale=.7,flip=false,phase=0) => {
+    const kick=(phase%2===0)?0:1;
+    // SC-045 final cabinet-distance dolphin: use a leaping, arched silhouette
+    // rather than a straight fish/shark profile. Rounded melon + beak, swept
+    // dorsal, low pectoral and separated tail flukes are intentionally exaggerated.
+    const pts=[
+      [5,17],[8,13],[14,11],[18,7],[26,5],[38,4],[50,5],[62,7],[74,10],[84,14],[92,20],[98,26],
+      [103,28],[108,28-kick],[114,27-kick],[121,29],[114,31],[108,30+kick],[103,31+kick],[98,29],
+      [93,27],[87,26],[76,25],[64,23],[52,21],[43,19],[38,20],[34,28],[30,26],[29,21],[22,20],[16,18],[10,18]
+    ];
+    __sq45Poly(pts,x,y,scale,flip);
+    // Smaller, swept dorsal. Keeping it low avoids the shark-fin read.
+    __sq45Poly([[48,5],[54,1],[58,2],[56,6]],x,y,scale,flip);
+    // Tiny eye cutout is enough at DMD distance; keep the rest as one bold mass.
+    nctx.save();
+    nctx.translate(Math.round(x*__SQ45_PX),Math.round(y*__SQ45_PX));
+    nctx.scale((flip?-1:1)*scale,scale);
+    nctx.clearRect(14*__SQ45_PX,12*__SQ45_PX,1.5*__SQ45_PX,1.5*__SQ45_PX);
+    nctx.restore();
+  };
+  const __sq45Dart = (tipX,tipY) => {
+    __sq45Line(tipX,tipY,tipX+20,tipY-2,1);
+    __sq45Rect(tipX-1,tipY-1,2,2);
+    __sq45Line(tipX+16,tipY-2,tipX+22,tipY-6,1);
+    __sq45Line(tipX+16,tipY-1,tipX+23,tipY+3,1);
+    __sq45Line(tipX+18,tipY-2,tipX+23,tipY-1,1);
+  };
+  // <<< PATCH:SC045_PINBALL_PROCEDURAL_SCENES END
+
   function drawNative(now) {
     nctx.clearRect(0, 0, NATIVE_W, NATIVE_H);
 
@@ -737,6 +825,71 @@ function thresholdNativeToAmber(){
     const __pZ2 = (window.__sqDmdPinnedZ2Text ? String(window.__sqDmdPinnedZ2Text) : "");
     const z2t = ((active && typeof active.z2 === "string") ? String(active.z2) : (__pZ2 || "")).toUpperCase();
     const z3t = (active && typeof active.z3 === "string") ? String(active.z3).toUpperCase() : "";
+
+
+    // >>> PATCH:SC045_PINBALL_SCENE_TYPES START
+    if (active && active.type === 'anticipationEyes') {
+      const age=Math.max(0,now-active.start), dur=Math.max(700,Number(active.ms||1150)), reduce=__sqSc045ReducedMotion();
+      const p=reduce?.36:Math.max(0,Math.min(1,age/dur));
+      const text=(z2t||'CAN HE......?').toUpperCase();
+      const px=Math.max(34,TEXT.topPx-8), w=measureTextPx(text,px,900);
+      let x;
+      if(reduce) x=28;
+      else if(p<.22) x=Math.round(NATIVE_W+20-(p/.22)*(NATIVE_W-8));
+      else if(p<.78) x=Math.round(28-((p-.22)/.56)*42);
+      else x=Math.round(-14-((p-.78)/.22)*(w+36));
+      const y=Math.floor(NATIVE_H*.60);
+      drawTextPx(text,x,y,px,900);
+      const blink=!reduce && ((Math.floor(age/170)%7)===5);
+      const pupil=reduce?-1:(x<60?-2:(x>220?1:0));
+      __sq45Line(101,6,110,5,1); __sq45Line(115,5,124,6,1);
+      __sq45Eye(101,9,pupil,blink); __sq45Eye(115,9,pupil,blink);
+      if(!reduce){
+        const tick=Math.floor(age/95)%3;
+        for(let i=0;i<3;i++) if(i!==tick) __sq45Rect(96+i*2,25+i%2,1,1);
+      }
+      thresholdNativeToAmber(); return;
+    }
+    if (active && active.type === 'dolphinSwim') {
+      const age=Math.max(0,now-active.start), dur=Math.max(1300,Number(active.ms||2000)), reduce=__sqSc045ReducedMotion();
+      const p=reduce?.52:Math.max(0,Math.min(1,age/dur)), phase=Math.floor(age/145)%2;
+      // One hero dolphin is more recognisable than overlapping fish-like silhouettes.
+      // It arcs across the cabinet while remaining materially visible for the full scene.
+      const x=reduce?8:(-28+p*92), y=reduce?0:(2-Math.sin(Math.PI*p)*3);
+      __sq45Dolphin(x,y,.92,false,phase);
+      // Scrolling water/spray provides unmistakable sea motion without competing with the silhouette.
+      for(let i=0;i<7;i++){
+        const wx=((i*22-Math.round(p*64))%164+164)%164-18;
+        __sq45Line(wx,30,wx+5,28,1); __sq45Line(wx+5,28,wx+10,30,1);
+      }
+      const sx=Math.round(x+13), sy=Math.round(y+20);
+      [[0,0],[-4,-3],[-8,-1],[-12,-5],[-16,-2]].forEach(([dx,dy],i)=>{ if(reduce||((i+phase)%2===0)) __sq45Rect(sx+dx,sy+dy,1,1); });
+      thresholdNativeToAmber(); return;
+    }
+    if (active && active.type === 'bullseyeHit') {
+      const age=Math.max(0,now-active.start), dur=Math.max(850,Number(active.ms||1100)), reduce=__sqSc045ReducedMotion();
+      const p=reduce?1:Math.max(0,Math.min(1,age/dur));
+      const impactP=Math.min(1,p/.58), hit=p>=.58;
+      const shake=(!reduce&&hit)?((Math.floor(age/55)%2)?1:-1):0;
+      const cx=31+shake, cy=16;
+      __sq45Circle(cx,cy,11,1); __sq45Circle(cx,cy,7,1); __sq45Circle(cx,cy,3,1);
+      __sq45Line(cx-13,cy,cx+13,cy,1); __sq45Line(cx,cy-13,cx,cy+13,1);
+      const tipX=reduce?31:Math.round(122-(122-31)*impactP);
+      const tipY=reduce?16:Math.round(8+(16-8)*impactP);
+      __sq45Dart(tipX,tipY);
+      if(hit){
+        const ray=Math.round(8+Math.min(1,(p-.58)/.24)*9);
+        [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]].forEach(([dx,dy])=>__sq45Line(cx+dx*5,cy+dy*5,cx+dx*ray,cy+dy*ray,1));
+        const flash=((Math.floor(age/90)%2)===0)||reduce;
+        if(flash) drawTextPx('50',92*__SQ45_PX,24*__SQ45_PX,48,900);
+      } else {
+        // speed lines make the inbound dart read instantly at a glance
+        __sq45Line(Math.min(126,tipX+28),tipY-4,Math.min(127,tipX+37),tipY-5,1);
+        __sq45Line(Math.min(126,tipX+30),tipY+4,Math.min(127,tipX+39),tipY+5,1);
+      }
+      thresholdNativeToAmber(); return;
+    }
+    // <<< PATCH:SC045_PINBALL_SCENE_TYPES END
 
         // >>> PATCH:SQ_DMD_MARQUEE_FULL START
     // Special scene type: marqueeFull (scroll Z2 text across the FULL DMD area; hides all other zones)
@@ -958,7 +1111,7 @@ if (!active || active.type === "idle") {
     __sqDmdLastZ3 = (z3 ?? "").toString();
 
     enqueue({
-      type: o.type || "hold", // hold | flash | wipe | shake | roll | idle
+      type: o.type || "hold", // hold | flash | wipe | shake | roll | idle | anticipationEyes | dolphinSwim | bullseyeHit
       dir: o.dir || "fwd",     // for wipe: fwd | rev
       revealMs: (typeof o.revealMs === "number" ? o.revealMs : undefined),
       amp: (typeof o.amp === "number" ? o.amp : undefined), // for shake

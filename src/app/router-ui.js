@@ -46,6 +46,17 @@ function show(id){
     try { if (typeof ensureGameBuilt === 'function') ensureGameBuilt(); } catch(_) {}
     try{ __sqSyncTurboVisualState('game'); }catch(_){}
     try { if (typeof updateUI === 'function') updateUI(); } catch(_) {}
+    try{
+      window.__sqDmdPrimePbCache?.();
+      const firstVisit = !state?.finished && Number(state?.currentRound || 0) === 0 && Number(state?.currentDart || 0) === 0 && (!Array.isArray(state?.history) || state.history.length === 0);
+      if (firstVisit) {
+        const introKey = `${state?.match?.id || 'match'}|${state?.__gameToken || state?.match?.history?.length || 0}`;
+        if (window.__sqDmdInitialIntroKey !== introKey) {
+          window.__sqDmdInitialIntroKey = introKey;
+          setTimeout(()=>{ try{ window.__sqDmdShowTurnIntro?.(true); }catch(_){} }, 0);
+        }
+      }
+    }catch(_){}
     try { if (typeof __sqResumeVsShadowAutoTurnIfNeeded === 'function') __sqResumeVsShadowAutoTurnIfNeeded('show:game'); } catch(_) {}
     if (window.__marksKick) { clearInterval(window.__marksKick); window.__marksKick = null; }
     try { if (typeof scanForTripleHatAndCelebrate === 'function') scanForTripleHatAndCelebrate(); } catch(_) {}
@@ -3265,7 +3276,7 @@ function __sqVsShadowDmdRoundLabel(roundDef, roundIndex){
   try{
     if (roundDef && roundDef.type === 'number') return String(roundDef.target || '');
     if (roundDef && roundDef.type === 'doubles') return 'DBL';
-    if (roundDef && roundDef.type === 'triples') return 'TRL';
+    if (roundDef && roundDef.type === 'triples') return 'TRB';
     if (roundDef && roundDef.type === 'bull') return 'BULL';
     return String((Number(roundIndex) || 0) + 1);
   }catch(_){ return String((Number(roundIndex) || 0) + 1); }
@@ -3441,7 +3452,9 @@ function __sqVsShadowQueueDmdPhrase(phrase, opts){
     if (o.imageType) {
       window.sqDmdShowZones({ z2:'', z3:'' }, { type:o.imageType, ms:Number(o.imageMs || 900), amp:Number(o.amp || 3.0) });
     }
-    if (words.length === 1) {
+    if (o.wholePhrase) {
+      window.sqDmdShowZones({ z2:String(phrase || '').toUpperCase(), z3:'' }, { type:'flash', ms:Number(o.phraseMs || finalHoldMs), fx:'impact' });
+    } else if (words.length === 1) {
       window.sqDmdShowZones({ z2:words[0], z3:'' }, { type:'flash', ms:finalHoldMs, fx:'impact' });
     } else if (words.length === 2) {
       window.sqDmdShowZones({ z2:words[0], z3:'' }, { type:'flash', ms:stepMs, fx:'impact' });
@@ -3451,6 +3464,7 @@ function __sqVsShadowQueueDmdPhrase(phrase, opts){
       window.sqDmdShowZones({ z2:words.slice(0, -1).join(' '), z3:'' }, { type:'flash', ms:stepMs, fx:'impact' });
       window.sqDmdShowZones({ z2:words.slice(0, -1).join(' '), z3:words[words.length - 1] }, { type:'flash', ms:finalHoldMs, fx:'impact' });
     }
+    if (o.afterType) window.sqDmdShowZones({ z2:'', z3:'' }, { type:o.afterType, ms:Number(o.afterMs || 1000), amp:Number(o.afterAmp || 0) });
     window.sqDmdShowZones({ z2:restoreZ2, z3:restoreZ3 }, { type:'hold', ms:1 });
     return true;
   }catch(_){ return false; }
@@ -3464,9 +3478,7 @@ function __sqVsShadowDmdCalloutForDart(dart, dartIndex, entry, roundDef){
     const kindFor = __sqVsShadowDmdKindForDart;
     const turnKinds = prior.concat([dart]).map(kindFor);
     const scoringKinds = turnKinds.filter(k => k && k !== 'Miss');
-    const hasS = scoringKinds.includes('S');
-    const hasD = scoringKinds.includes('D');
-    const hasT = scoringKinds.includes('T');
+    const hasS = scoringKinds.includes('S'), hasD = scoringKinds.includes('D'), hasT = scoringKinds.includes('T');
     const hasMiss = turnKinds.includes('Miss');
     const isFinalDart = Number(dartIndex) === 2;
     const priorKinds = prior.map(kindFor);
@@ -3475,51 +3487,49 @@ function __sqVsShadowDmdCalloutForDart(dart, dartIndex, entry, roundDef){
     const thirdIsScoringAfterTwoMisses = isFinalDart && kind !== 'Miss' && points > 0 && priorKinds[0] === 'Miss' && priorKinds[1] === 'Miss';
     const lastDartHeroImageHit = thirdIsScoringAfterTwoMisses && (kind === 'Double' || kind === 'D' || kind === 'Triple' || kind === 'T' || kind === 'B');
     const isDesmondDelight = isFinalDart && turnKinds.filter(k => k === 'S').length === 2 && turnKinds.filter(k => k === 'D').length === 1 && !hasT && !hasMiss;
-    const roundTotalNow = prior.concat([dart]).reduce((sum, d) => sum + (Number(d && (d.points ?? d.pts ?? d.score) || 0) || 0), 0);
+    const roundTotalNow = prior.concat([dart]).reduce((sum,d)=>sum + Number(d && (d.points ?? d.pts ?? d.score) || 0), 0);
     const distinctKinds = Array.from(new Set(scoringKinds));
     const isDirtyTurn = isFinalDart && roundTotalNow > 0 && roundTotalNow <= 30 && !(hasS && hasD && hasT) && !isDesmondDelight && distinctKinds.length >= 2;
     const isDoublesRound = roundDef && roundDef.type === 'doubles';
     const isTriplesRound = roundDef && roundDef.type === 'triples';
     const sector = Number(dart && (dart.sector ?? dart.segment ?? dart.target) || 0);
-    const low1234 = sector === 1 || sector === 2 || sector === 3 || sector === 4;
-    const voldyHit = low1234 && ((isDoublesRound && (kind === 'Double' || kind === 'D')) || (isTriplesRound && (kind === 'Triple' || kind === 'T')));
+    const voldyHit = sector >= 1 && sector <= 5 && ((isDoublesRound && (kind === 'Double' || kind === 'D')) || (isTriplesRound && (kind === 'Triple' || kind === 'T')));
 
-    if (thirdMissAfterTwoTriples || thirdMissAfterTwoDoubles) return { phrase:'Boooooo!!', phraseOpts:{ stepMs:300 }, queueOnly:true };
+    if (thirdMissAfterTwoTriples || thirdMissAfterTwoDoubles) return { z2:'AWKWARD', fx:{ type:'shake', amp:3.0, ms:900, fx:'impact' } };
     if (isDesmondDelight) return { phrase:'DESMOND DELIGHT', phraseOpts:{ imageType:'desmondImg', imageMs:950, amp:3.6, stepMs:280 }, queueOnly:true };
     if (isFinalDart && hasS && hasD && hasT) return { phrase:'SHANGHAI', phraseOpts:{ stepMs:320 }, queueOnly:true };
-    if (thirdIsScoringAfterTwoMisses) {
-      return {
-        phrase:'LAST DART HERO',
-        phraseOpts: lastDartHeroImageHit ? { imageType:'lastDartImg', imageMs:900, amp:3.4, stepMs:260 } : { stepMs:260 },
-        queueOnly:true
-      };
-    }
-    if (voldyHit) return { phrase:'HAHA HA HAH!', phraseOpts:{ imageType:'voldyImg', imageMs:900, amp:2.8, stepMs:300 }, queueOnly:true };
-    if (kind === 'Miss' || points === 0) return { z2:'MISS', fx:{ type:'flash', ms:650, fx:'smear' } };
-    if (kind === 'B') return { z2: dart.bull === 'Inner' ? 'INNER BULL!' : 'OUTER BULL!', fx:{ type:'shake', amp:2.2, ms:900, fx:'impact' } };
+    if (thirdIsScoringAfterTwoMisses) return { phrase:'LAST DART HERO', phraseOpts:lastDartHeroImageHit ? { imageType:'lastDartImg', imageMs:900, amp:3.4, stepMs:260 } : { stepMs:260 }, queueOnly:true };
+    if (voldyHit) return { phrase:'HAHA HA HAHAA!', phraseOpts:{ imageType:'voldyImg', imageMs:900, amp:2.8, stepMs:300 }, queueOnly:true };
+    if (kind === 'Miss' || points === 0) return isFinalDart && roundTotalNow === 0 ? { z2:'SCRATCH', fx:{ type:'flash', ms:760, fx:'smear' } } : { z2:'MISS', fx:{ type:'flash', ms:650, fx:'smear' } };
+    if (kind === 'B') return dart.bull === 'Inner'
+      ? { phrase:'BULLSEYE', phraseOpts:{ wholePhrase:true, phraseMs:700, afterType:'bullseyeHit', afterMs:1100 }, queueOnly:true }
+      : { z2:'OUTER!', fx:{ type:'shake', amp:2.0, ms:760, fx:'impact' } };
     if (kind === 'Triple' || kind === 'T') {
       const count = turnKinds.filter(k => k === 'T').length;
-      if (count === 2) return { phrase:'TREBLE TROUBLE', phraseOpts:{ stepMs:250 }, queueOnly:true };
-      if (count >= 3) return { phrase:'MAXI MAYHEM', phraseOpts:{ stepMs:250 }, queueOnly:true };
-      return { z2:'TRIPLE!', fx:{ type:'shake', amp:2.3, ms:900, fx:'impact' } };
+      if (count === 1) return { z2:'TREBLE!', fx:{ type:'shake', amp:2.3, ms:850, fx:'impact' } };
+      if (count === 2 && Number(dartIndex) === 1) return { z2:'CAN HE......?', fx:{ type:'anticipationEyes', ms:1150, fx:'impact' } };
+      if (count === 2 && isFinalDart) return { beats:['TWO TREBLES','NICE FINISH'], queueOnly:true };
+      return { phrase:'MAXI MAYHEM!', phraseOpts:{ stepMs:250 }, queueOnly:true };
     }
     if (kind === 'Double' || kind === 'D') {
       const count = turnKinds.filter(k => k === 'D').length;
-      if (count === 2) return { phrase:'DOUBLE LOCK', phraseOpts:{ stepMs:250 }, queueOnly:true };
-      if (count >= 3) return { phrase:'DOUBLE DEVIL', phraseOpts:{ stepMs:250 }, queueOnly:true };
-      return { z2:'DOUBLE!', fx:{ type:'flash', ms:800, fx:'impact' } };
+      if (count === 1) return { z2:'DOUBLE!', fx:{ type:'flash', ms:800, fx:'impact' } };
+      if (count === 2 && Number(dartIndex) === 1) return { z2:'HOLD UP....', fx:{ type:'anticipationEyes', ms:1150, fx:'impact' } };
+      if (count === 2 && isFinalDart) return { z2:'TWO DOUBLES!', fx:{ type:'flash', ms:850, fx:'impact' } };
+      return { phrase:'GET IN THE SEA!!', phraseOpts:{ wholePhrase:true, phraseMs:760, afterType:'dolphinSwim', afterMs:2000 }, queueOnly:true };
     }
     if (isDirtyTurn) return { phrase:'UGLY BUT IT COUNTS', phraseOpts:{ stepMs:250 }, queueOnly:true };
-    if (points >= 60) return { z2:'POWER DART', fx:{ type:'shake', amp:2.0, ms:850, fx:'impact' } };
     if (isFinalDart && turnKinds.filter(k => k === 'S').length >= 3) {
-      const pool = ['STEADY HAND', 'DOING THE BASICS', 'SLOW AND STEADY'];
-      const pick = pool[Math.abs((Number(state && state.shadow && state.shadow.shadowPlayerIndex) || 1) + (Number(dartIndex) || 0) + roundTotalNow) % pool.length];
-      return { phrase:pick, phraseOpts:{ stepMs:250 }, queueOnly:true };
+      const pool = ['STEADY HAND','DOING THE BASICS','SLOW AND STEADY','MAKING BANK','EASY MONEY','BASIC BITCH'];
+      const key = `vs:${Number(state?.currentPlayer || 0)}`;
+      let pickIndex = Math.abs((Number(state?.currentPlayer || 0) + Number(dartIndex || 0) + roundTotalNow)) % pool.length;
+      const lastMap = window.__sqDmdLastSinglePhraseByPlayer || (window.__sqDmdLastSinglePhraseByPlayer = Object.create(null));
+      if (lastMap[key] === pool[pickIndex]) pickIndex = (pickIndex + 1) % pool.length;
+      lastMap[key] = pool[pickIndex];
+      return { phrase:pool[pickIndex], phraseOpts:{ stepMs:250 }, queueOnly:true };
     }
     return { z2:'SINGLE', fx:{ type:'wipe', ms:650, fx:'smear' } };
-  }catch(_){
-    return { z2:'SINGLE', fx:{ type:'flash', ms:650, fx:'impact' } };
-  }
+  }catch(_){ return { z2:'', fx:{ type:'hold', ms:1 } }; }
 }
 
 function __sqShowVsShadowDartFeedback(dart, dartIndex, roundIndex, entry){
@@ -3533,6 +3543,12 @@ function __sqShowVsShadowDartFeedback(dart, dartIndex, roundIndex, entry){
       .filter(Boolean)
       .join(' / ');
     const callout = __sqVsShadowDmdCalloutForDart(dart, dartIndex, entry, roundDef);
+    if (callout && Array.isArray(callout.beats) && callout.beats.length >= 2) {
+      window.sqDmdShowZones({ z2:String(callout.beats[0] || '').toUpperCase(), z3:'' }, { type:'flash', ms:620, fx:'impact' });
+      window.sqDmdShowZones({ z2:String(callout.beats[1] || '').toUpperCase(), z3:'' }, { type:'flash', ms:720, fx:'impact' });
+      window.sqDmdShowZones({ z2:'', z3:seq }, { type:'hold', ms:1 });
+      return;
+    }
     if (callout && callout.phrase) {
       const queued = __sqVsShadowQueueDmdPhrase(callout.phrase, Object.assign({ restoreZ2:'', restoreZ3:seq }, callout.phraseOpts || {}));
       if (queued && callout.queueOnly) return;
@@ -3583,11 +3599,7 @@ function __sqVsShadowRealDmdInfoLines(realIndex){
     const pos = Math.max(1, ordered.findIndex(x => x.i === realIndex) + 1);
     const avg = dartsThrown ? (total * 3 / dartsThrown) : 0;
     const avgTxt = (Math.round(avg * 10) / 10).toFixed(1);
-    return [
-      'SCORE: ' + total,
-      'POS: ' + pos + '/' + pCount,
-      'RND AVG: ' + avgTxt
-    ];
+    return (typeof window.__sqDmdBuildPreThrowInfo === 'function') ? window.__sqDmdBuildPreThrowInfo(realIndex) : ['SCORE: ' + total + '  PB: —', 'POS: ' + pos + '/' + pCount];
   }catch(_){ return []; }
 }
 
