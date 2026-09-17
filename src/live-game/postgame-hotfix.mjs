@@ -1,4 +1,5 @@
 const PATCH_FLAG = '__sqSc038XpLeaderboardHotfix';
+const MATCH_LEADERBOARD_LABEL = 'MATCH LEADERBOARD';
 
 function scoreRowsTotal(rows) {
   return (Array.isArray(rows) ? rows : []).reduce(
@@ -101,8 +102,14 @@ function patchPostGameOverlay(overlay, host = globalThis) {
 
   overlay.dataset.sqSc038LeaderboardHotfix = '1';
 
+  // Do not rewrite identical text from inside the button's own MutationObserver.
+  // An unconditional textContent assignment retriggers childList forever and can
+  // starve the UI thread immediately after the XP animation completes.
   const syncLabel = () => {
-    if (!xpScreen.hidden && !next.disabled) next.textContent = 'MATCH LEADERBOARD';
+    if (xpScreen.hidden || next.disabled) return;
+    if (String(next.textContent || '').trim() !== MATCH_LEADERBOARD_LABEL) {
+      next.textContent = MATCH_LEADERBOARD_LABEL;
+    }
   };
   const buttonObserver = new MutationObserver(syncLabel);
   buttonObserver.observe(next, { attributes: true, childList: true, subtree: true });
@@ -127,7 +134,7 @@ function patchPostGameOverlay(overlay, host = globalThis) {
       overlay.remove();
     } catch (error) {
       next.disabled = false;
-      next.textContent = 'MATCH LEADERBOARD';
+      next.textContent = MATCH_LEADERBOARD_LABEL;
       try { console.error('[SC-038] Match leaderboard handoff failed', error); } catch (_) {}
       try {
         if (typeof host.toast === 'function') host.toast('Could not open Match Leaderboard. Please retry.');
