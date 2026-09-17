@@ -1,0 +1,27 @@
+name: SC-042 regression fixture update
+on:
+  push:
+    branches:
+      - sc042-record-integrity-fix
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: sc042-record-integrity-fix
+          fetch-depth: 2
+      - run: python3 tools/sc042_patch_tests.py
+      - run: node --check tools/ui-smoke/verify-sc025.js
+      - run: git diff --check
+      - name: Commit fixture update
+        run: |
+          git rm .github/workflows/sc042-update-regression-fixture.yml tools/sc042_patch_tests.py
+          git config user.name shateki-build-bot
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tools/ui-smoke/verify-sc025.js
+          git commit -m "test(sc042): align milestone regression with threshold source"
+          git push origin HEAD:sc042-record-integrity-fix
