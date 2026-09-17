@@ -6,7 +6,9 @@ on:
   pull_request:
     paths:
       - src/legacy/quarantine/core-pre-modals.js
+      - src/legacy/scripts/inline-005.js
       - src/legacy/scripts/inline-026.js
+      - src/legacy/intentional-patches.json
       - src/ui/modals.js
       - tools/ui-smoke/verify-sc025.js
       - tools/ui-smoke/verify-sc042-record-integrity.js
@@ -31,6 +33,7 @@ jobs:
         run: |
           node tools/ui-smoke/verify-sc042-record-integrity.mjs
           node --check src/legacy/quarantine/core-pre-modals.js
+          node --check src/legacy/scripts/inline-005.js
           node --check src/legacy/scripts/inline-026.js
           node --check src/ui/modals.js
           node --check tools/ui-smoke/verify-sc025.js
@@ -38,6 +41,7 @@ jobs:
       - name: Architecture verification and exact build
         run: |
           npm ci --prefix scripts --ignore-scripts
+          node scripts/build-core-js-from-source.mjs --verify-current
           node scripts/verify-modularization.mjs
           npm ci --ignore-scripts --no-audit --no-fund
           npm run build
