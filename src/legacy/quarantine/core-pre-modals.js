@@ -1611,14 +1611,13 @@ if(hsBody){
               const score = Number((g.totals || [])[idx] || 0);
               const nameKey = nm.toLowerCase();
               const priorGameBest = Number(bestGameByPlayer.get(nameKey) || 0);
-              if (score > 0 && score > priorGameBest) {
-                pushEvent(ts, `GAME PB - ${nm} (${score})`, 'game_pb');
-                bestGameByPlayer.set(nameKey, score);
-              }
-              if (score > 0 && score > globalGameBest) {
-                pushEvent(ts, `NEW GAME RECORD SCORE - ${nm} - ${score} 🥇`, 'game_record');
-                globalGameBest = score;
-              }
+              const isGamePB = score > 0 && score > priorGameBest;
+              const isGameRecord = score > 0 && score > globalGameBest;
+              // A record is also a PB, but only print the higher-priority record event.
+              if (isGameRecord) pushEvent(ts, `NEW GAME RECORD SCORE - ${nm} - ${score} 🥇`, 'game_record');
+              else if (isGamePB) pushEvent(ts, `GAME PB - ${nm} (${score})`, 'game_pb');
+              if (isGamePB) bestGameByPlayer.set(nameKey, score);
+              if (isGameRecord) globalGameBest = score;
               const playerRounds = Array.isArray(board[idx]) ? board[idx] : [];
               for (let r = 0; r < Math.min(14, playerRounds.length || 0); r++) {
                 const cell = playerRounds[r];
@@ -1629,14 +1628,13 @@ if(hsBody){
                 const playerRoundKey = `${nameKey}|${roundKey}`;
                 const priorRoundPB = Number(bestRoundByPlayer.get(playerRoundKey) || 0);
                 const priorRoundWR = Number(bestRoundGlobal.get(roundKey) || 0);
-                if (total > priorRoundPB) {
-                  pushEvent(ts, `ROUND PB / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_pb');
-                  bestRoundByPlayer.set(playerRoundKey, total);
-                }
-                if (total > priorRoundWR) {
-                  pushEvent(ts, `ROUND WR / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_wr');
-                  bestRoundGlobal.set(roundKey, total);
-                }
+                const isRoundPB = total > priorRoundPB;
+                const isRoundRecord = total > priorRoundWR;
+                // A round record is also a PB, but only print the higher-priority record event.
+                if (isRoundRecord) pushEvent(ts, `ROUND WR / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_wr');
+                else if (isRoundPB) pushEvent(ts, `ROUND PB / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_pb');
+                if (isRoundPB) bestRoundByPlayer.set(playerRoundKey, total);
+                if (isRoundRecord) bestRoundGlobal.set(roundKey, total);
               }
             });
           });
