@@ -18,6 +18,7 @@ const renderer = read('src/legacy/scripts/inline-007.js');
 const engine = read('src/game/engine.js');
 const liveV2 = read('src/live-game/live-v2.js');
 const turbo = read('src/legacy/scripts/inline-016.js');
+const patchManifest = JSON.parse(read('src/legacy/intentional-patches.json'));
 
 // The two old pad-FX compatibility layers may animate buttons, but they must no
 // longer own DMD scenes or destructive queue clearing.
@@ -42,5 +43,13 @@ const patchMeta = [
   meta('src/legacy/scripts/inline-003.js'),
   meta('src/legacy/scripts/inline-004.js'),
 ];
+for (const current of patchMeta) {
+  const declared = patchManifest.patches.find(entry => entry.file === current.path);
+  assert(declared, `${current.path} must be registered as an intentional legacy patch`);
+  assert.equal(declared.sha256, current.sha256, `${current.path} patch hash must match live content`);
+  assert.equal(declared.bytes, current.bytes, `${current.path} patch byte count must match live content`);
+  assert.equal(declared.task, 'SC-032 DMD ownership cleanup', `${current.path} patch must be owned by SC-032`);
+}
+
 console.log(`SC032_PATCH_META=${JSON.stringify(patchMeta)}`);
 console.log('SC-032 DMD OWNERSHIP: FIRST-SLICE STATIC CONTRACT PASS');
