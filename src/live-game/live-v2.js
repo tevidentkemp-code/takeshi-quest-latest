@@ -1051,7 +1051,7 @@ function buildPad(){
       let z1 = String(rIdx + 1);
       if (rd?.type === 'number') z1 = String(rd.target);
       else if (rd?.type === 'doubles') z1 = 'DBL';
-      else if (rd?.type === 'triples') z1 = 'TRL';
+      else if (rd?.type === 'triples') z1 = 'TRB';
       else if (rd?.type === 'bull') z1 = 'BULL';
       const darts = Array.isArray(state?.score?.[pIdx]?.[rIdx]?.darts)
         ? state.score[pIdx][rIdx].darts.slice(0, Number(state?.currentDart || 0)).filter(Boolean)
@@ -3835,7 +3835,7 @@ if (roundLabelEl) {
       const n = parseInt(lbl, 10);
       const z1 = (!Number.isNaN(n) && n > 0) ? (n) :
                  (String(lbl||'').toUpperCase().includes('DOUBLE') ? 'DBL' :
-                  String(lbl||'').toUpperCase().includes('TRIPLE') ? 'TRL' :
+                  String(lbl||'').toUpperCase().includes('TRIPLE') ? 'TRB' :
                   String(lbl||'').toUpperCase().includes('BULL') ? 'BULL' :
                   String(lbl||'').toUpperCase().slice(0,4));
       if (z1 && z1 !== prev) window.sqDmdShowZ1(`ROUND

@@ -168,14 +168,16 @@ function zoneRects(){
 function drawZ1Target(z1Text, rect){
   const t = (z1Text || "").toString().toUpperCase().trim();
   if (!t) return;
-
-  // Zone 1 is target-only. If callers pass "ROUND\n12", we still only render the target.
   const parts = t.split(/\n/).filter(Boolean);
   const target = (parts.length ? parts[parts.length - 1] : t).trim();
   if (!target) return;
 
-  // Bigger, perfectly centered target (no label).
-  drawTextInRect(target, rect, 48, "center", "middle", 700);
+  // SC-045: make the visible pinball indicator actually read ROUND + target.
+  // The label stays small and the target remains the dominant element.
+  const top = { x:rect.x, y:rect.y + 3, w:rect.w, h:42 };
+  const body = { x:rect.x, y:rect.y + 38, w:rect.w, h:rect.h - 38 };
+  drawTextInRect('ROUND', top, 15, "center", "middle", 800);
+  drawTextInRect(target, body, 46, "center", "middle", 750);
 }
 
 function drawTextInRect(str, rect, px, align="center", v="middle", weight, yOff=0){
@@ -726,6 +728,27 @@ function thresholdNativeToAmber(){
     nctx.restore();
   }
 
+  // >>> PATCH:SC045_PINBALL_PROCEDURAL_SCENES START
+  // Procedural DMD scenes: deliberately graphic/abstract like classic pinball
+  // animations. They are authored directly into the 640x160 native buffer,
+  // then pass through the existing amber dot threshold/mask.
+  const __sqSc045ReducedMotion = () => {
+    try{ return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches; }catch(_){ return false; }
+  };
+  const __sqSc045DrawDolphin = (cx, cy, scale, flip) => {
+    const sx = flip ? -1 : 1;
+    nctx.save(); nctx.translate(cx, cy); nctx.scale(sx * scale, scale);
+    nctx.lineWidth = 5; nctx.strokeStyle = 'rgba(255,255,255,1)'; nctx.fillStyle = 'rgba(255,255,255,1)';
+    nctx.beginPath();
+    nctx.moveTo(-52, 3); nctx.quadraticCurveTo(-16, -28, 30, -8); nctx.quadraticCurveTo(50, 0, 62, -5);
+    nctx.quadraticCurveTo(47, 12, 19, 15); nctx.quadraticCurveTo(-18, 25, -52, 3); nctx.closePath(); nctx.stroke();
+    nctx.beginPath(); nctx.moveTo(-3,-18); nctx.lineTo(11,-38); nctx.lineTo(21,-13); nctx.closePath(); nctx.fill();
+    nctx.beginPath(); nctx.moveTo(-52,3); nctx.lineTo(-72,-13); nctx.lineTo(-66,4); nctx.lineTo(-74,20); nctx.closePath(); nctx.fill();
+    nctx.beginPath(); nctx.arc(36,-7,3.2,0,Math.PI*2); nctx.fill();
+    nctx.restore();
+  };
+  // <<< PATCH:SC045_PINBALL_PROCEDURAL_SCENES END
+
   function drawNative(now) {
     nctx.clearRect(0, 0, NATIVE_W, NATIVE_H);
 
@@ -737,6 +760,54 @@ function thresholdNativeToAmber(){
     const __pZ2 = (window.__sqDmdPinnedZ2Text ? String(window.__sqDmdPinnedZ2Text) : "");
     const z2t = ((active && typeof active.z2 === "string") ? String(active.z2) : (__pZ2 || "")).toUpperCase();
     const z3t = (active && typeof active.z3 === "string") ? String(active.z3).toUpperCase() : "";
+
+
+    // >>> PATCH:SC045_PINBALL_SCENE_TYPES START
+    if (active && active.type === 'anticipationEyes') {
+      const age = Math.max(0, now - active.start);
+      const reduce = __sqSc045ReducedMotion();
+      const t = (z2t || '').toUpperCase();
+      const px = Math.max(30, TEXT.topPx - 4);
+      const w = measureTextPx(t, px, 800);
+      const dur = Math.max(500, Number(active.ms || 1150));
+      const p = reduce ? .46 : Math.max(0, Math.min(1, age / dur));
+      const x = Math.round(NATIVE_W - p * (NATIVE_W + w + 90));
+      const y = Math.floor(NATIVE_H/2 + px*.25);
+      drawTextPx(t, x, y, px, 800);
+      const ex = reduce ? Math.round(NATIVE_W*.78) : Math.round(x + w + 38);
+      const ey = Math.round(NATIVE_H*.52 + (reduce ? 0 : Math.sin(age*.012)*5));
+      nctx.lineWidth = 5; nctx.strokeStyle = 'rgba(255,255,255,1)'; nctx.fillStyle = 'rgba(255,255,255,1)';
+      [0,42].forEach(off=>{ nctx.beginPath(); nctx.ellipse(ex+off,ey,16,25,0,0,Math.PI*2); nctx.stroke(); nctx.beginPath(); nctx.arc(ex+off + (reduce?0:Math.sin(age*.018)*5),ey+2,5,0,Math.PI*2); nctx.fill(); });
+      thresholdNativeToAmber(); return;
+    }
+    if (active && active.type === 'dolphinSwim') {
+      const age = Math.max(0, now - active.start), reduce = __sqSc045ReducedMotion();
+      const dur = Math.max(1000, Number(active.ms || 2000));
+      const p = reduce ? .52 : Math.max(0, Math.min(1, age / dur));
+      const x1 = reduce ? NATIVE_W*.38 : -80 + p*(NATIVE_W+160);
+      const x2 = reduce ? NATIVE_W*.68 : NATIVE_W+90 - p*(NATIVE_W+180);
+      __sqSc045DrawDolphin(x1, NATIVE_H*.46 + (reduce?0:Math.sin(age*.010)*18), .72, false);
+      __sqSc045DrawDolphin(x2, NATIVE_H*.66 + (reduce?0:Math.cos(age*.012)*16), .55, true);
+      nctx.lineWidth = 4; nctx.strokeStyle = 'rgba(255,255,255,1)';
+      for(let i=0;i<3;i++){ const bx=(x1-70)-(i*20); nctx.beginPath(); nctx.arc(bx, NATIVE_H*.70, 10+i*3, Math.PI*1.05, Math.PI*1.85); nctx.stroke(); }
+      thresholdNativeToAmber(); return;
+    }
+    if (active && active.type === 'bullseyeHit') {
+      const age = Math.max(0, now - active.start), reduce = __sqSc045ReducedMotion();
+      const cx = Math.round(NATIVE_W*.34), cy = Math.round(NATIVE_H*.52);
+      nctx.strokeStyle = 'rgba(255,255,255,1)'; nctx.fillStyle = 'rgba(255,255,255,1)';
+      [50,34,18,6].forEach((r,i)=>{ nctx.lineWidth = i===3 ? 5 : 3; nctx.beginPath(); nctx.arc(cx,cy,r,0,Math.PI*2); nctx.stroke(); });
+      nctx.beginPath(); nctx.moveTo(cx-55,cy); nctx.lineTo(cx+55,cy); nctx.moveTo(cx,cy-55); nctx.lineTo(cx,cy+55); nctx.stroke();
+      const p = reduce ? 1 : Math.max(0, Math.min(1, age/620));
+      const tipX = Math.round(NATIVE_W - 24 - p*(NATIVE_W - 24 - cx));
+      const tipY = Math.round(cy - 28 + p*28);
+      nctx.lineWidth=6; nctx.beginPath(); nctx.moveTo(tipX+74,tipY-12); nctx.lineTo(tipX,tipY); nctx.stroke();
+      nctx.beginPath(); nctx.moveTo(tipX,tipY); nctx.lineTo(tipX+16,tipY-7); nctx.lineTo(tipX+13,tipY+7); nctx.closePath(); nctx.fill();
+      nctx.beginPath(); nctx.moveTo(tipX+62,tipY-10); nctx.lineTo(tipX+82,tipY-28); nctx.lineTo(tipX+78,tipY-7); nctx.lineTo(tipX+91,tipY+7); nctx.lineTo(tipX+64,tipY+1); nctx.closePath(); nctx.fill();
+      if (p >= .98 && !reduce) { for(let a=0;a<8;a++){ const ang=a*Math.PI/4; nctx.beginPath(); nctx.moveTo(cx+Math.cos(ang)*12,cy+Math.sin(ang)*12); nctx.lineTo(cx+Math.cos(ang)*72,cy+Math.sin(ang)*72); nctx.stroke(); } }
+      thresholdNativeToAmber(); return;
+    }
+    // <<< PATCH:SC045_PINBALL_SCENE_TYPES END
 
         // >>> PATCH:SQ_DMD_MARQUEE_FULL START
     // Special scene type: marqueeFull (scroll Z2 text across the FULL DMD area; hides all other zones)
@@ -958,7 +1029,7 @@ if (!active || active.type === "idle") {
     __sqDmdLastZ3 = (z3 ?? "").toString();
 
     enqueue({
-      type: o.type || "hold", // hold | flash | wipe | shake | roll | idle
+      type: o.type || "hold", // hold | flash | wipe | shake | roll | idle | anticipationEyes | dolphinSwim | bullseyeHit
       dir: o.dir || "fwd",     // for wipe: fwd | rev
       revealMs: (typeof o.revealMs === "number" ? o.revealMs : undefined),
       amp: (typeof o.amp === "number" ? o.amp : undefined), // for shake
