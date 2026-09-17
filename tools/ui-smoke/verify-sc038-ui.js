@@ -13,8 +13,14 @@ function p(name) { return path.join(OUT, name); }
   try {
     await H.boot(page, { settle: 3200 });
 
-    const wrapped = await page.evaluate(() => !!(window.openGameCompleteDialog && window.openGameCompleteDialog.__sqSc038Wrapped));
-    assert.equal(wrapped, true, 'SC-038 completion wrapper did not install');
+    const runtime = await page.evaluate(() => ({
+      wrapped: !!(window.openGameCompleteDialog && window.openGameCompleteDialog.__sqSc038Wrapped),
+      hotfix: !!window.__sqSc038Hotfix,
+      detectorFixed: !!(window.SQ_ACH && window.SQ_ACH.detectGame && window.SQ_ACH.detectGame.__sqSc038UntouchableFixed),
+    }));
+    assert.equal(runtime.wrapped, true, 'SC-038 completion wrapper did not install');
+    assert.equal(runtime.hotfix, true, 'SC-038 XP/leaderboard hotfix did not install');
+    assert.equal(runtime.detectorFixed, true, 'SC-038 achievement detector repair did not install');
 
     await page.evaluate(() => {
       const mkQuery = (rows) => {
@@ -89,16 +95,11 @@ function p(name) { return path.join(OUT, name); }
         id:'sc038-fixture-match', mode:'official', gameMode:'official', targetWins:3,
         history:[], wins:[0,0], completedLogged:false
       });
-      // The production mode resolver verifies registered-player metadata. This
-      // fixture is deliberately offline, so pin only the fixture's mode result.
       window.__sqComputeGameMode = () => 'official';
       try { delete state._decider; } catch (_) {}
       try { delete state.__sqGameCompleteOpen; } catch (_) {}
       try { delete state.__sqXpRevealedTok; } catch (_) {}
 
-      // SC-038 owns navigation into the existing XP renderer, not the XP engine.
-      // Count that handoff directly so this offline fixture does not need to
-      // recreate every XP/achievement database dependency.
       const originalXpReveal = window.__sqGcXpReveal;
       if (typeof originalXpReveal !== 'function') throw new Error('Existing XP renderer missing');
       window.__sqSc038XpCalls = 0;
@@ -107,8 +108,6 @@ function p(name) { return path.join(OUT, name); }
         return originalXpReveal.apply(this, args);
       };
 
-      // Mirror the exact canonical Bull-row markup inside the real Throwpad host.
-      // Canonical buildPad() does not add data-bull attributes to these controls.
       document.body.setAttribute('data-page', 'game');
       document.body.classList.add('livev2-on');
       const pad = document.getElementById('pad');
@@ -174,16 +173,38 @@ function p(name) { return path.join(OUT, name); }
     await page.locator('.sq-pg-next').evaluate(el => el.click());
     await page.waitForSelector('.sq-pg-xp-screen:not([hidden])');
     await page.waitForFunction(() => {
-      const b = document.querySelector('.sq-pg-next');
-      return b && !b.disabled && /NEXT GAME|FINISH MATCH/.test(b.textContent || '');
+      const title = document.querySelector('.sq-pg-xp-screen:not([hidden]) .gc-xp-title');
+      return title && /XP EARNED/.test(title.textContent || '');
     }, { timeout:12000 });
-    assert.equal((await page.locator('.sq-pg-next').textContent()).trim(), 'NEXT GAME');
+    await page.waitForFunction(() => document.querySelectorAll('.sq-pg-xp-screen:not([hidden]) .gc-xp-row').length === 2, { timeout:12000 });
+    await page.waitForFunction(() => {
+      const b = document.querySelector('.sq-pg-next');
+      return b && !b.disabled && /MATCH LEADERBOARD/.test(b.textContent || '');
+    }, { timeout:12000 });
+
+    assert.equal((await page.locator('.sq-pg-next').textContent()).trim(), 'MATCH LEADERBOARD');
+    assert.equal(await page.locator('.sq-pg-xp-screen .gc-xp-row').count(), 2, 'Animated XP player rows did not render');
     assert.equal(await page.evaluate(() => window.__sqSc038XpCalls), 1, 'Existing XP renderer handoff did not run exactly once');
+    assert.equal(await page.evaluate(() => ('uniqueWon' in window) || ('neverBehind' in window)), false, 'SC-038 detector compatibility globals leaked after XP render');
     await page.screenshot({ path:p('sc038-xp-runtime.png'), fullPage:false });
 
-    // The harness intentionally aborts all non-local requests (including production
-    // Supabase and decorative remote assets), which Chromium reports as generic
-    // ERR_FAILED console noise. Keep real application/page errors visible.
+    await page.evaluate(() => {
+      const original = window.awardAndShowLeaderboard;
+      if (typeof original !== 'function' || typeof showLeaderboard !== 'function') throw new Error('Canonical Match Leaderboard route missing');
+      window.__sqSc038LeaderboardCalls = 0;
+      window.__sqSc038OriginalAwardAndShowLeaderboard = original;
+      window.awardAndShowLeaderboard = async function() {
+        window.__sqSc038LeaderboardCalls += 1;
+        state.gameAwarded = true;
+        showLeaderboard();
+      };
+    });
+    await page.locator('.sq-pg-next').click();
+    await page.waitForFunction(() => document.body.getAttribute('data-page') === 'leaderboard', { timeout:4000 });
+    assert.equal(await page.evaluate(() => window.__sqSc038LeaderboardCalls), 1, 'Match Leaderboard handoff did not run exactly once');
+    assert.equal(await page.locator('.sq-gamecomplete-backdrop').count(), 0, 'Game Complete overlay remained after Match Leaderboard opened');
+    await page.screenshot({ path:p('sc038-match-leaderboard-runtime.png'), fullPage:false });
+
     const unexpected = consoleErrs.filter(e => !/supabase|failed to fetch|networkerror|aborterror|failed to load resource:\s*net::err_failed/i.test(e));
     assert.deepEqual(unexpected, [], 'Unexpected console/page errors: ' + unexpected.join(' | '));
 
@@ -192,7 +213,8 @@ function p(name) { return path.join(OUT, name); }
       p('sc038-bull-runtime.png'),
       p('sc038-result-runtime.png'),
       p('sc038-scorecard-runtime.png'),
-      p('sc038-xp-runtime.png')
+      p('sc038-xp-runtime.png'),
+      p('sc038-match-leaderboard-runtime.png')
     ] }, null, 2));
   } finally {
     await browser.close();
