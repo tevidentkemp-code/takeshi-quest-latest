@@ -1,0 +1,33 @@
+name: SC-032 DMD ownership QA
+
+on:
+  pull_request:
+    paths:
+      - src/legacy/scripts/inline-003.js
+      - src/legacy/scripts/inline-004.js
+      - src/legacy/scripts/inline-007.js
+      - src/legacy/scripts/inline-016.js
+      - src/game/engine.js
+      - src/live-game/live-v2.js
+      - src/live-game/dmd/**
+      - src/legacy/intentional-patches.json
+      - tools/ui-smoke/verify-sc032-dmd-ownership.mjs
+      - .github/workflows/sc032-dmd-ownership-qa.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ownership-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+      - name: Verify bounded DMD ownership contract
+        run: node tools/ui-smoke/verify-sc032-dmd-ownership.mjs
