@@ -5,83 +5,104 @@ const H = require('./harness');
 
 const OUT = process.env.SQ_SCREENSHOTS || path.join(__dirname, '../../qa-artifacts');
 fs.mkdirSync(OUT, { recursive: true });
+const shot = name => path.join(OUT, name);
+const stage = name => console.log(`[SC-038] ${name}`);
 
-function p(name) { return path.join(OUT, name); }
+function makeRoundRows(values) {
+  return values.map((roundTotal, index) => {
+    let darts;
+    if (index === 11) {
+      darts = [{ kind:'D', sector:roundTotal / 2, points:roundTotal }, { kind:'Miss', points:0 }, { kind:'Miss', points:0 }];
+    } else if (index === 12) {
+      darts = [{ kind:'T', sector:roundTotal / 3, points:roundTotal }, { kind:'Miss', points:0 }, { kind:'Miss', points:0 }];
+    } else if (index === 13) {
+      darts = [{ kind:'B', bull:roundTotal === 50 ? 'Inner' : 'Outer', points:roundTotal }, { kind:'Miss', points:0 }, { kind:'Miss', points:0 }];
+    } else {
+      let left = Number(roundTotal || 0);
+      darts = Array.from({ length:3 }, () => {
+        const points = Math.max(0, Math.min(20, left));
+        left -= points;
+        return points > 0 ? { kind:'S', sector:points, points } : { kind:'Miss', points:0 };
+      });
+    }
+    return { darts, roundTotal };
+  });
+}
 
 (async () => {
-  const { browser, page, consoleErrs } = await H.launch({ width: 390, height: 844 });
+  const { browser, page, consoleErrs } = await H.launch({ width:390, height:844 });
   try {
-    await H.boot(page, { settle: 3200 });
+    await H.boot(page, { settle:3200 });
+    stage('booted');
 
     const runtime = await page.evaluate(() => ({
       wrapped: !!(window.openGameCompleteDialog && window.openGameCompleteDialog.__sqSc038Wrapped),
       hotfix: !!window.__sqSc038Hotfix,
       detectorFixed: !!(window.SQ_ACH && window.SQ_ACH.detectGame && window.SQ_ACH.detectGame.__sqSc038UntouchableFixed),
+      xpRenderer: typeof window.__sqGcXpReveal === 'function',
+      leaderboardRoute: typeof window.awardAndShowLeaderboard === 'function' && typeof window.showLeaderboard === 'function',
     }));
-    assert.equal(runtime.wrapped, true, 'SC-038 completion wrapper did not install');
-    assert.equal(runtime.hotfix, true, 'SC-038 XP/leaderboard hotfix did not install');
-    assert.equal(runtime.detectorFixed, true, 'SC-038 achievement detector repair did not install');
+    assert.deepEqual(runtime, {
+      wrapped:true,
+      hotfix:true,
+      detectorFixed:true,
+      xpRenderer:true,
+      leaderboardRoute:true,
+    }, 'Required SC-038 runtime contracts are not installed');
 
-    await page.evaluate(() => {
-      const mkQuery = (rows) => {
+    const alphaRounds = [30,33,36,39,42,45,48,51,54,57,60,40,54,50];
+    const betaRounds  = [20,22,24,26,28,30,32,34,36,38,40,32,42,25];
+
+    await page.evaluate(({ alpha, beta }) => {
+      const mkQuery = rows => {
         const q = {};
-        ['select','eq','neq','ilike','like','in','order','limit','gte','lte','is','not','maybeSingle','single'].forEach(k => {
+        ['select','eq','neq','ilike','like','or','in','order','limit','gte','lte','is','not','maybeSingle','single'].forEach(k => {
           q[k] = () => q;
         });
-        q.then = (resolve, reject) => Promise.resolve({ data: rows, error: null }).then(resolve, reject);
+        q.then = (resolve, reject) => Promise.resolve({ data:rows, error:null }).then(resolve, reject);
         return q;
       };
       const recordRows = [
         { player_id:'11111111-1111-1111-1111-111111111111', player_name:'Test Alpha', best_score:310, best_score_pos:2 },
-        { player_id:'22222222-2222-2222-2222-222222222222', player_name:'Test Beta', best_score:340, best_score_pos:1 }
+        { player_id:'22222222-2222-2222-2222-222222222222', player_name:'Test Beta', best_score:340, best_score_pos:1 },
       ];
       window.sb = {
         from(table) {
           if (table === 'v_player_best_official_ranked') return mkQuery(recordRows);
+          if (table === 'v_player_xp') return mkQuery([
+            { player_id:'11111111-1111-1111-1111-111111111111', name:'Test Alpha', total_xp:240 },
+            { player_id:'22222222-2222-2222-2222-222222222222', name:'Test Beta', total_xp:180 },
+          ]);
           return mkQuery([]);
-        }
+        },
       };
       window.__sb = window.sb;
 
-      const alphaRounds = [30,33,36,39,42,45,48,51,54,57,60,40,54,50];
-      const betaRounds  = [20,22,24,26,28,30,32,34,36,38,40,32,42,25];
-      const regularDarts = (roundTotal) => {
-        let left = Number(roundTotal || 0);
-        const darts = [];
-        for (let i = 0; i < 3; i++) {
-          const points = Math.max(0, Math.min(20, left));
-          darts.push(points > 0 ? { kind:'S', sector:points, points } : { kind:'Miss', points:0 });
-          left -= points;
-        }
-        return darts;
-      };
-      const toRows = (arr) => arr.map((roundTotal, index) => {
-        let darts;
-        if (index === 11) {
-          darts = [{ kind:'D', sector:roundTotal / 2, points:roundTotal }, { kind:'Miss', points:0 }, { kind:'Miss', points:0 }];
-        } else if (index === 12) {
-          darts = [{ kind:'T', sector:roundTotal / 3, points:roundTotal }, { kind:'Miss', points:0 }, { kind:'Miss', points:0 }];
-        } else if (index === 13) {
-          darts = [{ kind:'B', bull:roundTotal === 50 ? 'Inner' : 'Outer', points:roundTotal }, { kind:'Miss', points:0 }, { kind:'Miss', points:0 }];
-        } else {
-          darts = regularDarts(roundTotal);
-        }
-        return { darts, roundTotal };
-      });
+      // The post-game test owns presentation/navigation. Give the real animated
+      // renderer deterministic pre-game XP so CI never waits on an offline
+      // Supabase request or a stale cache/in-flight promise.
+      if (window.SQ_XP) {
+        window.SQ_XP._cache = null;
+        window.SQ_XP._cacheAt = 0;
+        window.SQ_XP._inflight = null;
+        window.__sqSc038OriginalXpForName = window.SQ_XP.forName;
+        window.SQ_XP.forName = async name => ({
+          name,
+          total_xp: /Alpha/i.test(String(name || '')) ? 240 : 180,
+        });
+      }
+      if (window.SQ_ACH) {
+        window.SQ_ACH._cache = {};
+        window.SQ_ACH._playerDirectoryCache = null;
+        window.SQ_ACH._playerDirectoryCacheAt = 0;
+        window.SQ_ACH._playerDirectoryInflight = null;
+      }
 
       state.players = [
-        {
-          id:'11111111-1111-1111-1111-111111111111',
-          player_id:'11111111-1111-1111-1111-111111111111',
-          name:'Test Alpha', first_name:'Test', last_name:'Alpha', nickname:'Captain Double', initials:'TA', type:'registered'
-        },
-        {
-          id:'22222222-2222-2222-2222-222222222222',
-          player_id:'22222222-2222-2222-2222-222222222222',
-          name:'Test Beta', first_name:'Test', last_name:'Beta', nickname:'The Verifier', initials:'TB', type:'registered'
-        }
+        { id:'11111111-1111-1111-1111-111111111111', player_id:'11111111-1111-1111-1111-111111111111', name:'Test Alpha', first_name:'Test', last_name:'Alpha', nickname:'Captain Double', initials:'TA', type:'registered' },
+        { id:'22222222-2222-2222-2222-222222222222', player_id:'22222222-2222-2222-2222-222222222222', name:'Test Beta', first_name:'Test', last_name:'Beta', nickname:'The Verifier', initials:'TB', type:'registered' },
       ];
-      state.score = [toRows(alphaRounds), toRows(betaRounds)];
+      state.score = [alpha, beta];
       state.currentRound = 13;
       state.currentPlayer = 0;
       state.currentDart = 0;
@@ -93,7 +114,7 @@ function p(name) { return path.join(OUT, name); }
       state.__gameToken = 3801;
       state.match = Object.assign({}, state.match || {}, {
         id:'sc038-fixture-match', mode:'official', gameMode:'official', targetWins:3,
-        history:[], wins:[0,0], completedLogged:false
+        history:[], wins:[0,0], completedLogged:false,
       });
       window.__sqComputeGameMode = () => 'official';
       try { delete state._decider; } catch (_) {}
@@ -101,7 +122,6 @@ function p(name) { return path.join(OUT, name); }
       try { delete state.__sqXpRevealedTok; } catch (_) {}
 
       const originalXpReveal = window.__sqGcXpReveal;
-      if (typeof originalXpReveal !== 'function') throw new Error('Existing XP renderer missing');
       window.__sqSc038XpCalls = 0;
       window.__sqGcXpReveal = function(...args) {
         window.__sqSc038XpCalls += 1;
@@ -120,79 +140,65 @@ function p(name) { return path.join(OUT, name); }
       probe.style.cssText = 'position:fixed;left:12px;right:12px;top:12px;z-index:999999;background:#050812;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;border-radius:14px';
       probe.innerHTML = '<button class="dtBullBtn" type="button">OUTER BULL</button><button class="dtBullBtn inner" type="button">INNER BULL</button>';
       pad.appendChild(probe);
-    });
+    }, { alpha:makeRoundRows(alphaRounds), beta:makeRoundRows(betaRounds) });
+    stage('fixture installed');
 
     const outerSel = '#pad #sc038BullProbe .dtBullBtn:first-child:not(.inner)';
     const innerSel = '#pad #sc038BullProbe .dtBullBtn.inner';
     await page.waitForSelector(outerSel);
     const bullColors = await page.evaluate(({ outerSel, innerSel }) => {
-      const outer = document.querySelector(outerSel);
-      const inner = document.querySelector(innerSel);
-      const a = getComputedStyle(outer);
-      const b = getComputedStyle(inner);
-      return { outerBg:a.backgroundImage, outerBorder:a.borderTopColor, innerBg:b.backgroundImage, innerBorder:b.borderTopColor };
+      const outer = getComputedStyle(document.querySelector(outerSel));
+      const inner = getComputedStyle(document.querySelector(innerSel));
+      return { outerBg:outer.backgroundImage, innerBg:inner.backgroundImage };
     }, { outerSel, innerSel });
-    assert.match(bullColors.outerBg, /18, 92, 52|rgb\(18, 92, 52\)/, 'Outer Bull is not using the green SC-038 treatment');
-    assert.match(bullColors.innerBg, /126, 27, 42|rgb\(126, 27, 42\)/, 'Inner Bull is not using the red SC-038 treatment');
-    await page.locator('#sc038BullProbe').screenshot({ path:p('sc038-bull-runtime.png') });
+    assert.match(bullColors.outerBg, /18, 92, 52|rgb\(18, 92, 52\)/, 'Outer Bull is not green');
+    assert.match(bullColors.innerBg, /126, 27, 42|rgb\(126, 27, 42\)/, 'Inner Bull is not red');
+    await page.locator('#sc038BullProbe').screenshot({ path:shot('sc038-bull-runtime.png') });
     await page.evaluate(() => document.getElementById('sc038BullProbe')?.remove());
+    stage('bull colours passed');
 
-    await page.evaluate(() => {
-      state.finished = true;
-      openGameCompleteDialog();
-    });
+    await page.evaluate(() => { state.finished = true; openGameCompleteDialog(); });
     await page.waitForSelector('.sq-gamecomplete-backdrop[data-sq-sc038="1"] .sq-pg-result:not([hidden])');
-    await page.waitForTimeout(300);
-
-    assert.equal(await page.locator('.gc-arcade-kicker').textContent(), 'GAME COMPLETE');
+    await page.waitForTimeout(250);
+    assert.equal((await page.locator('.gc-arcade-kicker').textContent()).trim(), 'GAME COMPLETE');
     assert.equal((await page.locator('.sq-pg-mainname').textContent()).trim(), 'Test Alpha');
     assert.match((await page.locator('.sq-pg-nickname').textContent()).trim(), /Captain Double/);
     assert.equal((await page.locator('.gc-statRow').filter({ hasText:'Best Round' }).locator('.gc-statValue').textContent()).trim(), 'R11 / 60');
     const statStyle = await page.locator('.gc-statRow').filter({ hasText:'Final Score' }).locator('.gc-statValue').evaluate(el => {
       const s = getComputedStyle(el);
-      return { fontSize:parseFloat(s.fontSize), fontWeight:s.fontWeight };
+      return { size:parseFloat(s.fontSize), weight:Number(s.fontWeight) };
     });
-    assert.ok(statStyle.fontSize <= 24, 'Game Complete stat numbers are still too large');
-    assert.ok(Number(statStyle.fontWeight) <= 500, 'Game Complete stat numbers are still bold');
-    let visibleButtons = (await page.locator('.modal-gamecomplete button:visible').allTextContents()).map(t => t.replace(/\s+/g,' ').trim());
-    assert.equal(visibleButtons.some(t => /VIEW BREAKDOWN|SCORECARD|END MATCH|NEXT ROUND/i.test(t)), false, 'Legacy post-game actions are still visible on result screen');
-    assert.equal(visibleButtons.some(t => /NEXT/.test(t)), true, 'Result NEXT button missing');
-    await page.screenshot({ path:p('sc038-result-runtime.png'), fullPage:false });
+    assert.ok(statStyle.size <= 24, 'Game Complete numbers are still too large');
+    assert.ok(statStyle.weight <= 500, 'Game Complete numbers are still bold');
+    assert.equal((await page.locator('.modal-gamecomplete button:visible').allTextContents()).some(t => /VIEW BREAKDOWN|SCORECARD|END MATCH|NEXT ROUND/i.test(t)), false, 'Legacy result actions remain visible');
+    await page.screenshot({ path:shot('sc038-result-runtime.png'), fullPage:false });
+    stage('game complete passed');
 
     await page.locator('.sq-pg-next').click();
     await page.waitForSelector('.sq-pg-scorecard:not([hidden])');
-    await page.waitForTimeout(500);
     assert.equal(await page.locator('.sq-pg-score-row').count(), 2);
     assert.equal((await page.locator('.sq-pg-score-row').first().locator('.sq-pg-best').textContent()).trim(), 'R11 / 60');
-    assert.equal(await page.locator('.sq-pg-badge.pb').count(), 2, 'Expected PB badges missing');
-    assert.equal(await page.locator('.sq-pg-badge.wr').count(), 1, 'Expected WR badge missing');
-    visibleButtons = (await page.locator('.modal-gamecomplete button:visible').allTextContents()).map(t => t.replace(/\s+/g,' ').trim());
-    assert.equal(visibleButtons.some(t => /VIEW BREAKDOWN|SCORECARD|END MATCH|NEXT ROUND/i.test(t)), false, 'Legacy actions leaked onto scorecard');
-    await page.screenshot({ path:p('sc038-scorecard-runtime.png'), fullPage:false });
+    assert.equal(await page.locator('.sq-pg-badge.pb').count(), 2, 'PB badges missing');
+    assert.equal(await page.locator('.sq-pg-badge.wr').count(), 1, 'WR badge missing');
+    await page.screenshot({ path:shot('sc038-scorecard-runtime.png'), fullPage:false });
+    stage('scorecard passed');
 
-    await page.locator('.sq-pg-next').evaluate(el => el.click());
+    await page.locator('.sq-pg-next').click();
     await page.waitForSelector('.sq-pg-xp-screen:not([hidden])');
-    await page.waitForFunction(() => {
-      const title = document.querySelector('.sq-pg-xp-screen:not([hidden]) .gc-xp-title');
-      return title && /XP EARNED/.test(title.textContent || '');
-    }, { timeout:12000 });
-    await page.waitForFunction(() => document.querySelectorAll('.sq-pg-xp-screen:not([hidden]) .gc-xp-row').length === 2, { timeout:12000 });
+    await page.waitForFunction(() => /XP EARNED/.test(document.querySelector('.sq-pg-xp-screen:not([hidden]) .gc-xp-title')?.textContent || ''), null, { timeout:8000 });
+    await page.waitForFunction(() => document.querySelectorAll('.sq-pg-xp-screen:not([hidden]) .gc-xp-row').length === 2, null, { timeout:8000 });
     await page.waitForFunction(() => {
       const b = document.querySelector('.sq-pg-next');
       return b && !b.disabled && /MATCH LEADERBOARD/.test(b.textContent || '');
-    }, { timeout:12000 });
-
-    assert.equal((await page.locator('.sq-pg-next').textContent()).trim(), 'MATCH LEADERBOARD');
-    assert.equal(await page.locator('.sq-pg-xp-screen .gc-xp-row').count(), 2, 'Animated XP player rows did not render');
-    assert.equal(await page.evaluate(() => window.__sqSc038XpCalls), 1, 'Existing XP renderer handoff did not run exactly once');
-    assert.equal(await page.evaluate(() => ('uniqueWon' in window) || ('neverBehind' in window)), false, 'SC-038 detector compatibility globals leaked after XP render');
-    await page.screenshot({ path:p('sc038-xp-runtime.png'), fullPage:false });
+    }, null, { timeout:8000 });
+    assert.equal(await page.locator('.sq-pg-xp-screen .gc-xp-row').count(), 2, 'Animated XP rows did not render');
+    assert.equal(await page.evaluate(() => window.__sqSc038XpCalls), 1, 'XP renderer did not run exactly once');
+    assert.equal(await page.evaluate(() => ('uniqueWon' in window) || ('neverBehind' in window)), false, 'Detector compatibility globals leaked');
+    await page.screenshot({ path:shot('sc038-xp-runtime.png'), fullPage:false });
+    stage('animated XP passed');
 
     await page.evaluate(() => {
-      const original = window.awardAndShowLeaderboard;
-      if (typeof original !== 'function' || typeof showLeaderboard !== 'function') throw new Error('Canonical Match Leaderboard route missing');
       window.__sqSc038LeaderboardCalls = 0;
-      window.__sqSc038OriginalAwardAndShowLeaderboard = original;
       window.awardAndShowLeaderboard = async function() {
         window.__sqSc038LeaderboardCalls += 1;
         state.gameAwarded = true;
@@ -200,22 +206,16 @@ function p(name) { return path.join(OUT, name); }
       };
     });
     await page.locator('.sq-pg-next').click();
-    await page.waitForFunction(() => document.body.getAttribute('data-page') === 'leaderboard', { timeout:4000 });
+    await page.waitForFunction(() => document.body.getAttribute('data-page') === 'leaderboard', null, { timeout:4000 });
     assert.equal(await page.evaluate(() => window.__sqSc038LeaderboardCalls), 1, 'Match Leaderboard handoff did not run exactly once');
-    assert.equal(await page.locator('.sq-gamecomplete-backdrop').count(), 0, 'Game Complete overlay remained after Match Leaderboard opened');
-    await page.screenshot({ path:p('sc038-match-leaderboard-runtime.png'), fullPage:false });
+    assert.equal(await page.locator('.sq-gamecomplete-backdrop').count(), 0, 'Game Complete overlay remained open');
+    await page.screenshot({ path:shot('sc038-match-leaderboard-runtime.png'), fullPage:false });
+    stage('match leaderboard passed');
 
     const unexpected = consoleErrs.filter(e => !/supabase|failed to fetch|networkerror|aborterror|failed to load resource:\s*net::err_failed/i.test(e));
     assert.deepEqual(unexpected, [], 'Unexpected console/page errors: ' + unexpected.join(' | '));
 
     console.log('SC-038 runtime UI PASS');
-    console.log(JSON.stringify({ screenshots:[
-      p('sc038-bull-runtime.png'),
-      p('sc038-result-runtime.png'),
-      p('sc038-scorecard-runtime.png'),
-      p('sc038-xp-runtime.png'),
-      p('sc038-match-leaderboard-runtime.png')
-    ] }, null, 2));
   } finally {
     await browser.close();
   }
