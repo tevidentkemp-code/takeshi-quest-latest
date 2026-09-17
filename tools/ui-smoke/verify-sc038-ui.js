@@ -40,6 +40,7 @@ function makeRoundRows(values) {
       hotfix: !!window.__sqSc038Hotfix,
       detectorFixed: !!(window.SQ_ACH && window.SQ_ACH.detectGame && window.SQ_ACH.detectGame.__sqSc038UntouchableFixed),
       xpRenderer: typeof window.__sqGcXpReveal === 'function',
+      xpBreakdown: !!window.__sqSc038XpBreakdown,
       leaderboardRoute: typeof window.awardAndShowLeaderboard === 'function' && typeof window.showLeaderboard === 'function',
     }));
     assert.deepEqual(runtime, {
@@ -47,6 +48,7 @@ function makeRoundRows(values) {
       hotfix:true,
       detectorFixed:true,
       xpRenderer:true,
+      xpBreakdown:true,
       leaderboardRoute:true,
     }, 'Required SC-038 runtime contracts are not installed');
 
@@ -87,6 +89,9 @@ function makeRoundRows(values) {
         window.SQ_XP._inflight = null;
         window.__sqSc038OriginalXpForName = window.SQ_XP.forName;
         window.SQ_XP.forName = async name => ({
+          player_id: /Alpha/i.test(String(name || ''))
+            ? '11111111-1111-1111-1111-111111111111'
+            : '22222222-2222-2222-2222-222222222222',
           name,
           total_xp: /Alpha/i.test(String(name || '')) ? 240 : 180,
         });
@@ -194,8 +199,49 @@ function makeRoundRows(values) {
     assert.equal(await page.locator('.sq-pg-xp-screen .gc-xp-row').count(), 2, 'Animated XP rows did not render');
     assert.equal(await page.evaluate(() => window.__sqSc038XpCalls), 1, 'XP renderer did not run exactly once');
     assert.equal(await page.evaluate(() => ('uniqueWon' in window) || ('neverBehind' in window)), false, 'Detector compatibility globals leaked');
+
+    const xpLayout = await page.locator('.sq-pg-xp-screen .gc-xp-row').first().evaluate(row => {
+      const labels = Array.from(row.querySelectorAll('.gc-xp-source-label')).map(el => (el.textContent || '').trim());
+      const chipTracks = Array.from(row.querySelectorAll('.gc-xp-source-chips')).map(el => ({
+        overflowX:getComputedStyle(el).overflowX,
+        scrollWidth:el.scrollWidth,
+        clientWidth:el.clientWidth,
+      }));
+      const nameBox = row.querySelector('.gc-xp-name')?.getBoundingClientRect();
+      const rank = row.querySelector('.gc-xp-rankstack');
+      const rankBox = rank?.getBoundingClientRect();
+      const levelUp = row.querySelector('.gc-xp-lvup');
+      const levelUpBox = levelUp?.getBoundingClientRect();
+      const badge = row.querySelector('.gc-xp-lvholder')?.firstElementChild;
+      const badgeBox = badge?.getBoundingClientRect();
+      return {
+        labels,
+        chipTracks,
+        rankText:(rank?.textContent || '').trim(),
+        badgeText:(badge?.textContent || '').trim(),
+        levelUpText:(levelUp?.textContent || '').trim(),
+        rankRight:rankBox?.right || 0,
+        nameRight:nameBox?.right || 0,
+        badgeTop:badgeBox?.top || 0,
+        levelUpTop:levelUpBox?.top || 0,
+      };
+    });
+    assert.deepEqual(xpLayout.labels, ['BASE XP','POSITIVE','NEGATIVE'], 'XP breakdown rows are not in the requested order');
+    assert.equal(xpLayout.chipTracks.length, 3, 'XP breakdown is missing a horizontal source track');
+    xpLayout.chipTracks.forEach((track, index) => {
+      assert.equal(track.overflowX, 'auto', `XP source track ${index + 1} is not horizontally scrollable`);
+    });
+    assert.ok(/LV\s*\d+/i.test(xpLayout.badgeText), 'Level badge is missing from the XP card');
+    assert.ok(xpLayout.rankRight > xpLayout.nameRight, 'Level badge stack is not positioned at the right side of the card');
+    if (/LEVEL UP!/i.test(xpLayout.rankText)) {
+      assert.ok(xpLayout.levelUpTop >= xpLayout.badgeTop, 'LEVEL UP notification is not below the level badge');
+    }
+    assert.ok(await page.locator('.gc-xp-source-chip.base').count() >= 2, 'Basic XP source chips did not render');
+    assert.ok(await page.locator('.gc-xp-source-chip.positive').count() + await page.locator('.gc-xp-source-chip.milestone').count() >= 1, 'Positive XP source chips did not render');
+    assert.ok(await page.locator('.gc-xp-source-chip.negative, .gc-xp-source-chip.empty').count() >= 1, 'Negative XP source row did not render');
+
     await page.screenshot({ path:shot('sc038-xp-runtime.png'), fullPage:false });
-    stage('animated XP passed');
+    stage('animated XP breakdown passed');
 
     await page.evaluate(() => {
       window.__sqSc038LeaderboardCalls = 0;
