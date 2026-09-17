@@ -238,6 +238,16 @@ function openGameCompleteDialog() {
     return;
   }
   const __isVsShadowComplete = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
+
+  // Presentation-only finished-game state: once completion is valid, replace
+  // the last live-game DMD frame with a cabinet-style full-width GAME OVER
+  // marquee. The next startNewGame(true) hard-clears this scene.
+  try{
+    window.__sqDmdStopPreThrow?.();
+    window.__sqDmdHardClearQueue?.();
+    window.sqDmdShowZones?.({ z2:'GAME OVER', z3:'' }, { type:'marqueeFull', ms:60 * 60 * 1000 });
+  }catch(_){ }
+
   const totals = state.players.map((_, i) => totalScoreForPlayer(i));
   if (!totals.length) return;
   
