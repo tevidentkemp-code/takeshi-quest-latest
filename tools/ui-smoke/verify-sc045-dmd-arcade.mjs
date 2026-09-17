@@ -7,6 +7,11 @@ const renderer = fs.readFileSync('src/legacy/scripts/inline-007.js','utf8');
 const state = fs.readFileSync('src/app/state.js','utf8');
 for (const s of ['TREBLE!','CAN HE......?','TWO TREBLES','NICE FINISH','MAXI MAYHEM!','AWKWARD','HOLD UP....','TWO DOUBLES!','GET IN THE SEA!!','OUTER!','BULLSEYE','MAKING BANK','EASY MONEY','BASIC BITCH','HAHA HA HAHAA!','SCRATCH']) assert(engine.includes(s), `engine missing ${s}`);
 for (const type of ['anticipationEyes','dolphinSwim','bullseyeHit']) assert(renderer.includes(`active.type === '${type}'`), `renderer missing ${type}`);
+assert(renderer.includes('128x32 logical DMD grid'), 'special art must document the classic 128x32 logical-grid direction');
+assert(renderer.includes('const __SQ45_PX = 5;'), 'special art must stay on the coarse 128x32 logical grid');
+for (const helper of ['__sq45Eye','__sq45Dolphin','__sq45Dart','__sq45Circle']) assert(renderer.includes(`const ${helper}`), `premium pinball helper missing: ${helper}`);
+assert(renderer.includes("reducedMotion:'reduce'") === false, 'renderer must not contain test-only reduced-motion emulation');
+assert(renderer.includes("window.matchMedia?.('(prefers-reduced-motion: reduce)')"), 'renderer must provide reduced-motion art fallback');
 assert(engine.includes("__sector >= 1 && __sector <= 5"), 'engine Voldy range must be 1-5');
 assert(router.includes("sector >= 1 && sector <= 5"), 'Vs Shadow Voldy range must be 1-5');
 assert(!engine.includes("z1 = 'TRL'"), 'engine DMD must not emit TRL');
@@ -19,4 +24,4 @@ assert(router.includes("__sqDmdShowTurnIntro?.(true)"), 'first-game TO THROW FIR
 assert(state.includes("first ? 'TO THROW FIRST' : 'TO THROW'"), 'tiebreak first-throw wording missing');
 const combo = engine.slice(engine.indexOf('// >>> PATCH:SQ_DMD_VOLDY_TRIGGER START'), engine.indexOf('// Render all three zones;'));
 assert(!combo.includes('POWER DART'), 'POWER DART must be retired from canonical live DMD trigger block');
-console.log('SC-045 DMD ARCADE STATIC: ALL PASS');
+console.log('SC-045 DMD ARCADE + CLASSIC PINBALL ART CONTRACT: ALL PASS');
