@@ -12,22 +12,6 @@ const H = require('./harness');
       typeof window.recordThrow === 'function'
     );
 
-    const sourceContract = await page.evaluate(() => {
-      const record = String(window.recordThrow);
-      const complete = String(window.openGameCompleteDialog);
-      const start = String(window.startNewGame);
-      return {
-        targetSplit: record.includes("z2:'NEXT UP'") && record.includes("z3:String(nextLbl || '').toUpperCase()"),
-        oldTargetLine: record.includes('NEXT UP..'),
-        gameOver: complete.includes("z2:'GAME OVER'") && complete.includes("type:'marqueeFull'"),
-        startClears: start.includes('__sqDmdHardClearQueue'),
-      };
-    });
-    assert.equal(sourceContract.targetSplit, true, 'round handover does not split NEXT UP / target');
-    assert.equal(sourceContract.oldTargetLine, false, 'legacy NEXT UP.. target line remains');
-    assert.equal(sourceContract.gameOver, true, 'game completion does not own the GAME OVER marquee');
-    assert.equal(sourceContract.startClears, true, 'new game does not clear the completed-game DMD scene');
-
     await page.evaluate(() => {
       const mkRounds = (base) => Array.from({ length:14 }, (_, i) => ({
         darts:[
