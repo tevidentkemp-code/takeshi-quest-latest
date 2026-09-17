@@ -69,18 +69,19 @@ jobs:
           printf '%s\n' "$changed"
           for f in $changed; do
             case "$f" in
-              src/game/engine.js|src/app/router-ui.js|src/app/state.js|src/live-game/live-v2.js|src/legacy/scripts/inline-005.js|src/legacy/scripts/inline-007.js|src/legacy/intentional-patches.json|tools/ui-smoke/verify-sc045-dmd-arcade.mjs|tools/ui-smoke/verify-sc045-dmd-arcade.js|.github/workflows/sc045-dmd-arcade-qa.yml|tools/sc045_apply_patch.py|.github/workflows/sc045-writer.yml) ;;
+              src/game/engine.js|src/app/router-ui.js|src/app/state.js|src/live-game/live-v2.js|src/legacy/scripts/inline-005.js|src/legacy/scripts/inline-007.js|src/legacy/intentional-patches.json|tools/ui-smoke/verify-sc045-dmd-arcade.mjs|tools/ui-smoke/verify-sc045-dmd-arcade.js|.github/workflows/sc045-dmd-arcade-qa.yml|tools/sc045_apply_patch.py) ;;
               *) echo "Unexpected changed file: $f" >&2; exit 1 ;;
             esac
           done
-      - name: Commit implementation and remove one-shot writer
+      - name: Commit and push verified source/tests only
         shell: bash
         run: |
           set -euo pipefail
-          rm -f tools/sc045_apply_patch.py .github/workflows/sc045-writer.yml
+          rm -f .github/workflows/sc045-dmd-arcade-qa.yml
+          git checkout -- tools/sc045_apply_patch.py
           git config user.name "shateki-release-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add -A
+          git add src/app/router-ui.js src/app/state.js src/game/engine.js src/legacy/intentional-patches.json src/legacy/scripts/inline-005.js src/legacy/scripts/inline-007.js src/live-game/live-v2.js tools/ui-smoke/verify-sc045-dmd-arcade.js tools/ui-smoke/verify-sc045-dmd-arcade.mjs
           git diff --cached --check
           git commit -m "SC-045: upgrade DMD arcade language and pinball motion"
           git push origin HEAD:sc045-dmd-arcade-language
