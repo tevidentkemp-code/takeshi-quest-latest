@@ -1,0 +1,36 @@
+name: SC-042 sync source authority
+on:
+  push:
+    branches:
+      - sc042-record-integrity-fix
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: sc042-record-integrity-fix
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Rebuild compatibility runtime
+        run: node scripts/build-core-js-from-source.mjs --output src/legacy/scripts/inline-005.js
+      - name: Register standalone patch evidence
+        run: python3 tools/sc042_sync_patch_manifest.py
+      - name: Verify source authority
+        run: |
+          npm ci --prefix scripts --ignore-scripts
+          node scripts/verify-modularization.mjs
+          git diff --check
+      - name: Commit authority sync
+        run: |
+          git rm .github/workflows/sc042-sync-source-authority.yml tools/sc042_sync_patch_manifest.py
+          git config user.name shateki-build-bot
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/legacy/scripts/inline-005.js src/legacy/intentional-patches.json
+          git commit -m "chore(sc042): sync generated JS authority"
+          git push origin HEAD:sc042-record-integrity-fix
