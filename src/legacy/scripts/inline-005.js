@@ -23570,14 +23570,13 @@ if(hsBody){
               const score = Number((g.totals || [])[idx] || 0);
               const nameKey = nm.toLowerCase();
               const priorGameBest = Number(bestGameByPlayer.get(nameKey) || 0);
-              if (score > 0 && score > priorGameBest) {
-                pushEvent(ts, `GAME PB - ${nm} (${score})`, 'game_pb');
-                bestGameByPlayer.set(nameKey, score);
-              }
-              if (score > 0 && score > globalGameBest) {
-                pushEvent(ts, `NEW GAME RECORD SCORE - ${nm} - ${score} 🥇`, 'game_record');
-                globalGameBest = score;
-              }
+              const isGamePB = score > 0 && score > priorGameBest;
+              const isGameRecord = score > 0 && score > globalGameBest;
+              // A record is also a PB, but only print the higher-priority record event.
+              if (isGameRecord) pushEvent(ts, `NEW GAME RECORD SCORE - ${nm} - ${score} 🥇`, 'game_record');
+              else if (isGamePB) pushEvent(ts, `GAME PB - ${nm} (${score})`, 'game_pb');
+              if (isGamePB) bestGameByPlayer.set(nameKey, score);
+              if (isGameRecord) globalGameBest = score;
               const playerRounds = Array.isArray(board[idx]) ? board[idx] : [];
               for (let r = 0; r < Math.min(14, playerRounds.length || 0); r++) {
                 const cell = playerRounds[r];
@@ -23588,14 +23587,13 @@ if(hsBody){
                 const playerRoundKey = `${nameKey}|${roundKey}`;
                 const priorRoundPB = Number(bestRoundByPlayer.get(playerRoundKey) || 0);
                 const priorRoundWR = Number(bestRoundGlobal.get(roundKey) || 0);
-                if (total > priorRoundPB) {
-                  pushEvent(ts, `ROUND PB / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_pb');
-                  bestRoundByPlayer.set(playerRoundKey, total);
-                }
-                if (total > priorRoundWR) {
-                  pushEvent(ts, `ROUND WR / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_wr');
-                  bestRoundGlobal.set(roundKey, total);
-                }
+                const isRoundPB = total > priorRoundPB;
+                const isRoundRecord = total > priorRoundWR;
+                // A round record is also a PB, but only print the higher-priority record event.
+                if (isRoundRecord) pushEvent(ts, `ROUND WR / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_wr');
+                else if (isRoundPB) pushEvent(ts, `ROUND PB / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_pb');
+                if (isRoundPB) bestRoundByPlayer.set(playerRoundKey, total);
+                if (isRoundRecord) bestRoundGlobal.set(roundKey, total);
               }
             });
           });
@@ -27562,7 +27560,7 @@ SQ_ACH.playerDirectory = async function(force){
         player_id: r.player_id,
         name: String(r.name || '').trim(),
         games_played: Math.max(0, Number(r.games_played) || 0)
-      })).filter(r => r.player_id);
+      })).filter(r => r.player_id && r.games_played > 0);
       this._playerDirectoryCache = rows;
       this._playerDirectoryCacheAt = Date.now();
       return rows;
@@ -27732,6 +27730,51 @@ SQ_MISFIRE.forCode = async function(code){
   }catch(_){ return { available:false, rows:[] }; }
 };
 
+SQ_ACH.scoreMilestoneThreshold = function(code){
+  const m = String(code || '').match(/^score_(100|200|300|400|500|600|700)$/);
+  return m ? Number(m[1]) : 0;
+};
+SQ_ACH.forScoreMilestone = async function(code){
+  const threshold = this.scoreMilestoneThreshold(code);
+  if (!threshold) return [];
+  const SB = window.sb || window.__sb || null;
+  if (!SB || typeof SB.from !== 'function') return [];
+  try{
+    const directory = await this.playerDirectory();
+    const byId = new Map((directory || []).map(p => [String(p.player_id || ''), p]));
+    const byName = new Map((directory || []).map(p => [String(p.name || '').trim().toLowerCase(), p]));
+    const counts = new Map();
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize){
+      const to = from + pageSize - 1;
+      const { data, error } = await SB.from('v_player_game_scores_official_clean')
+        .select('game_id,ts,player_id,player_id_alt,player_name,score')
+        .gte('score', threshold)
+        .order('ts', { ascending:true })
+        .range(from, to);
+      if (error) return [];
+      const rows = Array.isArray(data) ? data : [];
+      rows.forEach(r => {
+        const ids = [r && r.player_id, r && r.player_id_alt].map(v => String(v || '').trim()).filter(Boolean);
+        let p = null;
+        for (const id of ids){ if (byId.has(id)){ p = byId.get(id); break; } }
+        if (!p) p = byName.get(String((r && r.player_name) || '').trim().toLowerCase()) || null;
+        if (!p) return;
+        const key = String(p.player_id);
+        counts.set(key, (counts.get(key) || 0) + 1);
+      });
+      if (rows.length < pageSize) break;
+    }
+    return (directory || []).map(p => ({
+      player_id:p.player_id,
+      name:p.name || '—',
+      cnt:counts.get(String(p.player_id)) || 0,
+      games_played:Math.max(0, Number(p.games_played) || 0)
+    })).filter(r => r.cnt > 0)
+      .sort((a,b) => (b.cnt-a.cnt) || String(a.name||'').localeCompare(String(b.name||'')) || String(a.player_id||'').localeCompare(String(b.player_id||'')));
+  }catch(_){ return []; }
+};
+
 // Trophy detail popup: how to earn it + a leaderboard of everyone who has it.
 async function __sqTrophyDetail(code, earnedMap){
   const a = SQ_ACH.meta(code); const s = SQ_ACH.tierStyle(a.tier);
@@ -27764,7 +27807,10 @@ async function __sqTrophyDetail(code, earnedMap){
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
   modal.tabIndex = 0; modal.focus();
 
-  const rows = milestone ? await SQ_ACH.forMilestones() : await SQ_ACH.forCode(code);
+  const scoreThreshold = SQ_ACH.scoreMilestoneThreshold(code);
+  const rows = scoreThreshold
+    ? await SQ_ACH.forScoreMilestone(code)
+    : (milestone ? await SQ_ACH.forMilestones() : await SQ_ACH.forCode(code));
   if (!overlay.isConnected) return;
   loading.remove();
   const medal = i => i === 0 ? '#ffd24a' : i === 1 ? '#cbd5e1' : i === 2 ? '#d08b5a' : 'var(--v3-muted,#98a2b8)';
@@ -27788,7 +27834,7 @@ async function __sqTrophyDetail(code, earnedMap){
       val.textContent = mode === 'average' ? __sqLeagueAverageText(r) : (milestone ? String(Number(r.cnt)||0) : ('×' + r.cnt));
       val.title = mode === 'average'
         ? ((Number(r.cnt)||0) + ' occurrence(s) over ' + (Number(r.games_played)||0) + ' eligible games' + (eligible ? '' : ' · Not ranked until 6 eligible games'))
-        : (milestone ? 'Milestones achieved' : '');
+        : (scoreThreshold ? (scoreThreshold + '+ game scores') : (milestone ? 'Milestones achieved' : ''));
       val.style.cssText = 'font-weight:900;color:' + (mode === 'average' ? s.c : (milestone ? '#2fd06b' : '#ffb14a')) + ';white-space:nowrap;';
       row.append(rk, nm, val); list.appendChild(row);
     });

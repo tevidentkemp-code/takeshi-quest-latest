@@ -219,6 +219,19 @@
       };
     });
   }
+  function cleanRoundRecordHolderToken(v){
+    return String(v==null?'':v).trim().replace(/\s+x\d+\s*$/i,'').trim();
+  }
+  function cleanRoundRecordHolders(v){
+    var raw=Array.isArray(v)?v:(typeof v==='string'?v.split('/'):[]);
+    var seen=new Set(), out=[];
+    raw.forEach(function(h){
+      var clean=cleanRoundRecordHolderToken(h);
+      var key=norm(clean);
+      if(clean && key && !seen.has(key)){seen.add(key);out.push(clean);}
+    });
+    return out;
+  }
   async function fetchOfficialRoundHighScoresClean(){
     var client=cleanDbClient();
     if(!client) throw new Error('Supabase client unavailable');
@@ -227,11 +240,12 @@
       .order('target_sort',{ascending:true});
     if(q&&q.error) throw q.error;
     return (Array.isArray(q&&q.data)?q.data:[]).map(function(r){
-      var holders=r&&r.holders;
-      if(typeof holders==='string') holders=holders.split('/').map(function(h){return h.trim();}).filter(Boolean);
-      if(!Array.isArray(holders)) holders=[];
-      var holder=String(r&&r.holder||'').trim();
-      if(holder && holders.indexOf(holder)<0) holders.unshift(holder);
+      var holders=cleanRoundRecordHolders(r&&r.holders);
+      var holderParts=cleanRoundRecordHolders(r&&r.holder);
+      holderParts.slice().reverse().forEach(function(h){
+        if(!holders.some(function(x){return norm(x)===norm(h);})){holders.unshift(h);}
+      });
+      var holder=holders.join(' / ');
       return {
         mode:r&&r.mode,
         round_key:(r&&r.round_key)||(r&&r.round_label)||'',
