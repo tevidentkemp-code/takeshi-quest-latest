@@ -786,20 +786,23 @@ function thresholdNativeToAmber(){
     __sq45Rect(x+4+pupil,y+3,2,3);
   };
   const __sq45Dolphin = (x,y,scale=.7,flip=false,phase=0) => {
-    const kick=(phase%2===0)?0:2;
-    // Cabinet-distance dolphin silhouette: one bold readable mass with an
-    // unmistakable rounded melon, short beak, swept dorsal, pectoral fin and tail flukes.
+    const kick=(phase%2===0)?0:1;
+    // SC-045 final cabinet-distance dolphin: use a leaping, arched silhouette
+    // rather than a straight fish/shark profile. Rounded melon + beak, swept
+    // dorsal, low pectoral and separated tail flukes are intentionally exaggerated.
     const pts=[
-      [17,13],[29,10],[43,8],[56,7],[61,3],[66,8],[79,8],[88,7],[95,8],[100,10],[103,12],[115,13],
-      [104,15],[100,17],[95,18],[85,20],[75,21],[68,27+kick],[70,21],[57,22],[43,21],[29,19],[18,17],
-      [10,21+kick],[13,17],[3,19],[10,15],[4,10-kick],[14,13]
+      [5,17],[8,13],[14,11],[18,7],[26,5],[38,4],[50,5],[62,7],[74,10],[84,14],[92,20],[98,26],
+      [103,28],[108,28-kick],[114,27-kick],[121,29],[114,31],[108,30+kick],[103,31+kick],[98,29],
+      [93,27],[87,26],[76,25],[64,23],[52,21],[43,19],[38,20],[34,28],[30,26],[29,21],[22,20],[16,18],[10,18]
     ];
     __sq45Poly(pts,x,y,scale,flip);
+    // Smaller, swept dorsal. Keeping it low avoids the shark-fin read.
+    __sq45Poly([[48,5],[54,1],[58,2],[56,6]],x,y,scale,flip);
+    // Tiny eye cutout is enough at DMD distance; keep the rest as one bold mass.
     nctx.save();
     nctx.translate(Math.round(x*__SQ45_PX),Math.round(y*__SQ45_PX));
     nctx.scale((flip?-1:1)*scale,scale);
-    // Tiny cut-out eye; everything else remains a strong one-bit silhouette.
-    nctx.clearRect(96*__SQ45_PX,11*__SQ45_PX,2*__SQ45_PX,2*__SQ45_PX);
+    nctx.clearRect(14*__SQ45_PX,12*__SQ45_PX,1.5*__SQ45_PX,1.5*__SQ45_PX);
     nctx.restore();
   };
   const __sq45Dart = (tipX,tipY) => {
@@ -852,8 +855,8 @@ function thresholdNativeToAmber(){
       const p=reduce?.52:Math.max(0,Math.min(1,age/dur)), phase=Math.floor(age/145)%2;
       // One hero dolphin is more recognisable than overlapping fish-like silhouettes.
       // It arcs across the cabinet while remaining materially visible for the full scene.
-      const x=reduce?14:(-34+p*112), y=reduce?3:(7-Math.sin(Math.PI*p)*6);
-      __sq45Dolphin(x,y,.82,false,phase);
+      const x=reduce?8:(-28+p*92), y=reduce?0:(2-Math.sin(Math.PI*p)*3);
+      __sq45Dolphin(x,y,.92,false,phase);
       // Scrolling water/spray provides unmistakable sea motion without competing with the silhouette.
       for(let i=0;i<7;i++){
         const wx=((i*22-Math.round(p*64))%164+164)%164-18;
