@@ -574,7 +574,7 @@ setTimeout(() => {
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2: `NEXT UP.. ${nextLbl}`, z3:'' }, { type:'flash', ms:760, fx:'smear' });
+          window.sqDmdShowZones?.({ z2:'NEXT UP', z3:String(nextLbl || '').toUpperCase() }, { type:'flash', ms:760, fx:'smear' });
         }catch(_){}
       }, 1700);
 
@@ -2408,6 +2408,11 @@ function startNewGame(setOrder=false){
     showPlayerOrderDialog();
     return;
   }
+
+  // A completed game pins the DMD to the scrolling GAME OVER scene. A new
+  // game owns a fresh DMD lifecycle, so clear that presentation before any
+  // new round/player state is painted.
+  try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
 
   // >>> PATCH:practice-multi-game-save-reset START
   // Practice save guards are per completed game, not per practice session/match.
