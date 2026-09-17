@@ -1,13 +1,32 @@
-name: SC-042 patch runner check
+name: SC-042 bounded integrity patch
 on:
   push:
     branches:
       - sc042-record-integrity-fix
 permissions:
-  contents: read
+  contents: write
 jobs:
-  check:
+  patch:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - run: echo SC-042-runner-ok
+        with:
+          ref: sc042-record-integrity-fix
+          fetch-depth: 2
+      - name: Apply source patch
+        run: python3 tools/sc042_apply.py
+      - name: Syntax and whitespace
+        run: |
+          node --check src/legacy/quarantine/core-pre-modals.js
+          node --check src/legacy/scripts/inline-026.js
+          node --check src/ui/modals.js
+          git diff --check
+      - name: Commit patched sources
+        run: |
+          git rm .github/workflows/sc042-apply-integrity-fix.yml tools/sc042_apply.py
+          git config user.name shateki-build-bot
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/legacy/quarantine/core-pre-modals.js src/legacy/scripts/inline-026.js src/ui/modals.js
+          git commit -m "fix(sc042): repair record and milestone integrity"
+          git push origin HEAD:sc042-record-integrity-fix
