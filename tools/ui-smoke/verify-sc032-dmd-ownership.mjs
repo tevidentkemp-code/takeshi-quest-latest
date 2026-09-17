@@ -39,6 +39,32 @@ assert(engine.includes('window.sqDmdShowZones'), 'engine presentation path remai
 assert(liveV2.includes('__sqDmdV2.emit'), 'Live V2 modular action feedback remains present');
 assert(turbo.includes('__sqDmdBulkMiss'), 'Turbo bulk-miss suppression contract remains present');
 
+// SC-032 Stage-3 sequencing contract: Skip must not create the generic visit
+// banner, and every delayed frame must prove it still owns the same visit before
+// it can render. This is presentation-only and deliberately reuses the released
+// renderer flow token + history rather than introducing a second game-state owner.
+assert(
+  engine.includes("dartIndex === 2 && !window.__sqSkipInProgress"),
+  'generic Skip must not start the engine Stage-3 visit sequence'
+);
+assert(
+  engine.includes('const __sqDmdStage3Token = Number(window.__sqDmdFlowToken || 0);'),
+  'Stage-3 must capture the released renderer flow token'
+);
+assert(
+  engine.includes('const __sqDmdStage3ExpectedHistory ='),
+  'Stage-3 must capture the completed-visit history boundary'
+);
+assert(
+  engine.includes('const __sqDmdStage3Current = () => ('),
+  'Stage-3 must expose one ownership predicate for all delayed frames'
+);
+const stage3GuardCount = (engine.match(/if \(!__sqDmdStage3Current\(\)\) return;/g) || []).length;
+assert(
+  stage3GuardCount >= 7,
+  `Stage-3 outer + delayed frames must all revalidate ownership (found ${stage3GuardCount})`
+);
+
 const patchMeta = [
   meta('src/legacy/scripts/inline-003.js'),
   meta('src/legacy/scripts/inline-004.js'),
@@ -52,4 +78,5 @@ for (const current of patchMeta) {
 }
 
 console.log(`SC032_PATCH_META=${JSON.stringify(patchMeta)}`);
-console.log('SC-032 DMD OWNERSHIP: FIRST-SLICE STATIC CONTRACT PASS');
+console.log(`SC032_STAGE3_GUARDS=${stage3GuardCount}`);
+console.log('SC-032 DMD OWNERSHIP: STATIC CONTRACT PASS');
