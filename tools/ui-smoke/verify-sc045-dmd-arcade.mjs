@@ -24,4 +24,6 @@ assert(router.includes("__sqDmdShowTurnIntro?.(true)"), 'first-game TO THROW FIR
 assert(state.includes("first ? 'TO THROW FIRST' : 'TO THROW'"), 'tiebreak first-throw wording missing');
 const combo = engine.slice(engine.indexOf('// >>> PATCH:SQ_DMD_VOLDY_TRIGGER START'), engine.indexOf('// Render all three zones;'));
 assert(!combo.includes('POWER DART'), 'POWER DART must be retired from canonical live DMD trigger block');
+assert(!fs.existsSync('tools/sc045_art_polish.py'), 'temporary SC-045 art patch writer must not remain in candidate');
+assert(!fs.existsSync('.github/workflows/sc045-art-polish-writer.yml'), 'temporary SC-045 writer workflow must not remain in candidate');
 console.log('SC-045 DMD ARCADE + CLASSIC PINBALL ART CONTRACT: ALL PASS');
