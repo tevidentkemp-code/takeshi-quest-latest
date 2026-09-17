@@ -1,0 +1,81 @@
+name: SC-032 guarded Stage-3 writer
+
+on:
+  push:
+    branches: [sc032-dmd-ownership-cleanup]
+    paths:
+      - scripts/sc032-guard-dmd-stage3.mjs
+      - .github/workflows/sc032-stage3-writer.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sc032-stage3-writer
+  cancel-in-progress: false
+
+jobs:
+  apply-verified-stage3-guard:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm branch has not advanced
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin sc032-dmd-ownership-cleanup
+          test "$(git rev-parse origin/sc032-dmd-ownership-cleanup)" = "${GITHUB_SHA}"
+
+      - name: Install deterministic architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Apply bounded Stage-3 ownership patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/sc032-guard-dmd-stage3.mjs
+          node --check src/game/engine.js
+
+      - name: Regenerate compatibility JS from semantic source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build-core-js-from-source.mjs \
+            --output .sc032-inline-005.js \
+            --evidence .sc032-js-build-evidence.json
+          cp .sc032-inline-005.js src/legacy/scripts/inline-005.js
+          node scripts/verify-core-domains.mjs
+          node scripts/verify-modularization.mjs
+
+      - name: Prove bounded write set and remove one-shot writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .sc032-inline-005.js .sc032-js-build-evidence.json
+          git rm scripts/sc032-guard-dmd-stage3.mjs .github/workflows/sc032-stage3-writer.yml
+          git diff --check
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //' | sort)"
+          expected=$'.github/workflows/sc032-stage3-writer.yml\nscripts/sc032-guard-dmd-stage3.mjs\nsrc/game/engine.js\nsrc/legacy/scripts/inline-005.js'
+          test "$changed" = "$expected"
+
+      - name: Commit verified bounded patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/game/engine.js src/legacy/scripts/inline-005.js
+          git commit -m "SC-032: cancel stale DMD Stage-3 frames"
+          git push origin HEAD:sc032-dmd-ownership-cleanup
