@@ -27,7 +27,20 @@ jobs:
           git merge-base --is-ancestor 8b2647bb92083d4a9b6fcb3a9de01c4a8643c29d HEAD
           git status --short
       - name: Apply bounded SC-045 patch
-        run: python3 tools/sc045_apply_patch.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('tools/sc045_apply_patch.py')
+          s=p.read_text()
+          old="out, count = re.subn(pattern, repl, text, count=1, flags=flags)"
+          new="out, count = re.subn(pattern, lambda _m: repl, text, count=1, flags=flags)"
+          if s.count(old) != 1:
+              raise SystemExit('literal replacement bootstrap mismatch')
+          p.write_text(s.replace(old,new,1))
+          PY
+          python3 tools/sc045_apply_patch.py
       - name: Install deterministic tooling
         run: |
           npm ci --prefix scripts --ignore-scripts
