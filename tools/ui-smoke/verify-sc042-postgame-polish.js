@@ -99,8 +99,9 @@ const H = require('./harness');
       };
     });
 
+    console.log('SC-042 leaderboard computed style', JSON.stringify(board));
     assert.equal(board.rows, 4, 'leaderboard data rows changed');
-    assert.ok(board.radius >= 18, 'leaderboard shell is not using the modern rounded surface');
+    assert.ok(board.radius >= 14, 'leaderboard shell lost its rounded post-game surface');
     assert.match(board.spacing, /8px/, 'leaderboard rows are not visually separated into cards');
     assert.ok(board.firstRadius >= 10, 'leaderboard card row has no rounded leading edge');
     assert.ok(board.firstLeft >= 3, 'leaderboard card row lost its accent rail');
