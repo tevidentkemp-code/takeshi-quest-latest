@@ -1,4 +1,5 @@
 import '../postgame-flow.mjs';
+import '../postgame-hotfix.mjs';
 import '../postgame-release-guard.mjs';
 import '../bull-colours.mjs';
 import { detectExistingBackend, install } from './controller.mjs';
