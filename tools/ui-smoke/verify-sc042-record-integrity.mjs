@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 const core=fs.readFileSync('src/legacy/quarantine/core-pre-modals.js','utf8');
 const rhs=fs.readFileSync('src/legacy/scripts/inline-026.js','utf8');
 const late=fs.readFileSync('src/legacy/scripts/inline-047.js','utf8');
-const modals=fs.readFileSync('src/ui/modals.js','utf8');
+const modals=fs.readFileSync('src/ui/modals.js','utf8');\nconst engine=fs.readFileSync('src/game/engine.js','utf8');\nconst appState=fs.readFileSync('src/app/state.js','utf8');\nconst dmdRenderer=fs.readFileSync('src/legacy/scripts/inline-007.js','utf8');\nconst leaderboardCss=fs.readFileSync('src/styles/tournament/leaderboard-bracket.css','utf8');
 
 assert(core.includes('const isGamePB = score > 0 && score > priorGameBest;'));
 assert(core.includes('const isGameRecord = score > 0 && score > globalGameBest;'));
