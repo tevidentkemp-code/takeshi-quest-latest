@@ -787,16 +787,19 @@ function thresholdNativeToAmber(){
   };
   const __sq45Dolphin = (x,y,scale=.7,flip=false,phase=0) => {
     const kick=(phase%2===0)?0:2;
-    // Deliberately exaggerated dolphin profile for instant cabinet-distance recognition:
-    // rounded melon + long beak, small dorsal fin, pectoral fin and forked tail.
+    // Cabinet-distance dolphin silhouette: one bold readable mass with an
+    // unmistakable rounded melon, short beak, swept dorsal, pectoral fin and tail flukes.
     const pts=[
-      [14,14],[25,12],[38,8],[48,7],[52,3],[59,8],[72,9],[83,10],[90,12],[96,12],[103,11],[112,13],
-      [104,16],[96,16],[90,17],[80,19],[68,21],[72,26+kick],[62,22],[45,23],[30,20],[18,18],
-      [10,23+kick],[13,18],[4,20],[10,16],[3,11-kick]
+      [17,13],[29,10],[43,8],[56,7],[61,3],[66,8],[79,8],[88,7],[95,8],[100,10],[103,12],[115,13],
+      [104,15],[100,17],[95,18],[85,20],[75,21],[68,27+kick],[70,21],[57,22],[43,21],[29,19],[18,17],
+      [10,21+kick],[13,17],[3,19],[10,15],[4,10-kick],[14,13]
     ];
     __sq45Poly(pts,x,y,scale,flip);
-    nctx.save(); nctx.translate(Math.round(x*__SQ45_PX),Math.round(y*__SQ45_PX)); nctx.scale((flip?-1:1)*scale,scale);
-    nctx.clearRect(88*__SQ45_PX,12*__SQ45_PX,2*__SQ45_PX,2*__SQ45_PX);
+    nctx.save();
+    nctx.translate(Math.round(x*__SQ45_PX),Math.round(y*__SQ45_PX));
+    nctx.scale((flip?-1:1)*scale,scale);
+    // Tiny cut-out eye; everything else remains a strong one-bit silhouette.
+    nctx.clearRect(96*__SQ45_PX,11*__SQ45_PX,2*__SQ45_PX,2*__SQ45_PX);
     nctx.restore();
   };
   const __sq45Dart = (tipX,tipY) => {
@@ -846,18 +849,18 @@ function thresholdNativeToAmber(){
     }
     if (active && active.type === 'dolphinSwim') {
       const age=Math.max(0,now-active.start), dur=Math.max(1300,Number(active.ms||2000)), reduce=__sqSc045ReducedMotion();
-      const p=reduce?.52:Math.max(0,Math.min(1,age/dur)), phase=Math.floor(age/150)%2;
-      const x1=reduce?24:(-38+p*132), y1=reduce?2:(8-Math.sin(Math.PI*p)*8);
-      const x2=reduce?108:(154-p*126), y2=reduce?12:(11+Math.sin(Math.PI*p)*5);
-      __sq45Dolphin(x1,y1,.72,false,phase);
-      __sq45Dolphin(x2,y2,.46,true,phase+1);
-      // scrolling water line and spray dots create the classic 1-bit cabinet motion cue
-      for(let i=0;i<8;i++){
-        const wx=((i*20-Math.round(p*70))%160+160)%160-16;
+      const p=reduce?.52:Math.max(0,Math.min(1,age/dur)), phase=Math.floor(age/145)%2;
+      // One hero dolphin is more recognisable than overlapping fish-like silhouettes.
+      // It arcs across the cabinet while remaining materially visible for the full scene.
+      const x=reduce?14:(-34+p*112), y=reduce?3:(7-Math.sin(Math.PI*p)*6);
+      __sq45Dolphin(x,y,.82,false,phase);
+      // Scrolling water/spray provides unmistakable sea motion without competing with the silhouette.
+      for(let i=0;i<7;i++){
+        const wx=((i*22-Math.round(p*64))%164+164)%164-18;
         __sq45Line(wx,30,wx+5,28,1); __sq45Line(wx+5,28,wx+10,30,1);
       }
-      const sx=Math.round(x1+12), sy=Math.round(y1+20);
-      [[0,0],[-3,-3],[-7,-1],[-10,-5],[-13,-2]].forEach(([dx,dy],i)=>{ if(reduce||((i+phase)%2===0)) __sq45Rect(sx+dx,sy+dy,1,1); });
+      const sx=Math.round(x+13), sy=Math.round(y+20);
+      [[0,0],[-4,-3],[-8,-1],[-12,-5],[-16,-2]].forEach(([dx,dy],i)=>{ if(reduce||((i+phase)%2===0)) __sq45Rect(sx+dx,sy+dy,1,1); });
       thresholdNativeToAmber(); return;
     }
     if (active && active.type === 'bullseyeHit') {
