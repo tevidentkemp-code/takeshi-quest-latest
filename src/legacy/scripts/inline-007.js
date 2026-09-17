@@ -787,15 +787,16 @@ function thresholdNativeToAmber(){
   };
   const __sq45Dolphin = (x,y,scale=.7,flip=false,phase=0) => {
     const kick=(phase%2===0)?0:2;
+    // Deliberately exaggerated dolphin profile for instant cabinet-distance recognition:
+    // rounded melon + long beak, small dorsal fin, pectoral fin and forked tail.
     const pts=[
-      [23,17],[35,10],[48,8],[51,5],[55,9],[68,9],[77,10],[83,12],[87,14],[94,14],[104,13],
-      [97,16],[88,16],[80,18],[70,20],[60,21],[64,25+kick],[55,22],[40,23],[25,19],[16,19],
-      [8,26+kick],[14,20],[23,18],[12,16],[6,10-kick],[15,11]
+      [14,14],[25,12],[38,8],[48,7],[52,3],[59,8],[72,9],[83,10],[90,12],[96,12],[103,11],[112,13],
+      [104,16],[96,16],[90,17],[80,19],[68,21],[72,26+kick],[62,22],[45,23],[30,20],[18,18],
+      [10,23+kick],[13,18],[4,20],[10,16],[3,11-kick]
     ];
     __sq45Poly(pts,x,y,scale,flip);
-    // punch a dark eye through the silhouette; clearRect respects the active transform only
     nctx.save(); nctx.translate(Math.round(x*__SQ45_PX),Math.round(y*__SQ45_PX)); nctx.scale((flip?-1:1)*scale,scale);
-    nctx.clearRect(78*__SQ45_PX,12*__SQ45_PX,2*__SQ45_PX,2*__SQ45_PX);
+    nctx.clearRect(88*__SQ45_PX,12*__SQ45_PX,2*__SQ45_PX,2*__SQ45_PX);
     nctx.restore();
   };
   const __sq45Dart = (tipX,tipY) => {
@@ -846,8 +847,8 @@ function thresholdNativeToAmber(){
     if (active && active.type === 'dolphinSwim') {
       const age=Math.max(0,now-active.start), dur=Math.max(1300,Number(active.ms||2000)), reduce=__sqSc045ReducedMotion();
       const p=reduce?.52:Math.max(0,Math.min(1,age/dur)), phase=Math.floor(age/150)%2;
-      const x1=reduce?27:(-78+p*216), y1=reduce?2:(8-Math.sin(Math.PI*p)*8);
-      const x2=reduce?118:(186-p*214), y2=reduce?12:(11+Math.sin(Math.PI*p)*5);
+      const x1=reduce?24:(-38+p*132), y1=reduce?2:(8-Math.sin(Math.PI*p)*8);
+      const x2=reduce?108:(154-p*126), y2=reduce?12:(11+Math.sin(Math.PI*p)*5);
       __sq45Dolphin(x1,y1,.72,false,phase);
       __sq45Dolphin(x2,y2,.46,true,phase+1);
       // scrolling water line and spray dots create the classic 1-bit cabinet motion cue
