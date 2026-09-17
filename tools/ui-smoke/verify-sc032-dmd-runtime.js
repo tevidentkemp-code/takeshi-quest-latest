@@ -11,6 +11,10 @@ async function visible(page, selector){
   return page.$(`${selector}:not([disabled])`);
 }
 
+function staleStage3(writes){
+  return writes.filter(w => /ROUND SCORE|NEXT UP|TO THROW FIRST|COMPLETE/i.test(`${w.z2} ${w.z3}`));
+}
+
 (async () => {
   const { browser, page, consoleErrs } = await H.launch({ width:390, height:844 });
   try {
@@ -39,6 +43,12 @@ async function visible(page, selector){
       };
     });
 
+    const score = async () => {
+      const button = await visible(page, '#pad .dtBullBtn');
+      assert(button, 'score button is available');
+      await button.click();
+    };
+
     // 1) Generic Skip owns its feedback. Engine third-dart timers must not
     // repaint ROUND SCORE / NEXT UP underneath the controller transient.
     await page.evaluate(() => { window.__sqSc032DmdWrites = []; });
@@ -58,18 +68,11 @@ async function visible(page, selector){
       writes: window.__sqSc032DmdWrites.slice(),
     }));
     assert.equal(skipped.history, start.history + 3, 'Skip records exactly the remaining three misses');
-    const staleSkip = skipped.writes.filter(w => /ROUND SCORE|NEXT UP|TO THROW FIRST|COMPLETE/i.test(`${w.z2} ${w.z3}`));
-    assert.deepEqual(staleSkip, [], `Skip must not leak third-dart Stage-3 writes: ${JSON.stringify(staleSkip)}`);
+    assert.deepEqual(staleStage3(skipped.writes), [], `Skip must not leak third-dart Stage-3 writes: ${JSON.stringify(staleStage3(skipped.writes))}`);
 
     // 2) Complete the next player's visit normally, then throw immediately for
     // the following player. That new input hard-clears/cancels the old DMD flow.
     // No delayed ROUND SCORE / NEXT UP from the previous visit may repaint later.
-    const score = async () => {
-      const button = await visible(page, '#pad .dtBullBtn');
-      assert(button, 'score button is available');
-      await button.click();
-    };
-
     await score();
     await score();
     const beforeThird = await page.evaluate(() => ({ player: state.currentPlayer, history: state.history.length }));
@@ -88,17 +91,45 @@ async function visible(page, selector){
       writes: window.__sqSc032DmdWrites.slice(),
     }));
     assert.equal(rapid.dart, 1, 'immediate next-player throw remains recorded');
-    const staleRapid = rapid.writes.filter(w => /ROUND SCORE|NEXT UP|TO THROW FIRST|COMPLETE/i.test(`${w.z2} ${w.z3}`));
-    assert.deepEqual(staleRapid, [], `new throw must cancel previous visit Stage-3 writes: ${JSON.stringify(staleRapid)}`);
+    assert.deepEqual(staleStage3(rapid.writes), [], `new throw must cancel previous visit Stage-3 writes: ${JSON.stringify(staleStage3(rapid.writes))}`);
 
     // 3) Generic Undo remains controller-owned and settles cleanly.
-    const undo = await visible(page, '#pad .dtActBtn.undo');
+    let undo = await visible(page, '#pad .dtActBtn.undo');
     assert(undo, 'Undo is available');
     await undo.click();
     await page.waitForFunction(() => window.__sqDmdV2?.snapshot?.().active?.headline === 'THROW UNDONE', { timeout: 350 });
     const undone = await page.evaluate(() => ({ dart: state.currentDart, active: window.__sqDmdV2?.snapshot?.().active?.headline || '' }));
     assert.equal(undone.dart, 0, 'Undo restores the immediate next-player dart');
     assert.equal(undone.active, 'THROW UNDONE', 'Undo presentation remains controller-owned');
+
+    // 4) Undoing the third dart before Stage-3 starts must invalidate that
+    // completed-visit sequence even though generic Undo intentionally does not
+    // hard-clear the DMD renderer.
+    await score();
+    await score();
+    const beforeUndoThird = await page.evaluate(() => ({
+      player: state.currentPlayer,
+      history: state.history.length,
+    }));
+    await score();
+    await page.waitForFunction((player) => state.currentPlayer !== player && state.currentDart === 0, beforeUndoThird.player, { timeout: 350 });
+
+    undo = await visible(page, '#pad .dtActBtn.undo');
+    assert(undo, 'Undo remains available after a completed visit');
+    await undo.click();
+    await page.waitForFunction((player) => state.currentPlayer === player && state.currentDart === 2, beforeUndoThird.player, { timeout: 350 });
+    await page.evaluate(() => { window.__sqSc032DmdWrites = []; });
+    await page.waitForTimeout(1900);
+
+    const thirdUndone = await page.evaluate(() => ({
+      player: state.currentPlayer,
+      dart: state.currentDart,
+      writes: window.__sqSc032DmdWrites.slice(),
+      active: window.__sqDmdV2?.snapshot?.().active?.headline || '',
+    }));
+    assert.equal(thirdUndone.player, beforeUndoThird.player, 'third-dart Undo restores the original player');
+    assert.equal(thirdUndone.dart, 2, 'third-dart Undo restores dart three input');
+    assert.deepEqual(staleStage3(thirdUndone.writes), [], `third-dart Undo must cancel old Stage-3 writes: ${JSON.stringify(staleStage3(thirdUndone.writes))}`);
 
     assertNoUnexpectedErrors(consoleErrs, 'SC-032 DMD runtime');
     console.log('SC-032 DMD RUNTIME OWNERSHIP: ALL PASS');
