@@ -56,10 +56,13 @@ function diffRatio(a,b){
 
     await page.emulateMedia({reducedMotion:'no-preference'});
     for(const scene of scenes){
-      await page.evaluate(s=>{ window.__sqDmdHardClearQueue?.(); window.sqDmdStop(); window.sqDmdShowZones({z2:s.z2,z3:''},{type:s.type,ms:s.ms}); },scene);
-      let elapsed=0, prev=null, maxMotion=0;
+      let prev=null, maxMotion=0;
       for(let i=0;i<scene.times.length;i++){
-        const target=scene.times[i]; await page.waitForTimeout(target-elapsed); elapsed=target;
+        // Restart for every sampled frame. Screenshot/PNG encoding time must never
+        // advance the animation clock and accidentally turn a late-frame style gate
+        // into an end-of-scene/idle assertion.
+        await page.evaluate(s=>{ window.__sqDmdHardClearQueue?.(); window.sqDmdStop(); window.sqDmdShowZones({z2:s.z2,z3:''},{type:s.type,ms:s.ms}); },scene);
+        await page.waitForTimeout(scene.times[i]);
         const m=await metrics();
         assert(m.ratio>0.004,`${scene.type} frame ${i+1} too faint: ${m.ratio}`);
         assert(m.ratio<0.34,`${scene.type} frame ${i+1} overfilled: ${m.ratio}`);
@@ -83,7 +86,7 @@ function diffRatio(a,b){
       await page.locator('#sqDmdWrap').screenshot({path:path.join(out,`sc045-${scene.type}-reduced.png`)});
     }
 
-    // Visibility gate across the supported phone widths and a desktop/cabinet viewport.
+    // Visibility gate across supported phone widths and a desktop/cabinet viewport.
     await page.emulateMedia({reducedMotion:'reduce'});
     for(const vp of [{w:320,h:844},{w:390,h:844},{w:430,h:900},{w:1366,h:900}]){
       await page.setViewportSize({width:vp.w,height:vp.h});
