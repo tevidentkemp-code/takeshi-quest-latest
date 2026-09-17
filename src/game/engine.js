@@ -387,7 +387,8 @@ try {
     // >>> PATCH:SQ_DMD_CLEAR_Z3_ENDTURN
     // End-of-turn behaviour:
     // - After 3rd dart, run Stage 3 round-end banner/roll-up, then clear Z3.
-    if (typeof dartIndex === 'number' && dartIndex === 2) {
+    // Skip owns its own controller transient; do not start a competing visit banner.
+    if (typeof dartIndex === 'number' && dartIndex === 2 && !window.__sqSkipInProgress) {
       try {
         const roundTotal = (entry && entry.darts) ? entry.darts.reduce((s,d)=> s + (d?.points||0), 0) : 0;
 
@@ -396,7 +397,18 @@ try {
 // else: NEXT UP -> <player>
 const holdNameMs = 240; // tiny settle
 const baseDelay = 180;  // let last-dart callout land
+// Every future Stage-3 frame belongs to this exact completed visit. A new throw
+// hard-clears/increments the renderer flow token; Undo reduces history below the
+// expected completed-visit length. Either condition invalidates every old timer.
+const __sqDmdStage3Token = Number(window.__sqDmdFlowToken || 0);
+const __sqDmdStage3ExpectedHistory = (Array.isArray(state?.history) ? state.history.length : 0) + 1;
+const __sqDmdStage3Current = () => (
+  Number(window.__sqDmdFlowToken || 0) === __sqDmdStage3Token &&
+  Array.isArray(state?.history) &&
+  state.history.length >= __sqDmdStage3ExpectedHistory
+);
 setTimeout(() => {
+  if (!__sqDmdStage3Current()) return;
   try {
     const players = state.players || [];
     const pCount = players.length || 1;
@@ -522,24 +534,28 @@ setTimeout(() => {
       const currLbl = roundLabel(currDef);
       const nextLbl = nextDef ? (nextDef.type === 'number' ? `${nextDef.target}s` : roundLabel(nextDef)) : '';
       setTimeout(()=>{
+        if (!__sqDmdStage3Current()) return;
         try{
           window.sqDmdShowZones?.({ z2: `ROUND ${currLbl}`, z3:'COMPLETE', z3Small:true, type:'roll' }, { type:'flash', ms:720, fx:'smear' });
         }catch(_){}
       }, 850);
 
       setTimeout(()=>{
+        if (!__sqDmdStage3Current()) return;
         try{
           window.sqDmdShowZones?.({ z2: `NEXT UP.. ${nextLbl}`, z3:'' }, { type:'flash', ms:760, fx:'smear' });
         }catch(_){}
       }, 1700);
 
       setTimeout(()=>{
+        if (!__sqDmdStage3Current()) return;
         try{
           window.sqDmdShowZones?.({ z2: nextName, z3:'TO THROW FIRST' }, { type:'wipe', ms:820, fx:'impact', z3Small:true });
         }catch(_){}
       }, 2550);
 
       setTimeout(()=>{
+        if (!__sqDmdStage3Current()) return;
         try{
           window.sqDmdShowZones?.({ z2: nextName, z3:'' }, { type:'hold', ms:1 });
           window.__sqDmdStartPreThrow?.(nextName, infoLines);
@@ -547,12 +563,14 @@ setTimeout(() => {
       }, 3300);
     } else {
       setTimeout(()=>{
+        if (!__sqDmdStage3Current()) return;
         try{
           window.sqDmdShowZones?.({ z2: 'NEXT UP', z3:'' }, { type:'flash', ms:620, fx:'smear' });
         }catch(_){}
       }, 850);
 
       setTimeout(()=>{
+        if (!__sqDmdStage3Current()) return;
         try{
           window.sqDmdShowZones?.({ z2: nextName, z3:'' }, { type:'hold', ms:1 });
           window.__sqDmdStartPreThrow?.(nextName, infoLines);
