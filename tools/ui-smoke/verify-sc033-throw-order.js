@@ -138,6 +138,7 @@ function rotated(values) {
       return {
         // Non-Match modes never receive the boolean Match Play order policy.
         practice: run({ mode: 'practice', forcePractice: true, practiceType: 'classic', autoRotateOrder: undefined }),
+        vsShadow: run({ mode: 'practice', forcePractice: true, practiceType: 'vsshadow' }),
         tournament: run({ tournament: true, tournamentType: 'classic' }),
       };
     });
@@ -175,6 +176,28 @@ function rotated(values) {
     assert.match(initialDialog.gameNumberText, /GAME 1/i, 'Throw Order did not identify Game 1');
     assert.equal(initialDialog.toggleText.trim(), 'AUTO ON', 'AUTO should default ON for new Match Play');
     assert.equal(initialDialog.pressed, 'true', 'AUTO toggle aria state should default ON');
+
+    for (const width of [320, 390, 430]) {
+      await page.setViewportSize({ width, height: width === 320 ? 568 : 844 });
+      await page.waitForTimeout(120);
+      const fit = await page.evaluate(() => {
+        const modal = document.querySelector('.modal-throworder');
+        const toggle = modal && modal.querySelector('.to-auto-toggle');
+        const mr = modal && modal.getBoundingClientRect();
+        const tr = toggle && toggle.getBoundingClientRect();
+        return {
+          overflow: document.documentElement.scrollWidth > innerWidth + 1,
+          modalLeft: mr ? mr.left : -999,
+          modalRight: mr ? mr.right : 99999,
+          toggleHeight: tr ? tr.height : 0,
+        };
+      });
+      assert.equal(fit.overflow, false, width + 'px Throw Order must not create horizontal overflow');
+      assert(fit.modalLeft >= -1 && fit.modalRight <= width + 1, width + 'px Throw Order modal must stay within viewport');
+      assert(fit.toggleHeight >= 43.5, width + 'px AUTO toggle must preserve the canonical 44px minimum tap target');
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(120);
     await shot(page, 'sc033-throw-order-auto-on', '.modal-throworder');
 
     // AUTO OFF must preserve the existing manual throw-order step between games.

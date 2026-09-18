@@ -19183,6 +19183,8 @@ if (recordSeries) {
 // Throw order selection
 // SC-033 keeps ordinary Match Play order ownership inside the existing player-array
 // model. Practice, Vs Shadow and Tournament are deliberately excluded.
+// A boolean autoRotateOrder is the Match Play order-policy marker; do not infer
+// eligibility from mutable stats/persistence classification fields.
 function __sqIsAutoThrowOrderMatch(){
   try{
     const m = (state && state.match) || {};
