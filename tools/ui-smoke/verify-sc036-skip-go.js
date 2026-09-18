@@ -15,7 +15,10 @@ function assert(cond, msg) {
     await page.waitForFunction(() =>
       typeof window.__sqSkipAbsentVisit === 'function' &&
       typeof window.__sqAbsentPlayers === 'function' &&
-      typeof window.__sqMarkPlayerReturned === 'function'
+      typeof window.__sqMarkPlayerReturned === 'function' &&
+      typeof window.__sqEnsureFinalBullReturnTimer === 'function' &&
+      typeof window.__sqFinalBullReturnTimerActive === 'function' &&
+      typeof window.__sqExpireFinalBullReturnTimer === 'function'
     );
 
     const reset = async (round=2, player=1, players=3) => {
@@ -196,6 +199,125 @@ function assert(cond, msg) {
       return {handled,before,after:JSON.stringify(state.__sqCatchUp||null)};
     });
     assert(isolated.handled===false && isolated.before===isolated.after, 'Tournament must remain isolated from absence Skip Go');
+
+    // Game Rules §§9.8–9.11: retained catch-up at the scheduled Bull visit
+    // starts a 30s return gate. Skip cannot bypass it; first Bull dart clears it.
+    await reset(13,1,2);
+    await page.evaluate(() => {
+      state.__sqCatchUp={
+        version:1,
+        active:false,
+        jobs:[{
+          kind:'absence',
+          playerIndex:1,
+          playerKey:'p1',
+          joinedRound:10,
+          pendingRounds:[10,11,12],
+          scratchedRounds:[],
+          returned:false,
+          absent:true,
+          completed:false
+        }]
+      };
+      window.__sqSc036DmdTimerFrames=[];
+      const original=window.sqDmdShowZones;
+      if(!window.__sqSc036DmdOriginal) window.__sqSc036DmdOriginal=original;
+      window.sqDmdShowZones=(zones,opts)=>{
+        try{ window.__sqSc036DmdTimerFrames.push({zones:JSON.parse(JSON.stringify(zones||{})),opts:JSON.parse(JSON.stringify(opts||{}))}); }catch(_){}
+        return window.__sqSc036DmdOriginal?.(zones,opts);
+      };
+      save();
+      updateUI();
+      window.__sqEnsureFinalBullReturnTimer();
+    });
+    await page.waitForTimeout(120);
+    s=await page.evaluate(() => {
+      const job=state.__sqCatchUp.jobs[0];
+      return {
+        active:window.__sqFinalBullReturnTimerActive(1),
+        remaining:Number(job.bullReturnDeadlineAt||0)-Date.now(),
+        frames:(window.__sqSc036DmdTimerFrames||[]).slice()
+      };
+    });
+    assert(s.active===true && s.remaining>28500 && s.remaining<=30000, 'scheduled Bull with retained catch-up must start a persisted 30-second return timer');
+    assert(s.frames.some(f=>/BULL RETURN/i.test(String(f.zones?.z1||'')) && /BETA/i.test(String(f.zones?.z2||'')) && /SECONDS/i.test(String(f.zones?.z3||''))), 'DMD must show affected player and Bull return countdown');
+
+    const blockedSkip=await page.evaluate(() => {
+      const before={p:state.currentPlayer,r:state.currentRound,d:state.currentDart,h:state.history.length};
+      const handled=window.__sqSkipAbsentVisit();
+      return {handled,before,after:{p:state.currentPlayer,r:state.currentRound,d:state.currentDart,h:state.history.length}};
+    });
+    assert(blockedSkip.handled===true && JSON.stringify(blockedSkip.before)===JSON.stringify(blockedSkip.after), 'Skip Go must not bypass the active final-Bull return timer');
+
+    assert(await page.evaluate(() => window.__sqMarkPlayerReturned(1))===true, 'Player Returned can acknowledge presence during the Bull gate');
+    s=await page.evaluate(() => {
+      const job=state.__sqCatchUp.jobs[0];
+      return {active:window.__sqFinalBullReturnTimerActive(1),deadline:job.bullReturnDeadlineAt,returned:job.returned};
+    });
+    assert(s.active===true && Number.isFinite(Number(s.deadline)) && s.returned===true, 'Player Returned must not stop the timer before the first Bull dart');
+
+    await page.evaluate(() => recordThrow({kind:'Miss'}));
+    s=await page.evaluate(() => {
+      const job=state.__sqCatchUp.jobs[0];
+      return {d:state.currentDart,deadline:job.bullReturnDeadlineAt,first:job.bullReturnFirstDartAt,returned:job.returned};
+    });
+    assert(s.d===1 && !s.deadline && Number.isFinite(Number(s.first)) && s.returned===true, 'first Bull dart must stop the return timer and continue the Bull visit');
+
+    // Expiry scratches every retained catch-up round plus the complete Bull visit to zero.
+    await reset(13,1,2);
+    await page.evaluate(() => {
+      state.__sqCatchUp={
+        version:1,
+        active:false,
+        jobs:[{
+          kind:'absence',
+          playerIndex:1,
+          playerKey:'p1',
+          joinedRound:10,
+          pendingRounds:[10,11,12],
+          scratchedRounds:[],
+          returned:false,
+          absent:true,
+          completed:false
+        }]
+      };
+      save();
+      updateUI();
+      window.__sqEnsureFinalBullReturnTimer();
+      state.__sqCatchUp.jobs[0].bullReturnDeadlineAt=Date.now()-1;
+    });
+    assert(await page.evaluate(() => window.__sqExpireFinalBullReturnTimer(1,state.__sqCatchUp.jobs[0].bullReturnDeadlineAt))===true, 'expired final-Bull return timer must enforce timeout');
+    s=await page.evaluate(() => {
+      const job=state.__sqCatchUp.jobs[0];
+      return {
+        finished:state.finished,
+        pending:job.pendingRounds.slice(),
+        scratched:job.scratchedRounds.slice(),
+        completed:job.completed,
+        timedOut:job.bullTimedOut,
+        rows:[10,11,12,13].map(r=>JSON.parse(JSON.stringify(state.score[1][r]))),
+        hist:state.history[state.history.length-1]
+      };
+    });
+    assert(s.finished===true && s.completed===true && s.timedOut===true && s.pending.length===0, 'timeout must close catch-up and allow the game to complete');
+    assert(s.scratched.join(',')==='10,11,12,13', 'timeout must scratch retained rounds and Bull');
+    assert(s.rows.every(row=>row.roundTotal===0 && row.darts.every(d=>d && d.kind==='Scratch' && d.points===0)), 'timeout scratches must be materialised as zero rows');
+    assert(s.hist?.type==='absenceBullTimeout', 'final-Bull timeout must be an explicit undoable history event');
+
+    await page.evaluate(() => {
+      document.querySelectorAll('.sq-gamecomplete-backdrop').forEach(n=>n.remove());
+      undo();
+    });
+    s=await page.evaluate(() => {
+      const job=state.__sqCatchUp.jobs[0];
+      return {
+        finished:state.finished,p:state.currentPlayer,r:state.currentRound,d:state.currentDart,
+        pending:job.pendingRounds.slice(),scratched:job.scratchedRounds.slice(),
+        deadline:Number(job.bullReturnDeadlineAt||0)-Date.now()
+      };
+    });
+    assert(s.finished===false && s.p===1 && s.r===13 && s.d===0, 'Undo must restore the timed Bull cursor');
+    assert(s.pending.join(',')==='10,11,12' && s.scratched.length===0 && s.deadline>28500, 'Undo must restore catch-up and restart the 30-second Bull gate');
 
     // Final-round edge: game waits for an absent player, then completes after returned catch-up.
     await reset(13,1,2);
