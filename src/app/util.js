@@ -4014,6 +4014,7 @@ const baseState = {
     id: null,
     targetWins: 4,      // default "first to 4 wins" – overwritten when you start a match
     gameNumber: 1,
+    autoRotateOrder: false,
     wins: [],
     history: [],
     completedLogged: false
