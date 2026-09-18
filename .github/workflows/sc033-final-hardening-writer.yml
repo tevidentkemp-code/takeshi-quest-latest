@@ -1,0 +1,70 @@
+name: SC-033 final hardening writer
+
+on:
+  push:
+    branches: [sc033-auto-throw-order]
+    paths:
+      - scripts/sc033-final-hardening.mjs
+      - .github/workflows/sc033-final-hardening-writer.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sc033-final-hardening-writer
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: sc033-auto-throw-order
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm bounded branch ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "sc033-auto-throw-order"
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+
+      - name: Apply SC-033 hardening
+        run: node scripts/sc033-final-hardening.mjs
+
+      - name: Install deterministic architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Rebuild compatibility artifacts from semantic source
+        run: node scripts/materialize-runtime.mjs
+
+      - name: Verify source authority and patch cleanliness
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/verify-modularization.mjs
+          node scripts/build-core-js-from-source.mjs --verify-current
+          node scripts/build-core-styles-from-source.mjs --verify-current
+          node --check src/game/engine.js
+          node --check tools/ui-smoke/verify-sc033-throw-order.js
+          git diff --check
+          rm -f .sc031-build-html-evidence.json .sc031-build-css-evidence.json .sc031-build-js-evidence.json
+
+      - name: Commit hardened candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add             src/game/engine.js             src/styles/setup/throw-order.css             src/legacy/scripts/inline-005.js             src/legacy/styles/inline-002.css             tools/ui-smoke/verify-sc033-throw-order.js
+          git diff --cached --check
+          git diff --cached --quiet && { echo "No SC-033 hardening changes to commit"; exit 1; }
+          git commit -m "SC-033: harden mobile and mode-isolation acceptance"
+          git push origin HEAD:sc033-auto-throw-order
