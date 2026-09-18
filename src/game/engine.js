@@ -106,34 +106,54 @@
 function __sqCloneCatchUpState(){
   try{ return state && state.__sqCatchUp ? JSON.parse(JSON.stringify(state.__sqCatchUp)) : null; }catch(_){ return null; }
 }
+function __sqCatchUpJobReady(job, roundIdx){
+  try{
+    if(!job || job.completed || !Array.isArray(job.pendingRounds) || !job.pendingRounds.length) return false;
+    if(job.kind==='absence' && job.returned!==true) return false;
+    return Number(job.joinedRound||0)<=Number(roundIdx);
+  }catch(_){ return false; }
+}
 function __sqCatchUpJobsReadyForRound(roundIdx){
   try{
     const cu=state && state.__sqCatchUp;
     if(!cu || !Array.isArray(cu.jobs)) return [];
     return cu.jobs
       .map((job,index)=>({job,index}))
-      .filter(x=>x.job && !x.job.completed && Array.isArray(x.job.pendingRounds) && x.job.pendingRounds.length && Number(x.job.joinedRound||0)<=Number(roundIdx));
+      .filter(x=>__sqCatchUpJobReady(x.job,roundIdx));
   }catch(_){ return []; }
 }
-function __sqBeginCatchUpAfterTableRound(pIdx,rIdx){
+function __sqOpenAbsenceJobs(){
+  try{
+    const cu=state && state.__sqCatchUp;
+    if(!cu || !Array.isArray(cu.jobs)) return [];
+    return cu.jobs
+      .map((job,index)=>({job,index}))
+      .filter(x=>x.job && x.job.kind==='absence' && !x.job.completed && x.job.returned!==true);
+  }catch(_){ return []; }
+}
+function __sqStartCatchUpAfterRound(rIdx, opts={}){
   try{
     const cu=state && state.__sqCatchUp;
     if(!cu || cu.active) return false;
-    if(Number(pIdx)!==Number((state.players||[]).length-1)) return false;
     const ready=__sqCatchUpJobsReadyForRound(rIdx);
     if(!ready.length) return false;
     const before=__sqCloneCatchUpState();
     const first=ready[0];
     cu.active=true;
-    cu.resumeRound=Math.min(MAX_ROUNDS-1,Number(rIdx)+1);
-    cu.resumePlayer=0;
+    cu.awaitingReturn=false;
+    cu.resumeRound=Number.isFinite(Number(opts.resumeRound)) ? Number(opts.resumeRound) : Math.min(MAX_ROUNDS-1,Number(rIdx)+1);
+    cu.resumePlayer=Number.isFinite(Number(opts.resumePlayer)) ? Number(opts.resumePlayer) : 0;
+    cu.resumeFinished=opts.resumeFinished===true;
     cu.activeJobIndex=first.index;
     cu.startedAfterRound=Number(rIdx);
+    state.finished=false;
     state.currentDart=0;
     state.currentPlayer=Number(first.job.playerIndex);
     state.currentRound=Number(first.job.pendingRounds[0]);
-    const last=Array.isArray(state.history)&&state.history.length?state.history[state.history.length-1]:null;
-    if(last) last.catchUpStartStateBefore=before;
+    if(opts.historyAnchor!==false){
+      const last=Array.isArray(state.history)&&state.history.length?state.history[state.history.length-1]:null;
+      if(last) last.catchUpStartStateBefore=before;
+    }
     try{
       const p=state.players?.[state.currentPlayer];
       const nm=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(state.currentPlayer+1));
@@ -143,6 +163,17 @@ function __sqBeginCatchUpAfterTableRound(pIdx,rIdx){
     }catch(_){}
     try{save();}catch(_){}
     return true;
+  }catch(e){ console.warn('[SQ] catch-up start failed',e); return false; }
+}
+function __sqBeginCatchUpAfterTableRound(pIdx,rIdx){
+  try{
+    if(Number(pIdx)!==Number((state.players||[]).length-1)) return false;
+    const finalRound=Number(rIdx)>=MAX_ROUNDS-1;
+    return __sqStartCatchUpAfterRound(rIdx,{
+      resumeRound:finalRound?Number(rIdx):Math.min(MAX_ROUNDS-1,Number(rIdx)+1),
+      resumePlayer:0,
+      resumeFinished:finalRound
+    });
   }catch(e){ console.warn('[SQ] catch-up start failed',e); return false; }
 }
 function __sqAdvanceActiveCatchUp(pIdx,rIdx){
@@ -165,9 +196,8 @@ function __sqAdvanceActiveCatchUp(pIdx,rIdx){
       return true;
     }
     job.completed=true;
-    const next=cu.jobs
-      .map((j,index)=>({job:j,index}))
-      .find(x=>x.job && !x.job.completed && Array.isArray(x.job.pendingRounds) && x.job.pendingRounds.length && Number(x.job.joinedRound||0)<=Number(cu.startedAfterRound));
+    job.absent=false;
+    const next=__sqCatchUpJobsReadyForRound(cu.startedAfterRound)[0];
     if(next){
       cu.activeJobIndex=next.index;
       state.currentDart=0;
@@ -176,16 +206,201 @@ function __sqAdvanceActiveCatchUp(pIdx,rIdx){
       try{save();}catch(_){}
       return true;
     }
+    const resumeFinished=cu.resumeFinished===true;
     cu.active=false;
+    cu.awaitingReturn=false;
     cu.completedAfterRound=Number(cu.startedAfterRound);
     delete cu.activeJobIndex;
+    delete cu.resumeFinished;
     state.currentDart=0;
+    if(resumeFinished){
+      state.finished=true;
+      return true;
+    }
     state.currentPlayer=Number(cu.resumePlayer||0);
     state.currentRound=Number(cu.resumeRound||0);
     try{save();}catch(_){}
     return true;
   }catch(e){ console.warn('[SQ] catch-up advance failed',e); return false; }
 }
+function __sqIsAbsenceSkipEligible(){
+  try{
+    if(!state || state.finished || state.suddenDeath?.active) return false;
+    if(Number(state.currentDart||0)!==0) return false;
+    if(state.__sqCatchUp?.active) return false;
+    return typeof __sqIsAutoThrowOrderMatch==='function' && __sqIsAutoThrowOrderMatch();
+  }catch(_){ return false; }
+}
+function __sqAbsencePlayerKey(p,idx){
+  try{
+    const raw=(p&&(p.id||p.player_id||p.name||p.player_name))||('idx:'+idx);
+    return String(raw||('idx:'+idx)).trim().toLowerCase();
+  }catch(_){ return 'idx:'+idx; }
+}
+function __sqAbsenceJobForPlayer(pIdx){
+  try{
+    const jobs=Array.isArray(state?.__sqCatchUp?.jobs)?state.__sqCatchUp.jobs:[];
+    for(let i=jobs.length-1;i>=0;i--){
+      const job=jobs[i];
+      if(job && job.kind==='absence' && !job.completed && Number(job.playerIndex)===Number(pIdx)) return job;
+    }
+  }catch(_){}
+  return null;
+}
+function __sqMaterializeAbsenceScratch(pIdx,rIdx){
+  try{
+    const entry=state?.score?.[pIdx]?.[rIdx];
+    if(!entry) return false;
+    const existing=Array.isArray(entry.darts)?entry.darts:[null,null,null];
+    if(existing.some(d=>d && Number(d.points||0)>0)) return false;
+    entry.darts=[
+      {kind:'Scratch',points:0,absence:true},
+      {kind:'Scratch',points:0,absence:true},
+      {kind:'Scratch',points:0,absence:true}
+    ];
+    entry.roundTotal=0;
+    return true;
+  }catch(_){ return false; }
+}
+function __sqAdvanceAfterAbsenceSkip(pIdx,rIdx){
+  try{
+    state.currentDart=0;
+    if(state.currentPlayer < state.players.length-1){
+      state.currentPlayer++;
+      return true;
+    }
+    if(__sqBeginCatchUpAfterTableRound(pIdx,rIdx)) return true;
+    if(Number(state.currentRound)<MAX_ROUNDS-1){
+      state.currentPlayer=0;
+      state.currentRound++;
+      return true;
+    }
+    const open=__sqOpenAbsenceJobs();
+    if(open.length){
+      if(!state.__sqCatchUp || typeof state.__sqCatchUp!=='object') state.__sqCatchUp={version:1,jobs:[],active:false};
+      state.__sqCatchUp.awaitingReturn=true;
+      state.__sqCatchUp.startedAfterRound=Number(rIdx);
+      state.currentPlayer=Number(open[0].job.playerIndex);
+      state.currentRound=Number(rIdx);
+      state.currentDart=0;
+      state.finished=false;
+      try{
+        const p=state.players?.[state.currentPlayer];
+        const nm=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(state.currentPlayer+1));
+        toast('Waiting for '+nm+' to return.');
+      }catch(_){}
+      return true;
+    }
+    state.finished=true;
+    return true;
+  }catch(e){ console.warn('[SQ] absence advance failed',e); return false; }
+}
+function __sqSkipAbsentVisit(){
+  try{
+    if(!__sqIsAbsenceSkipEligible()) return false;
+    const pIdx=Number(state.currentPlayer||0);
+    const rIdx=Number(state.currentRound||0);
+    const boardBefore=JSON.parse(JSON.stringify(state.score?.[pIdx]||[]));
+    const catchBefore=__sqCloneCatchUpState();
+    const cursorBefore={player:pIdx,round:rIdx,dart:Number(state.currentDart||0),finished:!!state.finished};
+    if(!state.__sqCatchUp || typeof state.__sqCatchUp!=='object') state.__sqCatchUp={version:1,jobs:[],active:false};
+    if(!Array.isArray(state.__sqCatchUp.jobs)) state.__sqCatchUp.jobs=[];
+    let job=__sqAbsenceJobForPlayer(pIdx);
+    if(!job){
+      job={
+        kind:'absence',
+        playerIndex:pIdx,
+        playerKey:__sqAbsencePlayerKey(state.players?.[pIdx],pIdx),
+        joinedRound:rIdx,
+        pendingRounds:[],
+        scratchedRounds:[],
+        returned:false,
+        absent:true,
+        completed:false
+      };
+      state.__sqCatchUp.jobs.push(job);
+    }
+    job.absent=true;
+    job.returned=false;
+    if(!Array.isArray(job.pendingRounds)) job.pendingRounds=[];
+    if(!Array.isArray(job.scratchedRounds)) job.scratchedRounds=[];
+    const known=job.pendingRounds.some(x=>Number(x)===rIdx) || job.scratchedRounds.some(x=>Number(x)===rIdx);
+    if(!known) job.pendingRounds.push(rIdx);
+    job.pendingRounds=job.pendingRounds.map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
+    while(job.pendingRounds.length>3){
+      const scratch=Number(job.pendingRounds.shift());
+      if(!job.scratchedRounds.some(x=>Number(x)===scratch)) job.scratchedRounds.push(scratch);
+      __sqMaterializeAbsenceScratch(pIdx,scratch);
+    }
+    state.history.push({
+      type:'absenceSkip',
+      player:pIdx,
+      round:rIdx,
+      dartIndex:0,
+      catchUpStateBefore:catchBefore,
+      absenceBoardBefore:boardBefore,
+      absenceCursorBefore:cursorBefore
+    });
+    __sqAdvanceAfterAbsenceSkip(pIdx,rIdx);
+    try{save();}catch(_){}
+    try{updateUI();}catch(_){}
+    try{
+      const p=state.players?.[pIdx];
+      const nm=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(pIdx+1));
+      toast(nm+' skipped • marked absent');
+    }catch(_){}
+    return true;
+  }catch(e){ console.warn('[SQ] absence skip failed',e); return false; }
+}
+function __sqAbsentPlayers(){
+  try{
+    const seen=new Set();
+    return __sqOpenAbsenceJobs().reduce((out,x)=>{
+      const idx=Number(x.job.playerIndex);
+      if(seen.has(idx)) return out;
+      seen.add(idx);
+      const p=state.players?.[idx];
+      const name=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(idx+1));
+      out.push({playerIndex:idx,name,pendingRounds:(x.job.pendingRounds||[]).slice(),scratchedRounds:(x.job.scratchedRounds||[]).slice()});
+      return out;
+    },[]);
+  }catch(_){ return []; }
+}
+function __sqMarkPlayerReturned(pIdx){
+  try{
+    pIdx=Number(pIdx);
+    const jobs=Array.isArray(state?.__sqCatchUp?.jobs)?state.__sqCatchUp.jobs:[];
+    let job=null;
+    for(let i=jobs.length-1;i>=0;i--){
+      const j=jobs[i];
+      if(j && j.kind==='absence' && !j.completed && j.returned!==true && Number(j.playerIndex)===pIdx){ job=j; break; }
+    }
+    if(!job) return false;
+    job.returned=true;
+    job.absent=false;
+    job.returnedAtRound=Number(state.currentRound||0);
+    if(!Array.isArray(job.pendingRounds) || !job.pendingRounds.length) job.completed=true;
+    const cu=state.__sqCatchUp;
+    if(cu?.awaitingReturn && !cu.active && !job.completed){
+      const rIdx=Number(cu.startedAfterRound??state.currentRound??0);
+      __sqStartCatchUpAfterRound(rIdx,{resumeRound:rIdx,resumePlayer:0,resumeFinished:rIdx>=MAX_ROUNDS-1,historyAnchor:false});
+    }
+    try{save();}catch(_){}
+    try{updateUI();}catch(_){}
+    try{
+      const p=state.players?.[pIdx];
+      const nm=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(pIdx+1));
+      toast(nm+' returned • catch-up queued');
+    }catch(_){}
+    return true;
+  }catch(e){ console.warn('[SQ] mark returned failed',e); return false; }
+}
+try{
+  window.__sqSkipAbsentVisit=__sqSkipAbsentVisit;
+  window.__sqAbsentPlayers=__sqAbsentPlayers;
+  window.__sqMarkPlayerReturned=__sqMarkPlayerReturned;
+  window.__sqIsAbsenceSkipEligible=__sqIsAbsenceSkipEligible;
+}catch(_){}
 // @CANONICAL:GAMEPLAY_RECORD_THROW_BASE
 function recordThrow(spec){
   try{ window.__sqDmdStopPreThrow?.(); }catch(_){ }
@@ -952,6 +1167,25 @@ function undo(){
   }
 
   state.history.pop();
+  if (last && last.type === 'absenceSkip') {
+    try{
+      const pIdx=Number(last.player||0);
+      if(Array.isArray(last.absenceBoardBefore)) state.score[pIdx]=JSON.parse(JSON.stringify(last.absenceBoardBefore));
+      if(last.catchUpStateBefore) state.__sqCatchUp=JSON.parse(JSON.stringify(last.catchUpStateBefore));
+      else delete state.__sqCatchUp;
+      const cur=last.absenceCursorBefore||{};
+      state.currentPlayer=Number(cur.player??pIdx);
+      state.currentRound=Number(cur.round??last.round??0);
+      state.currentDart=Number(cur.dart??0);
+      state.finished=!!cur.finished;
+      recomputeMatchAggHitsForPlayer(pIdx);
+      recomputeMatchAggTotalsForPlayer(pIdx);
+      try{save();}catch(_){}
+      updateUI();
+      try{toast('Skip Go undone');}catch(_){}
+    }catch(err){ console.warn('[SQ] absence undo failed',err); updateUI(); }
+    return;
+  }
   if (last && last.catchUpStateBefore) {
     try{ state.__sqCatchUp = JSON.parse(JSON.stringify(last.catchUpStateBefore)); }catch(_){}
   } else if (last && last.catchUpStartStateBefore) {
