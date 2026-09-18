@@ -57,14 +57,37 @@ const H = require('./harness');
         return original ? original.apply(this, arguments) : undefined;
       };
 
-      openGameCompleteDialog();
+      try { show('game'); } catch (_) {}
+      try { if (typeof updateUI === 'function') updateUI(); } catch (_) {}
     });
 
+    await page.waitForFunction(() => document.body.dataset.page === 'game');
+    await page.waitForTimeout(180);
+    await page.evaluate(() => openGameCompleteDialog());
     await page.waitForSelector('.sq-gamecomplete-backdrop');
     const gameOver = await page.evaluate(() =>
-      (window.__sqSc042PostgameDmdWrites || []).find(w => w.z2 === 'GAME OVER' && w.type === 'marqueeFull') || null
+      (window.__sqSc042PostgameDmdWrites || []).find(w => w.z2 === 'GAME OVER' && w.type === 'pulseFull') || null
     );
-    assert(gameOver, 'GAME OVER full-width marquee was not written when completion opened');
+    assert(gameOver, 'GAME OVER centered pulse was not written when completion opened');
+
+    const dmdMetric = async () => page.evaluate(() => {
+      const c=document.getElementById('sqDmdCanvas');
+      const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
+      let minX=c.width,maxX=-1,minY=c.height,maxY=-1,lit=0;
+      for(let y=0;y<c.height;y++) for(let x=0;x<c.width;x++){
+        const i=(y*c.width+x)*4, r=d[i],g=d[i+1],b=d[i+2],a=d[i+3];
+        if(!(a>80 && r>110 && g>45 && b<130 && r>g*1.18)) continue;
+        lit++; if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;
+      }
+      const bbox=maxX>=0?{x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1}:{x:0,y:0,w:0,h:0};
+      return {w:c.width,h:c.height,lit,bbox,cx:bbox.x+bbox.w/2};
+    });
+    await page.waitForTimeout(240); const pulseA=await dmdMetric();
+    await page.waitForTimeout(900); const pulseB=await dmdMetric();
+    assert(pulseA.lit>0 && pulseB.lit>0, 'GAME OVER pulse is not visibly rendered');
+    assert(Math.abs(pulseA.cx-pulseA.w/2)<pulseA.w*0.08, 'GAME OVER is not centered in early pulse frame');
+    assert(Math.abs(pulseB.cx-pulseB.w/2)<pulseB.w*0.08, 'GAME OVER is not centered in later pulse frame');
+    assert(Math.abs(pulseA.cx-pulseB.cx)<pulseA.w*0.03, 'GAME OVER is travelling horizontally instead of pulsing in place');
 
     await page.evaluate(() => {
       document.querySelectorAll('.sq-gamecomplete-backdrop').forEach(n => n.remove());
@@ -109,6 +132,35 @@ const H = require('./harness');
     assert.match(board.winsBg, /gradient/i, 'WINS row is not using the highlighted card treatment');
     assert.match(board.nextBg, /gradient/i, 'NEXT GAME is not using the post-game primary treatment');
     assert.equal(board.nextVisible, true, 'NEXT GAME lifecycle changed');
+
+    await page.waitForTimeout(750);
+    const leaderboardActions = await page.evaluate(() => {
+      const stats=document.getElementById('statsHubBtnFinal');
+      const stack=document.querySelector('#leaderboard .stacked-actions');
+      const scores=document.getElementById('gameScoresBtn');
+      return {
+        statsVisible:!!(stats && stats.offsetParent),
+        statsInStack:!!(stats && stack && stats.parentElement===stack),
+        scoresWired:!!(scores && scores.__sqModernGameScoresWired)
+      };
+    });
+    assert.equal(leaderboardActions.statsVisible, false, 'STATS must be removed from Match Leaderboard');
+    assert.equal(leaderboardActions.statsInStack, false, 'STATS must not be relocated into Match Leaderboard actions');
+    assert.equal(leaderboardActions.scoresWired, true, 'GAME SCORES was not rewired to the post-game scorecard component');
+
+    await page.click('#gameScoresBtn');
+    await page.waitForSelector('.sq-pg-history-modal .sq-pg-history-scorecard');
+    const scoresUi=await page.evaluate(() => ({
+      legacyTables:document.querySelectorAll('.sq-pg-history-modal table.hs-table').length,
+      cards:document.querySelectorAll('.sq-pg-history-modal .sq-pg-history-scorecard').length,
+      title:document.querySelector('.sq-pg-history-modal .sq-pg-scorecard-title')?.textContent?.trim()||'',
+      rows:Array.from(document.querySelectorAll('.sq-pg-history-modal .sq-pg-score-row')).map(r=>r.textContent.replace(/\s+/g,' ').trim())
+    }));
+    assert.equal(scoresUi.legacyTables,0,'legacy round-by-round GAME SCORES table is still being used');
+    assert.equal(scoresUi.cards,1,'expected one modern post-game scorecard for one completed game');
+    assert.equal(scoresUi.title,'GAME 1 SCORECARD','modern GAME SCORES title mismatch');
+    assert(scoresUi.rows.some(t=>/Test Two/i.test(t) && /204/.test(t)),'modern GAME SCORES missing winning player score');
+    assert(scoresUi.rows.some(t=>/Test One/i.test(t) && /105/.test(t)),'modern GAME SCORES missing other player score');
 
     const unexpected = consoleErrs.filter(e => !/supabase|failed to fetch|networkerror|aborterror|failed to load resource:\s*net::err_failed/i.test(e));
     assert.deepEqual(unexpected, [], 'Unexpected console/page errors: ' + unexpected.join(' | '));
