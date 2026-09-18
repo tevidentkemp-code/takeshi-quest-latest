@@ -69,8 +69,7 @@ function staleStage3(writes){
       openAbsences: (state.__sqCatchUp?.jobs || []).filter(j => j && j.kind === 'absence' && !j.completed).map(j => ({
         playerIndex: j.playerIndex,
         pendingRounds: (j.pendingRounds || []).slice()
-      })),
-      skippedRow: (state.score?.[start.player]?.[state.currentRound] || null)
+      }))
     }));
     assert.equal(skipped.history, start.history + 1, 'Start-of-turn Skip Go records one synthetic absence history event');
     assert.equal(skipped.openAbsences.length, 1, 'Start-of-turn Skip Go creates one open absence job');
