@@ -47,17 +47,39 @@
         next.classList.add('sq-fix170-next-round');
         stack.appendChild(next);
       }
-      if (scores) stack.appendChild(scores);
+      // Route GAME SCORES to the same post-game scorecard component used by
+      // the Game Complete flow. Cloning once drops the legacy round-table
+      // listener without changing the button ID or match navigation.
+      if (scores) {
+        if (!scores.__sqModernGameScoresWired) {
+          var oldScores = scores;
+          var modernScores = oldScores.cloneNode(true);
+          modernScores.__sqModernGameScoresWired = true;
+          modernScores.onclick = function(e){
+            try{ if(e){e.preventDefault();e.stopPropagation();} }catch(_){ }
+            try{
+              if (typeof window.__sqOpenMatchGameScores === 'function') {
+                window.__sqOpenMatchGameScores();
+                return false;
+              }
+            }catch(err){ try{ console.warn('[SQ] modern GAME SCORES unavailable', err); }catch(_){ } }
+            return false;
+          };
+          oldScores.replaceWith(modernScores);
+          scores = modernScores;
+        }
+        stack.appendChild(scores);
+      }
 
-      // Restore the STATS action on the leaderboard: the static top row that
-      // hosted it is display:none, so relocate #statsHubBtnFinal into the
-      // action stack (audit N-4). Its openStatsHubDialog handler is preserved.
+      // Match Leaderboard no longer exposes STATS. Keep the original static
+      // control hidden in its already-hidden top row so in-game Stats remains
+      // available elsewhere without appearing on this screen.
       var statsFinal = document.getElementById('statsHubBtnFinal');
       if (statsFinal) {
-        statsFinal.textContent = 'STATS';
-        statsFinal.classList.remove('letter-throw', 'top-throw');
-        statsFinal.classList.add('btn', 'big', 'sq-fix170-stats');
-        if (statsFinal.parentElement !== stack) stack.appendChild(statsFinal);
+        statsFinal.style.setProperty('display','none','important');
+        statsFinal.setAttribute('aria-hidden','true');
+        var topRow = document.getElementById('leaderboardTopRow');
+        if (topRow && statsFinal.parentElement !== topRow) topRow.appendChild(statsFinal);
       }
 
       // The game engine owns whether END MATCH is visible. Do not override
