@@ -4,13 +4,28 @@
 **Project:** Shateki-Quest (`vvfqumgtasuacpggdmxx`)
 **Mode:** READ/AUDIT only — no DDL, policy, role, function or data writes were made.
 
+## Authority and currentness
+
+**Authority class:** BACKEND / SECURITY RESEARCH KNOWLEDGE.
+
+This document is the durable Shateki security research/rationale authority for Supabase/backend security findings and the reasoning that future remediation must preserve. It does not own live backend state, current implementation state, Pipeline sequencing, product rules, permissions, SQL/DDL/RLS/schema writes or release approval.
+
+- Live Supabase schema, policies, grants, Auth state, keys, functions/RPCs, Edge Functions and advisor output are backend truth and must be freshly read before material security work.
+- Live GitHub source is implementation truth for client/service/backend call paths.
+- `SHATEKI — MASTER PIPELINE` owns SC-004 sequencing and current work state.
+- Shateki Coding controls own operating procedure and permissions.
+- `docs/backend/SC031_SUPABASE_SECURITY_REMEDIATION_PROPOSAL.md` is subordinate supporting/proposal evidence only; it is not a second CURRENT security knowledge authority.
+
+Unless a finding is explicitly freshly reverified, counts, policy inventories, function exposure, key/Auth state and implementation observations in the dated audit below are historical snapshot evidence from 13 September 2026. Before SC-004, RLS/grant/policy work, Auth/admin-boundary changes, destructive-operation security work, RPC/SECURITY DEFINER changes, Edge Function privilege design, key/credential-model changes or other backend-authority work, freshly verify the live Supabase schema, policies/grants, advisors, Auth state, key posture, functions/RPCs, Edge Functions where relevant, and current GitHub write/service paths.
+
+
 ## Executive finding
 
 The current browser application uses the public Supabase client for normal gameplay and some administrative data mutations. The live database has multiple broad anonymous write policies, including unrestricted UPDATE and/or DELETE paths on persistent game/player data. The local Admin keypad in the browser is therefore a UI convenience only; it is not a database security boundary.
 
 This is a **P0 release-hardening item** for SC-031. It does not justify changing live RLS blindly: some anonymous writes may currently be required by legitimate unauthenticated gameplay. The exact write paths must be classified and covered by acceptance tests before any policy change.
 
-## Fresh Supabase advisor findings
+## 13 September 2026 Supabase advisor snapshot
 
 Security advisor:
 
@@ -29,7 +44,7 @@ Performance advisor:
 - 2 duplicate-index findings.
 - 12 indexes currently reported unused. These are evidence for review only and must not be removed solely because the advisor reports no usage.
 
-## Confirmed anonymous UPDATE/DELETE surface
+## 13 September 2026 confirmed anonymous UPDATE/DELETE snapshot
 
 A direct read of `pg_policies` confirmed broad anonymous mutation policies on:
 
@@ -47,7 +62,7 @@ A direct read of `pg_policies` confirmed broad anonymous mutation policies on:
 
 This list is not a claim that every policy is unused or malicious. It is a statement that possession of the public anon client is sufficient to reach those RLS paths unless another database constraint prevents the operation.
 
-## Confirmed client-side destructive path
+## 13 September 2026 confirmed client-side destructive-path snapshot
 
 `src/services/cloud.js` contains direct public-client mutations for administrative game maintenance:
 
@@ -57,7 +72,7 @@ This list is not a claim that every policy is unused or malicious. It is a state
 
 The Admin keypad implementation explicitly describes itself as a UI gate. Because its credential/check runs in client-side JavaScript, it cannot protect database operations from callers who invoke the Supabase API directly.
 
-## Functions requiring review
+## Functions identified for review in the 13 September 2026 snapshot
 
 ### `public.check_pin`
 
@@ -108,8 +123,8 @@ Before changing live policies/functions, prepare a reversible migration and prov
 
 Supabase's supported CLI can generate schema types and run pgTAP database tests. Those controls are a strong fit for SC-031 once a local migration baseline is established. The current live project does not have the `pgtap` extension installed, so enabling it or introducing a migration baseline is a separate DDL decision and must not be performed implicitly.
 
-## Current decision
+## Historical audit disposition
 
-**No live database change authorised or performed.**
+**No live database change was authorised or performed by the 13 September 2026 audit.**
 
-This audit converts the existing security findings into an explicit SC-031 release gate. The next engineering step is write-path classification and a proposed reversible migration; execution requires explicit database/DDL approval.
+The audit established the durable security rationale captured above and produced the subordinate remediation proposal. Current SC-004 status, sequencing and next action are not maintained here; retrieve the live Pipeline/HANDOVER. Any future execution still requires the appropriate explicit database/DDL authority and fresh live Supabase verification.
