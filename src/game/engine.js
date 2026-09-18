@@ -103,6 +103,89 @@
 })();
 // <<< PATCH:SC045_DMD_ARCADE_PRESENTATION_HELPERS END
 
+function __sqCloneCatchUpState(){
+  try{ return state && state.__sqCatchUp ? JSON.parse(JSON.stringify(state.__sqCatchUp)) : null; }catch(_){ return null; }
+}
+function __sqCatchUpJobsReadyForRound(roundIdx){
+  try{
+    const cu=state && state.__sqCatchUp;
+    if(!cu || !Array.isArray(cu.jobs)) return [];
+    return cu.jobs
+      .map((job,index)=>({job,index}))
+      .filter(x=>x.job && !x.job.completed && Array.isArray(x.job.pendingRounds) && x.job.pendingRounds.length && Number(x.job.joinedRound||0)<=Number(roundIdx));
+  }catch(_){ return []; }
+}
+function __sqBeginCatchUpAfterTableRound(pIdx,rIdx){
+  try{
+    const cu=state && state.__sqCatchUp;
+    if(!cu || cu.active) return false;
+    if(Number(pIdx)!==Number((state.players||[]).length-1)) return false;
+    const ready=__sqCatchUpJobsReadyForRound(rIdx);
+    if(!ready.length) return false;
+    const before=__sqCloneCatchUpState();
+    const first=ready[0];
+    cu.active=true;
+    cu.resumeRound=Math.min(MAX_ROUNDS-1,Number(rIdx)+1);
+    cu.resumePlayer=0;
+    cu.activeJobIndex=first.index;
+    cu.startedAfterRound=Number(rIdx);
+    state.currentDart=0;
+    state.currentPlayer=Number(first.job.playerIndex);
+    state.currentRound=Number(first.job.pendingRounds[0]);
+    const last=Array.isArray(state.history)&&state.history.length?state.history[state.history.length-1]:null;
+    if(last) last.catchUpStartStateBefore=before;
+    try{
+      const p=state.players?.[state.currentPlayer];
+      const nm=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(state.currentPlayer+1));
+      const def=ROUNDS[state.currentRound];
+      const tgt=def?.type==='number'?String(def.target):(def?.type==='doubles'?'D':def?.type==='triples'?'T':'B');
+      toast('Catch-up: '+nm+' • '+tgt);
+    }catch(_){}
+    try{save();}catch(_){}
+    return true;
+  }catch(e){ console.warn('[SQ] catch-up start failed',e); return false; }
+}
+function __sqAdvanceActiveCatchUp(pIdx,rIdx){
+  try{
+    const cu=state && state.__sqCatchUp;
+    if(!cu || !cu.active || !Array.isArray(cu.jobs)) return false;
+    const job=cu.jobs[Number(cu.activeJobIndex)];
+    if(!job || Number(job.playerIndex)!==Number(pIdx)) return false;
+    if(!Array.isArray(job.pendingRounds)) job.pendingRounds=[];
+    if(job.pendingRounds.length && Number(job.pendingRounds[0])===Number(rIdx)) job.pendingRounds.shift();
+    else{
+      const pos=job.pendingRounds.findIndex(x=>Number(x)===Number(rIdx));
+      if(pos>=0) job.pendingRounds.splice(pos,1);
+    }
+    if(job.pendingRounds.length){
+      state.currentDart=0;
+      state.currentPlayer=Number(job.playerIndex);
+      state.currentRound=Number(job.pendingRounds[0]);
+      try{save();}catch(_){}
+      return true;
+    }
+    job.completed=true;
+    const next=cu.jobs
+      .map((j,index)=>({job:j,index}))
+      .find(x=>x.job && !x.job.completed && Array.isArray(x.job.pendingRounds) && x.job.pendingRounds.length && Number(x.job.joinedRound||0)<=Number(cu.startedAfterRound));
+    if(next){
+      cu.activeJobIndex=next.index;
+      state.currentDart=0;
+      state.currentPlayer=Number(next.job.playerIndex);
+      state.currentRound=Number(next.job.pendingRounds[0]);
+      try{save();}catch(_){}
+      return true;
+    }
+    cu.active=false;
+    cu.completedAfterRound=Number(cu.startedAfterRound);
+    delete cu.activeJobIndex;
+    state.currentDart=0;
+    state.currentPlayer=Number(cu.resumePlayer||0);
+    state.currentRound=Number(cu.resumeRound||0);
+    try{save();}catch(_){}
+    return true;
+  }catch(e){ console.warn('[SQ] catch-up advance failed',e); return false; }
+}
 // @CANONICAL:GAMEPLAY_RECORD_THROW_BASE
 function recordThrow(spec){
   try{ window.__sqDmdStopPreThrow?.(); }catch(_){ }
@@ -116,6 +199,7 @@ function recordThrow(spec){
   const rIndex    = state.currentRound;
   const pIndex    = state.currentPlayer;
   const dartIndex = state.currentDart;
+  const __catchUpStateBefore = (state.__sqCatchUp && state.__sqCatchUp.active) ? __sqCloneCatchUpState() : null;
 
   if (rIndex < 0 || rIndex >= MAX_ROUNDS) return;
   if (pIndex < 0 || pIndex >= state.players.length) return;
@@ -729,7 +813,8 @@ setTimeout(() => {
     player:    pIndex,
     round:     rIndex,
     dartIndex: dartIndex,
-    throw:     dartObj
+    throw:     dartObj,
+    catchUpStateBefore: __catchUpStateBefore
   });
 
   // Match aggregates
@@ -752,7 +837,11 @@ setTimeout(() => {
     state.currentDart++;
   } else {
     state.currentDart = 0;
-    if (state.currentPlayer < state.players.length - 1) {
+    if (__sqAdvanceActiveCatchUp(pIndex, rIndex)) {
+      // Catch-up owns the next visit until its queued rounds are complete.
+    } else if (__sqBeginCatchUpAfterTableRound(pIndex, rIndex)) {
+      // Table round completed; late-join catch-up starts before the next live round.
+    } else if (state.currentPlayer < state.players.length - 1) {
       state.currentPlayer++;
     } else {
       state.currentPlayer = 0;
@@ -863,6 +952,11 @@ function undo(){
   }
 
   state.history.pop();
+  if (last && last.catchUpStateBefore) {
+    try{ state.__sqCatchUp = JSON.parse(JSON.stringify(last.catchUpStateBefore)); }catch(_){}
+  } else if (last && last.catchUpStartStateBefore) {
+    try{ state.__sqCatchUp = JSON.parse(JSON.stringify(last.catchUpStartStateBefore)); }catch(_){}
+  }
   const { player, round, dartIndex } = last;
 
   const entry = state.score?.[player]?.[round];
@@ -2520,6 +2614,7 @@ function startNewGame(setOrder=false){
   // <<< PATCH:practice-multi-game-save-reset END
 
   state.__gameToken = (state.__gameToken || 0) + 1;
+  delete state.__sqCatchUp;
   state._decider = null;
   state.score = Array.from({length:state.players.length},
     ()=>Array.from({length:MAX_ROUNDS},()=>({darts:[null,null,null],roundTotal:0})));
@@ -2561,6 +2656,17 @@ function restartGame() {
 function swapPlayers(i, j) {
   // Swap players themselves
   [state.players[i], state.players[j]] = [state.players[j], state.players[i]];
+
+  // Keep any in-flight/persisted catch-up jobs attached to player identity.
+  try{
+    if(state.__sqCatchUp && Array.isArray(state.__sqCatchUp.jobs)){
+      state.__sqCatchUp.jobs.forEach(job=>{
+        if(!job) return;
+        if(Number(job.playerIndex)===Number(i)) job.playerIndex=j;
+        else if(Number(job.playerIndex)===Number(j)) job.playerIndex=i;
+      });
+    }
+  }catch(_){}
 
   // Swap match wins
   if (state.match && Array.isArray(state.match.wins)) {
