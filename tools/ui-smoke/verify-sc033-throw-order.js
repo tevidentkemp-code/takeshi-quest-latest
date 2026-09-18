@@ -148,6 +148,26 @@ function rotated(values) {
       assert.deepEqual(result.after, result.before, name + ' player order changed');
     }
 
+    const turbo = await page.evaluate(() => {
+      state.players = [{ name: 'TURBO A' }, { name: 'TURBO B' }, { name: 'TURBO C' }];
+      state.match = {
+        mode: 'turbo',
+        gameMode: 'turbo',
+        gameFormat: 'match_play',
+        gameVariant: 'turbo',
+        autoRotateOrder: true,
+        wins: [0, 0, 0],
+        history: [],
+      };
+      const before = state.players.map(p => p.name);
+      const enabled = __sqAutoThrowOrderEnabled();
+      const didRotate = __sqRotateThrowOrderOnePlace();
+      return { before, enabled, didRotate, after: state.players.map(p => p.name) };
+    });
+    assert.equal(turbo.enabled, true, 'Turbo Match Play must inherit the Match Play AUTO policy');
+    assert.equal(turbo.didRotate, true, 'Turbo Match Play AUTO rotation must execute');
+    assert.deepEqual(turbo.after, rotated(turbo.before), 'Turbo Match Play did not rotate exactly one place');
+
     // Reload to restore a clean UI/runtime, then prove the actual Match Play flow.
     await H.boot(page, { settle: 1800 });
     await H.toMatchCard(page);
@@ -198,6 +218,13 @@ function rotated(values) {
     }
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(120);
+
+    // The first game is still user-confirmed. Prove a manual reorder becomes the
+    // canonical Game-1 baseline before AUTO takes over on later games.
+    const firstRow = page.locator('.modal-throworder .to-row').first();
+    await firstRow.locator('.to-arrow-btn').nth(1).click();
+    const confirmedGame1Order = await page.evaluate(() => state.players.map(p => p.name));
+    assert.deepEqual(confirmedGame1Order, ['BETA', 'ALPHA'], 'Manual Game 1 throw-order confirmation did not update the canonical player order');
     await shot(page, 'sc033-throw-order-auto-on', '.modal-throworder');
 
     // AUTO OFF must preserve the existing manual throw-order step between games.
@@ -211,7 +238,7 @@ function rotated(values) {
       order: state.players.map(p => p.name),
       auto: state.match.autoRotateOrder,
     }));
-    assert.deepEqual(game1.order, ['ALPHA', 'BETA'], 'Game 1 order must stay as confirmed');
+    assert.deepEqual(game1.order, confirmedGame1Order, 'Game 1 order must stay exactly as manually confirmed');
     assert.equal(game1.auto, false, 'AUTO OFF choice did not persist into game state');
 
     await H.playToCompletion(page, { strongPlayerName: 'ALPHA' });
