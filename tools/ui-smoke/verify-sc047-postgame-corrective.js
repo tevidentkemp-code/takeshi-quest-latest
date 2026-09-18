@@ -33,7 +33,7 @@ const path = require('path');
     });
 
     await page.waitForSelector('.sq-gamecomplete-backdrop');
-    await page.waitForSelector('.sq-gamecomplete-backdrop .sq-pg-scorecard');
+    await page.waitForSelector('.sq-gamecomplete-backdrop .sq-pg-scorecard', { state:'attached' });
     const gameOver=await page.evaluate(()=>window.__sc047Writes.find(x=>x.z2==='GAME OVER'));
     assert(gameOver,'GAME OVER write missing');
     assert.equal(gameOver.type,'pulseCenter','GAME OVER must use pulseCenter');
