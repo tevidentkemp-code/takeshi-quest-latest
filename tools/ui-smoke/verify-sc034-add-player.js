@@ -144,6 +144,10 @@ function assert(cond, msg) {
 
     await page.reload({waitUntil:'domcontentloaded'});
     await page.waitForTimeout(2200);
+    assert(await page.isVisible('#resumeBtn'), 'Resume Game should be visible after refresh');
+    await page.click('#resumeBtn');
+    await page.waitForFunction(() => document.body.dataset.page === 'game', {timeout:15000});
+    await page.waitForTimeout(1000);
     const restored = await page.evaluate(() => ({
       p:state.currentPlayer,r:state.currentRound,d:state.currentDart,
       active:!!state.__sqCatchUp?.active,
