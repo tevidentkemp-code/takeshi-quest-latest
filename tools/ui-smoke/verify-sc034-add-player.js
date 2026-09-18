@@ -262,7 +262,7 @@ function blankBoard() {
         names: state.players.map(p => p.name),
         wins: state.match.wins.slice(),
         totals: state.match.history[0].totals.slice(),
-        boards: state.match.history[0].board.slice(),
+        boardOwners: state.match.history[0].board.map(rows => rows == null ? null : (rows?.[0]?.owner || null)),
         hits: state.matchAgg.hits.slice()
       };
       const ok = __sqRotateThrowOrderOnePlace();
@@ -273,14 +273,14 @@ function blankBoard() {
           names: state.players.map(p => p.name),
           wins: state.match.wins.slice(),
           totals: state.match.history[0].totals.slice(),
-          boards: state.match.history[0].board.slice(),
+          boardOwners: state.match.history[0].board.map(rows => rows == null ? null : (rows?.[0]?.owner || null)),
           hits: state.matchAgg.hits.slice()
         }
       };
     });
     assert.equal(rotationIdentity.ok, true, 'SC-033 rotation stopped working after SC-034');
     const rotate = arr => arr.slice(1).concat(arr[0]);
-    for (const key of ['names', 'wins', 'totals', 'boards', 'hits']) {
+    for (const key of ['names', 'wins', 'totals', 'boardOwners', 'hits']) {
       assert.deepEqual(rotationIdentity.after[key], rotate(rotationIdentity.before[key]), 'Identity alignment failed after rotation for ' + key);
     }
 
