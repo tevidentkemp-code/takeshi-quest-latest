@@ -1,0 +1,70 @@
+name: SC-034 batch QA
+
+on:
+  push:
+    branches: [batch-sc034-sc036]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sc034-batch-qa
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Install source tooling
+        run: npm ci --prefix scripts --ignore-scripts
+      - name: Verify source authority
+        run: |
+          node scripts/verify-modularization.mjs
+          node scripts/build-core-js-from-source.mjs --verify-current
+          node scripts/build-core-styles-from-source.mjs --verify-current
+          node --check src/game/engine.js
+          node --check src/legacy/scripts/inline-030.js
+          node --check tools/ui-smoke/verify-sc034-add-player.js
+      - name: Build exact candidate
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+          npm run verify:dist
+      - name: Install browser QA
+        working-directory: tools/ui-smoke
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: SC-034 source acceptance
+        env:
+          SQ_APP_URL: http://127.0.0.1:8123/index.html
+        run: |
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sc034-source.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          node tools/ui-smoke/verify-sc034-add-player.js
+          node tools/ui-smoke/verify-sc033-throw-order.js
+          node tools/ui-smoke/smoke.js
+          node tools/ui-smoke/verify-sc014.js
+          node tools/ui-smoke/verify-classic-visual-fit.js
+          node tools/ui-smoke/verify-cloud-failure-resilience.js
+      - name: SC-034 dist acceptance
+        env:
+          SQ_APP_URL: http://127.0.0.1:8124/index.html
+        run: |
+          python3 -m http.server 8124 --bind 127.0.0.1 --directory dist >/tmp/sc034-dist.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          node tools/ui-smoke/verify-sc034-add-player.js
+          node tools/ui-smoke/verify-sc033-throw-order.js
+          node tools/ui-smoke/smoke.js
+          node tools/ui-smoke/verify-classic-visual-fit.js
+          node tools/ui-smoke/verify-cloud-failure-resilience.js
