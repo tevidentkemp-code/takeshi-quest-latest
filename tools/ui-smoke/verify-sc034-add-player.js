@@ -166,6 +166,21 @@ function assert(cond, msg) {
     });
     assert(blocked17.gate.ok === false && blocked17.added === false, 'late entry must close once 17s starts');
 
+    // Game 2+ must reject mid-game late entry under Game Rules §3.6.
+    const game2Blocked = await page.evaluate(() => {
+      state.players = state.players.slice(0,2);
+      state.score = state.score.slice(0,2);
+      state.match.wins = [0,0];
+      state.match.gameNumber = 2;
+      state.currentRound = 0; state.currentPlayer = 0; state.currentDart = 0;
+      state.history = []; state.finished = false;
+      delete state.__sqCatchUp;
+      const gate = window.__sqLateJoinEligibility();
+      const added = window.__sqAppendLatePlayer({name:'GAME2 LATE'},'guest');
+      return {gate,added,count:state.players.length};
+    });
+    assert(game2Blocked.gate.ok === false && game2Blocked.added === false, 'mid-game late entry must be blocked after Game 1');
+
     // Six-player cap.
     const cap = await page.evaluate(() => {
       const mk = () => Array.from({length:14}, () => ({darts:[null,null,null],roundTotal:0}));
