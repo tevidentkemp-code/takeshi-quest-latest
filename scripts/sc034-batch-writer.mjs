@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 
 function fail(msg){ throw new Error('SC-034 writer: '+msg); }
 function replaceOnce(text, from, to, label){
@@ -294,5 +295,24 @@ const addRowBlock=`    var addGate=(typeof window.__sqLateJoinStatus==='function
 `+removeRow;
 menu=replaceOnce(menu,removeRow,addRowBlock,'menu row');
 fs.writeFileSync(menuPath,menu);
+
+const patchManifestPath='src/legacy/intentional-patches.json';
+const migrationPath='src/legacy/migration-manifest.json';
+const patchManifest=JSON.parse(fs.readFileSync(patchManifestPath,'utf8'));
+const migration=JSON.parse(fs.readFileSync(migrationPath,'utf8'));
+const extracted=(migration.scripts||[]).find(x=>x.file===menuPath);
+if(!extracted||!extracted.sha256)fail('migration authority missing for '+menuPath);
+if(!Array.isArray(patchManifest.patches))patchManifest.patches=[];
+if(patchManifest.patches.some(x=>x.file===menuPath))fail('intentional patch already registered for '+menuPath);
+const sha256=(value)=>crypto.createHash('sha256').update(value).digest('hex');
+patchManifest.patches.push({
+  file:menuPath,
+  originalSha256:extracted.sha256,
+  sha256:sha256(menu),
+  bytes:Buffer.byteLength(menu,'utf8'),
+  task:'SC-034',
+  reason:'Add the rules-aligned in-game registered-player late-entry control to the existing Game Menu without creating a parallel roster or navigation system.'
+});
+fs.writeFileSync(patchManifestPath,JSON.stringify(patchManifest,null,2)+'\n');
 
 console.log('SC-034 deterministic source patch applied.');
