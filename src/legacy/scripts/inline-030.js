@@ -163,7 +163,14 @@
     }catch(_){}
 
     var joinedRound=Math.max(0,Number(state.currentRound||0));
-    var allMissed=Array.from({length:joinedRound},function(_,i){return i;});
+    var liveMode=String(
+      state.gameMode ||
+      (state.match && (state.match.gameMode || state.match.gameVariant || state.match.mode)) ||
+      ''
+    ).toLowerCase();
+    var firstPlayableRound=(liveMode==='turbo')?7:0;
+    var missedCount=Math.max(0,joinedRound-firstPlayableRound);
+    var allMissed=Array.from({length:missedCount},function(_,i){return firstPlayableRound+i;});
     var pending=allMissed.slice(-3);
     var scratched=allMissed.slice(0,Math.max(0,allMissed.length-3));
     if(!state.__sqCatchUp || typeof state.__sqCatchUp!=='object') state.__sqCatchUp={version:1,jobs:[],active:false};

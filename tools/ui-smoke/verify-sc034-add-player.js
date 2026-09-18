@@ -118,6 +118,37 @@ function assert(cond, msg) {
     const resumed = await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp?.active}));
     assert(resumed.p === 0 && resumed.r === 6 && resumed.active === false, 'normal play should resume at next live round');
 
+    // Turbo begins at 17s. Before the first 17s dart a late player may join,
+    // but Classic rounds 10-16 never existed and must not become catch-up work.
+    await page.evaluate(() => {
+      const mk = () => Array.from({length:14}, () => ({darts:[null,null,null],roundTotal:0}));
+      state.players = [
+        {id:'ta',name:'TURBO A',initials:'TA'},
+        {id:'tb',name:'TURBO B',initials:'TB'}
+      ];
+      state.score = [mk(),mk()];
+      state.match = {
+        mode:'turbo', gameMode:'turbo', gameVariant:'turbo',
+        gameFormat:'match_play', gameNumber:1, wins:[0,0], history:[]
+      };
+      state.gameMode='turbo';
+      state.matchAgg={hits:[{},{}],totals60:[0,0],totals100:[0,0],totals140:[0,0]};
+      state.currentRound=7; state.currentPlayer=0; state.currentDart=0;
+      state.history=[]; state.finished=false; delete state.__sqCatchUp;
+    });
+    const turboAdded = await page.evaluate(() =>
+      window.__sqAppendLatePlayer({id:'tc',name:'TURBO C',initials:'TC'}, 'registered')
+    );
+    assert(turboAdded === true, 'Turbo late player should be addable before first 17s dart');
+    const turboState = await page.evaluate(() => ({
+      players:state.players.map(p=>p.name),
+      job:JSON.parse(JSON.stringify(state.__sqCatchUp?.jobs?.[0]||null))
+    }));
+    assert(turboState.players.join('|') === 'TURBO A|TURBO B|TURBO C', 'Turbo late player must be final thrower');
+    assert(turboState.job && turboState.job.pendingRounds.length === 0, 'Turbo must not invent Classic catch-up rounds');
+    assert(turboState.job && turboState.job.scratchedRounds.length === 0, 'Turbo must not invent Classic scratched rounds');
+    await page.evaluate(() => { delete state.gameMode; });
+
     // Persist and reload during an active catch-up sequence.
     await page.evaluate(() => {
       const mk = () => Array.from({length:14}, () => ({darts:[null,null,null],roundTotal:0}));
