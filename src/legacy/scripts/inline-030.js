@@ -96,6 +96,13 @@
       try{ if(typeof updateUI==='function') updateUI(); else if(window.__sqLiveV3Sync) window.__sqLiveV3Sync(); }catch(_){ }
       try{ toast('New layout '+(v3on?'disabled':'enabled')); }catch(_){ }
     }});
+    var lateGate=(typeof window.__sqLateEntryStatus==='function')?window.__sqLateEntryStatus():{allowed:false,reason:'Late-entry controls unavailable.'};
+    var lateRow=addRow(m.body,{ico:'+',label:'Add Player',desc:(lateGate.allowed?'Join as final thrower':(lateGate.reason||'Unavailable')),cls:(lateGate.allowed?'green':''),onClick:function(){
+      if(!lateGate.allowed){ try{toast(lateGate.reason||'Player cannot join now.');}catch(_){} return; }
+      m.close();
+      try{ if(typeof window.__sqOpenLatePlayerDialog==='function') window.__sqOpenLatePlayerDialog(); else toast('Add Player unavailable.'); }catch(e){ console.error(e); }
+    }});
+    if(!lateGate.allowed){ lateRow.disabled=true; lateRow.setAttribute('aria-disabled','true'); }
     addRow(m.body,{ico:'−',label:'Remove Player',desc:'Remove from this game',onClick:function(){m.close(); openRemovePlayerMenu(window.__sqOpenGameMenu106);}});
     // Destructive group, set apart below a divider.
     try{ m.body.insertAdjacentHTML('beforeend','<div class="sq-menu106-sep" aria-hidden="true"></div>'); }catch(_){ }
