@@ -234,6 +234,12 @@ delegate = """function openGameScoresDialog() {
   if (!state.match || !Array.isArray(state.match.history) || !state.match.history.length) {
 """
 s = replace_once(s, anchor, delegate, 'engine game scorecard delegation')
+s = replace_once(
+    s,
+    '// ROUND SCORE (score) -> (if round completes: ROUND <n> COMPLETE -> NEXT UP.. <next target> -> <player> TO THROW FIRST)',
+    '// ROUND SCORE (score) -> (if round completes: ROUND <n> COMPLETE -> NEXT UP / <next target> -> <player> TO THROW)',
+    'engine Stage 3 NEXT UP comment'
+)
 write(path, s)
 
 # 6) Intentional legacy patch evidence.
