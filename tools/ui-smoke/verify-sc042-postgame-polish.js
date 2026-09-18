@@ -57,9 +57,13 @@ const H = require('./harness');
         return original ? original.apply(this, arguments) : undefined;
       };
 
-      openGameCompleteDialog();
+      try { show('game'); } catch (_) {}
+      try { if (typeof updateUI === 'function') updateUI(); } catch (_) {}
     });
 
+    await page.waitForFunction(() => document.body.dataset.page === 'game');
+    await page.waitForTimeout(180);
+    await page.evaluate(() => openGameCompleteDialog());
     await page.waitForSelector('.sq-gamecomplete-backdrop');
     const gameOver = await page.evaluate(() =>
       (window.__sqSc042PostgameDmdWrites || []).find(w => w.z2 === 'GAME OVER' && w.type === 'pulseFull') || null
