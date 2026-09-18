@@ -1,0 +1,62 @@
+name: SC-034 materialize batch runtime
+
+on:
+  push:
+    branches: [batch-sc034-sc036]
+    paths:
+      - src/game/**
+      - src/app/**
+      - src/live-game/**
+      - src/shell/**
+      - src/styles/**
+      - src/legacy/scripts/inline-030.js
+      - scripts/**
+      - .github/workflows/sc034-materialize.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sc034-materialize
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Install source tooling
+        run: npm ci --prefix scripts --ignore-scripts
+      - name: Materialize controlled runtime
+        run: node scripts/materialize-runtime.mjs
+      - name: Guard generated write set
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index\.html|src/legacy/scripts/inline-005\.js|src/legacy/styles/inline-002\.css)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected materialized paths:"
+            echo "$bad"
+            exit 1
+          fi
+          test -n "$changed"
+          git diff --check
+      - name: Commit generated runtime only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html src/legacy/scripts/inline-005.js src/legacy/styles/inline-002.css
+          git commit -m 'SC-034: materialize verified runtime'
+          git push origin HEAD:batch-sc034-sc036
