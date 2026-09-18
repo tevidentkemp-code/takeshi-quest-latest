@@ -4912,7 +4912,6 @@ const baseState = {
     id: null,
     targetWins: 4,      // default "first to 4 wins" – overwritten when you start a match
     gameNumber: 1,
-    autoRotateOrder: false,
     wins: [],
     history: [],
     completedLogged: false
@@ -8883,7 +8882,7 @@ if (mlStartBtn) {
       gameNumber: 1,
       // SC-033: ordinary Match Play rotates the starter one place each new game by default.
       // Practice / Vs Shadow remain on their existing order paths.
-      autoRotateOrder: (__selMode === 'match'),
+      autoRotateOrder: (__selMode === 'match') ? true : undefined,
       wins: Array.from({ length: state.players.length }, () => 0),
       history: [],
       completedLogged: false
@@ -19187,7 +19186,7 @@ if (recordSeries) {
 function __sqIsAutoThrowOrderMatch(){
   try{
     const m = (state && state.match) || {};
-    const gameFormat = String(m.gameFormat || '').toLowerCase();
+    const hasMatchOrderPolicy = (typeof m.autoRotateOrder === 'boolean');
     const isTournament = !!(
       m.tournament === true ||
       m.tournamentType ||
@@ -19196,9 +19195,11 @@ function __sqIsAutoThrowOrderMatch(){
       state?.__sqTournamentDraft ||
       state?.__sqTournamentActive
     );
-    const isPractice = !!(m.forcePractice || m.practiceType);
     const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') && __sqIsVsShadowRuntime();
-    return gameFormat === 'match_play' && !isTournament && !isPractice && !isVsShadow;
+    // The Match Play selection owns this boolean. Do not infer eligibility from
+    // mode/forcePractice: guest Match Play is intentionally reclassified as
+    // practice for persistence/stat eligibility after completion.
+    return hasMatchOrderPolicy && !isTournament && !isVsShadow;
   }catch(_){
     return false;
   }
