@@ -1,0 +1,156 @@
+name: SC-033 release candidate QA
+# Release refresh baseline: main 4cbe488a485c967c87932fcd147f45a22115d9be
+
+on:
+  push:
+    branches: [sc033-auto-throw-order]
+    paths:
+      - src/**
+      - tools/ui-smoke/**
+      - scripts/**
+      - package.json
+      - package-lock.json
+      - vite.config.*
+      - .github/workflows/sc033-release-candidate-qa.yml
+  pull_request:
+    paths:
+      - src/**
+      - tools/ui-smoke/**
+      - scripts/**
+      - package.json
+      - package-lock.json
+      - vite.config.*
+      - .github/workflows/sc033-release-candidate-qa.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sc033-release-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm current production ancestry and clean delivery surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+          test ! -e scripts/sc033-final-hardening.mjs
+          test ! -e .github/workflows/sc033-final-hardening-writer.yml
+          git diff --check origin/main...HEAD
+
+      - name: Install deterministic architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Verify semantic source authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/verify-modularization.mjs | tee sc033-modular.txt
+          node scripts/build-core-js-from-source.mjs --verify-current | tee sc033-js-authority.txt
+          node scripts/build-core-styles-from-source.mjs --verify-current | tee sc033-css-authority.txt
+          node tools/ui-smoke/verify-sc032-dmd-ownership.mjs | tee sc033-dmd-ownership.txt
+          node tools/ui-smoke/verify-sc030-dmd-v2.mjs | tee sc033-dmd-unit.txt
+          node tools/ui-smoke/verify-sc030-reduced-motion.mjs | tee sc033-motion-unit.txt
+          node tools/ui-smoke/verify-sc042-record-integrity.mjs | tee sc033-record-static.txt
+          node tools/ui-smoke/verify-sc045-dmd-arcade.mjs | tee sc033-arcade-static.txt
+          node --check src/game/engine.js
+          node --check src/app/router-ui.js
+          node --check tools/ui-smoke/verify-sc033-throw-order.js
+
+      - name: Build exact production candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build | tee sc033-vite-build.txt
+          npm run verify:dist | tee sc033-dist-verify.txt
+          node scripts/build-core-js-from-source.mjs --verify-current
+          node scripts/build-core-styles-from-source.mjs --verify-current
+
+      - name: Install deterministic browser QA
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Full source runtime acceptance
+        shell: bash
+        env:
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts-sc033-source
+          SQ_APP_URL: http://127.0.0.1:8123/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sc033-source.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          timeout 150s node tools/ui-smoke/verify-sc033-throw-order.js | tee sc033-source-throw-order.txt
+          node tools/ui-smoke/smoke.js | tee sc033-source-smoke.txt
+          node tools/ui-smoke/verify-sc014.js | tee sc033-source-setup.txt
+          node tools/ui-smoke/verify-saveplayer-card.js | tee sc033-source-saveplayer.txt
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sc033-source-classic.txt
+          node tools/ui-smoke/verify-sc042-record-integrity.js | tee sc033-source-record.txt
+          node tools/ui-smoke/verify-sc042-postgame-polish.js | tee sc033-source-postgame.txt
+          node tools/ui-smoke/verify-sc025.js | tee sc033-source-sc025.txt
+          node tools/ui-smoke/verify-sc045-dmd-arcade.js | tee sc033-source-arcade.txt
+          node tools/ui-smoke/verify-sc032-dmd-runtime.js | tee sc033-source-dmd.txt
+          node tools/ui-smoke/verify-sc030-reduced-motion-runtime.js | tee sc033-source-motion.txt
+          node tools/ui-smoke/verify-sc030-actions-runtime.js | tee sc033-source-actions.txt
+          node tools/ui-smoke/verify-sc030-undo-runtime.js | tee sc033-source-undo.txt
+          node tools/ui-smoke/verify-cloud-failure-resilience.js | tee sc033-source-cloud.txt
+
+      - name: Built dist runtime acceptance
+        shell: bash
+        env:
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts-sc033-dist
+          SQ_APP_URL: http://127.0.0.1:8124/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8124 --bind 127.0.0.1 --directory dist >/tmp/sc033-dist.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          timeout 150s node tools/ui-smoke/verify-sc033-throw-order.js | tee sc033-dist-throw-order.txt
+          node tools/ui-smoke/smoke.js | tee sc033-dist-smoke.txt
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sc033-dist-classic.txt
+          node tools/ui-smoke/verify-sc042-record-integrity.js | tee sc033-dist-record.txt
+          node tools/ui-smoke/verify-sc042-postgame-polish.js | tee sc033-dist-postgame.txt
+          node tools/ui-smoke/verify-sc045-dmd-arcade.js | tee sc033-dist-arcade.txt
+          node tools/ui-smoke/verify-sc032-dmd-runtime.js | tee sc033-dist-dmd.txt
+          node tools/ui-smoke/verify-sc030-reduced-motion-runtime.js | tee sc033-dist-motion.txt
+          node tools/ui-smoke/verify-sc030-actions-runtime.js | tee sc033-dist-actions.txt
+          node tools/ui-smoke/verify-sc030-undo-runtime.js | tee sc033-dist-undo.txt
+          node tools/ui-smoke/verify-cloud-failure-resilience.js | tee sc033-dist-cloud.txt
+
+      - name: Final candidate cleanliness
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check origin/main...HEAD
+          git status --short
+
+      - name: Keep SC-033 release-candidate evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sc033-release-candidate-evidence
+          retention-days: 14
+          path: |
+            sc033-*.txt
+            qa-artifacts-sc033-source/
+            qa-artifacts-sc033-dist/
