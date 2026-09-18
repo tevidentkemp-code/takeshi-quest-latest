@@ -74,6 +74,44 @@
   function doEndGame(){ window.__sqConfirm({ title:'End Game', message:'End game? Current game data will be cleared and you will go to the end-game screen.' }, function(){ resetCurrentGameKeepPlayers(); try{save();}catch(_){} try{ if(typeof showLeaderboard==='function') showLeaderboard(); else if(typeof _showPageSafe==='function') _showPageSafe('leaderboard'); }catch(e){console.error(e);} }); }
   function doEndMatch(){ window.__sqConfirm({ title:'End Match', message:'End match? This will clear the current match state and return to the start screen.' }, function(){ try{ clearTournamentRuntime('end match'); state=JSON.parse(JSON.stringify(baseState)); save(); }catch(_){} try{ if(typeof navigateToStartScreen==='function') navigateToStartScreen(); else show('details'); }catch(_){ } setTimeout(function(){try{ if(typeof arrangeStartActions==='function') arrangeStartActions(); ensureHomePanels(); }catch(_){ }},80); }); }
 
+  async function openAddPlayerMenu(prev){
+    var gate=(typeof window.__sqLateJoinStatus==='function')?window.__sqLateJoinStatus():{ok:false,reason:'Add Player is unavailable.'};
+    if(!gate.ok){try{toast(gate.reason);}catch(_){} if(prev)prev(); return;}
+    var m=openModalShell('Add Player','Joins as final thrower');
+    m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
+    var info=document.createElement('p');info.className='tag';info.textContent='Loading registered players…';m.body.appendChild(info);
+    try{
+      if(typeof window.__sqSyncPlayerCacheFromCloud!=='function')throw new Error('Player sync unavailable');
+      var sync=await window.__sqSyncPlayerCacheFromCloud();
+      if(!sync||sync.ok!==true)throw new Error((sync&&sync.reason)||'Supabase player sync failed');
+      var rows=(typeof getSavedPlayers==='function'?getSavedPlayers():[])||[];
+      var current=new Set((state.players||[]).map(function(p){return String((p&&p.id)||'').trim().toLowerCase()||('name:'+String((p&&p.name)||'').trim().toLowerCase());}));
+      rows=rows.filter(function(p){
+        var id=String((p&&p.id)||'').trim().toLowerCase();
+        var nk='name:'+String((p&&p.name)||'').trim().toLowerCase();
+        return p&&p.name&&!current.has(id||nk)&&!current.has(nk);
+      });
+      info.remove();
+      if(!rows.length){var none=document.createElement('p');none.className='tag';none.textContent='No other registered players are available.';m.body.appendChild(none);return;}
+      rows.forEach(function(p){
+        var label=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'')||p.name;
+        addRow(m.body,{ico:'+',label:label,desc:'Join as final thrower',cls:'green',onClick:function(){
+          var latest=(typeof window.__sqLateJoinStatus==='function')?window.__sqLateJoinStatus():{ok:false,reason:'Add Player is unavailable.'};
+          if(!latest.ok){try{toast(latest.reason);}catch(_){}return;}
+          var res=(typeof window.__sqAppendLatePlayer==='function')?window.__sqAppendLatePlayer(p):{ok:false,reason:'Add Player is unavailable.'};
+          if(!res||!res.ok){try{toast((res&&res.reason)||'Player could not be added.');}catch(_){}return;}
+          m.close();
+          try{if(typeof buildEverything==='function')buildEverything();}catch(e){console.error(e);}
+          try{if(typeof updateUI==='function')updateUI();}catch(e){console.error(e);}
+          try{toast(label+' added as final thrower');}catch(_){}
+        }});
+      });
+    }catch(e){
+      info.textContent='Registered players could not be verified from Supabase. Add Player is unavailable.';
+      try{console.warn('[SQ] SC-034 player load failed',e);}catch(_){}
+    }
+  }
+
   function openRemovePlayerMenu(prev){
     var m=openModalShell('Remove Player','Current game only');
     m.modal.querySelector('.sq-menu106-back').onclick=function(){ m.close(); if(prev) prev(); };
@@ -96,6 +134,9 @@
       try{ if(typeof updateUI==='function') updateUI(); else if(window.__sqLiveV3Sync) window.__sqLiveV3Sync(); }catch(_){ }
       try{ toast('New layout '+(v3on?'disabled':'enabled')); }catch(_){ }
     }});
+    var addGate=(typeof window.__sqLateJoinStatus==='function')?window.__sqLateJoinStatus():{ok:false,reason:'Add Player is unavailable.'};
+    var addPlayerRow=addRow(m.body,{ico:'+',label:'Add Player',desc:addGate.ok?'Join as final thrower':addGate.reason,cls:addGate.ok?'green':'',onClick:function(){m.close();openAddPlayerMenu(window.__sqOpenGameMenu106);}});
+    if(!addGate.ok){addPlayerRow.disabled=true;addPlayerRow.setAttribute('aria-disabled','true');}
     addRow(m.body,{ico:'−',label:'Remove Player',desc:'Remove from this game',onClick:function(){m.close(); openRemovePlayerMenu(window.__sqOpenGameMenu106);}});
     // Destructive group, set apart below a divider.
     try{ m.body.insertAdjacentHTML('beforeend','<div class="sq-menu106-sep" aria-hidden="true"></div>'); }catch(_){ }

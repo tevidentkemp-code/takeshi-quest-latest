@@ -2646,6 +2646,9 @@ if (mlStartBtn) {
       createdAtIso: _tsOverride || new Date().toISOString(),
       targetWins: games,
       gameNumber: 1,
+      // SC-033: ordinary Match Play rotates the starter one place each new game by default.
+      // Practice / Vs Shadow remain on their existing order paths.
+      autoRotateOrder: (__selMode === 'match') ? true : undefined,
       wins: Array.from({ length: state.players.length }, () => 0),
       history: [],
       completedLogged: false

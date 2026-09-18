@@ -1,7 +1,7 @@
 // SHATEKI-QUEST smoke suite.
 // Full canonical journey: home -> mode tree -> match card -> FT3 match length
-// -> throw order -> live game 1 -> leaderboard/NEXT GAME -> throw order -> live game 2
-// -> leaderboard/NEXT GAME -> throw order -> live game 3 -> leaderboard/END MATCH
+// -> throw order -> live game 1 -> leaderboard/NEXT GAME -> AUTO-rotated live game 2
+// -> leaderboard/NEXT GAME -> AUTO-rotated live game 3 -> leaderboard/END MATCH
 // -> game scores -> end match -> home.
 // Run: node smoke.js   (serve the repo root first, default http://localhost:8123)
 // Exit code 0 = pass. All Supabase traffic is network-blocked by the harness.
@@ -81,16 +81,23 @@ async function continueMatch(page, label, nextGameNumber) {
   check(`${label} leaderboard shows NEXT GAME`, lb.nextVisible, JSON.stringify(lb));
   check(`${label} leaderboard hides END MATCH`, !lb.endVisible, JSON.stringify(lb));
 
-  await page.click('#nextGameBtn');
-  await page.waitForFunction(() => !!document.querySelector('.modal-throworder'), { timeout: 8000 }).catch(() => {});
-  const orderModal = await page.$('.modal-throworder');
-  check(`${label}: NEXT GAME opens throw-order step`, !!orderModal);
-  const startNext = await page.$('.modal-throworder .to-start');
-  check(`${label}: throw-order step has START GAME`, !!startNext);
-  if (startNext) await startNext.click();
+  const before = await page.evaluate(() => ({
+    order: (state.players || []).map(p => String(p && p.name || '')),
+    auto: state?.match?.autoRotateOrder === true,
+  }));
+  check(`${label}: AUTO throw-order rotation is enabled`, before.auto, JSON.stringify(before));
 
+  await page.click('#nextGameBtn');
   await page.waitForFunction(() => document.body.dataset.page === 'game', { timeout: 15000 }).catch(() => {});
   await page.waitForTimeout(900);
+
+  const after = await page.evaluate(() => ({
+    order: (state.players || []).map(p => String(p && p.name || '')),
+    modal: !!document.querySelector('.modal-throworder'),
+  }));
+  const expected = before.order.length > 1 ? before.order.slice(1).concat(before.order[0]) : before.order.slice();
+  check(`${label}: NEXT GAME skips manual throw-order when AUTO is ON`, !after.modal, JSON.stringify(after));
+  check(`${label}: starter rotates exactly one place`, JSON.stringify(after.order) === JSON.stringify(expected), JSON.stringify({before:before.order, after:after.order, expected}));
   check(`NEXT GAME starts Game ${nextGameNumber}`, await page.evaluate(() => document.body.dataset.page === 'game'));
   check(`Game ${nextGameNumber} throw pad built`, await page.evaluate(() => document.querySelectorAll('#pad button').length >= 5));
 }
