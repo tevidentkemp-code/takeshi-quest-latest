@@ -194,7 +194,16 @@ function rotated(values) {
     await H.playToCompletion(page, { strongPlayerName: 'ALPHA' });
     await dismissCompletion(page);
     await finishToLeaderboard(page);
-    const offBefore = await page.evaluate(() => state.players.map(p => p.name));
+    const offState = await page.evaluate(() => ({
+      order: state.players.map(p => p.name),
+      auto: state.match.autoRotateOrder,
+      autoType: typeof state.match.autoRotateOrder,
+      mode: state.match.mode || null,
+      forcePractice: state.match.forcePractice === true,
+    }));
+    assert.equal(offState.autoType, 'boolean', 'Guest Match Play lost its explicit throw-order policy after Game 1 classification');
+    assert.equal(offState.auto, false, 'AUTO OFF preference changed during Game 1 completion');
+    const offBefore = offState.order;
     await page.click('#nextGameBtn');
     await page.waitForSelector('.modal-throworder');
     const offDialog = await page.evaluate(() => ({
