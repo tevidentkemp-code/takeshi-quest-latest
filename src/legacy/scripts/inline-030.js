@@ -74,6 +74,162 @@
   function doEndGame(){ window.__sqConfirm({ title:'End Game', message:'End game? Current game data will be cleared and you will go to the end-game screen.' }, function(){ resetCurrentGameKeepPlayers(); try{save();}catch(_){} try{ if(typeof showLeaderboard==='function') showLeaderboard(); else if(typeof _showPageSafe==='function') _showPageSafe('leaderboard'); }catch(e){console.error(e);} }); }
   function doEndMatch(){ window.__sqConfirm({ title:'End Match', message:'End match? This will clear the current match state and return to the start screen.' }, function(){ try{ clearTournamentRuntime('end match'); state=JSON.parse(JSON.stringify(baseState)); save(); }catch(_){} try{ if(typeof navigateToStartScreen==='function') navigateToStartScreen(); else show('details'); }catch(_){ } setTimeout(function(){try{ if(typeof arrangeStartActions==='function') arrangeStartActions(); ensureHomePanels(); }catch(_){ }},80); }); }
 
+  function __sqLateJoinEligibility(){
+    try{
+      if(!state || state.finished) return {ok:false, reason:'Game is not active.'};
+      if(state.suddenDeath && state.suddenDeath.active) return {ok:false, reason:'Unavailable during a tiebreak.'};
+      var players=Array.isArray(state.players)?state.players:[];
+      if(players.length>=6) return {ok:false, reason:'Maximum 6 players.'};
+      try{ if(typeof __sqIsVsShadowRuntime==='function' && __sqIsVsShadowRuntime()) return {ok:false, reason:'Not available in Vs Shadow.'}; }catch(_){}
+      try{
+        var m=state.match||{};
+        if(m.tournamentType || m.tournamentId || state.__sqTournamentActive || window.__sqTournamentDraft) return {ok:false, reason:'Not available during Tournament play.'};
+      }catch(_){}
+      var round=Number(state.currentRound||0);
+      var dart=Number(state.currentDart||0);
+      var player=Number(state.currentPlayer||0);
+      var seventeenStarted=(Array.isArray(state.history)?state.history:[]).some(function(h){return Number(h&&h.round)===7;});
+      if(round>7 || (round===7 && (dart>0 || player>0 || seventeenStarted))){
+        return {ok:false, reason:'Late entry closes once 17s begins.'};
+      }
+      return {ok:true, reason:'Joins as the final thrower.'};
+    }catch(e){ return {ok:false, reason:'Add Player unavailable.'}; }
+  }
+  window.__sqLateJoinEligibility=__sqLateJoinEligibility;
+
+  function __sqLateJoinPlayerKey(p,idx){
+    var raw=(p&&(p.id||p.player_id||p.name||p.player_name))||('idx:'+idx);
+    return String(raw||('idx:'+idx)).trim().toLowerCase();
+  }
+
+  function __sqLateJoinEmptyBoard(){
+    var n=(typeof MAX_ROUNDS==='number'&&MAX_ROUNDS>0)?MAX_ROUNDS:14;
+    return Array.from({length:n},function(){return {darts:[null,null,null],roundTotal:0};});
+  }
+
+  function __sqNormaliseLateJoinPlayer(row,type){
+    row=(row&&typeof row==='object')?row:{name:String(row||'').trim()};
+    var name=String(row.name||row.player_name||row.display_name||'').trim();
+    if(!name) return null;
+    var id=row.id||row.player_id||null;
+    return {
+      id:id,
+      player_id:id,
+      name:name,
+      first_name:String(row.first_name||'').trim(),
+      last_name:String(row.last_name||'').trim(),
+      nickname:String(row.nickname||'').trim(),
+      initials:String(row.initials||'').trim() || name.slice(0,2).toUpperCase(),
+      type:type || (id?'registered':'guest')
+    };
+  }
+
+  function __sqAppendLatePlayer(row,type){
+    var gate=__sqLateJoinEligibility();
+    if(!gate.ok){ try{toast(gate.reason);}catch(_){} return false; }
+    var p=__sqNormaliseLateJoinPlayer(row,type);
+    if(!p) return false;
+    var players=Array.isArray(state.players)?state.players:(state.players=[]);
+    var key=__sqLateJoinPlayerKey(p,players.length);
+    var dupe=players.some(function(existing,idx){return __sqLateJoinPlayerKey(existing,idx)===key || String(existing&&existing.name||'').trim().toLowerCase()===p.name.toLowerCase();});
+    if(dupe){ try{toast('Player is already in this game.');}catch(_){} return false; }
+
+    var idx=players.length;
+    players.push(p);
+    if(typeof assignUniqueColors==='function'){ try{assignUniqueColors(players);}catch(_){} }
+
+    if(!Array.isArray(state.score)) state.score=[];
+    state.score.push(__sqLateJoinEmptyBoard());
+
+    if(!state.match) state.match={};
+    if(!Array.isArray(state.match.wins)) state.match.wins=[];
+    while(state.match.wins.length<idx) state.match.wins.push(0);
+    state.match.wins.push(0);
+
+    try{
+      if(typeof ensureMatchAgg==='function') ensureMatchAgg();
+      if(state.matchAgg){
+        if(!Array.isArray(state.matchAgg.hits)) state.matchAgg.hits=[];
+        if(!Array.isArray(state.matchAgg.totals60)) state.matchAgg.totals60=[];
+        if(!Array.isArray(state.matchAgg.totals100)) state.matchAgg.totals100=[];
+        if(!Array.isArray(state.matchAgg.totals140)) state.matchAgg.totals140=[];
+        state.matchAgg.hits[idx]={};
+        state.matchAgg.totals60[idx]=0;
+        state.matchAgg.totals100[idx]=0;
+        state.matchAgg.totals140[idx]=0;
+      }
+    }catch(_){}
+
+    var joinedRound=Math.max(0,Number(state.currentRound||0));
+    var allMissed=Array.from({length:joinedRound},function(_,i){return i;});
+    var pending=allMissed.slice(-3);
+    var scratched=allMissed.slice(0,Math.max(0,allMissed.length-3));
+    if(!state.__sqCatchUp || typeof state.__sqCatchUp!=='object') state.__sqCatchUp={version:1,jobs:[],active:false};
+    if(!Array.isArray(state.__sqCatchUp.jobs)) state.__sqCatchUp.jobs=[];
+    state.__sqCatchUp.jobs.push({
+      kind:'lateJoin',
+      playerIndex:idx,
+      playerKey:key,
+      joinedRound:joinedRound,
+      pendingRounds:pending.slice(),
+      scratchedRounds:scratched.slice(),
+      completed:pending.length===0
+    });
+
+    try{save();}catch(_){}
+    try{
+      var rebuild=(typeof buildEverythingChunked==='function')?buildEverythingChunked():null;
+      if(rebuild&&typeof rebuild.then==='function') rebuild.then(function(){try{updateUI();}catch(_){}});
+      else if(typeof updateUI==='function') updateUI();
+    }catch(_){}
+    try{toast(p.name+' added as final thrower.');}catch(_){}
+    return true;
+  }
+  window.__sqAppendLatePlayer=__sqAppendLatePlayer;
+
+  function openAddGuestMenu(prev){
+    var m=openModalShell('Add Guest Player','Joins as the final thrower');
+    m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
+    var input=document.createElement('input');
+    input.className='ms-player-input';
+    input.type='text';
+    input.maxLength=40;
+    input.placeholder='Guest name';
+    input.autocomplete='off';
+    var add=document.createElement('button');
+    add.type='button'; add.className='btn'; add.textContent='ADD PLAYER';
+    add.onclick=function(){
+      var name=String(input.value||'').trim();
+      if(!name){try{toast('Enter a player name.');}catch(_){}return;}
+      if(__sqAppendLatePlayer({name:name},'guest')){m.close();}
+    };
+    m.body.append(input,add);
+    setTimeout(function(){try{input.focus();}catch(_){}},0);
+  }
+
+  async function openAddPlayerMenu(prev){
+    var gate=__sqLateJoinEligibility();
+    if(!gate.ok){try{toast(gate.reason);}catch(_){}return;}
+    var m=openModalShell('Add Player','Joins as the final thrower');
+    m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
+    var active=new Set((state.players||[]).map(function(p){return String(p&&p.name||'').trim().toLowerCase();}).filter(Boolean));
+    var rows=[];
+    try{ if(typeof cloudListPlayers==='function') rows=await cloudListPlayers(); }catch(e){ console.warn('[SQ] Add Player cloud list failed',e); }
+    rows=(Array.isArray(rows)?rows:[]).filter(function(p){return !active.has(String(p&&p.name||'').trim().toLowerCase());});
+    if(rows.length){
+      rows.forEach(function(p){
+        var name=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p.name || 'Player';
+        addRow(m.body,{ico:'＋',label:name,desc:'Registered player • final thrower',cls:'green',onClick:function(){
+          if(__sqAppendLatePlayer(p,'registered')) m.close();
+        }});
+      });
+    }else{
+      var empty=document.createElement('p'); empty.className='tag'; empty.textContent='No other registered players available.'; m.body.appendChild(empty);
+    }
+    addRow(m.body,{ico:'＋',label:'Guest Player',desc:'Add by name • may change game classification',onClick:function(){m.close();openAddGuestMenu(function(){openAddPlayerMenu(prev);});}});
+  }
+  window.__sqOpenAddPlayerMenu=openAddPlayerMenu;
+
   function openRemovePlayerMenu(prev){
     var m=openModalShell('Remove Player','Current game only');
     m.modal.querySelector('.sq-menu106-back').onclick=function(){ m.close(); if(prev) prev(); };
@@ -95,6 +251,11 @@
       m.close();
       try{ if(typeof updateUI==='function') updateUI(); else if(window.__sqLiveV3Sync) window.__sqLiveV3Sync(); }catch(_){ }
       try{ toast('New layout '+(v3on?'disabled':'enabled')); }catch(_){ }
+    }});
+    var __addGate=__sqLateJoinEligibility();
+    addRow(m.body,{ico:'＋',label:'Add Player',desc:(__addGate.ok?'Final thrower • available before 17s':__addGate.reason),cls:(__addGate.ok?'green':''),onClick:function(){
+      if(!__addGate.ok){try{toast(__addGate.reason);}catch(_){}return;}
+      m.close(); openAddPlayerMenu(window.__sqOpenGameMenu106);
     }});
     addRow(m.body,{ico:'−',label:'Remove Player',desc:'Remove from this game',onClick:function(){m.close(); openRemovePlayerMenu(window.__sqOpenGameMenu106);}});
     // Destructive group, set apart below a divider.
