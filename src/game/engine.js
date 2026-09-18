@@ -1487,7 +1487,13 @@ function showLeaderboard() {
         return;
       }
       state.finished = false;
-      startNewGame();      // opens throw-order dialog, then goes to Game
+      // SC-033: when Match Play AUTO is enabled, rotate exactly one place and
+      // start immediately. AUTO OFF preserves the existing manual/re-cork step.
+      if (__sqAutoThrowOrderEnabled() && __sqRotateThrowOrderOnePlace()) {
+        startNewGame(true);
+        return;
+      }
+      startNewGame();      // AUTO OFF / non-match path: opens throw-order dialog
     };
   }
 
@@ -2278,6 +2284,40 @@ if (recordSeries) {
 }
 
 // Throw order selection
+// SC-033 keeps ordinary Match Play order ownership inside the existing player-array
+// model. Practice, Vs Shadow and Tournament are deliberately excluded.
+function __sqIsAutoThrowOrderMatch(){
+  try{
+    const m = (state && state.match) || {};
+    const gameFormat = String(m.gameFormat || '').toLowerCase();
+    const isTournament = !!(
+      m.tournament === true ||
+      m.tournamentType ||
+      m.tournamentSize ||
+      m.tournamentMatch ||
+      state?.__sqTournamentDraft ||
+      state?.__sqTournamentActive
+    );
+    const isPractice = !!(m.forcePractice || m.practiceType);
+    const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') && __sqIsVsShadowRuntime();
+    return gameFormat === 'match_play' && !isTournament && !isPractice && !isVsShadow;
+  }catch(_){
+    return false;
+  }
+}
+
+function __sqAutoThrowOrderEnabled(){
+  return __sqIsAutoThrowOrderMatch() && state?.match?.autoRotateOrder === true;
+}
+
+function __sqRotateThrowOrderOnePlace(){
+  if (!__sqIsAutoThrowOrderMatch() || !Array.isArray(state?.players) || state.players.length < 2) return false;
+  // Move first -> last by repeatedly using the canonical swap helper. That helper
+  // remaps all index-owned match data with the players, preserving identity.
+  for (let i = 0; i < state.players.length - 1; i++) swapPlayers(i, i + 1);
+  return true;
+}
+
 function showPlayerOrderDialog() {
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop';
@@ -2297,7 +2337,9 @@ function showPlayerOrderDialog() {
   const sub = document.createElement('div');
   sub.className = 'to-subtitle';
   // match length is already chosen; show current game index if available
-  const gnum = (state && typeof state.gameNumber === 'number' && state.gameNumber > 0) ? state.gameNumber : 1;
+  const gnum = (state && state.match && typeof state.match.gameNumber === 'number' && state.match.gameNumber > 0)
+    ? state.match.gameNumber
+    : ((state && typeof state.gameNumber === 'number' && state.gameNumber > 0) ? state.gameNumber : 1);
   sub.textContent = 'DECIDE THE LINEUP FOR GAME ' + gnum;
 
   titleWrap.append(h, sub);
@@ -2368,6 +2410,46 @@ function showPlayerOrderDialog() {
   render();
   body.appendChild(list);
 
+  const autoEligible = __sqIsAutoThrowOrderMatch();
+  let autoOrderPending = !!(autoEligible && state?.match?.autoRotateOrder === true);
+  if (autoEligible) {
+    const autoPanel = document.createElement('div');
+    autoPanel.className = 'to-auto-order';
+
+    const autoCopy = document.createElement('div');
+    autoCopy.className = 'to-auto-copy';
+
+    const autoTitle = document.createElement('div');
+    autoTitle.className = 'to-auto-title';
+    autoTitle.textContent = 'AUTO ROTATE';
+
+    const autoDesc = document.createElement('div');
+    autoDesc.className = 'to-auto-desc';
+    autoDesc.textContent = 'MOVE THE STARTER ONE PLACE EACH NEW GAME';
+
+    autoCopy.append(autoTitle, autoDesc);
+
+    const autoToggle = document.createElement('button');
+    autoToggle.type = 'button';
+    autoToggle.className = 'to-auto-toggle';
+    autoToggle.setAttribute('aria-label', 'Automatic throw-order rotation');
+
+    const syncAutoToggle = () => {
+      autoToggle.dataset.enabled = autoOrderPending ? 'true' : 'false';
+      autoToggle.setAttribute('aria-pressed', String(autoOrderPending));
+      autoToggle.textContent = autoOrderPending ? 'AUTO ON' : 'AUTO OFF';
+    };
+    syncAutoToggle();
+
+    autoToggle.onclick = () => {
+      autoOrderPending = !autoOrderPending;
+      syncAutoToggle();
+    };
+
+    autoPanel.append(autoCopy, autoToggle);
+    body.appendChild(autoPanel);
+  }
+
   const actions = document.createElement('div');
   actions.className = 'to-actions';
 
@@ -2377,7 +2459,11 @@ function showPlayerOrderDialog() {
   startBtn.className = (__mode === 'practice') ? 'btn to-start to-blueLight practice-cta' : 'btn to-start practice-cta';
   startBtn.type = 'button';
   startBtn.innerHTML = 'START GAME <span class="to-start-ic">▶</span>';
-  startBtn.onclick = () => { overlay.remove(); startNewGame(true); };
+  startBtn.onclick = () => {
+    if (autoEligible && state && state.match) state.match.autoRotateOrder = !!autoOrderPending;
+    overlay.remove();
+    startNewGame(true);
+  };
 
   const backBtn = document.createElement('button');
   backBtn.className = 'btn to-back ms2-back';
@@ -2483,6 +2569,11 @@ function swapPlayers(i, j) {
     state.match.history.forEach(g => {
       if (g && Array.isArray(g.totals)) {
         [g.totals[i], g.totals[j]] = [g.totals[j], g.totals[i]];
+      }
+      // Historical round boards are index-owned too. Keep them aligned with
+      // player identity whenever manual or automatic order changes.
+      if (g && Array.isArray(g.board)) {
+        [g.board[i], g.board[j]] = [g.board[j], g.board[i]];
       }
     });
   }
