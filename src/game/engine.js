@@ -116,6 +116,12 @@ function recordThrow(spec){
   const rIndex    = state.currentRound;
   const pIndex    = state.currentPlayer;
   const dartIndex = state.currentDart;
+  const __sqCatchupActiveAtThrow = state.__sqLateCatchupActive || null;
+  const __sqLateCatchupAtThrow = !!(
+    __sqCatchupActiveAtThrow &&
+    Number(__sqCatchupActiveAtThrow.roundIndex) === Number(rIndex) &&
+    Number((typeof __sqLateEntryFindPlayerIndex === 'function') ? __sqLateEntryFindPlayerIndex(__sqCatchupActiveAtThrow.playerKey) : __sqCatchupActiveAtThrow.playerIndex) === Number(pIndex)
+  );
 
   if (rIndex < 0 || rIndex >= MAX_ROUNDS) return;
   if (pIndex < 0 || pIndex >= state.players.length) return;
@@ -729,7 +735,10 @@ setTimeout(() => {
     player:    pIndex,
     round:     rIndex,
     dartIndex: dartIndex,
-    throw:     dartObj
+    throw:     dartObj,
+    lateCatchup: __sqLateCatchupAtThrow,
+    lateCatchupPlayerKey: __sqLateCatchupAtThrow ? String(__sqCatchupActiveAtThrow?.playerKey || '') : '',
+    lateCatchupResumeRound: __sqLateCatchupAtThrow ? Number(__sqCatchupActiveAtThrow?.resumeRound) : null
   });
 
   // Match aggregates
@@ -747,20 +756,33 @@ setTimeout(() => {
 
 {
   }
-  // Advance dart / player / round
+  // Advance dart / player / round.
+  // SC-034: a catch-up visit stays isolated from the live table cursor; normal
+  // play resumes only after the permitted missed rounds have been completed.
   if (state.currentDart < 2) {
     state.currentDart++;
   } else {
     state.currentDart = 0;
-    if (state.currentPlayer < state.players.length - 1) {
-      state.currentPlayer++;
-    } else {
-      state.currentPlayer = 0;
-      if (state.currentRound < MAX_ROUNDS - 1) {
-        state.currentRound++;
+    const __sqCatchupHandled = __sqLateCatchupAtThrow &&
+      typeof __sqCompleteLateEntryCatchupVisit === 'function' &&
+      __sqCompleteLateEntryCatchupVisit(pIndex, rIndex);
+
+    if (!__sqCatchupHandled) {
+      if (state.currentPlayer < state.players.length - 1) {
+        state.currentPlayer++;
       } else {
-        // Game done – completion dialog will open
-        state.finished = true;
+        const __sqResumeRound = Number(state.currentRound) + 1;
+        const __sqStartedCatchup = typeof __sqBeginLateEntryCatchup === 'function' &&
+          __sqBeginLateEntryCatchup(__sqResumeRound);
+        if (!__sqStartedCatchup) {
+          state.currentPlayer = 0;
+          if (state.currentRound < MAX_ROUNDS - 1) {
+            state.currentRound++;
+          } else {
+            // Game done – completion dialog will open
+            state.finished = true;
+          }
+        }
       }
     }
   }
@@ -862,7 +884,19 @@ function undo(){
     }
   }
 
+  if (state.__sqLateCatchupActive && last.lateCatchup !== true) {
+    try{
+      const activeKey = state.__sqLateCatchupActive.playerKey;
+      const activeItem = Array.isArray(state.lateEntryCatchups) ? state.lateEntryCatchups.find(x => x && x.playerKey === activeKey) : null;
+      if (activeItem) activeItem.active = false;
+    }catch(_){ }
+    delete state.__sqLateCatchupActive;
+  }
+
   state.history.pop();
+  if (last.lateCatchup === true && typeof __sqRestoreLateEntryCatchupForUndo === 'function') {
+    __sqRestoreLateEntryCatchupForUndo(last);
+  }
   const { player, round, dartIndex } = last;
 
   const entry = state.score?.[player]?.[round];
@@ -2519,6 +2553,10 @@ function startNewGame(setOrder=false){
   }catch(_){ }
   // <<< PATCH:practice-multi-game-save-reset END
 
+  try{
+    delete state.lateEntryCatchups;
+    delete state.__sqLateCatchupActive;
+  }catch(_){ }
   state.__gameToken = (state.__gameToken || 0) + 1;
   state._decider = null;
   state.score = Array.from({length:state.players.length},
