@@ -69,7 +69,7 @@ function assert(cond, msg) {
     // Game Menu must expose the explicit return path.
     await page.evaluate(() => window.__sqOpenGameMenu106());
     await page.waitForTimeout(100);
-    const menuText = await page.locator('.sq-menu106').last().innerText().catch(()=> '');
+    const menuText = await page.locator('.sq-menu106-modal').last().innerText().catch(()=> '');
     assert(/PLAYER RETURNED/i.test(menuText) && /BETA/i.test(menuText), 'Game Menu must expose Player Returned for absent players');
     await page.keyboard.press('Escape').catch(()=>{});
 
