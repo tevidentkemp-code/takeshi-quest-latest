@@ -49,15 +49,12 @@
       }
       if (scores) stack.appendChild(scores);
 
-      // Restore the STATS action on the leaderboard: the static top row that
-      // hosted it is display:none, so relocate #statsHubBtnFinal into the
-      // action stack (audit N-4). Its openStatsHubDialog handler is preserved.
+      // SC-047: Match Leaderboard no longer carries a STATS action.
+      // Keep the legacy static control out of the visible action stack.
       var statsFinal = document.getElementById('statsHubBtnFinal');
       if (statsFinal) {
-        statsFinal.textContent = 'STATS';
-        statsFinal.classList.remove('letter-throw', 'top-throw');
-        statsFinal.classList.add('btn', 'big', 'sq-fix170-stats');
-        if (statsFinal.parentElement !== stack) stack.appendChild(statsFinal);
+        statsFinal.classList.add('hidden');
+        statsFinal.style.display = 'none';
       }
 
       // The game engine owns whether END MATCH is visible. Do not override

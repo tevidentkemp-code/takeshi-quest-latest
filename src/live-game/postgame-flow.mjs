@@ -304,6 +304,24 @@ body .modal-decider .dtBullRow .dtBullBtn.inner[data-bull="Inner"]{
   width:100%;
   margin:0;
 }
+/* SC-047: leaderboard GAME SCORES reuses this exact scorecard component. */
+.sq-pg-scorecard-backdrop .sq-pg-scorecard-dialog{
+  width:min(94vw,620px);
+  max-width:620px;
+  max-height:min(86vh,780px);
+  overflow:auto;
+}
+.sq-pg-scorecard-dialog .gc-arcade-shell{
+  min-height:0 !important;
+  padding:24px 18px 18px !important;
+}
+.sq-pg-scorecard-dialog .sq-pg-scorecard{
+  display:block !important;
+}
+.sq-pg-scorecard-dialog .sq-pg-nav{
+  margin-top:18px;
+}
+
 @media (max-width:560px){
   .modal-gamecomplete.sq-gc-arcade .gc-arcade-shell{ min-height:0; padding:28px 18px 20px; }
   .modal-gamecomplete.sq-gc-arcade .gc-arcade-content{ min-height:360px; }
@@ -375,6 +393,70 @@ function buildScorecard(modal, st) {
     list.appendChild(el);
   });
   return { screen, rows };
+}
+
+function openGameScorecardDialog(stOverride = null) {
+  const st = stOverride || getState();
+  if (!st || !Array.isArray(st.players) || !st.players.length) return false;
+  injectStyles();
+
+  document.querySelectorAll('.sq-pg-scorecard-backdrop').forEach(node => {
+    try { node.remove(); } catch (_) {}
+  });
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-backdrop sq-pg-scorecard-backdrop';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal modal-gamecomplete sq-gc-arcade sq-pg-scorecard-dialog';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', 'Game Scorecard');
+
+  const shell = document.createElement('div');
+  shell.className = 'gc-arcade-shell';
+
+  const closeTop = document.createElement('button');
+  closeTop.type = 'button';
+  closeTop.className = 'gc-close';
+  closeTop.setAttribute('aria-label', 'Close');
+  closeTop.textContent = '✕';
+
+  const built = buildScorecard(modal, st);
+  const scorecard = built.screen;
+  const rows = built.rows;
+  scorecard.hidden = false;
+
+  const nav = document.createElement('div');
+  nav.className = 'sq-pg-nav';
+  const closeBottom = document.createElement('button');
+  closeBottom.type = 'button';
+  closeBottom.className = 'sq-pg-next';
+  closeBottom.textContent = 'CLOSE';
+  nav.appendChild(closeBottom);
+
+  shell.appendChild(closeTop);
+  shell.appendChild(scorecard);
+  shell.appendChild(nav);
+  modal.appendChild(shell);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  const close = () => {
+    try { document.removeEventListener('keydown', onKey); } catch (_) {}
+    try { overlay.remove(); } catch (_) {}
+  };
+  const onKey = event => {
+    if (event && event.key === 'Escape') close();
+  };
+  closeTop.onclick = close;
+  closeBottom.onclick = close;
+  overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
+  document.addEventListener('keydown', onKey);
+
+  hydrateRecordBadges(st, rows, scorecard);
+  try { closeTop.focus(); } catch (_) {}
+  return true;
 }
 
 async function hydrateRecordBadges(st, rows, scorecard) {
@@ -544,6 +626,7 @@ function installPostGameFlow() {
 
 function boot() {
   injectStyles();
+  if (typeof window !== 'undefined') window.__sqOpenGameScorecardDialog = openGameScorecardDialog;
   let tries = 0;
   const attempt = () => {
     tries += 1;
@@ -558,4 +641,4 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   else boot();
 }
 
-export { installPostGameFlow, upgradePostGameOverlay, scorecardRows };
+export { installPostGameFlow, upgradePostGameOverlay, scorecardRows, openGameScorecardDialog };

@@ -426,7 +426,7 @@ try {
         const roundTotal = (entry && entry.darts) ? entry.darts.reduce((s,d)=> s + (d?.points||0), 0) : 0;
 
         // Stage 3: post-turn sequence:
-// ROUND SCORE (score) -> (if round completes: ROUND <n> COMPLETE -> NEXT UP.. <next target> -> <player> TO THROW FIRST)
+// ROUND SCORE (score) -> (if round completes: ROUND <n> COMPLETE -> NEXT UP / <next target> -> <player> TO THROW)
 // else: NEXT UP -> <player>
 const holdNameMs = 240; // tiny settle
 const baseDelay = 180;  // let last-dart callout land
@@ -1525,6 +1525,12 @@ function showLeaderboard() {
 }
 
 function openGameScoresDialog() {
+  try {
+    if (typeof window.__sqOpenGameScorecardDialog === 'function' && window.__sqOpenGameScorecardDialog()) return;
+  } catch (err) {
+    try { console.warn('[SC-047] modern Game Scorecard unavailable; using legacy fallback', err); } catch (_) {}
+  }
+
   if (!state.match || !Array.isArray(state.match.history) || !state.match.history.length) {
     toast('No completed games yet.');
     return;

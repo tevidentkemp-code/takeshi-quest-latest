@@ -891,6 +891,28 @@ function thresholdNativeToAmber(){
     }
     // <<< PATCH:SC045_PINBALL_SCENE_TYPES END
 
+    // >>> PATCH:SC047_DMD_GAME_OVER_PULSE START
+    // Full-DMD centred slow pulse for the completed-game background.
+    // Text never moves laterally; reduced-motion users get a fixed centre frame.
+    if (active && active.type === 'pulseCenter') {
+      const t = (z2t || '').toUpperCase();
+      if (t) {
+        const reduce = __sqSc045ReducedMotion();
+        const age = Math.max(0, now - active.start);
+        const cycleMs = 2400;
+        const wave = reduce ? 0 : (Math.sin((age / cycleMs) * Math.PI * 2 - Math.PI / 2) + 1) / 2;
+        const basePx = Math.max(TEXT.topPx, TEXT.botPx) + 4;
+        const px = Math.round(basePx + wave * 7);
+        const w = measureTextPx(t, px, 900);
+        const x = Math.round((NATIVE_W - w) / 2);
+        const y = Math.floor((NATIVE_H / 2) + px * 0.35);
+        drawTextPx(t, x, y, px, 900);
+      }
+      thresholdNativeToAmber();
+      return;
+    }
+    // <<< PATCH:SC047_DMD_GAME_OVER_PULSE END
+
         // >>> PATCH:SQ_DMD_MARQUEE_FULL START
     // Special scene type: marqueeFull (scroll Z2 text across the FULL DMD area; hides all other zones)
     if (active && active.type === 'marqueeFull') {
@@ -1111,7 +1133,7 @@ if (!active || active.type === "idle") {
     __sqDmdLastZ3 = (z3 ?? "").toString();
 
     enqueue({
-      type: o.type || "hold", // hold | flash | wipe | shake | roll | idle | anticipationEyes | dolphinSwim | bullseyeHit
+      type: o.type || "hold", // hold | flash | wipe | shake | roll | idle | pulseCenter | anticipationEyes | dolphinSwim | bullseyeHit
       dir: o.dir || "fwd",     // for wipe: fwd | rev
       revealMs: (typeof o.revealMs === "number" ? o.revealMs : undefined),
       amp: (typeof o.amp === "number" ? o.amp : undefined), // for shake

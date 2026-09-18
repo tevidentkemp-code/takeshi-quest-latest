@@ -5162,12 +5162,12 @@ function openGameCompleteDialog() {
   const __isVsShadowComplete = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
 
   // Presentation-only finished-game state: once completion is valid, replace
-  // the last live-game DMD frame with a cabinet-style full-width GAME OVER
-  // marquee. The next startNewGame(true) hard-clears this scene.
+  // the last live-game DMD frame with a centred, slow-breathing GAME OVER.
+  // No lateral movement or strobe; the next fresh game hard-clears this scene.
   try{
     window.__sqDmdStopPreThrow?.();
     window.__sqDmdHardClearQueue?.();
-    window.sqDmdShowZones?.({ z2:'GAME OVER', z3:'' }, { type:'marqueeFull', ms:60 * 60 * 1000 });
+    window.sqDmdShowZones?.({ z2:'GAME OVER', z3:'' }, { type:'pulseCenter', ms:60 * 60 * 1000 });
   }catch(_){ }
 
   const totals = state.players.map((_, i) => totalScoreForPlayer(i));
@@ -17320,7 +17320,7 @@ try {
         const roundTotal = (entry && entry.darts) ? entry.darts.reduce((s,d)=> s + (d?.points||0), 0) : 0;
 
         // Stage 3: post-turn sequence:
-// ROUND SCORE (score) -> (if round completes: ROUND <n> COMPLETE -> NEXT UP.. <next target> -> <player> TO THROW FIRST)
+// ROUND SCORE (score) -> (if round completes: ROUND <n> COMPLETE -> NEXT UP / <next target> -> <player> TO THROW)
 // else: NEXT UP -> <player>
 const holdNameMs = 240; // tiny settle
 const baseDelay = 180;  // let last-dart callout land
@@ -18419,6 +18419,12 @@ function showLeaderboard() {
 }
 
 function openGameScoresDialog() {
+  try {
+    if (typeof window.__sqOpenGameScorecardDialog === 'function' && window.__sqOpenGameScorecardDialog()) return;
+  } catch (err) {
+    try { console.warn('[SC-047] modern Game Scorecard unavailable; using legacy fallback', err); } catch (_) {}
+  }
+
   if (!state.match || !Array.isArray(state.match.history) || !state.match.history.length) {
     toast('No completed games yet.');
     return;
