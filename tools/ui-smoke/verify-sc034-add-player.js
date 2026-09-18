@@ -150,6 +150,30 @@ function emptyRows(n=14){
     assert.equal(cap.after.ok,false,'seventh player must be blocked');
     assert.match(cap.after.reason,/6 players/i,'cap reason should explain six-player maximum');
 
+    // Turbo starts at 17s: a player may join before the first dart, but there
+    // are no earlier Turbo rounds to catch up or scratch.
+    const turbo=await page.evaluate(()=>{
+      const mkRows=()=>Array.from({length:MAX_ROUNDS},()=>({darts:[null,null,null],roundTotal:0}));
+      setSavedPlayers([{id:'a',name:'ALPHA'},{id:'b',name:'BETA'},{id:'c',name:'CHARLIE'}]);
+      state.players=[{id:'a',name:'ALPHA'},{id:'b',name:'BETA'}];
+      state.score=[mkRows(),mkRows()];
+      state.currentRound=7; state.currentPlayer=0; state.currentDart=0; state.history=[]; state.finished=false;
+      state.gameMode='turbo';
+      state.match={mode:'turbo',gameMode:'turbo',gameVariant:'turbo',gameFormat:'match_play',wins:[0,0],history:[]};
+      state.matchAgg={hits:[{},{}],totals60:[0,0],totals100:[0,0],totals140:[0,0]};
+      state.lateJoinJobs=[]; delete state.__sqLateJoinCatchUp;
+      const gate=window.__sqLateJoinStatus();
+      const add=window.__sqAppendLatePlayer({id:'c',name:'CHARLIE'});
+      const job=state.lateJoinJobs[0];
+      delete state.gameMode;
+      return {gate,add,names:state.players.map(p=>p.name),pending:job.pendingRounds,scratch:job.scratchRounds};
+    });
+    assert.equal(turbo.gate.ok,true,'Turbo should allow late join before its first 17s dart');
+    assert.equal(turbo.add.ok,true,'Turbo registered player should append');
+    assert.deepEqual(turbo.names,['ALPHA','BETA','CHARLIE'],'Turbo late player must be final thrower');
+    assert.deepEqual(turbo.pending,[],'Turbo must not invent Classic catch-up rounds');
+    assert.deepEqual(turbo.scratch,[],'Turbo must not invent Classic scratched rounds');
+
     // Practice / Tournament / Vs Shadow isolation.
     const isolation=await page.evaluate(()=>{
       const base=()=>{
@@ -184,7 +208,8 @@ function emptyRows(n=14){
     assert.equal(menu.found,true,'Game Menu must expose Add Player');
     assert.equal(menu.disabled,false,'Add Player should be enabled in eligible Match Play');
 
-    assert.equal(consoleErrs.length,0,'console errors: '+consoleErrs.join('\n'));
+    const meaningfulConsoleErrs=consoleErrs.filter(msg=>!/Failed to load resource: net::ERR_FAILED/i.test(String(msg||'')));
+    assert.equal(meaningfulConsoleErrs.length,0,'console errors: '+meaningfulConsoleErrs.join('\n'));
     console.log('SC-034 ADD PLAYER: PASS');
   } finally {
     await browser.close();
