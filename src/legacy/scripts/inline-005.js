@@ -6393,6 +6393,259 @@ const save = () => {
   try { if (typeof onStateSaved === 'function') onStateSaved(); } catch(_) {}
 };
 function ensureMatchAgg(){ if(state.matchAgg && state.matchAgg.hits) return; state.matchAgg={ hits:Array.from({length:state.players.length},()=>({})), totals60:Array.from({length:state.players.length},()=>0), totals100:Array.from({length:state.players.length},()=>0), totals140:Array.from({length:state.players.length},()=>0) }; }
+// SC-034 — live late-entry roster + catch-up ownership.
+// Late-added players are appended as the final thrower for the current game.
+// Absence scratches carry no dart attempts; only the three most recent missed
+// rounds are eligible for make-up after the live table round completes.
+function __sqLateEntryPlayerKey(player){
+  try{
+    const id = player && (player.id || player.player_id);
+    if (id != null && String(id).trim()) return 'id:' + String(id).trim();
+    const name = String(player && player.name || '').trim().toLowerCase();
+    return name ? 'name:' + name : '';
+  }catch(_){ return ''; }
+}
+function __sqLateEntryFindPlayerIndex(key){
+  try{
+    if (!key || !Array.isArray(state?.players)) return -1;
+    return state.players.findIndex(p => __sqLateEntryPlayerKey(p) === key);
+  }catch(_){ return -1; }
+}
+function __sqLateEntryRoundHasDart(roundIndex){
+  try{
+    return (state?.score || []).some(board => {
+      const darts = board?.[roundIndex]?.darts;
+      return Array.isArray(darts) && darts.some(d => d !== null && d !== undefined);
+    });
+  }catch(_){ return false; }
+}
+function __sqLateEntryStatus(){
+  try{
+    if (!state || !Array.isArray(state.players) || !state.match) return { allowed:false, reason:'No live match is active.' };
+    if (state.finished) return { allowed:false, reason:'The current game is complete.' };
+    if (state.suddenDeath?.active) return { allowed:false, reason:'Players cannot join during sudden death.' };
+    if (state.__sqLateCatchupActive) return { allowed:false, reason:'Complete the current catch-up throws first.' };
+    if (state.players.length >= 6) return { allowed:false, reason:'Maximum 6 players.' };
+
+    const m = state.match || {};
+    const isTournament = !!(
+      m.tournament === true || m.tournamentType || m.tournamentSize ||
+      m.tournamentMatch || state?.__sqTournamentDraft || state?.__sqTournamentActive
+    );
+    const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') && __sqIsVsShadowRuntime();
+    const mode = String(m.mode || m.gameMode || state.mode || state.gameMode || '').toLowerCase();
+    const isPractice = m.forcePractice === true || mode === 'practice';
+    const isMatchPlay = m.gameFormat === 'match_play' || typeof m.autoRotateOrder === 'boolean' ||
+      ['match','official','classic','turbo'].includes(mode);
+
+    if (isTournament) return { allowed:false, reason:'Late entry is not available in Tournament.' };
+    if (isVsShadow) return { allowed:false, reason:'Late entry is not available in Vs Shadow.' };
+    if (isPractice) return { allowed:false, reason:'Late entry is only available in Match Play.' };
+    if (!isMatchPlay) return { allowed:false, reason:'Late entry is only available in Match Play.' };
+
+    const round = Number(state.currentRound);
+    if (!Number.isInteger(round) || round < 0) return { allowed:false, reason:'Current round is unavailable.' };
+    if (round > 7) return { allowed:false, reason:'Late entry closes once 17s begin.' };
+    if (round === 7 && __sqLateEntryRoundHasDart(7)) return { allowed:false, reason:'Late entry closes once the first dart at 17s is thrown.' };
+    return { allowed:true, reason:'', round };
+  }catch(_){
+    return { allowed:false, reason:'Late-entry state is unavailable.' };
+  }
+}
+window.__sqLateEntryStatus = __sqLateEntryStatus;
+window.__sqCanAddLatePlayer = function(){ return __sqLateEntryStatus().allowed === true; };
+
+function __sqLateEntryBlankBoard(){
+  return Array.from({length:MAX_ROUNDS},()=>({darts:[null,null,null],roundTotal:0}));
+}
+function __sqLateEntryCatchupList(){
+  if (!Array.isArray(state.lateEntryCatchups)) state.lateEntryCatchups = [];
+  return state.lateEntryCatchups;
+}
+function __sqLateEntryResolveItem(item){
+  if (!item) return -1;
+  const idx = __sqLateEntryFindPlayerIndex(item.playerKey);
+  if (idx >= 0) item.playerIndex = idx;
+  return idx;
+}
+function __sqBeginLateEntryCatchup(resumeRound){
+  try{
+    const list = __sqLateEntryCatchupList();
+    for (const item of list){
+      const pIdx = __sqLateEntryResolveItem(item);
+      if (pIdx < 0 || !Array.isArray(item.pendingRounds) || !item.pendingRounds.length) continue;
+      const roundIndex = Number(item.pendingRounds[0]);
+      if (!Number.isInteger(roundIndex) || roundIndex < 0 || roundIndex >= MAX_ROUNDS) {
+        item.pendingRounds.shift();
+        continue;
+      }
+      item.active = true;
+      state.__sqLateCatchupActive = {
+        playerKey:item.playerKey,
+        playerIndex:pIdx,
+        roundIndex,
+        resumeRound:Number(resumeRound)
+      };
+      state.currentPlayer = pIdx;
+      state.currentRound = roundIndex;
+      state.currentDart = 0;
+      try{
+        const nm = String(state.players[pIdx]?.nickname || state.players[pIdx]?.name || 'PLAYER').trim().toUpperCase();
+        const target = labelForRound(ROUNDS[roundIndex]);
+        window.sqDmdShowZones?.({ z2:'CATCH UP', z3:(nm + ' • ' + target) }, { type:'flash', ms:720, fx:'impact', z3Small:true });
+      }catch(_){ }
+      return true;
+    }
+  }catch(_){ }
+  return false;
+}
+function __sqCompleteLateEntryCatchupVisit(playerIndex, roundIndex){
+  try{
+    const active = state.__sqLateCatchupActive;
+    if (!active) return false;
+    const activeIdx = __sqLateEntryFindPlayerIndex(active.playerKey);
+    if (activeIdx !== Number(playerIndex) || Number(active.roundIndex) !== Number(roundIndex)) return false;
+
+    const item = __sqLateEntryCatchupList().find(x => x && x.playerKey === active.playerKey);
+    if (item){
+      const pos = Array.isArray(item.pendingRounds) ? item.pendingRounds.indexOf(Number(roundIndex)) : -1;
+      if (pos >= 0) item.pendingRounds.splice(pos, 1);
+      if (!Array.isArray(item.completedRounds)) item.completedRounds = [];
+      if (!item.completedRounds.includes(Number(roundIndex))) item.completedRounds.push(Number(roundIndex));
+      const ent = state.score?.[activeIdx]?.[roundIndex];
+      if (ent) ent.lateEntryStatus = 'catchup_complete';
+      item.active = false;
+    }
+
+    const resumeRound = Number(active.resumeRound);
+    delete state.__sqLateCatchupActive;
+    if (__sqBeginLateEntryCatchup(resumeRound)) return true;
+
+    state.currentPlayer = 0;
+    state.currentDart = 0;
+    if (resumeRound >= MAX_ROUNDS) state.finished = true;
+    else state.currentRound = Math.max(0, resumeRound);
+    return true;
+  }catch(_){ return false; }
+}
+function __sqRestoreLateEntryCatchupForUndo(last){
+  try{
+    if (!last || last.lateCatchup !== true) return;
+    const list = __sqLateEntryCatchupList();
+    const key = String(last.lateCatchupPlayerKey || __sqLateEntryPlayerKey(state.players?.[last.player]) || '');
+    let item = list.find(x => x && x.playerKey === key);
+    if (!item){
+      item = { playerKey:key, playerIndex:last.player, joinedAtRound:Number(last.round), pendingRounds:[], completedRounds:[] };
+      list.push(item);
+    }
+    if (!Array.isArray(item.pendingRounds)) item.pendingRounds = [];
+    const r = Number(last.round);
+    if (!item.pendingRounds.includes(r)) item.pendingRounds.unshift(r);
+    if (Array.isArray(item.completedRounds)) item.completedRounds = item.completedRounds.filter(x => Number(x) !== r);
+    item.active = true;
+    const ent = state.score?.[last.player]?.[r];
+    if (ent) ent.lateEntryStatus = 'catchup_pending';
+    state.__sqLateCatchupActive = {
+      playerKey:key,
+      playerIndex:Number(last.player),
+      roundIndex:r,
+      resumeRound:Number(last.lateCatchupResumeRound)
+    };
+  }catch(_){ }
+}
+window.__sqAddLatePlayer = function(meta){
+  const gate = __sqLateEntryStatus();
+  if (!gate.allowed) return { ok:false, reason:gate.reason };
+  try{
+    const name = String(meta && meta.name || '').trim();
+    if (!name) return { ok:false, reason:'Select a saved player.' };
+    const player = {
+      type:'registered',
+      id:(meta && meta.id != null) ? String(meta.id).trim() : null,
+      name,
+      first_name:String(meta?.first_name || ''),
+      last_name:String(meta?.last_name || ''),
+      nickname:String(meta?.nickname || ''),
+      initials:__sqNormalizeInitials(meta?.initials, name)
+    };
+    const key = __sqLateEntryPlayerKey(player);
+    if (!key) return { ok:false, reason:'Player identity is unavailable.' };
+    if (state.players.some(p => __sqLateEntryPlayerKey(p) === key || String(p?.name || '').trim().toLowerCase() === name.toLowerCase())) {
+      return { ok:false, reason:'Player is already in this game.' };
+    }
+
+    const newIndex = state.players.length;
+    const joinRound = Number(state.currentRound);
+    const priorRounds = Array.from({length:Math.max(0, joinRound)}, (_,i)=>i);
+    const pendingRounds = priorRounds.slice(-3);
+    const pendingSet = new Set(pendingRounds);
+    const scratchedRounds = priorRounds.filter(r => !pendingSet.has(r));
+
+    state.players.push(player);
+    if (!Array.isArray(state.score)) state.score = [];
+    const board = __sqLateEntryBlankBoard();
+    priorRounds.forEach(r => {
+      board[r].lateEntryStatus = pendingSet.has(r) ? 'catchup_pending' : 'scratched_absent';
+    });
+    state.score.push(board);
+
+    if (state.match){
+      if (!Array.isArray(state.match.wins)) state.match.wins = [];
+      while (state.match.wins.length < newIndex) state.match.wins.push(0);
+      state.match.wins.push(0);
+      if (Array.isArray(state.match.history)){
+        state.match.history.forEach(g => {
+          if (!g) return;
+          if (Array.isArray(g.totals)){
+            while (g.totals.length < newIndex) g.totals.push(null);
+            g.totals.push(null);
+          }
+          if (Array.isArray(g.board)){
+            while (g.board.length < newIndex) g.board.push(null);
+            g.board.push(null);
+          }
+        });
+      }
+    }
+
+    ensureMatchAgg();
+    if (!state.matchAgg) state.matchAgg = { hits:[], totals60:[], totals100:[], totals140:[] };
+    ['hits','totals60','totals100','totals140'].forEach(k => { if (!Array.isArray(state.matchAgg[k])) state.matchAgg[k] = []; });
+    while (state.matchAgg.hits.length < newIndex) state.matchAgg.hits.push({});
+    state.matchAgg.hits.push({});
+    for (const k of ['totals60','totals100','totals140']){
+      while (state.matchAgg[k].length < newIndex) state.matchAgg[k].push(0);
+      state.matchAgg[k].push(0);
+    }
+
+    __sqLateEntryCatchupList().push({
+      playerKey:key,
+      playerIndex:newIndex,
+      joinedAtRound:joinRound,
+      pendingRounds:pendingRounds.slice(),
+      scratchedRounds:scratchedRounds.slice(),
+      completedRounds:[],
+      active:false
+    });
+
+    try{
+      const panel = document.getElementById('liveV2Panel');
+      if (panel){ panel.dataset.built='0'; panel.dataset.pcount=''; panel.innerHTML=''; }
+    }catch(_){ }
+    try{ save(); }catch(_){ }
+    try{
+      if (typeof buildEverythingChunked === 'function') {
+        Promise.resolve(buildEverythingChunked()).then(()=>{ try{ updateUI(); }catch(_){ } }).catch(()=>{ try{ updateUI(); }catch(_){ } });
+      } else updateUI();
+    }catch(_){ try{ updateUI(); }catch(__){ } }
+
+    return { ok:true, playerIndex:newIndex, name, pendingRounds:pendingRounds.slice(), scratchedRounds:scratchedRounds.slice(), finalThrower:true };
+  }catch(err){
+    try{ console.error('[SQ] SC-034 late-entry add failed', err); }catch(_){ }
+    return { ok:false, reason:'Player could not be added.' };
+  }
+};
+
 
 function getGameLog() {
   const v1 = safeLoad(GAMES_LOG_KEY);
@@ -11044,9 +11297,14 @@ async function showAddPlayerDialog(index){
 // Select a saved player for match.
 // index==0 => add to Match Setup list.
 async function showSelectPlayerDialog(index){
+  const liveLateEntry = Number(index) === -1;
+  if (liveLateEntry) {
+    const gate = (typeof window.__sqLateEntryStatus === 'function') ? window.__sqLateEntryStatus() : { allowed:false, reason:'Late-entry controls unavailable.' };
+    if (!gate.allowed) { toast(gate.reason || 'Player cannot join now.'); return; }
+  }
   const select = byId('existingPlayerSelect');
   if (!select) { toast('Select list missing'); return; }
-  if ((parseInt(index || '0', 10) || 0) === 0 && __sqVsShadowSetupSlotTaken()) {
+  if (!liveLateEntry && (parseInt(index || '0', 10) || 0) === 0 && __sqVsShadowSetupSlotTaken()) {
     toast('Vs Shadow uses exactly 1 real player.');
     return;
   }
@@ -11080,12 +11338,16 @@ async function showSelectPlayerDialog(index){
     console.error('cloudListPlayers failed', err);
   }
 
+  if (!any && liveLateEntry) {
+    toast('Saved players unavailable from Supabase. Try again when cloud player data is available.');
+    return;
+  }
   if (!any && __sqIsVsShadowSetup()) {
     toast('Saved players unavailable from Supabase. Add a guest player or try again.');
     return;
   }
 
-  // Fallback: local
+  // Fallback: local (setup only; live late entry stays cloud-canonical).
   if (!any) {
     const local = getSavedPlayers();
     (local || []).forEach(pushResolved);
@@ -11107,17 +11369,20 @@ async function showSelectPlayerDialog(index){
 
   const modal = byId('selectPlayerModal');
   if (!modal) { toast('Select Player modal missing'); return; }
-  modal.dataset.playerIndex = String(index || 0);
+  modal.dataset.playerIndex = String(index ?? 0);
+  const titleEl = modal.querySelector('.sp2-title');
+  if (titleEl) titleEl.textContent = liveLateEntry ? 'ADD PLAYER' : 'SELECT PLAYERS';
   modal.classList.remove('hidden');
 
   const listWrap = byId('spPlayerList');
   const searchEl = byId('spSearchInput');
   const chips = Array.from(modal.querySelectorAll('.sp2-chip'));
-  const vsShadow = __sqIsVsShadowSetup();
-  const slotsLeft = Math.max(0, (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 6) - ((__msPlayers && __msPlayers.length) || 0));
-  const maxPick = vsShadow ? 1 : slotsLeft;
+  const vsShadow = !liveLateEntry && __sqIsVsShadowSetup();
+  const rosterNow = liveLateEntry ? (Array.isArray(state?.players) ? state.players : []) : (__msPlayers || []);
+  const slotsLeft = Math.max(0, (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 6) - rosterNow.length);
+  const maxPick = liveLateEntry ? Math.min(1, slotsLeft) : (vsShadow ? 1 : slotsLeft);
 
-  const alreadyIn = new Set((__msPlayers || []).map(p => String(p.id || p.name || '').trim().toLowerCase()).filter(Boolean));
+  const alreadyIn = new Set(rosterNow.map(p => String(p.id || p.name || '').trim().toLowerCase()).filter(Boolean));
 
   const selectedKeys = new Set();
   let sortMode = 'recent';
@@ -11178,13 +11443,13 @@ async function showSelectPlayerDialog(index){
       row.appendChild(check);
 
       row.onclick = () => {
-        if (inCard){ toast('Already on the match card'); return; }
+        if (inCard){ toast(liveLateEntry ? 'Player is already in this game.' : 'Already on the match card'); return; }
         if (selectedKeys.has(key)){
           selectedKeys.delete(key);
         } else {
           if (vsShadow) selectedKeys.clear();
           if (selectedKeys.size >= maxPick){
-            toast(vsShadow ? 'Vs Shadow uses exactly 1 real player.' : `Match card is full (max ${MS2_MAX_PLAYERS} players)`);
+            toast(liveLateEntry ? 'Select one player to join the game.' : (vsShadow ? 'Vs Shadow uses exactly 1 real player.' : `Match card is full (max ${MS2_MAX_PLAYERS} players)`));
             return;
           }
           selectedKeys.add(key);
@@ -11250,11 +11515,22 @@ async function showSelectPlayerDialog(index){
   }
 
   if (confirmBtn) {
+    confirmBtn.textContent = liveLateEntry ? 'ADD PLAYER' : 'CONFIRM PLAYERS';
     confirmBtn.onclick = () => {
       const picks = resolvedList.filter(p => selectedKeys.has(keyOf(p)));
       if (!picks.length) { toast('Select at least one player'); return; }
 
-      const idx = parseInt(modal.dataset.playerIndex || '0', 10) || 0;
+      const idxRaw = parseInt(modal.dataset.playerIndex || '0', 10);
+      const idx = Number.isFinite(idxRaw) ? idxRaw : 0;
+
+      if (idx === -1) {
+        const result = (typeof window.__sqAddLatePlayer === 'function') ? window.__sqAddLatePlayer(picks[0]) : { ok:false, reason:'Late-entry controls unavailable.' };
+        if (!result || !result.ok) { toast((result && result.reason) || 'Player could not be added.'); return; }
+        select.value = '';
+        modal.classList.add('hidden');
+        toast(result.name + ' added as final thrower');
+        return;
+      }
 
       if (idx === 0) {
         if (__sqVsShadowSetupSlotTaken()) {
@@ -11295,6 +11571,13 @@ async function showSelectPlayerDialog(index){
 
   renderList();
 }
+
+window.__sqOpenLatePlayerDialog = async function(){
+  const gate = (typeof window.__sqLateEntryStatus === 'function') ? window.__sqLateEntryStatus() : { allowed:false, reason:'Late-entry controls unavailable.' };
+  if (!gate.allowed) { toast(gate.reason || 'Player cannot join now.'); return false; }
+  await showSelectPlayerDialog(-1);
+  return true;
+};
 
 // Init
 __msRenderPlayers();
@@ -17013,6 +17296,12 @@ function recordThrow(spec){
   const rIndex    = state.currentRound;
   const pIndex    = state.currentPlayer;
   const dartIndex = state.currentDart;
+  const __sqCatchupActiveAtThrow = state.__sqLateCatchupActive || null;
+  const __sqLateCatchupAtThrow = !!(
+    __sqCatchupActiveAtThrow &&
+    Number(__sqCatchupActiveAtThrow.roundIndex) === Number(rIndex) &&
+    Number((typeof __sqLateEntryFindPlayerIndex === 'function') ? __sqLateEntryFindPlayerIndex(__sqCatchupActiveAtThrow.playerKey) : __sqCatchupActiveAtThrow.playerIndex) === Number(pIndex)
+  );
 
   if (rIndex < 0 || rIndex >= MAX_ROUNDS) return;
   if (pIndex < 0 || pIndex >= state.players.length) return;
@@ -17626,7 +17915,10 @@ setTimeout(() => {
     player:    pIndex,
     round:     rIndex,
     dartIndex: dartIndex,
-    throw:     dartObj
+    throw:     dartObj,
+    lateCatchup: __sqLateCatchupAtThrow,
+    lateCatchupPlayerKey: __sqLateCatchupAtThrow ? String(__sqCatchupActiveAtThrow?.playerKey || '') : '',
+    lateCatchupResumeRound: __sqLateCatchupAtThrow ? Number(__sqCatchupActiveAtThrow?.resumeRound) : null
   });
 
   // Match aggregates
@@ -17644,20 +17936,33 @@ setTimeout(() => {
 
 {
   }
-  // Advance dart / player / round
+  // Advance dart / player / round.
+  // SC-034: a catch-up visit stays isolated from the live table cursor; normal
+  // play resumes only after the permitted missed rounds have been completed.
   if (state.currentDart < 2) {
     state.currentDart++;
   } else {
     state.currentDart = 0;
-    if (state.currentPlayer < state.players.length - 1) {
-      state.currentPlayer++;
-    } else {
-      state.currentPlayer = 0;
-      if (state.currentRound < MAX_ROUNDS - 1) {
-        state.currentRound++;
+    const __sqCatchupHandled = __sqLateCatchupAtThrow &&
+      typeof __sqCompleteLateEntryCatchupVisit === 'function' &&
+      __sqCompleteLateEntryCatchupVisit(pIndex, rIndex);
+
+    if (!__sqCatchupHandled) {
+      if (state.currentPlayer < state.players.length - 1) {
+        state.currentPlayer++;
       } else {
-        // Game done – completion dialog will open
-        state.finished = true;
+        const __sqResumeRound = Number(state.currentRound) + 1;
+        const __sqStartedCatchup = typeof __sqBeginLateEntryCatchup === 'function' &&
+          __sqBeginLateEntryCatchup(__sqResumeRound);
+        if (!__sqStartedCatchup) {
+          state.currentPlayer = 0;
+          if (state.currentRound < MAX_ROUNDS - 1) {
+            state.currentRound++;
+          } else {
+            // Game done – completion dialog will open
+            state.finished = true;
+          }
+        }
       }
     }
   }
@@ -17759,7 +18064,19 @@ function undo(){
     }
   }
 
+  if (state.__sqLateCatchupActive && last.lateCatchup !== true) {
+    try{
+      const activeKey = state.__sqLateCatchupActive.playerKey;
+      const activeItem = Array.isArray(state.lateEntryCatchups) ? state.lateEntryCatchups.find(x => x && x.playerKey === activeKey) : null;
+      if (activeItem) activeItem.active = false;
+    }catch(_){ }
+    delete state.__sqLateCatchupActive;
+  }
+
   state.history.pop();
+  if (last.lateCatchup === true && typeof __sqRestoreLateEntryCatchupForUndo === 'function') {
+    __sqRestoreLateEntryCatchupForUndo(last);
+  }
   const { player, round, dartIndex } = last;
 
   const entry = state.score?.[player]?.[round];
@@ -19416,6 +19733,10 @@ function startNewGame(setOrder=false){
   }catch(_){ }
   // <<< PATCH:practice-multi-game-save-reset END
 
+  try{
+    delete state.lateEntryCatchups;
+    delete state.__sqLateCatchupActive;
+  }catch(_){ }
   state.__gameToken = (state.__gameToken || 0) + 1;
   state._decider = null;
   state.score = Array.from({length:state.players.length},
