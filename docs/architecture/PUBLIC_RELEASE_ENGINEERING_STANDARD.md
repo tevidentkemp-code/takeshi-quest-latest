@@ -6,6 +6,23 @@ This document defines the engineering quality bar for the modular Shateki Quest 
 
 The governing principle is: **small, reversible, independently verified changes with explicit ownership and no hidden production authority.**
 
+## Authority and currentness
+
+**Authority class:** ENGINEERING ARCHITECTURE / RELEASE KNOWLEDGE.
+
+This document is the durable Shateki knowledge/rationale authority for engineering architecture, source ownership, build/tooling, CI/CD, testing and public-release engineering. It does not own current implementation state, task sequencing, product rules, permissions or release approval.
+
+- Live GitHub/runtime source is implementation truth.
+- `SHATEKI — MASTER PIPELINE` owns sequencing, priorities and current work state.
+- Shateki Coding Project Instructions and `CURRENT_Shateki_Quest_Working_Rules` own operating procedure, permissions and engineering change discipline.
+- `CURRENT_Shateki_Quest_Game_Rules` owns product and game-rule authority.
+- BUILD LOG/HANDOVER remain execution history and resume evidence, not engineering knowledge authority.
+
+Retrieve this standard before material architecture, build-system, CI/CD, deployment/release-engineering, supply-chain, broad testing, accessibility-publication, performance/observability or engineering-toolchain work.
+
+Version- or platform-sensitive facts must be freshly reverified at task time against authoritative current sources before they are relied upon. This includes Node.js support/LTS status, Vite behaviour/versioning, GitHub Actions runtimes/security guidance, GitHub Pages/deployment behaviour, Playwright capabilities, third-party Actions, WCAG/current accessibility guidance where material, and browser/platform capabilities.
+
+
 ## 1. Architecture
 
 - Keep the browser UI, game/domain logic, persistent-data services and presentation code separated by explicit boundaries.
@@ -122,7 +139,7 @@ A structural slice is releasable only when:
 6. rollback is explicit and tested or trivially reversible;
 7. release approval is explicit.
 
-SC-031 remains BUILD/FIX work. Nothing in this standard authorises a production merge or deployment.
+Historical provenance: this standard was established during SC-031 architecture work. SC-031 or any successor work status is not maintained here; retrieve the live Pipeline/HANDOVER for current state. Nothing in this standard authorises a production merge or deployment.
 
 ## External standards used for this engineering bar
 
