@@ -891,6 +891,27 @@ function thresholdNativeToAmber(){
     }
     // <<< PATCH:SC045_PINBALL_SCENE_TYPES END
 
+    // >>> PATCH:SC042_GAME_OVER_PULSE START
+    // Finished-game cabinet scene: centered GAME OVER with a slow breathing
+    // size pulse. No horizontal travel and no strobe/flicker.
+    if (active && active.type === 'pulseFull') {
+      const t = (z2t || '').toUpperCase();
+      if (t) {
+        const age = Math.max(0, now - active.start);
+        const reduce = __sqSc045ReducedMotion();
+        const wave = reduce ? 0.5 : ((Math.sin((age / 2200) * Math.PI * 2 - Math.PI / 2) + 1) / 2);
+        const basePx = Math.max(TEXT.topPx, TEXT.botPx) + 4;
+        const px = Math.round(basePx * (0.96 + wave * 0.06));
+        const w = measureTextPx(t, px, 850);
+        const x = Math.round((NATIVE_W - w) / 2);
+        const y = Math.floor((NATIVE_H / 2) + px * 0.35);
+        drawTextPx(t, x, y, px, 850);
+      }
+      thresholdNativeToAmber();
+      return;
+    }
+    // <<< PATCH:SC042_GAME_OVER_PULSE END
+
         // >>> PATCH:SQ_DMD_MARQUEE_FULL START
     // Special scene type: marqueeFull (scroll Z2 text across the FULL DMD area; hides all other zones)
     if (active && active.type === 'marqueeFull') {
@@ -1111,7 +1132,7 @@ if (!active || active.type === "idle") {
     __sqDmdLastZ3 = (z3 ?? "").toString();
 
     enqueue({
-      type: o.type || "hold", // hold | flash | wipe | shake | roll | idle | anticipationEyes | dolphinSwim | bullseyeHit
+      type: o.type || "hold", // hold | flash | wipe | shake | roll | idle | pulseFull | anticipationEyes | dolphinSwim | bullseyeHit
       dir: o.dir || "fwd",     // for wipe: fwd | rev
       revealMs: (typeof o.revealMs === "number" ? o.revealMs : undefined),
       amp: (typeof o.amp === "number" ? o.amp : undefined), // for shake
