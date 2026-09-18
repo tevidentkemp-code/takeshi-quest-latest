@@ -1,0 +1,99 @@
+name: SC-034 batch writer
+
+on:
+  push:
+    branches: [batch-launch-live-flow-sc034-sc036]
+    paths:
+      - scripts/sc034-batch-writer.mjs
+      - tools/ui-smoke/verify-sc034-add-player.js
+      - .github/workflows/sc034-batch-writer.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sc034-batch-writer
+  cancel-in-progress: false
+
+jobs:
+  apply-verify-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm accepted SC-033 ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor fb959555b692af32d9381b46a0513e59b199c769 HEAD
+
+      - name: Install source-authority tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Apply bounded SC-034 source patch
+        run: node scripts/sc034-batch-writer.mjs
+
+      - name: Regenerate compatibility runtime from semantic source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build-core-js-from-source.mjs --output src/legacy/scripts/inline-005.js
+          node scripts/build-core-js-from-source.mjs --verify-current
+          node --check src/game/engine.js
+          node --check src/legacy/scripts/inline-030.js
+          node --check tools/ui-smoke/verify-sc034-add-player.js
+
+      - name: Build exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+          npm run verify:dist
+
+      - name: Install browser QA
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: SC-034 and SC-033 runtime regression
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8123/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sc034-http.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          node tools/ui-smoke/verify-sc034-add-player.js
+          node tools/ui-smoke/verify-sc033-throw-order.js
+          node tools/ui-smoke/verify-sc014.js
+
+      - name: Remove temporary writer controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm scripts/sc034-batch-writer.mjs
+          rm .github/workflows/sc034-batch-writer.yml
+          git diff --check
+
+      - name: Commit verified SC-034 slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'SC-034: add in-game late player flow'
+          git push origin HEAD:batch-launch-live-flow-sc034-sc036
