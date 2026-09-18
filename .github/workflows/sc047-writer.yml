@@ -1,0 +1,65 @@
+name: SC-047 guarded writer
+on:
+  push:
+    branches: [sc047-postgame-corrective]
+    paths:
+      - tools/sc047_apply.py
+      - .github/workflows/sc047-writer.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: sc047-postgame-corrective
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Confirm exact production parent
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor f54dc2cde087914af7812288f85fe0f2e71d589a HEAD
+      - name: Apply bounded corrective patch
+        run: python3 tools/sc047_apply.py
+      - name: Materialize semantic runtime and verify architecture
+        run: |
+          set -euo pipefail
+          npm ci --prefix scripts --ignore-scripts
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run materialize
+          node tools/ui-smoke/verify-sc047-postgame-corrective.mjs
+          node --check src/app/state.js
+          node --check src/game/engine.js
+          node --check src/legacy/scripts/inline-007.js
+          node --check src/legacy/scripts/inline-045.js
+          node --check src/live-game/postgame-flow.mjs
+          node --check tools/ui-smoke/verify-sc047-postgame-corrective.js
+          node scripts/verify-modularization.mjs
+          npm run build
+          npm run verify:dist
+          git diff --check
+      - name: Prove bounded write set
+        run: |
+          set -euo pipefail
+          git status --short
+          for f in $(git status --short | awk '{print $2}' | sort); do
+            case "$f" in
+              src/app/state.js|src/game/engine.js|src/legacy/scripts/inline-005.js|src/legacy/scripts/inline-007.js|src/legacy/scripts/inline-045.js|src/legacy/intentional-patches.json|src/live-game/postgame-flow.mjs|tools/ui-smoke/verify-sc047-postgame-corrective.js|tools/ui-smoke/verify-sc047-postgame-corrective.mjs|tools/sc047_apply.py) ;;
+              *) echo "Unexpected changed file: $f" >&2; exit 1 ;;
+            esac
+          done
+      - name: Commit verified source and tests
+        run: |
+          set -euo pipefail
+          git checkout -- tools/sc047_apply.py
+          git config user.name "shateki-release-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/app/state.js src/game/engine.js src/legacy/scripts/inline-005.js src/legacy/scripts/inline-007.js src/legacy/scripts/inline-045.js src/legacy/intentional-patches.json src/live-game/postgame-flow.mjs tools/ui-smoke/verify-sc047-postgame-corrective.js tools/ui-smoke/verify-sc047-postgame-corrective.mjs
+          git diff --cached --check
+          git commit -m "SC-047: correct post-game DMD and leaderboard actions"
+          git push origin HEAD:sc047-postgame-corrective
