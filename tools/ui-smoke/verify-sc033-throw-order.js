@@ -136,7 +136,8 @@ function rotated(values) {
         return { enabled, rotated, before, after: state.players.map(p => p.name) };
       };
       return {
-        practice: run({ forcePractice: true, practiceType: 'classic' }),
+        // Non-Match modes never receive the boolean Match Play order policy.
+        practice: run({ mode: 'practice', forcePractice: true, practiceType: 'classic', autoRotateOrder: undefined }),
         tournament: run({ tournament: true, tournamentType: 'classic' }),
       };
     });
