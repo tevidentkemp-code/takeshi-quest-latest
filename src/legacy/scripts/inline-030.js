@@ -239,6 +239,24 @@
   }
   window.__sqOpenAddPlayerMenu=openAddPlayerMenu;
 
+  function openReturnPlayerMenu(prev){
+    var absent=(typeof window.__sqAbsentPlayers==='function')?window.__sqAbsentPlayers():[];
+    var m=openModalShell('Player Returned','Catch-up starts after the current table round');
+    m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
+    if(!absent.length){
+      var empty=document.createElement('p'); empty.className='tag'; empty.textContent='No players are currently marked absent.'; m.body.appendChild(empty); return;
+    }
+    absent.forEach(function(row){
+      var pending=Array.isArray(row.pendingRounds)?row.pendingRounds.length:0;
+      addRow(m.body,{ico:'↩',label:row.name,desc:(pending?pending+' catch-up round'+(pending===1?'':'s'):'No catch-up required'),cls:'green',onClick:function(){
+        if(typeof window.__sqMarkPlayerReturned==='function' && window.__sqMarkPlayerReturned(row.playerIndex)){
+          m.close();
+        }
+      }});
+    });
+  }
+  window.__sqOpenReturnPlayerMenu=openReturnPlayerMenu;
+
   function openRemovePlayerMenu(prev){
     var m=openModalShell('Remove Player','Current game only');
     m.modal.querySelector('.sq-menu106-back').onclick=function(){ m.close(); if(prev) prev(); };
@@ -266,6 +284,12 @@
       if(!__addGate.ok){try{toast(__addGate.reason);}catch(_){}return;}
       m.close(); openAddPlayerMenu(window.__sqOpenGameMenu106);
     }});
+    var __absent=(typeof window.__sqAbsentPlayers==='function')?window.__sqAbsentPlayers():[];
+    if(__absent.length){
+      addRow(m.body,{ico:'↩',label:'Player Returned',desc:__absent.map(function(x){return x.name;}).join(', '),cls:'green',onClick:function(){
+        m.close(); openReturnPlayerMenu(window.__sqOpenGameMenu106);
+      }});
+    }
     addRow(m.body,{ico:'−',label:'Remove Player',desc:'Remove from this game',onClick:function(){m.close(); openRemovePlayerMenu(window.__sqOpenGameMenu106);}});
     // Destructive group, set apart below a divider.
     try{ m.body.insertAdjacentHTML('beforeend','<div class="sq-menu106-sep" aria-hidden="true"></div>'); }catch(_){ }
