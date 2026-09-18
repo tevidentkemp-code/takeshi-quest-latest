@@ -79,6 +79,8 @@
       if(!state || state.finished) return {ok:false, reason:'Game is not active.'};
       if(state.suddenDeath && state.suddenDeath.active) return {ok:false, reason:'Unavailable during a tiebreak.'};
       var players=Array.isArray(state.players)?state.players:[];
+      var gameNumber=Number(state&&state.match&&state.match.gameNumber||1);
+      if(gameNumber>1) return {ok:false, reason:'Mid-game late entry is only available in Game 1.'};
       if(players.length>=6) return {ok:false, reason:'Maximum 6 players.'};
       try{ if(typeof __sqIsVsShadowRuntime==='function' && __sqIsVsShadowRuntime()) return {ok:false, reason:'Not available in Vs Shadow.'}; }catch(_){}
       try{
