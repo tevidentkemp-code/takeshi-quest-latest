@@ -304,6 +304,38 @@ body .modal-decider .dtBullRow .dtBullBtn.inner[data-bull="Inner"]{
   width:100%;
   margin:0;
 }
+.modal-gamecomplete.sq-gc-arcade.sq-pg-history-modal{
+  width:min(94vw,620px);
+  max-width:620px;
+  max-height:min(88vh,820px);
+  padding:0;
+  overflow:hidden;
+  border:1px solid rgba(255,122,0,.24);
+  border-radius:22px;
+  background:linear-gradient(165deg,#151b28 0%,#090d14 100%);
+  box-shadow:0 24px 60px rgba(0,0,0,.56),inset 0 1px 0 rgba(255,255,255,.05);
+}
+.modal-gamecomplete.sq-gc-arcade.sq-pg-history-modal .modal-body.sq-pg-history-body{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  max-height:72vh;
+  padding:18px;
+  overflow-y:auto;
+}
+.modal-gamecomplete.sq-gc-arcade.sq-pg-history-modal .sq-pg-history-scorecard{
+  display:block;
+  padding:15px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:16px;
+  background:linear-gradient(180deg,rgba(18,25,38,.94),rgba(8,13,22,.98));
+  box-shadow:inset 3px 0 0 rgba(255,122,0,.70),0 10px 24px rgba(0,0,0,.24);
+}
+.modal-gamecomplete.sq-gc-arcade.sq-pg-history-modal .sq-pg-history-scorecard .sq-pg-scorecard-title{
+  margin-bottom:14px;
+  font-size:clamp(18px,4.8vw,28px);
+}
+
 @media (max-width:560px){
   .modal-gamecomplete.sq-gc-arcade .gc-arcade-shell{ min-height:0; padding:28px 18px 20px; }
   .modal-gamecomplete.sq-gc-arcade .gc-arcade-content{ min-height:360px; }
@@ -348,12 +380,12 @@ function updateHero(modal, st, isMatchComplete) {
   });
 }
 
-function buildScorecard(modal, st) {
+function buildScorecard(modal, st, opts = {}) {
   const screen = document.createElement('section');
   screen.className = 'sq-pg-screen sq-pg-scorecard';
   screen.hidden = true;
   screen.innerHTML = `
-    <h2 class="sq-pg-scorecard-title">GAME SCORECARD</h2>
+    <h2 class="sq-pg-scorecard-title">${esc(opts.title || 'GAME SCORECARD')}</h2>
     <div class="sq-pg-score-head" aria-hidden="true">
       <span>Name</span><span>Score</span><span>Avg</span><span>Best Round</span>
     </div>
@@ -375,6 +407,33 @@ function buildScorecard(modal, st) {
     list.appendChild(el);
   });
   return { screen, rows };
+}
+
+function openMatchGameScores(st = getState()) {
+  const history = Array.isArray(st?.match?.history) ? st.match.history : [];
+  const players = Array.isArray(st?.players) ? st.players : [];
+  if (!history.length || !players.length) return false;
+  if (typeof window.sqModal !== 'function') return false;
+
+  injectStyles();
+  const m = window.sqModal({
+    title:'GAME SCORES',
+    closeButton:'CLOSE',
+    modalClass:'modal-gamecomplete sq-gc-arcade sq-pg-history-modal',
+    maxWidth:'620px',
+    width:'94vw'
+  });
+  m.body.classList.add('sq-pg-history-body');
+
+  history.forEach((game, index) => {
+    const board = Array.isArray(game?.board) ? game.board : [];
+    const pseudo = { players, score: board };
+    const built = buildScorecard(m.modal, pseudo, { title:`GAME ${index + 1} SCORECARD` });
+    built.screen.hidden = false;
+    built.screen.classList.add('sq-pg-history-scorecard');
+    m.body.appendChild(built.screen);
+  });
+  return true;
 }
 
 async function hydrateRecordBadges(st, rows, scorecard) {
@@ -539,6 +598,7 @@ function installPostGameFlow() {
   wrappedOpenGameCompleteDialog.__sqSc038Wrapped = true;
   wrappedOpenGameCompleteDialog.__sqSc038Original = original;
   window.openGameCompleteDialog = wrappedOpenGameCompleteDialog;
+  window.__sqOpenMatchGameScores = function(){ return openMatchGameScores(getState()); };
   return true;
 }
 
@@ -558,4 +618,4 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   else boot();
 }
 
-export { installPostGameFlow, upgradePostGameOverlay, scorecardRows };
+export { installPostGameFlow, upgradePostGameOverlay, scorecardRows, openMatchGameScores };
