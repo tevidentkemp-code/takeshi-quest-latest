@@ -52,12 +52,18 @@ jobs:
           python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sc034-source.log 2>&1 &
           pid=$!
           trap 'kill "$pid" || true' EXIT
-          node tools/ui-smoke/verify-sc034-add-player.js
-          node tools/ui-smoke/verify-sc033-throw-order.js
-          node tools/ui-smoke/smoke.js
-          node tools/ui-smoke/verify-sc014.js
-          node tools/ui-smoke/verify-classic-visual-fit.js
-          node tools/ui-smoke/verify-cloud-failure-resilience.js
+          echo "=== SC-034 dedicated ==="
+          timeout 180s node tools/ui-smoke/verify-sc034-add-player.js
+          echo "=== SC-033 throw order ==="
+          timeout 180s node tools/ui-smoke/verify-sc033-throw-order.js
+          echo "=== canonical scoring smoke ==="
+          timeout 180s node tools/ui-smoke/smoke.js
+          echo "=== setup regression ==="
+          timeout 180s node tools/ui-smoke/verify-sc014.js
+          echo "=== classic visual fit ==="
+          timeout 180s node tools/ui-smoke/verify-classic-visual-fit.js
+          echo "=== cloud resilience ==="
+          timeout 180s node tools/ui-smoke/verify-cloud-failure-resilience.js
       - name: SC-034 dist acceptance
         env:
           SQ_APP_URL: http://127.0.0.1:8124/index.html
@@ -65,8 +71,13 @@ jobs:
           python3 -m http.server 8124 --bind 127.0.0.1 --directory dist >/tmp/sc034-dist.log 2>&1 &
           pid=$!
           trap 'kill "$pid" || true' EXIT
-          node tools/ui-smoke/verify-sc034-add-player.js
-          node tools/ui-smoke/verify-sc033-throw-order.js
-          node tools/ui-smoke/smoke.js
-          node tools/ui-smoke/verify-classic-visual-fit.js
-          node tools/ui-smoke/verify-cloud-failure-resilience.js
+          echo "=== SC-034 dedicated dist ==="
+          timeout 180s node tools/ui-smoke/verify-sc034-add-player.js
+          echo "=== SC-033 throw order dist ==="
+          timeout 180s node tools/ui-smoke/verify-sc033-throw-order.js
+          echo "=== canonical scoring smoke dist ==="
+          timeout 180s node tools/ui-smoke/smoke.js
+          echo "=== classic visual fit dist ==="
+          timeout 180s node tools/ui-smoke/verify-classic-visual-fit.js
+          echo "=== cloud resilience dist ==="
+          timeout 180s node tools/ui-smoke/verify-cloud-failure-resilience.js
