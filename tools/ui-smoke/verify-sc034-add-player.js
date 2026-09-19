@@ -17,6 +17,57 @@ function assert(cond, msg) {
       typeof window.__sqLateJoinEligibility === 'function'
     );
 
+    // Production UI contract: long registered-player lists must scroll above the
+    // fixed throwpad, and selection must ask for confirmation before mutation.
+    await page.evaluate(() => {
+      window.__sc034OrigCloudListPlayers = window.cloudListPlayers;
+      window.__sc034OrigConfirm = window.__sqConfirm;
+      window.__sc034ConfirmCalls = [];
+      window.cloudListPlayers = async () => Array.from({length:24},(_,i)=>({
+        id:'ui-'+i,
+        name:'UI PLAYER '+String(i+1).padStart(2,'0')
+      }));
+      window.__sqConfirm = (opts, yes) => { window.__sc034ConfirmCalls.push({opts,yes}); };
+      window.__sqOpenAddPlayerMenu(()=>{});
+    });
+    await page.waitForFunction(() => document.querySelectorAll('.sq-menu106-row').length >= 20);
+    const addUi = await page.evaluate(() => {
+      const modal=document.querySelector('.sq-menu106-modal');
+      const body=modal?.querySelector('.sq-menu106-body');
+      const pad=document.querySelector('.pad-bar');
+      const cs=body?getComputedStyle(body):null;
+      const bd=document.querySelector('.sq-menu106-bd');
+      return {
+        scrollable:!!body && body.scrollHeight>body.clientHeight && ['auto','scroll'].includes(cs?.overflowY),
+        modalBottom:modal?.getBoundingClientRect().bottom||0,
+        viewport:window.innerHeight,
+        modalZ:Number(getComputedStyle(bd).zIndex||0),
+        padZ:pad?Number(getComputedStyle(pad).zIndex||0):0,
+        players:state.players.length
+      };
+    });
+    assert(addUi.scrollable, 'Add Player list must be vertically scrollable');
+    assert(addUi.modalBottom <= addUi.viewport + 1, 'Add Player modal must remain inside the viewport');
+    assert(addUi.modalZ > addUi.padZ, 'Add Player modal must sit above the fixed throwpad');
+
+    await page.locator('.sq-menu106-row').first().click();
+    const confirmUi = await page.evaluate(() => ({
+      count:window.__sc034ConfirmCalls.length,
+      message:String(window.__sc034ConfirmCalls[0]?.opts?.message||''),
+      players:state.players.length
+    }));
+    assert(confirmUi.count===1 && /ARE YOU SURE YOU WANT TO ADD UI PLAYER 01\?/i.test(confirmUi.message), 'registered player selection must ask for explicit confirmation');
+    assert(confirmUi.players===2, 'registered player must not be added before confirmation');
+
+    await page.evaluate(() => {
+      document.querySelectorAll('.sq-menu106-bd').forEach(n=>n.remove());
+      window.cloudListPlayers=window.__sc034OrigCloudListPlayers;
+      window.__sqConfirm=window.__sc034OrigConfirm;
+      delete window.__sc034OrigCloudListPlayers;
+      delete window.__sc034OrigConfirm;
+      delete window.__sc034ConfirmCalls;
+    });
+
     // Give ALPHA a score so we can prove existing state is untouched by roster expansion.
     await page.evaluate(() => recordThrow({ kind:'S' }));
     const before = await page.evaluate(() => ({
