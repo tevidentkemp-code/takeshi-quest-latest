@@ -83,6 +83,22 @@ function assert(cond, msg) {
     assert(/rgb\(255,\s*106,\s*0\)/i.test(skipMark.color), 'skipped-round marker must use Shateki orange');
     assert(skipMark.animation && skipMark.animation!=='none', 'skipped-round marker must have a subtle pulse animation');
 
+    const liveSkipMark = await page.evaluate(() => {
+      const el=document.querySelector('#v2Rows .v2Cell[data-p="1"][data-round="2"] .sq-skip-cell-mark');
+      const cell=document.querySelector('#v2Rows .v2Cell[data-p="1"][data-round="2"]');
+      const cs=el?getComputedStyle(el):null;
+      return {
+        text:String(el?.textContent||'').trim(),
+        cellText:String(cell?.textContent||'').trim(),
+        color:cs?.color||'',
+        animation:cs?.animationName||''
+      };
+    });
+    assert(liveSkipMark.text==='»»»', 'visible Live V2 skipped cell must replace displayed zero with three fast-forward chevrons');
+    assert(!/^0(?:\s|$)/.test(liveSkipMark.cellText), 'visible Live V2 skipped cell must not display zero as its score');
+    assert(/rgb\(255,\s*106,\s*0\)/i.test(liveSkipMark.color), 'visible Live V2 skipped marker must use Shateki orange');
+    assert(liveSkipMark.animation && liveSkipMark.animation!=='none', 'visible Live V2 skipped marker must pulse subtly');
+
     // Game Menu must NOT expose the retired manual return path.
     await page.evaluate(() => window.__sqOpenGameMenu106());
     await page.waitForTimeout(100);
