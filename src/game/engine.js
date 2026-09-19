@@ -576,7 +576,7 @@ function __sqSkipAbsentVisit(){
     try{
       const p=state.players?.[pIdx];
       const nm=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(pIdx+1));
-      toast(nm+' skipped • marked absent');
+      toast(nm+' skipped • score unchanged');
     }catch(_){}
     return true;
   }catch(e){ console.warn('[SQ] absence skip failed',e); return false; }
@@ -595,39 +595,64 @@ function __sqAbsentPlayers(){
     },[]);
   }catch(_){ return []; }
 }
-function __sqMarkPlayerReturned(pIdx){
+function __sqResumeAbsenceOnScoreInput(){
   try{
-    pIdx=Number(pIdx);
-    const jobs=Array.isArray(state?.__sqCatchUp?.jobs)?state.__sqCatchUp.jobs:[];
+    if(!state || state.finished || state.suddenDeath?.active || state.__sqCatchUp?.active) return false;
+    if(Number(state.currentDart||0)!==0) return false;
+    const pIdx=Number(state.currentPlayer||0);
+    const rIdx=Number(state.currentRound||0);
+    const cu=state.__sqCatchUp;
+    if(!cu || !Array.isArray(cu.jobs)) return false;
+
+    let jobIndex=-1;
     let job=null;
-    for(let i=jobs.length-1;i>=0;i--){
-      const j=jobs[i];
-      if(j && j.kind==='absence' && !j.completed && j.returned!==true && Number(j.playerIndex)===pIdx){ job=j; break; }
+    for(let i=cu.jobs.length-1;i>=0;i--){
+      const j=cu.jobs[i];
+      if(j && j.kind==='absence' && !j.completed && j.returned!==true && Number(j.playerIndex)===pIdx){
+        jobIndex=i;
+        job=j;
+        break;
+      }
     }
-    if(!job) return false;
+    if(!job || !Array.isArray(job.pendingRounds) || !job.pendingRounds.length) return false;
+
+    const pending=job.pendingRounds.map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
+    job.pendingRounds=pending;
+    // Final Bull with older retained rounds keeps the canonical Bull-first timer flow.
+    if(rIdx===MAX_ROUNDS-1 && pending.some(round=>round<MAX_ROUNDS-1)) return false;
+
     job.returned=true;
     job.absent=false;
-    job.returnedAtRound=Number(state.currentRound||0);
-    if(!Array.isArray(job.pendingRounds) || !job.pendingRounds.length) job.completed=true;
-    const cu=state.__sqCatchUp;
-    if(cu?.awaitingReturn && !cu.active && !job.completed){
-      const rIdx=Number(cu.startedAfterRound??state.currentRound??0);
-      __sqStartCatchUpAfterRound(rIdx,{resumeRound:rIdx,resumePlayer:0,resumeFinished:rIdx>=MAX_ROUNDS-1,historyAnchor:false});
-    }
-    try{save();}catch(_){}
-    try{updateUI();}catch(_){}
+    job.returnedAtRound=rIdx;
+
+    cu.active=true;
+    cu.awaitingReturn=false;
+    cu.resumeRound=rIdx;
+    cu.resumePlayer=pIdx;
+    cu.resumeFinished=rIdx>=MAX_ROUNDS-1;
+    cu.activeJobIndex=jobIndex;
+    cu.startedAfterRound=rIdx;
+
+    state.finished=false;
+    state.currentDart=0;
+    state.currentPlayer=pIdx;
+    state.currentRound=Number(pending[0]);
+
     try{
       const p=state.players?.[pIdx];
       const nm=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(pIdx+1));
-      toast(nm+' returned • catch-up queued');
+      const def=ROUNDS[state.currentRound];
+      const tgt=def?.type==='number'?String(def.target):(def?.type==='doubles'?'D':def?.type==='triples'?'T':'B');
+      toast('Catch-up: '+nm+' • '+tgt);
     }catch(_){}
+    try{save();}catch(_){}
     return true;
-  }catch(e){ console.warn('[SQ] mark returned failed',e); return false; }
+  }catch(e){ console.warn('[SQ] automatic absence resume failed',e); return false; }
 }
 try{
   window.__sqSkipAbsentVisit=__sqSkipAbsentVisit;
   window.__sqAbsentPlayers=__sqAbsentPlayers;
-  window.__sqMarkPlayerReturned=__sqMarkPlayerReturned;
+  window.__sqResumeAbsenceOnScoreInput=__sqResumeAbsenceOnScoreInput;
   window.__sqIsAbsenceSkipEligible=__sqIsAbsenceSkipEligible;
 }catch(_){}
 // @CANONICAL:GAMEPLAY_RECORD_THROW_BASE
@@ -639,6 +664,11 @@ function recordThrow(spec){
     if (typeof __sqHandleVsShadowManualShadowInput === 'function') __sqHandleVsShadowManualShadowInput('recordThrow');
     return;
   }
+
+  // A skipped player resumes implicitly on their first scoring input at the next
+  // scheduled turn. Rewind to the oldest recoverable missed round (max three)
+  // and apply this same input there; no manual "Player Returned" action exists.
+  try{ __sqResumeAbsenceOnScoreInput(); }catch(_){}
 
   const rIndex    = state.currentRound;
   const pIndex    = state.currentPlayer;

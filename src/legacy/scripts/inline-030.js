@@ -210,7 +210,9 @@
     add.onclick=function(){
       var name=String(input.value||'').trim();
       if(!name){try{toast('Enter a player name.');}catch(_){}return;}
-      if(__sqAppendLatePlayer({name:name},'guest')){m.close();}
+      window.__sqConfirm({ title:'Add Player', message:'Are you sure you want to add '+name+'?' }, function(){
+        if(__sqAppendLatePlayer({name:name},'guest')){m.close();}
+      });
     };
     m.body.append(input,add);
     setTimeout(function(){try{input.focus();}catch(_){}},0);
@@ -229,7 +231,9 @@
       rows.forEach(function(p){
         var name=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p.name || 'Player';
         addRow(m.body,{ico:'＋',label:name,desc:'Registered player • final thrower',cls:'green',onClick:function(){
-          if(__sqAppendLatePlayer(p,'registered')) m.close();
+          window.__sqConfirm({ title:'Add Player', message:'Are you sure you want to add '+name+'?' }, function(){
+            if(__sqAppendLatePlayer(p,'registered')) m.close();
+          });
         }});
       });
     }else{
@@ -238,24 +242,6 @@
     addRow(m.body,{ico:'＋',label:'Guest Player',desc:'Add by name • may change game classification',onClick:function(){m.close();openAddGuestMenu(function(){openAddPlayerMenu(prev);});}});
   }
   window.__sqOpenAddPlayerMenu=openAddPlayerMenu;
-
-  function openReturnPlayerMenu(prev){
-    var absent=(typeof window.__sqAbsentPlayers==='function')?window.__sqAbsentPlayers():[];
-    var m=openModalShell('Player Returned','Catch-up starts after the current table round');
-    m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
-    if(!absent.length){
-      var empty=document.createElement('p'); empty.className='tag'; empty.textContent='No players are currently marked absent.'; m.body.appendChild(empty); return;
-    }
-    absent.forEach(function(row){
-      var pending=Array.isArray(row.pendingRounds)?row.pendingRounds.length:0;
-      addRow(m.body,{ico:'↩',label:row.name,desc:(pending?pending+' catch-up round'+(pending===1?'':'s'):'No catch-up required'),cls:'green',onClick:function(){
-        if(typeof window.__sqMarkPlayerReturned==='function' && window.__sqMarkPlayerReturned(row.playerIndex)){
-          m.close();
-        }
-      }});
-    });
-  }
-  window.__sqOpenReturnPlayerMenu=openReturnPlayerMenu;
 
   function openRemovePlayerMenu(prev){
     var m=openModalShell('Remove Player','Current game only');
@@ -284,12 +270,6 @@
       if(!__addGate.ok){try{toast(__addGate.reason);}catch(_){}return;}
       m.close(); openAddPlayerMenu(window.__sqOpenGameMenu106);
     }});
-    var __absent=(typeof window.__sqAbsentPlayers==='function')?window.__sqAbsentPlayers():[];
-    if(__absent.length){
-      addRow(m.body,{ico:'↩',label:'Player Returned',desc:__absent.map(function(x){return x.name;}).join(', '),cls:'green',onClick:function(){
-        m.close(); openReturnPlayerMenu(window.__sqOpenGameMenu106);
-      }});
-    }
     addRow(m.body,{ico:'−',label:'Remove Player',desc:'Remove from this game',onClick:function(){m.close(); openRemovePlayerMenu(window.__sqOpenGameMenu106);}});
     // Destructive group, set apart below a divider.
     try{ m.body.insertAdjacentHTML('beforeend','<div class="sq-menu106-sep" aria-hidden="true"></div>'); }catch(_){ }
