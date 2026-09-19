@@ -196,7 +196,7 @@
   }
   window.__sqAppendLatePlayer=__sqAppendLatePlayer;
 
-  function openAddGuestMenu(prev){
+  function openAddGuestMenu(prev,initialName){
     var m=openModalShell('Add Guest Player','Joins as the final thrower');
     m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
     var input=document.createElement('input');
@@ -205,14 +205,18 @@
     input.maxLength=40;
     input.placeholder='Guest name';
     input.autocomplete='off';
+    input.value=String(initialName||'');
     var add=document.createElement('button');
     add.type='button'; add.className='btn'; add.textContent='ADD PLAYER';
     add.onclick=function(){
       var name=String(input.value||'').trim();
       if(!name){try{toast('Enter a player name.');}catch(_){}return;}
-      window.__sqConfirm({ title:'Add Player', message:'Are you sure you want to add '+name+'?' }, function(){
-        if(__sqAppendLatePlayer({name:name},'guest')){m.close();}
-      });
+      m.close();
+      window.__sqConfirm(
+        { title:'Add Player', message:'Are you sure you want to add '+name+'?' },
+        function(){ __sqAppendLatePlayer({name:name},'guest'); },
+        function(){ openAddGuestMenu(prev,name); }
+      );
     };
     m.body.append(input,add);
     setTimeout(function(){try{input.focus();}catch(_){}},0);
@@ -231,9 +235,12 @@
       rows.forEach(function(p){
         var name=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p.name || 'Player';
         addRow(m.body,{ico:'＋',label:name,desc:'Registered player • final thrower',cls:'green',onClick:function(){
-          window.__sqConfirm({ title:'Add Player', message:'Are you sure you want to add '+name+'?' }, function(){
-            if(__sqAppendLatePlayer(p,'registered')) m.close();
-          });
+          m.close();
+          window.__sqConfirm(
+            { title:'Add Player', message:'Are you sure you want to add '+name+'?' },
+            function(){ __sqAppendLatePlayer(p,'registered'); },
+            function(){ openAddPlayerMenu(prev); }
+          );
         }});
       });
     }else{
@@ -268,7 +275,7 @@
     var __addGate=__sqLateJoinEligibility();
     addRow(m.body,{ico:'＋',label:'Add Player',desc:(__addGate.ok?'Final thrower • available before 17s':__addGate.reason),cls:(__addGate.ok?'green':''),onClick:function(){
       if(!__addGate.ok){try{toast(__addGate.reason);}catch(_){}return;}
-      m.close(); openAddPlayerMenu(window.__sqOpenGameMenu106);
+      m.close(); setTimeout(function(){ openAddPlayerMenu(window.__sqOpenGameMenu106); },0);
     }});
     addRow(m.body,{ico:'−',label:'Remove Player',desc:'Remove from this game',onClick:function(){m.close(); openRemovePlayerMenu(window.__sqOpenGameMenu106);}});
     // Destructive group, set apart below a divider.
