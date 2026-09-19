@@ -356,7 +356,9 @@ const __soloScoreBorderClass = (pCount === 1)
   ? (r === tableCr ? ' solo-current' : ((r < tableCr && val != null && pbVal > 0 && Number(val) > pbVal) ? ' solo-beat-pb' : (r < tableCr ? ' solo-complete' : ' solo-future')))
   : '';
 const __skipState = (typeof __sqSkippedRoundState === 'function') ? __sqSkippedRoundState(i, r) : '';
-const __inlineScore = __skipState === 'pending'
+const __skipEntry = state.score?.[i]?.[r];
+const __hasCatchUpDart = Array.isArray(__skipEntry?.darts) && __skipEntry.darts.some(d=>d && d.kind!=='Scratch');
+const __inlineScore = (__skipState === 'pending' && !__hasCatchUpDart)
   ? '<span class="v2CellNum sq-skip-cell-mark">»»»</span>'
   : (__skipState === 'scratched'
     ? '<span class="v2CellNum sq-skip-cell-scratched">X</span>'
@@ -3841,6 +3843,7 @@ function updateUI() {
       const hasDart    = roundHasScore[r][p];
       const roundTotal = hasDart ? (entry?.roundTotal || 0) : 0;
       const skipState  = __sqSkippedRoundState(p, r);
+      const hasCatchUpDart = Array.isArray(entry?.darts) && entry.darts.some(d=>d && d.kind!=='Scratch');
 
       const mainEl = byId(`cell-main-${p}-${r}`);
       const subEl  = byId(`cell-sub-${p}-${r}`);
@@ -3852,7 +3855,7 @@ function updateUI() {
           subEl.classList.toggle('sq-skip-cell-mark', skipState === 'pending');
           subEl.classList.toggle('sq-skip-cell-scratched', skipState === 'scratched');
           subEl.classList.remove('sub-win');
-          if (skipState === 'pending') {
+          if (skipState === 'pending' && !hasCatchUpDart) {
             subEl.textContent = '»»»';
           } else if (skipState === 'scratched') {
             subEl.textContent = 'X';
