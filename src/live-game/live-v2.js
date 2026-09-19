@@ -3707,6 +3707,18 @@ function __sqLiveV3Render(){
   try{ __sqV3EnsureLevels(panel); }catch(_){ }
 }
 
+function __sqIsSkippedRoundCell(pIdx, rIdx){
+  try{
+    const jobs=Array.isArray(state?.__sqCatchUp?.jobs)?state.__sqCatchUp.jobs:[];
+    return jobs.some(job=>{
+      if(!job || job.kind!=='absence' || Number(job.playerIndex)!==Number(pIdx)) return false;
+      const pending=Array.isArray(job.pendingRounds)?job.pendingRounds:[];
+      const scratched=Array.isArray(job.scratchedRounds)?job.scratchedRounds:[];
+      return pending.some(x=>Number(x)===Number(rIdx)) || scratched.some(x=>Number(x)===Number(rIdx));
+    });
+  }catch(_){ return false; }
+}
+
 window.__sqLiveV3Sync = function(){
   try{
     const onGame = document.body && document.body.dataset.page === 'game';
@@ -3781,6 +3793,7 @@ function updateUI() {
       const entry      = state.score?.[p]?.[r];
       const hasDart    = roundHasScore[r][p];
       const roundTotal = hasDart ? (entry?.roundTotal || 0) : 0;
+      const isSkipped  = __sqIsSkippedRoundCell(p, r);
 
       const mainEl = byId(`cell-main-${p}-${r}`);
       const subEl  = byId(`cell-sub-${p}-${r}`);
@@ -3789,17 +3802,23 @@ function updateUI() {
         running += roundTotal;
         if (mainEl) mainEl.textContent = String(running);
         if (subEl) {
-          subEl.textContent = `(${roundTotal})`;
+          subEl.classList.toggle('sq-skip-cell-mark', isSkipped);
           subEl.classList.remove('sub-win');
-          if (roundTotal > 0 && roundTotal === maxRoundTotals[r]) {
-            // highest round score this row – green
-            subEl.classList.add('sub-win');
+          if (isSkipped) {
+            subEl.textContent = '»»»';
+          } else {
+            subEl.textContent = `(${roundTotal})`;
+            if (roundTotal > 0 && roundTotal === maxRoundTotals[r]) {
+              // highest round score this row – green
+              subEl.classList.add('sub-win');
+            }
           }
         }
       } else {
         if (mainEl) mainEl.textContent = '–';
         if (subEl) {
-          subEl.textContent = '';
+          subEl.classList.toggle('sq-skip-cell-mark', isSkipped);
+          subEl.textContent = isSkipped ? '»»»' : '';
           subEl.classList.remove('sub-win');
         }
       }
