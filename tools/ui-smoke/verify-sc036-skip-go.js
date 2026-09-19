@@ -118,13 +118,28 @@ function assert(cond, msg) {
     assert(s.p===1 && s.r===3 && s.d===0 && s.active===false, 'skipped player should simply reach their next scheduled turn');
 
     // First scoring input automatically resumes from the oldest retained missed round.
+    // Presentation must stay anchored to the scheduled table round; only the
+    // orange active badge/cell moves back to the catch-up target.
     await page.evaluate(() => recordThrow({kind:'Miss'}));
+    await page.waitForTimeout(100);
     s = await page.evaluate(() => {
       const job=state.__sqCatchUp.jobs.find(j=>j.kind==='absence'&&!j.completed&&j.playerIndex===1);
-      return {p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active,returned:!!job?.returned,pending:job?.pendingRounds?.slice()||[]};
+      const activeCell=document.querySelector('#v2Rows .v2Cell.active[data-p="1"]');
+      const activeBadge=document.querySelector('#v2Rows .v2Badge.active');
+      const liveRow=document.querySelector('#v2Rows .v2Cell.liveRow[data-p="1"]');
+      return {
+        p:state.currentPlayer,r:state.currentRound,d:state.currentDart,
+        active:!!state.__sqCatchUp.active,returned:!!job?.returned,pending:job?.pendingRounds?.slice()||[],
+        viewRound:Number(window.__sqLiveV2DisplayRound?.()),
+        activeCellRound:Number(activeCell?.dataset?.round),
+        activeBadge:String(activeBadge?.textContent||'').trim(),
+        liveRowRound:Number(liveRow?.dataset?.round)
+      };
     });
     assert(s.p===1 && s.r===2 && s.d===1 && s.active===true && s.returned===true, 'first score input must auto-resume BETA at oldest missed round');
     assert(s.pending.join(',')==='2', 'single skipped round should remain the active catch-up round until completed');
+    assert(s.viewRound===3 && s.liveRowRound===3, 'catch-up must keep Live V2 viewport anchored to the scheduled table round');
+    assert(s.activeCellRound===2 && s.activeBadge==='12', 'orange active edging must move to the missed round cell and its round badge');
 
     await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
     s = await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active}));
@@ -181,9 +196,33 @@ function assert(cond, msg) {
     assert(s.p===1 && s.r===6 && s.d===0, 'BETA should reach scheduled round 6 before automatic catch-up');
 
     // First score at round 6 rewinds to round 3, then 4, then 5, and finally returns to round 6.
+    const catchUpScrollBefore=await page.evaluate(() => {
+      liveV2Render();
+      const wrap=document.querySelector('#liveV2Panel .v2RowsWrap');
+      if(!wrap) return null;
+      const max=Math.max(0,wrap.scrollHeight-wrap.clientHeight);
+      wrap.scrollTop=Math.max(0,Math.round(max*0.45));
+      return {top:wrap.scrollTop,max};
+    });
     await page.evaluate(() => recordThrow({kind:'Miss'}));
-    s=await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active}));
+    await page.waitForTimeout(100);
+    s=await page.evaluate(() => {
+      const wrap=document.querySelector('#liveV2Panel .v2RowsWrap');
+      const activeCell=document.querySelector('#v2Rows .v2Cell.active[data-p="1"]');
+      const liveRow=document.querySelector('#v2Rows .v2Cell.liveRow[data-p="1"]');
+      return {
+        p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active,
+        viewRound:Number(window.__sqLiveV2DisplayRound?.()),
+        activeCellRound:Number(activeCell?.dataset?.round),
+        liveRowRound:Number(liveRow?.dataset?.round),
+        scrollTop:wrap?wrap.scrollTop:null
+      };
+    });
     assert(s.p===1 && s.r===3 && s.d===1 && s.active===true, 'automatic resume must rewind to oldest of latest-three missed rounds');
+    assert(s.viewRound===6 && s.liveRowRound===6 && s.activeCellRound===3, 'max-three catch-up must move only active edging while scheduled row stays fixed');
+    if(catchUpScrollBefore && catchUpScrollBefore.max>4){
+      assert(Math.abs(Number(s.scrollTop)-Number(catchUpScrollBefore.top))<=2, 'starting catch-up must not auto-scroll the Live V2 score panel backwards');
+    }
 
     await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
     for (const round of [4,5]) {
