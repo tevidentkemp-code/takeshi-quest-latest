@@ -25,9 +25,15 @@ function assert(cond, msg) {
         id:'ui-'+i,
         name:'UI PLAYER '+String(i+1).padStart(2,'0')
       }));
-      window.__sqOpenAddPlayerMenu(()=>{});
+      window.__sqOpenGameMenu106();
     });
-    await page.waitForFunction(() => document.querySelectorAll('.sq-menu106-row').length >= 20);
+    const gameMenuAdd = page.locator('.sq-menu106-row').filter({hasText:'Add Player'}).first();
+    await gameMenuAdd.waitFor({state:'visible'});
+    await gameMenuAdd.click();
+    await page.waitForFunction(() =>
+      /ADD PLAYER/i.test(document.querySelector('.sq-menu106-title')?.textContent||'') &&
+      document.querySelectorAll('.sq-menu106-row').length >= 20
+    );
     const addUi = await page.evaluate(() => {
       const modal=document.querySelector('.sq-menu106-modal');
       const body=modal?.querySelector('.sq-menu106-body');
