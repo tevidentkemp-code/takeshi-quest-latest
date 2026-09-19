@@ -117,14 +117,50 @@ function assert(cond, msg) {
     s = await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp?.active}));
     assert(s.p===1 && s.r===3 && s.d===0 && s.active===false, 'skipped player should simply reach their next scheduled turn');
 
+    // Before any score input, presentation must already show the oldest recoverable
+    // missed round as the orange target while keeping the table viewport/live row
+    // on the scheduled round.
+    await page.waitForTimeout(120);
+    const previewFocus = await page.evaluate(() => {
+      const wrap=document.querySelector('#liveV2Panel .v2RowsWrap');
+      const activeBadge=document.querySelector('#v2Rows .v2Badge.active');
+      const liveBadge=document.querySelector('#v2Rows .v2Badge.liveRow');
+      const activeCell=document.querySelector('#v2Rows .v2Cell.active[data-p="1"]');
+      const scheduledCell=document.querySelector('#v2Rows .v2Cell.liveRow[data-p="1"]');
+      return {
+        activeBadgeRound:Number(activeBadge?.dataset?.round),
+        liveBadgeRound:Number(liveBadge?.dataset?.round),
+        activeCellRound:Number(activeCell?.dataset?.round),
+        scheduledCellRound:Number(scheduledCell?.dataset?.round),
+        activeText:String(activeCell?.textContent||'').trim(),
+        scrollTop:Number(wrap?.scrollTop||0)
+      };
+    });
+    assert(previewFocus.activeBadgeRound===2 && previewFocus.activeCellRound===2, 'returning player orange focus must preview the oldest skipped round before scoring');
+    assert(previewFocus.liveBadgeRound===3 && previewFocus.scheduledCellRound===3, 'table live row must stay on the scheduled round while catch-up is previewed');
+    assert(/»»»/.test(previewFocus.activeText), 'orange catch-up focus must sit on the skipped chevron cell');
+
     // First scoring input automatically resumes from the oldest retained missed round.
     await page.evaluate(() => recordThrow({kind:'Miss'}));
+    await page.waitForTimeout(140);
     s = await page.evaluate(() => {
       const job=state.__sqCatchUp.jobs.find(j=>j.kind==='absence'&&!j.completed&&j.playerIndex===1);
-      return {p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active,returned:!!job?.returned,pending:job?.pendingRounds?.slice()||[]};
+      const wrap=document.querySelector('#liveV2Panel .v2RowsWrap');
+      const activeBadge=document.querySelector('#v2Rows .v2Badge.active');
+      const liveBadge=document.querySelector('#v2Rows .v2Badge.liveRow');
+      const activeCell=document.querySelector('#v2Rows .v2Cell.active[data-p="1"]');
+      return {
+        p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active,returned:!!job?.returned,pending:job?.pendingRounds?.slice()||[],
+        activeBadgeRound:Number(activeBadge?.dataset?.round),
+        liveBadgeRound:Number(liveBadge?.dataset?.round),
+        activeCellRound:Number(activeCell?.dataset?.round),
+        scrollTop:Number(wrap?.scrollTop||0)
+      };
     });
     assert(s.p===1 && s.r===2 && s.d===1 && s.active===true && s.returned===true, 'first score input must auto-resume BETA at oldest missed round');
     assert(s.pending.join(',')==='2', 'single skipped round should remain the active catch-up round until completed');
+    assert(s.activeBadgeRound===2 && s.activeCellRound===2 && s.liveBadgeRound===3, 'active orange edge must stay on catch-up round while live table row remains scheduled round');
+    assert(Math.abs(s.scrollTop-previewFocus.scrollTop)<=4, 'starting catch-up must not move the score viewport backwards');
 
     await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
     s = await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active}));
