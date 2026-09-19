@@ -83,6 +83,30 @@ function assert(cond, msg) {
     assert(/rgb\(255,\s*106,\s*0\)/i.test(skipMark.color), 'skipped-round marker must use Shateki orange');
     assert(skipMark.animation && skipMark.animation!=='none', 'skipped-round marker must have a subtle pulse animation');
 
+    // Physical production view contract: Live V3 must render the same skipped
+    // marker in its visible round cell instead of falling back to a numeric zero.
+    await page.evaluate(() => localStorage.setItem('sq_livev3_test','1'));
+    await reset(2,1,2);
+    await page.waitForFunction(() => document.body.classList.contains('livev3-on') && !!document.querySelector('#liveV3Panel'));
+    await page.waitForSelector('#pad .dtActBtn.skip', {state:'visible'});
+    await page.click('#pad .dtActBtn.skip');
+    await page.waitForFunction(() => !!document.querySelector('#liveV3Panel .v3-side[data-p="1"] .v3-rr-tot.sq-skip-cell-mark'));
+    const v3SkipMark = await page.evaluate(() => {
+      const el=document.querySelector('#liveV3Panel .v3-side[data-p="1"] .v3-rr-tot.sq-skip-cell-mark');
+      const cs=el?getComputedStyle(el):null;
+      return {
+        text:String(el?.textContent||'').trim(),
+        color:cs?.color||'',
+        animation:cs?.animationName||'',
+        dataUntouched:state.score[1][2].darts.every(x=>x===null)
+      };
+    });
+    assert(v3SkipMark.text==='»»»', 'Live V3 skipped round must replace displayed zero with three fast-forward chevrons');
+    assert(/rgb\(255,\s*106,\s*0\)/i.test(v3SkipMark.color), 'Live V3 skipped marker must use Shateki orange');
+    assert(v3SkipMark.animation && v3SkipMark.animation!=='none', 'Live V3 skipped marker must pulse subtly');
+    assert(v3SkipMark.dataUntouched===true, 'Live V3 marker must not fabricate score data');
+    await page.evaluate(() => { localStorage.removeItem('sq_livev3_test'); document.body.classList.remove('livev3-on'); document.getElementById('liveV3Panel')?.remove(); });
+
     // Game Menu must NOT expose the retired manual return path.
     await page.evaluate(() => window.__sqOpenGameMenu106());
     await page.waitForTimeout(100);
