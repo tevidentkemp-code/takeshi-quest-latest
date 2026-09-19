@@ -15,7 +15,7 @@ function assert(cond, msg) {
     await page.waitForFunction(() =>
       typeof window.__sqSkipAbsentVisit === 'function' &&
       typeof window.__sqAbsentPlayers === 'function' &&
-      typeof window.__sqMarkPlayerReturned === 'function' &&
+      typeof window.__sqResumeAbsenceOnScoreInput === 'function' &&
       typeof window.__sqEnsureFinalBullReturnTimer === 'function' &&
       typeof window.__sqFinalBullReturnTimerActive === 'function' &&
       typeof window.__sqExpireFinalBullReturnTimer === 'function'
@@ -69,47 +69,55 @@ function assert(cond, msg) {
     assert(s.job && s.job.kind==='absence' && s.job.pendingRounds.join(',')==='2', 'absence job must retain the skipped round');
     assert(s.absent.length===1 && s.absent[0].name==='BETA', 'BETA should be exposed as absent');
 
-    // Game Menu must expose the explicit return path.
+    // Game Menu must NOT expose the retired manual return path.
     await page.evaluate(() => window.__sqOpenGameMenu106());
     await page.waitForTimeout(100);
     const menuText = await page.locator('.sq-menu106-modal').last().innerText().catch(()=> '');
-    assert(/PLAYER RETURNED/i.test(menuText) && /BETA/i.test(menuText), 'Game Menu must expose Player Returned for absent players');
+    assert(!/PLAYER RETURNED/i.test(menuText), 'Game Menu must not expose retired Player Returned control');
     await page.keyboard.press('Escape').catch(()=>{});
 
-    // Finish GAMMA's round: because BETA has not returned, play advances normally.
+    // Finish GAMMA round 2, then ALPHA round 3. BETA reaches their next scheduled turn.
     await page.evaluate(() => {
       recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'});
     });
-    s = await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,active:!!state.__sqCatchUp?.active}));
-    assert(s.p===0 && s.r===3 && s.active===false, 'unreturned player must not interrupt the next table round');
-
-    async function completeAlphaThenSkipBeta(round) {
-      await page.evaluate((round) => {
-        if(state.currentPlayer!==0 || state.currentRound!==round) throw new Error('expected ALPHA at round '+round);
-        recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'});
-      }, round);
-      const pos = await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart}));
-      assert(pos.p===1 && pos.r===round && pos.d===0, 'BETA should reach scheduled turn before another absence skip');
-      const handled = await page.evaluate(() => window.__sqSkipAbsentVisit());
-      assert(handled===true, 'start-of-turn absence skip must be handled');
-    }
-    async function completeGamma(round) {
-      await page.evaluate((round) => {
-        if(state.currentPlayer!==2 || state.currentRound!==round) throw new Error('expected GAMMA at round '+round);
-        recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'});
-      }, round);
-    }
-
-    await completeAlphaThenSkipBeta(3); await completeGamma(3);
-    await completeAlphaThenSkipBeta(4); await completeGamma(4);
-
-    // Fourth missed round should scratch the oldest and remain undoable.
     await page.evaluate(() => {
-      if(state.currentPlayer!==0 || state.currentRound!==5) throw new Error('expected ALPHA round 5');
+      if(state.currentPlayer!==0 || state.currentRound!==3) throw new Error('expected ALPHA round 3');
       recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'});
     });
-    let handled = await page.evaluate(() => window.__sqSkipAbsentVisit());
-    assert(handled===true, 'fourth absence skip should be handled');
+    s = await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp?.active}));
+    assert(s.p===1 && s.r===3 && s.d===0 && s.active===false, 'skipped player should simply reach their next scheduled turn');
+
+    // First scoring input automatically resumes from the oldest retained missed round.
+    await page.evaluate(() => recordThrow({kind:'Miss'}));
+    s = await page.evaluate(() => {
+      const job=state.__sqCatchUp.jobs.find(j=>j.kind==='absence'&&!j.completed&&j.playerIndex===1);
+      return {p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active,returned:!!job?.returned,pending:job?.pendingRounds?.slice()||[]};
+    });
+    assert(s.p===1 && s.r===2 && s.d===1 && s.active===true && s.returned===true, 'first score input must auto-resume BETA at oldest missed round');
+    assert(s.pending.join(',')==='2', 'single skipped round should remain the active catch-up round until completed');
+
+    await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
+    s = await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active}));
+    assert(s.p===1 && s.r===3 && s.d===0 && s.active===false, 'after catch-up, player must resume the scheduled turn that triggered return');
+
+    // Build a four-round absence backlog. Only the latest three remain recoverable.
+    await reset(2,1,3);
+    async function finishPlayer(expectedPlayer, round) {
+      await page.evaluate(({expectedPlayer,round}) => {
+        if(state.currentPlayer!==expectedPlayer || state.currentRound!==round) throw new Error('unexpected cursor '+state.currentPlayer+'/'+state.currentRound);
+        recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'});
+      }, {expectedPlayer,round});
+    }
+    assert(await page.evaluate(() => window.__sqSkipAbsentVisit())===true, 'round 2 absence skip should succeed');
+    await finishPlayer(2,2);
+    for (const round of [3,4]) {
+      await finishPlayer(0,round);
+      assert(await page.evaluate(() => window.__sqSkipAbsentVisit())===true, 'absence skip round '+round+' should succeed');
+      await finishPlayer(2,round);
+    }
+    await finishPlayer(0,5);
+    assert(await page.evaluate(() => window.__sqSkipAbsentVisit())===true, 'fourth absence skip should succeed');
+
     s = await page.evaluate(() => {
       const job=state.__sqCatchUp.jobs.find(j=>j.kind==='absence'&&!j.completed&&j.playerIndex===1);
       return {
@@ -118,9 +126,9 @@ function assert(cond, msg) {
         r2:JSON.parse(JSON.stringify(state.score[1][2]))
       };
     });
-    assert(s.pending.join(',')==='3,4,5', 'only the most recent three missed rounds stay recoverable');
-    assert(s.scratched.join(',')==='2', 'oldest missed round must be scratched after backlog exceeds three');
-    assert(s.r2.darts.every(d=>d && d.kind==='Scratch' && d.points===0), 'scratched round must be materialised as a zero, not a scored Miss action');
+    assert(s.pending.join(',')==='3,4,5', 'only the most recent three skipped rounds stay recoverable');
+    assert(s.scratched.join(',')==='2', 'oldest skipped round must be scratched after backlog exceeds three');
+    assert(s.r2.darts.every(d=>d && d.kind==='Scratch' && d.points===0), 'oldest scratched round must materialise as zero');
 
     await page.evaluate(() => undo());
     s = await page.evaluate(() => {
@@ -132,35 +140,32 @@ function assert(cond, msg) {
         r2:JSON.parse(JSON.stringify(state.score[1][2]))
       };
     });
-    assert(s.p===1 && s.r===5 && s.d===0, 'Undo must restore the skipped player/round cursor');
+    assert(s.p===1 && s.r===5 && s.d===0, 'Undo must restore skipped player/round cursor');
     assert(s.pending.join(',')==='2,3,4' && s.scratched.length===0, 'Undo must restore absence queue exactly');
     assert(s.r2.darts.every(d=>d===null), 'Undo must restore pre-scratch board state');
 
-    handled = await page.evaluate(() => window.__sqSkipAbsentVisit());
-    assert(handled===true, 'reapplied absence skip should succeed');
+    assert(await page.evaluate(() => window.__sqSkipAbsentVisit())===true, 'reapplied absence skip should succeed');
+    await finishPlayer(2,5);
+    await finishPlayer(0,6);
+    s=await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart}));
+    assert(s.p===1 && s.r===6 && s.d===0, 'BETA should reach scheduled round 6 before automatic catch-up');
 
-    // Returning before the table round ends queues catch-up; it must not interrupt GAMMA.
-    const returned = await page.evaluate(() => window.__sqMarkPlayerReturned(1));
-    assert(returned===true, 'Player Returned must mark the active absence job returned');
-    s = await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,absent:window.__sqAbsentPlayers(),active:!!state.__sqCatchUp.active}));
-    assert(s.p===2 && s.r===5 && s.absent.length===0 && s.active===false, 'return must wait until current table round finishes');
+    // First score at round 6 rewinds to round 3, then 4, then 5, and finally returns to round 6.
+    await page.evaluate(() => recordThrow({kind:'Miss'}));
+    s=await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active}));
+    assert(s.p===1 && s.r===3 && s.d===1 && s.active===true, 'automatic resume must rewind to oldest of latest-three missed rounds');
 
-    await completeGamma(5);
-    s = await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active}));
-    assert(s.p===1 && s.r===3 && s.d===0 && s.active===true, 'catch-up must begin with oldest retained round after table round completes');
-
-    for (const round of [3,4,5]) {
+    await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
+    for (const round of [4,5]) {
       const pos=await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart}));
       assert(pos.p===1 && pos.r===round && pos.d===0, 'unexpected catch-up position '+JSON.stringify(pos));
-      await page.evaluate(() => {
-        recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'});
-      });
+      await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
     }
     s=await page.evaluate(() => {
       const job=state.__sqCatchUp.jobs.find(j=>j.kind==='absence'&&j.playerIndex===1);
-      return {p:state.currentPlayer,r:state.currentRound,active:!!state.__sqCatchUp.active,completed:!!job.completed};
+      return {p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active,completed:!!job.completed};
     });
-    assert(s.p===0 && s.r===6 && s.active===false && s.completed===true, 'normal play must resume at next live round after catch-up');
+    assert(s.p===1 && s.r===6 && s.d===0 && s.active===false && s.completed===true, 'after max-three catch-up, player must resume scheduled round 6');
 
     // Resume persistence: an unreturned absence must survive refresh and Resume Game.
     await reset(4,1,3);
@@ -249,13 +254,6 @@ function assert(cond, msg) {
     });
     assert(blockedSkip.handled===true && JSON.stringify(blockedSkip.before)===JSON.stringify(blockedSkip.after), 'Skip Go must not bypass the active final-Bull return timer');
 
-    assert(await page.evaluate(() => window.__sqMarkPlayerReturned(1))===true, 'Player Returned can acknowledge presence during the Bull gate');
-    s=await page.evaluate(() => {
-      const job=state.__sqCatchUp.jobs[0];
-      return {active:window.__sqFinalBullReturnTimerActive(1),deadline:job.bullReturnDeadlineAt,returned:job.returned};
-    });
-    assert(s.active===true && Number.isFinite(Number(s.deadline)) && s.returned===true, 'Player Returned must not stop the timer before the first Bull dart');
-
     await page.evaluate(() => recordThrow({kind:'Miss'}));
     s=await page.evaluate(() => {
       const job=state.__sqCatchUp.jobs[0];
@@ -319,18 +317,16 @@ function assert(cond, msg) {
     assert(s.finished===false && s.p===1 && s.r===13 && s.d===0, 'Undo must restore the timed Bull cursor');
     assert(s.pending.join(',')==='10,11,12' && s.scratched.length===0 && s.deadline>28500, 'Undo must restore catch-up and restart the 30-second Bull gate');
 
-    // Final-round edge: game waits for an absent player, then completes after returned catch-up.
+    // Final-round edge: a skipped Bull remains unscored until the player presses a score button again.
     await reset(13,1,2);
     assert(await page.evaluate(() => window.__sqSkipAbsentVisit())===true, 'final-round absence skip should be handled');
     s=await page.evaluate(() => ({finished:state.finished,awaiting:!!state.__sqCatchUp?.awaitingReturn,p:state.currentPlayer,r:state.currentRound}));
-    assert(s.finished===false && s.awaiting===true && s.p===1 && s.r===13, 'game must wait rather than falsely complete with an unresolved absence');
-    assert(await page.evaluate(() => window.__sqMarkPlayerReturned(1))===true, 'final-round player return should be accepted');
-    s=await page.evaluate(() => ({active:!!state.__sqCatchUp?.active,p:state.currentPlayer,r:state.currentRound}));
-    assert(s.active===true && s.p===1 && s.r===13, 'final-round catch-up should start immediately from waiting state');
-    await page.evaluate(() => {
-      recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'});
-    });
-    assert(await page.evaluate(() => state.finished===true), 'game should finish only after final returned catch-up completes');
+    assert(s.finished===false && s.awaiting===true && s.p===1 && s.r===13, 'game must wait with Bull score untouched');
+    await page.evaluate(() => recordThrow({kind:'Miss'}));
+    s=await page.evaluate(() => ({active:!!state.__sqCatchUp?.active,p:state.currentPlayer,r:state.currentRound,d:state.currentDart}));
+    assert(s.active===true && s.p===1 && s.r===13 && s.d===1, 'first Bull score input must implicitly resume the skipped Bull');
+    await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
+    assert(await page.evaluate(() => state.finished===true), 'game should finish after the resumed Bull visit completes');
 
     console.log('SC-036 SKIP GO: PASS');
   } finally {
