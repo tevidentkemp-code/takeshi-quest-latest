@@ -69,6 +69,20 @@ function assert(cond, msg) {
     assert(s.job && s.job.kind==='absence' && s.job.pendingRounds.join(',')==='2', 'absence job must retain the skipped round');
     assert(s.absent.length===1 && s.absent[0].name==='BETA', 'BETA should be exposed as absent');
 
+    const skipMark = await page.evaluate(() => {
+      const sub=document.querySelector('#cell-sub-1-2');
+      const cs=sub?getComputedStyle(sub):null;
+      return {
+        text:String(sub?.textContent||'').trim(),
+        marked:!!sub?.classList.contains('sq-skip-cell-mark'),
+        color:cs?.color||'',
+        animation:cs?.animationName||''
+      };
+    });
+    assert(skipMark.text==='»»»' && skipMark.marked, 'skipped round must show three fast-forward chevrons instead of zero');
+    assert(/rgb\(255,\s*106,\s*0\)/i.test(skipMark.color), 'skipped-round marker must use Shateki orange');
+    assert(skipMark.animation && skipMark.animation!=='none', 'skipped-round marker must have a subtle pulse animation');
+
     // Game Menu must NOT expose the retired manual return path.
     await page.evaluate(() => window.__sqOpenGameMenu106());
     await page.waitForTimeout(100);
