@@ -16432,9 +16432,14 @@ function __sqLiveV3Render(){
     const items = [];
     for (let ri = r; ri >= 0; ri--){
       const e = entryOf(p, ri);
-      if (!roundComplete(p, ri, e)) continue;
-      const best = __sqV3RoundThrown(entryOf(1 - p, ri)) && Number(e.roundTotal || 0) > Number(entryOf(1 - p, ri).roundTotal || 0);
-      items.push(`<div class="v3-rr${best ? ' best' : ''}"><span class="v3-rr-lab">R${ri + 1}</span><span class="v3-rr-tot">${Number(e.roundTotal || 0)}</span><span class="v3-rr-marks">${__sqV3Marks(e).replace(/ \/ /g, '<i>·</i>')}</span></div>`);
+      const skipped = __sqIsSkippedRoundCell(p, ri);
+      if (!skipped && !roundComplete(p, ri, e)) continue;
+      const best = !skipped && __sqV3RoundThrown(entryOf(1 - p, ri)) && Number(e.roundTotal || 0) > Number(entryOf(1 - p, ri).roundTotal || 0);
+      const totalHtml = skipped
+        ? '<span class="v3-rr-tot sq-skip-cell-mark" aria-label="Skipped round">»»»</span>'
+        : '<span class="v3-rr-tot">' + Number((e && e.roundTotal) || 0) + '</span>';
+      const marksHtml = skipped ? '' : __sqV3Marks(e).replace(/ \/ /g, '<i>·</i>');
+      items.push(`<div class="v3-rr${best ? ' best' : ''}"><span class="v3-rr-lab">R${ri + 1}</span>${totalHtml}<span class="v3-rr-marks">${marksHtml}</span></div>`);
     }
     if (!items.length) return '<div class="v3-rr-none">—</div>';
     return items.join('');
