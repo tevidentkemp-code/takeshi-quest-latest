@@ -355,10 +355,12 @@ const __soloLiveDarts = (pCount === 1) ? __sqV2DartsTextForEntry(state.score?.[i
 const __soloScoreBorderClass = (pCount === 1)
   ? (r === tableCr ? ' solo-current' : ((r < tableCr && val != null && pbVal > 0 && Number(val) > pbVal) ? ' solo-beat-pb' : (r < tableCr ? ' solo-complete' : ' solo-future')))
   : '';
-const __isSkippedCell = (typeof __sqIsSkippedRoundCell === 'function') && __sqIsSkippedRoundCell(i, r);
-const __inlineScore = __isSkippedCell
+const __skipState = (typeof __sqSkippedRoundState === 'function') ? __sqSkippedRoundState(i, r) : '';
+const __inlineScore = __skipState === 'pending'
   ? '<span class="v2CellNum sq-skip-cell-mark">»»»</span>'
-  : (val == null ? "–" : `<span class="v2CellNum">${escapeHtml(String(val))}</span>${__soloLiveDarts ? `<span class="v2CellDarts">${escapeHtml(__soloLiveDarts)}</span>` : ''}`);
+  : (__skipState === 'scratched'
+    ? '<span class="v2CellNum sq-skip-cell-scratched">X</span>'
+    : (val == null ? "–" : `<span class="v2CellNum">${escapeHtml(String(val))}</span>${__soloLiveDarts ? `<span class="v2CellDarts">${escapeHtml(__soloLiveDarts)}</span>` : ''}`));
 const __inlineTargets = (r === tableCr)
   ? `<div class="v2CellShots" data-p="${i}" data-round="${r}" aria-label="Current round targets">
       <span class="v2Dot" data-p="${i}" data-dot="0" data-shot-state="idle"></span>
@@ -3747,16 +3749,21 @@ function __sqLiveV3Render(){
   try{ __sqV3EnsureLevels(panel); }catch(_){ }
 }
 
-function __sqIsSkippedRoundCell(pIdx, rIdx){
+function __sqSkippedRoundState(pIdx, rIdx){
   try{
     const jobs=Array.isArray(state?.__sqCatchUp?.jobs)?state.__sqCatchUp.jobs:[];
-    return jobs.some(job=>{
-      if(!job || job.kind!=='absence' || Number(job.playerIndex)!==Number(pIdx)) return false;
+    for(const job of jobs){
+      if(!job || job.kind!=='absence' || Number(job.playerIndex)!==Number(pIdx)) continue;
       const pending=Array.isArray(job.pendingRounds)?job.pendingRounds:[];
+      if(pending.some(x=>Number(x)===Number(rIdx))) return 'pending';
       const scratched=Array.isArray(job.scratchedRounds)?job.scratchedRounds:[];
-      return pending.some(x=>Number(x)===Number(rIdx)) || scratched.some(x=>Number(x)===Number(rIdx));
-    });
-  }catch(_){ return false; }
+      if(scratched.some(x=>Number(x)===Number(rIdx))) return 'scratched';
+    }
+  }catch(_){}
+  return '';
+}
+function __sqIsSkippedRoundCell(pIdx, rIdx){
+  return !!__sqSkippedRoundState(pIdx, rIdx);
 }
 
 window.__sqLiveV3Sync = function(){
@@ -3833,7 +3840,7 @@ function updateUI() {
       const entry      = state.score?.[p]?.[r];
       const hasDart    = roundHasScore[r][p];
       const roundTotal = hasDart ? (entry?.roundTotal || 0) : 0;
-      const isSkipped  = __sqIsSkippedRoundCell(p, r);
+      const skipState  = __sqSkippedRoundState(p, r);
 
       const mainEl = byId(`cell-main-${p}-${r}`);
       const subEl  = byId(`cell-sub-${p}-${r}`);
@@ -3842,10 +3849,13 @@ function updateUI() {
         running += roundTotal;
         if (mainEl) mainEl.textContent = String(running);
         if (subEl) {
-          subEl.classList.toggle('sq-skip-cell-mark', isSkipped);
+          subEl.classList.toggle('sq-skip-cell-mark', skipState === 'pending');
+          subEl.classList.toggle('sq-skip-cell-scratched', skipState === 'scratched');
           subEl.classList.remove('sub-win');
-          if (isSkipped) {
+          if (skipState === 'pending') {
             subEl.textContent = '»»»';
+          } else if (skipState === 'scratched') {
+            subEl.textContent = 'X';
           } else {
             subEl.textContent = `(${roundTotal})`;
             if (roundTotal > 0 && roundTotal === maxRoundTotals[r]) {
@@ -3857,8 +3867,9 @@ function updateUI() {
       } else {
         if (mainEl) mainEl.textContent = '–';
         if (subEl) {
-          subEl.classList.toggle('sq-skip-cell-mark', isSkipped);
-          subEl.textContent = isSkipped ? '»»»' : '';
+          subEl.classList.toggle('sq-skip-cell-mark', skipState === 'pending');
+          subEl.classList.toggle('sq-skip-cell-scratched', skipState === 'scratched');
+          subEl.textContent = skipState === 'pending' ? '»»»' : (skipState === 'scratched' ? 'X' : '');
           subEl.classList.remove('sub-win');
         }
       }
