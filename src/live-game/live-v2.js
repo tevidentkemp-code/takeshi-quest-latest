@@ -65,8 +65,39 @@ function liveV2Render(){
              : (Number.isFinite(+state.currentPlayerIndex) ? +state.currentPlayerIndex
              : (Number.isFinite(+state.turnIndex) ? +state.turnIndex : 0));
 
-  // Totals + initials + leader diff subline
+  // Totals + initials + leader diff subline.
+  // SC-036 presentation split: during absence catch-up the engine cursor rewinds
+  // to the missed scoring round, but the table/viewport stays on the scheduled
+  // live round. The orange active edge follows the catch-up target independently.
   const cr = state.currentRound ?? 0;
+  const __sqCatchUpView = (()=>{
+    const clampRound = v => Math.max(0, Math.min(MAX_ROUNDS - 1, Number(v) || 0));
+    const cu = state && state.__sqCatchUp;
+    let tableRound = clampRound(cr);
+    let scoringRound = clampRound(cr);
+    let preview = false;
+
+    if(cu && cu.active){
+      if(Number.isFinite(Number(cu.resumeRound))) tableRound = clampRound(cu.resumeRound);
+    }else if(cu && Array.isArray(cu.jobs) && Number(state.currentDart || 0) === 0){
+      for(let j=cu.jobs.length-1; j>=0; j--){
+        const job = cu.jobs[j];
+        if(!job || job.kind !== 'absence' || job.completed || job.returned === true || Number(job.playerIndex) !== Number(turn)) continue;
+        const pending = Array.isArray(job.pendingRounds) ? job.pendingRounds.map(Number).filter(Number.isFinite).sort((a,b)=>a-b) : [];
+        if(!pending.length) break;
+        // Final Bull remains Bull-first under §§9.8–9.11; do not preview older
+        // catch-up rounds until that first Bull dart has been taken.
+        if(tableRound === MAX_ROUNDS - 1 && pending.some(r=>r < MAX_ROUNDS - 1)) break;
+        scoringRound = clampRound(pending[0]);
+        preview = scoringRound !== tableRound;
+        break;
+      }
+    }
+
+    return { tableRound, scoringRound, active:!!(cu && cu.active), preview };
+  })();
+  const tableCr = __sqCatchUpView.tableRound;
+  const activeCr = __sqCatchUpView.scoringRound;
 
   // Bottom number:
   // - leaders show green positive gap to the next non-leading score
@@ -208,14 +239,14 @@ function liveV2Render(){
     // Fix122/Fix131: early games should start with the live round anchored on row 4.
     // Practice solo: blank / blank / blank / 10.
     // Standard Match Play: blank / blank / blank / 10, then roll up each completed round.
-    const __sqSoloPracticeStartAnchor = (pCount === 1 && cr <= 2 && (function(){
+    const __sqSoloPracticeStartAnchor = (pCount === 1 && tableCr <= 2 && (function(){
       try{
         const m = state.match || {};
         const mode = String(state.mode || state.gameMode || m.mode || m.gameMode || '').toLowerCase();
         return mode.indexOf('practice') >= 0 || m.isPractice === true || m.is_practice === true || state.isPractice === true || state.is_practice === true || pCount === 1;
       }catch(_){ return pCount === 1; }
     })());
-    const __sqStandardMatchStartAnchor = (pCount > 1 && cr <= 2 && (function(){
+    const __sqStandardMatchStartAnchor = (pCount > 1 && tableCr <= 2 && (function(){
       try{
         const m = state.match || {};
         const mode = String(state.mode || state.gameMode || m.mode || m.gameMode || '').toLowerCase();
@@ -227,9 +258,9 @@ function liveV2Render(){
       }catch(_){ return true; }
     })());
     const __sqStartAnchorRow4 = (__sqSoloPracticeStartAnchor || __sqStandardMatchStartAnchor);
-    const renderEnd = Math.min(totalR - 1, (__sqStartAnchorRow4 ? cr : (cr <= 2 ? 3 : cr)));
+    const renderEnd = Math.min(totalR - 1, (__sqStartAnchorRow4 ? tableCr : (tableCr <= 2 ? 3 : tableCr)));
     if(__sqStartAnchorRow4){
-      const __blankRows = Math.max(0, 3 - cr);
+      const __blankRows = Math.max(0, 3 - tableCr);
       for(let __b = 0; __b < __blankRows; __b++){
         out.push('<div class="v2Badge small solo-future sq122-blank sq131-blank"></div>');
         if(pCount === 1){
@@ -244,11 +275,12 @@ function liveV2Render(){
     }
     for(let r = 0; r <= renderEnd; r++){
 
-      const rowSmall = (r !== cr);
-      const rowClass = (r === cr) ? " liveRow" : (rowSmall ? " small" : "");
+      const rowSmall = (r !== tableCr);
+      const rowClass = (r === tableCr) ? " liveRow" : (rowSmall ? " small" : "");
 
-      // Insert a faint divider line above the live row (not over the badge column)
-      if(r === cr && (r > 0 || __sqStartAnchorRow4)){
+      // Insert a faint divider line above the table's live row. Catch-up changes
+      // orange focus only; it must not move or resize the viewport rows.
+      if(r === tableCr && (r > 0 || __sqStartAnchorRow4)){
         out.push('<div class="v2SepNo"></div>');
         out.push('<div class="v2Sep"></div>');
       }
@@ -262,11 +294,11 @@ function liveV2Render(){
         if(vals[i] != null && vals[i] > maxV) maxV = vals[i];
       }
 
-      const __soloRowState = (pCount === 1) ? (r === cr ? " solo-current" : (r < cr ? " solo-complete" : " solo-future")) : "";
-      out.push(`<div class="v2Badge${rowClass} ${r === cr ? "active":""}${__soloRowState}">${escapeHtml(roundLabelForIndex(r))}</div>`);
+      const __soloRowState = (pCount === 1) ? (r === tableCr ? " solo-current" : (r < tableCr ? " solo-complete" : " solo-future")) : "";
+      out.push(`<div class="v2Badge${rowClass} ${r === activeCr ? "active":""}${__soloRowState}" data-round="${r}">${escapeHtml(roundLabelForIndex(r))}</div>`);
       for(let i=0; i<pCount; i++){
         const val = vals[i];
-        const isActiveCell = (r === cr) && (i === turn);
+        const isActiveCell = (r === activeCr) && (i === turn);
 
         // Highlight highest round score(s), but don't green-glow a row of zeros.
         const isHi = (maxV > 0) && (val != null) && (val === maxV);
@@ -321,20 +353,20 @@ const isPB = (!isWR) && (val != null) && (pbVal > 0) && (val === pbVal);
 
 const __soloLiveDarts = (pCount === 1) ? __sqV2DartsTextForEntry(state.score?.[i]?.[r], r) : '';
 const __soloScoreBorderClass = (pCount === 1)
-  ? (r === cr ? ' solo-current' : ((r < cr && val != null && pbVal > 0 && Number(val) > pbVal) ? ' solo-beat-pb' : (r < cr ? ' solo-complete' : ' solo-future')))
+  ? (r === tableCr ? ' solo-current' : ((r < tableCr && val != null && pbVal > 0 && Number(val) > pbVal) ? ' solo-beat-pb' : (r < tableCr ? ' solo-complete' : ' solo-future')))
   : '';
 const __isSkippedCell = (typeof __sqIsSkippedRoundCell === 'function') && __sqIsSkippedRoundCell(i, r);
 const __inlineScore = __isSkippedCell
   ? '<span class="v2CellNum sq-skip-cell-mark">»»»</span>'
   : (val == null ? "–" : `<span class="v2CellNum">${escapeHtml(String(val))}</span>${__soloLiveDarts ? `<span class="v2CellDarts">${escapeHtml(__soloLiveDarts)}</span>` : ''}`);
-const __inlineTargets = (r === cr)
+const __inlineTargets = (r === tableCr)
   ? `<div class="v2CellShots" data-p="${i}" data-round="${r}" aria-label="Current round targets">
       <span class="v2Dot" data-p="${i}" data-dot="0" data-shot-state="idle"></span>
       <span class="v2Dot" data-p="${i}" data-dot="1" data-shot-state="idle"></span>
       <span class="v2Dot" data-p="${i}" data-dot="2" data-shot-state="idle"></span>
     </div>`
   : '';
-const __cellContents = (r === cr)
+const __cellContents = (r === tableCr)
   ? `<div class="v2CellScore">${__inlineScore}</div>${__inlineTargets}`
   : __inlineScore;
 out.push(`<div class="v2Cell${rowClass} ${(isActiveCell ? "active":"")} ${(isHi ? "hi":"")} ${(isPB ? "pb":"")} ${(isWR ? "wr":"")}${__soloScoreBorderClass}" data-p="${i}" data-round="${r}">` +
@@ -363,9 +395,9 @@ out.push(`<div class="v2Cell${rowClass} ${(isActiveCell ? "active":"")} ${(isHi 
               soloPbVal = Number(m3 && m3.get ? (m3.get(rk2) || 0) : 0) || 0;
             }
           }catch(_){ }
-          const __soloPbBorderClass = (r === cr)
+          const __soloPbBorderClass = (r === tableCr)
             ? ' solo-current'
-            : ((r < cr && val != null && soloPbVal > 0 && Number(val) <= soloPbVal) ? ' solo-pb-holds' : (r < cr ? ' solo-complete' : ' solo-future'));
+            : ((r < tableCr && val != null && soloPbVal > 0 && Number(val) <= soloPbVal) ? ' solo-pb-holds' : (r < tableCr ? ' solo-complete' : ' solo-future'));
           out.push(`<div class="v2Cell${rowClass} v2SoloPbCell ${soloPbVal > 0 ? 'hasPb' : ''}${__soloPbBorderClass}">` +
             (soloPbVal > 0
               ? `<span class="v2SoloPbScore">${escapeHtml(String(soloPbVal))}</span><span class="v2SoloPbDarts">${escapeHtml(soloPbDarts || '—')}</span>`
@@ -382,9 +414,10 @@ out.push(`<div class="v2Cell${rowClass} ${(isActiveCell ? "active":"")} ${(isHi 
     // when the round cursor advances; historic rows never receive targets.
     for(let i=0;i<pCount;i++){
       const targetNodes = rowsHost.querySelectorAll(`.v2Cell.liveRow[data-p="${i}"] .v2CellShots .v2Dot`);
-      const darts = Array.isArray(state.score?.[i]?.[cr]?.darts) ? state.score[i][cr].darts : [];
-      const next = i === turn ? dartN : 3;
-      renderVisitDots(targetNodes, darts, next, !state.finished && i === turn);
+      const darts = Array.isArray(state.score?.[i]?.[tableCr]?.darts) ? state.score[i][tableCr].darts : [];
+      const ownsTableRound = i === turn && activeCr === tableCr;
+      const next = ownsTableRound ? dartN : 3;
+      renderVisitDots(targetNodes, darts, next, !state.finished && ownsTableRound);
     }
 
     // >>> PATCH:livev2-scoringcell-nextrow START
@@ -537,21 +570,25 @@ const out2 = [];
       }, {passive:true});
     }
 
-    // Build a signature for "scoring input changed" within the same round.
-    const sig = String(cr) + "|" + String(turn) + "|" + String(dartN) + "|" + __v2Totals.join(",");
+    // Build a signature around the table round, not the temporary catch-up
+    // scoring cursor. Starting/continuing catch-up must never drag the viewport
+    // backwards; only the orange active edge moves to activeCr.
+    const sig = String(tableCr) + "|" + String(turn) + "|" + String(dartN) + "|" + __v2Totals.join(",");
     const hadSig = (typeof window.__liveV2LastSig !== "undefined");
     const changed = hadSig && (sig !== window.__liveV2LastSig);
     window.__liveV2LastSig = sig;
 
     if(typeof window.__liveV2LastCr === "undefined") window.__liveV2LastCr = -1;
 
-    const roundChanged = (cr !== window.__liveV2LastCr);
-    if(roundChanged){
-      window.__liveV2LastCr = cr;
+    const roundChanged = (tableCr !== window.__liveV2LastCr);
+    if(__sqCatchUpView.active){
+      window.__liveV2LastCr = tableCr;
+    }else if(roundChanged){
+      window.__liveV2LastCr = tableCr;
       wrap.scrollTop = wrap.scrollHeight;
       window.__liveV2UserScrolled = false;
     }else if(changed){
-      // Any dart/score update snaps back to bottom (even if user had scrolled up).
+      // Ordinary scoring still snaps to the live table round.
       wrap.scrollTop = wrap.scrollHeight;
       window.__liveV2UserScrolled = false;
     }
