@@ -1,5 +1,17 @@
 // ===== @SEC:JS:GAME:LIVEV2 =====
 // @CANONICAL:LIVE_V2_BASE_RENDER
+function __sqLiveV2DisplayRound(){
+  try{
+    const cu=state && state.__sqCatchUp;
+    const resume=Number(cu && cu.resumeRound);
+    if(cu && cu.active===true && Number.isFinite(resume)){
+      return Math.max(0, Math.min(MAX_ROUNDS - 1, resume));
+    }
+  }catch(_){}
+  return Math.max(0, Math.min(MAX_ROUNDS - 1, Number(state?.currentRound || 0)));
+}
+try{ window.__sqLiveV2DisplayRound=__sqLiveV2DisplayRound; }catch(_){}
+
 function liveV2Render(){
   // Only runs on gameplay screen; prevents start/menu JS from crashing
   const page = document.body && (document.body.getAttribute('data-page') || document.body.dataset && document.body.dataset.page);
@@ -66,7 +78,11 @@ function liveV2Render(){
              : (Number.isFinite(+state.turnIndex) ? +state.turnIndex : 0));
 
   // Totals + initials + leader diff subline
+  // cr = gameplay/scoring cursor. viewCr = table round already reached.
+  // During SC-036 catch-up the scorer rewinds cr, but the Live V2 viewport must
+  // stay anchored to the scheduled table round while only active edging moves.
   const cr = state.currentRound ?? 0;
+  const viewCr = __sqLiveV2DisplayRound();
 
   // Bottom number:
   // - leaders show green positive gap to the next non-leading score
@@ -198,7 +214,7 @@ function liveV2Render(){
   const rowsHost = document.getElementById("v2Rows");
   if(rowsHost){
     const out = [];
-    const totalR = (typeof ROUNDS!=="undefined" && Array.isArray(ROUNDS) && ROUNDS.length) ? ROUNDS.length : Math.max(cr+1, 1);
+    const totalR = (typeof ROUNDS!=="undefined" && Array.isArray(ROUNDS) && ROUNDS.length) ? ROUNDS.length : Math.max(viewCr+1, 1);
 
     // Window behavior: render all rounds up to current (plus next), within a scrollable viewport.
     // Users can scroll back to see completed rounds; on scoring input we auto-scroll back to the live round.
@@ -208,14 +224,14 @@ function liveV2Render(){
     // Fix122/Fix131: early games should start with the live round anchored on row 4.
     // Practice solo: blank / blank / blank / 10.
     // Standard Match Play: blank / blank / blank / 10, then roll up each completed round.
-    const __sqSoloPracticeStartAnchor = (pCount === 1 && cr <= 2 && (function(){
+    const __sqSoloPracticeStartAnchor = (pCount === 1 && viewCr <= 2 && (function(){
       try{
         const m = state.match || {};
         const mode = String(state.mode || state.gameMode || m.mode || m.gameMode || '').toLowerCase();
         return mode.indexOf('practice') >= 0 || m.isPractice === true || m.is_practice === true || state.isPractice === true || state.is_practice === true || pCount === 1;
       }catch(_){ return pCount === 1; }
     })());
-    const __sqStandardMatchStartAnchor = (pCount > 1 && cr <= 2 && (function(){
+    const __sqStandardMatchStartAnchor = (pCount > 1 && viewCr <= 2 && (function(){
       try{
         const m = state.match || {};
         const mode = String(state.mode || state.gameMode || m.mode || m.gameMode || '').toLowerCase();
@@ -227,9 +243,9 @@ function liveV2Render(){
       }catch(_){ return true; }
     })());
     const __sqStartAnchorRow4 = (__sqSoloPracticeStartAnchor || __sqStandardMatchStartAnchor);
-    const renderEnd = Math.min(totalR - 1, (__sqStartAnchorRow4 ? cr : (cr <= 2 ? 3 : cr)));
+    const renderEnd = Math.min(totalR - 1, (__sqStartAnchorRow4 ? viewCr : (viewCr <= 2 ? 3 : viewCr)));
     if(__sqStartAnchorRow4){
-      const __blankRows = Math.max(0, 3 - cr);
+      const __blankRows = Math.max(0, 3 - viewCr);
       for(let __b = 0; __b < __blankRows; __b++){
         out.push('<div class="v2Badge small solo-future sq122-blank sq131-blank"></div>');
         if(pCount === 1){
@@ -244,11 +260,12 @@ function liveV2Render(){
     }
     for(let r = 0; r <= renderEnd; r++){
 
-      const rowSmall = (r !== cr);
-      const rowClass = (r === cr) ? " liveRow" : (rowSmall ? " small" : "");
+      const rowSmall = (r !== viewCr);
+      const rowClass = (r === viewCr) ? " liveRow" : (rowSmall ? " small" : "");
 
-      // Insert a faint divider line above the live row (not over the badge column)
-      if(r === cr && (r > 0 || __sqStartAnchorRow4)){
+      // Keep geometry anchored to the scheduled table round; active catch-up
+      // edging is independent and follows the actual scoring cursor below.
+      if(r === viewCr && (r > 0 || __sqStartAnchorRow4)){
         out.push('<div class="v2SepNo"></div>');
         out.push('<div class="v2Sep"></div>');
       }
@@ -262,7 +279,7 @@ function liveV2Render(){
         if(vals[i] != null && vals[i] > maxV) maxV = vals[i];
       }
 
-      const __soloRowState = (pCount === 1) ? (r === cr ? " solo-current" : (r < cr ? " solo-complete" : " solo-future")) : "";
+      const __soloRowState = (pCount === 1) ? (r === viewCr ? " solo-current" : (r < viewCr ? " solo-complete" : " solo-future")) : "";
       out.push(`<div class="v2Badge${rowClass} ${r === cr ? "active":""}${__soloRowState}">${escapeHtml(roundLabelForIndex(r))}</div>`);
       for(let i=0; i<pCount; i++){
         const val = vals[i];
@@ -321,20 +338,20 @@ const isPB = (!isWR) && (val != null) && (pbVal > 0) && (val === pbVal);
 
 const __soloLiveDarts = (pCount === 1) ? __sqV2DartsTextForEntry(state.score?.[i]?.[r], r) : '';
 const __soloScoreBorderClass = (pCount === 1)
-  ? (r === cr ? ' solo-current' : ((r < cr && val != null && pbVal > 0 && Number(val) > pbVal) ? ' solo-beat-pb' : (r < cr ? ' solo-complete' : ' solo-future')))
+  ? (r === viewCr ? ' solo-current' : ((r < viewCr && val != null && pbVal > 0 && Number(val) > pbVal) ? ' solo-beat-pb' : (r < viewCr ? ' solo-complete' : ' solo-future')))
   : '';
 const __isSkippedCell = (typeof __sqIsSkippedRoundCell === 'function') && __sqIsSkippedRoundCell(i, r);
 const __inlineScore = __isSkippedCell
   ? '<span class="v2CellNum sq-skip-cell-mark">»»»</span>'
   : (val == null ? "–" : `<span class="v2CellNum">${escapeHtml(String(val))}</span>${__soloLiveDarts ? `<span class="v2CellDarts">${escapeHtml(__soloLiveDarts)}</span>` : ''}`);
-const __inlineTargets = (r === cr)
+const __inlineTargets = (r === viewCr)
   ? `<div class="v2CellShots" data-p="${i}" data-round="${r}" aria-label="Current round targets">
       <span class="v2Dot" data-p="${i}" data-dot="0" data-shot-state="idle"></span>
       <span class="v2Dot" data-p="${i}" data-dot="1" data-shot-state="idle"></span>
       <span class="v2Dot" data-p="${i}" data-dot="2" data-shot-state="idle"></span>
     </div>`
   : '';
-const __cellContents = (r === cr)
+const __cellContents = (r === viewCr)
   ? `<div class="v2CellScore">${__inlineScore}</div>${__inlineTargets}`
   : __inlineScore;
 out.push(`<div class="v2Cell${rowClass} ${(isActiveCell ? "active":"")} ${(isHi ? "hi":"")} ${(isPB ? "pb":"")} ${(isWR ? "wr":"")}${__soloScoreBorderClass}" data-p="${i}" data-round="${r}">` +
@@ -382,9 +399,10 @@ out.push(`<div class="v2Cell${rowClass} ${(isActiveCell ? "active":"")} ${(isHi 
     // when the round cursor advances; historic rows never receive targets.
     for(let i=0;i<pCount;i++){
       const targetNodes = rowsHost.querySelectorAll(`.v2Cell.liveRow[data-p="${i}"] .v2CellShots .v2Dot`);
-      const darts = Array.isArray(state.score?.[i]?.[cr]?.darts) ? state.score[i][cr].darts : [];
-      const next = i === turn ? dartN : 3;
-      renderVisitDots(targetNodes, darts, next, !state.finished && i === turn);
+      const darts = Array.isArray(state.score?.[i]?.[viewCr]?.darts) ? state.score[i][viewCr].darts : [];
+      const onScheduledRound = (cr === viewCr);
+      const next = (i === turn && onScheduledRound) ? dartN : 3;
+      renderVisitDots(targetNodes, darts, next, !state.finished && i === turn && onScheduledRound);
     }
 
     // >>> PATCH:livev2-scoringcell-nextrow START
@@ -538,20 +556,24 @@ const out2 = [];
     }
 
     // Build a signature for "scoring input changed" within the same round.
-    const sig = String(cr) + "|" + String(turn) + "|" + String(dartN) + "|" + __v2Totals.join(",");
+    const catchUpActive = !!(state?.__sqCatchUp?.active);
+    const sig = String(viewCr) + "|" + String(turn) + "|" + String(dartN) + "|" + __v2Totals.join(",");
     const hadSig = (typeof window.__liveV2LastSig !== "undefined");
     const changed = hadSig && (sig !== window.__liveV2LastSig);
     window.__liveV2LastSig = sig;
 
     if(typeof window.__liveV2LastCr === "undefined") window.__liveV2LastCr = -1;
 
-    const roundChanged = (cr !== window.__liveV2LastCr);
+    const roundChanged = (viewCr !== window.__liveV2LastCr);
     if(roundChanged){
-      window.__liveV2LastCr = cr;
-      wrap.scrollTop = wrap.scrollHeight;
-      window.__liveV2UserScrolled = false;
-    }else if(changed){
-      // Any dart/score update snaps back to bottom (even if user had scrolled up).
+      window.__liveV2LastCr = viewCr;
+      if(!catchUpActive){
+        wrap.scrollTop = wrap.scrollHeight;
+        window.__liveV2UserScrolled = false;
+      }
+    }else if(changed && !catchUpActive){
+      // Ordinary scoring snaps back to the live table round. Catch-up is the
+      // exception: keep the user's viewport stationary while active edging moves.
       wrap.scrollTop = wrap.scrollHeight;
       window.__liveV2UserScrolled = false;
     }
@@ -3132,7 +3154,9 @@ function __sqV3RaceEnsure(){
   }
 }
 function __sqV3RaceSeries(){
-  const rc = MAX_ROUNDS, cr = Number(state.currentRound || 0);
+  const rc = MAX_ROUNDS, cr = (typeof __sqLiveV2DisplayRound === 'function')
+    ? Number(__sqLiveV2DisplayRound())
+    : Number(state.currentRound || 0);
   const NP = (state.players || []).length || 2;
   return Array.from({ length: NP }, (_, p) => {
     const b = (state.score && state.score[p]) || []; let run = 0; const pts = [];
@@ -3277,7 +3301,9 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
     // vertical round grid + labels. Classic starts at START and divides every
     // round into three equal throw steps; other modes retain the existing grid.
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    const cr = Number(state.currentRound || 0) - offset;
+    const cr = ((typeof __sqLiveV2DisplayRound === 'function')
+      ? Number(__sqLiveV2DisplayRound())
+      : Number(state.currentRound || 0)) - offset;
     if (perThrowRace){
       const sx = XStep(0);
       ctx.strokeStyle = 'rgba(150,170,210,.11)'; ctx.lineWidth = 1;
