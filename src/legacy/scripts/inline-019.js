@@ -6,6 +6,9 @@
   function snapLiveRound(){
     try{
       if(document.body.dataset.page !== 'game') return;
+      // SC-036 catch-up: keep the table viewport stationary while the active
+      // scoring border moves to a retained missed round.
+      if(state && state.__sqCatchUp && state.__sqCatchUp.active===true) return;
       const wrap = document.querySelector('.livev2panel .v2RowsWrap');
       const active = document.querySelector('.livev2panel .v2Badge.active');
       if(!wrap || !active) return;
