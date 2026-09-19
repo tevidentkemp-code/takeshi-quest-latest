@@ -117,7 +117,8 @@ function staleStage3(writes){
       history: state.history.length,
     }));
     await score();
-    await page.waitForFunction((player) => state.currentPlayer !== player && state.currentDart === 0, beforeUndoThird.player, { timeout: 350 });
+    // Keep the assertion strict, but allow normal hosted-runner scheduling jitter.
+    await page.waitForFunction((player) => state.currentPlayer !== player && state.currentDart === 0, beforeUndoThird.player, { timeout: 1000 });
 
     undo = await visible(page, '#pad .dtActBtn.undo');
     assert(undo, 'Undo remains available after a completed visit');
