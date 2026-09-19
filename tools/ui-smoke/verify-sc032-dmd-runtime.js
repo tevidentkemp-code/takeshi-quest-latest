@@ -66,8 +66,13 @@ function staleStage3(writes){
     const skipped = await page.evaluate(() => ({
       history: state.history.length,
       writes: window.__sqSc032DmdWrites.slice(),
+      openAbsences: (state.__sqCatchUp?.jobs || []).filter(j => j && j.kind === 'absence' && !j.completed).map(j => ({
+        playerIndex: j.playerIndex,
+        pendingRounds: (j.pendingRounds || []).slice()
+      }))
     }));
-    assert.equal(skipped.history, start.history + 3, 'Skip records exactly the remaining three misses');
+    assert.equal(skipped.history, start.history + 1, 'Start-of-turn Skip Go records one synthetic absence history event');
+    assert.equal(skipped.openAbsences.length, 1, 'Start-of-turn Skip Go creates one open absence job');
     assert.deepEqual(staleStage3(skipped.writes), [], `Skip must not leak third-dart Stage-3 writes: ${JSON.stringify(staleStage3(skipped.writes))}`);
 
     // 2) Complete the next player's visit normally, then throw immediately for

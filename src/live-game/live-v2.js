@@ -1097,7 +1097,10 @@ function buildPad(){
     };
 
     try{ window.__sqSkipInProgress = true; }catch(_){ }
-    try{ missGo(); }catch(_){ }
+    try{
+      const absenceHandled = (typeof __sqSkipAbsentVisit === 'function') ? (__sqSkipAbsentVisit() === true) : false;
+      if (!absenceHandled) missGo();
+    }catch(_){ }
     finally { try{ window.__sqSkipInProgress = false; }catch(_){ } }
 
     const afterHistory = Array.isArray(state?.history) ? state.history.length : before.history;

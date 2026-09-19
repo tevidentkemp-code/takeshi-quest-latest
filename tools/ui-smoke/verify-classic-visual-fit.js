@@ -235,13 +235,37 @@ async function verifySc022HudPolish(){
     shots = await waitForV2Shots(page, ['next:', 'idle:', 'idle:']);
     assertOrangeUnthrown(shots, 'next-round reset');
 
+    // SC-036: a start-of-turn SKIP is now an absence, not three scored misses.
+    await page.locator('#pad .dtActBtn.skip').click();
+    await page.waitForFunction(() => state.currentPlayer === 1 && state.currentRound === 1 && state.currentDart === 0);
+    const absentSkip = await page.evaluate(() => ({
+      darts:(state.score?.[0]?.[1]?.darts || []).slice(),
+      jobs:(state.__sqCatchUp?.jobs || []).filter(j => j?.kind === 'absence' && !j.completed).map(j => ({playerIndex:j.playerIndex,pendingRounds:(j.pendingRounds||[]).slice()}))
+    }));
+    assert(absentSkip.darts.every(d => d == null), 'start-of-turn Skip Go must not paint three scored misses');
+    assert.equal(absentSkip.jobs.length, 1, 'start-of-turn Skip Go creates one absence job');
+    assert.equal(absentSkip.jobs[0].playerIndex, 0, 'absence belongs to the skipped player');
+    assert.deepEqual(absentSkip.jobs[0].pendingRounds, [1], 'absence queues the skipped live round');
+
+    await page.locator('#pad .dtActBtn.undo').click();
+    await page.waitForFunction(() => state.currentPlayer === 0 && state.currentRound === 1 && state.currentDart === 0);
+    const afterAbsenceUndo = await page.evaluate(() => ({
+      darts:(state.score?.[0]?.[1]?.darts || []).slice(),
+      openAbsences:(state.__sqCatchUp?.jobs || []).filter(j => j?.kind === 'absence' && !j.completed).length
+    }));
+    assert(afterAbsenceUndo.darts.every(d => d == null), 'Undo restores the unplayed visit after absence Skip Go');
+    assert.equal(afterAbsenceUndo.openAbsences, 0, 'Undo removes the synthetic absence job');
+
+    // Mid-visit SKIP retains the legacy skip-remaining-darts / MISS presentation.
+    await page.locator('#pad .dtActBtn.miss').click();
+    await page.waitForFunction(() => state.currentPlayer === 0 && state.currentRound === 1 && state.currentDart === 1);
     await page.locator('#pad .dtActBtn.skip').click();
     await page.waitForFunction(() => state.currentPlayer === 1 && state.currentRound === 1 && state.currentDart === 0);
     await waitForV2Shots(page, ['done:X', 'done:X', 'done:X']);
     await page.locator('#pad .dtActBtn.undo').click();
     await page.waitForFunction(() => state.currentPlayer === 0 && state.currentRound === 1 && state.currentDart === 2);
     shots = await waitForV2Shots(page, ['done:X', 'done:X', 'next:']);
-    assertOrangeUnthrown(shots, 'after Undo restores skipped Dart 3');
+    assertOrangeUnthrown(shots, 'after Undo restores mid-visit skipped Dart 3');
 
     assertNoUnexpectedErrors(consoleErrs, 'SC-022 HUD polish');
     console.log('PASS SC-022 stacked averages / action controls / shot state, reset and Undo');

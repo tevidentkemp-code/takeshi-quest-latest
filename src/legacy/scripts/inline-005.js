@@ -14008,7 +14008,10 @@ function buildPad(){
     };
 
     try{ window.__sqSkipInProgress = true; }catch(_){ }
-    try{ missGo(); }catch(_){ }
+    try{
+      const absenceHandled = (typeof __sqSkipAbsentVisit === 'function') ? (__sqSkipAbsentVisit() === true) : false;
+      if (!absenceHandled) missGo();
+    }catch(_){ }
     finally { try{ window.__sqSkipInProgress = false; }catch(_){ } }
 
     const afterHistory = Array.isArray(state?.history) ? state.history.length : before.history;
@@ -17000,6 +17003,533 @@ function __sqGameRenderFailsafe(err){
 })();
 // <<< PATCH:SC045_DMD_ARCADE_PRESENTATION_HELPERS END
 
+function __sqCloneCatchUpState(){
+  try{ return state && state.__sqCatchUp ? JSON.parse(JSON.stringify(state.__sqCatchUp)) : null; }catch(_){ return null; }
+}
+function __sqCatchUpJobReady(job, roundIdx){
+  try{
+    if(!job || job.completed || !Array.isArray(job.pendingRounds) || !job.pendingRounds.length) return false;
+    if(job.kind==='absence' && job.returned!==true) return false;
+    return Number(job.joinedRound||0)<=Number(roundIdx);
+  }catch(_){ return false; }
+}
+function __sqCatchUpJobsReadyForRound(roundIdx){
+  try{
+    const cu=state && state.__sqCatchUp;
+    if(!cu || !Array.isArray(cu.jobs)) return [];
+    return cu.jobs
+      .map((job,index)=>({job,index}))
+      .filter(x=>__sqCatchUpJobReady(x.job,roundIdx));
+  }catch(_){ return []; }
+}
+function __sqOpenAbsenceJobs(){
+  try{
+    const cu=state && state.__sqCatchUp;
+    if(!cu || !Array.isArray(cu.jobs)) return [];
+    return cu.jobs
+      .map((job,index)=>({job,index}))
+      .filter(x=>x.job && x.job.kind==='absence' && !x.job.completed && x.job.returned!==true);
+  }catch(_){ return []; }
+}
+
+// SC-036 / Game Rules §§9.8–9.11: final-Bull return gate.
+// Enforcement is state/deadline owned; DMD rendering is best-effort only.
+const __SQ_FINAL_BULL_RETURN_MS=30000;
+function __sqFinalBullReturnTimerJob(pIdx){
+  try{
+    const jobs=Array.isArray(state?.__sqCatchUp?.jobs)?state.__sqCatchUp.jobs:[];
+    pIdx=Number(pIdx);
+    for(let i=jobs.length-1;i>=0;i--){
+      const job=jobs[i];
+      if(!job || job.kind!=='absence' || job.completed || Number(job.playerIndex)!==pIdx) continue;
+      const pending=Array.isArray(job.pendingRounds)?job.pendingRounds.map(Number).filter(Number.isFinite):[];
+      const hasRetainedPreBull=pending.some(r=>r<MAX_ROUNDS-1);
+      const hasDeadline=Number.isFinite(Number(job.bullReturnDeadlineAt));
+      if(hasRetainedPreBull || hasDeadline) return job;
+    }
+  }catch(_){}
+  return null;
+}
+function __sqClearFinalBullReturnRuntime(){
+  try{ if(window.__sqBullReturnTimeout) clearTimeout(window.__sqBullReturnTimeout); }catch(_){}
+  try{ if(window.__sqBullReturnInterval) clearInterval(window.__sqBullReturnInterval); }catch(_){}
+  try{
+    delete window.__sqBullReturnTimeout;
+    delete window.__sqBullReturnInterval;
+    delete window.__sqBullReturnRuntimeKey;
+    delete window.__sqBullReturnLastSecond;
+  }catch(_){}
+}
+function __sqRenderFinalBullReturnCountdown(job){
+  try{
+    if(!job) return false;
+    const deadline=Number(job.bullReturnDeadlineAt||0);
+    if(!Number.isFinite(deadline) || deadline<=0) return false;
+    const remaining=Math.max(0,deadline-Date.now());
+    const seconds=Math.max(0,Math.ceil(remaining/1000));
+    if(window.__sqBullReturnLastSecond===seconds && seconds>10) return true;
+    window.__sqBullReturnLastSecond=seconds;
+    const pIdx=Number(job.playerIndex||0);
+    const p=state?.players?.[pIdx];
+    const name=((typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(pIdx+1))).toString().trim().toUpperCase();
+    try{ window.__sqDmdStopPreThrow?.(); }catch(_){}
+    try{ window.__sqDmdHardClearQueue?.(); }catch(_){}
+    const fx=seconds<=5
+      ? {type:'shake',amp:3.6,ms:420,fx:'impact',z3Small:true}
+      : (seconds<=10
+        ? {type:'flash',ms:620,fx:'impact',z3Small:true}
+        : {type:'hold',ms:980,z3Small:true});
+    window.sqDmdShowZones?.(
+      {z1:'BULL RETURN',z2:name,z3:(seconds+' SECONDS')},
+      fx
+    );
+    return true;
+  }catch(_){ return false; }
+}
+function __sqFinalBullReturnTimerActive(pIdx){
+  try{
+    pIdx=Number(pIdx);
+    if(!state || state.finished || state.__sqCatchUp?.active) return false;
+    if(Number(state.currentRound)!==MAX_ROUNDS-1 || Number(state.currentPlayer)!==pIdx || Number(state.currentDart||0)!==0) return false;
+    const job=__sqFinalBullReturnTimerJob(pIdx);
+    const deadline=Number(job?.bullReturnDeadlineAt||0);
+    return !!job && Number.isFinite(deadline) && deadline>Date.now();
+  }catch(_){ return false; }
+}
+function __sqAdvanceAfterFinalBullTimeout(pIdx,rIdx){
+  try{
+    state.currentDart=0;
+    if(Number(state.currentPlayer)!==Number(pIdx) || Number(state.currentRound)!==Number(rIdx)) return false;
+    if(state.currentPlayer < state.players.length-1){
+      state.currentPlayer++;
+      return true;
+    }
+    if(__sqBeginCatchUpAfterTableRound(pIdx,rIdx)) return true;
+    const open=__sqOpenAbsenceJobs();
+    if(open.length){
+      if(!state.__sqCatchUp || typeof state.__sqCatchUp!=='object') state.__sqCatchUp={version:1,jobs:[],active:false};
+      state.__sqCatchUp.awaitingReturn=true;
+      state.__sqCatchUp.startedAfterRound=Number(rIdx);
+      state.currentPlayer=Number(open[0].job.playerIndex);
+      state.currentRound=Number(rIdx);
+      state.currentDart=0;
+      state.finished=false;
+      return true;
+    }
+    state.finished=true;
+    return true;
+  }catch(_){ return false; }
+}
+function __sqExpireFinalBullReturnTimer(pIdx,expectedDeadline){
+  try{
+    pIdx=Number(pIdx);
+    const rIdx=MAX_ROUNDS-1;
+    const job=__sqFinalBullReturnTimerJob(pIdx);
+    if(!job || job.completed) return false;
+    const deadline=Number(job.bullReturnDeadlineAt||0);
+    if(!Number.isFinite(deadline) || deadline<=0) return false;
+    if(Number.isFinite(Number(expectedDeadline)) && Number(expectedDeadline)!==deadline) return false;
+    if(Date.now()<deadline) return false;
+    if(Number(state.currentPlayer)!==pIdx || Number(state.currentRound)!==rIdx || Number(state.currentDart||0)!==0) return false;
+
+    const catchBefore=__sqCloneCatchUpState();
+    const boardBefore=JSON.parse(JSON.stringify(state.score?.[pIdx]||[]));
+    const cursorBefore={player:pIdx,round:rIdx,dart:0,finished:!!state.finished};
+    const scratched=new Set(Array.isArray(job.scratchedRounds)?job.scratchedRounds.map(Number).filter(Number.isFinite):[]);
+    const pending=Array.isArray(job.pendingRounds)?job.pendingRounds.map(Number).filter(Number.isFinite):[];
+    pending.forEach(round=>{ scratched.add(round); __sqMaterializeAbsenceScratch(pIdx,round); });
+    scratched.add(rIdx);
+    __sqMaterializeAbsenceScratch(pIdx,rIdx);
+    job.pendingRounds=[];
+    job.scratchedRounds=Array.from(scratched).sort((a,b)=>a-b);
+    job.completed=true;
+    job.absent=false;
+    job.returned=false;
+    job.bullTimedOut=true;
+    job.bullTimedOutAt=Date.now();
+    delete job.bullReturnDeadlineAt;
+    delete job.bullReturnStartedAt;
+
+    state.history.push({
+      type:'absenceBullTimeout',
+      player:pIdx,
+      round:rIdx,
+      dartIndex:0,
+      catchUpStateBefore:catchBefore,
+      absenceBoardBefore:boardBefore,
+      absenceCursorBefore:cursorBefore
+    });
+
+    __sqClearFinalBullReturnRuntime();
+    const wasFinished=!!state.finished;
+    __sqAdvanceAfterFinalBullTimeout(pIdx,rIdx);
+    try{save();}catch(_){}
+    try{updateUI();}catch(_){}
+    try{
+      const p=state.players?.[pIdx];
+      const nm=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(pIdx+1));
+      toast(nm+' timed out • Bull and catch-up scratched');
+    }catch(_){}
+    if(!wasFinished && state.finished){
+      try{openGameCompleteDialog();}catch(_){}
+    }
+    return true;
+  }catch(e){ console.warn('[SQ] final Bull timeout failed',e); return false; }
+}
+function __sqEnsureFinalBullReturnTimer(){
+  try{
+    if(!state || state.finished || state.__sqCatchUp?.active) { __sqClearFinalBullReturnRuntime(); return false; }
+    const pIdx=Number(state.currentPlayer||0);
+    if(Number(state.currentRound)!==MAX_ROUNDS-1 || Number(state.currentDart||0)!==0) { __sqClearFinalBullReturnRuntime(); return false; }
+    const job=__sqFinalBullReturnTimerJob(pIdx);
+    if(!job) { __sqClearFinalBullReturnRuntime(); return false; }
+
+    let deadline=Number(job.bullReturnDeadlineAt||0);
+    if(!Number.isFinite(deadline) || deadline<=0){
+      const now=Date.now();
+      job.bullReturnStartedAt=now;
+      job.bullReturnDeadlineAt=now+__SQ_FINAL_BULL_RETURN_MS;
+      deadline=job.bullReturnDeadlineAt;
+      try{save();}catch(_){}
+    }
+    if(Date.now()>=deadline) return __sqExpireFinalBullReturnTimer(pIdx,deadline);
+
+    const key=pIdx+'|'+deadline;
+    if(window.__sqBullReturnRuntimeKey!==key){
+      __sqClearFinalBullReturnRuntime();
+      window.__sqBullReturnRuntimeKey=key;
+      __sqRenderFinalBullReturnCountdown(job);
+      window.__sqBullReturnInterval=setInterval(()=>{
+        try{
+          const liveJob=__sqFinalBullReturnTimerJob(pIdx);
+          if(!liveJob || Number(liveJob.bullReturnDeadlineAt||0)!==deadline || !__sqFinalBullReturnTimerActive(pIdx)){
+            __sqClearFinalBullReturnRuntime();
+            return;
+          }
+          __sqRenderFinalBullReturnCountdown(liveJob);
+        }catch(_){}
+      },500);
+      window.__sqBullReturnTimeout=setTimeout(()=>{
+        try{ __sqExpireFinalBullReturnTimer(pIdx,deadline); }catch(_){}
+      },Math.max(0,deadline-Date.now()+5));
+    }
+    return true;
+  }catch(_){ return false; }
+}
+function __sqHandleFinalBullFirstDart(pIdx,rIdx,dartIdx){
+  try{
+    if(Number(rIdx)!==MAX_ROUNDS-1 || Number(dartIdx)!==0) return true;
+    const job=__sqFinalBullReturnTimerJob(pIdx);
+    if(!job) return true;
+    __sqEnsureFinalBullReturnTimer();
+    const deadline=Number(job.bullReturnDeadlineAt||0);
+    if(Number.isFinite(deadline) && Date.now()>=deadline){
+      __sqExpireFinalBullReturnTimer(pIdx,deadline);
+      return false;
+    }
+    if(Number.isFinite(deadline) && deadline>0){
+      job.returned=true;
+      job.absent=false;
+      job.returnedAtRound=Number(rIdx);
+      job.bullReturnFirstDartAt=Date.now();
+      delete job.bullReturnDeadlineAt;
+      delete job.bullReturnStartedAt;
+      __sqClearFinalBullReturnRuntime();
+      try{save();}catch(_){}
+    }
+    return true;
+  }catch(_){ return true; }
+}
+try{
+  window.__sqEnsureFinalBullReturnTimer=__sqEnsureFinalBullReturnTimer;
+  window.__sqFinalBullReturnTimerActive=__sqFinalBullReturnTimerActive;
+  window.__sqExpireFinalBullReturnTimer=__sqExpireFinalBullReturnTimer;
+}catch(_){}
+try{
+  if(!window.__sqBullReturnWatchdog){
+    window.__sqBullReturnWatchdog=setInterval(()=>{ try{ __sqEnsureFinalBullReturnTimer(); }catch(_){} },250);
+  }
+}catch(_){}
+function __sqStartCatchUpAfterRound(rIdx, opts={}){
+  try{
+    const cu=state && state.__sqCatchUp;
+    if(!cu || cu.active) return false;
+    const ready=__sqCatchUpJobsReadyForRound(rIdx);
+    if(!ready.length) return false;
+    const before=__sqCloneCatchUpState();
+    const first=ready[0];
+    cu.active=true;
+    cu.awaitingReturn=false;
+    cu.resumeRound=Number.isFinite(Number(opts.resumeRound)) ? Number(opts.resumeRound) : Math.min(MAX_ROUNDS-1,Number(rIdx)+1);
+    cu.resumePlayer=Number.isFinite(Number(opts.resumePlayer)) ? Number(opts.resumePlayer) : 0;
+    cu.resumeFinished=opts.resumeFinished===true;
+    cu.activeJobIndex=first.index;
+    cu.startedAfterRound=Number(rIdx);
+    state.finished=false;
+    state.currentDart=0;
+    state.currentPlayer=Number(first.job.playerIndex);
+    state.currentRound=Number(first.job.pendingRounds[0]);
+    if(opts.historyAnchor!==false){
+      const last=Array.isArray(state.history)&&state.history.length?state.history[state.history.length-1]:null;
+      if(last) last.catchUpStartStateBefore=before;
+    }
+    try{
+      const p=state.players?.[state.currentPlayer];
+      const nm=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(state.currentPlayer+1));
+      const def=ROUNDS[state.currentRound];
+      const tgt=def?.type==='number'?String(def.target):(def?.type==='doubles'?'D':def?.type==='triples'?'T':'B');
+      toast('Catch-up: '+nm+' • '+tgt);
+    }catch(_){}
+    try{save();}catch(_){}
+    return true;
+  }catch(e){ console.warn('[SQ] catch-up start failed',e); return false; }
+}
+function __sqBeginCatchUpAfterTableRound(pIdx,rIdx){
+  try{
+    if(Number(pIdx)!==Number((state.players||[]).length-1)) return false;
+    const finalRound=Number(rIdx)>=MAX_ROUNDS-1;
+    return __sqStartCatchUpAfterRound(rIdx,{
+      resumeRound:finalRound?Number(rIdx):Math.min(MAX_ROUNDS-1,Number(rIdx)+1),
+      resumePlayer:0,
+      resumeFinished:finalRound
+    });
+  }catch(e){ console.warn('[SQ] catch-up start failed',e); return false; }
+}
+function __sqAdvanceActiveCatchUp(pIdx,rIdx){
+  try{
+    const cu=state && state.__sqCatchUp;
+    if(!cu || !cu.active || !Array.isArray(cu.jobs)) return false;
+    const job=cu.jobs[Number(cu.activeJobIndex)];
+    if(!job || Number(job.playerIndex)!==Number(pIdx)) return false;
+    if(!Array.isArray(job.pendingRounds)) job.pendingRounds=[];
+    if(job.pendingRounds.length && Number(job.pendingRounds[0])===Number(rIdx)) job.pendingRounds.shift();
+    else{
+      const pos=job.pendingRounds.findIndex(x=>Number(x)===Number(rIdx));
+      if(pos>=0) job.pendingRounds.splice(pos,1);
+    }
+    if(job.pendingRounds.length){
+      state.currentDart=0;
+      state.currentPlayer=Number(job.playerIndex);
+      state.currentRound=Number(job.pendingRounds[0]);
+      try{save();}catch(_){}
+      return true;
+    }
+    job.completed=true;
+    job.absent=false;
+    const next=__sqCatchUpJobsReadyForRound(cu.startedAfterRound)[0];
+    if(next){
+      cu.activeJobIndex=next.index;
+      state.currentDart=0;
+      state.currentPlayer=Number(next.job.playerIndex);
+      state.currentRound=Number(next.job.pendingRounds[0]);
+      try{save();}catch(_){}
+      return true;
+    }
+    const resumeFinished=cu.resumeFinished===true;
+    cu.active=false;
+    cu.awaitingReturn=false;
+    cu.completedAfterRound=Number(cu.startedAfterRound);
+    delete cu.activeJobIndex;
+    delete cu.resumeFinished;
+    state.currentDart=0;
+    if(resumeFinished){
+      state.finished=true;
+      return true;
+    }
+    state.currentPlayer=Number(cu.resumePlayer||0);
+    state.currentRound=Number(cu.resumeRound||0);
+    try{save();}catch(_){}
+    return true;
+  }catch(e){ console.warn('[SQ] catch-up advance failed',e); return false; }
+}
+function __sqIsAbsenceSkipEligible(){
+  try{
+    if(!state || state.finished || state.suddenDeath?.active) return false;
+    if(Number(state.currentDart||0)!==0) return false;
+    if(state.__sqCatchUp?.active) return false;
+    return typeof __sqIsAutoThrowOrderMatch==='function' && __sqIsAutoThrowOrderMatch();
+  }catch(_){ return false; }
+}
+function __sqAbsencePlayerKey(p,idx){
+  try{
+    const raw=(p&&(p.id||p.player_id||p.name||p.player_name))||('idx:'+idx);
+    return String(raw||('idx:'+idx)).trim().toLowerCase();
+  }catch(_){ return 'idx:'+idx; }
+}
+function __sqAbsenceJobForPlayer(pIdx){
+  try{
+    const jobs=Array.isArray(state?.__sqCatchUp?.jobs)?state.__sqCatchUp.jobs:[];
+    for(let i=jobs.length-1;i>=0;i--){
+      const job=jobs[i];
+      if(job && job.kind==='absence' && !job.completed && Number(job.playerIndex)===Number(pIdx)) return job;
+    }
+  }catch(_){}
+  return null;
+}
+function __sqMaterializeAbsenceScratch(pIdx,rIdx){
+  try{
+    const entry=state?.score?.[pIdx]?.[rIdx];
+    if(!entry) return false;
+    const existing=Array.isArray(entry.darts)?entry.darts:[null,null,null];
+    if(existing.some(d=>d && Number(d.points||0)>0)) return false;
+    entry.darts=[
+      {kind:'Scratch',points:0,absence:true},
+      {kind:'Scratch',points:0,absence:true},
+      {kind:'Scratch',points:0,absence:true}
+    ];
+    entry.roundTotal=0;
+    return true;
+  }catch(_){ return false; }
+}
+function __sqAdvanceAfterAbsenceSkip(pIdx,rIdx){
+  try{
+    state.currentDart=0;
+    if(state.currentPlayer < state.players.length-1){
+      state.currentPlayer++;
+      return true;
+    }
+    if(__sqBeginCatchUpAfterTableRound(pIdx,rIdx)) return true;
+    if(Number(state.currentRound)<MAX_ROUNDS-1){
+      state.currentPlayer=0;
+      state.currentRound++;
+      return true;
+    }
+    const open=__sqOpenAbsenceJobs();
+    if(open.length){
+      if(!state.__sqCatchUp || typeof state.__sqCatchUp!=='object') state.__sqCatchUp={version:1,jobs:[],active:false};
+      state.__sqCatchUp.awaitingReturn=true;
+      state.__sqCatchUp.startedAfterRound=Number(rIdx);
+      state.currentPlayer=Number(open[0].job.playerIndex);
+      state.currentRound=Number(rIdx);
+      state.currentDart=0;
+      state.finished=false;
+      try{
+        const p=state.players?.[state.currentPlayer];
+        const nm=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(state.currentPlayer+1));
+        toast('Waiting for '+nm+' to return.');
+      }catch(_){}
+      return true;
+    }
+    state.finished=true;
+    return true;
+  }catch(e){ console.warn('[SQ] absence advance failed',e); return false; }
+}
+function __sqSkipAbsentVisit(){
+  try{
+    if(!__sqIsAbsenceSkipEligible()) return false;
+    const pIdx=Number(state.currentPlayer||0);
+    const rIdx=Number(state.currentRound||0);
+    if(rIdx===MAX_ROUNDS-1 && Number(state.currentDart||0)===0 && __sqFinalBullReturnTimerJob(pIdx)){
+      const beforePlayer=Number(state.currentPlayer||0);
+      __sqEnsureFinalBullReturnTimer();
+      if(Number(state.currentPlayer||0)!==beforePlayer || state.finished) return true;
+      if(__sqFinalBullReturnTimerActive(pIdx)){
+        try{toast('30-second Bull return timer active • throw first Bull dart to stop it');}catch(_){}
+        return true;
+      }
+    }
+    const boardBefore=JSON.parse(JSON.stringify(state.score?.[pIdx]||[]));
+    const catchBefore=__sqCloneCatchUpState();
+    const cursorBefore={player:pIdx,round:rIdx,dart:Number(state.currentDart||0),finished:!!state.finished};
+    if(!state.__sqCatchUp || typeof state.__sqCatchUp!=='object') state.__sqCatchUp={version:1,jobs:[],active:false};
+    if(!Array.isArray(state.__sqCatchUp.jobs)) state.__sqCatchUp.jobs=[];
+    let job=__sqAbsenceJobForPlayer(pIdx);
+    if(!job){
+      job={
+        kind:'absence',
+        playerIndex:pIdx,
+        playerKey:__sqAbsencePlayerKey(state.players?.[pIdx],pIdx),
+        joinedRound:rIdx,
+        pendingRounds:[],
+        scratchedRounds:[],
+        returned:false,
+        absent:true,
+        completed:false
+      };
+      state.__sqCatchUp.jobs.push(job);
+    }
+    job.absent=true;
+    job.returned=false;
+    if(!Array.isArray(job.pendingRounds)) job.pendingRounds=[];
+    if(!Array.isArray(job.scratchedRounds)) job.scratchedRounds=[];
+    const known=job.pendingRounds.some(x=>Number(x)===rIdx) || job.scratchedRounds.some(x=>Number(x)===rIdx);
+    if(!known) job.pendingRounds.push(rIdx);
+    job.pendingRounds=job.pendingRounds.map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
+    while(job.pendingRounds.length>3){
+      const scratch=Number(job.pendingRounds.shift());
+      if(!job.scratchedRounds.some(x=>Number(x)===scratch)) job.scratchedRounds.push(scratch);
+      __sqMaterializeAbsenceScratch(pIdx,scratch);
+    }
+    state.history.push({
+      type:'absenceSkip',
+      player:pIdx,
+      round:rIdx,
+      dartIndex:0,
+      catchUpStateBefore:catchBefore,
+      absenceBoardBefore:boardBefore,
+      absenceCursorBefore:cursorBefore
+    });
+    __sqAdvanceAfterAbsenceSkip(pIdx,rIdx);
+    try{__sqEnsureFinalBullReturnTimer();}catch(_){}
+    try{save();}catch(_){}
+    try{updateUI();}catch(_){}
+    try{
+      const p=state.players?.[pIdx];
+      const nm=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(pIdx+1));
+      toast(nm+' skipped • marked absent');
+    }catch(_){}
+    return true;
+  }catch(e){ console.warn('[SQ] absence skip failed',e); return false; }
+}
+function __sqAbsentPlayers(){
+  try{
+    const seen=new Set();
+    return __sqOpenAbsenceJobs().reduce((out,x)=>{
+      const idx=Number(x.job.playerIndex);
+      if(seen.has(idx)) return out;
+      seen.add(idx);
+      const p=state.players?.[idx];
+      const name=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(idx+1));
+      out.push({playerIndex:idx,name,pendingRounds:(x.job.pendingRounds||[]).slice(),scratchedRounds:(x.job.scratchedRounds||[]).slice()});
+      return out;
+    },[]);
+  }catch(_){ return []; }
+}
+function __sqMarkPlayerReturned(pIdx){
+  try{
+    pIdx=Number(pIdx);
+    const jobs=Array.isArray(state?.__sqCatchUp?.jobs)?state.__sqCatchUp.jobs:[];
+    let job=null;
+    for(let i=jobs.length-1;i>=0;i--){
+      const j=jobs[i];
+      if(j && j.kind==='absence' && !j.completed && j.returned!==true && Number(j.playerIndex)===pIdx){ job=j; break; }
+    }
+    if(!job) return false;
+    job.returned=true;
+    job.absent=false;
+    job.returnedAtRound=Number(state.currentRound||0);
+    if(!Array.isArray(job.pendingRounds) || !job.pendingRounds.length) job.completed=true;
+    const cu=state.__sqCatchUp;
+    if(cu?.awaitingReturn && !cu.active && !job.completed){
+      const rIdx=Number(cu.startedAfterRound??state.currentRound??0);
+      __sqStartCatchUpAfterRound(rIdx,{resumeRound:rIdx,resumePlayer:0,resumeFinished:rIdx>=MAX_ROUNDS-1,historyAnchor:false});
+    }
+    try{save();}catch(_){}
+    try{updateUI();}catch(_){}
+    try{
+      const p=state.players?.[pIdx];
+      const nm=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(pIdx+1));
+      toast(nm+' returned • catch-up queued');
+    }catch(_){}
+    return true;
+  }catch(e){ console.warn('[SQ] mark returned failed',e); return false; }
+}
+try{
+  window.__sqSkipAbsentVisit=__sqSkipAbsentVisit;
+  window.__sqAbsentPlayers=__sqAbsentPlayers;
+  window.__sqMarkPlayerReturned=__sqMarkPlayerReturned;
+  window.__sqIsAbsenceSkipEligible=__sqIsAbsenceSkipEligible;
+}catch(_){}
 // @CANONICAL:GAMEPLAY_RECORD_THROW_BASE
 function recordThrow(spec){
   try{ window.__sqDmdStopPreThrow?.(); }catch(_){ }
@@ -17013,10 +17543,12 @@ function recordThrow(spec){
   const rIndex    = state.currentRound;
   const pIndex    = state.currentPlayer;
   const dartIndex = state.currentDart;
+  const __catchUpStateBefore = (state.__sqCatchUp && state.__sqCatchUp.active) ? __sqCloneCatchUpState() : null;
 
   if (rIndex < 0 || rIndex >= MAX_ROUNDS) return;
   if (pIndex < 0 || pIndex >= state.players.length) return;
   if (dartIndex < 0 || dartIndex > 2) return;
+  if(!__sqHandleFinalBullFirstDart(pIndex,rIndex,dartIndex)) return;
 
   const wasFinished = state.finished;
 
@@ -17626,7 +18158,8 @@ setTimeout(() => {
     player:    pIndex,
     round:     rIndex,
     dartIndex: dartIndex,
-    throw:     dartObj
+    throw:     dartObj,
+    catchUpStateBefore: __catchUpStateBefore
   });
 
   // Match aggregates
@@ -17649,7 +18182,11 @@ setTimeout(() => {
     state.currentDart++;
   } else {
     state.currentDart = 0;
-    if (state.currentPlayer < state.players.length - 1) {
+    if (__sqAdvanceActiveCatchUp(pIndex, rIndex)) {
+      // Catch-up owns the next visit until its queued rounds are complete.
+    } else if (__sqBeginCatchUpAfterTableRound(pIndex, rIndex)) {
+      // Table round completed; late-join catch-up starts before the next live round.
+    } else if (state.currentPlayer < state.players.length - 1) {
       state.currentPlayer++;
     } else {
       state.currentPlayer = 0;
@@ -17662,6 +18199,7 @@ setTimeout(() => {
     }
   }
 
+  try{__sqEnsureFinalBullReturnTimer();}catch(_){}
   updateUI();
 
   if (dartIndex === 2 &&
@@ -17760,6 +18298,41 @@ function undo(){
   }
 
   state.history.pop();
+  if (last && (last.type === 'absenceSkip' || last.type === 'absenceBullTimeout')) {
+    try{
+      const pIdx=Number(last.player||0);
+      if(Array.isArray(last.absenceBoardBefore)) state.score[pIdx]=JSON.parse(JSON.stringify(last.absenceBoardBefore));
+      if(last.catchUpStateBefore) state.__sqCatchUp=JSON.parse(JSON.stringify(last.catchUpStateBefore));
+      else delete state.__sqCatchUp;
+      const cur=last.absenceCursorBefore||{};
+      state.currentPlayer=Number(cur.player??pIdx);
+      state.currentRound=Number(cur.round??last.round??0);
+      state.currentDart=Number(cur.dart??0);
+      state.finished=!!cur.finished;
+      if(last.type==='absenceBullTimeout'){
+        const job=__sqFinalBullReturnTimerJob(pIdx);
+        if(job){
+          const now=Date.now();
+          job.bullReturnStartedAt=now;
+          job.bullReturnDeadlineAt=now+__SQ_FINAL_BULL_RETURN_MS;
+          delete job.bullTimedOut;
+          delete job.bullTimedOutAt;
+        }
+      }
+      recomputeMatchAggHitsForPlayer(pIdx);
+      recomputeMatchAggTotalsForPlayer(pIdx);
+      try{save();}catch(_){}
+      try{__sqEnsureFinalBullReturnTimer();}catch(_){}
+      updateUI();
+      try{toast(last.type==='absenceBullTimeout'?'Bull timeout undone':'Skip Go undone');}catch(_){}
+    }catch(err){ console.warn('[SQ] absence undo failed',err); updateUI(); }
+    return;
+  }
+  if (last && last.catchUpStateBefore) {
+    try{ state.__sqCatchUp = JSON.parse(JSON.stringify(last.catchUpStateBefore)); }catch(_){}
+  } else if (last && last.catchUpStartStateBefore) {
+    try{ state.__sqCatchUp = JSON.parse(JSON.stringify(last.catchUpStartStateBefore)); }catch(_){}
+  }
   const { player, round, dartIndex } = last;
 
   const entry = state.score?.[player]?.[round];
@@ -19384,6 +19957,7 @@ function showPlayerOrderDialog() {
 }
 
 function startNewGame(setOrder=false){
+  try{ __sqClearFinalBullReturnRuntime(); }catch(_){ }
   try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('startNewGame'); }catch(_){ }
   try{
     const savedVsShadow = (typeof __sqSavedStateIsVsShadow === 'function') ? __sqSavedStateIsVsShadow(state) : false;
@@ -19417,6 +19991,7 @@ function startNewGame(setOrder=false){
   // <<< PATCH:practice-multi-game-save-reset END
 
   state.__gameToken = (state.__gameToken || 0) + 1;
+  delete state.__sqCatchUp;
   state._decider = null;
   state.score = Array.from({length:state.players.length},
     ()=>Array.from({length:MAX_ROUNDS},()=>({darts:[null,null,null],roundTotal:0})));
@@ -19458,6 +20033,17 @@ function restartGame() {
 function swapPlayers(i, j) {
   // Swap players themselves
   [state.players[i], state.players[j]] = [state.players[j], state.players[i]];
+
+  // Keep any in-flight/persisted catch-up jobs attached to player identity.
+  try{
+    if(state.__sqCatchUp && Array.isArray(state.__sqCatchUp.jobs)){
+      state.__sqCatchUp.jobs.forEach(job=>{
+        if(!job) return;
+        if(Number(job.playerIndex)===Number(i)) job.playerIndex=j;
+        else if(Number(job.playerIndex)===Number(j)) job.playerIndex=i;
+      });
+    }
+  }catch(_){}
 
   // Swap match wins
   if (state.match && Array.isArray(state.match.wins)) {

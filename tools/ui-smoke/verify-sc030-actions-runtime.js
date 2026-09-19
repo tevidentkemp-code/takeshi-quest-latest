@@ -41,10 +41,11 @@ function assertNoUnexpectedErrors(consoleErrs, label){
     assert(skip, 'Skip action is available');
     await skip.click();
 
-    // Old behavior waited 500ms before gameplay advanced. The modern path must
-    // have committed the turn before this 300ms guard expires.
+    // SC-036 start-of-turn Skip Go is now one synthetic absence event rather
+    // than three scored misses. Responsiveness is unchanged: the hand-off must
+    // still complete inside the existing 300ms guard.
     await page.waitForFunction((startPlayer) => (
-      state.history.length >= 3 &&
+      state.history.length >= 1 &&
       state.currentDart === 0 &&
       state.currentPlayer !== startPlayer
     ), before.player, { timeout: 300 });
@@ -58,7 +59,7 @@ function assertNoUnexpectedErrors(consoleErrs, label){
       active: window.__sqDmdV2?.snapshot?.().active?.headline || '',
       hardClears: window.__sqSc030HardClearCount,
     }));
-    assert.equal(skipped.history, 3, 'Skip records exactly the remaining three misses at turn start');
+    assert.equal(skipped.history, 1, 'Start-of-turn Skip Go records one synthetic absence event');
     assert.equal(skipped.dart, 0, 'Skip hands off at the next player dart 1');
     assert.equal(skipped.skipFlag, false, 'Skip suppression flag is cleared synchronously');
     assert.equal(skipped.active, 'TURN SKIPPED', 'Skip feedback is controller-owned');
@@ -74,7 +75,7 @@ function assertNoUnexpectedErrors(consoleErrs, label){
       player: state.currentPlayer,
       dart: state.currentDart,
     }));
-    assert.equal(rescored.history, 4, 'next player can score immediately after Skip');
+    assert.equal(rescored.history, 2, 'next player can score immediately after Skip');
     assert.equal(rescored.player, skipped.player, 'immediate score belongs to next player');
     assert.equal(rescored.dart, 1, 'next player advances one dart');
 
@@ -92,7 +93,7 @@ function assertNoUnexpectedErrors(consoleErrs, label){
       hardClears: window.__sqSc030HardClearCount,
       active: window.__sqDmdV2.snapshot().active?.headline || '',
     }));
-    assert.equal(undone.history, 3, 'Undo removes the immediate next-player dart');
+    assert.equal(undone.history, 1, 'Undo removes the immediate next-player dart while preserving the absence event');
     assert.equal(undone.player, skipped.player, 'Undo restores the same next player');
     assert.equal(undone.dart, 0, 'Undo restores dart index after immediate score');
     assert.equal(undone.hardClears, 0, 'generic Undo no longer erases DMD baseline');
