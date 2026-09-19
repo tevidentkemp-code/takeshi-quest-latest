@@ -7,10 +7,13 @@
     try{
       if(document.body.dataset.page !== 'game') return;
       const wrap = document.querySelector('.livev2panel .v2RowsWrap');
-      const active = document.querySelector('.livev2panel .v2Badge.active');
-      if(!wrap || !active) return;
+      // Geometry/scroll follows the table's live row. During catch-up the
+      // orange .active badge may point at an older missed round and must not
+      // drag the viewport backwards.
+      const live = document.querySelector('.livev2panel .v2Badge.liveRow');
+      if(!wrap || !live) return;
       const bottomPad = 22;
-      const target = Math.max(0, active.offsetTop + active.offsetHeight - wrap.clientHeight + bottomPad);
+      const target = Math.max(0, live.offsetTop + live.offsetHeight - wrap.clientHeight + bottomPad);
       if(Math.abs(wrap.scrollTop - target) > 4) wrap.scrollTop = target;
     }catch(_){ }
   }
