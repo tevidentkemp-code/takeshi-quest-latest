@@ -107,6 +107,11 @@ function assert(cond, msg) {
     assert(v3SkipMark.dataUntouched===true, 'Live V3 marker must not fabricate score data');
     await page.evaluate(() => { localStorage.removeItem('sq_livev3_test'); document.body.classList.remove('livev3-on'); document.getElementById('liveV3Panel')?.remove(); });
 
+    // Restore the original 3-player absence fixture before continuing the
+    // established SC-036 behaviour suite.
+    await reset(2,1,3);
+    assert(await page.evaluate(() => window.__sqSkipAbsentVisit())===true, 'restored 3-player absence skip should succeed');
+
     // Game Menu must NOT expose the retired manual return path.
     await page.evaluate(() => window.__sqOpenGameMenu106());
     await page.waitForTimeout(100);
