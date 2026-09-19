@@ -161,6 +161,8 @@ function assert(cond, msg) {
     assert(s.pending.join(',')==='2', 'single skipped round should remain the active catch-up round until completed');
     assert(s.activeBadgeRound===2 && s.activeCellRound===2 && s.liveBadgeRound===3, 'active orange edge must stay on catch-up round while live table row remains scheduled round');
     assert(Math.abs(s.scrollTop-previewFocus.scrollTop)<=4, 'starting catch-up must not move the score viewport backwards');
+    const resumedCellText = await page.evaluate(() => String(document.querySelector('#v2Rows .v2Cell.active[data-p="1"][data-round="2"]')?.textContent||'').trim());
+    assert(!/»»»/.test(resumedCellText), 'once catch-up scoring starts, the active cell must show the live score rather than retain the pending arrows');
 
     await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
     s = await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active}));
@@ -195,6 +197,13 @@ function assert(cond, msg) {
     assert(s.pending.join(',')==='3,4,5', 'only the most recent three skipped rounds stay recoverable');
     assert(s.scratched.join(',')==='2', 'oldest skipped round must be scratched after backlog exceeds three');
     assert(s.r2.darts.every(d=>d && d.kind==='Scratch' && d.points===0), 'oldest scratched round must materialise as zero');
+
+    const cappedMarkers = await page.evaluate(() => {
+      const text=(r)=>String(document.querySelector(`#v2Rows .v2Cell[data-p="1"][data-round="${r}"]`)?.textContent||'').trim();
+      return {r2:text(2),r3:text(3),r4:text(4),r5:text(5)};
+    });
+    assert(cappedMarkers.r2==='X', 'skipped rounds older than the recoverable latest three must display X');
+    assert(/»»»/.test(cappedMarkers.r3) && /»»»/.test(cappedMarkers.r4) && /»»»/.test(cappedMarkers.r5), 'latest three recoverable skipped rounds must retain fast-forward markers');
 
     await page.evaluate(() => undo());
     s = await page.evaluate(() => {
