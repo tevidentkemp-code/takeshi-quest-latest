@@ -13234,7 +13234,10 @@ const __soloLiveDarts = (pCount === 1) ? __sqV2DartsTextForEntry(state.score?.[i
 const __soloScoreBorderClass = (pCount === 1)
   ? (r === cr ? ' solo-current' : ((r < cr && val != null && pbVal > 0 && Number(val) > pbVal) ? ' solo-beat-pb' : (r < cr ? ' solo-complete' : ' solo-future')))
   : '';
-const __inlineScore = val == null ? "–" : `<span class="v2CellNum">${escapeHtml(String(val))}</span>${__soloLiveDarts ? `<span class="v2CellDarts">${escapeHtml(__soloLiveDarts)}</span>` : ''}`;
+const __isSkippedCell = (typeof __sqIsSkippedRoundCell === 'function') && __sqIsSkippedRoundCell(i, r);
+const __inlineScore = __isSkippedCell
+  ? '<span class="v2CellNum sq-skip-cell-mark">»»»</span>'
+  : (val == null ? "–" : `<span class="v2CellNum">${escapeHtml(String(val))}</span>${__soloLiveDarts ? `<span class="v2CellDarts">${escapeHtml(__soloLiveDarts)}</span>` : ''}`);
 const __inlineTargets = (r === cr)
   ? `<div class="v2CellShots" data-p="${i}" data-round="${r}" aria-label="Current round targets">
       <span class="v2Dot" data-p="${i}" data-dot="0" data-shot-state="idle"></span>
