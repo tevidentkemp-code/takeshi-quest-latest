@@ -75,6 +75,28 @@ function staleStage3(writes){
     assert.equal(skipped.openAbsences.length, 1, 'Start-of-turn Skip Go creates one open absence job');
     assert.deepEqual(staleStage3(skipped.writes), [], `Skip must not leak third-dart Stage-3 writes: ${JSON.stringify(staleStage3(skipped.writes))}`);
 
+    // This test owns DMD sequencing, not absence/catch-up semantics. Retire the
+    // synthetic absence after proving Skip feedback so later DMD scenarios start
+    // from a clean normal-turn cursor under the new implicit-return contract.
+    await page.evaluate(() => {
+      const cu=state.__sqCatchUp;
+      if(cu && Array.isArray(cu.jobs)){
+        cu.jobs.forEach(job => {
+          if(job && job.kind==='absence' && !job.completed){
+            job.pendingRounds=[];
+            job.completed=true;
+            job.absent=false;
+            job.returned=true;
+          }
+        });
+        cu.active=false;
+        cu.awaitingReturn=false;
+        delete cu.activeJobIndex;
+        delete cu.resumeFinished;
+      }
+      save();
+    });
+
     // 2) Complete the next player's visit normally, then throw immediately for
     // the following player. That new input hard-clears/cancels the old DMD flow.
     // No delayed ROUND SCORE / NEXT UP from the previous visit may repaint later.
@@ -117,8 +139,7 @@ function staleStage3(writes){
       history: state.history.length,
     }));
     await score();
-    // Keep the assertion strict, but allow normal hosted-runner scheduling jitter.
-    await page.waitForFunction((player) => state.currentPlayer !== player && state.currentDart === 0, beforeUndoThird.player, { timeout: 1000 });
+    await page.waitForFunction((player) => state.currentPlayer !== player && state.currentDart === 0, beforeUndoThird.player, { timeout: 350 });
 
     undo = await visible(page, '#pad .dtActBtn.undo');
     assert(undo, 'Undo remains available after a completed visit');
