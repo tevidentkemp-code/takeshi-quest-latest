@@ -196,14 +196,19 @@ function assert(cond, msg) {
     assert(s.p===1 && s.r===6 && s.d===0, 'BETA should reach scheduled round 6 before automatic catch-up');
 
     // First score at round 6 rewinds to round 3, then 4, then 5, and finally returns to round 6.
+    await page.evaluate(() => liveV2Render());
+    // Allow the ordinary pre-catch two-frame live-row snap to finish before
+    // positioning the viewport. From this point onward any movement is caused
+    // by catch-up itself and is therefore a real regression.
+    await page.waitForTimeout(80);
     const catchUpScrollBefore=await page.evaluate(() => {
-      liveV2Render();
       const wrap=document.querySelector('#liveV2Panel .v2RowsWrap');
       if(!wrap) return null;
       const max=Math.max(0,wrap.scrollHeight-wrap.clientHeight);
       wrap.scrollTop=Math.max(0,Math.round(max*0.45));
       return {top:wrap.scrollTop,max};
     });
+    await page.waitForTimeout(30);
     await page.evaluate(() => recordThrow({kind:'Miss'}));
     await page.waitForTimeout(100);
     s=await page.evaluate(() => {
