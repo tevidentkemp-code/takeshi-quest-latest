@@ -37,6 +37,7 @@ fs.mkdirSync(out,{recursive:true});
   assert(await scoreBtn.isVisible(),'TV Mode must preserve an interactive score button');
   await scoreBtn.click(); await page.waitForTimeout(300);
   assert.notEqual(await page.evaluate(()=>state.currentDart),beforeDart,'canonical throwpad did not score while TV Mode was open');
+  assert.equal((await page.locator('#sqTvTbody tr').nth(1).locator('td').first().locator('strong').textContent()).trim(),'—','future TV scoreboard rounds must remain empty');
   await page.screenshot({path:path.join(out,'tv-1920x1080.png')});
   await page.evaluate(()=>{state.score[0][0]={roundTotal:30,darts:[{kind:'T',sector:10,points:30},{kind:'Miss',points:0},{kind:'S',sector:10,points:10}]};state.currentPlayer=1;state.currentDart=0;window.__sqTvModeSync();});
   assert.match(await page.locator('#sqTvDmdMain').textContent(),/BETA TO THROW/);
