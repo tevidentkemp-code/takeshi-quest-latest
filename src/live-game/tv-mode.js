@@ -167,8 +167,9 @@
             var st=__sqSkippedRoundState(p,r); if(st==='pending') skip='»»»'; else if(st==='scratched') skip='X';
           }
         }catch(_){}
-        var main=skip||(cum.any?String(cum.value):'—');
-        var sub=skip?'':(rs==null?'':'('+rs+')');
+        var futureRound=r>cr;
+        var main=futureRound?'—':(skip||(cum.any?String(cum.value):'—'));
+        var sub=(futureRound||skip)?'':(rs==null?'':'('+rs+')');
         body+='<td class="'+(p===cp?'current-player':'')+'"><strong>'+main+'</strong><small>'+sub+'</small></td>';
       }
       body+='</tr>';
