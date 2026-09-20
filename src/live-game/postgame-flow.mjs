@@ -365,7 +365,8 @@ function updateHero(modal, st, isMatchComplete) {
   const winnerIndexes = totals.map((v, i) => v === max ? i : -1).filter(i => i >= 0);
   let winnerIndex = winnerIndexes[0] ?? 0;
   try {
-    if (st._decider && st._decider.resolved && Number.isInteger(st._decider.winner)) winnerIndex = st._decider.winner;
+    if (st._decider?.resolved && st._decider.gameToken === (st.__gameToken || 0)
+      && Number.isInteger(st._decider.winner) && st.players[st._decider.winner]) winnerIndex = st._decider.winner;
   } catch (_) {}
 
   const player = st.players[winnerIndex] || {};

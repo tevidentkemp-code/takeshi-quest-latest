@@ -2048,7 +2048,7 @@ function __sqAvatarFallbackId(seed=''){
   return (Math.abs(h >>> 0) % SQ_AVATAR_COUNT) + 1;
 }
 function __sqNormalizeAvatarId(value, seed=''){
-  const n = Number.parseInt(value, 10);
+  const n = (typeof value === 'number' || typeof value === 'string') ? Number(value) : NaN;
   return Number.isInteger(n) && n >= 1 && n <= SQ_AVATAR_COUNT ? n : __sqAvatarFallbackId(seed);
 }
 function __sqAvatarSpritePosition(value){
@@ -2103,6 +2103,16 @@ function __sqBuildAvatarPicker(selectedId, onChange){
       refresh();
       if (typeof onChange === 'function') onChange(id);
     };
+    btn.onkeydown = event => {
+      const step = { ArrowRight:1, ArrowDown:1, ArrowLeft:-1, ArrowUp:-1 }[event.key];
+      if (!step && event.key !== 'Home' && event.key !== 'End') return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 1 : event.key === 'End' ? SQ_AVATAR_COUNT
+        : ((id - 1 + step + SQ_AVATAR_COUNT) % SQ_AVATAR_COUNT) + 1;
+      const target = root.querySelector('[data-avatar-id="' + next + '"]');
+      target.click();
+      target.focus();
+    };
     root.appendChild(btn);
   }
   refresh();
@@ -2115,57 +2125,26 @@ window.__sqAvatarIdForPlayer = __sqAvatarIdForPlayer;
 window.__sqApplyAvatarSprite = __sqApplyAvatarSprite;
 window.__sqBuildAvatarPicker = __sqBuildAvatarPicker;
 
-function __sqEnhancePlayerHubAvatarEditor(root){
-  try{
-    const overlay = (root && root.id === 'playerHubEditorOverlay') ? root
-      : (root && root.querySelector ? root.querySelector('#playerHubEditorOverlay') : null)
-      || document.getElementById('playerHubEditorOverlay');
-    if (!overlay || overlay.dataset.sqAvatarEnhanced === '1') return;
-    const body = overlay.querySelector('.modal-body');
-    if (!body) return;
-    const sub = Array.from(body.children).find(el => el.classList && el.classList.contains('muted'));
-    const name = String(sub?.textContent || '').trim();
-    const p = (_sqPlayerDir.byName && _sqPlayerDir.byName[name.toLowerCase()]) || { name };
-    let avatarId = __sqAvatarIdForPlayer(p);
-    overlay.dataset.sqAvatarId = String(avatarId);
-
-    const wrap = document.createElement('div');
-    wrap.className = 'sq-playerhub-avatar-wrap';
-    const lab = document.createElement('div');
-    lab.className = 'muted';
-    lab.textContent = 'Avatar';
-    wrap.appendChild(lab, __sqBuildAvatarPicker(avatarId, id => {
-      avatarId = id;
-      overlay.dataset.sqAvatarId = String(id);
-    }));
-
-    const firstField = Array.from(body.children).find(el => el.tagName === 'LABEL');
-    body.insertBefore(wrap, firstField || null);
-    const notes = Array.from(body.querySelectorAll('.muted'));
-    const note = notes.find(el => /Profile edits update/i.test(String(el.textContent || '')));
-    if (note) note.textContent = 'Profile edits update avatar, first name, last name, nickname and Player Hub password. Historic player name key stays intact.';
-    overlay.dataset.sqAvatarEnhanced = '1';
-  }catch(err){ try{ console.warn('[SC-040] Player Hub avatar editor enhancement skipped', err); }catch(_){} }
+// Called by the canonical Player Hub editor with its actual player record.
+function __sqEnhancePlayerHubAvatarEditor(overlay, player){
+  const body = overlay.querySelector('.modal-body');
+  const wrap = document.createElement('div');
+  wrap.className = 'sq-playerhub-avatar-wrap';
+  overlay.dataset.sqAvatarId = String(__sqAvatarIdForPlayer(player));
+  const label = document.createElement('div');
+  label.className = 'muted';
+  label.textContent = 'Avatar';
+  wrap.append(label, __sqBuildAvatarPicker(Number(overlay.dataset.sqAvatarId), id => {
+    overlay.dataset.sqAvatarId = String(id);
+  }));
+  body.insertBefore(wrap, body.querySelector('label'));
 }
-
-try{
-  if (window.__sqUIMutationBus?.on){
-    window.__sqUIMutationBus.on(muts => {
-      for (const m of (muts || [])) for (const n of (m.addedNodes || [])) {
-        if (n instanceof HTMLElement) __sqEnhancePlayerHubAvatarEditor(n);
-      }
-    });
-  } else if (typeof MutationObserver === 'function') {
-    const mo = new MutationObserver(muts => {
-      for (const m of muts) for (const n of (m.addedNodes || [])) {
-        if (n instanceof HTMLElement) __sqEnhancePlayerHubAvatarEditor(n);
-      }
-    });
-    const start = () => document.body && mo.observe(document.body, { childList:true, subtree:true });
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once:true });
-    else start();
-  }
-}catch(_){ }
+function __sqAvatarSaveError(error){
+  const message = String(error?.message || '');
+  const missing = /avatar_id/i.test(message) &&
+    (['42703', 'PGRST204'].includes(String(error?.code)) || /column|schema cache/i.test(message));
+  return missing ? new Error('Avatars are not available yet. Your selection was not saved. Please try again after the app update.') : error;
+}
 /* ===== /SC-040 PLAYER AVATAR IDENTITY ===== */
 
 async function cloudUpdatePlayerProfile(playerOrName, profile){
@@ -2183,13 +2162,7 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
   if (p.nickname   != null) payload.nickname   = String(p.nickname  ||'').trim();
   if (p.initials   != null) payload.initials   = __sqNormalizeInitials(String(p.initials||''), (p.name||keyName));
   if (p.avatar_id  != null) payload.avatar_id  = __sqNormalizeAvatarId(p.avatar_id, keyId || keyName);
-  else {
-    try{
-      const hub = document.getElementById('playerHubEditorOverlay');
-      const hubAvatar = hub?.dataset?.sqAvatarId;
-      if (hubAvatar) payload.avatar_id = __sqNormalizeAvatarId(hubAvatar, keyId || keyName);
-    }catch(_){}
-  }
+
 
   // Optional name update (normally handled via rename RPC first)
   if (p.name != null){
@@ -2206,12 +2179,15 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
 
     const { data, error } = await q.select('id,name,first_name,last_name,nickname,initials,avatar_id').maybeSingle();
     if (error) { markCloudError(error); throw error; }
+    if (!data) throw new Error('Profile was not saved. Refresh the player list and try again.');
     markCloudOk();
     await cloudRefreshPlayerDirectory(true);
     window.dispatchEvent(new CustomEvent('sq:players-changed'));
     return data || null;
   }catch(e){
-    // If some columns don't exist on older deployments, fall back to safe minimal update.
+    // Never turn an avatar write failure into a partial successful profile save.
+    if (payload.avatar_id != null) throw __sqAvatarSaveError(e);
+    // Preserve the pre-existing fallback only for callers not saving avatars.
     const msg  = String(e?.message || e || '');
     const code = String(e?.code || '');
     const missing = (code === '42703') || /column .* does not exist/i.test(msg);
@@ -2287,7 +2263,7 @@ async function __sqFetchPlayersRows(force=false){
     try{
       const r1 = await sb
         .from(TABLE_PLAYERS)
-        .select('id, name, initials, nickname, first_name, last_name, avatar_id, created_at, deleted_at')
+        .select('*') // Includes avatar_id after migration; preserves profile/deletion fields before it.
         .is('deleted_at', null)
         .order('name');
       if(r1.error) throw r1.error;

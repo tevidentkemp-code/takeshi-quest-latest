@@ -372,6 +372,7 @@ async function cloudCreatePlayer(name, profile){
     try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_upsert'); }catch(_){}
     return;
   }catch(e1){
+    if (row.avatar_id != null) { markCloudError(e1); throw __sqAvatarSaveError(e1); }
     const msg = String(e1?.message || e1 || '');
     const code = String(e1?.code || '');
     const isMissingCols = (code === '42703') || /(initials|first_name|last_name|nickname|avatar_id)/i.test(msg);
@@ -2594,6 +2595,7 @@ if (mlStartBtn) {
       const init  = __sqNormalizeInitials(meta.initials, p.name);
 
       return {
+        id: p.id,
         name: p.name,
         first_name: first,
         last_name: last,
@@ -4572,17 +4574,14 @@ async function syncSavedPlayersFromCloud(){
         last_name: (p.last_name != null ? String(p.last_name) : ''),
         nickname: (p.nickname != null ? String(p.nickname) : ''),
         initials: __sqNormalizeInitials(p.initials, p.name),
-        avatar_id: __sqAvatarIdForPlayer(p),
+        avatar_id: p.avatar_id ?? null,
         joinedAt: p.created_at ? new Date(p.created_at).toISOString() : null,
         _src: 'cloud'
       }))
       .sort((a,b)=> String(a.name).localeCompare(String(b.name)));
 
-    if (cloudArr.length){
-      setSavedPlayers(cloudArr);
-      return true;
-    }
-    return false;
+    setSavedPlayers(cloudArr);
+    return true;
   }catch(e){
     console.error('syncSavedPlayersFromCloud failed', e);
     return false;
@@ -4771,7 +4770,7 @@ async function showAddPlayerDialog(index){
         try{ document.dispatchEvent(new Event('sq:savedPlayersUpdated')); }catch(_){ }
       } catch (e) {
         console.error('cloudCreatePlayer failed', e);
-        toast('Save failed');
+        toast(e?.message || 'Save failed');
         return;
       }
 
@@ -4834,6 +4833,7 @@ async function showSelectPlayerDialog(index){
   select.innerHTML = '<option value="">Select a saved player...</option>';
 
   let any = false;
+  let cloudLoaded = false;
   let resolvedList = [];
 
   const pushResolved = (p) => {
@@ -4855,7 +4855,8 @@ async function showSelectPlayerDialog(index){
 
   // Prefer cloud
   try {
-    const cloudList = await cloudListPlayers();
+    const cloudList = await cloudListPlayers(true);
+    cloudLoaded = true;
     (cloudList || []).forEach(pushResolved);
     any = !!(cloudList && cloudList.length);
   } catch (err) {
@@ -4868,7 +4869,7 @@ async function showSelectPlayerDialog(index){
   }
 
   // Fallback: local
-  if (!any) {
+  if (!any && !cloudLoaded) {
     const local = getSavedPlayers();
     (local || []).forEach(pushResolved);
     any = !!(local && local.length);

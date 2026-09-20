@@ -9,15 +9,24 @@ on:
       - 'src/styles/setup/match-setup-base.css'
       - 'assets/avatars/**'
       - 'supabase/migrations/*sc040*'
-      - 'tools/ui-smoke/verify-sc040-player-avatars.mjs'
+      - 'tools/ui-smoke/verify-sc040*'
+      - 'tools/ui-smoke/package*.json'
+      - 'supabase/rollbacks/*sc040*'
+      - 'src/legacy/scripts/inline-008.js'
+      - 'src/legacy/scripts/inline-011.js'
+      - 'src/legacy/scripts/inline-030.js'
+      - 'src/legacy/intentional-patches.json'
       - '.github/workflows/sc040-player-avatars-qa.yml'
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version-file: '.node-version'
       - run: npm ci
@@ -30,6 +39,27 @@ jobs:
       - run: npm run materialize
       - run: npm run build
       - run: npm run verify:dist
+      - run: npm ci --prefix tools/ui-smoke --ignore-scripts
+      - run: npx --prefix tools/ui-smoke playwright install --with-deps chromium
+      - run: node tools/ui-smoke/verify-sc040-migration.mjs
+      - name: Avatar integration and affected-flow regressions (production blocked)
+        shell: bash
+        env:
+          SQ_SCREENSHOTS: output/playwright/sc040
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sc040-http.log 2>&1 &
+          source_pid=$!
+          python3 -m http.server 8124 --bind 127.0.0.1 --directory dist >/tmp/sc040-dist-http.log 2>&1 &
+          dist_pid=$!
+          trap 'kill "$source_pid" "$dist_pid" || true' EXIT
+          node tools/ui-smoke/verify-sc040-runtime.js
+          SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=output/playwright/sc040-dist node tools/ui-smoke/verify-sc040-runtime.js
+          node tools/ui-smoke/verify-sc034-add-player.js
+          node tools/ui-smoke/verify-sc038-ui.js
+          node tools/ui-smoke/verify-training-modes.js
+          node tools/ui-smoke/verify-progression-modes.js
+          node tools/ui-smoke/smoke.js
       - name: Keep SC-040 generated-runtime evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -37,6 +67,7 @@ jobs:
           name: sc040-generated-runtime
           retention-days: 14
           path: |
+            output/playwright/
             index.html
             src/legacy/scripts/inline-005.js
             src/legacy/styles/inline-002.css
