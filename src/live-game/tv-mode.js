@@ -108,8 +108,14 @@
   function syncPadClearance(){
     try{
       var pad=document.getElementById('padBar');
-      var h=(pad&&pad.offsetParent!==null)?Math.ceil(pad.getBoundingClientRect().height):0;
-      document.documentElement.style.setProperty('--sq-tv-pad-h',Math.max(0,h)+'px');
+      var clearance=0;
+      if(pad&&pad.offsetParent!==null){
+        var rect=pad.getBoundingClientRect();
+        clearance=Math.max(0,Math.ceil(window.innerHeight-rect.top));
+      }
+      document.documentElement.style.setProperty('--sq-tv-pad-h',clearance+'px');
+      var root=document.getElementById(ROOT_ID);
+      if(root) root.style.bottom=clearance+'px';
     }catch(_){}
   }
   function render(){
@@ -118,6 +124,7 @@
     var s=gameState(); if(!s||!Array.isArray(s.players)) return;
     var root=document.getElementById(ROOT_ID); if(!root||!active()) return;
     var players=s.players, cp=Math.max(0,Math.min(players.length-1,Number(s.currentPlayer)||0));
+    root.style.setProperty('--sq-tv-count',String(Math.max(2,Math.min(6,players.length))));
     var cr=Math.max(0,Number(s.currentRound)||0), cd=Math.max(0,Math.min(2,Number(s.currentDart)||0));
     var totals=players.map(function(_,i){return totalFor(s,i);}), lead=totals.length?Math.max.apply(null,totals):0;
     var wins=(s.match&&Array.isArray(s.match.wins))?s.match.wins:[];
