@@ -136,11 +136,11 @@ assert.equal(GAP_MOCK_START,50);
     ]
   });
   const score=[
-    [{roundTotal:40,darts:[hit(20),hit(10),hit(10)]}],
-    [{roundTotal:100,darts:[hit(40),hit(30),hit(30)]}]
+    [{roundTotal:10,darts:[hit(4),hit(3),hit(3)]}],
+    [{roundTotal:70,darts:[hit(70),null,null]}]
   ];
-  const h=historyForVisits(0,[[20,10]]);
-  const b=engine.visit(ctx({history:h,score,dartIndex:2,dart:hit(10)}));
+  const h=historyForVisits(0,[[4,3]]);
+  const b=engine.visit(ctx({history:h,score,dartIndex:2,dart:hit(3)}));
   assert.equal(b?.reason,'history_h2h_repeat','repeated historical opponent dominance should become a callback');
 }
 {
