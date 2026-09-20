@@ -4669,7 +4669,7 @@ async function showAddPlayerDialog(index){
 
   let chosenName = '';
   let manualInitials = false;
-  let chosenAvatarId = 1;
+  let chosenAvatarId = (typeof __sqAvatarAutoAssignId === 'function') ? __sqAvatarAutoAssignId('new-player') : 1;
   const avatarHost = byId('newPlayerAvatarPicker');
   const renderAvatarPicker = () => {
     if (!avatarHost || typeof __sqBuildAvatarPicker !== 'function') return;
@@ -4695,7 +4695,7 @@ async function showAddPlayerDialog(index){
     if (lastEl)  lastEl.value  = '';
     if (nickEl)  nickEl.value  = __sqPickNickname();
     if (initEl)  initEl.value  = '';
-    chosenAvatarId = 1;
+    chosenAvatarId = (typeof __sqAvatarAutoAssignId === 'function') ? __sqAvatarAutoAssignId('new-player') : 1;
     renderAvatarPicker();
     manualInitials = false;
     maybeAutoInitials();
