@@ -96,11 +96,11 @@ assert.equal(GAP_MOCK_START,50);
 {
   const engine=createCommentaryEngine({mode:MODES.BRUTAL});
   const score=[
-    [{roundTotal:30,darts:[hit(10),hit(10),hit(10)]}],
-    [{roundTotal:80,darts:[hit(80),null,null]}]
+    [{roundTotal:10,darts:[hit(4),hit(3),hit(3)]}],
+    [{roundTotal:60,darts:[hit(60),null,null]}]
   ];
-  const h=historyForVisits(0,[[10,10]]);
-  const b=engine.visit(ctx({history:h,score,dartIndex:2,dart:hit(10)}));
+  const h=historyForVisits(0,[[4,3]]);
+  const b=engine.visit(ctx({history:h,score,dartIndex:2,dart:hit(3)}));
   assert.equal(b?.reason,'far_behind','50 behind at visit end must be mocked');
   assert.equal(b?.gap,50);
 }
