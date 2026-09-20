@@ -22,6 +22,8 @@ jobs:
         with:
           node-version-file: '.node-version'
       - run: npm ci
+      - name: Install deterministic architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
       - run: node --check src/app/util.js
       - run: node --check src/app/router-ui.js
       - run: node --check src/legacy/scripts/inline-008.js
@@ -30,3 +32,13 @@ jobs:
       - run: npm run materialize
       - run: npm run build
       - run: npm run verify:dist
+      - name: Keep SC-040 generated-runtime evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sc040-generated-runtime
+          retention-days: 14
+          path: |
+            index.html
+            src/legacy/scripts/inline-005.js
+            src/legacy/styles/inline-002.css
