@@ -12,7 +12,7 @@
     if (!p) return null;
     var name = String(p.name || '').trim();
     if (!name) return null;
-    return { id:(p.id != null ? String(p.id).trim() : null), name:name, first_name:(p.first_name != null ? String(p.first_name) : ''), last_name:(p.last_name != null ? String(p.last_name) : ''), nickname:(p.nickname != null ? String(p.nickname) : ''), initials:(typeof window.__sqNormalizeInitials === 'function' ? window.__sqNormalizeInitials(p.initials, name) : String(p.initials || '').trim()), joinedAt:p.joinedAt || p.created_at || p.createdAt || null, _src:p._src || 'cloud-cache' };
+    return { id:(p.id != null ? String(p.id).trim() : null), name:name, avatar_id:p.avatar_id ?? null, first_name:(p.first_name != null ? String(p.first_name) : ''), last_name:(p.last_name != null ? String(p.last_name) : ''), nickname:(p.nickname != null ? String(p.nickname) : ''), initials:(typeof window.__sqNormalizeInitials === 'function' ? window.__sqNormalizeInitials(p.initials, name) : String(p.initials || '').trim()), joinedAt:p.joinedAt || p.created_at || p.createdAt || null, _src:p._src || 'cloud-cache' };
   }
   function safeSetCache(arr, meta){
     var clean = (Array.isArray(arr) ? arr : []).map(normalizeCachePlayer).filter(Boolean).sort(function(a,b){ return String(a.name).localeCompare(String(b.name)); });

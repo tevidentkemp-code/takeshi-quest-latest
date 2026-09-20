@@ -117,6 +117,7 @@
     return {
       id:id,
       player_id:id,
+      avatar_id:__sqAvatarIdForPlayer(row),
       name:name,
       first_name:String(row.first_name||'').trim(),
       last_name:String(row.last_name||'').trim(),

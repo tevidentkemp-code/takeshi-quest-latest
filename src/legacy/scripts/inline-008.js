@@ -36,7 +36,7 @@
     var rows = [];
     try {
       if (typeof cloudListPlayers === 'function'){
-        var cloud = await cloudListPlayers();
+        var cloud = await cloudListPlayers(true);
         (cloud || []).forEach(function(p){
           if (!p || !p.name) return;
           rows.push({
@@ -45,7 +45,8 @@
             first_name: (p.first_name != null ? String(p.first_name) : ''),
             last_name: (p.last_name != null ? String(p.last_name) : ''),
             nickname: (p.nickname != null ? String(p.nickname) : ''),
-            initials: (p.initials != null ? String(p.initials) : '')
+            initials: (p.initials != null ? String(p.initials) : ''),
+            avatar_id: p.avatar_id ?? null
           });
         });
       }
@@ -63,7 +64,8 @@
             first_name: (p.first_name != null ? String(p.first_name) : ''),
             last_name: (p.last_name != null ? String(p.last_name) : ''),
             nickname: (p.nickname != null ? String(p.nickname) : ''),
-            initials: (p.initials != null ? String(p.initials) : '')
+            initials: (p.initials != null ? String(p.initials) : ''),
+            avatar_id: p.avatar_id ?? null
           });
         });
       }catch(err){
@@ -140,9 +142,11 @@
     var note = document.createElement('div');
     note.className = 'muted';
     note.style.fontSize = '.86rem';
-    note.textContent = 'Profile edits update first name, last name, nickname and Player Hub password. Historic player name key stays intact.';
+    note.textContent = 'Profile edits update avatar, first name, last name, nickname and Player Hub password. Historic player name key stays intact.';
 
     body.append(sub, firstF.wrap, lastF.wrap, nickF.wrap, passF.wrap, note);
+    overlay.appendChild(body);
+    __sqEnhancePlayerHubAvatarEditor(overlay, player);
 
     var footer = document.createElement('div');
     footer.className = 'modal-footer';
@@ -192,7 +196,8 @@
             first_name: first,
             last_name: last,
             nickname: nick,
-            initials: init
+            initials: init,
+            avatar_id: Number(overlay.dataset.sqAvatarId)
           });
         } else {
           throw new Error('cloudUpdatePlayerProfile not available');
@@ -219,7 +224,7 @@
         console.error(err);
         var msg = (err && (err.message || err.details)) ? String(err.message || err.details) : '';
         if (/duplicate key|unique/i.test(msg)) __sqToast('Save failed: name already exists');
-        else __sqToast('Save failed');
+        else __sqToast(msg || 'Save failed');
       }
     };
 
@@ -260,7 +265,11 @@
       }
     };
 
-    footer.append(backBtn, saveBtn, delBtn);
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'btn';
+    closeBtn.textContent = 'Close';
+    closeBtn.onclick = function(){ overlay.remove(); if (openerOverlay) openerOverlay.remove(); };
+    footer.append(backBtn, closeBtn, saveBtn, delBtn);
     modal.append(title, body, footer);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
@@ -383,7 +392,7 @@
       var p = chosenPlayer();
       if (!p){ error.textContent = 'Select a player'; clearCode(); return; }
       if (code === __sqPlayerDefaultPw(p)){
-        overlay.remove();
+        overlay.style.display = 'none';
         __sqOpenPlayerProfileEditor(p, overlay);
       } else {
         error.textContent = 'Incorrect password';
