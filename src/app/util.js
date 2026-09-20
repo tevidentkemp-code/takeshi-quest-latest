@@ -2114,6 +2114,58 @@ window.__sqAvatarSpritePosition = __sqAvatarSpritePosition;
 window.__sqAvatarIdForPlayer = __sqAvatarIdForPlayer;
 window.__sqApplyAvatarSprite = __sqApplyAvatarSprite;
 window.__sqBuildAvatarPicker = __sqBuildAvatarPicker;
+
+function __sqEnhancePlayerHubAvatarEditor(root){
+  try{
+    const overlay = (root && root.id === 'playerHubEditorOverlay') ? root
+      : (root && root.querySelector ? root.querySelector('#playerHubEditorOverlay') : null)
+      || document.getElementById('playerHubEditorOverlay');
+    if (!overlay || overlay.dataset.sqAvatarEnhanced === '1') return;
+    const body = overlay.querySelector('.modal-body');
+    if (!body) return;
+    const sub = Array.from(body.children).find(el => el.classList && el.classList.contains('muted'));
+    const name = String(sub?.textContent || '').trim();
+    const p = (_sqPlayerDir.byName && _sqPlayerDir.byName[name.toLowerCase()]) || { name };
+    let avatarId = __sqAvatarIdForPlayer(p);
+    overlay.dataset.sqAvatarId = String(avatarId);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'sq-playerhub-avatar-wrap';
+    const lab = document.createElement('div');
+    lab.className = 'muted';
+    lab.textContent = 'Avatar';
+    wrap.appendChild(lab, __sqBuildAvatarPicker(avatarId, id => {
+      avatarId = id;
+      overlay.dataset.sqAvatarId = String(id);
+    }));
+
+    const firstField = Array.from(body.children).find(el => el.tagName === 'LABEL');
+    body.insertBefore(wrap, firstField || null);
+    const notes = Array.from(body.querySelectorAll('.muted'));
+    const note = notes.find(el => /Profile edits update/i.test(String(el.textContent || '')));
+    if (note) note.textContent = 'Profile edits update avatar, first name, last name, nickname and Player Hub password. Historic player name key stays intact.';
+    overlay.dataset.sqAvatarEnhanced = '1';
+  }catch(err){ try{ console.warn('[SC-040] Player Hub avatar editor enhancement skipped', err); }catch(_){} }
+}
+
+try{
+  if (window.__sqUIMutationBus?.on){
+    window.__sqUIMutationBus.on(muts => {
+      for (const m of (muts || [])) for (const n of (m.addedNodes || [])) {
+        if (n instanceof HTMLElement) __sqEnhancePlayerHubAvatarEditor(n);
+      }
+    });
+  } else if (typeof MutationObserver === 'function') {
+    const mo = new MutationObserver(muts => {
+      for (const m of muts) for (const n of (m.addedNodes || [])) {
+        if (n instanceof HTMLElement) __sqEnhancePlayerHubAvatarEditor(n);
+      }
+    });
+    const start = () => document.body && mo.observe(document.body, { childList:true, subtree:true });
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once:true });
+    else start();
+  }
+}catch(_){ }
 /* ===== /SC-040 PLAYER AVATAR IDENTITY ===== */
 
 async function cloudUpdatePlayerProfile(playerOrName, profile){
@@ -2131,6 +2183,13 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
   if (p.nickname   != null) payload.nickname   = String(p.nickname  ||'').trim();
   if (p.initials   != null) payload.initials   = __sqNormalizeInitials(String(p.initials||''), (p.name||keyName));
   if (p.avatar_id  != null) payload.avatar_id  = __sqNormalizeAvatarId(p.avatar_id, keyId || keyName);
+  else {
+    try{
+      const hub = document.getElementById('playerHubEditorOverlay');
+      const hubAvatar = hub?.dataset?.sqAvatarId;
+      if (hubAvatar) payload.avatar_id = __sqNormalizeAvatarId(hubAvatar, keyId || keyName);
+    }catch(_){}
+  }
 
   // Optional name update (normally handled via rename RPC first)
   if (p.name != null){
