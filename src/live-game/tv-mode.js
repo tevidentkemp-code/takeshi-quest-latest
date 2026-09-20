@@ -6,6 +6,7 @@
 
   var ROOT_ID='sqTvModeOverlay';
   var timer=0;
+  var PARKED=true; // SC-037 temporarily withdrawn from the live UI pending redesign.
 
   function esc(v){
     return String(v==null?'':v).replace(/[&<>"']/g,function(ch){
@@ -196,6 +197,7 @@
   }
   function active(){return !!(document.body&&document.body.classList.contains('sq-tv-mode-on'));}
   function enable(){
+    if(PARKED){ try{if(typeof toast==='function')toast('TV Mode is temporarily unavailable');}catch(_){} return false; }
     var s=gameState(), reason=modeUnsupported(s);
     if(document.body.dataset.page!=='game'){ try{if(typeof toast==='function')toast('Start a game before opening TV Mode');}catch(_){} return false; }
     if(reason){ try{if(typeof toast==='function')toast(reason);}catch(_){} return false; }
@@ -214,9 +216,23 @@
     var root=document.getElementById(ROOT_ID); if(root) root.remove();
     try{ if(document.fullscreenElement&&document.exitFullscreen) document.exitFullscreen(); }catch(_){}
   }
+  function suppressMenuEntry(){
+    if(!PARKED) return;
+    try{
+      document.querySelectorAll('.sq-menu106-row').forEach(function(row){
+        var label=row.querySelector('.sq-menu106-label');
+        if(label && /^TV Mode \(Beta\)/i.test(String(label.textContent||'').trim())) row.remove();
+      });
+    }catch(_){}
+  }
   window.__sqTvModeIsActive=active;
+  window.__sqTvModeIsAvailable=function(){return !PARKED;};
   window.__sqTvModeSync=render;
   window.__sqTvModeToggle=function(on){return on===false?(disable(),false):enable();};
+  suppressMenuEntry();
+  try{
+    new MutationObserver(suppressMenuEntry).observe(document.documentElement,{childList:true,subtree:true});
+  }catch(_){}
   window.addEventListener('pagehide',disable);
   document.addEventListener('keydown',function(e){if(e.key==='Escape'&&active()&&!document.querySelector('.modal-backdrop:not(.hidden)'))disable();});
 })();
