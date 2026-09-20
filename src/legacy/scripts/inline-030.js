@@ -267,6 +267,14 @@
     var v3on=false; try{ v3on = localStorage.getItem('sq_livev3_test')==='1'; }catch(_){ }
     // Safe / frequently-used actions first.
     addRow(m.body,{ico:'📊',label:'Stats',desc:'Race, game & match stats',cls:'blue',onClick:function(){m.close(); window.openStatsHubDialog();}});
+    var __tvOn=false; try{ __tvOn=!!(window.__sqTvModeIsActive&&window.__sqTvModeIsActive()); }catch(_){ }
+    addRow(m.body,{ico:'▣',label:'TV Mode (Beta)'+(__tvOn?' • ON':''),desc:'16:9 big-screen live view',cls:(__tvOn?'orange':''),onClick:function(){
+      m.close();
+      try{
+        if(typeof window.__sqTvModeToggle==='function') window.__sqTvModeToggle(!__tvOn);
+        else if(typeof toast==='function') toast('TV Mode unavailable');
+      }catch(e){ try{console.warn('[SQ] TV Mode toggle failed',e);}catch(_){ } }
+    }});
     addRow(m.body,{ico:'🧪',label:'New Layout (Beta): '+(v3on?'ON':'OFF'),desc:'2-4 player Match Play Classic',cls:(v3on?'green':''),onClick:function(){
       try{ localStorage.setItem('sq_livev3_test', v3on?'0':'1'); }catch(_){ }
       m.close();
