@@ -1,3 +1,4 @@
+import '../tv-mode.js';
 import '../postgame-flow.mjs';
 import '../postgame-hotfix.mjs';
 import '../xp-breakdown.mjs';
