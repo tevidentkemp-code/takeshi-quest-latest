@@ -21,6 +21,7 @@ function shatekiCompatibilityRuntime() {
       // completes compatibility migration. Keep those paths available in dist.
       copyTreeIfPresent('src/legacy', 'dist/src/legacy');
       copyTreeIfPresent('src/styles', 'dist/src/styles');
+      copyTreeIfPresent('src/features', 'dist/src/features');
       copyTreeIfPresent('assets', 'dist/assets');
       fs.writeFileSync(path.join(root, 'dist', '.nojekyll'), '', 'utf8');
     },
