@@ -2034,9 +2034,12 @@ async function cloudRenamePlayer(oldName, newName){
 
 /* ===== SC-040 PLAYER AVATAR IDENTITY ===== */
 const SQ_AVATAR_COUNT = 29;
+const SQ_AVATAR_AUTO_ASSIGN_COUNT = 20;
 const SQ_AVATAR_COLS = 6;
 const SQ_AVATAR_ROWS = 5;
 
+// Automatic assignment may use only the original AI-generated portrait pool.
+// The later photo-derived catalogue entries remain available for explicit manual selection.
 function __sqAvatarFallbackId(seed=''){
   const s = String(seed || '').trim().toLowerCase();
   if (!s) return 1;
@@ -2045,7 +2048,10 @@ function __sqAvatarFallbackId(seed=''){
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
-  return (Math.abs(h >>> 0) % SQ_AVATAR_COUNT) + 1;
+  return (Math.abs(h >>> 0) % SQ_AVATAR_AUTO_ASSIGN_COUNT) + 1;
+}
+function __sqAvatarAutoAssignId(seed=''){
+  return __sqAvatarFallbackId(seed);
 }
 function __sqNormalizeAvatarId(value, seed=''){
   const n = (typeof value === 'number' || typeof value === 'string') ? Number(value) : NaN;
@@ -2119,6 +2125,8 @@ function __sqBuildAvatarPicker(selectedId, onChange){
   return root;
 }
 window.SQ_AVATAR_COUNT = SQ_AVATAR_COUNT;
+window.SQ_AVATAR_AUTO_ASSIGN_COUNT = SQ_AVATAR_AUTO_ASSIGN_COUNT;
+window.__sqAvatarAutoAssignId = __sqAvatarAutoAssignId;
 window.__sqNormalizeAvatarId = __sqNormalizeAvatarId;
 window.__sqAvatarSpritePosition = __sqAvatarSpritePosition;
 window.__sqAvatarIdForPlayer = __sqAvatarIdForPlayer;
