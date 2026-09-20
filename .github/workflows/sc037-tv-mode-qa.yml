@@ -1,0 +1,55 @@
+name: SC-037 TV Mode Beta QA
+on:
+  pull_request:
+    paths:
+      - 'src/live-game/tv-mode.js'
+      - 'src/styles/live-game/tv-mode.css'
+      - 'src/legacy/scripts/inline-030.js'
+      - 'src/shell/index.template.html'
+      - 'index.html'
+      - 'tools/ui-smoke/verify-sc037-tv-mode.js'
+      - '.github/workflows/sc037-tv-mode-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: '.node-version'
+      - run: npm ci
+      - name: Install deterministic architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+      - run: node --check src/live-game/tv-mode.js
+      - run: node --check src/legacy/scripts/inline-030.js
+      - run: npm run materialize
+      - run: npm run build
+      - run: npm run verify:dist
+      - run: npm ci --prefix tools/ui-smoke --ignore-scripts
+      - run: npx --prefix tools/ui-smoke playwright install --with-deps chromium
+      - name: TV Mode source + dist acceptance
+        shell: bash
+        env:
+          SQ_SCREENSHOTS: output/playwright/sc037
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sc037-http.log 2>&1 &
+          source_pid=$!
+          python3 -m http.server 8124 --bind 127.0.0.1 --directory dist >/tmp/sc037-dist-http.log 2>&1 &
+          dist_pid=$!
+          trap 'kill "$source_pid" "$dist_pid" || true' EXIT
+          node tools/ui-smoke/verify-sc037-tv-mode.js
+          SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=output/playwright/sc037-dist node tools/ui-smoke/verify-sc037-tv-mode.js
+          node tools/ui-smoke/verify-sc033-throw-order.js
+          node tools/ui-smoke/smoke.js
+      - name: Keep SC-037 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sc037-tv-mode-beta
+          retention-days: 14
+          path: output/playwright/sc037*

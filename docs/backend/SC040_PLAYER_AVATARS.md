@@ -8,6 +8,7 @@
 - Hosted exact-head gates all passed: SC-040 Player Avatars, Setup regression, SC-032 DMD ownership, SC-033 release candidate, SC-034/036 release candidate, SC-042 record integrity, SC-031 cloud-failure resilience and SC-045 DMD arcade.
 - Production Supabase now has `public.players.avatar_id smallint NULL` with `players_avatar_id_range` enforcing NULL or 1–29. Existing RLS/policies/grants were preserved.
 - Released UI contract: avatar selectable when saving a new player; editable in Player Hub; visible on Select Player, Set Up Your Game and Throw Order; paired celebration artwork appears only after Game Complete for the actual winner, including a resolved shootout.
+- Automatic avatar assignment/fallback is restricted to catalogue IDs 1–20, the original AI-generated portrait pool. IDs 21–29 are the later photo-derived portraits and are manual-selection only; existing explicit selections remain valid.
 - No scoring, rankings, XP, achievement eligibility, game limits or game rules changed.
 - Remaining manual gate: physical iPhone Safari hard-refresh/visual acceptance. This cannot be truthfully self-declared from automated tooling.
 - Migration history contains two entries with the same idempotent SC-040 DDL; live schema has one column and one range constraint. History was intentionally not rewritten.
@@ -42,7 +43,7 @@ Quarantined compatibility owners `inline-008.js` (Hub), `inline-011.js` (cache) 
 1. Match Setup → Save New Player → choose a portrait, enter profile details and Save. The portrait appears on the match card.
 2. Player Hub → choose player → existing password gate → choose another portrait → Save. Back returns to the gate; Close exits the Hub. Failed saves retain the editor.
 3. Select saved players on another device to fetch their canonical identities. The completed game's actual winner receives the paired celebration artwork, including a resolved shootout winner.
-4. Existing NULL/invalid avatars render a deterministic fallback seeded by UUID (name for guests). No backfill is required.
+4. Existing NULL/invalid avatars render a deterministic fallback seeded by UUID (name for guests), restricted to AI-generated IDs 1–20. Photo-derived IDs 21–29 are never chosen automatically. No backfill is required.
 
 Before migration, reads remain compatible. Avatar saves deliberately fail visibly. **Apply and verify the approved database migration before releasing this client.**
 
