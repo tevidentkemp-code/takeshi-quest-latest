@@ -20,6 +20,16 @@ fs.mkdirSync(out,{recursive:true});
   assert(await page.locator('#padBar').isVisible(),'canonical throwpad must stay visible in TV Mode');
   const padBox=await page.locator('#padBar').boundingBox();
   const tvBox=await page.locator('#sqTvModeOverlay').boundingBox();
+  const geometry=await page.evaluate(()=>({
+    innerHeight:window.innerHeight,
+    padRect:(()=>{const r=document.getElementById('padBar')?.getBoundingClientRect();return r?{top:r.top,bottom:r.bottom,height:r.height}:null;})(),
+    tvRect:(()=>{const r=document.getElementById('sqTvModeOverlay')?.getBoundingClientRect();return r?{top:r.top,bottom:r.bottom,height:r.height}:null;})(),
+    cssVar:getComputedStyle(document.documentElement).getPropertyValue('--sq-tv-pad-h'),
+    rootBottom:document.getElementById('sqTvModeOverlay')?.style.bottom||'',
+    rootComputedBottom:getComputedStyle(document.getElementById('sqTvModeOverlay')).bottom
+  }));
+  console.log('SC-037 geometry',JSON.stringify(geometry));
+  await page.screenshot({path:path.join(out,'tv-geometry-1920x1080.png')});
   assert(padBox&&tvBox&&tvBox.y+tvBox.height<=padBox.y+2,'TV overlay must stop above canonical throwpad');
   const beforeDart=await page.evaluate(()=>state.currentDart);
   let scoreBtn=page.locator('#pad button.dtBullBtn:not([disabled])').first();
