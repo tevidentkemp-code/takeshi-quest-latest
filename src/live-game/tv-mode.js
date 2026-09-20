@@ -32,7 +32,8 @@
   function hasDart(entry){
     if (!entry) return false;
     var darts = Array.isArray(entry.darts) ? entry.darts : [];
-    return darts.some(function(d){ return d !== null && d !== undefined; }) || entry.roundTotal != null;
+    if (darts.some(function(d){ return d !== null && d !== undefined; })) return true;
+    return Number(entry.roundTotal || 0) !== 0;
   }
 
   function totalAt(playerIdx, roundIdx){
