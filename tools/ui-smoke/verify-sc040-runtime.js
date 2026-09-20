@@ -108,7 +108,26 @@ fs.mkdirSync(out, {recursive:true});
     await page.locator('#spPlayerList .sp2-row').filter({hasText:'AVATAR TESTER'}).click();
     await page.click('#confirmSelectPlayerBtn');
     assert.equal(await page.locator('#msPlayersList [data-avatar-id]').first().getAttribute('data-avatar-id'),'29');
-    await H.addGuests(page,['Beta']); await H.startMatch(page,3);
+    await H.addGuests(page,['Beta']);
+    assert.equal(await page.locator('#msPlayersList [data-avatar-id]').first().getAttribute('data-avatar-id'),'29');
+    assert.equal(await page.locator('.sq-gc-celebration-sprite').count(),0,'celebration art must not render during match setup');
+    await page.click('#startMatchBtn'); await page.waitForTimeout(500);
+    const pickedLength = await page.evaluate(() => {
+      const seg = document.querySelector('#mlGrid .mlw-seg[data-value="3"]');
+      if (!seg) return false;
+      seg.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+      return true;
+    });
+    assert(pickedLength,'FT3 match-length segment missing');
+    await page.click('#mlStartBtn');
+    await page.waitForSelector('.modal-throworder');
+    assert.equal(await page.locator('.modal-throworder .to-row').first().locator('[data-avatar-id]').getAttribute('data-avatar-id'),'29');
+    assert.equal(await page.locator('.modal-throworder .to-row [data-avatar-id]').count(),2,'every Throw Order player must show an avatar');
+    assert.equal(await page.locator('.sq-gc-celebration-sprite').count(),0,'celebration art must not render in Throw Order');
+    await page.click('.modal-throworder .to-start');
+    await page.waitForFunction(()=>document.body.dataset.page==='game',{timeout:15000});
+    await page.waitForTimeout(1200);
+    assert.equal(await page.locator('.sq-gc-celebration-sprite').count(),0,'celebration art must not render during live play');
     assert.equal(await page.evaluate(()=>state.players.find(p=>p.name==='Avatar Tester').avatar_id),29);
     assert((await page.evaluate(()=>state.players.map(p=>p.avatar_id))).every(Number.isInteger));
     await page.evaluate(()=>{
@@ -131,7 +150,7 @@ fs.mkdirSync(out, {recursive:true});
     await page.waitForSelector('.sq-gc-celebration-sprite');
     assert.equal(await page.locator('.sq-gc-celebration-sprite').getAttribute('data-avatar-id'),'29');
     assert.equal(consoleErrs.filter(x=>x.startsWith('pageerror:')).length,0,JSON.stringify(consoleErrs.filter(x=>x.startsWith('pageerror:'))));
-    console.log('PASS fresh-cache canonical fetch, selection, match state, actual second-player winner and no uncaught errors');
+    console.log('PASS fresh-cache canonical fetch, Select Player + Match Setup + Throw Order avatars, live celebration boundary, match state, actual second-player winner and no uncaught errors');
     console.log('SC-040 browser acceptance PASS (production network blocked)');
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

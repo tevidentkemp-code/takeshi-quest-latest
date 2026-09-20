@@ -20083,7 +20083,12 @@ function showPlayerOrderDialog() {
 
       const badge = document.createElement('div');
       badge.className = 'to-badge';
-      badge.textContent = initialsForPlayer(p) || (String(p.name||'').trim().slice(0,2).toUpperCase());
+      try{
+        __sqApplyAvatarSprite(badge, __sqAvatarIdForPlayer(p));
+        badge.setAttribute('aria-hidden', 'true');
+      }catch(_){
+        badge.textContent = initialsForPlayer(p) || (String(p.name||'').trim().slice(0,2).toUpperCase());
+      }
 
       const meta = document.createElement('div');
       meta.className = 'to-meta';
