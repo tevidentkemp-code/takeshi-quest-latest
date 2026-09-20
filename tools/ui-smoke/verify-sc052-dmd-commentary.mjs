@@ -144,6 +144,26 @@ assert.equal(GAP_MOCK_START,50);
   assert.equal(b?.reason,'history_h2h_repeat','repeated historical opponent dominance should become a callback');
 }
 {
+  let reads=0;
+  const host={
+    sb:{
+      from(){
+        reads++;
+        const q={
+          select(){return q;},
+          order(){return q;},
+          limit(){return Promise.resolve({data:[],error:null});}
+        };
+        return q;
+      }
+    }
+  };
+  const engine=createCommentaryEngine({mode:MODES.BRUTAL,host});
+  await engine.warmHistory([{name:'Alpha'},{name:'Beta'}],'official');
+  await engine.warmHistory([{name:'Alpha'},{name:'Beta'}],'official');
+  assert.equal(reads,1,'empty history must be prefetched at most once per player set');
+}
+{
   const engine=createCommentaryEngine({mode:MODES.OFF});
   assert.equal(engine.dart(ctx({score:scoreFromTotals([0,100])})),null,'OFF mode must emit no commentary');
 }
