@@ -23,3 +23,7 @@ Normal portrait gameplay, Throw Order, scoring, skip/catch-up, match wins, Game 
 ## Rollback
 
 Remove the SC-037 stylesheet/script includes from the shell template, revert the Game Menu row, and delete `src/live-game/tv-mode.js` / `src/styles/live-game/tv-mode.css`. No data rollback is required.
+
+## Candidate verification note
+
+A documentation-only refresh was added after the original SC-034/036 built-dist GitHub Actions runner remained in-progress after the source-runtime pass. Runtime TV Mode code was not changed by this refresh; the new exact head is used to obtain a clean hosted CI result before release.
