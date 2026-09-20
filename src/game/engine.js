@@ -1273,7 +1273,6 @@ setTimeout(() => {
         }catch(_){}
       }, __preThrowAt);
     }
-    }
   } catch(_){}
 }, baseDelay);} catch(_){}
     }
