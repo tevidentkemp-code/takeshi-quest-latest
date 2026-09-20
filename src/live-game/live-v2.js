@@ -3788,22 +3788,6 @@ window.__sqLiveV3Sync = function(){
   }catch(e){ try{ console.warn('[SQ] LiveV3 sync failed', e); }catch(_){ } }
 };
 
-/* >>> PATCH:SC037_TV_MODE_LOADER START */
-(function(){
-  if (document.getElementById('sqTvModeScript')) return;
-  function loadTvMode(){
-    if (document.getElementById('sqTvModeScript')) return;
-    var script=document.createElement('script');
-    script.id='sqTvModeScript';
-    script.src='./src/live-game/tv-mode.js';
-    script.defer=true;
-    document.head.appendChild(script);
-  }
-  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',loadTvMode,{once:true});
-  else loadTvMode();
-})();
-/* <<< PATCH:SC037_TV_MODE_LOADER END */
-
 function updateUI() {
   try {
   try{ if (typeof __sqSyncTurboVisualState === 'function') __sqSyncTurboVisualState(document.body?.dataset?.page || ''); }catch(_){}
