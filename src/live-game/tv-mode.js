@@ -100,13 +100,21 @@
     root.querySelector('#sqTvFull').onclick=function(){
       try{
         if(document.fullscreenElement){ document.exitFullscreen&&document.exitFullscreen(); }
-        else if(root.requestFullscreen){ root.requestFullscreen(); }
+        else if(document.documentElement.requestFullscreen){ document.documentElement.requestFullscreen(); }
       }catch(_){}
     };
     return root;
   }
+  function syncPadClearance(){
+    try{
+      var pad=document.getElementById('padBar');
+      var h=(pad&&pad.offsetParent!==null)?Math.ceil(pad.getBoundingClientRect().height):0;
+      document.documentElement.style.setProperty('--sq-tv-pad-h',Math.max(0,h)+'px');
+    }catch(_){}
+  }
   function render(){
     if(!document.body||document.body.dataset.page!=='game'){ if(active()) disable(); return; }
+    syncPadClearance();
     var s=gameState(); if(!s||!Array.isArray(s.players)) return;
     var root=document.getElementById(ROOT_ID); if(!root||!active()) return;
     var players=s.players, cp=Math.max(0,Math.min(players.length-1,Number(s.currentPlayer)||0));
@@ -192,6 +200,7 @@
   function disable(){
     if(timer){clearInterval(timer);timer=0;}
     document.body&&document.body.classList.remove('sq-tv-mode-on');
+    try{document.documentElement.style.removeProperty('--sq-tv-pad-h');}catch(_){}
     var root=document.getElementById(ROOT_ID); if(root) root.remove();
     try{ if(document.fullscreenElement&&document.exitFullscreen) document.exitFullscreen(); }catch(_){}
   }
