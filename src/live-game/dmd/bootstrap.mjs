@@ -6,11 +6,14 @@ import '../postgame-release-guard.mjs';
 import '../bull-colours.mjs';
 import { detectExistingBackend, install } from './controller.mjs';
 import { createMotionSafeBackend } from './motion.mjs';
+import { installCommentary } from './commentary.mjs';
 
 const MAX_ATTEMPTS = 120;
 const RETRY_MS = 50;
 let attempts = 0;
 let timer = null;
+
+if (!window.__sqDmdCommentary) installCommentary(window);
 
 function backendReady(host) {
   return !!(
