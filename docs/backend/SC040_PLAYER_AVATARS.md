@@ -1,6 +1,18 @@
-# SC-040 — persistent player avatars (unreleased)
+# SC-040 — persistent player avatars (released; physical iPhone acceptance pending)
 
-## Authority and verified baseline — 20 September 2026
+## Release closeout — 20 September 2026
+
+- Exact verified candidate: `fa3e1a327baad249d2f0ceb9276a3af1d50c1fd6`.
+- PR #57 squash-merged to production `main` as `918bb63bea56a903df6b56b2904fb68529ee60b0`.
+- GitHub Pages build/deployment run `35525044431` completed successfully from that production commit.
+- Hosted exact-head gates all passed: SC-040 Player Avatars, Setup regression, SC-032 DMD ownership, SC-033 release candidate, SC-034/036 release candidate, SC-042 record integrity, SC-031 cloud-failure resilience and SC-045 DMD arcade.
+- Production Supabase now has `public.players.avatar_id smallint NULL` with `players_avatar_id_range` enforcing NULL or 1–29. Existing RLS/policies/grants were preserved.
+- Released UI contract: avatar selectable when saving a new player; editable in Player Hub; visible on Select Player, Set Up Your Game and Throw Order; paired celebration artwork appears only after Game Complete for the actual winner, including a resolved shootout.
+- No scoring, rankings, XP, achievement eligibility, game limits or game rules changed.
+- Remaining manual gate: physical iPhone Safari hard-refresh/visual acceptance. This cannot be truthfully self-declared from automated tooling.
+- Migration history contains two entries with the same idempotent SC-040 DDL; live schema has one column and one range constraint. History was intentionally not rewritten.
+
+## Pre-release authority and verified baseline — 20 September 2026
 
 - Repository: `tevidentkemp-code/takeshi-quest-latest`, branch `sc040-player-avatars`; existing draft PR #57.
 - Production `main` and merge base: `d4a2835d46706a3dbb2d56bf71330e566629e4c1`.
@@ -98,4 +110,4 @@ Rollback now: production is untouched; leave draft PR unmerged. Local continuati
 
 Rollback after a later approved release: revert the SC-040 release commit and verify the previous client (`d4a2835…` baseline). The additive nullable column can safely remain while assessing. If explicitly approved for removal, export `id, avatar_id` first, then run `supabase/rollbacks/sc040_player_avatar_identity.sql`. It uses no CASCADE; unexpected dependencies abort removal. Dropping the column discards selected avatar values, so schema reversibility alone does not restore those choices. No score/history rollback is required.
 
-Exact next action: review the candidate and paired art; verify hosted CI for its exact SHA; obtain explicit production migration approval. Keep PR draft and production undeployed until the separate release gates pass.
+Exact next action: hard-refresh production on a physical iPhone and visually accept the six released surfaces. If green, mark SC-040 CLOSED and promote the next queued item. If not, reopen only the failing SC-040 surface and use the documented client-first rollback route.
