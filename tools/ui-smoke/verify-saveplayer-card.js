@@ -68,6 +68,13 @@ const check = (name, ok, detail) => { if (!ok) failures++; console.log((ok ? 'PA
     await page.fill('#newPlayerFirst', first); await page.waitForTimeout(150);
     await page.evaluate(() => document.getElementById('newPlayerFirst').dispatchEvent(new Event('input', { bubbles: true })));
     await page.waitForTimeout(150);
+    const avatarCount = await page.locator('#newPlayerAvatarPicker .sq-avatar-option').count();
+    check(`Avatar picker exposes all 34 choices for "${first}"`, avatarCount === 34, String(avatarCount));
+    const disabledBeforeAvatar = await page.locator('#savePlayerBtn').isDisabled();
+    check(`Save remains disabled until avatar chosen for "${first}"`, disabledBeforeAvatar);
+    await page.locator('#newPlayerAvatarPicker .sq-avatar-option').nth(first === 'Zed' ? 0 : 33).click();
+    await page.waitForTimeout(120);
+    check(`Save enabled after avatar chosen for "${first}"`, !(await page.locator('#savePlayerBtn').isDisabled()));
     await page.click('#savePlayerBtn'); await page.waitForTimeout(900);
   }
 
