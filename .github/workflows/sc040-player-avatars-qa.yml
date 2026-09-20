@@ -1,0 +1,32 @@
+name: SC-040 Player Avatars QA
+on:
+  pull_request:
+    paths:
+      - 'src/app/util.js'
+      - 'src/app/router-ui.js'
+      - 'src/legacy/scripts/inline-008.js'
+      - 'src/live-game/postgame-flow.mjs'
+      - 'src/ui/modals/setup/add-player-modal.html'
+      - 'src/styles/setup/match-setup-base.css'
+      - 'assets/avatars/**'
+      - 'supabase/migrations/*sc040*'
+      - 'tools/ui-smoke/verify-sc040-player-avatars.mjs'
+      - '.github/workflows/sc040-player-avatars-qa.yml'
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+      - run: npm ci
+      - run: node --check src/app/util.js
+      - run: node --check src/app/router-ui.js
+      - run: node --check src/legacy/scripts/inline-008.js
+      - run: node --check src/live-game/postgame-flow.mjs
+      - run: node tools/ui-smoke/verify-sc040-player-avatars.mjs
+      - run: npm run materialize
+      - run: npm run build
+      - run: npm run verify:dist

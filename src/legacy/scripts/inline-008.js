@@ -45,7 +45,8 @@
             first_name: (p.first_name != null ? String(p.first_name) : ''),
             last_name: (p.last_name != null ? String(p.last_name) : ''),
             nickname: (p.nickname != null ? String(p.nickname) : ''),
-            initials: (p.initials != null ? String(p.initials) : '')
+            initials: (p.initials != null ? String(p.initials) : ''),
+            avatar_id: (typeof __sqAvatarIdForPlayer === 'function' ? __sqAvatarIdForPlayer(p) : 1)
           });
         });
       }
@@ -63,7 +64,8 @@
             first_name: (p.first_name != null ? String(p.first_name) : ''),
             last_name: (p.last_name != null ? String(p.last_name) : ''),
             nickname: (p.nickname != null ? String(p.nickname) : ''),
-            initials: (p.initials != null ? String(p.initials) : '')
+            initials: (p.initials != null ? String(p.initials) : ''),
+            avatar_id: (typeof __sqAvatarIdForPlayer === 'function' ? __sqAvatarIdForPlayer(p) : 1)
           });
         });
       }catch(err){
@@ -128,6 +130,15 @@
       return { wrap: wrap, input: input };
     }
 
+    var avatarId = (typeof __sqAvatarIdForPlayer === 'function') ? __sqAvatarIdForPlayer(player) : 1;
+    var avatarWrap = document.createElement('div');
+    avatarWrap.className = 'sq-playerhub-avatar-wrap';
+    var avatarLab = document.createElement('div');
+    avatarLab.className = 'muted';
+    avatarLab.textContent = 'Avatar';
+    avatarWrap.appendChild(avatarLab);
+    if (typeof __sqBuildAvatarPicker === 'function') avatarWrap.appendChild(__sqBuildAvatarPicker(avatarId, function(id){ avatarId = id; }));
+
     var firstF = mkField('First name', player.first_name || '');
     var lastF  = mkField('Last name', player.last_name || '');
     var nickF  = mkField('Nickname', player.nickname || '');
@@ -140,9 +151,9 @@
     var note = document.createElement('div');
     note.className = 'muted';
     note.style.fontSize = '.86rem';
-    note.textContent = 'Profile edits update first name, last name, nickname and Player Hub password. Historic player name key stays intact.';
+    note.textContent = 'Profile edits update avatar, first name, last name, nickname and Player Hub password. Historic player name key stays intact.';
 
-    body.append(sub, firstF.wrap, lastF.wrap, nickF.wrap, passF.wrap, note);
+    body.append(sub, avatarWrap, firstF.wrap, lastF.wrap, nickF.wrap, passF.wrap, note);
 
     var footer = document.createElement('div');
     footer.className = 'modal-footer';
@@ -192,7 +203,8 @@
             first_name: first,
             last_name: last,
             nickname: nick,
-            initials: init
+            initials: init,
+            avatar_id: avatarId
           });
         } else {
           throw new Error('cloudUpdatePlayerProfile not available');

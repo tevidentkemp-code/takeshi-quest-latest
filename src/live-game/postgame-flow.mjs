@@ -145,6 +145,16 @@ body .modal-decider .dtBullRow .dtBullBtn.inner[data-bull="Inner"]{
   color:#ffc1c8 !important;
   box-shadow:0 0 0 1px rgba(255,77,94,.11),0 8px 18px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,225,229,.10),0 0 18px rgba(255,77,94,.11) !important;
 }
+.modal-gamecomplete.sq-gc-arcade .gc-arcade-visual .sq-gc-celebration-sprite{
+  position:absolute;
+  top:0;
+  right:0;
+  height:100%;
+  aspect-ratio:4 / 5;
+  background-repeat:no-repeat;
+  background-size:600% 500%;
+  filter:saturate(1.04) contrast(1.04);
+}
 .modal-gamecomplete.sq-gc-arcade .gc-winnerName.sq-pg-winner-name{
   margin-bottom:18px;
   max-width:min(440px,92vw);
@@ -360,6 +370,19 @@ function updateHero(modal, st, isMatchComplete) {
 
   const player = st.players[winnerIndex] || {};
   const parts = playerDisplayParts(player, `Player ${winnerIndex + 1}`);
+  const visual = modal.querySelector('.gc-arcade-visual');
+  if (visual && typeof window !== 'undefined' && typeof window.__sqAvatarSpritePosition === 'function') {
+    const id = (typeof window.__sqAvatarIdForPlayer === 'function') ? window.__sqAvatarIdForPlayer(player) : 1;
+    const pos = window.__sqAvatarSpritePosition(id);
+    visual.style.background = 'none';
+    visual.innerHTML = '';
+    const art = document.createElement('div');
+    art.className = 'sq-gc-celebration-sprite';
+    art.dataset.avatarId = String(pos.id);
+    art.style.backgroundImage = 'url("./assets/avatars/celebration-sprite.webp")';
+    art.style.backgroundPosition = pos.x.toFixed(4) + '% ' + pos.y.toFixed(4) + '%';
+    visual.appendChild(art);
+  }
   const winnerEl = modal.querySelector('.gc-winnerName');
   if (winnerEl) {
     winnerEl.classList.add('sq-pg-winner-name');

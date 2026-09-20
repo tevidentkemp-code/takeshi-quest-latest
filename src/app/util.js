@@ -2031,6 +2031,91 @@ async function cloudRenamePlayer(oldName, newName){
 // Your Supabase schema (players) appears to be name-only.
 // Keeping this function prevents older UI code from breaking if it still calls it.
 
+
+/* ===== SC-040 PLAYER AVATAR IDENTITY ===== */
+const SQ_AVATAR_COUNT = 29;
+const SQ_AVATAR_COLS = 6;
+const SQ_AVATAR_ROWS = 5;
+
+function __sqAvatarFallbackId(seed=''){
+  const s = String(seed || '').trim().toLowerCase();
+  if (!s) return 1;
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++){
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (Math.abs(h >>> 0) % SQ_AVATAR_COUNT) + 1;
+}
+function __sqNormalizeAvatarId(value, seed=''){
+  const n = Number.parseInt(value, 10);
+  return Number.isInteger(n) && n >= 1 && n <= SQ_AVATAR_COUNT ? n : __sqAvatarFallbackId(seed);
+}
+function __sqAvatarSpritePosition(value){
+  const id = __sqNormalizeAvatarId(value);
+  const index = id - 1;
+  const col = index % SQ_AVATAR_COLS;
+  const row = Math.floor(index / SQ_AVATAR_COLS);
+  return { id, col, row,
+    x: SQ_AVATAR_COLS > 1 ? (col / (SQ_AVATAR_COLS - 1)) * 100 : 0,
+    y: SQ_AVATAR_ROWS > 1 ? (row / (SQ_AVATAR_ROWS - 1)) * 100 : 0 };
+}
+function __sqAvatarIdForPlayer(playerOrName){
+  if (playerOrName && typeof playerOrName === 'object'){
+    return __sqNormalizeAvatarId(playerOrName.avatar_id, playerOrName.id || playerOrName.name || '');
+  }
+  return __sqNormalizeAvatarId(null, playerOrName);
+}
+function __sqApplyAvatarSprite(el, avatarId){
+  if (!el) return el;
+  const p = __sqAvatarSpritePosition(avatarId);
+  el.dataset.avatarId = String(p.id);
+  el.style.backgroundImage = 'url("./assets/avatars/avatar-sprite.webp")';
+  el.style.backgroundRepeat = 'no-repeat';
+  el.style.backgroundSize = '600% 500%';
+  el.style.backgroundPosition = p.x.toFixed(4) + '% ' + p.y.toFixed(4) + '%';
+  return el;
+}
+function __sqBuildAvatarPicker(selectedId, onChange){
+  const root = document.createElement('div');
+  root.className = 'sq-avatar-picker';
+  root.setAttribute('role', 'radiogroup');
+  root.setAttribute('aria-label', 'Choose player avatar');
+  let selected = __sqNormalizeAvatarId(selectedId);
+  const refresh = () => {
+    root.querySelectorAll('.sq-avatar-choice').forEach(btn => {
+      const active = Number(btn.dataset.avatarId) === selected;
+      btn.classList.toggle('selected', active);
+      btn.setAttribute('aria-checked', active ? 'true' : 'false');
+      btn.tabIndex = active ? 0 : -1;
+    });
+  };
+  for (let id = 1; id <= SQ_AVATAR_COUNT; id++){
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'sq-avatar-choice';
+    btn.dataset.avatarId = String(id);
+    btn.setAttribute('role', 'radio');
+    btn.setAttribute('aria-label', 'Avatar ' + id);
+    __sqApplyAvatarSprite(btn, id);
+    btn.onclick = () => {
+      selected = id;
+      refresh();
+      if (typeof onChange === 'function') onChange(id);
+    };
+    root.appendChild(btn);
+  }
+  refresh();
+  return root;
+}
+window.SQ_AVATAR_COUNT = SQ_AVATAR_COUNT;
+window.__sqNormalizeAvatarId = __sqNormalizeAvatarId;
+window.__sqAvatarSpritePosition = __sqAvatarSpritePosition;
+window.__sqAvatarIdForPlayer = __sqAvatarIdForPlayer;
+window.__sqApplyAvatarSprite = __sqApplyAvatarSprite;
+window.__sqBuildAvatarPicker = __sqBuildAvatarPicker;
+/* ===== /SC-040 PLAYER AVATAR IDENTITY ===== */
+
 async function cloudUpdatePlayerProfile(playerOrName, profile){
   const obj = (playerOrName && typeof playerOrName === 'object') ? playerOrName : null;
   const keyName = String(obj ? (obj.name||'') : (playerOrName||'')).trim();
@@ -2045,6 +2130,7 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
   if (p.last_name  != null) payload.last_name  = String(p.last_name ||'').trim();
   if (p.nickname   != null) payload.nickname   = String(p.nickname  ||'').trim();
   if (p.initials   != null) payload.initials   = __sqNormalizeInitials(String(p.initials||''), (p.name||keyName));
+  if (p.avatar_id  != null) payload.avatar_id  = __sqNormalizeAvatarId(p.avatar_id, keyId || keyName);
 
   // Optional name update (normally handled via rename RPC first)
   if (p.name != null){
@@ -2059,7 +2145,7 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
     if (keyId) q = q.eq('id', keyId);
     else q = q.eq('name', keyName);
 
-    const { data, error } = await q.select('id,name,first_name,last_name,nickname,initials').maybeSingle();
+    const { data, error } = await q.select('id,name,first_name,last_name,nickname,initials,avatar_id').maybeSingle();
     if (error) { markCloudError(error); throw error; }
     markCloudOk();
     await cloudRefreshPlayerDirectory(true);
@@ -2142,7 +2228,7 @@ async function __sqFetchPlayersRows(force=false){
     try{
       const r1 = await sb
         .from(TABLE_PLAYERS)
-        .select('id, name, initials, nickname, first_name, last_name, created_at, deleted_at')
+        .select('id, name, initials, nickname, first_name, last_name, avatar_id, created_at, deleted_at')
         .is('deleted_at', null)
         .order('name');
       if(r1.error) throw r1.error;
@@ -2151,7 +2237,7 @@ async function __sqFetchPlayersRows(force=false){
     }catch(e1){
       const msg = String(e1?.message || e1 || '');
       const code = String(e1?.code || '');
-      const isSchemaMismatch = (code === '42703') || /(initials|deleted_at|nickname|first_name|last_name)/i.test(msg);
+      const isSchemaMismatch = (code === '42703') || /(initials|deleted_at|nickname|first_name|last_name|avatar_id)/i.test(msg);
       if(!isSchemaMismatch){
         markCloudError(e1);
         throw e1;
