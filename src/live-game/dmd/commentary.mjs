@@ -340,6 +340,7 @@ export function createCommentaryEngine(options={}) {
   let historyRows=Array.isArray(options.historyRows)?options.historyRows.slice():[];
   let historyGames=groupHistory(historyRows);
   let warmKey='';
+  let warmResolvedKey='';
   let warmPromise=null;
 
   function enabled(ctx) {
@@ -353,7 +354,7 @@ export function createCommentaryEngine(options={}) {
     const names=(Array.isArray(players)?players:[]).map(playerName).filter(Boolean);
     const key=names.map(norm).sort().join('|');
     if(!key) return [];
-    if(key===warmKey && historyRows.length) return historyRows;
+    if(key===warmResolvedKey) return historyRows;
     if(key===warmKey && warmPromise) return warmPromise;
     warmKey=key;
     warmPromise=(async()=>{
@@ -367,11 +368,17 @@ export function createCommentaryEngine(options={}) {
           .limit(260);
         if(q&&q.error) throw q.error;
         const wanted=new Set(names.map(norm));
-        historyRows=(Array.isArray(q&&q.data)?q.data:[]).filter(r=>wanted.has(norm(r&&r.player_name)));
-        historyGames=groupHistory(Array.isArray(q&&q.data)?q.data:[]);
+        const allRows=Array.isArray(q&&q.data)?q.data:[];
+        historyRows=allRows.filter(r=>wanted.has(norm(r&&r.player_name)));
+        historyGames=groupHistory(allRows);
+        warmResolvedKey=key;
         return historyRows;
-      }catch(_){ return historyRows; }
-      finally{ warmPromise=null; }
+      }catch(_){
+        // Fail closed for this player set during the current game. Current-match
+        // memory still works; do not retry a failed network read on every dart.
+        warmResolvedKey=key;
+        return historyRows;
+      } finally { warmPromise=null; }
     })();
     return warmPromise;
   }
