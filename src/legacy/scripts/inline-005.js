@@ -2929,6 +2929,143 @@ async function cloudRenamePlayer(oldName, newName){
 // Your Supabase schema (players) appears to be name-only.
 // Keeping this function prevents older UI code from breaking if it still calls it.
 
+
+/* ===== SC-040 PLAYER AVATAR IDENTITY ===== */
+const SQ_AVATAR_COUNT = 29;
+const SQ_AVATAR_COLS = 6;
+const SQ_AVATAR_ROWS = 5;
+
+function __sqAvatarFallbackId(seed=''){
+  const s = String(seed || '').trim().toLowerCase();
+  if (!s) return 1;
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++){
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (Math.abs(h >>> 0) % SQ_AVATAR_COUNT) + 1;
+}
+function __sqNormalizeAvatarId(value, seed=''){
+  const n = Number.parseInt(value, 10);
+  return Number.isInteger(n) && n >= 1 && n <= SQ_AVATAR_COUNT ? n : __sqAvatarFallbackId(seed);
+}
+function __sqAvatarSpritePosition(value){
+  const id = __sqNormalizeAvatarId(value);
+  const index = id - 1;
+  const col = index % SQ_AVATAR_COLS;
+  const row = Math.floor(index / SQ_AVATAR_COLS);
+  return { id, col, row,
+    x: SQ_AVATAR_COLS > 1 ? (col / (SQ_AVATAR_COLS - 1)) * 100 : 0,
+    y: SQ_AVATAR_ROWS > 1 ? (row / (SQ_AVATAR_ROWS - 1)) * 100 : 0 };
+}
+function __sqAvatarIdForPlayer(playerOrName){
+  if (playerOrName && typeof playerOrName === 'object'){
+    return __sqNormalizeAvatarId(playerOrName.avatar_id, playerOrName.id || playerOrName.name || '');
+  }
+  return __sqNormalizeAvatarId(null, playerOrName);
+}
+function __sqApplyAvatarSprite(el, avatarId){
+  if (!el) return el;
+  const p = __sqAvatarSpritePosition(avatarId);
+  el.dataset.avatarId = String(p.id);
+  el.style.backgroundImage = 'url("./assets/avatars/avatar-sprite.webp")';
+  el.style.backgroundRepeat = 'no-repeat';
+  el.style.backgroundSize = '600% 500%';
+  el.style.backgroundPosition = p.x.toFixed(4) + '% ' + p.y.toFixed(4) + '%';
+  return el;
+}
+function __sqBuildAvatarPicker(selectedId, onChange){
+  const root = document.createElement('div');
+  root.className = 'sq-avatar-picker';
+  root.setAttribute('role', 'radiogroup');
+  root.setAttribute('aria-label', 'Choose player avatar');
+  let selected = __sqNormalizeAvatarId(selectedId);
+  const refresh = () => {
+    root.querySelectorAll('.sq-avatar-choice').forEach(btn => {
+      const active = Number(btn.dataset.avatarId) === selected;
+      btn.classList.toggle('selected', active);
+      btn.setAttribute('aria-checked', active ? 'true' : 'false');
+      btn.tabIndex = active ? 0 : -1;
+    });
+  };
+  for (let id = 1; id <= SQ_AVATAR_COUNT; id++){
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'sq-avatar-choice';
+    btn.dataset.avatarId = String(id);
+    btn.setAttribute('role', 'radio');
+    btn.setAttribute('aria-label', 'Avatar ' + id);
+    __sqApplyAvatarSprite(btn, id);
+    btn.onclick = () => {
+      selected = id;
+      refresh();
+      if (typeof onChange === 'function') onChange(id);
+    };
+    root.appendChild(btn);
+  }
+  refresh();
+  return root;
+}
+window.SQ_AVATAR_COUNT = SQ_AVATAR_COUNT;
+window.__sqNormalizeAvatarId = __sqNormalizeAvatarId;
+window.__sqAvatarSpritePosition = __sqAvatarSpritePosition;
+window.__sqAvatarIdForPlayer = __sqAvatarIdForPlayer;
+window.__sqApplyAvatarSprite = __sqApplyAvatarSprite;
+window.__sqBuildAvatarPicker = __sqBuildAvatarPicker;
+
+function __sqEnhancePlayerHubAvatarEditor(root){
+  try{
+    const overlay = (root && root.id === 'playerHubEditorOverlay') ? root
+      : (root && root.querySelector ? root.querySelector('#playerHubEditorOverlay') : null)
+      || document.getElementById('playerHubEditorOverlay');
+    if (!overlay || overlay.dataset.sqAvatarEnhanced === '1') return;
+    const body = overlay.querySelector('.modal-body');
+    if (!body) return;
+    const sub = Array.from(body.children).find(el => el.classList && el.classList.contains('muted'));
+    const name = String(sub?.textContent || '').trim();
+    const p = (_sqPlayerDir.byName && _sqPlayerDir.byName[name.toLowerCase()]) || { name };
+    let avatarId = __sqAvatarIdForPlayer(p);
+    overlay.dataset.sqAvatarId = String(avatarId);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'sq-playerhub-avatar-wrap';
+    const lab = document.createElement('div');
+    lab.className = 'muted';
+    lab.textContent = 'Avatar';
+    wrap.appendChild(lab, __sqBuildAvatarPicker(avatarId, id => {
+      avatarId = id;
+      overlay.dataset.sqAvatarId = String(id);
+    }));
+
+    const firstField = Array.from(body.children).find(el => el.tagName === 'LABEL');
+    body.insertBefore(wrap, firstField || null);
+    const notes = Array.from(body.querySelectorAll('.muted'));
+    const note = notes.find(el => /Profile edits update/i.test(String(el.textContent || '')));
+    if (note) note.textContent = 'Profile edits update avatar, first name, last name, nickname and Player Hub password. Historic player name key stays intact.';
+    overlay.dataset.sqAvatarEnhanced = '1';
+  }catch(err){ try{ console.warn('[SC-040] Player Hub avatar editor enhancement skipped', err); }catch(_){} }
+}
+
+try{
+  if (window.__sqUIMutationBus?.on){
+    window.__sqUIMutationBus.on(muts => {
+      for (const m of (muts || [])) for (const n of (m.addedNodes || [])) {
+        if (n instanceof HTMLElement) __sqEnhancePlayerHubAvatarEditor(n);
+      }
+    });
+  } else if (typeof MutationObserver === 'function') {
+    const mo = new MutationObserver(muts => {
+      for (const m of muts) for (const n of (m.addedNodes || [])) {
+        if (n instanceof HTMLElement) __sqEnhancePlayerHubAvatarEditor(n);
+      }
+    });
+    const start = () => document.body && mo.observe(document.body, { childList:true, subtree:true });
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once:true });
+    else start();
+  }
+}catch(_){ }
+/* ===== /SC-040 PLAYER AVATAR IDENTITY ===== */
+
 async function cloudUpdatePlayerProfile(playerOrName, profile){
   const obj = (playerOrName && typeof playerOrName === 'object') ? playerOrName : null;
   const keyName = String(obj ? (obj.name||'') : (playerOrName||'')).trim();
@@ -2943,6 +3080,14 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
   if (p.last_name  != null) payload.last_name  = String(p.last_name ||'').trim();
   if (p.nickname   != null) payload.nickname   = String(p.nickname  ||'').trim();
   if (p.initials   != null) payload.initials   = __sqNormalizeInitials(String(p.initials||''), (p.name||keyName));
+  if (p.avatar_id  != null) payload.avatar_id  = __sqNormalizeAvatarId(p.avatar_id, keyId || keyName);
+  else {
+    try{
+      const hub = document.getElementById('playerHubEditorOverlay');
+      const hubAvatar = hub?.dataset?.sqAvatarId;
+      if (hubAvatar) payload.avatar_id = __sqNormalizeAvatarId(hubAvatar, keyId || keyName);
+    }catch(_){}
+  }
 
   // Optional name update (normally handled via rename RPC first)
   if (p.name != null){
@@ -2957,7 +3102,7 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
     if (keyId) q = q.eq('id', keyId);
     else q = q.eq('name', keyName);
 
-    const { data, error } = await q.select('id,name,first_name,last_name,nickname,initials').maybeSingle();
+    const { data, error } = await q.select('id,name,first_name,last_name,nickname,initials,avatar_id').maybeSingle();
     if (error) { markCloudError(error); throw error; }
     markCloudOk();
     await cloudRefreshPlayerDirectory(true);
@@ -3040,7 +3185,7 @@ async function __sqFetchPlayersRows(force=false){
     try{
       const r1 = await sb
         .from(TABLE_PLAYERS)
-        .select('id, name, initials, nickname, first_name, last_name, created_at, deleted_at')
+        .select('id, name, initials, nickname, first_name, last_name, avatar_id, created_at, deleted_at')
         .is('deleted_at', null)
         .order('name');
       if(r1.error) throw r1.error;
@@ -3049,7 +3194,7 @@ async function __sqFetchPlayersRows(force=false){
     }catch(e1){
       const msg = String(e1?.message || e1 || '');
       const code = String(e1?.code || '');
-      const isSchemaMismatch = (code === '42703') || /(initials|deleted_at|nickname|first_name|last_name)/i.test(msg);
+      const isSchemaMismatch = (code === '42703') || /(initials|deleted_at|nickname|first_name|last_name|avatar_id)/i.test(msg);
       if(!isSchemaMismatch){
         markCloudError(e1);
         throw e1;
@@ -6593,6 +6738,7 @@ async function cloudCreatePlayer(name, profile){
     first_name: (p.first_name != null) ? String(p.first_name||'').trim() : undefined,
     last_name:  (p.last_name  != null) ? String(p.last_name ||'').trim() : undefined,
     nickname:   (p.nickname   != null) ? String(p.nickname  ||'').trim() : undefined,
+    avatar_id:  (p.avatar_id  != null) ? __sqNormalizeAvatarId(p.avatar_id, nm) : undefined,
   };
 
   // Try full schema; fall back if columns missing.
@@ -6607,7 +6753,7 @@ async function cloudCreatePlayer(name, profile){
   }catch(e1){
     const msg = String(e1?.message || e1 || '');
     const code = String(e1?.code || '');
-    const isMissingCols = (code === '42703') || /(initials|first_name|last_name|nickname)/i.test(msg);
+    const isMissingCols = (code === '42703') || /(initials|first_name|last_name|nickname|avatar_id)/i.test(msg);
     if (!isMissingCols){
       markCloudError(e1);
       throw e1;
@@ -8420,11 +8566,12 @@ function __ms2DisplayName(p){
 }
 
 // Avatar (M3 generic person) + rank line builders for slot rows.
-function __ms2Avatar(){
+function __ms2Avatar(player){
   const ava = document.createElement('span');
   ava.className = 'ms2-ava';
   ava.setAttribute('aria-hidden', 'true');
-  ava.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.4"/><path d="M5.5 19.5c1.2-3.1 3.6-4.7 6.5-4.7s5.3 1.6 6.5 4.7"/></svg>';
+  try{ __sqApplyAvatarSprite(ava, __sqAvatarIdForPlayer(player || 'guest')); }
+  catch(_){ ava.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.4"/><path d="M5.5 19.5c1.2-3.1 3.6-4.7 6.5-4.7s5.3 1.6 6.5 4.7"/></svg>'; }
   return ava;
 }
 
@@ -8456,7 +8603,7 @@ function __msRenderPlayers(){
     row.className = 'ms2-slot filled ms-player-row';
     row.dataset.index = String(i);
 
-    row.appendChild(__ms2Avatar());
+    row.appendChild(__ms2Avatar(p));
 
     const info = document.createElement('div');
     info.className = 'ms2-info';
@@ -8797,7 +8944,8 @@ if (mlStartBtn) {
         first_name: p.first_name || '',
         last_name: p.last_name || '',
         nickname: p.nickname || '',
-        initials: p.initials || ''
+        initials: p.initials || '',
+        avatar_id: __sqAvatarIdForPlayer(p)
       });
     });
 
@@ -8830,6 +8978,7 @@ if (mlStartBtn) {
         last_name: last,
         nickname: nick,
         initials: init,
+        avatar_id: __sqAvatarIdForPlayer(meta || p),
         color: null
       };
     });
@@ -10802,6 +10951,7 @@ async function syncSavedPlayersFromCloud(){
         last_name: (p.last_name != null ? String(p.last_name) : ''),
         nickname: (p.nickname != null ? String(p.nickname) : ''),
         initials: __sqNormalizeInitials(p.initials, p.name),
+        avatar_id: __sqAvatarIdForPlayer(p),
         joinedAt: p.created_at ? new Date(p.created_at).toISOString() : null,
         _src: 'cloud'
       }))
@@ -10899,6 +11049,13 @@ async function showAddPlayerDialog(index){
 
   let chosenName = '';
   let manualInitials = false;
+  let chosenAvatarId = 1;
+  const avatarHost = byId('newPlayerAvatarPicker');
+  const renderAvatarPicker = () => {
+    if (!avatarHost || typeof __sqBuildAvatarPicker !== 'function') return;
+    avatarHost.innerHTML = '';
+    avatarHost.appendChild(__sqBuildAvatarPicker(chosenAvatarId, id => { chosenAvatarId = id; }));
+  };
 
   const setSaveEnabled = () => {
     const ok = !!String(firstEl?.value || '').trim();
@@ -10918,6 +11075,8 @@ async function showAddPlayerDialog(index){
     if (lastEl)  lastEl.value  = '';
     if (nickEl)  nickEl.value  = __sqPickNickname();
     if (initEl)  initEl.value  = '';
+    chosenAvatarId = 1;
+    renderAvatarPicker();
     manualInitials = false;
     maybeAutoInitials();
     setSaveEnabled();
@@ -10983,7 +11142,7 @@ async function showAddPlayerDialog(index){
       chosenName = fullName;
 
       try {
-        await cloudCreatePlayer(fullName, { initials, nickname, first_name: first, last_name: last });
+        await cloudCreatePlayer(fullName, { initials, nickname, first_name: first, last_name: last, avatar_id: chosenAvatarId });
         try{ if (typeof window.__homeLivePrinterInjectLine === 'function') window.__homeLivePrinterInjectLine(`🚨 NEW PLAYER - ${fullName} - Welcome to Shateki Quest 🎯`); }catch(_e){}
         await syncSavedPlayersFromCloud();
         try{ populateSavedPlayersSelects(); }catch(_){ }
@@ -11016,7 +11175,8 @@ async function showAddPlayerDialog(index){
             first_name: (meta && meta.first_name) || first,
             last_name:  (meta && meta.last_name)  || last,
             nickname:   (meta && meta.nickname)   || nickname,
-            initials:   (meta && meta.initials)   || initials
+            initials:   (meta && meta.initials)   || initials,
+            avatar_id:  __sqAvatarIdForPlayer(meta || { name: fullName, avatar_id: chosenAvatarId })
           };
           const candKey = String(cand.id || cand.name).trim().toLowerCase();
           const already = __msPlayers.some(p => String((p && (p.id || p.name)) || '').trim().toLowerCase() === candKey);
@@ -11067,7 +11227,8 @@ async function showSelectPlayerDialog(index){
       first_name: (p.first_name != null ? String(p.first_name) : ''),
       last_name: (p.last_name != null ? String(p.last_name) : ''),
       nickname: (p.nickname != null ? String(p.nickname) : ''),
-      initials: __sqNormalizeInitials(p.initials, p.name)
+      initials: __sqNormalizeInitials(p.initials, p.name),
+      avatar_id: __sqAvatarIdForPlayer(p)
     });
   };
 
@@ -11160,7 +11321,7 @@ async function showSelectPlayerDialog(index){
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'ms2-slot sp2-row' + (selectedKeys.has(key) ? ' selected' : '') + (inCard ? ' in-card' : '');
-      row.appendChild(__ms2Avatar());
+      row.appendChild(__ms2Avatar(p));
 
       const info = document.createElement('span');
       info.className = 'ms2-info';
@@ -11270,7 +11431,8 @@ async function showSelectPlayerDialog(index){
             first_name: meta.first_name || '',
             last_name: meta.last_name || '',
             nickname: meta.nickname || '',
-            initials: meta.initials || ''
+            initials: meta.initials || '',
+            avatar_id: __sqAvatarIdForPlayer(meta)
           });
         });
         __msRenderPlayers();
