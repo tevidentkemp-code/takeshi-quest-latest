@@ -996,10 +996,32 @@ try {
     }
   }
 
-  // Render all three zones; Z3 always shows the running sequence unless a queued combo owns the display.
+  // SC-052: commentary may take the simple MISS/SINGLE lane, but canonical
+  // achievements / Bulls / doubles / trebles / authored combo scenes stay dominant.
+  let __sqCommentaryOwnsSubline = false;
+  try{
+    if (__sqCommentaryDartBeat && !__queueOnlyCombo) {
+      const __protectedDmdBeat = !!(
+        __isDesmondDelight || __isShanghai || __thirdIsScoringAfterTwoMisses ||
+        __voldyHit || kind === 'B' || kind === 'Triple' || kind === 'T' ||
+        kind === 'Double' || kind === 'D'
+      );
+      if (!__protectedDmdBeat || Number(__sqCommentaryDartBeat.priority || 0) >= 45) {
+        z2 = String(__sqCommentaryDartBeat.headline || z2).toUpperCase();
+        __sqCommentaryOwnsSubline = Number(__sqCommentaryDartBeat.priority || 0) >= 45 && !!__sqCommentaryDartBeat.subline;
+        fx = { type:'flash', ms:(__sqCommentaryOwnsSubline ? 900 : 700), fx:'impact' };
+      }
+    }
+  }catch(_){ }
+
+  // Render all three zones; Z3 normally shows the running sequence. Major
+  // commentary milestones (6/9/12+ misses) may use Z3 for the punchline.
   if (window.sqDmdShowZones) {
     if (!__queueOnlyCombo) {
-      window.sqDmdShowZones({ z1, z2, z3: (window.__sqDmdBulkMiss ? '' : seq) }, fx);
+      const __sqDmdStoryZ3 = (__sqCommentaryOwnsSubline && __sqCommentaryDartBeat)
+        ? String(__sqCommentaryDartBeat.subline || '').toUpperCase()
+        : (window.__sqDmdBulkMiss ? '' : seq);
+      window.sqDmdShowZones({ z1, z2, z3: __sqDmdStoryZ3 }, fx);
     }
     // >>> PATCH:SQ_DMD_CLEAR_Z3_ENDTURN
     // End-of-turn behaviour:
