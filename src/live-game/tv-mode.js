@@ -109,9 +109,11 @@
     try{
       var pad=document.getElementById('padBar');
       var clearance=0;
-      if(pad&&pad.offsetParent!==null){
+      if(pad){
+        var style=window.getComputedStyle(pad);
         var rect=pad.getBoundingClientRect();
-        clearance=Math.max(0,Math.ceil(window.innerHeight-rect.top));
+        var visible=style.display!=='none'&&style.visibility!=='hidden'&&rect.height>0&&rect.bottom>0;
+        if(visible) clearance=Math.max(0,Math.ceil(window.innerHeight-rect.top));
       }
       document.documentElement.style.setProperty('--sq-tv-pad-h',clearance+'px');
       var root=document.getElementById(ROOT_ID);
