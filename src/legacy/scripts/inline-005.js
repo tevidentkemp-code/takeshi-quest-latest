@@ -2943,6 +2943,12 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
   if (p.last_name  != null) payload.last_name  = String(p.last_name ||'').trim();
   if (p.nickname   != null) payload.nickname   = String(p.nickname  ||'').trim();
   if (p.initials   != null) payload.initials   = __sqNormalizeInitials(String(p.initials||''), (p.name||keyName));
+  if (p.avatar_key != null) {
+    const av = (typeof window.__sqAvatarNormaliseKey === 'function')
+      ? window.__sqAvatarNormaliseKey(p.avatar_key)
+      : String(p.avatar_key || '').trim().toLowerCase();
+    payload.avatar_key = av || null;
+  }
 
   // Optional name update (normally handled via rename RPC first)
   if (p.name != null){
@@ -2957,7 +2963,7 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
     if (keyId) q = q.eq('id', keyId);
     else q = q.eq('name', keyName);
 
-    const { data, error } = await q.select('id,name,first_name,last_name,nickname,initials').maybeSingle();
+    const { data, error } = await q.select('id,name,first_name,last_name,nickname,initials,avatar_key').maybeSingle();
     if (error) { markCloudError(error); throw error; }
     markCloudOk();
     await cloudRefreshPlayerDirectory(true);
@@ -3040,7 +3046,7 @@ async function __sqFetchPlayersRows(force=false){
     try{
       const r1 = await sb
         .from(TABLE_PLAYERS)
-        .select('id, name, initials, nickname, first_name, last_name, created_at, deleted_at')
+        .select('id, name, initials, nickname, first_name, last_name, avatar_key, created_at, deleted_at')
         .is('deleted_at', null)
         .order('name');
       if(r1.error) throw r1.error;
@@ -3049,11 +3055,33 @@ async function __sqFetchPlayersRows(force=false){
     }catch(e1){
       const msg = String(e1?.message || e1 || '');
       const code = String(e1?.code || '');
-      const isSchemaMismatch = (code === '42703') || /(initials|deleted_at|nickname|first_name|last_name)/i.test(msg);
+      const isSchemaMismatch = (code === '42703') || /(initials|deleted_at|nickname|first_name|last_name|avatar_key)/i.test(msg);
       if(!isSchemaMismatch){
         markCloudError(e1);
         throw e1;
       }
+
+      // SC-040 rollout compatibility: until the avatar migration is applied,
+      // retain the existing rich player profile instead of collapsing to name-only.
+      if (/avatar_key/i.test(msg)) {
+        try {
+          const legacy = await sb
+            .from(TABLE_PLAYERS)
+            .select('id, name, initials, nickname, first_name, last_name, created_at, deleted_at')
+            .is('deleted_at', null)
+            .order('name');
+          if (!legacy.error) {
+            const rows = __sqClonePlayersRows((legacy.data || []).map(p => ({ ...p, avatar_key: null })));
+            markCloudOk();
+            if(generation === Number(window.__sqPlayersFetchGeneration || 0)){
+              window.__sqPlayersFetchCache = __sqClonePlayersRows(rows);
+              window.__sqPlayersFetchAt = Date.now();
+            }
+            return rows;
+          }
+        } catch(_) {}
+      }
+
       try{
         const r2 = await sb
           .from(TABLE_PLAYERS)
@@ -6593,6 +6621,9 @@ async function cloudCreatePlayer(name, profile){
     first_name: (p.first_name != null) ? String(p.first_name||'').trim() : undefined,
     last_name:  (p.last_name  != null) ? String(p.last_name ||'').trim() : undefined,
     nickname:   (p.nickname   != null) ? String(p.nickname  ||'').trim() : undefined,
+    avatar_key: (p.avatar_key != null)
+      ? ((typeof window.__sqAvatarNormaliseKey === 'function') ? window.__sqAvatarNormaliseKey(p.avatar_key) : String(p.avatar_key || '').trim().toLowerCase())
+      : undefined,
   };
 
   // Try full schema; fall back if columns missing.
@@ -6607,7 +6638,22 @@ async function cloudCreatePlayer(name, profile){
   }catch(e1){
     const msg = String(e1?.message || e1 || '');
     const code = String(e1?.code || '');
-    const isMissingCols = (code === '42703') || /(initials|first_name|last_name|nickname)/i.test(msg);
+
+    // SC-040 staged rollout: branch previews remain compatible before DDL approval.
+    if (/avatar_key/i.test(msg)) {
+      try {
+        const legacyRow = { ...row };
+        delete legacyRow.avatar_key;
+        const { error: legacyErr } = await sb.from(TABLE_PLAYERS).upsert(legacyRow, { onConflict: 'name' });
+        if (!legacyErr) {
+          markCloudOk();
+          try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_upsert_pre_sc040'); }catch(_){}
+          return;
+        }
+      } catch(_) {}
+    }
+
+    const isMissingCols = (code === '42703') || /(initials|first_name|last_name|nickname|avatar_key)/i.test(msg);
     if (!isMissingCols){
       markCloudError(e1);
       throw e1;
@@ -8419,8 +8465,14 @@ function __ms2DisplayName(p){
   return nick ? `${base} “${nick}”` : base;
 }
 
-// Avatar (M3 generic person) + rank line builders for slot rows.
-function __ms2Avatar(){
+// Avatar portrait when assigned; current generic person remains the safe fallback.
+function __ms2Avatar(player){
+  const key = player && player.avatar_key ? player.avatar_key : '';
+  try {
+    if (key && typeof window.__sqAvatarMake === 'function') {
+      return window.__sqAvatarMake(key, 'ms2-ava sq-avatar-live');
+    }
+  } catch(_) {}
   const ava = document.createElement('span');
   ava.className = 'ms2-ava';
   ava.setAttribute('aria-hidden', 'true');
@@ -8456,7 +8508,7 @@ function __msRenderPlayers(){
     row.className = 'ms2-slot filled ms-player-row';
     row.dataset.index = String(i);
 
-    row.appendChild(__ms2Avatar());
+    row.appendChild(__ms2Avatar(p));
 
     const info = document.createElement('div');
     info.className = 'ms2-info';
@@ -8797,7 +8849,8 @@ if (mlStartBtn) {
         first_name: p.first_name || '',
         last_name: p.last_name || '',
         nickname: p.nickname || '',
-        initials: p.initials || ''
+        initials: p.initials || '',
+        avatar_key: p.avatar_key || ''
       });
     });
 
@@ -8830,6 +8883,9 @@ if (mlStartBtn) {
         last_name: last,
         nickname: nick,
         initials: init,
+        avatar_key: (typeof window.__sqAvatarNormaliseKey === 'function')
+          ? window.__sqAvatarNormaliseKey(meta.avatar_key || p.avatar_key)
+          : String(meta.avatar_key || p.avatar_key || '').trim().toLowerCase(),
         color: null
       };
     });
@@ -10898,12 +10954,15 @@ async function showAddPlayerDialog(index){
   const closeBtn= byId('npCloseBtn');
 
   let chosenName = '';
+  let chosenAvatarKey = '';
   let manualInitials = false;
 
   const setSaveEnabled = () => {
     const ok = !!String(firstEl?.value || '').trim();
     const cloudOk = !!(window.sb && typeof window.sb.from === 'function');
-    if (saveBtn) saveBtn.disabled = !(ok && cloudOk);
+    const avatarFeatureReady = typeof window.__sqMountAvatarPicker === 'function';
+    const avatarOk = !avatarFeatureReady || !!chosenAvatarKey;
+    if (saveBtn) saveBtn.disabled = !(ok && cloudOk && avatarOk);
   };
 
   const maybeAutoInitials = () => {
@@ -10918,8 +10977,18 @@ async function showAddPlayerDialog(index){
     if (lastEl)  lastEl.value  = '';
     if (nickEl)  nickEl.value  = __sqPickNickname();
     if (initEl)  initEl.value  = '';
+    chosenAvatarKey = '';
     manualInitials = false;
     maybeAutoInitials();
+    try {
+      const host = window.__sqEnsureAddPlayerPickerHost && window.__sqEnsureAddPlayerPickerHost();
+      if (host && typeof window.__sqMountAvatarPicker === 'function') {
+        window.__sqMountAvatarPicker(host, '', (key) => {
+          chosenAvatarKey = key;
+          setSaveEnabled();
+        }, { label:'AVATAR', ariaLabel:'Choose new player avatar' });
+      }
+    } catch(_) {}
     setSaveEnabled();
   };
 
@@ -10983,7 +11052,7 @@ async function showAddPlayerDialog(index){
       chosenName = fullName;
 
       try {
-        await cloudCreatePlayer(fullName, { initials, nickname, first_name: first, last_name: last });
+        await cloudCreatePlayer(fullName, { initials, nickname, first_name: first, last_name: last, avatar_key: chosenAvatarKey });
         try{ if (typeof window.__homeLivePrinterInjectLine === 'function') window.__homeLivePrinterInjectLine(`🚨 NEW PLAYER - ${fullName} - Welcome to Shateki Quest 🎯`); }catch(_e){}
         await syncSavedPlayersFromCloud();
         try{ populateSavedPlayersSelects(); }catch(_){ }
@@ -11016,7 +11085,8 @@ async function showAddPlayerDialog(index){
             first_name: (meta && meta.first_name) || first,
             last_name:  (meta && meta.last_name)  || last,
             nickname:   (meta && meta.nickname)   || nickname,
-            initials:   (meta && meta.initials)   || initials
+            initials:   (meta && meta.initials)   || initials,
+            avatar_key: (meta && meta.avatar_key) || chosenAvatarKey || ''
           };
           const candKey = String(cand.id || cand.name).trim().toLowerCase();
           const already = __msPlayers.some(p => String((p && (p.id || p.name)) || '').trim().toLowerCase() === candKey);
@@ -11067,7 +11137,10 @@ async function showSelectPlayerDialog(index){
       first_name: (p.first_name != null ? String(p.first_name) : ''),
       last_name: (p.last_name != null ? String(p.last_name) : ''),
       nickname: (p.nickname != null ? String(p.nickname) : ''),
-      initials: __sqNormalizeInitials(p.initials, p.name)
+      initials: __sqNormalizeInitials(p.initials, p.name),
+      avatar_key: (typeof window.__sqAvatarNormaliseKey === 'function')
+        ? window.__sqAvatarNormaliseKey(p.avatar_key)
+        : String(p.avatar_key || '').trim().toLowerCase()
     });
   };
 
@@ -11160,7 +11233,7 @@ async function showSelectPlayerDialog(index){
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'ms2-slot sp2-row' + (selectedKeys.has(key) ? ' selected' : '') + (inCard ? ' in-card' : '');
-      row.appendChild(__ms2Avatar());
+      row.appendChild(__ms2Avatar(p));
 
       const info = document.createElement('span');
       info.className = 'ms2-info';
@@ -11270,7 +11343,8 @@ async function showSelectPlayerDialog(index){
             first_name: meta.first_name || '',
             last_name: meta.last_name || '',
             nickname: meta.nickname || '',
-            initials: meta.initials || ''
+            initials: meta.initials || '',
+            avatar_key: meta.avatar_key || ''
           });
         });
         __msRenderPlayers();
