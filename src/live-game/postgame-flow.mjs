@@ -359,6 +359,11 @@ function updateHero(modal, st, isMatchComplete) {
   } catch (_) {}
 
   const player = st.players[winnerIndex] || {};
+  try {
+    if (typeof window !== 'undefined' && typeof window.__sqApplyWinnerCelebration === 'function') {
+      window.__sqApplyWinnerCelebration(modal, player.avatar_key);
+    }
+  } catch (_) {}
   const parts = playerDisplayParts(player, `Player ${winnerIndex + 1}`);
   const winnerEl = modal.querySelector('.gc-winnerName');
   if (winnerEl) {
