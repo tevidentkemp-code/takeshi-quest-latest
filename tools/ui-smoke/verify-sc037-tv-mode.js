@@ -49,6 +49,8 @@ fs.mkdirSync(out,{recursive:true});
 
     const activeTotal=(await page.locator('#sqTvModeOverlay .sq-tv-player.is-active .sq-tv-player-score').first().textContent()).trim();
     assert.equal(activeTotal,String(after.total),'TV total must update from canonical state');
+    const nextRoundCell=(await page.locator('#sqTvModeOverlay .sq-tv-table tbody tr').nth(1).locator('td').nth(1).textContent()).trim();
+    assert.equal(nextRoundCell,'—','future unplayed rounds must remain visually empty');
 
     await page.screenshot({path:path.join(out,'tv-1920x1080.png'),fullPage:false});
 
