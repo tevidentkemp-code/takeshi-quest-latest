@@ -2045,6 +2045,12 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
   if (p.last_name  != null) payload.last_name  = String(p.last_name ||'').trim();
   if (p.nickname   != null) payload.nickname   = String(p.nickname  ||'').trim();
   if (p.initials   != null) payload.initials   = __sqNormalizeInitials(String(p.initials||''), (p.name||keyName));
+  if (p.avatar_key != null) {
+    const av = (typeof window.__sqAvatarNormaliseKey === 'function')
+      ? window.__sqAvatarNormaliseKey(p.avatar_key)
+      : String(p.avatar_key || '').trim().toLowerCase();
+    payload.avatar_key = av || null;
+  }
 
   // Optional name update (normally handled via rename RPC first)
   if (p.name != null){
@@ -2059,7 +2065,7 @@ async function cloudUpdatePlayerProfile(playerOrName, profile){
     if (keyId) q = q.eq('id', keyId);
     else q = q.eq('name', keyName);
 
-    const { data, error } = await q.select('id,name,first_name,last_name,nickname,initials').maybeSingle();
+    const { data, error } = await q.select('id,name,first_name,last_name,nickname,initials,avatar_key').maybeSingle();
     if (error) { markCloudError(error); throw error; }
     markCloudOk();
     await cloudRefreshPlayerDirectory(true);
@@ -2142,7 +2148,7 @@ async function __sqFetchPlayersRows(force=false){
     try{
       const r1 = await sb
         .from(TABLE_PLAYERS)
-        .select('id, name, initials, nickname, first_name, last_name, created_at, deleted_at')
+        .select('id, name, initials, nickname, first_name, last_name, avatar_key, created_at, deleted_at')
         .is('deleted_at', null)
         .order('name');
       if(r1.error) throw r1.error;
@@ -2151,11 +2157,33 @@ async function __sqFetchPlayersRows(force=false){
     }catch(e1){
       const msg = String(e1?.message || e1 || '');
       const code = String(e1?.code || '');
-      const isSchemaMismatch = (code === '42703') || /(initials|deleted_at|nickname|first_name|last_name)/i.test(msg);
+      const isSchemaMismatch = (code === '42703') || /(initials|deleted_at|nickname|first_name|last_name|avatar_key)/i.test(msg);
       if(!isSchemaMismatch){
         markCloudError(e1);
         throw e1;
       }
+
+      // SC-040 rollout compatibility: until the avatar migration is applied,
+      // retain the existing rich player profile instead of collapsing to name-only.
+      if (/avatar_key/i.test(msg)) {
+        try {
+          const legacy = await sb
+            .from(TABLE_PLAYERS)
+            .select('id, name, initials, nickname, first_name, last_name, created_at, deleted_at')
+            .is('deleted_at', null)
+            .order('name');
+          if (!legacy.error) {
+            const rows = __sqClonePlayersRows((legacy.data || []).map(p => ({ ...p, avatar_key: null })));
+            markCloudOk();
+            if(generation === Number(window.__sqPlayersFetchGeneration || 0)){
+              window.__sqPlayersFetchCache = __sqClonePlayersRows(rows);
+              window.__sqPlayersFetchAt = Date.now();
+            }
+            return rows;
+          }
+        } catch(_) {}
+      }
+
       try{
         const r2 = await sb
           .from(TABLE_PLAYERS)
