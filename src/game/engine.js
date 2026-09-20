@@ -734,6 +734,31 @@ function recordThrow(spec){
     (entry.darts[1]?.points || 0) +
     (entry.darts[2]?.points || 0);
 
+  // SC-052 — read-only DMD commentary snapshot. This never owns or mutates
+  // scoring state; it only describes the canonical throw that was just written.
+  const __sqCommentaryMode = String(
+    state?.gameMode || state?.mode || state?.match?.gameMode || state?.match?.mode || ''
+  );
+  const __sqCommentaryCtx = {
+    pIndex, rIndex, dartIndex,
+    dart: dartObj,
+    players: state.players,
+    score: state.score,
+    history: state.history,
+    matchHistory: state?.match?.history,
+    mode: __sqCommentaryMode,
+    roundDef,
+    maxRounds: MAX_ROUNDS,
+    suppress: !!(window.__sqSkipInProgress || state?.__sqCatchUp?.active)
+  };
+  let __sqCommentaryDartBeat = null;
+  let __sqCommentaryVisitBeat = null;
+  try{
+    window.__sqDmdCommentaryWarmHistory?.(state.players, __sqCommentaryMode);
+    __sqCommentaryDartBeat = window.__sqDmdCommentaryDart?.(__sqCommentaryCtx) || null;
+    if (dartIndex === 2) __sqCommentaryVisitBeat = window.__sqDmdCommentaryVisit?.(__sqCommentaryCtx) || null;
+  }catch(_){ }
+
   /* >>> PATCH:SQ_DMD_STAGE2_THROW_QUALITY START */
 // Stage 2: Throw-quality scenes + Zone layout responsibilities
 // Z1 = current round/phase, Z2 = main callout, Z3 = per-turn throw sequence (S20 / X / T18)
