@@ -1163,61 +1163,116 @@ setTimeout(() => {
       ? window.__sqDmdBuildPreThrowInfo(nextPlayerIdx)
       : [`SCORE: ${nextTotal}  PB: —`, `POS: ${pos}/${pCount} • DIFF: ${diffTxt}`];
 
-    // 1) ROUND SCORE + score below (Z3)
+    // 1) ROUND SCORE always lands first. Commentary then gets a bounded
+    // story beat before navigation resumes. A new throw invalidates every timer.
     window.sqDmdShowZones?.({ z2: 'ROUND SCORE', z3: String(roundTotal), z3Small:true, type:'roll' }, { type:'flash', ms:650, fx:'impact' });
 
-    // 2) Branch: round completed vs normal next player
+    const __sqShowStoryBeat = (story, ms=680) => {
+      if (!story || !__sqDmdStage3Current()) return;
+      try{
+        window.sqDmdShowZones?.({
+          z2:String(story.headline || '').toUpperCase(),
+          z3:String(story.subline || '').toUpperCase(),
+          z3Small:true
+        }, { type:'flash', ms, fx:'impact' });
+      }catch(_){}
+    };
+
+    let __sqCommentaryRoundBeat = null;
+    try{
+      if (willAdvanceRound && !(state?.__sqCatchUp?.active)) {
+        __sqCommentaryRoundBeat = window.__sqDmdCommentaryRound?.({
+          ...__sqCommentaryCtx,
+          players,
+          score:state.score,
+          matchHistory:state?.match?.history,
+          suppress:false
+        }) || null;
+      }
+    }catch(_){ }
+
+    let __sqStoryCursor = 0;
+    if (__sqCommentaryVisitBeat) {
+      __sqStoryCursor = 700;
+      setTimeout(()=>{
+        if (!__sqDmdStage3Current()) return;
+        __sqShowStoryBeat(__sqCommentaryVisitBeat, 680);
+      }, __sqStoryCursor);
+      __sqStoryCursor += 720;
+    } else {
+      __sqStoryCursor = 850;
+    }
+
+    // 2) Branch: completed round gets its own verdict/punchline before NEXT UP.
     if (willAdvanceRound) {
       const currLbl = roundLabel(currDef);
       const nextLbl = nextDef ? (nextDef.type === 'number' ? `${nextDef.target}` : roundLabel(nextDef)) : '';
+      const __roundCompleteAt = __sqStoryCursor;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2: `ROUND ${currLbl}`, z3:'COMPLETE', z3Small:true, type:'roll' }, { type:'flash', ms:720, fx:'smear' });
+          window.sqDmdShowZones?.({ z2: `ROUND ${currLbl}`, z3:'COMPLETE', z3Small:true, type:'roll' }, { type:'flash', ms:650, fx:'smear' });
         }catch(_){}
-      }, 850);
+      }, __roundCompleteAt);
 
+      __sqStoryCursor = __roundCompleteAt + 700;
+      if (__sqCommentaryRoundBeat) {
+        const __roundPunchlineAt = __sqStoryCursor;
+        setTimeout(()=>{
+          if (!__sqDmdStage3Current()) return;
+          __sqShowStoryBeat(__sqCommentaryRoundBeat, 700);
+        }, __roundPunchlineAt);
+        __sqStoryCursor += 740;
+      }
+
+      const __nextAt = __sqStoryCursor;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2:'NEXT UP', z3:String(nextLbl || '').toUpperCase() }, { type:'flash', ms:760, fx:'smear' });
+          window.sqDmdShowZones?.({ z2:'NEXT UP', z3:String(nextLbl || '').toUpperCase() }, { type:'flash', ms:680, fx:'smear' });
         }catch(_){}
-      }, 1700);
+      }, __nextAt);
 
+      const __playerAt = __nextAt + 720;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2: nextName, z3:'TO THROW' }, { type:'wipe', ms:820, fx:'impact', z3Small:true });
+          window.sqDmdShowZones?.({ z2: nextName, z3:'TO THROW' }, { type:'wipe', ms:720, fx:'impact', z3Small:true });
         }catch(_){}
-      }, 2550);
+      }, __playerAt);
 
+      const __preThrowAt = __playerAt + 760;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
           window.sqDmdShowZones?.({ z2: nextName, z3:'' }, { type:'hold', ms:1 });
           window.__sqDmdStartPreThrow?.(nextName, infoLines);
         }catch(_){}
-      }, 3300);
+      }, __preThrowAt);
     } else {
+      const __nextAt = __sqStoryCursor;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2: 'NEXT UP', z3:'' }, { type:'flash', ms:620, fx:'smear' });
+          window.sqDmdShowZones?.({ z2: 'NEXT UP', z3:'' }, { type:'flash', ms:600, fx:'smear' });
         }catch(_){}
-      }, 850);
+      }, __nextAt);
 
+      const __playerAt = __nextAt + 650;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
-        try{ window.sqDmdShowZones?.({ z2: nextName, z3:'TO THROW' }, { type:'wipe', ms:700, fx:'impact', z3Small:true }); }catch(_){}
-      }, 1500);
+        try{ window.sqDmdShowZones?.({ z2: nextName, z3:'TO THROW' }, { type:'wipe', ms:650, fx:'impact', z3Small:true }); }catch(_){}
+      }, __playerAt);
 
+      const __preThrowAt = __playerAt + 700;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
           window.sqDmdShowZones?.({ z2: nextName, z3:'' }, { type:'hold', ms:1 });
           window.__sqDmdStartPreThrow?.(nextName, infoLines);
         }catch(_){}
-      }, 2250);
+      }, __preThrowAt);
+    }
     }
   } catch(_){}
 }, baseDelay);} catch(_){}
