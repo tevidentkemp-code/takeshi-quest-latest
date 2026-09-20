@@ -17854,6 +17854,31 @@ function recordThrow(spec){
     (entry.darts[1]?.points || 0) +
     (entry.darts[2]?.points || 0);
 
+  // SC-052 — read-only DMD commentary snapshot. This never owns or mutates
+  // scoring state; it only describes the canonical throw that was just written.
+  const __sqCommentaryMode = String(
+    state?.gameMode || state?.mode || state?.match?.gameMode || state?.match?.mode || ''
+  );
+  const __sqCommentaryCtx = {
+    pIndex, rIndex, dartIndex,
+    dart: dartObj,
+    players: state.players,
+    score: state.score,
+    history: state.history,
+    matchHistory: state?.match?.history,
+    mode: __sqCommentaryMode,
+    roundDef,
+    maxRounds: MAX_ROUNDS,
+    suppress: !!(window.__sqSkipInProgress || state?.__sqCatchUp?.active)
+  };
+  let __sqCommentaryDartBeat = null;
+  let __sqCommentaryVisitBeat = null;
+  try{
+    window.__sqDmdCommentaryWarmHistory?.(state.players, __sqCommentaryMode);
+    __sqCommentaryDartBeat = window.__sqDmdCommentaryDart?.(__sqCommentaryCtx) || null;
+    if (dartIndex === 2) __sqCommentaryVisitBeat = window.__sqDmdCommentaryVisit?.(__sqCommentaryCtx) || null;
+  }catch(_){ }
+
   /* >>> PATCH:SQ_DMD_STAGE2_THROW_QUALITY START */
 // Stage 2: Throw-quality scenes + Zone layout responsibilities
 // Z1 = current round/phase, Z2 = main callout, Z3 = per-turn throw sequence (S20 / X / T18)
@@ -18091,10 +18116,32 @@ try {
     }
   }
 
-  // Render all three zones; Z3 always shows the running sequence unless a queued combo owns the display.
+  // SC-052: commentary may take the simple MISS/SINGLE lane, but canonical
+  // achievements / Bulls / doubles / trebles / authored combo scenes stay dominant.
+  let __sqCommentaryOwnsSubline = false;
+  try{
+    if (__sqCommentaryDartBeat && !__queueOnlyCombo) {
+      const __protectedDmdBeat = !!(
+        __isDesmondDelight || __isShanghai || __thirdIsScoringAfterTwoMisses ||
+        __voldyHit || kind === 'B' || kind === 'Triple' || kind === 'T' ||
+        kind === 'Double' || kind === 'D'
+      );
+      if (!__protectedDmdBeat || Number(__sqCommentaryDartBeat.priority || 0) >= 45) {
+        z2 = String(__sqCommentaryDartBeat.headline || z2).toUpperCase();
+        __sqCommentaryOwnsSubline = Number(__sqCommentaryDartBeat.priority || 0) >= 45 && !!__sqCommentaryDartBeat.subline;
+        fx = { type:'flash', ms:(__sqCommentaryOwnsSubline ? 900 : 700), fx:'impact' };
+      }
+    }
+  }catch(_){ }
+
+  // Render all three zones; Z3 normally shows the running sequence. Major
+  // commentary milestones (6/9/12+ misses) may use Z3 for the punchline.
   if (window.sqDmdShowZones) {
     if (!__queueOnlyCombo) {
-      window.sqDmdShowZones({ z1, z2, z3: (window.__sqDmdBulkMiss ? '' : seq) }, fx);
+      const __sqDmdStoryZ3 = (__sqCommentaryOwnsSubline && __sqCommentaryDartBeat)
+        ? String(__sqCommentaryDartBeat.subline || '').toUpperCase()
+        : (window.__sqDmdBulkMiss ? '' : seq);
+      window.sqDmdShowZones({ z1, z2, z3: __sqDmdStoryZ3 }, fx);
     }
     // >>> PATCH:SQ_DMD_CLEAR_Z3_ENDTURN
     // End-of-turn behaviour:
@@ -18236,61 +18283,115 @@ setTimeout(() => {
       ? window.__sqDmdBuildPreThrowInfo(nextPlayerIdx)
       : [`SCORE: ${nextTotal}  PB: —`, `POS: ${pos}/${pCount} • DIFF: ${diffTxt}`];
 
-    // 1) ROUND SCORE + score below (Z3)
+    // 1) ROUND SCORE always lands first. Commentary then gets a bounded
+    // story beat before navigation resumes. A new throw invalidates every timer.
     window.sqDmdShowZones?.({ z2: 'ROUND SCORE', z3: String(roundTotal), z3Small:true, type:'roll' }, { type:'flash', ms:650, fx:'impact' });
 
-    // 2) Branch: round completed vs normal next player
+    const __sqShowStoryBeat = (story, ms=680) => {
+      if (!story || !__sqDmdStage3Current()) return;
+      try{
+        window.sqDmdShowZones?.({
+          z2:String(story.headline || '').toUpperCase(),
+          z3:String(story.subline || '').toUpperCase(),
+          z3Small:true
+        }, { type:'flash', ms, fx:'impact' });
+      }catch(_){}
+    };
+
+    let __sqCommentaryRoundBeat = null;
+    try{
+      if (willAdvanceRound && !(state?.__sqCatchUp?.active)) {
+        __sqCommentaryRoundBeat = window.__sqDmdCommentaryRound?.({
+          ...__sqCommentaryCtx,
+          players,
+          score:state.score,
+          matchHistory:state?.match?.history,
+          suppress:false
+        }) || null;
+      }
+    }catch(_){ }
+
+    let __sqStoryCursor = 0;
+    if (__sqCommentaryVisitBeat) {
+      __sqStoryCursor = 700;
+      setTimeout(()=>{
+        if (!__sqDmdStage3Current()) return;
+        __sqShowStoryBeat(__sqCommentaryVisitBeat, 680);
+      }, __sqStoryCursor);
+      __sqStoryCursor += 720;
+    } else {
+      __sqStoryCursor = 850;
+    }
+
+    // 2) Branch: completed round gets its own verdict/punchline before NEXT UP.
     if (willAdvanceRound) {
       const currLbl = roundLabel(currDef);
       const nextLbl = nextDef ? (nextDef.type === 'number' ? `${nextDef.target}` : roundLabel(nextDef)) : '';
+      const __roundCompleteAt = __sqStoryCursor;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2: `ROUND ${currLbl}`, z3:'COMPLETE', z3Small:true, type:'roll' }, { type:'flash', ms:720, fx:'smear' });
+          window.sqDmdShowZones?.({ z2: `ROUND ${currLbl}`, z3:'COMPLETE', z3Small:true, type:'roll' }, { type:'flash', ms:650, fx:'smear' });
         }catch(_){}
-      }, 850);
+      }, __roundCompleteAt);
 
+      __sqStoryCursor = __roundCompleteAt + 700;
+      if (__sqCommentaryRoundBeat) {
+        const __roundPunchlineAt = __sqStoryCursor;
+        setTimeout(()=>{
+          if (!__sqDmdStage3Current()) return;
+          __sqShowStoryBeat(__sqCommentaryRoundBeat, 700);
+        }, __roundPunchlineAt);
+        __sqStoryCursor += 740;
+      }
+
+      const __nextAt = __sqStoryCursor;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2:'NEXT UP', z3:String(nextLbl || '').toUpperCase() }, { type:'flash', ms:760, fx:'smear' });
+          window.sqDmdShowZones?.({ z2:'NEXT UP', z3:String(nextLbl || '').toUpperCase() }, { type:'flash', ms:680, fx:'smear' });
         }catch(_){}
-      }, 1700);
+      }, __nextAt);
 
+      const __playerAt = __nextAt + 720;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2: nextName, z3:'TO THROW' }, { type:'wipe', ms:820, fx:'impact', z3Small:true });
+          window.sqDmdShowZones?.({ z2: nextName, z3:'TO THROW' }, { type:'wipe', ms:720, fx:'impact', z3Small:true });
         }catch(_){}
-      }, 2550);
+      }, __playerAt);
 
+      const __preThrowAt = __playerAt + 760;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
           window.sqDmdShowZones?.({ z2: nextName, z3:'' }, { type:'hold', ms:1 });
           window.__sqDmdStartPreThrow?.(nextName, infoLines);
         }catch(_){}
-      }, 3300);
+      }, __preThrowAt);
     } else {
+      const __nextAt = __sqStoryCursor;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2: 'NEXT UP', z3:'' }, { type:'flash', ms:620, fx:'smear' });
+          window.sqDmdShowZones?.({ z2: 'NEXT UP', z3:'' }, { type:'flash', ms:600, fx:'smear' });
         }catch(_){}
-      }, 850);
+      }, __nextAt);
 
+      const __playerAt = __nextAt + 650;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
-        try{ window.sqDmdShowZones?.({ z2: nextName, z3:'TO THROW' }, { type:'wipe', ms:700, fx:'impact', z3Small:true }); }catch(_){}
-      }, 1500);
+        try{ window.sqDmdShowZones?.({ z2: nextName, z3:'TO THROW' }, { type:'wipe', ms:650, fx:'impact', z3Small:true }); }catch(_){}
+      }, __playerAt);
 
+      const __preThrowAt = __playerAt + 700;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
           window.sqDmdShowZones?.({ z2: nextName, z3:'' }, { type:'hold', ms:1 });
           window.__sqDmdStartPreThrow?.(nextName, infoLines);
         }catch(_){}
-      }, 2250);
+      }, __preThrowAt);
     }
   } catch(_){}
 }, baseDelay);} catch(_){}
