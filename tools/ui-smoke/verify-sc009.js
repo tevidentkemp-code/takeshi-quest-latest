@@ -142,7 +142,7 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
   check('Misfire card opens detail modal', !!detail && /Bull Blind/.test(detail.text || ''), JSON.stringify(detail));
   if (detail) {
     check('Misfire detail carries repeat count', /Recorded ×3 historically/i.test(detail.count), detail.count);
-    check('Misfire detail preserves launch-forward/worst/-5 rule', /5 Sep 2026 20:13 UTC/i.test(detail.rule) && /Only the worst Misfire applies per game/i.test(detail.rule) && /maximum deduction is 5 XP per game/i.test(detail.rule), detail.rule);
+    check('Misfire detail preserves normal cap + Volde exception', /5 Sep 2026 20:13 UTC/i.test(detail.rule) && /Normal Misfires use the single worst penalty/i.test(detail.rule) && /capped at -5 XP per game/i.test(detail.rule) && /Volde-D’eux \/ Volde-Trois are exceptions/i.test(detail.rule) && /every qualifying dart is -2 XP/i.test(detail.rule) && /stacks independently/i.test(detail.rule), detail.rule);
     check('Misfire detail now includes all-player leaderboard', norm(detail.title) === 'Misfire leaderboard' && detail.rows.length === 2, JSON.stringify(detail.rows));
     check('Misfire leaderboard ranks historical counts descending', detail.rows[0] && detail.rows[0].rank === '#1' && detail.rows[0].name === 'Alex S' && detail.rows[0].count === '×3' && detail.rows[1] && detail.rows[1].rank === '#2' && detail.rows[1].name === 'Sam T' && detail.rows[1].count === '×2', JSON.stringify(detail.rows));
     check('Misfire leaderboard reads the verified Misfire source only', detail.sourceAudit.some(x => x.table === 'v_player_misfires' && x.code === 'bull_blind'), JSON.stringify(detail.sourceAudit));
