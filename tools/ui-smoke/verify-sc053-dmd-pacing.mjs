@@ -7,10 +7,14 @@ const missOwner=read('src/legacy/scripts/inline-025.js');
 const renderer=read('src/legacy/scripts/inline-007.js');
 const compat=read('src/legacy/scripts/inline-005.js');
 
-assert(engine.includes("{ type:'roll', ms:900, fx:'impact' }"),'ROUND SCORE must use 900ms roll');
-assert(engine.includes("__sqShowStoryBeat(__sqCommentaryVisitBeat, 1200, 'hold')"),'visit story must hold 1200ms');
-assert(engine.includes("__sqShowStoryBeat(__sqCommentaryRoundBeat, 1380, 'hold')"),'round punchline must hold 1380ms');
-assert(engine.includes("{ type:'shutter', ms:900, revealMs:280, fx:'smear' }"),'round complete must use split shutter');
+assert(engine.includes("{ type:'roll', ms:1050, fx:'impact' }"),'ROUND SCORE must use 1050ms roll');
+assert(engine.includes("const base = kind === 'round' ? 1900 : 1600;"),'story minimum read windows missing');
+assert(engine.includes("const max = kind === 'round' ? 2450 : 2200;"),'story maximum read windows missing');
+assert(engine.includes("__sqShowStoryBeat(__sqCommentaryVisitBeat, __visitStoryMs, 'hold')"),'visit story must use adaptive hold');
+assert(engine.includes("__sqShowStoryBeat(__sqCommentaryRoundBeat, __roundStoryMs, 'hold')"),'round punchline must use adaptive hold');
+assert(engine.includes("{ type:'shutter', ms:950, revealMs:280, fx:'smear' }"),'round complete must use split shutter');
+assert(engine.includes("if (__active && Number(__active.priority || 0) <= 20) window.__sqDmdCancelTransientScenes?.();"),'important story must clear only low-priority controller transients');
+assert(engine.includes("Math.max(1450, Math.min(1850, 1250 + (__sqDartStoryChars * 14)))"),'major per-dart commentary must have readable adaptive hold');
 assert(engine.includes("z2:(nextLbl ? `NEXT: ${String(nextLbl).toUpperCase()}` : 'NEXT')"),'round handoff must combine next target');
 assert(!engine.includes("{ z2: 'NEXT UP', z3:'' }"),'standalone NEXT UP card should be removed from canonical Stage 3');
 assert(engine.includes("{ type:'snap', ms:380, revealMs:120, amp:2.2, fx:'impact' }"),'ordinary miss must be short snap');
@@ -32,7 +36,8 @@ assert(renderer.includes('const bands = 4'),'shutter must use four alternating b
 assert(renderer.includes('fxScale = 1 + (0.055 * decay)'),'snap must have a bounded slam scale');
 
 for(const needle of [
-  "__sqShowStoryBeat(__sqCommentaryVisitBeat, 1200, 'hold')"
+  "__sqShowStoryBeat(__sqCommentaryVisitBeat, __visitStoryMs, 'hold')",
+  "const base = kind === 'round' ? 1900 : 1600;"
 ]) assert(compat.includes(needle),`generated compatibility runtime missing: ${needle}`);
 
 console.log('SC-053 DMD pacing + motion static acceptance PASS');
