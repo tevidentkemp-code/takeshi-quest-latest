@@ -1,0 +1,59 @@
+name: SC-050 Public Version + Release Notes QA
+on:
+  pull_request:
+    paths:
+      - src/release/release-metadata.mjs
+      - src/home/release-info.mjs
+      - index.html
+      - src/shell/index.template.html
+      - docs/release/SC050_PUBLIC_RELEASE_METADATA.md
+      - tools/ui-smoke/verify-sc050-release-info.mjs
+      - tools/ui-smoke/verify-sc050-release-info.js
+      - .github/workflows/sc050-release-info-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Release metadata contract
+        run: |
+          node --check src/release/release-metadata.mjs
+          node --check src/home/release-info.mjs
+          node --check tools/ui-smoke/verify-sc050-release-info.mjs
+          node --check tools/ui-smoke/verify-sc050-release-info.js
+          node tools/ui-smoke/verify-sc050-release-info.mjs
+      - name: Build exact candidate
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+          npm run verify:dist
+      - name: Install browser QA
+        working-directory: tools/ui-smoke
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Source and dist version UI acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sc050-source.log 2>&1 & spid=$!
+          python3 -m http.server 8124 --bind 127.0.0.1 --directory dist >/tmp/sc050-dist.log 2>&1 & dpid=$!
+          trap 'kill "$spid" "$dpid" || true' EXIT
+          export SQ_APP_URL=http://127.0.0.1:8123/index.html
+          node tools/ui-smoke/verify-sc050-release-info.js
+          node tools/ui-smoke/verify-setup-regression.js
+          export SQ_APP_URL=http://127.0.0.1:8124/index.html
+          node tools/ui-smoke/verify-sc050-release-info.js
+          node tools/ui-smoke/verify-setup-regression.js
+      - name: Whitespace
+        run: git diff --check HEAD^ HEAD
