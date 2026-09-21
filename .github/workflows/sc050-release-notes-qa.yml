@@ -38,6 +38,13 @@ jobs:
           node --check src/legacy/quarantine/core-pre-modals.js
           node tools/ui-smoke/verify-sc050-release-notes.mjs
 
+      - name: Enforce public release metadata for runtime changes
+        if: github.event_name == 'pull_request'
+        env:
+          SQ_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SQ_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node tools/ui-smoke/verify-release-metadata-policy.mjs "$SQ_BASE_SHA" "$SQ_HEAD_SHA"
+
       - name: Materialize and verify production build
         run: |
           npm run materialize
