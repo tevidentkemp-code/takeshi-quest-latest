@@ -38,7 +38,10 @@ assert(late.includes("ACH.forMilestones = () => ACH.forMilestoneProgress(code);"
 assert(late.includes("target >= 10 && target <= 20"));
 assert(late.includes("Math.max(0, Number(r && r.bull_any) || 0)"));
 
-assert(engine.includes("window.sqDmdShowZones?.({ z2:'NEXT UP', z3:String(nextLbl || '').toUpperCase() }"));
+assert(engine.includes("z2:(nextLbl ? `NEXT: ${String(nextLbl).toUpperCase()}` : 'NEXT')"));
+assert(engine.includes("z3:`${nextName} TO THROW`"));
+assert(!engine.includes("{ z2: 'NEXT UP', z3:'' }"));
+assert(!engine.includes("window.sqDmdShowZones?.({ z2:'NEXT UP', z3:String(nextLbl || '').toUpperCase() }"));
 assert(!engine.includes('NEXT UP.. ${nextLbl}'));
 assert(engine.includes('window.__sqDmdHardClearQueue?.();'));
 assert(appState.includes("window.sqDmdShowZones?.({ z2:'GAME OVER', z3:'' }, { type:'pulseFull'"));
