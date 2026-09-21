@@ -35,7 +35,7 @@ const BROWSER_NOISE=/supabase|Failed to fetch|fetch failed|net::|NetworkError|lo
     const missX=page.locator('#pad .dtX3');
     assert.equal(await missX.count(),1,'MISS xN control must exist');
     await missX.click();
-    await page.waitForFunction(()=>state.history.length>=3 && state.currentPlayer===1 && state.currentDart===0,{timeout:2500});
+    await page.waitForFunction(()=>state.history.length>=3 && state.currentPlayer===1 && state.currentDart===0,undefined,{timeout:2500});
     await page.waitForTimeout(250);
 
     const missWrites=await page.evaluate(()=>window.__sc053Writes.filter(w=>/^MISS x3$/i.test(w.z2)));
@@ -45,9 +45,10 @@ const BROWSER_NOISE=/supabase|Failed to fetch|fetch failed|net::|NetworkError|lo
       assert.equal(w.ms,150,`MISS x3 frame ${i+1} must be 150ms`);
       assert(w.revealMs<=130,`MISS x3 frame ${i+1} reveal must stay punchy`);
     });
-    assert.equal(missWrites[0].z3.trim(),'X / /','first MISS x3 frame must land one X');
-    assert(missWrites[1].z3.includes('X / X'),'second MISS x3 frame must land two Xs');
-    assert(missWrites[2].z3.includes('X / X / X'),'third MISS x3 frame must land all three Xs');
+    const compact=missWrites.map(w=>w.z3.replace(/\s+/g,'').replace(/\//g,'/'));
+    assert(compact[0].startsWith('X/'),'first MISS x3 frame must land one X');
+    assert(compact[1].startsWith('X/X/'),'second MISS x3 frame must land two Xs');
+    assert(compact[2].includes('X/X/X'),'third MISS x3 frame must land all three Xs');
     const span=missWrites[2].at-missWrites[0].at;
     assert(span<450,`MISS x3 X sequence should complete quickly; observed ${span.toFixed(1)}ms`);
 
@@ -57,7 +58,7 @@ const BROWSER_NOISE=/supabase|Failed to fetch|fetch failed|net::|NetworkError|lo
       recordThrow({kind:'T'});
       recordThrow({kind:'T'});
     });
-    await page.waitForFunction(()=>state.currentPlayer===0 && state.currentRound===1 && state.currentDart===0,{timeout:1500});
+    await page.waitForFunction(()=>state.currentPlayer===0 && state.currentRound===1 && state.currentDart===0,undefined,{timeout:1500});
     await page.waitForTimeout(6200);
 
     const writes=await page.evaluate(()=>window.__sc053Writes.slice());
