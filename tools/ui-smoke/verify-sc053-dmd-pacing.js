@@ -34,11 +34,27 @@ const BROWSER_NOISE=/supabase|Failed to fetch|fetch failed|net::|NetworkError|lo
 
     const missX=page.locator('#pad .dtX3');
     assert.equal(await missX.count(),1,'MISS xN control must exist');
+    const preMiss=await page.evaluate(()=>{
+      const btn=document.querySelector('#pad .dtX3');
+      return {
+        currentPlayer:state.currentPlayer,
+        currentRound:state.currentRound,
+        currentDart:state.currentDart,
+        history:state.history.length,
+        label:String(btn&&btn.textContent||'').replace(/\s+/g,' ').trim(),
+        missN:String(btn&&btn.dataset&&btn.dataset.missN||''),
+        onclick:String(btn&&btn.onclick||'').slice(0,700),
+        showZones:String(window.sqDmdShowZones||'').slice(0,300)
+      };
+    });
+    console.log('SC053_PRE_MISS',JSON.stringify(preMiss));
     await missX.click();
     await page.waitForFunction(()=>state.history.length>=3 && state.currentPlayer===1 && state.currentDart===0,undefined,{timeout:2500});
     await page.waitForTimeout(250);
 
-    const missWrites=await page.evaluate(()=>window.__sc053Writes.filter(w=>/^MISS x3$/i.test(w.z2)));
+    const allMissWrites=await page.evaluate(()=>window.__sc053Writes.slice());
+    console.log('SC053_MISS_WRITES',JSON.stringify(allMissWrites));
+    const missWrites=allMissWrites.filter(w=>/^MISS x3$/i.test(w.z2));
     assert.equal(missWrites.length,3,'MISS x3 must render exactly three X impact frames');
     missWrites.forEach((w,i)=>{
       assert.equal(w.type,'snap',`MISS x3 frame ${i+1} must use snap`);
