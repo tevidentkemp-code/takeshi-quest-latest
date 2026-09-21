@@ -11,5 +11,5 @@ assert.equal(appliedMisfirePenalty([{code:'ordinary',penalty:-8}]),-5);
 const modals=fs.readFileSync(new URL('../../src/ui/modals.js',import.meta.url),'utf8');
 for(const token of ["code:'volde_deux'","code:'volde_trois'","stackPerDart:true","excluded from that cap"]) assert.ok(modals.includes(token),token);
 const sql=fs.readFileSync(new URL('../../supabase/migrations/20260921180000_sc048_volde_misfires.sql',import.meta.url),'utf8');
-for(const token of ["'volde_deux'","'volde_trois'","sum(e.penalty) FILTER","NOT IN ('volde_deux','volde_trois')"]) assert.ok(sql.includes(token),token);
+for(const token of ["'volde_deux'","'volde_trois'","sum(e.penalty) FILTER","NOT IN ('volde_deux','volde_trois')","coalesce(min(e.penalty) filter"]) assert.ok(sql.includes(token),token);
 console.log('SC-048 Volde contract PASS');

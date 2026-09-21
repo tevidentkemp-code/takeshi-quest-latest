@@ -128,7 +128,7 @@ union all select game_id,player_id,event_at,code,penalty from volde_events;
 create or replace view public.v_player_misfire_xp as
 with per_game as (
   select e.player_id,e.game_id,
-    (coalesce(greatest(-5,min(e.penalty) filter(where e.code NOT IN ('volde_deux','volde_trois'))),0)
+    (greatest(-5,coalesce(min(e.penalty) filter(where e.code NOT IN ('volde_deux','volde_trois')),0))
      + coalesce(sum(e.penalty) FILTER (where e.code in ('volde_deux','volde_trois')),0))::bigint penalty
   from public.v_misfire_penalty_events e group by e.player_id,e.game_id
 )
