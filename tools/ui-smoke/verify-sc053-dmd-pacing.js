@@ -54,19 +54,19 @@ const BROWSER_NOISE=/supabase|Failed to fetch|fetch failed|net::|NetworkError|lo
 
     const allMissWrites=await page.evaluate(()=>window.__sc053Writes.slice());
     console.log('SC053_MISS_WRITES',JSON.stringify(allMissWrites));
-    const missWrites=allMissWrites.filter(w=>/^MISS x3$/i.test(w.z2));
+    const missWrites=allMissWrites.filter(w=>/^MISS$/i.test(w.z2) && /X/.test(w.z3));
     assert.equal(missWrites.length,3,'MISS x3 must render exactly three X impact frames');
     missWrites.forEach((w,i)=>{
       assert.equal(w.type,'snap',`MISS x3 frame ${i+1} must use snap`);
-      assert.equal(w.ms,150,`MISS x3 frame ${i+1} must be 150ms`);
-      assert(w.revealMs<=130,`MISS x3 frame ${i+1} reveal must stay punchy`);
+      assert.equal(w.ms,125,`MISS x3 frame ${i+1} must be 125ms`);
+      assert.equal(w.revealMs,90,`MISS x3 frame ${i+1} reveal must be 90ms`);
     });
     const compact=missWrites.map(w=>w.z3.replace(/\s+/g,'').replace(/\//g,'/'));
     assert(compact[0].startsWith('X/'),'first MISS x3 frame must land one X');
     assert(compact[1].startsWith('X/X/'),'second MISS x3 frame must land two Xs');
     assert(compact[2].includes('X/X/X'),'third MISS x3 frame must land all three Xs');
     const span=missWrites[2].at-missWrites[0].at;
-    assert(span<450,`MISS x3 X sequence should complete quickly; observed ${span.toFixed(1)}ms`);
+    assert(span<230,`MISS x3 X sequence should land quickly; observed ${span.toFixed(1)}ms`);
 
     await page.evaluate(()=>{ window.__sc053Writes=[]; });
     await page.evaluate(()=>{
