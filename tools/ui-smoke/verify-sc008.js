@@ -71,7 +71,7 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
 
   check('Misfires section remains visible inside Achievements', !!misfires && misfires.visible, JSON.stringify(misfires));
   if (misfires) {
-    check('Misfires: all 8 rules shown', misfires.cardCount === 8, JSON.stringify(misfires.cardCount));
+    check('Misfires: all 10 rules shown', misfires.cardCount === 10, JSON.stringify(misfires.cardCount));
     check('Misfires: historical total = 4', norm(misfires.total) === E.misfires.total, JSON.stringify(misfires.total));
     check('Misfires: launch-forward XP impact = -2 XP', norm(misfires.xp) === E.misfires.xp, JSON.stringify(misfires.xp));
     check('Misfires: Bull Blind count from DB aggregate', misfires.byCode.bull_blind && misfires.byCode.bull_blind.count === 3 && norm(misfires.byCode.bull_blind.repeat) === '×3', JSON.stringify(misfires.byCode));
