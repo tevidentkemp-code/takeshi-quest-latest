@@ -11,6 +11,8 @@ const MISFIRE_META = Object.freeze({
   bull_blind: { name: 'Bull Blind', penalty: -1 },
   century_drought: { name: 'Century Drought', penalty: -2 },
   wooden_spoon: { name: 'Wooden Spoon', penalty: -3 },
+  volde_deux: { name: 'Volde-D’eux', penalty: -2 },
+  volde_trois: { name: 'Volde-Trois', penalty: -2 },
 });
 
 const SCORE_MILESTONES = Object.freeze([100, 200, 300, 400, 500, 600, 700]);
@@ -85,13 +87,42 @@ function maxRun(values, predicate) {
   return best;
 }
 
+function voldeHitCount(rows, roundIndex, expectedKind) {
+  const row = Array.isArray(rows) ? rows[roundIndex] : null;
+  const darts = row && Array.isArray(row.darts) ? row.darts : [];
+  return darts.filter(dart => {
+    const kind = String(dart && (dart.kind || dart.type) || '').trim().toLowerCase();
+    const sector = Number(dart && dart.sector);
+    const rightKind = expectedKind === 'double'
+      ? (kind === 'd' || kind === 'double')
+      : (kind === 't' || kind === 'triple');
+    return rightKind && Number.isInteger(sector) && sector >= 1 && sector <= 5;
+  }).length;
+}
+
+function isVoldeCode(code) {
+  return code === 'volde_deux' || code === 'volde_trois';
+}
+
 export function detectImmediateMisfires(rows, total) {
   const values = roundTotals(rows);
   const events = [];
   const add = code => {
     if (events.some(event => event.code === code)) return;
     const meta = MISFIRE_META[code];
-    if (meta) events.push({ code, name: meta.name, penalty: meta.penalty });
+    if (meta) events.push({ code, name: meta.name, penalty: meta.penalty, count:1 });
+  };
+  const addVolde = (code, count) => {
+    const meta = MISFIRE_META[code];
+    if (!meta || !(count > 0)) return;
+    events.push({
+      code,
+      name:meta.name,
+      count,
+      unitPenalty:meta.penalty,
+      penalty:meta.penalty * count,
+      stacking:true,
+    });
   };
 
   if (values.length >= 3 && values.slice(0, 3).every(value => value === 0)) add('cold_start');
@@ -101,15 +132,25 @@ export function detectImmediateMisfires(rows, total) {
   if (Number(total || 0) < 100) add('sub_ton');
   if (values.length >= 14 && values[11] === 0 && values[12] === 0 && values[13] === 0) add('special_delivery_failed');
   if (values.length >= 14 && values[13] === 0) add('bull_blind');
+
+  // SC-048: these two are dart-level exceptions. Every qualifying hit stacks
+  // independently and is additional to the normal worst-only / -5 game rule.
+  addVolde('volde_deux', voldeHitCount(rows, 11, 'double'));
+  addVolde('volde_trois', voldeHitCount(rows, 12, 'triple'));
   return events;
 }
 
 export function appliedMisfirePenalty(events) {
-  const penalties = (Array.isArray(events) ? events : [])
+  const source = Array.isArray(events) ? events : [];
+  const normal = source
+    .filter(event => !isVoldeCode(event && event.code))
     .map(event => Number(event && event.penalty || 0))
     .filter(value => value < 0);
-  if (!penalties.length) return 0;
-  return Math.max(-5, Math.min(...penalties));
+  const normalPenalty = normal.length ? Math.max(-5, Math.min(...normal)) : 0;
+  const voldePenalty = source
+    .filter(event => isVoldeCode(event && event.code))
+    .reduce((sum, event) => sum + Math.min(0, Number(event && event.penalty || 0)), 0);
+  return normalPenalty + voldePenalty;
 }
 
 function injectStyles() {
@@ -579,8 +620,9 @@ function buildDetailedRow(host, data) {
   const negative = makeSourceLine('NEGATIVE');
   if (data.negative.length) {
     data.negative.forEach(item => {
-      const applied = item.penalty === data.penalty;
-      negative.chips.appendChild(makeChip(`${item.name} ${item.penalty} XP${applied ? ' · APPLIED' : ''}`, 'negative', applied ? 'applied' : ''));
+      const applied = !!item.applied;
+      const countText = Number(item.count || 1) > 1 ? ` ×${Number(item.count)}` : '';
+      negative.chips.appendChild(makeChip(`${item.name}${countText} ${item.penalty} XP${applied ? ' · APPLIED' : ''}`, 'negative', applied ? 'applied' : ''));
     });
   } else {
     negative.chips.appendChild(makeChip('NO MISFIRES', 'empty'));
@@ -685,6 +727,14 @@ async function buildPlayerData(host, st) {
 
     const negative = detectImmediateMisfires(board[p] || [], totals[p]);
     addStreakMisfires(negative, context, row, totals[p], bottomCount === 1 && totals[p] === minTotal);
+    const normalWorst = negative
+      .filter(item => !isVoldeCode(item && item.code))
+      .reduce((worst, item) => Math.min(worst, Number(item && item.penalty || 0)), 0);
+    negative.forEach(item => {
+      item.applied = isVoldeCode(item && item.code)
+        ? Number(item && item.penalty || 0) < 0
+        : (normalWorst < 0 && Number(item && item.penalty || 0) === normalWorst);
+    });
     const penalty = appliedMisfirePenalty(negative);
 
     const scoreXp = Math.round(Number(totals[p] || 0) * Number(host.SQ_XP.W.point || 0));
