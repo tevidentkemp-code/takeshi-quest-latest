@@ -28606,10 +28606,10 @@ const SQ_MISFIRE = {
     { code:'sub_ton',                 name:'Sub Ton',                 icon:'📉', penalty:-2, desc:'Finish a game below 100 points' },
     { code:'special_delivery_failed', name:'Special Delivery Failed', icon:'📦', penalty:-2, desc:'Score zero in the Doubles, Triples and Bull rounds' },
     { code:'bull_blind',              name:'Bull Blind',              icon:'🙈', penalty:-1, desc:'Score zero in the Bull round' },
-    { code:'volde_deux',               name:'Volde-D’eux',             icon:'🎯', penalty:-2, stackPerDart:true, desc:'Hit D1–D5 in the Doubles round' },
-    { code:'volde_trois',              name:'Volde-Trois',             icon:'🎯', penalty:-2, stackPerDart:true, desc:'Hit T1–T5 in the Trebles round' },
     { code:'century_drought',         name:'Century Drought',         icon:'🏜️', penalty:-2, desc:'Finish below 100 in five consecutive games' },
-    { code:'wooden_spoon',            name:'Wooden Spoon',            icon:'🥄', penalty:-3, desc:'Finish sole last in five consecutive games' }
+    { code:'wooden_spoon',            name:'Wooden Spoon',            icon:'🥄', penalty:-3, desc:'Finish sole last in five consecutive games' },
+    { code:'volde_deux',               name:'Volde-D’eux',             icon:'2️⃣', penalty:-2, desc:'Hit D1–D5 in the Doubles round · -2 XP for every qualifying dart' },
+    { code:'volde_trois',              name:'Volde-Trois',             icon:'3️⃣', penalty:-2, desc:'Hit T1–T5 in the Trebles round · -2 XP for every qualifying dart' }
   ],
   async forPlayerId(playerId){
     try{
@@ -29269,7 +29269,7 @@ async function __sqMisfireDetail(code, misfireMap){
     '<div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:linear-gradient(135deg,rgba(127,29,29,.52),rgba(69,10,10,.82));border:1px solid rgba(248,113,113,.42);">'
     + '<div style="font-size:40px;line-height:1">' + m.icon + '</div>'
     + '<div style="min-width:0"><div style="font-weight:900;font-size:20px;color:#fff">' + m.name + '</div>'
-    + '<div style="font-size:11px;font-weight:900;letter-spacing:.08em;color:#fecaca">MISFIRE · ' + (m.stackPerDart ? (m.penalty + ' XP / DART') : (m.penalty + ' XP')) + '</div></div></div>'
+    + '<div style="font-size:11px;font-weight:900;letter-spacing:.08em;color:#fecaca">MISFIRE · ' + m.penalty + ' XP</div></div></div>'
     + '<div style="margin:14px 2px 4px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">How it happens</div>'
     + '<div style="font-size:15px;font-weight:600;margin:0 2px 10px">' + m.desc + '.</div>'
     + '<div class="pp-misfire-detail-count" style="font-size:12px;font-weight:800;margin:0 2px 12px;color:' + (cnt > 0 ? '#fecaca' : 'var(--v3-muted,#98a2b8)') + '">' + (cnt > 0 ? ('Recorded ×' + cnt + ' historically') : 'Not recorded yet') + '</div>';
@@ -29277,9 +29277,7 @@ async function __sqMisfireDetail(code, misfireMap){
   const loading = document.createElement('p'); loading.className = 'muted'; loading.id = 'misfireLbLoading'; loading.style.fontSize = '13px'; loading.textContent = 'Loading…';
   const mount = document.createElement('div'); mount.className = 'pp-misfire-lb-mount';
   const rule = document.createElement('div'); rule.className = 'muted pp-misfire-detail-rule'; rule.style.cssText = 'font-size:10px;line-height:1.4;margin:12px 2px 0';
-  rule.textContent = m.stackPerDart
-    ? 'Historical counts can include earlier Official/Classic games. XP penalties apply only from 5 Sep 2026 20:13 UTC. Each qualifying dart is −2 XP and stacks independently. Volde penalties are exempt from the ordinary worst-Misfire-only rule and the −5 XP per-game cap.'
-    : 'Historical counts can include earlier Official/Classic games. XP penalties apply only from 5 Sep 2026 20:13 UTC. For ordinary Misfires, only the worst penalty applies and the ordinary deduction is capped at 5 XP per game. Volde-D’eux and Volde-Trois are excluded from that cap.';
+  rule.textContent = 'Historical counts can include earlier Official/Classic games. XP penalties apply only from 5 Sep 2026 20:13 UTC. Normal Misfires use the single worst penalty, capped at -5 XP per game. Volde-D’eux / Volde-Trois are exceptions: every qualifying dart is -2 XP and stacks independently.';
   body.append(modeBar.el, loading, mount, rule);
   modal.append(body); overlay.appendChild(modal); document.body.appendChild(overlay);
   try{if(window.sqModal&&window.sqModal.register)window.sqModal.register(overlay,modal,function(){overlay.remove();});}catch(_){}
@@ -29349,7 +29347,7 @@ function __sqMisfireCase(misfireState, xpRow){
                   : 'background:rgba(255,255,255,.03);border:1px dashed rgba(248,113,113,.18);opacity:.42;filter:grayscale(1);');
       const ic = document.createElement('div'); ic.textContent = m.icon; ic.style.cssText = 'font-size:26px;line-height:1;';
       const nm = document.createElement('div'); nm.className = 'pp-misfire-name'; nm.textContent = m.name; nm.style.cssText = 'font-size:10px;font-weight:800;letter-spacing:.01em;color:' + (earned ? '#fecaca' : 'var(--v3-muted,#98a2b8)') + ';line-height:1.15;';
-      const pen = document.createElement('div'); pen.className = 'pp-misfire-penalty'; pen.textContent = m.penalty + (m.stackPerDart ? ' XP / dart' : ' XP'); pen.style.cssText = 'font-size:9px;font-weight:900;color:#fca5a5;';
+      const pen = document.createElement('div'); pen.className = 'pp-misfire-penalty'; pen.textContent = m.penalty + ' XP'; pen.style.cssText = 'font-size:9px;font-weight:900;color:#fca5a5;';
       b.append(ic, nm, pen); b.onclick = () => { try{ __sqMisfireDetail(m.code, map); }catch(_){ } };
       if (earned && cnt > 1){
         const bc = document.createElement('div'); bc.className = 'pp-misfire-count'; bc.textContent = '×' + cnt;
@@ -29363,7 +29361,7 @@ function __sqMisfireCase(misfireState, xpRow){
     card.appendChild(grid);
   }
   const foot = document.createElement('div'); foot.className = 'muted pp-misfire-foot'; foot.style.cssText = 'font-size:10px;line-height:1.35;margin-top:10px;';
-  foot.textContent = 'Historical counts include earlier Official/Classic games. XP penalties apply only from 5 Sep 2026 20:13 UTC. For ordinary Misfires, only the worst penalty applies and the ordinary deduction is capped at 5 XP per game. Volde-D’eux and Volde-Trois stack at −2 XP per qualifying dart and are excluded from that cap.';
+  foot.textContent = 'Historical counts include earlier Official/Classic games. XP penalties apply only from 5 Sep 2026 20:13 UTC. Normal Misfires use the single worst penalty, capped at -5 XP per game. Volde-D’eux / Volde-Trois stack at -2 XP for every qualifying dart and are exempt from that cap.';
   card.appendChild(foot);
   return card;
 }
