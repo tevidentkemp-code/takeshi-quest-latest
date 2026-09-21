@@ -1,0 +1,87 @@
+name: SC-050 Release Notes QA
+on:
+  pull_request:
+    paths:
+      - 'assets/release-metadata.json'
+      - 'src/legacy/quarantine/core-pre-modals.js'
+      - 'src/legacy/scripts/inline-005.js'
+      - 'src/styles/home/start-hero.css'
+      - 'tools/ui-smoke/verify-sc050-release-notes.*'
+      - 'tools/ui-smoke/harness.js'
+      - 'tools/ui-smoke/package*.json'
+      - '.github/workflows/sc050-release-notes-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 2
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: '.node-version'
+
+      - run: npm ci
+      - name: Install deterministic architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Static release contract
+        run: |
+          node --check src/legacy/quarantine/core-pre-modals.js
+          node tools/ui-smoke/verify-sc050-release-notes.mjs
+
+      - name: Enforce public release metadata for runtime changes
+        if: github.event_name == 'pull_request'
+        env:
+          SQ_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SQ_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$SQ_BASE_SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$SQ_BASE_SHA"
+          node tools/ui-smoke/verify-release-metadata-policy.mjs "$SQ_BASE_SHA" "$SQ_HEAD_SHA"
+
+      - name: Materialize and verify production build
+        run: |
+          npm run materialize
+          npm run build
+          npm run verify:dist
+          node tools/ui-smoke/verify-sc050-release-notes.mjs
+
+      - name: Install browser test tooling
+        run: |
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps chromium
+
+      - name: Source and dist browser acceptance
+        shell: bash
+        env:
+          SQ_SCREENSHOTS: output/playwright/sc050
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sc050-http.log 2>&1 &
+          source_pid=$!
+          python3 -m http.server 8124 --bind 127.0.0.1 --directory dist >/tmp/sc050-dist-http.log 2>&1 &
+          dist_pid=$!
+          trap 'kill "$source_pid" "$dist_pid" || true' EXIT
+          node tools/ui-smoke/verify-sc050-release-notes.js
+          SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=output/playwright/sc050-dist node tools/ui-smoke/verify-sc050-release-notes.js
+
+      - name: Keep SC-050 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sc050-release-notes-evidence
+          retention-days: 14
+          path: |
+            output/playwright/sc050/
+            output/playwright/sc050-dist/
+            assets/release-metadata.json
