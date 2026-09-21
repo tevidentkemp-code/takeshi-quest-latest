@@ -71,13 +71,13 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
 
   check('Misfires section remains visible inside Achievements', !!misfires && misfires.visible, JSON.stringify(misfires));
   if (misfires) {
-    check('Misfires: all 8 rules shown', misfires.cardCount === 8, JSON.stringify(misfires.cardCount));
+    check('Misfires: all 10 rules shown', misfires.cardCount === 10, JSON.stringify(misfires.cardCount));
     check('Misfires: historical total = 4', norm(misfires.total) === E.misfires.total, JSON.stringify(misfires.total));
     check('Misfires: launch-forward XP impact = -2 XP', norm(misfires.xp) === E.misfires.xp, JSON.stringify(misfires.xp));
     check('Misfires: Bull Blind count from DB aggregate', misfires.byCode.bull_blind && misfires.byCode.bull_blind.count === 3 && norm(misfires.byCode.bull_blind.repeat) === '×3', JSON.stringify(misfires.byCode));
     check('Misfires: Cold Start count from DB aggregate', misfires.byCode.cold_start && misfires.byCode.cold_start.count === 1, JSON.stringify(misfires.byCode));
     check('Misfires: footer explicitly says launch-forward', /apply only from 5 Sep 2026 20:13 UTC/i.test(misfires.footer), misfires.footer);
-    check('Misfires: footer states worst-only / -5 cap', /only the worst penalty applies/i.test(misfires.footer) && /maximum deduction is 5 XP per game/i.test(misfires.footer), misfires.footer);
+    check('Misfires: footer states ordinary cap plus Volde exception', /ordinary Misfires/i.test(misfires.footer) && /capped at 5 XP per game/i.test(misfires.footer) && /Volde-D[’']eux and Volde-Trois stack/i.test(misfires.footer), misfires.footer);
     check('Hub navigation retains Stats / XP / Achievements', JSON.stringify(misfires.tabs) === JSON.stringify(['Stats','XP','Achievements']), JSON.stringify(misfires.tabs));
   }
 
