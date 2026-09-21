@@ -106,6 +106,13 @@ jobs:
           npm ci --ignore-scripts
           npx playwright install --with-deps chromium
 
+      - name: Enforce public release metadata for runtime changes
+        if: github.event_name == 'pull_request'
+        env:
+          SQ_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SQ_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node tools/ui-smoke/verify-release-metadata-policy.mjs "$SQ_BASE_SHA" "$SQ_HEAD_SHA"
+
       - name: Check patch whitespace
         shell: bash
         run: |
