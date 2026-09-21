@@ -77,8 +77,8 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
   });
 
   check('achievement sections ordered Milestones → Trophies / Awards → Misfires', JSON.stringify(ui.sections) === JSON.stringify(['Milestones','Trophies / Awards','Misfires']), JSON.stringify(ui.sections));
-  check('Misfires render all 8 trophy-style cards', ui.cardCount === 8, JSON.stringify(ui));
-  check('Misfire unlocked summary counts distinct earned rules', norm(ui.unlocked) === '2 / 8 unlocked', ui.unlocked);
+  check('Misfires render all 10 trophy-style cards', ui.cardCount === 10, JSON.stringify(ui));
+  check('Misfire unlocked summary counts distinct earned rules', norm(ui.unlocked) === '2 / 10 unlocked', ui.unlocked);
   check('Misfire historical total remains DB-derived', norm(ui.total) === '4 historical occurrences', ui.total);
   check('Misfire XP remains DB-derived', norm(ui.xp) === '-2 XP', ui.xp);
   check('Bull Blind repeat badge shows ×3', ui.byCode.bull_blind && ui.byCode.bull_blind.count === 3 && norm(ui.byCode.bull_blind.repeat) === '×3' && norm(ui.byCode.bull_blind.penalty) === '-1 XP', JSON.stringify(ui.byCode));
