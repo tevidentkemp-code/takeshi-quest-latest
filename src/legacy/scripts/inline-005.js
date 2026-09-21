@@ -23134,6 +23134,130 @@ window.closeModal = window.closeModal || function(id){
 
 // === Start screen layout arranger (non-destructive; rebuilds start-actions) ===
 
+// >>> PATCH:SC050_RELEASE_NOTES START
+(function(){
+  const META_URL = './assets/release-metadata.json';
+  let releaseMetaPromise = null;
+
+  function formatReleaseDate(value){
+    try{
+      const date = new Date(String(value || '') + 'T00:00:00Z');
+      if (Number.isNaN(date.getTime())) return String(value || '');
+      return date.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric', timeZone:'UTC' });
+    }catch(_){
+      return String(value || '');
+    }
+  }
+
+  function loadReleaseMetadata(force){
+    if (force || !releaseMetaPromise){
+      releaseMetaPromise = fetch(META_URL, { cache:'no-store' }).then(function(response){
+        if (!response.ok) throw new Error('release-metadata-http-' + response.status);
+        return response.json();
+      }).then(function(meta){
+        if (!meta || meta.schemaVersion !== 1 || !meta.currentVersion || !Array.isArray(meta.releases)){
+          throw new Error('release-metadata-invalid');
+        }
+        return meta;
+      });
+    }
+    return releaseMetaPromise;
+  }
+
+  window.__sqLoadReleaseMetadata = loadReleaseMetadata;
+
+  window.__sqApplyReleaseVersionLabel = function(button){
+    if (!button) return;
+    button.textContent = 'VERSION';
+    button.setAttribute('aria-label', 'Open release notes');
+    loadReleaseMetadata(false).then(function(meta){
+      button.textContent = 'v' + meta.currentVersion;
+      button.setAttribute('aria-label', 'Open release notes for Shateki Quest version ' + meta.currentVersion);
+      button.title = 'Release Notes';
+    }).catch(function(){
+      button.textContent = 'VERSION';
+      button.title = 'Release notes unavailable';
+    });
+  };
+
+  window.__sqOpenReleaseNotes = async function(){
+    let meta;
+    try{
+      meta = await loadReleaseMetadata(false);
+    }catch(error){
+      try{ console.error('[SQ] Release metadata failed', error); }catch(_){}
+      try{ toast('Release notes unavailable'); }catch(_){}
+      return;
+    }
+    if (typeof window.sqModal !== 'function'){
+      try{ toast('Release notes unavailable'); }catch(_){}
+      return;
+    }
+
+    const modal = window.sqModal({
+      title: 'RELEASE NOTES',
+      sub: 'CURRENT v' + meta.currentVersion,
+      onBack: function(){},
+      closeButton: 'CLOSE',
+      modalClass: 'menu-modal sq-release-notes-modal',
+      maxWidth: '560px'
+    });
+    modal.body.classList.add('sq-release-notes-body');
+
+    meta.releases.forEach(function(item, index){
+      const card = document.createElement('article');
+      card.className = 'sq-release-entry' + (index === 0 ? ' is-current' : '');
+
+      const head = document.createElement('div');
+      head.className = 'sq-release-entry-head';
+
+      const id = document.createElement('span');
+      id.className = 'sq-release-id';
+      id.textContent = item.version ? ('v' + item.version) : String(item.releaseId || 'Release');
+
+      const date = document.createElement('time');
+      date.className = 'sq-release-date';
+      date.dateTime = String(item.date || '');
+      date.textContent = formatReleaseDate(item.date);
+
+      const title = document.createElement('h4');
+      title.className = 'sq-release-title';
+      title.textContent = String(item.title || item.releaseId || 'Release');
+
+      head.append(id, date);
+      card.append(head, title);
+
+      if (Array.isArray(item.changes) && item.changes.length){
+        const list = document.createElement('ul');
+        list.className = 'sq-release-changes';
+        item.changes.forEach(function(change){
+          const li = document.createElement('li');
+          li.textContent = String(change);
+          list.appendChild(li);
+        });
+        card.appendChild(list);
+      }
+
+      if (item.releaseId && item.version){
+        const ref = document.createElement('div');
+        ref.className = 'sq-release-ref';
+        ref.textContent = String(item.releaseId);
+        card.appendChild(ref);
+      }
+
+      modal.body.appendChild(card);
+    });
+
+    if (meta.historyNote){
+      const note = document.createElement('p');
+      note.className = 'sq-release-history-note';
+      note.textContent = String(meta.historyNote);
+      modal.body.appendChild(note);
+    }
+  };
+})();
+// <<< PATCH:SC050_RELEASE_NOTES END
+
 function arrangeStartActions(){
   try{
     const host = document.querySelector('#details .start-actions.column') || document.querySelector('.start-actions.column');
@@ -23494,6 +23618,21 @@ function arrangeStartActions(){
       });
     } catch(_e) {}
     frag.appendChild(printer);
+
+    let releaseVersionBtn = document.getElementById('sqReleaseVersionBtn');
+    if (!releaseVersionBtn){
+      releaseVersionBtn = doc.createElement('button');
+      releaseVersionBtn.id = 'sqReleaseVersionBtn';
+      releaseVersionBtn.type = 'button';
+    }
+    releaseVersionBtn.className = 'sq-release-version';
+    releaseVersionBtn.onclick = function(){
+      if (typeof window.__sqOpenReleaseNotes === 'function') window.__sqOpenReleaseNotes();
+    };
+    frag.appendChild(releaseVersionBtn);
+    if (typeof window.__sqApplyReleaseVersionLabel === 'function'){
+      window.__sqApplyReleaseVersionLabel(releaseVersionBtn);
+    }
 
     // (removed) NEW PLAYERS ticker in VIDE
 
