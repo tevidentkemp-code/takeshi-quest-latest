@@ -1,0 +1,9 @@
+-- SC-048 rollback plan
+-- Revert the SC-048 client commit and restore the three pre-SC-048 view definitions together.
+-- Pre-change database fingerprint:
+-- v_misfire_events: 2964 rows
+-- v_misfire_penalty_events: 210 rows
+-- sum(v_player_misfire_xp.misfire_xp): -169
+-- v_player_misfire_xp fingerprint: 20a3b26b32c9d51ba061d94a48a210ad
+-- The authoritative pre-change SQL is the pg_views snapshot recorded in SHATEKI CODING BUILD LOG for SC-048.
+-- Never roll back only the XP view while leaving Volde events active.

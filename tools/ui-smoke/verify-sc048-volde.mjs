@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { detectImmediateMisfires, appliedMisfirePenalty } from '../../src/live-game/xp-breakdown.mjs';
+const rows=Array.from({length:14},()=>({roundTotal:10,darts:[{kind:'S',points:10,sector:10}]}));
+rows[11]={roundTotal:20,darts:[{kind:'Double',points:2,sector:1},{kind:'Double',points:10,sector:5},{kind:'Double',points:12,sector:6}]};
+rows[12]={roundTotal:27,darts:[{kind:'Triple',points:6,sector:2},{kind:'Triple',points:15,sector:5},{kind:'Triple',points:18,sector:6}]};
+const events=detectImmediateMisfires(rows,220), by=Object.fromEntries(events.map(e=>[e.code,e]));
+assert.equal(by.volde_deux?.count,2); assert.equal(by.volde_trois?.count,2); assert.equal(appliedMisfirePenalty(events),-8);
+assert.equal(appliedMisfirePenalty([{code:'deep_freeze',penalty:-3},{code:'sub_ton',penalty:-2},{code:'volde_deux',penalty:-2,count:3},{code:'volde_trois',penalty:-2,count:2}]),-13);
+assert.equal(appliedMisfirePenalty([{code:'ordinary',penalty:-8}]),-5);
+const modals=fs.readFileSync(new URL('../../src/ui/modals.js',import.meta.url),'utf8');
+for(const token of ["code:'volde_deux'","code:'volde_trois'","stackPerDart:true","excluded from that cap"]) assert.ok(modals.includes(token),token);
+const sql=fs.readFileSync(new URL('../../supabase/migrations/20260921180000_sc048_volde_misfires.sql',import.meta.url),'utf8');
+for(const token of ["'volde_deux'","'volde_trois'","sum(e.penalty) FILTER","NOT IN ('volde_deux','volde_trois')"]) assert.ok(sql.includes(token),token);
+console.log('SC-048 Volde contract PASS');

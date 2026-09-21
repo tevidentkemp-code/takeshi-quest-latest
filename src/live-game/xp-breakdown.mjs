@@ -9,9 +9,13 @@ const MISFIRE_META = Object.freeze({
   sub_ton: { name: 'Sub-Ton', penalty: -2 },
   special_delivery_failed: { name: 'Special Delivery Failed', penalty: -2 },
   bull_blind: { name: 'Bull Blind', penalty: -1 },
+  volde_deux: { name: 'Volde-D’eux', penalty: -2 },
+  volde_trois: { name: 'Volde-Trois', penalty: -2 },
   century_drought: { name: 'Century Drought', penalty: -2 },
   wooden_spoon: { name: 'Wooden Spoon', penalty: -3 },
 });
+
+const STACKING_MISFIRE_CODES = new Set(['volde_deux','volde_trois']);
 
 const SCORE_MILESTONES = Object.freeze([100, 200, 300, 400, 500, 600, 700]);
 
@@ -101,15 +105,48 @@ export function detectImmediateMisfires(rows, total) {
   if (Number(total || 0) < 100) add('sub_ton');
   if (values.length >= 14 && values[11] === 0 && values[12] === 0 && values[13] === 0) add('special_delivery_failed');
   if (values.length >= 14 && values[13] === 0) add('bull_blind');
+
+  const voldeCount = (row, expectedKinds) => {
+    const darts = Array.isArray(row && row.darts) ? row.darts : [];
+    return darts.filter(dart => {
+      const kind = norm(dart && dart.kind);
+      const sector = Number(dart && dart.sector);
+      return expectedKinds.includes(kind) && Number.isInteger(sector) && sector >= 1 && sector <= 5;
+    }).length;
+  };
+  const voldeDeux = voldeCount((Array.isArray(rows) ? rows : [])[11], ['double','d']);
+  const voldeTrois = voldeCount((Array.isArray(rows) ? rows : [])[12], ['triple','treble','t']);
+  if (voldeDeux > 0) {
+    const meta = MISFIRE_META.volde_deux;
+    events.push({ code:'volde_deux', name:meta.name, penalty:meta.penalty, count:voldeDeux });
+  }
+  if (voldeTrois > 0) {
+    const meta = MISFIRE_META.volde_trois;
+    events.push({ code:'volde_trois', name:meta.name, penalty:meta.penalty, count:voldeTrois });
+  }
   return events;
 }
 
-export function appliedMisfirePenalty(events) {
+function misfireEventCount(event) {
+  return Math.max(1, Number(event && event.count || 1));
+}
+function isStackingMisfire(event) {
+  return STACKING_MISFIRE_CODES.has(String(event && event.code || ''));
+}
+function appliedOrdinaryMisfirePenalty(events) {
   const penalties = (Array.isArray(events) ? events : [])
+    .filter(event => !isStackingMisfire(event))
     .map(event => Number(event && event.penalty || 0))
     .filter(value => value < 0);
   if (!penalties.length) return 0;
   return Math.max(-5, Math.min(...penalties));
+}
+export function appliedMisfirePenalty(events) {
+  const list = Array.isArray(events) ? events : [];
+  const ordinary = appliedOrdinaryMisfirePenalty(list);
+  const stacking = list.filter(isStackingMisfire)
+    .reduce((sum, event) => sum + Number(event && event.penalty || 0) * misfireEventCount(event), 0);
+  return ordinary + stacking;
 }
 
 function injectStyles() {
@@ -579,8 +616,12 @@ function buildDetailedRow(host, data) {
   const negative = makeSourceLine('NEGATIVE');
   if (data.negative.length) {
     data.negative.forEach(item => {
-      const applied = item.penalty === data.penalty;
-      negative.chips.appendChild(makeChip(`${item.name} ${item.penalty} XP${applied ? ' · APPLIED' : ''}`, 'negative', applied ? 'applied' : ''));
+      const count = misfireEventCount(item);
+      const stacking = isStackingMisfire(item);
+      const effectivePenalty = stacking ? Number(item.penalty || 0) * count : Number(item.penalty || 0);
+      const applied = stacking || item.penalty === data.ordinaryPenalty;
+      const countText = stacking && count > 1 ? ` ×${count}` : '';
+      negative.chips.appendChild(makeChip(`${item.name}${countText} ${effectivePenalty} XP${applied ? ' · APPLIED' : ''}`, 'negative', applied ? 'applied' : ''));
     });
   } else {
     negative.chips.appendChild(makeChip('NO MISFIRES', 'empty'));
@@ -685,6 +726,7 @@ async function buildPlayerData(host, st) {
 
     const negative = detectImmediateMisfires(board[p] || [], totals[p]);
     addStreakMisfires(negative, context, row, totals[p], bottomCount === 1 && totals[p] === minTotal);
+    const ordinaryPenalty = appliedOrdinaryMisfirePenalty(negative);
     const penalty = appliedMisfirePenalty(negative);
 
     const scoreXp = Math.round(Number(totals[p] || 0) * Number(host.SQ_XP.W.point || 0));
@@ -709,6 +751,7 @@ async function buildPlayerData(host, st) {
       base,
       positive,
       negative,
+      ordinaryPenalty,
       penalty,
       netXp,
       post:Math.max(0, row.pre + netXp),
