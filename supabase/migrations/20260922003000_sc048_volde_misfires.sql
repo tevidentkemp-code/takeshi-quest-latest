@@ -27,6 +27,7 @@ with off_games as materialized (
       nullif(lower(trim(coalesce(g.state->>'gameMode', g.state->>'mode', ''))), ''),
       'legacy'
     ) in ('legacy', 'official')
+    and cardinality(g.totals) >= 2
     and g.state ? 'board'
 ),
 darts as materialized (
