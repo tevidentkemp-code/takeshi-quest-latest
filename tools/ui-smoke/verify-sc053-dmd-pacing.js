@@ -35,34 +35,34 @@ const BROWSER_NOISE=/supabase|Failed to fetch|fetch failed|net::|NetworkError|lo
     const missX=page.locator('#pad .dtX3');
     assert.equal(await missX.count(),1,'MISS xN control must exist');
 
-    // Regression: one scoring dart must remain visible when MISS x2 fills darts 2+3.
-    await page.evaluate(()=>recordThrow({kind:'T'}));
-    await page.waitForFunction(()=>state.currentPlayer===0 && state.currentRound===0 && state.currentDart===1);
-    await page.evaluate(()=>{ window.__sc053Writes=[]; });
+    // Fresh visit: prove the full MISS x3 speed/punch sequence.
     await missX.click();
-    await page.waitForFunction(()=>state.currentPlayer===1 && state.currentRound===0 && state.currentDart===0,undefined,{timeout:2500});
+    await page.waitForFunction(()=>state.history.length>=3 && state.currentPlayer===1 && state.currentDart===0,undefined,{timeout:2500});
     await page.waitForTimeout(180);
-    const x2Writes=await page.evaluate(()=>window.__sc053Writes.filter(w=>/^MISS$/i.test(w.z2)&&/X/.test(w.z3)));
-    assert.equal(x2Writes.length,2,'MISS x2 must render two X impact frames');
-    assert.equal(x2Writes[0].z3.replace(/\s+/g,''),'T/X/','MISS x2 first frame must preserve dart 1 TREBLE');
-    assert.equal(x2Writes[1].z3.replace(/\s+/g,''),'T/X/X','MISS x2 final frame must preserve dart 1 TREBLE');
-
-    // Regression: two scoring darts must remain visible when MISS x1 fills dart 3.
-    await page.evaluate(()=>{
-      recordThrow({kind:'S'});
-      recordThrow({kind:'D'});
+    const missWrites=await page.evaluate(()=>window.__sc053Writes.filter(w=>/^MISS$/i.test(w.z2)&&/X/.test(w.z3)));
+    assert.equal(missWrites.length,3,'MISS x3 must render exactly three X impact frames');
+    missWrites.forEach((w,i)=>{
+      assert.equal(w.type,'snap',`MISS x3 frame ${i+1} must use snap`);
+      assert.equal(w.ms,125,`MISS x3 frame ${i+1} must be 125ms`);
+      assert.equal(w.revealMs,90,`MISS x3 frame ${i+1} reveal must be 90ms`);
     });
-    await page.waitForFunction(()=>state.currentPlayer===1 && state.currentRound===0 && state.currentDart===2);
-    await page.evaluate(()=>{ window.__sc053Writes=[]; });
-    await missX.click();
-    await page.waitForFunction(()=>state.currentPlayer===0 && state.currentRound===1 && state.currentDart===0,undefined,{timeout:2500});
-    await page.waitForTimeout(180);
-    const x1Writes=await page.evaluate(()=>window.__sc053Writes.filter(w=>/^MISS$/i.test(w.z2)&&/X/.test(w.z3)));
-    assert.equal(x1Writes.length,1,'MISS x1 must render one X impact frame');
-    assert.equal(x1Writes[0].z3.replace(/\s+/g,''),'S/D/X','MISS x1 must preserve darts 1+2');
+    const compact=missWrites.map(w=>w.z3.replace(/\s+/g,''));
+    assert.equal(compact[0],'X//','first MISS x3 frame must land one X');
+    assert.equal(compact[1],'X/X/','second MISS x3 frame must land two Xs');
+    assert.equal(compact[2],'X/X/X','third MISS x3 frame must land all three Xs');
+    const span=missWrites[2].at-missWrites[0].at;
+    assert(span<230,`MISS x3 X sequence should land quickly; observed ${span.toFixed(1)}ms`);
 
-    // Completed-round story remains ordered/readable after the corrected x1 path.
+    // Existing deterministic round-story scenario remains intact.
+    await page.evaluate(()=>{ window.__sc053Writes=[]; });
+    await page.evaluate(()=>{
+      recordThrow({kind:'T'});
+      recordThrow({kind:'T'});
+      recordThrow({kind:'T'});
+    });
+    await page.waitForFunction(()=>state.currentPlayer===0 && state.currentRound===1 && state.currentDart===0,undefined,{timeout:1500});
     await page.waitForTimeout(6200);
+
     const writes=await page.evaluate(()=>window.__sc053Writes.slice());
     const find=(pred)=>writes.find(pred);
     const roundScore=find(w=>w.z2==='ROUND SCORE');
@@ -86,24 +86,31 @@ const BROWSER_NOISE=/supabase|Failed to fetch|fetch failed|net::|NetworkError|lo
     assert(order.every((v,i)=>i===0||v>order[i-1]),'story frames must appear in canonical order');
     assert(!writes.some(w=>w.z2==='NEXT UP'),'redundant standalone NEXT UP frame must be removed');
 
-    // Fresh visit still proves the full MISS x3 speed/punch sequence.
+    // Regression: one scored dart must remain visible when MISS x2 fills darts 2+3.
+    await page.evaluate(()=>recordThrow({kind:'T'}));
+    await page.waitForFunction(()=>state.currentPlayer===0 && state.currentRound===1 && state.currentDart===1);
     await page.evaluate(()=>{ window.__sc053Writes=[]; });
     await missX.click();
     await page.waitForFunction(()=>state.currentPlayer===1 && state.currentRound===1 && state.currentDart===0,undefined,{timeout:2500});
     await page.waitForTimeout(180);
-    const missWrites=await page.evaluate(()=>window.__sc053Writes.filter(w=>/^MISS$/i.test(w.z2)&&/X/.test(w.z3)));
-    assert.equal(missWrites.length,3,'MISS x3 must render exactly three X impact frames');
-    missWrites.forEach((w,i)=>{
-      assert.equal(w.type,'snap',`MISS x3 frame ${i+1} must use snap`);
-      assert.equal(w.ms,125,`MISS x3 frame ${i+1} must be 125ms`);
-      assert.equal(w.revealMs,90,`MISS x3 frame ${i+1} reveal must be 90ms`);
+    const x2Writes=await page.evaluate(()=>window.__sc053Writes.filter(w=>/^MISS$/i.test(w.z2)&&/X/.test(w.z3)));
+    assert.equal(x2Writes.length,2,'MISS x2 must render two X impact frames');
+    assert.equal(x2Writes[0].z3.replace(/\s+/g,''),'T/X/','MISS x2 first frame must preserve dart 1 TREBLE');
+    assert.equal(x2Writes[1].z3.replace(/\s+/g,''),'T/X/X','MISS x2 final frame must preserve dart 1 TREBLE');
+
+    // Regression: two scored darts must remain visible when MISS x1 fills dart 3.
+    await page.evaluate(()=>{
+      recordThrow({kind:'S'});
+      recordThrow({kind:'D'});
     });
-    const compact=missWrites.map(w=>w.z3.replace(/\s+/g,''));
-    assert.equal(compact[0],'X//','first MISS x3 frame must land one X');
-    assert.equal(compact[1],'X/X/','second MISS x3 frame must land two Xs');
-    assert.equal(compact[2],'X/X/X','third MISS x3 frame must land all three Xs');
-    const span=missWrites[2].at-missWrites[0].at;
-    assert(span<230,`MISS x3 X sequence should land quickly; observed ${span.toFixed(1)}ms`);
+    await page.waitForFunction(()=>state.currentPlayer===1 && state.currentRound===1 && state.currentDart===2);
+    await page.evaluate(()=>{ window.__sc053Writes=[]; });
+    await missX.click();
+    await page.waitForFunction(()=>state.currentPlayer===0 && state.currentRound===2 && state.currentDart===0,undefined,{timeout:2500});
+    await page.waitForTimeout(180);
+    const x1Writes=await page.evaluate(()=>window.__sc053Writes.filter(w=>/^MISS$/i.test(w.z2)&&/X/.test(w.z3)));
+    assert.equal(x1Writes.length,1,'MISS x1 must render one X impact frame');
+    assert.equal(x1Writes[0].z3.replace(/\s+/g,''),'S/D/X','MISS x1 must preserve darts 1+2');
 
     const reduced=await page.evaluate(()=>{
       const before=window.matchMedia;
