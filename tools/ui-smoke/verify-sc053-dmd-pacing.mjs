@@ -18,6 +18,10 @@ assert(engine.includes("{ type:'wipe', ms:440, revealMs:110, fx:'smear' }"),'ord
 
 assert(missOwner.includes('var DMD_STEP_MS=75,DMD_HOLD_AFTER_MS=105,BUSY_EXTRA_MS=150;'),'MISS xN cadence contract missing');
 assert(missOwner.includes("var opts={type:'snap',ms:125,revealMs:90,amp:2.8,fx:'impact'};"),'MISS xN must use 125ms SNAP impact');
+assert(missOwner.includes('function dartToken(d,round)'),'MISS xN must derive existing dart tokens');
+assert(missOwner.includes('function currentVisitSnapshot()'),'MISS xN must snapshot the current visit before animating');
+assert(missOwner.includes("for(var i=0;i<Math.min(start,3,darts.length);i++)if(darts[i])cells[i]=dartToken(darts[i],round);"),'MISS xN snapshot must preserve prior scored darts');
+assert(missOwner.includes("for(var i=0;i<step&&start+i<3;i++)cells[start+i]='X';"),'MISS xN must place new Xs from the current dart slot');
 assert(missOwner.includes("},340);}setTimeout(function(){try{btn.classList.remove('sq-missx3-hit95');}catch(_){}},390);"),'MISS xN button ghost must be shortened');
 assert(missOwner.includes("['pointerdown','touchstart','click'].forEach(function(type){document.addEventListener(type,handleMissX3,true);});"),'Fix95 capture ownership must remain explicit');
 
