@@ -16,8 +16,10 @@ for (const release of RELEASE_METADATA.releases) {
 }
 const home = fs.readFileSync(new URL('../../src/ui/screens/home/home.html', import.meta.url), 'utf8');
 assert(home.includes('id="sqReleaseVersionBtn"'));
-assert(home.includes('./src/release/release-ui.mjs'));
+assert(!home.includes('./src/release/release-ui.mjs'), 'Home must not create a second Vite module entry');
 assert(!home.includes('v1.1.0'), 'Home must not duplicate canonical version truth');
+const bootstrap = fs.readFileSync(new URL('../../src/live-game/dmd/bootstrap.mjs', import.meta.url), 'utf8');
+assert(bootstrap.includes("import '../../release/release-ui.mjs'"), 'Release UI must ride the existing module entry');
 const ui = fs.readFileSync(new URL('../../src/release/release-ui.mjs', import.meta.url), 'utf8');
 assert(ui.includes("import { RELEASE_METADATA } from './release-metadata.mjs'"));
 assert(ui.includes('data-release-action="back"'));

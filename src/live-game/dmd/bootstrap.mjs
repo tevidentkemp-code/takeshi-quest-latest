@@ -4,6 +4,7 @@ import '../postgame-hotfix.mjs';
 import '../xp-breakdown.mjs';
 import '../postgame-release-guard.mjs';
 import '../bull-colours.mjs';
+import '../../release/release-ui.mjs';
 import { detectExistingBackend, install } from './controller.mjs';
 import { createMotionSafeBackend } from './motion.mjs';
 import { installCommentary } from './commentary.mjs';
