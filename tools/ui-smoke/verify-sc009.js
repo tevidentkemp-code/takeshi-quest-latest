@@ -77,8 +77,8 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
   });
 
   check('achievement sections ordered Milestones → Trophies / Awards → Misfires', JSON.stringify(ui.sections) === JSON.stringify(['Milestones','Trophies / Awards','Misfires']), JSON.stringify(ui.sections));
-  check('Misfires render all 8 trophy-style cards', ui.cardCount === 8, JSON.stringify(ui));
-  check('Misfire unlocked summary counts distinct earned rules', norm(ui.unlocked) === '2 / 8 unlocked', ui.unlocked);
+  check('Misfires render all 10 trophy-style cards', ui.cardCount === 10, JSON.stringify(ui));
+  check('Misfire unlocked summary counts distinct earned rules', norm(ui.unlocked) === '2 / 10 unlocked', ui.unlocked);
   check('Misfire historical total remains DB-derived', norm(ui.total) === '4 historical occurrences', ui.total);
   check('Misfire XP remains DB-derived', norm(ui.xp) === '-2 XP', ui.xp);
   check('Bull Blind repeat badge shows ×3', ui.byCode.bull_blind && ui.byCode.bull_blind.count === 3 && norm(ui.byCode.bull_blind.repeat) === '×3' && norm(ui.byCode.bull_blind.penalty) === '-1 XP', JSON.stringify(ui.byCode));
@@ -142,7 +142,7 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
   check('Misfire card opens detail modal', !!detail && /Bull Blind/.test(detail.text || ''), JSON.stringify(detail));
   if (detail) {
     check('Misfire detail carries repeat count', /Recorded ×3 historically/i.test(detail.count), detail.count);
-    check('Misfire detail preserves launch-forward/worst/-5 rule', /5 Sep 2026 20:13 UTC/i.test(detail.rule) && /Only the worst Misfire applies per game/i.test(detail.rule) && /maximum deduction is 5 XP per game/i.test(detail.rule), detail.rule);
+    check('Misfire detail preserves launch-forward ordinary cap plus Volde exception', /5 Sep 2026 20:13 UTC/i.test(detail.rule) && /ordinary Misfires/i.test(detail.rule) && /capped at 5 XP per game/i.test(detail.rule) && /Volde-D[’']eux and Volde-Trois/i.test(detail.rule), detail.rule);
     check('Misfire detail now includes all-player leaderboard', norm(detail.title) === 'Misfire leaderboard' && detail.rows.length === 2, JSON.stringify(detail.rows));
     check('Misfire leaderboard ranks historical counts descending', detail.rows[0] && detail.rows[0].rank === '#1' && detail.rows[0].name === 'Alex S' && detail.rows[0].count === '×3' && detail.rows[1] && detail.rows[1].rank === '#2' && detail.rows[1].name === 'Sam T' && detail.rows[1].count === '×2', JSON.stringify(detail.rows));
     check('Misfire leaderboard reads the verified Misfire source only', detail.sourceAudit.some(x => x.table === 'v_player_misfires' && x.code === 'bull_blind'), JSON.stringify(detail.sourceAudit));
