@@ -55,6 +55,7 @@ for (const needle of [
   "g.finished = true",
   "coalesce(g.is_practice, false) = false",
   "coalesce(g.is_tiebreak, false) = false",
+  "cardinality(g.totals) >= 2",
   "in ('legacy', 'official')",
   "ridx = 11",
   "kind in ('d', 'double')",
