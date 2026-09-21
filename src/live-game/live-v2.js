@@ -1200,7 +1200,7 @@ function buildPad(){
         (typeof state !== 'undefined' && state && typeof state.currentDartIndex === 'number') ? state.currentDartIndex :
         (typeof state !== 'undefined' && state && typeof state.dartIndex === 'number') ? state.dartIndex : 0;
 
-      const specialMissSeq = (dart >= 0 && dart <= 2 && n >= 2);
+      const specialMissSeq = (dart >= 0 && dart <= 2 && n >= 1);
       const seqSlots = [' ', ' ', ' '];
 
       try{
@@ -1252,9 +1252,9 @@ function buildPad(){
           base[idx] = 'X';
           try{
             const z3 = `${base[0]} / ${base[1]} / ${base[2]}`;
-            window.sqDmdShowZones?.({ z2: label, z3, z3Small:true }, { type:'snap', ms:150, revealMs:125, amp:2.6, fx:'impact' });
+            window.sqDmdShowZones?.({ z2: label, z3, z3Small:true }, { type:'flash', ms:260, fx:'impact' });
           }catch(_){}
-          await new Promise(r=>setTimeout(r,165));
+          await new Promise(r=>setTimeout(r,280));
         }
       }
 
@@ -1320,7 +1320,7 @@ function buildPad(){
           (typeof state !== 'undefined' && state && typeof state.currentDartIndex === 'number') ? state.currentDartIndex :
           (typeof state !== 'undefined' && state && typeof state.dartIndex === 'number') ? state.dartIndex : 0;
 
-        const specialMissSeq = (dart >= 0 && dart <= 2 && n >= 2);
+        const specialMissSeq = (dart >= 0 && dart <= 2 && n >= 1);
         const seqSlots = [' ', ' ', ' '];
 
         try{
@@ -1373,9 +1373,9 @@ function buildPad(){
             base[idx] = 'X';
             try{
               const z3 = `${base[0]} / ${base[1]} / ${base[2]}`;
-              window.sqDmdShowZones?.({ z2: label, z3, z3Small:true }, { type:'snap', ms:150, revealMs:125, amp:2.6, fx:'impact' });
+              window.sqDmdShowZones?.({ z2: label, z3, z3Small:true }, { type:'flash', ms:260, fx:'impact' });
             }catch(_){}
-            await new Promise(r=>setTimeout(r,165));
+            await new Promise(r=>setTimeout(r,280));
           }
         }
 
