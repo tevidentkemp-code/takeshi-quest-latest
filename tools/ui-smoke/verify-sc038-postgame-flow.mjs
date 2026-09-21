@@ -93,4 +93,11 @@ assert.equal(projectedMatchCompletion({
   match:{ targetWins:1, wins:[0,0], history:[] }
 }, 'practice').complete, false, 'Practice must never show Match Win');
 
+assert.equal(projectedMatchCompletion({
+  ...matchFixture,
+  gameMode:'vs_shadow',
+  mode:'vs_shadow',
+  match:{ targetWins:1, wins:[0,0], history:[] }
+}, 'vs_shadow').complete, false, 'Vs Shadow must not inherit the standard FT3/FT5 Match Win gate');
+
 console.log('SC-038 helper contract PASS');
