@@ -130,16 +130,16 @@ export function projectedMatchCompletion(st, modeOverride = '') {
   const currentWins = Array.from({ length: players.length }, (_, index) => Math.max(0, Number(match.wins?.[index]) || 0));
   const projectedWins = currentWins.slice();
   const gameWinnerIndex = currentGameWinnerIndex(st);
-  const practiceLike = /practice|training/.test(mode) || st?.forcePractice === true || st?.isPractice === true;
+  const nonMatchWinMode = /practice|training|shadow/.test(mode) || st?.forcePractice === true || st?.isPractice === true;
 
-  if (!practiceLike && !st?.gameAwarded && gameWinnerIndex >= 0) {
+  if (!nonMatchWinMode && !st?.gameAwarded && gameWinnerIndex >= 0) {
     projectedWins[gameWinnerIndex] = (projectedWins[gameWinnerIndex] || 0) + 1;
   }
 
   const maxWins = projectedWins.length ? Math.max(...projectedWins) : 0;
   const leaders = projectedWins.map((value, index) => value === maxWins ? index : -1).filter(index => index >= 0);
   const winnerIndex = leaders.length === 1 ? leaders[0] : -1;
-  const complete = !practiceLike && winnerIndex >= 0 && maxWins >= targetWins;
+  const complete = !nonMatchWinMode && winnerIndex >= 0 && maxWins >= targetWins;
 
   return { complete, targetWins, winnerIndex, projectedWins, gameWinnerIndex, mode };
 }
