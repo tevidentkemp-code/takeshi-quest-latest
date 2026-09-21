@@ -907,15 +907,15 @@ try {
     try{
       if (!window.sqDmdShowZones) return false;
       const rz2 = String((opts && opts.restoreZ2) ?? ''), rz3 = String((opts && opts.restoreZ3) ?? '');
-      window.sqDmdShowZones({ z2:String(first || '').toUpperCase(), z3:'' }, { type:'flash', ms:Number((opts && opts.firstMs) || 620), fx:'impact' });
-      window.sqDmdShowZones({ z2:String(second || '').toUpperCase(), z3:'' }, { type:'flash', ms:Number((opts && opts.secondMs) || 720), fx:'impact' });
+      window.sqDmdShowZones({ z2:String(first || '').toUpperCase(), z3:'' }, { type:'snap', ms:Number((opts && opts.firstMs) || 520), revealMs:140, amp:2.5, fx:'impact' });
+      window.sqDmdShowZones({ z2:String(second || '').toUpperCase(), z3:'' }, { type:'hold', ms:Number((opts && opts.secondMs) || 760), fx:'impact' });
       window.sqDmdShowZones({ z2:rz2, z3:rz3 }, { type:'hold', ms:1 });
       return true;
     }catch(_){ return false; }
   }
 
   let z2 = '';
-  let fx = { type:'flash', ms:650 };
+  let fx = { type:'snap', ms:420, revealMs:130, amp:2.2, fx:'impact' };
   let __queueOnlyCombo = false;
 
   if (kind === 'Miss' || pts === 0) {
@@ -923,13 +923,13 @@ try {
       __queueOnlyCombo = true;
     } else if (__thirdMissAfterTwoTriples || __thirdMissAfterTwoDoubles) {
       z2 = 'AWKWARD';
-      fx = { type:'shake', amp:3.0, ms:900, fx:'impact' };
+      fx = { type:'shake', amp:3.0, ms:650, fx:'impact' };
     } else if (__isScratchVisit) {
       z2 = 'SCRATCH';
-      fx = { type:'flash', ms:760, fx:'smear' };
+      fx = { type:'snap', ms:520, revealMs:140, amp:2.8, fx:'impact' };
     } else {
       z2 = 'MISS';
-      fx = { type:'flash', ms:650, fx:'smear' };
+      fx = { type:'snap', ms:380, revealMs:120, amp:2.2, fx:'impact' };
     }
   } else if (__isDesmondDelight) {
     __queueOnlyCombo = __sqQueueComboPhrase('DESMOND DELIGHT', { imageType:'desmondImg', imageMs:950, amp:3.6, stepMs:280, restoreZ2:'', restoreZ3:(window.__sqDmdBulkMiss ? '' : seq) });
@@ -945,14 +945,14 @@ try {
       __queueOnlyCombo = __sqQueueComboPhrase('BULLSEYE', { wholePhrase:true, phraseMs:700, afterType:'bullseyeHit', afterMs:1100, restoreZ2:'', restoreZ3:(window.__sqDmdBulkMiss ? '' : seq) });
     } else {
       z2 = 'OUTER!';
-      fx = { type:'shake', amp:2.0, ms:760, fx:'impact' };
+      fx = { type:'shake', amp:2.0, ms:600, fx:'impact' };
     }
   } else if (kind === 'Triple' || kind === 'T') {
     window.__sqDmdTripleCount = (window.__sqDmdTripleCount||0) + 1;
     const n = window.__sqDmdTripleCount;
     if (n === 1) {
       z2 = 'TREBLE!';
-      fx = { type:'shake', amp:2.3, ms:850, fx:'impact' };
+      fx = { type:'shake', amp:2.3, ms:720, fx:'impact' };
     } else if (n === 2 && dartIndex === 1) {
       z2 = 'CAN HE......?';
       fx = { type:'anticipationEyes', ms:1150, fx:'impact' };
@@ -966,13 +966,13 @@ try {
     const n = window.__sqDmdDoubleCount;
     if (n === 1) {
       z2 = 'DOUBLE!';
-      fx = { type:'flash', ms:800, fx:'impact' };
+      fx = { type:'snap', ms:580, revealMs:150, amp:2.5, fx:'impact' };
     } else if (n === 2 && dartIndex === 1) {
       z2 = 'HOLD UP....';
       fx = { type:'anticipationEyes', ms:1150, fx:'impact' };
     } else if (n === 2 && dartIndex === 2) {
       z2 = 'TWO DOUBLES!';
-      fx = { type:'flash', ms:850, fx:'impact' };
+      fx = { type:'snap', ms:640, revealMs:150, amp:2.7, fx:'impact' };
     } else {
       __queueOnlyCombo = __sqQueueComboPhrase('GET IN THE SEA!!', { wholePhrase:true, phraseMs:760, afterType:'dolphinSwim', afterMs:2000, restoreZ2:'', restoreZ3:(window.__sqDmdBulkMiss ? '' : seq) });
     }
@@ -992,7 +992,7 @@ try {
       __queueOnlyCombo = __sqQueueComboPhrase(pick, { stepMs:250, restoreZ2:'', restoreZ3:(window.__sqDmdBulkMiss ? '' : seq) });
     } else {
       z2 = 'SINGLE';
-      fx = { type:'wipe', ms:650, fx:'smear' };
+      fx = { type:'wipe', ms:440, revealMs:110, fx:'smear' };
     }
   }
 
@@ -1009,7 +1009,17 @@ try {
       if (!__protectedDmdBeat || Number(__sqCommentaryDartBeat.priority || 0) >= 45) {
         z2 = String(__sqCommentaryDartBeat.headline || z2).toUpperCase();
         __sqCommentaryOwnsSubline = Number(__sqCommentaryDartBeat.priority || 0) >= 45 && !!__sqCommentaryDartBeat.subline;
-        fx = { type:'flash', ms:(__sqCommentaryOwnsSubline ? 900 : 700), fx:'impact' };
+        if (__sqCommentaryOwnsSubline) {
+          const __sqDartStoryChars = String(__sqCommentaryDartBeat.headline || '').length + String(__sqCommentaryDartBeat.subline || '').length;
+          const __sqDartStoryMs = Math.max(1450, Math.min(1850, 1250 + (__sqDartStoryChars * 14)));
+          try{
+            const __active = window.__sqDmdV2?.snapshot?.().active;
+            if (__active && Number(__active.priority || 0) <= 20) window.__sqDmdCancelTransientScenes?.();
+          }catch(_){}
+          fx = { type:'hold', ms:__sqDartStoryMs, fx:'impact' };
+        } else {
+          fx = { type:'snap', ms:620, revealMs:135, amp:2.4, fx:'impact' };
+        }
       }
     }
   }catch(_){ }
@@ -1163,18 +1173,37 @@ setTimeout(() => {
       ? window.__sqDmdBuildPreThrowInfo(nextPlayerIdx)
       : [`SCORE: ${nextTotal}  PB: —`, `POS: ${pos}/${pCount} • DIFF: ${diffTxt}`];
 
-    // 1) ROUND SCORE always lands first. Commentary then gets a bounded
-    // story beat before navigation resumes. A new throw invalidates every timer.
-    window.sqDmdShowZones?.({ z2: 'ROUND SCORE', z3: String(roundTotal), z3Small:true, type:'roll' }, { type:'flash', ms:650, fx:'impact' });
+    // 1) ROUND SCORE is information, not spectacle: give it a stable read.
+    // Low-value modular transients are cleared first so they cannot sit on top
+    // of the post-visit story. Competitive/achievement/record/game scenes survive.
+    const __sqClearLowPriorityTransient = () => {
+      try{
+        const __active = window.__sqDmdV2?.snapshot?.().active;
+        if (__active && Number(__active.priority || 0) <= 20) window.__sqDmdCancelTransientScenes?.();
+      }catch(_){}
+    };
+    const __sqStoryHoldMs = (story, kind='visit') => {
+      const chars = String(story?.headline || '').trim().length + String(story?.subline || '').trim().length;
+      const base = kind === 'round' ? 1900 : 1600;
+      const max = kind === 'round' ? 2450 : 2200;
+      return Math.max(base, Math.min(max, base + Math.max(0, chars - 18) * 18));
+    };
 
-    const __sqShowStoryBeat = (story, ms=680) => {
+    __sqClearLowPriorityTransient();
+    window.sqDmdShowZones?.(
+      { z2:'ROUND SCORE', z3:String(roundTotal), z3Small:true },
+      { type:'roll', ms:1050, fx:'impact' }
+    );
+
+    const __sqShowStoryBeat = (story, ms, type='hold') => {
       if (!story || !__sqDmdStage3Current()) return;
       try{
+        __sqClearLowPriorityTransient();
         window.sqDmdShowZones?.({
           z2:String(story.headline || '').toUpperCase(),
           z3:String(story.subline || '').toUpperCase(),
           z3Small:true
-        }, { type:'flash', ms, fx:'impact' });
+        }, { type, ms:Number(ms || __sqStoryHoldMs(story,'visit')), revealMs:260, fx:'impact' });
       }catch(_){}
     };
 
@@ -1191,19 +1220,19 @@ setTimeout(() => {
       }
     }catch(_){ }
 
-    let __sqStoryCursor = 0;
+    let __sqStoryCursor = 1080;
     if (__sqCommentaryVisitBeat) {
-      __sqStoryCursor = 700;
+      const __visitStoryMs = __sqStoryHoldMs(__sqCommentaryVisitBeat, 'visit');
+      const __visitStoryAt = __sqStoryCursor;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
-        __sqShowStoryBeat(__sqCommentaryVisitBeat, 680);
-      }, __sqStoryCursor);
-      __sqStoryCursor += 720;
-    } else {
-      __sqStoryCursor = 850;
+        __sqShowStoryBeat(__sqCommentaryVisitBeat, __visitStoryMs, 'hold');
+      }, __visitStoryAt);
+      __sqStoryCursor += (__visitStoryMs + 100);
     }
 
-    // 2) Branch: completed round gets its own verdict/punchline before NEXT UP.
+    // 2) Completed rounds get a cabinet-style shutter, then a proper punchline.
+    // Navigation is deliberately condensed to one frame afterwards.
     if (willAdvanceRound) {
       const currLbl = roundLabel(currDef);
       const nextLbl = nextDef ? (nextDef.type === 'number' ? `${nextDef.target}` : roundLabel(nextDef)) : '';
@@ -1211,64 +1240,62 @@ setTimeout(() => {
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2: `ROUND ${currLbl}`, z3:'COMPLETE', z3Small:true, type:'roll' }, { type:'flash', ms:650, fx:'smear' });
+          window.sqDmdShowZones?.(
+            { z2:`ROUND ${currLbl}`, z3:'COMPLETE', z3Small:true },
+            { type:'shutter', ms:950, revealMs:280, fx:'smear' }
+          );
         }catch(_){}
       }, __roundCompleteAt);
 
-      __sqStoryCursor = __roundCompleteAt + 700;
+      __sqStoryCursor = __roundCompleteAt + 980;
       if (__sqCommentaryRoundBeat) {
+        const __roundStoryMs = __sqStoryHoldMs(__sqCommentaryRoundBeat, 'round');
         const __roundPunchlineAt = __sqStoryCursor;
         setTimeout(()=>{
           if (!__sqDmdStage3Current()) return;
-          __sqShowStoryBeat(__sqCommentaryRoundBeat, 700);
+          __sqShowStoryBeat(__sqCommentaryRoundBeat, __roundStoryMs, 'hold');
         }, __roundPunchlineAt);
-        __sqStoryCursor += 740;
+        __sqStoryCursor += (__roundStoryMs + 110);
       }
 
-      const __nextAt = __sqStoryCursor;
+      const __handoffAt = __sqStoryCursor;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2:'NEXT UP', z3:String(nextLbl || '').toUpperCase() }, { type:'flash', ms:680, fx:'smear' });
+          window.sqDmdShowZones?.(
+            { z2:(nextLbl ? `NEXT: ${String(nextLbl).toUpperCase()}` : 'NEXT'), z3:`${nextName} TO THROW`, z3Small:true },
+            { type:'wipe', ms:900, revealMs:180, fx:'smear' }
+          );
         }catch(_){}
-      }, __nextAt);
+      }, __handoffAt);
 
-      const __playerAt = __nextAt + 720;
+      const __preThrowAt = __handoffAt + 930;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2: nextName, z3:'TO THROW' }, { type:'wipe', ms:720, fx:'impact', z3Small:true });
-        }catch(_){}
-      }, __playerAt);
-
-      const __preThrowAt = __playerAt + 760;
-      setTimeout(()=>{
-        if (!__sqDmdStage3Current()) return;
-        try{
-          window.sqDmdShowZones?.({ z2: nextName, z3:'' }, { type:'hold', ms:1 });
+          window.sqDmdShowZones?.({ z2:nextName, z3:'' }, { type:'hold', ms:1 });
           window.__sqDmdStartPreThrow?.(nextName, infoLines);
         }catch(_){}
       }, __preThrowAt);
     } else {
-      const __nextAt = __sqStoryCursor;
+      // No separate NEXT UP card: go straight from the visit story to the next
+      // player. This shortens dead air while keeping the meaningful text longer.
+      const __handoffAt = __sqStoryCursor;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2: 'NEXT UP', z3:'' }, { type:'flash', ms:600, fx:'smear' });
+          window.sqDmdShowZones?.(
+            { z2:nextName, z3:'TO THROW', z3Small:true },
+            { type:'wipe', ms:820, revealMs:160, fx:'smear' }
+          );
         }catch(_){}
-      }, __nextAt);
+      }, __handoffAt);
 
-      const __playerAt = __nextAt + 650;
-      setTimeout(()=>{
-        if (!__sqDmdStage3Current()) return;
-        try{ window.sqDmdShowZones?.({ z2: nextName, z3:'TO THROW' }, { type:'wipe', ms:650, fx:'impact', z3Small:true }); }catch(_){}
-      }, __playerAt);
-
-      const __preThrowAt = __playerAt + 700;
+      const __preThrowAt = __handoffAt + 850;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2: nextName, z3:'' }, { type:'hold', ms:1 });
+          window.sqDmdShowZones?.({ z2:nextName, z3:'' }, { type:'hold', ms:1 });
           window.__sqDmdStartPreThrow?.(nextName, infoLines);
         }catch(_){}
       }, __preThrowAt);

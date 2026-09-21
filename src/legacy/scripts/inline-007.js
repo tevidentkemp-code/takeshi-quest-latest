@@ -630,16 +630,30 @@ function thresholdNativeToAmber(){
     const ageFx = (active && active.start) ? (now - active.start) : 0;
     let fxDx = 0, fxDy = 0;
 
+    const __sqMotionReduced = (()=>{ try{ return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches; }catch(_){ return false; } })();
+
     // SHAKE: small deterministic shake (no random allocations)
-    if (active && active.type === "shake") {
+    if (active && active.type === "shake" && !__sqMotionReduced) {
       const amp = (typeof active.amp === "number" ? active.amp : 2.0) * DPR;
       fxDx = Math.round(Math.sin(ageFx * 0.06) * amp);
       fxDy = Math.round(Math.cos(ageFx * 0.07) * (amp * 0.65));
     }
 
-    // Wipe: reveal left→right (or reverse) via clip rect
+    // SNAP: a very short cabinet-style slam. Unlike FLASH it never hides the
+    // text, so rapid MISS x2/x3 frames read as impacts rather than strobing.
+    let fxScale = 1;
+    if (active && active.type === "snap" && !__sqMotionReduced) {
+      const dur = Math.max(90, Number(active.revealMs || 150));
+      const p = Math.max(0, Math.min(1, ageFx / dur));
+      const decay = 1 - Math.pow(p, 0.55);
+      const amp = (typeof active.amp === "number" ? active.amp : 2.4) * DPR;
+      fxDx += Math.round((Math.sin(ageFx * 0.18) >= 0 ? 1 : -1) * amp * decay);
+      fxScale = 1 + (0.055 * decay);
+    }
+
+    // Wipe: reveal left→right (or reverse) via clip rect.
     let doClip = false, clipX = 0, clipW = outW;
-    if (active && active.type === "wipe") {
+    if (active && active.type === "wipe" && !__sqMotionReduced) {
       const revealMs = (typeof active.revealMs === "number" ? active.revealMs : 260);
       const p = Math.max(0, Math.min(1, ageFx / Math.max(60, revealMs)));
       doClip = true;
@@ -652,11 +666,35 @@ function thresholdNativeToAmber(){
       }
     }
 
+    // SHUTTER: four alternating horizontal bands reveal the next story beat.
+    // Used sparingly for round changes so it feels like a cabinet transition,
+    // not a generic web-page wipe.
+    let doShutter = !!(active && active.type === "shutter" && !__sqMotionReduced);
+    const shutterRevealMs = Math.max(140, Number(active?.revealMs || 300));
+
     ctx.save();
+    if (fxScale !== 1) {
+      ctx.translate(outW / 2, outH / 2);
+      ctx.scale(fxScale, fxScale);
+      ctx.translate(-outW / 2, -outH / 2);
+    }
     if (fxDx || fxDy) ctx.translate(fxDx, fxDy);
     if (doClip) {
       ctx.beginPath();
       ctx.rect(clipX, 0, Math.max(1, clipW), outH);
+      ctx.clip();
+    } else if (doShutter) {
+      const bands = 4;
+      const bandH = outH / bands;
+      ctx.beginPath();
+      for (let i = 0; i < bands; i++) {
+        const delay = i * 26;
+        const p = Math.max(0, Math.min(1, (ageFx - delay) / shutterRevealMs));
+        const eased = 1 - Math.pow(1 - p, 3);
+        const w = Math.max(1, Math.floor(outW * eased));
+        const x = (i % 2 === 0) ? 0 : (outW - w);
+        ctx.rect(x, Math.floor(i * bandH), w, Math.ceil(bandH + 1));
+      }
       ctx.clip();
     }
     // <<< PATCH:SQ_DMD_ANIM_PACK1_CTXFX END
@@ -1132,7 +1170,7 @@ if (!active || active.type === "idle") {
     __sqDmdLastZ3 = (z3 ?? "").toString();
 
     enqueue({
-      type: o.type || "hold", // hold | flash | wipe | shake | roll | idle | pulseFull | anticipationEyes | dolphinSwim | bullseyeHit
+      type: o.type || "hold", // hold | flash | wipe | shutter | snap | shake | roll | idle | pulseFull | anticipationEyes | dolphinSwim | bullseyeHit
       dir: o.dir || "fwd",     // for wipe: fwd | rev
       revealMs: (typeof o.revealMs === "number" ? o.revealMs : undefined),
       amp: (typeof o.amp === "number" ? o.amp : undefined), // for shake
