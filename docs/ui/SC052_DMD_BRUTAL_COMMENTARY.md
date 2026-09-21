@@ -1,6 +1,12 @@
 # SC-052 — DMD Brutal Commentary
 
-Status: BUILD CANDIDATE
+Status: RELEASED / VERIFIED IN MAIN
+
+## Release evidence
+- PR #61 exact head: `7b92132f0c84ba09e61b6baef94fb33153650baa`
+- Production merge: `affd7c93458a2c09ce10ddfa1abfb267c2dab971`
+- Released: 21/09/2026
+- SC-053 is the presentation-only pacing/motion follow-on; it does not alter this commentary authority contract.
 
 ## Purpose
 Turn the live DMD into a stateful, sarcastic British crime-caper/pub commentator that reacts to the actual darts story without becoming a scoring engine.
