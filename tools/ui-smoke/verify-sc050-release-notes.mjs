@@ -7,7 +7,10 @@ const css = fs.readFileSync('src/styles/home/start-hero.css','utf8');
 
 assert.equal(meta.schemaVersion,1);
 assert.match(meta.currentVersion,/^\d+\.\d+\.\d+$/);
-assert.equal(meta.currentReleaseId,'SC-050');
+assert(meta.currentReleaseId,'currentReleaseId required');
+const sc050 = meta.releases.find((row)=>row.releaseId === 'SC-050');
+assert(sc050,'SC-050 foundation release must remain in history');
+assert.equal(sc050.version,'0.1.0','SC-050 must remain the first public v0.1.0 release');
 assert(Array.isArray(meta.releases) && meta.releases.length >= 20);
 assert.equal(meta.releases[0].version,meta.currentVersion);
 assert.equal(meta.releases[0].releaseId,meta.currentReleaseId);
@@ -33,4 +36,4 @@ assert(css.includes(".sq-release-notes-body"));
 assert(css.includes("overflow-y:auto"));
 assert(css.includes(".sq-release-entry.is-current"));
 
-console.log('SC-050 release metadata/static contract PASS:', meta.currentVersion, meta.releases.length, 'entries');
+console.log('Release metadata/static contract PASS:', meta.currentVersion, meta.currentReleaseId, meta.releases.length, 'entries');
