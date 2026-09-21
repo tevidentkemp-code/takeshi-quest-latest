@@ -14,6 +14,14 @@ const BROWSER_NOISE=/supabase|Failed to fetch|fetch failed|net::|NetworkError|lo
 
     await page.evaluate(()=>{
       window.__sc053Writes=[];
+      window.__sc053TransientCancels=0;
+      const originalCancel=window.__sqDmdCancelTransientScenes;
+      if (typeof originalCancel==='function') {
+        window.__sqDmdCancelTransientScenes=function(){
+          window.__sc053TransientCancels++;
+          return originalCancel.apply(this,arguments);
+        };
+      }
       const original=window.sqDmdShowZones;
       window.__sc053OriginalShowZones=original;
       window.sqDmdShowZones=function(z,o){
@@ -58,27 +66,32 @@ const BROWSER_NOISE=/supabase|Failed to fetch|fetch failed|net::|NetworkError|lo
     await page.evaluate(()=>{
       recordThrow({kind:'T'});
       recordThrow({kind:'T'});
+      // Put an ordinary low-priority controller transient on screen immediately
+      // before dart 3. Stage 3 must clear it before the readable story begins.
+      try{ window.__sqDmdV2?.emit?.({kind:'HIT_SINGLE',points:10,total:10}); }catch(_){}
       recordThrow({kind:'T'});
     });
     await page.waitForFunction(()=>state.currentPlayer===0 && state.currentRound===1 && state.currentDart===0,undefined,{timeout:1500});
-    await page.waitForTimeout(6200);
+    await page.waitForTimeout(8200);
 
     const writes=await page.evaluate(()=>window.__sc053Writes.slice());
     const find=(pred)=>writes.find(pred);
     const roundScore=find(w=>w.z2==='ROUND SCORE');
-    const visitStory=find(w=>w.type==='hold' && w.ms===1200);
+    const visitStory=find(w=>w.type==='hold' && w.ms>=1600 && w.ms<=2200);
     const roundComplete=find(w=>/^ROUND /.test(w.z2) && w.z3==='COMPLETE');
-    const roundPunch=find(w=>w.type==='hold' && w.ms===1380);
+    const roundPunch=find(w=>w.type==='hold' && w.ms>=1900 && w.ms<=2450);
     const handoff=find(w=>/^NEXT:/.test(w.z2) && /TO THROW/.test(w.z3));
 
     assert(roundScore,'ROUND SCORE frame missing');
     assert.equal(roundScore.type,'roll');
-    assert.equal(roundScore.ms,900,'ROUND SCORE must remain readable for 900ms');
-    assert(visitStory,'end-of-go story must hold for 1200ms');
+    assert.equal(roundScore.ms,1050,'ROUND SCORE must remain readable for 1050ms');
+    assert(visitStory,'end-of-go story must hold for at least 1600ms');
     assert(roundComplete,'ROUND COMPLETE frame missing');
     assert.equal(roundComplete.type,'shutter','round change must use split shutter');
-    assert.equal(roundComplete.ms,900);
-    assert(roundPunch,'end-of-round punchline must hold for 1380ms');
+    assert.equal(roundComplete.ms,950);
+    assert(roundPunch,'end-of-round punchline must hold for at least 1900ms');
+    const transientCancels=await page.evaluate(()=>window.__sc053TransientCancels||0);
+    assert(transientCancels>=1,'important story must clear a low-priority controller transient');
     assert(handoff,'combined next-target/player handoff missing');
     assert.equal(handoff.type,'wipe');
     assert.equal(handoff.ms,900);
