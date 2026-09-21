@@ -111,7 +111,11 @@ jobs:
         env:
           SQ_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           SQ_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node tools/ui-smoke/verify-release-metadata-policy.mjs "$SQ_BASE_SHA" "$SQ_HEAD_SHA"
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$SQ_BASE_SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$SQ_BASE_SHA"
+          node tools/ui-smoke/verify-release-metadata-policy.mjs "$SQ_BASE_SHA" "$SQ_HEAD_SHA"
 
       - name: Check patch whitespace
         shell: bash
