@@ -5218,6 +5218,45 @@ function __sqUnrankedXpMode(){
     return '';
   }catch(_){ return ''; }
 }
+
+// SXP-04: warm the existing pre-game XP lookup as soon as a completed game
+// enters the Game Winner flow. This does not calculate, award or persist XP;
+// it only moves the same v_player_xp-backed reads earlier and runs them in
+// parallel so the Rewards screen does not begin with a network waterfall.
+function __sqGcXpPrefetchKey(){
+  try{
+    const token = Number(state && state.__gameToken || 0);
+    const names = (state && Array.isArray(state.players) ? state.players : [])
+      .map(p => String((p && (p.name || p.player)) || '').trim().toLowerCase());
+    return token + '|' + names.join('|');
+  }catch(_){ return ''; }
+}
+function __sqGcXpStartPrefetch(){
+  try{
+    if (!window.SQ_XP || typeof SQ_XP.forName !== 'function' || !state) return Promise.resolve([]);
+    if (__sqUnrankedXpMode()) return Promise.resolve([]);
+    const key = __sqGcXpPrefetchKey();
+    const existing = window.__sqGcXpPrefetch;
+    if (existing && existing.key === key && existing.promise) return existing.promise;
+    const players = (state.players || []).map(p => String((p && (p.name || p.player)) || '').trim());
+    const startedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const promise = Promise.all(players.map(async name => {
+      if (!name) return null;
+      try{ return await SQ_XP.forName(name); }catch(_){ return null; }
+    })).then(rows => {
+      try{
+        if (window.__sqGcXpPrefetch && window.__sqGcXpPrefetch.key === key){
+          window.__sqGcXpPrefetch.resolved = rows;
+          window.__sqGcXpPrefetch.resolvedAt =
+            (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        }
+      }catch(_){}
+      return rows;
+    });
+    window.__sqGcXpPrefetch = { key, promise, startedAt, resolved:null };
+    return promise;
+  }catch(_){ return Promise.resolve([]); }
+}
 async function __sqGcXpReveal(host, onComplete){
   try{
     if (!window.SQ_XP || !window.SQ_ACH || !state || !state.score){ if (onComplete) onComplete(); return; }
@@ -5247,6 +5286,9 @@ async function __sqGcXpReveal(host, onComplete){
       name: (typeof __sqPlayerPretty === 'function' ? __sqPlayerPretty(p) : (p && p.name)) || (p && p.name) || '',
       rawName: String((p && (p.name || p.player)) || '').trim(),
     }));
+    // Prefer the game-end prefetch. If the player tapped NEXT exceptionally
+    // quickly, this waits for one parallel batch rather than N serial reads.
+    const prefetchedXp = await __sqGcXpStartPrefetch();
     const totals = players.map((_, i) => (board[i] || []).reduce((s, r) => s + (Number(r && r.roundTotal) || 0), 0));
     const maxTotal = Math.max(0, ...totals);
     const results = SQ_ACH.detectGame(board, { players, is_tiebreak: !!(state.is_tiebreak || state.currentGameIsTiebreak) });
@@ -5268,14 +5310,20 @@ async function __sqGcXpReveal(host, onComplete){
       const troph = trophiesByP[p] || [];
       const trophyXp = troph.reduce((s, e) => s + (SQ_ACH.meta(e.code).xp || 0) * e.count, 0);
       const gained = Math.round(totals[p] * SQ_XP.W.point) + SQ_XP.W.game + (won ? SQ_XP.W.gameWin : 0) + trophyXp;
-      let pre = 0; try{ const xr = await SQ_XP.forName(players[p].rawName || nm); pre = xr ? Number(xr.total_xp) || 0 : 0; }catch(_){ }
+      let pre = 0;
+      try{
+        const xr = Array.isArray(prefetchedXp) ? prefetchedXp[p] : null;
+        pre = xr ? Number(xr.total_xp) || 0 : 0;
+      }catch(_){ }
       rows.push({ nm, won, troph, gained, pre, post: pre + gained });
     }
     rows.sort((a, b) => (Number(b.won) - Number(a.won)) || (b.gained - a.gained));
     const panel = document.createElement('div'); panel.className = 'gc-xp-panel';
     const title = document.createElement('div'); title.className = 'gc-xp-title'; title.textContent = 'XP EARNED';
     panel.appendChild(title); host.appendChild(panel);
-    for (let i = 0; i < rows.length; i++){ await __sqGcXpRow(panel, rows[i], reduced); }
+    // Append every row immediately, then let the existing row animations run
+    // together. Previously each row blocked the next for ~1.1–1.8s.
+    await Promise.all(rows.map(row => __sqGcXpRow(panel, row, reduced)));
     // Freshen caches so subsequent screens read the new totals.
     try{ SQ_XP._cache = null; SQ_ACH._cache = {}; }catch(_){ }
     if (onComplete) onComplete();
@@ -5289,6 +5337,10 @@ function openGameCompleteDialog() {
     return;
   }
   const __isVsShadowComplete = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
+
+  // SXP-04: start the Rewards read while the player is still viewing Game Winner.
+  // Fire-and-forget; reveal reuses this exact promise/result.
+  try{ __sqGcXpStartPrefetch(); }catch(_){ }
 
   // Presentation-only finished-game state: once completion is valid, replace
   // the last live-game DMD frame with a centered, slow-pulsing GAME OVER.
@@ -12219,10 +12271,16 @@ function ensureLiveV2Panel(){
   panel.innerHTML = `
     <div class="v2GameCell" aria-label="Gameplay">
       <div class="v2Scores">
-        <div class="v2DotsCol" aria-hidden="true">
-          <div class="v2Dot" data-dot="0"></div>
-          <div class="v2Dot" data-dot="1"></div>
-          <div class="v2Dot" data-dot="2"></div>
+        <div class="v2QuickRail" aria-label="Live game controls">
+          <button id="v2QuickMenu" class="v2QuickBtn" type="button" aria-label="Game menu" title="Game menu">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <button id="v2QuickTv" class="v2QuickBtn" type="button" aria-label="Open TV mode" title="TV mode">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="13" rx="2"/><path d="M8 21h8M12 18v3"/></svg>
+          </button>
+          <button id="v2QuickSound" class="v2QuickBtn" type="button" aria-label="Turn sound effects off" aria-pressed="true" title="Sound effects">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>
+          </button>
         </div>
         <div class="v2ScoreGrid">
           ${scoreBoxes}
@@ -13073,6 +13131,87 @@ function __sqToggleLegacyUIForLiveV2(on){
 }
 // ===== @SEC:JS:GAME:LIVEV2 =====
 // @CANONICAL:LIVE_V2_BASE_RENDER
+function __sqLiveV2PaintQuickSound(btn){
+  if (!btn) return;
+  let on = true;
+  try{ on = (typeof __sqV3SoundOn === 'function') ? __sqV3SoundOn() : localStorage.getItem('sq_livev3_sound') !== '0'; }catch(_){ on = true; }
+  btn.classList.toggle('muted', !on);
+  btn.style.color = on ? '#ffd37a' : 'rgba(219,229,248,.42)';
+  btn.style.opacity = on ? '1' : '.72';
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  btn.setAttribute('aria-label', on ? 'Turn sound effects off' : 'Turn sound effects on');
+  btn.title = on ? 'Sound effects on' : 'Sound effects off';
+}
+function __sqBindLiveV2QuickRail(panel){
+  try{
+    if (!panel) return;
+    const scores = panel.querySelector('.v2Scores');
+    const rail = panel.querySelector('.v2QuickRail');
+    const menu = panel.querySelector('#v2QuickMenu');
+    const tv = panel.querySelector('#v2QuickTv');
+    const sound = panel.querySelector('#v2QuickSound');
+
+    // SXP-04: reclaim only the obsolete left utility rail; protected promoted CSS stays untouched.
+    if (scores){
+      scores.style.setProperty('grid-template-columns', '44px minmax(0,1fr)', 'important');
+      scores.style.setProperty('gap', '8px', 'important');
+      scores.style.setProperty('align-items', 'stretch', 'important');
+    }
+    if (rail){
+      Object.assign(rail.style, {
+        display:'flex', flexDirection:'column', alignItems:'stretch',
+        justifyContent:'flex-start', gap:'6px', minWidth:'44px'
+      });
+      rail.style.gridColumn = '1 / 2';
+    }
+    [menu, tv, sound].filter(Boolean).forEach(btn => {
+      Object.assign(btn.style, {
+        width:'44px', minWidth:'44px', height:'44px', minHeight:'44px',
+        display:'grid', placeItems:'center', padding:'0', borderRadius:'12px',
+        border:'1px solid rgba(139,166,210,.30)',
+        background:'linear-gradient(180deg,rgba(25,37,57,.92),rgba(9,16,29,.98))',
+        color:'#dbe5f8', touchAction:'manipulation'
+      });
+      const svg = btn.querySelector('svg');
+      if (svg){
+        svg.style.width='22px'; svg.style.height='22px'; svg.style.fill='none';
+        svg.style.stroke='currentColor'; svg.style.strokeWidth='2';
+        svg.style.strokeLinecap='round'; svg.style.strokeLinejoin='round';
+        svg.style.pointerEvents='none';
+      }
+    });
+    if (tv) tv.style.color = '#9ccbff';
+    if (sound) sound.style.color = '#ffd37a';
+    if (menu){
+      menu.onclick = () => {
+        try{ if (typeof window.__sqOpenGameMenu106 === 'function') return window.__sqOpenGameMenu106(); }catch(_){}
+        try{ document.getElementById('settingsBtnGame')?.click(); }catch(_){}
+      };
+    }
+    if (tv){
+      tv.onclick = () => {
+        try{
+          if (typeof window.__sqTvModeToggle === 'function') return window.__sqTvModeToggle(true);
+          if (typeof toast === 'function') toast('TV Mode unavailable');
+        }catch(e){ try{ console.warn('[SQ] TV Mode toggle failed', e); }catch(_){} }
+      };
+    }
+    if (sound){
+      __sqLiveV2PaintQuickSound(sound);
+      sound.onclick = () => {
+        let next = true;
+        try{
+          const current = (typeof __sqV3SoundOn === 'function') ? __sqV3SoundOn() : localStorage.getItem('sq_livev3_sound') !== '0';
+          next = !current;
+          if (typeof __sqV3SetSound === 'function') __sqV3SetSound(next);
+          else localStorage.setItem('sq_livev3_sound', next ? '1' : '0');
+          if (next && typeof __sqV3Ac === 'function') __sqV3Ac();
+        }catch(_){}
+        __sqLiveV2PaintQuickSound(sound);
+      };
+    }
+  }catch(_){}
+}
 function liveV2Render(){
   // Only runs on gameplay screen; prevents start/menu JS from crashing
   const page = document.body && (document.body.getAttribute('data-page') || document.body.dataset && document.body.dataset.page);
@@ -13129,6 +13268,7 @@ function liveV2Render(){
   }
   panel.hidden = false;
 
+  try{ __sqBindLiveV2QuickRail(panel); }catch(_){ }
   try{ __sqSetupLiveV2Sizing(panel); }catch(_){ }
 
   const pCount = getLiveV2PlayerCount();
