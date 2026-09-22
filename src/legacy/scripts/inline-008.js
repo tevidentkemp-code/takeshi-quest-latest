@@ -575,14 +575,15 @@
     var row = skip.parentElement;
     if (!row) return false;
 
-    row.style.display = 'grid';
-    row.style.gridTemplateColumns = 'repeat(3,minmax(0,1fr))';
-    row.style.gap = '8px';
-    row.style.alignItems = 'stretch';
+    row.style.setProperty('display', 'grid', 'important');
+    row.style.setProperty('grid-template-columns', 'repeat(3,minmax(0,1fr))', 'important');
+    row.style.setProperty('gap', '8px', 'important');
+    row.style.setProperty('align-items', 'stretch', 'important');
 
     [miss, undo, skip].forEach(function(btn){
-      btn.style.width = '100%';
-      btn.style.minWidth = '0';
+      btn.style.setProperty('width', '100%', 'important');
+      btn.style.setProperty('min-width', '44px', 'important');
+      btn.style.setProperty('justify-self', 'stretch', 'important');
     });
 
     // SXP-04: Settings moved to the Live V2 quick rail. Keep the Throwpad
