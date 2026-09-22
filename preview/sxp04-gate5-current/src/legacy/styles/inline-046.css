@@ -1,0 +1,127 @@
+
+/* Tournament mode-selection (CLASSIC (BETA) / TURBO (BETA)) — visually align
+ * with Match Play mode-selection cards (.sg-opt). Scoped to the mode-selection
+ * step only via the .sg-tournament-controls-with-rules modifier, so the
+ * 4/8-player size step is unaffected.
+ *
+ * Layout: full-width stacked rows + left icon block + right text block.
+ * CLASSIC pill (1st child)  — orange people icon, orange accent when active.
+ * TURBO   pill (2nd child)  — cyan  lightning icon, cyan  accent when active.
+ * The bulky "Classic rules:" / "Turbo rules:" block is hidden on this step
+ * so the cards feel like mode buttons rather than info panels.
+ *
+ * Pill order maps to choiceButton() appends in renderType()
+ *   (indexEDIT.html:43195 Classic, indexEDIT.html:43196 Turbo).
+ *
+ * No JS, markup, or app-behaviour changes.
+ */
+
+/* Container: stack pills full-width */
+.sg-tournament-controls-with-rules{
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0 18px;
+}
+
+/* Pill base — match .sg-opt geometry; reserve left padding for the icon block */
+.sg-tournament-controls-with-rules .sg-tournament-pill{
+  position: relative;
+  width: 100%;
+  text-align: left;
+  padding: 16px 18px 16px 92px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(20,24,44,.82);
+  box-shadow: 0 10px 26px rgba(0,0,0,.28);
+  transition: transform .12s ease, border-color .12s ease, background .12s ease, box-shadow .12s ease;
+  cursor: pointer;
+}
+
+.sg-tournament-controls-with-rules .sg-tournament-pill:hover{
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,.22);
+}
+
+.sg-tournament-controls-with-rules .sg-tournament-pill:active{
+  transform: translateY(0);
+}
+
+/* Left icon block via ::before — mirrors .sg-opt .sg-ico geometry */
+.sg-tournament-controls-with-rules .sg-tournament-pill::before{
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.04) no-repeat center / 30px 30px;
+}
+
+/* CLASSIC pill (1st child) — orange people icon + orange icon-block border */
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(1)::before{
+  border-color: rgba(255,140,40,.45);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ff8c28' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='8.5' cy='7' r='3'/%3E%3Cpath d='M23 21v-2a4 4 0 0 0-3-3.87'/%3E%3Cpath d='M16 3.13a3 3 0 0 1 0 5.74'/%3E%3C/svg%3E");
+}
+
+/* TURBO pill (2nd child) — cyan lightning icon + cyan icon-block border */
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(2)::before{
+  border-color: rgba(120,220,255,.45);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2378dcff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 2L4 14h7l-1 8 10-13h-7l0-7z'/%3E%3C/svg%3E");
+}
+
+/* Active state — orange for CLASSIC, cyan for TURBO */
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(1).active{
+  border-color: rgba(255,140,40,.55);
+  background: rgba(60,38,16,.55);
+  box-shadow: 0 0 0 1px rgba(255,140,40,.35) inset, 0 12px 28px rgba(0,0,0,.32);
+}
+
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(2).active{
+  border-color: rgba(120,220,255,.55);
+  background: rgba(30,52,82,.55);
+  box-shadow: 0 0 0 1px rgba(120,220,255,.35) inset, 0 12px 28px rgba(0,0,0,.32);
+}
+
+/* Title — match .sg-opt-title weight/size */
+.sg-tournament-controls-with-rules .sg-tournament-pill-title{
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  line-height: 1.15;
+  color: rgba(245,247,255,.96);
+}
+
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(1).active .sg-tournament-pill-title{
+  color: #FFD18C;
+}
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(2).active .sg-tournament-pill-title{
+  color: #B8F3FF;
+}
+
+/* Description — uppercase, tight, mode-button feel */
+.sg-tournament-controls-with-rules .sg-tournament-pill-desc{
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.35;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: rgba(231,233,245,.66);
+}
+
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(1).active .sg-tournament-pill-desc{
+  color: rgba(255,210,160,.85);
+}
+.sg-tournament-controls-with-rules .sg-tournament-pill:nth-child(2).active .sg-tournament-pill-desc{
+  color: rgba(180,220,240,.85);
+}
+
+/* Hide the bulky "Classic rules:" / "Turbo rules:" block on the mode-selection
+ * step so cards feel like buttons. Rules content stays available implicitly
+ * in the description text and on later setup steps if needed. */
+.sg-tournament-controls-with-rules .sg-tournament-inline-rule{
+  display: none;
+}

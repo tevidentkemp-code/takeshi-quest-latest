@@ -1,0 +1,709 @@
+
+  /* Cloud status pill (top-right) */
+.cloud-status {
+  position: fixed;
+  right: 12px;
+  top: 12px;          /* moved from bottom to top */
+  bottom: auto;
+  background: rgba(10, 12, 30, .92);
+  border: 1px solid #2b3050;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 500000;
+  pointer-events: none;
+}
+
+.cloud-status .cloud-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #666;
+}
+
+/* States */
+.cloud-status.checking .cloud-dot { background: var(--warn); }
+.cloud-status.ok       .cloud-dot { background: var(--accent-2); }
+.cloud-status.error    .cloud-dot { background: var(--danger); }
+
+/* Top row of buttons: keep spacing on leaderboard etc. */
+#leaderboardTopRow,
+#gameTopRow{
+margin-bottom: var(--section-gap);
+}
+
+/* Main game: stick the scoreboard (Game Wins row) directly to the bottom
+   of the floating score block above it. */
+.float-head{
+  margin-bottom: 0;
+}
+
+/* Remove extra top margin on the scoreboard so it touches the float-head */
+#scoreWrap{
+  margin-top: 0 !important;
+}
+
+/* ===== @CSS:MENU_MODAL_EXT | Player Stats menu + select-player form ===== */
+.menu-modal-title-sub{
+  margin-top:2px;
+  font-size:.82rem;
+  color:var(--muted);
+  font-weight:600;
+  letter-spacing:.02em;
+  text-transform:none;
+}
+
+.menu-modal-title-sub2{
+  margin-top:2px;
+  font-size:.78rem;
+  color:var(--muted);
+  font-weight:600;
+  letter-spacing:.02em;
+  text-transform:none;
+}
+
+.sq-player-stats-picker{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  width:100%;
+}
+.sq-player-stats-picker span{
+  white-space:nowrap;
+}
+.sq-player-stats-picker select{
+  min-width:150px;
+  max-width:230px;
+  padding:5px 30px 5px 10px;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,.18);
+  color:var(--text);
+  background:rgba(255,255,255,.07);
+  font:inherit;
+  font-weight:700;
+  outline:none;
+}
+.sq-player-stats-picker select:focus{
+  border-color:rgba(74,167,255,.7);
+  box-shadow:0 0 0 2px rgba(74,167,255,.18);
+}
+
+.menu-row.is-disabled{
+  opacity:.45;
+}
+.menu-row.is-disabled .menu-row-chev{
+  opacity:.35;
+}
+.menu-modal-form{
+  width:100%;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding:8px 2px 4px;
+}
+.menu-modal-form label{
+  font-size:.72rem;
+  color:var(--muted);
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  font-weight:700;
+}
+.menu-modal-actions{
+  width:100%;
+  display:flex;
+  gap:10px;
+  padding-top:10px;
+}
+.menu-modal-actions .btn{
+  flex:1;
+}
+.menu-modal-actions .btn.primary{
+  width:100%;
+}
+
+/* ===== @CSS:GAME_SCROLL =====
+   Body scrolling is intentionally disabled (overflow:hidden).
+   These rules make the in-game scoreboard scrollable inside its allocated area,
+   especially on mobile where the table can extend beyond the viewport. */
+#game{
+  height: 100dvh;
+}
+#game > .card.section{
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* critical: allow overflow children to scroll inside flex */
+}
+#gameTopRow,
+#floatHead{
+  flex: 0 0 auto;
+}
+/* The main scroll container for the live scoreboard */
+#scoreWrap{
+  flex: 1 1 auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+/* Control pad stays anchored below */
+#pad{
+  flex: 0 0 auto;
+}
+
+/* keep these tiny + shorter */
+#leaderboardTopRow .btn,
+#gameTopRow .btn{
+  font-size: 0.9rem;
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+/* ===== @CSS:GAME_SCROLL_CLASSIC =====
+   Classic in-game scroll behaviour:
+   - The PAGE scroll container is .wrap (not the table).
+   - Top row (Start Screen / Restart / Stats) scrolls away.
+   - Player info block (#floatHead) becomes sticky at the top.
+   - Score pad (.pad-bar) stays fixed at the bottom.
+*/
+
+/* Game page background palette (match main menu tone) */
+body[data-page="game"]{
+  background:radial-gradient(1100px 700px at 0% 0%, #192033 0%, #0f1220 52%, #070913 100%);
+}
+body[data-page="game"] .wrap,
+body[data-page="leaderboard"] .wrap{
+  height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding-top: 0 !important;
+}
+/* >>> PATCH:LIVE_GAME_DISABLE_PAGE_SCROLL START */
+/* Live game should not page-scroll; only Cell 2 rounds list is scrollable. */
+body.livev2-on[data-page="game"]{ overflow: hidden !important; height: 100dvh; }
+body.livev2-on[data-page="game"] .wrap{ overflow: hidden !important; height: 100dvh; }
+/* keep rounds list scrollable */
+body.livev2-on[data-page="game"] #v2RowsWrap,
+body.livev2-on[data-page="game"] .v2RowsWrap{ overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+/* <<< PATCH:LIVE_GAME_DISABLE_PAGE_SCROLL END */
+
+/* Game table palette */
+body[data-page="game"] #scoreWrap table{ background:rgba(15,18,32,.72); }
+body[data-page="game"] #scoreWrap thead th{ background:rgba(23,26,43,.96); }
+body[data-page="game"] #scoreWrap tbody th{ background:rgba(16,19,38,.92); }
+body[data-page="game"] .float-head{ background:rgba(17,20,34,.94); }
+body[data-page="game"] .pad-bar{ background:rgba(17,20,34,.94); }
+
+/* Undo the "internal table scroll" approach for the game page */
+body[data-page="game"] #game{
+  height: auto !important;
+}
+body[data-page="game"] #game > .card.section{
+  height: auto !important;
+  display: block !important;
+}
+
+/* Let the scoreboard table flow with the page scroll */
+body[data-page="game"] #scoreWrap{
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+/* Prevent the table header from sticking over the sticky player header */
+body[data-page="game"] #scoreWrap thead th{
+  position: static !important;
+}
+
+/* >>> PATCH:livev2-mobile-win-css START */
+/* Mobile gameplay: constrain scoreboard to exactly 4 visible rounds (3 previous + current). 
+   We must override the earlier "flow with page scroll" rules that set overflow/max-height to none. */
+@media (max-width: 480px){
+  body[data-page="game"] #scoreWrap{
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    max-height: var(--sqScoreWinH, 340px) !important;
+    height: var(--sqScoreWinH, 340px) !important;
+  }
+}
+html.force-mobile body[data-page="game"] #scoreWrap{
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  max-height: var(--sqScoreWinH, 340px) !important;
+  height: var(--sqScoreWinH, 340px) !important;
+}
+/* <<< PATCH:livev2-mobile-win-css END */
+
+/* Sticky player info block */
+body[data-page="game"] #floatHead{
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  background: rgba(23,26,43,.98);
+  backdrop-filter: blur(6px);
+  border-radius: 12px;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border: 1px solid rgba(42,46,72,.85);
+}
+
+/* ===== Start Screen sizing (page: #details) ===== */
+#details #appTitle{ display:block; } /* stacked hero title (width still measurable) */
+
+#details .start-actions{ max-width:none; }
+
+/* Big buttons: 2/3 of title width, max 820px */
+#details #questBtn,
+#details #startGameBtn,
+#details #resumeBtn{
+  width: min(calc(var(--title-w) * 0.6667), 820px);
+  margin-inline:auto;
+}
+
+/* High Scores + Player Stats row: same width as big buttons */
+#details .start-actions > .row:first-of-type{
+  width: min(calc(var(--title-w) * 0.6667), 820px);
+  margin-inline:auto;
+}
+
+/* Small screens */
+@media (max-width:560px){
+  #details #questBtn,
+  #details #startGameBtn,
+  #details #resumeBtn,
+  #details .start-actions > .row:first-of-type{ width:92vw; }
+}
+
+/* Make each button line fill that width */
+#details .start-actions .btn.big{ width: 100%; }
+#details .start-actions .row{ width: 100%; }     /* High Scores / Player Stats row */
+#details .start-actions .row .btn{ width: 100%; }
+
+/* ===== Start/Resume visual style (match orange mock) ===== */
+#details #startGameBtn,
+#details #resumeBtn{
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+#details #startGameBtn{
+  background: #ff6a00;
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  color: #ffffff;
+}
+
+#details #resumeBtn{
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  color: rgba(255,255,255,.82);
+}
+
+#details #resumeBtn[disabled],
+#details #resumeBtn.disabled{
+  opacity: .55;
+  filter: grayscale(.2);
+}
+
+#details .btnIcon{
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* Secondary navigation buttons + Admin (aligned to main column) */
+#details .start-secondary-row{
+  width: var(--homeW);
+  max-width: var(--homeW);
+  margin: 10px auto 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--navGap);
+  box-sizing: border-box;
+}
+
+#details .start-secondary-row .btn{
+  height: 86px;
+  border-radius: 18px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 12px 30px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.04) inset;
+  color: rgba(255,255,255,.86);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+}
+#details .start-secondary-row .btn .navIcon{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;}
+#details .start-secondary-row .btn .navIcon svg{width:22px;height:22px;}
+#details .start-secondary-row .btn .navText{font-size:14px;line-height:1;}
+
+#latestScoresBtn{--acc:#37e08f;color:var(--acc);border-color:rgba(55,224,143,.35);} 
+#latestScoresBtn .navIcon{color:var(--acc);} 
+#playerStatsBtn{--acc:#4aa7ff;color:var(--acc);border-color:rgba(74,167,255,.35);} 
+#playerStatsBtn .navIcon{color:var(--acc);} 
+#leagueRankingsBtn{--acc:#ffb24a;color:var(--acc);border-color:rgba(255,178,74,.35);} 
+#leagueRankingsBtn .navIcon{color:var(--acc);} 
+
+/* Admin button: same width as one nav tile */
+#adminCodeRow{
+  width: var(--homeW);
+  max-width: var(--homeW);
+  margin: 10px auto 22px;
+  display: flex;
+  justify-content: center;
+  box-sizing: border-box;
+}
+#adminCodeBtn{
+  width: calc((var(--homeW) - (2 * var(--navGap))) / 3);
+  max-width: 100%;
+  height: 58px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 12px 30px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.04) inset;
+  color: rgba(255,255,255,.86);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+}
+
+/* Final Leaderboard layout */
+#leaderboard .lb-box{
+  padding:12px;
+  border-radius:12px;
+  background:linear-gradient(180deg,#14284a,#12213d);
+  border:1px solid #2a4777;
+}
+
+/* Leaderboard action buttons: full width of the leaderboard table */
+#leaderboard .lb-box .stacked-actions{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  width:100%;
+  margin-top:8px;
+}
+
+#leaderboard .lb-box .stacked-actions .btn.big{
+  width:100%;
+  max-width:none;
+  display:block;
+}
+
+/* >>> PATCH:LB_VERTICAL_LAYOUT START */
+/* Vertical leaderboard (players = columns, metrics = rows) */
+#leaderboard #lbTable thead th.lb-rowhdr{ text-align:left; }
+#leaderboard #lbTable tbody td.lb-rowlabel{
+  text-align:left;
+  font-weight:800;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color: rgba(255,255,255,.78);
+}
+#leaderboard #lbTable thead th{
+  padding-top:10px;
+  padding-bottom:10px;
+}
+#leaderboard #lbTable tbody tr:last-child td{
+  border-bottom: none;
+}
+/* Remove the old "Player column divider" assumptions */
+#leaderboard #lbTable thead th:first-child,
+#leaderboard #lbTable tbody td:first-child{
+  border-right: 1px solid #2a2e48;
+}
+/* >>> PATCH:LB_VERTICAL_LAYOUT END */
+
+/* table layout + no-wrap for player names */
+#leaderboard #lbTable{
+  table-layout: fixed; /* respect colgroup widths */
+  width: 100%;
+}
+#leaderboard #lbTable thead th:first-child,
+#leaderboard #lbTable tbody td:first-child{
+  white-space: nowrap;
+  border-right: 1px solid #2a2e48; /* vertical divider after Player */
+}
+
+/* divider after the LAST G# column */
+#leaderboard #lbTable thead th.after-games-sep,
+#leaderboard #lbTable tbody td.after-games-sep{
+  border-right: 1px solid #2a2e48;
+}
+
+/* widths for numeric columns */
+#lbTable thead th:first-child{
+  text-align:left;
+}
+
+/* keep names tidy on small screens */
+#leaderboard #lbTable th:first-child,
+#leaderboard #lbTable td:first-child{
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* numbers look better with tabular figures */
+#leaderboard #lbTable td,
+#leaderboard #lbTable th{ font-variant-numeric: tabular-nums; }
+
+/* subtle zebra + hover */
+#leaderboard #lbTable tbody tr:nth-child(odd) td{ background: rgba(255,255,255,.02); }
+#leaderboard #lbTable tbody tr:hover td{ background: rgba(255,255,255,.03); }
+
+/* === Start screen Game Ticker (single-line vertical scroll) === */
+#psTicker{
+  width: 100vw;
+  max-width: none;
+  margin: 0;
+
+  /* full-bleed even inside centred layout */
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+
+  /* Videprinter styling */
+  background: linear-gradient(180deg,#fdd45c,#f7b733);
+  border-top: 2px solid #b98b00;
+  border-bottom: 2px solid #b98b00;
+  color: #111;
+
+  /* Single-line strip; one score at a time */
+  height: 32px;
+  overflow: hidden;
+
+  padding: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+
+  /* Pin to bottom on the Start screen */
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  z-index: 300000;
+}
+
+/* === Start screen Extra Ticker (stacked above yellow) === */
+#psTickerTop{
+  width: 100vw;
+  max-width: none;
+  margin: 0;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  background: linear-gradient(180deg,#1e2654,#121630);
+  border-top: 1px solid rgba(255,255,255,0.10);
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+  color: #eaf0ff;
+  height: 32px;
+  overflow: hidden;
+  padding: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 32px;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  z-index: 300000;
+}
+#psTickerTop.hidden{display:none;}
+/* Hard-disable bottom tickers (removed from UI) */
+#psTicker,
+#psTickerTop{ display:none !important; }
+
+#psTickerTop .track{
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 32px;
+  will-change: transform;
+  transform: translateY(0);
+}
+#psTicker.hidden{
+  display:none;
+}
+
+/* Each line inside the ticker (we use two and slide them) */
+#psTicker .track{
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 32px;
+  will-change: transform;
+  transform: translateY(0);
+}
+
+/* >>> PATCH:ticker-marquee START */
+#psTicker .track,
+#psTickerTop .track{
+  left: 0;
+  right: 0;
+  padding: 0 14px;
+  overflow: hidden;
+}
+#psTicker .track .marquee,
+#psTickerTop .track .marquee{
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  min-width: 300%;
+  will-change: transform;
+  animation: ticker-marquee 18s linear infinite;
+}
+/* Upper (new players) ticker: single-run scroll with a pause */
+#psTickerTop .track .marquee{
+  min-width: 0;              /* don't require repeats */
+  animation: ticker-marquee-top 77s linear infinite; /* 72s scroll + ~5s pause */
+}
+#psTicker .track .marquee span,
+#psTickerTop .track .marquee span{
+  display: inline-block;
+  padding-right: 64px;
+}
+@keyframes ticker-marquee{
+  /* Start fully off-screen to the right, then scroll left across the whole ticker */
+  0%{ transform: translateX(100%); }
+  100%{ transform: translateX(-66.6667%); }
+}
+
+@keyframes ticker-marquee-top{
+  /* One message: start offscreen right, traverse fully, pause, then restart */
+  0%{ transform: translateX(100%); }
+  93.5%{ transform: translateX(-100%); }
+  100%{ transform: translateX(-100%); }
+}
+/* <<< PATCH:ticker-marquee END */
+
+/* --- MOT3_47 home layout fixes --- */
+/* Footer nav is in normal flow now; keep only a small safe-area cushion */
+#details{
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+.home-live-printer .lp-top,
+.home-mini-printer .lp-top{
+  justify-content: center;
+  text-align: center;
+}
+.home-live-printer .lp-top{
+  gap: 0;
+}
+
+/* --- HOME NAV (Player Hub / Stats / League) --- */
+#details .start-actions .home-nav-row{
+  width: var(--homeW);
+  margin: 12px auto 0;
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+#details .start-actions .home-nav-row .navBtn.btn{
+  width: 100%;
+  max-width: none;
+  min-height: 58px;
+  padding: 0 14px;
+  border-radius: 16px;
+  background: #131733;
+  border: 1px solid #2b3050;
+  box-shadow: 0 10px 22px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-weight: 800;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ink);
+}
+#details .start-actions .home-nav-row .navBtn.btn .navIcon{
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+}
+#details .start-actions .home-nav-row .navBtn.btn .navIcon svg{
+  width: 20px;
+  height: 20px;
+}
+#details .start-actions .home-nav-row .navBtn.btn:active{ transform: translateY(1px); }
+
+/* Theme edges + text */
+#details .start-actions .home-nav-row .navGreen{ color: #22e46b; border-color: rgba(34,228,107,.55); }
+#details .start-actions .home-nav-row .navBlue{ color: #2f86ff; border-color: rgba(47,134,255,.55); }
+/* navAmber merged into navOrange (audit V-4/M-5): the runtime home rebuild
+   always assigns navOrange, so the amber variant never rendered. */
+#details .start-actions .home-nav-row .navOrange{ color: #ff9b22; border-color: rgba(255,155,34,.55); }
+
+#details .start-actions .home-nav-row .navBtn.btn:hover{
+  filter: brightness(1.05);
+}
+
+/* --- ADMIN (text link with lock) --- */
+#details .start-actions .home-admin-row{
+  width: var(--homeW);
+  margin: 10px auto 0;
+  display: flex;
+  justify-content: center;
+}
+#details .start-actions .adminLink{
+  background: transparent;
+  border: 0;
+  padding: 6px 10px 2px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: rgba(230,230,230,.55);
+  font-weight: 800;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+}
+#details .start-actions .adminLink .adminLock{
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  opacity: .9;
+}
+#details .start-actions .adminLink .adminLock svg{
+  width: 16px;
+  height: 16px;
+}
+#details .start-actions .adminLink:hover{ color: rgba(230,230,230,.8); }
