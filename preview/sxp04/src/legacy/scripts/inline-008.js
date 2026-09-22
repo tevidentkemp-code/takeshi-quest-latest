@@ -575,24 +575,29 @@
     var row = skip.parentElement;
     if (!row) return false;
 
-    row.style.display = 'grid';
-    row.style.gridTemplateColumns = '2fr 2fr 1fr 1fr';
-    row.style.gap = '8px';
-    row.style.alignItems = 'stretch';
+    row.style.setProperty('display', 'grid', 'important');
+    row.style.setProperty('grid-template-columns', 'repeat(3,minmax(0,1fr))', 'important');
+    row.style.setProperty('gap', '8px', 'important');
+    row.style.setProperty('align-items', 'stretch', 'important');
 
-    [miss, undo, skip].forEach(function(btn){
-      btn.style.width = '100%';
-      btn.style.minWidth = '0';
-    });
-
-    var settings = document.getElementById('settingsBtnGamePad');
-    if (!settings) settings = buildBtn();
-    if (settings.parentElement !== row){
-      skip.insertAdjacentElement('afterend', settings);
+    // Number rounds previously widened the Treble column to make room for
+    // half-Skip + half-Settings. With Settings moved to the utility rail,
+    // restore S / D / T to three equal columns so the action row aligns.
+    var scoreRow = row.previousElementSibling;
+    if (scoreRow && scoreRow.classList && scoreRow.classList.contains('dtScoreRow')){
+      scoreRow.style.setProperty('grid-template-columns', 'repeat(3,minmax(0,1fr))', 'important');
     }
 
-    settings.style.width = '100%';
-    settings.style.minWidth = '0';
+    [miss, undo, skip].forEach(function(btn){
+      btn.style.setProperty('width', '100%', 'important');
+      btn.style.setProperty('min-width', '44px', 'important');
+      btn.style.setProperty('justify-self', 'stretch', 'important');
+    });
+
+    // SXP-04: Settings moved to the Live V2 quick rail. Keep the Throwpad
+    // action row to three normal-size controls: MISS / UNDO / SKIP.
+    var settings = document.getElementById('settingsBtnGamePad');
+    if (settings) settings.remove();
     return true;
   }
 
