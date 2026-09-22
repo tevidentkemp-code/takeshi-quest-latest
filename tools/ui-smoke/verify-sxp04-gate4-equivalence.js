@@ -129,7 +129,7 @@ async function rhAfterPrefix(page, firstSpec, heldSpec, suffix=[]){
     suffix.forEach(item => recordThrow(item));
     return {found:true, committed:result.committed, rhSpec:rh.spec};
   }, {firstSpec,heldSpec,suffix});
-  assert(outcome.found, 'RH option must be available after an ordinary first dart');
+  assert(outcome.found, 'RH option must be available when holding the button matching the ordinary first dart');
   assert.equal(outcome.committed, 1, 'RH must commit exactly one canonical dart');
   return {snapshot:await captureCanonical(page), outcome};
 }
@@ -171,9 +171,10 @@ async function undoSnapshot(page){
     const quick2 = await quickAfterPrefix(page,[{kind:'D'}],{kind:'S'},2);
     assert.deepEqual(quick2, normalX2, 'x2 must be 100% equivalent to two ordinary repeated darts after a prefix dart');
 
-    // RH: held-button identity is irrelevant; exact previous scoring result is repeated.
+    // RH: the held button must match the immediately previous scoring result;
+    // once eligible, the repeated canonical dart must remain exactly equivalent.
     const normalRh = await ordinary(page,[{kind:'D'},{kind:'D'},{kind:'S'}]);
-    const quickRh = await rhAfterPrefix(page,{kind:'D'},{kind:'S'},[{kind:'S'}]);
+    const quickRh = await rhAfterPrefix(page,{kind:'D'},{kind:'D'},[{kind:'S'}]);
     assert.deepEqual(quickRh.snapshot, normalRh, 'RH must be 100% equivalent to manually repeating the previous exact result');
     assert.deepEqual(quickRh.outcome.rhSpec,{kind:'D'},'RH on number rounds must serialize the prior Double exactly');
 
