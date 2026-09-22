@@ -1,0 +1,207 @@
+name: SXP-04 Experience 04 release
+
+on:
+  push:
+    branches: [release/sxp04-experience04]
+    paths:
+      - package.json
+      - package-lock.json
+      - vite.config.mjs
+      - scripts/**
+      - src/**
+      - assets/release-metadata.json
+      - tools/ui-smoke/**
+      - .github/workflows/sxp04-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sxp04-experience04-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm exact production base and verified Experience source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main sxp-04-gate5-current-main-acceptance
+          test "$(git rev-parse origin/main)" = "88552fb3fbfe7686f49ad74f481ebf087a361a96"
+          git merge-base --is-ancestor origin/main HEAD
+          cmp <(git show origin/sxp-04-gate5-current-main-acceptance:src/live-game/live-v2.js) src/live-game/live-v2.js
+          cmp <(git show origin/sxp-04-gate5-current-main-acceptance:src/styles/live-game/v2-panel.css) src/styles/live-game/v2-panel.css
+          for p in             tools/ui-smoke/verify-sxp04-gate1-miss-contract.mjs             tools/ui-smoke/verify-sxp04-gate1-miss-response.js             tools/ui-smoke/verify-sxp04-gate2-contract.mjs             tools/ui-smoke/verify-sxp04-gate2-nonblocking.js             tools/ui-smoke/verify-sxp04-gate3-quick-entry-contract.mjs             tools/ui-smoke/verify-sxp04-gate4-equivalence-contract.mjs             tools/ui-smoke/verify-sxp04-gate4-equivalence.js             tools/ui-smoke/verify-sxp04-gate5-iphone-corrections.js             tools/ui-smoke/verify-sxp04-gate5-iphone-corrections.mjs
+          do
+            cmp <(git show "origin/sxp-04-gate5-current-main-acceptance:$p") "$p"
+          done
+          node - <<'NODE'
+          const fs=require('fs');
+          const m=JSON.parse(fs.readFileSync('assets/release-metadata.json','utf8'));
+          if(m.currentVersion!=='0.5.0') throw new Error('expected v0.5.0');
+          if(m.currentReleaseId!=='SXP-001-E04') throw new Error('expected SXP-001-E04');
+          if(m.releases?.[0]?.version!=='0.5.0') throw new Error('v0.5.0 must be first release note');
+          NODE
+          git diff --check origin/main...HEAD --             src/live-game/live-v2.js             src/styles/live-game/v2-panel.css             assets/release-metadata.json             tools/ui-smoke/             .github/workflows/sxp04-release.yml
+
+      - name: Install architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Materialize canonical runtime
+        run: node scripts/materialize-runtime.mjs
+
+      - name: Verify source authority and protected contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build-core-js-from-source.mjs --verify-current
+          node scripts/build-core-styles-from-source.mjs --verify-current
+          node scripts/verify-modularization.mjs
+          node tools/ui-smoke/verify-sxp04-gate5-iphone-corrections.mjs
+          node tools/ui-smoke/verify-sxp04-gate4-equivalence-contract.mjs
+          node tools/ui-smoke/verify-sxp04-gate3-quick-entry-contract.mjs
+          node tools/ui-smoke/verify-sxp04-gate2-contract.mjs
+          node tools/ui-smoke/verify-sxp04-gate1-miss-contract.mjs
+          node tools/ui-smoke/verify-sxp04-sidequest.mjs
+          node tools/ui-smoke/verify-sc042-record-integrity.mjs
+          node tools/ui-smoke/verify-sc048-volde.mjs
+          node tools/ui-smoke/verify-sc032-dmd-ownership.mjs
+
+      - name: Install deterministic build dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Build exact production candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build | tee sxp04-release-build.txt
+          npm run verify:dist | tee sxp04-release-dist.txt
+          node scripts/build-core-js-from-source.mjs --verify-current
+          node scripts/build-core-styles-from-source.mjs --verify-current
+
+      - name: Install deterministic browser QA
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run Experience 04 release regressions
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8175/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8175 --bind 127.0.0.1 --directory dist >/tmp/sxp04-release-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+
+          node tools/ui-smoke/verify-sxp04-gate5-iphone-corrections.js | tee sxp04-release-iphone.txt
+          node tools/ui-smoke/verify-sxp04-gate4-equivalence.js | tee sxp04-release-equivalence.txt
+          node tools/ui-smoke/verify-sxp04-gate2-nonblocking.js | tee sxp04-release-nonblocking.txt
+          node tools/ui-smoke/verify-sxp04-gate1-miss-response.js | tee sxp04-release-latency.txt
+          node tools/ui-smoke/verify-sc030-undo-runtime.js | tee sxp04-release-undo.txt
+          node tools/ui-smoke/verify-sc033-throw-order.js | tee sxp04-release-throw-order.txt
+          node tools/ui-smoke/verify-sc042-record-integrity.js | tee sxp04-release-record-integrity.txt
+          node tools/ui-smoke/verify-progression-modes.js | tee sxp04-release-progression.txt
+          node tools/ui-smoke/verify-training-modes.js | tee sxp04-release-training.txt
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sxp04-release-visual-fit.txt
+          node tools/ui-smoke/smoke.js | tee sxp04-release-smoke.txt
+
+      - name: Confirm bounded clean release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "88552fb3fbfe7686f49ad74f481ebf087a361a96"
+          git merge-base --is-ancestor origin/main HEAD
+          test -z "$(git diff --name-only origin/main...HEAD | grep '^preview/' || true)"
+          git diff --check origin/main...HEAD --             src/live-game/live-v2.js             src/styles/live-game/v2-panel.css             assets/release-metadata.json             tools/ui-smoke/             .github/workflows/sxp04-release.yml
+
+      - name: Stage generated compatibility runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf sxp04-release-write
+          mkdir -p sxp04-release-write/src/legacy/styles sxp04-release-write/src/legacy/scripts
+          cp index.html sxp04-release-write/index.html
+          cp src/legacy/styles/inline-002.css sxp04-release-write/src/legacy/styles/inline-002.css
+          cp src/legacy/scripts/inline-005.js sxp04-release-write/src/legacy/scripts/inline-005.js
+
+      - name: Package generated runtime
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sxp04-release-write
+          retention-days: 1
+          path: sxp04-release-write/
+
+      - name: Keep release evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sxp04-release-evidence
+          retention-days: 14
+          path: |
+            sxp04-release-*.txt
+            sc031-vite-build-evidence.json
+
+  commit-generated:
+    needs: verify
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Confirm release branch has not advanced
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin release/sxp04-experience04
+          test "$(git rev-parse origin/release/sxp04-experience04)" = "${GITHUB_SHA}"
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: sxp04-release-write
+          path: sxp04-release-write
+
+      - name: Apply generated runtime only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp sxp04-release-write/index.html index.html
+          cp sxp04-release-write/src/legacy/styles/inline-002.css src/legacy/styles/inline-002.css
+          cp sxp04-release-write/src/legacy/scripts/inline-005.js src/legacy/scripts/inline-005.js
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //' | grep -v '^sxp04-release-write/' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index.html|src/legacy/styles/inline-002.css|src/legacy/scripts/inline-005.js)$' || true)"
+          if [ -n "$bad" ]; then
+            echo 'Refusing generated write: unexpected changed paths:'
+            echo "$bad"
+            exit 1
+          fi
+          test -n "$changed"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html src/legacy/styles/inline-002.css src/legacy/scripts/inline-005.js
+          git commit -m 'SXP-04 release: materialize v0.5.0 runtime [skip ci]'
+          git push origin HEAD:release/sxp04-experience04
