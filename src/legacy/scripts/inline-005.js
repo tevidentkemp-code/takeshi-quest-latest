@@ -14338,10 +14338,14 @@ function buildPad(){
       try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
       try{ window.__sqSkipInProgress = true; }catch(_){ }
       try{ window.sqDmdShowZones?.({ z2:'SKIP GO', z3:'>>>' }, { type:'flash', ms:500, fx:'impact' }); }catch(_){ }
-      setTimeout(() => {
-        try{ missGo(); }catch(_){ }
-        setTimeout(() => { try{ window.__sqSkipInProgress = false; }catch(_){ } }, 120);
-      }, 500);
+
+      // SXP-04 Gate 2: presentation is additive only. Vs Shadow previously
+      // waited for the 500ms SKIP GO scene before mutating gameplay state.
+      // Commit the canonical skip immediately, then let the existing DMD
+      // transient continue independently; the next legitimate input/scene
+      // can still hard-clear it through the normal flow-token path.
+      try{ missGo(); }catch(_){ }
+      try{ window.__sqSkipInProgress = false; }catch(_){ }
       return;
     }
 
