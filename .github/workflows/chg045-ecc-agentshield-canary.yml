@@ -57,8 +57,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          set +e
           node agentshield/dist/index.js scan --path target --format json --output /tmp/agentshield-report.json
+          json_rc=$?
           node agentshield/dist/index.js scan --path target --format markdown --output /tmp/agentshield-report.md
+          md_rc=$?
+          set -e
+
+          # AgentShield documents exit code 2 for critical findings. In a canary,
+          # that is scan evidence, not a scanner/runtime failure.
+          for rc in "$json_rc" "$md_rc"; do
+            if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
+              echo "Unexpected AgentShield exit code: $rc" >&2
+              exit "$rc"
+            fi
+          done
+
           node -e '
             const fs=require("fs");
             const r=JSON.parse(fs.readFileSync("/tmp/agentshield-report.json","utf8"));
@@ -71,6 +85,7 @@ jobs:
             };
             console.log(JSON.stringify(out,null,2));
           '
+
           {
             echo "## CHG-045 — AgentShield canary"
             echo
@@ -79,6 +94,7 @@ jobs:
             echo "- Mode: read-only static scan"
             echo "- Auto-fix: disabled"
             echo "- LLM/Opus/deep runtime analysis: disabled"
+            echo "- Scanner exit codes: JSON=$json_rc / Markdown=$md_rc"
             echo
             cat /tmp/agentshield-report.md
           } >> "$GITHUB_STEP_SUMMARY"
