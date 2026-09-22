@@ -143,10 +143,17 @@ async function verifySc022HudPolish(){
             iconFont:parseFloat(getComputedStyle(button.querySelector('.dtIcon')).fontSize)
           };
         });
-        const settingsButton = document.getElementById('settingsBtnGamePad');
-        const settingsRect = rect(settingsButton);
-        const settingsStyle = getComputedStyle(settingsButton);
-        const settingsLabel = getComputedStyle(settingsButton, '::after').content.replace(/^['"]|['"]$/g, '');
+        const quickControls = ['v2QuickMenu','v2QuickTv','v2QuickSound'].map(id => {
+          const button = document.getElementById(id);
+          const br = rect(button);
+          return {
+            id,
+            present:!!button,
+            handler:!!button && typeof button.onclick === 'function',
+            fits:!!br && br.width >= 43.9 && br.height >= 43.9 && br.left >= -.5 && br.right <= innerWidth + .5,
+            aria:button ? String(button.getAttribute('aria-label') || '') : ''
+          };
+        });
         return {
           overflow:document.documentElement.scrollWidth > innerWidth + 1,
           padFits:pad.left >= -.5 && pad.right <= innerWidth + .5 && pad.top >= -.5 && pad.bottom <= innerHeight + .5,
@@ -158,13 +165,8 @@ async function verifySc022HudPolish(){
           equalMetricWidths:Math.abs(metrics[0].width-metrics[1].width) <= 1,
           metrics,
           actions,
-          settings:{
-            icon:String(settingsButton.textContent || '').trim(),
-            label:settingsLabel,
-            direction:settingsStyle.flexDirection,
-            handler:typeof settingsButton.onclick === 'function',
-            fits:settingsRect.width >= 43.9 && settingsRect.height >= 43.9 && settingsButton.scrollWidth <= settingsButton.clientWidth + 1 && settingsButton.scrollHeight <= settingsButton.clientHeight + 1
-          }
+          padSettingsAbsent:!document.getElementById('settingsBtnGamePad'),
+          quickControls
         };
       });
       assert(!layout.overflow, `${size.width}px HUD has no horizontal overflow`);
@@ -180,7 +182,9 @@ async function verifySc022HudPolish(){
       assert.deepEqual(layout.actions.map(action => action.icon), ['⊘','◀◀','▶▶'], `${size.width}px action glyphs`);
       assert(layout.actions.every(action => action.direction === 'column' && action.vertical && action.centred && action.fits), `${size.width}px action icons stack above labels inside existing tap targets`);
       assert(layout.actions.find(action => action.name === 'miss').iconFont >= 18.5, `${size.width}px MISS symbol is enlarged and remains inside its button`);
-      assert.deepEqual(layout.settings, {icon:'☰',label:'SET',direction:'column',handler:true,fits:true}, `${size.width}px Settings keeps its handler and stacks SET below the hamburger`);
+      assert(layout.padSettingsAbsent, `${size.width}px Settings is removed from the Throwpad action row`);
+      assert(layout.quickControls.every(control => control.present && control.handler && control.fits && control.aria),
+        `${size.width}px Menu / TV / Sound quick rail controls are wired and remain >=44px`);
       if (process.env.SQ_SCREENSHOTS) {
         fs.mkdirSync(process.env.SQ_SCREENSHOTS,{recursive:true});
         await page.screenshot({path:path.join(process.env.SQ_SCREENSHOTS,`sc022-hud-${size.width}.png`)});

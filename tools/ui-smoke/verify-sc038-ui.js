@@ -88,13 +88,18 @@ function makeRoundRows(values) {
         window.SQ_XP._cacheAt = 0;
         window.SQ_XP._inflight = null;
         window.__sqSc038OriginalXpForName = window.SQ_XP.forName;
-        window.SQ_XP.forName = async name => ({
-          player_id: /Alpha/i.test(String(name || ''))
-            ? '11111111-1111-1111-1111-111111111111'
-            : '22222222-2222-2222-2222-222222222222',
-          name,
-          total_xp: /Alpha/i.test(String(name || '')) ? 240 : 180,
-        });
+        window.__sqSc038XpForNameCalls = [];
+        window.SQ_XP.forName = async name => {
+          window.__sqSc038XpForNameCalls.push({ name:String(name || ''), at:performance.now() });
+          await new Promise(resolve => setTimeout(resolve, 120));
+          return {
+            player_id: /Alpha/i.test(String(name || ''))
+              ? '11111111-1111-1111-1111-111111111111'
+              : '22222222-2222-2222-2222-222222222222',
+            name,
+            total_xp: /Alpha/i.test(String(name || '')) ? 240 : 180,
+          };
+        };
       }
       if (window.SQ_ACH) {
         window.SQ_ACH._cache = {};
@@ -125,6 +130,7 @@ function makeRoundRows(values) {
       try { delete state._decider; } catch (_) {}
       try { delete state.__sqGameCompleteOpen; } catch (_) {}
       try { delete state.__sqXpRevealedTok; } catch (_) {}
+      try { delete window.__sqGcXpPrefetch; } catch (_) {}
 
       const originalXpReveal = window.__sqGcXpReveal;
       window.__sqSc038XpCalls = 0;
@@ -164,7 +170,20 @@ function makeRoundRows(values) {
 
     await page.evaluate(() => { state.finished = true; openGameCompleteDialog(); });
     await page.waitForSelector('.sq-gamecomplete-backdrop[data-sq-sc038="1"] .sq-pg-result:not([hidden])');
-    await page.waitForTimeout(250);
+    await page.waitForFunction(() => (window.__sqSc038XpForNameCalls || []).length === 2, null, { timeout:1000 });
+    const prefetch = await page.evaluate(() => {
+      const calls = window.__sqSc038XpForNameCalls || [];
+      return {
+        count:calls.length,
+        startSpread:calls.length >= 2 ? Math.abs(Number(calls[1].at || 0) - Number(calls[0].at || 0)) : 9999,
+        key:String(window.__sqGcXpPrefetch && window.__sqGcXpPrefetch.key || '')
+      };
+    });
+    assert.equal(prefetch.count, 2, 'Game Winner did not start XP reads for both players');
+    assert.ok(prefetch.startSpread < 50, 'XP reads did not start in parallel at game end: ' + JSON.stringify(prefetch));
+    assert.ok(prefetch.key.includes('test alpha') && prefetch.key.includes('test beta'), 'XP prefetch is not keyed to the completed game players');
+    await page.waitForFunction(() => Array.isArray(window.__sqGcXpPrefetch?.resolved) && window.__sqGcXpPrefetch.resolved.length === 2, null, { timeout:1000 });
+    await page.waitForTimeout(50);
     assert.equal((await page.locator('.gc-arcade-kicker').textContent()).trim(), 'GAME WINNER');
     assert.equal((await page.locator('.sq-pg-mainname').textContent()).trim(), 'Test Alpha');
     assert.match((await page.locator('.sq-pg-nickname').textContent()).trim(), /Captain Double/);
@@ -188,10 +207,13 @@ function makeRoundRows(values) {
     await page.screenshot({ path:shot('sc038-scorecard-runtime.png'), fullPage:false });
     stage('scorecard passed');
 
+    const xpRevealStarted = Date.now();
     await page.locator('.sq-pg-next').click();
     await page.waitForSelector('.sq-pg-xp-screen:not([hidden])');
-    await page.waitForFunction(() => /XP EARNED/.test(document.querySelector('.sq-pg-xp-screen:not([hidden]) .gc-xp-title')?.textContent || ''), null, { timeout:8000 });
-    await page.waitForFunction(() => document.querySelectorAll('.sq-pg-xp-screen:not([hidden]) .gc-xp-row').length === 2, null, { timeout:8000 });
+    await page.waitForFunction(() => /XP EARNED/.test(document.querySelector('.sq-pg-xp-screen:not([hidden]) .gc-xp-title')?.textContent || ''), null, { timeout:1500 });
+    await page.waitForFunction(() => document.querySelectorAll('.sq-pg-xp-screen:not([hidden]) .gc-xp-row').length === 2, null, { timeout:1500 });
+    const xpFirstPaintMs = Date.now() - xpRevealStarted;
+    assert.ok(xpFirstPaintMs < 300, 'Prefetched XP screen did not paint immediately: ' + xpFirstPaintMs + 'ms');
     await page.waitForFunction(() => {
       const b = document.querySelector('.sq-pg-next');
       return b && !b.disabled && /MATCH LEADERBOARD/.test(b.textContent || '');
