@@ -46,10 +46,12 @@
   function render(){
     var el = ensureHud(); if (!el) return;
     var all=vals(), normal=vals('normal'), bulk=vals('bulk-miss');
+    var dom=samples.map(function(x){ return Number(x.domMs == null ? x.ms : x.domMs); });
     var record=perfVals('recordThrow.total'), live=perfVals('liveV2Render'), pad=perfVals('buildPad');
     el.textContent =
-      'SXP-04 BASELINE • OFFLINE PREVIEW' +
-      '\nALL  n='+all.length+'  p95 '+pct(all,95)+'ms  max '+pct(all,100)+'ms' +
+      'SXP-04 AFTER CANDIDATE • OFFLINE PREVIEW' +
+      '\nPAINT  n='+all.length+'  p95 '+pct(all,95)+'ms  max '+pct(all,100)+'ms' +
+      '\nDOM  n='+dom.length+'  p95 '+pct(dom,95)+'ms' +
       '\nNORMAL  n='+normal.length+'  p95 '+pct(normal,95)+'ms' +
       '\nMISS×N  n='+bulk.length+'  p95 '+pct(bulk,95)+'ms' +
       '\nRECORD THROW  n='+record.length+'  p95 '+pct(record,95)+'ms' +
@@ -72,9 +74,10 @@
     new MutationObserver(function(){
       if (!pending) return;
       var p = pending; pending = null;
+      var domMs = Math.max(0, now()-p.t0);
       var raf = window.requestAnimationFrame || function(cb){ return setTimeout(cb,16); };
       raf(function(){
-        samples.push({ id:p.id, kind:p.kind, control:p.control, ms:Math.max(0, now()-p.t0), ts:Date.now() });
+        samples.push({ id:p.id, kind:p.kind, control:p.control, domMs:domMs, ms:Math.max(0, now()-p.t0), ts:Date.now() });
         if (samples.length > 200) samples.shift();
         try { localStorage.setItem(storageKey, JSON.stringify(samples)); } catch(_){}
         render();
