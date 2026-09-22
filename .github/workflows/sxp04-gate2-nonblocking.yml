@@ -1,0 +1,229 @@
+name: SXP-04 Gate 2 non-blocking presentation
+
+on:
+  push:
+    branches: [sxp-04-gate2-nonblocking-presentation]
+    paths:
+      - package.json
+      - package-lock.json
+      - vite.config.mjs
+      - scripts/**
+      - src/**
+      - tools/ui-smoke/**
+      - .github/workflows/sxp04-gate2-nonblocking.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sxp04-gate2-nonblocking
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm stacked Gate 1 ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor 0984b34d3ee21bfbe758c8f7c9f7e70fdbc3d505 HEAD
+
+      - name: Install architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Materialize canonical runtime
+        run: node scripts/materialize-runtime.mjs
+
+      - name: Verify generated source authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build-core-js-from-source.mjs --verify-current
+          node scripts/build-core-styles-from-source.mjs --verify-current
+
+      - name: Run Gate 2 contract guard
+        run: node tools/ui-smoke/verify-sxp04-gate2-contract.mjs
+
+      - name: Preserve Gate 1 contract
+        run: node tools/ui-smoke/verify-sxp04-gate1-miss-contract.mjs
+
+      - name: Preserve released side-quest contract
+        run: node tools/ui-smoke/verify-sxp04-sidequest.mjs
+
+      - name: Install deterministic build dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Build Vite candidate
+        run: npm run build
+
+      - name: Verify Vite dist contract
+        run: npm run verify:dist
+
+      - name: Install deterministic UI test dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run Gate 2 forced-long-presentation regression
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8130/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8130 --bind 127.0.0.1 --directory dist >/tmp/sxp04-gate2-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sxp04-gate2-nonblocking.js | tee sxp04-gate2-nonblocking.txt
+
+      - name: Re-run Gate 1 MISS latency
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8131/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8131 --bind 127.0.0.1 --directory dist >/tmp/sxp04-gate1-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sxp04-gate1-miss-response.js | tee sxp04-gate1-latency.txt
+
+      - name: Run existing Skip Go regression
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8132/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8132 --bind 127.0.0.1 --directory dist >/tmp/sxp04-skip-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sc036-skip-go.js | tee sxp04-skip-go.txt
+
+      - name: Run DMD pacing regression
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8133/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8133 --bind 127.0.0.1 --directory dist >/tmp/sxp04-dmd-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sc053-dmd-pacing.js | tee sxp04-dmd-pacing.txt
+
+      - name: Run DMD ownership source guard
+        run: node tools/ui-smoke/verify-sc032-dmd-ownership.mjs
+
+      - name: Run scoring smoke offline
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8134/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8134 --bind 127.0.0.1 --directory dist >/tmp/sxp04-smoke-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/smoke.js | tee sxp04-gate2-smoke.txt
+
+      - name: Run classic mobile visual fit
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8135/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8135 --bind 127.0.0.1 --directory dist >/tmp/sxp04-fit-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sxp04-gate2-visual-fit.txt
+
+      - name: Stage generated runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf sxp04-gate2-write
+          mkdir -p sxp04-gate2-write/src/legacy/styles sxp04-gate2-write/src/legacy/scripts
+          cp index.html sxp04-gate2-write/index.html
+          cp src/legacy/styles/inline-002.css sxp04-gate2-write/src/legacy/styles/inline-002.css
+          cp src/legacy/scripts/inline-005.js sxp04-gate2-write/src/legacy/scripts/inline-005.js
+
+      - name: Package generated runtime
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sxp04-gate2-write
+          retention-days: 1
+          path: sxp04-gate2-write/
+
+      - name: Keep Gate 2 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sxp04-gate2-evidence
+          retention-days: 14
+          path: |
+            sxp04-gate2-nonblocking.txt
+            sxp04-gate1-latency.txt
+            sxp04-skip-go.txt
+            sxp04-dmd-pacing.txt
+            sxp04-gate2-smoke.txt
+            sxp04-gate2-visual-fit.txt
+            sc031-vite-build-evidence.json
+
+  commit-generated:
+    needs: verify
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Confirm branch has not advanced
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin sxp-04-gate2-nonblocking-presentation
+          test "$(git rev-parse origin/sxp-04-gate2-nonblocking-presentation)" = "${GITHUB_SHA}"
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: sxp04-gate2-write
+          path: sxp04-gate2-write
+
+      - name: Apply generated runtime only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp sxp04-gate2-write/index.html index.html
+          cp sxp04-gate2-write/src/legacy/styles/inline-002.css src/legacy/styles/inline-002.css
+          cp sxp04-gate2-write/src/legacy/scripts/inline-005.js src/legacy/scripts/inline-005.js
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //' | grep -v '^sxp04-gate2-write/' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index.html|src/legacy/styles/inline-002.css|src/legacy/scripts/inline-005.js)$' || true)"
+          if [ -n "$bad" ]; then
+            echo 'Refusing generated write: unexpected changed paths:'
+            echo "$bad"
+            exit 1
+          fi
+          test -n "$changed"
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html src/legacy/styles/inline-002.css src/legacy/scripts/inline-005.js
+          git commit -m 'SXP-04 Gate 2: materialize non-blocking presentation runtime [skip ci]'
+          git push origin HEAD:sxp-04-gate2-nonblocking-presentation
