@@ -46,8 +46,9 @@ jobs:
           git merge-base --is-ancestor origin/main HEAD
           cmp <(git show origin/main:assets/release-metadata.json) assets/release-metadata.json
           cmp <(git show origin/main:src/styles/practice/solo-live-v2.css) src/styles/practice/solo-live-v2.css
-          cmp <(git show origin/sxp-04-gate4-equivalence:src/live-game/live-v2.js) src/live-game/live-v2.js
-          cmp <(git show origin/sxp-04-gate4-equivalence:src/styles/live-game/v2-panel.css) src/styles/live-game/v2-panel.css
+          # Gate 5 contains two explicitly accepted iPhone corrections on top
+          # of the Gate 4 source: stable non-composited hold UI and exact-button
+          # Robin Hood eligibility. Preserve all other accepted proof assets.
           for p in             tools/ui-smoke/verify-sxp04-gate1-miss-contract.mjs             tools/ui-smoke/verify-sxp04-gate1-miss-response.js             tools/ui-smoke/verify-sxp04-gate2-contract.mjs             tools/ui-smoke/verify-sxp04-gate2-nonblocking.js             tools/ui-smoke/verify-sxp04-gate3-quick-entry-contract.mjs             tools/ui-smoke/verify-sxp04-gate3-quick-entry.js             tools/ui-smoke/verify-sxp04-gate4-equivalence-contract.mjs             tools/ui-smoke/verify-sxp04-gate4-equivalence.js
           do
             cmp <(git show "origin/sxp-04-gate4-equivalence:$p") "$p"
@@ -67,6 +68,7 @@ jobs:
           node scripts/build-core-js-from-source.mjs --verify-current
           node scripts/build-core-styles-from-source.mjs --verify-current
           node scripts/verify-modularization.mjs
+          node tools/ui-smoke/verify-sxp04-gate5-iphone-corrections.mjs
           node tools/ui-smoke/verify-sxp04-gate4-equivalence-contract.mjs
           node tools/ui-smoke/verify-sxp04-gate3-quick-entry-contract.mjs
           node tools/ui-smoke/verify-sxp04-gate2-contract.mjs
@@ -105,6 +107,7 @@ jobs:
           server_pid=$!
           trap 'kill "$server_pid" || true' EXIT
 
+          node tools/ui-smoke/verify-sxp04-gate5-iphone-corrections.js | tee sxp04-gate5-iphone-corrections.txt
           node tools/ui-smoke/verify-sxp04-gate4-equivalence.js | tee sxp04-gate5-equivalence.txt
           node tools/ui-smoke/verify-sxp04-gate3-quick-entry.js | tee sxp04-gate5-gesture.txt
           node tools/ui-smoke/verify-sxp04-gate2-nonblocking.js | tee sxp04-gate5-nonblocking.txt
@@ -151,7 +154,7 @@ jobs:
           Source commit: ${GITHUB_SHA}
           Production base / ancestor: 88552fb3fbfe7686f49ad74f481ebf087a361a96
           Accepted Gate 4 source reference: 62a4fad4f7f02b68fddec32600850f39b0db0ede
-          SC-049: hold S/D/T 360ms; slide/release to x2/x3/RH; release elsewhere cancels.
+          SC-049: hold S/D/T 360ms; slide/release to x2/x3; RH only on the button matching the immediately previous dart; release elsewhere cancels.
           Every repeated dart uses canonical recordThrow one dart at a time.
           Supabase requests are blocked before app boot.
           No visible preview overlay is injected.
