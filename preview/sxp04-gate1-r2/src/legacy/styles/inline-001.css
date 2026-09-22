@@ -1,0 +1,263 @@
+
+  html,body{background:#070914;margin:0;}
+  /* Critical: ensure boot splash covers the white flash before main CSS applies */
+  #bootSplash,#gameLoadOverlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center, rgba(26,30,56,.92) 0%, rgba(6,8,18,.98) 55%, rgba(0,0,0,1) 100%);z-index:9999;}
+  #bootSplash[aria-hidden="true"],#gameLoadOverlay[aria-hidden="true"]{display:none !important;}
+
+/* >>> PATCH:portrait-fit-v1 START */
+@media (max-width: 480px) and (orientation: portrait){
+  :root{
+    /* Cell 1 (DM) shorter so the shot pad fits without scrolling */
+    --sqDmdH: 74px;
+  }
+  /* Cell 3 INFO: tighten pill/row heights further (requested: -25% again) */
+  .livev2panel .v2AvgWrap{
+    padding: 4px 0;
+    border-radius: 16px;
+  }
+  /* Label pill (POS / 3R AVG / MTC AVG): hard-center text vertically */
+  .livev2panel .v2AvgLabel{
+    border-radius: 12px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.10);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    font-weight:800;
+    font-size: 10px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    opacity: .85;
+    min-height: 26px;
+    padding: 0;
+    line-height: 1;
+  }
+
+  /* Fit 5-row Info table (POS/3R/MTC/P-RANK/G-RANK) */
+  .livev2panel .v2InfoCell .v2AvgCell{
+    min-height: 22px;
+    font-size: 12px;
+  }
+  .livev2panel .v2AvgLabel{
+    min-height: 22px;
+  }
+
+}
+/* <<< PATCH:portrait-fit-v1 END */
+
+/* >>> PATCH:B3_LAYOUT_CONSOLIDATED_V1 START */
+/* LIVE V2 layout authority: A1/B1/B2/B3/C1.
+   B3 is the lower pager (Game Race / Game Stats / Game Streak).
+   This block consolidates earlier B3 height, overflow, and stats-fill rules
+   without changing the current visual layout. */
+:root{
+  --sqLiveBlockGap: 14px;
+  --sqA1H: 86px;
+  --sqB1Gap: 10px;
+  --sqB3H: clamp(104px, 14vh, 150px);
+  --sqV2InfoH: clamp(210px, 26vh, 260px);
+}
+
+#liveV2Panel{
+  display:flex;
+  flex-direction:column;
+  gap: var(--sqLiveBlockGap);
+}
+
+#liveTopBar, #liveHeader, #v2TopBar, #v2Header{
+  min-height: var(--sqA1H);
+}
+
+#v2GameCell{
+  display:flex;
+  flex-direction:column;
+  gap: var(--sqB1Gap);
+  min-height: 0;
+  padding-bottom: 0 !important;
+}
+
+/* B3 pager height: support both legacy IDs and current class-based Live V2 DOM. */
+#v2InfoPager, #v2GeneralInfo, #v2InfoCell,
+body.livev2-on[data-page="game"] .v2InfoPager,
+body.livev2-on[data-page="game"] .v2InfoViewport,
+body.livev2-on[data-page="game"] .v2InfoTrack,
+body.livev2-on[data-page="game"] .v2InfoPage{
+  height: var(--sqV2InfoH) !important;
+  min-height: var(--sqV2InfoH) !important;
+  max-height: var(--sqV2InfoH) !important;
+}
+
+#v2InfoPager, #v2InfoViewport, #v2InfoTrack,
+#v2InfoTrack .v2InfoPage, #v2GeneralInfo, #v2InfoCell,
+body.livev2-on[data-page="game"] .v2InfoPager,
+body.livev2-on[data-page="game"] .v2InfoViewport,
+body.livev2-on[data-page="game"] .v2InfoTrack,
+body.livev2-on[data-page="game"] .v2InfoPage{
+  min-height: 0 !important;
+  box-sizing: border-box;
+}
+
+#v2InfoTrack,
+body.livev2-on[data-page="game"] .v2InfoTrack{
+  height: var(--sqV2InfoH) !important;
+}
+
+#v2InfoTrack .v2InfoPage,
+body.livev2-on[data-page="game"] .v2InfoPage{
+  height: var(--sqV2InfoH) !important;
+  display:flex;
+}
+
+body.livev2-on[data-page="game"] .v2InfoCell,
+body.livev2-on[data-page="game"] .v2HighCell{
+  height: 100%;
+  margin-top: 0;
+  display:flex;
+  flex-direction:column;
+}
+
+body.livev2-on[data-page="game"] .v2InfoCell .v2AvgWrap{
+  flex:1;
+  min-height:0;
+}
+
+.livev2panel .v2AvgPage{
+  height: 100%;
+  min-height: 100%;
+}
+
+.livev2panel #v2Avg{
+  margin-bottom: 0;
+}
+
+/* B3 stats page fill: rows spread evenly inside the fixed pager height. */
+body.livev2-on[data-page="game"] #v2Avg{
+  padding-bottom: 14px !important;
+  box-sizing: border-box;
+}
+
+body.livev2-on[data-page="game"] .v2StatsVScroll{
+  height: 100% !important;
+}
+
+body.livev2-on[data-page="game"] .v2StatsPage{
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+}
+
+body.livev2-on[data-page="game"] .v2StatsRow{
+  flex: 1 1 0 !important;
+  align-items: center !important;
+}
+
+body.livev2-on[data-page="game"] .v2StatsRow > *{
+  min-height: 0 !important;
+}
+
+/* legacy wrappers only */
+#game, #liveGame, #liveGameWrap, #liveGameCell{
+  padding-bottom: calc(env(safe-area-inset-bottom) + 96px);
+}
+
+/* fixed throw pad */
+#padBar, #scorePad, .pad-bar{
+  padding-bottom: calc(env(safe-area-inset-bottom) + 10px) !important;
+}
+
+@media (max-height: 820px){
+  :root{ --sqB3H: clamp(96px, 12.5vh, 132px); }
+}
+@media (max-height: 740px){
+  :root{ --sqB3H: clamp(84px, 11vh, 114px); }
+}
+/* <<< PATCH:B3_LAYOUT_CONSOLIDATED_V1 END */
+
+/* >>> PATCH:COMMENTARY_BOX_ONLY START */
+/* B3a canonical view = Game Race canvas. Old text commentary branch removed. */
+body.livev2-on[data-page="game"] canvas#v2InfoDmd{
+  display:block !important;
+}
+/* <<< PATCH:COMMENTARY_BOX_ONLY END */
+
+/* >>> PATCH:target-points-header-stack START */
+.hs-table thead th span{display:block !important; line-height:1.05 !important;}
+.hs-table thead th{white-space:normal !important;}
+.hs-table thead th:nth-child(6), .hs-table thead th:nth-child(7),
+.hs-table tbody td:nth-child(6), .hs-table tbody td:nth-child(7){text-align:center !important;}
+/* <<< PATCH:target-points-header-stack END */
+
+/* >>> PATCH:C1_THROWPAD_SETTINGS_CONSOLIDATED_V1 START
+   Consolidates superseded C1 Settings/Throwpad CSS patches.
+   Visual intent preserved:
+   - Pad settings button = text hamburger, 28px, centered.
+   - Hide old sq-pad-lines icon spans when present.
+   - S/D/T and MISS xN buttons keep enlarged mobile type.
+*/
+body[data-page="game"] #settingsBtnGamePad{
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100%;
+  min-width: 0;
+  padding: 0 !important;
+  overflow: hidden !important;
+  text-indent: 0 !important;
+  color: #cfd3ee !important;
+  font-size: 28px !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+}
+
+body[data-page="game"] #settingsBtnGamePad::before,
+body[data-page="game"] #settingsBtnGamePad::after{
+  content: none !important;
+}
+
+body[data-page="game"] #settingsBtnGamePad .sq-pad-lines{
+  display: none !important;
+}
+
+body[data-page="game"] .pad-bar button{
+  letter-spacing: .04em;
+}
+
+body[data-page="game"] .pad-bar button[data-kind="single"],
+body[data-page="game"] .pad-bar button[data-kind="double"],
+body[data-page="game"] .pad-bar button[data-kind="treble"]{
+  font-size: 22px !important;
+  font-weight: 800 !important;
+}
+
+body[data-page="game"] .pad-bar button.miss-multi,
+body[data-page="game"] .pad-bar button[id*="miss"][id*="multi"],
+body[data-page="game"] .pad-bar button[aria-label*="MISS x"],
+body[data-page="game"] .pad-bar button[title*="MISS x"]{
+  font-size: 22px !important;
+  font-weight: 800 !important;
+  line-height: 1.05 !important;
+}
+
+body[data-page="game"] .pad-bar button .miss-mult-text,
+body[data-page="game"] .pad-bar button .missx,
+body[data-page="game"] .pad-bar button .btn-main,
+body[data-page="game"] .pad-bar button .btn-label{
+  font-size: inherit !important;
+}
+
+body[data-page="game"] .pad-bar > div:first-child button{
+  font-size: 22px !important;
+  font-weight: 800 !important;
+}
+
+body[data-page="game"] .pad-bar > div:first-child button:first-child{
+  font-size: 22px !important;
+  font-weight: 800 !important;
+  line-height: 1.05 !important;
+}
+/* <<< PATCH:C1_THROWPAD_SETTINGS_CONSOLIDATED_V1 END */
+

@@ -1,0 +1,1089 @@
+/* >>> PATCH:home-live-printer START */
+.home-live-printer{
+  min-height: 0;
+  max-height: none;
+  height:auto;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.10);
+  background:
+    linear-gradient(180deg, rgba(16,20,38,.94), rgba(10,13,26,.92));
+  box-shadow: 0 14px 34px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.05);
+  overflow: hidden;
+  width: min(420px, 94%);
+  margin: 18px auto 8px;
+}
+
+/* --- HOME: Testing overlays + badges (VIDE / High Score League / Power Rankings) --- */
+.home-live-printer .lp-title,
+.home-mini-printer .lp-title{
+  display:inline-block;
+}
+
+.home-live-printer .lp-badge,
+.home-mini-printer .lp-badge{
+  margin-left:auto;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-size:10px;
+  letter-spacing:.10em;
+  text-transform:uppercase;
+  color: rgba(210,215,235,.85);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.lp-badgeSep{ opacity:.55; }
+
+.lp-dots{ display:inline-flex; gap:4px; margin-left:2px; }
+.lp-dots i{
+  width:4px; height:4px; border-radius:99px;
+  background: rgba(210,215,235,.75);
+  opacity:.25;
+  animation: lpDotPulse 1.2s infinite;
+}
+.lp-dots i:nth-child(2){ animation-delay:.20s; }
+.lp-dots i:nth-child(3){ animation-delay:.40s; }
+@keyframes lpDotPulse{
+  0%, 80%, 100% { opacity:.20; transform: translateY(0); }
+  40% { opacity:.95; transform: translateY(-1px); }
+}
+
+.lp-mid-hold{ position:relative; }
+
+/* Home panels: use centered overlay only (hide corner badge) */
+#homeLivePrinter .lp-badge{ display:none !important; }
+
+#homeLivePrinter.is-live .home-hold-overlay{ display:none !important; }
+.home-mini-printer.is-live .home-hold-overlay{ display:none !important; }
+
+.home-hold-overlay{
+  position:absolute;
+  inset: 0;
+  z-index: 3;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap: 8px;
+  background: rgba(6,10,20,.72);
+  backdrop-filter: blur(3px);
+  pointer-events:none;
+}
+
+/* Center hold content within panel content area (below panel headers) */
+#homeLivePrinter .home-hold-overlay{ inset: 41px 0 0 0; }
+.home-mini-printer .home-hold-overlay{ inset: 41px 0 0 0; }
+
+.home-hold-overlay-mini{
+  background: rgba(6,10,20,.78);
+}
+
+.home-hold-title{
+  font-size: 12px;
+  letter-spacing: .22em;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: rgba(226,232,250,.72);
+}
+
+.home-hold-sub{
+  font-size: 10px;
+  letter-spacing: .18em;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: rgba(255,140,40,.78);
+}
+
+/* Game-styled loading bar (home LIVE UPDATES hold state): navy track with a
+   blue hairline and a glowing orange sweep, matching the CTA palette. */
+.sq-loadbar{
+  width: min(220px, 70%);
+  height: 8px;
+  border-radius: 99px;
+  background: #101827;
+  border: 1px solid rgba(35,164,255,.35);
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 0 18px rgba(47,134,255,.15), inset 0 1px 2px rgba(0,0,0,.5);
+}
+.sq-loadbar-fill{ position:absolute; inset:0; }
+.sq-loadbar-fill::after{
+  content:'';
+  position:absolute;
+  top:0; bottom:0;
+  width:45%;
+  left:-45%;
+  border-radius:99px;
+  background: linear-gradient(90deg, rgba(255,122,0,0), rgba(255,122,0,.9), rgba(255,170,60,.95), rgba(255,122,0,0));
+  box-shadow: 0 0 12px rgba(255,122,0,.55);
+  animation: sqLoadSweep 1.4s cubic-bezier(.4,0,.6,1) infinite;
+}
+@keyframes sqLoadSweep{
+  0% { left:-45%; }
+  100% { left:100%; }
+}
+@media (prefers-reduced-motion: reduce){
+  .sq-loadbar-fill::after{ animation-duration: 2.8s; }
+}
+
+.home-hold-sim{
+  display:flex;
+  gap: 10px;
+  margin-top: 2px;
+}
+.home-hold-sim span{
+  width: 28px;
+  height: 4px;
+  border-radius: 99px;
+  background: rgba(230,235,250,.18);
+  overflow:hidden;
+  position:relative;
+}
+.home-hold-sim span::after{
+  content:'';
+  position:absolute;
+  top:0; bottom:0;
+  width: 60%;
+  left: -60%;
+  background: linear-gradient(90deg, rgba(255,122,0,0), rgba(255,122,0,.55), rgba(255,122,0,0));
+  animation: holdSweep 1.3s infinite;
+}
+.home-hold-sim span:nth-child(2)::after{ animation-delay:.20s; }
+.home-hold-sim span:nth-child(3)::after{ animation-delay:.40s; }
+@keyframes holdSweep{
+  0% { left:-60%; }
+  100% { left: 120%; }
+}
+
+/* Ensure START/RESUME match VIDE width */
+#details #startGameBtn,
+#details #resumeBtn{
+  width: min(420px, 94%) !important;
+  margin-left:auto;
+  margin-right:auto;
+}
+/* Center key home elements defensively */
+#details #startGameBtn,
+#details #resumeBtn,
+#details #homeLivePrinter{
+  display:block;
+  margin-left:auto;
+  margin-right:auto;
+}
+
+/* Meta (HS / PB) */
+.home-live-printer .lp-meta{
+  padding: 8px 10px;
+  display:flex;
+  flex-direction:column;
+  gap: 4px;
+}
+.home-live-printer .lp-meta{display:none !important;}
+#homeLpHS{display:none !important;}
+.home-live-printer hr{display:none !important;}
+
+.home-live-printer .lp-meta-line{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  color: rgba(220,255,230,.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.home-live-printer .lp-meta-line b{ color: rgba(54,255,122,.95); font-weight: 900; }
+.home-live-printer .lp-meta-rule{
+  height: 1px;
+  background: rgba(255,255,255,.10);
+}
+
+/* Top: MATCH_LOG.TXT */
+.home-live-printer .lp-top{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  padding: 12px 14px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #36ff7a;
+  background: rgba(0,0,0,.20);
+  border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.home-live-printer .lp-dot{
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #36ff7a;
+  opacity: .85;
+}
+.home-live-printer .lp-top span:last-child{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+
+/* Middle: printer table */
+.home-live-printer .lp-mid{
+  padding: 10px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,0)),
+    rgba(0,0,0,.10);
+}
+/* Mini league panels: pull table content up a touch */
+.home-mini-printer .lp-mid{ padding-top: 8px; }
+
+.home-live-printer .lp-table{
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 11.5px;
+  line-height: 1.28;
+  color: rgba(220,255,230,.95);
+  border: 1px solid rgba(54,255,122,.09);
+  border-radius: 10px;
+  background:
+    repeating-linear-gradient(180deg, rgba(255,255,255,.022) 0, rgba(255,255,255,.022) 1px, rgba(255,255,255,0) 1px, rgba(255,255,255,0) 7px),
+    linear-gradient(180deg, rgba(2,9,18,.72), rgba(2,6,14,.84));
+  box-shadow: inset 0 0 18px rgba(0,0,0,.22), 0 0 0 1px rgba(0,0,0,.14);
+}
+.home-live-printer .lp-row{ height: 20px; }
+.home-live-printer .lp-row td{
+  padding: 1px 0;
+  vertical-align: middle;
+  background: transparent;
+  border-bottom: 1px solid rgba(210,235,255,.055);
+}
+.home-live-printer .lp-row:last-child td{ border-bottom: 0; }
+.home-live-printer .lp-line{
+  padding: 2px 8px 2px 10px;
+  position: relative;
+}
+.home-live-printer .lp-ellipsis{
+  display:block;
+  overflow:hidden;
+  max-width: 100%;
+  /* long player lists wrap onto a second line instead of being cut off */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.15;
+}
+.home-live-printer .lp-ellipsis.lp-structured{
+  display:flex;
+  align-items:center;
+  flex-wrap: wrap;
+  row-gap: 1px;
+  gap: 6px;
+  min-width: 0;
+}
+.home-live-printer .lp-mode{
+  flex: 0 0 auto;
+  min-width: 30px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  border: 1px solid rgba(54,255,122,.28);
+  background: rgba(54,255,122,.075);
+  color: rgba(86,255,150,.96);
+  font-size: 9.5px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-align: center;
+}
+.home-live-printer .lp-mode-sep{
+  flex: 0 0 auto;
+  color: rgba(210,220,235,.38);
+  font-weight: 800;
+}
+.home-live-printer .lp-time{
+  flex: 0 0 auto;
+  color: rgba(108,220,255,.78);
+  font-variant-numeric: tabular-nums;
+}
+.home-live-printer .lp-result{
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: rgba(231,246,241,.95);
+}
+.home-live-printer .lp-scoreline{
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.home-live-printer .lp-row.lp-practice .lp-mode{
+  border-color: rgba(69,184,255,.34);
+  background: rgba(69,184,255,.09);
+  color: rgba(129,218,255,.96);
+}
+.home-live-printer .lp-row.lp-turbo .lp-mode{
+  border-color: rgba(255,138,34,.38);
+  background: rgba(255,138,34,.10);
+  color: rgba(255,174,86,.98);
+}
+
+.home-live-printer .lp-row.lp-datehdr .lp-ellipsis{
+  display:flex;
+  align-items:center;
+  gap: 9px;
+  font-weight: 900 !important;
+  color: rgba(255,138,34,.88);
+  letter-spacing: .16em;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.home-live-printer .lp-row.lp-datehdr .lp-ellipsis::before,
+.home-live-printer .lp-row.lp-datehdr .lp-ellipsis::after{
+  content:'';
+  height:1px;
+  flex:1 1 auto;
+  min-width: 14px;
+  background: repeating-linear-gradient(90deg, rgba(255,138,34,.30) 0, rgba(255,138,34,.30) 5px, transparent 5px, transparent 9px);
+}
+
+/* PATCH:LIVE_PRINTER_DATEHDR_STYLE_ID_TARGET START */
+#homeLivePrinter .lp-row.lp-datehdr .lp-ellipsis{
+  font-weight: 900 !important;
+  color: rgba(255,138,34,.88) !important;
+  letter-spacing: .16em;
+}
+/* PATCH:LIVE_PRINTER_DATEHDR_STYLE_ID_TARGET END */
+.home-live-printer .lp-row.lp-new .lp-line{
+  padding-left: 30px;
+  color: rgba(226,255,238,.98);
+  background: linear-gradient(90deg, rgba(54,255,122,.14), rgba(54,255,122,.035) 56%, transparent);
+  box-shadow: inset 0 0 18px rgba(54,255,122,.055);
+}
+.home-live-printer .lp-row.lp-new .lp-line::before{
+  content:'';
+  position:absolute;
+  left:0;
+  top:5px;
+  bottom:5px;
+  width:3px;
+  border-radius: 0 4px 4px 0;
+  background: rgba(54,255,122,.92);
+  box-shadow: 0 0 10px rgba(54,255,122,.42);
+}
+.home-live-printer .lp-row.lp-new .lp-result{ color: rgba(236,255,244,.98); }
+.home-live-printer .lp-row.lp-new .lp-time{ color: rgba(141,234,255,.88); }
+
+.home-live-printer .lp-ellipsis.lp-recordline,
+.home-live-printer .lp-ellipsis.lp-matchline,
+.home-live-printer .lp-ellipsis.lp-alertline{
+  display:flex;
+  align-items:center;
+  gap: 7px;
+  min-width:0;
+}
+.home-live-printer .lp-record-chip{
+  flex:0 0 auto;
+  /* wide enough for the longest label ("NEW GAME RECORD SCORE"); the row wraps
+     now, so a wider chip pushes the value to line two rather than off screen */
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid rgba(255,196,77,.36);
+  background: linear-gradient(180deg, rgba(255,196,77,.16), rgba(255,196,77,.055));
+  color: rgba(255,218,108,.98);
+  font-size: 9px;
+  line-height: 1.05;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+.home-live-printer .lp-record-value{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color: rgba(238,246,225,.95);
+  font-weight: 800;
+}
+.home-live-printer .lp-row.lp-roundpb .lp-record-chip{
+  border-color: rgba(69,184,255,.34);
+  background: rgba(69,184,255,.09);
+  color: rgba(129,218,255,.98);
+}
+.home-live-printer .lp-row.lp-gamepb .lp-record-chip{
+  border-color: rgba(54,255,122,.32);
+  background: rgba(54,255,122,.08);
+  color: rgba(92,255,157,.98);
+}
+.home-live-printer .lp-row.lp-record .lp-record-chip,
+.home-live-printer .lp-row.lp-alert .lp-record-chip{
+  border-color: rgba(255,196,77,.42);
+  background: rgba(255,196,77,.12);
+  color: rgba(255,222,122,.98);
+}
+.home-live-printer .lp-row.lp-alert-row .lp-line{
+  background: linear-gradient(90deg, rgba(255,66,80,.12), rgba(255,66,80,.035) 66%, transparent);
+}
+.home-live-printer .lp-alert-chip{
+  flex:0 0 auto;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid rgba(255,88,96,.44);
+  background: linear-gradient(180deg, rgba(255,66,80,.22), rgba(100,12,28,.26));
+  color: rgba(255,184,188,.98);
+  font-size: 9px;
+  line-height: 1.05;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  box-shadow: 0 0 10px rgba(255,66,80,.16), inset 0 1px 0 rgba(255,255,255,.08);
+}
+.home-live-printer .lp-alert-copy{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color: rgba(255,232,226,.96);
+  font-weight: 850;
+}
+.home-live-printer .lp-row.lp-match-result .lp-line{
+  background: linear-gradient(90deg, rgba(69,184,255,.085), rgba(255,196,77,.045) 62%, transparent);
+}
+.home-live-printer .lp-result-chip{
+  flex:0 0 auto;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid rgba(69,184,255,.36);
+  background: rgba(69,184,255,.09);
+  color: rgba(129,218,255,.98);
+  font-size: 9px;
+  line-height: 1.05;
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+.home-live-printer .lp-medal-list{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap: 5px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.home-live-printer .lp-medal-chip{
+  flex:0 0 auto;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 8.5px;
+  line-height: 1.05;
+  font-weight: 950;
+  letter-spacing: .08em;
+  border: 1px solid rgba(255,255,255,.18);
+}
+.home-live-printer .lp-medal-gold{ color:#ffdd70; background:rgba(255,205,80,.12); border-color:rgba(255,205,80,.34); }
+.home-live-printer .lp-medal-silver{ color:#dbe7f4; background:rgba(210,226,244,.10); border-color:rgba(210,226,244,.26); }
+.home-live-printer .lp-medal-bronze{ color:#ffb17b; background:rgba(255,138,76,.10); border-color:rgba(255,138,76,.28); }
+.home-live-printer .lp-medal-name{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color: rgba(236,246,241,.96);
+}
+
+/* PB / WR / ALERT lines in LIVE UPDATES */
+.home-live-printer .lp-row.lp-roundpb .lp-line,
+.home-live-printer .lp-row.lp-roundpb .lp-ellipsis{ color: rgba(255, 220, 90, .98) !important; font-weight: 400 !important; }
+.home-live-printer .lp-row.lp-gamepb .lp-line,
+.home-live-printer .lp-row.lp-gamepb .lp-ellipsis{ color: rgba(255, 220, 90, .98) !important; font-weight: 900; }
+
+/* Any line prefixed with 🚨 (ALERT / PB / WR / NEW PLAYER / ROUND WR) */
+.home-live-printer .lp-row.lp-alert .lp-line,
+.home-live-printer .lp-row.lp-alert .lp-ellipsis{ color: rgba(255, 220, 90, .98) !important; font-weight: 900; }
+
+/* Records (e.g., NEW GAME RECORD SCORE) */
+
+/* Record lines (ROUND PB / GAME PB / NEW GAME RECORD / ALERT) belong to the game
+   printed above them, so indent them and hang a connector rather than letting
+   them arrive looking like a brand-new result. */
+.home-live-printer .lp-row.lp-roundpb .lp-line,
+.home-live-printer .lp-row.lp-gamepb .lp-line,
+.home-live-printer .lp-row.lp-record .lp-line,
+.home-live-printer .lp-row.lp-alert .lp-line,
+.home-live-printer .lp-row.lp-alert-row .lp-line{ padding-left: 26px; }
+.home-live-printer .lp-row.lp-roundpb .lp-line::before,
+.home-live-printer .lp-row.lp-gamepb .lp-line::before,
+.home-live-printer .lp-row.lp-record .lp-line::before,
+.home-live-printer .lp-row.lp-alert .lp-line::before,
+.home-live-printer .lp-row.lp-alert-row .lp-line::before{
+  content:''; position:absolute; left:13px; top:-2px; bottom:50%;
+  border-left:1px solid rgba(255,220,90,.35);
+  border-bottom:1px solid rgba(255,220,90,.35);
+  border-bottom-left-radius:4px; width:8px;
+}
+.lp-record .lp-line, .lp-record .lp-ellipsis{
+  color: rgba(255, 220, 90, .98) !important;
+  font-weight: 900 !important;
+}
+
+@media (max-width: 480px){
+  .home-live-printer{
+    margin-top: 16px;
+  }
+  .home-live-printer .lp-mid{
+    padding: 8px;
+  }
+  .home-live-printer .lp-table{
+    font-size: 10.8px;
+  }
+  .home-live-printer .lp-row{
+    height: 20px;
+  }
+  .home-live-printer .lp-line{
+    padding: 1px 7px 1px 8px;
+  }
+  .home-live-printer .lp-row.lp-new .lp-line{
+    padding-left: 28px;
+  }
+  .home-live-printer .lp-row.lp-roundpb .lp-line,
+  .home-live-printer .lp-row.lp-gamepb .lp-line,
+  .home-live-printer .lp-row.lp-record .lp-line,
+  .home-live-printer .lp-row.lp-alert .lp-line,
+  .home-live-printer .lp-row.lp-alert-row .lp-line{ padding-left: 24px; }
+  .home-live-printer .lp-ellipsis.lp-structured{
+    gap: 5px;
+  }
+  .home-live-printer .lp-mode{
+    min-width: 28px;
+    padding: 2px 3px;
+    font-size: 9px;
+  }
+  .home-live-printer .lp-time{
+    font-size: 10.2px;
+  }
+  .home-live-printer .lp-row.lp-datehdr .lp-ellipsis{
+    gap: 7px;
+    font-size: 9.5px;
+    letter-spacing: .12em;
+  }
+  .home-live-printer .lp-record-chip,
+  .home-live-printer .lp-result-chip,
+  .home-live-printer .lp-alert-chip{
+    max-width: 100%;
+    font-size: 8.4px;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+  .home-live-printer .lp-medal-list{
+    gap: 4px;
+  }
+}
+
+/* The new players marquee sits below the VIDE box */
+.home-newplayers{ margin-top: 10px; }
+
+/* <<< PATCH:home-mini-leagues START */
+.home-mini-leagues{
+  width:min(420px,94%);
+  margin:0 auto 18px;
+  display:flex;
+  gap:14px;
+}
+@media (max-width: 520px){
+  .home-mini-leagues{ flex-direction:column; }
+}
+.home-mini-printer{
+  flex:1;
+  min-height:170px;
+  max-height:190px;
+  display:flex;
+  flex-direction:column;
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.10);
+  overflow:hidden;
+  background: linear-gradient(180deg, rgba(16,20,38,.94), rgba(10,13,26,.92));
+  box-shadow: 0 14px 34px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.05);
+}
+.home-mini-printer .lp-top{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:12px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size:12px;
+  letter-spacing:.14em;
+  color: rgba(0,255,120,.85);
+  text-transform:uppercase;
+  background: rgba(0,0,0,.20);
+  border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.home-mini-printer .lp-dot{
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  background: rgba(0,255,120,.95);
+  box-shadow: 0 0 10px rgba(0,255,120,.45);
+}
+.home-mini-printer .lp-mid{
+  flex:1;
+  padding:0px 12px 10px;
+  overflow:hidden;
+}
+.home-mini-printer table.mini-table{
+  width:100%;
+  border-collapse:collapse;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size:12px;
+}
+.home-mini-printer table.mini-table thead th{
+  padding:6px 6px;
+  color: rgba(0,255,120,.85);
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  border-bottom: 1px solid rgba(0,255,120,.25);
+}
+.home-mini-printer table.mini-table tbody td{
+  padding:4px 6px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  color: rgba(220,255,230,.85);
+}
+.home-mini-printer table.mini-table tbody tr:last-child td{ border-bottom:none; }
+.home-mini-muted{
+  color: rgba(220,255,230,.55) !important;
+  text-align:center;
+  font-style:italic;
+  padding:10px 0;
+}
+/* <<< PATCH:home-mini-leagues END */
+
+/* <<< PATCH:home-live-printer END */
+
+.start-actions .btn.big{
+  width: 100%;
+}
+
+  /* --- FIX: centre bottom nav + admin buttons (and match RESUME styling) --- */
+  #details .start-actions .start-secondary-row{
+    width: var(--homeW) !important;
+    margin: 10px auto 0 !important;
+    display: flex !important;
+    justify-content: center !important;
+    gap: 14px !important;
+  }
+  #details .start-actions .start-secondary-row .btn{
+    height: 74px;
+    width: calc((var(--homeW) - 28px) / 3);
+    max-width: 160px;
+    background: #131733;            /* same as .btn base */
+    border-color: #2b3050;
+    box-shadow: 0 18px 44px rgba(0,0,0,.28);
+  }
+  #details .start-actions .start-secondary-row .btn:hover{
+    background: #161a3a;
+    border-color: #32407a;
+    transform: translateY(-2px);
+  }
+
+  #details .start-actions .home-admin-row{
+    width: var(--homeW) !important;
+    margin: 10px auto 0 !important;
+    display: flex !important;
+    justify-content: center !important;
+  }
+  #details .start-actions .home-admin-row .btn{
+    height: 52px;
+    width: calc((var(--homeW) - 28px) / 3); /* same as STATS */
+    max-width: 160px;
+    background: #131733;
+    border-color: #2b3050;
+    font-weight: 800;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+  }
+  #details .start-actions .home-admin-row .btn:hover{
+    background: #161a3a;
+    border-color: #32407a;
+    transform: translateY(-2px);
+  }
+
+/* ===== VIDE HOME: fix footer/nav centering + unstick buttons ===== */
+.home-footer-nav{
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  top: auto !important;
+  transform: none !important;
+
+  width: var(--homeW, min(420px, 94%)) !important;
+  margin: 10px auto 0 !important;
+  padding: 0 !important;
+
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+}
+
+.home-square-row{
+  width: 100% !important;
+  margin: 0 auto !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 14px !important;
+  justify-items: stretch !important;
+}
+
+.home-admin-row{
+  width: 100% !important;
+  margin: 0 auto !important;
+  display: flex !important;
+  justify-content: center !important;
+}
+
+.home-admin-row button,
+.home-admin-row .btn{
+  width: calc((100% - 28px) / 3) !important; /* match one of the 3 square buttons */
+  max-width: none !important;
+  text-transform: uppercase !important;
+}
+
+/* match RESUME button vibe (neutral grey) */
+.home-square-row .btn,
+.home-admin-row .btn,
+.home-square-row button,
+.home-admin-row button{
+  width:100%; max-width:180px;
+  background: transparent;
+  border: 0;
+  border-radius: 14px;
+  padding: 10px 14px;
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  color: rgba(150,156,168,0.95);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  box-shadow: none;
+  cursor:pointer;
+}
+.home-admin-row button:hover{ background: transparent; }
+
+/* keep icons/text sizes readable */
+.home-square-row .btn span,
+.home-admin-row .btn span{
+  letter-spacing: .08em !important;
+}
+
+/* --- Footer nav alignment + styling (mirrors start-actions nav styles) --- */
+.home-footer-nav{
+  width: var(--homeW);
+  max-width: 92vw;
+  margin: 12px auto 0;
+}
+/* Single segmented bar: icon over label, hairline dividers */
+.home-footer-nav .home-nav-row{
+  display:flex;
+  gap: 0;
+  width: 100%;
+  align-items: stretch;
+  justify-content: space-between;
+  border-radius: 16px;
+  background: rgba(20,24,44,.82);
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 10px 30px rgba(0,0,0,0.35);
+  padding: 10px 0;
+  overflow: hidden;
+}
+.home-footer-nav .home-nav-row .navBtn{
+  flex: 1 1 0;
+  min-width: 0;
+  height: auto;
+  padding: 6px 4px;
+  display:flex;
+  flex-direction: column;
+  align-items:center;
+  justify-content:center;
+  gap: 8px;
+  border-radius: 0;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.home-footer-nav .home-nav-row .navBtn + .navBtn{
+  border-left: 1px solid rgba(255,255,255,.10) !important;
+}
+.home-footer-nav .home-nav-row .navBtn .navIcon{
+  width: 24px;
+  height: 24px;
+  display:inline-flex;
+}
+.home-footer-nav .home-nav-row .navBtn .navIcon svg{
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.home-footer-nav .home-nav-row .navBtn .navLabel{
+  font-size: 11px;
+  line-height: 1;
+  text-align:center;
+  white-space: nowrap;
+}
+
+/* Color accents (icon + text) */
+.home-footer-nav .home-nav-row .navBtn.navGreen{ color:#3cff86; }
+.home-footer-nav .home-nav-row .navBtn.navBlue{  color:#4aa3ff; }
+.home-footer-nav .home-nav-row .navBtn.navOrange{color:#ffb14a; }
+
+.home-footer-nav .home-nav-row .navBtn:hover{ transform: translateY(-1px); }
+.home-footer-nav .home-nav-row .navBtn:active{ transform: translateY(0); }
+
+.home-footer-nav .home-admin-row{
+  margin-top: 10px;
+  display:flex;
+  justify-content:center;
+}
+.home-footer-nav .adminLink{
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.55);
+  cursor: pointer;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap: 6px;
+  padding: 6px 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+.home-footer-nav .adminLink .adminLock{
+  width: 18px;
+  height: 18px;
+  display:inline-flex;
+  opacity: 0.75;
+}
+.home-footer-nav .adminLink .adminLock svg{
+  width: 18px;
+  height: 18px;
+  fill:none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.home-footer-nav .adminLink:hover{ color: rgba(255,255,255,0.75); }
+
+/* Ensure the start-actions container doesn't constrain/offset the nav */
+#details .start-actions{
+  width: var(--homeW);
+  max-width: 92vw;
+  margin-left:auto;
+  margin-right:auto;
+}
+#details .home-live-printer, #details .hspr-row{
+  width: var(--homeW);
+  max-width: 92vw;
+}
+
+/* Home mini leagues: arcade terminal treatment */
+.home-mini-printer{
+  min-height: 176px;
+  max-height: 210px;
+  border-color: rgba(88,111,142,.34);
+  background:
+    linear-gradient(180deg, rgba(13,18,34,.78), rgba(3,8,18,.88)),
+    rgba(6,10,20,.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.055),
+    inset 0 0 28px rgba(69,184,255,.045),
+    0 18px 44px rgba(0,0,0,.38);
+}
+.home-mini-printer .lp-top{
+  justify-content:center;
+  padding: 14px 14px 11px;
+  background: linear-gradient(180deg, rgba(0,0,0,.28), rgba(0,0,0,.06));
+}
+.home-mini-printer .lp-title{
+  color: rgba(54,255,122,.95);
+  text-shadow: 0 0 14px rgba(54,255,122,.26);
+  letter-spacing: .18em;
+}
+.home-mini-printer .lp-mid{
+  padding: 5px 12px 12px;
+}
+#homePowerLeagueRows{
+  position: relative;
+}
+.mini-table-plain{
+  width:100%;
+  table-layout:fixed;
+  border-collapse:separate;
+  border-spacing:0;
+  margin-top:0;
+  overflow:hidden;
+  border:1px solid rgba(69,184,255,.12);
+  border-radius:10px;
+  background:
+    repeating-linear-gradient(180deg, rgba(255,255,255,.018) 0, rgba(255,255,255,.018) 1px, transparent 1px, transparent 8px),
+    linear-gradient(180deg, rgba(2,9,18,.72), rgba(2,6,14,.84));
+  box-shadow: inset 0 0 16px rgba(0,0,0,.24);
+}
+.mini-table-plain td{
+  background:transparent !important;
+  border:0 !important;
+  padding:9px 10px !important;
+  font-size:12.5px;
+  line-height:1.15;
+}
+.mini-table-plain tr + tr td{
+  border-top:1px solid rgba(210,235,255,.07) !important;
+}
+#homePowerLeagueRows tr:first-child td{
+  background: linear-gradient(90deg, rgba(54,255,122,.10), rgba(54,255,122,.025) 65%, transparent) !important;
+}
+.mini-table-plain .mini-rank{
+  width:34px;
+  white-space:nowrap;
+  text-align:center;
+  color:rgba(255,184,96,.94);
+  font-weight:950;
+  font-variant-numeric:tabular-nums;
+}
+.mini-table-plain .mini-name{
+  max-width:none;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:rgba(231,246,241,.94);
+}
+.mini-table-plain .mini-val{
+  width:74px;
+  white-space:nowrap;
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+  color:rgba(129,218,255,.96);
+  font-weight:850;
+}
+@media (max-width: 480px){
+  .home-mini-printer .lp-mid{ padding: 5px 9px 10px; }
+  .mini-table-plain td{ padding:8px 8px !important; font-size:11.6px; }
+  .mini-table-plain .mini-rank{ width:28px; }
+  .mini-table-plain .mini-val{ width:62px; }
+}
+
+/* Home secondary panels: unified terminal glass pass */
+#details .home-live-printer,
+#details .home-mini-printer{
+  border-radius: 16px;
+  border-color: rgba(88,111,142,.34);
+  background:
+    linear-gradient(180deg, rgba(13,18,34,.78), rgba(3,8,18,.89)),
+    rgba(6,10,20,.84);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.055),
+    inset 0 0 30px rgba(69,184,255,.045),
+    0 18px 44px rgba(0,0,0,.38);
+}
+#details .home-live-printer .lp-top,
+#details .home-mini-printer .lp-top{
+  justify-content: center;
+  text-align: center;
+  padding: 20px 14px 10px;
+  background: transparent;
+}
+#details .home-live-printer .lp-title,
+#details .home-mini-printer .lp-title{
+  color: rgba(54,255,122,.97);
+  text-shadow: 0 0 14px rgba(54,255,122,.28);
+  letter-spacing: .16em;
+}
+#details .home-live-printer .lp-mid,
+#details .home-mini-printer .lp-mid{
+  background: transparent;
+}
+#details .home-live-printer .lp-mid{
+  padding: 8px 10px 12px;
+}
+#details .home-mini-printer .lp-mid{
+  padding: 8px 12px 12px;
+}
+/* While a panel is in its hold state, keep the empty feed screen invisible
+   (layout preserved); it reappears when live rows arrive and hold is lifted. */
+#details .lp-mid.lp-mid-hold .lp-table,
+#details .lp-mid.lp-mid-hold .mini-table{
+  visibility: hidden;
+}
+#details .home-live-printer .lp-table,
+#details .mini-table-plain{
+  border-color: rgba(54,255,122,.10);
+  background:
+    repeating-linear-gradient(180deg, rgba(255,255,255,.02) 0, rgba(255,255,255,.02) 1px, transparent 1px, transparent 8px),
+    linear-gradient(180deg, rgba(2,9,18,.74), rgba(2,6,14,.86));
+  box-shadow:
+    inset 0 0 18px rgba(0,0,0,.24),
+    0 0 0 1px rgba(0,0,0,.14);
+}
+#details .mini-table-plain tr + tr td{
+  border-top: 1px solid rgba(210,235,255,.06) !important;
+}
+#details #homePowerLeagueRows tr:first-child td{
+  background: linear-gradient(90deg, rgba(54,255,122,.12), rgba(54,255,122,.032) 68%, transparent) !important;
+}
+#details .mini-table-plain .mini-rank{
+  color: rgba(255,184,96,.96);
+}
+#details .mini-table-plain .mini-name{
+  color: rgba(231,246,241,.95);
+}
+#details .mini-table-plain .mini-val{
+  color: rgba(129,218,255,.98);
+}
+
+@media (max-width: 480px){
+  #details .home-live-printer .lp-top,
+  #details .home-mini-printer .lp-top{
+    padding: 17px 12px 8px;
+  }
+  #details .home-live-printer .lp-title,
+  #details .home-mini-printer .lp-title{
+    letter-spacing: .12em;
+  }
+  #details .home-live-printer .lp-mid{
+    padding: 7px 8px 10px;
+  }
+  #details .home-mini-printer .lp-mid{
+    padding: 7px 9px 10px;
+  }
+}
+
+/* Admin link: fully transparent (no pill) */
+.home-admin-row .adminLink{
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  padding:0 !important;
+  height:auto !important;
+  width:auto !important;
+  border-radius:0 !important;
+  letter-spacing:0.18em !important;
+}
+.home-admin-row .adminLink:hover{background:transparent !important;}
+

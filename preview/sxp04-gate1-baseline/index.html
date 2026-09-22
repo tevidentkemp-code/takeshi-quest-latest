@@ -1,0 +1,1696 @@
+<!DOCTYPE html>
+<!--
+  LOCKED BASE: DMD + MISS/X3 + B1/B3
+  Confirmed working after partial-row fix.
+
+  CANONICAL BASE: LIVE GAME UI
+  Locked base after DMD/B1/B3 sync, miss/skip cleanup, and hero-image pass.
+
+  SEARCH TAGS
+  @CANONICAL:LIVE
+  @CANONICAL:DMD
+  @CANONICAL:B1
+  @CANONICAL:B3
+  @CANONICAL:THROWPAD
+  @PATCH:A:DMD
+  @PATCH:B1:PLAYERINFO
+  @PATCH:B3:GAMERACE
+  @PATCH:B3:GAMESTATS
+  @PATCH:B3:GAMESTREAK
+  @PATCH:THROWPAD:MISS
+  @CANONICAL:MISS
+  @PATCH:THROWPAD:SKIP
+
+  CANONICAL AREAS
+  A  = Dot matrix / DMD / combo logic
+  B1 = Player info pills
+  B3a = Game Race
+  B3b = Game Stats
+  B3c = Game Streak
+  Throwpad = in-round controls, miss/skip/x3 logic
+
+  EDIT RULE
+  Patch from this file only.
+  Do not copy whole branches from older files without inspection.
+
+  BRANCH STATUS
+  This file is now the single active working branch for:
+  - B3a = Game Race
+  - B3b = Game Stats
+  - B3c = Game Streak
+
+  CLEANUP STATUS
+  Old experimental B3 pulse/glow CSS branches removed.
+  Future work on B3 must patch this file only, in isolated steps.
+  BLOCKER REMOVAL
+  Visible-overflow enabled on B3 wrappers/lanes so pulse scale is not clipped.
+
+  B3C RESET STATUS
+  Experimental bar / glow / pulse work removed.
+  B3c is intentionally blank in this file until rebuilt from scratch.
+-->
+
+<!-- CANONICAL BASE: LIVE GAME UI
+     Locked after DMD/B1/B3 sync, miss/skip cleanup, and B3 pulse/glow branch cleanup.
+     Use this file only for future edits.
+-->
+<html lang="en">
+<head>
+<script id="sxp04-gate1-offline-guard">(function(){var f=window.fetch;window.fetch=function(i,o){var u=String((i&&i.url)||i||"");if(/supabase\.co/i.test(u))return Promise.reject(new TypeError("SXP-04 Gate 1 preview blocks Supabase"));return f.apply(this,arguments)};try{var W=window.WebSocket;window.WebSocket=function(u,p){if(/supabase\.co/i.test(String(u||"")))throw new Error("SXP-04 Gate 1 preview blocks Supabase WebSocket");return new W(u,p)}}catch(_){}})();</script>
+
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+
+<!-- >>> PATCH:SQ_VIEWPORT_VH_FIX START -->
+<script src="./src/legacy/scripts/inline-001.js"></script>
+<!-- <<< PATCH:SQ_VIEWPORT_VH_FIX END -->
+<title>Shateki Quest Scorer</title>
+
+<!--
+=========================================================
+TOC (CTRL+F)
+@SEC:DEP:INDEX
+@SEC:HTML:OVERLAYS
+@SEC:HTML:SCREENS
+@SEC:CSS:TOKENS
+@SEC:CSS:HOME
+@SEC:CSS:GAME
+@SEC:JS:UTIL
+@SEC:JS:STATE
+@SEC:JS:CLOUD
+@SEC:JS:UI:ROUTER
+@SEC:JS:GAME:ENGINE
+@SEC:JS:GAME:LIVEV2
+@SEC:JS:MODALS
+@SEC:JS:BOOT
+=========================================================
+-->
+<!-- ===== @SEC:DEP:INDEX =====
+@DEP:LEGACY_HOME
+  - Any alternate/previous start/home menu builders (rollback only)
+@DEP:LEGACY_GAMEPLAY
+  - Legacy gameplay UI containers hidden when LiveV2 eligible
+    (#floatWrap, #turnBar, #scoreWrap, #roundBar, #roundSeamBar)
+-->
+
+<!-- =========================================================
+     CODE MAP (search these tokens in this file)
+     =========================================================
+     TOP BAR / HEADER
+       - #fhMenuWrap (sticky top container)
+       - #sqDmdWrap (Pinball DMD container)            [PATCH:SQ_DMD_TOPBAR_V1]
+       - #gameTopRow (settings/hamburger row)
+
+     PINBALL DMD (Dot Matrix Display)
+       - CSS:   SQ_DMD_TOPBAR_CSS_V1                   [PATCH:SQ_DMD_TOPBAR_CSS_V1]
+       - JS:    SQ_DMD_TOPBAR_JS_V1                    [PATCH:SQ_DMD_TOPBAR_JS_V1]
+       - API:   window.sqDmdShow(top, bottom, opts)
+               window.sqDmdSetIdle(text)
+               window.sqDmdStop()
+      window.sqDmdSetPlayerMeta(meta)
+
+     NAVIGATION HINTS
+       - Search: "function recordThrow" (throw pipeline)
+       - Search: "compute" / "totals" / "leader" (score aggregation)
+       - Search: "open" (popup handlers)
+========================================================= -->
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f1220'/%3E%3Cpath d='M22 12h24l-8 18h10L18 52l10-20H18z' fill='%23ff7a00'/%3E%3C/svg%3E" />
+
+<!-- =====================================================================
+     FILE MAP (MOT)
+     1) <head>: meta, external libs, CSS
+     2) <body>: overlays, screens, modals
+     3) <script>: app logic
+===================================================================== -->
+
+<!-- >>> PATCH:SQ_BOOT_SPLASH_MARKUP_V2 START -->
+<div id="bootSplash" aria-hidden="false">
+  <div class="bsWrap">
+    <div class="bsLogo">SHATEKI<span>QUEST</span></div>
+    <div class="bsSub">LOADING</div>
+    <div class="bsDots" aria-hidden="true"><i></i><i></i><i></i></div>
+  </div>
+</div>
+
+<div id="gameLoadOverlay" class="sq-hide sqSplashOverlay" aria-hidden="true">
+  <div class="bsWrap">
+    <div class="bsLogo">SHATEKI<span>QUEST</span></div>
+    <div class="bsSub">LOADING</div>
+    <div id="gameLoadMsg" class="bsNote">Preparing Live Game</div>
+    <div class="bsDots" aria-hidden="true"><i></i><i></i><i></i></div>
+  </div>
+</div>
+<!-- <<< PATCH:SQ_BOOT_SPLASH_MARKUP_V2 END -->
+
+<!-- =====================================================================
+     SCREENS + MODALS (STATIC DOM)
+===================================================================== -->
+
+<!-- =====================================================================
+     SQ AUDIT + INDEX (AUTO-MAINTAINED)
+     Build: v12.5.32 (organised)
+     Last update: 2026-01-29 18:37 UTC
+
+     Jump points (CTRL+F for tags; line numbers are approximate after edits):
+       • @HTML:ADMIN                — Admin Hub + Saved Players Admin
+       • @JS:CLOUD:SUPABASE_INIT    — Supabase init + cloud status chip
+       • @JS:CLOUD:GAMES            — cloudFetchAllGamesAsLocal + mappers
+       • @JS:UI:LIVE_UPDATES_VIDE   — ticker / alerts / NEW PLAYER announcements
+       • @JS:UI:GAMEPLAY:AUTOSCROLL — keep last rounds visible above pad
+       • @JS:UI:GAMEPLAY:THROWPAD   — throw pad builder (S/D/T/Bull)
+       • @JS:MODAL:LATEST_SCORES    — League & Ranks > Latest Scores (Official/Practice)
+       • @JS:MODAL:LEAGUE_RANKINGS  — Power Rankings / Premier League / High Score League / Top 50 / Round HS
+       • @JS:UI:STATS_ROUTER        — Home vs In‑game Stats back routing
+
+     Known fragile areas (treat as “edit-with-care”):
+       • Practice vs Official classification: prefer DB truth (match_id null) + support legacy mode="unofficial"
+       • Player identity migration (name → UUID): keep player_id mapped in games.state.players to avoid stats gaps
+       • Throw pad layouts (D/T/Bull): keep flex/full-width behavior consistent with number rounds
+       • Ticker “VIDE” alerts: keep formatting logic centralized (avoid duplicate escapeHtml/playerNameFrom helpers)
+===================================================================== -->
+
+<!-- Supabase JS v2 -->
+<!-- >>> PATCH:MOT_SYSTEM_INVENTORY_V1 START
+     SYSTEM INVENTORY & DEPENDENCY MAP (read-only)
+     Purpose: single source-of-truth documentation for screens, flows, and Supabase touchpoints.
+
+     Screens (router: body[data-page])
+       - details      Home / Start
+       - players      Match setup
+       - game         Live gameplay (Live V2)
+       - leaderboard  End-of-match leaderboard
+
+     Primary flows
+       1) details -> players -> game -> leaderboard
+       2) details -> Player Hub / Stats / League & Ranks -> modal(s) -> close -> details
+       3) game -> Settings -> modal(s) -> back/close -> game
+
+     Authoritative data (Supabase)
+       Tables / views referenced in this build:
+       - games (TABLE_GAMES)
+       - matches (TABLE_MATCHES)
+       - player_games_union (TABLE_PLAYER_GAMES) [read view/union]
+       - high_scores_sp (TABLE_HS_LEAGUE) [official high-score league]
+       - high_scores (TABLE_HS_PRACTICE) [practice/high score storage]
+       - v_pb_by_player_round (TABLE_PB_ROUNDS)
+       - v_wr_by_round (TABLE_WR_ROUNDS)
+       - v_round_high_scores_modal (Round High Scores modal view)
+       - v_top50_scores_official (Top 50 Scores modal view)
+
+     @SUPABASE:VIEW_DEPENDENCY_INVENTORY
+     Production-facing Supabase dependencies observed in this file. This is a map only:
+     do not create browser fallbacks for ranked/historical stats unless explicitly documented.
+
+     - games
+       Used by: gameplay cloud load/save/archive/purge, normalized game fetchers, Player Stats profile fallback aggregates,
+                PB/WR admin snapshots, legacy league/high-score paths.
+       Required columns visible in code: id, created_at, archived_at, state, totals, match_id, game_number, finished, mode.
+       Missing-data behaviour: cloud read errors surface through callers or leave the relevant UI empty/unavailable.
+       Browser role: allowed to normalize/load gameplay records; should not be used for new ranked/stat history aggregation.
+       Materialized/refresh: table, no refresh.
+
+     - v_games_visible
+       Used by: Home Live Updates ticker visible-game fetchers.
+       Required columns visible in code: id, created_at, archived_at, state, totals, match_id, game_number.
+       Missing-data behaviour: fetch throws; ticker/start screen remains usable via caller guards.
+       Browser role: display/delta-load visible games only.
+       Materialized/refresh: needs verification.
+
+     - matches
+       Used by: cloudFetchAllMatchesAsLocal(), getMatchesOfficial().
+       Required columns visible in code: not fully visible in this inventory block; needs verification.
+       Missing-data behaviour: cloud probe marks failure/missing; match-dependent UI degrades.
+       Browser role: display/load match metadata only.
+       Materialized/refresh: table, no refresh.
+
+     - high_scores_sp / high_scores
+       Used by: official/practice high-score storage, legacy latest/high-score recovery paths.
+       Required columns visible in code: player_id, name, score, ts, game_id.
+       Missing-data behaviour: guarded by cloud probes/table-missing map; affected UI shows empty/unavailable.
+       Browser role: display/recover stored high scores; do not derive new ranked leagues from partial UI state.
+       Materialized/refresh: table or table|view depending deployment; needs verification.
+
+     - high_score_league_official
+       Used by: Home High Score League mini card.
+       Required columns visible in code: player, best_score, best_ts.
+       Missing-data behaviour: silent catch; home remains usable, card can show no data.
+       Browser role: display already-ranked/aggregated rows only.
+       Materialized/refresh: needs verification.
+
+     - v_power_rankings_last56_official_clean / v_power_rankings_last56_turbo_clean / v_power_rankings_last56_practice_clean
+       Used by: Home Power Rankings, Player Stats hero current Power Rank, Power Rankings modal/source.
+       Required columns visible in code: player, rounds_used, total_points, avg_per_round, last_played_at.
+       Missing-data behaviour: warnings/unavailable UI; active ranking fails closed if the clean view is missing or empty.
+       Browser role: display/filter DB-derived current rankings; browser applies saved-player and active-14-day filters where coded.
+       Materialized/refresh: needs verification.
+
+     - v_power_rank_last56_ranked
+       Used by: not referenced in this file as of this inventory.
+       Required columns visible in code: none.
+       Missing-data behaviour: n/a.
+       Browser role: n/a.
+       Materialized/refresh: n/a.
+
+     - v_top50_scores_official
+       Used by: canonical Top 50 Scores Official tab.
+       Required columns visible in code: player_name, score, rounds, avg_round, ts.
+       Missing-data behaviour: Top 50 modal shows "Required Supabase view/data source is missing or empty."
+       Browser role: display DB-derived Top 50 rows only; no game-history reconstruction.
+       Materialized/refresh: needs verification.
+
+     - v_top50_scores_practice
+       Used by: canonical Top 50 Scores Practice tab.
+       Required columns visible in code: player_name, score, rounds, avg_round, ts.
+       Missing-data behaviour: Top 50 modal shows "Required Supabase view/data source is missing or empty."
+       Browser role: display DB-derived Top 50 rows only.
+       Materialized/refresh: needs verification.
+
+     - v_round_high_scores_modal
+       Used by: Round High Scores modal and PB/WR admin enrichment.
+       Required columns visible in code: round_key, wr, darts, holder, tie_idx; other modal paths may select *.
+       Missing-data behaviour: modal/admin code shows no rows or falls back where guarded.
+       Browser role: display/enrich DB-derived round records; avoid inventing WR/PB rows.
+       Materialized/refresh: needs verification.
+
+     - v_pb_by_player_round
+       Used by: Live V2 PB edging, PB/GR admin, player/round record snapshots.
+       Required columns visible in code: bucket_key, round_key, pb_points; comments also mention player, cat, val, game_id, ridx, ts.
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived PB records; limited snapshot merging only in existing code.
+       Materialized/refresh: needs verification.
+
+     - v_wr_by_round
+       Used by: Live V2 WR edging, PB/GR admin, round record snapshots.
+       Required columns visible in code: round_key, wr_points; comments also mention cat, val, player, game_id, ridx, ts.
+       Missing-data behaviour: optional in cloud probe; errors are captured and UI continues.
+       Browser role: display/enrich DB-derived WR records.
+       Materialized/refresh: needs verification.
+
+     - v_player_games_union_visible
+       Used by: TABLE_PLAYER_GAMES / player stats windows contract.
+       Required columns visible in code: not fully visible at reference point; needs verification.
+       Missing-data behaviour: cloud probe marks failure/missing; stats windows should surface empty/unavailable states.
+       Browser role: display/limited player game windows; avoid new full-history ranking aggregation.
+       Materialized/refresh: needs verification.
+
+     - v_player_best_official_ranked
+       Used by: Player Stats profile Quick Stats / Highest Score rank.
+       Required columns visible in code: player_name, best_score, best_score_pos.
+       Missing-data behaviour: warning logged; profile falls back to existing score values without DB rank.
+       Browser role: display DB-derived rank only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_targets
+       Used by: Player Stats profile Targets card.
+       Required columns visible in code: player_key, favorite_number, favorite_pct, worst_number, worst_pct.
+       Missing-data behaviour: warning logged; card shows placeholder/available existing values.
+       Browser role: display DB-derived recent target summary only.
+       Materialized/refresh: needs verification.
+
+     - v_player_last30_target_rates
+       Used by: Player Stats profile top/bottom target-rate detail (Favourite/Weakest Numbers top-3).
+       Required columns visible in code: player_key, target_n, hit_pct, throws.
+       Missing-data behaviour: silently treated as optional; card falls back to v_player_last30_targets fav/worst.
+       Browser role: display DB-derived recent target rates only.
+       Source: plain VIEW over throw_events_v + round_hit_counts_v, same last-30-games window as
+               v_player_last30_targets (its per-target CTE, un-collapsed). Always live, not materialized.
+
+     - v_player_target_streaks
+       Used by: Player Stats Quick Stats Dart/Round Streak, Streak League.
+       Required columns visible in code: player_key, player_name, mode_key, mode_label, dart_streak, round_streak,
+                                  source_games, last_played_at.
+       Missing-data behaviour: Streak League shows required-view missing/empty state; Player Stats shows placeholder if unavailable.
+       Browser role: display DB-derived streaks/ranks only; do not calculate streaks from full history in browser.
+       Materialized/refresh: intended DB-derived streak view; materialized/refresh status needs verification in this file.
+
+     - v_player_target_hit_pct
+       Used by: Target Hit % heatmap/table, Target Hit % G Rank lookup.
+       Required columns visible in code: player_key, player_name, target_key, target_label, target_sort, throws, hits,
+                                  hit_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Hit % unavailable message; SPIDER/PROGRESS disabled until rows exist.
+       Browser role: display DB-derived aggregate hit rates; browser may compute personal rank from returned 14 rows only.
+       Materialized/refresh: wrapper/view status needs verification; do not infer from points.
+
+     - v_player_target_points_pct
+       Used by: Target Points % table.
+       Required columns visible in code: player_key, player_name, target_number, target_label, throws, actual_points,
+                                  max_points, points_pct, source_games, first_played_at, last_played_at.
+       Missing-data behaviour: Target Points % unavailable message; actions disabled until rows exist.
+       Browser role: display DB-derived aggregate points efficiency; no full-history reconstruction.
+       Materialized/refresh: wrapper/view status needs verification.
+
+     - v_player_target_hit_progress
+       Used by: Target Hit % Progress graph.
+       Required columns visible in code: player_key, player_name, game_id, created_at, target_key, target_label,
+                                  target_sort, throws, hits, hit_pct.
+       Missing-data behaviour: progress popup shows "Progress data is not available yet..."
+       Browser role: display DB-derived per-game/target progression rows; graph transforms only returned percentages.
+       Materialized/refresh: likely app-facing view; materialized backing/refresh needs verification.
+
+     - v_player_target_points_progress
+       Used by: Target Points % Progress graph.
+       Required columns visible in code: player_key, player_name, game_id, created_at, target_key, target_label,
+                                  target_sort, target_number, round_score, max_round_score, round_pct.
+       Missing-data behaviour: progress popup shows "Progress data is not available yet..."
+       Browser role: display DB-derived per-game/target progression rows; graph maps returned percentages only.
+       Materialized/refresh: likely app-facing view; materialized backing/refresh needs verification.
+
+     - throw_events_v
+       Used by: throw-level probes/helpers and legacy/diagnostic throw truth paths.
+       Required columns visible in code/comments: game_id, created_at, player_name, round_index, dart_number, dart_index,
+                                             target, bucket_key, points, ring, hit_number, hit, kind, bull.
+       Missing-data behaviour: warnings; some legacy helpers fall back to game boards. Do not use fallback for Target Hit % accuracy.
+       Browser role: diagnostic/source-truth reads only unless a DB view depends on it; avoid client full-history reconstruction.
+       Materialized/refresh: view; refresh status needs verification.
+
+     - player_dtb_bucket_ranks_v
+       Used by: D/T/B Hit % game-rank helpers.
+       Required columns visible in code: target_round, d_game_rank, t_game_rank, player_name.
+       Missing-data behaviour: rank helpers fall back to unavailable rank display.
+       Browser role: display DB-derived D/T rank columns only.
+       Materialized/refresh: needs verification.
+
+     @MODE:CLASSIFICATION_RULES
+     Production mode ownership for Official / Turbo / Practice. Official filters must exclude Turbo before accepting
+     a row as official; is_practice=false alone is not sufficient.
+
+     - turbo
+       Explicit Turbo rows are identified by mode/gameMode/game_mode/type='turbo', gameVariant='turbo',
+       Tournament Turbo tournamentType='turbo',
+       strictTimer=true, throwLimitSeconds=20, or startTarget='17' in the game row, state, match, or rules object.
+       Legacy quarantine: older broken saves may be labelled official while rounds 10-16 are unplayed and rounds
+       17-20/D/T/B contain play; browser fallback filters treat that board shape as Turbo to stop official leakage.
+       Future Match Play Turbo writes must include state.gameVariant='turbo', state.mode='turbo',
+       state.gameMode='turbo', strictTimer=true, throwLimitSeconds=20, and startTarget='17'.
+       Future Tournament Turbo writes may also use tournamentType='turbo' where tournament logic requires it.
+
+     - practice
+       Explicit practice/unofficial/solo rows, is_practice=true rows, forced-practice match rows, or single-player rows.
+       Turbo is never classified as Practice.
+
+     - official
+       Normal saved-player match rows only: not Turbo, not Practice, and at least two players.
+       Supabase official views should use the same Turbo exclusion rule, not only match_id/is_practice checks.
+
+     @RANKING:TERMINOLOGY_SOURCE_MAP
+     Production-facing rank labels observed in this file. This is a terminology/source map only:
+     do not change rank formulas or fetch paths without a scoped ranking task.
+
+     - Home Power Rankings / Power Rankings popup
+       UI label: Power Rankings, Power Rank, #.
+       Blocks/helpers: home mini Power Rankings, getOfficialPowerRows(), openPowerLeagueDialog().
+       Source: v_power_rankings_last56_official_clean for official/current; Turbo/Practice use mode-specific clean views.
+       Meaning: Power Rank is current active ranking metric; # is row position in the current filtered table.
+       Clarity: clear.
+
+     - Player Stats profile hero
+       UI label: Power Rank.
+       Block/helper: openPlayerStatsDialog() profile card render.
+       Source: v_power_rankings_last56_official_clean, filtered to saved players and the active 14-day current rule.
+       Meaning: current active Power Rank value and current active table position.
+       Clarity: clear.
+
+     - Player Stats profile Quick Stats
+       UI labels: Highest Score, Current Power Rank #.
+       Block/helper: openPlayerStatsDialog() Quick Stats card.
+       Sources: v_player_best_official_ranked for Highest Score rank; current Power Rank position is from v_power_rankings_last56_official_clean.
+       Meaning: Highest Score rank is historical PB table position; Current Power Rank # is not historical peak.
+       Clarity: label-only cleanup applied to avoid presenting current position as Highest/Peak Power Rank.
+       Needs follow-up: add a DB-derived historical Peak/Highest Power Rank source before showing that historical label again.
+
+     - Live V2 game info panel
+       UI labels: POS, P RANK, G RANK.
+       Block/helper: liveV2Render()/rank fill block.
+       Source: current game state for POS; sq_rank_score RPC is the only accepted P/G rank source.
+       Meaning: POS is current-game table position; P Rank is within-player historical score comparison; G Rank is cross-player historical score comparison.
+       Clarity: labels are clear in the live-game info table.
+       Fail-closed rule: if sq_rank_score is unavailable, P/G Rank shows unavailable instead of browser dense-rank fallback.
+
+     - Target Hit %
+       UI labels: P Rank, G Rank.
+       Block/helper: @CANONICAL:PLAYER_TARGET_HIT_HEATMAP, applyTargetHitPersonalRanks(), fetchTargetHitGlobalRanks().
+       Source: v_player_target_hit_pct aggregate rows.
+       Meaning: P Rank is within-player target comparison; G Rank is cross-player comparison for the same target.
+       Clarity: clear; no raw history reconstruction.
+
+     - Target Points % and Target Hit/Points Progress
+       UI label: no production rank label observed in current canonical target metric/progress popups.
+       Source: v_player_target_points_pct, v_player_target_points_progress, v_player_target_hit_progress.
+       Meaning: n/a for ranks.
+       Clarity: no rank terminology issue observed.
+
+     - D/T/B Hit % popups
+       UI labels: P Rank, My Rank, Game Rank.
+       Blocks/helpers: openPlayerDTBPctDialog(), openPlayerDTBCombinedPctDialog().
+       Source: within-player D/T rows for personal/my ranks; player_dtb_bucket_ranks_v for Game Rank when available.
+       Meaning: P/My Rank is within-player comparison; Game Rank is cross-player comparison.
+       Clarity: label-only cleanup applied to the simple D/T/B table's generic Rank header.
+
+     - League & Rankings popups
+       UI labels: #, Power Rank, Streak.
+       Blocks/helpers: Top 50 Scores, High Score League, Streak League, Premier League.
+       Sources: v_top50_scores_official/practice/turbo, high-score/player game helpers, v_player_target_streaks, official game rows.
+       Meaning: # is row position in that table/filter; Power Rank is the current Power Rankings metric; Streak is DB-derived streak value.
+       Clarity: table-context rank labels are clear.
+
+     - Round High Scores / PB / WR / Latest Matches
+       UI labels: Pos, PB, WR.
+       Blocks/helpers: Round High Scores modal, Latest Matches rows, Live V2 PB/WR helpers.
+       Sources: v_round_high_scores_modal, v_pb_by_player_round, v_wr_by_round, row-level position fields/helpers.
+       Meaning: Pos is row/table position for the displayed score context; PB/WR are records, not rank labels.
+       Clarity: generally clear; needs verification for every legacy Latest Matches branch before broad copy changes.
+
+     @RANKING:BROWSER_FALLBACK_AUDIT
+     Browser-side rank/position calculations observed in this file. This is an audit only:
+     do not remove fallbacks or change formulas without a scoped data-source replacement task.
+
+     - Live V2 POS
+       Block/helper: liveV2Render() info panel.
+       UI: live game info table POS row.
+       Type: table-position rank inside the current in-progress game.
+       Source used: current in-memory game totals only.
+       Completeness: complete for the visible current game.
+       Risk: acceptable table-position only.
+       Future fix: none required; keep separate from historical P/G ranks.
+
+     - Live V2 P RANK / G RANK fail-closed path
+       Block/helper: liveV2Render() __sqUpdateRanks().
+       UI: live game info table P RANK and G RANK rows.
+       Type: personal rank and global/cross-player rank from DB RPC only.
+       Source used: sq_rank_score RPC only; browser dense-rank fallback is disabled.
+       Completeness: DB-derived when RPC succeeds; unavailable otherwise.
+       Risk: safe fail-closed.
+       Future fix: keep sq_rank_score maintained or replace with an equivalent ranked-score RPC.
+
+     - getOfficialPowerRows() DB-view fallback
+       Block/helper: shared getOfficialPowerRows().
+       UI: Home Power Rankings and callers using shared current official rows.
+       Type: current active Power Rank table rows.
+       Source used: v_power_rankings_last56_official_clean only.
+       Completeness: DB-derived mode-classified rows.
+       Risk: safe fail-closed if the clean view is missing or empty.
+       Future fix: materialize/refresh the clean view if performance requires it.
+
+     - Power Rankings popup non-official rows
+       Block/helper: Fix132 computePowerRows(mode).
+       UI: Power Rankings popup Turbo/Practice tabs, and official if the official view path fails.
+       Type: current Power Rank table rows by mode.
+       Source used: v_power_rankings_last56_official_clean, v_power_rankings_last56_turbo_clean, v_power_rankings_last56_practice_clean.
+       Completeness: DB-derived mode-classified rows.
+       Risk: safe fail-closed if the relevant clean view is missing or empty.
+       Future fix: materialize/refresh mode-specific clean views if performance requires it.
+
+     - Player Stats profile current Power Rank fallback
+       Block/helper: openPlayerStatsDialog() "Current Power Rank" aggregation block.
+       UI: Player Stats profile hero/Quick Stats current Power Rank position.
+       Type: current active Power Rank position fallback.
+       Source used: dbPower from v_power_rankings_last56_official_clean is the displayed truth; older block still has broad local aggregate code for non-authoritative profile details.
+       Completeness: displayed current Power Rank is DB-derived.
+       Risk: needs follow-up cleanup to retire older non-displayed power-rank aggregation.
+       Future fix: keep current Power Rank display bound to the clean DB view only.
+
+     - Player Stats profile best-score fallback ranking
+       Block/helper: openPlayerStatsDialog() bestByPlayer/bestList.
+       UI: legacy support for Highest Score position; current display prefers v_player_best_official_ranked best_score_pos.
+       Type: historical PB leaderboard position fallback.
+       Source used: v_player_best_official_ranked preferred; fallback scans loaded games/totals.
+       Completeness: preferred view is DB-derived; fallback is browser-visible game data.
+       Risk: needs DB view/RPC if still active.
+       Future fix: keep v_player_best_official_ranked as the only PB rank source and show unavailable if missing.
+
+     - Target Hit % P Rank
+       Block/helper: applyTargetHitPersonalRanks().
+       UI: Target Hit % table P Rank.
+       Type: within-player target comparison.
+       Source used: selected player's 14 rows from v_player_target_hit_pct.
+       Completeness: complete for the selected player's target rows when the view returns rows.
+       Risk: safe.
+       Future fix: none required unless moving personal_rank into a ranked view for consistency.
+
+     - Target Hit % G Rank
+       Block/helper: fetchTargetHitGlobalRanks().
+       UI: Target Hit % table G Rank.
+       Type: global/cross-player target rank from aggregate rows.
+       Source used: v_player_target_hit_pct for matching target keys; optional saved-player filter from cloudListPlayers().
+       Completeness: DB-derived aggregate rows, but ranking is still performed in the browser over a limited select.
+       Risk: safe short-term; needs DB view/RPC for stricter production truth and eligibility control.
+       Future fix: add v_player_target_hit_ranked with personal_rank and game_rank/window-function columns.
+
+     - D/T/B Hit % personal ranks
+       Block/helper: openPlayerDTBPctDialog(), openPlayerDTBCombinedPctDialog().
+       UI: D/T/B Hit % P/My Rank columns.
+       Type: within-player comparison.
+       Source used: existing D/T/B rows; some legacy metric rows are built from throw/game helpers.
+       Completeness: rank is personal-only, but source path may depend on legacy broad fetches.
+       Risk: acceptable for personal rank; needs DB view/RPC for the underlying metric path if promoted.
+       Future fix: move D/T/B personal rank to a DB-derived target summary view if this popup remains production-facing.
+
+     - D/T/B Hit % Game Rank
+       Block/helper: openPlayerDTBCombinedPctDialog() game-rank helpers.
+       UI: D/T/B Hit % Game Rank columns.
+       Type: global/cross-player rank.
+       Source used: player_dtb_bucket_ranks_v when available.
+       Completeness: DB-derived when view exists; unavailable state when missing.
+       Risk: safe.
+       Future fix: document/refresh the backing view and eligibility/minimum-throw rule.
+
+     - Latest Matches Pos fallback
+       Block/helper: fetchLatestMatchesRows().
+       UI: Player Stats Latest Matches position column.
+       Type: per-game table-position rank.
+       Source used: TABLE_PLAYER_GAMES/player_games_union position preferred; fallback reads games rows and ranks totals within each complete game.
+       Completeness: complete for each loaded game row; fallback may be migration-only and broad.
+       Risk: acceptable table-position only.
+       Future fix: keep position in the player-game view; show unavailable if the fallback becomes slow or incomplete.
+
+     - Round High Scores / PB/WR fallback merges
+       Block/helper: openRoundHighScoresDialog_v85(), mergeSavedGameTies_v85(), mergeCloudThrowRows_v85().
+       UI: Round High Scores, WR/PB holder/tie displays.
+       Type: record table fallback, not a rank label, but uses browser-side best/tie reconstruction.
+       Source used: v_round_high_scores_modal preferred; fallback merges PB/GR snapshot, saved games, and throw rows.
+       Completeness: preferred view is DB-derived; fallback scans broad browser-visible history/throws.
+       Risk: needs DB view/RPC.
+       Future fix: make v_round_high_scores_modal carry all holder/tie/darts detail needed by the modal and remove browser history merge fallbacks.
+
+     - Top 50 Scores legacy row builders
+       Block/helper: older Fix99/Fix100 playerRows()/gamesFor() helpers; active canonical Top 50 uses @CANONICAL:TOP_50_SCORES.
+       UI: legacy Top 50 paths if directly invoked by old helpers.
+       Type: table-position score rank.
+       Source used: active canonical uses v_top50_scores_official/practice/turbo; legacy helpers compute from games rows.
+       Completeness: canonical DB views are complete for the modal; legacy helpers are browser-visible.
+       Risk: legacy/dead path if canonical ownership remains intact.
+       Future fix: keep legacy helpers routed away from the modal; remove once search proves no callers remain.
+
+     - High Score League row positions
+       Block/helper: openHighScoreLeagueDialog() active Fix100 path.
+       UI: High Score League table # column.
+       Type: cross-player PB table-position rank.
+       Source used: Official uses v_high_score_league_official_from_games_clean; Turbo fails closed until a clean Turbo view exists.
+       Completeness: Official DB-derived clean view; saved-player filtering remains browser-side display filtering.
+       Risk: Turbo HSL still needs DB view/RPC.
+       Future fix: add v_high_score_league_turbo app-facing ranked view with saved-player eligibility.
+
+     - Premier League row positions
+       Block/helper: Fix136 officialRows()/aggregate().
+       UI: Premier League period tables # column.
+       Type: league table-position rank by selected period.
+       Source used: official game rows aggregated in browser.
+       Completeness: browser-visible official rows; period/min-game rule is browser-side.
+       Risk: needs DB view/RPC.
+       Future fix: add period-aware Premier League ranked view/RPC that accepts period/filter or returns canonical period buckets.
+
+     - Streak League row positions
+       Block/helper: openStreakLeagueDialog() render().
+       UI: Streak League # column.
+       Type: table-position rank for selected streak metric/mode.
+       Source used: v_player_target_streaks DB-derived rows; browser applies sort/tie-breakers for display.
+       Completeness: complete if the view returns all mode rows.
+       Risk: acceptable table-position only.
+       Future fix: optional ranked wrapper view if server-side row position is desired.
+
+     - Tournament seeding monthly Premier rank
+       Block/helper: getMonthlyPremierRankMap() in tournament setup.
+       UI: tournament seed ordering / "MONTHLY PL" metadata.
+       Type: monthly league rank used for tournament seeding.
+       Source used: getGamesForMode('official') and browser aggregation/dense rank for current month.
+       Completeness: browser-visible official rows; affects tournament setup rather than a read-only table.
+       Risk: needs DB view/RPC.
+       Future fix: add v_monthly_premier_rankings or an RPC for tournament seeding, with month/timezone and saved-player rules defined server-side.
+
+     Cloud init + guards
+       - ensureCloudInit(): creates window.sb client if missing; sets cloud status chip
+       - CLOUD_TABLE_MISSING + cloudMarkTableMissing(): disables missing tables/views safely
+       - READS_CLOUD_ONLY=true is treated as "truth mode": localStorage is cache only
+
+     Cloud reads (roots)
+       - cloudFetchAllGamesAsLocal()
+       - cloudFetchLatestGamesAsLocal(limit)
+       - ((typeof cloudFetchVisibleGamesSinceAsLocal==='function')?cloudFetchVisibleGamesSinceAsLocal:cloudFetchGamesSinceAsLocal)(sinceIso, limit)
+       - cloudFetchAllMatchesAsLocal()
+       - getGamesForMode(mode) [cloud-only override + stable de-dupe]
+       - getMatchesOfficial() [cloud-only override + stable de-dupe]
+       - computePlayerWindowStatsAsync(playerName, mode) [merges sources; local is neutralised under READS_CLOUD_ONLY]
+
+     Cloud writes (observed)
+       - cloudInsertHighScore(), cloudInsertHighScoreIfMissing()
+       - cloudDeleteGameCascade(g)
+       - recoverHighScoresFromCloudWindow(hours)
+
+     Runtime state stores
+       - In-memory: state (game engine), LiveV2 runtime UI state
+       - LocalStorage: cache only; must never diverge from Supabase truth
+
+     Notes (truth rules)
+       - If a view returns 0 rows, diagnose the data pipeline (view/join/filters), not the UI.
+       - Do not add new historical/cross-player aggregation client-side; prefer Postgres views + window functions (dense_rank + explicit tie-breakers).
+<<< PATCH:MOT_SYSTEM_INVENTORY_V1 END -->
+<!-- >>> PATCH:MOT_STAGE2_BASELINE_V1 START
+     STABILITY & REGRESSION BASELINE (read-only)
+
+     Smoke tests (critical flows)
+       A) Boot / navigation
+          1) Load page: no red console errors
+          2) Home (details) renders; primary buttons clickable
+          3) Home -> League/Ranks -> each menu item opens -> Back returns -> Close returns to Home
+
+       B) Match setup -> live game
+          1) Home -> Players (setup)
+          2) Start match -> Game
+          3) Enter a few throws (score buttons) -> round advances
+          4) Open any in-game modal -> Back/Close returns correctly
+
+       C) End-of-match
+          1) Finish match -> Leaderboard
+          2) New match / back to Home works
+
+       D) Data truth checks (when Supabase connected)
+          1) League / High Scores loads deterministically
+          2) If a view returns 0 rows, UI shows an explanatory empty-state (not a broken graph)
+
+     Diagnostics (opt-in)
+       - Enable via: URL ?debug=1 OR localStorage.SQ_DEBUG='1'
+       - Helpers: window.sqGetDiagnostics(), window.sqClearDiagnostics()
+       - Captures: window.error + unhandledrejection + lightweight event marks
+<<< PATCH:MOT_STAGE2_BASELINE_V1 END -->
+
+<!-- >>> PATCH:MOT_STAGE3_IA_PLAN_V1 START
+     INFORMATION ARCHITECTURE (IA) + NAVIGATION PLAN (read-only)
+
+     Goals
+       - Clear top-level destinations: Home, Players/Match, Live Game, Stats, League, Admin
+       - Consistent Back vs Close semantics in every modal:
+           Back  = previous modal/menu within the same task
+           Close = exit task and return to the screen that launched the task (Home or Game)
+       - Always-available navigation entrypoint on every screen (Home + Game + Leaderboard)
+
+     Proposed menu structure (Main Menu)
+       - New Game (Home)
+       - Player Stats (Select Player -> Player Hub)
+       - League & Rankings
+       - Admin (if enabled)
+       - Resume Game (only when in-game)
+
+     Modal stack rules (standard)
+       - Only ONE modal receives focus at a time (focus trap)
+       - ESC closes the top-most modal (managed stack only)
+       - Overlay click closes top-most modal (managed stack only)
+       - Back pops one level; Close clears the task and returns to origin
+
+     Implementation approach (incremental)
+       Stage 3A: add a managed modal stack + Main Menu modal (no rewrites)
+       Stage 3B: wire an existing/optional MENU button on each screen to open Main Menu
+       Stage 3C: gradually migrate legacy (hidden) modals to the managed pattern where safe
+<<< PATCH:MOT_STAGE3_IA_PLAN_V1 END -->
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+<!-- ===== @SEC:JS:BOOT ===== -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- ===== @SEC:CSS:TOKENS ===== -->
+<!-- ===== @SEC:CSS:HOME ===== -->
+
+<!-- >>> PATCH:force-mobile-qs START -->
+<script src="./src/legacy/scripts/inline-002.js"></script>
+<!-- <<< PATCH:force-mobile-qs END -->
+
+<!-- >>> PATCH:SQ_BOOT_SPLASH_V1 START -->
+<!-- ===== @SEC:CSS:BOOT ===== -->
+<!-- <<< PATCH:SQ_BOOT_SPLASH_V1 END -->
+
+
+
+
+
+
+<!-- >>> PATCH:FIX16_B3_DOTS_RACE_PADFX START -->
+<script src="./src/legacy/scripts/inline-003.js" id="sq-fix16-b3-dots-race-padfx-js"></script>
+<!-- <<< PATCH:FIX16_B3_DOTS_RACE_PADFX END -->
+
+<!-- >>> PATCH:FIX17_PADFX_STRONGER START -->
+<script src="./src/legacy/scripts/inline-004.js" id="sq-fix17-padfx-stronger-js"></script>
+<!-- <<< PATCH:FIX17_PADFX_STRONGER END -->
+
+
+<!-- >>> PATCH:FIX19_RACE_SINGLE_BOX START -->
+<!-- <<< PATCH:FIX19_RACE_SINGLE_BOX END -->
+
+<!-- >>> PATCH:FIX21_RACE_CHART_GEOMETRY_CSS START -->
+<!-- <<< PATCH:FIX21_RACE_CHART_GEOMETRY_CSS END -->
+
+
+<!-- >>> PATCH:LIVE_CLASSIC_STAGE1_VISUAL_V1 START -->
+<!-- <<< PATCH:LIVE_CLASSIC_STAGE1_VISUAL_V1 END -->
+
+  <script type="module" crossorigin src="./assets/index-Q7VN8AU4.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BsKq3lX4.css">
+</head>
+<body data-page="details">
+<!-- ===== @HTML:SCREENS ===== -->
+
+  <!-- ===== @SEC:HTML:SCREENS ===== -->
+<div class="wrap">
+
+    <!-- PAGE 1: GAME DETAILS -->
+    <section id="details" class="card section">
+<div class="home-arcade-hero">
+<h2 id="appTitle"><span class="titleMain">SHATEKI</span><span class="titleSub">QUEST</span></h2>
+</div>
+      <div class="start-actions column" style="gap:8px">
+        <button id="questBtn" class="btn primary big" type="button">New game ▶</button>
+                <button id="tournamentBtn" class="btn big" type="button">TOURNAMENT</button>
+<button id="resumeBtn" class="btn secondary big" type="button" disabled title="No saved match"><span class="btnIcon">↺</span><span class="btnLabel">RESUME GAME</span></button>
+
+        <div class="row start-secondary-row home-nav-row">
+  <button id="latestScoresBtn" class="btn navBtn navGreen" type="button">
+    <span class="navIcon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+    </span>
+    <span class="navText">PLAYER HUB</span>
+  </button>
+
+  <button id="playerStatsBtn" class="btn navBtn navBlue" type="button">
+    <span class="navIcon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 3v18h18"/>
+        <path d="M7 15v3"/>
+        <path d="M12 11v7"/>
+        <path d="M17 6v12"/>
+      </svg>
+    </span>
+    <span class="navText">STATS</span>
+  </button>
+
+  <button id="leagueRankingsBtn" class="btn navBtn navOrange" type="button">
+    <span class="navIcon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 21h8"/>
+        <path d="M12 17v4"/>
+        <path d="M7 4h10"/>
+        <path d="M17 4v5a5 5 0 0 1-10 0V4"/>
+        <path d="M5 6h2v3a4 4 0 0 1-2-3z"/>
+        <path d="M19 6h-2v3a4 4 0 0 0 2-3z"/>
+      </svg>
+    </span>
+    <span class="navText">LEAGUE &amp; RANKS</span>
+  </button>
+</div>
+
+<!-- Admin (text link) -->
+<div class="row home-admin-row" id="adminCodeRow">
+  <button id="adminCodeBtn" class="adminLink" type="button">
+    <span class="adminLock" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="5" y="11" width="14" height="10" rx="2"/>
+        <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+      </svg>
+    </span>
+    <span class="adminText">ADMIN</span>
+  </button>
+</div>
+      </div>
+
+<div id="psTickerTop" class="hidden"><div class="track"></div></div>
+
+<div id="psTicker" class="hidden"><div class="track"></div></div>
+</section>
+
+<!-- PAGE 2: PLAYER SELECT -->
+<section id="players" class="card section hidden">
+  <div class="ms-card">
+    <div class="ms-intake-heading">
+      <span class="ms-intake-kicker">SET UP YOUR GAME</span>
+      <span id="msModeLabel" class="ms-mode-label">CLASSIC</span>
+      <h2 class="ms2-title">MATCH CARD</h2>
+      <p class="ms-intake-intro">Add your players, then choose the match length.</p>
+    </div>
+
+    <div class="ms2-addrow">
+      <button id="msAddRegisteredBtn" class="btn ms2-btn ms2-add-saved" type="button">
+        <span class="ms2-ic" aria-hidden="true">
+          <svg viewBox="0 0 32 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h6"/><path d="M7 9v6"/><circle cx="21" cy="4.5" r="2.2"/><path d="M21 7v6"/><path d="M16.5 10.5 21 9l4.5 1.5"/><path d="M21 13l-2.8 8"/><path d="M21 13l2.8 8"/></svg>
+        </span>
+        <span>ADD SAVED</span>
+      </button>
+      <button id="msAddGuestBtn" class="btn ms2-btn ms2-add-guest" type="button">
+        <span class="ms2-ic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        </span>
+        <span>ADD GUEST</span>
+      </button>
+    </div>
+
+    <button id="msRegisterPlayerBtn" class="btn ms2-btn ms2-save-new" type="button">
+      <span class="ms2-ic" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+      </span>
+      <span>SAVE NEW PLAYER</span>
+    </button>
+
+    <div class="ms-roster-heading"><span>YOUR LINE-UP</span><span id="msRosterCount">0 / 6 selected</span></div>
+    <div id="msPlayersList" class="ms-players-list ms2-slots" role="group" aria-label="Selected players"></div>
+
+    <div id="msMinHint" class="ms-hint" role="status" aria-live="polite" aria-atomic="true">Add 2 players to continue.</div>
+  </div>
+
+  <button id="startMatchBtn" class="btn ms-start ms-primary" type="button" aria-describedby="msMinHint" disabled>
+    SELECT MATCH LENGTH
+  </button>
+
+  <button id="startScreenBtn" class="btn ms2-back" type="button"><span class="ms2-back-ar" aria-hidden="true">&#8592;</span><span class="ms2-back-txt">BACK</span></button>
+</section> <!-- end #players -->
+
+   <!--PAGE3: GAME -->
+<section id="game" class="hidden">
+  <div class="card section">
+<!-- Floating names + wins + totals -->
+        <div class="float-head" id="floatHead">
+          <!-- >>> PATCH:SQ_DMD_TOPBAR_V1 START -->
+<!-- Pinball DMD (dot-matrix) stands alone above the player/info pills -->
+<div class="sq-dmd-wrap" id="sqDmdTopBar" aria-label="Dot matrix display">
+  <div class="sq-dmd" id="sqDmdWrap" role="img" aria-label="Pinball-style dot matrix display">
+    <canvas id="sqDmdCanvas" width="128" height="32"></canvas>
+    <div class="sq-dmd-overlay" aria-hidden="true"></div>
+  </div>
+</div>
+<!-- >>> PATCH:SQ_DMD_TOPBAR_V1 END -->
+
+          
+      <div id="fhMenuWrap" class="fh-menu-wrap">
+
+        
+
+        <div class="row fh-menu sq-top-actions" id="gameTopRow">
+<button id="settingsBtnGame" class="btn letter-throw top-throw sq-settings-btn" aria-label="Settings"><svg class="sq-gear" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+
+      <!-- Legacy hidden Start Screen / Restart buttons and the empty
+           #settingsMenuGame dropdown removed (audit X-2): the settings button
+           opens the fix106 Main Menu, which carries these actions. All JS
+           references are null-guarded lookups. -->
+    </div>
+      </div>
+      <div id="fhMenuLine" class="fh-menu-line" aria-hidden="true"></div>
+<div class="table-wrap" id="floatWrap">
+            <table aria-hidden="true"><thead id="floatThead"></thead></table>
+          </div>
+          <div id="turnBar" class="turn-bar" aria-hidden="true"></div>
+        </div>
+
+        <div id="gameScrollGate">
+
+<!-- LIVE V2 PANEL (2 players) -->
+        <div id="liveV2Panel" class="livev2panel" hidden></div>
+
+        <!-- Scoreboard -->
+        <div class="table-wrap" id="scoreWrap" style="margin-top:10px">
+          <div id="roundBar" class="round-bar" aria-hidden="true"></div>
+          <div id="roundSeamBar" class="round-seam-bar" aria-hidden="true"></div>
+          <table aria-label="Scoreboard">
+            <thead id="thead"></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- Hidden stats tables used to keep column widths aligned -->
+        <div class="stats-box">
+          <div class="table-wrap" id="statsWrap">
+            <table aria-label="Player statistics">
+              <thead id="statsThead"></thead>
+              <tbody id="statsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="stats-box">
+          <div class="table-wrap" id="mstatsWrap">
+            <table aria-label="Match statistics">
+              <thead id="mstatsThead"></thead>
+              <tbody id="mstatsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="endBanner" class="banner hidden"></div>
+      </div>
+
+      </div>
+    </section>
+
+<section id="leaderboard" class="card section hidden">
+  <!-- Mirror the in-game top row (3 buttons, same sizing) -->
+  <div class="row sq-top-actions" id="leaderboardTopRow">
+    <button id="statsHubBtnFinal" class="btn letter-throw top-throw">STATS</button>
+    <button id="settingsBtnLB" class="btn letter-throw top-throw sq-settings-btn" aria-label="Settings"><svg class="sq-gear" viewBox="0 0 24 24" aria-hidden="true">
+  <path d="M12 2.6l1.1 2.5 2.7.6 2-1.8 2.3 3.9-2.2 1.6.2 2.8 2.2 1.6-2.3 3.9-2.6-1.2-2.4 1.4-.6 2.7H9.6L9 18.8l-2.4-1.4-2.6 1.2-2.3-3.9 2.2-1.6.2-2.8L1.9 7.8l2.3-3.9 2 1.8 2.7-.6L12 2.6z"
+        fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="2"/>
+  <path d="M12 8.2v7.6M8.2 12h7.6M9.6 9.6l4.8 4.8M14.4 9.6l-4.8 4.8"
+        fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6" opacity=".95"/>
+</svg></button>
+
+    <!-- Legacy hidden Start Screen / Restart buttons and #settingsMenuLB
+         removed (audit X-2): the leaderboard top row is display:none and its
+         actions live in the fix170 action stack. JS references are
+         null-guarded lookups. -->
+  </div>
+<!-- Leaderboard in its own box -->
+  <div class="lb-box" style="margin-top:8px;">
+    <h2 style="margin-top:0;">MATCH LEADERBOARD</h2>
+<div class="table-wrap" style="margin-top:8px">
+      <table id="lbTable">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+      <!-- Stacked, centered actions -->
+  <div class="stacked-actions">
+    <button id="gameScoresBtn" class="btn big" type="button">GAME SCORES</button>
+    <button id="highScoresMenuBtnLB" class="btn big" type="button">HIGH SCORES</button>
+
+    <!-- NEXT GAME (shown while match ongoing) -->
+    <button id="nextGameBtn" class="btn primary big" type="button">NEXT GAME ▶</button>
+
+    <!-- END MATCH (replaces NEXT GAME when match complete) -->
+    <button id="newMatchBtn" class="btn danger big hidden" type="button">END MATCH</button>
+
+  </div>
+  </div>
+
+</section>
+
+  </div><!-- /.wrap -->
+
+    <!-- Fixed Throw Pad (Game Stats / Match Stats / High Scores / Race appear here) -->
+    <div class="pad-bar" id="padBar">
+      <!-- keep your existing inner markup exactly as it is -->
+      <div class="pad-inner">
+        <div class="pad-head">
+          <div class="pad-left">
+            <div id="padHint" class="pad-hint"></div>
+          </div>
+        </div>
+        <div id="pad" class="pad"></div>
+      </div>
+    </div>
+    
+    <div id="gifOverlay" class="gif-overlay hidden"></div>
+
+    <!-- Add Player Modal -->
+    <div id="addPlayerModal" class="modal-backdrop hidden">
+      <div class="modal np-modal" role="dialog" aria-modal="true" aria-labelledby="npTitle">
+        <div class="np-top">
+          <!-- Duplicate back arrow removed; the close (×) is the single
+               dismiss control (audit D-3). Grid keeps the title centred. -->
+          <span class="np-top-spacer" aria-hidden="true"></span>
+          <div class="np-head">
+            <div id="npTitle" class="np-title">NEW PLAYER</div>
+            <div class="np-sub">SAVED TO THE PLAYER HUB</div>
+          </div>
+          <button id="npCloseBtn" class="np-close" type="button" aria-label="Close">×</button>
+        </div>
+
+        <div class="modal-body np-body">
+          <div class="np-field np-avatar-field">
+            <div class="np-label">AVATAR</div>
+            <div id="newPlayerAvatarPicker" class="sq-avatar-picker-host"></div>
+          </div>
+
+          <div class="np-field">
+            <div class="np-label">FIRST NAME</div>
+            <input id="newPlayerFirst" type="text" autocomplete="given-name" placeholder="e.g. Luke" />
+          </div>
+
+          <div class="np-field np-nick">
+            <div class="np-label">NICKNAME</div>
+            <div class="np-nick-row">
+              <input id="newPlayerNickname" type="text" autocomplete="off" placeholder="e.g. The Nuke" />
+              <button id="genNicknameBtn" class="np-gen" type="button" aria-label="Generate nickname">⟳</button>
+            </div>
+          </div>
+
+          <div class="np-field">
+            <div class="np-label">LAST NAME</div>
+            <input id="newPlayerLast" type="text" autocomplete="family-name" placeholder="e.g. Littler" />
+          </div>
+
+          <div class="np-field">
+            <div class="np-label">INITIALS</div>
+            <input id="newPlayerInitials" type="text" inputmode="text" maxlength="3" autocomplete="off" placeholder="e.g. LL" />
+          </div>
+        </div>
+
+        <div class="modal-footer np-footer">
+          <button id="savePlayerBtn" class="btn np-save" type="button" disabled>SAVE PLAYER</button>
+        </div>
+      </div>
+    </div>
+
+<!-- Select Player Modal -->
+<div id="selectPlayerModal" class="modal-backdrop hidden">
+  <div class="modal sp-modal">
+    <div class="sp2-head">
+      <div class="sp2-title">SELECT PLAYERS</div>
+    </div>
+    <div class="modal-body">
+      <div class="sp2-search">
+        <span class="sp2-search-ic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.8-3.8"/></svg>
+        </span>
+        <input id="spSearchInput" type="text" placeholder="Search players ..." autocomplete="off" />
+      </div>
+      <div class="sp2-chips" role="group" aria-label="Sort players">
+        <button class="sp2-chip active" data-sort="recent" type="button">RECENT</button>
+        <button class="sp2-chip" data-sort="az" type="button">A-Z</button>
+        <button class="sp2-chip" data-sort="rank" type="button">RANK</button>
+      </div>
+      <div id="spPlayerList" class="sp-list sp2-list"></div>
+      <!-- Hidden native select stays as the canonical value carrier for legacy
+           hooks (fix129 dedupe reads its options). -->
+      <select id="existingPlayerSelect" class="sp-native-select" aria-hidden="true" tabindex="-1">
+        <option value="">Select a saved player...</option>
+      </select>
+    </div>
+    <div class="modal-footer sp2-footer">
+      <!-- SAVE NEW PLAYER lives on the Match Card only; removed from this dialog. -->
+      <button id="confirmSelectPlayerBtn" class="btn sp2-confirm" type="button">CONFIRM PLAYERS</button>
+      <button id="cancelSelectPlayerBtn" class="btn ms2-back sp2-back" type="button"><span class="ms2-back-ar" aria-hidden="true">&#8592;</span><span class="ms2-back-txt">BACK</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- Start Game Modal (Home > START GAME >) -->
+<div id="startGameModal" class="modal-backdrop hidden">
+  <div class="modal sg-modal">
+    <div class="sg-head">
+      <div class="sg-title">SELECT GAME MODE</div>
+      <div class="sg-sub">CHOOSE HOW YOU WANT TO PLAY</div>
+    </div>
+    <div class="modal-body">
+      <div id="startGameModalBody" class="sg-options"></div>
+    </div>
+    <div class="modal-footer sg-footer">
+      <button id="closeStartGameModalBtn" class="btn ms2-back" type="button"><span class="ms2-back-ar" aria-hidden="true">&#8592;</span><span class="ms2-back-txt">BACK</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- Match Length Modal (Players > Start Match) -->
+<div id="matchLengthModal" class="modal-backdrop hidden">
+  <div class="modal ml-modal">
+    <div class="ml-top">
+      <!-- Single back control lives in the footer (#mlFooterBackBtn); the
+           duplicate header arrow was removed (audit D-3). -->
+      <div class="ml-head">
+        <div class="ml-title">MATCH LENGTH</div>
+        <div class="ml-sub">SELECT NUMBER OF GAMES</div>
+      </div>
+    </div>
+
+    <div class="modal-body">
+      <div id="mlGrid" class="ml-grid" role="group" aria-label="Select number of games"></div>
+      <div id="mlHint" class="ml-hint">
+        <span class="ml-hint-ico" aria-hidden="true">i</span>
+        <span id="mlHintText"></span>
+      </div>
+    </div>
+
+    <div class="modal-footer ml-footer">
+      <button id="mlFooterBackBtn" class="btn ml-foot-back ms2-back" type="button"><span class="ms2-back-ar" aria-hidden="true">&#8592;</span><span class="ms2-back-txt">BACK</span></button>
+      <!-- Label swaps via JS based on mode -->
+      <button id="mlStartBtn" class="btn ms-start ms-primary" type="button" disabled>SET THROW ORDER <span class="ms-arrow">▶</span></button>
+    </div>
+  </div>
+</div>
+<!-- Admin Hub Modal -->
+<div id="adminHubModal" class="modal-backdrop hidden">
+  <div class="modal menu-modal admin-menu-modal">
+    <div class="menu-modal-header">
+      <!-- Admin Hub back ← and close ✕ both dismissed to Home (duplicates).
+           The single ✕ close is kept (audit D-3/V-2); a spacer preserves the
+           centred header layout. -->
+      <span class="icon-btn" aria-hidden="true" style="visibility:hidden;"></span>
+
+      <div class="menu-modal-title">
+        <div class="menu-modal-title-text">ADMIN HUB</div>
+        <div class="menu-modal-title-sub">Tools & maintenance</div>
+      </div>
+
+      <button id="closeAdminHubBtnX" class="icon-btn" type="button" aria-label="Close">
+        <span style="font-size:18px;line-height:1;">✕</span>
+      </button>
+    </div>
+
+    <div class="menu-modal-body">
+      <div class="menu-section-label">GAMES</div>
+      <div class="menu-list">
+        <button id="openAllGamesBtn" class="menu-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M3 7h18"/><path d="M6 7v14"/><path d="M18 7v14"/><path d="M6 11h12"/><path d="M6 15h12"/><path d="M6 19h12"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">All Games</span>
+            <span class="menu-row-sub">Browse recent matches</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
+        <button id="openAllScoresBtn" class="menu-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M4 19h16"/><path d="M6 16V5h12v11"/><path d="M8 8h8"/><path d="M8 11h8"/><path d="M8 14h5"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">All Scores</span>
+            <span class="menu-row-sub">Remove a player from a game</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
+      </div>
+
+      <div class="menu-section-label">LEAGUE</div>
+      <div class="menu-list">
+        <button id="openHsLeagueAdmin" class="menu-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M7 21h10"/><path d="M9 17h6"/><path d="M8 4h8l-1 6H9z"/><path d="M9 10v7"/><path d="M15 10v7"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">League High Scores</span>
+            <span class="menu-row-sub">Official leaderboard maintenance</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
+
+        <button id="openHsPracticeAdmin" class="menu-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M12 2v5"/><path d="M6 7h12"/><path d="M7 7l2 15h6l2-15"/><path d="M9 12h6"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">Practice High Scores</span>
+            <span class="menu-row-sub">Non-official leaderboard</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
+
+        <button id="openLeagueLowsAdmin" class="menu-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M4 17l6-6 4 4 6-8"/><path d="M20 7v6h-6"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">League Low Scores</span>
+            <span class="menu-row-sub">Official low-score table</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
+      </div>
+
+      <div class="menu-section-label">PLAYERS</div>
+      <div class="menu-list">
+        <button id="openSavedPlayersAdminBtn" class="menu-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M20 21v-2a4 4 0 0 0-3-3.8"/><path d="M4 21v-2a4 4 0 0 1 3-3.8"/><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">Saved Player Admin</span>
+            <span class="menu-row-sub">Edit names, initials & nicknames</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
+
+        <button id="openPBGRAdminBtn" class="menu-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M12 2l3 7h7l-5.5 4 2 7-6.5-4.5L5.5 20l2-7L2 9h7z"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">PB / GR Admin</span>
+            <span class="menu-row-sub">Personal best & game record tools</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
+      </div>
+
+      <div class="menu-section-label">DATA</div>
+      <div class="menu-list">
+        <button id="openDataAdminBtn" class="menu-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M4 4h16v16H4z"/><path d="M8 8h8"/><path d="M8 12h8"/><path d="M8 16h8"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">DATA</span>
+            <span class="menu-row-sub">Dashboards & metrics</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
+
+        <button id="fixDuplicatesBtn" class="menu-row danger-row" type="button">
+          <span class="menu-row-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.3h3.4L22 21H2z"/>
+            </svg>
+          </span>
+          <span class="menu-row-text">
+            <span class="menu-row-title">Remove Duplicate High Scores</span>
+            <span class="menu-row-sub">Cleanup helper (use carefully)</span>
+          </span>
+          <span class="menu-row-chev">›</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Data Modal -->
+<div id="dataAdminModal" class="modal-backdrop hidden">
+  <div class="modal compact">
+    <h3>DATA</h3>
+    <div class="modal-body">
+      <p class="tag" id="dataPlayersCount">Number of saved players 0</p>
+      <p class="tag" id="dataNewPlayers7">New saved players (past 7 days) 0</p>
+      <hr style="margin:10px 0; border:0; border-top:1px solid #23284a;">
+      <div class="column" style="align-items:center; gap:8px;">
+        <button id="dataDailyGamesBtn" class="btn" style="width:min(360px,92%);">Daily Games</button>
+        <button id="dataUniqueLogonsBtn" class="btn" style="width:min(360px,92%);">Unique Log Ons</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button id="dataAdminBackBtn" class="btn" type="button">Back</button>
+      <button id="dataAdminCloseBtn" class="btn" type="button">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Data Chart Modal -->
+<div id="dataChartModal" class="modal-backdrop hidden">
+  <div class="modal compact">
+    <h3 id="dataChartTitle">Chart</h3>
+    <div class="modal-body">
+      <div class="row" style="gap:8px; flex-wrap:wrap; justify-content:center; margin-bottom:10px;">
+        <button id="dataChartRangeDaily"  class="btn small range active" type="button">Daily</button>
+        <button id="dataChartRangeWeekly" class="btn small range" type="button">Weekly</button>
+        <button id="dataChartRangeMonthly" class="btn small range" type="button">Monthly</button>
+        <button id="dataChartRangeYearly" class="btn small range" type="button">Yearly</button>
+      </div>
+      <div style="border-radius:12px;border:1px solid #23284a;padding:8px;background:#101533;min-height:260px;">
+        <canvas id="dataChartCanvas" width="640" height="320" style="width:100%; height:auto;"></canvas>
+      </div>
+      <p class="tag" id="dataChartHint">Horizontal: Date, Vertical: Count</p>
+    </div>
+    <div class="modal-footer">
+      <button id="dataChartBackBtn" class="btn" type="button">Back</button>
+      <button id="dataChartCloseBtn" class="btn" type="button">Close</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- All Games Modal -->
+<div id="allGamesModal" class="modal-backdrop hidden">
+  <div class="modal compact">
+    <h3>All Games</h3>
+    <div class="modal-body" id="allGamesBody">
+      <div id="allGamesTableWrap"></div>
+    </div>
+    <div class="modal-footer">
+      <button id="allGamesBackBtn" class="btn" type="button">Back</button>
+      <button id="allGamesCloseBtn" class="btn" type="button">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- League Low Scores Admin Modal -->
+<div id="leagueLowsAdminModal" class="modal-backdrop hidden">
+  <div class="modal compact">
+    <h3>League Low Scores — Admin</h3>
+    <div class="modal-body" id="leagueLowsAdminBody">
+      <p class="tag">Loading league low scores…</p>
+    </div>
+    <div class="modal-footer">
+      <button id="leagueLowsBackBtn" class="btn" type="button">Back</button>
+      <button id="leagueLowsCloseBtn" class="btn" type="button">Close</button>
+    </div>
+  </div>
+</div>
+
+  <!-- Legacy static Round High Scores modal removed (audit X-1): it was
+       self-quarantined; the active path is the Fix97 dynamic modal. -->
+
+    <!-- Saved Players Admin Modal -->
+    <div id="savedPlayersAdminModal" class="modal-backdrop hidden">
+      <div class="modal compact">
+        <h3>Saved Players Admin</h3>
+        <div class="modal-body">
+          <div id="savedPlayersAdminBody"></div>
+        </div>
+        <div class="modal-footer">
+          <button id="backSavedPlayersAdminBtn" class="btn" type="button">Back</button>
+          <button id="closeSavedPlayersAdminBtn" class="btn" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cloud Status -->
+    <div id="cloudStatus" class="cloud-status checking">
+      <span class="cloud-dot"></span>
+      <span id="cloudStatusText">Checking cloud…</span>
+    </div>
+    <script src="./src/legacy/scripts/inline-005.js"></script>
+<!-- PB / GR Admin Modal -->
+<div id="pbgrAdminModal" class="modal-backdrop hidden">
+  <div class="modal compact" role="dialog" aria-modal="true" aria-labelledby="pbgrTitle">
+    <h3 id="pbgrTitle">PB / GR Admin</h3>
+    <div class="modal-body">
+      <p class="muted" style="margin-top:-6px;margin-bottom:10px;">
+        Manage Personal Bests and Game Records. Deleting a row will remove the underlying round from the cloud.
+      </p>
+
+      <h4 style="margin:8px 0 6px;">World Records (All Players)</h4>
+      <div id="pbgrGlobal" class="table-wrap"></div>
+
+      <hr style="border:0;border-top:1px solid rgba(255,255,255,.08);margin:12px 0;">
+
+      <h4 style="margin:8px 0 6px;">Player PBs</h4>
+      <label for="pbgrPlayerSelect" class="muted" style="display:block;margin-bottom:6px;">Select saved player:</label>
+      <select id="pbgrPlayerSelect" class="input" style="min-width:220px;"></select>
+      <div class="row" id="pbgrBackfillRow" style="margin-top:10px; gap:8px; align-items:center;">
+        <button id="pbgrBackfillBtn" class="btn warn" type="button">Backdate PB / WR</button>
+        <span class="muted">Scan cloud throws (saved players, official only) and write PBs + WRs.</span>
+      </div>
+      <div id="pbgrPlayer" class="table-wrap" style="margin-top:8px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button id="pbgrBackBtn" class="btn" type="button">Back</button>
+      <button id="pbgrRefreshBtn" class="btn" type="button">Refresh</button>
+      <button id="pbgrCloseBtn" class="btn" type="button">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="./src/legacy/scripts/inline-006.js"></script>
+
+<!-- >>> PATCH:SQ_DMD_TOPBAR_JS_V1 START -->
+<script src="./src/legacy/scripts/inline-007.js"></script>
+<!-- >>> PATCH:SQ_DMD_TOPBAR_JS_V1 END -->
+
+<!-- >>> PATCH:ROUND_HIGH_SCORES_V82 START -->
+<script src="./src/legacy/scripts/inline-008.js"></script>
+<!-- >>> PATCH:ROUND_HIGH_SCORES_V82 END -->
+
+
+
+<!-- >>> PATCH:H2H_OPPONENT_ROLLING_GRAPH_V3 START -->
+<script src="./src/legacy/scripts/inline-009.js"></script>
+<!-- <<< PATCH:H2H_OPPONENT_ROLLING_GRAPH_V3 END -->
+
+
+<!-- >>> PATCH:FIX48_H2H_SINGLE_SORTED_LEAGUE START -->
+<!-- <<< PATCH:FIX48_H2H_SINGLE_SORTED_LEAGUE END -->
+
+
+<!-- >>> PATCH:FIX62_RETIRE_RANKING_LOCALSTORAGE START -->
+<script src="./src/legacy/scripts/inline-010.js"></script>
+<!-- <<< PATCH:FIX62_RETIRE_RANKING_LOCALSTORAGE END -->
+
+
+<!-- >>> PATCH:PHASE1_PLAYER_CACHE_VERIFIED_V2 START -->
+<script src="./src/legacy/scripts/inline-011.js"></script>
+<!-- <<< PATCH:PHASE1_PLAYER_CACHE_VERIFIED_V2 END -->
+
+<!-- >>> PATCH:FIX66_PLAYER_CACHE_ALIAS_RECURSION_FIX START -->
+<script src="./src/legacy/scripts/inline-012.js"></script>
+<!-- <<< PATCH:FIX66_PLAYER_CACHE_ALIAS_RECURSION_FIX END -->
+
+
+<!-- >>> PATCH:FIX67_RECOVERY_CACHE_GUARD START -->
+<script src="./src/legacy/scripts/inline-013.js"></script>
+<!-- <<< PATCH:FIX67_RECOVERY_CACHE_GUARD END -->
+
+
+<!-- >>> PATCH:FIX85_TOURNAMENT_SHARED_STYLES_AND_CLEANUP START -->
+<!-- <<< PATCH:FIX85_TOURNAMENT_SHARED_STYLES_AND_CLEANUP END -->
+<!-- >>> PATCH:FIX74_TOURNAMENT_STEPPED_FLOW START -->
+<script src="./src/legacy/scripts/inline-014.js"></script>
+<!-- <<< PATCH:FIX74_TOURNAMENT_STEPPED_FLOW END -->
+
+
+
+<!-- >>> PATCH:FIX75_TOURNAMENT_START_RUNNER START -->
+<script src="./src/legacy/scripts/inline-015.js"></script>
+<!-- <<< PATCH:FIX75_TOURNAMENT_START_RUNNER END -->
+
+
+<!-- >>> PATCH:FIX76_TURBO_20SEC_TIMER START -->
+<script src="./src/legacy/scripts/inline-016.js" id="sq-fix76-turbo-20sec-timer-js"></script>
+<!-- <<< PATCH:FIX76_TURBO_20SEC_TIMER END -->
+
+
+<!-- >>> PATCH:FIX77_TURBO_TIMER_RACE_ROWS START -->
+<script src="./src/legacy/scripts/inline-017.js" id="sq-fix77-turbo-timer-race-rows-js"></script>
+<!-- <<< PATCH:FIX77_TURBO_TIMER_RACE_ROWS END -->
+<!-- >>> PATCH:FIX83_TOURNAMENT_LEADERBOARD_BRACKET_MISSX3 START -->
+<script src="./src/legacy/scripts/inline-018.js" id="sq-fix83-tournament-bracket-js"></script>
+<!-- <<< PATCH:FIX83_TOURNAMENT_LEADERBOARD_BRACKET_MISSX3 END -->
+<!-- >>> PATCH:FIX40_B3_PAGE_ORDER_V1 START -->
+<!-- <<< PATCH:FIX40_B3_PAGE_ORDER_V1 END -->
+
+
+<!-- >>> PATCH:FIX41_EVENING_LAYOUT_RACE_PAD START -->
+<script src="./src/legacy/scripts/inline-019.js"></script>
+<!-- <<< PATCH:FIX41_EVENING_LAYOUT_RACE_PAD END -->
+
+
+<!-- >>> PATCH:FIX42_PAD_FORMAT_LAYOUT_CLEARANCE START -->
+<!-- <<< PATCH:FIX42_PAD_FORMAT_LAYOUT_CLEARANCE END -->
+
+<script src="./src/legacy/scripts/inline-020.js"></script>
+
+<!-- >>> PATCH:FIX68_RECOVERY_WARNING_SILENCE START -->
+<script src="./src/legacy/scripts/inline-021.js"></script>
+<!-- <<< PATCH:FIX68_RECOVERY_WARNING_SILENCE END -->
+
+<!-- >>> PATCH:FIX78_TURBO_HS_AND_START_ROWS START -->
+<script src="./src/legacy/scripts/inline-022.js" id="sq-fix78-turbo-hs-startrows-js"></script>
+<!-- <<< PATCH:FIX78_TURBO_HS_AND_START_ROWS END -->
+
+<!-- >>> PATCH:FIX86_TOURNAMENT_TREE_DECIDER_BACK START -->
+<script src="./src/legacy/scripts/inline-023.js"></script>
+<!-- <<< PATCH:FIX86_TOURNAMENT_TREE_DECIDER_BACK END -->
+
+
+<!-- >>> PATCH:FIX87_TOURNAMENT_POPUP_COPY_CLEANUP START -->
+<!-- Tournament stepped-flow copy cleaned: centralised step headers, removed redundant explanatory lines, updated Classic/Turbo rules copy. -->
+<!-- <<< PATCH:FIX87_TOURNAMENT_POPUP_COPY_CLEANUP END -->
+
+
+<!-- >>> PATCH:FIX90_TOURNAMENT_UI_THROWORDER_MISSX3 START -->
+<script src="./src/legacy/scripts/inline-024.js" id="sq-fix90-tournament-ui-js"></script>
+<!-- <<< PATCH:FIX90_TOURNAMENT_UI_THROWORDER_MISSX3 END -->
+
+
+
+<!-- >>> PATCH:FIX95_MISSX3_CONSOLIDATED_TIMED START -->
+<script src="./src/legacy/scripts/inline-025.js" id="sq-fix95-missx3-js"></script>
+<!-- <<< PATCH:FIX95_MISSX3_CONSOLIDATED_TIMED END -->
+
+<!-- >>> PATCH:FIX97_LEAGUE_RANKS_TURBO_TABS START -->
+<script src="./src/legacy/scripts/inline-026.js" id="sq-fix97-league-ranks-turbo-tabs-js"></script>
+<!-- <<< PATCH:FIX97_LEAGUE_RANKS_TURBO_TABS END -->
+
+<!-- >>> PATCH:FIX99_TOP50_PRACTICE_TAB START -->
+<script src="./src/legacy/scripts/inline-027.js" id="sq-fix99-top50-practice-js"></script>
+<!-- <<< PATCH:FIX99_TOP50_PRACTICE_TAB END -->
+
+
+<!-- >>> PATCH:FIX100_LEAGUE_RANKS_FORMAT_ALIGNMENT START -->
+<script src="./src/legacy/scripts/inline-028.js" id="sq-fix100-league-ranks-format-js"></script>
+<!-- <<< PATCH:FIX100_LEAGUE_RANKS_FORMAT_ALIGNMENT END -->
+<!-- >>> FIX102_LEAGUE_RANKS_TEXT_DATE_CLEANUP START -->
+<script src="./src/legacy/scripts/inline-029.js"></script>
+<!-- >>> FIX102_LEAGUE_RANKS_TEXT_DATE_CLEANUP END -->
+
+
+<!-- >>> PATCH:FIX106_HOME_MENU_STATS_RESET START -->
+<script src="./src/legacy/scripts/inline-030.js" id="sq-fix106-home-menu-stats-reset-js"></script>
+<!-- <<< PATCH:FIX106_HOME_MENU_STATS_RESET END -->
+
+
+
+
+
+
+
+
+
+
+<!-- >>> PATCH:FIX112_PRACTICE_ROUND_PB_CELL_GREY START -->
+<!-- <<< PATCH:FIX112_PRACTICE_ROUND_PB_CELL_GREY END -->
+
+
+<!-- >>> PATCH:FIX114_PRACTICE_PB_SCORE_SMALLER START -->
+<!-- <<< PATCH:FIX114_PRACTICE_PB_SCORE_SMALLER END -->
+
+<!-- >>> PATCH:FIX115_PRACTICE_SCORE_BEATS_PB_GREEN_TEXT START -->
+<!-- <<< PATCH:FIX115_PRACTICE_SCORE_BEATS_PB_GREEN_TEXT END -->
+
+
+
+<!-- >>> PATCH:FIX118_PRACTICE_PB_COMPARE_SAFE_REPAIR START -->
+<!-- <<< PATCH:FIX118_PRACTICE_PB_COMPARE_SAFE_REPAIR END -->
+
+
+
+
+<!-- >>> PATCH:FIX120_PRACTICE_PB_COMPARE_FORCE_STYLE START -->
+<script src="./src/legacy/scripts/inline-031.js" id="sq-fix120-practice-pb-compare-force-style-js"></script>
+<!-- <<< PATCH:FIX120_PRACTICE_PB_COMPARE_FORCE_STYLE END -->
+
+<!-- >>> PATCH:FIX122_PRACTICE_START_ROW_ANCHOR_RENDER_FIX START -->
+<!-- <<< PATCH:FIX122_PRACTICE_START_ROW_ANCHOR_RENDER_FIX END -->
+
+
+
+
+
+
+
+
+
+<!-- >>> PATCH:FIX126_PRACTICE_GEOMETRY_LOCK_CANONICAL START -->
+<script src="./src/legacy/scripts/inline-032.js" id="sq-fix126-practice-geometry-lock-js"></script>
+<!-- <<< PATCH:FIX126_PRACTICE_GEOMETRY_LOCK_CANONICAL END -->
+
+
+
+<!-- >>> PATCH:FIX127_PRACTICE_LIVE_ROW_SEPARATOR_CANONICAL START -->
+<!-- <<< PATCH:FIX127_PRACTICE_LIVE_ROW_SEPARATOR_CANONICAL END -->
+
+
+
+
+<!-- >>> PATCH:FIX129_PLAYER_SELECT_DEDUPE_CANONICAL START -->
+<script src="./src/legacy/scripts/inline-033.js" id="sq-fix129-player-select-dedupe-js"></script>
+<!-- <<< PATCH:FIX129_PLAYER_SELECT_DEDUPE_CANONICAL END -->
+
+<!-- >>> PATCH:FIX130_PRACTICE_COMPLETED_PILL_ROOM_FIX START -->
+<!-- <<< PATCH:FIX130_PRACTICE_COMPLETED_PILL_ROOM_FIX END -->
+
+<!-- >>> PATCH:FIX131_MATCHPLAY_START_ROW_ANCHOR START -->
+<!-- <<< PATCH:FIX131_MATCHPLAY_START_ROW_ANCHOR END -->
+
+
+<!-- >>> PATCH:FIX132_POWER_RANKINGS_PROPER_LAYOUT START -->
+<script src="./src/legacy/scripts/inline-034.js" id="sq-fix132-power-rankings-js"></script>
+<!-- <<< PATCH:FIX132_POWER_RANKINGS_PROPER_LAYOUT END -->
+
+
+<!-- >>> PATCH:FIX136_PREMIER_LEAGUE_RESTORE_FILTERS START -->
+<script src="./src/legacy/scripts/inline-035.js" id="sq-fix136-premier-league-js"></script>
+<!-- <<< PATCH:FIX136_PREMIER_LEAGUE_RESTORE_FILTERS END -->
+
+
+
+
+<!-- >>> PATCH:FIX146_PL_FAST_TOP50_TABS_CANONICAL START -->
+<script src="./src/legacy/scripts/inline-036.js" id="sq-fix146-pl-fast-top50-tabs-canonical-js"></script>
+<!-- <<< PATCH:FIX146_PL_FAST_TOP50_TABS_CANONICAL END -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- >>> PATCH:FIX153_MOT_CACHE_MODAL_GUARD START -->
+<script src="./src/legacy/scripts/inline-037.js" id="sq-fix153-mot-cache-modal-guard-js"></script>
+<!-- <<< PATCH:FIX153_MOT_CACHE_MODAL_GUARD END -->
+
+
+
+<!-- >>> PATCH:FIX160_HOME_POWER_FIRST_PLUS_NICKNAME START -->
+<script src="./src/legacy/scripts/inline-038.js"></script>
+<!-- <<< PATCH:FIX160_HOME_POWER_FIRST_PLUS_NICKNAME END -->
+
+<!-- >>> PATCH:FIX166_TOP50_NAMES_TARGET_HIT_HEATMAP START -->
+<script src="./src/legacy/scripts/inline-039.js" id="sq-fix166-top50-names-target-hit-heatmap-js"></script>
+<!-- <<< PATCH:FIX166_TOP50_NAMES_TARGET_HIT_HEATMAP END -->
+
+<!-- >>> PATCH:FIX167_GAMEPLAY_PERF_MOT START -->
+<script src="./src/legacy/scripts/inline-040.js" id="sq-fix167-gameplay-perf-mot-js"></script>
+<!-- <<< PATCH:FIX167_GAMEPLAY_PERF_MOT END -->
+
+<!-- >>> PATCH:FIX168_MODE_CLASSIFICATION_TURBO_GUARD START -->
+<script src="./src/legacy/scripts/inline-041.js" id="sq-fix168-mode-classification-turbo-guard-js"></script>
+<!-- <<< PATCH:FIX168_MODE_CLASSIFICATION_TURBO_GUARD END -->
+
+<script src="./src/legacy/scripts/inline-042.js" id="sq-rankings-turbo-routing-fix-js"></script>
+
+
+
+<!-- >>> PATCH:MINOR_UX_CLEANUP_AND_VIDE_EMPTY_START START
+Changes:
+- START SCREEN > LIVE UPDATES VIDE now stays empty on first load before the normal bottom-up scroll/types begin.
+- Player Stats Hub labels clarified: Player High Scores, Player Scores Over Time, Player H2H.
+- Per-player H2H opponent header clarified.
+- If Global H2H Phase2 is present, Q column/sort cleanup is applied by string-compatible patching.
+Logic untouched: practice save, scoring, Supabase writes, rankings formulas.
+<<< PATCH:MINOR_UX_CLEANUP_AND_VIDE_EMPTY_START END -->
+
+
+<script src="./src/legacy/scripts/inline-043.js" id="sq-start-tournament-route-blocker-guard-v2"></script>
+
+
+<script src="./src/legacy/scripts/inline-044.js" id="sq-fix169-power-rankings-current-clean-source-js"></script>
+
+<!-- >>> PATCH:FIX170_DECIDER_LEADERBOARD_CONFIRM START -->
+<script src="./src/legacy/scripts/inline-045.js" id="sq-fix170-decider-leaderboard-confirm-js"></script>
+<!-- <<< PATCH:FIX170_DECIDER_LEADERBOARD_CONFIRM END -->
+
+<!-- >>> PATCH:FIX171_LEADERBOARD_BRACKET_VISUAL_REFRESH START -->
+<!-- <<< PATCH:FIX171_LEADERBOARD_BRACKET_VISUAL_REFRESH END -->
+
+<!-- >>> PATCH:FIX172_TOURNAMENT_MODE_CARD START -->
+<!-- <<< PATCH:FIX172_TOURNAMENT_MODE_CARD END -->
+
+<!-- >>> PATCH:HOME_ARCADE_START_HERO START -->
+<!-- <<< PATCH:HOME_ARCADE_START_HERO END -->
+
+<!-- >>> PATCH:GAME_COMPLETE_ARCADE_REDESIGN START -->
+<!-- <<< PATCH:GAME_COMPLETE_ARCADE_REDESIGN END -->
+
+<!-- >>> PATCH:TRAINING_MODE_V1 START -->
+<script src="./src/legacy/scripts/inline-046.js"></script>
+<!-- <<< PATCH:TRAINING_MODE_V1 END -->
+
+<!-- >>> PATCH:LIVE_CLASSIC_STAGE2_B3_COMPACT START -->
+<!-- <<< PATCH:LIVE_CLASSIC_STAGE2_B3_COMPACT END -->
+
+<script src="./src/legacy/scripts/inline-047.js"></script>
+
+<!-- >>> SC-037 TV MODE BETA START -->
+<!-- <<< SC-037 TV MODE BETA END -->
+
+<script>window.__SXP04_GATE1_LABEL='BASELINE';window.__SXP04_GATE1_SHA='8c3113446a38d8446cddcdd559d9cde7372aa255';</script><script src="./sxp04-gate1-r2.js"></script>
+</body>
+</html>

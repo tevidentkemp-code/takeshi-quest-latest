@@ -1,0 +1,359 @@
+/* ===== @CSS:GAME_TOPMENU_COLLAPSE =====
+   Top menu is part of the sticky header and collapses away as you scroll.
+   - Sticky inset: 4px from top
+   - Menu collapses until only a thin divider remains
+===== */
+:root{
+  --gameTopInset:0px;
+  --fhMenuH:48px;   /* JS will overwrite */
+  --fhCollapse:0px; /* JS updates on scroll */
+  --fhScrollGate:0px; /* JS updates: hold content until B1 collapsed */
+}
+
+#floatHead.float-head{
+  background: var(--bg);
+  position: sticky;
+  top: var(--gameTopInset);
+  z-index: 2;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+  isolation:isolate;
+  overflow: visible;
+}
+
+.fh-menu-wrap{
+  height: calc(var(--fhMenuH) - var(--fhCollapse));
+  overflow: hidden;
+  position: relative;
+  background: var(--bg);
+}
+
+#gameTopRow.fh-menu{
+  margin: 0 !important;
+  position: relative;
+  padding-top: 4px; /* default */
+  padding-bottom: 4px; /* default */
+  transform: translateY(calc(-1 * var(--fhCollapse)));
+}
+
+/* >>> PATCH:game_topbar_settings_left_v1_a START */
+/* GAME: make the top action bar thinner so it sits tight above the player score pills */
+body[data-page="game"] #gameTopRow.fh-menu{
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+/* >>> PATCH:game_topbar_settings_left_v1_a END */
+
+/* ===== TOP OPTIONS ROW (Game + Leaderboard) ===== */
+#gameTopRow.sq-top-actions,
+#leaderboardTopRow.sq-top-actions{
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 12px;
+}
+
+/* >>> PATCH:game_topbar_settings_left_v1 START */
+/* GAME: remove STATS pill entirely; move Settings to the LHS and shrink the bar */
+body[data-page="game"] #statsHubBtnGame{ display:none !important; }
+
+body[data-page="game"] #gameTopRow.sq-top-actions{
+  justify-content: flex-start;
+  gap: 0;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  padding-left: 10px; /* aligns with the left gutter above throw dots */
+}
+
+body[data-page="game"] .sq-settings-btn{ margin-left: 5px; }
+
+/* Settings menu should open under the left-anchored cog */
+body[data-page="game"] #settingsMenuGame{
+  left: 10px;
+  right: auto;
+}
+/* >>> PATCH:game_topbar_settings_left_v1 END */
+
+/* >>> PATCH:SQ_DMD_TOPBAR_CSS_V1 START */
+/* Pinball DMD: lives in the sticky header above the Settings pill.
+   Constraint: add height, do NOT change width. */
+body[data-page="game"] .sq-dmd-wrap{
+  padding: 6px 10px 2px; /* aligns with left gutter */
+}
+body[data-page="game"] .sq-dmd{
+  position: relative;
+  width: 100%;
+  border-radius: 22px;
+  background: rgba(0,0,0,.28);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 0 1px rgba(255,122,0,.14),
+    0 10px 26px rgba(0,0,0,.45);
+  overflow: hidden;
+}
+body[data-page="game"] #sqDmdCanvas{
+  display:block;
+  width: 100%;
+  height: var(--sqDmdH,74px);      /* depth: doubled */
+  image-rendering: pixelated;
+}
+body[data-page="game"] .sq-dmd-overlay{
+  pointer-events:none;
+  position:absolute; inset:0;
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,.10), rgba(255,255,255,0) 24%),
+    repeating-linear-gradient(to bottom, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,0) 1px 4px);
+  /* mix-blend-mode removed (caused yellow flashing on some browsers) */
+opacity: .18;
+}
+@media (orientation: landscape){
+  body[data-page="game"] #sqDmdCanvas{ height: 88px; }
+}
+/* >>> PATCH:SQ_DMD_TOPBAR_CSS_V1 END */
+/* >>> PATCH:SQ_DMD_SETTINGS_OVERLAY_V1 START
+   Goal: keep V12 logic intact; only restyle/relocate Settings button.
+   - Button sits on top-left corner of DMD (overlay).
+   - Smaller, transparent background, Shateki orange strokes.
+*/
+body[data-page="game"] #fhMenuWrap{
+  position: relative; /* anchor for absolute settings button */
+}
+
+/* Hide the original row height impact (button will be absolute) */
+body[data-page="game"] #gameTopRow{
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
+/* Place settings button over the DMD */
+body[data-page="game"] #settingsBtnGame{
+  position: absolute !important;
+  left: 14px;
+  top: 14px;
+  z-index: 60;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: transparent !important;
+  border: 1px solid rgba(255,122,0,.65);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.10),
+    0 0 0 1px rgba(255,122,0,.10),
+    0 10px 18px rgba(0,0,0,.45);
+}
+
+/* The hamburger glyph: orange lines, no fills */
+body[data-page="game"] #settingsBtnGame .sq-gear path,
+body[data-page="game"] #settingsBtnGame svg path{
+  stroke: rgba(255,122,0,.95) !important;
+  stroke-width: 2.2 !important;
+  stroke-linecap: round !important;
+}
+
+/* No hover glow on mobile; keep tap feedback subtle */
+body[data-page="game"] #settingsBtnGame:active{
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.10),
+    0 0 0 1px rgba(255,122,0,.18),
+    0 6px 12px rgba(0,0,0,.38);
+}
+/* >>> PATCH:SQ_DMD_SETTINGS_OVERLAY_V1 END */
+
+#gameTopRow.sq-top-actions > #statsHubBtnGame,
+#leaderboardTopRow.sq-top-actions > #statsHubBtnFinal{
+  /* Keep STATS as a fixed pill on the LHS (match Settings size) */
+  flex: 0 0 54px;
+  width: 54px;
+  display:flex !important;
+  align-items:center;
+  justify-content:center;
+  padding-left:0 !important;
+  padding-right:0 !important;
+}
+
+/* Settings button: same pill style, icon centered */
+.sq-settings-btn{
+  flex: 0 0 54px;
+  display:flex !important;
+  align-items:center;
+  justify-content:center;
+  padding-left:0 !important;
+  padding-right:0 !important;
+}
+
+.sq-gear{
+  width: 26px;
+  height: 26px;
+  opacity: .95;
+}
+
+/* Fixed-width STATS label */
+#statsHubBtnGame,
+#statsHubBtnFinal{
+  font-size: 11px;
+  letter-spacing: .14em;
+}
+
+/* Hide old buttons (we still trigger them from the Settings menu) */
+.sq-hidden-top{
+  display:none !important;
+}
+
+/* Settings menu (simple dropdown under top row) */
+.sq-settings-menu{
+  position: absolute;
+  top: calc(var(--fhMenuH) - var(--fhCollapse));
+  right: 10px;
+  width: min(240px, 92vw);
+  background: rgba(10,12,18,.98);
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 14px;
+  padding: 8px;
+  z-index: 30000;
+  box-shadow: 0 10px 28px rgba(0,0,0,.55);
+}
+
+#leaderboard .sq-settings-menu{
+  position: relative;
+  top: auto;
+  right: auto;
+  margin: 8px 10px 0 auto;
+}
+
+.sq-settings-item{
+  width: 100%;
+  text-align: left;
+  height: 44px;
+  border-radius: 12px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.sq-settings-item + .sq-settings-item{
+  margin-top: 8px;
+}
+.fh-menu-line{
+  position:absolute;
+  left:0; right:0;
+  top: calc(var(--fhMenuH) - var(--fhCollapse));
+  height: 1px;
+  background: rgba(255,255,255,.10);
+  pointer-events:none;
+}
+
+/* >>> PATCH:GAME_TOPBAR_ALIGN_V2 START
+   Goal:
+   - Remove in-game STATS button.
+   - Settings cog sits in the left column (aligned with throw dots / round pills).
+   - Divider line spans only the main gameplay width (player/round/pad columns), not the left column.
+*/
+body[data-page="game"] #statsHubBtnGame{ display:none !important; }
+
+body[data-page="game"] #gameTopRow{
+  width: var(--left-col-w);
+  max-width: var(--left-col-w);
+  justify-content: center;
+  gap: 0;
+  padding: 2px 0 !important; /* shrink the top bar */
+  position: relative;
+  z-index: 2;
+}
+
+body[data-page="game"] #fhMenuLine.fh-menu-line{
+  left: calc(var(--left-col-w) + 10px);
+  right: 10px;
+  z-index: 1;
+}
+
+body[data-page="game"] #settingsMenuGame.sq-settings-menu{
+  left: 10px;
+  right: auto;
+}
+/* >>> PATCH:GAME_TOPBAR_ALIGN_V2 END */
+
+/* >>> PATCH:GAME_TOPBAR_BAR_AFTER_SETTINGS_V1 START
+   GAME: top bar background should start to the right of the Settings cog, aligned with the first player pill edge.
+*/
+body[data-page="game"] #fhMenuWrap.fh-menu-wrap{
+  background: transparent;
+}
+body[data-page="game"] #fhMenuWrap.fh-menu-wrap{
+  position: relative;
+}
+body[data-page="game"] #fhMenuWrap.fh-menu-wrap::before{
+  content:"";
+  position:absolute;
+  top:0;
+  bottom:0;
+  left: calc(var(--left-col-w) + 10px);
+  right: 10px;
+  background: var(--bg);
+  border: 1px solid #2a2e48;
+  border-radius: 12px;
+  pointer-events:none;
+  z-index:0;
+}
+/* Keep the divider line aligned to the same main area */
+body[data-page="game"] #fhMenuLine.fh-menu-line{
+  left: calc(var(--left-col-w) + 10px);
+  right: 10px;
+  z-index: 1;
+}
+/* >>> PATCH:GAME_TOPBAR_BAR_AFTER_SETTINGS_V1 END
+*/
+
+/* >>> PATCH:GAME_REMOVE_ALL_BARS_V1 START
+   GAME: remove ALL header/indicator bars; leave only the Settings button.
+*/
+body[data-page="game"] #fhMenuLine.fh-menu-line{ display:none !important; }
+body[data-page="game"] #fhMenuWrap.fh-menu-wrap::before{ content:none !important; display:none !important; }
+/* Remove animated indicator bars */
+body[data-page="game"] #turnBar.turn-bar{ display:none !important; }
+body[data-page="game"] #roundBar.round-bar{ display:none !important; }
+body[data-page="game"] #roundSeamBar.round-seam-bar{ display:none !important; }
+/* >>> PATCH:GAME_REMOVE_ALL_BARS_V1 END */
+
+/* >>> SC-030 DMD V2 CABINET TREATMENT START */
+/* Presentation only: preserve the canonical 74px portrait / 88px landscape DMD footprint. */
+body[data-page="game"] #sqDmdWrap{
+  isolation:isolate;
+  background:
+    radial-gradient(120% 150% at 50% -35%, rgba(255,176,54,.065), transparent 52%),
+    linear-gradient(180deg, #080604 0%, #050403 100%);
+  border-color:rgba(255,153,24,.30);
+  box-shadow:
+    inset 0 1px 0 rgba(255,210,128,.07),
+    inset 0 -12px 28px rgba(0,0,0,.48),
+    0 0 0 1px rgba(255,122,0,.10),
+    0 9px 24px rgba(0,0,0,.46),
+    0 0 14px rgba(255,133,16,.055);
+}
+body[data-page="game"] #sqDmdWrap::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  z-index:1;
+  opacity:.14;
+  background-image:radial-gradient(circle, rgba(255,154,35,.24) 0 .55px, transparent .7px);
+  background-size:4px 4px;
+}
+body[data-page="game"] #sqDmdCanvas{
+  position:relative;
+  z-index:2;
+  filter:saturate(1.05) contrast(1.04) drop-shadow(0 0 3px rgba(255,143,28,.13));
+}
+body[data-page="game"] #sqDmdWrap .sq-dmd-overlay{
+  z-index:3;
+  opacity:.12;
+  background:
+    linear-gradient(to bottom, rgba(255,226,184,.055), transparent 22%),
+    repeating-linear-gradient(to bottom, rgba(255,255,255,.024) 0 1px, transparent 1px 4px);
+}
+@media (prefers-reduced-motion: reduce){
+  body[data-page="game"] #sqDmdCanvas{ filter:saturate(1.02) contrast(1.02); }
+}
+/* <<< SC-030 DMD V2 CABINET TREATMENT END */
