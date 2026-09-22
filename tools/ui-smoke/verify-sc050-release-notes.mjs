@@ -7,7 +7,7 @@ const css = fs.readFileSync('src/styles/home/start-hero.css','utf8');
 
 assert.equal(meta.schemaVersion,1);
 assert.match(meta.currentVersion,/^\d+\.\d+\.\d+$/);
-assert.equal(meta.currentReleaseId,'SC-050');
+assert(meta.releases.some((row)=>row.releaseId === 'SC-050'),'SC-050 release history must be retained');
 assert(Array.isArray(meta.releases) && meta.releases.length >= 20);
 assert.equal(meta.releases[0].version,meta.currentVersion);
 assert.equal(meta.releases[0].releaseId,meta.currentReleaseId);
