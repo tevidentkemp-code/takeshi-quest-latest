@@ -92,7 +92,7 @@ async function captureCanonical(page){
       liveAverages,
       achievements
     };
-  }, storageKey);
+  }, GAME_STORAGE_KEY);
 }
 
 async function ordinary(page, specs){
