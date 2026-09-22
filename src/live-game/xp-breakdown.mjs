@@ -30,6 +30,23 @@ function getState() {
   try { return state; } catch (_) { return null; }
 }
 
+function xpPrefetchKey(st) {
+  const token = Number(st && st.__gameToken || 0);
+  const names = (Array.isArray(st && st.players) ? st.players : [])
+    .map(player => rawPlayerName(player).toLowerCase());
+  return token + '|' + names.join('|');
+}
+
+function existingXpRows(host, st) {
+  try {
+    const pref = host && host.__sqGcXpPrefetch;
+    if (!pref || pref.key !== xpPrefetchKey(st)) return null;
+    if (Array.isArray(pref.resolved)) return Promise.resolve(pref.resolved);
+    if (pref.promise && typeof pref.promise.then === 'function') return pref.promise;
+  } catch (_) {}
+  return null;
+}
+
 function modeKey(st) {
   try {
     if (typeof window.__sqComputeGameMode === 'function') return String(window.__sqComputeGameMode() || '').toLowerCase();
@@ -697,10 +714,18 @@ async function buildPlayerData(host, st) {
     ? st._decider.winner
     : null;
 
+  let prefetchedXp = null;
+  try {
+    const existing = existingXpRows(host, st);
+    if (existing) prefetchedXp = await existing;
+  } catch (_) {}
+
   const playerRows = await Promise.all(statePlayers.map(async (player, index) => {
     const rawName = rawPlayerName(player);
-    let xpRow = null;
-    try { xpRow = await host.SQ_XP.forName(rawName); } catch (_) {}
+    let xpRow = Array.isArray(prefetchedXp) ? prefetchedXp[index] : null;
+    if (!xpRow) {
+      try { xpRow = await host.SQ_XP.forName(rawName); } catch (_) {}
+    }
     return {
       index,
       player,
@@ -766,6 +791,28 @@ async function buildPlayerData(host, st) {
   }).sort((a, b) => (Number(b.won) - Number(a.won)) || (b.netXp - a.netXp));
 }
 
+function startDetailedXpPrefetch(host, st = getState()) {
+  try {
+    if (!host || !st || !host.SQ_XP || !host.SQ_ACH || !isRankedXpMode(st)) return Promise.resolve(null);
+    const key = xpPrefetchKey(st);
+    const existing = host.__sqSc038XpPrefetch;
+    if (existing && existing.key === key && existing.promise) return existing.promise;
+    const promise = buildPlayerData(host, st).then(data => {
+      try {
+        if (host.__sqSc038XpPrefetch && host.__sqSc038XpPrefetch.key === key) {
+          host.__sqSc038XpPrefetch.resolved = data;
+          host.__sqSc038XpPrefetch.resolvedAt = performance.now();
+        }
+      } catch (_) {}
+      return data;
+    });
+    host.__sqSc038XpPrefetch = { key, promise, resolved:null, startedAt:performance.now() };
+    return promise;
+  } catch (_) {
+    return Promise.resolve(null);
+  }
+}
+
 async function detailedReveal(hostEl, onComplete, original, host) {
   const st = getState();
   if (!st || !Array.isArray(st.score) || !host.SQ_XP || !host.SQ_ACH || !isRankedXpMode(st)) {
@@ -774,7 +821,7 @@ async function detailedReveal(hostEl, onComplete, original, host) {
 
   try {
     injectStyles();
-    const data = await buildPlayerData(host, st);
+    const data = await startDetailedXpPrefetch(host, st);
     const reduced = typeof host.__sqV3Reduced === 'function' ? !!host.__sqV3Reduced() : false;
     const panel = document.createElement('div');
     panel.className = 'gc-xp-panel sq-xp-detailed-panel';
@@ -784,11 +831,9 @@ async function detailedReveal(hostEl, onComplete, original, host) {
     panel.appendChild(title);
     hostEl.replaceChildren(panel);
 
-    for (const row of data) {
-      const built = buildDetailedRow(host, row);
-      panel.appendChild(built.el);
-      await animateDetailedRow(host, built, row, reduced);
-    }
+    const builtRows = data.map(row => ({ row, built:buildDetailedRow(host, row) }));
+    builtRows.forEach(({ built }) => panel.appendChild(built.el));
+    await Promise.all(builtRows.map(({ row, built }) => animateDetailedRow(host, built, row, reduced)));
 
     try { host.SQ_XP._cache = null; host.SQ_ACH._cache = {}; } catch (_) {}
     if (typeof onComplete === 'function') onComplete();
@@ -816,6 +861,7 @@ export function installXpBreakdown(host = globalThis) {
   detailed[ORIGINAL_KEY] = original;
   host.__sqGcXpReveal = detailed;
   host[INSTALL_FLAG] = true;
+  host.__sqSc038StartXpPrefetch = st => startDetailedXpPrefetch(host, st || getState());
   host.__sqSc038XpBreakdown = {
     detectImmediateMisfires,
     appliedMisfirePenalty,
