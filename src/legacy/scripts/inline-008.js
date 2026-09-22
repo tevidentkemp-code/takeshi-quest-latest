@@ -576,7 +576,7 @@
     if (!row) return false;
 
     row.style.display = 'grid';
-    row.style.gridTemplateColumns = '2fr 2fr 1fr 1fr';
+    row.style.gridTemplateColumns = 'repeat(3,minmax(0,1fr))';
     row.style.gap = '8px';
     row.style.alignItems = 'stretch';
 
@@ -585,14 +585,10 @@
       btn.style.minWidth = '0';
     });
 
+    // SXP-04: Settings moved to the Live V2 quick rail. Keep the Throwpad
+    // action row to three normal-size controls: MISS / UNDO / SKIP.
     var settings = document.getElementById('settingsBtnGamePad');
-    if (!settings) settings = buildBtn();
-    if (settings.parentElement !== row){
-      skip.insertAdjacentElement('afterend', settings);
-    }
-
-    settings.style.width = '100%';
-    settings.style.minWidth = '0';
+    if (settings) settings.remove();
     return true;
   }
 
