@@ -1,0 +1,165 @@
+/* ---------------- Arcade animations ---------------- */
+/* Score / total pop */
+@keyframes v3Pop{
+  0%{ transform:scale(1); }
+  30%{ transform:scale(1.28); }
+  55%{ transform:scale(.94); }
+  75%{ transform:scale(1.06); }
+  100%{ transform:scale(1); }
+}
+.v3-pop{ animation: v3Pop .42s cubic-bezier(.2,.9,.25,1) both; transform-origin:center; }
+/* Big hit (treble / 30+) — bigger, gold flash + glow */
+@keyframes v3PopBig{
+  0%{ transform:scale(1); color:#fff; text-shadow:0 2px 16px rgba(0,0,0,.5); }
+  25%{ transform:scale(1.5); color:#ffd24a; text-shadow:0 0 26px rgba(255,196,46,.95); }
+  55%{ transform:scale(.9); color:#ffe08a; }
+  78%{ transform:scale(1.1); color:#ffd24a; }
+  100%{ transform:scale(1); color:#fff; text-shadow:0 2px 16px rgba(0,0,0,.5); }
+}
+.v3-pop-big{ animation: v3PopBig .58s cubic-bezier(.2,.9,.25,1) both; transform-origin:center; }
+/* Marks flash-in */
+@keyframes v3Flash{ 0%{ filter:brightness(2.4); } 100%{ filter:brightness(1); } }
+.v3-flash{ animation: v3Flash .4s ease-out both; }
+/* Persistent FX overlay: hosts flying "+N" clones that must survive re-renders */
+#v3fxLayer{ position:fixed; inset:0; pointer-events:none; z-index:9000; }
+@keyframes v3ShakeRed{
+  0%,100%{ transform:translateX(0); color:#fff; }
+  15%{ transform:translateX(-6px); color:#ff4d5e; }
+  30%{ transform:translateX(6px); color:#ff4d5e; }
+  45%{ transform:translateX(-5px); color:#ff6a76; }
+  60%{ transform:translateX(4px); color:#ff6a76; }
+  80%{ transform:translateX(-2px); }
+}
+.v3-shake-red{ animation: v3ShakeRed .5s ease-in-out both; }
+/* Flying round-total clone (round complete -> diagonal slide to history) */
+.v3-fly{
+  position:fixed; display:flex; align-items:center; justify-content:center;
+  font-weight:900; color:#fff; letter-spacing:-.02em;
+  text-shadow:0 2px 16px rgba(0,0,0,.6); pointer-events:none;
+  transform:translate(0,0) scale(1); opacity:1;
+  transition: transform .52s cubic-bezier(.35,.05,.2,1), opacity .52s ease-in;
+}
+/* "+N" that slides sideways from the centre round score into a player's total */
+.v3-plusfly{
+  position:fixed; pointer-events:none; z-index:60;
+  transform:translate(-50%,-50%); opacity:1;
+  font-weight:900; font-size:22px; line-height:1; letter-spacing:-.02em;
+  color:#ffb14a; text-shadow:0 2px 12px rgba(0,0,0,.6);
+  transition: transform .43s cubic-bezier(.25,.7,.3,1), opacity .43s ease-in;
+}
+.v3-plusfly.big{ font-size:31px; color:#ffd24a; text-shadow:0 0 18px rgba(255,196,46,.9); }
+/* Live combo callout when a round completes (Full House, Shanghai, 180, …) */
+.v3-combo-pop{
+  position:fixed; left:50%; top:46%; transform:translate(-50%,-50%) scale(.6);
+  display:flex; align-items:center; gap:8px; padding:9px 16px; border-radius:14px;
+  font-weight:900; letter-spacing:.03em; white-space:nowrap; pointer-events:none; z-index:70;
+  background:linear-gradient(135deg,rgba(255,196,74,.30),rgba(255,140,40,.16));
+  border:1px solid rgba(255,196,74,.55); color:#ffe1a6; box-shadow:0 12px 30px rgba(0,0,0,.5);
+  animation: v3ComboPop 1.5s cubic-bezier(.2,.9,.25,1) both;
+}
+.v3-combo-pop .v3-combo-ic{ font-size:22px; line-height:1; }
+.v3-combo-pop .v3-combo-nm{ font-size:16px; color:#fff; }
+.v3-combo-legendary{ background:linear-gradient(135deg,rgba(180,123,255,.34),rgba(120,60,200,.18)); border-color:rgba(180,123,255,.6); color:#e9c6ff; }
+.v3-combo-silver{ background:linear-gradient(135deg,rgba(200,214,235,.24),rgba(150,170,200,.12)); border-color:rgba(200,214,235,.5); color:#e4ecf7; }
+.v3-combo-bronze{ background:linear-gradient(135deg,rgba(208,139,90,.24),rgba(160,100,60,.12)); border-color:rgba(208,139,90,.5); color:#f0c9a6; }
+@keyframes v3ComboPop{
+  0%{ opacity:0; transform:translate(-50%,-50%) scale(.6); }
+  14%{ opacity:1; transform:translate(-50%,-50%) scale(1.12); }
+  28%{ transform:translate(-50%,-50%) scale(1); }
+  80%{ opacity:1; transform:translate(-50%,-62%) scale(1); }
+  100%{ opacity:0; transform:translate(-50%,-80%) scale(.94); }
+}
+/* Round total landing in the history slot */
+@keyframes v3RrLand{
+  0%{ transform:scale(1.5); }
+  55%{ transform:scale(.92); }
+  100%{ transform:scale(1); }
+}
+.v3-rr-land{ animation: v3RrLand .34s cubic-bezier(.2,.9,.25,1) both; }
+/* Older rounds dropping down one slot to make room */
+@keyframes v3RrDrop{
+  0%{ transform:translateY(-16px); opacity:.4; }
+  100%{ transform:translateY(0); opacity:1; }
+}
+.v3-rr-drop{ animation: v3RrDrop .4s cubic-bezier(.2,.9,.25,1) both; }
+/* New completed round sliding into a card's history */
+@keyframes v3RrNew{
+  0%{ opacity:0; transform:translateY(-10px) scale(.9); }
+  60%{ opacity:1; transform:translateY(0) scale(1.05); }
+  100%{ opacity:1; transform:translateY(0) scale(1); }
+}
+.v3-rr-new{ animation: v3RrNew .5s cubic-bezier(.2,.9,.25,1) both; }
+.v3-rr-new.best .v3-rr-tot{ animation: v3BestFlash .8s ease-out both; }
+@keyframes v3BestFlash{
+  0%,100%{ text-shadow:none; }
+  30%{ text-shadow:0 0 16px rgba(47,208,107,.9); transform:scale(1.15); }
+}
+/* Active card sweep-in on turn change */
+@keyframes v3CardIn{
+  0%{ transform:scale(.985); }
+  50%{ transform:scale(1.012); }
+  100%{ transform:scale(1); }
+}
+.v3-card-in{ animation: v3CardIn .4s ease-out; }
+/* Extinguished dart dot */
+@keyframes v3DotOut{
+  0%{ transform:scale(1.5); border-color:var(--v3-orange); box-shadow:0 0 12px rgba(255,106,0,.8); }
+  100%{ transform:scale(1); }
+}
+.v3-dot-out{ animation: v3DotOut .35s ease-out both; }
+
+@media (prefers-reduced-motion: reduce){
+  .v3-pop, .v3-pop-big, .v3-flash, .v3-rr-new, .v3-rr-new.best .v3-rr-tot, .v3-card-in, .v3-dot-out, .v3-card.active, .v3-card-hit, .v3-shake-red, .v3-rr-land, .v3-rr-drop, .v3-fly, .v3-plusfly, .v3-dmd-bezel::before, .v3-dmd-attract::before, .v3-windot-win, .v3-combo-pop, .v3-avg.rec-record .v3-avg-val, .v3-tb-display.anim.hit, .v3-tb-display.anim.miss{ animation:none !important; transition:none !important; }
+  #v3fxLayer{ display:none !important; }
+}
+
+/* ---- Pad restyle when V3 is active (same buttons, new clothes) ---- */
+body.livev3-on .dtX3{
+  background: rgba(120,20,30,.34) !important;
+  border: 1.6px solid rgba(255,77,94,.6) !important;
+  color:#ff8d99 !important;
+  border-radius: 12px !important;
+  font-weight:900 !important;
+}
+body.livev3-on .dtBullRow .dtBullBtn{
+  border-radius:12px !important;
+  font-size:26px !important;
+  font-weight:900 !important;
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+  justify-content:center !important;
+  gap:2px !important;
+  line-height:1 !important;
+}
+body.livev3-on .dtBullRow .dtBullBtn::after{
+  font-size:9px; font-weight:800; letter-spacing:.1em; opacity:.85;
+}
+body.livev3-on .dtBullRow .dtBullBtn:nth-child(1){
+  background: rgba(122,74,18,.4) !important; border:1.6px solid rgba(255,176,46,.65) !important; color:#ffcf99 !important;
+}
+body.livev3-on .dtBullRow .dtBullBtn:nth-child(1)::after{ content:'SINGLE'; }
+body.livev3-on .dtBullRow .dtBullBtn:nth-child(2){
+  background: rgba(16,44,86,.5) !important; border:1.6px solid rgba(74,163,255,.6) !important; color:#9fccff !important;
+}
+body.livev3-on .dtBullRow .dtBullBtn:nth-child(2)::after{ content:'DOUBLE'; }
+body.livev3-on .dtBullRow .dtBullBtn:nth-child(3){
+  background: rgba(14,66,38,.5) !important; border:1.6px solid rgba(47,208,107,.6) !important; color:#8ef0b6 !important;
+}
+body.livev3-on .dtBullRow .dtBullBtn:nth-child(3)::after{ content:'TREBLE'; }
+body.livev3-on .dtActBtn{ border-radius:12px !important; font-weight:900 !important; }
+/* Keep MISS / UNDO / SKIP exactly equal every turn. A pad patch stamps
+   inline width:100% on some action buttons (not all) which skews the flex
+   split on the first render; force equal basis and ignore that inline width. */
+body.livev3-on .dtActions{ display:flex !important; width:100% !important; gap:8px !important; }
+body.livev3-on .dtActions .dtActBtn{ flex:1 1 0 !important; width:auto !important; min-width:0 !important; }
+body.livev3-on .dtActBtn.miss{ background:rgba(120,20,30,.3) !important; border:1.4px solid rgba(255,77,94,.55) !important; }
+body.livev3-on .dtActBtn.undo{ background:rgba(110,80,10,.3) !important; border:1.4px solid rgba(255,176,46,.55) !important; }
+body.livev3-on .dtActBtn.skip{ background:rgba(16,44,86,.4) !important; border:1.4px solid rgba(74,163,255,.55) !important; }
+
+@media (max-width: 430px){
+  .v3-main{ gap:6px; }
+  .v3-card{ padding:7px 6px 9px; }
+  .v3-grid th, .v3-grid td{ padding:4px 4px; font-size:10.5px; }
+}
+

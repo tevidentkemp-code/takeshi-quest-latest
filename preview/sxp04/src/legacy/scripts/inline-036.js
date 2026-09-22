@@ -1,0 +1,38 @@
+
+(function(){
+  'use strict';
+  if(window.__sqFix146PlFastTop50TabsCanonical)return;window.__sqFix146PlFastTop50TabsCanonical=true;
+
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function norm(s){return String(s||'').trim().toLowerCase();}
+  function key(s){return norm(s).replace(/[^a-z0-9]+/g,'');}
+  function parseMs(t){var n=Date.parse(t||'');return Number.isFinite(n)?n:0;}
+  function pad2(n){return String(n).padStart(2,'0');}
+  function fmtDateTime(ts){try{var d=new Date(ts||0);if(!Number.isFinite(d.getTime()))return'';return pad2(d.getDate())+'.'+pad2(d.getMonth()+1)+'.'+pad2(d.getFullYear()%100)+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());}catch(_){return'';}}
+  function playerName(p){if(p==null)return'';if(typeof p==='string')return p.trim();var n=String(p.name||p.player||p.player_name||p.playerName||p.display_name||p.nick||'').trim();if(n)return n;var f=String(p.first_name||p.firstName||'').trim(),l=String(p.last_name||p.lastName||'').trim(),nick=String(p.nickname||'').trim();return f?(nick?(f+' "'+nick+'"'+(l?' '+l:'')):(f+(l?' '+l:''))):'';}
+  function playersOf(g){var ps=g&&(g.players||(g.state&&g.state.players)||(g.raw&&g.raw.state&&g.raw.state.players));return Array.isArray(ps)?ps:[];}
+  function totalsOf(g){var t=g&&(g.totals||(g.state&&g.state.totals)||(g.raw&&g.raw.totals)||(g.raw&&g.raw.state&&g.raw.state.totals));return Array.isArray(t)?t:[];}
+  function boardOf(g){return g&&(g.board||g.score||(g.state&&(g.state.board||g.state.score))||(g.raw&&g.raw.state&&(g.raw.state.board||g.raw.state.score)));}
+  function rowsForPlayer(board,pi){if(!Array.isArray(board))return[];if(Array.isArray(board[pi]))return board[pi];if(Array.isArray(board[0])&&board[0][pi]!=null)return board.map(function(r){return Array.isArray(r)?r[pi]:null;});return[];}
+  function roundScore(ent){if(ent==null)return 0;if(typeof ent==='number'||typeof ent==='string')return Number(ent)||0;var keys=['roundTotal','round_total','points','score','total','val','value'];for(var i=0;i<keys.length;i++){var n=Number(ent[keys[i]]);if(Number.isFinite(n)&&n>0)return n;}var darts=Array.isArray(ent.darts)?ent.darts:(Array.isArray(ent.throws)?ent.throws:null);if(darts)return darts.reduce(function(a,d){return a+(Number(d&&(d.points??d.score??d.val??d.value)||0)||0);},0);return 0;}
+  function totalFor(g,pi){var t=totalsOf(g),v=t[pi];if(typeof v==='number'||typeof v==='string'){var n=Number(v)||0;if(n>0)return n;}if(v&&typeof v==='object'){var no=Number(v.total??v.score??v.points??v.val);if(Number.isFinite(no)&&no>0)return no;}return rowsForPlayer(boardOf(g),pi).reduce(function(a,e){return a+roundScore(e);},0);}
+  function isPractice(g){var st=(g&&g.state)||{},raw=(g&&g.raw&&g.raw.state)||{};var mode=String((g&&g.mode)||(g&&g.game_mode)||st.mode||st.gameMode||raw.mode||'').toLowerCase();return mode.includes('practice')||mode.includes('unofficial')||mode==='solo'||(g&&g.isPractice===true)||(g&&g.is_practice===true)||st.isPractice===true||st.is_practice===true||playersOf(g).length===1;}
+  function isTurbo(g){try{var st=(g&&g.state)||{},raw=(g&&g.raw&&g.raw.state)||{},m=st.match||raw.match||(g&&g.match)||{},rules=st.tournamentRules||m.tournamentRules||raw.tournamentRules||{};var type=String((g&&g.tournamentType)||st.tournamentType||st.tournament_type||m.tournamentType||m.tournament_type||raw.tournamentType||(st.__sqTournamentDraft&&st.__sqTournamentDraft.type)||'').toLowerCase();return type==='turbo'||st.strictTimer===true||m.strictTimer===true||rules.strictTimer===true||Number(st.throwLimitSeconds||m.throwLimitSeconds||rules.throwLimitSeconds||0)===20||String(rules.startTarget||st.startTarget||m.startTarget||'')==='17';}catch(_){return false;}}
+  async function allGames(){try{if(typeof window.__sqGetAllGamesNormalized==='function'){var n=await window.__sqGetAllGamesNormalized();if(Array.isArray(n))return n;}}catch(_){}try{if(typeof cloudFetchAllGamesAsLocal==='function'){var c=await cloudFetchAllGamesAsLocal();if(Array.isArray(c))return c;}}catch(_){}return[];}
+  async function gamesFor(bucket){var gs=await allGames();return gs.filter(function(g){if(g&&(g.archived_at||g.archivedAt))return false;if(bucket==='turbo')return isTurbo(g)&&!isPractice(g);if(bucket==='practice')return isPractice(g)&&!isTurbo(g);return !isTurbo(g)&&!isPractice(g);}).sort(function(a,b){return parseMs(b.ts||b.created_at)-parseMs(a.ts||a.created_at);});}
+  function denom(bucket,g,pi){if(bucket==='turbo')return 7;var rows=rowsForPlayer(boardOf(g),pi).filter(function(x){return x!=null;});return rows.length>=7?rows.length:14;}
+  async function playerRows(bucket){var rows=[];(await gamesFor(bucket)).forEach(function(g){playersOf(g).forEach(function(p,pi){var name=playerName(p);if(!name)return;var score=totalFor(g,pi);if(!(score>0))return;rows.push({player:name,playerKey:key(name),score:score,avg:score/denom(bucket,g,pi),ts:g.ts||g.created_at||g.completed_at||'',game:g});});});return rows.sort(function(a,b){return(b.score-a.score)||(parseMs(b.ts)-parseMs(a.ts))||String(a.player).localeCompare(String(b.player));});}
+
+  // Premier League: keep Fix136 layout but remove sluggish medal observer; use cheap debounced medal pass.
+  function removeOldPremierMedalObserverNoise(){try{window.__sqFix137PremierAllTimeBestMedals=false;}catch(_){}}
+  removeOldPremierMedalObserverNoise();
+  var medalCache=null, medalCacheAt=0;
+  async function savedKeys(){try{var rows=typeof cloudListPlayers==='function'?await cloudListPlayers():[];return new Set((rows||[]).map(function(p){return key(playerName(p)||p.name||p.first_name||p.firstName||'');}).filter(Boolean));}catch(_){return new Set();}}
+  async function medalMap(){if(medalCache&&(Date.now()-medalCacheAt)<120000)return medalCache;var saved=await savedKeys(),scores=[];(await allGames()).forEach(function(g){if(isPractice(g)||isTurbo(g))return;playersOf(g).forEach(function(p,pi){var nm=playerName(p),pk=key(nm);if(saved.size&&!saved.has(pk))return;var sc=Math.round(Number(totalFor(g,pi))||0);if(sc>0)scores.push(sc);});});var top=Array.from(new Set(scores)).sort(function(a,b){return b-a;}).slice(0,3);var map=new Map();if(top[0]!=null)map.set(top[0],{m:'🥇',c:'gold'});if(top[1]!=null)map.set(top[1],{m:'🥈',c:'silver'});if(top[2]!=null)map.set(top[2],{m:'🥉',c:'bronze'});medalCache=map;medalCacheAt=Date.now();return map;}
+  function cellScore(td){var n=Number(String(td.textContent||'').replace(/[🥇🥈🥉]/g,'').replace(/[^0-9.-]/g,''));return Number.isFinite(n)?Math.round(n):null;}
+  var medalTimer=null;
+  function scheduleMedals(delay){clearTimeout(medalTimer);medalTimer=setTimeout(async function(){var bd=document.querySelector('.sq136-pl-bd');if(!bd)return;var map=await medalMap();bd.querySelectorAll('.best-cell').forEach(function(td){td.querySelectorAll('.sq137-medal').forEach(function(n){n.remove();});var info=map.get(cellScore(td));if(!info)return;var sp=document.createElement('span');sp.className='sq137-medal '+info.c;sp.textContent=info.m;td.appendChild(sp);});},delay||60);}
+  var oldPL=window.openPremierLeagueDialog;
+  if(typeof oldPL==='function'&&!oldPL.__sq146){window.openPremierLeagueDialog=function(){var r=oldPL.apply(this,arguments);scheduleMedals(160);setTimeout(function(){var bd=document.querySelector('.sq136-pl-bd');if(!bd||bd.__sq146Bound)return;bd.__sq146Bound=true;bd.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('[data-filter-id]'))scheduleMedals(40);},true);},80);return r;};window.openPremierLeagueDialog.__sq146=true;}
+  try{console.info('[SQ] Fix146 Premier League light medals active; Top50 canonical popup removed for Fix151.');}catch(_){ }
+})();
