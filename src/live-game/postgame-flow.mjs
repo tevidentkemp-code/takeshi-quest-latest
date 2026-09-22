@@ -519,7 +519,7 @@ function updateHero(modal, st) {
   const player = st.players[winnerIndex] || {};
   const parts = playerDisplayParts(player, 'Player ' + (winnerIndex + 1));
   const visual = modal.querySelector('.gc-arcade-visual');
-  if (visual && typeof window !== 'undefined' && typeof window.__sqAvatarSpritePosition === 'function') {
+  if (visual && player.type !== 'guest' && typeof window !== 'undefined' && typeof window.__sqAvatarSpritePosition === 'function') {
     const id = (typeof window.__sqAvatarIdForPlayer === 'function') ? window.__sqAvatarIdForPlayer(player) : 1;
     const pos = window.__sqAvatarSpritePosition(id);
     visual.style.background = 'none';
@@ -666,27 +666,35 @@ function buildMatchWinScreen(st, matchState) {
 
   const stage = screen.querySelector('.sq-pg-match-stage');
   if (stage && typeof window !== 'undefined' && typeof window.__sqAvatarSpritePosition === 'function') {
-    const winnerId = (typeof window.__sqAvatarIdForPlayer === 'function') ? window.__sqAvatarIdForPlayer(player) : 1;
-    const winnerPos = window.__sqAvatarSpritePosition(winnerId);
-    const art = document.createElement('div');
-    art.className = 'sq-pg-match-celebration';
-    art.dataset.avatarId = String(winnerPos.id);
-    art.style.backgroundImage = 'url("./assets/avatars/celebration-sprite.webp")';
-    art.style.backgroundPosition = winnerPos.x.toFixed(4) + '% ' + winnerPos.y.toFixed(4) + '%';
-    stage.appendChild(art);
+    if (player.type !== 'guest') {
+      const winnerId = (typeof window.__sqAvatarIdForPlayer === 'function') ? window.__sqAvatarIdForPlayer(player) : 1;
+      const winnerPos = window.__sqAvatarSpritePosition(winnerId);
+      const art = document.createElement('div');
+      art.className = 'sq-pg-match-celebration';
+      art.dataset.avatarId = String(winnerPos.id);
+      art.style.backgroundImage = 'url("./assets/avatars/celebration-sprite.webp")';
+      art.style.backgroundPosition = winnerPos.x.toFixed(4) + '% ' + winnerPos.y.toFixed(4) + '%';
+      stage.appendChild(art);
+    }
 
     const rail = screen.querySelector('.sq-pg-opponent-rail');
     (st.players || []).forEach((opponent, index) => {
       if (index === winnerIndex || !rail) return;
-      const id = (typeof window.__sqAvatarIdForPlayer === 'function') ? window.__sqAvatarIdForPlayer(opponent) : 1;
-      const pos = window.__sqAvatarSpritePosition(id);
       const chip = document.createElement('div');
       chip.className = 'sq-pg-opponent';
-      chip.setAttribute('aria-label', playerDisplayParts(opponent, 'Player ' + (index + 1)).main);
+      const opponentParts = playerDisplayParts(opponent, 'Player ' + (index + 1));
+      chip.setAttribute('aria-label', opponentParts.main);
       chip.innerHTML = '<div class="sq-pg-opponent-avatar"></div><span class="sq-pg-opponent-reaction" aria-hidden="true"></span>';
       const avatar = chip.querySelector('.sq-pg-opponent-avatar');
-      avatar.style.backgroundImage = 'url("./assets/avatars/avatar-sprite.webp")';
-      avatar.style.backgroundPosition = pos.x.toFixed(4) + '% ' + pos.y.toFixed(4) + '%';
+      if (opponent && opponent.type === 'guest') {
+        avatar.dataset.guestAvatar = '1';
+        avatar.textContent = String(opponent.initials || opponentParts.main || '').trim().slice(0,2).toUpperCase();
+      } else {
+        const id = (typeof window.__sqAvatarIdForPlayer === 'function') ? window.__sqAvatarIdForPlayer(opponent) : 1;
+        const pos = window.__sqAvatarSpritePosition(id);
+        avatar.style.backgroundImage = 'url("./assets/avatars/avatar-sprite.webp")';
+        avatar.style.backgroundPosition = pos.x.toFixed(4) + '% ' + pos.y.toFixed(4) + '%';
+      }
       chip.querySelector('.sq-pg-opponent-reaction').textContent = ((index + winnerIndex) % 2 === 0) ? '👏' : '😤';
       rail.appendChild(chip);
     });
