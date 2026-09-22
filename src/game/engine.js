@@ -573,11 +573,8 @@ function __sqSkipAbsentVisit(){
     try{__sqEnsureFinalBullReturnTimer();}catch(_){}
     try{save();}catch(_){}
     try{updateUI();}catch(_){}
-    try{
-      const p=state.players?.[pIdx];
-      const nm=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(pIdx+1));
-      toast(nm+' skipped • score unchanged');
-    }catch(_){}
+    // SXP-04: skip state is already visible in the score cell/catch-up flow.
+    // Avoid duplicating that VISIT-tier feedback with a recurring toast.
     return true;
   }catch(e){ console.warn('[SQ] absence skip failed',e); return false; }
 }
@@ -1458,7 +1455,16 @@ setTimeout(() => {
   }
 
   try{__sqEnsureFinalBullReturnTimer();}catch(_){}
-  updateUI();
+  // SXP-04: accepted scoring input must paint immediately. The Live V2 perf
+  // wrapper already exposes this bounded escape hatch; keep background/non-score
+  // renders coalesced and restore the prior flag after this canonical update.
+  const __sqPrevLiveV2Immediate = window.__sqLiveV2Immediate === true;
+  try{
+    window.__sqLiveV2Immediate = true;
+    updateUI();
+  } finally {
+    window.__sqLiveV2Immediate = __sqPrevLiveV2Immediate;
+  }
 
   if (dartIndex === 2 &&
       typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime() &&
