@@ -5427,12 +5427,27 @@ function openGameCompleteDialog() {
     try { return Array.isArray(state && state.match && state.match.history) ? state.match.history.length : 0; }
     catch(_) { return 0; }
   };
-  const projectedMatchCompleteByGames = () => {
+  // SC-055: match completion must follow the existing engine-owned rule.
+  // Standard matches finish when a player reaches targetWins; Vs Shadow keeps
+  // its existing fixed-game-count completion semantics.
+  const projectedMatchComplete = () => {
+    const targetWins = targetGamesForMatch();
     const alreadyAwarded = !!(state && state.gameAwarded);
-    const projectedPlayed = completedGamesInMatch() + (alreadyAwarded ? 0 : 1);
-    return projectedPlayed >= targetGamesForMatch();
+    if (__isVsShadowComplete) {
+      const projectedPlayed = completedGamesInMatch() + (alreadyAwarded ? 0 : 1);
+      return projectedPlayed >= targetWins;
+    }
+    const wins = Array.isArray(state && state.match && state.match.wins)
+      ? state.match.wins.map(v => Number(v) || 0)
+      : [];
+    if (!alreadyAwarded && Number.isInteger(primaryWinnerIndex) && primaryWinnerIndex >= 0) {
+      while (wins.length <= primaryWinnerIndex) wins.push(0);
+      wins[primaryWinnerIndex] = (wins[primaryWinnerIndex] || 0) + 1;
+    }
+    const maxWins = wins.length ? Math.max(...wins) : 0;
+    return maxWins >= targetWins;
   };
-  const matchAdvanceLabel = projectedMatchCompleteByGames() ? 'End Match' : 'Next Round';
+  const matchAdvanceLabel = projectedMatchComplete() ? 'End Match' : 'Next Round';
   const openCurrentGameBreakdownDialog = () => {
     document.querySelectorAll('.sq-gc-breakdown-backdrop').forEach(n => n.remove());
     const rows = buildCurrentGameBreakdownRows();
@@ -5505,7 +5520,7 @@ function openGameCompleteDialog() {
       const wasVsShadow = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
       if (typeof awardAndShowLeaderboard === 'function') await awardAndShowLeaderboard();
       const gamesPlayedAfterAward = completedGamesInMatch();
-      const matchComplete = gamesPlayedAfterAward >= targetGamesForMatch();
+      const matchComplete = projectedMatchComplete();
 
       if (wasVsShadow && state && state.shadow && state.shadow.saveFailed === true && state.gameAwarded !== true) {
         if (btn) {

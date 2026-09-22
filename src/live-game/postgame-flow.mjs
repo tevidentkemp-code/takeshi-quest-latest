@@ -105,6 +105,45 @@ function scoreForPlayer(st, index) {
   return (Array.isArray(rows) ? rows : []).reduce((sum, row) => sum + Number(row && row.roundTotal || 0), 0);
 }
 
+
+export function currentGameWinnerIndex(st) {
+  const players = Array.isArray(st?.players) ? st.players : [];
+  if (!players.length) return -1;
+  const totals = players.map((_, i) => scoreForPlayer(st, i));
+  const max = totals.length ? Math.max(...totals) : 0;
+  const leaders = totals.map((value, index) => value === max ? index : -1).filter(index => index >= 0);
+  let winnerIndex = leaders.length === 1 ? leaders[0] : -1;
+  try {
+    if (st?._decider?.resolved && st._decider.gameToken === (st.__gameToken || 0)
+      && Number.isInteger(st._decider.winner) && players[st._decider.winner]) {
+      winnerIndex = st._decider.winner;
+    }
+  } catch (_) {}
+  return winnerIndex;
+}
+
+export function projectedMatchCompletion(st, modeOverride = '') {
+  const players = Array.isArray(st?.players) ? st.players : [];
+  const match = st?.match || {};
+  const mode = String(modeOverride || st?.gameMode || st?.mode || match?.gameMode || match?.mode || '').toLowerCase();
+  const targetWins = Math.max(1, Number(match.targetWins) || 1);
+  const currentWins = Array.from({ length: players.length }, (_, index) => Math.max(0, Number(match.wins?.[index]) || 0));
+  const projectedWins = currentWins.slice();
+  const gameWinnerIndex = currentGameWinnerIndex(st);
+  const nonMatchWinMode = /practice|training|shadow/.test(mode) || st?.forcePractice === true || st?.isPractice === true;
+
+  if (!nonMatchWinMode && !st?.gameAwarded && gameWinnerIndex >= 0) {
+    projectedWins[gameWinnerIndex] = (projectedWins[gameWinnerIndex] || 0) + 1;
+  }
+
+  const maxWins = projectedWins.length ? Math.max(...projectedWins) : 0;
+  const leaders = projectedWins.map((value, index) => value === maxWins ? index : -1).filter(index => index >= 0);
+  const winnerIndex = leaders.length === 1 ? leaders[0] : -1;
+  const complete = !nonMatchWinMode && winnerIndex >= 0 && maxWins >= targetWins;
+
+  return { complete, targetWins, winnerIndex, projectedWins, gameWinnerIndex, mode };
+}
+
 function scorecardRows(st) {
   const players = Array.isArray(st && st.players) ? st.players : [];
   const totals = players.map((_, index) => scoreForPlayer(st, index));
@@ -346,6 +385,120 @@ body .modal-decider .dtBullRow .dtBullBtn.inner[data-bull="Inner"]{
   font-size:clamp(18px,4.8vw,28px);
 }
 
+
+.modal-gamecomplete.sq-gc-arcade .sq-pg-match-win{
+  position:relative;
+  z-index:4;
+  width:100%;
+  min-height:390px;
+  overflow:hidden;
+}
+.modal-gamecomplete.sq-gc-arcade .sq-pg-match-stage{
+  position:relative;
+  min-height:390px;
+  border:1px solid rgba(255,122,0,.26);
+  border-radius:18px;
+  overflow:hidden;
+  background:radial-gradient(circle at 78% 20%,rgba(255,122,0,.18),transparent 38%),linear-gradient(150deg,rgba(25,31,45,.98),rgba(7,11,18,.99));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 16px 34px rgba(0,0,0,.30);
+}
+.modal-gamecomplete.sq-gc-arcade .sq-pg-match-copy{
+  position:relative;
+  z-index:4;
+  width:min(58%,330px);
+  padding:28px 0 0 22px;
+}
+.modal-gamecomplete.sq-gc-arcade .sq-pg-match-kicker{
+  color:rgba(255,184,101,.88);
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+}
+.modal-gamecomplete.sq-gc-arcade .sq-pg-match-name{
+  margin-top:9px;
+  color:var(--shatekiOrange,#ff7a00);
+  font-size:clamp(30px,7vw,46px);
+  line-height:.95;
+  font-weight:950;
+}
+.modal-gamecomplete.sq-gc-arcade .sq-pg-match-nick{
+  margin-top:8px;
+  color:rgba(255,211,158,.92);
+  font-size:clamp(13px,3.6vw,19px);
+  font-weight:850;
+  letter-spacing:.07em;
+}
+.modal-gamecomplete.sq-gc-arcade .sq-pg-match-score{
+  display:inline-flex;
+  align-items:center;
+  min-height:34px;
+  margin-top:18px;
+  padding:7px 11px;
+  border:1px solid rgba(255,122,0,.34);
+  border-radius:999px;
+  color:#fff2df;
+  background:rgba(255,122,0,.10);
+  font-size:15px;
+  font-weight:950;
+  letter-spacing:.07em;
+}
+.modal-gamecomplete.sq-gc-arcade .sq-pg-match-celebration{
+  position:absolute;
+  z-index:2;
+  top:0;
+  right:-4%;
+  height:100%;
+  aspect-ratio:4 / 5;
+  background-repeat:no-repeat;
+  background-size:600% 500%;
+  filter:saturate(1.10) contrast(1.06);
+}
+.modal-gamecomplete.sq-gc-arcade .sq-pg-opponent-rail{
+  position:absolute;
+  z-index:5;
+  left:18px;
+  right:18px;
+  bottom:16px;
+  display:flex;
+  align-items:flex-end;
+  gap:8px;
+  pointer-events:none;
+}
+.modal-gamecomplete.sq-gc-arcade .sq-pg-opponent{
+  position:relative;
+  width:44px;
+  height:44px;
+  flex:0 0 44px;
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:50%;
+  overflow:visible;
+  background-color:#101723;
+  box-shadow:0 8px 18px rgba(0,0,0,.38);
+}
+.modal-gamecomplete.sq-gc-arcade .sq-pg-opponent-avatar{
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  background-repeat:no-repeat;
+  background-size:600% 500%;
+  filter:saturate(.76) brightness(.78);
+}
+.modal-gamecomplete.sq-gc-arcade .sq-pg-opponent-reaction{
+  position:absolute;
+  right:-5px;
+  bottom:-7px;
+  display:grid;
+  place-items:center;
+  width:21px;
+  height:21px;
+  border-radius:50%;
+  border:1px solid rgba(255,255,255,.18);
+  background:#0b1018;
+  font-size:12px;
+  line-height:1;
+}
+
 @media (max-width:560px){
   .modal-gamecomplete.sq-gc-arcade .gc-arcade-shell{ min-height:0; padding:28px 18px 20px; }
   .modal-gamecomplete.sq-gc-arcade .gc-arcade-content{ min-height:360px; }
@@ -358,19 +511,13 @@ body .modal-decider .dtBullRow .dtBullBtn.inner[data-bull="Inner"]{
   document.head.appendChild(style);
 }
 
-function updateHero(modal, st, isMatchComplete) {
-  const totals = (st.players || []).map((_, i) => scoreForPlayer(st, i));
-  if (!totals.length) return;
-  const max = Math.max(...totals);
-  const winnerIndexes = totals.map((v, i) => v === max ? i : -1).filter(i => i >= 0);
-  let winnerIndex = winnerIndexes[0] ?? 0;
-  try {
-    if (st._decider?.resolved && st._decider.gameToken === (st.__gameToken || 0)
-      && Number.isInteger(st._decider.winner) && st.players[st._decider.winner]) winnerIndex = st._decider.winner;
-  } catch (_) {}
+
+function updateHero(modal, st) {
+  const winnerIndex = currentGameWinnerIndex(st);
+  if (winnerIndex < 0) return;
 
   const player = st.players[winnerIndex] || {};
-  const parts = playerDisplayParts(player, `Player ${winnerIndex + 1}`);
+  const parts = playerDisplayParts(player, 'Player ' + (winnerIndex + 1));
   const visual = modal.querySelector('.gc-arcade-visual');
   if (visual && typeof window !== 'undefined' && typeof window.__sqAvatarSpritePosition === 'function') {
     const id = (typeof window.__sqAvatarIdForPlayer === 'function') ? window.__sqAvatarIdForPlayer(player) : 1;
@@ -378,7 +525,7 @@ function updateHero(modal, st, isMatchComplete) {
     visual.style.background = 'none';
     visual.innerHTML = '';
     const art = document.createElement('div');
-    art.className = 'sq-gc-celebration-sprite';
+    art.className = 'sq-gc-celebration-sprite sq-pg-game-win-art';
     art.dataset.avatarId = String(pos.id);
     art.style.backgroundImage = 'url("./assets/avatars/celebration-sprite.webp")';
     art.style.backgroundPosition = pos.x.toFixed(4) + '% ' + pos.y.toFixed(4) + '%';
@@ -387,12 +534,13 @@ function updateHero(modal, st, isMatchComplete) {
   const winnerEl = modal.querySelector('.gc-winnerName');
   if (winnerEl) {
     winnerEl.classList.add('sq-pg-winner-name');
-    winnerEl.innerHTML = `<span class="sq-pg-mainname">${esc(parts.main)}</span>${parts.nickname ? `<span class="sq-pg-nickname">&ldquo;${esc(parts.nickname)}&rdquo;</span>` : ''}`;
-    winnerEl.setAttribute('title', [parts.main, parts.nickname ? `"${parts.nickname}"` : ''].filter(Boolean).join(' '));
+    winnerEl.innerHTML = '<span class="sq-pg-mainname">' + esc(parts.main) + '</span>'
+      + (parts.nickname ? '<span class="sq-pg-nickname">&ldquo;' + esc(parts.nickname) + '&rdquo;</span>' : '');
+    winnerEl.setAttribute('title', [parts.main, parts.nickname ? '"' + parts.nickname + '"' : ''].filter(Boolean).join(' '));
   }
 
   const kicker = modal.querySelector('.gc-arcade-kicker');
-  if (kicker) kicker.textContent = isMatchComplete ? 'MATCH COMPLETE' : 'GAME COMPLETE';
+  if (kicker) kicker.textContent = 'GAME WINNER';
 
   const best = bestRoundSummary(st.score?.[winnerIndex] || []);
   const statRows = Array.from(modal.querySelectorAll('.gc-statRow'));
@@ -483,6 +631,7 @@ async function hydrateRecordBadges(st, rows, scorecard) {
   }
 }
 
+
 function buildXpScreen() {
   const screen = document.createElement('section');
   screen.className = 'sq-pg-screen sq-pg-xp-screen';
@@ -491,9 +640,64 @@ function buildXpScreen() {
   return screen;
 }
 
+function buildMatchWinScreen(st, matchState) {
+  if (!matchState?.complete || matchState.winnerIndex < 0) return null;
+  const winnerIndex = matchState.winnerIndex;
+  const player = st.players?.[winnerIndex] || {};
+  const parts = playerDisplayParts(player, 'Player ' + (winnerIndex + 1));
+  const projectedWins = matchState.projectedWins || [];
+  const scoreText = projectedWins.length === 2
+    ? Number(projectedWins[0] || 0) + '–' + Number(projectedWins[1] || 0)
+    : Number(projectedWins[winnerIndex] || 0) + ' WINS';
+
+  const screen = document.createElement('section');
+  screen.className = 'sq-pg-screen sq-pg-match-win';
+  screen.hidden = true;
+  screen.innerHTML =
+    '<div class="sq-pg-match-stage">'
+      + '<div class="sq-pg-match-copy">'
+        + '<div class="sq-pg-match-kicker">MATCH WINNER</div>'
+        + '<div class="sq-pg-match-name">' + esc(parts.main) + '</div>'
+        + (parts.nickname ? '<div class="sq-pg-match-nick">&ldquo;' + esc(parts.nickname) + '&rdquo;</div>' : '')
+        + '<div class="sq-pg-match-score">' + esc(scoreText) + '</div>'
+      + '</div>'
+      + '<div class="sq-pg-opponent-rail" aria-label="Other match players"></div>'
+    + '</div>';
+
+  const stage = screen.querySelector('.sq-pg-match-stage');
+  if (stage && typeof window !== 'undefined' && typeof window.__sqAvatarSpritePosition === 'function') {
+    const winnerId = (typeof window.__sqAvatarIdForPlayer === 'function') ? window.__sqAvatarIdForPlayer(player) : 1;
+    const winnerPos = window.__sqAvatarSpritePosition(winnerId);
+    const art = document.createElement('div');
+    art.className = 'sq-pg-match-celebration';
+    art.dataset.avatarId = String(winnerPos.id);
+    art.style.backgroundImage = 'url("./assets/avatars/celebration-sprite.webp")';
+    art.style.backgroundPosition = winnerPos.x.toFixed(4) + '% ' + winnerPos.y.toFixed(4) + '%';
+    stage.appendChild(art);
+
+    const rail = screen.querySelector('.sq-pg-opponent-rail');
+    (st.players || []).forEach((opponent, index) => {
+      if (index === winnerIndex || !rail) return;
+      const id = (typeof window.__sqAvatarIdForPlayer === 'function') ? window.__sqAvatarIdForPlayer(opponent) : 1;
+      const pos = window.__sqAvatarSpritePosition(id);
+      const chip = document.createElement('div');
+      chip.className = 'sq-pg-opponent';
+      chip.setAttribute('aria-label', playerDisplayParts(opponent, 'Player ' + (index + 1)).main);
+      chip.innerHTML = '<div class="sq-pg-opponent-avatar"></div><span class="sq-pg-opponent-reaction" aria-hidden="true"></span>';
+      const avatar = chip.querySelector('.sq-pg-opponent-avatar');
+      avatar.style.backgroundImage = 'url("./assets/avatars/avatar-sprite.webp")';
+      avatar.style.backgroundPosition = pos.x.toFixed(4) + '% ' + pos.y.toFixed(4) + '%';
+      chip.querySelector('.sq-pg-opponent-reaction').textContent = ((index + winnerIndex) % 2 === 0) ? '👏' : '😤';
+      rail.appendChild(chip);
+    });
+  }
+  return screen;
+}
+
 function isUnresolvedDecider(modal) {
   return !!modal.querySelector('[data-action="startDecider"]');
 }
+
 
 function upgradePostGameOverlay(overlay) {
   if (!overlay || overlay.dataset.sqSc038 === '1') return;
@@ -505,10 +709,11 @@ function upgradePostGameOverlay(overlay) {
   overlay.dataset.sqSc038 = '1';
   const advanceBtn = modal.querySelector('[data-action="advanceMatch"]');
   if (!advanceBtn) return;
-  const finalLabel = finalAdvanceLabel(advanceBtn.textContent);
-  const isMatchComplete = finalLabel === 'FINISH MATCH';
 
-  updateHero(modal, st, isMatchComplete);
+  const matchState = projectedMatchCompletion(st, getMode());
+  const isMatchComplete = !!matchState.complete;
+  overlay.dataset.sqSc055MatchComplete = isMatchComplete ? '1' : '0';
+  updateHero(modal, st);
 
   Array.from(modal.querySelectorAll('.gc-actions.gc-arcade-actions')).forEach(group => {
     group.style.setProperty('display', 'none', 'important');
@@ -524,8 +729,11 @@ function upgradePostGameOverlay(overlay) {
   if (!hero) return;
   hero.classList.add('sq-pg-screen', 'sq-pg-result');
 
-  const { screen: scorecard, rows } = buildScorecard(modal, st);
+  const built = buildScorecard(modal, st);
+  const scorecard = built.screen;
+  const rows = built.rows;
   const xpScreen = buildXpScreen();
+  const matchWinScreen = isMatchComplete ? buildMatchWinScreen(st, matchState) : null;
   const nav = document.createElement('div');
   nav.className = 'sq-pg-nav';
   const next = document.createElement('button');
@@ -536,6 +744,7 @@ function upgradePostGameOverlay(overlay) {
 
   shell.appendChild(scorecard);
   shell.appendChild(xpScreen);
+  if (matchWinScreen) shell.appendChild(matchWinScreen);
   shell.appendChild(nav);
 
   hydrateRecordBadges(st, rows, scorecard);
@@ -549,10 +758,11 @@ function upgradePostGameOverlay(overlay) {
     hero.hidden = n !== 0;
     scorecard.hidden = n !== 1;
     xpScreen.hidden = n !== 2;
+    if (matchWinScreen) matchWinScreen.hidden = n !== 3;
     const visual = modal.querySelector('.gc-arcade-visual');
     const confetti = modal.querySelector('.gc-arcade-confetti');
     if (visual) visual.style.display = n === 0 ? '' : 'none';
-    if (confetti) confetti.style.display = n === 0 ? '' : 'none';
+    if (confetti) confetti.style.display = (n === 0 || (isMatchComplete && n === 3)) ? '' : 'none';
   };
 
   const enableFinalAdvance = () => {
@@ -560,7 +770,7 @@ function upgradePostGameOverlay(overlay) {
     xpReady = true;
     if (xpSafety) clearTimeout(xpSafety);
     next.disabled = false;
-    next.textContent = finalLabel;
+    next.textContent = isMatchComplete ? 'MATCH WIN ▶' : 'MATCH LEADERBOARD';
   };
 
   const startXp = () => {
@@ -593,6 +803,15 @@ function upgradePostGameOverlay(overlay) {
       return;
     }
     if ((current === 2 || !xpScreen.hidden) && xpReady) {
+      if (isMatchComplete && matchWinScreen) {
+        show(3);
+        next.textContent = 'MATCH LEADERBOARD';
+        return;
+      }
+      advanceBtn.click();
+      return;
+    }
+    if (current === 3 && matchWinScreen && !matchWinScreen.hidden) {
       advanceBtn.click();
     }
   };

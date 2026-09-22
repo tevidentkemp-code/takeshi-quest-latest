@@ -136,28 +136,41 @@ export function patchAchievementDetector(host = globalThis) {
   return true;
 }
 
+
 function patchPostGameOverlay(overlay, host = globalThis) {
   if (!overlay || overlay.dataset.sqSc038LeaderboardHotfix === '1') return false;
   const next = overlay.querySelector('.sq-pg-next');
   const xpScreen = overlay.querySelector('.sq-pg-xp-screen');
+  const matchWinScreen = overlay.querySelector('.sq-pg-match-win');
   if (!next || !xpScreen) return false;
 
   overlay.dataset.sqSc038LeaderboardHotfix = '1';
 
-  // Do not rewrite identical text from inside the button's own MutationObserver.
-  // An unconditional textContent assignment retriggers childList forever and can
-  // starve the UI thread immediately after the XP animation completes.
+  const isMatchComplete = () => overlay.dataset.sqSc055MatchComplete === '1';
+  const xpVisible = () => !xpScreen.hidden;
+  const matchWinVisible = () => !!matchWinScreen && !matchWinScreen.hidden;
+
+  // Keep the post-game navigation label aligned with the visible SC-055 stage.
+  // A completed match must pass through MATCH WIN before the leaderboard.
   const syncLabel = () => {
-    if (xpScreen.hidden || next.disabled) return;
-    if (String(next.textContent || '').trim() !== MATCH_LEADERBOARD_LABEL) {
-      next.textContent = MATCH_LEADERBOARD_LABEL;
-    }
+    if (next.disabled) return;
+    let wanted = '';
+    if (xpVisible() && isMatchComplete()) wanted = 'MATCH WIN ▶';
+    else if ((xpVisible() && !isMatchComplete()) || matchWinVisible()) wanted = MATCH_LEADERBOARD_LABEL;
+    if (wanted && String(next.textContent || '').trim() !== wanted) next.textContent = wanted;
   };
   const buttonObserver = new MutationObserver(syncLabel);
   buttonObserver.observe(next, { attributes: true, childList: true, subtree: true });
 
   next.addEventListener('click', async event => {
-    if (xpScreen.hidden || next.disabled) return;
+    const onXp = xpVisible();
+    const onMatchWin = matchWinVisible();
+    if ((!onXp && !onMatchWin) || next.disabled) return;
+
+    // For a completed match, let postgame-flow advance XP -> MATCH WIN.
+    // The next click, from MATCH WIN, is the only one that may hand off.
+    if (onXp && isMatchComplete()) return;
+
     event.preventDefault();
     event.stopImmediatePropagation();
 
@@ -176,7 +189,7 @@ function patchPostGameOverlay(overlay, host = globalThis) {
       overlay.remove();
     } catch (error) {
       next.disabled = false;
-      next.textContent = MATCH_LEADERBOARD_LABEL;
+      next.textContent = onMatchWin ? MATCH_LEADERBOARD_LABEL : (isMatchComplete() ? 'MATCH WIN ▶' : MATCH_LEADERBOARD_LABEL);
       try { console.error('[SC-038] Match leaderboard handoff failed', error); } catch (_) {}
       try {
         if (typeof host.toast === 'function') host.toast('Could not open Match Leaderboard. Please retry.');

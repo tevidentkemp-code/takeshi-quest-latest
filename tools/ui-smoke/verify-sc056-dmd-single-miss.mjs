@@ -8,8 +8,8 @@ assert.equal(source.includes("const label = `MISS x${n}`;"),false,'unconditional
 assert(source.includes('pressMissN(1)'),'ordinary MISS action must keep using the shared one-miss path');
 
 const meta=JSON.parse(fs.readFileSync('assets/release-metadata.json','utf8'));
-assert.equal(meta.currentVersion,'0.2.1');
-assert.equal(meta.currentReleaseId,'SC-056');
-assert.equal(meta.releases[0].releaseId,'SC-056');
+const sc056Release=meta.releases.find(release => release && release.releaseId === 'SC-056');
+assert(sc056Release,'SC-056 release history entry must remain present after later releases');
+assert.equal(sc056Release.version,'0.2.1','SC-056 historical public version must remain stable');
 
 console.log('SC-056 DMD single-MISS static contract PASS');

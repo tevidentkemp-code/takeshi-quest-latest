@@ -165,7 +165,7 @@ function makeRoundRows(values) {
     await page.evaluate(() => { state.finished = true; openGameCompleteDialog(); });
     await page.waitForSelector('.sq-gamecomplete-backdrop[data-sq-sc038="1"] .sq-pg-result:not([hidden])');
     await page.waitForTimeout(250);
-    assert.equal((await page.locator('.gc-arcade-kicker').textContent()).trim(), 'GAME COMPLETE');
+    assert.equal((await page.locator('.gc-arcade-kicker').textContent()).trim(), 'GAME WINNER');
     assert.equal((await page.locator('.sq-pg-mainname').textContent()).trim(), 'Test Alpha');
     assert.match((await page.locator('.sq-pg-nickname').textContent()).trim(), /Captain Double/);
     assert.equal((await page.locator('.gc-statRow').filter({ hasText:'Best Round' }).locator('.gc-statValue').textContent()).trim(), 'R11 / 60');
@@ -257,6 +257,65 @@ function makeRoundRows(values) {
     assert.equal(await page.locator('.sq-gamecomplete-backdrop').count(), 0, 'Game Complete overlay remained open');
     await page.screenshot({ path:shot('sc038-match-leaderboard-runtime.png'), fullPage:false });
     stage('match leaderboard passed');
+
+
+    // SC-055: the deciding game still shows GAME WIN first. Only after XP may
+    // a truly completed match expose the separate MATCH WIN screen.
+    await page.evaluate(() => {
+      document.body.setAttribute('data-page', 'game');
+      state.finished = true;
+      state.gameAwarded = false;
+      state.mode = 'official';
+      state.gameMode = 'official';
+      state.match = Object.assign({}, state.match || {}, {
+        id:'sc055-final-match', mode:'official', gameMode:'official',
+        targetWins:3, history:[], wins:[2,1], completedLogged:false,
+      });
+      window.__sqComputeGameMode = () => 'official';
+      window.__sqSc055LeaderboardCalls = 0;
+      window.awardAndShowLeaderboard = async function() {
+        window.__sqSc055LeaderboardCalls += 1;
+        state.gameAwarded = true;
+        showLeaderboard();
+      };
+      window.__sqGcXpReveal = function(host, done) {
+        if (host) host.innerHTML = '<div class="gc-xp-title">XP EARNED</div><div class="gc-xp-row"></div><div class="gc-xp-row"></div>';
+        if (typeof done === 'function') done();
+      };
+      try { delete state.__sqGameCompleteOpen; } catch (_) {}
+      openGameCompleteDialog();
+    });
+
+    await page.waitForSelector('.sq-gamecomplete-backdrop[data-sq-sc038="1"][data-sq-sc055-match-complete="1"] .sq-pg-result:not([hidden])');
+    assert.equal((await page.locator('.gc-arcade-kicker').textContent()).trim(), 'GAME WINNER', 'Deciding game skipped GAME WIN');
+    assert.equal(await page.locator('.sq-pg-match-win').count(), 1, 'Completed match did not prepare a Match Win screen');
+    assert.equal(await page.locator('.sq-pg-match-win:not([hidden])').count(), 0, 'Match Win appeared before Game Win/Scorecard/XP');
+
+    await page.locator('.sq-pg-next').click();
+    await page.waitForSelector('.sq-pg-scorecard:not([hidden])');
+    await page.locator('.sq-pg-next').click();
+    await page.waitForSelector('.sq-pg-xp-screen:not([hidden])');
+    await page.waitForFunction(() => {
+      const b = document.querySelector('.sq-pg-next');
+      return b && !b.disabled && /MATCH WIN/.test(b.textContent || '');
+    }, null, { timeout:3000 });
+
+    assert.equal(await page.locator('.sq-pg-match-win:not([hidden])').count(), 0, 'Match Win appeared before XP finished');
+    await page.locator('.sq-pg-next').click();
+    await page.waitForSelector('.sq-pg-match-win:not([hidden])');
+    assert.equal((await page.locator('.sq-pg-match-kicker').textContent()).trim(), 'MATCH WINNER');
+    assert.equal((await page.locator('.sq-pg-match-name').textContent()).trim(), 'Test Alpha');
+    assert.equal((await page.locator('.sq-pg-match-score').textContent()).trim(), '3–1');
+    assert.equal(await page.locator('.sq-pg-match-celebration').count(), 1, 'Match winner celebration art missing');
+    assert.equal(await page.locator('.sq-pg-opponent').count(), 1, 'Actual opponent reaction portrait missing');
+    assert.match((await page.locator('.sq-pg-next').textContent()).trim(), /MATCH LEADERBOARD/);
+    await page.screenshot({ path:shot('sc055-match-win-runtime.png'), fullPage:false });
+    stage('SC-055 match win gate passed');
+
+    await page.locator('.sq-pg-next').click();
+    await page.waitForFunction(() => document.body.getAttribute('data-page') === 'leaderboard', null, { timeout:4000 });
+    assert.equal(await page.evaluate(() => window.__sqSc055LeaderboardCalls), 1, 'Final Match Leaderboard handoff did not run exactly once');
+    assert.equal(await page.locator('.sq-gamecomplete-backdrop').count(), 0, 'Match Win overlay remained open');
 
     const unexpected = consoleErrs.filter(e => !/supabase|failed to fetch|networkerror|aborterror|failed to load resource:\s*net::err_failed/i.test(e));
     assert.deepEqual(unexpected, [], 'Unexpected console/page errors: ' + unexpected.join(' | '));
