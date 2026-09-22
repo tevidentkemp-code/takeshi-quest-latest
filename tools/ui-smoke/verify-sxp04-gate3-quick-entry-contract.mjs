@@ -19,7 +19,7 @@ assert(live.includes('window.__sqQuickSuppressClick = {'), 'gesture must arm com
 assert(live.includes('until: performance.now() + 180'), 'compatibility-click suppression must stay narrowly time-bounded');
 assert(live.includes('if (Math.hypot(dx,dy) > 18) return;'), 'compatibility-click suppression must be release-coordinate scoped');
 assert(!live.includes('__sqQuickSuppressClickUntil'), 'broad time-only click dead zone must not return');
-assert(css.includes('min-width:56px;') && css.includes('min-height:48px;'), 'quick targets must remain >=48px high and comfortably touchable');
+assert(css.includes('min-width:60px !important;') && css.includes('min-height:52px !important;'), 'quick targets must stay physically >=48px despite inherited button CSS');
 assert(css.includes('@media (prefers-reduced-motion:reduce)'), 'prototype must respect reduced motion');
 
 console.log('SXP-04 Gate 3 quick-entry contract PASS.');
