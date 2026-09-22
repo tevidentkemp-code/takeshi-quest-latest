@@ -6,9 +6,9 @@ async function inspectLayout(page) {
     const pad = document.getElementById('pad');
     const actions = pad.querySelector('.dtActions');
     const controls = [...actions.querySelectorAll('button')];
-    const names = controls.map(b => b.id === 'settingsBtnGamePad' ? 'settings' :
-      ['miss', 'undo', 'skip'].find(c => b.classList.contains(c)));
-    if (names.join(',') !== 'miss,undo,skip,settings') problems.push('control order: ' + names);
+    const names = controls.map(b => ['miss', 'undo', 'skip'].find(c => b.classList.contains(c)));
+    if (names.join(',') !== 'miss,undo,skip') problems.push('control order: ' + names);
+    if (document.getElementById('settingsBtnGamePad')) problems.push('retired pad Settings button still present');
     for (const b of controls) {
       const box = b.getBoundingClientRect();
       const label = b.id || b.className;
@@ -28,6 +28,15 @@ async function inspectLayout(page) {
       if (controls[i - 1].getBoundingClientRect().right > controls[i].getBoundingClientRect().left)
         problems.push('overlapping action buttons');
     }
+    const rail = document.querySelector('#liveV2Panel .v2QuickRail');
+    const railButtons = rail ? [...rail.querySelectorAll('.v2QuickBtn')] : [];
+    const railIds = railButtons.map(b => b.id).join(',');
+    if (railIds !== 'v2QuickMenu,v2QuickTv,v2QuickSound') problems.push('quick rail controls: ' + railIds);
+    railButtons.forEach(b => {
+      const box = b.getBoundingClientRect();
+      if (box.width < 43.9 || box.height < 43.9) problems.push(b.id + ': quick control below 44px');
+      if (box.left < -0.5 || box.right > innerWidth + .5) problems.push(b.id + ': quick control outside viewport');
+    });
     return problems;
   });
 }
@@ -47,15 +56,15 @@ async function inspectNumberAlignment(page) {
     const miss = actions.querySelector('.dtActBtn.miss');
     const undo = actions.querySelector('.dtActBtn.undo');
     const skip = actions.querySelector('.dtActBtn.skip');
-    const settings = actions.querySelector('#settingsBtnGamePad');
-    if (tops.length !== 3 || !miss || !undo || !skip || !settings)
+    if (tops.length !== 3 || !miss || !undo || !skip)
       return { error: 'score/action controls missing' };
     return {
       missDelta: Math.abs(center(tops[0]) - center(miss)),
       undoDelta: Math.abs(center(tops[1]) - center(undo)),
-      tGroupDelta: Math.abs(center(tops[2]) - ((center(skip) + center(settings)) / 2)),
+      skipDelta: Math.abs(center(tops[2]) - center(skip)),
+      missWidth: miss.getBoundingClientRect().width,
+      undoWidth: undo.getBoundingClientRect().width,
       skipWidth: skip.getBoundingClientRect().width,
-      settingsWidth: settings.getBoundingClientRect().width,
     };
   });
 }
@@ -70,7 +79,7 @@ function createThrowpadChecks(check, screenshot) {
       const viewport = page.viewportSize();
       for (const width of type === 'number' ? [320, 360, 390, 430, 820] : [320, 390]) {
         await page.setViewportSize({ width, height: 844 });
-        // Allow the existing settings insertion/layout timer and responsive canvas to settle.
+        // Allow the existing action-layout timer and responsive canvas to settle.
         await page.waitForTimeout(1200);
         const problems = await inspectLayout(page);
         check(`${type} throwpad at ${width}px: labels fit, controls stay reachable`, !problems.length, problems.join('; '));
@@ -78,8 +87,8 @@ function createThrowpadChecks(check, screenshot) {
           const alignment = await inspectNumberAlignment(page);
           const aligned = !alignment.error &&
             alignment.missDelta <= 2.5 && alignment.undoDelta <= 2.5 &&
-            alignment.tGroupDelta <= 2.5 &&
-            alignment.skipWidth >= 43.9 && alignment.settingsWidth >= 43.9;
+            alignment.skipDelta <= 2.5 &&
+            alignment.missWidth >= 43.9 && alignment.undoWidth >= 43.9 && alignment.skipWidth >= 43.9;
           check(`number throwpad at ${width}px: lower controls align under S/D/T`, aligned,
             alignment.error || JSON.stringify(alignment));
         }
