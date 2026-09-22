@@ -8,6 +8,7 @@
   var pending = null;
   var seq = 0;
   var hud = null;
+  var storageKey = 'sxp04_perf_samples:' + String(location.pathname || 'preview');
 
   function now(){ try { return performance.now(); } catch(_) { return Date.now(); } }
   function pct(values, p){
@@ -75,7 +76,7 @@
       raf(function(){
         samples.push({ id:p.id, kind:p.kind, control:p.control, ms:Math.max(0, now()-p.t0), ts:Date.now() });
         if (samples.length > 200) samples.shift();
-        try { localStorage.setItem('sxp04_perf_samples', JSON.stringify(samples)); } catch(_){}
+        try { localStorage.setItem(storageKey, JSON.stringify(samples)); } catch(_){}
         render();
       });
     }).observe(host,{subtree:true,childList:true,characterData:true,attributes:true});
@@ -127,7 +128,7 @@
   function boot(){
     try{ window.SQ_PERF_DEBUG = true; }catch(_){}
     try{
-      var prior=JSON.parse(localStorage.getItem('sxp04_perf_samples')||'[]');
+      var prior=JSON.parse(localStorage.getItem(storageKey)||'[]');
       if(Array.isArray(prior)) samples=prior.slice(-200);
     }catch(_){}
     ensureHud(); installObserver(); render();
