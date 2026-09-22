@@ -580,6 +580,14 @@
     row.style.setProperty('gap', '8px', 'important');
     row.style.setProperty('align-items', 'stretch', 'important');
 
+    // Number rounds previously widened the Treble column to make room for
+    // half-Skip + half-Settings. With Settings moved to the utility rail,
+    // restore S / D / T to three equal columns so the action row aligns.
+    var scoreRow = row.previousElementSibling;
+    if (scoreRow && scoreRow.classList && scoreRow.classList.contains('dtScoreRow')){
+      scoreRow.style.setProperty('grid-template-columns', 'repeat(3,minmax(0,1fr))', 'important');
+    }
+
     [miss, undo, skip].forEach(function(btn){
       btn.style.setProperty('width', '100%', 'important');
       btn.style.setProperty('min-width', '44px', 'important');
