@@ -3099,11 +3099,17 @@ function showPlayerOrderDialog() {
 
       const badge = document.createElement('div');
       badge.className = 'to-badge';
-      try{
-        __sqApplyAvatarSprite(badge, __sqAvatarIdForPlayer(p));
-        badge.setAttribute('aria-hidden', 'true');
-      }catch(_){
+      if (p && p.type === 'guest') {
+        badge.classList.add('to-badge-guest');
         badge.textContent = initialsForPlayer(p) || (String(p.name||'').trim().slice(0,2).toUpperCase());
+        badge.dataset.guestAvatar = '1';
+      } else {
+        try{
+          __sqApplyAvatarSprite(badge, __sqAvatarIdForPlayer(p));
+          badge.setAttribute('aria-hidden', 'true');
+        }catch(_){
+          badge.textContent = initialsForPlayer(p) || (String(p.name||'').trim().slice(0,2).toUpperCase());
+        }
       }
 
       const meta = document.createElement('div');
