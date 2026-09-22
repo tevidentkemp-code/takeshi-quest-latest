@@ -18,7 +18,7 @@ function __sqBindLiveV2QuickRail(panel){
     const tv = panel.querySelector('#v2QuickTv');
     const sound = panel.querySelector('#v2QuickSound');
 
-    // Keep this bounded to the reclaimed dead rail; protected promoted CSS stays untouched.
+    // SXP-04: reclaim only the obsolete left utility rail; protected promoted CSS stays untouched.
     if (scores){
       scores.style.setProperty('grid-template-columns', '44px minmax(0,1fr)', 'important');
       scores.style.setProperty('gap', '8px', 'important');
