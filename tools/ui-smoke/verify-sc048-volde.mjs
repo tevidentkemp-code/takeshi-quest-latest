@@ -68,9 +68,7 @@ for (const needle of [
 ]) assert(migration.includes(needle), `SC-048 migration missing contract: ${needle}`);
 
 const metadata = JSON.parse(fs.readFileSync('assets/release-metadata.json','utf8'));
-assert.equal(metadata.currentVersion,'0.2.0');
-assert.equal(metadata.currentReleaseId,'SC-048');
-assert.equal(metadata.releases[0].releaseId,'SC-048');
+assert(metadata.releases.some(row => row.version === '0.2.0' && row.releaseId === 'SC-048'),'SC-048 v0.2.0 release history must be retained');
 
 const wrongRound = Array.from({length:14}, () => row(10, []));
 wrongRound[10] = row(2,[hit('Double',2,1)]);
