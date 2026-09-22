@@ -1,0 +1,122 @@
+name: SXP-04 Gate 4 canonical equivalence
+
+on:
+  push:
+    branches: [sxp-04-gate4-equivalence]
+    paths:
+      - package.json
+      - package-lock.json
+      - vite.config.mjs
+      - scripts/**
+      - src/**
+      - tools/ui-smoke/**
+      - .github/workflows/sxp04-gate4-equivalence.yml
+  pull_request:
+    paths:
+      - package.json
+      - package-lock.json
+      - vite.config.mjs
+      - scripts/**
+      - src/**
+      - tools/ui-smoke/**
+      - .github/workflows/sxp04-gate4-equivalence.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sxp04-gate4-equivalence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm accepted Gate 3 ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor 137987632e87f2a52816d0e519a3afcaf93a484b HEAD
+          git diff --check 137987632e87f2a52816d0e519a3afcaf93a484b...HEAD
+
+      - name: Install architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Materialize canonical runtime
+        run: node scripts/materialize-runtime.mjs
+
+      - name: Verify source authority and Gate contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build-core-js-from-source.mjs --verify-current
+          node scripts/build-core-styles-from-source.mjs --verify-current
+          node tools/ui-smoke/verify-sxp04-gate4-equivalence-contract.mjs
+          node tools/ui-smoke/verify-sxp04-gate3-quick-entry-contract.mjs
+          node tools/ui-smoke/verify-sxp04-gate2-contract.mjs
+          node tools/ui-smoke/verify-sxp04-gate1-miss-contract.mjs
+          node tools/ui-smoke/verify-sxp04-sidequest.mjs
+
+      - name: Install deterministic build dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Build exact Gate 4 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build | tee sxp04-gate4-build.txt
+          npm run verify:dist | tee sxp04-gate4-dist.txt
+
+      - name: Install deterministic browser QA
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Gate 4 canonical equivalence + preservation suite
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8150/index.html
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts-sxp04-gate4
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8150 --bind 127.0.0.1 --directory dist >/tmp/sxp04-gate4-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+
+          node tools/ui-smoke/verify-sxp04-gate4-equivalence.js | tee sxp04-gate4-equivalence.txt
+          node tools/ui-smoke/verify-sxp04-gate3-quick-entry.js | tee sxp04-gate4-gate3.txt
+          node tools/ui-smoke/verify-sc030-undo-runtime.js | tee sxp04-gate4-undo.txt
+          node tools/ui-smoke/verify-sc032-dmd-runtime.js | tee sxp04-gate4-dmd.txt
+          node tools/ui-smoke/verify-progression-modes.js | tee sxp04-gate4-progression-modes.txt
+          node tools/ui-smoke/verify-training-modes.js | tee sxp04-gate4-training-modes.txt
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sxp04-gate4-visual-fit.txt
+          node tools/ui-smoke/smoke.js | tee sxp04-gate4-smoke.txt
+
+      - name: Final Gate 4 cleanliness
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check 137987632e87f2a52816d0e519a3afcaf93a484b...HEAD
+
+      - name: Keep Gate 4 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sxp04-gate4-equivalence-evidence
+          retention-days: 14
+          path: |
+            sxp04-gate4-*.txt
+            qa-artifacts-sxp04-gate4/
