@@ -1156,6 +1156,16 @@ function __sqQuickEntrySpecFromDart(dart, roundDef){
   }catch(_){ return null; }
 }
 
+function __sqQuickEntrySpecEquals(a,b){
+  try{
+    if (!a || !b) return false;
+    if (a.kind || b.kind) return String(a.kind || '') === String(b.kind || '');
+    if (a.sector != null || b.sector != null) return Number(a.sector || 0) === Number(b.sector || 0);
+    if (a.bull || b.bull) return String(a.bull || '') === String(b.bull || '');
+    return false;
+  }catch(_){ return false; }
+}
+
 function __sqQuickEntryOptions(baseSpec){
   try{
     if (!state || state.finished || state.suddenDeath?.active) return [];
@@ -1166,12 +1176,18 @@ function __sqQuickEntryOptions(baseSpec){
     if (remaining >= 2) opts.push({ id:'x2', label:'×2', count:2, spec:Object.assign({}, baseSpec) });
     if (remaining >= 3) opts.push({ id:'x3', label:'×3', count:3, spec:Object.assign({}, baseSpec) });
 
+    // Physical Robin Hood can only repeat the dart immediately before it.
+    // Therefore RH is exposed only when the held score button represents that
+    // exact previous canonical result. On dart 3 this also means every other
+    // S/D/T long-press is completely inactive.
     if (dart >= 1){
       const round = Number(state.currentRound || 0);
       const player = Number(state.currentPlayer || 0);
       const prior = state.score?.[player]?.[round]?.darts?.[dart - 1] || null;
       const rhSpec = __sqQuickEntrySpecFromDart(prior, ROUNDS?.[round]);
-      if (rhSpec) opts.push({ id:'rh', label:'RH', count:1, spec:rhSpec });
+      if (rhSpec && __sqQuickEntrySpecEquals(baseSpec, rhSpec)){
+        opts.push({ id:'rh', label:'RH', count:1, spec:rhSpec });
+      }
     }
     return opts;
   }catch(_){ return []; }
@@ -1253,6 +1269,8 @@ function __sqBindQuickEntryHold(btn, specFactory){
   btn.__sqQuickEntryBound = true;
   btn.style.touchAction = 'none';
   btn.style.webkitTouchCallout = 'none';
+  btn.style.webkitUserSelect = 'none';
+  btn.style.userSelect = 'none';
 
   let gesture=null;
   const cancelTimer=()=>{ try{ if (gesture?.timer) clearTimeout(gesture.timer); }catch(_){ } };
