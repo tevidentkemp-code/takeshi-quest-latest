@@ -1,0 +1,92 @@
+name: CHG-045 ECC AgentShield Canary
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/chg045-ecc-agentshield-canary.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  agentshield-canary:
+    name: AgentShield pinned read-only scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact Shateki candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: target
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout pinned AgentShield source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: affaan-m/agentshield
+          ref: b0891303bdcd6037376a94263d45cfd2ff3dfb98
+          path: agentshield
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+
+      - name: Verify tool provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C agentshield rev-parse HEAD)" = "b0891303bdcd6037376a94263d45cfd2ff3dfb98"
+          echo "AgentShield commit: $(git -C agentshield rev-parse HEAD)"
+          echo "Target commit: $(git -C target rev-parse HEAD)"
+
+      - name: Build pinned AgentShield
+        working-directory: agentshield
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+
+      - name: Run read-only JSON and Markdown scans
+        shell: bash
+        run: |
+          set -euo pipefail
+          node agentshield/dist/index.js scan --path target --format json --output /tmp/agentshield-report.json
+          node agentshield/dist/index.js scan --path target --format markdown --output /tmp/agentshield-report.md
+          node -e '
+            const fs=require("fs");
+            const r=JSON.parse(fs.readFileSync("/tmp/agentshield-report.json","utf8"));
+            const out={
+              targetPath:r.targetPath,
+              grade:r.score?.grade,
+              numericScore:r.score?.numericScore,
+              summary:r.summary,
+              harnessAdapters:r.harnessAdapters
+            };
+            console.log(JSON.stringify(out,null,2));
+          '
+          {
+            echo "## CHG-045 — AgentShield canary"
+            echo
+            echo "- Tool commit: `b0891303bdcd6037376a94263d45cfd2ff3dfb98`"
+            echo "- Target commit: `$(git -C target rev-parse HEAD)`"
+            echo "- Mode: read-only static scan"
+            echo "- Auto-fix: disabled"
+            echo "- LLM/Opus/deep runtime analysis: disabled"
+            echo
+            cat /tmp/agentshield-report.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Canary integrity check
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s /tmp/agentshield-report.json
+          test -s /tmp/agentshield-report.md
+          git -C target diff --exit-code
