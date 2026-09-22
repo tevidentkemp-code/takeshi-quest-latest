@@ -5,6 +5,8 @@ function __sqLiveV2PaintQuickSound(btn){
   let on = true;
   try{ on = (typeof __sqV3SoundOn === 'function') ? __sqV3SoundOn() : localStorage.getItem('sq_livev3_sound') !== '0'; }catch(_){ on = true; }
   btn.classList.toggle('muted', !on);
+  btn.style.color = on ? '#ffd37a' : 'rgba(219,229,248,.42)';
+  btn.style.opacity = on ? '1' : '.72';
   btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   btn.setAttribute('aria-label', on ? 'Turn sound effects off' : 'Turn sound effects on');
   btn.title = on ? 'Sound effects on' : 'Sound effects off';
