@@ -1327,8 +1327,7 @@ function buildPad(){
         try{ window.__sqSuppressMissCallouts = true; }catch(_){}
         const base = seqSlots.slice();
         const label = n > 1 ? `MISS x${n}` : 'MISS';
-
-        for (let i=0; i<n; i++){
+        const showMissFrame = (i)=>{
           if (Number(window.__sqDmdFlowToken || 0) !== myToken) return;
           const idx = Math.min(2, dart + i);
           base[idx] = 'X';
@@ -1336,20 +1335,30 @@ function buildPad(){
             const z3 = `${base[0]} / ${base[1]} / ${base[2]}`;
             window.sqDmdShowZones?.({ z2: label, z3, z3Small:true }, { type:'flash', ms:260, fx:'impact' });
           }catch(_){}
-          await new Promise(r=>setTimeout(r,280));
+        };
+
+        // SXP-04 Gate 1: gameplay/state commits first. MISS presentation is
+        // additive and cancellable; it must never hold recordThrow behind a timer.
+        showMissFrame(0);
+        for (let i=0; i<n; i++){
+          if (Number(window.__sqDmdFlowToken || 0) !== myToken) break;
+          recordThrow({ kind:'Miss' });
         }
+        for (let i=1; i<n; i++){
+          setTimeout(()=>{ try{ showMissFrame(i); }catch(_){} }, i * 90);
+        }
+        setTimeout(()=>{
+          try{
+            if (Number(window.__sqDmdFlowToken || 0) === myToken) window.__sqSuppressMissCallouts = false;
+          }catch(_){}
+        }, Math.max(140, (n - 1) * 90 + 120));
+        window.__sqDmdBulkMiss = __prevBulk;
+        return;
       }
 
       for (let i=0;i<n;i++){
-        if (specialMissSeq && Number(window.__sqDmdFlowToken || 0) !== myToken) return;
         recordThrow({ kind:'Miss' });
-        if (!specialMissSeq){
-          await new Promise(r=>setTimeout(r,70));
-        }
-      }
-
-      if (specialMissSeq){
-        setTimeout(()=>{ try{ window.__sqSuppressMissCallouts = false; }catch(_){} }, 120);
+        await new Promise(r=>setTimeout(r,70));
       }
       window.__sqDmdBulkMiss = __prevBulk;
     }
@@ -1448,8 +1457,7 @@ function buildPad(){
           try{ window.__sqSuppressMissCallouts = true; }catch(_){}
           const base = seqSlots.slice();
           const label = n > 1 ? `MISS x${n}` : 'MISS';
-
-          for (let i=0; i<n; i++){
+          const showMissFrame = (i)=>{
             if (Number(window.__sqDmdFlowToken || 0) !== myToken) return;
             const idx = Math.min(2, dart + i);
             base[idx] = 'X';
@@ -1457,20 +1465,30 @@ function buildPad(){
               const z3 = `${base[0]} / ${base[1]} / ${base[2]}`;
               window.sqDmdShowZones?.({ z2: label, z3, z3Small:true }, { type:'flash', ms:260, fx:'impact' });
             }catch(_){}
-            await new Promise(r=>setTimeout(r,280));
+          };
+
+          // SXP-04 Gate 1: gameplay/state commits first. MISS presentation is
+          // additive and cancellable; it must never hold recordThrow behind a timer.
+          showMissFrame(0);
+          for (let i=0; i<n; i++){
+            if (Number(window.__sqDmdFlowToken || 0) !== myToken) break;
+            recordThrow({ kind:'Miss' });
           }
+          for (let i=1; i<n; i++){
+            setTimeout(()=>{ try{ showMissFrame(i); }catch(_){} }, i * 90);
+          }
+          setTimeout(()=>{
+            try{
+              if (Number(window.__sqDmdFlowToken || 0) === myToken) window.__sqSuppressMissCallouts = false;
+            }catch(_){}
+          }, Math.max(140, (n - 1) * 90 + 120));
+          window.__sqDmdBulkMiss = __prevBulk;
+          return;
         }
 
         for (let i=0;i<n;i++){
-          if (specialMissSeq && Number(window.__sqDmdFlowToken || 0) !== myToken) return;
           recordThrow({ kind:'Miss' });
-          if (!specialMissSeq){
-            await new Promise(r=>setTimeout(r,70));
-          }
-        }
-
-        if (specialMissSeq){
-          setTimeout(()=>{ try{ window.__sqSuppressMissCallouts = false; }catch(_){} }, 120);
+          await new Promise(r=>setTimeout(r,70));
         }
         window.__sqDmdBulkMiss = __prevBulk;
       }
