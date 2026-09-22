@@ -141,11 +141,11 @@ async function continueMatch(page, label, nextGameNumber) {
   await throwpadChecks.onTurn(page);
   await checkScoreControls(page, check);
 
-  // -- In-game Main Menu
-  await page.locator('#settingsBtnGamePad').click();
+  // -- In-game Main Menu (SXP-04 quick rail)
+  await page.locator('#v2QuickMenu').click();
   await page.waitForTimeout(800);
-  check('Main Menu opens (fix106)', !!(await page.$('.sq-menu106-bd')));
-  check('Pad Settings opens only the canonical menu', await page.evaluate(() => {
+  check('Main Menu opens from Live V2 quick rail', !!(await page.$('.sq-menu106-bd')));
+  check('Quick Menu opens only the canonical menu', await page.evaluate(() => {
     const open = [...document.querySelectorAll('.modal-backdrop:not(.hidden)')].filter(m => getComputedStyle(m).display !== 'none');
     return open.length === 1 && open[0].classList.contains('sq-menu106-bd');
   }));
