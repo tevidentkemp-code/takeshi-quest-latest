@@ -12,7 +12,9 @@ assert(live.includes("if (remaining >= 3) opts.push({ id:'x3'"), 'x3 remaining-d
 assert(live.includes("btn.style.webkitUserSelect = 'none';"), 'iPhone hold must suppress native selection');
 assert(live.includes("btn.style.webkitTouchCallout = 'none';"), 'iPhone hold must suppress native touch callout');
 
-const quickCss=css.slice(css.indexOf('.sqQuickEntryPopover'), css.indexOf('@media (prefers-reduced-motion:reduce)')+250);
+const quickStart=css.indexOf('.sqQuickEntryPopover');
+const quickMedia=css.indexOf('@media (prefers-reduced-motion:reduce)', quickStart);
+const quickCss=css.slice(quickStart, quickMedia >= 0 ? quickMedia + 250 : quickStart + 5000);
 assert(quickCss.includes('-webkit-backdrop-filter:none;') && quickCss.includes('backdrop-filter:none;'),
   'quick-entry fixed overlay must not use backdrop filtering on iPhone');
 assert(!quickCss.includes('backdrop-filter:blur('), 'quick-entry blur compositor path must not return');
