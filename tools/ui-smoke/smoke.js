@@ -141,6 +141,28 @@ async function continueMatch(page, label, nextGameNumber) {
   await throwpadChecks.onTurn(page);
   await checkScoreControls(page, check);
 
+  // -- SXP-04 quick rail utilities
+  const soundBefore = await page.evaluate(() => localStorage.getItem('sq_livev3_sound') !== '0');
+  await page.locator('#v2QuickSound').click();
+  const soundAfter = await page.evaluate(() => ({
+    on:localStorage.getItem('sq_livev3_sound') !== '0',
+    pressed:document.getElementById('v2QuickSound')?.getAttribute('aria-pressed')
+  }));
+  check('Quick Sound toggles the existing persisted sound preference',
+    soundAfter.on !== soundBefore && soundAfter.pressed === (soundAfter.on ? 'true' : 'false'));
+  await page.locator('#v2QuickSound').click();
+  check('Quick Sound can restore its prior state',
+    await page.evaluate(expected => (localStorage.getItem('sq_livev3_sound') !== '0') === expected, soundBefore));
+
+  await page.locator('#v2QuickTv').click();
+  await page.waitForTimeout(250);
+  check('Quick TV enters the canonical TV layout',
+    await page.evaluate(() => !!(window.__sqTvModeIsActive && window.__sqTvModeIsActive())));
+  await page.evaluate(() => { try{ window.__sqTvModeToggle?.(false); }catch(_){} });
+  await page.waitForTimeout(150);
+  check('TV layout can return to the live scoring view',
+    await page.evaluate(() => !(window.__sqTvModeIsActive && window.__sqTvModeIsActive())));
+
   // -- In-game Main Menu (SXP-04 quick rail)
   await page.locator('#v2QuickMenu').click();
   await page.waitForTimeout(800);
