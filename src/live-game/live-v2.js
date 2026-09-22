@@ -1,5 +1,50 @@
 // ===== @SEC:JS:GAME:LIVEV2 =====
 // @CANONICAL:LIVE_V2_BASE_RENDER
+function __sqLiveV2PaintQuickSound(btn){
+  if (!btn) return;
+  let on = true;
+  try{ on = (typeof __sqV3SoundOn === 'function') ? __sqV3SoundOn() : localStorage.getItem('sq_livev3_sound') !== '0'; }catch(_){ on = true; }
+  btn.classList.toggle('muted', !on);
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  btn.setAttribute('aria-label', on ? 'Turn sound effects off' : 'Turn sound effects on');
+  btn.title = on ? 'Sound effects on' : 'Sound effects off';
+}
+function __sqBindLiveV2QuickRail(panel){
+  try{
+    if (!panel) return;
+    const menu = panel.querySelector('#v2QuickMenu');
+    const tv = panel.querySelector('#v2QuickTv');
+    const sound = panel.querySelector('#v2QuickSound');
+    if (menu){
+      menu.onclick = () => {
+        try{ if (typeof window.__sqOpenGameMenu106 === 'function') return window.__sqOpenGameMenu106(); }catch(_){}
+        try{ document.getElementById('settingsBtnGame')?.click(); }catch(_){}
+      };
+    }
+    if (tv){
+      tv.onclick = () => {
+        try{
+          if (typeof window.__sqTvModeToggle === 'function') return window.__sqTvModeToggle(true);
+          if (typeof toast === 'function') toast('TV Mode unavailable');
+        }catch(e){ try{ console.warn('[SQ] TV Mode toggle failed', e); }catch(_){} }
+      };
+    }
+    if (sound){
+      __sqLiveV2PaintQuickSound(sound);
+      sound.onclick = () => {
+        let next = true;
+        try{
+          const current = (typeof __sqV3SoundOn === 'function') ? __sqV3SoundOn() : localStorage.getItem('sq_livev3_sound') !== '0';
+          next = !current;
+          if (typeof __sqV3SetSound === 'function') __sqV3SetSound(next);
+          else localStorage.setItem('sq_livev3_sound', next ? '1' : '0');
+          if (next && typeof __sqV3Ac === 'function') __sqV3Ac();
+        }catch(_){}
+        __sqLiveV2PaintQuickSound(sound);
+      };
+    }
+  }catch(_){}
+}
 function liveV2Render(){
   // Only runs on gameplay screen; prevents start/menu JS from crashing
   const page = document.body && (document.body.getAttribute('data-page') || document.body.dataset && document.body.dataset.page);
@@ -56,6 +101,7 @@ function liveV2Render(){
   }
   panel.hidden = false;
 
+  try{ __sqBindLiveV2QuickRail(panel); }catch(_){ }
   try{ __sqSetupLiveV2Sizing(panel); }catch(_){ }
 
   const pCount = getLiveV2PlayerCount();
