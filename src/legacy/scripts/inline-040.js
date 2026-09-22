@@ -5,6 +5,10 @@
   window.__sqFix167GameplayPerfMot = true;
 
   if (typeof window.SQ_PERF_DEBUG === 'undefined') window.SQ_PERF_DEBUG = false;
+  try{
+    var __sqPerfParams = new URLSearchParams(window.location.search || '');
+    if (__sqPerfParams.get('sqperf') === '1') window.SQ_PERF_DEBUG = true;
+  }catch(_){}
   var samples = [];
   function now(){ try{ return performance.now(); }catch(_){ return Date.now(); } }
   function push(name, ms, meta){
@@ -157,6 +161,53 @@
     window.recordThrow = wrappedRecordThrow;
     try{ recordThrow = wrappedRecordThrow; }catch(_){}
   }
+
+  function installPerfTestControl(){
+    try{
+      if (!window.SQ_PERF_DEBUG || document.getElementById('sqPerfCopyResults')) return;
+      var btn = document.createElement('button');
+      btn.id = 'sqPerfCopyResults';
+      btn.type = 'button';
+      btn.textContent = 'COPY PERF RESULTS';
+      btn.setAttribute('aria-label','Copy Experience 04 performance results');
+      btn.style.position = 'fixed';
+      btn.style.right = '8px';
+      btn.style.bottom = '8px';
+      btn.style.zIndex = '2147483647';
+      btn.style.padding = '10px 12px';
+      btn.style.borderRadius = '10px';
+      btn.style.border = '1px solid rgba(255,255,255,.35)';
+      btn.style.background = '#111';
+      btn.style.color = '#fff';
+      btn.style.font = '700 11px/1.1 system-ui,-apple-system,sans-serif';
+      btn.style.opacity = '.88';
+      btn.addEventListener('click', async function(){
+        try{
+          var report = window.sqPerfReport ? window.sqPerfReport() : null;
+          var payload = JSON.stringify({
+            label:'SXP-04 BEFORE baseline',
+            userAgent:navigator.userAgent,
+            viewport:{w:window.innerWidth,h:window.innerHeight,dpr:window.devicePixelRatio || 1},
+            href:window.location.href,
+            report:report
+          }, null, 2);
+          if (navigator.clipboard && navigator.clipboard.writeText){
+            await navigator.clipboard.writeText(payload);
+            btn.textContent = 'COPIED — PASTE TO CHAT';
+          }else{
+            window.prompt('Copy these results and paste them into ChatGPT:', payload);
+            btn.textContent = 'RESULTS READY';
+          }
+          setTimeout(function(){ btn.textContent = 'COPY PERF RESULTS'; }, 3500);
+        }catch(e){
+          try{ btn.textContent = 'COPY FAILED'; }catch(_){}
+        }
+      });
+      (document.body || document.documentElement).appendChild(btn);
+    }catch(_){}
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installPerfTestControl, {once:true});
+  else installPerfTestControl();
 
   try{ console.info('[SQ] Fix167 gameplay perf MOT active'); }catch(_){}
 })();
