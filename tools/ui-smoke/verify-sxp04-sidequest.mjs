@@ -9,7 +9,7 @@ const css = fs.readFileSync('src/styles/live-game/v2-panel.css','utf8');
 const stage = fs.readFileSync('src/styles/live-game/classic-stage1.css','utf8');
 
 assert(state.includes('function __sqGcXpStartPrefetch()'), 'XP prefetch helper must exist');
-assert(state.includes('try{ __sqGcXpStartPrefetch(); }catch(_){}'), 'Game Winner flow must start XP prefetch');
+assert(/try\{\s*__sqGcXpStartPrefetch\(\);\s*\}catch\(_\)\{\s*\}/.test(state), 'Game Winner flow must start XP prefetch');
 assert(state.includes('const prefetchedXp = await __sqGcXpStartPrefetch();'), 'Rewards reveal must consume the prefetched batch');
 assert(!state.includes('await SQ_XP.forName(players[p].rawName || nm)'), 'Rewards reveal must not serially fetch XP per player');
 assert(state.includes('Promise.all(players.map(async name =>'), 'XP prefetch must read player XP in parallel');
