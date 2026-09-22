@@ -153,6 +153,7 @@ fs.mkdirSync(out, {recursive:true});
     });
     await page.waitForTimeout(300);
     assert.equal(await page.locator('.sq-gc-celebration-sprite').count(),0,'guest winner must not receive premium celebration art');
+    assert.equal(await page.locator('.sq-pg-guest-win-art[data-guest-avatar="1"]').count(),1,'guest winner must receive generic initials art');
     assert.equal(consoleErrs.filter(x=>x.startsWith('pageerror:')).length,0,JSON.stringify(consoleErrs.filter(x=>x.startsWith('pageerror:'))));
     console.log('PASS fresh-cache canonical fetch, registered avatar persistence, generic guest identity through Match Setup/Throw Order/game state/postgame, and no uncaught errors');
     console.log('SC-040 browser acceptance PASS (production network blocked)');
