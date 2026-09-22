@@ -76,12 +76,22 @@ jobs:
           node -e '
             const fs=require("fs");
             const r=JSON.parse(fs.readFileSync("/tmp/agentshield-report.json","utf8"));
+            const findings=(r.findings||[]).map(f=>({
+              id:f.id ?? f.ruleId ?? f.rule,
+              severity:f.severity,
+              title:f.title,
+              file:f.file,
+              line:f.line,
+              category:f.category,
+              runtimeConfidence:f.runtimeConfidence
+            }));
             const out={
               targetPath:r.targetPath,
               grade:r.score?.grade,
               numericScore:r.score?.numericScore,
               summary:r.summary,
-              harnessAdapters:r.harnessAdapters
+              matchedHarnesses:r.harnessAdapters?.matched || [],
+              findings
             };
             console.log(JSON.stringify(out,null,2));
           '
@@ -89,8 +99,8 @@ jobs:
           {
             echo "## CHG-045 — AgentShield canary"
             echo
-            echo "- Tool commit: `b0891303bdcd6037376a94263d45cfd2ff3dfb98`"
-            echo "- Target commit: `$(git -C target rev-parse HEAD)`"
+            echo "- Tool commit: b0891303bdcd6037376a94263d45cfd2ff3dfb98"
+            echo "- Target commit: $(git -C target rev-parse HEAD)"
             echo "- Mode: read-only static scan"
             echo "- Auto-fix: disabled"
             echo "- LLM/Opus/deep runtime analysis: disabled"
