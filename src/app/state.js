@@ -167,6 +167,45 @@ function __sqUnrankedXpMode(){
     return '';
   }catch(_){ return ''; }
 }
+
+// SXP-04: warm the existing pre-game XP lookup as soon as a completed game
+// enters the Game Winner flow. This does not calculate, award or persist XP;
+// it only moves the same v_player_xp-backed reads earlier and runs them in
+// parallel so the Rewards screen does not begin with a network waterfall.
+function __sqGcXpPrefetchKey(){
+  try{
+    const token = Number(state && state.__gameToken || 0);
+    const names = (state && Array.isArray(state.players) ? state.players : [])
+      .map(p => String((p && (p.name || p.player)) || '').trim().toLowerCase());
+    return token + '|' + names.join('|');
+  }catch(_){ return ''; }
+}
+function __sqGcXpStartPrefetch(){
+  try{
+    if (!window.SQ_XP || typeof SQ_XP.forName !== 'function' || !state) return Promise.resolve([]);
+    if (__sqUnrankedXpMode()) return Promise.resolve([]);
+    const key = __sqGcXpPrefetchKey();
+    const existing = window.__sqGcXpPrefetch;
+    if (existing && existing.key === key && existing.promise) return existing.promise;
+    const players = (state.players || []).map(p => String((p && (p.name || p.player)) || '').trim());
+    const startedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const promise = Promise.all(players.map(async name => {
+      if (!name) return null;
+      try{ return await SQ_XP.forName(name); }catch(_){ return null; }
+    })).then(rows => {
+      try{
+        if (window.__sqGcXpPrefetch && window.__sqGcXpPrefetch.key === key){
+          window.__sqGcXpPrefetch.resolved = rows;
+          window.__sqGcXpPrefetch.resolvedAt =
+            (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        }
+      }catch(_){}
+      return rows;
+    });
+    window.__sqGcXpPrefetch = { key, promise, startedAt, resolved:null };
+    return promise;
+  }catch(_){ return Promise.resolve([]); }
+}
 async function __sqGcXpReveal(host, onComplete){
   try{
     if (!window.SQ_XP || !window.SQ_ACH || !state || !state.score){ if (onComplete) onComplete(); return; }
@@ -196,6 +235,9 @@ async function __sqGcXpReveal(host, onComplete){
       name: (typeof __sqPlayerPretty === 'function' ? __sqPlayerPretty(p) : (p && p.name)) || (p && p.name) || '',
       rawName: String((p && (p.name || p.player)) || '').trim(),
     }));
+    // Prefer the game-end prefetch. If the player tapped NEXT exceptionally
+    // quickly, this waits for one parallel batch rather than N serial reads.
+    const prefetchedXp = await __sqGcXpStartPrefetch();
     const totals = players.map((_, i) => (board[i] || []).reduce((s, r) => s + (Number(r && r.roundTotal) || 0), 0));
     const maxTotal = Math.max(0, ...totals);
     const results = SQ_ACH.detectGame(board, { players, is_tiebreak: !!(state.is_tiebreak || state.currentGameIsTiebreak) });
@@ -217,14 +259,20 @@ async function __sqGcXpReveal(host, onComplete){
       const troph = trophiesByP[p] || [];
       const trophyXp = troph.reduce((s, e) => s + (SQ_ACH.meta(e.code).xp || 0) * e.count, 0);
       const gained = Math.round(totals[p] * SQ_XP.W.point) + SQ_XP.W.game + (won ? SQ_XP.W.gameWin : 0) + trophyXp;
-      let pre = 0; try{ const xr = await SQ_XP.forName(players[p].rawName || nm); pre = xr ? Number(xr.total_xp) || 0 : 0; }catch(_){ }
+      let pre = 0;
+      try{
+        const xr = Array.isArray(prefetchedXp) ? prefetchedXp[p] : null;
+        pre = xr ? Number(xr.total_xp) || 0 : 0;
+      }catch(_){ }
       rows.push({ nm, won, troph, gained, pre, post: pre + gained });
     }
     rows.sort((a, b) => (Number(b.won) - Number(a.won)) || (b.gained - a.gained));
     const panel = document.createElement('div'); panel.className = 'gc-xp-panel';
     const title = document.createElement('div'); title.className = 'gc-xp-title'; title.textContent = 'XP EARNED';
     panel.appendChild(title); host.appendChild(panel);
-    for (let i = 0; i < rows.length; i++){ await __sqGcXpRow(panel, rows[i], reduced); }
+    // Append every row immediately, then let the existing row animations run
+    // together. Previously each row blocked the next for ~1.1–1.8s.
+    await Promise.all(rows.map(row => __sqGcXpRow(panel, row, reduced)));
     // Freshen caches so subsequent screens read the new totals.
     try{ SQ_XP._cache = null; SQ_ACH._cache = {}; }catch(_){ }
     if (onComplete) onComplete();
@@ -238,6 +286,10 @@ function openGameCompleteDialog() {
     return;
   }
   const __isVsShadowComplete = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
+
+  // SXP-04: start the Rewards read while the player is still viewing Game Winner.
+  // Fire-and-forget; reveal reuses this exact promise/result.
+  try{ __sqGcXpStartPrefetch(); }catch(_){ }
 
   // Presentation-only finished-game state: once completion is valid, replace
   // the last live-game DMD frame with a centered, slow-pulsing GAME OVER.
