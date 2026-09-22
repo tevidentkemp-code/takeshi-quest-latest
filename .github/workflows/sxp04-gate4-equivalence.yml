@@ -1,0 +1,207 @@
+name: SXP-04 Gate 4 quick-entry equivalence
+
+on:
+  push:
+    branches: [sxp-04-gate4-quick-entry-equivalence]
+    paths:
+      - package.json
+      - package-lock.json
+      - vite.config.mjs
+      - scripts/**
+      - src/**
+      - tools/ui-smoke/**
+      - .github/workflows/sxp04-gate4-equivalence.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sxp04-gate4-equivalence
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm stacked Gate 3 ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor 137987632e87f2a52816d0e519a3afcaf93a484b HEAD
+
+      - name: Install architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Materialize canonical runtime
+        run: node scripts/materialize-runtime.mjs
+
+      - name: Verify generated source authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build-core-js-from-source.mjs --verify-current
+          node scripts/build-core-styles-from-source.mjs --verify-current
+
+      - name: Preserve Gate 3 quick-entry contract
+        run: node tools/ui-smoke/verify-sxp04-gate3-quick-entry-contract.mjs
+
+      - name: Preserve Gate 2 contract
+        run: node tools/ui-smoke/verify-sxp04-gate2-contract.mjs
+
+      - name: Preserve Gate 1 contract
+        run: node tools/ui-smoke/verify-sxp04-gate1-miss-contract.mjs
+
+      - name: Preserve released side-quest contract
+        run: node tools/ui-smoke/verify-sxp04-sidequest.mjs
+
+      - name: Run record-integrity source contract
+        run: node tools/ui-smoke/verify-sc042-record-integrity.mjs
+
+      - name: Install deterministic build dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Build Vite candidate
+        run: npm run build
+
+      - name: Verify Vite dist contract
+        run: npm run verify:dist
+
+      - name: Install deterministic UI test dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run Gate 4 canonical equivalence
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8150/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8150 --bind 127.0.0.1 --directory dist >/tmp/sxp04-gate4-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sxp04-gate4-equivalence.js | tee sxp04-gate4-equivalence.txt
+
+      - name: Re-run Gate 3 real gesture efficiency
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8151/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8151 --bind 127.0.0.1 --directory dist >/tmp/sxp04-gate3-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sxp04-gate3-quick-entry.js | tee sxp04-gate3-quick-entry.txt
+
+      - name: Re-run Gate 2 forced-long-presentation regression
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8152/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8152 --bind 127.0.0.1 --directory dist >/tmp/sxp04-gate2-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sxp04-gate2-nonblocking.js | tee sxp04-gate2-nonblocking.txt
+
+      - name: Re-run Gate 1 MISS latency
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8153/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8153 --bind 127.0.0.1 --directory dist >/tmp/sxp04-gate1-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sxp04-gate1-miss-response.js | tee sxp04-gate1-latency.txt
+
+      - name: Run DMD pacing regression
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8154/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8154 --bind 127.0.0.1 --directory dist >/tmp/sxp04-dmd-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sc053-dmd-pacing.js | tee sxp04-dmd-pacing.txt
+
+      - name: Run DMD ownership source guard
+        run: node tools/ui-smoke/verify-sc032-dmd-ownership.mjs
+
+      - name: Run record-integrity runtime regression
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8155/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8155 --bind 127.0.0.1 --directory dist >/tmp/sxp04-record-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sc042-record-integrity.js | tee sxp04-record-integrity.txt
+
+      - name: Run Training mode isolation
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8156/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8156 --bind 127.0.0.1 --directory dist >/tmp/sxp04-training-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-training-modes.js | tee sxp04-training-modes.txt
+
+      - name: Run scoring smoke offline
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8157/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8157 --bind 127.0.0.1 --directory dist >/tmp/sxp04-smoke-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/smoke.js | tee sxp04-gate4-smoke.txt
+
+      - name: Run classic mobile visual fit
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8158/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8158 --bind 127.0.0.1 --directory dist >/tmp/sxp04-fit-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sxp04-gate4-visual-fit.txt
+
+      - name: Keep Gate 4 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sxp04-gate4-evidence
+          retention-days: 14
+          path: |
+            sxp04-gate4-equivalence.txt
+            sxp04-gate3-quick-entry.txt
+            sxp04-gate2-nonblocking.txt
+            sxp04-gate1-latency.txt
+            sxp04-dmd-pacing.txt
+            sxp04-record-integrity.txt
+            sxp04-training-modes.txt
+            sxp04-gate4-smoke.txt
+            sxp04-gate4-visual-fit.txt
+            sc031-vite-build-evidence.json
