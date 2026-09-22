@@ -7,7 +7,9 @@ const BROWSER_NOISE=/supabase|Failed to fetch|fetch failed|net::|NetworkError|lo
   const {browser,page,consoleErrs}=await H.launch({width:390,height:844});
   try{
     await H.boot(page,{settle:1000});
-    await H.startMatch(page);
+    await H.toMatchCard(page);
+    await H.addGuests(page,['ALPHA','BETA']);
+    await H.startMatch(page,3);
     await page.waitForFunction(()=>window.__sqDmdV2Ready===true && typeof window.sqDmdShowZones==='function');
 
     await page.evaluate(()=>{
