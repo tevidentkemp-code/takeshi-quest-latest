@@ -1,0 +1,243 @@
+name: SXP-04 Gate 3 quick-entry prototype
+
+on:
+  push:
+    branches: [sxp-04-gate3-quick-entry-prototype]
+    paths:
+      - package.json
+      - package-lock.json
+      - vite.config.mjs
+      - scripts/**
+      - src/**
+      - tools/ui-smoke/**
+      - .github/workflows/sxp04-gate3-quick-entry.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sxp04-gate3-quick-entry
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm stacked Gate 2 ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor 7fc671a7dc10a8e122d6eef45c31c1564b13944b HEAD
+
+      - name: Install architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Materialize canonical runtime
+        run: node scripts/materialize-runtime.mjs
+
+      - name: Verify generated source authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build-core-js-from-source.mjs --verify-current
+          node scripts/build-core-styles-from-source.mjs --verify-current
+
+      - name: Run Gate 3 quick-entry contract
+        run: node tools/ui-smoke/verify-sxp04-gate3-quick-entry-contract.mjs
+
+      - name: Preserve Gate 2 contract
+        run: node tools/ui-smoke/verify-sxp04-gate2-contract.mjs
+
+      - name: Preserve Gate 1 contract
+        run: node tools/ui-smoke/verify-sxp04-gate1-miss-contract.mjs
+
+      - name: Preserve released side-quest contract
+        run: node tools/ui-smoke/verify-sxp04-sidequest.mjs
+
+      - name: Install deterministic build dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Build Vite candidate
+        run: npm run build
+
+      - name: Verify Vite dist contract
+        run: npm run verify:dist
+
+      - name: Install deterministic UI test dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run Gate 3 real gesture efficiency
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8140/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8140 --bind 127.0.0.1 --directory dist >/tmp/sxp04-gate3-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sxp04-gate3-quick-entry.js | tee sxp04-gate3-quick-entry.txt
+
+      - name: Re-run Gate 2 forced-long-presentation regression
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8141/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8141 --bind 127.0.0.1 --directory dist >/tmp/sxp04-gate2-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sxp04-gate2-nonblocking.js | tee sxp04-gate2-nonblocking.txt
+
+      - name: Re-run Gate 1 MISS latency
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8142/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8142 --bind 127.0.0.1 --directory dist >/tmp/sxp04-gate1-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-sxp04-gate1-miss-response.js | tee sxp04-gate1-latency.txt
+
+      - name: Run scoring smoke offline
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8143/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8143 --bind 127.0.0.1 --directory dist >/tmp/sxp04-smoke-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/smoke.js | tee sxp04-gate3-smoke.txt
+
+      - name: Run classic mobile visual fit
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8144/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8144 --bind 127.0.0.1 --directory dist >/tmp/sxp04-fit-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sxp04-gate3-visual-fit.txt
+
+      - name: Stage generated runtime + touch preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf sxp04-gate3-write
+          mkdir -p sxp04-gate3-write/runtime/src/legacy/styles sxp04-gate3-write/runtime/src/legacy/scripts
+          cp index.html sxp04-gate3-write/runtime/index.html
+          cp src/legacy/styles/inline-002.css sxp04-gate3-write/runtime/src/legacy/styles/inline-002.css
+          cp src/legacy/scripts/inline-005.js sxp04-gate3-write/runtime/src/legacy/scripts/inline-005.js
+
+          mkdir -p sxp04-gate3-write/preview/sxp04-gate3
+          cp -a dist/. sxp04-gate3-write/preview/sxp04-gate3/
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('sxp04-gate3-write/preview/sxp04-gate3/index.html')
+          s=p.read_text()
+          guard='''<script id="sxp04-gate3-offline-guard">(function(){var f=window.fetch;window.fetch=function(i,o){var u=String((i&&i.url)||i||"");if(/supabase\\.co/i.test(u))return Promise.reject(new TypeError("SXP-04 Gate 3 preview blocks Supabase"));return f.apply(this,arguments)};try{var W=window.WebSocket;window.WebSocket=function(u,p){if(/supabase\\.co/i.test(String(u||"")))throw new Error("SXP-04 Gate 3 preview blocks Supabase WebSocket");return new W(u,p)}}catch(_){}})();</script>'''
+          note='''<div id="sxp04Gate3Note" style="position:fixed;left:8px;right:8px;top:max(8px,env(safe-area-inset-top));z-index:2147483647;padding:8px 10px;border:1px solid rgba(255,122,0,.45);border-radius:9px;background:rgba(8,10,16,.92);color:#fff;font:600 11px/1.35 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;pointer-events:none">SC-049 PROTOTYPE • Hold S/D/T 360ms → slide to ×2 / ×3 / RH → release. Release elsewhere cancels.</div>'''
+          s=s.replace('<head>','<head>\n'+guard,1)
+          s=s.replace('<body>','<body>\n'+note,1)
+          p.write_text(s)
+          PY
+          cat > sxp04-gate3-write/preview/sxp04-gate3/SXP04_GATE3_BUILD.txt <<EOF
+          SXP-04 GATE 3 OFFLINE IPHONE PREVIEW
+          Source commit: ${GITHUB_SHA}
+          SC-049 prototype: 360ms hold on S/D/T; slide/release to x2/x3/RH; release elsewhere cancels.
+          All repeated darts route through canonical recordThrow one dart at a time.
+          Supabase requests are blocked before app boot.
+          Production main remains unchanged.
+          Gate 3 target: >=33% action reduction where quick-entry applies.
+          EOF
+
+      - name: Package generated outputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sxp04-gate3-write
+          retention-days: 1
+          include-hidden-files: true
+          path: sxp04-gate3-write/
+
+      - name: Keep Gate 3 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sxp04-gate3-evidence
+          retention-days: 14
+          path: |
+            sxp04-gate3-quick-entry.txt
+            sxp04-gate2-nonblocking.txt
+            sxp04-gate1-latency.txt
+            sxp04-gate3-smoke.txt
+            sxp04-gate3-visual-fit.txt
+            sc031-vite-build-evidence.json
+
+  commit-generated:
+    needs: verify
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Confirm branch has not advanced
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin sxp-04-gate3-quick-entry-prototype
+          test "$(git rev-parse origin/sxp-04-gate3-quick-entry-prototype)" = "${GITHUB_SHA}"
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: sxp04-gate3-write
+          path: sxp04-gate3-write
+
+      - name: Apply generated runtime + preview only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp sxp04-gate3-write/runtime/index.html index.html
+          cp sxp04-gate3-write/runtime/src/legacy/styles/inline-002.css src/legacy/styles/inline-002.css
+          cp sxp04-gate3-write/runtime/src/legacy/scripts/inline-005.js src/legacy/scripts/inline-005.js
+          rm -rf preview/sxp04-gate3
+          mkdir -p preview
+          cp -a sxp04-gate3-write/preview/sxp04-gate3 preview/sxp04-gate3
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //' | grep -v '^sxp04-gate3-write/' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index.html|src/legacy/styles/inline-002.css|src/legacy/scripts/inline-005.js|preview/sxp04-gate3/)' || true)"
+          if [ -n "$bad" ]; then
+            echo 'Refusing generated write: unexpected changed paths:'
+            echo "$bad"
+            exit 1
+          fi
+          test -n "$changed"
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html src/legacy/styles/inline-002.css src/legacy/scripts/inline-005.js preview/sxp04-gate3
+          git commit -m 'SXP-04 Gate 3: materialize quick-entry prototype [skip ci]'
+          git push origin HEAD:sxp-04-gate3-quick-entry-prototype
