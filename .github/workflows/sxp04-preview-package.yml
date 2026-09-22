@@ -1,0 +1,176 @@
+name: SXP-04 preview package
+
+on:
+  push:
+    branches: [sxp-04-live-game-feel-throwpad-v2]
+    paths:
+      - package.json
+      - package-lock.json
+      - vite.config.mjs
+      - scripts/**
+      - src/**
+      - assets/**
+      - tools/ui-smoke/sxp04-perf-preview.js
+      - tools/ui-smoke/verify-sxp04-live-feel.mjs
+      - .github/workflows/sxp04-preview-package.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sxp04-preview-package
+  cancel-in-progress: false
+
+jobs:
+  verify-preview:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm production ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+
+      - name: Install architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Materialize source-authority runtime
+        run: node scripts/materialize-runtime.mjs
+
+      - name: Install deterministic build dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Run SXP-04 live-feel regression guard
+        run: node tools/ui-smoke/verify-sxp04-live-feel.mjs
+
+      - name: Build Vite preview candidate
+        run: npm run build
+
+      - name: Verify Vite dist contract
+        run: npm run verify:dist
+
+      - name: Install deterministic UI test dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Run scoring smoke offline
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8123/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 --directory dist >/tmp/sxp04-preview-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/smoke.js | tee sxp04-preview-smoke-results.txt
+
+      - name: Stage isolated offline preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf sxp04-preview-write
+          mkdir -p sxp04-preview-write/preview/sxp04
+          cp -a dist/. sxp04-preview-write/preview/sxp04/
+          cp tools/ui-smoke/sxp04-perf-preview.js sxp04-preview-write/preview/sxp04/sxp04-perf-preview.js
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('sxp04-preview-write/preview/sxp04/index.html')
+          s=p.read_text()
+          guard='''<script id="sxp04-offline-guard">(function(){var f=window.fetch;window.fetch=function(i,o){var u=String((i&&i.url)||i||"");if(/supabase\\.co/i.test(u))return Promise.reject(new TypeError("SXP-04 preview blocks Supabase"));return f.apply(this,arguments)};try{var W=window.WebSocket;window.WebSocket=function(u,p){if(/supabase\\.co/i.test(String(u||"")))throw new Error("SXP-04 preview blocks Supabase WebSocket");return new W(u,p)}}catch(_){}})();</script>'''
+          s=s.replace('<head>','<head>\n'+guard,1)
+          s=s.replace('</body>','<script src="./sxp04-perf-preview.js"></script>\n</body>',1)
+          p.write_text(s)
+          PY
+          cat > sxp04-preview-write/preview/sxp04/SXP04_PREVIEW_BUILD.txt <<EOF
+          SXP-04 OFFLINE TEST PREVIEW
+          Source commit: ${GITHUB_SHA}
+          Supabase requests are blocked before app boot.
+          Production main remains unchanged.
+          EOF
+          test -f sxp04-preview-write/preview/sxp04/index.html
+          test -f sxp04-preview-write/preview/sxp04/sxp04-perf-preview.js
+          grep -q 'sxp04-offline-guard' sxp04-preview-write/preview/sxp04/index.html
+          grep -q 'sxp04-perf-preview.js' sxp04-preview-write/preview/sxp04/index.html
+
+      - name: Package verified preview
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sxp04-preview-write
+          retention-days: 1
+          include-hidden-files: true
+          path: sxp04-preview-write/
+
+      - name: Keep preview QA evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sxp04-preview-evidence
+          retention-days: 14
+          path: |
+            sxp04-preview-smoke-results.txt
+            sc031-vite-build-evidence.json
+
+  commit-preview:
+    needs: verify-preview
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Confirm branch has not advanced
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin sxp-04-live-game-feel-throwpad-v2
+          test "$(git rev-parse origin/sxp-04-live-game-feel-throwpad-v2)" = "${GITHUB_SHA}"
+
+      - name: Download verified preview
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sxp04-preview-write
+          path: sxp04-preview-write
+
+      - name: Apply preview output only
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf preview/sxp04
+          mkdir -p preview
+          cp -a sxp04-preview-write/preview/sxp04 preview/sxp04
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //' | grep -v '^sxp04-preview-write/' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^preview/sxp04/' || true)"
+          if [ -n "$bad" ]; then
+            echo 'Refusing preview write: unexpected changed paths:'
+            echo "$bad"
+            exit 1
+          fi
+          test -n "$changed"
+          git diff --check -- preview/sxp04
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A preview/sxp04
+          git commit -m 'SXP-04: publish verified offline test preview [skip ci]'
+          git push origin HEAD:sxp-04-live-game-feel-throwpad-v2
