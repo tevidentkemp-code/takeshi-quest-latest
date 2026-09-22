@@ -1119,6 +1119,233 @@ const out2 = [];
 /*****************
  * UI UPDATE
  *****************/
+// >>> SXP-04 GATE 3 / SC-049 QUICK ENTRY PROTOTYPE START
+// Touch-first speed-entry layer only. Canonical scoring remains recordThrow()
+// once per dart; no batch history/state format is introduced.
+const __SQ_QUICK_ENTRY_HOLD_MS = 360;
+
+function __sqQuickEntrySpecFromDart(dart, roundDef){
+  try{
+    if (!dart) return null;
+    const kind = String(dart.kind || dart.type || '').trim();
+    const points = Number(dart.points ?? dart.pts ?? dart.score ?? 0);
+    if (/^Miss$/i.test(kind) || points === 0) return { kind:'Miss' };
+
+    if (roundDef?.type === 'number'){
+      if (/^(S|Single)$/i.test(kind)) return { kind:'S' };
+      if (/^(D|Double)$/i.test(kind)) return { kind:'D' };
+      if (/^(T|Triple)$/i.test(kind)) return { kind:'T' };
+      const n = Number(roundDef.target || 0);
+      if (n > 0){
+        if (points === n) return { kind:'S' };
+        if (points === n * 2) return { kind:'D' };
+        if (points === n * 3) return { kind:'T' };
+      }
+      return null;
+    }
+
+    if (roundDef?.type === 'doubles' || roundDef?.type === 'triples'){
+      const sector = Number(dart.sector || 0);
+      return sector > 0 ? { sector } : null;
+    }
+
+    if (roundDef?.type === 'bull'){
+      return { bull: dart.bull === 'Inner' ? 'Inner' : 'Outer' };
+    }
+    return null;
+  }catch(_){ return null; }
+}
+
+function __sqQuickEntryOptions(baseSpec){
+  try{
+    if (!state || state.finished || state.suddenDeath?.active) return [];
+    const dart = Math.max(0, Math.min(2, Number(state.currentDart || 0)));
+    const remaining = 3 - dart;
+    const opts = [];
+
+    if (remaining >= 2) opts.push({ id:'x2', label:'×2', count:2, spec:Object.assign({}, baseSpec) });
+    if (remaining >= 3) opts.push({ id:'x3', label:'×3', count:3, spec:Object.assign({}, baseSpec) });
+
+    if (dart >= 1){
+      const round = Number(state.currentRound || 0);
+      const player = Number(state.currentPlayer || 0);
+      const prior = state.score?.[player]?.[round]?.darts?.[dart - 1] || null;
+      const rhSpec = __sqQuickEntrySpecFromDart(prior, ROUNDS?.[round]);
+      if (rhSpec) opts.push({ id:'rh', label:'RH', count:1, spec:rhSpec });
+    }
+    return opts;
+  }catch(_){ return []; }
+}
+
+function __sqQuickEntryCommit(spec, count){
+  const result = { requested:0, committed:0, startPlayer:null, startRound:null, startDart:null };
+  try{
+    const requested = Math.max(1, Math.min(3, Number(count || 1)));
+    const startPlayer = Number(state.currentPlayer || 0);
+    const startRound = Number(state.currentRound || 0);
+    const startDart = Number(state.currentDart || 0);
+    const maxFits = Math.max(0, 3 - startDart);
+    result.requested = Math.min(requested, maxFits);
+    result.startPlayer = startPlayer;
+    result.startRound = startRound;
+    result.startDart = startDart;
+
+    for (let i=0; i<result.requested; i++){
+      if (state.finished || state.suddenDeath?.active) break;
+      if (Number(state.currentPlayer) !== startPlayer || Number(state.currentRound) !== startRound) break;
+      const before = Array.isArray(state.history) ? state.history.length : 0;
+      try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
+      recordThrow(Object.assign({}, spec || {}));
+      const after = Array.isArray(state.history) ? state.history.length : before;
+      if (after <= before) break;
+      result.committed += 1;
+    }
+  }catch(_){ }
+  return result;
+}
+
+function __sqQuickEntryClose(){
+  try{ document.querySelectorAll('.sqQuickEntryPopover').forEach(el=>el.remove()); }catch(_){ }
+  try{ document.querySelectorAll('#pad .sq-quick-holding').forEach(el=>el.classList.remove('sq-quick-holding')); }catch(_){ }
+}
+
+function __sqQuickEntryRender(btn, options){
+  try{
+    __sqQuickEntryClose();
+    if (!btn || !Array.isArray(options) || !options.length) return null;
+    const pop = document.createElement('div');
+    pop.className = 'sqQuickEntryPopover';
+    pop.setAttribute('role','menu');
+    pop.setAttribute('aria-label','Quick entry');
+    options.forEach(opt=>{
+      const b=document.createElement('button');
+      b.type='button';
+      b.className='sqQuickEntryOption';
+      b.dataset.qe=opt.id;
+      b.setAttribute('role','menuitem');
+      b.setAttribute('aria-label', opt.id === 'rh' ? 'Robin Hood repeat previous dart' : ('Repeat ' + opt.count + ' darts'));
+      b.textContent=opt.label;
+      pop.appendChild(b);
+    });
+    document.body.appendChild(pop);
+    btn.classList.add('sq-quick-holding');
+
+    const r=btn.getBoundingClientRect();
+    const pr=pop.getBoundingClientRect();
+    const left=Math.max(8, Math.min(window.innerWidth - pr.width - 8, r.left + (r.width/2) - (pr.width/2)));
+    let top=r.top - pr.height - 10;
+    if (top < 8) top=Math.min(window.innerHeight - pr.height - 8, r.bottom + 10);
+    pop.style.left=Math.round(left)+'px';
+    pop.style.top=Math.round(top)+'px';
+    return pop;
+  }catch(_){ return null; }
+}
+
+function __sqQuickEntryOptionAt(x,y){
+  try{
+    const el=document.elementFromPoint(Number(x||0), Number(y||0));
+    return el?.closest?.('.sqQuickEntryOption') || null;
+  }catch(_){ return null; }
+}
+
+function __sqBindQuickEntryHold(btn, specFactory){
+  if (!btn || btn.__sqQuickEntryBound) return;
+  btn.__sqQuickEntryBound = true;
+  btn.style.touchAction = 'none';
+  btn.style.webkitTouchCallout = 'none';
+
+  let gesture=null;
+  const cancelTimer=()=>{ try{ if (gesture?.timer) clearTimeout(gesture.timer); }catch(_){ } };
+
+  const finish=(e, commit)=>{
+    if (!gesture) return;
+    cancelTimer();
+    const active=!!gesture.active;
+    const options=gesture.options || [];
+    if (active){
+      try{ e?.preventDefault?.(); e?.stopPropagation?.(); }catch(_){ }
+      window.__sqQuickSuppressClickUntil = performance.now() + 550;
+      if (commit){
+        const hit=__sqQuickEntryOptionAt(e?.clientX, e?.clientY);
+        const opt=hit ? options.find(o=>o.id===hit.dataset.qe) : null;
+        if (opt) __sqQuickEntryCommit(opt.spec, opt.count);
+      }
+    }
+    __sqQuickEntryClose();
+    gesture=null;
+  };
+
+  btn.addEventListener('pointerdown',(e)=>{
+    try{
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      const baseSpec=typeof specFactory === 'function' ? specFactory() : null;
+      const options=__sqQuickEntryOptions(baseSpec);
+      if (!baseSpec || !options.length) return;
+      gesture={
+        pointerId:e.pointerId,
+        startX:e.clientX,
+        startY:e.clientY,
+        baseSpec,
+        options,
+        active:false,
+        timer:null
+      };
+      try{ btn.setPointerCapture?.(e.pointerId); }catch(_){ }
+      gesture.timer=setTimeout(()=>{
+        if (!gesture) return;
+        const latest=__sqQuickEntryOptions(gesture.baseSpec);
+        if (!latest.length){ gesture=null; return; }
+        gesture.options=latest;
+        gesture.active=true;
+        __sqQuickEntryRender(btn, latest);
+      }, __SQ_QUICK_ENTRY_HOLD_MS);
+    }catch(_){ }
+  });
+
+  btn.addEventListener('pointermove',(e)=>{
+    if (!gesture) return;
+    if (!gesture.active){
+      const dx=Number(e.clientX||0)-Number(gesture.startX||0);
+      const dy=Number(e.clientY||0)-Number(gesture.startY||0);
+      if (Math.hypot(dx,dy) > 18){ cancelTimer(); gesture=null; }
+      return;
+    }
+    try{
+      const hit=__sqQuickEntryOptionAt(e.clientX,e.clientY);
+      document.querySelectorAll('.sqQuickEntryOption.is-target').forEach(el=>el.classList.remove('is-target'));
+      if (hit) hit.classList.add('is-target');
+      e.preventDefault();
+    }catch(_){ }
+  });
+
+  btn.addEventListener('pointerup',(e)=>finish(e,true));
+  btn.addEventListener('pointercancel',(e)=>finish(e,false));
+  btn.addEventListener('contextmenu',(e)=>{ try{ e.preventDefault(); }catch(_){ } });
+}
+
+if (!window.__sqQuickEntryClickGuardBound){
+  window.__sqQuickEntryClickGuardBound=true;
+  document.addEventListener('click',(e)=>{
+    try{
+      if (performance.now() >= Number(window.__sqQuickSuppressClickUntil || 0)) return;
+      const t=e.target?.closest?.('#pad button, .sqQuickEntryPopover button');
+      if (!t) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }catch(_){ }
+  }, true);
+}
+
+window.__sqQuickEntry = {
+  holdMs:__SQ_QUICK_ENTRY_HOLD_MS,
+  specFromDart:__sqQuickEntrySpecFromDart,
+  options:__sqQuickEntryOptions,
+  commit:__sqQuickEntryCommit,
+  close:__sqQuickEntryClose
+};
+// <<< SXP-04 GATE 3 / SC-049 QUICK ENTRY PROTOTYPE END
+
 // @CANONICAL:THROWPAD_BASE_RENDER
 function buildPad(){ 
   if (!pad) return; 
@@ -1517,6 +1744,7 @@ function buildPad(){
         b.dataset.scoreLabel = { S:'Single', D:'Double', T:'Treble' }[k];
         b.setAttribute('aria-label', b.dataset.scoreLabel);
         b.onclick = ()=>{ try{ window.__sqDmdHardClearQueue?.(); }catch(_){ } recordThrow({ kind: k }); };
+        __sqBindQuickEntryHold(b, ()=>({ kind:k }));
         sdtRow.appendChild(b);
       });
 
