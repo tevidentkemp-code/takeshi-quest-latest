@@ -150,7 +150,6 @@ async function undoSnapshot(page){
     await H.addGuests(page,['EQUIV ALPHA','EQUIV BETA']);
     await H.startMatch(page);
 
-    assert(window !== undefined);
     assert.equal(await page.evaluate(() => typeof window.__sqQuickEntry?.commit), 'function', 'Gate 3 quick-entry API must be present');
 
     // x3: identical number-round scoring must be canonical in every state surface.
