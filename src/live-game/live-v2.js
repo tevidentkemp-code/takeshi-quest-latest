@@ -1264,7 +1264,14 @@ function __sqBindQuickEntryHold(btn, specFactory){
     const options=gesture.options || [];
     if (active){
       try{ e?.preventDefault?.(); e?.stopPropagation?.(); }catch(_){ }
-      window.__sqQuickSuppressClickUntil = performance.now() + 550;
+      // Suppress only the immediate compatibility click generated at this
+      // release point. A broad time-only guard created a dead zone where a
+      // legitimate rapid next-player tap could be swallowed.
+      window.__sqQuickSuppressClick = {
+        until: performance.now() + 180,
+        x: Number(e?.clientX || 0),
+        y: Number(e?.clientY || 0)
+      };
       if (commit){
         const hit=__sqQuickEntryOptionAt(e?.clientX, e?.clientY);
         const opt=hit ? options.find(o=>o.id===hit.dataset.qe) : null;
@@ -1327,9 +1334,17 @@ if (!window.__sqQuickEntryClickGuardBound){
   window.__sqQuickEntryClickGuardBound=true;
   document.addEventListener('click',(e)=>{
     try{
-      if (performance.now() >= Number(window.__sqQuickSuppressClickUntil || 0)) return;
+      const guard=window.__sqQuickSuppressClick || null;
+      if (!guard || performance.now() >= Number(guard.until || 0)){
+        window.__sqQuickSuppressClick = null;
+        return;
+      }
+      const dx=Number(e.clientX || 0)-Number(guard.x || 0);
+      const dy=Number(e.clientY || 0)-Number(guard.y || 0);
+      if (Math.hypot(dx,dy) > 18) return;
       const t=e.target?.closest?.('#pad button, .sqQuickEntryPopover button');
       if (!t) return;
+      window.__sqQuickSuppressClick = null;
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
