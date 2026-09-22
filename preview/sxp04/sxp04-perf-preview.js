@@ -19,6 +19,13 @@
   function vals(kind){
     return samples.filter(function(s){ return !kind || s.kind===kind; }).map(function(s){ return s.ms; });
   }
+  function perfVals(name){
+    try{
+      var report = window.sqPerfReport ? window.sqPerfReport() : null;
+      var rows = report && Array.isArray(report.samples) ? report.samples : [];
+      return rows.filter(function(s){ return s && s.name === name; }).map(function(s){ return Number(s.ms || 0); });
+    }catch(_){ return []; }
+  }
   function ensureHud(){
     if (hud && document.body && document.body.contains(hud)) return hud;
     if (!document.body) return null;
@@ -38,11 +45,15 @@
   function render(){
     var el = ensureHud(); if (!el) return;
     var all=vals(), normal=vals('normal'), bulk=vals('bulk-miss');
+    var record=perfVals('recordThrow.total'), live=perfVals('liveV2Render'), pad=perfVals('buildPad');
     el.textContent =
       'SXP-04 BASELINE • OFFLINE PREVIEW' +
       '\nALL  n='+all.length+'  p95 '+pct(all,95)+'ms  max '+pct(all,100)+'ms' +
       '\nNORMAL  n='+normal.length+'  p95 '+pct(normal,95)+'ms' +
       '\nMISS×N  n='+bulk.length+'  p95 '+pct(bulk,95)+'ms' +
+      '\nRECORD THROW  n='+record.length+'  p95 '+pct(record,95)+'ms' +
+      '\nLIVE RENDER  n='+live.length+'  p95 '+pct(live,95)+'ms' +
+      '\nBUILD PAD  n='+pad.length+'  p95 '+pct(pad,95)+'ms' +
       '\nLONG TASKS  '+longTasks.length +
       '\nAfter 2–3 rounds: screenshot this panel.';
   }
@@ -114,6 +125,7 @@
   };
 
   function boot(){
+    try{ window.SQ_PERF_DEBUG = true; }catch(_){}
     try{
       var prior=JSON.parse(localStorage.getItem('sxp04_perf_samples')||'[]');
       if(Array.isArray(prior)) samples=prior.slice(-200);
