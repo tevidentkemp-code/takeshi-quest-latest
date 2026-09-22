@@ -26,7 +26,7 @@ assert(live.includes("window.__sqTvModeToggle"), 'TV quick control must reuse ca
 assert(live.includes("__sqV3SetSound"), 'Sound quick control must reuse canonical sound preference');
 assert(padCompat.includes("if (settings) settings.remove();"), 'legacy helper must remove bottom Settings control');
 assert(padCompat.includes("repeat(3,minmax(0,1fr))"), 'legacy helper must keep three equal action columns');
-assert(stage.includes('#settingsBtnGamePad') && stage.includes('display:none !important'), 'pad Settings must remain hidden');
+assert(padCompat.includes("if (settings) settings.remove();"), 'pad Settings must be removed from the Throwpad DOM');
 assert(css.includes('.livev2panel .v2QuickRail'), 'quick rail styling must exist');
 assert(css.includes('min-width:44px') && css.includes('min-height:44px'), 'quick rail must preserve >=44px touch targets');
 
