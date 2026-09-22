@@ -1458,7 +1458,16 @@ setTimeout(() => {
   }
 
   try{__sqEnsureFinalBullReturnTimer();}catch(_){}
-  updateUI();
+  // SXP-04 Gate 1: scoring-triggered Live V2 paint uses the existing bounded
+  // immediate-render escape hatch. Background/non-scoring renders remain
+  // coalesced and the prior flag is restored before recordThrow returns.
+  const __sqPrevLiveV2Immediate = window.__sqLiveV2Immediate === true;
+  try{
+    window.__sqLiveV2Immediate = true;
+    updateUI();
+  } finally {
+    window.__sqLiveV2Immediate = __sqPrevLiveV2Immediate;
+  }
 
   if (dartIndex === 2 &&
       typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime() &&
