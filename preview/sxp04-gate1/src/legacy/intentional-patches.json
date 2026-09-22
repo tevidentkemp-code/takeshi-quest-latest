@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "stage": "intentional-legacy-patch-evidence",
+  "originalExtractionManifest": "src/legacy/migration-manifest.json",
+  "patches": [
+    {
+      "file": "src/legacy/scripts/inline-003.js",
+      "originalSha256": "5f6be60f5dc76ba37abf8d410379c6bc0db0c5a425f069c4e5a55a5284b28c0c",
+      "sha256": "4c69a6ead31dbdddf02e6c5dd4f17a650703e8059e3ff959d61450253e3a79ed",
+      "bytes": 1090,
+      "task": "SC-032 DMD ownership cleanup",
+      "reason": "Keep the historical pad click layer responsible for button pulse feedback only and remove its duplicate MISS/UNDO DMD scene writes and delayed MISS timers.",
+      "protectedBehaviour": "Button feedback classes remain unchanged. Scoring, game state, mode routing, renderer fallback, Supabase, ranking and persistence semantics are untouched."
+    },
+    {
+      "file": "src/legacy/scripts/inline-004.js",
+      "originalSha256": "8d5ec754185beaef0b2b871302d40153a596fc2936f9020d68cd639d79cbba6d",
+      "sha256": "711048c3cb37c80a87c361464540a1855255ec7d47d18cce7061ef60168de8b1",
+      "bytes": 1247,
+      "task": "SC-032 DMD ownership cleanup",
+      "reason": "Keep the stronger pointer feedback layer visual-only and remove its duplicate MISS DMD hard-clear/write/timer sequence so gameplay presentation is not raced by an older compatibility hook.",
+      "protectedBehaviour": "MISS/UNDO button feedback remains. Renderer fallback and Turbo bulk-miss behaviour remain available elsewhere; scoring, game state, modes, Supabase, ranking and persistence are untouched."
+    },
+    {
+      "file": "src/legacy/scripts/inline-007.js",
+      "originalSha256": "9c85e5c51c0b0ddf04022a94f15626974925789d83a39496e5b85e6079024f2c",
+      "sha256": "e81323a11a7052a00d8be40b097df3b439cbe74be822743b747e8a74a1fe5e83",
+      "bytes": 137844,
+      "task": "SC-053 DMD pacing + motion polish",
+      "reason": "Add reduced-motion-safe SNAP impact and split-SHUTTER transition primitives to the established DMD renderer so rapid MISS x2/x3 feedback is punchier and completed-round handoffs can transition cleanly without long strobing.",
+      "protectedBehaviour": "Presentation only: scoring, XP, game history, match wins, mode isolation, Supabase schema/data/RLS and DMD input ownership remain unchanged. Existing renderer API, special artwork scenes and GAME OVER pulse remain available."
+    },
+    {
+      "file": "src/legacy/scripts/inline-025.js",
+      "originalSha256": "166a8d7964cc9e710e588d4e45269691cf37df0827d3a9e1fd81af30f70186ca",
+      "sha256": "615d530e9c57553a088a8dbdcc0feb679037f49d5fa2c4b59b2f9ff583a3a7ce",
+      "bytes": 6324,
+      "task": "SC-053 DMD pacing + motion polish",
+      "reason": "Tighten the live Fix95 MISS xN capture-owned visual sequence and preserve the actual current visit when filling remaining miss slots. Existing scored darts remain visible (for example T / X / X or S / D / X) while the new misses use the 75ms/125ms SNAP cadence.",
+      "protectedBehaviour": "Presentation/timing only: the existing capture ownership, number of canonical Miss recordThrow calls, Undo/history, scoring totals, match state, Supabase, ranking, XP and game rules remain unchanged."
+    },
+    {
+      "file": "src/legacy/scripts/inline-045.js",
+      "originalSha256": "711e52549d16bd255bf90c5e3e17c652b7cd39b5dd454456393c5a6564331c5b",
+      "sha256": "9a4c2862241c7a30b209a6cd8b619fff7db2ec03b7d0b4372152ae0a28891743",
+      "bytes": 6039,
+      "task": "SC-042 post-release Match Leaderboard acceptance hotfix",
+      "reason": "Remove STATS from Match Leaderboard and route GAME SCORES to the established post-game scorecard component without altering match data or navigation semantics.",
+      "protectedBehaviour": "Presentation only: scoring, XP, game history, match wins, mode isolation, Supabase schema/data/RLS and DMD input ownership remain unchanged."
+    },
+    {
+      "file": "src/legacy/scripts/inline-026.js",
+      "originalSha256": "4f3823a1ec7a8e48af59ec404688c9b0d1b2ab2f47c3c5e34fd116cf058f18fb",
+      "sha256": "2623629780f6fdbd427c7a2a459f5cb8821bc924880d7f9ac696192e53b5ccb1",
+      "bytes": 40757,
+      "task": "SC-042 record and milestone integrity",
+      "reason": "Remove repeat-hit xN suffixes from Official Round Record holder presentation while preserving distinct holder/tie truth and all stored score history.",
+      "protectedBehaviour": "Round scores, darts, tie_count, Turbo records, scoring, modes, Supabase data/schema/RLS, ranking and persistence semantics are unchanged."
+    },
+    {
+      "file": "src/legacy/scripts/inline-047.js",
+      "originalSha256": "0dd96d875c46ac2fdda51d616d07c7ac329fe06c3851623bcc4c3d46e85bfa20",
+      "sha256": "3810f0e4330a6ab46e087ade0845fde6e37d3060e3e1934d5abc477a41235717",
+      "bytes": 7389,
+      "task": "SC-042 milestone-family failed-acceptance hotfix",
+      "reason": "Redirect non-score Milestone detail leaderboards from the generic count-of-milestones aggregate to the selected milestone's authoritative progress measure: career bulls, distinct 10-20 double/treble targets, Official games played, or distinct unlocked trophy codes.",
+      "protectedBehaviour": "Compatibility read/presentation patch only. Achievement unlock state, XP, scoring, game history, modes, Supabase schema/data/RLS, rankings and persistence writes are untouched; zero-game and zero-progress identities remain excluded."
+    },
+    {
+      "file": "src/legacy/scripts/inline-008.js",
+      "originalSha256": "9eb80a111ced884704dc0a76d60f080459ce37c1a4b2b807274ffe7624740f3b",
+      "sha256": "c8bc8d89db83d07313cfee78829d41bb36ce200bdb0c948edc8fab4cc97eee35",
+      "bytes": 52667,
+      "task": "SC-040 persistent player avatars + SXP-04 live utility rail",
+      "reason": "Preserve the established Player Hub avatar patch and retire the compatibility helper that injected a bottom Throwpad Settings button; MISS / UNDO / SKIP now remain three equal normal-width actions because Settings moved to the Live V2 utility rail.",
+      "protectedBehaviour": "Scoring, Skip mechanics, Undo, ranks, XP rules, mode eligibility, existing auth, RLS and Supabase writes remain unchanged."
+    },
+    {
+      "file": "src/legacy/scripts/inline-030.js",
+      "originalSha256": "61b73c53decc19c753e284ff1212c031af3017eaf079a2583b2131dafa1d86cf",
+      "sha256": "ca1cb97c6d93d139b285a2549faefe4d7cddacf8b5e8013f403bdee17b6d3a78",
+      "bytes": 20781,
+      "task": "SC-040 persistent player avatars + SC-037 TV Mode beta",
+      "reason": "Preserve SC-040 late-join avatar identity and add the bounded Game Menu entry for the SC-037 presentation-only TV overlay.",
+      "protectedBehaviour": "Scoring, late-join eligibility, ranks, XP, mode eligibility, existing auth, RLS and Supabase writes remain unchanged."
+    },
+    {
+      "file": "src/legacy/scripts/inline-011.js",
+      "originalSha256": "42e9643e96c7e4cdea0c68de8aabbf029696600f40f4c07e8b4affdb84077eac",
+      "task": "SC-040 persistent player avatars",
+      "reason": "Preserve nullable canonical avatar_id through the existing cloud-synced cache normalizer.",
+      "protectedBehaviour": "Cache stays non-authoritative; no scoring, rank, XP or backend security changes.",
+      "sha256": "f4a5639adc1f6e11b390d2de1b665ab967fe72fa6f2ebabecaeb9bb5e96c7cee",
+      "bytes": 3842
+    }
+  ]
+}
