@@ -53,7 +53,11 @@ async function layout(page, width, height){
         const r = button.getBoundingClientRect();
         return r.width > 0 && r.left >= -1 && r.right <= innerWidth + 1;
       }),
-      oldDotsDisplay: panel ? getComputedStyle(panel.querySelector('.v2DotsCol')).display : 'none',
+      oldDotsAbsent: !panel?.querySelector('.v2DotsCol'),
+      quickRail: panel ? [...panel.querySelectorAll('.v2QuickRail .v2QuickBtn')].map(button => {
+        const r = button.getBoundingClientRect();
+        return { id:button.id, width:r.width, height:r.height, left:r.left, right:r.right, handler:typeof button.onclick === 'function' };
+      }) : [],
       progressPresent: !!panel?.querySelector('.v2VisitProgress'),
       historicTargetCells: panel?.querySelectorAll('.v2Cell:not(.liveRow) .v2CellShots').length || 0,
       liveTargets: liveCells.map(cell => ({
@@ -139,7 +143,9 @@ function assertStateParity(snapshot, label){
     await capture(page, 'responsive-390');
     assert.equal(standard.historicRows, 3, '390px shows three historic rows');
     assert(standard.currentVisible && standard.currentAboveGraph, '390px current score remains visible');
-    assert.equal(standard.oldDotsDisplay, 'none', '390px removes the duplicate left-hand indicators');
+    assert(standard.oldDotsAbsent, '390px removes the duplicate left-hand indicator stack');
+    assert.deepEqual(standard.quickRail.map(button => button.id), ['v2QuickMenu','v2QuickTv','v2QuickSound'], '390px uses the reclaimed left rail for Menu / TV / Sound');
+    assert(standard.quickRail.every(button => button.width >= 43.9 && button.height >= 43.9 && button.left >= -1 && button.right <= 391 && button.handler), '390px quick rail controls are wired 44px targets');
     assert.equal(standard.progressPresent, false, '390px has no standalone target strip');
     assert.equal(standard.liveTargets.length, 2, '390px renders one current-round target group per player');
     assert(standard.liveTargets.every(player => player.count === 3), '390px renders three square targets per player');
@@ -154,7 +160,8 @@ function assertStateParity(snapshot, label){
     assert.equal(large.liveTargets.length, 2, '430px renders one current-round target group per player');
     assert(large.liveTargets.every(player => player.count === 3), '430px renders three square targets per player');
     assert.equal(large.historicTargetCells, 0, '430px keeps targets out of historic round cells');
-    assert.equal(large.oldDotsDisplay, 'none', '430px removes the duplicate left-hand indicators');
+    assert(large.oldDotsAbsent, '430px removes the duplicate left-hand indicator stack');
+    assert(large.quickRail.every(button => button.width >= 43.9 && button.height >= 43.9 && button.handler), '430px quick rail controls remain wired 44px targets');
     assert(!large.overflow && large.padButtonsFit, '430px has no layout regression');
     for (const [player, geometry] of large.liveTargets.entries()) {
       assert(geometry.scoreRect.top < geometry.shotsRect.top, `player ${player} score sits above targets`);

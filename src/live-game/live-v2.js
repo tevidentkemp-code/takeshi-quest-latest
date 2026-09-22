@@ -1,5 +1,86 @@
 // ===== @SEC:JS:GAME:LIVEV2 =====
 // @CANONICAL:LIVE_V2_BASE_RENDER
+function __sqLiveV2PaintQuickSound(btn){
+  if (!btn) return;
+  let on = true;
+  try{ on = (typeof __sqV3SoundOn === 'function') ? __sqV3SoundOn() : localStorage.getItem('sq_livev3_sound') !== '0'; }catch(_){ on = true; }
+  btn.classList.toggle('muted', !on);
+  btn.style.color = on ? '#ffd37a' : 'rgba(219,229,248,.42)';
+  btn.style.opacity = on ? '1' : '.72';
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  btn.setAttribute('aria-label', on ? 'Turn sound effects off' : 'Turn sound effects on');
+  btn.title = on ? 'Sound effects on' : 'Sound effects off';
+}
+function __sqBindLiveV2QuickRail(panel){
+  try{
+    if (!panel) return;
+    const scores = panel.querySelector('.v2Scores');
+    const rail = panel.querySelector('.v2QuickRail');
+    const menu = panel.querySelector('#v2QuickMenu');
+    const tv = panel.querySelector('#v2QuickTv');
+    const sound = panel.querySelector('#v2QuickSound');
+
+    // SXP-04: reclaim only the obsolete left utility rail; protected promoted CSS stays untouched.
+    if (scores){
+      scores.style.setProperty('grid-template-columns', '44px minmax(0,1fr)', 'important');
+      scores.style.setProperty('gap', '8px', 'important');
+      scores.style.setProperty('align-items', 'stretch', 'important');
+    }
+    if (rail){
+      Object.assign(rail.style, {
+        display:'flex', flexDirection:'column', alignItems:'stretch',
+        justifyContent:'flex-start', gap:'6px', minWidth:'44px'
+      });
+      rail.style.gridColumn = '1 / 2';
+    }
+    [menu, tv, sound].filter(Boolean).forEach(btn => {
+      Object.assign(btn.style, {
+        width:'44px', minWidth:'44px', height:'44px', minHeight:'44px',
+        display:'grid', placeItems:'center', padding:'0', borderRadius:'12px',
+        border:'1px solid rgba(139,166,210,.30)',
+        background:'linear-gradient(180deg,rgba(25,37,57,.92),rgba(9,16,29,.98))',
+        color:'#dbe5f8', touchAction:'manipulation'
+      });
+      const svg = btn.querySelector('svg');
+      if (svg){
+        svg.style.width='22px'; svg.style.height='22px'; svg.style.fill='none';
+        svg.style.stroke='currentColor'; svg.style.strokeWidth='2';
+        svg.style.strokeLinecap='round'; svg.style.strokeLinejoin='round';
+        svg.style.pointerEvents='none';
+      }
+    });
+    if (tv) tv.style.color = '#9ccbff';
+    if (sound) sound.style.color = '#ffd37a';
+    if (menu){
+      menu.onclick = () => {
+        try{ if (typeof window.__sqOpenGameMenu106 === 'function') return window.__sqOpenGameMenu106(); }catch(_){}
+        try{ document.getElementById('settingsBtnGame')?.click(); }catch(_){}
+      };
+    }
+    if (tv){
+      tv.onclick = () => {
+        try{
+          if (typeof window.__sqTvModeToggle === 'function') return window.__sqTvModeToggle(true);
+          if (typeof toast === 'function') toast('TV Mode unavailable');
+        }catch(e){ try{ console.warn('[SQ] TV Mode toggle failed', e); }catch(_){} }
+      };
+    }
+    if (sound){
+      __sqLiveV2PaintQuickSound(sound);
+      sound.onclick = () => {
+        let next = true;
+        try{
+          const current = (typeof __sqV3SoundOn === 'function') ? __sqV3SoundOn() : localStorage.getItem('sq_livev3_sound') !== '0';
+          next = !current;
+          if (typeof __sqV3SetSound === 'function') __sqV3SetSound(next);
+          else localStorage.setItem('sq_livev3_sound', next ? '1' : '0');
+          if (next && typeof __sqV3Ac === 'function') __sqV3Ac();
+        }catch(_){}
+        __sqLiveV2PaintQuickSound(sound);
+      };
+    }
+  }catch(_){}
+}
 function liveV2Render(){
   // Only runs on gameplay screen; prevents start/menu JS from crashing
   const page = document.body && (document.body.getAttribute('data-page') || document.body.dataset && document.body.dataset.page);
@@ -56,6 +137,7 @@ function liveV2Render(){
   }
   panel.hidden = false;
 
+  try{ __sqBindLiveV2QuickRail(panel); }catch(_){ }
   try{ __sqSetupLiveV2Sizing(panel); }catch(_){ }
 
   const pCount = getLiveV2PlayerCount();

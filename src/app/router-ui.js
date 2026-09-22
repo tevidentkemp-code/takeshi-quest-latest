@@ -5841,10 +5841,16 @@ function ensureLiveV2Panel(){
   panel.innerHTML = `
     <div class="v2GameCell" aria-label="Gameplay">
       <div class="v2Scores">
-        <div class="v2DotsCol" aria-hidden="true">
-          <div class="v2Dot" data-dot="0"></div>
-          <div class="v2Dot" data-dot="1"></div>
-          <div class="v2Dot" data-dot="2"></div>
+        <div class="v2QuickRail" aria-label="Live game controls">
+          <button id="v2QuickMenu" class="v2QuickBtn" type="button" aria-label="Game menu" title="Game menu">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <button id="v2QuickTv" class="v2QuickBtn" type="button" aria-label="Open TV mode" title="TV mode">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="13" rx="2"/><path d="M8 21h8M12 18v3"/></svg>
+          </button>
+          <button id="v2QuickSound" class="v2QuickBtn" type="button" aria-label="Turn sound effects off" aria-pressed="true" title="Sound effects">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>
+          </button>
         </div>
         <div class="v2ScoreGrid">
           ${scoreBoxes}
