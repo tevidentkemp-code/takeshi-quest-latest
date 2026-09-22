@@ -194,6 +194,27 @@ body .modal-decider .dtBullRow .dtBullBtn.inner[data-bull="Inner"]{
   background-size:600% 500%;
   filter:saturate(1.04) contrast(1.04);
 }
+.sq-pg-guest-win-art{
+  position:absolute;
+  right:7%;
+  top:50%;
+  transform:translateY(-50%);
+  width:clamp(150px,32vw,240px);
+  aspect-ratio:1;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  border:2px solid rgba(255,122,0,.72);
+  background:
+    radial-gradient(circle at 50% 34%,rgba(255,156,62,.18),transparent 38%),
+    linear-gradient(180deg,rgba(28,35,52,.96),rgba(9,13,22,.98));
+  box-shadow:0 0 0 7px rgba(255,122,0,.07),0 0 46px rgba(255,122,0,.18),inset 0 1px 0 rgba(255,255,255,.08);
+  color:rgba(244,246,255,.95);
+  font-size:clamp(44px,11vw,74px);
+  line-height:1;
+  font-weight:950;
+  letter-spacing:.04em;
+}
 .modal-gamecomplete.sq-gc-arcade .gc-winnerName.sq-pg-winner-name{
   margin-bottom:18px;
   max-width:min(440px,92vw);
@@ -519,17 +540,25 @@ function updateHero(modal, st) {
   const player = st.players[winnerIndex] || {};
   const parts = playerDisplayParts(player, 'Player ' + (winnerIndex + 1));
   const visual = modal.querySelector('.gc-arcade-visual');
-  if (visual && player.type !== 'guest' && typeof window !== 'undefined' && typeof window.__sqAvatarSpritePosition === 'function') {
-    const id = (typeof window.__sqAvatarIdForPlayer === 'function') ? window.__sqAvatarIdForPlayer(player) : 1;
-    const pos = window.__sqAvatarSpritePosition(id);
+  if (visual) {
     visual.style.background = 'none';
     visual.innerHTML = '';
-    const art = document.createElement('div');
-    art.className = 'sq-gc-celebration-sprite sq-pg-game-win-art';
-    art.dataset.avatarId = String(pos.id);
-    art.style.backgroundImage = 'url("./assets/avatars/celebration-sprite.webp")';
-    art.style.backgroundPosition = pos.x.toFixed(4) + '% ' + pos.y.toFixed(4) + '%';
-    visual.appendChild(art);
+    if (player.type === 'guest') {
+      const guestArt = document.createElement('div');
+      guestArt.className = 'sq-pg-guest-win-art';
+      guestArt.dataset.guestAvatar = '1';
+      guestArt.textContent = String(player.initials || parts.main || '').trim().slice(0, 2).toUpperCase() || 'G';
+      visual.appendChild(guestArt);
+    } else if (typeof window !== 'undefined' && typeof window.__sqAvatarSpritePosition === 'function') {
+      const id = (typeof window.__sqAvatarIdForPlayer === 'function') ? window.__sqAvatarIdForPlayer(player) : 1;
+      const pos = window.__sqAvatarSpritePosition(id);
+      const art = document.createElement('div');
+      art.className = 'sq-gc-celebration-sprite sq-pg-game-win-art';
+      art.dataset.avatarId = String(pos.id);
+      art.style.backgroundImage = 'url("./assets/avatars/celebration-sprite.webp")';
+      art.style.backgroundPosition = pos.x.toFixed(4) + '% ' + pos.y.toFixed(4) + '%';
+      visual.appendChild(art);
+    }
   }
   const winnerEl = modal.querySelector('.gc-winnerName');
   if (winnerEl) {
@@ -666,7 +695,13 @@ function buildMatchWinScreen(st, matchState) {
 
   const stage = screen.querySelector('.sq-pg-match-stage');
   if (stage && typeof window !== 'undefined' && typeof window.__sqAvatarSpritePosition === 'function') {
-    if (player.type !== 'guest') {
+    if (player.type === 'guest') {
+      const guestArt = document.createElement('div');
+      guestArt.className = 'sq-pg-guest-win-art';
+      guestArt.dataset.guestAvatar = '1';
+      guestArt.textContent = String(player.initials || parts.main || '').trim().slice(0, 2).toUpperCase() || 'G';
+      stage.appendChild(guestArt);
+    } else {
       const winnerId = (typeof window.__sqAvatarIdForPlayer === 'function') ? window.__sqAvatarIdForPlayer(player) : 1;
       const winnerPos = window.__sqAvatarSpritePosition(winnerId);
       const art = document.createElement('div');
