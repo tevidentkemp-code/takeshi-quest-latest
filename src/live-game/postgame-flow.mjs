@@ -706,6 +706,10 @@ function upgradePostGameOverlay(overlay) {
   const st = getState();
   if (!st || !Array.isArray(st.players) || !st.players.length) return;
 
+  // SXP-04: start the detailed XP/history package while Game Winner is on screen.
+  // Rewards reveal reuses this promise; no XP formula or persistence rule changes.
+  try { window.__sqSc038StartXpPrefetch?.(st); } catch (_) {}
+
   overlay.dataset.sqSc038 = '1';
   const advanceBtn = modal.querySelector('[data-action="advanceMatch"]');
   if (!advanceBtn) return;
