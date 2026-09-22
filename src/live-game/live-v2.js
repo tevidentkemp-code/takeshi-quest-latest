@@ -1244,7 +1244,7 @@ function buildPad(){
       if (specialMissSeq){
         try{ window.__sqSuppressMissCallouts = true; }catch(_){}
         const base = seqSlots.slice();
-        const label = `MISS x${n}`;
+        const label = n > 1 ? `MISS x${n}` : 'MISS';
 
         for (let i=0; i<n; i++){
           if (Number(window.__sqDmdFlowToken || 0) !== myToken) return;
@@ -1365,7 +1365,7 @@ function buildPad(){
         if (specialMissSeq){
           try{ window.__sqSuppressMissCallouts = true; }catch(_){}
           const base = seqSlots.slice();
-          const label = `MISS x${n}`;
+          const label = n > 1 ? `MISS x${n}` : 'MISS';
 
           for (let i=0; i<n; i++){
             if (Number(window.__sqDmdFlowToken || 0) !== myToken) return;

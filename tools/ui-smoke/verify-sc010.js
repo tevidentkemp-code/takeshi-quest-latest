@@ -79,13 +79,13 @@ async function scenario(mode){
   check('success reads Misfires once by resolved player id', success.ui.calls.v_player_misfires === 1, JSON.stringify(success.ui.calls));
   check('successful history renders earned Trophy Vault count', success.ui.vaultCount === '2 / 58', success.ui.vaultCount);
   check('successful history preserves real section counts', /0 \/ 15 unlocked/.test(success.ui.milestones) && /2 \/ 43 unlocked/.test(success.ui.trophies), success.ui.milestones + ' | ' + success.ui.trophies);
-  check('Misfires remain available on success', /2 \/ 8 unlocked/.test(success.ui.misfires) && /4 historical occurrences/.test(success.ui.misfires), success.ui.misfires);
+  check('Misfires remain available on success', /2 \/ 10 unlocked/.test(success.ui.misfires) && /4 historical occurrences/.test(success.ui.misfires), success.ui.misfires);
 
   const failed = await scenario('error');
   check('split achievement fetch failure is not rendered as 0/58', failed.ui.vaultCount === '— / 58', failed.ui.vaultCount);
   check('split achievement fetch failure is explicitly labelled unavailable', /Achievement history unavailable/i.test(failed.ui.vaultSub) && /Achievement history is unavailable right now/i.test(failed.ui.vaultShelf), failed.ui.vaultSub + ' | ' + failed.ui.vaultShelf);
   check('failed history uses dash counts, not false zero section counts', /— \/ 15 unlocked/.test(failed.ui.milestones) && /— \/ 43 unlocked/.test(failed.ui.trophies), failed.ui.milestones + ' | ' + failed.ui.trophies);
-  check('Misfires still render when positive split reads fail', /2 \/ 8 unlocked/.test(failed.ui.misfires) && /4 historical occurrences/.test(failed.ui.misfires), failed.ui.misfires);
+  check('Misfires still render when positive split reads fail', /2 \/ 10 unlocked/.test(failed.ui.misfires) && /4 historical occurrences/.test(failed.ui.misfires), failed.ui.misfires);
   check('failure path still avoids combined v_player_achievements', !failed.ui.calls.v_player_achievements, JSON.stringify(failed.ui.calls));
 
   const empty = await scenario('empty');
