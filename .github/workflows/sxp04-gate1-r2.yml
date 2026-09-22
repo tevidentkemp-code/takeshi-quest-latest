@@ -1,0 +1,265 @@
+name: SXP-04 Gate 1 response R2
+
+on:
+  push:
+    branches: [sxp-04-gate1-response-r2]
+    paths:
+      - package.json
+      - package-lock.json
+      - vite.config.mjs
+      - scripts/**
+      - src/game/engine.js
+      - tools/ui-smoke/sxp04-gate1-r2.js
+      - tools/ui-smoke/measure-sxp04-gate1.js
+      - tools/ui-smoke/verify-sxp04-gate1-r2.mjs
+      - .github/workflows/sxp04-gate1-r2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sxp04-gate1-response-r2
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm exact production baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "8c3113446a38d8446cddcdd559d9cde7372aa255"
+          git merge-base --is-ancestor origin/main HEAD
+
+      - name: Install architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Materialize candidate runtime
+        run: node scripts/materialize-runtime.mjs
+
+      - name: Verify source authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build-core-js-from-source.mjs --verify-current
+          node scripts/build-core-styles-from-source.mjs --verify-current
+          node tools/ui-smoke/verify-sxp04-gate1-r2.mjs
+
+      - name: Install deterministic build dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Build candidate
+        run: npm run build
+
+      - name: Verify candidate dist
+        run: npm run verify:dist
+
+      - name: Stage candidate dist
+        shell: bash
+        run: |
+          rm -rf /tmp/sxp04-r2-candidate
+          mkdir -p /tmp/sxp04-r2-candidate
+          cp -a dist/. /tmp/sxp04-r2-candidate/
+
+      - name: Build exact production baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach ../sxp04-r2-baseline 8c3113446a38d8446cddcdd559d9cde7372aa255
+          ln -s "$GITHUB_WORKSPACE/node_modules" ../sxp04-r2-baseline/node_modules
+          (cd ../sxp04-r2-baseline && npm run build)
+          rm -rf /tmp/sxp04-r2-baseline
+          mkdir -p /tmp/sxp04-r2-baseline
+          cp -a ../sxp04-r2-baseline/dist/. /tmp/sxp04-r2-baseline/
+
+      - name: Package baseline and candidate previews
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf sxp04-gate1-write
+          mkdir -p sxp04-gate1-write/preview/sxp04-gate1-baseline
+          mkdir -p sxp04-gate1-write/preview/sxp04-gate1-r2
+          cp -a /tmp/sxp04-r2-baseline/. sxp04-gate1-write/preview/sxp04-gate1-baseline/
+          cp -a /tmp/sxp04-r2-candidate/. sxp04-gate1-write/preview/sxp04-gate1-r2/
+          cp tools/ui-smoke/sxp04-gate1-r2.js sxp04-gate1-write/preview/sxp04-gate1-baseline/
+          cp tools/ui-smoke/sxp04-gate1-r2.js sxp04-gate1-write/preview/sxp04-gate1-r2/
+          python3 - <<'PY'
+          from pathlib import Path
+          guard='''<script id="sxp04-gate1-offline-guard">(function(){var f=window.fetch;window.fetch=function(i,o){var u=String((i&&i.url)||i||"");if(/supabase\\.co/i.test(u))return Promise.reject(new TypeError("SXP-04 Gate 1 preview blocks Supabase"));return f.apply(this,arguments)};try{var W=window.WebSocket;window.WebSocket=function(u,p){if(/supabase\\.co/i.test(String(u||"")))throw new Error("SXP-04 Gate 1 preview blocks Supabase WebSocket");return new W(u,p)}}catch(_){}})();</script>'''
+          variants=[
+            ('sxp04-gate1-baseline','BASELINE','8c3113446a38d8446cddcdd559d9cde7372aa255'),
+            ('sxp04-gate1-r2','AFTER R2','${GITHUB_SHA}')
+          ]
+          for folder,label,sha in variants:
+            p=Path('sxp04-gate1-write/preview')/folder/'index.html'
+            s=p.read_text()
+            s=s.replace('<head>','<head>\n'+guard,1)
+            inject=f'''<script>window.__SXP04_GATE1_LABEL={label!r};window.__SXP04_GATE1_SHA={sha!r};</script><script src="./sxp04-gate1-r2.js"></script>'''
+            s=s.replace('</body>',inject+'\n</body>',1)
+            p.write_text(s)
+            (p.parent/'SXP04_GATE1_BUILD.txt').write_text(
+              f'SXP-04 GATE 1 {label}\nSource commit: {sha}\nMetric: accepted click -> first animation frame with changed visible Live V2 score/dart state.\nSupabase requests blocked.\n'
+            )
+          PY
+
+      - name: Install deterministic UI test dependencies
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Measure exact production baseline
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8131/index.html
+          SQ_GATE1_LABEL: BASELINE
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8131 --bind 127.0.0.1 --directory sxp04-gate1-write/preview/sxp04-gate1-baseline >/tmp/sxp04-r2-base-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/measure-sxp04-gate1.js | tee sxp04-gate1-baseline-report.json
+
+      - name: Measure Gate 1 R2 candidate
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8132/index.html
+          SQ_GATE1_LABEL: AFTER_R2
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8132 --bind 127.0.0.1 --directory sxp04-gate1-write/preview/sxp04-gate1-r2 >/tmp/sxp04-r2-cand-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/measure-sxp04-gate1.js | tee sxp04-gate1-r2-report.json
+
+      - name: Gate candidate threshold and print comparison
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const base=JSON.parse(fs.readFileSync('sxp04-gate1-baseline-report.json','utf8'));
+          const cand=JSON.parse(fs.readFileSync('sxp04-gate1-r2-report.json','utf8'));
+          const b=Number(base.report.summary.normal.p95);
+          const c=Number(cand.report.summary.normal.p95);
+          console.log('Gate 1 corrected baseline p95:',b,'ms');
+          console.log('Gate 1 R2 candidate p95:',c,'ms');
+          console.log('Delta:',Math.round((c-b)*10)/10,'ms');
+          if(!(c<=100)) throw new Error('Candidate exceeds 100ms Gate 1 threshold');
+          NODE
+
+      - name: Run candidate scoring smoke
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8133/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8133 --bind 127.0.0.1 --directory sxp04-gate1-write/preview/sxp04-gate1-r2 >/tmp/sxp04-r2-smoke-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/smoke.js | tee sxp04-gate1-r2-smoke.txt
+
+      - name: Run candidate classic mobile visual fit
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8134/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8134 --bind 127.0.0.1 --directory sxp04-gate1-write/preview/sxp04-gate1-r2 >/tmp/sxp04-r2-fit-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sxp04-gate1-r2-visual-fit.txt
+
+      - name: Stage generated candidate runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p sxp04-gate1-write/runtime/src/legacy/scripts
+          cp index.html sxp04-gate1-write/runtime/index.html
+          cp src/legacy/scripts/inline-005.js sxp04-gate1-write/runtime/src/legacy/scripts/inline-005.js
+
+      - name: Package generated outputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sxp04-gate1-r2-write
+          retention-days: 1
+          include-hidden-files: true
+          path: sxp04-gate1-write/
+
+      - name: Keep QA evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sxp04-gate1-r2-evidence
+          retention-days: 14
+          path: |
+            sxp04-gate1-baseline-report.json
+            sxp04-gate1-r2-report.json
+            sxp04-gate1-r2-smoke.txt
+            sxp04-gate1-r2-visual-fit.txt
+            sc031-vite-build-evidence.json
+
+  commit-generated:
+    needs: verify
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Confirm branch has not advanced
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin sxp-04-gate1-response-r2
+          test "$(git rev-parse origin/sxp-04-gate1-response-r2)" = "${GITHUB_SHA}"
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sxp04-gate1-r2-write
+          path: sxp04-gate1-write
+
+      - name: Apply only generated runtime and pinned previews
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp sxp04-gate1-write/runtime/index.html index.html
+          cp sxp04-gate1-write/runtime/src/legacy/scripts/inline-005.js src/legacy/scripts/inline-005.js
+          rm -rf preview/sxp04-gate1-baseline preview/sxp04-gate1-r2
+          mkdir -p preview
+          cp -a sxp04-gate1-write/preview/sxp04-gate1-baseline preview/
+          cp -a sxp04-gate1-write/preview/sxp04-gate1-r2 preview/
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //' | grep -v '^sxp04-gate1-write/' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index.html|src/legacy/scripts/inline-005.js|preview/sxp04-gate1-baseline/|preview/sxp04-gate1-r2/)' || true)"
+          if [ -n "$bad" ]; then
+            echo 'Refusing generated write: unexpected paths:'
+            echo "$bad"
+            exit 1
+          fi
+          test -n "$changed"
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html src/legacy/scripts/inline-005.js preview/sxp04-gate1-baseline preview/sxp04-gate1-r2
+          git commit -m 'SXP-04 Gate 1: publish R2 comparison previews [skip ci]'
+          git push origin HEAD:sxp-04-gate1-response-r2
