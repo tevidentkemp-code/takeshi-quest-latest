@@ -8570,7 +8570,13 @@ function __ms2Avatar(player){
   const ava = document.createElement('span');
   ava.className = 'ms2-ava';
   ava.setAttribute('aria-hidden', 'true');
-  try{ __sqApplyAvatarSprite(ava, __sqAvatarIdForPlayer(player || 'guest')); }
+  const isGuest = !!(player && typeof player === 'object' && player.type === 'guest');
+  if (isGuest) {
+    ava.dataset.guestAvatar = '1';
+    ava.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.4"/><path d="M5.5 19.5c1.2-3.1 3.6-4.7 6.5-4.7s5.3 1.6 6.5 4.7"/></svg>';
+    return ava;
+  }
+  try{ __sqApplyAvatarSprite(ava, __sqAvatarIdForPlayer(player)); }
   catch(_){ ava.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.4"/><path d="M5.5 19.5c1.2-3.1 3.6-4.7 6.5-4.7s5.3 1.6 6.5 4.7"/></svg>'; }
   return ava;
 }
@@ -8945,7 +8951,7 @@ if (mlStartBtn) {
         last_name: p.last_name || '',
         nickname: p.nickname || '',
         initials: p.initials || '',
-        avatar_id: __sqAvatarIdForPlayer(p)
+        avatar_id: p.type === 'guest' ? null : __sqAvatarIdForPlayer(p)
       });
     });
 
@@ -8964,7 +8970,7 @@ if (mlStartBtn) {
     state.players = built.map(p => {
       const meta = (p.type === 'registered')
         ? (p.first_name || p.last_name || p.nickname || p.initials ? p : (__sqFindSavedPlayerMetaByName(p.name) || p))
-        : (__sqFindSavedPlayerMetaByName(p.name) || p);
+        : p;
 
       const parts = __sqNameParts(p.name);
       const first = String(meta.first_name || '').trim() || parts.first;
@@ -8973,13 +8979,14 @@ if (mlStartBtn) {
       const init  = __sqNormalizeInitials(meta.initials, p.name);
 
       return {
+        type: p.type || 'guest',
         id: p.id,
         name: p.name,
         first_name: first,
         last_name: last,
         nickname: nick,
         initials: init,
-        avatar_id: __sqAvatarIdForPlayer(meta || p),
+        avatar_id: p.type === 'guest' ? null : __sqAvatarIdForPlayer(meta || p),
         color: null
       };
     });
@@ -20234,11 +20241,17 @@ function showPlayerOrderDialog() {
 
       const badge = document.createElement('div');
       badge.className = 'to-badge';
-      try{
-        __sqApplyAvatarSprite(badge, __sqAvatarIdForPlayer(p));
-        badge.setAttribute('aria-hidden', 'true');
-      }catch(_){
+      if (p && p.type === 'guest') {
+        badge.classList.add('to-badge-guest');
         badge.textContent = initialsForPlayer(p) || (String(p.name||'').trim().slice(0,2).toUpperCase());
+        badge.dataset.guestAvatar = '1';
+      } else {
+        try{
+          __sqApplyAvatarSprite(badge, __sqAvatarIdForPlayer(p));
+          badge.setAttribute('aria-hidden', 'true');
+        }catch(_){
+          badge.textContent = initialsForPlayer(p) || (String(p.name||'').trim().slice(0,2).toUpperCase());
+        }
       }
 
       const meta = document.createElement('div');
