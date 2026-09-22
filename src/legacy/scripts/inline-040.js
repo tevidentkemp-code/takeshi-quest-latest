@@ -4,7 +4,10 @@
   if (window.__sqFix167GameplayPerfMot) return;
   window.__sqFix167GameplayPerfMot = true;
 
-  if (typeof window.SQ_PERF_DEBUG === 'undefined') window.SQ_PERF_DEBUG = false;
+  var __sqPerfUrlEnabled = false;
+  try{ __sqPerfUrlEnabled = new URLSearchParams(window.location.search || '').get('sqperf') === '1'; }catch(_){}
+  if (typeof window.SQ_PERF_DEBUG === 'undefined') window.SQ_PERF_DEBUG = __sqPerfUrlEnabled;
+  else if (__sqPerfUrlEnabled) window.SQ_PERF_DEBUG = true;
   var samples = [];
   var inputSeq = 0;
   var pendingInput = null;
@@ -15,6 +18,7 @@
     var row = { name:name, ms:Math.round(Number(ms || 0) * 100) / 100, ts:Date.now(), meta:meta || null };
     samples.push(row);
     if (samples.length > 240) samples.shift();
+    try{ if (__sqPerfUrlEnabled) updateHud(); }catch(_){}
     try{ if (row.ms >= 12) console.debug('[SQ][PERF]', row.name, row.ms + 'ms', row.meta || ''); }catch(_){}
   }
   function measure(name, fn, meta){
@@ -33,6 +37,32 @@
     pendingInput = null;
     return true;
   };
+  function ensureHud(){
+    try{
+      if (!__sqPerfUrlEnabled || !document || !document.body) return null;
+      var el = document.getElementById('sqPerfHud');
+      if (el) return el;
+      el = document.createElement('div');
+      el.id = 'sqPerfHud';
+      el.setAttribute('aria-live','polite');
+      el.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:2147483647;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,.82);color:#fff;font:12px/1.25 -apple-system,BlinkMacSystemFont,sans-serif;max-width:min(92vw,360px);pointer-events:none;white-space:pre-line';
+      el.textContent = 'SXP-04 PERF • collecting…';
+      document.body.appendChild(el);
+      return el;
+    }catch(_){ return null; }
+  }
+  function updateHud(){
+    try{
+      var el = ensureHud();
+      if (!el) return;
+      var vals = samples.filter(function(s){ return s.name === 'input.tapToVisible'; }).map(function(s){ return Number(s.ms || 0); });
+      var rt = samples.filter(function(s){ return s.name === 'recordThrow.total'; }).map(function(s){ return Number(s.ms || 0); });
+      var lt = samples.filter(function(s){ return s.name === 'main.longtask'; }).map(function(s){ return Number(s.ms || 0); });
+      el.textContent = 'SXP-04 PERF  n=' + vals.length +
+        '\nTap→visible p50 ' + percentile(vals,50) + 'ms • p95 ' + percentile(vals,95) + 'ms' +
+        '\nrecordThrow p95 ' + percentile(rt,95) + 'ms • long tasks ' + lt.length;
+    }catch(_){}
+  }
   window.sqPerfReport = function(){
     var grouped = {};
     samples.forEach(function(s){
@@ -57,6 +87,7 @@
       };
     }).sort(function(a,b){ return b.max - a.max; });
     try{ console.table(rows); }catch(_){}
+    try{ updateHud(); }catch(_){}
     return {
       debug:!!window.SQ_PERF_DEBUG,
       longTaskSupported:longTaskSupported,
@@ -244,5 +275,12 @@
     try{ recordThrow = wrappedRecordThrow; }catch(_){}
   }
 
+  try{
+    if (__sqPerfUrlEnabled) {
+      var bootHud = function(){ try{ ensureHud(); updateHud(); }catch(_){} };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootHud, {once:true});
+      else bootHud();
+    }
+  }catch(_){}
   try{ console.info('[SQ] Fix167 gameplay perf MOT active'); }catch(_){}
 })();
