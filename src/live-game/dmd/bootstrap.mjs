@@ -44,13 +44,22 @@ function boot() {
     timer = null;
   }
 
-  const backend = createMotionSafeBackend(createModernHdProofBackend(detectExistingBackend(window)), window);
+  const backend = createMotionSafeBackend(createModernHdProofBackend(detectExistingBackend(window), window), window);
   window.__sqDmdV2 = install({
     host: window,
     document,
     backend,
     maxQueue: 2,
     hapticsEnabled: false,
+    baselineProvider: () => {
+      try {
+        return typeof window.__sqDmdCurrentBaselineEvent === 'function'
+          ? window.__sqDmdCurrentBaselineEvent()
+          : null;
+      } catch (_) {
+        return null;
+      }
+    },
   });
   window.__sqDmdV2Ready = true;
   return true;
