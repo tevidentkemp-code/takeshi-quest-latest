@@ -758,8 +758,12 @@ function thresholdNativeToAmber(){
     const livingPulse = Math.sin(age * .0045) * .006;
     const pulse = 1 + impactPulse + livingPulse;
 
-    const w = im.naturalWidth * baseScale * pulse;
-    const h = im.naturalHeight * baseScale * pulse;
+    // Never shrink below the established full-width banner framing.
+    // Motion may breathe outward slightly, but protected artwork identity/layout
+    // remains at least the canonical safe width on every frame.
+    const visualPulse = Math.max(1, pulse);
+    const w = im.naturalWidth * baseScale * visualPulse;
+    const h = im.naturalHeight * baseScale * visualPulse;
 
     const impactX = Math.sin(age * .060) * amp * settle * .70;
     const impactY = Math.cos(age * .074) * amp * settle * Math.max(.25, Number(yAmp) || .5) * .52;
