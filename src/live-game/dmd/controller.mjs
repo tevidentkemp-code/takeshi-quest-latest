@@ -202,7 +202,7 @@ export function makeSceneDescriptor(event = {}, msg = makeMessage(event)) {
     priority,
     token: makeEventToken(event, msg),
     sceneType: REPLACEMENT_KINDS.has(kind) ? 'replacement' : 'dynamic',
-    renderType: clean((msg && msg.type) || 'hold', 24).toLowerCase(),
+    renderType: String((msg && msg.type) || 'hold').trim().slice(0, 24),
     duration: Number.isFinite(Number(msg && msg.duration)) ? Math.max(0, Number(msg.duration)) : undefined,
     headline: clean(msg && msg.headline, 24),
     subline: clean(msg && msg.subline, 24),
