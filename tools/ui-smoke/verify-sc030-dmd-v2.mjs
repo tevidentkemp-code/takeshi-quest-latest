@@ -61,6 +61,23 @@ function fakeDocument(){
   console.log('PASS renderer-neutral semantic scene descriptor');
 })();
 
+(function testModeIsolationAndNoEventMutation(){
+  const classicEvent=Object.freeze({
+    kind:'HIT_SINGLE',points:20,total:120,mode:'classic',round:2,dart:1
+  });
+  const turboEvent=Object.freeze({
+    kind:'HIT_SINGLE',points:20,total:120,mode:'turbo',round:2,dart:1
+  });
+  const classic=DMD.makeSceneDescriptor(classicEvent,DMD.makeMessage(classicEvent));
+  const turbo=DMD.makeSceneDescriptor(turboEvent,DMD.makeMessage(turboEvent));
+  assert.equal(classic.mode,'CLASSIC');
+  assert.equal(turbo.mode,'TURBO');
+  assert.notEqual(classic.token,turbo.token,'fallback tokens must remain isolated by mode');
+  assert.equal(classic.priority,turbo.priority,'mode context must not silently change presentation tier');
+  assert.deepEqual(classicEvent,{kind:'HIT_SINGLE',points:20,total:120,mode:'classic',round:2,dart:1},'scene creation must not mutate canonical event payload');
+  console.log('PASS mode-isolated tokens + zero event mutation');
+})();
+
 (function testPriorityPreemptionAndTimerProtection(){
   const scheduler = fakeScheduler();
   const renders = [];
