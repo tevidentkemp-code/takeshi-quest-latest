@@ -743,25 +743,40 @@ function thresholdNativeToAmber(){
     }
   }
 
-  // Special artwork is a DMD banner, not a contained thumbnail: keep its
-  // natural aspect ratio, fill the usable width at every pulse phase, and let
-  // the native canvas crop excess height symmetrically. Small shake/pulse
-  // excursions may crop a few horizontal edge pixels, which is intentional.
+  // Special artwork keeps the existing GIF/content contract, but the scene
+  // movement now follows the SXP-05 Modern HD direction: one short impact
+  // settle followed by restrained cinematic drift instead of constant judder.
   function drawDmdSceneImage(im, age, amp, rateX, rateY, pulseAmp, yAmp){
     if (!im || !im.complete || !im.naturalWidth || !im.naturalHeight) return;
     amp = Math.min(12, Math.max(0, Number(amp) || 0));
     const insetX = 4;
     const safeWidth = Math.max(1, NATIVE_W - insetX * 2);
-    const minPulse = Math.max(.8, 1 - Math.abs(Number(pulseAmp) || 0));
-    const scale = safeWidth / im.naturalWidth / minPulse;
-    const pulse = 1 + Math.sin(age * .028) * pulseAmp;
-    const w = im.naturalWidth * scale * pulse;
-    const h = im.naturalHeight * scale * pulse;
-    const x = (NATIVE_W - w) / 2 + Math.sin(age * rateX) * amp;
-    const y = (NATIVE_H - h) / 2 + Math.cos(age * rateY) * amp * yAmp;
+    const baseScale = safeWidth / im.naturalWidth;
+
+    const settle = Math.exp(-Math.max(0, age) / 210);
+    const impactPulse = Math.sin(Math.max(0, age) * .045) * settle * Math.min(.055, Math.abs(Number(pulseAmp) || 0) + .018);
+    const livingPulse = Math.sin(age * .0045) * .006;
+    const pulse = 1 + impactPulse + livingPulse;
+
+    // Never shrink below the established full-width banner framing.
+    // Motion may breathe outward slightly, but protected artwork identity/layout
+    // remains at least the canonical safe width on every frame.
+    const visualPulse = Math.max(1, pulse);
+    const w = im.naturalWidth * baseScale * visualPulse;
+    const h = im.naturalHeight * baseScale * visualPulse;
+
+    const impactX = Math.sin(age * .060) * amp * settle * .70;
+    const impactY = Math.cos(age * .074) * amp * settle * Math.max(.25, Number(yAmp) || .5) * .52;
+    const driftX = Math.sin(age * Math.max(.0018, rateX * .060)) * Math.min(1.4, amp * .14);
+    const driftY = Math.cos(age * Math.max(.0015, rateY * .050)) * Math.min(.8, amp * .08) * Math.max(.35, Number(yAmp) || .5);
+
+    const x = (NATIVE_W - w) / 2 + impactX + driftX;
+    const y = (NATIVE_H - h) / 2 + impactY + driftY;
+
     nctx.save();
     nctx.globalAlpha = 1;
     nctx.imageSmoothingEnabled = true;
+    nctx.imageSmoothingQuality = 'high';
     nctx.drawImage(im, x, y, w, h);
     nctx.restore();
   }
