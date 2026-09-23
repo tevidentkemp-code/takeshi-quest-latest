@@ -6,6 +6,7 @@
  */
 
 export const VERSION = '2.1.0-sc030-modular';
+export const ARCHITECTURE = 'sxp05-gate3-scene-contract';
 
 export const PRIORITY = Object.freeze({
   IDLE: 0,
@@ -91,7 +92,7 @@ export function makeMessage(event = {}) {
     case 'OUTER_BULL':
       return { priority: PRIORITY.THROW, headline: 'OUTER BULL +25', subline: total, type: 'hold', haptic: 'double' };
     case 'BULLSEYE':
-      return { priority: PRIORITY.VISIT, headline: 'BULLSEYE +50', subline: total, type: 'hold', haptic: 'major' };
+      return { priority: PRIORITY.THROW, headline: 'BULLSEYE +50', subline: total, type: 'hold', haptic: 'major' };
     case 'MISS':
       return { priority: PRIORITY.THROW, headline: 'MISS', subline: `DART ${dart} OF 3`, type: 'hold', haptic: 'miss' };
     case 'SCRATCH':
@@ -104,11 +105,11 @@ export function makeMessage(event = {}) {
     case 'LEVEL':
       return { priority: PRIORITY.COMPETITIVE, headline: 'LEVEL', subline: clean(event.scoreLine || event.totalLine || '', 18), type: 'hold', haptic: 'competitive' };
     case 'ROUND_DOUBLES':
-      return { priority: PRIORITY.COMPETITIVE, headline: 'DOUBLES', subline: clean(event.roundLabel || 'ROUND 12', 16), type: 'hold', haptic: 'competitive' };
+      return { priority: PRIORITY.VISIT, headline: 'DOUBLES', subline: clean(event.roundLabel || 'ROUND 12', 16), type: 'hold', haptic: 'competitive' };
     case 'ROUND_TREBLES':
-      return { priority: PRIORITY.COMPETITIVE, headline: 'TREBLES', subline: clean(event.roundLabel || 'ROUND 13', 16), type: 'hold', haptic: 'competitive' };
+      return { priority: PRIORITY.VISIT, headline: 'TREBLES', subline: clean(event.roundLabel || 'ROUND 13', 16), type: 'hold', haptic: 'competitive' };
     case 'ROUND_BULL':
-      return { priority: PRIORITY.COMPETITIVE, headline: 'BULL', subline: clean(event.roundLabel || 'FINAL ROUND', 16), type: 'hold', haptic: 'major' };
+      return { priority: PRIORITY.VISIT, headline: 'BULL', subline: clean(event.roundLabel || 'FINAL ROUND', 16), type: 'hold', haptic: 'major' };
     case 'UNDO':
       return { priority: PRIORITY.VISIT, headline: 'THROW UNDONE', subline: clean(event.subline || 'SCORE RESTORED', 20), type: 'hold', haptic: 'tap' };
     case 'SKIP':
@@ -139,6 +140,86 @@ export function makeMessage(event = {}) {
         haptic: event.haptic || null
       };
   }
+}
+
+const REPLACEMENT_KINDS = new Set([
+  'BULLSEYE',
+  'LAST_DART_HERO',
+  'DESMOND_DELIGHT',
+  'VOLDY',
+  'ACHIEVEMENT',
+  'PERSONAL_BEST',
+  'SHATEKI_RECORD',
+  'GAME_WON',
+  'MATCH_WON'
+]);
+
+function familyForPriority(priority) {
+  if (priority >= PRIORITY.GAME) return 'GAME';
+  if (priority >= PRIORITY.RECORD) return 'RECORD';
+  if (priority >= PRIORITY.ACHIEVEMENT) return 'ACHIEVEMENT';
+  if (priority >= PRIORITY.COMPETITIVE) return 'COMPETITIVE';
+  if (priority >= PRIORITY.VISIT) return 'VISIT';
+  if (priority >= PRIORITY.THROW) return 'THROW';
+  return 'IDLE';
+}
+
+export function makeEventToken(event = {}, msg = makeMessage(event)) {
+  const explicit = clean(event.eventToken || event.token || event.sceneToken, 96);
+  if (explicit) return explicit;
+  const kind = clean(event.kind, 40) || 'EVENT';
+  const parts = [
+    kind,
+    event.gameId,
+    event.matchId,
+    event.mode || event.gameMode || event.practiceType,
+    event.round,
+    event.turn,
+    event.dart,
+    event.historyLength,
+    event.player,
+    event.target,
+    event.points,
+    event.visitPoints,
+    event.total,
+    event.gameScore,
+    event.matchScore,
+    msg && msg.headline,
+    msg && msg.subline
+  ].map(value => clean(value, 24));
+  return parts.join('|');
+}
+
+export function makeSceneDescriptor(event = {}, msg = makeMessage(event)) {
+  const kind = clean(event.kind, 40) || 'EVENT';
+  const priority = finite(msg && msg.priority, PRIORITY.THROW);
+  return Object.freeze({
+    architecture: ARCHITECTURE,
+    sceneId: clean(event.sceneId || kind, 48),
+    kind,
+    mode: clean(event.mode || event.gameMode || event.practiceType, 24),
+    family: familyForPriority(priority),
+    priority,
+    token: makeEventToken(event, msg),
+    sceneType: REPLACEMENT_KINDS.has(kind) ? 'replacement' : 'dynamic',
+    renderType: String((msg && msg.type) || 'hold').trim().slice(0, 24),
+    duration: Number.isFinite(Number(msg && msg.duration)) ? Math.max(0, Number(msg.duration)) : undefined,
+    headline: clean(msg && msg.headline, 24),
+    subline: clean(msg && msg.subline, 24),
+    amp: Number.isFinite(Number(event.amp)) ? Number(event.amp) : 3.2,
+    playerInput: event.playerInput === true || event.input === true,
+    replayable: event.replayable === true,
+    payload: Object.freeze({
+      player: clean(event.player, 24),
+      target: targetLabel(event.target),
+      dart: finite(event.dart, 0),
+      points: finite(event.points, 0),
+      visitPoints: finite(event.visitPoints, 0),
+      total: Number.isFinite(Number(event.total)) ? Number(event.total) : null,
+      gameScore: Number.isFinite(Number(event.gameScore)) ? Number(event.gameScore) : null,
+      matchScore: clean(event.matchScore, 16)
+    })
+  });
 }
 
 export function supportsHaptics(nav) {
@@ -175,32 +256,83 @@ export function createController(options = {}) {
   const scheduler = options.scheduler || defaultScheduler();
   const now = typeof options.now === 'function' ? options.now : () => Date.now();
   const render = typeof options.render === 'function' ? options.render : () => {};
+  const renderScene = typeof options.renderScene === 'function' ? options.renderScene : null;
   const clearBackend = typeof options.clear === 'function' ? options.clear : () => {};
   const restoreIdle = typeof options.restoreIdle === 'function' ? options.restoreIdle : () => {};
+  const baselineProvider = typeof options.baselineProvider === 'function' ? options.baselineProvider : null;
   const haptics = options.haptics || createHaptics({ enabled: false });
   const maxQueue = Math.max(0, Math.min(4, finite(options.maxQueue, 2)));
-  const staleLowPriorityMs = Math.max(250, finite(options.staleLowPriorityMs, 900));
+  const dedupeWindowMs = Math.max(250, finite(options.dedupeWindowMs, 2500));
   const queue = [];
+  const recentTokens = new Map();
   let active = null;
   let idleBaseline = null;
   let timer = null;
   let generation = 0;
   let suspended = false;
   let seq = 0;
+  let lastDecision = null;
 
   function durationFor(msg) {
     if (Number.isFinite(Number(msg.duration))) return Math.max(0, Number(msg.duration));
     return DEFAULT_DURATION[msg.priority] || 600;
   }
 
-  function renderMessage(msg) {
+  function pruneRecentTokens() {
+    const cutoff = now() - dedupeWindowMs;
+    for (const [token, at] of recentTokens) {
+      if (at < cutoff) recentTokens.delete(token);
+    }
+    while (recentTokens.size > 64) {
+      recentTokens.delete(recentTokens.keys().next().value);
+    }
+  }
+
+  function isDuplicateToken(token) {
+    if (!token) return false;
+    pruneRecentTokens();
+    const at = recentTokens.get(token);
+    return Number.isFinite(at) && (now() - at) <= dedupeWindowMs;
+  }
+
+  function rememberToken(token) {
+    if (!token) return;
+    pruneRecentTokens();
+    recentTokens.set(token, now());
+  }
+
+  function resolveBaseline() {
+    if (baselineProvider) {
+      try {
+        const provided = baselineProvider();
+        if (provided) {
+          const candidate = Number.isFinite(Number(provided.priority)) && provided.headline != null
+            ? { ...provided }
+            : makeMessage(provided);
+          if (finite(candidate.priority, PRIORITY.IDLE) === PRIORITY.IDLE) idleBaseline = candidate;
+        }
+      } catch (_) {}
+    }
+    return idleBaseline;
+  }
+
+  function renderMessage(msg, scene) {
     if (!msg || suspended) return;
     const ms = durationFor(msg);
     try {
-      render(
-        { z2: clean(msg.headline, 24), z3: clean(msg.subline, 24) },
-        { type: msg.type || 'hold', ms: ms || 2000, amp: Number.isFinite(Number(msg.amp)) ? Number(msg.amp) : 3.2 }
-      );
+      if (renderScene) {
+        renderScene(Object.freeze({
+          ...scene,
+          duration: ms,
+          renderType: scene.renderType || msg.type || 'hold',
+          amp: Number.isFinite(Number(scene.amp)) ? Number(scene.amp) : 3.2
+        }));
+      } else {
+        render(
+          { z2: clean(msg.headline, 24), z3: clean(msg.subline, 24) },
+          { type: msg.type || 'hold', ms: ms || 2000, amp: Number.isFinite(Number(msg.amp)) ? Number(msg.amp) : 3.2 }
+        );
+      }
     } catch (_) {}
     if (msg.haptic) haptics.pulse(msg.haptic);
   }
@@ -210,18 +342,9 @@ export function createController(options = {}) {
     timer = null;
   }
 
-  function isStale(msg) {
-    if (!msg || msg.priority > PRIORITY.VISIT || !Number.isFinite(msg.__queuedAt)) return false;
-    return (now() - msg.__queuedAt) > staleLowPriorityMs;
-  }
-
   function nextQueued() {
-    queue.sort((a, b) => b.priority - a.priority || a.__seq - b.__seq);
-    while (queue.length) {
-      const candidate = queue.shift();
-      if (!isStale(candidate)) return candidate;
-    }
-    return null;
+    queue.sort((a, b) => b.msg.priority - a.msg.priority || a.__seq - b.__seq);
+    return queue.shift() || null;
   }
 
   function restore() {
@@ -229,59 +352,93 @@ export function createController(options = {}) {
     cancelTimer();
     const next = nextQueued();
     if (next) {
-      showNow(next);
+      showNow(next.msg, next.event, next.scene);
       return;
     }
-    try { restoreIdle(idleBaseline); } catch (_) {}
+    const baseline = resolveBaseline();
+    try { restoreIdle(baseline); } catch (_) {}
+    lastDecision = { action: 'restore', token: baseline ? makeEventToken({ kind:'BASELINE' }, baseline) : '' };
   }
 
-  function showNow(msg) {
+  function showNow(msg, event = {}, scene = makeSceneDescriptor(event, msg)) {
     generation += 1;
-    const token = generation;
+    const timerGeneration = generation;
     cancelTimer();
     try { clearBackend(); } catch (_) {}
-    active = msg;
-    renderMessage(msg);
+    active = { ...msg, __scene: scene };
+    rememberToken(scene.token);
+    renderMessage(msg, scene);
+    lastDecision = { action: 'show', token: scene.token, family: scene.family, priority: scene.priority };
     const ms = durationFor(msg);
     if (ms > 0) {
       timer = scheduler.set(() => {
-        if (token !== generation) return;
+        if (timerGeneration !== generation) return;
         restore();
       }, ms);
     }
   }
 
-  function enqueue(msg) {
-    if (maxQueue === 0) return;
-    msg.__seq = ++seq;
-    msg.__queuedAt = now();
-    queue.push(msg);
-    queue.sort((a, b) => b.priority - a.priority || a.__seq - b.__seq);
+  function enqueue(msg, event, scene) {
+    if (maxQueue === 0 || !scene.replayable) return false;
+    queue.push({ msg, event, scene, __seq: ++seq });
+    queue.sort((a, b) => b.msg.priority - a.msg.priority || a.__seq - b.__seq);
     while (queue.length > maxQueue) queue.pop();
+    lastDecision = { action: 'queue', token: scene.token, family: scene.family, priority: scene.priority };
+    return true;
   }
 
-  function emit(event) {
-    const msg = makeMessage(event);
-    msg.priority = finite(msg.priority, PRIORITY.THROW);
-    if (msg.priority === PRIORITY.IDLE) {
-      idleBaseline = msg;
-      if (!active) renderMessage(msg);
-      return msg;
-    }
-    if (!active || msg.priority >= active.priority) showNow(msg);
-    else enqueue(msg);
-    return msg;
-  }
-
-  function hardClear({ restore: shouldRestore = true } = {}) {
+  function cancelPresentation() {
     generation += 1;
     cancelTimer();
     queue.length = 0;
     active = null;
     try { clearBackend(); } catch (_) {}
     haptics.cancel();
+  }
+
+  function emit(event = {}) {
+    const msg = makeMessage(event);
+    msg.priority = finite(msg.priority, PRIORITY.THROW);
+    const scene = makeSceneDescriptor(event, msg);
+
+    if (msg.priority === PRIORITY.IDLE) {
+      idleBaseline = msg;
+      if (!active) renderMessage(msg, scene);
+      lastDecision = { action: 'baseline', token: scene.token, family: scene.family, priority: scene.priority };
+      return msg;
+    }
+
+    if (isDuplicateToken(scene.token)) {
+      lastDecision = { action: 'dedupe', token: scene.token, family: scene.family, priority: scene.priority };
+      return { ...msg, __deduped: true, __scene: scene };
+    }
+
+    if (scene.playerInput && active) {
+      cancelPresentation();
+      showNow(msg, event, scene);
+      lastDecision = { action: 'input-preempt', token: scene.token, family: scene.family, priority: scene.priority };
+      return msg;
+    }
+
+    if (!active || msg.priority >= active.priority) {
+      showNow(msg, event, scene);
+      return msg;
+    }
+
+    if (scene.replayable && msg.priority >= active.priority) {
+      enqueue(msg, event, scene);
+      return msg;
+    }
+
+    lastDecision = { action: 'suppress-drop', token: scene.token, family: scene.family, priority: scene.priority };
+    return { ...msg, __suppressed: true, __scene: scene };
+  }
+
+  function hardClear({ restore: shouldRestore = true } = {}) {
+    cancelPresentation();
     if (shouldRestore) {
-      try { restoreIdle(idleBaseline); } catch (_) {}
+      const baseline = resolveBaseline();
+      try { restoreIdle(baseline); } catch (_) {}
     }
   }
 
@@ -290,16 +447,10 @@ export function createController(options = {}) {
     if (next === suspended) return;
     suspended = next;
     if (suspended) {
-      generation += 1;
-      cancelTimer();
-      queue.splice(0, queue.length, ...queue.filter(item => item.priority > PRIORITY.VISIT));
-      if (active && active.priority <= PRIORITY.VISIT) active = null;
-      haptics.cancel();
-      try { clearBackend(); } catch (_) {}
+      cancelPresentation();
       return;
     }
-    if (active && !isStale(active)) showNow(active);
-    else restore();
+    restore();
   }
 
   return {
@@ -310,9 +461,11 @@ export function createController(options = {}) {
       return {
         active: active ? { ...active } : null,
         idle: idleBaseline ? { ...idleBaseline } : null,
-        queue: queue.map(item => ({ ...item })),
+        queue: queue.map(item => ({ ...item.msg, __scene: item.scene })),
         suspended,
-        version: VERSION
+        version: VERSION,
+        architecture: ARCHITECTURE,
+        lastDecision: lastDecision ? { ...lastDecision } : null
       };
     },
     priorities: PRIORITY,
@@ -366,7 +519,8 @@ export function install(options = {}) {
     ...backend,
     haptics,
     maxQueue: options.maxQueue ?? 2,
-    staleLowPriorityMs: options.staleLowPriorityMs ?? 900
+    dedupeWindowMs: options.dedupeWindowMs ?? 2500,
+    baselineProvider: options.baselineProvider
   });
   const unbindVisibility = bindVisibility(controller, doc);
   controller.dispose = () => {
