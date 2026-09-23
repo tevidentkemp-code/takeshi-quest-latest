@@ -28,7 +28,7 @@ export function createModernHdProofBackend(base = {}) {
         z3: clean(scene.subline, 24),
       };
       const opts = {
-        type: clean(scene.renderType || 'hold', 24).toLowerCase(),
+        type: clean(scene.renderType || 'hold', 24),
         ms: Number.isFinite(Number(scene.duration)) ? Math.max(0, Number(scene.duration)) : 2000,
         amp: Number.isFinite(Number(scene.amp)) ? Number(scene.amp) : 3.2,
         __sqSceneId: clean(scene.sceneId, 48),
