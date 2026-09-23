@@ -210,6 +210,8 @@ function fakeDocument(){
   assert.equal(calls[0][1].z2, 'NEW SHATEKI RECORD');
   assert.equal(calls[0][2].__sqSceneToken, 'record-token');
   assert.equal(calls[0][2].__sqSceneType, 'replacement');
+  backend.renderScene({ sceneId:'VOLDY', token:'voldy-token', family:'ACHIEVEMENT', sceneType:'replacement', renderType:'voldyImg', duration:900, headline:'VOLDY', subline:'TOTAL 99' });
+  assert.equal(calls[1][2].type, 'voldyImg', 'legacy camelCase artwork renderer type must remain case-preserved');
   console.log('PASS renderer-neutral scene → Modern HD proof backend seam');
 })();
 
