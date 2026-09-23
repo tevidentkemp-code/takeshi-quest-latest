@@ -1,0 +1,240 @@
+name: SXP-04 Gate 5 current-main iPhone acceptance
+
+on:
+  push:
+    branches: [sxp-04-gate5-current-main-acceptance]
+    paths:
+      - package.json
+      - package-lock.json
+      - vite.config.mjs
+      - scripts/**
+      - src/**
+      - assets/release-metadata.json
+      - tools/ui-smoke/**
+      - .github/workflows/sxp04-gate5-current-main.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sxp04-gate5-current-main
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+
+      - name: Confirm current production ancestry and accepted Experience source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main sxp-04-gate4-equivalence
+          test "$(git rev-parse origin/main)" = "88552fb3fbfe7686f49ad74f481ebf087a361a96"
+          git merge-base --is-ancestor origin/main HEAD
+          cmp <(git show origin/main:assets/release-metadata.json) assets/release-metadata.json
+          cmp <(git show origin/main:src/styles/practice/solo-live-v2.css) src/styles/practice/solo-live-v2.css
+          # Gate 5 contains two explicitly accepted iPhone corrections on top
+          # of the Gate 4 source: stable non-composited hold UI and exact-button
+          # Robin Hood eligibility. Preserve all other accepted proof assets.
+          for p in             tools/ui-smoke/verify-sxp04-gate1-miss-contract.mjs             tools/ui-smoke/verify-sxp04-gate1-miss-response.js             tools/ui-smoke/verify-sxp04-gate2-contract.mjs             tools/ui-smoke/verify-sxp04-gate2-nonblocking.js             tools/ui-smoke/verify-sxp04-gate3-quick-entry-contract.mjs             tools/ui-smoke/verify-sxp04-gate3-quick-entry.js             tools/ui-smoke/verify-sxp04-gate4-equivalence-contract.mjs
+          do
+            cmp <(git show "origin/sxp-04-gate4-equivalence:$p") "$p"
+          done
+          git diff --check origin/main...HEAD -- \
+            src/live-game/live-v2.js \
+            src/styles/live-game/v2-panel.css \
+            tools/ui-smoke/ \
+            .github/workflows/sxp04-gate5-current-main.yml
+
+      - name: Install architecture tooling
+        run: npm ci --prefix scripts --ignore-scripts
+
+      - name: Materialize canonical runtime
+        run: node scripts/materialize-runtime.mjs
+
+      - name: Verify source authority and protected contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build-core-js-from-source.mjs --verify-current
+          node scripts/build-core-styles-from-source.mjs --verify-current
+          node scripts/verify-modularization.mjs
+          node tools/ui-smoke/verify-sxp04-gate5-iphone-corrections.mjs
+          node tools/ui-smoke/verify-sxp04-gate4-equivalence-contract.mjs
+          node tools/ui-smoke/verify-sxp04-gate3-quick-entry-contract.mjs
+          node tools/ui-smoke/verify-sxp04-gate2-contract.mjs
+          node tools/ui-smoke/verify-sxp04-gate1-miss-contract.mjs
+          node tools/ui-smoke/verify-sxp04-sidequest.mjs
+          node tools/ui-smoke/verify-sc042-record-integrity.mjs
+          node tools/ui-smoke/verify-sc048-volde.mjs
+          node tools/ui-smoke/verify-sc032-dmd-ownership.mjs
+
+      - name: Install deterministic build dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Build exact Gate 5 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build | tee sxp04-gate5-build.txt
+          npm run verify:dist | tee sxp04-gate5-dist.txt
+          node scripts/build-core-js-from-source.mjs --verify-current
+          node scripts/build-core-styles-from-source.mjs --verify-current
+
+      - name: Install deterministic browser QA
+        working-directory: tools/ui-smoke
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
+      - name: Re-prove Experience 04 and production regressions
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8165/index.html
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8165 --bind 127.0.0.1 --directory dist >/tmp/sxp04-gate5-current-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+
+          node tools/ui-smoke/verify-sxp04-gate5-iphone-corrections.js | tee sxp04-gate5-iphone-corrections.txt
+          node tools/ui-smoke/verify-sxp04-gate4-equivalence.js | tee sxp04-gate5-equivalence.txt
+          node tools/ui-smoke/verify-sxp04-gate2-nonblocking.js | tee sxp04-gate5-nonblocking.txt
+          node tools/ui-smoke/verify-sxp04-gate1-miss-response.js | tee sxp04-gate5-latency.txt
+          node tools/ui-smoke/verify-sc030-undo-runtime.js | tee sxp04-gate5-undo.txt
+          node tools/ui-smoke/verify-sc033-throw-order.js | tee sxp04-gate5-throw-order.txt
+          node tools/ui-smoke/verify-sc042-record-integrity.js | tee sxp04-gate5-record-integrity.txt
+          node tools/ui-smoke/verify-progression-modes.js | tee sxp04-gate5-progression-modes.txt
+          node tools/ui-smoke/verify-training-modes.js | tee sxp04-gate5-training-modes.txt
+          node tools/ui-smoke/verify-classic-visual-fit.js | tee sxp04-gate5-visual-fit.txt
+          node tools/ui-smoke/smoke.js | tee sxp04-gate5-smoke.txt
+
+      - name: Final candidate cleanliness
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "88552fb3fbfe7686f49ad74f481ebf087a361a96"
+          git merge-base --is-ancestor origin/main HEAD
+          git diff --check origin/main...HEAD -- \
+            src/live-game/live-v2.js \
+            src/styles/live-game/v2-panel.css \
+            tools/ui-smoke/ \
+            .github/workflows/sxp04-gate5-current-main.yml -- \
+            src/live-game/live-v2.js \
+            src/styles/live-game/v2-panel.css \
+            tools/ui-smoke/ \
+            .github/workflows/sxp04-gate5-current-main.yml
+
+      - name: Stage exact offline iPhone preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf sxp04-gate5-current-write
+          mkdir -p sxp04-gate5-current-write/runtime/src/legacy/styles sxp04-gate5-current-write/runtime/src/legacy/scripts
+          cp index.html sxp04-gate5-current-write/runtime/index.html
+          cp src/legacy/styles/inline-002.css sxp04-gate5-current-write/runtime/src/legacy/styles/inline-002.css
+          cp src/legacy/scripts/inline-005.js sxp04-gate5-current-write/runtime/src/legacy/scripts/inline-005.js
+
+          mkdir -p sxp04-gate5-current-write/preview/sxp04-gate5-current
+          cp -a dist/. sxp04-gate5-current-write/preview/sxp04-gate5-current/
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('sxp04-gate5-current-write/preview/sxp04-gate5-current/index.html')
+          s=p.read_text()
+          guard='''<script id="sxp04-gate5-offline-guard">(function(){var f=window.fetch;window.fetch=function(i,o){var u=String((i&&i.url)||i||"");if(/supabase\.co/i.test(u))return Promise.reject(new TypeError("SXP-04 Gate 5 preview blocks Supabase"));return f.apply(this,arguments)};try{var W=window.WebSocket;window.WebSocket=function(u,p){if(/supabase\.co/i.test(String(u||"")))throw new Error("SXP-04 Gate 5 preview blocks Supabase WebSocket");return new W(u,p)}}catch(_){}})();</script>'''
+          s=s.replace('<head>','<head>\n'+guard,1)
+          p.write_text(s)
+          PY
+          cat > sxp04-gate5-current-write/preview/sxp04-gate5-current/SXP04_GATE5_BUILD.txt <<EOF
+          SXP-04 GATE 5 CURRENT-MAIN IPHONE ACCEPTANCE
+          Source commit: ${GITHUB_SHA}
+          Production base / ancestor: 88552fb3fbfe7686f49ad74f481ebf087a361a96
+          Accepted Gate 4 source reference: 62a4fad4f7f02b68fddec32600850f39b0db0ede
+          SC-049: hold S/D/T 360ms; slide/release to x2/x3; RH only on the button matching the immediately previous dart; release elsewhere cancels.
+          Every repeated dart uses canonical recordThrow one dart at a time.
+          Supabase requests are blocked before app boot.
+          No visible preview overlay is injected.
+          Production remains unchanged.
+          EOF
+
+      - name: Package Gate 5 candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sxp04-gate5-current-write
+          retention-days: 1
+          include-hidden-files: true
+          path: sxp04-gate5-current-write/
+
+      - name: Keep Gate 5 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sxp04-gate5-current-evidence
+          retention-days: 14
+          path: sxp04-gate5-*.txt
+
+  commit-generated:
+    needs: verify
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Confirm branch has not advanced
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin sxp-04-gate5-current-main-acceptance
+          test "$(git rev-parse origin/sxp-04-gate5-current-main-acceptance)" = "${GITHUB_SHA}"
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: sxp04-gate5-current-write
+          path: sxp04-gate5-current-write
+
+      - name: Apply generated runtime and pinned preview only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp sxp04-gate5-current-write/runtime/index.html index.html
+          cp sxp04-gate5-current-write/runtime/src/legacy/styles/inline-002.css src/legacy/styles/inline-002.css
+          cp sxp04-gate5-current-write/runtime/src/legacy/scripts/inline-005.js src/legacy/scripts/inline-005.js
+          rm -rf preview/sxp04-gate5-current
+          mkdir -p preview
+          cp -a sxp04-gate5-current-write/preview/sxp04-gate5-current preview/sxp04-gate5-current
+
+          changed="$(git status --porcelain --untracked-files=all | sed -E 's/^.. //' | grep -v '^sxp04-gate5-current-write/' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(index.html|src/legacy/styles/inline-002.css|src/legacy/scripts/inline-005.js|preview/sxp04-gate5-current/)' || true)"
+          if [ -n "$bad" ]; then
+            echo 'Refusing generated write: unexpected changed paths:'
+            echo "$bad"
+            exit 1
+          fi
+          test -n "$changed"
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html src/legacy/styles/inline-002.css src/legacy/scripts/inline-005.js preview/sxp04-gate5-current
+          git commit -m 'SXP-04 Gate 5: materialize current-main iPhone candidate [skip ci]'
+          git push origin HEAD:sxp-04-gate5-current-main-acceptance

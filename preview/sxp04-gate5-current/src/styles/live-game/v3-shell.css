@@ -1,0 +1,658 @@
+/* =====================================================================
+   LIVE V3 — Premium UI test layout (2-player Match Play Classic, beta)
+===================================================================== */
+body.livev3-on #liveV2Panel,
+body.livev3-on #floatHead,
+body.livev3-on #gameTopRow{ display:none !important; }
+body.livev3-on #settingsBtnGamePad,
+body.livev3-on #settingsBtnGame{ display:none !important; }   /* v3 top bar has its own menu button */
+
+#liveV3Panel{
+  --v3-orange:#ff6a00; --v3-orange-lt:#ff9440;
+  --v3-blue:#4aa3ff; --v3-green:#2fd06b; --v3-red:#ff4d5e; --v3-purple:#b06bff;
+  --v3-ink:#eaf0fb; --v3-muted:rgba(214,222,240,.5);
+  --v3-line:rgba(255,255,255,.09);
+  --v3-panel: linear-gradient(165deg,#141924 0%,#0c0f17 100%);
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto 2px;
+  color: var(--v3-ink);
+  display:flex;
+  flex-direction:column;
+  /* Fill the space between the top of the page and the fixed throw pad, so the
+     GAME RACE stretches all the way down to the buttons. */
+  min-height: calc((var(--sqVh, 1vh) * 100) - var(--pad-h, 175px) - 6px);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------------- Top bar ---------------- */
+.v3-topbar{
+  display:grid;
+  grid-template-columns: auto 1fr auto;   /* SOUND | DIGITAL DISPLAY | MENU */
+  align-items:center;
+  gap:8px;
+  padding: 7px 8px;
+  border-radius: 14px;
+  background: var(--v3-panel);
+  border:1px solid var(--v3-line);
+  box-shadow: 0 8px 22px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.05);
+  margin-bottom: 0;            /* the centre stem butts straight into the marquee */
+  flex: 0 0 auto;
+}
+/* The whole middle is one digital readout: shows TARGET when idle, and
+   trophies / combos / callouts with an arcade flip-in animation. */
+.v3-tb-display{
+  position:relative; min-width:0; overflow:hidden;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  height:44px; border-radius:11px; padding:2px 10px;
+  background: linear-gradient(180deg, rgba(8,11,20,.7), rgba(5,7,13,.7));
+  border:1px solid rgba(120,150,220,.14);
+  box-shadow: inset 0 0 18px rgba(0,0,0,.6);
+}
+.v3-tb-scan{ position:absolute; inset:0; pointer-events:none; z-index:0; opacity:.5;
+  background:repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 3px); }
+.v3-tb-lab{ position:relative; z-index:1; display:block; font-size:9px; font-weight:900; letter-spacing:.22em; color:var(--v3-muted); line-height:1.1; }
+.v3-tb-val{ position:relative; z-index:1; display:block; font-size:21px; font-weight:900; letter-spacing:.03em; color:var(--v3-orange-lt); line-height:1.02; white-space:nowrap; text-shadow:0 0 14px rgba(255,138,20,.35); }
+.v3-tb-display.event .v3-tb-val{ font-size:16px; }
+.v3-tb-display.green .v3-tb-val{ color:#b6ffce; text-shadow:0 0 16px rgba(80,240,140,.7); }
+.v3-tb-display.green .v3-tb-lab{ color:rgba(120,255,170,.75); }
+.v3-tb-display.gold .v3-tb-val{ color:#ffe6b0; text-shadow:0 0 18px rgba(255,190,60,.8); }
+.v3-tb-display.gold .v3-tb-lab{ color:rgba(255,205,120,.85); }
+/* arcade flip/glitch whenever the readout content changes */
+/* Throw feedback: HIT flashes green + kicks, MISS flashes red + rumbles/shakes */
+.v3-tb-display.hit{ border-color:rgba(47,208,107,.6)!important; box-shadow:0 0 26px rgba(47,208,107,.45), inset 0 0 22px rgba(0,0,0,.75)!important; }
+.v3-tb-display.hit .v3-tb-val{ color:#8effb4; text-shadow:0 0 20px rgba(60,240,140,.9); }
+.v3-tb-display.hit .v3-tb-lab{ color:rgba(120,255,170,.8); }
+.v3-tb-display.miss{ border-color:rgba(255,77,94,.6)!important; box-shadow:0 0 26px rgba(255,77,94,.45), inset 0 0 22px rgba(0,0,0,.75)!important; }
+.v3-tb-display.miss .v3-tb-val{ color:#ff8a97; text-shadow:0 0 20px rgba(255,77,94,.9); }
+.v3-tb-display.miss .v3-tb-lab{ color:rgba(255,140,155,.85); }
+.v3-tb-display.anim.hit{ animation:v3TbHit .5s cubic-bezier(.2,.9,.25,1); }
+.v3-tb-display.anim.miss{ animation:v3TbMiss .52s cubic-bezier(.36,.07,.19,.97); }
+@keyframes v3TbHit{
+  0%{ transform:scale(1); } 18%{ transform:scale(1.09) translateY(-2px); }
+  42%{ transform:scale(.99) translateY(1px); } 70%{ transform:scale(1.03); } 100%{ transform:scale(1); }
+}
+@keyframes v3TbMiss{
+  0%,100%{ transform:translateX(0) rotate(0); }
+  12%{ transform:translateX(-7px) rotate(-.7deg); } 26%{ transform:translateX(6px) rotate(.6deg); }
+  40%{ transform:translateX(-5px) rotate(-.5deg); } 54%{ transform:translateX(4px) rotate(.4deg); }
+  68%{ transform:translateX(-3px); } 82%{ transform:translateX(2px); }
+}
+.v3-tb-display.anim .v3-tb-val{ animation:v3TbFlip .42s cubic-bezier(.2,.9,.25,1); }
+.v3-tb-display.anim.event .v3-tb-val{ animation:v3TbPop .55s cubic-bezier(.2,.9,.25,1); }
+.v3-tb-display.anim .v3-tb-lab{ animation:v3TbLab .42s ease; }
+@keyframes v3TbFlip{ 0%{ transform:translateY(-70%) scaleY(.15); opacity:0; filter:blur(1.5px); } 55%{ transform:translateY(9%) scaleY(1.12); opacity:1; filter:blur(0); } 100%{ transform:none; } }
+@keyframes v3TbPop{ 0%{ transform:scale(.4); opacity:0; } 45%{ transform:scale(1.18); opacity:1; } 68%{ transform:scale(.96); } 100%{ transform:scale(1); } }
+@keyframes v3TbLab{ 0%{ opacity:0; letter-spacing:.5em; } 100%{ opacity:1; } }
+.v3-tb-menu{
+  width:44px; height:38px; border-radius:11px; justify-self:end;
+  background: rgba(255,255,255,.05); border:1px solid var(--v3-line);
+  color:var(--v3-ink); display:grid; place-items:center;
+}
+.v3-tb-menu:active{ transform:translateY(1px); }
+.v3-tb-menu svg{ width:22px; height:22px; }
+.v3-tb-snd{
+  width:38px; height:38px; border-radius:11px; justify-self:end;
+  background: rgba(255,255,255,.05); border:1px solid var(--v3-line);
+  color:var(--v3-ink); display:grid; place-items:center; font-size:16px; line-height:1;
+}
+.v3-tb-snd:active{ transform:translateY(1px); }
+.v3-tb-snd svg{ width:20px; height:20px; }
+.v3-tb-snd.muted{ color:var(--v3-muted); background:rgba(255,255,255,.03); }
+
+/* ---------------- Main 3-column area ---------------- */
+/* Body wraps the pills+score row AND the full-width screen; FORM bars span it. */
+.v3-body{
+  position:relative; flex:1 1 auto; min-height:0;
+  display:flex; flex-direction:column; gap:9px; margin-bottom:10px;
+  padding-top:0;
+}
+/* The pills need their old breathing room, but the centre stem must NOT have any
+   — it has to meet the marquee with no seam to read as one screen. */
+.v3-main{ padding-top:9px; }
+.v3-main > .v3-centre{ margin-top:-9px; }
+.v3-main{
+  display:grid;
+  grid-template-columns: 14px 1fr 1.06fr 1fr 14px;   /* FORM bars flank each player pill */
+  gap: 8px;
+  align-items: stretch;
+  margin: 0;
+  flex: 0 0 auto;
+}
+/* 4-player: a 2x2 grid of pills with the centre column spanning both rows down
+   the middle, and a FORM bar flanking each pill on its outer edge. */
+.v3-main.v3-4p{
+  grid-template-columns: 14px 1fr 1.12fr 1fr 14px;
+  grid-template-areas:
+    "f0 c0 mid c1 f1"
+    "f2 c2 mid c3 f3";
+  row-gap:8px;
+}
+/* 3-player: two pills stacked on the left, one on the right, centre column down
+   the middle; a FORM bar flanks each pill on its outer edge. The right pill
+   claims both rows but is sized to ONE row and centred, so it matches the height
+   of the left pills while sitting midway up the screen. */
+.v3-main.v3-3p{
+  grid-template-columns: 14px 1fr 1.12fr 1fr 14px;
+  grid-template-areas:
+    "f0 c0 mid c1 f1"
+    "f2 c2 mid c1 f1";
+  row-gap:8px;
+}
+.v3-main.v3-3p > [style*="grid-area:c1"],
+.v3-main.v3-3p > [style*="grid-area:f1"]{
+  align-self:center;                 /* midway up the screen */
+  height:auto;                       /* natural height — matches the left pills, never clips */
+}
+/* The single right-hand pill must not stretch to fill the two-row span. */
+.v3-main.v3-3p > [style*="grid-area:c1"] .v3-card{ flex:0 0 auto; }
+/* The RACE band: a full-width animated race box (FORM bars now sit beside the
+   player pills, on their outer edges). */
+.v3-screen{
+  flex:1 1 auto; min-height:120px; margin:0 2px;
+  display:flex; flex-direction:row; align-items:stretch; gap:6px;
+}
+/* 3- and 4-player have taller pill stacks, so the race gets a smaller floor —
+   it still grows to fill whatever space is left down to the throw pad. */
+.v3-body.v3-4p .v3-screen,
+.v3-body.v3-3p .v3-screen{ min-height:104px; }
+.v3-race-frame{ flex:1 1 auto; min-width:0; display:flex; }
+.v3-race-bezel{
+  position:relative; flex:1; border-radius:14px; overflow:hidden;
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(74,144,255,.10), transparent 60%),
+    linear-gradient(180deg,#0a0f1a 0%,#05070d 70%);
+  border:1px solid rgba(255,255,255,.09);
+  box-shadow: inset 0 0 26px rgba(0,0,0,.75), 0 4px 16px rgba(0,0,0,.4);
+}
+.v3-race-title{
+  position:absolute; top:6px; left:0; right:0; text-align:center; z-index:2; pointer-events:none;
+  font-size:9px; font-weight:900; letter-spacing:.26em; color:rgba(150,180,235,.5);
+}
+.v3-race{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+.v3-side{ display:flex; flex-direction:column; min-width:0; }
+
+/* Games-won pill now sits at the TOP of each card (arrow + crown removed) */
+.v3-cardtop{
+  display:flex; justify-content:center; align-items:center; gap:6px;
+  min-height:22px; margin-bottom:4px; flex:0 0 auto;
+}
+.v3-wins{
+  display:inline-flex; align-items:center; gap:7px;
+  padding:3px 9px; border-radius:999px;
+  background:rgba(255,255,255,.04); border:1px solid var(--v3-line);
+}
+.v3-wins-lab{ font-size:8px; font-weight:900; letter-spacing:.16em; color:var(--v3-muted); }
+.v3-windots{ display:flex; gap:5px; }
+.v3-windots i{ width:8px; height:8px; border-radius:50%; background:#333846; box-shadow: inset 0 1px 1px rgba(0,0,0,.5); }
+.v3-windots i.on{ background:var(--v3-orange); box-shadow:0 0 8px rgba(255,106,0,.75); }
+.v3-windot-win{ animation: v3WinDot 1.1s cubic-bezier(.2,.9,.25,1) both; }
+@keyframes v3WinDot{
+  0%{ transform:scale(1); background:var(--v3-orange); box-shadow:0 0 8px rgba(255,106,0,.75); }
+  22%{ transform:scale(2.6); background:#ffe27a; box-shadow:0 0 20px rgba(255,214,64,1), 0 0 34px rgba(255,196,46,.8); }
+  55%{ transform:scale(1.5); background:#ffd24a; box-shadow:0 0 16px rgba(255,214,64,.9); }
+  100%{ transform:scale(1); background:var(--v3-orange); box-shadow:0 0 8px rgba(255,106,0,.75); }
+}
+
+/* Player card */
+.v3-card{
+  position:relative;
+  border-radius: 16px;
+  background: var(--v3-panel);
+  border:1.5px solid rgba(255,255,255,.10);
+  padding: 8px 9px 9px;
+  display:flex; flex-direction:column; align-items:center;
+  min-width:0; flex: 1 1 auto; overflow:hidden;
+  box-shadow: 0 10px 26px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.05);
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+/* the footer (rounds + averages) sticks to the bottom of the pill */
+.v3-foot{ margin-top:auto; }
+/* Sharp corners on the screen-facing edge, rounded on the inside */
+.v3-card.p1{ border-radius: 3px 16px 16px 3px; }
+.v3-card.p2{ border-radius: 16px 3px 3px 16px; }
+.v3-card-sheen{
+  position:absolute; inset:0; pointer-events:none; opacity:0;
+  transition:opacity .25s ease;
+}
+.v3-card.active .v3-card-sheen{ opacity:1; }
+.v3-card.active.p1 .v3-card-sheen{ background: radial-gradient(120% 60% at 0% 20%, rgba(255,106,0,.16), transparent 60%); }
+.v3-card.active.p2 .v3-card-sheen{ background: radial-gradient(120% 60% at 100% 20%, rgba(255,106,0,.16), transparent 60%); }
+/* Active pill: the WHOLE card throbs (breathes) so whose-turn is unmistakable. */
+.v3-card.active{
+  border-color:var(--v3-orange);
+  transform-origin:center;
+  animation: v3CardThrob 1.5s ease-in-out infinite;
+}
+.v3-card.active.p1{ border-left-width:3px; }
+.v3-card.active.p2{ border-right-width:3px; }
+@keyframes v3CardThrob{
+  0%,100%{ transform:scale(1);      box-shadow: 0 10px 26px rgba(0,0,0,.4), 0 0 16px rgba(255,106,0,.22), inset 0 1px 0 rgba(255,255,255,.06); }
+  50%    { transform:scale(1.018);  box-shadow: 0 13px 32px rgba(0,0,0,.46), 0 0 32px rgba(255,106,0,.55), inset 0 1px 0 rgba(255,255,255,.08); }
+}
+/* Hit "reach": the active pill lunges forward when a dart scores (like a button press). */
+.v3-card-hit{ animation: v3CardHit .42s cubic-bezier(.2,.9,.25,1) !important; }
+@keyframes v3CardHit{
+  0%{ transform:scale(1); }
+  32%{ transform:scale(1.055); box-shadow: 0 16px 36px rgba(0,0,0,.5), 0 0 40px rgba(255,106,0,.7), inset 0 1px 0 rgba(255,255,255,.1); }
+  100%{ transform:scale(1); }
+}
+.v3-card > *{ position:relative; z-index:1; }
+
+.v3-id{ display:flex; align-items:center; justify-content:center; gap:6px; min-height:20px; }
+.v3-badge{
+  width:20px; height:20px; border-radius:7px;
+  display:grid; place-items:center;
+  font-size:12px; font-weight:900; color:var(--v3-muted);
+  background:rgba(255,255,255,.05); border:1px solid var(--v3-line);
+}
+.v3-card.active .v3-badge{ color:#ffd9ae; border-color:rgba(255,106,0,.5); background:rgba(255,106,0,.14); }
+.v3-lvl{ font-size:9px; font-weight:900; letter-spacing:.04em; color:#ffd9ae; background:rgba(255,106,0,.16); border:1px solid rgba(255,106,0,.4); border-radius:999px; padding:1px 6px; line-height:1.5; white-space:nowrap; }
+.v3-crown{ color:#ffc53d; display:inline-flex; filter:drop-shadow(0 0 5px rgba(255,197,61,.5)); }
+.v3-crown svg{ width:19px; height:19px; }
+
+/* Crown + go-arrow indicator share one compact row (order number removed) */
+.v3-dartrow{ display:flex; align-items:center; justify-content:center; gap:7px; min-height:19px; margin:3px 0 2px; }
+.v3-dartico{ color:rgba(214,222,240,.4); display:inline-flex; }
+.v3-dartico svg{ width:52px; height:14px; display:block; }
+.v3-card.active .v3-dartico{ color:var(--v3-orange); filter:drop-shadow(0 0 6px rgba(255,106,0,.4)); }
+.v3-dartrow .v3-crown svg{ width:17px; height:17px; }
+.v3-dartrow .v3-lvl{ margin-left:1px; }
+
+.v3-name{
+  font-size: clamp(16px, 5.5vw, 25px);
+  font-weight: 900; letter-spacing:0; line-height:1.02;
+  max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.v3-card.active .v3-name{ color:var(--v3-orange); text-shadow:0 0 18px rgba(255,106,0,.35); }
+.v3-card.waiting.p2 .v3-name{ color:var(--v3-blue); }
+.v3-card.waiting.p1 .v3-name{ color:#eaf0fb; }
+.v3-nick-slot{ min-height:13px; margin-top:2px; max-width:100%; }
+.v3-nick{ font-size:9px; font-weight:800; letter-spacing:.1em; color:var(--v3-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.v3-total{ font-size: clamp(28px, 9vw, 44px); font-weight:900; color:#fff; margin-top:6px; line-height:.98;
+  letter-spacing:-.02em; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:clip;
+  font-variant-numeric:tabular-nums; transition:color .3s ease, text-shadow .3s ease; }
+/* half-width pills in 3/4-player: keep 3-digit totals inside the card */
+.v3-main.v3-3p .v3-total, .v3-main.v3-4p .v3-total{ font-size:clamp(24px, 7.4vw, 34px); }
+.v3-total.leading{ color:var(--v3-green); text-shadow:0 0 14px rgba(47,208,107,.5); }
+.v3-total.lead-record{ color:var(--v3-purple); text-shadow:0 0 18px rgba(176,107,255,.7); animation:v3AvgRecord 1.4s ease-in-out infinite; }
+.v3-diff{
+  display:inline-flex; align-items:center; gap:3px;
+  font-size:12px; font-weight:900; letter-spacing:.02em; margin-top:5px;
+  padding:2px 9px; border-radius:999px;
+}
+.v3-diff.up{ color:var(--v3-green); background:rgba(47,208,107,.12); }
+.v3-diff.down{ color:var(--v3-red); background:rgba(255,77,94,.12); }
+.v3-diff.even{ color:var(--v3-muted); background:rgba(255,255,255,.05); }
+
+/* Rounds zone — compact now the card no longer stretches full height */
+/* Card footer: previous rounds hug the OUTER edge, averages the INNER edge. */
+.v3-foot{
+  width:100%; flex:0 0 auto; display:flex; align-items:stretch; gap:10px;
+  border-top:1px solid var(--v3-line); margin-top:8px; padding-top:8px;
+}
+/* No mirroring: previous rounds always LEFT, averages always RIGHT, both sides. */
+.v3-foot-div{ flex:0 0 auto; width:1px; align-self:stretch; background:var(--v3-line); }  /* faint grey divider */
+/* Outer column scrolls so every past round stays reachable (bottom grid removed). */
+.v3-foot-prev{ flex:0 1 auto; min-width:38px; max-height:104px; overflow-y:auto; overscroll-behavior:contain;
+  display:flex; flex-direction:column; gap:6px; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.18) transparent; pointer-events:auto; }
+.v3-foot-prev::-webkit-scrollbar{ width:3px; }
+.v3-foot-prev::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.18); border-radius:3px; }
+.v3-foot-avgs{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:5px; justify-content:center; }
+/* 3- and 4-player pills are ~half width, so compact the footer to fit cleanly. */
+.v3-main.v3-3p .v3-avg-val, .v3-main.v3-4p .v3-avg-val{ font-size:14px; }
+.v3-main.v3-3p .v3-avg-lab, .v3-main.v3-4p .v3-avg-lab{ font-size:7px; letter-spacing:.04em; }
+.v3-main.v3-3p .v3-rr-tot,  .v3-main.v3-4p .v3-rr-tot{ font-size:15px; }
+.v3-main.v3-3p .v3-rr-marks,.v3-main.v3-4p .v3-rr-marks{ font-size:8px; }
+.v3-main.v3-3p .v3-foot,    .v3-main.v3-4p .v3-foot{ gap:6px; }
+/* previous-round stack (outer) */
+.v3-rr{ display:flex; flex-direction:column; align-items:center; text-align:center; }
+.v3-foot.p1 .v3-rr{ align-items:flex-start; text-align:left; }
+.v3-foot.p2 .v3-rr{ align-items:flex-start; text-align:left; }
+.v3-rr-lab{ font-size:8px; font-weight:900; letter-spacing:.12em; color:var(--v3-muted); }
+.v3-rr-tot{ font-size:17px; font-weight:900; color:#fff; line-height:1.05; }
+.v3-rr.best .v3-rr-tot{ color:var(--v3-green); }
+.v3-rr-marks{ font-size:9px; font-weight:800; color:rgba(214,222,240,.5); letter-spacing:.03em; }
+.v3-rr-marks i{ font-style:normal; color:rgba(214,222,240,.3); margin:0 1px; }
+.v3-rr-none{ font-size:16px; font-weight:900; color:rgba(214,222,240,.28); white-space:nowrap; }
+/* averages stack — always right-aligned, never centred, so the numbers line up */
+.v3-foot-avgs{ align-items:flex-end; min-width:0; }
+.v3-avg{ display:flex; flex-direction:column; align-items:flex-end; text-align:right; gap:0; min-width:0; max-width:100%; }
+.v3-foot.p1 .v3-avg,
+.v3-foot.p2 .v3-avg{ align-items:flex-end; text-align:right; }
+.v3-avg-val{ font-size:16px; font-weight:900; color:#fff; line-height:1.02; transition:color .3s ease, text-shadow .3s ease; }
+.v3-avg-lab{ font-size:8px; font-weight:900; letter-spacing:.08em; color:var(--v3-muted); }
+/* record highlighting: GREEN = player's own best ever, PURPLE = all-time record */
+.v3-avg.rec-best .v3-avg-val{ color:var(--v3-green); text-shadow:0 0 10px rgba(47,208,107,.55); }
+.v3-avg.rec-record .v3-avg-val{ color:var(--v3-purple); text-shadow:0 0 12px rgba(176,107,255,.75); animation:v3AvgRecord 1.4s ease-in-out infinite; }
+@keyframes v3AvgRecord{ 0%,100%{ text-shadow:0 0 10px rgba(176,107,255,.55); } 50%{ text-shadow:0 0 18px rgba(176,107,255,.95); } }
+
+/* ---------------- Centre column — the STEM of the T ----------------
+   The top bar is the marquee; this column drops out of its middle as one
+   continuous screen: same glass, same scanlines, no seam where they meet. */
+.v3-centre{ display:flex; flex-direction:column; min-width:0; }
+.v3-ctop{
+  position:relative; flex:1 1 auto; overflow:hidden;
+  display:flex; flex-direction:column; align-items:stretch;
+  border:1px solid rgba(255,255,255,.09);
+  border-top:0;                                   /* butts into the marquee */
+  border-radius:0 0 16px 16px;
+  background:linear-gradient(180deg,#0b0f1a 0%,#070a12 55%,#05070d 100%);
+  box-shadow: inset 0 0 26px rgba(0,0,0,.85), 0 6px 20px rgba(0,0,0,.35);
+}
+/* shared scanline glass, matching the marquee */
+.v3-stem-scan{ position:absolute; inset:0; z-index:3; pointer-events:none;
+  background:repeating-linear-gradient(0deg, rgba(0,0,0,.26) 0 1px, transparent 1px 3px); opacity:.42; }
+.v3-ctop > *{ position:relative; z-index:1; }
+.v3-dartbox{
+  border-radius:12px; background: var(--v3-panel); border:1px solid var(--v3-line);
+  padding:8px; text-align:center; flex:0 0 auto;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+.v3-dart-lab{ font-size:10px; font-weight:900; letter-spacing:.14em; color:rgba(214,222,240,.62); }
+.v3-dartdots{ display:flex; justify-content:center; gap:11px; margin-top:6px; }
+.v3-dartdots i{
+  width:16px; height:16px; border-radius:50%;
+  border:2px solid #3a4050; background:radial-gradient(circle,#0c0f17 40%, transparent 42%);
+  box-sizing:border-box; transition: all .18s ease;
+}
+.v3-dartdots i.on{
+  border-color:var(--v3-orange);
+  background:radial-gradient(circle, #ff6a00 34%, #0c0f17 36%, #0c0f17 52%, transparent 54%);
+  box-shadow:0 0 9px rgba(255,106,0,.55);
+}
+/* Now a transparent section INSIDE the stem — the stem provides the chrome. */
+.v3-scorebox{
+  position:relative; overflow:hidden;
+  border:0; background:transparent; box-shadow:none;
+  padding: 14px 10px; text-align:center;
+  flex:1 1 auto;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+}
+.v3-sb-glow{ position:absolute; inset:0; pointer-events:none;
+  background: radial-gradient(96% 78% at 50% 0%, rgba(255,106,0,.16), transparent 64%); }
+.v3-scorebox > *{ position:relative; z-index:1; }
+/* TARGET chip pinned to the top of the ROUND SCORE pill (moved off the top bar) */
+/* TARGET = the junction segment, divided by a hairline rule (no box-in-a-box) */
+.v3-sb-target{
+  display:flex; flex-direction:column; align-items:center; gap:1px; flex:0 0 auto;
+  padding:9px 10px 10px;
+  border-bottom:1px solid rgba(255,255,255,.10);
+  background:radial-gradient(120% 100% at 50% 0%, rgba(255,106,0,.16), transparent 72%);
+}
+.v3-sbt-lab{ font-size:8px; font-weight:900; letter-spacing:.22em; color:rgba(214,222,240,.55); line-height:1; }
+/* Big and legible mid-throw — this is the number players glance at most. */
+.v3-sbt-val{ font-size:clamp(26px,7.5vw,34px); font-weight:950; letter-spacing:.02em; line-height:1.02;
+  max-width:100%; white-space:nowrap; overflow:hidden;
+  color:var(--v3-orange-lt); text-shadow:0 0 18px rgba(255,138,20,.6); }
+.v3-sbt-val.mid{ font-size:clamp(20px,5.6vw,26px); }
+.v3-sbt-val.long{ font-size:clamp(14px,4.1vw,19px); letter-spacing:.06em; }
+/* ---- COMBO TAKEOVER: the whole stem becomes the stage ---- */
+/* The score recedes behind the celebration, then eases back — no hard cut.
+   Scoped to the exit render only, so it never flickers on an ordinary throw. */
+.v3-ctop.combo-out .v3-scorebox{ animation:v3ScoreBack .34s cubic-bezier(.2,.9,.25,1) both; }
+@keyframes v3ScoreBack{ from{ opacity:.15; transform:scale(.9); filter:blur(2px); } to{ opacity:1; transform:scale(1); filter:blur(0); } }
+.v3-ctop.comboing .v3-scorebox{ opacity:.14; filter:blur(2px); transform:scale(.9); animation:none; transition:opacity .2s ease, filter .2s ease, transform .2s ease; }
+/* Outro: the celebration recedes and the score glides back in — no jerk. */
+.v3-ctop.comboing.leaving .v3-scorebox{ opacity:1; filter:blur(0); transform:scale(1);
+  transition:opacity .42s cubic-bezier(.2,.9,.25,1), filter .42s ease, transform .42s cubic-bezier(.2,.9,.25,1); }
+.v3-combo-stage.leaving{ animation:v3CsOut .42s cubic-bezier(.4,0,.2,1) both; }
+@keyframes v3CsOut{ from{ opacity:1; transform:scale(1); } to{ opacity:0; transform:scale(1.14); } }
+.v3-ctop.comboing.leaving{ transition:border-color .42s ease, box-shadow .42s ease; }
+.v3-ctop.comboing.silver{ border-color:rgba(200,214,235,.75); box-shadow:inset 0 0 30px rgba(0,0,0,.8), 0 0 34px rgba(200,214,235,.4); }
+.v3-ctop.comboing.gold{ border-color:rgba(255,196,74,.8); box-shadow:inset 0 0 30px rgba(0,0,0,.8), 0 0 38px rgba(255,196,74,.5); }
+.v3-ctop.comboing.legendary{ border-color:rgba(180,123,255,.85); box-shadow:inset 0 0 30px rgba(0,0,0,.8), 0 0 44px rgba(180,123,255,.6); }
+.v3-combo-stage{
+  position:absolute; left:0; right:0; top:0; bottom:0; z-index:4; pointer-events:none;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:8px;
+  animation:v3CsIn .34s cubic-bezier(.2,.9,.25,1) both;
+}
+.v3-cs-lab{ font-size:9px; font-weight:900; letter-spacing:.26em; color:rgba(255,255,255,.7); }
+.v3-cs-name{
+  font-size:clamp(15px,4.6vw,23px); font-weight:950; line-height:1.06; text-align:center;
+  letter-spacing:0; text-transform:uppercase;
+  /* wrap between WORDS only — never split a word mid-letter in the narrow stem */
+  word-break:normal; overflow-wrap:break-word; hyphens:none; max-width:100%;
+  animation:v3CsPop .5s cubic-bezier(.2,.9,.25,1) both .06s;
+}
+.v3-combo-stage.silver .v3-cs-name{ color:#eaf1fb; text-shadow:0 0 20px rgba(200,214,235,.9); }
+.v3-combo-stage.gold .v3-cs-name{ color:#ffe1a6; text-shadow:0 0 22px rgba(255,196,74,.95); }
+.v3-combo-stage.legendary .v3-cs-name{ color:#e9c6ff; text-shadow:0 0 26px rgba(180,123,255,1); }
+/* WHIFF — a whole round missed. The opposite of a combo: cold, red, slumping. */
+.v3-ctop.comboing.whiff{ border-color:rgba(255,77,94,.7); box-shadow:inset 0 0 30px rgba(0,0,0,.85), 0 0 30px rgba(255,77,94,.35); }
+.v3-combo-stage.whiff .v3-cs-name{ color:#ff8a97; text-shadow:0 0 18px rgba(255,77,94,.8); animation:v3CsSlump .6s cubic-bezier(.3,.7,.4,1) both .04s; }
+.v3-combo-stage.whiff .v3-cs-lab{ color:rgba(255,150,160,.85); }
+.v3-combo-stage.whiff .v3-cs-ring{ color:#ff4d5e; animation:v3CsRingWeak .7s ease-out both; }
+@keyframes v3CsSlump{ 0%{ transform:translateY(-26px) scale(1.1); opacity:0; }
+  55%{ transform:translateY(4px) scale(1); opacity:1; } 100%{ transform:translateY(0) scale(1); opacity:1; } }
+@keyframes v3CsRingWeak{ 0%{ transform:scale(.4); opacity:.6; } 100%{ transform:scale(1.5); opacity:0; } }
+/* shockwave from the centre of the stem */
+.v3-cs-ring{ position:absolute; left:50%; top:50%; width:90px; height:90px; margin:-45px 0 0 -45px;
+  border-radius:50%; border:2.5px solid currentColor; opacity:0; animation:v3CsRing .72s ease-out both; }
+.v3-combo-stage.silver .v3-cs-ring{ color:#c8d6eb; }
+.v3-combo-stage.gold .v3-cs-ring{ color:#ffc44a; }
+.v3-combo-stage.legendary .v3-cs-ring{ color:#b47bff; }
+/* ---- BIG-COMBO FX: flash, anime speed-rays, lightning, sparks, quake ---- */
+.v3-cs-flash,.v3-cs-rays,.v3-cs-bolts,.v3-cs-spark{ position:absolute; inset:0; pointer-events:none; }
+.v3-cs-flash{ background:#fff; opacity:0; }
+.v3-combo-stage.big .v3-cs-flash{ animation:v3CsFlash .5s ease-out both; }
+@keyframes v3CsFlash{ 0%{ opacity:.85; } 22%{ opacity:.25; } 100%{ opacity:0; } }
+/* radial speed-lines, Street-Fighter engage */
+.v3-cs-rays{ opacity:0; background:repeating-conic-gradient(from 0deg at 50% 50%,
+  currentColor 0deg 2deg, transparent 2deg 11deg); mix-blend-mode:screen; }
+.v3-combo-stage.big .v3-cs-rays{ animation:v3CsRays .8s ease-out both; }
+@keyframes v3CsRays{ 0%{ opacity:.55; transform:scale(.35) rotate(0deg); } 100%{ opacity:0; transform:scale(2.1) rotate(26deg); } }
+/* lightning bolts striking in from the corners */
+.v3-cs-bolts i{ position:absolute; width:3px; top:-12%; height:124%; background:linear-gradient(180deg,transparent,#fff 22%,currentColor 55%,transparent);
+  filter:blur(.4px); opacity:0; transform-origin:top center; }
+.v3-cs-bolts i:nth-child(1){ left:16%; transform:rotate(13deg); }
+.v3-cs-bolts i:nth-child(2){ left:38%; transform:rotate(-9deg); }
+.v3-cs-bolts i:nth-child(3){ left:62%; transform:rotate(11deg); }
+.v3-cs-bolts i:nth-child(4){ left:84%; transform:rotate(-14deg); }
+.v3-combo-stage.big .v3-cs-bolts i{ animation:v3CsBolt .46s steps(3,end) both; }
+.v3-combo-stage.big .v3-cs-bolts i:nth-child(2){ animation-delay:.07s; }
+.v3-combo-stage.big .v3-cs-bolts i:nth-child(3){ animation-delay:.13s; }
+.v3-combo-stage.big .v3-cs-bolts i:nth-child(4){ animation-delay:.19s; }
+@keyframes v3CsBolt{ 0%{ opacity:0; } 30%{ opacity:.95; } 60%{ opacity:.35; } 100%{ opacity:0; } }
+/* particle sparks flung outward */
+.v3-cs-spark b{ position:absolute; left:50%; top:50%; width:4px; height:4px; border-radius:50%;
+  background:currentColor; box-shadow:0 0 8px currentColor; opacity:0; }
+.v3-combo-stage.big .v3-cs-spark b{ animation:v3CsSpark .8s ease-out both; }
+.v3-cs-spark b:nth-child(1){ --tx:-58px; --ty:-46px; animation-delay:.02s; }
+.v3-cs-spark b:nth-child(2){ --tx:56px;  --ty:-52px; animation-delay:.05s; }
+.v3-cs-spark b:nth-child(3){ --tx:-70px; --ty:26px;  animation-delay:.08s; }
+.v3-cs-spark b:nth-child(4){ --tx:66px;  --ty:34px;  animation-delay:.03s; }
+.v3-cs-spark b:nth-child(5){ --tx:-30px; --ty:72px;  animation-delay:.10s; }
+.v3-cs-spark b:nth-child(6){ --tx:34px;  --ty:-76px; animation-delay:.06s; }
+.v3-cs-spark b:nth-child(7){ --tx:-82px; --ty:-12px; animation-delay:.12s; }
+.v3-cs-spark b:nth-child(8){ --tx:78px;  --ty:-8px;  animation-delay:.09s; }
+.v3-cs-spark b:nth-child(9){ --tx:12px;  --ty:84px;  animation-delay:.14s; }
+.v3-cs-spark b:nth-child(10){ --tx:-16px; --ty:-88px; animation-delay:.04s; }
+@keyframes v3CsSpark{ 0%{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+  100%{ opacity:0; transform:translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(.3); } }
+.v3-cs-ring.r2{ animation-delay:.14s; }
+.v3-combo-stage.big .v3-cs-name{ animation:v3CsPopBig .62s cubic-bezier(.2,.9,.25,1) both .06s; }
+@keyframes v3CsPopBig{ 0%{ transform:scale(.35) rotate(-7deg); opacity:0; } 45%{ transform:scale(1.24) rotate(2deg); opacity:1; }
+  70%{ transform:scale(.96) rotate(-1deg); } 100%{ transform:scale(1) rotate(0); opacity:1; } }
+/* whole-panel impact shake */
+.v3-quake{ animation:v3Quake .42s cubic-bezier(.36,.07,.19,.97); }
+.v3-quake-big{ animation:v3QuakeBig .62s cubic-bezier(.36,.07,.19,.97); }
+@keyframes v3Quake{ 0%,100%{ transform:translate(0,0); } 20%{ transform:translate(-4px,2px); }
+  40%{ transform:translate(4px,-2px); } 60%{ transform:translate(-3px,-1px); } 80%{ transform:translate(2px,1px); } }
+@keyframes v3QuakeBig{ 0%,100%{ transform:translate(0,0) rotate(0); } 12%{ transform:translate(-8px,4px) rotate(-.5deg); }
+  26%{ transform:translate(8px,-5px) rotate(.5deg); } 42%{ transform:translate(-7px,-3px) rotate(-.35deg); }
+  58%{ transform:translate(6px,4px) rotate(.3deg); } 74%{ transform:translate(-4px,2px); } 88%{ transform:translate(3px,-1px); } }
+@media (prefers-reduced-motion: reduce){
+  .v3-quake,.v3-quake-big,.v3-cs-flash,.v3-cs-rays,.v3-cs-bolts i,.v3-cs-spark b{ animation:none !important; opacity:0 !important; }
+}
+@keyframes v3CsIn{ from{ opacity:0; } to{ opacity:1; } }
+@keyframes v3CsPop{ 0%{ transform:scale(.55); opacity:0; } 55%{ transform:scale(1.12); opacity:1; } 100%{ transform:scale(1); opacity:1; } }
+@keyframes v3CsRing{ 0%{ transform:scale(.3); opacity:.95; } 70%{ opacity:.25; } 100%{ transform:scale(2.5); opacity:0; } }
+@media (prefers-reduced-motion: reduce){
+  .v3-combo-stage,.v3-cs-name,.v3-cs-ring{ animation:none !important; }
+  .v3-cs-ring{ display:none; }
+}
+/* Round-complete freeze: the finished total holds, lit, before the reset. */
+.v3-sb-num.v3-held{ color:#ffe6b0; text-shadow:0 0 26px rgba(255,190,60,.75), 0 2px 22px rgba(0,0,0,.55); }
+/* DART TRACK — three slots that fill with what each dart actually scored */
+.v3-darttrack{
+  flex:0 0 auto; display:flex; align-items:center; justify-content:center; gap:8px;
+  padding:9px 8px 10px; border-top:1px solid rgba(255,255,255,.10);
+  background:linear-gradient(180deg, rgba(255,255,255,.02), transparent);
+}
+.v3-slot{
+  width:30px; height:30px; border-radius:9px; display:grid; place-items:center;
+  font-size:13px; font-weight:950; letter-spacing:.01em;
+  border:1.5px solid rgba(255,255,255,.12); background:rgba(255,255,255,.03);
+  color:rgba(214,222,240,.5); transition:all .18s ease;
+}
+.v3-slot i{ width:8px; height:8px; border-radius:50%; background:rgba(214,222,240,.22); display:block; }
+.v3-slot.next{ border-color:var(--v3-orange); box-shadow:0 0 14px rgba(255,106,0,.5); animation:v3SlotNext 1.1s ease-in-out infinite; }
+.v3-slot.next i{ background:var(--v3-orange); box-shadow:0 0 8px rgba(255,106,0,.9); }
+@keyframes v3SlotNext{ 0%,100%{ transform:scale(1); opacity:.85; } 50%{ transform:scale(1.09); opacity:1; } }
+.v3-slot.done{ color:#fff; }
+.v3-slot.done.treble{ border-color:rgba(47,208,107,.75); background:rgba(47,208,107,.16); color:#8effb4; box-shadow:0 0 12px rgba(47,208,107,.35); }
+.v3-slot.done.double{ border-color:rgba(74,163,255,.75); background:rgba(74,163,255,.16); color:#9ccbff; box-shadow:0 0 12px rgba(74,163,255,.3); }
+.v3-slot.done.bull{   border-color:rgba(255,196,74,.8);  background:rgba(255,196,74,.16); color:#ffe1a6; box-shadow:0 0 12px rgba(255,196,74,.35); }
+.v3-slot.done.single{ border-color:rgba(255,255,255,.28); background:rgba(255,255,255,.07); color:#eef2ff; }
+.v3-slot.done.miss{   border-color:rgba(255,77,94,.7);   background:rgba(255,77,94,.14);  color:#ff8a97; }
+@media (prefers-reduced-motion: reduce){ .v3-slot.next{ animation:none; } }
+.v3-sb-lab{ font-size:12px; font-weight:900; letter-spacing:.2em; color:rgba(214,222,240,.78); }
+/* The live round score is the CABINET's readout, not a player's total — so it
+   reads as cyan LED with tabular digits, clearly distinct from the players'
+   white/accent totals either side. */
+.v3-sb-num{
+  font-size: clamp(56px, 19vw, 84px); font-weight:900; line-height:1; margin-top:5px;
+  letter-spacing:.01em; font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1;
+  color:#b6ecff;
+  text-shadow:0 0 10px rgba(120,220,255,.75), 0 0 34px rgba(70,190,255,.45), 0 2px 22px rgba(0,0,0,.6);
+}
+.v3-sb-marks{ font-size:17px; font-weight:900; color:rgba(214,222,240,.75); margin-top:6px; letter-spacing:.1em; }
+.v3-sb-marks i{ font-style:normal; color:rgba(214,222,240,.34); }
+
+/* ============ FORM METERS — thin arcade CHARGE bars at the screen edges ============
+   Fill UP with good play; every on-target dart charges them, doubles/trebles/bull
+   and combos charge harder. Fill it and it POPS (gold burst) and banks a fire
+   streak. Pinned to the far left/right edges of the play area. */
+.v3-edge-form{
+  width:14px; align-self:stretch;                  /* as tall as the player pill it flanks */
+  display:flex; flex-direction:column; align-items:center; gap:4px; pointer-events:none;
+}
+.v3-ef-cap{ font-size:7px; font-weight:900; letter-spacing:.18em; color:rgba(214,222,240,.45); writing-mode:vertical-rl; text-orientation:upright; letter-spacing:0; line-height:1; }
+.v3-ef-track{
+  position:relative; flex:1 1 auto; width:100%; min-height:60px; border-radius:9px; overflow:hidden;
+  background:linear-gradient(180deg,#0b0f1a,#04060c);
+  border:1.5px solid rgba(255,255,255,.09);
+  box-shadow: inset 0 0 14px rgba(0,0,0,.85);
+}
+.v3-ef-fill{
+  position:absolute; left:0; right:0; bottom:0; height:0%;
+  background:linear-gradient(180deg,#69b7ff 0%,#2f6bff 100%);
+  box-shadow:0 0 16px rgba(74,163,255,.65);
+  transition: background .45s ease, box-shadow .45s ease;   /* height is rAF-driven for smoothness */
+}
+.v3-ef-tip{ position:absolute; left:-2px; right:-2px; top:-2px; height:4px; border-radius:3px;
+  background:#fff; box-shadow:0 0 10px #fff, 0 0 18px rgba(120,200,255,.9); opacity:.9; }
+/* Electric spark that crackles off the top of the fill when the bar is HOT */
+.v3-ef-spark{ position:absolute; top:-3px; left:50%; width:3px; height:3px; margin-left:-1.5px; border-radius:50%; background:#fff; opacity:0; z-index:4; pointer-events:none; }
+.v3-edge-form.hot .v3-ef-spark{ opacity:1; animation:v3Spark .5s linear infinite; }
+.v3-edge-form.hot .v3-ef-spark::after{ content:''; position:absolute; inset:0; border-radius:50%; background:#fff; animation:v3Spark2 .4s linear infinite .2s; }
+@keyframes v3Spark{
+  0%{ opacity:0; transform:translateY(0) scale(.4); box-shadow:0 0 0 transparent; }
+  18%{ opacity:1; box-shadow:-3px -2px 3px #ffe27a, 3px -3px 3px #fff, 0 -1px 5px #ffd24a; }
+  60%{ opacity:.85; transform:translateY(-6px) scale(1); box-shadow:-5px -6px 4px rgba(255,220,120,.6), 4px -7px 4px rgba(255,255,255,.75); }
+  100%{ opacity:0; transform:translateY(-12px) scale(.2); }
+}
+@keyframes v3Spark2{ 0%{ opacity:0; transform:translate(-3px,0) scale(.5); } 40%{ opacity:1; box-shadow:4px -3px 4px #fff, -4px -4px 3px #ffd24a; } 100%{ opacity:0; transform:translate(3px,-9px) scale(.2); } }
+.v3-edge-form.hot .v3-ef-tip{ animation:v3TipCrackle .1s steps(2) infinite; }
+@keyframes v3TipCrackle{ 0%{ opacity:.7; filter:brightness(1); } 50%{ opacity:1; filter:brightness(1.8); } 100%{ opacity:.85; } }
+/* COLD -> mid -> WARM -> HOT ramp (a true form reading) */
+.v3-edge-form.cold .v3-ef-fill{ background:linear-gradient(180deg,#9fe0ff 0%,#4aa8e8 100%); box-shadow:0 0 14px rgba(120,200,255,.55); }
+.v3-edge-form.cold .v3-ef-tip{ background:#e8fbff; box-shadow:0 0 10px #cdefff, 0 0 16px rgba(150,220,255,.8); }
+.v3-edge-form.warm .v3-ef-fill{ background:linear-gradient(180deg,#ffe07a 0%,#ff9a2f 100%); box-shadow:0 0 20px rgba(255,170,60,.85); }
+.v3-edge-form.warm .v3-ef-tip{ background:#fff2c8; box-shadow:0 0 10px #ffdf8a, 0 0 18px rgba(255,180,60,.9); }
+.v3-edge-form.hot .v3-ef-fill{ background:linear-gradient(180deg,#ffe14a 0%,#ff7a1e 45%,#ff2f5a 100%); box-shadow:0 0 30px rgba(255,90,60,.95); }
+.v3-edge-form.hot .v3-ef-tip{ background:#fff; box-shadow:0 0 12px #ffd24a, 0 0 22px rgba(255,90,40,1); }
+/* Only the LIVE player's bar gets the intense arcade FX. */
+.v3-edge-form.live .v3-ef-tip{ animation:v3EfTip 1s ease-in-out infinite; }
+.v3-edge-form.live.hot .v3-ef-fill{ animation:v3EfHot .5s ease-in-out infinite; }
+.v3-edge-form.live.hot .v3-ef-track{ box-shadow: inset 0 0 14px rgba(0,0,0,.85), 0 0 20px rgba(255,80,40,.5); animation:v3EfHotBox .5s ease-in-out infinite; }
+@keyframes v3EfHot{ 0%,100%{ filter:brightness(1) saturate(1); } 50%{ filter:brightness(1.5) saturate(1.3); } }
+@keyframes v3EfHotBox{ 0%,100%{ box-shadow: inset 0 0 14px rgba(0,0,0,.85), 0 0 14px rgba(255,80,40,.35); } 50%{ box-shadow: inset 0 0 14px rgba(0,0,0,.85), 0 0 26px rgba(255,90,50,.7); } }
+@keyframes v3EfTip{ 0%,100%{ opacity:.5; transform:scaleX(.9); } 50%{ opacity:1; transform:scaleX(1.15); } }
+.v3-ef-segs{ position:absolute; inset:0; z-index:2; pointer-events:none;
+  background-image:repeating-linear-gradient(180deg, rgba(0,0,0,.6) 0 1.5px, transparent 1.5px 7.5%); }
+.v3-ef-track::after{ content:''; position:absolute; inset:0; z-index:3; pointer-events:none;
+  background:radial-gradient(120% 40% at 50% 0%, rgba(255,255,255,.08), transparent 60%); }
+.v3-ef-streak{ min-height:13px; font-size:11px; line-height:1; filter:drop-shadow(0 0 5px rgba(255,140,40,.85)); }
+/* SURGE: a big combo lands -> a white power-flash rips up the whole bar. */
+.v3-ef-fill.surge{ animation:v3EfSurge .5s ease-out; }
+@keyframes v3EfSurge{
+  0%{ filter:brightness(2.6) saturate(1.6); box-shadow:0 0 40px #fff, 0 0 60px rgba(255,120,40,.9); }
+  35%{ filter:brightness(1.8) saturate(1.4); }
+  100%{ filter:brightness(1) saturate(1); }
+}
+.v3-ef-track.surge::before{ content:''; position:absolute; inset:0; z-index:5; pointer-events:none; border-radius:inherit;
+  background:radial-gradient(60% 30% at 50% 100%, rgba(255,255,255,.7), transparent 70%); animation:v3EfSurgeFlash .5s ease-out forwards; }
+@keyframes v3EfSurgeFlash{ 0%{ opacity:1; transform:translateY(0); } 100%{ opacity:0; transform:translateY(-40%); } }
+@media (prefers-reduced-motion: reduce){
+  .v3-edge-form.live.hot .v3-ef-fill, .v3-edge-form.live.hot .v3-ef-track, .v3-edge-form.live .v3-ef-tip{ animation:none; }
+  .v3-ef-fill{ transition:height .2s linear; }
+}
+.v3-dmd-bezel{
+  position:relative; flex:1; border-radius:12px; overflow:hidden;
+  background:
+    radial-gradient(120% 62% at 50% 44%, rgba(255,106,0,.10), rgba(255,106,0,0) 62%),
+    radial-gradient(140% 100% at 50% 50%, #0a0f19 0%, #05070c 66%, #02040a 100%);
+  border:1px solid rgba(255,255,255,.08);
+  box-shadow: inset 0 0 22px rgba(0,0,0,.7), inset 0 0 0 3px rgba(0,0,0,.5), 0 4px 14px rgba(0,0,0,.4);
+  display:flex; align-items:center; justify-content:center;
+}
+/* Slow "backlight" breathe so the screen reads as lit, never dead-black */
+.v3-dmd-bezel::before{
+  content:''; position:absolute; inset:0; pointer-events:none; z-index:0;
+  background: radial-gradient(70% 44% at 50% 46%, rgba(255,140,40,.16), rgba(255,140,40,0) 70%);
+  animation: v3DmdGlow 4.2s ease-in-out infinite;
+}
+@keyframes v3DmdGlow{ 0%,100%{ opacity:.45; } 50%{ opacity:1; } }
+/* Scanlines + edge vignette on top */
+.v3-dmd-bezel::after{
+  content:''; position:absolute; inset:0; pointer-events:none; z-index:2;
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,.03) 0 1px, transparent 1px 3px),
+    radial-gradient(130% 100% at 50% 50%, rgba(0,0,0,0) 52%, rgba(0,0,0,.55) 100%);
+  opacity:.6;
+}
+/* Idle "attract" content: a faint reticle + the round target, behind the DMD */
+.v3-dmd-attract{
+  position:absolute; inset:0; z-index:0; pointer-events:none;
+  display:flex; align-items:center; justify-content:center;
+}
+.v3-dmd-attract::before{
+  content:''; position:absolute; left:50%; top:50%; width:70%; padding-bottom:70%;
+  transform:translate(-50%,-50%); border-radius:50%;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 0 37%, rgba(255,150,60,.16) 37% 38.5%, transparent 38.5%),
+    radial-gradient(circle at 50% 50%, transparent 0 58%, rgba(255,150,60,.11) 58% 59.5%, transparent 59.5%),
+    radial-gradient(circle at 50% 50%, transparent 0 79%, rgba(255,150,60,.07) 79% 80.5%, transparent 80.5%);
+  animation: v3Reticle 4.2s ease-in-out infinite;
+}
+.v3-dmd-attract::after{
+  content:''; position:absolute; left:50%; top:50%; width:74%; height:1px;
+  transform:translate(-50%,-50%);
+  background: linear-gradient(90deg, transparent, rgba(255,150,60,.14) 20% 80%, transparent);
+  box-shadow: 0 0 0 0 transparent;
+}
+.v3-dmd-target{
+  position:relative; z-index:1; font-weight:900; letter-spacing:-.02em; line-height:1;
+  font-size: clamp(30px, 12vw, 52px); color: rgba(255,150,60,.10);
+  text-shadow: 0 0 24px rgba(255,140,40,.14);
+}
+@keyframes v3Reticle{ 0%,100%{ opacity:.55; transform:translate(-50%,-50%) scale(.98); } 50%{ opacity:1; transform:translate(-50%,-50%) scale(1.02); } }
+.v3-dmdslot{ position:relative; z-index:1; width:100%; height:100%; display:flex; align-items:center; }
+.v3-dmdslot .sq-dmd, .v3-dmdslot .sq-dmd-wrap, .v3-dmdslot .v2InfoDmdCell{
+  width:100% !important; max-width:none !important; margin:0 !important;
+  height:auto !important; min-height:0 !important;
+}
+.v3-dmdslot canvas{ display:block; width:100% !important; height:auto !important; max-height:100% !important; }
+
