@@ -92,7 +92,7 @@ export function makeMessage(event = {}) {
     case 'OUTER_BULL':
       return { priority: PRIORITY.THROW, headline: 'OUTER BULL +25', subline: total, type: 'hold', haptic: 'double' };
     case 'BULLSEYE':
-      return { priority: PRIORITY.THROW, headline: 'BULLSEYE +50', subline: total, type: 'hold', haptic: 'major' };
+      return { priority: PRIORITY.THROW, headline: 'BULLSEYE +50', subline: total, type: 'hold', duration: 1300, haptic: 'major' };
     case 'MISS':
       return { priority: PRIORITY.THROW, headline: 'MISS', subline: `DART ${dart} OF 3`, type: 'hold', haptic: 'miss' };
     case 'SCRATCH':
@@ -104,12 +104,22 @@ export function makeMessage(event = {}) {
       return { priority: PRIORITY.COMPETITIVE, headline: 'NEW LEADER', subline: player ? `${player} ${signed(margin)}` : signed(margin), type: 'hold', haptic: 'competitive' };
     case 'LEVEL':
       return { priority: PRIORITY.COMPETITIVE, headline: 'LEVEL', subline: clean(event.scoreLine || event.totalLine || '', 18), type: 'hold', haptic: 'competitive' };
+    case 'LATE_CLOSE':
+      return { priority: PRIORITY.COMPETITIVE, headline: clean(event.headline || 'CLOSE GAME', 22), subline: clean(event.subline || (Number.isFinite(Number(event.margin)) ? `MARGIN ${Math.abs(Math.round(Number(event.margin)))}` : ''), 22), type: 'hold', duration: 1000, haptic: 'competitive' };
     case 'ROUND_DOUBLES':
       return { priority: PRIORITY.VISIT, headline: 'DOUBLES', subline: clean(event.roundLabel || 'ROUND 12', 16), type: 'hold', haptic: 'competitive' };
     case 'ROUND_TREBLES':
       return { priority: PRIORITY.VISIT, headline: 'TREBLES', subline: clean(event.roundLabel || 'ROUND 13', 16), type: 'hold', haptic: 'competitive' };
     case 'ROUND_BULL':
       return { priority: PRIORITY.VISIT, headline: 'BULL', subline: clean(event.roundLabel || 'FINAL ROUND', 16), type: 'hold', haptic: 'major' };
+    case 'ROUND_TARGET':
+      return { priority: PRIORITY.VISIT, headline: target ? `TARGET ${target}` : 'NEXT TARGET', subline: clean(event.roundLabel || '', 18), type: 'hold', haptic: 'visit' };
+    case 'CATCH_UP':
+      return { priority: PRIORITY.VISIT, headline: 'CATCH-UP', subline: [player, target ? `TARGET ${target}` : ''].filter(Boolean).join(' · '), type: 'hold', duration: 900, haptic: 'tap' };
+    case 'FINAL_BULL_TIMER': {
+      const seconds = Math.max(0, Math.ceil(finite(event.seconds, 0)));
+      return { priority: PRIORITY.COMPETITIVE, headline: 'BULL RETURN', subline: [player, `${seconds} SECONDS`].filter(Boolean).join(' · '), type: 'hold', duration: 0, haptic: null };
+    }
     case 'UNDO':
       return { priority: PRIORITY.VISIT, headline: 'THROW UNDONE', subline: clean(event.subline || 'SCORE RESTORED', 20), type: 'hold', haptic: 'tap' };
     case 'SKIP':
@@ -209,6 +219,8 @@ export function makeSceneDescriptor(event = {}, msg = makeMessage(event)) {
     amp: Number.isFinite(Number(event.amp)) ? Number(event.amp) : 3.2,
     playerInput: event.playerInput === true || event.input === true,
     replayable: event.replayable === true,
+    persistent: event.persistent === true || kind === 'FINAL_BULL_TIMER',
+    updateOnly: event.updateOnly === true || kind === 'FINAL_BULL_TIMER',
     payload: Object.freeze({
       player: clean(event.player, 24),
       target: targetLabel(event.target),
@@ -217,7 +229,9 @@ export function makeSceneDescriptor(event = {}, msg = makeMessage(event)) {
       visitPoints: finite(event.visitPoints, 0),
       total: Number.isFinite(Number(event.total)) ? Number(event.total) : null,
       gameScore: Number.isFinite(Number(event.gameScore)) ? Number(event.gameScore) : null,
-      matchScore: clean(event.matchScore, 16)
+      matchScore: clean(event.matchScore, 16),
+      seconds: Math.max(0, Math.ceil(finite(event.seconds, 0))),
+      margin: Math.round(finite(event.margin, 0))
     })
   });
 }
@@ -325,7 +339,9 @@ export function createController(options = {}) {
           ...scene,
           duration: ms,
           renderType: scene.renderType || msg.type || 'hold',
-          amp: Number.isFinite(Number(scene.amp)) ? Number(scene.amp) : 3.2
+          amp: Number.isFinite(Number(scene.amp)) ? Number(scene.amp) : 3.2,
+          persistent: scene.persistent === true,
+          updateOnly: scene.updateOnly === true
         }));
       } else {
         render(
@@ -378,6 +394,23 @@ export function createController(options = {}) {
     }
   }
 
+  function updateActiveScene(msg, event, scene) {
+    generation += 1;
+    cancelTimer();
+    active = { ...msg, __scene: scene };
+    rememberToken(scene.token);
+    renderMessage(msg, scene);
+    lastDecision = { action: 'update', token: scene.token, family: scene.family, priority: scene.priority };
+    const ms = durationFor(msg);
+    if (!scene.persistent && ms > 0) {
+      const timerGeneration = generation;
+      timer = scheduler.set(() => {
+        if (timerGeneration !== generation) return;
+        restore();
+      }, ms);
+    }
+  }
+
   function enqueue(msg, event, scene) {
     if (maxQueue === 0 || !scene.replayable) return false;
     queue.push({ msg, event, scene, __seq: ++seq });
@@ -417,6 +450,11 @@ export function createController(options = {}) {
       cancelPresentation();
       showNow(msg, event, scene);
       lastDecision = { action: 'input-preempt', token: scene.token, family: scene.family, priority: scene.priority };
+      return msg;
+    }
+
+    if (scene.updateOnly && active && active.__scene && active.__scene.sceneId === scene.sceneId) {
+      updateActiveScene(msg, event, scene);
       return msg;
     }
 
