@@ -1348,6 +1348,72 @@ function __sqBindQuickEntryHold(btn, specFactory){
   btn.addEventListener('contextmenu',(e)=>{ try{ e.preventDefault(); }catch(_){ } });
 }
 
+function __sqBindMissBounceHold(btn){
+  if (!btn || btn.__sqMissBounceHoldBound) return;
+  btn.__sqMissBounceHoldBound = true;
+  btn.style.touchAction = 'none';
+  btn.style.webkitTouchCallout = 'none';
+  btn.style.webkitUserSelect = 'none';
+  btn.style.userSelect = 'none';
+
+  let holdTimer = null;
+  let held = false;
+  let pointerId = null;
+  const clearHold = ()=>{ if (holdTimer) clearTimeout(holdTimer); holdTimer = null; };
+
+  btn.addEventListener('pointerdown',(e)=>{
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    clearHold();
+    held = false;
+    pointerId = e.pointerId;
+    const startX = e.clientX, startY = e.clientY;
+    btn.__sqMissBounceStart = { x:startX, y:startY };
+    try{ btn.setPointerCapture?.(e.pointerId); }catch(_){}
+    holdTimer = setTimeout(()=>{
+      held = true;
+      btn.classList.add('sq-miss-bounce-held');
+      try{ window.__sqDmdHardClearQueue?.(); }catch(_){}
+      try{ window.sqDmdShowZones?.({ z2:'BOUNCE OUT', z3:'' }, { type:'flash', ms:420, fx:'impact' }); }catch(_){}
+      try{ recordThrow({ kind:'BounceOut' }); }catch(_){}
+      try{ navigator.vibrate?.(35); }catch(_){}
+    }, __SQ_QUICK_ENTRY_HOLD_MS);
+  });
+
+  btn.addEventListener('pointermove',(e)=>{
+    if (pointerId !== e.pointerId || held) return;
+    const s = btn.__sqMissBounceStart;
+    if (!s) return;
+    if (Math.hypot(Number(e.clientX||0)-s.x, Number(e.clientY||0)-s.y) > 18){
+      clearHold();
+      pointerId = null;
+    }
+  });
+  const finish=(e)=>{
+    if (pointerId != null && e.pointerId !== pointerId) return;
+    clearHold();
+    pointerId = null;
+    delete btn.__sqMissBounceStart;
+    if (held){
+      e.preventDefault();
+      e.stopPropagation();
+      window.__sqMissBounceSuppressClick = performance.now() + 220;
+      setTimeout(()=>btn.classList.remove('sq-miss-bounce-held'),180);
+    }
+  };
+  btn.addEventListener('pointerup',finish);
+  btn.addEventListener('pointercancel',finish);
+  btn.addEventListener('contextmenu',(e)=>e.preventDefault());
+  btn.addEventListener('click',(e)=>{
+    if (held || performance.now() < Number(window.__sqMissBounceSuppressClick||0)){
+      held = false;
+      window.__sqMissBounceSuppressClick = 0;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }
+  }, true);
+}
+
 if (!window.__sqQuickEntryClickGuardBound){
   window.__sqQuickEntryClickGuardBound=true;
   document.addEventListener('click',(e)=>{
@@ -1790,6 +1856,7 @@ function buildPad(){
         b.type = 'button';
         b.innerHTML = `<div class="dtIcon">${icon}</div><div class="dtLbl">${label}</div>`;
         b.onclick = onClick;
+        if (cls === 'miss') __sqBindMissBounceHold(b);
         return b;
       };
 
@@ -1884,6 +1951,7 @@ function buildPad(){
         b.type = 'button';
         b.innerHTML = `<div class="dtIcon">${icon}</div><div class="dtLbl">${label}</div>`;
         b.onclick = onClick;
+        if (cls === 'miss') __sqBindMissBounceHold(b);
         return b;
       };
 
@@ -1968,6 +2036,7 @@ function buildPad(){
         b.type = 'button';
         b.innerHTML = `<div class="dtIcon">${icon}</div><div class="dtLbl">${label}</div>`;
         b.onclick = onClick;
+        if (cls === 'miss') __sqBindMissBounceHold(b);
         return b;
       };
 
