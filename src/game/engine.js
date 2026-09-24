@@ -103,6 +103,59 @@
 })();
 // <<< PATCH:SC045_DMD_ARCADE_PRESENTATION_HELPERS END
 
+// Presentation-only competitive/catch-up DMD beats. No scoring or persistence ownership.
+function __sqDmdFightRoundBeat(pIdx,rIdx,total,roundDef){
+  try{
+    if(state?.__sqCatchUp?.active) return null;
+    const players=Array.isArray(state?.players)?state.players:[];
+    if(players.length<2 || Number(state.currentDart||0)!==2) return null;
+    let ceiling=0;
+    if(roundDef?.type==='number') ceiling=Math.max(0,Number(roundDef.target||0)*3);
+    else if(roundDef?.type==='doubles') ceiling=120;
+    else if(roundDef?.type==='triples') ceiling=180;
+    else if(roundDef?.type==='bull') ceiling=150;
+    if(!ceiling) return null;
+    const threshold=Math.ceil(ceiling*0.70);
+    const score=Math.max(0,Number(total||0));
+    window.__sqDmdFightBenchmarks=window.__sqDmdFightBenchmarks||{};
+    const key=String(rIdx);
+    const prev=window.__sqDmdFightBenchmarks[key]||null;
+    if(score<threshold) return null;
+    const name=((typeof __sqPlayerPretty==='function'?__sqPlayerPretty(players[pIdx]):'') || players[pIdx]?.name || ('P'+(Number(pIdx)+1))).toString().trim().toUpperCase();
+    if(prev && Number(prev.player)!==Number(pIdx) && score>Number(prev.score||0)){
+      window.__sqDmdFightBenchmarks[key]={player:Number(pIdx),score,name};
+      const calls=['FATALITY','K.O.','COUNTER!','BRUTAL!'];
+      const call=calls[(Number(pIdx)+Number(rIdx)+score)%calls.length];
+      return {headline:call,subline:(name+' TOPS '+String(prev.score)).slice(0,32),reason:'fight_round_overtake',priority:58};
+    }
+    if(!prev || score>Number(prev.score||0)){
+      window.__sqDmdFightBenchmarks[key]={player:Number(pIdx),score,name};
+      if(Number(pIdx)<players.length-1){
+        return {headline:'FINISH HIM!',subline:(name+' SETS '+score).slice(0,32),reason:'fight_round_benchmark',priority:54};
+      }
+    }
+  }catch(_){}
+  return null;
+}
+function __sqDmdCatchUpReturnBeat(pIdx,rIdx){
+  try{
+    const p=state?.players?.[Number(pIdx)];
+    const name=((typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('P'+(Number(pIdx)+1))).toString().trim().toUpperCase();
+    const def=ROUNDS?.[Number(rIdx)];
+    const target=def?.type==='number'?String(def.target):(def?.type==='doubles'?'DBL':def?.type==='triples'?'TRB':'BULL');
+    const lines=[
+      ['LATE HOMEWORK',name+' • BACK TO '+target],
+      ['UNFINISHED BUSINESS',name+' OWES US '+target],
+      ['ADMIN TIME',name+' • '+target+' AGAIN'],
+      ['YOU MISSED A BIT',name+' • BACK TO '+target]
+    ];
+    const pair=lines[(Number(pIdx)+Number(rIdx))%lines.length];
+    window.__sqDmdHardClearQueue?.();
+    window.sqDmdShowZones?.({z2:pair[0],z3:pair[1],z3Small:true},{type:'shutter',ms:1450,revealMs:220,fx:'impact'});
+    return true;
+  }catch(_){return false;}
+}
+
 function __sqCloneCatchUpState(){
   try{ return state && state.__sqCatchUp ? JSON.parse(JSON.stringify(state.__sqCatchUp)) : null; }catch(_){ return null; }
 }
@@ -668,12 +721,14 @@ function recordThrow(spec){
   // A skipped player resumes implicitly on their first scoring input at the next
   // scheduled turn. Rewind to the oldest recoverable missed round (max three)
   // and apply this same input there; no manual "Player Returned" action exists.
-  try{ __sqResumeAbsenceOnScoreInput(); }catch(_){}
+  let __sqReturnedToCatchUp=false;
+  try{ __sqReturnedToCatchUp=!!__sqResumeAbsenceOnScoreInput(); }catch(_){}
 
   const rIndex    = state.currentRound;
   const pIndex    = state.currentPlayer;
   const dartIndex = state.currentDart;
   const __catchUpStateBefore = (state.__sqCatchUp && state.__sqCatchUp.active) ? __sqCloneCatchUpState() : null;
+  if(__sqReturnedToCatchUp){ try{ __sqDmdCatchUpReturnBeat(pIndex,rIndex); }catch(_){} }
 
   if (rIndex < 0 || rIndex >= MAX_ROUNDS) return;
   if (pIndex < 0 || pIndex >= state.players.length) return;
@@ -1210,6 +1265,8 @@ setTimeout(() => {
       }catch(_){}
     };
 
+    const __sqFightBeat = __sqDmdFightRoundBeat(thisPlayerIdx,thisRoundIdx,roundTotal,currDef);
+
     let __sqCommentaryRoundBeat = null;
     try{
       if (willAdvanceRound && !(state?.__sqCatchUp?.active)) {
@@ -1224,12 +1281,13 @@ setTimeout(() => {
     }catch(_){ }
 
     let __sqStoryCursor = 1080;
-    if (__sqCommentaryVisitBeat) {
-      const __visitStoryMs = __sqStoryHoldMs(__sqCommentaryVisitBeat, 'visit');
+    const __sqVisitStory = __sqFightBeat || __sqCommentaryVisitBeat;
+    if (__sqVisitStory) {
+      const __visitStoryMs = __sqStoryHoldMs(__sqVisitStory, 'visit');
       const __visitStoryAt = __sqStoryCursor;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
-        __sqShowStoryBeat(__sqCommentaryVisitBeat, __visitStoryMs, 'hold');
+        __sqShowStoryBeat(__sqVisitStory, __visitStoryMs, __sqFightBeat ? 'flash' : 'hold');
       }, __visitStoryAt);
       __sqStoryCursor += (__visitStoryMs + 100);
     }
