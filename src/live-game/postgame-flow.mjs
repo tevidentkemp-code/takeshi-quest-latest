@@ -780,7 +780,8 @@ function upgradePostGameOverlay(overlay) {
 
   const returnToFinishedGame = () => {
     try { if (xpSafety) clearTimeout(xpSafety); } catch (_) {}
-    try { window.__sqClearHoldPresentation?.(); } catch (_) {}
+    try { window.__sqQuickEntry?.close?.(); } catch (_) {}
+    try { document.querySelectorAll('#pad .sq-miss-bounce-held').forEach(el=>el.classList.remove('sq-miss-bounce-held')); } catch (_) {}
     overlay.remove();
     try {
       // Restore the canonical live-game surface exactly as completed. The
