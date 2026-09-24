@@ -694,8 +694,11 @@ function recordThrow(spec){
   let hitKey = null;
   let dartObj;
 
-  if (spec.kind === 'Miss') {
+  if (spec.kind === 'Miss' || spec.kind === 'BounceOut') {
+    // Bounce-out is scored exactly as a miss, but retain a marker so future
+    // analytics can distinguish the physical outcome without changing scoring.
     dartObj = { kind: 'Miss', points: 0 };
+    if (spec.kind === 'BounceOut') dartObj.bounceOut = true;
   } else if (roundDef.type === 'number') {
     const base = roundDef.target;
     if (spec.kind === 'S')      points = base;
