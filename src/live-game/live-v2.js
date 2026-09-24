@@ -1225,12 +1225,6 @@ function __sqQuickEntryClose(){
   try{ document.querySelectorAll('#pad .sq-quick-holding').forEach(el=>el.classList.remove('sq-quick-holding')); }catch(_){ }
 }
 
-function __sqClearHoldPresentation(){
-  try{ __sqQuickEntryClose(); }catch(_){}
-  try{ document.querySelectorAll('#pad .sq-miss-bounce-held').forEach(el=>el.classList.remove('sq-miss-bounce-held')); }catch(_){}
-  try{ window.__sqQuickSuppressClick = null; window.__sqMissBounceSuppressClick = 0; }catch(_){}
-}
-
 function __sqQuickEntryRender(btn, options){
   try{
     __sqQuickEntryClose();
@@ -1442,7 +1436,6 @@ if (!window.__sqQuickEntryClickGuardBound){
   }, true);
 }
 
-window.__sqClearHoldPresentation = __sqClearHoldPresentation;
 window.__sqQuickEntry = {
   holdMs:__SQ_QUICK_ENTRY_HOLD_MS,
   specFromDart:__sqQuickEntrySpecFromDart,
