@@ -5331,6 +5331,10 @@ async function __sqGcXpReveal(host, onComplete){
 }
 
 function openGameCompleteDialog() {
+  // No scoring-pad hold UI may survive the transition into post-game.
+  try{ window.__sqQuickEntry?.close?.(); }catch(_){}
+  try{ document.querySelectorAll('#pad .sq-miss-bounce-held').forEach(el=>el.classList.remove('sq-miss-bounce-held')); }catch(_){}
+  try{ window.__sqQuickSuppressClick = null; window.__sqMissBounceSuppressClick = 0; }catch(_){}
   if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) {
     try{ state.finished = false; state.gameAwarded = false; }catch(_){ }
     try{ __sqVsShadowBlockPhase2C(__SQ_VS_SHADOW_COMPLETION_BLOCK_REASON); }catch(_){ }
@@ -14479,6 +14483,72 @@ function __sqBindQuickEntryHold(btn, specFactory){
   btn.addEventListener('contextmenu',(e)=>{ try{ e.preventDefault(); }catch(_){ } });
 }
 
+function __sqBindMissBounceHold(btn){
+  if (!btn || btn.__sqMissBounceHoldBound) return;
+  btn.__sqMissBounceHoldBound = true;
+  btn.style.touchAction = 'none';
+  btn.style.webkitTouchCallout = 'none';
+  btn.style.webkitUserSelect = 'none';
+  btn.style.userSelect = 'none';
+
+  let holdTimer = null;
+  let held = false;
+  let pointerId = null;
+  const clearHold = ()=>{ if (holdTimer) clearTimeout(holdTimer); holdTimer = null; };
+
+  btn.addEventListener('pointerdown',(e)=>{
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    clearHold();
+    held = false;
+    pointerId = e.pointerId;
+    const startX = e.clientX, startY = e.clientY;
+    btn.__sqMissBounceStart = { x:startX, y:startY };
+    try{ btn.setPointerCapture?.(e.pointerId); }catch(_){}
+    holdTimer = setTimeout(()=>{
+      held = true;
+      btn.classList.add('sq-miss-bounce-held');
+      try{ window.__sqDmdHardClearQueue?.(); }catch(_){}
+      try{ window.sqDmdShowZones?.({ z2:'BOUNCE OUT!', z3:'MISS • 0' }, { type:'flash', ms:900, fx:'impact' }); }catch(_){}
+      try{ recordThrow({ kind:'BounceOut' }); }catch(_){}
+      try{ navigator.vibrate?.(35); }catch(_){}
+    }, __SQ_QUICK_ENTRY_HOLD_MS);
+  });
+
+  btn.addEventListener('pointermove',(e)=>{
+    if (pointerId !== e.pointerId || held) return;
+    const s = btn.__sqMissBounceStart;
+    if (!s) return;
+    if (Math.hypot(Number(e.clientX||0)-s.x, Number(e.clientY||0)-s.y) > 18){
+      clearHold();
+      pointerId = null;
+    }
+  });
+  const finish=(e)=>{
+    if (pointerId != null && e.pointerId !== pointerId) return;
+    clearHold();
+    pointerId = null;
+    delete btn.__sqMissBounceStart;
+    if (held){
+      e.preventDefault();
+      e.stopPropagation();
+      window.__sqMissBounceSuppressClick = performance.now() + 220;
+      setTimeout(()=>btn.classList.remove('sq-miss-bounce-held'),180);
+    }
+  };
+  btn.addEventListener('pointerup',finish);
+  btn.addEventListener('pointercancel',finish);
+  btn.addEventListener('contextmenu',(e)=>e.preventDefault());
+  btn.addEventListener('click',(e)=>{
+    if (held || performance.now() < Number(window.__sqMissBounceSuppressClick||0)){
+      held = false;
+      window.__sqMissBounceSuppressClick = 0;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }
+  }, true);
+}
+
 if (!window.__sqQuickEntryClickGuardBound){
   window.__sqQuickEntryClickGuardBound=true;
   document.addEventListener('click',(e)=>{
@@ -14921,6 +14991,7 @@ function buildPad(){
         b.type = 'button';
         b.innerHTML = `<div class="dtIcon">${icon}</div><div class="dtLbl">${label}</div>`;
         b.onclick = onClick;
+        if (cls === 'miss') __sqBindMissBounceHold(b);
         return b;
       };
 
@@ -15015,6 +15086,7 @@ function buildPad(){
         b.type = 'button';
         b.innerHTML = `<div class="dtIcon">${icon}</div><div class="dtLbl">${label}</div>`;
         b.onclick = onClick;
+        if (cls === 'miss') __sqBindMissBounceHold(b);
         return b;
       };
 
@@ -15099,6 +15171,7 @@ function buildPad(){
         b.type = 'button';
         b.innerHTML = `<div class="dtIcon">${icon}</div><div class="dtLbl">${label}</div>`;
         b.onclick = onClick;
+        if (cls === 'miss') __sqBindMissBounceHold(b);
         return b;
       };
 
@@ -17661,6 +17734,59 @@ function __sqGameRenderFailsafe(err){
 })();
 // <<< PATCH:SC045_DMD_ARCADE_PRESENTATION_HELPERS END
 
+// Presentation-only competitive/catch-up DMD beats. No scoring or persistence ownership.
+function __sqDmdFightRoundBeat(pIdx,rIdx,total,roundDef){
+  try{
+    if(state?.__sqCatchUp?.active) return null;
+    const players=Array.isArray(state?.players)?state.players:[];
+    if(players.length<2 || Number(state.currentDart||0)!==2) return null;
+    let ceiling=0;
+    if(roundDef?.type==='number') ceiling=Math.max(0,Number(roundDef.target||0)*3);
+    else if(roundDef?.type==='doubles') ceiling=120;
+    else if(roundDef?.type==='triples') ceiling=180;
+    else if(roundDef?.type==='bull') ceiling=150;
+    if(!ceiling) return null;
+    const threshold=Math.ceil(ceiling*0.70);
+    const score=Math.max(0,Number(total||0));
+    window.__sqDmdFightBenchmarks=window.__sqDmdFightBenchmarks||{};
+    const key=String(rIdx);
+    const prev=window.__sqDmdFightBenchmarks[key]||null;
+    if(score<threshold) return null;
+    const name=((typeof __sqPlayerPretty==='function'?__sqPlayerPretty(players[pIdx]):'') || players[pIdx]?.name || ('P'+(Number(pIdx)+1))).toString().trim().toUpperCase();
+    if(prev && Number(prev.player)!==Number(pIdx) && score>Number(prev.score||0)){
+      window.__sqDmdFightBenchmarks[key]={player:Number(pIdx),score,name};
+      const calls=['FATALITY','K.O.','COUNTER!','BRUTAL!'];
+      const call=calls[(Number(pIdx)+Number(rIdx)+score)%calls.length];
+      return {headline:call,subline:(name+' TOPS '+String(prev.score)).slice(0,32),reason:'fight_round_overtake',priority:58};
+    }
+    if(!prev || score>Number(prev.score||0)){
+      window.__sqDmdFightBenchmarks[key]={player:Number(pIdx),score,name};
+      if(Number(pIdx)<players.length-1){
+        return {headline:'FINISH HIM!',subline:(name+' SETS '+score).slice(0,32),reason:'fight_round_benchmark',priority:54};
+      }
+    }
+  }catch(_){}
+  return null;
+}
+function __sqDmdCatchUpReturnBeat(pIdx,rIdx){
+  try{
+    const p=state?.players?.[Number(pIdx)];
+    const name=((typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('P'+(Number(pIdx)+1))).toString().trim().toUpperCase();
+    const def=ROUNDS?.[Number(rIdx)];
+    const target=def?.type==='number'?String(def.target):(def?.type==='doubles'?'DBL':def?.type==='triples'?'TRB':'BULL');
+    const lines=[
+      ['LATE HOMEWORK',name+' • BACK TO '+target],
+      ['UNFINISHED BUSINESS',name+' OWES US '+target],
+      ['ADMIN TIME',name+' • '+target+' AGAIN'],
+      ['YOU MISSED A BIT',name+' • BACK TO '+target]
+    ];
+    const pair=lines[(Number(pIdx)+Number(rIdx))%lines.length];
+    window.__sqDmdHardClearQueue?.();
+    window.sqDmdShowZones?.({z2:pair[0],z3:pair[1],z3Small:true},{type:'shutter',ms:1450,revealMs:220,fx:'impact'});
+    return true;
+  }catch(_){return false;}
+}
+
 function __sqCloneCatchUpState(){
   try{ return state && state.__sqCatchUp ? JSON.parse(JSON.stringify(state.__sqCatchUp)) : null; }catch(_){ return null; }
 }
@@ -18226,12 +18352,14 @@ function recordThrow(spec){
   // A skipped player resumes implicitly on their first scoring input at the next
   // scheduled turn. Rewind to the oldest recoverable missed round (max three)
   // and apply this same input there; no manual "Player Returned" action exists.
-  try{ __sqResumeAbsenceOnScoreInput(); }catch(_){}
+  let __sqReturnedToCatchUp=false;
+  try{ __sqReturnedToCatchUp=!!__sqResumeAbsenceOnScoreInput(); }catch(_){}
 
   const rIndex    = state.currentRound;
   const pIndex    = state.currentPlayer;
   const dartIndex = state.currentDart;
   const __catchUpStateBefore = (state.__sqCatchUp && state.__sqCatchUp.active) ? __sqCloneCatchUpState() : null;
+  if(__sqReturnedToCatchUp){ try{ __sqDmdCatchUpReturnBeat(pIndex,rIndex); }catch(_){} }
 
   if (rIndex < 0 || rIndex >= MAX_ROUNDS) return;
   if (pIndex < 0 || pIndex >= state.players.length) return;
@@ -18252,8 +18380,11 @@ function recordThrow(spec){
   let hitKey = null;
   let dartObj;
 
-  if (spec.kind === 'Miss') {
+  if (spec.kind === 'Miss' || spec.kind === 'BounceOut') {
+    // Bounce-out is scored exactly as a miss, but retain a marker so future
+    // analytics can distinguish the physical outcome without changing scoring.
     dartObj = { kind: 'Miss', points: 0 };
+    if (spec.kind === 'BounceOut') dartObj.bounceOut = true;
   } else if (roundDef.type === 'number') {
     const base = roundDef.target;
     if (spec.kind === 'S')      points = base;
@@ -18765,6 +18896,8 @@ setTimeout(() => {
       }catch(_){}
     };
 
+    const __sqFightBeat = __sqDmdFightRoundBeat(thisPlayerIdx,thisRoundIdx,roundTotal,currDef);
+
     let __sqCommentaryRoundBeat = null;
     try{
       if (willAdvanceRound && !(state?.__sqCatchUp?.active)) {
@@ -18779,12 +18912,13 @@ setTimeout(() => {
     }catch(_){ }
 
     let __sqStoryCursor = 1080;
-    if (__sqCommentaryVisitBeat) {
-      const __visitStoryMs = __sqStoryHoldMs(__sqCommentaryVisitBeat, 'visit');
+    const __sqVisitStory = __sqFightBeat || __sqCommentaryVisitBeat;
+    if (__sqVisitStory) {
+      const __visitStoryMs = __sqStoryHoldMs(__sqVisitStory, 'visit');
       const __visitStoryAt = __sqStoryCursor;
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
-        __sqShowStoryBeat(__sqCommentaryVisitBeat, __visitStoryMs, 'hold');
+        __sqShowStoryBeat(__sqVisitStory, __visitStoryMs, __sqFightBeat ? 'flash' : 'hold');
       }, __visitStoryAt);
       __sqStoryCursor += (__visitStoryMs + 100);
     }
