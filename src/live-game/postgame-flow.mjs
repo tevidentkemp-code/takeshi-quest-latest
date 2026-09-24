@@ -334,6 +334,8 @@ body .modal-decider .dtBullRow .dtBullBtn.inner[data-bull="Inner"]{
   width:100%;
   margin-top:16px;
 }
+.modal-gamecomplete.sq-gc-arcade .sq-pg-nav{ display:grid; grid-template-columns:minmax(96px,.34fr) minmax(0,1fr); gap:8px; }
+.modal-gamecomplete.sq-gc-arcade .sq-pg-back,
 .modal-gamecomplete.sq-gc-arcade .sq-pg-next{
   width:100%;
   min-height:58px;
@@ -347,6 +349,7 @@ body .modal-decider .dtBullRow .dtBullBtn.inner[data-bull="Inner"]{
   text-transform:uppercase;
   box-shadow:0 12px 28px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.07);
 }
+.modal-gamecomplete.sq-gc-arcade .sq-pg-back:not(:disabled):active,
 .modal-gamecomplete.sq-gc-arcade .sq-pg-next:not(:disabled):active{ transform:translateY(1px); filter:brightness(1.10); }
 .modal-gamecomplete.sq-gc-arcade .sq-pg-next:disabled{ opacity:.48; }
 .modal-gamecomplete.sq-gc-arcade .sq-pg-xp-screen .gc-xp-reveal{
@@ -740,11 +743,15 @@ function upgradePostGameOverlay(overlay) {
   const matchWinScreen = isMatchComplete ? buildMatchWinScreen(st, matchState) : null;
   const nav = document.createElement('div');
   nav.className = 'sq-pg-nav';
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.className = 'sq-pg-back';
+  back.textContent = '◀ BACK';
   const next = document.createElement('button');
   next.type = 'button';
   next.className = 'sq-pg-next';
   next.textContent = 'NEXT ▶';
-  nav.appendChild(next);
+  nav.append(back, next);
 
   shell.appendChild(scorecard);
   shell.appendChild(xpScreen);
@@ -759,6 +766,7 @@ function upgradePostGameOverlay(overlay) {
 
   const show = n => {
     next.dataset.pgStep = String(n);
+    back.dataset.pgStep = String(n);
     hero.hidden = n !== 0;
     scorecard.hidden = n !== 1;
     xpScreen.hidden = n !== 2;
@@ -767,6 +775,28 @@ function upgradePostGameOverlay(overlay) {
     const confetti = modal.querySelector('.gc-arcade-confetti');
     if (visual) visual.style.display = n === 0 ? '' : 'none';
     if (confetti) confetti.style.display = (n === 0 || (isMatchComplete && n === 3)) ? '' : 'none';
+    back.textContent = n === 0 ? '◀ GAME' : '◀ BACK';
+  };
+
+  const returnToFinishedGame = () => {
+    try { if (xpSafety) clearTimeout(xpSafety); } catch (_) {}
+    try { window.__sqClearHoldPresentation?.(); } catch (_) {}
+    overlay.remove();
+    try {
+      // Restore the canonical live-game surface exactly as completed. The
+      // existing Undo path is the sole mechanism that reopens the final dart.
+      if (document.body) document.body.setAttribute('data-page', 'game');
+      if (typeof updateUI === 'function') updateUI();
+    } catch (_) {}
+  };
+
+  back.onclick = event => {
+    try { event?.preventDefault?.(); event?.stopPropagation?.(); } catch (_) {}
+    const current = Number(next.dataset.pgStep || 0);
+    if (current <= 0) { returnToFinishedGame(); return; }
+    show(current - 1);
+    if (current - 1 === 0 || current - 1 === 1) next.textContent = 'NEXT ▶';
+    else if (current - 1 === 2) next.textContent = xpReady ? (isMatchComplete ? 'MATCH WIN ▶' : 'MATCH LEADERBOARD') : 'XP…';
   };
 
   const enableFinalAdvance = () => {
