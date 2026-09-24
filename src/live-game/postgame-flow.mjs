@@ -703,6 +703,9 @@ function isUnresolvedDecider(modal) {
 
 
 function upgradePostGameOverlay(overlay) {
+  try { window.__sqQuickEntry?.close?.(); } catch (_) {}
+  try { document.querySelectorAll('.sqQuickEntryPopover').forEach(el=>el.remove()); } catch (_) {}
+  try { document.querySelectorAll('#pad .sq-quick-holding,#pad .sq-miss-bounce-held').forEach(el=>el.classList.remove('sq-quick-holding','sq-miss-bounce-held')); } catch (_) {}
   if (!overlay || overlay.dataset.sqSc038 === '1') return;
   const modal = overlay.querySelector('.modal-gamecomplete.sq-gc-arcade');
   if (!modal || isUnresolvedDecider(modal)) return;
