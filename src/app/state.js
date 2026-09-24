@@ -281,7 +281,9 @@ async function __sqGcXpReveal(host, onComplete){
 
 function openGameCompleteDialog() {
   // No scoring-pad hold UI may survive the transition into post-game.
-  try{ window.__sqClearHoldPresentation?.(); }catch(_){}
+  try{ window.__sqQuickEntry?.close?.(); }catch(_){}
+  try{ document.querySelectorAll('#pad .sq-miss-bounce-held').forEach(el=>el.classList.remove('sq-miss-bounce-held')); }catch(_){}
+  try{ window.__sqQuickSuppressClick = null; window.__sqMissBounceSuppressClick = 0; }catch(_){}
   if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) {
     try{ state.finished = false; state.gameAwarded = false; }catch(_){ }
     try{ __sqVsShadowBlockPhase2C(__SQ_VS_SHADOW_COMPLETION_BLOCK_REASON); }catch(_){ }
