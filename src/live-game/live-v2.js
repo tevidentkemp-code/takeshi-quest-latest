@@ -1225,6 +1225,12 @@ function __sqQuickEntryClose(){
   try{ document.querySelectorAll('#pad .sq-quick-holding').forEach(el=>el.classList.remove('sq-quick-holding')); }catch(_){ }
 }
 
+function __sqClearHoldPresentation(){
+  try{ __sqQuickEntryClose(); }catch(_){}
+  try{ document.querySelectorAll('#pad .sq-miss-bounce-held').forEach(el=>el.classList.remove('sq-miss-bounce-held')); }catch(_){}
+  try{ window.__sqQuickSuppressClick = null; window.__sqMissBounceSuppressClick = 0; }catch(_){}
+}
+
 function __sqQuickEntryRender(btn, options){
   try{
     __sqQuickEntryClose();
@@ -1373,7 +1379,7 @@ function __sqBindMissBounceHold(btn){
       held = true;
       btn.classList.add('sq-miss-bounce-held');
       try{ window.__sqDmdHardClearQueue?.(); }catch(_){}
-      try{ window.sqDmdShowZones?.({ z2:'BOUNCE OUT', z3:'' }, { type:'flash', ms:420, fx:'impact' }); }catch(_){}
+      try{ window.sqDmdShowZones?.({ z2:'BOUNCE OUT!', z3:'MISS • 0' }, { type:'flash', ms:900, fx:'impact' }); }catch(_){}
       try{ recordThrow({ kind:'BounceOut' }); }catch(_){}
       try{ navigator.vibrate?.(35); }catch(_){}
     }, __SQ_QUICK_ENTRY_HOLD_MS);
@@ -1436,6 +1442,7 @@ if (!window.__sqQuickEntryClickGuardBound){
   }, true);
 }
 
+window.__sqClearHoldPresentation = __sqClearHoldPresentation;
 window.__sqQuickEntry = {
   holdMs:__SQ_QUICK_ENTRY_HOLD_MS,
   specFromDart:__sqQuickEntrySpecFromDart,
