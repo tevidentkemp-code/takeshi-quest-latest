@@ -221,6 +221,18 @@ function injectStyles() {
   font-size:15px;
   line-height:1;
 }
+.gc-xp-gamebar-wrap{ margin-top:7px; }
+.gc-xp-gamebar-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px; color:rgba(235,240,250,.62); font-size:8px; font-weight:950; letter-spacing:.12em; text-transform:uppercase; }
+.gc-xp-gamebar{ height:6px; border-radius:999px; overflow:hidden; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); }
+.gc-xp-gamebar-fill{ height:100%; width:0; border-radius:999px; background:linear-gradient(90deg,#ff6a00,#ffb14a); box-shadow:0 0 10px rgba(255,138,0,.45); transition:width .55s ease; }
+.gc-xp-totalbar-label{ margin-top:5px; color:rgba(235,240,250,.38); font-size:7px; font-weight:900; letter-spacing:.12em; text-transform:uppercase; }
+.gc-xp-info-backdrop{ position:fixed; inset:0; z-index:2147483000; display:flex; align-items:center; justify-content:center; padding:18px; background:rgba(0,0,0,.72); }
+.gc-xp-info-card{ width:min(360px,92vw); border-radius:15px; padding:16px; background:#121826; border:1px solid rgba(255,149,0,.34); box-shadow:0 18px 50px rgba(0,0,0,.55); color:#f7f8fa; }
+.gc-xp-info-title{ font-size:16px; font-weight:950; }
+.gc-xp-info-xp{ margin-top:5px; color:#7be0a0; font-size:13px; font-weight:900; }
+.gc-xp-info-copy{ margin-top:10px; color:#b8c0cc; font-size:12px; line-height:1.45; }
+.gc-xp-info-close{ margin-top:14px; width:100%; min-height:40px; border-radius:10px; border:1px solid rgba(255,149,0,.42); background:rgba(255,138,0,.10); color:#fff; font-weight:900; }
+.gc-xp-source-chip[data-xp-info]{ cursor:pointer; }
 .gc-xp-breakdown{
   display:flex;
   flex-direction:column;
@@ -551,6 +563,7 @@ function awardDetails(host, map) {
         icon: String(meta.icon || '★'),
         tier: meta.tier,
         milestone: !!(host.SQ_ACH.isMilestone && host.SQ_ACH.isMilestone(code)),
+        description: String(meta.description || meta.desc || meta.criteria || meta.rule || 'Award earned by meeting this achievement condition in the current game.'),
       });
     } catch (_) {}
   });
@@ -568,10 +581,34 @@ function matchWinBaseXp(st, playerIndex, totals) {
   return 150;
 }
 
-function makeChip(text, kind, extraClass = '') {
-  const chip = document.createElement('span');
+function showXpInfo(info) {
+  if (!info) return;
+  document.querySelector('.gc-xp-info-backdrop')?.remove();
+  const back = document.createElement('div');
+  back.className = 'gc-xp-info-backdrop';
+  const card = document.createElement('div');
+  card.className = 'gc-xp-info-card';
+  card.innerHTML = `<div class="gc-xp-info-title">${esc(info.title || 'XP')}</div>
+    <div class="gc-xp-info-xp">${esc(info.xp || '')}</div>
+    <div class="gc-xp-info-copy">${esc(info.description || 'XP earned from this game.')}</div>
+    <button type="button" class="gc-xp-info-close">CLOSE</button>`;
+  back.appendChild(card);
+  const close = () => back.remove();
+  back.addEventListener('click', e => { if (e.target === back) close(); });
+  card.querySelector('.gc-xp-info-close')?.addEventListener('click', close);
+  document.body.appendChild(back);
+}
+
+function makeChip(text, kind, extraClass = '', info = null) {
+  const chip = document.createElement(info ? 'button' : 'span');
+  if (info) chip.type = 'button';
   chip.className = `gc-xp-source-chip ${kind}${extraClass ? ` ${extraClass}` : ''}`;
   chip.textContent = text;
+  if (info) {
+    chip.dataset.xpInfo = '1';
+    chip.setAttribute('aria-label', `${info.title}. View XP explanation`);
+    chip.addEventListener('click', () => showXpInfo(info));
+  }
   return chip;
 }
 
@@ -612,6 +649,11 @@ function buildDetailedRow(host, data) {
       <span class="gc-xp-rankstack"><span class="gc-xp-lvholder"></span><span class="gc-xp-lvup">LEVEL UP!</span></span>
     </div>
     <div class="gc-xp-gain">${data.netXp >= 0 ? '+' : ''}${data.netXp} XP</div>
+    <div class="gc-xp-gamebar-wrap">
+      <div class="gc-xp-gamebar-head"><span>THIS GAME</span><span>${data.netXp >= 0 ? '+' : ''}${data.netXp} XP</span></div>
+      <div class="gc-xp-gamebar"><div class="gc-xp-gamebar-fill"></div></div>
+    </div>
+    <div class="gc-xp-totalbar-label">TOTAL XP PROGRESS</div>
     <div class="gc-xp-bar"><div class="gc-xp-fill"></div></div>
     <div class="gc-xp-breakdown"></div>
   `;
@@ -620,26 +662,34 @@ function buildDetailedRow(host, data) {
   rankChip(host, rankHolder, pre);
 
   const breakdown = el.querySelector('.gc-xp-breakdown');
-  const base = makeSourceLine('BASE XP');
-  data.base.forEach(item => base.chips.appendChild(makeChip(`${item.label} +${item.xp} XP`, 'base')));
+  const base = makeSourceLine(`BASE XP ${data.baseXp >= 0 ? '+' : ''}${data.baseXp}`);
+  data.base.forEach(item => base.chips.appendChild(makeChip(`${item.label} +${item.xp} XP`, 'base', '', {
+    title:item.label + ' XP', xp:`+${item.xp} XP`, description:item.description
+  })));
   if (!data.base.length) base.chips.appendChild(makeChip('NONE', 'empty'));
   breakdown.appendChild(base.line);
 
-  const positive = makeSourceLine('POSITIVE');
+  const positive = makeSourceLine(`POSITIVE +${data.positiveXp}`);
   data.positive.forEach(item => {
     const countText = item.count > 1 ? ` ×${item.count}` : '';
-    const chip = makeChip(`${item.icon} ${item.name}${countText} +${item.xp} XP`, item.milestone ? 'milestone' : 'positive');
+    const chip = makeChip(`${item.icon} ${item.name}${countText} +${item.xp} XP`, item.milestone ? 'milestone' : 'positive', '', {
+      title:item.name, xp:`+${item.xp} XP`, description:item.description
+    });
     positive.chips.appendChild(chip);
   });
   if (!data.positive.length) positive.chips.appendChild(makeChip('NO NEW AWARDS', 'empty'));
   breakdown.appendChild(positive.line);
 
-  const negative = makeSourceLine('NEGATIVE');
+  const negative = makeSourceLine(`NEGATIVE ${data.penalty}`);
   if (data.negative.length) {
     data.negative.forEach(item => {
       const applied = !!item.applied;
       const countText = Number(item.count || 1) > 1 ? ` ×${Number(item.count)}` : '';
-      negative.chips.appendChild(makeChip(`${item.name}${countText} ${item.penalty} XP${applied ? ' · APPLIED' : ''}`, 'negative', applied ? 'applied' : ''));
+      negative.chips.appendChild(makeChip(`${item.name}${countText} ${item.penalty} XP${applied ? ' · APPLIED' : ''}`, 'negative', applied ? 'applied' : '', {
+        title:item.name, xp:`${item.penalty} XP`, description: applied
+          ? 'Misfire condition triggered in this game. This penalty is applied to the game XP total.'
+          : 'Misfire condition triggered in this game, but a stronger normal Misfire penalty is applied instead.'
+      }));
     });
   } else {
     negative.chips.appendChild(makeChip('NO MISFIRES', 'empty'));
@@ -666,11 +716,15 @@ async function animateDetailedRow(host, built, data, reduced) {
   const { el, pre, post, rankHolder } = built;
   const gain = el.querySelector('.gc-xp-gain');
   const fill = el.querySelector('.gc-xp-fill');
+  const gameFill = el.querySelector('.gc-xp-gamebar-fill');
+  const gameScale = Math.max(1, Number(data.baseXp||0) + Number(data.positiveXp||0) + Math.abs(Number(data.penalty||0)));
+  const gamePct = Math.max(0, Math.min(1, Math.abs(Number(data.netXp||0)) / gameScale));
   const levelUp = el.querySelector('.gc-xp-lvup');
   const didLevel = Number(post.level || 0) > Number(pre.level || 0);
 
   if (reduced) {
     el.classList.add('in');
+    if (gameFill) { gameFill.style.transition='none'; gameFill.style.width=`${gamePct * 100}%`; }
     fill.style.transition = 'none';
     fill.style.width = `${Math.max(0, Math.min(1, Number(post.pct || 0))) * 100}%`;
     if (didLevel) {
@@ -681,6 +735,7 @@ async function animateDetailedRow(host, built, data, reduced) {
   }
 
   gain.textContent = '+0 XP';
+  if (gameFill) requestAnimationFrame(()=>{ gameFill.style.width=`${gamePct * 100}%`; });
   await new Promise(resolve => setTimeout(resolve, 70));
   el.classList.add('in');
   animateCount(gain, 0, data.netXp, 600);
@@ -767,11 +822,11 @@ async function buildPlayerData(host, st) {
     const winXp = won ? Number(host.SQ_XP.W.gameWin || 0) : 0;
     const matchXp = matchWinBaseXp(st, p, totals);
     const base = [
-      { label:'SCORE', xp:scoreXp },
-      { label:'GAME', xp:gameXp },
+      { label:'SCORE', xp:scoreXp, description:'XP generated directly from the points scored in this game.' },
+      { label:'GAME', xp:gameXp, description:'Base XP awarded for completing an XP-eligible game.' },
     ];
-    if (winXp) base.push({ label:'WIN', xp:winXp });
-    if (matchXp) base.push({ label:'MATCH WIN', xp:matchXp });
+    if (winXp) base.push({ label:'WIN', xp:winXp, description:'Base XP awarded for winning this game.' });
+    if (matchXp) base.push({ label:'MATCH WIN', xp:matchXp, description:'Base XP awarded for winning the completed match.' });
 
     const positiveXp = positive.reduce((sum, item) => sum + Number(item.xp || 0), 0);
     const baseXp = base.reduce((sum, item) => sum + Number(item.xp || 0), 0);
@@ -785,6 +840,8 @@ async function buildPlayerData(host, st) {
       positive,
       negative,
       penalty,
+      baseXp,
+      positiveXp,
       netXp,
       post:Math.max(0, row.pre + netXp),
     };
