@@ -280,6 +280,8 @@ async function __sqGcXpReveal(host, onComplete){
 }
 
 function openGameCompleteDialog() {
+  // No scoring-pad hold UI may survive the transition into post-game.
+  try{ window.__sqClearHoldPresentation?.(); }catch(_){}
   if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) {
     try{ state.finished = false; state.gameAwarded = false; }catch(_){ }
     try{ __sqVsShadowBlockPhase2C(__SQ_VS_SHADOW_COMPLETION_BLOCK_REASON); }catch(_){ }
