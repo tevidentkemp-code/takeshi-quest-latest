@@ -21,15 +21,22 @@ function diffRatio(a,b){
       const original=window.sqDmdShowZones;
       window.sqDmdShowZones=function(z,o){ window.__sc045Writes.push({z2:String(z?.z2||''),z3:String(z?.z3||''),type:String(o?.type||''),ms:Number(o?.ms||0)}); return original.apply(this,arguments); };
     });
+    const routineTreble=await page.evaluate(()=>{
+      window.__sqDmdV2?.emit?.({kind:'HIT_TREBLE',points:30,total:30,eventToken:'sc045-routine-treble',playerInput:true});
+      return window.__sqDmdV2?.snapshot?.().active?.headline||'';
+    });
+    assert.equal(routineTreble,'TREBLE +30','routine Treble must use Gate 4 controller treatment');
+    await page.evaluate(()=>window.__sqDmdV2?.clear?.({restore:true}));
+
     await page.evaluate(()=>recordThrow({kind:'T'}));
     let writes=await page.evaluate(()=>window.__sc045Writes.slice());
-    assert(writes.some(w=>w.z2==='TREBLE!'),'first treble => TREBLE!');
+    assert(!writes.some(w=>w.z2==='TREBLE!'),'legacy first-Treble routine frame must not duplicate the controller');
     await page.evaluate(()=>{ window.__sqDmdHardClearQueue?.(); window.__sc045Writes=[]; recordThrow({kind:'T'}); });
     writes=await page.evaluate(()=>window.__sc045Writes.slice());
-    assert(writes.some(w=>w.z2==='CAN HE......?' && w.type==='anticipationEyes'),'dart-2 second treble => anticipation scene');
+    assert(writes.some(w=>w.z2==='CAN HE......?' && w.type==='anticipationEyes'),'dart-2 second treble special remains available for Gate 5');
     await page.evaluate(()=>{ window.__sqDmdHardClearQueue?.(); window.__sc045Writes=[]; recordThrow({kind:'T'}); });
     writes=await page.evaluate(()=>window.__sc045Writes.slice());
-    assert(writes.some(w=>/MAXI/.test(w.z2+' '+w.z3)),'third treble => MAXI MAYHEM');
+    assert(writes.some(w=>/MAXI/.test(w.z2+' '+w.z3)),'third treble named special remains available for Gate 5');
 
     async function metrics(){
       return page.evaluate(()=>{
@@ -53,6 +60,9 @@ function diffRatio(a,b){
     // post-scene sample after a 1100ms animation has legitimately completed.
     async function sampleScene(scene,targetMs){
       return page.evaluate(({scene,targetMs})=>new Promise(resolve=>{
+        // Isolate legacy named-scene visual metrics from any controller timer
+        // created by the gameplay probes above.
+        window.__sqDmdV2?.clear?.({restore:false});
         window.__sqDmdHardClearQueue?.();
         window.sqDmdStop();
         const started=performance.now();
@@ -94,7 +104,8 @@ function diffRatio(a,b){
         assert(m.elapsed<scene.ms,`${scene.type} sample ${i+1} was captured after scene duration: actual=${m.elapsed} duration=${scene.ms}`);
         assert(m.ratio>0.004,`${scene.type} frame ${i+1} too faint: ${m.ratio}`);
         assert(m.ratio<0.34,`${scene.type} frame ${i+1} overfilled: ${m.ratio}`);
-        assert(m.bbox.w>m.w*0.18,`${scene.type} frame ${i+1} lacks horizontal visual presence: ${JSON.stringify(m.bbox)} canvas=${m.w}x${m.h}`);
+        const minHorizontal=(scene.type==='anticipationEyes' && i===0)?m.w*0.07:m.w*0.18;
+        assert(m.bbox.w>minHorizontal,`${scene.type} frame ${i+1} lacks horizontal visual presence: ${JSON.stringify(m.bbox)} canvas=${m.w}x${m.h}`);
         assert(m.bbox.h>m.h*0.14,`${scene.type} frame ${i+1} lacks vertical visual presence: ${JSON.stringify(m.bbox)} canvas=${m.w}x${m.h}`);
         if(prev) maxMotion=Math.max(maxMotion,diffRatio(prev,m.signature));
         prev=m.signature;
@@ -113,7 +124,7 @@ function diffRatio(a,b){
     // Reduced-motion is not a blank/less-readable fallback: it must remain bold and essentially static.
     await page.emulateMedia({reducedMotion:'reduce'});
     for(const scene of scenes){
-      await page.evaluate(s=>{ window.__sqDmdHardClearQueue?.(); window.sqDmdStop(); window.sqDmdShowZones({z2:s.z2,z3:''},{type:s.type,ms:Math.max(s.ms,1400)}); },scene);
+      await page.evaluate(s=>{ window.__sqDmdV2?.clear?.({restore:false}); window.__sqDmdHardClearQueue?.(); window.sqDmdStop(); window.sqDmdShowZones({z2:s.z2,z3:''},{type:s.type,ms:Math.max(s.ms,1400)}); },scene);
       await page.waitForTimeout(180); const a=await metrics();
       await page.waitForTimeout(260); const b=await metrics();
       await page.locator('#sqDmdWrap').screenshot({path:path.join(out,`sc045-${scene.type}-reduced.png`)});

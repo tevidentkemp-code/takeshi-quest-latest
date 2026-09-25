@@ -6,6 +6,7 @@ import '../postgame-release-guard.mjs';
 import '../bull-colours.mjs';
 import { detectExistingBackend, install } from './controller.mjs';
 import { createMotionSafeBackend } from './motion.mjs';
+import { createModernHdProofBackend } from './modern-hd-backend.mjs';
 import { installCommentary } from './commentary.mjs';
 
 const MAX_ATTEMPTS = 120;
@@ -43,7 +44,7 @@ function boot() {
     timer = null;
   }
 
-  const backend = createMotionSafeBackend(detectExistingBackend(window), window);
+  const backend = createMotionSafeBackend(createModernHdProofBackend(detectExistingBackend(window)), window);
   window.__sqDmdV2 = install({
     host: window,
     document,

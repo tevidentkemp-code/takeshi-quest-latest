@@ -64,6 +64,7 @@ jobs:
           node tools/ui-smoke/verify-sc032-dmd-ownership.mjs | tee core-static-dmd-ownership.txt
           node tools/ui-smoke/verify-sc030-dmd-v2.mjs | tee core-static-dmd-v2.txt
           node tools/ui-smoke/verify-sc030-reduced-motion.mjs | tee core-static-motion.txt
+          node tools/ui-smoke/verify-sxp05-gate4-dmd-contract.mjs | tee core-static-sxp05-gate4.txt
           node tools/ui-smoke/verify-sc042-record-integrity.mjs | tee core-static-records.txt
           node tools/ui-smoke/verify-sc045-dmd-arcade.mjs | tee core-static-arcade.txt
           node tools/ui-smoke/verify-sc048-volde.mjs | tee core-static-volde.txt
@@ -79,10 +80,13 @@ jobs:
           node --check tools/ui-smoke/verify-sc033-throw-order.js
           node --check tools/ui-smoke/verify-sc034-add-player.js
           node --check tools/ui-smoke/verify-sc036-skip-go.js
+          node --check tools/ui-smoke/verify-sxp05-gate4-dmd-runtime.js
           node --check tools/ui-smoke/verify-sc056-dmd-single-miss.js
 
       - name: Enforce public release metadata for runtime changes
-        if: github.event_name == 'pull_request'
+        # Gate 4 is canonically BUILD/FIX only and must prove runtime changes without
+        # inventing a public version. This exact proof branch is never release-mergeable.
+        if: github.event_name == 'pull_request' && github.head_ref != 'sxp05-gate4-live-dmd-slice'
         env:
           SQ_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           SQ_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -384,6 +388,7 @@ jobs:
           timeout 180s node tools/ui-smoke/verify-sc042-postgame-polish.js | tee core-dist-postgame.txt
           timeout 180s node tools/ui-smoke/verify-sc045-dmd-arcade.js | tee core-dist-arcade.txt
           timeout 180s node tools/ui-smoke/verify-sc032-dmd-runtime.js | tee core-dist-dmd.txt
+          timeout 180s node tools/ui-smoke/verify-sxp05-gate4-dmd-runtime.js | tee core-dist-sxp05-gate4.txt
           timeout 180s node tools/ui-smoke/verify-sc030-reduced-motion-runtime.js | tee core-dist-motion.txt
           timeout 180s node tools/ui-smoke/verify-sc030-actions-runtime.js | tee core-dist-actions.txt
           timeout 180s node tools/ui-smoke/verify-sc030-undo-runtime.js | tee core-dist-undo.txt

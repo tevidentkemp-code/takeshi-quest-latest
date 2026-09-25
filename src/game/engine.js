@@ -104,6 +104,108 @@
 // <<< PATCH:SC045_DMD_ARCADE_PRESENTATION_HELPERS END
 
 // Presentation-only competitive/catch-up DMD beats. No scoring or persistence ownership.
+// SXP-05 Gate 4: routine/rule-significant DMD events are routed through the
+// modular controller. These helpers read canonical state only and never mutate it.
+function __sqDmdGate4ControllerActive(){
+  try{ return window.__sqDmdV2?.snapshot?.().architecture === 'sxp05-gate3-scene-contract'; }catch(_){ return false; }
+}
+function __sqDmdGate4Mode(){
+  try{ return String(state?.gameMode || state?.mode || state?.match?.gameMode || state?.match?.mode || '').trim().toLowerCase(); }catch(_){ return ''; }
+}
+function __sqDmdGate4PlayerName(idx){
+  try{
+    const p=state?.players?.[Number(idx)];
+    if(!p) return '';
+    if(typeof p==='string') return p.trim();
+    try{
+      if(typeof __sqVsShadowDisplayLabelForPlayer==='function'){
+        const shadow=__sqVsShadowDisplayLabelForPlayer(p,{dmd:true});
+        if(shadow) return String(shadow).trim();
+      }
+    }catch(_){}
+    return String((typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p.name || p.full || p.nickname || p.code || p.initials || '').trim();
+  }catch(_){ return ''; }
+}
+function __sqDmdGate4Target(rIdx){
+  try{
+    const def=ROUNDS?.[Number(rIdx)];
+    if(!def) return '';
+    if(def.type==='number') return String(def.target || '');
+    if(def.type==='doubles') return 'DBL';
+    if(def.type==='triples') return 'TRB';
+    if(def.type==='bull') return 'BULL';
+  }catch(_){}
+  return '';
+}
+function __sqDmdGate4Totals(){
+  try{
+    const players=Array.isArray(state?.players)?state.players:[];
+    return players.map((_,pIdx)=>{
+      let total=0;
+      for(let r=0;r<MAX_ROUNDS;r++) total+=Number(state?.score?.[pIdx]?.[r]?.roundTotal||0);
+      return total;
+    });
+  }catch(_){ return []; }
+}
+function __sqDmdGate4CompetitiveSnapshot(){
+  const totals=__sqDmdGate4Totals();
+  if(totals.length<2) return {totals,leaders:[],soleLeader:null,margin:0};
+  const max=Math.max(...totals);
+  const leaders=totals.map((v,i)=>({v:Number(v||0),i})).filter(x=>x.v===max).map(x=>x.i);
+  const sorted=[...totals].map(Number).sort((a,b)=>b-a);
+  const margin=Math.max(0,Number(sorted[0]||0)-Number(sorted[1]||0));
+  return {totals,leaders,soleLeader:leaders.length===1?leaders[0]:null,margin};
+}
+function __sqDmdGate4Token(kind,ctx={}){
+  const mode=__sqDmdGate4Mode() || 'default';
+  const p=Number.isFinite(Number(ctx.playerIndex))?Number(ctx.playerIndex):Number(state?.currentPlayer||0);
+  const r=Number.isFinite(Number(ctx.roundIndex))?Number(ctx.roundIndex):Number(state?.currentRound||0);
+  const d=Number.isFinite(Number(ctx.dartIndex))?Number(ctx.dartIndex):Number(state?.currentDart||0);
+  const h=Number.isFinite(Number(ctx.historyLength))?Number(ctx.historyLength):(Array.isArray(state?.history)?state.history.length:0);
+  const extra=String(ctx.extra||'').replace(/\s+/g,'-').slice(0,40);
+  return ['G4',mode,String(kind||'EVENT').toUpperCase(),p,r,d,h,extra].join('|');
+}
+function __sqDmdGate4Emit(kind,payload={},opts={}){
+  try{
+    if(!__sqDmdGate4ControllerActive() || typeof window.__sqDmdV2?.emit!=='function') return null;
+    const playerIndex=Number.isFinite(Number(opts.playerIndex))?Number(opts.playerIndex):Number(state?.currentPlayer||0);
+    const roundIndex=Number.isFinite(Number(opts.roundIndex))?Number(opts.roundIndex):Number(state?.currentRound||0);
+    const dartIndex=Number.isFinite(Number(opts.dartIndex))?Number(opts.dartIndex):Number(state?.currentDart||0);
+    const historyLength=Number.isFinite(Number(opts.historyLength))?Number(opts.historyLength):(Array.isArray(state?.history)?state.history.length:0);
+    const event={
+      kind,
+      mode:__sqDmdGate4Mode(),
+      player:payload.player ?? __sqDmdGate4PlayerName(playerIndex),
+      target:payload.target ?? __sqDmdGate4Target(roundIndex),
+      round:roundIndex+1,
+      dart:dartIndex+1,
+      historyLength,
+      ...payload,
+      eventToken:opts.eventToken || __sqDmdGate4Token(kind,{playerIndex,roundIndex,dartIndex,historyLength,extra:opts.extra}),
+      playerInput:opts.playerInput===true
+    };
+    return window.__sqDmdV2.emit(event);
+  }catch(_){ return null; }
+}
+function __sqDmdGate4Baseline(){
+  try{
+    if(!state || state.finished) return null;
+    const pIdx=Number(state.currentPlayer||0);
+    const rIdx=Number(state.currentRound||0);
+    const player=__sqDmdGate4PlayerName(pIdx);
+    const target=__sqDmdGate4Target(rIdx);
+    if(state?.__sqCatchUp?.active){
+      return {priority:0,headline:'CATCH-UP',subline:[player,target?('TARGET '+target):''].filter(Boolean).join(' · '),type:'hold',duration:0,haptic:null};
+    }
+    return {kind:'PLAYER_UP',player,target,mode:__sqDmdGate4Mode(),round:rIdx+1,dart:Number(state.currentDart||0)+1};
+  }catch(_){ return null; }
+}
+try{
+  window.__sqDmdCurrentBaseline=__sqDmdGate4Baseline;
+  window.__sqDmdGate4Emit=__sqDmdGate4Emit;
+  window.__sqDmdGate4ControllerActive=__sqDmdGate4ControllerActive;
+}catch(_){}
+
 function __sqDmdFightRoundBeat(pIdx,rIdx,total,roundDef){
   try{
     if(state?.__sqCatchUp?.active) return null;
@@ -143,6 +245,14 @@ function __sqDmdCatchUpReturnBeat(pIdx,rIdx){
     const name=((typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('P'+(Number(pIdx)+1))).toString().trim().toUpperCase();
     const def=ROUNDS?.[Number(rIdx)];
     const target=def?.type==='number'?String(def.target):(def?.type==='doubles'?'DBL':def?.type==='triples'?'TRB':'BULL');
+    if(__sqDmdGate4ControllerActive()){
+      __sqDmdGate4Emit('CATCH_UP',{player:name,target},{
+        playerIndex:Number(pIdx),roundIndex:Number(rIdx),dartIndex:Number(state?.currentDart||0),
+        historyLength:Array.isArray(state?.history)?state.history.length:0,
+        extra:'return'
+      });
+      return true;
+    }
     const lines=[
       ['LATE HOMEWORK',name+' • BACK TO '+target],
       ['UNFINISHED BUSINESS',name+' OWES US '+target],
@@ -226,6 +336,17 @@ function __sqRenderFinalBullReturnCountdown(job){
     const p=state?.players?.[pIdx];
     const name=((typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(pIdx+1))).toString().trim().toUpperCase();
     try{ window.__sqDmdStopPreThrow?.(); }catch(_){}
+    if(__sqDmdGate4ControllerActive()){
+      __sqDmdGate4Emit('FINAL_BULL_TIMER',{
+        player:name,target:'BULL',seconds,deadline
+      },{
+        playerIndex:pIdx,roundIndex:MAX_ROUNDS-1,dartIndex:0,
+        historyLength:Array.isArray(state?.history)?state.history.length:0,
+        eventToken:['G4','FINAL_BULL_TIMER',pIdx,deadline,seconds].join('|'),
+        extra:String(deadline)
+      });
+      return true;
+    }
     try{ window.__sqDmdHardClearQueue?.(); }catch(_){}
     const fx=seconds<=5
       ? {type:'shake',amp:3.6,ms:420,fx:'impact',z3Small:true}
@@ -318,6 +439,9 @@ function __sqExpireFinalBullReturnTimer(pIdx,expectedDeadline){
     __sqAdvanceAfterFinalBullTimeout(pIdx,rIdx);
     try{save();}catch(_){}
     try{updateUI();}catch(_){}
+    try{
+      if(__sqDmdGate4ControllerActive()) window.__sqDmdV2?.clear?.({restore:true});
+    }catch(_){}
     try{
       const p=state.players?.[pIdx];
       const nm=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(pIdx+1));
@@ -785,12 +909,77 @@ function recordThrow(spec){
     dartObj = { kind: 'Miss', points: 0 };
   }
 
+  const __sqGate4CompetitiveBefore=__sqDmdGate4CompetitiveSnapshot();
+
   // Write dart
   entry.darts[dartIndex] = dartObj;
   entry.roundTotal =
     (entry.darts[0]?.points || 0) +
     (entry.darts[1]?.points || 0) +
     (entry.darts[2]?.points || 0);
+
+  // Gate 4 routine acknowledgement. The accepted scoring mutation above is
+  // canonical; this event is presentation-only and uses the pre-mutation cursor
+  // as its deterministic identity. Existing named/special sequences remain on
+  // their legacy presentation path until Gate 5, but still hard-cancel any old
+  // controller transient because accepted player input always wins.
+  let __sqGate4RoutineOwned=false;
+  let __sqGate4LegacySpecialOwned=false;
+  try{
+    const __g4KindOf=(d)=>{
+      if(!d || Number(d.points||0)===0 || d.kind==='Miss') return 'X';
+      if(d.kind==='B') return d.bull==='Inner'?'B50':'B25';
+      if(d.kind==='Triple' || d.kind==='T') return 'T';
+      if(d.kind==='Double' || d.kind==='D') return 'D';
+      if(d.kind==='Single' || d.kind==='S') return 'S';
+      return String(d.kind||'').toUpperCase();
+    };
+    const __g4Prior=(entry.darts||[]).slice(0,dartIndex).map(__g4KindOf);
+    const __g4Current=__g4KindOf(dartObj);
+    const __g4All=__g4Prior.concat([__g4Current]);
+    const __g4Scoring=__g4All.filter(k=>k && k!=='X');
+    const __g4HasS=__g4Scoring.includes('S'), __g4HasD=__g4Scoring.includes('D'), __g4HasT=__g4Scoring.includes('T');
+    const __g4Shanghai=(dartIndex===2 && __g4HasS && __g4HasD && __g4HasT);
+    const __g4Desmond=(dartIndex===2 && __g4All.filter(k=>k==='S').length===2 && __g4All.filter(k=>k==='D').length===1 && !__g4HasT && !__g4All.includes('X'));
+    const __g4LastDartHero=(dartIndex===2 && __g4Current!=='X' && __g4Prior[0]==='X' && __g4Prior[1]==='X');
+    const __g4Awkward=(dartIndex===2 && __g4Current==='X' && ((__g4Prior[0]==='T' && __g4Prior[1]==='T') || (__g4Prior[0]==='D' && __g4Prior[1]==='D')));
+    const __g4RepeatedTreble=(__g4Current==='T' && __g4Prior.filter(k=>k==='T').length>=1);
+    const __g4RepeatedDouble=(__g4Current==='D' && __g4Prior.filter(k=>k==='D').length>=1);
+    const __g4ThreeSingles=(dartIndex===2 && __g4All.filter(k=>k==='S').length===3);
+    const __g4Dirty=(dartIndex===2 && Number(entry.roundTotal||0)>0 && Number(entry.roundTotal||0)<=30 && !__g4Shanghai && !__g4Desmond && new Set(__g4Scoring).size>=2);
+    const __g4Sector=Number(dartObj?.sector||0);
+    const __g4Voldy=(__g4Sector>=1 && __g4Sector<=5 && ((roundDef?.type==='doubles' && __g4Current==='D') || (roundDef?.type==='triples' && __g4Current==='T')));
+    __sqGate4LegacySpecialOwned=!!(__g4Shanghai||__g4Desmond||__g4LastDartHero||__g4Awkward||__g4RepeatedTreble||__g4RepeatedDouble||__g4ThreeSingles||__g4Dirty||__g4Voldy);
+
+    if(__sqGate4LegacySpecialOwned && __sqDmdGate4ControllerActive()){
+      try{ window.__sqDmdV2?.clear?.({restore:false}); }catch(_){}
+    }
+
+    let __g4Kind='';
+    if(dartObj?.kind==='Miss' || Number(dartObj?.points||0)===0){
+      __g4Kind=(dartIndex===2 && Number(entry.roundTotal||0)===0)?'SCRATCH':'MISS';
+    }else if(dartObj?.kind==='B'){
+      __g4Kind=(dartObj?.bull==='Inner')?'BULLSEYE':'OUTER_BULL';
+    }else if(dartObj?.kind==='Triple' || dartObj?.kind==='T') __g4Kind='HIT_TREBLE';
+    else if(dartObj?.kind==='Double' || dartObj?.kind==='D') __g4Kind='HIT_DOUBLE';
+    else if(dartObj?.kind==='Single' || dartObj?.kind==='S') __g4Kind='HIT_SINGLE';
+    if(__g4Kind && !__sqGate4LegacySpecialOwned){
+      const __g4Total=__sqDmdGate4Totals()[pIndex]||0;
+      __sqGate4RoutineOwned=!!__sqDmdGate4Emit(__g4Kind,{
+        player:__sqDmdGate4PlayerName(pIndex),
+        target:__sqDmdGate4Target(rIndex),
+        points:Number(dartObj?.points||0),
+        total:Number(__g4Total||0),
+        visitPoints:Number(entry.roundTotal||0),
+        dart:dartIndex+1
+      },{
+        playerIndex:pIndex,roundIndex:rIndex,dartIndex,
+        historyLength:(Array.isArray(state?.history)?state.history.length:0)+1,
+        eventToken:__sqDmdGate4Token(__g4Kind,{playerIndex:pIndex,roundIndex:rIndex,dartIndex,historyLength:(Array.isArray(state?.history)?state.history.length:0)+1,extra:Number(dartObj?.points||0)}),
+        playerInput:true
+      });
+    }
+  }catch(_){}
 
   // SC-052 — read-only DMD commentary snapshot. This never owns or mutates
   // scoring state; it only describes the canonical throw that was just written.
@@ -1000,7 +1189,9 @@ try {
     __queueOnlyCombo = __sqQueueComboPhrase('HAHA HA HAHAA!', { imageType:'voldyImg', imageMs:900, amp:2.8, stepMs:300, restoreZ2:'', restoreZ3:(window.__sqDmdBulkMiss ? '' : seq) });
   } else if (kind === 'B') {
     if (dartObj.bull === 'Inner') {
-      __queueOnlyCombo = __sqQueueComboPhrase('BULLSEYE', { wholePhrase:true, phraseMs:700, afterType:'bullseyeHit', afterMs:1100, restoreZ2:'', restoreZ3:(window.__sqDmdBulkMiss ? '' : seq) });
+      if (!__sqGate4RoutineOwned) {
+        __queueOnlyCombo = __sqQueueComboPhrase('BULLSEYE', { wholePhrase:true, phraseMs:700, afterType:'bullseyeHit', afterMs:1100, restoreZ2:'', restoreZ3:(window.__sqDmdBulkMiss ? '' : seq) });
+      }
     } else {
       z2 = 'OUTER!';
       fx = { type:'shake', amp:2.0, ms:600, fx:'impact' };
@@ -1085,7 +1276,7 @@ try {
   // Render all three zones; Z3 normally shows the running sequence. Major
   // commentary milestones (6/9/12+ misses) may use Z3 for the punchline.
   if (window.sqDmdShowZones) {
-    if (!__queueOnlyCombo) {
+    if (!__queueOnlyCombo && !__sqGate4RoutineOwned) {
       const __sqDmdStoryZ3 = (__sqCommentaryOwnsSubline && __sqCommentaryDartBeat)
         ? String(__sqCommentaryDartBeat.subline || '').toUpperCase()
         : (window.__sqDmdBulkMiss ? '' : seq);
@@ -1095,7 +1286,7 @@ try {
     // End-of-turn behaviour:
     // - After 3rd dart, run Stage 3 round-end banner/roll-up, then clear Z3.
     // Skip owns its own controller transient; do not start a competing visit banner.
-    if (typeof dartIndex === 'number' && dartIndex === 2 && !window.__sqSkipInProgress) {
+    if (typeof dartIndex === 'number' && dartIndex === 2 && !window.__sqSkipInProgress && !__sqDmdGate4ControllerActive()) {
       try {
         const roundTotal = (entry && entry.darts) ? entry.darts.reduce((s,d)=> s + (d?.points||0), 0) : 0;
 
@@ -1518,6 +1709,64 @@ setTimeout(() => {
     }
   }
 
+  // Gate 4 visit/orientation/competitive facts are emitted only after the
+  // canonical cursor/history have advanced, so restoration always reads fresh state.
+  try{
+    if(__sqDmdGate4ControllerActive() && !__sqGate4LegacySpecialOwned){
+      const __g4After=__sqDmdGate4CompetitiveSnapshot();
+      const __g4History=Array.isArray(state?.history)?state.history.length:0;
+      if(dartIndex===2){
+        if(Number(entry.roundTotal||0)!==0){
+          __sqDmdGate4Emit('VISIT_COMPLETE',{
+            player:__sqDmdGate4PlayerName(pIndex),
+            visitPoints:Number(entry.roundTotal||0),
+            total:Number(__g4After.totals?.[pIndex]||0)
+          },{playerIndex:pIndex,roundIndex:rIndex,dartIndex,historyLength:__g4History,extra:'visit'});
+        }
+        if(!state?.__sqCatchUp?.active && Number(state.currentRound)!==Number(rIndex)){
+          const __nextRound=Number(state.currentRound||0);
+          const __nextDef=ROUNDS?.[__nextRound];
+          const __roundKind=__nextDef?.type==='doubles'?'ROUND_DOUBLES':
+            (__nextDef?.type==='triples'?'ROUND_TREBLES':
+              (__nextDef?.type==='bull'?'ROUND_BULL':'ROUND_TARGET'));
+          __sqDmdGate4Emit(__roundKind,{
+            target:__sqDmdGate4Target(__nextRound),
+            roundLabel:'ROUND '+String(__nextRound+1)
+          },{roundIndex:__nextRound,dartIndex:0,historyLength:__g4History,extra:'round-transition'});
+        }
+      }
+
+      const __beforeLeader=__sqGate4CompetitiveBefore?.soleLeader;
+      const __afterLeader=__g4After?.soleLeader;
+      if(__afterLeader!=null && Number(__afterLeader)!==Number(__beforeLeader)){
+        const others=(__g4After.totals||[]).filter((_,i)=>i!==Number(__afterLeader)).map(Number);
+        const nextBest=others.length?Math.max(...others):Number(__g4After.totals?.[__afterLeader]||0);
+        __sqDmdGate4Emit('NEW_LEADER',{
+          player:__sqDmdGate4PlayerName(__afterLeader),
+          margin:Number(__g4After.totals?.[__afterLeader]||0)-Number(nextBest||0)
+        },{playerIndex:__afterLeader,roundIndex:rIndex,dartIndex,historyLength:__g4History,extra:'leader-edge'});
+      }else if((__g4After?.leaders||[]).length>=2){
+        const __beforeTie=(__sqGate4CompetitiveBefore?.leaders||[]).join(',');
+        const __afterTie=(__g4After?.leaders||[]).join(',');
+        if(__beforeTie!==__afterTie){
+          __sqDmdGate4Emit('TIED',{
+            scoreLine:'SCORE '+String(Math.max(...(__g4After.totals||[0]).map(Number)))
+          },{playerIndex:pIndex,roundIndex:rIndex,dartIndex,historyLength:__g4History,extra:'tie-'+__afterTie});
+        }
+      }
+
+      const __tableRoundClosed=(dartIndex===2 && Number(pIndex)===Math.max(0,(state?.players?.length||1)-1) && !__catchUpStateBefore?.active);
+      if(__tableRoundClosed && Number(rIndex)>=4 && (__g4After?.totals||[]).length>=2 && Number(__g4After.margin)<=10){
+        const __beforeClose=(__sqGate4CompetitiveBefore?.totals||[]).length>=2 && Number(__sqGate4CompetitiveBefore.margin)<=10;
+        if(!__beforeClose || Number(state.currentRound)!==Number(rIndex)){
+          __sqDmdGate4Emit('LATE_CLOSE',{margin:Number(__g4After.margin||0)},{
+            playerIndex:pIndex,roundIndex:rIndex,dartIndex,historyLength:__g4History,extra:'close-'+String(rIndex)
+          });
+        }
+      }
+    }
+  }catch(_){}
+
   try{__sqEnsureFinalBullReturnTimer();}catch(_){}
   updateUI();
 
@@ -1726,7 +1975,9 @@ try{ window.__sqDmdPlayMissXXX = __sqDmdPlayMissXXX; }catch(_){ }
 function __sqHandleMissTap(){
   try{
     // Instant MISS: no triple-tap helper (keeps gameplay snappy).
-    try{ window.sqDmdShowZones?.({ z2:'MISS', z3:'' }, { type:'flash', ms:220, fx:'pop' }); }catch(_){ }
+    if (!__sqDmdGate4ControllerActive()) {
+      try{ window.sqDmdShowZones?.({ z2:'MISS', z3:'' }, { type:'flash', ms:220, fx:'pop' }); }catch(_){ }
+    }
     try{ recordThrow({ kind:'Miss' }); }catch(_){ }
   }catch(_){ }
 }
