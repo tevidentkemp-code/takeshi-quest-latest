@@ -62,3 +62,15 @@ Sequencing is time-sensitive. Re-read the Shateki MASTER Pipeline and Coding Pro
 ## Deterministic refresh
 
 Re-check the Source Map, Working Rules, Coding Project Control, Shateki MASTER Pipeline, relevant task authority, repository `main` SHA, source-authority maps, and live implementation. Update this guide only as a reviewed derived copy; never resolve a conflict by weakening the stronger source.
+
+## Runtime Execution Fast Path — CHG-049 controlled pilot
+
+The existing MASTER Routing Standard (Drive ID 1MkY2krgn09fawf4f7dyYo_0_262n9XrlWeIXMT-Zg7s) owns the execution-class contract. This guide is derived and never grants write or release permission. Shateki Working Rules (19Bps656J9DjJzXRRpWbUhjoetJDD-h76o5D0f4-WqwI) and the local CHG-049 adoption receipt in Coding Project Control govern compatibility.
+
+- Dispatch once after checking live Pipeline, Coding HANDOVER and Source Map. Reuse a verified source within the same uninterrupted task only while its scope, revision and dependent state remain valid; refresh after a change, conflict, resumed chat, failed check, new write target or release boundary.
+- **Fast Patch:** one isolated reversible change with settled acceptance and no scoring, state, persistence, mode, auth/RLS, secrets, dependency, CI/deployment, public-brand or new-design decision. A small diff alone is insufficient. Run diff/syntax checks and focused affected-path regressions; UI changes still require relevant rendered mobile/accessibility checks.
+- **Standard Build:** bounded multi-file or behaviour work with known ownership. Add affected integration/lifecycle tests, source materialisation, build/dist parity and relevant modes. Shared scoring/state/data/security changes escalate.
+- **High-Risk:** authority/governance/routing, security, schema/data, shared scoring/state/modes, irreversible operations, uncertain ownership or release engineering. Preserve explicit approval, full applicable regression and independent acceptance where already required. Missing evidence blocks only the affected action.
+- These development QA tiers never waive existing exact-head CI, build/dist, protected release workflows, authorised merge/deploy, production readback or rollback.
+- Reconcile the completed unit once in local TASK / BUILD LOG / HANDOVER; update the family Pipeline only when its owned status/gate/action changes, and MASTER only for a material adoption/acceptance/blocker transition. Read back every changed surface.
+- Rotate chat at a verified phase boundary, tool/context failure or sustained recovery drift; checkpoint first. Never use a new chat to reset permissions or skip unfinished gates.
