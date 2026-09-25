@@ -10,7 +10,8 @@ const compat=read('src/legacy/scripts/inline-005.js');
 assert(engine.includes("{ type:'roll', ms:1050, fx:'impact' }"),'ROUND SCORE must use 1050ms roll');
 assert(engine.includes("const base = kind === 'round' ? 1900 : 1600;"),'story minimum read windows missing');
 assert(engine.includes("const max = kind === 'round' ? 2450 : 2200;"),'story maximum read windows missing');
-assert(engine.includes("__sqShowStoryBeat(__sqCommentaryVisitBeat, __visitStoryMs, 'hold')"),'visit story must use adaptive hold');
+assert(engine.includes('const __sqVisitStory = __sqFightBeat || __sqCommentaryVisitBeat;'),'visit story must preserve fight-beat precedence over commentary');
+assert(engine.includes("__sqShowStoryBeat(__sqVisitStory, __visitStoryMs, __sqFightBeat ? 'flash' : 'hold')"),'visit story must use adaptive hold with fight-beat flash');
 assert(engine.includes("__sqShowStoryBeat(__sqCommentaryRoundBeat, __roundStoryMs, 'hold')"),'round punchline must use adaptive hold');
 assert(engine.includes("{ type:'shutter', ms:950, revealMs:280, fx:'smear' }"),'round complete must use split shutter');
 assert(engine.includes("if (__active && Number(__active.priority || 0) <= 20) window.__sqDmdCancelTransientScenes?.();"),'important story must clear only low-priority controller transients');
@@ -36,7 +37,7 @@ assert(renderer.includes('const bands = 4'),'shutter must use four alternating b
 assert(renderer.includes('fxScale = 1 + (0.055 * decay)'),'snap must have a bounded slam scale');
 
 for(const needle of [
-  "__sqShowStoryBeat(__sqCommentaryVisitBeat, __visitStoryMs, 'hold')",
+  "__sqShowStoryBeat(__sqVisitStory, __visitStoryMs, __sqFightBeat ? 'flash' : 'hold')",
   "const base = kind === 'round' ? 1900 : 1600;"
 ]) assert(compat.includes(needle),`generated compatibility runtime missing: ${needle}`);
 
