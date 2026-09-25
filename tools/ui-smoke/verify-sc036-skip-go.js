@@ -313,14 +313,27 @@ function assert(cond, msg) {
     await page.waitForTimeout(120);
     s=await page.evaluate(() => {
       const job=state.__sqCatchUp.jobs[0];
+      const controller=window.__sqDmdV2?.snapshot?.()||null;
       return {
         active:window.__sqFinalBullReturnTimerActive(1),
         remaining:Number(job.bullReturnDeadlineAt||0)-Date.now(),
-        frames:(window.__sqSc036DmdTimerFrames||[]).slice()
+        frames:(window.__sqSc036DmdTimerFrames||[]).slice(),
+        controller:controller?{
+          architecture:controller.architecture||'',
+          headline:controller.active?.headline||'',
+          subline:controller.active?.subline||'',
+          priority:Number(controller.active?.priority||0),
+          duration:Number(controller.active?.duration||0)
+        }:null
       };
     });
     assert(s.active===true && s.remaining>28500 && s.remaining<=30000, 'scheduled Bull with retained catch-up must start a persisted 30-second return timer');
-    assert(s.frames.some(f=>/BULL RETURN/i.test(String(f.zones?.z1||'')) && /BETA/i.test(String(f.zones?.z2||'')) && /SECONDS/i.test(String(f.zones?.z3||''))), 'DMD must show affected player and Bull return countdown');
+    if(s.controller?.architecture==='sxp05-gate3-scene-contract'){
+      assert(s.controller.headline==='BULL RETURN' && /BETA/i.test(s.controller.subline) && /\d+S/i.test(s.controller.subline), 'Gate 4 DMD must show affected player and numeric Bull return countdown');
+      assert(s.controller.priority===30 && s.controller.duration===0, 'Final Bull countdown must remain persistent COMPETITIVE presentation');
+    }else{
+      assert(s.frames.some(f=>/BULL RETURN/i.test(String(f.zones?.z1||'')) && /BETA/i.test(String(f.zones?.z2||'')) && /SECONDS/i.test(String(f.zones?.z3||''))), 'legacy DMD fallback must show affected player and Bull return countdown');
+    }
 
     const blockedSkip=await page.evaluate(() => {
       const before={p:state.currentPlayer,r:state.currentRound,d:state.currentDart,h:state.history.length};
