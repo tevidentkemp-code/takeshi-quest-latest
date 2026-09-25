@@ -18,7 +18,16 @@ jobs:
         with:
           node-version-file: .node-version
       - run: npm ci --prefix scripts --ignore-scripts
-      - run: npm run materialize
+      - name: Generate compatibility outputs from authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/render-index-from-source.mjs --output .release-index.html
+          cp .release-index.html index.html
+          node scripts/build-core-styles-from-source.mjs --output .release-core.css
+          cp .release-core.css src/legacy/styles/inline-002.css
+          node scripts/build-core-js-from-source.mjs --output .release-core.js
+          cp .release-core.js src/legacy/scripts/inline-005.js
       - name: Commit exact generated outputs
         shell: bash
         run: |
