@@ -298,6 +298,238 @@ function injectStyles() {
   .gc-xp-source-label{ font-size:7px; }
   .gc-xp-source-chip{ font-size:9px; padding:4px 8px; }
 }
+
+/* SXP XP result card: presentation-only hierarchy aligned with the live-game shell. */
+.gc-xp-row.sq-xp-detailed{
+  padding:14px;
+  border:1px solid rgba(255,138,0,.22);
+  border-radius:18px;
+  background:
+    radial-gradient(90% 120% at 0% 0%, rgba(255,122,0,.08), transparent 48%),
+    linear-gradient(180deg, rgba(17,24,39,.96), rgba(9,14,25,.98));
+  box-shadow:0 18px 42px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.045);
+}
+.gc-xp-profile{
+  display:grid;
+  grid-template-columns:96px minmax(0,1fr);
+  gap:14px;
+  align-items:stretch;
+  min-width:0;
+}
+.gc-xp-avatar-card{
+  position:relative;
+  min-height:122px;
+  border-radius:15px;
+  overflow:hidden;
+  border:1px solid rgba(255,149,0,.38);
+  background:#0b1120;
+  box-shadow:0 0 24px rgba(255,122,0,.09), inset 0 1px 0 rgba(255,255,255,.06);
+}
+.gc-xp-avatar-art{
+  position:absolute;
+  inset:0;
+  background-color:#111827;
+  background-repeat:no-repeat;
+  background-size:600% 500%;
+}
+.gc-xp-avatar-fallback{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#f3f6fb;
+  font-size:28px;
+  font-weight:950;
+  letter-spacing:.04em;
+  background:
+    radial-gradient(circle at 50% 24%, rgba(255,138,0,.22), transparent 44%),
+    linear-gradient(180deg,#162033,#0b1120);
+}
+.gc-xp-avatar-xp{
+  position:absolute;
+  z-index:2;
+  left:6px;
+  right:6px;
+  bottom:6px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:6px;
+  padding:7px 8px;
+  border:1px solid rgba(255,190,90,.24);
+  border-radius:9px;
+  background:linear-gradient(180deg,rgba(8,12,20,.72),rgba(5,8,15,.92));
+  backdrop-filter:blur(6px);
+  box-shadow:0 7px 18px rgba(0,0,0,.32);
+}
+.gc-xp-avatar-xp-label{
+  color:rgba(225,232,245,.56);
+  font-size:7px;
+  font-weight:950;
+  line-height:1.05;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.gc-xp-avatar-xp-value{
+  color:#ffc25d;
+  font-size:13px;
+  font-weight:950;
+  line-height:1;
+  white-space:nowrap;
+}
+.gc-xp-summary{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+}
+.gc-xp-summary-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:8px;
+  min-width:0;
+}
+.gc-xp-summary-name{
+  min-width:0;
+}
+.gc-xp-row.sq-xp-detailed .gc-xp-name{
+  padding:0;
+  font-size:18px;
+  line-height:1.08;
+}
+.gc-xp-nickname{
+  margin-top:4px;
+  color:rgba(185,197,219,.56);
+  font-size:9px;
+  font-weight:850;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.gc-xp-win-badge{
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  min-height:27px;
+  padding:0 9px;
+  border-radius:999px;
+  border:1px solid rgba(255,190,70,.42);
+  color:#ffd57b;
+  background:rgba(255,159,28,.08);
+  font-size:8px;
+  line-height:1;
+  font-weight:950;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+.gc-xp-summary-meta{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:8px;
+  margin-top:7px;
+}
+.gc-xp-row.sq-xp-detailed .gc-xp-gain{
+  margin:0;
+  color:#69e6ad;
+  font-size:20px;
+  line-height:1;
+  font-weight:950;
+  letter-spacing:-.02em;
+}
+.gc-xp-row.sq-xp-detailed .gc-xp-gain.is-negative{ color:#ff9eaa; }
+.gc-xp-rankstack{
+  min-width:auto;
+  gap:4px;
+}
+.gc-xp-gamebar-wrap{ margin-top:11px; }
+.gc-xp-gamebar-head,
+.gc-xp-totalbar-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:5px;
+  color:rgba(226,233,246,.52);
+  font-size:8px;
+  line-height:1;
+  font-weight:950;
+  letter-spacing:.13em;
+  text-transform:uppercase;
+}
+.gc-xp-gamebar-value,
+.gc-xp-totalbar-value{
+  color:rgba(244,247,252,.78);
+  font-size:10px;
+  letter-spacing:.01em;
+  text-transform:none;
+  font-variant-numeric:tabular-nums;
+}
+.gc-xp-totalbar-head{ margin-top:9px; }
+.gc-xp-totalbar-head .gc-xp-totalbar-value{ color:#ffc25d; font-weight:950; }
+.gc-xp-breakdown{
+  gap:0;
+  margin-top:13px;
+  border-top:1px solid rgba(255,255,255,.09);
+}
+.gc-xp-source-line{
+  display:grid;
+  grid-template-columns:66px 50px minmax(0,1fr);
+  align-items:center;
+  gap:8px;
+  min-height:48px;
+  padding:7px 0;
+  border-bottom:1px solid rgba(255,255,255,.075);
+}
+.gc-xp-source-line:last-child{ border-bottom:0; }
+.gc-xp-source-label{
+  font-size:8px;
+  letter-spacing:.13em;
+  white-space:normal;
+  line-height:1.15;
+}
+.gc-xp-source-total{
+  font-size:14px;
+  line-height:1;
+  font-weight:950;
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+  color:#eef3ff;
+}
+.gc-xp-source-line.positive .gc-xp-source-total{ color:#d6b4ff; }
+.gc-xp-source-line.negative .gc-xp-source-total{ color:#ff9eaa; }
+.gc-xp-source-chips{
+  padding:2px 3px 3px 0;
+}
+.gc-xp-source-chip{
+  min-height:32px;
+  padding:6px 10px;
+  border-radius:12px;
+  font-size:10px;
+}
+button.gc-xp-source-chip[data-xp-info]::after{
+  content:'›';
+  margin-left:3px;
+  color:rgba(235,240,250,.58);
+  font-size:16px;
+  line-height:.7;
+}
+@media(max-width:390px){
+  .gc-xp-row.sq-xp-detailed{ padding:11px; }
+  .gc-xp-profile{ grid-template-columns:82px minmax(0,1fr); gap:10px; }
+  .gc-xp-avatar-card{ min-height:112px; }
+  .gc-xp-row.sq-xp-detailed .gc-xp-name{ font-size:15px; }
+  .gc-xp-row.sq-xp-detailed .gc-xp-gain{ font-size:18px; }
+  .gc-xp-win-badge{ padding:0 7px; font-size:7px; }
+  .gc-xp-avatar-xp{ left:4px; right:4px; bottom:4px; padding:6px; display:block; }
+  .gc-xp-avatar-xp-value{ display:block; margin-top:3px; font-size:12px; }
+  .gc-xp-source-line{ grid-template-columns:58px 44px minmax(0,1fr); gap:5px; }
+  .gc-xp-source-total{ font-size:12px; }
+}
 @media(prefers-reduced-motion:reduce){
   .gc-xp-row.sq-xp-detailed,.gc-xp-row.sq-xp-detailed .gc-xp-fill,.gc-xp-row.sq-xp-detailed .gc-xp-lvup{ transition:none!important; animation:none!important; }
 }
@@ -612,16 +844,19 @@ function makeChip(text, kind, extraClass = '', info = null) {
   return chip;
 }
 
-function makeSourceLine(label) {
+function makeSourceLine(label, totalText = '', tone = '') {
   const line = document.createElement('div');
-  line.className = 'gc-xp-source-line';
+  line.className = `gc-xp-source-line${tone ? ` ${tone}` : ''}`;
   const lab = document.createElement('div');
   lab.className = 'gc-xp-source-label';
   lab.textContent = label;
+  const total = document.createElement('div');
+  total.className = 'gc-xp-source-total';
+  total.textContent = totalText;
   const chips = document.createElement('div');
   chips.className = 'gc-xp-source-chips';
-  line.append(lab, chips);
-  return { line, chips };
+  line.append(lab, total, chips);
+  return { line, chips, total };
 }
 
 function rankChip(host, holder, progress) {
@@ -638,41 +873,87 @@ function rankChip(host, holder, progress) {
   holder.appendChild(fallback);
 }
 
+function formatXp(value) {
+  return Math.max(0, Number(value || 0)).toLocaleString('en-GB');
+}
+
+function xpAvatarInitials(data) {
+  const initials = String(data?.player?.initials || '').trim();
+  if (initials) return initials.slice(0, 2).toUpperCase();
+  const words = String(data?.name || '').trim().split(/\s+/).filter(Boolean);
+  return (words.slice(0, 2).map(word => word[0]).join('') || '?').toUpperCase();
+}
+
+function applyXpAvatar(host, el, data) {
+  if (!el) return;
+  try {
+    if (typeof host.__sqAvatarIdForPlayer === 'function' && typeof host.__sqApplyAvatarSprite === 'function') {
+      const id = host.__sqAvatarIdForPlayer(data?.player || data?.rawName || data?.name || '');
+      host.__sqApplyAvatarSprite(el, id);
+      el.setAttribute('aria-label', `${data?.name || 'Player'} avatar`);
+      return;
+    }
+  } catch (_) {}
+  el.classList.add('gc-xp-avatar-fallback');
+  el.textContent = xpAvatarInitials(data);
+}
+
 function buildDetailedRow(host, data) {
   const pre = host.SQ_XP.progress(data.pre);
   const post = host.SQ_XP.progress(data.post);
   const el = document.createElement('div');
   el.className = `gc-xp-row sq-xp-detailed${data.won ? ' won' : ''}`;
+  const nickname = String(data.nickname || '').trim();
+  const winLabel = data.matchWin ? 'MATCH WIN' : (data.won ? 'GAME WIN' : '');
   el.innerHTML = `
-    <div class="gc-xp-head">
-      <span class="gc-xp-name"><span class="nm">${esc(data.name)}</span></span>
-      <span class="gc-xp-rankstack"><span class="gc-xp-lvholder"></span><span class="gc-xp-lvup">LEVEL UP!</span></span>
+    <div class="gc-xp-profile">
+      <div class="gc-xp-avatar-card">
+        <div class="gc-xp-avatar-art" role="img"></div>
+        <div class="gc-xp-avatar-xp">
+          <span class="gc-xp-avatar-xp-label">CURRENT XP</span>
+          <span class="gc-xp-avatar-xp-value">${formatXp(data.post)} XP</span>
+        </div>
+      </div>
+      <div class="gc-xp-summary">
+        <div class="gc-xp-summary-head">
+          <div class="gc-xp-summary-name">
+            <span class="gc-xp-name"><span class="nm">${esc(data.name)}</span></span>
+            ${nickname ? `<div class="gc-xp-nickname">“${esc(nickname)}”</div>` : ''}
+          </div>
+          ${winLabel ? `<span class="gc-xp-win-badge">${winLabel}</span>` : ''}
+        </div>
+        <div class="gc-xp-summary-meta">
+          <div class="gc-xp-gain${data.netXp < 0 ? ' is-negative' : ''}">${data.netXp >= 0 ? '+' : ''}${data.netXp} XP</div>
+          <span class="gc-xp-rankstack"><span class="gc-xp-lvholder"></span><span class="gc-xp-lvup">LEVEL UP!</span></span>
+        </div>
+        <div class="gc-xp-gamebar-wrap">
+          <div class="gc-xp-gamebar-head"><span>THIS GAME XP</span><span class="gc-xp-gamebar-value">${data.netXp >= 0 ? '+' : ''}${data.netXp} XP</span></div>
+          <div class="gc-xp-gamebar"><div class="gc-xp-gamebar-fill"></div></div>
+        </div>
+        <div class="gc-xp-totalbar-head"><span>TOTAL XP</span><span class="gc-xp-totalbar-value">${formatXp(data.post)} XP</span></div>
+        <div class="gc-xp-bar"><div class="gc-xp-fill"></div></div>
+      </div>
     </div>
-    <div class="gc-xp-gain">${data.netXp >= 0 ? '+' : ''}${data.netXp} XP</div>
-    <div class="gc-xp-gamebar-wrap">
-      <div class="gc-xp-gamebar-head"><span>THIS GAME</span><span>${data.netXp >= 0 ? '+' : ''}${data.netXp} XP</span></div>
-      <div class="gc-xp-gamebar"><div class="gc-xp-gamebar-fill"></div></div>
-    </div>
-    <div class="gc-xp-totalbar-label">TOTAL XP PROGRESS</div>
-    <div class="gc-xp-bar"><div class="gc-xp-fill"></div></div>
     <div class="gc-xp-breakdown"></div>
   `;
+
+  applyXpAvatar(host, el.querySelector('.gc-xp-avatar-art'), data);
 
   const rankHolder = el.querySelector('.gc-xp-lvholder');
   rankChip(host, rankHolder, pre);
 
   const breakdown = el.querySelector('.gc-xp-breakdown');
-  const base = makeSourceLine(`BASE XP ${data.baseXp >= 0 ? '+' : ''}${data.baseXp}`);
-  data.base.forEach(item => base.chips.appendChild(makeChip(`${item.label} +${item.xp} XP`, 'base', '', {
+  const base = makeSourceLine('BASE XP', `+${data.baseXp}`, 'base');
+  data.base.forEach(item => base.chips.appendChild(makeChip(`${item.label} +${item.xp}`, 'base', '', {
     title:item.label + ' XP', xp:`+${item.xp} XP`, description:item.description
   })));
   if (!data.base.length) base.chips.appendChild(makeChip('NONE', 'empty'));
   breakdown.appendChild(base.line);
 
-  const positive = makeSourceLine(`POSITIVE +${data.positiveXp}`);
+  const positive = makeSourceLine('POSITIVE', `+${data.positiveXp}`, 'positive');
   data.positive.forEach(item => {
     const countText = item.count > 1 ? ` ×${item.count}` : '';
-    const chip = makeChip(`${item.icon} ${item.name}${countText} +${item.xp} XP`, item.milestone ? 'milestone' : 'positive', '', {
+    const chip = makeChip(`${item.icon} ${item.name}${countText}`, item.milestone ? 'milestone' : 'positive', '', {
       title:item.name, xp:`+${item.xp} XP`, description:item.description
     });
     positive.chips.appendChild(chip);
@@ -680,12 +961,12 @@ function buildDetailedRow(host, data) {
   if (!data.positive.length) positive.chips.appendChild(makeChip('NO NEW AWARDS', 'empty'));
   breakdown.appendChild(positive.line);
 
-  const negative = makeSourceLine(`NEGATIVE ${data.penalty}`);
+  const negative = makeSourceLine('NEGATIVE', `${data.penalty}`, 'negative');
   if (data.negative.length) {
     data.negative.forEach(item => {
       const applied = !!item.applied;
       const countText = Number(item.count || 1) > 1 ? ` ×${Number(item.count)}` : '';
-      negative.chips.appendChild(makeChip(`${item.name}${countText} ${item.penalty} XP${applied ? ' · APPLIED' : ''}`, 'negative', applied ? 'applied' : '', {
+      negative.chips.appendChild(makeChip(`${item.name}${countText}${applied ? ' · APPLIED' : ''}`, 'negative', applied ? 'applied' : '', {
         title:item.name, xp:`${item.penalty} XP`, description: applied
           ? 'Misfire condition triggered in this game. This penalty is applied to the game XP total.'
           : 'Misfire condition triggered in this game, but a stronger normal Misfire penalty is applied instead.'
@@ -786,6 +1067,7 @@ async function buildPlayerData(host, st) {
       player,
       rawName,
       name: prettyPlayerName(player, index),
+      nickname: String(player && player.nickname || '').trim(),
       playerId: String(xpRow && xpRow.player_id || player && (player.player_id || player.id) || '').trim(),
       pre: Number(xpRow && xpRow.total_xp || 0),
       allPlayerRows: null,
@@ -843,6 +1125,7 @@ async function buildPlayerData(host, st) {
       baseXp,
       positiveXp,
       netXp,
+      matchWin:matchXp > 0,
       post:Math.max(0, row.pre + netXp),
     };
   }).sort((a, b) => (Number(b.won) - Number(a.won)) || (b.netXp - a.netXp));
