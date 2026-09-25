@@ -223,68 +223,58 @@ function makeRoundRows(values) {
     assert.equal(await page.evaluate(() => ('uniqueWon' in window) || ('neverBehind' in window)), false, 'Detector compatibility globals leaked');
 
     const xpLayout = await page.locator('.sq-pg-xp-screen .gc-xp-row').first().evaluate(row => {
-      const labels = Array.from(row.querySelectorAll('.gc-xp-source-label')).map(el => (el.textContent || '').trim());
+      const labels = Array.from(row.querySelectorAll('.gc-xp-source-label-name')).map(el => (el.textContent || '').trim());
       const chipTracks = Array.from(row.querySelectorAll('.gc-xp-source-chips')).map(el => ({
         overflowX:getComputedStyle(el).overflowX,
         scrollWidth:el.scrollWidth,
         clientWidth:el.clientWidth,
       }));
-      const nameBox = row.querySelector('.gc-xp-name')?.getBoundingClientRect();
-      const rank = row.querySelector('.gc-xp-rankstack');
+      const name = row.querySelector('.gc-xp-name');
+      const rank = row.querySelector('.gc-xp-rank-title');
+      const portrait = row.querySelector('.gc-xp-portrait');
+      const avatar = row.querySelector('.gc-xp-avatar-sprite');
+      const gameValue = row.querySelector('.gc-xp-gamebar-value');
+      const totalValue = row.querySelector('.gc-xp-totalbar-value');
+      const muted = Array.from(row.querySelectorAll('.gc-xp-source-line.is-muted')).map(el => (el.textContent || '').trim());
+      const nameBox = name?.getBoundingClientRect();
       const rankBox = rank?.getBoundingClientRect();
-      const levelUp = row.querySelector('.gc-xp-lvup');
-      const levelUpBox = levelUp?.getBoundingClientRect();
-      const badge = row.querySelector('.gc-xp-lvholder')?.firstElementChild;
-      const badgeBox = badge?.getBoundingClientRect();
+      const portraitBox = portrait?.getBoundingClientRect();
       return {
         labels,
         chipTracks,
-        rankText:(rank?.textContent || '').trim(),
-        badgeText:(badge?.textContent || '').trim(),
-        levelUpText:(levelUp?.textContent || '').trim(),
-        rankRight:rankBox?.right || 0,
-        nameRight:nameBox?.right || 0,
-        badgeTop:badgeBox?.top || 0,
-        levelUpTop:levelUpBox?.top || 0,
+        name:(name?.textContent || '').trim(),
+        rank:(rank?.textContent || '').replace(/LEVEL UP!/i,'').trim(),
+        rankBelowName:!!(nameBox && rankBox && rankBox.top >= nameBox.bottom - 1),
+        duplicateRankStack:row.querySelectorAll('.gc-xp-rankstack,.gc-xp-lvholder').length,
+        portrait:!!portrait,
+        portraitRatio:portraitBox && portraitBox.height ? portraitBox.width / portraitBox.height : 0,
+        avatarId:avatar?.dataset.avatarId || '',
+        gameValue:(gameValue?.textContent || '').trim(),
+        totalValue:(totalValue?.textContent || '').trim(),
+        muted,
       };
     });
     assert.deepEqual(
-      xpLayout.labels.map(label => label.replace(/\s+[+-]?\d+$/, '')),
-      ['BASE XP','POSITIVE','NEGATIVE'],
+      xpLayout.labels,
+      ['BASE XP','POSITIVE XP','NEGATIVE XP'],
       'XP breakdown rows are not in the requested order'
     );
     assert.equal(xpLayout.chipTracks.length, 3, 'XP breakdown is missing a horizontal source track');
     xpLayout.chipTracks.forEach((track, index) => {
       assert.equal(track.overflowX, 'auto', `XP source track ${index + 1} is not horizontally scrollable`);
     });
-    assert.ok(/LV\s*\d+/i.test(xpLayout.badgeText), 'Level badge is missing from the XP card');
-    assert.ok(xpLayout.rankRight > xpLayout.nameRight, 'Level badge stack is not positioned at the right side of the card');
-    if (/LEVEL UP!/i.test(xpLayout.rankText)) {
-      assert.ok(xpLayout.levelUpTop >= xpLayout.badgeTop, 'LEVEL UP notification is not below the level badge');
-    }
+    assert.equal(xpLayout.portrait, true, 'XP card is missing the player profile portrait');
+    assert.ok(Math.abs(xpLayout.portraitRatio - 1) <= 0.04, 'XP profile portrait is not preserving its square avatar aspect ratio: ' + xpLayout.portraitRatio);
+    assert.ok(/^\d+$/.test(xpLayout.avatarId), 'XP profile portrait is not using the canonical avatar identity');
+    assert.ok(/ROOKIE|AMATEUR|MARKSMAN|SHARPSHOOTER|SNIPER|ACE|MASTER|GRANDMASTER|LEGEND|IMMORTAL/i.test(xpLayout.rank), 'Canonical XP rank is not clearly shown below the player name');
+    assert.equal(xpLayout.rankBelowName, true, 'Canonical XP rank is not positioned directly below the player name');
+    assert.equal(xpLayout.duplicateRankStack, 0, 'Obsolete duplicate XP rank/level badge remains on the right');
+    assert.match(xpLayout.gameValue, /^\d[\d,]* \/ \d[\d,]* XP$/, 'This Game XP is not shown as XX / XXX XP');
+    assert.match(xpLayout.totalValue, /^\d[\d,]* \/ \d[\d,]* XP$/, 'Total XP is not shown as XX / XXX XP');
+    assert.equal(await page.locator('.sq-pg-xp-screen .gc-xp-row').first().locator('.gc-xp-source-label-value').count(), 3, 'XP breakdown labels do not expose clear numeric values');
     assert.ok(await page.locator('.gc-xp-source-chip.base').count() >= 2, 'Basic XP source chips did not render');
     assert.ok(await page.locator('.gc-xp-source-chip.positive').count() + await page.locator('.gc-xp-source-chip.milestone').count() >= 1, 'Positive XP source chips did not render');
     assert.ok(await page.locator('.gc-xp-source-chip.negative, .gc-xp-source-chip.empty').count() >= 1, 'Negative XP source row did not render');
-
-    const xpHero = await page.locator('.sq-pg-xp-screen .gc-xp-row').first().evaluate(row => {
-      const portrait = row.querySelector('.gc-xp-portrait');
-      const avatar = row.querySelector('.gc-xp-avatar-sprite');
-      const rank = row.querySelector('.gc-xp-current-value');
-      const game = row.querySelector('.gc-xp-gamebar-head');
-      const total = row.querySelector('.gc-xp-totalbar-head');
-      return {
-        portrait:!!portrait,
-        avatarId:avatar?.dataset.avatarId || '',
-        rank:(rank?.textContent || '').trim(),
-        game:(game?.textContent || '').trim(),
-        total:(total?.textContent || '').trim(),
-      };
-    });
-    assert.equal(xpHero.portrait, true, 'XP card is missing the player profile portrait');
-    assert.ok(/^\d+$/.test(xpHero.avatarId), 'XP profile portrait is not using the canonical avatar identity');
-    assert.ok(/ROOKIE|AMATEUR|MARKSMAN|SHARPSHOOTER|SNIPER|ACE|MASTER|GRANDMASTER|LEGEND|IMMORTAL/i.test(xpHero.rank), 'Canonical XP rank is not clearly shown on the profile image');
-    assert.match(xpHero.game, /THIS GAME XP/i, 'This Game XP hierarchy is missing');
-    assert.match(xpHero.total, /TOTAL XP/i, 'Total XP hierarchy is missing');
 
     const infoChip = page.locator('.sq-pg-xp-screen .gc-xp-source-chip[data-xp-info]').first();
     assert.ok(await infoChip.count(), 'Clickable XP award/source chip missing');

@@ -16,8 +16,10 @@ assert.equal(appliedMisfirePenalty([{ penalty:-8 }]), -5, 'Negative XP must rema
 assert.equal(appliedMisfirePenalty([]), 0);
 
 const source = fs.readFileSync(new URL('../../src/live-game/xp-breakdown.mjs', import.meta.url), 'utf8');
-for (const required of ['BASE XP','POSITIVE','NEGATIVE','overflow-x:auto','gc-xp-rankstack','LEVEL UP!','gc-xp-portrait','RANK','gc-xp-avatar-sprite','THIS GAME XP','TOTAL XP','data-xp-info']) {
+for (const required of ['BASE XP','POSITIVE XP','NEGATIVE XP','overflow-x:auto','gc-xp-rank-title','LEVEL UP!','gc-xp-portrait','aspect-ratio:1 / 1','gc-xp-avatar-sprite','THIS GAME XP','TOTAL XP','gc-xp-source-label-value','data-xp-info']) {
   assert.ok(source.includes(required), `Missing XP breakdown contract: ${required}`);
 }
 
 console.log('SC-038 XP breakdown contract PASS');
+
+assert.ok(!source.includes('gc-xp-rankstack'), 'Obsolete right-side XP rank stack must be removed');
