@@ -10,6 +10,18 @@ on:
       - 'tools/ui-smoke/harness.js'
       - 'tools/ui-smoke/package*.json'
       - '.github/workflows/sc050-release-notes-qa.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'src/**'
+      - 'assets/**'
+      - 'supabase/migrations/**'
+      - 'supabase/functions/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.*'
+      - '.github/workflows/sc050-release-notes-qa.yml'
   workflow_dispatch:
 
 permissions:
@@ -39,10 +51,10 @@ jobs:
           node tools/ui-smoke/verify-sc050-release-notes.mjs
 
       - name: Enforce public release metadata for runtime changes
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
         env:
-          SQ_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          SQ_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SQ_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          SQ_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         shell: bash
         run: |
           set -euo pipefail

@@ -1,0 +1,59 @@
+name: Setup failure diagnostic
+on:
+  push:
+    branches: [fix/release-metadata-gate-20260924]
+    paths: [.github/workflows/setup-failure-diagnostic.yml]
+permissions:
+  contents: write
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/release-metadata-gate-20260924
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - run: npm ci --prefix scripts --ignore-scripts
+      - run: npm run materialize
+      - working-directory: tools/ui-smoke
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Diagnose setup suite
+        shell: bash
+        run: |
+          set +e
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sq-http.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          : > setup-diagnostic.txt
+          for test in \
+            "node tools/ui-smoke/verify-sc038-xp-breakdown.mjs" \
+            "node tools/ui-smoke/verify-sc038-postgame-flow.mjs" \
+            "node tools/ui-smoke/verify-sc038-ui.js" \
+            "node tools/ui-smoke/verify-sc028.js" \
+            "node tools/ui-smoke/verify-pstats.js" \
+            "node tools/ui-smoke/verify-sc008.js" \
+            "node tools/ui-smoke/verify-sc009.js" \
+            "node tools/ui-smoke/verify-sc010.js" \
+            "node tools/ui-smoke/verify-sc025.js" \
+            "node tools/ui-smoke/verify-sc014.js" \
+            "node tools/ui-smoke/verify-sc033-throw-order.js" \
+            "node tools/ui-smoke/smoke.js" \
+            "node tools/ui-smoke/verify-saveplayer-card.js" \
+            "node tools/ui-smoke/verify-classic-visual-fit.js"
+          do
+            echo "=== $test ===" >> setup-diagnostic.txt
+            timeout 150s bash -lc "$test" >> setup-diagnostic.txt 2>&1
+            echo "EXIT=$?" >> setup-diagnostic.txt
+          done
+      - name: Commit diagnostic
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add setup-diagnostic.txt
+          git commit -m "Capture setup regression diagnostic"
+          git push origin HEAD:fix/release-metadata-gate-20260924
