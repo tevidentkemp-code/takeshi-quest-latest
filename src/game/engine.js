@@ -245,6 +245,14 @@ function __sqDmdCatchUpReturnBeat(pIdx,rIdx){
     const name=((typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('P'+(Number(pIdx)+1))).toString().trim().toUpperCase();
     const def=ROUNDS?.[Number(rIdx)];
     const target=def?.type==='number'?String(def.target):(def?.type==='doubles'?'DBL':def?.type==='triples'?'TRB':'BULL');
+    if(__sqDmdGate4ControllerActive()){
+      __sqDmdGate4Emit('CATCH_UP',{player:name,target},{
+        playerIndex:Number(pIdx),roundIndex:Number(rIdx),dartIndex:Number(state?.currentDart||0),
+        historyLength:Array.isArray(state?.history)?state.history.length:0,
+        extra:'return'
+      });
+      return true;
+    }
     const lines=[
       ['LATE HOMEWORK',name+' • BACK TO '+target],
       ['UNFINISHED BUSINESS',name+' OWES US '+target],
@@ -328,6 +336,17 @@ function __sqRenderFinalBullReturnCountdown(job){
     const p=state?.players?.[pIdx];
     const name=((typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(pIdx+1))).toString().trim().toUpperCase();
     try{ window.__sqDmdStopPreThrow?.(); }catch(_){}
+    if(__sqDmdGate4ControllerActive()){
+      __sqDmdGate4Emit('FINAL_BULL_TIMER',{
+        player:name,target:'BULL',seconds,deadline
+      },{
+        playerIndex:pIdx,roundIndex:MAX_ROUNDS-1,dartIndex:0,
+        historyLength:Array.isArray(state?.history)?state.history.length:0,
+        eventToken:['G4','FINAL_BULL_TIMER',pIdx,deadline,seconds].join('|'),
+        extra:String(deadline)
+      });
+      return true;
+    }
     try{ window.__sqDmdHardClearQueue?.(); }catch(_){}
     const fx=seconds<=5
       ? {type:'shake',amp:3.6,ms:420,fx:'impact',z3Small:true}
@@ -420,6 +439,9 @@ function __sqExpireFinalBullReturnTimer(pIdx,expectedDeadline){
     __sqAdvanceAfterFinalBullTimeout(pIdx,rIdx);
     try{save();}catch(_){}
     try{updateUI();}catch(_){}
+    try{
+      if(__sqDmdGate4ControllerActive()) window.__sqDmdV2?.clear?.({restore:true});
+    }catch(_){}
     try{
       const p=state.players?.[pIdx];
       const nm=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p?.name || ('Player '+(pIdx+1));
