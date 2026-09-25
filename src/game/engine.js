@@ -920,9 +920,41 @@ function recordThrow(spec){
 
   // Gate 4 routine acknowledgement. The accepted scoring mutation above is
   // canonical; this event is presentation-only and uses the pre-mutation cursor
-  // as its deterministic identity.
+  // as its deterministic identity. Existing named/special sequences remain on
+  // their legacy presentation path until Gate 5, but still hard-cancel any old
+  // controller transient because accepted player input always wins.
   let __sqGate4RoutineOwned=false;
+  let __sqGate4LegacySpecialOwned=false;
   try{
+    const __g4KindOf=(d)=>{
+      if(!d || Number(d.points||0)===0 || d.kind==='Miss') return 'X';
+      if(d.kind==='B') return d.bull==='Inner'?'B50':'B25';
+      if(d.kind==='Triple' || d.kind==='T') return 'T';
+      if(d.kind==='Double' || d.kind==='D') return 'D';
+      if(d.kind==='Single' || d.kind==='S') return 'S';
+      return String(d.kind||'').toUpperCase();
+    };
+    const __g4Prior=(entry.darts||[]).slice(0,dartIndex).map(__g4KindOf);
+    const __g4Current=__g4KindOf(dartObj);
+    const __g4All=__g4Prior.concat([__g4Current]);
+    const __g4Scoring=__g4All.filter(k=>k && k!=='X');
+    const __g4HasS=__g4Scoring.includes('S'), __g4HasD=__g4Scoring.includes('D'), __g4HasT=__g4Scoring.includes('T');
+    const __g4Shanghai=(dartIndex===2 && __g4HasS && __g4HasD && __g4HasT);
+    const __g4Desmond=(dartIndex===2 && __g4All.filter(k=>k==='S').length===2 && __g4All.filter(k=>k==='D').length===1 && !__g4HasT && !__g4All.includes('X'));
+    const __g4LastDartHero=(dartIndex===2 && __g4Current!=='X' && __g4Prior[0]==='X' && __g4Prior[1]==='X');
+    const __g4Awkward=(dartIndex===2 && __g4Current==='X' && ((__g4Prior[0]==='T' && __g4Prior[1]==='T') || (__g4Prior[0]==='D' && __g4Prior[1]==='D')));
+    const __g4RepeatedTreble=(__g4Current==='T' && __g4Prior.filter(k=>k==='T').length>=1);
+    const __g4RepeatedDouble=(__g4Current==='D' && __g4Prior.filter(k=>k==='D').length>=1);
+    const __g4ThreeSingles=(dartIndex===2 && __g4All.filter(k=>k==='S').length===3);
+    const __g4Dirty=(dartIndex===2 && Number(entry.roundTotal||0)>0 && Number(entry.roundTotal||0)<=30 && !__g4Shanghai && !__g4Desmond && new Set(__g4Scoring).size>=2);
+    const __g4Sector=Number(dartObj?.sector||0);
+    const __g4Voldy=(__g4Sector>=1 && __g4Sector<=5 && ((roundDef?.type==='doubles' && __g4Current==='D') || (roundDef?.type==='triples' && __g4Current==='T')));
+    __sqGate4LegacySpecialOwned=!!(__g4Shanghai||__g4Desmond||__g4LastDartHero||__g4Awkward||__g4RepeatedTreble||__g4RepeatedDouble||__g4ThreeSingles||__g4Dirty||__g4Voldy);
+
+    if(__sqGate4LegacySpecialOwned && __sqDmdGate4ControllerActive()){
+      try{ window.__sqDmdV2?.clear?.({restore:false}); }catch(_){}
+    }
+
     let __g4Kind='';
     if(dartObj?.kind==='Miss' || Number(dartObj?.points||0)===0){
       __g4Kind=(dartIndex===2 && Number(entry.roundTotal||0)===0)?'SCRATCH':'MISS';
@@ -931,7 +963,7 @@ function recordThrow(spec){
     }else if(dartObj?.kind==='Triple' || dartObj?.kind==='T') __g4Kind='HIT_TREBLE';
     else if(dartObj?.kind==='Double' || dartObj?.kind==='D') __g4Kind='HIT_DOUBLE';
     else if(dartObj?.kind==='Single' || dartObj?.kind==='S') __g4Kind='HIT_SINGLE';
-    if(__g4Kind){
+    if(__g4Kind && !__sqGate4LegacySpecialOwned){
       const __g4Total=__sqDmdGate4Totals()[pIndex]||0;
       __sqGate4RoutineOwned=!!__sqDmdGate4Emit(__g4Kind,{
         player:__sqDmdGate4PlayerName(pIndex),

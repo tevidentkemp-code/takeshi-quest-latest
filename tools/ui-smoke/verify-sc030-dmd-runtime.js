@@ -35,7 +35,7 @@ function assertNoUnexpectedErrors(consoleErrs, label) {
     assert.equal(boot.transientShow, 'function', 'safe transient renderer channel is available');
     assert.equal(boot.transientCancel, 'function', 'safe transient cancellation channel is available');
     assert.equal(boot.injectedStyle, false, 'DMD appearance is owned by semantic CSS, not an injected style tag');
-    assert.match(boot.version, /^2\.1\.0-sc030-modular$/);
+    assert.equal(boot.version, '2.2.0-sxp05-gate4', 'Gate 4 controller version must be explicit');
 
     await H.toMatchCard(page);
     await H.addGuests(page, ['DMD ALPHA', 'DMD BETA']);

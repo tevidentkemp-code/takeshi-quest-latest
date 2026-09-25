@@ -21,15 +21,22 @@ function diffRatio(a,b){
       const original=window.sqDmdShowZones;
       window.sqDmdShowZones=function(z,o){ window.__sc045Writes.push({z2:String(z?.z2||''),z3:String(z?.z3||''),type:String(o?.type||''),ms:Number(o?.ms||0)}); return original.apply(this,arguments); };
     });
+    const routineTreble=await page.evaluate(()=>{
+      window.__sqDmdV2?.emit?.({kind:'HIT_TREBLE',points:30,total:30,eventToken:'sc045-routine-treble',playerInput:true});
+      return window.__sqDmdV2?.snapshot?.().active?.headline||'';
+    });
+    assert.equal(routineTreble,'TREBLE +30','routine Treble must use Gate 4 controller treatment');
+    await page.evaluate(()=>window.__sqDmdV2?.clear?.({restore:true}));
+
     await page.evaluate(()=>recordThrow({kind:'T'}));
     let writes=await page.evaluate(()=>window.__sc045Writes.slice());
-    assert(writes.some(w=>w.z2==='TREBLE!'),'first treble => TREBLE!');
+    assert(!writes.some(w=>w.z2==='TREBLE!'),'legacy first-Treble routine frame must not duplicate the controller');
     await page.evaluate(()=>{ window.__sqDmdHardClearQueue?.(); window.__sc045Writes=[]; recordThrow({kind:'T'}); });
     writes=await page.evaluate(()=>window.__sc045Writes.slice());
-    assert(writes.some(w=>w.z2==='CAN HE......?' && w.type==='anticipationEyes'),'dart-2 second treble => anticipation scene');
+    assert(writes.some(w=>w.z2==='CAN HE......?' && w.type==='anticipationEyes'),'dart-2 second treble special remains available for Gate 5');
     await page.evaluate(()=>{ window.__sqDmdHardClearQueue?.(); window.__sc045Writes=[]; recordThrow({kind:'T'}); });
     writes=await page.evaluate(()=>window.__sc045Writes.slice());
-    assert(writes.some(w=>/MAXI/.test(w.z2+' '+w.z3)),'third treble => MAXI MAYHEM');
+    assert(writes.some(w=>/MAXI/.test(w.z2+' '+w.z3)),'third treble named special remains available for Gate 5');
 
     async function metrics(){
       return page.evaluate(()=>{

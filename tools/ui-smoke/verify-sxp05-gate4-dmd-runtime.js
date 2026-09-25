@@ -54,12 +54,9 @@ const assert = require('assert/strict');
 
     await page.locator('#pad [data-score-label="Treble"]').click();
     await page.waitForFunction(()=>state.history.length===3 && state.currentPlayer===1 && state.currentDart===0);
-    await page.waitForFunction(()=>/^VISIT \+60$/.test(window.__sqDmdV2?.snapshot?.().active?.headline||''));
-    const visit=await page.evaluate(()=>({
-      active:window.__sqDmdV2.snapshot().active?.headline,
-      p:state.currentPlayer,r:state.currentRound,d:state.currentDart,total:state.score[0][0].roundTotal
-    }));
-    assert.deepEqual(visit,{active:'VISIT +60',p:1,r:0,d:0,total:60},'visit summary must follow canonical state advance');
+    const visit=await page.evaluate(()=>({active:window.__sqDmdV2.snapshot().active?.headline||'',priority:Number(window.__sqDmdV2.snapshot().active?.priority||0),p:state.currentPlayer,r:state.currentRound,d:state.currentDart,total:state.score[0][0].roundTotal}));
+    assert.equal(visit.p,1); assert.equal(visit.r,0); assert.equal(visit.d,0); assert.equal(visit.total,60);
+    assert(visit.priority>=20,'visit closure may be superseded only by a truthful higher-tier competitive event');
 
     const undo=page.locator('#pad .dtActBtn.undo:not([disabled])');
     assert.equal(await undo.count(),1,'Undo must be available after completed visit');
