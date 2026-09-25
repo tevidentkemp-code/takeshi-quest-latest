@@ -775,8 +775,8 @@ function buildDetailedRow(host, data) {
       <div class="gc-xp-portrait" aria-label="${esc(data.name)} profile picture">
         <div class="gc-xp-avatar-sprite" aria-hidden="true"></div>
         <div class="gc-xp-current">
-          <span class="gc-xp-current-label">CURRENT XP</span>
-          <span class="gc-xp-current-value">${formatXp(data.post)} XP</span>
+          <span class="gc-xp-current-label">RANK</span>
+          <span class="gc-xp-current-value">${esc(String(post.title || 'Rookie').toUpperCase())}</span>
         </div>
       </div>
       <div class="gc-xp-summary">
