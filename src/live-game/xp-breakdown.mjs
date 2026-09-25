@@ -188,11 +188,12 @@ function injectStyles() {
   display:grid;
   grid-template-columns:116px minmax(0,1fr);
   gap:14px;
-  align-items:stretch;
+  align-items:start;
 }
 .gc-xp-portrait{
   position:relative;
-  min-height:148px;
+  width:116px;
+  aspect-ratio:1 / 1;
   border-radius:16px;
   overflow:hidden;
   border:1px solid rgba(255,149,45,.38);
@@ -206,41 +207,42 @@ function injectStyles() {
   inset:0;
   background-repeat:no-repeat;
   background-size:600% 500%;
+  background-position:center;
 }
-.gc-xp-current{
-  position:absolute;
-  left:7px;
-  right:7px;
-  bottom:7px;
-  min-height:38px;
-  display:flex;
+.gc-xp-summary{ min-width:0; display:flex; flex-direction:column; }
+.gc-xp-summary .gc-xp-head{
+  margin:0;
+  display:block;
+}
+.gc-xp-player-copy{ min-width:0; }
+.gc-xp-rank-title{
+  display:inline-flex;
   align-items:center;
-  justify-content:space-between;
-  gap:8px;
-  padding:7px 9px;
-  border-radius:11px;
-  border:1px solid rgba(255,185,92,.24);
-  background:rgba(4,8,15,.82);
-  backdrop-filter:blur(8px);
-  box-shadow:0 8px 20px rgba(0,0,0,.34);
-}
-.gc-xp-current-label{
-  color:rgba(226,234,248,.58);
-  font-size:7px;
+  gap:7px;
+  margin-top:5px;
+  color:#ffd176;
+  font-size:10px;
+  line-height:1.15;
   font-weight:950;
   letter-spacing:.13em;
   text-transform:uppercase;
-  white-space:nowrap;
 }
-.gc-xp-current-value{
-  color:#ffd176;
-  font-size:13px;
-  font-weight:950;
-  line-height:1;
-  white-space:nowrap;
+.gc-xp-rank-title::before{
+  content:'★';
+  color:#ffad32;
+  font-size:9px;
 }
-.gc-xp-summary{ min-width:0; display:flex; flex-direction:column; }
-.gc-xp-summary .gc-xp-head{ margin:0; }
+.gc-xp-levelup-inline{
+  display:inline-block;
+  margin-left:7px;
+  color:#7be0a0;
+  font-size:8px;
+  letter-spacing:.10em;
+  opacity:0;
+  transform:translateY(2px);
+  transition:opacity .25s ease, transform .25s ease;
+}
+.gc-xp-levelup-inline.in{ opacity:1; transform:none; }
 .gc-xp-summary .gc-xp-gain{
   margin-top:7px;
   color:#69efb4;
@@ -297,23 +299,6 @@ function injectStyles() {
   text-overflow:ellipsis;
   white-space:nowrap;
 }
-.gc-xp-rankstack{
-  display:flex;
-  flex-direction:column;
-  align-items:flex-end;
-  justify-content:flex-start;
-  gap:5px;
-  min-width:102px;
-}
-.gc-xp-rankstack .gc-xp-lvholder{ display:flex; justify-content:flex-end; }
-.gc-xp-row.sq-xp-detailed .gc-xp-lvup{
-  display:block;
-  margin:0 2px 0 0;
-  font-size:10px;
-  line-height:1;
-  text-align:right;
-  white-space:nowrap;
-}
 .gc-xp-row.sq-xp-detailed .gc-xp-gain{
   margin-top:7px;
   font-size:15px;
@@ -346,6 +331,9 @@ function injectStyles() {
   min-width:0;
 }
 .gc-xp-source-label{
+  display:flex;
+  align-items:baseline;
+  gap:5px;
   color:rgba(235,240,250,.48);
   font-size:8px;
   line-height:1;
@@ -354,6 +342,15 @@ function injectStyles() {
   text-transform:uppercase;
   white-space:nowrap;
 }
+.gc-xp-source-label-value{
+  color:rgba(246,248,255,.92);
+  font-size:9px;
+  letter-spacing:.02em;
+}
+.gc-xp-source-line.is-muted .gc-xp-source-label,
+.gc-xp-source-line.is-muted .gc-xp-source-label-value{ color:rgba(235,240,250,.28); }
+.gc-xp-source-line.negative:not(.is-muted) .gc-xp-source-label-value{ color:#ff9cab; }
+.gc-xp-source-line.positive:not(.is-muted) .gc-xp-source-label-value{ color:#b9f4d7; }
 .gc-xp-source-chips{
   display:flex;
   flex-wrap:nowrap;
@@ -391,13 +388,10 @@ function injectStyles() {
 .gc-xp-source-chip.empty{ color:rgba(235,240,250,.38); border-color:rgba(255,255,255,.06); background:rgba(255,255,255,.025); }
 @media(max-width:560px){
   .gc-xp-hero{ grid-template-columns:92px minmax(0,1fr); gap:10px; }
-  .gc-xp-portrait{ min-height:128px; border-radius:14px; }
-  .gc-xp-current{ left:5px; right:5px; bottom:5px; padding:6px 7px; }
-  .gc-xp-current-label{ font-size:6px; }
-  .gc-xp-current-value{ font-size:11px; }
+  .gc-xp-portrait{ width:92px; border-radius:14px; }
   .gc-xp-summary .gc-xp-gain{ font-size:19px; }
   .gc-xp-row.sq-xp-detailed .gc-xp-name{ font-size:14px; }
-  .gc-xp-rankstack{ min-width:96px; }
+  .gc-xp-rank-title{ font-size:9px; letter-spacing:.11em; }
   .gc-xp-source-line{ grid-template-columns:52px minmax(0,1fr); gap:5px; }
   .gc-xp-source-label{ font-size:7px; }
   .gc-xp-source-chip{ font-size:9px; padding:4px 8px; }
@@ -716,12 +710,18 @@ function makeChip(text, kind, extraClass = '', info = null) {
   return chip;
 }
 
-function makeSourceLine(label) {
+function makeSourceLine(label, value, kind, muted = false) {
   const line = document.createElement('div');
-  line.className = 'gc-xp-source-line';
+  line.className = 'gc-xp-source-line' + (kind ? ' ' + kind : '') + (muted ? ' is-muted' : '');
   const lab = document.createElement('div');
   lab.className = 'gc-xp-source-label';
-  lab.textContent = label;
+  const name = document.createElement('span');
+  name.className = 'gc-xp-source-label-name';
+  name.textContent = label;
+  const amount = document.createElement('span');
+  amount.className = 'gc-xp-source-label-value';
+  amount.textContent = value;
+  lab.append(name, amount);
   const chips = document.createElement('div');
   chips.className = 'gc-xp-source-chips';
   line.append(lab, chips);
@@ -768,31 +768,30 @@ function rankChip(host, holder, progress) {
 function buildDetailedRow(host, data) {
   const pre = host.SQ_XP.progress(data.pre);
   const post = host.SQ_XP.progress(data.post);
+  const nextTotalXp = post.atMax ? Number(post.xp || data.post || 0) : Number(post.xp || data.post || 0) + Number(post.toNext || 0);
   const el = document.createElement('div');
   el.className = `gc-xp-row sq-xp-detailed${data.won ? ' won' : ''}`;
   el.innerHTML = `
     <div class="gc-xp-hero">
       <div class="gc-xp-portrait" aria-label="${esc(data.name)} profile picture">
         <div class="gc-xp-avatar-sprite" aria-hidden="true"></div>
-        <div class="gc-xp-current">
-          <span class="gc-xp-current-label">RANK</span>
-          <span class="gc-xp-current-value">${esc(String(post.title || 'Rookie').toUpperCase())}</span>
-        </div>
       </div>
       <div class="gc-xp-summary">
         <div class="gc-xp-head">
-          <span class="gc-xp-name"><span class="nm">${esc(data.name)}</span></span>
-          <span class="gc-xp-rankstack"><span class="gc-xp-lvholder"></span><span class="gc-xp-lvup">LEVEL UP!</span></span>
+          <div class="gc-xp-player-copy">
+            <span class="gc-xp-name"><span class="nm">${esc(data.name)}</span></span>
+            <div class="gc-xp-rank-title">${esc(String(post.title || 'Rookie').toUpperCase())}<span class="gc-xp-levelup-inline">LEVEL UP!</span></div>
+          </div>
         </div>
         <div class="gc-xp-gain">${data.netXp >= 0 ? '+' : ''}${data.netXp} XP</div>
         <div class="gc-xp-bars">
           <div class="gc-xp-gamebar-wrap">
-            <div class="gc-xp-gamebar-head"><span>THIS GAME XP</span><span>${data.netXp >= 0 ? '+' : ''}${data.netXp} XP</span></div>
+            <div class="gc-xp-gamebar-head"><span>THIS GAME XP</span><span class="gc-xp-gamebar-value"></span></div>
             <div class="gc-xp-gamebar"><div class="gc-xp-gamebar-fill"></div></div>
           </div>
           <div class="gc-xp-totalbar-head">
             <span>TOTAL XP</span>
-            <span class="gc-xp-totalbar-value">${formatXp(data.post)} XP</span>
+            <span class="gc-xp-totalbar-value">${formatXp(data.post)} / ${formatXp(nextTotalXp)} XP</span>
           </div>
           <div class="gc-xp-bar"><div class="gc-xp-fill"></div></div>
         </div>
@@ -803,18 +802,15 @@ function buildDetailedRow(host, data) {
 
   applyPlayerAvatar(host, el.querySelector('.gc-xp-avatar-sprite'), data.player);
 
-  const rankHolder = el.querySelector('.gc-xp-lvholder');
-  rankChip(host, rankHolder, pre);
-
   const breakdown = el.querySelector('.gc-xp-breakdown');
-  const base = makeSourceLine(`BASE XP ${data.baseXp >= 0 ? '+' : ''}${data.baseXp}`);
+  const base = makeSourceLine('BASE XP', `${data.baseXp >= 0 ? '+' : ''}${data.baseXp}`, 'base', data.baseXp === 0);
   data.base.forEach(item => base.chips.appendChild(makeChip(`${item.label} +${item.xp} XP`, 'base', '', {
     title:item.label + ' XP', xp:`+${item.xp} XP`, description:item.description
   })));
   if (!data.base.length) base.chips.appendChild(makeChip('NONE', 'empty'));
   breakdown.appendChild(base.line);
 
-  const positive = makeSourceLine(`POSITIVE +${data.positiveXp}`);
+  const positive = makeSourceLine('POSITIVE XP', `+${data.positiveXp}`, 'positive', data.positiveXp === 0);
   data.positive.forEach(item => {
     const countText = item.count > 1 ? ` ×${item.count}` : '';
     const chip = makeChip(`${item.icon} ${item.name}${countText} +${item.xp} XP`, item.milestone ? 'milestone' : 'positive', '', {
@@ -825,7 +821,7 @@ function buildDetailedRow(host, data) {
   if (!data.positive.length) positive.chips.appendChild(makeChip('NO NEW AWARDS', 'empty'));
   breakdown.appendChild(positive.line);
 
-  const negative = makeSourceLine(`NEGATIVE ${data.penalty}`);
+  const negative = makeSourceLine('NEGATIVE XP', `${data.penalty}`, 'negative', data.penalty === 0);
   if (data.negative.length) {
     data.negative.forEach(item => {
       const applied = !!item.applied;
@@ -841,7 +837,7 @@ function buildDetailedRow(host, data) {
   }
   breakdown.appendChild(negative.line);
 
-  return { el, pre, post, rankHolder };
+  return { el, pre, post };
 }
 
 function animateCount(el, from, to, duration) {
@@ -858,24 +854,23 @@ function animateCount(el, from, to, duration) {
 }
 
 async function animateDetailedRow(host, built, data, reduced) {
-  const { el, pre, post, rankHolder } = built;
+  const { el, pre, post } = built;
   const gain = el.querySelector('.gc-xp-gain');
   const fill = el.querySelector('.gc-xp-fill');
   const gameFill = el.querySelector('.gc-xp-gamebar-fill');
+  const gameValue = el.querySelector('.gc-xp-gamebar-value');
   const gameScale = Math.max(1, Number(data.baseXp||0) + Number(data.positiveXp||0) + Math.abs(Number(data.penalty||0)));
   const gamePct = Math.max(0, Math.min(1, Math.abs(Number(data.netXp||0)) / gameScale));
-  const levelUp = el.querySelector('.gc-xp-lvup');
+  const levelUp = el.querySelector('.gc-xp-levelup-inline');
   const didLevel = Number(post.level || 0) > Number(pre.level || 0);
+  if (gameValue) gameValue.textContent = `${formatXp(Math.abs(Number(data.netXp||0)))} / ${formatXp(gameScale)} XP`;
 
   if (reduced) {
     el.classList.add('in');
     if (gameFill) { gameFill.style.transition='none'; gameFill.style.width=`${gamePct * 100}%`; }
     fill.style.transition = 'none';
     fill.style.width = `${Math.max(0, Math.min(1, Number(post.pct || 0))) * 100}%`;
-    if (didLevel) {
-      rankChip(host, rankHolder, post);
-      levelUp.classList.add('in');
-    }
+    if (didLevel) levelUp?.classList.add('in');
     return;
   }
 
@@ -890,8 +885,7 @@ async function animateDetailedRow(host, built, data, reduced) {
   if (didLevel) {
     fill.style.width = '100%';
     await new Promise(resolve => setTimeout(resolve, 460));
-    rankChip(host, rankHolder, post);
-    levelUp.classList.add('in');
+    levelUp?.classList.add('in');
     el.classList.add('gc-levelup');
     try { if (typeof host.__sqV3SndGame === 'function') host.__sqV3SndGame(); } catch (_) {}
     fill.style.transition = 'none';
