@@ -223,7 +223,7 @@ function makeRoundRows(values) {
     assert.equal(await page.evaluate(() => ('uniqueWon' in window) || ('neverBehind' in window)), false, 'Detector compatibility globals leaked');
 
     const xpLayout = await page.locator('.sq-pg-xp-screen .gc-xp-row').first().evaluate(row => {
-      const labels = Array.from(row.querySelectorAll('.gc-xp-source-label')).map(el => (el.textContent || '').trim());
+      const labels = Array.from(row.querySelectorAll('.gc-xp-source-label-name')).map(el => (el.textContent || '').trim());
       const chipTracks = Array.from(row.querySelectorAll('.gc-xp-source-chips')).map(el => ({
         overflowX:getComputedStyle(el).overflowX,
         scrollWidth:el.scrollWidth,
@@ -255,7 +255,7 @@ function makeRoundRows(values) {
       };
     });
     assert.deepEqual(
-      xpLayout.labels.map(label => label.replace(/\s+[+-]?\d+$/, '').trim()),
+      xpLayout.labels,
       ['BASE XP','POSITIVE XP','NEGATIVE XP'],
       'XP breakdown rows are not in the requested order'
     );
@@ -271,7 +271,7 @@ function makeRoundRows(values) {
     assert.equal(xpLayout.duplicateRankStack, 0, 'Obsolete duplicate XP rank/level badge remains on the right');
     assert.match(xpLayout.gameValue, /^\d[\d,]* \/ \d[\d,]* XP$/, 'This Game XP is not shown as XX / XXX XP');
     assert.match(xpLayout.totalValue, /^\d[\d,]* \/ \d[\d,]* XP$/, 'Total XP is not shown as XX / XXX XP');
-    assert.ok(await page.locator('.gc-xp-source-label-value').count() === 3, 'XP breakdown labels do not expose clear numeric values');
+    assert.equal(await page.locator('.sq-pg-xp-screen .gc-xp-row').first().locator('.gc-xp-source-label-value').count(), 3, 'XP breakdown labels do not expose clear numeric values');
     assert.ok(await page.locator('.gc-xp-source-chip.base').count() >= 2, 'Basic XP source chips did not render');
     assert.ok(await page.locator('.gc-xp-source-chip.positive').count() + await page.locator('.gc-xp-source-chip.milestone').count() >= 1, 'Positive XP source chips did not render');
     assert.ok(await page.locator('.gc-xp-source-chip.negative, .gc-xp-source-chip.empty').count() >= 1, 'Negative XP source row did not render');
