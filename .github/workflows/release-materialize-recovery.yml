@@ -28,16 +28,21 @@ jobs:
           cp .release-core.css src/legacy/styles/inline-002.css
           node scripts/build-core-js-from-source.mjs --output .release-core.js
           cp .release-core.js src/legacy/scripts/inline-005.js
+      - name: Capture architecture diagnostic
+        shell: bash
+        run: |
+          node scripts/verify-modularization.mjs > release-architecture-diagnostic.txt 2>&1 || true
+          node scripts/build-core-js-from-source.mjs --verify-current >> release-architecture-diagnostic.txt 2>&1 || true
       - name: Commit exact generated outputs
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- index.html src/legacy/scripts/inline-005.js src/legacy/styles/inline-002.css; then
+          if git diff --quiet -- index.html src/legacy/scripts/inline-005.js src/legacy/styles/inline-002.css && test -f release-architecture-diagnostic.txt; then
             echo "Generated outputs already exact."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html src/legacy/scripts/inline-005.js src/legacy/styles/inline-002.css
+          git add index.html src/legacy/scripts/inline-005.js src/legacy/styles/inline-002.css release-architecture-diagnostic.txt
           git commit -m "Materialize exact generated release outputs"
           git push origin HEAD:fix/release-metadata-gate-20260924
