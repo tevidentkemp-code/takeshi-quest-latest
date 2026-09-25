@@ -21,4 +21,5 @@ for (const required of ['BASE XP','POSITIVE XP','NEGATIVE XP','overflow-x:auto',
 }
 
 console.log('SC-038 XP breakdown contract PASS');
-\nassert.ok(!source.includes('gc-xp-rankstack'), 'Obsolete right-side XP rank stack must be removed');\n
+
+assert.ok(!source.includes('gc-xp-rankstack'), 'Obsolete right-side XP rank stack must be removed');
