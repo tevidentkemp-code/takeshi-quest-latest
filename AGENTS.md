@@ -2,15 +2,15 @@
 
 Status: **DERIVED ORIENTATION — NON-CANONICAL**
 
-Verified against commit: `69e14553beee376f28af63c7faf905bbd9c03228`
+Verified against application/release baseline: `18ae202ca6bd7b3dc1129968142f0448170b52ba`
 
-Verified: 2026-09-23 (Europe/London)
+Verified: 2026-09-25 (Europe/London)
 
-This file shortens repository navigation. It does not replace current Google Drive Project authorities, live source code, Supabase truth, approved sequencing, or release permission. If it conflicts with any stronger source, stop, use the stronger source, and record the mismatch before changing code.
+This file shortens repository navigation. It does not replace current Google Drive Project authorities, live source code, Supabase truth, approved sequencing, or release permission. If it conflicts with any stronger source, pause only the conflicting action, retrieve and use the stronger source, record the mismatch, and continue every other authorised action that remains safe.
 
 ## Read order
 
-1. Confirm the task, operating mode, current branch/commit, and explicit write/release permission.
+1. Confirm the task, operating mode, current branch/commit, and whether write/release authority has already been granted in the current task, Pipeline, or HANDOVER. Do not re-request authority that is already explicit.
 2. Read the current Shateki Source Map and the task-specific Drive authority named there.
 3. Read the relevant repository map in `docs/architecture/` and then the live source files.
 4. For UI work, read `docs/DESIGN_SYSTEM.md`; for state/data work, read `docs/ARCHITECTURE.md`.
@@ -43,11 +43,21 @@ Run `npm run materialize` to regenerate compatibility output and `npm run build`
 - For JavaScript changes, run syntax/static checks, source-authority parity, build/dist checks, and the relevant functional workflow.
 - For visual changes, test source and built output at representative mobile widths 320, 390, and 430 CSS pixels, including focus, touch, overflow, and reduced motion.
 - For state changes, test score entry, Undo, Skip, mode isolation, rapid/repeated input, persistence boundaries, and presentation cancellation/restoration.
-- A local build or passing check is not release approval. Do not merge, push, deploy, or change production without explicit authority.
+- A local build or passing check is not release approval. If bounded RELEASE authority has already been granted, continue through merge/deploy/live verification without asking again; otherwise stop before the release action only.
+
+## Execution continuity and approval economy
+
+- Once a bounded BUILD/FIX or RELEASE objective is authorised, treat that as one approval for the normal execution chain inside that scope.
+- BUILD/FIX authority covers implementation, diagnosis, in-scope remediation, generated/materialised outputs, test and CI reruns, branch refresh/rebase where safe, and verification.
+- RELEASE authority, once granted, additionally covers merge/deploy, deployment monitoring, production verification, rollback if the authorised release fails, and control-record reconciliation.
+- CI/test failures, `action_required`, stale branches, merge conflicts, missing generated outputs, deployment-in-progress, and verification-pending states are execution gates, not reasons to end the task. Diagnose, fix, rerun/check, and continue.
+- Ask Thomas only for a hard human gate: a material product-rule choice; destructive or irreversible database/schema work; credentials or permissions only he can provide; a materially different visual/product direction; an explicitly unauthorised programme boundary; or release approval that has not yet been granted.
+- Status is not completion. Do not return with “in progress”, “I will check next”, or a plan when the next executable step can be performed with available tools.
+- If a hard human gate is reached, complete every other safe in-scope action first and ask one precise question.
 
 ## Current sequencing warning
 
-At this verification point, SXP-001 Experience 05 is live at v0.5.1 and Gate 3 is parked/unmerged. This is a time-stamped orientation fact, not permanent sequencing authority. Re-read the Shateki MASTER Pipeline and Coding Project Control before resuming or starting experience work.
+Sequencing is time-sensitive. Re-read the Shateki MASTER Pipeline and Coding Project Control every session rather than embedding a prior Experience/Gate state here as permanent authority.
 
 ## Deterministic refresh
 
