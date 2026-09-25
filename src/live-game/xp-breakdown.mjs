@@ -325,7 +325,7 @@ function injectStyles() {
 }
 .gc-xp-source-line{
   display:grid;
-  grid-template-columns:58px minmax(0,1fr);
+  grid-template-columns:96px minmax(0,1fr);
   align-items:center;
   gap:7px;
   min-width:0;
@@ -392,7 +392,7 @@ function injectStyles() {
   .gc-xp-summary .gc-xp-gain{ font-size:19px; }
   .gc-xp-row.sq-xp-detailed .gc-xp-name{ font-size:14px; }
   .gc-xp-rank-title{ font-size:9px; letter-spacing:.11em; }
-  .gc-xp-source-line{ grid-template-columns:52px minmax(0,1fr); gap:5px; }
+  .gc-xp-source-line{ grid-template-columns:88px minmax(0,1fr); gap:6px; }
   .gc-xp-source-label{ font-size:7px; }
   .gc-xp-source-chip{ font-size:9px; padding:4px 8px; }
 }
