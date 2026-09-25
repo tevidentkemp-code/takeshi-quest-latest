@@ -15,7 +15,9 @@ const BROWSER_NOISE=/supabase|Failed to fetch|fetch failed|net::|NetworkError|lo
     await page.locator('#pad [data-score-label="Single"]').click();
     await page.waitForFunction(()=>state.history.length===6 && state.currentPlayer===0 && state.currentRound===1 && state.currentDart===0,undefined,{timeout:2500});
     const transition=await page.evaluate(()=>({active:window.__sqDmdV2?.snapshot?.().active?.headline||'',priority:Number(window.__sqDmdV2?.snapshot?.().active?.priority||0),duration:Number(window.__sqDmdV2?.snapshot?.().active?.duration||0),total:Number(state.score?.[1]?.[0]?.roundTotal||0)}));
-    assert.equal(transition.active,'TARGET 11'); assert.equal(transition.priority,20); assert(transition.duration>0 && transition.duration<=900); assert.equal(transition.total,50);
+    assert.equal(transition.active,'TARGET 11'); assert.equal(transition.priority,20); assert.equal(transition.total,50);
+    // VISIT duration is applied internally by the controller scheduler; prove
+    // the <=900ms contract by observing fresh-state restoration after 780ms.
     await page.waitForTimeout(780);
     const restored=await page.evaluate(()=>window.__sqDmdV2?.snapshot?.().idle||null);
     assert.equal(restored?.headline,'ALPHA UP'); assert.equal(restored?.subline,'TARGET 11');

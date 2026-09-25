@@ -1712,7 +1712,7 @@ setTimeout(() => {
   // Gate 4 visit/orientation/competitive facts are emitted only after the
   // canonical cursor/history have advanced, so restoration always reads fresh state.
   try{
-    if(__sqDmdGate4ControllerActive()){
+    if(__sqDmdGate4ControllerActive() && !__sqGate4LegacySpecialOwned){
       const __g4After=__sqDmdGate4CompetitiveSnapshot();
       const __g4History=Array.isArray(state?.history)?state.history.length:0;
       if(dartIndex===2){
