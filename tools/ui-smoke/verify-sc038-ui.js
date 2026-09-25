@@ -109,8 +109,8 @@ function makeRoundRows(values) {
       }
 
       state.players = [
-        { id:'11111111-1111-1111-1111-111111111111', player_id:'11111111-1111-1111-1111-111111111111', name:'Test Alpha', first_name:'Test', last_name:'Alpha', nickname:'Captain Double', initials:'TA', type:'registered' },
-        { id:'22222222-2222-2222-2222-222222222222', player_id:'22222222-2222-2222-2222-222222222222', name:'Test Beta', first_name:'Test', last_name:'Beta', nickname:'The Verifier', initials:'TB', type:'registered' },
+        { id:'11111111-1111-1111-1111-111111111111', player_id:'11111111-1111-1111-1111-111111111111', name:'Test Alpha', first_name:'Test', last_name:'Alpha', nickname:'Captain Double', initials:'TA', avatar_id:3, type:'registered' },
+        { id:'22222222-2222-2222-2222-222222222222', player_id:'22222222-2222-2222-2222-222222222222', name:'Test Beta', first_name:'Test', last_name:'Beta', nickname:'The Verifier', initials:'TB', avatar_id:4, type:'registered' },
       ];
       state.score = [alpha, beta];
       state.currentRound = 13;
@@ -246,6 +246,11 @@ function makeRoundRows(values) {
         nameRight:nameBox?.right || 0,
         badgeTop:badgeBox?.top || 0,
         levelUpTop:levelUpBox?.top || 0,
+        avatarId:row.querySelector('.gc-xp-avatar-art')?.dataset.avatarId || '',
+        currentXpText:(row.querySelector('.gc-xp-avatar-xp')?.textContent || '').replace(/\s+/g,' ').trim(),
+        nicknameText:(row.querySelector('.gc-xp-nickname')?.textContent || '').trim(),
+        gameXpText:(row.querySelector('.gc-xp-gamebar-head')?.textContent || '').replace(/\s+/g,' ').trim(),
+        totalXpText:(row.querySelector('.gc-xp-totalbar-head')?.textContent || '').replace(/\s+/g,' ').trim(),
       };
     });
     assert.deepEqual(xpLayout.labels, ['BASE XP','POSITIVE','NEGATIVE'], 'XP breakdown rows are not in the requested order');
@@ -254,6 +259,11 @@ function makeRoundRows(values) {
       assert.equal(track.overflowX, 'auto', `XP source track ${index + 1} is not horizontally scrollable`);
     });
     assert.ok(/LV\s*\d+/i.test(xpLayout.badgeText), 'Level badge is missing from the XP card');
+    assert.equal(xpLayout.avatarId, '3', 'XP card did not use the player\'s canonical avatar');
+    assert.match(xpLayout.currentXpText, /CURRENT XP\s+\d[\d,]* XP/i, 'Current XP is not clearly shown on the profile image');
+    assert.match(xpLayout.nicknameText, /Captain Double/, 'Player nickname is missing from the XP summary');
+    assert.match(xpLayout.gameXpText, /THIS GAME XP/i, 'This Game XP hierarchy is missing');
+    assert.match(xpLayout.totalXpText, /TOTAL XP/i, 'Total XP hierarchy is missing');
     assert.ok(xpLayout.rankRight > xpLayout.nameRight, 'Level badge stack is not positioned at the right side of the card');
     if (/LEVEL UP!/i.test(xpLayout.rankText)) {
       assert.ok(xpLayout.levelUpTop >= xpLayout.badgeTop, 'LEVEL UP notification is not below the level badge');
@@ -261,6 +271,13 @@ function makeRoundRows(values) {
     assert.ok(await page.locator('.gc-xp-source-chip.base').count() >= 2, 'Basic XP source chips did not render');
     assert.ok(await page.locator('.gc-xp-source-chip.positive').count() + await page.locator('.gc-xp-source-chip.milestone').count() >= 1, 'Positive XP source chips did not render');
     assert.ok(await page.locator('.gc-xp-source-chip.negative, .gc-xp-source-chip.empty').count() >= 1, 'Negative XP source row did not render');
+
+    const explainableAward = page.locator('.gc-xp-source-chip.positive[data-xp-info], .gc-xp-source-chip.milestone[data-xp-info]').first();
+    await explainableAward.click();
+    await page.waitForSelector('.gc-xp-info-backdrop');
+    assert.ok((await page.locator('.gc-xp-info-copy').textContent()).trim().length > 10, 'Award explanation popup is missing its explanation');
+    await page.locator('.gc-xp-info-close').click();
+    await page.waitForSelector('.gc-xp-info-backdrop', { state:'detached' });
 
     await page.screenshot({ path:shot('sc038-xp-runtime.png'), fullPage:false });
     stage('animated XP breakdown passed');
