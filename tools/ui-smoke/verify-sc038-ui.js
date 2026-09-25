@@ -248,7 +248,11 @@ function makeRoundRows(values) {
         levelUpTop:levelUpBox?.top || 0,
       };
     });
-    assert.deepEqual(xpLayout.labels, ['BASE XP','POSITIVE','NEGATIVE'], 'XP breakdown rows are not in the requested order');
+    assert.deepEqual(
+      xpLayout.labels.map(label => label.replace(/\s+[+-]?\d+$/, '')),
+      ['BASE XP','POSITIVE','NEGATIVE'],
+      'XP breakdown rows are not in the requested order'
+    );
     assert.equal(xpLayout.chipTracks.length, 3, 'XP breakdown is missing a horizontal source track');
     xpLayout.chipTracks.forEach((track, index) => {
       assert.equal(track.overflowX, 'auto', `XP source track ${index + 1} is not horizontally scrollable`);
@@ -261,6 +265,34 @@ function makeRoundRows(values) {
     assert.ok(await page.locator('.gc-xp-source-chip.base').count() >= 2, 'Basic XP source chips did not render');
     assert.ok(await page.locator('.gc-xp-source-chip.positive').count() + await page.locator('.gc-xp-source-chip.milestone').count() >= 1, 'Positive XP source chips did not render');
     assert.ok(await page.locator('.gc-xp-source-chip.negative, .gc-xp-source-chip.empty').count() >= 1, 'Negative XP source row did not render');
+
+    const xpHero = await page.locator('.sq-pg-xp-screen .gc-xp-row').first().evaluate(row => {
+      const portrait = row.querySelector('.gc-xp-portrait');
+      const avatar = row.querySelector('.gc-xp-avatar-sprite');
+      const current = row.querySelector('.gc-xp-current-value');
+      const game = row.querySelector('.gc-xp-gamebar-head');
+      const total = row.querySelector('.gc-xp-totalbar-head');
+      return {
+        portrait:!!portrait,
+        avatarId:avatar?.dataset.avatarId || '',
+        current:(current?.textContent || '').trim(),
+        game:(game?.textContent || '').trim(),
+        total:(total?.textContent || '').trim(),
+      };
+    });
+    assert.equal(xpHero.portrait, true, 'XP card is missing the player profile portrait');
+    assert.ok(/^\d+$/.test(xpHero.avatarId), 'XP profile portrait is not using the canonical avatar identity');
+    assert.match(xpHero.current, /\d[\d,]* XP/, 'Current XP is not clearly shown on the profile image');
+    assert.match(xpHero.game, /THIS GAME XP/i, 'This Game XP hierarchy is missing');
+    assert.match(xpHero.total, /TOTAL XP/i, 'Total XP hierarchy is missing');
+
+    const infoChip = page.locator('.sq-pg-xp-screen .gc-xp-source-chip[data-xp-info]').first();
+    assert.ok(await infoChip.count(), 'Clickable XP award/source chip missing');
+    await infoChip.click();
+    await page.waitForSelector('.gc-xp-info-backdrop .gc-xp-info-card');
+    assert.ok((await page.locator('.gc-xp-info-copy').textContent()).trim().length > 0, 'XP award explanation popup has no explanation');
+    await page.locator('.gc-xp-info-close').click();
+    await page.waitForFunction(() => !document.querySelector('.gc-xp-info-backdrop'));
 
     await page.screenshot({ path:shot('sc038-xp-runtime.png'), fullPage:false });
     stage('animated XP breakdown passed');
