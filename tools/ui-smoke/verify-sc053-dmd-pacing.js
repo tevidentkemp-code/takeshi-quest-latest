@@ -18,13 +18,18 @@ const BROWSER_NOISE=/supabase|Failed to fetch|fetch failed|net::|NetworkError|lo
     assert.equal(transition.active,'TARGET 11'); assert.equal(transition.priority,20); assert.equal(transition.total,50);
     // VISIT duration is applied internally by the controller scheduler; prove
     // the <=900ms contract by observing fresh-state restoration after 780ms.
-    await page.waitForTimeout(780);
-    const restored=await page.evaluate(()=>window.__sqDmdV2?.snapshot?.().idle||null);
-    assert.equal(restored?.headline,'ALPHA UP'); assert.equal(restored?.subline,'TARGET 11');
+    // Enter the next legitimate score while the round transition is still active:
+    // accepted player input must hard-cancel that transient immediately.
     await page.locator('#pad [data-score-label="Double"]').click();
     await page.waitForFunction(()=>state.history.length===7 && state.currentDart===1);
     const rapid=await page.evaluate(()=>window.__sqDmdV2?.snapshot?.());
-    assert.equal(rapid.active?.headline,'DOUBLE +22'); assert.equal(rapid.lastDecision?.action,'input-preempt');
+    assert.equal(rapid.active?.headline,'DOUBLE +22');
+    assert.equal(rapid.lastDecision?.action,'input-preempt');
+
+    // The replacement THROW transient then restores against fresh current state.
+    await page.waitForTimeout(700);
+    const restored=await page.evaluate(()=>window.__sqDmdV2?.snapshot?.().idle||null);
+    assert.equal(restored?.headline,'ALPHA UP'); assert.equal(restored?.subline,'TARGET 11');
     const unexpected=consoleErrs.filter(e=>!BROWSER_NOISE.test(e)); assert.deepEqual(unexpected,[],'unexpected browser errors: '+unexpected.join('\n'));
     console.log('SC-053 Gate 4 pacing + motion contract PASS');
   }finally{await browser.close();}

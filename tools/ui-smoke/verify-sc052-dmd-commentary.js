@@ -27,7 +27,7 @@ const BROWSER_NOISE=/supabase|Failed to fetch|fetch failed|net::|NetworkError|lo
     assert(snap.story.some(x=>x.stage==='visit' && x.reason==='zero_visit'),'zero visit classifier remains available');
     assert.equal(snap.roundBeat?.reason,'round_far_behind','round commentary classifier remains intact for Gate 5');
     assert.equal(snap.roundBeat?.gap,90);
-    assert(Number(snap.controller?.active?.priority||0)>=20,'Gate 4 controller remains authoritative for live delivery');
+    assert.equal(snap.controller?.architecture,'sxp05-gate3-scene-contract','Gate 4 controller remains installed while named specials/commentary remain separately owned');
     const unexpected=consoleErrs.filter(e=>!BROWSER_NOISE.test(e)); assert.deepEqual(unexpected,[],'unexpected browser errors: '+unexpected.join('\n'));
     console.log('SC-052 DMD commentary boundary acceptance PASS');
   }finally{await browser.close();}

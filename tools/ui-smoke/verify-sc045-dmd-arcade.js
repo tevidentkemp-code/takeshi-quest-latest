@@ -60,6 +60,9 @@ function diffRatio(a,b){
     // post-scene sample after a 1100ms animation has legitimately completed.
     async function sampleScene(scene,targetMs){
       return page.evaluate(({scene,targetMs})=>new Promise(resolve=>{
+        // Isolate legacy named-scene visual metrics from any controller timer
+        // created by the gameplay probes above.
+        window.__sqDmdV2?.clear?.({restore:false});
         window.__sqDmdHardClearQueue?.();
         window.sqDmdStop();
         const started=performance.now();
@@ -120,7 +123,7 @@ function diffRatio(a,b){
     // Reduced-motion is not a blank/less-readable fallback: it must remain bold and essentially static.
     await page.emulateMedia({reducedMotion:'reduce'});
     for(const scene of scenes){
-      await page.evaluate(s=>{ window.__sqDmdHardClearQueue?.(); window.sqDmdStop(); window.sqDmdShowZones({z2:s.z2,z3:''},{type:s.type,ms:Math.max(s.ms,1400)}); },scene);
+      await page.evaluate(s=>{ window.__sqDmdV2?.clear?.({restore:false}); window.__sqDmdHardClearQueue?.(); window.sqDmdStop(); window.sqDmdShowZones({z2:s.z2,z3:''},{type:s.type,ms:Math.max(s.ms,1400)}); },scene);
       await page.waitForTimeout(180); const a=await metrics();
       await page.waitForTimeout(260); const b=await metrics();
       await page.locator('#sqDmdWrap').screenshot({path:path.join(out,`sc045-${scene.type}-reduced.png`)});
