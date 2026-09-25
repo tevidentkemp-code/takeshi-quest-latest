@@ -16,7 +16,7 @@ assert.equal(appliedMisfirePenalty([{ penalty:-8 }]), -5, 'Negative XP must rema
 assert.equal(appliedMisfirePenalty([]), 0);
 
 const source = fs.readFileSync(new URL('../../src/live-game/xp-breakdown.mjs', import.meta.url), 'utf8');
-for (const required of ['BASE XP','POSITIVE','NEGATIVE','overflow-x:auto','gc-xp-rankstack','LEVEL UP!']) {
+for (const required of ['BASE XP','POSITIVE','NEGATIVE','overflow-x:auto','gc-xp-rankstack','LEVEL UP!','gc-xp-portrait','RANK','gc-xp-avatar-sprite','THIS GAME XP','TOTAL XP','data-xp-info']) {
   assert.ok(source.includes(required), `Missing XP breakdown contract: ${required}`);
 }
 

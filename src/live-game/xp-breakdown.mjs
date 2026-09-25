@@ -175,7 +175,105 @@ function injectStyles() {
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
-.gc-xp-row.sq-xp-detailed{ padding:11px 12px 11px 15px; }
+.gc-xp-row.sq-xp-detailed{
+  padding:14px;
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.08);
+  background:
+    radial-gradient(110% 80% at 0% 0%, rgba(255,122,0,.075), transparent 52%),
+    linear-gradient(180deg, rgba(18,24,39,.96), rgba(9,14,25,.97));
+  box-shadow:0 16px 36px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.035);
+}
+.gc-xp-hero{
+  display:grid;
+  grid-template-columns:116px minmax(0,1fr);
+  gap:14px;
+  align-items:stretch;
+}
+.gc-xp-portrait{
+  position:relative;
+  min-height:148px;
+  border-radius:16px;
+  overflow:hidden;
+  border:1px solid rgba(255,149,45,.38);
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255,130,30,.16), transparent 55%),
+    #0b101b;
+  box-shadow:0 0 22px rgba(255,120,0,.10), inset 0 0 0 1px rgba(255,255,255,.035);
+}
+.gc-xp-avatar-sprite{
+  position:absolute;
+  inset:0;
+  background-repeat:no-repeat;
+  background-size:600% 500%;
+}
+.gc-xp-current{
+  position:absolute;
+  left:7px;
+  right:7px;
+  bottom:7px;
+  min-height:38px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:7px 9px;
+  border-radius:11px;
+  border:1px solid rgba(255,185,92,.24);
+  background:rgba(4,8,15,.82);
+  backdrop-filter:blur(8px);
+  box-shadow:0 8px 20px rgba(0,0,0,.34);
+}
+.gc-xp-current-label{
+  color:rgba(226,234,248,.58);
+  font-size:7px;
+  font-weight:950;
+  letter-spacing:.13em;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+.gc-xp-current-value{
+  color:#ffd176;
+  font-size:13px;
+  font-weight:950;
+  line-height:1;
+  white-space:nowrap;
+}
+.gc-xp-summary{ min-width:0; display:flex; flex-direction:column; }
+.gc-xp-summary .gc-xp-head{ margin:0; }
+.gc-xp-summary .gc-xp-gain{
+  margin-top:7px;
+  color:#69efb4;
+  font-size:22px;
+  line-height:1;
+  font-weight:950;
+  letter-spacing:.01em;
+}
+.gc-xp-bars{ margin-top:auto; padding-top:12px; }
+.gc-xp-totalbar-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin:10px 0 4px;
+  color:rgba(235,240,250,.62);
+  font-size:8px;
+  font-weight:950;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.gc-xp-totalbar-value{
+  color:#ffd176;
+  font-size:10px;
+  letter-spacing:0;
+  text-transform:none;
+}
+.gc-xp-breakdown{
+  padding-top:12px;
+  margin-top:12px;
+  border-top:1px solid rgba(255,255,255,.09);
+}
+
 .gc-xp-row.sq-xp-detailed .gc-xp-head{
   display:grid;
   grid-template-columns:minmax(0,1fr) auto;
@@ -292,6 +390,12 @@ function injectStyles() {
 .gc-xp-source-chip.applied{ box-shadow:inset 0 0 0 1px rgba(255,88,106,.17); }
 .gc-xp-source-chip.empty{ color:rgba(235,240,250,.38); border-color:rgba(255,255,255,.06); background:rgba(255,255,255,.025); }
 @media(max-width:560px){
+  .gc-xp-hero{ grid-template-columns:92px minmax(0,1fr); gap:10px; }
+  .gc-xp-portrait{ min-height:128px; border-radius:14px; }
+  .gc-xp-current{ left:5px; right:5px; bottom:5px; padding:6px 7px; }
+  .gc-xp-current-label{ font-size:6px; }
+  .gc-xp-current-value{ font-size:11px; }
+  .gc-xp-summary .gc-xp-gain{ font-size:19px; }
   .gc-xp-row.sq-xp-detailed .gc-xp-name{ font-size:14px; }
   .gc-xp-rankstack{ min-width:96px; }
   .gc-xp-source-line{ grid-template-columns:52px minmax(0,1fr); gap:5px; }
@@ -624,6 +728,29 @@ function makeSourceLine(label) {
   return { line, chips };
 }
 
+function formatXp(value) {
+  return Math.max(0, Number(value || 0)).toLocaleString('en-GB');
+}
+
+function applyPlayerAvatar(host, el, player) {
+  if (!el) return;
+  try {
+    const id = typeof host.__sqAvatarIdForPlayer === 'function'
+      ? host.__sqAvatarIdForPlayer(player)
+      : (typeof window.__sqAvatarIdForPlayer === 'function' ? window.__sqAvatarIdForPlayer(player) : 1);
+    const pos = typeof host.__sqAvatarSpritePosition === 'function'
+      ? host.__sqAvatarSpritePosition(id)
+      : (typeof window.__sqAvatarSpritePosition === 'function' ? window.__sqAvatarSpritePosition(id) : null);
+    if (pos) {
+      el.dataset.avatarId = String(pos.id);
+      el.style.backgroundImage = 'url("./assets/avatars/avatar-sprite.webp")';
+      el.style.backgroundPosition = pos.x.toFixed(4) + '% ' + pos.y.toFixed(4) + '%';
+      return;
+    }
+  } catch (_) {}
+  el.style.backgroundImage = 'radial-gradient(circle at 50% 30%, rgba(255,122,0,.28), rgba(17,24,39,.96) 58%)';
+}
+
 function rankChip(host, holder, progress) {
   holder.replaceChildren();
   try {
@@ -644,19 +771,37 @@ function buildDetailedRow(host, data) {
   const el = document.createElement('div');
   el.className = `gc-xp-row sq-xp-detailed${data.won ? ' won' : ''}`;
   el.innerHTML = `
-    <div class="gc-xp-head">
-      <span class="gc-xp-name"><span class="nm">${esc(data.name)}</span></span>
-      <span class="gc-xp-rankstack"><span class="gc-xp-lvholder"></span><span class="gc-xp-lvup">LEVEL UP!</span></span>
+    <div class="gc-xp-hero">
+      <div class="gc-xp-portrait" aria-label="${esc(data.name)} profile picture">
+        <div class="gc-xp-avatar-sprite" aria-hidden="true"></div>
+        <div class="gc-xp-current">
+          <span class="gc-xp-current-label">RANK</span>
+          <span class="gc-xp-current-value">${esc(String(post.title || 'Rookie').toUpperCase())}</span>
+        </div>
+      </div>
+      <div class="gc-xp-summary">
+        <div class="gc-xp-head">
+          <span class="gc-xp-name"><span class="nm">${esc(data.name)}</span></span>
+          <span class="gc-xp-rankstack"><span class="gc-xp-lvholder"></span><span class="gc-xp-lvup">LEVEL UP!</span></span>
+        </div>
+        <div class="gc-xp-gain">${data.netXp >= 0 ? '+' : ''}${data.netXp} XP</div>
+        <div class="gc-xp-bars">
+          <div class="gc-xp-gamebar-wrap">
+            <div class="gc-xp-gamebar-head"><span>THIS GAME XP</span><span>${data.netXp >= 0 ? '+' : ''}${data.netXp} XP</span></div>
+            <div class="gc-xp-gamebar"><div class="gc-xp-gamebar-fill"></div></div>
+          </div>
+          <div class="gc-xp-totalbar-head">
+            <span>TOTAL XP</span>
+            <span class="gc-xp-totalbar-value">${formatXp(data.post)} XP</span>
+          </div>
+          <div class="gc-xp-bar"><div class="gc-xp-fill"></div></div>
+        </div>
+      </div>
     </div>
-    <div class="gc-xp-gain">${data.netXp >= 0 ? '+' : ''}${data.netXp} XP</div>
-    <div class="gc-xp-gamebar-wrap">
-      <div class="gc-xp-gamebar-head"><span>THIS GAME</span><span>${data.netXp >= 0 ? '+' : ''}${data.netXp} XP</span></div>
-      <div class="gc-xp-gamebar"><div class="gc-xp-gamebar-fill"></div></div>
-    </div>
-    <div class="gc-xp-totalbar-label">TOTAL XP PROGRESS</div>
-    <div class="gc-xp-bar"><div class="gc-xp-fill"></div></div>
     <div class="gc-xp-breakdown"></div>
   `;
+
+  applyPlayerAvatar(host, el.querySelector('.gc-xp-avatar-sprite'), data.player);
 
   const rankHolder = el.querySelector('.gc-xp-lvholder');
   rankChip(host, rankHolder, pre);
