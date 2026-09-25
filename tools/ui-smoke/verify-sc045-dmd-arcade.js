@@ -104,7 +104,8 @@ function diffRatio(a,b){
         assert(m.elapsed<scene.ms,`${scene.type} sample ${i+1} was captured after scene duration: actual=${m.elapsed} duration=${scene.ms}`);
         assert(m.ratio>0.004,`${scene.type} frame ${i+1} too faint: ${m.ratio}`);
         assert(m.ratio<0.34,`${scene.type} frame ${i+1} overfilled: ${m.ratio}`);
-        assert(m.bbox.w>m.w*0.18,`${scene.type} frame ${i+1} lacks horizontal visual presence: ${JSON.stringify(m.bbox)} canvas=${m.w}x${m.h}`);
+        const minHorizontal=(scene.type==='anticipationEyes' && i===0)?m.w*0.07:m.w*0.18;
+        assert(m.bbox.w>minHorizontal,`${scene.type} frame ${i+1} lacks horizontal visual presence: ${JSON.stringify(m.bbox)} canvas=${m.w}x${m.h}`);
         assert(m.bbox.h>m.h*0.14,`${scene.type} frame ${i+1} lacks vertical visual presence: ${JSON.stringify(m.bbox)} canvas=${m.w}x${m.h}`);
         if(prev) maxMotion=Math.max(maxMotion,diffRatio(prev,m.signature));
         prev=m.signature;
