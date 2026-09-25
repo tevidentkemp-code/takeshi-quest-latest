@@ -1,0 +1,401 @@
+# Consolidation contract: 39/39 unique legacy UI/regression commands preserved; release-ready target <=5m.
+name: Core release QA
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - index.html
+      - src/**
+      - tools/ui-smoke/**
+      - scripts/**
+      - assets/**
+      - supabase/migrations/**
+      - supabase/rollbacks/**
+      - supabase/functions/**
+      - package.json
+      - package-lock.json
+      - vite.config.*
+      - .github/workflows/core-release-qa.yml
+      - .github/workflows/setup-qa.yml
+      - .github/workflows/sc031-cloud-failure-qa.yml
+      - .github/workflows/sc033-release-candidate-qa.yml
+      - .github/workflows/sc034-batch-qa.yml
+      - .github/workflows/sc048-volde-qa.yml
+      - .github/workflows/sc050-release-notes-qa.yml
+      - .github/workflows/sc056-dmd-single-miss-qa.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-build:
+    name: Static authority + exact build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+
+      - name: Install deterministic tooling
+        run: |
+          set -euo pipefail
+          npm ci --prefix scripts --ignore-scripts
+          npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Verify source authority and static contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/verify-modularization.mjs | tee core-static-modular.txt
+          node scripts/build-core-js-from-source.mjs --verify-current | tee core-static-js-authority.txt
+          node scripts/build-core-styles-from-source.mjs --verify-current | tee core-static-css-authority.txt
+          node tools/ui-smoke/verify-sc032-dmd-ownership.mjs | tee core-static-dmd-ownership.txt
+          node tools/ui-smoke/verify-sc030-dmd-v2.mjs | tee core-static-dmd-v2.txt
+          node tools/ui-smoke/verify-sc030-reduced-motion.mjs | tee core-static-motion.txt
+          node tools/ui-smoke/verify-sc042-record-integrity.mjs | tee core-static-records.txt
+          node tools/ui-smoke/verify-sc045-dmd-arcade.mjs | tee core-static-arcade.txt
+          node tools/ui-smoke/verify-sc048-volde.mjs | tee core-static-volde.txt
+          node tools/ui-smoke/verify-sc038-xp-breakdown.mjs | tee core-static-xp.txt
+          node tools/ui-smoke/verify-sc038-postgame-flow.mjs | tee core-static-postgame-flow.txt
+          node tools/ui-smoke/verify-sc050-release-notes.mjs | tee core-static-release-notes.txt
+          node tools/ui-smoke/verify-sc056-dmd-single-miss.mjs | tee core-static-single-miss.txt
+          node --check src/game/engine.js
+          node --check src/app/router-ui.js
+          node --check src/live-game/live-v2.js
+          node --check src/live-game/xp-breakdown.mjs
+          node --check src/ui/modals.js
+          node --check tools/ui-smoke/verify-sc033-throw-order.js
+          node --check tools/ui-smoke/verify-sc034-add-player.js
+          node --check tools/ui-smoke/verify-sc036-skip-go.js
+          node --check tools/ui-smoke/verify-sc056-dmd-single-miss.js
+
+      - name: Enforce public release metadata for runtime changes
+        if: github.event_name == 'pull_request'
+        env:
+          SQ_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SQ_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$SQ_BASE_SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$SQ_BASE_SHA"
+          node tools/ui-smoke/verify-release-metadata-policy.mjs "$SQ_BASE_SHA" "$SQ_HEAD_SHA"
+
+      - name: Build exact production candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build | tee core-vite-build.txt
+          npm run verify:dist | tee core-dist-verify.txt
+          node scripts/build-core-js-from-source.mjs --verify-current
+          node scripts/build-core-styles-from-source.mjs --verify-current
+          git diff --check origin/main...HEAD
+
+      - name: Upload exact dist once
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-release-dist
+          retention-days: 2
+          path: dist/
+
+      - name: Keep static/build evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-release-static-evidence
+          retention-days: 14
+          path: |
+            core-static-*.txt
+            core-vite-build.txt
+            core-dist-verify.txt
+
+  source-core:
+    name: Source representative — core journey
+    needs: static-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Install browser QA
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps chromium
+      - name: Run representative source core
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8123/index.html
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts-core-source
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/core-source.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          timeout 240s node tools/ui-smoke/smoke.js | tee core-source-smoke.txt
+          timeout 180s node tools/ui-smoke/verify-saveplayer-card.js | tee core-source-saveplayer.txt
+          timeout 180s node tools/ui-smoke/verify-classic-visual-fit.js | tee core-source-classic.txt
+      - name: Keep source-core evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-release-source-core-evidence
+          retention-days: 14
+          path: |
+            core-source-*.txt
+            qa-artifacts-core-source/
+
+  source-live:
+    name: Source representative — live controls
+    needs: static-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Install browser QA
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps chromium
+      - name: Run representative source live controls
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8123/index.html
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts-live-source
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/live-source.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          timeout 180s node tools/ui-smoke/verify-sc033-throw-order.js | tee core-source-throw-order.txt
+          timeout 180s node tools/ui-smoke/verify-sc034-add-player.js | tee core-source-add-player.txt
+          timeout 180s node tools/ui-smoke/verify-sc036-skip-go.js | tee core-source-skip-go.txt
+          timeout 180s node tools/ui-smoke/verify-cloud-failure-resilience.js | tee core-source-cloud.txt
+          timeout 180s node tools/ui-smoke/verify-sc014.js | tee core-source-setup.txt
+          timeout 180s node tools/ui-smoke/verify-sc028.js | tee core-source-sc028.txt
+          timeout 180s node tools/ui-smoke/verify-sc008.js | tee core-source-sc008.txt
+      - name: Keep source-live evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-release-source-live-evidence
+          retention-days: 14
+          path: |
+            core-source-*.txt
+            qa-artifacts-live-source/
+
+  dist-core:
+    name: Dist shard A — scoring + setup
+    needs: static-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: core-release-dist
+          path: dist
+      - name: Install browser QA
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps chromium
+      - name: Run dist scoring and setup
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8124/index.html
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts-dist-core
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8124 --bind 127.0.0.1 --directory dist >/tmp/dist-core.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          timeout 240s node tools/ui-smoke/smoke.js | tee core-dist-smoke.txt
+          timeout 180s node tools/ui-smoke/verify-sc014.js | tee core-dist-setup.txt
+          timeout 180s node tools/ui-smoke/verify-saveplayer-card.js | tee core-dist-saveplayer.txt
+      - name: Keep dist-core evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-release-dist-core-evidence
+          retention-days: 14
+          path: |
+            core-dist-*.txt
+            qa-artifacts-dist-core/
+
+  dist-live:
+    name: Dist shard B — live game controls
+    needs: static-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: core-release-dist
+          path: dist
+      - name: Install browser QA
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps chromium
+      - name: Run dist live-game controls
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8124/index.html
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts-dist-live
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8124 --bind 127.0.0.1 --directory dist >/tmp/dist-live.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          timeout 180s node tools/ui-smoke/verify-sc033-throw-order.js | tee core-dist-throw-order.txt
+          timeout 180s node tools/ui-smoke/verify-sc034-add-player.js | tee core-dist-add-player.txt
+          timeout 180s node tools/ui-smoke/verify-sc036-skip-go.js | tee core-dist-skip-go.txt
+          timeout 180s node tools/ui-smoke/verify-sc056-dmd-single-miss.js | tee core-dist-single-miss.txt
+      - name: Keep dist-live evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-release-dist-live-evidence
+          retention-days: 14
+          path: |
+            core-dist-*.txt
+            qa-artifacts-dist-live/
+
+  dist-modes:
+    name: Dist shard C — modes + progression
+    needs: static-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: core-release-dist
+          path: dist
+      - name: Install browser QA
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps chromium
+      - name: Run dist mode/progression coverage
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8124/index.html
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts-dist-modes
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8124 --bind 127.0.0.1 --directory dist >/tmp/dist-modes.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          timeout 180s node tools/ui-smoke/verify-classic-visual-fit.js | tee core-dist-classic.txt
+          timeout 180s node tools/ui-smoke/verify-training-modes.js | tee core-dist-training.txt
+          timeout 180s node tools/ui-smoke/verify-progression-modes.js | tee core-dist-progression.txt
+          timeout 180s node tools/ui-smoke/verify-pstats.js | tee core-dist-pstats.txt
+          timeout 180s node tools/ui-smoke/verify-p23.js | tee core-dist-p23.txt
+          timeout 180s node tools/ui-smoke/verify-n5-stacking.js | tee core-dist-n5.txt
+          timeout 180s node tools/ui-smoke/verify-sc025.js | tee core-dist-sc025.txt
+          timeout 180s node tools/ui-smoke/verify-sc009.js | tee core-dist-sc009.txt
+          timeout 180s node tools/ui-smoke/verify-sc010.js | tee core-dist-sc010.txt
+      - name: Keep dist-modes evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-release-dist-modes-evidence
+          retention-days: 14
+          path: |
+            core-dist-*.txt
+            qa-artifacts-dist-modes/
+
+  dist-dmd:
+    name: Dist shard D — DMD + records + resilience
+    needs: static-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: core-release-dist
+          path: dist
+      - name: Install browser QA
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps chromium
+      - name: Run dist DMD/record/resilience coverage
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8124/index.html
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts-dist-dmd
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8124 --bind 127.0.0.1 --directory dist >/tmp/dist-dmd.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          timeout 180s node tools/ui-smoke/verify-sc042-record-integrity.js | tee core-dist-record.txt
+          timeout 180s node tools/ui-smoke/verify-sc042-postgame-polish.js | tee core-dist-postgame.txt
+          timeout 180s node tools/ui-smoke/verify-sc045-dmd-arcade.js | tee core-dist-arcade.txt
+          timeout 180s node tools/ui-smoke/verify-sc032-dmd-runtime.js | tee core-dist-dmd.txt
+          timeout 180s node tools/ui-smoke/verify-sc030-reduced-motion-runtime.js | tee core-dist-motion.txt
+          timeout 180s node tools/ui-smoke/verify-sc030-actions-runtime.js | tee core-dist-actions.txt
+          timeout 180s node tools/ui-smoke/verify-sc030-undo-runtime.js | tee core-dist-undo.txt
+          timeout 180s node tools/ui-smoke/verify-cloud-failure-resilience.js | tee core-dist-cloud.txt
+          timeout 180s node tools/ui-smoke/verify-sc038-ui.js | tee core-dist-xp-ui.txt
+          timeout 180s node tools/ui-smoke/verify-sc050-release-notes.js | tee core-dist-release-notes.txt
+      - name: Keep dist-dmd evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-release-dist-dmd-evidence
+          retention-days: 14
+          path: |
+            core-dist-*.txt
+            qa-artifacts-dist-dmd/
