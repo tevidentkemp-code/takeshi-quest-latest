@@ -269,20 +269,20 @@ function makeRoundRows(values) {
     const xpHero = await page.locator('.sq-pg-xp-screen .gc-xp-row').first().evaluate(row => {
       const portrait = row.querySelector('.gc-xp-portrait');
       const avatar = row.querySelector('.gc-xp-avatar-sprite');
-      const current = row.querySelector('.gc-xp-current-value');
+      const rank = row.querySelector('.gc-xp-current-value');
       const game = row.querySelector('.gc-xp-gamebar-head');
       const total = row.querySelector('.gc-xp-totalbar-head');
       return {
         portrait:!!portrait,
         avatarId:avatar?.dataset.avatarId || '',
-        current:(current?.textContent || '').trim(),
+        rank:(rank?.textContent || '').trim(),
         game:(game?.textContent || '').trim(),
         total:(total?.textContent || '').trim(),
       };
     });
     assert.equal(xpHero.portrait, true, 'XP card is missing the player profile portrait');
     assert.ok(/^\d+$/.test(xpHero.avatarId), 'XP profile portrait is not using the canonical avatar identity');
-    assert.match(xpHero.current, /\d[\d,]* XP/, 'Current XP is not clearly shown on the profile image');
+    assert.ok(/ROOKIE|AMATEUR|MARKSMAN|SHARPSHOOTER|SNIPER|ACE|MASTER|GRANDMASTER|LEGEND|IMMORTAL/i.test(xpHero.rank), 'Canonical XP rank is not clearly shown on the profile image');
     assert.match(xpHero.game, /THIS GAME XP/i, 'This Game XP hierarchy is missing');
     assert.match(xpHero.total, /TOTAL XP/i, 'Total XP hierarchy is missing');
 
