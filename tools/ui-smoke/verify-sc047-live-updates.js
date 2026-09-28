@@ -9,27 +9,21 @@ fs.mkdirSync(out, { recursive: true });
 (async () => {
   const { browser, ctx, page, consoleErrs } = await H.launch();
   try {
-    // Exercise the real cloud -> player-cache -> LIVE UPDATES path. The generic
-    // harness blocks production Supabase, so provide one canonical players row
-    // with created_at rather than relying on a localStorage-only seed.
-    await page.route('**/rest/v1/players*', async route => {
-      const req = route.request();
-      if (req.method() !== 'GET') return route.continue();
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([{
-          id:'11111111-1111-4111-8111-111111111111',
-          name:'Recent Player',
-          first_name:'Recent',
-          last_name:'Player',
-          nickname:'',
-          initials:'RP',
-          avatar_id:null,
-          deleted_at:null,
-          created_at:new Date().toISOString()
-        }])
-      });
+    // Refresh contract: a player already synced from Supabase on the previous
+    // session must render immediately from the last-good display cache while
+    // cloud revalidation happens in the background. The cache is not authority.
+    await ctx.addInitScript(() => {
+      localStorage.setItem('shateki_players', JSON.stringify([{
+        id:'11111111-1111-4111-8111-111111111111',
+        name:'Recent Player',
+        first_name:'Recent',
+        last_name:'Player',
+        nickname:'',
+        initials:'RP',
+        avatar_id:null,
+        joinedAt:new Date().toISOString(),
+        _src:'cloud-cache'
+      }]));
     });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await H.boot(page, { settle: 3000 });
