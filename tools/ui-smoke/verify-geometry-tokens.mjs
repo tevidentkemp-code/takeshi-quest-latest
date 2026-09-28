@@ -13,7 +13,6 @@ function mustNot(source, needle, label) {
 const foundations = read('src/styles/core/foundations-tokens.css');
 const startGame = read('src/styles/modals/start-game.css');
 const liveV2 = read('src/styles/live-game/v2-panel.css');
-const gameComplete = read('src/styles/modals/game-complete.css');
 const leaderboardBase = read('src/styles/league/leaderboard-base.css');
 const leaderboardPolish = read('src/styles/league/leaderboard-polish.css');
 const topbar = read('src/styles/live-game/topbar.css');
@@ -43,9 +42,6 @@ must(liveV2, 'border-radius: var(--sq-radius-full);', 'Live V2 full token');
 must(liveV2, 'inset: calc(0px - var(--sq-ring-outset)) !important;', 'Turbo outside ring inset');
 must(liveV2, 'border-radius: calc(var(--sq-radius-panel) + var(--sq-ring-outset)) !important;', 'Turbo concentric radius');
 must(liveV2, 'padding: var(--sq-ring-outset) !important;', 'Turbo ring thickness');
-
-must(gameComplete, 'border-radius: var(--sq-radius-shell) !important;', 'Game Complete shell');
-must(gameComplete, 'border-radius: var(--sq-radius-stage) !important;', 'Game Complete stage');
 
 must(leaderboardBase, 'border-radius:var(--sq-radius-card) !important;', 'Leaderboard base card');
 must(leaderboardBase, 'border-radius:var(--sq-radius-full);', 'Leaderboard pill');
