@@ -904,6 +904,12 @@ if(hsBody){
           lpSyncPauseButton();
         });
       }
+      window.__sqHomeLiveEnsurePlaying = () => {
+        if (!lpState) return;
+        lpState.paused = false;
+        lpState.hold = 0;
+        lpSyncPauseButton();
+      };
       lpSyncPauseButton();
       const lpReducedMotion = () => {
         try { return !!window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
