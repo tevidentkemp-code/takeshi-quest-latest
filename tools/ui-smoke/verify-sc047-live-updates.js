@@ -63,6 +63,13 @@ fs.mkdirSync(out, { recursive: true });
     assert.equal(refreshed.paused, false, 'refresh must start LIVE UPDATES playing');
     assert.equal(refreshed.label, 'PAUSE');
 
+    // Reload legitimately creates a fresh document. Mark the new canonical row
+    // nodes before testing whether subsequent pause/injection mutates them.
+    await page.evaluate(() => {
+      Array.from(document.querySelectorAll('#homeLivePrinterRows tr.lp-row'))
+        .forEach((row, i) => { row.dataset.sc047Stable = 'row-' + i; });
+    });
+
     await page.evaluate(() => window.__homeLivePrinterInjectLine('CLA / 22:31 Thom (200) bts Sam (180)'));
     await page.waitForFunction(() => document.getElementById('homeLivePrinterRows')?.textContent.includes('Thom (200)'), { timeout: 5000 });
     const twoLine = await page.locator('#homeLivePrinterRows tr.lp-row').filter({ hasText: 'Thom (200)' }).last().evaluate(row => {
