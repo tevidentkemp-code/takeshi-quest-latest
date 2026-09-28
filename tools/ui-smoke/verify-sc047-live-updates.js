@@ -7,8 +7,21 @@ const out = process.env.SQ_SCREENSHOTS || path.join(__dirname, '../../output/pla
 fs.mkdirSync(out, { recursive: true });
 
 (async () => {
-  const { browser, page, consoleErrs } = await H.launch();
+  const { browser, ctx, page, consoleErrs } = await H.launch();
   try {
+    await ctx.addInitScript(() => {
+      const iso = new Date().toISOString();
+      localStorage.setItem('shateki_players', JSON.stringify([{
+        id:'sc047-recent-player',
+        name:'Recent Player',
+        first_name:'Recent',
+        last_name:'Player',
+        nickname:'',
+        initials:'RP',
+        joinedAt:iso,
+        _src:'cloud-cache'
+      }]));
+    });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await H.boot(page, { settle: 3000 });
     await page.waitForFunction(() =>
@@ -17,13 +30,16 @@ fs.mkdirSync(out, { recursive: true });
       !!document.getElementById('homeLivePauseBtn')
     , { timeout: 20000 });
 
-    // Force one event through the real scheduler so the test is independent
-    // of cloud availability and of whether an empty tbody has a visible box.
-    await page.evaluate(() => window.__homeLivePrinterInjectLine('SC047 BOOTSTRAP EVENT'));
+    // A recent saved player comes from the cloud-synced display cache and
+    // must survive reload as a proper LIVE UPDATES event. First paint should
+    // already contain data rather than 15 blank rows slowly filling over time.
     await page.waitForFunction(() => {
       const rows = document.querySelectorAll('#homeLivePrinterRows tr.lp-row');
       const body = document.getElementById('homeLivePrinterRows');
-      return rows.length === 15 && !!body && body.textContent.includes('SC047 BOOTSTRAP EVENT');
+      const pause = document.getElementById('homeLivePauseBtn');
+      return rows.length === 15 && !!body && body.textContent.includes('Recent Player')
+        && pause && pause.textContent.trim() === 'PAUSE'
+        && pause.getAttribute('aria-pressed') === 'false';
     }, { timeout: 5000 });
 
     const baseline = await page.evaluate(() => {
