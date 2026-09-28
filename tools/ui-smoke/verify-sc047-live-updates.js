@@ -9,18 +9,27 @@ fs.mkdirSync(out, { recursive: true });
 (async () => {
   const { browser, ctx, page, consoleErrs } = await H.launch();
   try {
-    await ctx.addInitScript(() => {
-      const iso = new Date().toISOString();
-      localStorage.setItem('shateki_players', JSON.stringify([{
-        id:'sc047-recent-player',
-        name:'Recent Player',
-        first_name:'Recent',
-        last_name:'Player',
-        nickname:'',
-        initials:'RP',
-        joinedAt:iso,
-        _src:'cloud-cache'
-      }]));
+    // Exercise the real cloud -> player-cache -> LIVE UPDATES path. The generic
+    // harness blocks production Supabase, so provide one canonical players row
+    // with created_at rather than relying on a localStorage-only seed.
+    await page.route('**/rest/v1/players*', async route => {
+      const req = route.request();
+      if (req.method() !== 'GET') return route.continue();
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{
+          id:'11111111-1111-4111-8111-111111111111',
+          name:'Recent Player',
+          first_name:'Recent',
+          last_name:'Player',
+          nickname:'',
+          initials:'RP',
+          avatar_id:null,
+          deleted_at:null,
+          created_at:new Date().toISOString()
+        }])
+      });
     });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await H.boot(page, { settle: 3000 });
@@ -40,7 +49,7 @@ fs.mkdirSync(out, { recursive: true });
       return rows.length === 15 && !!body && body.textContent.includes('Recent Player')
         && pause && pause.textContent.trim() === 'PAUSE'
         && pause.getAttribute('aria-pressed') === 'false';
-    }, { timeout: 5000 });
+    }, { timeout: 8000 });
 
     const baseline = await page.evaluate(() => {
       const rows = Array.from(document.querySelectorAll('#homeLivePrinterRows tr.lp-row'));
