@@ -87,6 +87,10 @@ fs.mkdirSync(out, {recursive:true});
     assert.equal(hubPending.saveDisabled,true);
     assert.match(hubPending.status,/Saving profile/i);
     delayPatch=false;
+    await page.waitForFunction(() => {
+      const el = document.getElementById('playerHubEditorOverlay');
+      return !!el && Array.from(el.querySelectorAll('button')).some(b => b.textContent.trim() === 'Saved ✓');
+    }, { timeout: 3000 });
     await page.waitForSelector('#playerHubEditorOverlay',{state:'detached'});
     assert.equal(rows[1].avatar_id,29);
     await openHub();
