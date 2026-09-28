@@ -22,9 +22,23 @@
   window.getSavedPlayers = function getSavedPlayers(){ try{ return parsePlayers(rawGet(PLAYER_KEY)); }catch(_){ return []; } };
   window.setSavedPlayers = function setSavedPlayers(arr){ return safeSetCache(arr, { source:'setSavedPlayers-cache-write' }); };
   window.__sqSyncPlayerCacheFromCloud = async function __sqSyncPlayerCacheFromCloud(){
-    if (typeof window.cloudListPlayers !== 'function') return { ok:false, reason:'cloudListPlayers missing', count:0 };
-    try{ var cloud = await window.cloudListPlayers(); var clean = safeSetCache(cloud || [], { source:'cloudListPlayers' }); try{ if (typeof window.populateSavedPlayersSelects === 'function') window.populateSavedPlayersSelects(clean); }catch(_){ } return { ok:true, source:'cloud', count:clean.length, ts:lastSyncMeta && lastSyncMeta.ts }; }
-    catch(e){ console.warn('[SQ] player cache cloud sync failed; existing cache remains display-only fallback', e); return { ok:false, reason:String(e && (e.message || e)), count:(window.getSavedPlayers ? window.getSavedPlayers().length : 0) }; }
+    var existing = []; try{ existing = window.getSavedPlayers ? window.getSavedPlayers() : []; }catch(_){ existing = []; }
+    if (typeof window.cloudListPlayers !== 'function') return { ok:false, reason:'cloudListPlayers missing', count:existing.length };
+    try{
+      try{
+        if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) {
+          return { ok:false, reason:'cloud unavailable', count:existing.length };
+        }
+      }catch(_){
+        return { ok:false, reason:'cloud init failed', count:existing.length };
+      }
+      var cloud = await window.cloudListPlayers();
+      var clean = safeSetCache(cloud || [], { source:'cloudListPlayers' });
+      try{ if (typeof window.populateSavedPlayersSelects === 'function') window.populateSavedPlayersSelects(clean); }catch(_){ }
+      try{ document.dispatchEvent(new Event('sq:savedPlayersUpdated')); }catch(_){ }
+      return { ok:true, source:'cloud', count:clean.length, ts:lastSyncMeta && lastSyncMeta.ts };
+    }
+    catch(e){ console.warn('[SQ] player cache cloud sync failed; existing cache remains display-only fallback', e); return { ok:false, reason:String(e && (e.message || e)), count:existing.length }; }
   };
   window.__sqPlayerCacheReport = function __sqPlayerCacheReport(){
     var arr = []; try{ arr = window.getSavedPlayers ? window.getSavedPlayers() : []; }catch(_){ arr = []; }
