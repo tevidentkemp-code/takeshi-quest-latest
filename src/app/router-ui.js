@@ -4782,7 +4782,11 @@ async function showAddPlayerDialog(index){
 
       try {
         await cloudCreatePlayer(fullName, { initials, nickname, first_name: first, last_name: last, avatar_id: chosenAvatarId });
-        try{ if (typeof window.__homeLivePrinterInjectLine === 'function') window.__homeLivePrinterInjectLine(`🚨 NEW PLAYER - ${fullName} - Welcome to Shateki Quest 🎯`); }catch(_e){}
+        try{
+          const line = `🚨 NEW PLAYER - ${fullName} - Welcome to Shateki Quest 🎯`;
+          if (typeof window.__homeLivePrinterPersistLine === 'function') window.__homeLivePrinterPersistLine(line, 'new_player');
+          else if (typeof window.__homeLivePrinterInjectLine === 'function') window.__homeLivePrinterInjectLine(line);
+        }catch(_e){}
         await syncSavedPlayersFromCloud();
         try{ populateSavedPlayersSelects(); }catch(_){ }
         try{ if (typeof window.buildStartTicker === 'function') window.buildStartTicker(); }catch(_){ }
