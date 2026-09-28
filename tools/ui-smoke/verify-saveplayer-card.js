@@ -83,7 +83,9 @@ const check = (name, ok, detail) => { if (!ok) failures++; console.log((ok ? 'PA
       };
     });
     check('Save gives immediate busy feedback', pending.text === 'SAVING…' && pending.disabled && pending.buttonBusy === 'true' && pending.modalBusy === 'true' && /Saving player/i.test(pending.status), JSON.stringify(pending));
-    await page.waitForTimeout(900);
+    await page.waitForFunction(() => document.getElementById('savePlayerBtn')?.textContent === 'SAVED ✓', { timeout: 4000 });
+    check('Save shows visible success confirmation', await page.evaluate(() => document.getElementById('savePlayerBtn')?.textContent === 'SAVED ✓'));
+    await page.waitForTimeout(500);
     await page.evaluate(() => { window.__sqTestUpsertDelayMs = 0; });
   }
 
