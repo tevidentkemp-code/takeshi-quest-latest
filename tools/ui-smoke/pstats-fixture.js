@@ -11,6 +11,8 @@
 // XP 151 -> LV 2 ROOKIE, 33 XP to level 3 (matches the reference shot).
 // Misfire fixture: 4 historical occurrences; launch-forward XP impact is -2.
 
+const __recentIso = (daysAgo=1) => new Date(Date.now() - Number(daysAgo || 0) * 86400000).toISOString();
+
 const FIXTURE = {
   players: [
     { name: 'Alex S', nickname: 'The Atomic' },
@@ -56,15 +58,15 @@ const FIXTURE = {
     ],
     // Canonical Official Power Rankings source used by production.
     v_power_rankings_official_current_clean: [
-      { player: 'Jo R', player_key: 'jo r', games_used: 4, rounds_used: 56, total_points: 532, avg_per_round: 9.5, last_played_at: '2026-09-11T20:04:00Z', latest_scores: [133,133,133,133], source_game_ids: ['jo-4','jo-3','jo-2','jo-1'], rank_pos: 1 },
-      { player: 'Mia K', player_key: 'mia k', games_used: 4, rounds_used: 56, total_points: 510, avg_per_round: 9.1, last_played_at: '2026-09-11T20:03:00Z', latest_scores: [128,128,127,127], source_game_ids: ['mia-4','mia-3','mia-2','mia-1'], rank_pos: 2 },
-      { player: 'Alex S', player_key: 'alex s', games_used: 4, rounds_used: 56, total_points: 490, avg_per_round: 8.75, last_played_at: '2026-09-11T20:02:00Z', latest_scores: [125,125,120,120], source_game_ids: ['alex-4','alex-3','alex-2','alex-1'], rank_pos: 3 },
+      { player: 'Jo R', player_key: 'jo r', games_used: 4, rounds_used: 56, total_points: 532, avg_per_round: 9.5, last_played_at: __recentIso(1), latest_scores: [133,133,133,133], source_game_ids: ['jo-4','jo-3','jo-2','jo-1'], rank_pos: 1 },
+      { player: 'Mia K', player_key: 'mia k', games_used: 4, rounds_used: 56, total_points: 510, avg_per_round: 9.1, last_played_at: __recentIso(2), latest_scores: [128,128,127,127], source_game_ids: ['mia-4','mia-3','mia-2','mia-1'], rank_pos: 2 },
+      { player: 'Alex S', player_key: 'alex s', games_used: 4, rounds_used: 56, total_points: 490, avg_per_round: 8.75, last_played_at: __recentIso(3), latest_scores: [125,125,120,120], source_game_ids: ['alex-4','alex-3','alex-2','alex-1'], rank_pos: 3 },
     ],
     // Retained only for legacy tests that intentionally address the old view.
     v_power_rankings_last56_official_clean: [
-      { player: 'Jo R', player_key: 'jo r', rounds_used: 56, total_points: 532, avg_per_round: 9.5, last_played_at: null, rank_pos: 1 },
-      { player: 'Mia K', player_key: 'mia k', rounds_used: 56, total_points: 510, avg_per_round: 9.1, last_played_at: null, rank_pos: 2 },
-      { player: 'Alex S', player_key: 'alex s', rounds_used: 56, total_points: 490, avg_per_round: 8.75, last_played_at: null, rank_pos: 3 },
+      { player: 'Jo R', player_key: 'jo r', rounds_used: 56, total_points: 532, avg_per_round: 9.5, last_played_at: __recentIso(1), rank_pos: 1 },
+      { player: 'Mia K', player_key: 'mia k', rounds_used: 56, total_points: 510, avg_per_round: 9.1, last_played_at: __recentIso(2), rank_pos: 2 },
+      { player: 'Alex S', player_key: 'alex s', rounds_used: 56, total_points: 490, avg_per_round: 8.75, last_played_at: __recentIso(3), rank_pos: 3 },
     ],
     v_player_best_official_ranked: [
       { player_name: 'Alex S', best_score: 168, best_score_pos: 38 },
