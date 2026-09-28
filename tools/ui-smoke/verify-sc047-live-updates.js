@@ -11,7 +11,20 @@ fs.mkdirSync(out, { recursive: true });
   try {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await H.boot(page, { settle: 3000 });
-    await page.waitForSelector('#homeLivePrinterRows');
+    await page.waitForFunction(() =>
+      !!window.__homeLivePrinterState &&
+      typeof window.__homeLivePrinterInjectLine === 'function' &&
+      !!document.getElementById('homeLivePauseBtn')
+    , { timeout: 20000 });
+
+    // Force one event through the real scheduler so the test is independent
+    // of cloud availability and of whether an empty tbody has a visible box.
+    await page.evaluate(() => window.__homeLivePrinterInjectLine('SC047 BOOTSTRAP EVENT'));
+    await page.waitForFunction(() => {
+      const rows = document.querySelectorAll('#homeLivePrinterRows tr.lp-row');
+      const body = document.getElementById('homeLivePrinterRows');
+      return rows.length === 15 && !!body && body.textContent.includes('SC047 BOOTSTRAP EVENT');
+    }, { timeout: 5000 });
 
     const baseline = await page.evaluate(() => {
       const rows = Array.from(document.querySelectorAll('#homeLivePrinterRows tr.lp-row'));
