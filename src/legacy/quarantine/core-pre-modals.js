@@ -1939,6 +1939,35 @@ if(hsBody){
         };
       }catch(_e){}
 
+      const lpPrimeLocalPresentation = () => {
+        try {
+          const st = window.__homeLivePrinterState;
+          if (!st) return false;
+          const events = lpReadLocalEvents()
+            .slice()
+            .sort((a,b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+            .map(e => String(e.line || '').trim())
+            .filter(Boolean);
+          if (!events.length) return false;
+          st.bufLines = events.slice(0, LP_BUFFER);
+          const firstWindow = st.bufLines.slice(0, LP_VISIBLE);
+          while (firstWindow.length < LP_VISIBLE) firstWindow.push('');
+          st.displayLines = firstWindow;
+          st.lpStarted = true;
+          st.primedFromLocal = true;
+          st.lpCursor = st.bufLines.length ? (Math.min(LP_VISIBLE, st.bufLines.length) % st.bufLines.length) : 0;
+          st.paused = false;
+          st.hold = 2;
+          lpEnsureRows(st.displayLines);
+          const mid = document.querySelector('#homeLivePrinter .lp-mid');
+          const hold = document.querySelector('#homeLivePrinter .home-hold-overlay');
+          try { if (mid) mid.classList.remove('lp-mid-hold'); } catch(_e){}
+          try { const p = document.getElementById('homeLivePrinter'); if (p) p.classList.add('is-live'); } catch(_e){}
+          try { if (hold) hold.style.display = 'none'; } catch(_e){}
+          return true;
+        } catch (_) { return false; }
+      };
+
       const lpRenderWindow = (opts = {}) => {
         const st = window.__homeLivePrinterState;
         const tbody = document.getElementById('homeLivePrinterRows');
@@ -2313,10 +2342,12 @@ if(hsBody){
             st.lastSig = sig0 || st.lastSig;
           }
 
-          // First successful sync should look complete immediately. Subsequent
-          // events still move through the normal scheduler/animation.
-          if (!st.lpStarted) {
+          // First successful cloud/local truth sync should look complete
+          // immediately. If Home was synchronously primed from presentation
+          // history, replace that prime with the combined current feed now.
+          if (!st.lpStarted || st.primedFromLocal) {
             st.lpStarted = true;
+            st.primedFromLocal = false;
             const firstWindow = st.bufLines.slice(0, LP_VISIBLE);
             while (firstWindow.length < LP_VISIBLE) firstWindow.push('');
             st.displayLines = firstWindow;
@@ -2333,6 +2364,10 @@ if(hsBody){
           st.syncing = false;
         }
       };
+
+      // Render any persisted presentation event immediately on Home entry;
+      // cloud/game truth continues to refresh asynchronously below.
+      lpPrimeLocalPresentation();
 
 if (!window.__homeLivePrinterInterval){
         window.__homeLivePrinterInterval = setInterval(()=>{
