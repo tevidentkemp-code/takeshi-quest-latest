@@ -11212,7 +11212,11 @@ async function showAddPlayerDialog(index){
 
       try {
         await cloudCreatePlayer(fullName, { initials, nickname, first_name: first, last_name: last, avatar_id: chosenAvatarId });
-        try{ if (typeof window.__homeLivePrinterInjectLine === 'function') window.__homeLivePrinterInjectLine(`🚨 NEW PLAYER - ${fullName} - Welcome to Shateki Quest 🎯`); }catch(_e){}
+        try{
+          const line = `🚨 NEW PLAYER - ${fullName} - Welcome to Shateki Quest 🎯`;
+          if (typeof window.__homeLivePrinterPersistLine === 'function') window.__homeLivePrinterPersistLine(line, 'new_player');
+          else if (typeof window.__homeLivePrinterInjectLine === 'function') window.__homeLivePrinterInjectLine(line);
+        }catch(_e){}
         await syncSavedPlayersFromCloud();
         try{ populateSavedPlayersSelects(); }catch(_){ }
         try{ if (typeof window.buildStartTicker === 'function') window.buildStartTicker(); }catch(_){ }
@@ -24558,6 +24562,30 @@ if(hsBody){
       const LP_BUFFER = 30;
       const LP_VISIBLE = 15;
       const LP_SYNC_MS = Math.max(15000, (typeof SQ_GAMES_VISIBLE_MIN_POLL_MS !== 'undefined' ? SQ_GAMES_VISIBLE_MIN_POLL_MS : 15000));
+      const LP_LOCAL_EVENT_KEY = 'sq_live_updates_events_v1';
+      const LP_LOCAL_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+      const lpReadLocalEvents = () => {
+        try {
+          const raw = JSON.parse(localStorage.getItem(LP_LOCAL_EVENT_KEY) || '[]');
+          const now = Date.now();
+          return (Array.isArray(raw) ? raw : [])
+            .filter(e => e && e.line && Number.isFinite(new Date(e.ts).getTime()) && (now - new Date(e.ts).getTime()) < LP_LOCAL_EVENT_TTL_MS)
+            .slice(-20);
+        } catch (_) { return []; }
+      };
+      const lpPersistLocalEvent = (line, kind = 'manual') => {
+        const l = String(line || '').replace(/\s+/g, ' ').trim();
+        if (!l) return null;
+        try {
+          const now = Date.now();
+          let events = lpReadLocalEvents().filter(e => !(e.line === l && (now - new Date(e.ts).getTime()) < 60000));
+          const ev = { id:'local:' + now + ':' + Math.random().toString(36).slice(2,8), ts:new Date(now).toISOString(), kind:String(kind || 'manual'), line:l };
+          events.push(ev);
+          events = events.slice(-20);
+          localStorage.setItem(LP_LOCAL_EVENT_KEY, JSON.stringify(events));
+          return ev;
+        } catch (_) { return null; }
+      };
       // Cloud availability helper (avoid ReferenceError on older builds)
       const lpCloudOK = () => {
         try {
@@ -25544,6 +25572,11 @@ if(hsBody){
           st.recentInjectedLines = st.recentInjectedLines.filter(x => x && (Date.now() - Number(x.at || 0)) < 30000).slice(-LP_BUFFER);
           st.hold = 0;
         };
+        window.__homeLivePrinterPersistLine = (line, kind) => {
+          const ev = lpPersistLocalEvent(line, kind);
+          window.__homeLivePrinterInjectLine(line);
+          return ev;
+        };
       }catch(_e){}
 
       const lpRenderWindow = (opts = {}) => {
@@ -25828,6 +25861,18 @@ if(hsBody){
               .sort((a,b) => new Date(b.event_ts).getTime() - new Date(a.event_ts).getTime())
               .slice(0, 8);
             if (joins.length) items = ([]).concat(items || [], joins);
+          }catch(_e){}
+
+          // Presentation-only persisted events survive refresh on this device.
+          // They do not own player/game truth; they only preserve feed history.
+          try{
+            const localEvents = lpReadLocalEvents().map(e => ({
+              event_ts:e.ts,
+              event_id:e.id,
+              event_kind:e.kind || 'local',
+              line_text:e.line
+            }));
+            if (localEvents.length) items = ([]).concat(items || [], localEvents);
           }catch(_e){}
 
           const mid = document.querySelector('#homeLivePrinter .lp-mid');
