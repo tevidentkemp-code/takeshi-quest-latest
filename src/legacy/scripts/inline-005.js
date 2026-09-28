@@ -11206,6 +11206,9 @@ async function showAddPlayerDialog(index){
 
       chosenName = fullName;
       setSaveState(true, 'Saving player…');
+      // Give the browser a real painted frame before starting the mutation so
+      // SAVING… is visible even when the cloud responds very quickly.
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
       try {
         await cloudCreatePlayer(fullName, { initials, nickname, first_name: first, last_name: last, avatar_id: chosenAvatarId });
@@ -11263,7 +11266,13 @@ async function showAddPlayerDialog(index){
         }
       }catch(err){ try{ console.warn('add-to-card after save failed', err); }catch(_){ } }
 
+      if (saveBtn) {
+        saveBtn.textContent = 'SAVED ✓';
+        saveBtn.setAttribute('aria-busy', 'false');
+      }
+      modal.setAttribute('aria-busy', 'false');
       if (saveStatus) saveStatus.textContent = 'Player saved.';
+      await new Promise(resolve => setTimeout(resolve, 260));
       finish(cardMsg);
     };
   }
@@ -24508,8 +24517,11 @@ if(hsBody){
       }
       const lpState = window.__homeLivePrinterState;
       if (lpState) {
-        if (typeof lpState.paused !== 'boolean') lpState.paused = false;
+        // Home always enters with LIVE UPDATES playing. Pause is a temporary
+        // viewing choice, not a sticky navigation/session state.
+        lpState.paused = false;
         if (!Array.isArray(lpState.injectQueue)) lpState.injectQueue = [];
+        if (!Array.isArray(lpState.recentInjectedLines)) lpState.recentInjectedLines = [];
       }
       const lpPauseBtn = document.getElementById('homeLivePauseBtn');
       const lpSyncPauseButton = () => {
@@ -24971,9 +24983,10 @@ if(hsBody){
 	          return;
 	        }
 	        el.setAttribute('aria-label', lpDisplayText(line));
-	        lpAppendTextSpan(el, 'lp-mode', parsed.abbr);
-	        lpAppendTextSpan(el, 'lp-mode-sep', '/');
-	        lpAppendTextSpan(el, 'lp-time', parsed.time);
+	        const meta = lpAppendTextSpan(el, 'lp-game-meta', '');
+	        lpAppendTextSpan(meta, 'lp-mode', parsed.abbr);
+	        lpAppendTextSpan(meta, 'lp-mode-sep', '/');
+	        lpAppendTextSpan(meta, 'lp-time', parsed.time);
 	        const result = lpAppendTextSpan(el, 'lp-result', '');
 	        lpAppendTextSpan(result, 'lp-scoreline', parsed.scoreline);
 	      };
@@ -25524,8 +25537,11 @@ if(hsBody){
           const l = String(line || '').replace(/\s+/g,' ').trim();
           if (!st || !l) return;
           st.injectQueue = Array.isArray(st.injectQueue) ? st.injectQueue : [];
+          st.recentInjectedLines = Array.isArray(st.recentInjectedLines) ? st.recentInjectedLines : [];
           st.injectQueue.push(l);
           st.injectQueue = st.injectQueue.slice(-LP_BUFFER);
+          st.recentInjectedLines.push({ line:l, at:Date.now() });
+          st.recentInjectedLines = st.recentInjectedLines.filter(x => x && (Date.now() - Number(x.at || 0)) < 30000).slice(-LP_BUFFER);
           st.hold = 0;
         };
       }catch(_e){}
@@ -25790,6 +25806,30 @@ if(hsBody){
             }
           }catch(_e){}
 
+          // NEW PLAYER is a real feed event, not a one-session animation.
+          // Rebuild recent player joins from the cloud-synced player cache so a
+          // refresh still shows them without creating a second data authority.
+          try{
+            const players = (typeof getSavedPlayers === 'function') ? getSavedPlayers() : [];
+            const cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
+            const joins = (Array.isArray(players) ? players : [])
+              .map(p => {
+                const joined = p && (p.joinedAt || p.created_at || p.createdAt);
+                const ts = joined ? new Date(joined).getTime() : NaN;
+                if (!p || !p.name || !Number.isFinite(ts) || ts < cutoff) return null;
+                return {
+                  event_ts: new Date(ts).toISOString(),
+                  event_id: 'player:' + String(p.id || p.name) + ':' + String(ts),
+                  event_kind: 'new_player',
+                  line_text: '🚨 NEW PLAYER - ' + String(p.name).trim() + ' - Welcome to Shateki Quest 🎯'
+                };
+              })
+              .filter(Boolean)
+              .sort((a,b) => new Date(b.event_ts).getTime() - new Date(a.event_ts).getTime())
+              .slice(0, 8);
+            if (joins.length) items = ([]).concat(items || [], joins);
+          }catch(_e){}
+
           const mid = document.querySelector('#homeLivePrinter .lp-mid');
           const hold = document.querySelector('#homeLivePrinter .home-hold-overlay');
 
@@ -25851,7 +25891,14 @@ if(hsBody){
           });
           // <<< PATCH:LIVE_PRINTER_DATE_HEADERS END
 
-          const collapsedLines = lpCollapseRoundPBOverflow(lines);
+          let collapsedLines = lpCollapseRoundPBOverflow(lines);
+          const nowMs = Date.now();
+          st.recentInjectedLines = (Array.isArray(st.recentInjectedLines) ? st.recentInjectedLines : [])
+            .filter(x => x && (nowMs - Number(x.at || 0)) < 30000);
+          if (st.recentInjectedLines.length) {
+            const recent = new Set(st.recentInjectedLines.map(x => String(x.line || '').trim()).filter(Boolean));
+            collapsedLines = collapsedLines.filter(line => !recent.has(String(line || '').trim()));
+          }
           const sig0 = sorted[0] ? lpSig(sorted[0]) : '';
           const shouldRefresh = forceFull || (sig0 && sig0 !== st.lastSig) || !Array.isArray(st.bufLines);
 
@@ -25861,14 +25908,21 @@ if(hsBody){
             st.lastSig = sig0 || st.lastSig;
           }
 
-          // Start empty on first load; events scroll in from bottom one-by-one.
+          // First successful sync should look complete immediately. Subsequent
+          // events still move through the normal scheduler/animation.
           if (!st.lpStarted) {
             st.lpStarted = true;
-            st.lpCursor = 0;
-            st.displayLines = Array.from({ length: LP_VISIBLE }, () => '');
+            const firstWindow = st.bufLines.slice(0, LP_VISIBLE);
+            while (firstWindow.length < LP_VISIBLE) firstWindow.push('');
+            st.displayLines = firstWindow;
+            st.lpCursor = st.bufLines.length ? (Math.min(LP_VISIBLE, st.bufLines.length) % st.bufLines.length) : 0;
+            st.hold = 2;
             lpEnsureRows(st.displayLines);
           } else if (!Array.isArray(st.displayLines) || st.displayLines.length !== LP_VISIBLE) {
-            st.displayLines = Array.from({ length: LP_VISIBLE }, () => '');
+            const firstWindow = st.bufLines.slice(0, LP_VISIBLE);
+            while (firstWindow.length < LP_VISIBLE) firstWindow.push('');
+            st.displayLines = firstWindow;
+            lpEnsureRows(st.displayLines);
           }
         } finally {
           st.syncing = false;
