@@ -205,6 +205,20 @@ async function install(page) {
     window.__ms2PowerRanks = null;
     window.__ms2PowerRanksAt = 0;
 
+    // Player Stats consumes the shared Official Power Rank provider. Stub that
+    // public seam directly so this UI fixture tests rendering/value plumbing,
+    // not whichever backend implementation happened to initialise during boot.
+    const canonicalPowerRows = [
+      { player:'Jo R', playerKey:'jo r', rounds:56, avgRound:9.50, powerRank:9.50, rankPos:1, qualifiesRounds:true, qualifiesRecent:true, qualified:true, active:true },
+      { player:'Mia K', playerKey:'mia k', rounds:56, avgRound:9.10, powerRank:9.10, rankPos:2, qualifiesRounds:true, qualifiesRecent:true, qualified:true, active:true },
+      { player:'Alex S', playerKey:'alex s', rounds:56, avgRound:8.75, powerRank:8.75, rankPos:3, qualifiesRounds:true, qualifiesRecent:true, qualified:true, active:true },
+    ];
+    window.getOfficialPowerRows = async () => canonicalPowerRows.map((r) => ({ ...r }));
+    window.__sqPowerRankingRowsFromCleanView = async (mode) =>
+      String(mode || 'official').toLowerCase() === 'official'
+        ? canonicalPowerRows.map((r) => ({ ...r }))
+        : [];
+
     // 6) bust XP/achievement caches so they re-read through the stub
     if (window.SQ_XP) { window.SQ_XP._cache = null; window.SQ_XP._cacheAt = 0; }
     if (window.SQ_ACH) {
