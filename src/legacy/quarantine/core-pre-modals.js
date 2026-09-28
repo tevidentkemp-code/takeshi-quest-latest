@@ -2303,6 +2303,24 @@ if(hsBody){
         }
       };
 
+      if (!window.__homeLivePlayerCacheListener){
+        window.__homeLivePlayerCacheListener = true;
+        document.addEventListener('sq:savedPlayersUpdated', () => {
+          const refresh = (attempt = 0) => {
+            const st = window.__homeLivePrinterState;
+            if (!st) return;
+            if (st.syncing && attempt < 4) {
+              setTimeout(() => refresh(attempt + 1), 200);
+              return;
+            }
+            if (st.syncing) return;
+            st.lastSyncMs = Date.now();
+            lpSync(true);
+          };
+          refresh(0);
+        });
+      }
+
 if (!window.__homeLivePrinterInterval){
         window.__homeLivePrinterInterval = setInterval(()=>{
           const st = window.__homeLivePrinterState;
