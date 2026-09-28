@@ -87,40 +87,14 @@
     }
   }
 
-  function renderLiveImmediately(){
-    // >>> PATCH:VIDE_EMPTY_FIRST_LOAD START
-    // Keep START SCREEN > LIVE UPDATES VIDE empty on load.
-    // The normal printer loop will then scroll/type fresh lines up from the bottom.
-    // This prevents a prefilled table duplicating the first typed feed line.
-    try{
-      var st = window.__homeLivePrinterState;
-      var body = document.getElementById('homeLivePrinterRows');
-      if (st && !st.__sqVideInitialBlanked){
-        st.__sqVideInitialBlanked = true;
-        st.lpStarted = false;
-        st.displayLines = Array.from({ length: 9 }, function(){ return ''; });
-        if (body){
-          body.innerHTML = '';
-          for (var i=0;i<9;i++){
-            body.insertAdjacentHTML('beforeend','<tr class="lp-row"><td class="lp-line"><span class="lp-ellipsis"></span></td></tr>');
-          }
-        }
-      }
-    }catch(_){ }
-    return false;
-    // <<< PATCH:VIDE_EMPTY_FIRST_LOAD END
-  }
-
   function boot(){
+    // LIVE UPDATES first-load rows are owned entirely by the main printer.
+    // Do not rebuild its tbody from this compatibility layer: the main
+    // renderer reserves the canonical row count and starts from an empty
+    // display model itself.
     setTimeout(refreshPowerFast, 80);
     setTimeout(refreshPowerFast, 800);
     setTimeout(refreshPowerFast, 2000);
-
-    var tries = 0;
-    var id = setInterval(function(){
-      tries += 1;
-      if (renderLiveImmediately() || tries > 24) clearInterval(id);
-    }, 250);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once:true });
