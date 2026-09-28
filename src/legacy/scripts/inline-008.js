@@ -144,7 +144,13 @@
     note.style.fontSize = '.86rem';
     note.textContent = 'Profile edits update avatar, first name, last name, nickname and Player Hub password. Historic player name key stays intact.';
 
-    body.append(sub, firstF.wrap, lastF.wrap, nickF.wrap, passF.wrap, note);
+    var status = document.createElement('div');
+    status.className = 'sr-only';
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    status.setAttribute('aria-atomic', 'true');
+
+    body.append(sub, firstF.wrap, lastF.wrap, nickF.wrap, passF.wrap, note, status);
     overlay.appendChild(body);
     __sqEnhancePlayerHubAvatarEditor(overlay, player);
 
@@ -165,7 +171,25 @@
     var saveBtn = document.createElement('button');
     saveBtn.className = 'btn primary';
     saveBtn.textContent = 'Save';
+    var delBtn;
+    var closeBtn;
+    var editorBusy = false;
+    function setEditorBusy(action, active, message){
+      editorBusy = !!active;
+      overlay.setAttribute('aria-busy', editorBusy ? 'true' : 'false');
+      [backBtn, closeBtn, saveBtn, delBtn].forEach(function(btn){ if (btn) btn.disabled = editorBusy; });
+      if (saveBtn) {
+        saveBtn.textContent = (editorBusy && action === 'save') ? 'Saving…' : 'Save';
+        saveBtn.setAttribute('aria-busy', (editorBusy && action === 'save') ? 'true' : 'false');
+      }
+      if (delBtn) {
+        delBtn.textContent = (editorBusy && action === 'delete') ? 'Deleting…' : 'Delete Profile';
+        delBtn.setAttribute('aria-busy', (editorBusy && action === 'delete') ? 'true' : 'false');
+      }
+      status.textContent = message || '';
+    }
     saveBtn.onclick = async function(){
+      if (editorBusy) return;
       var first = String(firstF.input.value || '').trim();
       var last  = String(lastF.input.value  || '').trim();
       var nick  = String(nickF.input.value  || '').trim();
@@ -179,6 +203,7 @@
         ? __sqNormalizeInitials('', fullName)
         : fullName.split(/\s+/).map(function(x){ return x ? x.charAt(0).toUpperCase() : ''; }).join('').slice(0,2);
 
+      setEditorBusy('save', true, 'Saving profile…');
       try{
         var id = player.id;
         var nmOld = player.name;
@@ -187,6 +212,7 @@
           id = key && key.id ? key.id : null;
         }
         if (!id){
+          setEditorBusy('save', false, 'Save failed. Your changes are still here.');
           __sqToast('Save failed: missing player id');
           return;
         }
@@ -222,16 +248,18 @@
         if (openerOverlay) openerOverlay.remove();
       }catch(err){
         console.error(err);
+        setEditorBusy('save', false, 'Save failed. Your changes are still here.');
         var msg = (err && (err.message || err.details)) ? String(err.message || err.details) : '';
         if (/duplicate key|unique/i.test(msg)) __sqToast('Save failed: name already exists');
         else __sqToast(msg || 'Save failed');
       }
     };
 
-    var delBtn = document.createElement('button');
+    delBtn = document.createElement('button');
     delBtn.className = 'btn danger';
     delBtn.textContent = 'Delete Profile';
     delBtn.onclick = async function(){
+      if (editorBusy) return;
       var nmOld = player.name;
       if (!nmOld){ __sqToast('Invalid player'); return; }
 
@@ -247,6 +275,7 @@
       }catch(_){}
 
       if (!confirm('Delete ' + String(player.name || 'this player') + '?')) return;
+      setEditorBusy('delete', true, 'Deleting profile…');
       try{
         if (typeof cloudDeletePlayer === 'function'){
           await cloudDeletePlayer(player.id ? { id: player.id, name: player.name } : player.name);
@@ -261,11 +290,12 @@
         if (openerOverlay) openerOverlay.remove();
       }catch(err){
         console.error(err);
+        setEditorBusy('delete', false, 'Delete failed. Profile was not removed.');
         __sqToast('Delete failed');
       }
     };
 
-    var closeBtn = document.createElement('button');
+    closeBtn = document.createElement('button');
     closeBtn.className = 'btn';
     closeBtn.textContent = 'Close';
     closeBtn.onclick = function(){ overlay.remove(); if (openerOverlay) openerOverlay.remove(); };
