@@ -38,6 +38,19 @@ const FIXTURE = {
     { players: ['Alex S', 'Sam T'], totals: [40, 55], ts: '2026-03-01T20:00:00Z', board: null, gameVariant: 'turbo', mode: 'turbo' },
   ],
   views: {
+    // Canonical clean-round source used by the current Power Rank guard.
+    // Keep this fixture self-contained so boot timing cannot decide whether the
+    // profile reads the clean-round path or an older fallback.
+    mv_player_round_scores_mode_clean_app: [
+      { mode_key:'official', player:'Jo R',  player_key:'jo r',  game_id:'pr-jo',   created_at:'2026-09-11T20:04:00Z', round_index:0, round_score:9.50 },
+      { mode_key:'official', player:'Mia K', player_key:'mia k', game_id:'pr-mia',  created_at:'2026-09-11T20:03:00Z', round_index:0, round_score:9.10 },
+      { mode_key:'official', player:'Alex S',player_key:'alex s',game_id:'pr-alex', created_at:'2026-09-11T20:02:00Z', round_index:0, round_score:8.75 },
+    ],
+    v_games_mode_classified: [
+      { id:'pr-jo', mode_key:'official' },
+      { id:'pr-mia', mode_key:'official' },
+      { id:'pr-alex', mode_key:'official' },
+    ],
     v_player_game_scores_official_clean: [
       { game_id:'jo-4', ts:'2026-09-11T20:04:00Z', player_name:'Jo R', score:133 },
       { game_id:'jo-3', ts:'2026-09-10T20:04:00Z', player_name:'Jo R', score:133 },
@@ -163,7 +176,7 @@ async function install(page) {
     const mkQuery = (table) => {
       const q = {
         _t: table, _from: null, _to: null,
-        select() { return q; }, eq() { return q; }, ilike() { return q; },
+        select() { return q; }, eq() { return q; }, ilike() { return q; }, in() { return q; },
         or() { return q; }, order() { return q; }, limit() { return q; },
         range(from, to) { q._from = from; q._to = to; return q; },
         then(res) {
