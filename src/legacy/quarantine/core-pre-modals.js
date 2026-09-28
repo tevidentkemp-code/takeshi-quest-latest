@@ -882,6 +882,9 @@ if(hsBody){
       const lpState = window.__homeLivePrinterState;
       if (lpState) {
         if (typeof lpState.paused !== 'boolean') lpState.paused = false;
+        // Home always starts playing. A pause is a deliberate interaction for
+        // the current visible session, never an initial/loading state.
+        if (!lpState.lpStarted) lpState.paused = false;
         if (!Array.isArray(lpState.injectQueue)) lpState.injectQueue = [];
       }
       const lpPauseBtn = document.getElementById('homeLivePauseBtn');
@@ -1282,6 +1285,7 @@ if(hsBody){
 	      };
 
 	      const lpDisplayText = (line) => {
+	        if (String(line || '').startsWith('__SQ_PLAYER_ROW__')) return String(line || '').slice('__SQ_PLAYER_ROW__'.length);
 	        const parsed = lpParseResultLine(line);
 	        if (parsed) return `${parsed.abbr} / ${parsed.time} ${parsed.scoreline}`.trim();
 	        const match = lpParseMatchResultLine(line);
@@ -1456,6 +1460,8 @@ if(hsBody){
         if (!tr) return;
         const isRecord = lpIsRecordLine(line);
         const isWorldRecord = lpIsWorldRecordLine(line);
+        const isGamePlayers = String(line || '').startsWith('__SQ_PLAYER_ROW__');
+        const isGameHead = /^(CLA|TBO|PRA)\s*\/\s*\d{2}:\d{2}$/.test(String(line || '').trim());
         const isRoundPB = !isRecord && lpIsRoundPBLine(line);
 	        const isGamePB = !isRecord && lpIsGamePBLine(line);
 	        const isMatchResult = lpIsMatchResultLine(line);
@@ -1465,6 +1471,8 @@ if(hsBody){
 	        const modeInfo = (!isAlert && !isDateHdr) ? lpModeDisplayFromLine(line) : { mode: '' };
 	        tr.classList.toggle('lp-record', isRecord);
 	        tr.classList.toggle('lp-world-record', isWorldRecord);
+	        tr.classList.toggle('lp-game-head', isGameHead);
+	        tr.classList.toggle('lp-game-players', isGamePlayers);
 	        tr.classList.toggle('lp-roundpb', isRoundPB);
 	        tr.classList.toggle('lp-gamepb', isGamePB);
 	        tr.classList.toggle('lp-match-result', isMatchResult);
@@ -1747,6 +1755,26 @@ if(hsBody){
         });
         publishDiag();
         return out;
+      };
+
+      const lpBuildRecentPlayerItems = () => {
+        try{
+          const cutoff = Date.now() - (14 * 86400000);
+          const rows = (typeof getSavedPlayers === 'function') ? (getSavedPlayers() || []) : [];
+          return rows.map(p => {
+            const name = String(p && p.name || '').trim();
+            const ts = p && (p.joinedAt || p.created_at || p.createdAt);
+            const ms = ts ? Date.parse(ts) : NaN;
+            if (!name || !Number.isFinite(ms) || ms < cutoff) return null;
+            return {
+              event_ts: new Date(ms).toISOString(),
+              ts: new Date(ms).toISOString(),
+              event_id: 'new_player:' + String(p.id || name).toLowerCase(),
+              event_kind: 'new_player',
+              line_text: `🚨 NEW PLAYER - ${name} - Welcome to Shateki Quest 🎯`
+            };
+          }).filter(Boolean).slice(0, 12);
+        }catch(_e){ return []; }
       };
 
       const lpBuildDerivedPrinterItems = async () => {
@@ -2162,6 +2190,12 @@ if(hsBody){
               items = ([]).concat(items || [], derived);
             }
           }catch(_e){}
+          try{
+            const recentPlayers = lpBuildRecentPlayerItems();
+            if (Array.isArray(recentPlayers) && recentPlayers.length){
+              items = ([]).concat(items || [], recentPlayers);
+            }
+          }catch(_e){}
 
           const mid = document.querySelector('#homeLivePrinter .lp-mid');
           const hold = document.querySelector('#homeLivePrinter .home-hold-overlay');
@@ -2206,6 +2240,13 @@ if(hsBody){
             return s;
           };
 
+          const LP_PLAYER_PREFIX = '__SQ_PLAYER_ROW__';
+          const _lpPushResultRows = (line) => {
+            const parsed = lpParseResultLine(line);
+            if (!parsed) { lines.push(line); return; }
+            lines.push(`${parsed.abbr} / ${parsed.time}`);
+            lines.push(LP_PLAYER_PREFIX + parsed.scoreline);
+          };
           const lines = [];
           let _lpLastKey = null;
           filtered.forEach(it=>{
@@ -2218,7 +2259,7 @@ if(hsBody){
               lines.push(_lpFmtHeader(d));
               _lpLastKey = key;
             }
-            lines.push(_lpStripDate(lpFmtLine(it)));
+            _lpPushResultRows(_lpStripDate(lpFmtLine(it)));
             const beerAlert = lpBeerAlertLineForGame(it);
             if (beerAlert) lines.push(beerAlert);
           });
@@ -2234,14 +2275,21 @@ if(hsBody){
             st.lastSig = sig0 || st.lastSig;
           }
 
-          // Start empty on first load; events scroll in from bottom one-by-one.
+          // Paint the current feed immediately on first load. v0.8.0 started
+          // with 15 blanks and took many scroll cycles to fill the panel.
           if (!st.lpStarted) {
             st.lpStarted = true;
-            st.lpCursor = 0;
-            st.displayLines = Array.from({ length: LP_VISIBLE }, () => '');
+            st.paused = false;
+            lpSyncPauseButton();
+            const firstWindow = st.bufLines.slice(0, LP_VISIBLE);
+            st.displayLines = firstWindow.concat(Array.from({ length: Math.max(0, LP_VISIBLE - firstWindow.length) }, () => ''));
+            st.lpCursor = st.bufLines.length ? (Math.min(LP_VISIBLE, st.bufLines.length) % st.bufLines.length) : 0;
+            st.hold = 2;
             lpEnsureRows(st.displayLines);
           } else if (!Array.isArray(st.displayLines) || st.displayLines.length !== LP_VISIBLE) {
-            st.displayLines = Array.from({ length: LP_VISIBLE }, () => '');
+            const win = st.bufLines.slice(0, LP_VISIBLE);
+            st.displayLines = win.concat(Array.from({ length: Math.max(0, LP_VISIBLE - win.length) }, () => ''));
+            lpEnsureRows(st.displayLines);
           }
         } finally {
           st.syncing = false;
