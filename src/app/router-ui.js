@@ -37,6 +37,7 @@ function show(id){
   buildPad();
   if (id === 'players') { try{ __msUpdateStartEnabled(); }catch(_){} }
   if (id === 'details') {
+    try { if (typeof window.__sqHomeLiveEnsurePlaying === 'function') window.__sqHomeLiveEnsurePlaying(); } catch(_){}
     try {
       if (typeof window.buildStartTicker === 'function') { window.buildStartTicker(); }
     } catch(e) { console.error(e); }
