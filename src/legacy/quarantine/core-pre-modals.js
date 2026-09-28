@@ -1106,6 +1106,7 @@ if(hsBody){
       const lpFmtLine = (g) => {
         // Prefer server-provided line_text, but normalize formatting for UI.
         const raw = String((g && g.line_text) ? g.line_text : '').trim() || null;
+        if (raw && g && g.event_kind === 'new_player') return raw;
 
         const buildFallback = () => {
           const dt = lpFmtDT(g);
