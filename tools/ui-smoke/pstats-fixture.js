@@ -168,7 +168,22 @@ async function install(page) {
     };
     const fakeSb = { from: (t) => mkQuery(t) };
     window.sb = fakeSb; window.__sb = fakeSb;
-    // 5) bust XP/achievement caches so they re-read through the stub
+
+    // 5) bust Power Rank caches populated during normal boot before this
+    // deterministic fixture replaces the cloud seams. Without this, a stale
+    // empty/production result can win the race and make the profile show "—".
+    if (typeof window.__sqInvalidatePowerOfficialFetchCache === 'function') {
+      window.__sqInvalidatePowerOfficialFetchCache('pstats fixture install');
+    } else {
+      window.__sqPowerOfficialFetchGeneration = Number(window.__sqPowerOfficialFetchGeneration || 0) + 1;
+      window.__sqPowerOfficialFetchInFlight = null;
+      window.__sqPowerOfficialFetchCache = null;
+      window.__sqPowerOfficialFetchAt = 0;
+    }
+    window.__ms2PowerRanks = null;
+    window.__ms2PowerRanksAt = 0;
+
+    // 6) bust XP/achievement caches so they re-read through the stub
     if (window.SQ_XP) { window.SQ_XP._cache = null; window.SQ_XP._cacheAt = 0; }
     if (window.SQ_ACH) {
       window.SQ_ACH._cache = {};
