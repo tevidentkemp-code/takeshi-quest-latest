@@ -54,6 +54,13 @@ const FIXTURE = {
       { game_id:'sam-2', ts:'2026-09-09T20:01:00Z', player_name:'Sam T', score:100 },
       { game_id:'sam-1', ts:'2026-09-08T20:01:00Z', player_name:'Sam T', score:100 },
     ],
+    // Canonical Official Power Rankings source used by production.
+    v_power_rankings_official_current_clean: [
+      { player: 'Jo R', player_key: 'jo r', games_used: 4, rounds_used: 56, total_points: 532, avg_per_round: 9.5, last_played_at: '2026-09-11T20:04:00Z', latest_scores: [133,133,133,133], source_game_ids: ['jo-4','jo-3','jo-2','jo-1'], rank_pos: 1 },
+      { player: 'Mia K', player_key: 'mia k', games_used: 4, rounds_used: 56, total_points: 510, avg_per_round: 9.1, last_played_at: '2026-09-11T20:03:00Z', latest_scores: [128,128,127,127], source_game_ids: ['mia-4','mia-3','mia-2','mia-1'], rank_pos: 2 },
+      { player: 'Alex S', player_key: 'alex s', games_used: 4, rounds_used: 56, total_points: 490, avg_per_round: 8.75, last_played_at: '2026-09-11T20:02:00Z', latest_scores: [125,125,120,120], source_game_ids: ['alex-4','alex-3','alex-2','alex-1'], rank_pos: 3 },
+    ],
+    // Retained only for legacy tests that intentionally address the old view.
     v_power_rankings_last56_official_clean: [
       { player: 'Jo R', player_key: 'jo r', rounds_used: 56, total_points: 532, avg_per_round: 9.5, last_played_at: null, rank_pos: 1 },
       { player: 'Mia K', player_key: 'mia k', rounds_used: 56, total_points: 510, avg_per_round: 9.1, last_played_at: null, rank_pos: 2 },
