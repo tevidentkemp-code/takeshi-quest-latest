@@ -88,6 +88,22 @@ fs.mkdirSync(out, { recursive: true });
     assert.equal(resumed.paused, false);
     assert.equal(resumed.transition, '', 'Reduced motion must not leave a transform transition active');
 
+    // WR is a locked semantic colour: verified World Records must be purple,
+    // not inherited from the generic alert/PB gold treatment.
+    await page.evaluate(() => window.__homeLivePrinterInjectLine('🚨 ROUND WR / 18s - SC047 (90) - S0 / D0 / T1'));
+    await page.waitForFunction(() => !!document.querySelector('#homeLivePrinterRows .lp-row.lp-world-record'), { timeout: 5000 });
+    const wr = await page.locator('#homeLivePrinterRows .lp-row.lp-world-record').last().evaluate(row => {
+      const chip = row.querySelector('.lp-record-chip');
+      return {
+        text: row.textContent || '',
+        rowColor: getComputedStyle(row.querySelector('.lp-ellipsis') || row).color,
+        chipColor: chip ? getComputedStyle(chip).color : ''
+      };
+    });
+    assert.match(wr.text, /ROUND WR/i, 'World Record row missing WR content');
+    assert.match(wr.rowColor, /196,\s*153,\s*255/, 'World Record row must use the locked purple semantic');
+    assert.match(wr.chipColor, /214,\s*184,\s*255/, 'World Record chip must use the locked purple semantic');
+
     await page.screenshot({ path: path.join(out, 'live-updates-stable.png') });
     const pageErrors = consoleErrs.filter(x => x.startsWith('pageerror:'));
     assert.equal(pageErrors.length, 0, JSON.stringify(pageErrors));
