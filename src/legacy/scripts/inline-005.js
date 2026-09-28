@@ -25036,6 +25036,7 @@ if(hsBody){
 
       const lpStripBang = (s) => String(s || '').replace(/^🚨\s*/,'').trim();
       const lpIsRecordLine = (line) => /^NEW GAME RECORD SCORE\b/i.test(lpStripBang(line));
+      const lpIsWorldRecordLine = (line) => /^(?:NEW GAME RECORD SCORE|ROUND WR|WR\b|WORLD RECORD\b)/i.test(lpStripBang(line));
       const lpIsRoundPBLine = (line) => /^ROUND PB\b/i.test(lpStripBang(line));
       const lpIsGamePBLine  = (line) => /^GAME PB\b/i.test(lpStripBang(line));
       const lpIsMatchResultLine = (line) => /^\(\s*(CLA|TBO)\s+RESULT\s*\)\s*\/\s*/i.test(String(line || '').replace(/\s+/g,' ').trim()) ||
@@ -25081,6 +25082,7 @@ if(hsBody){
       const lpApplyRowClasses = (tr, line) => {
         if (!tr) return;
         const isRecord = lpIsRecordLine(line);
+        const isWorldRecord = lpIsWorldRecordLine(line);
         const isRoundPB = !isRecord && lpIsRoundPBLine(line);
 	        const isGamePB = !isRecord && lpIsGamePBLine(line);
 	        const isMatchResult = lpIsMatchResultLine(line);
@@ -25089,6 +25091,7 @@ if(hsBody){
 	        const isDateHdr = lpIsDateHdrLine(line);
 	        const modeInfo = (!isAlert && !isDateHdr) ? lpModeDisplayFromLine(line) : { mode: '' };
 	        tr.classList.toggle('lp-record', isRecord);
+	        tr.classList.toggle('lp-world-record', isWorldRecord);
 	        tr.classList.toggle('lp-roundpb', isRoundPB);
 	        tr.classList.toggle('lp-gamepb', isGamePB);
 	        tr.classList.toggle('lp-match-result', isMatchResult);
