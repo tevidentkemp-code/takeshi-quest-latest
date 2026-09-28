@@ -13,7 +13,6 @@ function mustNot(source, needle, label) {
 const foundations = read('src/styles/core/foundations-tokens.css');
 const startGame = read('src/styles/modals/start-game.css');
 const liveV2 = read('src/styles/live-game/v2-panel.css');
-const turbo = read('src/legacy/styles/inline-016.css');
 const gameComplete = read('src/styles/modals/game-complete.css');
 const leaderboardBase = read('src/styles/league/leaderboard-base.css');
 const leaderboardPolish = read('src/styles/league/leaderboard-polish.css');
@@ -41,10 +40,9 @@ must(liveV2, 'border-radius: var(--sq-radius-stage);', 'Live V2 stage token');
 must(liveV2, 'border-radius: var(--sq-radius-panel);', 'Live V2 panel token');
 must(liveV2, 'border-radius: var(--sq-radius-full);', 'Live V2 full token');
 
-must(turbo, 'inset:calc(0px - var(--sq-ring-outset));', 'Turbo outside ring inset');
-must(turbo, 'border-radius:calc(var(--sq-radius-panel) + var(--sq-ring-outset));', 'Turbo concentric radius');
-must(turbo, 'padding:var(--sq-ring-outset);', 'Turbo ring thickness');
-mustNot(turbo, 'inset:-4px; border-radius:22px; padding:4px;', 'old Turbo magic-number geometry');
+must(liveV2, 'inset: calc(0px - var(--sq-ring-outset)) !important;', 'Turbo outside ring inset');
+must(liveV2, 'border-radius: calc(var(--sq-radius-panel) + var(--sq-ring-outset)) !important;', 'Turbo concentric radius');
+must(liveV2, 'padding: var(--sq-ring-outset) !important;', 'Turbo ring thickness');
 
 must(gameComplete, 'border-radius: var(--sq-radius-shell) !important;', 'Game Complete shell');
 must(gameComplete, 'border-radius: var(--sq-radius-stage) !important;', 'Game Complete stage');
