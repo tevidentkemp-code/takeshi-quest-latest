@@ -4697,6 +4697,14 @@ async function showAddPlayerDialog(index){
     if (!savePending) setSaveEnabled();
   };
 
+  const paintSaveState = () => new Promise(resolve => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+  const keepSaveStateVisible = async (startedAt, minMs = 650) => {
+    const elapsed = performance.now() - startedAt;
+    if (elapsed < minMs) await new Promise(resolve => setTimeout(resolve, minMs - elapsed));
+  };
+
   const maybeAutoInitials = () => {
     if (!initEl) return;
     if (manualInitials) return;
@@ -4775,7 +4783,9 @@ async function showAddPlayerDialog(index){
       const nickname = String(nickEl?.value || '').trim();
 
       chosenName = fullName;
+      const saveFeedbackStartedAt = performance.now();
       setSaveState(true, 'Saving player…');
+      await paintSaveState();
 
       try {
         await cloudCreatePlayer(fullName, { initials, nickname, first_name: first, last_name: last, avatar_id: chosenAvatarId });
@@ -4833,7 +4843,10 @@ async function showAddPlayerDialog(index){
         }
       }catch(err){ try{ console.warn('add-to-card after save failed', err); }catch(_){ } }
 
+      await keepSaveStateVisible(saveFeedbackStartedAt);
+      if (saveBtn) saveBtn.textContent = 'SAVED ✓';
       if (saveStatus) saveStatus.textContent = 'Player saved.';
+      await new Promise(resolve => setTimeout(resolve, 250));
       finish(cardMsg);
     };
   }
