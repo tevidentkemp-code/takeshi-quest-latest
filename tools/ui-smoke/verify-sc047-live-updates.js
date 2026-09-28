@@ -7,7 +7,7 @@ const out = process.env.SQ_SCREENSHOTS || path.join(__dirname, '../../output/pla
 fs.mkdirSync(out, { recursive: true });
 
 (async () => {
-  const { browser, page, consoleErrs } = await H.launch(undefined, { seedPlayers: true });
+  const { browser, page, consoleErrs } = await H.launch();
   try {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await H.boot(page, { settle: 3000 });
@@ -17,13 +17,14 @@ fs.mkdirSync(out, { recursive: true });
       !!document.getElementById('homeLivePauseBtn')
     , { timeout: 20000 });
 
-    // Force one event through the real scheduler so the test is independent
-    // of cloud availability and of whether an empty tbody has a visible box.
-    await page.evaluate(() => window.__homeLivePrinterInjectLine('SC047 BOOTSTRAP EVENT'));
+    // Persist a presentation event, then reload. This mirrors a newly-created
+    // player event and proves the feed can recover immediately after refresh
+    // even when the cloud is unavailable in the QA harness.
+    await page.evaluate(() => window.__homeLivePrinterPersistLine('🚨 NEW PLAYER - Refresh Tester - Welcome to Shateki Quest 🎯', 'new_player'));
     await page.waitForFunction(() => {
       const rows = document.querySelectorAll('#homeLivePrinterRows tr.lp-row');
       const body = document.getElementById('homeLivePrinterRows');
-      return rows.length === 15 && !!body && body.textContent.includes('SC047 BOOTSTRAP EVENT');
+      return rows.length === 15 && !!body && body.textContent.includes('Refresh Tester');
     }, { timeout: 5000 });
 
     const baseline = await page.evaluate(() => {
@@ -46,7 +47,7 @@ fs.mkdirSync(out, { recursive: true });
       paused: !!window.__homeLivePrinterState?.paused,
       label: document.getElementById('homeLivePauseBtn')?.textContent?.trim()
     }));
-    assert.match(firstLoad.text, /NEW PLAYER/i, 'first successful sync must populate the visible feed immediately');
+    assert.match(firstLoad.text, /Refresh Tester/i, 'persisted NEW PLAYER event must be visible before refresh');
     assert(firstLoad.height >= 320, 'home LIVE UPDATES must retain the fuller vertical composition');
     assert.equal(firstLoad.paused, false, 'home must never enter paused');
     assert.equal(firstLoad.label, 'PAUSE', 'playing state must show PAUSE, not PLAY');
@@ -58,7 +59,7 @@ fs.mkdirSync(out, { recursive: true });
       paused: !!window.__homeLivePrinterState?.paused,
       label: document.getElementById('homeLivePauseBtn')?.textContent?.trim()
     }));
-    assert.match(refreshed.text, /NEW PLAYER/i, 'NEW PLAYER must survive a page refresh via the saved-player cache');
+    assert.match(refreshed.text, /Refresh Tester/i, 'NEW PLAYER must survive a page refresh via the persisted feed event cache');
     assert.equal(refreshed.paused, false, 'refresh must start LIVE UPDATES playing');
     assert.equal(refreshed.label, 'PAUSE');
 
