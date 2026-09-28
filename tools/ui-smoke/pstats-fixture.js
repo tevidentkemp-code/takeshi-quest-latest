@@ -38,48 +38,28 @@ const FIXTURE = {
     { players: ['Alex S', 'Sam T'], totals: [40, 55], ts: '2026-03-01T20:00:00Z', board: null, gameVariant: 'turbo', mode: 'turbo' },
   ],
   views: {
-    // Canonical clean-round source used by the current Power Rank guard.
-    // Keep this fixture self-contained so boot timing cannot decide whether the
-    // profile reads the clean-round path or an older fallback.
-    mv_player_round_scores_mode_clean_app: [
-      { mode_key:'official', player:'Jo R',  player_key:'jo r',  game_id:'pr-jo',   created_at:'2026-09-11T20:04:00Z', round_index:0, round_score:9.50 },
-      { mode_key:'official', player:'Mia K', player_key:'mia k', game_id:'pr-mia',  created_at:'2026-09-11T20:03:00Z', round_index:0, round_score:9.10 },
-      { mode_key:'official', player:'Alex S',player_key:'alex s',game_id:'pr-alex', created_at:'2026-09-11T20:02:00Z', round_index:0, round_score:8.75 },
-    ],
-    v_games_mode_classified: [
-      { id:'pr-jo', mode_key:'official' },
-      { id:'pr-mia', mode_key:'official' },
-      { id:'pr-alex', mode_key:'official' },
-    ],
     v_player_game_scores_official_clean: [
-      { game_id:'jo-4', ts:'2026-09-11T20:04:00Z', player_name:'Jo R', score:133 },
-      { game_id:'jo-3', ts:'2026-09-10T20:04:00Z', player_name:'Jo R', score:133 },
-      { game_id:'jo-2', ts:'2026-09-09T20:04:00Z', player_name:'Jo R', score:133 },
-      { game_id:'jo-1', ts:'2026-09-08T20:04:00Z', player_name:'Jo R', score:133 },
-      { game_id:'mia-4', ts:'2026-09-11T20:03:00Z', player_name:'Mia K', score:128 },
-      { game_id:'mia-3', ts:'2026-09-10T20:03:00Z', player_name:'Mia K', score:128 },
-      { game_id:'mia-2', ts:'2026-09-09T20:03:00Z', player_name:'Mia K', score:127 },
-      { game_id:'mia-1', ts:'2026-09-08T20:03:00Z', player_name:'Mia K', score:127 },
-      { game_id:'alex-4', ts:'2026-09-11T20:02:00Z', player_name:'Alex S', score:125 },
-      { game_id:'alex-3', ts:'2026-09-10T20:02:00Z', player_name:'Alex S', score:125 },
-      { game_id:'alex-2', ts:'2026-09-09T20:02:00Z', player_name:'Alex S', score:120 },
-      { game_id:'alex-1', ts:'2026-09-08T20:02:00Z', player_name:'Alex S', score:120 },
-      { game_id:'sam-4', ts:'2026-09-11T20:01:00Z', player_name:'Sam T', score:100 },
-      { game_id:'sam-3', ts:'2026-09-10T20:01:00Z', player_name:'Sam T', score:100 },
-      { game_id:'sam-2', ts:'2026-09-09T20:01:00Z', player_name:'Sam T', score:100 },
-      { game_id:'sam-1', ts:'2026-09-08T20:01:00Z', player_name:'Sam T', score:100 },
+      { game_id:'jo-4', ts:__recentIso(1), player_name:'Jo R', score:133 },
+      { game_id:'jo-3', ts:__recentIso(2), player_name:'Jo R', score:133 },
+      { game_id:'jo-2', ts:__recentIso(3), player_name:'Jo R', score:133 },
+      { game_id:'jo-1', ts:__recentIso(4), player_name:'Jo R', score:133 },
+      { game_id:'mia-4', ts:__recentIso(1), player_name:'Mia K', score:128 },
+      { game_id:'mia-3', ts:__recentIso(2), player_name:'Mia K', score:128 },
+      { game_id:'mia-2', ts:__recentIso(3), player_name:'Mia K', score:127 },
+      { game_id:'mia-1', ts:__recentIso(4), player_name:'Mia K', score:127 },
+      { game_id:'alex-4', ts:__recentIso(1), player_name:'Alex S', score:125 },
+      { game_id:'alex-3', ts:__recentIso(2), player_name:'Alex S', score:125 },
+      { game_id:'alex-2', ts:__recentIso(3), player_name:'Alex S', score:120 },
+      { game_id:'alex-1', ts:__recentIso(4), player_name:'Alex S', score:120 },
+      { game_id:'sam-4', ts:__recentIso(1), player_name:'Sam T', score:100 },
+      { game_id:'sam-3', ts:__recentIso(2), player_name:'Sam T', score:100 },
+      { game_id:'sam-2', ts:__recentIso(3), player_name:'Sam T', score:100 },
+      { game_id:'sam-1', ts:__recentIso(4), player_name:'Sam T', score:100 },
     ],
-    // Canonical Official Power Rankings source used by production.
-    v_power_rankings_official_current_clean: [
-      { player: 'Jo R', player_key: 'jo r', games_used: 4, rounds_used: 56, total_points: 532, avg_per_round: 9.5, last_played_at: __recentIso(1), latest_scores: [133,133,133,133], source_game_ids: ['jo-4','jo-3','jo-2','jo-1'], rank_pos: 1 },
-      { player: 'Mia K', player_key: 'mia k', games_used: 4, rounds_used: 56, total_points: 510, avg_per_round: 9.1, last_played_at: __recentIso(2), latest_scores: [128,128,127,127], source_game_ids: ['mia-4','mia-3','mia-2','mia-1'], rank_pos: 2 },
-      { player: 'Alex S', player_key: 'alex s', games_used: 4, rounds_used: 56, total_points: 490, avg_per_round: 8.75, last_played_at: __recentIso(3), latest_scores: [125,125,120,120], source_game_ids: ['alex-4','alex-3','alex-2','alex-1'], rank_pos: 3 },
-    ],
-    // Retained only for legacy tests that intentionally address the old view.
     v_power_rankings_last56_official_clean: [
-      { player: 'Jo R', player_key: 'jo r', rounds_used: 56, total_points: 532, avg_per_round: 9.5, last_played_at: __recentIso(1), rank_pos: 1 },
-      { player: 'Mia K', player_key: 'mia k', rounds_used: 56, total_points: 510, avg_per_round: 9.1, last_played_at: __recentIso(2), rank_pos: 2 },
-      { player: 'Alex S', player_key: 'alex s', rounds_used: 56, total_points: 490, avg_per_round: 8.75, last_played_at: __recentIso(3), rank_pos: 3 },
+      { player: 'Jo R', player_key: 'jo r', rounds_used: 56, total_points: 532, avg_per_round: 9.5, last_played_at: null, rank_pos: 1 },
+      { player: 'Mia K', player_key: 'mia k', rounds_used: 56, total_points: 510, avg_per_round: 9.1, last_played_at: null, rank_pos: 2 },
+      { player: 'Alex S', player_key: 'alex s', rounds_used: 56, total_points: 490, avg_per_round: 8.75, last_played_at: null, rank_pos: 3 },
     ],
     v_player_best_official_ranked: [
       { player_name: 'Alex S', best_score: 168, best_score_pos: 38 },
@@ -176,7 +156,7 @@ async function install(page) {
     const mkQuery = (table) => {
       const q = {
         _t: table, _from: null, _to: null,
-        select() { return q; }, eq() { return q; }, ilike() { return q; }, in() { return q; },
+        select() { return q; }, eq() { return q; }, ilike() { return q; },
         or() { return q; }, order() { return q; }, limit() { return q; },
         range(from, to) { q._from = from; q._to = to; return q; },
         then(res) {
@@ -190,36 +170,7 @@ async function install(page) {
     };
     const fakeSb = { from: (t) => mkQuery(t) };
     window.sb = fakeSb; window.__sb = fakeSb;
-
-    // 5) bust Power Rank caches populated during normal boot before this
-    // deterministic fixture replaces the cloud seams. Without this, a stale
-    // empty/production result can win the race and make the profile show "—".
-    if (typeof window.__sqInvalidatePowerOfficialFetchCache === 'function') {
-      window.__sqInvalidatePowerOfficialFetchCache('pstats fixture install');
-    } else {
-      window.__sqPowerOfficialFetchGeneration = Number(window.__sqPowerOfficialFetchGeneration || 0) + 1;
-      window.__sqPowerOfficialFetchInFlight = null;
-      window.__sqPowerOfficialFetchCache = null;
-      window.__sqPowerOfficialFetchAt = 0;
-    }
-    window.__ms2PowerRanks = null;
-    window.__ms2PowerRanksAt = 0;
-
-    // Player Stats consumes the shared Official Power Rank provider. Stub that
-    // public seam directly so this UI fixture tests rendering/value plumbing,
-    // not whichever backend implementation happened to initialise during boot.
-    const canonicalPowerRows = [
-      { player:'Jo R', playerKey:'jo r', rounds:56, avgRound:9.50, powerRank:9.50, rankPos:1, qualifiesRounds:true, qualifiesRecent:true, qualified:true, active:true },
-      { player:'Mia K', playerKey:'mia k', rounds:56, avgRound:9.10, powerRank:9.10, rankPos:2, qualifiesRounds:true, qualifiesRecent:true, qualified:true, active:true },
-      { player:'Alex S', playerKey:'alex s', rounds:56, avgRound:8.75, powerRank:8.75, rankPos:3, qualifiesRounds:true, qualifiesRecent:true, qualified:true, active:true },
-    ];
-    window.getOfficialPowerRows = async () => canonicalPowerRows.map((r) => ({ ...r }));
-    window.__sqPowerRankingRowsFromCleanView = async (mode) =>
-      String(mode || 'official').toLowerCase() === 'official'
-        ? canonicalPowerRows.map((r) => ({ ...r }))
-        : [];
-
-    // 6) bust XP/achievement caches so they re-read through the stub
+    // 5) bust XP/achievement caches so they re-read through the stub
     if (window.SQ_XP) { window.SQ_XP._cache = null; window.SQ_XP._cacheAt = 0; }
     if (window.SQ_ACH) {
       window.SQ_ACH._cache = {};
