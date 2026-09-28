@@ -53,6 +53,15 @@ fs.mkdirSync(out, { recursive: true });
       };
     });
     assert.equal(baseline.count, 15, 'LIVE UPDATES must mount the canonical 15 stable rows');
+    const visibleGeometry = await page.evaluate(() => {
+      const mid = document.querySelector('#homeLivePrinter .lp-mid');
+      const rows = Array.from(document.querySelectorAll('#homeLivePrinterRows tr.lp-row'));
+      const mr = mid && mid.getBoundingClientRect();
+      const last = rows[rows.length - 1] && rows[rows.length - 1].getBoundingClientRect();
+      return { midBottom: mr && mr.bottom, lastBottom: last && last.bottom, midTop: mr && mr.top, firstTop: rows[0] && rows[0].getBoundingClientRect().top };
+    });
+    assert(visibleGeometry.lastBottom <= visibleGeometry.midBottom + 1, '15th LIVE UPDATES row must be fully visible: ' + JSON.stringify(visibleGeometry));
+    assert(visibleGeometry.firstTop >= visibleGeometry.midTop - 1, 'first LIVE UPDATES row must stay inside panel: ' + JSON.stringify(visibleGeometry));
     assert.equal(baseline.pause, true, 'LIVE UPDATES pause control missing');
     assert.equal(baseline.pressed, 'false', 'LIVE UPDATES should start playing');
 
