@@ -24184,6 +24184,7 @@ function arrangeStartActions(){
       printer.innerHTML = ''+
         '<div class="lp-top">'+
           '<span id="homeLpTopLine" class="lp-title">LIVE UPDATES</span>'+
+          '<button id="homeLivePauseBtn" class="lp-pause" type="button" aria-pressed="false" aria-label="Pause live updates">PAUSE</button>'+
         '</div>'+
         '<div class="lp-mid lp-mid-hold">'+
           '<div class="home-hold-overlay" aria-hidden="true">'+
@@ -24500,9 +24501,38 @@ if(hsBody){
           lastSyncMs: 0,
           syncing: false,
           forceFullEvery: 6, // every N syncs, hard refresh rows
-          syncCount: 0
+          syncCount: 0,
+          paused: false,
+          injectQueue: []
         };
       }
+      const lpState = window.__homeLivePrinterState;
+      if (lpState) {
+        if (typeof lpState.paused !== 'boolean') lpState.paused = false;
+        if (!Array.isArray(lpState.injectQueue)) lpState.injectQueue = [];
+      }
+      const lpPauseBtn = document.getElementById('homeLivePauseBtn');
+      const lpSyncPauseButton = () => {
+        if (!lpPauseBtn || !lpState) return;
+        const paused = !!lpState.paused;
+        lpPauseBtn.textContent = paused ? 'PLAY' : 'PAUSE';
+        lpPauseBtn.setAttribute('aria-pressed', paused ? 'true' : 'false');
+        lpPauseBtn.setAttribute('aria-label', paused ? 'Resume live updates' : 'Pause live updates');
+      };
+      if (lpPauseBtn && !lpPauseBtn.dataset.lpBound) {
+        lpPauseBtn.dataset.lpBound = '1';
+        lpPauseBtn.addEventListener('click', () => {
+          if (!lpState) return;
+          lpState.paused = !lpState.paused;
+          if (!lpState.paused) lpState.hold = 0;
+          lpSyncPauseButton();
+        });
+      }
+      lpSyncPauseButton();
+      const lpReducedMotion = () => {
+        try { return !!window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+        catch (_) { return false; }
+      };
       const lpSig = (g) => {
         if (!g) return '';
         const ts = String(g.event_ts ?? g.ts ?? g.created_at ?? g.createdAt ?? '');
@@ -24989,6 +25019,11 @@ if(hsBody){
 	          if (typeof onDone === 'function') requestAnimationFrame(onDone);
 	          return;
 	        }
+	        if (lpReducedMotion()) {
+	          el.textContent = t.slice(0, max);
+	          if (typeof onDone === 'function') requestAnimationFrame(onDone);
+	          return;
+	        }
 	        const timer = setInterval(()=>{
 	          i++;
 	          el.textContent = t.slice(0, i);
@@ -25001,6 +25036,7 @@ if(hsBody){
 
       const lpStripBang = (s) => String(s || '').replace(/^🚨\s*/,'').trim();
       const lpIsRecordLine = (line) => /^NEW GAME RECORD SCORE\b/i.test(lpStripBang(line));
+      const lpIsWorldRecordLine = (line) => /^(?:NEW GAME RECORD SCORE|ROUND WR|WR\b|WORLD RECORD\b)/i.test(lpStripBang(line));
       const lpIsRoundPBLine = (line) => /^ROUND PB\b/i.test(lpStripBang(line));
       const lpIsGamePBLine  = (line) => /^GAME PB\b/i.test(lpStripBang(line));
       const lpIsMatchResultLine = (line) => /^\(\s*(CLA|TBO)\s+RESULT\s*\)\s*\/\s*/i.test(String(line || '').replace(/\s+/g,' ').trim()) ||
@@ -25046,6 +25082,7 @@ if(hsBody){
       const lpApplyRowClasses = (tr, line) => {
         if (!tr) return;
         const isRecord = lpIsRecordLine(line);
+        const isWorldRecord = lpIsWorldRecordLine(line);
         const isRoundPB = !isRecord && lpIsRoundPBLine(line);
 	        const isGamePB = !isRecord && lpIsGamePBLine(line);
 	        const isMatchResult = lpIsMatchResultLine(line);
@@ -25054,6 +25091,7 @@ if(hsBody){
 	        const isDateHdr = lpIsDateHdrLine(line);
 	        const modeInfo = (!isAlert && !isDateHdr) ? lpModeDisplayFromLine(line) : { mode: '' };
 	        tr.classList.toggle('lp-record', isRecord);
+	        tr.classList.toggle('lp-world-record', isWorldRecord);
 	        tr.classList.toggle('lp-roundpb', isRoundPB);
 	        tr.classList.toggle('lp-gamepb', isGamePB);
 	        tr.classList.toggle('lp-match-result', isMatchResult);
@@ -25419,6 +25457,10 @@ if(hsBody){
           if (onDone) onDone();
           return;
         }
+        if (lpReducedMotion() || !durationMs) {
+          if (onDone) requestAnimationFrame(onDone);
+          return;
+        }
         let doneCalled = false;
         const finish = () => {
           if (doneCalled) return;
@@ -25449,33 +25491,29 @@ if(hsBody){
       const lpEnsureRows = (lines) => {
         const tbody = document.getElementById('homeLivePrinterRows');
         if (!tbody) return;
-        tbody.innerHTML = '';
-        (lines || []).slice(0, LP_VISIBLE).forEach((line) => {
-          const tr = document.createElement('tr');
-          tr.className = 'lp-row';
-	          const td = document.createElement('td');
-	          td.className = 'lp-line';
-	          const sp = document.createElement('span');
-	          sp.className = 'lp-ellipsis';
-	          lpApplyRowClasses(tr, line);
-	          lpSetLineContent(sp, line);
-	          td.appendChild(sp);
-	          tr.appendChild(td);
-	          tbody.appendChild(tr);
-        });
-        // pad to exactly LP_VISIBLE rows
-        while (tbody.querySelectorAll('tr.lp-row').length < LP_VISIBLE) {
-          const tr = document.createElement('tr');
-          tr.className = 'lp-row';
-          const td = document.createElement('td');
-          td.className = 'lp-line';
-          const sp = document.createElement('span');
-          sp.className = 'lp-ellipsis';
-          sp.textContent = '';
-          td.appendChild(sp);
-          tr.appendChild(td);
-          tbody.appendChild(tr);
+        let rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
+        if (rows.length !== LP_VISIBLE) {
+          tbody.replaceChildren();
+          for (let i = 0; i < LP_VISIBLE; i++) {
+            const tr = document.createElement('tr');
+            tr.className = 'lp-row';
+            const td = document.createElement('td');
+            td.className = 'lp-line';
+            const sp = document.createElement('span');
+            sp.className = 'lp-ellipsis';
+            td.appendChild(sp);
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+          }
+          rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
         }
+        rows.forEach((tr, i) => {
+          const line = (lines || [])[i] ?? '';
+          const sp = tr.querySelector('.lp-ellipsis');
+          tr.classList.remove('lp-new');
+          lpApplyRowClasses(tr, line);
+          if (sp) lpSetLineContent(sp, line);
+        });
       };
 
       // Allow other parts of the app to inject a one-off LIVE UPDATES line (e.g., NEW PLAYER)
@@ -25485,13 +25523,10 @@ if(hsBody){
           const st = window.__homeLivePrinterState;
           const l = String(line || '').replace(/\s+/g,' ').trim();
           if (!st || !l) return;
-          // push into buffer
-          st.bufLines = [l].concat(Array.isArray(st.bufLines) ? st.bufLines : []);
-          st.bufLines = st.bufLines.slice(0, LP_BUFFER);
-          // show immediately by shifting the visible window
-          st.displayLines = Array.isArray(st.displayLines) ? st.displayLines : Array.from({ length: LP_VISIBLE }, () => '');
-          st.displayLines = st.displayLines.slice(1).concat([l]);
-          lpEnsureRows(st.displayLines);
+          st.injectQueue = Array.isArray(st.injectQueue) ? st.injectQueue : [];
+          st.injectQueue.push(l);
+          st.injectQueue = st.injectQueue.slice(-LP_BUFFER);
+          st.hold = 0;
         };
       }catch(_e){}
 
@@ -25518,10 +25553,11 @@ if(hsBody){
       const lpScrollStep = () => {
         const st = window.__homeLivePrinterState;
         const tbody = document.getElementById('homeLivePrinterRows');
-        if (!st || !tbody) return;
+        if (!st || !tbody || st.paused) return;
 
         const buf = Array.isArray(st.bufLines) ? st.bufLines : [];
-        if (!buf.length) return;
+        const queue = Array.isArray(st.injectQueue) ? st.injectQueue : [];
+        if (!buf.length && !queue.length) return;
 
         // Ensure display model exists
         if (!st.lpStarted || !Array.isArray(st.displayLines) || st.displayLines.length !== LP_VISIBLE) {
@@ -25534,19 +25570,26 @@ if(hsBody){
         const rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
         const rowH = (rows[0] ? (rows[0].getBoundingClientRect().height || 20) : 20);
 
-        // Pull next line (circular)
-        const nextIdx = st.lpCursor % buf.length;
-        const nextLine = String(buf[nextIdx] ?? '').trim();
-        st.lpCursor = (st.lpCursor + 1) % buf.length;
-        // Pace the pause that follows this line by looking at what comes next: a
-        // record/PB/alert belongs to the game printed above it, so it should land
-        // almost immediately, while a fresh game result gets the fuller beat.
-        try{
-          const upcoming = String(buf[st.lpCursor % buf.length] ?? '').trim();
-          const follower = lpIsRecordLine(upcoming) || lpIsRoundPBLine(upcoming)
-                        || lpIsGamePBLine(upcoming) || lpIsAlertLine(upcoming) || lpIsBeerAlertLine(upcoming);
-          st.nextHold = follower ? 0 : 2;
-        }catch(_e){ st.nextHold = 2; }
+        // Pull injected events through this same scheduler instead of letting
+        // other features repaint the printer DOM directly.
+        let nextLine = '';
+        if (queue.length) {
+          nextLine = String(queue.shift() ?? '').trim();
+          st.nextHold = 1;
+        } else {
+          const nextIdx = st.lpCursor % buf.length;
+          nextLine = String(buf[nextIdx] ?? '').trim();
+          st.lpCursor = (st.lpCursor + 1) % buf.length;
+          // Pace the pause that follows this line by looking at what comes next: a
+          // record/PB/alert belongs to the game printed above it, so it should land
+          // almost immediately, while a fresh game result gets the fuller beat.
+          try{
+            const upcoming = String(buf[st.lpCursor % buf.length] ?? '').trim();
+            const follower = lpIsRecordLine(upcoming) || lpIsRoundPBLine(upcoming)
+                          || lpIsGamePBLine(upcoming) || lpIsAlertLine(upcoming) || lpIsBeerAlertLine(upcoming);
+            st.nextHold = follower ? 0 : 2;
+          }catch(_e){ st.nextHold = 2; }
+        }
 
         // Shift window (top drops, new line appears at bottom)
         try { st.displayLines.shift(); } catch(_e){ st.displayLines = st.displayLines.slice(1); }
@@ -25845,11 +25888,14 @@ if (!window.__homeLivePrinterInterval){
           }
 
           
-          // Continuous feed: scroll through last 20 even when nothing new arrives
+          // Continuous feed: scroll through recent results unless the user has
+          // explicitly paused motion. Cloud sync continues while paused.
           try {
-            if (!Number.isFinite(st.hold)) st.hold = 0;
-            if (st.hold > 0) st.hold--;
-            else { lpScrollStep(); const h = Number(st.nextHold); st.hold = Number.isFinite(h) ? h : 2; }
+            if (!st.paused) {
+              if (!Number.isFinite(st.hold)) st.hold = 0;
+              if (st.hold > 0) st.hold--;
+              else { lpScrollStep(); const h = Number(st.nextHold); st.hold = Number.isFinite(h) ? h : 2; }
+            }
           } catch (_) {}
           // Sync cloud rows at most every 15s; animation still ticks every second.
           if (!st.lastSyncMs || (Date.now() - st.lastSyncMs) >= LP_SYNC_MS) {
