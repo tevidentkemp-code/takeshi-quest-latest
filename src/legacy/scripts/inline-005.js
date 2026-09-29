@@ -26051,16 +26051,26 @@ if(hsBody){
         }
       };
 
-      // Full page reloads deliberately begin with a blank VIDE. Persisted
-      // events remain in the buffer and are written by the normal scheduler.
+      // Full page reloads deliberately begin with a blank VIDE. Seed the
+      // hidden buffer synchronously from persisted presentation history so
+      // printing can start immediately without waiting for cloud sync.
       try{
         const st = window.__homeLivePrinterState;
         if (st && st.bootBlankPending) {
+          const localBootLines = lpReadLocalEvents()
+            .slice()
+            .sort((a,b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+            .map(e => String(e.line || '').trim())
+            .filter(Boolean);
+          st.bufLines = localBootLines.slice(0, LP_BUFFER);
           st.lpStarted = true;
           st.primedFromLocal = false;
           st.displayLines = Array.from({ length: LP_VISIBLE }, () => '');
           st.lpCursor = 0;
           st.hold = 0;
+          // The blank boot frame has now been established. Cloud sync may
+          // replace the buffer later, but must not replace this presentation.
+          st.bootBlankPending = false;
           lpEnsureRows(st.displayLines);
         }
       }catch(_e){}
