@@ -59,34 +59,55 @@ fs.mkdirSync(out, { recursive: true });
       'CLA / 22:31 Thom (450) bts Chris (404), Grant (403), Liam (397), Matteo (388), James (377)'
     ));
     await page.waitForTimeout(120);
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.waitForTimeout(80);
     const mobileGeometry = await page.evaluate(() => {
       const printer = document.getElementById('homeLivePrinter');
       const wrap = document.querySelector('.wrap');
+      const nav = document.querySelector('#homeFooterNav .home-nav-row');
+      const version = document.getElementById('sqReleaseVersionBtn');
       const bodyStyle = getComputedStyle(document.body);
+      const printerStyle = printer ? getComputedStyle(printer) : null;
+      const navStyle = nav ? getComputedStyle(nav) : null;
+      const normalCopy = document.querySelector('#homeLivePrinter .lp-row:not(.lp-datehdr) .lp-result')
+        || document.querySelector('#homeLivePrinter .lp-row:not(.lp-datehdr) .lp-ellipsis');
       return {
         height: printer?.getBoundingClientRect().height || 0,
         wrapPaddingBottom: parseFloat(getComputedStyle(wrap).paddingBottom || '0'),
-        footerMarginBottom: parseFloat(getComputedStyle(document.getElementById('homeFooterNav')).marginBottom || '0'),
-        navPosition: getComputedStyle(document.querySelector('#homeFooterNav .home-nav-row')).position,
-        navRect: document.querySelector('#homeFooterNav .home-nav-row')?.getBoundingClientRect() || null,
+        navPosition: navStyle?.position || '',
+        navBottom: parseFloat(navStyle?.bottom || '0'),
+        navRect: nav?.getBoundingClientRect() || null,
         printerRect: printer?.getBoundingClientRect() || null,
-        documentTail: document.documentElement.scrollHeight - ((document.getElementById('homeFooterNav')?.getBoundingClientRect().bottom || 0) + window.scrollY),
-        textSizeAdjust: bodyStyle.webkitTextSizeAdjust || bodyStyle.textSizeAdjust || ''
+        versionRect: version?.getBoundingClientRect() || null,
+        viewportBottomClearance: nav ? (window.innerHeight - nav.getBoundingClientRect().bottom) : 0,
+        textSizeAdjust: bodyStyle.webkitTextSizeAdjust || bodyStyle.textSizeAdjust || '',
+        printerTextSizeAdjust: printerStyle?.webkitTextSizeAdjust || printerStyle?.textSizeAdjust || '',
+        tableFontSize: parseFloat(getComputedStyle(document.querySelector('#homeLivePrinter .lp-table')).fontSize || '0'),
+        normalCopyFontSize: normalCopy ? parseFloat(getComputedStyle(normalCopy).fontSize || '0') : 0
       };
     });
     assert(Math.abs(mobileGeometry.height - stableHeightBefore) < 1,
       'VIDE height must remain fixed when a long result wraps');
     assert(mobileGeometry.wrapPaddingBottom >= 72,
-      'Home must retain base bottom scroll clearance for Safari chrome');
-    assert.notEqual(mobileGeometry.navPosition, 'fixed',
-      'mobile Home primary nav must remain in document flow and never overlay VIDE');
+      'Home must retain bottom scroll clearance for Safari chrome');
+    assert.equal(mobileGeometry.navPosition, 'sticky',
+      'mobile Home primary nav must dock with sticky positioning only after VIDE/version');
+    assert(mobileGeometry.navBottom >= 92,
+      'mobile Home primary nav must carry explicit Safari toolbar clearance');
+    assert(mobileGeometry.viewportBottomClearance >= 90,
+      'PLAYER HUB / STATS / LEAGUE must sit above the mobile browser bottom controls');
     assert(mobileGeometry.navRect && mobileGeometry.printerRect &&
       mobileGeometry.navRect.top >= mobileGeometry.printerRect.bottom,
-      'PLAYER HUB / STATS / LEAGUE must render below VIDE, never in front of it');
-    assert(mobileGeometry.documentTail >= 180,
-      'Home must retain a non-collapsing Safari scroll tail after the footer');
+      'PLAYER HUB / STATS / LEAGUE must remain below VIDE, never in front of it');
+    assert(mobileGeometry.versionRect && mobileGeometry.navRect &&
+      mobileGeometry.versionRect.bottom <= mobileGeometry.navRect.top + 1,
+      'Home version must remain above the primary navigation rail');
     assert.equal(mobileGeometry.textSizeAdjust, '100%',
       'Home must disable iOS Safari text autosizing drift');
+    assert.equal(mobileGeometry.printerTextSizeAdjust, '100%',
+      'VIDE must explicitly disable iOS Safari text autosizing drift');
+    assert(Math.abs(mobileGeometry.normalCopyFontSize - mobileGeometry.tableFontSize) < 0.05,
+      'ordinary VIDE copy must keep the same computed font size as the printer table');
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() =>
@@ -105,8 +126,11 @@ fs.mkdirSync(out, { recursive: true });
       paused: !!window.__homeLivePrinterState?.paused,
       label: document.getElementById('homeLivePauseBtn')?.textContent?.trim()
     }));
-    assert(refreshed.buffer.some(line => /Refresh Tester/i.test(String(line))),
+    const refreshedNewPlayer = refreshed.buffer.find(line => /Refresh Tester/i.test(String(line)));
+    assert(refreshedNewPlayer,
       'persisted NEW PLAYER event must survive refresh in the printer buffer');
+    assert.doesNotMatch(String(refreshedNewPlayer), /\s-\s(CLASSIC|TURBO|PRACTICE)\s*$/i,
+      'NEW PLAYER presentation events must never gain a game-mode suffix');
     assert.equal(refreshed.paused, false, 'refresh must start LIVE UPDATES playing');
     assert.equal(refreshed.label, 'PAUSE');
 
