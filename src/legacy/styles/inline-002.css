@@ -2202,10 +2202,25 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 .home-admin-row .btn{ width: 100%; }
 @media (max-width: 560px){
   #details .home-footer-nav{
-    /* Safari's floating bottom bar is taller than the safe-area inset alone.
-       A real trailing margin lets the final nav row scroll fully above it. */
-    margin-bottom: calc(150px + env(safe-area-inset-bottom)) !important;
-    scroll-margin-bottom: calc(150px + env(safe-area-inset-bottom));
+    /* Reserve document-flow space for the fixed mobile nav and keep Admin
+       reachable below it. */
+    min-height: 92px;
+    margin-bottom: calc(28px + env(safe-area-inset-bottom)) !important;
+  }
+  #details .home-footer-nav .home-nav-row{
+    /* iOS Safari overlays normal-flow content with its floating toolbar.
+       Treat the three primary Home actions as a real mobile bottom nav. */
+    position: fixed;
+    left: 50%;
+    right: auto;
+    bottom: max(92px, calc(56px + env(safe-area-inset-bottom)));
+    transform: translateX(-50%);
+    z-index: 1200;
+    width: min(440px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+    margin: 0;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
   }
 }
 /* <<< PATCH:home-footer-nav END */
