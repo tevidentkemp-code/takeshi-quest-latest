@@ -3861,27 +3861,39 @@ body[data-page="players"]{
     0 0 44px rgba(47,134,255,.10),
     0 0 90px rgba(255,122,0,.07) !important;
 }
-/* Home: let LIVE UPDATES reclaim the spare vertical space. The compact
-   v0.8.0 clamp shortened the page and clipped the intended feed composition. */
+/* Home: VIDE uses a stable geometry. Do not let feed content or Safari's
+   changing visual viewport grow/shrink the panel. Height is width-derived on
+   mobile so browser chrome changes cannot move the footer. */
 body[data-page="details"] #details{
-  display:flex;
-  flex-direction:column;
+  display:block;
 }
 #details .start-actions.column{
-  flex:1 1 auto;
+  flex:none;
   display:flex;
   flex-direction:column;
   min-height:0;
 }
 #details #homeLivePrinter{
-  flex:1 1 auto;
+  flex:0 0 auto;
   display:flex;
   flex-direction:column;
-  min-height:320px;
+  box-sizing:border-box;
+  height:560px;
+  min-height:560px;
+  max-height:560px;
+  overflow:hidden;
 }
 #details #homeLivePrinter .lp-mid{
   flex:1 1 auto;
   min-height:0;
+  overflow:hidden;
+}
+@media (max-width:560px){
+  #details #homeLivePrinter{
+    height:clamp(500px, calc((100vw - 32px) * 1.42), 540px);
+    min-height:clamp(500px, calc((100vw - 32px) * 1.42), 540px);
+    max-height:clamp(500px, calc((100vw - 32px) * 1.42), 540px);
+  }
 }
 
 /* =====================================================================
