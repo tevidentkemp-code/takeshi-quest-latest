@@ -67,6 +67,8 @@ fs.mkdirSync(out, { recursive: true });
         height: printer?.getBoundingClientRect().height || 0,
         wrapPaddingBottom: parseFloat(getComputedStyle(wrap).paddingBottom || '0'),
         footerMarginBottom: parseFloat(getComputedStyle(document.getElementById('homeFooterNav')).marginBottom || '0'),
+        navPosition: getComputedStyle(document.querySelector('#homeFooterNav .home-nav-row')).position,
+        navBottom: parseFloat(getComputedStyle(document.querySelector('#homeFooterNav .home-nav-row')).bottom || '0'),
         textSizeAdjust: bodyStyle.webkitTextSizeAdjust || bodyStyle.textSizeAdjust || ''
       };
     });
@@ -74,8 +76,10 @@ fs.mkdirSync(out, { recursive: true });
       'VIDE height must remain fixed when a long result wraps');
     assert(mobileGeometry.wrapPaddingBottom >= 72,
       'Home must retain base bottom scroll clearance for Safari chrome');
-    assert(mobileGeometry.footerMarginBottom >= 150,
-      'Home footer must have enough trailing clearance to rise above Safari bottom chrome');
+    assert.equal(mobileGeometry.navPosition, 'fixed',
+      'mobile Home primary nav must be viewport-fixed above Safari chrome');
+    assert(mobileGeometry.navBottom >= 92,
+      'mobile Home primary nav must clear Safari floating controls');
     assert.equal(mobileGeometry.textSizeAdjust, '100%',
       'Home must disable iOS Safari text autosizing drift');
 
