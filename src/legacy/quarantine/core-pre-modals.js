@@ -886,6 +886,9 @@ if(hsBody){
         lpState.paused = false;
         if (!Array.isArray(lpState.injectQueue)) lpState.injectQueue = [];
         if (!Array.isArray(lpState.recentInjectedLines)) lpState.recentInjectedLines = [];
+        // A full document load begins with a visually blank VIDE. The first
+        // successful sync fills the buffer only; the printer then writes it in.
+        if (typeof lpState.bootBlankPending !== 'boolean') lpState.bootBlankPending = true;
       }
       const lpPauseBtn = document.getElementById('homeLivePauseBtn');
       const lpSyncPauseButton = () => {
@@ -1433,6 +1436,42 @@ if(hsBody){
 	            if (typeof onDone === 'function') setTimeout(onDone, Math.max(0, speedMs));
 	          }
 	        }, speedMs);
+	      };
+
+	      const lpTypeLine = (el, line, speedMs = 28, onDone = null) => {
+	        if (!el) return;
+	        const parsed = lpParseResultLine(line);
+	        if (!parsed) {
+	          lpType(el, lpDisplayText(line), speedMs, () => {
+	            lpSetLineContent(el, line);
+	            if (typeof onDone === 'function') onDone();
+	          });
+	          return;
+	        }
+
+	        // Game rows are structured from the first typed character. Type the
+	        // mode/time line completely, then begin the scoreline underneath.
+	        el.textContent = '';
+	        try{
+	          el.classList.add('lp-structured');
+	          el.classList.remove('lp-matchline', 'lp-alertline', 'lp-recordline');
+	          el.setAttribute('aria-label', lpDisplayText(line));
+	        }catch(_e){}
+	        const meta = lpAppendTextSpan(el, 'lp-game-meta', '');
+	        const result = lpAppendTextSpan(el, 'lp-result', '');
+	        const metaText = `${parsed.abbr} / ${parsed.time}`;
+
+	        lpType(meta, metaText, speedMs, () => {
+	          meta.textContent = '';
+	          lpAppendTextSpan(meta, 'lp-mode', parsed.abbr);
+	          lpAppendTextSpan(meta, 'lp-mode-sep', '/');
+	          lpAppendTextSpan(meta, 'lp-time', parsed.time);
+	          const score = lpAppendTextSpan(result, 'lp-scoreline', '');
+	          lpType(score, parsed.scoreline, speedMs, () => {
+	            lpSetLineContent(el, line);
+	            if (typeof onDone === 'function') onDone();
+	          });
+	        });
 	      };
 
       const lpStripBang = (s) => String(s || '').replace(/^🚨\s*/,'').trim();
@@ -2061,7 +2100,7 @@ if(hsBody){
 	            const lastLine = st.displayLines[LP_VISIBLE - 1];
 	            const fast = (()=>{ try{ return lpIsRecordLine(lastLine) || lpIsRoundPBLine(lastLine)
               || lpIsGamePBLine(lastLine) || lpIsAlertLine(lastLine) || lpIsBeerAlertLine(lastLine); }catch(_e){ return false; } })();
-	            lpType(lastSp, lpDisplayText(lastLine), fast ? 8 : 22, () => lpSetLineContent(lastSp, lastLine));
+	            lpTypeLine(lastSp, lastLine, fast ? 8 : 22);
 	          }
 	        });
 	      };
@@ -2096,7 +2135,7 @@ if(hsBody){
 	            lpApplyRowClasses(lastRow, winNew[LP_VISIBLE - 1]);
 	            lastSp.textContent = '';
 	            const lastLine = winNew[LP_VISIBLE - 1] ?? '—';
-	            lpType(lastSp, lpDisplayText(lastLine), 20, () => lpSetLineContent(lastSp, lastLine));
+	            lpTypeLine(lastSp, lastLine, 20);
 	            setTimeout(() => {
 	              try { lastRow.classList.remove('lp-new'); } catch (_) {}
 	            }, 900);
@@ -2271,7 +2310,7 @@ if(hsBody){
             // Keep the hold overlay visible; show empty rows.
             try { if (mid) mid.classList.add('lp-mid-hold'); } catch(_e){}
             try { const p = document.getElementById('homeLivePrinter'); if (p) p.classList.remove('is-live'); } catch(_e){}
-            lpEnsureRows(Array.from({length: LP_VISIBLE}, ()=>'—'));
+            lpEnsureRows(Array.from({length: LP_VISIBLE}, ()=> st.bootBlankPending ? '' : '—'));
             return;
           }
 
@@ -2342,10 +2381,17 @@ if(hsBody){
             st.lastSig = sig0 || st.lastSig;
           }
 
-          // First successful cloud/local truth sync should look complete
-          // immediately. If Home was synchronously primed from presentation
-          // history, replace that prime with the combined current feed now.
-          if (!st.lpStarted || st.primedFromLocal) {
+          // A fresh document starts visually blank. Sync establishes the
+          // canonical buffer, then the normal printer scheduler writes it in.
+          if (st.bootBlankPending) {
+            st.bootBlankPending = false;
+            st.lpStarted = true;
+            st.primedFromLocal = false;
+            st.displayLines = Array.from({ length: LP_VISIBLE }, () => '');
+            st.lpCursor = 0;
+            st.hold = 0;
+            lpEnsureRows(st.displayLines);
+          } else if (!st.lpStarted || st.primedFromLocal) {
             st.lpStarted = true;
             st.primedFromLocal = false;
             const firstWindow = st.bufLines.slice(0, LP_VISIBLE);
@@ -2365,9 +2411,29 @@ if(hsBody){
         }
       };
 
-      // Render any persisted presentation event immediately on Home entry;
-      // cloud/game truth continues to refresh asynchronously below.
-      lpPrimeLocalPresentation();
+      // Full page reloads deliberately begin with a blank VIDE. Seed the
+      // hidden buffer synchronously from persisted presentation history so
+      // printing can start immediately without waiting for cloud sync.
+      try{
+        const st = window.__homeLivePrinterState;
+        if (st && st.bootBlankPending) {
+          const localBootLines = lpReadLocalEvents()
+            .slice()
+            .sort((a,b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+            .map(e => String(e.line || '').trim())
+            .filter(Boolean);
+          st.bufLines = localBootLines.slice(0, LP_BUFFER);
+          st.lpStarted = true;
+          st.primedFromLocal = false;
+          st.displayLines = Array.from({ length: LP_VISIBLE }, () => '');
+          st.lpCursor = 0;
+          st.hold = 0;
+          // The blank boot frame has now been established. Cloud sync may
+          // replace the buffer later, but must not replace this presentation.
+          st.bootBlankPending = false;
+          lpEnsureRows(st.displayLines);
+        }
+      }catch(_e){}
 
 if (!window.__homeLivePrinterInterval){
         window.__homeLivePrinterInterval = setInterval(()=>{

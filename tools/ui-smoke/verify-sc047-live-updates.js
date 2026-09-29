@@ -66,24 +66,38 @@ fs.mkdirSync(out, { recursive: true });
       return {
         height: printer?.getBoundingClientRect().height || 0,
         wrapPaddingBottom: parseFloat(getComputedStyle(wrap).paddingBottom || '0'),
+        footerMarginBottom: parseFloat(getComputedStyle(document.getElementById('homeFooterNav')).marginBottom || '0'),
         textSizeAdjust: bodyStyle.webkitTextSizeAdjust || bodyStyle.textSizeAdjust || ''
       };
     });
     assert(Math.abs(mobileGeometry.height - stableHeightBefore) < 1,
       'VIDE height must remain fixed when a long result wraps');
     assert(mobileGeometry.wrapPaddingBottom >= 72,
-      'Home must reserve enough bottom scroll clearance for Safari chrome');
+      'Home must retain base bottom scroll clearance for Safari chrome');
+    assert(mobileGeometry.footerMarginBottom >= 150,
+      'Home footer must have enough trailing clearance to rise above Safari bottom chrome');
     assert.equal(mobileGeometry.textSizeAdjust, '100%',
       'Home must disable iOS Safari text autosizing drift');
 
     await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() =>
+      !!window.__homeLivePrinterState &&
+      document.querySelectorAll('#homeLivePrinterRows tr.lp-row').length === 15
+    , { timeout: 5000 });
+    const bootBlank = await page.evaluate(() =>
+      (document.getElementById('homeLivePrinterRows')?.textContent || '').trim()
+    );
+    assert.equal(bootBlank, '', 'VIDE must begin visually blank after a full reload');
+
     await page.waitForTimeout(2600);
     const refreshed = await page.evaluate(() => ({
       text: document.getElementById('homeLivePrinterRows')?.textContent || '',
+      buffer: (window.__homeLivePrinterState?.bufLines || []).slice(),
       paused: !!window.__homeLivePrinterState?.paused,
       label: document.getElementById('homeLivePauseBtn')?.textContent?.trim()
     }));
-    assert.match(refreshed.text, /Refresh Tester/i, 'NEW PLAYER must survive a page refresh via the persisted feed event cache');
+    assert(refreshed.buffer.some(line => /Refresh Tester/i.test(String(line))),
+      'persisted NEW PLAYER event must survive refresh in the printer buffer');
     assert.equal(refreshed.paused, false, 'refresh must start LIVE UPDATES playing');
     assert.equal(refreshed.label, 'PAUSE');
 
@@ -94,7 +108,16 @@ fs.mkdirSync(out, { recursive: true });
         .forEach((row, i) => { row.dataset.sc047Stable = 'row-' + i; });
     });
 
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.evaluate(() => window.__homeLivePrinterInjectLine('CLA / 22:31 Thom (200) bts Sam (180)'));
+    await page.waitForFunction(() => {
+      const rows = Array.from(document.querySelectorAll('#homeLivePrinterRows tr.lp-row'));
+      const row = rows.find(r => r.querySelector('.lp-game-meta'));
+      if (!row) return false;
+      const meta = row.querySelector('.lp-game-meta')?.textContent || '';
+      const result = row.querySelector('.lp-result')?.textContent || '';
+      return /CLA/.test(meta) && !/Thom/.test(meta) && !result;
+    }, { timeout: 5000 });
     await page.waitForFunction(() => document.getElementById('homeLivePrinterRows')?.textContent.includes('Thom (200)'), { timeout: 5000 });
     const twoLine = await page.locator('#homeLivePrinterRows tr.lp-row').filter({ hasText: 'Thom (200)' }).last().evaluate(row => {
       const meta = row.querySelector('.lp-game-meta')?.getBoundingClientRect();
@@ -109,6 +132,7 @@ fs.mkdirSync(out, { recursive: true });
     assert(twoLine.hasMeta && twoLine.hasResult, 'game row must expose separate mode/time and scoreline blocks');
     assert(twoLine.resultTop >= twoLine.metaBottom - 1, 'player names/scoreline must start on the line below CLA / time');
 
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.click('#homeLivePauseBtn');
     let state = await page.evaluate(() => ({
       paused: !!window.__homeLivePrinterState?.paused,
