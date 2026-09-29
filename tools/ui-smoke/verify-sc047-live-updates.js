@@ -68,7 +68,9 @@ fs.mkdirSync(out, { recursive: true });
         wrapPaddingBottom: parseFloat(getComputedStyle(wrap).paddingBottom || '0'),
         footerMarginBottom: parseFloat(getComputedStyle(document.getElementById('homeFooterNav')).marginBottom || '0'),
         navPosition: getComputedStyle(document.querySelector('#homeFooterNav .home-nav-row')).position,
-        navBottom: parseFloat(getComputedStyle(document.querySelector('#homeFooterNav .home-nav-row')).bottom || '0'),
+        navRect: document.querySelector('#homeFooterNav .home-nav-row')?.getBoundingClientRect() || null,
+        printerRect: printer?.getBoundingClientRect() || null,
+        documentTail: document.documentElement.scrollHeight - ((document.getElementById('homeFooterNav')?.getBoundingClientRect().bottom || 0) + window.scrollY),
         textSizeAdjust: bodyStyle.webkitTextSizeAdjust || bodyStyle.textSizeAdjust || ''
       };
     });
@@ -76,10 +78,13 @@ fs.mkdirSync(out, { recursive: true });
       'VIDE height must remain fixed when a long result wraps');
     assert(mobileGeometry.wrapPaddingBottom >= 72,
       'Home must retain base bottom scroll clearance for Safari chrome');
-    assert.equal(mobileGeometry.navPosition, 'fixed',
-      'mobile Home primary nav must be viewport-fixed above Safari chrome');
-    assert(mobileGeometry.navBottom >= 92,
-      'mobile Home primary nav must clear Safari floating controls');
+    assert.notEqual(mobileGeometry.navPosition, 'fixed',
+      'mobile Home primary nav must remain in document flow and never overlay VIDE');
+    assert(mobileGeometry.navRect && mobileGeometry.printerRect &&
+      mobileGeometry.navRect.top >= mobileGeometry.printerRect.bottom,
+      'PLAYER HUB / STATS / LEAGUE must render below VIDE, never in front of it');
+    assert(mobileGeometry.documentTail >= 180,
+      'Home must retain a non-collapsing Safari scroll tail after the footer');
     assert.equal(mobileGeometry.textSizeAdjust, '100%',
       'Home must disable iOS Safari text autosizing drift');
 
