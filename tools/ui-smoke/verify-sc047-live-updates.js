@@ -52,6 +52,30 @@ fs.mkdirSync(out, { recursive: true });
     assert.equal(firstLoad.paused, false, 'home must never enter paused');
     assert.equal(firstLoad.label, 'PAUSE', 'playing state must show PAUSE, not PLAY');
 
+    // Long/wrapped content must never resize VIDE. This guards the mobile
+    // regression where feed content pushed HUB / STATS / LEAGUE below Safari.
+    const stableHeightBefore = firstLoad.height;
+    await page.evaluate(() => window.__homeLivePrinterInjectLine(
+      'CLA / 22:31 Thom (450) bts Chris (404), Grant (403), Liam (397), Matteo (388), James (377)'
+    ));
+    await page.waitForTimeout(120);
+    const mobileGeometry = await page.evaluate(() => {
+      const printer = document.getElementById('homeLivePrinter');
+      const wrap = document.querySelector('.wrap');
+      const bodyStyle = getComputedStyle(document.body);
+      return {
+        height: printer?.getBoundingClientRect().height || 0,
+        wrapPaddingBottom: parseFloat(getComputedStyle(wrap).paddingBottom || '0'),
+        textSizeAdjust: bodyStyle.webkitTextSizeAdjust || bodyStyle.textSizeAdjust || ''
+      };
+    });
+    assert(Math.abs(mobileGeometry.height - stableHeightBefore) < 1,
+      'VIDE height must remain fixed when a long result wraps');
+    assert(mobileGeometry.wrapPaddingBottom >= 72,
+      'Home must reserve enough bottom scroll clearance for Safari chrome');
+    assert.equal(mobileGeometry.textSizeAdjust, '100%',
+      'Home must disable iOS Safari text autosizing drift');
+
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2600);
     const refreshed = await page.evaluate(() => ({
