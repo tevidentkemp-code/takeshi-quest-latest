@@ -17,13 +17,14 @@ fs.mkdirSync(out, { recursive: true });
       !!document.getElementById('homeLivePauseBtn')
     , { timeout: 20000 });
 
-    // Force one event through the real scheduler so the test is independent
-    // of cloud availability and of whether an empty tbody has a visible box.
-    await page.evaluate(() => window.__homeLivePrinterInjectLine('SC047 BOOTSTRAP EVENT'));
+    // Persist a presentation event, then reload. This mirrors a newly-created
+    // player event and proves the feed can recover immediately after refresh
+    // even when the cloud is unavailable in the QA harness.
+    await page.evaluate(() => window.__homeLivePrinterPersistLine('🚨 NEW PLAYER - Refresh Tester - Welcome to Shateki Quest 🎯', 'new_player'));
     await page.waitForFunction(() => {
       const rows = document.querySelectorAll('#homeLivePrinterRows tr.lp-row');
       const body = document.getElementById('homeLivePrinterRows');
-      return rows.length === 15 && !!body && body.textContent.includes('SC047 BOOTSTRAP EVENT');
+      return rows.length === 15 && !!body && body.textContent.includes('Refresh Tester');
     }, { timeout: 5000 });
 
     const baseline = await page.evaluate(() => {
@@ -40,6 +41,50 @@ fs.mkdirSync(out, { recursive: true });
     assert.equal(baseline.pause, true, 'LIVE UPDATES pause control missing');
     assert.equal(baseline.pressed, 'false', 'LIVE UPDATES should start playing');
 
+    const firstLoad = await page.evaluate(() => ({
+      text: document.getElementById('homeLivePrinterRows')?.textContent || '',
+      height: document.getElementById('homeLivePrinter')?.getBoundingClientRect().height || 0,
+      paused: !!window.__homeLivePrinterState?.paused,
+      label: document.getElementById('homeLivePauseBtn')?.textContent?.trim()
+    }));
+    assert.match(firstLoad.text, /Refresh Tester/i, 'persisted NEW PLAYER event must be visible before refresh');
+    assert(firstLoad.height >= 320, 'home LIVE UPDATES must retain the fuller vertical composition');
+    assert.equal(firstLoad.paused, false, 'home must never enter paused');
+    assert.equal(firstLoad.label, 'PAUSE', 'playing state must show PAUSE, not PLAY');
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2600);
+    const refreshed = await page.evaluate(() => ({
+      text: document.getElementById('homeLivePrinterRows')?.textContent || '',
+      paused: !!window.__homeLivePrinterState?.paused,
+      label: document.getElementById('homeLivePauseBtn')?.textContent?.trim()
+    }));
+    assert.match(refreshed.text, /Refresh Tester/i, 'NEW PLAYER must survive a page refresh via the persisted feed event cache');
+    assert.equal(refreshed.paused, false, 'refresh must start LIVE UPDATES playing');
+    assert.equal(refreshed.label, 'PAUSE');
+
+    // Reload legitimately creates a fresh document. Mark the new canonical row
+    // nodes before testing whether subsequent pause/injection mutates them.
+    await page.evaluate(() => {
+      Array.from(document.querySelectorAll('#homeLivePrinterRows tr.lp-row'))
+        .forEach((row, i) => { row.dataset.sc047Stable = 'row-' + i; });
+    });
+
+    await page.evaluate(() => window.__homeLivePrinterInjectLine('CLA / 22:31 Thom (200) bts Sam (180)'));
+    await page.waitForFunction(() => document.getElementById('homeLivePrinterRows')?.textContent.includes('Thom (200)'), { timeout: 5000 });
+    const twoLine = await page.locator('#homeLivePrinterRows tr.lp-row').filter({ hasText: 'Thom (200)' }).last().evaluate(row => {
+      const meta = row.querySelector('.lp-game-meta')?.getBoundingClientRect();
+      const result = row.querySelector('.lp-result')?.getBoundingClientRect();
+      return {
+        hasMeta: !!meta,
+        hasResult: !!result,
+        metaBottom: meta?.bottom || 0,
+        resultTop: result?.top || 0
+      };
+    });
+    assert(twoLine.hasMeta && twoLine.hasResult, 'game row must expose separate mode/time and scoreline blocks');
+    assert(twoLine.resultTop >= twoLine.metaBottom - 1, 'player names/scoreline must start on the line below CLA / time');
+
     await page.click('#homeLivePauseBtn');
     let state = await page.evaluate(() => ({
       paused: !!window.__homeLivePrinterState?.paused,
@@ -47,6 +92,16 @@ fs.mkdirSync(out, { recursive: true });
       label: document.getElementById('homeLivePauseBtn')?.textContent?.trim()
     }));
     assert.deepEqual(state, { paused: true, pressed: 'true', label: 'PLAY' });
+
+    await page.evaluate(() => arrangeStartActions());
+    await page.waitForTimeout(80);
+    const reentered = await page.evaluate(() => ({
+      paused: !!window.__homeLivePrinterState?.paused,
+      pressed: document.getElementById('homeLivePauseBtn')?.getAttribute('aria-pressed'),
+      label: document.getElementById('homeLivePauseBtn')?.textContent?.trim()
+    }));
+    assert.deepEqual(reentered, { paused:false, pressed:'false', label:'PAUSE' }, 'returning to Home must reset a prior pause');
+    await page.click('#homeLivePauseBtn');
 
     await page.evaluate(() => window.__homeLivePrinterInjectLine('SC047 TEST EVENT'));
     await page.waitForTimeout(1300);

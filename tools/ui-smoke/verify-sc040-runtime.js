@@ -87,6 +87,16 @@ fs.mkdirSync(out, {recursive:true});
     assert.equal(hubPending.saveDisabled,true);
     assert.match(hubPending.status,/Saving profile/i);
     delayPatch=false;
+    await page.waitForFunction(() => {
+      const el=document.getElementById('playerHubEditorOverlay');
+      return !!el && Array.from(el.querySelectorAll('button')).some(b => b.textContent.trim() === 'Saved ✓');
+    }, { timeout:4000 });
+    const hubSaved = await page.locator('#playerHubEditorOverlay').evaluate(el => ({
+      status: el.querySelector('[role="status"]')?.textContent || '',
+      saved: Array.from(el.querySelectorAll('button')).some(b => b.textContent.trim() === 'Saved ✓')
+    }));
+    assert.equal(hubSaved.saved,true);
+    assert.match(hubSaved.status,/Profile saved/i);
     await page.waitForSelector('#playerHubEditorOverlay',{state:'detached'});
     assert.equal(rows[1].avatar_id,29);
     await openHub();

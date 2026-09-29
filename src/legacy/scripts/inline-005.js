@@ -11206,10 +11206,17 @@ async function showAddPlayerDialog(index){
 
       chosenName = fullName;
       setSaveState(true, 'Saving player…');
+      // Give the browser a real painted frame before starting the mutation so
+      // SAVING… is visible even when the cloud responds very quickly.
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
       try {
         await cloudCreatePlayer(fullName, { initials, nickname, first_name: first, last_name: last, avatar_id: chosenAvatarId });
-        try{ if (typeof window.__homeLivePrinterInjectLine === 'function') window.__homeLivePrinterInjectLine(`🚨 NEW PLAYER - ${fullName} - Welcome to Shateki Quest 🎯`); }catch(_e){}
+        try{
+          const line = `🚨 NEW PLAYER - ${fullName} - Welcome to Shateki Quest 🎯`;
+          if (typeof window.__homeLivePrinterPersistLine === 'function') window.__homeLivePrinterPersistLine(line, 'new_player');
+          else if (typeof window.__homeLivePrinterInjectLine === 'function') window.__homeLivePrinterInjectLine(line);
+        }catch(_e){}
         await syncSavedPlayersFromCloud();
         try{ populateSavedPlayersSelects(); }catch(_){ }
         try{ if (typeof window.buildStartTicker === 'function') window.buildStartTicker(); }catch(_){ }
@@ -11263,7 +11270,13 @@ async function showAddPlayerDialog(index){
         }
       }catch(err){ try{ console.warn('add-to-card after save failed', err); }catch(_){ } }
 
+      if (saveBtn) {
+        saveBtn.textContent = 'SAVED ✓';
+        saveBtn.setAttribute('aria-busy', 'false');
+      }
+      modal.setAttribute('aria-busy', 'false');
       if (saveStatus) saveStatus.textContent = 'Player saved.';
+      await new Promise(resolve => setTimeout(resolve, 260));
       finish(cardMsg);
     };
   }
@@ -24508,8 +24521,11 @@ if(hsBody){
       }
       const lpState = window.__homeLivePrinterState;
       if (lpState) {
-        if (typeof lpState.paused !== 'boolean') lpState.paused = false;
+        // Home always enters with LIVE UPDATES playing. Pause is a temporary
+        // viewing choice, not a sticky navigation/session state.
+        lpState.paused = false;
         if (!Array.isArray(lpState.injectQueue)) lpState.injectQueue = [];
+        if (!Array.isArray(lpState.recentInjectedLines)) lpState.recentInjectedLines = [];
       }
       const lpPauseBtn = document.getElementById('homeLivePauseBtn');
       const lpSyncPauseButton = () => {
@@ -24546,6 +24562,30 @@ if(hsBody){
       const LP_BUFFER = 30;
       const LP_VISIBLE = 15;
       const LP_SYNC_MS = Math.max(15000, (typeof SQ_GAMES_VISIBLE_MIN_POLL_MS !== 'undefined' ? SQ_GAMES_VISIBLE_MIN_POLL_MS : 15000));
+      const LP_LOCAL_EVENT_KEY = 'sq_live_updates_events_v1';
+      const LP_LOCAL_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+      const lpReadLocalEvents = () => {
+        try {
+          const raw = JSON.parse(localStorage.getItem(LP_LOCAL_EVENT_KEY) || '[]');
+          const now = Date.now();
+          return (Array.isArray(raw) ? raw : [])
+            .filter(e => e && e.line && Number.isFinite(new Date(e.ts).getTime()) && (now - new Date(e.ts).getTime()) < LP_LOCAL_EVENT_TTL_MS)
+            .slice(-20);
+        } catch (_) { return []; }
+      };
+      const lpPersistLocalEvent = (line, kind = 'manual') => {
+        const l = String(line || '').replace(/\s+/g, ' ').trim();
+        if (!l) return null;
+        try {
+          const now = Date.now();
+          let events = lpReadLocalEvents().filter(e => !(e.line === l && (now - new Date(e.ts).getTime()) < 60000));
+          const ev = { id:'local:' + now + ':' + Math.random().toString(36).slice(2,8), ts:new Date(now).toISOString(), kind:String(kind || 'manual'), line:l };
+          events.push(ev);
+          events = events.slice(-20);
+          localStorage.setItem(LP_LOCAL_EVENT_KEY, JSON.stringify(events));
+          return ev;
+        } catch (_) { return null; }
+      };
       // Cloud availability helper (avoid ReferenceError on older builds)
       const lpCloudOK = () => {
         try {
@@ -24971,9 +25011,10 @@ if(hsBody){
 	          return;
 	        }
 	        el.setAttribute('aria-label', lpDisplayText(line));
-	        lpAppendTextSpan(el, 'lp-mode', parsed.abbr);
-	        lpAppendTextSpan(el, 'lp-mode-sep', '/');
-	        lpAppendTextSpan(el, 'lp-time', parsed.time);
+	        const meta = lpAppendTextSpan(el, 'lp-game-meta', '');
+	        lpAppendTextSpan(meta, 'lp-mode', parsed.abbr);
+	        lpAppendTextSpan(meta, 'lp-mode-sep', '/');
+	        lpAppendTextSpan(meta, 'lp-time', parsed.time);
 	        const result = lpAppendTextSpan(el, 'lp-result', '');
 	        lpAppendTextSpan(result, 'lp-scoreline', parsed.scoreline);
 	      };
@@ -25524,11 +25565,48 @@ if(hsBody){
           const l = String(line || '').replace(/\s+/g,' ').trim();
           if (!st || !l) return;
           st.injectQueue = Array.isArray(st.injectQueue) ? st.injectQueue : [];
+          st.recentInjectedLines = Array.isArray(st.recentInjectedLines) ? st.recentInjectedLines : [];
           st.injectQueue.push(l);
           st.injectQueue = st.injectQueue.slice(-LP_BUFFER);
+          st.recentInjectedLines.push({ line:l, at:Date.now() });
+          st.recentInjectedLines = st.recentInjectedLines.filter(x => x && (Date.now() - Number(x.at || 0)) < 30000).slice(-LP_BUFFER);
           st.hold = 0;
         };
+        window.__homeLivePrinterPersistLine = (line, kind) => {
+          const ev = lpPersistLocalEvent(line, kind);
+          window.__homeLivePrinterInjectLine(line);
+          return ev;
+        };
       }catch(_e){}
+
+      const lpPrimeLocalPresentation = () => {
+        try {
+          const st = window.__homeLivePrinterState;
+          if (!st) return false;
+          const events = lpReadLocalEvents()
+            .slice()
+            .sort((a,b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+            .map(e => String(e.line || '').trim())
+            .filter(Boolean);
+          if (!events.length) return false;
+          st.bufLines = events.slice(0, LP_BUFFER);
+          const firstWindow = st.bufLines.slice(0, LP_VISIBLE);
+          while (firstWindow.length < LP_VISIBLE) firstWindow.push('');
+          st.displayLines = firstWindow;
+          st.lpStarted = true;
+          st.primedFromLocal = true;
+          st.lpCursor = st.bufLines.length ? (Math.min(LP_VISIBLE, st.bufLines.length) % st.bufLines.length) : 0;
+          st.paused = false;
+          st.hold = 2;
+          lpEnsureRows(st.displayLines);
+          const mid = document.querySelector('#homeLivePrinter .lp-mid');
+          const hold = document.querySelector('#homeLivePrinter .home-hold-overlay');
+          try { if (mid) mid.classList.remove('lp-mid-hold'); } catch(_e){}
+          try { const p = document.getElementById('homeLivePrinter'); if (p) p.classList.add('is-live'); } catch(_e){}
+          try { if (hold) hold.style.display = 'none'; } catch(_e){}
+          return true;
+        } catch (_) { return false; }
+      };
 
       const lpRenderWindow = (opts = {}) => {
         const st = window.__homeLivePrinterState;
@@ -25790,6 +25868,42 @@ if(hsBody){
             }
           }catch(_e){}
 
+          // NEW PLAYER is a real feed event, not a one-session animation.
+          // Rebuild recent player joins from the cloud-synced player cache so a
+          // refresh still shows them without creating a second data authority.
+          try{
+            const players = (typeof getSavedPlayers === 'function') ? getSavedPlayers() : [];
+            const cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
+            const joins = (Array.isArray(players) ? players : [])
+              .map(p => {
+                const joined = p && (p.joinedAt || p.created_at || p.createdAt);
+                const ts = joined ? new Date(joined).getTime() : NaN;
+                if (!p || !p.name || !Number.isFinite(ts) || ts < cutoff) return null;
+                return {
+                  event_ts: new Date(ts).toISOString(),
+                  event_id: 'player:' + String(p.id || p.name) + ':' + String(ts),
+                  event_kind: 'new_player',
+                  line_text: '🚨 NEW PLAYER - ' + String(p.name).trim() + ' - Welcome to Shateki Quest 🎯'
+                };
+              })
+              .filter(Boolean)
+              .sort((a,b) => new Date(b.event_ts).getTime() - new Date(a.event_ts).getTime())
+              .slice(0, 8);
+            if (joins.length) items = ([]).concat(items || [], joins);
+          }catch(_e){}
+
+          // Presentation-only persisted events survive refresh on this device.
+          // They do not own player/game truth; they only preserve feed history.
+          try{
+            const localEvents = lpReadLocalEvents().map(e => ({
+              event_ts:e.ts,
+              event_id:e.id,
+              event_kind:e.kind || 'local',
+              line_text:e.line
+            }));
+            if (localEvents.length) items = ([]).concat(items || [], localEvents);
+          }catch(_e){}
+
           const mid = document.querySelector('#homeLivePrinter .lp-mid');
           const hold = document.querySelector('#homeLivePrinter .home-hold-overlay');
 
@@ -25851,7 +25965,14 @@ if(hsBody){
           });
           // <<< PATCH:LIVE_PRINTER_DATE_HEADERS END
 
-          const collapsedLines = lpCollapseRoundPBOverflow(lines);
+          let collapsedLines = lpCollapseRoundPBOverflow(lines);
+          const nowMs = Date.now();
+          st.recentInjectedLines = (Array.isArray(st.recentInjectedLines) ? st.recentInjectedLines : [])
+            .filter(x => x && (nowMs - Number(x.at || 0)) < 30000);
+          if (st.recentInjectedLines.length) {
+            const recent = new Set(st.recentInjectedLines.map(x => String(x.line || '').trim()).filter(Boolean));
+            collapsedLines = collapsedLines.filter(line => !recent.has(String(line || '').trim()));
+          }
           const sig0 = sorted[0] ? lpSig(sorted[0]) : '';
           const shouldRefresh = forceFull || (sig0 && sig0 !== st.lastSig) || !Array.isArray(st.bufLines);
 
@@ -25861,19 +25982,32 @@ if(hsBody){
             st.lastSig = sig0 || st.lastSig;
           }
 
-          // Start empty on first load; events scroll in from bottom one-by-one.
-          if (!st.lpStarted) {
+          // First successful cloud/local truth sync should look complete
+          // immediately. If Home was synchronously primed from presentation
+          // history, replace that prime with the combined current feed now.
+          if (!st.lpStarted || st.primedFromLocal) {
             st.lpStarted = true;
-            st.lpCursor = 0;
-            st.displayLines = Array.from({ length: LP_VISIBLE }, () => '');
+            st.primedFromLocal = false;
+            const firstWindow = st.bufLines.slice(0, LP_VISIBLE);
+            while (firstWindow.length < LP_VISIBLE) firstWindow.push('');
+            st.displayLines = firstWindow;
+            st.lpCursor = st.bufLines.length ? (Math.min(LP_VISIBLE, st.bufLines.length) % st.bufLines.length) : 0;
+            st.hold = 2;
             lpEnsureRows(st.displayLines);
           } else if (!Array.isArray(st.displayLines) || st.displayLines.length !== LP_VISIBLE) {
-            st.displayLines = Array.from({ length: LP_VISIBLE }, () => '');
+            const firstWindow = st.bufLines.slice(0, LP_VISIBLE);
+            while (firstWindow.length < LP_VISIBLE) firstWindow.push('');
+            st.displayLines = firstWindow;
+            lpEnsureRows(st.displayLines);
           }
         } finally {
           st.syncing = false;
         }
       };
+
+      // Render any persisted presentation event immediately on Home entry;
+      // cloud/game truth continues to refresh asynchronously below.
+      lpPrimeLocalPresentation();
 
 if (!window.__homeLivePrinterInterval){
         window.__homeLivePrinterInterval = setInterval(()=>{

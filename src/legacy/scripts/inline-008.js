@@ -204,6 +204,7 @@
         : fullName.split(/\s+/).map(function(x){ return x ? x.charAt(0).toUpperCase() : ''; }).join('').slice(0,2);
 
       setEditorBusy('save', true, 'Saving profile…');
+      await new Promise(function(resolve){ requestAnimationFrame(function(){ requestAnimationFrame(resolve); }); });
       try{
         var id = player.id;
         var nmOld = player.name;
@@ -243,6 +244,11 @@
 
         try { if (typeof syncSavedPlayersFromCloud === 'function') await syncSavedPlayersFromCloud(); } catch(_){}
         try { document.dispatchEvent(new Event('sq:savedPlayersUpdated')); } catch(_){}
+        saveBtn.textContent = 'Saved ✓';
+        saveBtn.setAttribute('aria-busy', 'false');
+        overlay.setAttribute('aria-busy', 'false');
+        status.textContent = 'Profile saved.';
+        await new Promise(function(resolve){ setTimeout(resolve, 260); });
         __sqToast('Profile saved');
         overlay.remove();
         if (openerOverlay) openerOverlay.remove();

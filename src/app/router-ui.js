@@ -4776,10 +4776,17 @@ async function showAddPlayerDialog(index){
 
       chosenName = fullName;
       setSaveState(true, 'Saving player…');
+      // Give the browser a real painted frame before starting the mutation so
+      // SAVING… is visible even when the cloud responds very quickly.
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
       try {
         await cloudCreatePlayer(fullName, { initials, nickname, first_name: first, last_name: last, avatar_id: chosenAvatarId });
-        try{ if (typeof window.__homeLivePrinterInjectLine === 'function') window.__homeLivePrinterInjectLine(`🚨 NEW PLAYER - ${fullName} - Welcome to Shateki Quest 🎯`); }catch(_e){}
+        try{
+          const line = `🚨 NEW PLAYER - ${fullName} - Welcome to Shateki Quest 🎯`;
+          if (typeof window.__homeLivePrinterPersistLine === 'function') window.__homeLivePrinterPersistLine(line, 'new_player');
+          else if (typeof window.__homeLivePrinterInjectLine === 'function') window.__homeLivePrinterInjectLine(line);
+        }catch(_e){}
         await syncSavedPlayersFromCloud();
         try{ populateSavedPlayersSelects(); }catch(_){ }
         try{ if (typeof window.buildStartTicker === 'function') window.buildStartTicker(); }catch(_){ }
@@ -4833,7 +4840,13 @@ async function showAddPlayerDialog(index){
         }
       }catch(err){ try{ console.warn('add-to-card after save failed', err); }catch(_){ } }
 
+      if (saveBtn) {
+        saveBtn.textContent = 'SAVED ✓';
+        saveBtn.setAttribute('aria-busy', 'false');
+      }
+      modal.setAttribute('aria-busy', 'false');
       if (saveStatus) saveStatus.textContent = 'Player saved.';
+      await new Promise(resolve => setTimeout(resolve, 260));
       finish(cardMsg);
     };
   }
