@@ -2201,30 +2201,35 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 }
 .home-admin-row .btn{ width: 100%; }
 @media (max-width: 560px){
-  /* Safari-safe rule: keep the utility rail in document flow so it can never
-     cover VIDE. Put clearance on the actual page scroller, not a collapsing
-     bottom margin, so the rail can be scrolled fully above Safari's toolbar. */
+  /* Safari-safe Home rail:
+     - it remains after VIDE + version in normal document order;
+     - once reached, sticky positioning keeps the three primary actions above
+       Safari's floating bottom chrome instead of letting the browser cover them;
+     - a bounded footer tail gives sticky enough travel without v0.8.5's large
+       dead-scroll area. */
   body[data-page="details"] .wrap{
-    padding-bottom: calc(220px + env(safe-area-inset-bottom)) !important;
-    scroll-padding-bottom: calc(220px + env(safe-area-inset-bottom)) !important;
+    padding-bottom: calc(132px + env(safe-area-inset-bottom)) !important;
+    scroll-padding-bottom: calc(132px + env(safe-area-inset-bottom)) !important;
   }
   #details .home-footer-nav{
     position: relative;
     min-height: 0;
     margin-bottom: 0 !important;
+    padding-bottom: 112px;
   }
   #details .home-footer-nav .home-nav-row{
-    position: relative;
+    position: -webkit-sticky;
+    position: sticky;
     left: auto;
     right: auto;
-    bottom: auto;
+    bottom: max(92px, calc(56px + env(safe-area-inset-bottom)));
     transform: none;
-    z-index: auto;
+    z-index: 1200;
     width: 100%;
     max-width: 100%;
     margin: 0;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
   }
 }
 /* <<< PATCH:home-footer-nav END */
@@ -2511,6 +2516,23 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   box-shadow: inset 0 0 18px rgba(0,0,0,.22), 0 0 0 1px rgba(0,0,0,.14);
 }
 .home-live-printer .lp-row{ min-height: 20px; height:auto; }
+
+/* Keep ordinary VIDE copy at one stable scale throughout the printer cycle.
+   Safari must not resize text as rows fill or change from raw to structured
+   presentation. Semantic chips/date headers retain their explicit sizes. */
+#homeLivePrinter{
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+#homeLivePrinter .lp-row:not(.lp-datehdr) .lp-line,
+#homeLivePrinter .lp-row:not(.lp-datehdr) .lp-ellipsis,
+#homeLivePrinter .lp-row:not(.lp-datehdr) .lp-game-meta,
+#homeLivePrinter .lp-row:not(.lp-datehdr) .lp-time,
+#homeLivePrinter .lp-row:not(.lp-datehdr) .lp-result,
+#homeLivePrinter .lp-row:not(.lp-datehdr) .lp-scoreline{
+  font-size: inherit !important;
+}
+
 .home-live-printer .lp-row td{
   padding: 1px 0;
   vertical-align: middle;

@@ -1200,6 +1200,13 @@ if(hsBody){
         // If it contains underscores but not the full pattern, clean them.
         let cleaned = src.replace(/\s*_\s*/g, ' ').replace(/\s{2,}/g,' ').trim();
 
+        // Presentation-only NEW PLAYER events do not belong to a game mode.
+        // Never let the generic result formatter invent CLASSIC/TURBO/PRACTICE
+        // for them, and clean any stale suffix produced by older builds.
+        if (g && String(g.event_kind || '').toLowerCase() === 'new_player') {
+          return cleaned.replace(/\s*-\s*(CLASSIC|TURBO|PRACTICE)\s*$/i, '').trim();
+        }
+
         // PB/WR lines: strip any leading timestamp if present and normalize wording
         // ALERT (under 100 etc): strip timestamp and prefix 🚨
         if (/under\s*100/i.test(cleaned) || /^ALERT\b/i.test(cleaned)) {
