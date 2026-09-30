@@ -934,6 +934,7 @@ function recordThrow(spec){
       if(d.kind==='Single' || d.kind==='S') return 'S';
       return String(d.kind||'').toUpperCase();
     };
+    const __g5BounceOut = dartObj?.bounceOut === true;
     const __g4Prior=(entry.darts||[]).slice(0,dartIndex).map(__g4KindOf);
     const __g4Current=__g4KindOf(dartObj);
     const __g4All=__g4Prior.concat([__g4Current]);
@@ -949,14 +950,16 @@ function recordThrow(spec){
     const __g4Dirty=(dartIndex===2 && Number(entry.roundTotal||0)>0 && Number(entry.roundTotal||0)<=30 && !__g4Shanghai && !__g4Desmond && new Set(__g4Scoring).size>=2);
     const __g4Sector=Number(dartObj?.sector||0);
     const __g4Voldy=(__g4Sector>=1 && __g4Sector<=5 && ((roundDef?.type==='doubles' && __g4Current==='D') || (roundDef?.type==='triples' && __g4Current==='T')));
-    __sqGate4LegacySpecialOwned=!!(__g4Shanghai||__g4Desmond||__g4LastDartHero||__g4Awkward||__g4RepeatedTreble||__g4RepeatedDouble||__g4ThreeSingles||__g4Dirty||__g4Voldy);
+    __sqGate4LegacySpecialOwned=!__g5BounceOut && !!(__g4Shanghai||__g4Desmond||__g4LastDartHero||__g4Awkward||__g4RepeatedTreble||__g4RepeatedDouble||__g4ThreeSingles||__g4Dirty||__g4Voldy);
 
     if(__sqGate4LegacySpecialOwned && __sqDmdGate4ControllerActive()){
       try{ window.__sqDmdV2?.clear?.({restore:false}); }catch(_){}
     }
 
     let __g4Kind='';
-    if(dartObj?.kind==='Miss' || Number(dartObj?.points||0)===0){
+    if(__g5BounceOut){
+      __g4Kind='BOUNCE_OUT';
+    }else if(dartObj?.kind==='Miss' || Number(dartObj?.points||0)===0){
       __g4Kind=(dartIndex===2 && Number(entry.roundTotal||0)===0)?'SCRATCH':'MISS';
     }else if(dartObj?.kind==='B'){
       __g4Kind=(dartObj?.bull==='Inner')?'BULLSEYE':'OUTER_BULL';
@@ -1166,7 +1169,10 @@ try {
   let __queueOnlyCombo = false;
 
   if (kind === 'Miss' || pts === 0) {
-    if (window.__sqSuppressMissCallouts || window.__sqSkipInProgress) {
+    if (dartObj?.bounceOut === true) {
+      z2 = 'BOUNCE OUT';
+      fx = { type:'bounceOut', ms:1100, amp:3.0, fx:'impact' };
+    } else if (window.__sqSuppressMissCallouts || window.__sqSkipInProgress) {
       __queueOnlyCombo = true;
     } else if (__thirdMissAfterTwoTriples || __thirdMissAfterTwoDoubles) {
       z2 = 'AWKWARD';
