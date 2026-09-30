@@ -1372,10 +1372,7 @@ function __sqBindMissBounceHold(btn){
     holdTimer = setTimeout(()=>{
       held = true;
       btn.classList.add('sq-miss-bounce-held');
-      try{ window.__sqDmdHardClearQueue?.(); }catch(_){}
-      try{ window.sqDmdShowZones?.({ z2:'BOUNCE OUT', z3:'' }, { type:'flash', ms:420, fx:'impact' }); }catch(_){}
       try{ recordThrow({ kind:'BounceOut' }); }catch(_){}
-      try{ navigator.vibrate?.(35); }catch(_){}
     }, __SQ_QUICK_ENTRY_HOLD_MS);
   });
 
