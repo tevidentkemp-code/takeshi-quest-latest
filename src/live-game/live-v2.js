@@ -1301,8 +1301,6 @@ function __sqBindQuickEntryHold(btn, specFactory){
 
   btn.addEventListener('pointerdown',(e)=>{
     try{
-      // A genuine new press is a new scoring intent, so it must never inherit
-      // compatibility-click suppression from the previous completed hold.
       window.__sqQuickSuppressClick = null;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       const baseSpec=typeof specFactory === 'function' ? specFactory() : null;
@@ -1427,9 +1425,6 @@ if (!window.__sqQuickEntryClickGuardBound){
       }
       const t=e.target?.closest?.('#pad button, .sqQuickEntryPopover button');
       if (!t) return;
-      // iPhone Safari may synthesize the compatibility click at the original
-      // held S/D/T position even though pointerup occurred over ×2/×3.
-      // Match the stable score-button identity, not release coordinates.
       const scoreLabel=String(t.dataset?.scoreLabel || '');
       if (!guard.sourceScoreLabel || scoreLabel !== guard.sourceScoreLabel) return;
       window.__sqQuickSuppressClick = null;
@@ -1520,8 +1515,18 @@ function buildPad(){
     }catch(_){ }
 
     try{
-      if (window.__sqDmdV2 && typeof window.__sqDmdV2.emit === 'function'){
-        window.__sqDmdV2.emit({ kind:'UNDO' });
+      if (typeof window.__sqDmdGate4Emit === 'function' && window.__sqDmdGate4ControllerActive?.()){
+        window.__sqDmdGate4Emit('UNDO',{ subline:'SCORE RESTORED' },{
+          playerIndex:Number(state?.currentPlayer||0),
+          roundIndex:Number(state?.currentRound||0),
+          dartIndex:Number(state?.currentDart||0),
+          historyLength:Array.isArray(state?.history)?state.history.length:0,
+          eventToken:['G4','UNDO',String(after),String(state?.currentPlayer||0),String(state?.currentRound||0),String(state?.currentDart||0)].join('|'),
+          playerInput:true,
+          extra:'successful'
+        });
+      } else if (window.__sqDmdV2 && typeof window.__sqDmdV2.emit === 'function'){
+        window.__sqDmdV2.emit({ kind:'UNDO', playerInput:true });
       } else {
         window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120});
       }
@@ -1577,8 +1582,18 @@ function buildPad(){
     }catch(_){ }
 
     try{
-      if (window.__sqDmdV2 && typeof window.__sqDmdV2.emit === 'function'){
-        window.__sqDmdV2.emit({ kind:'SKIP', player:nextName });
+      if (typeof window.__sqDmdGate4Emit === 'function' && window.__sqDmdGate4ControllerActive?.()){
+        window.__sqDmdGate4Emit('SKIP',{player:nextName},{
+          playerIndex:Number(state?.currentPlayer||0),
+          roundIndex:Number(state?.currentRound||0),
+          dartIndex:Number(state?.currentDart||0),
+          historyLength:afterHistory,
+          eventToken:['G4','SKIP',String(afterHistory),String(state?.currentPlayer||0),String(state?.currentRound||0)].join('|'),
+          playerInput:true,
+          extra:'absence-skip'
+        });
+      } else if (window.__sqDmdV2 && typeof window.__sqDmdV2.emit === 'function'){
+        window.__sqDmdV2.emit({ kind:'SKIP', player:nextName, playerInput:true });
       } else {
         window.sqDmdShowZones?.({ z2:'TURN SKIPPED', z3:(nextName ? (nextName + ' UP') : '') }, { type:'hold', ms:500 });
       }
@@ -1657,6 +1672,13 @@ function buildPad(){
       if (n >= 2 || specialMissSeq) window.__sqDmdBulkMiss = true;
 
       let myToken = Number(window.__sqDmdFlowToken || 0);
+      if (specialMissSeq && window.__sqDmdGate4ControllerActive?.()){
+        // Gate 4: state/scoring commits synchronously; controller owns MISS/SCRATCH
+        // presentation and each accepted dart invalidates stale transient output.
+        for (let i=0; i<n; i++) recordThrow({ kind:'Miss' });
+        window.__sqDmdBulkMiss = __prevBulk;
+        return;
+      }
       if (specialMissSeq){
         try{ window.__sqSuppressMissCallouts = true; }catch(_){}
         const base = seqSlots.slice();
@@ -1787,6 +1809,13 @@ function buildPad(){
 
         // Queue is already cleared by the button bindings before we enter here.
         let myToken = Number(window.__sqDmdFlowToken || 0);
+        if (specialMissSeq && window.__sqDmdGate4ControllerActive?.()){
+          // Gate 4: state/scoring commits synchronously; controller owns MISS/SCRATCH
+          // presentation and each accepted dart invalidates stale transient output.
+          for (let i=0; i<n; i++) recordThrow({ kind:'Miss' });
+          window.__sqDmdBulkMiss = __prevBulk;
+          return;
+        }
         if (specialMissSeq){
           try{ window.__sqSuppressMissCallouts = true; }catch(_){}
           const base = seqSlots.slice();
