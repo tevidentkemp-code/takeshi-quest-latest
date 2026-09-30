@@ -5,7 +5,7 @@
  * Does not alter scoring, game rules, mode routing, persistence or Supabase.
  */
 
-export const VERSION = '2.2.0-sxp05-gate4';
+export const VERSION = '2.3.0-sxp05-gate5';
 export const ARCHITECTURE = 'sxp05-gate3-scene-contract';
 
 export const PRIORITY = Object.freeze({
@@ -96,6 +96,8 @@ export function makeMessage(event = {}) {
       return { priority: PRIORITY.THROW, headline: 'BULLSEYE +50', subline: total, type: 'bullseyeHit', duration: 1300, haptic: 'major' };
     case 'MISS':
       return { priority: PRIORITY.THROW, headline: 'MISS', subline: `DART ${dart} OF 3`, type: 'hold', haptic: 'miss' };
+    case 'BOUNCE_OUT':
+      return { priority: PRIORITY.VISIT + 5, headline: 'BOUNCE OUT', subline: 'NO SCORE', type: 'bounceOut', duration: 1100, haptic: 'miss' };
     case 'SCRATCH':
     case 'MISS_X3':
       return { priority: PRIORITY.VISIT, headline: 'SCRATCH', subline: 'NO SCORE', type: 'hold', haptic: 'miss' };
@@ -154,6 +156,7 @@ export function makeMessage(event = {}) {
 }
 
 const REPLACEMENT_KINDS = new Set([
+  'BOUNCE_OUT',
   'BULLSEYE',
   'LAST_DART_HERO',
   'DESMOND_DELIGHT',
