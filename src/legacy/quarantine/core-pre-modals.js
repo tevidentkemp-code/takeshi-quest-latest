@@ -557,6 +557,7 @@ function arrangeStartActions(){
       printer.innerHTML = ''+
         '<div class="lp-top">'+
           '<span id="homeLpTopLine" class="lp-title">LIVE UPDATES</span>'+
+          '<button id="homeLivePauseBtn" class="lp-pause" type="button" aria-pressed="false" aria-label="Pause live updates">PAUSE</button>'+
         '</div>'+
         '<div class="lp-mid lp-mid-hold">'+
           '<div class="home-hold-overlay" aria-hidden="true">'+
@@ -873,9 +874,44 @@ if(hsBody){
           lastSyncMs: 0,
           syncing: false,
           forceFullEvery: 6, // every N syncs, hard refresh rows
-          syncCount: 0
+          syncCount: 0,
+          paused: false,
+          injectQueue: []
         };
       }
+      const lpState = window.__homeLivePrinterState;
+      if (lpState) {
+        // Home always enters with LIVE UPDATES playing. Pause is a temporary
+        // viewing choice, not a sticky navigation/session state.
+        lpState.paused = false;
+        if (!Array.isArray(lpState.injectQueue)) lpState.injectQueue = [];
+        if (!Array.isArray(lpState.recentInjectedLines)) lpState.recentInjectedLines = [];
+        // A full document load begins with a visually blank VIDE. The first
+        // successful sync fills the buffer only; the printer then writes it in.
+        if (typeof lpState.bootBlankPending !== 'boolean') lpState.bootBlankPending = true;
+      }
+      const lpPauseBtn = document.getElementById('homeLivePauseBtn');
+      const lpSyncPauseButton = () => {
+        if (!lpPauseBtn || !lpState) return;
+        const paused = !!lpState.paused;
+        lpPauseBtn.textContent = paused ? 'PLAY' : 'PAUSE';
+        lpPauseBtn.setAttribute('aria-pressed', paused ? 'true' : 'false');
+        lpPauseBtn.setAttribute('aria-label', paused ? 'Resume live updates' : 'Pause live updates');
+      };
+      if (lpPauseBtn && !lpPauseBtn.dataset.lpBound) {
+        lpPauseBtn.dataset.lpBound = '1';
+        lpPauseBtn.addEventListener('click', () => {
+          if (!lpState) return;
+          lpState.paused = !lpState.paused;
+          if (!lpState.paused) lpState.hold = 0;
+          lpSyncPauseButton();
+        });
+      }
+      lpSyncPauseButton();
+      const lpReducedMotion = () => {
+        try { return !!window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+        catch (_) { return false; }
+      };
       const lpSig = (g) => {
         if (!g) return '';
         const ts = String(g.event_ts ?? g.ts ?? g.created_at ?? g.createdAt ?? '');
@@ -889,6 +925,30 @@ if(hsBody){
       const LP_BUFFER = 30;
       const LP_VISIBLE = 15;
       const LP_SYNC_MS = Math.max(15000, (typeof SQ_GAMES_VISIBLE_MIN_POLL_MS !== 'undefined' ? SQ_GAMES_VISIBLE_MIN_POLL_MS : 15000));
+      const LP_LOCAL_EVENT_KEY = 'sq_live_updates_events_v1';
+      const LP_LOCAL_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+      const lpReadLocalEvents = () => {
+        try {
+          const raw = JSON.parse(localStorage.getItem(LP_LOCAL_EVENT_KEY) || '[]');
+          const now = Date.now();
+          return (Array.isArray(raw) ? raw : [])
+            .filter(e => e && e.line && Number.isFinite(new Date(e.ts).getTime()) && (now - new Date(e.ts).getTime()) < LP_LOCAL_EVENT_TTL_MS)
+            .slice(-20);
+        } catch (_) { return []; }
+      };
+      const lpPersistLocalEvent = (line, kind = 'manual') => {
+        const l = String(line || '').replace(/\s+/g, ' ').trim();
+        if (!l) return null;
+        try {
+          const now = Date.now();
+          let events = lpReadLocalEvents().filter(e => !(e.line === l && (now - new Date(e.ts).getTime()) < 60000));
+          const ev = { id:'local:' + now + ':' + Math.random().toString(36).slice(2,8), ts:new Date(now).toISOString(), kind:String(kind || 'manual'), line:l };
+          events.push(ev);
+          events = events.slice(-20);
+          localStorage.setItem(LP_LOCAL_EVENT_KEY, JSON.stringify(events));
+          return ev;
+        } catch (_) { return null; }
+      };
       // Cloud availability helper (avoid ReferenceError on older builds)
       const lpCloudOK = () => {
         try {
@@ -1140,6 +1200,13 @@ if(hsBody){
         // If it contains underscores but not the full pattern, clean them.
         let cleaned = src.replace(/\s*_\s*/g, ' ').replace(/\s{2,}/g,' ').trim();
 
+        // Presentation-only NEW PLAYER events do not belong to a game mode.
+        // Never let the generic result formatter invent CLASSIC/TURBO/PRACTICE
+        // for them, and clean any stale suffix produced by older builds.
+        if (g && String(g.event_kind || '').toLowerCase() === 'new_player') {
+          return cleaned.replace(/\s*-\s*(CLASSIC|TURBO|PRACTICE)\s*$/i, '').trim();
+        }
+
         // PB/WR lines: strip any leading timestamp if present and normalize wording
         // ALERT (under 100 etc): strip timestamp and prefix 🚨
         if (/under\s*100/i.test(cleaned) || /^ALERT\b/i.test(cleaned)) {
@@ -1314,9 +1381,10 @@ if(hsBody){
 	          return;
 	        }
 	        el.setAttribute('aria-label', lpDisplayText(line));
-	        lpAppendTextSpan(el, 'lp-mode', parsed.abbr);
-	        lpAppendTextSpan(el, 'lp-mode-sep', '/');
-	        lpAppendTextSpan(el, 'lp-time', parsed.time);
+	        const meta = lpAppendTextSpan(el, 'lp-game-meta', '');
+	        lpAppendTextSpan(meta, 'lp-mode', parsed.abbr);
+	        lpAppendTextSpan(meta, 'lp-mode-sep', '/');
+	        lpAppendTextSpan(meta, 'lp-time', parsed.time);
 	        const result = lpAppendTextSpan(el, 'lp-result', '');
 	        lpAppendTextSpan(result, 'lp-scoreline', parsed.scoreline);
 	      };
@@ -1362,6 +1430,11 @@ if(hsBody){
 	          if (typeof onDone === 'function') requestAnimationFrame(onDone);
 	          return;
 	        }
+	        if (lpReducedMotion()) {
+	          el.textContent = t.slice(0, max);
+	          if (typeof onDone === 'function') requestAnimationFrame(onDone);
+	          return;
+	        }
 	        const timer = setInterval(()=>{
 	          i++;
 	          el.textContent = t.slice(0, i);
@@ -1372,8 +1445,45 @@ if(hsBody){
 	        }, speedMs);
 	      };
 
+	      const lpTypeLine = (el, line, speedMs = 28, onDone = null) => {
+	        if (!el) return;
+	        const parsed = lpParseResultLine(line);
+	        if (!parsed) {
+	          lpType(el, lpDisplayText(line), speedMs, () => {
+	            lpSetLineContent(el, line);
+	            if (typeof onDone === 'function') onDone();
+	          });
+	          return;
+	        }
+
+	        // Game rows are structured from the first typed character. Type the
+	        // mode/time line completely, then begin the scoreline underneath.
+	        el.textContent = '';
+	        try{
+	          el.classList.add('lp-structured');
+	          el.classList.remove('lp-matchline', 'lp-alertline', 'lp-recordline');
+	          el.setAttribute('aria-label', lpDisplayText(line));
+	        }catch(_e){}
+	        const meta = lpAppendTextSpan(el, 'lp-game-meta', '');
+	        const result = lpAppendTextSpan(el, 'lp-result', '');
+	        const metaText = `${parsed.abbr} / ${parsed.time}`;
+
+	        lpType(meta, metaText, speedMs, () => {
+	          meta.textContent = '';
+	          lpAppendTextSpan(meta, 'lp-mode', parsed.abbr);
+	          lpAppendTextSpan(meta, 'lp-mode-sep', '/');
+	          lpAppendTextSpan(meta, 'lp-time', parsed.time);
+	          const score = lpAppendTextSpan(result, 'lp-scoreline', '');
+	          lpType(score, parsed.scoreline, speedMs, () => {
+	            lpSetLineContent(el, line);
+	            if (typeof onDone === 'function') onDone();
+	          });
+	        });
+	      };
+
       const lpStripBang = (s) => String(s || '').replace(/^🚨\s*/,'').trim();
       const lpIsRecordLine = (line) => /^NEW GAME RECORD SCORE\b/i.test(lpStripBang(line));
+      const lpIsWorldRecordLine = (line) => /^(?:NEW GAME RECORD SCORE|ROUND WR|WR\b|WORLD RECORD\b)/i.test(lpStripBang(line));
       const lpIsRoundPBLine = (line) => /^ROUND PB\b/i.test(lpStripBang(line));
       const lpIsGamePBLine  = (line) => /^GAME PB\b/i.test(lpStripBang(line));
       const lpIsMatchResultLine = (line) => /^\(\s*(CLA|TBO)\s+RESULT\s*\)\s*\/\s*/i.test(String(line || '').replace(/\s+/g,' ').trim()) ||
@@ -1419,6 +1529,7 @@ if(hsBody){
       const lpApplyRowClasses = (tr, line) => {
         if (!tr) return;
         const isRecord = lpIsRecordLine(line);
+        const isWorldRecord = lpIsWorldRecordLine(line);
         const isRoundPB = !isRecord && lpIsRoundPBLine(line);
 	        const isGamePB = !isRecord && lpIsGamePBLine(line);
 	        const isMatchResult = lpIsMatchResultLine(line);
@@ -1427,6 +1538,7 @@ if(hsBody){
 	        const isDateHdr = lpIsDateHdrLine(line);
 	        const modeInfo = (!isAlert && !isDateHdr) ? lpModeDisplayFromLine(line) : { mode: '' };
 	        tr.classList.toggle('lp-record', isRecord);
+	        tr.classList.toggle('lp-world-record', isWorldRecord);
 	        tr.classList.toggle('lp-roundpb', isRoundPB);
 	        tr.classList.toggle('lp-gamepb', isGamePB);
 	        tr.classList.toggle('lp-match-result', isMatchResult);
@@ -1792,6 +1904,10 @@ if(hsBody){
           if (onDone) onDone();
           return;
         }
+        if (lpReducedMotion() || !durationMs) {
+          if (onDone) requestAnimationFrame(onDone);
+          return;
+        }
         let doneCalled = false;
         const finish = () => {
           if (doneCalled) return;
@@ -1822,33 +1938,29 @@ if(hsBody){
       const lpEnsureRows = (lines) => {
         const tbody = document.getElementById('homeLivePrinterRows');
         if (!tbody) return;
-        tbody.innerHTML = '';
-        (lines || []).slice(0, LP_VISIBLE).forEach((line) => {
-          const tr = document.createElement('tr');
-          tr.className = 'lp-row';
-	          const td = document.createElement('td');
-	          td.className = 'lp-line';
-	          const sp = document.createElement('span');
-	          sp.className = 'lp-ellipsis';
-	          lpApplyRowClasses(tr, line);
-	          lpSetLineContent(sp, line);
-	          td.appendChild(sp);
-	          tr.appendChild(td);
-	          tbody.appendChild(tr);
-        });
-        // pad to exactly LP_VISIBLE rows
-        while (tbody.querySelectorAll('tr.lp-row').length < LP_VISIBLE) {
-          const tr = document.createElement('tr');
-          tr.className = 'lp-row';
-          const td = document.createElement('td');
-          td.className = 'lp-line';
-          const sp = document.createElement('span');
-          sp.className = 'lp-ellipsis';
-          sp.textContent = '';
-          td.appendChild(sp);
-          tr.appendChild(td);
-          tbody.appendChild(tr);
+        let rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
+        if (rows.length !== LP_VISIBLE) {
+          tbody.replaceChildren();
+          for (let i = 0; i < LP_VISIBLE; i++) {
+            const tr = document.createElement('tr');
+            tr.className = 'lp-row';
+            const td = document.createElement('td');
+            td.className = 'lp-line';
+            const sp = document.createElement('span');
+            sp.className = 'lp-ellipsis';
+            td.appendChild(sp);
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+          }
+          rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
         }
+        rows.forEach((tr, i) => {
+          const line = (lines || [])[i] ?? '';
+          const sp = tr.querySelector('.lp-ellipsis');
+          tr.classList.remove('lp-new');
+          lpApplyRowClasses(tr, line);
+          if (sp) lpSetLineContent(sp, line);
+        });
       };
 
       // Allow other parts of the app to inject a one-off LIVE UPDATES line (e.g., NEW PLAYER)
@@ -1858,15 +1970,49 @@ if(hsBody){
           const st = window.__homeLivePrinterState;
           const l = String(line || '').replace(/\s+/g,' ').trim();
           if (!st || !l) return;
-          // push into buffer
-          st.bufLines = [l].concat(Array.isArray(st.bufLines) ? st.bufLines : []);
-          st.bufLines = st.bufLines.slice(0, LP_BUFFER);
-          // show immediately by shifting the visible window
-          st.displayLines = Array.isArray(st.displayLines) ? st.displayLines : Array.from({ length: LP_VISIBLE }, () => '');
-          st.displayLines = st.displayLines.slice(1).concat([l]);
-          lpEnsureRows(st.displayLines);
+          st.injectQueue = Array.isArray(st.injectQueue) ? st.injectQueue : [];
+          st.recentInjectedLines = Array.isArray(st.recentInjectedLines) ? st.recentInjectedLines : [];
+          st.injectQueue.push(l);
+          st.injectQueue = st.injectQueue.slice(-LP_BUFFER);
+          st.recentInjectedLines.push({ line:l, at:Date.now() });
+          st.recentInjectedLines = st.recentInjectedLines.filter(x => x && (Date.now() - Number(x.at || 0)) < 30000).slice(-LP_BUFFER);
+          st.hold = 0;
+        };
+        window.__homeLivePrinterPersistLine = (line, kind) => {
+          const ev = lpPersistLocalEvent(line, kind);
+          window.__homeLivePrinterInjectLine(line);
+          return ev;
         };
       }catch(_e){}
+
+      const lpPrimeLocalPresentation = () => {
+        try {
+          const st = window.__homeLivePrinterState;
+          if (!st) return false;
+          const events = lpReadLocalEvents()
+            .slice()
+            .sort((a,b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+            .map(e => String(e.line || '').trim())
+            .filter(Boolean);
+          if (!events.length) return false;
+          st.bufLines = events.slice(0, LP_BUFFER);
+          const firstWindow = st.bufLines.slice(0, LP_VISIBLE);
+          while (firstWindow.length < LP_VISIBLE) firstWindow.push('');
+          st.displayLines = firstWindow;
+          st.lpStarted = true;
+          st.primedFromLocal = true;
+          st.lpCursor = st.bufLines.length ? (Math.min(LP_VISIBLE, st.bufLines.length) % st.bufLines.length) : 0;
+          st.paused = false;
+          st.hold = 2;
+          lpEnsureRows(st.displayLines);
+          const mid = document.querySelector('#homeLivePrinter .lp-mid');
+          const hold = document.querySelector('#homeLivePrinter .home-hold-overlay');
+          try { if (mid) mid.classList.remove('lp-mid-hold'); } catch(_e){}
+          try { const p = document.getElementById('homeLivePrinter'); if (p) p.classList.add('is-live'); } catch(_e){}
+          try { if (hold) hold.style.display = 'none'; } catch(_e){}
+          return true;
+        } catch (_) { return false; }
+      };
 
       const lpRenderWindow = (opts = {}) => {
         const st = window.__homeLivePrinterState;
@@ -1891,10 +2037,11 @@ if(hsBody){
       const lpScrollStep = () => {
         const st = window.__homeLivePrinterState;
         const tbody = document.getElementById('homeLivePrinterRows');
-        if (!st || !tbody) return;
+        if (!st || !tbody || st.paused) return;
 
         const buf = Array.isArray(st.bufLines) ? st.bufLines : [];
-        if (!buf.length) return;
+        const queue = Array.isArray(st.injectQueue) ? st.injectQueue : [];
+        if (!buf.length && !queue.length) return;
 
         // Ensure display model exists
         if (!st.lpStarted || !Array.isArray(st.displayLines) || st.displayLines.length !== LP_VISIBLE) {
@@ -1907,19 +2054,26 @@ if(hsBody){
         const rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
         const rowH = (rows[0] ? (rows[0].getBoundingClientRect().height || 20) : 20);
 
-        // Pull next line (circular)
-        const nextIdx = st.lpCursor % buf.length;
-        const nextLine = String(buf[nextIdx] ?? '').trim();
-        st.lpCursor = (st.lpCursor + 1) % buf.length;
-        // Pace the pause that follows this line by looking at what comes next: a
-        // record/PB/alert belongs to the game printed above it, so it should land
-        // almost immediately, while a fresh game result gets the fuller beat.
-        try{
-          const upcoming = String(buf[st.lpCursor % buf.length] ?? '').trim();
-          const follower = lpIsRecordLine(upcoming) || lpIsRoundPBLine(upcoming)
-                        || lpIsGamePBLine(upcoming) || lpIsAlertLine(upcoming) || lpIsBeerAlertLine(upcoming);
-          st.nextHold = follower ? 0 : 2;
-        }catch(_e){ st.nextHold = 2; }
+        // Pull injected events through this same scheduler instead of letting
+        // other features repaint the printer DOM directly.
+        let nextLine = '';
+        if (queue.length) {
+          nextLine = String(queue.shift() ?? '').trim();
+          st.nextHold = 1;
+        } else {
+          const nextIdx = st.lpCursor % buf.length;
+          nextLine = String(buf[nextIdx] ?? '').trim();
+          st.lpCursor = (st.lpCursor + 1) % buf.length;
+          // Pace the pause that follows this line by looking at what comes next: a
+          // record/PB/alert belongs to the game printed above it, so it should land
+          // almost immediately, while a fresh game result gets the fuller beat.
+          try{
+            const upcoming = String(buf[st.lpCursor % buf.length] ?? '').trim();
+            const follower = lpIsRecordLine(upcoming) || lpIsRoundPBLine(upcoming)
+                          || lpIsGamePBLine(upcoming) || lpIsAlertLine(upcoming) || lpIsBeerAlertLine(upcoming);
+            st.nextHold = follower ? 0 : 2;
+          }catch(_e){ st.nextHold = 2; }
+        }
 
         // Shift window (top drops, new line appears at bottom)
         try { st.displayLines.shift(); } catch(_e){ st.displayLines = st.displayLines.slice(1); }
@@ -1953,7 +2107,7 @@ if(hsBody){
 	            const lastLine = st.displayLines[LP_VISIBLE - 1];
 	            const fast = (()=>{ try{ return lpIsRecordLine(lastLine) || lpIsRoundPBLine(lastLine)
               || lpIsGamePBLine(lastLine) || lpIsAlertLine(lastLine) || lpIsBeerAlertLine(lastLine); }catch(_e){ return false; } })();
-	            lpType(lastSp, lpDisplayText(lastLine), fast ? 8 : 22, () => lpSetLineContent(lastSp, lastLine));
+	            lpTypeLine(lastSp, lastLine, fast ? 8 : 22);
 	          }
 	        });
 	      };
@@ -1988,7 +2142,7 @@ if(hsBody){
 	            lpApplyRowClasses(lastRow, winNew[LP_VISIBLE - 1]);
 	            lastSp.textContent = '';
 	            const lastLine = winNew[LP_VISIBLE - 1] ?? '—';
-	            lpType(lastSp, lpDisplayText(lastLine), 20, () => lpSetLineContent(lastSp, lastLine));
+	            lpTypeLine(lastSp, lastLine, 20);
 	            setTimeout(() => {
 	              try { lastRow.classList.remove('lp-new'); } catch (_) {}
 	            }, 900);
@@ -2120,6 +2274,42 @@ if(hsBody){
             }
           }catch(_e){}
 
+          // NEW PLAYER is a real feed event, not a one-session animation.
+          // Rebuild recent player joins from the cloud-synced player cache so a
+          // refresh still shows them without creating a second data authority.
+          try{
+            const players = (typeof getSavedPlayers === 'function') ? getSavedPlayers() : [];
+            const cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
+            const joins = (Array.isArray(players) ? players : [])
+              .map(p => {
+                const joined = p && (p.joinedAt || p.created_at || p.createdAt);
+                const ts = joined ? new Date(joined).getTime() : NaN;
+                if (!p || !p.name || !Number.isFinite(ts) || ts < cutoff) return null;
+                return {
+                  event_ts: new Date(ts).toISOString(),
+                  event_id: 'player:' + String(p.id || p.name) + ':' + String(ts),
+                  event_kind: 'new_player',
+                  line_text: '🚨 NEW PLAYER - ' + String(p.name).trim() + ' - Welcome to Shateki Quest 🎯'
+                };
+              })
+              .filter(Boolean)
+              .sort((a,b) => new Date(b.event_ts).getTime() - new Date(a.event_ts).getTime())
+              .slice(0, 8);
+            if (joins.length) items = ([]).concat(items || [], joins);
+          }catch(_e){}
+
+          // Presentation-only persisted events survive refresh on this device.
+          // They do not own player/game truth; they only preserve feed history.
+          try{
+            const localEvents = lpReadLocalEvents().map(e => ({
+              event_ts:e.ts,
+              event_id:e.id,
+              event_kind:e.kind || 'local',
+              line_text:e.line
+            }));
+            if (localEvents.length) items = ([]).concat(items || [], localEvents);
+          }catch(_e){}
+
           const mid = document.querySelector('#homeLivePrinter .lp-mid');
           const hold = document.querySelector('#homeLivePrinter .home-hold-overlay');
 
@@ -2127,7 +2317,7 @@ if(hsBody){
             // Keep the hold overlay visible; show empty rows.
             try { if (mid) mid.classList.add('lp-mid-hold'); } catch(_e){}
             try { const p = document.getElementById('homeLivePrinter'); if (p) p.classList.remove('is-live'); } catch(_e){}
-            lpEnsureRows(Array.from({length: LP_VISIBLE}, ()=>'—'));
+            lpEnsureRows(Array.from({length: LP_VISIBLE}, ()=> st.bootBlankPending ? '' : '—'));
             return;
           }
 
@@ -2181,7 +2371,14 @@ if(hsBody){
           });
           // <<< PATCH:LIVE_PRINTER_DATE_HEADERS END
 
-          const collapsedLines = lpCollapseRoundPBOverflow(lines);
+          let collapsedLines = lpCollapseRoundPBOverflow(lines);
+          const nowMs = Date.now();
+          st.recentInjectedLines = (Array.isArray(st.recentInjectedLines) ? st.recentInjectedLines : [])
+            .filter(x => x && (nowMs - Number(x.at || 0)) < 30000);
+          if (st.recentInjectedLines.length) {
+            const recent = new Set(st.recentInjectedLines.map(x => String(x.line || '').trim()).filter(Boolean));
+            collapsedLines = collapsedLines.filter(line => !recent.has(String(line || '').trim()));
+          }
           const sig0 = sorted[0] ? lpSig(sorted[0]) : '';
           const shouldRefresh = forceFull || (sig0 && sig0 !== st.lastSig) || !Array.isArray(st.bufLines);
 
@@ -2191,19 +2388,59 @@ if(hsBody){
             st.lastSig = sig0 || st.lastSig;
           }
 
-          // Start empty on first load; events scroll in from bottom one-by-one.
-          if (!st.lpStarted) {
+          // A fresh document starts visually blank. Sync establishes the
+          // canonical buffer, then the normal printer scheduler writes it in.
+          if (st.bootBlankPending) {
+            st.bootBlankPending = false;
             st.lpStarted = true;
-            st.lpCursor = 0;
+            st.primedFromLocal = false;
             st.displayLines = Array.from({ length: LP_VISIBLE }, () => '');
+            st.lpCursor = 0;
+            st.hold = 0;
+            lpEnsureRows(st.displayLines);
+          } else if (!st.lpStarted || st.primedFromLocal) {
+            st.lpStarted = true;
+            st.primedFromLocal = false;
+            const firstWindow = st.bufLines.slice(0, LP_VISIBLE);
+            while (firstWindow.length < LP_VISIBLE) firstWindow.push('');
+            st.displayLines = firstWindow;
+            st.lpCursor = st.bufLines.length ? (Math.min(LP_VISIBLE, st.bufLines.length) % st.bufLines.length) : 0;
+            st.hold = 2;
             lpEnsureRows(st.displayLines);
           } else if (!Array.isArray(st.displayLines) || st.displayLines.length !== LP_VISIBLE) {
-            st.displayLines = Array.from({ length: LP_VISIBLE }, () => '');
+            const firstWindow = st.bufLines.slice(0, LP_VISIBLE);
+            while (firstWindow.length < LP_VISIBLE) firstWindow.push('');
+            st.displayLines = firstWindow;
+            lpEnsureRows(st.displayLines);
           }
         } finally {
           st.syncing = false;
         }
       };
+
+      // Full page reloads deliberately begin with a blank VIDE. Seed the
+      // hidden buffer synchronously from persisted presentation history so
+      // printing can start immediately without waiting for cloud sync.
+      try{
+        const st = window.__homeLivePrinterState;
+        if (st && st.bootBlankPending) {
+          const localBootLines = lpReadLocalEvents()
+            .slice()
+            .sort((a,b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+            .map(e => String(e.line || '').trim())
+            .filter(Boolean);
+          st.bufLines = localBootLines.slice(0, LP_BUFFER);
+          st.lpStarted = true;
+          st.primedFromLocal = false;
+          st.displayLines = Array.from({ length: LP_VISIBLE }, () => '');
+          st.lpCursor = 0;
+          st.hold = 0;
+          // The blank boot frame has now been established. Cloud sync may
+          // replace the buffer later, but must not replace this presentation.
+          st.bootBlankPending = false;
+          lpEnsureRows(st.displayLines);
+        }
+      }catch(_e){}
 
 if (!window.__homeLivePrinterInterval){
         window.__homeLivePrinterInterval = setInterval(()=>{
@@ -2218,11 +2455,14 @@ if (!window.__homeLivePrinterInterval){
           }
 
           
-          // Continuous feed: scroll through last 20 even when nothing new arrives
+          // Continuous feed: scroll through recent results unless the user has
+          // explicitly paused motion. Cloud sync continues while paused.
           try {
-            if (!Number.isFinite(st.hold)) st.hold = 0;
-            if (st.hold > 0) st.hold--;
-            else { lpScrollStep(); const h = Number(st.nextHold); st.hold = Number.isFinite(h) ? h : 2; }
+            if (!st.paused) {
+              if (!Number.isFinite(st.hold)) st.hold = 0;
+              if (st.hold > 0) st.hold--;
+              else { lpScrollStep(); const h = Number(st.nextHold); st.hold = Number.isFinite(h) ? h : 2; }
+            }
           } catch (_) {}
           // Sync cloud rows at most every 15s; animation still ticks every second.
           if (!st.lastSyncMs || (Date.now() - st.lastSyncMs) >= LP_SYNC_MS) {

@@ -351,7 +351,7 @@ function assert(cond, msg) {
 
     // Expiry scratches every retained catch-up round plus the complete Bull visit to zero.
     await reset(13,1,2);
-    await page.evaluate(() => {
+    const expiredEnforced = await page.evaluate(() => {
       state.__sqCatchUp={
         version:1,
         active:false,
@@ -370,9 +370,13 @@ function assert(cond, msg) {
       save();
       updateUI();
       window.__sqEnsureFinalBullReturnTimer();
-      state.__sqCatchUp.jobs[0].bullReturnDeadlineAt=Date.now()-1;
+      const expired = Date.now()-1;
+      state.__sqCatchUp.jobs[0].bullReturnDeadlineAt = expired;
+      // Set and enforce the synthetic expired deadline atomically so the
+      // production 250ms watchdog cannot legitimately win the test race.
+      return window.__sqExpireFinalBullReturnTimer(1, expired);
     });
-    assert(await page.evaluate(() => window.__sqExpireFinalBullReturnTimer(1,state.__sqCatchUp.jobs[0].bullReturnDeadlineAt))===true, 'expired final-Bull return timer must enforce timeout');
+    assert(expiredEnforced===true, 'expired final-Bull return timer must enforce timeout');
     s=await page.evaluate(() => {
       const job=state.__sqCatchUp.jobs[0];
       return {

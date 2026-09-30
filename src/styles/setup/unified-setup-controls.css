@@ -119,15 +119,14 @@ body[data-page="players"]{
     0 0 44px rgba(47,134,255,.10),
     0 0 90px rgba(255,122,0,.07) !important;
 }
-/* Home: keep LIVE UPDATES compact. The previous flex-grow treatment let
-   the feed consume the spare height on tall phones and pushed version/nav
-   controls below the intended home composition. */
+/* Home: VIDE uses a stable geometry. Do not let feed content or Safari's
+   changing visual viewport grow/shrink the panel. Height is width-derived on
+   mobile so browser chrome changes cannot move the footer. */
 body[data-page="details"] #details{
-  display:flex;
-  flex-direction:column;
+  display:block;
 }
 #details .start-actions.column{
-  flex:0 0 auto;
+  flex:none;
   display:flex;
   flex-direction:column;
   min-height:0;
@@ -136,14 +135,23 @@ body[data-page="details"] #details{
   flex:0 0 auto;
   display:flex;
   flex-direction:column;
-  height:clamp(250px,34dvh,310px);
-  min-height:250px;
-  max-height:310px;
+  box-sizing:border-box;
+  height:560px;
+  min-height:560px;
+  max-height:560px;
+  overflow:hidden;
 }
 #details #homeLivePrinter .lp-mid{
   flex:1 1 auto;
   min-height:0;
   overflow:hidden;
+}
+@media (max-width:560px){
+  #details #homeLivePrinter{
+    height:clamp(500px, calc((100vw - 32px) * 1.42), 540px);
+    min-height:clamp(500px, calc((100vw - 32px) * 1.42), 540px);
+    max-height:clamp(500px, calc((100vw - 32px) * 1.42), 540px);
+  }
 }
 
 /* =====================================================================

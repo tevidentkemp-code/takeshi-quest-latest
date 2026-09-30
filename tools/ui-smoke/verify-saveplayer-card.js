@@ -24,8 +24,8 @@ const check = (name, ok, detail) => { if (!ok) failures++; console.log((ok ? 'PA
       const base = {
         then: (res) => res({ data: [], error: null }),
         catch() { return proxy; },
-        upsert: () => Promise.resolve({ data: [{ id: 'new-id' }], error: null }),
-        insert: () => Promise.resolve({ data: [{ id: 'new-id' }], error: null }),
+        upsert: () => new Promise((resolve) => setTimeout(() => resolve({ data: [{ id: 'new-id' }], error: null }), Number(window.__sqTestUpsertDelayMs || 0))),
+        insert: () => new Promise((resolve) => setTimeout(() => resolve({ data: [{ id: 'new-id' }], error: null }), Number(window.__sqTestUpsertDelayMs || 0))),
       };
       // Any other builder method (select/eq/is/in/order/...) returns the chain.
       const proxy = new Proxy(base, { get(t, prop) { if (prop in t) return t[prop]; return () => proxy; } });
@@ -68,7 +68,25 @@ const check = (name, ok, detail) => { if (!ok) failures++; console.log((ok ? 'PA
     await page.fill('#newPlayerFirst', first); await page.waitForTimeout(150);
     await page.evaluate(() => document.getElementById('newPlayerFirst').dispatchEvent(new Event('input', { bubbles: true })));
     await page.waitForTimeout(150);
-    await page.click('#savePlayerBtn'); await page.waitForTimeout(900);
+    await page.evaluate(() => { window.__sqTestUpsertDelayMs = 250; });
+    await page.click('#savePlayerBtn');
+    await page.waitForTimeout(60);
+    const pending = await page.evaluate(() => {
+      const modal = document.getElementById('addPlayerModal');
+      const btn = document.getElementById('savePlayerBtn');
+      return {
+        text: btn && btn.textContent,
+        disabled: !!(btn && btn.disabled),
+        buttonBusy: btn && btn.getAttribute('aria-busy'),
+        modalBusy: modal && modal.getAttribute('aria-busy'),
+        status: document.getElementById('npSaveStatus')?.textContent || ''
+      };
+    });
+    check('Save gives immediate busy feedback', pending.text === 'SAVING…' && pending.disabled && pending.buttonBusy === 'true' && pending.modalBusy === 'true' && /Saving player/i.test(pending.status), JSON.stringify(pending));
+    await page.waitForFunction(() => document.getElementById('savePlayerBtn')?.textContent === 'SAVED ✓', { timeout: 4000 });
+    check('Save shows visible success confirmation', await page.evaluate(() => document.getElementById('savePlayerBtn')?.textContent === 'SAVED ✓'));
+    await page.waitForTimeout(500);
+    await page.evaluate(() => { window.__sqTestUpsertDelayMs = 0; });
   }
 
   // ---- Save #1 ----

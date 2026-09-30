@@ -219,10 +219,34 @@
   background: #36ff7a;
   opacity: .85;
 }
-.home-live-printer .lp-top span:last-child{
+.home-live-printer .lp-title{
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-weight: 800;
   letter-spacing: .06em;
+}
+.home-live-printer .lp-pause{
+  margin-left:auto;
+  border:0;
+  border-radius:8px;
+  padding:4px 7px;
+  background:transparent;
+  color:rgba(190,214,205,.72);
+  font:800 9px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  letter-spacing:.10em;
+  cursor:pointer;
+  opacity:.78;
+}
+.home-live-printer .lp-pause:hover,
+.home-live-printer .lp-pause:focus-visible{
+  color:rgba(230,255,240,.96);
+  background:rgba(54,255,122,.08);
+  outline:1px solid rgba(54,255,122,.26);
+  opacity:1;
+}
+.home-live-printer .lp-pause[aria-pressed="true"]{
+  color:rgba(255,174,86,.96);
+  background:rgba(255,122,0,.08);
+  outline:1px solid rgba(255,122,0,.22);
 }
 
 /* Middle: printer table */
@@ -255,7 +279,24 @@
     linear-gradient(180deg, rgba(2,9,18,.72), rgba(2,6,14,.84));
   box-shadow: inset 0 0 18px rgba(0,0,0,.22), 0 0 0 1px rgba(0,0,0,.14);
 }
-.home-live-printer .lp-row{ height: 20px; }
+.home-live-printer .lp-row{ min-height: 20px; height:auto; }
+
+/* Keep ordinary VIDE copy at one stable scale throughout the printer cycle.
+   Safari must not resize text as rows fill or change from raw to structured
+   presentation. Semantic chips/date headers retain their explicit sizes. */
+#homeLivePrinter{
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+#homeLivePrinter .lp-row:not(.lp-datehdr) .lp-line,
+#homeLivePrinter .lp-row:not(.lp-datehdr) .lp-ellipsis,
+#homeLivePrinter .lp-row:not(.lp-datehdr) .lp-game-meta,
+#homeLivePrinter .lp-row:not(.lp-datehdr) .lp-time,
+#homeLivePrinter .lp-row:not(.lp-datehdr) .lp-result,
+#homeLivePrinter .lp-row:not(.lp-datehdr) .lp-scoreline{
+  font-size: inherit !important;
+}
+
 .home-live-printer .lp-row td{
   padding: 1px 0;
   vertical-align: middle;
@@ -308,16 +349,33 @@
   color: rgba(108,220,255,.78);
   font-variant-numeric: tabular-nums;
 }
+.home-live-printer .lp-game-meta{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  width:100%;
+}
 .home-live-printer .lp-result{
+  display:block;
+  flex:0 0 100%;
+  width:100%;
   min-width: 0;
+  padding:2px 0 1px 2px;
   white-space: normal;
   overflow-wrap: anywhere;
   color: rgba(231,246,241,.95);
 }
 .home-live-printer .lp-scoreline{
+  display:block;
   min-width: 0;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+.home-live-printer .lp-ellipsis.lp-structured:not(.lp-matchline):not(.lp-alertline):not(.lp-recordline){
+  align-items:flex-start;
+  row-gap:2px;
+  padding-top:2px;
+  padding-bottom:2px;
 }
 .home-live-printer .lp-row.lp-practice .lp-mode{
   border-color: rgba(69,184,255,.34);
@@ -531,6 +589,26 @@
 .lp-record .lp-line, .lp-record .lp-ellipsis{
   color: rgba(255, 220, 90, .98) !important;
   font-weight: 900 !important;
+}
+
+/* World Record semantic: purple is reserved for verified WR/record status. */
+.home-live-printer .lp-row.lp-world-record .lp-line,
+.home-live-printer .lp-row.lp-world-record .lp-ellipsis{
+  color: rgba(196,153,255,.98) !important;
+  font-weight: 900 !important;
+}
+.home-live-printer .lp-row.lp-world-record .lp-record-chip{
+  border-color: rgba(176,107,255,.55);
+  background: rgba(176,107,255,.15);
+  color: rgba(214,184,255,.99);
+  box-shadow: 0 0 12px rgba(176,107,255,.18), inset 0 1px 0 rgba(255,255,255,.08);
+}
+.home-live-printer .lp-row.lp-world-record .lp-record-value{
+  color: rgba(220,197,255,.98);
+}
+.home-live-printer .lp-row.lp-world-record .lp-line::before{
+  border-left-color: rgba(176,107,255,.45);
+  border-bottom-color: rgba(176,107,255,.45);
 }
 
 @media (max-width: 480px){

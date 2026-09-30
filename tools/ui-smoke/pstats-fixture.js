@@ -11,6 +11,8 @@
 // XP 151 -> LV 2 ROOKIE, 33 XP to level 3 (matches the reference shot).
 // Misfire fixture: 4 historical occurrences; launch-forward XP impact is -2.
 
+const __recentIso = (daysAgo=1) => new Date(Date.now() - Number(daysAgo || 0) * 86400000).toISOString();
+
 const FIXTURE = {
   players: [
     { name: 'Alex S', nickname: 'The Atomic' },
@@ -37,22 +39,22 @@ const FIXTURE = {
   ],
   views: {
     v_player_game_scores_official_clean: [
-      { game_id:'jo-4', ts:'2026-09-11T20:04:00Z', player_name:'Jo R', score:133 },
-      { game_id:'jo-3', ts:'2026-09-10T20:04:00Z', player_name:'Jo R', score:133 },
-      { game_id:'jo-2', ts:'2026-09-09T20:04:00Z', player_name:'Jo R', score:133 },
-      { game_id:'jo-1', ts:'2026-09-08T20:04:00Z', player_name:'Jo R', score:133 },
-      { game_id:'mia-4', ts:'2026-09-11T20:03:00Z', player_name:'Mia K', score:128 },
-      { game_id:'mia-3', ts:'2026-09-10T20:03:00Z', player_name:'Mia K', score:128 },
-      { game_id:'mia-2', ts:'2026-09-09T20:03:00Z', player_name:'Mia K', score:127 },
-      { game_id:'mia-1', ts:'2026-09-08T20:03:00Z', player_name:'Mia K', score:127 },
-      { game_id:'alex-4', ts:'2026-09-11T20:02:00Z', player_name:'Alex S', score:125 },
-      { game_id:'alex-3', ts:'2026-09-10T20:02:00Z', player_name:'Alex S', score:125 },
-      { game_id:'alex-2', ts:'2026-09-09T20:02:00Z', player_name:'Alex S', score:120 },
-      { game_id:'alex-1', ts:'2026-09-08T20:02:00Z', player_name:'Alex S', score:120 },
-      { game_id:'sam-4', ts:'2026-09-11T20:01:00Z', player_name:'Sam T', score:100 },
-      { game_id:'sam-3', ts:'2026-09-10T20:01:00Z', player_name:'Sam T', score:100 },
-      { game_id:'sam-2', ts:'2026-09-09T20:01:00Z', player_name:'Sam T', score:100 },
-      { game_id:'sam-1', ts:'2026-09-08T20:01:00Z', player_name:'Sam T', score:100 },
+      { game_id:'jo-4', ts:__recentIso(1), player_name:'Jo R', score:133 },
+      { game_id:'jo-3', ts:__recentIso(2), player_name:'Jo R', score:133 },
+      { game_id:'jo-2', ts:__recentIso(3), player_name:'Jo R', score:133 },
+      { game_id:'jo-1', ts:__recentIso(4), player_name:'Jo R', score:133 },
+      { game_id:'mia-4', ts:__recentIso(1), player_name:'Mia K', score:128 },
+      { game_id:'mia-3', ts:__recentIso(2), player_name:'Mia K', score:128 },
+      { game_id:'mia-2', ts:__recentIso(3), player_name:'Mia K', score:127 },
+      { game_id:'mia-1', ts:__recentIso(4), player_name:'Mia K', score:127 },
+      { game_id:'alex-4', ts:__recentIso(1), player_name:'Alex S', score:125 },
+      { game_id:'alex-3', ts:__recentIso(2), player_name:'Alex S', score:125 },
+      { game_id:'alex-2', ts:__recentIso(3), player_name:'Alex S', score:120 },
+      { game_id:'alex-1', ts:__recentIso(4), player_name:'Alex S', score:120 },
+      { game_id:'sam-4', ts:__recentIso(1), player_name:'Sam T', score:100 },
+      { game_id:'sam-3', ts:__recentIso(2), player_name:'Sam T', score:100 },
+      { game_id:'sam-2', ts:__recentIso(3), player_name:'Sam T', score:100 },
+      { game_id:'sam-1', ts:__recentIso(4), player_name:'Sam T', score:100 },
     ],
     v_power_rankings_last56_official_clean: [
       { player: 'Jo R', player_key: 'jo r', rounds_used: 56, total_points: 532, avg_per_round: 9.5, last_played_at: null, rank_pos: 1 },

@@ -4664,11 +4664,13 @@ async function showAddPlayerDialog(index){
   const nickEl  = byId('newPlayerNickname');
   const genBtn  = byId('genNicknameBtn');
   const saveBtn = byId('savePlayerBtn');
+  const saveStatus = byId('npSaveStatus');
   const backBtn = byId('npBackBtn');
   const closeBtn= byId('npCloseBtn');
 
   let chosenName = '';
   let manualInitials = false;
+  let savePending = false;
   let chosenAvatarId = (typeof __sqAvatarAutoAssignId === 'function') ? __sqAvatarAutoAssignId('new-player') : 1;
   const avatarHost = byId('newPlayerAvatarPicker');
   const renderAvatarPicker = () => {
@@ -4680,7 +4682,19 @@ async function showAddPlayerDialog(index){
   const setSaveEnabled = () => {
     const ok = !!String(firstEl?.value || '').trim();
     const cloudOk = !!(window.sb && typeof window.sb.from === 'function');
-    if (saveBtn) saveBtn.disabled = !(ok && cloudOk);
+    if (saveBtn) saveBtn.disabled = savePending || !(ok && cloudOk);
+  };
+
+  const setSaveState = (pending, message = '') => {
+    savePending = !!pending;
+    if (saveBtn) {
+      saveBtn.disabled = savePending || saveBtn.disabled;
+      saveBtn.textContent = savePending ? 'SAVING…' : 'SAVE PLAYER';
+      saveBtn.setAttribute('aria-busy', savePending ? 'true' : 'false');
+    }
+    modal.setAttribute('aria-busy', savePending ? 'true' : 'false');
+    if (saveStatus) saveStatus.textContent = message;
+    if (!savePending) setSaveEnabled();
   };
 
   const maybeAutoInitials = () => {
@@ -4699,7 +4713,7 @@ async function showAddPlayerDialog(index){
     renderAvatarPicker();
     manualInitials = false;
     maybeAutoInitials();
-    setSaveEnabled();
+    setSaveState(false, '');
   };
 
   const finish = (msg) => {
@@ -4751,6 +4765,7 @@ async function showAddPlayerDialog(index){
   // Save
   if (saveBtn) {
     saveBtn.onclick = async () => {
+      if (savePending) return;
       const first = String(firstEl?.value || '').trim();
       const last  = String(lastEl?.value  || '').trim();
       if (!first){ toast('Enter a first name'); return; }
@@ -4760,16 +4775,25 @@ async function showAddPlayerDialog(index){
       const nickname = String(nickEl?.value || '').trim();
 
       chosenName = fullName;
+      setSaveState(true, 'Saving player…');
+      // Give the browser a real painted frame before starting the mutation so
+      // SAVING… is visible even when the cloud responds very quickly.
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
       try {
         await cloudCreatePlayer(fullName, { initials, nickname, first_name: first, last_name: last, avatar_id: chosenAvatarId });
-        try{ if (typeof window.__homeLivePrinterInjectLine === 'function') window.__homeLivePrinterInjectLine(`🚨 NEW PLAYER - ${fullName} - Welcome to Shateki Quest 🎯`); }catch(_e){}
+        try{
+          const line = `🚨 NEW PLAYER - ${fullName} - Welcome to Shateki Quest 🎯`;
+          if (typeof window.__homeLivePrinterPersistLine === 'function') window.__homeLivePrinterPersistLine(line, 'new_player');
+          else if (typeof window.__homeLivePrinterInjectLine === 'function') window.__homeLivePrinterInjectLine(line);
+        }catch(_e){}
         await syncSavedPlayersFromCloud();
         try{ populateSavedPlayersSelects(); }catch(_){ }
         try{ if (typeof window.buildStartTicker === 'function') window.buildStartTicker(); }catch(_){ }
         try{ document.dispatchEvent(new Event('sq:savedPlayersUpdated')); }catch(_){ }
       } catch (e) {
         console.error('cloudCreatePlayer failed', e);
+        setSaveState(false, 'Save failed. Your details are still here.');
         toast(e?.message || 'Save failed');
         return;
       }
@@ -4816,6 +4840,13 @@ async function showAddPlayerDialog(index){
         }
       }catch(err){ try{ console.warn('add-to-card after save failed', err); }catch(_){ } }
 
+      if (saveBtn) {
+        saveBtn.textContent = 'SAVED ✓';
+        saveBtn.setAttribute('aria-busy', 'false');
+      }
+      modal.setAttribute('aria-busy', 'false');
+      if (saveStatus) saveStatus.textContent = 'Player saved.';
+      await new Promise(resolve => setTimeout(resolve, 260));
       finish(cardMsg);
     };
   }

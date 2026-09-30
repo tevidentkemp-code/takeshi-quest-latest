@@ -46,17 +46,17 @@ const assert = require('assert/strict');
 
     // The first score may legitimately produce NEW LEADER. The second accepted
     // dart must cancel that higher-tier transient immediately.
-    await page.locator('#pad [data-score-label="Double"]').click();
+    await page.locator('#pad [data-score-label="Treble"]').click();
     await page.waitForFunction(()=>state.history.length===2 && state.currentDart===2);
     const second=await page.evaluate(()=>window.__sqDmdV2.snapshot());
-    assert.equal(second.active?.headline,'DOUBLE +20','second accepted dart must own the DMD immediately');
+    assert.equal(second.active?.headline,'TREBLE +30','second accepted dart must own the DMD immediately');
     assert.equal(second.lastDecision?.action,'input-preempt','legitimate scoring input must pre-empt stale presentation');
 
-    await page.locator('#pad [data-score-label="Treble"]').click();
+    await page.locator('#pad .dtActBtn.miss').click();
     await page.waitForFunction(()=>state.history.length===3 && state.currentPlayer===1 && state.currentDart===0);
     const visit=await page.evaluate(()=>({active:window.__sqDmdV2.snapshot().active?.headline||'',priority:Number(window.__sqDmdV2.snapshot().active?.priority||0),p:state.currentPlayer,r:state.currentRound,d:state.currentDart,total:state.score[0][0].roundTotal}));
-    assert.equal(visit.p,1); assert.equal(visit.r,0); assert.equal(visit.d,0); assert.equal(visit.total,60);
-    assert(visit.priority>=20,'visit closure may be superseded only by a truthful higher-tier competitive event');
+    assert.equal(visit.p,1); assert.equal(visit.r,0); assert.equal(visit.d,0); assert.equal(visit.total,40);
+    assert(visit.priority>=20,'ordinary visit closure may be superseded only by a truthful higher-tier competitive event');
 
     const undo=page.locator('#pad .dtActBtn.undo:not([disabled])');
     assert.equal(await undo.count(),1,'Undo must be available after completed visit');
@@ -72,6 +72,18 @@ const assert = require('assert/strict');
     const restored=await page.evaluate(()=>window.__sqDmdV2.snapshot().idle);
     assert.equal(restored?.headline,'GATE FOUR A UP','post-Undo restoration must use current player, not stale next player');
     assert.equal(restored?.subline,'TARGET 10');
+
+    // Gate 4 deliberately preserves named/special presentation on the legacy
+    // renderer until Gate 5. S + T + D is Shanghai: it must close the visit
+    // canonically without fabricating a controller-owned VISIT/COMPETITIVE scene.
+    await page.locator('#pad [data-score-label="Double"]').click();
+    await page.waitForFunction(()=>state.history.length===3 && state.currentPlayer===1 && state.currentDart===0);
+    const shanghai=await page.evaluate(()=>{
+      const snap=window.__sqDmdV2.snapshot();
+      return {p:state.currentPlayer,r:state.currentRound,d:state.currentDart,total:state.score[0][0].roundTotal,active:snap.active?{headline:snap.active.headline||'',priority:Number(snap.active.priority||0)}:null};
+    });
+    assert.equal(shanghai.p,1); assert.equal(shanghai.r,0); assert.equal(shanghai.d,0); assert.equal(shanghai.total,60);
+    assert(!shanghai.active || shanghai.active.priority<20,'Shanghai remains legacy-owned in Gate 4 and must not emit a false controller visit/competitive scene');
 
     // Fresh start-of-turn Skip: semantics are still owned by the existing
     // absence/catch-up engine; Gate 4 only owns the transient feedback.

@@ -2,9 +2,9 @@
 
 Status: **DERIVED IMPLEMENTATION GUIDE — NON-CANONICAL**
 
-Verified against commit: `69e14553beee376f28af63c7faf905bbd9c03228`
+Verified against VIS-003 candidate based on production `main` `f1d940a5713931ec1f45b0211e333a7563aeff5e`
 
-Verified: 2026-09-23 (Europe/London)
+Verified: 2026-09-28 (Europe/London)
 
 The current Drive theme direction is the stronger visual/UX authority; live source is implementation truth. This file names current implementation paths and constraints only. It does not approve a redesign or alter the brand.
 
@@ -33,9 +33,31 @@ Do not copy these values into a new parallel token system. Re-read `src/styles/c
 | Danger / warning / good | `#ff6b6b` / `#ffcc66` / `#7fffd4` |
 | Brand orange | `--shatekiOrange: #ff7a00` |
 | Brand blue | `--shatekiBlue: #2f86ff` |
-| General radius | `--radius: 14px` |
+| General radius compatibility alias | `--radius: var(--sq-radius-card)` |
+| Control radius | `--sq-radius-control: 8px` |
+| Compact radius | `--sq-radius-compact: 12px` |
+| Card radius | `--sq-radius-card: 14px` |
+| Panel radius | `--sq-radius-panel: 18px` |
+| Stage radius | `--sq-radius-stage: 22px` |
+| Shell radius | `--sq-radius-shell: 26px` |
+| Full/pill radius | `--sq-radius-full: 999px` |
+| Outside ring inset | `--sq-ring-outset: 4px` |
 
-The primary-button implementation currently uses orange-led colour, `#ffbd86` border/outline ink, `#ffead9` text, and an 8px radius. Treat source definitions—not this summary—as definitive.
+The primary-button implementation keeps its existing orange-led colour, `#ffbd86` border/outline ink, `#ffead9` text, and 8px radius through `--sq-primary-radius: var(--sq-radius-control)`. Treat source definitions—not this summary—as definitive.
+
+## Geometry construction — VIS-003 / CHG-052
+
+Shateki adopts the MASTER CHG-052 / R82 geometry method as an implementation and QA contract only. Drive `01-theme-direction.md` remains the stronger local visual authority.
+
+- Use the semantic radius tokens above for matching component roles; do not add a new one-off literal merely to approximate an existing role.
+- Same-role sibling controls should use the same geometry family unless a recorded visual/product reason requires otherwise.
+- Full radius is reserved for deliberate pills/capsules/circles rather than as a generic rounding shortcut.
+- Nested surfaces that visually share a corner centre use a nominal inner radius of `max(outer radius - actual visible inset, 0)`; rendered optical correction may follow where justified.
+- An outside ring/halo preserves the same curvature centre. The existing Turbo score ring is the reference relationship: 18px score panel + 4px outside ring = 22px outer radius.
+- Fill media should inherit the owning surface geometry and clip at the owning container rather than introduce unrelated corner curvature.
+- A surface deliberately attached flush to a viewport/parent edge may square the touching corners; a genuinely floating layer may remain rounded.
+- Responsive layout mode may change geometry (for example floating modal vs attached mobile sheet) without changing component identity.
+- Zero-visual-drift token migrations must preserve computed values. Intentional visual consolidation requires before/after rendered evidence and normal Shateki release acceptance.
 
 ## Type, spacing, and component rules
 

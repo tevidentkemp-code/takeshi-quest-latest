@@ -6,7 +6,7 @@ const out = process.env.SQ_SCREENSHOTS || path.join(__dirname, '../../output/pla
 fs.mkdirSync(out, {recursive:true});
 (async () => {
   const {browser, page, consoleErrs} = await H.launch();
-  let missing = false, deny = false, zero = false;
+  let missing = false, deny = false, zero = false, delayPatch = false;
   let rows = [{id:'11111111-1111-4111-8111-111111111111',name:'Legacy Player',first_name:'Legacy',last_name:'Player',initials:'LP',nickname:'Original',avatar_id:null,deleted_at:null,created_at:'2026-01-01T00:00:00Z'}];
   const writes = [];
   // Higher-priority local fixture; the harness blocks all other production requests.
@@ -24,6 +24,7 @@ fs.mkdirSync(out, {recursive:true});
     }
     let selected = rows.filter(p => (!url.searchParams.has('id') || 'eq.'+p.id === url.searchParams.get('id')) && (!url.searchParams.has('name') || 'eq.'+p.name === url.searchParams.get('name')) && (!url.searchParams.has('deleted_at') || p.deleted_at === null));
     if (method === 'PATCH') {
+      if (delayPatch) await new Promise(resolve => setTimeout(resolve, 250));
       if (zero) selected=[];
       selected.forEach(p=>Object.assign(p,payload));
     }
@@ -69,7 +70,33 @@ fs.mkdirSync(out, {recursive:true});
     await openHub();
     assert.equal(await page.locator('#playerHubEditorOverlay [aria-checked=true]').getAttribute('data-avatar-id'),'9');
     await page.locator('#playerHubEditorOverlay [data-avatar-id="29"]').click();
+    delayPatch=true;
     await page.locator('#playerHubEditorOverlay').getByRole('button',{name:'Save',exact:true}).click();
+    await page.waitForTimeout(60);
+    const hubPending = await page.locator('#playerHubEditorOverlay').evaluate(el => {
+      const save = Array.from(el.querySelectorAll('button')).find(b => b.textContent.trim() === 'Saving…');
+      return {
+        busy: el.getAttribute('aria-busy'),
+        saveText: save && save.textContent.trim(),
+        saveDisabled: !!(save && save.disabled),
+        status: el.querySelector('[role="status"]')?.textContent || ''
+      };
+    });
+    assert.equal(hubPending.busy,'true');
+    assert.equal(hubPending.saveText,'Saving…');
+    assert.equal(hubPending.saveDisabled,true);
+    assert.match(hubPending.status,/Saving profile/i);
+    delayPatch=false;
+    await page.waitForFunction(() => {
+      const el=document.getElementById('playerHubEditorOverlay');
+      return !!el && Array.from(el.querySelectorAll('button')).some(b => b.textContent.trim() === 'Saved ✓');
+    }, { timeout:4000 });
+    const hubSaved = await page.locator('#playerHubEditorOverlay').evaluate(el => ({
+      status: el.querySelector('[role="status"]')?.textContent || '',
+      saved: Array.from(el.querySelectorAll('button')).some(b => b.textContent.trim() === 'Saved ✓')
+    }));
+    assert.equal(hubSaved.saved,true);
+    assert.match(hubSaved.status,/Profile saved/i);
     await page.waitForSelector('#playerHubEditorOverlay',{state:'detached'});
     assert.equal(rows[1].avatar_id,29);
     await openHub();
