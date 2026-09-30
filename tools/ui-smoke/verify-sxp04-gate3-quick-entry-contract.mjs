@@ -1,3 +1,4 @@
+// SC-049 v0.8.7 exact-head release gate
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
