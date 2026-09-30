@@ -22,6 +22,19 @@ async function holdAndRelease(page, scoreLabel, optionId){
   await page.waitForTimeout(80);
 }
 
+async function dispatchCompatibilityClick(page, scoreLabel){
+  const held=page.locator('#pad [data-score-label="'+scoreLabel+'"]');
+  const p=await center(held);
+  await page.evaluate(({scoreLabel,x,y})=>{
+    const btn=document.querySelector('#pad [data-score-label="'+scoreLabel+'"]');
+    if(!btn) throw new Error('score button missing for compatibility click');
+    btn.dispatchEvent(new MouseEvent('click',{
+      bubbles:true,cancelable:true,clientX:x,clientY:y,button:0,detail:1,view:window
+    }));
+  },{scoreLabel,x:p.x,y:p.y});
+  await page.waitForTimeout(20);
+}
+
 async function holdCancel(page, scoreLabel){
   const held=page.locator('#pad [data-score-label="'+scoreLabel+'"]');
   const p=await center(held);
@@ -69,6 +82,81 @@ async function holdCancel(page, scoreLabel){
     assert.equal(base.history,3,'baseline must use three canonical dart entries');
     assert.deepEqual(base.darts,['S','S','S']);
     assert.equal(base.total,30);
+
+    // Regression: ×2/×3 must record exactly the selected number of the held score.
+    // Explicitly inject the iPhone/Safari-style compatibility click at the
+    // original held-button position; it must never become an extra dart.
+    for (const [label,kind,perDart] of [['Single','S',10],['Double','D',20],['Treble','T',30]]){
+      await reset();
+      await holdAndRelease(page,label,'x2');
+      let exact=await page.evaluate(()=>({
+        history:state.history.length,
+        darts:state.score[0][0].darts.map(d=>d&&d.kind),
+        total:state.score[0][0].roundTotal,
+        player:state.currentPlayer,
+        dart:state.currentDart
+      }));
+      assert.equal(exact.history,2,label+' ×2 must create exactly two canonical darts');
+      assert.deepEqual(exact.darts.slice(0,2),[kind,kind],label+' ×2 must repeat the held score twice');
+      assert.equal(exact.darts[2],null,label+' ×2 must leave dart 3 untouched');
+      assert.equal(exact.total,perDart*2,label+' ×2 total must equal exactly two held scores');
+      assert.equal(exact.player,0,label+' ×2 must stay on the same player with one dart remaining');
+      assert.equal(exact.dart,2,label+' ×2 must leave the cursor on dart 3');
+
+      await dispatchCompatibilityClick(page,label);
+      exact=await page.evaluate(()=>({
+        history:state.history.length,
+        darts:state.score[0][0].darts.map(d=>d&&d.kind),
+        total:state.score[0][0].roundTotal,
+        player:state.currentPlayer,
+        dart:state.currentDart
+      }));
+      assert.equal(exact.history,2,label+' ×2 must suppress the follow-up compatibility click');
+      assert.equal(exact.darts[2],null,label+' ×2 compatibility click must not create a third dart');
+      assert.equal(exact.total,perDart*2,label+' ×2 compatibility click must not change the score');
+
+      // A genuine next pointer press must clear the guard and score normally.
+      await page.locator('#pad [data-score-label="'+label+'"]').click();
+      const legit=await page.evaluate(()=>({
+        history:state.history.length,
+        darts:state.score[0][0].darts.map(d=>d&&d.kind),
+        player:state.currentPlayer,
+        dart:state.currentDart
+      }));
+      assert.equal(legit.history,3,label+' genuine next tap must not be swallowed');
+      assert.deepEqual(legit.darts,[kind,kind,kind],label+' genuine third dart must still score normally');
+      assert.equal(legit.player,1,label+' third dart must advance the visit normally');
+      assert.equal(legit.dart,0);
+
+      await reset();
+      await holdAndRelease(page,label,'x3');
+      let triple=await page.evaluate(()=>({
+        history:state.history.length,
+        darts:state.score[0][0].darts.map(d=>d&&d.kind),
+        total:state.score[0][0].roundTotal,
+        player:state.currentPlayer,
+        dart:state.currentDart,
+        next:state.score[1][0].darts.slice()
+      }));
+      assert.equal(triple.history,3,label+' ×3 must create exactly three canonical darts');
+      assert.deepEqual(triple.darts,[kind,kind,kind],label+' ×3 must repeat the held score three times');
+      assert.equal(triple.total,perDart*3,label+' ×3 total must equal exactly three held scores');
+      assert.equal(triple.player,1,label+' ×3 must finish the visit exactly once');
+      assert.equal(triple.dart,0);
+      assert(triple.next.every(d=>d==null),label+' ×3 must not spill into the next player');
+
+      await dispatchCompatibilityClick(page,label);
+      triple=await page.evaluate(()=>({
+        history:state.history.length,
+        player:state.currentPlayer,
+        dart:state.currentDart,
+        next:state.score[1][0].darts.slice()
+      }));
+      assert.equal(triple.history,3,label+' ×3 must suppress the follow-up compatibility click');
+      assert.equal(triple.player,1,label+' ×3 compatibility click must not advance the next player');
+      assert.equal(triple.dart,0);
+      assert(triple.next.every(d=>d==null),label+' ×3 compatibility click must not score for the next player');
+    }
 
     // x3 = one continuous hold/slide/release user action instead of 3 taps.
     await reset();
