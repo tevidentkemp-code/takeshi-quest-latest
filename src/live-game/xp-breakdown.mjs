@@ -9,6 +9,7 @@ const MISFIRE_META = Object.freeze({
   sub_ton: { name: 'Sub-Ton', penalty: -2 },
   special_delivery_failed: { name: 'Special Delivery Failed', penalty: -2 },
   bull_blind: { name: 'Bull Blind', penalty: -1 },
+  bounce_out: { name: 'Bounce Out', penalty: -1 },
   century_drought: { name: 'Century Drought', penalty: -2 },
   wooden_spoon: { name: 'Wooden Spoon', penalty: -3 },
   volde_deux: { name: 'Volde-D’eux', penalty: -2 },
@@ -104,6 +105,13 @@ function maxRun(values, predicate) {
   return best;
 }
 
+function bounceOutCount(rows) {
+  return (Array.isArray(rows) ? rows : []).reduce((sum, row) => {
+    const darts = row && Array.isArray(row.darts) ? row.darts : [];
+    return sum + darts.filter(dart => dart && dart.bounceOut === true).length;
+  }, 0);
+}
+
 function voldeHitCount(rows, roundIndex, expectedKind) {
   const row = Array.isArray(rows) ? rows[roundIndex] : null;
   const darts = row && Array.isArray(row.darts) ? row.darts : [];
@@ -149,6 +157,12 @@ export function detectImmediateMisfires(rows, total) {
   if (Number(total || 0) < 100) add('sub_ton');
   if (values.length >= 14 && values[11] === 0 && values[12] === 0 && values[13] === 0) add('special_delivery_failed');
   if (values.length >= 14 && values[13] === 0) add('bull_blind');
+
+  const bounceCount = bounceOutCount(rows);
+  if (bounceCount > 0) {
+    const meta = MISFIRE_META.bounce_out;
+    events.push({ code:'bounce_out', name:meta.name, penalty:meta.penalty, count:bounceCount });
+  }
 
   // SC-048: these two are dart-level exceptions. Every qualifying hit stacks
   // independently and is additional to the normal worst-only / -5 game rule.
