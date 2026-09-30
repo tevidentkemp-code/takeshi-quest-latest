@@ -14448,9 +14448,8 @@ function __sqBindQuickEntryHold(btn, specFactory){
       // release point. A broad time-only guard created a dead zone where a
       // legitimate rapid next-player tap could be swallowed.
       window.__sqQuickSuppressClick = {
-        until: performance.now() + 180,
-        x: Number(e?.clientX || 0),
-        y: Number(e?.clientY || 0)
+        until: performance.now() + 420,
+        sourceScoreLabel: String(btn.dataset.scoreLabel || '')
       };
       if (commit){
         const hit=__sqQuickEntryOptionAt(e?.clientX, e?.clientY);
@@ -14464,6 +14463,9 @@ function __sqBindQuickEntryHold(btn, specFactory){
 
   btn.addEventListener('pointerdown',(e)=>{
     try{
+      // A genuine new press is a new scoring intent, so it must never inherit
+      // compatibility-click suppression from the previous completed hold.
+      window.__sqQuickSuppressClick = null;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       const baseSpec=typeof specFactory === 'function' ? specFactory() : null;
       const options=__sqQuickEntryOptions(baseSpec);
@@ -14585,11 +14587,14 @@ if (!window.__sqQuickEntryClickGuardBound){
         window.__sqQuickSuppressClick = null;
         return;
       }
-      const dx=Number(e.clientX || 0)-Number(guard.x || 0);
-      const dy=Number(e.clientY || 0)-Number(guard.y || 0);
-      if (Math.hypot(dx,dy) > 18) return;
       const t=e.target?.closest?.('#pad button, .sqQuickEntryPopover button');
       if (!t) return;
+      // iPhone Safari may synthesize the compatibility click at the original
+      // held S/D/T position even though pointerup occurred over ×2/×3.
+      // Match the stable score-button identity, not release coordinates.
+      if (Number(e.detail || 0) === 0) return;
+      const scoreLabel=String(t.dataset?.scoreLabel || '');
+      if (!guard.sourceScoreLabel || scoreLabel !== guard.sourceScoreLabel) return;
       window.__sqQuickSuppressClick = null;
       e.preventDefault();
       e.stopPropagation();
