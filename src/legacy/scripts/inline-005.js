@@ -14592,7 +14592,6 @@ if (!window.__sqQuickEntryClickGuardBound){
       // iPhone Safari may synthesize the compatibility click at the original
       // held S/D/T position even though pointerup occurred over ×2/×3.
       // Match the stable score-button identity, not release coordinates.
-      if (Number(e.detail || 0) === 0) return;
       const scoreLabel=String(t.dataset?.scoreLabel || '');
       if (!guard.sourceScoreLabel || scoreLabel !== guard.sourceScoreLabel) return;
       window.__sqQuickSuppressClick = null;
