@@ -1,3 +1,4 @@
+// SC-049 v0.8.7: protects exact ×2/×3 repeats from mobile compatibility-click double fire.
 const H = require('./harness');
 const assert = require('assert/strict');
 
