@@ -231,14 +231,15 @@ async function holdCancel(page, scoreLabel){
     const x3Reduction=(3-1)/3;
     assert(x3Reduction>=1/3,'x3 must reduce actions by >=33%');
 
-    // After dart 1 only x2 + RH fit; x3 must disappear.
+    // After a Double on dart 1, holding Single may offer x2 but must not
+    // expose RH; RH belongs only to the button matching the previous dart.
     await reset();
     await page.locator('#pad [data-score-label="Double"]').click();
     const dbl=page.locator('#pad [data-score-label="Single"]');
     const dp=await center(dbl);
     await page.mouse.move(dp.x,dp.y); await page.mouse.down(); await page.waitForTimeout(410);
     let options=await page.locator('.sqQuickEntryOption').evaluateAll(els=>els.map(e=>e.dataset.qe).sort());
-    assert.deepEqual(options,['rh','x2'],'dart 2 must offer only x2 + RH');
+    assert.deepEqual(options,['x2'],'dart 2 Single hold must offer x2 only after a previous Double');
     await page.mouse.up(); await page.waitForTimeout(70);
     assert.equal(await page.evaluate(()=>state.history.length),1,'release outside option must cancel without ghost scoring');
 
@@ -255,10 +256,11 @@ async function holdCancel(page, scoreLabel){
     const x2Reduction=(3-2)/3;
     assert(x2Reduction>=1/3-1e-9,'x2 representative flow must reduce actions by at least 33%');
 
-    // RH repeats the immediately previous exact scoring result, not the held button.
+    // RH repeats the immediately previous exact scoring result and is available
+    // only from the button matching that previous result.
     await reset();
     await page.locator('#pad [data-score-label="Double"]').click();
-    await holdAndRelease(page,'Single','rh');
+    await holdAndRelease(page,'Double','rh');
     q=await page.evaluate(()=>({
       history:state.history.length,
       darts:state.score[0][0].darts.slice(0,2).map(d=>d&&({kind:d.kind,points:d.points})),
@@ -266,14 +268,14 @@ async function holdCancel(page, scoreLabel){
     }));
     assert.equal(q.history,2);
     assert.deepEqual(q.darts,[{kind:'D',points:20},{kind:'D',points:20}],
-      'RH held from Single must still repeat the previous Double exactly');
+      'RH held from Double must repeat the previous Double exactly');
     assert.equal(q.dart,2);
 
-    // Dart 3: RH is the only valid quick option.
-    const tp=await center(page.locator('#pad [data-score-label="Treble"]'));
+    // Dart 3: only the button matching dart 2 may expose RH.
+    const tp=await center(page.locator('#pad [data-score-label="Double"]'));
     await page.mouse.move(tp.x,tp.y); await page.mouse.down(); await page.waitForTimeout(410);
     options=await page.locator('.sqQuickEntryOption').evaluateAll(els=>els.map(e=>e.dataset.qe));
-    assert.deepEqual(options,['rh'],'third dart must expose RH only');
+    assert.deepEqual(options,['rh'],'third dart matching previous Double must expose RH only');
     await page.mouse.move(8,8); await page.mouse.up(); await page.waitForTimeout(70);
     assert.equal(await page.evaluate(()=>state.history.length),2,'third-dart cancel must not score');
 
