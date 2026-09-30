@@ -919,6 +919,43 @@ function thresholdNativeToAmber(){
       [[0,0],[-4,-3],[-8,-1],[-12,-5],[-16,-2]].forEach(([dx,dy],i)=>{ if(reduce||((i+phase)%2===0)) __sq45Rect(sx+dx,sy+dy,1,1); });
       thresholdNativeToAmber(); return;
     }
+    if (active && active.type === 'bounceOut') {
+      const age=Math.max(0,now-active.start), dur=Math.max(850,Number(active.ms||1100)), reduce=__sqSc045ReducedMotion();
+      const p=reduce?1:Math.max(0,Math.min(1,age/dur));
+      const impactAt=.38;
+      const cx=29, cy=16, edgeX=43;
+      __sq45Circle(cx,cy,14,1);
+      __sq45Circle(cx,cy,10,1);
+      __sq45Line(edgeX,3,edgeX,29,1);
+      let tipX=edgeX, tipY=16;
+      if(!reduce){
+        if(p<impactAt){
+          const q=Math.max(0,Math.min(1,p/impactAt));
+          const eased=1-Math.pow(1-q,3);
+          tipX=Math.round(122-(122-edgeX)*eased);
+          tipY=Math.round(8+(16-8)*eased);
+          for(let i=0;i<3;i++){
+            const sx=Math.min(127,tipX+26+(i*7));
+            __sq45Line(sx,tipY-4+(i*3),Math.min(127,sx+8),tipY-4+(i*3),1);
+          }
+        }else{
+          const q=Math.max(0,Math.min(1,(p-impactAt)/(1-impactAt)));
+          const eased=Math.pow(q,.72);
+          tipX=Math.round(edgeX+(122-edgeX)*eased);
+          tipY=Math.round(16-(Math.sin(q*Math.PI)*8)+(q*3));
+          const ray=Math.max(4,Math.round(4+(1-q)*7));
+          [[1,0],[1,-1],[1,1],[0,-1],[0,1]].forEach(([dx,dy])=>__sq45Line(edgeX+dx*2,cy+dy*2,edgeX+dx*ray,cy+dy*ray,1));
+        }
+      }else{
+        tipX=55; tipY=12;
+      }
+      __sq45Dart(tipX,tipY);
+      if(reduce || p>=impactAt){
+        drawTextPx('BOUNCE',60*__SQ45_PX,13*__SQ45_PX,26,900);
+        drawTextPx('OUT',82*__SQ45_PX,27*__SQ45_PX,30,900);
+      }
+      thresholdNativeToAmber(); return;
+    }
     if (active && active.type === 'bullseyeHit') {
       const age=Math.max(0,now-active.start), dur=Math.max(850,Number(active.ms||1100)), reduce=__sqSc045ReducedMotion();
       const p=reduce?1:Math.max(0,Math.min(1,age/dur));
@@ -1185,7 +1222,7 @@ if (!active || active.type === "idle") {
     __sqDmdLastZ3 = (z3 ?? "").toString();
 
     enqueue({
-      type: o.type || "hold", // hold | flash | wipe | shutter | snap | shake | roll | idle | pulseFull | anticipationEyes | dolphinSwim | bullseyeHit
+      type: o.type || "hold", // hold | flash | wipe | shutter | snap | shake | roll | idle | pulseFull | anticipationEyes | dolphinSwim | bullseyeHit | bounceOut
       dir: o.dir || "fwd",     // for wipe: fwd | rev
       revealMs: (typeof o.revealMs === "number" ? o.revealMs : undefined),
       amp: (typeof o.amp === "number" ? o.amp : undefined), // for shake

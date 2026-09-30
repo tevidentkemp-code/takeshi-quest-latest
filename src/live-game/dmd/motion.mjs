@@ -28,5 +28,15 @@ export function createMotionSafeBackend(base, host = globalThis) {
         amp: 0,
       });
     },
+    renderScene(scene = {}) {
+      if (typeof base.renderScene !== 'function') return undefined;
+      if (!prefersReducedMotion(host)) return base.renderScene(scene);
+      return base.renderScene({
+        ...scene,
+        renderType: 'hold',
+        amp: 0,
+        motion: 'reduced',
+      });
+    },
   };
 }

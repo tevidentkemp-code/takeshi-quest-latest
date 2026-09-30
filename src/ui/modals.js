@@ -2440,6 +2440,7 @@ const SQ_MISFIRE = {
     { code:'sub_ton',                 name:'Sub Ton',                 icon:'📉', penalty:-2, desc:'Finish a game below 100 points' },
     { code:'special_delivery_failed', name:'Special Delivery Failed', icon:'📦', penalty:-2, desc:'Score zero in the Doubles, Triples and Bull rounds' },
     { code:'bull_blind',              name:'Bull Blind',              icon:'🙈', penalty:-1, desc:'Score zero in the Bull round' },
+    { code:'bounce_out',               name:'Bounce Out',              icon:'↩️', penalty:-1, desc:'A dart bounces or falls out · every bounce-out is recorded; standard Misfire XP rules apply' },
     { code:'century_drought',         name:'Century Drought',         icon:'🏜️', penalty:-2, desc:'Finish below 100 in five consecutive games' },
     { code:'wooden_spoon',            name:'Wooden Spoon',            icon:'🥄', penalty:-3, desc:'Finish sole last in five consecutive games' },
     { code:'volde_deux',               name:'Volde-D’eux',             icon:'2️⃣', penalty:-2, desc:'Hit D1–D5 in the Doubles round · -2 XP for every qualifying dart' },
