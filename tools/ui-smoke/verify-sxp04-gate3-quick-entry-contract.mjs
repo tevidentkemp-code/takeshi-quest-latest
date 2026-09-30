@@ -19,6 +19,7 @@ assert(live.includes('window.__sqQuickSuppressClick = {'), 'gesture must arm com
 assert(live.includes('until: performance.now() + 420'), 'compatibility-click suppression must stay narrowly time-bounded');
 assert(live.includes("sourceScoreLabel: String(btn.dataset.scoreLabel || '')"), 'compatibility-click suppression must follow the held score identity across pad re-render');
 assert(live.includes("if (!guard.sourceScoreLabel || scoreLabel !== guard.sourceScoreLabel) return;"), 'only the held S/D/T compatibility click may be suppressed');
+assert(!live.includes("if (Number(e.detail || 0) === 0) return;"), 'compatibility-click suppression must not depend on click.detail');
 assert(live.includes('window.__sqQuickSuppressClick = null;'), 'a genuine new pointer press must be able to clear stale suppression');
 assert(!live.includes('__sqQuickSuppressClickUntil'), 'broad time-only click dead zone must not return');
 assert(css.includes('min-width:60px !important;') && css.includes('min-height:52px !important;'), 'quick targets must stay physically >=48px despite inherited button CSS');
