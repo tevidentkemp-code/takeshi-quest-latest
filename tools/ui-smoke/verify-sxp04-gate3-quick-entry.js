@@ -36,6 +36,34 @@ async function dispatchCompatibilityClick(page, scoreLabel){
   await page.waitForTimeout(20);
 }
 
+async function syntheticHoldAndReleaseNoClick(page, scoreLabel, optionId){
+  const held=page.locator('#pad [data-score-label="'+scoreLabel+'"]');
+  const p=await center(held);
+  await held.evaluate((el,{x,y})=>{
+    el.dispatchEvent(new PointerEvent('pointerdown',{
+      bubbles:true,cancelable:true,pointerId:91,pointerType:'touch',isPrimary:true,
+      button:0,buttons:1,clientX:x,clientY:y
+    }));
+  },p);
+  await page.waitForTimeout(410);
+  const option=page.locator('.sqQuickEntryOption[data-qe="'+optionId+'"]');
+  await option.waitFor({state:'visible'});
+  const ob=await option.boundingBox();
+  if(!ob) throw new Error('quick option has no bounding box');
+  const release={x:ob.x+ob.width/2,y:ob.y+ob.height/2};
+  await held.evaluate((el,{x,y})=>{
+    el.dispatchEvent(new PointerEvent('pointermove',{
+      bubbles:true,cancelable:true,pointerId:91,pointerType:'touch',isPrimary:true,
+      button:-1,buttons:1,clientX:x,clientY:y
+    }));
+    el.dispatchEvent(new PointerEvent('pointerup',{
+      bubbles:true,cancelable:true,pointerId:91,pointerType:'touch',isPrimary:true,
+      button:0,buttons:0,clientX:x,clientY:y
+    }));
+  },release);
+  await page.waitForTimeout(20);
+}
+
 async function holdCancel(page, scoreLabel){
   const held=page.locator('#pad [data-score-label="'+scoreLabel+'"]');
   const p=await center(held);
@@ -85,8 +113,7 @@ async function holdCancel(page, scoreLabel){
     assert.equal(base.total,30);
 
     // Regression: ×2/×3 must record exactly the selected number of the held score.
-    // Explicitly inject the iPhone/Safari-style compatibility click at the
-    // original held-button position; it must never become an extra dart.
+    // The normal browser gesture proves the actual hold/slide/release path for S/D/T.
     for (const [label,kind,perDart] of [['Single','S',10],['Double','D',20],['Treble','T',30]]){
       await reset();
       await holdAndRelease(page,label,'x2');
@@ -104,19 +131,8 @@ async function holdCancel(page, scoreLabel){
       assert.equal(exact.player,0,label+' ×2 must stay on the same player with one dart remaining');
       assert.equal(exact.dart,2,label+' ×2 must leave the cursor on dart 3');
 
-      await dispatchCompatibilityClick(page,label);
-      exact=await page.evaluate(()=>({
-        history:state.history.length,
-        darts:state.score[0][0].darts.map(d=>d&&d.kind),
-        total:state.score[0][0].roundTotal,
-        player:state.currentPlayer,
-        dart:state.currentDart
-      }));
-      assert.equal(exact.history,2,label+' ×2 must suppress the follow-up compatibility click');
-      assert.equal(exact.darts[2],null,label+' ×2 compatibility click must not create a third dart');
-      assert.equal(exact.total,perDart*2,label+' ×2 compatibility click must not change the score');
-
-      // A genuine next pointer press must clear the guard and score normally.
+      // A genuine next pointer press must score normally rather than being
+      // swallowed by the compatibility-click guard.
       await page.locator('#pad [data-score-label="'+label+'"]').click();
       const legit=await page.evaluate(()=>({
         history:state.history.length,
@@ -131,7 +147,7 @@ async function holdCancel(page, scoreLabel){
 
       await reset();
       await holdAndRelease(page,label,'x3');
-      let triple=await page.evaluate(()=>({
+      const triple=await page.evaluate(()=>({
         history:state.history.length,
         darts:state.score[0][0].darts.map(d=>d&&d.kind),
         total:state.score[0][0].roundTotal,
@@ -145,19 +161,55 @@ async function holdCancel(page, scoreLabel){
       assert.equal(triple.player,1,label+' ×3 must finish the visit exactly once');
       assert.equal(triple.dart,0);
       assert(triple.next.every(d=>d==null),label+' ×3 must not spill into the next player');
-
-      await dispatchCompatibilityClick(page,label);
-      triple=await page.evaluate(()=>({
-        history:state.history.length,
-        player:state.currentPlayer,
-        dart:state.currentDart,
-        next:state.score[1][0].darts.slice()
-      }));
-      assert.equal(triple.history,3,label+' ×3 must suppress the follow-up compatibility click');
-      assert.equal(triple.player,1,label+' ×3 compatibility click must not advance the next player');
-      assert.equal(triple.dart,0);
-      assert(triple.next.every(d=>d==null),label+' ×3 compatibility click must not score for the next player');
     }
+
+    // Safari-specific regression: synthetic pointer events deliberately avoid
+    // Chromium's own compatibility click, then inject one click at the ORIGINAL
+    // held-button coordinates. The old release-coordinate guard lets this
+    // through; the identity guard must suppress it.
+    await reset();
+    await syntheticHoldAndReleaseNoClick(page,'Single','x2');
+    let safari=await page.evaluate(()=>({
+      history:state.history.length,
+      darts:state.score[0][0].darts.map(d=>d&&d.kind),
+      guard:window.__sqQuickSuppressClick ? {until:window.__sqQuickSuppressClick.until,sourceScoreLabel:window.__sqQuickSuppressClick.sourceScoreLabel} : null
+    }));
+    assert.equal(safari.history,2,'Safari x2 fixture must commit exactly two Singles before compatibility click');
+    assert.deepEqual(safari.darts.slice(0,2),['S','S']);
+    assert.equal(safari.guard?.sourceScoreLabel,'Single','Safari guard must track the held Single identity');
+    await dispatchCompatibilityClick(page,'Single');
+    safari=await page.evaluate(()=>({
+      history:state.history.length,
+      darts:state.score[0][0].darts.map(d=>d&&d.kind),
+      guard:window.__sqQuickSuppressClick
+    }));
+    assert.equal(safari.history,2,'Safari compatibility click after ×2 must not create a third Single');
+    assert.equal(safari.darts[2],null);
+    assert.equal(safari.guard,null,'Safari compatibility-click guard must consume exactly one follow-up click');
+
+    await reset();
+    await syntheticHoldAndReleaseNoClick(page,'Single','x3');
+    safari=await page.evaluate(()=>({
+      history:state.history.length,
+      player:state.currentPlayer,
+      dart:state.currentDart,
+      next:state.score[1][0].darts.slice()
+    }));
+    assert.equal(safari.history,3,'Safari x3 fixture must commit exactly three Singles');
+    assert.equal(safari.player,1);
+    assert.equal(safari.dart,0);
+    assert(safari.next.every(d=>d==null),'Safari x3 must not spill before compatibility click');
+    await dispatchCompatibilityClick(page,'Single');
+    safari=await page.evaluate(()=>({
+      history:state.history.length,
+      player:state.currentPlayer,
+      dart:state.currentDart,
+      next:state.score[1][0].darts.slice()
+    }));
+    assert.equal(safari.history,3,'Safari compatibility click after ×3 must not create a fourth dart');
+    assert.equal(safari.player,1);
+    assert.equal(safari.dart,0);
+    assert(safari.next.every(d=>d==null),'Safari compatibility click after ×3 must not score for the next player');
 
     // x3 = one continuous hold/slide/release user action instead of 3 taps.
     await reset();
