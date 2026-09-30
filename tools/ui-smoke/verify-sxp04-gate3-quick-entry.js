@@ -30,7 +30,7 @@ async function dispatchCompatibilityClick(page, scoreLabel){
     const btn=document.querySelector('#pad [data-score-label="'+scoreLabel+'"]');
     if(!btn) throw new Error('score button missing for compatibility click');
     btn.dispatchEvent(new MouseEvent('click',{
-      bubbles:true,cancelable:true,clientX:x,clientY:y,button:0,detail:1,view:window
+      bubbles:true,cancelable:true,clientX:x,clientY:y,button:0,detail:0,view:window
     }));
   },{scoreLabel,x:p.x,y:p.y});
   await page.waitForTimeout(20);
