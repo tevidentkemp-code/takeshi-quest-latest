@@ -9,6 +9,7 @@ const MISFIRE_META = Object.freeze({
   sub_ton: { name: 'Sub-Ton', penalty: -2 },
   special_delivery_failed: { name: 'Special Delivery Failed', penalty: -2 },
   bull_blind: { name: 'Bull Blind', penalty: -1 },
+  bounce_out: { name: 'Bounce Out', penalty: -1 },
   century_drought: { name: 'Century Drought', penalty: -2 },
   wooden_spoon: { name: 'Wooden Spoon', penalty: -3 },
   volde_deux: { name: 'Volde-D’eux', penalty: -2 },
@@ -117,6 +118,13 @@ function voldeHitCount(rows, roundIndex, expectedKind) {
   }).length;
 }
 
+function bounceOutCount(rows) {
+  return (Array.isArray(rows) ? rows : []).reduce((count, row) => {
+    const darts = row && Array.isArray(row.darts) ? row.darts : [];
+    return count + darts.filter(dart => dart && dart.bounceOut === true).length;
+  }, 0);
+}
+
 function isVoldeCode(code) {
   return code === 'volde_deux' || code === 'volde_trois';
 }
@@ -128,6 +136,11 @@ export function detectImmediateMisfires(rows, total) {
     if (events.some(event => event.code === code)) return;
     const meta = MISFIRE_META[code];
     if (meta) events.push({ code, name: meta.name, penalty: meta.penalty, count:1 });
+  };
+  const addCountedNormal = (code, count) => {
+    const meta = MISFIRE_META[code];
+    if (!meta || !(count > 0)) return;
+    events.push({ code, name:meta.name, penalty:meta.penalty, count });
   };
   const addVolde = (code, count) => {
     const meta = MISFIRE_META[code];
@@ -149,6 +162,10 @@ export function detectImmediateMisfires(rows, total) {
   if (Number(total || 0) < 100) add('sub_ton');
   if (values.length >= 14 && values[11] === 0 && values[12] === 0 && values[13] === 0) add('special_delivery_failed');
   if (values.length >= 14 && values[13] === 0) add('bull_blind');
+  // SC-059: Bounce Out is explicit event data, never inferred from an ordinary Miss.
+  // Repeat count is historical/display truth; as a normal Misfire its -1 XP remains
+  // subject to the existing single-worst normal penalty rule for the game.
+  addCountedNormal('bounce_out', bounceOutCount(rows));
 
   // SC-048: these two are dart-level exceptions. Every qualifying hit stacks
   // independently and is additional to the normal worst-only / -5 game rule.
