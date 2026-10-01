@@ -196,15 +196,33 @@ async function verifySc022HudPolish(){
     shots = await waitForV2Shots(page, ['done:S', 'next:', 'idle:']);
     assertOrangeUnthrown(shots, 'after Dart 1');
     assert(shots[0].classes.includes('single'), 'Dart 1 uses the Beta single-hit mapping');
+    let liveAverages = await page.evaluate(() => {
+      const pair = __sqV2LiveAveragePair(0, state.currentRound);
+      return { expected3:__sqFmtAvg(pair.r3), expectedMatch:__sqFmtAvg(pair.mtc), actual3:document.getElementById('v2Mini3R0').textContent, actualMatch:document.getElementById('v2MiniMtc0').textContent, darts:pair.darts, matchDarts:pair.matchDarts };
+    });
+    assert.equal(liveAverages.actual3, '30', '3AV updates immediately after Dart 1 using three-dart pace');
+    assert.equal(liveAverages.actualMatch, '30', 'MAV updates immediately after Dart 1');
+    assert.equal(liveAverages.darts, 1, 'Game average denominator counts Dart 1 immediately');
+    assert.equal(liveAverages.matchDarts, 1, 'Match average denominator counts Dart 1 immediately');
 
     await page.locator('#pad [data-score-label="Double"]').click();
     shots = await waitForV2Shots(page, ['done:S', 'done:D', 'next:']);
     assertOrangeUnthrown(shots, 'after Dart 2');
     assert(shots[1].classes.includes('double'), 'Dart 2 uses the Beta double-hit mapping');
+    liveAverages = await page.evaluate(() => {
+      const pair = __sqV2LiveAveragePair(0, state.currentRound);
+      return { actual3:document.getElementById('v2Mini3R0').textContent, actualMatch:document.getElementById('v2MiniMtc0').textContent, darts:pair.darts };
+    });
+    assert.equal(liveAverages.actual3, '45', '3AV updates immediately after Dart 2');
+    assert.equal(liveAverages.actualMatch, '45', 'MAV updates immediately after Dart 2');
+    assert.equal(liveAverages.darts, 2, 'Average denominator counts exactly two darts after Dart 2');
 
     await page.locator('#pad .dtActBtn.undo').click();
     shots = await waitForV2Shots(page, ['done:S', 'next:', 'idle:']);
     assertOrangeUnthrown(shots, 'after Undo restores Dart 2');
+    liveAverages = await page.evaluate(() => ({ a3:document.getElementById('v2Mini3R0').textContent, mav:document.getElementById('v2MiniMtc0').textContent }));
+    assert.equal(liveAverages.a3, '30', 'Undo restores 3AV immediately');
+    assert.equal(liveAverages.mav, '30', 'Undo restores MAV immediately');
     await page.locator('#pad .dtActBtn.miss').click();
     shots = await waitForV2Shots(page, ['done:S', 'done:X', 'next:']);
     assertOrangeUnthrown(shots, 'after MISS');
@@ -220,13 +238,44 @@ async function verifySc022HudPolish(){
     await page.waitForFunction(() => state.currentPlayer === 1 && state.currentRound === 0 && state.currentDart === 0);
     shots = await waitForV2Shots(page, ['done:S', 'done:D', 'done:T']);
     assert(shots[2].classes.includes('treble'), 'Dart 3 uses the Beta treble-hit mapping');
-    const liveAverages = await page.evaluate(() => {
+    liveAverages = await page.evaluate(() => {
       const pair = __sqV2LiveAveragePair(0, state.currentRound);
       return {expected3:__sqFmtAvg(pair.r3), expectedMatch:__sqFmtAvg(pair.mtc), actual3:document.getElementById('v2Mini3R0').textContent, actualMatch:document.getElementById('v2MiniMtc0').textContent};
     });
-    assert.notEqual(liveAverages.actual3, '–', '3AV updates after a completed round');
-    assert.equal(liveAverages.actual3, liveAverages.expected3, '3AV display keeps the existing calculation');
-    assert.equal(liveAverages.actualMatch, liveAverages.expectedMatch, 'MAV display keeps the existing calculation');
+    assert.equal(liveAverages.actual3, '60', '3AV lands on the same completed-round value after Dart 3');
+    assert.equal(liveAverages.actualMatch, '60', 'MAV lands on the same completed-round value after Dart 3');
+    assert.equal(liveAverages.actual3, liveAverages.expected3, '3AV display keeps the shared calculation');
+    assert.equal(liveAverages.actualMatch, liveAverages.expectedMatch, 'MAV display keeps the shared calculation');
+
+    const matchAverage = await page.evaluate(() => {
+      const oldHistory = state.match.history;
+      const oldScore = state.score[0];
+      const oldRound = state.currentRound;
+      try {
+        state.match.history = [{
+          totals:[60,0],
+          board:[[
+            { darts:[{kind:'S',points:20},{kind:'S',points:20},{kind:'S',points:20}], roundTotal:60 }
+          ],[]]
+        }];
+        state.score[0] = [{
+          darts:[{kind:'S',points:10},null,null],
+          roundTotal:10
+        }];
+        state.currentRound = 0;
+        const pair = __sqV2LiveAveragePair(0, 0);
+        return { r3:pair.r3, game:pair.game, mtc:pair.mtc, darts:pair.darts, matchDarts:pair.matchDarts };
+      } finally {
+        state.match.history = oldHistory;
+        state.score[0] = oldScore;
+        state.currentRound = oldRound;
+      }
+    });
+    assert.equal(matchAverage.r3, 30, 'live 3AV normalises a partial current round by darts thrown');
+    assert.equal(matchAverage.game, 30, 'current-game three-dart average is available from the shared helper');
+    assert.equal(matchAverage.mtc, 52.5, 'MAV includes completed match games plus the current dart');
+    assert.equal(matchAverage.darts, 1, 'current-game average denominator remains one dart');
+    assert.equal(matchAverage.matchDarts, 4, 'MAV denominator includes three historical darts plus the current dart');
     await page.waitForTimeout(1150);
     shots = await waitForV2Shots(page, ['next:', 'idle:', 'idle:']);
     assertOrangeUnthrown(shots, 'next player reset');
