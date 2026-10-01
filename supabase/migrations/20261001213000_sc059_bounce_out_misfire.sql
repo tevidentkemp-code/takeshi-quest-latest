@@ -31,7 +31,7 @@ darts as materialized (
     (pl.ord - 1)::integer as player_index,
     (rnd.ord - 1)::integer as round_index,
     (d.ord - 1)::integer as dart_index,
-    d.val
+    d.val as dart
   from off_games g
   cross join lateral jsonb_array_elements(g.state->'board') with ordinality pl(val, ord)
   cross join lateral jsonb_array_elements(pl.val) with ordinality rnd(val, ord)
@@ -46,7 +46,7 @@ select
   'bounce_out'::text as code,
   (-1)::integer as penalty
 from darts
-where val->>'bounceOut' = 'true';
+where dart->>'bounceOut' = 'true';
 
 comment on view private.v_bounce_out_misfire_events is
   'SC-059 historical Official/Classic Bounce Out Misfire events derived only from explicit saved bounceOut=true dart markers.';
