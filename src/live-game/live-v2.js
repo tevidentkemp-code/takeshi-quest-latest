@@ -232,13 +232,13 @@ function liveV2Render(){
     el.classList.toggle("active", p === turn);
   });
 
-  // SC-017: duplicate the canonical live 3R/MTC averages beneath each player card.
+  // Live GAV/MAV: both are three-dart averages and update after every recorded dart.
   for(let i=0; i<pCount; i++){
     const av = __sqV2LiveAveragePair(i, cr);
-    const a3 = document.getElementById('v2Mini3R' + i);
-    const mt = document.getElementById('v2MiniMtc' + i);
-    if(a3) a3.textContent = __sqFmtAvg(av.r3);
-    if(mt) mt.textContent = __sqFmtAvg(av.mtc);
+    const ga = document.getElementById('v2Mini3R' + i);
+    const ma = document.getElementById('v2MiniMtc' + i);
+    if(ga) ga.textContent = __sqFmtAvg(av.gav);
+    if(ma) ma.textContent = __sqFmtAvg(av.mav);
   }
 
   // Solo Practice: PB/WR total + rolling pace and live variance beside the player score pill.
@@ -4011,20 +4011,21 @@ function __sqLiveV3Render(){
     return items.join('');
   };
 
-  // Averages: 3-dart avg = mean points per completed round; game avg = mean
-  // points per dart actually thrown. '--' until there is anything to average.
-  // Both averages are in POINTS-PER-ROUND (a round = 3 darts), so the units match.
-  //  • 3 ROUND AVG = mean over the player's last up-to-3 completed rounds (form).
-  //  • GAME AVG    = mean over every completed round this game.
+  // Live three-dart averages. GAV uses this game only; MAV includes completed
+  // games in the current match plus the current game. Both update per recorded dart.
   const playerAverages = (p) => {
-    const b = (state.score && state.score[p]) || [];
-    const roundPts = [];
-    b.forEach((e, ri) => { if (e && e.darts && roundComplete(p, ri, e)) roundPts.push(Number(e.roundTotal || 0)); });
-    const mean = arr => arr.length ? (arr.reduce((a, c) => a + c, 0) / arr.length) : null;
-    const game = mean(roundPts);
-    const r3 = mean(roundPts.slice(-3));
-    return { a3: r3 == null ? '--' : r3.toFixed(1), ga: game == null ? '--' : game.toFixed(1),
-             a3n: r3, gan: game, done: roundPts.length };
+    const pair = (typeof __sqV2LiveAveragePair === 'function')
+      ? __sqV2LiveAveragePair(p, r)
+      : { gav:NaN, mav:NaN, gameDarts:0, matchDarts:0 };
+    const gav = Number(pair.gav), mav = Number(pair.mav);
+    return {
+      gav: Number.isFinite(gav) ? gav.toFixed(1) : '--',
+      mav: Number.isFinite(mav) ? mav.toFixed(1) : '--',
+      gavn: Number.isFinite(gav) ? gav : null,
+      mavn: Number.isFinite(mav) ? mav : null,
+      gameDarts:Number(pair.gameDarts || 0),
+      matchDarts:Number(pair.matchDarts || 0)
+    };
   };
 
   const playerCard = (i, area) => {
@@ -4035,8 +4036,8 @@ function __sqLiveV3Render(){
     const lvlChip = __lvl ? `<span class="v3-lvl">LV ${__lvl}</span>` : '';
     const avg = playerAverages(i);
     const nmLower = String(pName(i)).trim().toLowerCase();
-    const a3cls = __sqV3AvgRecClass('a3', avg.a3n, avg.done, nmLower);
-    const gacls = __sqV3AvgRecClass('ga', avg.gan, avg.done, nmLower);
+    const gacls = __sqV3AvgRecClass('ga', avg.gavn, avg.gameDarts >= 9 ? 3 : 0, nmLower);
+    const mavcls = '';
     return `<div class="v3-side ${lr}" data-p="${i}"${area ? ` style="grid-area:${area}"` : ''}>
       <div class="v3-card ${active ? 'active' : 'waiting'} ${lr}">
         <div class="v3-card-sheen" aria-hidden="true"></div>
@@ -4048,8 +4049,8 @@ function __sqLiveV3Render(){
           <div class="v3-foot-prev">${lastRounds(i)}</div>
           <div class="v3-foot-div" aria-hidden="true"></div>
           <div class="v3-foot-avgs">
-            <div class="v3-avg ${a3cls}"><span class="v3-avg-val">${avg.a3}</span><span class="v3-avg-lab">3 RND AVG</span></div>
-            <div class="v3-avg ${gacls}"><span class="v3-avg-val">${avg.ga}</span><span class="v3-avg-lab">GAME AVG</span></div>
+            <div class="v3-avg ${gacls}"><span class="v3-avg-val">${avg.gav}</span><span class="v3-avg-lab">GAV</span></div>
+            <div class="v3-avg ${mavcls}"><span class="v3-avg-val">${avg.mav}</span><span class="v3-avg-lab">MAV</span></div>
           </div>
         </div>
       </div>
