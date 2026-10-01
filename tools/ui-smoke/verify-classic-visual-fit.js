@@ -177,8 +177,8 @@ async function verifySc022HudPolish(){
       assert(layout.shotSquares, `${size.width}px target squares keep their original square footprint`);
       assert(layout.miniHeight >= 47.5 && layout.miniHeight <= 49.5, `${size.width}px average strip keeps its 48px footprint`);
       assert(layout.equalMetricWidths, `${size.width}px average metrics keep equal widths`);
-      assert(layout.metrics.every(metric => metric.direction === 'column' && metric.labelAbove && metric.centred), `${size.width}px 3AV/MAV labels stack above centred values`);
-      assert(layout.metrics.every(metric => metric.valueFont >= 11.5 && metric.valueFont >= metric.labelFont + 4), `${size.width}px 3AV/MAV values are visibly larger than their labels`);
+      assert(layout.metrics.every(metric => metric.direction === 'column' && metric.labelAbove && metric.centred), `${size.width}px GAV/MAV labels stack above centred values`);
+      assert(layout.metrics.every(metric => metric.valueFont >= 11.5 && metric.valueFont >= metric.labelFont + 4), `${size.width}px GAV/MAV values are visibly larger than their labels`);
       assert.deepEqual(layout.actions.map(action => action.icon), ['⊘','◀◀','▶▶'], `${size.width}px action glyphs`);
       assert(layout.actions.every(action => action.direction === 'column' && action.vertical && action.centred && action.fits), `${size.width}px action icons stack above labels inside existing tap targets`);
       assert(layout.actions.find(action => action.name === 'miss').iconFont >= 18.5, `${size.width}px MISS symbol is enlarged and remains inside its button`);
@@ -196,11 +196,23 @@ async function verifySc022HudPolish(){
     shots = await waitForV2Shots(page, ['done:S', 'next:', 'idle:']);
     assertOrangeUnthrown(shots, 'after Dart 1');
     assert(shots[0].classes.includes('single'), 'Dart 1 uses the Beta single-hit mapping');
+    let perDartAvg = await page.evaluate(() => {
+      const pair=__sqV2LiveAveragePair(0, state.currentRound);
+      return {gav:document.getElementById('v2Mini3R0')?.textContent||'',mav:document.getElementById('v2MiniMtc0')?.textContent||'',expectedGav:__sqFmtAvg(pair.gav),expectedMav:__sqFmtAvg(pair.mav)};
+    });
+    assert.equal(perDartAvg.gav, perDartAvg.expectedGav, 'GAV updates immediately after Dart 1');
+    assert.equal(perDartAvg.mav, perDartAvg.expectedMav, 'MAV updates immediately after Dart 1');
 
     await page.locator('#pad [data-score-label="Double"]').click();
     shots = await waitForV2Shots(page, ['done:S', 'done:D', 'next:']);
     assertOrangeUnthrown(shots, 'after Dart 2');
     assert(shots[1].classes.includes('double'), 'Dart 2 uses the Beta double-hit mapping');
+    perDartAvg = await page.evaluate(() => {
+      const pair=__sqV2LiveAveragePair(0, state.currentRound);
+      return {gav:document.getElementById('v2Mini3R0')?.textContent||'',mav:document.getElementById('v2MiniMtc0')?.textContent||'',expectedGav:__sqFmtAvg(pair.gav),expectedMav:__sqFmtAvg(pair.mav)};
+    });
+    assert.equal(perDartAvg.gav, perDartAvg.expectedGav, 'GAV updates immediately after Dart 2');
+    assert.equal(perDartAvg.mav, perDartAvg.expectedMav, 'MAV updates immediately after Dart 2');
 
     await page.locator('#pad .dtActBtn.undo').click();
     shots = await waitForV2Shots(page, ['done:S', 'next:', 'idle:']);
@@ -222,11 +234,11 @@ async function verifySc022HudPolish(){
     assert(shots[2].classes.includes('treble'), 'Dart 3 uses the Beta treble-hit mapping');
     const liveAverages = await page.evaluate(() => {
       const pair = __sqV2LiveAveragePair(0, state.currentRound);
-      return {expected3:__sqFmtAvg(pair.r3), expectedMatch:__sqFmtAvg(pair.mtc), actual3:document.getElementById('v2Mini3R0').textContent, actualMatch:document.getElementById('v2MiniMtc0').textContent};
+      return {expectedGame:__sqFmtAvg(pair.gav), expectedMatch:__sqFmtAvg(pair.mav), actualGame:document.getElementById('v2Mini3R0').textContent, actualMatch:document.getElementById('v2MiniMtc0').textContent};
     });
-    assert.notEqual(liveAverages.actual3, '–', '3AV updates after a completed round');
-    assert.equal(liveAverages.actual3, liveAverages.expected3, '3AV display keeps the existing calculation');
-    assert.equal(liveAverages.actualMatch, liveAverages.expectedMatch, 'MAV display keeps the existing calculation');
+    assert.notEqual(liveAverages.actualGame, '–', 'GAV remains live after Dart 3');
+    assert.equal(liveAverages.actualGame, liveAverages.expectedGame, 'GAV display matches current-game per-dart calculation');
+    assert.equal(liveAverages.actualMatch, liveAverages.expectedMatch, 'MAV display matches current-match per-dart calculation');
     await page.waitForTimeout(1150);
     shots = await waitForV2Shots(page, ['next:', 'idle:', 'idle:']);
     assertOrangeUnthrown(shots, 'next player reset');
@@ -495,7 +507,7 @@ async function verifyTrainingRoute(){
     assert(await page.locator('#liveV2Panel .v2Total').allTextContents().then(v=>v.some(x=>Number(x)>0)), 'score totals update');
     console.log('PASS score totals update after a real button press');
     assert.equal(await page.locator('#liveV2Panel .v2MiniAvg').count(), 2, 'one mini-average strip per player');
-    assert((await page.locator('#liveV2Panel .v2MiniAvg').first().innerText()).includes('3AV'), '3AV label present');
+    assert((await page.locator('#liveV2Panel .v2MiniAvg').first().innerText()).includes('GAV'), 'GAV label present');
     assert((await page.locator('#liveV2Panel .v2MiniAvg').first().innerText()).includes('MAV'), 'MAV label present');
     const avgAttachGap = await page.evaluate(() => {
       const score=document.querySelector('#liveV2Panel .v2ScoreBox[data-p="0"]')?.getBoundingClientRect();
@@ -508,23 +520,33 @@ async function verifyTrainingRoute(){
       const beforeScores = structuredClone(state.score?.[pIdx] || []);
       const beforeRound = state.currentRound;
       const beforeDart = state.currentDart;
+      const beforeHistory = structuredClone(state.match?.history || []);
       try{
-        state.score[pIdx] = [10,11,12,13].map(points => ({
-          darts:[{kind:'S',points},{kind:'S',points},{kind:'S',points}],
-          roundTotal:points*3
-        }));
-        state.currentRound = 3;
-        state.currentDart = 3;
-        const pair = __sqV2LiveAveragePair(pIdx, 3);
+        state.score[pIdx] = [{
+          darts:[{kind:'S',points:20},{kind:'Miss',points:0},null],
+          roundTotal:20
+        }];
+        state.match.history = [{
+          totals:[30,0],
+          board:[[
+            {darts:[{kind:'S',points:10},{kind:'S',points:10},{kind:'S',points:10}],roundTotal:30}
+          ],[]]
+        }];
+        state.currentRound = 0;
+        state.currentDart = 2;
+        const pair = __sqV2LiveAveragePair(pIdx, 0);
         liveV2Render();
         await new Promise(resolve => setTimeout(resolve, 140));
         return {
-          pairR3: __sqFmtAvg(pair.r3),
-          pairMtc: __sqFmtAvg(pair.mtc),
-          r3: document.getElementById('v2Mini3R0')?.textContent || '',
-          mtc: document.getElementById('v2MiniMtc0')?.textContent || ''
+          pairGav: __sqFmtAvg(pair.gav),
+          pairMav: __sqFmtAvg(pair.mav),
+          gav: document.getElementById('v2Mini3R0')?.textContent || '',
+          mav: document.getElementById('v2MiniMtc0')?.textContent || '',
+          gameDarts: pair.gameDarts,
+          matchDarts: pair.matchDarts
         };
       } finally {
+        state.match.history = beforeHistory;
         state.score[pIdx] = beforeScores;
         state.currentRound = beforeRound;
         state.currentDart = beforeDart;
@@ -532,12 +554,13 @@ async function verifyTrainingRoute(){
         await new Promise(resolve => setTimeout(resolve, 140));
       }
     });
-    assert.equal(miniAv.pairR3, '36', '3R helper uses the latest three completed rounds');
-    assert.equal(miniAv.pairMtc, '34.5', 'MTC helper uses every completed round');
-    assert.notEqual(miniAv.pairR3, miniAv.pairMtc, '3AV and MAV fixtures remain independently testable');
-    assert.equal(miniAv.r3, miniAv.pairR3, 'rendered 3AV matches helper');
-    assert.equal(miniAv.mtc, miniAv.pairMtc, 'rendered MAV matches helper');
-    console.log('PASS distinct 3AV / MAV values and compact strip');
+    assert.equal(miniAv.gameDarts, 2, 'GAV counts only darts actually thrown in the current game');
+    assert.equal(miniAv.matchDarts, 5, 'MAV includes completed match-game darts plus current-game darts');
+    assert.equal(miniAv.pairGav, '30', 'GAV is the current-game three-dart average after two darts');
+    assert.equal(miniAv.pairMav, '30', 'MAV is the current-match three-dart average across five darts');
+    assert.equal(miniAv.gav, miniAv.pairGav, 'rendered GAV matches helper');
+    assert.equal(miniAv.mav, miniAv.pairMav, 'rendered MAV matches helper');
+    console.log('PASS per-dart GAV / MAV values and compact strip');
     for (const size of [{width:390,height:844},{width:430,height:932},{width:320,height:568},{width:1366,height:936}]) {
       await page.setViewportSize(size);
       await page.waitForTimeout(900);
@@ -553,7 +576,7 @@ async function verifyTrainingRoute(){
       });
       console.log('GEOMETRY', size, fit);
       assert(!fit.overflow, 'no horizontal overflow');
-      assert(!fit.miniOverflow, '3AV / MAV metrics fit their rectangle width');
+      assert(!fit.miniOverflow, 'GAV / MAV metrics fit their rectangle width');
       assert(fit.miniHeight>=47.5 && fit.miniHeight<=49.5, 'mini-average rectangle is doubled from 24px to 48px');
       assert(Math.abs(fit.canvasWidth-fit.width)<2,'canvas fits actual host width');
       if (size.height>=800) assert(fit.gap>=5 && fit.gap<=18,'panel reaches fixed controls with clearance');
