@@ -43,5 +43,4 @@ select
 from combined
 group by player_id;
 
-drop view if exists public.v_bounce_out_misfire_penalty_events;
-drop view if exists public.v_bounce_out_misfire_events;
+drop view if exists private.v_bounce_out_misfire_events;
