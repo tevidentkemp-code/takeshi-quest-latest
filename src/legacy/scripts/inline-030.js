@@ -229,8 +229,29 @@
     var m=openModalShell('Add Player','Joins as the final thrower');
     m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
     var active=new Set((state.players||[]).map(function(p){return String(p&&p.name||'').trim().toLowerCase();}).filter(Boolean));
+
+    // Keep a usable action visible immediately. Registered-player discovery is
+    // cloud-backed and may be slow or unavailable on a mobile connection.
+    addRow(m.body,{ico:'＋',label:'Guest Player',desc:'Add by name • may change game classification',onClick:function(){m.close();openAddGuestMenu(function(){openAddPlayerMenu(prev);});}});
+    var loading=document.createElement('p');
+    loading.className='tag sq-add-player-loading';
+    loading.textContent='Loading registered players…';
+    m.body.appendChild(loading);
+
     var rows=[];
-    try{ if(typeof cloudListPlayers==='function') rows=await cloudListPlayers(); }catch(e){ console.warn('[SQ] Add Player cloud list failed',e); }
+    var loadFailed=false;
+    try{
+      if(typeof cloudListPlayers==='function') rows=await cloudListPlayers();
+      else loadFailed=true;
+    }catch(e){
+      loadFailed=true;
+      console.warn('[SQ] Add Player cloud list failed',e);
+    }
+    // The user may already have chosen Guest Player or closed the menu while
+    // the cloud request was in flight. Never mutate a detached modal.
+    if(!document.contains(m.bd)) return;
+    try{ loading.remove(); }catch(_){}
+
     rows=(Array.isArray(rows)?rows:[]).filter(function(p){return !active.has(String(p&&p.name||'').trim().toLowerCase());});
     if(rows.length){
       rows.forEach(function(p){
@@ -245,9 +266,11 @@
         }});
       });
     }else{
-      var empty=document.createElement('p'); empty.className='tag'; empty.textContent='No other registered players available.'; m.body.appendChild(empty);
+      var empty=document.createElement('p');
+      empty.className='tag';
+      empty.textContent=loadFailed?'Registered players unavailable. Guest entry still works.':'No other registered players available.';
+      m.body.appendChild(empty);
     }
-    addRow(m.body,{ico:'＋',label:'Guest Player',desc:'Add by name • may change game classification',onClick:function(){m.close();openAddGuestMenu(function(){openAddPlayerMenu(prev);});}});
   }
   window.__sqOpenAddPlayerMenu=openAddPlayerMenu;
 
