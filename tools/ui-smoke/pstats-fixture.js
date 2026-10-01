@@ -9,7 +9,7 @@
 //   2026-02-02  115 v 150
 //   2026-02-20  140 v  90
 // XP 151 -> LV 2 ROOKIE, 33 XP to level 3 (matches the reference shot).
-// Misfire fixture: 4 historical occurrences; launch-forward XP impact is -2.
+// Misfire fixture: 6 historical occurrences including two Bounce Outs; launch-forward XP impact remains -2.
 
 const __recentIso = (daysAgo=1) => new Date(Date.now() - Number(daysAgo || 0) * 86400000).toISOString();
 
@@ -102,6 +102,7 @@ const FIXTURE = {
     v_player_misfires: [
       { code: 'bull_blind', cnt: 3 },
       { code: 'cold_start', cnt: 1 },
+      { code: 'bounce_out', cnt: 2 },
     ],
   },
 };
@@ -135,10 +136,11 @@ const EXPECTED = {
   rivalsNemesis: '1. Sam T (60.0%)',
   rivalsVictims: '1. Sam T (60.0%)',
   misfires: {
-    total: '4 historical occurrences',
+    total: '6 historical occurrences',
     xp: '-2 XP',
     bullBlind: '3× · -1 XP',
     coldStart: '1× · -1 XP',
+    bounceOut: '2× · -1 XP',
   },
 };
 
