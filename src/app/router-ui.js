@@ -6183,18 +6183,52 @@ function __sqFmtAvg(n){
 
 function __sqV2LiveAveragePair(pIdx, currentRound){
   try{
-    const vals = [];
     const cr = Math.max(0, Number(currentRound) || 0);
+    const rows = [];
+    const addEntry = (acc, entry) => {
+      if(!entry) return acc;
+      const darts = Array.isArray(entry.darts) ? entry.darts : [];
+      const thrown = darts.filter(d => d != null).length;
+      if(!thrown) return acc;
+      let points = Number(entry.roundTotal);
+      if(!Number.isFinite(points)){
+        points = darts.reduce((sum, d) => {
+          if(d == null) return sum;
+          if(typeof d === 'number') return sum + (Number(d) || 0);
+          return sum + (Number(d.points ?? d.score ?? d.value ?? 0) || 0);
+        }, 0);
+      }
+      acc.points += points;
+      acc.darts += thrown;
+      return acc;
+    };
+    const avg3 = acc => acc.darts ? (acc.points * 3 / acc.darts) : NaN;
+
     for(let r = 0; r <= cr; r++){
       const entry = state.score?.[pIdx]?.[r];
-      const done = (r < cr) || (entry && entry.darts && entry.darts[2] != null);
-      if(!done) continue;
-      const v = getPerRoundScore(r, pIdx);
-      if(Number.isFinite(+v)) vals.push(+v);
+      if(entry && Array.isArray(entry.darts) && entry.darts.some(d => d != null)) rows.push(entry);
     }
-    const mean = arr => arr.length ? arr.reduce((a,b)=>a+b,0) / arr.length : NaN;
-    return { r3: mean(vals.slice(-3)), mtc: mean(vals), count: vals.length };
-  }catch(_){ return { r3:NaN, mtc:NaN, count:0 }; }
+
+    const r3Acc = rows.slice(-3).reduce((acc, entry) => addEntry(acc, entry), {points:0,darts:0});
+    const gameAcc = rows.reduce((acc, entry) => addEntry(acc, entry), {points:0,darts:0});
+    const matchAcc = {points:0,darts:0};
+    const history = Array.isArray(state.match?.history) ? state.match.history : [];
+    history.forEach(game => {
+      const board = Array.isArray(game?.board?.[pIdx]) ? game.board[pIdx] : [];
+      board.forEach(entry => addEntry(matchAcc, entry));
+    });
+    matchAcc.points += gameAcc.points;
+    matchAcc.darts += gameAcc.darts;
+
+    return {
+      r3: avg3(r3Acc),
+      game: avg3(gameAcc),
+      mtc: avg3(matchAcc),
+      count: rows.length,
+      darts: gameAcc.darts,
+      matchDarts: matchAcc.darts
+    };
+  }catch(_){ return { r3:NaN, game:NaN, mtc:NaN, count:0, darts:0, matchDarts:0 }; }
 }
 
 function __sqSetupLiveV2Sizing(panel){
