@@ -79,10 +79,11 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
   check('achievement sections ordered Milestones → Trophies / Awards → Misfires', JSON.stringify(ui.sections) === JSON.stringify(['Milestones','Trophies / Awards','Misfires']), JSON.stringify(ui.sections));
   check('Misfires render all 11 trophy-style cards', ui.cardCount === 11, JSON.stringify(ui));
   check('Misfire unlocked summary counts distinct earned rules', norm(ui.unlocked) === '3 / 11 unlocked', ui.unlocked);
-  check('Misfire historical total remains DB-derived', norm(ui.total) === '4 historical occurrences', ui.total);
+  check('Misfire historical total remains DB-derived', norm(ui.total) === '6 historical occurrences', ui.total);
   check('Misfire XP remains DB-derived', norm(ui.xp) === '-2 XP', ui.xp);
   check('Bull Blind repeat badge shows ×3', ui.byCode.bull_blind && ui.byCode.bull_blind.count === 3 && norm(ui.byCode.bull_blind.repeat) === '×3' && norm(ui.byCode.bull_blind.penalty) === '-1 XP', JSON.stringify(ui.byCode));
   check('Cold Start remains recorded once', ui.byCode.cold_start && ui.byCode.cold_start.count === 1 && norm(ui.byCode.cold_start.penalty) === '-1 XP', JSON.stringify(ui.byCode));
+  check('Bounce Out is backfilled and remains -1 XP', ui.byCode.bounce_out && ui.byCode.bounce_out.count === 2 && norm(ui.byCode.bounce_out.repeat) === '×2' && norm(ui.byCode.bounce_out.penalty) === '-1 XP', JSON.stringify(ui.byCode));
   check('Player Stats navigation remains Stats / XP / Achievements', JSON.stringify(ui.tabs) === JSON.stringify(['Stats','XP','Achievements']), JSON.stringify(ui.tabs));
 
   // SC-024: use the existing Player Stats fixture for the selected player's card,
