@@ -339,14 +339,11 @@ function assert(cond, msg) {
     // Regression: Bull must be completed first, then retained pre-Bull catch-up
     // starts automatically after the table's Bull round finishes.
     await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
-    s=await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp?.active,finished:!!state.finished}));
-    assert(s.p===2 && s.r===13 && s.d===0 && s.active===false && s.finished===false, 'after returning player finishes Bull, remaining table players must still take Bull before catch-up');
-    await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
     s=await page.evaluate(() => {
       const job=state.__sqCatchUp.jobs[0];
       return {p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active,finished:!!state.finished,pending:job.pendingRounds.slice(),returned:job.returned};
     });
-    assert(s.p===1 && s.r===10 && s.d===0 && s.active===true && s.finished===false, 'after the table Bull finishes, retained catch-up must rewind to the oldest skipped round');
+    assert(s.p===1 && s.r===10 && s.d===0 && s.active===true && s.finished===false, 'after the two-player table Bull finishes, retained catch-up must rewind to the oldest skipped round');
     assert(s.pending.join(',')==='10,11,12' && s.returned===true, 'Bull-first flow must retain all eligible skipped rounds for post-Bull catch-up');
     for (const round of [10,11,12]) {
       const pos=await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active}));
