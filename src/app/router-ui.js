@@ -5863,8 +5863,8 @@ function ensureLiveV2Panel(){
     </div>
   `).join("");
   const miniAvgBoxes = Array.from({length: Math.max(1, Math.min(6, pCount))}).map((_,i)=>`
-    <div class="v2MiniAvg" data-p="${i}" aria-label="Player averages">
-      <span class="v2MiniMetric"><span class="v2MiniLab">3AV</span><strong id="v2Mini3R${i}">–</strong></span>
+    <div class="v2MiniAvg" data-p="${i}" aria-label="Player game and match averages">
+      <span class="v2MiniMetric"><span class="v2MiniLab">GAV</span><strong id="v2Mini3R${i}">–</strong></span>
       <span class="v2MiniMetric"><span class="v2MiniLab">MAV</span><strong id="v2MiniMtc${i}">–</strong></span>
     </div>
   `).join("");
