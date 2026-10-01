@@ -17,14 +17,16 @@ function assert(cond, msg) {
       typeof window.__sqLateJoinEligibility === 'function'
     );
 
-    // Production UI contract: long registered-player lists must scroll above the
-    // fixed throwpad, and selection must ask for confirmation before mutation.
+    // Production UI contract: Guest Player must remain usable immediately even
+    // while the cloud-backed registered-player list is still loading. Long
+    // registered-player lists must then scroll above the fixed throwpad, and
+    // selection must ask for confirmation before mutation.
     await page.evaluate(() => {
       window.__sc034OrigCloudListPlayers = window.cloudListPlayers;
-      window.cloudListPlayers = async () => Array.from({length:24},(_,i)=>({
-        id:'ui-'+i,
-        name:'UI PLAYER '+String(i+1).padStart(2,'0')
-      }));
+      window.__sc034CloudResolve = null;
+      window.cloudListPlayers = () => new Promise(resolve => {
+        window.__sc034CloudResolve = resolve;
+      });
       window.__sqOpenGameMenu106();
     });
     const gameMenuAdd = page.locator('.sq-menu106-row').filter({hasText:'Add Player'}).first();
@@ -32,8 +34,41 @@ function assert(cond, msg) {
     await gameMenuAdd.click();
     await page.waitForFunction(() =>
       /ADD PLAYER/i.test(document.querySelector('.sq-menu106-title')?.textContent||'') &&
-      document.querySelectorAll('.sq-menu106-row').length >= 20
+      typeof window.__sc034CloudResolve === 'function'
     );
+
+    const immediateUi = await page.evaluate(() => {
+      const body=document.querySelector('.sq-menu106-body');
+      const first=body?.querySelector('.sq-menu106-row');
+      const loading=body?.querySelector('.sq-add-player-loading');
+      const br=body?.getBoundingClientRect();
+      const rr=first?.getBoundingClientRect();
+      return {
+        firstText:String(first?.textContent||''),
+        loading:String(loading?.textContent||''),
+        guestVisible:!!br && !!rr && rr.top>=br.top-1 && rr.bottom<=br.bottom+1
+      };
+    });
+    assert(/GUEST PLAYER/i.test(immediateUi.firstText), 'Guest Player must render before cloud player discovery finishes');
+    assert(/LOADING REGISTERED PLAYERS/i.test(immediateUi.loading), 'Add Player must show an honest registered-player loading state');
+    assert(immediateUi.guestVisible, 'Guest Player must be immediately visible inside the Add Player viewport');
+
+    await page.evaluate(() => {
+      window.__sc034CloudResolve(Array.from({length:24},(_,i)=>({
+        id:'ui-'+i,
+        name:'UI PLAYER '+String(i+1).padStart(2,'0')
+      })));
+    });
+    await page.waitForFunction(() => document.querySelectorAll('.sq-menu106-row').length >= 25);
+    // Subsequent reopen after a cancelled confirmation should not be left
+    // waiting on another synthetic cloud promise.
+    await page.evaluate(() => {
+      window.cloudListPlayers = async () => Array.from({length:24},(_,i)=>({
+        id:'ui-'+i,
+        name:'UI PLAYER '+String(i+1).padStart(2,'0')
+      }));
+    });
+
     const addUi = await page.evaluate(() => {
       const modal=document.querySelector('.sq-menu106-modal');
       const body=modal?.querySelector('.sq-menu106-body');
@@ -53,7 +88,7 @@ function assert(cond, msg) {
     assert(addUi.modalBottom <= addUi.viewport + 1, 'Add Player modal must remain inside the viewport');
     assert(addUi.modalZ > addUi.padZ, 'Add Player modal must sit above the fixed throwpad');
 
-    await page.locator('.sq-menu106-row').first().click();
+    await page.locator('.sq-menu106-row').filter({hasText:'UI PLAYER 01'}).first().click();
     await page.waitForSelector('.sq-confirm-bd .sq-endmatch-no', {state:'visible'});
     const confirmUi = await page.evaluate(() => ({
       message:String(document.querySelector('.sq-confirm-bd .modal-body')?.textContent||''),
@@ -72,6 +107,7 @@ function assert(cond, msg) {
       document.querySelectorAll('.sq-menu106-bd').forEach(n=>n.remove());
       window.cloudListPlayers=window.__sc034OrigCloudListPlayers;
       delete window.__sc034OrigCloudListPlayers;
+      delete window.__sc034CloudResolve;
     });
 
     // Give ALPHA a score so we can prove existing state is untouched by roster expansion.
