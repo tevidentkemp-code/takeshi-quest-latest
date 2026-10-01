@@ -35,7 +35,7 @@ assert.ok(!detectImmediateMisfires(ordinaryMissRows,230).some(event => event.cod
 const source = fs.readFileSync(new URL('../../src/live-game/xp-breakdown.mjs', import.meta.url), 'utf8');
 const migration = fs.readFileSync(new URL('../../supabase/migrations/20261001213000_sc059_bounce_out_misfire.sql', import.meta.url), 'utf8');
 const rollback = fs.readFileSync(new URL('../../supabase/rollbacks/sc059_bounce_out_misfire.sql', import.meta.url), 'utf8');
-for (const required of ["private.v_bounce_out_misfire_events","'bounce_out'::text","d.val->>'bounceOut'","v_player_misfires","v_player_misfire_xp","2026-09-05 20:13:15+00"]) {
+for (const required of ["private.v_bounce_out_misfire_events","'bounce_out'::text","val->>'bounceOut'","v_player_misfires","v_player_misfire_xp","2026-09-05 20:13:15+00"]) {
   assert.ok(migration.includes(required), `Missing SC-059 migration contract: ${required}`);
 }
 assert.ok(rollback.includes('drop view if exists private.v_bounce_out_misfire_events'), 'SC-059 rollback must remove the internal Bounce Out helper view');
