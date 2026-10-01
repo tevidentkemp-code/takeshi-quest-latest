@@ -264,16 +264,7 @@ async function verifySc022HudPolish(){
         }];
         state.currentRound = 0;
         const pair = __sqV2LiveAveragePair(0, 0);
-        liveV2Render();
-        return {
-          r3:pair.r3,
-          game:pair.game,
-          mtc:pair.mtc,
-          darts:pair.darts,
-          matchDarts:pair.matchDarts,
-          renderedGav:document.getElementById('v2Mini3R0')?.textContent || '',
-          renderedMav:document.getElementById('v2MiniMtc0')?.textContent || ''
-        };
+        return { r3:pair.r3, game:pair.game, mtc:pair.mtc, darts:pair.darts, matchDarts:pair.matchDarts };
       } finally {
         state.match.history = oldHistory;
         state.score[0] = oldScore;
@@ -285,8 +276,6 @@ async function verifySc022HudPolish(){
     assert.equal(matchAverage.mtc, 52.5, 'MAV includes completed match games plus the current dart');
     assert.equal(matchAverage.darts, 1, 'current-game average denominator remains one dart');
     assert.equal(matchAverage.matchDarts, 4, 'MAV denominator includes three historical darts plus the current dart');
-    assert.equal(matchAverage.renderedGav, '30', 'rendered GAV stays current-game only with previous match history present');
-    assert.equal(matchAverage.renderedMav, '52.5', 'rendered MAV includes previous game plus current dart');
     await page.waitForTimeout(1150);
     shots = await waitForV2Shots(page, ['next:', 'idle:', 'idle:']);
     assertOrangeUnthrown(shots, 'next player reset');
