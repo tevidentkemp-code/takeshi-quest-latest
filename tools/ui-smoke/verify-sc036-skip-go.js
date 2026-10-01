@@ -336,6 +336,32 @@ function assert(cond, msg) {
     });
     assert(s.d===1 && !s.deadline && Number.isFinite(Number(s.first)) && s.returned===true, 'first Bull dart must stop the return timer and continue the Bull visit');
 
+    // Regression: Bull must be completed first, then retained pre-Bull catch-up
+    // starts automatically after the table's Bull round finishes.
+    await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
+    s=await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp?.active,finished:!!state.finished}));
+    assert(s.p===2 && s.r===13 && s.d===0 && s.active===false && s.finished===false, 'after returning player finishes Bull, remaining table players must still take Bull before catch-up');
+    await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
+    s=await page.evaluate(() => {
+      const job=state.__sqCatchUp.jobs[0];
+      return {p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active,finished:!!state.finished,pending:job.pendingRounds.slice(),returned:job.returned};
+    });
+    assert(s.p===1 && s.r===10 && s.d===0 && s.active===true && s.finished===false, 'after the table Bull finishes, retained catch-up must rewind to the oldest skipped round');
+    assert(s.pending.join(',')==='10,11,12' && s.returned===true, 'Bull-first flow must retain all eligible skipped rounds for post-Bull catch-up');
+    for (const round of [10,11,12]) {
+      const pos=await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active}));
+      assert(pos.p===1 && pos.r===round && pos.d===0 && pos.active===true, 'unexpected post-Bull catch-up cursor '+JSON.stringify(pos));
+      await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
+    }
+    s=await page.evaluate(() => ({
+      finished:!!state.finished,
+      active:!!state.__sqCatchUp?.active,
+      bull:JSON.parse(JSON.stringify(state.score[1][13])),
+      job:JSON.parse(JSON.stringify(state.__sqCatchUp.jobs[0]))
+    }));
+    assert(s.finished===true && s.active===false && s.job.completed===true, 'game must finish only after post-Bull catch-up completes');
+    assert(s.bull.darts.every(d=>d && d.kind==='Miss'), 'completed Bull visit must be preserved while earlier catch-up rounds are replayed');
+
     // Expiry scratches every retained catch-up round plus the complete Bull visit to zero.
     await reset(13,1,2);
     const expiredEnforced = await page.evaluate(() => {
