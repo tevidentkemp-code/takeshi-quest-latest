@@ -125,13 +125,6 @@ function bounceOutCount(rows) {
   }, 0);
 }
 
-function bounceOutCount(rows) {
-  return (Array.isArray(rows) ? rows : []).reduce((sum, row) => {
-    const darts = row && Array.isArray(row.darts) ? row.darts : [];
-    return sum + darts.filter(dart => !!(dart && dart.bounceOut === true)).length;
-  }, 0);
-}
-
 function isVoldeCode(code) {
   return code === 'volde_deux' || code === 'volde_trois';
 }
@@ -143,11 +136,6 @@ export function detectImmediateMisfires(rows, total) {
     if (events.some(event => event.code === code)) return;
     const meta = MISFIRE_META[code];
     if (meta) events.push({ code, name: meta.name, penalty: meta.penalty, count:1 });
-  };
-  const addCountedNormal = (code, count) => {
-    const meta = MISFIRE_META[code];
-    if (!meta || !(count > 0)) return;
-    events.push({ code, name:meta.name, penalty:meta.penalty, count });
   };
   const addCountedNormal = (code, count) => {
     const meta = MISFIRE_META[code];
@@ -167,7 +155,6 @@ export function detectImmediateMisfires(rows, total) {
     });
   };
 
-  addCountedNormal('bounce_out', bounceOutCount(rows));
   if (values.length >= 3 && values.slice(0, 3).every(value => value === 0)) add('cold_start');
   const zeroRun = maxRun(values, value => value === 0);
   if (zeroRun >= 3) add('ghost_town');
