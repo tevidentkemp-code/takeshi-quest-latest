@@ -527,9 +527,9 @@ async function verifyTrainingRoute(){
           roundTotal:20
         }];
         state.match.history = [{
-          totals:[30,0],
+          totals:[60,0],
           board:[[
-            {darts:[{kind:'S',points:10},{kind:'S',points:10},{kind:'S',points:10}],roundTotal:30}
+            {darts:[{kind:'S',points:20},{kind:'S',points:20},{kind:'S',points:20}],roundTotal:60}
           ],[]]
         }];
         state.currentRound = 0;
@@ -557,8 +557,9 @@ async function verifyTrainingRoute(){
     assert.equal(miniAv.gameDarts, 2, 'GAV counts only darts actually thrown in the current game');
     assert.equal(miniAv.matchDarts, 5, 'MAV includes completed match-game darts plus current-game darts');
     assert.equal(miniAv.pairGav, '30', 'GAV is the current-game three-dart average after two darts');
-    assert.equal(miniAv.pairMav, '30', 'MAV is the current-match three-dart average across five darts');
+    assert.equal(miniAv.pairMav, '48', 'MAV includes the completed-game history plus current-game darts');
     assert.equal(miniAv.gav, miniAv.pairGav, 'rendered GAV matches helper');
+    assert.notEqual(miniAv.pairGav, miniAv.pairMav, 'GAV and MAV remain independently testable');
     assert.equal(miniAv.mav, miniAv.pairMav, 'rendered MAV matches helper');
     console.log('PASS per-dart GAV / MAV values and compact strip');
     for (const size of [{width:390,height:844},{width:430,height:932},{width:320,height:568},{width:1366,height:936}]) {
