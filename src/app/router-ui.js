@@ -5864,7 +5864,7 @@ function ensureLiveV2Panel(){
   `).join("");
   const miniAvgBoxes = Array.from({length: Math.max(1, Math.min(6, pCount))}).map((_,i)=>`
     <div class="v2MiniAvg" data-p="${i}" aria-label="Player averages">
-      <span class="v2MiniMetric"><span class="v2MiniLab">3AV</span><strong id="v2Mini3R${i}">–</strong></span>
+      <span class="v2MiniMetric"><span class="v2MiniLab">GAV</span><strong id="v2Mini3R${i}">–</strong></span>
       <span class="v2MiniMetric"><span class="v2MiniLab">MAV</span><strong id="v2MiniMtc${i}">–</strong></span>
     </div>
   `).join("");
@@ -6181,20 +6181,40 @@ function __sqFmtAvg(n){
   return (Math.abs(v - Math.round(v)) < 1e-9) ? String(Math.round(v)) : v.toFixed(1);
 }
 
+function __sqV2DartAverageStats(board, pIdx){
+  let points = 0, darts = 0;
+  try{
+    const rows = Array.isArray(board?.[pIdx]) ? board[pIdx] : [];
+    rows.forEach(entry => {
+      const ds = entry && Array.isArray(entry.darts) ? entry.darts : [];
+      ds.forEach(dart => {
+        if(dart == null) return;
+        darts++;
+        const pts = Number(dart && (dart.points ?? dart.score ?? dart.value ?? 0));
+        if(Number.isFinite(pts)) points += pts;
+      });
+    });
+  }catch(_){}
+  return { points, darts, avg: darts ? (points * 3 / darts) : NaN };
+}
+
 function __sqV2LiveAveragePair(pIdx, currentRound){
   try{
-    const vals = [];
-    const cr = Math.max(0, Number(currentRound) || 0);
-    for(let r = 0; r <= cr; r++){
-      const entry = state.score?.[pIdx]?.[r];
-      const done = (r < cr) || (entry && entry.darts && entry.darts[2] != null);
-      if(!done) continue;
-      const v = getPerRoundScore(r, pIdx);
-      if(Number.isFinite(+v)) vals.push(+v);
-    }
-    const mean = arr => arr.length ? arr.reduce((a,b)=>a+b,0) / arr.length : NaN;
-    return { r3: mean(vals.slice(-3)), mtc: mean(vals), count: vals.length };
-  }catch(_){ return { r3:NaN, mtc:NaN, count:0 }; }
+    const gameStats = __sqV2DartAverageStats(state.score, pIdx);
+    let matchPoints = gameStats.points;
+    let matchDarts = gameStats.darts;
+    const history = state.match && Array.isArray(state.match.history) ? state.match.history : [];
+    history.forEach(game => {
+      const stats = __sqV2DartAverageStats(game && game.board, pIdx);
+      matchPoints += stats.points;
+      matchDarts += stats.darts;
+    });
+    const gav = gameStats.avg;
+    const mav = matchDarts ? (matchPoints * 3 / matchDarts) : NaN;
+    // r3/mtc remain compatibility aliases for older callers while the live UI
+    // now presents the canonical GAV/MAV pair.
+    return { gav, mav, r3:gav, mtc:mav, gameDarts:gameStats.darts, matchDarts };
+  }catch(_){ return { gav:NaN, mav:NaN, r3:NaN, mtc:NaN, gameDarts:0, matchDarts:0 }; }
 }
 
 function __sqSetupLiveV2Sizing(panel){
