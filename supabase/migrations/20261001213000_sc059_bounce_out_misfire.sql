@@ -1,5 +1,5 @@
 -- SC-059 — Bounce Out Misfire / historical backfill
--- Product authority: Thomas instruction 01/10/2026 + queued SC-059 contract.
+-- Product authority: CURRENT_Shateki_Quest_Game_Rules §5.2 and §15.3–15.4 + Thomas instruction 01/10/2026.
 -- Bounce Out remains a zero-score dart. It is a normal Misfire worth -1 XP.
 -- Historical occurrence counts are derived only from explicit saved
 -- dart.bounceOut=true markers. Ordinary MISS darts are never inferred.
@@ -17,16 +17,10 @@ with off_games as materialized (
     g.id,
     g.created_at,
     g.state
-  from public.games g
+  from public.v_games_official_clean g
   where g.finished = true
-    and coalesce(g.is_practice, false) = false
     and coalesce(g.is_tiebreak, false) = false
-    and coalesce(
-      nullif(lower(trim(g.mode)), ''),
-      nullif(lower(trim(coalesce(g.state->>'gameMode', g.state->>'mode', ''))), ''),
-      'legacy'
-    ) in ('legacy', 'official')
-    and cardinality(g.totals) >= 2
+    and coalesce(g.player_count, 0) >= 2
     and g.state ? 'board'
 ),
 darts as materialized (
