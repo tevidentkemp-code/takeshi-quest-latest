@@ -19399,6 +19399,7 @@ function undo(){
   recomputeMatchAggHitsForPlayer(player);
   recomputeMatchAggTotalsForPlayer(player);
 
+  try{__sqEnsureFinalBullReturnTimer();}catch(_){}
   updateUI();
 }
 
