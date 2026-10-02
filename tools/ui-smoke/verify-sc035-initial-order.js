@@ -51,14 +51,25 @@ async function visit(page) {
 (async()=>{
   const {browser,ctx,page,consoleErrs}=await H.launch({width:390,height:844});
   try{
-    // Commentary warms unrelated historical results on game start. Give that
-    // exact read an empty offline fixture: WebKit may report an aborted Fetch
-    // as a pageerror even when the commentary engine handles the rejection.
+    // Commentary and the record chart warm unrelated history on game start.
+    // Give their exact reads offline fixtures: WebKit may report aborted Fetch
+    // as a pageerror even when the caller handles the rejection.
     // Every other Supabase request still hits the harness's network blockade.
-    await ctx.route('**/rest/v1/v_player_game_scores_official_clean?**',route=>{
+    await ctx.route('**.supabase.co/rest/v1/**',route=>{
       const url=new URL(route.request().url());
-      if(route.request().method()==='GET' && url.searchParams.get('select')==='game_id,ts,player_index,player_name,score' && url.searchParams.get('limit')==='260'){
+      const method=route.request().method();
+      const table=url.pathname.split('/').pop();
+      const select=url.searchParams.get('select');
+      const limit=url.searchParams.get('limit');
+      const commentary=table==='v_player_game_scores_official_clean' && select==='game_id,ts,player_index,player_name,score' && limit==='260';
+      const legacyRecord=['high_scores','high_scores_sp'].includes(table) && select==='player_id,name,score,ts,game_id' && limit==='1';
+      if(method==='GET' && (commentary || legacyRecord)){
         return route.fulfill({status:200,contentType:'application/json',body:'[]'});
+      }
+      // Empty legacy records attempt the existing backfill probe. Keep that
+      // path unavailable without invoking a native aborted-Fetch pageerror.
+      if(method==='HEAD' && ['high_scores','high_scores_sp'].includes(table) && select==='game_id' && limit==='1'){
+        return route.fulfill({status:503,body:''});
       }
       return route.abort('failed');
     });
