@@ -53,12 +53,22 @@ async function prepareCompletion(page, round = 10) {
   await rest(page,round);
 }
 async function begin(page) {
-  await page.evaluate(()=>recordThrow({kind:'S',number:ROUNDS[state.currentRound].target}));
-  await page.waitForFunction(()=>{
-    const animation=document.getElementById('v2Rows').getAnimations().find(a=>a.playState==='running');
-    if(!animation) return false;
-    animation.pause();window.__sqSc065Animation=animation;return true;
+  await page.evaluate(()=>{
+    // Capture the real native animation at creation. External polling can
+    // miss a 300ms motion when several QA browsers share a busy machine.
+    const rows=document.getElementById('v2Rows'),native=rows.animate;
+    const own=Object.prototype.hasOwnProperty.call(rows,'animate');
+    window.__sqSc065Animation=null;window.__sqSc065AnimationStarted=false;
+    rows.animate=function(...args){
+      if(own) this.animate=native;else delete this.animate;
+      const animation=native.apply(this,args);
+      window.__sqSc065AnimationStarted=animation.playState==='running';
+      animation.pause();window.__sqSc065Animation=animation;
+      return animation;
+    };
+    recordThrow({kind:'S',number:ROUNDS[state.currentRound].target});
   });
+  await page.waitForFunction(()=>window.__sqSc065AnimationStarted && window.__sqSc065Animation?.playState==='paused');
 }
 
 (async()=>{
