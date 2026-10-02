@@ -232,13 +232,15 @@ function liveV2Render(){
     el.classList.toggle("active", p === turn);
   });
 
-  // SC-017: duplicate the canonical live 3R/MTC averages beneath each player card.
+  // SC-061: GAV = current-game three-dart average; MAV = whole-match
+  // three-dart average. Both include the current partial visit and update after
+  // every recorded dart. Legacy DOM ids stay stable for CSS/test hooks.
   for(let i=0; i<pCount; i++){
     const av = __sqV2LiveAveragePair(i, cr);
-    const a3 = document.getElementById('v2Mini3R' + i);
-    const mt = document.getElementById('v2MiniMtc' + i);
-    if(a3) a3.textContent = __sqFmtAvg(av.r3);
-    if(mt) mt.textContent = __sqFmtAvg(av.mtc);
+    const gav = document.getElementById('v2Mini3R' + i);
+    const mav = document.getElementById('v2MiniMtc' + i);
+    if(gav) gav.textContent = __sqFmtAvg(av.game);
+    if(mav) mav.textContent = __sqFmtAvg(av.mtc);
   }
 
   // Solo Practice: PB/WR total + rolling pace and live variance beside the player score pill.
@@ -684,19 +686,10 @@ const out2 = [];
   const avgHost = document.getElementById("v2Avg");
   if(avgHost){
 
-// A "completed round" for a player is:
-    // - any round < currentRound, OR
-    // - the current round where they have thrown all 3 darts
-    function __v2CompletedRoundsForPlayer(pIdx){
-      const list = [];
-      for(let r=0; r<=cr; r++){
-        const entry = state.score?.[pIdx]?.[r];
-        const done = (r < cr) || (entry && entry.darts && entry.darts[2] != null);
-        if(done) list.push(r);
-      }
-      return list;
-    }
-
+// Live averages use actual darts thrown, so partial visits update immediately.
+    // GAV is the current-game three-dart average; MAV spans prior completed
+    // match games plus current-game darts. The helper retains r3 for other
+    // consumers but the live GAV/MAV surfaces do not substitute 3AV for GAV.
     const rows = [];
 
     
@@ -722,29 +715,18 @@ const out2 = [];
       rows.push(`<div class="v2AvgCell">${__sqFmtOrd(rk)}</div>`);
     }
 
-    // Row 2: rolling 3-round average (last 3 completed rounds for that player)
-    rows.push(`<div class="v2AvgLabel"><div>3R</div><div class="sub">AVG</div></div>`);
+    // Row 2: current-game average, live after every dart.
+    rows.push(`<div class="v2AvgLabel"><div>GME</div><div class="sub">AVG</div></div>`);
     for(let i=0; i<pCount; i++){
-      const done = __v2CompletedRoundsForPlayer(i);
-      const last3 = done.slice(-3);
-      let sum = 0; let n = 0;
-      last3.forEach((r)=>{
-        const v = getPerRoundScore(r, i);
-        if(Number.isFinite(+v)) { sum += +v; n++; }
-      });
-      rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(n ? (sum / n) : NaN))}</div>`);
+      const av = __sqV2LiveAveragePair(i, cr);
+      rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(av.game))}</div>`);
     }
 
-    // Row 3: Match average (all completed rounds so far for that player)
+    // Row 3: true match average, previous games + current game, live after every dart.
     rows.push(`<div class="v2AvgLabel"><div>MTC</div><div class="sub">AVG</div></div>`);
     for(let i=0; i<pCount; i++){
-      const done = __v2CompletedRoundsForPlayer(i);
-      let sum = 0; let n = 0;
-      done.forEach((r)=>{
-        const v = getPerRoundScore(r, i);
-        if(Number.isFinite(+v)) { sum += +v; n++; }
-      });
-      rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(n ? (sum / n) : NaN))}</div>`);
+      const av = __sqV2LiveAveragePair(i, cr);
+      rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(av.mtc))}</div>`);
     }
 
     // Row 4: P RANK (current total vs THIS player's historical game totals, descending, dense_rank)
