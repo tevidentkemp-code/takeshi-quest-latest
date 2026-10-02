@@ -82,6 +82,7 @@ fs.mkdirSync(out, { recursive: true });
         viewportBottomClearance: nav ? (window.innerHeight - nav.getBoundingClientRect().bottom) : 0,
         textSizeAdjust: bodyStyle.webkitTextSizeAdjust || bodyStyle.textSizeAdjust || '',
         printerTextSizeAdjust: printerStyle?.webkitTextSizeAdjust || printerStyle?.textSizeAdjust || '',
+        supportsTextSizeAdjust: CSS.supports('-webkit-text-size-adjust', '100%') || CSS.supports('text-size-adjust', '100%'),
         tableFontSize: parseFloat(getComputedStyle(document.querySelector('#homeLivePrinter .lp-table')).fontSize || '0'),
         normalCopyFontSize: normalCopy ? parseFloat(getComputedStyle(normalCopy).fontSize || '0') : 0
       };
@@ -102,10 +103,15 @@ fs.mkdirSync(out, { recursive: true });
     assert(mobileGeometry.versionRect && mobileGeometry.navRect &&
       mobileGeometry.versionRect.bottom <= mobileGeometry.navRect.top + 1,
       'Home version must remain above the primary navigation rail');
-    assert.equal(mobileGeometry.textSizeAdjust, '100%',
-      'Home must disable iOS Safari text autosizing drift');
-    assert.equal(mobileGeometry.printerTextSizeAdjust, '100%',
-      'VIDE must explicitly disable iOS Safari text autosizing drift');
+    // Desktop WebKit does not implement the iOS text-autosizing property.
+    // Engines exposing it must still report the locked value; font/geometry
+    // outcomes below run in every engine.
+    if (mobileGeometry.supportsTextSizeAdjust) {
+      assert.equal(mobileGeometry.textSizeAdjust, '100%',
+        'Home must disable iOS Safari text autosizing drift');
+      assert.equal(mobileGeometry.printerTextSizeAdjust, '100%',
+        'VIDE must explicitly disable iOS Safari text autosizing drift');
+    }
     assert(Math.abs(mobileGeometry.normalCopyFontSize - mobileGeometry.tableFontSize) < 0.05,
       'ordinary VIDE copy must keep the same computed font size as the printer table');
 
@@ -170,7 +176,9 @@ fs.mkdirSync(out, { recursive: true });
     // Keep this on the real scheduler so it covers the same repeated shift/type
     // path used on Home rather than a synthetic DOM-only layout.
     const geometryLines = Array.from({ length: 9 }, (_, i) =>
-      `CLA / 22:${String(40 + i).padStart(2, '0')} GEOM${i + 1} (200) bts TESTER (180)`
+      i === 8
+        ? 'CLA / 22:48 GEOM9 (450) bts Christopher (404), Grant (403), Liam (397), Matteo (388), James (377)'
+        : `CLA / 22:${String(40 + i).padStart(2, '0')} GEOM${i + 1} (200) bts TESTER (180)`
     );
     await page.evaluate((lines) => {
       lines.forEach(line => window.__homeLivePrinterInjectLine(line));
@@ -179,7 +187,7 @@ fs.mkdirSync(out, { recursive: true });
     await page.waitForFunction((expected) => {
       const text = document.getElementById('homeLivePrinterRows')?.textContent || '';
       return expected.every(token => text.includes(token));
-    }, geometryLines.map((_, i) => `GEOM${i + 1}`), { timeout: 30000 });
+    }, [...geometryLines.map((_, i) => `GEOM${i + 1}`), 'James (377)'], { timeout: 30000 });
     await page.click('#homeLivePauseBtn');
     await page.waitForTimeout(800);
 
@@ -220,7 +228,14 @@ fs.mkdirSync(out, { recursive: true });
     // repository's representative 320 / 390 / 430 CSS-pixel widths.
     for (const width of [320, 430, 390]) {
       await page.setViewportSize({ width, height: 844 });
-      await page.waitForTimeout(120);
+      // Fitting runs on the resize event's animation frame. WebKit can deliver
+      // that event after the viewport call resolves, so await the visible
+      // outcome rather than assuming a fixed 120ms delivery time.
+      await page.waitForFunction(() => {
+        const mid = document.querySelector('#homeLivePrinter .lp-mid');
+        const table = document.querySelector('#homeLivePrinter .lp-table');
+        return mid && table && table.getBoundingClientRect().bottom <= mid.getBoundingClientRect().bottom + 1;
+      }, null, { timeout: 2000 });
       const widthGeometry = await page.evaluate(() => {
         const mid = document.querySelector('#homeLivePrinter .lp-mid');
         const table = document.querySelector('#homeLivePrinter .lp-table');
@@ -235,15 +250,49 @@ fs.mkdirSync(out, { recursive: true });
         return { midRect, tableRect, visibleRows };
       });
       assert(widthGeometry.midRect && widthGeometry.tableRect, `VIDE geometry missing at ${width}px`);
+      console.log('SC-047 width geometry', width, JSON.stringify(widthGeometry));
       assert(widthGeometry.tableRect.bottom <= widthGeometry.midRect.bottom + 1,
         `VIDE table must remain inside viewport at ${width}px`);
       assert(widthGeometry.visibleRows.every(row => row.height >= 26),
         `visible VIDE rows must retain readable height at ${width}px`);
+      const wrappedResult = await page.locator('#homeLivePrinterRows tr.lp-row').filter({ hasText: 'GEOM9' }).last().evaluate(row => {
+        const result = row.querySelector('.lp-result');
+        return { text: result?.textContent || '', width: result?.clientWidth || 0, scrollWidth: result?.scrollWidth || 0 };
+      });
+      assert.match(wrappedResult.text, /James \(377\)/, 'long result must retain its final player');
+      assert(wrappedResult.width > 0 && wrappedResult.scrollWidth <= wrappedResult.width + 1,
+        `long scoreline must wrap without horizontal clipping at ${width}px`);
       for (let i = 1; i < widthGeometry.visibleRows.length; i++) {
         assert(widthGeometry.visibleRows[i].top >= widthGeometry.visibleRows[i - 1].bottom - 0.5,
           `VIDE rows must not overlap at ${width}px`);
       }
     }
+
+    // A narrow viewport can retire every older visual slot. The one remaining
+    // result must keep its content height, rather than stretch to fill VIDE.
+    // This isolates the sparse-table layout seen in Thomas's iPhone report.
+    const sparseGeometry = await page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('#homeLivePrinterRows tr.lp-row'));
+      const previous = rows.map(row => row.classList.contains('lp-fit-hidden'));
+      try {
+        rows.forEach((row, i) => row.classList.toggle('lp-fit-hidden', i < rows.length - 1));
+        const row = rows[rows.length - 1];
+        return {
+          height: row.getBoundingClientRect().height,
+          text: row.textContent || '',
+          tableWidth: document.querySelector('#homeLivePrinter .lp-table').getBoundingClientRect().width,
+          resultWidth: row.querySelector('.lp-result')?.getBoundingClientRect().width || 0
+        };
+      } finally {
+        rows.forEach((row, i) => row.classList.toggle('lp-fit-hidden', previous[i]));
+      }
+    });
+    console.log('SC-047 sparse row geometry', JSON.stringify(sparseGeometry));
+    assert.match(sparseGeometry.text, /GEOM9/, 'sparse fallback must retain the newest real result');
+    assert(sparseGeometry.height >= 26 && sparseGeometry.height < 80,
+      'one remaining VIDE result must keep natural height, never fill the entire panel');
+    assert(sparseGeometry.resultWidth <= sparseGeometry.tableWidth,
+      'sparse result must wrap inside the feed width');
 
     // Geometry capture pauses the real printer to remove transition noise.
     // Restore playing state before continuing the pre-existing pause/resume contract checks.
