@@ -3,16 +3,23 @@ const fs = require('fs');
 const path = require('path');
 const H = require('./harness');
 
-async function seed(page, count, round = 10) {
-  await page.evaluate(async n => {
+async function seed(page, count, round = 10, mode = 'match') {
+  await page.evaluate(async ({n,mode}) => {
     const token = Number(state.__gameToken || 0);
     state = JSON.parse(JSON.stringify(baseState)); state.__gameToken = token;
     state.players = Array.from({length:n},(_,i)=>({id:'sc065-'+i,name:'WALL '+i,initials:'W'+i,avatar_id:i+1,color:'#ff7a00'}));
     assignUniqueColors(state.players);
     state.match = {id:'sc065-offline',gameNumber:1,targetWins:3,autoRotateOrder:true,wins:Array(n).fill(0),history:[],mode:'match',gameFormat:'match_play',gameVariant:'classic'};
+    if(mode==='tournament') Object.assign(state.match,{tournament:true,tournamentType:'classic',tournamentRules:{startRoundIndex:0,strictTimer:false}});
+    if(mode==='practice') Object.assign(state.match,{mode:'practice',forcePractice:true,isPractice:true});
+    if(mode==='turbo') Object.assign(state.match,{mode:'turbo',gameVariant:'turbo',startTarget:'17',strictTimer:true,throwLimitSeconds:20});
     startNewGame(true);
-  }, count);
+  }, {n:count,mode});
   await page.waitForFunction(()=>document.body.dataset.page==='game' && document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');
+  if(mode==='turbo'){
+    assert.equal(await page.evaluate(()=>state.currentRound),7,'Turbo changed its canonical starting round');
+    await page.evaluate(()=>window.__sqReleaseTurboReadyGate());
+  }
   await page.evaluate(r=>{let guard=0;while(state.currentRound<r && guard++<200) recordThrow({kind:'S',number:ROUNDS[state.currentRound].target});}, round);
   await rest(page,round);
 }
@@ -127,13 +134,55 @@ async function begin(page) {
     // Early normal Match rounds retain their existing blank-row anchoring and
     // gain the same single motion without creating duplicate completed rows.
     await page.setViewportSize({width:390,height:844});
-    for(const count of [2,3,4,5]){
-      await seed(page,count,0);await prepareCompletion(page,0);await begin(page);
-      assert.equal(await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().length),1,'Early completion started duplicate animations');
-      await page.evaluate(()=>window.__sqSc065Animation.play());await rest(page,1);
-      assert.equal(await page.locator('#v2Rows .v2Badge[data-round="0"]').count(),1,'Early completion duplicated history');
-      assert.equal(await page.locator('#v2Rows .v2Badge.liveRow[data-round="1"]').count(),1,'Early completion retained stale live round');
+    for(const mode of ['match','tournament','practice']) for(const count of [2,3,4,5]){
+      await seed(page,count,0,mode);
+      for(let round=0;round<3;round++){
+        await prepareCompletion(page,round);
+        const geometry=await page.evaluate(r=>{
+          const b=[...document.querySelectorAll('#v2Rows .v2Badge')],i=b.findIndex(e=>e.classList.contains('liveRow'));
+          return {anchor:i===b.length-1,pitch:b[i-1].getBoundingClientRect().top-b[i-2].getBoundingClientRect().top,old:r?b.find(e=>e.dataset.round===String(r-1)).getBoundingClientRect().top:null};
+        },round);
+        assert(geometry.anchor,mode+' early current row must use the existing blank/trailing anchor');
+        await begin(page);
+        assert.equal(await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().length),1,'Early completion started duplicate animations');
+        await page.evaluate(()=>window.__sqSc065Animation.currentTime=150);
+        assert.equal(await page.evaluate(()=>document.querySelector('#v2Rows .v2Badge.liveRow').dataset.round),String(round+1));
+        if(round){
+          const mid=await page.locator('#v2Rows .v2Badge[data-round="'+(round-1)+'"]').evaluate(e=>e.getBoundingClientRect().top);
+          assert(geometry.old-mid>1 && geometry.old-mid<geometry.pitch-1,mode+' early history lacks interpolated upward movement');
+        }
+        await page.evaluate(()=>window.__sqSc065Animation.play());await rest(page,round+1);
+        assert.equal(await page.locator('#v2Rows .v2Badge[data-round="'+round+'"]').count(),1,'Early completion duplicated history');
+        if(round){
+          const y=await page.locator('#v2Rows .v2Badge[data-round="'+(round-1)+'"]').evaluate(e=>e.getBoundingClientRect().top);
+          assert(Math.abs(geometry.old-y-geometry.pitch)<1,mode+' early history did not move exactly one row');
+        }
+      }
+      contained(await wall(page),mode+' early Round4');
     }
+
+    // Genuine Turbo keeps its Round17 start, strict timer and scoring, while
+    // its late wall uses the same history containment and native row motion.
+    for(const count of [2,5]){
+      await seed(page,count,10,'turbo');contained(await wall(page),'Turbo late round');
+      assert(await page.locator('#liveV2Panel .sqTurboTimerActive').count(),'Turbo turn timer disappeared');
+      await prepareCompletion(page);await begin(page);
+      await page.evaluate(()=>window.__sqSc065Animation.play());await rest(page,11);contained(await wall(page),'Turbo completion');
+    }
+
+    // Preserve the measured baseline outside active 2–5-player walls. Solo
+    // keeps its existing narrow cap, and six is a recovered historical view.
+    await page.setViewportSize({width:320,height:568});await seed(page,1,0,'practice');
+    assert.equal(await page.locator('#liveV2Panel .v2RowsWrap').evaluate(e=>e.getBoundingClientRect().height),206,'Solo narrow geometry changed');
+    assert.equal(await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().length),0,'Solo gained multiplayer motion');
+    await seed(page,5,0);
+    await page.evaluate(()=>{
+      state.players.push({id:'sc065-historic-6',name:'HISTORIC SIX',initials:'H6',color:'#abcdef'});
+      state.score.push(JSON.parse(JSON.stringify(state.score[0])));state.match.wins.push(0);ensureMatchAgg();updateUI();
+    });await rest(page,0);
+    assert.equal(await page.locator('#liveV2Panel').getAttribute('data-pcount'),'6','Historical sixth player disappeared');
+    assert.equal(await page.locator('#liveV2Panel .v2RowsWrap').evaluate(e=>getComputedStyle(e).maxHeight),'206px','Historical narrow cap changed');
+    assert.equal(await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().length),0,'Historical six-player view gained motion');
 
     // Undo while a transition is active removes only the last canonical dart
     // and cancels its presentation, including the delayed legacy snap.
@@ -184,6 +233,6 @@ async function begin(page) {
     contained(await wall(page),'Reduced motion');assert.equal((await wall(page)).running,0,'Reduced motion animated');
     const errors=consoleErrs.filter(e=>e.startsWith('pageerror:'));
     assert.deepEqual(errors,[],'Unexpected browser errors: '+JSON.stringify(errors));
-    console.log('SC-065 score-wall PASS: 2–5 players, 320/390/430, three completed rows, interpolated one-row motion, truth, Undo/navigation/rapid/reduced motion');
+    console.log('SC-065 score-wall PASS: 2–5 players, 320/390/430, three completed rows, interpolated one-row motion, Match/Classic Tournament/Practice early rounds, Turbo start/timer, solo/six preservation, truth, Undo/navigation/reload/rapid/reduced motion');
   }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exit(1);});

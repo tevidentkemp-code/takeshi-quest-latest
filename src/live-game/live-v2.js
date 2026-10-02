@@ -89,7 +89,8 @@ function __sqCancelV2WallMotion(panel){
 }
 function __sqSyncV2WallMotion(panel, tableRound){
   const rows = panel.querySelector('#v2Rows'), wrap = panel.querySelector('.v2RowsWrap');
-  if(!rows || !wrap || getLiveV2PlayerCount() < 2){__sqCancelV2WallMotion(panel);return;}
+  const count = getLiveV2PlayerCount();
+  if(!rows || !wrap || count < 2 || count > 5){__sqCancelV2WallMotion(panel);return;}
   const previous = panel.__sqV2Wall;
   const game = String(state.match?.id || '')+'|'+String(state.__gameToken || 0)+'|'+state.players.map(p=>p.id || p.name).join(',');
   const history = state.history?.length || 0;
@@ -375,6 +376,9 @@ function liveV2Render(){
     })());
     const __sqStandardMatchStartAnchor = (pCount > 1 && tableCr <= 2 && (function(){
       try{
+        // Supported multiplayer modes share the existing blank/trailing wall.
+        // Historical six-player views retain their established presentation.
+        if(pCount <= 5) return true;
         const m = state.match || {};
         const mode = String(state.mode || state.gameMode || m.mode || m.gameMode || '').toLowerCase();
         const tType = String(m.tournamentType || m.tournament_type || state.tournamentType || state.tournament_type || '').toLowerCase();

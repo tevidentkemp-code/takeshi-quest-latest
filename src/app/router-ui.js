@@ -6736,6 +6736,15 @@ function __sqSetupLiveV2RowsWindow(panel){
     if(!wrap) return;
     const badges = wrap.querySelectorAll('.v2Badge');
     if(!badges || badges.length < 1) return;
+    const count = getLiveV2PlayerCount();
+    if(count < 2 || count > 5){
+      // Solo and historical six-player views keep their existing window owner.
+      const narrow = Number(window.innerWidth || document.documentElement.clientWidth || 0) <= 360;
+      const last = Math.min(badges.length - 1, narrow ? 2 : 3);
+      const span = badges[last].getBoundingClientRect().bottom - badges[0].getBoundingClientRect().top;
+      wrap.style.setProperty('--sqV2RowsWinH', Math.max(120, Math.round(span) + 60) + 'px');
+      return;
+    }
     // Measure the actual live row and its three predecessors. The live row is
     // taller than history; first-row estimates omit it and the divider.
     const live = Array.from(badges).findIndex(b=>b.classList.contains('liveRow'));
