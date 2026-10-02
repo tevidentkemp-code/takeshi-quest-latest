@@ -121,7 +121,10 @@ function assert(cond, msg) {
     // Before any score input, presentation must already show the oldest recoverable
     // missed round as the orange target while keeping the table viewport/live row
     // on the scheduled round.
-    await page.waitForTimeout(120);
+    await page.waitForFunction(() =>
+      Number(document.querySelector('#v2Rows .v2Badge.active')?.dataset?.round)===2 &&
+      Number(document.querySelector('#v2Rows .v2Cell.active[data-p="1"]')?.dataset?.round)===2
+    );
     const previewFocus = await page.evaluate(() => {
       const wrap=document.querySelector('#liveV2Panel .v2RowsWrap');
       const activeBadge=document.querySelector('#v2Rows .v2Badge.active');
@@ -445,6 +448,39 @@ function assert(cond, msg) {
     assert(s.active===true && s.p===1 && s.r===13 && s.d===1, 'first Bull score input must implicitly resume the skipped Bull');
     await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
     assert(await page.evaluate(() => state.finished===true), 'game should finish after the resumed Bull visit completes');
+
+    // First Bull Bounce Out is a real zero-point dart, including for a player
+    // whose outstanding job originated with late entry. All supported lineup
+    // sizes must stop the timer and Undo must restore Bull without old targets.
+    for(const players of [2,3,4,5]){
+      for(const kind of ['absence','lateJoin']){
+        await reset(13,1,players);
+        await page.evaluate(kind=>{
+          state.__sqCatchUp={version:1,active:false,jobs:[{
+            kind,playerIndex:1,playerKey:'p1',joinedRound:6,
+            pendingRounds:[3,4,5],scratchedRounds:[],
+            returned:false,absent:kind==='absence',completed:false
+          }]};
+          window.__sqEnsureFinalBullReturnTimer();
+        },kind);
+        assert(await page.evaluate(()=>window.__sqFinalBullReturnTimerActive(1) &&
+          !state.__sqCatchUp.jobs[0].pendingRounds.length &&
+          [3,4,5].every(r=>state.score[1][r].darts.every(d=>d?.kind==='Scratch'))
+        ), `${players}-player ${kind} reaches Bull with earlier visits permanently scratched`);
+        await page.evaluate(()=>recordThrow({kind:'BounceOut'}));
+        assert(await page.evaluate(()=>state.currentRound===13 && state.currentDart===1 &&
+          state.score[1][13].darts[0]?.bounceOut===true &&
+          !state.__sqCatchUp.jobs[0].bullReturnDeadlineAt &&
+          !state.__sqCatchUp.active && __sqV2LiveAveragePair(1,13).darts===1
+        ), `${players}-player ${kind} first Bull Bounce Out stops the timer and counts exactly one thrown dart`);
+        await page.evaluate(()=>undo());
+        assert(await page.evaluate(()=>state.currentRound===13 && state.currentDart===0 &&
+          window.__sqFinalBullReturnTimerActive(1) &&
+          !state.__sqCatchUp.jobs[0].pendingRounds.length &&
+          [3,4,5].every(r=>state.score[1][r].darts.every(d=>d?.kind==='Scratch'))
+        ), `${players}-player ${kind} Bounce Out Undo re-arms Bull without recovering old visits`);
+      }
+    }
 
     // The cutoff belongs to each player's scheduled visit, not the table's first Bull dart.
     await reset(13,0,3);
