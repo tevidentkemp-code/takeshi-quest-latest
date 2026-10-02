@@ -25,7 +25,10 @@ async function scenario(mode){
     const wrapped = {
       from(table){
         window.__sc010Calls[table] = (window.__sc010Calls[table] || 0) + 1;
-        if (table === 'v_player_xp' && mode === 'xp_hang') {
+        if (['v_player_xp', 'v_ach_base', 'v_ach_david_goliath', 'v_player_misfires'].includes(table) && mode === 'hydrated_error' && !window.__sc010Recovery) return resultQuery(null, { message:'statement timeout' });
+        if ((table === 'v_player_xp' && mode === 'xp_hang') ||
+            (table === 'v_player_misfires' && mode === 'misfire_hang') ||
+            ((table === 'v_ach_base' || table === 'v_ach_david_goliath') && mode === 'positive_hang')) {
           const q = {
             select(){ return q; }, eq(){ return q; }, ilike(){ return q; }, or(){ return q; }, order(){ return q; }, limit(){ return q; },
             then(){ /* deliberately never settles: production statement-timeout/hung-request regression */ },
@@ -57,6 +60,12 @@ async function scenario(mode){
 
   await page.evaluate(() => window.openPlayerStatsHub('Alex S'));
   await page.locator('.sq-player-stats-hub .pp-tab').first().waitFor({ state:'visible', timeout:2000 });
+  if (mode === 'hydrated' || mode === 'hydrated_error') {
+    await page.locator('.sq-player-stats-hub .sq-player-stats-profile > [aria-busy="false"]').waitFor({ state:'visible', timeout:6000 });
+    // Healthy loaded history can be reused. Failed aggregate-backed history
+    // must reopen through dedicated sources, rather than reusing failure.
+    await page.evaluate(() => { window.__sc010Calls = {}; window.__sc010Recovery = true; });
+  }
   await page.evaluate(() => {
     window.__testProfileTabs = Array.from(document.querySelectorAll('.sq-player-stats-hub .pp-tab')).map(b => b.textContent.trim());
     const btn = Array.from(document.querySelectorAll('.sq-player-stats-hub .pp-tab')).find(b => /^achievements$/i.test(b.textContent.trim()));
@@ -84,7 +93,7 @@ async function scenario(mode){
 
 (async () => {
   const success = await scenario('success');
-  check('Achievements starts one scoped v_player_xp read for aggregate Misfire XP', success.ui.calls.v_player_xp === 1, JSON.stringify(success.ui.calls));
+  check('Achievements reuses one scoped player XP read for aggregate Misfire XP', success.ui.calls.v_player_xp === 1, JSON.stringify(success.ui.calls));
   check('Achievements does not touch slow target-profile analytics before rendering', !success.ui.calls.v_player_last30_targets && !success.ui.calls.v_player_last30_target_rates, JSON.stringify(success.ui.calls));
   check('success reads v_ach_base once by resolved player id', success.ui.calls.v_ach_base === 1, JSON.stringify(success.ui.calls));
   check('success reads v_ach_david_goliath once by resolved player id', success.ui.calls.v_ach_david_goliath === 1, JSON.stringify(success.ui.calls));
@@ -100,6 +109,23 @@ async function scenario(mode){
   check('a never-settling XP request does not block Misfire history', /3 \/ 11 unlocked/.test(xpHang.ui.misfires) && /6 historical occurrences/.test(xpHang.ui.misfires), xpHang.ui.misfires);
   check('XP hang path starts one XP request without slow target analytics', xpHang.ui.calls.v_player_xp === 1 && !xpHang.ui.calls.v_player_last30_targets && !xpHang.ui.calls.v_player_last30_target_rates, JSON.stringify(xpHang.ui.calls));
 
+  const misfireHang = await scenario('misfire_hang');
+  check('hung Misfire history cannot hide successful positive achievements', misfireHang.ui.vaultCount === '2 / 58', misfireHang.ui.vaultCount);
+  check('hung Misfire history is honestly pending, with no invented count', /Loading Misfire history/.test(misfireHang.ui.misfires) && /— \/ 11/.test(misfireHang.ui.misfires), misfireHang.ui.misfires);
+  check('pending history adds no XP request beyond the independently loaded hero', misfireHang.ui.calls.v_player_xp === 1, JSON.stringify(misfireHang.ui.calls));
+
+  const positiveHang = await scenario('positive_hang');
+  check('hung positive history cannot hide successful Misfires', /3 \/ 11 unlocked/.test(positiveHang.ui.misfires) && /6 historical occurrences/.test(positiveHang.ui.misfires), positiveHang.ui.misfires);
+  check('hung positive history is honestly pending, with no false zero', positiveHang.ui.vaultCount === '— / 58' && /Loading achievement history/.test(positiveHang.ui.vaultSub), positiveHang.ui.vaultCount + ' | ' + positiveHang.ui.vaultSub);
+
+  const hydrated = await scenario('hydrated');
+  check('healthy hydrated history is reused without duplicate queries', Object.keys(hydrated.ui.calls).length === 0, JSON.stringify(hydrated.ui.calls));
+  check('hydrated hub preserves real achievement and Misfire counts', hydrated.ui.vaultCount === '2 / 58' && /6 historical occurrences/.test(hydrated.ui.misfires), hydrated.ui.vaultCount + ' | ' + hydrated.ui.misfires);
+
+  const hydratedError = await scenario('hydrated_error');
+  check('failed hydrated history recovers through dedicated sources', hydratedError.ui.calls.v_ach_base === 1 && hydratedError.ui.calls.v_ach_david_goliath === 1 && hydratedError.ui.calls.v_player_misfires === 1 && !hydratedError.ui.calls.v_player_last30_targets, JSON.stringify(hydratedError.ui.calls));
+  check('failed aggregate XP cannot hide real hydrated-hub history', hydratedError.ui.vaultCount === '2 / 58' && /6 historical occurrences/.test(hydratedError.ui.misfires), hydratedError.ui.vaultCount + ' | ' + hydratedError.ui.misfires);
+
   const failed = await scenario('error');
   check('split achievement fetch failure is not rendered as 0/58', failed.ui.vaultCount === '— / 58', failed.ui.vaultCount);
   check('split achievement fetch failure is explicitly labelled unavailable', /Achievement history unavailable/i.test(failed.ui.vaultSub) && /Achievement history is unavailable right now/i.test(failed.ui.vaultShelf), failed.ui.vaultSub + ' | ' + failed.ui.vaultShelf);
@@ -111,7 +137,7 @@ async function scenario(mode){
   check('successful empty split history remains a genuine zero state', empty.ui.vaultCount === '0 / 58' && /No trophies yet/i.test(empty.ui.vaultShelf), empty.ui.vaultCount + ' | ' + empty.ui.vaultShelf);
   check('successful empty sections remain real zero counts', /0 \/ 15 unlocked/.test(empty.ui.milestones) && /0 \/ 43 unlocked/.test(empty.ui.trophies), empty.ui.milestones + ' | ' + empty.ui.trophies);
 
-  const errs = [...success.consoleErrs, ...xpHang.consoleErrs, ...failed.consoleErrs, ...empty.consoleErrs].filter(e => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));
+  const errs = [...success.consoleErrs, ...xpHang.consoleErrs, ...misfireHang.consoleErrs, ...positiveHang.consoleErrs, ...hydrated.consoleErrs, ...hydratedError.consoleErrs, ...failed.consoleErrs, ...empty.consoleErrs].filter(e => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));
   check('no unexpected console errors', errs.length === 0, errs.slice(0,5).join(' | '));
 
   const fs = require('fs');
