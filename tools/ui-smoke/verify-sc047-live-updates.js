@@ -228,7 +228,14 @@ fs.mkdirSync(out, { recursive: true });
     // repository's representative 320 / 390 / 430 CSS-pixel widths.
     for (const width of [320, 430, 390]) {
       await page.setViewportSize({ width, height: 844 });
-      await page.waitForTimeout(120);
+      // Fitting runs on the resize event's animation frame. WebKit can deliver
+      // that event after the viewport call resolves, so await the visible
+      // outcome rather than assuming a fixed 120ms delivery time.
+      await page.waitForFunction(() => {
+        const mid = document.querySelector('#homeLivePrinter .lp-mid');
+        const table = document.querySelector('#homeLivePrinter .lp-table');
+        return mid && table && table.getBoundingClientRect().bottom <= mid.getBoundingClientRect().bottom + 1;
+      }, null, { timeout: 2000 });
       const widthGeometry = await page.evaluate(() => {
         const mid = document.querySelector('#homeLivePrinter .lp-mid');
         const table = document.querySelector('#homeLivePrinter .lp-table');
@@ -243,6 +250,7 @@ fs.mkdirSync(out, { recursive: true });
         return { midRect, tableRect, visibleRows };
       });
       assert(widthGeometry.midRect && widthGeometry.tableRect, `VIDE geometry missing at ${width}px`);
+      console.log('SC-047 width geometry', width, JSON.stringify(widthGeometry));
       assert(widthGeometry.tableRect.bottom <= widthGeometry.midRect.bottom + 1,
         `VIDE table must remain inside viewport at ${width}px`);
       assert(widthGeometry.visibleRows.every(row => row.height >= 26),
