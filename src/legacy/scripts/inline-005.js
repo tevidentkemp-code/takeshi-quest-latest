@@ -25327,16 +25327,10 @@ if(hsBody){
         } else if (key && lpCloudOK() && window.sb) {
           const table = (typeof TABLE_MATCHES !== 'undefined' && TABLE_MATCHES) ? TABLE_MATCHES : 'matches';
           try {
-            let res = await window.sb
+            const res = await window.sb
               .from(table)
-              .select('id,created_at,players,wins,history,total_games,targetWins,target_wins')
+              .select('id,created_at,players,wins,history,total_games,target_wins')
               .in('id', ids);
-            if (res && res.error) {
-              res = await window.sb
-                .from(table)
-                .select('id,created_at,players,wins,history,total_games')
-                .in('id', ids);
-            }
             rows = (res && !res.error && Array.isArray(res.data)) ? res.data.slice() : [];
           } catch(_e) {
             rows = [];
@@ -29297,11 +29291,34 @@ const SQ_XP = {
       if (!force && this._inflight === run) this._inflight = null;
     }
   },
-  async forName(name){
-    const rows = await this.all();
-    const n = String(name || '').trim().toLowerCase();
-    return rows.find(r => String(r.name || '').trim().toLowerCase() === n) || null;
+  _oneCache: new Map(), _oneInflight: new Map(),
+  async _one(field, value, force){
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    const key = field + ':' + raw.toLowerCase();
+    const now = Date.now();
+    const cached = this._oneCache.get(key);
+    if (!force && cached && (now - cached.at) < 60000) return cached.row;
+    if (!force && this._oneInflight.has(key)) return this._oneInflight.get(key);
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return cached ? cached.row : null;
+    const run = (async () => {
+      try{
+        let q = SB.from('v_player_xp').select('*');
+        q = field === 'player_id' ? q.eq('player_id', raw) : q.ilike('name', raw);
+        const { data, error } = await q.limit(1);
+        if (error || !Array.isArray(data)) return cached ? cached.row : null;
+        const row = data[0] || null;
+        this._oneCache.set(key, { at:Date.now(), row });
+        return row;
+      }catch(_){ return cached ? cached.row : null; }
+    })();
+    if (!force) this._oneInflight.set(key, run);
+    try{ return await run; }
+    finally{ if (!force && this._oneInflight.get(key) === run) this._oneInflight.delete(key); }
   },
+  async forName(name, force){ return this._one('name', name, force); },
+  async forPlayerId(playerId, force){ return this._one('player_id', playerId, force); },
   fmt(n){ return (Number(n) || 0).toLocaleString(); }
 };
 window.SQ_XP = SQ_XP;
@@ -30226,6 +30243,109 @@ function __sqMisfireCase(misfireState, xpRow){
   return card;
 }
 
+function __sqBuildAchievementPanel(achState, misfireState, xpRow, reducedMotion, countUpFn){
+  const achMap = (achState && achState.map) || {};
+  const __ppReduced = !!reducedMotion;
+  const countUp = (typeof countUpFn === 'function') ? countUpFn : ((el, value) => { if (el) el.textContent = String(value == null ? '' : value); });
+  // ---- Achievements tab hero: "TROPHY VAULT" (unique to the Achievements tab) ----
+  const achPanel = document.createElement('div');
+  achPanel.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
+  {
+    const achAvailable = !!(achState && achState.available);
+    const catalog = (window.SQ_ACH && Array.isArray(SQ_ACH.CATALOG)) ? SQ_ACH.CATALOG : [];
+    const total = catalog.length;
+    const earnedCodes = catalog.filter(a => (achMap[a.code] || {}).cnt > 0);
+    const earnedN = earnedCodes.length;
+    const pctDone = total ? earnedN / total : 0;
+    const shelf = earnedCodes.slice().sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
+    const MAXSHELF = 8;
+
+    const vault = document.createElement('div'); vault.className = 'pp-vault';
+    const meter = document.createElement('div'); meter.className = 'pp-vault-meter';
+    const vhead = document.createElement('div'); vhead.className = 'pp-vault-head'; vhead.textContent = 'Trophy Vault';
+    const vcount = document.createElement('div'); vcount.className = 'pp-vault-count';
+    const vcB = document.createElement('b'); vcB.textContent = achAvailable ? String(earnedN) : '—';
+    const vcS = document.createElement('small'); vcS.textContent = ' / ' + total;
+    vcount.append(vcB, vcS);
+    const vbar = document.createElement('div'); vbar.className = 'pp-vault-bar';
+    const vfill = document.createElement('span'); vbar.appendChild(vfill);
+    const vsub = document.createElement('div'); vsub.className = 'pp-vault-sub'; vsub.textContent = achAvailable ? ('Trophies unlocked · ' + Math.round(pctDone * 100) + '%') : 'Achievement history unavailable';
+    meter.append(vhead, vcount, vbar, vsub);
+
+    const shelfEl = document.createElement('div'); shelfEl.className = 'pp-vault-shelf';
+    const chips = [];
+    shelf.slice(0, MAXSHELF).forEach(a => {
+      const meta = SQ_ACH.meta(a.code); const s = SQ_ACH.tierStyle(meta.tier);
+      const chip = document.createElement('div'); chip.className = 'pp-vault-badge';
+      chip.style.background = s.g; chip.style.border = '1px solid ' + s.b; chip.textContent = meta.icon;
+      chip.title = meta.name + ((achMap[a.code].cnt > 1) ? (' ×' + achMap[a.code].cnt) : '');
+      shelfEl.appendChild(chip); chips.push(chip);
+    });
+    if (shelf.length > MAXSHELF){ const more = document.createElement('div'); more.className = 'pp-vault-more'; more.textContent = '+' + (shelf.length - MAXSHELF) + ' more'; shelfEl.appendChild(more); }
+    if (!shelf.length){ const none = document.createElement('div'); none.className = 'pp-vault-more'; none.textContent = achAvailable ? 'No trophies yet — go earn some!' : 'Achievement history is unavailable right now.'; shelfEl.appendChild(none); }
+    vault.append(meter, shelfEl);
+    achPanel.appendChild(vault);
+    achPanel.appendChild(__sqTrophyCase(achMap, achAvailable));
+
+    // Misfires are deliberately separate from the positive Trophy Vault.
+    // Counts are historical; XP impact is the launch-forward value already
+    // included in v_player_xp, so the client never retroactively deducts XP.
+    const mfCard = __sqMisfireCase(misfireState, xpRow);
+    achPanel.appendChild(mfCard);
+
+    let timers = [];
+    achPanel.__ppReplay = () => {
+      timers.forEach(clearTimeout); timers = [];
+      if (!achAvailable){ vcB.textContent = '—'; vfill.style.width = '0%'; chips.forEach(c => c.classList.remove('in', 'shine')); return; }
+      if (__ppReduced){ vcB.textContent = String(earnedN); vfill.style.width = Math.round(pctDone * 100) + '%'; chips.forEach(c => c.classList.add('in')); return; }
+      vcB.textContent = '0'; vfill.style.width = '0%';
+      chips.forEach(c => c.classList.remove('in', 'shine'));
+      countUp(vcB, String(earnedN), 1000);
+      requestAnimationFrame(() => requestAnimationFrame(() => { vfill.style.width = Math.round(pctDone * 100) + '%'; }));
+      chips.forEach((c, i) => { timers.push(setTimeout(() => { c.classList.add('in', 'shine'); }, 120 + i * 90)); });
+    };
+  }
+  return achPanel;
+}
+
+async function __sqBuildPlayerAchievementsView(name){
+  const reduced = (() => { try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ return false; } })();
+  const instantCount = (el, value) => { if (el) el.textContent = String(value == null ? '' : value); };
+  let player = null;
+  let achState = { available:false, map:{} };
+  let misfireState = { available:false, map:{} };
+  try{ player = await SQ_ACH.playerForName(name); }catch(_){ player = null; }
+  let xpPromise = Promise.resolve(null);
+  if (player && player.player_id){
+    xpPromise = (typeof SQ_XP.forPlayerId === 'function')
+      ? SQ_XP.forPlayerId(player.player_id).catch(()=>null)
+      : Promise.resolve(null);
+    const [as, mf] = await Promise.all([
+      SQ_ACH.forPlayerId(player.player_id).catch(()=>({ available:false, map:{} })),
+      SQ_MISFIRE.forPlayerId(player.player_id).catch(()=>({ available:false, map:{} }))
+    ]);
+    achState = as || { available:false, map:{} };
+    misfireState = mf || { available:false, map:{} };
+  }
+  const achPanel = __sqBuildAchievementPanel(achState, misfireState, null, reduced, instantCount);
+  xpPromise.then(row => {
+    try{
+      const el = achPanel.querySelector('.pp-misfire-xp');
+      if (!el || !row || !Number.isFinite(Number(row.misfire_xp))) return;
+      const value = Number(row.misfire_xp);
+      el.textContent = (value > 0 ? '+' : '') + String(value) + ' XP';
+    }catch(_){}
+  }).catch(()=>{});
+  return {
+    profile: document.createElement('div'),
+    tabs: [],
+    showTab(host){
+      host.replaceChildren(achPanel);
+      try{ if (typeof achPanel.__ppReplay === 'function') requestAnimationFrame(achPanel.__ppReplay); }catch(_){}
+    }
+  };
+}
+
 // === Player Stats — one renderer shared by the hub and its content views ===
 window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, options){
   const name = String(playerName || '').trim();
@@ -30260,9 +30380,12 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, 
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') returnToHub(); });
   modal.tabIndex = 0; modal.focus();
   try{
-    const view = opts.view || await __sqBuildPlayerStatsProfile(name);
+    const tab = Number(opts.tab) || 0;
+    const view = opts.view || (tab === 2
+      ? await __sqBuildPlayerAchievementsView(name)
+      : await __sqBuildPlayerStatsProfile(name));
     if (returned || !overlay.isConnected) return;
-    view.showTab(body, Number(opts.tab) || 0);
+    view.showTab(body, tab);
   }catch(e){
     if (returned || !overlay.isConnected) return;
     body.textContent = 'Player stats could not be loaded. Return to the hub to try again.';
@@ -30285,6 +30408,15 @@ function __sqPlayerStatsView(profile, panels){
     tabs.forEach((b, i) => b.classList.toggle('active', i === idx));
     try{ if (typeof panel.__ppReplay === 'function') requestAnimationFrame(panel.__ppReplay); }catch(_){}
   } };
+}
+
+function __sqPlayerStatsHubShell(name){
+  const profile = document.createElement('div');
+  const hero = document.createElement('div'); hero.className = 'tag pp-hero';
+  const heroName = document.createElement('div'); heroName.className = 'pp-hero-name'; heroName.textContent = String(name || '').trim() || 'Player';
+  const heroSub = document.createElement('div'); heroSub.className = 'muted pp-hero-nick'; heroSub.textContent = 'Choose Stats, XP or Achievements';
+  hero.append(heroName, heroSub); profile.appendChild(hero);
+  return __sqPlayerStatsView(profile, [document.createElement('div'), document.createElement('div'), document.createElement('div')]);
 }
 
 // @CANONICAL:PLAYER_STATS_PROFILE_CARDS
@@ -31142,64 +31274,7 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     ladderCard.appendChild(lb); xpPanel.appendChild(ladderCard);
   }
 
-  // ---- Achievements tab hero: "TROPHY VAULT" (unique to the Achievements tab) ----
-  const achPanel = document.createElement('div');
-  achPanel.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
-  {
-    const achAvailable = !!(achState && achState.available);
-    const catalog = (window.SQ_ACH && Array.isArray(SQ_ACH.CATALOG)) ? SQ_ACH.CATALOG : [];
-    const total = catalog.length;
-    const earnedCodes = catalog.filter(a => (achMap[a.code] || {}).cnt > 0);
-    const earnedN = earnedCodes.length;
-    const pctDone = total ? earnedN / total : 0;
-    const shelf = earnedCodes.slice().sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
-    const MAXSHELF = 8;
-
-    const vault = document.createElement('div'); vault.className = 'pp-vault';
-    const meter = document.createElement('div'); meter.className = 'pp-vault-meter';
-    const vhead = document.createElement('div'); vhead.className = 'pp-vault-head'; vhead.textContent = 'Trophy Vault';
-    const vcount = document.createElement('div'); vcount.className = 'pp-vault-count';
-    const vcB = document.createElement('b'); vcB.textContent = achAvailable ? String(earnedN) : '—';
-    const vcS = document.createElement('small'); vcS.textContent = ' / ' + total;
-    vcount.append(vcB, vcS);
-    const vbar = document.createElement('div'); vbar.className = 'pp-vault-bar';
-    const vfill = document.createElement('span'); vbar.appendChild(vfill);
-    const vsub = document.createElement('div'); vsub.className = 'pp-vault-sub'; vsub.textContent = achAvailable ? ('Trophies unlocked · ' + Math.round(pctDone * 100) + '%') : 'Achievement history unavailable';
-    meter.append(vhead, vcount, vbar, vsub);
-
-    const shelfEl = document.createElement('div'); shelfEl.className = 'pp-vault-shelf';
-    const chips = [];
-    shelf.slice(0, MAXSHELF).forEach(a => {
-      const meta = SQ_ACH.meta(a.code); const s = SQ_ACH.tierStyle(meta.tier);
-      const chip = document.createElement('div'); chip.className = 'pp-vault-badge';
-      chip.style.background = s.g; chip.style.border = '1px solid ' + s.b; chip.textContent = meta.icon;
-      chip.title = meta.name + ((achMap[a.code].cnt > 1) ? (' ×' + achMap[a.code].cnt) : '');
-      shelfEl.appendChild(chip); chips.push(chip);
-    });
-    if (shelf.length > MAXSHELF){ const more = document.createElement('div'); more.className = 'pp-vault-more'; more.textContent = '+' + (shelf.length - MAXSHELF) + ' more'; shelfEl.appendChild(more); }
-    if (!shelf.length){ const none = document.createElement('div'); none.className = 'pp-vault-more'; none.textContent = achAvailable ? 'No trophies yet — go earn some!' : 'Achievement history is unavailable right now.'; shelfEl.appendChild(none); }
-    vault.append(meter, shelfEl);
-    achPanel.appendChild(vault);
-    achPanel.appendChild(__sqTrophyCase(achMap, achAvailable));
-
-    // Misfires are deliberately separate from the positive Trophy Vault.
-    // Counts are historical; XP impact is the launch-forward value already
-    // included in v_player_xp, so the client never retroactively deducts XP.
-    const mfCard = __sqMisfireCase(misfireState, xpRow);
-    achPanel.appendChild(mfCard);
-
-    let timers = [];
-    achPanel.__ppReplay = () => {
-      timers.forEach(clearTimeout); timers = [];
-      if (!achAvailable){ vcB.textContent = '—'; vfill.style.width = '0%'; chips.forEach(c => c.classList.remove('in', 'shine')); return; }
-      if (__ppReduced){ vcB.textContent = String(earnedN); vfill.style.width = Math.round(pctDone * 100) + '%'; chips.forEach(c => c.classList.add('in')); return; }
-      vcB.textContent = '0'; vfill.style.width = '0%';
-      chips.forEach(c => c.classList.remove('in', 'shine'));
-      countUp(vcB, String(earnedN), 1000);
-      requestAnimationFrame(() => requestAnimationFrame(() => { vfill.style.width = Math.round(pctDone * 100) + '%'; }));
-      chips.forEach((c, i) => { timers.push(setTimeout(() => { c.classList.add('in', 'shine'); }, 120 + i * 90)); });
-    };
-  }
+  const achPanel = __sqBuildAchievementPanel(achState, misfireState, xpRow, __ppReduced, countUp);
 
   return __sqPlayerStatsView(profile, [statsPanel, xpPanel, achPanel]);
 }
@@ -31525,32 +31600,39 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   };
 
   let profileRequest = 0;
+  let profileHydrateTimer = 0;
   const syncPlayerHeader = async () => {
     const n = String(currentName || playerSelect.value || '').trim();
     if (n && playerSelect.value !== n) playerSelect.value = n;
     const request = ++profileRequest;
-    profileHost.innerHTML = '<div class="sq-modal-loading"><div class="sq-loadbar"><span class="sq-loadbar-fill"></span></div></div>';
-    try{
-      const view = await __sqBuildPlayerStatsProfile(n);
-      if (request !== profileRequest || !overlay.isConnected) return;
+    clearTimeout(profileHydrateTimer);
+    const wireView = (view, hydrated) => {
+      if (request !== profileRequest || !overlay.isConnected || !view || !view.profile) return;
       profileHost.replaceChildren(view.profile);
-      view.tabs.forEach((button, tab) => {
+      (view.tabs || []).forEach((button, tab) => {
         button.onclick = () => {
+          clearTimeout(profileHydrateTimer);
           overlay.remove();
-          openPlayerStatsDialog(n, { view, tab, onReturn: () => {
+          openPlayerStatsDialog(n, { view: hydrated ? view : null, tab, onReturn: () => {
             document.body.appendChild(overlay);
             modal.focus();
             button.focus();
           } });
         };
       });
-    }catch(e){
-      if (request !== profileRequest || !overlay.isConnected) return;
-      profileHost.textContent = 'Player profile could not be loaded.';
-      const retry = document.createElement('button'); retry.className = 'btn sq-pill'; retry.textContent = 'Retry';
-      retry.onclick = syncPlayerHeader; profileHost.appendChild(retry);
-      console.warn('[SQ] Player profile load failed', e);
-    }
+    };
+    // Primary views stay usable immediately; full profile analytics hydrate only
+    // if the user remains on the hub. Achievements never waits on target analytics.
+    wireView(__sqPlayerStatsHubShell(n), false);
+    profileHydrateTimer = setTimeout(async () => {
+      try{
+        const view = await __sqBuildPlayerStatsProfile(n);
+        wireView(view, true);
+      }catch(e){
+        if (request !== profileRequest || !overlay.isConnected) return;
+        console.warn('[SQ] Player profile background load failed', e);
+      }
+    }, 1200);
   };
   const selectedName = () => String(currentName || playerSelect.value || '').trim();
   const openForSelected = (fnName, fallbackMessage, extraArgs) => {

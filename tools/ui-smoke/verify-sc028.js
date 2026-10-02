@@ -42,7 +42,20 @@ async function scenario(width) {
       openPlayerStatsHub('Alex S');
     });
     await page.waitForSelector(hubSel + ' .pp-hero');
-    await page.waitForTimeout(1100);
+    const immediate = await page.locator(hubSel).evaluate(el => ({
+      tabs:[...el.querySelectorAll('.pp-tab')].map(x => x.textContent),
+      text:el.innerText
+    }));
+    check(width + ': primary profile controls are immediately usable before analytics hydrate',
+      JSON.stringify(immediate.tabs) === JSON.stringify(['Stats','XP','Achievements']) &&
+      /Choose Stats, XP or Achievements/i.test(immediate.text), immediate);
+    await page.waitForFunction(selector => {
+      const el = document.querySelector(selector);
+      const text = el ? el.innerText : '';
+      const tiles = el ? [...el.querySelectorAll('.pp-tile-value')].map(x => x.textContent) : [];
+      return /The Atomic/.test(text) && /LV 2/.test(text) && /151 XP/.test(text)
+        && JSON.stringify(tiles) === JSON.stringify(['8.75 (#3)','5','126.0']);
+    }, hubSel, { timeout:6000 });
     const original = await page.locator(hubSel).evaluate(el => {
       window.__sc028Hero = el.querySelector('.pp-hero');
       return { text:el.innerText, tiles:[...el.querySelectorAll('.pp-tile-value')].map(x => x.textContent),
@@ -102,6 +115,7 @@ async function scenario(width) {
     check(width + ': hub Close exits', await page.locator(hubSel).count() === 0);
     await page.evaluate(() => openPlayerStatsHub('Jo R'));
     await page.waitForSelector(hubSel + ' .pp-tab');
+    await page.waitForFunction(selector => /No official games/.test((document.querySelector(selector) || {}).innerText || ''), hubSel, { timeout:6000 });
     check(width + ': zero-game player keeps truthful empty state', /No official games/.test(await page.locator(hubSel).innerText()) && await page.locator('.pp-tile').count() === 0);
     const unexpected = consoleErrs.filter(e => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));
     check(width + ': no new console or JavaScript errors', !unexpected.length && !pageErrors.length, { unexpected, pageErrors });

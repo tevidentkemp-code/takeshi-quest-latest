@@ -1667,16 +1667,10 @@ if(hsBody){
         } else if (key && lpCloudOK() && window.sb) {
           const table = (typeof TABLE_MATCHES !== 'undefined' && TABLE_MATCHES) ? TABLE_MATCHES : 'matches';
           try {
-            let res = await window.sb
+            const res = await window.sb
               .from(table)
-              .select('id,created_at,players,wins,history,total_games,targetWins,target_wins')
+              .select('id,created_at,players,wins,history,total_games,target_wins')
               .in('id', ids);
-            if (res && res.error) {
-              res = await window.sb
-                .from(table)
-                .select('id,created_at,players,wins,history,total_games')
-                .in('id', ids);
-            }
             rows = (res && !res.error && Array.isArray(res.data)) ? res.data.slice() : [];
           } catch(_e) {
             rows = [];
