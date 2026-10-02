@@ -216,6 +216,11 @@ fs.mkdirSync(out, { recursive: true });
     assert(geomRows[geomRows.length - 1].bottom <= denseGeometry.midRect.bottom + 1,
       'last populated VIDE row must remain fully inside the bottom of the feed viewport');
 
+    // Geometry capture pauses the real printer to remove transition noise.
+    // Restore playing state before continuing the pre-existing pause/resume contract checks.
+    await page.click('#homeLivePauseBtn');
+    await page.waitForFunction(() => !window.__homeLivePrinterState?.paused);
+
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.click('#homeLivePauseBtn');
     let state = await page.evaluate(() => ({
