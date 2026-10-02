@@ -216,6 +216,35 @@ fs.mkdirSync(out, { recursive: true });
     assert(geomRows[geomRows.length - 1].bottom <= denseGeometry.midRect.bottom + 1,
       'last populated VIDE row must remain fully inside the bottom of the feed viewport');
 
+    // Mobile-width acceptance: SC-047 visual work must remain safe at the
+    // repository's representative 320 / 390 / 430 CSS-pixel widths.
+    for (const width of [320, 430, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.waitForTimeout(120);
+      const widthGeometry = await page.evaluate(() => {
+        const mid = document.querySelector('#homeLivePrinter .lp-mid');
+        const table = document.querySelector('#homeLivePrinter .lp-table');
+        const midRect = mid?.getBoundingClientRect() || null;
+        const tableRect = table?.getBoundingClientRect() || null;
+        const visibleRows = Array.from(document.querySelectorAll('#homeLivePrinterRows tr.lp-row'))
+          .map(row => {
+            const rect = row.getBoundingClientRect();
+            return { text:(row.textContent || '').trim(), top:rect.top, bottom:rect.bottom, height:rect.height };
+          })
+          .filter(row => row.text && row.height > 0.5);
+        return { midRect, tableRect, visibleRows };
+      });
+      assert(widthGeometry.midRect && widthGeometry.tableRect, `VIDE geometry missing at ${width}px`);
+      assert(widthGeometry.tableRect.bottom <= widthGeometry.midRect.bottom + 1,
+        `VIDE table must remain inside viewport at ${width}px`);
+      assert(widthGeometry.visibleRows.every(row => row.height >= 26),
+        `visible VIDE rows must retain readable height at ${width}px`);
+      for (let i = 1; i < widthGeometry.visibleRows.length; i++) {
+        assert(widthGeometry.visibleRows[i].top >= widthGeometry.visibleRows[i - 1].bottom - 0.5,
+          `VIDE rows must not overlap at ${width}px`);
+      }
+    }
+
     // Geometry capture pauses the real printer to remove transition noise.
     // Restore playing state before continuing the pre-existing pause/resume contract checks.
     await page.click('#homeLivePauseBtn');
