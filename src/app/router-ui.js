@@ -2160,7 +2160,7 @@ function __sqVsShadowHasExactlyOneRealPlayer(){
   return __sqIsVsShadowSetup() && Array.isArray(__msPlayers) && __msPlayers.length === 1 && __msValidPlayerCount() === 1;
 }
 
-const MS2_MAX_PLAYERS = 6;
+const MS2_MAX_PLAYERS = 5;
 
 // Best-effort Power Rank lookup (official power rankings, cached ~60s).
 // Resolves to a Map of lowercased player name -> rank; empty map offline.
@@ -2313,7 +2313,7 @@ function __msValidPlayerCount(){
 }
 
 function __msMinPlayersRequired(){
-  // Practice allows 1–6 players. Match Play requires 2–6.
+  // New Practice allows 1–5 players. New Match Play requires 2–5.
   const mode = (window.__sqSelectedMode || 'match');
   if (__sqIsVsShadowSetup()) return 1;
   return (mode === 'practice') ? 1 : 2;
@@ -2347,7 +2347,7 @@ function __msUpdateStartEnabled(){
   if (startBtn) startBtn.disabled = !ready;
 
   const full = __msPlayers.length >= cap;
-  const fullReason = vsShadow ? 'Vs Shadow uses exactly 1 real player.' : 'All 6 places are filled. Remove a player to add another.';
+  const fullReason = vsShadow ? 'Vs Shadow uses exactly 1 real player.' : `All ${cap} places are filled. Remove a player to add another.`;
   [msAddRegisteredBtn, msAddGuestBtn].forEach(btn => {
     if (!btn) return;
     btn.disabled = full;
@@ -2572,6 +2572,10 @@ if (mlStartBtn) {
     });
 
     const minP = __msMinPlayersRequired();
+    if (built.length > MS2_MAX_PLAYERS) {
+      toast(`Match card is full (max ${MS2_MAX_PLAYERS} players)`);
+      return;
+    }
     if (built.length < minP) {
       toast(minP === 1 ? 'Add 1+ player' : 'Add 2+ players');
       return;
@@ -4824,7 +4828,7 @@ async function showAddPlayerDialog(index){
           };
           const candKey = String(cand.id || cand.name).trim().toLowerCase();
           const already = __msPlayers.some(p => String((p && (p.id || p.name)) || '').trim().toLowerCase() === candKey);
-          const cap = (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 6);
+          const cap = (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 5);
           const vsBlocked = (typeof __sqVsShadowSetupSlotTaken === 'function') && __sqVsShadowSetupSlotTaken();
           if (already){
             cardMsg = 'Already on the match card';
@@ -4928,7 +4932,7 @@ async function showSelectPlayerDialog(index){
   const searchEl = byId('spSearchInput');
   const chips = Array.from(modal.querySelectorAll('.sp2-chip'));
   const vsShadow = __sqIsVsShadowSetup();
-  const slotsLeft = Math.max(0, (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 6) - ((__msPlayers && __msPlayers.length) || 0));
+  const slotsLeft = Math.max(0, (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 5) - ((__msPlayers && __msPlayers.length) || 0));
   const maxPick = vsShadow ? 1 : slotsLeft;
 
   const alreadyIn = new Set((__msPlayers || []).map(p => String(p.id || p.name || '').trim().toLowerCase()).filter(Boolean));
@@ -5076,7 +5080,7 @@ async function showSelectPlayerDialog(index){
           return;
         }
         picks.forEach(meta => {
-          if (__msPlayers.length >= (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 6)) return;
+          if (__msPlayers.length >= (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 5)) return;
           __msPlayers.push({
             type: 'registered',
             id: meta.id != null ? meta.id : null,
@@ -5863,8 +5867,8 @@ function ensureLiveV2Panel(){
     </div>
   `).join("");
   const miniAvgBoxes = Array.from({length: Math.max(1, Math.min(6, pCount))}).map((_,i)=>`
-    <div class="v2MiniAvg" data-p="${i}" aria-label="Player averages">
-      <span class="v2MiniMetric"><span class="v2MiniLab">3AV</span><strong id="v2Mini3R${i}">–</strong></span>
+    <div class="v2MiniAvg" data-p="${i}" aria-label="Player game and match averages">
+      <span class="v2MiniMetric"><span class="v2MiniLab">GAV</span><strong id="v2Mini3R${i}">–</strong></span>
       <span class="v2MiniMetric"><span class="v2MiniLab">MAV</span><strong id="v2MiniMtc${i}">–</strong></span>
     </div>
   `).join("");
@@ -6183,18 +6187,55 @@ function __sqFmtAvg(n){
 
 function __sqV2LiveAveragePair(pIdx, currentRound){
   try{
-    const vals = [];
-    const cr = Math.max(0, Number(currentRound) || 0);
-    for(let r = 0; r <= cr; r++){
-      const entry = state.score?.[pIdx]?.[r];
-      const done = (r < cr) || (entry && entry.darts && entry.darts[2] != null);
-      if(!done) continue;
-      const v = getPerRoundScore(r, pIdx);
-      if(Number.isFinite(+v)) vals.push(+v);
+    const rows = [];
+    const addEntry = (acc, entry) => {
+      if(!entry) return acc;
+      const darts = Array.isArray(entry.darts) ? entry.darts : [];
+      const thrown = darts.filter(d => d != null && d.kind !== 'Scratch').length;
+      if(!thrown) return acc;
+      let points = entry.roundTotal == null ? NaN : Number(entry.roundTotal);
+      if(!Number.isFinite(points)){
+        points = darts.reduce((sum, d) => {
+          if(d == null) return sum;
+          if(typeof d === 'number') return sum + (Number(d) || 0);
+          return sum + (Number(d.points ?? d.score ?? d.value ?? 0) || 0);
+        }, 0);
+      }
+      acc.points += points;
+      acc.darts += thrown;
+      return acc;
+    };
+    const avg3 = acc => acc.darts ? (acc.points * 3 / acc.darts) : NaN;
+
+    // Catch-up can move the active round backwards. Every recorded dart in
+    // the current game still belongs in GAV, including later played rounds.
+    for(const entry of (state.score?.[pIdx] || [])){
+      if(entry && Array.isArray(entry.darts) && entry.darts.some(d => d != null && d.kind !== 'Scratch')) rows.push(entry);
     }
-    const mean = arr => arr.length ? arr.reduce((a,b)=>a+b,0) / arr.length : NaN;
-    return { r3: mean(vals.slice(-3)), mtc: mean(vals), count: vals.length };
-  }catch(_){ return { r3:NaN, mtc:NaN, count:0 }; }
+
+    const r3Acc = rows.slice(-3).reduce((acc, entry) => addEntry(acc, entry), {points:0,darts:0});
+    const gameAcc = rows.reduce((acc, entry) => addEntry(acc, entry), {points:0,darts:0});
+    const matchAcc = {points:0,darts:0};
+    const history = Array.isArray(state.match?.history) ? state.match.history : [];
+    history.forEach(game => {
+      // Completion snapshots the current board before the next game resets it.
+      // The existing game token keeps that board from entering MAV twice.
+      if(game?.gameToken != null && Number(game.gameToken) === Number(state.__gameToken || 0)) return;
+      const board = Array.isArray(game?.board?.[pIdx]) ? game.board[pIdx] : [];
+      board.forEach(entry => addEntry(matchAcc, entry));
+    });
+    matchAcc.points += gameAcc.points;
+    matchAcc.darts += gameAcc.darts;
+
+    return {
+      r3: avg3(r3Acc),
+      game: avg3(gameAcc),
+      mtc: avg3(matchAcc),
+      count: rows.length,
+      darts: gameAcc.darts,
+      matchDarts: matchAcc.darts
+    };
+  }catch(_){ return { r3:NaN, game:NaN, mtc:NaN, count:0, darts:0, matchDarts:0 }; }
 }
 
 function __sqSetupLiveV2Sizing(panel){

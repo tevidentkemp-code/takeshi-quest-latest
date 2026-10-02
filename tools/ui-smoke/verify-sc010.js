@@ -25,7 +25,7 @@ async function scenario(mode){
     const wrapped = {
       from(table){
         window.__sc010Calls[table] = (window.__sc010Calls[table] || 0) + 1;
-        if (table === 'v_player_xp' && mode === 'hydrated_error') return resultQuery(null, { message:'statement timeout' });
+        if (['v_player_xp', 'v_ach_base', 'v_ach_david_goliath', 'v_player_misfires'].includes(table) && mode === 'hydrated_error' && !window.__sc010Recovery) return resultQuery(null, { message:'statement timeout' });
         if ((table === 'v_player_xp' && mode === 'xp_hang') ||
             (table === 'v_player_misfires' && mode === 'misfire_hang') ||
             ((table === 'v_ach_base' || table === 'v_ach_david_goliath') && mode === 'positive_hang')) {
@@ -61,10 +61,10 @@ async function scenario(mode){
   await page.evaluate(() => window.openPlayerStatsHub('Alex S'));
   await page.locator('.sq-player-stats-hub .pp-tab').first().waitFor({ state:'visible', timeout:2000 });
   if (mode === 'hydrated' || mode === 'hydrated_error') {
-    await page.locator('.sq-player-stats-hub .pp-tile-label').first().waitFor({ state:'visible', timeout:6000 });
+    await page.locator('.sq-player-stats-hub .sq-player-stats-profile > [aria-busy="false"]').waitFor({ state:'visible', timeout:6000 });
     // Healthy loaded history can be reused. Failed aggregate-backed history
     // must reopen through dedicated sources, rather than reusing failure.
-    await page.evaluate(() => { window.__sc010Calls = {}; });
+    await page.evaluate(() => { window.__sc010Calls = {}; window.__sc010Recovery = true; });
   }
   await page.evaluate(() => {
     window.__testProfileTabs = Array.from(document.querySelectorAll('.sq-player-stats-hub .pp-tab')).map(b => b.textContent.trim());
@@ -93,7 +93,7 @@ async function scenario(mode){
 
 (async () => {
   const success = await scenario('success');
-  check('Achievements starts one scoped v_player_xp read for aggregate Misfire XP', success.ui.calls.v_player_xp === 1, JSON.stringify(success.ui.calls));
+  check('Achievements reuses one scoped player XP read for aggregate Misfire XP', success.ui.calls.v_player_xp === 1, JSON.stringify(success.ui.calls));
   check('Achievements does not touch slow target-profile analytics before rendering', !success.ui.calls.v_player_last30_targets && !success.ui.calls.v_player_last30_target_rates, JSON.stringify(success.ui.calls));
   check('success reads v_ach_base once by resolved player id', success.ui.calls.v_ach_base === 1, JSON.stringify(success.ui.calls));
   check('success reads v_ach_david_goliath once by resolved player id', success.ui.calls.v_ach_david_goliath === 1, JSON.stringify(success.ui.calls));
@@ -112,7 +112,7 @@ async function scenario(mode){
   const misfireHang = await scenario('misfire_hang');
   check('hung Misfire history cannot hide successful positive achievements', misfireHang.ui.vaultCount === '2 / 58', misfireHang.ui.vaultCount);
   check('hung Misfire history is honestly pending, with no invented count', /Loading Misfire history/.test(misfireHang.ui.misfires) && /— \/ 11/.test(misfireHang.ui.misfires), misfireHang.ui.misfires);
-  check('optional XP does not compete with pending history', !misfireHang.ui.calls.v_player_xp, JSON.stringify(misfireHang.ui.calls));
+  check('pending history adds no XP request beyond the independently loaded hero', misfireHang.ui.calls.v_player_xp === 1, JSON.stringify(misfireHang.ui.calls));
 
   const positiveHang = await scenario('positive_hang');
   check('hung positive history cannot hide successful Misfires', /3 \/ 11 unlocked/.test(positiveHang.ui.misfires) && /6 historical occurrences/.test(positiveHang.ui.misfires), positiveHang.ui.misfires);
