@@ -4608,6 +4608,7 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
       profileHost.replaceChildren(view.profile);
       (view.tabs || []).forEach((button, tab) => {
         button.onclick = () => {
+          (view.tabs || []).forEach((control, index) => control.classList.toggle('active', index === tab));
           clearTimeout(profileHydrateTimer);
           overlay.remove();
           openPlayerStatsDialog(n, { view: hydrated ? view : null, tab, onReturn: () => {
@@ -8053,4 +8054,3 @@ document.addEventListener('DOMContentLoaded', function(){
 })();
 
 // === Top Nav (Start / Restart / Stats) — equal widths across full row =======
-
