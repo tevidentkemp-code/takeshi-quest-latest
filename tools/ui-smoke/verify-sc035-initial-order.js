@@ -143,6 +143,17 @@ async function visit(page) {
       await visit(page);
     }
 
+    // A pre-SC-035 recovery cache already in Round 2 must retain the closed
+    // correction window even though it lacks the new completion marker.
+    await seed(page,2);await visit(page);await visit(page);
+    assert.equal((await snapshot(page)).round,1);
+    await page.evaluate(()=>{delete state.__sqInitialRoundComplete;save();});
+    await H.boot(page,{settle:1200});await page.click('#resumeBtn');
+    await page.waitForFunction(()=>document.body.dataset.page==='game');
+    await page.evaluate(()=>undo());
+    assert.equal((await snapshot(page)).round,0,'Historic cache Undo did not reach the previous visit');
+    assert.equal(await page.evaluate(()=>__sqInitialOrderAmendEligibility().ok),false,'Historic cache reopened correction after Round 1 had completed');
+
     // Skip Go and its Undo snapshots follow identity through correction; a
     // skipped first-round visit counts as accounted for without fake darts.
     await seed(page,3);await page.evaluate(()=>{__sqSkipAbsentVisit();__sqSkipAbsentVisit();});
