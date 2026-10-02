@@ -27,4 +27,3 @@ create or replace view private.v_bounce_out_misfire_events as
     '-1'::integer AS penalty
    FROM darts
   WHERE (dart ->> 'bounceOut'::text) = 'true'::text;
-
