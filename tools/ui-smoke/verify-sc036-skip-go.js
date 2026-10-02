@@ -44,6 +44,7 @@ function assert(cond, msg) {
         state.finished=false;
         state.suddenDeath={active:false};
         delete state.__sqCatchUp;
+        delete state.__sqFinalBullCutoffs;
         save();
         updateUI();
       }, {round,player,players});
@@ -198,11 +199,12 @@ function assert(cond, msg) {
     assert(s.scratched.join(',')==='2', 'oldest skipped round must be scratched after backlog exceeds three');
     assert(s.r2.darts.every(d=>d && d.kind==='Scratch' && d.points===0), 'oldest scratched round must materialise as zero');
 
+    await page.waitForFunction(() => document.querySelector('#v2Rows .v2Cell[data-p="1"][data-round="2"]')?.textContent.trim()==='X');
     const cappedMarkers = await page.evaluate(() => {
       const text=(r)=>String(document.querySelector(`#v2Rows .v2Cell[data-p="1"][data-round="${r}"]`)?.textContent||'').trim();
       return {r2:text(2),r3:text(3),r4:text(4),r5:text(5)};
     });
-    assert(cappedMarkers.r2==='X', 'skipped rounds older than the recoverable latest three must display X');
+    assert(cappedMarkers.r2==='X', 'skipped rounds older than the recoverable latest three must display X: '+JSON.stringify(cappedMarkers));
     assert(/»»»/.test(cappedMarkers.r3) && /»»»/.test(cappedMarkers.r4) && /»»»/.test(cappedMarkers.r5), 'latest three recoverable skipped rounds must retain fast-forward markers');
 
     await page.evaluate(() => undo());
@@ -284,6 +286,7 @@ function assert(cond, msg) {
     // starts a 30s return gate. Skip cannot bypass it; first Bull dart clears it.
     await reset(13,1,2);
     await page.evaluate(() => {
+      state.score[1][0]={roundTotal:10,darts:[{kind:'S',points:10},null,null]};
       state.__sqCatchUp={
         version:1,
         active:false,
@@ -316,10 +319,13 @@ function assert(cond, msg) {
       return {
         active:window.__sqFinalBullReturnTimerActive(1),
         remaining:Number(job.bullReturnDeadlineAt||0)-Date.now(),
-        frames:(window.__sqSc036DmdTimerFrames||[]).slice()
+        frames:(window.__sqSc036DmdTimerFrames||[]).slice(),
+        pending:job.pendingRounds.slice(),scratched:job.scratchedRounds.slice(),
+        rows:[10,11,12].map(r=>state.score[1][r])
       };
     });
     assert(s.active===true && s.remaining>28500 && s.remaining<=30000, 'scheduled Bull with retained catch-up must start a persisted 30-second return timer');
+    assert(!s.pending.length && s.scratched.join(',')==='10,11,12' && s.rows.every(row=>row.roundTotal===0 && row.darts.every(d=>d.kind==='Scratch')), 'v11 scratches missed rounds immediately at scheduled Bull');
     assert(s.frames.some(f=>/BULL RETURN/i.test(String(f.zones?.z1||'')) && /BETA/i.test(String(f.zones?.z2||'')) && /SECONDS/i.test(String(f.zones?.z3||''))), 'DMD must show affected player and Bull return countdown');
 
     const blockedSkip=await page.evaluate(() => {
@@ -328,36 +334,46 @@ function assert(cond, msg) {
       return {handled,before,after:{p:state.currentPlayer,r:state.currentRound,d:state.currentDart,h:state.history.length}};
     });
     assert(blockedSkip.handled===true && JSON.stringify(blockedSkip.before)===JSON.stringify(blockedSkip.after), 'Skip Go must not bypass the active final-Bull return timer');
+    const originalDeadline=await page.evaluate(()=>state.__sqCatchUp.jobs[0].bullReturnDeadlineAt);
+    await page.evaluate(()=>save());
+    await page.reload({waitUntil:'domcontentloaded'});
+    await page.waitForSelector('#resumeBtn',{state:'visible'});
+    await page.click('#resumeBtn');
+    await page.waitForFunction(()=>document.body.dataset.page==='game');
+    assert(await page.evaluate(deadline=>state.__sqCatchUp.jobs[0].bullReturnDeadlineAt===deadline && !state.__sqCatchUp.jobs[0].pendingRounds.length,originalDeadline), 'refresh preserves the existing Bull deadline and permanent scratches');
 
     await page.evaluate(() => recordThrow({kind:'Miss'}));
     s=await page.evaluate(() => {
       const job=state.__sqCatchUp.jobs[0];
-      return {d:state.currentDart,deadline:job.bullReturnDeadlineAt,first:job.bullReturnFirstDartAt,returned:job.returned};
+      return {d:state.currentDart,deadline:job.bullReturnDeadlineAt,first:job.bullReturnFirstDartAt,returned:job.returned,avg:__sqV2LiveAveragePair(1,13)};
     });
     assert(s.d===1 && !s.deadline && Number.isFinite(Number(s.first)) && s.returned===true, 'first Bull dart must stop the return timer and continue the Bull visit');
+    assert(s.avg.darts===2 && s.avg.game===15 && s.avg.mtc===15, 'scratched missed visits must not count as thrown darts in GAV/MAV');
+    await page.evaluate(()=>undo());
+    assert(await page.evaluate(()=>state.currentRound===13 && state.currentDart===0 && !state.__sqCatchUp.jobs[0].pendingRounds.length && state.score[1][10].darts.every(d=>d.kind==='Scratch') && window.__sqFinalBullReturnTimerActive(1)), 'Undo of the first Bull dart restores only Bull and its return gate');
+    await page.evaluate(()=>recordThrow({kind:'Miss'}));
+    await page.evaluate(()=>save());
+    await page.reload({waitUntil:'domcontentloaded'});
+    await page.waitForSelector('#resumeBtn',{state:'visible'});
+    await page.click('#resumeBtn');
+    await page.waitForFunction(()=>document.body.dataset.page==='game' && state.currentDart===1);
+    assert(await page.evaluate(()=>state.currentRound===13 && !state.__sqCatchUp.jobs[0].pendingRounds.length && state.score[1][10].darts.every(d=>d.kind==='Scratch')), 'Bull-only state and permanent scratches survive refresh');
 
-    // Regression: Bull must be completed first, then retained pre-Bull catch-up
-    // starts automatically after the table's Bull round finishes.
+    // v11 regression: completing Bull can never restore earlier missed rounds.
     await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
     s=await page.evaluate(() => {
       const job=state.__sqCatchUp.jobs[0];
       return {p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active,finished:!!state.finished,pending:job.pendingRounds.slice(),returned:job.returned};
     });
-    assert(s.p===1 && s.r===10 && s.d===0 && s.active===true && s.finished===false, 'after the two-player table Bull finishes, retained catch-up must rewind to the oldest skipped round');
-    assert(s.pending.join(',')==='10,11,12' && s.returned===true, 'Bull-first flow must retain all eligible skipped rounds for post-Bull catch-up');
-    for (const round of [10,11,12]) {
-      const pos=await page.evaluate(() => ({p:state.currentPlayer,r:state.currentRound,d:state.currentDart,active:!!state.__sqCatchUp.active}));
-      assert(pos.p===1 && pos.r===round && pos.d===0 && pos.active===true, 'unexpected post-Bull catch-up cursor '+JSON.stringify(pos));
-      await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
-    }
+    assert(s.r===13 && s.active===false && s.finished===true && !s.pending.length, 'table Bull completion must finish without a pre-Bull rewind');
     s=await page.evaluate(() => ({
       finished:!!state.finished,
       active:!!state.__sqCatchUp?.active,
       bull:JSON.parse(JSON.stringify(state.score[1][13])),
       job:JSON.parse(JSON.stringify(state.__sqCatchUp.jobs[0]))
     }));
-    assert(s.finished===true && s.active===false && s.job.completed===true, 'game must finish only after post-Bull catch-up completes');
-    assert(s.bull.darts.every(d=>d && d.kind==='Miss'), 'completed Bull visit must be preserved while earlier catch-up rounds are replayed');
+    assert(s.finished===true && s.active===false && !s.job.pendingRounds.length, 'no catch-up remains after Bull');
+    assert(s.bull.darts.every(d=>d && d.kind==='Miss'), 'completed Bull visit must remain intact');
 
     // Expiry scratches every retained catch-up round plus the complete Bull visit to zero.
     await reset(13,1,2);
@@ -417,7 +433,7 @@ function assert(cond, msg) {
       };
     });
     assert(s.finished===false && s.p===1 && s.r===13 && s.d===0, 'Undo must restore the timed Bull cursor');
-    assert(s.pending.join(',')==='10,11,12' && s.scratched.length===0 && s.deadline>28500, 'Undo must restore catch-up and restart the 30-second Bull gate');
+    assert(!s.pending.length && s.scratched.join(',')==='10,11,12' && s.deadline>28500, 'Undo may restore Bull but cannot recover permanently scratched missed rounds');
 
     // Final-round edge: a skipped Bull remains unscored until the player presses a score button again.
     await reset(13,1,2);
@@ -429,6 +445,30 @@ function assert(cond, msg) {
     assert(s.active===true && s.p===1 && s.r===13 && s.d===1, 'first Bull score input must implicitly resume the skipped Bull');
     await page.evaluate(() => { recordThrow({kind:'Miss'}); recordThrow({kind:'Miss'}); });
     assert(await page.evaluate(() => state.finished===true), 'game should finish after the resumed Bull visit completes');
+
+    // The cutoff belongs to each player's scheduled visit, not the table's first Bull dart.
+    await reset(13,0,3);
+    await page.evaluate(()=>{
+      state.__sqCatchUp={version:1,active:false,jobs:[{kind:'absence',playerIndex:1,playerKey:'p1',joinedRound:10,pendingRounds:[10,11,12],scratchedRounds:[],returned:false,absent:true,completed:false}]};
+      window.__sqEnsureFinalBullReturnTimer();
+    });
+    assert(await page.evaluate(()=>state.__sqCatchUp.jobs[0].pendingRounds.length===3 && !state.__sqCatchUp.jobs[0].bullReturnDeadlineAt), 'another player beginning Bull cannot scratch a future thrower early');
+    await page.evaluate(()=>{recordThrow({kind:'Miss'});recordThrow({kind:'Miss'});recordThrow({kind:'Miss'});});
+    assert(await page.evaluate(()=>state.currentPlayer===1 && state.currentRound===13 && !state.__sqCatchUp.jobs[0].pendingRounds.length && window.__sqFinalBullReturnTimerActive(1)), 'the affected player becoming active immediately scratches the backlog and starts the timer');
+    await page.evaluate(()=>{recordThrow({kind:'Miss'});recordThrow({kind:'Miss'});recordThrow({kind:'Miss'});});
+    assert(await page.evaluate(()=>state.currentPlayer===2 && state.currentRound===13 && !state.__sqCatchUp.active), 'Bull continues to the next real thrower without a rewind');
+
+    await reset(12,1,3);
+    await page.evaluate(()=>{
+      window.__sqSkipAbsentVisit();
+      state.currentRound=13;state.currentPlayer=1;state.currentDart=0;
+      window.__sqEnsureFinalBullReturnTimer();
+    });
+    const permanent=await page.evaluate(()=>JSON.stringify({round:state.currentRound,player:state.currentPlayer,score:state.score,history:state.history}));
+    await page.evaluate(()=>undo());
+    assert(await page.evaluate(before=>JSON.stringify({round:state.currentRound,player:state.currentPlayer,score:state.score,history:state.history})===before,permanent), 'Undo cannot reopen an absence Skip event permanently closed at Bull');
+    await page.evaluate(()=>startNewGame(true));
+    assert(await page.evaluate(()=>!state.__sqFinalBullCutoffs && !state.__sqCatchUp && state.currentRound===0), 'new game clears previous-game Bull cutoffs');
 
     console.log('SC-036 SKIP GO: PASS');
   } finally {

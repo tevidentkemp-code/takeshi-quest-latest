@@ -6187,7 +6187,7 @@ function __sqV2LiveAveragePair(pIdx, currentRound){
     const addEntry = (acc, entry) => {
       if(!entry) return acc;
       const darts = Array.isArray(entry.darts) ? entry.darts : [];
-      const thrown = darts.filter(d => d != null).length;
+      const thrown = darts.filter(d => d != null && d.kind !== 'Scratch').length;
       if(!thrown) return acc;
       let points = entry.roundTotal == null ? NaN : Number(entry.roundTotal);
       if(!Number.isFinite(points)){
@@ -6206,7 +6206,7 @@ function __sqV2LiveAveragePair(pIdx, currentRound){
     // Catch-up can move the active round backwards. Every recorded dart in
     // the current game still belongs in GAV, including later played rounds.
     for(const entry of (state.score?.[pIdx] || [])){
-      if(entry && Array.isArray(entry.darts) && entry.darts.some(d => d != null)) rows.push(entry);
+      if(entry && Array.isArray(entry.darts) && entry.darts.some(d => d != null && d.kind !== 'Scratch')) rows.push(entry);
     }
 
     const r3Acc = rows.slice(-3).reduce((acc, entry) => addEntry(acc, entry), {points:0,darts:0});

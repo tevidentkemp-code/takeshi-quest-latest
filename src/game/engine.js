@@ -188,17 +188,47 @@ function __sqOpenAbsenceJobs(){
 // SC-036 / Game Rules §§9.8–9.11: final-Bull return gate.
 // Enforcement is state/deadline owned; DMD rendering is best-effort only.
 const __SQ_FINAL_BULL_RETURN_MS=30000;
+function __sqApplyFinalBullCutoff(pIdx){
+  try{
+    pIdx=Number(pIdx);
+    const key=__sqAbsencePlayerKey(state.players?.[pIdx],pIdx);
+    let remembered=state.__sqFinalBullCutoffs?.[key];
+    const scheduled=Number(state.currentRound)===MAX_ROUNDS-1 && Number(state.currentPlayer)===pIdx && !state.__sqCatchUp?.active;
+    if(!remembered && !scheduled) return false;
+    const jobs=(state.__sqCatchUp?.jobs||[]).filter(job=>job && Number(job.playerIndex)===pIdx && !job.completed);
+    const rounds=new Set(Array.isArray(remembered)?remembered:[]);
+    jobs.forEach(job=>(job.pendingRounds||[]).forEach(r=>{
+      r=Number(r); if(Number.isInteger(r) && r>=0 && r<MAX_ROUNDS-1) rounds.add(r);
+    }));
+    if(!rounds.size) return false;
+    if(!state.__sqFinalBullCutoffs) state.__sqFinalBullCutoffs={};
+    state.__sqFinalBullCutoffs[key]=Array.from(rounds).sort((a,b)=>a-b);
+    rounds.forEach(r=>__sqMaterializeAbsenceScratch(pIdx,r));
+    jobs.forEach(job=>{
+      const scratched=new Set(job.scratchedRounds||[]);
+      rounds.forEach(r=>scratched.add(r));
+      job.scratchedRounds=Array.from(scratched).sort((a,b)=>a-b);
+      job.pendingRounds=(job.pendingRounds||[]).filter(r=>Number(r)>=MAX_ROUNDS-1);
+      job.bullReturnRequired=true;
+    });
+    return true;
+  }catch(e){ console.warn('[SQ] final Bull cutoff failed',e); return false; }
+}
+function __sqReapplyFinalBullCutoffs(){
+  (state.players||[]).forEach((_,pIdx)=>__sqApplyFinalBullCutoff(pIdx));
+}
 function __sqFinalBullReturnTimerJob(pIdx){
   try{
     const jobs=Array.isArray(state?.__sqCatchUp?.jobs)?state.__sqCatchUp.jobs:[];
     pIdx=Number(pIdx);
     for(let i=jobs.length-1;i>=0;i--){
       const job=jobs[i];
-      if(!job || job.kind!=='absence' || job.completed || Number(job.playerIndex)!==pIdx) continue;
+      if(!job || job.completed || Number(job.playerIndex)!==pIdx) continue;
       const pending=Array.isArray(job.pendingRounds)?job.pendingRounds.map(Number).filter(Number.isFinite):[];
       const hasRetainedPreBull=pending.some(r=>r<MAX_ROUNDS-1);
       const hasDeadline=Number.isFinite(Number(job.bullReturnDeadlineAt));
-      if(hasRetainedPreBull || hasDeadline) return job;
+      const bullThrown=(state.score?.[pIdx]?.[MAX_ROUNDS-1]?.darts||[]).some(d=>d && d.kind!=='Scratch');
+      if(hasRetainedPreBull || hasDeadline || (job.bullReturnRequired && !bullThrown)) return job;
     }
   }catch(_){}
   return null;
@@ -334,6 +364,7 @@ function __sqEnsureFinalBullReturnTimer(){
     if(!state || state.finished || state.__sqCatchUp?.active) { __sqClearFinalBullReturnRuntime(); return false; }
     const pIdx=Number(state.currentPlayer||0);
     if(Number(state.currentRound)!==MAX_ROUNDS-1 || Number(state.currentDart||0)!==0) { __sqClearFinalBullReturnRuntime(); return false; }
+    __sqApplyFinalBullCutoff(pIdx);
     const job=__sqFinalBullReturnTimerJob(pIdx);
     if(!job) { __sqClearFinalBullReturnRuntime(); return false; }
 
@@ -407,6 +438,7 @@ function __sqStartCatchUpAfterRound(rIdx, opts={}){
   try{
     const cu=state && state.__sqCatchUp;
     if(!cu || cu.active) return false;
+    __sqReapplyFinalBullCutoffs();
     const ready=__sqCatchUpJobsReadyForRound(rIdx);
     if(!ready.length) return false;
     const before=__sqCloneCatchUpState();
@@ -656,6 +688,7 @@ function __sqResumeAbsenceOnScoreInput(){
     const rIdx=Number(state.currentRound||0);
     const cu=state.__sqCatchUp;
     if(!cu || !Array.isArray(cu.jobs)) return false;
+    __sqApplyFinalBullCutoff(pIdx);
 
     let jobIndex=-1;
     let job=null;
@@ -671,7 +704,7 @@ function __sqResumeAbsenceOnScoreInput(){
 
     const pending=job.pendingRounds.map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
     job.pendingRounds=pending;
-    // Final Bull with older retained rounds keeps the canonical Bull-first timer flow.
+    // v11: scheduled Bull permanently closes every earlier missed visit.
     if(rIdx===MAX_ROUNDS-1 && pending.some(round=>round<MAX_ROUNDS-1)) return false;
 
     job.returned=true;
@@ -1596,6 +1629,11 @@ function undo(){
   }
 
   const last = state.history[state.history.length - 1];
+  const cutoffKey=__sqAbsencePlayerKey(state.players?.[last?.player],Number(last?.player||0));
+  if(last?.type==='absenceSkip' && state.__sqFinalBullCutoffs?.[cutoffKey]?.includes(Number(last.round))){
+    toast('That missed round was permanently scratched at Bull.');
+    return;
+  }
   if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime()) {
     const shadow = state.shadow || {};
     const lastIsRealDart = !!(last && last.type !== 'shadowAutoTurn' && typeof __sqIsShadowPlayer === 'function' && !__sqIsShadowPlayer(state.players && state.players[last.player]));
@@ -1628,6 +1666,7 @@ function undo(){
       state.currentRound=Number(cur.round??last.round??0);
       state.currentDart=Number(cur.dart??0);
       state.finished=!!cur.finished;
+      __sqReapplyFinalBullCutoffs();
       if(last.type==='absenceBullTimeout'){
         const job=__sqFinalBullReturnTimerJob(pIdx);
         if(job){
@@ -1652,6 +1691,7 @@ function undo(){
   } else if (last && last.catchUpStartStateBefore) {
     try{ state.__sqCatchUp = JSON.parse(JSON.stringify(last.catchUpStartStateBefore)); }catch(_){}
   }
+  __sqReapplyFinalBullCutoffs();
   const { player, round, dartIndex } = last;
 
   const entry = state.score?.[player]?.[round];
@@ -3315,6 +3355,7 @@ function startNewGame(setOrder=false){
   // <<< PATCH:practice-multi-game-save-reset END
 
   state.__gameToken = (state.__gameToken || 0) + 1;
+  delete state.__sqFinalBullCutoffs;
   delete state.__sqCatchUp;
   state._decider = null;
   state.score = Array.from({length:state.players.length},
