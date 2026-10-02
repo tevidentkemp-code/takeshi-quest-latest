@@ -25,6 +25,7 @@ async function scenario(mode){
     const wrapped = {
       from(table){
         window.__sc010Calls[table] = (window.__sc010Calls[table] || 0) + 1;
+        if (table === 'v_player_xp' && mode === 'hydrated_error') return resultQuery(null, { message:'statement timeout' });
         if ((table === 'v_player_xp' && mode === 'xp_hang') ||
             (table === 'v_player_misfires' && mode === 'misfire_hang') ||
             ((table === 'v_ach_base' || table === 'v_ach_david_goliath') && mode === 'positive_hang')) {
@@ -59,10 +60,10 @@ async function scenario(mode){
 
   await page.evaluate(() => window.openPlayerStatsHub('Alex S'));
   await page.locator('.sq-player-stats-hub .pp-tab').first().waitFor({ state:'visible', timeout:2000 });
-  if (mode === 'hydrated') {
+  if (mode === 'hydrated' || mode === 'hydrated_error') {
     await page.locator('.sq-player-stats-hub .pp-tile-label').first().waitFor({ state:'visible', timeout:6000 });
-    // A completed hub profile must not supply a stale or failed Achievements
-    // panel. The child must perform its dedicated reads even after hydration.
+    // Healthy loaded history can be reused. Failed aggregate-backed history
+    // must reopen through dedicated sources, rather than reusing failure.
     await page.evaluate(() => { window.__sc010Calls = {}; });
   }
   await page.evaluate(() => {
@@ -118,8 +119,12 @@ async function scenario(mode){
   check('hung positive history is honestly pending, with no false zero', positiveHang.ui.vaultCount === '— / 58' && /Loading achievement history/.test(positiveHang.ui.vaultSub), positiveHang.ui.vaultCount + ' | ' + positiveHang.ui.vaultSub);
 
   const hydrated = await scenario('hydrated');
-  check('hydrated hub still opens the dedicated achievement path', hydrated.ui.calls.v_ach_base === 1 && hydrated.ui.calls.v_ach_david_goliath === 1 && hydrated.ui.calls.v_player_misfires === 1 && !hydrated.ui.calls.v_player_last30_targets, JSON.stringify(hydrated.ui.calls));
+  check('healthy hydrated history is reused without duplicate queries', Object.keys(hydrated.ui.calls).length === 0, JSON.stringify(hydrated.ui.calls));
   check('hydrated hub preserves real achievement and Misfire counts', hydrated.ui.vaultCount === '2 / 58' && /6 historical occurrences/.test(hydrated.ui.misfires), hydrated.ui.vaultCount + ' | ' + hydrated.ui.misfires);
+
+  const hydratedError = await scenario('hydrated_error');
+  check('failed hydrated history recovers through dedicated sources', hydratedError.ui.calls.v_ach_base === 1 && hydratedError.ui.calls.v_ach_david_goliath === 1 && hydratedError.ui.calls.v_player_misfires === 1 && !hydratedError.ui.calls.v_player_last30_targets, JSON.stringify(hydratedError.ui.calls));
+  check('failed aggregate XP cannot hide real hydrated-hub history', hydratedError.ui.vaultCount === '2 / 58' && /6 historical occurrences/.test(hydratedError.ui.misfires), hydratedError.ui.vaultCount + ' | ' + hydratedError.ui.misfires);
 
   const failed = await scenario('error');
   check('split achievement fetch failure is not rendered as 0/58', failed.ui.vaultCount === '— / 58', failed.ui.vaultCount);
@@ -132,7 +137,7 @@ async function scenario(mode){
   check('successful empty split history remains a genuine zero state', empty.ui.vaultCount === '0 / 58' && /No trophies yet/i.test(empty.ui.vaultShelf), empty.ui.vaultCount + ' | ' + empty.ui.vaultShelf);
   check('successful empty sections remain real zero counts', /0 \/ 15 unlocked/.test(empty.ui.milestones) && /0 \/ 43 unlocked/.test(empty.ui.trophies), empty.ui.milestones + ' | ' + empty.ui.trophies);
 
-  const errs = [...success.consoleErrs, ...xpHang.consoleErrs, ...misfireHang.consoleErrs, ...positiveHang.consoleErrs, ...hydrated.consoleErrs, ...failed.consoleErrs, ...empty.consoleErrs].filter(e => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));
+  const errs = [...success.consoleErrs, ...xpHang.consoleErrs, ...misfireHang.consoleErrs, ...positiveHang.consoleErrs, ...hydrated.consoleErrs, ...hydratedError.consoleErrs, ...failed.consoleErrs, ...empty.consoleErrs].filter(e => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));
   check('no unexpected console errors', errs.length === 0, errs.slice(0,5).join(' | '));
 
   const fs = require('fs');

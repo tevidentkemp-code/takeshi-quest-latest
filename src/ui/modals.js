@@ -3378,7 +3378,7 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, 
   modal.tabIndex = 0; modal.focus();
   try{
     const tab = Number(opts.tab) || 0;
-    const view = tab === 2
+    const view = tab === 2 && !(opts.view && opts.view.achievementHistoryAvailable)
       ? await __sqBuildPlayerAchievementsView(name)
       : (opts.view || await __sqBuildPlayerStatsProfile(name));
     if (returned || !overlay.isConnected) return;
@@ -3391,7 +3391,7 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, 
 };
 
 // Keep the existing markup, active states and panel animations in one place.
-function __sqPlayerStatsView(profile, panels){
+function __sqPlayerStatsView(profile, panels, achievementHistoryAvailable = false){
   const tabBar = document.createElement('div'); tabBar.className = 'pp-tabs';
   const tabs = ['Stats', 'XP', 'Achievements'].map((label, idx) => {
     const t = document.createElement('button'); t.type = 'button'; t.textContent = label;
@@ -3399,7 +3399,7 @@ function __sqPlayerStatsView(profile, panels){
     tabBar.appendChild(t); return t;
   });
   profile.appendChild(tabBar);
-  return { profile, tabs, showTab(host, idx){
+  return { profile, tabs, achievementHistoryAvailable, showTab(host, idx){
     const panel = panels[idx] || panels[0];
     host.replaceChildren(panel);
     tabs.forEach((b, i) => b.classList.toggle('active', i === idx));
@@ -4273,7 +4273,7 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
 
   const achPanel = __sqBuildAchievementPanel(achState, misfireState, xpRow, __ppReduced, countUp);
 
-  return __sqPlayerStatsView(profile, [statsPanel, xpPanel, achPanel]);
+  return __sqPlayerStatsView(profile, [statsPanel, xpPanel, achPanel], !!(achState.available && misfireState.available));
 }
 
 // [removed: openPlayerDTBDialog alias (orphaned)] audit P5.3 batch 2 — dead/shadowed definition, no live callers
