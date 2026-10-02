@@ -157,14 +157,17 @@ async function begin(page) {
         await page.evaluate(async()=>{window.__sqSc065Animation.currentTime=150;await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));});
         assert.equal(await page.evaluate(()=>document.querySelector('#v2Rows .v2Badge.liveRow').dataset.round),String(round+1));
         if(round){
-          const mid=await page.locator('#v2Rows .v2Badge[data-round="'+(round-1)+'"]').evaluate(e=>e.getBoundingClientRect().top);
-          assert(geometry.old-mid>1 && geometry.old-mid<geometry.pitch-1,mode+' early history lacks interpolated upward movement');
+          // Deferred read completions rebuild row children. Query and measure
+          // atomically so a detached Playwright handle cannot report y=0.
+          const mid=await page.evaluate(r=>document.querySelector('#v2Rows .v2Badge[data-round="'+r+'"]').getBoundingClientRect().top,round-1);
+          assert(geometry.old-mid>1 && geometry.old-mid<geometry.pitch-1,mode+' early history lacks interpolated upward movement: '+JSON.stringify({count,round,geometry,mid}));
         }
         await page.evaluate(()=>window.__sqSc065Animation.play());await rest(page,round+1);
         assert.equal(await page.locator('#v2Rows .v2Badge[data-round="'+round+'"]').count(),1,'Early completion duplicated history');
         if(round){
-          const y=await page.locator('#v2Rows .v2Badge[data-round="'+(round-1)+'"]').evaluate(e=>e.getBoundingClientRect().top);
-          assert(Math.abs(geometry.old-y-geometry.pitch)<1,'Early history did not move exactly one row: '+JSON.stringify({mode,count,round,geometry,y}));
+          const y=await page.evaluate(r=>document.querySelector('#v2Rows .v2Badge[data-round="'+r+'"]').getBoundingClientRect().top,round-1);
+          const diagnostic=Math.abs(geometry.old-y-geometry.pitch)<1 ? null : await page.evaluate(()=>({page:document.body.dataset.page,panelHidden:document.getElementById('liveV2Panel').hidden,panelDisplay:getComputedStyle(document.getElementById('liveV2Panel')).display,grid:document.getElementById('v2Rows').getBoundingClientRect().toJSON(),round:state.currentRound,token:state.__gameToken,history:state.history.length,animation:document.getElementById('liveV2Panel').__sqV2Wall?.animation?.playState}));
+          assert(Math.abs(geometry.old-y-geometry.pitch)<1,'Early history did not move exactly one row: '+JSON.stringify({mode,count,round,geometry,y,diagnostic}));
         }
       }
       contained(await wall(page),mode+' early Round4');
