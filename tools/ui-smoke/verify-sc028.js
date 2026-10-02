@@ -52,7 +52,9 @@ async function scenario(width) {
     await page.waitForFunction(selector => {
       const el = document.querySelector(selector);
       const text = el ? el.innerText : '';
-      return /The Atomic/.test(text) && /LV 2/.test(text) && /151 XP/.test(text);
+      const tiles = el ? [...el.querySelectorAll('.pp-tile-value')].map(x => x.textContent) : [];
+      return /The Atomic/.test(text) && /LV 2/.test(text) && /151 XP/.test(text)
+        && JSON.stringify(tiles) === JSON.stringify(['8.75 (#3)','5','126.0']);
     }, hubSel, { timeout:6000 });
     const original = await page.locator(hubSel).evaluate(el => {
       window.__sc028Hero = el.querySelector('.pp-hero');
