@@ -1822,8 +1822,16 @@ if (hasSaved){
         try{
           state = Object.assign(JSON.parse(JSON.stringify(baseState)), saved);
           try{ if (typeof __sqNormalizeVsShadowRuntimeState === 'function') __sqNormalizeVsShadowRuntimeState('resume-after-load'); }catch(_){ }
+          // Older recovery caches can already be beyond Round 1 without the
+          // SC-035 marker. Preserve that known completion across later Undo.
+          if(typeof __sqRememberInitialRoundComplete==='function') __sqRememberInitialRoundComplete(0);
           show('game');
-          assignUniqueColors(state.players);
+          // SC-035 keeps already assigned identity colours with the corrected
+          // lineup; normal resume still uses the established palette assignment.
+          const amendedColors=state.__sqInitialOrderAmended===true &&
+            state.players.every(p=>COLOR_PALETTE.includes(p.color)) &&
+            new Set(state.players.map(p=>p.color)).size===state.players.length;
+          if(!amendedColors) assignUniqueColors(state.players);
           await buildEverythingChunked();
           updateUI();
           toast('Resumed last match');
@@ -6192,7 +6200,7 @@ function __sqV2LiveAveragePair(pIdx, currentRound){
     const addEntry = (acc, entry) => {
       if(!entry) return acc;
       const darts = Array.isArray(entry.darts) ? entry.darts : [];
-      const thrown = darts.filter(d => d != null).length;
+      const thrown = darts.filter(d => d != null && d.kind !== 'Scratch').length;
       if(!thrown) return acc;
       let points = entry.roundTotal == null ? NaN : Number(entry.roundTotal);
       if(!Number.isFinite(points)){
@@ -6211,7 +6219,7 @@ function __sqV2LiveAveragePair(pIdx, currentRound){
     // Catch-up can move the active round backwards. Every recorded dart in
     // the current game still belongs in GAV, including later played rounds.
     for(const entry of (state.score?.[pIdx] || [])){
-      if(entry && Array.isArray(entry.darts) && entry.darts.some(d => d != null)) rows.push(entry);
+      if(entry && Array.isArray(entry.darts) && entry.darts.some(d => d != null && d.kind !== 'Scratch')) rows.push(entry);
     }
 
     const r3Acc = rows.slice(-3).reduce((acc, entry) => addEntry(acc, entry), {points:0,darts:0});

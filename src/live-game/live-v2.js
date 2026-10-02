@@ -210,8 +210,8 @@ function liveV2Render(){
         if(!job || job.kind !== 'absence' || job.completed || job.returned === true || Number(job.playerIndex) !== Number(turn)) continue;
         const pending = Array.isArray(job.pendingRounds) ? job.pendingRounds.map(Number).filter(Number.isFinite).sort((a,b)=>a-b) : [];
         if(!pending.length) break;
-        // Final Bull remains Bull-first under §§9.8–9.11; do not preview older
-        // catch-up rounds until that first Bull dart has been taken.
+        // v11 §§9.8–9.11 permanently close earlier catch-up at scheduled Bull;
+        // only the Bull target may be shown from this visit onward.
         if(tableRound === MAX_ROUNDS - 1 && pending.some(r=>r < MAX_ROUNDS - 1)) break;
         scoringRound = clampRound(pending[0]);
         preview = scoringRound !== tableRound;

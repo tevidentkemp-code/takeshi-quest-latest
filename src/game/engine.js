@@ -188,17 +188,47 @@ function __sqOpenAbsenceJobs(){
 // SC-036 / Game Rules §§9.8–9.11: final-Bull return gate.
 // Enforcement is state/deadline owned; DMD rendering is best-effort only.
 const __SQ_FINAL_BULL_RETURN_MS=30000;
+function __sqApplyFinalBullCutoff(pIdx){
+  try{
+    pIdx=Number(pIdx);
+    const key=__sqAbsencePlayerKey(state.players?.[pIdx],pIdx);
+    let remembered=state.__sqFinalBullCutoffs?.[key];
+    const scheduled=Number(state.currentRound)===MAX_ROUNDS-1 && Number(state.currentPlayer)===pIdx && !state.__sqCatchUp?.active;
+    if(!remembered && !scheduled) return false;
+    const jobs=(state.__sqCatchUp?.jobs||[]).filter(job=>job && Number(job.playerIndex)===pIdx && !job.completed);
+    const rounds=new Set(Array.isArray(remembered)?remembered:[]);
+    jobs.forEach(job=>(job.pendingRounds||[]).forEach(r=>{
+      r=Number(r); if(Number.isInteger(r) && r>=0 && r<MAX_ROUNDS-1) rounds.add(r);
+    }));
+    if(!rounds.size) return false;
+    if(!state.__sqFinalBullCutoffs) state.__sqFinalBullCutoffs={};
+    state.__sqFinalBullCutoffs[key]=Array.from(rounds).sort((a,b)=>a-b);
+    rounds.forEach(r=>__sqMaterializeAbsenceScratch(pIdx,r));
+    jobs.forEach(job=>{
+      const scratched=new Set(job.scratchedRounds||[]);
+      rounds.forEach(r=>scratched.add(r));
+      job.scratchedRounds=Array.from(scratched).sort((a,b)=>a-b);
+      job.pendingRounds=(job.pendingRounds||[]).filter(r=>Number(r)>=MAX_ROUNDS-1);
+      job.bullReturnRequired=true;
+    });
+    return true;
+  }catch(e){ console.warn('[SQ] final Bull cutoff failed',e); return false; }
+}
+function __sqReapplyFinalBullCutoffs(){
+  (state.players||[]).forEach((_,pIdx)=>__sqApplyFinalBullCutoff(pIdx));
+}
 function __sqFinalBullReturnTimerJob(pIdx){
   try{
     const jobs=Array.isArray(state?.__sqCatchUp?.jobs)?state.__sqCatchUp.jobs:[];
     pIdx=Number(pIdx);
     for(let i=jobs.length-1;i>=0;i--){
       const job=jobs[i];
-      if(!job || job.kind!=='absence' || job.completed || Number(job.playerIndex)!==pIdx) continue;
+      if(!job || job.completed || Number(job.playerIndex)!==pIdx) continue;
       const pending=Array.isArray(job.pendingRounds)?job.pendingRounds.map(Number).filter(Number.isFinite):[];
       const hasRetainedPreBull=pending.some(r=>r<MAX_ROUNDS-1);
       const hasDeadline=Number.isFinite(Number(job.bullReturnDeadlineAt));
-      if(hasRetainedPreBull || hasDeadline) return job;
+      const bullThrown=(state.score?.[pIdx]?.[MAX_ROUNDS-1]?.darts||[]).some(d=>d && d.kind!=='Scratch');
+      if(hasRetainedPreBull || hasDeadline || (job.bullReturnRequired && !bullThrown)) return job;
     }
   }catch(_){}
   return null;
@@ -334,6 +364,7 @@ function __sqEnsureFinalBullReturnTimer(){
     if(!state || state.finished || state.__sqCatchUp?.active) { __sqClearFinalBullReturnRuntime(); return false; }
     const pIdx=Number(state.currentPlayer||0);
     if(Number(state.currentRound)!==MAX_ROUNDS-1 || Number(state.currentDart||0)!==0) { __sqClearFinalBullReturnRuntime(); return false; }
+    __sqApplyFinalBullCutoff(pIdx);
     const job=__sqFinalBullReturnTimerJob(pIdx);
     if(!job) { __sqClearFinalBullReturnRuntime(); return false; }
 
@@ -407,6 +438,7 @@ function __sqStartCatchUpAfterRound(rIdx, opts={}){
   try{
     const cu=state && state.__sqCatchUp;
     if(!cu || cu.active) return false;
+    __sqReapplyFinalBullCutoffs();
     const ready=__sqCatchUpJobsReadyForRound(rIdx);
     if(!ready.length) return false;
     const before=__sqCloneCatchUpState();
@@ -497,6 +529,7 @@ function __sqAdvanceActiveCatchUp(pIdx,rIdx){
 }
 function __sqIsAbsenceSkipEligible(){
   try{
+    if(window.__sqInitialOrderApplying) return false;
     if(!state || state.finished || state.suddenDeath?.active) return false;
     if(Number(state.currentDart||0)!==0) return false;
     if(state.__sqCatchUp?.active) return false;
@@ -537,6 +570,7 @@ function __sqMaterializeAbsenceScratch(pIdx,rIdx){
 function __sqAdvanceAfterAbsenceSkip(pIdx,rIdx){
   try{
     state.currentDart=0;
+    if(__sqAdvanceAmendedInitialRound(pIdx,rIdx)) return true;
     if(state.currentPlayer < state.players.length-1){
       state.currentPlayer++;
       return true;
@@ -623,6 +657,7 @@ function __sqSkipAbsentVisit(){
       absenceCursorBefore:cursorBefore
     });
     __sqAdvanceAfterAbsenceSkip(pIdx,rIdx);
+    __sqRememberInitialRoundComplete(rIdx);
     try{__sqEnsureFinalBullReturnTimer();}catch(_){}
     try{save();}catch(_){}
     try{updateUI();}catch(_){}
@@ -656,6 +691,7 @@ function __sqResumeAbsenceOnScoreInput(){
     const rIdx=Number(state.currentRound||0);
     const cu=state.__sqCatchUp;
     if(!cu || !Array.isArray(cu.jobs)) return false;
+    __sqApplyFinalBullCutoff(pIdx);
 
     let jobIndex=-1;
     let job=null;
@@ -671,7 +707,7 @@ function __sqResumeAbsenceOnScoreInput(){
 
     const pending=job.pendingRounds.map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
     job.pendingRounds=pending;
-    // Final Bull with older retained rounds keeps the canonical Bull-first timer flow.
+    // v11: scheduled Bull permanently closes every earlier missed visit.
     if(rIdx===MAX_ROUNDS-1 && pending.some(round=>round<MAX_ROUNDS-1)) return false;
 
     job.returned=true;
@@ -710,6 +746,7 @@ try{
 }catch(_){}
 // @CANONICAL:GAMEPLAY_RECORD_THROW_BASE
 function recordThrow(spec){
+  if(window.__sqInitialOrderApplying) return;
   try{ window.__sqDmdStopPreThrow?.(); }catch(_){ }
   // Ignore input if game is finished or in sudden death
   if (state.finished || state.suddenDeath.active) return;
@@ -1503,6 +1540,8 @@ setTimeout(() => {
     state.currentDart = 0;
     if (__sqAdvanceActiveCatchUp(pIndex, rIndex)) {
       // Catch-up owns the next visit until its queued rounds are complete.
+    } else if (__sqAdvanceAmendedInitialRound(pIndex, rIndex)) {
+      // Corrected Game-1 order visits each remaining player exactly once.
     } else if (__sqBeginCatchUpAfterTableRound(pIndex, rIndex)) {
       // Table round completed; late-join catch-up starts before the next live round.
     } else if (state.currentPlayer < state.players.length - 1) {
@@ -1518,6 +1557,7 @@ setTimeout(() => {
     }
   }
 
+  __sqRememberInitialRoundComplete(rIndex);
   try{__sqEnsureFinalBullReturnTimer();}catch(_){}
   updateUI();
 
@@ -1590,12 +1630,18 @@ function recomputeMatchAggHitsForPlayer(pIdx){
 }
 
 function undo(){
+  if(window.__sqInitialOrderApplying) return;
   if (!state.history.length) {
     toast('Nothing to undo');
     return;
   }
 
   const last = state.history[state.history.length - 1];
+  const cutoffKey=__sqAbsencePlayerKey(state.players?.[last?.player],Number(last?.player||0));
+  if(last?.type==='absenceSkip' && state.__sqFinalBullCutoffs?.[cutoffKey]?.includes(Number(last.round))){
+    toast('That missed round was permanently scratched at Bull.');
+    return;
+  }
   if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime()) {
     const shadow = state.shadow || {};
     const lastIsRealDart = !!(last && last.type !== 'shadowAutoTurn' && typeof __sqIsShadowPlayer === 'function' && !__sqIsShadowPlayer(state.players && state.players[last.player]));
@@ -1628,6 +1674,7 @@ function undo(){
       state.currentRound=Number(cur.round??last.round??0);
       state.currentDart=Number(cur.dart??0);
       state.finished=!!cur.finished;
+      __sqReapplyFinalBullCutoffs();
       if(last.type==='absenceBullTimeout'){
         const job=__sqFinalBullReturnTimerJob(pIdx);
         if(job){
@@ -1652,6 +1699,7 @@ function undo(){
   } else if (last && last.catchUpStartStateBefore) {
     try{ state.__sqCatchUp = JSON.parse(JSON.stringify(last.catchUpStartStateBefore)); }catch(_){}
   }
+  __sqReapplyFinalBullCutoffs();
   const { player, round, dartIndex } = last;
 
   const entry = state.score?.[player]?.[round];
@@ -1674,10 +1722,12 @@ function undo(){
   recomputeMatchAggHitsForPlayer(player);
   recomputeMatchAggTotalsForPlayer(player);
 
+  try{__sqEnsureFinalBullReturnTimer();}catch(_){}
   updateUI();
 }
 
 function missGo(){
+  if(window.__sqInitialOrderApplying) return;
   if (state.finished || state.suddenDeath.active) return;
   if (typeof __sqVsShadowCurrentPlayerIsShadow === 'function' && __sqVsShadowCurrentPlayerIsShadow()) {
     if (typeof __sqHandleVsShadowManualShadowInput === 'function') __sqHandleVsShadowManualShadowInput('missGo');
@@ -3112,11 +3162,123 @@ function __sqRotateThrowOrderOnePlace(){
   return true;
 }
 
-function showPlayerOrderDialog() {
+// SC-035 / Game Rules §10.3: correction preserves scored darts and takes effect
+// on the next visit. The existing setup dialog is reused with a staged order.
+function __sqInitialRoundVisitAccountedFor(pIdx){
+  const darts=state?.score?.[pIdx]?.[0]?.darts;
+  if(Array.isArray(darts) && darts.slice(0,3).filter(d=>d!=null).length===3) return true;
+  return (state?.__sqCatchUp?.jobs||[]).some(job=>
+    Number(job?.playerIndex)===Number(pIdx) &&
+    [...(job.pendingRounds||[]),...(job.scratchedRounds||[])].some(r=>Number(r)===0));
+}
+function __sqRememberInitialRoundComplete(rIdx){
+  if(Number(rIdx)!==0 || !__sqIsAutoThrowOrderMatch()) return;
+  if(Number(state.currentRound)>0 || (state.__sqCatchUp?.active && Number(state.__sqCatchUp.startedAfterRound)===0)){
+    state.__sqInitialRoundComplete=true;
+  }
+}
+function __sqInitialOrderAmendEligibility(){
+  if(!__sqIsAutoThrowOrderMatch()) return {ok:false,reason:'Available in Match Play only.'};
+  if(Number(state?.match?.gameNumber||1)!==1 || (state?.match?.history?.length||0)>0) return {ok:false,reason:'Initial order can be corrected in Game 1 only.'};
+  if(state.finished || state.gameAwarded || state.suddenDeath?.active || state._decider?.active) return {ok:false,reason:'This game is no longer active.'};
+  if(Number(state.currentRound)!==0 || state.__sqInitialRoundComplete || state.__sqCatchUp?.active || state.__sqCatchUp?.awaitingReturn) return {ok:false,reason:'Initial order can be corrected only before Round 1 is complete.'};
+  const count=state.players?.length||0;
+  if(count<2 || count>5) return {ok:false,reason:'Initial order correction requires 2–5 players.'};
+  if(state.players.every((_,i)=>__sqInitialRoundVisitAccountedFor(i))) return {ok:false,reason:'Round 1 is already complete.'};
+  return {ok:true,reason:''};
+}
+function __sqAdvanceAmendedInitialRound(pIdx,rIdx){
+  if(!state.__sqInitialOrderAmended || Number(rIdx)!==0 || state.__sqCatchUp?.active) return false;
+  state.currentDart=0;
+  const next=state.players.findIndex((_,i)=>!__sqInitialRoundVisitAccountedFor(i));
+  if(next>=0){ state.currentPlayer=next; return true; }
+  state.__sqInitialRoundComplete=true;
+  if(__sqStartCatchUpAfterRound(0,{resumeRound:1,resumePlayer:0,resumeFinished:false})) return true;
+  state.currentPlayer=0;
+  state.currentRound=1;
+  return true;
+}
+async function __sqApplyInitialOrderAmendment(order,guard){
+  if(window.__sqInitialOrderApplying) return false;
+  const gate=__sqInitialOrderAmendEligibility();
+  const unchanged=guard && Number(state.__gameToken||0)===guard.token &&
+    JSON.stringify(state.players)===guard.players && state.history.length===guard.history &&
+    JSON.stringify(state.score)===guard.score && state.match.id===guard.matchId &&
+    state.match.autoRotateOrder===guard.auto &&
+    state.currentPlayer===guard.player && state.currentDart===guard.dart;
+  const count=state.players.length;
+  if(!gate.ok || !unchanged || !Array.isArray(order) || order.length!==count ||
+     new Set(order).size!==count || order.some(i=>!Number.isInteger(i)||i<0||i>=count)){
+    toast(gate.ok?'Game state changed. Reopen Amend Initial Order.':gate.reason);
+    return false;
+  }
+  if(order.every((old,i)=>old===i)) return true;
+  const backup=JSON.parse(JSON.stringify(state));
+  const oldToNew=[];
+  order.forEach((old,i)=>{oldToNew[old]=i;});
+  const remapIndex=(object,key)=>{
+    if(object && Number.isInteger(object[key]) && oldToNew[object[key]]!==undefined) object[key]=oldToNew[object[key]];
+  };
+  const reorder=(object,key)=>{
+    if(object && Array.isArray(object[key])){ const old=object[key]; object[key]=order.map(i=>old[i]); }
+  };
+  const remapCatchUp=(cu)=>{
+    if(!cu) return;
+    remapIndex(cu,'resumePlayer');
+    (cu.jobs||[]).forEach(job=>{
+      remapIndex(job,'playerIndex');
+      if(job && /^idx:\d+$/.test(job.playerKey||'')) job.playerKey='idx:'+job.playerIndex;
+    });
+  };
+  window.__sqInitialOrderApplying=true;
+  try{
+    reorder(state,'players'); reorder(state,'score'); reorder(state.match,'wins');
+    (state.match?.history||[]).forEach(game=>{reorder(game,'totals');reorder(game,'board');});
+    ['hits','totals60','totals100','totals140'].forEach(key=>reorder(state.matchAgg,key));
+    remapIndex(state,'currentPlayer'); remapIndex(state.uiLastGo,'player');
+    remapCatchUp(state.__sqCatchUp);
+    state.history.forEach(entry=>{
+      remapIndex(entry,'player'); remapIndex(entry.absenceCursorBefore,'player');
+      remapCatchUp(entry.catchUpStateBefore); remapCatchUp(entry.catchUpStartStateBefore);
+    });
+    state.__sqInitialOrderAmended=true;
+    // A partial visit retains its actor. Between visits, select the first player
+    // in the corrected lineup who has not already played or been skipped.
+    if(Number(state.currentDart||0)===0){
+      const next=state.players.findIndex((_,i)=>!__sqInitialRoundVisitAccountedFor(i));
+      if(next>=0) state.currentPlayer=next;
+    }
+    try{window.__sqDmdHardClearQueue?.();}catch(_){}
+    try{delete window.__sqDmdFightBenchmarks;}catch(_){}
+    await buildEverythingChunked();
+    updateUI(); save();
+    toast('Initial throw order corrected');
+    return true;
+  }catch(error){
+    state=backup;
+    // Cache recovery must not depend on the presentation recovering too.
+    try{save();}catch(_){}
+    try{await buildEverythingChunked();}catch(_){}
+    try{updateUI();}catch(_){}
+    console.warn('[SQ] initial throw-order correction failed',error);
+    toast('Order correction unavailable. Your game has been kept.');
+    return false;
+  }finally{
+    window.__sqInitialOrderApplying=false;
+  }
+}
+function showPlayerOrderDialog(opts={}) {
+  const amend=opts.amend===true;
+  if(amend){ const gate=__sqInitialOrderAmendEligibility(); if(!gate.ok){toast(gate.reason);return;} }
+  const draft=state.players.map((_,i)=>i);
+  const guard={token:Number(state.__gameToken||0),players:JSON.stringify(state.players),score:JSON.stringify(state.score),matchId:state.match.id,auto:state.match.autoRotateOrder,history:state.history.length,player:state.currentPlayer,dart:state.currentDart};
+  let applying=false;
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop';
   const modal = document.createElement('div');
-  modal.className = 'modal modal-throworder';
+  modal.className = 'modal modal-throworder'+(amend?' modal-throworder-amend':'');
+  let registered=null;
+  const dismiss=(back=false)=>{if(applying)return;if(registered)registered.close();else overlay.remove();if(back&&opts.onBack)opts.onBack();};
 
   const top = document.createElement('div');
   top.className = 'to-top';
@@ -3126,7 +3288,7 @@ function showPlayerOrderDialog() {
 
   const h = document.createElement('div');
   h.className = 'to-title';
-  h.textContent = 'THROW ORDER';
+  h.textContent = amend?'AMEND INITIAL ORDER':'THROW ORDER';
 
   const sub = document.createElement('div');
   sub.className = 'to-subtitle';
@@ -3134,10 +3296,16 @@ function showPlayerOrderDialog() {
   const gnum = (state && state.match && typeof state.match.gameNumber === 'number' && state.match.gameNumber > 0)
     ? state.match.gameNumber
     : ((state && typeof state.gameNumber === 'number' && state.gameNumber > 0) ? state.gameNumber : 1);
-  sub.textContent = 'DECIDE THE LINEUP FOR GAME ' + gnum;
+  sub.textContent = amend?'GAME 1 • CORRECT THE INITIAL LINEUP':'DECIDE THE LINEUP FOR GAME ' + gnum;
 
   titleWrap.append(h, sub);
   top.append(titleWrap);
+  if(amend){
+    const nav=document.createElement('div');nav.className='to-amend-nav';
+    const back=document.createElement('button');back.type='button';back.className='btn';back.textContent='← Back';back.onclick=()=>dismiss(true);
+    const close=document.createElement('button');close.type='button';close.className='btn';close.textContent='×';close.setAttribute('aria-label','Close');close.onclick=()=>dismiss();
+    nav.append(back,close);top.prepend(nav);
+  }
 
   const body = document.createElement('div');
   body.className = 'to-body';
@@ -3151,7 +3319,7 @@ function showPlayerOrderDialog() {
 
   function render(){
     list.innerHTML = '';
-    state.players.forEach((p, i) => {
+    (amend?draft.map(i=>state.players[i]):state.players).forEach((p, i) => {
       const row = document.createElement('div');
       row.className = 'to-row';
 
@@ -3188,16 +3356,19 @@ function showPlayerOrderDialog() {
       up.className = 'to-arrow-btn';
       up.type = 'button';
       up.innerHTML = '↑';
+      up.setAttribute('aria-label','Move '+(__sqPlayerPretty(p)||p.name||'player')+' earlier');
       up.disabled = (i === 0);
 
       const down = document.createElement('button');
       down.className = 'to-arrow-btn';
       down.type = 'button';
       down.innerHTML = '↓';
+      down.setAttribute('aria-label','Move '+(__sqPlayerPretty(p)||p.name||'player')+' later');
       down.disabled = (i === state.players.length - 1);
 
-      up.onclick = () => { if (i > 0) { swapPlayers(i, i-1); render(); } };
-      down.onclick = () => { if (i < state.players.length - 1) { swapPlayers(i, i+1); render(); } };
+      const move=(j)=>{if(applying)return;if(amend)[draft[i],draft[j]]=[draft[j],draft[i]];else swapPlayers(i,j);render();if(amend)modal.focus();};
+      up.onclick = () => { if (i > 0) move(i-1); };
+      down.onclick = () => { if (i < state.players.length - 1) move(i+1); };
 
       arrows.append(up, down);
 
@@ -3208,10 +3379,15 @@ function showPlayerOrderDialog() {
 
   render();
   body.appendChild(list);
+  if(amend){
+    const note=document.createElement('p');note.className='to-amend-note';
+    note.textContent=Number(state.currentDart||0)>0?'Recorded darts stay with each player. The current visit finishes before the corrected order takes effect.':'Recorded darts stay with each player. Remaining Round 1 visits follow the corrected order.';
+    body.appendChild(note);
+  }
 
   const autoEligible = __sqIsAutoThrowOrderMatch();
   let autoOrderPending = !!(autoEligible && state?.match?.autoRotateOrder === true);
-  if (autoEligible) {
+  if (autoEligible && !amend) {
     const autoPanel = document.createElement('div');
     autoPanel.className = 'to-auto-order';
 
@@ -3257,8 +3433,18 @@ function showPlayerOrderDialog() {
   // Match Setup CTA sizing/typography consistency
   startBtn.className = (__mode === 'practice') ? 'btn to-start to-blueLight practice-cta' : 'btn to-start practice-cta';
   startBtn.type = 'button';
-  startBtn.innerHTML = 'START GAME <span class="to-start-ic">▶</span>';
-  startBtn.onclick = () => {
+  startBtn.innerHTML = amend?'APPLY CORRECTION':'START GAME <span class="to-start-ic">▶</span>';
+  startBtn.onclick = async () => {
+    if(amend){
+      if(applying)return;applying=true;
+      if(registered)registered.escapeClose=false;
+      startBtn.disabled=true;startBtn.textContent='APPLYING…';
+      const applied=await __sqApplyInitialOrderAmendment(draft,guard);
+      applying=false;
+      if(registered)registered.escapeClose=true;
+      if(applied)dismiss();else{startBtn.disabled=false;startBtn.textContent='APPLY CORRECTION';}
+      return;
+    }
     if (!__sqNewGamePlayerCountAllowed()) return;
     if (autoEligible && state && state.match) state.match.autoRotateOrder = !!autoOrderPending;
     overlay.remove();
@@ -3269,16 +3455,18 @@ function showPlayerOrderDialog() {
   backBtn.className = 'btn to-back ms2-back';
   backBtn.type = 'button';
   backBtn.innerHTML = '<span class="ms2-back-ar" aria-hidden="true">&#8592;</span><span class="ms2-back-txt">BACK</span>';
-  backBtn.onclick = () => overlay.remove();
+  backBtn.onclick = () => dismiss(amend);
 
-  actions.append(startBtn, backBtn);
+  if(amend) actions.append(startBtn);
+  else actions.append(startBtn, backBtn);
 
   modal.append(top, body, actions);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
+  if(amend && window.sqModal?.register) registered=window.sqModal.register(overlay,modal,()=>overlay.remove());
 
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  overlay.addEventListener('click', e => { if (e.target === overlay) dismiss(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') dismiss(); });
   modal.tabIndex = 0; modal.focus();
 }
 
@@ -3324,7 +3512,10 @@ function startNewGame(setOrder=false){
   // <<< PATCH:practice-multi-game-save-reset END
 
   state.__gameToken = (state.__gameToken || 0) + 1;
+  delete state.__sqFinalBullCutoffs;
   delete state.__sqCatchUp;
+  delete state.__sqInitialOrderAmended;
+  delete state.__sqInitialRoundComplete;
   state._decider = null;
   state.score = Array.from({length:state.players.length},
     ()=>Array.from({length:MAX_ROUNDS},()=>({darts:[null,null,null],roundTotal:0})));
