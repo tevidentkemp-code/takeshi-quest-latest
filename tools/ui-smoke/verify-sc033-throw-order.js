@@ -50,7 +50,7 @@ function rotated(values) {
   try {
     await H.boot(page, { settle: 2500 });
 
-    // Contract-level identity checks for every supported Match Play player count.
+    // New Match Play supports 2–5; six remains a historical read/identity fixture.
     for (let n = 2; n <= 6; n++) {
       const got = await page.evaluate((count) => {
         const players = Array.from({ length: count }, (_, i) => ({ name: 'P' + (i + 1), color: 'c' + (i + 1) }));

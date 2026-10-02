@@ -81,7 +81,7 @@
       var players=Array.isArray(state.players)?state.players:[];
       var gameNumber=Number(state&&state.match&&state.match.gameNumber||1);
       if(gameNumber>1) return {ok:false, reason:'Mid-game late entry is only available in Game 1.'};
-      if(players.length>=6) return {ok:false, reason:'Maximum 6 players.'};
+      if(players.length>=5) return {ok:false, reason:'Maximum 5 players.'};
       try{ if(typeof __sqIsVsShadowRuntime==='function' && __sqIsVsShadowRuntime()) return {ok:false, reason:'Not available in Vs Shadow.'}; }catch(_){}
       try{
         var m=state.match||{};

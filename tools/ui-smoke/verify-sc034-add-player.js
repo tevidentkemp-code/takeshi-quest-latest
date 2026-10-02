@@ -9,7 +9,26 @@ function assert(cond, msg) {
   try {
     await H.boot(page);
     await H.toMatchCard(page);
-    await H.addGuests(page, ['ALPHA', 'BETA']);
+    await H.addGuests(page, ['ALPHA', 'BETA', 'CAP THREE', 'CAP FOUR', 'CAP FIVE']);
+    const setupCap = await page.evaluate(() => {
+      const before=__msPlayers.length;
+      __msAddGuest();
+      return {before,count:__msPlayers.length,guestDisabled:msAddGuestBtn.disabled,savedDisabled:msAddRegisteredBtn.disabled,copy:document.getElementById('msRosterCount').textContent};
+    });
+    assert(setupCap.before===5 && setupCap.count===5 && setupCap.guestDisabled && setupCap.savedDisabled, 'new guest/saved setup must stop at five');
+    assert(/5 \/ 5/.test(setupCap.copy), 'setup must communicate the five-player cap');
+    const staleSetup = await page.evaluate(() => {
+      __msPlayers.push({name:'STALE SIXTH',type:'guest'});
+      __msUpdateStartEnabled();
+      const disabled=document.getElementById('startMatchBtn').disabled;
+      const before=JSON.stringify(state.players);
+      document.getElementById('mlStartBtn').dispatchEvent(new MouseEvent('click',{bubbles:true}));
+      const unchanged=before===JSON.stringify(state.players);
+      __msPlayers.splice(2);
+      __msRenderPlayers();
+      return {disabled,unchanged};
+    });
+    assert(staleSetup.disabled && staleSetup.unchanged, 'a stale six-player setup cannot enter throw order through either start action');
     await H.startMatch(page, 3);
 
     await page.waitForFunction(() =>
@@ -305,20 +324,46 @@ function assert(cond, msg) {
     });
     assert(game2Blocked.gate.ok === false && game2Blocked.added === false, 'mid-game late entry must be blocked after Game 1');
 
-    // Six-player cap.
+    // New late entry stops at five; existing six-player state is preserved below.
     const cap = await page.evaluate(() => {
       const mk = () => Array.from({length:14}, () => ({darts:[null,null,null],roundTotal:0}));
-      state.players = Array.from({length:6},(_,i)=>({name:'P'+(i+1),type:'guest'}));
+      state.players = Array.from({length:5},(_,i)=>({name:'P'+(i+1),type:'guest'}));
       state.score = state.players.map(()=>mk());
-      state.match.wins = Array(6).fill(0);
-      state.matchAgg = {hits:Array(6).fill(null).map(()=>({})),totals60:Array(6).fill(0),totals100:Array(6).fill(0),totals140:Array(6).fill(0)};
+      state.match.wins = Array(5).fill(0);
+      state.matchAgg = {hits:Array(5).fill(null).map(()=>({})),totals60:Array(5).fill(0),totals100:Array(5).fill(0),totals140:Array(5).fill(0)};
       state.currentRound=0; state.currentPlayer=0; state.currentDart=0; state.history=[]; state.finished=false;
       delete state.__sqCatchUp;
       const gate=window.__sqLateJoinEligibility();
-      const added=window.__sqAppendLatePlayer({name:'P7'},'guest');
+      const added=window.__sqAppendLatePlayer({name:'P6'},'guest');
       return {gate,added,count:state.players.length};
     });
-    assert(cap.gate.ok === false && cap.added === false && cap.count === 6, 'six-player cap must hold');
+    assert(cap.gate.ok === false && cap.added === false && cap.count === 5, 'five-player late-entry cap must hold');
+    for (const width of [320,390,430]) {
+      await page.setViewportSize({width,height:844});
+      for (const count of [2,3,4,5]) {
+        const layout = await page.evaluate((n) => {
+          const players=state.players, scores=state.score;
+          state.players=players.slice(0,n);state.score=scores.slice(0,n);
+          liveV2Render();
+          const panel=document.getElementById('liveV2Panel');
+          const rect=panel.getBoundingClientRect();
+          const cells=document.querySelectorAll('#v2Rows .v2Cell').length;
+          state.players=players;state.score=scores;
+          return {left:rect.left,right:rect.right,width:innerWidth,cells};
+        },count);
+        assert(layout.left>=-1 && layout.right<=layout.width+1 && layout.cells>0, `${count}-player score wall must render within ${width}px`);
+      }
+    }
+    const historical = await page.evaluate(() => {
+      state.players.push({name:'HISTORICAL SIXTH',type:'guest'});
+      state.score.push(Array.from({length:14},()=>({darts:[null,null,null],roundTotal:0})));
+      state.match.wins.push(0);
+      const before=JSON.stringify({players:state.players,score:state.score});
+      liveV2Render();
+      const added=window.__sqAppendLatePlayer({name:'SEVENTH'},'guest');
+      return {added,count:state.players.length,unchanged:before===JSON.stringify({players:state.players,score:state.score}),cells:document.querySelectorAll('#v2Rows .v2Cell').length};
+    });
+    assert(!historical.added && historical.count===6 && historical.unchanged && historical.cells>0, 'historical six-player state remains readable and unchanged');
 
     console.log('SC-034 ADD PLAYER: PASS');
   } finally {

@@ -380,7 +380,7 @@ function arrangeStartActions(){
           '<div class="sg-opt-top">'+
             '<div class="sg-opt-title">MATCH PLAY</div>'+
           '</div>'+
-          '<div class="sg-opt-desc">GAMES BETWEEN 2 AND 6 PEOPLE</div>' +
+          '<div class="sg-opt-desc">GAMES BETWEEN 2 AND 5 PEOPLE</div>' +
         '</div>';
       const openMatchVariantMenu = () => {
         startGameBody.innerHTML = '';
