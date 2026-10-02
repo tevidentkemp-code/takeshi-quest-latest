@@ -44,7 +44,7 @@ async function scenario(mode){
   }, mode);
 
   await page.evaluate(() => window.openPlayerStatsHub('Alex S'));
-  await page.waitForTimeout(1800);
+  await page.locator('.sq-player-stats-hub .pp-tab').first().waitFor({ state:'visible', timeout:2000 });
   await page.evaluate(() => {
     window.__testProfileTabs = Array.from(document.querySelectorAll('.sq-player-stats-hub .pp-tab')).map(b => b.textContent.trim());
     const btn = Array.from(document.querySelectorAll('.sq-player-stats-hub .pp-tab')).find(b => /^achievements$/i.test(b.textContent.trim()));
@@ -72,7 +72,8 @@ async function scenario(mode){
 
 (async () => {
   const success = await scenario('success');
-  check('cold Player Stats performs one v_player_xp read for existing profile XP/player identity', success.ui.calls.v_player_xp === 1, JSON.stringify(success.ui.calls));
+  check('Achievements starts one scoped v_player_xp read for aggregate Misfire XP', success.ui.calls.v_player_xp === 1, JSON.stringify(success.ui.calls));
+  check('Achievements does not touch slow target-profile analytics before rendering', !success.ui.calls.v_player_last30_targets && !success.ui.calls.v_player_last30_target_rates, JSON.stringify(success.ui.calls));
   check('success reads v_ach_base once by resolved player id', success.ui.calls.v_ach_base === 1, JSON.stringify(success.ui.calls));
   check('success reads v_ach_david_goliath once by resolved player id', success.ui.calls.v_ach_david_goliath === 1, JSON.stringify(success.ui.calls));
   check('success does not use combined v_player_achievements hot path', !success.ui.calls.v_player_achievements, JSON.stringify(success.ui.calls));
@@ -94,6 +95,13 @@ async function scenario(mode){
 
   const errs = [...success.consoleErrs, ...failed.consoleErrs, ...empty.consoleErrs].filter(e => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));
   check('no unexpected console errors', errs.length === 0, errs.slice(0,5).join(' | '));
+
+  const fs = require('fs');
+  const path = require('path');
+  const corePre = fs.readFileSync(path.join(__dirname, '../../src/legacy/quarantine/core-pre-modals.js'), 'utf8');
+  check('match metadata uses canonical target_wins without a known-failing targetWins probe',
+    corePre.includes("select('id,created_at,players,wins,history,total_games,target_wins')") &&
+    !corePre.includes('targetWins,target_wins'));
 
   console.log(failures ? `\n${failures} FAILURES` : '\nALL PASS');
   process.exit(failures ? 1 : 0);
