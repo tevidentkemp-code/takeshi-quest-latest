@@ -25596,6 +25596,51 @@ if(hsBody){
         }
       };
 
+      const lpFitRowsToViewport = () => {
+        const mid = document.querySelector('#homeLivePrinter .lp-mid');
+        const table = document.querySelector('#homeLivePrinter .lp-table');
+        const tbody = document.getElementById('homeLivePrinterRows');
+        if (!mid || !table || !tbody) return;
+
+        const rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
+        if (!rows.length) return;
+
+        // Start from the full logical window, then retire only as many oldest
+        // visual slots as are required to keep every remaining row fully inside
+        // the fixed VIDE viewport. This preserves row typography/spacing instead
+        // of squeezing the table as two-line results accumulate.
+        rows.forEach(row => row.classList.remove('lp-fit-hidden'));
+
+        let maxBottom = 0;
+        try {
+          const midRect = mid.getBoundingClientRect();
+          const style = getComputedStyle(mid);
+          const padBottom = parseFloat(style.paddingBottom || '0') || 0;
+          maxBottom = midRect.bottom - padBottom;
+        } catch (_) {
+          maxBottom = mid.getBoundingClientRect().bottom;
+        }
+
+        const overflows = () => {
+          try { return table.getBoundingClientRect().bottom > (maxBottom + 0.5); }
+          catch (_) { return false; }
+        };
+
+        for (let i = 0; i < rows.length - 1 && overflows(); i++) {
+          rows[i].classList.add('lp-fit-hidden');
+        }
+      };
+
+      const lpFirstVisibleRowHeight = (rows, fallback = 20) => {
+        const list = Array.isArray(rows) ? rows : [];
+        const first = list.find(row => {
+          if (!row || row.classList.contains('lp-fit-hidden')) return false;
+          try { return row.getBoundingClientRect().height > 0.5; } catch (_) { return false; }
+        });
+        try { return first ? (first.getBoundingClientRect().height || fallback) : fallback; }
+        catch (_) { return fallback; }
+      };
+
       const lpEnsureRows = (lines) => {
         const tbody = document.getElementById('homeLivePrinterRows');
         if (!tbody) return;
@@ -25622,7 +25667,18 @@ if(hsBody){
           lpApplyRowClasses(tr, line);
           if (sp) lpSetLineContent(sp, line);
         });
+        lpFitRowsToViewport();
       };
+
+      // Re-fit on viewport changes (mobile browser chrome/orientation) without
+      // changing the outer SC-047 stable panel geometry.
+      try {
+        const st = window.__homeLivePrinterState;
+        if (st && !st.__sqVideFitResizeBound) {
+          st.__sqVideFitResizeBound = true;
+          window.addEventListener('resize', () => requestAnimationFrame(lpFitRowsToViewport), { passive:true });
+        }
+      } catch (_) {}
 
       // Allow other parts of the app to inject a one-off LIVE UPDATES line (e.g., NEW PLAYER)
       // Usage: window.__homeLivePrinterInjectLine('🚨 NEW PLAYER - Name - Welcome...')
@@ -25694,6 +25750,7 @@ if(hsBody){
 	            lpSetLineContent(sp, line);
 	          }
 	        });
+        lpFitRowsToViewport();
 	      };
       const lpScrollStep = () => {
         const st = window.__homeLivePrinterState;
@@ -25712,8 +25769,9 @@ if(hsBody){
           lpEnsureRows(st.displayLines);
         }
 
+        lpFitRowsToViewport();
         const rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
-        const rowH = (rows[0] ? (rows[0].getBoundingClientRect().height || 20) : 20);
+        const rowH = lpFirstVisibleRowHeight(rows, 20);
 
         // Pull injected events through this same scheduler instead of letting
         // other features repaint the printer DOM directly.
@@ -25768,16 +25826,20 @@ if(hsBody){
 	            const lastLine = st.displayLines[LP_VISIBLE - 1];
 	            const fast = (()=>{ try{ return lpIsRecordLine(lastLine) || lpIsRoundPBLine(lastLine)
               || lpIsGamePBLine(lastLine) || lpIsAlertLine(lastLine) || lpIsBeerAlertLine(lastLine); }catch(_e){ return false; } })();
-	            lpTypeLine(lastSp, lastLine, fast ? 8 : 22);
-	          }
+	            lpTypeLine(lastSp, lastLine, fast ? 8 : 22, lpFitRowsToViewport);
+              requestAnimationFrame(lpFitRowsToViewport);
+	          } else {
+              lpFitRowsToViewport();
+            }
 	        });
 	      };
       const lpAnimateNewBottom = (bufLines) => {
         const tbody = document.getElementById('homeLivePrinterRows');
         if (!tbody) return;
 
+        lpFitRowsToViewport();
         const rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
-        const rowH = (rows[0] ? (rows[0].getBoundingClientRect().height || 22) : 22);
+        const rowH = lpFirstVisibleRowHeight(rows, 22);
 
         const buf = Array.isArray(bufLines) ? bufLines : [];
         const winNew = buf.slice(0, LP_VISIBLE);
@@ -25803,10 +25865,14 @@ if(hsBody){
 	            lpApplyRowClasses(lastRow, winNew[LP_VISIBLE - 1]);
 	            lastSp.textContent = '';
 	            const lastLine = winNew[LP_VISIBLE - 1] ?? '—';
-	            lpTypeLine(lastSp, lastLine, 20);
+	            lpTypeLine(lastSp, lastLine, 20, lpFitRowsToViewport);
+              requestAnimationFrame(lpFitRowsToViewport);
 	            setTimeout(() => {
 	              try { lastRow.classList.remove('lp-new'); } catch (_) {}
+                lpFitRowsToViewport();
 	            }, 900);
+          } else {
+            lpFitRowsToViewport();
           }
         });
       };
