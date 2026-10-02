@@ -83,6 +83,7 @@ jobs:
           node --check tools/ui-smoke/verify-sc034-add-player.js
           node --check tools/ui-smoke/verify-sc036-skip-go.js
           node --check tools/ui-smoke/verify-sc047-live-updates.js
+          node --check tools/ui-smoke/verify-sc043-player-stats.js
           node --check tools/ui-smoke/verify-sxp04-gate3-quick-entry.js
           node --check tools/ui-smoke/verify-sc056-dmd-single-miss.js
 
@@ -147,7 +148,7 @@ jobs:
           set -euo pipefail
           npm ci --prefix tools/ui-smoke --ignore-scripts
           npx --prefix tools/ui-smoke playwright install --with-deps webkit
-      - name: Verify Home in WebKit
+      - name: Verify Home and Player Stats in WebKit
         shell: bash
         env:
           SQ_BROWSER: webkit
@@ -160,6 +161,8 @@ jobs:
           trap 'kill "$source_pid" "$dist_pid" || true' EXIT
           SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/source timeout 180s node tools/ui-smoke/verify-sc047-live-updates.js | tee core-webkit-source-home.txt
           SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/dist timeout 180s node tools/ui-smoke/verify-sc047-live-updates.js | tee core-webkit-dist-home.txt
+          SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/stats-source timeout 180s node tools/ui-smoke/verify-sc043-player-stats.js | tee core-webkit-source-stats.txt
+          SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/stats-dist timeout 180s node tools/ui-smoke/verify-sc043-player-stats.js | tee core-webkit-dist-stats.txt
       - name: Keep WebKit evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -247,6 +250,7 @@ jobs:
           timeout 180s node tools/ui-smoke/verify-cloud-failure-resilience.js | tee core-source-cloud.txt
           timeout 180s node tools/ui-smoke/verify-sc014.js | tee core-source-setup.txt
           timeout 180s node tools/ui-smoke/verify-sc028.js | tee core-source-sc028.txt
+          timeout 180s node tools/ui-smoke/verify-sc043-player-stats.js | tee core-source-sc043.txt
           timeout 180s node tools/ui-smoke/verify-sc008.js | tee core-source-sc008.txt
       - name: Keep source-live evidence
         if: always()
@@ -392,6 +396,7 @@ jobs:
           timeout 180s node tools/ui-smoke/verify-sc025.js | tee core-dist-sc025.txt
           timeout 180s node tools/ui-smoke/verify-sc009.js | tee core-dist-sc009.txt
           timeout 180s node tools/ui-smoke/verify-sc010.js | tee core-dist-sc010.txt
+          timeout 180s node tools/ui-smoke/verify-sc043-player-stats.js | tee core-dist-sc043.txt
       - name: Keep dist-modes evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
