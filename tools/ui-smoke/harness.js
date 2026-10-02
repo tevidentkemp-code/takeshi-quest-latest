@@ -2,11 +2,13 @@
 // Safety guarantee: every request to *.supabase.co is aborted at the network
 // layer, so no run can ever read or write production data. The supabase-js
 // CDN script is served from the locally installed npm copy instead.
-const { chromium } = require('playwright');
+const { chromium, webkit } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
 const APP_URL = process.env.SQ_APP_URL || 'http://localhost:8123/index.html';
+const BROWSER = process.env.SQ_BROWSER || 'chromium';
+if (!['chromium', 'webkit'].includes(BROWSER)) throw new Error('Unsupported SQ_BROWSER: ' + BROWSER);
 const UMD = process.env.SQ_SUPABASE_UMD ||
   path.join(__dirname, 'node_modules/@supabase/supabase-js/dist/umd/supabase.js');
 const CHROMIUM = process.env.SQ_CHROMIUM ||
@@ -14,7 +16,9 @@ const CHROMIUM = process.env.SQ_CHROMIUM ||
     ? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' : undefined);
 
 async function launch(viewport, opts = {}) {
-  const browser = await chromium.launch(CHROMIUM ? { executablePath: CHROMIUM } : {});
+  const browser = BROWSER === 'webkit'
+    ? await webkit.launch()
+    : await chromium.launch(CHROMIUM ? { executablePath: CHROMIUM } : {});
   const ctx = await browser.newContext({
     viewport: viewport || { width: 390, height: 844 },
     isMobile: (viewport || { width: 390 }).width < 500,
