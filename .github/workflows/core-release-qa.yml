@@ -81,6 +81,7 @@ jobs:
           node --check src/ui/modals.js
           node --check tools/ui-smoke/verify-sc033-throw-order.js
           node --check tools/ui-smoke/verify-sc035-initial-order.js
+          node --check tools/ui-smoke/verify-sc067-turbo-identity.js
           node --check tools/ui-smoke/verify-sc034-add-player.js
           node --check tools/ui-smoke/verify-sc036-skip-go.js
           node --check tools/ui-smoke/verify-sc047-live-updates.js
@@ -164,6 +165,8 @@ jobs:
           SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/dist timeout 180s node tools/ui-smoke/verify-sc047-live-updates.js | tee core-webkit-dist-home.txt
           SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/stats-source timeout 180s node tools/ui-smoke/verify-sc043-player-stats.js | tee core-webkit-source-stats.txt
           SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/stats-dist timeout 180s node tools/ui-smoke/verify-sc043-player-stats.js | tee core-webkit-dist-stats.txt
+          SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/turbo-source timeout 180s node tools/ui-smoke/verify-sc067-turbo-identity.js | tee core-webkit-source-turbo.txt
+          SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/turbo-dist timeout 180s node tools/ui-smoke/verify-sc067-turbo-identity.js | tee core-webkit-dist-turbo.txt
       - name: Keep WebKit evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -206,6 +209,7 @@ jobs:
           timeout 180s node tools/ui-smoke/verify-saveplayer-card.js | tee core-source-saveplayer.txt
           timeout 180s node tools/ui-smoke/verify-sc047-live-updates.js | tee core-source-sc047.txt
           timeout 180s node tools/ui-smoke/verify-classic-visual-fit.js | tee core-source-classic.txt
+          timeout 180s node tools/ui-smoke/verify-sc067-turbo-identity.js | tee core-source-turbo.txt
       - name: Keep source-core evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -391,6 +395,7 @@ jobs:
           pid=$!
           trap 'kill "$pid" || true' EXIT
           timeout 180s node tools/ui-smoke/verify-classic-visual-fit.js | tee core-dist-classic.txt
+          timeout 180s node tools/ui-smoke/verify-sc067-turbo-identity.js | tee core-dist-turbo.txt
           timeout 180s node tools/ui-smoke/verify-training-modes.js | tee core-dist-training.txt
           timeout 180s node tools/ui-smoke/verify-progression-modes.js | tee core-dist-progression.txt
           timeout 180s node tools/ui-smoke/verify-pstats.js | tee core-dist-pstats.txt
