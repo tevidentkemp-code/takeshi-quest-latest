@@ -4587,14 +4587,14 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
     if (n && playerSelect.value !== n) playerSelect.value = n;
     const request = ++profileRequest;
     clearTimeout(profileHydrateTimer);
-    const wireView = (view) => {
+    const wireView = (view, hydrated) => {
       if (request !== profileRequest || !overlay.isConnected || !view || !view.profile) return;
       profileHost.replaceChildren(view.profile);
       (view.tabs || []).forEach((button, tab) => {
         button.onclick = () => {
           clearTimeout(profileHydrateTimer);
           overlay.remove();
-          openPlayerStatsDialog(n, { tab, onReturn: () => {
+          openPlayerStatsDialog(n, { view: hydrated ? view : null, tab, onReturn: () => {
             document.body.appendChild(overlay);
             modal.focus();
             button.focus();
@@ -4604,11 +4604,11 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
     };
     // Primary views stay usable immediately; full profile analytics hydrate only
     // if the user remains on the hub. Achievements never waits on target analytics.
-    wireView(__sqPlayerStatsHubShell(n));
+    wireView(__sqPlayerStatsHubShell(n), false);
     profileHydrateTimer = setTimeout(async () => {
       try{
         const view = await __sqBuildPlayerStatsProfile(n);
-        wireView(view);
+        wireView(view, true);
       }catch(e){
         if (request !== profileRequest || !overlay.isConnected) return;
         console.warn('[SQ] Player profile background load failed', e);
