@@ -1821,8 +1821,16 @@ if (hasSaved){
         try{
           state = Object.assign(JSON.parse(JSON.stringify(baseState)), saved);
           try{ if (typeof __sqNormalizeVsShadowRuntimeState === 'function') __sqNormalizeVsShadowRuntimeState('resume-after-load'); }catch(_){ }
+          // Older recovery caches can already be beyond Round 1 without the
+          // SC-035 marker. Preserve that known completion across later Undo.
+          if(typeof __sqRememberInitialRoundComplete==='function') __sqRememberInitialRoundComplete(0);
           show('game');
-          assignUniqueColors(state.players);
+          // SC-035 keeps already assigned identity colours with the corrected
+          // lineup; normal resume still uses the established palette assignment.
+          const amendedColors=state.__sqInitialOrderAmended===true &&
+            state.players.every(p=>COLOR_PALETTE.includes(p.color)) &&
+            new Set(state.players.map(p=>p.color)).size===state.players.length;
+          if(!amendedColors) assignUniqueColors(state.players);
           await buildEverythingChunked();
           updateUI();
           toast('Resumed last match');
