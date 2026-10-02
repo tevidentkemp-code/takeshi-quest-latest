@@ -6189,7 +6189,7 @@ function __sqV2LiveAveragePair(pIdx, currentRound){
       const darts = Array.isArray(entry.darts) ? entry.darts : [];
       const thrown = darts.filter(d => d != null).length;
       if(!thrown) return acc;
-      let points = Number(entry.roundTotal);
+      let points = entry.roundTotal == null ? NaN : Number(entry.roundTotal);
       if(!Number.isFinite(points)){
         points = darts.reduce((sum, d) => {
           if(d == null) return sum;
@@ -6214,6 +6214,9 @@ function __sqV2LiveAveragePair(pIdx, currentRound){
     const matchAcc = {points:0,darts:0};
     const history = Array.isArray(state.match?.history) ? state.match.history : [];
     history.forEach(game => {
+      // Completion snapshots the current board before the next game resets it.
+      // The existing game token keeps that board from entering MAV twice.
+      if(game?.gameToken != null && Number(game.gameToken) === Number(state.__gameToken || 0)) return;
       const board = Array.isArray(game?.board?.[pIdx]) ? game.board[pIdx] : [];
       board.forEach(entry => addEntry(matchAcc, entry));
     });

@@ -292,6 +292,23 @@ async function verifySc022HudPolish(){
     assert.equal(catchupAverage.game, 37.5, 'GAV keeps every recorded dart when catch-up moves the active round backwards');
     assert.equal(catchupAverage.match, 37.5, 'MAV keeps later played rounds during catch-up');
     assert.equal(catchupAverage.darts, 4, 'MISS and explicit Bounce Out count as thrown darts; untouched skipped rounds do not');
+    const completedAverage = await page.evaluate(() => {
+      const oldScore = state.score[0], oldHistory = state.match.history, oldToken = state.__gameToken;
+      try {
+        const visit = points => ({ darts:[{kind:'S',points}, {kind:'S',points}, {kind:'S',points}], roundTotal:points*3 });
+        state.__gameToken = 1;
+        state.score[0] = [visit(10)];
+        state.match.history = [
+          {gameToken:0,board:[[visit(20)]]},
+          {gameToken:1,board:[[visit(10)]]}
+        ];
+        const pair = __sqV2LiveAveragePair(0, 0);
+        return { game:pair.game, match:pair.mtc, darts:pair.matchDarts };
+      } finally { state.score[0] = oldScore; state.match.history = oldHistory; state.__gameToken = oldToken; }
+    });
+    assert.equal(completedAverage.game, 30, 'GAV retains the just-completed game');
+    assert.equal(completedAverage.match, 45, 'MAV counts a completed current-game snapshot exactly once');
+    assert.equal(completedAverage.darts, 6, 'completion does not duplicate the current three darts in MAV');
     await page.waitForTimeout(1150);
     shots = await waitForV2Shots(page, ['next:', 'idle:', 'idle:']);
     assertOrangeUnthrown(shots, 'next player reset');
