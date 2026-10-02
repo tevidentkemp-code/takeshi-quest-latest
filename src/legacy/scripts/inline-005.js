@@ -29395,20 +29395,21 @@ const SQ_XP = {
       + (matchWon ? this.W.matchWin : 0)
       + (Number(milestones) || 0) * this.W.milestone;
   },
-  _cache: null, _cacheAt: 0, _inflight: null,
+  _cache: null, _cacheAt: 0, _inflight: null, _allAvailable:false,
   async all(force){
     const now = Date.now();
-    if (!force && this._cache && (now - this._cacheAt) < 60000) return this._cache;
+    if (!force && this._cache && (now - this._cacheAt) < 60000) { this._allAvailable = true; return this._cache; }
     if (!force && this._inflight) return this._inflight;
     const SB = window.sb || window.__sb || null;
-    if (!SB || typeof SB.from !== 'function') return this._cache || [];
+    if (!SB || typeof SB.from !== 'function') { this._allAvailable = false; return this._cache || []; }
     const run = (async () => {
       try{
-        const { data, error } = await SB.from('v_player_xp').select('*');
-        if (error || !Array.isArray(data)) return this._cache || [];
+        const { data, error } = await __sqStatsSourceDeadline(SB.from('v_player_xp').select('*'));
+        this._allAvailable = !error && Array.isArray(data);
+        if (!this._allAvailable) return this._cache || [];
         this._cache = data; this._cacheAt = Date.now();
         return data;
-      }catch(_){ return this._cache || []; }
+      }catch(_){ this._allAvailable = false; return this._cache || []; }
     })();
     if (!force) this._inflight = run;
     try{ return await run; }
@@ -29416,33 +29417,39 @@ const SQ_XP = {
       if (!force && this._inflight === run) this._inflight = null;
     }
   },
-  _oneCache: new Map(), _oneInflight: new Map(),
+  _oneCache: new Map(), _oneInflight: new Map(), _oneAvailable: new Map(),
   async _one(field, value, force){
     const raw = String(value || '').trim();
     if (!raw) return null;
     const key = field + ':' + raw.toLowerCase();
     const now = Date.now();
     const cached = this._oneCache.get(key);
-    if (!force && cached && (now - cached.at) < 60000) return cached.row;
+    if (!force && cached && (now - cached.at) < 60000) { this._oneAvailable.set(key, true); return cached.row; }
     if (!force && this._oneInflight.has(key)) return this._oneInflight.get(key);
     const SB = window.sb || window.__sb || null;
-    if (!SB || typeof SB.from !== 'function') return cached ? cached.row : null;
+    if (!SB || typeof SB.from !== 'function') { this._oneAvailable.set(key, false); return cached ? cached.row : null; }
     const run = (async () => {
       try{
         let q = SB.from('v_player_xp').select('*');
         q = field === 'player_id' ? q.eq('player_id', raw) : q.ilike('name', raw);
-        const { data, error } = await q.limit(1);
+        const { data, error } = await __sqStatsSourceDeadline(q.limit(1));
+        this._oneAvailable.set(key, !error && Array.isArray(data));
         if (error || !Array.isArray(data)) return cached ? cached.row : null;
         const row = data[0] || null;
         this._oneCache.set(key, { at:Date.now(), row });
         return row;
-      }catch(_){ return cached ? cached.row : null; }
+      }catch(_){ this._oneAvailable.set(key, false); return cached ? cached.row : null; }
     })();
     if (!force) this._oneInflight.set(key, run);
     try{ return await run; }
     finally{ if (!force && this._oneInflight.get(key) === run) this._oneInflight.delete(key); }
   },
   async forName(name, force){ return this._one('name', name, force); },
+  async forNameState(name, force){
+    const row = await this.forName(name, force);
+    const key = 'name:' + String(name || '').trim().toLowerCase();
+    return { available:!!this._oneAvailable.get(key), row };
+  },
   async forPlayerId(playerId, force){ return this._one('player_id', playerId, force); },
   fmt(n){ return (Number(n) || 0).toLocaleString(); }
 };
@@ -29618,7 +29625,7 @@ const SQ_MISFIRE = {
       if (!playerId) return { available:false, map:{} };
       const SB = window.sb || window.__sb || null;
       if (!SB || typeof SB.from !== 'function') return { available:false, map:{} };
-      const { data, error } = await SB.from('v_player_misfires').select('code,cnt').eq('player_id', playerId);
+      const { data, error } = await __sqStatsSourceDeadline(SB.from('v_player_misfires').select('code,cnt').eq('player_id', playerId));
       if (error || !Array.isArray(data)) return { available:false, map:{} };
       const map = {}; data.forEach(r => { map[r.code] = { cnt:Number(r.cnt) || 0 }; });
       return { available:true, map };
@@ -29779,7 +29786,7 @@ SQ_ACH.playerDirectory = async function(force){
   if (!SB || typeof SB.from !== 'function') return this._playerDirectoryCache || [];
   const run = (async () => {
     try{
-      const { data, error } = await SB.from('v_player_base_xp').select('player_id,name,games_played');
+      const { data, error } = await __sqStatsSourceDeadline(SB.from('v_player_base_xp').select('player_id,name,games_played'));
       if (error || !Array.isArray(data)) return this._playerDirectoryCache || [];
       const rows = data.map(r => ({
         player_id: r.player_id,
@@ -29825,7 +29832,7 @@ SQ_ACH._sourceRows = async function(opts){
     let dgQ = SB.from('v_ach_david_goliath').select('player_id,code,cnt,xp');
     if (opts.playerId){ baseQ = baseQ.eq('player_id', opts.playerId); dgQ = dgQ.eq('player_id', opts.playerId); }
     if (opts.code && !meta){ baseQ = baseQ.eq('code', opts.code); dgQ = dgQ.eq('code', opts.code); }
-    const [base, dg] = await Promise.all([baseQ, dgQ]);
+    const [base, dg] = await Promise.all([__sqStatsSourceDeadline(baseQ), __sqStatsSourceDeadline(dgQ)]);
     if (!base || base.error || !Array.isArray(base.data) || !dg || dg.error || !Array.isArray(dg.data)) return { available:false, rows:[] };
     return { available:true, rows:this._mergeSourceRows(base.data.concat(dg.data)) };
   }catch(_){ return { available:false, rows:[] }; }
@@ -30201,7 +30208,7 @@ window.__sqAchCelebrate = function(){
 };
 
 // Render the trophy case: earned badges bright (with counts), locked badges dim.
-function __sqTrophyCase(earnedMap, available = true){
+function __sqTrophyCase(earnedMap, available = true, loading = false){
   const wrap = document.createElement('div');
   wrap.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
   const badge = (a) => {
@@ -30219,7 +30226,7 @@ function __sqTrophyCase(earnedMap, available = true){
     const nm = document.createElement('div'); nm.textContent = a.name; nm.style.cssText = 'font-size:10px;font-weight:800;letter-spacing:.01em;color:' + (earned ? s.c : 'var(--v3-muted,#98a2b8)') + ';line-height:1.15;';
     b.append(ic, nm);
     if (available) b.onclick = () => { try{ __sqTrophyDetail(a.code, earnedMap); }catch(_){ } };
-    else { b.style.cursor = 'default'; b.title = 'Achievement history is unavailable right now.'; }
+    else { b.style.cursor = 'default'; b.title = loading ? 'Loading achievement history…' : 'Achievement history is unavailable right now.'; }
     // Repeatable trophies show a ×count; milestones show a ✓ tick when unlocked.
     if (earned && !milestone && got.cnt > 1){
       const bc = document.createElement('div'); bc.textContent = '×' + got.cnt;
@@ -30331,7 +30338,7 @@ function __sqMisfireCase(misfireState, xpRow){
   if (!misfireState || !misfireState.available){
     unlocked.textContent = '— / ' + SQ_MISFIRE.CATALOG.length + ' unlocked';
     const unavailable = document.createElement('div'); unavailable.className = 'muted'; unavailable.style.fontSize = '12px';
-    unavailable.textContent = 'Misfire history is unavailable right now.'; card.appendChild(unavailable);
+    unavailable.textContent = misfireState && misfireState.loading ? 'Loading Misfire history…' : 'Misfire history is unavailable right now.'; card.appendChild(unavailable);
   } else {
     const total = SQ_MISFIRE.CATALOG.reduce((sum, x) => sum + Number((map[x.code] || {}).cnt || 0), 0);
     const earnedN = SQ_MISFIRE.CATALOG.filter(x => Number((map[x.code] || {}).cnt || 0) > 0).length;
@@ -30394,7 +30401,7 @@ function __sqBuildAchievementPanel(achState, misfireState, xpRow, reducedMotion,
     vcount.append(vcB, vcS);
     const vbar = document.createElement('div'); vbar.className = 'pp-vault-bar';
     const vfill = document.createElement('span'); vbar.appendChild(vfill);
-    const vsub = document.createElement('div'); vsub.className = 'pp-vault-sub'; vsub.textContent = achAvailable ? ('Trophies unlocked · ' + Math.round(pctDone * 100) + '%') : 'Achievement history unavailable';
+    const vsub = document.createElement('div'); vsub.className = 'pp-vault-sub'; vsub.textContent = achAvailable ? ('Trophies unlocked · ' + Math.round(pctDone * 100) + '%') : (achState && achState.loading ? 'Loading achievement history…' : 'Achievement history unavailable');
     meter.append(vhead, vcount, vbar, vsub);
 
     const shelfEl = document.createElement('div'); shelfEl.className = 'pp-vault-shelf';
@@ -30407,10 +30414,10 @@ function __sqBuildAchievementPanel(achState, misfireState, xpRow, reducedMotion,
       shelfEl.appendChild(chip); chips.push(chip);
     });
     if (shelf.length > MAXSHELF){ const more = document.createElement('div'); more.className = 'pp-vault-more'; more.textContent = '+' + (shelf.length - MAXSHELF) + ' more'; shelfEl.appendChild(more); }
-    if (!shelf.length){ const none = document.createElement('div'); none.className = 'pp-vault-more'; none.textContent = achAvailable ? 'No trophies yet — go earn some!' : 'Achievement history is unavailable right now.'; shelfEl.appendChild(none); }
+    if (!shelf.length){ const none = document.createElement('div'); none.className = 'pp-vault-more'; none.textContent = achAvailable ? 'No trophies yet — go earn some!' : (achState && achState.loading ? 'Loading achievement history…' : 'Achievement history is unavailable right now.'); shelfEl.appendChild(none); }
     vault.append(meter, shelfEl);
     achPanel.appendChild(vault);
-    achPanel.appendChild(__sqTrophyCase(achMap, achAvailable));
+    achPanel.appendChild(__sqTrophyCase(achMap, achAvailable, !!(achState && achState.loading)));
 
     // Misfires are deliberately separate from the positive Trophy Vault.
     // Counts are historical; XP impact is the launch-forward value already
@@ -30433,40 +30440,61 @@ function __sqBuildAchievementPanel(achState, misfireState, xpRow, reducedMotion,
   return achPanel;
 }
 
-async function __sqBuildPlayerAchievementsView(name){
+function __sqPlayerStatsHistory(name, primary, retry=false){
+  const history = primary.history || (primary.history = {});
+  const failed = key => history[key + 'State'] && !history[key + 'State'].available;
+  if (!history.player || (retry && (failed('positive') || failed('misfires')))) history.player = SQ_ACH.playerForName(name).catch(() => null);
+  const source = (key, service) => {
+    if (!history[key] || (retry && failed(key))){
+      history[key + 'State'] = null;
+      history[key] = history.player.then(player => player && player.player_id
+        ? service.forPlayerId(player.player_id) : { available:false, map:{} })
+        .catch(() => ({ available:false, map:{} }))
+        .then(value => { history[key + 'State'] = value; return value; });
+    }
+    return history[key];
+  };
+  return { positive:source('positive', SQ_ACH), misfires:source('misfires', SQ_MISFIRE) };
+}
+
+async function __sqBuildPlayerAchievementsView(name, primary={}){
   const reduced = (() => { try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ return false; } })();
   const instantCount = (el, value) => { if (el) el.textContent = String(value == null ? '' : value); };
-  let player = null;
-  let achState = { available:false, map:{} };
-  let misfireState = { available:false, map:{} };
-  try{ player = await SQ_ACH.playerForName(name); }catch(_){ player = null; }
-  let xpPromise = Promise.resolve(null);
-  if (player && player.player_id){
-    xpPromise = (typeof SQ_XP.forPlayerId === 'function')
-      ? SQ_XP.forPlayerId(player.player_id).catch(()=>null)
-      : Promise.resolve(null);
-    const [as, mf] = await Promise.all([
-      SQ_ACH.forPlayerId(player.player_id).catch(()=>({ available:false, map:{} })),
-      SQ_MISFIRE.forPlayerId(player.player_id).catch(()=>({ available:false, map:{} }))
-    ]);
-    achState = as || { available:false, map:{} };
-    misfireState = mf || { available:false, map:{} };
-  }
-  const achPanel = __sqBuildAchievementPanel(achState, misfireState, null, reduced, instantCount);
-  xpPromise.then(row => {
-    try{
-      const el = achPanel.querySelector('.pp-misfire-xp');
-      if (!el || !row || !Number.isFinite(Number(row.misfire_xp))) return;
-      const value = Number(row.misfire_xp);
-      el.textContent = (value > 0 ? '+' : '') + String(value) + ' XP';
-    }catch(_){}
-  }).catch(()=>{});
+  let achState, misfireState, xpRow = null, host = null, request = 0;
+  const achPanel = document.createElement('div');
+  const render = () => {
+    if (host && !host.isConnected) return;
+    const panel = __sqBuildAchievementPanel(achState, misfireState, xpRow, reduced, instantCount);
+    achPanel.replaceChildren(panel);
+    if ((!achState.available && !achState.loading) || (!misfireState.available && !misfireState.loading)){
+      const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn sq-pill pp-history-retry';
+      retry.textContent = 'Retry unavailable history'; retry.onclick = load; achPanel.appendChild(retry);
+    }
+    if (host) requestAnimationFrame(() => { if (host.isConnected) panel.__ppReplay(); });
+  };
+  const load = async () => {
+    const id = ++request;
+    achState = { available:false, loading:true, map:{} };
+    misfireState = { available:false, loading:true, map:{} }; render();
+    const sources = __sqPlayerStatsHistory(name, primary, true);
+    const histories = [
+      sources.positive.then(value => { if (id === request){ achState = value; render(); } }),
+      sources.misfires.then(value => { if (id === request){ misfireState = value; render(); } })
+    ];
+    Promise.all(histories).then(async () => {
+      if (id !== request || (host && !host.isConnected)) return;
+      const source = await SQ_XP.forNameState(name);
+      if (id !== request || !source.available || (host && !host.isConnected)) return;
+      xpRow = source.row; render();
+    }).catch(() => {});
+  };
+  load();
   return {
-    profile: document.createElement('div'),
-    tabs: [],
-    showTab(host){
-      host.replaceChildren(achPanel);
-      try{ if (typeof achPanel.__ppReplay === 'function') requestAnimationFrame(achPanel.__ppReplay); }catch(_){}
+    profile:document.createElement('div'), tabs:[],
+    showTab(mount){
+      host = mount; mount.replaceChildren(achPanel);
+      const panel = achPanel.firstElementChild;
+      if (panel && typeof panel.__ppReplay === 'function') requestAnimationFrame(() => { if (host.isConnected) panel.__ppReplay(); });
     }
   };
 }
@@ -30494,7 +30522,7 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, 
   const backBtn = document.createElement('button'); backBtn.className = 'btn sq-pill'; backBtn.textContent = 'Back';
   backBtn.onclick = returnToHub;
   footer.appendChild(backBtn);
-  body.innerHTML = '<div class="sq-modal-loading"><div class="sq-loadbar"><span class="sq-loadbar-fill"></span></div></div>';
+  __sqPlayerStatsSourceMessage(body, 'Loading player statistics…');
   modal.append(body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
   __sqStatsArcade(overlay, modal);
   // SC-028: both child controls return to the profile hub; hub Close exits.
@@ -30506,20 +30534,33 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, 
   modal.tabIndex = 0; modal.focus();
   try{
     const tab = Number(opts.tab) || 0;
-    const view = opts.view || (tab === 2
-      ? await __sqBuildPlayerAchievementsView(name)
-      : await __sqBuildPlayerStatsProfile(name));
+    const xpHost = tab === 1 ? __sqPlayerStatsXpHost(name, false, opts.primary) : null;
+    if (tab === 0 && !opts.view){
+      opts.primary = opts.primary || __sqPlayerStatsPrimary(name);
+      const primaryCard = __sqPlayerStatsPrimaryMetrics(name, opts.primary);
+      const phase = document.createElement('div'); __sqPlayerStatsSourceMessage(phase, opts.primary.phase);
+      opts.primary.phaseNodes.add(phase.querySelector('[role=status]'));
+      body.replaceChildren(primaryCard, phase);
+    }
+    const view = xpHost
+      ? { showTab(mount){ mount.replaceChildren(xpHost); } }
+      : (tab === 2 && !(opts.view && opts.view.achievementHistoryAvailable)
+        ? await __sqBuildPlayerAchievementsView(name, opts.primary)
+        : (opts.view || await __sqStatsSourceDeadline(__sqBuildPlayerStatsProfile(name, opts.primary), 15000)));
     if (returned || !overlay.isConnected) return;
     view.showTab(body, tab);
   }catch(e){
     if (returned || !overlay.isConnected) return;
-    body.textContent = 'Player stats could not be loaded. Return to the hub to try again.';
+    const unavailable = document.createElement('div');
+    __sqPlayerStatsSourceMessage(unavailable, 'Player statistics are unavailable right now. Return to the hub to retry.');
+    unavailable.setAttribute('aria-busy', 'false'); unavailable.querySelector('.sq-loadbar')?.remove();
+    body.appendChild(unavailable);
     console.warn('[SQ] Player stats load failed', e);
   }
 };
 
 // Keep the existing markup, active states and panel animations in one place.
-function __sqPlayerStatsView(profile, panels){
+function __sqPlayerStatsView(profile, panels, achievementHistoryAvailable = false){
   const tabBar = document.createElement('div'); tabBar.className = 'pp-tabs';
   const tabs = ['Stats', 'XP', 'Achievements'].map((label, idx) => {
     const t = document.createElement('button'); t.type = 'button'; t.textContent = label;
@@ -30527,7 +30568,7 @@ function __sqPlayerStatsView(profile, panels){
     tabBar.appendChild(t); return t;
   });
   profile.appendChild(tabBar);
-  return { profile, tabs, showTab(host, idx){
+  return { profile, tabs, achievementHistoryAvailable, showTab(host, idx){
     const panel = panels[idx] || panels[0];
     host.replaceChildren(panel);
     tabs.forEach((b, i) => b.classList.toggle('active', i === idx));
@@ -30535,49 +30576,217 @@ function __sqPlayerStatsView(profile, panels){
   } };
 }
 
-function __sqPlayerStatsHubShell(name){
-  const profile = document.createElement('div');
-  const hero = document.createElement('div'); hero.className = 'tag pp-hero';
-  const heroName = document.createElement('div'); heroName.className = 'pp-hero-name'; heroName.textContent = String(name || '').trim() || 'Player';
-  const heroSub = document.createElement('div'); heroSub.className = 'muted pp-hero-nick'; heroSub.textContent = 'Choose Stats, XP or Achievements';
-  hero.append(heroName, heroSub); profile.appendChild(hero);
-  return __sqPlayerStatsView(profile, [document.createElement('div'), document.createElement('div'), document.createElement('div')]);
+function __sqPlayerStatsSetPhase(primary, label){
+  primary.phase = label;
+  primary.phaseNodes.forEach(node => { node.textContent = label; });
 }
 
-// @CANONICAL:PLAYER_STATS_PROFILE_CARDS
-async function __sqBuildPlayerStatsProfile(name){
-  // Supabase client and all calculations below retain their existing sources.
-  const SB = (typeof window !== 'undefined') ? (window.sb || window.__sb || window.supabase || window.supabaseClient || null) : null;
+function __sqStatsSourceDeadline(source, ms=10000){
+  let timer;
+  return Promise.race([
+    Promise.resolve(source),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Player Stats source timed out')), ms); })
+  ]).finally(() => clearTimeout(timer));
+}
 
-  // Helpers
-  const monthKey = d => {
-    const x = (d instanceof Date) ? d : (d ? new Date(d) : null);
-    return x && !Number.isNaN(x.getTime()) ? `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}` : '';
-  };
-  const monthLabel = k => {
-    if (!k) return '—';
-    const [y,m] = k.split('-').map(Number);
-    return new Date(y, m-1, 1).toLocaleString(undefined,{ month:'short', year:'numeric' }).toUpperCase();
-  };
+function __sqPlayerStatsSourceMessage(host, label, retry){
+  const card = document.createElement('div'); card.className = 'tag pp-source-state';
+  const text = document.createElement('p'); text.setAttribute('role', 'status'); text.textContent = label;
+  card.appendChild(text);
+  host.setAttribute('aria-busy', retry ? 'false' : 'true');
+  if (retry){
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'btn sq-pill';
+    button.textContent = 'Retry'; button.onclick = retry; card.appendChild(button);
+  } else {
+    const bar = document.createElement('div'); bar.className = 'sq-loadbar'; bar.setAttribute('aria-hidden', 'true');
+    const fill = document.createElement('span'); fill.className = 'sq-loadbar-fill'; bar.appendChild(fill); card.appendChild(bar);
+  }
+  host.replaceChildren(card);
+}
 
-  // 1) All official games — fetched ONCE and reused for both the player's
-  // slice and the local power-rank fallback (this used to be two full fetches).
-  // Turbo games are excluded here so the whole profile is Standard-Official
-  // only ("official" fetch alone doesn't strip Turbo).
-  const __allGamesNorm = (await __fetchOfficialGames(50000)).map(__normalizeGame)
+function __sqPlayerStatsXpHost(name, progressionOnly=false, primary=null){
+  const host = document.createElement('div'); host.className = progressionOnly ? 'pp-progression' : 'pp-xp-content';
+  let request = 0;
+  const load = async (force=false) => {
+    const id = ++request;
+    __sqPlayerStatsSourceMessage(host, 'Loading XP…');
+    let source;
+    try {
+      const pending = primary && !force ? primary.xp : SQ_XP.forNameState(name, force);
+      if (primary && force) primary.xp = pending;
+      source = await pending;
+    }
+    catch (_) { source = { available:false, row:null }; }
+    if (id !== request) return;
+    const row = source && source.row;
+    if (!source || !source.available || !row || row.total_xp == null || !Number.isFinite(Number(row.total_xp))){
+      __sqPlayerStatsSourceMessage(host, 'XP is unavailable right now. Level and progress will appear when it loads.', () => load(true));
+      return;
+    }
+    host.setAttribute('aria-busy', 'false');
+    if (progressionOnly){
+      const progress = SQ_XP.progress(row.total_xp);
+      host.replaceChildren(__sqXpChip(progress), __sqXpBar(progress));
+    } else {
+      const panel = __sqBuildPlayerXpPanel(row); host.replaceChildren(panel);
+      host.__ppReplay = () => { if (host.isConnected && typeof panel.__ppReplay === 'function') panel.__ppReplay(); };
+      requestAnimationFrame(host.__ppReplay);
+    }
+  };
+  load();
+  return host;
+}
+
+function __sqPlayerStatsHero(name, nick='', tiles=null, primary=null){
+  const hero = document.createElement('div'); hero.className = 'tag pp-hero';
+  const identity = document.createElement('div'); identity.className = 'pp-identity';
+  const avatar = document.createElement('div'); avatar.className = 'pp-identity-avatar'; avatar.setAttribute('aria-hidden', 'true');
+  const player = (window.__sqPlayerStatsPlayers || []).find(p => __sqPlayerStatsKey(p.name) === __sqPlayerStatsKey(name));
+  __sqApplyAvatarSprite(avatar, __sqAvatarIdForPlayer(player ? (player.raw || player) : name));
+  const copy = document.createElement('div'); copy.className = 'pp-identity-copy';
+  const title = document.createElement('div'); title.className = 'pp-hero-name'; title.textContent = name;
+  const sub = document.createElement('div'); sub.className = 'muted pp-hero-nick';
+  sub.textContent = nick || __sqPlayerStatsNickname(name, window.__sqPlayerStatsPlayers || []) || 'Player profile';
+  copy.append(title, sub); identity.append(avatar, copy);
+  hero.append(identity, __sqPlayerStatsXpHost(name, true, primary));
+  if (!tiles){
+    tiles = document.createElement('div'); tiles.className = 'pp-tiles';
+    ['Power Rank', 'Games', 'PL AVG'].forEach(label => {
+      const tile = document.createElement('div'); tile.className = 'pp-tile';
+      const caption = document.createElement('div'); caption.className = 'muted pp-tile-label'; caption.textContent = label;
+      const value = document.createElement('div'); value.className = 'pp-tile-value muted'; value.textContent = 'Loading…';
+      tile.append(caption, value); tiles.appendChild(tile);
+    });
+  }
+  hero.appendChild(tiles);
+  return hero;
+}
+
+function __sqPlayerStatsCountUp(el, txt, dur=650){
+  const __ppReduced = (() => { try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ return false; } })();
+
+    const m = String(txt).match(/^([\d,]+(?:\.\d+)?)([\s\S]*)$/);
+    if (__ppReduced || !m){ el.textContent = txt; return; }
+    const numStr = m[1].replace(/,/g, '');
+    const target = parseFloat(numStr); const rest = m[2] || '';
+    const dec = (numStr.split('.')[1] || '').length;
+    const hadComma = m[1].indexOf(',') >= 0;
+    const t0 = performance.now();
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const cur = target * eased;
+      el.textContent = (hadComma ? Number(cur.toFixed(dec)).toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec }) : cur.toFixed(dec)) + rest;
+      if (p < 1) requestAnimationFrame(step); else el.textContent = txt;
+    };
+    requestAnimationFrame(step);
+}
+
+function __sqPlayerStatsCard(titleTxt, icon, rows, opts={}){
+  const fmtValue = v => (v == null || v === '' || v === '—') ? '—' : String(v);
+  // Value may be a string OR a prebuilt node (rank chips, target bars, …).
+  const statRow = (label, value, muted) => {
+    const row = document.createElement('div');
+    row.className = 'pp-row' + (muted ? ' muted' : '');
+    const l = document.createElement('span'); l.className = 'pp-row-label' + (muted ? ' muted' : ''); l.textContent = label;
+    const v = document.createElement('span'); v.className = 'pp-row-value' + (muted ? ' muted' : '');
+    if (value instanceof Node) v.appendChild(value); else v.textContent = fmtValue(value);
+    row.append(l, v);
+    return row;
+  };
+  const statCard = (titleTxt, icon, rows, opts={}) => {
+    const c = document.createElement('div');
+    c.className = 'tag pp-card';
+    if (opts.muted) { c.style.borderStyle = 'dashed'; c.style.opacity = '.84'; }
+    const head = document.createElement('div');
+    head.className = 'pp-card-head';
+    const ico = document.createElement('span'); ico.className = 'pp-ico'; ico.innerHTML = icon || '';
+    const ttl = document.createElement('strong'); ttl.textContent = titleTxt;
+    head.append(ico, ttl); c.appendChild(head);
+    rows.forEach(r => c.appendChild(statRow(r[0], r[1], opts.muted || r[2])));
+    if (opts.footer){ const f = document.createElement('p'); f.className = 'muted'; f.style.margin = '8px 0 0'; f.style.fontSize = '12px'; f.textContent = opts.footer; c.appendChild(f); }
+    return c;
+  };
+  return statCard(titleTxt, icon, rows, opts);
+}
+
+function __sqBuildPlayerXpPanel(xpRow){
+  const xpProg = SQ_XP.progress(xpRow.total_xp);
+  const __ppReduced = (() => { try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ return false; } })();
+  const countUp = __sqPlayerStatsCountUp;
+  const statCard = __sqPlayerStatsCard;
+  const iconSvg = { achievements:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v3a5 5 0 0 1-10 0V4z"/><path d="M5 5H3v2a4 4 0 0 0 4 4"/><path d="M19 5h2v2a4 4 0 0 1-4 4"/></svg>' };
+  // XP & Level card (lives in the XP tab)
+  const xpCard = statCard('XP & Level', iconSvg.achievements, [
+      ['Level', `${xpProg.level} · ${xpProg.title}`],
+      ['Total XP', SQ_XP.fmt(xpProg.xp)],
+      ['From Points', SQ_XP.fmt(Math.round((xpRow.points_scored||0) * SQ_XP.W.point)) + ` (${SQ_XP.fmt(xpRow.points_scored)} pts)`],
+      ['From Games', SQ_XP.fmt((xpRow.games_played||0) * SQ_XP.W.game) + ` (${xpRow.games_played})`],
+      ['From Wins', SQ_XP.fmt((xpRow.games_won||0) * SQ_XP.W.gameWin + (xpRow.matches_won||0) * SQ_XP.W.matchWin) + ` (${xpRow.games_won}G / ${xpRow.matches_won}M)`],
+      ['From Milestones', SQ_XP.fmt((xpRow.milestones||0) * SQ_XP.W.milestone) + ` (${xpRow.milestones})`],
+      ['From Trophies', SQ_XP.fmt(xpRow.ach_xp||0) + ` (${xpRow.badges||0} badges)`]
+    ], { footer: xpProg.atMax ? 'Max level reached — Legend.' : `${SQ_XP.fmt(xpProg.toNext)} XP to Level ${xpProg.level + 1}.` });
+
+  const xpPanel = document.createElement('div');
+  xpPanel.className = 'pp-cards';
+
+  // ---- XP tab hero: "XP CORE" reactor (unique to the XP tab) ----
+  {
+    const prog = xpProg;
+    const orb = document.createElement('div'); orb.className = 'pp-xporb';
+    const stage = document.createElement('div'); stage.className = 'pp-orb-stage';
+    const canvas = document.createElement('canvas');
+    const center = document.createElement('div'); center.className = 'pp-orb-center';
+    const lvtag = document.createElement('div'); lvtag.className = 'pp-orb-lvtag'; lvtag.textContent = 'Level';
+    const lvnum = document.createElement('div'); lvnum.className = 'pp-orb-level'; lvnum.textContent = String(prog.level);
+    const lvttl = document.createElement('div'); lvttl.className = 'pp-orb-title'; lvttl.textContent = prog.title;
+    center.append(lvtag, lvnum, lvttl); stage.append(canvas, center);
+    const info = document.createElement('div'); info.className = 'pp-orb-info';
+    const ohead = document.createElement('div'); ohead.className = 'pp-orb-head'; ohead.textContent = 'XP Core';
+    const oxp = document.createElement('div'); oxp.className = 'pp-orb-xp'; oxp.textContent = SQ_XP.fmt(prog.xp);
+    const oseg = document.createElement('div'); oseg.className = 'pp-orb-seg';
+    const SEGN = 12, onN = Math.round(prog.pct * SEGN);
+    for (let i = 0; i < SEGN; i++){ const s = document.createElement('i'); if (i < onN) s.className = 'on'; oseg.appendChild(s); }
+    const onext = document.createElement('div'); onext.className = 'pp-orb-next';
+    onext.textContent = prog.atMax ? 'Max level — Legend' : (SQ_XP.fmt(prog.toNext) + ' XP to Level ' + (prog.level + 1));
+    info.append(ohead, oxp, oseg, onext); orb.append(stage, info);
+    xpPanel.appendChild(orb);
+    let raf = 0;
+    xpPanel.__ppReplay = () => {
+      cancelAnimationFrame(raf);
+      if (__ppReduced){ __sqDrawXpReactor(canvas, prog.pct, 1, 0); lvnum.textContent = String(prog.level); oxp.textContent = SQ_XP.fmt(prog.xp); return; }
+      countUp(lvnum, String(prog.level), 850);
+      countUp(oxp, SQ_XP.fmt(prog.xp), 950);
+      const dur = 1400, t0 = performance.now();
+      const loop = (now) => {
+        const el = now - t0, tt = Math.min(1, el / dur);
+        __sqDrawXpReactor(canvas, prog.pct, 1 - Math.pow(1 - tt, 3), el);
+        if (el < 3200) raf = requestAnimationFrame(loop);
+        else __sqDrawXpReactor(canvas, prog.pct, 1, el);
+      };
+      raf = requestAnimationFrame(loop);
+    };
+  }
+
+  xpPanel.appendChild(xpCard);
+  {
+    const ladderCard = document.createElement('div'); ladderCard.className = 'tag';
+    ladderCard.style.cssText = 'padding:12px;border-radius:14px;background:rgba(255,255,255,.052);border:1px solid rgba(255,255,255,.09);display:flex;flex-direction:column;gap:10px;';
+    ladderCard.innerHTML = '<strong style="font-size:15px;color:#f59e0b">🏅 Level Ladder</strong><p class="muted" style="margin:0;font-size:12px">See how you rank against everyone by XP.</p>';
+    const lb = document.createElement('button'); lb.className = 'btn sq-pill'; lb.textContent = 'Open Level Ladder';
+    lb.onclick = () => { try{ if (typeof openXpLeaderboard === 'function') openXpLeaderboard(); }catch(_){ } };
+    ladderCard.appendChild(lb); xpPanel.appendChild(ladderCard);
+  }
+
+  return xpPanel;
+}
+
+async function __sqPlayerStatsGameSummary(name){
+  const __allGamesNorm = (await __sqStatsSourceDeadline(__fetchOfficialGames(50000, true))).map(__normalizeGame)
     .filter(g => !__sqGameLooksTurbo(g.raw));
   const games = __allGamesNorm
     .filter(g => Array.isArray(g.players) && g.players.some(p => String(p||'').trim().toLowerCase()===name.toLowerCase()))
     .sort((a,b)=> (new Date(a.ts) - new Date(b.ts)));
-
-  // Preserve the existing empty state without inventing profile values.
-  if (!games.length){
-    const profile = document.createElement('div');
-    const p = document.createElement('p'); p.className = 'muted';
-    p.textContent = 'No official games found for this player.';
-    profile.appendChild(p);
-    return __sqPlayerStatsView(profile, [p.cloneNode(true), p.cloneNode(true), p.cloneNode(true)]);
-  }
 
   // Index for this player and raw scores
   const idxOf = g => g.players.findIndex(p => String(p||'').trim().toLowerCase()===name.toLowerCase());
@@ -30590,25 +30799,14 @@ async function __sqBuildPlayerStatsProfile(name){
   const PB    = GAMES ? Math.max(...scores) : 0;
   const LOW   = GAMES ? Math.min(...scores) : 0;
 
-  // 2.1) Canonical ranks / windows from DB views
-  // - Power Rank: exact last-56 Official ranking rebuilt from the lightweight DB-derived
-  //   v_player_game_scores_official_clean source, then filtered to the same active 14-day Current rule
-  // - Highest Score place: v_player_best_official_ranked
-  // - Favorite/Worst: v_player_last30_targets (throw-universe)
-  let dbPower = null;
-  let dbBest  = null;
-  let dbFav   = null;
-  let dbStreak = null;
-  let dbRates = null;
-  let savedPlayersRows = [];
-  if (SB && typeof SB.from === 'function'){
-    // All lookups are independent — run them in parallel (this used to be six
-    // sequential round-trips and dominated the dialog's load time).
-    const fkey = name.toLowerCase();
-    const safeQ = q => Promise.resolve(q).catch(e => ({ error: e }));
-    // The canonical last-56 view currently times out in the browser. This lighter DB-derived
-    // source is equivalent for completed Official games: four games x 14 rounds = 56 rounds.
-    // Keep the exact canonical ordering/rank semantics; do not substitute a different ranking view.
+  return { __allGamesNorm, games, scores, GAMES, TOTAL, AVG, PB, LOW };
+}
+
+async function __sqPlayerStatsRankSource(name){
+  const SB = window.sb || window.__sb || null;
+  if (!SB || typeof SB.from !== 'function') return { available:false, dbPower:null, savedRows:[] };
+  let dbPower = null, available = true;
+  const safeQ = q => __sqStatsSourceDeadline(q).catch(error => ({ error }));
     const __sqFetchPlayerStatsPowerRows = async () => {
       const pageSize = 1000;
       const sourceRows = [];
@@ -30620,7 +30818,8 @@ async function __sqBuildPlayerStatsProfile(name){
           .order('game_id', { ascending:false })
           .range(from, from + pageSize - 1);
         if (res && res.error) throw res.error;
-        const page = (res && Array.isArray(res.data)) ? res.data : [];
+        if (!res || !Array.isArray(res.data)) throw new Error('Power Rank source unavailable');
+        const page = res.data;
         sourceRows.push(...page);
         if (page.length < pageSize) break;
       }
@@ -30646,40 +30845,19 @@ async function __sqBuildPlayerStatsProfile(name){
       ranked.forEach((row, idx) => { row.rank_pos = idx + 1; });
       return { data: ranked, error: null };
     };
-    const [savedRows, pr, bs, fv, tr, st] = await Promise.all([
+  const [savedRows, pr] = await Promise.all([
       (async () => {
         let rows = [];
         try{
-          if (typeof cloudListPlayers === 'function') rows = await cloudListPlayers();
+          if (typeof cloudListPlayers === 'function') rows = await __sqStatsSourceDeadline(cloudListPlayers());
         }catch(_){ rows = []; }
         if ((!rows || !rows.length) && typeof getSavedPlayers === 'function'){
           try{ rows = getSavedPlayers() || []; }catch(_){ rows = []; }
         }
         return rows || [];
       })(),
-      safeQ(__sqFetchPlayerStatsPowerRows()),
-      safeQ(SB.from('v_player_best_official_ranked')
-        .select('player_name,best_score,best_score_pos')
-        .ilike('player_name', name)
-        .limit(1)),
-      safeQ(SB.from('v_player_last30_targets')
-        .select('player_key,favorite_number,favorite_pct,worst_number,worst_pct')
-        .eq('player_key', fkey)
-        .limit(1)),
-      (typeof cloudIsTableMissing !== 'function' || !cloudIsTableMissing('v_player_last30_target_rates'))
-        ? safeQ(SB.from('v_player_last30_target_rates')
-            .select('player_key,target_n,hit_pct,throws')
-            .eq('player_key', fkey)
-            .order('hit_pct', { ascending: false }))
-        : Promise.resolve(null),
-      safeQ(SB.from('v_player_target_streaks')
-        .select('player_key,player_name,mode_key,mode_label,dart_streak,round_streak,source_games,last_played_at')
-        .eq('player_key', fkey.trim())
-        .eq('mode_key', 'official')
-        .limit(1))
-    ]);
-
-    savedPlayersRows = savedRows || [];
+      safeQ(__sqFetchPlayerStatsPowerRows())
+  ]);
     try{
       const powerKey = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
       const savedMap = new Map((savedRows || []).map(p => {
@@ -30713,7 +30891,160 @@ async function __sqBuildPlayerStatsProfile(name){
         .sort((a,b) => (b.avg - a.avg) || (b.rounds - a.rounds) || (b.lastMs - a.lastMs) || String(a.player).localeCompare(String(b.player)));
       const mine = rows.find(r => r.playerKey === powerKey(name));
       dbPower = mine ? { player: mine.player, power_rank: mine.avg, power_rank_pos: mine.rankPos || (rows.indexOf(mine) + 1), last_played_at: mine.lastMs || null } : null;
-    }catch(e){ try{ if(window.SQ_DEBUG) console.warn('[SQ] power rank view read failed', e); }catch(_){} }
+    }catch(e){ available = false; try{ if(window.SQ_DEBUG) console.warn('[SQ] power rank view read failed', e); }catch(_){} }
+
+  return { available, dbPower, savedRows };
+}
+
+function __sqPlayerStatsPrimary(name){
+  const games = __sqPlayerStatsGameSummary(name); games.catch(() => {});
+  return {
+    xp:SQ_XP.forNameState(name),
+    phase:'Loading player statistics…', phaseNodes:new Set(),
+    games,
+    rank:__sqPlayerStatsRankSource(name)
+  };
+}
+
+function __sqPlayerStatsPrimaryMetrics(name, primary){
+  const tiles = document.createElement('div'); tiles.className = 'pp-tiles';
+  const values = ['Power Rank', 'Games', 'PL AVG'].map(label => {
+    const tile = document.createElement('div'); tile.className = 'pp-tile';
+    const caption = document.createElement('div'); caption.className = 'muted pp-tile-label'; caption.textContent = label;
+    const value = document.createElement('div'); value.className = 'pp-tile-value'; value.dataset.sourceState = 'loading'; value.textContent = 'Loading…';
+    tile.append(caption, value); tiles.appendChild(tile); return value;
+  });
+  primary.games.then(summary => {
+    delete values[1].dataset.sourceState; delete values[2].dataset.sourceState;
+    values[1].textContent = String(summary.GAMES);
+    values[2].textContent = summary.GAMES ? summary.AVG.toFixed(1) : '—';
+  }).catch(() => { values[1].dataset.sourceState = values[2].dataset.sourceState = 'unavailable'; values[1].textContent = values[2].textContent = 'Unavailable'; });
+  let rankRequest = 0;
+  const loadRank = async (source) => {
+    const id = ++rankRequest;
+    values[0].dataset.sourceState = 'loading'; values[0].textContent = 'Loading…';
+    values[0].parentElement.querySelector('button')?.remove();
+    let result;
+    try{ result = await source; }catch(_){ result = { available:false, dbPower:null }; }
+    if (id !== rankRequest) return;
+    if (result.available) delete values[0].dataset.sourceState; else values[0].dataset.sourceState = 'unavailable';
+    const power = result.dbPower;
+    values[0].textContent = power ? Number(power.power_rank).toFixed(2) + (power.power_rank_pos ? ' (#' + power.power_rank_pos + ')' : '') : (result.available ? '—' : 'Unavailable');
+    if (!result.available){
+      const retry = document.createElement('button'); retry.className = 'btn sq-pill'; retry.type = 'button';
+      retry.textContent = 'Retry rank'; retry.onclick = () => { primary.rank = __sqPlayerStatsRankSource(name); loadRank(primary.rank); };
+      values[0].parentElement.appendChild(retry);
+    }
+  };
+  loadRank(primary.rank);
+  return tiles;
+}
+
+function __sqPlayerStatsHubShell(name){
+  const primary = __sqPlayerStatsPrimary(name);
+  const profile = document.createElement('div'); profile.setAttribute('aria-busy', 'true');
+  profile.appendChild(__sqPlayerStatsHero(String(name || '').trim() || 'Player', '', __sqPlayerStatsPrimaryMetrics(name, primary), primary));
+  const phase = document.createElement('p'); phase.className = 'muted pp-profile-phase'; phase.setAttribute('role', 'status');
+  phase.textContent = primary.phase; primary.phaseNodes.add(phase); profile.appendChild(phase);
+  const view = __sqPlayerStatsView(profile, [document.createElement('div'), document.createElement('div'), document.createElement('div')]);
+  view.primary = primary;
+  return view;
+}
+
+// @CANONICAL:PLAYER_STATS_PROFILE_CARDS
+async function __sqBuildPlayerStatsProfile(name, primary=null){
+  // Supabase client and all calculations below retain their existing sources.
+  const SB = (typeof window !== 'undefined') ? (window.sb || window.__sb || window.supabase || window.supabaseClient || null) : null;
+  // Warm independent canonical sources without making Stats wait for them.
+  primary = primary || __sqPlayerStatsPrimary(name);
+  const xpSource = primary.xp;
+  let xpRow = null;
+  xpSource.then(source => { if (source.available) xpRow = source.row; });
+  let achState = { available:false, loading:true, map:{} };
+  let misfireState = { available:false, loading:true, map:{} };
+  const histories = __sqPlayerStatsHistory(name, primary);
+  const positiveSource = histories.positive;
+  const misfireSource = histories.misfires;
+  positiveSource.then(value => { achState = value; });
+  misfireSource.then(value => { misfireState = value; });
+
+  // Helpers
+  const monthKey = d => {
+    const x = (d instanceof Date) ? d : (d ? new Date(d) : null);
+    return x && !Number.isNaN(x.getTime()) ? `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}` : '';
+  };
+  const monthLabel = k => {
+    if (!k) return '—';
+    const [y,m] = k.split('-').map(Number);
+    return new Date(y, m-1, 1).toLocaleString(undefined,{ month:'short', year:'numeric' }).toUpperCase();
+  };
+
+  // 1) All official games — fetched ONCE and reused for both the player's
+  // slice and the local power-rank fallback (this used to be two full fetches).
+  // Turbo games are excluded here so the whole profile is Standard-Official
+  // only ("official" fetch alone doesn't strip Turbo).
+  const { __allGamesNorm, games, scores, GAMES, TOTAL, AVG, PB, LOW } = await primary.games;
+  // Preserve the existing empty state without inventing profile values.
+  if (!games.length){
+    const profile = document.createElement('div');
+    const p = document.createElement('p'); p.className = 'muted';
+    p.textContent = 'No official games found for this player.';
+    profile.append(__sqPlayerStatsHero(name, '', __sqPlayerStatsPrimaryMetrics(name, primary), primary), p);
+    profile.setAttribute('aria-busy', 'false');
+    const view = __sqPlayerStatsView(profile, [p.cloneNode(true), p.cloneNode(true), p.cloneNode(true)]);
+    view.primary = primary; return view;
+  }
+
+  const idxOf = g => g.players.findIndex(p => String(p||'').trim().toLowerCase()===name.toLowerCase());
+
+  // 2.1) Canonical ranks / windows from DB views
+  // - Power Rank: exact last-56 Official ranking rebuilt from the lightweight DB-derived
+  //   v_player_game_scores_official_clean source, then filtered to the same active 14-day Current rule
+  // - Highest Score place: v_player_best_official_ranked
+  // - Favorite/Worst: v_player_last30_targets (throw-universe)
+  let dbPower = null, rankAvailable = false;
+  const unavailableSources = [];
+  let dbBest  = null;
+  let dbFav   = null;
+  let dbStreak = null;
+  let dbRates = null;
+  let savedPlayersRows = [];
+  if (SB && typeof SB.from === 'function'){
+    // All lookups are independent — run them in parallel (this used to be six
+    // sequential round-trips and dominated the dialog's load time).
+    __sqPlayerStatsSetPhase(primary, 'Loading target analytics…');
+    const fkey = name.toLowerCase();
+    const safeQ = q => __sqStatsSourceDeadline(q).catch(e => ({ error: e }));
+    // The canonical last-56 view currently times out in the browser. This lighter DB-derived
+    // source is equivalent for completed Official games: four games x 14 rounds = 56 rounds.
+    // Keep the exact canonical ordering/rank semantics; do not substitute a different ranking view.
+    const [power, bs, fv, tr, st] = await Promise.all([
+      primary.rank,
+      safeQ(SB.from('v_player_best_official_ranked')
+        .select('player_name,best_score,best_score_pos')
+        .ilike('player_name', name)
+        .limit(1)),
+      safeQ(SB.from('v_player_last30_targets')
+        .select('player_key,favorite_number,favorite_pct,worst_number,worst_pct')
+        .eq('player_key', fkey)
+        .limit(1)),
+      (typeof cloudIsTableMissing !== 'function' || !cloudIsTableMissing('v_player_last30_target_rates'))
+        ? safeQ(SB.from('v_player_last30_target_rates')
+            .select('player_key,target_n,hit_pct,throws')
+            .eq('player_key', fkey)
+            .order('hit_pct', { ascending: false }))
+        : Promise.resolve(null),
+      safeQ(SB.from('v_player_target_streaks')
+        .select('player_key,player_name,mode_key,mode_label,dart_streak,round_streak,source_games,last_played_at')
+        .eq('player_key', fkey.trim())
+        .eq('mode_key', 'official')
+        .limit(1))
+    ]);
+
+    const currentPower = await primary.rank;
+    savedPlayersRows = currentPower.savedRows || [];
+    dbPower = currentPower.dbPower; rankAvailable = currentPower.available;
+    [[bs,'Best-score ranking'], [fv,'Target favourites'], [tr,'Target hit rates'], [st,'Target streaks']].forEach(([source,label]) => { if (source && source.error) unavailableSources.push(label); });
 
     if (bs && bs.error) console.warn('[SQ] best score rank view read failed', bs.error);
     dbBest = (bs && !bs.error && bs.data && bs.data[0]) ? bs.data[0] : null;
@@ -30892,116 +31223,10 @@ if (Array.isArray(myThrowsFromBoards) && myThrowsFromBoards.length) {
   const fav = favCandidates.length ? favCandidates.reduce((m,r)=> r.pct>m.pct?r:m, favCandidates[0]) : null;
   const worst = favCandidates.length ? favCandidates.reduce((m,r)=> r.pct<m.pct?r:m, favCandidates[0]) : null;
 
-// 6) Current Power Rank — the DB view (dbPower) is the single source of
-// truth; this local recomputation runs ONLY when the view is unavailable,
-// so the Quick Stats row can never disagree with the hero tile.
-let myPower = null, myPowerPos = null;
-if (!dbPower){
-const MIN_ROUNDS_QUALIFY = 28;   // 2 games (28 rounds)
-const WINDOW_ROUNDS      = 56;   // last 56 rounds
-
-// All official games (reused from the single fetch at the top)
-const allGames = __allGamesNorm;
-
-// Map game_id -> timestamp (for ordering rounds)
-const gameTs = new Map();
-allGames.forEach(g => {
-  const gid = (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id;
-  if (gid) gameTs.set(gid, g.ts || null);
-});
-
-// Fetch throws for all those games; fallback to reconstruct from boards
-let allThrows = [];
-try {
-  const allIds = allGames
-    .map(g => (g.raw && (g.raw.id || g.raw.game_id)) || g.id || g.game_id)
-    .filter(Boolean);
-  allThrows = await __fetchThrowsForGames(allIds);
-} catch (_) {}
-
-if (!allThrows.length) {
-  // fallback: synthesize from boards
-  allGames.forEach(g => {
-    (g.players || []).forEach(p => {
-      const rows = __throwsFromGamesForPlayer(p, [g]);
-      if (rows && rows.length) allThrows.push(...rows);
-    });
-  });
-}
-
-// Keep only real round rows and finite points
-allThrows = allThrows.filter(t =>
-  typeof t.round_index === 'number' &&
-  t.round_index >= 0 && t.round_index <= 13 &&
-  Number.isFinite(Number(t.points))
-);
-
-// Aggregate to per-player round totals, ordered by (game ts, round index)
-const roundsByPlayer = new Map(); // player -> [{ts, ri, pts}, ...]
-allThrows.forEach(t => {
-  const player = String(t.player || '').trim();
-  if (!player) return;
-  const gid = t.game_id;
-  const ts  = gameTs.get(gid) || null;
-  const ri  = Number(t.round_index || 0);
-  const pts = Number(t.points || 0);
-
-  // key per game+round so multiple darts sum to that round
-  const bucketKey = `${gid}|${ri}`;
-  let list = roundsByPlayer.get(player);
-  if (!list) { list = []; roundsByPlayer.set(player, list); }
-
-  // find or create that round entry
-  let entry = list.find(e => e.key === bucketKey);
-  if (!entry) {
-    entry = { key: bucketKey, ts, ri, sum: 0 };
-    list.push(entry);
-  }
-  entry.sum += pts;
-});
-
-// Build power rows: last 56 rounds -> avg per round; qualify if >= 28 rounds (2 games)
-const powerRows = Array.from(roundsByPlayer.entries()).map(([player, list]) => {
-  // order by time then round index
-  list.sort((a, b) => {
-    const at = a.ts ? new Date(a.ts).getTime() : 0;
-    const bt = b.ts ? new Date(b.ts).getTime() : 0;
-    return (at - bt) || (a.ri - b.ri);
-  });
-
-  const last     = list.slice(-WINDOW_ROUNDS);
-  const n        = last.length;
-  const pts      = last.reduce((s, r) => s + Number(r.sum || 0), 0);
-  const avgRound = n ? (pts / n) : 0;
-  const recentTs = last.length ? (last[last.length - 1].ts || 0) : 0;
-  const qualifies = n >= MIN_ROUNDS_QUALIFY;
-
-  return { player, rounds: n, avgRound, recentTs, qualifies };
-});
-
-// Sort using the same tie-breakers as the Power Rankings table:
-// 1) avg/round ↓, 2) rounds ↓, 3) most-recent ts ↓, 4) player name ↑
-const qualified = powerRows
-  .filter(r => r.qualifies)
-  .sort((a, b) =>
-    (b.avgRound - a.avgRound) ||
-    (b.rounds   - a.rounds)   ||
-    (b.recentTs - a.recentTs) ||
-    String(a.player).localeCompare(String(b.player))
-  );
-
-// My row + absolute position among qualified
-myPower = qualified.find(
-  r => r.player.toLowerCase() === name.toLowerCase()
-) || null;
-
-myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
-}
-
-  // Single-sourced Power Rank position (view first, local fallback)
+  // Current Power Rank uses the same verified source as the hero. A failed
+  // source cannot become a competing position reconstructed from partial boards.
   const powerPosValue = (dbPower && Number.isFinite(Number(dbPower.power_rank_pos)))
-    ? `#${Number(dbPower.power_rank_pos)}`
-    : (myPowerPos ? `#${myPowerPos}` : '—');
+    ? `#${Number(dbPower.power_rank_pos)}` : (rankAvailable ? '—' : 'Unavailable');
 
   // Best-score leaderboard rank (use each player's PB across all games)
   const bestByPlayer = new Map();
@@ -31018,9 +31243,6 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
 
   // ---- Render as a mobile-first player profile screen ----------------------
   const fmtValue = v => (v == null || v === '' || v === '—') ? '—' : String(v);
-  const rankValue = (dbPower && Number.isFinite(Number(dbPower.power_rank)) && Number.isFinite(Number(dbPower.power_rank_pos)))
-    ? `${Number(dbPower.power_rank).toFixed(2)} (#${Number(dbPower.power_rank_pos)})`
-    : '—';
   // Rank falls back to the locally computed PB leaderboard position when the
   // view is unreachable, and drops the "(#—)" noise when neither is known.
   const pbRank = (dbBest && dbBest.best_score_pos) ? dbBest.best_score_pos : myPBPos;
@@ -31065,76 +31287,12 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   profile.style.flexDirection = 'column';
   profile.style.gap = '12px';
 
-  // Count a numeric value up from 0 (skipped under prefers-reduced-motion)
   const __ppReduced = (() => { try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ return false; } })();
-  const countUp = (el, txt, dur=650) => {
-    const m = String(txt).match(/^([\d,]+(?:\.\d+)?)([\s\S]*)$/);
-    if (__ppReduced || !m){ el.textContent = txt; return; }
-    const numStr = m[1].replace(/,/g, '');
-    const target = parseFloat(numStr); const rest = m[2] || '';
-    const dec = (numStr.split('.')[1] || '').length;
-    const hadComma = m[1].indexOf(',') >= 0;
-    const t0 = performance.now();
-    const step = (t) => {
-      const p = Math.min(1, (t - t0) / dur);
-      const eased = 1 - Math.pow(1 - p, 3);
-      const cur = target * eased;
-      el.textContent = (hadComma ? Number(cur.toFixed(dec)).toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec }) : cur.toFixed(dec)) + rest;
-      if (p < 1) requestAnimationFrame(step); else el.textContent = txt;
-    };
-    requestAnimationFrame(step);
-  };
+  const countUp = __sqPlayerStatsCountUp;
 
-  const hero = document.createElement('div');
-  hero.className = 'tag pp-hero';
-  const heroName = document.createElement('div');
-  heroName.textContent = name;
-  heroName.className = 'pp-hero-name';
-  const heroNick = document.createElement('div');
-  heroNick.textContent = nick || 'Player profile';
-  heroNick.className = 'muted pp-hero-nick';
-  const heroTiles = document.createElement('div');
-  heroTiles.className = 'pp-tiles';
-  const tile = (label, value) => {
-    const t = document.createElement('div');
-    t.className = 'pp-tile';
-    const l = document.createElement('div'); l.className = 'muted pp-tile-label'; l.textContent = label;
-    const v = document.createElement('div'); v.className = 'pp-tile-value';
-    countUp(v, fmtValue(value));
-    t.append(l, v);
-    return t;
-  };
-  heroTiles.append(tile('Power Rank', rankValue), tile('Games', GAMES), tile('PL AVG', AVG.toFixed(1)));
+  const heroTiles = __sqPlayerStatsPrimaryMetrics(name, primary);
 
-  // XP / level: a "LV n · TITLE" chip beside the name and a progress bar.
-  let xpProg = null, xpRow = null, achState = { available:false, map:{} }, misfireState = { available:false, map:{} };
-  try{
-    const xr = await SQ_XP.forName(name).catch(()=>null);
-    xpRow = xr || null;
-    if (xpRow){
-      xpProg = SQ_XP.progress(xpRow.total_xp);
-      const [as, mf] = await Promise.all([
-        SQ_ACH.forPlayerId(xpRow.player_id).catch(()=>({ available:false, map:{} })),
-        SQ_MISFIRE.forPlayerId(xpRow.player_id).catch(()=>({ available:false, map:{} }))
-      ]);
-      achState = as || { available:false, map:{} };
-      misfireState = mf || { available:false, map:{} };
-    }
-  }catch(_){ }
-  const achMap = achState.map || {};
-  const misfireMap = misfireState.map || {};
-  if (xpProg){
-    const nameRow = document.createElement('div');
-    nameRow.style.cssText = 'display:flex;align-items:center;gap:10px;width:100%;flex-wrap:nowrap;justify-content:space-between;';
-    const levelChip = __sqXpChip(xpProg);
-    levelChip.style.marginLeft = 'auto';
-    levelChip.style.flex = '0 0 auto';
-    nameRow.append(heroName, levelChip);
-    hero.append(nameRow, heroNick, heroTiles, __sqXpBar(xpProg));
-  } else {
-    hero.append(heroName, heroNick, heroTiles);
-  }
-  profile.appendChild(hero);
+  profile.appendChild(__sqPlayerStatsHero(name, nick, heroTiles, primary));
 
   const cards = document.createElement('div');
   cards.className = 'pp-cards';
@@ -31148,29 +31306,7 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     rivals:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l16 16"/><path d="M7 7h.01"/><path d="M17 17h.01"/></svg>',
     achievements:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v3a5 5 0 0 1-10 0V4z"/><path d="M5 5H3v2a4 4 0 0 0 4 4"/><path d="M19 5h2v2a4 4 0 0 1-4 4"/></svg>'
   };
-  // Value may be a string OR a prebuilt node (rank chips, target bars, …).
-  const statRow = (label, value, muted) => {
-    const row = document.createElement('div');
-    row.className = 'pp-row' + (muted ? ' muted' : '');
-    const l = document.createElement('span'); l.className = 'pp-row-label' + (muted ? ' muted' : ''); l.textContent = label;
-    const v = document.createElement('span'); v.className = 'pp-row-value' + (muted ? ' muted' : '');
-    if (value instanceof Node) v.appendChild(value); else v.textContent = fmtValue(value);
-    row.append(l, v);
-    return row;
-  };
-  const statCard = (titleTxt, icon, rows, opts={}) => {
-    const c = document.createElement('div');
-    c.className = 'tag pp-card';
-    if (opts.muted) { c.style.borderStyle = 'dashed'; c.style.opacity = '.84'; }
-    const head = document.createElement('div');
-    head.className = 'pp-card-head';
-    const ico = document.createElement('span'); ico.className = 'pp-ico'; ico.innerHTML = icon || '';
-    const ttl = document.createElement('strong'); ttl.textContent = titleTxt;
-    head.append(ico, ttl); c.appendChild(head);
-    rows.forEach(r => c.appendChild(statRow(r[0], r[1], opts.muted || r[2])));
-    if (opts.footer){ const f = document.createElement('p'); f.className = 'muted'; f.style.margin = '8px 0 0'; f.style.fontSize = '12px'; f.textContent = opts.footer; c.appendChild(f); }
-    return c;
-  };
+  const statCard = __sqPlayerStatsCard;
   // "168 (#38)" with the rank chip coloured (gold/silver/bronze on the podium)
   const withRank = (mainTxt, pos) => {
     const wrap = document.createElement('span');
@@ -31211,19 +31347,6 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     return box;
   };
 
-  // XP & Level card (lives in the XP tab)
-  const xpCard = statCard('XP & Level', iconSvg.achievements, xpRow ? [
-      ['Level', `${xpProg.level} · ${xpProg.title}`],
-      ['Total XP', SQ_XP.fmt(xpProg.xp)],
-      ['From Points', SQ_XP.fmt(Math.round((xpRow.points_scored||0) * SQ_XP.W.point)) + ` (${SQ_XP.fmt(xpRow.points_scored)} pts)`],
-      ['From Games', SQ_XP.fmt((xpRow.games_played||0) * SQ_XP.W.game) + ` (${xpRow.games_played})`],
-      ['From Wins', SQ_XP.fmt((xpRow.games_won||0) * SQ_XP.W.gameWin + (xpRow.matches_won||0) * SQ_XP.W.matchWin) + ` (${xpRow.games_won}G / ${xpRow.matches_won}M)`],
-      ['From Milestones', SQ_XP.fmt((xpRow.milestones||0) * SQ_XP.W.milestone) + ` (${xpRow.milestones})`],
-      ['From Trophies', SQ_XP.fmt(xpRow.ach_xp||0) + ` (${xpRow.badges||0} badges)`]
-    ] : [
-      ['Level', 'No ranked games yet', true]
-    ], xpRow ? { footer: xpProg.atMax ? 'Max level reached — Legend.' : `${SQ_XP.fmt(xpProg.toNext)} XP to Level ${xpProg.level + 1}.` } : { muted: true });
-
   const highestScoreNode = PB
     ? (pbRank ? withRank(`${PB} `, pbRank) : String(PB))
     : '—';
@@ -31252,13 +31375,19 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     statCard('Rivals', iconSvg.rivals, [
       ['Nemesis', fmtOpp(topNem)],
       ['Favourite Victims', fmtOpp(topBff)]
-    ]),
-    statCard('Rivalry', iconSvg.rivals, [
-      ['Giant Slayer', (achMap.giant_slayer ? `${achMap.giant_slayer.cnt} upset${achMap.giant_slayer.cnt>1?'s':''}` : '—'), !achMap.giant_slayer],
-      ['Nemesis wins', (achMap.nemesis ? `${achMap.nemesis.cnt}` : '—'), !achMap.nemesis],
-      ['Champion', (achMap.champion ? `${achMap.champion.cnt}` : '—'), !achMap.champion]
     ])
   );
+  const rivalryHost = document.createElement('div');
+  const renderRivalry = () => {
+    const map = achState.map || {};
+    const unknown = achState.loading ? 'Loading…' : 'Unavailable';
+    rivalryHost.replaceChildren(statCard('Rivalry', iconSvg.rivals, [
+      ['Giant Slayer', !achState.available ? unknown : (map.giant_slayer ? `${map.giant_slayer.cnt} upset${map.giant_slayer.cnt>1?'s':''}` : '—'), !map.giant_slayer],
+      ['Nemesis wins', !achState.available ? unknown : (map.nemesis ? `${map.nemesis.cnt}` : '—'), !map.nemesis],
+      ['Champion', !achState.available ? unknown : (map.champion ? `${map.champion.cnt}` : '—'), !map.champion]
+    ]));
+  };
+  renderRivalry(); positiveSource.then(renderRivalry); cards.appendChild(rivalryHost);
   // Tournament + Turbo tracking isn't live yet — one slim teaser strip instead
   // of two dead cards full of "Tracking soon" rows.
   {
@@ -31348,60 +31477,42 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
   Array.prototype.forEach.call(cards.children, (c, i) => { c.style.animationDelay = (80 + i * 70) + 'ms'; });
   // ---- Tabbed content: Stats / XP / Achievements ----
   const statsPanel = cards;
-  const xpPanel = document.createElement('div');
-  xpPanel.className = 'pp-cards';
-
-  // ---- XP tab hero: "XP CORE" reactor (unique to the XP tab) ----
-  {
-    const prog = xpProg || { level:1, title:'Rookie', pct:0, xp:0, toNext:0, atMax:false };
-    const orb = document.createElement('div'); orb.className = 'pp-xporb';
-    const stage = document.createElement('div'); stage.className = 'pp-orb-stage';
-    const canvas = document.createElement('canvas');
-    const center = document.createElement('div'); center.className = 'pp-orb-center';
-    const lvtag = document.createElement('div'); lvtag.className = 'pp-orb-lvtag'; lvtag.textContent = 'Level';
-    const lvnum = document.createElement('div'); lvnum.className = 'pp-orb-level'; lvnum.textContent = String(prog.level);
-    const lvttl = document.createElement('div'); lvttl.className = 'pp-orb-title'; lvttl.textContent = prog.title;
-    center.append(lvtag, lvnum, lvttl); stage.append(canvas, center);
-    const info = document.createElement('div'); info.className = 'pp-orb-info';
-    const ohead = document.createElement('div'); ohead.className = 'pp-orb-head'; ohead.textContent = 'XP Core';
-    const oxp = document.createElement('div'); oxp.className = 'pp-orb-xp'; oxp.textContent = SQ_XP.fmt(prog.xp);
-    const oseg = document.createElement('div'); oseg.className = 'pp-orb-seg';
-    const SEGN = 12, onN = Math.round(prog.pct * SEGN);
-    for (let i = 0; i < SEGN; i++){ const s = document.createElement('i'); if (i < onN) s.className = 'on'; oseg.appendChild(s); }
-    const onext = document.createElement('div'); onext.className = 'pp-orb-next';
-    onext.textContent = prog.atMax ? 'Max level — Legend' : (SQ_XP.fmt(prog.toNext) + ' XP to Level ' + (prog.level + 1));
-    info.append(ohead, oxp, oseg, onext); orb.append(stage, info);
-    xpPanel.appendChild(orb);
-    let raf = 0;
-    xpPanel.__ppReplay = () => {
-      cancelAnimationFrame(raf);
-      if (__ppReduced){ __sqDrawXpReactor(canvas, prog.pct, 1, 0); lvnum.textContent = String(prog.level); oxp.textContent = SQ_XP.fmt(prog.xp); return; }
-      countUp(lvnum, String(prog.level), 850);
-      countUp(oxp, SQ_XP.fmt(prog.xp), 950);
-      const dur = 1400, t0 = performance.now();
-      const loop = (now) => {
-        const el = now - t0, tt = Math.min(1, el / dur);
-        __sqDrawXpReactor(canvas, prog.pct, 1 - Math.pow(1 - tt, 3), el);
-        if (el < 3200) raf = requestAnimationFrame(loop);
-        else __sqDrawXpReactor(canvas, prog.pct, 1, el);
-      };
-      raf = requestAnimationFrame(loop);
+  if (unavailableSources.length){
+    const notice = () => {
+      const host = document.createElement('div');
+      __sqPlayerStatsSourceMessage(host, 'Some analytics are unavailable: ' + unavailableSources.join(', ') + '.', () => {
+        host.closest('.modal-backdrop')?.remove(); openPlayerStatsHub(name);
+      });
+      return host;
     };
+    profile.appendChild(notice()); statsPanel.prepend(notice());
   }
+  const xpPanel = __sqPlayerStatsXpHost(name, false, primary);
 
-  xpPanel.appendChild(xpCard);
-  {
-    const ladderCard = document.createElement('div'); ladderCard.className = 'tag';
-    ladderCard.style.cssText = 'padding:12px;border-radius:14px;background:rgba(255,255,255,.052);border:1px solid rgba(255,255,255,.09);display:flex;flex-direction:column;gap:10px;';
-    ladderCard.innerHTML = '<strong style="font-size:15px;color:#f59e0b">🏅 Level Ladder</strong><p class="muted" style="margin:0;font-size:12px">See how you rank against everyone by XP.</p>';
-    const lb = document.createElement('button'); lb.className = 'btn sq-pill'; lb.textContent = 'Open Level Ladder';
-    lb.onclick = () => { try{ if (typeof openXpLeaderboard === 'function') openXpLeaderboard(); }catch(_){ } };
-    ladderCard.appendChild(lb); xpPanel.appendChild(ladderCard);
-  }
-
-  const achPanel = __sqBuildAchievementPanel(achState, misfireState, xpRow, __ppReduced, countUp);
-
-  return __sqPlayerStatsView(profile, [statsPanel, xpPanel, achPanel]);
+  const achPanel = document.createElement('div');
+  const renderHistory = () => {
+    const panel = __sqBuildAchievementPanel(achState, misfireState, xpRow, __ppReduced, countUp);
+    achPanel.replaceChildren(panel);
+    if (achPanel.isConnected && typeof panel.__ppReplay === 'function') requestAnimationFrame(panel.__ppReplay);
+  };
+  achPanel.__ppReplay = () => {
+    const panel = achPanel.firstElementChild;
+    if (achPanel.isConnected && panel && typeof panel.__ppReplay === 'function') panel.__ppReplay();
+  };
+  renderHistory();
+  positiveSource.then(renderHistory);
+  misfireSource.then(renderHistory);
+  xpSource.then(renderHistory);
+  const view = __sqPlayerStatsView(profile, [statsPanel, xpPanel, achPanel]);
+  profile.setAttribute('aria-busy', 'false');
+  view.primary = primary;
+  const showTab = view.showTab;
+  view.showTab = (host, idx) => {
+    if (idx === 2) primary.xp.then(source => { if (source.available){ xpRow = source.row; renderHistory(); } });
+    showTab(host, idx);
+  };
+  Object.defineProperty(view, 'achievementHistoryAvailable', { get:() => !!(achState.available && misfireState.available) });
+  return view;
 }
 
 // [removed: openPlayerDTBDialog alias (orphaned)] audit P5.3 batch 2 — dead/shadowed definition, no live callers
@@ -31432,13 +31543,16 @@ function __sqSetPlayerStatsSelectedName(name){
   try{ if (typeof __sqSetStatsOrigin === 'function') __sqSetStatsOrigin('home', n); }catch(_){}
   return n;
 }
-async function __sqLoadPlayerStatsPlayers(){
+async function __sqLoadPlayerStatsPlayers(strict=false){
   let items = [];
   try{
-    if (typeof cloudListPlayers === 'function') items = await cloudListPlayers();
+    if (typeof cloudListPlayers === 'function') items = await __sqStatsSourceDeadline(cloudListPlayers());
+    else if (strict) throw new Error('Player directory unavailable');
   }catch(e){
+    if (strict) throw e;
     console.warn('[SQ] Player Stats player list load failed', e);
   }
+  if (strict && !Array.isArray(items)) throw new Error('Player directory unavailable');
   const seen = new Set();
   return (Array.isArray(items) ? items : [])
     .map(p => ({ raw:p, name:__sqPlayerStatsNameOf(p), nickname:String((p && (p.nickname || p.nick || p.alias)) || '').trim() }))
@@ -31474,6 +31588,15 @@ window.openXpLeaderboard = async function openXpLeaderboard(){
   modal.tabIndex = 0; modal.focus();
   let rows = [];
   try{ rows = await SQ_XP.all(true); }catch(_){ }
+  if (!overlay.isConnected) return;
+  if (!SQ_XP._allAvailable){
+    const status = document.createElement('div');
+    __sqPlayerStatsSourceMessage(status, 'XP leaderboard is unavailable right now.', () => { overlay.remove(); openXpLeaderboard(); });
+    body.querySelector('#xplbLoading')?.remove(); body.appendChild(status);
+    const back = document.createElement('button'); back.className = 'btn sq-pill'; back.textContent = 'Back';
+    back.onclick = () => { overlay.remove(); __sqGoBackToStatsMain(); }; body.appendChild(back);
+    __sqStatsArcade(overlay, modal); return;
+  }
   rows = (rows || []).filter(r => Number(r.total_xp) > 0).sort((a, b) => Number(b.total_xp) - Number(a.total_xp));
   const loading = body.querySelector('#xplbLoading'); if (loading) loading.remove();
   if (!rows.length){
@@ -31526,7 +31649,7 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
   try{ if (typeof cloudFetchAllGamesAsLocal === 'function') cloudFetchAllGamesAsLocal().catch(function(){}); }catch(_){ }
 
   var overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-  var modal = document.createElement('div'); modal.className = 'modal menu-modal';
+  var modal = document.createElement('div'); modal.className = 'modal menu-modal sq-player-stats-directory';
   var header = document.createElement('div'); header.className = 'menu-modal-header';
   var backBtn = document.createElement('button'); backBtn.className = 'icon-btn'; backBtn.type = 'button'; backBtn.setAttribute('aria-label', 'Back');
   backBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
@@ -31558,7 +31681,11 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
 
   (async function(){
     var players = [];
-    try{ players = await __sqLoadPlayerStatsPlayers(); }catch(_){ players = []; }
+    try{ players = await __sqLoadPlayerStatsPlayers(true); }catch(_){
+      if (overlay.isConnected) __sqPlayerStatsSourceMessage(list, 'Player list is unavailable right now.', () => { close(); window.openPlayerStatsSelect(); });
+      return;
+    }
+    if (!overlay.isConnected) return;
     if (!players.length){
       list.innerHTML = '';
       var p = document.createElement('p'); p.className = 'tag muted'; p.style.padding = '14px'; p.textContent = 'No saved players found.';
@@ -31566,12 +31693,9 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
     }
     window.__sqPlayerStatsPlayers = players;
 
-    // XP map drives the TOP sort + level chips (best-effort; ok if absent).
+    // XP sorting is secondary. The alphabetical directory mounts first.
     var xpByName = {};
-    try{
-      var xrows = (typeof SQ_XP !== 'undefined' && SQ_XP.all) ? await SQ_XP.all() : [];
-      (xrows || []).forEach(function(r){ xpByName[String(r.name || '').trim().toLowerCase()] = Number(r.total_xp) || 0; });
-    }catch(_){ }
+    var xpAvailable = false;
     var xpOf = function(pl){ return xpByName[String(pl.name || '').trim().toLowerCase()] || 0; };
 
     var av = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>';
@@ -31593,6 +31717,26 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
       chipEls[c[0]] = b; chips.appendChild(b);
     });
     controls.append(search, chips);
+    var alphabet = document.createElement('nav'); alphabet.className = 'ps-pick-alphabet'; alphabet.setAttribute('aria-label', 'Player names A to Z');
+    var letterOf = function(name){ return String(name || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().charAt(0).toUpperCase(); };
+    var letterButtons = [];
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(function(letter){
+      var button = document.createElement('button'); button.type = 'button'; button.textContent = letter;
+      button.setAttribute('aria-label', 'Jump to names beginning with ' + letter);
+      button.onclick = function(){
+        if (filter === 'top') {
+          filter = 'all'; Object.keys(chipEls).forEach(function(k){ chipEls[k].classList.toggle('active', k === filter); }); render();
+        }
+        var target = Array.from(listWrap.querySelectorAll('.menu-row')).find(function(row){ return row.dataset.playerLetter === letter; });
+        if (!target) return;
+        var top = body.scrollTop + target.getBoundingClientRect().top - body.getBoundingClientRect().top - controls.getBoundingClientRect().height - 12;
+        body.scrollTo({ top:Math.max(0, top), behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+        target.focus({ preventScroll:true });
+      };
+      letterButtons.push(button); alphabet.appendChild(button);
+    });
+    var xpFeedback = document.createElement('div'); xpFeedback.className = 'muted ps-pick-source'; xpFeedback.setAttribute('role', 'status');
+    controls.append(alphabet, xpFeedback);
     body.appendChild(controls);
     var listWrap = document.createElement('div'); listWrap.className = 'menu-list'; body.appendChild(listWrap);
     search.addEventListener('input', function(){ render(); });
@@ -31604,6 +31748,8 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
       if (q) arr = arr.filter(function(pl){ return (String(pl.name || '') + ' ' + String(pl.nickname || '')).toLowerCase().indexOf(q) >= 0; });
       if (filter === 'top') arr.sort(function(a, b){ return (xpOf(b) - xpOf(a)) || String(a.name).localeCompare(String(b.name)); });
       else arr.sort(function(a, b){ return String(a.name).localeCompare(String(b.name)); });
+      var letters = new Set(arr.map(function(pl){ return letterOf(pl.name); }));
+      letterButtons.forEach(function(button){ button.disabled = !letters.has(button.textContent); });
 
       listWrap.innerHTML = '';
       if (!arr.length){
@@ -31614,6 +31760,10 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
       arr.forEach(function(pl){
         var nk = String(pl.name || '').trim().toLowerCase();
         var row = document.createElement('div'); row.className = 'menu-row'; row.setAttribute('role', 'button'); row.tabIndex = 0;
+        row.dataset.playerLetter = letterOf(pl.name);
+        var selected = nk === __sqPlayerStatsKey(window.__sqPlayerStatsSelectedName);
+        row.classList.toggle('is-selected', selected); row.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        row.setAttribute('aria-label', 'Choose player ' + pl.name);
         var lvl = xpOf(pl) > 0 && typeof SQ_XP !== 'undefined' && SQ_XP.progress ? SQ_XP.progress(xpOf(pl)).level : 0;
         row.innerHTML = '<span class="menu-row-icon">' + av + '</span>'
           + '<span class="menu-row-text"><span class="menu-row-title">' + esc(pl.name) + (filter === 'top' && lvl ? '<span class="ps-pick-lvl">LV ' + lvl + '</span>' : '') + '</span>'
@@ -31635,10 +31785,28 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
           try{ if (typeof __sqSetPlayerStatsSelectedName === 'function') __sqSetPlayerStatsSelectedName(pl.name); }catch(_){ }
           try{ if (typeof window.openPlayerStatsHub === 'function') window.openPlayerStatsHub(pl.name); }catch(e){ console.error('open hub failed', e); }
         };
+        row.onkeydown = function(ev){ if (ev.target === row && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); row.click(); } };
         listWrap.appendChild(row);
       });
     }
     render();
+    var loadXpRanks = async function(force){
+      chipEls.top.disabled = true; xpFeedback.textContent = 'Loading XP rankings…';
+      var rows;
+      try{ rows = await SQ_XP.all(force); xpAvailable = !!SQ_XP._allAvailable; }catch(_){ xpAvailable = false; }
+      if (!overlay.isConnected) return;
+      if (xpAvailable){
+        xpByName = {};
+        (rows || []).forEach(function(row){ xpByName[__sqPlayerStatsKey(row.name)] = Number(row.total_xp) || 0; });
+        xpFeedback.textContent = ''; chipEls.top.disabled = false;
+        if (filter === 'top') render();
+      } else {
+        xpFeedback.textContent = 'XP rankings unavailable. ';
+        var retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn sq-pill'; retry.textContent = 'Retry'; retry.onclick = function(){ loadXpRanks(true); };
+        xpFeedback.appendChild(retry);
+      }
+    };
+    loadXpRanks(false);
   })();
 };
 
@@ -31731,33 +31899,53 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
     if (n && playerSelect.value !== n) playerSelect.value = n;
     const request = ++profileRequest;
     clearTimeout(profileHydrateTimer);
+    let hydration = null, activeTab = 0;
     const wireView = (view, hydrated) => {
       if (request !== profileRequest || !overlay.isConnected || !view || !view.profile) return;
       profileHost.replaceChildren(view.profile);
+      let presentedXp = view.primary && view.primary.xp;
       (view.tabs || []).forEach((button, tab) => {
+        button.classList.toggle('active', tab === activeTab);
         button.onclick = () => {
+          activeTab = tab;
+          (view.tabs || []).forEach((control, index) => control.classList.toggle('active', index === tab));
           clearTimeout(profileHydrateTimer);
           overlay.remove();
-          openPlayerStatsDialog(n, { view: hydrated ? view : null, tab, onReturn: () => {
+          openPlayerStatsDialog(n, { view: hydrated ? view : null, primary:view.primary, tab, onReturn: () => {
+            if (request !== profileRequest) return;
+            if (view.primary && view.primary.xp !== presentedXp){
+              view.profile.querySelector('.pp-progression')?.replaceWith(__sqPlayerStatsXpHost(n, true, view.primary));
+              presentedXp = view.primary.xp;
+            }
             document.body.appendChild(overlay);
-            modal.focus();
-            button.focus();
+            modal.focus(); button.focus();
+            if (!hydrated) scheduleHydration();
           } });
         };
       });
     };
-    // Primary views stay usable immediately; full profile analytics hydrate only
-    // if the user remains on the hub. Achievements never waits on target analytics.
-    wireView(__sqPlayerStatsHubShell(n), false);
-    profileHydrateTimer = setTimeout(async () => {
-      try{
-        const view = await __sqBuildPlayerStatsProfile(n);
-        wireView(view, true);
-      }catch(e){
+    const shell = __sqPlayerStatsHubShell(n);
+    const scheduleHydration = () => {
+      clearTimeout(profileHydrateTimer);
+      profileHydrateTimer = setTimeout(async () => {
+        // Do not start secondary reads for a closed or superseded profile.
         if (request !== profileRequest || !overlay.isConnected) return;
-        console.warn('[SQ] Player profile background load failed', e);
-      }
-    }, 1200);
+        try{
+          hydration = hydration || __sqStatsSourceDeadline(__sqBuildPlayerStatsProfile(n, shell.primary), 15000);
+          wireView(await hydration, true);
+        }catch(e){
+          if (request !== profileRequest || !overlay.isConnected) return;
+          shell.profile.setAttribute('aria-busy', 'false');
+          shell.profile.querySelector('.pp-profile-phase')?.remove();
+          const status = document.createElement('div');
+          __sqPlayerStatsSourceMessage(status, 'Player statistics are unavailable right now. XP and Achievements remain accessible.', syncPlayerHeader);
+          profileHost.appendChild(status);
+          console.warn('[SQ] Player profile background load failed', e);
+        }
+      }, 1200);
+    };
+    // Primary sources start immediately; only the visible hub hydrates analytics.
+    wireView(shell, false); scheduleHydration();
   };
   const selectedName = () => String(currentName || playerSelect.value || '').trim();
   const openForSelected = (fnName, fallbackMessage, extraArgs) => {
@@ -31835,7 +32023,11 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   };
 
   (async () => {
-    hubPlayers = await __sqLoadPlayerStatsPlayers();
+    try{ hubPlayers = await __sqLoadPlayerStatsPlayers(true); }catch(_){
+      if (overlay.isConnected) __sqPlayerStatsSourceMessage(profileHost, 'Player list is unavailable right now.', () => { overlay.remove(); openPlayerStatsHub(currentName); });
+      return;
+    }
+    if (!overlay.isConnected) return;
     if (!hubPlayers.length){
       playerSelect.innerHTML = '<option value="">No saved players</option>';
       playerSelect.disabled = true;
@@ -31863,7 +32055,7 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
     syncPlayerHeader();
   })();
 
-  const close = () => { try{ overlay.remove(); }catch(_){ overlay.parentNode && overlay.parentNode.removeChild(overlay); } };
+  const close = () => { clearTimeout(profileHydrateTimer); ++profileRequest; try{ overlay.remove(); }catch(_){ overlay.parentNode && overlay.parentNode.removeChild(overlay); } };
   // From the picker, Back returns to the name list so you can switch player.
   backBtn.onclick = __fromPicker
     ? () => { close(); try{ if (typeof window.openPlayerStatsSelect === 'function') window.openPlayerStatsSelect(); }catch(_){ } }
@@ -31874,19 +32066,21 @@ modal.tabIndex = 0; modal.focus();
 };
 
 // ==== Player-Stats helpers ====================================================
-async function __fetchOfficialGames(limit=5000){
+async function __fetchOfficialGames(limit=5000, strict=false){
   try{
     // Prefer local fetch if available (already normalized in your app)
     if (typeof cloudFetchAllGamesAsLocal === 'function') {
       const all = await cloudFetchAllGamesAsLocal();
+      if (strict && !Array.isArray(all)) throw new Error('Game history unavailable');
       return (all||[]).filter(g => Array.isArray(g?.players) && g.players.length >= 2);
     }
-    if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) return [];
+    if (typeof ensureCloudInit === 'function' && !ensureCloudInit()) { if (strict) throw new Error('Game history unavailable'); return []; }
     const table = (typeof TABLE_GAMES !== 'undefined' ? TABLE_GAMES : 'games');
     const { data, error } = await sb.from(table).select('*').order('created_at',{ascending:false}).limit(limit);
     if (error) throw error;
+    if (strict && !Array.isArray(data)) throw new Error('Game history unavailable');
     return (data||[]).filter(g => Array.isArray(g?.state?.players) && g.state.players.length >= 2);
-  }catch(e){ console.error('__fetchOfficialGames failed', e); return []; }
+  }catch(e){ if (strict) throw e; console.error('__fetchOfficialGames failed', e); return []; }
 }
 function __gameTs(g){
   return g?.ts || g?.created_at || g?.inserted_at || (g?.meta && (g.meta.ts || g.meta.date)) || null;
@@ -35181,7 +35375,6 @@ document.addEventListener('DOMContentLoaded', function(){
 })();
 
 // === Top Nav (Start / Restart / Stats) — equal widths across full row =======
-
 // [MOVED] equalizeTopNav_v1 moved to @SEC:JS:LEGACY:QUARANTINE (Stage 4A.1b)
 ;
 
