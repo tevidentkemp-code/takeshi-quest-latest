@@ -49,8 +49,19 @@ async function visit(page) {
 }
 
 (async()=>{
-  const {browser,page,consoleErrs}=await H.launch({width:390,height:844});
+  const {browser,ctx,page,consoleErrs}=await H.launch({width:390,height:844});
   try{
+    // Commentary warms unrelated historical results on game start. Give that
+    // exact read an empty offline fixture: WebKit may report an aborted Fetch
+    // as a pageerror even when the commentary engine handles the rejection.
+    // Every other Supabase request still hits the harness's network blockade.
+    await ctx.route('**/rest/v1/v_player_game_scores_official_clean?**',route=>{
+      const url=new URL(route.request().url());
+      if(route.request().method()==='GET' && url.searchParams.get('select')==='game_id,ts,player_index,player_name,score' && url.searchParams.get('limit')==='260'){
+        return route.fulfill({status:200,contentType:'application/json',body:'[]'});
+      }
+      return route.abort('failed');
+    });
     await H.boot(page,{settle:1200});
     assert(await page.evaluate(()=>typeof __sqInitialOrderAmendEligibility==='function'),'SC-035 correction is missing');
 
@@ -137,8 +148,8 @@ async function visit(page) {
     await visit(page);
     assert.equal((await snapshot(page)).round,1,'Skip caused a duplicate first-round visit');
 
-    // A rebuild is one guarded transition: repeated Apply, Escape and score
-    // entry cannot interleave darts or leave a partially reordered game.
+    // A rebuild is one guarded transition: repeated Apply, Escape, Undo and
+    // score/Skip entry cannot interleave or hang on the legacy miss loop.
     await seed(page,3);await page.evaluate(()=>recordThrow({kind:'S'}));
     const beforeBusy=await snapshot(page);await openAmend(page);await rotateDraft(page,3);
     await page.evaluate(()=>{
@@ -149,7 +160,13 @@ async function visit(page) {
     await page.waitForFunction(()=>window.__sqInitialOrderApplying===true);
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('.modal-throworder-amend').count(),1,'Escape dismissed a correction during the guarded rebuild');
-    await page.evaluate(()=>{recordThrow({kind:'S'});__sqSkipAbsentVisit();document.querySelector('.modal-throworder-amend .to-start').click();});
+    await page.evaluate(()=>{
+      recordThrow({kind:'S'});__sqSkipAbsentVisit();undo();missGo();
+      const skip=document.querySelector('#pad .dtActBtn.skip');
+      if(!skip) throw new Error('LiveV2 generic Skip control is missing');
+      skip.click();
+      document.querySelector('.modal-throworder-amend .to-start').click();
+    });
     const duringBusy=await snapshot(page);
     assert.deepEqual(duringBusy.values,beforeBusy.values,'Score entry interleaved with the correction');
     assert.deepEqual(duringBusy.history,beforeBusy.history,'Repeated Apply/score entry duplicated canonical history');

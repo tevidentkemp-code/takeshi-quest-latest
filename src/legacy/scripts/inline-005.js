@@ -19287,6 +19287,7 @@ function recomputeMatchAggHitsForPlayer(pIdx){
 }
 
 function undo(){
+  if(window.__sqInitialOrderApplying) return;
   if (!state.history.length) {
     toast('Nothing to undo');
     return;
@@ -19375,6 +19376,7 @@ function undo(){
 }
 
 function missGo(){
+  if(window.__sqInitialOrderApplying) return;
   if (state.finished || state.suddenDeath.active) return;
   if (typeof __sqVsShadowCurrentPlayerIsShadow === 'function' && __sqVsShadowCurrentPlayerIsShadow()) {
     if (typeof __sqHandleVsShadowManualShadowInput === 'function') __sqHandleVsShadowManualShadowInput('missGo');
@@ -20846,6 +20848,7 @@ function __sqAdvanceAmendedInitialRound(pIdx,rIdx){
   return true;
 }
 async function __sqApplyInitialOrderAmendment(order,guard){
+  if(window.__sqInitialOrderApplying) return false;
   const gate=__sqInitialOrderAmendEligibility();
   const unchanged=guard && Number(state.__gameToken||0)===guard.token &&
     JSON.stringify(state.players)===guard.players && state.history.length===guard.history &&
