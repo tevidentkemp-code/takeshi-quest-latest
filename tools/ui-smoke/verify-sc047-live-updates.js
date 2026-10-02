@@ -165,6 +165,57 @@ fs.mkdirSync(out, { recursive: true });
     assert(twoLine.hasMeta && twoLine.hasResult, 'game row must expose separate mode/time and scoreline blocks');
     assert(twoLine.resultTop >= twoLine.metaBottom - 1, 'player names/scoreline must start on the line below CLA / time');
 
+    // Regression: once 6-10 structured rows are populated, the fixed VIDE
+    // viewport must not squeeze rows together or leave the top row clipped.
+    // Keep this on the real scheduler so it covers the same repeated shift/type
+    // path used on Home rather than a synthetic DOM-only layout.
+    const geometryLines = Array.from({ length: 9 }, (_, i) =>
+      `CLA / 22:${String(40 + i).padStart(2, '0')} GEOM${i + 1} (200) bts TESTER (180)`
+    );
+    await page.evaluate((lines) => {
+      lines.forEach(line => window.__homeLivePrinterInjectLine(line));
+      if (window.__homeLivePrinterState) window.__homeLivePrinterState.hold = 0;
+    }, geometryLines);
+    await page.waitForFunction((expected) => {
+      const text = document.getElementById('homeLivePrinterRows')?.textContent || '';
+      return expected.every(token => text.includes(token));
+    }, geometryLines.map((_, i) => `GEOM${i + 1}`), { timeout: 30000 });
+    await page.click('#homeLivePauseBtn');
+    await page.waitForTimeout(800);
+
+    const denseGeometry = await page.evaluate(() => {
+      const mid = document.querySelector('#homeLivePrinter .lp-mid');
+      const table = document.querySelector('#homeLivePrinter .lp-table');
+      const midRect = mid?.getBoundingClientRect() || null;
+      const tableRect = table?.getBoundingClientRect() || null;
+      const populated = Array.from(document.querySelectorAll('#homeLivePrinterRows tr.lp-row'))
+        .filter(row => (row.textContent || '').trim())
+        .map(row => {
+          const rect = row.getBoundingClientRect();
+          return {
+            text: (row.textContent || '').trim(),
+            top: rect.top,
+            bottom: rect.bottom,
+            height: rect.height
+          };
+        });
+      return { midRect, tableRect, populated };
+    });
+    console.log('SC-047 dense row geometry', JSON.stringify(denseGeometry));
+    const geomRows = denseGeometry.populated.filter(row => /GEOM\d+/.test(row.text));
+    assert(geomRows.length >= 9, 'dense regression must retain all nine injected structured rows');
+    assert(denseGeometry.midRect && denseGeometry.tableRect, 'dense regression requires VIDE viewport geometry');
+    assert(geomRows.every(row => row.height >= 26),
+      'structured game rows must retain readable two-line height after 6+ populated rows');
+    for (let i = 1; i < geomRows.length; i++) {
+      assert(geomRows[i].top >= geomRows[i - 1].bottom - 0.5,
+        'populated VIDE rows must never overlap or bunch together');
+    }
+    assert(geomRows[0].top >= denseGeometry.midRect.top - 1,
+      'first populated VIDE row must remain fully inside the top of the feed viewport');
+    assert(geomRows[geomRows.length - 1].bottom <= denseGeometry.midRect.bottom + 1,
+      'last populated VIDE row must remain fully inside the bottom of the feed viewport');
+
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.click('#homeLivePauseBtn');
     let state = await page.evaluate(() => ({
