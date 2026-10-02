@@ -70,7 +70,7 @@
       state.currentRound=0; state.currentPlayer=0; state.currentDart=0; state.history=[]; state.finished=false;
     }catch(e){ console.error('[SQ] reset game failed',e); }
   }
-  function doRestartGame(){ window.__sqConfirm({ title:'Restart Game', message:'Restart game? This clears current game data and returns to throw order.' }, function(){ resetCurrentGameKeepPlayers(); try{save();}catch(_){} try{ if(typeof startNewGame==='function') startNewGame(); else if(typeof restartGameSafe==='function') restartGameSafe(); }catch(e){console.error(e);} }); }
+  function doRestartGame(){ if(typeof __sqNewGamePlayerCountAllowed==='function' && !__sqNewGamePlayerCountAllowed()) return; window.__sqConfirm({ title:'Restart Game', message:'Restart game? This clears current game data and returns to throw order.' }, function(){ resetCurrentGameKeepPlayers(); try{save();}catch(_){} try{ if(typeof startNewGame==='function') startNewGame(); else if(typeof restartGameSafe==='function') restartGameSafe(); }catch(e){console.error(e);} }); }
   function doEndGame(){ window.__sqConfirm({ title:'End Game', message:'End game? Current game data will be cleared and you will go to the end-game screen.' }, function(){ resetCurrentGameKeepPlayers(); try{save();}catch(_){} try{ if(typeof showLeaderboard==='function') showLeaderboard(); else if(typeof _showPageSafe==='function') _showPageSafe('leaderboard'); }catch(e){console.error(e);} }); }
   function doEndMatch(){ window.__sqConfirm({ title:'End Match', message:'End match? This will clear the current match state and return to the start screen.' }, function(){ try{ clearTournamentRuntime('end match'); state=JSON.parse(JSON.stringify(baseState)); save(); }catch(_){} try{ if(typeof navigateToStartScreen==='function') navigateToStartScreen(); else show('details'); }catch(_){ } setTimeout(function(){try{ if(typeof arrangeStartActions==='function') arrangeStartActions(); ensureHomePanels(); }catch(_){ }},80); }); }
 
@@ -81,7 +81,7 @@
       var players=Array.isArray(state.players)?state.players:[];
       var gameNumber=Number(state&&state.match&&state.match.gameNumber||1);
       if(gameNumber>1) return {ok:false, reason:'Mid-game late entry is only available in Game 1.'};
-      if(players.length>=6) return {ok:false, reason:'Maximum 6 players.'};
+      if(players.length>=5) return {ok:false, reason:'Maximum 5 players.'};
       try{ if(typeof __sqIsVsShadowRuntime==='function' && __sqIsVsShadowRuntime()) return {ok:false, reason:'Not available in Vs Shadow.'}; }catch(_){}
       try{
         var m=state.match||{};

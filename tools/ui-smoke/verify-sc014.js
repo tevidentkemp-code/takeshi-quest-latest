@@ -41,7 +41,7 @@ async function openMode(page, mode) {
     await openMode(page, 'classic');
     let s = await info(page);
     check('Classic empty setup explains the minimum', !s.ready && /2/.test(s.hint));
-    check('Classic mode and roster count visible', s.mode === 'CLASSIC' && s.count === '0 / 6 selected');
+    check('Classic mode and roster count visible', s.mode === 'CLASSIC' && s.count === '0 / 5 selected');
     await screenshot(page, 'sc014-empty-mobile');
     await page.click('#msAddGuestBtn');
     check('Adding a guest focuses the new name', await page.evaluate(() => document.activeElement === document.querySelector('.ms-player-input')));
@@ -57,14 +57,14 @@ async function openMode(page, mode) {
       return parseFloat(getComputedStyle(input).fontSize) >= 16 && remove.width >= 44 && remove.height >= 44;
     }));
     await screenshot(page, 'sc014-ready-mobile');
-    await H.addGuests(page, ['QA CHARLIE','QA DELTA','QA ECHO','QA FOXTROT']);
+    await H.addGuests(page, ['QA CHARLIE','QA DELTA','QA ECHO']);
     s = await info(page);
-    check('Six players disable both add controls and explain why', s.players === 6 && s.guestsDisabled && s.savedDisabled && /6/.test(s.hint));
+    check('Five players disable both add controls and explain why', s.players === 5 && s.guestsDisabled && s.savedDisabled && /5/.test(s.hint));
     await page.evaluate(() => __msAddGuest());
-    check('Direct guest-add cannot bypass six-player cap', (await info(page)).players === 6);
+    check('Direct guest-add cannot bypass five-player cap', (await info(page)).players === 5);
     await page.locator('.ms-remove').last().click();
     s = await info(page);
-    check('Removing a player re-enables both add controls', s.players === 5 && !s.guestsDisabled && !s.savedDisabled);
+    check('Removing a player re-enables both add controls', s.players === 4 && !s.guestsDisabled && !s.savedDisabled);
     await page.click('#msAddGuestBtn');
     s = await info(page);
     check('Unnamed guests keep existing exclusion behaviour explicit', s.ready && /unnamed guest.*left out/.test(s.hint));
