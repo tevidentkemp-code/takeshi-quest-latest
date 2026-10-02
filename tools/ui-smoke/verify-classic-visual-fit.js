@@ -177,8 +177,8 @@ async function verifySc022HudPolish(){
       assert(layout.shotSquares, `${size.width}px target squares keep their original square footprint`);
       assert(layout.miniHeight >= 47.5 && layout.miniHeight <= 49.5, `${size.width}px average strip keeps its 48px footprint`);
       assert(layout.equalMetricWidths, `${size.width}px average metrics keep equal widths`);
-      assert(layout.metrics.every(metric => metric.direction === 'column' && metric.labelAbove && metric.centred), `${size.width}px 3AV/MAV labels stack above centred values`);
-      assert(layout.metrics.every(metric => metric.valueFont >= 11.5 && metric.valueFont >= metric.labelFont + 4), `${size.width}px 3AV/MAV values are visibly larger than their labels`);
+      assert(layout.metrics.every(metric => metric.direction === 'column' && metric.labelAbove && metric.centred), `${size.width}px GAV/MAV labels stack above centred values`);
+      assert(layout.metrics.every(metric => metric.valueFont >= 11.5 && metric.valueFont >= metric.labelFont + 4), `${size.width}px GAV/MAV values are visibly larger than their labels`);
       assert.deepEqual(layout.actions.map(action => action.icon), ['⊘','◀◀','▶▶'], `${size.width}px action glyphs`);
       assert(layout.actions.every(action => action.direction === 'column' && action.vertical && action.centred && action.fits), `${size.width}px action icons stack above labels inside existing tap targets`);
       assert(layout.actions.find(action => action.name === 'miss').iconFont >= 18.5, `${size.width}px MISS symbol is enlarged and remains inside its button`);
@@ -196,15 +196,33 @@ async function verifySc022HudPolish(){
     shots = await waitForV2Shots(page, ['done:S', 'next:', 'idle:']);
     assertOrangeUnthrown(shots, 'after Dart 1');
     assert(shots[0].classes.includes('single'), 'Dart 1 uses the Beta single-hit mapping');
+    let liveAverages = await page.evaluate(() => {
+      const pair = __sqV2LiveAveragePair(0, state.currentRound);
+      return { expectedGame:__sqFmtAvg(pair.game), expectedMatch:__sqFmtAvg(pair.mtc), actualGame:document.getElementById('v2Mini3R0').textContent, actualMatch:document.getElementById('v2MiniMtc0').textContent, darts:pair.darts, matchDarts:pair.matchDarts };
+    });
+    assert.equal(liveAverages.actualGame, '30', 'GAV updates immediately after Dart 1 using three-dart pace');
+    assert.equal(liveAverages.actualMatch, '30', 'MAV updates immediately after Dart 1');
+    assert.equal(liveAverages.darts, 1, 'Game average denominator counts Dart 1 immediately');
+    assert.equal(liveAverages.matchDarts, 1, 'Match average denominator counts Dart 1 immediately');
 
     await page.locator('#pad [data-score-label="Double"]').click();
     shots = await waitForV2Shots(page, ['done:S', 'done:D', 'next:']);
     assertOrangeUnthrown(shots, 'after Dart 2');
     assert(shots[1].classes.includes('double'), 'Dart 2 uses the Beta double-hit mapping');
+    liveAverages = await page.evaluate(() => {
+      const pair = __sqV2LiveAveragePair(0, state.currentRound);
+      return { actualGame:document.getElementById('v2Mini3R0').textContent, actualMatch:document.getElementById('v2MiniMtc0').textContent, darts:pair.darts };
+    });
+    assert.equal(liveAverages.actualGame, '45', 'GAV updates immediately after Dart 2');
+    assert.equal(liveAverages.actualMatch, '45', 'MAV updates immediately after Dart 2');
+    assert.equal(liveAverages.darts, 2, 'Average denominator counts exactly two darts after Dart 2');
 
     await page.locator('#pad .dtActBtn.undo').click();
     shots = await waitForV2Shots(page, ['done:S', 'next:', 'idle:']);
     assertOrangeUnthrown(shots, 'after Undo restores Dart 2');
+    liveAverages = await page.evaluate(() => ({ gav:document.getElementById('v2Mini3R0').textContent, mav:document.getElementById('v2MiniMtc0').textContent }));
+    assert.equal(liveAverages.gav, '30', 'Undo restores GAV immediately');
+    assert.equal(liveAverages.mav, '30', 'Undo restores MAV immediately');
     await page.locator('#pad .dtActBtn.miss').click();
     shots = await waitForV2Shots(page, ['done:S', 'done:X', 'next:']);
     assertOrangeUnthrown(shots, 'after MISS');
@@ -220,13 +238,77 @@ async function verifySc022HudPolish(){
     await page.waitForFunction(() => state.currentPlayer === 1 && state.currentRound === 0 && state.currentDart === 0);
     shots = await waitForV2Shots(page, ['done:S', 'done:D', 'done:T']);
     assert(shots[2].classes.includes('treble'), 'Dart 3 uses the Beta treble-hit mapping');
-    const liveAverages = await page.evaluate(() => {
+    liveAverages = await page.evaluate(() => {
       const pair = __sqV2LiveAveragePair(0, state.currentRound);
-      return {expected3:__sqFmtAvg(pair.r3), expectedMatch:__sqFmtAvg(pair.mtc), actual3:document.getElementById('v2Mini3R0').textContent, actualMatch:document.getElementById('v2MiniMtc0').textContent};
+      return {expectedGame:__sqFmtAvg(pair.game), expectedMatch:__sqFmtAvg(pair.mtc), actualGame:document.getElementById('v2Mini3R0').textContent, actualMatch:document.getElementById('v2MiniMtc0').textContent};
     });
-    assert.notEqual(liveAverages.actual3, '–', '3AV updates after a completed round');
-    assert.equal(liveAverages.actual3, liveAverages.expected3, '3AV display keeps the existing calculation');
-    assert.equal(liveAverages.actualMatch, liveAverages.expectedMatch, 'MAV display keeps the existing calculation');
+    assert.equal(liveAverages.actualGame, '60', 'GAV lands on the same completed-round value after Dart 3');
+    assert.equal(liveAverages.actualMatch, '60', 'MAV lands on the same completed-round value after Dart 3');
+    assert.equal(liveAverages.actualGame, liveAverages.expectedGame, 'GAV display keeps the shared calculation');
+    assert.equal(liveAverages.actualMatch, liveAverages.expectedMatch, 'MAV display keeps the shared calculation');
+
+    const matchAverage = await page.evaluate(() => {
+      const oldHistory = state.match.history;
+      const oldScore = state.score[0];
+      const oldRound = state.currentRound;
+      try {
+        state.match.history = [{
+          totals:[60,0],
+          board:[[
+            { darts:[{kind:'S',points:20},{kind:'S',points:20},{kind:'S',points:20}], roundTotal:60 }
+          ],[]]
+        }];
+        state.score[0] = [{
+          darts:[{kind:'S',points:10},null,null],
+          roundTotal:10
+        }];
+        state.currentRound = 0;
+        const pair = __sqV2LiveAveragePair(0, 0);
+        return { r3:pair.r3, game:pair.game, mtc:pair.mtc, darts:pair.darts, matchDarts:pair.matchDarts };
+      } finally {
+        state.match.history = oldHistory;
+        state.score[0] = oldScore;
+        state.currentRound = oldRound;
+      }
+    });
+    assert.equal(matchAverage.r3, 30, 'internal 3AV helper remains available for existing consumers');
+    assert.equal(matchAverage.game, 30, 'current-game three-dart average is available from the shared helper');
+    assert.equal(matchAverage.mtc, 52.5, 'MAV includes completed match games plus the current dart');
+    assert.equal(matchAverage.darts, 1, 'current-game average denominator remains one dart');
+    assert.equal(matchAverage.matchDarts, 4, 'MAV denominator includes three historical darts plus the current dart');
+    const catchupAverage = await page.evaluate(() => {
+      const oldScore = state.score[0], oldHistory = state.match.history;
+      try {
+        state.match.history = [];
+        state.score[0] = [
+          { darts:[{kind:'S',points:10},{kind:'X',points:0}, {kind:'X',points:0,bounceOut:true}], roundTotal:10 },
+          { darts:[], roundTotal:0, skipped:true },
+          { darts:[{kind:'D',points:40},null,null], roundTotal:40 }
+        ];
+        const pair = __sqV2LiveAveragePair(0, 0);
+        return { game:pair.game, match:pair.mtc, darts:pair.darts };
+      } finally { state.score[0] = oldScore; state.match.history = oldHistory; }
+    });
+    assert.equal(catchupAverage.game, 37.5, 'GAV keeps every recorded dart when catch-up moves the active round backwards');
+    assert.equal(catchupAverage.match, 37.5, 'MAV keeps later played rounds during catch-up');
+    assert.equal(catchupAverage.darts, 4, 'MISS and explicit Bounce Out count as thrown darts; untouched skipped rounds do not');
+    const completedAverage = await page.evaluate(() => {
+      const oldScore = state.score[0], oldHistory = state.match.history, oldToken = state.__gameToken;
+      try {
+        const visit = points => ({ darts:[{kind:'S',points}, {kind:'S',points}, {kind:'S',points}], roundTotal:points*3 });
+        state.__gameToken = 1;
+        state.score[0] = [visit(10)];
+        state.match.history = [
+          {gameToken:0,board:[[visit(20)]]},
+          {gameToken:1,board:[[visit(10)]]}
+        ];
+        const pair = __sqV2LiveAveragePair(0, 0);
+        return { game:pair.game, match:pair.mtc, darts:pair.matchDarts };
+      } finally { state.score[0] = oldScore; state.match.history = oldHistory; state.__gameToken = oldToken; }
+    });
+    assert.equal(completedAverage.game, 30, 'GAV retains the just-completed game');
+    assert.equal(completedAverage.match, 45, 'MAV counts a completed current-game snapshot exactly once');
+    assert.equal(completedAverage.darts, 6, 'completion does not duplicate the current three darts in MAV');
     await page.waitForTimeout(1150);
     shots = await waitForV2Shots(page, ['next:', 'idle:', 'idle:']);
     assertOrangeUnthrown(shots, 'next player reset');
@@ -495,7 +577,7 @@ async function verifyTrainingRoute(){
     assert(await page.locator('#liveV2Panel .v2Total').allTextContents().then(v=>v.some(x=>Number(x)>0)), 'score totals update');
     console.log('PASS score totals update after a real button press');
     assert.equal(await page.locator('#liveV2Panel .v2MiniAvg').count(), 2, 'one mini-average strip per player');
-    assert((await page.locator('#liveV2Panel .v2MiniAvg').first().innerText()).includes('3AV'), '3AV label present');
+    assert((await page.locator('#liveV2Panel .v2MiniAvg').first().innerText()).includes('GAV'), 'GAV label present');
     assert((await page.locator('#liveV2Panel .v2MiniAvg').first().innerText()).includes('MAV'), 'MAV label present');
     const avgAttachGap = await page.evaluate(() => {
       const score=document.querySelector('#liveV2Panel .v2ScoreBox[data-p="0"]')?.getBoundingClientRect();
@@ -520,8 +602,9 @@ async function verifyTrainingRoute(){
         await new Promise(resolve => setTimeout(resolve, 140));
         return {
           pairR3: __sqFmtAvg(pair.r3),
+          pairGame: __sqFmtAvg(pair.game),
           pairMtc: __sqFmtAvg(pair.mtc),
-          r3: document.getElementById('v2Mini3R0')?.textContent || '',
+          gav: document.getElementById('v2Mini3R0')?.textContent || '',
           mtc: document.getElementById('v2MiniMtc0')?.textContent || ''
         };
       } finally {
@@ -532,12 +615,12 @@ async function verifyTrainingRoute(){
         await new Promise(resolve => setTimeout(resolve, 140));
       }
     });
-    assert.equal(miniAv.pairR3, '36', '3R helper uses the latest three completed rounds');
+    assert.equal(miniAv.pairR3, '36', 'internal 3R helper uses the latest three completed rounds');
     assert.equal(miniAv.pairMtc, '34.5', 'MTC helper uses every completed round');
-    assert.notEqual(miniAv.pairR3, miniAv.pairMtc, '3AV and MAV fixtures remain independently testable');
-    assert.equal(miniAv.r3, miniAv.pairR3, 'rendered 3AV matches helper');
+    assert.equal(miniAv.pairGame, miniAv.pairMtc, 'GAV and MAV match when no previous match game exists');
+    assert.equal(miniAv.gav, miniAv.pairGame, 'rendered GAV matches helper');
     assert.equal(miniAv.mtc, miniAv.pairMtc, 'rendered MAV matches helper');
-    console.log('PASS distinct 3AV / MAV values and compact strip');
+    console.log('PASS live GAV / MAV values and compact strip');
     for (const size of [{width:390,height:844},{width:430,height:932},{width:320,height:568},{width:1366,height:936}]) {
       await page.setViewportSize(size);
       await page.waitForTimeout(900);
@@ -553,7 +636,7 @@ async function verifyTrainingRoute(){
       });
       console.log('GEOMETRY', size, fit);
       assert(!fit.overflow, 'no horizontal overflow');
-      assert(!fit.miniOverflow, '3AV / MAV metrics fit their rectangle width');
+      assert(!fit.miniOverflow, 'GAV / MAV metrics fit their rectangle width');
       assert(fit.miniHeight>=47.5 && fit.miniHeight<=49.5, 'mini-average rectangle is doubled from 24px to 48px');
       assert(Math.abs(fit.canvasWidth-fit.width)<2,'canvas fits actual host width');
       if (size.height>=800) assert(fit.gap>=5 && fit.gap<=18,'panel reaches fixed controls with clearance');

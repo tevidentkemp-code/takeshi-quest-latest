@@ -12293,8 +12293,8 @@ function ensureLiveV2Panel(){
     </div>
   `).join("");
   const miniAvgBoxes = Array.from({length: Math.max(1, Math.min(6, pCount))}).map((_,i)=>`
-    <div class="v2MiniAvg" data-p="${i}" aria-label="Player averages">
-      <span class="v2MiniMetric"><span class="v2MiniLab">3AV</span><strong id="v2Mini3R${i}">–</strong></span>
+    <div class="v2MiniAvg" data-p="${i}" aria-label="Player game and match averages">
+      <span class="v2MiniMetric"><span class="v2MiniLab">GAV</span><strong id="v2Mini3R${i}">–</strong></span>
       <span class="v2MiniMetric"><span class="v2MiniLab">MAV</span><strong id="v2MiniMtc${i}">–</strong></span>
     </div>
   `).join("");
@@ -12613,18 +12613,55 @@ function __sqFmtAvg(n){
 
 function __sqV2LiveAveragePair(pIdx, currentRound){
   try{
-    const vals = [];
-    const cr = Math.max(0, Number(currentRound) || 0);
-    for(let r = 0; r <= cr; r++){
-      const entry = state.score?.[pIdx]?.[r];
-      const done = (r < cr) || (entry && entry.darts && entry.darts[2] != null);
-      if(!done) continue;
-      const v = getPerRoundScore(r, pIdx);
-      if(Number.isFinite(+v)) vals.push(+v);
+    const rows = [];
+    const addEntry = (acc, entry) => {
+      if(!entry) return acc;
+      const darts = Array.isArray(entry.darts) ? entry.darts : [];
+      const thrown = darts.filter(d => d != null).length;
+      if(!thrown) return acc;
+      let points = entry.roundTotal == null ? NaN : Number(entry.roundTotal);
+      if(!Number.isFinite(points)){
+        points = darts.reduce((sum, d) => {
+          if(d == null) return sum;
+          if(typeof d === 'number') return sum + (Number(d) || 0);
+          return sum + (Number(d.points ?? d.score ?? d.value ?? 0) || 0);
+        }, 0);
+      }
+      acc.points += points;
+      acc.darts += thrown;
+      return acc;
+    };
+    const avg3 = acc => acc.darts ? (acc.points * 3 / acc.darts) : NaN;
+
+    // Catch-up can move the active round backwards. Every recorded dart in
+    // the current game still belongs in GAV, including later played rounds.
+    for(const entry of (state.score?.[pIdx] || [])){
+      if(entry && Array.isArray(entry.darts) && entry.darts.some(d => d != null)) rows.push(entry);
     }
-    const mean = arr => arr.length ? arr.reduce((a,b)=>a+b,0) / arr.length : NaN;
-    return { r3: mean(vals.slice(-3)), mtc: mean(vals), count: vals.length };
-  }catch(_){ return { r3:NaN, mtc:NaN, count:0 }; }
+
+    const r3Acc = rows.slice(-3).reduce((acc, entry) => addEntry(acc, entry), {points:0,darts:0});
+    const gameAcc = rows.reduce((acc, entry) => addEntry(acc, entry), {points:0,darts:0});
+    const matchAcc = {points:0,darts:0};
+    const history = Array.isArray(state.match?.history) ? state.match.history : [];
+    history.forEach(game => {
+      // Completion snapshots the current board before the next game resets it.
+      // The existing game token keeps that board from entering MAV twice.
+      if(game?.gameToken != null && Number(game.gameToken) === Number(state.__gameToken || 0)) return;
+      const board = Array.isArray(game?.board?.[pIdx]) ? game.board[pIdx] : [];
+      board.forEach(entry => addEntry(matchAcc, entry));
+    });
+    matchAcc.points += gameAcc.points;
+    matchAcc.darts += gameAcc.darts;
+
+    return {
+      r3: avg3(r3Acc),
+      game: avg3(gameAcc),
+      mtc: avg3(matchAcc),
+      count: rows.length,
+      darts: gameAcc.darts,
+      matchDarts: matchAcc.darts
+    };
+  }catch(_){ return { r3:NaN, game:NaN, mtc:NaN, count:0, darts:0, matchDarts:0 }; }
 }
 
 function __sqSetupLiveV2Sizing(panel){
@@ -13394,13 +13431,15 @@ function liveV2Render(){
     el.classList.toggle("active", p === turn);
   });
 
-  // SC-017: duplicate the canonical live 3R/MTC averages beneath each player card.
+  // SC-061: GAV = current-game three-dart average; MAV = whole-match
+  // three-dart average. Both include the current partial visit and update after
+  // every recorded dart. Legacy DOM ids stay stable for CSS/test hooks.
   for(let i=0; i<pCount; i++){
     const av = __sqV2LiveAveragePair(i, cr);
-    const a3 = document.getElementById('v2Mini3R' + i);
-    const mt = document.getElementById('v2MiniMtc' + i);
-    if(a3) a3.textContent = __sqFmtAvg(av.r3);
-    if(mt) mt.textContent = __sqFmtAvg(av.mtc);
+    const gav = document.getElementById('v2Mini3R' + i);
+    const mav = document.getElementById('v2MiniMtc' + i);
+    if(gav) gav.textContent = __sqFmtAvg(av.game);
+    if(mav) mav.textContent = __sqFmtAvg(av.mtc);
   }
 
   // Solo Practice: PB/WR total + rolling pace and live variance beside the player score pill.
@@ -13846,19 +13885,10 @@ const out2 = [];
   const avgHost = document.getElementById("v2Avg");
   if(avgHost){
 
-// A "completed round" for a player is:
-    // - any round < currentRound, OR
-    // - the current round where they have thrown all 3 darts
-    function __v2CompletedRoundsForPlayer(pIdx){
-      const list = [];
-      for(let r=0; r<=cr; r++){
-        const entry = state.score?.[pIdx]?.[r];
-        const done = (r < cr) || (entry && entry.darts && entry.darts[2] != null);
-        if(done) list.push(r);
-      }
-      return list;
-    }
-
+// Live averages use actual darts thrown, so partial visits update immediately.
+    // GAV is the current-game three-dart average; MAV spans prior completed
+    // match games plus current-game darts. The helper retains r3 for other
+    // consumers but the live GAV/MAV surfaces do not substitute 3AV for GAV.
     const rows = [];
 
     
@@ -13884,29 +13914,18 @@ const out2 = [];
       rows.push(`<div class="v2AvgCell">${__sqFmtOrd(rk)}</div>`);
     }
 
-    // Row 2: rolling 3-round average (last 3 completed rounds for that player)
-    rows.push(`<div class="v2AvgLabel"><div>3R</div><div class="sub">AVG</div></div>`);
+    // Row 2: current-game average, live after every dart.
+    rows.push(`<div class="v2AvgLabel"><div>GME</div><div class="sub">AVG</div></div>`);
     for(let i=0; i<pCount; i++){
-      const done = __v2CompletedRoundsForPlayer(i);
-      const last3 = done.slice(-3);
-      let sum = 0; let n = 0;
-      last3.forEach((r)=>{
-        const v = getPerRoundScore(r, i);
-        if(Number.isFinite(+v)) { sum += +v; n++; }
-      });
-      rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(n ? (sum / n) : NaN))}</div>`);
+      const av = __sqV2LiveAveragePair(i, cr);
+      rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(av.game))}</div>`);
     }
 
-    // Row 3: Match average (all completed rounds so far for that player)
+    // Row 3: true match average, previous games + current game, live after every dart.
     rows.push(`<div class="v2AvgLabel"><div>MTC</div><div class="sub">AVG</div></div>`);
     for(let i=0; i<pCount; i++){
-      const done = __v2CompletedRoundsForPlayer(i);
-      let sum = 0; let n = 0;
-      done.forEach((r)=>{
-        const v = getPerRoundScore(r, i);
-        if(Number.isFinite(+v)) { sum += +v; n++; }
-      });
-      rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(n ? (sum / n) : NaN))}</div>`);
+      const av = __sqV2LiveAveragePair(i, cr);
+      rows.push(`<div class="v2AvgCell">${escapeHtml(__sqFmtAvg(av.mtc))}</div>`);
     }
 
     // Row 4: P RANK (current total vs THIS player's historical game totals, descending, dense_rank)
@@ -19734,7 +19753,7 @@ async function awardAndShowLeaderboard(){
     }
   }
 
-  state.match.history.push({ totals: historyTotals, board: historyBoard });
+  state.match.history.push({ totals: historyTotals, board: historyBoard, gameToken: state.__gameToken || 0 });
 
   // Long-term local logs
   logCompletedGame(historyTotals, isVsShadow ? [] : winners, historyBoard);
@@ -25311,16 +25330,10 @@ if(hsBody){
         } else if (key && lpCloudOK() && window.sb) {
           const table = (typeof TABLE_MATCHES !== 'undefined' && TABLE_MATCHES) ? TABLE_MATCHES : 'matches';
           try {
-            let res = await window.sb
+            const res = await window.sb
               .from(table)
-              .select('id,created_at,players,wins,history,total_games,targetWins,target_wins')
+              .select('id,created_at,players,wins,history,total_games,target_wins')
               .in('id', ids);
-            if (res && res.error) {
-              res = await window.sb
-                .from(table)
-                .select('id,created_at,players,wins,history,total_games')
-                .in('id', ids);
-            }
             rows = (res && !res.error && Array.isArray(res.data)) ? res.data.slice() : [];
           } catch(_e) {
             rows = [];
@@ -25579,6 +25592,51 @@ if(hsBody){
         }
       };
 
+      const lpFitRowsToViewport = () => {
+        const mid = document.querySelector('#homeLivePrinter .lp-mid');
+        const table = document.querySelector('#homeLivePrinter .lp-table');
+        const tbody = document.getElementById('homeLivePrinterRows');
+        if (!mid || !table || !tbody) return;
+
+        const rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
+        if (!rows.length) return;
+
+        // Start from the full logical window, then retire only as many oldest
+        // visual slots as are required to keep every remaining row fully inside
+        // the fixed VIDE viewport. This preserves row typography/spacing instead
+        // of squeezing the table as two-line results accumulate.
+        rows.forEach(row => row.classList.remove('lp-fit-hidden'));
+
+        let maxBottom = 0;
+        try {
+          const midRect = mid.getBoundingClientRect();
+          const style = getComputedStyle(mid);
+          const padBottom = parseFloat(style.paddingBottom || '0') || 0;
+          maxBottom = midRect.bottom - padBottom;
+        } catch (_) {
+          maxBottom = mid.getBoundingClientRect().bottom;
+        }
+
+        const overflows = () => {
+          try { return table.getBoundingClientRect().bottom > (maxBottom + 0.5); }
+          catch (_) { return false; }
+        };
+
+        for (let i = 0; i < rows.length - 1 && overflows(); i++) {
+          rows[i].classList.add('lp-fit-hidden');
+        }
+      };
+
+      const lpFirstVisibleRowHeight = (rows, fallback = 20) => {
+        const list = Array.isArray(rows) ? rows : [];
+        const first = list.find(row => {
+          if (!row || row.classList.contains('lp-fit-hidden')) return false;
+          try { return row.getBoundingClientRect().height > 0.5; } catch (_) { return false; }
+        });
+        try { return first ? (first.getBoundingClientRect().height || fallback) : fallback; }
+        catch (_) { return fallback; }
+      };
+
       const lpEnsureRows = (lines) => {
         const tbody = document.getElementById('homeLivePrinterRows');
         if (!tbody) return;
@@ -25605,7 +25663,18 @@ if(hsBody){
           lpApplyRowClasses(tr, line);
           if (sp) lpSetLineContent(sp, line);
         });
+        lpFitRowsToViewport();
       };
+
+      // Re-fit on viewport changes (mobile browser chrome/orientation) without
+      // changing the outer SC-047 stable panel geometry.
+      try {
+        const st = window.__homeLivePrinterState;
+        if (st && !st.__sqVideFitResizeBound) {
+          st.__sqVideFitResizeBound = true;
+          window.addEventListener('resize', () => requestAnimationFrame(lpFitRowsToViewport), { passive:true });
+        }
+      } catch (_) {}
 
       // Allow other parts of the app to inject a one-off LIVE UPDATES line (e.g., NEW PLAYER)
       // Usage: window.__homeLivePrinterInjectLine('🚨 NEW PLAYER - Name - Welcome...')
@@ -25677,6 +25746,7 @@ if(hsBody){
 	            lpSetLineContent(sp, line);
 	          }
 	        });
+        lpFitRowsToViewport();
 	      };
       const lpScrollStep = () => {
         const st = window.__homeLivePrinterState;
@@ -25695,8 +25765,9 @@ if(hsBody){
           lpEnsureRows(st.displayLines);
         }
 
+        lpFitRowsToViewport();
         const rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
-        const rowH = (rows[0] ? (rows[0].getBoundingClientRect().height || 20) : 20);
+        const rowH = lpFirstVisibleRowHeight(rows, 20);
 
         // Pull injected events through this same scheduler instead of letting
         // other features repaint the printer DOM directly.
@@ -25751,16 +25822,20 @@ if(hsBody){
 	            const lastLine = st.displayLines[LP_VISIBLE - 1];
 	            const fast = (()=>{ try{ return lpIsRecordLine(lastLine) || lpIsRoundPBLine(lastLine)
               || lpIsGamePBLine(lastLine) || lpIsAlertLine(lastLine) || lpIsBeerAlertLine(lastLine); }catch(_e){ return false; } })();
-	            lpTypeLine(lastSp, lastLine, fast ? 8 : 22);
-	          }
+	            lpTypeLine(lastSp, lastLine, fast ? 8 : 22, lpFitRowsToViewport);
+              requestAnimationFrame(lpFitRowsToViewport);
+	          } else {
+              lpFitRowsToViewport();
+            }
 	        });
 	      };
       const lpAnimateNewBottom = (bufLines) => {
         const tbody = document.getElementById('homeLivePrinterRows');
         if (!tbody) return;
 
+        lpFitRowsToViewport();
         const rows = Array.from(tbody.querySelectorAll('tr.lp-row'));
-        const rowH = (rows[0] ? (rows[0].getBoundingClientRect().height || 22) : 22);
+        const rowH = lpFirstVisibleRowHeight(rows, 22);
 
         const buf = Array.isArray(bufLines) ? bufLines : [];
         const winNew = buf.slice(0, LP_VISIBLE);
@@ -25786,10 +25861,14 @@ if(hsBody){
 	            lpApplyRowClasses(lastRow, winNew[LP_VISIBLE - 1]);
 	            lastSp.textContent = '';
 	            const lastLine = winNew[LP_VISIBLE - 1] ?? '—';
-	            lpTypeLine(lastSp, lastLine, 20);
+	            lpTypeLine(lastSp, lastLine, 20, lpFitRowsToViewport);
+              requestAnimationFrame(lpFitRowsToViewport);
 	            setTimeout(() => {
 	              try { lastRow.classList.remove('lp-new'); } catch (_) {}
+                lpFitRowsToViewport();
 	            }, 900);
+          } else {
+            lpFitRowsToViewport();
           }
         });
       };
@@ -29281,11 +29360,34 @@ const SQ_XP = {
       if (!force && this._inflight === run) this._inflight = null;
     }
   },
-  async forName(name){
-    const rows = await this.all();
-    const n = String(name || '').trim().toLowerCase();
-    return rows.find(r => String(r.name || '').trim().toLowerCase() === n) || null;
+  _oneCache: new Map(), _oneInflight: new Map(),
+  async _one(field, value, force){
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    const key = field + ':' + raw.toLowerCase();
+    const now = Date.now();
+    const cached = this._oneCache.get(key);
+    if (!force && cached && (now - cached.at) < 60000) return cached.row;
+    if (!force && this._oneInflight.has(key)) return this._oneInflight.get(key);
+    const SB = window.sb || window.__sb || null;
+    if (!SB || typeof SB.from !== 'function') return cached ? cached.row : null;
+    const run = (async () => {
+      try{
+        let q = SB.from('v_player_xp').select('*');
+        q = field === 'player_id' ? q.eq('player_id', raw) : q.ilike('name', raw);
+        const { data, error } = await q.limit(1);
+        if (error || !Array.isArray(data)) return cached ? cached.row : null;
+        const row = data[0] || null;
+        this._oneCache.set(key, { at:Date.now(), row });
+        return row;
+      }catch(_){ return cached ? cached.row : null; }
+    })();
+    if (!force) this._oneInflight.set(key, run);
+    try{ return await run; }
+    finally{ if (!force && this._oneInflight.get(key) === run) this._oneInflight.delete(key); }
   },
+  async forName(name, force){ return this._one('name', name, force); },
+  async forPlayerId(playerId, force){ return this._one('player_id', playerId, force); },
   fmt(n){ return (Number(n) || 0).toLocaleString(); }
 };
 window.SQ_XP = SQ_XP;
@@ -30210,6 +30312,109 @@ function __sqMisfireCase(misfireState, xpRow){
   return card;
 }
 
+function __sqBuildAchievementPanel(achState, misfireState, xpRow, reducedMotion, countUpFn){
+  const achMap = (achState && achState.map) || {};
+  const __ppReduced = !!reducedMotion;
+  const countUp = (typeof countUpFn === 'function') ? countUpFn : ((el, value) => { if (el) el.textContent = String(value == null ? '' : value); });
+  // ---- Achievements tab hero: "TROPHY VAULT" (unique to the Achievements tab) ----
+  const achPanel = document.createElement('div');
+  achPanel.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
+  {
+    const achAvailable = !!(achState && achState.available);
+    const catalog = (window.SQ_ACH && Array.isArray(SQ_ACH.CATALOG)) ? SQ_ACH.CATALOG : [];
+    const total = catalog.length;
+    const earnedCodes = catalog.filter(a => (achMap[a.code] || {}).cnt > 0);
+    const earnedN = earnedCodes.length;
+    const pctDone = total ? earnedN / total : 0;
+    const shelf = earnedCodes.slice().sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
+    const MAXSHELF = 8;
+
+    const vault = document.createElement('div'); vault.className = 'pp-vault';
+    const meter = document.createElement('div'); meter.className = 'pp-vault-meter';
+    const vhead = document.createElement('div'); vhead.className = 'pp-vault-head'; vhead.textContent = 'Trophy Vault';
+    const vcount = document.createElement('div'); vcount.className = 'pp-vault-count';
+    const vcB = document.createElement('b'); vcB.textContent = achAvailable ? String(earnedN) : '—';
+    const vcS = document.createElement('small'); vcS.textContent = ' / ' + total;
+    vcount.append(vcB, vcS);
+    const vbar = document.createElement('div'); vbar.className = 'pp-vault-bar';
+    const vfill = document.createElement('span'); vbar.appendChild(vfill);
+    const vsub = document.createElement('div'); vsub.className = 'pp-vault-sub'; vsub.textContent = achAvailable ? ('Trophies unlocked · ' + Math.round(pctDone * 100) + '%') : 'Achievement history unavailable';
+    meter.append(vhead, vcount, vbar, vsub);
+
+    const shelfEl = document.createElement('div'); shelfEl.className = 'pp-vault-shelf';
+    const chips = [];
+    shelf.slice(0, MAXSHELF).forEach(a => {
+      const meta = SQ_ACH.meta(a.code); const s = SQ_ACH.tierStyle(meta.tier);
+      const chip = document.createElement('div'); chip.className = 'pp-vault-badge';
+      chip.style.background = s.g; chip.style.border = '1px solid ' + s.b; chip.textContent = meta.icon;
+      chip.title = meta.name + ((achMap[a.code].cnt > 1) ? (' ×' + achMap[a.code].cnt) : '');
+      shelfEl.appendChild(chip); chips.push(chip);
+    });
+    if (shelf.length > MAXSHELF){ const more = document.createElement('div'); more.className = 'pp-vault-more'; more.textContent = '+' + (shelf.length - MAXSHELF) + ' more'; shelfEl.appendChild(more); }
+    if (!shelf.length){ const none = document.createElement('div'); none.className = 'pp-vault-more'; none.textContent = achAvailable ? 'No trophies yet — go earn some!' : 'Achievement history is unavailable right now.'; shelfEl.appendChild(none); }
+    vault.append(meter, shelfEl);
+    achPanel.appendChild(vault);
+    achPanel.appendChild(__sqTrophyCase(achMap, achAvailable));
+
+    // Misfires are deliberately separate from the positive Trophy Vault.
+    // Counts are historical; XP impact is the launch-forward value already
+    // included in v_player_xp, so the client never retroactively deducts XP.
+    const mfCard = __sqMisfireCase(misfireState, xpRow);
+    achPanel.appendChild(mfCard);
+
+    let timers = [];
+    achPanel.__ppReplay = () => {
+      timers.forEach(clearTimeout); timers = [];
+      if (!achAvailable){ vcB.textContent = '—'; vfill.style.width = '0%'; chips.forEach(c => c.classList.remove('in', 'shine')); return; }
+      if (__ppReduced){ vcB.textContent = String(earnedN); vfill.style.width = Math.round(pctDone * 100) + '%'; chips.forEach(c => c.classList.add('in')); return; }
+      vcB.textContent = '0'; vfill.style.width = '0%';
+      chips.forEach(c => c.classList.remove('in', 'shine'));
+      countUp(vcB, String(earnedN), 1000);
+      requestAnimationFrame(() => requestAnimationFrame(() => { vfill.style.width = Math.round(pctDone * 100) + '%'; }));
+      chips.forEach((c, i) => { timers.push(setTimeout(() => { c.classList.add('in', 'shine'); }, 120 + i * 90)); });
+    };
+  }
+  return achPanel;
+}
+
+async function __sqBuildPlayerAchievementsView(name){
+  const reduced = (() => { try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ return false; } })();
+  const instantCount = (el, value) => { if (el) el.textContent = String(value == null ? '' : value); };
+  let player = null;
+  let achState = { available:false, map:{} };
+  let misfireState = { available:false, map:{} };
+  try{ player = await SQ_ACH.playerForName(name); }catch(_){ player = null; }
+  let xpPromise = Promise.resolve(null);
+  if (player && player.player_id){
+    xpPromise = (typeof SQ_XP.forPlayerId === 'function')
+      ? SQ_XP.forPlayerId(player.player_id).catch(()=>null)
+      : Promise.resolve(null);
+    const [as, mf] = await Promise.all([
+      SQ_ACH.forPlayerId(player.player_id).catch(()=>({ available:false, map:{} })),
+      SQ_MISFIRE.forPlayerId(player.player_id).catch(()=>({ available:false, map:{} }))
+    ]);
+    achState = as || { available:false, map:{} };
+    misfireState = mf || { available:false, map:{} };
+  }
+  const achPanel = __sqBuildAchievementPanel(achState, misfireState, null, reduced, instantCount);
+  xpPromise.then(row => {
+    try{
+      const el = achPanel.querySelector('.pp-misfire-xp');
+      if (!el || !row || !Number.isFinite(Number(row.misfire_xp))) return;
+      const value = Number(row.misfire_xp);
+      el.textContent = (value > 0 ? '+' : '') + String(value) + ' XP';
+    }catch(_){}
+  }).catch(()=>{});
+  return {
+    profile: document.createElement('div'),
+    tabs: [],
+    showTab(host){
+      host.replaceChildren(achPanel);
+      try{ if (typeof achPanel.__ppReplay === 'function') requestAnimationFrame(achPanel.__ppReplay); }catch(_){}
+    }
+  };
+}
+
 // === Player Stats — one renderer shared by the hub and its content views ===
 window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, options){
   const name = String(playerName || '').trim();
@@ -30244,9 +30449,12 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, 
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') returnToHub(); });
   modal.tabIndex = 0; modal.focus();
   try{
-    const view = opts.view || await __sqBuildPlayerStatsProfile(name);
+    const tab = Number(opts.tab) || 0;
+    const view = opts.view || (tab === 2
+      ? await __sqBuildPlayerAchievementsView(name)
+      : await __sqBuildPlayerStatsProfile(name));
     if (returned || !overlay.isConnected) return;
-    view.showTab(body, Number(opts.tab) || 0);
+    view.showTab(body, tab);
   }catch(e){
     if (returned || !overlay.isConnected) return;
     body.textContent = 'Player stats could not be loaded. Return to the hub to try again.';
@@ -30269,6 +30477,15 @@ function __sqPlayerStatsView(profile, panels){
     tabs.forEach((b, i) => b.classList.toggle('active', i === idx));
     try{ if (typeof panel.__ppReplay === 'function') requestAnimationFrame(panel.__ppReplay); }catch(_){}
   } };
+}
+
+function __sqPlayerStatsHubShell(name){
+  const profile = document.createElement('div');
+  const hero = document.createElement('div'); hero.className = 'tag pp-hero';
+  const heroName = document.createElement('div'); heroName.className = 'pp-hero-name'; heroName.textContent = String(name || '').trim() || 'Player';
+  const heroSub = document.createElement('div'); heroSub.className = 'muted pp-hero-nick'; heroSub.textContent = 'Choose Stats, XP or Achievements';
+  hero.append(heroName, heroSub); profile.appendChild(hero);
+  return __sqPlayerStatsView(profile, [document.createElement('div'), document.createElement('div'), document.createElement('div')]);
 }
 
 // @CANONICAL:PLAYER_STATS_PROFILE_CARDS
@@ -31126,64 +31343,7 @@ myPowerPos = myPower ? (qualified.indexOf(myPower) + 1) : null;
     ladderCard.appendChild(lb); xpPanel.appendChild(ladderCard);
   }
 
-  // ---- Achievements tab hero: "TROPHY VAULT" (unique to the Achievements tab) ----
-  const achPanel = document.createElement('div');
-  achPanel.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
-  {
-    const achAvailable = !!(achState && achState.available);
-    const catalog = (window.SQ_ACH && Array.isArray(SQ_ACH.CATALOG)) ? SQ_ACH.CATALOG : [];
-    const total = catalog.length;
-    const earnedCodes = catalog.filter(a => (achMap[a.code] || {}).cnt > 0);
-    const earnedN = earnedCodes.length;
-    const pctDone = total ? earnedN / total : 0;
-    const shelf = earnedCodes.slice().sort((a, b) => (SQ_ACH.meta(b.code).xp || 0) - (SQ_ACH.meta(a.code).xp || 0));
-    const MAXSHELF = 8;
-
-    const vault = document.createElement('div'); vault.className = 'pp-vault';
-    const meter = document.createElement('div'); meter.className = 'pp-vault-meter';
-    const vhead = document.createElement('div'); vhead.className = 'pp-vault-head'; vhead.textContent = 'Trophy Vault';
-    const vcount = document.createElement('div'); vcount.className = 'pp-vault-count';
-    const vcB = document.createElement('b'); vcB.textContent = achAvailable ? String(earnedN) : '—';
-    const vcS = document.createElement('small'); vcS.textContent = ' / ' + total;
-    vcount.append(vcB, vcS);
-    const vbar = document.createElement('div'); vbar.className = 'pp-vault-bar';
-    const vfill = document.createElement('span'); vbar.appendChild(vfill);
-    const vsub = document.createElement('div'); vsub.className = 'pp-vault-sub'; vsub.textContent = achAvailable ? ('Trophies unlocked · ' + Math.round(pctDone * 100) + '%') : 'Achievement history unavailable';
-    meter.append(vhead, vcount, vbar, vsub);
-
-    const shelfEl = document.createElement('div'); shelfEl.className = 'pp-vault-shelf';
-    const chips = [];
-    shelf.slice(0, MAXSHELF).forEach(a => {
-      const meta = SQ_ACH.meta(a.code); const s = SQ_ACH.tierStyle(meta.tier);
-      const chip = document.createElement('div'); chip.className = 'pp-vault-badge';
-      chip.style.background = s.g; chip.style.border = '1px solid ' + s.b; chip.textContent = meta.icon;
-      chip.title = meta.name + ((achMap[a.code].cnt > 1) ? (' ×' + achMap[a.code].cnt) : '');
-      shelfEl.appendChild(chip); chips.push(chip);
-    });
-    if (shelf.length > MAXSHELF){ const more = document.createElement('div'); more.className = 'pp-vault-more'; more.textContent = '+' + (shelf.length - MAXSHELF) + ' more'; shelfEl.appendChild(more); }
-    if (!shelf.length){ const none = document.createElement('div'); none.className = 'pp-vault-more'; none.textContent = achAvailable ? 'No trophies yet — go earn some!' : 'Achievement history is unavailable right now.'; shelfEl.appendChild(none); }
-    vault.append(meter, shelfEl);
-    achPanel.appendChild(vault);
-    achPanel.appendChild(__sqTrophyCase(achMap, achAvailable));
-
-    // Misfires are deliberately separate from the positive Trophy Vault.
-    // Counts are historical; XP impact is the launch-forward value already
-    // included in v_player_xp, so the client never retroactively deducts XP.
-    const mfCard = __sqMisfireCase(misfireState, xpRow);
-    achPanel.appendChild(mfCard);
-
-    let timers = [];
-    achPanel.__ppReplay = () => {
-      timers.forEach(clearTimeout); timers = [];
-      if (!achAvailable){ vcB.textContent = '—'; vfill.style.width = '0%'; chips.forEach(c => c.classList.remove('in', 'shine')); return; }
-      if (__ppReduced){ vcB.textContent = String(earnedN); vfill.style.width = Math.round(pctDone * 100) + '%'; chips.forEach(c => c.classList.add('in')); return; }
-      vcB.textContent = '0'; vfill.style.width = '0%';
-      chips.forEach(c => c.classList.remove('in', 'shine'));
-      countUp(vcB, String(earnedN), 1000);
-      requestAnimationFrame(() => requestAnimationFrame(() => { vfill.style.width = Math.round(pctDone * 100) + '%'; }));
-      chips.forEach((c, i) => { timers.push(setTimeout(() => { c.classList.add('in', 'shine'); }, 120 + i * 90)); });
-    };
-  }
+  const achPanel = __sqBuildAchievementPanel(achState, misfireState, xpRow, __ppReduced, countUp);
 
   return __sqPlayerStatsView(profile, [statsPanel, xpPanel, achPanel]);
 }
@@ -31509,32 +31669,39 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
   };
 
   let profileRequest = 0;
+  let profileHydrateTimer = 0;
   const syncPlayerHeader = async () => {
     const n = String(currentName || playerSelect.value || '').trim();
     if (n && playerSelect.value !== n) playerSelect.value = n;
     const request = ++profileRequest;
-    profileHost.innerHTML = '<div class="sq-modal-loading"><div class="sq-loadbar"><span class="sq-loadbar-fill"></span></div></div>';
-    try{
-      const view = await __sqBuildPlayerStatsProfile(n);
-      if (request !== profileRequest || !overlay.isConnected) return;
+    clearTimeout(profileHydrateTimer);
+    const wireView = (view, hydrated) => {
+      if (request !== profileRequest || !overlay.isConnected || !view || !view.profile) return;
       profileHost.replaceChildren(view.profile);
-      view.tabs.forEach((button, tab) => {
+      (view.tabs || []).forEach((button, tab) => {
         button.onclick = () => {
+          clearTimeout(profileHydrateTimer);
           overlay.remove();
-          openPlayerStatsDialog(n, { view, tab, onReturn: () => {
+          openPlayerStatsDialog(n, { view: hydrated ? view : null, tab, onReturn: () => {
             document.body.appendChild(overlay);
             modal.focus();
             button.focus();
           } });
         };
       });
-    }catch(e){
-      if (request !== profileRequest || !overlay.isConnected) return;
-      profileHost.textContent = 'Player profile could not be loaded.';
-      const retry = document.createElement('button'); retry.className = 'btn sq-pill'; retry.textContent = 'Retry';
-      retry.onclick = syncPlayerHeader; profileHost.appendChild(retry);
-      console.warn('[SQ] Player profile load failed', e);
-    }
+    };
+    // Primary views stay usable immediately; full profile analytics hydrate only
+    // if the user remains on the hub. Achievements never waits on target analytics.
+    wireView(__sqPlayerStatsHubShell(n), false);
+    profileHydrateTimer = setTimeout(async () => {
+      try{
+        const view = await __sqBuildPlayerStatsProfile(n);
+        wireView(view, true);
+      }catch(e){
+        if (request !== profileRequest || !overlay.isConnected) return;
+        console.warn('[SQ] Player profile background load failed', e);
+      }
+    }, 1200);
   };
   const selectedName = () => String(currentName || playerSelect.value || '').trim();
   const openForSelected = (fnName, fallbackMessage, extraArgs) => {

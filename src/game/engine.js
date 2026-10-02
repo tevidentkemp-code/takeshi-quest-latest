@@ -2072,7 +2072,7 @@ async function awardAndShowLeaderboard(){
     }
   }
 
-  state.match.history.push({ totals: historyTotals, board: historyBoard });
+  state.match.history.push({ totals: historyTotals, board: historyBoard, gameToken: state.__gameToken || 0 });
 
   // Long-term local logs
   logCompletedGame(historyTotals, isVsShadow ? [] : winners, historyBoard);
