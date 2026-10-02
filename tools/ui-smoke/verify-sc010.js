@@ -25,6 +25,14 @@ async function scenario(mode){
     const wrapped = {
       from(table){
         window.__sc010Calls[table] = (window.__sc010Calls[table] || 0) + 1;
+        if (table === 'v_player_xp' && mode === 'xp_hang') {
+          const q = {
+            select(){ return q; }, eq(){ return q; }, ilike(){ return q; }, or(){ return q; }, order(){ return q; }, limit(){ return q; },
+            then(){ /* deliberately never settles: production statement-timeout/hung-request regression */ },
+            catch(){ return q; }
+          };
+          return q;
+        }
         if ((table === 'v_ach_base' || table === 'v_ach_david_goliath') && mode === 'error') {
           return resultQuery(null, { message:'statement timeout' });
         }
@@ -35,7 +43,11 @@ async function scenario(mode){
       }
     };
     window.sb = wrapped; window.__sb = wrapped;
-    if (window.SQ_XP){ window.SQ_XP._cache = null; window.SQ_XP._cacheAt = 0; window.SQ_XP._inflight = null; }
+    if (window.SQ_XP){
+      window.SQ_XP._cache = null; window.SQ_XP._cacheAt = 0; window.SQ_XP._inflight = null;
+      try{ window.SQ_XP._oneCache && window.SQ_XP._oneCache.clear(); }catch(_){}
+      try{ window.SQ_XP._oneInflight && window.SQ_XP._oneInflight.clear(); }catch(_){}
+    }
     if (window.SQ_ACH){
       window.SQ_ACH._playerDirectoryCache = null;
       window.SQ_ACH._playerDirectoryCacheAt = 0;
@@ -82,6 +94,12 @@ async function scenario(mode){
   check('successful history preserves real section counts', /0 \/ 15 unlocked/.test(success.ui.milestones) && /2 \/ 43 unlocked/.test(success.ui.trophies), success.ui.milestones + ' | ' + success.ui.trophies);
   check('Misfires remain available on success', /3 \/ 11 unlocked/.test(success.ui.misfires) && /6 historical occurrences/.test(success.ui.misfires), success.ui.misfires);
 
+  const xpHang = await scenario('xp_hang');
+  check('a never-settling XP request does not block the Trophy Vault', xpHang.ui.vaultCount === '2 / 58', xpHang.ui.vaultCount);
+  check('a never-settling XP request does not block positive achievement sections', /0 \/ 15 unlocked/.test(xpHang.ui.milestones) && /2 \/ 43 unlocked/.test(xpHang.ui.trophies), xpHang.ui.milestones + ' | ' + xpHang.ui.trophies);
+  check('a never-settling XP request does not block Misfire history', /3 \/ 11 unlocked/.test(xpHang.ui.misfires) && /6 historical occurrences/.test(xpHang.ui.misfires), xpHang.ui.misfires);
+  check('XP hang path starts one XP request without slow target analytics', xpHang.ui.calls.v_player_xp === 1 && !xpHang.ui.calls.v_player_last30_targets && !xpHang.ui.calls.v_player_last30_target_rates, JSON.stringify(xpHang.ui.calls));
+
   const failed = await scenario('error');
   check('split achievement fetch failure is not rendered as 0/58', failed.ui.vaultCount === '— / 58', failed.ui.vaultCount);
   check('split achievement fetch failure is explicitly labelled unavailable', /Achievement history unavailable/i.test(failed.ui.vaultSub) && /Achievement history is unavailable right now/i.test(failed.ui.vaultShelf), failed.ui.vaultSub + ' | ' + failed.ui.vaultShelf);
@@ -93,7 +111,7 @@ async function scenario(mode){
   check('successful empty split history remains a genuine zero state', empty.ui.vaultCount === '0 / 58' && /No trophies yet/i.test(empty.ui.vaultShelf), empty.ui.vaultCount + ' | ' + empty.ui.vaultShelf);
   check('successful empty sections remain real zero counts', /0 \/ 15 unlocked/.test(empty.ui.milestones) && /0 \/ 43 unlocked/.test(empty.ui.trophies), empty.ui.milestones + ' | ' + empty.ui.trophies);
 
-  const errs = [...success.consoleErrs, ...failed.consoleErrs, ...empty.consoleErrs].filter(e => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));
+  const errs = [...success.consoleErrs, ...xpHang.consoleErrs, ...failed.consoleErrs, ...empty.consoleErrs].filter(e => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource/i.test(e));
   check('no unexpected console errors', errs.length === 0, errs.slice(0,5).join(' | '));
 
   const fs = require('fs');
