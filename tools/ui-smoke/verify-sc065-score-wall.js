@@ -25,7 +25,11 @@ async function seed(page, count, round = 10, mode = 'match') {
 }
 async function rest(page, round) {
   await page.waitForFunction(r=>document.querySelector('#v2Rows .v2Badge.liveRow')?.dataset.round===String(r), round);
-  await page.waitForFunction(()=>!document.getElementById('v2Rows').getAnimations().some(a=>a.playState==='running'));
+  await page.waitForFunction(()=>{
+    const rows=document.getElementById('v2Rows');
+    const owned=document.getElementById('liveV2Panel').__sqV2Wall?.animation;
+    return [owned,...rows.getAnimations()].every(a=>!a || (!a.pending && !['running','paused'].includes(a.playState)));
+  });
   // The existing legacy snap runs two frames after the coalesced render.
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))));
 }
@@ -155,7 +159,7 @@ async function begin(page) {
         assert.equal(await page.locator('#v2Rows .v2Badge[data-round="'+round+'"]').count(),1,'Early completion duplicated history');
         if(round){
           const y=await page.locator('#v2Rows .v2Badge[data-round="'+(round-1)+'"]').evaluate(e=>e.getBoundingClientRect().top);
-          assert(Math.abs(geometry.old-y-geometry.pitch)<1,mode+' early history did not move exactly one row');
+          assert(Math.abs(geometry.old-y-geometry.pitch)<1,'Early history did not move exactly one row: '+JSON.stringify({mode,count,round,geometry,y}));
         }
       }
       contained(await wall(page),mode+' early Round4');
