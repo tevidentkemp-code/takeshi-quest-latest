@@ -6453,6 +6453,7 @@ function __sqSyncTurboVisualState(page){
 }
 function show(id){
   try{
+    if (id !== 'game' && typeof __sqCancelV2WallMotion === 'function') __sqCancelV2WallMotion();
     if (id !== 'game' && typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('show:' + id);
     if (id === 'game' && typeof __sqNormalizeVsShadowRuntimeState === 'function') __sqNormalizeVsShadowRuntimeState('show:game');
   }catch(_){ }
@@ -13157,26 +13158,19 @@ function __sqSetupLiveV2RowsWindow(panel){
     if(!wrap) return;
     const badges = wrap.querySelectorAll('.v2Badge');
     if(!badges || badges.length < 1) return;
-    const r0 = badges[0].getBoundingClientRect();
-    let wantH = 0;
-    // The smallest supported portrait layout deliberately shows two historic
-    // rows plus the live row. Larger layouts retain three historic rows.
-    const narrow = Number(window.innerWidth || document.documentElement.clientWidth || 0) <= 360;
-    const visibleRows = narrow ? 3 : 4;
-    const last = Math.min(badges.length - 1, visibleRows - 1);
-    if(last >= 0){
-      const target = badges[last].getBoundingClientRect();
-      wantH = Math.round(target.bottom - r0.top);
-    }else if(badges.length >= 3){
-      const r2 = badges[badges.length - 1].getBoundingClientRect();
-      wantH = Math.round(r2.bottom - r0.top);
-    }else{
-      const rl = badges[badges.length-1].getBoundingClientRect();
-      wantH = Math.round(rl.bottom - r0.top);
-    }
-    // Add a small safety buffer so the top/bottom row edges never clip
-    // (padding + border-radius + subpixel rounding on iOS).
-    wantH = Math.max(120, wantH + 60);
+    // Measure the actual live row and its three predecessors. The live row is
+    // taller than history; first-row estimates omit it and the divider.
+    const live = Array.from(badges).findIndex(b=>b.classList.contains('liveRow'));
+    const first = Math.max(0, live - 3);
+    const last = live >= 3 ? live : Math.min(badges.length - 1, 3);
+    const rows = panel.querySelector('#v2Rows');
+    const ws = getComputedStyle(wrap), rs = getComputedStyle(rows);
+    const px = value => parseFloat(value) || 0;
+    const inset = px(ws.paddingTop)+px(ws.paddingBottom)+px(ws.borderTopWidth)+px(ws.borderBottomWidth)+px(rs.paddingTop)+px(rs.paddingBottom);
+    const span = badges[last].getBoundingClientRect().bottom - badges[first].getBoundingClientRect().top;
+    // Common grid motion can add floating-point noise to viewport rectangles.
+    // Keep the measured CSS subpixel size stable before rounding the viewport up.
+    const wantH = Math.max(120, Math.ceil(Math.round((span + inset) * 64) / 64));
     wrap.style.setProperty('--sqV2RowsWinH', wantH + 'px');
   }catch(_){ }
 }
@@ -13284,6 +13278,48 @@ function __sqBindLiveV2QuickRail(panel){
     }
   }catch(_){}
 }
+function __sqCancelV2WallMotion(panel){
+  const host = panel || document.getElementById('liveV2Panel');
+  const wall = host && host.__sqV2Wall;
+  try{ wall?.animation?.cancel(); }catch(_){}
+  if(host) delete host.__sqV2Wall;
+}
+function __sqSyncV2WallMotion(panel, tableRound){
+  const rows = panel.querySelector('#v2Rows'), wrap = panel.querySelector('.v2RowsWrap');
+  if(!rows || !wrap || getLiveV2PlayerCount() < 2){__sqCancelV2WallMotion(panel);return;}
+  const previous = panel.__sqV2Wall;
+  const game = String(state.match?.id || '')+'|'+String(state.__gameToken || 0)+'|'+state.players.map(p=>p.id || p.name).join(',');
+  const history = state.history?.length || 0;
+  const sameGame = previous && previous.game === game;
+  const changedRound = sameGame && previous.round !== tableRound;
+  const moving = previous?.animation && ['running','paused'].includes(previous.animation.playState);
+  const rollback = sameGame && history < previous.history;
+  if(!sameGame || changedRound || rollback){
+    try{ previous?.animation?.cancel(); }catch(_){}
+  }
+  // A completed table round may start catch-up with an older scoring cursor.
+  // Its wall still moves forward to the scheduled table round, never backward.
+  const forward = sameGame && tableRound === previous.round + 1 && history > previous.history;
+  if(forward) wrap.scrollTop = wrap.scrollHeight;
+  const current = {game,round:tableRound,history,animation:(!changedRound && !rollback && sameGame) ? previous.animation : null};
+  panel.__sqV2Wall = current;
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if(reduced){try{ current.animation?.cancel(); }catch(_){}current.animation=null;return;}
+  // A new round while the previous motion is still active presents the newest
+  // truth immediately. Score entry never waits for a visual transition.
+  if(!forward || moving || typeof rows.animate !== 'function') return;
+  const badges = Array.from(rows.querySelectorAll('.v2Badge'));
+  const liveIndex = badges.findIndex(b=>b.classList.contains('liveRow'));
+  const last = badges[liveIndex-1], prior = badges[liveIndex-2];
+  if(!last || !prior) return;
+  const pitch = last.getBoundingClientRect().top - prior.getBoundingClientRect().top;
+  if(!(pitch > 0)) return;
+  // One persistent grid moves as a unit: no cloned/stale scores and no overlap
+  // between the completed row, divider and newly active row.
+  const animation = rows.animate([{transform:'translateY('+pitch+'px)'},{transform:'translateY(0)'}],{duration:300,easing:'cubic-bezier(.2,.65,.3,1)'});
+  current.animation = animation;
+  animation.onfinish = ()=>{if(panel.__sqV2Wall?.animation === animation) panel.__sqV2Wall.animation=null;};
+}
 function liveV2Render(){
   // Only runs on gameplay screen; prevents start/menu JS from crashing
   const page = document.body && (document.body.getAttribute('data-page') || document.body.dataset && document.body.dataset.page);
@@ -13335,6 +13371,7 @@ function liveV2Render(){
   try{ if (typeof __sqSyncTurboVisualState === 'function') __sqSyncTurboVisualState('game'); }catch(_){ }
 
   if(!eligible){
+    __sqCancelV2WallMotion(panel);
     panel.hidden = true;
     return;
   }
@@ -13510,7 +13547,7 @@ function liveV2Render(){
     }
   });
 
-  // Rounds list: 3-row viewport. At game start show current + next 2; later show current + previous 2.
+  // Rounds list: three completed rows plus the live row; older rows remain scrollable.
   // >>> PATCH:LIVEV2_ROWS_GUARD START
   try {
   const rowsHost = document.getElementById("v2Rows");
@@ -13699,6 +13736,7 @@ out.push(`<div class="v2Cell${rowClass} ${(isActiveCell ? "active":"")} ${(isHi 
       }
     }
     rowsHost.innerHTML = out.join("");
+    if(pCount > 1) __sqSetupLiveV2RowsWindow(panel);
 
     // Current-round target cells live inside the live score cells only. They
     // derive from the authoritative per-player round darts and reset in place
@@ -13884,6 +13922,8 @@ const out2 = [];
       window.__liveV2UserScrolled = false;
     }
   }
+
+  try{ __sqSyncV2WallMotion(panel, tableCr); }catch(_){}
 
   // Averages box (under 3-round viewport)
   const avgHost = document.getElementById("v2Avg");

@@ -80,6 +80,7 @@ jobs:
           node --check src/live-game/xp-breakdown.mjs
           node --check src/ui/modals.js
           node --check tools/ui-smoke/verify-sc033-throw-order.js
+          node --check tools/ui-smoke/verify-sc065-score-wall.js
           node --check tools/ui-smoke/verify-sc034-add-player.js
           node --check tools/ui-smoke/verify-sc036-skip-go.js
           node --check tools/ui-smoke/verify-sc047-live-updates.js
@@ -127,7 +128,7 @@ jobs:
             core-dist-verify.txt
 
   webkit-home:
-    name: WebKit — Home source + dist
+    name: WebKit — Home, Stats and score wall source + dist
     needs: static-build
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -148,7 +149,7 @@ jobs:
           set -euo pipefail
           npm ci --prefix tools/ui-smoke --ignore-scripts
           npx --prefix tools/ui-smoke playwright install --with-deps webkit
-      - name: Verify Home and Player Stats in WebKit
+      - name: Verify Home, Player Stats and score wall in WebKit
         shell: bash
         env:
           SQ_BROWSER: webkit
@@ -163,6 +164,8 @@ jobs:
           SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/dist timeout 180s node tools/ui-smoke/verify-sc047-live-updates.js | tee core-webkit-dist-home.txt
           SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/stats-source timeout 180s node tools/ui-smoke/verify-sc043-player-stats.js | tee core-webkit-source-stats.txt
           SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/stats-dist timeout 180s node tools/ui-smoke/verify-sc043-player-stats.js | tee core-webkit-dist-stats.txt
+          SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/score-wall-source timeout 180s node tools/ui-smoke/verify-sc065-score-wall.js | tee core-webkit-source-score-wall.txt
+          SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/score-wall-dist timeout 180s node tools/ui-smoke/verify-sc065-score-wall.js | tee core-webkit-dist-score-wall.txt
       - name: Keep WebKit evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -244,6 +247,7 @@ jobs:
           pid=$!
           trap 'kill "$pid" || true' EXIT
           timeout 180s node tools/ui-smoke/verify-sc033-throw-order.js | tee core-source-throw-order.txt
+          timeout 180s node tools/ui-smoke/verify-sc065-score-wall.js | tee core-source-score-wall.txt
           timeout 180s node tools/ui-smoke/verify-sc034-add-player.js | tee core-source-add-player.txt
           timeout 180s node tools/ui-smoke/verify-sc036-skip-go.js | tee core-source-skip-go.txt
           timeout 180s node tools/ui-smoke/verify-sxp04-gate3-quick-entry.js | tee core-source-quick-entry.txt
@@ -341,6 +345,7 @@ jobs:
           pid=$!
           trap 'kill "$pid" || true' EXIT
           timeout 180s node tools/ui-smoke/verify-sc033-throw-order.js | tee core-dist-throw-order.txt
+          timeout 180s node tools/ui-smoke/verify-sc065-score-wall.js | tee core-dist-score-wall.txt
           timeout 180s node tools/ui-smoke/verify-sc034-add-player.js | tee core-dist-add-player.txt
           timeout 180s node tools/ui-smoke/verify-sc036-skip-go.js | tee core-dist-skip-go.txt
           timeout 180s node tools/ui-smoke/verify-sxp04-gate3-quick-entry.js | tee core-dist-quick-entry.txt
