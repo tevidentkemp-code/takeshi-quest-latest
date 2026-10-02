@@ -79,7 +79,7 @@ async function begin(page) {
     };
     recordThrow({kind:'S',number:ROUNDS[state.currentRound].target});
   });
-  await page.waitForFunction(()=>window.__sqSc065AnimationStarted && window.__sqSc065Animation?.playState==='paused');
+  await page.waitForFunction(()=>window.__sqSc065AnimationStarted && window.__sqSc065Animation?.playState==='paused' && !window.__sqSc065Animation.pending);
 }
 
 (async()=>{
@@ -105,9 +105,10 @@ async function begin(page) {
         await prepareCompletion(page);
         const before=await wall(page),pitch=before.entries[1].top-before.entries[0].top;
         await begin(page);
-        const midpoint=await page.evaluate(()=>{
+        const midpoint=await page.evaluate(async()=>{
           const a=window.__sqSc065Animation;
           a.currentTime=Number(a.effect.getTiming().duration)/2;
+          await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
           return document.querySelector('#v2Rows .v2Badge[data-round="9"]').getBoundingClientRect().top;
         });
         const moving=await wall(page);
@@ -153,7 +154,7 @@ async function begin(page) {
         assert(geometry.anchor,mode+' early current row must use the existing blank/trailing anchor');
         await begin(page);
         assert.equal(await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().length),1,'Early completion started duplicate animations');
-        await page.evaluate(()=>window.__sqSc065Animation.currentTime=150);
+        await page.evaluate(async()=>{window.__sqSc065Animation.currentTime=150;await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));});
         assert.equal(await page.evaluate(()=>document.querySelector('#v2Rows .v2Badge.liveRow').dataset.round),String(round+1));
         if(round){
           const mid=await page.locator('#v2Rows .v2Badge[data-round="'+(round-1)+'"]').evaluate(e=>e.getBoundingClientRect().top);
