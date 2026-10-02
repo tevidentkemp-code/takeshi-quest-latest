@@ -19947,6 +19947,7 @@ function showLeaderboard() {
   if (nextGameBtn) {
     nextGameBtn.classList.toggle('hidden', matchDone);
     nextGameBtn.onclick = () => {
+      if (!__sqNewGamePlayerCountAllowed()) return;
       if (isVsShadow) {
         const nextIndex = state.match?.history?.length || 0;
         const games = Array.isArray(state.shadow && state.shadow.games) ? state.shadow.games : [];
@@ -20943,6 +20944,7 @@ function showPlayerOrderDialog() {
   startBtn.type = 'button';
   startBtn.innerHTML = 'START GAME <span class="to-start-ic">▶</span>';
   startBtn.onclick = () => {
+    if (!__sqNewGamePlayerCountAllowed()) return;
     if (autoEligible && state && state.match) state.match.autoRotateOrder = !!autoOrderPending;
     overlay.remove();
     startNewGame(true);
@@ -20965,7 +20967,14 @@ function showPlayerOrderDialog() {
   modal.tabIndex = 0; modal.focus();
 }
 
+function __sqNewGamePlayerCountAllowed(){
+  // Game Rules v11 caps creation; historical/resumed boards remain readable.
+  if ((state?.players?.length || 0) <= 5) return true;
+  try{ toast('New games support a maximum of 5 players. Start a new match with 2–5 players.'); }catch(_){}
+  return false;
+}
 function startNewGame(setOrder=false){
+  if (!__sqNewGamePlayerCountAllowed()) return;
   try{ __sqClearFinalBullReturnRuntime(); }catch(_){ }
   try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('startNewGame'); }catch(_){ }
   try{
@@ -21027,6 +21036,7 @@ __sqAfterPaint(async ()=>{
 }
 
 function restartGame() {
+  if (!__sqNewGamePlayerCountAllowed()) return;
   if (!confirm('Are you sure you want to restart this game? All progress will be lost.')) return;
   try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('restartGame'); }catch(_){ }
   state.finished = false;

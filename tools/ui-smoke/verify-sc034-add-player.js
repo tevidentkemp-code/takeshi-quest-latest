@@ -361,9 +361,10 @@ function assert(cond, msg) {
       const before=JSON.stringify({players:state.players,score:state.score});
       liveV2Render();
       const added=window.__sqAppendLatePlayer({name:'SEVENTH'},'guest');
+      startNewGame(true);
       return {added,count:state.players.length,unchanged:before===JSON.stringify({players:state.players,score:state.score}),cells:document.querySelectorAll('#v2Rows .v2Cell').length};
     });
-    assert(!historical.added && historical.count===6 && historical.unchanged && historical.cells>0, 'historical six-player state remains readable and unchanged');
+    assert(!historical.added && historical.count===6 && historical.unchanged && historical.cells>0, 'historical six-player state remains readable; new-game attempts cannot clear or replace its board');
 
     console.log('SC-034 ADD PLAYER: PASS');
   } finally {
