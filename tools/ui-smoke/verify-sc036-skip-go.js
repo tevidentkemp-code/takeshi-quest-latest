@@ -462,11 +462,34 @@ function assert(cond, msg) {
             returned:false,absent:kind==='absence',completed:false
           }]};
           window.__sqEnsureFinalBullReturnTimer();
+          // Match the canonical turn transition: state/timer first, then UI.
+          updateUI();
         },kind);
         assert(await page.evaluate(()=>window.__sqFinalBullReturnTimerActive(1) &&
           !state.__sqCatchUp.jobs[0].pendingRounds.length &&
           [3,4,5].every(r=>state.score[1][r].darts.every(d=>d?.kind==='Scratch'))
         ), `${players}-player ${kind} reaches Bull with earlier visits permanently scratched`);
+        // Absence scratches use the established X marker; late-entry scratches
+        // keep their established numeric zero presentation.
+        await page.waitForFunction(expected =>
+          Number(document.querySelector('#v2Rows .v2Badge.active')?.dataset?.round)===13 &&
+          Number(document.querySelector('#v2Rows .v2Badge.liveRow')?.dataset?.round)===13 &&
+          Number(document.querySelector('#v2Rows .v2Cell.active[data-p="1"]')?.dataset?.round)===13 &&
+          [3,4,5].every(r=>document.querySelector(`#v2Rows .v2Cell[data-p="1"][data-round="${r}"]`)?.textContent.trim()===expected),
+          kind==='absence'?'X':'0'
+        ).catch(async error=>{
+          const shown=await page.evaluate(()=>({
+            activeBadge:document.querySelector('#v2Rows .v2Badge.active')?.dataset?.round,
+            liveBadge:document.querySelector('#v2Rows .v2Badge.liveRow')?.dataset?.round,
+            activeCell:document.querySelector('#v2Rows .v2Cell.active[data-p="1"]')?.dataset?.round,
+            oldCells:[3,4,5].map(r=>document.querySelector(`#v2Rows .v2Cell[data-p="1"][data-round="${r}"]`)?.textContent.trim())
+          }));
+          throw new Error(`${players}-player ${kind} Bull display: ${JSON.stringify(shown)}; ${error.message}`);
+        });
+        assert(await page.locator('#pad .dtBullBtn').count()>0 &&
+          await page.locator('#pad [data-score-label="Single"]').count()===0,
+          `${players}-player ${kind} keeps visible Bull focus and offers no old number target`
+        );
         await page.evaluate(()=>recordThrow({kind:'BounceOut'}));
         assert(await page.evaluate(()=>state.currentRound===13 && state.currentDart===1 &&
           state.score[1][13].darts[0]?.bounceOut===true &&
