@@ -3057,7 +3057,7 @@ window.__sqAchCelebrate = function(){
 };
 
 // Render the trophy case: earned badges bright (with counts), locked badges dim.
-function __sqTrophyCase(earnedMap, available = true){
+function __sqTrophyCase(earnedMap, available = true, loading = false){
   const wrap = document.createElement('div');
   wrap.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
   const badge = (a) => {
@@ -3075,7 +3075,7 @@ function __sqTrophyCase(earnedMap, available = true){
     const nm = document.createElement('div'); nm.textContent = a.name; nm.style.cssText = 'font-size:10px;font-weight:800;letter-spacing:.01em;color:' + (earned ? s.c : 'var(--v3-muted,#98a2b8)') + ';line-height:1.15;';
     b.append(ic, nm);
     if (available) b.onclick = () => { try{ __sqTrophyDetail(a.code, earnedMap); }catch(_){ } };
-    else { b.style.cursor = 'default'; b.title = 'Achievement history is unavailable right now.'; }
+    else { b.style.cursor = 'default'; b.title = loading ? 'Loading achievement history…' : 'Achievement history is unavailable right now.'; }
     // Repeatable trophies show a ×count; milestones show a ✓ tick when unlocked.
     if (earned && !milestone && got.cnt > 1){
       const bc = document.createElement('div'); bc.textContent = '×' + got.cnt;
@@ -3187,7 +3187,7 @@ function __sqMisfireCase(misfireState, xpRow){
   if (!misfireState || !misfireState.available){
     unlocked.textContent = '— / ' + SQ_MISFIRE.CATALOG.length + ' unlocked';
     const unavailable = document.createElement('div'); unavailable.className = 'muted'; unavailable.style.fontSize = '12px';
-    unavailable.textContent = 'Misfire history is unavailable right now.'; card.appendChild(unavailable);
+    unavailable.textContent = misfireState && misfireState.loading ? 'Loading Misfire history…' : 'Misfire history is unavailable right now.'; card.appendChild(unavailable);
   } else {
     const total = SQ_MISFIRE.CATALOG.reduce((sum, x) => sum + Number((map[x.code] || {}).cnt || 0), 0);
     const earnedN = SQ_MISFIRE.CATALOG.filter(x => Number((map[x.code] || {}).cnt || 0) > 0).length;
@@ -3250,7 +3250,7 @@ function __sqBuildAchievementPanel(achState, misfireState, xpRow, reducedMotion,
     vcount.append(vcB, vcS);
     const vbar = document.createElement('div'); vbar.className = 'pp-vault-bar';
     const vfill = document.createElement('span'); vbar.appendChild(vfill);
-    const vsub = document.createElement('div'); vsub.className = 'pp-vault-sub'; vsub.textContent = achAvailable ? ('Trophies unlocked · ' + Math.round(pctDone * 100) + '%') : 'Achievement history unavailable';
+    const vsub = document.createElement('div'); vsub.className = 'pp-vault-sub'; vsub.textContent = achAvailable ? ('Trophies unlocked · ' + Math.round(pctDone * 100) + '%') : (achState && achState.loading ? 'Loading achievement history…' : 'Achievement history unavailable');
     meter.append(vhead, vcount, vbar, vsub);
 
     const shelfEl = document.createElement('div'); shelfEl.className = 'pp-vault-shelf';
@@ -3263,10 +3263,10 @@ function __sqBuildAchievementPanel(achState, misfireState, xpRow, reducedMotion,
       shelfEl.appendChild(chip); chips.push(chip);
     });
     if (shelf.length > MAXSHELF){ const more = document.createElement('div'); more.className = 'pp-vault-more'; more.textContent = '+' + (shelf.length - MAXSHELF) + ' more'; shelfEl.appendChild(more); }
-    if (!shelf.length){ const none = document.createElement('div'); none.className = 'pp-vault-more'; none.textContent = achAvailable ? 'No trophies yet — go earn some!' : 'Achievement history is unavailable right now.'; shelfEl.appendChild(none); }
+    if (!shelf.length){ const none = document.createElement('div'); none.className = 'pp-vault-more'; none.textContent = achAvailable ? 'No trophies yet — go earn some!' : (achState && achState.loading ? 'Loading achievement history…' : 'Achievement history is unavailable right now.'); shelfEl.appendChild(none); }
     vault.append(meter, shelfEl);
     achPanel.appendChild(vault);
-    achPanel.appendChild(__sqTrophyCase(achMap, achAvailable));
+    achPanel.appendChild(__sqTrophyCase(achMap, achAvailable, !!(achState && achState.loading)));
 
     // Misfires are deliberately separate from the positive Trophy Vault.
     // Counts are historical; XP impact is the launch-forward value already
@@ -3293,36 +3293,52 @@ async function __sqBuildPlayerAchievementsView(name){
   const reduced = (() => { try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ return false; } })();
   const instantCount = (el, value) => { if (el) el.textContent = String(value == null ? '' : value); };
   let player = null;
-  let achState = { available:false, map:{} };
-  let misfireState = { available:false, map:{} };
+  let achState = { available:false, loading:true, map:{} };
+  let misfireState = { available:false, loading:true, map:{} };
+  const achPanel = document.createElement('div');
+  let host = null;
+  const render = () => {
+    if (host && !host.isConnected) return;
+    const panel = __sqBuildAchievementPanel(achState, misfireState, null, reduced, instantCount);
+    achPanel.replaceChildren(panel);
+    if (host) requestAnimationFrame(panel.__ppReplay);
+  };
   try{ player = await SQ_ACH.playerForName(name); }catch(_){ player = null; }
-  let xpPromise = Promise.resolve(null);
   if (player && player.player_id){
-    xpPromise = (typeof SQ_XP.forPlayerId === 'function')
-      ? SQ_XP.forPlayerId(player.player_id).catch(()=>null)
-      : Promise.resolve(null);
-    const [as, mf] = await Promise.all([
-      SQ_ACH.forPlayerId(player.player_id).catch(()=>({ available:false, map:{} })),
+    // History sources render independently. Optional XP starts afterwards so
+    // it cannot contend with the history reads or hide successful sections.
+    const history = [
+      SQ_ACH.forPlayerId(player.player_id).catch(()=>({ available:false, map:{} }))
+        .then(state => { achState = state; render(); }),
       SQ_MISFIRE.forPlayerId(player.player_id).catch(()=>({ available:false, map:{} }))
-    ]);
-    achState = as || { available:false, map:{} };
-    misfireState = mf || { available:false, map:{} };
-  }
-  const achPanel = __sqBuildAchievementPanel(achState, misfireState, null, reduced, instantCount);
-  xpPromise.then(row => {
-    try{
+        .then(state => { misfireState = state; render(); })
+    ];
+    Promise.all(history).then(async () => {
+      if (host && !host.isConnected) return;
+      const SB = window.sb || window.__sb || null;
+      if (!SB || typeof SB.from !== 'function') return;
+      // Only the authoritative Misfire XP field is needed on this page.
+      const { data, error } = await SB.from('v_player_xp').select('misfire_xp')
+        .eq('player_id', player.player_id).limit(1);
+      const row = !error && Array.isArray(data) ? data[0] : null;
       const el = achPanel.querySelector('.pp-misfire-xp');
-      if (!el || !row || !Number.isFinite(Number(row.misfire_xp))) return;
+      if (!el || (host && !host.isConnected) || !row || row.misfire_xp == null || !Number.isFinite(Number(row.misfire_xp))) return;
       const value = Number(row.misfire_xp);
       el.textContent = (value > 0 ? '+' : '') + String(value) + ' XP';
-    }catch(_){}
-  }).catch(()=>{});
+    }).catch(()=>{});
+  } else {
+    achState = { available:false, map:{} };
+    misfireState = { available:false, map:{} };
+  }
+  render();
   return {
     profile: document.createElement('div'),
     tabs: [],
-    showTab(host){
-      host.replaceChildren(achPanel);
-      try{ if (typeof achPanel.__ppReplay === 'function') requestAnimationFrame(achPanel.__ppReplay); }catch(_){}
+    showTab(mount){
+      host = mount;
+      mount.replaceChildren(achPanel);
+      const panel = achPanel.firstElementChild;
+      try{ if (panel && typeof panel.__ppReplay === 'function') requestAnimationFrame(panel.__ppReplay); }catch(_){}
     }
   };
 }
@@ -3362,9 +3378,9 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, 
   modal.tabIndex = 0; modal.focus();
   try{
     const tab = Number(opts.tab) || 0;
-    const view = opts.view || (tab === 2
+    const view = tab === 2
       ? await __sqBuildPlayerAchievementsView(name)
-      : await __sqBuildPlayerStatsProfile(name));
+      : (opts.view || await __sqBuildPlayerStatsProfile(name));
     if (returned || !overlay.isConnected) return;
     view.showTab(body, tab);
   }catch(e){
