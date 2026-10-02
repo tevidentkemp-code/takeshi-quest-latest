@@ -12613,7 +12613,6 @@ function __sqFmtAvg(n){
 
 function __sqV2LiveAveragePair(pIdx, currentRound){
   try{
-    const cr = Math.max(0, Number(currentRound) || 0);
     const rows = [];
     const addEntry = (acc, entry) => {
       if(!entry) return acc;
@@ -12634,8 +12633,9 @@ function __sqV2LiveAveragePair(pIdx, currentRound){
     };
     const avg3 = acc => acc.darts ? (acc.points * 3 / acc.darts) : NaN;
 
-    for(let r = 0; r <= cr; r++){
-      const entry = state.score?.[pIdx]?.[r];
+    // Catch-up can move the active round backwards. Every recorded dart in
+    // the current game still belongs in GAV, including later played rounds.
+    for(const entry of (state.score?.[pIdx] || [])){
       if(entry && Array.isArray(entry.darts) && entry.darts.some(d => d != null)) rows.push(entry);
     }
 

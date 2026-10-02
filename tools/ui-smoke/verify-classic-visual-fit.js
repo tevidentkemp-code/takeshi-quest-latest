@@ -276,6 +276,22 @@ async function verifySc022HudPolish(){
     assert.equal(matchAverage.mtc, 52.5, 'MAV includes completed match games plus the current dart');
     assert.equal(matchAverage.darts, 1, 'current-game average denominator remains one dart');
     assert.equal(matchAverage.matchDarts, 4, 'MAV denominator includes three historical darts plus the current dart');
+    const catchupAverage = await page.evaluate(() => {
+      const oldScore = state.score[0], oldHistory = state.match.history;
+      try {
+        state.match.history = [];
+        state.score[0] = [
+          { darts:[{kind:'S',points:10},{kind:'X',points:0}, {kind:'X',points:0,bounceOut:true}], roundTotal:10 },
+          { darts:[], roundTotal:0, skipped:true },
+          { darts:[{kind:'D',points:40},null,null], roundTotal:40 }
+        ];
+        const pair = __sqV2LiveAveragePair(0, 0);
+        return { game:pair.game, match:pair.mtc, darts:pair.darts };
+      } finally { state.score[0] = oldScore; state.match.history = oldHistory; }
+    });
+    assert.equal(catchupAverage.game, 37.5, 'GAV keeps every recorded dart when catch-up moves the active round backwards');
+    assert.equal(catchupAverage.match, 37.5, 'MAV keeps later played rounds during catch-up');
+    assert.equal(catchupAverage.darts, 4, 'MISS and explicit Bounce Out count as thrown darts; untouched skipped rounds do not');
     await page.waitForTimeout(1150);
     shots = await waitForV2Shots(page, ['next:', 'idle:', 'idle:']);
     assertOrangeUnthrown(shots, 'next player reset');
