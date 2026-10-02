@@ -89,8 +89,12 @@ async function begin(page) {
     // warmers receive empty results; writes remain blocked by the harness.
     await ctx.route('**.supabase.co/rest/v1/**',route=>{
       const method=route.request().method();
-      if(method==='GET') return route.fulfill({status:200,contentType:'application/json',body:'[]'});
-      if(method==='HEAD') return route.fulfill({status:503,body:''});
+      // Keep the offline response a valid cross-origin response in WebKit,
+      // including the unavailable HEAD probe. Production writes stay blocked.
+      const headers={'access-control-allow-origin':'*','access-control-allow-methods':'GET, HEAD, OPTIONS','access-control-allow-headers':'authorization, apikey, content-type, prefer, x-client-info'};
+      if(method==='OPTIONS') return route.fulfill({status:204,headers,body:''});
+      if(method==='GET') return route.fulfill({status:200,headers,contentType:'application/json',body:'[]'});
+      if(method==='HEAD') return route.fulfill({status:503,headers,body:''});
       return route.abort('failed');
     });
     await H.boot(page,{settle:800});
