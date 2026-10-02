@@ -2160,7 +2160,7 @@ function __sqVsShadowHasExactlyOneRealPlayer(){
   return __sqIsVsShadowSetup() && Array.isArray(__msPlayers) && __msPlayers.length === 1 && __msValidPlayerCount() === 1;
 }
 
-const MS2_MAX_PLAYERS = 6;
+const MS2_MAX_PLAYERS = 5;
 
 // Best-effort Power Rank lookup (official power rankings, cached ~60s).
 // Resolves to a Map of lowercased player name -> rank; empty map offline.
@@ -2313,7 +2313,7 @@ function __msValidPlayerCount(){
 }
 
 function __msMinPlayersRequired(){
-  // Practice allows 1–6 players. Match Play requires 2–6.
+  // New Practice allows 1–5 players. New Match Play requires 2–5.
   const mode = (window.__sqSelectedMode || 'match');
   if (__sqIsVsShadowSetup()) return 1;
   return (mode === 'practice') ? 1 : 2;
@@ -2347,7 +2347,7 @@ function __msUpdateStartEnabled(){
   if (startBtn) startBtn.disabled = !ready;
 
   const full = __msPlayers.length >= cap;
-  const fullReason = vsShadow ? 'Vs Shadow uses exactly 1 real player.' : 'All 6 places are filled. Remove a player to add another.';
+  const fullReason = vsShadow ? 'Vs Shadow uses exactly 1 real player.' : `All ${cap} places are filled. Remove a player to add another.`;
   [msAddRegisteredBtn, msAddGuestBtn].forEach(btn => {
     if (!btn) return;
     btn.disabled = full;
@@ -2572,6 +2572,10 @@ if (mlStartBtn) {
     });
 
     const minP = __msMinPlayersRequired();
+    if (built.length > MS2_MAX_PLAYERS) {
+      toast(`Match card is full (max ${MS2_MAX_PLAYERS} players)`);
+      return;
+    }
     if (built.length < minP) {
       toast(minP === 1 ? 'Add 1+ player' : 'Add 2+ players');
       return;
@@ -4824,7 +4828,7 @@ async function showAddPlayerDialog(index){
           };
           const candKey = String(cand.id || cand.name).trim().toLowerCase();
           const already = __msPlayers.some(p => String((p && (p.id || p.name)) || '').trim().toLowerCase() === candKey);
-          const cap = (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 6);
+          const cap = (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 5);
           const vsBlocked = (typeof __sqVsShadowSetupSlotTaken === 'function') && __sqVsShadowSetupSlotTaken();
           if (already){
             cardMsg = 'Already on the match card';
@@ -4928,7 +4932,7 @@ async function showSelectPlayerDialog(index){
   const searchEl = byId('spSearchInput');
   const chips = Array.from(modal.querySelectorAll('.sp2-chip'));
   const vsShadow = __sqIsVsShadowSetup();
-  const slotsLeft = Math.max(0, (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 6) - ((__msPlayers && __msPlayers.length) || 0));
+  const slotsLeft = Math.max(0, (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 5) - ((__msPlayers && __msPlayers.length) || 0));
   const maxPick = vsShadow ? 1 : slotsLeft;
 
   const alreadyIn = new Set((__msPlayers || []).map(p => String(p.id || p.name || '').trim().toLowerCase()).filter(Boolean));
@@ -5076,7 +5080,7 @@ async function showSelectPlayerDialog(index){
           return;
         }
         picks.forEach(meta => {
-          if (__msPlayers.length >= (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 6)) return;
+          if (__msPlayers.length >= (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 5)) return;
           __msPlayers.push({
             type: 'registered',
             id: meta.id != null ? meta.id : null,

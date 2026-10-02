@@ -8590,7 +8590,7 @@ function __sqVsShadowHasExactlyOneRealPlayer(){
   return __sqIsVsShadowSetup() && Array.isArray(__msPlayers) && __msPlayers.length === 1 && __msValidPlayerCount() === 1;
 }
 
-const MS2_MAX_PLAYERS = 6;
+const MS2_MAX_PLAYERS = 5;
 
 // Best-effort Power Rank lookup (official power rankings, cached ~60s).
 // Resolves to a Map of lowercased player name -> rank; empty map offline.
@@ -8743,7 +8743,7 @@ function __msValidPlayerCount(){
 }
 
 function __msMinPlayersRequired(){
-  // Practice allows 1–6 players. Match Play requires 2–6.
+  // New Practice allows 1–5 players. New Match Play requires 2–5.
   const mode = (window.__sqSelectedMode || 'match');
   if (__sqIsVsShadowSetup()) return 1;
   return (mode === 'practice') ? 1 : 2;
@@ -8777,7 +8777,7 @@ function __msUpdateStartEnabled(){
   if (startBtn) startBtn.disabled = !ready;
 
   const full = __msPlayers.length >= cap;
-  const fullReason = vsShadow ? 'Vs Shadow uses exactly 1 real player.' : 'All 6 places are filled. Remove a player to add another.';
+  const fullReason = vsShadow ? 'Vs Shadow uses exactly 1 real player.' : `All ${cap} places are filled. Remove a player to add another.`;
   [msAddRegisteredBtn, msAddGuestBtn].forEach(btn => {
     if (!btn) return;
     btn.disabled = full;
@@ -9002,6 +9002,10 @@ if (mlStartBtn) {
     });
 
     const minP = __msMinPlayersRequired();
+    if (built.length > MS2_MAX_PLAYERS) {
+      toast(`Match card is full (max ${MS2_MAX_PLAYERS} players)`);
+      return;
+    }
     if (built.length < minP) {
       toast(minP === 1 ? 'Add 1+ player' : 'Add 2+ players');
       return;
@@ -11254,7 +11258,7 @@ async function showAddPlayerDialog(index){
           };
           const candKey = String(cand.id || cand.name).trim().toLowerCase();
           const already = __msPlayers.some(p => String((p && (p.id || p.name)) || '').trim().toLowerCase() === candKey);
-          const cap = (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 6);
+          const cap = (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 5);
           const vsBlocked = (typeof __sqVsShadowSetupSlotTaken === 'function') && __sqVsShadowSetupSlotTaken();
           if (already){
             cardMsg = 'Already on the match card';
@@ -11358,7 +11362,7 @@ async function showSelectPlayerDialog(index){
   const searchEl = byId('spSearchInput');
   const chips = Array.from(modal.querySelectorAll('.sp2-chip'));
   const vsShadow = __sqIsVsShadowSetup();
-  const slotsLeft = Math.max(0, (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 6) - ((__msPlayers && __msPlayers.length) || 0));
+  const slotsLeft = Math.max(0, (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 5) - ((__msPlayers && __msPlayers.length) || 0));
   const maxPick = vsShadow ? 1 : slotsLeft;
 
   const alreadyIn = new Set((__msPlayers || []).map(p => String(p.id || p.name || '').trim().toLowerCase()).filter(Boolean));
@@ -11506,7 +11510,7 @@ async function showSelectPlayerDialog(index){
           return;
         }
         picks.forEach(meta => {
-          if (__msPlayers.length >= (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 6)) return;
+          if (__msPlayers.length >= (typeof MS2_MAX_PLAYERS === 'number' ? MS2_MAX_PLAYERS : 5)) return;
           __msPlayers.push({
             type: 'registered',
             id: meta.id != null ? meta.id : null,
@@ -19983,6 +19987,7 @@ function showLeaderboard() {
   if (nextGameBtn) {
     nextGameBtn.classList.toggle('hidden', matchDone);
     nextGameBtn.onclick = () => {
+      if (!__sqNewGamePlayerCountAllowed()) return;
       if (isVsShadow) {
         const nextIndex = state.match?.history?.length || 0;
         const games = Array.isArray(state.shadow && state.shadow.games) ? state.shadow.games : [];
@@ -20979,6 +20984,7 @@ function showPlayerOrderDialog() {
   startBtn.type = 'button';
   startBtn.innerHTML = 'START GAME <span class="to-start-ic">▶</span>';
   startBtn.onclick = () => {
+    if (!__sqNewGamePlayerCountAllowed()) return;
     if (autoEligible && state && state.match) state.match.autoRotateOrder = !!autoOrderPending;
     overlay.remove();
     startNewGame(true);
@@ -21001,7 +21007,14 @@ function showPlayerOrderDialog() {
   modal.tabIndex = 0; modal.focus();
 }
 
+function __sqNewGamePlayerCountAllowed(){
+  // Game Rules v11 caps creation; historical/resumed boards remain readable.
+  if ((state?.players?.length || 0) <= 5) return true;
+  try{ toast('New games support a maximum of 5 players. Start a new match with 2–5 players.'); }catch(_){}
+  return false;
+}
 function startNewGame(setOrder=false){
+  if (!__sqNewGamePlayerCountAllowed()) return;
   try{ __sqClearFinalBullReturnRuntime(); }catch(_){ }
   try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('startNewGame'); }catch(_){ }
   try{
@@ -21064,6 +21077,7 @@ __sqAfterPaint(async ()=>{
 }
 
 function restartGame() {
+  if (!__sqNewGamePlayerCountAllowed()) return;
   if (!confirm('Are you sure you want to restart this game? All progress will be lost.')) return;
   try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('restartGame'); }catch(_){ }
   state.finished = false;
@@ -24084,7 +24098,7 @@ function arrangeStartActions(){
           '<div class="sg-opt-top">'+
             '<div class="sg-opt-title">MATCH PLAY</div>'+
           '</div>'+
-          '<div class="sg-opt-desc">GAMES BETWEEN 2 AND 6 PEOPLE</div>' +
+          '<div class="sg-opt-desc">GAMES BETWEEN 2 AND 5 PEOPLE</div>' +
         '</div>';
       const openMatchVariantMenu = () => {
         startGameBody.innerHTML = '';

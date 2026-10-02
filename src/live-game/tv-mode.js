@@ -20,6 +20,7 @@
     return String((p&&(p.nickname||p.name||p.displayName||p.initials))||('PLAYER '+(i+1))).trim();
   }
   function modeUnsupported(s){
+    // The viewer retains historical six-player boards; new games are capped upstream.
     if(!s||!Array.isArray(s.players)||s.players.length<2||s.players.length>6) return 'TV Mode currently supports 2–6 player games.';
     var m=s.match||{};
     var bag=[s.mode,s.gameMode,m.mode,m.gameMode,m.practiceType,m.gameVariant].map(function(v){return String(v||'').toLowerCase();}).join(' ');
