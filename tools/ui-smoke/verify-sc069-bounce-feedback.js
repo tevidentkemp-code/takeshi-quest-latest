@@ -133,6 +133,7 @@ fs.mkdirSync(out, { recursive: true });
     await begin('accepted-final-bull'); await hold(); await page.waitForFunction(() => state.finished === true); r = await read(); committedBO(r); assert(r.after.finished, 'final dart completes game'); await page.screenshot({ path: path.join(out, 'accepted-final-bull.png') });
 
     await page.locator('[data-action="gcClose"]').click(); await page.locator('#settingsBtnGame').click(); await page.locator('.sq-menu106-row').filter({ hasText: 'End Match' }).click(); await page.locator('.sq-confirm-bd .sq-endmatch-yes').click();
+    await page.waitForFunction(() => document.body.dataset.page === 'details' && state.history.length === 0);
     assert.equal(await page.evaluate(() => document.body.dataset.page), 'details'); assert.equal(await page.evaluate(() => state.history.length), 0); assert.equal(await page.evaluate(() => window.__sqDmdV2.snapshot().queue.some(m => m.bounceOut) || !!window.__sqDmdV2.snapshot().active?.bounceOut), false);
 
     // A fresh ordinary match gives the real pre-threshold End Match path a clean
