@@ -71,6 +71,7 @@ async function scenario(mode){
     const btn = Array.from(document.querySelectorAll('.sq-player-stats-hub .pp-tab')).find(b => /^achievements$/i.test(b.textContent.trim()));
     if (btn) btn.click();
   });
+  await page.waitForTimeout(500);
   if (mode === 'hydrated') {
     // This healthy fixture reuses the native 1000ms count-up. Wait for its
     // known available history at the existing 8s default, preserving all assertions.
@@ -80,7 +81,7 @@ async function scenario(mode){
         root?.querySelector('.pp-vault-count')?.textContent.trim() === '2 / 58' &&
         /6 historical occurrences/.test(root?.querySelector('.pp-misfires')?.textContent || '');
     });
-  } else await page.waitForTimeout(500);
+  }
   const ui = await page.evaluate(() => {
     const root = document.querySelector('.sq-stats-modal');
     const sec = title => root.querySelector('[data-achievement-section="' + title + '"]');
