@@ -13473,7 +13473,12 @@ function liveV2Render(){
     const v2s = document.getElementById("v2Sub"+i);
     const v2w = document.getElementById("v2WinDots"+i);
     if(v2i) v2i.textContent = getPlayerInitial(i);
-    if(v2t) v2t.textContent = String(__v2Totals[i]);
+    if(v2t){
+      v2t.textContent = String(__v2Totals[i]);
+      // Fit the full canonical total in the five-player presentation only.
+      if(pCount === 5) v2t.dataset.totalDigits = String(v2t.textContent.length);
+      else delete v2t.dataset.totalDigits;
+    }
 
     const diff = (__v2Totals[i] - __v2LeaderTotal); // trailing = negative
     const isLeader = (__v2Totals[i] === __v2LeaderTotal);
@@ -16962,6 +16967,34 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
     // Smoothly ease the vertical scale so the whole graph grows fluidly.
     st.maxV = st.maxV ? st.maxV + (targetMax - st.maxV) * 0.14 : targetMax;
     const maxV = st.maxV;
+    // Five player keys keep their natural font width and wrap as whole labels.
+    let legendRows = 1;
+    if (packet && NP === 5) {
+      ctx.font = '800 9px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      let keyX = 26, keyY = 3;
+      const keyRight = cssW - 12;
+      const singleRowHs = perThrowRace && records.length;
+      const keyWidths = packet.series.map(s => ctx.measureText(String(s.name || '').replace(/^Record:/i,'HS').slice(0,12)).width);
+      const widestPair = Math.max(0, ...keyWidths.slice(1).map((width, i) => width + keyWidths[i]));
+      const keyGap = singleRowHs ? 6 : Math.max(0, Math.min(12, keyRight - 26 - widestPair - 0.5));
+      const place = width => {
+        if (keyX > 26 && keyX + width > keyRight) { keyX = 26; keyY += 12; legendRows++; }
+      };
+      packet.series.forEach((s, i) => {
+        const label = String(s.name || '').replace(/^Record:/i,'HS').slice(0,12);
+        const width = keyWidths[i];
+        place(width); ctx.fillStyle = s.color || '#7bdcff'; ctx.fillText(label, keyX, keyY);
+        keyX += width + keyGap;
+      });
+      if (singleRowHs) {
+        const label = 'High Score', width = ctx.measureText(label).width;
+        place(width + 5 + 18);
+        ctx.save(); ctx.setLineDash([]); ctx.fillStyle = 'rgba(255,224,150,.88)'; ctx.fillText(label, keyX, keyY);
+        const dashX = keyX + width + 5;
+        ctx.setLineDash([5,4]); ctx.strokeStyle = records[0].color || 'rgba(255,214,110,.9)'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(dashX, keyY + 5); ctx.lineTo(dashX + 18, keyY + 5); ctx.stroke(); ctx.restore();
+      }
+    } else {
     // Classic keeps the High Score key on the same compact row as player keys.
     // Player labels are proportionally constrained only when the available
     // canvas width would otherwise push the gold dash beyond the right edge.
@@ -16998,7 +17031,8 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
         ctx.restore();
       }
     }
-    const padL = 26, padR = 12, padT = perThrowRace ? 29 : (packet ? 19 : 8), padB = 18, W = cssW - padL - padR, H = cssH - padT - padB;
+    }
+    const padL = 26, padR = 12, padT = (perThrowRace ? 29 : (packet ? 19 : 8)) + (NP === 5 ? (legendRows - 1) * 12 : 0), padB = 18, W = cssW - padL - padR, H = cssH - padT - padB;
     const throwSteps = Math.max(1, rc * 3);
     const XStep = step => padL + (Math.max(0, Math.min(throwSteps, Number(step) || 0)) / throwSteps) * W;
     const X = i => perThrowRace ? XStep((i + 1) * 3) : padL + (rc <= 1 ? 0 : (i / (rc - 1)) * W);
@@ -29656,6 +29690,20 @@ const SQ_XP = {
     const now = Date.now();
     const cached = this._oneCache.get(key);
     if (!force && cached && (now - cached.at) < 60000) { this._oneAvailable.set(key, true); return cached.row; }
+    // SC-063: the player directory may already have a fresh authoritative XP
+    // snapshot. Reuse its matching row rather than asking PostgREST to
+    // recompute the same expensive view for one player.
+    const allFresh = !force && this._allAvailable && Array.isArray(this._cache) && (now - this._cacheAt) < 60000;
+    if (allFresh){
+      const row = this._cache.find(r => field === 'player_id'
+        ? String((r && r.player_id) || '') === raw
+        : String((r && r.name) || '').trim().toLowerCase() === raw.toLowerCase());
+      if (row){
+        this._oneAvailable.set(key, true);
+        this._oneCache.set(key, { at:this._cacheAt, row });
+        return row;
+      }
+    }
     if (!force && this._oneInflight.has(key)) return this._oneInflight.get(key);
     const SB = window.sb || window.__sb || null;
     if (!SB || typeof SB.from !== 'function') { this._oneAvailable.set(key, false); return cached ? cached.row : null; }
@@ -30674,7 +30722,15 @@ function __sqBuildAchievementPanel(achState, misfireState, xpRow, reducedMotion,
 function __sqPlayerStatsHistory(name, primary, retry=false){
   const history = primary.history || (primary.history = {});
   const failed = key => history[key + 'State'] && !history[key + 'State'].available;
-  if (!history.player || (retry && (failed('positive') || failed('misfires')))) history.player = SQ_ACH.playerForName(name).catch(() => null);
+  if (!history.player || (retry && (failed('positive') || failed('misfires')))){
+    const key = __sqPlayerStatsKey(name);
+    const known = (window.__sqPlayerStatsPlayers || []).find(p => __sqPlayerStatsKey(p.name) === key);
+    const raw = known && (known.raw || known);
+    const playerId = raw && (raw.id || raw.player_id);
+    history.player = playerId
+      ? Promise.resolve({ player_id:String(playerId), name:(known && known.name) || name })
+      : SQ_ACH.playerForName(name).catch(() => null);
+  }
   const source = (key, service) => {
     if (!history[key] || (retry && failed(key))){
       history[key + 'State'] = null;
@@ -32162,6 +32218,14 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
         // Do not start secondary reads for a closed or superseded profile.
         if (request !== profileRequest || !overlay.isConnected) return;
         try{
+          // SC-063: protect the critical progression/history reads from the
+          // heavier target-analytics burst. These promises already have their
+          // own truthful timeout/error states; this only controls ordering.
+          try{ await shell.primary.xp; }catch(_){}
+          if (request !== profileRequest || !overlay.isConnected) return;
+          const criticalHistory = __sqPlayerStatsHistory(n, shell.primary);
+          await Promise.allSettled([criticalHistory.positive, criticalHistory.misfires]);
+          if (request !== profileRequest || !overlay.isConnected) return;
           hydration = hydration || __sqStatsSourceDeadline(__sqBuildPlayerStatsProfile(n, shell.primary), 15000);
           wireView(await hydration, true);
         }catch(e){

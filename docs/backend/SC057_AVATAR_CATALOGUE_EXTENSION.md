@@ -1,6 +1,6 @@
 # SC-057 approved avatar pairs — candidate, backend acceptance pending
 
-Original prepared code: production `main` / `6176c8902f4598c15908af0209065c4fda734d57` (v0.11.0). Preservation refresh: released `main` / `083c02b144fd7832ee8a4d5afecfdafe14fa1a76` (v0.11.5), retaining all 61 production release entries and inherited QA jobs. The candidate uses provisional v0.12.0 dated 3 October 2026; final allocation follows the then-live metadata. Mode: bounded BUILD/FIX, T2 production candidate. Thomas's programme RELEASE grant and completed approval of the six original portraits/winner images authorise this bounded extension for appended IDs 30–32. Required backend acceptance and exact-head QA precede root-coordinated release. This document records candidate preparation.
+Original prepared code: production `main` / `6176c8902f4598c15908af0209065c4fda734d57` (v0.11.0). Final preservation refresh: released `main` / `73aa208156bd030418d83c301980a90457f84ec0` (v0.11.7), retaining all 63 production release entries and all 37 inherited Core QA jobs. The candidate uses provisional v0.12.0 dated 3 October 2026; final allocation follows the then-live metadata. Mode: bounded BUILD/FIX, T2 production candidate. Thomas's programme RELEASE grant and completed approval of the six original portraits/winner images authorise this bounded extension for appended IDs 30–32. Required backend acceptance and exact-head QA precede root-coordinated release. This document records candidate preparation.
 
 ## Verified source and live database
 
