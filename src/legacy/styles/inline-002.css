@@ -1507,6 +1507,24 @@ body[data-page="game"] #gameScrollGate{
   justify-content:center;
 }
 
+/* VIS-001: contain mode labels and preserve the existing mode accents. */
+#startGameModal .sg-opt .sg-opt-top{ flex-wrap:wrap; row-gap:4px; }
+#startGameModal .sg-opt .sg-opt-title,
+#startGameModal .sg-opt .sg-opt-soon{ max-width:100%; }
+#startGameModal .sg-opt .sg-opt-desc{
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.04em;
+  line-height:1.3;
+}
+#startGameModal .sg-opt:not(.sg-opt--turbo) .sg-opt-desc{ color:rgba(231,233,245,.70); }
+@media(max-width:360px){
+  #startGameModal .sg-head{ padding:14px 16px 8px; }
+  #startGameModal .sg-title{ font-size:20px; letter-spacing:.04em; }
+  #startGameModal .sg-options{ padding:10px 16px 14px; }
+  #startGameModal .sg-opt{ padding:12px; gap:12px; }
+}
+
 /* Select Players modal — Premium UI v1 */
 .modal.sp-modal{
   max-width: 420px;
@@ -1619,6 +1637,70 @@ body[data-page="game"] #gameScrollGate{
   pointer-events:none;
   left:-9999px;
 }
+
+/* SC-051: the late-entry chooser shares setup player identity treatment. */
+.sq-menu106-modal.sq-add-player-modal{
+  width:min(92vw,420px)!important;
+  max-width:420px!important;
+  border-radius:var(--sq-radius-panel)!important;
+  background:rgba(10,13,20,.98)!important;
+  padding:0 0 4px!important;
+  box-shadow:0 18px 40px rgba(0,0,0,.45)!important;
+}
+.sq-add-player-modal .sq-menu106-head{
+  flex-shrink:0;
+  grid-template-columns:44px minmax(0,1fr) 44px;
+  margin:0;
+  padding:16px 16px 8px;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+  overflow:visible;
+}
+.sq-add-player-modal .sq-menu106-head::after{ display:none; }
+.sq-add-player-modal .sq-menu106-title{
+  color:#fff;
+  font-size:18px;
+  font-weight:800;
+  letter-spacing:.02em;
+  text-align:left;
+  text-shadow:none;
+}
+.sq-add-player-modal .sq-menu106-sub{
+  text-align:left;
+  letter-spacing:.06em;
+  font-size:10px;
+}
+.sq-add-player-modal .sq-menu106-back,
+.sq-add-player-modal .sq-menu106-x{ width:44px; height:44px; border-radius:var(--sq-radius-compact); }
+.sq-add-player-modal .sq-menu106-body{
+  margin:2px 16px 6px;
+  padding:2px;
+  gap:11px;
+}
+.sq-add-player-modal .sq-menu106-row.sp2-row{
+  flex-shrink:0;
+  min-height:52px;
+  display:flex;
+  gap:11px;
+  padding:0 10px;
+  border-radius:9px;
+  border-color:#363a3d;
+  background:#0f151b;
+  box-shadow:0 8px 18px rgba(0,0,0,.25);
+}
+.sq-add-player-modal .sq-menu106-row::before{ display:none; }
+.sq-add-player-modal .sq-menu106-label{ font-size:14px; font-weight:800; line-height:normal; }
+.sq-add-player-modal .sq-menu106-desc{
+  text-transform:none;
+  letter-spacing:normal;
+  font-size:11.5px;
+  font-weight:400;
+  color:rgba(231,235,245,.55);
+}
+.sq-add-player-modal .sq-menu106-footer{ flex-shrink:0; margin:0; padding:10px 16px 16px; }
+.sq-add-player-modal .sq-menu106-close{ min-height:44px; border-radius:var(--sq-radius-compact); }
 
 .sq-turbo-ready-modal{
   max-width:420px;
@@ -1774,6 +1856,31 @@ body.sq-mode-turbo[data-page="game"] .livev2panel .v2ScoreBox .sqTurboSvg .sqTur
 body.sq-mode-turbo[data-page="game"] .livev2panel .v2ScoreBox.sqTurboWarn .sqTurboSvg .sqTurboProgress,
 body.sq-mode-turbo[data-page="game"] .livev2panel .v2ScoreBox.sqTurboDanger .sqTurboSvg .sqTurboProgress{
   stroke:rgba(255,34,42,1)!important;
+}
+.sg-footer .btn{
+  width: 140px;
+}
+/* Consistent Back/Close styling across the game-mode flow — matches the
+   MATCH LENGTH / THROW ORDER back (navy pill), replacing the plain buttons. */
+.sg-footer .btn,
+.sg-practice-footer .btn{
+  min-width: 116px;
+  height: 48px;
+  border-radius: 12px;
+  background: #101827;
+  border: 1px solid rgba(35,164,255,.7);
+  color: #e8f4ff;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.sg-practice-footer{
+  display:flex; justify-content:center; gap:12px; margin-top:14px; padding:4px 0 2px;
+}
+/* Prevent the duplicate Back: hide the modal's own footer while a
+   sub-menu (Classic/Turbo, Practice type) with its own footer is open. */
+#startGameModal .modal.sg-modal:has(.sg-practice-footer) .sg-footer{
+  display:none !important;
 }
 /* SC-067: retain the approved Turbo palette on the current Live V2 owners.
    These selectors outrank the shared Classic stage without changing its CSS. */
@@ -2208,8 +2315,24 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 .table-wrap th.when-col, .table-wrap td.when-col{
   white-space:nowrap;
 }
-  
-  
+
+/* VIS-002: readable League rows and existing 44px control standard. */
+.sq-league-rankings-backdrop .icon-btn,
+.sq-player-stats-hub .icon-btn {
+  width:44px; height:44px; min-width:44px; flex:0 0 44px; padding:0;
+}
+.sq-league-rankings-backdrop .menu-row-left { flex:1 1 auto; min-width:0; }
+.sq-league-rankings-backdrop .menu-row-text { flex:1 1 auto; min-width:0; }
+.sq-league-rankings-backdrop .menu-row-label,
+.sq-league-rankings-backdrop .menu-row-desc {
+  max-width:100%; white-space:normal; overflow-wrap:anywhere;
+}
+.sq-league-rankings-backdrop .menu-modal-title-text {
+  white-space:normal; text-align:center; line-height:1.2;
+}
+.modal-backdrop:is(.sq132-bd,.sq136-pl-bd,.sq-hs-league-backdrop,.sq-streak-league-backdrop,.sq-rhs-fix97-backdrop,.sq-fix166-top50,.sq-latest-scores-backdrop) .modal button {
+  min-height:44px !important;
+}
 /* >>> PATCH:home-footer-nav START */
 .home-footer-nav {
   /* Normal flow (not fixed) so content can scroll naturally */
@@ -2511,26 +2634,36 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   font-weight: 800;
   letter-spacing: .06em;
 }
-.home-live-printer .lp-pause{
+#details #homeLivePrinter .lp-pause{
+  position:absolute;
+  top:50%;
+  right:12px;
+  transform:translateY(-50%);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+  min-width:44px;
+  min-height:44px;
   margin-left:auto;
   border:0;
-  border-radius:8px;
-  padding:4px 7px;
+  border-radius:var(--sq-radius-control);
+  padding:0 7px;
   background:transparent;
   color:rgba(190,214,205,.72);
-  font:800 9px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font:800 11px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   letter-spacing:.10em;
   cursor:pointer;
   opacity:.78;
 }
-.home-live-printer .lp-pause:hover,
-.home-live-printer .lp-pause:focus-visible{
+#details #homeLivePrinter .lp-pause:hover,
+#details #homeLivePrinter .lp-pause:focus-visible{
   color:rgba(230,255,240,.96);
   background:rgba(54,255,122,.08);
   outline:1px solid rgba(54,255,122,.26);
   opacity:1;
 }
-.home-live-printer .lp-pause[aria-pressed="true"]{
+#details #homeLivePrinter .lp-pause[aria-pressed="true"]{
   color:rgba(255,174,86,.96);
   background:rgba(255,122,0,.08);
   outline:1px solid rgba(255,122,0,.22);
@@ -3378,6 +3511,13 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
   padding: 20px 14px 10px;
   background: transparent;
 }
+/* VIS-001: keep the existing header and title position while enlarging Pause. */
+#details #homeLivePrinter .lp-top{
+  position:relative;
+  justify-content:flex-start;
+  min-height:48px;
+  box-sizing:border-box;
+}
 #details .home-live-printer .lp-title,
 #details .home-mini-printer .lp-title{
   color: rgba(54,255,122,.97);
@@ -3427,6 +3567,7 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 }
 
 @media (max-width: 480px){
+  #details #homeLivePrinter .lp-top{ min-height:43px; }
   #details .home-live-printer .lp-top,
   #details .home-mini-printer .lp-top{
     padding: 17px 12px 8px;
@@ -3444,7 +3585,10 @@ table.sq-table td.muted{ color: rgba(255,255,255,0.55); }
 }
 
 /* Admin link: fully transparent (no pill) */
-.home-admin-row .adminLink{
+#details .home-admin-row .adminLink{
+  min-width:44px;
+  min-height:44px;
+  justify-content:center;
   background:transparent !important;
   border:none !important;
   box-shadow:none !important;
@@ -4186,6 +4330,21 @@ body[data-page="details"] #details{
   transform-origin:bottom; transition:height .5s cubic-bezier(.2,.8,.25,1);
 }
 .pp-strip-cell.win{ background:linear-gradient(180deg,#ffb14a,#ff7a18); box-shadow:0 0 8px rgba(255,140,40,.5); }
+
+/* VIS-002: fit the existing unavailable status without splitting its word. */
+.sq-player-stats-hub .pp-tile-value[data-source-state="unavailable"] {
+  font-size:12px;
+  white-space:nowrap;
+  overflow-wrap:normal;
+}
+@media(max-width:390px) {
+  .sq-player-stats-hub .pp-tiles:has(.pp-tile-value[data-source-state="unavailable"]) {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .sq-player-stats-hub .pp-tiles:has(.pp-tile-value[data-source-state="unavailable"]) .pp-tile:first-child {
+    grid-column:1 / -1;
+  }
+}
 /* Power Rankings arena (pw-*): podium + sliding ranked rows + power bars */
 .pw-arena{ display:flex; flex-direction:column; gap:12px; }
 .pw-podium{ display:grid; grid-template-columns:1fr 1.18fr 1fr; gap:8px; align-items:end; padding:8px 2px 0; }
@@ -4698,6 +4857,23 @@ body[data-page="details"] #details{
   z-index:2;
 }
 
+/* VIS-002: contain names, qualification annotations and the final scroll row. */
+.sq132-bd .pw-row-top { flex-wrap:wrap; row-gap:4px; }
+.sq132-bd .pw-row-name {
+  max-width:100%; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:anywhere;
+}
+.sq132-bd .pw-chips { max-width:100%; flex-wrap:wrap; }
+.sq136-pl-bd .sq136-pl-body { flex:1 1 auto; min-height:0; }
+.sq136-pl-bd .sq136-pl-filters { flex:0 0 auto; }
+.sq136-pl-bd .sq136-pl-table-mount {
+  display:flex; flex-direction:column; flex:1 1 auto; min-height:0; overflow:hidden;
+}
+.sq136-pl-bd .pl-arena { flex:1 1 auto; min-height:0; max-height:none; overflow-y:auto; }
+.sq136-pl-bd .sq136-pl-footer { flex:0 0 auto; }
+.sq136-pl-bd .pl-row.unq .pl-sub { flex-wrap:wrap; }
+.sq136-pl-bd .pl-row.unq .pl-dots { max-width:100%; flex-wrap:wrap; }
+.sq136-pl-bd .pl-row.unq .pl-dots i { flex:0 0 7px; }
+.sq136-pl-bd .pl-row.unq .pl-sub > span:last-child { max-width:100%; }
 /* =====================================================================
    LIVE V3 — Premium UI test layout (2-player Match Play Classic, beta)
 ===================================================================== */
