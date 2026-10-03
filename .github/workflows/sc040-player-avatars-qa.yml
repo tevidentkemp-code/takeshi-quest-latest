@@ -7,13 +7,17 @@ on:
       - 'src/game/engine.js'
       - 'src/legacy/scripts/inline-005.js'
       - 'src/live-game/postgame-flow.mjs'
+      - 'src/live-game/xp-breakdown.mjs'
       - 'src/ui/modals/setup/add-player-modal.html'
       - 'src/styles/setup/match-setup-base.css'
       - 'assets/avatars/**'
       - 'supabase/migrations/*sc040*'
+      - 'supabase/migrations/*sc057*'
       - 'tools/ui-smoke/verify-sc040*'
+      - 'tools/ui-smoke/verify-sc057*'
       - 'tools/ui-smoke/package*.json'
       - 'supabase/rollbacks/*sc040*'
+      - 'supabase/rollbacks/*sc057*'
       - 'src/legacy/scripts/inline-008.js'
       - 'src/legacy/scripts/inline-011.js'
       - 'src/legacy/scripts/inline-030.js'
@@ -28,6 +32,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version-file: '.node-version'
@@ -39,12 +45,14 @@ jobs:
       - run: node --check src/game/engine.js
       - run: node --check src/live-game/postgame-flow.mjs
       - run: node tools/ui-smoke/verify-sc040-player-avatars.mjs
+      - run: node tools/ui-smoke/verify-sc057-avatars.mjs
       - run: npm run materialize
       - run: npm run build
       - run: npm run verify:dist
       - run: npm ci --prefix tools/ui-smoke --ignore-scripts
       - run: npx --prefix tools/ui-smoke playwright install --with-deps chromium
       - run: node tools/ui-smoke/verify-sc040-migration.mjs
+      - run: node tools/ui-smoke/verify-sc057-migration.mjs
       - name: Avatar integration and affected-flow regressions (production blocked)
         shell: bash
         env:
