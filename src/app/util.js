@@ -641,8 +641,8 @@ function openPlayerStatsSelectDialog(){
   (async () => {
     try{
       const items = await cloudListPlayers(); // [{name}]
-      sel.innerHTML = '<option value="">Select a saved player...</option>' +
-        (items || []).map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+      sel.replaceChildren(new Option('Select a saved player...', ''),
+        ...(items || []).map(p => new Option(String(p.name || ''), String(p.name || ''))));
     }catch(e){
       console.error('Stats: load players failed', e);
       try{ if (typeof toast==='function') toast('Cloud offline'); }catch(_){}
@@ -708,8 +708,8 @@ function openPBGRAdminDialog(){
     try{
       const items = await cloudListPlayers(); // [{name}]
       if (sel){
-        sel.innerHTML = '<option value="">Select a saved player…</option>' +
-          (items||[]).map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+        sel.replaceChildren(new Option('Select a saved player…', ''),
+          ...(items || []).map(p => new Option(String(p.name || ''), String(p.name || ''))));
         if (!sel.value && items && items.length) sel.value = items[0].name || '';
         if (typeof renderPBGRPlayerTableInto === 'function') await renderPBGRPlayerTableInto('pbgrPlayer', sel.value);
       }
@@ -3281,7 +3281,8 @@ function __sqIsRecoverableGameStateForLocalCache(o){
     if(!o || typeof o !== 'object') return false;
     const players = Array.isArray(o.players) ? o.players : [];
     if(!players.length) return false;
-    if (typeof __sqSavedStateIsVsShadow === 'function' && __sqSavedStateIsVsShadow(o)) return false;
+    // An unfinished Shadow board is recoverable presentation data too. The
+    // secure runtime separately verifies or issues authority before any save.
     if(o.gameAwarded === true || o.finished === true || o.__sqCompleted === true || o.__sqGameCompleteOpen === true) return false;
     return true;
   }catch(_){ return false; }
@@ -3838,4 +3839,3 @@ const baseState = {
   matchAgg: null,
   gameAwarded: false
 };
-

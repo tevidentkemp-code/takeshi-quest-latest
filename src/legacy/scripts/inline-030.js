@@ -155,6 +155,8 @@
   }
 
   async function __sqAppendLatePlayer(row,type){
+    if(window.__sqLateJoinInFlight)return false;
+    var joiningState=state;
     var gate=__sqLateJoinEligibility();
     if(!gate.ok){ try{toast(gate.reason);}catch(_){} return false; }
     var p=__sqNormaliseLateJoinPlayer(row,type);
@@ -164,10 +166,10 @@
     var dupe=players.some(function(existing,idx){return __sqLateJoinPlayerKey(existing,idx)===key || String(existing&&existing.name||'').trim().toLowerCase()===p.name.toLowerCase();});
     if(dupe){ try{toast('Player is already in this game.');}catch(_){} return false; }
 
-    window.__sqSecurityInputBlocked=true;
-    try{await window.SQ_GAMEPLAY.syncRoster(players.concat([p]));}
+    window.__sqLateJoinInFlight=true;window.__sqSecurityInputBlocked=true;
+    try{await window.SQ_GAMEPLAY.syncRoster(players.concat([p]));if(state!==joiningState)throw new window.Sc004Error('game_state_changed');}
     catch(error){window.SQ_GAMEPLAY.failure(error);return false;}
-    finally{window.__sqSecurityInputBlocked=false;}
+    finally{window.__sqLateJoinInFlight=false;window.__sqSecurityInputBlocked=false;}
     var idx=players.length;
     players.push(p);
     if(typeof assignUniqueColors==='function'){ try{assignUniqueColors(players);}catch(_){} }
@@ -315,6 +317,23 @@
   }
   window.__sqOpenAddPlayerMenu=openAddPlayerMenu;
 
+  function removeCurrentPlayer(index){
+    var oldCurrent=state.currentPlayer,next=Math.min(index,state.players.length-2);
+    var map=i=>i===index?next:i>index?i-1:i;
+    var remap=(object,key)=>{if(object&&Number.isInteger(object[key]))object[key]=map(object[key]);};
+    var catchUp=cu=>{if(!cu)return;var active=(cu.jobs||[])[cu.activeJobIndex];cu.jobs=(cu.jobs||[]).filter(job=>job.playerIndex!==index);cu.jobs.forEach(job=>{remap(job,'playerIndex');if(/^idx:\d+$/.test(job.playerKey||''))job.playerKey='idx:'+job.playerIndex;});remap(cu,'resumePlayer');if(active&&!cu.jobs.includes(active)){cu.active=false;cu.activeJobIndex=-1;}else if(active)cu.activeJobIndex=cu.jobs.indexOf(active);};
+    state.players.splice(index,1);if(Array.isArray(state.score))state.score.splice(index,1);
+    if(Array.isArray(state.match?.wins))state.match.wins.splice(index,1);
+    for(var key of ['hits','totals60','totals100','totals140'])if(Array.isArray(state.matchAgg?.[key]))state.matchAgg[key].splice(index,1);
+    state.history=(state.history||[]).filter(entry=>entry.player!==index);
+    state.history.forEach(entry=>{remap(entry,'player');remap(entry.absenceCursorBefore,'player');catchUp(entry.catchUpStateBefore);catchUp(entry.catchUpStartStateBefore);});
+    catchUp(state.__sqCatchUp);remap(state,'currentPlayer');
+    if(state.uiLastGo?.player===index)delete state.uiLastGo;else remap(state.uiLastGo,'player');
+    if(state._decider?.winner===index)state._decider=null;else remap(state._decider,'winner');
+    if(oldCurrent===index)state.currentDart=0;
+    try{delete window.__sqDmdFightBenchmarks;window.__sqDmdHardClearQueue?.();}catch(_){}
+  }
+
   function openRemovePlayerMenu(prev){
     var m=openModalShell('Remove Player','Current game only');
     m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
@@ -324,9 +343,9 @@
       addRow(m.body,{ico:'−',label:'Remove '+name,desc:'Current game only',cls:'danger',onClick:function(){
         window.__sqConfirm({title:'Remove Player',message:'Remove '+name+' from the current game?'},async function(){
           if(!window.SQ_GAMEPLAY.canDiscard())return;
-          var players=state.players.filter(function(_,i){return i!==index;});
+          var removingState=state;var players=state.players.filter(function(_,i){return i!==index;});
           window.__sqSecurityInputBlocked=true;
-          try{await window.SQ_GAMEPLAY.syncRoster(players);state.players.splice(index,1);if(Array.isArray(state.score))state.score.splice(index,1);if(Array.isArray(state.match?.wins))state.match.wins.splice(index,1);if(state.currentPlayer>=state.players.length)state.currentPlayer=0;save();m.close();updateUI();}
+          try{await window.SQ_GAMEPLAY.syncRoster(players);if(state!==removingState)throw new window.Sc004Error('game_state_changed');removeCurrentPlayer(index);save();m.close();if(typeof buildEverythingChunked==='function')await buildEverythingChunked();updateUI();}
           catch(error){window.SQ_GAMEPLAY.failure(error);}
           finally{window.__sqSecurityInputBlocked=false;}
         });

@@ -396,6 +396,7 @@
         total_points: st.totalPoints, total_darts: st.totalDarts, total_hits: st.totalHits, hit_pct: hitPct
       };
       var res = await window.SQ_SECURITY.completeTraining(st.control.training_id,payload);
+      st.saved=true;
       return { saved: true };
     }catch(e){window.SQ_GAMEPLAY.failure(e);return {saved:false,reason:'error'};}
   }
@@ -439,6 +440,7 @@
   }
 
   function closeTraining(st){
+    if(st.finished&&st.results.length&&!st.saved){window.SQ_GAMEPLAY.notice('Save this completed training session before closing. Your results are preserved; use RETRY SAVE.');return;}
     if(window.__sqTrainingControl?.training_id===st.control?.training_id)delete window.__sqTrainingControl;
     try{ st.el.ov.remove(); }catch(_){ try{ document.querySelectorAll('.tr-overlay').forEach(function(x){ x.remove(); }); }catch(__){ } }
     try{ if (typeof show === 'function') show('details'); }catch(_){ }

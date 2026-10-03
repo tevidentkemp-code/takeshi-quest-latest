@@ -1,3 +1,4 @@
+BEGIN;
 -- SC-004 production catalog preflight captured 2026-10-03.
 -- Run after additive app, Edge, admin and controller proof, immediately before closure.
 -- Original production objects and the exact reviewed new public/private authorities must match.
@@ -102,3 +103,106 @@ BEGIN
   IF has_schema_privilege('anon','private','USAGE') OR has_schema_privilege('authenticated','private','USAGE')
     THEN RAISE EXCEPTION 'SC004 private schema ACL drift'; END IF;
 END $private_preflight$;
+
+-- SC-004 exact mutation closure. SELECT and Realtime publication are retained.
+-- Run only after preflight.sql and additive gameplay/admin definitions succeed.
+DROP POLICY "app_logons_insert_anon" ON public."app_logons";
+DROP POLICY "auth_insert_commentary" ON public."game_commentary";
+DROP POLICY "game_commentary_insert_all" ON public."game_commentary";
+DROP POLICY "insert_commentary" ON public."game_commentary";
+DROP POLICY "game_events_insert" ON public."game_events";
+DROP POLICY "games_delete_admin" ON public."games";
+DROP POLICY "games_delete_anon" ON public."games";
+DROP POLICY "games_insert_anon" ON public."games";
+DROP POLICY "games_update_admin" ON public."games";
+DROP POLICY "games_update_anon" ON public."games";
+DROP POLICY "high_scores_delete_anon" ON public."high_scores";
+DROP POLICY "high_scores_insert_anon" ON public."high_scores";
+DROP POLICY "hs_delete_admin" ON public."high_scores";
+DROP POLICY "high_scores_sp_delete_anon" ON public."high_scores_sp";
+DROP POLICY "high_scores_sp_insert_anon" ON public."high_scores_sp";
+DROP POLICY "hs_sp_delete_admin" ON public."high_scores_sp";
+DROP POLICY "match_players_delete_anon" ON public."match_players";
+DROP POLICY "match_players_insert_anon" ON public."match_players";
+DROP POLICY "match_players_update_anon" ON public."match_players";
+DROP POLICY "match_tiebreaks_delete_anon" ON public."match_tiebreaks";
+DROP POLICY "match_tiebreaks_insert_anon" ON public."match_tiebreaks";
+DROP POLICY "match_tiebreaks_update_anon" ON public."match_tiebreaks";
+DROP POLICY "matches_delete_anon" ON public."matches";
+DROP POLICY "matches_insert_anon" ON public."matches";
+DROP POLICY "matches_update_anon" ON public."matches";
+DROP POLICY "player_aliases_delete_anon" ON public."player_aliases";
+DROP POLICY "player_aliases_insert_anon" ON public."player_aliases";
+DROP POLICY "player_aliases_update_anon" ON public."player_aliases";
+DROP POLICY "player_bucket_map_delete_anon" ON public."player_bucket_map";
+DROP POLICY "player_bucket_map_insert_anon" ON public."player_bucket_map";
+DROP POLICY "player_bucket_map_update_anon" ON public."player_bucket_map";
+DROP POLICY "prh_update_all" ON public."player_round_highs";
+DROP POLICY "prh_upsert_all" ON public."player_round_highs";
+DROP POLICY "players_delete_anon" ON public."players";
+DROP POLICY "players_insert_anon" ON public."players";
+DROP POLICY "players_update_anon" ON public."players";
+DROP POLICY "players_archive_delete_anon" ON public."players_archive";
+DROP POLICY "players_archive_insert_anon" ON public."players_archive";
+DROP POLICY "players_archive_update_anon" ON public."players_archive";
+DROP POLICY "training_sessions_insert_anon" ON public."training_sessions";
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."app_logons" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."game_commentary" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."game_events" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."game_events_archive" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."games" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."high_scores" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."high_scores_sp" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."match_players" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."match_tiebreaks" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."matches" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."player_aliases" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."player_bucket_map" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."player_go_events" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."player_match_stats" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."player_round_highs" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."players" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."players_archive" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."training_sessions" FROM PUBLIC,anon,authenticated;
+REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN ON public."v_games_visible" FROM PUBLIC,anon,authenticated;
+REVOKE USAGE,UPDATE ON SEQUENCE public."players_archive_id_seq" FROM PUBLIC,anon,authenticated;
+REVOKE USAGE,UPDATE ON SEQUENCE public."high_scores_id_seq" FROM PUBLIC,anon,authenticated;
+REVOKE USAGE,UPDATE ON SEQUENCE public."high_scores_sp_id_seq" FROM PUBLIC,anon,authenticated;
+REVOKE USAGE,UPDATE ON SEQUENCE public."game_events_id_seq" FROM PUBLIC,anon,authenticated;
+REVOKE EXECUTE ON FUNCTION public."check_pin"(p_name text, p_hash text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public."check_pin"(p_name text, p_hash text) TO service_role;
+REVOKE EXECUTE ON FUNCTION public."log_player_go"(p_game_id uuid, p_player_id uuid, p_round_number integer, p_go_number integer, p_started_at timestamp with time zone, p_ended_at timestamp with time zone) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public."log_player_go"(p_game_id uuid, p_player_id uuid, p_round_number integer, p_go_number integer, p_started_at timestamp with time zone, p_ended_at timestamp with time zone) TO service_role;
+DROP FUNCTION public."log_player_go"(p_game_id uuid, p_player_id uuid, p_round_number integer, p_go_number integer, p_go_token uuid, p_started_at timestamp with time zone, p_ended_at timestamp with time zone, p_status text, p_valid boolean, p_ended_reason text); -- Proven unused browser-only broken overload.
+REVOKE EXECUTE ON FUNCTION public."merge_player_name_everywhere"(old_name text, new_name text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public."merge_player_name_everywhere"(old_name text, new_name text) TO service_role;
+REVOKE EXECUTE ON FUNCTION public."refresh_stat_matviews"() FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public."refresh_stat_matviews"() TO service_role;
+REVOKE EXECUTE ON FUNCTION public."rename_player_merge"(old_name text, new_name text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public."rename_player_merge"(old_name text, new_name text) TO service_role;
+REVOKE EXECUTE ON FUNCTION public."sq_admin_archive_game"(p_game_id uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public."sq_admin_archive_game"(p_game_id uuid) TO service_role;
+REVOKE EXECUTE ON FUNCTION public."sq_admin_authorize"(p_pin text, p_client_key text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public."sq_admin_authorize"(p_pin text, p_client_key text) TO service_role;
+REVOKE EXECUTE ON FUNCTION public."sq_admin_delete_high_score"(p_scope text, p_game_id uuid, p_name text, p_score integer, p_ts timestamp with time zone) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public."sq_admin_delete_high_score"(p_scope text, p_game_id uuid, p_name text, p_score integer, p_ts timestamp with time zone) TO service_role;
+REVOKE EXECUTE ON FUNCTION public."sq_admin_game_maintenance"(p_session_token text, p_client_hash text, p_action text, p_game_id uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public."sq_admin_game_maintenance"(p_session_token text, p_client_hash text, p_action text, p_game_id uuid) TO service_role;
+REVOKE EXECUTE ON FUNCTION public."sq_admin_log_action"(p_action text, p_object_id text, p_client_key text, p_success boolean, p_detail text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public."sq_admin_log_action"(p_action text, p_object_id text, p_client_key text, p_success boolean, p_detail text) TO service_role;
+REVOKE EXECUTE ON FUNCTION public."sq_admin_login"(p_pin text, p_client_hash text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public."sq_admin_login"(p_pin text, p_client_hash text) TO service_role;
+REVOKE EXECUTE ON FUNCTION public."sq_admin_logout"(p_session_token text, p_client_hash text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public."sq_admin_logout"(p_session_token text, p_client_hash text) TO service_role;
+REVOKE EXECUTE ON FUNCTION public."sq_admin_purge_game"(p_game_id uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public."sq_admin_purge_game"(p_game_id uuid) TO service_role;
+REVOKE EXECUTE ON FUNCTION public."sq_admin_reinstate_game"(p_game_id uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public."sq_admin_reinstate_game"(p_game_id uuid) TO service_role;
+REVOKE EXECUTE ON FUNCTION public."fn_push_high_scores"() FROM PUBLIC,anon,authenticated;
+REVOKE EXECUTE ON FUNCTION public."match_players_autolink"() FROM PUBLIC,anon,authenticated;
+REVOKE EXECUTE ON FUNCTION public."players_rename_merge_trigger"() FROM PUBLIC,anon,authenticated;
+-- Future new functions/tables must have explicit ACLs; this migration does
+-- not alter unrelated historical owner default ACLs. Every SC004 object is closed.
+NOTIFY pgrst, 'reload schema';
+
+COMMIT;

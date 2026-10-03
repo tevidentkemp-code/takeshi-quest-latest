@@ -962,7 +962,8 @@ async function recoverHighScoresFromCloudWindow(hours=24){
 
 async function backfillLocalGamesToCloud(){
   await window.SQ_ADMIN_AUTH.require();
-  const games=typeof getGameLog==='function'?(getGameLog()||[]):[];
+  const cached=typeof safeLoad==='function'?safeLoad(GAMES_LOG_KEY):null;
+  const games=Array.isArray(cached)?cached:(typeof getGameLog==='function'?(getGameLog()||[]):[]);
   let inserted=0,hs=0;
   for(const g of games){
     const players=(g.players||[]).map(p=>typeof p==='string'?{name:p}:p).filter(Boolean);
@@ -974,7 +975,8 @@ async function backfillLocalGamesToCloud(){
 
 async function backfillLocalMatchesToCloud(){
   await window.SQ_ADMIN_AUTH.require();
-  const matches=typeof getMatchLog==='function'?(getMatchLog()||[]):[];
+  const cached=typeof safeLoad==='function'?safeLoad(MATCHES_LOG_KEY):null;
+  const matches=Array.isArray(cached)?cached:(typeof getMatchLog==='function'?(getMatchLog()||[]):[]);
   let inserted=0;
   for(const m of matches){
     const result=await window.sqAdminAction({operation:'import_match',match:{id:m.id||null,created_at:m.ts||new Date().toISOString(),players:(m.players||[]).map(p=>typeof p==='string'?{name:p}:p),wins:m.wins||[],total_games:m.games||Math.max(1,m.history?.length||0),history:(m.history||[]).map(g=>({totals:g.totals||[]}))}});
@@ -1380,4 +1382,3 @@ window.getOfficialPowerRows = async function getOfficialPowerRows(){
   };
 })();
 // >>> PATCH:game-utils END
-
