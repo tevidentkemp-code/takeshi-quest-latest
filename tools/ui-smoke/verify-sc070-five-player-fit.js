@@ -30,12 +30,12 @@ async function seed(page,count=5,mode='match'){
     startNewGame(count>1?false:true);
   },{count,mode});
   if(count>1)await page.click('.to-start');
+  try{await page.waitForFunction(()=>document.body.dataset.page==='game'&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');}
+  catch(error){console.error('SC070 fixture deadline '+JSON.stringify(await page.evaluate(()=>({page:document.body.dataset.page,round:state.currentRound,history:state.history.length,overlay:document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden'),visible:document.visibilityState,tableRows:document.querySelectorAll('#tbody tr').length}))));throw error;}
   if(mode==='turbo'){
     await page.waitForFunction(()=>document.body.dataset.page==='game');assert.equal(await page.evaluate(()=>state.currentRound),7);
     await page.click('.sq-turbo-ready-start');await page.waitForFunction(()=>window.__sqTurboTimerStatus().active&&document.querySelector('.sqTurboTimerActive'));
   }
-  try{await page.waitForFunction(()=>document.body.dataset.page==='game'&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');}
-  catch(error){console.error('SC070 fixture deadline '+JSON.stringify(await page.evaluate(()=>({page:document.body.dataset.page,round:state.currentRound,history:state.history.length,overlay:document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden'),visible:document.visibilityState,tableRows:document.querySelectorAll('#tbody tr').length}))));throw error;}
 }
 async function advance(page,round){
   await page.evaluate(round=>{let guard=0;while(state.currentRound<round&&guard++<250){const r=state.currentRound;recordThrow(r===11?{kind:'D',sector:20}:r===12?{kind:'T',sector:20}:{kind:'T',number:ROUNDS[r].target});}if(state.currentRound!==round)throw new Error('Canonical fixture did not reach requested round');},round);
