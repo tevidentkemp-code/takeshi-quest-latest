@@ -322,43 +322,17 @@ function dedupeRowsByNameScoreKeepEarliest(rows){
   return [...map.values()];
 }
 async function dedupeTableHighScores(table){
-  const { data, error } = await sb
-    .from(table)
-    .select('name, score, ts, game_id')
-    .order('ts', { ascending: true })
-    .limit(10000);
-  if (error) { markCloudError(error); throw error; }
-  const groups = new Map();
-  for (const r of (data || [])){
-    const key = _keyNameScore(r);
-    const arr = groups.get(key) || [];
-    arr.push(r);
-    groups.set(key, arr);
-  }
-  let deleted = 0;
-  for (const [, arr] of groups){
-    if (arr.length <= 1) continue;
-    arr.sort((a,b)=> (Date.parse(a.ts||'')||0) - (Date.parse(b.ts||'')||0));
-    // keep earliest (index 0), delete the rest
-    for (let i = 1; i < arr.length; i++){
-      const row = arr[i];
-      const { error: delErr } = await sb.from(table)
-        .delete()
-        .eq('name', row.name)
-        .eq('score', row.score)
-        .eq('ts', row.ts);
-      if (!delErr) deleted++;
-    }
-  }
+  const scope = table === TABLE_HS_PRACTICE ? 'practice' : table === TABLE_HS_LEAGUE ? 'league' : null;
+  if (!scope) throw new Error('Unknown high-score table');
+  const result = await window.sqAdminAction({ operation:'dedupe_scores', scope });
   markCloudOk();
-  return deleted;
+  return Number(result.deleted || 0);
 }
+
 async function dedupeAllHighScores(){
-  let total = 0;
-  try { total += await dedupeTableHighScores(TABLE_HS_LEAGUE); } catch(e){ console.error(e); }
-  try { total += await dedupeTableHighScores(TABLE_HS_PRACTICE); } catch(e){ console.error(e); }
-  return total;
+  return (await dedupeTableHighScores(TABLE_HS_LEAGUE)) + (await dedupeTableHighScores(TABLE_HS_PRACTICE));
 }
+
 // ---- Admin Hub ----
 // ===== @JS:UI:ADMIN =====
 function openAdminHub(){
@@ -376,6 +350,11 @@ function openAdminHub(){
     });
   } catch(_) {}
   hub.classList.remove('hidden');
+  if(!hub.querySelector('#sqAdminSignOut')){
+    const signOut=document.createElement('button');signOut.id='sqAdminSignOut';signOut.className='btn';signOut.textContent='Sign out';signOut.style.minHeight='44px';
+    signOut.onclick=async()=>{try{await window.SQ_ADMIN_AUTH.signOut();hub.classList.add('hidden');toast('Signed out of Admin.');}catch(e){toast(e.message||'Sign out failed.');}};
+    (hub.querySelector('.modal-footer')||hub.querySelector('.modal')||hub).appendChild(signOut);
+  }
 
   // Buttons
   const btnAll   = document.getElementById('openAllGamesBtn');
@@ -422,85 +401,9 @@ try { window.openAdminHub = openAdminHub; } catch(_) {}
 
 // >>> PATCH:ADMIN_ALL_SCORES_V1 START
 async function cloudRemovePlayerFromGame(gameId, playerId, playerName){
-  await ensureCloudInit();
   if (!gameId || !playerId) throw new Error('cloudRemovePlayerFromGame: missing ids');
-
-  // 1) Attempt to remove player from the game row (best-effort)
-  try{
-    const { data: gRows, error: gErr } = await sb.from(TABLE_GAMES)
-      .select('id,state,stats,totals')
-      .eq('id', gameId)
-      .limit(1);
-
-    if (!gErr && gRows && gRows[0]){
-      const g = gRows[0];
-      const state = (g.state && typeof g.state === 'object') ? JSON.parse(JSON.stringify(g.state)) : null;
-      const stats = (g.stats && typeof g.stats === 'object') ? JSON.parse(JSON.stringify(g.stats)) : null;
-      const totals = Array.isArray(g.totals) ? g.totals.slice() : null;
-
-      // Determine player index from common patterns
-      let idx = -1;
-
-      const tryFindIdxInArray = (arr)=>{
-        if (!Array.isArray(arr)) return -1;
-        for (let i=0;i<arr.length;i++){
-          const it = arr[i];
-          if (it && typeof it === 'object'){
-            if (it.id === playerId || it.player_id === playerId) return i;
-            if (playerName && (it.name === playerName || it.player_name === playerName)) return i;
-          } else {
-            if (it === playerId) return i;
-            if (playerName && it === playerName) return i;
-          }
-        }
-        return -1;
-      };
-
-      if (state){
-        idx = tryFindIdxInArray(state.players);
-        if (idx<0) idx = tryFindIdxInArray(state.player_ids);
-        if (idx<0) idx = tryFindIdxInArray(state.playerIds);
-        if (idx<0) idx = tryFindIdxInArray(state.names);
-      }
-      if (idx<0 && stats){
-        idx = tryFindIdxInArray(stats.players);
-        if (idx<0) idx = tryFindIdxInArray(stats.player_ids);
-        if (idx<0) idx = tryFindIdxInArray(stats.names);
-      }
-
-      const stripIdx = (obj, key)=>{
-        if (!obj || !Array.isArray(obj[key]) || idx<0) return;
-        obj[key].splice(idx,1);
-      };
-
-      if (idx>=0){
-        // remove from known arrays
-        stripIdx(state,'players'); stripIdx(state,'player_ids'); stripIdx(state,'playerIds'); stripIdx(state,'names');
-        stripIdx(stats,'players'); stripIdx(stats,'player_ids'); stripIdx(stats,'playerIds'); stripIdx(stats,'names');
-
-        if (totals) totals.splice(idx,1);
-
-        // Also try nested common shapes
-        if (state && state.match && Array.isArray(state.match.players)) state.match.players.splice(idx,1);
-        if (stats && stats.perPlayer && Array.isArray(stats.perPlayer)) stats.perPlayer.splice(idx,1);
-
-        await sb.from(TABLE_GAMES).update({
-          state: state,
-          stats: stats,
-          totals: totals
-        }).eq('id', gameId);
-      } else {
-        console.warn('[AllScores] Could not determine player index in game row; skipping game JSON edit.');
-      }
-    }
-  }catch(e){
-    console.warn('[AllScores] Game-row edit failed; continuing to purge HS rows only.', e);
-  }
-
-  // 2) Purge HS rows for this player+game
-  try{ await sb.from(TABLE_HS_LEAGUE).delete().eq('game_id', gameId).eq('player_id', playerId); }catch(_){}
-  try{ await sb.from(TABLE_HS_PRACTICE).delete().eq('game_id', gameId).eq('player_id', playerId); }catch(_){}
-
+  await window.sqAdminAction({ operation:'remove_game_player', game_id:gameId, player_id:playerId, player_name:playerName || undefined });
+  try{ window.__sqClearGamesTruthCache && window.__sqClearGamesTruthCache('remove_game_player'); }catch(_){}
   return true;
 }
 
@@ -738,8 +641,8 @@ function openPlayerStatsSelectDialog(){
   (async () => {
     try{
       const items = await cloudListPlayers(); // [{name}]
-      sel.innerHTML = '<option value="">Select a saved player...</option>' +
-        (items || []).map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+      sel.replaceChildren(new Option('Select a saved player...', ''),
+        ...(items || []).map(p => new Option(String(p.name || ''), String(p.name || ''))));
     }catch(e){
       console.error('Stats: load players failed', e);
       try{ if (typeof toast==='function') toast('Cloud offline'); }catch(_){}
@@ -805,8 +708,8 @@ function openPBGRAdminDialog(){
     try{
       const items = await cloudListPlayers(); // [{name}]
       if (sel){
-        sel.innerHTML = '<option value="">Select a saved player…</option>' +
-          (items||[]).map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+        sel.replaceChildren(new Option('Select a saved player…', ''),
+          ...(items || []).map(p => new Option(String(p.name || ''), String(p.name || ''))));
         if (!sel.value && items && items.length) sel.value = items[0].name || '';
         if (typeof renderPBGRPlayerTableInto === 'function') await renderPBGRPlayerTableInto('pbgrPlayer', sel.value);
       }
@@ -1412,8 +1315,6 @@ async function renderSavedPlayersAdmin(){
           initials: init
         });
 
-        // Ensure initials are set even on older deployments
-        try { await cloudUpdatePlayerInitials({ id, name: nmOld }, init); } catch(_){}
 
         try { await syncSavedPlayersFromCloud(); } catch(_){}
         try { document.dispatchEvent(new Event('sq:savedPlayersUpdated')); } catch(_){}
@@ -1886,67 +1787,14 @@ if (!items.length) {
 // Propagate a player rename to other cloud tables that store name strings.
 // Best-effort only (ignore failures so we never break the app).
 async function cloudPropagatePlayerRename(oldName, newName){
-  // Keep this conservative: only touch tables that are known to exist in your current Supabase schema.
-  const o = String(oldName||'').trim();
-  const n = String(newName||'').trim();
-  if (!o || !n || o === n) return;
-
-  const tasks = [];
-  try { tasks.push(sb.from(TABLE_HS_LEAGUE).update({ name: n }).eq('name', o)); } catch(_) {}
-  try { tasks.push(sb.from(TABLE_HS_PRACTICE).update({ name: n }).eq('name', o)); } catch(_) {}
-
-  // Best-effort only; never throw (avoid console red spam on missing tables/views)
-  try { await Promise.allSettled(tasks); } catch(_) {}
+  return cloudRenamePlayerMerge(oldName, newName);
 }
 
 // Best-effort: rename the player inside historical games.state JSON so stats/ranks stay unified.
 // This updates state.players[].name (board is index-based so it stays valid).
 async function cloudRenamePlayerInGamesState(oldName, newName, maxRows=500){
-  const o = String(oldName||'').trim();
-  const n = String(newName||'').trim();
-  if (!o || !n || o === n) return { updated: 0 };
-  let updated = 0;
-  let offset = 0;
-  const page = 100;
-
-  while (updated < maxRows){
-    const { data, error } = await sb
-      .from(TABLE_GAMES)
-      .select('id, state')
-      .contains('state', { players: [{ name: o }] })
-      .range(offset, offset + page - 1);
-
-    if (error) throw error;
-    const rows = data || [];
-    if (!rows.length) break;
-
-    for (const row of rows){
-      if (updated >= maxRows) break;
-      const st = row.state;
-      if (!st || !Array.isArray(st.players)) continue;
-
-      let changed = false;
-      const players = st.players.map(pl => {
-        if (pl && typeof pl === 'object' && String(pl.name||'').trim() === o){
-          changed = true;
-          return { ...pl, name: n };
-        }
-        return pl;
-      });
-
-      if (!changed) continue;
-
-      const nextState = { ...st, players };
-      const { error: uErr } = await sb.from(TABLE_GAMES).update({ state: nextState }).eq('id', row.id);
-      if (uErr) throw uErr;
-      updated += 1;
-    }
-
-    if (rows.length < page) break;
-    offset += rows.length;
-  }
-
-  return { updated };
+  const result = await cloudRenamePlayerMerge(oldName,newName);
+  return { updated: result ? 1 : 0 };
 }
 
 // Rename helper (updates `name` column)
@@ -1973,56 +1821,29 @@ async function cloudResolvePlayerKeyByName(name){
 // Use Supabase RPC to merge rename across history (DB function: public.rename_player_merge(old_name, new_name)).
 // This keeps legacy name-based data coherent while we gradually migrate UI to IDs.
 async function cloudRenamePlayerMerge(oldName, newName){
-  const o = String(oldName||'').trim();
-  const n = String(newName||'').trim();
-  if (!o || !n || o === n) return;
-
-  const { error } = await sb.rpc('rename_player_merge', { old_name: o, new_name: n });
-  if (error) { markCloudError(error); throw error; }
+  const o=String(oldName || '').trim(), n=String(newName || '').trim();
+  if (!o || !n || o===n) return null;
+  const result=await window.sqAdminAction({ operation:'rename_merge', old_name:o, new_name:n });
   markCloudOk();
-  try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('rename_player_merge'); }catch(_){}
+  window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('rename_merge');
+  return result;
 }
+
 // <<< PATCH:PLAYER_RENAME_RPC END
 
 // Player rename by UUID id (keeps name-based propagation for legacy tables)
 async function cloudRenamePlayerById(playerId, oldName, newName){
-  const id = String(playerId||'').trim();
-  const fallbackOld = String(oldName||'').trim();
-  const n  = String(newName||'').trim();
-  if (!id || !n) return;
-
-  // Prefer the authoritative current name for this id (protects against case/whitespace mismatches)
-  let o = fallbackOld;
-  try{
-    const { data, error } = await sb
-      .from(TABLE_PLAYERS)
-      .select('name')
-      .eq('id', id)
-      .maybeSingle();
-    if (error) throw error;
-    if (data && data.name) o = String(data.name).trim();
-  }catch(_){ /* fall back */ }
-
-  if (!o || o === n) return;
-
-  // Server-side merge rename (players + match_players + matches JSON + highscores)
-  await cloudRenamePlayerMerge(o, n);
-
-  // Extra legacy cleanup: some views still parse games.state; keep those unified too.
-  try { await cloudRenamePlayerInGamesState(o, n); } catch(_) {}
+  const id=String(playerId || '').trim(), name=String(newName || '').trim();
+  if (!id || !name) throw new Error('Rename requires a player id and name');
+  const result=await window.sqAdminAction({ operation:'rename_merge', player_id:id, new_name:name });
+  window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('rename_merge');
+  return result;
 }
+
 // <<< PATCH:PLAYER_ID_SUPPORT END
 
 async function cloudRenamePlayer(oldName, newName){
-  const o = String(oldName||'').trim();
-  const n = String(newName||'').trim();
-  if (!o || !n || o === n) return;
-
-  // Server-side merge rename (players + match_players + matches JSON + highscores)
-  await cloudRenamePlayerMerge(o, n);
-
-  // Extra legacy cleanup: some views still parse games.state; keep those unified too.
-  try { await cloudRenamePlayerInGamesState(o, n); } catch(_) {}
+  return cloudRenamePlayerMerge(oldName,newName);
 }
 
 // Update player profile (first/last/region) while keeping `name` as the app-wide display key.
@@ -2171,65 +1992,26 @@ function __sqAvatarSaveError(error){
 /* ===== /SC-040 PLAYER AVATAR IDENTITY ===== */
 
 async function cloudUpdatePlayerProfile(playerOrName, profile){
-  const obj = (playerOrName && typeof playerOrName === 'object') ? playerOrName : null;
-  const keyName = String(obj ? (obj.name||'') : (playerOrName||'')).trim();
-  const keyId   = String(obj ? (obj.id||'')   : '').trim();
-  const p = (profile && typeof profile === 'object') ? profile : {};
-
-  if (!keyName && !keyId) return null;
-
-  // Build payload (only include defined keys)
-  const payload = {};
-  if (p.first_name != null) payload.first_name = String(p.first_name||'').trim();
-  if (p.last_name  != null) payload.last_name  = String(p.last_name ||'').trim();
-  if (p.nickname   != null) payload.nickname   = String(p.nickname  ||'').trim();
-  if (p.initials   != null) payload.initials   = __sqNormalizeInitials(String(p.initials||''), (p.name||keyName));
-  if (p.avatar_id  != null) payload.avatar_id  = __sqNormalizeAvatarId(p.avatar_id, keyId || keyName);
-
-
-  // Optional name update (normally handled via rename RPC first)
-  if (p.name != null){
-    const nm = String(p.name||'').trim();
-    if (nm) payload.name = nm;
-  }
-
+  const obj=(playerOrName && typeof playerOrName==='object') ? playerOrName : null;
+  const keyName=String(obj ? obj.name || '' : playerOrName || '').trim();
+  const keyId=String(obj ? obj.id || '' : '').trim();
+  if (!keyId && !keyName) throw new Error('Profile requires a player key');
+  const p=profile && typeof profile==='object' ? profile : {};
+  const payload={};
+  for (const field of ['first_name','last_name','nickname','name']) if (p[field]!=null) payload[field]=String(p[field]).trim();
+  if (p.initials!=null) payload.initials=__sqNormalizeInitials(p.initials,p.name || keyName);
+  if (p.avatar_id!=null) payload.avatar_id=__sqNormalizeAvatarId(p.avatar_id,keyId || keyName);
   if (!Object.keys(payload).length) return null;
-
   try{
-    let q = sb.from(TABLE_PLAYERS).update(payload);
-    if (keyId) q = q.eq('id', keyId);
-    else q = q.eq('name', keyName);
-
-    const { data, error } = await q.select('id,name,first_name,last_name,nickname,initials,avatar_id').maybeSingle();
-    if (error) { markCloudError(error); throw error; }
-    if (!data) throw new Error('Profile was not saved. Refresh the player list and try again.');
+    const result=await window.sqAdminAction({ operation:'update_player', player_id:keyId || undefined, player_name:keyId ? undefined : keyName, profile:payload });
+    if (!result.player?.id) throw new Error('Profile was not saved. Refresh the player list and try again.');
     markCloudOk();
+    window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_profile_update');
+    try{window.__sqClearGamesTruthCache?.('player_profile_update');}catch(_){}
     await cloudRefreshPlayerDirectory(true);
     window.dispatchEvent(new CustomEvent('sq:players-changed'));
-    return data || null;
-  }catch(e){
-    // Never turn an avatar write failure into a partial successful profile save.
-    if (payload.avatar_id != null) throw __sqAvatarSaveError(e);
-    // Preserve the pre-existing fallback only for callers not saving avatars.
-    const msg  = String(e?.message || e || '');
-    const code = String(e?.code || '');
-    const missing = (code === '42703') || /column .* does not exist/i.test(msg);
-    if (!missing) throw e;
-
-    const fallback = {};
-    if (payload.initials != null) fallback.initials = payload.initials;
-    if (payload.name != null)     fallback.name     = payload.name;
-    if (!Object.keys(fallback).length) return null;
-
-    const q2 = keyId
-      ? sb.from(TABLE_PLAYERS).update(fallback).eq('id', keyId)
-      : sb.from(TABLE_PLAYERS).update(fallback).eq('name', keyName);
-    const { data, error } = await q2.select('id,name,initials').maybeSingle();
-    if (error) { markCloudError(error); throw error; }
-    markCloudOk();
-    try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_profile_fallback_update'); }catch(_){}
-    return data || null;
-  }
+    return result.player;
+  }catch(e){markCloudError(e);throw e;}
 }
 
 /* ===== @CLOUD:PLAYER_DIRECTORY (game-wide display + cache) ===== */
@@ -2403,20 +2185,8 @@ function sqInitialsForPlayerField(nameOrId, fallback=''){
 }
 
 async function cloudArchivePlayerSnapshot(playerRow, reason='admin_change'){
-  if (!ensureCloudInit() || !playerRow?.id) return;
-  try{
-    const sb = window.sb;
-    // best-effort archive (table may not exist yet)
-    await sb.from(TABLE_PLAYERS_ARCHIVE).insert({
-      player_id: playerRow.id,
-      player_name: playerRow.name || null,
-      reason,
-      payload: playerRow,
-      archived_at: new Date().toISOString(),
-    });
-  }catch(e){
-    // ignore (archive table not present / RLS / etc.)
-  }
+  if (!playerRow?.id) throw new Error('Player snapshot requires an id');
+  return window.sqAdminAction({ operation:'archive_player', player_id:playerRow.id, reason:String(reason).slice(0,80) });
 }
 
 // Game Complete modal hierarchy tweak (title + big result + smaller standings)
@@ -2854,11 +2624,11 @@ function wireTopRowButtons(){
       if (!select || !numEl) return;
       
 
-/* === Admin → Button + Password Popup (final) === */
+/* === Admin button and authenticated sign-in entry === */
 (function adminButton(){
   if (window.__sqAdminButtonInit) return;
   window.__sqAdminButtonInit = true;
-  const expected = (window.ADMIN_PASSWORD || 'hownowbrowncow'); // change if needed
+  // Sign-in and enrollment are verified by Supabase Auth and the server.
 
   // 1) Ensure we have a single Admin button
   const row = document.getElementById('adminCodeRow');
@@ -2889,116 +2659,19 @@ function wireTopRowButtons(){
     });
   }
 
-  // 3) Password popup → on success open the standard Admin panel
+  // 3) Verified sign-in opens the standard Admin panel
   function openAdminPasswordModal(){
-    if (window.__sqAdminModalOpen) return;
-    window.__sqAdminModalOpen = true;
-    const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-    const modal   = document.createElement('div'); modal.className = 'modal';
-
-    const title = document.createElement('h3'); title.textContent = 'Admin Login';
-    const body  = document.createElement('div'); body.className = 'modal-body';
-
-    const label = document.createElement('label');
-    label.textContent = 'Enter password:';
-    label.className = 'muted';
-    label.style.display = 'block';
-    label.style.marginBottom = '6px';
-
-    const input = document.createElement('input');
-    input.type = 'password';
-    input.className = 'input';
-    input.autocomplete = 'current-password';
-    input.placeholder = 'Password';
-    input.style.minWidth = '220px';
-
-    body.append(label, input);
-
-    const footer = document.createElement('div'); footer.className = 'modal-footer';
-    const cancel = document.createElement('button'); cancel.className = 'btn';         cancel.textContent = 'Cancel';
-    const enter  = document.createElement('button'); enter.className  = 'btn primary'; enter.textContent  = 'Enter';
-
-    function close(){ try{ overlay.remove(); } finally { window.__sqAdminModalOpen = false; } }
-    function deny(){
-      if (typeof toast === 'function') toast('Incorrect password');
-      else alert('Incorrect password');
-      input.focus(); input.select();
-    }
-    function grant(){
-      window.__sqAdminAuthed = true;
-      close();
-      // Call the ungated hub if available to avoid recursion
-      if (typeof window.__openAdminHubUnsafe === 'function') window.__openAdminHubUnsafe();
-      else if (typeof window.openAdminHub === 'function') window.openAdminHub();
-      else if (typeof openAdminHub === 'function') openAdminHub();
-    }
-    function submit(){
-      const v = (input.value || '').trim();
-      if (!expected || v === expected) grant(); else deny();
-    }
-
-    cancel.onclick = close;
-    enter.onclick  = submit;
-    input.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') submit(); });
-
-    footer.append(cancel, enter);
-    modal.append(title, body, footer);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-
-    modal.tabIndex = 0; modal.focus();
-    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-    overlay.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
-
-    setTimeout(()=> input.focus(), 0);
+    if (!window.SQ_ADMIN_AUTH) { toast('Admin sign-in is unavailable. Please reload.'); return; }
+    return window.SQ_ADMIN_AUTH.require().then(()=>{
+      const hub=window.__sqOriginalOpenAdminHub || window.__openAdminHubUnsafe;
+      if (typeof hub==='function') return hub();
+    }).catch(e=>{ if (typeof toast==='function') toast(e.message || 'Admin sign-in failed'); });
   }
+
     // Export for other wiring (e.g. start-screen Admin button)
     window.openAdminPasswordModal = openAdminPasswordModal;
 
-// Ensure ALL admin entrypoints are password-gated (including any legacy buttons calling openAdminHub directly)
-(function(){
-  if (window.__sqAdminGateWrapped) return;
-  window.__sqAdminGateWrapped = true;
-  if (window.__sqAdminAuthed == null) window.__sqAdminAuthed = false;
-
-  function tryWrap(){
-    if (typeof window.openAdminPasswordModal !== 'function') return false;
-    if (typeof window.openAdminHub !== 'function') return false;
-    if (window.openAdminHub.__sqIsGated) return true;
-
-    const unsafe = window.openAdminHub;
-    window.__openAdminHubUnsafe = unsafe;
-
-    window.openAdminHub = function(){
-      if (window.__sqAdminAuthed) return unsafe();
-      return window.openAdminPasswordModal();
-    };
-    window.openAdminHub.__sqIsGated = true;
-
-    // Capture-click safety net (covers markup onclick + nested icons)
-    document.addEventListener('click', (e)=>{
-      const el = e.target && e.target.closest ? e.target.closest('#adminBtn,#adminCodeBtn,button,a') : null;
-      if (!el) return;
-      const id = (el.id||'').toLowerCase();
-      const label = String(el.textContent||'').trim().toLowerCase();
-      const isAdmin = (id==='adminbtn' || id==='admincodebtn' || label==='admin' || label==='admin hub' || label==='admin code');
-      if (!isAdmin) return;
-      if (!window.__sqAdminAuthed){
-        e.preventDefault();
-        e.stopPropagation();
-        window.openAdminPasswordModal();
-      }
-    }, true);
-    return true;
-  }
-
-  let tries = 0;
-  const iv = setInterval(()=>{
-    tries++;
-    if (tryWrap() || tries > 30) clearInterval(iv);
-  }, 200);
-})();
-
+// Entry points share the authenticated gate in inline-001.js.
   removeStandaloneLabel();
   ensureButton();
 })();
@@ -3107,8 +2780,8 @@ function openHighScoresHubDialog(){
 /**********************
  * CONFIG: Supabase
  **********************/
-const SUPABASE_URL = "https://vvfqumgtasuacpggdmxx.supabase.co";
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2ZnF1bWd0YXN1YWNwZ2dkbXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NTk0MDMsImV4cCI6MjA3ODUzNTQwM30.8NblWOwEsY1FP1hxvO6isQ908NyxkTgntnZZiXIFPHE";
+const SUPABASE_URL = window.SQ_SECURITY_CONFIG?.supabaseUrl || "https://vvfqumgtasuacpggdmxx.supabase.co";
+const SUPABASE_ANON = window.SQ_SECURITY_CONFIG?.publicKey || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2ZnF1bWd0YXN1YWNwZ2dkbXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NTk0MDMsImV4cCI6MjA3ODUzNTQwM30.8NblWOwEsY1FP1hxvO6isQ908NyxkTgntnZZiXIFPHE";
 
 // Dev-only Supabase read instrumentation.
 // Enable with URL ?debug=1, localStorage.SQ_DEBUG='1', or localStorage.SQ_EGRESS_DEBUG='1'.
@@ -3609,7 +3282,8 @@ function __sqIsRecoverableGameStateForLocalCache(o){
     if(!o || typeof o !== 'object') return false;
     const players = Array.isArray(o.players) ? o.players : [];
     if(!players.length) return false;
-    if (typeof __sqSavedStateIsVsShadow === 'function' && __sqSavedStateIsVsShadow(o)) return false;
+    // An unfinished Shadow board is recoverable presentation data too. The
+    // secure runtime separately verifies or issues authority before any save.
     if(o.gameAwarded === true || o.finished === true || o.__sqCompleted === true || o.__sqGameCompleteOpen === true) return false;
     return true;
   }catch(_){ return false; }
@@ -4166,4 +3840,3 @@ const baseState = {
   matchAgg: null,
   gameAwarded: false
 };
-

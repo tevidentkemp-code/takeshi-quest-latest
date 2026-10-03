@@ -107,10 +107,16 @@ if (out) fs.mkdirSync(out, { recursive: true });
       await page.locator('.sq-release-notes-modal .modal-footer button').filter({ hasText:/^CLOSE$/ }).tap();
       await page.locator('.sq-release-notes-modal').waitFor({ state:'detached' });
       await page.locator('#adminCodeBtn').tap();
-      await page.locator('#adminCodeGateOverlay').waitFor({ state:'visible' });
-      assert.equal(await page.evaluate(()=>window.__sqAdminAuthed), false, 'Admin opens its existing unauthenticated gate');
-      await page.locator('#adminCodeGateOverlay button').filter({ hasText:/^Return$/ }).tap();
-      await page.locator('#adminCodeGateOverlay').waitFor({ state:'detached' });
+      await page.locator('#sqAdminSignInOverlay').waitFor({ state:'visible' });
+      assert.equal(await page.evaluate(()=>window.__sqAdminAuthed), false, 'Admin opens its unauthenticated account sign-in gate');
+      assert.equal(await page.evaluate(()=>document.activeElement?.id), 'sqAdminEmail', 'Admin sign-in opens with focus on Email');
+      const authGeometry=await page.locator('#sqAdminSignInOverlay .modal').evaluate(n=>{
+        const r=n.getBoundingClientRect();return {left:r.left,right:r.right,controls:Array.from(n.querySelectorAll('input,button')).map(c=>c.getBoundingClientRect().height)};
+      });
+      assert(authGeometry.left>=0&&authGeometry.right<=width, 'Admin sign-in fits the viewport');
+      assert(authGeometry.controls.every(h=>h>=44), 'Admin sign-in controls retain 44px touch targets');
+      await page.locator('#sqAdminSignInOverlay button').filter({ hasText:/^Cancel$/ }).tap();
+      await page.locator('#sqAdminSignInOverlay').waitFor({ state:'detached' });
       await page.evaluate(()=>window.scrollTo(0,0));
       await openModes(); await checkCards(); await snapshot('mode');
       if (height === 568) {

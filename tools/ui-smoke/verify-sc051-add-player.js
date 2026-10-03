@@ -47,7 +47,10 @@ const H = require('./harness');
       await page.locator('.sq-add-player-modal .sq-menu106-row').filter({hasText:'UI PLAYER 24'}).tap();
       await page.waitForSelector('.sq-confirm-bd .sq-endmatch-yes');
     };
-    const confirm = async yes => page.locator('.sq-confirm-bd '+(yes?'.sq-endmatch-yes':'.sq-endmatch-no')).tap();
+    const confirm = async yes => {
+      await page.locator('.sq-confirm-bd '+(yes?'.sq-endmatch-yes':'.sq-endmatch-no')).tap();
+      if(yes)await page.waitForFunction(()=>!window.__sqSecurityInputBlocked);
+    };
     const protectedState = async () => page.evaluate(()=>JSON.stringify({players:state.players,score:state.score,history:state.history,match:state.match,currentRound:state.currentRound,currentPlayer:state.currentPlayer,currentDart:state.currentDart}));
     const header = async () => {
       const result=await page.evaluate(() => {
@@ -146,7 +149,7 @@ const H = require('./harness');
       assert.equal(await protectedState(),atCutoff,'stale confirmation after first17s cannot mutate roster or scored state');
 
       await reset();
-      await page.evaluate(()=>{window.__sqAppendLatePlayer({name:'THREE'},'guest');window.__sqAppendLatePlayer({name:'FOUR'},'guest');});
+      await page.evaluate(async()=>{await window.__sqAppendLatePlayer({name:'THREE'},'guest');await window.__sqAppendLatePlayer({name:'FOUR'},'guest');});
       await open(); await chooseSaved();
       await page.evaluate(()=>window.__sqAppendLatePlayer({name:'FIVE'},'guest'));
       const atCap=await protectedState();

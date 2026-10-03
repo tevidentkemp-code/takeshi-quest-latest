@@ -40,7 +40,9 @@ async function captureCanonical(page){
       const match = st.match || {};
       return {
         score: clone(st.score || []),
-        history: clone(st.history || []),
+        // Go telemetry records wall-clock timing; these two entry paths run at different times.
+        // Compare every existing canonical history field, excluding only this observation.
+        history: clone(st.history || []).map(({recorded_at,...dart})=>dart),
         cursor: {
           player:Number(st.currentPlayer || 0),
           round:Number(st.currentRound || 0),

@@ -1,0 +1,43 @@
+// SC-004 PROPOSED EDGE BOOTSTRAP. NOT DEPLOYED OR RUNTIME VERIFIED.
+// Keep this file as text until all required cutover gates and real admin
+// enrollment pass. Copy the handler beside the final index.ts only in the
+// separately reviewed deployment package; generate and verify a Deno lockfile.
+import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
+import { createSc004Handler } from './handler.mjs';
+
+const projectUrl = Deno.env.get('SUPABASE_URL');
+const publicKey = Deno.env.get('SUPABASE_ANON_KEY');
+const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+if (!projectUrl || !publicKey || !serviceKey) {
+  throw new Error('Required Supabase environment configuration is missing.');
+}
+const options = {
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+};
+// No caller Authorization header is inherited into this service client.
+const server = createClient(projectUrl, serviceKey, options);
+const browserOrigin = Deno.env.get('SQ_SC004_BROWSER_ORIGIN') ||
+  'https://tevidentkemp-code.github.io';
+
+const handler = createSc004Handler({
+  expectedAuthIssuer: projectUrl.replace(/\/$/, '') + '/auth/v1',
+  allowedOrigins: [browserOrigin],
+  mutationsEnabled: () => Deno.env.get('SQ_SC004_WRITES_ENABLED') === 'true',
+  command: async (args) => {
+    const { data, error } = await server.rpc('sq_sc004_command', args);
+    if (error) {
+      // Preserve only a SQL classification for the handler's fixed response.
+      // Avoid logging the SDK error, request, body, JWT or bearer capability.
+      throw Object.assign(new Error('command_failed'), { code: error.code });
+    }
+    return data;
+  },
+  getUser: async (jwt) => {
+    // Exact token validation uses a separate public-key Auth client. It cannot
+    // change the server client's role or admit a client-provided user/session.
+    const authClient = createClient(projectUrl, publicKey, options);
+    return authClient.auth.getUser(jwt);
+  },
+});
+
+Deno.serve(handler);
