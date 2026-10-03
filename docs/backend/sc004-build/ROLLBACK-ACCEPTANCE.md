@@ -1,5 +1,7 @@
 # SC-004 restricted rollback acceptance
 
+This is the original full SQL-fault rehearsal. The [current-main rollback](ROLLBACK-CURRENT-MAIN.md) is the latest proven compatible app anchor and preserves this byte-identical backend/recovery evidence.
+
 Restricted rollback passed against the dedicated real local Supabase stack on 2026-10-03. The platform completed **11/11 assertions** across prepare (3), held (4) and recovered (4); the browser completed **2/2 phases**, including actual UI Finish of the original issued game. These are compatible restoration and session recovery receipts. Production was not changed.
 
 Both result files enforce their complete ordered phase sequence and share run `bb961823-ae86-455d-a6f7-9f2f7458af6c`, frozen candidate HEAD `b8d6d63dafcf390826332fb10bc209f18b30d692` and manifest SHA-256 `f035ec6f421ab9ef1c43c3e9c29242eb7b358c3f0e28cd34c36eb12c9901a0d2`. The [anchor manifest](rollback-anchor-manifest.json) covers 181 files: 170 compatible app files, nine Edge files and the two restricted recovery SQL files. Every frozen file matched its digest. The platform uses the frozen transport implementation; the recovered browser independently checks served index and loaded frozen asset bytes.
