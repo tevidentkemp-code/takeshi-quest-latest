@@ -90,11 +90,11 @@ REVOKE ALL ON private.sc004_public_requests,private.sc004_training_controls,priv
 
 CREATE FUNCTION private.sc004_validate_rules(p jsonb) RETURNS void LANGUAGE plpgsql SET search_path=pg_catalog AS $f$
 BEGIN
-  IF jsonb_typeof(p)<>'object' OR octet_length(p::text)>8192
+  IF jsonb_typeof(p) IS DISTINCT FROM 'object' OR octet_length(p::text)>8192
     OR EXISTS(SELECT 1 FROM jsonb_object_keys(p) k WHERE k NOT IN ('gameFormat','gameVariant','tournament','tournamentType','tournamentRules','strictTimer','throwLimitSeconds','startTarget'))
-    OR (p ? 'gameFormat' AND p->>'gameFormat' NOT IN ('match_play'))
-    OR (p ? 'gameVariant' AND p->>'gameVariant' NOT IN ('classic','turbo'))
-    OR (p ? 'startTarget' AND p->>'startTarget' NOT IN ('10','17'))
+    OR (p ? 'gameFormat' AND (jsonb_typeof(p->'gameFormat') IS DISTINCT FROM 'string' OR p->>'gameFormat' NOT IN ('match_play')))
+    OR (p ? 'gameVariant' AND (jsonb_typeof(p->'gameVariant') IS DISTINCT FROM 'string' OR p->>'gameVariant' NOT IN ('classic','turbo')))
+    OR (p ? 'startTarget' AND (jsonb_typeof(p->'startTarget') NOT IN ('number','string') OR p->>'startTarget' NOT IN ('10','17')))
     OR (p ? 'throwLimitSeconds' AND p->'throwLimitSeconds'<>'null'::jsonb AND p->>'throwLimitSeconds'<>'20')
     OR (p ? 'tournament' AND jsonb_typeof(p->'tournament')<>'boolean')
     OR (p ? 'strictTimer' AND jsonb_typeof(p->'strictTimer')<>'boolean')
@@ -113,16 +113,21 @@ BEGIN
   IF p_action='create_training' THEN
     IF EXISTS(SELECT 1 FROM jsonb_object_keys(p_body) k WHERE k NOT IN ('request_id','player','mode','length','config')) OR coalesce(p_issue,'') !~ '^[a-f0-9]{64}$' THEN RAISE EXCEPTION 'invalid training initiation' USING ERRCODE='22023'; END IF;
     SELECT x.receipt INTO receipt FROM private.sc004_requests x WHERE x.request_id=rid AND x.issue_hash=p_issue;
-    IF FOUND THEN RETURN receipt; END IF;
+    IF FOUND THEN
+      PERFORM 1 FROM private.sc004_training_controls WHERE training_id=(training.receipt->>'training_id')::uuid
+        AND token_hash=p_issue AND revoked_at IS NULL AND expires_at>private.sc004_controller_now() FOR UPDATE;
+      IF NOT FOUND THEN RAISE EXCEPTION 'training issuance no longer live' USING ERRCODE='42501'; END IF;
+      RETURN receipt;
+    END IF;
     IF EXISTS(SELECT 1 FROM private.sc004_requests WHERE request_id=rid) THEN RAISE EXCEPTION 'request conflict' USING ERRCODE='23505'; END IF;
     p:=p_body->'player';
-    IF jsonb_typeof(p)<>'object' OR EXISTS(SELECT 1 FROM jsonb_object_keys(p) k WHERE k NOT IN ('id','name')) OR length(trim(coalesce(p->>'name',''))) NOT BETWEEN 1 AND 80
+    IF jsonb_typeof(p) IS DISTINCT FROM 'object' OR EXISTS(SELECT 1 FROM jsonb_object_keys(p) k WHERE k NOT IN ('id','name')) OR jsonb_typeof(p->'name') IS DISTINCT FROM 'string' OR length(trim(coalesce(p->>'name',''))) NOT BETWEEN 1 AND 80
       OR coalesce(p_body->>'mode','') NOT IN ('standard','tdb','select') OR coalesce((p_body->>'length')::integer,-1) NOT IN (0,10,15)
-      OR jsonb_typeof(p_body->'config')<>'object' OR octet_length((p_body->'config')::text)>8192 THEN RAISE EXCEPTION 'invalid training setup' USING ERRCODE='22023'; END IF;
+      OR jsonb_typeof(p_body->'config') IS DISTINCT FROM 'object' OR octet_length((p_body->'config')::text)>8192 THEN RAISE EXCEPTION 'invalid training setup' USING ERRCODE='22023'; END IF;
     IF p->>'id' IS NOT NULL THEN SELECT * INTO saved FROM public.players WHERE id=(p->>'id')::uuid AND deleted_at IS NULL; IF NOT FOUND OR saved.name<>p->>'name' THEN RAISE EXCEPTION 'unknown training player' USING ERRCODE='22023'; END IF; END IF;
     IF EXISTS(SELECT 1 FROM jsonb_object_keys(p_body->'config') k WHERE k<>'targets') THEN RAISE EXCEPTION 'invalid training config' USING ERRCODE='22023'; END IF;
     IF p_body->>'mode'='select' THEN
-      IF jsonb_typeof(p_body->'config'->'targets')<>'array' OR jsonb_array_length(p_body->'config'->'targets') NOT BETWEEN 1 AND 5 THEN RAISE EXCEPTION 'invalid selected targets' USING ERRCODE='22023'; END IF;
+      IF jsonb_typeof(p_body->'config'->'targets') IS DISTINCT FROM 'array' OR jsonb_array_length(p_body->'config'->'targets') NOT BETWEEN 1 AND 5 THEN RAISE EXCEPTION 'invalid selected targets' USING ERRCODE='22023'; END IF;
       FOR r IN SELECT value FROM jsonb_array_elements(p_body->'config'->'targets') LOOP
         IF jsonb_typeof(r) IS DISTINCT FROM 'object' OR NOT(r ?& ARRAY['kind','req']) OR jsonb_typeof(r->'kind') IS DISTINCT FROM 'string' OR jsonb_typeof(r->'req') IS DISTINCT FROM 'string' OR EXISTS(SELECT 1 FROM jsonb_object_keys(r) k WHERE k NOT IN ('kind','n','req')) OR r->>'kind' NOT IN ('number','bull') OR jsonb_typeof(r->'req') IS DISTINCT FROM 'string' OR r->>'req' NOT IN ('any','single','double','treble','bull') OR (r->>'kind'='number' AND (jsonb_typeof(r->'n') IS DISTINCT FROM 'number' OR coalesce(r->>'n','') !~ '^[0-9]+$' OR (r->>'n')::integer NOT BETWEEN 10 AND 20 OR r->>'req'='bull')) OR (r->>'kind'='bull' AND (r->>'req'<>'bull' OR r ? 'n')) THEN RAISE EXCEPTION 'invalid selected target' USING ERRCODE='22023'; END IF;
       END LOOP;
@@ -224,8 +229,16 @@ BEGIN
   IF p_action NOT IN ('list_roster','resume','resume_training','admin_action') AND coalesce((SELECT held FROM private.sc004_write_control WHERE singleton),true) THEN
     RAISE EXCEPTION 'writes held' USING ERRCODE = '55000';
   END IF;
+  -- Serialize retries before checking either issuance receipt table. This avoids
+  -- a concurrent identical request observing no receipt and failing uniqueness.
+  IF p_action IN ('create_player','create_match','create_training') THEN
+    PERFORM pg_advisory_xact_lock(674004,hashtext(rid::text));
+  END IF;
   IF p_action = 'create_player' THEN
     IF EXISTS (SELECT 1 FROM jsonb_object_keys(p_body) k WHERE k NOT IN ('request_id','name','initials','first_name','last_name','nickname','avatar_id'))
+       OR jsonb_typeof(p_body->'name') IS DISTINCT FROM 'string'
+       OR EXISTS(SELECT 1 FROM unnest(ARRAY['initials','first_name','last_name','nickname']) k WHERE p_body ? k AND jsonb_typeof(p_body->k) NOT IN ('string','null'))
+       OR (p_body ? 'avatar_id' AND p_body->'avatar_id'<>'null'::jsonb AND (jsonb_typeof(p_body->'avatar_id') IS DISTINCT FROM 'number' OR (p_body->>'avatar_id')::integer NOT BETWEEN 1 AND 29))
        OR length(trim(coalesce(p_body->>'name',''))) NOT BETWEEN 1 AND 80
        OR length(coalesce(p_body->>'initials','')) > 5
        OR length(coalesce(p_body->>'first_name','')) > 80
@@ -255,12 +268,17 @@ BEGIN
       RAISE EXCEPTION 'invalid match initiation' USING ERRCODE = '22023';
     END IF;
     SELECT r.receipt INTO receipt FROM private.sc004_requests r WHERE r.request_id=rid AND r.issue_hash=p_issue_hash;
-    IF FOUND THEN RETURN receipt; END IF;
+    IF FOUND THEN
+      PERFORM 1 FROM private.sc004_controllers WHERE match_id=(receipt->>'match_id')::uuid
+        AND token_hash=p_issue_hash AND revoked_at IS NULL AND expires_at>private.sc004_controller_now() FOR UPDATE;
+      IF NOT FOUND THEN RAISE EXCEPTION 'match issuance no longer live' USING ERRCODE='42501'; END IF;
+      RETURN receipt;
+    END IF;
     IF EXISTS(SELECT 1 FROM private.sc004_requests r WHERE r.request_id=rid) THEN
       RAISE EXCEPTION 'match initiation request already consumed' USING ERRCODE = '23505';
     END IF;
     mode := p_body->>'mode';
-    IF mode IS NULL OR mode NOT IN ('official','practice','turbo','vs_shadow') OR jsonb_typeof(p_body->'roster') <> 'array' THEN
+    IF mode IS NULL OR mode NOT IN ('official','practice','turbo','vs_shadow') OR jsonb_typeof(p_body->'roster') IS DISTINCT FROM 'array' THEN
       RAISE EXCEPTION 'invalid mode or roster' USING ERRCODE = '22023';
     END IF;
     n := jsonb_array_length(p_body->'roster');
@@ -271,7 +289,7 @@ BEGIN
       RAISE EXCEPTION 'invalid player count or match format' USING ERRCODE = '22023';
     END IF;
     FOR item IN SELECT value FROM jsonb_array_elements(p_body->'roster') LOOP
-      IF jsonb_typeof(item) <> 'object' OR EXISTS(SELECT 1 FROM jsonb_object_keys(item) k WHERE k NOT IN ('id','name')) THEN
+      IF jsonb_typeof(item) IS DISTINCT FROM 'object' OR EXISTS(SELECT 1 FROM jsonb_object_keys(item) k WHERE k NOT IN ('id','name')) THEN
         RAISE EXCEPTION 'invalid roster entry' USING ERRCODE = '22023';
       END IF;
       IF item->>'id' IS NOT NULL THEN
@@ -281,7 +299,7 @@ BEGIN
         END IF;
         roster := roster || jsonb_build_array(jsonb_build_object('id',saved.id,'name',saved.name));
       ELSE
-        IF mode='official' OR length(trim(coalesce(item->>'name',''))) NOT BETWEEN 1 AND 80
+        IF mode='official' OR jsonb_typeof(item->'name') IS DISTINCT FROM 'string' OR length(trim(coalesce(item->>'name',''))) NOT BETWEEN 1 AND 80
            OR lower(trim(item->>'name')) IN ('shadow','vs shadow') THEN
           RAISE EXCEPTION 'guest not eligible for this mode' USING ERRCODE = '22023';
         END IF;
@@ -328,7 +346,7 @@ BEGIN
     -- This match was minted by this registry. No UUID-only adoption or removal
     -- of a historical match is possible. Cascades remove private pending slots.
     DELETE FROM public.match_players WHERE match_id=mid;
-    DELETE FROM private.sc004_requests r WHERE r.receipt->>'match_id'=mid::text;
+    -- Retain the consumed issuance receipt: this secret must never bind another match.
     DELETE FROM public.matches WHERE id=mid;
     RETURN jsonb_build_object('ok',true,'match_id',mid,'cleaned',true);
   END IF;
@@ -345,12 +363,12 @@ BEGIN
   END IF;
   IF p_action='update_roster' THEN
     IF EXISTS(SELECT 1 FROM jsonb_object_keys(p_body) k WHERE k NOT IN ('request_id','match_id','roster'))
-       OR jsonb_typeof(p_body->'roster') <> 'array' THEN RAISE EXCEPTION 'invalid roster' USING ERRCODE='22023'; END IF;
+       OR jsonb_typeof(p_body->'roster') IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'invalid roster' USING ERRCODE='22023'; END IF;
     n := jsonb_array_length(p_body->'roster');
     IF n > 5 OR n < 1 OR (c.mode='vs_shadow' AND n<>1) THEN RAISE EXCEPTION 'invalid roster count' USING ERRCODE='22023'; END IF;
     IF n=1 AND c.mode IN ('official','turbo') THEN c.mode:='practice'; END IF;
     FOR item IN SELECT value FROM jsonb_array_elements(p_body->'roster') LOOP
-      IF jsonb_typeof(item)<>'object' OR EXISTS(SELECT 1 FROM jsonb_object_keys(item) k WHERE k NOT IN ('id','name','initials','avatar_id','nickname','display_name')) THEN
+      IF jsonb_typeof(item) IS DISTINCT FROM 'object' OR EXISTS(SELECT 1 FROM jsonb_object_keys(item) k WHERE k NOT IN ('id','name','initials','avatar_id','nickname','display_name')) THEN
         RAISE EXCEPTION 'invalid roster entry' USING ERRCODE='22023';
       END IF;
       IF item->>'id' IS NOT NULL THEN
@@ -358,12 +376,13 @@ BEGIN
         IF NOT FOUND OR (item->>'name' IS NOT NULL AND item->>'name'<>saved.name) THEN RAISE EXCEPTION 'unknown roster player' USING ERRCODE='22023'; END IF;
         row_item := jsonb_build_object('id',saved.id,'name',saved.name);
       ELSE
-        IF length(trim(coalesce(item->>'name',''))) NOT BETWEEN 1 AND 80 OR lower(trim(item->>'name')) IN ('shadow','vs shadow') THEN RAISE EXCEPTION 'guest not eligible' USING ERRCODE='22023'; END IF;
+        IF jsonb_typeof(item->'name') IS DISTINCT FROM 'string' OR length(trim(coalesce(item->>'name',''))) NOT BETWEEN 1 AND 80 OR lower(trim(item->>'name')) IN ('shadow','vs shadow') THEN RAISE EXCEPTION 'guest not eligible' USING ERRCODE='22023'; END IF;
         IF c.mode='official' THEN c.mode:='practice'; END IF;
         row_item := jsonb_build_object('id',NULL,'name',trim(item->>'name'));
       END IF;
-      IF length(coalesce(item->>'initials',''))>5 OR length(coalesce(item->>'nickname',''))>80 OR length(coalesce(item->>'display_name',''))>80
-        OR (item ? 'avatar_id' AND (item->>'avatar_id')::integer NOT BETWEEN 1 AND 29) THEN RAISE EXCEPTION 'invalid match display' USING ERRCODE='22023'; END IF;
+      IF EXISTS(SELECT 1 FROM unnest(ARRAY['initials','nickname','display_name']) k WHERE item ? k AND jsonb_typeof(item->k) IS DISTINCT FROM 'string')
+        OR length(coalesce(item->>'initials',''))>5 OR length(coalesce(item->>'nickname',''))>80 OR length(coalesce(item->>'display_name',''))>80
+        OR (item ? 'avatar_id' AND (jsonb_typeof(item->'avatar_id') IS DISTINCT FROM 'number' OR (item->>'avatar_id')::integer NOT BETWEEN 1 AND 29)) THEN RAISE EXCEPTION 'invalid match display' USING ERRCODE='22023'; END IF;
       row_item := row_item || (item - 'id' - 'name');
       roster := roster || jsonb_build_array(row_item);
     END LOOP;
@@ -412,8 +431,8 @@ BEGIN
     END IF;
     IF (c.single_game AND i<>1)
        OR (NOT EXISTS(SELECT 1 FROM private.sc004_slots WHERE match_id=mid AND game_number=i)
-           AND EXISTS(SELECT 1 FROM private.sc004_slots WHERE match_id=mid AND status='pending')) THEN
-      RAISE EXCEPTION 'previous game pending or single-game mode' USING ERRCODE='22023';
+           AND EXISTS(SELECT 1 FROM private.sc004_slots WHERE match_id=mid AND status<>'completed')) THEN
+      RAISE EXCEPTION 'previous game unaccepted or single-game mode' USING ERRCODE='22023';
     END IF;
     INSERT INTO private.sc004_slots(match_id,game_number) VALUES(mid,i)
       ON CONFLICT(match_id,game_number) DO NOTHING;
@@ -426,6 +445,9 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'game scope denied' USING ERRCODE = '42501'; END IF;
   IF p_action = 'reset_game' THEN
     IF s.status='completed' THEN RAISE EXCEPTION 'accepted game cannot be reset' USING ERRCODE='42501'; END IF;
+    IF EXISTS(SELECT 1 FROM private.sc004_slots WHERE match_id=mid AND game_number>s.game_number) THEN
+      RAISE EXCEPTION 'older game cannot be reset' USING ERRCODE='42501';
+    END IF;
     UPDATE private.sc004_slots SET status='pending',payload=NULL,receipt=NULL WHERE game_id=gid;
     RETURN jsonb_build_object('ok',true,'game_id',gid,'match_id',mid,'game_number',s.game_number,'status','pending');
   END IF;
@@ -465,7 +487,9 @@ BEGIN
   IF EXISTS(SELECT 1 FROM jsonb_object_keys(p_body) k WHERE k NOT IN ('request_id','match_id','game_id','state','totals','stats','winner_indexes'))
      OR coalesce(jsonb_typeof(p_body->'state'),'null') <> 'object'
      OR p_body->'state'->'players' IS DISTINCT FROM c.roster
-     OR coalesce(p_body->'state'->>'mode','') <> c.mode
+     OR (coalesce(p_body->'state'->>'mode','') <> c.mode
+         AND NOT(c.mode='vs_shadow' AND p_body->'state'->>'mode'='practice'))
+     OR (c.mode='vs_shadow' AND p_body->'state' ? 'gameMode' AND p_body->'state'->>'gameMode' IS DISTINCT FROM 'practice')
      OR EXISTS(SELECT 1 FROM jsonb_each(c.rules) r WHERE p_body->'state' ? r.key AND NOT (r.value <@ (p_body->'state'->r.key))) THEN
     RAISE EXCEPTION 'invalid completion scope' USING ERRCODE = '22023';
   END IF;
@@ -479,6 +503,7 @@ BEGIN
   board := p_body->'state'->'board'; n := jsonb_array_length(c.roster);
   IF coalesce(jsonb_typeof(board),'null') <> 'array' OR jsonb_array_length(board) <> n
      OR coalesce(jsonb_typeof(p_body->'totals'),'null') <> 'array' OR jsonb_array_length(p_body->'totals') <> n
+     OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_body->'totals') v WHERE jsonb_typeof(v) IS DISTINCT FROM 'number' OR v::text !~ '^[0-9]+$')
      OR (p_body ? 'stats' AND p_body->'stats' NOT IN ('null'::jsonb,'{}'::jsonb)) THEN
     RAISE EXCEPTION 'invalid board dimensions' USING ERRCODE = '22023';
   END IF;
@@ -572,7 +597,7 @@ BEGIN
       AND NOT EXISTS(SELECT 1 FROM private.sc004_slots s WHERE s.match_id=c.match_id AND s.status='completed')
     ORDER BY c.expires_at LIMIT p_limit FOR UPDATE OF c,m SKIP LOCKED LOOP
     DELETE FROM public.match_players WHERE match_id=x.match_id;
-    DELETE FROM private.sc004_requests WHERE receipt->>'match_id'=x.match_id::text;
+    -- Retain the consumed issuance receipt: this secret must never bind another match.
     DELETE FROM public.matches WHERE id=x.match_id;
     removed:=removed+1;
   END LOOP;
@@ -580,4 +605,3 @@ BEGIN
 END $f$;
 REVOKE ALL ON FUNCTION public.sq_sc004_prune_expired_empty(integer) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.sq_sc004_prune_expired_empty(integer) TO service_role;
-

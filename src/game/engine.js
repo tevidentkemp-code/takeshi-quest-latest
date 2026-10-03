@@ -1881,7 +1881,7 @@ function __sqBuildCompletedGamePayload(){
   const control=state.__sqGameControl;if(!control)throw new Error('controller_required');
   const snapshot={
     players:JSON.parse(JSON.stringify(matchState.__sqRoster)),board:boardClone,
-    mode:matchState.__sqControllerMode||gameMode,gameMode:gameMode,
+    mode:isVsShadow?'practice':(matchState.__sqControllerMode||gameMode),gameMode:gameMode,
     gameFormat:isMatchPlayTurbo?'match_play':(matchState.gameFormat||undefined),
     gameVariant:isMatchPlayTurbo?'turbo':(matchState.gameVariant||undefined),
     tournament:isMatchPlayTurbo?false:(isActualTournament?true:undefined),
@@ -3276,8 +3276,8 @@ function __sqNewGamePlayerCountAllowed(){
   return false;
 }
 async function startNewGame(setOrder=false){
-  if(state.__sqSecurityPreparing)return;
-  if (!__sqNewGamePlayerCountAllowed()) return;
+  if(state.__sqSecurityPreparing)return false;
+  if (!__sqNewGamePlayerCountAllowed()) return false;
   try{ __sqClearFinalBullReturnRuntime(); }catch(_){ }
   try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('startNewGame'); }catch(_){ }
   try{
@@ -3288,12 +3288,12 @@ async function startNewGame(setOrder=false){
   if(!setOrder){
     try{ if (typeof __sqSanitizeVsShadowForGenericStart === 'function') __sqSanitizeVsShadowForGenericStart('startNewGame-generic'); }catch(_){ }
     showPlayerOrderDialog();
-    return;
+    return false;
   }
 
   const startingState=state;
   __sqShowGameLoadOverlay('Preparing secure game');
-  try{await window.SQ_GAMEPLAY.prepareNewGame();if(state!==startingState){__sqHideGameLoadOverlay();return;}}catch(error){__sqHideGameLoadOverlay();return;}
+  try{await window.SQ_GAMEPLAY.prepareNewGame();if(state!==startingState){__sqHideGameLoadOverlay();return false;}}catch(error){__sqHideGameLoadOverlay();return false;}
 
   // A completed game pins the DMD to the scrolling GAME OVER scene. A new
   // game owns a fresh DMD lifecycle, so clear that presentation before any
@@ -3343,6 +3343,7 @@ __sqAfterPaint(async ()=>{
     __sqHideGameLoadOverlay();
   }
 });
+  return true;
 }
 
 function restartGame() {

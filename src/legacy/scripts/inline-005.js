@@ -1539,8 +1539,8 @@ function openPlayerStatsSelectDialog(){
   (async () => {
     try{
       const items = await cloudListPlayers(); // [{name}]
-      sel.innerHTML = '<option value="">Select a saved player...</option>' +
-        (items || []).map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+      sel.replaceChildren(new Option('Select a saved player...', ''),
+        ...(items || []).map(p => new Option(String(p.name || ''), String(p.name || ''))));
     }catch(e){
       console.error('Stats: load players failed', e);
       try{ if (typeof toast==='function') toast('Cloud offline'); }catch(_){}
@@ -1606,8 +1606,8 @@ function openPBGRAdminDialog(){
     try{
       const items = await cloudListPlayers(); // [{name}]
       if (sel){
-        sel.innerHTML = '<option value="">Select a saved player…</option>' +
-          (items||[]).map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+        sel.replaceChildren(new Option('Select a saved player…', ''),
+          ...(items || []).map(p => new Option(String(p.name || ''), String(p.name || ''))));
         if (!sel.value && items && items.length) sel.value = items[0].name || '';
         if (typeof renderPBGRPlayerTableInto === 'function') await renderPBGRPlayerTableInto('pbgrPlayer', sel.value);
       }
@@ -4164,7 +4164,8 @@ function __sqIsRecoverableGameStateForLocalCache(o){
     if(!o || typeof o !== 'object') return false;
     const players = Array.isArray(o.players) ? o.players : [];
     if(!players.length) return false;
-    if (typeof __sqSavedStateIsVsShadow === 'function' && __sqSavedStateIsVsShadow(o)) return false;
+    // An unfinished Shadow board is recoverable presentation data too. The
+    // secure runtime separately verifies or issues authority before any save.
     if(o.gameAwarded === true || o.finished === true || o.__sqCompleted === true || o.__sqGameCompleteOpen === true) return false;
     return true;
   }catch(_){ return false; }
@@ -4721,7 +4722,6 @@ const baseState = {
   matchAgg: null,
   gameAwarded: false
 };
-
 // ===== @SEC:JS:STATE =====
 
 let state = JSON.parse(JSON.stringify(baseState));
@@ -7669,7 +7669,7 @@ function setupStartMenuButtons(){
 if (hasSaved){ 
     resumeBtn.onclick = () => {
       try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('resume-before-load'); }catch(_){ }
-      if (typeof __sqSavedStateIsVsShadow === 'function' && __sqSavedStateIsVsShadow(saved)) {
+      if (typeof __sqSavedStateIsVsShadow === 'function' && __sqSavedStateIsVsShadow(saved) && !window.SQ_GAMEPLAY.hasCachedController(saved) && (saved.match?.history||[]).length) {
         try{ toast('Vs Shadow recovery is not supported for this mode. Your cached state is preserved for owner review.'); }catch(_){ }
         return;
       }
@@ -7692,6 +7692,7 @@ if (hasSaved){
           if(!amendedColors) assignUniqueColors(state.players);
           await buildEverythingChunked();
           updateUI();
+          if(typeof __sqResumeVsShadowAutoTurnIfNeeded==='function')__sqResumeVsShadowAutoTurnIfNeeded('secure-resume');
           toast('Resumed last match');
         } catch(error){window.SQ_GAMEPLAY.failure(error);show('details');window.SQ_GAMEPLAY.offerLegacyRecovery();}
         finally {
@@ -19090,7 +19091,7 @@ function __sqBuildCompletedGamePayload(){
   const control=state.__sqGameControl;if(!control)throw new Error('controller_required');
   const snapshot={
     players:JSON.parse(JSON.stringify(matchState.__sqRoster)),board:boardClone,
-    mode:matchState.__sqControllerMode||gameMode,gameMode:gameMode,
+    mode:isVsShadow?'practice':(matchState.__sqControllerMode||gameMode),gameMode:gameMode,
     gameFormat:isMatchPlayTurbo?'match_play':(matchState.gameFormat||undefined),
     gameVariant:isMatchPlayTurbo?'turbo':(matchState.gameVariant||undefined),
     tournament:isMatchPlayTurbo?false:(isActualTournament?true:undefined),
@@ -20485,8 +20486,8 @@ function __sqNewGamePlayerCountAllowed(){
   return false;
 }
 async function startNewGame(setOrder=false){
-  if(state.__sqSecurityPreparing)return;
-  if (!__sqNewGamePlayerCountAllowed()) return;
+  if(state.__sqSecurityPreparing)return false;
+  if (!__sqNewGamePlayerCountAllowed()) return false;
   try{ __sqClearFinalBullReturnRuntime(); }catch(_){ }
   try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('startNewGame'); }catch(_){ }
   try{
@@ -20497,12 +20498,12 @@ async function startNewGame(setOrder=false){
   if(!setOrder){
     try{ if (typeof __sqSanitizeVsShadowForGenericStart === 'function') __sqSanitizeVsShadowForGenericStart('startNewGame-generic'); }catch(_){ }
     showPlayerOrderDialog();
-    return;
+    return false;
   }
 
   const startingState=state;
   __sqShowGameLoadOverlay('Preparing secure game');
-  try{await window.SQ_GAMEPLAY.prepareNewGame();if(state!==startingState){__sqHideGameLoadOverlay();return;}}catch(error){__sqHideGameLoadOverlay();return;}
+  try{await window.SQ_GAMEPLAY.prepareNewGame();if(state!==startingState){__sqHideGameLoadOverlay();return false;}}catch(error){__sqHideGameLoadOverlay();return false;}
 
   // A completed game pins the DMD to the scrolling GAME OVER scene. A new
   // game owns a fresh DMD lifecycle, so clear that presentation before any
@@ -20552,6 +20553,7 @@ __sqAfterPaint(async ()=>{
     __sqHideGameLoadOverlay();
   }
 });
+  return true;
 }
 
 function restartGame() {
@@ -22480,7 +22482,8 @@ async function recoverHighScoresFromCloudWindow(hours=24){
 
 async function backfillLocalGamesToCloud(){
   await window.SQ_ADMIN_AUTH.require();
-  const games=typeof getGameLog==='function'?(getGameLog()||[]):[];
+  const cached=typeof safeLoad==='function'?safeLoad(GAMES_LOG_KEY):null;
+  const games=Array.isArray(cached)?cached:(typeof getGameLog==='function'?(getGameLog()||[]):[]);
   let inserted=0,hs=0;
   for(const g of games){
     const players=(g.players||[]).map(p=>typeof p==='string'?{name:p}:p).filter(Boolean);
@@ -22492,7 +22495,8 @@ async function backfillLocalGamesToCloud(){
 
 async function backfillLocalMatchesToCloud(){
   await window.SQ_ADMIN_AUTH.require();
-  const matches=typeof getMatchLog==='function'?(getMatchLog()||[]):[];
+  const cached=typeof safeLoad==='function'?safeLoad(MATCHES_LOG_KEY):null;
+  const matches=Array.isArray(cached)?cached:(typeof getMatchLog==='function'?(getMatchLog()||[]):[]);
   let inserted=0;
   for(const m of matches){
     const result=await window.sqAdminAction({operation:'import_match',match:{id:m.id||null,created_at:m.ts||new Date().toISOString(),players:(m.players||[]).map(p=>typeof p==='string'?{name:p}:p),wins:m.wins||[],total_games:m.games||Math.max(1,m.history?.length||0),history:(m.history||[]).map(g=>({totals:g.totals||[]}))}});
@@ -22898,7 +22902,6 @@ window.getOfficialPowerRows = async function getOfficialPowerRows(){
   };
 })();
 // >>> PATCH:game-utils END
-
 // [MOVED] Vertical Game Ticker module moved to @SEC:JS:LEGACY:QUARANTINE (Stage 4A ticker dedupe)
 
 // Simple High Scores picker for start screen: Match vs Round

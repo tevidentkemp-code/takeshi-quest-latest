@@ -18,7 +18,7 @@
   }
   function notice(message,error){
     let el=document.getElementById('sqSecurityStatus');
-    if(!el){el=document.createElement('div');el.id='sqSecurityStatus';el.className='cloud-status';el.setAttribute('role','status');el.style.cssText='position:fixed;bottom:8px;left:8px;right:8px;z-index:900000;background:var(--card,#171a2b);padding:12px;border:1px solid var(--warning,#ffcc66);border-radius:8px;font-size:13px';document.body.appendChild(el);}
+    if(!el){el=document.createElement('div');el.id='sqSecurityStatus';el.className='cloud-status';el.setAttribute('role','status');el.style.cssText='position:fixed;top:auto;bottom:8px;left:8px;right:8px;display:block;pointer-events:auto;z-index:900000;background:var(--card,#171a2b);padding:12px;border:1px solid var(--warning,#ffcc66);border-radius:8px;font-size:13px';document.body.appendChild(el);}
     el.textContent=message;el.hidden=!message;
     if(error) console.warn('[SQ] secure persistence',error.code||error.message);
   }
@@ -63,7 +63,7 @@
     const st=current();if(!Number.isInteger(index)||!realIndexes(st).includes(index)||!fields||Object.keys(fields).some(k=>!['initials','avatar_id','nickname','display_name'].includes(k)))throw new window.Sc004Error('invalid_display_patch');
     const players=clone(st.players);Object.assign(players[index],fields);
     window.__sqSecurityInputBlocked=true;
-    try{await syncRoster(players);st.players[index]=players[index];if(typeof save==='function')save();if(typeof updateUI==='function')updateUI();return players[index];}
+    try{await syncRoster(players);if(current()!==st)throw new window.Sc004Error('game_state_changed');st.players[index]=players[index];if(typeof save==='function')save();if(typeof updateUI==='function')updateUI();return players[index];}
     catch(error){throw failure(error);}
     finally{window.__sqSecurityInputBlocked=false;}
   }
@@ -98,6 +98,7 @@
   }
   async function resume(){
     const st=current();const control=st.__sqGameControl;
+    if(!st.match?.securityVersion){await recoverFreshLegacy();return resume();}
     if(!control||!client().hasController(control.match_id))throw failure(new window.Sc004Error('controller_required'));
     try{
       const receipt=await client().command('resume',control.match_id);
@@ -108,7 +109,23 @@
       return receipt;
     }catch(error){throw failure(error);}
   }
-  const canonical=value=>JSON.stringify(value&&typeof value==='object'?Array.isArray(value)?value.map(x=>JSON.parse(canonical(x))):Object.fromEntries(Object.keys(value).sort().map(k=>[k,JSON.parse(canonical(value[k]))])):value);
+  const normalize=value=>Array.isArray(value)?value.map(x=>x===undefined?null:normalize(x)):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().filter(k=>value[k]!==undefined).map(k=>[k,normalize(value[k])])):value;
+  const canonical=value=>JSON.stringify(normalize(value));
+  const historyTotals=history=>(history||[]).map(game=>({totals:game?.totals||[]}));
+  async function recoverFreshLegacy(){
+    const st=current(),m=st.match||{},oldId=m.id;
+    if(m.securityVersion||(m.history||[]).length||!UUID.test(oldId||''))throw failure(new window.Sc004Error('controller_required'));
+    const read=window.sb;if(!read?.from)throw failure(new window.Sc004Error('legacy_lookup_unavailable'));
+    const result=await read.from('matches').select('id').eq('id',oldId).maybeSingle();
+    if(result.error)throw failure(new window.Sc004Error('legacy_lookup_unavailable'));
+    if(result.data)throw failure(new window.Sc004Error('owner_recovery_required'));
+    if(current()!==st)throw new window.Sc004Error('game_state_changed');
+    const before=canonical(st.score);
+    await prepareNewGame(); // Issues fresh IDs while preserving the existing engine board.
+    if(current()!==st||canonical(st.score)!==before||m.id===oldId)throw new window.Sc004Error('recovery_board_changed');
+    notice('Your unfinished board is preserved in a newly issued match.');return st.__sqGameControl;
+  }
+  function hasCachedController(st){try{return !!st?.__sqGameControl&&client().hasController(st.__sqGameControl.match_id);}catch(_){return false;}}
   async function recoverLegacy(settings){
     const st=current(),m=st.match||{};
     if(m.securityVersion||!UUID.test(m.id||'')||String(m.practiceType||'').toLowerCase()==='vsshadow')throw new window.Sc004Error('legacy_recovery_denied');
@@ -118,7 +135,7 @@
     if(current()!==st||canonical(st.score)!==canonical(before.score)||canonical(st.players)!==canonical(before.players))throw new window.Sc004Error('recovery_board_changed');
     const cached=realIndexes(st).map(i=>st.players[i]),issued=receipt.roster||[];
     if(cached.length!==issued.length||cached.some(p=>!issued.some(q=>String(p.name||'').trim().toLowerCase()===String(q.name||'').trim().toLowerCase()&&(!UUID.test(p.id||p.player_id||'')||String(p.id||p.player_id).toLowerCase()===String(q.id||'').toLowerCase()))))throw new window.Sc004Error('legacy_roster_mismatch');
-    if(canonical(m.history||[])!==canonical(receipt.history||[])||issued.some((p,i)=>{const index=cached.findIndex(q=>String(q.name||'').trim().toLowerCase()===String(p.name||'').trim().toLowerCase());return Number(m.wins?.[index]||0)!==Number(receipt.wins?.[i]||0);}))throw new window.Sc004Error('legacy_history_mismatch');
+    if(canonical(historyTotals(m.history))!==canonical(historyTotals(receipt.history))||issued.some((p,i)=>{const index=cached.findIndex(q=>String(q.name||'').trim().toLowerCase()===String(p.name||'').trim().toLowerCase());return Number(m.wins?.[index]||0)!==Number(receipt.wins?.[i]||0);}))throw new window.Sc004Error('legacy_history_mismatch');
     if(Number(receipt.game_number)!==(receipt.history||[]).length+1||!['official','practice','turbo'].includes(receipt.mode)||![1,3,5].includes(Number(receipt.target_wins)))throw new window.Sc004Error('legacy_scope_mismatch');
     updateMatchReceipt(st,receipt);m.__sqServerSingle=receipt.match_format==='single';m.targetWins=receipt.target_wins;m.gameNumber=receipt.game_number;
     st.__sqGameControl={match_id:receipt.match_id,game_id:receipt.game_id,game_number:receipt.game_number,mode:receipt.mode,roster:clone(receipt.roster)};
@@ -131,15 +148,16 @@
     const button=document.createElement('button');button.type='button';button.className='btn';button.textContent='OWNER RECOVERY';button.dataset.sqOwnerRecovery='1';
     button.onclick=async()=>{
       try{await window.SQ_ADMIN_AUTH.require();}catch(error){failure(error);return;}
-      const settings={target_wins:[1,3,5].includes(Number(m.targetWins))?Number(m.targetWins):1,mode:mode(st),rules:rules(st)};
+      const series=m.mode==='match'||m.gameFormat==='match_play'||Number(m.targetWins)>1||m.tournament===true;
+      const settings={target_wins:[1,3,5].includes(Number(m.targetWins))?Number(m.targetWins):1,match_format:series?'series':'single',mode:mode(st),rules:rules(st)};
       if(!['official','practice','turbo'].includes(settings.mode)){notice('This legacy mode needs owner review. Your board remains preserved.');return;}
       const overlay=document.createElement('div');overlay.className='modal-backdrop';overlay.id='sqLegacyRecovery';
       const modal=document.createElement('div');modal.className='modal';modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.style.maxWidth='420px';
       const title=document.createElement('h3');title.textContent='Recover unfinished match';
       const body=document.createElement('div');body.className='modal-body';
       const summary=document.createElement('p');summary.textContent='Match '+m.id+' · '+settings.mode.toUpperCase()+' · first to '+settings.target_wins+' wins. The server must verify the saved participants, history and wins. Your current board stays intact.';
-      const label=document.createElement('label'),confirm=document.createElement('input');confirm.type='checkbox';confirm.id='sqLegacyRecoveryConfirmed';label.append(confirm,document.createTextNode(' I confirm this match mode, rules and target wins.'));
-      const provenance=document.createElement('pre');provenance.style.whiteSpace='pre-wrap';provenance.textContent=JSON.stringify(settings.rules,null,2);
+      const label=document.createElement('label'),confirm=document.createElement('input');confirm.type='checkbox';confirm.id='sqLegacyRecoveryConfirmed';label.style.cssText='display:flex;align-items:center;gap:8px;min-height:44px';label.append(confirm,document.createTextNode(' I confirm this match mode, rules and target wins.'));
+      const provenance=document.createElement('p');provenance.textContent=(settings.match_format==='series'?'Match series. ':'Single game. ')+(settings.mode==='turbo'?'Starts at 17, with strict 20 second turns. ':'Standard starting round. ')+(m.tournament?'Tournament match.':'');
       const error=document.createElement('p');error.setAttribute('role','status');
       const footer=document.createElement('div');footer.className='modal-footer';
       const cancel=document.createElement('button');cancel.className='btn';cancel.textContent='Cancel';cancel.onclick=()=>overlay.remove();
@@ -149,7 +167,7 @@
     };status.appendChild(button);
   }
   function canThrow(){const st=current();return !window.__sqSecurityInputBlocked&&!!st.__sqGameControl&&client().hasController(st.__sqGameControl.match_id)&&!st.__sqAcceptedGameReceipt&&!st.__sqCompletionSnapshot;}
-  function canDiscard(){const st=current();if(st.__sqAwardInFlight||(st.__sqCompletionSnapshot&&!st.__sqAcceptedGameReceipt)||client().pendingCompletions().some(x=>x.match_id===st.match?.id)){notice('A completed game is awaiting acceptance. Retry Finish Game before resetting or ending this match.');return false;}return true;}
+  function canDiscard(){const st=current();if(window.__sqSecurityInputBlocked){notice('Wait for the current match update to finish. Your board is preserved.');return false;}if(st.__sqAwardInFlight||(st.__sqCompletionSnapshot&&!st.__sqAcceptedGameReceipt)||client().pendingCompletions().some(x=>x.match_id===st.match?.id)){notice('A completed game is awaiting acceptance. Retry Finish Game before resetting or ending this match.');return false;}return true;}
   async function saveGoEvents(st,receipt){
     const indexes=realIndexes(st);const history=st.history||[];
     for(const i of indexes){const player=st.players[i];const id=player.id||player.player_id;if(!UUID.test(id||''))continue;
@@ -189,7 +207,7 @@
     delete st.__sqGameControl;
   }
   window.SQ_SECURITY=Object.freeze({ready:async()=>client(),createPlayer:body=>client().createPlayer(body),admin:body=>client().admin(body),recoverLegacyMatch:(...args)=>client().recoverLegacyMatch(...args),command:(...args)=>client().command(...args),completeGame:(...args)=>client().completeGame(...args),pendingCompletions:()=>client().pendingCompletions(),createTraining:(...args)=>client().createTraining(...args),completeTraining:(...args)=>client().completeTraining(...args),retryTraining:id=>client().retryTraining(id),pendingTraining:()=>client().pendingTraining(),visit:body=>client().visit(body),retryCompletion:id=>client().retryCompletion(id)});
-  window.SQ_GAMEPLAY=Object.freeze({prepareNewGame,resume,recoverLegacy,offerLegacyRecovery,canThrow,canDiscard,syncRoster,updateDisplay,completeCurrentGame,abandon,failure,notice});
+  window.SQ_GAMEPLAY=Object.freeze({prepareNewGame,resume,recoverFreshLegacy,recoverLegacy,offerLegacyRecovery,hasCachedController,canThrow,canDiscard,syncRoster,updateDisplay,completeCurrentGame,abandon,failure,notice});
   async function retryPending(){
     for(const item of client().pendingCompletions()){
       const receipt=await client().retryCompletion(item.game_id);const st=current();
