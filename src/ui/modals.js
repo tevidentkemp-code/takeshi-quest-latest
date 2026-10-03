@@ -2291,7 +2291,7 @@ const SQ_XP = {
         : String((r && r.name) || '').trim().toLowerCase() === raw.toLowerCase());
       if (row){
         this._oneAvailable.set(key, true);
-        this._oneCache.set(key, { at:now, row });
+        this._oneCache.set(key, { at:this._cacheAt, row });
         return row;
       }
     }

@@ -23,6 +23,7 @@ function __sqSyncTurboVisualState(page){
 }
 function show(id){
   try{
+    if (id !== 'game' && typeof __sqCancelV2WallMotion === 'function') __sqCancelV2WallMotion();
     if (id !== 'game' && typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('show:' + id);
     if (id === 'game' && typeof __sqNormalizeVsShadowRuntimeState === 'function') __sqNormalizeVsShadowRuntimeState('show:game');
   }catch(_){ }
@@ -6735,26 +6736,28 @@ function __sqSetupLiveV2RowsWindow(panel){
     if(!wrap) return;
     const badges = wrap.querySelectorAll('.v2Badge');
     if(!badges || badges.length < 1) return;
-    const r0 = badges[0].getBoundingClientRect();
-    let wantH = 0;
-    // The smallest supported portrait layout deliberately shows two historic
-    // rows plus the live row. Larger layouts retain three historic rows.
-    const narrow = Number(window.innerWidth || document.documentElement.clientWidth || 0) <= 360;
-    const visibleRows = narrow ? 3 : 4;
-    const last = Math.min(badges.length - 1, visibleRows - 1);
-    if(last >= 0){
-      const target = badges[last].getBoundingClientRect();
-      wantH = Math.round(target.bottom - r0.top);
-    }else if(badges.length >= 3){
-      const r2 = badges[badges.length - 1].getBoundingClientRect();
-      wantH = Math.round(r2.bottom - r0.top);
-    }else{
-      const rl = badges[badges.length-1].getBoundingClientRect();
-      wantH = Math.round(rl.bottom - r0.top);
+    const count = getLiveV2PlayerCount();
+    if(count < 2 || count > 5){
+      // Solo and historical six-player views keep their existing window owner.
+      const narrow = Number(window.innerWidth || document.documentElement.clientWidth || 0) <= 360;
+      const last = Math.min(badges.length - 1, narrow ? 2 : 3);
+      const span = badges[last].getBoundingClientRect().bottom - badges[0].getBoundingClientRect().top;
+      wrap.style.setProperty('--sqV2RowsWinH', Math.max(120, Math.round(span) + 60) + 'px');
+      return;
     }
-    // Add a small safety buffer so the top/bottom row edges never clip
-    // (padding + border-radius + subpixel rounding on iOS).
-    wantH = Math.max(120, wantH + 60);
+    // Measure the actual live row and its three predecessors. The live row is
+    // taller than history; first-row estimates omit it and the divider.
+    const live = Array.from(badges).findIndex(b=>b.classList.contains('liveRow'));
+    const first = Math.max(0, live - 3);
+    const last = live >= 3 ? live : Math.min(badges.length - 1, 3);
+    const rows = panel.querySelector('#v2Rows');
+    const ws = getComputedStyle(wrap), rs = getComputedStyle(rows);
+    const px = value => parseFloat(value) || 0;
+    const inset = px(ws.paddingTop)+px(ws.paddingBottom)+px(ws.borderTopWidth)+px(ws.borderBottomWidth)+px(rs.paddingTop)+px(rs.paddingBottom);
+    const span = badges[last].getBoundingClientRect().bottom - badges[first].getBoundingClientRect().top;
+    // Common grid motion can add floating-point noise to viewport rectangles.
+    // Keep the measured CSS subpixel size stable before rounding the viewport up.
+    const wantH = Math.max(120, Math.ceil(Math.round((span + inset) * 64) / 64));
     wrap.style.setProperty('--sqV2RowsWinH', wantH + 'px');
   }catch(_){ }
 }

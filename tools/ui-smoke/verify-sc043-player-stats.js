@@ -135,12 +135,26 @@ async function main(width){
       check('closing the hub cancels deferred history and target reads', await page.evaluate(()=>!__sc043Reads.v_ach_base && !__sc043Reads.v_player_misfires && !__sc043Reads.v_player_last30_targets));
       await install(page, 'healthy');
       const cachedXp = await page.evaluate(async()=>{
-        await SQ_XP.all(true);
-        const before = __sc043Reads.v_player_xp || 0;
-        const state = await SQ_XP.forNameState('Alex S');
-        return { before, after:__sc043Reads.v_player_xp || 0, available:state.available, xp:Number(state.row && state.row.total_xp) };
+        const realNow = Date.now;
+        let now = realNow();
+        Date.now = () => now;
+        try{
+          await SQ_XP.all(true);
+          const directoryAt = SQ_XP._cacheAt;
+          now += 59000;
+          const state = await SQ_XP.forNameState('Alex S');
+          const reused = { reads:__sc043Reads.v_player_xp || 0, at:SQ_XP._oneCache.get('name:alex s').at, available:state.available, xp:Number(state.row && state.row.total_xp) };
+          now += 1001;
+          const renewed = await SQ_XP.forNameState('Alex S');
+          const expired = { reads:__sc043Reads.v_player_xp || 0, available:renewed.available, xp:Number(renewed.row && renewed.row.total_xp) };
+          now += 1;
+          const retry = await SQ_XP.forNameState('Alex S', true);
+          return { directoryAt, reused, expired, forced:{ reads:__sc043Reads.v_player_xp || 0, available:retry.available, xp:Number(retry.row && retry.row.total_xp) } };
+        }finally{ Date.now = realNow; }
       });
-      check('fresh full XP cache serves selected player without a duplicate XP view read', cachedXp.before===1 && cachedXp.after===1 && cachedXp.available && cachedXp.xp===151, cachedXp);
+      check('59-second directory XP is reused without a duplicate read or renewed cache age', cachedXp.reused.reads===1 && cachedXp.reused.at===cachedXp.directoryAt && cachedXp.reused.available && cachedXp.reused.xp===151, cachedXp);
+      check('selected XP expires at the original directory 60-second boundary', cachedXp.expired.reads===2 && cachedXp.expired.available && cachedXp.expired.xp===151, cachedXp);
+      check('explicit XP Retry bypasses a fresh selected-player cache', cachedXp.forced.reads===3 && cachedXp.forced.available && cachedXp.forced.xp===151, cachedXp);
 
       await install(page, 'xp_hang'); await page.evaluate(()=>openPlayerStatsHub('Alex S'));
       await page.waitForTimeout(1500);
