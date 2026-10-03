@@ -22,6 +22,7 @@ function __sqSyncTurboVisualState(page){
   }catch(_){ }
 }
 function show(id){
+  if (id !== 'game') { try{ __sqCancelMissBounceFeedback(); }catch(_){} }
   try{
     if (id !== 'game' && typeof __sqCancelV2WallMotion === 'function') __sqCancelV2WallMotion();
     if (id !== 'game' && typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('show:' + id);
