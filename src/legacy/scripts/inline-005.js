@@ -24383,6 +24383,8 @@ function arrangeStartActions(){
         footer.append(back);
 
         startGameBody.append(intro, classic, turbo, footer);
+        // A new menu opens at its introduction, not the prior menu scroll position.
+        startGameBody.parentElement.scrollTop = 0;
       };
 
       matchPlay.onclick = (e)=>{
@@ -24436,6 +24438,8 @@ function arrangeStartActions(){
         footer.append(back);
 
         startGameBody.append(intro, classic, vsAi, vsShadow, footer);
+        // A new menu opens at its introduction, not the prior menu scroll position.
+        startGameBody.parentElement.scrollTop = 0;
       };
 
       const tournament = makeOpt('tournamentBtn', 'tournament', 'TOURNAMENT (BETA)', 'CLASSIC / TURBO KNOCKOUT', 'LIVE', true);
@@ -24467,6 +24471,8 @@ function arrangeStartActions(){
       startGameBody.appendChild(tournament);
       startGameBody.appendChild(practice);
       startGameBody.appendChild(training);
+      // A new menu opens at its introduction, not the prior menu scroll position.
+      startGameBody.parentElement.scrollTop = 0;
     }
 // Close button in modal
     const closeStart = document.getElementById('closeStartGameModalBtn');
