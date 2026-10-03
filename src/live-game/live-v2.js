@@ -244,7 +244,12 @@ function liveV2Render(){
     const v2s = document.getElementById("v2Sub"+i);
     const v2w = document.getElementById("v2WinDots"+i);
     if(v2i) v2i.textContent = getPlayerInitial(i);
-    if(v2t) v2t.textContent = String(__v2Totals[i]);
+    if(v2t){
+      v2t.textContent = String(__v2Totals[i]);
+      // Fit the full canonical total in the five-player presentation only.
+      if(pCount === 5) v2t.dataset.totalDigits = String(v2t.textContent.length);
+      else delete v2t.dataset.totalDigits;
+    }
 
     const diff = (__v2Totals[i] - __v2LeaderTotal); // trailing = negative
     const isLeader = (__v2Totals[i] === __v2LeaderTotal);
@@ -3733,6 +3738,32 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
     // Smoothly ease the vertical scale so the whole graph grows fluidly.
     st.maxV = st.maxV ? st.maxV + (targetMax - st.maxV) * 0.14 : targetMax;
     const maxV = st.maxV;
+    // Five player keys keep their natural font width and wrap as whole labels.
+    let legendRows = 1;
+    if (packet && NP === 5) {
+      ctx.font = '800 9px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      let keyX = 26, keyY = 3;
+      const keyRight = cssW - 12;
+      const singleRowHs = perThrowRace && records.length;
+      const keyGap = singleRowHs ? 6 : 12;
+      const place = width => {
+        if (keyX > 26 && keyX + width > keyRight) { keyX = 26; keyY += 12; legendRows++; }
+      };
+      packet.series.forEach(s => {
+        const label = String(s.name || '').replace(/^Record:/i,'HS').slice(0,12);
+        const width = ctx.measureText(label).width;
+        place(width); ctx.fillStyle = s.color || '#7bdcff'; ctx.fillText(label, keyX, keyY);
+        keyX += width + keyGap;
+      });
+      if (singleRowHs) {
+        const label = 'High Score', width = ctx.measureText(label).width;
+        place(width + 5 + 18);
+        ctx.save(); ctx.setLineDash([]); ctx.fillStyle = 'rgba(255,224,150,.88)'; ctx.fillText(label, keyX, keyY);
+        const dashX = keyX + width + 5;
+        ctx.setLineDash([5,4]); ctx.strokeStyle = records[0].color || 'rgba(255,214,110,.9)'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(dashX, keyY + 5); ctx.lineTo(dashX + 18, keyY + 5); ctx.stroke(); ctx.restore();
+      }
+    } else {
     // Classic keeps the High Score key on the same compact row as player keys.
     // Player labels are proportionally constrained only when the available
     // canvas width would otherwise push the gold dash beyond the right edge.
@@ -3769,7 +3800,8 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
         ctx.restore();
       }
     }
-    const padL = 26, padR = 12, padT = perThrowRace ? 29 : (packet ? 19 : 8), padB = 18, W = cssW - padL - padR, H = cssH - padT - padB;
+    }
+    const padL = 26, padR = 12, padT = (perThrowRace ? 29 : (packet ? 19 : 8)) + (NP === 5 ? (legendRows - 1) * 12 : 0), padB = 18, W = cssW - padL - padR, H = cssH - padT - padB;
     const throwSteps = Math.max(1, rc * 3);
     const XStep = step => padL + (Math.max(0, Math.min(throwSteps, Number(step) || 0)) / throwSteps) * W;
     const X = i => perThrowRace ? XStep((i + 1) * 3) : padL + (rc <= 1 ? 0 : (i / (rc - 1)) * W);
