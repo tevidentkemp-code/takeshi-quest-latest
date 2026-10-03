@@ -3,7 +3,26 @@ const fs = require('fs');
 const path = require('path');
 const H = require('./harness');
 
+const qaStarted=Date.now();
+let qaCase='boot';
+function progress(stage,label){
+  if(stage==='START') qaCase=label;
+  console.log('SC065 '+new Date().toISOString()+' +'+(Date.now()-qaStarted)+'ms '+stage+' '+label);
+}
+async function frames(page,count,label){
+  await page.evaluate(({count,label})=>new Promise((resolve,reject)=>{
+    let left=count;
+    const timer=setTimeout(()=>{
+      const panel=document.getElementById('liveV2Panel'),rows=document.getElementById('v2Rows');
+      reject(new Error('SC065 RAF deadline '+JSON.stringify({label,remaining:left,visibility:document.visibilityState,hidden:document.hidden,ready:document.readyState,page:document.body.dataset.page,panelHidden:panel?.hidden,panelDisplay:panel?getComputedStyle(panel).display:null,gridConnected:rows?.isConnected,gridRect:rows?.getBoundingClientRect().toJSON(),animations:rows?.getAnimations().map(a=>({state:a.playState,pending:a.pending,time:a.currentTime})),round:state.currentRound,token:state.__gameToken,history:state.history.length})));
+    },8000);
+    const tick=()=>{if(--left===0){clearTimeout(timer);resolve();}else requestAnimationFrame(tick);};
+    requestAnimationFrame(tick);
+  }),{count,label:qaCase+': '+label});
+}
+
 async function seed(page, count, round = 10, mode = 'match') {
+  progress('FIXTURE',qaCase+' '+mode+'/'+count+' players/round '+round);
   await page.evaluate(async ({n,mode}) => {
     const token = Number(state.__gameToken || 0);
     state = JSON.parse(JSON.stringify(baseState)); state.__gameToken = token;
@@ -27,6 +46,7 @@ async function seed(page, count, round = 10, mode = 'match') {
   }
   await page.evaluate(r=>{let guard=0;while(state.currentRound<r && guard++<200) recordThrow({kind:'S',number:ROUNDS[state.currentRound].target});}, round);
   await rest(page,round);
+  progress('READY',qaCase+' '+mode+'/'+count+' players/round '+round);
 }
 async function rest(page, round) {
   await page.waitForFunction(r=>document.querySelector('#v2Rows .v2Badge.liveRow')?.dataset.round===String(r), round);
@@ -36,7 +56,7 @@ async function rest(page, round) {
     return [owned,...rows.getAnimations()].every(a=>!a || (!a.pending && !['running','paused'].includes(a.playState)));
   });
   // The existing legacy snap runs two frames after the coalesced render.
-  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))));
+  await frames(page,3,'settled legacy snap');
 }
 async function wall(page) {
   return page.evaluate(()=>{
@@ -112,18 +132,19 @@ async function begin(page) {
     for(const width of [320,390,430]){
       await page.setViewportSize({width,height:width===320?568:844});
       for(const count of [2,3,4,5]){
+        progress('START','late '+width+'px/'+count+' players');
         await seed(page,count); contained(await wall(page),width+'px/'+count+' players late round');
         await prepareCompletion(page);
         const before=await wall(page),pitch=before.entries[1].top-before.entries[0].top;
         await begin(page);
-        const midpoint=await page.evaluate(async()=>{
+        await page.evaluate(()=>{
           const a=window.__sqSc065Animation;
           a.currentTime=Number(a.effect.getTiming().duration)/2;
-          await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-          return document.querySelector('#v2Rows .v2Badge[data-round="9"]').getBoundingClientRect().top;
         });
+        await frames(page,2,'midpoint');
+        const midpoint=await page.evaluate(()=>document.querySelector('#v2Rows .v2Badge[data-round="9"]').getBoundingClientRect().top);
         const moving=await wall(page);
-        await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))));
+        await frames(page,3,'delayed snap');
         const delayed=await wall(page);
         // At completion the older historical row moves upward, with an actual
         // interpolated position rather than a delayed jump to the final row.
@@ -148,6 +169,7 @@ async function begin(page) {
           fs.mkdirSync(process.env.SQ_SCREENSHOTS,{recursive:true});
           await page.screenshot({path:path.join(process.env.SQ_SCREENSHOTS,'sc065-wall-'+width+'-'+count+'.png')});
         }
+        progress('PASS',qaCase);
       }
     }
 
@@ -155,8 +177,10 @@ async function begin(page) {
     // gain the same single motion without creating duplicate completed rows.
     await page.setViewportSize({width:390,height:844});
     for(const mode of ['match','tournament','practice']) for(const count of [2,3,4,5]){
+      progress('START','early '+mode+'/'+count+' players');
       await seed(page,count,0,mode);
       for(let round=0;round<3;round++){
+        progress('START','early '+mode+'/'+count+' players/round '+round);
         await prepareCompletion(page,round);
         const geometry=await page.evaluate(r=>{
           const b=[...document.querySelectorAll('#v2Rows .v2Badge')],i=b.findIndex(e=>e.classList.contains('liveRow'));
@@ -165,7 +189,8 @@ async function begin(page) {
         assert(geometry.anchor,mode+' early current row must use the existing blank/trailing anchor');
         await begin(page);
         assert.equal(await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().length),1,'Early completion started duplicate animations');
-        await page.evaluate(async()=>{window.__sqSc065Animation.currentTime=150;await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));});
+        await page.evaluate(()=>window.__sqSc065Animation.currentTime=150);
+        await frames(page,2,'early midpoint');
         assert.equal(await page.evaluate(()=>document.querySelector('#v2Rows .v2Badge.liveRow').dataset.round),String(round+1));
         if(round){
           // Deferred read completions rebuild row children. Query and measure
@@ -180,6 +205,7 @@ async function begin(page) {
           const diagnostic=Math.abs(geometry.old-y-geometry.pitch)<1 ? null : await page.evaluate(()=>({page:document.body.dataset.page,panelHidden:document.getElementById('liveV2Panel').hidden,panelDisplay:getComputedStyle(document.getElementById('liveV2Panel')).display,grid:document.getElementById('v2Rows').getBoundingClientRect().toJSON(),round:state.currentRound,token:state.__gameToken,history:state.history.length,animation:document.getElementById('liveV2Panel').__sqV2Wall?.animation?.playState}));
           assert(Math.abs(geometry.old-y-geometry.pitch)<1,'Early history did not move exactly one row: '+JSON.stringify({mode,count,round,geometry,y,diagnostic}));
         }
+        progress('PASS',qaCase);
       }
       contained(await wall(page),mode+' early Round4');
     }
@@ -187,14 +213,17 @@ async function begin(page) {
     // Genuine Turbo keeps its Round17 start, strict timer and scoring, while
     // its late wall uses the same history containment and native row motion.
     for(const count of [2,5]){
+      progress('START','Turbo/'+count+' players');
       await seed(page,count,10,'turbo');contained(await wall(page),'Turbo late round');
       assert(await page.locator('#liveV2Panel .sqTurboTimerActive').count(),'Turbo turn timer disappeared');
       await prepareCompletion(page);await begin(page);
       await page.evaluate(()=>window.__sqSc065Animation.play());await rest(page,11);contained(await wall(page),'Turbo completion');
+      progress('PASS',qaCase);
     }
 
     // Preserve the measured baseline outside active 2–5-player walls. Solo
     // keeps its existing narrow cap, and six is a recovered historical view.
+    progress('START','solo and historical six preservation');
     await page.setViewportSize({width:320,height:568});await seed(page,1,0,'practice');
     assert.equal(await page.locator('#liveV2Panel .v2RowsWrap').evaluate(e=>e.getBoundingClientRect().height),206,'Solo narrow geometry changed');
     assert.equal(await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().length),0,'Solo gained multiplayer motion');
@@ -206,20 +235,26 @@ async function begin(page) {
     assert.equal(await page.locator('#liveV2Panel').getAttribute('data-pcount'),'6','Historical sixth player disappeared');
     assert.equal(await page.locator('#liveV2Panel .v2RowsWrap').evaluate(e=>getComputedStyle(e).maxHeight),'206px','Historical narrow cap changed');
     assert.equal(await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().length),0,'Historical six-player view gained motion');
+    progress('PASS',qaCase);
 
     // Undo while a transition is active removes only the last canonical dart
     // and cancels its presentation, including the delayed legacy snap.
+    progress('START','Undo during motion');
     await page.setViewportSize({width:390,height:844});await seed(page,3);await prepareCompletion(page);await begin(page);
     await page.evaluate(()=>undo());await rest(page,10);contained(await wall(page),'Undo during motion');
     assert.equal(await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().length),0,'Undo retained cancelled motion');
     assert.equal(await page.evaluate(()=>state.score[2][10].darts[2]),null,'Undo changed the wrong dart');
+    progress('PASS',qaCase);
 
     // Navigation cancels the moving view. Returning displays current truth.
+    progress('START','navigation during motion');
     await begin(page);await page.evaluate(()=>show('details'));
     assert.equal(await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().length),0,'Navigation retained motion');
     await page.evaluate(()=>{show('game');updateUI();});await rest(page,11);contained(await wall(page),'Navigation return');
+    progress('PASS',qaCase);
 
     // Reload discards a transient animation and resumes the saved score truth.
+    progress('START','reload during motion');
     await seed(page,2);await prepareCompletion(page);await begin(page);
     const savedHistory=await page.evaluate(()=>state.history.length);
     await page.waitForLoadState('networkidle');
@@ -228,34 +263,43 @@ async function begin(page) {
     fixturePhase='after-reload';
     contained(await wall(page),'Reload recovery');assert.equal((await wall(page)).history,savedHistory,'Reload lost canonical score history');
     assert.equal(await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().length),0,'Reload resumed stale motion');
+    progress('PASS',qaCase);
 
     // Starting another game cannot inherit the previous grid movement.
+    progress('START','new game during motion');
     await seed(page,2);await prepareCompletion(page);await begin(page);
     await seed(page,4);contained(await wall(page),'New game during motion');
     assert.equal(await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().length),0,'New game inherited stale motion');
+    progress('PASS',qaCase);
 
     // A real pad control accepts a dart while the score wall is moving.
+    progress('START','pad scoring during motion');
     await seed(page,3);await prepareCompletion(page);await begin(page);
     await page.evaluate(()=>window.__sqSc065Animation.currentTime=150);
     const controlHistory=await page.evaluate(()=>state.history.length);
     await page.click('#pad .dtActBtn.miss');
     await page.waitForFunction(n=>state.history.length===n+1,controlHistory);
-    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))));
+    await frames(page,3,'pad scoring');
     const scoredMoving=await wall(page);
     for(const e of scoredMoving.entries.slice(0,3)) assert(e.cells.every(c=>c.top>=scoredMoving.top-1 && c.bottom<=scoredMoving.bottom+1),'Scoring during motion clipped history');
     await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().forEach(a=>a.play()));await rest(page,11);
     contained(await wall(page),'Pad scoring during motion');
+    progress('PASS',qaCase);
 
     // New scoring never waits on motion. A rapid next-round completion cancels
     // the old animation and presents the newest complete state immediately.
+    progress('START','rapid round completion');
     await seed(page,2);await prepareCompletion(page);await begin(page);
     await page.evaluate(()=>{let safe=0;while(state.currentRound===11 && safe++<10) recordThrow({kind:'Miss'});});
     await rest(page,12);contained(await wall(page),'Rapid completion');
     assert.equal((await wall(page)).running,0,'Rapid completion retained stale motion');
+    progress('PASS',qaCase);
 
+    progress('START','reduced motion');
     await page.emulateMedia({reducedMotion:'reduce'});await seed(page,5);await prepareCompletion(page);
     await page.evaluate(()=>recordThrow({kind:'S',number:20}));await rest(page,11);
     contained(await wall(page),'Reduced motion');assert.equal((await wall(page)).running,0,'Reduced motion animated');
+    progress('PASS',qaCase);
     const errors=consoleErrs.filter(e=>e.startsWith('pageerror:'));
     assert.deepEqual(errors,[],'Unexpected browser errors: '+JSON.stringify(errors));
     console.log('SC-065 score-wall PASS: 2–5 players, 320/390/430, three completed rows, interpolated one-row motion, Match/Classic Tournament/Practice early rounds, Turbo start/timer, solo/six preservation, truth, Undo/navigation/reload/rapid/reduced motion');
