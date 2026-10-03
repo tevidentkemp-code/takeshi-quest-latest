@@ -11,10 +11,16 @@ fs.mkdirSync(out, {recursive:true});
   let rows = [{id:'11111111-1111-4111-8111-111111111111',name:'Legacy Player',first_name:'Legacy',last_name:'Player',initials:'LP',nickname:'Original',avatar_id:null,deleted_at:null,created_at:'2026-01-01T00:00:00Z'}];
   const writes = [];
   // Offline UI data effects only. Actual Auth acceptance uses the real-local suite.
-  await page.exposeFunction('__sc040Command',async request=>{
+  await page.exposeFunction('__sc040Command',async (request,authorization)=>{
     const {action,body}=request;
     const profile=action==='create_player'?body:body.profile;
-    writes.push({method:action,payload:profile});
+    if(action==='admin_action'){
+      assert.equal(authorization,'Bearer sc004-ui-fixture-admin','profile fixture requires the explicit offline admin credential');
+      assert.equal(body.operation,'update_player','avatar editing retains the actual admin command operation');
+      assert.equal(body.player_id,'22222222-2222-4222-8222-222222222222','avatar editing addresses the exact saved profile');
+      assert.match(request.request_id,/^[a-f0-9-]{36}$/i,'profile command retains its request envelope');
+    }
+    writes.push({method:action,payload:profile,authorization,operation:body.operation});
     if(profile?.avatar_id!=null&&missing)return {status:400,body:{ok:false,code:'operation_failed'}};
     if(action==='admin_action'&&deny)return {status:403,body:{ok:false,code:'permission_denied'}};
     if(action==='create_player'){
@@ -33,7 +39,7 @@ fs.mkdirSync(out, {recursive:true});
         const request=JSON.parse(init.body||'{}');
         if(request.action==='create_player'||request.action==='admin_action'){
           if(request.action==='admin_action'&&init.headers.Authorization!=='Bearer sc004-ui-fixture-admin')return new Response(JSON.stringify({ok:false,code:'permission_denied'}),{status:403});
-          const result=await window.__sc040Command(request);return new Response(JSON.stringify(result.body),{status:result.status,headers:{'Content-Type':'application/json'}});
+          const result=await window.__sc040Command(request,init.headers.Authorization||null);return new Response(JSON.stringify(result.body),{status:result.status,headers:{'Content-Type':'application/json'}});
         }
       }
       return prior(target,init);
@@ -113,6 +119,8 @@ fs.mkdirSync(out, {recursive:true});
     }));
     assert.equal(hubSaved.saved,true);
     assert.match(hubSaved.status,/Profile saved/i);
+    assert.equal(writes.find(w=>w.method==='admin_action')?.authorization,'Bearer sc004-ui-fixture-admin');
+    assert.equal(writes.find(w=>w.method==='admin_action')?.operation,'update_player');
     await page.waitForSelector('#playerHubEditorOverlay',{state:'detached'});
     assert.equal(rows[1].avatar_id,29);
     await openHub();
