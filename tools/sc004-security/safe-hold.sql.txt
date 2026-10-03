@@ -1,0 +1,26 @@
+-- SC-004 PROPOSAL REHEARSAL ONLY. Not deployed and not production rollback.
+-- The candidate schema must already exist. Run as the trusted database owner.
+-- No capability or public API role may change this private flag.
+BEGIN;
+UPDATE private.sc004_write_control SET held=true WHERE singleton;
+COMMIT;
+
+-- Readback: all command writes, including issuance, registration, completion,
+-- admin action and pruning, now fail closed; controller resume and roster reads
+-- remain available only through their existing authorization boundaries.
+SELECT held FROM private.sc004_write_control WHERE singleton;
+SELECT count(*) AS pending_slots FROM private.sc004_slots WHERE status='pending';
+SELECT role_name,
+       has_table_privilege(role_name,'public.games','INSERT') AS games_insert,
+       has_table_privilege(role_name,'public.games','UPDATE') AS games_update,
+       has_table_privilege(role_name,'public.games','DELETE') AS games_delete,
+       has_table_privilege(role_name,'public.v_games_visible','UPDATE') AS view_update,
+       has_function_privilege(role_name,'public.log_player_go(uuid,uuid,integer,integer,timestamptz,timestamptz)','EXECUTE') AS go6_execute,
+       has_function_privilege(role_name,'public.log_player_go(uuid,uuid,integer,integer,uuid,timestamptz,timestamptz,text,boolean,text)','EXECUTE') AS go10_execute
+FROM (VALUES('anon'),('authenticated')) r(role_name);
+
+-- After diagnosing the failure and re-verifying the repaired candidate only:
+-- UPDATE private.sc004_write_control SET held=false WHERE singleton;
+-- Retry each exact queued completion through the controller-authorized handler.
+-- Never restore anonymous policies/grants, writable views, direct frontend
+-- mutation calls, or unchecked SECURITY DEFINER EXECUTE as routine rollback.
