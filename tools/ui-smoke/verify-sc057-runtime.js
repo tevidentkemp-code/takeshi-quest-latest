@@ -151,6 +151,7 @@ fs.mkdirSync(OUT,{recursive:true});
     assert.equal(late.id,lateFixture.id);assert.equal(late.avatar,32);
     const lateBefore=await page.evaluate(()=>state.players.map(p=>({id:p.id,avatar_id:p.avatar_id})));
     const lateRow=page.locator('.sq-add-player-modal .sq-menu106-row').filter({hasText:late.label});
+    await lateRow.waitFor({state:'visible'});
     assert.equal(await lateRow.count(),1);await checkArt(lateRow.locator('[data-avatar-id]'),32);
     await lateRow.click();
     assert((await page.locator('.sq-confirm-bd .modal-body').textContent()).includes(late.pretty),'confirmation retains full canonical identity');
