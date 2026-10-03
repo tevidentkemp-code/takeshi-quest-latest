@@ -168,7 +168,7 @@ BEGIN
     IF EXISTS (SELECT 1 FROM jsonb_object_keys(p_body) k WHERE k NOT IN ('request_id','name','initials','first_name','last_name','nickname','avatar_id'))
        OR jsonb_typeof(p_body->'name') IS DISTINCT FROM 'string'
        OR EXISTS(SELECT 1 FROM unnest(ARRAY['initials','first_name','last_name','nickname']) k WHERE p_body ? k AND jsonb_typeof(p_body->k) NOT IN ('string','null'))
-       OR (p_body ? 'avatar_id' AND p_body->'avatar_id'<>'null'::jsonb AND (jsonb_typeof(p_body->'avatar_id') IS DISTINCT FROM 'number' OR (p_body->>'avatar_id')::integer NOT BETWEEN 1 AND 29))
+       OR (p_body ? 'avatar_id' AND p_body->'avatar_id'<>'null'::jsonb AND (jsonb_typeof(p_body->'avatar_id') IS DISTINCT FROM 'number' OR (p_body->>'avatar_id')::integer NOT BETWEEN 1 AND 32))
        OR length(trim(coalesce(p_body->>'name',''))) NOT BETWEEN 1 AND 80
        OR length(coalesce(p_body->>'initials','')) > 5
        OR length(coalesce(p_body->>'first_name','')) > 80
@@ -312,7 +312,7 @@ BEGIN
       END IF;
       IF EXISTS(SELECT 1 FROM unnest(ARRAY['initials','nickname','display_name']) k WHERE item ? k AND jsonb_typeof(item->k) IS DISTINCT FROM 'string')
         OR length(coalesce(item->>'initials',''))>5 OR length(coalesce(item->>'nickname',''))>80 OR length(coalesce(item->>'display_name',''))>80
-        OR (item ? 'avatar_id' AND (jsonb_typeof(item->'avatar_id') IS DISTINCT FROM 'number' OR (item->>'avatar_id')::integer NOT BETWEEN 1 AND 29)) THEN RAISE EXCEPTION 'invalid match display' USING ERRCODE='22023'; END IF;
+        OR (item ? 'avatar_id' AND (jsonb_typeof(item->'avatar_id') IS DISTINCT FROM 'number' OR (item->>'avatar_id')::integer NOT BETWEEN 1 AND 32)) THEN RAISE EXCEPTION 'invalid match display' USING ERRCODE='22023'; END IF;
       row_item := row_item || (item - 'id' - 'name');
       roster := roster || jsonb_build_array(row_item);
     END LOOP;

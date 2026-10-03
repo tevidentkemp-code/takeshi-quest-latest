@@ -2,6 +2,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const H=require('./harness');
+const {installAdminUiFixture}=require('./admin-ui-fixture');
 const OUT=process.env.SQ_SCREENSHOTS||path.join(__dirname,'../../output/playwright/sc057');
 fs.mkdirSync(OUT,{recursive:true});
 
@@ -10,6 +11,41 @@ fs.mkdirSync(OUT,{recursive:true});
   let range=29,denied=false,zero=false,serial=0;
   const writes=[];
   let rows=[{id:'11111111-1111-4111-8111-111111111111',name:'Legacy Twenty Nine',first_name:'Legacy',last_name:'Twenty Nine',initials:'L29',avatar_id:29,deleted_at:null}];
+  // Offline UI data effects only; real Auth/DB acceptance remains a separate suite.
+  // Keep the production command envelope and credential construction exercised.
+  await page.exposeFunction('__sc057Command',async(request,authorization)=>{
+    const {action,body}=request;
+    assert.match(request.request_id,/^[a-f0-9-]{36}$/i,'profile write retains its command request ID');
+    const payload=action==='create_player'?body:body.profile;
+    if(action==='admin_action'){
+      assert.equal(authorization,'Bearer sc004-ui-fixture-admin','profile edit requires the explicit offline credential');
+      assert.equal(body.operation,'update_player','profile edit retains the current admin operation');
+      assert.equal(body.player_id,rows.find(p=>p.name==='Append 30')?.id,'profile edit addresses the exact saved UUID');
+    }
+    writes.push({method:action,payload,authorization,operation:body.operation});
+    if(payload?.avatar_id>range)return {status:400,body:{ok:false,code:'operation_failed',message:'players_avatar_id_range'}};
+    if(denied)return {status:403,body:{ok:false,code:'permission_denied'}};
+    if(action==='create_player'){
+      const row={...payload,id:'22222222-2222-4222-8222-'+String(++serial).padStart(12,'0'),deleted_at:null};
+      rows.push(row);return {status:200,body:{ok:true,...row}};
+    }
+    const row=zero?null:rows.find(p=>p.id===body.player_id);
+    if(row)Object.assign(row,payload);
+    return {status:200,body:{ok:true,player:row}};
+  });
+  await page.addInitScript(()=>{
+    const prior=window.fetch;
+    window.fetch=async function(target,init){
+      if(String(target)===window.SQ_SECURITY_CONFIG?.endpoint){
+        const request=JSON.parse(init.body||'{}');
+        if(request.action==='create_player'||request.action==='admin_action'){
+          const result=await window.__sc057Command(request,init.headers.Authorization||null);
+          return new Response(JSON.stringify(result.body),{status:result.status,headers:{'Content-Type':'application/json'}});
+        }
+      }
+      return prior(target,init);
+    };
+  });
   const offline=async route=>{
     const req=route.request(),url=new URL(req.url()),table=url.pathname.split('/').pop(),method=req.method();
     if(table==='players'){
@@ -19,19 +55,8 @@ fs.mkdirSync(OUT,{recursive:true});
       const transport=health?{headers:{'access-control-allow-origin':'*','access-control-allow-methods':'GET, HEAD, OPTIONS','access-control-allow-headers':'accept-profile, apikey, authorization, cache-control, pragma, x-client-info'}}:{};
       if(health&&method==='OPTIONS')return route.fulfill({status:204,body:'',...transport});
       if(health&&method==='HEAD')return route.fulfill({status:503,body:'',...transport});
-      const payload=['POST','PATCH'].includes(method)?req.postDataJSON():null;
-      if(payload)writes.push({method,payload});
-      if(payload?.avatar_id>range)return route.fulfill({status:400,json:{code:'23514',message:'new row violates check constraint "players_avatar_id_range"'}});
-      if(payload&&denied)return route.fulfill({status:403,json:{code:'42501',message:'permission denied'}});
-      if(method==='POST'){
-        rows.push({...payload,id:'22222222-2222-4222-8222-'+String(++serial).padStart(12,'0'),deleted_at:null});
-        return route.fulfill({status:201,json:[]});
-      }
+      assert(!['POST','PATCH','DELETE'].includes(method),'profile fixture must never permit retired direct REST writes');
       let selected=rows.filter(p=>(!url.searchParams.has('id')||'eq.'+p.id===url.searchParams.get('id'))&&(!url.searchParams.has('name')||'eq.'+p.name===url.searchParams.get('name')));
-      if(method==='PATCH'){
-        if(zero)selected=[];
-        selected.forEach(p=>Object.assign(p,payload));
-      }
       const single=(req.headers().accept||'').includes('vnd.pgrst.object');
       return route.fulfill({status:200,json:single?selected[0]||null:selected,...transport});
     }
@@ -61,7 +86,8 @@ fs.mkdirSync(OUT,{recursive:true});
     await page.evaluate(()=>window.openPlayerHubGate());
     const option=await page.locator('#playerHubSelect option').evaluateAll((opts,n)=>opts.find(o=>o.textContent.startsWith(n)).value,name);
     await page.selectOption('#playerHubSelect',option);
-    for(let i=0;i<4;i++)await page.locator('#playerHubGateOverlay').getByRole('button',{name:'1',exact:true}).click();
+    await installAdminUiFixture(page);
+    await page.locator('#playerHubGateOverlay').getByRole('button',{name:'Edit profile',exact:true}).click();
     await page.waitForSelector('#playerHubEditorOverlay');
   };
   try{

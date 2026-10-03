@@ -9,6 +9,7 @@ import { createClient } from '../ui-smoke/node_modules/@supabase/supabase-js/dis
 import { createSc004Client } from '../../src/services/sc004-client.mjs';
 import { runAdminCases, runLegacyRecoveryCases } from './admin-platform-cases.mjs';
 import { runExtendedCases } from './platform-extended-cases.mjs';
+import { runAvatarCases } from './avatar-platform-cases.mjs';
 const cfg = JSON.parse(fs.readFileSync(process.env.SC004_LOCAL_ENV, 'utf8'));
 const url = cfg.API_URL || cfg.api_url;
 if (!/^http:\/\/127\.0\.0\.1:54821$/.test(url)) throw new Error('This suite only accepts the isolated SC004 local stack.');
@@ -80,6 +81,7 @@ await check('Public create-only registration succeeds and duplicate name cannot 
   await assert.rejects(()=>client.createPlayer({name:`SC004_A_${run}`,initials:'EVIL'}),e=>e.status===409);
   const row=must(await read.from('players').select('initials').eq('id',a.id).single());assert.equal(row.initials,'A');
 });
+await runAvatarCases({client,read,check,run});
 await check('Real Edge and PostgreSQL issue independent server-scoped match controllers',async()=>{
   match=await client.createMatch({mode:'official',match_format:'series',roster:[{id:a.id},{id:b.id}],target_wins:3},crypto.randomUUID());
   other=await client.createMatch({mode:'official',match_format:'series',roster:[{id:a.id},{id:b.id}],target_wins:3},crypto.randomUUID());
