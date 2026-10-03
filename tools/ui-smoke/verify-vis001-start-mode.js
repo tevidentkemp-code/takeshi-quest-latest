@@ -9,8 +9,26 @@ if (out) fs.mkdirSync(out, { recursive: true });
 
 (async () => {
   for (const [width, height] of [[320,844], [390,844], [430,844], [320,568], [820,844]]) {
-    const { browser, page, consoleErrs } = await H.launch({ width, height }, { seedPlayers: true });
+    const { browser, ctx, page, consoleErrs } = await H.launch({ width, height }, { seedPlayers: true });
     try {
+      // Home warms unrelated official history. Keep this exact read valid and
+      // empty offline; every write and every other cloud request stays blocked.
+      await ctx.route('**.supabase.co/rest/v1/games*', route => {
+        const request = route.request(), url = new URL(request.url());
+        const headers = {
+          'access-control-allow-origin': '*',
+          'access-control-allow-methods': 'GET, OPTIONS',
+          'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-client-info'
+        };
+        if (url.pathname !== '/rest/v1/games') return route.abort('failed');
+        if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers, body: '' });
+        if (request.method() === 'GET' &&
+            url.searchParams.get('select') === 'id,created_at,archived_at,state,totals,match_id,game_number' &&
+            url.searchParams.get('order') === 'created_at.asc' && url.searchParams.size === 2) {
+          return route.fulfill({ status: 200, headers, contentType: 'application/json', body: '[]' });
+        }
+        return route.abort('failed');
+      });
       await page.emulateMedia({ reducedMotion: width === 390 ? 'reduce' : 'no-preference' });
       await H.boot(page, { settle: 1300 });
       const snapshot = async (name) => {
