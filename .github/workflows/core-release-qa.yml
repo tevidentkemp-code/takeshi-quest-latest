@@ -218,7 +218,7 @@ jobs:
           python3 -m http.server 8123 --bind 127.0.0.1 --directory "$SQ_SERVER_DIRECTORY" >/tmp/webkit-score-wall.log 2>&1 &
           pid=$!
           trap 'kill "$pid" || true' EXIT
-          timeout 180s node tools/ui-smoke/verify-sc065-score-wall.js | tee core-webkit-score-wall.txt
+          timeout 180s node tools/ui-smoke/verify-sc065-score-wall.js 2>&1 | tee core-webkit-score-wall.txt
       - name: Keep complete score-wall group evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -228,6 +228,7 @@ jobs:
           path: |
             core-webkit-score-wall.txt
             qa-artifacts-webkit-score-wall/
+            /tmp/webkit-score-wall.log
 
   source-core:
     name: Source representative — core journey

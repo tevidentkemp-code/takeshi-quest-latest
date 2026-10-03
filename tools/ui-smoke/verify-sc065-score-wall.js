@@ -38,6 +38,8 @@ async function frames(page,count,label){
 async function seed(page, count, round = 10, mode = 'match') {
   progress('FIXTURE',qaCase+' '+mode+'/'+count+' players/round '+round);
   await page.evaluate(async ({n,mode}) => {
+    window.__sqSc065FixtureFrame=false;
+    requestAnimationFrame(()=>{window.__sqSc065FixtureFrame=true;});
     const token = Number(state.__gameToken || 0);
     state = JSON.parse(JSON.stringify(baseState)); state.__gameToken = token;
     state.players = Array.from({length:n},(_,i)=>({id:'sc065-'+i,name:'WALL '+i,initials:'W'+i,avatar_id:i+1,color:'#ff7a00'}));
@@ -51,8 +53,19 @@ async function seed(page, count, round = 10, mode = 'match') {
   try{
     await page.waitForFunction(()=>document.body.dataset.page==='game' && document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');
   }catch(error){
-    const diagnostic=await page.evaluate(()=>({page:document.body.dataset.page,overlayHidden:document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden'),overlayDisplay:getComputedStyle(document.getElementById('gameLoadOverlay')).display,round:state.currentRound,token:state.__gameToken,history:state.history.length,panelHidden:document.getElementById('liveV2Panel')?.hidden}));
-    error.message+='; game fixture '+JSON.stringify({count,round,mode,diagnostic});throw error;
+    const diagnostic=await page.evaluate(()=>{
+      const overlay=document.getElementById('gameLoadOverlay'),boot=document.getElementById('bootSplash'),panel=document.getElementById('liveV2Panel');
+      const status=el=>el?{hidden:el.hidden,ariaHidden:el.getAttribute('aria-hidden'),display:getComputedStyle(el).display,opacity:getComputedStyle(el).opacity,rect:el.getBoundingClientRect().toJSON()}:null;
+      return{page:document.body.dataset.page,visibility:document.visibilityState,hidden:document.hidden,ready:document.readyState,fixtureFrame:window.__sqSc065FixtureFrame,overlay:status(overlay),boot:status(boot),panel:status(panel),round:state.currentRound,token:state.__gameToken,history:state.history.length,tableRows:document.querySelectorAll('#gameTable tbody tr').length,scriptPaths:[...document.scripts].filter(s=>s.src&&new URL(s.src).origin===location.origin).map(s=>new URL(s.src).pathname)};
+    });
+    // Playwright caches its original error stack, so an appended message is
+    // absent from Node's normal error print. Emit the credential-free state.
+    console.error('SC065 fixture deadline '+JSON.stringify({count,round,mode,diagnostic}));
+    if(process.env.SQ_SCREENSHOTS){
+      fs.mkdirSync(process.env.SQ_SCREENSHOTS,{recursive:true});
+      await page.screenshot({path:path.join(process.env.SQ_SCREENSHOTS,'sc065-fixture-failure.png')});
+    }
+    throw error;
   }
   if(mode==='turbo'){
     assert.equal(await page.evaluate(()=>state.currentRound),7,'Turbo changed its canonical starting round');
