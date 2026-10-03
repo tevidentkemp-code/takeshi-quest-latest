@@ -25,7 +25,7 @@ Read-only catalog/plan evidence on 2026-10-02: 957 games, all player-major, incl
 
 The captured pre-repair rank plan classified all game JSON, expanded player rows and sorted before returning its first page. The captured XP filtered plan had 586 nodes / estimated cost 213201 / 36 sequential scans; Misfire had 142 nodes / estimated cost 180533 / 14 sequential scans. Costs are estimates, not durations. The original private-prefilter-only read-only receipt reported 16 unchanged Bounce events and 188 unchanged Misfire count rows; preserve that prior receipt and freshly recheck the approved combined candidate.
 
-The classifier change addresses rank's source chain, which a Bounce-only prefilter cannot repair. XP/Misfires still contain normal-event, Volde, achievement, streak and name-resolution work. This candidate does not promise those residual chains will meet 3s until anonymously verified after approved application. Keep truthful unavailable/retry states if they fail. Do not trim history, calculate persistent truth in the browser or raise role timeouts to force success.
+The classifier change addresses rank's source chain, which a Bounce-only prefilter cannot repair. XP/Misfires still contain normal-event, Volde, achievement, streak and name-resolution work. The already-present repair requires independent anonymous verification of those residual chains under the existing 3s limit; the fresh acceptance below records that evidence. Keep truthful unavailable/retry states if they fail. Do not trim history, calculate persistent truth in the browser or raise role timeouts to force success.
 
 ## Verification before application
 
@@ -53,13 +53,13 @@ Independent source review must preserve every original shape/exception branch. T
 
 Captured security baseline (2026-10-02): classifier owner postgres, invoker (prosecdef=false), STABLE, parallel unsafe, leakproof=false, Boolean return, search_path pg_catalog/public; existing EXECUTE ACL is PUBLIC/postgres/anon/authenticated/service_role. The private view owner and only ACL recipient are postgres, with no reloptions. The classified games, clean player scores and XP views retain security_invoker=true; the other inspected views retain their existing null reloptions. CREATE OR REPLACE must retain those owners/ACLs/options. No new grants or security settings are proposed.
 
-## Controlled application and acceptance
+## Existing migration reconciliation and acceptance
 
 Human authority is already granted. Independently re-read both live object definitions/owners/ACL/security options and compare them with the exact approved migration and captured rollback. The observed existing migration must be reconciled before any further application or rollback; do not replace another chat's work on the assumption that the earlier draft is still unapplied. Capture full input/output fingerprints under a stable snapshot, without ordinary-log player dumps. This remains an engineering evidence gate, not another generic DDL permission request.
 
-After authorized application, require complete old/new classifier output equality, including mode_key/classification_reason; full Bounce event multiset equality with EXCEPT ALL both directions; complete Misfire counts and every authoritative XP field; unchanged clean score rows; and unchanged paged rank results under fixed timestamps/cutoff. Do not compare only a single player's visible score.
+For the already-present authorised migration, require complete old/new classifier output equality, including mode_key/classification_reason; full Bounce event multiset equality with EXCEPT ALL both directions; complete Misfire counts and every authoritative XP field; unchanged clean score rows; and unchanged paged rank results under fixed timestamps/cutoff. Do not compare only a single player's visible score.
 
-The exact anonymous request shapes above must return valid 200 results repeatedly with clear headroom below 3s. Check selected-player and full 49-player XP/directory reads, Misfires, all rank pages, historical-six eligibility, refresh, Retry, Back and Close. Run the existing security access checks and verify private direct access remains denied, with every existing view security_invoker/RLS/grant setting unchanged. Record source/DDL hashes and live readback. Representative use is required before claiming STABLE.
+The exact anonymous request shapes above must return valid 200 results repeatedly with clear headroom below 3s. Check selected-player and full active-player XP/directory reads (37 active players among 49 total saved-player rows), Misfires, all rank pages, historical-six eligibility, refresh, Retry, Back and Close. Run the existing security access checks and verify private direct access remains denied, with every existing view security_invoker/RLS/grant setting unchanged. Record source/DDL hashes and live readback. Representative use is required before claiming STABLE.
 
 If an output/security mismatch appears, abort/roll back; never compensate through client calculations or security relaxation.
 
