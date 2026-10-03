@@ -1,6 +1,7 @@
 // P2.3 verification: duplicate header back controls removed; the surviving
 // single control still dismisses; header layout stays centred.
 const H = require('./harness');
+const {enterAdmin}=require('./admin-ui-fixture');
 const fs = require('fs');
 const path = require('path');
 let failures = 0;
@@ -42,10 +43,7 @@ fs.mkdirSync(SHOTS, { recursive: true });
   {
     const { browser, page } = await H.launch({ width: 390, height: 844 }, { seedPlayers: true });
     await H.boot(page, { settle: 3000 });
-    await page.click('#adminCodeBtn'); await page.waitForTimeout(700);
-    for (const d of ['4', '9', '3', '6']) { const bts = await page.$$('#adminCodeGateOverlay button'); for (const b of bts) { if ((await b.textContent() || '').trim() === d) { await b.click(); break; } } await page.waitForTimeout(150); }
-    const bts = await page.$$('#adminCodeGateOverlay button'); for (const b of bts) { if ((await b.textContent() || '').trim() === 'Return') { await b.click(); break; } }
-    await page.waitForTimeout(900);
+    await enterAdmin(page);
     check('ADMIN: back arrow #closeAdminHubBtn removed', await page.evaluate(() => !document.getElementById('closeAdminHubBtn')));
     check('ADMIN: close ✕ present', await page.evaluate(() => !!document.getElementById('closeAdminHubBtnX')));
     check('ADMIN: hub visible', await page.evaluate(() => !document.getElementById('adminHubModal').classList.contains('hidden')));
