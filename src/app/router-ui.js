@@ -1566,7 +1566,7 @@ function setupStartMenuButtons(){
 if (hasSaved){ 
     resumeBtn.onclick = () => {
       try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('resume-before-load'); }catch(_){ }
-      if (typeof __sqSavedStateIsVsShadow === 'function' && __sqSavedStateIsVsShadow(saved)) {
+      if (typeof __sqSavedStateIsVsShadow === 'function' && __sqSavedStateIsVsShadow(saved) && !window.SQ_GAMEPLAY.hasCachedController(saved) && (saved.match?.history||[]).length) {
         try{ toast('Vs Shadow recovery is not supported for this mode. Your cached state is preserved for owner review.'); }catch(_){ }
         return;
       }
@@ -1589,6 +1589,7 @@ if (hasSaved){
           if(!amendedColors) assignUniqueColors(state.players);
           await buildEverythingChunked();
           updateUI();
+          if(typeof __sqResumeVsShadowAutoTurnIfNeeded==='function')__sqResumeVsShadowAutoTurnIfNeeded('secure-resume');
           toast('Resumed last match');
         } catch(error){window.SQ_GAMEPLAY.failure(error);show('details');window.SQ_GAMEPLAY.offerLegacyRecovery();}
         finally {

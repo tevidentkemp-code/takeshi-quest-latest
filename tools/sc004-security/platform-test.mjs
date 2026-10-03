@@ -14,7 +14,7 @@ const url = cfg.API_URL || cfg.api_url;
 if (!/^http:\/\/127\.0\.0\.1:54821$/.test(url)) throw new Error('This suite only accepts the isolated SC004 local stack.');
 const key = cfg.ANON_KEY || cfg.anon_key;
 const serviceKey = cfg.SERVICE_ROLE_KEY || cfg.service_role_key;
-const dockerHost = 'unix:///Users/Thom/.colima/sc004/docker.sock';
+const dockerHost = process.env.SC004_DOCKER_HOST || 'unix:///Users/Thom/.colima/sc004/docker.sock';
 const container = 'supabase_db_sc004-supabase-local';
 const outPath = process.env.SC004_RESULTS_PATH;
 if (!outPath) throw new Error('SC004_RESULTS_PATH is required.');
@@ -36,11 +36,11 @@ let adminJWT,ordinaryJWT;
 const store=cache();
 let loseResponse=false;
 const client=createSc004Client({endpoint,publicKey:key,allowLocalFixture:true,storage:store,getAdminToken:async()=>adminJWT,fetchImpl:async(target,init)=>{const r=await fetchApi(target,init);if(loseResponse&&JSON.parse(init.body).action==='complete_game'&&r.ok){loseResponse=false;throw new Error('Deliberately lose reply after real commit');}return r;}});
-const invoke=async(action,body={},capability,jwt)=>{
+const invoke=async(action,body={},capability,jwt,requestId=crypto.randomUUID())=>{
   const headers={'Content-Type':'application/json',apikey:key};
   if(capability)headers['X-SQ-Match-Controller']=capability;
   if(jwt)headers.Authorization='Bearer '+jwt;
-  const r=await fetchApi(endpoint,{method:'POST',headers,body:JSON.stringify({action,request_id:crypto.randomUUID(),body})});
+  const r=await fetchApi(endpoint,{method:'POST',headers,body:JSON.stringify({action,request_id:requestId,body})});
   return {status:r.status,data:await r.json()};
 };
 const denied=r=>assert([400,401,403,404].includes(r.status),JSON.stringify({status:r.status,data:r.data}));
@@ -110,17 +110,20 @@ if(process.env.SC004_CLOSURE_SQL){
     execFileSync('docker',['--host',dockerHost,'exec','-i',container,'psql','-U','postgres','-d','postgres','--set','ON_ERROR_STOP=on'],{input:closure,encoding:'utf8',maxBuffer:8*1024*1024});
     sql('SELECT public.sq_sc004_set_hold(false)');
   });
+  // Downstream fixtures assume restricted privileges. Keep the hold and stop
+  // immediately if the exact closure guard rejected drift.
+  if(!results.at(-1).pass){save();process.exit(1);}
 }
 if(process.env.SC004_PHASE==='additive') {
   save();process.exit(results.every(x=>x.pass)?0:1);
 }
 const board=(n)=>Array.from({length:n},(_,pi)=>Array.from({length:14},(_,ri)=>{
   const points=pi===0?(ri<11?ri+10:ri===11?20:ri===12?30:25):0;
-  return{darts:[{kind:ri<11?'S':ri===11?'D':ri===12?'T':'B',points},{kind:'Miss',points:0},{kind:'Miss',points:0}],roundTotal:points};
+  return{darts:[{kind:pi?'Miss':ri<11?'S':ri===11?'Double':ri===12?'Triple':'B',points,...(!pi&&ri===13?{bull:'Outer'}:!pi&&ri>=11?{sector:10}:{})},{kind:'Miss',points:0},{kind:'Miss',points:0}],roundTotal:points};
 }));
 await check('Accepted completion persists actual scores atomically; lost reply retries idempotently',async()=>{
   const body={game_id:slot.game_id,state:{players:match.roster,board:board(match.roster.length),mode:'official'},totals:[240,0,0],winner_indexes:[0]};
-  loseResponse=true;await assert.rejects(()=>client.completeGame(match.match_id,body),e=>e.code==='network_unavailable');
+  loseResponse=true;try{await assert.rejects(()=>client.completeGame(match.match_id,body),e=>e.code==='network_unavailable');}finally{loseResponse=false;}
   assert.equal(client.pendingCompletions().length,1);
   receipt=await client.retryCompletion(slot.game_id);assert.equal(receipt.game_id,slot.game_id);assert.equal(client.pendingCompletions().length,0);
   const row=must(await read.from('games').select('id,match_id,totals,finished').eq('id',slot.game_id).single());
@@ -128,6 +131,7 @@ await check('Accepted completion persists actual scores atomically; lost reply r
   assert.equal(must(await read.from('high_scores_sp').select('game_id').eq('game_id',slot.game_id)).length,1);
   const conflict={...body,totals:[999,0,0]};await assert.rejects(()=>client.completeGame(match.match_id,conflict),e=>e.status===409);
 });
+if(!results.at(-1).pass){save();process.exit(1);}
 await check('Authorized go event accepts exact retry and rejects a foreign player',async()=>{
   const body={game_id:slot.game_id,player_id:b.id,round_number:1,go_number:1,started_at:new Date().toISOString(),ended_at:new Date().toISOString()};
   await client.command('log_go',match.match_id,body);await client.command('log_go',match.match_id,body);
@@ -192,8 +196,11 @@ await check('Real Realtime subscription receives published commentary without pu
   const realtime=createClient(url,key,{...authOptions,realtime:{params:{eventsPerSecond:10}}});
   const marker='SC004 realtime '+run;
   let resolveEvent;const event=new Promise(resolve=>resolveEvent=resolve);
-  const channel=realtime.channel('sc004-'+run).on('postgres_changes',{event:'INSERT',schema:'public',table:'game_commentary'},payload=>{if(JSON.stringify(payload).includes(marker))resolveEvent(payload);});
-  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Realtime subscribe timeout')),15000);channel.subscribe(status=>{if(status==='SUBSCRIBED'){clearTimeout(timer);resolve();}else if(status==='CHANNEL_ERROR'){clearTimeout(timer);reject(new Error(status));}});});
+  let joined=false,databaseReady=false,ready;
+  const channel=realtime.channel('sc004-'+run).on('system',{},message=>{if(message.status==='ok'&&message.message==='Subscribed to PostgreSQL'){databaseReady=true;ready?.();}}).on('postgres_changes',{event:'INSERT',schema:'public',table:'game_commentary'},payload=>{if(JSON.stringify(payload).includes(marker))resolveEvent(payload);});
+  // A channel join can precede the PostgreSQL subscription acknowledgement.
+  // Start the write only after both real platform readiness events arrive.
+  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Realtime database subscribe timeout')),15000);ready=()=>{if(joined&&databaseReady){clearTimeout(timer);resolve();}};channel.subscribe(status=>{if(status==='SUBSCRIBED'){joined=true;ready();}else if(status==='CHANNEL_ERROR'){clearTimeout(timer);reject(new Error(status));}});});
   try{
     // A trusted fixture producer; the same table/publication is used by authorized commentary.
     const cols=sql("SELECT jsonb_agg(jsonb_build_object('name',column_name,'type',data_type,'nullable',is_nullable,'default',column_default)) FROM information_schema.columns WHERE table_schema='public' AND table_name='game_commentary'");
@@ -209,7 +216,7 @@ await check('Server allowlist revoke immediately denies a still-signed admin JWT
   sql(`UPDATE private.sc004_admins SET enabled=true WHERE user_id=${ql(admin.id)}::uuid`);
 });
 await runAdminCases({admin:body=>client.admin(body),sql,check,run});
-await runLegacyRecoveryCases({recover:(id,settings)=>client.recoverLegacyMatch(id,settings),command:(...args)=>client.command(...args),sql,check,run});
+await runLegacyRecoveryCases({recover:(id,settings)=>client.recoverLegacyMatch(id,settings),command:(...args)=>client.command(...args),complete:(id,body)=>client.completeGame(id,body),sql,check,run});
 await runExtendedCases({check,client,sql,invoke,cap,read,must,service,createAuthUser,ordinaryJWT,url,key,fetchApi,run,players:[a,b]});
 save();console.log(JSON.stringify({passed:results.filter(x=>x.pass).length,total:results.length}));
-process.exitCode=results.every(x=>x.pass)?0:1;
+process.exit(results.every(x=>x.pass)?0:1);

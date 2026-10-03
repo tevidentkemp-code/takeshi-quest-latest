@@ -22,6 +22,19 @@ await check('Exact server issuance retry recovers same secret and match',async()
  assert.equal((await invoke('create_match',{...body,target_wins:5},null,id)).status,409);
  b=(await invoke('create_match',body)).data;
 });
+await check('Missing, JSON-null and wrong-type authority fields fail before persistence',async()=>{
+ const base={mode:'official',roster:[{id:A},{id:B}],target_wins:1,rules:{}};
+ for(const roster of [undefined,null,{},[null]])assert.equal((await invoke('create_match',{...base,roster})).status,400);
+ for(const rules of [null,{gameFormat:null},{gameVariant:null},{startTarget:null}])assert.equal((await invoke('create_match',{...base,rules})).status,400);
+ for(const name of [undefined,null,42,{}])assert.equal((await invoke('create_player',{name})).status,400);
+ for(const config of [undefined,null,[]])assert.equal((await invoke('create_training',{player:{id:A,name:'SYNTHETIC_A'},mode:'standard',length:10,config})).status,400);
+ const m=(await invoke('create_match',base)).data;
+ const sl=(await invoke('reserve_game',{match_id:m.match_id,game_number:1},m.capability)).data;
+ const board=Array.from({length:2},()=>Array.from({length:14},()=>({darts:[null,null,null],roundTotal:0})));
+ const completion={match_id:m.match_id,game_id:sl.game_id,state:{players:m.roster,board,mode:'official'}};
+ for(const totals of [undefined,null,[null,null],['0','0']])assert.equal((await invoke('complete_game',{...completion,totals},m.capability)).status,400);
+ assert.equal((await f.db.query('SELECT count(*)::int n FROM games WHERE id=$1',[sl.game_id])).rows[0].n,0);
+});
 await check('Trusted rule metadata preserves omitted fields and rejects contradictory completion',async()=>{
  const rules={gameFormat:'match_play',gameVariant:'classic',strictTimer:false};
  const m=(await invoke('create_match',{mode:'official',roster:[{id:A},{id:B}],target_wins:1,rules})).data;
@@ -56,6 +69,23 @@ await check('Canonical completion atomically records game, HS, wins; retry immut
  assert.equal((await invoke('complete_game',{...payload,totals:[0,0]},a.capability)).status,409);
  assert.equal((await invoke('reset_game',{match_id:a.match_id,game_id:slot.game_id},a.capability)).status,403);
 });
+await check('Cleaned game holes cannot advance or revive behind a later slot',async()=>{
+ const m=(await invoke('create_match',{mode:'official',roster:[{id:A},{id:B}],target_wins:3,match_format:'series'})).data;
+ const one=(await invoke('reserve_game',{match_id:m.match_id,game_number:1},m.capability)).data;
+ assert.equal((await invoke('cleanup_game',{match_id:m.match_id,game_id:one.game_id},m.capability)).status,200);
+ assert.equal((await invoke('reserve_game',{match_id:m.match_id,game_number:2},m.capability)).status,400);
+ assert.equal((await invoke('reset_game',{match_id:m.match_id,game_id:one.game_id},m.capability)).status,200);
+ assert.equal((await f.db.query("SELECT count(*)::int n FROM private.sc004_slots WHERE match_id=$1 AND status='pending'",[m.match_id])).rows[0].n,1);
+ // A stale pre-fix registry with a later slot must still fail closed on reset.
+ await f.db.query("UPDATE private.sc004_slots SET status='cleaned' WHERE game_id=$1",[one.game_id]);
+ await f.db.query("INSERT INTO private.sc004_slots(match_id,game_number) VALUES($1,2)",[m.match_id]);
+ assert.equal((await invoke('reset_game',{match_id:m.match_id,game_id:one.game_id},m.capability)).status,403);
+});
+await check('Numeric and timestamp overflow return malformed-input 400',async()=>{
+ assert.equal((await invoke('reserve_game',{match_id:a.match_id,game_number:2147483648},a.capability)).status,400);
+ assert.equal((await invoke('create_match',{mode:'official',roster:[{id:A},{id:B}],target_wins:2147483648})).status,400);
+ assert.equal((await invoke('log_go',{match_id:a.match_id,game_id:slot.game_id,player_id:A,round_number:1,go_number:1,started_at:'2026-10-99T10:00:00Z',ended_at:'2026-10-99T10:00:10Z'},a.capability)).status,400);
+});
 await check('Accepted player go and event derive exact game/player scope',async()=>{
  assert.equal((await invoke('log_go',{match_id:a.match_id,game_id:slot.game_id,player_id:A,round_number:1,go_number:1,started_at:'2026-10-03T10:00:00Z',ended_at:'2026-10-03T10:00:10Z'},a.capability)).status,200);
  const event={match_id:a.match_id,game_id:slot.game_id,event:{player_id:A,round_index:0,dart_index:0}};
@@ -69,7 +99,9 @@ await check('Practice guest series updates wins; VsShadow persists Practice real
  assert.equal((await invoke('complete_game',p,series.capability)).status,200);assert.equal((await f.db.query('SELECT wins FROM matches WHERE id=$1',[series.match_id])).rows[0].wins[0],1);
  const shadow=(await invoke('create_match',{mode:'vs_shadow',match_format:'single',roster:[{id:A}],target_wins:1,rules:{}})).data;
  const ss=(await invoke('reserve_game',{match_id:shadow.match_id,game_number:1},shadow.capability)).data;
- assert.equal((await invoke('complete_game',{match_id:shadow.match_id,game_id:ss.game_id,state:{players:shadow.roster,board:[payload.state.board[0]],mode:'vs_shadow'},totals:[140]},shadow.capability)).status,200);
+ const shadowPayload={match_id:shadow.match_id,game_id:ss.game_id,state:{players:shadow.roster,board:[payload.state.board[0]],mode:'practice',gameMode:'practice'},totals:[140]};
+ assert.equal((await invoke('complete_game',{...shadowPayload,state:{...shadowPayload.state,gameMode:'official'}},shadow.capability)).status,400);
+ assert.equal((await invoke('complete_game',shadowPayload,shadow.capability)).status,200);
  assert.equal((await f.db.query('SELECT state->>\'mode\' mode FROM games WHERE id=$1',[ss.game_id])).rows[0].mode,'practice');
 });
 await check('Training issues separate scope, binds setup, validates aggregate and retry',async()=>{
@@ -109,6 +141,21 @@ await check('Restricted hold pauses valid controller lifetime and never revives 
  assert.equal((await invoke('resume',{match_id:a.match_id},a.capability)).status,200);assert.equal((await invoke('resume',{match_id:b.match_id},b.capability)).status,403);
  await f.asRole('service_role','SELECT public.sq_sc004_set_hold(false)');
  assert.equal((await invoke('resume',{match_id:a.match_id},a.capability)).status,200);assert.equal((await invoke('resume',{match_id:b.match_id},b.capability)).status,403);
+});
+await check('Consumed issuance cannot rebind an old secret after cleanup, expiry or prune',async()=>{
+ const request=crypto.randomUUID(),body={mode:'official',roster:[{id:A},{id:B}],target_wins:1};
+ const m=(await invoke('create_match',body,null,request)).data;
+ assert.equal((await invoke('cleanup_match',{match_id:m.match_id},m.capability)).status,200);
+ assert.equal((await invoke('create_match',body,null,request)).status,403,'cleanup replay');
+ const expiredRequest=crypto.randomUUID(),expired=(await invoke('create_match',body,null,expiredRequest)).data;
+ await f.db.query("UPDATE private.sc004_controllers SET expires_at=now()-interval '1 second' WHERE match_id=$1",[expired.match_id]);
+ assert.equal((await invoke('create_match',body,null,expiredRequest)).status,403,'expired/pruned replay');
+ await f.asRole('service_role','SELECT public.sq_sc004_prune_expired_empty(100)');
+ assert.equal((await invoke('create_match',body,null,expiredRequest)).status,403,'expired/pruned replay');
+ const trainingRequest=crypto.randomUUID(),trainingBody={player:{id:A,name:'SYNTHETIC_A'},mode:'standard',length:10,config:{}};
+ const training=(await invoke('create_training',trainingBody,null,trainingRequest)).data;
+ await f.db.query('UPDATE private.sc004_training_controls SET revoked_at=now() WHERE training_id=$1',[training.training_id]);
+ assert.equal((await invoke('create_training',trainingBody,null,trainingRequest)).status,403,'revoked training replay');
 });
 await check('Own empty cleanup, idempotent visit, held writes deny with deliberate503',async()=>{
  const empty=(await invoke('create_match',{mode:'official',roster:[{id:A},{id:B}],target_wins:1})).data;assert.equal((await invoke('cleanup_match',{match_id:empty.match_id},empty.capability)).status,200);

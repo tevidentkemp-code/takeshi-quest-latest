@@ -9,7 +9,7 @@
       startNewGame = async function(setOrder){
         const startingState=state;
         const ret = await __sqOriginalStartNewGame.apply(this, arguments);
-        if(state!==startingState || startingState.__sqSecurityPreparing || !startingState.__sqGameControl)return ret;
+        if(ret!==true || state!==startingState || startingState.__sqSecurityPreparing || !startingState.__sqGameControl)return ret;
         try{
           const m = state && state.match ? state.match : {};
           const rules = (m && (m.tournamentRules || m.rules)) || {};

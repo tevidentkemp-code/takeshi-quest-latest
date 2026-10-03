@@ -53,9 +53,9 @@ BEGIN
   PERFORM public.sq_sc004_authorize_game(claim.actor_hash,claim.game_id,claim.admin_user,claim.admin_session);
   SELECT * INTO claim FROM private.sc004_commentary_claims WHERE claim_id=p_claim AND status='pending' AND expires_at>clock_timestamp() FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'claim denied' USING ERRCODE='42501'; END IF;
-  IF jsonb_typeof(p_lines)<>'array' OR jsonb_array_length(p_lines) NOT BETWEEN 3 AND 5 THEN RAISE EXCEPTION 'invalid lines' USING ERRCODE='22023'; END IF;
+  IF jsonb_typeof(p_lines) IS DISTINCT FROM 'array' OR jsonb_array_length(p_lines) NOT BETWEEN 3 AND 5 THEN RAISE EXCEPTION 'invalid lines' USING ERRCODE='22023'; END IF;
   FOR line IN SELECT value FROM jsonb_array_elements(p_lines) LOOP
-    IF jsonb_typeof(line)<>'object' OR EXISTS(SELECT 1 FROM jsonb_object_keys(line) k WHERE k NOT IN ('speaker','text','intensity')) OR line->>'speaker' NOT IN ('SARAH','WADE','MICKY') OR length(trim(coalesce(line->>'text',''))) NOT BETWEEN 1 AND 180 OR (line->>'intensity')::integer NOT BETWEEN 1 AND 10 THEN RAISE EXCEPTION 'invalid line' USING ERRCODE='22023'; END IF;
+    IF jsonb_typeof(line) IS DISTINCT FROM 'object' OR NOT(line ?& ARRAY['speaker','text','intensity']) OR jsonb_typeof(line->'speaker') IS DISTINCT FROM 'string' OR jsonb_typeof(line->'text') IS DISTINCT FROM 'string' OR jsonb_typeof(line->'intensity') IS DISTINCT FROM 'number' OR EXISTS(SELECT 1 FROM jsonb_object_keys(line) k WHERE k NOT IN ('speaker','text','intensity')) OR line->>'speaker' NOT IN ('SARAH','WADE','MICKY') OR length(trim(coalesce(line->>'text',''))) NOT BETWEEN 1 AND 180 OR (line->>'intensity')::integer NOT BETWEEN 1 AND 10 THEN RAISE EXCEPTION 'invalid line' USING ERRCODE='22023'; END IF;
     INSERT INTO public.game_commentary(game_id,line,kind,meta) VALUES(claim.game_id,line->>'speaker'||': '||trim(line->>'text'),'studio',jsonb_build_object('kind',claim.kind,'speaker',line->>'speaker','intensity',(line->>'intensity')::integer));
   END LOOP;
   UPDATE private.sc004_commentary_claims SET status='done' WHERE claim_id=p_claim;
