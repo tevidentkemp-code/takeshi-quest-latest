@@ -93,3 +93,37 @@ Actual public anonymous GETs repeated three times return 200 for selected XP (on
 The candidate connected to real production reads shows Thom's 131,050 XP, Level 54 / Legend, Power Rank 23.07 (#7), Games 525 and PL AVG 312.4; achievements and Misfires return 200. Back/Close, containment and strict errors pass with zero attempted cloud writes. This is candidate readback, not a public deployment claim. Optional target favourites/hit rates still report unavailable explicitly; this bounded repair makes critical progression/history/navigation usable without fabricating those optional results. Final public readback remains required.
 
 The reused directory XP row now keeps its original cache timestamp, preventing a near-expiry row from gaining a second minute of freshness. A service regression proves reuse at 59 seconds, a source read after the original 60-second boundary, and a forced Retry read; the controlled test clock is restored in `finally`.
+
+## Remaining selected-XP failure and rounds-view follow-up
+
+This follow-up is an **unapplied backend candidate**, prepared from released main `73aa208156bd030418d83c301980a90457f84ec0` (v0.11.7). The already-present two-object migration and its original rollback remain unchanged. Candidate metadata v0.11.8 preserves all 63 actual predecessor release objects. Application and release remain gated by exact-head QA, a fresh source/security guard, installed readback and public mobile acceptance.
+
+The controlled native public run on 2026-10-03 at 18:06 UTC reproduced selected-player XP HTTP 500 / PostgreSQL 57014 in about 3,299ms. Its games and three rank-page reads completed concurrently, while the XP directory producer was never called and no full-directory XP request was pending. This rules out a duplicate directory read in that observed failure; it does not establish concurrency as its cause. A separate six-request serial/concurrent comparison returned 200 with identical fingerprints and did not reproduce the timeout. No client staging or source deadline change is proposed.
+
+The selected-XP planner contains seven scalar dart-array scans in `public.v_ach_rounds`. The new migration `20261003191500_sc063_rounds_single_expansion.sql` replaces only that existing view. It shares one per-round `darts AS MATERIALIZED` JSON expansion while retaining the original `roundTotal` projection followed by all seven scalar `COUNT`/`WHERE` expressions in their original order. Its eligibility, name resolution, player/round indexing, target/max-score mapping and 16 returned column names/types remain unchanged. Existing downstream views, global king selection, Misfire formulas, historical-six eligibility, data, grants, RLS, helper functions and role timeouts are outside the patch.
+
+The initially proposed aggregate `FILTER` model failed 16 of 115 independent local comparisons. A guarded `CASE` variant still failed six mixed-error precedence cases. Their original receipts are retained. Neither rejected model is in this migration; malformed arrays/integers must continue to produce the original SQLSTATE, rather than being normalized or hidden.
+
+Independent acceptance already obtained for the replacement query model:
+
+- PostgreSQL 17.6, one read-only anon transaction at the existing three-second limit, snapshot `1134719`: **115/115** complete typed-row and SQLSTATE comparisons pass. Inputs include all seven counters, aliases, SQL/JSON null, missing fields, malformed arrays/integers, short-circuit behaviour, unresolved names, eligibility and mixed-error precedence.
+- One read-only PostgreSQL 17 snapshot `1134556`: all 12 full-row `EXCEPT ALL` directions across rounds, achievement base, normal Misfire events, player achievements, Misfire counts and XP report zero differences. The compared row counts are 32,298 / 413 / 3,094 / 434 / 188 / 37; source context is 966 games and 37 active players.
+- One separate original/candidate anonymous selected-XP `EXPLAIN ANALYZE` pair at the unchanged three-second limit: original execution 2,270.010ms, candidate model 1,628.908ms (28.24% lower), returning one row each. Planning is 74.160ms / 35.965ms. Shared read blocks are zero for both; shared hit blocks are 2,446 / 2,313, and temporary reads/writes are 11,913 / 1,402 for both. This is one query-local model pair, not statistical reliability, actual view/API performance or native app acceptance. No complete runtime function-scan count is inferred from an alias-only plan audit.
+
+The versioned local regression uses existing PGlite 0.5.8, without a browser or production connection:
+
+```sh
+node tools/ui-smoke/verify-sc063-rounds-single-expansion.mjs
+```
+
+It compares the frozen 115 full-row/type/SQLSTATE outcomes against the captured original and exact candidate. It also applies the actual guarded forward/rollback to a disposable database, verifies stable view/dependent identities, permissions/options/columns and unchanged synthetic data, and proves refusal on source/ACL/security drift, repeat application and a failed post-replacement digest check. Local PGlite is PostgreSQL 18.3; the separate actual PostgreSQL 17.6 fixture receipt supplies the production-version edge proof.
+
+## One-view rollout and recovery gate
+
+Before application, the release owner must freshly confirm the Shateki-Quest project and `public.v_ach_rounds` identity (captured OID 180495), original canonical SHA-256 `be18c389f58aadad4c32e1d8911be6741dd66dbc3f1450003e398ca32ccbd80d`, all protected output/security fingerprints and exact-head CI. The forward transaction acquires a compatible view read lock with `SELECT ... WHERE false`, validates the captured definition/security/column contract, performs one `CREATE OR REPLACE VIEW`, and verifies that OID, ownership, ACL, options, column attributes and relation dependencies remain equal. A local five-second lock timeout bounds DDL waiting; the statement timeout is never widened. Transaction-local search-path ordering binds only the established public source relations. A failed guard rolls back the whole replacement.
+
+The expected candidate canonical SHA-256 is `341c072314ec410da7e898caca61271601596ca57e9a6d4466154de3871d41e2`, derived by the disposable deparser after its captured original matched PostgreSQL 17 byte for byte. PostgreSQL 17 application must match it exactly or abort; do not weaken the digest check to compensate for a different canonical form.
+
+After authorised application, require fresh full-output/security equivalence and actual anonymous selected/full XP, Misfires and all rank pages with repeated headroom below the existing three-second limit. Verify public 320/390/430 progression, trophies, refresh, Retry, Back/Close and zero attempted writes. The model improvement alone cannot close the observed public failure or establish STABLE.
+
+Recovery is `supabase/rollbacks/sc063_rounds_single_expansion.sql`. It accepts only the exact new definition with the captured security/column contract, restores the exact previous view and checks its original digest and unchanged identity/dependencies in one transaction. No data restoration is required. Unexpected drift must be investigated; this file must not revert another actor's different change automatically. The earlier two-object rollback is not part of this recovery.

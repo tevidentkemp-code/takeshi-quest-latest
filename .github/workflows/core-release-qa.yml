@@ -716,3 +716,30 @@ jobs:
           path: |
             core-dist-*.txt
             qa-artifacts-dist-dmd/
+
+  sc063-rounds-model:
+    name: SC063 rounds — local output and recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Install existing disposable database tooling
+        run: npm ci --prefix tools/ui-smoke --ignore-scripts
+      - name: Verify frozen 115 outputs and guarded forward/recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 60s node tools/ui-smoke/verify-sc063-rounds-single-expansion.mjs | tee core-sc063-rounds-model.txt
+      - name: Keep local database evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-release-sc063-rounds-model-evidence
+          retention-days: 14
+          path: core-sc063-rounds-model.txt
