@@ -1,10 +1,12 @@
 // Saving a new player from the Match Setup screen must: (1) close the Add
 // Player dialog, and (2) drop that player onto the Match Card. Repeats per save.
 //
-// The save path uses the module-scoped `sb` client, so we install a fake
+// Public reads use the module-scoped `sb` client, so we install a fake
 // window.supabase BEFORE boot (locking it so the real UMD can't overwrite it)
-// and abort the UMD route. Every query resolves empty; upsert resolves ok.
+// and abort the UMD route. Registration uses the explicit offline Edge fixture;
+// its create_player response retains the original delayed-save UI assertions.
 const { chromium } = require('playwright');
+const { installSecurityFixture } = require('./security-fixture');
 const fs = require('fs');
 const path = require('path');
 const APP_URL = process.env.SQ_APP_URL || 'http://localhost:8123/index.html';
@@ -17,9 +19,25 @@ const check = (name, ok, detail) => { if (!ok) failures++; console.log((ok ? 'PA
 (async () => {
   const browser = await chromium.launch(CHROMIUM ? { executablePath: CHROMIUM } : {});
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await installSecurityFixture(ctx);
 
   // Fake supabase client, locked so the (blocked) UMD can't clobber it.
   await ctx.addInitScript(() => {
+    // Keep the delay on the fetch function captured by the browser transport.
+    // The setter also wraps the shared fixture if its init script runs later.
+    const delayed = transport => async function(target, options = {}) {
+      if (String(target) === 'https://sc004-ui-fixture.invalid/functions/v1/sq-match-control' &&
+          JSON.parse(options.body || '{}').action === 'create_player') {
+        await new Promise(resolve => setTimeout(resolve, Number(window.__sqTestUpsertDelayMs || 0)));
+      }
+      return transport.call(window, target, options);
+    };
+    let transport = delayed(window.fetch);
+    Object.defineProperty(window, 'fetch', {
+      configurable: true,
+      get: () => transport,
+      set: value => { transport = delayed(value); }
+    });
     const mkQuery = () => {
       const base = {
         then: (res) => res({ data: [], error: null }),
@@ -112,7 +130,9 @@ const check = (name, ok, detail) => { if (!ok) failures++; console.log((ok ? 'PA
   const startEnabled = await page.evaluate(() => { const b = document.getElementById('startMatchBtn'); return b && !b.disabled; });
   check('Two players => SELECT MATCH LENGTH enabled', startEnabled);
 
-  await page.screenshot({ path: '/tmp/claude-0/-home-user-takeshi-quest-latest/a0f87c99-8ef4-52be-a315-5993b28477a5/scratchpad/saveplayer-card.png' });
+  const screenshotDirectory = process.env.SQ_SCREENSHOTS || path.join('output', 'playwright');
+  fs.mkdirSync(screenshotDirectory, { recursive: true });
+  await page.screenshot({ path: path.join(screenshotDirectory, 'saveplayer-card.png') });
   // Ignore artifacts of the offline fake: the aborted Supabase CDN <script>
   // raises a resource-load Event, surfaced by the app's global error banner.
   const badErrs = errs.filter((e) => !/ERR_FAILED|Failed to load resource|\[object Event\]/.test(e));

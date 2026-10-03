@@ -8,10 +8,10 @@ const H = require('./harness');
       await H.boot(page,{settle:1300});
       const returnFromAdmin = async () => {
         await page.locator('#adminCodeBtn').tap();
-        // Keep the Home Start control in view before the real Return action.
+        // Keep the Home Start control in view before cancelling real sign-in.
         await page.evaluate(()=>window.scrollTo(0,0));
-        await page.locator('#adminCodeGateOverlay button').filter({hasText:/^Return$/}).tap();
-        await page.locator('#adminCodeGateOverlay').waitFor({state:'detached'});
+        await page.locator('#sqAdminSignInOverlay button').filter({hasText:/^Cancel$/}).tap();
+        await page.locator('#sqAdminSignInOverlay').waitFor({state:'detached'});
       };
       const enterImmediately = async (id, title) => {
         // No settling delay before the action: this races the deferred Home work.

@@ -1,0 +1,267 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-03T17:37:03.300361+00:00",
+  "purpose": "Test-only SC040 offline fixture adaptation to verified admin transport",
+  "candidate_head_observed": "50d459536118dab8b607d8b1fb2b4d8036878955",
+  "original_ci_failure": "sc040-ci-failure-receipt.json",
+  "diagnosis": "The production sqAdminAction helper closes over the real Auth requirement. Replacing only window.SQ_ADMIN_AUTH in the offline fixture opened Hub but did not authorize profile Save, which correctly awaited real sign-in.",
+  "changes": [
+    {
+      "path": "tools/ui-smoke/admin-ui-fixture.js",
+      "sha256": "860864c74e758f9caf6d31fffa5df2e5b30412d721ead992e46b4fa209aed5c6"
+    },
+    {
+      "path": "tools/ui-smoke/verify-sc040-runtime.js",
+      "sha256": "18513f9c040b552665db7a868ef339cf77583327e270621878d11675629d638e"
+    }
+  ],
+  "fix": "Rebind only the offline sqAdminAction helper through its explicitly installed Auth seam and actual SQ_SECURITY.admin transport. Assert exact fixture bearer, update_player operation, exact synthetic player ID and UUID request envelope at the Node fixture boundary.",
+  "retained_assertions": [
+    "Original 250ms busy-feedback delay",
+    "Saved confirmation and profile persistence",
+    "Denied and zero-row failures",
+    "Avatar visibility/cache/reload",
+    "Responsive targets and Back/Close",
+    "Celebration and actual second-player winner",
+    "No unexpected JavaScript errors"
+  ],
+  "deadlines_widened": false,
+  "runtime_source_changes": false,
+  "build_changes": false,
+  "database_or_real_api_writes": false,
+  "environment": {
+    "browser": "Chromium",
+    "node": "24.21.0",
+    "server": "http://127.0.0.1:54163",
+    "server_owner": "Dedicated kernel-allocated loopback port, serving the frozen shared worktree; no changes to 8127 or 8128",
+    "auth": "Explicit offline test credential only",
+    "production_supabase_traffic": "Blocked by browser harness"
+  },
+  "total_suite_runs": 11,
+  "passed_suite_runs": 11,
+  "suite_runs": [
+    {
+      "test": "SC040",
+      "artifact": "source",
+      "url": "http://127.0.0.1:54163/index.html",
+      "command": "SQ_APP_URL=http://127.0.0.1:54163/index.html SQ_SCREENSHOTS='/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/screenshots/sc040-source' '/Users/Thom/.codex/runtimes/shateki-node24.21/bin/node' tools/ui-smoke/verify-sc040-runtime.js > '/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/sc040-source.log' 2>&1",
+      "started_at": "2026-10-03T17:26:10.808Z",
+      "completion_observed_at": "2026-10-03T17:26:53.546Z",
+      "exit_code": 0,
+      "log": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/sc040-source.log",
+      "log_sha256": "4a6ab6cbe6b83d567d45d0580480bb22c1145b01c8cce2a4f4d6131b77f2ea0a",
+      "result_tail": [
+        "PASS Hub edit, Back/Close, responsive targets, denied/zero-row writes",
+        "PASS fresh-cache canonical fetch, Select Player + Match Setup + Throw Order avatars, live celebration boundary, match state, actual second-player winner and no uncaught errors",
+        "SC-040 browser acceptance PASS (production network blocked)"
+      ],
+      "pass_prefixed_lines": 3
+    },
+    {
+      "test": "SC040",
+      "artifact": "dist",
+      "url": "http://127.0.0.1:54163/dist/index.html",
+      "command": "SQ_APP_URL=http://127.0.0.1:54163/dist/index.html SQ_SCREENSHOTS='/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/screenshots/sc040-dist' '/Users/Thom/.codex/runtimes/shateki-node24.21/bin/node' tools/ui-smoke/verify-sc040-runtime.js > '/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/sc040-dist.log' 2>&1",
+      "started_at": "2026-10-03T17:26:10.812Z",
+      "completion_observed_at": "2026-10-03T17:26:53.551Z",
+      "exit_code": 0,
+      "log": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/sc040-dist.log",
+      "log_sha256": "4a6ab6cbe6b83d567d45d0580480bb22c1145b01c8cce2a4f4d6131b77f2ea0a",
+      "result_tail": [
+        "PASS Hub edit, Back/Close, responsive targets, denied/zero-row writes",
+        "PASS fresh-cache canonical fetch, Select Player + Match Setup + Throw Order avatars, live celebration boundary, match state, actual second-player winner and no uncaught errors",
+        "SC-040 browser acceptance PASS (production network blocked)"
+      ],
+      "pass_prefixed_lines": 3
+    },
+    {
+      "test": "P23",
+      "artifact": "source",
+      "url": "http://127.0.0.1:54163/index.html",
+      "command": "SQ_APP_URL=http://127.0.0.1:54163/index.html SQ_SCREENSHOTS='/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/screenshots/p23-source' '/Users/Thom/.codex/runtimes/shateki-node24.21/bin/node' tools/ui-smoke/verify-p23.js > '/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/p23-source.log' 2>&1",
+      "started_at": "2026-10-03T17:28:24.530Z",
+      "completion_observed_at": "2026-10-03T17:29:18.771Z",
+      "exit_code": 0,
+      "log": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/p23-source.log",
+      "log_sha256": "666e6555c73fd84807582be1ce6f1742f44b3a3e0de8382ea37e1275e90d92a8",
+      "result_tail": [
+        "PASS  ADMIN: \u2715 dismisses hub",
+        "",
+        "ALL PASS"
+      ],
+      "pass_prefixed_lines": 10
+    },
+    {
+      "test": "P23",
+      "artifact": "dist",
+      "url": "http://127.0.0.1:54163/dist/index.html",
+      "command": "SQ_APP_URL=http://127.0.0.1:54163/dist/index.html SQ_SCREENSHOTS='/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/screenshots/p23-dist' '/Users/Thom/.codex/runtimes/shateki-node24.21/bin/node' tools/ui-smoke/verify-p23.js > '/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/p23-dist.log' 2>&1",
+      "started_at": "2026-10-03T17:28:24.537Z",
+      "completion_observed_at": "2026-10-03T17:29:18.776Z",
+      "exit_code": 0,
+      "log": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/p23-dist.log",
+      "log_sha256": "666e6555c73fd84807582be1ce6f1742f44b3a3e0de8382ea37e1275e90d92a8",
+      "result_tail": [
+        "PASS  ADMIN: \u2715 dismisses hub",
+        "",
+        "ALL PASS"
+      ],
+      "pass_prefixed_lines": 10
+    },
+    {
+      "test": "N5",
+      "artifact": "source",
+      "url": "http://127.0.0.1:54163/index.html",
+      "command": "SQ_APP_URL=http://127.0.0.1:54163/index.html SQ_SCREENSHOTS='/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/screenshots/n5-source' '/Users/Thom/.codex/runtimes/shateki-node24.21/bin/node' tools/ui-smoke/verify-n5-stacking.js > '/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/n5-source.log' 2>&1",
+      "started_at": "2026-10-03T17:29:34.255Z",
+      "completion_observed_at": "2026-10-03T17:30:56.659Z",
+      "exit_code": 0,
+      "log": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/n5-source.log",
+      "log_sha256": "d1def04aef3ffac387bef84af855727adc20ab430d3a6c8bb4cb2b2ecaf02d49",
+      "result_tail": [
+        "PASS  rapid tool switching leaves <=1 open backdrop",
+        "",
+        "ALL PASS"
+      ],
+      "pass_prefixed_lines": 2
+    },
+    {
+      "test": "N5",
+      "artifact": "dist",
+      "url": "http://127.0.0.1:54163/dist/index.html",
+      "command": "SQ_APP_URL=http://127.0.0.1:54163/dist/index.html SQ_SCREENSHOTS='/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/screenshots/n5-dist' '/Users/Thom/.codex/runtimes/shateki-node24.21/bin/node' tools/ui-smoke/verify-n5-stacking.js > '/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/n5-dist.log' 2>&1",
+      "started_at": "2026-10-03T17:29:34.255Z",
+      "completion_observed_at": "2026-10-03T17:30:56.663Z",
+      "exit_code": 0,
+      "log": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/n5-dist.log",
+      "log_sha256": "d1def04aef3ffac387bef84af855727adc20ab430d3a6c8bb4cb2b2ecaf02d49",
+      "result_tail": [
+        "PASS  rapid tool switching leaves <=1 open backdrop",
+        "",
+        "ALL PASS"
+      ],
+      "pass_prefixed_lines": 2
+    },
+    {
+      "test": "SC034",
+      "artifact": "source",
+      "url": "http://127.0.0.1:54163/index.html",
+      "argv": [
+        "/Users/Thom/.codex/runtimes/shateki-node24.21/bin/node",
+        "tools/ui-smoke/verify-sc034-add-player.js"
+      ],
+      "environment": {
+        "SQ_APP_URL": "http://127.0.0.1:54163/index.html",
+        "SQ_SCREENSHOTS": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/screenshots/SC034"
+      },
+      "started_at": "2026-10-03T17:30:30.123046+00:00",
+      "completion_observed_at": "2026-10-03T17:30:52.281513+00:00",
+      "exit_code": 0,
+      "log": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/sc034-source.log",
+      "log_sha256": "c65457084fef7307b8a63a4b39b9a036a19e1afa6853aa358ffb620cdb10f12d",
+      "result_tail": [
+        "SC-034 ADD PLAYER: PASS"
+      ],
+      "pass_prefixed_lines": 0
+    },
+    {
+      "test": "SC038",
+      "artifact": "source",
+      "url": "http://127.0.0.1:54163/index.html",
+      "argv": [
+        "/Users/Thom/.codex/runtimes/shateki-node24.21/bin/node",
+        "tools/ui-smoke/verify-sc038-ui.js"
+      ],
+      "environment": {
+        "SQ_APP_URL": "http://127.0.0.1:54163/index.html",
+        "SQ_SCREENSHOTS": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/screenshots/SC038"
+      },
+      "started_at": "2026-10-03T17:30:52.283443+00:00",
+      "completion_observed_at": "2026-10-03T17:31:04.850455+00:00",
+      "exit_code": 0,
+      "log": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/sc038-source.log",
+      "log_sha256": "a2befd839f765bab85f3d8aeedcef243de8fa5a24751dd80644c3e2d3bba7356",
+      "result_tail": [
+        "[SC-038] match leaderboard passed",
+        "[SC-038] SC-055 match win gate passed",
+        "SC-038 runtime UI PASS"
+      ],
+      "pass_prefixed_lines": 0
+    },
+    {
+      "test": "smoke",
+      "artifact": "source",
+      "url": "http://127.0.0.1:54163/index.html",
+      "argv": [
+        "/Users/Thom/.codex/runtimes/shateki-node24.21/bin/node",
+        "tools/ui-smoke/smoke.js"
+      ],
+      "environment": {
+        "SQ_APP_URL": "http://127.0.0.1:54163/index.html",
+        "SQ_SCREENSHOTS": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/screenshots/smoke"
+      },
+      "started_at": "2026-10-03T17:31:04.852222+00:00",
+      "completion_observed_at": "2026-10-03T17:33:09.104936+00:00",
+      "exit_code": 0,
+      "log": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/smoke-source.log",
+      "log_sha256": "4f46d8c60b4613c51ca8e94f78934de5e2400bc7bf601aea243b05aa64fae2f9",
+      "result_tail": [
+        "PASS  no unexpected console errors",
+        "",
+        "90/90 passed"
+      ],
+      "pass_prefixed_lines": 90
+    },
+    {
+      "test": "Training",
+      "artifact": "source",
+      "url": "http://127.0.0.1:54163/index.html",
+      "argv": [
+        "/Users/Thom/.codex/runtimes/shateki-node24.21/bin/node",
+        "tools/ui-smoke/verify-training-modes.js"
+      ],
+      "environment": {
+        "SQ_APP_URL": "http://127.0.0.1:54163/index.html",
+        "SQ_SCREENSHOTS": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/screenshots/Training"
+      },
+      "started_at": "2026-10-03T17:30:30.123046+00:00",
+      "completion_observed_at": "2026-10-03T17:31:02.069023+00:00",
+      "exit_code": 0,
+      "log": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/training-source.log",
+      "log_sha256": "70477a533d3bdc8bd9a8ae74fa08e3ea7314f775d9308dd68537e32d84c2dd37",
+      "result_tail": [
+        "PASS  no unexpected console errors",
+        "",
+        "ALL PASS"
+      ],
+      "pass_prefixed_lines": 16
+    },
+    {
+      "test": "Progression",
+      "artifact": "source",
+      "url": "http://127.0.0.1:54163/index.html",
+      "argv": [
+        "/Users/Thom/.codex/runtimes/shateki-node24.21/bin/node",
+        "tools/ui-smoke/verify-progression-modes.js"
+      ],
+      "environment": {
+        "SQ_APP_URL": "http://127.0.0.1:54163/index.html",
+        "SQ_SCREENSHOTS": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/screenshots/Progression"
+      },
+      "started_at": "2026-10-03T17:31:02.081585+00:00",
+      "completion_observed_at": "2026-10-03T17:31:09.453209+00:00",
+      "exit_code": 0,
+      "log": "/Users/Thom/.codex/visualizations/2026/10/03/01a1019e-91ab-7f91-b515-54d75a96d978/sc004-security-audit/build/sc040-fixture-repair/progression-source.log",
+      "log_sha256": "aefeb4b209bd8347cec1c063d2471376a87d04def8a6d8b17d8212285642ce7e",
+      "result_tail": [
+        "PASS  no unexpected console errors",
+        "",
+        "24/24 passed"
+      ],
+      "pass_prefixed_lines": 24
+    }
+  ],
+  "syntax": "Both changed test files passed node --check",
+  "git_diff_check": "PASS",
+  "limitation": "Offline UI regression evidence only. This does not prove real Auth/Edge/PostgREST/Realtime acceptance or turn the original failing CI run into PASS. A subsequent pushed exact head must complete its own CI."
+}

@@ -153,6 +153,7 @@ async function seed(page, count, round = 10, mode = 'match') {
     // The real Ready button is available while chunked preparation is still
     // painting. Follow that user flow before waiting for the loader to settle.
     await page.waitForFunction(()=>document.body.dataset.page==='game');
+    await page.waitForFunction(()=>!state.__sqSecurityPreparing&&state.__sqGameControl&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');
     assert.equal(await page.evaluate(()=>state.currentRound),7,'Turbo changed its canonical starting round');
     await page.click('.sq-turbo-ready-start');
     await page.waitForFunction(()=>window.__sqTurboTimerStatus().active && document.querySelector('.sqTurboTimerActive'));
