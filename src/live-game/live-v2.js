@@ -1404,10 +1404,14 @@ function __sqBindMissBounceHold(btn){
   btn.style.userSelect = 'none';
 
   let holdTimer = null;
+  let holdStartedAt = null, commitPendingHold = null;
   let held = false;
   let cancelled = false;
   let pointerId = null;
-  const clearHold = ()=>{ if (holdTimer) clearTimeout(holdTimer); holdTimer = null; };
+  const clearHold = ()=>{
+    if (holdTimer !== null) clearTimeout(holdTimer);
+    holdTimer = null; holdStartedAt = null; commitPendingHold = null;
+  };
   const cancelGesture = ()=>{
     clearHold();
     cancelled = true;
@@ -1435,8 +1439,9 @@ function __sqBindMissBounceHold(btn){
     const startX = e.clientX, startY = e.clientY;
     btn.__sqMissBounceStart = { x:startX, y:startY };
     try{ btn.setPointerCapture?.(e.pointerId); }catch(_){}
-    holdTimer = setTimeout(()=>{
-      holdTimer = null;
+    const commitHold = ()=>{
+      if (commitPendingHold !== commitHold) return;
+      clearHold();
       if (cancelled || document.body?.dataset?.page !== 'game' || state !== game ||
           state.__gameToken !== token || state.history !== history || history?.length !== historyLength ||
           state.currentPlayer !== player || state.currentRound !== round || state.currentDart !== dart ||
@@ -1451,7 +1456,10 @@ function __sqBindMissBounceHold(btn){
       if (state !== game || state.history !== history || history.length !== historyLength + 1 || receipt?.throw?.bounceOut !== true) return;
       try{ window.__sqDmdV2?.emit?.({ kind:'BOUNCE_OUT' }); }catch(_){}
       try{ navigator.vibrate?.(35); }catch(_){}
-    }, __SQ_QUICK_ENTRY_HOLD_MS);
+    };
+    holdStartedAt = performance.now();
+    commitPendingHold = commitHold;
+    holdTimer = setTimeout(commitHold, __SQ_QUICK_ENTRY_HOLD_MS);
   });
 
   btn.addEventListener('pointermove',(e)=>{
@@ -1465,6 +1473,10 @@ function __sqBindMissBounceHold(btn){
   });
   const finish=(e)=>{
     if (pointerId != null && e.pointerId !== pointerId) return;
+    const commit = e.type === 'pointerup' && pointerId !== null && holdTimer !== null &&
+      holdStartedAt !== null && performance.now() - holdStartedAt >= __SQ_QUICK_ENTRY_HOLD_MS
+      ? commitPendingHold : null;
+    if (commit) commit();
     clearHold();
     pointerId = null;
     if (__sqMissBouncePendingCancel === cancelGesture) __sqMissBouncePendingCancel = null;

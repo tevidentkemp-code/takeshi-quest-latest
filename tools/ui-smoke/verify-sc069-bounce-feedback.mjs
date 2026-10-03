@@ -10,6 +10,9 @@ function scheduler() {
   return {
     set(fn, ms) { jobs.set(++id, { fn, at: now + ms }); return id; },
     clear(key) { jobs.delete(key); },
+    // Let a native release win while a due timer remains undelivered.
+    elapse(ms) { now += ms; },
+    retain(key) { return jobs.get(key)?.fn; },
     run(key) { const job = jobs.get(key); if (!job) return false; jobs.delete(key); now = job.at; job.fn(); return true; },
     advance(ms) { const end = now + ms; for (;;) { const next = [...jobs].filter(([, j]) => j.at <= end).sort((a, b) => a[1].at - b[1].at)[0]; if (!next) break; this.run(next[0]); } now = end; },
     now: () => now,
@@ -84,10 +87,12 @@ function fixture({ reject = false, feedbackThrows = false, catchUp = false } = {
   const button = { style: {}, classList: { add: n => classes.add(n), remove: n => classes.delete(n) }, setPointerCapture() {}, addEventListener: (name, fn) => { handlers.set(name, fn); } };
   const state = { __gameToken: 1, currentPlayer: 0, currentRound: 0, currentDart: 0, history: [], players: ['ALPHA', 'BETA'] };
   const context = { state, document: { body: { dataset: { page: 'game' } } }, window: { __sqDmdV2: { emit: e => { events.push(['feedback', e]); if (feedbackThrows) throw Error('display unavailable'); }, cancelBounceOut: () => events.push(['cancel-feedback']) } }, navigator: { vibrate: n => events.push(['vibrate', n]) }, performance: { now: clock.now }, setTimeout: clock.set.bind(clock), clearTimeout: clock.clear.bind(clock), __SQ_QUICK_ENTRY_HOLD_MS: 360,
-    recordThrow(spec) { events.push(['record', spec]); if (reject) return; const s = context.state; s.history.push({ player: catchUp ? 1 : s.currentPlayer, round: s.currentRound, dartIndex: s.currentDart, throw: { kind: 'Miss', points: 0, bounceOut: true } }); s.currentDart++; } };
+    recordThrow(spec) { events.push(['record', spec]); if (reject) return; const s = context.state; s.history.push({ player: catchUp ? 1 : s.currentPlayer, round: s.currentRound, dartIndex: s.currentDart, throw: { kind: 'Miss', points: 0, ...(spec.kind === 'BounceOut' ? { bounceOut: true } : {}) } }); s.currentDart++; } };
   vm.createContext(context); vm.runInContext(gestureSource + '\n__sqBindMissBounceHold(button);', Object.assign(context, { button }));
-  function fire(name) { const e = { pointerType: 'mouse', button: 0, pointerId: 1, clientX: 10, clientY: 10, prevented: false, stopped: false, preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; }, stopImmediatePropagation() { this.stopped = true; } }; handlers.get(name)?.(e); return e; }
-  return { context, clock, events, fire, cancel: () => vm.runInContext('__sqCancelMissBounceFeedback()', context) };
+  function fire(name, pointer = {}) { const e = { type: name, pointerType: 'mouse', button: 0, pointerId: 1, clientX: 10, clientY: 10, ...pointer, prevented: false, stopped: false, preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; }, stopImmediatePropagation() { this.stopped = true; } }; handlers.get(name)?.(e); return e; }
+  // Model the existing native click after the gesture's capture guard.
+  function click() { const e = fire('click'); if (!e.stopped) context.recordThrow({ kind: 'Miss' }); return e; }
+  return { context, clock, events, fire, click, cancel: () => vm.runInContext('__sqCancelMissBounceFeedback()', context) };
 }
 
 {
@@ -117,6 +122,128 @@ for (const mutate of [f => { f.context.document.body.dataset.page = 'details'; }
   assert.equal(f.context.state.history.length, 0, 'route cancellation retires the timer');
   assert.equal(f.events.filter(e => e[0] === 'record' || e[0] === 'feedback').length, 0);
   assert(f.fire('click').stopped);
+}
+
+
+// Regression for the observed Linux WebKit ordering: the 360ms callback is due,
+// but native pointerup arrives first. This controlled scheduler proves the
+// gesture mechanism; the existing native source/dist browser legs stay required.
+function holdCallback(f) {
+  const timer = f.clock.pending()[0], callback = f.clock.retain(timer);
+  assert.equal(typeof callback, 'function', 'retain the actual armed hold callback');
+  return { timer, callback };
+}
+function assertAcceptedHold(f, label) {
+  assert.equal(f.events.filter(e => e[0] === 'record').length, 1, label + ': one canonical call');
+  assert.equal(f.events.find(e => e[0] === 'record')[1].kind, 'BounceOut');
+  assert.equal(f.context.state.history.length, 1, label + ': one accepted history entry');
+  assert.equal(f.context.state.history[0].throw.bounceOut, true);
+  assert.deepEqual(f.events.map(e => e[0]), ['record', 'feedback', 'vibrate'], label + ': feedback follows acceptance');
+}
+for (const elapsed of [360, 500]) {
+  const f = fixture(); f.fire('pointerdown'); const { timer, callback } = holdCallback(f);
+  f.clock.elapse(elapsed);
+  assert.equal(f.context.state.history.length, 0, 'elapsing time alone does not deliver the hold timer');
+  assert(f.clock.pending().includes(timer), 'the due hold callback is still pending before native release');
+  const release = f.fire('pointerup');
+  assert(release.prevented && release.stopped, 'eligible elapsed release consumes the hold');
+  assert(f.click().stopped, 'elapsed release consumes its native compatibility click');
+  assertAcceptedHold(f, 'elapsed ' + elapsed);
+  assert(!f.clock.pending().includes(timer), 'release retires the pending timer');
+  callback(); callback();
+  assertAcceptedHold(f, 'late losing callbacks after elapsed ' + elapsed);
+}
+{
+  const f = fixture(); f.fire('pointerdown'); const { callback } = holdCallback(f);
+  f.clock.elapse(359.999); f.fire('pointerup');
+  assert.equal(f.click().stopped, false, 'release below360ms remains an ordinary native tap');
+  assert.equal(f.context.state.history.length, 1);
+  assert.equal(f.events.filter(e => e[0] === 'record').length, 1);
+  assert.equal(f.events.find(e => e[0] === 'record')[1].kind, 'Miss');
+  assert.equal(f.context.state.history[0].throw.bounceOut, undefined);
+  callback();
+  assert.equal(f.events.filter(e => e[0] === 'record').length, 1, 'a cancelled short-tap callback cannot add a hold');
+  assert.equal(f.events.filter(e => e[0] === 'feedback' || e[0] === 'vibrate').length, 0);
+}
+{
+  const f = fixture(); f.fire('pointerdown'); const { callback } = holdCallback(f);
+  f.clock.advance(360); assertAcceptedHold(f, 'normal360ms timer');
+  f.clock.elapse(90); f.fire('pointerup'); assert(f.click().stopped);
+  callback(); assertAcceptedHold(f, 'normal timer wins before release and late callback');
+}
+{
+  const f = fixture(); f.fire('pointerdown'); const { callback } = holdCallback(f);
+  f.clock.elapse(500); f.fire('pointercancel'); callback();
+  assert.equal(f.events.filter(e => e[0] === 'record' || e[0] === 'feedback' || e[0] === 'vibrate').length, 0, 'overdue pointercancel cannot use the release fallback');
+  assert.equal(f.clock.pending().length, 0, 'pointercancel retires the hold timer');
+}
+for (const distance of [18, 18.001]) {
+  const f = fixture(); f.fire('pointerdown'); const { callback } = holdCallback(f);
+  f.clock.elapse(100); f.fire('pointermove', { clientX: 10 + distance });
+  f.clock.elapse(400); f.fire('pointerup'); const click = f.click(); callback();
+  if (distance === 18) {
+    assert(click.stopped); assertAcceptedHold(f, 'movement at18px');
+  } else {
+    assert.equal(click.stopped, false, 'movement beyond18px cancels only the hold');
+    assert.deepEqual(f.events.filter(e => e[0] === 'record').map(e => e[1].kind), ['Miss']);
+    assert.equal(f.events.filter(e => e[0] === 'feedback' || e[0] === 'vibrate').length, 0, 'movement cancellation cannot cue BO');
+  }
+}
+{
+  const f = fixture(); f.fire('pointerdown'); const { timer, callback } = holdCallback(f);
+  f.clock.elapse(500); f.fire('pointerup', { pointerId: 2 });
+  assert.equal(f.context.state.history.length, 0, 'unrelated pointerup cannot commit');
+  assert(f.clock.pending().includes(timer), 'unrelated pointerup cannot retire the rightful gesture');
+  f.fire('pointerup'); assert(f.click().stopped); callback(); assertAcceptedHold(f, 'rightful release after unrelated pointer');
+}
+{
+  const f = fixture(); f.fire('pointerdown'); const first = holdCallback(f);
+  f.clock.elapse(100); f.fire('pointerdown'); const second = holdCallback(f);
+  assert.notEqual(first.timer, second.timer);
+  f.clock.elapse(260); first.callback();
+  assert.equal(f.context.state.history.length, 0, 'replaced gesture callback cannot commit');
+  assert(f.clock.pending().includes(second.timer), 'old callback cannot clear the current hold');
+  f.clock.elapse(101); f.fire('pointerup'); assert(f.click().stopped);
+  first.callback(); second.callback(); assertAcceptedHold(f, 'replacement gesture owns its callback');
+}
+const staleReleaseGuards = {
+  page: f => { f.context.document.body.dataset.page = 'details'; },
+  state: f => { f.context.state = { ...f.context.state }; },
+  token: f => { f.context.state.__gameToken++; },
+  historyIdentity: f => { f.context.state.history = []; },
+  historyLength: f => { f.context.state.history.push({ throw: { kind: 'Miss', points: 0 } }); },
+  player: f => { f.context.state.currentPlayer = 1; },
+  round: f => { f.context.state.currentRound++; },
+  dart: f => { f.context.state.currentDart++; },
+  actor: f => { f.context.state.players[0] = 'REPLACEMENT'; }
+};
+for (const [name, mutate] of Object.entries(staleReleaseGuards)) {
+  const f = fixture(); f.fire('pointerdown'); const { callback } = holdCallback(f);
+  f.clock.elapse(500); mutate(f); f.fire('pointerup'); assert(f.click().stopped, name + ': stale compatibility click is consumed'); callback();
+  assert.equal(f.events.filter(e => e[0] === 'record' || e[0] === 'feedback' || e[0] === 'vibrate').length, 0, name + ': overdue release and old callback cannot record or cue');
+  assert.equal(f.clock.pending().length, 0, name + ': stale hold timer is retired');
+}
+{
+  const f = fixture(); f.fire('pointerdown'); const { callback } = holdCallback(f);
+  f.clock.elapse(500); f.cancel(); f.fire('pointerup'); assert(f.click().stopped); callback();
+  assert.equal(f.context.state.history.length, 0, 'explicit navigation cancellation survives overdue release and callback');
+  assert.equal(f.events.filter(e => e[0] === 'record' || e[0] === 'feedback' || e[0] === 'vibrate').length, 0);
+}
+{
+  const f = fixture({ reject: true }); f.fire('pointerdown'); const { callback } = holdCallback(f);
+  f.clock.elapse(500); f.fire('pointerup'); assert(f.click().stopped); callback();
+  assert.equal(f.events.filter(e => e[0] === 'record').length, 1, 'canonical rejection receives exactlyone attempted hold');
+  assert.equal(f.context.state.history.length, 0, 'canonical rejection remains authoritative');
+  assert.equal(f.events.filter(e => e[0] === 'feedback' || e[0] === 'vibrate').length, 0, 'unaccepted hold cannot cue or vibrate');
+}
+{
+  const f = fixture(); f.fire('pointerdown'); f.clock.elapse(500); f.fire('pointerup'); assert(f.click().stopped);
+  f.clock.elapse(1); f.fire('pointerdown'); f.clock.elapse(1); f.fire('pointerup');
+  assert.equal(f.click().stopped, false, 'genuine next press1ms after release remains usable within220ms');
+  assert.deepEqual(f.events.filter(e => e[0] === 'record').map(e => e[1].kind), ['BounceOut', 'Miss']);
+  assert.equal(f.context.state.history.length, 2);
+  assert.equal(f.context.state.history[1].throw.bounceOut, undefined);
+  assert.equal(f.events.filter(e => e[0] === 'feedback').length, 1, 'only the accepted hold cues BO');
 }
 
 console.log('SC-069 owned Bounce Out gesture/receipt, queue cancellation and reduced-motion contracts PASS');
