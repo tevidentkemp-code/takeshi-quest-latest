@@ -38,6 +38,11 @@ async function frames(page,count,label){
 async function seed(page, count, round = 10, mode = 'match') {
   progress('FIXTURE',qaCase+' '+mode+'/'+count+' players/round '+round);
   await page.evaluate(async ({n,mode}) => {
+    window.__sqSc065YieldTrace=[];
+    if(!window.__sqSc065YieldOriginal){
+      window.__sqSc065YieldOriginal=__sqYieldToPaint;
+      __sqYieldToPaint=function(){const item={start:performance.now()};window.__sqSc065YieldTrace.push(item);return window.__sqSc065YieldOriginal().then(value=>{item.end=performance.now();return value;});};
+    }
     window.__sqSc065FixtureFrame=false;
     requestAnimationFrame(()=>{window.__sqSc065FixtureFrame=true;});
     const token = Number(state.__gameToken || 0);
@@ -48,8 +53,9 @@ async function seed(page, count, round = 10, mode = 'match') {
     if(mode==='tournament') Object.assign(state.match,{tournament:true,tournamentType:'classic',tournamentRules:{startRoundIndex:0,strictTimer:false}});
     if(mode==='practice') Object.assign(state.match,{mode:'practice',forcePractice:true,isPractice:true});
     if(mode==='turbo') Object.assign(state.match,{mode:'turbo',gameVariant:'turbo',startTarget:'17',strictTimer:true,throwLimitSeconds:20});
-    startNewGame(true);
+    startNewGame(n>1?false:true);
   }, {n:count,mode});
+  if(count>1)await page.click('.to-start');
   if(mode==='turbo'){
     // The real Ready button is available while chunked preparation is still
     // painting. Follow that user flow before waiting for the loader to settle.
@@ -64,7 +70,7 @@ async function seed(page, count, round = 10, mode = 'match') {
     const diagnostic=await page.evaluate(()=>{
       const overlay=document.getElementById('gameLoadOverlay'),boot=document.getElementById('bootSplash'),panel=document.getElementById('liveV2Panel');
       const status=el=>el?{hidden:el.hidden,ariaHidden:el.getAttribute('aria-hidden'),display:getComputedStyle(el).display,opacity:getComputedStyle(el).opacity,rect:el.getBoundingClientRect().toJSON()}:null;
-      return{page:document.body.dataset.page,visibility:document.visibilityState,hidden:document.hidden,ready:document.readyState,fixtureFrame:window.__sqSc065FixtureFrame,overlay:status(overlay),boot:status(boot),panel:status(panel),round:state.currentRound,token:state.__gameToken,history:state.history.length,tableRows:document.querySelectorAll('#tbody tr').length,scriptPaths:[...document.scripts].filter(s=>s.src&&new URL(s.src).origin===location.origin).map(s=>new URL(s.src).pathname)};
+      return{page:document.body.dataset.page,visibility:document.visibilityState,hidden:document.hidden,ready:document.readyState,fixtureFrame:window.__sqSc065FixtureFrame,yields:window.__sqSc065YieldTrace,overlay:status(overlay),boot:status(boot),panel:status(panel),round:state.currentRound,token:state.__gameToken,history:state.history.length,tableRows:document.querySelectorAll('#tbody tr').length,scriptPaths:[...document.scripts].filter(s=>s.src&&new URL(s.src).origin===location.origin).map(s=>new URL(s.src).pathname)};
     });
     // Playwright caches its original error stack, so an appended message is
     // absent from Node's normal error print. Emit the credential-free state.
@@ -77,6 +83,7 @@ async function seed(page, count, round = 10, mode = 'match') {
   }
   await page.evaluate(r=>{let guard=0;while(state.currentRound<r && guard++<200) recordThrow({kind:'S',number:ROUNDS[state.currentRound].target});}, round);
   await rest(page,round);
+  console.log('SC065 native yield trace '+JSON.stringify(await page.evaluate(()=>({yields:window.__sqSc065YieldTrace}))));
   progress('READY',qaCase+' '+mode+'/'+count+' players/round '+round);
 }
 async function rest(page, round) {
