@@ -746,7 +746,7 @@ try{
 }catch(_){}
 // @CANONICAL:GAMEPLAY_RECORD_THROW_BASE
 function recordThrow(spec){
-  if(window.__sqInitialOrderApplying) return;
+  if(window.__sqInitialOrderApplying || window.__sqThrowOrderRevealPending) return;
   try{ window.__sqDmdStopPreThrow?.(); }catch(_){ }
   // Ignore input if game is finished or in sudden death
   if (state.finished || state.suddenDeath.active) return;
@@ -3267,6 +3267,81 @@ async function __sqApplyInitialOrderAmendment(order,guard){
     window.__sqInitialOrderApplying=false;
   }
 }
+function __sqRevealConfirmedThrowOrder(start){
+  const players=state.players.slice();
+  const practiceType=String(state.match?.practiceType||state.practiceType||'').toLowerCase();
+  if(players.length<2 || players.length>5 || practiceType==='training' || practiceType==='vsshadow' ||
+     ((typeof __sqIsVsShadowRuntime==='function') && __sqIsVsShadowRuntime()) ||
+     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches){ start(); return; }
+
+  // The confirmed roster remains authoritative. Presentation never starts a
+  // replacement game after navigation, another start or an identity change.
+  const guard={page:document.body.dataset.page,token:Number(state.__gameToken||0),matchId:state.match?.id,players:JSON.stringify(state.players)};
+  const current=()=>document.body.dataset.page===guard.page && Number(state.__gameToken||0)===guard.token &&
+    state.match?.id===guard.matchId && JSON.stringify(state.players)===guard.players;
+  let done=false,timer=null,observer=null;
+  const overlay=document.createElement('div');
+  overlay.className='modal-backdrop sq-throw-order-reveal';
+  const finish=(play)=>{
+    if(done)return;
+    done=true;
+    const valid=play && overlay.isConnected && current();
+    clearTimeout(timer);observer?.disconnect();
+    window.removeEventListener('pagehide',cancel);
+    overlay.remove();
+    window.__sqThrowOrderRevealPending=false;
+    if(valid)start();
+  };
+  const cancel=()=>finish(false);
+  window.__sqThrowOrderRevealPending=true;
+  try{
+    const stage=document.createElement('section');
+    stage.className='sq-throw-order-stage';stage.dataset.count=String(players.length);
+    stage.setAttribute('role','dialog');stage.setAttribute('aria-modal','true');
+    stage.setAttribute('aria-label','Confirmed throw order');
+    const head=document.createElement('div');head.className='sq-throw-order-head';
+    const brand=document.createElement('span');brand.textContent='SHATEKI QUEST';
+    const game=document.createElement('b');game.textContent='GAME '+Math.max(1,Number(state.match?.gameNumber||1));
+    head.append(brand,game);
+    const title=document.createElement('div');title.className='sq-throw-order-title';title.textContent='THROW ORDER';
+    const format=document.createElement('div');format.className='sq-throw-order-format';
+    format.textContent=players.length>2?'FREE FOR ALL':'HEAD TO HEAD';
+    const lineup=document.createElement('div');lineup.className='sq-throw-order-lineup';
+    lineup.setAttribute('role','list');lineup.setAttribute('aria-label','Confirmed throw order');
+    const step=1720/(players.length*2-2);
+    players.forEach((p,i)=>{
+      if(i){
+        const vs=document.createElement('div');vs.className='sq-throw-order-vs sq-throw-order-beat';
+        vs.textContent='VS';vs.setAttribute('aria-hidden','true');
+        vs.style.setProperty('--sq-order-delay',((i*2-1)*step)+'ms');lineup.appendChild(vs);
+      }
+      const fighter=document.createElement('div');fighter.className='sq-throw-order-fighter sq-throw-order-beat';
+      const name=__sqPlayerPretty(p)||String(p.name||'').trim()||('Player '+(i+1));
+      fighter.setAttribute('role','listitem');fighter.setAttribute('aria-label','Throw order '+(i+1)+': '+name);
+      fighter.style.setProperty('--sq-order-delay',(i*2*step)+'ms');
+      const portrait=document.createElement('div');portrait.className='sq-throw-order-portrait';portrait.setAttribute('aria-hidden','true');
+      try{__sqApplyAvatarSprite(portrait,__sqAvatarIdForPlayer(p));}catch(_){}
+      const label=document.createElement('div');label.className='sq-throw-order-name';label.textContent=name;
+      fighter.append(portrait,label);lineup.appendChild(fighter);
+    });
+    const skip=document.createElement('button');skip.type='button';skip.className='btn sq-throw-order-skip';skip.textContent='SKIP';
+    skip.onclick=()=>finish(true);
+    overlay.addEventListener('keydown',e=>{
+      if(e.key==='Escape'){e.preventDefault();cancel();}
+      if(e.key==='Tab'){e.preventDefault();skip.focus();}
+    });
+    stage.append(head,title,format,lineup,skip);overlay.appendChild(stage);document.body.appendChild(overlay);
+    observer=new MutationObserver(()=>{if(!overlay.isConnected || !current())cancel();});
+    observer.observe(document.body,{attributes:true,attributeFilter:['data-page'],childList:true});
+    window.addEventListener('pagehide',cancel,{once:true});
+    skip.focus();
+    timer=setTimeout(()=>finish(true),2200);
+  }catch(error){
+    // Artwork/presentation failures must never strand a confirmed start.
+    if(done)throw error;
+    const valid=current();cancel();if(valid)start();
+  }
+}
 function showPlayerOrderDialog(opts={}) {
   const amend=opts.amend===true;
   if(amend){ const gate=__sqInitialOrderAmendEligibility(); if(!gate.ok){toast(gate.reason);return;} }
@@ -3445,10 +3520,11 @@ function showPlayerOrderDialog(opts={}) {
       if(applied)dismiss();else{startBtn.disabled=false;startBtn.textContent='APPLY CORRECTION';}
       return;
     }
-    if (!__sqNewGamePlayerCountAllowed()) return;
+    if (applying || window.__sqThrowOrderRevealPending || !__sqNewGamePlayerCountAllowed()) return;
+    applying=true;startBtn.disabled=true;
     if (autoEligible && state && state.match) state.match.autoRotateOrder = !!autoOrderPending;
     overlay.remove();
-    startNewGame(true);
+    __sqRevealConfirmedThrowOrder(()=>startNewGame(true));
   };
 
   const backBtn = document.createElement('button');
