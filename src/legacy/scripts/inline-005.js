@@ -29675,6 +29675,20 @@ const SQ_XP = {
     const now = Date.now();
     const cached = this._oneCache.get(key);
     if (!force && cached && (now - cached.at) < 60000) { this._oneAvailable.set(key, true); return cached.row; }
+    // SC-063: the player directory may already have a fresh authoritative XP
+    // snapshot. Reuse its matching row rather than asking PostgREST to
+    // recompute the same expensive view for one player.
+    const allFresh = !force && this._allAvailable && Array.isArray(this._cache) && (now - this._cacheAt) < 60000;
+    if (allFresh){
+      const row = this._cache.find(r => field === 'player_id'
+        ? String((r && r.player_id) || '') === raw
+        : String((r && r.name) || '').trim().toLowerCase() === raw.toLowerCase());
+      if (row){
+        this._oneAvailable.set(key, true);
+        this._oneCache.set(key, { at:this._cacheAt, row });
+        return row;
+      }
+    }
     if (!force && this._oneInflight.has(key)) return this._oneInflight.get(key);
     const SB = window.sb || window.__sb || null;
     if (!SB || typeof SB.from !== 'function') { this._oneAvailable.set(key, false); return cached ? cached.row : null; }
@@ -30693,7 +30707,15 @@ function __sqBuildAchievementPanel(achState, misfireState, xpRow, reducedMotion,
 function __sqPlayerStatsHistory(name, primary, retry=false){
   const history = primary.history || (primary.history = {});
   const failed = key => history[key + 'State'] && !history[key + 'State'].available;
-  if (!history.player || (retry && (failed('positive') || failed('misfires')))) history.player = SQ_ACH.playerForName(name).catch(() => null);
+  if (!history.player || (retry && (failed('positive') || failed('misfires')))){
+    const key = __sqPlayerStatsKey(name);
+    const known = (window.__sqPlayerStatsPlayers || []).find(p => __sqPlayerStatsKey(p.name) === key);
+    const raw = known && (known.raw || known);
+    const playerId = raw && (raw.id || raw.player_id);
+    history.player = playerId
+      ? Promise.resolve({ player_id:String(playerId), name:(known && known.name) || name })
+      : SQ_ACH.playerForName(name).catch(() => null);
+  }
   const source = (key, service) => {
     if (!history[key] || (retry && failed(key))){
       history[key + 'State'] = null;
@@ -32181,6 +32203,14 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
         // Do not start secondary reads for a closed or superseded profile.
         if (request !== profileRequest || !overlay.isConnected) return;
         try{
+          // SC-063: protect the critical progression/history reads from the
+          // heavier target-analytics burst. These promises already have their
+          // own truthful timeout/error states; this only controls ordering.
+          try{ await shell.primary.xp; }catch(_){}
+          if (request !== profileRequest || !overlay.isConnected) return;
+          const criticalHistory = __sqPlayerStatsHistory(n, shell.primary);
+          await Promise.allSettled([criticalHistory.positive, criticalHistory.misfires]);
+          if (request !== profileRequest || !overlay.isConnected) return;
           hydration = hydration || __sqStatsSourceDeadline(__sqBuildPlayerStatsProfile(n, shell.primary), 15000);
           wireView(await hydration, true);
         }catch(e){

@@ -5,8 +5,10 @@ const path = require('path');
 const H = require('./harness');
 // Complete groups keep hosted WebKit within the existing 180s command budget.
 const qaPart = process.env.SQ_SC070_PART || 'all';
-assert(['all','layout','numerical'].includes(qaPart),'Invalid SQ_SC070_PART: '+qaPart);
-const inPart = part => qaPart==='all'||qaPart===part;
+const expectedCases = {all:62,layout:26,numerical:36,identity:12,records:14,'numeric-doubles':12,'numeric-triples':12,'numeric-bull':12};
+const numericRoundParts = {11:'numeric-doubles',12:'numeric-triples',13:'numeric-bull'};
+assert(Object.hasOwn(expectedCases,qaPart),'Invalid SQ_SC070_PART: '+qaPart);
+const inPart = part => qaPart==='all'||qaPart===part||(qaPart==='layout'&&['identity','records'].includes(part))||(part==='numerical'&&qaPart.startsWith('numeric-'));
 const qaStarted = Date.now();
 const widths = [320,390,430];
 const shots = process.env.SQ_SCREENSHOTS;
@@ -125,7 +127,7 @@ async function read(page,key,numeric=false){
   try{
     await ctx.route('**.supabase.co/rest/v1/**',r=>{const method=r.request().method(),headers={'access-control-allow-origin':'*','access-control-expose-headers':'content-range','content-range':'*/0'};if(method==='GET')return r.fulfill({status:200,headers,contentType:'application/json',body:'[]'});if(method==='HEAD')return r.fulfill({status:200,headers,body:''});if(method==='OPTIONS')return r.fulfill({status:204,headers:{...headers,'access-control-allow-methods':'GET,HEAD,OPTIONS','access-control-allow-headers':r.request().headers()['access-control-request-headers']||'apikey,authorization,content-type,x-client-info'},body:''});return r.abort('failed');});
     await H.boot(page,{settle:800});
-    if(inPart('layout')){
+    if(inPart('identity')){
     for(const mode of ['match','turbo'])for(const width of widths)for(const long of [false,true]){
       await page.setViewportSize({width,height:844});await seed(page,5,mode);await advance(page,mode==='turbo'?9:8);await identity(page,long,true,mode==='match'&&long);
       await page.evaluate(()=>{for(const kind of ['S','D','T','Miss','S','D','T','Miss','S','T','D','Miss','S'])recordThrow({kind,number:ROUNDS[state.currentRound].target});});await settled(page,mode==='turbo'?9:8);
@@ -134,12 +136,13 @@ async function read(page,key,numeric=false){
     }
     if(inPart('numerical')){
     for(const mode of ['match','turbo','practice','tournament'])for(const round of [11,12,13])for(const width of widths){
+      if(qaPart.startsWith('numeric-')&&qaPart!==numericRoundParts[round])continue;
       await page.setViewportSize({width,height:844});await seed(page,5,mode);await advance(page,round);await identity(page,true,true);
       await page.evaluate(r=>{[20,10,17,0,20,10,17,0,20,17,10,0,20,10].forEach((v,i)=>recordThrow(!v?{kind:'Miss'}:r===13?{kind:'B',bull:i%2?'Outer':'Inner'}:{kind:r===11?'D':'T',sector:v}));},round);await settled(page,round);
       const r=await read(page,mode+'-numeric-'+round+'-'+width,true),tokens=r.cells.flatMap(c=>c.dots.map(d=>d.text));for(const token of round===11?['D20','D10','D17','X']:round===12?['T20','T10','T17','X']:['50','25','X'])assert(tokens.includes(token),'Real canonical token missing: '+token);
     }
     }
-    if(inPart('layout')){
+    if(inPart('records')){
     for(const width of widths){
       await page.setViewportSize({width,height:844});await seed(page);await advance(page,13);await identity(page,true,true);await page.evaluate(()=>{for(let i=0;i<14;i++)recordThrow({kind:'B',bull:'Inner'});});await settled(page,13);
       const r=await read(page,'canonical-1935-'+width,true);assert.equal(r.headers[0].truth,1935,'Canonical maximum must be fully visible');
@@ -156,7 +159,7 @@ async function read(page,key,numeric=false){
     }
     await page.emulateMedia({reducedMotion:'reduce'});await page.setViewportSize({width:320,height:844});await seed(page);await advance(page,12);await identity(page,true,true);await read(page,'reduced-motion-triplets',true);assert.equal(await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().length),0);
     }
-    assert.equal(cases,qaPart==='all'?62:qaPart==='layout'?26:36,'Complete focused group coverage changed');
+    assert.equal(cases,expectedCases[qaPart],'Complete focused group coverage changed');
     assert.deepEqual(consoleErrs.filter(e=>e.startsWith('pageerror:')),[],'Unexpected page errors');console.log('SC070 five-player fit PASS '+cases+' cases ('+qaPart+', '+(Date.now()-qaStarted)+'ms); production writes blocked');
   }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});
