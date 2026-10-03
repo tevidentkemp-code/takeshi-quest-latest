@@ -336,6 +336,11 @@
       m.close(); setTimeout(function(){ openAddPlayerMenu(window.__sqOpenGameMenu106); },0);
     }});
     addRow(m.body,{ico:'−',label:'Remove Player',desc:'Remove from this game',onClick:function(){m.close(); openRemovePlayerMenu(window.__sqOpenGameMenu106);}});
+    var __orderGate=typeof __sqInitialOrderAmendEligibility==='function'?__sqInitialOrderAmendEligibility():{ok:false,reason:'Initial order correction unavailable.'};
+    addRow(m.body,{ico:'↕',label:'Amend Initial Order',desc:(__orderGate.ok?'Game 1 • correction before Round 1 completes':__orderGate.reason),onClick:function(){
+      if(!__orderGate.ok){try{toast(__orderGate.reason);}catch(_){}return;}
+      m.close();showPlayerOrderDialog({amend:true,onBack:window.__sqOpenGameMenu106});
+    }});
     // Destructive group, set apart below a divider.
     try{ m.body.insertAdjacentHTML('beforeend','<div class="sq-menu106-sep" aria-hidden="true"></div>'); }catch(_){ }
     addRow(m.body,{ico:'↻',label:'Restart Game',desc:'Reset this game',cls:'danger',onClick:function(){m.close(); doRestartGame();}});
