@@ -81,6 +81,49 @@ function __sqBindLiveV2QuickRail(panel){
     }
   }catch(_){}
 }
+function __sqCancelV2WallMotion(panel){
+  const host = panel || document.getElementById('liveV2Panel');
+  const wall = host && host.__sqV2Wall;
+  try{ wall?.animation?.cancel(); }catch(_){}
+  if(host) delete host.__sqV2Wall;
+}
+function __sqSyncV2WallMotion(panel, tableRound){
+  const rows = panel.querySelector('#v2Rows'), wrap = panel.querySelector('.v2RowsWrap');
+  const count = getLiveV2PlayerCount();
+  if(!rows || !wrap || count < 2 || count > 5){__sqCancelV2WallMotion(panel);return;}
+  const previous = panel.__sqV2Wall;
+  const game = String(state.match?.id || '')+'|'+String(state.__gameToken || 0)+'|'+state.players.map(p=>p.id || p.name).join(',');
+  const history = state.history?.length || 0;
+  const sameGame = previous && previous.game === game;
+  const changedRound = sameGame && previous.round !== tableRound;
+  const moving = previous?.animation && ['running','paused'].includes(previous.animation.playState);
+  const rollback = sameGame && history < previous.history;
+  if(!sameGame || changedRound || rollback){
+    try{ previous?.animation?.cancel(); }catch(_){}
+  }
+  // A completed table round may start catch-up with an older scoring cursor.
+  // Its wall still moves forward to the scheduled table round, never backward.
+  const forward = sameGame && tableRound === previous.round + 1 && history > previous.history;
+  if(forward) wrap.scrollTop = wrap.scrollHeight;
+  const current = {game,round:tableRound,history,animation:(!changedRound && !rollback && sameGame) ? previous.animation : null};
+  panel.__sqV2Wall = current;
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if(reduced){try{ current.animation?.cancel(); }catch(_){}current.animation=null;return;}
+  // A new round while the previous motion is still active presents the newest
+  // truth immediately. Score entry never waits for a visual transition.
+  if(!forward || moving || typeof rows.animate !== 'function') return;
+  const badges = Array.from(rows.querySelectorAll('.v2Badge'));
+  const liveIndex = badges.findIndex(b=>b.classList.contains('liveRow'));
+  const last = badges[liveIndex-1], prior = badges[liveIndex-2];
+  if(!last || !prior) return;
+  const pitch = last.getBoundingClientRect().top - prior.getBoundingClientRect().top;
+  if(!(pitch > 0)) return;
+  // One persistent grid moves as a unit: no cloned/stale scores and no overlap
+  // between the completed row, divider and newly active row.
+  const animation = rows.animate([{transform:'translateY('+pitch+'px)'},{transform:'translateY(0)'}],{duration:300,easing:'cubic-bezier(.2,.65,.3,1)'});
+  current.animation = animation;
+  animation.onfinish = ()=>{if(panel.__sqV2Wall?.animation === animation) panel.__sqV2Wall.animation=null;};
+}
 function liveV2Render(){
   // Only runs on gameplay screen; prevents start/menu JS from crashing
   const page = document.body && (document.body.getAttribute('data-page') || document.body.dataset && document.body.dataset.page);
@@ -132,6 +175,7 @@ function liveV2Render(){
   try{ if (typeof __sqSyncTurboVisualState === 'function') __sqSyncTurboVisualState('game'); }catch(_){ }
 
   if(!eligible){
+    __sqCancelV2WallMotion(panel);
     panel.hidden = true;
     return;
   }
@@ -307,7 +351,7 @@ function liveV2Render(){
     }
   });
 
-  // Rounds list: 3-row viewport. At game start show current + next 2; later show current + previous 2.
+  // Rounds list: three completed rows plus the live row; older rows remain scrollable.
   // >>> PATCH:LIVEV2_ROWS_GUARD START
   try {
   const rowsHost = document.getElementById("v2Rows");
@@ -332,6 +376,9 @@ function liveV2Render(){
     })());
     const __sqStandardMatchStartAnchor = (pCount > 1 && tableCr <= 2 && (function(){
       try{
+        // Supported multiplayer modes share the existing blank/trailing wall.
+        // Historical six-player views retain their established presentation.
+        if(pCount <= 5) return true;
         const m = state.match || {};
         const mode = String(state.mode || state.gameMode || m.mode || m.gameMode || '').toLowerCase();
         const tType = String(m.tournamentType || m.tournament_type || state.tournamentType || state.tournament_type || '').toLowerCase();
@@ -496,6 +543,7 @@ out.push(`<div class="v2Cell${rowClass} ${(isActiveCell ? "active":"")} ${(isHi 
       }
     }
     rowsHost.innerHTML = out.join("");
+    if(pCount > 1) __sqSetupLiveV2RowsWindow(panel);
 
     // Current-round target cells live inside the live score cells only. They
     // derive from the authoritative per-player round darts and reset in place
@@ -681,6 +729,8 @@ const out2 = [];
       window.__liveV2UserScrolled = false;
     }
   }
+
+  try{ __sqSyncV2WallMotion(panel, tableCr); }catch(_){}
 
   // Averages box (under 3-round viewport)
   const avgHost = document.getElementById("v2Avg");
