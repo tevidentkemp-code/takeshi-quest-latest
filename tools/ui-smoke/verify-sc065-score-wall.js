@@ -39,9 +39,23 @@ async function seed(page, count, round = 10, mode = 'match') {
   progress('FIXTURE',qaCase+' '+mode+'/'+count+' players/round '+round);
   await page.evaluate(async ({n,mode}) => {
     window.__sqSc065YieldTrace=[];
+    window.__sqSc065Timing={preSeed:{at:performance.now(),timeOrigin:performance.timeOrigin,page:document.body.dataset.page,ready:document.readyState,visibility:document.visibilityState,fonts:document.fonts.status,bodyClasses:document.body.className,playerCount:state.players.length},frames:[],builds:[],transitions:[],yields:[]};
+    if(!window.__sqSc065NativeRaf){
+      window.__sqSc065NativeRaf=requestAnimationFrame;
+      window.requestAnimationFrame=function(callback){
+        const d=window.__sqSc065Timing,item={queued:performance.now(),name:callback.name},yieldItem=window.__sqSc065PendingYield;window.__sqSc065PendingYield=null;
+        if(yieldItem)yieldItem.rafQueued=item.queued;
+        if(d){d.frames.push(item);if(d.frames.length>100)d.frames.shift();}
+        return window.__sqSc065NativeRaf.call(this,function(){item.called=performance.now();if(yieldItem)yieldItem.rafCalled=item.called;return callback.apply(this,arguments);});
+      };
+      for(const name of ['buildScoreHeader','buildScoreBody','buildFloatingHeader','buildStatsHeader','buildStatsBody','buildMatchStatsHeader','buildMatchStatsBody','setupScrollSync']){
+        const native=window[name];window[name]=function(){const d=window.__sqSc065Timing,item={name,start:performance.now()};if(d){d.builds.push(item);if(d.builds.length>30)d.builds.shift();}try{return native.apply(this,arguments);}finally{item.end=performance.now();}};
+      }
+      const observer=new MutationObserver(records=>{const d=window.__sqSc065Timing;if(!d)return;for(const record of records){d.transitions.push({at:performance.now(),id:record.target.id,attribute:record.attributeName,value:record.target.getAttribute(record.attributeName),page:document.body.dataset.page});if(d.transitions.length>40)d.transitions.shift();}});observer.observe(document.body,{attributes:true,attributeFilter:['data-page']});const overlay=document.getElementById('gameLoadOverlay');if(overlay)observer.observe(overlay,{attributes:true,attributeFilter:['aria-hidden','class','style']});
+    }
     if(!window.__sqSc065YieldOriginal){
       window.__sqSc065YieldOriginal=__sqYieldToPaint;
-      __sqYieldToPaint=function(){const item={start:performance.now()};window.__sqSc065YieldTrace.push(item);return window.__sqSc065YieldOriginal().then(value=>{item.end=performance.now();return value;});};
+      __sqYieldToPaint=function(){const item={start:performance.now()};window.__sqSc065YieldTrace.push(item);const timing={start:item.start};window.__sqSc065Timing.yields.push(timing);window.__sqSc065PendingYield=timing;const promise=window.__sqSc065YieldOriginal.apply(this,arguments);window.__sqSc065PendingYield=null;return promise.then(value=>{item.end=performance.now();timing.end=item.end;return value;});};
     }
     window.__sqSc065FixtureFrame=false;
     requestAnimationFrame(()=>{window.__sqSc065FixtureFrame=true;});
@@ -64,17 +78,18 @@ async function seed(page, count, round = 10, mode = 'match') {
     await page.click('.sq-turbo-ready-start');
     await page.waitForFunction(()=>window.__sqTurboTimerStatus().active && document.querySelector('.sqTurboTimerActive'));
   }
+  const waitDispatched=Date.now();
   try{
     await page.waitForFunction(()=>document.body.dataset.page==='game' && document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');
   }catch(error){
     const diagnostic=await page.evaluate(()=>{
       const overlay=document.getElementById('gameLoadOverlay'),boot=document.getElementById('bootSplash'),panel=document.getElementById('liveV2Panel');
       const status=el=>el?{hidden:el.hidden,ariaHidden:el.getAttribute('aria-hidden'),display:getComputedStyle(el).display,opacity:getComputedStyle(el).opacity,rect:el.getBoundingClientRect().toJSON()}:null;
-      return{page:document.body.dataset.page,visibility:document.visibilityState,hidden:document.hidden,ready:document.readyState,fixtureFrame:window.__sqSc065FixtureFrame,yields:window.__sqSc065YieldTrace,overlay:status(overlay),boot:status(boot),panel:status(panel),round:state.currentRound,token:state.__gameToken,history:state.history.length,tableRows:document.querySelectorAll('#tbody tr').length,scriptPaths:[...document.scripts].filter(s=>s.src&&new URL(s.src).origin===location.origin).map(s=>new URL(s.src).pathname)};
+      return{page:document.body.dataset.page,visibility:document.visibilityState,hidden:document.hidden,ready:document.readyState,fixtureFrame:window.__sqSc065FixtureFrame,yields:window.__sqSc065YieldTrace,nativeTiming:window.__sqSc065Timing,overlay:status(overlay),boot:status(boot),panel:status(panel),round:state.currentRound,token:state.__gameToken,history:state.history.length,tableRows:document.querySelectorAll('#tbody tr').length,scriptPaths:[...document.scripts].filter(s=>s.src&&new URL(s.src).origin===location.origin).map(s=>new URL(s.src).pathname)};
     });
     // Playwright caches its original error stack, so an appended message is
     // absent from Node's normal error print. Emit the credential-free state.
-    console.error('SC065 fixture deadline '+JSON.stringify({count,round,mode,diagnostic}));
+    console.error('SC065 fixture deadline '+JSON.stringify({count,round,mode,waitDispatched,deadline:waitDispatched+8000,observedAt:Date.now(),diagnostic}));
     if(process.env.SQ_SCREENSHOTS){
       fs.mkdirSync(process.env.SQ_SCREENSHOTS,{recursive:true});
       await page.screenshot({path:path.join(process.env.SQ_SCREENSHOTS,'sc065-fixture-failure.png')});

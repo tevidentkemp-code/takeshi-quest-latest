@@ -45,11 +45,50 @@ async function identity(page,long=false,maxWins=false){
 async function observer(page){
   await page.evaluate(()=>{
     const c=document.getElementById('v2InfoDmd'),ctx=c.getContext('2d');window.__sc070Legend=new Map();window.__sc070Packet=null;
-    if(!window.__sc070DrawNative){window.__sc070DrawNative=__sqDrawArcadeRace;__sqDrawArcadeRace=function(canvas,packet,st,now){if(packet)window.__sc070Packet=JSON.stringify(packet);return window.__sc070DrawNative(canvas,packet,st,now);};}
+    const ids=window.__sc070Ids||(window.__sc070Ids={canvases:new WeakMap(),contexts:new WeakMap(),next:0});
+    const id=(map,value)=>{if(!value||!['object','function'].includes(typeof value))return null;if(!map.has(value))map.set(value,++ids.next);return map.get(value);};
+    const d=window.__sc070Diag={at:performance.now(),initialCanvas:id(ids.canvases,c),initialContext:id(ids.contexts,ctx),drawCount:0,nativeTextCount:0,frameCount:0,draws:[],text:[],frames:[]};
+    if(!window.__sc070NativeText){
+      window.__sc070NativeText=CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText=function(text,x,y,maxWidth){
+        const d=window.__sc070Diag;
+        if(d && this.canvas?.id==='v2InfoDmd'){
+          d.nativeTextCount++;
+          d.text.push({at:performance.now(),text,x,y,font:this.font,align:this.textAlign,width:this.measureText(text).width,maxWidth,canvas:id(ids.canvases,this.canvas),context:id(ids.contexts,this),connected:this.canvas.isConnected,currentCanvas:this.canvas===document.getElementById('v2InfoDmd')});
+          if(d.text.length>100)d.text.shift();
+        }
+        return window.__sc070NativeText.apply(this,arguments);
+      };
+    }
+    if(!window.__sc070NativeRaf){
+      window.__sc070NativeRaf=requestAnimationFrame;
+      window.requestAnimationFrame=function(callback){
+        const d=window.__sc070Diag,item={queued:performance.now(),name:callback.name};
+        if(d){d.frames.push(item);if(d.frames.length>80)d.frames.shift();}
+        return window.__sc070NativeRaf.call(this,function(){item.called=performance.now();if(d)d.frameCount++;return callback.apply(this,arguments);});
+      };
+    }
+    if(!window.__sc070DrawNative){window.__sc070DrawNative=__sqDrawArcadeRace;__sqDrawArcadeRace=function(canvas,packet,st,now){
+      if(packet)window.__sc070Packet=JSON.stringify(packet);
+      const context=canvas?.getContext?.('2d'),d=window.__sc070Diag,item={start:performance.now(),canvas:id(ids.canvases,canvas),context:id(ids.contexts,context),canvasId:canvas?.id,connected:canvas?.isConnected,currentCanvas:canvas===document.getElementById('v2InfoDmd'),packetNames:Array.isArray(packet?.series)?packet.series.map(s=>s?.name):null,ctxHook:!!context?.__sc070FillNative,maxV:st?.maxV,lastLen:Array.isArray(st?.lastLen)?st.lastLen.slice():st?.lastLen,lastFull:Array.isArray(st?.lastFull)?st.lastFull.slice():st?.lastFull};
+      if(d){d.drawCount++;d.draws.push(item);if(d.draws.length>24)d.draws.shift();}
+      try{return window.__sc070DrawNative.apply(this,arguments);}finally{item.end=performance.now();}
+    };}
     if(!ctx.__sc070FillNative){ctx.__sc070FillNative=ctx.fillText;ctx.fillText=function(text,x,y,maxWidth){if(this.font.includes('9px')&&this.textAlign==='left'&&y<40){const natural=this.measureText(text).width;window.__sc070Legend.set(text,{text,x,y,end:x+(maxWidth===undefined?natural:Math.min(natural,maxWidth)),natural,font:this.font,color:this.fillStyle,compressed:maxWidth!==undefined});}return ctx.__sc070FillNative.apply(this,arguments);};}
   });
+  const at=Date.now();let stage='packet';
+  try{
   await page.waitForFunction(()=>{try{const p=JSON.parse(window.__sc070Packet);return p.series.length===state.players.length&&p.series.every((s,i)=>s.name===state.players[i].name);}catch(_){return false;}});
-  await page.evaluate(()=>window.__sc070Legend.clear());await frames(page);await page.waitForFunction(()=>window.__sc070Legend.size>=state.players.length);
+  stage='clear';await page.evaluate(()=>window.__sc070Legend.clear());stage='frames';await frames(page);stage='legend';await page.waitForFunction(()=>window.__sc070Legend.size>=state.players.length);
+  }catch(error){
+    try{
+      console.error('SC070 native observer deadline '+JSON.stringify({stage,waitStarted:at,observedAt:Date.now(),diagnostic:await page.evaluate(()=>{
+        const c=document.getElementById('v2InfoDmd'),ctx=c?.getContext('2d'),ids=window.__sc070Ids;
+        return{at:performance.now(),timeOrigin:performance.timeOrigin,page:document.body.dataset.page,ready:document.readyState,visibility:document.visibilityState,hidden:document.hidden,bodyClasses:document.body.className,fonts:document.fonts.status,canvas:c?{identity:ids.canvases.get(c),context:ids.contexts.get(ctx),connected:c.isConnected,rect:c.getBoundingClientRect().toJSON(),width:c.width,height:c.height,ctxHook:!!ctx.__sc070FillNative}:null,packet:window.__sc070Packet?JSON.parse(window.__sc070Packet):null,map:[...window.__sc070Legend.values()],players:state.players.map(p=>p.name),gameToken:state.__gameToken,history:state.history.length,animations:document.getElementById('v2Rows').getAnimations().map(a=>({pending:a.pending,state:a.playState,time:a.currentTime})),renderRaf:window.__sqV2RaceRaf,native:window.__sc070Diag};
+      }),pageErrors:(page.__sc070ConsoleErrors||[]).filter(e=>e.startsWith('pageerror:'))}));
+    }catch(diagnosticError){console.error('SC070 diagnostic read failed '+String(diagnosticError));}
+    throw error;
+  }
 }
 async function measure(page){return page.evaluate(()=>{
   const rect=e=>{const r=e.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom};};
@@ -82,7 +121,7 @@ async function read(page,key,numeric=false){
   console.log('PASS '+key);cases++;return r;
 }
 (async()=>{
-  const{browser,ctx,page,consoleErrs}=await H.launch({width:390,height:844});
+  const{browser,ctx,page,consoleErrs}=await H.launch({width:390,height:844});page.__sc070ConsoleErrors=consoleErrs;
   try{
     await ctx.route('**.supabase.co/rest/v1/**',r=>{const method=r.request().method(),headers={'access-control-allow-origin':'*','access-control-expose-headers':'content-range','content-range':'*/0'};if(method==='GET')return r.fulfill({status:200,headers,contentType:'application/json',body:'[]'});if(method==='HEAD')return r.fulfill({status:200,headers,body:''});if(method==='OPTIONS')return r.fulfill({status:204,headers:{...headers,'access-control-allow-methods':'GET,HEAD,OPTIONS','access-control-allow-headers':r.request().headers()['access-control-request-headers']||'apikey,authorization,content-type,x-client-info'},body:''});return r.abort('failed');});
     await H.boot(page,{settle:800});
