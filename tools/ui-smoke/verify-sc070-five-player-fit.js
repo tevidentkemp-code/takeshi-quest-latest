@@ -39,8 +39,8 @@ async function advance(page,round){
   await page.evaluate(round=>{let guard=0;while(state.currentRound<round&&guard++<250){const r=state.currentRound;recordThrow(r===11?{kind:'D',sector:20}:r===12?{kind:'T',sector:20}:{kind:'T',number:ROUNDS[r].target});}if(state.currentRound!==round)throw new Error('Canonical fixture did not reach requested round');},round);
   await settled(page,round);
 }
-async function identity(page,long=false,maxWins=false){
-  await page.evaluate(({long,maxWins})=>{state.players.forEach((p,i)=>p.name=long?'WWWWWWWWWWW'+String.fromCharCode(65+i):'PLAYER '+String.fromCharCode(65+i));if(maxWins){state.match.targetWins=5;state.match.wins=[4,3,2,1,0];}updateUI();},{long,maxWins});await frames(page);
+async function identity(page,long=false,maxWins=false,widest=false){
+  await page.evaluate(({long,maxWins,widest})=>{state.players.forEach((p,i)=>p.name=widest?['WWWWWWWWWWWW','WWWWWWWWWWWM','WWWWWWWWWWWA','WWWWWWWWWWWB','WWWWWWWWWWWC'][i]:long?'WWWWWWWWWWW'+String.fromCharCode(65+i):'PLAYER '+String.fromCharCode(65+i));if(maxWins){state.match.targetWins=5;state.match.wins=[4,3,2,1,0];}updateUI();},{long,maxWins,widest});await frames(page);
 }
 async function observer(page){
   await page.evaluate(()=>{
@@ -127,7 +127,7 @@ async function read(page,key,numeric=false){
     await H.boot(page,{settle:800});
     if(inPart('layout')){
     for(const mode of ['match','turbo'])for(const width of widths)for(const long of [false,true]){
-      await page.setViewportSize({width,height:844});await seed(page,5,mode);await advance(page,mode==='turbo'?9:8);await identity(page,long,true);
+      await page.setViewportSize({width,height:844});await seed(page,5,mode);await advance(page,mode==='turbo'?9:8);await identity(page,long,true,mode==='match'&&long);
       await page.evaluate(()=>{for(const kind of ['S','D','T','Miss','S','D','T','Miss','S','T','D','Miss','S'])recordThrow({kind,number:ROUNDS[state.currentRound].target});});await settled(page,mode==='turbo'?9:8);
       const r=await read(page,mode+'-'+width+'-'+(long?'long':'ordinary'));if(mode==='match')assert.equal(r.headers[0].truth,1080,'Actual canonical1080 fixture changed');
     }

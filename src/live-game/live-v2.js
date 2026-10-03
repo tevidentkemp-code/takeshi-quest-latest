@@ -3745,13 +3745,15 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
       let keyX = 26, keyY = 3;
       const keyRight = cssW - 12;
       const singleRowHs = perThrowRace && records.length;
-      const keyGap = singleRowHs ? 6 : 12;
+      const keyWidths = packet.series.map(s => ctx.measureText(String(s.name || '').replace(/^Record:/i,'HS').slice(0,12)).width);
+      const widestPair = Math.max(0, ...keyWidths.slice(1).map((width, i) => width + keyWidths[i]));
+      const keyGap = singleRowHs ? 6 : Math.max(0, Math.min(12, keyRight - 26 - widestPair - 0.5));
       const place = width => {
         if (keyX > 26 && keyX + width > keyRight) { keyX = 26; keyY += 12; legendRows++; }
       };
-      packet.series.forEach(s => {
+      packet.series.forEach((s, i) => {
         const label = String(s.name || '').replace(/^Record:/i,'HS').slice(0,12);
-        const width = ctx.measureText(label).width;
+        const width = keyWidths[i];
         place(width); ctx.fillStyle = s.color || '#7bdcff'; ctx.fillText(label, keyX, keyY);
         keyX += width + keyGap;
       });
