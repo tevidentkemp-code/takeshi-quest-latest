@@ -129,7 +129,7 @@ jobs:
             core-dist-verify.txt
 
   webkit-home:
-    name: WebKit — Home, Stats and score wall source + dist
+    name: WebKit — Home and Stats source + dist
     needs: static-build
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -150,7 +150,7 @@ jobs:
           set -euo pipefail
           npm ci --prefix tools/ui-smoke --ignore-scripts
           npx --prefix tools/ui-smoke playwright install --with-deps webkit
-      - name: Verify Home, Player Stats and score wall in WebKit
+      - name: Verify Home and Player Stats in WebKit
         shell: bash
         env:
           SQ_BROWSER: webkit
@@ -165,8 +165,6 @@ jobs:
           SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/dist timeout 180s node tools/ui-smoke/verify-sc047-live-updates.js | tee core-webkit-dist-home.txt
           SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/stats-source timeout 180s node tools/ui-smoke/verify-sc043-player-stats.js | tee core-webkit-source-stats.txt
           SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/stats-dist timeout 180s node tools/ui-smoke/verify-sc043-player-stats.js | tee core-webkit-dist-stats.txt
-          SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/score-wall-source timeout 180s node tools/ui-smoke/verify-sc065-score-wall.js | tee core-webkit-source-score-wall.txt
-          SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/score-wall-dist timeout 180s node tools/ui-smoke/verify-sc065-score-wall.js | tee core-webkit-dist-score-wall.txt
       - name: Keep WebKit evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -176,6 +174,60 @@ jobs:
           path: |
             core-webkit-*.txt
             qa-artifacts-webkit/
+
+  webkit-score-wall:
+    # Exact 8f2e CI passed cases continuously until the full matrix hit 180s.
+    # Partition complete groups; preserve every assertion and existing budget.
+    name: WebKit score wall — ${{ matrix.build }} / ${{ matrix.part }}
+    needs: static-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [source, dist]
+        part: [late, early, lifecycle]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        if: matrix.build == 'dist'
+        with:
+          name: core-release-dist
+          path: dist
+      - name: Install WebKit QA
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps webkit
+      - name: Verify complete score-wall group in WebKit
+        shell: bash
+        env:
+          SQ_BROWSER: webkit
+          SQ_SC065_PART: ${{ matrix.part }}
+          SQ_SERVER_DIRECTORY: ${{ matrix.build == 'dist' && 'dist' || '.' }}
+          SQ_APP_URL: http://127.0.0.1:8123/index.html
+          SQ_SCREENSHOTS: qa-artifacts-webkit-score-wall
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 --directory "$SQ_SERVER_DIRECTORY" >/tmp/webkit-score-wall.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          timeout 180s node tools/ui-smoke/verify-sc065-score-wall.js | tee core-webkit-score-wall.txt
+      - name: Keep complete score-wall group evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-release-webkit-score-wall-${{ matrix.build }}-${{ matrix.part }}-evidence
+          retention-days: 14
+          path: |
+            core-webkit-score-wall.txt
+            qa-artifacts-webkit-score-wall/
 
   source-core:
     name: Source representative — core journey

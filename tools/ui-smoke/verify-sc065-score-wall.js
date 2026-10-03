@@ -3,10 +3,24 @@ const fs = require('fs');
 const path = require('path');
 const H = require('./harness');
 
+// Linux WebKit's full matrix exceeded the unchanged 180s command budget
+// while every completed case passed. Keep complete groups independently runnable.
+const qaPart=process.env.SQ_SC065_PART || 'all';
+assert(['all','late','early','lifecycle'].includes(qaPart),'Invalid SQ_SC065_PART: '+qaPart);
+const widths=[320,390,430],counts=[2,3,4,5],earlyModes=['match','tournament','practice'];
+const lifecycleCases=['Turbo/2 players','Turbo/5 players','solo and historical six preservation','Undo during motion','navigation during motion','reload during motion','new game during motion','pad scoring during motion','rapid round completion','reduced motion'];
+const caseGroups={
+  late:widths.flatMap(width=>counts.map(count=>'late '+width+'px/'+count+' players')),
+  early:earlyModes.flatMap(mode=>counts.flatMap(count=>[0,1,2].map(round=>'early '+mode+'/'+count+' players/round '+round))),
+  lifecycle:lifecycleCases
+};
+const plannedCases=Object.entries(caseGroups).filter(([part])=>qaPart==='all' || qaPart===part).flatMap(([,cases])=>cases);
+const completedCases=[];
 const qaStarted=Date.now();
 let qaCase='boot';
 function progress(stage,label){
   if(stage==='START') qaCase=label;
+  if(stage==='PASS') completedCases.push(label);
   console.log('SC065 '+new Date().toISOString()+' +'+(Date.now()-qaStarted)+'ms '+stage+' '+label);
 }
 async function frames(page,count,label){
@@ -108,6 +122,9 @@ async function begin(page) {
 }
 
 (async()=>{
+  if(process.argv.includes('--list-cases')){
+    console.log(JSON.stringify({part:qaPart,cases:plannedCases}));return;
+  }
   const {browser,ctx,page,consoleErrs}=await H.launch({width:390,height:844});
   try{
     const fixtureHeaders=new Map();
@@ -129,9 +146,10 @@ async function begin(page) {
       return route.abort('failed');
     });
     await H.boot(page,{settle:800});
-    for(const width of [320,390,430]){
+    if(qaPart==='all' || qaPart==='late'){
+    for(const width of widths){
       await page.setViewportSize({width,height:width===320?568:844});
-      for(const count of [2,3,4,5]){
+      for(const count of counts){
         progress('START','late '+width+'px/'+count+' players');
         await seed(page,count); contained(await wall(page),width+'px/'+count+' players late round');
         await prepareCompletion(page);
@@ -172,11 +190,13 @@ async function begin(page) {
         progress('PASS',qaCase);
       }
     }
+    }
 
-    // Early normal Match rounds retain their existing blank-row anchoring and
+    // Shared early rounds retain their existing blank-row anchoring and
     // gain the same single motion without creating duplicate completed rows.
+    if(qaPart==='all' || qaPart==='early'){
     await page.setViewportSize({width:390,height:844});
-    for(const mode of ['match','tournament','practice']) for(const count of [2,3,4,5]){
+    for(const mode of earlyModes) for(const count of counts){
       progress('START','early '+mode+'/'+count+' players');
       await seed(page,count,0,mode);
       for(let round=0;round<3;round++){
@@ -209,9 +229,11 @@ async function begin(page) {
       }
       contained(await wall(page),mode+' early Round4');
     }
+    }
 
     // Genuine Turbo keeps its Round17 start, strict timer and scoring, while
     // its late wall uses the same history containment and native row motion.
+    if(qaPart==='all' || qaPart==='lifecycle'){
     for(const count of [2,5]){
       progress('START','Turbo/'+count+' players');
       await seed(page,count,10,'turbo');contained(await wall(page),'Turbo late round');
@@ -300,8 +322,10 @@ async function begin(page) {
     await page.evaluate(()=>recordThrow({kind:'S',number:20}));await rest(page,11);
     contained(await wall(page),'Reduced motion');assert.equal((await wall(page)).running,0,'Reduced motion animated');
     progress('PASS',qaCase);
+    }
     const errors=consoleErrs.filter(e=>e.startsWith('pageerror:'));
     assert.deepEqual(errors,[],'Unexpected browser errors: '+JSON.stringify(errors));
-    console.log('SC-065 score-wall PASS: 2–5 players, 320/390/430, three completed rows, interpolated one-row motion, Match/Classic Tournament/Practice early rounds, Turbo start/timer, solo/six preservation, truth, Undo/navigation/reload/rapid/reduced motion');
+    assert.deepEqual(completedCases,plannedCases,'Selected SC065 coverage was incomplete or duplicated');
+    console.log('SC-065 score-wall PASS: '+qaPart+'; '+completedCases.length+' complete cases, strict errors empty');
   }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exit(1);});
