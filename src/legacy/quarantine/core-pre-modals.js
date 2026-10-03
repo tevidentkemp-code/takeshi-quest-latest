@@ -932,29 +932,15 @@ if(hsBody){
       const LP_VISIBLE = 15;
       const LP_SYNC_MS = Math.max(15000, (typeof SQ_GAMES_VISIBLE_MIN_POLL_MS !== 'undefined' ? SQ_GAMES_VISIBLE_MIN_POLL_MS : 15000));
       const LP_LOCAL_EVENT_KEY = 'sq_live_updates_events_v1';
-      const LP_LOCAL_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-      const lpReadLocalEvents = () => {
-        try {
-          const raw = JSON.parse(localStorage.getItem(LP_LOCAL_EVENT_KEY) || '[]');
-          const now = Date.now();
-          return (Array.isArray(raw) ? raw : [])
-            .filter(e => e && e.line && Number.isFinite(new Date(e.ts).getTime()) && (now - new Date(e.ts).getTime()) < LP_LOCAL_EVENT_TTL_MS)
-            .slice(-20);
-        } catch (_) { return []; }
+      // LIVE UPDATES is a public history surface. Browser-local presentation
+      // events are not authoritative and must never survive as feed history.
+      const lpClearLegacyLocalEvents = () => {
+        try { localStorage.removeItem(LP_LOCAL_EVENT_KEY); } catch (_) {}
       };
-      const lpPersistLocalEvent = (line, kind = 'manual') => {
-        const l = String(line || '').replace(/\s+/g, ' ').trim();
-        if (!l) return null;
-        try {
-          const now = Date.now();
-          let events = lpReadLocalEvents().filter(e => !(e.line === l && (now - new Date(e.ts).getTime()) < 60000));
-          const ev = { id:'local:' + now + ':' + Math.random().toString(36).slice(2,8), ts:new Date(now).toISOString(), kind:String(kind || 'manual'), line:l };
-          events.push(ev);
-          events = events.slice(-20);
-          localStorage.setItem(LP_LOCAL_EVENT_KEY, JSON.stringify(events));
-          return ev;
-        } catch (_) { return null; }
-      };
+      lpClearLegacyLocalEvents();
+      const lpReadLocalEvents = () => [];
+      const lpPersistLocalEvent = () => null;
+
       // Cloud availability helper (avoid ReferenceError on older builds)
       const lpCloudOK = () => {
         try {
@@ -987,6 +973,23 @@ if(hsBody){
         }catch(_e){}
         return false;
       };
+      const lpIsPracticeGame = (g) => {
+        try{
+          if (!g) return false;
+          const st = g.state || g.game_state || {};
+          const match = g.match || st.match || {};
+          const vals = [
+            g.mode, g.gameMode, g.game_mode, g.type,
+            st.mode, st.gameMode, st.game_mode, st.type,
+            match.mode, match.gameMode, match.game_mode, match.type
+          ].map(v => String(v || '').toLowerCase());
+          return g.isPractice === true || g.is_practice === true || g.practice === true ||
+            st.isPractice === true || st.is_practice === true ||
+            match.isPractice === true || match.is_practice === true ||
+            vals.some(v => v === 'practice' || v.indexOf('practice') >= 0 || v === 'solo');
+        }catch(_e){ return false; }
+      };
+
       // >>> PATCH:VIDE_CLASSIC_SUFFIX_AND_FIRST_BLANK_V1 START
       const lpModeSuffix = (g) => {
         if (g && (g.isPractice || g.is_practice || g.practice)) return ' - PRACTICE';
@@ -1832,12 +1835,15 @@ if(hsBody){
         }
         let events = [];
         try{
-          if (typeof __fetchOfficialGames !== 'function' || typeof __normalizeGame !== 'function') {
+          // Records shown in VIDE must come from persistent cloud truth only.
+          // Never derive public PB/WR history from local game/recovery caches.
+          if (typeof cloudFetchAllGamesAsLocal !== 'function') {
             st.derivedItems = [];
             st.derivedFetchedAt = now;
             return [];
           }
-          const allGames = (await __fetchOfficialGames(1000)).map(__normalizeGame).filter(Boolean);
+          const allGames = (await cloudFetchAllGamesAsLocal())
+            .filter(g => g && !(g.archived_at || g.archivedAt));
           allGames.sort((a,b)=> new Date(a.ts || 0).getTime() - new Date(b.ts || 0).getTime());
           const bestGameByPlayer = new Map();
           const bestRoundByPlayer = new Map();
@@ -1856,19 +1862,30 @@ if(hsBody){
           allGames.forEach(g => {
             const ts = g.ts || (g.raw && (g.raw.created_at || g.raw.ts)) || null;
             const board = Array.isArray(g.board) ? g.board : [];
-            (g.players || []).forEach((name, idx) => {
-              const nm = String(name || '').trim();
+            const isPractice = lpIsPracticeGame(g);
+            const roundMode = isPractice ? '' : (lpIsTurboGame(g) ? 'turbo' : 'official');
+            (g.players || []).forEach((player, idx) => {
+              const nm = String(
+                typeof player === 'string'
+                  ? player
+                  : (player && (player.name || player.nickname || player.first_name || player.player_name || player.initials)) || ''
+              ).trim();
               if (!nm) return;
               const score = Number((g.totals || [])[idx] || 0);
               const nameKey = nm.toLowerCase();
               const priorGameBest = Number(bestGameByPlayer.get(nameKey) || 0);
               const isGamePB = score > 0 && score > priorGameBest;
               const isGameRecord = score > 0 && score > globalGameBest;
-              // A record is also a PB, but only print the higher-priority record event.
+              // Preserve existing GAME PB semantics; this hotfix only changes
+              // the source authority and ROUND PB/WR mode isolation.
               if (isGameRecord) pushEvent(ts, `NEW GAME RECORD SCORE - ${nm} - ${score} 🥇`, 'game_record');
               else if (isGamePB) pushEvent(ts, `GAME PB - ${nm} (${score})`, 'game_pb');
               if (isGamePB) bestGameByPlayer.set(nameKey, score);
               if (isGameRecord) globalGameBest = score;
+
+              // Practice never contributes ROUND PB/WR lines to VIDE. Official
+              // and Turbo compare only with their own historical mode bucket.
+              if (!roundMode) return;
               const playerRounds = Array.isArray(board[idx]) ? board[idx] : [];
               for (let r = 0; r < Math.min(14, playerRounds.length || 0); r++) {
                 const cell = playerRounds[r];
@@ -1876,16 +1893,16 @@ if(hsBody){
                 if (!Number.isFinite(total) || total <= 0) continue;
                 const roundKey = lpRoundKey(r);
                 const counts = lpCountSummary(cell, r);
-                const playerRoundKey = `${nameKey}|${roundKey}`;
+                const playerRoundKey = `${roundMode}|${nameKey}|${roundKey}`;
+                const globalRoundKey = `${roundMode}|${roundKey}`;
                 const priorRoundPB = Number(bestRoundByPlayer.get(playerRoundKey) || 0);
-                const priorRoundWR = Number(bestRoundGlobal.get(roundKey) || 0);
+                const priorRoundWR = Number(bestRoundGlobal.get(globalRoundKey) || 0);
                 const isRoundPB = total > priorRoundPB;
                 const isRoundRecord = total > priorRoundWR;
-                // A round record is also a PB, but only print the higher-priority record event.
                 if (isRoundRecord) pushEvent(ts, `ROUND WR / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_wr');
                 else if (isRoundPB) pushEvent(ts, `ROUND PB / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_pb');
                 if (isRoundPB) bestRoundByPlayer.set(playerRoundKey, total);
-                if (isRoundRecord) bestRoundGlobal.set(roundKey, total);
+                if (isRoundRecord) bestRoundGlobal.set(globalRoundKey, total);
               }
             });
           });
@@ -2261,68 +2278,10 @@ if(hsBody){
               }).filter(Boolean);
             }
 }
-            // If cloud is unavailable, fall back to local game log cache (cloud->local sync writes here).
-            if (!games || !games.length) {
-              try {
-                const gl = (typeof getGameLog === 'function') ? getGameLog() : [];
-                if (Array.isArray(gl) && gl.length) {
-                  const slice = gl.slice(-LP_BUFFER).reverse();
-                  games = slice.map(row => {
-                    try {
-                      const ts = row.created_at || row.createdAt || row.ts || row.updated_at || null;
-                      const state = row.state || row.State || row.game_state || null;
-                      const ps0 = (state && Array.isArray(state.players)) ? state.players : (Array.isArray(row.players) ? row.players : []);
-                      const totals0 = (state && state.totals && Array.isArray(state.totals)) ? state.totals : (Array.isArray(row.totals) ? row.totals : []);
-                      const nameOf = (p) => {
-                        if (!p) return '?';
-                        if (typeof p === 'string') return p.trim() || '?';
-                        return String(p.name || p.nickname || p.first_name || p.player_name || p.initials || p.player_id || '?').trim() || '?';
-                      };
-                      const rows = ps0.map((p,i)=>({ name: nameOf(p), score: Number(totals0[i] ?? 0) }))
-                        .sort((a,b)=> (b.score - a.score) || String(a.name).localeCompare(String(b.name)));
-                      const winner = rows[0] || { name:'?', score:'?' };
-                      const opp = rows.slice(1).map(r => lpPlayerScoreText(r.name, r.score)).join(', ');
-                      const isPractice = !!(row && (row.isPractice || row.is_practice || row.practice ||
-                        String(row.mode || row.gameMode || '').toLowerCase() === 'practice' ||
-                        String(state?.mode || state?.gameMode || '').toLowerCase() === 'practice' ||
-                        state?.is_practice === true || state?.isPractice === true));
-                      const isTurbo = !isPractice && lpIsTurboGame(Object.assign({}, row || {}, { state }));
-                      const beerPlayers = (!isPractice && !isTurbo) ? lpUnder100Names(rows) : [];
-                      return { ts, winner_name: winner.name, winner_score: winner.score, opponents_text: opp, isPractice, isTurbo, mode: isPractice ? 'practice' : (isTurbo ? 'turbo' : (row.mode || state?.mode || '')), match_id: row.match_id || row.matchId || state?.match_id || state?.matchId || state?.match?.id || null, game_number: row.game_number || row.gameNumber || state?.game_number || state?.gameNumber || null, players: ps0, totals: totals0, state, match_state: state?.match || null, beer_alert_players: beerPlayers };
-                    } catch(_e) {
-                      return null;
-                    }
-                  }).filter(Boolean);
-                }
-              } catch(_e) {}
-            }
+            // LIVE UPDATES fails closed when cloud history is unavailable.
+            // Local game/recovery state is intentionally not a public history source.
+            if (!games || !games.length) games = [];
 
-            if (!games || !games.length) {
-              const ids = getSavedMatchIdsSorted();
-              games = ids.slice(-LP_BUFFER).reverse().map(id => {
-                const mm = getMatchState(id);
-                if (!mm) return null;
-                const rows = (mm.players || []).map(p => ({ name: p.name || '?', score: (p.totalScore ?? 0) }))
-                  .sort((a,b)=> b.score - a.score || String(a.name).localeCompare(String(b.name)));
-                const winner = rows[0] || { name: '?', score: '?' };
-                const opp = rows.slice(1).map(r => lpPlayerScoreText(r.name, r.score)).join(', ');
-                const isTurbo = lpIsTurboGame(mm);
-                return {
-                  match_id: id,
-                  ts: mm.ts || mm.createdAt || mm.created_at || mm.updatedAt || mm.updated_at,
-                  winner_name: winner.name,
-                  winner_score: winner.score,
-                  opponents_text: opp,
-                  isTurbo,
-                  mode: isTurbo ? 'turbo' : (mm.mode || mm.gameMode || ''),
-                  players: mm.players || [],
-                  totals: rows.map(r => r.score),
-                  state: mm,
-                  match_state: mm.match || mm,
-                  beer_alert_players: []
-                };
-              }).filter(Boolean);
-            }
             try {
               const matchRows = await lpFetchRelevantMatchRows(games);
               const matchResults = lpBuildCompletedMatchResultItems(games, matchRows);
@@ -2344,7 +2303,7 @@ if(hsBody){
           // Rebuild recent player joins from the cloud-synced player cache so a
           // refresh still shows them without creating a second data authority.
           try{
-            const players = (typeof getSavedPlayers === 'function') ? getSavedPlayers() : [];
+            const players = (lpCloudOK() && typeof cloudListPlayers === 'function') ? await cloudListPlayers() : [];
             const cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
             const joins = (Array.isArray(players) ? players : [])
               .map(p => {
@@ -2364,17 +2323,7 @@ if(hsBody){
             if (joins.length) items = ([]).concat(items || [], joins);
           }catch(_e){}
 
-          // Presentation-only persisted events survive refresh on this device.
-          // They do not own player/game truth; they only preserve feed history.
-          try{
-            const localEvents = lpReadLocalEvents().map(e => ({
-              event_ts:e.ts,
-              event_id:e.id,
-              event_kind:e.kind || 'local',
-              line_text:e.line
-            }));
-            if (localEvents.length) items = ([]).concat(items || [], localEvents);
-          }catch(_e){}
+          // No browser-local presentation history is merged into public VIDE.
 
           const mid = document.querySelector('#homeLivePrinter .lp-mid');
           const hold = document.querySelector('#homeLivePrinter .home-hold-overlay');
