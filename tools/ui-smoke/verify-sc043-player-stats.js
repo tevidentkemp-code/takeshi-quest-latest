@@ -30,6 +30,7 @@ async function install(page, mode){
       window.__sc043Reads[table] = (window.__sc043Reads[table] || 0) + 1;
       const m = window.__sc043Mode;
       if (table === 'v_player_xp' && ['directory_hang','xp_hang'].includes(m)) return query(null, true);
+      if (table === 'v_player_misfires' && m === 'misfire_hang') return query(null, true);
       if ((table === 'v_player_xp' && m === 'xp_error') || (table === 'v_player_game_scores_official_clean' && m === 'rank_error') ||
           (['v_ach_base','v_ach_david_goliath'].includes(table) && m === 'history_error')) return query({ data:null, error:{ message:'fixture timeout' } });
       if (table === 'v_player_xp' && m === 'zero') return query({ data:[{...xp, total_xp:0}], error:null });
@@ -132,6 +133,29 @@ async function main(width){
       await page.waitForSelector(hub+' .pp-tab'); await page.locator(hub+' [aria-label=Close]').click();
       await page.waitForTimeout(1400);
       check('closing the hub cancels deferred history and target reads', await page.evaluate(()=>!__sc043Reads.v_ach_base && !__sc043Reads.v_player_misfires && !__sc043Reads.v_player_last30_targets));
+      await install(page, 'healthy');
+      const cachedXp = await page.evaluate(async()=>{
+        await SQ_XP.all(true);
+        const before = __sc043Reads.v_player_xp || 0;
+        const state = await SQ_XP.forNameState('Alex S');
+        return { before, after:__sc043Reads.v_player_xp || 0, available:state.available, xp:Number(state.row && state.row.total_xp) };
+      });
+      check('fresh full XP cache serves selected player without a duplicate XP view read', cachedXp.before===1 && cachedXp.after===1 && cachedXp.available && cachedXp.xp===151, cachedXp);
+
+      await install(page, 'xp_hang'); await page.evaluate(()=>openPlayerStatsHub('Alex S'));
+      await page.waitForTimeout(1500);
+      check('hung primary XP prevents automatic history/target stampede', await page.evaluate(()=>
+        !__sc043Reads.v_ach_base && !__sc043Reads.v_ach_david_goliath && !__sc043Reads.v_player_misfires && !__sc043Reads.v_player_last30_targets
+      ), await page.evaluate(()=>__sc043Reads));
+      await closeAll(page);
+
+      await install(page, 'misfire_hang'); await page.evaluate(()=>openPlayerStatsHub('Alex S'));
+      await page.waitForTimeout(1700);
+      check('in-flight Misfire history is prioritised before automatic target analytics', await page.evaluate(()=>
+        __sc043Reads.v_player_misfires===1 && !__sc043Reads.v_player_last30_targets && !__sc043Reads.v_player_last30_target_rates
+      ), await page.evaluate(()=>__sc043Reads));
+      await closeAll(page);
+
       await install(page, 'rank_error'); await page.evaluate(()=>openPlayerStatsHub('Alex S'));
       await page.getByRole('button',{name:'Retry rank',exact:true}).waitFor();
       await page.evaluate(()=>__sc043Mode='healthy'); await page.getByRole('button',{name:'Retry rank',exact:true}).click();

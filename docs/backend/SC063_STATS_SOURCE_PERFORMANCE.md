@@ -68,3 +68,16 @@ If an output/security mismatch appears, abort/roll back; never compensate throug
 The rollback file contains the exact pre-candidate private helper and classifier body captured from production. Restore those two existing objects transactionally, preserving their ownership/ACL/options. This is the SC063 rollback, not the SC059 rollback: SC059's established Bounce Out history and XP rules must remain present. No data restoration is needed because this repair writes no data rows.
 
 Public metadata 0.10.2 is provisional against exact main 6176c890 (v0.11.0). Root must reconcile its public version and full release history if main advances before final approval/release.
+
+## Post-approval hosted-runtime finding (2026-10-03)
+
+The approved two-object database optimisation preserved every captured output/security fingerprint and improved isolated anonymous reads, but hosted Player Stats still reproduced intermittent HTTP 500 / PostgreSQL 57014 on the selected-player XP request. Live logs showed XP, Misfires and target analytics timing out together during the same automatic profile-hydration burst. The remaining defect is therefore request contention, not an XP/Misfire formula or schema mismatch.
+
+The bounded client remediation:
+- reuses a fresh successful `v_player_xp` directory snapshot for the selected player instead of immediately recomputing the same view;
+- resolves selected-player history through the already loaded canonical saved-player id when available;
+- stages automatic secondary profile analytics until the critical XP and achievement/Misfire history reads have settled;
+- preserves explicit Retry as a forced fresh source read;
+- does not change XP weights, levels, Misfire criteria/penalties, achievement criteria, rank formulas, data rows, grants, RLS, role timeouts or public database contracts.
+
+Regression coverage must prove that cached XP reuse removes the duplicate read and that hung XP/Misfire sources prevent automatic target-analytics fan-out. Hosted production readback remains required before closure.
