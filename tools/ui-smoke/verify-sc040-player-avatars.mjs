@@ -7,7 +7,8 @@ const post=fs.readFileSync('src/live-game/postgame-flow.mjs','utf8');
 const add=fs.readFileSync('src/ui/modals/setup/add-player-modal.html','utf8');
 const css=fs.readFileSync('src/styles/setup/match-setup-base.css','utf8');
 const mig=fs.readFileSync('supabase/migrations/20260920162000_sc040_player_avatar_identity.sql','utf8');
-assert(util.includes('const SQ_AVATAR_COUNT = 29;'));
+assert(util.includes('const SQ_AVATAR_COUNT = 32;'));
+assert(util.includes('const SQ_AVATAR_SPRITE_COUNT = 29;'));
 assert(util.includes('const SQ_AVATAR_AUTO_ASSIGN_COUNT = 20;'));
 assert(util.includes('__sqAvatarAutoAssignId'));
 assert(router.includes("__sqAvatarAutoAssignId('new-player')"));
@@ -17,7 +18,8 @@ assert(router.includes('newPlayerAvatarPicker'));
 assert(router.includes('avatar_id: __sqAvatarIdForPlayer'));
 assert(util.includes('__sqEnhancePlayerHubAvatarEditor'));
 assert(fs.readFileSync('src/legacy/scripts/inline-008.js','utf8').includes('__sqEnhancePlayerHubAvatarEditor(overlay, player)'));
-assert(post.includes('celebration-sprite.webp'));
+assert(post.includes('__sqApplyCelebrationSprite'));
+assert(util.includes('celebration-sprite.webp'));
 assert(post.includes('sq-gc-celebration-sprite'));
 assert(add.includes('id="newPlayerAvatarPicker"'));
 assert(css.includes('.sq-avatar-picker'));
@@ -38,7 +40,7 @@ for (const sample of ['',seed,'alpha','beta','guest-player','another-player']){
   const id = api.__sqAvatarAutoAssignId(sample);
   assert(id >= 1 && id <= 20,'automatic assignment escaped AI-generated pool: '+id);
 }
-for (const value of [null,undefined,0,-1,30,1.5,'1oops',{},true]){
+for (const value of [null,undefined,0,-1,33,1.5,'1oops',{},true]){
   const id = api.__sqNormalizeAvatarId(value,seed);
   assert.equal(id,fallback);
   assert(id >= 1 && id <= 20,'invalid avatar fallback escaped AI-generated pool');
