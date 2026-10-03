@@ -1686,18 +1686,8 @@ if(hsBody){
           }
           st.matchRowsCache = { key, at: now, rows: rows.slice() };
         }
-        try {
-          const localMatches = (typeof getMatchLog === 'function') ? (getMatchLog() || []) : [];
-          (Array.isArray(localMatches) ? localMatches : []).forEach(m => {
-            const id = String(m && m.id || '').trim();
-            if (id && ids.includes(id)) rows.push(m);
-          });
-        } catch(_e) {}
-        try {
-          const current = (typeof state !== 'undefined' && state && state.match) ? state.match : null;
-          const id = String(current && current.id || '').trim();
-          if (id && ids.includes(id)) rows.push(current);
-        } catch(_e) {}
+        // Match-result metadata remains cloud-backed; local match/current-game
+        // recovery state must never supplement public LIVE UPDATES history.
         return rows;
       };
 
@@ -2300,8 +2290,8 @@ if(hsBody){
           }catch(_e){}
 
           // NEW PLAYER is a real feed event, not a one-session animation.
-          // Rebuild recent player joins from the cloud-synced player cache so a
-          // refresh still shows them without creating a second data authority.
+          // Rebuild recent player joins from the live cloud player source so a
+          // refresh shows only persisted players, never browser-local fixtures.
           try{
             const players = (lpCloudOK() && typeof cloudListPlayers === 'function') ? await cloudListPlayers() : [];
             const cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
