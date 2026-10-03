@@ -69,6 +69,22 @@
     b.onclick=opt.onClick||function(){};
     body.appendChild(b); return b;
   }
+  function addPlayerChoice(body,opt,player){
+    var row=addRow(body,opt);
+    row.classList.add('ms2-slot','sp2-row');
+    var icon=row.querySelector('.sq-menu106-ico');
+    if(player && typeof __ms2Avatar==='function') icon.replaceWith(__ms2Avatar(player));
+    else icon.className='ms2-ava';
+    row.querySelector('.sq-menu106-copy').classList.add('ms2-info');
+    var name=row.querySelector('.sq-menu106-label');
+    name.classList.add('ms2-nm');
+    if(player && typeof __ms2DisplayName==='function') name.textContent=__ms2DisplayName(player)||opt.label;
+    return row;
+  }
+  function styleAddPlayerShell(m){
+    m.modal.classList.add('sp-modal','sq-add-player-modal');
+    m.modal.querySelector('.sq-menu106-title').classList.add('sp2-title');
+  }
 
   function resetCurrentGameKeepPlayers(){
     try{
@@ -209,16 +225,19 @@
 
   function openAddGuestMenu(prev,initialName){
     var m=openModalShell('Add Guest Player','Joins as the final thrower');
+    styleAddPlayerShell(m);
+    m.body.classList.add('np-body');
     m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
     var input=document.createElement('input');
     input.className='ms-player-input';
+    input.id='sqLateGuestName';
     input.type='text';
     input.maxLength=40;
     input.placeholder='Guest name';
     input.autocomplete='off';
     input.value=String(initialName||'');
     var add=document.createElement('button');
-    add.type='button'; add.className='btn'; add.textContent='ADD PLAYER';
+    add.type='button'; add.className='btn np-save'; add.textContent='ADD PLAYER';
     add.onclick=function(){
       var name=String(input.value||'').trim();
       if(!name){try{toast('Enter a player name.');}catch(_){}return;}
@@ -229,7 +248,12 @@
         function(){ openAddGuestMenu(prev,name); }
       );
     };
-    m.body.append(input,add);
+    var field=document.createElement('div');
+    field.className='np-field';
+    var label=document.createElement('label');
+    label.className='np-label'; label.htmlFor=input.id; label.textContent='Guest name';
+    field.append(label,input);
+    m.body.append(field,add);
     setTimeout(function(){try{input.focus();}catch(_){}},0);
   }
 
@@ -237,12 +261,14 @@
     var gate=__sqLateJoinEligibility();
     if(!gate.ok){try{toast(gate.reason);}catch(_){}return;}
     var m=openModalShell('Add Player','Joins as the final thrower');
+    styleAddPlayerShell(m);
+    m.body.classList.add('sp2-list');
     m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
     var active=new Set((state.players||[]).map(function(p){return String(p&&p.name||'').trim().toLowerCase();}).filter(Boolean));
 
     // Keep a usable action visible immediately. Registered-player discovery is
     // cloud-backed and may be slow or unavailable on a mobile connection.
-    addRow(m.body,{ico:'＋',label:'Guest Player',desc:'Add by name • may change game classification',onClick:function(){m.close();openAddGuestMenu(function(){openAddPlayerMenu(prev);});}});
+    addPlayerChoice(m.body,{ico:'＋',label:'Guest Player',desc:'Add by name • may change game classification',onClick:function(){m.close();openAddGuestMenu(function(){openAddPlayerMenu(prev);});}});
     var loading=document.createElement('p');
     loading.className='tag sq-add-player-loading';
     loading.textContent='Loading registered players…';
@@ -266,14 +292,14 @@
     if(rows.length){
       rows.forEach(function(p){
         var name=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p.name || 'Player';
-        addRow(m.body,{ico:'＋',label:name,desc:'Registered player • final thrower',cls:'green',onClick:function(){
+        addPlayerChoice(m.body,{ico:'＋',label:name,desc:'Registered player • final thrower',cls:'green',onClick:function(){
           m.close();
           window.__sqConfirm(
             { title:'Add Player', message:'Are you sure you want to add '+name+'?' },
             function(){ __sqAppendLatePlayer(p,'registered'); },
             function(){ openAddPlayerMenu(prev); }
           );
-        }});
+        }},p);
       });
     }else{
       var empty=document.createElement('p');
