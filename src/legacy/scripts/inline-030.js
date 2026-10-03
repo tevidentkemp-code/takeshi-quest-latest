@@ -90,15 +90,16 @@
     try{
       try{ if(typeof __sqSanitizeVsShadowForGenericStart==='function') __sqSanitizeVsShadowForGenericStart('menu106-reset-current-game'); }catch(_){ }
       var players=Array.isArray(state.players)?state.players.slice():[];
+      var gameControl=state.__sqGameControl?JSON.parse(JSON.stringify(state.__sqGameControl)):null;
       var match=state.match?JSON.parse(JSON.stringify(state.match)):JSON.parse(JSON.stringify(baseState.match));
       state=JSON.parse(JSON.stringify(baseState));
-      state.players=players; state.match=match; state.score=players.map(function(){return[];});
+      state.players=players; state.match=match;if(gameControl)state.__sqGameControl=gameControl; state.score=players.map(function(){return[];});
       state.currentRound=0; state.currentPlayer=0; state.currentDart=0; state.history=[]; state.finished=false;
     }catch(e){ console.error('[SQ] reset game failed',e); }
   }
-  function doRestartGame(){ if(typeof __sqNewGamePlayerCountAllowed==='function' && !__sqNewGamePlayerCountAllowed()) return; window.__sqConfirm({ title:'Restart Game', message:'Restart game? This clears current game data and returns to throw order.' }, function(){ resetCurrentGameKeepPlayers(); try{save();}catch(_){} try{ if(typeof startNewGame==='function') startNewGame(); else if(typeof restartGameSafe==='function') restartGameSafe(); }catch(e){console.error(e);} }); }
-  function doEndGame(){ window.__sqConfirm({ title:'End Game', message:'End game? Current game data will be cleared and you will go to the end-game screen.' }, function(){ resetCurrentGameKeepPlayers(); try{save();}catch(_){} try{ if(typeof showLeaderboard==='function') showLeaderboard(); else if(typeof _showPageSafe==='function') _showPageSafe('leaderboard'); }catch(e){console.error(e);} }); }
-  function doEndMatch(){ window.__sqConfirm({ title:'End Match', message:'End match? This will clear the current match state and return to the start screen.' }, function(){ try{ clearTournamentRuntime('end match'); state=JSON.parse(JSON.stringify(baseState)); save(); }catch(_){} try{ if(typeof navigateToStartScreen==='function') navigateToStartScreen(); else show('details'); }catch(_){ } setTimeout(refreshDeferredHome,80); }); }
+  function doRestartGame(){ if(typeof __sqNewGamePlayerCountAllowed==='function' && !__sqNewGamePlayerCountAllowed()) return; window.__sqConfirm({ title:'Restart Game', message:'Restart game? This clears current game data and returns to throw order.' }, function(){ if(!window.SQ_GAMEPLAY.canDiscard())return; resetCurrentGameKeepPlayers(); try{save();}catch(_){} try{ if(typeof startNewGame==='function') startNewGame(); else if(typeof restartGameSafe==='function') restartGameSafe(); }catch(e){console.error(e);} }); }
+  function doEndGame(){ window.__sqConfirm({ title:'End Game', message:'End game? Current game data will be cleared and you will go to the end-game screen.' }, async function(){ try{await window.SQ_GAMEPLAY.abandon();}catch(error){window.SQ_GAMEPLAY.failure(error);return;} resetCurrentGameKeepPlayers(); try{save();}catch(_){} try{ if(typeof showLeaderboard==='function') showLeaderboard(); else if(typeof _showPageSafe==='function') _showPageSafe('leaderboard'); }catch(e){console.error(e);} }); }
+  function doEndMatch(){ window.__sqConfirm({ title:'End Match', message:'End match? This will clear the current match state and return to the start screen.' }, async function(){ try{await window.SQ_GAMEPLAY.abandon();}catch(error){window.SQ_GAMEPLAY.failure(error);return;} try{ clearTournamentRuntime('end match'); state=JSON.parse(JSON.stringify(baseState)); save(); }catch(_){} try{ if(typeof navigateToStartScreen==='function') navigateToStartScreen(); else show('details'); }catch(_){ } setTimeout(refreshDeferredHome,80); }); }
 
   function __sqLateJoinEligibility(){
     try{
@@ -153,7 +154,7 @@
     };
   }
 
-  function __sqAppendLatePlayer(row,type){
+  async function __sqAppendLatePlayer(row,type){
     var gate=__sqLateJoinEligibility();
     if(!gate.ok){ try{toast(gate.reason);}catch(_){} return false; }
     var p=__sqNormaliseLateJoinPlayer(row,type);
@@ -163,6 +164,10 @@
     var dupe=players.some(function(existing,idx){return __sqLateJoinPlayerKey(existing,idx)===key || String(existing&&existing.name||'').trim().toLowerCase()===p.name.toLowerCase();});
     if(dupe){ try{toast('Player is already in this game.');}catch(_){} return false; }
 
+    window.__sqSecurityInputBlocked=true;
+    try{await window.SQ_GAMEPLAY.syncRoster(players.concat([p]));}
+    catch(error){window.SQ_GAMEPLAY.failure(error);return false;}
+    finally{window.__sqSecurityInputBlocked=false;}
     var idx=players.length;
     players.push(p);
     if(typeof assignUniqueColors==='function'){ try{assignUniqueColors(players);}catch(_){} }
@@ -312,12 +317,35 @@
 
   function openRemovePlayerMenu(prev){
     var m=openModalShell('Remove Player','Current game only');
-    m.modal.querySelector('.sq-menu106-back').onclick=function(){ m.close(); if(prev) prev(); };
-    var pls=Array.isArray(state&&state.players)?state.players:[];
-    if(!pls.length){ var p=document.createElement('p'); p.className='tag'; p.textContent='No players available.'; m.body.appendChild(p); return; }
-    pls.forEach(function(p,idx){
-      var name=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p.name || ('Player '+(idx+1));
-      addRow(m.body,{ico:'−',label:'Remove '+name,desc:'Delete current-game data',cls:'danger',onClick:function(){ window.__sqConfirm({ title:'Remove Player', message:'Remove '+name+'? Their current-game data will be deleted and the match continues.' }, function(){ try{state.players.splice(idx,1); if(Array.isArray(state.score))state.score.splice(idx,1); if(state.match&&Array.isArray(state.match.wins))state.match.wins.splice(idx,1); if(state.currentPlayer>=state.players.length)state.currentPlayer=0; save(); m.close(); if(typeof liveV2Render==='function') liveV2Render();}catch(e){console.error(e);} }); }});
+    m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
+    if((state.match?.history||[]).length){var warning=document.createElement('p');warning.className='tag';warning.textContent='An accepted game is part of this match. Participant history changes require an administrator.';m.body.appendChild(warning);return;}
+    (state.players||[]).forEach(function(player,index){
+      var name=player.name||('Player '+(index+1));
+      addRow(m.body,{ico:'−',label:'Remove '+name,desc:'Current game only',cls:'danger',onClick:function(){
+        window.__sqConfirm({title:'Remove Player',message:'Remove '+name+' from the current game?'},async function(){
+          if(!window.SQ_GAMEPLAY.canDiscard())return;
+          var players=state.players.filter(function(_,i){return i!==index;});
+          window.__sqSecurityInputBlocked=true;
+          try{await window.SQ_GAMEPLAY.syncRoster(players);state.players.splice(index,1);if(Array.isArray(state.score))state.score.splice(index,1);if(Array.isArray(state.match?.wins))state.match.wins.splice(index,1);if(state.currentPlayer>=state.players.length)state.currentPlayer=0;save();m.close();updateUI();}
+          catch(error){window.SQ_GAMEPLAY.failure(error);}
+          finally{window.__sqSecurityInputBlocked=false;}
+        });
+      }});
+    });
+  }
+  function openMatchDisplayMenu(prev){
+    var m=openModalShell('Match Display','Only this match; saved player profiles stay unchanged');
+    m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
+    (state.players||[]).forEach(function(player,index){
+      if(player?.isShadow||player?.virtual)return;
+      addPlayerChoice(m.body,{label:player.name||'Player',desc:'Edit match initials',onClick:function(){
+        m.close();var edit=openModalShell('Match Initials',player.name||'Player');
+        edit.modal.querySelector('.sq-menu106-back').onclick=function(){edit.close();openMatchDisplayMenu(prev);};
+        var input=document.createElement('input');input.className='ms-player-input';input.maxLength=5;input.value=player.initials||'';input.setAttribute('aria-label','Match initials');
+        var saveButton=document.createElement('button');saveButton.type='button';saveButton.className='btn primary';saveButton.textContent='SAVE MATCH INITIALS';
+        saveButton.onclick=async function(){saveButton.disabled=true;try{await window.SQ_GAMEPLAY.updateDisplay(index,{initials:input.value.trim().toUpperCase()});edit.close();}catch(error){saveButton.disabled=false;}};
+        edit.body.append(input,saveButton);setTimeout(function(){input.focus();},0);
+      }},player);
     });
   }
 
@@ -345,6 +373,7 @@
       if(!__addGate.ok){try{toast(__addGate.reason);}catch(_){}return;}
       m.close(); setTimeout(function(){ openAddPlayerMenu(window.__sqOpenGameMenu106); },0);
     }});
+    addRow(m.body,{ico:'✎',label:'Match Display',desc:'Match-only initials; saved profiles unchanged',onClick:function(){m.close();openMatchDisplayMenu(window.__sqOpenGameMenu106);}});
     addRow(m.body,{ico:'−',label:'Remove Player',desc:'Remove from this game',onClick:function(){m.close(); openRemovePlayerMenu(window.__sqOpenGameMenu106);}});
     var __orderGate=typeof __sqInitialOrderAmendEligibility==='function'?__sqInitialOrderAmendEligibility():{ok:false,reason:'Initial order correction unavailable.'};
     addRow(m.body,{ico:'↕',label:'Amend Initial Order',desc:(__orderGate.ok?'Game 1 • correction before Round 1 completes':__orderGate.reason),onClick:function(){

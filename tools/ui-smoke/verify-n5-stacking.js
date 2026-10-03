@@ -1,13 +1,10 @@
 const H = require('./harness');
+const {enterAdmin}=require('./admin-ui-fixture');
 let failures=0; function check(n,ok,d){if(!ok)failures++;console.log((ok?'PASS':'FAIL')+'  '+n+(ok||!d?'':'  — '+d));}
 (async () => {
   const { browser, page } = await H.launch({ width: 390, height: 844 });
   await H.boot(page, { settle: 3000 });
-  // enter admin
-  await page.click('#adminCodeBtn'); await page.waitForTimeout(700);
-  for (const d of ['4','9','3','6']) { const bts=await page.$$('#adminCodeGateOverlay button'); for (const b of bts){ if((await b.textContent()||'').trim()===d){await b.click();break;} } await page.waitForTimeout(150); }
-  const bts=await page.$$('#adminCodeGateOverlay button'); for (const b of bts){ if((await b.textContent()||'').trim()==='Return'){await b.click();break;} }
-  await page.waitForTimeout(900);
+  await enterAdmin(page);
   // open HS League admin (dynamic dialog), then immediately reopen the hub — the old repro left both stacked
   await page.click('#openHsLeagueAdmin'); await page.waitForTimeout(1200);
   await page.evaluate(() => window.openAdminHub());

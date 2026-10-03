@@ -43,48 +43,20 @@
   function getDeviceId(){
     try {
       let id = localStorage.getItem('sq_device_id');
-      if (!id) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id||'')) {
         id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('dev_' + Math.random().toString(16).slice(2) + Date.now());
         localStorage.setItem('sq_device_id', id);
       }
       return id;
     } catch(e){
-      return 'anon';
+      return crypto.randomUUID();
     }
   }
 
   // ---- Cloud logon tracking (device/day) ----
   async function logDailyVisitToCloud(){
-    const client = getSb();
-    if (!client) return;
-
-    // If cloud logons are blocked by RLS/policies, stop spamming the console.
-    try {
-      if (localStorage.getItem('sq_cloud_logons_disabled') === '1') return;
-    } catch(_){}
-
-    const day = isoDay(new Date());
-    const device_id = getDeviceId();
-
-    // Upsert once per device per day.
-    try {
-      const { error } = await client
-        .from(TABLE_APP_LOGONS)
-        .upsert({ day, device_id }, { onConflict: 'day,device_id' });
-
-      if (error) {
-        // Common: 42501 insufficient_privilege, 401/403 auth/policy issues
-        const code = (error && (error.code || error.status)) || '';
-        if (String(code) === '42501' || String(code) === '401' || String(code) === '403') {
-          try { localStorage.setItem('sq_cloud_logons_disabled', '1'); } catch(_){}
-          console.warn('Cloud logons disabled (policy/privilege). Using local-only.');
-          return;
-        }
-        console.warn('Cloud logon upsert failed', error);
-      }
-    } catch(e){
-      console.warn('Cloud logon upsert exception', e);
-    }
+    try{await window.SQ_SECURITY.visit({device_id:getDeviceId()});}
+    catch(error){console.info('[SQ] Visit telemetry unavailable',error.code||error.message);}
   }
 
   // ---- Local fallback logon tracking (kept for offline/dev) ----
