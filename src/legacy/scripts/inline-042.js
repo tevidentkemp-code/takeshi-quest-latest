@@ -226,7 +226,7 @@
         // not a League & Rankings Turbo button. Exclude the Start Game modal from this catch-all.
         if (id === 'tournamentBtn' || (btn.closest && btn.closest('#startGameModal, .sg-options'))) return;
         if (hay.indexOf('turbo') < 0) return;
-        if (btn.closest && btn.closest('.sq132-tabs, .sq-fix100-top50, .sq-top50-backdrop, .sq-latest-scores, .sq-streak-controls')) return;
+        if (btn.closest && btn.closest('.sq132-tabs, .sq-fix100-top50, .sq-top50-backdrop, .sq-latest-scores, .sq-streak-controls, .sq-league-tabs, .sq-fix97-tabs')) return;
         btn.__sqTurboLeagueRoutingFix = true;
         btn.addEventListener('click', function(e){
           claim(e);
@@ -252,7 +252,7 @@
   document.addEventListener('click', function(e){
     var btn = e.target && e.target.closest ? e.target.closest('button, [role="button"], [data-action], .home-mini-printer') : null;
     if (!btn) return;
-    if (btn.closest && btn.closest('.sq132-tabs, .sq-fix100-top50, .sq-top50-backdrop, .sq-latest-scores, .sq-streak-controls')) return;
+    if (btn.closest && btn.closest('.sq132-tabs, .sq-fix100-top50, .sq-top50-backdrop, .sq-latest-scores, .sq-streak-controls, .sq-league-tabs, .sq-fix97-tabs')) return;
     var label = textOf(btn);
     var action = String(btn.getAttribute && btn.getAttribute('data-action') || '');
     var id = String(btn.id || '');

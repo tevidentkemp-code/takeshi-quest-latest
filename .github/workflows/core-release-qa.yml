@@ -83,6 +83,7 @@ jobs:
           node --check tools/ui-smoke/verify-sc035-initial-order.js
           node --check tools/ui-smoke/verify-sc034-add-player.js
           node --check tools/ui-smoke/verify-sc036-skip-go.js
+          node --check tools/ui-smoke/verify-vis002-mobile.js
           node --check tools/ui-smoke/verify-vis001-start-mode.js
           node --check tools/ui-smoke/verify-vis001-navigation.js
           node --check tools/ui-smoke/verify-sc051-add-player.js
@@ -268,6 +269,51 @@ jobs:
           path: |
             core-vis001-*.txt
             qa-artifacts-vis001/
+
+  vis002-mobile:
+    name: League mobile — Chromium + WebKit source + dist
+    needs: static-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: core-release-dist
+          path: dist
+      - name: Install mobile browser QA
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps chromium webkit
+      - name: Verify current League surfaces and Stats readability
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/vis002-source.log 2>&1 &
+          source_pid=$!
+          python3 -m http.server 8124 --bind 127.0.0.1 --directory dist >/tmp/vis002-dist.log 2>&1 &
+          dist_pid=$!
+          trap 'kill "$source_pid" "$dist_pid" || true' EXIT
+          for browser in chromium webkit; do
+            SQ_BROWSER="$browser" SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS="qa-artifacts-vis002/$browser-source" timeout 180s node tools/ui-smoke/verify-vis002-mobile.js | tee "core-vis002-$browser-source.txt"
+            SQ_BROWSER="$browser" SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS="qa-artifacts-vis002/$browser-dist" timeout 180s node tools/ui-smoke/verify-vis002-mobile.js | tee "core-vis002-$browser-dist.txt"
+          done
+      - name: Keep League mobile evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-release-vis002-mobile-evidence
+          retention-days: 14
+          path: |
+            core-vis002-*.txt
+            qa-artifacts-vis002/
 
   source-core:
     name: Source representative — core journey
