@@ -1,0 +1,11 @@
+# SC-065 game loading recovery
+
+Start the game and confirm the existing throw order. Wait for the loading overlay to close before entering darts. Turbo still requires its separate Ready button and keeps the same 20-second turn clock. If loading does not finish, preserve the current board; reload and use the existing secure resume/recovery flow rather than creating replacement score history.
+
+The canonical `src/game/engine.js::__sqYieldToPaint` retains its normal animation-frame then macrotask path. A timer requested at 100ms can settle that same yield if the frame or its follow-up task is late. Each yield settles once and clears its losing frame/task/timer handles. The eight builders keep their original order, with secure preparation, throw order, state/token handling and overlay reveal unchanged.
+
+The fallback cannot guarantee that a frame painted or that a busy browser delivers a timer within 100ms. Main-thread work, timer throttling and the separate outer `__sqAfterPaint` can still delay loading. Existing async task ownership is unchanged; this patch does not add cancellation leases or claim to fix stale continuations.
+
+Run `node tools/ui-smoke/verify-sc065-startup-yield.mjs` for the canonical helper/builder scheduler regression. It covers delayed callbacks, normal ordering, missing/throwing frame scheduling, single settlement, losing-handle cleanup and builder failure. Native acceptance remains separate: paired original/candidate source and dist in Chromium and WebKit, real two-player Classic/Turbo setup, Ready, Single/Miss/Undo, actual 10/15/20-second Turbo timing, navigation, and the unchanged full SC-065 startup/lifecycle suite. Keep existing 8-second readiness and 180-second process deadlines.
+
+Before publication, the owned helper hunk can be dropped and `inline-005.js` regenerated through normal materialization. After publication, revert that helper through a forward recovery release using the next valid patch version and a matching running-version literal, retaining every actual prior release entry. Preserve later SC-004 security/controller flows and SC-047 cloud feed/update notices. Build/dist parity and exact source/dist smoke verification are required before publishing or declaring recovery complete.
