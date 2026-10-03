@@ -1,6 +1,6 @@
 # SC-063: Stats source performance repair
 
-This is a SQL-gated draft. The database changes have not been applied. The previous frontend repair in PR120 has been removed from its diff because current main already supplies it.
+This is an approved SQL-gated release candidate. Thomas approved the combined backend application on 2026-10-03. The database changes have not yet been applied; exact-head QA and live preflight remain required before execution. The previous frontend repair in PR120 has been removed from its diff because current main already supplies it.
 
 ## Confirmed failure and scope
 
@@ -67,4 +67,4 @@ If an output/security mismatch appears, abort/roll back; never compensate throug
 
 The rollback file contains the exact pre-candidate private helper and classifier body captured from production. Restore those two existing objects transactionally, preserving their ownership/ACL/options. This is the SC063 rollback, not the SC059 rollback: SC059's established Bounce Out history and XP rules must remain present. No data restoration is needed because this repair writes no data rows.
 
-Public metadata 0.10.2 is provisional against exact main cbe0928 (v0.10.1). Root must reconcile its public version and full release history if main advances before final approval/release.
+Public metadata 0.10.2 is provisional against exact main 6176c890 (v0.11.0). Root must reconcile its public version and full release history if main advances before final approval/release.
