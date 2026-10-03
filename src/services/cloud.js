@@ -221,61 +221,29 @@ function ensureCloudInit(){
   }
 // >>> PATCH:MOT5B3_ARCHIVE_REINSTATE_PURGE START
 async function cloudArchiveGame(game){
-  await ensureCloudInit();
-  const gid = (typeof game === 'object' && game) ? (game.id || game.game_id || null) : game;
-  if (!gid) throw new Error('cloudArchiveGame: missing game id');
-  const { error } = await sb.from(TABLE_GAMES).update({ archived_at: new Date().toISOString() }).eq('id', gid);
-  if (error) throw error;
-  try{ if (typeof window.__sqClearGamesTruthCache === 'function') window.__sqClearGamesTruthCache('cloudArchiveGame'); }catch(_){ }
-  try{ localStorage.removeItem('SQ_PSTICKER_CACHE_V1'); }catch(_){ }
-  try{ if (typeof window.__sqRefreshRecentMatchesTicker==='function') window.__sqRefreshRecentMatchesTicker(); }catch(_){ }
-  try{ localStorage.removeItem('SQ_PSTICKER_CACHE_V1'); }catch(_){ }
-  try{ if (typeof window.__sqRefreshRecentMatchesTicker==='function') window.__sqRefreshRecentMatchesTicker(); }catch(_){ }
+  const gid=typeof game==='object'&&game?(game.id||game.game_id):game;
+  if(!gid)throw new Error('cloudArchiveGame: missing game id');
+  await window.sqAdminAction({operation:'archive',game_id:gid});
+  try{window.__sqClearGamesTruthCache?.('cloudArchiveGame');localStorage.removeItem('SQ_PSTICKER_CACHE_V1');window.__sqRefreshRecentMatchesTicker?.();}catch(_){}
   return true;
 }
 
 async function cloudReinstateGame(game){
-  await ensureCloudInit();
-  const gid = (typeof game === 'object' && game) ? (game.id || game.game_id || null) : game;
-  if (!gid) throw new Error('cloudReinstateGame: missing game id');
-  const { error } = await sb.from(TABLE_GAMES).update({ archived_at: null }).eq('id', gid);
-  if (error) throw error;
-  try{ if (typeof window.__sqClearGamesTruthCache === 'function') window.__sqClearGamesTruthCache('cloudReinstateGame'); }catch(_){ }
-  try{ localStorage.removeItem('SQ_PSTICKER_CACHE_V1'); }catch(_){ }
-  try{ if (typeof window.__sqRefreshRecentMatchesTicker==='function') window.__sqRefreshRecentMatchesTicker(); }catch(_){ }
+  const gid=typeof game==='object'&&game?(game.id||game.game_id):game;
+  if(!gid)throw new Error('cloudReinstateGame: missing game id');
+  await window.sqAdminAction({operation:'reinstate',game_id:gid});
+  try{window.__sqClearGamesTruthCache?.('cloudReinstateGame');localStorage.removeItem('SQ_PSTICKER_CACHE_V1');window.__sqRefreshRecentMatchesTicker?.();}catch(_){}
   return true;
 }
 
-// Permanent purge: remove game row + best-effort cleanup of related tables.
-// NOTE: This is intentionally destructive.
 async function cloudPurgeGameCascade(game){
-  await ensureCloudInit();
-  const gid = (typeof game === 'object' && game) ? (game.id || game.game_id || null) : game;
-  if (!gid) throw new Error('cloudPurgeGameCascade: missing game id');
-
-  const tryDel = async (table, col='game_id')=>{
-    try{ await sb.from(table).delete().eq(col, gid); }catch(_){ }
-  };
-
-  await tryDel(TABLE_HS_LEAGUE, 'game_id');
-  await tryDel(TABLE_HS_PRACTICE, 'game_id');
-
-  // Best-effort event/commentary cleanup (only if tables exist)
-  await tryDel('game_events', 'game_id');
-  await tryDel('game_commentary', 'game_id');
-
-  // Throws table if ever enabled
-  try{
-    if (typeof TABLE_GAME_THROWS==='string' && TABLE_GAME_THROWS && !(CLOUD_TABLE_MISSING && CLOUD_TABLE_MISSING[TABLE_GAME_THROWS])){
-      await tryDel(TABLE_GAME_THROWS, 'game_id');
-    }
-  }catch(_){ }
-
-  const { error: delErr } = await sb.from(TABLE_GAMES).delete().eq('id', gid);
-  if (delErr) throw delErr;
-  try{ if (typeof window.__sqClearGamesTruthCache === 'function') window.__sqClearGamesTruthCache('cloudPurgeGameCascade'); }catch(_){ }
+  const gid=typeof game==='object'&&game?(game.id||game.game_id):game;
+  if(!gid)throw new Error('cloudPurgeGameCascade: missing game id');
+  await window.sqAdminAction({operation:'purge',game_id:gid});
+  try{window.__sqClearGamesTruthCache?.('cloudPurgeGameCascade');}catch(_){}
   return true;
 }
+
 // <<< PATCH:MOT5B3_ARCHIVE_REINSTATE_PURGE END
 
 // >>> PATCH:MOT_STAGE5A_PROBE_EARLY_V4 START
@@ -433,92 +401,22 @@ async function cloudPurgeGameCascade(game){
 
 /*** CLOUD HIGH SCORES API — safe fallback implementations ***/
 (function(){
-  // Insert (or keep existing) → create only if missing to avoid duplicates
-  if (typeof window.cloudInsertHighScore !== 'function') {
-    window.cloudInsertHighScore = async function(name, score, isPractice){
-      if (!ensureCloudInit()) throw new Error('Cloud not initialised');
-      const table = isPractice
-        ? (typeof TABLE_HS_PRACTICE !== 'undefined' ? TABLE_HS_PRACTICE : 'high_scores_practice')
-        : (typeof TABLE_HS_LEAGUE   !== 'undefined' ? TABLE_HS_LEAGUE   : 'high_scores');
-
-      const row = {
-        name: String(name || '').trim(),
-        score: Number(score || 0),
-        // Prefer server default if your table has one; otherwise send a timestamp
-        ts: new Date().toISOString()
-      };
-
-      // basic guards; don't write empty rows
-      if (!row.name || row.score <= 0) return false;
-
-      const { error } = await sb.from(table).insert(row);
-      if (error) throw error;
-      return true;
+  // Historical score maintenance resolves an exact saved game on the server.
+  if(typeof window.cloudInsertHighScore!=='function'){
+    window.cloudInsertHighScore=async function(name,score,isPractice){
+      if(!name||Number(score)<=0)return false;
+      const result=await window.sqAdminAction({operation:'ensure_score',scope:isPractice?'practice':'league',player_name:String(name),score:Number(score)});
+      return result.inserted>0;
     };
   }
-if (typeof window.cloudInsertHighScoreIfMissing !== 'function') {
-  window.cloudInsertHighScoreIfMissing = async function(table, name, score, ts){
-    if (!ensureCloudInit()) throw new Error('Cloud not initialised');
-    const n = String(name || '').trim();
-    const s = Number(score || 0);
-    if (!n || s <= 0) return false;
+  if(typeof window.cloudInsertHighScoreIfMissing!=='function'){
+    window.cloudInsertHighScoreIfMissing=async function(table,name,score,ts){
+      if(!name||Number(score)<=0)return false;
+      const result=await window.sqAdminAction({operation:'ensure_score',scope:table===TABLE_HS_PRACTICE?'practice':'league',player_name:String(name),score:Number(score),timestamp:ts});
+      return result.inserted>0;
+    };
+  }
 
-    // Does a matching row already exist? (exact name/score; if ts is given, use ±2 min window)
-    async function existsQuery() {
-      try {
-        if (ts) {
-          const pad = 2 * 60 * 1000;
-          const fromIso = new Date(new Date(ts).getTime() - pad).toISOString();
-          const toIso   = new Date(new Date(ts).getTime() + pad).toISOString();
-          const { count, error } = await sb
-            .from(table)
-            .select('name,score,ts', { count: 'exact', head: true })
-            .gte('ts', fromIso).lte('ts', toIso)
-            .eq('name', n).eq('score', s)
-            .limit(1);
-          if (error) throw error;
-          return !!(count && count > 0);
-        } else {
-          const { count, error } = await sb
-            .from(table)
-            .select('name,score,ts', { count: 'exact', head: true })
-            .eq('name', n).eq('score', s)
-            .limit(1);
-          if (error) throw error;
-          return !!(count && count > 0);
-        }
-      } catch {
-        // Fallback: non-head select
-        try {
-          if (ts) {
-            const pad = 2 * 60 * 1000;
-            const fromIso = new Date(new Date(ts).getTime() - pad).toISOString();
-            const toIso   = new Date(new Date(ts).getTime() + pad).toISOString();
-            const { data } = await sb
-              .from(table).select('name,score,ts')
-              .gte('ts', fromIso).lte('ts', toIso)
-              .eq('name', n).eq('score', s).limit(1);
-            return Array.isArray(data) && data.length > 0;
-          } else {
-            const { data } = await sb
-              .from(table).select('name,score,ts')
-              .eq('name', n).eq('score', s).limit(1);
-            return Array.isArray(data) && data.length > 0;
-          }
-        } catch {
-          return false;
-        }
-      }
-    }
-
-    if (await existsQuery()) return false;
-
-    const row = { name: n, score: s, ts: ts || new Date().toISOString() };
-    const { error } = await sb.from(table).insert(row);
-    if (error) throw error;
-    return true;
-  };
-}
 
   if (typeof window.cloudListHighScores !== 'function') {
     window.cloudListHighScores = async function(isPractice, limit = 50){
@@ -539,40 +437,18 @@ if (typeof window.cloudInsertHighScoreIfMissing !== 'function') {
     };
   }
 
-  if (typeof window.cloudDeleteHighScore !== 'function') {
-    window.cloudDeleteHighScore = async function(row, isPractice){
-      if (!ensureCloudInit()) throw new Error('Cloud not initialised');
-      const table = isPractice
-        ? (typeof TABLE_HS_PRACTICE !== 'undefined' ? TABLE_HS_PRACTICE : 'high_scores_practice')
-        : (typeof TABLE_HS_LEAGUE   !== 'undefined' ? TABLE_HS_LEAGUE   : 'high_scores');
-
-      // Try exact match (including ts if provided)
-      try {
-        let q = sb.from(table).delete()
-          .eq('name', String(row?.name || ''))
-          .eq('score', Number(row?.score || 0));
-        if (row?.ts) q = q.eq('ts', row.ts);
-        const { error } = await q;
-        if (error) throw error;
-        return;
-      } catch (e) {
-        // Fallback: delete on small time window if exact ts equality fails
-        if (!row?.ts) throw e;
-        const pad = 2 * 60 * 1000;
-        const fromIso = new Date(new Date(row.ts).getTime() - pad).toISOString();
-        const toIso   = new Date(new Date(row.ts).getTime() + pad).toISOString();
-        const { error } = await sb.from(table).delete()
-          .gte('ts', fromIso).lte('ts', toIso)
-          .eq('name', String(row.name || ''))
-          .eq('score', Number(row.score || 0));
-        if (error) throw error;
-      }
+  if(typeof window.cloudDeleteHighScore!=='function'){
+    window.cloudDeleteHighScore=async function(row,isPractice){
+      const body={operation:'delete_score',scope:isPractice?'practice':'league'};
+      if(row?.id!=null)body.score_id=row.id;
+      else{body.name=String(row?.name||'');body.score=Number(row?.score||0);if(row?.game_id)body.game_id=row.game_id;else body.timestamp=row?.ts;}
+      return window.sqAdminAction(body);
     };
   }
 })();
-// Toggle for writing per-player game rows to a table.
-// Your project uses a view (`player_games_union`), so writes should be disabled.
-const ENABLE_PLAYER_GAMES_WRITES = false;
+
+
+// Per-player game rows are derived by the existing read-only view.
 
 /*****************
  * CLOUD-ONLY READS (force consistency across devices)
@@ -1080,163 +956,35 @@ window.getMatchesOfficial = async function getMatchesOfficial(){
 };
 
 // Recover missing High Scores by scanning cloud Games for a recent window (default 24h).
-async function recoverHighScoresFromCloudWindow(hours = 24){
-  if (!ensureCloudInit()) { toast('Cloud not initialised'); return { inserted:0, scanned:0, skipped:0 }; }
-  const now = Date.now();
-  const fromIso = new Date(now - (hours * 60 * 60 * 1000)).toISOString();
-  const toIso   = new Date(now + (5 * 60 * 1000)).toISOString(); // small future skew for device time drift
-
-  let scanned = 0, inserted = 0, skipped = 0;
-  let rows = [];
-  try {
-    const { data, error } = await sb
-      .from(TABLE_GAMES)
-      .select('created_at, state, totals')
-      .gte('created_at', fromIso)
-      .lte('created_at', toIso)
-      .order('created_at', { ascending: true });
-    if (error) throw error;
-    rows = data || [];
-  } catch (e) {
-    console.error('recover HS: fetch games failed', e);
-    toast('Recover HS failed: could not fetch games');
-    return { inserted, scanned, skipped };
-  }
-
-  for (const g of rows) {
-    scanned++;
-    const players = (g?.state?.players || [])
-      .map(p => (typeof p === 'string') ? { name: p } : p)
-      .filter(Boolean);
-    const totals = Array.isArray(g?.totals) ? g.totals : [];
-    const ts = g?.created_at || new Date().toISOString();
-    const isSingle = players.length === 1;
-    const table = isSingle
-      ? (typeof TABLE_HS_PRACTICE !== 'undefined' ? TABLE_HS_PRACTICE : 'high_scores_practice')
-      : (typeof TABLE_HS_LEAGUE   !== 'undefined' ? TABLE_HS_LEAGUE   : 'high_scores');
-
-    for (let i = 0; i < players.length; i++) {
-      const name  = players[i]?.name || '';
-      const score = Number(totals[i] || 0);
-      if (!name || score <= 0) continue;
-      try {
-        const playerId = players[i]?.id || players[i]?.player_id || null;
-        const gameId = g?.id || null;
-        if (!playerId || !gameId) { skipped++; continue; }
-        const ok = await cloudInsertHighScoreIfMissing(table, playerId, name, score, ts, gameId);
-        if (ok) inserted++; else skipped++;
-      } catch (e) {
-        console.error('recover HS: insert failed', e);
-        skipped++;
-      }
-    }
-  }
-
-  return { inserted, scanned, skipped };
+async function recoverHighScoresFromCloudWindow(hours=24){
+  return window.sqAdminAction({operation:'recover_scores',hours:Number(hours)});
 }
 
-/*****************
- * BACKFILL: Sync all local data → Supabase
- *****************/
-  async function backfillLocalGamesToCloud() {
-    const games = (typeof getGameLog === 'function') ? (getGameLog() || []) : [];
-    let inserted = 0, hs = 0, playerRows = 0;
-    for (const g of games) {
-      try {
-        const players = (g.players || []).map(p => typeof p === 'string' ? { name:p } : p).filter(Boolean);
-        const totals  = Array.isArray(g.totals) ? g.totals : [];
-        const isSingle = players.length === 1;
-        const ts = g.ts || new Date().toISOString();
-
-        // --- games table
-        if (typeof TABLE_GAMES !== 'undefined') {
-          const payload = {
-            created_at: ts,
-            state: { players, board: g.board || null },
-            totals,
-            finished: true,
-            match_id: g.match_id || null
-          };
-          try {
-            const { error } = await sb.from(TABLE_GAMES).insert(payload);
-            if (!error) inserted++;
-          } catch (e) {
-            // attempt upsert on conflict(created_at) if supported
-            try {
-              const { error } = await sb.from(TABLE_GAMES).upsert(payload);
-              if (!error) inserted++;
-            } catch(_) {}
-          }
-        }
-
-        // --- high scores tables
-        if (typeof cloudInsertHighScore === 'function') {
-          for (let i = 0; i < players.length; i++) {
-            const name = players[i]?.name || `Player ${i+1}`;
-            const score = Number(totals[i] || 0);
-            if (!name || score <= 0) continue;
-            try { await cloudInsertHighScore(name, score, isPractice); hs++; } catch(_) {}
-          }
-        }
-
-        // --- player_games (optional; skipped when using a view like `player_games_union`)
-        if (ENABLE_PLAYER_GAMES_WRITES && typeof TABLE_PLAYER_GAMES !== 'undefined' && players.length) {
-          const sorted = totals.map((t,i)=>({t:Number(t||0),i})).sort((a,b)=>b.t-a.t);
-          const posByIdx = Array(players.length).fill(null);
-          sorted.forEach((o,rank)=>{ posByIdx[o.i] = rank+1; });
-          for (let i=0;i<players.length;i++){
-            const row = {
-              sheet_id: g.sheet_id || null,
-              player: players[i]?.name || `Player ${i+1}`,
-              score: Number(totals[i] || 0),
-              position: posByIdx[i] || null,
-              ts,
-              is_practice: isSingle,
-              rounds: (typeof MAX_ROUNDS === 'number' ? MAX_ROUNDS : null)
-            };
-            try {
-              const { error } = await sb.from(TABLE_PLAYER_GAMES).insert(row);
-              if (!error) playerRows++;
-            } catch(_) {}
-          }
-        }
-      } catch (e) {
-        console.error('Backfill game failed', e);
-      }
-    }
-    return { inserted, hs, playerRows, scanned: games.length };
+async function backfillLocalGamesToCloud(){
+  await window.SQ_ADMIN_AUTH.require();
+  const games=typeof getGameLog==='function'?(getGameLog()||[]):[];
+  let inserted=0,hs=0;
+  for(const g of games){
+    const players=(g.players||[]).map(p=>typeof p==='string'?{name:p}:p).filter(Boolean);
+    const result=await window.sqAdminAction({operation:'import_game',game:{created_at:g.ts||new Date().toISOString(),state:{...(g.state||{}),players,board:g.board||g.state?.board||null},totals:Array.isArray(g.totals)?g.totals:[],match_id:g.match_id||null,game_number:g.game_number||1}});
+    inserted+=result.inserted||0;hs+=result.high_scores||0;
   }
-  
-  async function backfillLocalMatchesToCloud() {
-    const matches = (typeof getMatchLog === 'function') ? (getMatchLog() || []) : [];
-    if (typeof TABLE_MATCHES === 'undefined') return { inserted: 0, scanned: matches.length };
-    let inserted = 0;
-    for (const m of matches) {
-      try {
-        const payload = {
-          id: m.id || null,
-          created_at: m.ts || new Date().toISOString(),
-          players: (m.players || []).map(p => typeof p === 'string' ? { name:p } : p),
-          wins: m.wins || [],
-          total_games: m.games || (Array.isArray(m.history) ? m.history.length : null),
-          history: (m.history || []).map(g => ({ totals: g.totals || [] }))
-        };
-        try {
-          const { error } = await sb.from(TABLE_MATCHES).insert(payload);
-          if (!error) inserted++;
-        } catch(_) {
-          try {
-            const { error } = await sb.from(TABLE_MATCHES).upsert(payload);
-            if (!error) inserted++;
-          } catch(e) { console.warn('match upsert failed', e); }
-        }
-      } catch (e) {
-        console.error('Backfill match failed', e);
-      }
-    }
-    return { inserted, scanned: matches.length };
+  return {inserted,hs,playerRows:0,scanned:games.length};
+}
+
+async function backfillLocalMatchesToCloud(){
+  await window.SQ_ADMIN_AUTH.require();
+  const matches=typeof getMatchLog==='function'?(getMatchLog()||[]):[];
+  let inserted=0;
+  for(const m of matches){
+    const result=await window.sqAdminAction({operation:'import_match',match:{id:m.id||null,created_at:m.ts||new Date().toISOString(),players:(m.players||[]).map(p=>typeof p==='string'?{name:p}:p),wins:m.wins||[],total_games:m.games||Math.max(1,m.history?.length||0),history:(m.history||[]).map(g=>({totals:g.totals||[]}))}});
+    inserted+=result.inserted||0;
   }
-  
+  return {inserted,scanned:matches.length};
+}
+
+
+
   async function runBackfillAll(){
     if (!ensureCloudInit()) { toast('Cloud not initialised'); return; }
     const btn = document.getElementById('backfillAllBtn');

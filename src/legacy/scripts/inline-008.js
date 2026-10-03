@@ -13,24 +13,8 @@
     try { console.log(msg); } catch(_){}
   }
 
-  function __sqPwStore(){
-    try { return JSON.parse(localStorage.getItem('sq_playerhub_passwords') || '{}') || {}; }
-    catch(_){ return {}; }
-  }
-  function __sqSetPwStore(obj){
-    try { localStorage.setItem('sq_playerhub_passwords', JSON.stringify(obj || {})); } catch(_){}
-  }
-  function __sqPlayerPwKey(p){
-    if (!p) return '';
-    var id = (p.id != null && String(p.id).trim()) ? ('id:' + String(p.id).trim()) : '';
-    if (id) return id;
-    return 'name:' + String(p.name || '').trim().toLowerCase();
-  }
-  function __sqPlayerDefaultPw(p){
-    var key = __sqPlayerPwKey(p);
-    var map = __sqPwStore();
-    return String(map[key] || '1111');
-  }
+  // Retire obsolete per-player plaintext pseudo-credentials.
+  try{localStorage.removeItem('sq_playerhub_passwords');}catch(_){}
 
   async function __sqListPlayersForHub(){
     var rows = [];
@@ -133,16 +117,10 @@
     var firstF = mkField('First name', player.first_name || '');
     var lastF  = mkField('Last name', player.last_name || '');
     var nickF  = mkField('Nickname', player.nickname || '');
-    var passF  = mkField('Password', __sqPlayerDefaultPw(player));
-    passF.input.type = 'password';
-    passF.input.inputMode = 'numeric';
-    passF.input.maxLength = 12;
-    passF.input.placeholder = '1111';
-
     var note = document.createElement('div');
     note.className = 'muted';
     note.style.fontSize = '.86rem';
-    note.textContent = 'Profile edits update avatar, first name, last name, nickname and Player Hub password. Historic player name key stays intact.';
+    note.textContent = 'Saved profile changes require an enrolled Admin account. Historic player name key stays intact.';
 
     var status = document.createElement('div');
     status.className = 'sr-only';
@@ -150,7 +128,7 @@
     status.setAttribute('aria-live', 'polite');
     status.setAttribute('aria-atomic', 'true');
 
-    body.append(sub, firstF.wrap, lastF.wrap, nickF.wrap, passF.wrap, note, status);
+    body.append(sub, firstF.wrap, lastF.wrap, nickF.wrap, note, status);
     overlay.appendChild(body);
     __sqEnhancePlayerHubAvatarEditor(overlay, player);
 
@@ -193,7 +171,6 @@
       var first = String(firstF.input.value || '').trim();
       var last  = String(lastF.input.value  || '').trim();
       var nick  = String(nickF.input.value  || '').trim();
-      var pass  = String(passF.input.value  || '').trim() || '1111';
       if (!first){ __sqToast('First name required'); return; }
 
       var fullName = (typeof __sqBuildFullName === 'function')
@@ -229,18 +206,6 @@
         } else {
           throw new Error('cloudUpdatePlayerProfile not available');
         }
-
-        try {
-          if (typeof cloudUpdatePlayerInitials === 'function'){
-            await cloudUpdatePlayerInitials({ id: id, name: nmOld }, init);
-          }
-        } catch(_){}
-
-        try {
-          var pwMap = __sqPwStore();
-          pwMap[__sqPlayerPwKey(player)] = pass;
-          __sqSetPwStore(pwMap);
-        } catch(_){}
 
         try { if (typeof syncSavedPlayersFromCloud === 'function') await syncSavedPlayersFromCloud(); } catch(_){}
         try { document.dispatchEvent(new Event('sq:savedPlayersUpdated')); } catch(_){}
@@ -372,127 +337,30 @@
     });
     selectWrap.append(selectLab, select);
 
-    var hint = document.createElement('div');
-    hint.className = 'muted';
-    hint.textContent = 'Default password is 1111';
-
-    var display = document.createElement('div');
-    display.setAttribute('aria-live', 'polite');
-    display.style.width = '100%';
-    display.style.maxWidth = '240px';
-    display.style.minHeight = '52px';
-    display.style.padding = '12px 14px';
-    display.style.borderRadius = '12px';
-    display.style.border = '1px solid #2b3050';
-    display.style.background = '#101329';
-    display.style.color = '#e7e9f5';
-    display.style.textAlign = 'center';
-    display.style.fontSize = '1.25rem';
-    display.style.fontWeight = '800';
-    display.style.letterSpacing = '.35em';
-    display.style.fontVariantNumeric = 'tabular-nums';
-    display.style.boxSizing = 'border-box';
-
-    var error = document.createElement('div');
-    error.style.minHeight = '18px';
-    error.style.fontSize = '.9rem';
-    error.style.color = '#ff6b6b';
-    error.style.textAlign = 'center';
-
-    var pad = document.createElement('div');
-    pad.style.display = 'grid';
-    pad.style.gridTemplateColumns = 'repeat(3, minmax(68px, 1fr))';
-    pad.style.gap = '10px';
-    pad.style.width = '100%';
-    pad.style.maxWidth = '240px';
-
-    var code = '';
-
-    function refresh(){
-      display.textContent = code.length ? Array(code.length).fill('•').join(' ') : '—';
-    }
-    function chosenPlayer(){
-      var idx = String(select.value || '').trim();
-      if (idx === '') return null;
-      return players[Number(idx)] || null;
-    }
-    function clearCode(){
-      code = '';
-      error.textContent = '';
-      refresh();
-    }
-    function close(){
-      overlay.remove();
-    }
-    function submit(){
-      var p = chosenPlayer();
-      if (!p){ error.textContent = 'Select a player'; clearCode(); return; }
-      if (code === __sqPlayerDefaultPw(p)){
-        overlay.style.display = 'none';
-        __sqOpenPlayerProfileEditor(p, overlay);
-      } else {
-        error.textContent = 'Incorrect password';
-        code = '';
-        refresh();
-      }
-    }
-    function pushDigit(d){
-      if (!chosenPlayer()){ error.textContent = 'Select a player'; return; }
-      error.textContent = '';
-      if (code.length >= 4) return;
-      code += String(d);
-      refresh();
-      if (code.length === 4) submit();
-    }
-    function mkKey(label, fn, cls){
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = cls || 'btn';
-      b.textContent = label;
-      b.style.minHeight = '54px';
-      b.style.fontSize = '1.05rem';
-      b.onclick = fn;
-      return b;
-    }
-
-    ['1','2','3','4','5','6','7','8','9'].forEach(function(n){
-      pad.appendChild(mkKey(n, function(){ pushDigit(n); }));
-    });
-    pad.appendChild(mkKey('Clear', function(){ clearCode(); }));
-    pad.appendChild(mkKey('0', function(){ pushDigit('0'); }));
-    pad.appendChild(mkKey('⌫', function(){
-      code = code.slice(0,-1);
-      error.textContent = '';
-      refresh();
-    }));
-
-    var footer = document.createElement('div');
-    footer.className = 'modal-footer';
-    footer.style.justifyContent = 'center';
-
-    var returnBtn = document.createElement('button');
-    returnBtn.className = 'btn';
-    returnBtn.textContent = 'Return';
-    returnBtn.onclick = close;
-
-    footer.append(returnBtn);
-    body.append(selectWrap, hint, display, error, pad);
-    modal.append(title, body, footer);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-
-    modal.tabIndex = 0;
-    modal.focus();
-    refresh();
-
-    select.addEventListener('change', clearCode);
-    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
-    overlay.addEventListener('keydown', function(e){
-      if (e.key === 'Escape'){ close(); return; }
-      if (/^[0-9]$/.test(e.key)){ pushDigit(e.key); return; }
-      if (e.key === 'Backspace'){ code = code.slice(0,-1); error.textContent=''; refresh(); return; }
-      if (e.key === 'Enter' && code.length === 4){ submit(); }
-    });
+    var hint=document.createElement('p');hint.className='muted';
+    hint.textContent='Saved profile changes require Admin sign-in.';
+    var error=document.createElement('p');error.setAttribute('role','status');error.setAttribute('aria-live','polite');
+    var footer=document.createElement('div');footer.className='modal-footer';
+    var returnBtn=document.createElement('button');returnBtn.className='btn';returnBtn.textContent='Return';
+    var editBtn=document.createElement('button');editBtn.className='btn primary';editBtn.textContent='Edit profile';
+    for(var button of [returnBtn,editBtn])button.style.minHeight='44px';
+    function close(){overlay.remove();}
+    returnBtn.onclick=close;
+    editBtn.onclick=async function(){
+      var value=String(select.value||'');var player=value===''?null:players[Number(value)];
+      if(!player){error.textContent='Select a player.';return;}
+      editBtn.disabled=true;overlay.style.display='none';
+      try{
+        if(!window.SQ_ADMIN_AUTH)throw new Error('Admin sign-in is unavailable. Please reload.');
+        await window.SQ_ADMIN_AUTH.require();
+        if(overlay.isConnected)__sqOpenPlayerProfileEditor(player,overlay);
+      }catch(e){if(overlay.isConnected){overlay.style.display='';error.textContent=e.message||'Admin sign-in failed.';editBtn.focus();}}
+      finally{editBtn.disabled=false;}
+    };
+    footer.append(returnBtn,editBtn);body.append(selectWrap,hint,error);modal.append(title,body,footer);overlay.appendChild(modal);document.body.appendChild(overlay);
+    select.focus();
+    overlay.addEventListener('click',function(e){if(e.target===overlay)close();});
+    overlay.addEventListener('keydown',function(e){if(e.key==='Escape')close();});
   }
 
   function __sqLooksLikePlayerHub(el){
@@ -1260,14 +1128,8 @@
   }
 
   function isCompleteEnough(){
-    try{
-      if (!window.state || !Array.isArray(state.players) || !state.players.length) return false;
-      if (state.finished === true || state.gameAwarded === true || state.__sqGameCompleteOpen === true) return true;
-      var rounds = (typeof roundsCount === 'function') ? roundsCount() : (Array.isArray(state.score && state.score[0]) ? state.score[0].length : 0);
-      var board = Array.isArray(state.score) ? state.score : [];
-      if (state.players.length === 1 && Array.isArray(board[0]) && rounds && board[0].filter(function(x){ return x != null; }).length >= rounds) return true;
-      return false;
-    }catch(_){ return false; }
+    // Board arrays exist from game start. Only canonical completion may persist.
+    return !!(window.state && (state.finished===true||state.gameAwarded===true));
   }
 
   function playerRows(){
@@ -1319,116 +1181,9 @@
   }
 
   async function savePracticeToGames(){
-    var saveKey = '';
-    try{
-      if (!isPracticeState() || !isCompleteEnough()) return null;
-      if (typeof sb === 'undefined' || !sb || typeof sb.from !== 'function'){
-        try{ console.info('[SQ] Practice cloud save V3 skipped: Supabase unavailable'); }catch(_){ }
-        return null;
-      }
-
-      var players = playerRows();
-      if (!players.length) return null;
-      var totals = totalsNow();
-      var board = cloneBoard();
-      saveKey = completedPracticeKey(players, totals, board);
-
-      // Dedupe only the exact same completed game. Do not let stale boolean flags
-      // from a previous practice completion block the next game.
-      if (state.__sqPracticeSaveInFlightKeyV2 === saveKey){
-        try{ console.info('[SQ] Practice cloud save V3 skipped: same game save already in flight'); }catch(_){ }
-        return null;
-      }
-      if (state.__sqPracticeSavedKeyV2 === saveKey){
-        try{ console.info('[SQ] Practice cloud save V3 skipped: exact completed game already saved'); }catch(_){ }
-        return null;
-      }
-      if ((state.__sqPracticeCloudSavedV2 || state.__sqPracticeSavedToGames) && state.__sqPracticeSavedKeyV2 !== saveKey){
-        try{ console.info('[SQ] Practice cloud save V3 continuing: stale saved flags belonged to previous practice game'); }catch(_){ }
-        try{
-          delete state.__sqPracticeCloudSavedV2;
-          delete state.__sqPracticeSavedToGames;
-          delete state.__sqPracticeSaveMatchIdV2;
-        }catch(_){ }
-      }
-
-      var ts = new Date().toISOString();
-      var table = (typeof TABLE_GAMES !== 'undefined' && TABLE_GAMES) ? TABLE_GAMES : 'games';
-      var matchTable = (typeof TABLE_MATCHES !== 'undefined' && TABLE_MATCHES) ? TABLE_MATCHES : 'matches';
-      var practiceMatchId = ((typeof crypto !== 'undefined' && crypto && crypto.randomUUID) ? crypto.randomUUID() : ('practice-' + Date.now() + '-' + Math.random().toString(36).slice(2,8)));
-
-      state.__sqPracticeSaveInFlightV2 = true;
-      state.__sqPracticeSaveInFlightKeyV2 = saveKey;
-      state.__sqPracticeSaveMatchIdV2 = practiceMatchId;
-
-      // Mark the current exact game as guarded before the async insert to stop
-      // duplicate wrappers from saving the same board twice. If insert fails,
-      // the catch block removes this key so retry remains possible.
-      state.__sqPracticeSavedKeyV2 = saveKey;
-      state.__sqPracticeCloudSavedV2 = true;
-      state.__sqPracticeSavedToGames = true;
-
-      state.match = Object.assign({}, state.match || {}, {
-        id: practiceMatchId,
-        mode: 'practice',
-        forcePractice: true,
-        createdAtIso: ts,
-        history: [],
-        wins: Array.from({ length: players.length }, function(){ return 0; })
-      });
-
-      var matchRes = await sb.from(matchTable).upsert({
-        id: practiceMatchId,
-        created_at: ts,
-        total_games: 1,
-        players: players,
-        wins: Array.from({ length: players.length }, function(){ return 0; }),
-        history: [{ totals: totals.slice(), mode: 'practice' }]
-      }).select('id').single();
-      if (matchRes && matchRes.error) throw matchRes.error;
-
-      var payload = {
-        match_id: practiceMatchId,
-        game_number: 1,
-        created_at: ts,
-        totals: totals,
-        finished: true,
-        mode: 'practice',
-        state: {
-          players: players,
-          board: board,
-          totals: totals,
-          mode: 'practice',
-          gameMode: 'practice',
-          is_practice: true,
-          total_players: players.length,
-          match_id: practiceMatchId,
-          matchId: practiceMatchId,
-          completed_at: ts,
-          practice_save_key: saveKey,
-          schema_version: 3
-        }
-      };
-
-      var res = await sb.from(table).insert(payload).select('id, created_at').single();
-      if (res && res.error) throw res.error;
-      try{ console.info('[SQ] Practice cloud save V3 wrote games row', { game: res && res.data, practiceMatchId: practiceMatchId, game_number: 1, created_at: ts, saveKey: saveKey }); }catch(_){ }
-      return res && res.data ? res.data : null;
-    }catch(e){
-      try{
-        if (!saveKey || state.__sqPracticeSavedKeyV2 === saveKey) delete state.__sqPracticeSavedKeyV2;
-        state.__sqPracticeCloudSavedV2 = false;
-        state.__sqPracticeSavedToGames = false;
-        delete state.__sqPracticeSaveMatchIdV2;
-      }catch(_){ }
-      try{ console.error('[SQ] Practice cloud save V3 failed', e); }catch(_){ }
-      return null;
-    }finally{
-      try{
-        if (!saveKey || state.__sqPracticeSaveInFlightKeyV2 === saveKey) delete state.__sqPracticeSaveInFlightKeyV2;
-        delete state.__sqPracticeSaveInFlightV2;
-      }catch(_){ }
-    }
+    if(!isPracticeState()||!isCompleteEnough())return null;
+    try{return await window.SQ_GAMEPLAY.completeCurrentGame();}
+    catch(error){window.SQ_GAMEPLAY.failure(error);return null;}
   }
 
   window.__sqSavePracticeToGamesNow = savePracticeToGames;

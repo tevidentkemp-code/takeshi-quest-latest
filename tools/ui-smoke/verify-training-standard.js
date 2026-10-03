@@ -3,6 +3,7 @@
 // summary with total points, hit rate, and a save to training_sessions.
 const { chromium } = require('playwright');
 const fs = require('fs');
+const {installSecurityFixture}=require('./security-fixture');
 const APP_URL = process.env.SQ_APP_URL || 'http://localhost:8123/index.html';
 const CHROMIUM = fs.existsSync('/opt/pw-browsers/chromium-1194/chrome-linux/chrome')
   ? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' : undefined;
@@ -17,6 +18,7 @@ const check = (name, ok, detail) => { if (!ok) failures++; console.log((ok ? 'PA
   const inserts = [];
   await ctx.exposeFunction('__trCapture', (row) => { inserts.push(row); });
 
+  await installSecurityFixture(ctx);
   await ctx.addInitScript(() => {
     const players = [{ id: 'p1', name: 'Trainee One', nickname: 'The Bolt', initials: 'TO' }, { id: 'p2', name: 'Trainee Two', nickname: '', initials: 'TT' }];
     const mkQuery = (table) => {
