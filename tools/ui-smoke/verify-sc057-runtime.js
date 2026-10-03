@@ -141,12 +141,25 @@ fs.mkdirSync(OUT,{recursive:true});
     await page.evaluate(()=>window.__sqOpenGameMenu106());
     await page.locator('.sq-menu106-row').filter({hasText:'Add Player'}).first().click();
     await page.waitForFunction(()=>!document.querySelector('.sq-add-player-loading'));
-    const lateLabel=await page.evaluate(()=>__sqPlayerPretty(getSavedPlayers().find(p=>p.name==='Append 32')));
-    await page.locator('.sq-menu106-row').filter({hasText:lateLabel}).first().click();
+    const lateFixture=rows.find(p=>p.name==='Append 32');
+    assert.equal(lateFixture.id,'22222222-2222-4222-8222-000000000003');
+    assert.equal(lateFixture.avatar_id,32);
+    const late=await page.evaluate(()=>{
+      const p=getSavedPlayers().find(p=>p.name==='Append 32');
+      return {id:p.id,avatar:p.avatar_id,label:__ms2DisplayName(p),pretty:__sqPlayerPretty(p)};
+    });
+    assert.equal(late.id,lateFixture.id);assert.equal(late.avatar,32);
+    const lateBefore=await page.evaluate(()=>state.players.map(p=>({id:p.id,avatar_id:p.avatar_id})));
+    const lateRow=page.locator('.sq-add-player-modal .sq-menu106-row').filter({hasText:late.label});
+    assert.equal(await lateRow.count(),1);await checkArt(lateRow.locator('[data-avatar-id]'),32);
+    await lateRow.click();
+    assert((await page.locator('.sq-confirm-bd .modal-body').textContent()).includes(late.pretty),'confirmation retains full canonical identity');
+    assert.deepEqual(await page.evaluate(()=>state.players.map(p=>({id:p.id,avatar_id:p.avatar_id}))),lateBefore,'late choice waits for confirmation');
     await page.locator('.sq-confirm-bd .sq-endmatch-yes').click();
     await page.waitForFunction(()=>state.players.length===3);
     assert.deepEqual(await page.evaluate(()=>state.players.map(p=>p.avatar_id)),[30,31,32]);
     const identities=await page.evaluate(()=>state.players.map(p=>({id:p.id,avatar_id:p.avatar_id})));
+    assert.deepEqual(identities,lateBefore.concat([{id:lateFixture.id,avatar_id:32}]),'confirmed late append preserves exact UUID/avatar');
     console.log('PASS actual Select/setup/Throw Order/live identity and confirmed registered late join');
     for(const width of [320,390,430])for(const [index,id] of [30,31,32].entries()){
       await page.setViewportSize({width,height:844});
