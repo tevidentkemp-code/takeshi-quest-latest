@@ -1,5 +1,6 @@
 -- SC-057: accept only the three visually approved appended avatar identities.
--- UNAPPLIED: requires specific production database approval before client release.
+-- UNAPPLIED: Thomas's programme RELEASE grant and three-pair artwork approval authorise this extension.
+-- Apply and verify the required backend acceptance before selectable IDs reach production.
 -- Existing mappings, column shape, defaults, RLS, ACL, policies and player rows stay intact.
 begin;
 set local lock_timeout = '5s';

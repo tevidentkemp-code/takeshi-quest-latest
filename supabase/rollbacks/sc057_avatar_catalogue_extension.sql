@@ -1,4 +1,5 @@
--- Requires separate approval. Never discard or remap a selected avatar automatically.
+-- Recovery is covered by programme RELEASE authority only while no IDs 30..32 are saved.
+-- Any future remap/delete requires a separate hard data decision. Never discard or remap a selected avatar automatically.
 -- Revert the client only after considering any saved 30..32 identities.
 -- If new identities exist, retain the expanded range/assets and use the documented recovery gate.
 begin;
