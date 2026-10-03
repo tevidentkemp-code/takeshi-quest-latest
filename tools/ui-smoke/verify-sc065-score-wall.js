@@ -90,10 +90,16 @@ async function begin(page) {
 (async()=>{
   const {browser,ctx,page,consoleErrs}=await H.launch({width:390,height:844});
   try{
+    const fixtureHeaders=new Map();
+    let fixturePhase='before-reload';
+    page.on('pageerror',()=>console.log('SC065 offline read diagnostic '+JSON.stringify({phase:fixturePhase,requests:[...fixtureHeaders.values()]})));
     // This is a local canonical-score fixture. Unrelated read-only record
     // warmers receive empty results; writes remain blocked by the harness.
     await ctx.route('**.supabase.co/rest/v1/**',route=>{
       const method=route.request().method();
+      const table=new URL(route.request().url()).pathname.split('/').pop();
+      const names=Object.keys(route.request().headers()).sort();
+      fixtureHeaders.set(method+':'+table,{method,table,headerNames:names});
       // Keep the offline response valid in WebKit. An empty count and empty
       // games response give the unrelated record backfill nothing to write.
       const headers={'access-control-allow-origin':'*','access-control-allow-methods':'GET, HEAD, OPTIONS','access-control-allow-headers':'authorization, apikey, content-type, prefer, x-client-info'};
@@ -217,7 +223,9 @@ async function begin(page) {
     await seed(page,2);await prepareCompletion(page);await begin(page);
     const savedHistory=await page.evaluate(()=>state.history.length);
     await page.waitForLoadState('networkidle');
+    fixturePhase='reload';
     await H.boot(page,{settle:800});await page.click('#resumeBtn');await rest(page,11);
+    fixturePhase='after-reload';
     contained(await wall(page),'Reload recovery');assert.equal((await wall(page)).history,savedHistory,'Reload lost canonical score history');
     assert.equal(await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().length),0,'Reload resumed stale motion');
 
