@@ -13,7 +13,12 @@ fs.mkdirSync(OUT,{recursive:true});
   const offline=async route=>{
     const req=route.request(),url=new URL(req.url()),table=url.pathname.split('/').pop(),method=req.method();
     if(table==='players'){
-      if(method==='HEAD'&&url.searchParams.get('select')==='id'&&url.searchParams.get('limit')==='1')return route.fulfill({status:503,body:''});
+      // initialCloudCheck is a cross-origin GET with Supabase request headers.
+      // Keep its exact offline response/preflight readable in Linux WebKit.
+      const health=url.searchParams.get('select')==='id'&&url.searchParams.get('limit')==='1';
+      const transport=health?{headers:{'access-control-allow-origin':'*','access-control-allow-methods':'GET, HEAD, OPTIONS','access-control-allow-headers':'accept-profile, apikey, authorization, cache-control, pragma, x-client-info'}}:{};
+      if(health&&method==='OPTIONS')return route.fulfill({status:204,body:'',...transport});
+      if(health&&method==='HEAD')return route.fulfill({status:503,body:'',...transport});
       const payload=['POST','PATCH'].includes(method)?req.postDataJSON():null;
       if(payload)writes.push({method,payload});
       if(payload?.avatar_id>range)return route.fulfill({status:400,json:{code:'23514',message:'new row violates check constraint "players_avatar_id_range"'}});
@@ -28,7 +33,7 @@ fs.mkdirSync(OUT,{recursive:true});
         selected.forEach(p=>Object.assign(p,payload));
       }
       const single=(req.headers().accept||'').includes('vnd.pgrst.object');
-      return route.fulfill({status:200,json:single?selected[0]||null:selected});
+      return route.fulfill({status:200,json:single?selected[0]||null:selected,...transport});
     }
     // Exact read-only owners warmed by game start/post-game. Empty histories
     // are isolated fixtures; every other production request stays blocked.
