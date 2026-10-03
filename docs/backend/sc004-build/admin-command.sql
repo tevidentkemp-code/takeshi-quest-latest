@@ -125,7 +125,7 @@ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $f$
 <<cmd>>
 DECLARE
   op text; rid uuid; uid uuid; gid uuid; mid uuid; scope text; sql_table text;
-  m public.matches; recovered_controller private.sc004_controllers; next_game integer; target integer; mode text; rules jsonb; roster jsonb:='[]'::jsonb;
+  m public.matches; recovered_controller private.sc004_controllers; next_game integer; target integer; mode text; match_format text; rules jsonb; roster jsonb:='[]'::jsonb;
   profile jsonb; result jsonb; previous private.sc004_admin_requests; player public.players; g public.games;
   n integer; changed integer:=0; total integer:=0; idx integer; arr jsonb; key text; item jsonb; payload jsonb; nm text; ts timestamptz;
 BEGIN
@@ -152,7 +152,7 @@ BEGIN
   gid:=(p_body->>'game_id')::uuid;
   scope:=p_body->>'scope';
   IF op='recover_legacy' THEN
-    IF EXISTS(SELECT 1 FROM jsonb_object_keys(p_body) k WHERE k NOT IN ('operation','request_id','match_id','target_wins','mode','rules')) OR coalesce(p_issue_hash,'')!~'^[a-f0-9]{64}$' THEN RAISE EXCEPTION 'invalid legacy recovery' USING ERRCODE='22023'; END IF;
+    IF EXISTS(SELECT 1 FROM jsonb_object_keys(p_body) k WHERE k NOT IN ('operation','request_id','match_id','target_wins','mode','match_format','rules')) OR coalesce(p_issue_hash,'')!~'^[a-f0-9]{64}$' THEN RAISE EXCEPTION 'invalid legacy recovery' USING ERRCODE='22023'; END IF;
     mid:=(p_body->>'match_id')::uuid;
     -- Only an enrolled owner may recover an actual saved scope. Never create
     -- history or wins from the browser's unfinished board/cache.
@@ -162,10 +162,17 @@ BEGIN
     IF jsonb_typeof(m.players) IS DISTINCT FROM 'array' OR jsonb_array_length(m.players) NOT BETWEEN 1 AND 5 OR jsonb_typeof(m.history) IS DISTINCT FROM 'array' OR jsonb_typeof(m.wins) IS DISTINCT FROM 'array' OR jsonb_array_length(m.wins)<>jsonb_array_length(m.players) THEN RAISE EXCEPTION 'unsupported saved match shape' USING ERRCODE='22023'; END IF;
     IF EXISTS(SELECT 1 FROM public.games WHERE match_id=mid AND (NOT finished OR archived_at IS NOT NULL)) THEN RAISE EXCEPTION 'saved match requires owner repair' USING ERRCODE='22023'; END IF;
     SELECT coalesce(max(game_number),0)+1 INTO next_game FROM public.games WHERE match_id=mid;
-    IF next_game>99 OR jsonb_array_length(m.history)<>next_game-1 OR (SELECT count(*) FROM public.games WHERE match_id=mid)<>next_game-1 THEN RAISE EXCEPTION 'saved game sequence cannot be reconciled' USING ERRCODE='22023'; END IF;
+    IF next_game>99 OR jsonb_array_length(m.history)<>next_game-1 OR (SELECT count(*) FROM public.games WHERE match_id=mid)<>next_game-1
+      OR (SELECT count(DISTINCT game_number) FROM public.games WHERE match_id=mid)<>next_game-1
+      OR EXISTS(SELECT 1 FROM public.games h WHERE h.match_id=mid AND (h.game_number<1 OR jsonb_typeof(m.history->(h.game_number-1)) IS DISTINCT FROM 'object' OR jsonb_typeof(m.history->(h.game_number-1)->'totals') IS DISTINCT FROM 'array' OR m.history->(h.game_number-1)->'totals' IS DISTINCT FROM to_jsonb(h.totals)))
+      THEN RAISE EXCEPTION 'saved game sequence cannot be reconciled' USING ERRCODE='22023'; END IF;
     target:=coalesce(m.target_wins,(p_body->>'target_wins')::integer);
     IF m.target_wins IS NOT NULL AND p_body ? 'target_wins' AND (p_body->>'target_wins')::integer IS DISTINCT FROM m.target_wins THEN RAISE EXCEPTION 'saved first-to setting cannot change' USING ERRCODE='22023'; END IF;
     IF target IS NULL OR target NOT IN (1,3,5) OR EXISTS(SELECT 1 FROM jsonb_array_elements(m.wins) w WHERE (w::text)::integer>=target OR (w::text)::integer<0) THEN RAISE EXCEPTION 'saved match is complete or needs owner settings repair' USING ERRCODE='22023'; END IF;
+    -- Legacy matches did not persist whether first-to-one was a series or a
+    -- single game. Only the verified owner can attest that missing setting.
+    match_format:=p_body->>'match_format';
+    IF match_format IS NULL OR match_format NOT IN ('single','series') OR (match_format='single' AND (target<>1 OR next_game<>1)) THEN RAISE EXCEPTION 'owner must confirm saved match format' USING ERRCODE='22023'; END IF;
     SELECT * INTO g FROM public.games WHERE match_id=mid ORDER BY game_number DESC LIMIT 1;
     mode:=CASE WHEN g.mode='unofficial' OR g.state->>'mode'='turbo' THEN 'turbo' WHEN g.mode='practice' OR g.is_practice OR m.mode='practice' OR m.is_practice OR jsonb_array_length(m.players)=1 THEN 'practice' ELSE 'official' END;
     SELECT coalesce(jsonb_object_agg(k,v),'{}'::jsonb) INTO rules FROM jsonb_each(coalesce(g.state,'{}'::jsonb)) e(k,v) WHERE k IN ('gameFormat','gameVariant','tournament','tournamentType','tournamentRules','strictTimer','throwLimitSeconds','startTarget');
@@ -177,6 +184,7 @@ BEGIN
       IF p_body ? 'rules' AND p_body->'rules' IS DISTINCT FROM rules THEN RAISE EXCEPTION 'saved rules cannot change' USING ERRCODE='22023'; END IF;
     END IF;
     IF (mode IN ('official','turbo') AND jsonb_array_length(m.players)<2) OR (mode='vs_shadow' AND jsonb_array_length(m.players)<>1) THEN RAISE EXCEPTION 'saved roster does not fit mode' USING ERRCODE='22023'; END IF;
+    IF mode='vs_shadow' AND match_format<>'single' THEN RAISE EXCEPTION 'shadow recovery must be a single game' USING ERRCODE='22023'; END IF;
     FOR item IN SELECT value FROM jsonb_array_elements(m.players) LOOP
       nm:=CASE WHEN jsonb_typeof(item)='string' THEN item#>>'{}' ELSE item->>'name' END;
       uid:=coalesce(item->>'id',item->>'player_id')::uuid;
@@ -192,7 +200,7 @@ BEGIN
     END LOOP;
     IF (SELECT count(DISTINCT coalesce(value->>'id',lower(value->>'name'))) FROM jsonb_array_elements(roster))<>jsonb_array_length(roster) THEN RAISE EXCEPTION 'duplicate saved roster' USING ERRCODE='22023'; END IF;
     PERFORM private.sc004_validate_rules(rules);
-    INSERT INTO private.sc004_controllers(match_id,token_hash,mode,single_game,roster,rules) VALUES(mid,p_issue_hash,mode,target=1,roster,rules) RETURNING * INTO recovered_controller;
+    INSERT INTO private.sc004_controllers(match_id,token_hash,mode,single_game,roster,rules) VALUES(mid,p_issue_hash,mode,match_format='single',roster,rules) RETURNING * INTO recovered_controller;
     IF m.target_wins IS NULL THEN UPDATE public.matches SET target_wins=target WHERE id=mid; END IF;
     -- Historical slots make the next reservation sequence deterministic. They
     -- preserve accepted public records and cannot be overwritten by completion.

@@ -91,14 +91,25 @@ export async function runAdminCases({admin,sql,check,run='admin-'+crypto.randomU
   });
 }
 
-export async function runLegacyRecoveryCases({recover,command,sql,check,run='legacy-'+crypto.randomUUID().slice(0,8)}){
+export async function seedLegacyBrowserCase({sql,run='legacy-ui-'+crypto.randomUUID().slice(0,8)}){
+  const ql=v=>"'"+String(v).replaceAll("'","''")+"'",j=v=>ql(JSON.stringify(v))+'::jsonb';
+  const [a,b,match_id,game_id]=Array.from({length:4},()=>crypto.randomUUID());
+  const roster=[{id:a,name:`LEGACY_${run}_A`},{id:b,name:`LEGACY_${run}_B`}],wins=[1,0],history=[{totals:[240,0]}],rules={gameFormat:'match_play',gameVariant:'classic'};
+  const board=roster.map((_,pi)=>Array.from({length:14},(_,ri)=>{const points=pi?0:ri<11?ri+10:ri===11?20:ri===12?30:25;
+    const hit=pi?{kind:'Miss',points:0}:ri<11?{kind:'S',points}:ri===11?{kind:'Double',sector:10,points}:ri===12?{kind:'Triple',sector:10,points}:{kind:'B',bull:'Outer',points};
+    return{darts:[hit,{kind:'Miss',points:0},{kind:'Miss',points:0}],roundTotal:points};}));
+  await sql(`INSERT INTO public.players(id,name) VALUES(${ql(a)},${ql(roster[0].name)}),(${ql(b)},${ql(roster[1].name)}); INSERT INTO public.matches(id,total_games,players,wins,history,target_wins,mode,is_practice) VALUES(${ql(match_id)},1,${j(roster.map(p=>({name:p.name})))},${j(wins)},${j(history)},NULL,'official',false); INSERT INTO public.games(id,match_id,game_number,state,totals,finished,mode,is_practice) VALUES(${ql(game_id)},${ql(match_id)},1,${j({players:roster,board,mode:'official',...rules})},ARRAY[240,0],true,'official',false);`);
+  return{match_id,accepted_game_id:game_id,roster,wins,db_history:history,cache_history:[{totals:[240,0],board,gameToken:'legacy-ui-accepted'}],target_wins:3,match_format:'series',mode:'official',rules};
+}
+
+export async function runLegacyRecoveryCases({recover,command,complete,sql,check,run='legacy-'+crypto.randomUUID().slice(0,8)}){
   const ql=v=>"'"+String(v).replaceAll("'","''")+"'",j=v=>ql(JSON.stringify(v))+'::jsonb';
   const [a,b,mid,gid]=Array.from({length:4},()=>crypto.randomUUID()),na=`LEGACY_${run}_A`,nb=`LEGACY_${run}_B`;
-  const roster=[{id:a,name:na},{id:b,name:nb}],past=[{totals:[140,0]}],wins=[1,0];
+  const roster=[{id:a,name:na},{id:b,name:nb}],past=[{totals:[240,0]}],wins=[1,0];
   const board=roster.map((_,pi)=>Array.from({length:14},(_,ri)=>{const points=pi?0:ri<11?ri+10:ri===11?20:ri===12?30:25;return{darts:[{kind:pi?'Miss':ri<11?'S':ri===11?'Double':ri===12?'Triple':'B',points},{kind:'Miss',points:0},{kind:'Miss',points:0}],roundTotal:points};}));
   await sql(`INSERT INTO public.players(id,name) VALUES(${ql(a)},${ql(na)}),(${ql(b)},${ql(nb)}); INSERT INTO public.matches(id,total_games,players,wins,history,target_wins,mode,is_practice) VALUES(${ql(mid)},1,${j([{name:na},{name:nb}])},${j(wins)},${j(past)},NULL,'official',false); INSERT INTO public.games(id,match_id,game_number,state,totals,finished,mode,is_practice) VALUES(${ql(gid)},${ql(mid)},1,${j({players:roster,board,mode:'official'})},ARRAY[240,0],true,'official',false);`);
   await check('Owner recovery preserves legacy DB history/wins and mints only next pending game',async()=>{
-    const r=await recover(mid,{target_wins:3});assert.equal(r.match_id,mid);assert.equal(r.game_number,2);assert.equal(r.recovered,true);assert.equal(r.target_wins,3);assert.deepEqual(r.roster,roster);assert.deepEqual(r.wins,wins);assert.deepEqual(r.history,past);assert.notEqual(r.game_id,gid);assert.equal('capability'in r,false);
+    const r=await recover(mid,{target_wins:3,match_format:'series'});assert.equal(r.match_id,mid);assert.equal(r.game_number,2);assert.equal(r.recovered,true);assert.equal(r.target_wins,3);assert.equal(r.match_format,'series');assert.deepEqual(r.roster,roster);assert.deepEqual(r.wins,wins);assert.deepEqual(r.history,past);assert.notEqual(r.game_id,gid);assert.equal('capability'in r,false);
     const saved=JSON.parse(String(await sql(`SELECT jsonb_build_object('history',history,'wins',wins,'players',players) FROM public.matches WHERE id=${ql(mid)}`)));
     assert.deepEqual(saved.history,past);assert.deepEqual(saved.wins,wins);assert.deepEqual(saved.players,[{name:na},{name:nb}]);
     if(command){const resumed=await command('resume',mid);assert.equal(resumed.match_id,mid);assert.equal(resumed.games.filter(g=>g.status==='pending').length,1);assert.equal(resumed.games.find(g=>g.status==='pending').game_id,r.game_id);}
@@ -106,6 +117,23 @@ export async function runLegacyRecoveryCases({recover,command,sql,check,run='leg
   });
   await check('Legacy guest Practice recovery uses owner-confirmed unsaved settings and retains guest identity',async()=>{
     const mid=crypto.randomUUID(),roster=[{name:`GUEST_${run}`}];await sql(`INSERT INTO public.matches(id,total_games,players,wins,history,target_wins,mode,is_practice) VALUES(${ql(mid)},1,${j(roster)},'[0]','[]',NULL,'practice',true);`);
-    const r=await recover(mid,{target_wins:1,mode:'practice',rules:{}});assert.equal(r.mode,'practice');assert.equal(r.match_format,'single');assert.equal(r.game_number,1);assert.deepEqual(r.roster,[{id:null,name:roster[0].name}]);assert.deepEqual(r.wins,[0]);
+    const r=await recover(mid,{target_wins:1,mode:'practice',match_format:'single',rules:{}});assert.equal(r.mode,'practice');assert.equal(r.match_format,'single');assert.equal(r.game_number,1);assert.deepEqual(r.roster,[{id:null,name:roster[0].name}]);assert.deepEqual(r.wins,[0]);
+  });
+  await check('Legacy recovery rejects a saved history total that disagrees with the same numbered game',async()=>{
+    const bad=crypto.randomUUID(),game=crypto.randomUUID();
+    await sql(`INSERT INTO public.matches(id,total_games,players,wins,history,target_wins,mode,is_practice) VALUES(${ql(bad)},1,${j([{name:na},{name:nb}])},'[1,0]',${j([{totals:[140,0]}])},3,'official',false); INSERT INTO public.games(id,match_id,game_number,state,totals,finished,mode,is_practice) VALUES(${ql(game)},${ql(bad)},1,${j({players:roster,board,mode:'official'})},ARRAY[240,0],true,'official',false);`);
+    await assert.rejects(()=>recover(bad,{target_wins:3,match_format:'series'}));
+    assert.equal(String(await sql(`SELECT count(*) FROM private.sc004_controllers WHERE match_id=${ql(bad)}`)).trim(),'0');
+  });
+  await check('First-to-one legacy series retains series accounting after a recovered completion',async()=>{
+    const first=crypto.randomUUID();await sql(`INSERT INTO public.matches(id,total_games,players,wins,history,target_wins,mode,is_practice) VALUES(${ql(first)},1,${j([{name:na},{name:nb}])},'[0,0]','[]',1,'official',false);`);
+    const settings={target_wins:1,match_format:'series',mode:'official',rules:{}};
+    const r=await recover(first,settings);assert.equal(r.match_format,'series');assert.equal(r.game_number,1);
+    assert.equal(String(await sql(`SELECT single_game::text FROM private.sc004_controllers WHERE match_id=${ql(first)}`)).trim(),'false');
+    if(complete){
+      const board=roster.map((_,pi)=>Array.from({length:14},()=>({darts:[{kind:pi?'Miss':'S',points:pi?0:10},{kind:'Miss',points:0},{kind:'Miss',points:0}],roundTotal:pi?0:10})));
+      const receipt=await complete(first,{game_id:r.game_id,state:{players:r.roster,board,mode:'official'},totals:[140,0]});assert.equal(receipt.game_id,r.game_id);
+      const saved=JSON.parse(String(await sql(`SELECT wins FROM public.matches WHERE id=${ql(first)}`)));assert.deepEqual(saved,[1,0]);
+    }
   });
 }

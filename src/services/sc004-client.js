@@ -40,6 +40,7 @@ function normalized(value) {
   if (!object(value)) return value;
   return Object.fromEntries(Object.keys(value).sort().map(key => [key, normalized(value[key])]));
 }
+const storageLocks=new WeakMap();
 const cloneJson=value=>JSON.parse(JSON.stringify(value));
 const identical = (a, b) => JSON.stringify(normalized(a)) === JSON.stringify(normalized(b));
 function publicReceipt(result) {
@@ -93,17 +94,41 @@ function createSc004Client({
     try { storage.setItem(key, JSON.stringify(value)); }
     catch { throw new Sc004Error('recovery_cache_unavailable'); }
   };
-  const remember = (result, matchId) => {
-    if (!CAPABILITY.test(result.capability || '') || !UUID.test(matchId || '')) {
-      throw new Sc004Error('invalid_issued_controller');
+  const strictLoad=key=>{try{const value=JSON.parse(storage.getItem(key)||'{}');if(!object(value))throw new Error();return value;}catch{throw new Sc004Error('recovery_cache_unavailable');}};
+  async function locked(job){
+    if(window.document&&window.navigator){
+      if(!window.navigator.locks?.request)throw new Sc004Error('recovery_lock_unavailable');
+      return window.navigator.locks.request('sq.sc004.persistence.v1',{mode:'exclusive'},job);
     }
-    credentials = { ...credentials, [matchId]: {
-      capability: result.capability,
-      match_id: matchId,
-      expires_at: result.expires_at ?? null,
-    } };
-    try { persist(CREDENTIAL_KEY, credentials); return 'persistent'; }
-    catch { return 'memory_only'; }
+    // Explicit Node/local VM fixtures share this storage object. Browsers require
+    // the real origin-wide Web Lock above before any durable mutation.
+    const previous=storageLocks.get(storage)||Promise.resolve();
+    const task=previous.then(job);storageLocks.set(storage,task.catch(()=>{}));return task;
+  }
+  async function changeCache(key,update){return locked(()=>{
+    const {next,value}=update(strictLoad(key));persist(key,next);
+    if(key===PENDING_KEY)pending=next;else if(key===START_KEY)starts=next;else if(key===GO_KEY)goQueue=next;else credentials={...credentials,...next};
+    return value;
+  });}
+  async function enqueue(key,id,body,action,conflict='pending_payload_conflict'){
+    return changeCache(key,current=>{
+      const entryKey=typeof id==='function'?id(current):id,prior=current[entryKey];
+      if(prior&&!identical(prior.body,body))throw new Sc004Error(conflict);
+      const queued=prior||{request_id:newRequestId(),body:cloneJson(body),...(action?{action}:{})};
+      return {next:{...current,[entryKey]:queued},value:{key:entryKey,queued}};
+    });
+  }
+  async function forget(key,id,requestId){return changeCache(key,current=>{
+    const next={...current};if(next[id]?.request_id===requestId)delete next[id];return{next};
+  });}
+  const refreshPending=()=>{try{pending=strictLoad(PENDING_KEY);}catch(_){}return pending;};
+  const refreshCredentials=()=>{try{credentials={...credentials,...strictLoad(CREDENTIAL_KEY)};}catch(_){}return credentials;};
+  const remember = async (result, matchId) => {
+    if (!CAPABILITY.test(result.capability || '') || !UUID.test(matchId || ''))throw new Sc004Error('invalid_issued_controller');
+    const issued={capability:result.capability,match_id:matchId,expires_at:result.expires_at??null};
+    credentials={...credentials,[matchId]:issued};
+    try{await changeCache(CREDENTIAL_KEY,current=>({next:{...current,[matchId]:issued}}));return 'persistent';}
+    catch{return 'memory_only';}
   };
 
   async function send(action, body, { matchId, scopeKey = 'match_id', admin = false, requestId } = {}) {
@@ -112,7 +137,7 @@ function createSc004Client({
     if (!UUID.test(id)) throw new Sc004Error('invalid_request_id');
     const headers = { 'Content-Type': 'application/json', apikey: publicKey };
     if (matchId) {
-      const cached = credentials[matchId];
+      const cached = refreshCredentials()[matchId];
       if (!UUID.test(matchId) || cached?.match_id !== matchId ||
           !CAPABILITY.test(cached?.capability || '') || body[scopeKey] !== matchId) {
         throw new Sc004Error('controller_required');
@@ -149,27 +174,21 @@ function createSc004Client({
       if (!object(body) || ['match_id', 'game_id', 'id'].some(key => key in body)) {
         throw new Sc004Error('historical_claim_denied');
       }
-      const previousKey=Object.keys(starts).find(key=>!key.startsWith('training:')&&identical(starts[key].body,body));
-      const key = initiationKey || previousKey || newRequestId();
-      const prior = starts[key];
-      if (prior && !identical(prior.body, body)) throw new Sc004Error('pending_start_conflict');
-      const queued = prior || {request_id:newRequestId(),body:cloneJson(body)};
-      const next = {...starts,[key]:queued}; persist(START_KEY,next); starts=next;
+      const {key,queued}=await enqueue(START_KEY,current=>initiationKey||Object.keys(current).find(k=>!k.startsWith('training:')&&!k.startsWith('legacy:')&&identical(current[k].body,body))||newRequestId(),body,null,'pending_start_conflict');
       const result = await send('create_match',queued.body,{requestId:queued.request_id});
-      const recovery = remember(result, result.match_id);
-      const {[key]:removed,...remaining}=starts; persist(START_KEY,remaining); starts=remaining;
+      const recovery = await remember(result, result.match_id);
+      await forget(START_KEY,key,queued.request_id);
       // The caller must surface memory_only: refresh would lose this authority.
       return { ...publicReceipt(result), recovery };
     },
     async recoverLegacyMatch(matchId,settings={}) {
-      if(!UUID.test(matchId||'')||!object(settings)||Object.keys(settings).some(k=>!['target_wins','mode','rules'].includes(k)))throw new Sc004Error('invalid_recovery');
-      const body=cloneJson({operation:'recover_legacy',match_id:matchId,...settings}),key='legacy:'+matchId,prior=starts[key];
-      if(prior&&!identical(prior.body,body))throw new Sc004Error('pending_start_conflict');
-      const queued=prior||{request_id:newRequestId(),body};const next={...starts,[key]:queued};persist(START_KEY,next);starts=next;
+      if(!UUID.test(matchId||'')||!object(settings)||Object.keys(settings).some(k=>!['target_wins','match_format','mode','rules'].includes(k)))throw new Sc004Error('invalid_recovery');
+      const body=cloneJson({operation:'recover_legacy',match_id:matchId,...settings});
+      const {key,queued}=await enqueue(START_KEY,'legacy:'+matchId,body,null,'pending_start_conflict');
       const result=await send('admin_action',queued.body,{admin:true,requestId:queued.request_id});
       if(result.match_id!==matchId||!UUID.test(result.game_id||'')||result.recovered!==true)throw new Sc004Error('receipt_scope_mismatch');
-      const recovery=remember(result,matchId);
-      const {[key]:removed,...remaining}=starts;persist(START_KEY,remaining);starts=remaining;
+      const recovery=await remember(result,matchId);
+      await forget(START_KEY,key,queued.request_id);
       return {...publicReceipt(result),recovery};
     },
     async command(action, matchId, body = {}) {
@@ -179,7 +198,7 @@ function createSc004Client({
       if(['resume_training','renew_training'].includes(action)){
         if('training_id'in body&&body.training_id!==matchId)throw new Sc004Error('scope_denied');
         const result=await send(action,{...body,training_id:matchId},{matchId,scopeKey:'training_id'});
-        if(action==='renew_training')remember({...credentials[matchId],...result},matchId);
+        if(action==='renew_training')await remember({...credentials[matchId],...result},matchId);
         return publicReceipt(result);
       }
       if ('match_id' in body && body.match_id !== matchId) throw new Sc004Error('scope_denied');
@@ -189,13 +208,12 @@ function createSc004Client({
           throw new Sc004Error('receipt_scope_mismatch');
         }
         // Renewal extends the existing secret. A lost response must not rotate it.
-        const recovery = remember({ ...credentials[matchId], ...result }, matchId);
+        const recovery = await remember({ ...credentials[matchId], ...result }, matchId);
         return { ...publicReceipt(result), recovery };
       }
       if (action === 'revoke_controller' || action === 'cleanup_match') {
-        const { [matchId]: removed, ...remaining } = credentials;
-        credentials = remaining;
-        persist(CREDENTIAL_KEY, credentials);
+        await changeCache(CREDENTIAL_KEY,current=>{const next={...current};delete next[matchId];return{next};});
+        delete credentials[matchId];
       }
       return publicReceipt(result);
     },
@@ -205,75 +223,58 @@ function createSc004Client({
         throw new Sc004Error('invalid_completion');
       }
       const payload = cloneJson({ ...body, match_id: matchId });
-      const previous = pending[body.game_id];
-      if (previous && !identical(previous.body, payload)) {
-        throw new Sc004Error('pending_payload_conflict');
-      }
-      const queued = previous || { request_id: newRequestId(), body: payload };
-      const queuedPending = { ...pending, [body.game_id]: queued };
-      persist(PENDING_KEY, queuedPending); // Preserve before any request or lost response.
-      pending = queuedPending;
+      const {queued}=await enqueue(PENDING_KEY,body.game_id,payload);
       const result = await send('complete_game', queued.body, {
         matchId, requestId: queued.request_id,
       });
       if (result.game_id !== body.game_id || result.match_id !== matchId) {
         throw new Sc004Error('receipt_scope_mismatch');
       }
-      const { [body.game_id]: saved, ...remaining } = pending;
-      persist(PENDING_KEY, remaining); // A cache failure retains the exact retry.
-      pending = remaining;
+      await forget(PENDING_KEY,body.game_id,queued.request_id); // Removes only this accepted envelope.
       return publicReceipt(result);
     },
     async retryCompletion(gameId) {
-      const queued = pending[gameId];
+      const queued = refreshPending()[gameId];
       if (!queued) throw new Sc004Error('pending_completion_not_found');
       return this.completeGame(queued.body.match_id, queued.body);
     },
     pendingCompletions() {
-      return Object.entries(pending).filter(([,entry])=>!entry.action).map(([gameId, entry]) => ({
+      return Object.entries(refreshPending()).filter(([,entry])=>!entry.action).map(([gameId, entry]) => ({
         game_id: gameId, match_id: entry.body.match_id, request_id: entry.request_id,
       }));
     },
-    hasController(matchId) {return UUID.test(matchId||'') && CAPABILITY.test(credentials[matchId]?.capability||'');},
-    controllerExpiry(matchId) {return credentials[matchId]?.expires_at||null;},
+    hasController(matchId) {return UUID.test(matchId||'') && CAPABILITY.test(refreshCredentials()[matchId]?.capability||'');},
+    controllerExpiry(matchId) {return refreshCredentials()[matchId]?.expires_at||null;},
     async logGo(matchId, body) {
       const key=[body.game_id,body.player_id,body.round_number,body.go_number].join(':');
-      const previous=goQueue[key];
       const payload=cloneJson({...body,match_id:matchId});
-      if(previous && !identical(previous.body,payload)) throw new Sc004Error('pending_go_conflict');
-      const queued=previous||{request_id:newRequestId(),body:payload};
-      const next={...goQueue,[key]:queued};persist(GO_KEY,next);goQueue=next;
+      const {queued}=await enqueue(GO_KEY,key,payload,null,'pending_go_conflict');
       const result=await send('log_go',queued.body,{matchId,requestId:queued.request_id});
-      const {[key]:saved,...remaining}=goQueue;persist(GO_KEY,remaining);goQueue=remaining;
+      await forget(GO_KEY,key,queued.request_id);
       return publicReceipt(result);
     },
     async retryGoEvents() {
-      const results=[];
+      const results=[];try{goQueue=strictLoad(GO_KEY);}catch(_){}
       for(const item of Object.values(goQueue)) results.push(await this.logGo(item.body.match_id,item.body));
       return results;
     },
     async createTraining(body,initiationKey) {
-      const previousKey=Object.keys(starts).find(key=>key.startsWith('training:')&&identical(starts[key].body,body));
-      const key=initiationKey?'training:'+initiationKey:(previousKey||'training:'+newRequestId());const prior=starts[key];
-      if(prior&&!identical(prior.body,body))throw new Sc004Error('pending_start_conflict');
-      const queued=prior||{request_id:newRequestId(),body:cloneJson(body)};const next={...starts,[key]:queued};persist(START_KEY,next);starts=next;
+      const {key,queued}=await enqueue(START_KEY,current=>initiationKey?'training:'+initiationKey:Object.keys(current).find(k=>k.startsWith('training:')&&identical(current[k].body,body))||'training:'+newRequestId(),body,null,'pending_start_conflict');
       const result=await send('create_training',queued.body,{requestId:queued.request_id});
-      const recovery=remember(result,result.training_id);
-      const {[key]:removed,...remaining}=starts;persist(START_KEY,remaining);starts=remaining;
+      const recovery=await remember(result,result.training_id);
+      await forget(START_KEY,key,queued.request_id);
       return {...publicReceipt(result),recovery};
     },
     async completeTraining(trainingId,payload) {
-      const key='training:'+trainingId;const body=cloneJson({training_id:trainingId,payload});const prior=pending[key];
-      if(prior&&!identical(prior.body,body))throw new Sc004Error('pending_payload_conflict');
-      const queued=prior||{action:'complete_training',request_id:newRequestId(),body};
-      const next={...pending,[key]:queued};persist(PENDING_KEY,next);pending=next;
+      const key='training:'+trainingId,body=cloneJson({training_id:trainingId,payload});
+      const {queued}=await enqueue(PENDING_KEY,key,body,'complete_training');
       const result=await send('complete_training',queued.body,{matchId:trainingId,scopeKey:'training_id',requestId:queued.request_id});
       if(result.training_id!==trainingId)throw new Sc004Error('receipt_scope_mismatch');
-      const {[key]:saved,...remaining}=pending;persist(PENDING_KEY,remaining);pending=remaining;
+      await forget(PENDING_KEY,key,queued.request_id);
       return publicReceipt(result);
     },
-    pendingTraining() {return Object.values(pending).filter(x=>x.action==='complete_training').map(x=>({training_id:x.body.training_id,request_id:x.request_id}));},
-    async retryTraining(trainingId) {const item=pending['training:'+trainingId];if(!item)throw new Sc004Error('pending_completion_not_found');return this.completeTraining(trainingId,item.body.payload);},
+    pendingTraining() {return Object.values(refreshPending()).filter(x=>x.action==='complete_training').map(x=>({training_id:x.body.training_id,request_id:x.request_id}));},
+    async retryTraining(trainingId) {const item=refreshPending()['training:'+trainingId];if(!item)throw new Sc004Error('pending_completion_not_found');return this.completeTraining(trainingId,item.body.payload);},
     async visit(body) {return publicReceipt(await send('visit',body));},
     async createPlayer(profile) {
       const result = await send('create_player', profile);

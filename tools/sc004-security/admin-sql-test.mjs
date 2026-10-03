@@ -26,7 +26,7 @@ try{
   await runAdminCases({admin,sql,check,run:'schema-'+crypto.randomUUID().slice(0,8)});
   const recoveryQueue=new Map();
   const recover=async(mid,settings={})=>{const b={operation:'recover_legacy',match_id:mid,...settings,request_id:crypto.randomUUID()},hash=crypto.randomUUID().replaceAll('-','').repeat(2);const r=(await f.asRole('service_role','SELECT public.sq_sc004_admin($1::jsonb,$2::uuid,$3::uuid,$4) r',[JSON.stringify(b),u,session,hash])).rows[0].r;recoveryQueue.set(mid,{b,hash,r});return r;};
-  await runLegacyRecoveryCases({recover,command:async(action,mid)=>f.command(action,recoveryQueue.get(mid).hash,{match_id:mid}),sql,check,run:'schema-'+crypto.randomUUID().slice(0,8)});
+  await runLegacyRecoveryCases({recover,command:async(action,mid,body={})=>f.command(action,recoveryQueue.get(mid).hash,{...body,match_id:mid}),complete:async(mid,body)=>f.command('complete_game',recoveryQueue.get(mid).hash,{...body,match_id:mid}),sql,check,run:'schema-'+crypto.randomUUID().slice(0,8)});
   await check('Legacy recovery exact request is stable; unknown, replacement, changed key and revoked deny',async()=>{
     const [mid,{b,hash,r}]=[...recoveryQueue][0];
     const call=async(b,hash)=>(await f.asRole('service_role','SELECT public.sq_sc004_admin($1::jsonb,$2::uuid,$3::uuid,$4) r',[JSON.stringify(b),u,session,hash])).rows[0].r;

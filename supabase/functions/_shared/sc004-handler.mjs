@@ -216,7 +216,7 @@ export function createSc004Handler({
       if (sqlCode === '42501') return response({ ok: false, code: 'permission_denied' }, 403);
       if (sqlCode === '23505') return response({ ok: false, code: 'conflict' }, 409);
       if (sqlCode === '55000') return response({ ok: false, code: 'writes_held' }, 503);
-      if (['22023', '22P02', '23503', '23514'].includes(sqlCode)) {
+      if (['22023', '22003', '22007', '22008', '22P02', '23503', '23514'].includes(sqlCode)) {
         return response({ ok: false, code: 'invalid_request' }, 400);
       }
       return response({ ok: false, code: 'operation_failed' }, 500);
