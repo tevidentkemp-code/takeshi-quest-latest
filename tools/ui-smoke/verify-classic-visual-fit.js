@@ -7,6 +7,12 @@ const assert = require('assert/strict');
 const GAME_STORAGE_KEY = 'shateki_quest_scorer_v6';
 const BROWSER_NOISE = /supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource|Content Security Policy|connect-src/i;
 
+async function captureResumableCache(page) {
+  return page.evaluate(gameKey => Object.fromEntries([
+    gameKey, 'sq.security.match-credentials.v1', 'sc004.offline-ui-fixture.server.v1'
+  ].map(key => [key, localStorage.getItem(key)])), GAME_STORAGE_KEY);
+}
+
 async function installRacePacketCapture(page){
   await page.evaluate(() => {
     const original = window.__sqDrawArcadeRace;
@@ -375,8 +381,8 @@ async function verifyNewRaceRoute(mode, expected){
     const packet = await waitForRacePacket(page, expected, {matchMode:mode});
     assert.equal(packet.classicThrowRace, expected, `${mode} new-game routing`);
     assertNoUnexpectedErrors(consoleErrs, `${mode} new-game routing`);
-    const savedState = await page.evaluate(key => localStorage.getItem(key), GAME_STORAGE_KEY);
-    assert(savedState, `${mode} new game writes a resumable cache`);
+    const savedState = await captureResumableCache(page);
+    assert(savedState[GAME_STORAGE_KEY], `${mode} new game writes a resumable cache`);
     console.log(`PASS SC-021 new-game ${mode} routes classicThrowRace=${expected}`);
     return savedState;
   } finally { await browser.close(); }
@@ -452,9 +458,17 @@ async function verifySc023TurboLiveRecovery(){
 }
 
 async function verifyResumedRaceRoute(label, savedState, expected){
-  const {browser, ctx, page, consoleErrs} = await H.launch({width:390,height:844});
+  const {browser, page, consoleErrs} = await H.launch({width:390,height:844});
   try {
-    await ctx.addInitScript(({key, value}) => localStorage.setItem(key, value), {key:GAME_STORAGE_KEY, value:savedState});
+    // Copy the original issued authority and fixture server snapshot verbatim.
+    // Populate storage before the navigation that initializes the fixture; this
+    // avoids relying on ordering between independent browser init scripts.
+    await page.goto(H.APP_URL, {waitUntil:'domcontentloaded'});
+    await page.evaluate(entries => {
+      for (const [key, value] of Object.entries(entries)) {
+        if (value !== null) localStorage.setItem(key, value);
+      }
+    }, savedState);
     await H.boot(page);
     await installRacePacketCapture(page);
     assert(await page.isVisible('#resumeBtn'), `${label}: Resume Game is visible`);
@@ -572,8 +586,8 @@ async function verifyTrainingRoute(){
     console.log('PASS SC-021 new-game Classic with guests routes classicThrowRace=true');
     await page.locator('#pad .dtBullBtn').first().click();
     await page.waitForTimeout(650);
-    classicSavedState = await page.evaluate(key => localStorage.getItem(key), GAME_STORAGE_KEY);
-    assert(classicSavedState, 'Classic game writes a resumable cache');
+    classicSavedState = await captureResumableCache(page);
+    assert(classicSavedState[GAME_STORAGE_KEY], 'Classic game writes a resumable cache');
     assert(await page.locator('#liveV2Panel .v2Total').allTextContents().then(v=>v.some(x=>Number(x)>0)), 'score totals update');
     console.log('PASS score totals update after a real button press');
     assert.equal(await page.locator('#liveV2Panel .v2MiniAvg').count(), 2, 'one mini-average strip per player');
@@ -757,7 +771,7 @@ async function verifyTrainingRoute(){
   await verifySc022HudPolish();
   await verifyResumedRaceRoute('Classic', classicSavedState, true);
   const practiceSavedState = await verifyNewRaceRoute('practice', false);
-  const resumedPractice = JSON.parse(practiceSavedState);
+  const resumedPractice = JSON.parse(practiceSavedState[GAME_STORAGE_KEY]);
   resumedPractice.match = Object.assign({}, resumedPractice.match || {}, {mode:'practice'});
   delete resumedPractice.match.forcePractice;
   delete resumedPractice.match.gameMode;
@@ -768,7 +782,7 @@ async function verifyTrainingRoute(){
   delete resumedPractice.isPractice;
   delete resumedPractice.is_practice;
   delete resumedPractice.practice;
-  await verifyResumedRaceRoute('Practice without forcePractice', JSON.stringify(resumedPractice), false);
+  await verifyResumedRaceRoute('Practice without forcePractice', {...practiceSavedState, [GAME_STORAGE_KEY]:JSON.stringify(resumedPractice)}, false);
   await verifySc023TurboLiveRecovery();
   await verifyNewRaceRoute('turbo', false);
   await verifyVsShadowAndPracticeAliasRoutes();
