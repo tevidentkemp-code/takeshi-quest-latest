@@ -2033,7 +2033,8 @@ async function cloudRenamePlayer(oldName, newName){
 
 
 /* ===== SC-040 PLAYER AVATAR IDENTITY ===== */
-const SQ_AVATAR_COUNT = 29;
+const SQ_AVATAR_COUNT = 32;
+const SQ_AVATAR_SPRITE_COUNT = 29;
 const SQ_AVATAR_AUTO_ASSIGN_COUNT = 20;
 const SQ_AVATAR_COLS = 6;
 const SQ_AVATAR_ROWS = 5;
@@ -2059,6 +2060,7 @@ function __sqNormalizeAvatarId(value, seed=''){
 }
 function __sqAvatarSpritePosition(value){
   const id = __sqNormalizeAvatarId(value);
+  if (id > SQ_AVATAR_SPRITE_COUNT) return null;
   const index = id - 1;
   const col = index % SQ_AVATAR_COLS;
   const row = Math.floor(index / SQ_AVATAR_COLS);
@@ -2072,15 +2074,27 @@ function __sqAvatarIdForPlayer(playerOrName){
   }
   return __sqNormalizeAvatarId(null, playerOrName);
 }
-function __sqApplyAvatarSprite(el, avatarId){
+function __sqApplyAvatarArtwork(el, avatarId, celebration=false){
   if (!el) return el;
-  const p = __sqAvatarSpritePosition(avatarId);
-  el.dataset.avatarId = String(p.id);
-  el.style.backgroundImage = 'url("./assets/avatars/avatar-sprite.webp")';
+  const id = __sqNormalizeAvatarId(avatarId);
+  const standalone = id > SQ_AVATAR_SPRITE_COUNT;
+  const kind = celebration ? 'winner' : 'avatar';
+  const path = standalone ? kind + '-' + id + '.webp'
+    : (celebration ? 'celebration-sprite.webp' : 'avatar-sprite.webp');
+  el.dataset.avatarId = String(id);
+  el.dataset.avatarLayout = standalone ? 'standalone' : 'sprite';
+  el.style.backgroundImage = 'url("./assets/avatars/' + path + '")';
   el.style.backgroundRepeat = 'no-repeat';
-  el.style.backgroundSize = '600% 500%';
-  el.style.backgroundPosition = p.x.toFixed(4) + '% ' + p.y.toFixed(4) + '%';
+  el.style.backgroundSize = standalone ? '100% 100%' : '600% 500%';
+  const p = standalone ? null : __sqAvatarSpritePosition(id);
+  el.style.backgroundPosition = p ? p.x.toFixed(4) + '% ' + p.y.toFixed(4) + '%' : 'center';
   return el;
+}
+function __sqApplyAvatarSprite(el, avatarId){
+  return __sqApplyAvatarArtwork(el, avatarId);
+}
+function __sqApplyCelebrationSprite(el, avatarId){
+  return __sqApplyAvatarArtwork(el, avatarId, true);
 }
 function __sqBuildAvatarPicker(selectedId, onChange){
   const root = document.createElement('div');
@@ -2131,6 +2145,7 @@ window.__sqNormalizeAvatarId = __sqNormalizeAvatarId;
 window.__sqAvatarSpritePosition = __sqAvatarSpritePosition;
 window.__sqAvatarIdForPlayer = __sqAvatarIdForPlayer;
 window.__sqApplyAvatarSprite = __sqApplyAvatarSprite;
+window.__sqApplyCelebrationSprite = __sqApplyCelebrationSprite;
 window.__sqBuildAvatarPicker = __sqBuildAvatarPicker;
 
 // Called by the canonical Player Hub editor with its actual player record.

@@ -755,13 +755,11 @@ function applyPlayerAvatar(host, el, player) {
     const id = typeof host.__sqAvatarIdForPlayer === 'function'
       ? host.__sqAvatarIdForPlayer(player)
       : (typeof window.__sqAvatarIdForPlayer === 'function' ? window.__sqAvatarIdForPlayer(player) : 1);
-    const pos = typeof host.__sqAvatarSpritePosition === 'function'
-      ? host.__sqAvatarSpritePosition(id)
-      : (typeof window.__sqAvatarSpritePosition === 'function' ? window.__sqAvatarSpritePosition(id) : null);
-    if (pos) {
-      el.dataset.avatarId = String(pos.id);
-      el.style.backgroundImage = 'url("./assets/avatars/avatar-sprite.webp")';
-      el.style.backgroundPosition = pos.x.toFixed(4) + '% ' + pos.y.toFixed(4) + '%';
+    const apply = typeof host.__sqApplyAvatarSprite === 'function'
+      ? host.__sqApplyAvatarSprite
+      : (typeof window.__sqApplyAvatarSprite === 'function' ? window.__sqApplyAvatarSprite : null);
+    if (apply) {
+      apply(el, id);
       return;
     }
   } catch (_) {}
