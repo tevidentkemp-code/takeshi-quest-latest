@@ -50,13 +50,21 @@ async function seed(page, count, round = 10, mode = 'match') {
     if(mode==='turbo') Object.assign(state.match,{mode:'turbo',gameVariant:'turbo',startTarget:'17',strictTimer:true,throwLimitSeconds:20});
     startNewGame(true);
   }, {n:count,mode});
+  if(mode==='turbo'){
+    // The real Ready button is available while chunked preparation is still
+    // painting. Follow that user flow before waiting for the loader to settle.
+    await page.waitForFunction(()=>document.body.dataset.page==='game');
+    assert.equal(await page.evaluate(()=>state.currentRound),7,'Turbo changed its canonical starting round');
+    await page.click('.sq-turbo-ready-start');
+    await page.waitForFunction(()=>window.__sqTurboTimerStatus().active && document.querySelector('.sqTurboTimerActive'));
+  }
   try{
     await page.waitForFunction(()=>document.body.dataset.page==='game' && document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');
   }catch(error){
     const diagnostic=await page.evaluate(()=>{
       const overlay=document.getElementById('gameLoadOverlay'),boot=document.getElementById('bootSplash'),panel=document.getElementById('liveV2Panel');
       const status=el=>el?{hidden:el.hidden,ariaHidden:el.getAttribute('aria-hidden'),display:getComputedStyle(el).display,opacity:getComputedStyle(el).opacity,rect:el.getBoundingClientRect().toJSON()}:null;
-      return{page:document.body.dataset.page,visibility:document.visibilityState,hidden:document.hidden,ready:document.readyState,fixtureFrame:window.__sqSc065FixtureFrame,overlay:status(overlay),boot:status(boot),panel:status(panel),round:state.currentRound,token:state.__gameToken,history:state.history.length,tableRows:document.querySelectorAll('#gameTable tbody tr').length,scriptPaths:[...document.scripts].filter(s=>s.src&&new URL(s.src).origin===location.origin).map(s=>new URL(s.src).pathname)};
+      return{page:document.body.dataset.page,visibility:document.visibilityState,hidden:document.hidden,ready:document.readyState,fixtureFrame:window.__sqSc065FixtureFrame,overlay:status(overlay),boot:status(boot),panel:status(panel),round:state.currentRound,token:state.__gameToken,history:state.history.length,tableRows:document.querySelectorAll('#tbody tr').length,scriptPaths:[...document.scripts].filter(s=>s.src&&new URL(s.src).origin===location.origin).map(s=>new URL(s.src).pathname)};
     });
     // Playwright caches its original error stack, so an appended message is
     // absent from Node's normal error print. Emit the credential-free state.
@@ -66,10 +74,6 @@ async function seed(page, count, round = 10, mode = 'match') {
       await page.screenshot({path:path.join(process.env.SQ_SCREENSHOTS,'sc065-fixture-failure.png')});
     }
     throw error;
-  }
-  if(mode==='turbo'){
-    assert.equal(await page.evaluate(()=>state.currentRound),7,'Turbo changed its canonical starting round');
-    await page.evaluate(()=>window.__sqReleaseTurboReadyGate());
   }
   await page.evaluate(r=>{let guard=0;while(state.currentRound<r && guard++<200) recordThrow({kind:'S',number:ROUNDS[state.currentRound].target});}, round);
   await rest(page,round);
@@ -142,6 +146,14 @@ async function begin(page) {
   try{
     const fixtureHeaders=new Map();
     let fixturePhase='before-reload';
+    const pendingReads=new Set();let readRevision=0;
+    page.on('request',request=>{
+      if(request.url().includes('supabase.co') && ['GET','HEAD','OPTIONS'].includes(request.method())){
+        pendingReads.add(request);readRevision++;
+      }
+    });
+    const finishRead=request=>pendingReads.delete(request);
+    page.on('requestfinished',finishRead);page.on('requestfailed',finishRead);
     page.on('pageerror',()=>console.log('SC065 offline read diagnostic '+JSON.stringify({phase:fixturePhase,requests:[...fixtureHeaders.values()]})));
     // This is a local canonical-score fixture. Unrelated read-only record
     // warmers receive empty results; writes remain blocked by the harness.
@@ -152,7 +164,7 @@ async function begin(page) {
       fixtureHeaders.set(method+':'+table,{method,table,headerNames:names});
       // Keep the offline response valid in WebKit. An empty count and empty
       // games response give the unrelated record backfill nothing to write.
-      const headers={'access-control-allow-origin':'*','access-control-allow-methods':'GET, HEAD, OPTIONS','access-control-allow-headers':'authorization, apikey, content-type, prefer, x-client-info'};
+      const headers={'access-control-allow-origin':'*','access-control-allow-methods':'GET, HEAD, OPTIONS','access-control-allow-headers':'authorization, apikey, accept-profile, content-type, prefer, x-client-info'};
       if(method==='OPTIONS') return route.fulfill({status:204,headers,body:''});
       if(method==='GET') return route.fulfill({status:200,headers,contentType:'application/json',body:'[]'});
       if(method==='HEAD') return route.fulfill({status:200,headers:{...headers,'content-range':'*/0','access-control-expose-headers':'content-range'},body:''});
@@ -292,7 +304,16 @@ async function begin(page) {
     progress('START','reload during motion');
     await seed(page,2);await prepareCompletion(page);await begin(page);
     const savedHistory=await page.evaluate(()=>state.history.length);
-    await page.waitForLoadState('networkidle');
+    // waitForLoadState('networkidle') can resolve from an earlier document
+    // event while new reads are pending. Do not unload an offline response
+    // halfway through fulfillment; drain actual reads across a native paint.
+    const readBarrierAt=Date.now();let samples=0,budget;
+    const drain=(async()=>{for(;;){const revision=readRevision;await frames(page,1,'offline read completion');samples++;if(!pendingReads.size && readRevision===revision)return;}})();
+    try{
+      await Promise.race([drain,new Promise((_,reject)=>{budget=setTimeout(()=>reject(new Error('Offline reads did not settle within 8000ms; pending='+pendingReads.size)),8000);})]);
+    }finally{clearTimeout(budget);}
+    assert(await page.evaluate(()=>document.getElementById('v2Rows').getAnimations().some(a=>a.playState==='paused')),'Reload must still interrupt native wall motion');
+    console.log('SC065 read completion '+JSON.stringify({elapsed:Date.now()-readBarrierAt,samples,pending:pendingReads.size}));
     fixturePhase='reload';
     await H.boot(page,{settle:800});await page.click('#resumeBtn');await rest(page,11);
     fixturePhase='after-reload';
