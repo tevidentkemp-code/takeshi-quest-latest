@@ -12,6 +12,13 @@ assert(Array.isArray(meta.releases) && meta.releases.length >= 20);
 assert.equal(meta.releases[0].version,meta.currentVersion);
 assert.equal(meta.releases[0].releaseId,meta.currentReleaseId);
 
+const runningVersionMatch = core.match(/const RUNNING_VERSION = '([^']+)'/);
+assert(runningVersionMatch,'running build version constant missing');
+assert.equal(runningVersionMatch[1],meta.currentVersion,'running build version must match release metadata at build time');
+assert(core.includes('REFRESH APP - UPDATE AVAILABLE'),'update-available VIDE line missing');
+assert(core.includes('__sqCheckForAppUpdate'),'update heartbeat missing');
+assert(core.includes("cache:'no-store'"),'release metadata fetch must bypass browser cache');
+
 const ids = meta.releases.map((r)=>r.releaseId);
 assert.equal(new Set(ids).size,ids.length,'release identifiers must be unique');
 for (let i=0;i<meta.releases.length;i++){
