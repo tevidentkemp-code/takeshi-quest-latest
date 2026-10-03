@@ -35,8 +35,101 @@ async function frames(page,count,label){
   }),{count,label:qaCase+': '+label});
 }
 
+// First cold early fixture only. Forward native scheduling and builders without
+// changing their results, polling, or deadlines; restore on success and error.
+let coldFixtureObserved=false;
+async function beginColdFixtureDiagnostic(page){
+  await page.evaluate(()=>{
+    const trace=window.__sqSc065ColdDiagnostic={scope:'first cold fixture; main world only',limits:{records:512,owners:64,bookkeepingMs:25},records:[],owners:[],dropped:0,bookkeepingMs:0,stopped:null,restored:false,restoreConflicts:[]};
+    let active=true;
+    const restores=[],owners=new WeakMap();
+    let observer=null;
+    window.__sqSc065RestoreColdDiagnostic=()=>{
+      if(trace.restored)return null;
+      active=false;observer?.disconnect();
+      for(const restore of restores.reverse())restore();
+      trace.restored=true;return trace;
+    };
+    const clock=()=>performance.now();
+    function note(kind,fields){
+      if(!active)return null;
+      if(trace.records.length>=trace.limits.records){trace.dropped++;trace.stopped='record cap';active=false;return null;}
+      const item={kind,at:clock(),...fields};trace.records.push(item);return item;
+    }
+    function observe(fn){
+      if(!active)return null;
+      const start=clock();
+      try{return fn();}catch(error){trace.observerError=String(error);trace.stopped='observer error';active=false;return null;}
+      finally{
+        trace.bookkeepingMs+=clock()-start;
+        if(trace.bookkeepingMs>=trace.limits.bookkeepingMs){trace.stopped='bookkeeping cap';active=false;}
+      }
+    }
+    function owner(callback){
+      if(owners.has(callback))return owners.get(callback);
+      if(trace.owners.length>=trace.limits.owners)return null;
+      const id=trace.owners.length;
+      trace.owners.push({id,name:callback.name||'',stack:String(new Error().stack||'').split('\n').slice(2,7).join('\n').slice(0,800)});
+      owners.set(callback,id);return id;
+    }
+    function replace(name,make){
+      const original=window[name];if(typeof original!=='function')return;
+      const wrapped=make(original);window[name]=wrapped;
+      restores.push(()=>{if(window[name]===wrapped)window[name]=original;else trace.restoreConflicts.push(name);});
+    }
+    replace('requestAnimationFrame',original=>function(callback){
+      if(!active||typeof callback!=='function')return Reflect.apply(original,this,arguments);
+      const item=observe(()=>note('raf',{scheduledAt:clock(),owner:owner(callback)}));
+      if(!item)return Reflect.apply(original,this,arguments);
+      const args=Array.from(arguments);
+      args[0]=function(){
+        observe(()=>{item.firedAt=clock();item.frameStamp=arguments[0];});
+        try{return Reflect.apply(callback,this,arguments);}
+        finally{observe(()=>{item.returnedAt=clock();});}
+      };
+      return Reflect.apply(original,this,args);
+    });
+    replace('setTimeout',original=>function(callback,delay){
+      if(!active||typeof callback!=='function'||(delay!==undefined&&delay!==0))return Reflect.apply(original,this,arguments);
+      const item=observe(()=>note('timer',{scheduledAt:clock(),delay:delay??0,owner:owner(callback)}));
+      if(!item)return Reflect.apply(original,this,arguments);
+      const args=Array.from(arguments);
+      args[0]=function(){
+        observe(()=>{item.firedAt=clock();});
+        try{return Reflect.apply(callback,this,arguments);}
+        finally{observe(()=>{item.returnedAt=clock();});}
+      };
+      return Reflect.apply(original,this,args);
+    });
+    const builders=['buildScoreHeader','buildScoreBody','buildFloatingHeader','buildStatsHeader','buildStatsBody','buildMatchStatsHeader','buildMatchStatsBody','setupScrollSync'];
+    for(const name of [...builders,'show','updateUI','__sqShowGameLoadOverlay','__sqHideGameLoadOverlay']){
+      replace(name,original=>function(){
+        if(!active)return Reflect.apply(original,this,arguments);
+        const item=observe(()=>note(builders.includes(name)?'builder':'transition',{name,startAt:clock()}));
+        try{return Reflect.apply(original,this,arguments);}
+        finally{if(item)observe(()=>{item.returnedAt=clock();});}
+      });
+    }
+    observer=new MutationObserver(records=>{
+      observe(()=>note('attributes',{changes:records.map(r=>({target:r.target.id||r.target.tagName,attribute:r.attributeName})),page:document.body.dataset.page,overlayAriaHidden:document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')}));
+    });
+    const overlay=document.getElementById('gameLoadOverlay');
+    if(overlay)observer.observe(overlay,{attributes:true,attributeFilter:['aria-hidden','class']});
+    observer.observe(document.body,{attributes:true,attributeFilter:['data-page']});
+  });
+}
+async function finishColdFixtureDiagnostic(page,outcome){
+  try{
+    const diagnostic=await page.evaluate(()=>window.__sqSc065RestoreColdDiagnostic?.());
+    if(diagnostic)console.log('SC065 cold fixture diagnostic '+JSON.stringify({outcome,diagnostic}));
+  }catch(error){console.error('SC065 cold fixture diagnostic capture failed '+String(error));}
+}
+
 async function seed(page, count, round = 10, mode = 'match') {
   progress('FIXTURE',qaCase+' '+mode+'/'+count+' players/round '+round);
+  const observeCold=qaPart==='early'&&!coldFixtureObserved;
+  try{
+  if(observeCold){coldFixtureObserved=true;await beginColdFixtureDiagnostic(page);}
   await page.evaluate(async ({n,mode}) => {
     window.__sqSc065YieldTrace=[];
     if(!window.__sqSc065YieldOriginal){
@@ -67,6 +160,7 @@ async function seed(page, count, round = 10, mode = 'match') {
   try{
     await page.waitForFunction(()=>document.body.dataset.page==='game' && document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');
   }catch(error){
+    if(observeCold)await finishColdFixtureDiagnostic(page,'loader deadline');
     const diagnostic=await page.evaluate(()=>{
       const overlay=document.getElementById('gameLoadOverlay'),boot=document.getElementById('bootSplash'),panel=document.getElementById('liveV2Panel');
       const status=el=>el?{hidden:el.hidden,ariaHidden:el.getAttribute('aria-hidden'),display:getComputedStyle(el).display,opacity:getComputedStyle(el).opacity,rect:el.getBoundingClientRect().toJSON()}:null;
@@ -81,10 +175,14 @@ async function seed(page, count, round = 10, mode = 'match') {
     }
     throw error;
   }
+  if(observeCold)await finishColdFixtureDiagnostic(page,'loader ready');
   await page.evaluate(r=>{let guard=0;while(state.currentRound<r && guard++<200) recordThrow({kind:'S',number:ROUNDS[state.currentRound].target});}, round);
   await rest(page,round);
   console.log('SC065 native yield trace '+JSON.stringify(await page.evaluate(()=>({yields:window.__sqSc065YieldTrace}))));
   progress('READY',qaCase+' '+mode+'/'+count+' players/round '+round);
+  }finally{
+    if(observeCold)await finishColdFixtureDiagnostic(page,'seed cleanup');
+  }
 }
 async function rest(page, round) {
   await page.waitForFunction(r=>document.querySelector('#v2Rows .v2Badge.liveRow')?.dataset.round===String(r), round);
