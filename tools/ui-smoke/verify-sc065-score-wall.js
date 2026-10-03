@@ -15,7 +15,12 @@ async function seed(page, count, round = 10, mode = 'match') {
     if(mode==='turbo') Object.assign(state.match,{mode:'turbo',gameVariant:'turbo',startTarget:'17',strictTimer:true,throwLimitSeconds:20});
     startNewGame(true);
   }, {n:count,mode});
-  await page.waitForFunction(()=>document.body.dataset.page==='game' && document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');
+  try{
+    await page.waitForFunction(()=>document.body.dataset.page==='game' && document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');
+  }catch(error){
+    const diagnostic=await page.evaluate(()=>({page:document.body.dataset.page,overlayHidden:document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden'),overlayDisplay:getComputedStyle(document.getElementById('gameLoadOverlay')).display,round:state.currentRound,token:state.__gameToken,history:state.history.length,panelHidden:document.getElementById('liveV2Panel')?.hidden}));
+    error.message+='; game fixture '+JSON.stringify({count,round,mode,diagnostic});throw error;
+  }
   if(mode==='turbo'){
     assert.equal(await page.evaluate(()=>state.currentRound),7,'Turbo changed its canonical starting round');
     await page.evaluate(()=>window.__sqReleaseTurboReadyGate());
