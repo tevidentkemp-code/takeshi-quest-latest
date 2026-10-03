@@ -1,0 +1,53 @@
+# SC-004 candidate acceptance receipts
+
+The implemented candidate passed the checks below. Production has not been cut over. Final fresh real-platform acceptance passed **45/45**; restricted rollback passed all **11 platform assertions and both browser phases**, including actual recovered Finish of the same issued game. These local results do not grant production activation.
+
+| Observed check | Result | Public receipt | What it proves |
+| --- | --- | --- | --- |
+| Static, syntax and materialization contracts | 30/30 PASS | [static-results.json](static-results.json) | Declared source/runtime ownership and syntax/static contracts. |
+| Cross-instance recovery cache | 5/5 PASS | [client-cache-results.json](client-cache-results.json) | Fresh merge/removal under the cache lock, exact pending envelopes and no cross-tab overwrite. Network receipts are explicit test doubles. |
+| Production gameplay runtime envelope | 6/6 PASS | [gameplay-runtime-results.json](gameplay-runtime-results.json) | Issuance before input, complete canonical metadata/decider, frozen lost-reply retry, Practice series, Turbo/Tournament and real-only Shadow. Transport is an explicit local double. |
+| Admin SQL/schema contracts | 18/18 PASS | [admin-schema-results.json](admin-schema-results.json) | Captured 18-table PostgreSQL schema replay, role/admin/hold checks, profile/history/score semantics and legacy recovery. Auth columns/principals are minimal synthetic SQL fixtures. |
+| Offline UI baseline | 16/16 suite runs PASS | [offline-summary.json](offline-summary.json) | Eight existing UI suites on source and the same eight on dist, with explicit offline transport fixtures. This is gameplay/UI regression evidence. |
+| SC-065 score wall, within the offline runs | 58 complete cases on source and 58 on dist; strict errors empty | [offline-summary.json](offline-summary.json) | Full late/early/lifecycle motion, geometry, Undo, navigation/reload, scoring and reduced-motion matrix. These are two app artifacts in the recorded browser harness, not 58 cases in every possible browser. |
+| Actual source browser | 19/19 PASS; page errors 0 | [browser-source-results.json](browser-source-results.json) | Actual candidate browser → real isolated Auth/Edge/PostgREST. |
+| Actual dist browser | 19/19 PASS; page errors 0 | [browser-dist-results.json](browser-dist-results.json) | The built artifact exercises the same real isolated API/DB boundary. |
+| Final clean real-platform replay | 45/45 PASS | [real-platform-final-results.json](real-platform-final-results.json), [fresh replay receipt](final-fresh-rehearsal-receipt.json) | Real isolated Auth, Edge, PostgreSQL/PostgREST and Realtime; exact guarded migration replay and zero client write grants after closure. |
+| Restricted function/app rollback with live pending sessions | 11/11 platform assertions and 2/2 browser phases PASS | [Rollback acceptance](ROLLBACK-ACCEPTANCE.md), [platform receipt](rollback-platform-final-results.json), [browser receipt](rollback-browser-final-results.json) | Actual failed SQL definition and app/Edge outages, frozen compatible restoration, unchanged accepted history/registries, held exact queues and resumed same-game UI Finish. |
+
+The offline receipt was recorded from 2026-10-03T16:06:28.519Z to 16:15:29.660Z. It predates the bounded SDK pin and interactive security-notice layout correction. The later 19/19 source and 19/19 dist real browser runs cover the final served candidate, including those changes. The static summary retains the exact check commands and a SHA-256 of its original detailed receipt; the offline summary retains suite results, times and the original receipt hash. Raw source preimages, credentials, private legacy seeds, controller request IDs and capabilities are not copied into these documents.
+
+The real browser runs drive actual setup, registration, throw-order/Ready, staged Finish, Training pads, owner recovery and retained admin screens. Competitive throws call the canonical `recordThrow` entry used by the pad; there is no test scorer or board replacement. Accepted boards/totals are read from the real database. Shadow replays its original natural timers and persists one real Practice player. The suite verifies ordinary issued-scope reload, guest late join/restart, saved/guest Turbo, solo Practice, classic/Turbo Tournament, Standard/TDB/Select Training, scoped initials/removal and both legacy branches. Persisted legacy recovery uses actual enrolled synthetic Auth and confirms the same saved match's next game while retaining cached presentation fields. Admin cases cover focus/cancel, ordinary-user denial, enrolled sign-in/sign-out, persistent profile UI, create-only history imports, archive/reinstate/purge and soft delete. Only the pinned SDK asset is served from the installed local SDK; command/Auth/PostgREST responses are not mocked.
+
+The browser suite does not itself test Realtime or upstream model output. The separate real-platform suite is responsible for actual Auth, Edge, PostgreSQL/PostgREST and Realtime authorization/closure checks. Commentary's local-only upstream model-output fixture makes model text deterministic; it does not replace the real Auth, Edge service calls, private actor claim, SQL commit/recheck or Realtime delivery. That fixture does not prove a paid production model call. The final 45/45 platform receipt supplies that proof for the isolated stack; it does not claim a paid production model call or production cutover.
+
+Both real browser receipts observed Git HEAD `b8d6d63dafcf390826332fb10bc209f18b30d692` at launch. Their served index bytes are identified independently:
+
+| App artifact | SHA-256 of served index |
+| --- | --- |
+| Source: `http://127.0.0.1:8127/index.html` | `f3061585869ca50c58ff7b279df71ed27fe61d742d1c4385d955df3509e2a2dd` |
+| Dist: `http://127.0.0.1:8127/dist/index.html` | `42dd342e55dd2d2039bd9b087f444c14135e7f714a2ca2c52ee747ac90ccdcb3` |
+
+Later metadata-only candidate changes or a rebuilt artifact require their own build/hash record; these hashes describe the tested served bytes. The intended production owner's enrollment and real sign-in, fresh production preflight, controlled cutover and release hold remain programme gates. See [caller matrix](CALLER-MATRIX.md) and [gameplay integration](GAMEPLAY-INTEGRATION.md) for the concrete implementation boundary.
+
+The subsequent candidate release metadata is `v0.12.0` / `SC-004-SCOPED-AUTHORITY`, preserving all 61 prior history entries. Its [static metadata receipt](release-metadata-results.json) passed the SC-050 contract with 62 entries. This was a metadata-only edit after the browser receipts; no materialization, build, server change or deployment was performed for it. The controller will record the rebuilt candidate after the restricted rollback rehearsal.
+
+The final fresh rehearsal reconstructed the captured application schema without copying production rows and retained real managed Auth/Realtime services. It applied the additive and closure CLI migration packages under reviewed guards, exercised additive Auth/admin/controller proof before closure, and then passed all 45 platform cases. The Data API denial case contains **114 direct POST/PATCH/DELETE probes**: 18 closed base tables plus `v_games_visible`, three mutation methods and both anonymous and ordinary authenticated roles. Additional API cases deny both Go signatures, the merge RPC and private command access. Actual Auth checks use permanent API-created users and signed sessions, including session deletion, allowlist revocation and user-editable metadata denial. Actual Edge tests cover completion/retry, scoped roster/Go/events, legacy recovery, Training, visits and the retired PIN route. Actual Realtime receives both published commentary and authorized lines from the local commentary Edge fixture; revocation during the asynchronous model wait prevents commit. The model text alone is deterministic fixture output.
+
+Two local guard hash adaptations are documented in [local-migration-rehearsal-manifest.json](local-migration-rehearsal-manifest.json). Production PostgreSQL `17.6.1.044` and local `17.11.0.002` deparse UNION branch aliases and unary negative integer literals differently. These substitutions are limited to the local rehearsal copies; production preflight guards and migration files retain their exact production hashes. They do not relax table/function/policy/privilege guards or accept schema drift.
+
+| View | Production definition MD5 | Local deparser MD5 |
+| --- | --- | --- |
+| `public.player_round_win_by_window_v` | `36d0cd443069f1a2a1e9917a8f30fd13` | `40652f6d46dbeeecbf3faf44253e83e9` |
+| `public.v_misfire_events` | `a9a70f6a0358573cbf154f2be9703bba` | `1d723ea0f5812e2c963489551642a386` |
+
+The exact production migration files were checked against the [fresh rehearsal receipt](final-fresh-rehearsal-receipt.json):
+
+| Migration | SHA-256 |
+| --- | --- |
+| `supabase/migrations/20261003161850_sc004_scoped_authority_additive.sql` | `f71a1bd8497c15faa711a8c85230f72f56fcdd86a6f4f72841bd076f02a1e763` |
+| `supabase/migrations/20261003161851_sc004_close_legacy_mutation.sql` | `f0a67bdfa9804d81bac145be90f4231e3804072ed33c92efc3957a18190f2012` |
+
+The final fresh receipt reports the public/private manifests match the frozen authority inventory, zero closed-table client role write grants, and no production activation. It retains the prior rejected intermediate result separately. The subsequent [restricted rollback acceptance](ROLLBACK-ACCEPTANCE.md) supplies actual pending-session restoration proof using a frozen 181-file anchor, complete shared-run phase receipts, deliberate SQL/app/Edge faults and real recovered saves. The failed function-definition transaction left the hold committed and all 42 function/nine private table fingerprints unchanged. Original Game2 and Training queues committed exactly once after restoration; the recovered browser finished and saved the original issued game with exact board/totals. These receipts leave the intended production owner and controlled production activation gates explicit.
+
+After the metadata build and dist verification, the [release-note browser receipt](release-browser-results.json) passed on source and dist at 320/390/430px: current v0.12.0, 62 retained history entries, internal scrolling, viewport fit, and Back/Close. Each artifact passed 23 explicit assertions plus the navigation waits. These were offline UI checks with production Supabase traffic blocked; no API writes or deployment occurred. This metadata check supplements the earlier 19/19 gameplay/admin browser receipts rather than rerunning them.
