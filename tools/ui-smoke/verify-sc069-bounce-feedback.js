@@ -43,7 +43,7 @@ fs.mkdirSync(out, { recursive: true });
     });
     const begin = async name => { console.log('CASE ' + name); await page.evaluate(name => { const d = window.__sc069; Object.assign(d, { name, armed: true, frames: [], records: [], writes: [], events: [], emits: [], detaches: [], held: document.querySelector('#pad .dtActBtn.miss') }); d.before = d.snap(); }, name); };
     const read = async () => { const r = await page.evaluate(() => { const d = window.__sc069; return { name: d.name, before: d.before, after: d.snap(), records: d.records, writes: d.writes, emits: d.emits, events: d.events, frames: d.frames, detaches: d.detaches }; }); receipts.push(r); fs.writeFileSync(path.join(out, r.name + '.json'), JSON.stringify(r, null, 2)); console.log('RESULT ' + r.name + ' ' + JSON.stringify({ historyBefore: r.before.history, historyAfter: r.after.history, records: r.records.map(x => x.spec), BOEmits: r.emits.filter(e => e.event.kind === 'BOUNCE_OUT').length, detaches: r.detaches.length })); return r; };
-    const press = async () => { const b = await page.locator('#pad .dtActBtn.miss').boundingBox(); assert(b, 'MISS visible'); await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down(); };
+    const press = async () => { const b = await page.locator('#pad .dtActBtn.miss').boundingBox(); assert(b, 'MISS visible'); const point = { x: b.x + b.width / 2, y: b.y + b.height / 2 }; await page.mouse.move(point.x, point.y); await page.mouse.down(); return point; };
     const hold = async () => { await press(); await page.waitForTimeout(450); await page.mouse.up(); };
     const undoAll = async () => { for (let i = 0; i < 8 && await page.evaluate(() => state.history.length > 0); i++) await page.locator('#pad .dtActBtn.undo').click(); await page.waitForTimeout(750); assert.equal(await page.evaluate(() => state.history.length), 0); };
     const boFrames = r => r.frames.filter(f => f.text.join('').includes('BOUNCE OUT'));
@@ -52,9 +52,20 @@ fs.mkdirSync(out, { recursive: true });
     await begin('short-tap'); await page.locator('#pad .dtActBtn.miss').click(); let r = await read();
     assert.equal(r.records.length, 1); assert.equal(r.records[0].spec.kind, 'Miss'); assert.equal(r.after.tail.throw.bounceOut, undefined); assert.equal(r.emits.length, 0); await undoAll();
 
-    await begin('hold-real-rapid-next-press'); await hold(); await page.waitForTimeout(30); await press(); await page.mouse.up(); await page.waitForTimeout(100); r = await read();
+    await begin('hold-real-rapid-next-press');
+    const rapidPoint = await press(); await page.waitForTimeout(450);
+    // Read the current MISS target while the first pointer is still down. A
+    // canonical render may replace the pad; do no layout/transport work between
+    // the measured first release and genuine next native press.
+    const rapidTarget = await page.locator('#pad .dtActBtn.miss').boundingBox();
+    assert(rapidTarget, 'current MISS visible before rapid release');
+    assert(rapidPoint.x >= rapidTarget.x && rapidPoint.x < rapidTarget.x + rapidTarget.width && rapidPoint.y >= rapidTarget.y && rapidPoint.y < rapidTarget.y + rapidTarget.height, 'held pointer remains inside the current MISS target');
+    await page.mouse.up(); await page.mouse.down(); await page.mouse.up();
+    await page.waitForTimeout(100); r = await read();
     assert.deepEqual(r.records.map(x => x.spec.kind), ['BounceOut', 'Miss']); assert.equal(r.after.history, 2); assert.equal(r.records[0].after.tail.throw.bounceOut, true); assert.equal(r.after.tail.throw.bounceOut, undefined);
-    const downs = r.events.filter(e => e.type === 'pointerdown'), ups = r.events.filter(e => e.type === 'pointerup'); r.rapidGapMs = downs[1].at - ups[0].at; assert(r.rapidGapMs < 220, 'second genuine press actually occurred within220ms'); await undoAll();
+    const downs = r.events.filter(e => e.type === 'pointerdown'), ups = r.events.filter(e => e.type === 'pointerup'); r.rapidGapMs = downs[1].at - ups[0].at;
+    console.log('MEASURE genuine BO next-press gap ' + JSON.stringify({ ms: r.rapidGapMs, pointerdownCount: downs.length, pointerupCount: ups.length }));
+    assert(r.rapidGapMs < 220, 'second genuine press actually occurred within220ms'); await undoAll();
 
     await page.locator('#pad .dtActBtn.miss').click(); await page.locator('#pad .dtActBtn.miss').click(); await begin('third-dart-detach'); await hold(); await page.waitForTimeout(100); r = await read(); committedBO(r);
     assert.equal(r.detaches.length, 1); assert.equal(r.after.player, 1); assert.equal(r.after.dart, 0); await undoAll();
