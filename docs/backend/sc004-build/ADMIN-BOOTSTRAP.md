@@ -1,13 +1,13 @@
 SC-004 requires one permanent Supabase Auth principal enrolled by the project owner. The initial production capture contained zero Auth users; the owner has since supplied the intended UUID, and a fresh read verified that principal is permanent, confirmed and active, with no current session. Its enrollment and intended-owner browser sign-in remain release gates. A controller capability, old PIN, player password, browser flag, JWT metadata, and ordinary signed-in account cannot enroll or act as admin.
 
-The project owner should create the intended administrator through the Supabase Dashboard Authentication Users page, using the administrator's email and a private password chosen through the owner-controlled flow. The account must be permanent and its email confirmed. Do not put the password, access token, refresh token, or service-role key in chat, repository files, screenshots, test output, or control-sheet evidence. No public registration UI is introduced.
+The intended administrator already exists: `8c04bacf-c14c-4334-ba28-cb5671d0fe1c`. A fresh owner-controlled read verified that UUID is permanent, email-confirmed and active. Do not create a duplicate account. The owner signs in through the account's existing private credentials. Do not put the password, access token, refresh token, or service-role key in chat, repository files, screenshots, test output, or control-sheet evidence. No public registration UI is introduced.
 
-After the additive migration exists, copy the verified Auth user's UUID from that owner-controlled page. Replace the single UUID literal below. Run this transaction with the trusted database owner, not through a browser command or public RPC. It aborts for an absent, anonymous, unconfirmed, or deleted user.
+After the additive migration exists, run this transaction for the verified intended UUID with the trusted database owner. It aborts for an absent, anonymous, unconfirmed, or deleted user. Enrollment is never exposed through a browser command or public RPC.
 
 ```sql
 BEGIN;
 DO $enroll$
-DECLARE intended uuid := '00000000-0000-0000-0000-000000000000';
+DECLARE intended uuid := '8c04bacf-c14c-4334-ba28-cb5671d0fe1c';
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM auth.users
@@ -23,14 +23,16 @@ END $enroll$;
 COMMIT;
 ```
 
-Keep writes held until the full release acceptance and cutover conditions pass. Sign in using Admin in the updated browser. Sign-in uses a separate Supabase SDK client from anonymous gameplay, verifies the user through Auth, then calls authenticated `admin_action` with operation `status`. The server verifies the permanent confirmed user, the current matching Auth session, and the private allowlist on every operation. Status works during a safe hold; mutations return `writes_held`. The UI's `__sqAdminAuthed` flag only changes presentation.
+The additive migration starts with the new routes held. That hold does not stop legacy table/RPC authority before closure. Once the new route/config and trusted enrollment are ready, the trusted controller releases the additive hold and serves the compatible browser. The intended owner then signs in using Admin and verifies authenticated `admin_action/status` before closure, while gameplay remains available. Status also works during a safe hold if an authenticated compatible browser is already available. Sign-in uses a separate Supabase SDK client from anonymous gameplay and verifies the user through Auth. The server checks the permanent confirmed user, current matching Auth session and private allowlist on every admin operation. Held mutations return `writes_held`. The UI's `__sqAdminAuthed` flag only changes presentation.
+
+Exercise real controller issuance/completion and session recovery during this released additive phase. Preserve the existing service until the secure path is ready; avoid leaving the new app held while awaiting owner login. Rehold only immediately before the exact guarded closure, after intended-owner proof, additive controller proof and legacy-session drain/recovery gates pass. Apply closure, check the restricted boundary and compatible readiness, then release through trusted `sq_sc004_set_hold(false)` under the [cutover runbook](CUTOVER-RUNBOOK.md). A guard or restoration failure leaves the hold committed and requires the [accepted restricted recovery procedure](ROLLBACK-ACCEPTANCE.md).
 
 Revocation is immediate for the privileged SQL boundary, including replayed request receipts:
 
 ```sql
 UPDATE private.sc004_admins
 SET enabled=false,revoked_at=clock_timestamp()
-WHERE user_id='00000000-0000-0000-0000-000000000000';
+WHERE user_id='8c04bacf-c14c-4334-ba28-cb5671d0fe1c';
 ```
 
 Revoking an Auth session through the owner Auth administration also denies that session's subsequent admin commands. A new sign-in is still subject to the live allowlist. Use Sign out in the Admin Hub to leave the browser admin session.
