@@ -17,15 +17,33 @@ fs.mkdirSync(out, { recursive: true });
       !!document.getElementById('homeLivePauseBtn')
     , { timeout: 20000 });
 
-    // Persist a presentation event, then reload. This mirrors a newly-created
-    // player event and proves the feed can recover immediately after refresh
-    // even when the cloud is unavailable in the QA harness.
-    await page.evaluate(() => window.__homeLivePrinterPersistLine('🚨 NEW PLAYER - Refresh Tester - Welcome to Shateki Quest 🎯', 'new_player'));
+    // Seed the exact class of legacy browser-local contamination reported
+    // from physical iPhone acceptance. The current session may still receive
+    // a transient NEW PLAYER notification, but public feed history must never
+    // persist either event in browser storage.
+    await page.evaluate(() => {
+      const key = 'sq_live_updates_events_v1';
+      localStorage.setItem(key, JSON.stringify([{
+        id:'local:sc004-accept',
+        ts:new Date().toISOString(),
+        kind:'new_player',
+        line:'🚨 NEW PLAYER - SC004 ACCEPT FIXTURE - Welcome to Shateki Quest 🎯'
+      }]));
+      window.__homeLivePrinterPersistLine('🚨 NEW PLAYER - Refresh Tester - Welcome to Shateki Quest 🎯', 'new_player');
+    });
     await page.waitForFunction(() => {
       const rows = document.querySelectorAll('#homeLivePrinterRows tr.lp-row');
       const body = document.getElementById('homeLivePrinterRows');
       return rows.length === 15 && !!body && body.textContent.includes('Refresh Tester');
     }, { timeout: 5000 });
+    const preReloadLocalCache = await page.evaluate(() => {
+      try { return JSON.parse(localStorage.getItem('sq_live_updates_events_v1') || '[]'); }
+      catch (_) { return []; }
+    });
+    assert.equal(preReloadLocalCache.length, 1,
+      'VIDE persistence API must not append new browser-local feed history');
+    assert.match(String(preReloadLocalCache[0]?.line || ''), /SC004 ACCEPT FIXTURE/i,
+      'legacy contamination fixture missing before cleanup reload');
 
     const baseline = await page.evaluate(() => {
       const rows = Array.from(document.querySelectorAll('#homeLivePrinterRows tr.lp-row'));
@@ -47,7 +65,9 @@ fs.mkdirSync(out, { recursive: true });
       paused: !!window.__homeLivePrinterState?.paused,
       label: document.getElementById('homeLivePauseBtn')?.textContent?.trim()
     }));
-    assert.match(firstLoad.text, /Refresh Tester/i, 'persisted NEW PLAYER event must be visible before refresh');
+    assert.match(firstLoad.text, /Refresh Tester/i, 'transient NEW PLAYER event must be visible in the current session');
+    assert.doesNotMatch(firstLoad.text, /SC004 ACCEPT FIXTURE/i,
+      'legacy browser-local contamination must never enter the current feed');
     assert(firstLoad.height >= 320, 'home LIVE UPDATES must retain the fuller vertical composition');
     assert.equal(firstLoad.paused, false, 'home must never enter paused');
     assert.equal(firstLoad.label, 'PAUSE', 'playing state must show PAUSE, not PLAY');
@@ -130,13 +150,17 @@ fs.mkdirSync(out, { recursive: true });
       text: document.getElementById('homeLivePrinterRows')?.textContent || '',
       buffer: (window.__homeLivePrinterState?.bufLines || []).slice(),
       paused: !!window.__homeLivePrinterState?.paused,
-      label: document.getElementById('homeLivePauseBtn')?.textContent?.trim()
+      label: document.getElementById('homeLivePauseBtn')?.textContent?.trim(),
+      localCache: localStorage.getItem('sq_live_updates_events_v1')
     }));
-    const refreshedNewPlayer = refreshed.buffer.find(line => /Refresh Tester/i.test(String(line)));
-    assert(refreshedNewPlayer,
-      'persisted NEW PLAYER event must survive refresh in the printer buffer');
-    assert.doesNotMatch(String(refreshedNewPlayer), /\s-\s(CLASSIC|TURBO|PRACTICE)\s*$/i,
-      'NEW PLAYER presentation events must never gain a game-mode suffix');
+    assert.equal(refreshed.localCache, null,
+      'full reload must remove the retired local LIVE UPDATES history cache');
+    assert.equal(refreshed.buffer.some(line => /Refresh Tester/i.test(String(line))), false,
+      'transient NEW PLAYER event must not survive refresh as browser-local history');
+    assert.equal(refreshed.buffer.some(line => /SC004 ACCEPT FIXTURE/i.test(String(line))), false,
+      'SC/test acceptance contamination must not survive refresh');
+    assert.doesNotMatch(refreshed.text, /SC004 ACCEPT FIXTURE|Refresh Tester/i,
+      'retired local feed history must not render after refresh');
     assert.equal(refreshed.paused, false, 'refresh must start LIVE UPDATES playing');
     assert.equal(refreshed.label, 'PAUSE');
 
@@ -357,6 +381,60 @@ fs.mkdirSync(out, { recursive: true });
     assert.equal(resumed.pressed, 'false');
     assert.equal(resumed.paused, false);
     assert.equal(resumed.transition, '', 'Reduced motion must not leave a transform transition active');
+
+    // Data truth / mode isolation: Practice may appear as a result, but it
+    // must never contribute ROUND PB/WR lines. Official and Turbo maintain
+    // independent round-history baselines.
+    await page.evaluate(() => {
+      const game = (id, ts, mode, name, roundTotal) => ({
+        id,
+        ts,
+        archived_at:null,
+        mode,
+        is_practice: mode === 'practice',
+        state:{ mode, is_practice:mode === 'practice' },
+        players:[{name},{name:'FILLER'}],
+        totals:[300,200],
+        board:[
+          [{ roundTotal, darts:[] }],
+          [{ roundTotal:0, darts:[] }]
+        ]
+      });
+      const games = [
+        game('official-leader','2026-10-03T20:00:00Z','official','OFFICIAL LEADER',60),
+        game('official-player','2026-10-03T20:01:00Z','official','MODE B',50),
+        game('turbo-leader','2026-10-03T20:02:00Z','turbo','TURBO LEADER',60),
+        game('turbo-player','2026-10-03T20:03:00Z','turbo','MODE B',40),
+        game('practice-player','2026-10-03T20:04:00Z','practice','PRACTICE ONLY',70)
+      ];
+      window.cloudFetchAllGamesAsLocal = async () => games.map(g => ({...g}));
+      window.cloudFetchLatestVisibleGamesAsLocal = async () => [];
+      window.cloudFetchLatestGamesAsLocal = async () => [];
+      window.cloudListPlayers = async () => [];
+      const st = window.__homeLivePrinterState;
+      st.derivedItems = [];
+      st.derivedFetchedAt = 0;
+      st.bufLines = [];
+      st.lastSig = '';
+      st.lastSyncMs = 0;
+      st.hold = 0;
+    });
+    await page.waitForFunction(() => {
+      const lines = window.__homeLivePrinterState?.bufLines || [];
+      return lines.some(line => /ROUND PB.*MODE B.*\(50\)/i.test(String(line))) &&
+             lines.some(line => /ROUND PB.*MODE B.*\(40\)/i.test(String(line)));
+    }, { timeout: 5000 });
+    const modePbLines = await page.evaluate(() =>
+      (window.__homeLivePrinterState?.bufLines || [])
+        .map(String)
+        .filter(line => /ROUND\s+(?:PB|WR)\b/i.test(line))
+    );
+    assert(modePbLines.some(line => /ROUND PB.*MODE B.*\(50\)/i.test(line)),
+      'Official ROUND PB must be derived from the Official history bucket');
+    assert(modePbLines.some(line => /ROUND PB.*MODE B.*\(40\)/i.test(line)),
+      'Turbo ROUND PB must be derived from the Turbo history bucket, not Official history');
+    assert.equal(modePbLines.some(line => /PRACTICE ONLY|\(70\)/i.test(line)), false,
+      'Practice must never contribute ROUND PB/WR lines to VIDE');
 
     // WR is a locked semantic colour: verified World Records must be purple,
     // not inherited from the generic alert/PB gold treatment.
