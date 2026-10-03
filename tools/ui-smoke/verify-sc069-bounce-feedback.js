@@ -19,10 +19,41 @@ fs.mkdirSync(out, { recursive: true });
       blockedWrites++; return r.abort('failed');
     });
     await ctx.addInitScript(() => {
-      const d = window.__sc069 = { armed: false, frames: [], records: [], writes: [], events: [], emits: [], detaches: [] };
-      for (const type of ['pointerdown', 'pointerup', 'click']) document.addEventListener(type, e => {
-        if (d.armed) d.events.push({ type, at: performance.now(), text: e.target.textContent.trim(), cls: String(e.target.className), heldConnected: d.held?.isConnected });
+      const d = window.__sc069 = { armed: false, frames: [], records: [], writes: [], events: [], emits: [], detaches: [], timerMarks: [] };
+      // Private observation only: no layout reads, native input/state/timer changes.
+      d.inspectGesture = (target, pointerId) => {
+        try {
+          const current = document.querySelector('#pad .dtActBtn.miss');
+          const nearest = target?.closest?.('#pad .dtActBtn.miss') || null;
+          const node = el => el ? { connected: el.isConnected, bound: el.__sqMissBounceHoldBound === true, start: el.__sqMissBounceStart ? { ...el.__sqMissBounceStart } : null, heldClass: el.classList.contains('sq-miss-bounce-held'), captured: pointerId == null ? null : el.hasPointerCapture?.(pointerId) === true } : null;
+          return { nearestMiss: node(nearest), currentMiss: node(current), heldMiss: node(d.held), nearestIsCurrent: nearest === current, heldIsCurrent: d.held === current, cursor: typeof state === 'undefined' ? null : { history: state.history?.length, player: state.currentPlayer, round: state.currentRound, dart: state.currentDart, token: state.__gameToken }, suppressClickUntil: Number(window.__sqMissBounceSuppressClick || 0) };
+        } catch (error) { return { observationError: String(error) }; }
+      };
+      for (const type of ['pointerdown', 'pointerup', 'click', 'pointermove', 'pointercancel', 'gotpointercapture', 'lostpointercapture']) document.addEventListener(type, e => {
+        if (d.armed) d.events.push({ type, at: performance.now(), text: String(e.target?.textContent || '').trim(), cls: String(e.target?.className || ''), heldConnected: d.held?.isConnected, pointerId: e.pointerId ?? null, pointerType: e.pointerType ?? null, clientX: e.clientX ?? null, clientY: e.clientY ?? null, buttons: e.buttons ?? null, gesture: d.inspectGesture(e.target, e.pointerId) });
       }, true);
+      const nativeSetTimeout = window.setTimeout, nativeClearTimeout = window.clearTimeout, watchedTimers = new Map();
+      window.setTimeout = function(callback, delay, ...args) {
+        if (!d.armed || Number(delay) !== 360 || typeof callback !== 'function') return Reflect.apply(nativeSetTimeout, this, [callback, delay, ...args]);
+        const mark = { caseAtSchedule: d.name, scheduledAt: performance.now(), delay: Number(delay), missBounceCallback: Function.prototype.toString.call(callback).includes("recordThrow({ kind:'BounceOut' })") };
+        let handle;
+        const observed = function(...callbackArgs) {
+          watchedTimers.delete(handle);
+          d.timerMarks.push({ ...mark, handle, phase: 'fire-before', at: performance.now(), gesture: d.inspectGesture(d.held) });
+          try { return Reflect.apply(callback, this, callbackArgs); }
+          finally { d.timerMarks.push({ ...mark, handle, phase: 'fire-after', at: performance.now(), gesture: d.inspectGesture(d.held) }); }
+        };
+        handle = Reflect.apply(nativeSetTimeout, this, [observed, delay, ...args]);
+        watchedTimers.set(handle, mark);
+        d.timerMarks.push({ ...mark, handle, phase: 'schedule', at: performance.now(), gesture: d.inspectGesture(d.held) });
+        return handle;
+      };
+      window.clearTimeout = function(handle) {
+        const mark = watchedTimers.get(handle);
+        if (mark && d.armed) d.timerMarks.push({ ...mark, handle, phase: 'clear', at: performance.now(), gesture: d.inspectGesture(d.held) });
+        watchedTimers.delete(handle);
+        return Reflect.apply(nativeClearTimeout, this, [handle]);
+      };
       const p = CanvasRenderingContext2D.prototype, clear = p.clearRect, text = p.fillText;
       p.clearRect = function () { const result = clear.apply(this, arguments); if (d.armed && this.canvas.width === 640 && this.canvas.height === 160 && !this.canvas.id) { this.__sc069Frame = { at: performance.now(), text: [] }; d.frames.push(this.__sc069Frame); if (d.frames.length > 240) d.frames.shift(); } return result; };
       p.fillText = function () { const result = text.apply(this, arguments); if (d.armed && this.__sc069Frame) this.__sc069Frame.text.push(String(arguments[0])); return result; };
@@ -41,8 +72,8 @@ fs.mkdirSync(out, { recursive: true });
       window.__sqDmdV2.emit = function () { if (d.armed) d.emits.push({ at: performance.now(), event: { ...arguments[0] } }); if (d.failFeedback && arguments[0]?.kind === 'BOUNCE_OUT') throw Error('SC069 isolated display failure'); return emit.apply(this, arguments); };
       new MutationObserver(() => { if (d.armed && d.held && !d.held.isConnected && !d.detaches.length) d.detaches.push({ at: performance.now(), state: d.snap() }); }).observe(document.getElementById('pad'), { childList: true, subtree: true });
     });
-    const begin = async name => { console.log('CASE ' + name); await page.evaluate(name => { const d = window.__sc069; Object.assign(d, { name, armed: true, frames: [], records: [], writes: [], events: [], emits: [], detaches: [], held: document.querySelector('#pad .dtActBtn.miss') }); d.before = d.snap(); }, name); };
-    const read = async () => { const r = await page.evaluate(() => { const d = window.__sc069; return { name: d.name, before: d.before, after: d.snap(), records: d.records, writes: d.writes, emits: d.emits, events: d.events, frames: d.frames, detaches: d.detaches }; }); receipts.push(r); fs.writeFileSync(path.join(out, r.name + '.json'), JSON.stringify(r, null, 2)); console.log('RESULT ' + r.name + ' ' + JSON.stringify({ historyBefore: r.before.history, historyAfter: r.after.history, records: r.records.map(x => x.spec), BOEmits: r.emits.filter(e => e.event.kind === 'BOUNCE_OUT').length, detaches: r.detaches.length })); return r; };
+    const begin = async name => { console.log('CASE ' + name); await page.evaluate(name => { const d = window.__sc069; Object.assign(d, { name, armed: true, frames: [], records: [], writes: [], events: [], emits: [], detaches: [], timerMarks: [], held: document.querySelector('#pad .dtActBtn.miss') }); d.before = d.snap(); }, name); };
+    const read = async () => { const r = await page.evaluate(() => { const d = window.__sc069; return { name: d.name, before: d.before, after: d.snap(), records: d.records, writes: d.writes, emits: d.emits, events: d.events, frames: d.frames, detaches: d.detaches, timerMarks: d.timerMarks }; }); receipts.push(r); fs.writeFileSync(path.join(out, r.name + '.json'), JSON.stringify(r, null, 2)); console.log('RESULT ' + r.name + ' ' + JSON.stringify({ historyBefore: r.before.history, historyAfter: r.after.history, records: r.records.map(x => x.spec), BOEmits: r.emits.filter(e => e.event.kind === 'BOUNCE_OUT').length, detaches: r.detaches.length })); return r; };
     const press = async () => { const b = await page.locator('#pad .dtActBtn.miss').boundingBox(); assert(b, 'MISS visible'); const point = { x: b.x + b.width / 2, y: b.y + b.height / 2 }; await page.mouse.move(point.x, point.y); await page.mouse.down(); return point; };
     const hold = async () => { await press(); await page.waitForTimeout(450); await page.mouse.up(); };
     const undoAll = async () => { for (let i = 0; i < 8 && await page.evaluate(() => state.history.length > 0); i++) await page.locator('#pad .dtActBtn.undo').click(); await page.waitForTimeout(750); assert.equal(await page.evaluate(() => state.history.length), 0); };
@@ -153,7 +184,7 @@ fs.mkdirSync(out, { recursive: true });
     fs.writeFileSync(path.join(out, 'receipt.json'), JSON.stringify({ url: H.APP_URL, browser: process.env.SQ_BROWSER || 'chromium', blockedWrites, strictPageErrors: [], cases: receipts }, null, 2));
     console.log('SC069 native feedback PASS ' + JSON.stringify({ cases: receipts.length, blockedWrites, strictPageErrors: [] }));
   } catch (error) {
-    try { await page.screenshot({ path: path.join(out, 'failure.png') }); fs.writeFileSync(path.join(out, 'failure.json'), JSON.stringify({ error: String(error), state: await page.evaluate(() => window.__sc069?.snap?.()), pageErrors: consoleErrs.filter(e => e.startsWith('pageerror:')) }, null, 2)); } catch (_) {}
+    try { await page.screenshot({ path: path.join(out, 'failure.png') }); fs.writeFileSync(path.join(out, 'failure.json'), JSON.stringify({ error: String(error), state: await page.evaluate(() => window.__sc069?.snap?.()), gestureObservation: await page.evaluate(() => { const d = window.__sc069; return d ? { events: d.events, timerMarks: d.timerMarks, gesture: d.inspectGesture?.(d.held) } : null; }), pageErrors: consoleErrs.filter(e => e.startsWith('pageerror:')) }, null, 2)); } catch (_) {}
     throw error;
   } finally { await browser.close(); console.log('SC069 browser fully closed'); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
