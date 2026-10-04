@@ -31424,6 +31424,10 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName, options){
               return;
             }
             const returnedView = hydratedView || view;
+            if (returnedView !== view){
+              const hero = view.profile.querySelector('.pp-hero');
+              if (hero) returnedView.profile.querySelector('.pp-hero')?.replaceWith(hero);
+            }
             if (returnedView.primary && returnedView.primary.xp !== presentedXp){
               returnedView.profile.querySelector('.pp-progression')?.replaceWith(__sqPlayerStatsXpHost(n, true, returnedView.primary));
               presentedXp = returnedView.primary.xp;
