@@ -251,7 +251,7 @@ jobs:
       matrix:
         browser: [chromium, webkit]
         build: [source, dist]
-        part: [identity, records, numeric-doubles, numeric-triples, numeric-bull]
+        part: [identity, records, numeric-doubles-standard, numeric-doubles-special, numeric-triples-standard, numeric-triples-special, numeric-bull-standard, numeric-bull-special]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -306,7 +306,7 @@ jobs:
       fail-fast: false
       matrix:
         build: [source, dist]
-        part: [late, early, lifecycle]
+        part: [late, early-match, early-tournament, early-practice, lifecycle]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -832,7 +832,7 @@ jobs:
             /tmp/bounce-feedback-server.log
 
   throw-order-reveal:
-    name: Throw-order reveal — ${{ matrix.browser }}
+    name: Throw-order reveal — ${{ matrix.browser }} / ${{ matrix.part }}
     needs: static-build
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -840,6 +840,7 @@ jobs:
       fail-fast: false
       matrix:
         browser: [chromium, webkit]
+        part: [presentation, lifecycle]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -861,6 +862,7 @@ jobs:
         shell: bash
         env:
           SQ_BROWSER: ${{ matrix.browser }}
+          SQ_SC068_PART: ${{ matrix.part }}
         run: |
           set -euo pipefail
           python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/reveal-source.log 2>&1 &
@@ -874,7 +876,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: core-release-reveal-${{ matrix.browser }}-evidence
+          name: core-release-reveal-${{ matrix.browser }}-${{ matrix.part }}-evidence
           retention-days: 14
           path: |
             core-reveal-*.txt

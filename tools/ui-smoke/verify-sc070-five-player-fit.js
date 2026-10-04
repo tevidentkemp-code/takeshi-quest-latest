@@ -5,8 +5,12 @@ const path = require('path');
 const H = require('./harness');
 // Complete groups keep hosted WebKit within the existing 180s command budget.
 const qaPart = process.env.SQ_SC070_PART || 'all';
-const expectedCases = {all:62,layout:26,numerical:36,identity:12,records:14,'numeric-doubles':12,'numeric-triples':12,'numeric-bull':12};
+const expectedCases = {all:62,layout:26,numerical:36,identity:12,records:14,'numeric-doubles':12,'numeric-triples':12,'numeric-bull':12,
+  'numeric-doubles-standard':6,'numeric-doubles-special':6,'numeric-triples-standard':6,'numeric-triples-special':6,'numeric-bull-standard':6,'numeric-bull-special':6};
 const numericRoundParts = {11:'numeric-doubles',12:'numeric-triples',13:'numeric-bull'};
+const numericSelection=/^(numeric-(?:doubles|triples|bull))-(standard|special)$/.exec(qaPart);
+const numericRoundPart=numericSelection?numericSelection[1]:qaPart;
+const numericalModes=['match','turbo','practice','tournament'].filter(mode=>!numericSelection||(numericSelection[2]==='standard'?['match','practice']:['turbo','tournament']).includes(mode));
 assert(Object.hasOwn(expectedCases,qaPart),'Invalid SQ_SC070_PART: '+qaPart);
 const inPart = part => qaPart==='all'||qaPart===part||(qaPart==='layout'&&['identity','records'].includes(part))||(part==='numerical'&&qaPart.startsWith('numeric-'));
 const qaStarted = Date.now();
@@ -137,8 +141,8 @@ async function read(page,key,numeric=false){
     }
     }
     if(inPart('numerical')){
-    for(const mode of ['match','turbo','practice','tournament'])for(const round of [11,12,13])for(const width of widths){
-      if(qaPart.startsWith('numeric-')&&qaPart!==numericRoundParts[round])continue;
+    for(const mode of numericalModes)for(const round of [11,12,13])for(const width of widths){
+      if(qaPart.startsWith('numeric-')&&numericRoundPart!==numericRoundParts[round])continue;
       await page.setViewportSize({width,height:844});await seed(page,5,mode);await advance(page,round);await identity(page,true,true);
       await page.evaluate(r=>{[20,10,17,0,20,10,17,0,20,17,10,0,20,10].forEach((v,i)=>recordThrow(!v?{kind:'Miss'}:r===13?{kind:'B',bull:i%2?'Outer':'Inner'}:{kind:r===11?'D':'T',sector:v}));},round);await settled(page,round);
       const r=await read(page,mode+'-numeric-'+round+'-'+width,true),tokens=r.cells.flatMap(c=>c.dots.map(d=>d.text));for(const token of round===11?['D20','D10','D17','X']:round===12?['T20','T10','T17','X']:['50','25','X'])assert(tokens.includes(token),'Real canonical token missing: '+token);

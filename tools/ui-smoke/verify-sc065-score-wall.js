@@ -5,13 +5,17 @@ const H = require('./harness');
 
 // Linux WebKit's full matrix exceeded the unchanged 180s command budget
 // while every completed case passed. Keep complete groups independently runnable.
-const qaPart=process.env.SQ_SC065_PART || 'all';
+const requestedPart=process.env.SQ_SC065_PART || 'all';
+const selectedEarlyMode=requestedPart.startsWith('early-')?requestedPart.slice(6):null;
+const qaPart=selectedEarlyMode===null?requestedPart:'early';
 assert(['all','late','early','lifecycle'].includes(qaPart),'Invalid SQ_SC065_PART: '+qaPart);
 const widths=[320,390,430],counts=[2,3,4,5],earlyModes=['match','tournament','practice'];
+if(selectedEarlyMode!==null&&!earlyModes.includes(selectedEarlyMode))throw Error('Invalid SQ_SC065_PART: '+requestedPart);
+const selectedEarlyModes=earlyModes.filter(mode=>selectedEarlyMode===null||mode===selectedEarlyMode);
 const lifecycleCases=['Turbo/2 players','Turbo/5 players','solo and historical six preservation','Undo during motion','navigation during motion','reload during motion','new game during motion','pad scoring during motion','rapid round completion','reduced motion'];
 const caseGroups={
   late:widths.flatMap(width=>counts.map(count=>'late '+width+'px/'+count+' players')),
-  early:earlyModes.flatMap(mode=>counts.flatMap(count=>[0,1,2].map(round=>'early '+mode+'/'+count+' players/round '+round))),
+  early:selectedEarlyModes.flatMap(mode=>counts.flatMap(count=>[0,1,2].map(round=>'early '+mode+'/'+count+' players/round '+round))),
   lifecycle:lifecycleCases
 };
 const plannedCases=Object.entries(caseGroups).filter(([part])=>qaPart==='all' || qaPart===part).flatMap(([,cases])=>cases);
@@ -329,7 +333,7 @@ async function begin(page) {
     // gain the same single motion without creating duplicate completed rows.
     if(qaPart==='all' || qaPart==='early'){
     await page.setViewportSize({width:390,height:844});
-    for(const mode of earlyModes) for(const count of counts){
+    for(const mode of selectedEarlyModes) for(const count of counts){
       progress('START','early '+mode+'/'+count+' players');
       await seed(page,count,0,mode);
       for(let round=0;round<3;round++){
@@ -468,6 +472,6 @@ async function begin(page) {
     const errors=consoleErrs.filter(e=>e.startsWith('pageerror:'));
     assert.deepEqual(errors,[],'Unexpected browser errors: '+JSON.stringify(errors));
     assert.deepEqual(completedCases,plannedCases,'Selected SC065 coverage was incomplete or duplicated');
-    console.log('SC-065 score-wall PASS: '+qaPart+'; '+completedCases.length+' complete cases, strict errors empty');
+    console.log('SC-065 score-wall PASS: '+requestedPart+'; '+completedCases.length+' complete cases, strict errors empty');
   }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exit(1);});

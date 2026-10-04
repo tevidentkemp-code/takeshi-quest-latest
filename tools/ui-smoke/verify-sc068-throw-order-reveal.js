@@ -2,6 +2,10 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const H=require('./harness');
+// Complete groups retain every assertion within the existing 180s command limit.
+const qaPart=process.env.SQ_SC068_PART||'all';
+if(!['all','presentation','lifecycle'].includes(qaPart))throw Error('Invalid SQ_SC068_PART: '+qaPart);
+const inPart=part=>qaPart==='all'||qaPart===part;
 
 async function fixture(ctx){
   // Empty read fixtures keep unrelated record warming offline. No mutation
@@ -191,6 +195,7 @@ async function shot(page,name){if(process.env.SQ_SCREENSHOTS){fs.mkdirSync(proce
     assert.equal(await page.evaluate(()=>typeof __sqRevealConfirmedThrowOrder),'function');
     await page.evaluate(()=>{window.__sqSc068Starts=0;const start=startNewGame;startNewGame=function(setOrder){if(setOrder)window.__sqSc068Starts++;return start.apply(this,arguments);};});
 
+    if(inPart('presentation')){
     // Complete the actual setup journey once; the mobile matrix below changes
     // only its roster fixture and exercises the same live confirmation owner.
     await H.toMatchCard(page);await H.addGuests(page,['Setup Alpha','Setup Beta']);
@@ -258,6 +263,10 @@ async function shot(page,name){if(process.env.SQ_SCREENSHOTS){fs.mkdirSync(proce
       assert.equal(after.starts,before.starts,action+' started a stale game');assert.equal(after.token,before.token+(action==='stale'?1:0));
       assert.equal(after.history,0);
     }
+    }
+    if(inPart('lifecycle')){
+    // Preserve the original all-run short viewport for this fresh complete group.
+    await page.setViewportSize({width:320,height:568});
     // Synthetic pagehide intentionally stops the existing RAF, so reboot for
     // the clock proofs rather than secretly restarting its private lifecycle.
     await boot();await page.evaluate(()=>{window.__sqSc068Starts=0;const start=startNewGame;startNewGame=function(setOrder){if(setOrder)window.__sqSc068Starts++;return start.apply(this,arguments);};});
@@ -342,9 +351,12 @@ async function shot(page,name){if(process.env.SQ_SCREENSHOTS){fs.mkdirSync(proce
     for(const kind of ['training','vsshadow','practice-classic']){
       await seed(page,kind==='practice-classic'?1:2,kind);const before=await read(page);await confirm(page);assert(!(await read(page)).pending,kind+' adopted the reveal');await playable(page);assert.equal((await read(page)).token,before.token+1);
     }
+    }
     assert.deepEqual(consoleErrs,[],'Unexpected console/page errors');
     if(process.env.SQ_SCREENSHOTS)fs.writeFileSync(path.join(process.env.SQ_SCREENSHOTS,'sc068-measurements.json'),JSON.stringify(evidence,null,2));
-    console.log('SC-068 PASS: exact ordered identities, picture→VS beats, 2–5/mobile/Skip/reduced/assets, stale lifecycle, preserved Turbo elapsed/READY, amendment/AUTO/resume/mode isolation');
+    console.log('SC068 complete group '+qaPart);
+    if(qaPart==='all')console.log('SC-068 PASS: exact ordered identities, picture→VS beats, 2–5/mobile/Skip/reduced/assets, stale lifecycle, preserved Turbo elapsed/READY, amendment/AUTO/resume/mode isolation');
+    else console.log('SC-068 PASS: '+qaPart+' complete group; strict errors empty');
   }catch(error){
     if(process.env.SQ_SCREENSHOTS){
       fs.mkdirSync(process.env.SQ_SCREENSHOTS,{recursive:true});
