@@ -5,13 +5,17 @@ const H = require('./harness');
 
 // Linux WebKit's full matrix exceeded the unchanged 180s command budget
 // while every completed case passed. Keep complete groups independently runnable.
-const qaPart=process.env.SQ_SC065_PART || 'all';
+const requestedPart=process.env.SQ_SC065_PART || 'all';
+const selectedEarlyMode=requestedPart.startsWith('early-')?requestedPart.slice(6):null;
+const qaPart=selectedEarlyMode===null?requestedPart:'early';
 assert(['all','late','early','lifecycle'].includes(qaPart),'Invalid SQ_SC065_PART: '+qaPart);
 const widths=[320,390,430],counts=[2,3,4,5],earlyModes=['match','tournament','practice'];
+if(selectedEarlyMode!==null&&!earlyModes.includes(selectedEarlyMode))throw Error('Invalid SQ_SC065_PART: '+requestedPart);
+const selectedEarlyModes=earlyModes.filter(mode=>selectedEarlyMode===null||mode===selectedEarlyMode);
 const lifecycleCases=['Turbo/2 players','Turbo/5 players','solo and historical six preservation','Undo during motion','navigation during motion','reload during motion','new game during motion','pad scoring during motion','rapid round completion','reduced motion'];
 const caseGroups={
   late:widths.flatMap(width=>counts.map(count=>'late '+width+'px/'+count+' players')),
-  early:earlyModes.flatMap(mode=>counts.flatMap(count=>[0,1,2].map(round=>'early '+mode+'/'+count+' players/round '+round))),
+  early:selectedEarlyModes.flatMap(mode=>counts.flatMap(count=>[0,1,2].map(round=>'early '+mode+'/'+count+' players/round '+round))),
   lifecycle:lifecycleCases
 };
 const plannedCases=Object.entries(caseGroups).filter(([part])=>qaPart==='all' || qaPart===part).flatMap(([,cases])=>cases);
@@ -130,7 +134,7 @@ async function seed(page, count, round = 10, mode = 'match') {
   const observeCold=qaPart==='early'&&!coldFixtureObserved;
   try{
   if(observeCold){coldFixtureObserved=true;await beginColdFixtureDiagnostic(page);}
-  await page.evaluate(async ({n,mode}) => {
+  const expectedToken = await page.evaluate(async ({n,mode}) => {
     window.__sqSc065YieldTrace=[];
     if(!window.__sqSc065YieldOriginal){
       window.__sqSc065YieldOriginal=__sqYieldToPaint;
@@ -140,6 +144,7 @@ async function seed(page, count, round = 10, mode = 'match') {
     requestAnimationFrame(()=>{window.__sqSc065FixtureFrame=true;});
     const token = Number(state.__gameToken || 0);
     state = JSON.parse(JSON.stringify(baseState)); state.__gameToken = token;
+    const expectedToken = Number(state.__gameToken || 0) + 1;
     state.players = Array.from({length:n},(_,i)=>({id:'sc065-'+i,name:'WALL '+i,initials:'W'+i,avatar_id:i+1,color:'#ff7a00'}));
     assignUniqueColors(state.players);
     state.match = {id:'sc065-offline',gameNumber:1,targetWins:3,autoRotateOrder:true,wins:Array(n).fill(0),history:[],mode:'match',gameFormat:'match_play',gameVariant:'classic'};
@@ -147,19 +152,20 @@ async function seed(page, count, round = 10, mode = 'match') {
     if(mode==='practice') Object.assign(state.match,{mode:'practice',forcePractice:true,isPractice:true});
     if(mode==='turbo') Object.assign(state.match,{mode:'turbo',gameVariant:'turbo',startTarget:'17',strictTimer:true,throwLimitSeconds:20});
     startNewGame(n>1?false:true);
+    return expectedToken;
   }, {n:count,mode});
   if(count>1)await page.click('.to-start');
   if(mode==='turbo'){
     // The real Ready button is available while chunked preparation is still
     // painting. Follow that user flow before waiting for the loader to settle.
     await page.waitForFunction(()=>document.body.dataset.page==='game');
-    await page.waitForFunction(()=>!state.__sqSecurityPreparing&&state.__sqGameControl&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');
+    await page.waitForFunction(expectedToken=>!window.__sqThrowOrderRevealPending&&!document.querySelector('.sq-throw-order-reveal')&&Number(state.__gameToken||0)===expectedToken&&document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&state.__sqGameControl&&window.SQ_GAMEPLAY.hasCachedController(state)&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',expectedToken);
     assert.equal(await page.evaluate(()=>state.currentRound),7,'Turbo changed its canonical starting round');
     await page.click('.sq-turbo-ready-start');
     await page.waitForFunction(()=>window.__sqTurboTimerStatus().active && document.querySelector('.sqTurboTimerActive'));
   }
   try{
-    await page.waitForFunction(()=>document.body.dataset.page==='game' && document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');
+    await page.waitForFunction(expectedToken=>!window.__sqThrowOrderRevealPending&&!document.querySelector('.sq-throw-order-reveal')&&Number(state.__gameToken||0)===expectedToken&&document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&state.__sqGameControl&&window.SQ_GAMEPLAY.hasCachedController(state)&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',expectedToken);
   }catch(error){
     if(observeCold)await finishColdFixtureDiagnostic(page,'loader deadline');
     const diagnostic=await page.evaluate(()=>{
@@ -327,7 +333,7 @@ async function begin(page) {
     // gain the same single motion without creating duplicate completed rows.
     if(qaPart==='all' || qaPart==='early'){
     await page.setViewportSize({width:390,height:844});
-    for(const mode of earlyModes) for(const count of counts){
+    for(const mode of selectedEarlyModes) for(const count of counts){
       progress('START','early '+mode+'/'+count+' players');
       await seed(page,count,0,mode);
       for(let round=0;round<3;round++){
@@ -466,6 +472,6 @@ async function begin(page) {
     const errors=consoleErrs.filter(e=>e.startsWith('pageerror:'));
     assert.deepEqual(errors,[],'Unexpected browser errors: '+JSON.stringify(errors));
     assert.deepEqual(completedCases,plannedCases,'Selected SC065 coverage was incomplete or duplicated');
-    console.log('SC-065 score-wall PASS: '+qaPart+'; '+completedCases.length+' complete cases, strict errors empty');
+    console.log('SC-065 score-wall PASS: '+requestedPart+'; '+completedCases.length+' complete cases, strict errors empty');
   }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exit(1);});

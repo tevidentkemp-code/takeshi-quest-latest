@@ -5,8 +5,12 @@ const path = require('path');
 const H = require('./harness');
 // Complete groups keep hosted WebKit within the existing 180s command budget.
 const qaPart = process.env.SQ_SC070_PART || 'all';
-const expectedCases = {all:62,layout:26,numerical:36,identity:12,records:14,'numeric-doubles':12,'numeric-triples':12,'numeric-bull':12};
+const expectedCases = {all:62,layout:26,numerical:36,identity:12,records:14,'numeric-doubles':12,'numeric-triples':12,'numeric-bull':12,
+  'numeric-doubles-standard':6,'numeric-doubles-special':6,'numeric-triples-standard':6,'numeric-triples-special':6,'numeric-bull-standard':6,'numeric-bull-special':6};
 const numericRoundParts = {11:'numeric-doubles',12:'numeric-triples',13:'numeric-bull'};
+const numericSelection=/^(numeric-(?:doubles|triples|bull))-(standard|special)$/.exec(qaPart);
+const numericRoundPart=numericSelection?numericSelection[1]:qaPart;
+const numericalModes=['match','turbo','practice','tournament'].filter(mode=>!numericSelection||(numericSelection[2]==='standard'?['match','practice']:['turbo','tournament']).includes(mode));
 assert(Object.hasOwn(expectedCases,qaPart),'Invalid SQ_SC070_PART: '+qaPart);
 const inPart = part => qaPart==='all'||qaPart===part||(qaPart==='layout'&&['identity','records'].includes(part))||(part==='numerical'&&qaPart.startsWith('numeric-'));
 const qaStarted = Date.now();
@@ -20,17 +24,19 @@ async function settled(page,round){
   await frames(page);
 }
 async function seed(page,count=5,mode='match'){
-  await page.evaluate(({count,mode})=>{
+  const expectedToken=await page.evaluate(({count,mode})=>{
     const token=Number(state.__gameToken||0);state=JSON.parse(JSON.stringify(baseState));state.__gameToken=token;
+    const expectedToken=Number(state.__gameToken||0)+1;
     state.players=Array.from({length:count},(_,i)=>({id:'sc070-'+i,name:'PLAYER '+String.fromCharCode(65+i),initials:'P'+(i+1),avatar_id:i+1}));assignUniqueColors(state.players);
     state.match={id:'sc070-offline',gameNumber:1,targetWins:3,autoRotateOrder:true,wins:Array(count).fill(0),history:[],mode:'match',gameFormat:'match_play',gameVariant:'classic'};
     if(mode==='practice')Object.assign(state.match,{mode:'practice',forcePractice:true,isPractice:true});
     if(mode==='tournament')Object.assign(state.match,{tournament:true,tournamentType:'classic',tournamentRules:{startRoundIndex:0,strictTimer:false}});
     if(mode==='turbo')Object.assign(state.match,{mode:'turbo',gameVariant:'turbo',startTarget:'17',strictTimer:true,throwLimitSeconds:20});
     startNewGame(count>1?false:true);
+    return expectedToken;
   },{count,mode});
   if(count>1)await page.click('.to-start');
-  try{await page.waitForFunction(()=>document.body.dataset.page==='game'&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');}
+  try{await page.waitForFunction(expectedToken=>!window.__sqThrowOrderRevealPending&&!document.querySelector('.sq-throw-order-reveal')&&Number(state.__gameToken||0)===expectedToken&&document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&state.__sqGameControl&&window.SQ_GAMEPLAY.hasCachedController(state)&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',expectedToken);}
   catch(error){console.error('SC070 fixture deadline '+JSON.stringify(await page.evaluate(()=>({page:document.body.dataset.page,round:state.currentRound,history:state.history.length,overlay:document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden'),visible:document.visibilityState,tableRows:document.querySelectorAll('#tbody tr').length}))));throw error;}
   if(mode==='turbo'){
     await page.waitForFunction(()=>document.body.dataset.page==='game');assert.equal(await page.evaluate(()=>state.currentRound),7);
@@ -135,8 +141,8 @@ async function read(page,key,numeric=false){
     }
     }
     if(inPart('numerical')){
-    for(const mode of ['match','turbo','practice','tournament'])for(const round of [11,12,13])for(const width of widths){
-      if(qaPart.startsWith('numeric-')&&qaPart!==numericRoundParts[round])continue;
+    for(const mode of numericalModes)for(const round of [11,12,13])for(const width of widths){
+      if(qaPart.startsWith('numeric-')&&numericRoundPart!==numericRoundParts[round])continue;
       await page.setViewportSize({width,height:844});await seed(page,5,mode);await advance(page,round);await identity(page,true,true);
       await page.evaluate(r=>{[20,10,17,0,20,10,17,0,20,17,10,0,20,10].forEach((v,i)=>recordThrow(!v?{kind:'Miss'}:r===13?{kind:'B',bull:i%2?'Outer':'Inner'}:{kind:r===11?'D':'T',sector:v}));},round);await settled(page,round);
       const r=await read(page,mode+'-numeric-'+round+'-'+width,true),tokens=r.cells.flatMap(c=>c.dots.map(d=>d.text));for(const token of round===11?['D20','D10','D17','X']:round===12?['T20','T10','T17','X']:['50','25','X'])assert(tokens.includes(token),'Real canonical token missing: '+token);
