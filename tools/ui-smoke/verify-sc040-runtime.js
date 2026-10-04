@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const H = require('./harness');
+const {installAdminUiFixture}=require('./admin-ui-fixture');
 const out = process.env.SQ_SCREENSHOTS || path.join(__dirname, '../../output/playwright/sc040');
 fs.mkdirSync(out, {recursive:true});
 (async () => {
@@ -9,25 +10,45 @@ fs.mkdirSync(out, {recursive:true});
   let missing = false, deny = false, zero = false, delayPatch = false;
   let rows = [{id:'11111111-1111-4111-8111-111111111111',name:'Legacy Player',first_name:'Legacy',last_name:'Player',initials:'LP',nickname:'Original',avatar_id:null,deleted_at:null,created_at:'2026-01-01T00:00:00Z'}];
   const writes = [];
-  // Higher-priority local fixture; the harness blocks all other production requests.
-  const playerRoute = async route => {
-    const req = route.request(), url = new URL(req.url());
-    if (url.pathname !== '/rest/v1/players') return route.abort();
-    const method = req.method();
-    const payload = method === 'GET' ? null : req.postDataJSON();
-    if (payload) writes.push({method,payload});
-    if (payload?.avatar_id != null && missing) return route.fulfill({status:400,json:{code:'PGRST204',message:"Could not find the 'avatar_id' column in the schema cache"}});
-    if (payload && deny) return route.fulfill({status:403,json:{code:'42501',message:'permission denied'}});
-    if (method === 'POST') {
-      rows.push({...payload,id:'22222222-2222-4222-8222-222222222222',deleted_at:null,created_at:'2026-09-20T00:00:00Z'});
-      return route.fulfill({status:201,json:[]});
+  // Offline UI data effects only. Actual Auth acceptance uses the real-local suite.
+  await page.exposeFunction('__sc040Command',async (request,authorization)=>{
+    const {action,body}=request;
+    const profile=action==='create_player'?body:body.profile;
+    if(action==='admin_action'){
+      assert.equal(authorization,'Bearer sc004-ui-fixture-admin','profile fixture requires the explicit offline admin credential');
+      assert.equal(body.operation,'update_player','avatar editing retains the actual admin command operation');
+      assert.equal(body.player_id,'22222222-2222-4222-8222-222222222222','avatar editing addresses the exact saved profile');
+      assert.match(request.request_id,/^[a-f0-9-]{36}$/i,'profile command retains its request envelope');
     }
+    writes.push({method:action,payload:profile,authorization,operation:body.operation});
+    if(profile?.avatar_id!=null&&missing)return {status:400,body:{ok:false,code:'operation_failed'}};
+    if(action==='admin_action'&&deny)return {status:403,body:{ok:false,code:'permission_denied'}};
+    if(action==='create_player'){
+      const row={...profile,id:'22222222-2222-4222-8222-222222222222',deleted_at:null,created_at:'2026-09-20T00:00:00Z'};rows.push(row);
+      return {status:200,body:{ok:true,...row}};
+    }
+    if(delayPatch)await new Promise(resolve=>setTimeout(resolve,250));
+    const row=zero?null:rows.find(p=>p.id===body.player_id||p.name===body.player_name);
+    if(row)Object.assign(row,profile);
+    return {status:200,body:{ok:true,player:row}};
+  });
+  await page.addInitScript(()=>{
+    const prior=window.fetch;
+    window.fetch=async function(target,init){
+      if(String(target)===window.SQ_SECURITY_CONFIG?.endpoint){
+        const request=JSON.parse(init.body||'{}');
+        if(request.action==='create_player'||request.action==='admin_action'){
+          if(request.action==='admin_action'&&init.headers.Authorization!=='Bearer sc004-ui-fixture-admin')return new Response(JSON.stringify({ok:false,code:'permission_denied'}),{status:403});
+          const result=await window.__sc040Command(request,init.headers.Authorization||null);return new Response(JSON.stringify(result.body),{status:result.status,headers:{'Content-Type':'application/json'}});
+        }
+      }
+      return prior(target,init);
+    };
+  });
+  const playerRoute=async route=>{
+    const req=route.request(),url=new URL(req.url());
+    if(url.pathname!=='/rest/v1/players'||req.method()!=='GET')return route.abort();
     let selected = rows.filter(p => (!url.searchParams.has('id') || 'eq.'+p.id === url.searchParams.get('id')) && (!url.searchParams.has('name') || 'eq.'+p.name === url.searchParams.get('name')) && (!url.searchParams.has('deleted_at') || p.deleted_at === null));
-    if (method === 'PATCH') {
-      if (delayPatch) await new Promise(resolve => setTimeout(resolve, 250));
-      if (zero) selected=[];
-      selected.forEach(p=>Object.assign(p,payload));
-    }
     const single = (req.headers().accept || '').includes('vnd.pgrst.object');
     return route.fulfill({status:200,json:single ? selected[0] || null : selected});
   };
@@ -40,10 +61,10 @@ fs.mkdirSync(out, {recursive:true});
     await page.reload(); await page.waitForTimeout(1200);
     assert.equal(await page.evaluate(()=>__sqAvatarIdForPlayer(getSavedPlayers()[0])),legacy.id,'legacy fallback survives reload');
     await page.evaluate(()=>showAddPlayerDialog(0));
-    assert.equal(await page.locator('#newPlayerAvatarPicker [role=radio]').count(),29);
+    assert.equal(await page.locator('#newPlayerAvatarPicker [role=radio]').count(),32);
     await page.locator('#newPlayerAvatarPicker [data-avatar-id="1"]').focus();
     await page.keyboard.press('ArrowLeft');
-    assert.equal(await page.locator('#newPlayerAvatarPicker [aria-checked=true]').getAttribute('data-avatar-id'),'29');
+    assert.equal(await page.locator('#newPlayerAvatarPicker [aria-checked=true]').getAttribute('data-avatar-id'),'32');
     await page.keyboard.press('Home'); await page.keyboard.press('ArrowRight');
     assert.equal(await page.locator('#newPlayerAvatarPicker [aria-checked=true]').getAttribute('data-avatar-id'),'2');
     await page.fill('#newPlayerFirst','Avatar'); await page.fill('#newPlayerLast','Tester');
@@ -64,7 +85,8 @@ fs.mkdirSync(out, {recursive:true});
       await page.selectOption('#playerHubSelect',{label:'Avatar Tester — "'+rows[1].nickname+'"'}).catch(()=>page.selectOption('#playerHubSelect','0'));
       // Resolve by actual fixture name, independent of list sorting.
       await page.selectOption('#playerHubSelect',await page.locator('#playerHubSelect option').evaluateAll(opts=>opts.find(o=>o.textContent.startsWith('Avatar Tester')).value));
-      for(let i=0;i<4;i++) await page.locator('#playerHubGateOverlay').getByRole('button',{name:'1',exact:true}).click();
+      await installAdminUiFixture(page);
+      await page.locator('#playerHubGateOverlay').getByRole('button',{name:'Edit profile',exact:true}).click();
       await page.waitForSelector('#playerHubEditorOverlay');
     };
     await openHub();
@@ -97,6 +119,8 @@ fs.mkdirSync(out, {recursive:true});
     }));
     assert.equal(hubSaved.saved,true);
     assert.match(hubSaved.status,/Profile saved/i);
+    assert.equal(writes.find(w=>w.method==='admin_action')?.authorization,'Bearer sc004-ui-fixture-admin');
+    assert.equal(writes.find(w=>w.method==='admin_action')?.operation,'update_player');
     await page.waitForSelector('#playerHubEditorOverlay',{state:'detached'});
     assert.equal(rows[1].avatar_id,29);
     await openHub();

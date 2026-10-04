@@ -6,8 +6,10 @@
   try{
     if (typeof startNewGame === 'function' && !startNewGame.__sqTournamentStartWrapped){
       const __sqOriginalStartNewGame = startNewGame;
-      startNewGame = function(setOrder){
-        const ret = __sqOriginalStartNewGame.apply(this, arguments);
+      startNewGame = async function(setOrder){
+        const startingState=state;
+        const ret = await __sqOriginalStartNewGame.apply(this, arguments);
+        if(ret!==true || state!==startingState || startingState.__sqSecurityPreparing || !startingState.__sqGameControl)return ret;
         try{
           const m = state && state.match ? state.match : {};
           const rules = (m && (m.tournamentRules || m.rules)) || {};

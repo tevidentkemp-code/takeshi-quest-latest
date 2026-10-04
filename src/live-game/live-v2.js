@@ -1387,6 +1387,14 @@ function __sqBindQuickEntryHold(btn, specFactory){
   btn.addEventListener('contextmenu',(e)=>{ try{ e.preventDefault(); }catch(_){ } });
 }
 
+let __sqMissBouncePendingCancel = null;
+function __sqCancelMissBounceFeedback(){
+  const cancel = __sqMissBouncePendingCancel;
+  __sqMissBouncePendingCancel = null;
+  try{ cancel?.(); }catch(_){}
+  try{ window.__sqDmdV2?.cancelBounceOut?.(); }catch(_){}
+}
+
 function __sqBindMissBounceHold(btn){
   if (!btn || btn.__sqMissBounceHoldBound) return;
   btn.__sqMissBounceHoldBound = true;
@@ -1396,26 +1404,62 @@ function __sqBindMissBounceHold(btn){
   btn.style.userSelect = 'none';
 
   let holdTimer = null;
+  let holdStartedAt = null, commitPendingHold = null;
   let held = false;
+  let cancelled = false;
   let pointerId = null;
-  const clearHold = ()=>{ if (holdTimer) clearTimeout(holdTimer); holdTimer = null; };
+  const clearHold = ()=>{
+    if (holdTimer !== null) clearTimeout(holdTimer);
+    holdTimer = null; holdStartedAt = null; commitPendingHold = null;
+  };
+  const cancelGesture = ()=>{
+    clearHold();
+    cancelled = true;
+    held = false;
+    pointerId = null;
+    delete btn.__sqMissBounceStart;
+    btn.classList.remove('sq-miss-bounce-held');
+    if (__sqMissBouncePendingCancel === cancelGesture) __sqMissBouncePendingCancel = null;
+  };
 
   btn.addEventListener('pointerdown',(e)=>{
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    try{ __sqMissBouncePendingCancel?.(); }catch(_){}
     clearHold();
     held = false;
+    cancelled = false;
     pointerId = e.pointerId;
+    const game = state;
+    const history = game.history;
+    const token = game.__gameToken;
+    const player = game.currentPlayer, round = game.currentRound, dart = game.currentDart;
+    const actor = game.players?.[player];
+    const historyLength = Array.isArray(history) ? history.length : 0;
+    __sqMissBouncePendingCancel = cancelGesture;
     const startX = e.clientX, startY = e.clientY;
     btn.__sqMissBounceStart = { x:startX, y:startY };
     try{ btn.setPointerCapture?.(e.pointerId); }catch(_){}
-    holdTimer = setTimeout(()=>{
+    const commitHold = ()=>{
+      if (commitPendingHold !== commitHold) return;
+      clearHold();
+      if (cancelled || document.body?.dataset?.page !== 'game' || state !== game ||
+          state.__gameToken !== token || state.history !== history || history?.length !== historyLength ||
+          state.currentPlayer !== player || state.currentRound !== round || state.currentDart !== dart ||
+          state.players?.[player] !== actor){
+        cancelGesture();
+        return;
+      }
       held = true;
       btn.classList.add('sq-miss-bounce-held');
-      try{ window.__sqDmdHardClearQueue?.(); }catch(_){}
-      try{ window.sqDmdShowZones?.({ z2:'BOUNCE OUT', z3:'' }, { type:'flash', ms:420, fx:'impact' }); }catch(_){}
       try{ recordThrow({ kind:'BounceOut' }); }catch(_){}
+      const receipt = history[historyLength];
+      if (state !== game || state.history !== history || history.length !== historyLength + 1 || receipt?.throw?.bounceOut !== true) return;
+      try{ window.__sqDmdV2?.emit?.({ kind:'BOUNCE_OUT' }); }catch(_){}
       try{ navigator.vibrate?.(35); }catch(_){}
-    }, __SQ_QUICK_ENTRY_HOLD_MS);
+    };
+    holdStartedAt = performance.now();
+    commitPendingHold = commitHold;
+    holdTimer = setTimeout(commitHold, __SQ_QUICK_ENTRY_HOLD_MS);
   });
 
   btn.addEventListener('pointermove',(e)=>{
@@ -1429,8 +1473,13 @@ function __sqBindMissBounceHold(btn){
   });
   const finish=(e)=>{
     if (pointerId != null && e.pointerId !== pointerId) return;
+    const commit = e.type === 'pointerup' && pointerId !== null && holdTimer !== null &&
+      holdStartedAt !== null && performance.now() - holdStartedAt >= __SQ_QUICK_ENTRY_HOLD_MS
+      ? commitPendingHold : null;
+    if (commit) commit();
     clearHold();
     pointerId = null;
+    if (__sqMissBouncePendingCancel === cancelGesture) __sqMissBouncePendingCancel = null;
     delete btn.__sqMissBounceStart;
     if (held){
       e.preventDefault();
@@ -1443,8 +1492,9 @@ function __sqBindMissBounceHold(btn){
   btn.addEventListener('pointercancel',finish);
   btn.addEventListener('contextmenu',(e)=>e.preventDefault());
   btn.addEventListener('click',(e)=>{
-    if (held || performance.now() < Number(window.__sqMissBounceSuppressClick||0)){
+    if (held || cancelled || performance.now() < Number(window.__sqMissBounceSuppressClick||0)){
       held = false;
+      cancelled = false;
       window.__sqMissBounceSuppressClick = 0;
       e.preventDefault();
       e.stopPropagation();
@@ -1518,9 +1568,11 @@ function buildPad(){
     // helper has mode-specific block/restore messages which must not be
     // overwritten by the generic DMD V2 event.
     if (isVsShadow){
+      const before = Array.isArray(state?.history) ? state.history.length : 0;
       try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
       try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ }
       undo();
+      if (Array.isArray(state?.history) && state.history.length < before) __sqCancelMissBounceFeedback();
       return;
     }
 
@@ -1534,6 +1586,7 @@ function buildPad(){
 
     const after = Array.isArray(state?.history) ? state.history.length : before;
     if (after >= before) return;
+    __sqCancelMissBounceFeedback();
 
     // Re-establish the truthful persistent DMD baseline from restored game state
     // before the transient Undo message takes ownership of presentation.

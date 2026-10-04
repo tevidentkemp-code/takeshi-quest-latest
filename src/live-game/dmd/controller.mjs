@@ -94,6 +94,8 @@ export function makeMessage(event = {}) {
       return { priority: PRIORITY.VISIT, headline: 'BULLSEYE +50', subline: total, type: 'hold', haptic: 'major' };
     case 'MISS':
       return { priority: PRIORITY.THROW, headline: 'MISS', subline: `DART ${dart} OF 3`, type: 'hold', haptic: 'miss' };
+    case 'BOUNCE_OUT':
+      return { priority: PRIORITY.THROW, headline: 'BOUNCE OUT', subline: '', type: 'flash', duration: 420, fx: 'impact', bounceOut: true, haptic: null };
     case 'SCRATCH':
     case 'MISS_X3':
       return { priority: PRIORITY.VISIT, headline: 'SCRATCH', subline: 'NO SCORE', type: 'hold', haptic: 'miss' };
@@ -197,9 +199,12 @@ export function createController(options = {}) {
     if (!msg || suspended) return;
     const ms = durationFor(msg);
     try {
+      const opts = msg.bounceOut
+        ? { type: msg.type, ms, fx: msg.fx, bounceOut: true }
+        : { type: msg.type || 'hold', ms: ms || 2000, amp: Number.isFinite(Number(msg.amp)) ? Number(msg.amp) : 3.2 };
       render(
         { z2: clean(msg.headline, 24), z3: clean(msg.subline, 24) },
-        { type: msg.type || 'hold', ms: ms || 2000, amp: Number.isFinite(Number(msg.amp)) ? Number(msg.amp) : 3.2 }
+        opts
       );
     } catch (_) {}
     if (msg.haptic) haptics.pulse(msg.haptic);
@@ -285,6 +290,17 @@ export function createController(options = {}) {
     }
   }
 
+  function cancelBounceOut() {
+    for (let i = queue.length - 1; i >= 0; i--) {
+      if (queue[i].bounceOut) queue.splice(i, 1);
+    }
+    if (!active?.bounceOut) return;
+    generation += 1;
+    cancelTimer();
+    try { clearBackend(); } catch (_) {}
+    restore();
+  }
+
   function setSuspended(value) {
     const next = !!value;
     if (next === suspended) return;
@@ -304,6 +320,7 @@ export function createController(options = {}) {
 
   return {
     emit,
+    cancelBounceOut,
     clear: hardClear,
     suspend: setSuspended,
     snapshot() {

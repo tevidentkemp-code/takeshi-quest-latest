@@ -204,11 +204,16 @@
 
   // ---------------------------------------------------------------- GAME
   async function startTraining(cfg){
+    var control;
+    try{var selected=cfg.player||{};var player=selected.id?{id:selected.id}:{name:selected.name};
+      control=await window.SQ_SECURITY.createTraining({player:player,mode:cfg.mode,length:cfg.length,config:cfg.mode==='select'?{targets:cfg.targets||[]}:{} });
+      if(control.recovery==='memory_only')window.SQ_GAMEPLAY.notice('Training control is available only in this tab. Keep the tab open until this session is saved.');
+    }catch(error){window.SQ_GAMEPLAY.failure(error);return;}
     try{ if (typeof closeModal === 'function') closeModal('startGameModal'); }catch(_){ }
     var sb = getSb();
     var pkey = norm(cfg.player && cfg.player.name);
     var st = {
-      cfg: cfg, target: null, lastKey: null, lastNumber: null, dartsThisGo: [], go: 0,
+      cfg: cfg, control:control, target: null, lastKey: null, lastNumber: null, dartsThisGo: [], go: 0,
       totalPoints: 0, totalDarts: 0, totalHits: 0, bestGo: 0, results: [],
       histWeight: {}, sessionMiss: {}, avg: null, finished: false, el: {}
     };
@@ -227,6 +232,7 @@
       }catch(_){ }
     }
 
+    window.__sqTrainingControl=control;
     buildGameScreen(st);
     nextGo(st);
   }
@@ -350,6 +356,7 @@
     var goHits = st.dartsThisGo.filter(function(d){ return d.hit; }).length;
     st.results.push({ target: st.target.kind === 'bull' ? 'bull' : st.target.n, req: st.target.req || 'any', darts: st.dartsThisGo.map(function(d){ return d.section; }), hits: goHits, points: goPts });
     if (goPts > st.bestGo) st.bestGo = goPts;
+    st.dartsThisGo=[];
     st.go++;
     addBar(st.el.progress, goPts);
     if (st.cfg.length > 0 && st.go >= st.cfg.length){ endSession(st); return; }
@@ -367,6 +374,12 @@
 
   async function endSession(st){
     if (st.finished) return;
+    if(st.dartsThisGo.length){
+      var points=st.dartsThisGo.reduce(function(sum,d){return sum+d.points;},0);
+      var hits=st.dartsThisGo.filter(function(d){return d.hit;}).length;
+      st.results.push({target:st.target.kind==='bull'?'bull':st.target.n,req:st.target.req||'any',darts:st.dartsThisGo.map(function(d){return d.section;}),hits:hits,points:points});
+      st.go++;st.bestGo=Math.max(st.bestGo,points);st.dartsThisGo=[];
+    }
     st.finished = true;
     var hitPct = st.totalDarts ? Math.round((st.totalHits / st.totalDarts) * 1000) / 10 : 0;
     var saveResult = await saveSession(st, hitPct);
@@ -374,8 +387,7 @@
   }
 
   async function saveSession(st, hitPct){
-    var sb = getSb();
-    if (!sb) return { saved: false, reason: 'offline' };
+    if (!st.control) return {saved:false,reason:'authority'};
     if (!st.results.length) return { saved: false, reason: 'empty' };
     try{
       var payload = {
@@ -383,10 +395,10 @@
         rounds_played: st.go, config: st.cfg.mode === 'select' ? { targets: st.cfg.targets || [] } : {}, results: st.results,
         total_points: st.totalPoints, total_darts: st.totalDarts, total_hits: st.totalHits, hit_pct: hitPct
       };
-      var res = await sb.from('training_sessions').insert(payload);
-      if (res && res.error) throw res.error;
+      var res = await window.SQ_SECURITY.completeTraining(st.control.training_id,payload);
+      st.saved=true;
       return { saved: true };
-    }catch(e){ try{ console.warn('[SQ] training save failed', e); }catch(_){ } return { saved: false, reason: 'error' }; }
+    }catch(e){window.SQ_GAMEPLAY.failure(e);return {saved:false,reason:'error'};}
   }
 
   function showSummary(st, hitPct, saveResult){
@@ -417,12 +429,19 @@
     ov.className = 'tr-overlay tr-summary';
     ov.innerHTML = '';
     ov.appendChild(inner);
-    inner.querySelector('.tr-again').onclick = function(){ try{ ov.remove(); }catch(_){ } startTraining(st.cfg); };
+    if(!saveResult.saved&&st.results.length){
+      var retry=el('button','btn primary','RETRY SAVE');retry.type='button';
+      retry.onclick=async function(){retry.disabled=true;var result=await saveSession(st,hitPct);retry.disabled=false;showSummary(st,hitPct,result);};
+      inner.querySelector('.tr-sum-actions').prepend(retry);
+    }
+    inner.querySelector('.tr-again').onclick = function(){if(!saveResult.saved&&st.results.length){window.SQ_GAMEPLAY.notice('Save this completed training session before starting another.');return;} try{ ov.remove(); }catch(_){ } startTraining(st.cfg); };
     inner.querySelector('.tr-done').onclick = function(){ closeTraining(st); };
     inner.querySelector('.tr-sum-stats').onclick = function(){ try{ openTrainingStats(st.cfg.player.name); }catch(_){ } };
   }
 
   function closeTraining(st){
+    if(st.finished&&st.results.length&&!st.saved){window.SQ_GAMEPLAY.notice('Save this completed training session before closing. Your results are preserved; use RETRY SAVE.');return;}
+    if(window.__sqTrainingControl?.training_id===st.control?.training_id)delete window.__sqTrainingControl;
     try{ st.el.ov.remove(); }catch(_){ try{ document.querySelectorAll('.tr-overlay').forEach(function(x){ x.remove(); }); }catch(__){ } }
     try{ if (typeof show === 'function') show('details'); }catch(_){ }
   }

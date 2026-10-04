@@ -1220,43 +1220,17 @@ function dedupeRowsByNameScoreKeepEarliest(rows){
   return [...map.values()];
 }
 async function dedupeTableHighScores(table){
-  const { data, error } = await sb
-    .from(table)
-    .select('name, score, ts, game_id')
-    .order('ts', { ascending: true })
-    .limit(10000);
-  if (error) { markCloudError(error); throw error; }
-  const groups = new Map();
-  for (const r of (data || [])){
-    const key = _keyNameScore(r);
-    const arr = groups.get(key) || [];
-    arr.push(r);
-    groups.set(key, arr);
-  }
-  let deleted = 0;
-  for (const [, arr] of groups){
-    if (arr.length <= 1) continue;
-    arr.sort((a,b)=> (Date.parse(a.ts||'')||0) - (Date.parse(b.ts||'')||0));
-    // keep earliest (index 0), delete the rest
-    for (let i = 1; i < arr.length; i++){
-      const row = arr[i];
-      const { error: delErr } = await sb.from(table)
-        .delete()
-        .eq('name', row.name)
-        .eq('score', row.score)
-        .eq('ts', row.ts);
-      if (!delErr) deleted++;
-    }
-  }
+  const scope = table === TABLE_HS_PRACTICE ? 'practice' : table === TABLE_HS_LEAGUE ? 'league' : null;
+  if (!scope) throw new Error('Unknown high-score table');
+  const result = await window.sqAdminAction({ operation:'dedupe_scores', scope });
   markCloudOk();
-  return deleted;
+  return Number(result.deleted || 0);
 }
+
 async function dedupeAllHighScores(){
-  let total = 0;
-  try { total += await dedupeTableHighScores(TABLE_HS_LEAGUE); } catch(e){ console.error(e); }
-  try { total += await dedupeTableHighScores(TABLE_HS_PRACTICE); } catch(e){ console.error(e); }
-  return total;
+  return (await dedupeTableHighScores(TABLE_HS_LEAGUE)) + (await dedupeTableHighScores(TABLE_HS_PRACTICE));
 }
+
 // ---- Admin Hub ----
 // ===== @JS:UI:ADMIN =====
 function openAdminHub(){
@@ -1274,6 +1248,11 @@ function openAdminHub(){
     });
   } catch(_) {}
   hub.classList.remove('hidden');
+  if(!hub.querySelector('#sqAdminSignOut')){
+    const signOut=document.createElement('button');signOut.id='sqAdminSignOut';signOut.className='btn';signOut.textContent='Sign out';signOut.style.minHeight='44px';
+    signOut.onclick=async()=>{try{await window.SQ_ADMIN_AUTH.signOut();hub.classList.add('hidden');toast('Signed out of Admin.');}catch(e){toast(e.message||'Sign out failed.');}};
+    (hub.querySelector('.modal-footer')||hub.querySelector('.modal')||hub).appendChild(signOut);
+  }
 
   // Buttons
   const btnAll   = document.getElementById('openAllGamesBtn');
@@ -1320,85 +1299,9 @@ try { window.openAdminHub = openAdminHub; } catch(_) {}
 
 // >>> PATCH:ADMIN_ALL_SCORES_V1 START
 async function cloudRemovePlayerFromGame(gameId, playerId, playerName){
-  await ensureCloudInit();
   if (!gameId || !playerId) throw new Error('cloudRemovePlayerFromGame: missing ids');
-
-  // 1) Attempt to remove player from the game row (best-effort)
-  try{
-    const { data: gRows, error: gErr } = await sb.from(TABLE_GAMES)
-      .select('id,state,stats,totals')
-      .eq('id', gameId)
-      .limit(1);
-
-    if (!gErr && gRows && gRows[0]){
-      const g = gRows[0];
-      const state = (g.state && typeof g.state === 'object') ? JSON.parse(JSON.stringify(g.state)) : null;
-      const stats = (g.stats && typeof g.stats === 'object') ? JSON.parse(JSON.stringify(g.stats)) : null;
-      const totals = Array.isArray(g.totals) ? g.totals.slice() : null;
-
-      // Determine player index from common patterns
-      let idx = -1;
-
-      const tryFindIdxInArray = (arr)=>{
-        if (!Array.isArray(arr)) return -1;
-        for (let i=0;i<arr.length;i++){
-          const it = arr[i];
-          if (it && typeof it === 'object'){
-            if (it.id === playerId || it.player_id === playerId) return i;
-            if (playerName && (it.name === playerName || it.player_name === playerName)) return i;
-          } else {
-            if (it === playerId) return i;
-            if (playerName && it === playerName) return i;
-          }
-        }
-        return -1;
-      };
-
-      if (state){
-        idx = tryFindIdxInArray(state.players);
-        if (idx<0) idx = tryFindIdxInArray(state.player_ids);
-        if (idx<0) idx = tryFindIdxInArray(state.playerIds);
-        if (idx<0) idx = tryFindIdxInArray(state.names);
-      }
-      if (idx<0 && stats){
-        idx = tryFindIdxInArray(stats.players);
-        if (idx<0) idx = tryFindIdxInArray(stats.player_ids);
-        if (idx<0) idx = tryFindIdxInArray(stats.names);
-      }
-
-      const stripIdx = (obj, key)=>{
-        if (!obj || !Array.isArray(obj[key]) || idx<0) return;
-        obj[key].splice(idx,1);
-      };
-
-      if (idx>=0){
-        // remove from known arrays
-        stripIdx(state,'players'); stripIdx(state,'player_ids'); stripIdx(state,'playerIds'); stripIdx(state,'names');
-        stripIdx(stats,'players'); stripIdx(stats,'player_ids'); stripIdx(stats,'playerIds'); stripIdx(stats,'names');
-
-        if (totals) totals.splice(idx,1);
-
-        // Also try nested common shapes
-        if (state && state.match && Array.isArray(state.match.players)) state.match.players.splice(idx,1);
-        if (stats && stats.perPlayer && Array.isArray(stats.perPlayer)) stats.perPlayer.splice(idx,1);
-
-        await sb.from(TABLE_GAMES).update({
-          state: state,
-          stats: stats,
-          totals: totals
-        }).eq('id', gameId);
-      } else {
-        console.warn('[AllScores] Could not determine player index in game row; skipping game JSON edit.');
-      }
-    }
-  }catch(e){
-    console.warn('[AllScores] Game-row edit failed; continuing to purge HS rows only.', e);
-  }
-
-  // 2) Purge HS rows for this player+game
-  try{ await sb.from(TABLE_HS_LEAGUE).delete().eq('game_id', gameId).eq('player_id', playerId); }catch(_){}
-  try{ await sb.from(TABLE_HS_PRACTICE).delete().eq('game_id', gameId).eq('player_id', playerId); }catch(_){}
-
+  await window.sqAdminAction({ operation:'remove_game_player', game_id:gameId, player_id:playerId, player_name:playerName || undefined });
+  try{ window.__sqClearGamesTruthCache && window.__sqClearGamesTruthCache('remove_game_player'); }catch(_){}
   return true;
 }
 
@@ -1636,8 +1539,8 @@ function openPlayerStatsSelectDialog(){
   (async () => {
     try{
       const items = await cloudListPlayers(); // [{name}]
-      sel.innerHTML = '<option value="">Select a saved player...</option>' +
-        (items || []).map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+      sel.replaceChildren(new Option('Select a saved player...', ''),
+        ...(items || []).map(p => new Option(String(p.name || ''), String(p.name || ''))));
     }catch(e){
       console.error('Stats: load players failed', e);
       try{ if (typeof toast==='function') toast('Cloud offline'); }catch(_){}
@@ -1703,8 +1606,8 @@ function openPBGRAdminDialog(){
     try{
       const items = await cloudListPlayers(); // [{name}]
       if (sel){
-        sel.innerHTML = '<option value="">Select a saved player…</option>' +
-          (items||[]).map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+        sel.replaceChildren(new Option('Select a saved player…', ''),
+          ...(items || []).map(p => new Option(String(p.name || ''), String(p.name || ''))));
         if (!sel.value && items && items.length) sel.value = items[0].name || '';
         if (typeof renderPBGRPlayerTableInto === 'function') await renderPBGRPlayerTableInto('pbgrPlayer', sel.value);
       }
@@ -2310,8 +2213,6 @@ async function renderSavedPlayersAdmin(){
           initials: init
         });
 
-        // Ensure initials are set even on older deployments
-        try { await cloudUpdatePlayerInitials({ id, name: nmOld }, init); } catch(_){}
 
         try { await syncSavedPlayersFromCloud(); } catch(_){}
         try { document.dispatchEvent(new Event('sq:savedPlayersUpdated')); } catch(_){}
@@ -2784,67 +2685,14 @@ if (!items.length) {
 // Propagate a player rename to other cloud tables that store name strings.
 // Best-effort only (ignore failures so we never break the app).
 async function cloudPropagatePlayerRename(oldName, newName){
-  // Keep this conservative: only touch tables that are known to exist in your current Supabase schema.
-  const o = String(oldName||'').trim();
-  const n = String(newName||'').trim();
-  if (!o || !n || o === n) return;
-
-  const tasks = [];
-  try { tasks.push(sb.from(TABLE_HS_LEAGUE).update({ name: n }).eq('name', o)); } catch(_) {}
-  try { tasks.push(sb.from(TABLE_HS_PRACTICE).update({ name: n }).eq('name', o)); } catch(_) {}
-
-  // Best-effort only; never throw (avoid console red spam on missing tables/views)
-  try { await Promise.allSettled(tasks); } catch(_) {}
+  return cloudRenamePlayerMerge(oldName, newName);
 }
 
 // Best-effort: rename the player inside historical games.state JSON so stats/ranks stay unified.
 // This updates state.players[].name (board is index-based so it stays valid).
 async function cloudRenamePlayerInGamesState(oldName, newName, maxRows=500){
-  const o = String(oldName||'').trim();
-  const n = String(newName||'').trim();
-  if (!o || !n || o === n) return { updated: 0 };
-  let updated = 0;
-  let offset = 0;
-  const page = 100;
-
-  while (updated < maxRows){
-    const { data, error } = await sb
-      .from(TABLE_GAMES)
-      .select('id, state')
-      .contains('state', { players: [{ name: o }] })
-      .range(offset, offset + page - 1);
-
-    if (error) throw error;
-    const rows = data || [];
-    if (!rows.length) break;
-
-    for (const row of rows){
-      if (updated >= maxRows) break;
-      const st = row.state;
-      if (!st || !Array.isArray(st.players)) continue;
-
-      let changed = false;
-      const players = st.players.map(pl => {
-        if (pl && typeof pl === 'object' && String(pl.name||'').trim() === o){
-          changed = true;
-          return { ...pl, name: n };
-        }
-        return pl;
-      });
-
-      if (!changed) continue;
-
-      const nextState = { ...st, players };
-      const { error: uErr } = await sb.from(TABLE_GAMES).update({ state: nextState }).eq('id', row.id);
-      if (uErr) throw uErr;
-      updated += 1;
-    }
-
-    if (rows.length < page) break;
-    offset += rows.length;
-  }
-
-  return { updated };
+  const result = await cloudRenamePlayerMerge(oldName,newName);
+  return { updated: result ? 1 : 0 };
 }
 
 // Rename helper (updates `name` column)
@@ -2871,56 +2719,29 @@ async function cloudResolvePlayerKeyByName(name){
 // Use Supabase RPC to merge rename across history (DB function: public.rename_player_merge(old_name, new_name)).
 // This keeps legacy name-based data coherent while we gradually migrate UI to IDs.
 async function cloudRenamePlayerMerge(oldName, newName){
-  const o = String(oldName||'').trim();
-  const n = String(newName||'').trim();
-  if (!o || !n || o === n) return;
-
-  const { error } = await sb.rpc('rename_player_merge', { old_name: o, new_name: n });
-  if (error) { markCloudError(error); throw error; }
+  const o=String(oldName || '').trim(), n=String(newName || '').trim();
+  if (!o || !n || o===n) return null;
+  const result=await window.sqAdminAction({ operation:'rename_merge', old_name:o, new_name:n });
   markCloudOk();
-  try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('rename_player_merge'); }catch(_){}
+  window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('rename_merge');
+  return result;
 }
+
 // <<< PATCH:PLAYER_RENAME_RPC END
 
 // Player rename by UUID id (keeps name-based propagation for legacy tables)
 async function cloudRenamePlayerById(playerId, oldName, newName){
-  const id = String(playerId||'').trim();
-  const fallbackOld = String(oldName||'').trim();
-  const n  = String(newName||'').trim();
-  if (!id || !n) return;
-
-  // Prefer the authoritative current name for this id (protects against case/whitespace mismatches)
-  let o = fallbackOld;
-  try{
-    const { data, error } = await sb
-      .from(TABLE_PLAYERS)
-      .select('name')
-      .eq('id', id)
-      .maybeSingle();
-    if (error) throw error;
-    if (data && data.name) o = String(data.name).trim();
-  }catch(_){ /* fall back */ }
-
-  if (!o || o === n) return;
-
-  // Server-side merge rename (players + match_players + matches JSON + highscores)
-  await cloudRenamePlayerMerge(o, n);
-
-  // Extra legacy cleanup: some views still parse games.state; keep those unified too.
-  try { await cloudRenamePlayerInGamesState(o, n); } catch(_) {}
+  const id=String(playerId || '').trim(), name=String(newName || '').trim();
+  if (!id || !name) throw new Error('Rename requires a player id and name');
+  const result=await window.sqAdminAction({ operation:'rename_merge', player_id:id, new_name:name });
+  window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('rename_merge');
+  return result;
 }
+
 // <<< PATCH:PLAYER_ID_SUPPORT END
 
 async function cloudRenamePlayer(oldName, newName){
-  const o = String(oldName||'').trim();
-  const n = String(newName||'').trim();
-  if (!o || !n || o === n) return;
-
-  // Server-side merge rename (players + match_players + matches JSON + highscores)
-  await cloudRenamePlayerMerge(o, n);
-
-  // Extra legacy cleanup: some views still parse games.state; keep those unified too.
-  try { await cloudRenamePlayerInGamesState(o, n); } catch(_) {}
+  return cloudRenamePlayerMerge(oldName,newName);
 }
 
 // Update player profile (first/last/region) while keeping `name` as the app-wide display key.
@@ -2931,7 +2752,8 @@ async function cloudRenamePlayer(oldName, newName){
 
 
 /* ===== SC-040 PLAYER AVATAR IDENTITY ===== */
-const SQ_AVATAR_COUNT = 29;
+const SQ_AVATAR_COUNT = 32;
+const SQ_AVATAR_SPRITE_COUNT = 29;
 const SQ_AVATAR_AUTO_ASSIGN_COUNT = 20;
 const SQ_AVATAR_COLS = 6;
 const SQ_AVATAR_ROWS = 5;
@@ -2957,6 +2779,7 @@ function __sqNormalizeAvatarId(value, seed=''){
 }
 function __sqAvatarSpritePosition(value){
   const id = __sqNormalizeAvatarId(value);
+  if (id > SQ_AVATAR_SPRITE_COUNT) return null;
   const index = id - 1;
   const col = index % SQ_AVATAR_COLS;
   const row = Math.floor(index / SQ_AVATAR_COLS);
@@ -2970,15 +2793,27 @@ function __sqAvatarIdForPlayer(playerOrName){
   }
   return __sqNormalizeAvatarId(null, playerOrName);
 }
-function __sqApplyAvatarSprite(el, avatarId){
+function __sqApplyAvatarArtwork(el, avatarId, celebration=false){
   if (!el) return el;
-  const p = __sqAvatarSpritePosition(avatarId);
-  el.dataset.avatarId = String(p.id);
-  el.style.backgroundImage = 'url("./assets/avatars/avatar-sprite.webp")';
+  const id = __sqNormalizeAvatarId(avatarId);
+  const standalone = id > SQ_AVATAR_SPRITE_COUNT;
+  const kind = celebration ? 'winner' : 'avatar';
+  const path = standalone ? kind + '-' + id + '.webp'
+    : (celebration ? 'celebration-sprite.webp' : 'avatar-sprite.webp');
+  el.dataset.avatarId = String(id);
+  el.dataset.avatarLayout = standalone ? 'standalone' : 'sprite';
+  el.style.backgroundImage = 'url("./assets/avatars/' + path + '")';
   el.style.backgroundRepeat = 'no-repeat';
-  el.style.backgroundSize = '600% 500%';
-  el.style.backgroundPosition = p.x.toFixed(4) + '% ' + p.y.toFixed(4) + '%';
+  el.style.backgroundSize = standalone ? '100% 100%' : '600% 500%';
+  const p = standalone ? null : __sqAvatarSpritePosition(id);
+  el.style.backgroundPosition = p ? p.x.toFixed(4) + '% ' + p.y.toFixed(4) + '%' : 'center';
   return el;
+}
+function __sqApplyAvatarSprite(el, avatarId){
+  return __sqApplyAvatarArtwork(el, avatarId);
+}
+function __sqApplyCelebrationSprite(el, avatarId){
+  return __sqApplyAvatarArtwork(el, avatarId, true);
 }
 function __sqBuildAvatarPicker(selectedId, onChange){
   const root = document.createElement('div');
@@ -3029,6 +2864,7 @@ window.__sqNormalizeAvatarId = __sqNormalizeAvatarId;
 window.__sqAvatarSpritePosition = __sqAvatarSpritePosition;
 window.__sqAvatarIdForPlayer = __sqAvatarIdForPlayer;
 window.__sqApplyAvatarSprite = __sqApplyAvatarSprite;
+window.__sqApplyCelebrationSprite = __sqApplyCelebrationSprite;
 window.__sqBuildAvatarPicker = __sqBuildAvatarPicker;
 
 // Called by the canonical Player Hub editor with its actual player record.
@@ -3054,65 +2890,26 @@ function __sqAvatarSaveError(error){
 /* ===== /SC-040 PLAYER AVATAR IDENTITY ===== */
 
 async function cloudUpdatePlayerProfile(playerOrName, profile){
-  const obj = (playerOrName && typeof playerOrName === 'object') ? playerOrName : null;
-  const keyName = String(obj ? (obj.name||'') : (playerOrName||'')).trim();
-  const keyId   = String(obj ? (obj.id||'')   : '').trim();
-  const p = (profile && typeof profile === 'object') ? profile : {};
-
-  if (!keyName && !keyId) return null;
-
-  // Build payload (only include defined keys)
-  const payload = {};
-  if (p.first_name != null) payload.first_name = String(p.first_name||'').trim();
-  if (p.last_name  != null) payload.last_name  = String(p.last_name ||'').trim();
-  if (p.nickname   != null) payload.nickname   = String(p.nickname  ||'').trim();
-  if (p.initials   != null) payload.initials   = __sqNormalizeInitials(String(p.initials||''), (p.name||keyName));
-  if (p.avatar_id  != null) payload.avatar_id  = __sqNormalizeAvatarId(p.avatar_id, keyId || keyName);
-
-
-  // Optional name update (normally handled via rename RPC first)
-  if (p.name != null){
-    const nm = String(p.name||'').trim();
-    if (nm) payload.name = nm;
-  }
-
+  const obj=(playerOrName && typeof playerOrName==='object') ? playerOrName : null;
+  const keyName=String(obj ? obj.name || '' : playerOrName || '').trim();
+  const keyId=String(obj ? obj.id || '' : '').trim();
+  if (!keyId && !keyName) throw new Error('Profile requires a player key');
+  const p=profile && typeof profile==='object' ? profile : {};
+  const payload={};
+  for (const field of ['first_name','last_name','nickname','name']) if (p[field]!=null) payload[field]=String(p[field]).trim();
+  if (p.initials!=null) payload.initials=__sqNormalizeInitials(p.initials,p.name || keyName);
+  if (p.avatar_id!=null) payload.avatar_id=__sqNormalizeAvatarId(p.avatar_id,keyId || keyName);
   if (!Object.keys(payload).length) return null;
-
   try{
-    let q = sb.from(TABLE_PLAYERS).update(payload);
-    if (keyId) q = q.eq('id', keyId);
-    else q = q.eq('name', keyName);
-
-    const { data, error } = await q.select('id,name,first_name,last_name,nickname,initials,avatar_id').maybeSingle();
-    if (error) { markCloudError(error); throw error; }
-    if (!data) throw new Error('Profile was not saved. Refresh the player list and try again.');
+    const result=await window.sqAdminAction({ operation:'update_player', player_id:keyId || undefined, player_name:keyId ? undefined : keyName, profile:payload });
+    if (!result.player?.id) throw new Error('Profile was not saved. Refresh the player list and try again.');
     markCloudOk();
+    window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_profile_update');
+    try{window.__sqClearGamesTruthCache?.('player_profile_update');}catch(_){}
     await cloudRefreshPlayerDirectory(true);
     window.dispatchEvent(new CustomEvent('sq:players-changed'));
-    return data || null;
-  }catch(e){
-    // Never turn an avatar write failure into a partial successful profile save.
-    if (payload.avatar_id != null) throw __sqAvatarSaveError(e);
-    // Preserve the pre-existing fallback only for callers not saving avatars.
-    const msg  = String(e?.message || e || '');
-    const code = String(e?.code || '');
-    const missing = (code === '42703') || /column .* does not exist/i.test(msg);
-    if (!missing) throw e;
-
-    const fallback = {};
-    if (payload.initials != null) fallback.initials = payload.initials;
-    if (payload.name != null)     fallback.name     = payload.name;
-    if (!Object.keys(fallback).length) return null;
-
-    const q2 = keyId
-      ? sb.from(TABLE_PLAYERS).update(fallback).eq('id', keyId)
-      : sb.from(TABLE_PLAYERS).update(fallback).eq('name', keyName);
-    const { data, error } = await q2.select('id,name,initials').maybeSingle();
-    if (error) { markCloudError(error); throw error; }
-    markCloudOk();
-    try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_profile_fallback_update'); }catch(_){}
-    return data || null;
-  }
+    return result.player;
+  }catch(e){markCloudError(e);throw e;}
 }
 
 /* ===== @CLOUD:PLAYER_DIRECTORY (game-wide display + cache) ===== */
@@ -3286,20 +3083,8 @@ function sqInitialsForPlayerField(nameOrId, fallback=''){
 }
 
 async function cloudArchivePlayerSnapshot(playerRow, reason='admin_change'){
-  if (!ensureCloudInit() || !playerRow?.id) return;
-  try{
-    const sb = window.sb;
-    // best-effort archive (table may not exist yet)
-    await sb.from(TABLE_PLAYERS_ARCHIVE).insert({
-      player_id: playerRow.id,
-      player_name: playerRow.name || null,
-      reason,
-      payload: playerRow,
-      archived_at: new Date().toISOString(),
-    });
-  }catch(e){
-    // ignore (archive table not present / RLS / etc.)
-  }
+  if (!playerRow?.id) throw new Error('Player snapshot requires an id');
+  return window.sqAdminAction({ operation:'archive_player', player_id:playerRow.id, reason:String(reason).slice(0,80) });
 }
 
 // Game Complete modal hierarchy tweak (title + big result + smaller standings)
@@ -3645,6 +3430,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // --- Top row buttons: compatibility wiring for new + legacy IDs ---
 function _showPageSafe(id){
+  if (id !== 'game') { try{ __sqCancelMissBounceFeedback(); }catch(_){} }
   try { if (window.SQ_DIAG && typeof window.SQ_DIAG.mark === 'function') window.SQ_DIAG.mark('showPage', { id }); } catch(_){ }
   // Prefer existing app router, else do a minimal local switch
   if (typeof window.showPage === 'function') { try { window.showPage(id); return; } catch(_){ } }
@@ -3736,11 +3522,11 @@ function wireTopRowButtons(){
       if (!select || !numEl) return;
       
 
-/* === Admin → Button + Password Popup (final) === */
+/* === Admin button and authenticated sign-in entry === */
 (function adminButton(){
   if (window.__sqAdminButtonInit) return;
   window.__sqAdminButtonInit = true;
-  const expected = (window.ADMIN_PASSWORD || 'hownowbrowncow'); // change if needed
+  // Sign-in and enrollment are verified by Supabase Auth and the server.
 
   // 1) Ensure we have a single Admin button
   const row = document.getElementById('adminCodeRow');
@@ -3771,116 +3557,19 @@ function wireTopRowButtons(){
     });
   }
 
-  // 3) Password popup → on success open the standard Admin panel
+  // 3) Verified sign-in opens the standard Admin panel
   function openAdminPasswordModal(){
-    if (window.__sqAdminModalOpen) return;
-    window.__sqAdminModalOpen = true;
-    const overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
-    const modal   = document.createElement('div'); modal.className = 'modal';
-
-    const title = document.createElement('h3'); title.textContent = 'Admin Login';
-    const body  = document.createElement('div'); body.className = 'modal-body';
-
-    const label = document.createElement('label');
-    label.textContent = 'Enter password:';
-    label.className = 'muted';
-    label.style.display = 'block';
-    label.style.marginBottom = '6px';
-
-    const input = document.createElement('input');
-    input.type = 'password';
-    input.className = 'input';
-    input.autocomplete = 'current-password';
-    input.placeholder = 'Password';
-    input.style.minWidth = '220px';
-
-    body.append(label, input);
-
-    const footer = document.createElement('div'); footer.className = 'modal-footer';
-    const cancel = document.createElement('button'); cancel.className = 'btn';         cancel.textContent = 'Cancel';
-    const enter  = document.createElement('button'); enter.className  = 'btn primary'; enter.textContent  = 'Enter';
-
-    function close(){ try{ overlay.remove(); } finally { window.__sqAdminModalOpen = false; } }
-    function deny(){
-      if (typeof toast === 'function') toast('Incorrect password');
-      else alert('Incorrect password');
-      input.focus(); input.select();
-    }
-    function grant(){
-      window.__sqAdminAuthed = true;
-      close();
-      // Call the ungated hub if available to avoid recursion
-      if (typeof window.__openAdminHubUnsafe === 'function') window.__openAdminHubUnsafe();
-      else if (typeof window.openAdminHub === 'function') window.openAdminHub();
-      else if (typeof openAdminHub === 'function') openAdminHub();
-    }
-    function submit(){
-      const v = (input.value || '').trim();
-      if (!expected || v === expected) grant(); else deny();
-    }
-
-    cancel.onclick = close;
-    enter.onclick  = submit;
-    input.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') submit(); });
-
-    footer.append(cancel, enter);
-    modal.append(title, body, footer);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-
-    modal.tabIndex = 0; modal.focus();
-    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-    overlay.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
-
-    setTimeout(()=> input.focus(), 0);
+    if (!window.SQ_ADMIN_AUTH) { toast('Admin sign-in is unavailable. Please reload.'); return; }
+    return window.SQ_ADMIN_AUTH.require().then(()=>{
+      const hub=window.__sqOriginalOpenAdminHub || window.__openAdminHubUnsafe;
+      if (typeof hub==='function') return hub();
+    }).catch(e=>{ if (typeof toast==='function') toast(e.message || 'Admin sign-in failed'); });
   }
+
     // Export for other wiring (e.g. start-screen Admin button)
     window.openAdminPasswordModal = openAdminPasswordModal;
 
-// Ensure ALL admin entrypoints are password-gated (including any legacy buttons calling openAdminHub directly)
-(function(){
-  if (window.__sqAdminGateWrapped) return;
-  window.__sqAdminGateWrapped = true;
-  if (window.__sqAdminAuthed == null) window.__sqAdminAuthed = false;
-
-  function tryWrap(){
-    if (typeof window.openAdminPasswordModal !== 'function') return false;
-    if (typeof window.openAdminHub !== 'function') return false;
-    if (window.openAdminHub.__sqIsGated) return true;
-
-    const unsafe = window.openAdminHub;
-    window.__openAdminHubUnsafe = unsafe;
-
-    window.openAdminHub = function(){
-      if (window.__sqAdminAuthed) return unsafe();
-      return window.openAdminPasswordModal();
-    };
-    window.openAdminHub.__sqIsGated = true;
-
-    // Capture-click safety net (covers markup onclick + nested icons)
-    document.addEventListener('click', (e)=>{
-      const el = e.target && e.target.closest ? e.target.closest('#adminBtn,#adminCodeBtn,button,a') : null;
-      if (!el) return;
-      const id = (el.id||'').toLowerCase();
-      const label = String(el.textContent||'').trim().toLowerCase();
-      const isAdmin = (id==='adminbtn' || id==='admincodebtn' || label==='admin' || label==='admin hub' || label==='admin code');
-      if (!isAdmin) return;
-      if (!window.__sqAdminAuthed){
-        e.preventDefault();
-        e.stopPropagation();
-        window.openAdminPasswordModal();
-      }
-    }, true);
-    return true;
-  }
-
-  let tries = 0;
-  const iv = setInterval(()=>{
-    tries++;
-    if (tryWrap() || tries > 30) clearInterval(iv);
-  }, 200);
-})();
-
+// Entry points share the authenticated gate in inline-001.js.
   removeStandaloneLabel();
   ensureButton();
 })();
@@ -3989,8 +3678,8 @@ function openHighScoresHubDialog(){
 /**********************
  * CONFIG: Supabase
  **********************/
-const SUPABASE_URL = "https://vvfqumgtasuacpggdmxx.supabase.co";
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2ZnF1bWd0YXN1YWNwZ2dkbXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NTk0MDMsImV4cCI6MjA3ODUzNTQwM30.8NblWOwEsY1FP1hxvO6isQ908NyxkTgntnZZiXIFPHE";
+const SUPABASE_URL = window.SQ_SECURITY_CONFIG?.supabaseUrl || "https://vvfqumgtasuacpggdmxx.supabase.co";
+const SUPABASE_ANON = window.SQ_SECURITY_CONFIG?.publicKey || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2ZnF1bWd0YXN1YWNwZ2dkbXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NTk0MDMsImV4cCI6MjA3ODUzNTQwM30.8NblWOwEsY1FP1hxvO6isQ908NyxkTgntnZZiXIFPHE";
 
 // Dev-only Supabase read instrumentation.
 // Enable with URL ?debug=1, localStorage.SQ_DEBUG='1', or localStorage.SQ_EGRESS_DEBUG='1'.
@@ -4491,7 +4180,8 @@ function __sqIsRecoverableGameStateForLocalCache(o){
     if(!o || typeof o !== 'object') return false;
     const players = Array.isArray(o.players) ? o.players : [];
     if(!players.length) return false;
-    if (typeof __sqSavedStateIsVsShadow === 'function' && __sqSavedStateIsVsShadow(o)) return false;
+    // An unfinished Shadow board is recoverable presentation data too. The
+    // secure runtime separately verifies or issues authority before any save.
     if(o.gameAwarded === true || o.finished === true || o.__sqCompleted === true || o.__sqGameCompleteOpen === true) return false;
     return true;
   }catch(_){ return false; }
@@ -5048,7 +4738,6 @@ const baseState = {
   matchAgg: null,
   gameAwarded: false
 };
-
 // ===== @SEC:JS:STATE =====
 
 let state = JSON.parse(JSON.stringify(baseState));
@@ -6452,6 +6141,7 @@ function __sqSyncTurboVisualState(page){
   }catch(_){ }
 }
 function show(id){
+  if (id !== 'game') { try{ __sqCancelMissBounceFeedback(); }catch(_){} }
   try{
     if (id !== 'game' && typeof __sqCancelV2WallMotion === 'function') __sqCancelV2WallMotion();
     if (id !== 'game' && typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('show:' + id);
@@ -6781,149 +6471,30 @@ async function cloudListPlayers(force=false){
 
 // Create / update a player by name only (no password)
 async function cloudCreatePlayer(name, profile){
-  const nm = String(name||'').trim();
-  const p = (profile && typeof profile === 'object') ? profile : {};
-  const initials = __sqNormalizeInitials(String(p.initials||''), nm);
-  const row = {
-    name: nm,
-    initials,
-    first_name: (p.first_name != null) ? String(p.first_name||'').trim() : undefined,
-    last_name:  (p.last_name  != null) ? String(p.last_name ||'').trim() : undefined,
-    nickname:   (p.nickname   != null) ? String(p.nickname  ||'').trim() : undefined,
-    avatar_id:  (p.avatar_id  != null) ? __sqNormalizeAvatarId(p.avatar_id, nm) : undefined,
-  };
-
-  // Try full schema; fall back if columns missing.
+  const nm=String(name||'').trim();const p=profile&&typeof profile==='object'?profile:{};
+  const row={name:nm,initials:__sqNormalizeInitials(String(p.initials||''),nm)};
+  for(const key of ['first_name','last_name','nickname'])if(p[key]!=null)row[key]=String(p[key]||'').trim();
+  if(p.avatar_id!=null)row.avatar_id=__sqNormalizeAvatarId(p.avatar_id,nm);
   try{
-    const { error } = await sb
-      .from(TABLE_PLAYERS)
-      .upsert(row, { onConflict: 'name' });
-    if (error) throw error;
-    markCloudOk();
-    try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_upsert'); }catch(_){}
-    return;
-  }catch(e1){
-    if (row.avatar_id != null) { markCloudError(e1); throw __sqAvatarSaveError(e1); }
-    const msg = String(e1?.message || e1 || '');
-    const code = String(e1?.code || '');
-    const isMissingCols = (code === '42703') || /(initials|first_name|last_name|nickname|avatar_id)/i.test(msg);
-    if (!isMissingCols){
-      markCloudError(e1);
-      throw e1;
-    }
-    // Minimal schema fallback
-    try{
-      const { error } = await sb
-        .from(TABLE_PLAYERS)
-        .upsert({ name: nm, initials }, { onConflict: 'name' });
-      if (error) throw error;
-      markCloudOk();
-      try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_upsert_fallback'); }catch(_){}
-      return;
-    }catch(e2){
-      const msg2 = String(e2?.message || e2 || '');
-      const code2 = String(e2?.code || '');
-      const isMissingInitials = (code2 === '42703') || /initials/i.test(msg2);
-      if (!isMissingInitials){ markCloudError(e2); throw e2; }
-      const { error } = await sb
-        .from(TABLE_PLAYERS)
-        .upsert({ name: nm }, { onConflict: 'name' });
-      if (error){ markCloudError(error); throw error; }
-      markCloudOk();
-      try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_upsert_name_only'); }catch(_){}
-    }
-  }
+    const receipt=await window.SQ_SECURITY.createPlayer(row);
+    markCloudOk();try{window.__sqInvalidatePlayersFetchCache?.('player_create');}catch(_){}
+    return receipt;
+  }catch(error){markCloudError(error);if(/conflict|exists/.test(error.code||''))error.message='Player name already exists. Select the saved player instead.';throw error;}
 }
 
 // Update initials for a player (by id when available; by resolved name otherwise)
 async function cloudUpdatePlayerInitials(playerOrName, initials){
-  const obj = (playerOrName && typeof playerOrName === 'object') ? playerOrName : null;
-  const nmIn = obj ? String(obj.name||'').trim() : String(playerOrName||'').trim();
-  const id = obj && obj.id ? obj.id : null;
-  if (!nmIn && !id) throw new Error('Update initials failed: missing player key');
-
-  const init = __sqNormalizeInitials(initials, nmIn);
-  try{
-    let q = sb.from(TABLE_PLAYERS).update({ initials: init });
-    if (id) {
-      q = q.eq('id', id);
-    } else {
-      const resolved = await cloudResolvePlayerKeyByName(nmIn);
-      const targetName = (resolved && resolved.name) ? resolved.name : nmIn;
-      q = q.eq('name', targetName);
-    }
-    const { data, error } = await q.select('id, name, initials').maybeSingle();
-    if (error) throw error;
-    markCloudOk();
-    try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_initials_update'); }catch(_){}
-    return data || null;
-  }catch(e1){
-    const msg = String(e1?.message || e1 || '');
-    const code = String(e1?.code || '');
-    const isMissingInitials = (code === '42703') || /initials/i.test(msg);
-    if (!isMissingInitials){
-      markCloudError(e1);
-      throw e1;
-    }
-    // Column doesn't exist yet: treat as no-op so UI doesn't break.
-    markCloudOk();
-    return null;
-  }
+  return cloudUpdatePlayerProfile(playerOrName,{initials:__sqNormalizeInitials(initials,typeof playerOrName==='object'?playerOrName?.name:playerOrName)});
 }
 
 async function cloudDeletePlayer(playerOrName){
-  // "Delete" is now SAFE: archive snapshot (best effort) then soft-delete (preferred) with hard-delete fallback.
-  const obj = (playerOrName && typeof playerOrName === 'object') ? playerOrName : null;
-  const raw = obj ? (obj.id || obj.name || '') : String(playerOrName || '');
-  const t = String(raw).trim();
-  if (!t) return;
-
-  if (!ensureCloudInit()) throw new Error('Cloud not ready');
-  const sb = window.sb;
-
-  const name = obj ? String(obj.name || '').trim() : (sqIsUuidLike(t) ? '' : t);
-  let playerId = obj?.id ? String(obj.id).trim() : (sqIsUuidLike(t) ? t : null);
-
-  if (!playerId && name){
-    try{ playerId = await cloudResolvePlayerId(name); }catch(e){}
-  }
-
-  // Fetch player row for archive (best effort)
-  let row = null;
-  if (playerId){
-    const r = await sb.from(TABLE_PLAYERS).select('*').eq('id', playerId).maybeSingle();
-    if (!r.error) row = r.data || null;
-  } else if (name){
-    const r = await sb.from(TABLE_PLAYERS).select('*').ilike('name', name).limit(1).maybeSingle();
-    if (!r.error) row = r.data || null;
-    if (row?.id) playerId = row.id;
-  }
-
-  if (row) await cloudArchivePlayerSnapshot(row, 'admin_delete');
-
-  // Prefer soft-delete (keeps history + allows restore)
-  const deletedAt = new Date().toISOString();
-  let softOk = false;
-
-  if (playerId){
-    const u = await sb.from(TABLE_PLAYERS).update({ deleted_at: deletedAt }).eq('id', playerId);
-    softOk = !u.error;
-  } else if (name){
-    const u = await sb.from(TABLE_PLAYERS).update({ deleted_at: deletedAt }).ilike('name', name);
-    softOk = !u.error;
-  }
-
-  // Fallback hard-delete only if soft-delete isn't available
-  if (!softOk){
-    if (playerId){
-      const d = await sb.from(TABLE_PLAYERS).delete().eq('id', playerId);
-      if (d.error) throw d.error;
-    } else if (name){
-      const d = await sb.from(TABLE_PLAYERS).delete().ilike('name', name);
-      if (d.error) throw d.error;
-    }
-  }
-
+  const obj=playerOrName&&typeof playerOrName==='object'?playerOrName:null;
+  const raw=String(obj?.id||obj?.name||playerOrName||'').trim();
+  if(!raw)throw new Error('Delete player failed: missing player key');
+  const body={operation:'delete_player',reason:'admin_delete'};
+  if(sqIsUuidLike(raw))body.player_id=raw;else body.player_name=raw;
+  await window.sqAdminAction(body);
+  try{window.__sqInvalidatePlayersFetchCache?.('player_delete');}catch(_){}
   await cloudRefreshPlayerDirectory(true);
   window.dispatchEvent(new CustomEvent('sq:players-changed'));
 }
@@ -7231,146 +6802,32 @@ if(!isPractice){
  * One-time backfill: rebuild high-score rows from TABLE_GAMES.
  * Requires `game_id` column on the target HS table (recommended).
  */
-async function cloudRebuildHighScoresFromGames(isPractice = false, maxPages = 200){
-  if (!ensureCloudInit()) throw new Error('Cloud not initialised');
-  const table = isPractice ? TABLE_HS_PRACTICE : TABLE_HS_LEAGUE;
-
-  // Probe for game_id column support
-  try{
-    const probe = await sb.from(table).select('game_id', { head:true, count:'exact' }).limit(1);
-    if (probe.error) throw probe.error;
-  }catch(e){
-    const msg  = String(e?.message || '');
-    const code = String(e?.code || '');
-    const missingCol = (code === '42703') || /game_id/i.test(msg);
-    if (missingCol) throw new Error('Missing game_id column on high score table');
-    throw e;
-  }
-
-  const pageSize = 250;
-  let from = 0;
-
-  for (let page = 0; page < maxPages; page++){
-    const to = from + pageSize - 1;
-
-    const { data, error } = await sb
-      .from(TABLE_GAMES)
-      .select('id, created_at, totals, match_id, state')
-      .order('created_at', { ascending:false })
-      .range(from, to);
-
-    if (error) throw error;
-    const rows = data || [];
-    if (!rows.length) break;
-
-    const inserts = [];
-
-    for (const g of rows){
-      const players = (g?.state?.players || []).map(p => (typeof p === 'string' ? { name:p } : p)).filter(Boolean);
-      const totals  = Array.isArray(g?.totals) ? g.totals : [];
-
-      const isSingle = players.length <= 1 || !g.match_id;
-      if (isPractice && !isSingle) continue;
-      if (!isPractice && isSingle) continue;
-
-      for (let i=0;i<players.length;i++){
-        const name = players[i]?.name || '';
-        const score = Number(totals[i] || 0);
-        if (!g.id || !name || score <= 0) continue;
-                const playerId = players[i]?.id || players[i]?.player_id || null;
-        if (!playerId) continue; // saved players only
-        inserts.push({ game_id: g.id, player_id: playerId, name, score, ts: g.created_at });
-      }
-    }
-
-    if (inserts.length){
-      // Prefer upsert to avoid duplicates on reruns (requires unique constraint on (game_id,name))
-      const { error: upErr } = await sb
-        .from(table)
-        .upsert(inserts, { onConflict: 'game_id,player_id', ignoreDuplicates: true });
-      if (upErr) throw upErr;
-    }
-
-    from += pageSize;
-  }
+async function cloudRebuildHighScoresFromGames(isPractice=false,maxPages=200){
+  return window.sqAdminAction({operation:'rebuild_scores',scope:isPractice?'practice':'league',max_games:Math.min(50000,Math.max(250,Number(maxPages||200)*250))});
 }
 
-// If HS table is empty, attempt a one-time rebuild from games (best effort).
-async function cloudListHighScoresWithBackfill(isPractice=false, limit=500){
-  let rows = await cloudListHighScores(isPractice, limit);
-  if (rows.length) return rows;
-
-  try{
-    await cloudRebuildHighScoresFromGames(isPractice);
-    rows = await cloudListHighScores(isPractice, limit);
-  }catch(e){
-    console.warn('HS backfill skipped/failed', e);
-  }
-  return rows;
+// Leaderboard reads do not perform persistent maintenance.
+async function cloudListHighScoresWithBackfill(isPractice=false,limit=500){
+  return cloudListHighScores(isPractice,limit);
 }
 
-// Insert (name, score, ts) if not already present in the table
-async function cloudInsertHighScoreIfMissing(table, playerId, name, score, ts, gameId){
-  // v27: High scores are ONLY for saved players. Require player_id + game_id.
-  try {
-    if (!playerId || !gameId) return false;
-
-    const payload = { player_id: playerId, name, score, ts, game_id: gameId };
-    if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime() &&
-        typeof __sqAssertNoShadowPersistPayload === 'function' &&
-        !__sqAssertNoShadowPersistPayload(payload, 'cloudInsertHighScoreIfMissing')) {
-      return false;
-    }
-
-    // One HS row per (game_id, player_id). Ignore duplicates.
-    const { error } = await sb
-      .from(table)
-      .upsert([payload], { onConflict: 'game_id,player_id', ignoreDuplicates: true });
-
-    if (error) { markCloudError(error); return false; }
-    markCloudOk();
-    return true;
-  } catch (e){
-    console.error('cloudInsertHighScoreIfMissing failed', e);
-    return false;
-  }
+async function cloudInsertHighScoreIfMissing(table,playerId,name,score,ts,gameId){
+  if(!playerId||!gameId||Number(score)<=0)return false;
+  const accepted=typeof state!=='undefined'&&state?.__sqAcceptedGameReceipt;
+  if(accepted&&accepted.game_id===gameId&&accepted.id===gameId)return false;
+  const scope=table===TABLE_HS_PRACTICE?'practice':table===TABLE_HS_LEAGUE?'league':null;
+  if(!scope)throw new Error('Unknown high-score table');
+  const result=await window.sqAdminAction({operation:'ensure_score',scope,game_id:gameId,player_id:playerId});
+  return result.inserted>0;
 }
 
-// From a finished game, write one HS row per player to the correct table
-async function cloudSaveHighScoresForGame(totals, tsIso, gameId){
-  try {
-    const players = state.players || [];
-    const realPlayers = (typeof __sqRealPlayersOnly === 'function') ? __sqRealPlayersOnly(players) : players;
-    const realTotals = (typeof __sqRealOnlyTotals === 'function') ? __sqRealOnlyTotals(totals || [], players) : (totals || []);
-    const gameMode = (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime())
-      ? 'practice'
-      : ((typeof __sqComputeGameMode === 'function') ? __sqComputeGameMode() : ((realPlayers.length===1) ? 'practice' : 'official'));
-    if (gameMode === 'turbo') {
-      console.warn('[SQ] Turbo high-score write skipped: no dedicated Turbo high-score table is configured; Turbo rows must not enter official high_scores_sp.');
-      return;
-    }
-    const isPractice = (gameMode === 'practice');
-    const table = isPractice ? TABLE_HS_PRACTICE : TABLE_HS_LEAGUE;
-    const when = tsIso || (state && state.meta && state.meta.ts) || (state && state.ts) || new Date().toISOString();
-
-    // Require a concrete game id (UUID) for referential integrity.
-    if (!gameId) return;
-
-    for (let i = 0; i < realPlayers.length; i++){
-      const p = realPlayers[i] || {};
-      const playerId = p.id || p.player_id || null; // saved players only
-      const name  = p.name || '';
-      const score = Number(realTotals?.[i] || 0);
-
-      // High Score League is for saved players only.
-      if (!playerId) continue;
-      if (!name || score <= 0) continue;
-
-      await cloudInsertHighScoreIfMissing(table, playerId, name, score, when, gameId);
-    }
-  } catch (e) {
-    console.error('cloudSaveHighScoresForGame failed', e);
+// Completion saves the game and eligible high scores in one server transaction.
+async function cloudSaveHighScoresForGame(totals,tsIso,gameId){
+  const receipt=typeof state!=='undefined'&&state?.__sqAcceptedGameReceipt;
+  if(!gameId||!receipt||receipt.id!==gameId||receipt.game_id!==gameId||!receipt.match_id){
+    throw new Error('Game completion has not been accepted by the server.');
   }
+  return true;
 }
 
 // Simple initial Supabase connectivity check
@@ -7615,21 +7072,9 @@ window.buildStartTicker = async function buildStartTicker(){
  * CLOUD MATCH HELPERS
  *****************/
 async function upsertMatchToSupabase(createdAtOverride) {
-  try {
-    if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime()) return;
-    const payload = {
-      id: state.match.id,                                                // uuid
-      created_at: state.match.createdAtIso || createdAtOverride || new Date().toISOString(),
-      total_games: state.match.history.length,
-      players: state.players.map(p => ({ name: p.name })),               // [{name}]
-      wins: (state.match.wins || []).slice(),
-      history: state.match.history.map(g => ({ totals: (g?.totals || []).slice() }))
-    };
-    const { error } = await sb.from(TABLE_MATCHES).upsert(payload);
-    if (error) throw error;
-  } catch (e) {
-    console.error('upsertMatchToSupabase failed', e);
-  }
+  // Completion owns wins/history atomically. This compatibility name only syncs
+  // the current controller's match-only roster; it never upserts history.
+  return window.SQ_GAMEPLAY.syncRoster();
 }
 
 // Map Supabase -> local shapes the stats code already understands
@@ -8241,16 +7686,16 @@ function setupStartMenuButtons(){
 if (hasSaved){ 
     resumeBtn.onclick = () => {
       try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('resume-before-load'); }catch(_){ }
-      if (typeof __sqSavedStateIsVsShadow === 'function' && __sqSavedStateIsVsShadow(saved)) {
-        try{ safeClear(STORAGE_KEY); }catch(_){ }
-        try{ setupStartMenuButtons(); }catch(_){ }
-        try{ toast('Vs Shadow recovery is not supported for this mode. Start a new Vs Shadow game instead.'); }catch(_){ }
+      if (typeof __sqSavedStateIsVsShadow === 'function' && __sqSavedStateIsVsShadow(saved) && !window.SQ_GAMEPLAY.hasCachedController(saved) && (saved.match?.history||[]).length) {
+        try{ toast('Vs Shadow recovery is not supported for this mode. Your cached state is preserved for owner review.'); }catch(_){ }
         return;
       }
       __sqShowGameLoadOverlay('Resuming Game');
       __sqAfterPaint(async ()=>{
         try{
           state = Object.assign(JSON.parse(JSON.stringify(baseState)), saved);
+          delete state.__sqAwardInFlight;delete state.__sqSecurityPreparing;
+          await window.SQ_GAMEPLAY.resume();
           try{ if (typeof __sqNormalizeVsShadowRuntimeState === 'function') __sqNormalizeVsShadowRuntimeState('resume-after-load'); }catch(_){ }
           // Older recovery caches can already be beyond Round 1 without the
           // SC-035 marker. Preserve that known completion across later Undo.
@@ -8264,8 +7709,10 @@ if (hasSaved){
           if(!amendedColors) assignUniqueColors(state.players);
           await buildEverythingChunked();
           updateUI();
+          if(typeof __sqResumeVsShadowAutoTurnIfNeeded==='function')__sqResumeVsShadowAutoTurnIfNeeded('secure-resume');
           toast('Resumed last match');
-        } finally {
+        } catch(error){window.SQ_GAMEPLAY.failure(error);show('details');window.SQ_GAMEPLAY.offerLegacyRecovery();}
+        finally {
           __sqHideGameLoadOverlay();
         }
       });
@@ -14601,6 +14048,14 @@ function __sqBindQuickEntryHold(btn, specFactory){
   btn.addEventListener('contextmenu',(e)=>{ try{ e.preventDefault(); }catch(_){ } });
 }
 
+let __sqMissBouncePendingCancel = null;
+function __sqCancelMissBounceFeedback(){
+  const cancel = __sqMissBouncePendingCancel;
+  __sqMissBouncePendingCancel = null;
+  try{ cancel?.(); }catch(_){}
+  try{ window.__sqDmdV2?.cancelBounceOut?.(); }catch(_){}
+}
+
 function __sqBindMissBounceHold(btn){
   if (!btn || btn.__sqMissBounceHoldBound) return;
   btn.__sqMissBounceHoldBound = true;
@@ -14610,26 +14065,62 @@ function __sqBindMissBounceHold(btn){
   btn.style.userSelect = 'none';
 
   let holdTimer = null;
+  let holdStartedAt = null, commitPendingHold = null;
   let held = false;
+  let cancelled = false;
   let pointerId = null;
-  const clearHold = ()=>{ if (holdTimer) clearTimeout(holdTimer); holdTimer = null; };
+  const clearHold = ()=>{
+    if (holdTimer !== null) clearTimeout(holdTimer);
+    holdTimer = null; holdStartedAt = null; commitPendingHold = null;
+  };
+  const cancelGesture = ()=>{
+    clearHold();
+    cancelled = true;
+    held = false;
+    pointerId = null;
+    delete btn.__sqMissBounceStart;
+    btn.classList.remove('sq-miss-bounce-held');
+    if (__sqMissBouncePendingCancel === cancelGesture) __sqMissBouncePendingCancel = null;
+  };
 
   btn.addEventListener('pointerdown',(e)=>{
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    try{ __sqMissBouncePendingCancel?.(); }catch(_){}
     clearHold();
     held = false;
+    cancelled = false;
     pointerId = e.pointerId;
+    const game = state;
+    const history = game.history;
+    const token = game.__gameToken;
+    const player = game.currentPlayer, round = game.currentRound, dart = game.currentDart;
+    const actor = game.players?.[player];
+    const historyLength = Array.isArray(history) ? history.length : 0;
+    __sqMissBouncePendingCancel = cancelGesture;
     const startX = e.clientX, startY = e.clientY;
     btn.__sqMissBounceStart = { x:startX, y:startY };
     try{ btn.setPointerCapture?.(e.pointerId); }catch(_){}
-    holdTimer = setTimeout(()=>{
+    const commitHold = ()=>{
+      if (commitPendingHold !== commitHold) return;
+      clearHold();
+      if (cancelled || document.body?.dataset?.page !== 'game' || state !== game ||
+          state.__gameToken !== token || state.history !== history || history?.length !== historyLength ||
+          state.currentPlayer !== player || state.currentRound !== round || state.currentDart !== dart ||
+          state.players?.[player] !== actor){
+        cancelGesture();
+        return;
+      }
       held = true;
       btn.classList.add('sq-miss-bounce-held');
-      try{ window.__sqDmdHardClearQueue?.(); }catch(_){}
-      try{ window.sqDmdShowZones?.({ z2:'BOUNCE OUT', z3:'' }, { type:'flash', ms:420, fx:'impact' }); }catch(_){}
       try{ recordThrow({ kind:'BounceOut' }); }catch(_){}
+      const receipt = history[historyLength];
+      if (state !== game || state.history !== history || history.length !== historyLength + 1 || receipt?.throw?.bounceOut !== true) return;
+      try{ window.__sqDmdV2?.emit?.({ kind:'BOUNCE_OUT' }); }catch(_){}
       try{ navigator.vibrate?.(35); }catch(_){}
-    }, __SQ_QUICK_ENTRY_HOLD_MS);
+    };
+    holdStartedAt = performance.now();
+    commitPendingHold = commitHold;
+    holdTimer = setTimeout(commitHold, __SQ_QUICK_ENTRY_HOLD_MS);
   });
 
   btn.addEventListener('pointermove',(e)=>{
@@ -14643,8 +14134,13 @@ function __sqBindMissBounceHold(btn){
   });
   const finish=(e)=>{
     if (pointerId != null && e.pointerId !== pointerId) return;
+    const commit = e.type === 'pointerup' && pointerId !== null && holdTimer !== null &&
+      holdStartedAt !== null && performance.now() - holdStartedAt >= __SQ_QUICK_ENTRY_HOLD_MS
+      ? commitPendingHold : null;
+    if (commit) commit();
     clearHold();
     pointerId = null;
+    if (__sqMissBouncePendingCancel === cancelGesture) __sqMissBouncePendingCancel = null;
     delete btn.__sqMissBounceStart;
     if (held){
       e.preventDefault();
@@ -14657,8 +14153,9 @@ function __sqBindMissBounceHold(btn){
   btn.addEventListener('pointercancel',finish);
   btn.addEventListener('contextmenu',(e)=>e.preventDefault());
   btn.addEventListener('click',(e)=>{
-    if (held || performance.now() < Number(window.__sqMissBounceSuppressClick||0)){
+    if (held || cancelled || performance.now() < Number(window.__sqMissBounceSuppressClick||0)){
       held = false;
+      cancelled = false;
       window.__sqMissBounceSuppressClick = 0;
       e.preventDefault();
       e.stopPropagation();
@@ -14732,9 +14229,11 @@ function buildPad(){
     // helper has mode-specific block/restore messages which must not be
     // overwritten by the generic DMD V2 event.
     if (isVsShadow){
+      const before = Array.isArray(state?.history) ? state.history.length : 0;
       try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
       try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ }
       undo();
+      if (Array.isArray(state?.history) && state.history.length < before) __sqCancelMissBounceFeedback();
       return;
     }
 
@@ -14748,6 +14247,7 @@ function buildPad(){
 
     const after = Array.isArray(state?.history) ? state.history.length : before;
     if (after >= before) return;
+    __sqCancelMissBounceFeedback();
 
     // Re-establish the truthful persistent DMD baseline from restored game state
     // before the transient Undo message takes ownership of presentation.
@@ -18526,7 +18026,8 @@ try{
 }catch(_){}
 // @CANONICAL:GAMEPLAY_RECORD_THROW_BASE
 function recordThrow(spec){
-  if(window.__sqInitialOrderApplying) return;
+  if(window.__sqInitialOrderApplying || window.__sqThrowOrderRevealPending) return;
+  if(!window.SQ_GAMEPLAY.canThrow()){window.SQ_GAMEPLAY.notice('Game control is being prepared or needs recovery. Your board is preserved.');return;}
   try{ window.__sqDmdStopPreThrow?.(); }catch(_){ }
   // Ignore input if game is finished or in sudden death
   if (state.finished || state.suddenDeath.active) return;
@@ -19295,7 +18796,8 @@ setTimeout(() => {
     round:     rIndex,
     dartIndex: dartIndex,
     throw:     dartObj,
-    catchUpStateBefore: __catchUpStateBefore
+    catchUpStateBefore: __catchUpStateBefore,
+    recorded_at: new Date().toISOString()
   });
 
   // Match aggregates
@@ -19410,6 +18912,7 @@ function recomputeMatchAggHitsForPlayer(pIdx){
 }
 
 function undo(){
+  if(state.__sqCompletionSnapshot||state.__sqAcceptedGameReceipt){window.SQ_GAMEPLAY.notice('This completed board is frozen. Retry Finish Game or start the next game.');return;}
   if(window.__sqInitialOrderApplying) return;
   if (!state.history.length) {
     toast('Nothing to undo');
@@ -19642,180 +19145,42 @@ function __sqComputeGameMode(){
 }
 
 // --- GAME LOGGING TO SUPABASE (real) + HIGH SCORES ---
+function __sqBuildCompletedGamePayload(){
+  // Retain the existing recordFullGame persistence envelope and complete board.
+  // The boundary replaces authority/IDs; recordThrow remains the scoring owner.
+  const runtimePlayers=Array.isArray(state.players)?state.players:[];
+  const isVsShadow=typeof __sqIsVsShadowRuntime==='function'&&__sqIsVsShadowRuntime();
+  const persistPlayers=typeof __sqRealPlayersOnly==='function'?__sqRealPlayersOnly(runtimePlayers):runtimePlayers;
+  const runtimeTotals=runtimePlayers.map((_,i)=>totalScoreForPlayer(i));
+  const totals=typeof __sqRealOnlyTotals==='function'?__sqRealOnlyTotals(runtimeTotals,runtimePlayers):runtimeTotals;
+  const boardClone=typeof __sqRealOnlyBoard==='function'?__sqRealOnlyBoard(state.score||[],runtimePlayers):JSON.parse(JSON.stringify(state.score||[]));
+  const gameMode=isVsShadow?'practice':__sqComputeGameMode();const isPractice=isVsShadow||gameMode==='practice';const isTurbo=gameMode==='turbo';
+  const matchState=state.match||{};const turboRules=matchState.tournamentRules||state.tournamentRules||{};
+  const isActualTournament=!!(matchState.tournament===true||matchState.tournamentType||matchState.tournamentSize||matchState.tournamentMatch||state.__sqTournamentDraft||state.__sqTournamentActive);
+  const isMatchPlayTurbo=!!(isTurbo&&!isActualTournament&&(String(matchState.gameFormat||state.gameFormat||'').toLowerCase()==='match_play'||String(matchState.gameVariant||state.gameVariant||'').toLowerCase()==='turbo'||String(matchState.mode||matchState.gameMode||state.mode||state.gameMode||'').toLowerCase()==='turbo'||String(matchState.startTarget||state.startTarget||'').toLowerCase()==='17'));
+  const control=state.__sqGameControl;if(!control)throw new Error('controller_required');
+  const snapshot={
+    players:JSON.parse(JSON.stringify(matchState.__sqRoster)),board:boardClone,
+    mode:isVsShadow?'practice':(matchState.__sqControllerMode||gameMode),gameMode:gameMode,
+    gameFormat:isMatchPlayTurbo?'match_play':(matchState.gameFormat||undefined),
+    gameVariant:isMatchPlayTurbo?'turbo':(matchState.gameVariant||undefined),
+    tournament:isMatchPlayTurbo?false:(isActualTournament?true:undefined),
+    is_practice:isPractice,total_players:persistPlayers.length,match_id:control.match_id,
+    tournamentType:(isTurbo&&isActualTournament)?'turbo':(matchState.tournamentType||state.tournamentType||undefined),
+    tournamentRules:(isTurbo&&isActualTournament)?Object.assign({strictTimer:true,throwLimitSeconds:20,startTarget:'17'},turboRules||{}):undefined,
+    strictTimer:isTurbo?true:undefined,throwLimitSeconds:isTurbo?20:undefined,startTarget:isTurbo?'17':undefined,
+    schema_version:isPractice?2:undefined
+  };
+  const indexes=runtimePlayers.map((p,i)=>({p,i})).filter(x=>!(typeof __sqIsShadowPlayer==='function'&&__sqIsShadowPlayer(x.p))).map(x=>x.i);
+  const maximum=Math.max(...totals);let winners=totals.map((t,i)=>t===maximum?i:null).filter(i=>i!==null);
+  if(state._decider?.resolved&&typeof state._decider.winner==='number')winners=[indexes.indexOf(state._decider.winner)].filter(i=>i>=0);
+  return{game_id:control.game_id,state:snapshot,totals,winner_indexes:winners};
+}
 async function recordFullGameToSupabase(createdAtOverride) {
-  let __sqVsShadowPracticeMatchCleanupId = null;
-  try {
-    if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) {
-      try{ __sqVsShadowBlockPhase2C(__SQ_VS_SHADOW_COMPLETION_BLOCK_REASON); }catch(_){ }
-      return null;
-    }
-    const runtimePlayers = Array.isArray(state.players) ? state.players : [];
-    const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
-    const persistPlayers = (typeof __sqRealPlayersOnly === 'function') ? __sqRealPlayersOnly(runtimePlayers) : runtimePlayers;
-    const isOfficial = !isVsShadow && (persistPlayers.length >= 2);
-
-    // Prefer caller-provided timestamp, then global backdate (if present), else now.
-    const ts =
-      (typeof createdAtOverride !== 'undefined' && createdAtOverride) ? createdAtOverride :
-      (typeof _tsOverride       !== 'undefined' && _tsOverride)       ? _tsOverride       :
-      new Date().toISOString();
-
-    if (isOfficial) {
-      try {
-        await upsertMatchToSupabase(ts);
-      } catch (e) {
-        console.warn('match upsert failed', e);
-      }
-    }
-
-    const runtimeTotals = runtimePlayers.map((_, i) => totalScoreForPlayer(i));
-    const totals     = (typeof __sqRealOnlyTotals === 'function') ? __sqRealOnlyTotals(runtimeTotals, runtimePlayers) : runtimeTotals;
-    const boardClone = (typeof __sqRealOnlyBoard === 'function') ? __sqRealOnlyBoard(state.score || [], runtimePlayers) : JSON.parse(JSON.stringify(state.score || []));
-    const gameMode   = isVsShadow ? 'practice' : ((typeof __sqComputeGameMode === 'function') ? __sqComputeGameMode() : (isOfficial ? 'official' : 'practice'));
-    const isPractice = isVsShadow || (gameMode === 'practice');
-    const isTurbo    = (gameMode === 'turbo');
-    const turboRules = (state && state.match && state.match.tournamentRules) || (state && state.tournamentRules) || {};
-    const matchState = (state && state.match) || {};
-    const isActualTournament = !!(matchState.tournament === true || matchState.tournamentType || matchState.tournamentSize || matchState.tournamentMatch || state?.__sqTournamentDraft || state?.__sqTournamentActive);
-    const isMatchPlayTurbo = !!(isTurbo && !isActualTournament && (
-      String(matchState.gameFormat || state?.gameFormat || '').toLowerCase() === 'match_play' ||
-      String(matchState.gameVariant || state?.gameVariant || '').toLowerCase() === 'turbo' ||
-      String(matchState.mode || matchState.gameMode || state?.mode || state?.gameMode || '').toLowerCase() === 'turbo' ||
-      String(matchState.startTarget || state?.startTarget || '').toLowerCase() === '17'
-    ));
-
-    // >>> PATCH:practice-save-v4-recordfull-dedupe START
-    // recordFullGameToSupabase is still called from awardAndShowLeaderboard after
-    // the direct practice save wrapper. For practice games, do not let a stale
-    // state.match.id + game_number=1 reinsert collide with games_pkey. Dedupe by
-    // the completed board fingerprint, not by session-level booleans.
-    function __sqRecordFullPracticeKey(){
-      try{
-        var names = (persistPlayers || []).map(function(p){ return String((p && p.name) || '').trim().toLowerCase(); }).join('|');
-        var totalStr = (totals || []).map(function(x){ return Number(x)||0; }).join('|');
-        var boardStr = JSON.stringify(boardClone || []);
-        var token = (state && state.__gameToken != null) ? String(state.__gameToken) : '';
-        return ['practice-v3', token, names, totalStr, boardStr].join('::');
-      }catch(_){ return ''; }
-    }
-
-    const __practiceSaveKeyForRecordFull = isPractice ? __sqRecordFullPracticeKey() : '';
-    if (isPractice && state && state.__sqPracticeSavedToGames && state.__sqPracticeSavedKeyV2 && state.__sqPracticeSavedKeyV2 === __practiceSaveKeyForRecordFull) {
-      try{ console.info('[SQ] recordFullGameToSupabase skipped: practice game already saved by direct practice path', { saveKey: __practiceSaveKeyForRecordFull }); }catch(_){ }
-      return null;
-    }
-    if (isPractice && state && (state.__sqPracticeSavedToGames || state.__sqPracticeCloudSavedV2) && state.__sqPracticeSavedKeyV2 && state.__sqPracticeSavedKeyV2 !== __practiceSaveKeyForRecordFull) {
-      try{ console.info('[SQ] recordFullGameToSupabase clearing stale practice save flags for new completed game'); }catch(_){ }
-      try{
-        delete state.__sqPracticeSavedToGames;
-        delete state.__sqPracticeCloudSavedV2;
-        delete state.__sqPracticeSaveMatchIdV2;
-      }catch(_){ }
-    }
-    // <<< PATCH:practice-save-v4-recordfull-dedupe END
-
-    // Supabase games.match_id is NOT NULL in the current schema.
-    // Practice therefore gets a real lightweight match row, but remains practice via state.mode/is_practice.
-    let practiceMatchId = null;
-    if (isPractice) {
-      try {
-        // Practice rows use a fresh lightweight match id per completed game.
-        // Reusing state.match.id with game_number=1 causes games_pkey collisions
-        // across back-to-back practice games in the current schema.
-        practiceMatchId = ((crypto && crypto.randomUUID) ? crypto.randomUUID() : ('practice-' + Date.now() + '-' + Math.random().toString(36).slice(2,8)));
-        state.match = Object.assign({}, state.match || {}, {
-          id: practiceMatchId,
-          mode: 'practice',
-          forcePractice: true,
-          createdAtIso: state?.match?.createdAtIso || ts,
-          history: Array.isArray(state?.match?.history) ? state.match.history : [],
-          wins: isVsShadow
-            ? Array.from({ length: persistPlayers.length }, () => 0)
-            : (Array.isArray(state?.match?.wins) ? state.match.wins : [])
-        });
-        const practiceMatchPayload = {
-          id: practiceMatchId,
-          created_at: state.match.createdAtIso || ts,
-          total_games: isVsShadow ? 1 : Math.max(1, state.match.history.length || 1),
-          players: persistPlayers.map(p => ({ name: p.name })),
-          wins: isVsShadow
-            ? Array.from({ length: persistPlayers.length }, () => 0)
-            : ((typeof __sqRealOnlyArray === 'function') ? __sqRealOnlyArray(state.match.wins || [], runtimePlayers) : (state.match.wins || []).slice()),
-          history: [{ totals: totals.slice(), mode: 'practice' }]
-        };
-        if (isVsShadow && typeof __sqAssertNoShadowPersistPayload === 'function' && !__sqAssertNoShadowPersistPayload(practiceMatchPayload, 'recordFullGameToSupabase:matches')) {
-          throw new Error('Vs Shadow save blocked: Shadow data cannot be persisted.');
-        }
-        if (isVsShadow) __sqVsShadowPracticeMatchCleanupId = practiceMatchId;
-        await sb.from(TABLE_MATCHES).upsert(practiceMatchPayload);
-      } catch (e) {
-        if (isVsShadow && /Vs Shadow save blocked/i.test(String(e && (e.message || e)))) throw e;
-        if (isVsShadow) throw e;
-        console.warn('[SQ] practice match upsert failed', e);
-      }
-    }
-
-    const payload = {
-      match_id:   isPractice ? practiceMatchId : (isOfficial ? (state.match?.id || null) : practiceMatchId),
-      game_number: isPractice ? 1 : (state.match?.history?.length ? state.match.history.length : 1),
-      created_at: ts, // finish time (or backdated override)
-      state:      {
-        players: persistPlayers.map(p => ({ name: p.name })),
-        board: boardClone,
-        mode: gameMode,
-        gameMode: gameMode,
-        gameFormat: isMatchPlayTurbo ? 'match_play' : undefined,
-        gameVariant: isMatchPlayTurbo ? 'turbo' : undefined,
-        tournament: isMatchPlayTurbo ? false : undefined,
-        is_practice: isPractice,
-        total_players: persistPlayers.length,
-        match_id: isPractice ? practiceMatchId : (state.match?.id || null),
-        tournamentType: (isTurbo && isActualTournament) ? 'turbo' : (state?.match?.tournamentType || state?.tournamentType || undefined),
-        tournamentRules: (isTurbo && isActualTournament) ? Object.assign({ strictTimer:true, throwLimitSeconds:20, startTarget:'17' }, turboRules || {}) : undefined,
-        strictTimer: isTurbo ? true : undefined,
-        throwLimitSeconds: isTurbo ? 20 : undefined,
-        startTarget: isTurbo ? '17' : undefined,
-        schema_version: isPractice ? 2 : undefined
-      },
-      totals,
-      finished:   true
-    };
-
-    if (isVsShadow && typeof __sqAssertNoShadowPersistPayload === 'function' && !__sqAssertNoShadowPersistPayload(payload, 'recordFullGameToSupabase:games')) {
-      throw new Error('Vs Shadow save blocked: Shadow data cannot be persisted.');
-    }
-
-    const { data: _gRow, error } = await sb.from(TABLE_GAMES).insert(payload).select('id, created_at').single();
-    if (error) {
-      // If the direct practice save path already inserted this exact completed game,
-      // do not surface a scary duplicate-key failure from the later leaderboard path.
-      if (isPractice && (error.code === '23505' || String(error.message || '').toLowerCase().indexOf('duplicate key') >= 0)) {
-        try{ console.warn('[SQ] recordFullGameToSupabase skipped duplicate practice insert', error); }catch(_){ }
-        return null;
-      }
-      throw error;
-    }
-    __sqVsShadowPracticeMatchCleanupId = null;
-    const _gameId = _gRow && _gRow.id ? _gRow.id : null;
-    try { if (typeof __sqClearRecoveryCachesAfterCompletedSave === 'function') __sqClearRecoveryCachesAfterCompletedSave('recordFullGameToSupabase'); } catch(_) {}
-    try { if (typeof window.__sqClearGamesTruthCache === 'function') window.__sqClearGamesTruthCache('recordFullGameToSupabase'); } catch(_) {}
-
-    // >>> PATCH:HS_TS_ALIGN START
-    // Write HS rows with the SAME ts as the game row, so deletes and audits remain consistent.
-    try { if (typeof cloudSaveHighScoresForGame === 'function') await cloudSaveHighScoresForGame(runtimeTotals, ts, _gameId); } catch(_e) {}
-    // <<< PATCH:HS_TS_ALIGN END
-  } catch (e) {
-    if (__sqVsShadowPracticeMatchCleanupId) {
-      try {
-        const cleanup = await sb.from(TABLE_MATCHES).delete().eq('id', __sqVsShadowPracticeMatchCleanupId);
-        if (cleanup && cleanup.error) console.warn('[SQ] Vs Shadow practice match cleanup failed', cleanup.error);
-      } catch (cleanupErr) {
-        console.warn('[SQ] Vs Shadow practice match cleanup threw', cleanupErr);
-      }
-    }
-    console.error('recordFullGameToSupabase failed', e);
-    throw e;
+  if(typeof __sqVsShadowCompletionBlocked==='function'&&__sqVsShadowCompletionBlocked()){
+    try{__sqVsShadowBlockPhase2C(__SQ_VS_SHADOW_COMPLETION_BLOCK_REASON);}catch(_){}return null;
   }
+  return window.SQ_GAMEPLAY.completeCurrentGame(__sqBuildCompletedGamePayload);
 }
 
 // Multi-player -> League (TABLE_HS_LEAGUE), single-player -> Practice (TABLE_HS_PRACTICE).
@@ -19826,111 +19191,45 @@ async function recordGameToHighScores() {
 }
 
 async function awardAndShowLeaderboard(){
-  // prevent double-award if called twice for same game
-  if (state.gameAwarded) {
-    showLeaderboard();
-    return;
+  if(state.gameAwarded){showLeaderboard();return;}
+  if(state.__sqAwardInFlight)return;
+  const isVsShadow=typeof __sqIsVsShadowRuntime==='function'&&__sqIsVsShadowRuntime();
+  if(typeof __sqVsShadowCompletionBlocked==='function'&&__sqVsShadowCompletionBlocked()){
+    state.finished=false;state.gameAwarded=false;
+    try{__sqVsShadowBlockPhase2C(__SQ_VS_SHADOW_COMPLETION_BLOCK_REASON);}catch(_){}return;
   }
-  const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
-  if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) {
-    try{ state.finished = false; state.gameAwarded = false; }catch(_){ }
-    try{ __sqVsShadowBlockPhase2C(__SQ_VS_SHADOW_COMPLETION_BLOCK_REASON); }catch(_){ }
-    return;
-  }
-  if (!isVsShadow) state.gameAwarded = true;
-
-  const totals  = state.players.map((_,i)=> totalScoreForPlayer(i));
-  const max     = Math.max(...totals);
-  let winners = totals.map((t,i)=> t===max?i:null).filter(x=>x!==null);
-  // Decider shootout override: only ONE winner is awarded a win; scores/stats remain unchanged
-  if (state._decider && state._decider.resolved && typeof state._decider.winner === 'number') {
-    winners = [state._decider.winner];
-  }
-  if (isVsShadow && typeof __sqRealOnlyWinnerIndexes === 'function') {
-    winners = __sqRealOnlyWinnerIndexes(winners, state.players || []);
-  }
-
-// before recordFullGameToSupabase();
-  if (!isVsShadow && (state.players?.length || 0) >= 2) {
-    try { await upsertMatchToSupabase(); } catch (e) { console.warn(e); }
-  }
-
-  // Ensure wins array exists
-  const awardPlayerCount = isVsShadow && typeof __sqRealPlayersOnly === 'function'
-    ? __sqRealPlayersOnly(state.players || []).length
-    : state.players.length;
-  if (!state.match.wins || state.match.wins.length !== awardPlayerCount) {
-    state.match.wins = Array.from({length: awardPlayerCount}, () => 0);
-  }
-  if (!isVsShadow) winners.forEach(i => state.match.wins[i]++);
-
-  // Snapshot board for history/stats
-  const boardClone = JSON.parse(JSON.stringify(state.score));
-  const historyTotals = isVsShadow && typeof __sqRealOnlyTotals === 'function' ? __sqRealOnlyTotals(totals, state.players || []) : totals.slice();
-  const historyBoard = isVsShadow && typeof __sqRealOnlyBoard === 'function' ? __sqRealOnlyBoard(boardClone, state.players || []) : boardClone;
-
-  if (isVsShadow) {
-    try {
-      if (state.shadow) {
-        state.shadow.saveFailed = false;
-        state.shadow.saveInFlight = true;
-        state.shadow.lastSaveError = '';
-      }
-      await recordFullGameToSupabase();
-      if (state.shadow) state.shadow.saveInFlight = false;
-      state.gameAwarded = true;
-    } catch (e) {
-      console.error(e);
-      try {
-        state.finished = true;
-        state.gameAwarded = false;
-        if (state.shadow) {
-          state.shadow.saveInFlight = false;
-          state.shadow.saveFailed = true;
-          state.shadow.lastSaveError = String((e && (e.message || e.details || e.hint)) || e || 'Save failed');
-        }
-        delete state.__sqPracticeSavedToGames;
-        delete state.__sqPracticeCloudSavedV2;
-        delete state.__sqPracticeSavedKeyV2;
-        delete state.__sqPracticeSaveMatchIdV2;
-      } catch(_) {}
-      try{ toast('Vs Shadow save failed. Your completed game is still on screen; retry Finish Game.'); }catch(_){ }
-      try{ window.sqDmdShowZones?.({ z2:'SAVE FAILED', z3:'RETRY FINISH' }, { type:'flash', ms:1200, fx:'impact', z3Small:true }); }catch(_){ }
-      try{ show('game'); }catch(_){ }
-      try{ updateUI(); }catch(_){ }
-      return;
-    }
-  }
-
-  state.match.history.push({ totals: historyTotals, board: historyBoard, gameToken: state.__gameToken || 0 });
-
-  // Long-term local logs
-  logCompletedGame(historyTotals, isVsShadow ? [] : winners, historyBoard);
-
-  const targetWins = state.match.targetWins || 1;
-  const gamesPlayedNow = Array.isArray(state.match.history) ? state.match.history.length : 0;
-  const maxWins    = state.match.wins.length ? Math.max(...state.match.wins) : 0;
-  const matchDone  = isVsShadow ? (gamesPlayedNow >= targetWins) : (maxWins >= targetWins);
-
-  if (!isVsShadow && matchDone && !state.match.completedLogged) {
-    logCompletedMatch();
-    state.match.completedLogged = true;
-  }
-
-  // Cloud writes (best-effort for legacy modes; Vs Shadow must fail closed above)
-  if (!isVsShadow) {
-    try { await recordFullGameToSupabase(); } catch (e) {
-      console.error(e); toast('Game saved to local only (cloud failed)');
-    }
-  }
-  try { await recordGameToHighScores(); } catch (e) {
-    console.error(e);
-  }
-
-  state.match.gameNumber = state.match.history.length + 1;
-
-  save();
-  showLeaderboard();
+  state.__sqAwardInFlight=true;const awardingState=state;
+  const totals=state.players.map((_,i)=>totalScoreForPlayer(i));const max=Math.max(...totals);
+  let winners=totals.map((t,i)=>t===max?i:null).filter(x=>x!==null);
+  if(state._decider?.resolved&&typeof state._decider.winner==='number')winners=[state._decider.winner];
+  if(isVsShadow&&typeof __sqRealOnlyWinnerIndexes==='function')winners=__sqRealOnlyWinnerIndexes(winners,state.players||[]);
+  try{
+    if(isVsShadow&&state.shadow){state.shadow.saveInFlight=true;state.shadow.saveFailed=false;}
+    // A failed or lost response retains the exact completion and finished board.
+    // No win/history award or next-game advancement precedes server acceptance.
+    const receipt=await recordFullGameToSupabase();
+    if(!receipt)throw new Error('completion_not_accepted');
+    if(state!==awardingState){window.SQ_GAMEPLAY.notice('The previous completed game was accepted. Current setup is preserved.');return;}
+    const count=isVsShadow&&typeof __sqRealPlayersOnly==='function'?__sqRealPlayersOnly(state.players||[]).length:state.players.length;
+    if(!state.match.wins||state.match.wins.length!==count)state.match.wins=Array.from({length:count},()=>0);
+    if(!isVsShadow)winners.forEach(i=>state.match.wins[i]++);
+    const board=JSON.parse(JSON.stringify(state.score));
+    const historyTotals=isVsShadow&&typeof __sqRealOnlyTotals==='function'?__sqRealOnlyTotals(totals,state.players||[]):totals.slice();
+    const historyBoard=isVsShadow&&typeof __sqRealOnlyBoard==='function'?__sqRealOnlyBoard(board,state.players||[]):board;
+    state.match.history.push({totals:historyTotals,board:historyBoard,gameToken:state.__gameToken||0,game_id:receipt.game_id});
+    logCompletedGame(historyTotals,isVsShadow?[]:winners,historyBoard);
+    const targetWins=state.match.targetWins||1;const countPlayed=state.match.history.length;
+    const maxWins=state.match.wins.length?Math.max(...state.match.wins):0;
+    const done=isVsShadow?countPlayed>=targetWins:maxWins>=targetWins;
+    if(!isVsShadow&&done&&!state.match.completedLogged){logCompletedMatch();state.match.completedLogged=true;}
+    state.gameAwarded=true;state.match.gameNumber=state.match.history.length+1;
+    if(state.shadow){state.shadow.saveInFlight=false;state.shadow.saveFailed=false;state.shadow.lastSaveError='';}
+    state.__sqAwardInFlight=false;save();showLeaderboard();
+  }catch(error){
+    state.finished=true;state.gameAwarded=false;
+    if(state.shadow){state.shadow.saveInFlight=false;state.shadow.saveFailed=true;state.shadow.lastSaveError=String(error.code||error.message||'Save failed');}
+    window.SQ_GAMEPLAY.failure(error);show('game');updateUI();
+  }finally{awardingState.__sqAwardInFlight=false;}
 }
 // next line should exist already in your file:
 const lbTable = byId('lbTable');
@@ -20305,7 +19604,24 @@ function buildEverything(){
 // >>> PATCH:SQ_BUILD_CHUNK_V1 START
 function __sqYieldToPaint(){
   return new Promise((resolve)=>{
-    requestAnimationFrame(()=>setTimeout(resolve, 0));
+    let settled = false, frame = null, afterPaint = null, watchdog = null;
+    const finish = ()=>{
+      if (settled) return;
+      settled = true;
+      if (frame !== null) { try{ cancelAnimationFrame(frame); }catch(_){} frame = null; }
+      if (afterPaint !== null) { clearTimeout(afterPaint); afterPaint = null; }
+      if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
+      resolve();
+    };
+    watchdog = setTimeout(finish, 100);
+    try{
+      if (typeof requestAnimationFrame !== 'function') return;
+      frame = requestAnimationFrame(()=>{
+        frame = null;
+        if (settled) return;
+        try{ afterPaint = setTimeout(finish, 0); }catch(_){}
+      });
+    }catch(_){}
   });
 }
 
@@ -21047,6 +20363,81 @@ async function __sqApplyInitialOrderAmendment(order,guard){
     window.__sqInitialOrderApplying=false;
   }
 }
+function __sqRevealConfirmedThrowOrder(start){
+  const players=state.players.slice();
+  const practiceType=String(state.match?.practiceType||state.practiceType||'').toLowerCase();
+  if(players.length<2 || players.length>5 || practiceType==='training' || practiceType==='vsshadow' ||
+     ((typeof __sqIsVsShadowRuntime==='function') && __sqIsVsShadowRuntime()) ||
+     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches){ start(); return; }
+
+  // The confirmed roster remains authoritative. Presentation never starts a
+  // replacement game after navigation, another start or an identity change.
+  const guard={state,page:document.body.dataset.page,token:Number(state.__gameToken||0),matchId:state.match?.id,players:JSON.stringify(state.players)};
+  const current=()=>state===guard.state && document.body.dataset.page===guard.page && Number(state.__gameToken||0)===guard.token &&
+    state.match?.id===guard.matchId && JSON.stringify(state.players)===guard.players;
+  let done=false,timer=null,observer=null;
+  const overlay=document.createElement('div');
+  overlay.className='modal-backdrop sq-throw-order-reveal';
+  const finish=(play)=>{
+    if(done)return;
+    done=true;
+    const valid=play && overlay.isConnected && current();
+    clearTimeout(timer);observer?.disconnect();
+    window.removeEventListener('pagehide',cancel);
+    overlay.remove();
+    window.__sqThrowOrderRevealPending=false;
+    if(valid)start();
+  };
+  const cancel=()=>finish(false);
+  window.__sqThrowOrderRevealPending=true;
+  try{
+    const stage=document.createElement('section');
+    stage.className='sq-throw-order-stage';stage.dataset.count=String(players.length);
+    stage.setAttribute('role','dialog');stage.setAttribute('aria-modal','true');
+    stage.setAttribute('aria-label','Confirmed throw order');
+    const head=document.createElement('div');head.className='sq-throw-order-head';
+    const brand=document.createElement('span');brand.textContent='SHATEKI QUEST';
+    const game=document.createElement('b');game.textContent='GAME '+Math.max(1,Number(state.match?.gameNumber||1));
+    head.append(brand,game);
+    const title=document.createElement('div');title.className='sq-throw-order-title';title.textContent='THROW ORDER';
+    const format=document.createElement('div');format.className='sq-throw-order-format';
+    format.textContent=players.length>2?'FREE FOR ALL':'HEAD TO HEAD';
+    const lineup=document.createElement('div');lineup.className='sq-throw-order-lineup';
+    lineup.setAttribute('role','list');lineup.setAttribute('aria-label','Confirmed throw order');
+    const step=1720/(players.length*2-2);
+    players.forEach((p,i)=>{
+      if(i){
+        const vs=document.createElement('div');vs.className='sq-throw-order-vs sq-throw-order-beat';
+        vs.textContent='VS';vs.setAttribute('aria-hidden','true');
+        vs.style.setProperty('--sq-order-delay',((i*2-1)*step)+'ms');lineup.appendChild(vs);
+      }
+      const fighter=document.createElement('div');fighter.className='sq-throw-order-fighter sq-throw-order-beat';
+      const name=__sqPlayerPretty(p)||String(p.name||'').trim()||('Player '+(i+1));
+      fighter.setAttribute('role','listitem');fighter.setAttribute('aria-label','Throw order '+(i+1)+': '+name);
+      fighter.style.setProperty('--sq-order-delay',(i*2*step)+'ms');
+      const portrait=document.createElement('div');portrait.className='sq-throw-order-portrait';portrait.setAttribute('aria-hidden','true');
+      try{__sqApplyAvatarSprite(portrait,__sqAvatarIdForPlayer(p));}catch(_){}
+      const label=document.createElement('div');label.className='sq-throw-order-name';label.textContent=name;
+      fighter.append(portrait,label);lineup.appendChild(fighter);
+    });
+    const skip=document.createElement('button');skip.type='button';skip.className='btn sq-throw-order-skip';skip.textContent='SKIP';
+    skip.onclick=()=>finish(true);
+    overlay.addEventListener('keydown',e=>{
+      if(e.key==='Escape'){e.preventDefault();cancel();}
+      if(e.key==='Tab'){e.preventDefault();skip.focus();}
+    });
+    stage.append(head,title,format,lineup,skip);overlay.appendChild(stage);document.body.appendChild(overlay);
+    observer=new MutationObserver(()=>{if(!overlay.isConnected || !current())cancel();});
+    observer.observe(document.body,{attributes:true,attributeFilter:['data-page'],childList:true});
+    window.addEventListener('pagehide',cancel,{once:true});
+    skip.focus();
+    timer=setTimeout(()=>finish(true),2200);
+  }catch(error){
+    // Artwork/presentation failures must never strand a confirmed start.
+    if(done)throw error;
+    const valid=current();cancel();if(valid)start();
+  }
+}
 function showPlayerOrderDialog(opts={}) {
   const amend=opts.amend===true;
   if(amend){ const gate=__sqInitialOrderAmendEligibility(); if(!gate.ok){toast(gate.reason);return;} }
@@ -21225,10 +20616,11 @@ function showPlayerOrderDialog(opts={}) {
       if(applied)dismiss();else{startBtn.disabled=false;startBtn.textContent='APPLY CORRECTION';}
       return;
     }
-    if (!__sqNewGamePlayerCountAllowed()) return;
+    if (applying || window.__sqThrowOrderRevealPending || !__sqNewGamePlayerCountAllowed()) return;
+    applying=true;startBtn.disabled=true;
     if (autoEligible && state && state.match) state.match.autoRotateOrder = !!autoOrderPending;
     overlay.remove();
-    startNewGame(true);
+    __sqRevealConfirmedThrowOrder(()=>startNewGame(true));
   };
 
   const backBtn = document.createElement('button');
@@ -21256,8 +20648,9 @@ function __sqNewGamePlayerCountAllowed(){
   try{ toast('New games support a maximum of 5 players. Start a new match with 2–5 players.'); }catch(_){}
   return false;
 }
-function startNewGame(setOrder=false){
-  if (!__sqNewGamePlayerCountAllowed()) return;
+async function startNewGame(setOrder=false){
+  if(state.__sqSecurityPreparing)return false;
+  if (!__sqNewGamePlayerCountAllowed()) return false;
   try{ __sqClearFinalBullReturnRuntime(); }catch(_){ }
   try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('startNewGame'); }catch(_){ }
   try{
@@ -21268,8 +20661,12 @@ function startNewGame(setOrder=false){
   if(!setOrder){
     try{ if (typeof __sqSanitizeVsShadowForGenericStart === 'function') __sqSanitizeVsShadowForGenericStart('startNewGame-generic'); }catch(_){ }
     showPlayerOrderDialog();
-    return;
+    return false;
   }
+
+  const startingState=state;
+  __sqShowGameLoadOverlay('Preparing secure game');
+  try{await window.SQ_GAMEPLAY.prepareNewGame();if(state!==startingState){__sqHideGameLoadOverlay();return false;}}catch(error){__sqHideGameLoadOverlay();return false;}
 
   // A completed game pins the DMD to the scrolling GAME OVER scene. A new
   // game owns a fresh DMD lifecycle, so clear that presentation before any
@@ -21319,9 +20716,11 @@ __sqAfterPaint(async ()=>{
     __sqHideGameLoadOverlay();
   }
 });
+  return true;
 }
 
 function restartGame() {
+  if(!window.SQ_GAMEPLAY.canDiscard())return;
   if (!__sqNewGamePlayerCountAllowed()) return;
   if (!confirm('Are you sure you want to restart this game? All progress will be lost.')) return;
   try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('restartGame'); }catch(_){ }
@@ -22272,55 +21671,11 @@ Type DELETE to confirm:`;
 // [removed: openRoundHighScoresDialog base def (self-quarantined)] audit P5.3 batch 3 — shadowed by later canonical definition
 // Delete a game (by timestamp) and its related high-score rows from Supabase
 async function cloudDeleteGameCascade(g){
-  if (!ensureCloudInit()) throw new Error('Cloud not initialised');
-
-  const gameId = g?.id || g?.game_id || null;
-  const ts = g?.ts || g?.created_at || null;
-  if (!gameId && !ts) throw new Error('Missing game id/timestamp for delete');
-
-  // 1) Delete the game row (prefer id)
-  if (gameId){
-    const { error } = await sb.from(TABLE_GAMES).delete().eq('id', gameId);
-    if (error) throw error;
-  } else {
-    // fallback by exact timestamp, then ±2min
-    try {
-      const { error } = await sb.from(TABLE_GAMES).delete().eq('created_at', ts);
-      if (error) throw error;
-    } catch (e) {
-      const pad = 2 * 60 * 1000;
-      const fromIso = new Date(new Date(ts).getTime() - pad).toISOString();
-      const toIso   = new Date(new Date(ts).getTime() + pad).toISOString();
-      const { error } = await sb.from(TABLE_GAMES).delete().gte('created_at', fromIso).lte('created_at', toIso);
-      if (error) throw error;
-    }
-  }
-
-  // 2) Delete related HS rows (prefer game_id). If schema lacks game_id, fall back to legacy delete.
-  const isSingle = (g?.players || []).length === 1;
-  const table = isSingle ? TABLE_HS_PRACTICE : TABLE_HS_LEAGUE;
-
-  if (gameId){
-    try{
-      const { error } = await sb.from(table).delete().eq('game_id', gameId);
-      if (error) throw error;
-      return;
-    }catch(e){
-      const msg  = String(e?.message || '');
-      const code = String(e?.code || '');
-      const missingCol = (code === '42703') || /game_id/i.test(msg);
-      if (!missingCol) throw e;
-      // else fall through to legacy matching
-    }
-  }
-
-  const players = g?.players || [];
-  const totals  = g?.totals  || [];
-  const tasks = players.map((p,i)=>{
-    const row = { name: p?.name || '', score: Number(totals[i]||0), ts: ts };
-    return cloudDeleteHighScore(row, isSingle).catch(()=>{});
-  });
-  await Promise.all(tasks);
+  const gameId=g?.id||g?.game_id||null;
+  const timestamp=g?.ts||g?.created_at||null;
+  if(!gameId&&!timestamp)throw new Error('Missing game id/timestamp for delete');
+  await window.sqAdminAction({operation:'purge',...(gameId?{game_id:gameId}:{timestamp})});
+  try{window.__sqClearGamesTruthCache?.('cloudDeleteGameCascade');}catch(_){}
 }
 
   /*****************
@@ -22549,61 +21904,29 @@ function ensureCloudInit(){
   }
 // >>> PATCH:MOT5B3_ARCHIVE_REINSTATE_PURGE START
 async function cloudArchiveGame(game){
-  await ensureCloudInit();
-  const gid = (typeof game === 'object' && game) ? (game.id || game.game_id || null) : game;
-  if (!gid) throw new Error('cloudArchiveGame: missing game id');
-  const { error } = await sb.from(TABLE_GAMES).update({ archived_at: new Date().toISOString() }).eq('id', gid);
-  if (error) throw error;
-  try{ if (typeof window.__sqClearGamesTruthCache === 'function') window.__sqClearGamesTruthCache('cloudArchiveGame'); }catch(_){ }
-  try{ localStorage.removeItem('SQ_PSTICKER_CACHE_V1'); }catch(_){ }
-  try{ if (typeof window.__sqRefreshRecentMatchesTicker==='function') window.__sqRefreshRecentMatchesTicker(); }catch(_){ }
-  try{ localStorage.removeItem('SQ_PSTICKER_CACHE_V1'); }catch(_){ }
-  try{ if (typeof window.__sqRefreshRecentMatchesTicker==='function') window.__sqRefreshRecentMatchesTicker(); }catch(_){ }
+  const gid=typeof game==='object'&&game?(game.id||game.game_id):game;
+  if(!gid)throw new Error('cloudArchiveGame: missing game id');
+  await window.sqAdminAction({operation:'archive',game_id:gid});
+  try{window.__sqClearGamesTruthCache?.('cloudArchiveGame');localStorage.removeItem('SQ_PSTICKER_CACHE_V1');window.__sqRefreshRecentMatchesTicker?.();}catch(_){}
   return true;
 }
 
 async function cloudReinstateGame(game){
-  await ensureCloudInit();
-  const gid = (typeof game === 'object' && game) ? (game.id || game.game_id || null) : game;
-  if (!gid) throw new Error('cloudReinstateGame: missing game id');
-  const { error } = await sb.from(TABLE_GAMES).update({ archived_at: null }).eq('id', gid);
-  if (error) throw error;
-  try{ if (typeof window.__sqClearGamesTruthCache === 'function') window.__sqClearGamesTruthCache('cloudReinstateGame'); }catch(_){ }
-  try{ localStorage.removeItem('SQ_PSTICKER_CACHE_V1'); }catch(_){ }
-  try{ if (typeof window.__sqRefreshRecentMatchesTicker==='function') window.__sqRefreshRecentMatchesTicker(); }catch(_){ }
+  const gid=typeof game==='object'&&game?(game.id||game.game_id):game;
+  if(!gid)throw new Error('cloudReinstateGame: missing game id');
+  await window.sqAdminAction({operation:'reinstate',game_id:gid});
+  try{window.__sqClearGamesTruthCache?.('cloudReinstateGame');localStorage.removeItem('SQ_PSTICKER_CACHE_V1');window.__sqRefreshRecentMatchesTicker?.();}catch(_){}
   return true;
 }
 
-// Permanent purge: remove game row + best-effort cleanup of related tables.
-// NOTE: This is intentionally destructive.
 async function cloudPurgeGameCascade(game){
-  await ensureCloudInit();
-  const gid = (typeof game === 'object' && game) ? (game.id || game.game_id || null) : game;
-  if (!gid) throw new Error('cloudPurgeGameCascade: missing game id');
-
-  const tryDel = async (table, col='game_id')=>{
-    try{ await sb.from(table).delete().eq(col, gid); }catch(_){ }
-  };
-
-  await tryDel(TABLE_HS_LEAGUE, 'game_id');
-  await tryDel(TABLE_HS_PRACTICE, 'game_id');
-
-  // Best-effort event/commentary cleanup (only if tables exist)
-  await tryDel('game_events', 'game_id');
-  await tryDel('game_commentary', 'game_id');
-
-  // Throws table if ever enabled
-  try{
-    if (typeof TABLE_GAME_THROWS==='string' && TABLE_GAME_THROWS && !(CLOUD_TABLE_MISSING && CLOUD_TABLE_MISSING[TABLE_GAME_THROWS])){
-      await tryDel(TABLE_GAME_THROWS, 'game_id');
-    }
-  }catch(_){ }
-
-  const { error: delErr } = await sb.from(TABLE_GAMES).delete().eq('id', gid);
-  if (delErr) throw delErr;
-  try{ if (typeof window.__sqClearGamesTruthCache === 'function') window.__sqClearGamesTruthCache('cloudPurgeGameCascade'); }catch(_){ }
+  const gid=typeof game==='object'&&game?(game.id||game.game_id):game;
+  if(!gid)throw new Error('cloudPurgeGameCascade: missing game id');
+  await window.sqAdminAction({operation:'purge',game_id:gid});
+  try{window.__sqClearGamesTruthCache?.('cloudPurgeGameCascade');}catch(_){}
   return true;
 }
+
 // <<< PATCH:MOT5B3_ARCHIVE_REINSTATE_PURGE END
 
 // >>> PATCH:MOT_STAGE5A_PROBE_EARLY_V4 START
@@ -22761,92 +22084,22 @@ async function cloudPurgeGameCascade(game){
 
 /*** CLOUD HIGH SCORES API — safe fallback implementations ***/
 (function(){
-  // Insert (or keep existing) → create only if missing to avoid duplicates
-  if (typeof window.cloudInsertHighScore !== 'function') {
-    window.cloudInsertHighScore = async function(name, score, isPractice){
-      if (!ensureCloudInit()) throw new Error('Cloud not initialised');
-      const table = isPractice
-        ? (typeof TABLE_HS_PRACTICE !== 'undefined' ? TABLE_HS_PRACTICE : 'high_scores_practice')
-        : (typeof TABLE_HS_LEAGUE   !== 'undefined' ? TABLE_HS_LEAGUE   : 'high_scores');
-
-      const row = {
-        name: String(name || '').trim(),
-        score: Number(score || 0),
-        // Prefer server default if your table has one; otherwise send a timestamp
-        ts: new Date().toISOString()
-      };
-
-      // basic guards; don't write empty rows
-      if (!row.name || row.score <= 0) return false;
-
-      const { error } = await sb.from(table).insert(row);
-      if (error) throw error;
-      return true;
+  // Historical score maintenance resolves an exact saved game on the server.
+  if(typeof window.cloudInsertHighScore!=='function'){
+    window.cloudInsertHighScore=async function(name,score,isPractice){
+      if(!name||Number(score)<=0)return false;
+      const result=await window.sqAdminAction({operation:'ensure_score',scope:isPractice?'practice':'league',player_name:String(name),score:Number(score)});
+      return result.inserted>0;
     };
   }
-if (typeof window.cloudInsertHighScoreIfMissing !== 'function') {
-  window.cloudInsertHighScoreIfMissing = async function(table, name, score, ts){
-    if (!ensureCloudInit()) throw new Error('Cloud not initialised');
-    const n = String(name || '').trim();
-    const s = Number(score || 0);
-    if (!n || s <= 0) return false;
+  if(typeof window.cloudInsertHighScoreIfMissing!=='function'){
+    window.cloudInsertHighScoreIfMissing=async function(table,name,score,ts){
+      if(!name||Number(score)<=0)return false;
+      const result=await window.sqAdminAction({operation:'ensure_score',scope:table===TABLE_HS_PRACTICE?'practice':'league',player_name:String(name),score:Number(score),timestamp:ts});
+      return result.inserted>0;
+    };
+  }
 
-    // Does a matching row already exist? (exact name/score; if ts is given, use ±2 min window)
-    async function existsQuery() {
-      try {
-        if (ts) {
-          const pad = 2 * 60 * 1000;
-          const fromIso = new Date(new Date(ts).getTime() - pad).toISOString();
-          const toIso   = new Date(new Date(ts).getTime() + pad).toISOString();
-          const { count, error } = await sb
-            .from(table)
-            .select('name,score,ts', { count: 'exact', head: true })
-            .gte('ts', fromIso).lte('ts', toIso)
-            .eq('name', n).eq('score', s)
-            .limit(1);
-          if (error) throw error;
-          return !!(count && count > 0);
-        } else {
-          const { count, error } = await sb
-            .from(table)
-            .select('name,score,ts', { count: 'exact', head: true })
-            .eq('name', n).eq('score', s)
-            .limit(1);
-          if (error) throw error;
-          return !!(count && count > 0);
-        }
-      } catch {
-        // Fallback: non-head select
-        try {
-          if (ts) {
-            const pad = 2 * 60 * 1000;
-            const fromIso = new Date(new Date(ts).getTime() - pad).toISOString();
-            const toIso   = new Date(new Date(ts).getTime() + pad).toISOString();
-            const { data } = await sb
-              .from(table).select('name,score,ts')
-              .gte('ts', fromIso).lte('ts', toIso)
-              .eq('name', n).eq('score', s).limit(1);
-            return Array.isArray(data) && data.length > 0;
-          } else {
-            const { data } = await sb
-              .from(table).select('name,score,ts')
-              .eq('name', n).eq('score', s).limit(1);
-            return Array.isArray(data) && data.length > 0;
-          }
-        } catch {
-          return false;
-        }
-      }
-    }
-
-    if (await existsQuery()) return false;
-
-    const row = { name: n, score: s, ts: ts || new Date().toISOString() };
-    const { error } = await sb.from(table).insert(row);
-    if (error) throw error;
-    return true;
-  };
-}
 
   if (typeof window.cloudListHighScores !== 'function') {
     window.cloudListHighScores = async function(isPractice, limit = 50){
@@ -22867,40 +22120,18 @@ if (typeof window.cloudInsertHighScoreIfMissing !== 'function') {
     };
   }
 
-  if (typeof window.cloudDeleteHighScore !== 'function') {
-    window.cloudDeleteHighScore = async function(row, isPractice){
-      if (!ensureCloudInit()) throw new Error('Cloud not initialised');
-      const table = isPractice
-        ? (typeof TABLE_HS_PRACTICE !== 'undefined' ? TABLE_HS_PRACTICE : 'high_scores_practice')
-        : (typeof TABLE_HS_LEAGUE   !== 'undefined' ? TABLE_HS_LEAGUE   : 'high_scores');
-
-      // Try exact match (including ts if provided)
-      try {
-        let q = sb.from(table).delete()
-          .eq('name', String(row?.name || ''))
-          .eq('score', Number(row?.score || 0));
-        if (row?.ts) q = q.eq('ts', row.ts);
-        const { error } = await q;
-        if (error) throw error;
-        return;
-      } catch (e) {
-        // Fallback: delete on small time window if exact ts equality fails
-        if (!row?.ts) throw e;
-        const pad = 2 * 60 * 1000;
-        const fromIso = new Date(new Date(row.ts).getTime() - pad).toISOString();
-        const toIso   = new Date(new Date(row.ts).getTime() + pad).toISOString();
-        const { error } = await sb.from(table).delete()
-          .gte('ts', fromIso).lte('ts', toIso)
-          .eq('name', String(row.name || ''))
-          .eq('score', Number(row.score || 0));
-        if (error) throw error;
-      }
+  if(typeof window.cloudDeleteHighScore!=='function'){
+    window.cloudDeleteHighScore=async function(row,isPractice){
+      const body={operation:'delete_score',scope:isPractice?'practice':'league'};
+      if(row?.id!=null)body.score_id=row.id;
+      else{body.name=String(row?.name||'');body.score=Number(row?.score||0);if(row?.game_id)body.game_id=row.game_id;else body.timestamp=row?.ts;}
+      return window.sqAdminAction(body);
     };
   }
 })();
-// Toggle for writing per-player game rows to a table.
-// Your project uses a view (`player_games_union`), so writes should be disabled.
-const ENABLE_PLAYER_GAMES_WRITES = false;
+
+
+// Per-player game rows are derived by the existing read-only view.
 
 /*****************
  * CLOUD-ONLY READS (force consistency across devices)
@@ -23408,163 +22639,37 @@ window.getMatchesOfficial = async function getMatchesOfficial(){
 };
 
 // Recover missing High Scores by scanning cloud Games for a recent window (default 24h).
-async function recoverHighScoresFromCloudWindow(hours = 24){
-  if (!ensureCloudInit()) { toast('Cloud not initialised'); return { inserted:0, scanned:0, skipped:0 }; }
-  const now = Date.now();
-  const fromIso = new Date(now - (hours * 60 * 60 * 1000)).toISOString();
-  const toIso   = new Date(now + (5 * 60 * 1000)).toISOString(); // small future skew for device time drift
-
-  let scanned = 0, inserted = 0, skipped = 0;
-  let rows = [];
-  try {
-    const { data, error } = await sb
-      .from(TABLE_GAMES)
-      .select('created_at, state, totals')
-      .gte('created_at', fromIso)
-      .lte('created_at', toIso)
-      .order('created_at', { ascending: true });
-    if (error) throw error;
-    rows = data || [];
-  } catch (e) {
-    console.error('recover HS: fetch games failed', e);
-    toast('Recover HS failed: could not fetch games');
-    return { inserted, scanned, skipped };
-  }
-
-  for (const g of rows) {
-    scanned++;
-    const players = (g?.state?.players || [])
-      .map(p => (typeof p === 'string') ? { name: p } : p)
-      .filter(Boolean);
-    const totals = Array.isArray(g?.totals) ? g.totals : [];
-    const ts = g?.created_at || new Date().toISOString();
-    const isSingle = players.length === 1;
-    const table = isSingle
-      ? (typeof TABLE_HS_PRACTICE !== 'undefined' ? TABLE_HS_PRACTICE : 'high_scores_practice')
-      : (typeof TABLE_HS_LEAGUE   !== 'undefined' ? TABLE_HS_LEAGUE   : 'high_scores');
-
-    for (let i = 0; i < players.length; i++) {
-      const name  = players[i]?.name || '';
-      const score = Number(totals[i] || 0);
-      if (!name || score <= 0) continue;
-      try {
-        const playerId = players[i]?.id || players[i]?.player_id || null;
-        const gameId = g?.id || null;
-        if (!playerId || !gameId) { skipped++; continue; }
-        const ok = await cloudInsertHighScoreIfMissing(table, playerId, name, score, ts, gameId);
-        if (ok) inserted++; else skipped++;
-      } catch (e) {
-        console.error('recover HS: insert failed', e);
-        skipped++;
-      }
-    }
-  }
-
-  return { inserted, scanned, skipped };
+async function recoverHighScoresFromCloudWindow(hours=24){
+  return window.sqAdminAction({operation:'recover_scores',hours:Number(hours)});
 }
 
-/*****************
- * BACKFILL: Sync all local data → Supabase
- *****************/
-  async function backfillLocalGamesToCloud() {
-    const games = (typeof getGameLog === 'function') ? (getGameLog() || []) : [];
-    let inserted = 0, hs = 0, playerRows = 0;
-    for (const g of games) {
-      try {
-        const players = (g.players || []).map(p => typeof p === 'string' ? { name:p } : p).filter(Boolean);
-        const totals  = Array.isArray(g.totals) ? g.totals : [];
-        const isSingle = players.length === 1;
-        const ts = g.ts || new Date().toISOString();
-
-        // --- games table
-        if (typeof TABLE_GAMES !== 'undefined') {
-          const payload = {
-            created_at: ts,
-            state: { players, board: g.board || null },
-            totals,
-            finished: true,
-            match_id: g.match_id || null
-          };
-          try {
-            const { error } = await sb.from(TABLE_GAMES).insert(payload);
-            if (!error) inserted++;
-          } catch (e) {
-            // attempt upsert on conflict(created_at) if supported
-            try {
-              const { error } = await sb.from(TABLE_GAMES).upsert(payload);
-              if (!error) inserted++;
-            } catch(_) {}
-          }
-        }
-
-        // --- high scores tables
-        if (typeof cloudInsertHighScore === 'function') {
-          for (let i = 0; i < players.length; i++) {
-            const name = players[i]?.name || `Player ${i+1}`;
-            const score = Number(totals[i] || 0);
-            if (!name || score <= 0) continue;
-            try { await cloudInsertHighScore(name, score, isPractice); hs++; } catch(_) {}
-          }
-        }
-
-        // --- player_games (optional; skipped when using a view like `player_games_union`)
-        if (ENABLE_PLAYER_GAMES_WRITES && typeof TABLE_PLAYER_GAMES !== 'undefined' && players.length) {
-          const sorted = totals.map((t,i)=>({t:Number(t||0),i})).sort((a,b)=>b.t-a.t);
-          const posByIdx = Array(players.length).fill(null);
-          sorted.forEach((o,rank)=>{ posByIdx[o.i] = rank+1; });
-          for (let i=0;i<players.length;i++){
-            const row = {
-              sheet_id: g.sheet_id || null,
-              player: players[i]?.name || `Player ${i+1}`,
-              score: Number(totals[i] || 0),
-              position: posByIdx[i] || null,
-              ts,
-              is_practice: isSingle,
-              rounds: (typeof MAX_ROUNDS === 'number' ? MAX_ROUNDS : null)
-            };
-            try {
-              const { error } = await sb.from(TABLE_PLAYER_GAMES).insert(row);
-              if (!error) playerRows++;
-            } catch(_) {}
-          }
-        }
-      } catch (e) {
-        console.error('Backfill game failed', e);
-      }
-    }
-    return { inserted, hs, playerRows, scanned: games.length };
+async function backfillLocalGamesToCloud(){
+  await window.SQ_ADMIN_AUTH.require();
+  const cached=typeof safeLoad==='function'?safeLoad(GAMES_LOG_KEY):null;
+  const games=Array.isArray(cached)?cached:(typeof getGameLog==='function'?(getGameLog()||[]):[]);
+  let inserted=0,hs=0;
+  for(const g of games){
+    const players=(g.players||[]).map(p=>typeof p==='string'?{name:p}:p).filter(Boolean);
+    const result=await window.sqAdminAction({operation:'import_game',game:{created_at:g.ts||new Date().toISOString(),state:{...(g.state||{}),players,board:g.board||g.state?.board||null},totals:Array.isArray(g.totals)?g.totals:[],match_id:g.match_id||null,game_number:g.game_number||1}});
+    inserted+=result.inserted||0;hs+=result.high_scores||0;
   }
-  
-  async function backfillLocalMatchesToCloud() {
-    const matches = (typeof getMatchLog === 'function') ? (getMatchLog() || []) : [];
-    if (typeof TABLE_MATCHES === 'undefined') return { inserted: 0, scanned: matches.length };
-    let inserted = 0;
-    for (const m of matches) {
-      try {
-        const payload = {
-          id: m.id || null,
-          created_at: m.ts || new Date().toISOString(),
-          players: (m.players || []).map(p => typeof p === 'string' ? { name:p } : p),
-          wins: m.wins || [],
-          total_games: m.games || (Array.isArray(m.history) ? m.history.length : null),
-          history: (m.history || []).map(g => ({ totals: g.totals || [] }))
-        };
-        try {
-          const { error } = await sb.from(TABLE_MATCHES).insert(payload);
-          if (!error) inserted++;
-        } catch(_) {
-          try {
-            const { error } = await sb.from(TABLE_MATCHES).upsert(payload);
-            if (!error) inserted++;
-          } catch(e) { console.warn('match upsert failed', e); }
-        }
-      } catch (e) {
-        console.error('Backfill match failed', e);
-      }
-    }
-    return { inserted, scanned: matches.length };
+  return {inserted,hs,playerRows:0,scanned:games.length};
+}
+
+async function backfillLocalMatchesToCloud(){
+  await window.SQ_ADMIN_AUTH.require();
+  const cached=typeof safeLoad==='function'?safeLoad(MATCHES_LOG_KEY):null;
+  const matches=Array.isArray(cached)?cached:(typeof getMatchLog==='function'?(getMatchLog()||[]):[]);
+  let inserted=0;
+  for(const m of matches){
+    const result=await window.sqAdminAction({operation:'import_match',match:{id:m.id||null,created_at:m.ts||new Date().toISOString(),players:(m.players||[]).map(p=>typeof p==='string'?{name:p}:p),wins:m.wins||[],total_games:m.games||Math.max(1,m.history?.length||0),history:(m.history||[]).map(g=>({totals:g.totals||[]}))}});
+    inserted+=result.inserted||0;
   }
-  
+  return {inserted,scanned:matches.length};
+}
+
+
+
   async function runBackfillAll(){
     if (!ensureCloudInit()) { toast('Cloud not initialised'); return; }
     const btn = document.getElementById('backfillAllBtn');
@@ -23960,7 +23065,6 @@ window.getOfficialPowerRows = async function getOfficialPowerRows(){
   };
 })();
 // >>> PATCH:game-utils END
-
 // [MOVED] Vertical Game Ticker module moved to @SEC:JS:LEGACY:QUARANTINE (Stage 4A ticker dedupe)
 
 // Simple High Scores picker for start screen: Match vs Round
@@ -24059,7 +23163,13 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
+  const RUNNING_VERSION = '0.14.0';
+  const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
+  let updateCheckPromise = null;
+  let updateLastCheckAt = 0;
+
+  window.__sqRunningVersion = RUNNING_VERSION;
 
   function formatReleaseDate(value){
     try{
@@ -24071,9 +23181,26 @@ window.closeModal = window.closeModal || function(id){
     }
   }
 
+  function versionParts(value){
+    const match = String(value || '').trim().match(/^(\d+)\.(\d+)\.(\d+)$/);
+    return match ? match.slice(1).map(Number) : null;
+  }
+
+  function compareVersions(a, b){
+    const av = versionParts(a);
+    const bv = versionParts(b);
+    if (!av || !bv) return 0;
+    for (let i = 0; i < 3; i++){
+      if (av[i] > bv[i]) return 1;
+      if (av[i] < bv[i]) return -1;
+    }
+    return 0;
+  }
+
   function loadReleaseMetadata(force){
     if (force || !releaseMetaPromise){
-      releaseMetaPromise = fetch(META_URL, { cache:'no-store' }).then(function(response){
+      const url = force ? (META_URL + '?sq_release_check=' + Date.now()) : META_URL;
+      const request = fetch(url, { cache:'no-store' }).then(function(response){
         if (!response.ok) throw new Error('release-metadata-http-' + response.status);
         return response.json();
       }).then(function(meta){
@@ -24082,22 +23209,79 @@ window.closeModal = window.closeModal || function(id){
         }
         return meta;
       });
+      releaseMetaPromise = request.catch(function(error){
+        releaseMetaPromise = null;
+        throw error;
+      });
     }
     return releaseMetaPromise;
   }
+
+  function updateAvailableLine(latestVersion){
+    return '🚨 REFRESH APP - UPDATE AVAILABLE - v' + String(latestVersion || '').trim();
+  }
+
+  function injectUpdateAvailable(latestVersion){
+    const line = updateAvailableLine(latestVersion);
+    if (typeof window.__homeLivePrinterInjectLine === 'function'){
+      window.__homeLivePrinterInjectLine(line);
+      window.__sqPendingUpdateLine = '';
+      return true;
+    }
+    window.__sqPendingUpdateLine = line;
+    return false;
+  }
+
+  window.__sqFlushPendingUpdateAlert = function(){
+    const line = String(window.__sqPendingUpdateLine || '').trim();
+    if (!line || typeof window.__homeLivePrinterInjectLine !== 'function') return false;
+    window.__homeLivePrinterInjectLine(line);
+    window.__sqPendingUpdateLine = '';
+    return true;
+  };
+
+  window.__sqCheckForAppUpdate = function(force){
+    const now = Date.now();
+    if (updateCheckPromise) return updateCheckPromise;
+    if (!force && updateLastCheckAt && (now - updateLastCheckAt) < UPDATE_CHECK_MS){
+      return Promise.resolve(window.__sqUpdateAvailableState || null);
+    }
+    updateLastCheckAt = now;
+    updateCheckPromise = loadReleaseMetadata(true).then(function(meta){
+      const updateAvailable = compareVersions(meta.currentVersion, RUNNING_VERSION) > 0;
+      const state = {
+        runningVersion: RUNNING_VERSION,
+        latestVersion: String(meta.currentVersion),
+        updateAvailable,
+        checkedAt: Date.now()
+      };
+      window.__sqUpdateAvailableState = state;
+      if (updateAvailable) injectUpdateAvailable(meta.currentVersion);
+      else window.__sqPendingUpdateLine = '';
+      return state;
+    }).catch(function(){
+      // A failed/offline version check must fail quietly, never invent an update.
+      return window.__sqUpdateAvailableState || null;
+    }).finally(function(){
+      updateCheckPromise = null;
+    });
+    return updateCheckPromise;
+  };
 
   window.__sqLoadReleaseMetadata = loadReleaseMetadata;
 
   window.__sqApplyReleaseVersionLabel = function(button){
     if (!button) return;
-    button.textContent = 'VERSION';
-    button.setAttribute('aria-label', 'Open release notes');
+    button.textContent = 'v' + RUNNING_VERSION;
+    button.setAttribute('aria-label', 'Open release notes for Shateki Quest running version ' + RUNNING_VERSION);
+    button.title = 'Release Notes';
     loadReleaseMetadata(false).then(function(meta){
-      button.textContent = 'v' + meta.currentVersion;
-      button.setAttribute('aria-label', 'Open release notes for Shateki Quest version ' + meta.currentVersion);
-      button.title = 'Release Notes';
+      const updateAvailable = compareVersions(meta.currentVersion, RUNNING_VERSION) > 0;
+      if (updateAvailable){
+        button.title = 'Update available: v' + meta.currentVersion;
+        button.setAttribute('aria-label', 'Open release notes. Running version ' + RUNNING_VERSION + '; update available ' + meta.currentVersion);
+      }
     }).catch(function(){
-      button.textContent = 'VERSION';
       button.title = 'Release notes unavailable';
     });
   };
@@ -24116,9 +23300,12 @@ window.closeModal = window.closeModal || function(id){
       return;
     }
 
+    const latestIsNewer = compareVersions(meta.currentVersion, RUNNING_VERSION) > 0;
     const modal = window.sqModal({
       title: 'RELEASE NOTES',
-      sub: 'CURRENT v' + meta.currentVersion,
+      sub: latestIsNewer
+        ? ('RUNNING v' + RUNNING_VERSION + ' · LATEST v' + meta.currentVersion)
+        : ('CURRENT v' + RUNNING_VERSION),
       onBack: function(){},
       closeButton: 'CLOSE',
       modalClass: 'menu-modal sq-release-notes-modal',
@@ -24126,9 +23313,9 @@ window.closeModal = window.closeModal || function(id){
     });
     modal.body.classList.add('sq-release-notes-body');
 
-    meta.releases.forEach(function(item, index){
+    meta.releases.forEach(function(item){
       const card = document.createElement('article');
-      card.className = 'sq-release-entry' + (index === 0 ? ' is-current' : '');
+      card.className = 'sq-release-entry' + (String(item.version || '') === RUNNING_VERSION ? ' is-current' : '');
 
       const head = document.createElement('div');
       head.className = 'sq-release-entry-head';
@@ -24177,6 +23364,22 @@ window.closeModal = window.closeModal || function(id){
       modal.body.appendChild(note);
     }
   };
+
+  if (!window.__sqUpdateHeartbeatInterval){
+    window.__sqUpdateHeartbeatInterval = setInterval(function(){
+      try{ window.__sqCheckForAppUpdate(true); }catch(_){}
+    }, UPDATE_CHECK_MS);
+  }
+  setTimeout(function(){
+    try{ window.__sqCheckForAppUpdate(true); }catch(_){}
+  }, 0);
+  try{
+    document.addEventListener('visibilitychange', function(){
+      if (!document.hidden){
+        try{ window.__sqCheckForAppUpdate(false); }catch(_){}
+      }
+    });
+  }catch(_){}
 })();
 // <<< PATCH:SC050_RELEASE_NOTES END
 
@@ -24562,6 +23765,9 @@ function arrangeStartActions(){
     if (typeof window.__sqApplyReleaseVersionLabel === 'function'){
       window.__sqApplyReleaseVersionLabel(releaseVersionBtn);
     }
+    if (typeof window.__sqCheckForAppUpdate === 'function'){
+      window.__sqCheckForAppUpdate(false);
+    }
 
     // (removed) NEW PLAYERS ticker in VIDE
 
@@ -24895,29 +24101,15 @@ if(hsBody){
       const LP_VISIBLE = 15;
       const LP_SYNC_MS = Math.max(15000, (typeof SQ_GAMES_VISIBLE_MIN_POLL_MS !== 'undefined' ? SQ_GAMES_VISIBLE_MIN_POLL_MS : 15000));
       const LP_LOCAL_EVENT_KEY = 'sq_live_updates_events_v1';
-      const LP_LOCAL_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-      const lpReadLocalEvents = () => {
-        try {
-          const raw = JSON.parse(localStorage.getItem(LP_LOCAL_EVENT_KEY) || '[]');
-          const now = Date.now();
-          return (Array.isArray(raw) ? raw : [])
-            .filter(e => e && e.line && Number.isFinite(new Date(e.ts).getTime()) && (now - new Date(e.ts).getTime()) < LP_LOCAL_EVENT_TTL_MS)
-            .slice(-20);
-        } catch (_) { return []; }
+      // LIVE UPDATES is a public history surface. Browser-local presentation
+      // events are not authoritative and must never survive as feed history.
+      const lpClearLegacyLocalEvents = () => {
+        try { localStorage.removeItem(LP_LOCAL_EVENT_KEY); } catch (_) {}
       };
-      const lpPersistLocalEvent = (line, kind = 'manual') => {
-        const l = String(line || '').replace(/\s+/g, ' ').trim();
-        if (!l) return null;
-        try {
-          const now = Date.now();
-          let events = lpReadLocalEvents().filter(e => !(e.line === l && (now - new Date(e.ts).getTime()) < 60000));
-          const ev = { id:'local:' + now + ':' + Math.random().toString(36).slice(2,8), ts:new Date(now).toISOString(), kind:String(kind || 'manual'), line:l };
-          events.push(ev);
-          events = events.slice(-20);
-          localStorage.setItem(LP_LOCAL_EVENT_KEY, JSON.stringify(events));
-          return ev;
-        } catch (_) { return null; }
-      };
+      lpClearLegacyLocalEvents();
+      const lpReadLocalEvents = () => [];
+      const lpPersistLocalEvent = () => null;
+
       // Cloud availability helper (avoid ReferenceError on older builds)
       const lpCloudOK = () => {
         try {
@@ -24950,6 +24142,23 @@ if(hsBody){
         }catch(_e){}
         return false;
       };
+      const lpIsPracticeGame = (g) => {
+        try{
+          if (!g) return false;
+          const st = g.state || g.game_state || {};
+          const match = g.match || st.match || {};
+          const vals = [
+            g.mode, g.gameMode, g.game_mode, g.type,
+            st.mode, st.gameMode, st.game_mode, st.type,
+            match.mode, match.gameMode, match.game_mode, match.type
+          ].map(v => String(v || '').toLowerCase());
+          return g.isPractice === true || g.is_practice === true || g.practice === true ||
+            st.isPractice === true || st.is_practice === true ||
+            match.isPractice === true || match.is_practice === true ||
+            vals.some(v => v === 'practice' || v.indexOf('practice') >= 0 || v === 'solo');
+        }catch(_e){ return false; }
+      };
+
       // >>> PATCH:VIDE_CLASSIC_SUFFIX_AND_FIRST_BLANK_V1 START
       const lpModeSuffix = (g) => {
         if (g && (g.isPractice || g.is_practice || g.practice)) return ' - PRACTICE';
@@ -25646,18 +24855,8 @@ if(hsBody){
           }
           st.matchRowsCache = { key, at: now, rows: rows.slice() };
         }
-        try {
-          const localMatches = (typeof getMatchLog === 'function') ? (getMatchLog() || []) : [];
-          (Array.isArray(localMatches) ? localMatches : []).forEach(m => {
-            const id = String(m && m.id || '').trim();
-            if (id && ids.includes(id)) rows.push(m);
-          });
-        } catch(_e) {}
-        try {
-          const current = (typeof state !== 'undefined' && state && state.match) ? state.match : null;
-          const id = String(current && current.id || '').trim();
-          if (id && ids.includes(id)) rows.push(current);
-        } catch(_e) {}
+        // Match-result metadata remains cloud-backed; local match/current-game
+        // recovery state must never supplement public LIVE UPDATES history.
         return rows;
       };
 
@@ -25795,12 +24994,15 @@ if(hsBody){
         }
         let events = [];
         try{
-          if (typeof __fetchOfficialGames !== 'function' || typeof __normalizeGame !== 'function') {
+          // Records shown in VIDE must come from persistent cloud truth only.
+          // Never derive public PB/WR history from local game/recovery caches.
+          if (typeof cloudFetchAllGamesAsLocal !== 'function') {
             st.derivedItems = [];
             st.derivedFetchedAt = now;
             return [];
           }
-          const allGames = (await __fetchOfficialGames(1000)).map(__normalizeGame).filter(Boolean);
+          const allGames = (await cloudFetchAllGamesAsLocal())
+            .filter(g => g && !(g.archived_at || g.archivedAt));
           allGames.sort((a,b)=> new Date(a.ts || 0).getTime() - new Date(b.ts || 0).getTime());
           const bestGameByPlayer = new Map();
           const bestRoundByPlayer = new Map();
@@ -25819,19 +25021,30 @@ if(hsBody){
           allGames.forEach(g => {
             const ts = g.ts || (g.raw && (g.raw.created_at || g.raw.ts)) || null;
             const board = Array.isArray(g.board) ? g.board : [];
-            (g.players || []).forEach((name, idx) => {
-              const nm = String(name || '').trim();
+            const isPractice = lpIsPracticeGame(g);
+            const roundMode = isPractice ? '' : (lpIsTurboGame(g) ? 'turbo' : 'official');
+            (g.players || []).forEach((player, idx) => {
+              const nm = String(
+                typeof player === 'string'
+                  ? player
+                  : (player && (player.name || player.nickname || player.first_name || player.player_name || player.initials)) || ''
+              ).trim();
               if (!nm) return;
               const score = Number((g.totals || [])[idx] || 0);
               const nameKey = nm.toLowerCase();
               const priorGameBest = Number(bestGameByPlayer.get(nameKey) || 0);
               const isGamePB = score > 0 && score > priorGameBest;
               const isGameRecord = score > 0 && score > globalGameBest;
-              // A record is also a PB, but only print the higher-priority record event.
+              // Preserve existing GAME PB semantics; this hotfix only changes
+              // the source authority and ROUND PB/WR mode isolation.
               if (isGameRecord) pushEvent(ts, `NEW GAME RECORD SCORE - ${nm} - ${score} 🥇`, 'game_record');
               else if (isGamePB) pushEvent(ts, `GAME PB - ${nm} (${score})`, 'game_pb');
               if (isGamePB) bestGameByPlayer.set(nameKey, score);
               if (isGameRecord) globalGameBest = score;
+
+              // Practice never contributes ROUND PB/WR lines to VIDE. Official
+              // and Turbo compare only with their own historical mode bucket.
+              if (!roundMode) return;
               const playerRounds = Array.isArray(board[idx]) ? board[idx] : [];
               for (let r = 0; r < Math.min(14, playerRounds.length || 0); r++) {
                 const cell = playerRounds[r];
@@ -25839,16 +25052,16 @@ if(hsBody){
                 if (!Number.isFinite(total) || total <= 0) continue;
                 const roundKey = lpRoundKey(r);
                 const counts = lpCountSummary(cell, r);
-                const playerRoundKey = `${nameKey}|${roundKey}`;
+                const playerRoundKey = `${roundMode}|${nameKey}|${roundKey}`;
+                const globalRoundKey = `${roundMode}|${roundKey}`;
                 const priorRoundPB = Number(bestRoundByPlayer.get(playerRoundKey) || 0);
-                const priorRoundWR = Number(bestRoundGlobal.get(roundKey) || 0);
+                const priorRoundWR = Number(bestRoundGlobal.get(globalRoundKey) || 0);
                 const isRoundPB = total > priorRoundPB;
                 const isRoundRecord = total > priorRoundWR;
-                // A round record is also a PB, but only print the higher-priority record event.
                 if (isRoundRecord) pushEvent(ts, `ROUND WR / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_wr');
                 else if (isRoundPB) pushEvent(ts, `ROUND PB / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_pb');
                 if (isRoundPB) bestRoundByPlayer.set(playerRoundKey, total);
-                if (isRoundRecord) bestRoundGlobal.set(roundKey, total);
+                if (isRoundRecord) bestRoundGlobal.set(globalRoundKey, total);
               }
             });
           });
@@ -26002,6 +25215,9 @@ if(hsBody){
           window.__homeLivePrinterInjectLine(line);
           return ev;
         };
+      }catch(_e){}
+      try{
+        if (typeof window.__sqFlushPendingUpdateAlert === 'function') window.__sqFlushPendingUpdateAlert();
       }catch(_e){}
 
       const lpPrimeLocalPresentation = () => {
@@ -26224,68 +25440,10 @@ if(hsBody){
               }).filter(Boolean);
             }
 }
-            // If cloud is unavailable, fall back to local game log cache (cloud->local sync writes here).
-            if (!games || !games.length) {
-              try {
-                const gl = (typeof getGameLog === 'function') ? getGameLog() : [];
-                if (Array.isArray(gl) && gl.length) {
-                  const slice = gl.slice(-LP_BUFFER).reverse();
-                  games = slice.map(row => {
-                    try {
-                      const ts = row.created_at || row.createdAt || row.ts || row.updated_at || null;
-                      const state = row.state || row.State || row.game_state || null;
-                      const ps0 = (state && Array.isArray(state.players)) ? state.players : (Array.isArray(row.players) ? row.players : []);
-                      const totals0 = (state && state.totals && Array.isArray(state.totals)) ? state.totals : (Array.isArray(row.totals) ? row.totals : []);
-                      const nameOf = (p) => {
-                        if (!p) return '?';
-                        if (typeof p === 'string') return p.trim() || '?';
-                        return String(p.name || p.nickname || p.first_name || p.player_name || p.initials || p.player_id || '?').trim() || '?';
-                      };
-                      const rows = ps0.map((p,i)=>({ name: nameOf(p), score: Number(totals0[i] ?? 0) }))
-                        .sort((a,b)=> (b.score - a.score) || String(a.name).localeCompare(String(b.name)));
-                      const winner = rows[0] || { name:'?', score:'?' };
-                      const opp = rows.slice(1).map(r => lpPlayerScoreText(r.name, r.score)).join(', ');
-                      const isPractice = !!(row && (row.isPractice || row.is_practice || row.practice ||
-                        String(row.mode || row.gameMode || '').toLowerCase() === 'practice' ||
-                        String(state?.mode || state?.gameMode || '').toLowerCase() === 'practice' ||
-                        state?.is_practice === true || state?.isPractice === true));
-                      const isTurbo = !isPractice && lpIsTurboGame(Object.assign({}, row || {}, { state }));
-                      const beerPlayers = (!isPractice && !isTurbo) ? lpUnder100Names(rows) : [];
-                      return { ts, winner_name: winner.name, winner_score: winner.score, opponents_text: opp, isPractice, isTurbo, mode: isPractice ? 'practice' : (isTurbo ? 'turbo' : (row.mode || state?.mode || '')), match_id: row.match_id || row.matchId || state?.match_id || state?.matchId || state?.match?.id || null, game_number: row.game_number || row.gameNumber || state?.game_number || state?.gameNumber || null, players: ps0, totals: totals0, state, match_state: state?.match || null, beer_alert_players: beerPlayers };
-                    } catch(_e) {
-                      return null;
-                    }
-                  }).filter(Boolean);
-                }
-              } catch(_e) {}
-            }
+            // LIVE UPDATES fails closed when cloud history is unavailable.
+            // Local game/recovery state is intentionally not a public history source.
+            if (!games || !games.length) games = [];
 
-            if (!games || !games.length) {
-              const ids = getSavedMatchIdsSorted();
-              games = ids.slice(-LP_BUFFER).reverse().map(id => {
-                const mm = getMatchState(id);
-                if (!mm) return null;
-                const rows = (mm.players || []).map(p => ({ name: p.name || '?', score: (p.totalScore ?? 0) }))
-                  .sort((a,b)=> b.score - a.score || String(a.name).localeCompare(String(b.name)));
-                const winner = rows[0] || { name: '?', score: '?' };
-                const opp = rows.slice(1).map(r => lpPlayerScoreText(r.name, r.score)).join(', ');
-                const isTurbo = lpIsTurboGame(mm);
-                return {
-                  match_id: id,
-                  ts: mm.ts || mm.createdAt || mm.created_at || mm.updatedAt || mm.updated_at,
-                  winner_name: winner.name,
-                  winner_score: winner.score,
-                  opponents_text: opp,
-                  isTurbo,
-                  mode: isTurbo ? 'turbo' : (mm.mode || mm.gameMode || ''),
-                  players: mm.players || [],
-                  totals: rows.map(r => r.score),
-                  state: mm,
-                  match_state: mm.match || mm,
-                  beer_alert_players: []
-                };
-              }).filter(Boolean);
-            }
             try {
               const matchRows = await lpFetchRelevantMatchRows(games);
               const matchResults = lpBuildCompletedMatchResultItems(games, matchRows);
@@ -26304,10 +25462,10 @@ if(hsBody){
           }catch(_e){}
 
           // NEW PLAYER is a real feed event, not a one-session animation.
-          // Rebuild recent player joins from the cloud-synced player cache so a
-          // refresh still shows them without creating a second data authority.
+          // Rebuild recent player joins from the live cloud player source so a
+          // refresh shows only persisted players, never browser-local fixtures.
           try{
-            const players = (typeof getSavedPlayers === 'function') ? getSavedPlayers() : [];
+            const players = (lpCloudOK() && typeof cloudListPlayers === 'function') ? await cloudListPlayers() : [];
             const cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
             const joins = (Array.isArray(players) ? players : [])
               .map(p => {
@@ -26327,17 +25485,7 @@ if(hsBody){
             if (joins.length) items = ([]).concat(items || [], joins);
           }catch(_e){}
 
-          // Presentation-only persisted events survive refresh on this device.
-          // They do not own player/game truth; they only preserve feed history.
-          try{
-            const localEvents = lpReadLocalEvents().map(e => ({
-              event_ts:e.ts,
-              event_id:e.id,
-              event_kind:e.kind || 'local',
-              line_text:e.line
-            }));
-            if (localEvents.length) items = ([]).concat(items || [], localEvents);
-          }catch(_e){}
+          // No browser-local presentation history is merged into public VIDE.
 
           const mid = document.querySelector('#homeLivePrinter .lp-mid');
           const hold = document.querySelector('#homeLivePrinter .home-hold-overlay');
@@ -35700,48 +34848,20 @@ document.addEventListener('DOMContentLoaded', function(){
   function getDeviceId(){
     try {
       let id = localStorage.getItem('sq_device_id');
-      if (!id) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id||'')) {
         id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('dev_' + Math.random().toString(16).slice(2) + Date.now());
         localStorage.setItem('sq_device_id', id);
       }
       return id;
     } catch(e){
-      return 'anon';
+      return crypto.randomUUID();
     }
   }
 
   // ---- Cloud logon tracking (device/day) ----
   async function logDailyVisitToCloud(){
-    const client = getSb();
-    if (!client) return;
-
-    // If cloud logons are blocked by RLS/policies, stop spamming the console.
-    try {
-      if (localStorage.getItem('sq_cloud_logons_disabled') === '1') return;
-    } catch(_){}
-
-    const day = isoDay(new Date());
-    const device_id = getDeviceId();
-
-    // Upsert once per device per day.
-    try {
-      const { error } = await client
-        .from(TABLE_APP_LOGONS)
-        .upsert({ day, device_id }, { onConflict: 'day,device_id' });
-
-      if (error) {
-        // Common: 42501 insufficient_privilege, 401/403 auth/policy issues
-        const code = (error && (error.code || error.status)) || '';
-        if (String(code) === '42501' || String(code) === '401' || String(code) === '403') {
-          try { localStorage.setItem('sq_cloud_logons_disabled', '1'); } catch(_){}
-          console.warn('Cloud logons disabled (policy/privilege). Using local-only.');
-          return;
-        }
-        console.warn('Cloud logon upsert failed', error);
-      }
-    } catch(e){
-      console.warn('Cloud logon upsert exception', e);
-    }
+    try{await window.SQ_SECURITY.visit({device_id:getDeviceId()});}
+    catch(error){console.info('[SQ] Visit telemetry unavailable',error.code||error.message);}
   }
 
   // ---- Local fallback logon tracking (kept for offline/dev) ----

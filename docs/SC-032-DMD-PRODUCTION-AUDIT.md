@@ -39,6 +39,7 @@ Out of scope:
 | Throw combinations / special phrases | `src/game/engine.js` | `inline-007.js` | Preserve current rules/copy; verify deterministic sequencing |
 | Desmond / Last Dart Hero / Voldy artwork | `src/game/engine.js` | `inline-007.js` named artwork types | Preserve; verify full-width identity and clean restoration |
 | End-of-visit `ROUND SCORE` / `NEXT UP` sequence | `src/game/engine.js` | `inline-007.js` | Ownership-gate every delayed frame so new input/Undo cancels stale output |
+| Accepted Bounce Out hold | `src/live-game/live-v2.js` + modular controller | existing transient renderer; motion-safe backend | Cue only after one canonical accepted receipt; cancel on Undo/navigation |
 | Generic Undo | `src/live-game/live-v2.js` + modular controller | transient channel / legacy fallback | Controller-owned; no old compatibility DMD writer |
 | Generic Skip | `src/live-game/live-v2.js` + modular controller | transient channel / legacy fallback | Controller-owned `TURN SKIPPED`; engine must not start competing Stage-3 sequence |
 | Miss xN | `src/live-game/live-v2.js` | `inline-007.js` | Preserve current X-sequence and flow-token cancellation |
@@ -172,3 +173,21 @@ After an authorised release: revert the SC-032 squash/merge commit only. SC-032 
 ## 9. Release state
 
 The branch/PR remains BUILD/FIX and must stay unmerged until all final exact-head automated gates and the physical iPhone acceptance are green, followed by explicit RELEASE approval.
+
+## 10. SC-069 bounded safe-feedback follow-up
+
+Candidate BUILD/FIX based on main `5de76272d1f2e476c514fc3e0a7e7722f51f4992` (v0.13.1); provisional patch v0.13.2. This follow-up repairs the confirmed navigation, Undo, reduced-motion and overdue-callback defects in the existing MISS hold. The scoped gameplay preparation, controller and accepted-completion safeguards from SC-004 remain intact, together with SC-047 cloud-only LIVE UPDATES and record-mode isolation. It does not complete the unresolved DMX/controller-interface requirement.
+
+The hold remains 360ms and calls canonical `recordThrow({kind:'BounceOut'})` once. Its original game, token, history, actor and cursor must still own the gesture. The modular controller receives a cue only after one accepted explicit zero-point Bounce Out receipt. Scoring, XP, average treatment, modes and persistence stay owned by their established paths.
+
+The hosted WebKit source trace at `86fd94e94f8916bf43aee0baac3f7d167301ebe5` recorded a 500ms hold whose scheduled 360ms callback had not run before release cleared it. Release now uses the same guarded commit when its original pending timer has reached the threshold. A timer/release winner retires its pending closure before recording; cancelled, moved, stale, replaced and late callbacks cannot score. A private native control delays only the identified hold callback to 1200ms and preserves every native assertion, gesture and deadline. The original runtime reproduces the Miss failure; candidate acceptance must retain separate controlled and ordinary source/dist Chromium/WebKit receipts. These observations do not establish a universal browser scheduling cause.
+
+`show()` and `_showPageSafe()` retire pending holds when leaving the game. Successful generic and recovered Shadow-human Undo remove only queued/active Bounce Out feedback. Non-BO controller cancellation is a no-op, and unrelated stories/priorities retain their existing timers. Reduced motion keeps the 420ms text hold with no Bounce Out impact FX. A genuine next press remains available inside the existing compatibility-click suppression interval.
+
+The established story queue can defer BO behind a higher-priority record. Earlier native source/dist Chromium/WebKit measurements were 735–812ms from scoring to that queued BO display; this patch does not change those priorities or claim synchronized hardware feedback.
+
+Acceptance uses `verify-sc069-bounce-feedback.mjs` plus the complete 24-case native suite in `verify-sc069-bounce-feedback.js`, on source/dist Chromium/WebKit at the final candidate head. All 57 native assertions and original deadlines remain. End Match waits for the actual asynchronous scoped cleanup before asserting the existing cleared-history/details result. The fixtures block production writes and report attempted non-GET requests. Coverage includes actual pointer release, synchronous pad replacement, real quick next press, Undo, route cancellation, accepted final Bull, static reduced-motion canvas, rejection and isolated display failure; compatible recovered-six and Shadow fixtures preserve historical behaviour. Existing Core/DMD ownership, Skip, motion, scoring and XP regressions remain required. The earlier 96 native cases and 12 protected regressions are retained as baseline evidence, not claimed as final-head runs.
+
+Recovery is a normal revert of the eventual SC-069 release commit, followed by source materialisation/build and affected smoke checks. A targeted pre-release recovery must remove only this follow-up's BO hunks; do not restore whole util/router/generated files over later avatar, Stats or SC-004 security work. No SQL or persistent-data recovery is needed. No hardware bridge, new event interface, XP rule or security change is included.
+
+The SC-043 offline fixture omits only the exact external CDN preconnect hint from its local HTML response. The SDK remains locally served, production requests remain blocked, and every existing Stats assertion, strict error check and deadline stays intact. The hosted failure was an external TLS preconnect reset after the 390px behavior checks; it is separate from the unresolved production XP timeout.

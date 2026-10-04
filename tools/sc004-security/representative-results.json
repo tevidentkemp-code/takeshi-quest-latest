@@ -1,0 +1,136 @@
+{
+  "scope": "Isolated representative proposal. Not SEC-05 cutover acceptance.",
+  "executed_at": "2026-10-03T13:26:31.505Z",
+  "engine": "PostgreSQL 18.3 (PGlite 0.5.8) on wasm32-unknown-emscripten, compiled by emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 3.1.74 (1092ec30a3fb1d46b1782ff1b4db5094d3d06ae5), 32-bit",
+  "replay": {
+    "baseTables": 18,
+    "uniqueIndexes": 28,
+    "triggers": 3,
+    "limitation": "Synthetic rows; captured public schema/policies/unique indexes/constraints/all 3 triggers. Auth users/sessions are minimal column fixtures, not real Auth. No production, PostgREST, Edge deployment, Realtime or browser scoring invocation."
+  },
+  "results": [
+    {
+      "name": "All 18 tables deny direct INSERT/UPDATE/DELETE/TRUNCATE to anon and authenticated",
+      "pass": true
+    },
+    {
+      "name": "Both log_player_go overloads deny anon and authenticated EXECUTE individually",
+      "pass": true
+    },
+    {
+      "name": "Writable owner view blocks every write and preserves existing SELECT",
+      "pass": true
+    },
+    {
+      "name": "Direct service RPC denies public role despite guessed request and registry hashes",
+      "pass": true
+    },
+    {
+      "name": "Private registry and Auth session tables inaccessible to public roles",
+      "pass": true
+    },
+    {
+      "name": "Protected mutation without controller is denied before SQL",
+      "pass": true
+    },
+    {
+      "name": "Guessed well-formed capability cannot claim historical match",
+      "pass": true
+    },
+    {
+      "name": "Current client -> handler -> actual SQL creates new match and stores only capability hash server-side",
+      "pass": true
+    },
+    {
+      "name": "Match A controller cannot alter Match B even with known IDs",
+      "pass": true
+    },
+    {
+      "name": "Low-friction registration creates a new stable player without modifying same-name profile",
+      "pass": true
+    },
+    {
+      "name": "Roster join, reorder, removal and scoped display edit preserve persistent profiles",
+      "pass": true
+    },
+    {
+      "name": "Resume/reconnect uses credential cache as proof only when live registry accepts it",
+      "pass": true
+    },
+    {
+      "name": "Game reservation is server-assigned, sequential and retry-idempotent",
+      "pass": true
+    },
+    {
+      "name": "Malformed boards, forged stats and nested foreign-match IDs are denied without commit",
+      "pass": true
+    },
+    {
+      "name": "Lost completion response resumes exact payload and produces one game and one score per player",
+      "pass": true
+    },
+    {
+      "name": "Conflicting completion cannot overwrite accepted throws or scores",
+      "pass": true
+    },
+    {
+      "name": "Approved six-argument go wrapper records frozen-roster event and accepts exact retry only",
+      "pass": true
+    },
+    {
+      "name": "Own failed-save cleanup changes pending slot only; completed and foreign games protected",
+      "pass": true
+    },
+    {
+      "name": "Accepted participant replacement and late joins after Game2 reservation are denied",
+      "pass": true
+    },
+    {
+      "name": "Practice, Turbo and Vs Shadow persist correct isolated scores and real players",
+      "pass": true
+    },
+    {
+      "name": "Saved-player positive-score eligibility excludes guest and zero high-score rows",
+      "pass": true
+    },
+    {
+      "name": "Turbo permits guests while Vs Shadow permits exactly one real player",
+      "pass": true
+    },
+    {
+      "name": "Expired and revoked controllers fail live registry recheck; cache cannot revive them",
+      "pass": true
+    },
+    {
+      "name": "Empty controller-created match cleanup removes private pending scope and never accepted history",
+      "pass": true
+    },
+    {
+      "name": "Recovery cache enqueue failure prevents submission; acknowledgement failure retains exact retry",
+      "pass": true
+    },
+    {
+      "name": "Admin and commentary cannot be authorized by controller, UI flags or arbitrary JSON authority",
+      "pass": true
+    },
+    {
+      "name": "Admin requires permanent confirmed user, allowlist and live matching session every request",
+      "pass": true
+    },
+    {
+      "name": "Safe hold rejects writes, preserves reads/resume/pending payload; trusted resumption retains closure",
+      "pass": true
+    }
+  ],
+  "passed": 28,
+  "total": 28,
+  "limitations": [
+    "No deployed Edge/PostgREST/Auth/Realtime or current frontend activation.",
+    "Synthetic Auth verifier seam tests request/SQL checks, not real token validation or enrolled production admin.",
+    "Training/telemetry, full 21 admin replacement routes, full tournament/provenance parity and production safe rollback are not complete.",
+    "Controller possession authorizes score submission; fixture checks aggregate consistency, not physical dart truth or a replacement scoring engine.",
+    "Lost initial capability response cannot be recovered from public IDs; proposed trusted expired-empty pruning is tested, with no scheduled production job.",
+    "First-game late-join timing before17s requires current frontend rule verification; no client phase input is treated as server proof.",
+    "Storage recovery tests cover a single writer and a reload; concurrent tabs/instances can reintroduce stale queues and need a coordinated cache contract."
+  ]
+}

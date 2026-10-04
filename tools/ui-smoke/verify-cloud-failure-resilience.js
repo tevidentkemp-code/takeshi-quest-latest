@@ -4,6 +4,7 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
+const {installSecurityFixture}=require('./security-fixture');
 
 const APP_URL = process.env.SQ_APP_URL || 'http://localhost:8123/index.html';
 const UMD = process.env.SQ_SUPABASE_UMD ||
@@ -23,6 +24,7 @@ async function runCase(browser, failure) {
     hasTouch: true,
     deviceScaleFactor: 2,
   });
+  await installSecurityFixture(context);
   const pageErrors = [];
   const consoleErrors = [];
 

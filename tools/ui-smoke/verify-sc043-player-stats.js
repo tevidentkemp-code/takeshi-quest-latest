@@ -51,6 +51,14 @@ async function closeAll(page){
 async function main(width){
   const {browser, page, consoleErrs} = await H.launch({width, height:844});
   try {
+    // The offline harness serves Supabase locally; omit its external TLS hint.
+    await page.route(H.APP_URL, async route => {
+      if (route.request().method() !== 'GET' || route.request().resourceType() !== 'document') return route.fallback();
+      const response = await route.fetch({ maxRedirects:0, timeout:8000 });
+      const body = (await response.text()).replace('<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>', '');
+      const headers = { ...response.headers(), 'content-length':String(Buffer.byteLength(body)) };
+      await route.fulfill({ response, headers, body });
+    });
     await H.boot(page, {settle:500}); await page.emulateMedia({reducedMotion:'reduce'});
     await install(page, 'directory_hang');
     await page.evaluate(() => { __sqPlayerStatsSelectedName = 'Sam T'; openPlayerStatsSelect(); });

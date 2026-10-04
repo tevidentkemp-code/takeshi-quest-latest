@@ -5,6 +5,7 @@
 const { chromium, webkit } = require('playwright');
 const path = require('path');
 const fs = require('fs');
+const {installSecurityFixture}=require('./security-fixture');
 
 const APP_URL = process.env.SQ_APP_URL || 'http://localhost:8123/index.html';
 const BROWSER = process.env.SQ_BROWSER || 'chromium';
@@ -25,6 +26,7 @@ async function launch(viewport, opts = {}) {
     hasTouch: true,
     deviceScaleFactor: 2,
   });
+  await installSecurityFixture(ctx);
   if (opts.seedPlayers) {
     await ctx.addInitScript(() => {
       const iso = new Date().toISOString();
