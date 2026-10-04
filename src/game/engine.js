@@ -2324,7 +2324,24 @@ function buildEverything(){
 // >>> PATCH:SQ_BUILD_CHUNK_V1 START
 function __sqYieldToPaint(){
   return new Promise((resolve)=>{
-    requestAnimationFrame(()=>setTimeout(resolve, 0));
+    let settled = false, frame = null, afterPaint = null, watchdog = null;
+    const finish = ()=>{
+      if (settled) return;
+      settled = true;
+      if (frame !== null) { try{ cancelAnimationFrame(frame); }catch(_){} frame = null; }
+      if (afterPaint !== null) { clearTimeout(afterPaint); afterPaint = null; }
+      if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
+      resolve();
+    };
+    watchdog = setTimeout(finish, 100);
+    try{
+      if (typeof requestAnimationFrame !== 'function') return;
+      frame = requestAnimationFrame(()=>{
+        frame = null;
+        if (settled) return;
+        try{ afterPaint = setTimeout(finish, 0); }catch(_){}
+      });
+    }catch(_){}
   });
 }
 

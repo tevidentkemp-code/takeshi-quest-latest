@@ -17,6 +17,17 @@ fs.mkdirSync(out, { recursive: true });
       !!document.getElementById('homeLivePauseBtn')
     , { timeout: 20000 });
 
+    await page.waitForFunction(() => !!window.__sqUpdateAvailableState?.latestVersion, { timeout: 5000 });
+    const releaseCurrent = await page.evaluate(() => ({
+      running: window.__sqRunningVersion,
+      state: window.__sqUpdateAvailableState,
+      label: document.getElementById('sqReleaseVersionBtn')?.textContent?.trim()
+    }));
+    assert.equal(releaseCurrent.state.updateAvailable, false,
+      'current build must not show an update warning when latest metadata matches');
+    assert.equal(releaseCurrent.label, 'v' + releaseCurrent.running,
+      'version control must show the actually running build, not fetched latest metadata');
+
     // Seed the exact class of legacy browser-local contamination reported
     // from physical iPhone acceptance. The current session may still receive
     // a transient NEW PLAYER notification, but public feed history must never
@@ -451,6 +462,55 @@ fs.mkdirSync(out, { recursive: true });
     assert.match(wr.text, /ROUND WR/i, 'World Record row missing WR content');
     assert.match(wr.rowColor, /196,\s*153,\s*255/, 'World Record row must use the locked purple semantic');
     assert.match(wr.chipColor, /214,\s*184,\s*255/, 'World Record chip must use the locked purple semantic');
+
+    const runningVersion = await page.evaluate(() => window.__sqRunningVersion);
+    const versionBits = runningVersion.split('.').map(Number);
+    const fakeLatest = [versionBits[0], versionBits[1], versionBits[2] + 1].join('.');
+    await page.route('**/assets/release-metadata.json*', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          schemaVersion: 1,
+          currentVersion: fakeLatest,
+          currentReleaseId: 'SC047_TEST_UPDATE',
+          releases: []
+        })
+      });
+    });
+    await page.evaluate(() => window.__sqCheckForAppUpdate(true));
+    await page.waitForFunction((latest) => {
+      const st = window.__homeLivePrinterState || {};
+      const queued = (st.injectQueue || []).some(line => String(line).includes('REFRESH APP - UPDATE AVAILABLE') && String(line).includes('v' + latest));
+      const visible = (document.getElementById('homeLivePrinterRows')?.textContent || '').includes('REFRESH APP - UPDATE AVAILABLE');
+      return queued || visible;
+    }, fakeLatest, { timeout: 5000 });
+    await page.waitForFunction(() =>
+      (document.getElementById('homeLivePrinterRows')?.textContent || '').includes('REFRESH APP - UPDATE AVAILABLE'),
+      { timeout: 5000 }
+    );
+    const updateAlert = await page.evaluate(() => {
+      const row = Array.from(document.querySelectorAll('#homeLivePrinterRows tr.lp-row'))
+        .find(r => (r.textContent || '').includes('REFRESH APP - UPDATE AVAILABLE'));
+      return {
+        state: window.__sqUpdateAvailableState,
+        label: document.getElementById('sqReleaseVersionBtn')?.textContent?.trim(),
+        localCache: localStorage.getItem('sq_live_updates_events_v1'),
+        alertClass: !!row?.classList.contains('lp-alert'),
+        text: row?.textContent || ''
+      };
+    });
+    assert.equal(updateAlert.state.updateAvailable, true,
+      'newer metadata must set updateAvailable');
+    assert.equal(updateAlert.state.latestVersion, fakeLatest);
+    assert.equal(updateAlert.label, 'v' + runningVersion,
+      'stale app must continue to identify the build actually running');
+    assert.match(updateAlert.text, /REFRESH APP - UPDATE AVAILABLE/i);
+    assert.equal(updateAlert.alertClass, true,
+      'update notice must use the existing high-priority VIDE alert treatment');
+    assert.equal(updateAlert.localCache, null,
+      'update notice must never persist as browser-local feed history');
+    await page.unroute('**/assets/release-metadata.json*');
 
     await page.screenshot({ path: path.join(out, 'live-updates-stable.png') });
     const pageErrors = consoleErrs.filter(x => x.startsWith('pageerror:'));

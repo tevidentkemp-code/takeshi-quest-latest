@@ -96,7 +96,13 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
+  const RUNNING_VERSION = '0.13.5';
+  const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
+  let updateCheckPromise = null;
+  let updateLastCheckAt = 0;
+
+  window.__sqRunningVersion = RUNNING_VERSION;
 
   function formatReleaseDate(value){
     try{
@@ -108,9 +114,26 @@ window.closeModal = window.closeModal || function(id){
     }
   }
 
+  function versionParts(value){
+    const match = String(value || '').trim().match(/^(\d+)\.(\d+)\.(\d+)$/);
+    return match ? match.slice(1).map(Number) : null;
+  }
+
+  function compareVersions(a, b){
+    const av = versionParts(a);
+    const bv = versionParts(b);
+    if (!av || !bv) return 0;
+    for (let i = 0; i < 3; i++){
+      if (av[i] > bv[i]) return 1;
+      if (av[i] < bv[i]) return -1;
+    }
+    return 0;
+  }
+
   function loadReleaseMetadata(force){
     if (force || !releaseMetaPromise){
-      releaseMetaPromise = fetch(META_URL, { cache:'no-store' }).then(function(response){
+      const url = force ? (META_URL + '?sq_release_check=' + Date.now()) : META_URL;
+      const request = fetch(url, { cache:'no-store' }).then(function(response){
         if (!response.ok) throw new Error('release-metadata-http-' + response.status);
         return response.json();
       }).then(function(meta){
@@ -119,22 +142,79 @@ window.closeModal = window.closeModal || function(id){
         }
         return meta;
       });
+      releaseMetaPromise = request.catch(function(error){
+        releaseMetaPromise = null;
+        throw error;
+      });
     }
     return releaseMetaPromise;
   }
+
+  function updateAvailableLine(latestVersion){
+    return '🚨 REFRESH APP - UPDATE AVAILABLE - v' + String(latestVersion || '').trim();
+  }
+
+  function injectUpdateAvailable(latestVersion){
+    const line = updateAvailableLine(latestVersion);
+    if (typeof window.__homeLivePrinterInjectLine === 'function'){
+      window.__homeLivePrinterInjectLine(line);
+      window.__sqPendingUpdateLine = '';
+      return true;
+    }
+    window.__sqPendingUpdateLine = line;
+    return false;
+  }
+
+  window.__sqFlushPendingUpdateAlert = function(){
+    const line = String(window.__sqPendingUpdateLine || '').trim();
+    if (!line || typeof window.__homeLivePrinterInjectLine !== 'function') return false;
+    window.__homeLivePrinterInjectLine(line);
+    window.__sqPendingUpdateLine = '';
+    return true;
+  };
+
+  window.__sqCheckForAppUpdate = function(force){
+    const now = Date.now();
+    if (updateCheckPromise) return updateCheckPromise;
+    if (!force && updateLastCheckAt && (now - updateLastCheckAt) < UPDATE_CHECK_MS){
+      return Promise.resolve(window.__sqUpdateAvailableState || null);
+    }
+    updateLastCheckAt = now;
+    updateCheckPromise = loadReleaseMetadata(true).then(function(meta){
+      const updateAvailable = compareVersions(meta.currentVersion, RUNNING_VERSION) > 0;
+      const state = {
+        runningVersion: RUNNING_VERSION,
+        latestVersion: String(meta.currentVersion),
+        updateAvailable,
+        checkedAt: Date.now()
+      };
+      window.__sqUpdateAvailableState = state;
+      if (updateAvailable) injectUpdateAvailable(meta.currentVersion);
+      else window.__sqPendingUpdateLine = '';
+      return state;
+    }).catch(function(){
+      // A failed/offline version check must fail quietly, never invent an update.
+      return window.__sqUpdateAvailableState || null;
+    }).finally(function(){
+      updateCheckPromise = null;
+    });
+    return updateCheckPromise;
+  };
 
   window.__sqLoadReleaseMetadata = loadReleaseMetadata;
 
   window.__sqApplyReleaseVersionLabel = function(button){
     if (!button) return;
-    button.textContent = 'VERSION';
-    button.setAttribute('aria-label', 'Open release notes');
+    button.textContent = 'v' + RUNNING_VERSION;
+    button.setAttribute('aria-label', 'Open release notes for Shateki Quest running version ' + RUNNING_VERSION);
+    button.title = 'Release Notes';
     loadReleaseMetadata(false).then(function(meta){
-      button.textContent = 'v' + meta.currentVersion;
-      button.setAttribute('aria-label', 'Open release notes for Shateki Quest version ' + meta.currentVersion);
-      button.title = 'Release Notes';
+      const updateAvailable = compareVersions(meta.currentVersion, RUNNING_VERSION) > 0;
+      if (updateAvailable){
+        button.title = 'Update available: v' + meta.currentVersion;
+        button.setAttribute('aria-label', 'Open release notes. Running version ' + RUNNING_VERSION + '; update available ' + meta.currentVersion);
+      }
     }).catch(function(){
-      button.textContent = 'VERSION';
       button.title = 'Release notes unavailable';
     });
   };
@@ -153,9 +233,12 @@ window.closeModal = window.closeModal || function(id){
       return;
     }
 
+    const latestIsNewer = compareVersions(meta.currentVersion, RUNNING_VERSION) > 0;
     const modal = window.sqModal({
       title: 'RELEASE NOTES',
-      sub: 'CURRENT v' + meta.currentVersion,
+      sub: latestIsNewer
+        ? ('RUNNING v' + RUNNING_VERSION + ' · LATEST v' + meta.currentVersion)
+        : ('CURRENT v' + RUNNING_VERSION),
       onBack: function(){},
       closeButton: 'CLOSE',
       modalClass: 'menu-modal sq-release-notes-modal',
@@ -163,9 +246,9 @@ window.closeModal = window.closeModal || function(id){
     });
     modal.body.classList.add('sq-release-notes-body');
 
-    meta.releases.forEach(function(item, index){
+    meta.releases.forEach(function(item){
       const card = document.createElement('article');
-      card.className = 'sq-release-entry' + (index === 0 ? ' is-current' : '');
+      card.className = 'sq-release-entry' + (String(item.version || '') === RUNNING_VERSION ? ' is-current' : '');
 
       const head = document.createElement('div');
       head.className = 'sq-release-entry-head';
@@ -214,6 +297,22 @@ window.closeModal = window.closeModal || function(id){
       modal.body.appendChild(note);
     }
   };
+
+  if (!window.__sqUpdateHeartbeatInterval){
+    window.__sqUpdateHeartbeatInterval = setInterval(function(){
+      try{ window.__sqCheckForAppUpdate(true); }catch(_){}
+    }, UPDATE_CHECK_MS);
+  }
+  setTimeout(function(){
+    try{ window.__sqCheckForAppUpdate(true); }catch(_){}
+  }, 0);
+  try{
+    document.addEventListener('visibilitychange', function(){
+      if (!document.hidden){
+        try{ window.__sqCheckForAppUpdate(false); }catch(_){}
+      }
+    });
+  }catch(_){}
 })();
 // <<< PATCH:SC050_RELEASE_NOTES END
 
@@ -598,6 +697,9 @@ function arrangeStartActions(){
     frag.appendChild(releaseVersionBtn);
     if (typeof window.__sqApplyReleaseVersionLabel === 'function'){
       window.__sqApplyReleaseVersionLabel(releaseVersionBtn);
+    }
+    if (typeof window.__sqCheckForAppUpdate === 'function'){
+      window.__sqCheckForAppUpdate(false);
     }
 
     // (removed) NEW PLAYERS ticker in VIDE
@@ -2046,6 +2148,9 @@ if(hsBody){
           window.__homeLivePrinterInjectLine(line);
           return ev;
         };
+      }catch(_e){}
+      try{
+        if (typeof window.__sqFlushPendingUpdateAlert === 'function') window.__sqFlushPendingUpdateAlert();
       }catch(_e){}
 
       const lpPrimeLocalPresentation = () => {
