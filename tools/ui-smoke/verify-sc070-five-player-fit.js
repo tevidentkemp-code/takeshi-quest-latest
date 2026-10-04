@@ -30,6 +30,7 @@ async function seed(page,count=5,mode='match'){
     startNewGame(count>1?false:true);
   },{count,mode});
   if(count>1)await page.click('.to-start');
+  if(count>1)await page.waitForFunction(()=>window.__sqThrowOrderRevealPending!==true);
   try{await page.waitForFunction(()=>document.body.dataset.page==='game'&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');}
   catch(error){console.error('SC070 fixture deadline '+JSON.stringify(await page.evaluate(()=>({page:document.body.dataset.page,round:state.currentRound,history:state.history.length,overlay:document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden'),visible:document.visibilityState,tableRows:document.querySelectorAll('#tbody tr').length}))));throw error;}
   if(mode==='turbo'){

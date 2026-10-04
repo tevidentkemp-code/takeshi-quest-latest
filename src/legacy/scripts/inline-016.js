@@ -24,7 +24,7 @@
   }
   function gameActive(){
     try{
-      return document.body?.dataset?.page === 'game' && typeof state !== 'undefined' && state && !state.finished && !state?.suddenDeath?.active && Array.isArray(state.players) && state.players.length >= 2 && isTurboGame() && !turboGatePending();
+      return !window.__sqThrowOrderRevealPending && document.body?.dataset?.page === 'game' && typeof state !== 'undefined' && state && !state.finished && !state?.suddenDeath?.active && Array.isArray(state.players) && state.players.length >= 2 && isTurboGame() && !turboGatePending();
     }catch(_){ return false; }
   }
   function turnKey(){
@@ -44,6 +44,7 @@
   }
   function renderTimer(){
     try{
+      if (window.__sqThrowOrderRevealPending) { clearBoxes(); return; }
       if (turboGatePending()) {
         try{ if (document.body?.dataset?.page === 'game' && typeof window.__sqShowTurboReadyGate === 'function') window.__sqShowTurboReadyGate(); }catch(_){}
       }

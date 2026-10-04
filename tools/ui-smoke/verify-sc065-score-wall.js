@@ -149,6 +149,7 @@ async function seed(page, count, round = 10, mode = 'match') {
     startNewGame(n>1?false:true);
   }, {n:count,mode});
   if(count>1)await page.click('.to-start');
+  if(count>1)await page.waitForFunction(()=>window.__sqThrowOrderRevealPending!==true);
   if(mode==='turbo'){
     // The real Ready button is available while chunked preparation is still
     // painting. Follow that user flow before waiting for the loader to settle.
