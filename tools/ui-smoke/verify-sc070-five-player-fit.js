@@ -20,17 +20,19 @@ async function settled(page,round){
   await frames(page);
 }
 async function seed(page,count=5,mode='match'){
-  await page.evaluate(({count,mode})=>{
+  const expectedToken=await page.evaluate(({count,mode})=>{
     const token=Number(state.__gameToken||0);state=JSON.parse(JSON.stringify(baseState));state.__gameToken=token;
+    const expectedToken=Number(state.__gameToken||0)+1;
     state.players=Array.from({length:count},(_,i)=>({id:'sc070-'+i,name:'PLAYER '+String.fromCharCode(65+i),initials:'P'+(i+1),avatar_id:i+1}));assignUniqueColors(state.players);
     state.match={id:'sc070-offline',gameNumber:1,targetWins:3,autoRotateOrder:true,wins:Array(count).fill(0),history:[],mode:'match',gameFormat:'match_play',gameVariant:'classic'};
     if(mode==='practice')Object.assign(state.match,{mode:'practice',forcePractice:true,isPractice:true});
     if(mode==='tournament')Object.assign(state.match,{tournament:true,tournamentType:'classic',tournamentRules:{startRoundIndex:0,strictTimer:false}});
     if(mode==='turbo')Object.assign(state.match,{mode:'turbo',gameVariant:'turbo',startTarget:'17',strictTimer:true,throwLimitSeconds:20});
     startNewGame(count>1?false:true);
+    return expectedToken;
   },{count,mode});
   if(count>1)await page.click('.to-start');
-  try{await page.waitForFunction(()=>document.body.dataset.page==='game'&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');}
+  try{await page.waitForFunction(expectedToken=>!window.__sqThrowOrderRevealPending&&!document.querySelector('.sq-throw-order-reveal')&&Number(state.__gameToken||0)===expectedToken&&document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&state.__sqGameControl&&window.SQ_GAMEPLAY.hasCachedController(state)&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',expectedToken);}
   catch(error){console.error('SC070 fixture deadline '+JSON.stringify(await page.evaluate(()=>({page:document.body.dataset.page,round:state.currentRound,history:state.history.length,overlay:document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden'),visible:document.visibilityState,tableRows:document.querySelectorAll('#tbody tr').length}))));throw error;}
   if(mode==='turbo'){
     await page.waitForFunction(()=>document.body.dataset.page==='game');assert.equal(await page.evaluate(()=>state.currentRound),7);

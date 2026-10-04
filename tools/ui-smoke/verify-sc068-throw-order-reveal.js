@@ -296,7 +296,11 @@ async function shot(page,name){if(process.env.SQ_SCREENSHOTS){fs.mkdirSync(proce
     const amended=(await read(page)).players;
     const accepted=await canonicalAcceptedCompletion(page,amended[0].name);
     await page.click('#nextGameBtn');await playable(page);assert.equal(await page.locator('.sq-throw-order-reveal').count(),0);assert.deepEqual((await read(page)).players,amended.slice(1).concat(amended[0]));
-    await page.evaluate(()=>{recordThrow({kind:'S'});save();});const saved=await read(page);await boot();await page.click('#resumeBtn');await playable(page);assert.equal(await page.locator('.sq-throw-order-reveal').count(),0);assert.deepEqual((await read(page)).players,saved.players);assert.equal((await read(page)).history,saved.history);
+    await page.evaluate(()=>{recordThrow({kind:'S'});save();});const saved=await read(page);await boot();
+    // A real document reload removes the prior native start observer. Restore
+    // the same observer before resume and the later preparation-count proofs.
+    await page.evaluate(()=>{window.__sqSc068Starts=0;const start=startNewGame;startNewGame=function(setOrder){if(setOrder)window.__sqSc068Starts++;return start.apply(this,arguments);};});
+    await page.click('#resumeBtn');await playable(page);assert.equal(await page.locator('.sq-throw-order-reveal').count(),0);assert.deepEqual((await read(page)).players,saved.players);assert.equal((await read(page)).history,saved.history);
     const resumed=await read(page);
     assert.deepEqual(resumed.control,saved.control,'Resume replaced the issued current-game control');
     assert(resumed.cachedController&&resumed.canThrow&&!resumed.preparing&&!resumed.inputBlocked,'Resume lost canonical controller continuity');
