@@ -22,11 +22,13 @@ export function createMotionSafeBackend(base, host = globalThis) {
     ...base,
     render(zones, opts = {}) {
       if (!prefersReducedMotion(host)) return base.render(zones, opts);
-      return base.render(zones, {
+      const safe = {
         ...opts,
         type: 'hold',
         amp: 0,
-      });
+      };
+      if (opts.bounceOut) delete safe.fx;
+      return base.render(zones, safe);
     },
   };
 }

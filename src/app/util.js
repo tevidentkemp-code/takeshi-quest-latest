@@ -2532,6 +2532,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // --- Top row buttons: compatibility wiring for new + legacy IDs ---
 function _showPageSafe(id){
+  if (id !== 'game') { try{ __sqCancelMissBounceFeedback(); }catch(_){} }
   try { if (window.SQ_DIAG && typeof window.SQ_DIAG.mark === 'function') window.SQ_DIAG.mark('showPage', { id }); } catch(_){ }
   // Prefer existing app router, else do a minimal local switch
   if (typeof window.showPage === 'function') { try { window.showPage(id); return; } catch(_){ } }
