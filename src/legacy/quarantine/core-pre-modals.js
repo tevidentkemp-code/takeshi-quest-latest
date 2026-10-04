@@ -96,7 +96,7 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
-  const RUNNING_VERSION = '0.14.0';
+  const RUNNING_VERSION = '0.14.1';
   const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
   let updateCheckPromise = null;
@@ -1924,6 +1924,11 @@ if(hsBody){
         const derivedTtlMs = Math.max(5 * 60 * 1000, Number(window.__sqAllGamesFetchTtlMs) || 0);
         if (Array.isArray(st.derivedItems) && st.derivedItems.length && st.derivedFetchedAt && (now - st.derivedFetchedAt) < derivedTtlMs) {
           return st.derivedItems;
+        }
+        // Stats covers Home; keep prior derived records until its normal poll
+        // can rebuild them without starting full history behind the modal.
+        if (document.querySelector('.sq-player-stats-directory, .sq-player-stats-hub, .sq-player-stats-content')) {
+          return Array.isArray(st.derivedItems) ? st.derivedItems : [];
         }
         let events = [];
         try{
