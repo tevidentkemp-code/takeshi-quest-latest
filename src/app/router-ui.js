@@ -22,7 +22,9 @@ function __sqSyncTurboVisualState(page){
   }catch(_){ }
 }
 function show(id){
+  if (id !== 'game') { try{ __sqCancelMissBounceFeedback(); }catch(_){} }
   try{
+    if (id !== 'game' && typeof __sqCancelV2WallMotion === 'function') __sqCancelV2WallMotion();
     if (id !== 'game' && typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('show:' + id);
     if (id === 'game' && typeof __sqNormalizeVsShadowRuntimeState === 'function') __sqNormalizeVsShadowRuntimeState('show:game');
   }catch(_){ }
@@ -350,149 +352,30 @@ async function cloudListPlayers(force=false){
 
 // Create / update a player by name only (no password)
 async function cloudCreatePlayer(name, profile){
-  const nm = String(name||'').trim();
-  const p = (profile && typeof profile === 'object') ? profile : {};
-  const initials = __sqNormalizeInitials(String(p.initials||''), nm);
-  const row = {
-    name: nm,
-    initials,
-    first_name: (p.first_name != null) ? String(p.first_name||'').trim() : undefined,
-    last_name:  (p.last_name  != null) ? String(p.last_name ||'').trim() : undefined,
-    nickname:   (p.nickname   != null) ? String(p.nickname  ||'').trim() : undefined,
-    avatar_id:  (p.avatar_id  != null) ? __sqNormalizeAvatarId(p.avatar_id, nm) : undefined,
-  };
-
-  // Try full schema; fall back if columns missing.
+  const nm=String(name||'').trim();const p=profile&&typeof profile==='object'?profile:{};
+  const row={name:nm,initials:__sqNormalizeInitials(String(p.initials||''),nm)};
+  for(const key of ['first_name','last_name','nickname'])if(p[key]!=null)row[key]=String(p[key]||'').trim();
+  if(p.avatar_id!=null)row.avatar_id=__sqNormalizeAvatarId(p.avatar_id,nm);
   try{
-    const { error } = await sb
-      .from(TABLE_PLAYERS)
-      .upsert(row, { onConflict: 'name' });
-    if (error) throw error;
-    markCloudOk();
-    try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_upsert'); }catch(_){}
-    return;
-  }catch(e1){
-    if (row.avatar_id != null) { markCloudError(e1); throw __sqAvatarSaveError(e1); }
-    const msg = String(e1?.message || e1 || '');
-    const code = String(e1?.code || '');
-    const isMissingCols = (code === '42703') || /(initials|first_name|last_name|nickname|avatar_id)/i.test(msg);
-    if (!isMissingCols){
-      markCloudError(e1);
-      throw e1;
-    }
-    // Minimal schema fallback
-    try{
-      const { error } = await sb
-        .from(TABLE_PLAYERS)
-        .upsert({ name: nm, initials }, { onConflict: 'name' });
-      if (error) throw error;
-      markCloudOk();
-      try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_upsert_fallback'); }catch(_){}
-      return;
-    }catch(e2){
-      const msg2 = String(e2?.message || e2 || '');
-      const code2 = String(e2?.code || '');
-      const isMissingInitials = (code2 === '42703') || /initials/i.test(msg2);
-      if (!isMissingInitials){ markCloudError(e2); throw e2; }
-      const { error } = await sb
-        .from(TABLE_PLAYERS)
-        .upsert({ name: nm }, { onConflict: 'name' });
-      if (error){ markCloudError(error); throw error; }
-      markCloudOk();
-      try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_upsert_name_only'); }catch(_){}
-    }
-  }
+    const receipt=await window.SQ_SECURITY.createPlayer(row);
+    markCloudOk();try{window.__sqInvalidatePlayersFetchCache?.('player_create');}catch(_){}
+    return receipt;
+  }catch(error){markCloudError(error);if(/conflict|exists/.test(error.code||''))error.message='Player name already exists. Select the saved player instead.';throw error;}
 }
 
 // Update initials for a player (by id when available; by resolved name otherwise)
 async function cloudUpdatePlayerInitials(playerOrName, initials){
-  const obj = (playerOrName && typeof playerOrName === 'object') ? playerOrName : null;
-  const nmIn = obj ? String(obj.name||'').trim() : String(playerOrName||'').trim();
-  const id = obj && obj.id ? obj.id : null;
-  if (!nmIn && !id) throw new Error('Update initials failed: missing player key');
-
-  const init = __sqNormalizeInitials(initials, nmIn);
-  try{
-    let q = sb.from(TABLE_PLAYERS).update({ initials: init });
-    if (id) {
-      q = q.eq('id', id);
-    } else {
-      const resolved = await cloudResolvePlayerKeyByName(nmIn);
-      const targetName = (resolved && resolved.name) ? resolved.name : nmIn;
-      q = q.eq('name', targetName);
-    }
-    const { data, error } = await q.select('id, name, initials').maybeSingle();
-    if (error) throw error;
-    markCloudOk();
-    try{ window.__sqInvalidatePlayersFetchCache && window.__sqInvalidatePlayersFetchCache('player_initials_update'); }catch(_){}
-    return data || null;
-  }catch(e1){
-    const msg = String(e1?.message || e1 || '');
-    const code = String(e1?.code || '');
-    const isMissingInitials = (code === '42703') || /initials/i.test(msg);
-    if (!isMissingInitials){
-      markCloudError(e1);
-      throw e1;
-    }
-    // Column doesn't exist yet: treat as no-op so UI doesn't break.
-    markCloudOk();
-    return null;
-  }
+  return cloudUpdatePlayerProfile(playerOrName,{initials:__sqNormalizeInitials(initials,typeof playerOrName==='object'?playerOrName?.name:playerOrName)});
 }
 
 async function cloudDeletePlayer(playerOrName){
-  // "Delete" is now SAFE: archive snapshot (best effort) then soft-delete (preferred) with hard-delete fallback.
-  const obj = (playerOrName && typeof playerOrName === 'object') ? playerOrName : null;
-  const raw = obj ? (obj.id || obj.name || '') : String(playerOrName || '');
-  const t = String(raw).trim();
-  if (!t) return;
-
-  if (!ensureCloudInit()) throw new Error('Cloud not ready');
-  const sb = window.sb;
-
-  const name = obj ? String(obj.name || '').trim() : (sqIsUuidLike(t) ? '' : t);
-  let playerId = obj?.id ? String(obj.id).trim() : (sqIsUuidLike(t) ? t : null);
-
-  if (!playerId && name){
-    try{ playerId = await cloudResolvePlayerId(name); }catch(e){}
-  }
-
-  // Fetch player row for archive (best effort)
-  let row = null;
-  if (playerId){
-    const r = await sb.from(TABLE_PLAYERS).select('*').eq('id', playerId).maybeSingle();
-    if (!r.error) row = r.data || null;
-  } else if (name){
-    const r = await sb.from(TABLE_PLAYERS).select('*').ilike('name', name).limit(1).maybeSingle();
-    if (!r.error) row = r.data || null;
-    if (row?.id) playerId = row.id;
-  }
-
-  if (row) await cloudArchivePlayerSnapshot(row, 'admin_delete');
-
-  // Prefer soft-delete (keeps history + allows restore)
-  const deletedAt = new Date().toISOString();
-  let softOk = false;
-
-  if (playerId){
-    const u = await sb.from(TABLE_PLAYERS).update({ deleted_at: deletedAt }).eq('id', playerId);
-    softOk = !u.error;
-  } else if (name){
-    const u = await sb.from(TABLE_PLAYERS).update({ deleted_at: deletedAt }).ilike('name', name);
-    softOk = !u.error;
-  }
-
-  // Fallback hard-delete only if soft-delete isn't available
-  if (!softOk){
-    if (playerId){
-      const d = await sb.from(TABLE_PLAYERS).delete().eq('id', playerId);
-      if (d.error) throw d.error;
-    } else if (name){
-      const d = await sb.from(TABLE_PLAYERS).delete().ilike('name', name);
-      if (d.error) throw d.error;
-    }
-  }
-
+  const obj=playerOrName&&typeof playerOrName==='object'?playerOrName:null;
+  const raw=String(obj?.id||obj?.name||playerOrName||'').trim();
+  if(!raw)throw new Error('Delete player failed: missing player key');
+  const body={operation:'delete_player',reason:'admin_delete'};
+  if(sqIsUuidLike(raw))body.player_id=raw;else body.player_name=raw;
+  await window.sqAdminAction(body);
+  try{window.__sqInvalidatePlayersFetchCache?.('player_delete');}catch(_){}
   await cloudRefreshPlayerDirectory(true);
   window.dispatchEvent(new CustomEvent('sq:players-changed'));
 }
@@ -800,146 +683,32 @@ if(!isPractice){
  * One-time backfill: rebuild high-score rows from TABLE_GAMES.
  * Requires `game_id` column on the target HS table (recommended).
  */
-async function cloudRebuildHighScoresFromGames(isPractice = false, maxPages = 200){
-  if (!ensureCloudInit()) throw new Error('Cloud not initialised');
-  const table = isPractice ? TABLE_HS_PRACTICE : TABLE_HS_LEAGUE;
-
-  // Probe for game_id column support
-  try{
-    const probe = await sb.from(table).select('game_id', { head:true, count:'exact' }).limit(1);
-    if (probe.error) throw probe.error;
-  }catch(e){
-    const msg  = String(e?.message || '');
-    const code = String(e?.code || '');
-    const missingCol = (code === '42703') || /game_id/i.test(msg);
-    if (missingCol) throw new Error('Missing game_id column on high score table');
-    throw e;
-  }
-
-  const pageSize = 250;
-  let from = 0;
-
-  for (let page = 0; page < maxPages; page++){
-    const to = from + pageSize - 1;
-
-    const { data, error } = await sb
-      .from(TABLE_GAMES)
-      .select('id, created_at, totals, match_id, state')
-      .order('created_at', { ascending:false })
-      .range(from, to);
-
-    if (error) throw error;
-    const rows = data || [];
-    if (!rows.length) break;
-
-    const inserts = [];
-
-    for (const g of rows){
-      const players = (g?.state?.players || []).map(p => (typeof p === 'string' ? { name:p } : p)).filter(Boolean);
-      const totals  = Array.isArray(g?.totals) ? g.totals : [];
-
-      const isSingle = players.length <= 1 || !g.match_id;
-      if (isPractice && !isSingle) continue;
-      if (!isPractice && isSingle) continue;
-
-      for (let i=0;i<players.length;i++){
-        const name = players[i]?.name || '';
-        const score = Number(totals[i] || 0);
-        if (!g.id || !name || score <= 0) continue;
-                const playerId = players[i]?.id || players[i]?.player_id || null;
-        if (!playerId) continue; // saved players only
-        inserts.push({ game_id: g.id, player_id: playerId, name, score, ts: g.created_at });
-      }
-    }
-
-    if (inserts.length){
-      // Prefer upsert to avoid duplicates on reruns (requires unique constraint on (game_id,name))
-      const { error: upErr } = await sb
-        .from(table)
-        .upsert(inserts, { onConflict: 'game_id,player_id', ignoreDuplicates: true });
-      if (upErr) throw upErr;
-    }
-
-    from += pageSize;
-  }
+async function cloudRebuildHighScoresFromGames(isPractice=false,maxPages=200){
+  return window.sqAdminAction({operation:'rebuild_scores',scope:isPractice?'practice':'league',max_games:Math.min(50000,Math.max(250,Number(maxPages||200)*250))});
 }
 
-// If HS table is empty, attempt a one-time rebuild from games (best effort).
-async function cloudListHighScoresWithBackfill(isPractice=false, limit=500){
-  let rows = await cloudListHighScores(isPractice, limit);
-  if (rows.length) return rows;
-
-  try{
-    await cloudRebuildHighScoresFromGames(isPractice);
-    rows = await cloudListHighScores(isPractice, limit);
-  }catch(e){
-    console.warn('HS backfill skipped/failed', e);
-  }
-  return rows;
+// Leaderboard reads do not perform persistent maintenance.
+async function cloudListHighScoresWithBackfill(isPractice=false,limit=500){
+  return cloudListHighScores(isPractice,limit);
 }
 
-// Insert (name, score, ts) if not already present in the table
-async function cloudInsertHighScoreIfMissing(table, playerId, name, score, ts, gameId){
-  // v27: High scores are ONLY for saved players. Require player_id + game_id.
-  try {
-    if (!playerId || !gameId) return false;
-
-    const payload = { player_id: playerId, name, score, ts, game_id: gameId };
-    if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime() &&
-        typeof __sqAssertNoShadowPersistPayload === 'function' &&
-        !__sqAssertNoShadowPersistPayload(payload, 'cloudInsertHighScoreIfMissing')) {
-      return false;
-    }
-
-    // One HS row per (game_id, player_id). Ignore duplicates.
-    const { error } = await sb
-      .from(table)
-      .upsert([payload], { onConflict: 'game_id,player_id', ignoreDuplicates: true });
-
-    if (error) { markCloudError(error); return false; }
-    markCloudOk();
-    return true;
-  } catch (e){
-    console.error('cloudInsertHighScoreIfMissing failed', e);
-    return false;
-  }
+async function cloudInsertHighScoreIfMissing(table,playerId,name,score,ts,gameId){
+  if(!playerId||!gameId||Number(score)<=0)return false;
+  const accepted=typeof state!=='undefined'&&state?.__sqAcceptedGameReceipt;
+  if(accepted&&accepted.game_id===gameId&&accepted.id===gameId)return false;
+  const scope=table===TABLE_HS_PRACTICE?'practice':table===TABLE_HS_LEAGUE?'league':null;
+  if(!scope)throw new Error('Unknown high-score table');
+  const result=await window.sqAdminAction({operation:'ensure_score',scope,game_id:gameId,player_id:playerId});
+  return result.inserted>0;
 }
 
-// From a finished game, write one HS row per player to the correct table
-async function cloudSaveHighScoresForGame(totals, tsIso, gameId){
-  try {
-    const players = state.players || [];
-    const realPlayers = (typeof __sqRealPlayersOnly === 'function') ? __sqRealPlayersOnly(players) : players;
-    const realTotals = (typeof __sqRealOnlyTotals === 'function') ? __sqRealOnlyTotals(totals || [], players) : (totals || []);
-    const gameMode = (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime())
-      ? 'practice'
-      : ((typeof __sqComputeGameMode === 'function') ? __sqComputeGameMode() : ((realPlayers.length===1) ? 'practice' : 'official'));
-    if (gameMode === 'turbo') {
-      console.warn('[SQ] Turbo high-score write skipped: no dedicated Turbo high-score table is configured; Turbo rows must not enter official high_scores_sp.');
-      return;
-    }
-    const isPractice = (gameMode === 'practice');
-    const table = isPractice ? TABLE_HS_PRACTICE : TABLE_HS_LEAGUE;
-    const when = tsIso || (state && state.meta && state.meta.ts) || (state && state.ts) || new Date().toISOString();
-
-    // Require a concrete game id (UUID) for referential integrity.
-    if (!gameId) return;
-
-    for (let i = 0; i < realPlayers.length; i++){
-      const p = realPlayers[i] || {};
-      const playerId = p.id || p.player_id || null; // saved players only
-      const name  = p.name || '';
-      const score = Number(realTotals?.[i] || 0);
-
-      // High Score League is for saved players only.
-      if (!playerId) continue;
-      if (!name || score <= 0) continue;
-
-      await cloudInsertHighScoreIfMissing(table, playerId, name, score, when, gameId);
-    }
-  } catch (e) {
-    console.error('cloudSaveHighScoresForGame failed', e);
+// Completion saves the game and eligible high scores in one server transaction.
+async function cloudSaveHighScoresForGame(totals,tsIso,gameId){
+  const receipt=typeof state!=='undefined'&&state?.__sqAcceptedGameReceipt;
+  if(!gameId||!receipt||receipt.id!==gameId||receipt.game_id!==gameId||!receipt.match_id){
+    throw new Error('Game completion has not been accepted by the server.');
   }
+  return true;
 }
 
 // Simple initial Supabase connectivity check
@@ -1184,21 +953,9 @@ window.buildStartTicker = async function buildStartTicker(){
  * CLOUD MATCH HELPERS
  *****************/
 async function upsertMatchToSupabase(createdAtOverride) {
-  try {
-    if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime()) return;
-    const payload = {
-      id: state.match.id,                                                // uuid
-      created_at: state.match.createdAtIso || createdAtOverride || new Date().toISOString(),
-      total_games: state.match.history.length,
-      players: state.players.map(p => ({ name: p.name })),               // [{name}]
-      wins: (state.match.wins || []).slice(),
-      history: state.match.history.map(g => ({ totals: (g?.totals || []).slice() }))
-    };
-    const { error } = await sb.from(TABLE_MATCHES).upsert(payload);
-    if (error) throw error;
-  } catch (e) {
-    console.error('upsertMatchToSupabase failed', e);
-  }
+  // Completion owns wins/history atomically. This compatibility name only syncs
+  // the current controller's match-only roster; it never upserts history.
+  return window.SQ_GAMEPLAY.syncRoster();
 }
 
 // Map Supabase -> local shapes the stats code already understands
@@ -1810,16 +1567,16 @@ function setupStartMenuButtons(){
 if (hasSaved){ 
     resumeBtn.onclick = () => {
       try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('resume-before-load'); }catch(_){ }
-      if (typeof __sqSavedStateIsVsShadow === 'function' && __sqSavedStateIsVsShadow(saved)) {
-        try{ safeClear(STORAGE_KEY); }catch(_){ }
-        try{ setupStartMenuButtons(); }catch(_){ }
-        try{ toast('Vs Shadow recovery is not supported for this mode. Start a new Vs Shadow game instead.'); }catch(_){ }
+      if (typeof __sqSavedStateIsVsShadow === 'function' && __sqSavedStateIsVsShadow(saved) && !window.SQ_GAMEPLAY.hasCachedController(saved) && (saved.match?.history||[]).length) {
+        try{ toast('Vs Shadow recovery is not supported for this mode. Your cached state is preserved for owner review.'); }catch(_){ }
         return;
       }
       __sqShowGameLoadOverlay('Resuming Game');
       __sqAfterPaint(async ()=>{
         try{
           state = Object.assign(JSON.parse(JSON.stringify(baseState)), saved);
+          delete state.__sqAwardInFlight;delete state.__sqSecurityPreparing;
+          await window.SQ_GAMEPLAY.resume();
           try{ if (typeof __sqNormalizeVsShadowRuntimeState === 'function') __sqNormalizeVsShadowRuntimeState('resume-after-load'); }catch(_){ }
           // Older recovery caches can already be beyond Round 1 without the
           // SC-035 marker. Preserve that known completion across later Undo.
@@ -1833,8 +1590,10 @@ if (hasSaved){
           if(!amendedColors) assignUniqueColors(state.players);
           await buildEverythingChunked();
           updateUI();
+          if(typeof __sqResumeVsShadowAutoTurnIfNeeded==='function')__sqResumeVsShadowAutoTurnIfNeeded('secure-resume');
           toast('Resumed last match');
-        } finally {
+        } catch(error){window.SQ_GAMEPLAY.failure(error);show('details');window.SQ_GAMEPLAY.offerLegacyRecovery();}
+        finally {
           __sqHideGameLoadOverlay();
         }
       });
@@ -6735,26 +6494,28 @@ function __sqSetupLiveV2RowsWindow(panel){
     if(!wrap) return;
     const badges = wrap.querySelectorAll('.v2Badge');
     if(!badges || badges.length < 1) return;
-    const r0 = badges[0].getBoundingClientRect();
-    let wantH = 0;
-    // The smallest supported portrait layout deliberately shows two historic
-    // rows plus the live row. Larger layouts retain three historic rows.
-    const narrow = Number(window.innerWidth || document.documentElement.clientWidth || 0) <= 360;
-    const visibleRows = narrow ? 3 : 4;
-    const last = Math.min(badges.length - 1, visibleRows - 1);
-    if(last >= 0){
-      const target = badges[last].getBoundingClientRect();
-      wantH = Math.round(target.bottom - r0.top);
-    }else if(badges.length >= 3){
-      const r2 = badges[badges.length - 1].getBoundingClientRect();
-      wantH = Math.round(r2.bottom - r0.top);
-    }else{
-      const rl = badges[badges.length-1].getBoundingClientRect();
-      wantH = Math.round(rl.bottom - r0.top);
+    const count = getLiveV2PlayerCount();
+    if(count < 2 || count > 5){
+      // Solo and historical six-player views keep their existing window owner.
+      const narrow = Number(window.innerWidth || document.documentElement.clientWidth || 0) <= 360;
+      const last = Math.min(badges.length - 1, narrow ? 2 : 3);
+      const span = badges[last].getBoundingClientRect().bottom - badges[0].getBoundingClientRect().top;
+      wrap.style.setProperty('--sqV2RowsWinH', Math.max(120, Math.round(span) + 60) + 'px');
+      return;
     }
-    // Add a small safety buffer so the top/bottom row edges never clip
-    // (padding + border-radius + subpixel rounding on iOS).
-    wantH = Math.max(120, wantH + 60);
+    // Measure the actual live row and its three predecessors. The live row is
+    // taller than history; first-row estimates omit it and the divider.
+    const live = Array.from(badges).findIndex(b=>b.classList.contains('liveRow'));
+    const first = Math.max(0, live - 3);
+    const last = live >= 3 ? live : Math.min(badges.length - 1, 3);
+    const rows = panel.querySelector('#v2Rows');
+    const ws = getComputedStyle(wrap), rs = getComputedStyle(rows);
+    const px = value => parseFloat(value) || 0;
+    const inset = px(ws.paddingTop)+px(ws.paddingBottom)+px(ws.borderTopWidth)+px(ws.borderBottomWidth)+px(rs.paddingTop)+px(rs.paddingBottom);
+    const span = badges[last].getBoundingClientRect().bottom - badges[first].getBoundingClientRect().top;
+    // Common grid motion can add floating-point noise to viewport rectangles.
+    // Keep the measured CSS subpixel size stable before rounding the viewport up.
+    const wantH = Math.max(120, Math.ceil(Math.round((span + inset) * 64) / 64));
     wrap.style.setProperty('--sqV2RowsWinH', wantH + 'px');
   }catch(_){ }
 }

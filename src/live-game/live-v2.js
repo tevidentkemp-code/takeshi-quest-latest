@@ -81,6 +81,49 @@ function __sqBindLiveV2QuickRail(panel){
     }
   }catch(_){}
 }
+function __sqCancelV2WallMotion(panel){
+  const host = panel || document.getElementById('liveV2Panel');
+  const wall = host && host.__sqV2Wall;
+  try{ wall?.animation?.cancel(); }catch(_){}
+  if(host) delete host.__sqV2Wall;
+}
+function __sqSyncV2WallMotion(panel, tableRound){
+  const rows = panel.querySelector('#v2Rows'), wrap = panel.querySelector('.v2RowsWrap');
+  const count = getLiveV2PlayerCount();
+  if(!rows || !wrap || count < 2 || count > 5){__sqCancelV2WallMotion(panel);return;}
+  const previous = panel.__sqV2Wall;
+  const game = String(state.match?.id || '')+'|'+String(state.__gameToken || 0)+'|'+state.players.map(p=>p.id || p.name).join(',');
+  const history = state.history?.length || 0;
+  const sameGame = previous && previous.game === game;
+  const changedRound = sameGame && previous.round !== tableRound;
+  const moving = previous?.animation && ['running','paused'].includes(previous.animation.playState);
+  const rollback = sameGame && history < previous.history;
+  if(!sameGame || changedRound || rollback){
+    try{ previous?.animation?.cancel(); }catch(_){}
+  }
+  // A completed table round may start catch-up with an older scoring cursor.
+  // Its wall still moves forward to the scheduled table round, never backward.
+  const forward = sameGame && tableRound === previous.round + 1 && history > previous.history;
+  if(forward) wrap.scrollTop = wrap.scrollHeight;
+  const current = {game,round:tableRound,history,animation:(!changedRound && !rollback && sameGame) ? previous.animation : null};
+  panel.__sqV2Wall = current;
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if(reduced){try{ current.animation?.cancel(); }catch(_){}current.animation=null;return;}
+  // A new round while the previous motion is still active presents the newest
+  // truth immediately. Score entry never waits for a visual transition.
+  if(!forward || moving || typeof rows.animate !== 'function') return;
+  const badges = Array.from(rows.querySelectorAll('.v2Badge'));
+  const liveIndex = badges.findIndex(b=>b.classList.contains('liveRow'));
+  const last = badges[liveIndex-1], prior = badges[liveIndex-2];
+  if(!last || !prior) return;
+  const pitch = last.getBoundingClientRect().top - prior.getBoundingClientRect().top;
+  if(!(pitch > 0)) return;
+  // One persistent grid moves as a unit: no cloned/stale scores and no overlap
+  // between the completed row, divider and newly active row.
+  const animation = rows.animate([{transform:'translateY('+pitch+'px)'},{transform:'translateY(0)'}],{duration:300,easing:'cubic-bezier(.2,.65,.3,1)'});
+  current.animation = animation;
+  animation.onfinish = ()=>{if(panel.__sqV2Wall?.animation === animation) panel.__sqV2Wall.animation=null;};
+}
 function liveV2Render(){
   // Only runs on gameplay screen; prevents start/menu JS from crashing
   const page = document.body && (document.body.getAttribute('data-page') || document.body.dataset && document.body.dataset.page);
@@ -132,6 +175,7 @@ function liveV2Render(){
   try{ if (typeof __sqSyncTurboVisualState === 'function') __sqSyncTurboVisualState('game'); }catch(_){ }
 
   if(!eligible){
+    __sqCancelV2WallMotion(panel);
     panel.hidden = true;
     return;
   }
@@ -200,7 +244,12 @@ function liveV2Render(){
     const v2s = document.getElementById("v2Sub"+i);
     const v2w = document.getElementById("v2WinDots"+i);
     if(v2i) v2i.textContent = getPlayerInitial(i);
-    if(v2t) v2t.textContent = String(__v2Totals[i]);
+    if(v2t){
+      v2t.textContent = String(__v2Totals[i]);
+      // Fit the full canonical total in the five-player presentation only.
+      if(pCount === 5) v2t.dataset.totalDigits = String(v2t.textContent.length);
+      else delete v2t.dataset.totalDigits;
+    }
 
     const diff = (__v2Totals[i] - __v2LeaderTotal); // trailing = negative
     const isLeader = (__v2Totals[i] === __v2LeaderTotal);
@@ -307,7 +356,7 @@ function liveV2Render(){
     }
   });
 
-  // Rounds list: 3-row viewport. At game start show current + next 2; later show current + previous 2.
+  // Rounds list: three completed rows plus the live row; older rows remain scrollable.
   // >>> PATCH:LIVEV2_ROWS_GUARD START
   try {
   const rowsHost = document.getElementById("v2Rows");
@@ -332,6 +381,9 @@ function liveV2Render(){
     })());
     const __sqStandardMatchStartAnchor = (pCount > 1 && tableCr <= 2 && (function(){
       try{
+        // Supported multiplayer modes share the existing blank/trailing wall.
+        // Historical six-player views retain their established presentation.
+        if(pCount <= 5) return true;
         const m = state.match || {};
         const mode = String(state.mode || state.gameMode || m.mode || m.gameMode || '').toLowerCase();
         const tType = String(m.tournamentType || m.tournament_type || state.tournamentType || state.tournament_type || '').toLowerCase();
@@ -496,6 +548,7 @@ out.push(`<div class="v2Cell${rowClass} ${(isActiveCell ? "active":"")} ${(isHi 
       }
     }
     rowsHost.innerHTML = out.join("");
+    if(pCount > 1) __sqSetupLiveV2RowsWindow(panel);
 
     // Current-round target cells live inside the live score cells only. They
     // derive from the authoritative per-player round darts and reset in place
@@ -681,6 +734,8 @@ const out2 = [];
       window.__liveV2UserScrolled = false;
     }
   }
+
+  try{ __sqSyncV2WallMotion(panel, tableCr); }catch(_){}
 
   // Averages box (under 3-round viewport)
   const avgHost = document.getElementById("v2Avg");
@@ -1332,6 +1387,14 @@ function __sqBindQuickEntryHold(btn, specFactory){
   btn.addEventListener('contextmenu',(e)=>{ try{ e.preventDefault(); }catch(_){ } });
 }
 
+let __sqMissBouncePendingCancel = null;
+function __sqCancelMissBounceFeedback(){
+  const cancel = __sqMissBouncePendingCancel;
+  __sqMissBouncePendingCancel = null;
+  try{ cancel?.(); }catch(_){}
+  try{ window.__sqDmdV2?.cancelBounceOut?.(); }catch(_){}
+}
+
 function __sqBindMissBounceHold(btn){
   if (!btn || btn.__sqMissBounceHoldBound) return;
   btn.__sqMissBounceHoldBound = true;
@@ -1341,26 +1404,62 @@ function __sqBindMissBounceHold(btn){
   btn.style.userSelect = 'none';
 
   let holdTimer = null;
+  let holdStartedAt = null, commitPendingHold = null;
   let held = false;
+  let cancelled = false;
   let pointerId = null;
-  const clearHold = ()=>{ if (holdTimer) clearTimeout(holdTimer); holdTimer = null; };
+  const clearHold = ()=>{
+    if (holdTimer !== null) clearTimeout(holdTimer);
+    holdTimer = null; holdStartedAt = null; commitPendingHold = null;
+  };
+  const cancelGesture = ()=>{
+    clearHold();
+    cancelled = true;
+    held = false;
+    pointerId = null;
+    delete btn.__sqMissBounceStart;
+    btn.classList.remove('sq-miss-bounce-held');
+    if (__sqMissBouncePendingCancel === cancelGesture) __sqMissBouncePendingCancel = null;
+  };
 
   btn.addEventListener('pointerdown',(e)=>{
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    try{ __sqMissBouncePendingCancel?.(); }catch(_){}
     clearHold();
     held = false;
+    cancelled = false;
     pointerId = e.pointerId;
+    const game = state;
+    const history = game.history;
+    const token = game.__gameToken;
+    const player = game.currentPlayer, round = game.currentRound, dart = game.currentDart;
+    const actor = game.players?.[player];
+    const historyLength = Array.isArray(history) ? history.length : 0;
+    __sqMissBouncePendingCancel = cancelGesture;
     const startX = e.clientX, startY = e.clientY;
     btn.__sqMissBounceStart = { x:startX, y:startY };
     try{ btn.setPointerCapture?.(e.pointerId); }catch(_){}
-    holdTimer = setTimeout(()=>{
+    const commitHold = ()=>{
+      if (commitPendingHold !== commitHold) return;
+      clearHold();
+      if (cancelled || document.body?.dataset?.page !== 'game' || state !== game ||
+          state.__gameToken !== token || state.history !== history || history?.length !== historyLength ||
+          state.currentPlayer !== player || state.currentRound !== round || state.currentDart !== dart ||
+          state.players?.[player] !== actor){
+        cancelGesture();
+        return;
+      }
       held = true;
       btn.classList.add('sq-miss-bounce-held');
-      try{ window.__sqDmdHardClearQueue?.(); }catch(_){}
-      try{ window.sqDmdShowZones?.({ z2:'BOUNCE OUT', z3:'' }, { type:'flash', ms:420, fx:'impact' }); }catch(_){}
       try{ recordThrow({ kind:'BounceOut' }); }catch(_){}
+      const receipt = history[historyLength];
+      if (state !== game || state.history !== history || history.length !== historyLength + 1 || receipt?.throw?.bounceOut !== true) return;
+      try{ window.__sqDmdV2?.emit?.({ kind:'BOUNCE_OUT' }); }catch(_){}
       try{ navigator.vibrate?.(35); }catch(_){}
-    }, __SQ_QUICK_ENTRY_HOLD_MS);
+    };
+    holdStartedAt = performance.now();
+    commitPendingHold = commitHold;
+    holdTimer = setTimeout(commitHold, __SQ_QUICK_ENTRY_HOLD_MS);
   });
 
   btn.addEventListener('pointermove',(e)=>{
@@ -1374,8 +1473,13 @@ function __sqBindMissBounceHold(btn){
   });
   const finish=(e)=>{
     if (pointerId != null && e.pointerId !== pointerId) return;
+    const commit = e.type === 'pointerup' && pointerId !== null && holdTimer !== null &&
+      holdStartedAt !== null && performance.now() - holdStartedAt >= __SQ_QUICK_ENTRY_HOLD_MS
+      ? commitPendingHold : null;
+    if (commit) commit();
     clearHold();
     pointerId = null;
+    if (__sqMissBouncePendingCancel === cancelGesture) __sqMissBouncePendingCancel = null;
     delete btn.__sqMissBounceStart;
     if (held){
       e.preventDefault();
@@ -1388,8 +1492,9 @@ function __sqBindMissBounceHold(btn){
   btn.addEventListener('pointercancel',finish);
   btn.addEventListener('contextmenu',(e)=>e.preventDefault());
   btn.addEventListener('click',(e)=>{
-    if (held || performance.now() < Number(window.__sqMissBounceSuppressClick||0)){
+    if (held || cancelled || performance.now() < Number(window.__sqMissBounceSuppressClick||0)){
       held = false;
+      cancelled = false;
       window.__sqMissBounceSuppressClick = 0;
       e.preventDefault();
       e.stopPropagation();
@@ -1463,9 +1568,11 @@ function buildPad(){
     // helper has mode-specific block/restore messages which must not be
     // overwritten by the generic DMD V2 event.
     if (isVsShadow){
+      const before = Array.isArray(state?.history) ? state.history.length : 0;
       try{ window.__sqDmdHardClearQueue?.(); }catch(_){ }
       try{ window.sqDmdShowZones?.({ z2:'<<<<' },{type:'wipe',dir:'rev',ms:400,revealMs:120}); }catch(_){ }
       undo();
+      if (Array.isArray(state?.history) && state.history.length < before) __sqCancelMissBounceFeedback();
       return;
     }
 
@@ -1479,6 +1586,7 @@ function buildPad(){
 
     const after = Array.isArray(state?.history) ? state.history.length : before;
     if (after >= before) return;
+    __sqCancelMissBounceFeedback();
 
     // Re-establish the truthful persistent DMD baseline from restored game state
     // before the transient Undo message takes ownership of presentation.
@@ -3683,6 +3791,34 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
     // Smoothly ease the vertical scale so the whole graph grows fluidly.
     st.maxV = st.maxV ? st.maxV + (targetMax - st.maxV) * 0.14 : targetMax;
     const maxV = st.maxV;
+    // Five player keys keep their natural font width and wrap as whole labels.
+    let legendRows = 1;
+    if (packet && NP === 5) {
+      ctx.font = '800 9px system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      let keyX = 26, keyY = 3;
+      const keyRight = cssW - 12;
+      const singleRowHs = perThrowRace && records.length;
+      const keyWidths = packet.series.map(s => ctx.measureText(String(s.name || '').replace(/^Record:/i,'HS').slice(0,12)).width);
+      const widestPair = Math.max(0, ...keyWidths.slice(1).map((width, i) => width + keyWidths[i]));
+      const keyGap = singleRowHs ? 6 : Math.max(0, Math.min(12, keyRight - 26 - widestPair - 0.5));
+      const place = width => {
+        if (keyX > 26 && keyX + width > keyRight) { keyX = 26; keyY += 12; legendRows++; }
+      };
+      packet.series.forEach((s, i) => {
+        const label = String(s.name || '').replace(/^Record:/i,'HS').slice(0,12);
+        const width = keyWidths[i];
+        place(width); ctx.fillStyle = s.color || '#7bdcff'; ctx.fillText(label, keyX, keyY);
+        keyX += width + keyGap;
+      });
+      if (singleRowHs) {
+        const label = 'High Score', width = ctx.measureText(label).width;
+        place(width + 5 + 18);
+        ctx.save(); ctx.setLineDash([]); ctx.fillStyle = 'rgba(255,224,150,.88)'; ctx.fillText(label, keyX, keyY);
+        const dashX = keyX + width + 5;
+        ctx.setLineDash([5,4]); ctx.strokeStyle = records[0].color || 'rgba(255,214,110,.9)'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(dashX, keyY + 5); ctx.lineTo(dashX + 18, keyY + 5); ctx.stroke(); ctx.restore();
+      }
+    } else {
     // Classic keeps the High Score key on the same compact row as player keys.
     // Player labels are proportionally constrained only when the available
     // canvas width would otherwise push the gold dash beyond the right edge.
@@ -3719,7 +3855,8 @@ function __sqDrawArcadeRace(canvas, packet, st, now){
         ctx.restore();
       }
     }
-    const padL = 26, padR = 12, padT = perThrowRace ? 29 : (packet ? 19 : 8), padB = 18, W = cssW - padL - padR, H = cssH - padT - padB;
+    }
+    const padL = 26, padR = 12, padT = (perThrowRace ? 29 : (packet ? 19 : 8)) + (NP === 5 ? (legendRows - 1) * 12 : 0), padB = 18, W = cssW - padL - padR, H = cssH - padT - padB;
     const throwSteps = Math.max(1, rc * 3);
     const XStep = step => padL + (Math.max(0, Math.min(throwSteps, Number(step) || 0)) / throwSteps) * W;
     const X = i => perThrowRace ? XStep((i + 1) * 3) : padL + (rc <= 1 ? 0 : (i / (rc - 1)) * W);

@@ -17,15 +17,44 @@ fs.mkdirSync(out, { recursive: true });
       !!document.getElementById('homeLivePauseBtn')
     , { timeout: 20000 });
 
-    // Persist a presentation event, then reload. This mirrors a newly-created
-    // player event and proves the feed can recover immediately after refresh
-    // even when the cloud is unavailable in the QA harness.
-    await page.evaluate(() => window.__homeLivePrinterPersistLine('🚨 NEW PLAYER - Refresh Tester - Welcome to Shateki Quest 🎯', 'new_player'));
+    await page.waitForFunction(() => !!window.__sqUpdateAvailableState?.latestVersion, { timeout: 5000 });
+    const releaseCurrent = await page.evaluate(() => ({
+      running: window.__sqRunningVersion,
+      state: window.__sqUpdateAvailableState,
+      label: document.getElementById('sqReleaseVersionBtn')?.textContent?.trim()
+    }));
+    assert.equal(releaseCurrent.state.updateAvailable, false,
+      'current build must not show an update warning when latest metadata matches');
+    assert.equal(releaseCurrent.label, 'v' + releaseCurrent.running,
+      'version control must show the actually running build, not fetched latest metadata');
+
+    // Seed the exact class of legacy browser-local contamination reported
+    // from physical iPhone acceptance. The current session may still receive
+    // a transient NEW PLAYER notification, but public feed history must never
+    // persist either event in browser storage.
+    await page.evaluate(() => {
+      const key = 'sq_live_updates_events_v1';
+      localStorage.setItem(key, JSON.stringify([{
+        id:'local:sc004-accept',
+        ts:new Date().toISOString(),
+        kind:'new_player',
+        line:'🚨 NEW PLAYER - SC004 ACCEPT FIXTURE - Welcome to Shateki Quest 🎯'
+      }]));
+      window.__homeLivePrinterPersistLine('🚨 NEW PLAYER - Refresh Tester - Welcome to Shateki Quest 🎯', 'new_player');
+    });
     await page.waitForFunction(() => {
       const rows = document.querySelectorAll('#homeLivePrinterRows tr.lp-row');
       const body = document.getElementById('homeLivePrinterRows');
       return rows.length === 15 && !!body && body.textContent.includes('Refresh Tester');
     }, { timeout: 5000 });
+    const preReloadLocalCache = await page.evaluate(() => {
+      try { return JSON.parse(localStorage.getItem('sq_live_updates_events_v1') || '[]'); }
+      catch (_) { return []; }
+    });
+    assert.equal(preReloadLocalCache.length, 1,
+      'VIDE persistence API must not append new browser-local feed history');
+    assert.match(String(preReloadLocalCache[0]?.line || ''), /SC004 ACCEPT FIXTURE/i,
+      'legacy contamination fixture missing before cleanup reload');
 
     const baseline = await page.evaluate(() => {
       const rows = Array.from(document.querySelectorAll('#homeLivePrinterRows tr.lp-row'));
@@ -47,7 +76,9 @@ fs.mkdirSync(out, { recursive: true });
       paused: !!window.__homeLivePrinterState?.paused,
       label: document.getElementById('homeLivePauseBtn')?.textContent?.trim()
     }));
-    assert.match(firstLoad.text, /Refresh Tester/i, 'persisted NEW PLAYER event must be visible before refresh');
+    assert.match(firstLoad.text, /Refresh Tester/i, 'transient NEW PLAYER event must be visible in the current session');
+    assert.doesNotMatch(firstLoad.text, /SC004 ACCEPT FIXTURE/i,
+      'legacy browser-local contamination must never enter the current feed');
     assert(firstLoad.height >= 320, 'home LIVE UPDATES must retain the fuller vertical composition');
     assert.equal(firstLoad.paused, false, 'home must never enter paused');
     assert.equal(firstLoad.label, 'PAUSE', 'playing state must show PAUSE, not PLAY');
@@ -130,13 +161,17 @@ fs.mkdirSync(out, { recursive: true });
       text: document.getElementById('homeLivePrinterRows')?.textContent || '',
       buffer: (window.__homeLivePrinterState?.bufLines || []).slice(),
       paused: !!window.__homeLivePrinterState?.paused,
-      label: document.getElementById('homeLivePauseBtn')?.textContent?.trim()
+      label: document.getElementById('homeLivePauseBtn')?.textContent?.trim(),
+      localCache: localStorage.getItem('sq_live_updates_events_v1')
     }));
-    const refreshedNewPlayer = refreshed.buffer.find(line => /Refresh Tester/i.test(String(line)));
-    assert(refreshedNewPlayer,
-      'persisted NEW PLAYER event must survive refresh in the printer buffer');
-    assert.doesNotMatch(String(refreshedNewPlayer), /\s-\s(CLASSIC|TURBO|PRACTICE)\s*$/i,
-      'NEW PLAYER presentation events must never gain a game-mode suffix');
+    assert.equal(refreshed.localCache, null,
+      'full reload must remove the retired local LIVE UPDATES history cache');
+    assert.equal(refreshed.buffer.some(line => /Refresh Tester/i.test(String(line))), false,
+      'transient NEW PLAYER event must not survive refresh as browser-local history');
+    assert.equal(refreshed.buffer.some(line => /SC004 ACCEPT FIXTURE/i.test(String(line))), false,
+      'SC/test acceptance contamination must not survive refresh');
+    assert.doesNotMatch(refreshed.text, /SC004 ACCEPT FIXTURE|Refresh Tester/i,
+      'retired local feed history must not render after refresh');
     assert.equal(refreshed.paused, false, 'refresh must start LIVE UPDATES playing');
     assert.equal(refreshed.label, 'PAUSE');
 
@@ -358,6 +393,60 @@ fs.mkdirSync(out, { recursive: true });
     assert.equal(resumed.paused, false);
     assert.equal(resumed.transition, '', 'Reduced motion must not leave a transform transition active');
 
+    // Data truth / mode isolation: Practice may appear as a result, but it
+    // must never contribute ROUND PB/WR lines. Official and Turbo maintain
+    // independent round-history baselines.
+    await page.evaluate(() => {
+      const game = (id, ts, mode, name, roundTotal) => ({
+        id,
+        ts,
+        archived_at:null,
+        mode,
+        is_practice: mode === 'practice',
+        state:{ mode, is_practice:mode === 'practice' },
+        players:[{name},{name:'FILLER'}],
+        totals:[300,200],
+        board:[
+          [{ roundTotal, darts:[] }],
+          [{ roundTotal:0, darts:[] }]
+        ]
+      });
+      const games = [
+        game('official-leader','2026-10-03T20:00:00Z','official','OFFICIAL LEADER',60),
+        game('official-player','2026-10-03T20:01:00Z','official','MODE B',50),
+        game('turbo-leader','2026-10-03T20:02:00Z','turbo','TURBO LEADER',60),
+        game('turbo-player','2026-10-03T20:03:00Z','turbo','MODE B',40),
+        game('practice-player','2026-10-03T20:04:00Z','practice','PRACTICE ONLY',70)
+      ];
+      window.cloudFetchAllGamesAsLocal = async () => games.map(g => ({...g}));
+      window.cloudFetchLatestVisibleGamesAsLocal = async () => [];
+      window.cloudFetchLatestGamesAsLocal = async () => [];
+      window.cloudListPlayers = async () => [];
+      const st = window.__homeLivePrinterState;
+      st.derivedItems = [];
+      st.derivedFetchedAt = 0;
+      st.bufLines = [];
+      st.lastSig = '';
+      st.lastSyncMs = 0;
+      st.hold = 0;
+    });
+    await page.waitForFunction(() => {
+      const lines = window.__homeLivePrinterState?.bufLines || [];
+      return lines.some(line => /ROUND PB.*MODE B.*\(50\)/i.test(String(line))) &&
+             lines.some(line => /ROUND PB.*MODE B.*\(40\)/i.test(String(line)));
+    }, { timeout: 5000 });
+    const modePbLines = await page.evaluate(() =>
+      (window.__homeLivePrinterState?.bufLines || [])
+        .map(String)
+        .filter(line => /ROUND\s+(?:PB|WR)\b/i.test(line))
+    );
+    assert(modePbLines.some(line => /ROUND PB.*MODE B.*\(50\)/i.test(line)),
+      'Official ROUND PB must be derived from the Official history bucket');
+    assert(modePbLines.some(line => /ROUND PB.*MODE B.*\(40\)/i.test(line)),
+      'Turbo ROUND PB must be derived from the Turbo history bucket, not Official history');
+    assert.equal(modePbLines.some(line => /PRACTICE ONLY|\(70\)/i.test(line)), false,
+      'Practice must never contribute ROUND PB/WR lines to VIDE');
+
     // WR is a locked semantic colour: verified World Records must be purple,
     // not inherited from the generic alert/PB gold treatment.
     await page.evaluate(() => window.__homeLivePrinterInjectLine('🚨 ROUND WR / 18s - SC047 (90) - S0 / D0 / T1'));
@@ -373,6 +462,55 @@ fs.mkdirSync(out, { recursive: true });
     assert.match(wr.text, /ROUND WR/i, 'World Record row missing WR content');
     assert.match(wr.rowColor, /196,\s*153,\s*255/, 'World Record row must use the locked purple semantic');
     assert.match(wr.chipColor, /214,\s*184,\s*255/, 'World Record chip must use the locked purple semantic');
+
+    const runningVersion = await page.evaluate(() => window.__sqRunningVersion);
+    const versionBits = runningVersion.split('.').map(Number);
+    const fakeLatest = [versionBits[0], versionBits[1], versionBits[2] + 1].join('.');
+    await page.route('**/assets/release-metadata.json*', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          schemaVersion: 1,
+          currentVersion: fakeLatest,
+          currentReleaseId: 'SC047_TEST_UPDATE',
+          releases: []
+        })
+      });
+    });
+    await page.evaluate(() => window.__sqCheckForAppUpdate(true));
+    await page.waitForFunction((latest) => {
+      const st = window.__homeLivePrinterState || {};
+      const queued = (st.injectQueue || []).some(line => String(line).includes('REFRESH APP - UPDATE AVAILABLE') && String(line).includes('v' + latest));
+      const visible = (document.getElementById('homeLivePrinterRows')?.textContent || '').includes('REFRESH APP - UPDATE AVAILABLE');
+      return queued || visible;
+    }, fakeLatest, { timeout: 5000 });
+    await page.waitForFunction(() =>
+      (document.getElementById('homeLivePrinterRows')?.textContent || '').includes('REFRESH APP - UPDATE AVAILABLE'),
+      { timeout: 5000 }
+    );
+    const updateAlert = await page.evaluate(() => {
+      const row = Array.from(document.querySelectorAll('#homeLivePrinterRows tr.lp-row'))
+        .find(r => (r.textContent || '').includes('REFRESH APP - UPDATE AVAILABLE'));
+      return {
+        state: window.__sqUpdateAvailableState,
+        label: document.getElementById('sqReleaseVersionBtn')?.textContent?.trim(),
+        localCache: localStorage.getItem('sq_live_updates_events_v1'),
+        alertClass: !!row?.classList.contains('lp-alert'),
+        text: row?.textContent || ''
+      };
+    });
+    assert.equal(updateAlert.state.updateAvailable, true,
+      'newer metadata must set updateAvailable');
+    assert.equal(updateAlert.state.latestVersion, fakeLatest);
+    assert.equal(updateAlert.label, 'v' + runningVersion,
+      'stale app must continue to identify the build actually running');
+    assert.match(updateAlert.text, /REFRESH APP - UPDATE AVAILABLE/i);
+    assert.equal(updateAlert.alertClass, true,
+      'update notice must use the existing high-priority VIDE alert treatment');
+    assert.equal(updateAlert.localCache, null,
+      'update notice must never persist as browser-local feed history');
+    await page.unroute('**/assets/release-metadata.json*');
 
     await page.screenshot({ path: path.join(out, 'live-updates-stable.png') });
     const pageErrors = consoleErrs.filter(x => x.startsWith('pageerror:'));

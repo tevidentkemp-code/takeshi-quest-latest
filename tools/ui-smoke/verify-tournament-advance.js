@@ -3,6 +3,7 @@
 // The multi-select Players step and final Tree step keep their confirm button.
 const { chromium } = require('playwright');
 const fs = require('fs');
+const {installSecurityFixture}=require('./security-fixture');
 const APP_URL = process.env.SQ_APP_URL || 'http://localhost:8123/index.html';
 const CHROMIUM = fs.existsSync('/opt/pw-browsers/chromium-1194/chrome-linux/chrome')
   ? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' : undefined;
@@ -14,6 +15,7 @@ const check = (name, ok, detail) => { if (!ok) failures++; console.log((ok ? 'PA
   const browser = await chromium.launch(CHROMIUM ? { executablePath: CHROMIUM } : {});
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
 
+  await installSecurityFixture(ctx);
   await ctx.addInitScript(() => {
     // Seed local saved players so the Players step has a roster offline.
     const iso = new Date().toISOString();

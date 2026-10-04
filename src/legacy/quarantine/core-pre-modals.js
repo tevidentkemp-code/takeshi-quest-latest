@@ -96,7 +96,13 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
+  const RUNNING_VERSION = '0.14.0';
+  const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
+  let updateCheckPromise = null;
+  let updateLastCheckAt = 0;
+
+  window.__sqRunningVersion = RUNNING_VERSION;
 
   function formatReleaseDate(value){
     try{
@@ -108,9 +114,26 @@ window.closeModal = window.closeModal || function(id){
     }
   }
 
+  function versionParts(value){
+    const match = String(value || '').trim().match(/^(\d+)\.(\d+)\.(\d+)$/);
+    return match ? match.slice(1).map(Number) : null;
+  }
+
+  function compareVersions(a, b){
+    const av = versionParts(a);
+    const bv = versionParts(b);
+    if (!av || !bv) return 0;
+    for (let i = 0; i < 3; i++){
+      if (av[i] > bv[i]) return 1;
+      if (av[i] < bv[i]) return -1;
+    }
+    return 0;
+  }
+
   function loadReleaseMetadata(force){
     if (force || !releaseMetaPromise){
-      releaseMetaPromise = fetch(META_URL, { cache:'no-store' }).then(function(response){
+      const url = force ? (META_URL + '?sq_release_check=' + Date.now()) : META_URL;
+      const request = fetch(url, { cache:'no-store' }).then(function(response){
         if (!response.ok) throw new Error('release-metadata-http-' + response.status);
         return response.json();
       }).then(function(meta){
@@ -119,22 +142,79 @@ window.closeModal = window.closeModal || function(id){
         }
         return meta;
       });
+      releaseMetaPromise = request.catch(function(error){
+        releaseMetaPromise = null;
+        throw error;
+      });
     }
     return releaseMetaPromise;
   }
+
+  function updateAvailableLine(latestVersion){
+    return '🚨 REFRESH APP - UPDATE AVAILABLE - v' + String(latestVersion || '').trim();
+  }
+
+  function injectUpdateAvailable(latestVersion){
+    const line = updateAvailableLine(latestVersion);
+    if (typeof window.__homeLivePrinterInjectLine === 'function'){
+      window.__homeLivePrinterInjectLine(line);
+      window.__sqPendingUpdateLine = '';
+      return true;
+    }
+    window.__sqPendingUpdateLine = line;
+    return false;
+  }
+
+  window.__sqFlushPendingUpdateAlert = function(){
+    const line = String(window.__sqPendingUpdateLine || '').trim();
+    if (!line || typeof window.__homeLivePrinterInjectLine !== 'function') return false;
+    window.__homeLivePrinterInjectLine(line);
+    window.__sqPendingUpdateLine = '';
+    return true;
+  };
+
+  window.__sqCheckForAppUpdate = function(force){
+    const now = Date.now();
+    if (updateCheckPromise) return updateCheckPromise;
+    if (!force && updateLastCheckAt && (now - updateLastCheckAt) < UPDATE_CHECK_MS){
+      return Promise.resolve(window.__sqUpdateAvailableState || null);
+    }
+    updateLastCheckAt = now;
+    updateCheckPromise = loadReleaseMetadata(true).then(function(meta){
+      const updateAvailable = compareVersions(meta.currentVersion, RUNNING_VERSION) > 0;
+      const state = {
+        runningVersion: RUNNING_VERSION,
+        latestVersion: String(meta.currentVersion),
+        updateAvailable,
+        checkedAt: Date.now()
+      };
+      window.__sqUpdateAvailableState = state;
+      if (updateAvailable) injectUpdateAvailable(meta.currentVersion);
+      else window.__sqPendingUpdateLine = '';
+      return state;
+    }).catch(function(){
+      // A failed/offline version check must fail quietly, never invent an update.
+      return window.__sqUpdateAvailableState || null;
+    }).finally(function(){
+      updateCheckPromise = null;
+    });
+    return updateCheckPromise;
+  };
 
   window.__sqLoadReleaseMetadata = loadReleaseMetadata;
 
   window.__sqApplyReleaseVersionLabel = function(button){
     if (!button) return;
-    button.textContent = 'VERSION';
-    button.setAttribute('aria-label', 'Open release notes');
+    button.textContent = 'v' + RUNNING_VERSION;
+    button.setAttribute('aria-label', 'Open release notes for Shateki Quest running version ' + RUNNING_VERSION);
+    button.title = 'Release Notes';
     loadReleaseMetadata(false).then(function(meta){
-      button.textContent = 'v' + meta.currentVersion;
-      button.setAttribute('aria-label', 'Open release notes for Shateki Quest version ' + meta.currentVersion);
-      button.title = 'Release Notes';
+      const updateAvailable = compareVersions(meta.currentVersion, RUNNING_VERSION) > 0;
+      if (updateAvailable){
+        button.title = 'Update available: v' + meta.currentVersion;
+        button.setAttribute('aria-label', 'Open release notes. Running version ' + RUNNING_VERSION + '; update available ' + meta.currentVersion);
+      }
     }).catch(function(){
-      button.textContent = 'VERSION';
       button.title = 'Release notes unavailable';
     });
   };
@@ -153,9 +233,12 @@ window.closeModal = window.closeModal || function(id){
       return;
     }
 
+    const latestIsNewer = compareVersions(meta.currentVersion, RUNNING_VERSION) > 0;
     const modal = window.sqModal({
       title: 'RELEASE NOTES',
-      sub: 'CURRENT v' + meta.currentVersion,
+      sub: latestIsNewer
+        ? ('RUNNING v' + RUNNING_VERSION + ' · LATEST v' + meta.currentVersion)
+        : ('CURRENT v' + RUNNING_VERSION),
       onBack: function(){},
       closeButton: 'CLOSE',
       modalClass: 'menu-modal sq-release-notes-modal',
@@ -163,9 +246,9 @@ window.closeModal = window.closeModal || function(id){
     });
     modal.body.classList.add('sq-release-notes-body');
 
-    meta.releases.forEach(function(item, index){
+    meta.releases.forEach(function(item){
       const card = document.createElement('article');
-      card.className = 'sq-release-entry' + (index === 0 ? ' is-current' : '');
+      card.className = 'sq-release-entry' + (String(item.version || '') === RUNNING_VERSION ? ' is-current' : '');
 
       const head = document.createElement('div');
       head.className = 'sq-release-entry-head';
@@ -214,6 +297,22 @@ window.closeModal = window.closeModal || function(id){
       modal.body.appendChild(note);
     }
   };
+
+  if (!window.__sqUpdateHeartbeatInterval){
+    window.__sqUpdateHeartbeatInterval = setInterval(function(){
+      try{ window.__sqCheckForAppUpdate(true); }catch(_){}
+    }, UPDATE_CHECK_MS);
+  }
+  setTimeout(function(){
+    try{ window.__sqCheckForAppUpdate(true); }catch(_){}
+  }, 0);
+  try{
+    document.addEventListener('visibilitychange', function(){
+      if (!document.hidden){
+        try{ window.__sqCheckForAppUpdate(false); }catch(_){}
+      }
+    });
+  }catch(_){}
 })();
 // <<< PATCH:SC050_RELEASE_NOTES END
 
@@ -599,6 +698,9 @@ function arrangeStartActions(){
     if (typeof window.__sqApplyReleaseVersionLabel === 'function'){
       window.__sqApplyReleaseVersionLabel(releaseVersionBtn);
     }
+    if (typeof window.__sqCheckForAppUpdate === 'function'){
+      window.__sqCheckForAppUpdate(false);
+    }
 
     // (removed) NEW PLAYERS ticker in VIDE
 
@@ -932,29 +1034,15 @@ if(hsBody){
       const LP_VISIBLE = 15;
       const LP_SYNC_MS = Math.max(15000, (typeof SQ_GAMES_VISIBLE_MIN_POLL_MS !== 'undefined' ? SQ_GAMES_VISIBLE_MIN_POLL_MS : 15000));
       const LP_LOCAL_EVENT_KEY = 'sq_live_updates_events_v1';
-      const LP_LOCAL_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-      const lpReadLocalEvents = () => {
-        try {
-          const raw = JSON.parse(localStorage.getItem(LP_LOCAL_EVENT_KEY) || '[]');
-          const now = Date.now();
-          return (Array.isArray(raw) ? raw : [])
-            .filter(e => e && e.line && Number.isFinite(new Date(e.ts).getTime()) && (now - new Date(e.ts).getTime()) < LP_LOCAL_EVENT_TTL_MS)
-            .slice(-20);
-        } catch (_) { return []; }
+      // LIVE UPDATES is a public history surface. Browser-local presentation
+      // events are not authoritative and must never survive as feed history.
+      const lpClearLegacyLocalEvents = () => {
+        try { localStorage.removeItem(LP_LOCAL_EVENT_KEY); } catch (_) {}
       };
-      const lpPersistLocalEvent = (line, kind = 'manual') => {
-        const l = String(line || '').replace(/\s+/g, ' ').trim();
-        if (!l) return null;
-        try {
-          const now = Date.now();
-          let events = lpReadLocalEvents().filter(e => !(e.line === l && (now - new Date(e.ts).getTime()) < 60000));
-          const ev = { id:'local:' + now + ':' + Math.random().toString(36).slice(2,8), ts:new Date(now).toISOString(), kind:String(kind || 'manual'), line:l };
-          events.push(ev);
-          events = events.slice(-20);
-          localStorage.setItem(LP_LOCAL_EVENT_KEY, JSON.stringify(events));
-          return ev;
-        } catch (_) { return null; }
-      };
+      lpClearLegacyLocalEvents();
+      const lpReadLocalEvents = () => [];
+      const lpPersistLocalEvent = () => null;
+
       // Cloud availability helper (avoid ReferenceError on older builds)
       const lpCloudOK = () => {
         try {
@@ -987,6 +1075,23 @@ if(hsBody){
         }catch(_e){}
         return false;
       };
+      const lpIsPracticeGame = (g) => {
+        try{
+          if (!g) return false;
+          const st = g.state || g.game_state || {};
+          const match = g.match || st.match || {};
+          const vals = [
+            g.mode, g.gameMode, g.game_mode, g.type,
+            st.mode, st.gameMode, st.game_mode, st.type,
+            match.mode, match.gameMode, match.game_mode, match.type
+          ].map(v => String(v || '').toLowerCase());
+          return g.isPractice === true || g.is_practice === true || g.practice === true ||
+            st.isPractice === true || st.is_practice === true ||
+            match.isPractice === true || match.is_practice === true ||
+            vals.some(v => v === 'practice' || v.indexOf('practice') >= 0 || v === 'solo');
+        }catch(_e){ return false; }
+      };
+
       // >>> PATCH:VIDE_CLASSIC_SUFFIX_AND_FIRST_BLANK_V1 START
       const lpModeSuffix = (g) => {
         if (g && (g.isPractice || g.is_practice || g.practice)) return ' - PRACTICE';
@@ -1683,18 +1788,8 @@ if(hsBody){
           }
           st.matchRowsCache = { key, at: now, rows: rows.slice() };
         }
-        try {
-          const localMatches = (typeof getMatchLog === 'function') ? (getMatchLog() || []) : [];
-          (Array.isArray(localMatches) ? localMatches : []).forEach(m => {
-            const id = String(m && m.id || '').trim();
-            if (id && ids.includes(id)) rows.push(m);
-          });
-        } catch(_e) {}
-        try {
-          const current = (typeof state !== 'undefined' && state && state.match) ? state.match : null;
-          const id = String(current && current.id || '').trim();
-          if (id && ids.includes(id)) rows.push(current);
-        } catch(_e) {}
+        // Match-result metadata remains cloud-backed; local match/current-game
+        // recovery state must never supplement public LIVE UPDATES history.
         return rows;
       };
 
@@ -1832,12 +1927,15 @@ if(hsBody){
         }
         let events = [];
         try{
-          if (typeof __fetchOfficialGames !== 'function' || typeof __normalizeGame !== 'function') {
+          // Records shown in VIDE must come from persistent cloud truth only.
+          // Never derive public PB/WR history from local game/recovery caches.
+          if (typeof cloudFetchAllGamesAsLocal !== 'function') {
             st.derivedItems = [];
             st.derivedFetchedAt = now;
             return [];
           }
-          const allGames = (await __fetchOfficialGames(1000)).map(__normalizeGame).filter(Boolean);
+          const allGames = (await cloudFetchAllGamesAsLocal())
+            .filter(g => g && !(g.archived_at || g.archivedAt));
           allGames.sort((a,b)=> new Date(a.ts || 0).getTime() - new Date(b.ts || 0).getTime());
           const bestGameByPlayer = new Map();
           const bestRoundByPlayer = new Map();
@@ -1856,19 +1954,30 @@ if(hsBody){
           allGames.forEach(g => {
             const ts = g.ts || (g.raw && (g.raw.created_at || g.raw.ts)) || null;
             const board = Array.isArray(g.board) ? g.board : [];
-            (g.players || []).forEach((name, idx) => {
-              const nm = String(name || '').trim();
+            const isPractice = lpIsPracticeGame(g);
+            const roundMode = isPractice ? '' : (lpIsTurboGame(g) ? 'turbo' : 'official');
+            (g.players || []).forEach((player, idx) => {
+              const nm = String(
+                typeof player === 'string'
+                  ? player
+                  : (player && (player.name || player.nickname || player.first_name || player.player_name || player.initials)) || ''
+              ).trim();
               if (!nm) return;
               const score = Number((g.totals || [])[idx] || 0);
               const nameKey = nm.toLowerCase();
               const priorGameBest = Number(bestGameByPlayer.get(nameKey) || 0);
               const isGamePB = score > 0 && score > priorGameBest;
               const isGameRecord = score > 0 && score > globalGameBest;
-              // A record is also a PB, but only print the higher-priority record event.
+              // Preserve existing GAME PB semantics; this hotfix only changes
+              // the source authority and ROUND PB/WR mode isolation.
               if (isGameRecord) pushEvent(ts, `NEW GAME RECORD SCORE - ${nm} - ${score} 🥇`, 'game_record');
               else if (isGamePB) pushEvent(ts, `GAME PB - ${nm} (${score})`, 'game_pb');
               if (isGamePB) bestGameByPlayer.set(nameKey, score);
               if (isGameRecord) globalGameBest = score;
+
+              // Practice never contributes ROUND PB/WR lines to VIDE. Official
+              // and Turbo compare only with their own historical mode bucket.
+              if (!roundMode) return;
               const playerRounds = Array.isArray(board[idx]) ? board[idx] : [];
               for (let r = 0; r < Math.min(14, playerRounds.length || 0); r++) {
                 const cell = playerRounds[r];
@@ -1876,16 +1985,16 @@ if(hsBody){
                 if (!Number.isFinite(total) || total <= 0) continue;
                 const roundKey = lpRoundKey(r);
                 const counts = lpCountSummary(cell, r);
-                const playerRoundKey = `${nameKey}|${roundKey}`;
+                const playerRoundKey = `${roundMode}|${nameKey}|${roundKey}`;
+                const globalRoundKey = `${roundMode}|${roundKey}`;
                 const priorRoundPB = Number(bestRoundByPlayer.get(playerRoundKey) || 0);
-                const priorRoundWR = Number(bestRoundGlobal.get(roundKey) || 0);
+                const priorRoundWR = Number(bestRoundGlobal.get(globalRoundKey) || 0);
                 const isRoundPB = total > priorRoundPB;
                 const isRoundRecord = total > priorRoundWR;
-                // A round record is also a PB, but only print the higher-priority record event.
                 if (isRoundRecord) pushEvent(ts, `ROUND WR / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_wr');
                 else if (isRoundPB) pushEvent(ts, `ROUND PB / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_pb');
                 if (isRoundPB) bestRoundByPlayer.set(playerRoundKey, total);
-                if (isRoundRecord) bestRoundGlobal.set(roundKey, total);
+                if (isRoundRecord) bestRoundGlobal.set(globalRoundKey, total);
               }
             });
           });
@@ -2039,6 +2148,9 @@ if(hsBody){
           window.__homeLivePrinterInjectLine(line);
           return ev;
         };
+      }catch(_e){}
+      try{
+        if (typeof window.__sqFlushPendingUpdateAlert === 'function') window.__sqFlushPendingUpdateAlert();
       }catch(_e){}
 
       const lpPrimeLocalPresentation = () => {
@@ -2261,68 +2373,10 @@ if(hsBody){
               }).filter(Boolean);
             }
 }
-            // If cloud is unavailable, fall back to local game log cache (cloud->local sync writes here).
-            if (!games || !games.length) {
-              try {
-                const gl = (typeof getGameLog === 'function') ? getGameLog() : [];
-                if (Array.isArray(gl) && gl.length) {
-                  const slice = gl.slice(-LP_BUFFER).reverse();
-                  games = slice.map(row => {
-                    try {
-                      const ts = row.created_at || row.createdAt || row.ts || row.updated_at || null;
-                      const state = row.state || row.State || row.game_state || null;
-                      const ps0 = (state && Array.isArray(state.players)) ? state.players : (Array.isArray(row.players) ? row.players : []);
-                      const totals0 = (state && state.totals && Array.isArray(state.totals)) ? state.totals : (Array.isArray(row.totals) ? row.totals : []);
-                      const nameOf = (p) => {
-                        if (!p) return '?';
-                        if (typeof p === 'string') return p.trim() || '?';
-                        return String(p.name || p.nickname || p.first_name || p.player_name || p.initials || p.player_id || '?').trim() || '?';
-                      };
-                      const rows = ps0.map((p,i)=>({ name: nameOf(p), score: Number(totals0[i] ?? 0) }))
-                        .sort((a,b)=> (b.score - a.score) || String(a.name).localeCompare(String(b.name)));
-                      const winner = rows[0] || { name:'?', score:'?' };
-                      const opp = rows.slice(1).map(r => lpPlayerScoreText(r.name, r.score)).join(', ');
-                      const isPractice = !!(row && (row.isPractice || row.is_practice || row.practice ||
-                        String(row.mode || row.gameMode || '').toLowerCase() === 'practice' ||
-                        String(state?.mode || state?.gameMode || '').toLowerCase() === 'practice' ||
-                        state?.is_practice === true || state?.isPractice === true));
-                      const isTurbo = !isPractice && lpIsTurboGame(Object.assign({}, row || {}, { state }));
-                      const beerPlayers = (!isPractice && !isTurbo) ? lpUnder100Names(rows) : [];
-                      return { ts, winner_name: winner.name, winner_score: winner.score, opponents_text: opp, isPractice, isTurbo, mode: isPractice ? 'practice' : (isTurbo ? 'turbo' : (row.mode || state?.mode || '')), match_id: row.match_id || row.matchId || state?.match_id || state?.matchId || state?.match?.id || null, game_number: row.game_number || row.gameNumber || state?.game_number || state?.gameNumber || null, players: ps0, totals: totals0, state, match_state: state?.match || null, beer_alert_players: beerPlayers };
-                    } catch(_e) {
-                      return null;
-                    }
-                  }).filter(Boolean);
-                }
-              } catch(_e) {}
-            }
+            // LIVE UPDATES fails closed when cloud history is unavailable.
+            // Local game/recovery state is intentionally not a public history source.
+            if (!games || !games.length) games = [];
 
-            if (!games || !games.length) {
-              const ids = getSavedMatchIdsSorted();
-              games = ids.slice(-LP_BUFFER).reverse().map(id => {
-                const mm = getMatchState(id);
-                if (!mm) return null;
-                const rows = (mm.players || []).map(p => ({ name: p.name || '?', score: (p.totalScore ?? 0) }))
-                  .sort((a,b)=> b.score - a.score || String(a.name).localeCompare(String(b.name)));
-                const winner = rows[0] || { name: '?', score: '?' };
-                const opp = rows.slice(1).map(r => lpPlayerScoreText(r.name, r.score)).join(', ');
-                const isTurbo = lpIsTurboGame(mm);
-                return {
-                  match_id: id,
-                  ts: mm.ts || mm.createdAt || mm.created_at || mm.updatedAt || mm.updated_at,
-                  winner_name: winner.name,
-                  winner_score: winner.score,
-                  opponents_text: opp,
-                  isTurbo,
-                  mode: isTurbo ? 'turbo' : (mm.mode || mm.gameMode || ''),
-                  players: mm.players || [],
-                  totals: rows.map(r => r.score),
-                  state: mm,
-                  match_state: mm.match || mm,
-                  beer_alert_players: []
-                };
-              }).filter(Boolean);
-            }
             try {
               const matchRows = await lpFetchRelevantMatchRows(games);
               const matchResults = lpBuildCompletedMatchResultItems(games, matchRows);
@@ -2341,10 +2395,10 @@ if(hsBody){
           }catch(_e){}
 
           // NEW PLAYER is a real feed event, not a one-session animation.
-          // Rebuild recent player joins from the cloud-synced player cache so a
-          // refresh still shows them without creating a second data authority.
+          // Rebuild recent player joins from the live cloud player source so a
+          // refresh shows only persisted players, never browser-local fixtures.
           try{
-            const players = (typeof getSavedPlayers === 'function') ? getSavedPlayers() : [];
+            const players = (lpCloudOK() && typeof cloudListPlayers === 'function') ? await cloudListPlayers() : [];
             const cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
             const joins = (Array.isArray(players) ? players : [])
               .map(p => {
@@ -2364,17 +2418,7 @@ if(hsBody){
             if (joins.length) items = ([]).concat(items || [], joins);
           }catch(_e){}
 
-          // Presentation-only persisted events survive refresh on this device.
-          // They do not own player/game truth; they only preserve feed history.
-          try{
-            const localEvents = lpReadLocalEvents().map(e => ({
-              event_ts:e.ts,
-              event_id:e.id,
-              event_kind:e.kind || 'local',
-              line_text:e.line
-            }));
-            if (localEvents.length) items = ([]).concat(items || [], localEvents);
-          }catch(_e){}
+          // No browser-local presentation history is merged into public VIDE.
 
           const mid = document.querySelector('#homeLivePrinter .lp-mid');
           const hold = document.querySelector('#homeLivePrinter .home-hold-overlay');

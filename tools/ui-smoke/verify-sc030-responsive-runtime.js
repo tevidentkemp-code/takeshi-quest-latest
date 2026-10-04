@@ -129,7 +129,8 @@ function assertStateParity(snapshot, label){
 
     const narrow = await layout(page, 320, 844);
     await capture(page, 'responsive-320');
-    assert.equal(narrow.historicRows, 2, '320px shows two historic rows');
+    // SC-065 supersedes the narrow two-row exception with three completed rows.
+    assert.equal(narrow.historicRows, 3, '320px shows three historic rows');
     assert(narrow.currentVisible, '320px current-round row is visible');
     assert(narrow.currentAboveGraph, '320px current-round row stays above graph');
     assert.equal(narrow.progressPresent, false, '320px has no standalone target strip');

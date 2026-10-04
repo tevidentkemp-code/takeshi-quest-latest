@@ -558,11 +558,13 @@ body.livev2-on[data-page="game"] #liveV2Panel .v2Rows .v2CellShots .v2Dot{
 }
 
 @media (max-width:360px){
-  /* JS measures the same row geometry and sets this variable inline. Keep a
-     narrow fallback so the current score never gets pushed below the graph if
-     a browser delays the first layout measurement. */
+  /* Solo and historical six-player views retain the established narrow cap. */
   body.livev2-on[data-page="game"] #liveV2Panel .v2RowsWrap{
     max-height:206px !important;
+  }
+  /* The measured three-history/live-row window owns supported multiplayer. */
+  body.livev2-on[data-page="game"] #liveV2Panel:is([data-pcount="2"],[data-pcount="3"],[data-pcount="4"],[data-pcount="5"]) .v2RowsWrap{
+    max-height:var(--sqV2RowsWinH, 234px) !important;
   }
 }
 
@@ -717,3 +719,15 @@ body[data-page="game"] .livev2panel .v2ScoreBox.sqTurboTimerActive::after{
 @media (prefers-reduced-motion:reduce){
   .sqQuickEntryPopover{ animation:none; }
 }
+
+/* SC070: approved five-player fit; other player counts retain their existing layout. */
+body.livev2-on[data-page="game"] #liveV2Panel[data-pcount="5"] .v2Rows .v2Cell.liveRow{padding-left:2px;padding-right:2px;}
+body.livev2-on[data-page="game"] #liveV2Panel[data-pcount="5"] .v2Rows .v2CellShots{grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;justify-items:center;}
+body.livev2-on[data-page="game"] #liveV2Panel[data-pcount="5"] .v2Rows .v2CellShots .v2Dot{width:100%;max-width:22px;height:auto;aspect-ratio:1;min-width:0;min-height:0;border-radius:31.8%;transition-property:border-color,background,color,box-shadow,opacity;}
+body.livev2-on[data-page="game"] #liveV2Panel[data-pcount="5"] .v2Cell.liveRow:is([data-round="11"],[data-round="12"],[data-round="13"]) .v2CellScore{transform:none;}
+body.livev2-on[data-page="game"] #liveV2Panel[data-pcount="5"] .v2Cell.liveRow:is([data-round="11"],[data-round="12"],[data-round="13"]) .v2CellNum{font-size:min(var(--sqV2CellF,18px),18px);}
+body.livev2-on[data-page="game"] #liveV2Panel[data-pcount="5"] .v2Cell.liveRow:is([data-round="11"],[data-round="12"],[data-round="13"]){padding-top:1px;padding-bottom:1px;gap:1px;}
+body.livev2-on[data-page="game"] #liveV2Panel[data-pcount="5"] .v2Cell.liveRow:is([data-round="11"],[data-round="12"],[data-round="13"]) .v2CellShots{grid-template-columns:24px;grid-template-rows:repeat(3,12px);gap:2px;min-height:40px;flex-basis:40px;margin-top:0;}
+body.livev2-on[data-page="game"] #liveV2Panel[data-pcount="5"] .v2Cell.liveRow:is([data-round="11"],[data-round="12"],[data-round="13"]) .v2CellShots .v2Dot{width:24px;height:12px;max-width:24px;aspect-ratio:auto;border-radius:3px;border-width:1px;font-size:9px;letter-spacing:0;}
+body.livev2-on[data-page="game"] #liveV2Panel[data-pcount="5"] .v2Total[data-total-digits="3"]{font-size:clamp(18px,calc(18px + (100vw - 320px)*.090909),28px);}
+body.livev2-on[data-page="game"] #liveV2Panel[data-pcount="5"] .v2Total[data-total-digits="4"]{font-size:clamp(14px,calc(14px + (100vw - 320px)*.054545),20px);letter-spacing:-.75px;}

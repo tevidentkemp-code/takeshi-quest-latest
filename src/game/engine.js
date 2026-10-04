@@ -747,6 +747,7 @@ try{
 // @CANONICAL:GAMEPLAY_RECORD_THROW_BASE
 function recordThrow(spec){
   if(window.__sqInitialOrderApplying || window.__sqThrowOrderRevealPending) return;
+  if(!window.SQ_GAMEPLAY.canThrow()){window.SQ_GAMEPLAY.notice('Game control is being prepared or needs recovery. Your board is preserved.');return;}
   try{ window.__sqDmdStopPreThrow?.(); }catch(_){ }
   // Ignore input if game is finished or in sudden death
   if (state.finished || state.suddenDeath.active) return;
@@ -1515,7 +1516,8 @@ setTimeout(() => {
     round:     rIndex,
     dartIndex: dartIndex,
     throw:     dartObj,
-    catchUpStateBefore: __catchUpStateBefore
+    catchUpStateBefore: __catchUpStateBefore,
+    recorded_at: new Date().toISOString()
   });
 
   // Match aggregates
@@ -1630,6 +1632,7 @@ function recomputeMatchAggHitsForPlayer(pIdx){
 }
 
 function undo(){
+  if(state.__sqCompletionSnapshot||state.__sqAcceptedGameReceipt){window.SQ_GAMEPLAY.notice('This completed board is frozen. Retry Finish Game or start the next game.');return;}
   if(window.__sqInitialOrderApplying) return;
   if (!state.history.length) {
     toast('Nothing to undo');
@@ -1862,180 +1865,42 @@ function __sqComputeGameMode(){
 }
 
 // --- GAME LOGGING TO SUPABASE (real) + HIGH SCORES ---
+function __sqBuildCompletedGamePayload(){
+  // Retain the existing recordFullGame persistence envelope and complete board.
+  // The boundary replaces authority/IDs; recordThrow remains the scoring owner.
+  const runtimePlayers=Array.isArray(state.players)?state.players:[];
+  const isVsShadow=typeof __sqIsVsShadowRuntime==='function'&&__sqIsVsShadowRuntime();
+  const persistPlayers=typeof __sqRealPlayersOnly==='function'?__sqRealPlayersOnly(runtimePlayers):runtimePlayers;
+  const runtimeTotals=runtimePlayers.map((_,i)=>totalScoreForPlayer(i));
+  const totals=typeof __sqRealOnlyTotals==='function'?__sqRealOnlyTotals(runtimeTotals,runtimePlayers):runtimeTotals;
+  const boardClone=typeof __sqRealOnlyBoard==='function'?__sqRealOnlyBoard(state.score||[],runtimePlayers):JSON.parse(JSON.stringify(state.score||[]));
+  const gameMode=isVsShadow?'practice':__sqComputeGameMode();const isPractice=isVsShadow||gameMode==='practice';const isTurbo=gameMode==='turbo';
+  const matchState=state.match||{};const turboRules=matchState.tournamentRules||state.tournamentRules||{};
+  const isActualTournament=!!(matchState.tournament===true||matchState.tournamentType||matchState.tournamentSize||matchState.tournamentMatch||state.__sqTournamentDraft||state.__sqTournamentActive);
+  const isMatchPlayTurbo=!!(isTurbo&&!isActualTournament&&(String(matchState.gameFormat||state.gameFormat||'').toLowerCase()==='match_play'||String(matchState.gameVariant||state.gameVariant||'').toLowerCase()==='turbo'||String(matchState.mode||matchState.gameMode||state.mode||state.gameMode||'').toLowerCase()==='turbo'||String(matchState.startTarget||state.startTarget||'').toLowerCase()==='17'));
+  const control=state.__sqGameControl;if(!control)throw new Error('controller_required');
+  const snapshot={
+    players:JSON.parse(JSON.stringify(matchState.__sqRoster)),board:boardClone,
+    mode:isVsShadow?'practice':(matchState.__sqControllerMode||gameMode),gameMode:gameMode,
+    gameFormat:isMatchPlayTurbo?'match_play':(matchState.gameFormat||undefined),
+    gameVariant:isMatchPlayTurbo?'turbo':(matchState.gameVariant||undefined),
+    tournament:isMatchPlayTurbo?false:(isActualTournament?true:undefined),
+    is_practice:isPractice,total_players:persistPlayers.length,match_id:control.match_id,
+    tournamentType:(isTurbo&&isActualTournament)?'turbo':(matchState.tournamentType||state.tournamentType||undefined),
+    tournamentRules:(isTurbo&&isActualTournament)?Object.assign({strictTimer:true,throwLimitSeconds:20,startTarget:'17'},turboRules||{}):undefined,
+    strictTimer:isTurbo?true:undefined,throwLimitSeconds:isTurbo?20:undefined,startTarget:isTurbo?'17':undefined,
+    schema_version:isPractice?2:undefined
+  };
+  const indexes=runtimePlayers.map((p,i)=>({p,i})).filter(x=>!(typeof __sqIsShadowPlayer==='function'&&__sqIsShadowPlayer(x.p))).map(x=>x.i);
+  const maximum=Math.max(...totals);let winners=totals.map((t,i)=>t===maximum?i:null).filter(i=>i!==null);
+  if(state._decider?.resolved&&typeof state._decider.winner==='number')winners=[indexes.indexOf(state._decider.winner)].filter(i=>i>=0);
+  return{game_id:control.game_id,state:snapshot,totals,winner_indexes:winners};
+}
 async function recordFullGameToSupabase(createdAtOverride) {
-  let __sqVsShadowPracticeMatchCleanupId = null;
-  try {
-    if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) {
-      try{ __sqVsShadowBlockPhase2C(__SQ_VS_SHADOW_COMPLETION_BLOCK_REASON); }catch(_){ }
-      return null;
-    }
-    const runtimePlayers = Array.isArray(state.players) ? state.players : [];
-    const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
-    const persistPlayers = (typeof __sqRealPlayersOnly === 'function') ? __sqRealPlayersOnly(runtimePlayers) : runtimePlayers;
-    const isOfficial = !isVsShadow && (persistPlayers.length >= 2);
-
-    // Prefer caller-provided timestamp, then global backdate (if present), else now.
-    const ts =
-      (typeof createdAtOverride !== 'undefined' && createdAtOverride) ? createdAtOverride :
-      (typeof _tsOverride       !== 'undefined' && _tsOverride)       ? _tsOverride       :
-      new Date().toISOString();
-
-    if (isOfficial) {
-      try {
-        await upsertMatchToSupabase(ts);
-      } catch (e) {
-        console.warn('match upsert failed', e);
-      }
-    }
-
-    const runtimeTotals = runtimePlayers.map((_, i) => totalScoreForPlayer(i));
-    const totals     = (typeof __sqRealOnlyTotals === 'function') ? __sqRealOnlyTotals(runtimeTotals, runtimePlayers) : runtimeTotals;
-    const boardClone = (typeof __sqRealOnlyBoard === 'function') ? __sqRealOnlyBoard(state.score || [], runtimePlayers) : JSON.parse(JSON.stringify(state.score || []));
-    const gameMode   = isVsShadow ? 'practice' : ((typeof __sqComputeGameMode === 'function') ? __sqComputeGameMode() : (isOfficial ? 'official' : 'practice'));
-    const isPractice = isVsShadow || (gameMode === 'practice');
-    const isTurbo    = (gameMode === 'turbo');
-    const turboRules = (state && state.match && state.match.tournamentRules) || (state && state.tournamentRules) || {};
-    const matchState = (state && state.match) || {};
-    const isActualTournament = !!(matchState.tournament === true || matchState.tournamentType || matchState.tournamentSize || matchState.tournamentMatch || state?.__sqTournamentDraft || state?.__sqTournamentActive);
-    const isMatchPlayTurbo = !!(isTurbo && !isActualTournament && (
-      String(matchState.gameFormat || state?.gameFormat || '').toLowerCase() === 'match_play' ||
-      String(matchState.gameVariant || state?.gameVariant || '').toLowerCase() === 'turbo' ||
-      String(matchState.mode || matchState.gameMode || state?.mode || state?.gameMode || '').toLowerCase() === 'turbo' ||
-      String(matchState.startTarget || state?.startTarget || '').toLowerCase() === '17'
-    ));
-
-    // >>> PATCH:practice-save-v4-recordfull-dedupe START
-    // recordFullGameToSupabase is still called from awardAndShowLeaderboard after
-    // the direct practice save wrapper. For practice games, do not let a stale
-    // state.match.id + game_number=1 reinsert collide with games_pkey. Dedupe by
-    // the completed board fingerprint, not by session-level booleans.
-    function __sqRecordFullPracticeKey(){
-      try{
-        var names = (persistPlayers || []).map(function(p){ return String((p && p.name) || '').trim().toLowerCase(); }).join('|');
-        var totalStr = (totals || []).map(function(x){ return Number(x)||0; }).join('|');
-        var boardStr = JSON.stringify(boardClone || []);
-        var token = (state && state.__gameToken != null) ? String(state.__gameToken) : '';
-        return ['practice-v3', token, names, totalStr, boardStr].join('::');
-      }catch(_){ return ''; }
-    }
-
-    const __practiceSaveKeyForRecordFull = isPractice ? __sqRecordFullPracticeKey() : '';
-    if (isPractice && state && state.__sqPracticeSavedToGames && state.__sqPracticeSavedKeyV2 && state.__sqPracticeSavedKeyV2 === __practiceSaveKeyForRecordFull) {
-      try{ console.info('[SQ] recordFullGameToSupabase skipped: practice game already saved by direct practice path', { saveKey: __practiceSaveKeyForRecordFull }); }catch(_){ }
-      return null;
-    }
-    if (isPractice && state && (state.__sqPracticeSavedToGames || state.__sqPracticeCloudSavedV2) && state.__sqPracticeSavedKeyV2 && state.__sqPracticeSavedKeyV2 !== __practiceSaveKeyForRecordFull) {
-      try{ console.info('[SQ] recordFullGameToSupabase clearing stale practice save flags for new completed game'); }catch(_){ }
-      try{
-        delete state.__sqPracticeSavedToGames;
-        delete state.__sqPracticeCloudSavedV2;
-        delete state.__sqPracticeSaveMatchIdV2;
-      }catch(_){ }
-    }
-    // <<< PATCH:practice-save-v4-recordfull-dedupe END
-
-    // Supabase games.match_id is NOT NULL in the current schema.
-    // Practice therefore gets a real lightweight match row, but remains practice via state.mode/is_practice.
-    let practiceMatchId = null;
-    if (isPractice) {
-      try {
-        // Practice rows use a fresh lightweight match id per completed game.
-        // Reusing state.match.id with game_number=1 causes games_pkey collisions
-        // across back-to-back practice games in the current schema.
-        practiceMatchId = ((crypto && crypto.randomUUID) ? crypto.randomUUID() : ('practice-' + Date.now() + '-' + Math.random().toString(36).slice(2,8)));
-        state.match = Object.assign({}, state.match || {}, {
-          id: practiceMatchId,
-          mode: 'practice',
-          forcePractice: true,
-          createdAtIso: state?.match?.createdAtIso || ts,
-          history: Array.isArray(state?.match?.history) ? state.match.history : [],
-          wins: isVsShadow
-            ? Array.from({ length: persistPlayers.length }, () => 0)
-            : (Array.isArray(state?.match?.wins) ? state.match.wins : [])
-        });
-        const practiceMatchPayload = {
-          id: practiceMatchId,
-          created_at: state.match.createdAtIso || ts,
-          total_games: isVsShadow ? 1 : Math.max(1, state.match.history.length || 1),
-          players: persistPlayers.map(p => ({ name: p.name })),
-          wins: isVsShadow
-            ? Array.from({ length: persistPlayers.length }, () => 0)
-            : ((typeof __sqRealOnlyArray === 'function') ? __sqRealOnlyArray(state.match.wins || [], runtimePlayers) : (state.match.wins || []).slice()),
-          history: [{ totals: totals.slice(), mode: 'practice' }]
-        };
-        if (isVsShadow && typeof __sqAssertNoShadowPersistPayload === 'function' && !__sqAssertNoShadowPersistPayload(practiceMatchPayload, 'recordFullGameToSupabase:matches')) {
-          throw new Error('Vs Shadow save blocked: Shadow data cannot be persisted.');
-        }
-        if (isVsShadow) __sqVsShadowPracticeMatchCleanupId = practiceMatchId;
-        await sb.from(TABLE_MATCHES).upsert(practiceMatchPayload);
-      } catch (e) {
-        if (isVsShadow && /Vs Shadow save blocked/i.test(String(e && (e.message || e)))) throw e;
-        if (isVsShadow) throw e;
-        console.warn('[SQ] practice match upsert failed', e);
-      }
-    }
-
-    const payload = {
-      match_id:   isPractice ? practiceMatchId : (isOfficial ? (state.match?.id || null) : practiceMatchId),
-      game_number: isPractice ? 1 : (state.match?.history?.length ? state.match.history.length : 1),
-      created_at: ts, // finish time (or backdated override)
-      state:      {
-        players: persistPlayers.map(p => ({ name: p.name })),
-        board: boardClone,
-        mode: gameMode,
-        gameMode: gameMode,
-        gameFormat: isMatchPlayTurbo ? 'match_play' : undefined,
-        gameVariant: isMatchPlayTurbo ? 'turbo' : undefined,
-        tournament: isMatchPlayTurbo ? false : undefined,
-        is_practice: isPractice,
-        total_players: persistPlayers.length,
-        match_id: isPractice ? practiceMatchId : (state.match?.id || null),
-        tournamentType: (isTurbo && isActualTournament) ? 'turbo' : (state?.match?.tournamentType || state?.tournamentType || undefined),
-        tournamentRules: (isTurbo && isActualTournament) ? Object.assign({ strictTimer:true, throwLimitSeconds:20, startTarget:'17' }, turboRules || {}) : undefined,
-        strictTimer: isTurbo ? true : undefined,
-        throwLimitSeconds: isTurbo ? 20 : undefined,
-        startTarget: isTurbo ? '17' : undefined,
-        schema_version: isPractice ? 2 : undefined
-      },
-      totals,
-      finished:   true
-    };
-
-    if (isVsShadow && typeof __sqAssertNoShadowPersistPayload === 'function' && !__sqAssertNoShadowPersistPayload(payload, 'recordFullGameToSupabase:games')) {
-      throw new Error('Vs Shadow save blocked: Shadow data cannot be persisted.');
-    }
-
-    const { data: _gRow, error } = await sb.from(TABLE_GAMES).insert(payload).select('id, created_at').single();
-    if (error) {
-      // If the direct practice save path already inserted this exact completed game,
-      // do not surface a scary duplicate-key failure from the later leaderboard path.
-      if (isPractice && (error.code === '23505' || String(error.message || '').toLowerCase().indexOf('duplicate key') >= 0)) {
-        try{ console.warn('[SQ] recordFullGameToSupabase skipped duplicate practice insert', error); }catch(_){ }
-        return null;
-      }
-      throw error;
-    }
-    __sqVsShadowPracticeMatchCleanupId = null;
-    const _gameId = _gRow && _gRow.id ? _gRow.id : null;
-    try { if (typeof __sqClearRecoveryCachesAfterCompletedSave === 'function') __sqClearRecoveryCachesAfterCompletedSave('recordFullGameToSupabase'); } catch(_) {}
-    try { if (typeof window.__sqClearGamesTruthCache === 'function') window.__sqClearGamesTruthCache('recordFullGameToSupabase'); } catch(_) {}
-
-    // >>> PATCH:HS_TS_ALIGN START
-    // Write HS rows with the SAME ts as the game row, so deletes and audits remain consistent.
-    try { if (typeof cloudSaveHighScoresForGame === 'function') await cloudSaveHighScoresForGame(runtimeTotals, ts, _gameId); } catch(_e) {}
-    // <<< PATCH:HS_TS_ALIGN END
-  } catch (e) {
-    if (__sqVsShadowPracticeMatchCleanupId) {
-      try {
-        const cleanup = await sb.from(TABLE_MATCHES).delete().eq('id', __sqVsShadowPracticeMatchCleanupId);
-        if (cleanup && cleanup.error) console.warn('[SQ] Vs Shadow practice match cleanup failed', cleanup.error);
-      } catch (cleanupErr) {
-        console.warn('[SQ] Vs Shadow practice match cleanup threw', cleanupErr);
-      }
-    }
-    console.error('recordFullGameToSupabase failed', e);
-    throw e;
+  if(typeof __sqVsShadowCompletionBlocked==='function'&&__sqVsShadowCompletionBlocked()){
+    try{__sqVsShadowBlockPhase2C(__SQ_VS_SHADOW_COMPLETION_BLOCK_REASON);}catch(_){}return null;
   }
+  return window.SQ_GAMEPLAY.completeCurrentGame(__sqBuildCompletedGamePayload);
 }
 
 // Multi-player -> League (TABLE_HS_LEAGUE), single-player -> Practice (TABLE_HS_PRACTICE).
@@ -2046,111 +1911,45 @@ async function recordGameToHighScores() {
 }
 
 async function awardAndShowLeaderboard(){
-  // prevent double-award if called twice for same game
-  if (state.gameAwarded) {
-    showLeaderboard();
-    return;
+  if(state.gameAwarded){showLeaderboard();return;}
+  if(state.__sqAwardInFlight)return;
+  const isVsShadow=typeof __sqIsVsShadowRuntime==='function'&&__sqIsVsShadowRuntime();
+  if(typeof __sqVsShadowCompletionBlocked==='function'&&__sqVsShadowCompletionBlocked()){
+    state.finished=false;state.gameAwarded=false;
+    try{__sqVsShadowBlockPhase2C(__SQ_VS_SHADOW_COMPLETION_BLOCK_REASON);}catch(_){}return;
   }
-  const isVsShadow = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
-  if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) {
-    try{ state.finished = false; state.gameAwarded = false; }catch(_){ }
-    try{ __sqVsShadowBlockPhase2C(__SQ_VS_SHADOW_COMPLETION_BLOCK_REASON); }catch(_){ }
-    return;
-  }
-  if (!isVsShadow) state.gameAwarded = true;
-
-  const totals  = state.players.map((_,i)=> totalScoreForPlayer(i));
-  const max     = Math.max(...totals);
-  let winners = totals.map((t,i)=> t===max?i:null).filter(x=>x!==null);
-  // Decider shootout override: only ONE winner is awarded a win; scores/stats remain unchanged
-  if (state._decider && state._decider.resolved && typeof state._decider.winner === 'number') {
-    winners = [state._decider.winner];
-  }
-  if (isVsShadow && typeof __sqRealOnlyWinnerIndexes === 'function') {
-    winners = __sqRealOnlyWinnerIndexes(winners, state.players || []);
-  }
-
-// before recordFullGameToSupabase();
-  if (!isVsShadow && (state.players?.length || 0) >= 2) {
-    try { await upsertMatchToSupabase(); } catch (e) { console.warn(e); }
-  }
-
-  // Ensure wins array exists
-  const awardPlayerCount = isVsShadow && typeof __sqRealPlayersOnly === 'function'
-    ? __sqRealPlayersOnly(state.players || []).length
-    : state.players.length;
-  if (!state.match.wins || state.match.wins.length !== awardPlayerCount) {
-    state.match.wins = Array.from({length: awardPlayerCount}, () => 0);
-  }
-  if (!isVsShadow) winners.forEach(i => state.match.wins[i]++);
-
-  // Snapshot board for history/stats
-  const boardClone = JSON.parse(JSON.stringify(state.score));
-  const historyTotals = isVsShadow && typeof __sqRealOnlyTotals === 'function' ? __sqRealOnlyTotals(totals, state.players || []) : totals.slice();
-  const historyBoard = isVsShadow && typeof __sqRealOnlyBoard === 'function' ? __sqRealOnlyBoard(boardClone, state.players || []) : boardClone;
-
-  if (isVsShadow) {
-    try {
-      if (state.shadow) {
-        state.shadow.saveFailed = false;
-        state.shadow.saveInFlight = true;
-        state.shadow.lastSaveError = '';
-      }
-      await recordFullGameToSupabase();
-      if (state.shadow) state.shadow.saveInFlight = false;
-      state.gameAwarded = true;
-    } catch (e) {
-      console.error(e);
-      try {
-        state.finished = true;
-        state.gameAwarded = false;
-        if (state.shadow) {
-          state.shadow.saveInFlight = false;
-          state.shadow.saveFailed = true;
-          state.shadow.lastSaveError = String((e && (e.message || e.details || e.hint)) || e || 'Save failed');
-        }
-        delete state.__sqPracticeSavedToGames;
-        delete state.__sqPracticeCloudSavedV2;
-        delete state.__sqPracticeSavedKeyV2;
-        delete state.__sqPracticeSaveMatchIdV2;
-      } catch(_) {}
-      try{ toast('Vs Shadow save failed. Your completed game is still on screen; retry Finish Game.'); }catch(_){ }
-      try{ window.sqDmdShowZones?.({ z2:'SAVE FAILED', z3:'RETRY FINISH' }, { type:'flash', ms:1200, fx:'impact', z3Small:true }); }catch(_){ }
-      try{ show('game'); }catch(_){ }
-      try{ updateUI(); }catch(_){ }
-      return;
-    }
-  }
-
-  state.match.history.push({ totals: historyTotals, board: historyBoard, gameToken: state.__gameToken || 0 });
-
-  // Long-term local logs
-  logCompletedGame(historyTotals, isVsShadow ? [] : winners, historyBoard);
-
-  const targetWins = state.match.targetWins || 1;
-  const gamesPlayedNow = Array.isArray(state.match.history) ? state.match.history.length : 0;
-  const maxWins    = state.match.wins.length ? Math.max(...state.match.wins) : 0;
-  const matchDone  = isVsShadow ? (gamesPlayedNow >= targetWins) : (maxWins >= targetWins);
-
-  if (!isVsShadow && matchDone && !state.match.completedLogged) {
-    logCompletedMatch();
-    state.match.completedLogged = true;
-  }
-
-  // Cloud writes (best-effort for legacy modes; Vs Shadow must fail closed above)
-  if (!isVsShadow) {
-    try { await recordFullGameToSupabase(); } catch (e) {
-      console.error(e); toast('Game saved to local only (cloud failed)');
-    }
-  }
-  try { await recordGameToHighScores(); } catch (e) {
-    console.error(e);
-  }
-
-  state.match.gameNumber = state.match.history.length + 1;
-
-  save();
-  showLeaderboard();
+  state.__sqAwardInFlight=true;const awardingState=state;
+  const totals=state.players.map((_,i)=>totalScoreForPlayer(i));const max=Math.max(...totals);
+  let winners=totals.map((t,i)=>t===max?i:null).filter(x=>x!==null);
+  if(state._decider?.resolved&&typeof state._decider.winner==='number')winners=[state._decider.winner];
+  if(isVsShadow&&typeof __sqRealOnlyWinnerIndexes==='function')winners=__sqRealOnlyWinnerIndexes(winners,state.players||[]);
+  try{
+    if(isVsShadow&&state.shadow){state.shadow.saveInFlight=true;state.shadow.saveFailed=false;}
+    // A failed or lost response retains the exact completion and finished board.
+    // No win/history award or next-game advancement precedes server acceptance.
+    const receipt=await recordFullGameToSupabase();
+    if(!receipt)throw new Error('completion_not_accepted');
+    if(state!==awardingState){window.SQ_GAMEPLAY.notice('The previous completed game was accepted. Current setup is preserved.');return;}
+    const count=isVsShadow&&typeof __sqRealPlayersOnly==='function'?__sqRealPlayersOnly(state.players||[]).length:state.players.length;
+    if(!state.match.wins||state.match.wins.length!==count)state.match.wins=Array.from({length:count},()=>0);
+    if(!isVsShadow)winners.forEach(i=>state.match.wins[i]++);
+    const board=JSON.parse(JSON.stringify(state.score));
+    const historyTotals=isVsShadow&&typeof __sqRealOnlyTotals==='function'?__sqRealOnlyTotals(totals,state.players||[]):totals.slice();
+    const historyBoard=isVsShadow&&typeof __sqRealOnlyBoard==='function'?__sqRealOnlyBoard(board,state.players||[]):board;
+    state.match.history.push({totals:historyTotals,board:historyBoard,gameToken:state.__gameToken||0,game_id:receipt.game_id});
+    logCompletedGame(historyTotals,isVsShadow?[]:winners,historyBoard);
+    const targetWins=state.match.targetWins||1;const countPlayed=state.match.history.length;
+    const maxWins=state.match.wins.length?Math.max(...state.match.wins):0;
+    const done=isVsShadow?countPlayed>=targetWins:maxWins>=targetWins;
+    if(!isVsShadow&&done&&!state.match.completedLogged){logCompletedMatch();state.match.completedLogged=true;}
+    state.gameAwarded=true;state.match.gameNumber=state.match.history.length+1;
+    if(state.shadow){state.shadow.saveInFlight=false;state.shadow.saveFailed=false;state.shadow.lastSaveError='';}
+    state.__sqAwardInFlight=false;save();showLeaderboard();
+  }catch(error){
+    state.finished=true;state.gameAwarded=false;
+    if(state.shadow){state.shadow.saveInFlight=false;state.shadow.saveFailed=true;state.shadow.lastSaveError=String(error.code||error.message||'Save failed');}
+    window.SQ_GAMEPLAY.failure(error);show('game');updateUI();
+  }finally{awardingState.__sqAwardInFlight=false;}
 }
 // next line should exist already in your file:
 const lbTable = byId('lbTable');
@@ -2525,7 +2324,24 @@ function buildEverything(){
 // >>> PATCH:SQ_BUILD_CHUNK_V1 START
 function __sqYieldToPaint(){
   return new Promise((resolve)=>{
-    requestAnimationFrame(()=>setTimeout(resolve, 0));
+    let settled = false, frame = null, afterPaint = null, watchdog = null;
+    const finish = ()=>{
+      if (settled) return;
+      settled = true;
+      if (frame !== null) { try{ cancelAnimationFrame(frame); }catch(_){} frame = null; }
+      if (afterPaint !== null) { clearTimeout(afterPaint); afterPaint = null; }
+      if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
+      resolve();
+    };
+    watchdog = setTimeout(finish, 100);
+    try{
+      if (typeof requestAnimationFrame !== 'function') return;
+      frame = requestAnimationFrame(()=>{
+        frame = null;
+        if (settled) return;
+        try{ afterPaint = setTimeout(finish, 0); }catch(_){}
+      });
+    }catch(_){}
   });
 }
 
@@ -3276,8 +3092,8 @@ function __sqRevealConfirmedThrowOrder(start){
 
   // The confirmed roster remains authoritative. Presentation never starts a
   // replacement game after navigation, another start or an identity change.
-  const guard={page:document.body.dataset.page,token:Number(state.__gameToken||0),matchId:state.match?.id,players:JSON.stringify(state.players)};
-  const current=()=>document.body.dataset.page===guard.page && Number(state.__gameToken||0)===guard.token &&
+  const guard={state,page:document.body.dataset.page,token:Number(state.__gameToken||0),matchId:state.match?.id,players:JSON.stringify(state.players)};
+  const current=()=>state===guard.state && document.body.dataset.page===guard.page && Number(state.__gameToken||0)===guard.token &&
     state.match?.id===guard.matchId && JSON.stringify(state.players)===guard.players;
   let done=false,timer=null,observer=null;
   const overlay=document.createElement('div');
@@ -3552,8 +3368,9 @@ function __sqNewGamePlayerCountAllowed(){
   try{ toast('New games support a maximum of 5 players. Start a new match with 2–5 players.'); }catch(_){}
   return false;
 }
-function startNewGame(setOrder=false){
-  if (!__sqNewGamePlayerCountAllowed()) return;
+async function startNewGame(setOrder=false){
+  if(state.__sqSecurityPreparing)return false;
+  if (!__sqNewGamePlayerCountAllowed()) return false;
   try{ __sqClearFinalBullReturnRuntime(); }catch(_){ }
   try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('startNewGame'); }catch(_){ }
   try{
@@ -3564,8 +3381,12 @@ function startNewGame(setOrder=false){
   if(!setOrder){
     try{ if (typeof __sqSanitizeVsShadowForGenericStart === 'function') __sqSanitizeVsShadowForGenericStart('startNewGame-generic'); }catch(_){ }
     showPlayerOrderDialog();
-    return;
+    return false;
   }
+
+  const startingState=state;
+  __sqShowGameLoadOverlay('Preparing secure game');
+  try{await window.SQ_GAMEPLAY.prepareNewGame();if(state!==startingState){__sqHideGameLoadOverlay();return false;}}catch(error){__sqHideGameLoadOverlay();return false;}
 
   // A completed game pins the DMD to the scrolling GAME OVER scene. A new
   // game owns a fresh DMD lifecycle, so clear that presentation before any
@@ -3615,9 +3436,11 @@ __sqAfterPaint(async ()=>{
     __sqHideGameLoadOverlay();
   }
 });
+  return true;
 }
 
 function restartGame() {
+  if(!window.SQ_GAMEPLAY.canDiscard())return;
   if (!__sqNewGamePlayerCountAllowed()) return;
   if (!confirm('Are you sure you want to restart this game? All progress will be lost.')) return;
   try{ if (typeof __sqClearVsShadowTimers === 'function') __sqClearVsShadowTimers('restartGame'); }catch(_){ }
@@ -4568,55 +4391,11 @@ Type DELETE to confirm:`;
 // [removed: openRoundHighScoresDialog base def (self-quarantined)] audit P5.3 batch 3 — shadowed by later canonical definition
 // Delete a game (by timestamp) and its related high-score rows from Supabase
 async function cloudDeleteGameCascade(g){
-  if (!ensureCloudInit()) throw new Error('Cloud not initialised');
-
-  const gameId = g?.id || g?.game_id || null;
-  const ts = g?.ts || g?.created_at || null;
-  if (!gameId && !ts) throw new Error('Missing game id/timestamp for delete');
-
-  // 1) Delete the game row (prefer id)
-  if (gameId){
-    const { error } = await sb.from(TABLE_GAMES).delete().eq('id', gameId);
-    if (error) throw error;
-  } else {
-    // fallback by exact timestamp, then ±2min
-    try {
-      const { error } = await sb.from(TABLE_GAMES).delete().eq('created_at', ts);
-      if (error) throw error;
-    } catch (e) {
-      const pad = 2 * 60 * 1000;
-      const fromIso = new Date(new Date(ts).getTime() - pad).toISOString();
-      const toIso   = new Date(new Date(ts).getTime() + pad).toISOString();
-      const { error } = await sb.from(TABLE_GAMES).delete().gte('created_at', fromIso).lte('created_at', toIso);
-      if (error) throw error;
-    }
-  }
-
-  // 2) Delete related HS rows (prefer game_id). If schema lacks game_id, fall back to legacy delete.
-  const isSingle = (g?.players || []).length === 1;
-  const table = isSingle ? TABLE_HS_PRACTICE : TABLE_HS_LEAGUE;
-
-  if (gameId){
-    try{
-      const { error } = await sb.from(table).delete().eq('game_id', gameId);
-      if (error) throw error;
-      return;
-    }catch(e){
-      const msg  = String(e?.message || '');
-      const code = String(e?.code || '');
-      const missingCol = (code === '42703') || /game_id/i.test(msg);
-      if (!missingCol) throw e;
-      // else fall through to legacy matching
-    }
-  }
-
-  const players = g?.players || [];
-  const totals  = g?.totals  || [];
-  const tasks = players.map((p,i)=>{
-    const row = { name: p?.name || '', score: Number(totals[i]||0), ts: ts };
-    return cloudDeleteHighScore(row, isSingle).catch(()=>{});
-  });
-  await Promise.all(tasks);
+  const gameId=g?.id||g?.game_id||null;
+  const timestamp=g?.ts||g?.created_at||null;
+  if(!gameId&&!timestamp)throw new Error('Missing game id/timestamp for delete');
+  await window.sqAdminAction({operation:'purge',...(gameId?{game_id:gameId}:{timestamp})});
+  try{window.__sqClearGamesTruthCache?.('cloudDeleteGameCascade');}catch(_){}
 }
 
   /*****************

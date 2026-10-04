@@ -70,10 +70,20 @@ jobs:
           node tools/ui-smoke/verify-sc048-volde.mjs | tee core-static-volde.txt
           node tools/ui-smoke/verify-sc038-xp-breakdown.mjs | tee core-static-xp.txt
           node tools/ui-smoke/verify-sc059-bounce-out.mjs | tee core-static-sc059-bounce-out.txt
+          node tools/ui-smoke/verify-sc069-bounce-feedback.mjs | tee core-static-sc069-bounce-feedback.txt
+          node --check tools/ui-smoke/verify-sc069-bounce-feedback.js
+          node tools/ui-smoke/verify-sc063-backend-performance.mjs | tee core-static-sc063-backend.txt
           node tools/ui-smoke/verify-sc038-postgame-flow.mjs | tee core-static-postgame-flow.txt
           node tools/ui-smoke/verify-sc050-release-notes.mjs | tee core-static-release-notes.txt
+          node tools/sc004-security/client-cache-tests.mjs | tee core-static-sc004-cache.txt
+          node tools/sc004-security/gameplay-runtime-tests.mjs | tee core-static-sc004-runtime.txt
+          node --check src/services/sc004-client.js
+          node --check src/services/sc004-gameplay.js
+          node --check src/services/admin-auth.js
+          node --check supabase/functions/_shared/sc004-handler.mjs
           node tools/ui-smoke/verify-sxp04-gate3-quick-entry-contract.mjs | tee core-static-quick-entry.txt
           node tools/ui-smoke/verify-sc056-dmd-single-miss.mjs | tee core-static-single-miss.txt
+          node tools/ui-smoke/verify-sc057-avatars.mjs | tee core-static-sc057-avatars.txt
           node --check src/game/engine.js
           node --check src/app/router-ui.js
           node --check src/live-game/live-v2.js
@@ -81,6 +91,9 @@ jobs:
           node --check src/ui/modals.js
           node --check tools/ui-smoke/verify-sc033-throw-order.js
           node --check tools/ui-smoke/verify-sc035-initial-order.js
+          node --check tools/ui-smoke/verify-sc065-score-wall.js
+          node tools/ui-smoke/verify-sc065-startup-yield.mjs | tee core-static-sc065-startup.txt
+          node --check tools/ui-smoke/verify-sc070-five-player-fit.js
           node --check tools/ui-smoke/verify-sc034-add-player.js
           node --check tools/ui-smoke/verify-sc036-skip-go.js
           node --check tools/ui-smoke/verify-vis002-mobile.js
@@ -88,9 +101,11 @@ jobs:
           node --check tools/ui-smoke/verify-vis001-navigation.js
           node --check tools/ui-smoke/verify-sc051-add-player.js
           node --check tools/ui-smoke/verify-sc047-live-updates.js
+          node --check tools/ui-smoke/verify-sc067-turbo-identity.js
           node --check tools/ui-smoke/verify-sc043-player-stats.js
           node --check tools/ui-smoke/verify-sxp04-gate3-quick-entry.js
           node --check tools/ui-smoke/verify-sc056-dmd-single-miss.js
+          node --check tools/ui-smoke/verify-sc057-runtime.js
 
       - name: Enforce public release metadata for runtime changes
         if: github.event_name == 'pull_request'
@@ -131,6 +146,52 @@ jobs:
             core-vite-build.txt
             core-dist-verify.txt
 
+  sc057-avatars:
+    name: SC-057 — approved avatars source + dist
+    needs: static-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: core-release-dist
+          path: dist
+      - name: Install avatar verification
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps chromium webkit
+          node tools/ui-smoke/verify-sc057-migration.mjs
+      - name: Verify all three appended identities in both browsers and builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sc057-source.log 2>&1 &
+          source_pid=$!
+          python3 -m http.server 8124 --bind 127.0.0.1 --directory dist >/tmp/sc057-dist.log 2>&1 &
+          dist_pid=$!
+          trap 'kill "$source_pid" "$dist_pid" || true' EXIT
+          for browser in chromium webkit; do
+            SQ_BROWSER="$browser" SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS="qa-artifacts-sc057/$browser-source" timeout 180s node tools/ui-smoke/verify-sc057-runtime.js | tee "core-sc057-$browser-source.txt"
+            SQ_BROWSER="$browser" SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS="qa-artifacts-sc057/$browser-dist" timeout 180s node tools/ui-smoke/verify-sc057-runtime.js | tee "core-sc057-$browser-dist.txt"
+          done
+      - name: Keep avatar evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-release-sc057-avatar-evidence
+          retention-days: 14
+          path: |
+            core-sc057-*.txt
+            qa-artifacts-sc057/
+
   webkit-home:
     name: WebKit — Home source + dist
     needs: static-build
@@ -166,6 +227,8 @@ jobs:
           trap 'kill "$source_pid" "$dist_pid" || true' EXIT
           SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/source timeout 180s node tools/ui-smoke/verify-sc047-live-updates.js | tee core-webkit-source-home.txt
           SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/dist timeout 180s node tools/ui-smoke/verify-sc047-live-updates.js | tee core-webkit-dist-home.txt
+          SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/turbo-source timeout 180s node tools/ui-smoke/verify-sc067-turbo-identity.js | tee core-webkit-source-turbo.txt
+          SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/turbo-dist timeout 180s node tools/ui-smoke/verify-sc067-turbo-identity.js | tee core-webkit-dist-turbo.txt
           SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/stats-source timeout 180s node tools/ui-smoke/verify-sc043-player-stats.js | tee core-webkit-source-stats.txt
           SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/stats-dist timeout 180s node tools/ui-smoke/verify-sc043-player-stats.js | tee core-webkit-dist-stats.txt
       - name: Keep WebKit evidence
@@ -177,6 +240,115 @@ jobs:
           path: |
             core-webkit-*.txt
             qa-artifacts-webkit/
+
+  five-player-fit:
+    name: Five-player fit — ${{ matrix.browser }} / ${{ matrix.build }} / ${{ matrix.part }}
+    needs: static-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+        build: [source, dist]
+        part: [identity, records, numeric-doubles, numeric-triples, numeric-bull]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        if: matrix.build == 'dist'
+        with:
+          name: core-release-dist
+          path: dist
+      - name: Install focused browser QA
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps ${{ matrix.browser }}
+      - name: Verify actual five-player rendering
+        shell: bash
+        env:
+          SQ_BROWSER: ${{ matrix.browser }}
+          SQ_SC070_PART: ${{ matrix.part }}
+          SQ_SERVER_DIRECTORY: ${{ matrix.build == 'dist' && 'dist' || '.' }}
+          SQ_APP_URL: http://127.0.0.1:8123/index.html
+          SQ_SCREENSHOTS: qa-artifacts-five-player-fit
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 --directory "$SQ_SERVER_DIRECTORY" >/tmp/five-player-fit-server.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          timeout 180s node tools/ui-smoke/verify-sc070-five-player-fit.js 2>&1 | tee core-five-player-fit.txt
+      - name: Keep five-player fit evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-five-player-fit-${{ matrix.browser }}-${{ matrix.build }}-${{ matrix.part }}
+          retention-days: 14
+          path: |
+            core-five-player-fit.txt
+            qa-artifacts-five-player-fit/
+            /tmp/five-player-fit-server.log
+
+  webkit-score-wall:
+    # Exact 8f2e CI passed cases continuously until the full matrix hit 180s.
+    # Partition complete groups; preserve every assertion and existing budget.
+    name: WebKit score wall — ${{ matrix.build }} / ${{ matrix.part }}
+    needs: static-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [source, dist]
+        part: [late, early, lifecycle]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        if: matrix.build == 'dist'
+        with:
+          name: core-release-dist
+          path: dist
+      - name: Install WebKit QA
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps webkit
+      - name: Verify complete score-wall group in WebKit
+        shell: bash
+        env:
+          SQ_BROWSER: webkit
+          SQ_SC065_PART: ${{ matrix.part }}
+          SQ_SERVER_DIRECTORY: ${{ matrix.build == 'dist' && 'dist' || '.' }}
+          SQ_APP_URL: http://127.0.0.1:8123/index.html
+          SQ_SCREENSHOTS: qa-artifacts-webkit-score-wall
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 --directory "$SQ_SERVER_DIRECTORY" >/tmp/webkit-score-wall.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          timeout 180s node tools/ui-smoke/verify-sc065-score-wall.js 2>&1 | tee core-webkit-score-wall.txt
+      - name: Keep complete score-wall group evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-release-webkit-score-wall-${{ matrix.build }}-${{ matrix.part }}-evidence
+          retention-days: 14
+          path: |
+            core-webkit-score-wall.txt
+            qa-artifacts-webkit-score-wall/
+            /tmp/webkit-score-wall.log
 
   sc051-mobile:
     name: Add Player mobile — Chromium + WebKit source + dist
@@ -347,6 +519,7 @@ jobs:
           timeout 180s node tools/ui-smoke/verify-saveplayer-card.js | tee core-source-saveplayer.txt
           timeout 180s node tools/ui-smoke/verify-sc047-live-updates.js | tee core-source-sc047.txt
           timeout 180s node tools/ui-smoke/verify-classic-visual-fit.js | tee core-source-classic.txt
+          timeout 180s node tools/ui-smoke/verify-sc067-turbo-identity.js | tee core-source-turbo.txt
       - name: Keep source-core evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -387,6 +560,7 @@ jobs:
           trap 'kill "$pid" || true' EXIT
           timeout 180s node tools/ui-smoke/verify-sc033-throw-order.js | tee core-source-throw-order.txt
           timeout 180s node tools/ui-smoke/verify-sc035-initial-order.js | tee core-source-initial-order.txt
+          timeout 180s node tools/ui-smoke/verify-sc065-score-wall.js | tee core-source-score-wall.txt
           timeout 180s node tools/ui-smoke/verify-sc034-add-player.js | tee core-source-add-player.txt
           timeout 180s node tools/ui-smoke/verify-sc036-skip-go.js | tee core-source-skip-go.txt
           timeout 180s node tools/ui-smoke/verify-sxp04-gate3-quick-entry.js | tee core-source-quick-entry.txt
@@ -485,6 +659,7 @@ jobs:
           trap 'kill "$pid" || true' EXIT
           timeout 180s node tools/ui-smoke/verify-sc033-throw-order.js | tee core-dist-throw-order.txt
           timeout 180s node tools/ui-smoke/verify-sc035-initial-order.js | tee core-dist-initial-order.txt
+          timeout 180s node tools/ui-smoke/verify-sc065-score-wall.js | tee core-dist-score-wall.txt
           timeout 180s node tools/ui-smoke/verify-sc034-add-player.js | tee core-dist-add-player.txt
           timeout 180s node tools/ui-smoke/verify-sc036-skip-go.js | tee core-dist-skip-go.txt
           timeout 180s node tools/ui-smoke/verify-sxp04-gate3-quick-entry.js | tee core-dist-quick-entry.txt
@@ -532,6 +707,7 @@ jobs:
           pid=$!
           trap 'kill "$pid" || true' EXIT
           timeout 180s node tools/ui-smoke/verify-classic-visual-fit.js | tee core-dist-classic.txt
+          timeout 180s node tools/ui-smoke/verify-sc067-turbo-identity.js | tee core-dist-turbo.txt
           timeout 180s node tools/ui-smoke/verify-training-modes.js | tee core-dist-training.txt
           timeout 180s node tools/ui-smoke/verify-progression-modes.js | tee core-dist-progression.txt
           timeout 180s node tools/ui-smoke/verify-pstats.js | tee core-dist-pstats.txt
@@ -602,6 +778,58 @@ jobs:
           path: |
             core-dist-*.txt
             qa-artifacts-dist-dmd/
+
+  bounce-feedback:
+    name: Bounce Out feedback — ${{ matrix.browser }} / ${{ matrix.build }}
+    needs: static-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+        build: [source, dist]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        if: matrix.build == 'dist'
+        with:
+          name: core-release-dist
+          path: dist
+      - name: Install focused browser QA
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps ${{ matrix.browser }}
+      - name: Verify complete native Bounce Out feedback cases
+        shell: bash
+        env:
+          SQ_BROWSER: ${{ matrix.browser }}
+          SQ_SERVER_DIRECTORY: ${{ matrix.build == 'dist' && 'dist' || '.' }}
+          SQ_APP_URL: http://127.0.0.1:8123/index.html
+          SQ_SC069_ARTIFACTS: qa-artifacts-bounce-feedback
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 --directory "$SQ_SERVER_DIRECTORY" >/tmp/bounce-feedback-server.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
+          timeout 180s node tools/ui-smoke/verify-sc069-bounce-feedback.js 2>&1 | tee core-bounce-feedback.txt
+      - name: Keep native Bounce Out feedback evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-bounce-feedback-${{ matrix.browser }}-${{ matrix.build }}
+          retention-days: 14
+          path: |
+            core-bounce-feedback.txt
+            qa-artifacts-bounce-feedback/
+            /tmp/bounce-feedback-server.log
 
   throw-order-reveal:
     name: Throw-order reveal — ${{ matrix.browser }}

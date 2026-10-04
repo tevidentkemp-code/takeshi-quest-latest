@@ -170,7 +170,7 @@ function assert(cond, msg) {
     assert(after.job && after.job.playerIndex === 2 && after.job.pendingRounds.length === 0, 'round-1 join should require no catch-up');
 
     // Force a clean mid-game state at round index 5 (15s), current table round.
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
       const mk = () => Array.from({length:14}, () => ({darts:[null,null,null],roundTotal:0}));
       state.players = state.players.slice(0,2);
       state.score = [mk(), mk()];
@@ -248,6 +248,7 @@ function assert(cond, msg) {
       state.currentRound=7; state.currentPlayer=0; state.currentDart=0;
       state.history=[]; state.finished=false; delete state.__sqCatchUp;
     });
+    await page.evaluate(()=>SQ_GAMEPLAY.prepareNewGame());
     const turboAdded = await page.evaluate(() =>
       window.__sqAppendLatePlayer({id:'tc',name:'TURBO C',initials:'TC'}, 'registered')
     );
@@ -262,7 +263,7 @@ function assert(cond, msg) {
     await page.evaluate(() => { delete state.gameMode; });
 
     // Persist and reload during an active catch-up sequence.
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
       const mk = () => Array.from({length:14}, () => ({darts:[null,null,null],roundTotal:0}));
       state.players = state.players.slice(0,2);
       state.score = [mk(),mk()];
@@ -271,7 +272,7 @@ function assert(cond, msg) {
       state.matchAgg = {hits:[{},{}],totals60:[0,0],totals100:[0,0],totals140:[0,0]};
       state.currentRound = 4; state.currentPlayer = 0; state.currentDart = 0; state.history=[]; state.finished=false;
       delete state.__sqCatchUp;
-      window.__sqAppendLatePlayer({name:'EPSILON',initials:'EP'},'guest');
+      await window.__sqAppendLatePlayer({name:'EPSILON',initials:'EP'},'guest');
       // manually mark catch-up active in the exact persisted shape and save
       const j=state.__sqCatchUp.jobs[0];
       state.__sqCatchUp.active=true; state.__sqCatchUp.activeJobIndex=0;
@@ -300,17 +301,17 @@ function assert(cond, msg) {
     assert(restored.p === 2, 'late player identity must survive refresh');
 
     // 17s boundary: no add once any dart at round index 7 has begun.
-    const blocked17 = await page.evaluate(() => {
+    const blocked17 = await page.evaluate(async () => {
       state.currentRound = 7; state.currentPlayer = 0; state.currentDart = 1;
       state.history.push({player:0,round:7,dartIndex:0,throw:{kind:'Miss',points:0}});
       const gate = window.__sqLateJoinEligibility();
-      const added = window.__sqAppendLatePlayer({name:'TOO LATE'},'guest');
+      const added = await window.__sqAppendLatePlayer({name:'TOO LATE'},'guest');
       return {gate,added,count:state.players.length};
     });
     assert(blocked17.gate.ok === false && blocked17.added === false, 'late entry must close once 17s starts');
 
     // Game 2+ must reject mid-game late entry under Game Rules §3.6.
-    const game2Blocked = await page.evaluate(() => {
+    const game2Blocked = await page.evaluate(async () => {
       state.players = state.players.slice(0,2);
       state.score = state.score.slice(0,2);
       state.match.wins = [0,0];
@@ -319,13 +320,13 @@ function assert(cond, msg) {
       state.history = []; state.finished = false;
       delete state.__sqCatchUp;
       const gate = window.__sqLateJoinEligibility();
-      const added = window.__sqAppendLatePlayer({name:'GAME2 LATE'},'guest');
+      const added = await window.__sqAppendLatePlayer({name:'GAME2 LATE'},'guest');
       return {gate,added,count:state.players.length};
     });
     assert(game2Blocked.gate.ok === false && game2Blocked.added === false, 'mid-game late entry must be blocked after Game 1');
 
     // New late entry stops at five; existing six-player state is preserved below.
-    const cap = await page.evaluate(() => {
+    const cap = await page.evaluate(async () => {
       const mk = () => Array.from({length:14}, () => ({darts:[null,null,null],roundTotal:0}));
       state.players = Array.from({length:5},(_,i)=>({name:'P'+(i+1),type:'guest'}));
       state.score = state.players.map(()=>mk());
@@ -334,7 +335,7 @@ function assert(cond, msg) {
       state.currentRound=0; state.currentPlayer=0; state.currentDart=0; state.history=[]; state.finished=false;
       delete state.__sqCatchUp;
       const gate=window.__sqLateJoinEligibility();
-      const added=window.__sqAppendLatePlayer({name:'P6'},'guest');
+      const added=await window.__sqAppendLatePlayer({name:'P6'},'guest');
       return {gate,added,count:state.players.length};
     });
     assert(cap.gate.ok === false && cap.added === false && cap.count === 5, 'five-player late-entry cap must hold');
@@ -354,14 +355,14 @@ function assert(cond, msg) {
         assert(layout.left>=-1 && layout.right<=layout.width+1 && layout.cells>0, `${count}-player score wall must render within ${width}px`);
       }
     }
-    const historical = await page.evaluate(() => {
+    const historical = await page.evaluate(async () => {
       state.players.push({name:'HISTORICAL SIXTH',type:'guest'});
       state.score.push(Array.from({length:14},()=>({darts:[null,null,null],roundTotal:0})));
       state.match.wins.push(0);
       const before=JSON.stringify({players:state.players,score:state.score});
       liveV2Render();
-      const added=window.__sqAppendLatePlayer({name:'SEVENTH'},'guest');
-      startNewGame(true);
+      const added=await window.__sqAppendLatePlayer({name:'SEVENTH'},'guest');
+      await startNewGame(true);
       return {added,count:state.players.length,unchanged:before===JSON.stringify({players:state.players,score:state.score}),cells:document.querySelectorAll('#v2Rows .v2Cell').length};
     });
     assert(!historical.added && historical.count===6 && historical.unchanged && historical.cells>0, 'historical six-player state remains readable; new-game attempts cannot clear or replace its board');

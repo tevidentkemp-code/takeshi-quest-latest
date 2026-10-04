@@ -30,6 +30,7 @@ async function install(page, mode){
       window.__sc043Reads[table] = (window.__sc043Reads[table] || 0) + 1;
       const m = window.__sc043Mode;
       if (table === 'v_player_xp' && ['directory_hang','xp_hang'].includes(m)) return query(null, true);
+      if (table === 'v_player_misfires' && m === 'misfire_hang') return query(null, true);
       if ((table === 'v_player_xp' && m === 'xp_error') || (table === 'v_player_game_scores_official_clean' && m === 'rank_error') ||
           (['v_ach_base','v_ach_david_goliath'].includes(table) && m === 'history_error')) return query({ data:null, error:{ message:'fixture timeout' } });
       if (table === 'v_player_xp' && m === 'zero') return query({ data:[{...xp, total_xp:0}], error:null });
@@ -50,6 +51,14 @@ async function closeAll(page){
 async function main(width){
   const {browser, page, consoleErrs} = await H.launch({width, height:844});
   try {
+    // The offline harness serves Supabase locally; omit its external TLS hint.
+    await page.route(H.APP_URL, async route => {
+      if (route.request().method() !== 'GET' || route.request().resourceType() !== 'document') return route.fallback();
+      const response = await route.fetch({ maxRedirects:0, timeout:8000 });
+      const body = (await response.text()).replace('<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>', '');
+      const headers = { ...response.headers(), 'content-length':String(Buffer.byteLength(body)) };
+      await route.fulfill({ response, headers, body });
+    });
     await H.boot(page, {settle:500}); await page.emulateMedia({reducedMotion:'reduce'});
     await install(page, 'directory_hang');
     await page.evaluate(() => { __sqPlayerStatsSelectedName = 'Sam T'; openPlayerStatsSelect(); });
@@ -132,6 +141,43 @@ async function main(width){
       await page.waitForSelector(hub+' .pp-tab'); await page.locator(hub+' [aria-label=Close]').click();
       await page.waitForTimeout(1400);
       check('closing the hub cancels deferred history and target reads', await page.evaluate(()=>!__sc043Reads.v_ach_base && !__sc043Reads.v_player_misfires && !__sc043Reads.v_player_last30_targets));
+      await install(page, 'healthy');
+      const cachedXp = await page.evaluate(async()=>{
+        const realNow = Date.now;
+        let now = realNow();
+        Date.now = () => now;
+        try{
+          await SQ_XP.all(true);
+          const directoryAt = SQ_XP._cacheAt;
+          now += 59000;
+          const state = await SQ_XP.forNameState('Alex S');
+          const reused = { reads:__sc043Reads.v_player_xp || 0, at:SQ_XP._oneCache.get('name:alex s').at, available:state.available, xp:Number(state.row && state.row.total_xp) };
+          now += 1001;
+          const renewed = await SQ_XP.forNameState('Alex S');
+          const expired = { reads:__sc043Reads.v_player_xp || 0, available:renewed.available, xp:Number(renewed.row && renewed.row.total_xp) };
+          now += 1;
+          const retry = await SQ_XP.forNameState('Alex S', true);
+          return { directoryAt, reused, expired, forced:{ reads:__sc043Reads.v_player_xp || 0, available:retry.available, xp:Number(retry.row && retry.row.total_xp) } };
+        }finally{ Date.now = realNow; }
+      });
+      check('59-second directory XP is reused without a duplicate read or renewed cache age', cachedXp.reused.reads===1 && cachedXp.reused.at===cachedXp.directoryAt && cachedXp.reused.available && cachedXp.reused.xp===151, cachedXp);
+      check('selected XP expires at the original directory 60-second boundary', cachedXp.expired.reads===2 && cachedXp.expired.available && cachedXp.expired.xp===151, cachedXp);
+      check('explicit XP Retry bypasses a fresh selected-player cache', cachedXp.forced.reads===3 && cachedXp.forced.available && cachedXp.forced.xp===151, cachedXp);
+
+      await install(page, 'xp_hang'); await page.evaluate(()=>openPlayerStatsHub('Alex S'));
+      await page.waitForTimeout(1500);
+      check('hung primary XP prevents automatic history/target stampede', await page.evaluate(()=>
+        !__sc043Reads.v_ach_base && !__sc043Reads.v_ach_david_goliath && !__sc043Reads.v_player_misfires && !__sc043Reads.v_player_last30_targets
+      ), await page.evaluate(()=>__sc043Reads));
+      await closeAll(page);
+
+      await install(page, 'misfire_hang'); await page.evaluate(()=>openPlayerStatsHub('Alex S'));
+      await page.waitForTimeout(1700);
+      check('in-flight Misfire history is prioritised before automatic target analytics', await page.evaluate(()=>
+        __sc043Reads.v_player_misfires===1 && !__sc043Reads.v_player_last30_targets && !__sc043Reads.v_player_last30_target_rates
+      ), await page.evaluate(()=>__sc043Reads));
+      await closeAll(page);
+
       await install(page, 'rank_error'); await page.evaluate(()=>openPlayerStatsHub('Alex S'));
       await page.getByRole('button',{name:'Retry rank',exact:true}).waitFor();
       await page.evaluate(()=>__sc043Mode='healthy'); await page.getByRole('button',{name:'Retry rank',exact:true}).click();

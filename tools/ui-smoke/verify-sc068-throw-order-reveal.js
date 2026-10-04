@@ -23,6 +23,69 @@ async function fixture(ctx){
   const wav=Buffer.alloc(204);wav.write('RIFF',0);wav.writeUInt32LE(196,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(8000,24);wav.writeUInt32LE(16000,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(160,40);
   await ctx.route('https://www.101soundboards.com/sounds/23923970-voldemort-laugh',r=>r.fulfill({status:200,contentType:'audio/wav',body:wav,headers:{'access-control-allow-origin':'*'}}));
 }
+async function installPreparationControl(ctx){
+  // The production client captures fetchImpl at construction. Intercept only
+  // that first construction and forward its real offline-fixture transport.
+  await ctx.addInitScript(()=>{
+    const endpoint='https://sc004-ui-fixture.invalid/functions/v1/sq-match-control';
+    if(Object.hasOwn(window,'createSc004Client'))throw Error('SC068 client factory was initialized before its offline control');
+    const control={next:null,gate:null,trace:[]};window.__sqSc068PreparationControl=control;
+    let factory;
+    const wrapped=function(options={}){
+      if(typeof factory!=='function')throw Error('SC068 canonical client factory unavailable');
+      const forward=options.fetchImpl||window.fetch;
+      const fetchImpl=async function(...args){
+        if(String(args[0])!==endpoint)return Reflect.apply(forward,this,args);
+        let request;try{request=JSON.parse(args[1]?.body||'{}');}catch(_){return Reflect.apply(forward,this,args);}
+        const selection=control.next;
+        const item={action:request.action,at:performance.now(),decision:'forward'};control.trace.push(item);
+        if(!selection||selection.action!==request.action)return Reflect.apply(forward,this,args);
+        control.next=null;item.decision=selection.kind;
+        if(selection.kind==='reject'){
+          item.settledAt=performance.now();
+          return new Response(JSON.stringify({ok:false,code:'permission_denied'}),{status:403,headers:{'Content-Type':'application/json'}});
+        }
+        if(selection.kind!=='delay')throw Error('Unknown SC068 offline preparation control');
+        await new Promise((resolve,reject)=>{
+          const signal=args[1]?.signal;
+          const gate={action:request.action};let settled=false;
+          const finish=(error)=>{
+            if(settled)return;settled=true;signal?.removeEventListener('abort',abort);
+            if(control.gate===gate)control.gate=null;item.settledAt=performance.now();
+            if(error)reject(error);else resolve();
+          };
+          const abort=()=>finish(new DOMException('Offline preparation cancelled','AbortError'));
+          gate.release=()=>finish();gate.cancel=abort;control.gate=gate;
+          if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
+        });
+        return Reflect.apply(forward,this,args);
+      };
+      try{return Reflect.apply(factory,this,[{...options,fetchImpl}]);}
+      finally{Object.defineProperty(window,'createSc004Client',{value:factory,writable:true,enumerable:true,configurable:true});}
+    };
+    Object.defineProperty(window,'createSc004Client',{get:()=>wrapped,set:value=>{factory=value;},enumerable:true,configurable:true});
+  });
+}
+async function preparationSnapshot(page){
+  return page.evaluate(()=>({token:Number(state.__gameToken||0),score:JSON.stringify(state.score),history:JSON.stringify(state.history),
+    preparing:!!state.__sqSecurityPreparing,blocked:!!window.__sqSecurityInputBlocked,canThrow:window.SQ_GAMEPLAY.canThrow(),
+    control:state.__sqGameControl?{matchId:state.__sqGameControl.match_id,gameId:state.__sqGameControl.game_id,gameNumber:state.__sqGameControl.game_number}:null,
+    gate:window.__sqSc068PreparationControl?.gate?.action||null,trace:window.__sqSc068PreparationControl?.trace.map(x=>({...x}))||[]}));
+}
+async function canonicalAcceptedCompletion(page,strongPlayerName){
+  await H.playToCompletion(page,{strongPlayerName});
+  await page.waitForSelector('.sq-gamecomplete-backdrop');
+  await page.locator('.sq-gamecomplete-backdrop [data-action="gcClose"]').click();
+  await page.waitForFunction(()=>!document.querySelector('.sq-gamecomplete-backdrop'));
+  await page.locator('#pad button').filter({hasText:'Finish Game'}).click();
+  await page.waitForFunction(()=>document.body.dataset.page==='leaderboard'&&state.gameAwarded&&
+    state.__sqAcceptedGameReceipt?.game_id===state.__sqGameControl?.game_id&&state.match.history.length===1);
+  const accepted=await page.evaluate(()=>({gameAwarded:state.gameAwarded,receipt:state.__sqAcceptedGameReceipt?.game_id,
+    historyId:state.match.history[0]?.game_id,gameNumber:state.match.gameNumber,controlId:state.__sqGameControl?.game_id}));
+  assert(accepted.gameAwarded&&accepted.receipt===accepted.controlId&&accepted.historyId===accepted.controlId,'AUTO fixture was not canonically accepted');
+  assert.equal(accepted.gameNumber,2,'Accepted first game did not advance the series');
+  return accepted;
+}
 async function seed(page,count=2,kind='classic'){
   await page.evaluate(({count,kind})=>{
     if(window.__sqThrowOrderRevealPending)throw Error('Previous reveal leaked');
@@ -44,7 +107,7 @@ async function seed(page,count=2,kind='classic'){
   },{count,kind});
   await page.waitForSelector('.modal-throworder:not(.modal-throworder-amend)');
 }
-async function read(page){return page.evaluate(()=>({token:Number(state.__gameToken||0),history:state.history.length,page:document.body.dataset.page,starts:window.__sqSc068Starts,pending:!!window.__sqThrowOrderRevealPending,players:state.players.map(p=>({id:p.id,name:__sqPlayerPretty(p),avatar:__sqAvatarIdForPlayer(p)})),timer:__sqTurboTimerStatus()}));}
+async function read(page){return page.evaluate(()=>({token:Number(state.__gameToken||0),history:state.history.length,page:document.body.dataset.page,starts:window.__sqSc068Starts,pending:!!window.__sqThrowOrderRevealPending,players:state.players.map(p=>({id:p.id,name:__sqPlayerPretty(p),avatar:__sqAvatarIdForPlayer(p)})),timer:__sqTurboTimerStatus(),control:state.__sqGameControl?{matchId:state.__sqGameControl.match_id,gameId:state.__sqGameControl.game_id,gameNumber:state.__sqGameControl.game_number}:null,cachedController:window.SQ_GAMEPLAY.hasCachedController(state),preparing:!!state.__sqSecurityPreparing,inputBlocked:!!window.__sqSecurityInputBlocked,canThrow:window.SQ_GAMEPLAY.canThrow()}));}
 async function confirm(page,repeated=false){
   return page.evaluate(repeated=>{
     window.__sqSc068Trace={start:performance.now(),beats:[],end:null};
@@ -59,7 +122,7 @@ async function confirm(page,repeated=false){
     return {pending:!!window.__sqThrowOrderRevealPending,token:Number(state.__gameToken||0),at:performance.now()};
   },repeated);
 }
-async function playable(page){await page.waitForFunction(()=>!window.__sqThrowOrderRevealPending&&document.body.dataset.page==='game'&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true');}
+async function playable(page){await page.waitForFunction(()=>!window.__sqThrowOrderRevealPending&&document.body.dataset.page==='game'&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&state.__sqGameControl&&window.SQ_GAMEPLAY.hasCachedController(state)&&window.SQ_GAMEPLAY.canThrow());}
 async function finish(page){await page.waitForFunction(()=>!window.__sqThrowOrderRevealPending);await playable(page);}
 async function settledLineup(page,measureScroll=false){
   // Snapshot readiness and geometry in one browser turn. CSS begins at its
@@ -120,7 +183,7 @@ async function shot(page,name){if(process.env.SQ_SCREENSHOTS){fs.mkdirSync(proce
     await H.boot(page,{settle:1000});
   };
   try{
-    await fixture(ctx);
+    await fixture(ctx);await installPreparationControl(ctx);
     // A controlled clock offset exercises the existing 20s cutoff without
     // replacing its formula, key, RAF cadence or canonical Miss implementation.
     await ctx.addInitScript(()=>{const real=performance.now.bind(performance);window.__sqSc068Offset=0;performance.now=()=>real()+window.__sqSc068Offset;});
@@ -186,10 +249,10 @@ async function shot(page,name){if(process.env.SQ_SCREENSHOTS){fs.mkdirSync(proce
 
     // Escape/removal/page navigation/pagehide and a replaced game token cannot
     // run a stale start callback. Cancellation leaves the existing game intact.
-    for(const action of ['escape','removed','navigation','pagehide','stale']){
+    for(const action of ['escape','removed','navigation','pagehide','stale','replacement-state']){
       await seed(page,2);const before=await read(page);await confirm(page);
       if(action==='escape')await page.keyboard.press('Escape');
-      else await page.evaluate(action=>{if(action==='removed')document.querySelector('.sq-throw-order-reveal').remove();if(action==='navigation')show('details');if(action==='pagehide')window.dispatchEvent(new Event('pagehide'));if(action==='stale')state.__gameToken++;},action);
+      else await page.evaluate(action=>{if(action==='removed')document.querySelector('.sq-throw-order-reveal').remove();if(action==='navigation')show('details');if(action==='pagehide')window.dispatchEvent(new Event('pagehide'));if(action==='stale')state.__gameToken++;if(action==='replacement-state')state=JSON.parse(JSON.stringify(state));},action);
       await page.waitForFunction(()=>!window.__sqThrowOrderRevealPending);
       assert.equal(await page.locator('.sq-throw-order-reveal').count(),0);const after=await read(page);
       assert.equal(after.starts,before.starts,action+' started a stale game');assert.equal(after.token,before.token+(action==='stale'?1:0));
@@ -231,9 +294,47 @@ async function shot(page,name){if(process.env.SQ_SCREENSHOTS){fs.mkdirSync(proce
     await page.locator('.modal-throworder-amend .to-row').first().locator('.to-arrow-btn').nth(1).click();await page.getByRole('button',{name:'APPLY CORRECTION',exact:true}).click();
     await page.waitForFunction(()=>!document.querySelector('.modal-throworder-amend'));assert.equal((await read(page)).starts,amendBefore.starts);assert.equal(await page.locator('.sq-throw-order-reveal').count(),0);
     const amended=(await read(page)).players;
-    await page.evaluate(()=>{state.finished=true;state.gameAwarded=true;state.match.gameNumber=2;state.match.history=[{totals:state.players.map((_,i)=>100+i),board:JSON.parse(JSON.stringify(state.score))}];showLeaderboard();show('leaderboard');});
+    const accepted=await canonicalAcceptedCompletion(page,amended[0].name);
     await page.click('#nextGameBtn');await playable(page);assert.equal(await page.locator('.sq-throw-order-reveal').count(),0);assert.deepEqual((await read(page)).players,amended.slice(1).concat(amended[0]));
     await page.evaluate(()=>{recordThrow({kind:'S'});save();});const saved=await read(page);await boot();await page.click('#resumeBtn');await playable(page);assert.equal(await page.locator('.sq-throw-order-reveal').count(),0);assert.deepEqual((await read(page)).players,saved.players);assert.equal((await read(page)).history,saved.history);
+    const resumed=await read(page);
+    assert.deepEqual(resumed.control,saved.control,'Resume replaced the issued current-game control');
+    assert(resumed.cachedController&&resumed.canThrow&&!resumed.preparing&&!resumed.inputBlocked,'Resume lost canonical controller continuity');
+    assert(accepted.receipt!==resumed.control.gameId,'AUTO reused the accepted previous game slot');
+
+    // Hold and reject only the exact offline reserve_game transport. The
+    // existing board must survive while canonical preparation is unresolved.
+    for(const decision of ['delay','reject']){
+      await seed(page,2);await confirm(page);await page.locator('.sq-throw-order-skip').click();await playable(page);
+      await page.locator('#pad [data-score-label="Single"]').click();await page.waitForFunction(()=>state.history.length===1);
+      const before=await preparationSnapshot(page),beforeStart=(await read(page)).starts;
+      await page.evaluate(decision=>{window.__sqSc068PreparationControl.next={action:'reserve_game',kind:decision};showPlayerOrderDialog();},decision);
+      await confirm(page,true);await page.locator('.sq-throw-order-skip').click();
+      if(decision==='delay'){
+        await page.waitForFunction(()=>window.__sqSc068PreparationControl.gate?.action==='reserve_game');
+        const held=await preparationSnapshot(page);
+        assert(held.preparing&&held.blocked&&!held.canThrow,'Delayed reservation did not block canonical input');
+        assert.equal(held.token,before.token);assert.equal(held.score,before.score);assert.equal(held.history,before.history);
+        assert.deepEqual(held.control,before.control,'Delayed preparation replaced current control before acceptance');
+        await page.evaluate(()=>recordThrow({kind:'Miss'}));
+        assert.equal((await preparationSnapshot(page)).history,before.history,'Canonical input scored while preparation was held');
+        await page.waitForTimeout(250);
+        assert.equal((await preparationSnapshot(page)).score,before.score,'Held preparation reset the existing board');
+        await page.evaluate(()=>window.__sqSc068PreparationControl.gate.release());await playable(page);
+        assert.equal((await read(page)).token,before.token+1);assert.equal((await read(page)).history,0);
+      }else{
+        await page.waitForFunction(()=>!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&
+          document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true'&&
+          window.__sqSc068PreparationControl.trace.some(x=>x.action==='reserve_game'&&x.decision==='reject'));
+        const rejected=await preparationSnapshot(page);
+        assert.equal(rejected.token,before.token);assert.equal(rejected.score,before.score);assert.equal(rejected.history,before.history);
+        assert.deepEqual(rejected.control,before.control,'Rejected preparation discarded current controller/board');
+        assert(!rejected.preparing&&!rejected.blocked&&rejected.gate===null,'Rejected preparation leaked a gate');
+      }
+      assert.equal((await read(page)).starts,beforeStart+1,'Repeated confirmation dispatched preparation twice');
+      assert.equal(await page.locator('.sq-throw-order-reveal').count(),0);
+      evidence.push({preparation:decision,before,after:await preparationSnapshot(page)});
+    }
     for(const kind of ['training','vsshadow','practice-classic']){
       await seed(page,kind==='practice-classic'?1:2,kind);const before=await read(page);await confirm(page);assert(!(await read(page)).pending,kind+' adopted the reveal');await playable(page);assert.equal((await read(page)).token,before.token+1);
     }
@@ -248,5 +349,5 @@ async function shot(page,name){if(process.env.SQ_SCREENSHOTS){fs.mkdirSync(proce
       await page.screenshot({path:path.join(process.env.SQ_SCREENSHOTS,'sc068-failure.png')}).catch(()=>{});
     }
     throw error;
-  }finally{await browser.close();}
+  }finally{await page.evaluate(()=>window.__sqSc068PreparationControl?.gate?.cancel()).catch(()=>{});await browser.close();}
 })().catch(error=>{console.error(error);process.exit(1);});
