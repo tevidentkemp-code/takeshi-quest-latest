@@ -353,6 +353,7 @@ async function shot(page,name){if(process.env.SQ_SCREENSHOTS){fs.mkdirSync(proce
     }
     }
     assert.deepEqual(consoleErrs,[],'Unexpected console/page errors');
+    if(process.env.SQ_SCREENSHOTS)fs.mkdirSync(process.env.SQ_SCREENSHOTS,{recursive:true});
     if(process.env.SQ_SCREENSHOTS)fs.writeFileSync(path.join(process.env.SQ_SCREENSHOTS,'sc068-measurements.json'),JSON.stringify(evidence,null,2));
     console.log('SC068 complete group '+qaPart);
     if(qaPart==='all')console.log('SC-068 PASS: exact ordered identities, picture→VS beats, 2–5/mobile/Skip/reduced/assets, stale lifecycle, preserved Turbo elapsed/READY, amendment/AUTO/resume/mode isolation');
