@@ -19549,7 +19549,24 @@ function buildEverything(){
 // >>> PATCH:SQ_BUILD_CHUNK_V1 START
 function __sqYieldToPaint(){
   return new Promise((resolve)=>{
-    requestAnimationFrame(()=>setTimeout(resolve, 0));
+    let settled = false, frame = null, afterPaint = null, watchdog = null;
+    const finish = ()=>{
+      if (settled) return;
+      settled = true;
+      if (frame !== null) { try{ cancelAnimationFrame(frame); }catch(_){} frame = null; }
+      if (afterPaint !== null) { clearTimeout(afterPaint); afterPaint = null; }
+      if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
+      resolve();
+    };
+    watchdog = setTimeout(finish, 100);
+    try{
+      if (typeof requestAnimationFrame !== 'function') return;
+      frame = requestAnimationFrame(()=>{
+        frame = null;
+        if (settled) return;
+        try{ afterPaint = setTimeout(finish, 0); }catch(_){}
+      });
+    }catch(_){}
   });
 }
 
@@ -23015,7 +23032,7 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
-  const RUNNING_VERSION = '0.13.3';
+  const RUNNING_VERSION = '0.13.4';
   const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
   let updateCheckPromise = null;
