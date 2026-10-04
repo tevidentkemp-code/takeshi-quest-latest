@@ -126,6 +126,7 @@ async function shot(page,name){if(process.env.SQ_SCREENSHOTS){fs.mkdirSync(proce
     await ctx.addInitScript(()=>{const real=performance.now.bind(performance);window.__sqSc068Offset=0;performance.now=()=>real()+window.__sqSc068Offset;});
     await boot();
     assert.equal(await page.evaluate(()=>typeof __sqRevealConfirmedThrowOrder),'function');
+    assert.equal(await page.evaluate(()=>typeof window.SQ_GAMEPLAY?.prepareNewGame),'function','Current secure game preparation contract must be present');
     await page.evaluate(()=>{window.__sqSc068Starts=0;const start=startNewGame;startNewGame=function(setOrder){if(setOrder)window.__sqSc068Starts++;return start.apply(this,arguments);};});
 
     // Complete the actual setup journey once; the mobile matrix below changes
