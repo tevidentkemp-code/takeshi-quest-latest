@@ -1,0 +1,103 @@
+name: SC-071 isolated build recovery
+on:
+  push:
+    branches: [work/sc071-build-recovery]
+    paths: [.github/workflows/sc071-build-recovery.yml]
+permissions:
+  contents: read
+jobs:
+  generate:
+    if: github.repository == 'tevidentkemp-code/takeshi-quest-latest' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - run: npm ci --prefix scripts --ignore-scripts
+      - name: Generate and verify the exact recovery pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = bba6eda50534b021bf012aafebbf36e9cc476052
+          node scripts/materialize-runtime.mjs
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          import crypto from 'node:crypto';
+          const runtime='src/legacy/scripts/inline-005.js', metadata='assets/release-metadata.json';
+          const original=execFileSync('git',['show','HEAD:'+runtime],{encoding:'utf8',maxBuffer:8*1024*1024});
+          assert.equal(original.split("const RUNNING_VERSION = '0.14.0';").length,2);
+          assert.equal(fs.readFileSync(runtime,'utf8'),original.replace("const RUNNING_VERSION = '0.14.0';","const RUNNING_VERSION = '0.14.1';"));
+          const prior=execFileSync('git',['show','d763df164ee5ef90b1cb14edefbae60a73b97fe5:'+metadata],{encoding:'utf8'});
+          const candidate=JSON.parse(fs.readFileSync(metadata,'utf8'));
+          assert.equal(candidate.currentReleaseId,'SC-071-TURBO-TIMER-PERIMETER');
+          assert.equal(candidate.currentVersion,'0.14.1');
+          const entry=JSON.stringify(candidate.releases[0],null,2).split('\n').map(line=>'    '+line).join('\n');
+          const restored=prior.replace('"currentVersion": "0.14.0"','"currentVersion": "0.14.1"').replace('"currentReleaseId": "SC-068-THROW-ORDER-REVEAL"','"currentReleaseId": "SC-071-TURBO-TIMER-PERIMETER"').replace('"releases": [\n','"releases": [\n'+entry+',\n');
+          assert.deepEqual(JSON.parse(restored),candidate);
+          fs.writeFileSync(metadata,restored);
+          const changed=execFileSync('git',['diff','--name-only'],{encoding:'utf8'}).trim().split('\n').sort();
+          assert.deepEqual(changed,[metadata,runtime].sort());
+          const out=process.env.RUNNER_TEMP+'/sc071-pair';fs.mkdirSync(out,{recursive:true});
+          const receipt={base:'bba6eda50534b021bf012aafebbf36e9cc476052',files:{}};
+          for(const file of [runtime,metadata]){const bytes=fs.readFileSync(file);fs.writeFileSync(out+'/'+file.split('/').at(-1),bytes);receipt.files[file]=crypto.createHash('sha256').update(bytes).digest('hex');}
+          fs.writeFileSync(out+'/receipt.json',JSON.stringify(receipt,null,2)+'\n');
+          console.log('SC071_PAIR_VERIFIED='+JSON.stringify(receipt));
+          NODE
+          git diff --check
+          node scripts/build-core-js-from-source.mjs --verify-current >/dev/null
+          node tools/ui-smoke/verify-sc050-release-metadata.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sc071-verified-pair
+          path: ${{ runner.temp }}/sc071-pair/
+          retention-days: 7
+  store:
+    needs: generate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: sc071-verified-pair
+          path: ${{ runner.temp }}/sc071-pair
+      - name: Store only verified bytes on isolated recovery branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/work/sc071-build-recovery
+          test "$(git ls-remote origin refs/heads/work/sc071-build-recovery | cut -f1)" = "$GITHUB_SHA"
+          python3 - <<'PY'
+          import os,json,pathlib,hashlib,shutil
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'sc071-pair'
+          assert sorted(x.name for x in p.iterdir())==['inline-005.js','receipt.json','release-metadata.json']
+          r=json.loads((p/'receipt.json').read_text())
+          assert r['base']=='bba6eda50534b021bf012aafebbf36e9cc476052'
+          assert set(r['files'])=={'src/legacy/scripts/inline-005.js','assets/release-metadata.json'}
+          for target,h in r['files'].items():
+              source=p/pathlib.Path(target).name
+              assert hashlib.sha256(source.read_bytes()).hexdigest()==h
+              shutil.copyfile(source,target)
+          PY
+          test "$(git diff --name-only | sort)" = "$(printf '%s\n' assets/release-metadata.json src/legacy/scripts/inline-005.js | sort)"
+          git diff --check
+          git add -- src/legacy/scripts/inline-005.js assets/release-metadata.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'SC-071: verified generated version and raw history preservation [skip ci]'
+          git push origin HEAD:work/sc071-build-recovery
+          echo "SC071_STORED_COMMIT=$(git rev-parse HEAD)"
+          echo "SC071_RUNTIME_BLOB=$(git rev-parse HEAD:src/legacy/scripts/inline-005.js)"
+          echo "SC071_METADATA_BLOB=$(git rev-parse HEAD:assets/release-metadata.json)"
