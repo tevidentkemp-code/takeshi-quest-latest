@@ -24,7 +24,7 @@ jobs:
           npm ci --prefix scripts --ignore-scripts
           npm ci --ignore-scripts --no-audit --no-fund
           npm ci --prefix tools/ui-smoke --ignore-scripts
-          npx --prefix tools/ui-smoke playwright install --with-deps chromium
+          npx --prefix tools/ui-smoke playwright install --with-deps chromium webkit
       - name: Add render-time regression to the existing Turbo suite
         run: |
           python3 - <<'PY'
@@ -101,11 +101,10 @@ jobs:
           before='    const totalR = (typeof ROUNDS!=="undefined" && Array.isArray(ROUNDS) && ROUNDS.length) ? ROUNDS.length : Math.max(cr+1, 1);'
           assert s.count(before)==1
           s=s.replace(before,before+"\n    const __sqTurboWallStart = __sqIsTurboVisualRuntime() ? __sqTurboRaceStartIndex(state, totalR) : 0;")
-          before='      // Compute per-round max (for faint green highlight)'
-          assert s.count(before)==1
-          block='''      // SC-077: pre-start Turbo rounds are placeholders, not zero scores.
-                // Emit them blank immediately; the legacy delayed cleanup must not
-                // be responsible for preventing a visible intermediate score.
+          before='      // Compute per-round max (for faint green highlight)\n      let maxV = -Infinity;'
+          assert s.count(before)==1, 'Expected exactly the active renderer, not the disabled next-row copy'
+          block='''      // SC-077: emit pre-start Turbo placeholders blank, before any paint.
+                // The delayed legacy cleanup must not expose intermediate zero scores.
                 if(r < __sqTurboWallStart){
                   out.push(`<div class="v2Badge${rowClass} sqTurboPreStartBadge" data-round="${r}"></div>`);
                   for(let i=0; i<pCount; i++){
@@ -116,8 +115,6 @@ jobs:
                 }
           
           '''
-          # Dedent only the extra Python template indentation, preserving six spaces in JS.
-          block='\n'.join(line[10:] if line.startswith('                ') else line for line in block.split('\n'))
           s=s.replace(before,block+before);p.write_text(s)
           p=Path('src/legacy/quarantine/core-pre-modals.js');s=p.read_text()
           before="const RUNNING_VERSION = '0.14.1';";assert s.count(before)==1
@@ -138,15 +135,23 @@ jobs:
           node scripts/build-core-styles-from-source.mjs --verify-current > sc077-css-parity.json
           node tools/ui-smoke/verify-sc050-release-notes.mjs
           git diff --check
-      - name: Verify the bounded fix with the same browser regression
+      - name: Verify both browsers against source and dist with identical assertions
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sc077-candidate-http.log 2>&1 &
-          pid=$!; trap 'kill "$pid" || true' EXIT
-          SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=sc077-images timeout 180s node tools/ui-smoke/verify-sc067-turbo-identity.js | tee sc077-candidate.txt
           npm run build > sc077-build.txt 2>&1
           npm run verify:dist > sc077-dist.txt 2>&1
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sc077-source-http.log 2>&1 &
+          source_pid=$!
+          python3 -m http.server 8124 --bind 127.0.0.1 --directory dist >/tmp/sc077-dist-http.log 2>&1 &
+          dist_pid=$!
+          trap 'kill "$source_pid" "$dist_pid" || true' EXIT
+          for browser in chromium webkit; do
+            for build in source dist; do
+              port=8123; if [ "$build" = dist ]; then port=8124; fi
+              SQ_BROWSER="$browser" SQ_APP_URL="http://127.0.0.1:$port/index.html" SQ_SCREENSHOTS="sc077-images/$browser-$build" timeout 180s node tools/ui-smoke/verify-sc067-turbo-identity.js | tee "sc077-$browser-$build.txt"
+            done
+          done
           node scripts/build-core-js-from-source.mjs --verify-current >/dev/null
           node scripts/build-core-styles-from-source.mjs --verify-current >/dev/null
       - name: Package the exact five-file candidate only
