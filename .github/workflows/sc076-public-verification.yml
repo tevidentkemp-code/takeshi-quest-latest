@@ -1,0 +1,61 @@
+name: SC-076 isolated public verification
+on:
+  push:
+    branches: [work/sc071-build-recovery]
+    paths: [.github/workflows/sc076-public-verification.yml]
+permissions:
+  contents: read
+jobs:
+  public:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 35ffe81b52faad1651cc10cb6a83a0bfcb135ae0
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Install existing isolated browser harness
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps webkit
+      - name: Verify published bytes and run original Turbo acceptance
+        shell: bash
+        env:
+          SQ_APP_URL: https://tevidentkemp-code.github.io/takeshi-quest-latest/index.html
+          SQ_BROWSER: webkit
+          SQ_SCREENSHOTS: ${{ github.workspace }}/sc076-public/screenshots
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 35ffe81b52faad1651cc10cb6a83a0bfcb135ae0
+          mkdir -p sc076-public
+          cat > "$RUNNER_TEMP/sc076-readback.py" <<'PY'
+          import pathlib,urllib.request,hashlib,json,datetime
+          base='https://tevidentkemp-code.github.io/takeshi-quest-latest/'
+          files=['index.html','assets/release-metadata.json','src/legacy/styles/inline-002.css','src/legacy/scripts/inline-005.js','src/legacy/scripts/inline-016.js','src/legacy/scripts/inline-017.js','src/legacy/styles/inline-016.css','src/legacy/styles/inline-017.css']
+          result={'commit':'35ffe81b52faad1651cc10cb6a83a0bfcb135ae0','at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'files':{}}
+          for path in files:
+              req=urllib.request.Request(base+path+'?sc076=35ffe81b-'+str(datetime.datetime.now().timestamp()),headers={'Cache-Control':'no-cache'})
+              with urllib.request.urlopen(req,timeout=20) as response: actual=response.read()
+              expected=pathlib.Path(path).read_bytes()
+              assert actual==expected,'Published bytes differ: '+path
+              result['files'][path]=hashlib.sha256(actual).hexdigest()
+          meta=json.loads(pathlib.Path('assets/release-metadata.json').read_text())
+          assert meta['currentVersion']=='0.14.1' and meta['currentReleaseId']=='SC-071-TURBO-TIMER-PERIMETER'
+          result['status']='PASS';print(json.dumps(result,indent=2))
+          PY
+          python3 "$RUNNER_TEMP/sc076-readback.py" | tee sc076-public/before.json
+          timeout 180s node tools/ui-smoke/verify-sc067-turbo-identity.js | tee sc076-public/browser.txt
+          python3 "$RUNNER_TEMP/sc076-readback.py" | tee sc076-public/after.json
+          git diff --exit-code
+      - name: Preserve public evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sc076-public-verification
+          path: sc076-public/
+          retention-days: 14
