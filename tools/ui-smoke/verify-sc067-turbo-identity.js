@@ -22,7 +22,7 @@ async function readPresentation(page) {
   return page.evaluate(() => {
     const css = (selector, pseudo) => {
       const e = document.querySelector(selector), s = getComputedStyle(e, pseudo);
-      return {border:s.borderColor, background:s.backgroundImage, fill:s.backgroundColor, color:s.color, animation:s.animationName, transition:s.transitionDuration};
+      return {border:s.borderColor, background:s.backgroundImage, fill:s.backgroundColor, color:s.color, animation:s.animationName, transition:s.transitionDuration, overflow:s.overflow};
     };
     const panel = document.getElementById('liveV2Panel'), p = getComputedStyle(panel, '::before');
     const r = panel.getBoundingClientRect(), dmd = document.querySelector('.sq-dmd').getBoundingClientRect();
@@ -59,6 +59,7 @@ async function runTurbo(count) {
       await page.waitForFunction(()=>getComputedStyle(document.querySelector('#liveV2Panel .v2ScoreBox.active')).borderColor === 'rgba(0, 245, 255, 0.72)');
       const s=await readPresentation(page); snapshots.push({width,...s});
       assert.equal(s.active.border,'rgba(0, 245, 255, 0.72)', 'Turbo active card remains cyan after shared styling');
+      assert.equal(s.active.overflow,'visible', 'Turbo timer perimeter is not clipped by the shared player-card skin');
       assert.equal(s.badge.border,'rgba(0, 245, 255, 0.58)', 'Turbo target badge remains cyan');
       assert.equal(s.cell.border,'rgba(0, 245, 255, 0.58)', 'Turbo current cell remains cyan');
       assert.equal(s.dmd.border,'rgba(0, 245, 255, 0.35)', 'Current DMD bezel uses the existing blue palette');
@@ -109,6 +110,7 @@ async function classicIsolation() {
     const s=await readPresentation(page);
     assert.equal(await page.evaluate(()=>document.body.classList.contains('sq-mode-turbo')),false);
     assert.equal(s.active.border,'rgba(255, 149, 0, 0.78)','Classic keeps its released amber active card');
+    assert.equal(s.active.overflow,'hidden','Classic keeps its released card clipping outside Turbo timer state');
     assert.notEqual(s.badge.border,'rgba(0, 245, 255, 0.58)');
     assert.notEqual(s.label.text,'"TURBO"');
     console.log('PASS SC-067 actual Classic isolation');
