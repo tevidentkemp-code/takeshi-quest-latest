@@ -15,6 +15,47 @@ async function screenshot(page, name) {
   fs.mkdirSync(shots, { recursive: true });
   await page.screenshot({ path: path.join(shots, name + '.png'), fullPage: true });
 }
+// SC-072: WebKit reports the harness-aborted cloud sync as Load failed.
+// Require an observed failed cloud GET; do not suppress other runtime errors.
+function expectedBlockedPlayerSync(text, observed) {
+  return observed && /^syncSavedPlayersFromCloud failed \{message: TypeError: Load failed, details: , hint: , code: \}$/.test(text);
+}
+// SC-072: exercise all roster densities at the same mobile viewports.
+async function checkLineupCards(page, count) {
+  const identity = await page.evaluate(() => JSON.stringify(__msPlayers));
+  for (const width of [320, 390, 430]) {
+    await page.setViewportSize({width, height:844});
+    const v = await page.evaluate(() => {
+      const cards = [...document.querySelectorAll('#msPlayersList .ms2-slot')];
+      return {
+        cards: cards.map(el => {
+          const s = getComputedStyle(el), r = el.getBoundingClientRect();
+          return {empty:el.classList.contains('empty'), h:r.height, x:r.x, right:r.right,
+            border:s.borderTopStyle, radius:s.borderTopLeftRadius, bg:s.backgroundColor,
+            font:parseFloat(s.fontSize), text:el.textContent.trim()};
+        }),
+        overflow:document.documentElement.scrollWidth > innerWidth,
+        identity:JSON.stringify(__msPlayers),
+        count:document.getElementById('msRosterCount').textContent,
+        remove:[...document.querySelectorAll('#msPlayersList .ms-remove')].map(el => {
+          const r=el.getBoundingClientRect(); return {w:r.width,h:r.height};
+        })
+      };
+    });
+    check(`SC072 ${count}/5 at ${width}: solid contained cards`, v.cards.length===5 &&
+      v.cards.every(c=>c.border==='solid' && c.radius==='14px' && c.x>=0 && c.right<=width) && !v.overflow);
+    check(`SC072 ${count}/5 at ${width}: readable honest empty places`,
+      v.cards.filter(c=>c.empty).length===5-count && v.cards.filter(c=>c.empty).every((c,i)=>
+        c.h>=52 && c.font>=11 && c.bg==='rgb(16, 24, 39)' &&
+        c.text===`${String(count+i+1).padStart(2,'0')}  /  OPEN SLOT`));
+    check(`SC072 ${count}/5 at ${width}: selected controls and identity preserved`,
+      v.cards.filter(c=>!c.empty).every(c=>c.h>=68) && v.remove.length===count &&
+      v.remove.every(r=>r.w>=44 && r.h>=44) && v.identity===identity && v.count===`${count} / 5 selected`);
+    await screenshot(page, `sc072-${count}p-${width}`);
+  }
+  await page.setViewportSize({width:390,height:844});
+}
+
 async function info(page) {
   return page.evaluate(() => ({
     page: document.body.dataset.page,
@@ -37,17 +78,23 @@ async function openMode(page, mode) {
 }
 (async () => {
   const { browser, page, consoleErrs } = await H.launch({ width: 390, height: 844 });
+  let blockedCloudReads = 0;
+  const pageErrors = [];
+  page.on('requestfailed', r => { if(r.method()==='GET' && /^https:\/\/[^/]+\.supabase\.co\//.test(r.url())) blockedCloudReads++; });
+  page.on('pageerror', e => pageErrors.push(e.message));
   try {
     await openMode(page, 'classic');
     let s = await info(page);
     check('Classic empty setup explains the minimum', !s.ready && /2/.test(s.hint));
     check('Classic mode and roster count visible', s.mode === 'CLASSIC' && s.count === '0 / 5 selected');
     await screenshot(page, 'sc014-empty-mobile');
+    await checkLineupCards(page, 0);
     await page.click('#msAddGuestBtn');
     check('Adding a guest focuses the new name', await page.evaluate(() => document.activeElement === document.querySelector('.ms-player-input')));
     await page.locator('.ms-player-input').fill('QA ALPHA');
     await page.locator('.ms-player-input').press('Enter');
     check('One Classic player cannot start', !(await info(page)).ready);
+    await checkLineupCards(page, 1);
     await H.addGuests(page, ['QA BRAVO']);
     s = await info(page);
     check('Two Classic players can continue with visible ready state', s.ready && /2 players ready/i.test(s.hint));
@@ -57,9 +104,11 @@ async function openMode(page, mode) {
       return parseFloat(getComputedStyle(input).fontSize) >= 16 && remove.width >= 44 && remove.height >= 44;
     }));
     await screenshot(page, 'sc014-ready-mobile');
+    await checkLineupCards(page, 2);
     await H.addGuests(page, ['QA CHARLIE','QA DELTA','QA ECHO']);
     s = await info(page);
     check('Five players disable both add controls and explain why', s.players === 5 && s.guestsDisabled && s.savedDisabled && /5/.test(s.hint));
+    await checkLineupCards(page, 5);
     await page.evaluate(() => __msAddGuest());
     check('Direct guest-add cannot bypass five-player cap', (await info(page)).players === 5);
     await page.locator('.ms-remove').last().click();
@@ -119,8 +168,12 @@ async function openMode(page, mode) {
     }
     await openMode(page, 'classic');
     check('Reload starts with a clean setup', (await info(page)).players === 0 && !(await info(page)).ready);
-    const unexpected = consoleErrs.filter(e => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource|Content Security Policy|connect-src/i.test(e));
+    const unexpected = consoleErrs.filter(e => !/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource|Content Security Policy|connect-src/i.test(e) && !expectedBlockedPlayerSync(e, blockedCloudReads > 0));
     check('No unexpected console errors', unexpected.length === 0, unexpected.slice(0, 3).join(' | '));
+  check('No uncaught JavaScript errors', pageErrors.length === 0, pageErrors.join(' | '));
+  const fixtureMessage='syncSavedPlayersFromCloud failed {message: TypeError: Load failed, details: , hint: , code: }';
+  check('Offline noise classifier is scoped', expectedBlockedPlayerSync(fixtureMessage,true) && !expectedBlockedPlayerSync(fixtureMessage,false) && !expectedBlockedPlayerSync('TypeError: Load failed',true) && !expectedBlockedPlayerSync('syncSavedPlayersFromCloud failed {message: ReferenceError: broken}',true));
+  console.log('SC072 observed offline cloud GET failures: '+blockedCloudReads);
   } finally { await browser.close(); }
   console.log(`\n${total - failures}/${total} passed`);
   process.exit(failures ? 1 : 0);
