@@ -1,0 +1,96 @@
+name: SC-072 published setup verification
+on:
+  push:
+    branches: [work/sc072-lineup-verification]
+    paths: [.github/workflows/sc072-public-verification.yml]
+permissions:
+  contents: read
+jobs:
+  published:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SQ_APP_URL: https://tevidentkemp-code.github.io/takeshi-quest-latest/index.html
+      SC072_RELEASE_SHA: da7b6401be3cd73469affd9a1a851b43b8a6d742
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: da7b6401be3cd73469affd9a1a851b43b8a6d742
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Prepare unchanged published-app checks
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sc072-public"
+          test "$(git rev-parse HEAD)" = "$SC072_RELEASE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = 9a09148a65fcf99a20b94d92b240c023931a39f1
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps chromium webkit
+      - name: Verify exact published files before browser acceptance
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/sc072-public-readback.py" <<'PY'
+          import os, pathlib, json, hashlib, urllib.request, datetime, sys
+          from concurrent.futures import ThreadPoolExecutor
+          phase = sys.argv[1]
+          sha = os.environ['SC072_RELEASE_SHA']
+          base = os.environ['SQ_APP_URL'].rsplit('/', 1)[0] + '/'
+          files = ['index.html', 'assets/release-metadata.json',
+                   'src/styles/setup/match-card-intake.css',
+                   'src/legacy/styles/inline-002.css', 'src/legacy/scripts/inline-005.js',
+                   'src/styles/live-game/v2-panel.css',
+                   'src/legacy/scripts/inline-016.js', 'src/legacy/scripts/inline-017.js']
+          def verify(path):
+              url = base + path + '?sc072=' + sha + '&phase=' + phase
+              request = urllib.request.Request(url, headers={'Cache-Control': 'no-cache'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  status = response.status
+                  actual = response.read(20 * 1024 * 1024)
+              expected = pathlib.Path(path).read_bytes()
+              assert status == 200 and actual == expected, 'Published mismatch: ' + path
+              if path == 'assets/release-metadata.json':
+                  meta = json.loads(actual)
+                  assert meta['currentVersion'] == '0.14.2'
+                  assert meta['currentReleaseId'] == 'SC-072-LINEUP-CARDS'
+              return {'path': path, 'bytes': len(actual), 'sha256': hashlib.sha256(actual).hexdigest(), 'exact': True}
+          with ThreadPoolExecutor(max_workers=4) as pool:
+              results = list(pool.map(verify, files))
+          receipt = {'phase': phase, 'at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                     'release_sha': sha, 'candidate_tree': '9a09148a65fcf99a20b94d92b240c023931a39f1',
+                     'files': results, 'pass': True}
+          out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'sc072-public' / (phase + '-readback.json')
+          out.write_text(json.dumps(receipt, indent=2) + '\n')
+          print(json.dumps(receipt))
+          PY
+          python3 "$RUNNER_TEMP/sc072-public-readback.py" before
+      - name: Published Chromium setup and mode acceptance
+        env:
+          SQ_BROWSER: chromium
+        run: |
+          set -euo pipefail
+          export SQ_SCREENSHOTS="$RUNNER_TEMP/sc072-public/chromium"
+          timeout 180s node tools/ui-smoke/verify-sc014.js 2>&1 | tee "$RUNNER_TEMP/sc072-public/chromium.txt"
+          grep -Fx '72/72 passed' "$RUNNER_TEMP/sc072-public/chromium.txt"
+      - name: Published WebKit setup and mode acceptance
+        env:
+          SQ_BROWSER: webkit
+        run: |
+          set -euo pipefail
+          export SQ_SCREENSHOTS="$RUNNER_TEMP/sc072-public/webkit"
+          timeout 180s node tools/ui-smoke/verify-sc014.js 2>&1 | tee "$RUNNER_TEMP/sc072-public/webkit.txt"
+          grep -Fx '72/72 passed' "$RUNNER_TEMP/sc072-public/webkit.txt"
+      - name: Verify published bytes stayed exact and checked-in files unchanged
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/sc072-public-readback.py" after
+          git diff --exit-code
+      - name: Retain public verification evidence including any failure
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sc072-published-acceptance
+          path: ${{ runner.temp }}/sc072-public/
+          retention-days: 14
+          if-no-files-found: warn
