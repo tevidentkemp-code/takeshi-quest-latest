@@ -5,6 +5,9 @@ on:
     paths: [.github/workflows/sc077-isolated-verification.yml]
 permissions:
   contents: read
+env:
+  SC077_BASE: da7b6401be3cd73469affd9a1a851b43b8a6d742
+  SC077_OLD: 73437b04db8e84a660be037e785796a78a8752b8
 jobs:
   verify:
     if: github.actor != 'github-actions[bot]'
@@ -13,68 +16,30 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 35ffe81b52faad1651cc10cb6a83a0bfcb135ae0
-          fetch-depth: 1
+          ref: da7b6401be3cd73469affd9a1a851b43b8a6d742
+          fetch-depth: 2
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version-file: .node-version
+      - name: Guard exact inputs and retain the existing regression
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SC077_BASE"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$SC077_BASE"
+          test "$(git ls-remote origin refs/heads/fix/sc077-turbo-prestart-zero-flash | cut -f1)" = "$SC077_OLD"
+          git fetch --no-tags --depth=2 origin "$SC077_OLD"
+          test "$(git rev-parse "$SC077_OLD^")" = 35ffe81b52faad1651cc10cb6a83a0bfcb135ae0
+          git diff --exit-code "$SC077_OLD^" "$SC077_BASE" -- src/live-game/live-v2.js
+          git show "$SC077_OLD:tools/ui-smoke/verify-sc067-turbo-identity.js" > tools/ui-smoke/verify-sc067-turbo-identity.js
+          node --check tools/ui-smoke/verify-sc067-turbo-identity.js
       - name: Install existing locked tooling
         run: |
           npm ci --prefix scripts --ignore-scripts
           npm ci --ignore-scripts --no-audit --no-fund
           npm ci --prefix tools/ui-smoke --ignore-scripts
           npx --prefix tools/ui-smoke playwright install --with-deps chromium webkit
-      - name: Add render-time regression to the existing Turbo suite
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('tools/ui-smoke/verify-sc067-turbo-identity.js')
-          s=p.read_text()
-          marker='async function readPresentation(page) {'
-          assert s.count(marker)==1
-          helpers='''// SC-077: inspect every wall replacement, before any delayed cleanup.
-          // Test-only instrumentation delegates to the native setter unchanged.
-          async function installPreStartProbe(ctx) {
-            await ctx.addInitScript(() => {
-              window.__sqPreStartProbe = {commits:0, invalid:[]};
-              const native = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
-              Object.defineProperty(Element.prototype, 'innerHTML', {...native, set(value) {
-                native.set.call(this, value);
-                if (this.id !== 'v2Rows' || typeof __sqIsTurboVisualRuntime !== 'function' || !__sqIsTurboVisualRuntime()) return;
-                const probe = window.__sqPreStartProbe;
-                const cutoff = __sqTurboRaceStartIndex(state, ROUNDS.length);
-                probe.commits++;
-                for (const cell of this.querySelectorAll('.v2Cell[data-round],.v2Badge[data-round]')) {
-                  if (Number(cell.dataset.round) >= cutoff) continue;
-                  const text = cell.textContent.trim();
-                  if (text && probe.invalid.length < 32) probe.invalid.push({round:Number(cell.dataset.round), text});
-                }
-              }});
-            });
-          }
-          async function assertPreStartBlank(page) {
-            const probe = await page.evaluate(() => window.__sqPreStartProbe);
-            assert(probe.commits > 0, 'SC-077 observed actual score-wall renders');
-            if (probe.invalid.length) console.log('SC077_BASELINE_WITNESS=' + JSON.stringify(probe));
-            assert.deepEqual(probe.invalid, [], 'SC077_PRESTART_CONTENT: excluded Turbo rounds must be blank at render time');
-          }
-          
-          '''
-          s=s.replace(marker,helpers+marker)
-          before='    await isolate(ctx); await H.boot(page,{settle:1000});'
-          assert s.count(before)==1
-          s=s.replace(before,'    await installPreStartProbe(ctx);\n'+before)
-          before='      const s=await readPresentation(page); snapshots.push({width,...s});'
-          assert s.count(before)==1
-          s=s.replace(before,before+"\n      await assertPreStartBlank(page);\n      assert.equal(await page.locator('#v2Rows .v2Cell[data-round=\"7\"][data-p=\"1\"] .v2CellNum').textContent(), '0', 'SC-077 preserves zero scores in the played Turbo range');")
-          before="    assert.deepEqual(pageErrors,[], 'No uncaught runtime errors');"
-          assert s.count(before)==1
-          s=s.replace(before,"    await assertPreStartBlank(page);\n    console.log('PASS SC-077 no pre-start content across startup, resize, Single, Miss and Undo renders');\n"+before)
-          p.write_text(s)
-          PY
-          node --check tools/ui-smoke/verify-sc067-turbo-identity.js
-      - name: Reproduce the original defect without modifying application files
+      - name: Reproduce on current main before copying the existing renderer fix
         shell: bash
         run: |
           set -euo pipefail
@@ -90,44 +55,30 @@ jobs:
           grep -q SC077_BASELINE_WITNESS= sc077-baseline.txt
           grep -q SC077_PRESTART_CONTENT sc077-baseline.txt
           test "$(git diff --name-only)" = tools/ui-smoke/verify-sc067-turbo-identity.js
-      - name: Patch only the semantic renderer and prepare candidate version
+      - name: Reconcile the unchanged fix to v0.14.3 without rewriting history
         run: |
+          set -euo pipefail
+          git show "$SC077_OLD:src/live-game/live-v2.js" > src/live-game/live-v2.js
           python3 - <<'PY'
           from pathlib import Path
-          import hashlib,json
-          p=Path('src/live-game/live-v2.js'); raw=p.read_bytes()
-          assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()=='0597f0c3a563a4c34711b6d2a519beabd04dda3c'
-          s=raw.decode()
-          before='    const totalR = (typeof ROUNDS!=="undefined" && Array.isArray(ROUNDS) && ROUNDS.length) ? ROUNDS.length : Math.max(cr+1, 1);'
-          assert s.count(before)==1
-          s=s.replace(before,before+"\n    const __sqTurboWallStart = __sqIsTurboVisualRuntime() ? __sqTurboRaceStartIndex(state, totalR) : 0;")
-          before='      // Compute per-round max (for faint green highlight)\n      let maxV = -Infinity;'
-          assert s.count(before)==1, 'Expected exactly the active renderer, not the disabled next-row copy'
-          block='''      // SC-077: emit pre-start Turbo placeholders blank, before any paint.
-                // The delayed legacy cleanup must not expose intermediate zero scores.
-                if(r < __sqTurboWallStart){
-                  out.push(`<div class="v2Badge${rowClass} sqTurboPreStartBadge" data-round="${r}"></div>`);
-                  for(let i=0; i<pCount; i++){
-                    out.push(`<div class="v2Cell${rowClass} sqTurboPreStartCell" data-p="${i}" data-round="${r}"></div>`);
-                  }
-                  if(pCount === 1) out.push(`<div class="v2Cell${rowClass} v2SoloPbCell sqTurboPreStartCell"></div>`);
-                  continue;
-                }
-          
-          '''
-          s=s.replace(before,block+before);p.write_text(s)
+          import json,os,subprocess
           p=Path('src/legacy/quarantine/core-pre-modals.js');s=p.read_text()
-          before="const RUNNING_VERSION = '0.14.1';";assert s.count(before)==1
-          p.write_text(s.replace(before,"const RUNNING_VERSION = '0.14.2';"))
-          p=Path('assets/release-metadata.json');s=p.read_text();old=json.loads(s)
-          assert old['currentVersion']=='0.14.1'
-          s=s.replace('"currentVersion": "0.14.1"','"currentVersion": "0.14.2"',1)
-          s=s.replace('"currentReleaseId": "SC-071-TURBO-TIMER-PERIMETER"','"currentReleaseId": "SC-077-TURBO-PRESTART-ROWS"',1)
-          entry={'version':'0.14.2','releaseId':'SC-077-TURBO-PRESTART-ROWS','date':'2026-10-07','title':'Stop Turbo pre-start score flashes','changes':['Kept rounds before Turbo starts blank throughout scoring redraws, removing the brief zero flash.','Preserved real scores, the countdown perimeter, scoring actions and other game modes.']}
-          rendered='\n'.join('    '+line for line in json.dumps(entry,indent=2).splitlines())
+          before="const RUNNING_VERSION = '0.14.2';"
+          assert s.count(before)==1
+          p.write_text(s.replace(before,"const RUNNING_VERSION = '0.14.3';"))
+          p=Path('assets/release-metadata.json');s=p.read_text();base=json.loads(s)
+          assert base['currentVersion']=='0.14.2' and base['currentReleaseId']=='SC-072-LINEUP-CARDS'
+          prior=json.loads(subprocess.check_output(['git','show',os.environ['SC077_OLD']+':assets/release-metadata.json']))
+          entry=prior['releases'][0]
+          assert entry['releaseId']=='SC-077-TURBO-PRESTART-ROWS' and entry['version']=='0.14.2'
+          entry['version']='0.14.3'
+          s=s.replace('"currentVersion": "0.14.2"','"currentVersion": "0.14.3"',1)
+          s=s.replace('"currentReleaseId": "SC-072-LINEUP-CARDS"','"currentReleaseId": "SC-077-TURBO-PRESTART-ROWS"',1)
           marker='  "releases": [\n';assert s.count(marker)==1
+          rendered='\n'.join('    '+line for line in json.dumps(entry,indent=2).splitlines())
           s=s.replace(marker,marker+rendered+',\n',1)
-          assert json.loads(s)['releases'][1:]==old['releases']
+          assert json.loads(s)['releases'][1:]==base['releases']
+          assert s.split(marker,1)[1].endswith(p.read_text().split(marker,1)[1])
           p.write_text(s)
           PY
           node scripts/materialize-runtime.mjs
@@ -135,7 +86,7 @@ jobs:
           node scripts/build-core-styles-from-source.mjs --verify-current > sc077-css-parity.json
           node tools/ui-smoke/verify-sc050-release-notes.mjs
           git diff --check
-      - name: Verify both browsers against source and dist with identical assertions
+      - name: Verify source and dist with unchanged Chromium and WebKit assertions
         shell: bash
         run: |
           set -euo pipefail
@@ -154,21 +105,29 @@ jobs:
           done
           node scripts/build-core-js-from-source.mjs --verify-current >/dev/null
           node scripts/build-core-styles-from-source.mjs --verify-current >/dev/null
-      - name: Package the exact five-file candidate only
+      - name: Package only verified files from the current-main candidate
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import hashlib,json,subprocess,shutil
+          import hashlib,json,os,subprocess,shutil
           expected=['assets/release-metadata.json','src/legacy/quarantine/core-pre-modals.js','src/legacy/scripts/inline-005.js','src/live-game/live-v2.js','tools/ui-smoke/verify-sc067-turbo-identity.js']
           changed=subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()
           assert sorted(changed)==sorted(expected),changed
+          for f in ['src/live-game/live-v2.js','tools/ui-smoke/verify-sc067-turbo-identity.js']:
+            assert Path(f).read_bytes()==subprocess.check_output(['git','show',os.environ['SC077_OLD']+':'+f])
           out=Path('/tmp/sc077-write');out.mkdir()
-          receipt={'base':'35ffe81b52faad1651cc10cb6a83a0bfcb135ae0','files':{},'releaseApproved':False}
+          receipt={'base':os.environ['SC077_BASE'],'previousCandidate':os.environ['SC077_OLD'],'version':'0.14.3','files':{},'blobs':{},'releaseApproved':False}
           for f in expected:
             target=out/f;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(f,target)
-            receipt['files'][f]=hashlib.sha256(target.read_bytes()).hexdigest()
+            data=target.read_bytes()
+            receipt['files'][f]=hashlib.sha256(data).hexdigest()
+            receipt['blobs'][f]=hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+          subprocess.run(['git','add','--',*expected],check=True)
+          receipt['verifiedTree']=subprocess.check_output(['git','write-tree'],text=True).strip()
+          subprocess.run(['git','diff','--cached','--check'],check=True)
           (out/'receipt.json').write_text(json.dumps(receipt,indent=2))
-          Path('sc077-diff.txt').write_bytes(subprocess.check_output(['git','diff','--',*expected]))
+          Path('sc077-receipt.json').write_text(json.dumps(receipt,indent=2))
+          Path('sc077-diff.txt').write_bytes(subprocess.check_output(['git','diff','--cached','--',*expected]))
           print(json.dumps(receipt,indent=2))
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -200,27 +159,34 @@ jobs:
         with:
           name: sc077-verified-write
           path: /tmp/sc077-write
-      - name: Store verified bytes on the isolated branch only
+      - name: Store verified bytes on the existing isolated helper only
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = refs/heads/work/sc077-zero-flash-verification
           test "$(git ls-remote origin refs/heads/work/sc077-zero-flash-verification | cut -f1)" = "$GITHUB_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$SC077_BASE"
+          test "$(git ls-remote origin refs/heads/fix/sc077-turbo-prestart-zero-flash | cut -f1)" = "$SC077_OLD"
           python3 - <<'PY'
           from pathlib import Path
-          import json,hashlib,shutil,subprocess
+          import json,hashlib,shutil,subprocess,os
           root=Path('/tmp/sc077-write');r=json.loads((root/'receipt.json').read_text())
           expected={'assets/release-metadata.json','src/legacy/quarantine/core-pre-modals.js','src/legacy/scripts/inline-005.js','src/live-game/live-v2.js','tools/ui-smoke/verify-sc067-turbo-identity.js'}
-          assert r['base']=='35ffe81b52faad1651cc10cb6a83a0bfcb135ae0' and set(r['files'])==expected
+          assert r['base']==os.environ['SC077_BASE'] and r['previousCandidate']==os.environ['SC077_OLD']
+          assert set(r['files'])==expected and r['releaseApproved'] is False
           for f,h in r['files'].items():
-            assert hashlib.sha256((root/f).read_bytes()).hexdigest()==h
+            data=(root/f).read_bytes()
+            assert hashlib.sha256(data).hexdigest()==h
+            assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==r['blobs'][f]
             shutil.copyfile(root/f,f)
-          assert set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines())==expected
+          changed=set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines())
+          assert changed and changed.issubset(expected),changed
+          print(json.dumps(r,indent=2))
           PY
           git diff --check
           git add -- assets/release-metadata.json src/legacy/quarantine/core-pre-modals.js src/legacy/scripts/inline-005.js src/live-game/live-v2.js tools/ui-smoke/verify-sc067-turbo-identity.js
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'SC-077: verified Turbo pre-start render fix [skip ci]'
+          git commit -m 'SC-077: verified current-main v0.14.3 candidate [skip ci]'
           git push origin HEAD:work/sc077-zero-flash-verification
           echo "SC077_STORED_COMMIT=$(git rev-parse HEAD)"
           git ls-tree -r HEAD -- assets/release-metadata.json src/legacy/quarantine/core-pre-modals.js src/legacy/scripts/inline-005.js src/live-game/live-v2.js tools/ui-smoke/verify-sc067-turbo-identity.js
