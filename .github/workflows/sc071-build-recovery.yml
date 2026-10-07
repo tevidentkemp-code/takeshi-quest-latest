@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = bba6eda50534b021bf012aafebbf36e9cc476052
+          test "$(git diff --name-only bba6eda50534b021bf012aafebbf36e9cc476052 HEAD)" = .github/workflows/sc071-build-recovery.yml
           node scripts/materialize-runtime.mjs
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
@@ -52,7 +52,7 @@ jobs:
           NODE
           git diff --check
           node scripts/build-core-js-from-source.mjs --verify-current >/dev/null
-          node tools/ui-smoke/verify-sc050-release-metadata.mjs
+          node tools/ui-smoke/verify-sc050-release-notes.mjs
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: sc071-verified-pair
