@@ -1388,11 +1388,25 @@ function __sqBindQuickEntryHold(btn, specFactory){
 }
 
 let __sqMissBouncePendingCancel = null;
+let __sqBounceOutPadFlashTimer = null;
+function __sqClearBounceOutPadFlash(){
+  if (__sqBounceOutPadFlashTimer !== null) clearTimeout(__sqBounceOutPadFlashTimer);
+  __sqBounceOutPadFlashTimer = null;
+  try{ document.getElementById('padBar')?.classList.remove('sq-bounce-out-flash'); }catch(_){}
+}
+function __sqFlashBounceOutPad(){
+  const pad = document.getElementById('padBar');
+  if (!pad) return;
+  __sqClearBounceOutPadFlash();
+  try{ pad.classList.remove('sq-bounce-out-flash'); void pad.offsetWidth; pad.classList.add('sq-bounce-out-flash'); }catch(_){ return; }
+  __sqBounceOutPadFlashTimer = setTimeout(__sqClearBounceOutPadFlash, 520);
+}
 function __sqCancelMissBounceFeedback(){
   const cancel = __sqMissBouncePendingCancel;
   __sqMissBouncePendingCancel = null;
   try{ cancel?.(); }catch(_){}
   try{ window.__sqDmdV2?.cancelBounceOut?.(); }catch(_){}
+  __sqClearBounceOutPadFlash();
 }
 
 function __sqBindMissBounceHold(btn){
@@ -1455,6 +1469,7 @@ function __sqBindMissBounceHold(btn){
       const receipt = history[historyLength];
       if (state !== game || state.history !== history || history.length !== historyLength + 1 || receipt?.throw?.bounceOut !== true) return;
       try{ window.__sqDmdV2?.emit?.({ kind:'BOUNCE_OUT' }); }catch(_){}
+      try{ __sqFlashBounceOutPad(); }catch(_){}
       try{ navigator.vibrate?.(35); }catch(_){}
     };
     holdStartedAt = performance.now();
