@@ -54,14 +54,31 @@ def menu(s):
     return s
 
 def css(s):
-    s=once(s,'grid-template-columns:38px 1fr 38px','grid-template-columns:44px minmax(0,1fr) 44px')
-    s=once(s,'.sq-menu106-x,.sq-menu106-back{width:36px;height:36px;', '.sq-menu106-x,.sq-menu106-back{width:44px;height:44px;')
-    s=once(s,'.sq-menu106-close{min-width:130px;min-height:42px;', '.sq-menu106-close{min-width:130px;min-height:44px;')
-    s=once(s,'.sq-menu106-head>*{position:relative;z-index:1;}', '.sq-menu106-head>*{position:relative;z-index:1;}\n/* SC-071: fixed icon geometry and touch-safe navigation in every shared mode. */\n.sq-menu106-head>div{min-width:0;overflow-wrap:anywhere;}\n.sq-menu106-ico svg{display:block;width:20px;height:20px;}')
-    return s
+    assert '/* SC-071:' not in s
+    return s+'''\n/* SC-071: shared Game Menu icons and touch-safe navigation.\n   Keep the historical extracted stylesheet unchanged; this is maintained source. */
+.sq-menu106-modal .sq-menu106-head{grid-template-columns:44px minmax(0,1fr) 44px;}
+.sq-menu106-modal .sq-menu106-x,
+.sq-menu106-modal .sq-menu106-back{width:44px;height:44px;}
+.sq-menu106-modal .sq-menu106-close{min-height:44px;}
+.sq-menu106-modal .sq-menu106-head>div{min-width:0;overflow-wrap:anywhere;}
+.sq-menu106-modal .sq-menu106-ico svg{display:block;width:20px;height:20px;}
+'''
 
 patch_file('src/legacy/scripts/inline-030.js','465cadbcfb447c04cadf7e16ef96509d7d73c887',menu)
-patch_file('src/legacy/styles/inline-029.css','9db773873aa8da2d137d45cc07619b51cca1c2b3',css)
+patch_file('src/styles/modals/menu-shell.css','3de3f5e9c87e2ceaaeefff1710cf7eb9c3847a39',css)
+
+# Preserve the original extraction evidence; update only the existing declared
+# intentional patch receipt for the editable standalone menu owner.
+p=Path('src/legacy/intentional-patches.json');data=json.loads(p.read_text())
+items=[x for x in data['patches'] if x['file']=='src/legacy/scripts/inline-030.js']
+assert len(items)==1
+item=items[0]
+assert item['sha256']=='148fb0e07042f63f559898478e84baa598df65e06bff656d78c346b02003a748'
+raw=Path(item['file']).read_bytes()
+item['sha256']=hashlib.sha256(raw).hexdigest();item['bytes']=len(raw)
+item['task']+=' + SC-071 all-mode menu cleanup'
+item['reason']+=' SC-071 replaces decorative menu icons, assigns Back only to genuine parents, and hides only the experimental layout entry.'
+p.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
 
 # Candidate only. SC-077 remains a separate, unreleased 0.14.3 candidate.
 p=Path('assets/release-metadata.json'); raw=p.read_text(); data=json.loads(raw)
