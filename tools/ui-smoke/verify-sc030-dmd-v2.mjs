@@ -31,6 +31,11 @@ function fakeDocument(){
   assert.equal(DMD.makeMessage({kind:'HIT_TREBLE',points:51,total:251}).headline, 'TREBLE +51');
   assert.equal(DMD.makeMessage({kind:'MISS',dart:2}).subline, 'DART 2 OF 3');
   assert.deepEqual(
+    { headline:DMD.makeMessage({kind:'BOUNCE_OUT'}).headline, subline:DMD.makeMessage({kind:'BOUNCE_OUT'}).subline },
+    { headline:'BOUNCE', subline:'OUT' },
+    'Bounce Out owns the two DMD text rows'
+  );
+  assert.deepEqual(
     [DMD.makeMessage({kind:'ROUND_DOUBLES'}).headline, DMD.makeMessage({kind:'ROUND_TREBLES'}).headline, DMD.makeMessage({kind:'ROUND_BULL'}).headline],
     ['DOUBLES','TREBLES','BULL']
   );
