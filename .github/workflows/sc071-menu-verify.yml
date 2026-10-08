@@ -60,12 +60,19 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import subprocess,json,hashlib
-          names=['src/legacy/scripts/inline-030.js','src/legacy/styles/inline-029.css','src/legacy/quarantine/core-pre-modals.js','assets/release-metadata.json','src/legacy/scripts/inline-005.js','tools/ui-smoke/verify-sc071-menu.js','tools/ui-smoke/verify-sc071-training.js']
+          names=['src/legacy/scripts/inline-030.js','src/styles/modals/menu-shell.css','src/legacy/quarantine/core-pre-modals.js','assets/release-metadata.json','src/legacy/scripts/inline-005.js','src/legacy/styles/inline-002.css','src/legacy/intentional-patches.json','tools/ui-smoke/verify-sc071-menu.js','tools/ui-smoke/verify-sc071-training.js']
           changed=set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines())
-          assert changed==set(names[:5]),changed
+          assert changed==set(names[:7]),changed
           prior=json.loads(subprocess.check_output(['git','show','HEAD:assets/release-metadata.json'],text=True))
           meta=json.loads(Path('assets/release-metadata.json').read_text())
           assert meta['releases'][1:]==prior['releases']
+          before=json.loads(subprocess.check_output(['git','show','HEAD:src/legacy/intentional-patches.json'],text=True))
+          after=json.loads(Path('src/legacy/intentional-patches.json').read_text())
+          assert len(before['patches'])==len(after['patches'])
+          for old,new in zip(before['patches'],after['patches']):
+            if old['file']=='src/legacy/scripts/inline-030.js':
+              assert old['originalSha256']==new['originalSha256'] and old['protectedBehaviour']==new['protectedBehaviour']
+            else: assert old==new
           subprocess.run(['git','add','--']+names,check=True)
           tree=subprocess.check_output(['git','write-tree'],text=True).strip()
           receipt={'base':'da7b6401be3cd73469affd9a1a851b43b8a6d742','tree':tree,'version':'0.14.4','files':{}}
@@ -167,7 +174,7 @@ jobs:
           from pathlib import Path
           import json,hashlib,subprocess
           root=Path('/tmp/sc071-verified');r=json.loads((root/'receipt.json').read_text())
-          expected={'src/legacy/scripts/inline-030.js','src/legacy/styles/inline-029.css','src/legacy/quarantine/core-pre-modals.js','assets/release-metadata.json','src/legacy/scripts/inline-005.js','tools/ui-smoke/verify-sc071-menu.js','tools/ui-smoke/verify-sc071-training.js'}
+          expected={'src/legacy/scripts/inline-030.js','src/styles/modals/menu-shell.css','src/legacy/quarantine/core-pre-modals.js','assets/release-metadata.json','src/legacy/scripts/inline-005.js','src/legacy/styles/inline-002.css','src/legacy/intentional-patches.json','tools/ui-smoke/verify-sc071-menu.js','tools/ui-smoke/verify-sc071-training.js'}
           assert set(r['files'])==expected and r['base']=='da7b6401be3cd73469affd9a1a851b43b8a6d742'
           for name,hashes in r['files'].items():
             raw=(root/name).read_bytes();assert hashlib.sha256(raw).hexdigest()==hashes['sha256']
