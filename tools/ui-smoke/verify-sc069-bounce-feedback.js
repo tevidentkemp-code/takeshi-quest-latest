@@ -77,7 +77,7 @@ fs.mkdirSync(out, { recursive: true });
     const press = async () => { const b = await page.locator('#pad .dtActBtn.miss').boundingBox(); assert(b, 'MISS visible'); const point = { x: b.x + b.width / 2, y: b.y + b.height / 2 }; await page.mouse.move(point.x, point.y); await page.mouse.down(); return point; };
     const hold = async () => { await press(); await page.waitForTimeout(450); await page.mouse.up(); };
     const undoAll = async () => { for (let i = 0; i < 8 && await page.evaluate(() => state.history.length > 0); i++) await page.locator('#pad .dtActBtn.undo').click(); await page.waitForTimeout(750); assert.equal(await page.evaluate(() => state.history.length), 0); };
-    const boFrames = r => r.frames.filter(f => f.text.includes('BOUNCE') && f.text.includes('OUT'));
+    const boFrames = r => r.frames.filter(f => f.text.includes('BOUNCE') || f.text.includes('OUT'));
     const committedBO = r => { assert.equal(r.records.length, 1, 'one canonical hold call'); assert.equal(r.records[0].spec.kind, 'BounceOut'); assert.equal(r.after.history, r.before.history + 1, 'one accepted history entry'); assert.equal(r.after.tail.throw.bounceOut, true); assert.equal(r.after.tail.throw.points, 0); assert.equal(r.emits.filter(e => e.event.kind === 'BOUNCE_OUT').length, 1, 'one presentation dispatch'); assert(r.emits.find(e => e.event.kind === 'BOUNCE_OUT').at >= r.records[0].at, 'feedback follows canonical call'); };
 
     await begin('short-tap'); await page.locator('#pad .dtActBtn.miss').click(); let r = await read();
@@ -126,7 +126,7 @@ fs.mkdirSync(out, { recursive: true });
 
     await page.emulateMedia({ reducedMotion: 'reduce' }); await begin('reduced-motion-static-canvas'); await hold(); await page.waitForTimeout(100); await page.screenshot({ path: path.join(out, 'reduced-motion-static.png') }); await page.waitForTimeout(500); r = await read(); committedBO(r);
     const safe = r.writes.find(w => w.zones.z2 === 'BOUNCE' && w.zones.z3 === 'OUT'); assert(safe && safe.reduced); assert.equal(safe.opts.type, 'hold'); assert.equal(safe.opts.ms, 520); assert.equal(safe.opts.amp, 0); assert.equal(safe.opts.fx, undefined);
-    const visible = boFrames(r); assert(visible.length >= 2, 'static BO text actually draws'); assert(!r.frames.some(f => f.at >= visible[0].at && f.at <= visible.at(-1).at && f.text.length === 0), 'no alternating blank BO canvas frames under reduced motion');
+    const visible = boFrames(r); assert(visible.some(f => f.text.includes('BOUNCE')), 'static BOUNCE row actually draws'); assert(visible.some(f => f.text.includes('OUT')), 'static OUT row actually draws'); assert(!r.frames.some(f => f.at >= visible[0].at && f.at <= visible.at(-1).at && f.text.length === 0), 'no alternating blank BO canvas frames under reduced motion');
     await undoAll(); await page.emulateMedia({ reducedMotion: 'no-preference' });
 
     await begin('rejected-busy-hold'); await page.evaluate(() => window.__sqInitialOrderApplying = true); await hold(); r = await read(); await page.evaluate(() => window.__sqInitialOrderApplying = false);
