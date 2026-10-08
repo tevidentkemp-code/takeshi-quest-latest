@@ -1,0 +1,182 @@
+name: SC-071 isolated menu verification
+on:
+  push:
+    branches: [work/sc071-menu-verification]
+    paths: [.github/workflows/sc071-menu-verify.yml, .sc071/patch.py, .sc071/verify-sc071-menu.js, .sc071/verify-sc071-training.js]
+permissions:
+  contents: read
+concurrency:
+  group: sc071-isolated-menu
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Pin application baseline and retain helper inputs outside it
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -r .sc071 /tmp/sc071-inputs
+          git checkout --detach da7b6401be3cd73469affd9a1a851b43b8a6d742
+          cp /tmp/sc071-inputs/verify-sc071-*.js tools/ui-smoke/
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Install locked tooling
+        run: |
+          npm ci --ignore-scripts
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps chromium
+      - name: Prove root Back defect on unchanged main
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p sc071-evidence
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/sc071-base-server.log 2>&1 &
+          pid=$!; trap 'kill "$pid" || true' EXIT
+          set +e
+          SC071_BASELINE=1 timeout 180s node tools/ui-smoke/verify-sc071-menu.js >sc071-evidence/baseline.txt 2>&1
+          status=$?
+          set -e
+          cat sc071-evidence/baseline.txt
+          test "$status" -eq 1
+          grep -q SC071_BACK_OWNER sc071-evidence/baseline.txt
+      - name: Apply bounded patch and regenerate normally
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/sc071-inputs/patch.py
+          node --check src/legacy/scripts/inline-030.js
+          npm run materialize
+          npm run build 2>&1 | tee sc071-evidence/build.txt
+          npm run verify:dist
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess,json,hashlib
+          names=['src/legacy/scripts/inline-030.js','src/legacy/styles/inline-029.css','src/legacy/quarantine/core-pre-modals.js','assets/release-metadata.json','src/legacy/scripts/inline-005.js','tools/ui-smoke/verify-sc071-menu.js','tools/ui-smoke/verify-sc071-training.js']
+          changed=set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines())
+          assert changed==set(names[:5]),changed
+          prior=json.loads(subprocess.check_output(['git','show','HEAD:assets/release-metadata.json'],text=True))
+          meta=json.loads(Path('assets/release-metadata.json').read_text())
+          assert meta['releases'][1:]==prior['releases']
+          subprocess.run(['git','add','--']+names,check=True)
+          tree=subprocess.check_output(['git','write-tree'],text=True).strip()
+          receipt={'base':'da7b6401be3cd73469affd9a1a851b43b8a6d742','tree':tree,'version':'0.14.4','files':{}}
+          for name in names:
+            data=Path(name).read_bytes()
+            blob=hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+            receipt['files'][name]={'sha256':hashlib.sha256(data).hexdigest(),'blob':blob}
+            dest=Path('/tmp/sc071-files')/name;dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(data)
+          Path('/tmp/sc071-files/receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+          Path('sc071-evidence/receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+          Path('sc071-evidence/candidate.diff').write_bytes(subprocess.check_output(['git','diff','--cached']))
+          print(json.dumps(receipt,indent=2))
+          PY
+          tar --exclude=.git --exclude=node_modules --exclude=tools/ui-smoke/node_modules -czf /tmp/sc071-workspace.tar.gz .
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sc071-workspace
+          path: /tmp/sc071-workspace.tar.gz
+          retention-days: 14
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sc071-files
+          path: /tmp/sc071-files/
+          retention-days: 14
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: sc071-build-evidence
+          path: sc071-evidence/
+          retention-days: 14
+  browser:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+        surface: [source, dist]
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: sc071-workspace
+          path: /tmp/sc071-artifact
+      - run: tar -xzf /tmp/sc071-artifact/sc071-workspace.tar.gz
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Install locked browser verification
+        run: |
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps ${{ matrix.browser }}
+      - name: Verify shared menus and native Training paths
+        shell: bash
+        env:
+          SQ_BROWSER: ${{ matrix.browser }}
+          SQ_APP_URL: http://127.0.0.1:8123/index.html
+          SQ_SCREENSHOTS: sc071-browser-evidence
+          SURFACE: ${{ matrix.surface }}
+        run: |
+          set -euo pipefail
+          root=.; if [ "$SURFACE" = dist ]; then root=dist; fi
+          mkdir -p sc071-browser-evidence
+          python3 -m http.server 8123 --bind 127.0.0.1 --directory "$root" >/tmp/sc071-server.log 2>&1 &
+          pid=$!; trap 'kill "$pid" || true' EXIT
+          timeout 180s node tools/ui-smoke/verify-sc071-menu.js 2>&1 | tee sc071-browser-evidence/menu.txt
+          timeout 180s node tools/ui-smoke/verify-sc071-training.js 2>&1 | tee sc071-browser-evidence/training.txt
+          timeout 180s node tools/ui-smoke/verify-sc051-add-player.js 2>&1 | tee sc071-browser-evidence/late-entry.txt
+          timeout 180s node tools/ui-smoke/verify-sc067-turbo-identity.js 2>&1 | tee sc071-browser-evidence/turbo.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: sc071-${{ matrix.browser }}-${{ matrix.surface }}-evidence
+          path: sc071-browser-evidence/
+          retention-days: 14
+  store:
+    needs: [build, browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: work/sc071-menu-verification
+          fetch-depth: 2
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: sc071-files
+          path: /tmp/sc071-verified
+      - name: Store verified bytes on helper branch only
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,hashlib,subprocess
+          root=Path('/tmp/sc071-verified');r=json.loads((root/'receipt.json').read_text())
+          expected={'src/legacy/scripts/inline-030.js','src/legacy/styles/inline-029.css','src/legacy/quarantine/core-pre-modals.js','assets/release-metadata.json','src/legacy/scripts/inline-005.js','tools/ui-smoke/verify-sc071-menu.js','tools/ui-smoke/verify-sc071-training.js'}
+          assert set(r['files'])==expected and r['base']=='da7b6401be3cd73469affd9a1a851b43b8a6d742'
+          for name,hashes in r['files'].items():
+            raw=(root/name).read_bytes();assert hashlib.sha256(raw).hexdigest()==hashes['sha256']
+            assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==hashes['blob']
+            p=Path(name);p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(raw)
+          Path('.sc071/verified-receipt.json').write_text(json.dumps(r,indent=2)+'\n')
+          subprocess.run(['git','add','--']+sorted(expected)+['.sc071/verified-receipt.json'],check=True)
+          PY
+          git diff --cached --check
+          git config user.name 'Shateki verification'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'SC-071: store verified menu candidate (helper only)'
+          git push origin HEAD:refs/heads/work/sc071-menu-verification
