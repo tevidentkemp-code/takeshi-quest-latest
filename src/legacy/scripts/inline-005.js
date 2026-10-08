@@ -14049,11 +14049,25 @@ function __sqBindQuickEntryHold(btn, specFactory){
 }
 
 let __sqMissBouncePendingCancel = null;
+let __sqBounceOutPadFlashTimer = null;
+function __sqClearBounceOutPadFlash(){
+  if (__sqBounceOutPadFlashTimer !== null) clearTimeout(__sqBounceOutPadFlashTimer);
+  __sqBounceOutPadFlashTimer = null;
+  try{ document.getElementById('padBar')?.classList.remove('sq-bounce-out-flash'); }catch(_){}
+}
+function __sqFlashBounceOutPad(){
+  const pad = document.getElementById('padBar');
+  if (!pad) return;
+  __sqClearBounceOutPadFlash();
+  try{ pad.classList.remove('sq-bounce-out-flash'); void pad.offsetWidth; pad.classList.add('sq-bounce-out-flash'); }catch(_){ return; }
+  __sqBounceOutPadFlashTimer = setTimeout(__sqClearBounceOutPadFlash, 520);
+}
 function __sqCancelMissBounceFeedback(){
   const cancel = __sqMissBouncePendingCancel;
   __sqMissBouncePendingCancel = null;
   try{ cancel?.(); }catch(_){}
   try{ window.__sqDmdV2?.cancelBounceOut?.(); }catch(_){}
+  __sqClearBounceOutPadFlash();
 }
 
 function __sqBindMissBounceHold(btn){
@@ -14116,6 +14130,7 @@ function __sqBindMissBounceHold(btn){
       const receipt = history[historyLength];
       if (state !== game || state.history !== history || history.length !== historyLength + 1 || receipt?.throw?.bounceOut !== true) return;
       try{ window.__sqDmdV2?.emit?.({ kind:'BOUNCE_OUT' }); }catch(_){}
+      try{ __sqFlashBounceOutPad(); }catch(_){}
       try{ navigator.vibrate?.(35); }catch(_){}
     };
     holdStartedAt = performance.now();
@@ -23163,7 +23178,7 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
-  const RUNNING_VERSION = '0.14.4';
+  const RUNNING_VERSION = '0.14.5';
   const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
   let updateCheckPromise = null;
