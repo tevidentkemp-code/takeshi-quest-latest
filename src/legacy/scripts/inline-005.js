@@ -23163,7 +23163,7 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
-  const RUNNING_VERSION = '0.14.2';
+  const RUNNING_VERSION = '0.14.4';
   const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
   let updateCheckPromise = null;
@@ -24991,6 +24991,11 @@ if(hsBody){
         const derivedTtlMs = Math.max(5 * 60 * 1000, Number(window.__sqAllGamesFetchTtlMs) || 0);
         if (Array.isArray(st.derivedItems) && st.derivedItems.length && st.derivedFetchedAt && (now - st.derivedFetchedAt) < derivedTtlMs) {
           return st.derivedItems;
+        }
+        // Stats covers Home; keep prior derived records until its normal poll
+        // can rebuild them without starting full history behind the modal.
+        if (document.querySelector('.sq-player-stats-directory, .sq-player-stats-hub, .sq-player-stats-content')) {
+          return Array.isArray(st.derivedItems) ? st.derivedItems : [];
         }
         let events = [];
         try{
@@ -28858,9 +28863,30 @@ const SQ_XP = {
   },
   async forName(name, force){ return this._one('name', name, force); },
   async forNameState(name, force){
+    const raw = String(name || '').trim();
+    const key = 'name:' + raw.toLowerCase();
+    const before = this._oneCache.get(key);
     const row = await this.forName(name, force);
-    const key = 'name:' + String(name || '').trim().toLowerCase();
-    return { available:!!this._oneAvailable.get(key), row };
+    const available = !!this._oneAvailable.get(key);
+    const one = this._oneCache.get(key);
+    const now = Date.now();
+    const allAge = now - this._cacheAt;
+    const freshEmpty = one && one.row == null && (now - one.at) < 60000;
+    // A selected read remains independent. Reuse only an already successful
+    // fresh directory row when this non-forced result became unavailable.
+    if (!available && !force && raw && one === before && !freshEmpty &&
+        this._allAvailable && Array.isArray(this._cache) && this._cacheAt > 0 &&
+        allAge >= 0 && allAge < 60000){
+      const cached = this._cache.find(value => String((value && value.name) || '').trim().toLowerCase() === raw.toLowerCase());
+      const numeric = value => (typeof value === 'number' && Number.isFinite(value)) ||
+        (typeof value === 'string' && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim()) && Number.isFinite(Number(value)));
+      const id = cached && cached.player_id;
+      if (cached && typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) &&
+          numeric(cached.total_xp) && numeric(cached.misfire_xp)){
+        return { available:true, row:cached, origin:'fresh-directory-cache' };
+      }
+    }
+    return { available, row };
   },
   async forPlayerId(playerId, force){ return this._one('player_id', playerId, force); },
   fmt(n){ return (Number(n) || 0).toLocaleString(); }
@@ -29874,7 +29900,11 @@ function __sqPlayerStatsHistory(name, primary, retry=false){
     }
     return history[key];
   };
-  return { positive:source('positive', SQ_ACH), misfires:source('misfires', SQ_MISFIRE) };
+  const sources = { positive:source('positive', SQ_ACH), misfires:source('misfires', SQ_MISFIRE) };
+  if (typeof primary.historyReadyResolve === 'function'){
+    primary.historyReadyResolve(); primary.historyReadyResolve = null;
+  }
+  return sources;
 }
 
 async function __sqBuildPlayerAchievementsView(name, primary={}){
@@ -29932,6 +29962,7 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, 
   const footer = document.createElement('div'); footer.className = 'modal-footer';
   footer.style.cssText = 'justify-content:flex-start;gap:10px;flex-shrink:0;';
   let returned = false;
+  const mayStartSecondaries = () => !returned && overlay.isConnected;
   const returnToHub = () => {
     if (returned) return;
     returned = true;
@@ -29944,6 +29975,7 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, 
   footer.appendChild(backBtn);
   __sqPlayerStatsSourceMessage(body, 'Loading player statistics…');
   modal.append(body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  if (typeof opts.onOpen === 'function') opts.onOpen(overlay);
   __sqStatsArcade(overlay, modal);
   // SC-028: both child controls return to the profile hub; hub Close exits.
   const closeBtn = document.createElement('button'); closeBtn.className = 'btn sq-pill'; closeBtn.textContent = 'Close';
@@ -29955,8 +29987,8 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, 
   try{
     const tab = Number(opts.tab) || 0;
     const xpHost = tab === 1 ? __sqPlayerStatsXpHost(name, false, opts.primary) : null;
-    if (tab === 0 && !opts.view){
-      opts.primary = opts.primary || __sqPlayerStatsPrimary(name);
+    if (tab === 0 && !(opts.view && opts.view.profile)){
+      opts.primary = opts.primary || __sqPlayerStatsPrimary(name, mayStartSecondaries);
       const primaryCard = __sqPlayerStatsPrimaryMetrics(name, opts.primary);
       const phase = document.createElement('div'); __sqPlayerStatsSourceMessage(phase, opts.primary.phase);
       opts.primary.phaseNodes.add(phase.querySelector('[role=status]'));
@@ -29966,7 +29998,7 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, 
       ? { showTab(mount){ mount.replaceChildren(xpHost); } }
       : (tab === 2 && !(opts.view && opts.view.achievementHistoryAvailable)
         ? await __sqBuildPlayerAchievementsView(name, opts.primary)
-        : (opts.view || await __sqStatsSourceDeadline(__sqBuildPlayerStatsProfile(name, opts.primary), 15000)));
+        : (opts.view ? await opts.view : await __sqStatsSourceDeadline(__sqBuildPlayerStatsProfile(name, opts.primary, mayStartSecondaries), 15000)));
     if (returned || !overlay.isConnected) return;
     view.showTab(body, tab);
   }catch(e){
@@ -30316,13 +30348,32 @@ async function __sqPlayerStatsRankSource(name){
   return { available, dbPower, savedRows };
 }
 
-function __sqPlayerStatsPrimary(name){
-  const games = __sqPlayerStatsGameSummary(name); games.catch(() => {});
-  return {
-    xp:SQ_XP.forNameState(name),
+function __sqPlayerStatsPrimary(name, mayStartSecondaries){
+  const xp = SQ_XP.forNameState(name);
+  const settled = xp.then(() => {}, () => {});
+  let primary;
+  const start = source => settled.then(async () => {
+    if (typeof mayStartSecondaries !== 'function' || !mayStartSecondaries()){
+      throw new Error('Player statistics request is no longer active');
+    }
+    if (primary.historyReady) await primary.historyReady;
+    if (typeof mayStartSecondaries !== 'function' || !mayStartSecondaries()){
+      throw new Error('Player statistics request is no longer active');
+    }
+    const histories = __sqPlayerStatsHistory(name, primary);
+    await Promise.allSettled([histories.positive, histories.misfires]);
+    if (typeof mayStartSecondaries !== 'function' || !mayStartSecondaries()){
+      throw new Error('Player statistics request is no longer active');
+    }
+    return source(name);
+  });
+  const games = start(__sqPlayerStatsGameSummary); games.catch(() => {});
+  const rank = start(__sqPlayerStatsRankSource); rank.catch(() => {});
+  return primary = {
+    xp,
     phase:'Loading player statistics…', phaseNodes:new Set(),
     games,
-    rank:__sqPlayerStatsRankSource(name)
+    rank
   };
 }
 
@@ -30360,8 +30411,8 @@ function __sqPlayerStatsPrimaryMetrics(name, primary){
   return tiles;
 }
 
-function __sqPlayerStatsHubShell(name){
-  const primary = __sqPlayerStatsPrimary(name);
+function __sqPlayerStatsHubShell(name, mayStartSecondaries){
+  const primary = __sqPlayerStatsPrimary(name, mayStartSecondaries);
   const profile = document.createElement('div'); profile.setAttribute('aria-busy', 'true');
   profile.appendChild(__sqPlayerStatsHero(String(name || '').trim() || 'Player', '', __sqPlayerStatsPrimaryMetrics(name, primary), primary));
   const phase = document.createElement('p'); phase.className = 'muted pp-profile-phase'; phase.setAttribute('role', 'status');
@@ -30372,11 +30423,11 @@ function __sqPlayerStatsHubShell(name){
 }
 
 // @CANONICAL:PLAYER_STATS_PROFILE_CARDS
-async function __sqBuildPlayerStatsProfile(name, primary=null){
+async function __sqBuildPlayerStatsProfile(name, primary=null, mayStartSecondaries=null){
   // Supabase client and all calculations below retain their existing sources.
   const SB = (typeof window !== 'undefined') ? (window.sb || window.__sb || window.supabase || window.supabaseClient || null) : null;
-  // Warm independent canonical sources without making Stats wait for them.
-  primary = primary || __sqPlayerStatsPrimary(name);
+  // Preserve canonical sources; automatic games/rank reads wait for initial XP.
+  primary = primary || __sqPlayerStatsPrimary(name, mayStartSecondaries);
   const xpSource = primary.xp;
   let xpRow = null;
   xpSource.then(source => { if (source.available) xpRow = source.row; });
@@ -30404,6 +30455,9 @@ async function __sqBuildPlayerStatsProfile(name, primary=null){
   // Turbo games are excluded here so the whole profile is Standard-Official
   // only ("official" fetch alone doesn't strip Turbo).
   const { __allGamesNorm, games, scores, GAMES, TOTAL, AVG, PB, LOW } = await primary.games;
+  if (typeof mayStartSecondaries === 'function' && !mayStartSecondaries()){
+    throw new Error('Player statistics request is no longer active');
+  }
   // Preserve the existing empty state without inventing profile values.
   if (!games.length){
     const profile = document.createElement('div');
@@ -30901,7 +30955,7 @@ if (Array.isArray(myThrowsFromBoards) && myThrowsFromBoards.length) {
     const notice = () => {
       const host = document.createElement('div');
       __sqPlayerStatsSourceMessage(host, 'Some analytics are unavailable: ' + unavailableSources.join(', ') + '.', () => {
-        host.closest('.modal-backdrop')?.remove(); openPlayerStatsHub(name);
+        host.closest('.modal-backdrop')?.remove(); openPlayerStatsHub(name, { retryAnalytics:true });
       });
       return host;
     };
@@ -31064,9 +31118,8 @@ window.openXpLeaderboard = async function openXpLeaderboard(){
 // first, then openPlayerStatsHub(name) opens the stat-views menu for them.
 window.openPlayerStatsSelect = function openPlayerStatsSelect(){
   var esc = function(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
-  // Warm the caches so the hub + profile open instantly after a name is picked.
+  // Warm player names for the directory; full games load with the profile.
   try{ if (typeof cloudListPlayers === 'function') cloudListPlayers().catch?.(function(){}); }catch(_){ }
-  try{ if (typeof cloudFetchAllGamesAsLocal === 'function') cloudFetchAllGamesAsLocal().catch(function(){}); }catch(_){ }
 
   var overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
   var modal = document.createElement('div'); modal.className = 'modal menu-modal sq-player-stats-directory';
@@ -31116,6 +31169,8 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
     // XP sorting is secondary. The alphabetical directory mounts first.
     var xpByName = {};
     var xpAvailable = false;
+    var xpRequested = false;
+    var topIntent = false;
     var xpOf = function(pl){ return xpByName[String(pl.name || '').trim().toLowerCase()] || 0; };
 
     var av = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>';
@@ -31133,7 +31188,16 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
     chipDefs.forEach(function(c){
       var b = document.createElement('button'); b.type = 'button'; b.className = 'ps-pick-chip' + (c[0] === 'all' ? ' active' : '');
       b.textContent = c[1]; b.dataset.f = c[0];
-      b.onclick = function(){ filter = c[0]; Object.keys(chipEls).forEach(function(k){ chipEls[k].classList.toggle('active', k === filter); }); render(); };
+      b.onclick = function(){
+        if (!overlay.isConnected) return;
+        if (c[0] === 'top' && !xpAvailable){
+          topIntent = true;
+          if (!xpRequested) loadXpRanks(false);
+          return;
+        }
+        topIntent = false;
+        filter = c[0]; Object.keys(chipEls).forEach(function(k){ chipEls[k].classList.toggle('active', k === filter); }); render();
+      };
       chipEls[c[0]] = b; chips.appendChild(b);
     });
     controls.append(search, chips);
@@ -31144,6 +31208,7 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
       var button = document.createElement('button'); button.type = 'button'; button.textContent = letter;
       button.setAttribute('aria-label', 'Jump to names beginning with ' + letter);
       button.onclick = function(){
+        topIntent = false;
         if (filter === 'top') {
           filter = 'all'; Object.keys(chipEls).forEach(function(k){ chipEls[k].classList.toggle('active', k === filter); }); render();
         }
@@ -31211,6 +31276,8 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
     }
     render();
     var loadXpRanks = async function(force){
+      if (!overlay.isConnected) return;
+      xpRequested = true;
       chipEls.top.disabled = true; xpFeedback.textContent = 'Loading XP rankings…';
       var rows;
       try{ rows = await SQ_XP.all(force); xpAvailable = !!SQ_XP._allAvailable; }catch(_){ xpAvailable = false; }
@@ -31219,6 +31286,10 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
         xpByName = {};
         (rows || []).forEach(function(row){ xpByName[__sqPlayerStatsKey(row.name)] = Number(row.total_xp) || 0; });
         xpFeedback.textContent = ''; chipEls.top.disabled = false;
+        if (topIntent){
+          topIntent = false; filter = 'top';
+          Object.keys(chipEls).forEach(function(k){ chipEls[k].classList.toggle('active', k === filter); });
+        }
         if (filter === 'top') render();
       } else {
         xpFeedback.textContent = 'XP rankings unavailable. ';
@@ -31226,11 +31297,10 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
         xpFeedback.appendChild(retry);
       }
     };
-    loadXpRanks(false);
   })();
 };
 
-window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
+window.openPlayerStatsHub = function openPlayerStatsHub(playerName, options){
   var __fromPicker = !!String(playerName || '').trim();
   try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('home', playerName); }catch(_){ }
   try{ console.debug('[Popup]', window.__sqStatsDebugName || 'New Game Screen Stats'); }catch(_){ }
@@ -31314,12 +31384,25 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
 
   let profileRequest = 0;
   let profileHydrateTimer = 0;
+  let releaseProfileHistory = () => {};
+  let retryAnalyticsPending = !!(options && options.retryAnalytics);
   const syncPlayerHeader = async () => {
     const n = String(currentName || playerSelect.value || '').trim();
     if (n && playerSelect.value !== n) playerSelect.value = n;
     const request = ++profileRequest;
+    releaseProfileHistory();
     clearTimeout(profileHydrateTimer);
-    let hydration = null, activeTab = 0;
+    let hydration = null, hydratedView = null, activeTab = 0, sharedChild = null;
+    const retryAnalytics = retryAnalyticsPending; retryAnalyticsPending = false;
+    const getStatsView = () => {
+      if (!hydration){
+        hydration = __sqStatsSourceDeadline(__sqBuildPlayerStatsProfile(n, shell.primary, () =>
+          request === profileRequest && ((retryAnalytics && overlay.isConnected) ||
+            (activeTab === 0 && !!(sharedChild && sharedChild.isConnected)))), 15000)
+          .then(view => { hydratedView = view; return view; }, error => { hydration = null; throw error; });
+      }
+      return hydration;
+    };
     const wireView = (view, hydrated) => {
       if (request !== profileRequest || !overlay.isConnected || !view || !view.profile) return;
       profileHost.replaceChildren(view.profile);
@@ -31331,36 +31414,71 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
           (view.tabs || []).forEach((control, index) => control.classList.toggle('active', index === tab));
           clearTimeout(profileHydrateTimer);
           overlay.remove();
-          openPlayerStatsDialog(n, { view: hydrated ? view : null, primary:view.primary, tab, onReturn: () => {
+          openPlayerStatsDialog(n, { view: tab === 0 ? getStatsView() : (hydrated ? view : null), primary:view.primary, tab, onOpen: child => { sharedChild = child; }, onReturn: () => {
+            sharedChild = null;
             if (request !== profileRequest) return;
-            if (view.primary && view.primary.xp !== presentedXp){
-              view.profile.querySelector('.pp-progression')?.replaceWith(__sqPlayerStatsXpHost(n, true, view.primary));
-              presentedXp = view.primary.xp;
+            if ([...document.querySelectorAll('.sq-player-stats-hub')].some(hub => hub.isConnected && !overlay.contains(hub))){
+              clearTimeout(profileHydrateTimer);
+              ++profileRequest;
+              releaseHistory();
+              return;
+            }
+            const returnedView = hydratedView || view;
+            if (returnedView !== view){
+              const hero = view.profile.querySelector('.pp-hero');
+              if (hero) returnedView.profile.querySelector('.pp-hero')?.replaceWith(hero);
+            }
+            if (returnedView.primary && returnedView.primary.xp !== presentedXp){
+              returnedView.profile.querySelector('.pp-progression')?.replaceWith(__sqPlayerStatsXpHost(n, true, returnedView.primary));
+              presentedXp = returnedView.primary.xp;
             }
             document.body.appendChild(overlay);
-            modal.focus(); button.focus();
-            if (!hydrated) scheduleHydration();
+            modal.focus();
+            wireView(returnedView, !!hydratedView || hydrated);
+            (returnedView.tabs || [])[activeTab]?.focus();
+            if (!hydratedView && !hydrated) scheduleHydration();
           } });
         };
       });
     };
-    const shell = __sqPlayerStatsHubShell(n);
+    const shell = __sqPlayerStatsHubShell(n, () => request === profileRequest &&
+      (overlay.isConnected || !!(sharedChild && sharedChild.isConnected)));
+    shell.primary.historyReady = new Promise(resolve => { shell.primary.historyReadyResolve = resolve; });
+    const releaseHistory = () => {
+      if (typeof shell.primary.historyReadyResolve === 'function'){
+        shell.primary.historyReadyResolve(); shell.primary.historyReadyResolve = null;
+      }
+    };
+    releaseProfileHistory = releaseHistory;
     const scheduleHydration = () => {
       clearTimeout(profileHydrateTimer);
       profileHydrateTimer = setTimeout(async () => {
         // Do not start secondary reads for a closed or superseded profile.
-        if (request !== profileRequest || !overlay.isConnected) return;
+        if (request !== profileRequest || !overlay.isConnected){
+          if (!(request === profileRequest && sharedChild && sharedChild.isConnected)) releaseHistory();
+          return;
+        }
         try{
           // SC-063: protect the critical progression/history reads from the
           // heavier target-analytics burst. These promises already have their
           // own truthful timeout/error states; this only controls ordering.
           try{ await shell.primary.xp; }catch(_){}
-          if (request !== profileRequest || !overlay.isConnected) return;
+          if (request !== profileRequest || !overlay.isConnected){
+            if (!(request === profileRequest && sharedChild && sharedChild.isConnected)) releaseHistory();
+            return;
+          }
           const criticalHistory = __sqPlayerStatsHistory(n, shell.primary);
           await Promise.allSettled([criticalHistory.positive, criticalHistory.misfires]);
           if (request !== profileRequest || !overlay.isConnected) return;
-          hydration = hydration || __sqStatsSourceDeadline(__sqBuildPlayerStatsProfile(n, shell.primary), 15000);
-          wireView(await hydration, true);
+          const [summary] = await Promise.all([shell.primary.games, shell.primary.rank]);
+          if (request !== profileRequest || !overlay.isConnected) return;
+          shell.profile.setAttribute('aria-busy', 'false');
+          shell.profile.querySelector('.pp-profile-phase')?.remove();
+          if (!summary.games.length && !shell.profile.querySelector('.pp-empty-history')){
+            const empty = document.createElement('p'); empty.className = 'muted pp-empty-history';
+            empty.textContent = 'No official games found for this player.'; shell.profile.appendChild(empty);
+          }
+          if (retryAnalytics) wireView(await getStatsView(), true);
         }catch(e){
           if (request !== profileRequest || !overlay.isConnected) return;
           shell.profile.setAttribute('aria-busy', 'false');
@@ -31372,7 +31490,8 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
         }
       }, 1200);
     };
-    // Primary sources start immediately; only the visible hub hydrates analytics.
+    // XP starts immediately; the existing timer owns automatic critical history.
+    // Full analytics are requested only by Stats or its existing explicit Retry.
     wireView(shell, false); scheduleHydration();
   };
   const selectedName = () => String(currentName || playerSelect.value || '').trim();
@@ -31483,7 +31602,7 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
     syncPlayerHeader();
   })();
 
-  const close = () => { clearTimeout(profileHydrateTimer); ++profileRequest; try{ overlay.remove(); }catch(_){ overlay.parentNode && overlay.parentNode.removeChild(overlay); } };
+  const close = () => { clearTimeout(profileHydrateTimer); ++profileRequest; releaseProfileHistory(); try{ overlay.remove(); }catch(_){ overlay.parentNode && overlay.parentNode.removeChild(overlay); } };
   // From the picker, Back returns to the name list so you can switch player.
   backBtn.onclick = __fromPicker
     ? () => { close(); try{ if (typeof window.openPlayerStatsSelect === 'function') window.openPlayerStatsSelect(); }catch(_){ } }
