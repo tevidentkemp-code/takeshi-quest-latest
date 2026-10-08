@@ -63,7 +63,7 @@ fs.mkdirSync(out, { recursive: true });
     await page.waitForFunction(() => window.__sqDmdV2Ready === true && document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden') === 'true');
     await page.evaluate(() => {
       const d = window.__sc069;
-      d.snap = () => ({ at: performance.now(), page: document.body.dataset.page, finished: state.finished, history: state.history.length, player: state.currentPlayer, round: state.currentRound, dart: state.currentDart, tail: state.history.at(-1), controller: window.__sqDmdV2.snapshot() });
+      d.snap = () => ({ at: performance.now(), page: document.body.dataset.page, finished: state.finished, history: state.history.length, player: state.currentPlayer, round: state.currentRound, dart: state.currentDart, tail: state.history.at(-1), padFlash: document.getElementById('padBar')?.classList.contains('sq-bounce-out-flash') === true, controller: window.__sqDmdV2.snapshot() });
       const record = recordThrow;
       recordThrow = window.recordThrow = function () { const entry = { at: performance.now(), spec: { ...arguments[0] }, before: d.snap() }; try { return record.apply(this, arguments); } finally { if (d.armed) { entry.after = d.snap(); d.records.push(entry); } } };
       const render = window.__sqDmdShowTransientZones;
@@ -77,11 +77,30 @@ fs.mkdirSync(out, { recursive: true });
     const press = async () => { const b = await page.locator('#pad .dtActBtn.miss').boundingBox(); assert(b, 'MISS visible'); const point = { x: b.x + b.width / 2, y: b.y + b.height / 2 }; await page.mouse.move(point.x, point.y); await page.mouse.down(); return point; };
     const hold = async () => { await press(); await page.waitForTimeout(450); await page.mouse.up(); };
     const undoAll = async () => { for (let i = 0; i < 8 && await page.evaluate(() => state.history.length > 0); i++) await page.locator('#pad .dtActBtn.undo').click(); await page.waitForTimeout(750); assert.equal(await page.evaluate(() => state.history.length), 0); };
-    const boFrames = r => r.frames.filter(f => f.text.join('').includes('BOUNCE OUT'));
+    const boFrames = r => r.frames.filter(f => f.text.includes('BOUNCE') && f.text.includes('OUT'));
     const committedBO = r => { assert.equal(r.records.length, 1, 'one canonical hold call'); assert.equal(r.records[0].spec.kind, 'BounceOut'); assert.equal(r.after.history, r.before.history + 1, 'one accepted history entry'); assert.equal(r.after.tail.throw.bounceOut, true); assert.equal(r.after.tail.throw.points, 0); assert.equal(r.emits.filter(e => e.event.kind === 'BOUNCE_OUT').length, 1, 'one presentation dispatch'); assert(r.emits.find(e => e.event.kind === 'BOUNCE_OUT').at >= r.records[0].at, 'feedback follows canonical call'); };
 
     await begin('short-tap'); await page.locator('#pad .dtActBtn.miss').click(); let r = await read();
-    assert.equal(r.records.length, 1); assert.equal(r.records[0].spec.kind, 'Miss'); assert.equal(r.after.tail.throw.bounceOut, undefined); assert.equal(r.emits.length, 0); await undoAll();
+    assert.equal(r.records.length, 1); assert.equal(r.records[0].spec.kind, 'Miss'); assert.equal(r.after.tail.throw.bounceOut, undefined); assert.equal(r.emits.length, 0); assert.equal(r.after.padFlash, false, 'ordinary MISS never triggers the Bounce Out red alert'); await undoAll();
+
+    await begin('accepted-red-pad-two-line-dmd'); await hold(); await page.waitForTimeout(45);
+    const alertVisual = await page.evaluate(() => {
+      const pad = document.getElementById('padBar');
+      const buttons = [...pad.querySelectorAll('button')].filter(button => {
+        const style = getComputedStyle(button), rect = button.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+      }).map(button => ({ text: String(button.textContent || '').trim(), background: getComputedStyle(button).backgroundColor }));
+      return { active: pad.classList.contains('sq-bounce-out-flash'), buttons };
+    });
+    r = await read(); committedBO(r);
+    assert.equal(r.after.padFlash, true, 'accepted Bounce Out keeps the bounded throwpad alert active');
+    assert.equal(alertVisual.active, true, 'throwpad alert class is active in the real UI');
+    assert(alertVisual.buttons.length >= 4, 'real throwpad exposes multiple visible controls during the alert');
+    assert(alertVisual.buttons.every(button => button.background === 'rgb(180, 35, 47)'), 'every visible throwpad button is red during the Bounce Out alert');
+    const alertWrite = r.writes.find(write => write.zones.z2 === 'BOUNCE' && write.zones.z3 === 'OUT');
+    assert(alertWrite, 'DMD receives BOUNCE / OUT on its two rows');
+    assert.equal(alertWrite.opts.type, 'flash'); assert.equal(alertWrite.opts.ms, 520); assert.equal(alertWrite.opts.bounceOut, true);
+    await page.screenshot({ path: path.join(out, 'accepted-red-pad-two-line-dmd.png') }); await undoAll();
 
     await begin('hold-real-rapid-next-press');
     const rapidPoint = await press(); await page.waitForTimeout(450);
@@ -106,7 +125,7 @@ fs.mkdirSync(out, { recursive: true });
     assert(!boFrames(r).some(f => f.at > undoneAt), 'no BO canvas frame survives actual Undo'); assert(!r.after.controller.queue.some(m => m.bounceOut)); await page.screenshot({ path: path.join(out, 'after-undo.png') }); await undoAll();
 
     await page.emulateMedia({ reducedMotion: 'reduce' }); await begin('reduced-motion-static-canvas'); await hold(); await page.waitForTimeout(100); await page.screenshot({ path: path.join(out, 'reduced-motion-static.png') }); await page.waitForTimeout(500); r = await read(); committedBO(r);
-    const safe = r.writes.find(w => w.zones.z2 === 'BOUNCE OUT'); assert(safe && safe.reduced); assert.equal(safe.opts.type, 'hold'); assert.equal(safe.opts.ms, 420); assert.equal(safe.opts.amp, 0); assert.equal(safe.opts.fx, undefined);
+    const safe = r.writes.find(w => w.zones.z2 === 'BOUNCE' && w.zones.z3 === 'OUT'); assert(safe && safe.reduced); assert.equal(safe.opts.type, 'hold'); assert.equal(safe.opts.ms, 520); assert.equal(safe.opts.amp, 0); assert.equal(safe.opts.fx, undefined);
     const visible = boFrames(r); assert(visible.length >= 2, 'static BO text actually draws'); assert(!r.frames.some(f => f.at >= visible[0].at && f.at <= visible.at(-1).at && f.text.length === 0), 'no alternating blank BO canvas frames under reduced motion');
     await undoAll(); await page.emulateMedia({ reducedMotion: 'no-preference' });
 
