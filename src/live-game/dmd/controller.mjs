@@ -95,7 +95,7 @@ export function makeMessage(event = {}) {
     case 'MISS':
       return { priority: PRIORITY.THROW, headline: 'MISS', subline: `DART ${dart} OF 3`, type: 'hold', haptic: 'miss' };
     case 'BOUNCE_OUT':
-      return { priority: PRIORITY.THROW, headline: 'BOUNCE OUT', subline: '', type: 'flash', duration: 420, fx: 'impact', bounceOut: true, haptic: null };
+      return { priority: PRIORITY.THROW, headline: 'BOUNCE', subline: 'OUT', type: 'flash', duration: 520, fx: 'impact', bounceOut: true, haptic: null };
     case 'SCRATCH':
     case 'MISS_X3':
       return { priority: PRIORITY.VISIT, headline: 'SCRATCH', subline: 'NO SCORE', type: 'hold', haptic: 'miss' };
