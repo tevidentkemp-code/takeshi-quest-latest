@@ -885,7 +885,7 @@ jobs:
             qa-artifacts-reveal/
 
   sc071-menus:
-    name: SC-071 menus — ${{ matrix.browser }} / ${{ matrix.build }}
+    name: SC-071 menus — ${{ matrix.browser }} / ${{ matrix.build }} / ${{ matrix.shard }}
     needs: static-build
     runs-on: ubuntu-latest
     timeout-minutes: 16
@@ -894,6 +894,7 @@ jobs:
       matrix:
         browser: [chromium, webkit]
         build: [source, dist]
+        shard: [a, b]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -916,6 +917,7 @@ jobs:
         shell: bash
         env:
           SQ_BROWSER: ${{ matrix.browser }}
+          SQ_SC071_SHARD: ${{ matrix.shard }}
           SQ_SERVER_DIRECTORY: ${{ matrix.build == 'dist' && 'dist' || '.' }}
           SQ_APP_URL: http://127.0.0.1:8123/index.html
           SQ_SCREENSHOTS: qa-artifacts-sc071
@@ -925,12 +927,14 @@ jobs:
           pid=$!
           trap 'kill "$pid" || true' EXIT
           timeout 300s node tools/ui-smoke/verify-sc071-menu.js 2>&1 | tee sc071-menu.txt
-          timeout 300s node tools/ui-smoke/verify-sc071-training.js 2>&1 | tee sc071-training.txt
+          if [ "$SQ_SC071_SHARD" = 'a' ]; then
+            timeout 300s node tools/ui-smoke/verify-sc071-training.js 2>&1 | tee sc071-training.txt
+          fi
       - name: Keep menu navigation evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: core-sc071-${{ matrix.browser }}-${{ matrix.build }}
+          name: core-sc071-${{ matrix.browser }}-${{ matrix.build }}-${{ matrix.shard }}
           retention-days: 14
           path: |
             sc071-*.txt

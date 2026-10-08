@@ -91,7 +91,11 @@ async function modeCase(page,mode,width,base){
    await page.waitForFunction(()=>!window.__sqSecurityInputBlocked&&!document.querySelector('.sq-throw-order-reveal'));
    const base=await page.evaluate(()=>JSON.stringify(state));
    if(process.env.SC071_BASELINE==='1'){await open(page);await shape(page,0);throw new Error('Baseline unexpectedly accepted');}
-   for(const mode of modes)for(const width of [320,390,430])await modeCase(page,mode,width,base);
+   // SC-071 CI shard split: same six modes x three widths, no skipped assertions.
+   const shard=process.env.SQ_SC071_SHARD||'all';
+   const cases=shard==='a'?modes.slice(0,3):shard==='b'?modes.slice(3):shard==='all'?modes:null;
+   assert(cases,'SC071 shard must be a, b or all');
+   for(const mode of cases)for(const width of [320,390,430])await modeCase(page,mode,width,base);
    for(const value of ['0','1']){
      await page.evaluate(v=>localStorage.setItem('sq_livev3_test',v),value);
      await open(page);check(await row(page,'New Layout').count()===0,'no beta entry for either stored setting');await close(page);
