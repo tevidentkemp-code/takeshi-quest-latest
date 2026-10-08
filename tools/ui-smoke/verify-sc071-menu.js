@@ -25,6 +25,15 @@ async function modeCase(page,mode,width,base){
  await page.setViewportSize({width,height:844});
  await page.emulateMedia({reducedMotion:width===390?'reduce':'no-preference'});
  await page.evaluate(({mode,base})=>{
+   // Synthetic multi-mode fixture: hold the 20-second Turbo visit clock still
+   // during menu-only checks. The real expiry remains covered by SC-076 QA.
+   if (!window.__sqSc071NaturalNow) window.__sqSc071NaturalNow=performance.now.bind(performance);
+   if (mode.includes('turbo')) {
+     const frozen=window.__sqSc071NaturalNow();
+     Object.defineProperty(performance,'now',{configurable:true,value:()=>frozen});
+   } else {
+     delete performance.now;
+   }
    state=JSON.parse(base);window.__sqTournamentDraft=null;
    state.match.mode=mode.includes('turbo')?'turbo':mode==='practice'||mode==='vsshadow'?'practice':'classic';
    state.match.gameMode=state.match.mode;state.gameMode=state.match.mode;
@@ -91,11 +100,18 @@ async function modeCase(page,mode,width,base){
      await open(page);check(await row(page,'New Layout').count()===0,'no beta entry for either stored setting');await close(page);
      assert.equal(await page.evaluate(()=>localStorage.getItem('sq_livev3_test')),value);checks++;
    }
-   await page.evaluate(()=>{localStorage.removeItem('sq_livev3_test');document.body.dataset.page='details';window.openStatsHubDialog();});
+   await page.evaluate(()=>{delete performance.now;localStorage.removeItem('sq_livev3_test');navigateToStartScreen();});
+   await page.waitForFunction(()=>document.body.dataset.page==='details');
+   await page.evaluate(()=>window.openStatsHubDialog());
    await shape(page,0);await close(page);
    assert.deepEqual(errors,[],'no uncaught runtime errors');checks++;
-   const unexpected=consoleErrs.filter(e=>!(/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource|connect-src|Load failed/i.test(e)));
+   // Forced 320/390/430 resizes can generate the browser's own ResizeObserver
+   // delivery-loop notice; preserve strict checks for every other console error.
+   const resizeNotice=/^\[SQ\] error: ResizeObserver loop completed with undelivered notifications\. ErrorEvent$/;
+   const notices=consoleErrs.filter(e=>resizeNotice.test(e));
+   const unexpected=consoleErrs.filter(e=>!resizeNotice.test(e)&&!(/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource|connect-src|Load failed/i.test(e)));
    assert.deepEqual(unexpected,[],'no unexpected console errors');checks++;
+   console.log('SC071 browser ResizeObserver notices during deliberate viewport changes: '+notices.length);
    console.log(`PASS SC071 ${checks} assertions (${process.env.SQ_BROWSER||'chromium'})`);
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
