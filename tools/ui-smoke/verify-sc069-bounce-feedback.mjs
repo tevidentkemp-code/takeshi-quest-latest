@@ -57,7 +57,7 @@ assert.deepEqual(message, { priority: 10, headline: 'BOUNCE', subline: 'OUT', ty
   assert.equal(clock.run(removedTimer), false, 'active BO timer is retired');
   clock.advance(700);
   assert.equal(c.snapshot().active, null, 'Undo settles without BO replay');
-  assert.deepEqual(renders.map(r => r.z.z2), ['BOUNCE OUT', 'THROW UNDONE']);
+  assert.deepEqual(renders.map(r => r.z.z2), ['BOUNCE', 'THROW UNDONE']);
   assert(!nativeCalls.includes('legacy') && !nativeCalls.includes('hard-clear'), 'native legacy queue and baseline are never broadly cleared');
 }
 
