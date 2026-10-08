@@ -110,7 +110,11 @@ async function modeCase(page,mode,width,base){
      assert.equal(await page.evaluate(()=>localStorage.getItem('sq_livev3_test')),value);checks++;
    }
    phase='home-stats';
-   await page.evaluate(()=>{localStorage.removeItem('sq_livev3_test');document.body.dataset.page='details';window.openStatsHubDialog();});
+   // Use the actual navigation owner: a body attribute alone leaves the game
+   // visible under Home styling and produced resize-observer errors in the fixture.
+   await page.evaluate(()=>{localStorage.removeItem('sq_livev3_test');navigateToStartScreen();});
+   await page.waitForFunction(()=>document.body.dataset.page==='details'&&getComputedStyle(document.getElementById('game')).display==='none');
+   await page.evaluate(()=>window.openStatsHubDialog());
    await shape(page,0);await close(page);
    assert.deepEqual(errors,[],'no uncaught runtime errors');checks++;
    const unexpected=consoleErrs.filter(e=>!(/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource|connect-src|Load failed/i.test(e)));
