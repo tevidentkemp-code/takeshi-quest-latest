@@ -10,6 +10,7 @@ let checks = 0;
 function check(label, ok, detail) { assert.ok(ok, label + (detail ? ': ' + JSON.stringify(detail) : '')); checks++; console.log('PASS  ' + label); }
 const hubSel = '.sq-player-stats-hub';
 const childSel = '.sq-stats-modal';
+const optionalStatsTables = ['v_player_best_official_ranked','v_player_last30_targets','v_player_last30_target_rates','v_player_target_streaks'];
 async function fit(page, selector) {
   return page.locator(selector).evaluate(el => {
     const r = el.getBoundingClientRect();
@@ -71,6 +72,8 @@ async function scenario(width) {
     check(width + ': exactly three primary controls', JSON.stringify(original.tabs) === JSON.stringify(['Stats','XP','Achievements']));
     check(width + ': old Player Stats row gone; all nine other rows remain', JSON.stringify(original.rows) === JSON.stringify(['Level Ladder','Latest Matches','Player High Scores','Progression','Practice Stats','Target Hit %','Target Points %','Player H2H','H2H Matchups (Coming Soon)']), original.rows);
     check(width + ': one games load and one XP/split achievement read', original.games === 1 && original.reads.v_player_xp === 1 && original.reads.v_ach_base === 1 && original.reads.v_ach_david_goliath === 1 && !original.reads.v_player_achievements, original);
+    check(width + ': optional Stats analytics are not read before Stats intent', optionalStatsTables.every(table => !original.reads[table]), original.reads);
+    let panelReadsBaseline;
     const hubFit = await fit(page, hubSel);
     check(width + ': hub fits without horizontal overflow', hubFit.fits && !hubFit.overflow.length, hubFit);
     await page.screenshot({ path:path.join(shots, `sc028-hub-${width}.png`) });
@@ -83,6 +86,14 @@ async function scenario(width) {
       await page.waitForTimeout(1200);
       const child = page.locator(childSel);
       check(width + ': ' + label + ' opens original content only', (await child.innerText()).toLowerCase().includes(content.toLowerCase()) && await page.locator('.pp-hero').count() === 0 && await page.locator(childSel + ' .pp-tabs').count() === 0);
+      if (idx === 0) {
+        panelReadsBaseline = await page.evaluate(() => ({ reads:{ ...window.__sc028Reads }, games:window.__sc028GamesReads }));
+        const otherReads = reads => Object.fromEntries(Object.entries(reads).filter(([table]) => !optionalStatsTables.includes(table)));
+        check(width + ': first Stats intent reads each optional source exactly once and preserves canonical reads',
+          optionalStatsTables.every(table => panelReadsBaseline.reads[table] === 1) &&
+          JSON.stringify(otherReads(panelReadsBaseline.reads)) === JSON.stringify(otherReads(original.reads)) &&
+          panelReadsBaseline.games === original.games, panelReadsBaseline);
+      }
       const childFit = await fit(page, childSel);
       check(width + ': ' + label + ' fits', childFit.fits && !childFit.overflow.length, childFit);
       await page.screenshot({ path:path.join(shots, `sc028-${label.toLowerCase()}-${width}.png`) });
@@ -90,11 +101,12 @@ async function scenario(width) {
       await page.waitForSelector(hubSel + ' .pp-hero');
       check(width + ': return restores the same single header and active button', await page.evaluate(idx => document.querySelector('.pp-hero') === window.__sc028Hero && document.querySelectorAll('.pp-hero').length === 1 && document.querySelectorAll('.pp-tab')[idx].classList.contains('active'), idx));
     }
-    check(width + ': entering/returning from panels adds no reads', await page.evaluate(original => JSON.stringify(window.__sc028Reads) === JSON.stringify(original.reads) && window.__sc028GamesReads === original.games, original));
+    check(width + ': entering/returning from panels adds no reads', await page.evaluate(original => JSON.stringify(window.__sc028Reads) === JSON.stringify(original.reads) && window.__sc028GamesReads === original.games, panelReadsBaseline));
     await page.locator(hubSel + ' .pp-tab').first().click();
     await page.keyboard.press('Escape');
     await page.waitForSelector(hubSel);
     check(width + ': Escape returns without a stale stack entry', await page.evaluate(() => !document.querySelector('.sq-stats-modal') && (window.__sqModalStack || []).length === 0));
+    check(width + ': reopening Stats and returning adds no reads', await page.evaluate(baseline => JSON.stringify(window.__sc028Reads) === JSON.stringify(baseline.reads) && window.__sc028GamesReads === baseline.games, panelReadsBaseline));
     for (const title of ['Level Ladder','Latest Matches']) {
       await page.locator(hubSel + ' .menu-row').filter({ has:page.locator('.menu-row-title', { hasText:new RegExp('^' + title + '$') }) }).click();
       await page.waitForSelector(childSel + ' .modal-footer');
