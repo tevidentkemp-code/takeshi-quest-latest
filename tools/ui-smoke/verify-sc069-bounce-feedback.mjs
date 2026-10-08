@@ -77,7 +77,7 @@ assert.deepEqual(message, { priority: 10, headline: 'BOUNCE', subline: 'OUT', ty
 // Model the exact production gesture owner with controlled timers and canonical
 // record receipts. These are unit events; native click evidence belongs to the
 // separate browser regression and retained public baseline traces.
-const stageCss = fs.readFileSync(new URL('../../src/styles/live-game/classic-stage1.css', import.meta.url), 'utf8');
+const stageCss = fs.readFileSync(new URL('../../src/styles/live-game/v2-panel.css', import.meta.url), 'utf8');
 assert(stageCss.includes('#padBar.sq-bounce-out-flash button'), 'Bounce Out alert must target every throwpad button');
 assert(stageCss.includes('background:#b4232f !important'), 'Bounce Out alert must force the red button surface');
 assert(stageCss.includes('@media (prefers-reduced-motion:reduce)'), 'Bounce Out alert must retain a reduced-motion treatment');
