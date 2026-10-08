@@ -19,7 +19,23 @@ let checks=0;
    assert.equal(await body.locator('.ms2-back:visible').count(),1,'one Training step Back');checks++;
    await body.locator('.ms2-back').click();
    if(mode==='SELECT')await body.locator('.modal-footer button.primary').click();else await pill(mode).click();
-   await pill('10 ROUNDS').click();await page.locator('.tr-overlay').waitFor();
+   await pill('10 ROUNDS').click();
+   try {
+     await page.locator('.tr-overlay').waitFor();
+   } catch(error) {
+     const state=await page.evaluate(()=>({
+       page:document.body.dataset.page,
+       setupTitle:document.querySelector('#startGameModalBody .sg-tournament-title')?.textContent,
+       overlayCount:document.querySelectorAll('.tr-overlay').length,
+       modalOpen:!document.getElementById('startGameModal')?.classList.contains('hidden'),
+       toastText:[...document.querySelectorAll('.toast,.sq-toast,.toast-msg')].map(n=>n.textContent).slice(-5),
+       securityReady:typeof window.SQ_SECURITY?.createTraining,
+       gameplayReady:typeof window.SQ_GAMEPLAY?.failure
+     }));
+     console.error('SC071_TRAINING_START_DIAGNOSTIC='+JSON.stringify({mode,width,...state}));
+     if(process.env.SQ_SCREENSHOTS)await page.screenshot({path:require('node:path').join(process.env.SQ_SCREENSHOTS,`sc071-training-failed-${mode}-${width}.png`)}).catch(()=>{});
+     throw error;
+   }
    assert.match(await page.locator('.tr-mode').textContent(),new RegExp(mode));checks++;
    assert.equal(await page.locator('.sq-menu106-modal').count(),0,'Training does not gain an unrelated menu');checks++;
    await page.locator('.tr-pad button').last().click();
