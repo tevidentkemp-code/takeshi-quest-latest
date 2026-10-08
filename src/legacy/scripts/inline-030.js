@@ -38,7 +38,7 @@
     }catch(_){ }
   }
 
-  function openModalShell(title, sub){
+  function openModalShell(title, sub, onBack){
     document.querySelectorAll('.sq-menu106-bd').forEach(function(n){
       // Close via the shared stack when registered so stack state stays true.
       var st=window.__sqModalStack||[]; var handled=false;
@@ -49,7 +49,7 @@
     bd.className='modal-backdrop sq-menu106-bd';
     var modal=document.createElement('div');
     modal.className='modal sq-menu106-modal';
-    modal.innerHTML='<div class="sq-menu106-head"><button class="sq-menu106-back" type="button" aria-label="Back">‹</button><div><div class="sq-menu106-title">'+esc(title)+'</div>'+(sub?'<div class="sq-menu106-sub">'+esc(sub)+'</div>':'')+'</div><button class="sq-menu106-x" type="button" aria-label="Close">×</button></div><div class="sq-menu106-body"></div><div class="sq-menu106-footer"><button class="btn sq-menu106-close" type="button">Close</button></div>';
+    modal.innerHTML='<div class="sq-menu106-head">'+(typeof onBack==='function'?'<button class="sq-menu106-back" type="button" aria-label="Back">‹</button>':'<span aria-hidden="true"></span>')+'<div><div class="sq-menu106-title">'+esc(title)+'</div>'+(sub?'<div class="sq-menu106-sub">'+esc(sub)+'</div>':'')+'</div><button class="sq-menu106-x" type="button" aria-label="Close">×</button></div><div class="sq-menu106-body"></div><div class="sq-menu106-footer"><button class="btn sq-menu106-close" type="button">Close</button></div>';
     bd.appendChild(modal); document.body.appendChild(bd);
     var close=function(){bd.remove();};
     if(window.sqModal&&window.sqModal.register){
@@ -58,14 +58,36 @@
     bd.addEventListener('click',function(e){if(e.target===bd)close();});
     modal.querySelector('.sq-menu106-x').onclick=close;
     modal.querySelector('.sq-menu106-close').onclick=close;
-    modal.querySelector('.sq-menu106-back').onclick=close;
+    // SC-071: only a genuine parent gets Back; Close never reopens it.
+    var back=modal.querySelector('.sq-menu106-back');
+    if(back) back.onclick=function(){close();onBack();};
     return {bd:bd,modal:modal,body:modal.querySelector('.sq-menu106-body'),close:close};
+  }
+  // SC-071: fixed, decorative line icons. Labels remain escaped below.
+  var MENU_ICONS={
+    "stats": "<path d=\"M5 19V11M12 19V5M19 19V8\"/>",
+    "tv": "<rect x=\"3\" y=\"4\" width=\"18\" height=\"13\" rx=\"2\"/><path d=\"M8 21h8M12 17v4\"/>",
+    "add": "<path d=\"M12 5v14M5 12h14\"/>",
+    "edit": "<path d=\"m15 5 4 4M4 20l5-1L20 8a2.8 2.8 0 0 0-4-4L5 15z\"/>",
+    "remove": "<path d=\"M5 12h14\"/>",
+    "order": "<path d=\"M8 20V4m-4 4 4-4 4 4M16 4v16m-4-4 4 4 4-4\"/>",
+    "restart": "<path d=\"M4 10a8 8 0 1 1 1 8M4 4v6h6\"/>",
+    "stop": "<rect x=\"5\" y=\"5\" width=\"14\" height=\"14\" rx=\"1\"/>",
+    "finish": "<path d=\"M5 21V3m0 1c5-4 9 4 14 0v10c-5 4-9-4-14 0\"/>",
+    "race": "<path d=\"M3 17l6-6 4 3 8-10M15 4h6v6\"/>",
+    "table": "<rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M3 10h18M10 4v16\"/>",
+    "trophy": "<path d=\"M8 3h8v6a4 4 0 0 1-8 0zM8 5H4v2a4 4 0 0 0 4 4m8-6h4v2a4 4 0 0 1-4 4M12 13v7m-4 1h8\"/>",
+    "warning": "<path d=\"m12 3 10 18H2zM12 9v5m0 3h.01\"/>",
+    "next": "<path d=\"m9 5 7 7-7 7\"/>"
+};
+  function menuIcon(name){
+    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+(MENU_ICONS[name]||MENU_ICONS.next)+'</svg>';
   }
   function addRow(body,opt){
     var b=document.createElement('button');
     b.type='button';
     b.className='sq-menu106-row '+(opt.cls||'');
-    b.innerHTML='<span class="sq-menu106-ico">'+esc(opt.ico||'›')+'</span><span class="sq-menu106-copy"><span class="sq-menu106-label">'+esc(opt.label||'')+'</span><span class="sq-menu106-desc">'+esc(opt.desc||'')+'</span></span><span class="sq-menu106-chev">›</span>';
+    b.innerHTML='<span class="sq-menu106-ico" aria-hidden="true">'+menuIcon(opt.ico)+'</span><span class="sq-menu106-copy"><span class="sq-menu106-label">'+esc(opt.label||'')+'</span><span class="sq-menu106-desc">'+esc(opt.desc||'')+'</span></span><span class="sq-menu106-chev">›</span>';
     b.onclick=opt.onClick||function(){};
     body.appendChild(b); return b;
   }
@@ -231,10 +253,9 @@
   window.__sqAppendLatePlayer=__sqAppendLatePlayer;
 
   function openAddGuestMenu(prev,initialName){
-    var m=openModalShell('Add Guest Player','Joins as the final thrower');
+    var m=openModalShell('Add Guest Player','Joins as the final thrower',prev);
     styleAddPlayerShell(m);
     m.body.classList.add('np-body');
-    m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
     var input=document.createElement('input');
     input.className='ms-player-input';
     input.id='sqLateGuestName';
@@ -267,15 +288,14 @@
   async function openAddPlayerMenu(prev){
     var gate=__sqLateJoinEligibility();
     if(!gate.ok){try{toast(gate.reason);}catch(_){}return;}
-    var m=openModalShell('Add Player','Joins as the final thrower');
+    var m=openModalShell('Add Player','Joins as the final thrower',prev);
     styleAddPlayerShell(m);
     m.body.classList.add('sp2-list');
-    m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
     var active=new Set((state.players||[]).map(function(p){return String(p&&p.name||'').trim().toLowerCase();}).filter(Boolean));
 
     // Keep a usable action visible immediately. Registered-player discovery is
     // cloud-backed and may be slow or unavailable on a mobile connection.
-    addPlayerChoice(m.body,{ico:'＋',label:'Guest Player',desc:'Add by name • may change game classification',onClick:function(){m.close();openAddGuestMenu(function(){openAddPlayerMenu(prev);});}});
+    addPlayerChoice(m.body,{ico:'add',label:'Guest Player',desc:'Add by name • may change game classification',onClick:function(){m.close();openAddGuestMenu(function(){openAddPlayerMenu(prev);});}});
     var loading=document.createElement('p');
     loading.className='tag sq-add-player-loading';
     loading.textContent='Loading registered players…';
@@ -299,7 +319,7 @@
     if(rows.length){
       rows.forEach(function(p){
         var name=(typeof __sqPlayerPretty==='function'?__sqPlayerPretty(p):'') || p.name || 'Player';
-        addPlayerChoice(m.body,{ico:'＋',label:name,desc:'Registered player • final thrower',cls:'green',onClick:function(){
+        addPlayerChoice(m.body,{ico:'add',label:name,desc:'Registered player • final thrower',cls:'green',onClick:function(){
           m.close();
           window.__sqConfirm(
             { title:'Add Player', message:'Are you sure you want to add '+name+'?' },
@@ -335,12 +355,11 @@
   }
 
   function openRemovePlayerMenu(prev){
-    var m=openModalShell('Remove Player','Current game only');
-    m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
+    var m=openModalShell('Remove Player','Current game only',prev);
     if((state.match?.history||[]).length){var warning=document.createElement('p');warning.className='tag';warning.textContent='An accepted game is part of this match. Participant history changes require an administrator.';m.body.appendChild(warning);return;}
     (state.players||[]).forEach(function(player,index){
       var name=player.name||('Player '+(index+1));
-      addRow(m.body,{ico:'−',label:'Remove '+name,desc:'Current game only',cls:'danger',onClick:function(){
+      addRow(m.body,{ico:'remove',label:'Remove '+name,desc:'Current game only',cls:'danger',onClick:function(){
         window.__sqConfirm({title:'Remove Player',message:'Remove '+name+' from the current game?'},async function(){
           if(!window.SQ_GAMEPLAY.canDiscard())return;
           var removingState=state;var players=state.players.filter(function(_,i){return i!==index;});
@@ -353,13 +372,11 @@
     });
   }
   function openMatchDisplayMenu(prev){
-    var m=openModalShell('Match Display','Only this match; saved player profiles stay unchanged');
-    m.modal.querySelector('.sq-menu106-back').onclick=function(){m.close();if(prev)prev();};
+    var m=openModalShell('Match Display','Only this match; saved player profiles stay unchanged',prev);
     (state.players||[]).forEach(function(player,index){
       if(player?.isShadow||player?.virtual)return;
       addPlayerChoice(m.body,{label:player.name||'Player',desc:'Edit match initials',onClick:function(){
-        m.close();var edit=openModalShell('Match Initials',player.name||'Player');
-        edit.modal.querySelector('.sq-menu106-back').onclick=function(){edit.close();openMatchDisplayMenu(prev);};
+        m.close();var edit=openModalShell('Match Initials',player.name||'Player',function(){openMatchDisplayMenu(prev);});
         var input=document.createElement('input');input.className='ms-player-input';input.maxLength=5;input.value=player.initials||'';input.setAttribute('aria-label','Match initials');
         var saveButton=document.createElement('button');saveButton.type='button';saveButton.className='btn primary';saveButton.textContent='SAVE MATCH INITIALS';
         saveButton.onclick=async function(){saveButton.disabled=true;try{await window.SQ_GAMEPLAY.updateDisplay(index,{initials:input.value.trim().toUpperCase()});edit.close();}catch(error){saveButton.disabled=false;}};
@@ -370,50 +387,44 @@
 
   window.__sqOpenGameMenu106=function(){
     var m=openModalShell('Game Menu','Live game controls');
-    var v3on=false; try{ v3on = localStorage.getItem('sq_livev3_test')==='1'; }catch(_){ }
     // Safe / frequently-used actions first.
-    addRow(m.body,{ico:'📊',label:'Stats',desc:'Race, game & match stats',cls:'blue',onClick:function(){m.close(); window.openStatsHubDialog();}});
+    addRow(m.body,{ico:'stats',label:'Stats',desc:'Race, game & match stats',cls:'blue',onClick:function(){m.close(); window.openStatsHubDialog();}});
     var __tvOn=false; try{ __tvOn=!!(window.__sqTvModeIsActive&&window.__sqTvModeIsActive()); }catch(_){ }
-    addRow(m.body,{ico:'▣',label:'TV Mode (Beta)'+(__tvOn?' • ON':''),desc:'16:9 big-screen live view',cls:(__tvOn?'orange':''),onClick:function(){
+    addRow(m.body,{ico:'tv',label:'TV Mode (Beta)'+(__tvOn?' • ON':''),desc:'16:9 big-screen live view',cls:(__tvOn?'orange':''),onClick:function(){
       m.close();
       try{
         if(typeof window.__sqTvModeToggle==='function') window.__sqTvModeToggle(!__tvOn);
         else if(typeof toast==='function') toast('TV Mode unavailable');
       }catch(e){ try{console.warn('[SQ] TV Mode toggle failed',e);}catch(_){ } }
     }});
-    addRow(m.body,{ico:'🧪',label:'New Layout (Beta): '+(v3on?'ON':'OFF'),desc:'2-4 player Match Play Classic',cls:(v3on?'green':''),onClick:function(){
-      try{ localStorage.setItem('sq_livev3_test', v3on?'0':'1'); }catch(_){ }
-      m.close();
-      try{ if(typeof updateUI==='function') updateUI(); else if(window.__sqLiveV3Sync) window.__sqLiveV3Sync(); }catch(_){ }
-      try{ toast('New layout '+(v3on?'disabled':'enabled')); }catch(_){ }
-    }});
+    // SC-071 hides only the beta menu entry; experimental code/settings stay intact.
     var __addGate=__sqLateJoinEligibility();
-    addRow(m.body,{ico:'＋',label:'Add Player',desc:(__addGate.ok?'Final thrower • available before 17s':__addGate.reason),cls:(__addGate.ok?'green':''),onClick:function(){
+    addRow(m.body,{ico:'add',label:'Add Player',desc:(__addGate.ok?'Final thrower • available before 17s':__addGate.reason),cls:(__addGate.ok?'green':''),onClick:function(){
       if(!__addGate.ok){try{toast(__addGate.reason);}catch(_){}return;}
       m.close(); setTimeout(function(){ openAddPlayerMenu(window.__sqOpenGameMenu106); },0);
     }});
-    addRow(m.body,{ico:'✎',label:'Match Display',desc:'Match-only initials; saved profiles unchanged',onClick:function(){m.close();openMatchDisplayMenu(window.__sqOpenGameMenu106);}});
-    addRow(m.body,{ico:'−',label:'Remove Player',desc:'Remove from this game',onClick:function(){m.close(); openRemovePlayerMenu(window.__sqOpenGameMenu106);}});
+    addRow(m.body,{ico:'remove',label:'Remove Player',desc:'Remove from this game',onClick:function(){m.close(); openRemovePlayerMenu(window.__sqOpenGameMenu106);}});
+    addRow(m.body,{ico:'edit',label:'Match Display',desc:'Match-only initials; saved profiles unchanged',onClick:function(){m.close();openMatchDisplayMenu(window.__sqOpenGameMenu106);}});
     var __orderGate=typeof __sqInitialOrderAmendEligibility==='function'?__sqInitialOrderAmendEligibility():{ok:false,reason:'Initial order correction unavailable.'};
-    addRow(m.body,{ico:'↕',label:'Amend Initial Order',desc:(__orderGate.ok?'Game 1 • correction before Round 1 completes':__orderGate.reason),onClick:function(){
+    addRow(m.body,{ico:'order',label:'Amend Initial Order',desc:(__orderGate.ok?'Game 1 • correction before Round 1 completes':__orderGate.reason),onClick:function(){
       if(!__orderGate.ok){try{toast(__orderGate.reason);}catch(_){}return;}
       m.close();showPlayerOrderDialog({amend:true,onBack:window.__sqOpenGameMenu106});
     }});
     // Destructive group, set apart below a divider.
     try{ m.body.insertAdjacentHTML('beforeend','<div class="sq-menu106-sep" aria-hidden="true"></div>'); }catch(_){ }
-    addRow(m.body,{ico:'↻',label:'Restart Game',desc:'Reset this game',cls:'danger',onClick:function(){m.close(); doRestartGame();}});
-    addRow(m.body,{ico:'⏹',label:'End Game',desc:'Go to game leaderboard',cls:'danger',onClick:function(){m.close(); doEndGame();}});
-    addRow(m.body,{ico:'🏁',label:'End Match',desc:'Return to start screen',cls:'danger',onClick:function(){m.close(); doEndMatch();}});
+    addRow(m.body,{ico:'restart',label:'Restart Game',desc:'Reset this game',cls:'danger',onClick:function(){m.close(); doRestartGame();}});
+    addRow(m.body,{ico:'stop',label:'End Game',desc:'Go to game leaderboard',cls:'danger',onClick:function(){m.close(); doEndGame();}});
+    addRow(m.body,{ico:'finish',label:'End Match',desc:'Return to start screen',cls:'danger',onClick:function(){m.close(); doEndMatch();}});
   };
 
   window.openStatsHubDialog=function(){
     try{ if(typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('ingame'); }catch(_){ }
-    var m=openModalShell('Player Stats','Choose a stats view');
-    addRow(m.body,{ico:'📈',label:'Game Race',desc:'Score race chart',cls:'orange',onClick:function(){m.close(); openGameRaceDialog();}});
-    addRow(m.body,{ico:'📊',label:'Game Stats',desc:'Current game breakdown',cls:'blue',onClick:function(){m.close(); openGameStatsDialog();}});
-    addRow(m.body,{ico:'▦',label:'Match Stats',desc:'Match totals and averages',cls:'blue',onClick:function(){m.close(); openMatchStatsDialog();}});
-    addRow(m.body,{ico:'🏆',label:'High Scores (Official)',desc:'Official high-score view',cls:'green',onClick:function(){m.close(); openHighScoresDialog();}});
-    addRow(m.body,{ico:'⚠',label:'Low Scores (Official)',desc:'Official low-score view',cls:'green',onClick:function(){m.close(); openLowScoresDialog();}});
+    var m=openModalShell('Player Stats','Choose a stats view',document.body.dataset.page==='game'?window.__sqOpenGameMenu106:null);
+    addRow(m.body,{ico:'race',label:'Game Race',desc:'Score race chart',cls:'orange',onClick:function(){m.close(); openGameRaceDialog();}});
+    addRow(m.body,{ico:'stats',label:'Game Stats',desc:'Current game breakdown',cls:'blue',onClick:function(){m.close(); openGameStatsDialog();}});
+    addRow(m.body,{ico:'table',label:'Match Stats',desc:'Match totals and averages',cls:'blue',onClick:function(){m.close(); openMatchStatsDialog();}});
+    addRow(m.body,{ico:'trophy',label:'High Scores (Official)',desc:'Official high-score view',cls:'green',onClick:function(){m.close(); openHighScoresDialog();}});
+    addRow(m.body,{ico:'warning',label:'Low Scores (Official)',desc:'Official low-score view',cls:'green',onClick:function(){m.close(); openLowScoresDialog();}});
   };
 
   document.addEventListener('click',function(e){
