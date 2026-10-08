@@ -21,7 +21,7 @@ function scheduler() {
 }
 
 const message = makeMessage({ kind: 'BOUNCE_OUT' });
-assert.deepEqual(message, { priority: 10, headline: 'BOUNCE OUT', subline: '', type: 'flash', duration: 420, fx: 'impact', bounceOut: true, haptic: null });
+assert.deepEqual(message, { priority: 10, headline: 'BOUNCE', subline: 'OUT', type: 'flash', duration: 520, fx: 'impact', bounceOut: true, haptic: null });
 
 {
   const clock = scheduler(), renders = [], calls = [];
@@ -41,7 +41,7 @@ assert.deepEqual(message, { priority: 10, headline: 'BOUNCE OUT', subline: '', t
   c.emit({ kind: 'UNDO' });
   clock.run(activeTimer);
   assert.equal(c.snapshot().active, null, 'existing900ms low-priority stale filtering remains intact after the1150ms record');
-  assert(!renders.some(r => r.z.z2 === 'BOUNCE OUT'), 'cancelled BO never replays after the record/Undo');
+  assert(!renders.some(r => r.z.z2 === 'BOUNCE' && r.z.z3 === 'OUT'), 'cancelled BO never replays after the record/Undo');
 }
 
 {
@@ -51,13 +51,13 @@ assert.deepEqual(message, { priority: 10, headline: 'BOUNCE OUT', subline: '', t
   const c = createController({ ...detectExistingBackend(host), scheduler: clock, now: clock.now, haptics: { pulse() {}, cancel() {} } });
   c.emit({ kind: 'BOUNCE_OUT' });
   const removedTimer = clock.pending()[0];
-  assert.deepEqual(renders[0], { z: { z2: 'BOUNCE OUT', z3: '' }, o: { type: 'flash', ms: 420, fx: 'impact', bounceOut: true } });
+  assert.deepEqual(renders[0], { z: { z2: 'BOUNCE', z3: 'OUT' }, o: { type: 'flash', ms: 520, fx: 'impact', bounceOut: true } });
   c.cancelBounceOut();
   c.emit({ kind: 'UNDO' });
   assert.equal(clock.run(removedTimer), false, 'active BO timer is retired');
   clock.advance(700);
   assert.equal(c.snapshot().active, null, 'Undo settles without BO replay');
-  assert.deepEqual(renders.map(r => r.z.z2), ['BOUNCE OUT', 'THROW UNDONE']);
+  assert.deepEqual(renders.map(r => r.z.z2), ['BOUNCE', 'THROW UNDONE']);
   assert(!nativeCalls.includes('legacy') && !nativeCalls.includes('hard-clear'), 'native legacy queue and baseline are never broadly cleared');
 }
 
@@ -65,11 +65,11 @@ assert.deepEqual(message, { priority: 10, headline: 'BOUNCE OUT', subline: '', t
   const calls = [], base = { render: (z, o) => { calls.push({ z, o }); return 'ok'; } };
   const normal = createMotionSafeBackend(base, { matchMedia: () => ({ matches: false }) });
   const reduced = createMotionSafeBackend(base, { matchMedia: () => ({ matches: true }) });
-  const opts = { type: 'flash', ms: 420, fx: 'impact', bounceOut: true };
-  assert.equal(normal.render({ z2: 'BOUNCE OUT' }, opts), 'ok');
+  const opts = { type: 'flash', ms: 520, fx: 'impact', bounceOut: true };
+  assert.equal(normal.render({ z2: 'BOUNCE', z3: 'OUT' }, opts), 'ok');
   assert.deepEqual(calls.at(-1).o, opts, 'normal BO flash/impact options remain intact');
-  reduced.render({ z2: 'BOUNCE OUT' }, opts);
-  assert.deepEqual(calls.at(-1).o, { type: 'hold', ms: 420, bounceOut: true, amp: 0 }, 'reduced BO removes both strobe type and impact FX');
+  reduced.render({ z2: 'BOUNCE', z3: 'OUT' }, opts);
+  assert.deepEqual(calls.at(-1).o, { type: 'hold', ms: 520, bounceOut: true, amp: 0 }, 'reduced BO removes both strobe type and impact FX');
   reduced.render({ z2: 'OTHER' }, { type: 'lastDartImg', ms: 900, fx: 'impact', amp: 3.4 });
   assert.deepEqual(calls.at(-1).o, { type: 'hold', ms: 900, fx: 'impact', amp: 0 }, 'existing non-BO adapter behaviour is unchanged');
 }
@@ -77,22 +77,28 @@ assert.deepEqual(message, { priority: 10, headline: 'BOUNCE OUT', subline: '', t
 // Model the exact production gesture owner with controlled timers and canonical
 // record receipts. These are unit events; native click evidence belongs to the
 // separate browser regression and retained public baseline traces.
+const stageCss = fs.readFileSync(new URL('../../src/styles/live-game/v2-panel.css', import.meta.url), 'utf8');
+assert(stageCss.includes('#padBar.sq-bounce-out-flash button'), 'Bounce Out alert must target every throwpad button');
+assert(stageCss.includes('background:#b4232f !important'), 'Bounce Out alert must force the red button surface');
+assert(stageCss.includes('@media (prefers-reduced-motion:reduce)'), 'Bounce Out alert must retain a reduced-motion treatment');
+
 const source = fs.readFileSync(new URL('../../src/live-game/live-v2.js', import.meta.url), 'utf8');
 const start = source.indexOf('let __sqMissBouncePendingCancel = null;');
 const end = source.indexOf("if (!window.__sqQuickEntryClickGuardBound)", start);
 assert(start >= 0 && end > start);
 const gestureSource = source.slice(start, end);
 function fixture({ reject = false, feedbackThrows = false, catchUp = false } = {}) {
-  const clock = scheduler(), events = [], classes = new Set(), handlers = new Map();
+  const clock = scheduler(), events = [], classes = new Set(), padClasses = new Set(), handlers = new Map();
   const button = { style: {}, classList: { add: n => classes.add(n), remove: n => classes.delete(n) }, setPointerCapture() {}, addEventListener: (name, fn) => { handlers.set(name, fn); } };
+  const padBar = { classList: { add: n => padClasses.add(n), remove: n => padClasses.delete(n), contains: n => padClasses.has(n) }, get offsetWidth(){ return 320; } };
   const state = { __gameToken: 1, currentPlayer: 0, currentRound: 0, currentDart: 0, history: [], players: ['ALPHA', 'BETA'] };
-  const context = { state, document: { body: { dataset: { page: 'game' } } }, window: { __sqDmdV2: { emit: e => { events.push(['feedback', e]); if (feedbackThrows) throw Error('display unavailable'); }, cancelBounceOut: () => events.push(['cancel-feedback']) } }, navigator: { vibrate: n => events.push(['vibrate', n]) }, performance: { now: clock.now }, setTimeout: clock.set.bind(clock), clearTimeout: clock.clear.bind(clock), __SQ_QUICK_ENTRY_HOLD_MS: 360,
+  const context = { state, document: { body: { dataset: { page: 'game' } }, getElementById: id => id === 'padBar' ? padBar : null }, window: { __sqDmdV2: { emit: e => { events.push(['feedback', e]); if (feedbackThrows) throw Error('display unavailable'); }, cancelBounceOut: () => events.push(['cancel-feedback']) } }, navigator: { vibrate: n => events.push(['vibrate', n]) }, performance: { now: clock.now }, setTimeout: clock.set.bind(clock), clearTimeout: clock.clear.bind(clock), __SQ_QUICK_ENTRY_HOLD_MS: 360,
     recordThrow(spec) { events.push(['record', spec]); if (reject) return; const s = context.state; s.history.push({ player: catchUp ? 1 : s.currentPlayer, round: s.currentRound, dartIndex: s.currentDart, throw: { kind: 'Miss', points: 0, ...(spec.kind === 'BounceOut' ? { bounceOut: true } : {}) } }); s.currentDart++; } };
   vm.createContext(context); vm.runInContext(gestureSource + '\n__sqBindMissBounceHold(button);', Object.assign(context, { button }));
   function fire(name, pointer = {}) { const e = { type: name, pointerType: 'mouse', button: 0, pointerId: 1, clientX: 10, clientY: 10, ...pointer, prevented: false, stopped: false, preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; }, stopImmediatePropagation() { this.stopped = true; } }; handlers.get(name)?.(e); return e; }
   // Model the existing native click after the gesture's capture guard.
   function click() { const e = fire('click'); if (!e.stopped) context.recordThrow({ kind: 'Miss' }); return e; }
-  return { context, clock, events, fire, click, cancel: () => vm.runInContext('__sqCancelMissBounceFeedback()', context) };
+  return { context, clock, events, padClasses, fire, click, cancel: () => vm.runInContext('__sqCancelMissBounceFeedback()', context) };
 }
 
 {
@@ -101,16 +107,20 @@ function fixture({ reject = false, feedbackThrows = false, catchUp = false } = {
   f.clock.advance(1);
   assert.equal(f.context.state.history.length, 1);
   assert.deepEqual(f.events.map(e => e[0]), ['record', 'feedback', 'vibrate'], 'one accepted canonical record precedes optional feedback');
+  assert.equal(f.padClasses.has('sq-bounce-out-flash'), true, 'accepted Bounce Out activates the full throwpad red alert');
   f.fire('pointerup'); assert(f.fire('click').stopped, 'held compatibility click is consumed');
   f.clock.advance(30); f.fire('pointerdown'); f.fire('pointerup');
   assert.equal(f.fire('click').stopped, false, 'a genuine next press within220ms remains usable');
   assert.equal(f.events.filter(e => e[0] === 'record').length, 1, 'quick tap has no second hold record');
+  f.clock.advance(490);
+  assert.equal(f.padClasses.has('sq-bounce-out-flash'), false, 'throwpad alert clears after its bounded window');
 }
 for (const opts of [{ reject: true }, { feedbackThrows: true }, { catchUp: true }]) {
   const f = fixture(opts); f.fire('pointerdown'); f.clock.advance(360);
   assert.equal(f.events.filter(e => e[0] === 'record').length, 1);
   assert.equal(f.context.state.history.length, opts.reject ? 0 : 1);
   assert.equal(f.events.filter(e => e[0] === 'feedback').length, opts.reject ? 0 : 1, 'feedback requires actual explicit BO receipt, including canonical catch-up cursor');
+  assert.equal(f.padClasses.has('sq-bounce-out-flash'), !opts.reject, 'red pad alert follows only an accepted explicit Bounce Out receipt');
 }
 for (const mutate of [f => { f.context.document.body.dataset.page = 'details'; }, f => { f.context.state.__gameToken++; }, f => { f.context.state.currentPlayer = 1; }, f => { f.context.state.history = []; }, f => { f.context.state = { ...f.context.state }; }]) {
   const f = fixture(); f.fire('pointerdown'); mutate(f); f.clock.advance(360);
