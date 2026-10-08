@@ -1,12 +1,11 @@
-// SC-071 shared menu contract. All network traffic uses the existing offline
-// harness; mode fixtures exercise the real menu/eligibility functions, not a
-// second menu implementation. Native mode journeys remain in release QA.
+// SC-071 shared menu contract. Offline fixtures exercise the real menu and
+// eligibility functions. The separate unchanged Turbo suite owns real-time QA.
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const H=require('./harness');
 const modes=['classic','turbo','practice','vsshadow','tournament-classic','tournament-turbo'];
-let checks=0;
+let checks=0,phase='boot';
 function check(ok,label){assert(ok,label);checks++;}
 const menu='.sq-menu106-modal';
 const row=(page,label)=>page.locator(menu+' .sq-menu106-row').filter({has:page.locator('.sq-menu106-label',{hasText:new RegExp('^'+label+'$')})});
@@ -21,9 +20,7 @@ async function shape(page,back){
  check(got.inside&&got.targets.every(Boolean),'menu and 44px navigation stay inside mobile viewport');
  check(got.icons,'fixed decorative SVGs replace emoji action imagery');
 }
-async function modeCase(page,mode,width,base){
- await page.setViewportSize({width,height:844});
- await page.emulateMedia({reducedMotion:width===390?'reduce':'no-preference'});
+async function seedMode(page,mode,base){
  await page.evaluate(({mode,base})=>{
    state=JSON.parse(base);window.__sqTournamentDraft=null;
    state.match.mode=mode.includes('turbo')?'turbo':mode==='practice'||mode==='vsshadow'?'practice':'classic';
@@ -32,6 +29,12 @@ async function modeCase(page,mode,width,base){
    if(mode.startsWith('tournament-'))state.match.tournamentType=mode.endsWith('turbo')?'turbo':'classic';
    window.cloudListPlayers=async()=>[];
  },{mode,base});
+}
+async function modeCase(page,mode,width,base){
+ phase=mode+'/'+width;
+ await page.setViewportSize({width,height:844});
+ await page.emulateMedia({reducedMotion:width===390?'reduce':'no-preference'});
+ await seedMode(page,mode,base);
  const truth=await page.evaluate(()=>({turbo:__sqIsTurboVisualRuntime(),shadow:__sqIsVsShadowRuntime(),gate:__sqLateJoinEligibility()}));
  assert.equal(truth.turbo,mode.includes('turbo'));assert.equal(truth.shadow,mode==='vsshadow');checks+=2;
  const before=await snapshot(page);
@@ -64,7 +67,8 @@ async function modeCase(page,mode,width,base){
  for(const action of ['Restart Game','End Game','End Match']){
    await row(page,action).click();
    const confirm=page.locator('.sq-confirm-bd');
-   if(await confirm.count()){await confirm.locator('.sq-endmatch-no').click();check(await confirm.count()===0,action+' cancellation closes confirmation');}
+   await confirm.waitFor();check(await confirm.count()===1,action+' retains one confirmation');
+   await confirm.locator('.sq-endmatch-no').click();check(await confirm.count()===0,action+' cancellation closes confirmation');
    await open(page);
  }
  await close(page);await sameState(page,before,'menu/back/cancel preserves canonical scores, identity and cursor');
@@ -79,23 +83,43 @@ async function modeCase(page,mode,width,base){
 }
 (async()=>{
  const {browser,page,consoleErrs}=await H.launch();
- const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const errors=[],events=[];page.on('pageerror',e=>errors.push(e.message));
+ page.on('console',m=>{if(m.type()==='error')events.push({phase,message:m.text()});});
  try{
    await H.boot(page,{settle:1000});await H.toMatchCard(page);await H.addGuests(page,['ALPHA','BETA']);await H.startMatch(page,3);
    await page.waitForFunction(()=>!window.__sqSecurityInputBlocked&&!document.querySelector('.sq-throw-order-reveal'));
    const base=await page.evaluate(()=>JSON.stringify(state));
-   if(process.env.SC071_BASELINE==='1'){await open(page);await shape(page,0);throw new Error('Baseline unexpectedly accepted');}
+   // A complete menu walk can exceed the canonical 20-second visit. Freeze
+   // only this fixture's elapsed-time source, not game logic or browser timers.
+   // The unchanged verify-sc067-turbo-identity.js runs in fresh real-time contexts.
+   await page.evaluate(()=>{const at=performance.now();window.__sc071PerformanceDescriptor=Object.getOwnPropertyDescriptor(performance,'now');Object.defineProperty(performance,'now',{configurable:true,value:()=>at});});
+   if(process.env.SC071_BASELINE==='1'){
+     // Read-only diagnostic on unchanged main before the expected Back failure.
+     for(const mode of modes)for(const width of [320,390,430]){
+       phase='baseline/'+mode+'/'+width;await page.setViewportSize({width,height:844});
+       await seedMode(page,mode,base);await open(page);await page.waitForTimeout(100);await close(page);await page.waitForTimeout(100);
+     }
+     console.log('SC071_BASELINE_CONSOLE='+JSON.stringify(events));
+     await open(page);await shape(page,0);throw new Error('Baseline unexpectedly accepted');
+   }
    for(const mode of modes)for(const width of [320,390,430])await modeCase(page,mode,width,base);
    for(const value of ['0','1']){
+     phase='beta-setting/'+value;
      await page.evaluate(v=>localStorage.setItem('sq_livev3_test',v),value);
      await open(page);check(await row(page,'New Layout').count()===0,'no beta entry for either stored setting');await close(page);
      assert.equal(await page.evaluate(()=>localStorage.getItem('sq_livev3_test')),value);checks++;
    }
+   phase='home-stats';
    await page.evaluate(()=>{localStorage.removeItem('sq_livev3_test');document.body.dataset.page='details';window.openStatsHubDialog();});
    await shape(page,0);await close(page);
    assert.deepEqual(errors,[],'no uncaught runtime errors');checks++;
    const unexpected=consoleErrs.filter(e=>!(/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource|connect-src|Load failed/i.test(e)));
+   if(unexpected.length)console.log('SC071_CONSOLE_PROVENANCE='+JSON.stringify(events));
    assert.deepEqual(unexpected,[],'no unexpected console errors');checks++;
    console.log(`PASS SC071 ${checks} assertions (${process.env.SQ_BROWSER||'chromium'})`);
- }finally{await browser.close();}
+ }finally{
+   console.log('SC071_FINAL_PHASE='+phase);
+   await page.evaluate(()=>{const d=window.__sc071PerformanceDescriptor;if(d)Object.defineProperty(performance,'now',d);else delete performance.now;}).catch(()=>{});
+   await browser.close();
+ }
 })().catch(e=>{console.error(e);process.exitCode=1;});
