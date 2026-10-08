@@ -8,7 +8,22 @@ let checks=0;
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  try{
   await H.boot(page,{settle:1000});
-  await page.evaluate(()=>{window.__sqLoadPlayerStatsPlayers=async()=>[{id:'00000000-0000-4000-8000-000000000071',name:'MENU TRAINEE',initials:'MT'}];});
+  await page.evaluate(()=>{
+    window.__sqLoadPlayerStatsPlayers=async()=>[{id:'00000000-0000-4000-8000-000000000071',name:'MENU TRAINEE',initials:'MT'}];
+    // UI-only isolation: session create/complete still use the real SC-004
+    // controller fixture. Avoid unrelated live Training analytics reads here.
+    const sb=window.sb||window.__sb;
+    if(sb&&typeof sb.from==='function'){
+      const from=sb.from.bind(sb);
+      sb.from=function(table){
+        if(table==='v_player_last30_target_rates'||table==='v_training_player_summary'){
+          const q={select(){return q;},eq(){return q;},then(resolve,reject){return Promise.resolve({data:[],error:null}).then(resolve,reject);}};
+          return q;
+        }
+        return from(table);
+      };
+    }
+  });
   for(const mode of ['STANDARD','TDB','SELECT'])for(const width of [320,390,430]){
    await page.setViewportSize({width,height:844});
    await page.click('#startGameBtn');await page.click('#trainingBtn');
