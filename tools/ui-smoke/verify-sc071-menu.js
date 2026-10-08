@@ -25,15 +25,12 @@ async function modeCase(page,mode,width,base){
  await page.setViewportSize({width,height:844});
  await page.emulateMedia({reducedMotion:width===390?'reduce':'no-preference'});
  await page.evaluate(({mode,base})=>{
-   // Synthetic multi-mode fixture: hold the 20-second Turbo visit clock still
-   // during menu-only checks. The real expiry remains covered by SC-076 QA.
-   if (!window.__sqSc071NaturalNow) window.__sqSc071NaturalNow=performance.now.bind(performance);
-   if (mode.includes('turbo')) {
-     const frozen=window.__sqSc071NaturalNow();
-     Object.defineProperty(performance,'now',{configurable:true,value:()=>frozen});
-   } else {
-     delete performance.now;
-   }
+   // Synthetic mode-only navigation fixture: hold Turbo at its real READY
+   // gate, before the visit clock legally starts. Existing SC-076/077 suites
+   // separately test native 20-second expiry and timer perimeter.
+   window.__sqTurboPreStartArmed=mode.includes('turbo');
+   window.__sqTurboPreStartReleased=!mode.includes('turbo');
+   window.__sqTurboPreStartShowing=mode.includes('turbo');
    state=JSON.parse(base);window.__sqTournamentDraft=null;
    state.match.mode=mode.includes('turbo')?'turbo':mode==='practice'||mode==='vsshadow'?'practice':'classic';
    state.match.gameMode=state.match.mode;state.gameMode=state.match.mode;
@@ -100,7 +97,7 @@ async function modeCase(page,mode,width,base){
      await open(page);check(await row(page,'New Layout').count()===0,'no beta entry for either stored setting');await close(page);
      assert.equal(await page.evaluate(()=>localStorage.getItem('sq_livev3_test')),value);checks++;
    }
-   await page.evaluate(()=>{delete performance.now;localStorage.removeItem('sq_livev3_test');navigateToStartScreen();});
+   await page.evaluate(()=>{window.__sqTurboPreStartArmed=false;window.__sqTurboPreStartReleased=true;window.__sqTurboPreStartShowing=false;localStorage.removeItem('sq_livev3_test');navigateToStartScreen();});
    await page.waitForFunction(()=>document.body.dataset.page==='details');
    await page.evaluate(()=>window.openStatsHubDialog());
    await shape(page,0);await close(page);
