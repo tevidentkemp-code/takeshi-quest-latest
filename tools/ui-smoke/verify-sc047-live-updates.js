@@ -447,6 +447,130 @@ fs.mkdirSync(out, { recursive: true });
     assert.equal(modePbLines.some(line => /PRACTICE ONLY|\(70\)/i.test(line)), false,
       'Practice must never contribute ROUND PB/WR lines to VIDE');
 
+    // SC063: the current Stats directory covers Home even when a relevant
+    // match request began first. Keep the native poll/clock and all original
+    // SC047 fixtures; only transport seams below park/deliver that response.
+    await page.waitForFunction(() => !window.__homeLivePrinterState?.syncing,
+      { timeout: 8000 });
+    await page.evaluate(() => {
+      const prior = {
+        all: window.cloudFetchAllGamesAsLocal,
+        visible: window.cloudFetchLatestVisibleGamesAsLocal,
+        latest: window.cloudFetchLatestGamesAsLocal,
+        players: window.cloudListPlayers,
+        sb: window.sb
+      };
+      window.__sc063NativeHomePrior = prior;
+      window.__sc063NativeHomeAllCalls = 0;
+      window.__sc063NativeHomeAllAt = 0;
+      window.__sc063NativeHomeMatchCalls = 0;
+      window.__sc063NativeHomeMatchDeliver = null;
+      window.cloudFetchAllGamesAsLocal = async () => {
+        ++window.__sc063NativeHomeAllCalls;
+        window.__sc063NativeHomeAllAt = Date.now();
+        return prior.all();
+      };
+      const recent = {
+        id:'sc063-home-guard-native-game',
+        ts:'2026-10-03T20:05:00Z',
+        archived_at:null,
+        mode:'official',
+        match_id:'sc063-home-guard-native-match',
+        players:[{name:'MODE B'},{name:'FILLER'}],
+        totals:[300,200],
+        state:{mode:'official'}
+      };
+      window.cloudFetchLatestVisibleGamesAsLocal = async () => [{...recent}];
+      window.cloudFetchLatestGamesAsLocal = async () => [{...recent}];
+      window.cloudListPlayers = async () => [{name:'MODE B'}];
+      window.sb = {
+        ...prior.sb,
+        from(table) {
+          if (table !== 'matches') return prior.sb.from(table);
+          return {
+            select() { return this; },
+            in() {
+              ++window.__sc063NativeHomeMatchCalls;
+              return new Promise(resolve => {
+                window.__sc063NativeHomeMatchDeliver = () => resolve({data:[],error:null});
+              });
+            }
+          };
+        }
+      };
+      const st = window.__homeLivePrinterState;
+      st.matchRowsCache = null;
+      st.derivedItems = [];
+      st.derivedFetchedAt = 0;
+      st.lastSyncMs = 0;
+    });
+    await page.waitForFunction(() =>
+      typeof window.__sc063NativeHomeMatchDeliver === 'function' &&
+      !!window.__homeLivePrinterState?.syncing,
+      { timeout: 8000 });
+    await page.click('#playerStatsBtn');
+    await page.waitForSelector('.sq-player-stats-directory .ps-pick-search',
+      { timeout: 8000 });
+    assert.equal(await page.evaluate(() => window.__sc063NativeHomeAllCalls), 0,
+      'Stats directory must not prewarm full game history while the Home match read is pending');
+    await page.evaluate(() => window.__sc063NativeHomeMatchDeliver());
+    await page.waitForFunction(() => !window.__homeLivePrinterState?.syncing,
+      { timeout: 8000 });
+    const coveredHome = await page.evaluate(() => ({
+      allCalls:window.__sc063NativeHomeAllCalls,
+      matchCalls:window.__sc063NativeHomeMatchCalls,
+      fetchedAt:window.__homeLivePrinterState?.derivedFetchedAt,
+      derivedCount:window.__homeLivePrinterState?.derivedItems?.length,
+      lastSyncMs:window.__homeLivePrinterState?.lastSyncMs,
+      recentResult:(window.__homeLivePrinterState?.bufLines || [])
+        .some(line => /MODE B.*300/i.test(String(line)))
+    }));
+    assert.equal(coveredHome.allCalls, 0,
+      'Home must check current Stats visibility after its awaited match response before starting full history');
+    assert.equal(coveredHome.matchCalls, 1, 'relevant match read must remain the original single request');
+    assert.equal(coveredHome.fetchedAt, 0, 'covered Home must not stamp a fabricated derived fetch');
+    assert.equal(coveredHome.derivedCount, 0, 'covered Home must preserve the prior empty derived cache');
+    assert.equal(coveredHome.recentResult, true, 'recent visible results must still enter the Home buffer');
+    await page.click('.sq-player-stats-directory [aria-label="Close"]');
+    await page.waitForFunction(() => !document.querySelector('.sq-player-stats-directory'),
+      { timeout: 8000 });
+    // Observe the existing >=15-second native poll. Do not install a timer,
+    // lower its interval, force another sync or move the clock.
+    await page.waitForTimeout(8000);
+    await page.waitForFunction(() =>
+      window.__sc063NativeHomeAllCalls === 1 &&
+      !window.__homeLivePrinterState?.syncing &&
+      !!window.__homeLivePrinterState?.derivedFetchedAt,
+      { timeout: 8000 });
+    const resumedHome = await page.evaluate(() => ({
+      allCalls:window.__sc063NativeHomeAllCalls,
+      allAt:window.__sc063NativeHomeAllAt,
+      matchCalls:window.__sc063NativeHomeMatchCalls,
+      lines:(window.__homeLivePrinterState?.bufLines || []).map(String)
+        .filter(line => /ROUND\s+(?:PB|WR)\b/i.test(line))
+    }));
+    assert.equal(resumedHome.allCalls, 1, 'closing Stats must permit the next original poll to rebuild full history once');
+    assert(resumedHome.allAt - coveredHome.lastSyncMs >= 15000,
+      'Home must resume on its existing native >=15-second poll');
+    assert.equal(resumedHome.matchCalls, 1, 'the normal poll must retain the relevant-match cache');
+    assert(resumedHome.lines.some(line => /ROUND PB.*MODE B.*\(50\)/i.test(line)),
+      'resumed Home must preserve the original Official ROUND PB fixture');
+    assert(resumedHome.lines.some(line => /ROUND PB.*MODE B.*\(40\)/i.test(line)),
+      'resumed Home must preserve the original Turbo ROUND PB fixture');
+    assert.equal(resumedHome.lines.some(line => /PRACTICE ONLY|\(70\)/i.test(line)), false,
+      'resumed Home must preserve original Practice ROUND isolation');
+    await page.evaluate(() => {
+      const prior = window.__sc063NativeHomePrior;
+      window.cloudFetchAllGamesAsLocal = prior.all;
+      window.cloudFetchLatestVisibleGamesAsLocal = prior.visible;
+      window.cloudFetchLatestGamesAsLocal = prior.latest;
+      window.cloudListPlayers = prior.players;
+      window.sb = prior.sb;
+      delete window.__sc063NativeHomePrior;
+    });
+    console.log('SC063 native Home/Stats match-order and original poll PASS',
+      JSON.stringify({covered:coveredHome, resumed:{...resumedHome, lines:undefined}}));
+
     // WR is a locked semantic colour: verified World Records must be purple,
     // not inherited from the generic alert/PB gold treatment.
     await page.evaluate(() => window.__homeLivePrinterInjectLine('🚨 ROUND WR / 18s - SC047 (90) - S0 / D0 / T1'));
