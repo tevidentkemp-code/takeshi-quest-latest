@@ -403,8 +403,8 @@
       if(!__addGate.ok){try{toast(__addGate.reason);}catch(_){}return;}
       m.close(); setTimeout(function(){ openAddPlayerMenu(window.__sqOpenGameMenu106); },0);
     }});
-    addRow(m.body,{ico:'edit',label:'Match Display',desc:'Match-only initials; saved profiles unchanged',onClick:function(){m.close();openMatchDisplayMenu(window.__sqOpenGameMenu106);}});
     addRow(m.body,{ico:'remove',label:'Remove Player',desc:'Remove from this game',onClick:function(){m.close(); openRemovePlayerMenu(window.__sqOpenGameMenu106);}});
+    addRow(m.body,{ico:'edit',label:'Match Display',desc:'Match-only initials; saved profiles unchanged',onClick:function(){m.close();openMatchDisplayMenu(window.__sqOpenGameMenu106);}});
     var __orderGate=typeof __sqInitialOrderAmendEligibility==='function'?__sqInitialOrderAmendEligibility():{ok:false,reason:'Initial order correction unavailable.'};
     addRow(m.body,{ico:'order',label:'Amend Initial Order',desc:(__orderGate.ok?'Game 1 • correction before Round 1 completes':__orderGate.reason),onClick:function(){
       if(!__orderGate.ok){try{toast(__orderGate.reason);}catch(_){}return;}

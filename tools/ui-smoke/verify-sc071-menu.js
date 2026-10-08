@@ -43,7 +43,7 @@ async function modeCase(page,mode,width,base){
  const before=await snapshot(page);
  await open(page);await shape(page,0);
  const labels=await page.locator(menu+' .sq-menu106-label').allTextContents();
- assert.deepEqual(labels,['Stats','TV Mode (Beta)','Add Player','Match Display','Remove Player','Amend Initial Order','Restart Game','End Game','End Match']);checks++;
+ assert.deepEqual(labels,['Stats','TV Mode (Beta)','Add Player','Remove Player','Match Display','Amend Initial Order','Restart Game','End Game','End Match']);checks++;
  check(!labels.some(x=>/New Layout/.test(x)),'experimental menu entry absent');
  await sameState(page,before,'opening menu does not mutate game state');
  await page.evaluate(()=>window.__sqOpenGameMenu106());
