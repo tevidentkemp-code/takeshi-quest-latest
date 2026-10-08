@@ -33,7 +33,13 @@ let checks=0;
    if(mode==='SELECT'){await body.locator('.tr-sel-num').filter({hasText:/^20$/}).click();await body.locator('.modal-footer button.primary').click();}
    assert.equal(await body.locator('.ms2-back:visible').count(),1,'one Training step Back');checks++;
    await body.locator('.ms2-back').click();
-   if(mode==='SELECT')await body.locator('.modal-footer button.primary').click();else await pill(mode).click();
+   // Length-page Back always returns to TRAINING MODE (including SELECT).
+   // Re-enter SELECT configuration and use its preserved chosen target.
+   await pill(mode).click();
+   if(mode==='SELECT'){
+     assert.equal(await body.locator('.tr-sel-chosen .tr-sel-chip').count(),1,'SELECT target survives length Back');checks++;
+     await body.locator('.modal-footer button.primary').click();
+   }
    await pill('10 ROUNDS').click();
    try {
      await page.locator('.tr-overlay').waitFor();
