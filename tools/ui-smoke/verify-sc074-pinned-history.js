@@ -70,6 +70,23 @@ async function layout(page) {
 }
 (async()=>{
   const {browser,ctx,page,consoleErrs}=await H.launch({width:390,height:844});
+  // Record the origin of blocked external requests without collecting
+  // sensitive query strings or granting any additional network access.
+  const resourceFailures=[],resourceConsole=[];
+  page.on('requestfailed',request=>{
+    try{
+      const url=new URL(request.url());
+      resourceFailures.push({origin:url.origin,path:url.pathname.slice(0,80),
+        failure:request.failure()?.slice(0,90)});
+    }catch(_){}
+  });
+  page.on('console',msg=>{
+    if(msg.type()!=='error') return;
+    const loc=msg.location();
+    let origin='';
+    try{origin=loc.url?new URL(loc.url).origin:'';}catch(_){}
+    resourceConsole.push({text:msg.text().slice(0,110),origin});
+  });
   try{
     // Match the existing SC065 offline fixture: unrelated cloud READ warmers
     // return empty records, while writes are still aborted by the harness.
@@ -100,8 +117,20 @@ async function layout(page) {
       });
       await page.waitForTimeout(100);
       home=await layout(page);
-      await page.evaluate(()=>{document.querySelector('#liveV2Panel .v2RowsWrap').scrollTop=0;});
-      await page.waitForTimeout(100);
+      // Exercise a real user scroll instead of assuming WebKit emits native
+      // 'scroll' events after scripted scrollTop assignment.
+      const area=await page.locator('#liveV2Panel .v2RowsWrap').boundingBox();
+      assert(area,'score-wall viewport must be visible');
+      await page.mouse.move(area.x+area.width/2,area.y+area.height/2);
+      await page.mouse.wheel(0,-800);
+      await page.waitForFunction(previous=>{
+        const wrap=document.querySelector('#liveV2Panel .v2RowsWrap');
+        return wrap && wrap.scrollTop<previous-40;
+      },home.scrollTop);
+      await page.waitForFunction(()=>{
+        const wrap=document.querySelector('#liveV2Panel .v2RowsWrap');
+        return wrap?.classList.contains('sq074-history-browsing')===true;
+      });
       const back=await layout(page);
       assert(back.scrollTop<home.scrollTop-40,'history scroller must move to older rounds');
       assert(Math.abs(back.older.top-home.older.top)>40,'completed history must move independently');
@@ -145,6 +174,12 @@ async function layout(page) {
       console.log('SC074 prototype PASS '+width+'px/'+count+' players: history moved, current row fixed, state untouched, scoring snaps back, Undo correct');
     }
     const err=consoleErrs.filter(x=>!(/supabase|Failed to fetch|Fetch API|NetworkError/i.test(x)));
+    if(err.length)console.error('SC074 RESOURCE DIAGNOSTIC '+JSON.stringify({
+      console:resourceConsole.slice(-50),blockedOrigins:resourceFailures.reduce((acc,x)=>{
+        const key=x.origin+' '+x.path;
+        acc[key]=(acc[key]||0)+1;return acc;
+      },{}),unexpected:err.slice(-15)
+    }));
     assert.deepEqual(err,[],'unexpected browser errors');
   }finally{
     await browser.close();
