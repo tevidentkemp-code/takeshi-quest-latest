@@ -69,8 +69,24 @@ async function layout(page) {
   });
 }
 (async()=>{
-  const {browser,page,consoleErrs}=await H.launch({width:390,height:844});
+  const {browser,ctx,page,consoleErrs}=await H.launch({width:390,height:844});
   try{
+    // Match the existing SC065 offline fixture: unrelated cloud READ warmers
+    // return empty records, while writes are still aborted by the harness.
+    // This avoids treating deliberately blocked Supabase GETs as UI errors.
+    await ctx.route('**.supabase.co/rest/v1/**',route=>{
+      const method=route.request().method();
+      const headers={
+        'access-control-allow-origin':'*',
+        'access-control-allow-methods':'GET, HEAD, OPTIONS',
+        'access-control-allow-headers':'authorization, apikey, accept-profile, content-type, prefer, x-client-info'
+      };
+      if(method==='OPTIONS') return route.fulfill({status:204,headers,body:''});
+      if(method==='GET') return route.fulfill({status:200,headers,contentType:'application/json',body:'[]'});
+      if(method==='HEAD') return route.fulfill({status:200,headers:{...headers,
+        'content-range':'*/0','access-control-expose-headers':'content-range'},body:''});
+      return route.abort('failed');
+    });
     await H.boot(page,{settle:800});
     for(const {count,width} of [{count:2,width:390},{count:5,width:320}]){
       await ready(page,count,width);

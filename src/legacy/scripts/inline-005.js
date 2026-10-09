@@ -12611,6 +12611,10 @@ function __sqSetupLiveV2RowsWindow(panel){
   try{
     const wrap = panel ? panel.querySelector('.v2RowsWrap') : null;
     if(!wrap) return;
+    // SC-074: viewport height was measured at the live position. A browser
+    // pass over older history must not recompute it from a sticky-offset row.
+    // Reuse that stable height until scoring returns to the live row.
+    if(wrap.classList.contains('sq074-history-browsing')) return;
     const badges = wrap.querySelectorAll('.v2Badge');
     if(!badges || badges.length < 1) return;
     const count = getLiveV2PlayerCount();
