@@ -89,6 +89,23 @@ async function layout(page) {
       const back=await layout(page);
       assert(back.scrollTop<home.scrollTop-40,'history scroller must move to older rounds');
       assert(Math.abs(back.older.top-home.older.top)>40,'completed history must move independently');
+      if(Math.abs(back.live.top-home.live.top)>=2){
+        const diagnostics=await page.evaluate(()=>{
+          const panel=document.getElementById('liveV2Panel');
+          const wrap=panel.querySelector('.v2RowsWrap');
+          const scroller=panel.querySelector('.v2RowsScroller');
+          const rows=panel.querySelector('#v2Rows');
+          const live=rows.querySelector('.v2Badge.liveRow');
+          const el=n=>({tag:n.tagName,id:n.id,className:n.className,
+            top:n.getBoundingClientRect().top,bottom:n.getBoundingClientRect().bottom,
+            scrollTop:n.scrollTop,scrollHeight:n.scrollHeight,clientHeight:n.clientHeight,
+            offsetTop:n.offsetTop,offsetParent:n.offsetParent?.id||n.offsetParent?.className,
+            position:getComputedStyle(n).position,overflowX:getComputedStyle(n).overflowX,
+            overflowY:getComputedStyle(n).overflowY,transform:getComputedStyle(n).transform});
+          return [wrap,scroller,rows,live].map(el);
+        });
+        console.error('SC074 PIN DIAGNOSTIC '+JSON.stringify({home,back,diagnostics}));
+      }
       assert(Math.abs(back.live.top-home.live.top)<2,'current row moved when browsing history');
       for(let i=0;i<home.cells.length;i++){
         assert(Math.abs(back.cells[i].top-home.cells[i].top)<2,'player '+i+' current cell moved while history scrolled');
