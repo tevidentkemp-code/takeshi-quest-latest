@@ -4,9 +4,9 @@
 const assert = require('node:assert/strict');
 const H = require('./harness');
 
-async function ready(page,count,width){
+async function ready(page,count,width,mode='match'){
   await page.setViewportSize({width,height:width===320?568:844});
-  const token=await page.evaluate(n=>{
+  const token=await page.evaluate(({n,mode})=>{
     const previous=Number(state.__gameToken||0);
     state=JSON.parse(JSON.stringify(baseState));
     state.__gameToken=previous;
@@ -17,9 +17,14 @@ async function ready(page,count,width){
     state.match={id:'sc074-offline',gameNumber:1,targetWins:3,
       autoRotateOrder:true,wins:Array(n).fill(0),history:[],mode:'match',
       gameFormat:'match_play',gameVariant:'classic'};
+    if(mode==='practice')Object.assign(state.match,
+      {mode:'practice',forcePractice:true,isPractice:true});
+    if(mode==='tournament')Object.assign(state.match,
+      {tournament:true,tournamentType:'classic',
+        tournamentRules:{startRoundIndex:0,strictTimer:false}});
     startNewGame(false);
     return previous+1;
-  },count);
+  },{n:count,mode});
   await page.click('.to-start');
   await page.waitForFunction(expected=>{
     return document.body.dataset.page==='game'
@@ -105,8 +110,13 @@ async function layout(page) {
       return route.abort('failed');
     });
     await H.boot(page,{settle:800});
-    for(const {count,width} of [{count:2,width:390},{count:5,width:320}]){
-      await ready(page,count,width);
+    for(const {count,width,mode} of [
+      {count:2,width:390,mode:'match'},
+      {count:3,width:430,mode:'practice'},
+      {count:4,width:390,mode:'tournament'},
+      {count:5,width:320,mode:'match'}
+    ]){
+      await ready(page,count,width,mode);
       let home=await layout(page);
       assert.equal(home.liveRound,9,'single scheduled current round');
       assert.equal(home.duplicates,1,'no duplicate score truth');
@@ -125,7 +135,11 @@ async function layout(page) {
       // the engine to bring an actual older row into view exercises the real
       // scroll container; Chromium additionally tests physical wheel input.
       if(process.env.SQ_BROWSER==='webkit'){
-        await page.locator('#v2Rows .v2Badge[data-round="3"]').scrollIntoViewIfNeeded();
+        await page.evaluate(()=>{
+          const badge=document.querySelector('#v2Rows .v2Badge[data-round="3"]');
+          if(!badge?.isConnected)throw Error('SC074 history row unavailable');
+          badge.scrollIntoView({block:'start',inline:'nearest',behavior:'auto'});
+        });
       }else{
         await page.mouse.move(area.x+area.width/2,area.y+area.height/2);
         await page.mouse.wheel(0,-800);
