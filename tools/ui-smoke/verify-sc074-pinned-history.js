@@ -121,8 +121,15 @@ async function layout(page) {
       // 'scroll' events after scripted scrollTop assignment.
       const area=await page.locator('#liveV2Panel .v2RowsWrap').boundingBox();
       assert(area,'score-wall viewport must be visible');
-      await page.mouse.move(area.x+area.width/2,area.y+area.height/2);
-      await page.mouse.wheel(0,-800);
+      // Mobile WebKit has no Playwright mouse-wheel implementation. Asking
+      // the engine to bring an actual older row into view exercises the real
+      // scroll container; Chromium additionally tests physical wheel input.
+      if(process.env.SQ_BROWSER==='webkit'){
+        await page.locator('#v2Rows .v2Badge[data-round="3"]').scrollIntoViewIfNeeded();
+      }else{
+        await page.mouse.move(area.x+area.width/2,area.y+area.height/2);
+        await page.mouse.wheel(0,-800);
+      }
       await page.waitForFunction(previous=>{
         const wrap=document.querySelector('#liveV2Panel .v2RowsWrap');
         return wrap && wrap.scrollTop<previous-40;
@@ -173,14 +180,33 @@ async function layout(page) {
       assert.equal((await layout(page)).historyLen,home.historyLen,'Undo changed history length');
       console.log('SC074 prototype PASS '+width+'px/'+count+' players: history moved, current row fixed, state untouched, scoring snaps back, Undo correct');
     }
-    const err=consoleErrs.filter(x=>!(/supabase|Failed to fetch|Fetch API|NetworkError/i.test(x)));
-    if(err.length)console.error('SC074 RESOURCE DIAGNOSTIC '+JSON.stringify({
-      console:resourceConsole.slice(-50),blockedOrigins:resourceFailures.reduce((acc,x)=>{
-        const key=x.origin+' '+x.path;
-        acc[key]=(acc[key]||0)+1;return acc;
-      },{}),unexpected:err.slice(-15)
-    }));
-    assert.deepEqual(err,[],'unexpected browser errors');
+    // The shared harness deliberately aborts ALL external requests. Their
+    // browser-level resource errors have a specific origin; verify that origin
+    // rather than broadly ignoring net::ERR_FAILED or any application error.
+    const expectedSandboxOrigins=new Set([
+      'https://vvfqumgtasuacpggdmxx.supabase.co',
+      'https://www.101soundboards.com'
+    ]);
+    const unexpected=resourceConsole.filter(entry=>!(
+      entry.text==='Failed to load resource: net::ERR_FAILED'
+      && expectedSandboxOrigins.has(entry.origin)
+    ));
+    // Console listeners observe the same errors as the harness; an unpaired
+    // pageerror is never legitimised by an intentionally blocked resource.
+    const pageErrors=consoleErrs.filter(x=>x.startsWith('pageerror:'));
+    if(unexpected.length||pageErrors.length){
+      console.error('SC074 UNEXPECTED CONSOLE '+JSON.stringify({
+        unexpected:unexpected.slice(-20),pageErrors:pageErrors.slice(-10),
+        blockedOrigins:resourceFailures.reduce((acc,x)=>{
+          const key=x.origin+' '+x.path;
+          acc[key]=(acc[key]||0)+1;return acc;
+        },{})
+      }));
+    }
+    assert.deepEqual(pageErrors,[],'unexpected application errors');
+    assert.deepEqual(unexpected,[],'unexpected first-party or unapproved external resource errors');
+    assert.equal(resourceConsole.length,consoleErrs.length,
+      'every harness console error must have a verified resource origin');
   }finally{
     await browser.close();
   }
