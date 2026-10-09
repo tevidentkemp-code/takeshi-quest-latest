@@ -138,7 +138,7 @@ async function layout(page) {
         await page.evaluate(()=>{
           const badge=document.querySelector('#v2Rows .v2Badge[data-round="3"]');
           if(!badge?.isConnected)throw Error('SC074 history row unavailable');
-          badge.scrollIntoView({block:'start',inline:'nearest',behavior:'auto'});
+          badge.scrollIntoView({block:'nearest',inline:'nearest',behavior:'auto'});
         });
       }else{
         await page.mouse.move(area.x+area.width/2,area.y+area.height/2);
