@@ -12611,6 +12611,10 @@ function __sqSetupLiveV2RowsWindow(panel){
   try{
     const wrap = panel ? panel.querySelector('.v2RowsWrap') : null;
     if(!wrap) return;
+    // SC-074: viewport height was measured at the live position. A browser
+    // pass over older history must not recompute it from a sticky-offset row.
+    // Reuse that stable height until scoring returns to the live row.
+    if(wrap.classList.contains('sq074-history-browsing')) return;
     const badges = wrap.querySelectorAll('.v2Badge');
     if(!badges || badges.length < 1) return;
     const count = getLiveV2PlayerCount();
@@ -12631,7 +12635,9 @@ function __sqSetupLiveV2RowsWindow(panel){
     const ws = getComputedStyle(wrap), rs = getComputedStyle(rows);
     const px = value => parseFloat(value) || 0;
     const inset = px(ws.paddingTop)+px(ws.paddingBottom)+px(ws.borderTopWidth)+px(ws.borderBottomWidth)+px(rs.paddingTop)+px(rs.paddingBottom);
-    const span = badges[last].getBoundingClientRect().bottom - badges[first].getBoundingClientRect().top;
+    // Sticky current-round paint must not shorten the measured row window
+    // when history is manually scrolled. Measure unscrolled layout positions.
+    const span = (badges[last].offsetTop + badges[last].offsetHeight) - badges[first].offsetTop;
     // Common grid motion can add floating-point noise to viewport rectangles.
     // Keep the measured CSS subpixel size stable before rounding the viewport up.
     const wantH = Math.max(120, Math.ceil(Math.round((span + inset) * 64) / 64));
@@ -12747,6 +12753,15 @@ function __sqCancelV2WallMotion(panel){
   const wall = host && host.__sqV2Wall;
   try{ wall?.animation?.cancel(); }catch(_){}
   if(host) delete host.__sqV2Wall;
+}
+// SC-074: temporarily pin the current row only while a player is manually
+// browsing older score history. Keep routine scoring/SC065 grid motion native.
+function __sqSyncV2HistoryPin(wrap){
+  if(!wrap) return true;
+  const atBottom = (wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight) < 8;
+  const count = getLiveV2PlayerCount();
+  wrap.classList.toggle('sq074-history-browsing', count >= 2 && count <= 5 && !atBottom);
+  return atBottom;
 }
 function __sqSyncV2WallMotion(panel, tableRound){
   const rows = panel.querySelector('#v2Rows'), wrap = panel.querySelector('.v2RowsWrap');
@@ -13366,9 +13381,7 @@ const out2 = [];
     if(!wrap.__sqBound){
       wrap.__sqBound = true;
       wrap.addEventListener("scroll", ()=>{
-        const slack = 8;
-        const atBottom = (wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight) < slack;
-        window.__liveV2UserScrolled = !atBottom;
+        window.__liveV2UserScrolled = !__sqSyncV2HistoryPin(wrap);
       }, {passive:true});
     }
 
@@ -13396,6 +13409,9 @@ const out2 = [];
     }
   }
 
+  // Restore the native slide-up style before scoring motion, then pin only if
+  // history is still deliberately scrolled away from the live position.
+  if(wrap) __sqSyncV2HistoryPin(wrap);
   try{ __sqSyncV2WallMotion(panel, tableCr); }catch(_){}
 
   // Averages box (under 3-round viewport)
@@ -23178,7 +23194,7 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
-  const RUNNING_VERSION = '0.14.6';
+  const RUNNING_VERSION = '0.14.7';
   const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
   let updateCheckPromise = null;

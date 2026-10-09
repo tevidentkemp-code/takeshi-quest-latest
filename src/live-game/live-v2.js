@@ -87,6 +87,15 @@ function __sqCancelV2WallMotion(panel){
   try{ wall?.animation?.cancel(); }catch(_){}
   if(host) delete host.__sqV2Wall;
 }
+// SC-074: temporarily pin the current row only while a player is manually
+// browsing older score history. Keep routine scoring/SC065 grid motion native.
+function __sqSyncV2HistoryPin(wrap){
+  if(!wrap) return true;
+  const atBottom = (wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight) < 8;
+  const count = getLiveV2PlayerCount();
+  wrap.classList.toggle('sq074-history-browsing', count >= 2 && count <= 5 && !atBottom);
+  return atBottom;
+}
 function __sqSyncV2WallMotion(panel, tableRound){
   const rows = panel.querySelector('#v2Rows'), wrap = panel.querySelector('.v2RowsWrap');
   const count = getLiveV2PlayerCount();
@@ -705,9 +714,7 @@ const out2 = [];
     if(!wrap.__sqBound){
       wrap.__sqBound = true;
       wrap.addEventListener("scroll", ()=>{
-        const slack = 8;
-        const atBottom = (wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight) < slack;
-        window.__liveV2UserScrolled = !atBottom;
+        window.__liveV2UserScrolled = !__sqSyncV2HistoryPin(wrap);
       }, {passive:true});
     }
 
@@ -735,6 +742,9 @@ const out2 = [];
     }
   }
 
+  // Restore the native slide-up style before scoring motion, then pin only if
+  // history is still deliberately scrolled away from the live position.
+  if(wrap) __sqSyncV2HistoryPin(wrap);
   try{ __sqSyncV2WallMotion(panel, tableCr); }catch(_){}
 
   // Averages box (under 3-round viewport)
