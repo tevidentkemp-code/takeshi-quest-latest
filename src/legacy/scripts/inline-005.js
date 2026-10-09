@@ -12631,7 +12631,9 @@ function __sqSetupLiveV2RowsWindow(panel){
     const ws = getComputedStyle(wrap), rs = getComputedStyle(rows);
     const px = value => parseFloat(value) || 0;
     const inset = px(ws.paddingTop)+px(ws.paddingBottom)+px(ws.borderTopWidth)+px(ws.borderBottomWidth)+px(rs.paddingTop)+px(rs.paddingBottom);
-    const span = badges[last].getBoundingClientRect().bottom - badges[first].getBoundingClientRect().top;
+    // Sticky current-round paint must not shorten the measured row window
+    // when history is manually scrolled. Measure unscrolled layout positions.
+    const span = (badges[last].offsetTop + badges[last].offsetHeight) - badges[first].offsetTop;
     // Common grid motion can add floating-point noise to viewport rectangles.
     // Keep the measured CSS subpixel size stable before rounding the viewport up.
     const wantH = Math.max(120, Math.ceil(Math.round((span + inset) * 64) / 64));
