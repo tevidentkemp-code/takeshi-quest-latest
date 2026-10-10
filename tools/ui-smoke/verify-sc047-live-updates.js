@@ -636,6 +636,135 @@ fs.mkdirSync(out, { recursive: true });
       'update notice must never persist as browser-local feed history');
     await page.unroute('**/assets/release-metadata.json*');
 
+
+    // VIDE compact grouping: cloud-backed match identities, mode boundaries,
+    // match-result order, medal icons, winner hierarchy and faint rail.
+    await page.waitForFunction(() => !window.__homeLivePrinterState?.syncing, {timeout:8000});
+    await page.evaluate(() => {
+      const prior = {
+        all:window.cloudFetchAllGamesAsLocal,
+        visible:window.cloudFetchLatestVisibleGamesAsLocal,
+        latest:window.cloudFetchLatestGamesAsLocal,
+        players:window.cloudListPlayers,
+        sb:window.sb
+      };
+      window.__videCompactPrior = prior;
+      const players = [{name:'Chris'}, {name:'James'}];
+      const make = (id, ts, mode, first, second) => ({
+        ts, mode, match_id:id, players,
+        totals:[first,second],
+        state:{mode, match_id:id},
+        is_practice:mode === 'practice',
+        archived_at:null
+      });
+      const samples = [
+        make('vide-fixture-a','2026-10-10T20:20:00Z','classic',431,196),
+        make('vide-fixture-a','2026-10-10T19:53:00Z','classic',408,282),
+        make('vide-fixture-a','2026-10-10T19:14:00Z','classic',444,269),
+        make('vide-fixture-b','2026-10-10T18:30:00Z','classic',401,300),
+        make('vide-fixture-c','2026-10-10T17:25:00Z','turbo',390,200),
+        make('vide-fixture-d','2026-10-10T17:02:00Z','practice',380,190)
+      ];
+      window.cloudFetchLatestVisibleGamesAsLocal = async () => samples.map(g=>({...g}));
+      window.cloudFetchLatestGamesAsLocal = async () => samples.map(g=>({...g}));
+      window.cloudFetchAllGamesAsLocal = async () => [];
+      window.cloudListPlayers = async () => [];
+      window.sb = {
+        ...prior.sb,
+        from(table) {
+          if (table !== 'matches') return prior.sb.from(table);
+          return {
+            select() { return this; },
+            in() { return Promise.resolve({data:[{
+              id:'vide-fixture-a', targetWins:3, wins:[3,0],
+              history:[
+                {totals:[444,269]},{totals:[408,282]},{totals:[431,196]}
+              ], players, matchTotals:[1283,747]
+            }],error:null}); }
+          };
+        }
+      };
+      const st = window.__homeLivePrinterState;
+      st.paused = false;
+      st.matchRowsCache = null;
+      st.derivedItems = [];
+      st.derivedFetchedAt = 0;
+      st.lastSyncMs = 0;
+      st.bufLines = [];
+      st.injectQueue = [];
+      st.recentInjectedLines = [];
+      st.lpStarted = false;
+      st.primedFromLocal = true;
+      st.hold = 0;
+    });
+    await page.waitForFunction(() => {
+      const buf = window.__homeLivePrinterState?.bufLines || [];
+      return buf.some(line => String(line).includes('Chris (431)')) &&
+        buf.some(line => String(line).includes('( CLA RESULT )')) &&
+        document.querySelectorAll('#homeLivePrinterRows .lp-medal-icon').length === 2;
+    }, {timeout:8000});
+    const compact = await page.evaluate(() => {
+      const lines = (window.__homeLivePrinterState?.bufLines || []).map(String);
+      const rows = [...document.querySelectorAll('#homeLivePrinterRows tr.lp-row')];
+      const result = rows.find(row => row.classList.contains('lp-match-result'));
+      const games = rows.filter(row => row.querySelector('.lp-winning-score'));
+      const times = games.map(row => row.querySelector('.lp-game-meta')?.getBoundingClientRect().left || 0);
+      const linked = rows.filter(row => row.classList.contains('lp-group-linked'));
+      const medals = [...(result?.querySelectorAll('.lp-medal-entry') || [])].map(entry => [
+        entry.querySelector('.lp-medal-icon')?.textContent || '',
+        entry.querySelector('.lp-medal-name')?.textContent || ''
+      ]);
+      const first = games.find(row => (row.textContent || '').includes('(431)'));
+      const winner = first?.querySelector('.lp-winning-score');
+      const scoreline = first?.querySelector('.lp-scoreline');
+      return {
+        lines, medals, headings:lines.filter(s=>/^(CLASSIC|TURBO|PRACTICE)$/.test(s)),
+        linked:linked.map(row=>row.textContent || ''),
+        oldMedalText:result?.querySelectorAll('.lp-medal-chip').length || 0,
+        times, winnerText:winner?.textContent || '',
+        winnerWeight:winner ? Number.parseInt(getComputedStyle(winner).fontWeight,10) : 0,
+        baseWeight:scoreline ? Number.parseInt(getComputedStyle(scoreline).fontWeight,10) : 0,
+        winnerColor:winner ? getComputedStyle(winner).color : '',
+        loserColor:scoreline ? getComputedStyle(scoreline).color : '',
+        medalA11y:result?.querySelector('.lp-ellipsis')?.getAttribute('aria-label') || '',
+        rowCount:rows.length
+      };
+    });
+    assert.deepEqual(compact.headings,['CLASSIC','CLASSIC','TURBO','PRACTICE'],
+      'VIDE must restart a full-name mode header on match identity or mode change');
+    const matchAt = compact.lines.findIndex(s=>s.includes('( CLA RESULT )'));
+    const latestAt = compact.lines.findIndex(s=>s.includes('Chris (431)'));
+    assert.equal(matchAt, latestAt - 1, 'completed match result must precede its deciding game');
+    assert.equal(compact.lines.filter(s=>s==='CLASSIC').length,2,
+      'consecutive games in one match must show a single CLASSIC header');
+    assert.deepEqual(compact.medals,[['🥇','Chris'],['🥈','James']],
+      'result should use medal symbols before names');
+    assert.equal(compact.oldMedalText,0,'text medals must not remain visible');
+    assert.match(compact.medalA11y,/first place Chris.*second place James/i);
+    assert.equal(compact.rowCount,15,'printer must retain all 15 stable row nodes');
+    assert.equal(compact.linked.length,3,
+      'only the three consecutive match-A game rows should receive a faint connector');
+    assert(compact.linked.every(x=>/Chris\s*\(/.test(x)),
+      'connector may not bridge a new match/mode');
+    assert(compact.times.length >= 3 &&
+      compact.times.every(x=>Math.abs(x-compact.times[0])<=1),
+      'game-time column must remain aligned across results');
+    assert.equal(compact.winnerText,'Chris (431)','winner name and score need one emphasised span');
+    assert(compact.winnerWeight > compact.baseWeight,'winner must be visibly bolder than opponents');
+    assert.notEqual(compact.winnerColor,compact.loserColor,
+      'winner must be subtly brighter, not another same-weight label');
+    await page.evaluate(() => {
+      const prior = window.__videCompactPrior;
+      if (!prior) return;
+      window.cloudFetchAllGamesAsLocal = prior.all;
+      window.cloudFetchLatestVisibleGamesAsLocal = prior.visible;
+      window.cloudFetchLatestGamesAsLocal = prior.latest;
+      window.cloudListPlayers = prior.players;
+      window.sb = prior.sb;
+      delete window.__videCompactPrior;
+    });
+    console.log('VIDE compact cloud-group / order / medals / winner / connector PASS');
+
     await page.screenshot({ path: path.join(out, 'live-updates-stable.png') });
     const pageErrors = consoleErrs.filter(x => x.startsWith('pageerror:'));
     assert.equal(pageErrors.length, 0, JSON.stringify(pageErrors));
