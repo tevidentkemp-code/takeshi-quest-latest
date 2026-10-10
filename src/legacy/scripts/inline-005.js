@@ -23178,7 +23178,7 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
-  const RUNNING_VERSION = '0.14.6';
+  const RUNNING_VERSION = '0.14.7';
   const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
   let updateCheckPromise = null;
@@ -24459,7 +24459,10 @@ if(hsBody){
 	        };
 	      };
 
-	      const lpParseMatchResultLine = (line) => {
+	      const lpModeHeading = line => /^(CLASSIC|TURBO|PRACTICE)$/i.test(String(line||'').trim()) ? String(line).trim().toUpperCase() : '';
+        const lpMedal = medal => ({gold:'🥇',silver:'🥈',bronze:'🥉'}[medal] || '');
+        const lpPlace = medal => ({gold:'first place',silver:'second place',bronze:'third place'}[medal] || '');
+        const lpParseMatchResultLine = (line) => {
 	        const text = String(line == null ? '' : line).replace(/\s+/g, ' ').trim();
 	        const m = text.match(/^\(\s*(CLA|TBO)\s+RESULT\s*\)\s*\/\s*(.+)$/i) ||
 	          text.match(/^(CLA|TBO)\s+RESULT\s*\/\s*(.+)$/i);
@@ -24481,7 +24484,7 @@ if(hsBody){
 	          return { medal, label, name: String(pm[2] || '').trim() };
 	        }).filter(x => x && x.name);
 	        if (!placements.length) return null;
-	        return { abbr, label: `( ${abbr} RESULT )`, placements };
+	        return { abbr, label:'MATCH RESULT', placements };
 	      };
 
 	      const lpParseBeerAlertLine = (line) => {
@@ -24512,17 +24515,20 @@ if(hsBody){
 	      };
 
 	      const lpDisplayText = (line) => {
-	        const parsed = lpParseResultLine(line);
-	        if (parsed) return `${parsed.abbr} / ${parsed.time} ${parsed.scoreline}`.trim();
-	        const match = lpParseMatchResultLine(line);
-	        if (match) {
-	          const parts = match.placements.map(p => `${p.medal.toUpperCase()} ${p.name}`);
-	          return `${match.label} / ${parts.join(', ')}`;
-	        }
-	        const alert = lpParseBeerAlertLine(line);
-	        if (alert) return `${alert.label} ${alert.copy}`.trim();
-	        return String(line == null ? '' : line);
-	      };
+          const heading = lpModeHeading(line);
+          if (heading) return heading;
+          const parsed = lpParseResultLine(line);
+          if (parsed) return `${parsed.time} ${parsed.scoreline}`.trim();
+          const match = lpParseMatchResultLine(line);
+          if (match) {
+            const mode = match.abbr === 'TBO' ? 'Turbo' : 'Classic';
+            return `${mode} match result: ` +
+              match.placements.map(p => `${lpPlace(p.medal)} ${p.name}`).join(', ');
+          }
+          const alert = lpParseBeerAlertLine(line);
+          if (alert) return `${alert.label} ${alert.copy}`.trim();
+          return String(line == null ? '' : line);
+        };
 
 	      const lpAppendTextSpan = (parent, className, text) => {
 	        const span = document.createElement('span');
@@ -24532,29 +24538,48 @@ if(hsBody){
 	        return span;
 	      };
 
-	      const lpSetLineContent = (el, line) => {
+	      const lpAppendScoreline = (parent, scoreline) => {
+          const whole = String(scoreline || '');
+          const bts = whole.match(/\s+bts\s+/i);
+          const first = bts ? whole.slice(0, bts.index) : '';
+          const span = lpAppendTextSpan(parent, 'lp-scoreline', '');
+          // The feed's explicit "bts" result identifies the winner; never
+          // infer a winner from a solo or otherwise ambiguous scoreline.
+          if (bts && /^.+\s\(\d+\)$/.test(first)) {
+            lpAppendTextSpan(span, 'lp-winning-score', first);
+            span.appendChild(document.createTextNode(whole.slice(bts.index)));
+          } else span.textContent = whole;
+          return span;
+        };
+        const lpSetLineContent = (el, line) => {
 	        if (!el) return;
 	        const parsed = lpParseResultLine(line);
-	        const match = parsed ? null : lpParseMatchResultLine(line);
-	        const alert = (!parsed && !match) ? lpParseBeerAlertLine(line) : null;
+          const heading = parsed ? '' : lpModeHeading(line);
+          const match = (parsed || heading) ? null : lpParseMatchResultLine(line);
+          const alert = (!parsed && !match && !heading) ? lpParseBeerAlertLine(line) : null;
 	        const record = (!parsed && !match && !alert) ? lpParseRecordLine(line) : null;
 	        el.textContent = '';
 	        try{ el.removeAttribute('aria-label'); }catch(_e){}
-	        el.classList.toggle('lp-structured', !!(parsed || match || alert || record));
+	        el.classList.toggle('lp-structured', !!(parsed || match || alert || record || heading));
 	        el.classList.toggle('lp-matchline', !!match);
 	        el.classList.toggle('lp-alertline', !!alert);
 	        el.classList.toggle('lp-recordline', !!record);
-	        if (match) {
+          el.classList.toggle('lp-modeheading', !!heading);
+          if (heading) {
+            lpAppendTextSpan(el, 'lp-mode lp-mode-heading', heading);
+            return;
+          }
+          if (match) {
 	          el.setAttribute('aria-label', lpDisplayText(line));
 	          lpAppendTextSpan(el, 'lp-result-chip', match.label);
-	          lpAppendTextSpan(el, 'lp-mode-sep', '/');
+          lpAppendTextSpan(el, 'lp-mode-sep', '—');
 	          const wrap = lpAppendTextSpan(el, 'lp-medal-list', '');
-	          match.placements.forEach((p, idx) => {
-	            if (idx) wrap.appendChild(document.createTextNode(', '));
-	            lpAppendTextSpan(wrap, 'lp-medal-name', p.name);
-	            wrap.appendChild(document.createTextNode(' '));
-	            lpAppendTextSpan(wrap, `lp-medal-chip lp-medal-${p.medal}`, p.label || p.medal.toUpperCase());
-	          });
+	          match.placements.forEach(p => {
+              const entry = lpAppendTextSpan(wrap, 'lp-medal-entry', '');
+              const icon = lpAppendTextSpan(entry, 'lp-medal-icon', lpMedal(p.medal));
+              icon.setAttribute('aria-hidden', 'true');
+              lpAppendTextSpan(entry, 'lp-medal-name', p.name);
+            });
 	          return;
 	        }
 	        if (alert) {
@@ -24575,11 +24600,9 @@ if(hsBody){
 	        }
 	        el.setAttribute('aria-label', lpDisplayText(line));
 	        const meta = lpAppendTextSpan(el, 'lp-game-meta', '');
-	        lpAppendTextSpan(meta, 'lp-mode', parsed.abbr);
-	        lpAppendTextSpan(meta, 'lp-mode-sep', '/');
 	        lpAppendTextSpan(meta, 'lp-time', parsed.time);
-	        const result = lpAppendTextSpan(el, 'lp-result', '');
-	        lpAppendTextSpan(result, 'lp-scoreline', parsed.scoreline);
+          const result = lpAppendTextSpan(el, 'lp-result', '');
+          lpAppendScoreline(result, parsed.scoreline);
 	      };
 
 	const lpUpdateMeta = async (games) => {
@@ -24614,7 +24637,7 @@ if(hsBody){
       };
 	      const lpType = (el, text, speedMs = 28, onDone = null) => {
 	        if (!el) return;
-	        try{ el.classList.remove('lp-structured', 'lp-matchline', 'lp-alertline', 'lp-recordline'); el.removeAttribute('aria-label'); }catch(_e){}
+	        try{ el.classList.remove('lp-structured', 'lp-matchline', 'lp-alertline', 'lp-recordline', 'lp-modeheading'); el.removeAttribute('aria-label'); }catch(_e){}
 	        el.textContent = '';
 	        let i = 0;
 	        const t = String(text || '');
@@ -24649,8 +24672,8 @@ if(hsBody){
 	          return;
 	        }
 
-	        // Game rows are structured from the first typed character. Type the
-	        // mode/time line completely, then begin the scoreline underneath.
+	        // Keep structured rows throughout typing. Print the time first and
+	        // then type the compact inline player scoreline beside it.
 	        el.textContent = '';
 	        try{
 	          el.classList.add('lp-structured');
@@ -24659,12 +24682,10 @@ if(hsBody){
 	        }catch(_e){}
 	        const meta = lpAppendTextSpan(el, 'lp-game-meta', '');
 	        const result = lpAppendTextSpan(el, 'lp-result', '');
-	        const metaText = `${parsed.abbr} / ${parsed.time}`;
+	        const metaText = parsed.time;
 
 	        lpType(meta, metaText, speedMs, () => {
 	          meta.textContent = '';
-	          lpAppendTextSpan(meta, 'lp-mode', parsed.abbr);
-	          lpAppendTextSpan(meta, 'lp-mode-sep', '/');
 	          lpAppendTextSpan(meta, 'lp-time', parsed.time);
 	          const score = lpAppendTextSpan(result, 'lp-scoreline', '');
 	          lpType(score, parsed.scoreline, speedMs, () => {
@@ -24729,7 +24750,8 @@ if(hsBody){
 	        const isBeerAlert = lpIsBeerAlertLine(line);
 	        const isAlert = lpIsAlertLine(line);
 	        const isDateHdr = lpIsDateHdrLine(line);
-	        const modeInfo = (!isAlert && !isDateHdr) ? lpModeDisplayFromLine(line) : { mode: '' };
+          const heading = lpModeHeading(line);
+          const modeInfo = (!isAlert && !isDateHdr && !heading) ? lpModeDisplayFromLine(line) : { mode:heading.toLowerCase() };
 	        tr.classList.toggle('lp-record', isRecord);
 	        tr.classList.toggle('lp-world-record', isWorldRecord);
 	        tr.classList.toggle('lp-roundpb', isRoundPB);
@@ -24738,6 +24760,7 @@ if(hsBody){
 	        tr.classList.toggle('lp-alert-row', isBeerAlert);
 	        tr.classList.toggle('lp-alert', isAlert);
 	        tr.classList.toggle('lp-datehdr', isDateHdr);
+          tr.classList.toggle('lp-modehdr', !!heading);
 	        tr.classList.toggle('lp-practice', modeInfo.mode === 'practice');
 	        tr.classList.toggle('lp-turbo', modeInfo.mode === 'turbo');
 	        tr.classList.toggle('lp-classic', modeInfo.mode === 'classic');
@@ -24755,6 +24778,27 @@ if(hsBody){
 	        }catch(_e){}
 	      };
 
+      const lpConnectVisibleGameRows = (rows, lines) => {
+          const cells = Array.isArray(lines) ? lines : [];
+          rows.forEach(row => row.classList.remove('lp-group-linked'));
+          let run = [];
+          const flush = () => {
+            if (run.length >= 2) run.forEach(i => rows[i]?.classList.add('lp-group-linked'));
+            run = [];
+          };
+          cells.forEach((line, index) => {
+            if (lpParseResultLine(line)) { run.push(index); return; }
+            if (lpModeHeading(line) || lpIsDateHdrLine(line) || !String(line||'').trim()) {
+              flush(); return;
+            }
+            // The match result and PB/WR/alert are contextual annotations, not
+            // competing matches. They do not disconnect a single group's rail.
+            if (lpIsMatchResultLine(line) || lpIsRecordLine(line) || lpIsRoundPBLine(line) ||
+                lpIsGamePBLine(line) || lpIsBeerAlertLine(line) || lpIsAlertLine(line)) return;
+            flush();
+          });
+          flush();
+        };
       const lpRoundKey = (roundIndex) => {
         const r = Number(roundIndex);
         if (r >= 0 && r <= 10) return `${10 + r}s`;
@@ -25202,6 +25246,7 @@ if(hsBody){
           lpApplyRowClasses(tr, line);
           if (sp) lpSetLineContent(sp, line);
         });
+        lpConnectVisibleGameRows(rows, lines || []);
         lpFitRowsToViewport();
       };
 
@@ -25284,11 +25329,12 @@ if(hsBody){
 	          if (!sp) return;
 	          const line = winDisp[i] ?? '—';
 	          if (!opts.skipLastType || i < LP_VISIBLE - 1) {
-	            lpApplyRowClasses(tr, line);
-	            lpSetLineContent(sp, line);
-	          }
-	        });
-        lpFitRowsToViewport();
+              lpApplyRowClasses(tr, line);
+              lpSetLineContent(sp, line);
+            }
+          });
+          lpConnectVisibleGameRows(rows, winDisp);
+          lpFitRowsToViewport();
 	      };
       const lpScrollStep = () => {
         const st = window.__homeLivePrinterState;
@@ -25369,8 +25415,9 @@ if(hsBody){
 	          } else {
               lpFitRowsToViewport();
             }
-	        });
-	      };
+          lpConnectVisibleGameRows(rows2, st.displayLines);
+        });
+      };
       const lpAnimateNewBottom = (bufLines) => {
         const tbody = document.getElementById('homeLivePrinterRows');
         if (!tbody) return;
@@ -25412,6 +25459,7 @@ if(hsBody){
           } else {
             lpFitRowsToViewport();
           }
+          lpConnectVisibleGameRows(rows2, winNew);
         });
       };
       const lpSync = async (forceFull = false) => {
@@ -25524,7 +25572,20 @@ if(hsBody){
           try { if (hold) hold.style.display = 'none'; } catch(_e){}
 
           const _lpGetTs = (g) => g.event_ts || g.ts || g.created_at || g.createdAt;
-          const sorted = items.slice().sort((a,b) => (new Date(_lpGetTs(b))).getTime() - (new Date(_lpGetTs(a))).getTime());
+          const sorted = items.slice().sort((a,b) => new Date(_lpGetTs(b) || 0).getTime() - new Date(_lpGetTs(a) || 0).getTime());
+          // Retain the original timestamps/source items. Reposition each proven
+          // match result immediately ahead of that match's latest visible game.
+          sorted.filter(it => it?.event_kind === 'match_result').forEach(result => {
+            const id = String(result.match_id || '').trim();
+            if (!id) return;
+            const current = sorted.indexOf(result);
+            const game = sorted.findIndex(it => it !== result && it?.event_kind !== 'match_result' &&
+              String(it?.match_id || it?.matchId || '').trim() === id &&
+              Array.isArray(it?.players) && it.winner_score != null);
+            if (game < 0 || current === game - 1) return;
+            sorted.splice(current, 1);
+            sorted.splice(game > current ? game - 1 : game, 0, result);
+          });
           const HIDE_KINDS = new Set();
           const filtered = sorted.filter(it => !(it && it.event_kind && HIDE_KINDS.has(it.event_kind)));
           // >>> PATCH:LIVE_PRINTER_DATE_HEADERS START
@@ -25550,21 +25611,51 @@ if(hsBody){
             return s;
           };
 
+          const _lpIsGameItem = it => it && !it.event_kind && Array.isArray(it.players) && it.winner_score != null;
+          const _lpGroupForGame = it => {
+            const mode = lpIsPracticeGame(it) ? 'PRACTICE' : (lpIsTurboGame(it) || it.isTurbo ? 'TURBO' : 'CLASSIC');
+            const matchId = String(it.match_id || it.matchId || '').trim();
+            const roster = it.players.map(p => String(typeof p === 'string' ? p :
+              (p?.id || p?.player_id || p?.name || p?.nickname || '')
+            ).trim().toLowerCase()).filter(Boolean).sort();
+            // Two matches with the same roster remain different groups when IDs
+            // exist; for legacy games without IDs, use the visible player roster.
+            const key = matchId ? 'match:' + matchId : 'players:' + (roster.join('|') || lpSig(it));
+            return { mode, key:mode + '/' + key + '/' + roster.join('|') };
+          };
+          const matchGroups = new Map();
+          filtered.forEach(it => {
+            if (!_lpIsGameItem(it)) return;
+            const id = String(it.match_id || it.matchId || '').trim();
+            if (id && !matchGroups.has(id)) matchGroups.set(id, _lpGroupForGame(it));
+          });
           const lines = [];
-          let _lpLastKey = null;
-          filtered.forEach(it=>{
+          let _lpLastKey = null, activeGroup = '';
+          filtered.forEach(it => {
             const ts = _lpGetTs(it);
             const d = ts ? new Date(ts) : null;
-            const key = d ? (d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate()) : null;
-            if(key && key !== _lpLastKey){
-              if (_lpLastKey === null) lines.push('');
-              else lines.push('');
+            const key = d && !isNaN(d.getTime()) ? (d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate()) : null;
+            if (key && key !== _lpLastKey) {
+              lines.push('');
               lines.push(_lpFmtHeader(d));
               _lpLastKey = key;
+              activeGroup = '';
+            }
+            let group = null;
+            if (_lpIsGameItem(it)) group = _lpGroupForGame(it);
+            else if (it?.event_kind === 'match_result') {
+              const id = String(it.match_id || '').trim();
+              const mode = lpParseMatchResultLine(it.line_text || '')?.abbr === 'TBO' ? 'TURBO' : 'CLASSIC';
+              group = matchGroups.get(id) || { mode, key:mode + '/match:' + id };
+            }
+            if (group && group.key !== activeGroup) {
+              lines.push(group.mode);
+              activeGroup = group.key;
             }
             lines.push(_lpStripDate(lpFmtLine(it)));
             const beerAlert = lpBeerAlertLineForGame(it);
             if (beerAlert) lines.push(beerAlert);
+            if (it?.event_kind === 'new_player') activeGroup = '';
           });
           // <<< PATCH:LIVE_PRINTER_DATE_HEADERS END
 
