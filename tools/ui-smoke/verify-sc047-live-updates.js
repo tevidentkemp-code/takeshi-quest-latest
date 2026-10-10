@@ -221,6 +221,11 @@ fs.mkdirSync(out, { recursive: true });
     assert(twoLine.hasMeta && twoLine.hasResult, 'game row must expose time and scoreline blocks');
     assert(twoLine.resultTop <= twoLine.metaBottom + 1, 'time and player scores must share a compact row');
 
+    // Settle any already-running cloud read before the animation fixture:
+    // changing the next-poll clock does not cancel an earlier pending read,
+    // which would later repaint nine transient results with empty-state rows.
+    await page.waitForFunction(() => window.__homeLivePrinterState?.syncing === false,
+      null, {timeout:45000});
     // Keep cloud-polling separate from the nine-row *animation* fixture.
     // The printer continues using its real 1s shift/type scheduler. A cloud
     // refresh that returns no games would otherwise clear transient rows
