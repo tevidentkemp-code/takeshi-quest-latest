@@ -24560,7 +24560,7 @@ if(hsBody){
 	        const record = (!parsed && !match && !alert) ? lpParseRecordLine(line) : null;
 	        el.textContent = '';
 	        try{ el.removeAttribute('aria-label'); }catch(_e){}
-	        el.classList.toggle('lp-structured', !!(parsed || match || alert || record));
+	        el.classList.toggle('lp-structured', !!(parsed || match || alert || record || heading));
 	        el.classList.toggle('lp-matchline', !!match);
 	        el.classList.toggle('lp-alertline', !!alert);
 	        el.classList.toggle('lp-recordline', !!record);
@@ -24672,8 +24672,8 @@ if(hsBody){
 	          return;
 	        }
 
-	        // Game rows are structured from the first typed character. Type the
-	        // mode/time line completely, then begin the scoreline underneath.
+	        // Keep structured rows throughout typing. Print the time first and
+	        // then type the compact inline player scoreline beside it.
 	        el.textContent = '';
 	        try{
 	          el.classList.add('lp-structured');
@@ -24799,7 +24799,7 @@ if(hsBody){
           });
           flush();
         };
-        const lpRoundKey = (roundIndex) => {
+      const lpRoundKey = (roundIndex) => {
         const r = Number(roundIndex);
         if (r >= 0 && r <= 10) return `${10 + r}s`;
         if (r === 11) return 'D';
