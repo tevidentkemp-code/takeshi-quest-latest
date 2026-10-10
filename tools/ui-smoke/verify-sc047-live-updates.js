@@ -190,7 +190,7 @@ fs.mkdirSync(out, { recursive: true });
       if (!row) return false;
       const meta = row.querySelector('.lp-game-meta')?.textContent || '';
       const result = row.querySelector('.lp-result')?.textContent || '';
-      return /CLA/.test(meta) && !/Thom/.test(meta) && !result;
+      return /22:31/.test(meta) && !/Thom/.test(meta) && !result;
     }, { timeout: 5000 });
     await page.waitForFunction(() => document.getElementById('homeLivePrinterRows')?.textContent.includes('Thom (200)'), { timeout: 5000 });
     const twoLine = await page.locator('#homeLivePrinterRows tr.lp-row').filter({ hasText: 'Thom (200)' }).last().evaluate(row => {
@@ -203,8 +203,8 @@ fs.mkdirSync(out, { recursive: true });
         resultTop: result?.top || 0
       };
     });
-    assert(twoLine.hasMeta && twoLine.hasResult, 'game row must expose separate mode/time and scoreline blocks');
-    assert(twoLine.resultTop >= twoLine.metaBottom - 1, 'player names/scoreline must start on the line below CLA / time');
+    assert(twoLine.hasMeta && twoLine.hasResult, 'game row must expose time and scoreline blocks');
+    assert(twoLine.resultTop <= twoLine.metaBottom + 1, 'time and player scores must share a compact row');
 
     // Regression: once 6-10 structured rows are populated, the fixed VIDE
     // viewport must not squeeze rows together or leave the top row clipped.
