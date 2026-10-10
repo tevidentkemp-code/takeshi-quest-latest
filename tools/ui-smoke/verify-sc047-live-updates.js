@@ -226,8 +226,9 @@ fs.mkdirSync(out, { recursive: true });
     // result, the pre-existing empty-state branch clears the printer DOM even
     // while transient injected lines are still progressing in displayLines.
     // Isolate transport in-memory; never write a test game to Supabase.
-    await page.waitForFunction(() => !window.__homeLivePrinterState?.syncing,
-      null, {timeout:8000});
+    // Do not wait for an unrelated, already-running blocked-Supabase read:
+    // the transport fixture is installed before the native 15s refresh.
+    // This exercises the real scheduler while keeping the cloud result honest.
     await page.evaluate(() => {
       window.__videSc047GeometryPrior = {
         visible:window.cloudFetchLatestVisibleGamesAsLocal,
@@ -240,6 +241,11 @@ fs.mkdirSync(out, { recursive: true });
       };
       window.cloudFetchLatestVisibleGamesAsLocal = async () => [{...game}];
       window.cloudFetchLatestGamesAsLocal = async () => [{...game}];
+      // Prevent a new external fetch from starting during fixture setup.
+      // The canonical 15s polling cadence is unchanged; future polls read
+      // the in-memory game fixture through the original cloud adapter.
+      const st = window.__homeLivePrinterState;
+      if (st) st.lastSyncMs = Date.now();
     });
 
     // Regression: once 6-10 structured rows are populated, the fixed VIDE
