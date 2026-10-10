@@ -708,7 +708,9 @@ fs.mkdirSync(out, { recursive: true });
       const rows = [...document.querySelectorAll('#homeLivePrinterRows tr.lp-row')];
       const result = rows.find(row => row.classList.contains('lp-match-result'));
       const games = rows.filter(row => row.querySelector('.lp-winning-score'));
-      const times = games.map(row => row.querySelector('.lp-game-meta')?.getBoundingClientRect().left || 0);
+      const visibleGames = games.filter(row => !row.classList.contains('lp-fit-hidden') && row.getBoundingClientRect().width > 0);
+      const times = visibleGames.map(row => row.querySelector('.lp-game-meta')?.getBoundingClientRect().left || 0);
+      const timeWidths = visibleGames.map(row => row.querySelector('.lp-game-meta')?.getBoundingClientRect().width || 0);
       const linked = rows.filter(row => row.classList.contains('lp-group-linked'));
       const medals = [...(result?.querySelectorAll('.lp-medal-entry') || [])].map(entry => [
         entry.querySelector('.lp-medal-icon')?.textContent || '',
@@ -721,7 +723,7 @@ fs.mkdirSync(out, { recursive: true });
         lines, medals, headings:lines.filter(s=>/^(CLASSIC|TURBO|PRACTICE)$/.test(s)),
         linked:linked.map(row=>row.textContent || ''),
         oldMedalText:result?.querySelectorAll('.lp-medal-chip').length || 0,
-        times, winnerText:winner?.textContent || '',
+        times, timeWidths, winnerText:winner?.textContent || '',
         winnerWeight:winner ? Number.parseInt(getComputedStyle(winner).fontWeight,10) : 0,
         baseWeight:scoreline ? Number.parseInt(getComputedStyle(scoreline).fontWeight,10) : 0,
         winnerColor:winner ? getComputedStyle(winner).color : '',
@@ -746,13 +748,39 @@ fs.mkdirSync(out, { recursive: true });
       'only the three consecutive match-A game rows should receive a faint connector');
     assert(compact.linked.every(x=>/Chris\s*\(/.test(x)),
       'connector may not bridge a new match/mode');
-    assert(compact.times.length >= 3 &&
-      compact.times.every(x=>Math.abs(x-compact.times[0])<=1),
-      'game-time column must remain aligned across results');
+    assert(compact.times.length >= 1 &&
+      compact.times.every(x=>Math.abs(x-compact.times[0])<=1) &&
+      compact.timeWidths.every(x=>Math.abs(x-compact.timeWidths[0])<=1 && x>0),
+      'visible game times must share aligned fixed-width columns');
     assert.equal(compact.winnerText,'Chris (431)','winner name and score need one emphasised span');
     assert(compact.winnerWeight > compact.baseWeight,'winner must be visibly bolder than opponents');
     assert.notEqual(compact.winnerColor,compact.loserColor,
       'winner must be subtly brighter, not another same-weight label');
+    for (const width of [320, 390, 430]) {
+      await page.setViewportSize({width,height:844});
+      await page.waitForFunction(() => {
+        const mid = document.querySelector('#homeLivePrinter .lp-mid');
+        const table = document.querySelector('#homeLivePrinter .lp-table');
+        return mid && table && table.getBoundingClientRect().bottom <= mid.getBoundingClientRect().bottom + 1;
+      }, null, {timeout:3000});
+      const geo = await page.evaluate(() => {
+        const mid = document.querySelector('#homeLivePrinter .lp-mid')?.getBoundingClientRect();
+        const rows = [...document.querySelectorAll('#homeLivePrinterRows tr.lp-row')];
+        const visible = rows.filter(row => !row.classList.contains('lp-fit-hidden') &&
+          row.textContent.trim() && row.getBoundingClientRect().width>0);
+        return {
+          rows:rows.length,
+          overflow:visible.some(row => row.getBoundingClientRect().right > mid.right + 1),
+          textOverflow:visible.some(row => {
+            const item=row.querySelector('.lp-result');
+            return item && item.scrollWidth > item.clientWidth + 1;
+          })
+        };
+      });
+      assert.equal(geo.rows,15,`VIDE must retain 15 printer slots at ${width}px`);
+      assert.equal(geo.overflow,false,`VIDE rows must fit panel at ${width}px`);
+      assert.equal(geo.textOverflow,false,`VIDE scores must wrap cleanly at ${width}px`);
+    }
     await page.evaluate(() => {
       const prior = window.__videCompactPrior;
       if (!prior) return;
