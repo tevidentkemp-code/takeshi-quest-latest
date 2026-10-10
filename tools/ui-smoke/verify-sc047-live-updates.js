@@ -183,16 +183,31 @@ fs.mkdirSync(out, { recursive: true });
     });
 
     await page.emulateMedia({ reducedMotion: 'no-preference' });
+    // Observe the actual DOM mutation sequence: a polling assertion can miss
+    // the brief gap between typing a five-character time and the scoreline.
+    await page.evaluate(() => {
+      const body = document.getElementById('homeLivePrinterRows');
+      const seen = { timeBeforeScore:false, scoreAfterTime:false };
+      const observer = new MutationObserver(() => {
+        const row = [...(body?.querySelectorAll('tr.lp-row') || [])].find(r =>
+          (r.querySelector('.lp-game-meta')?.textContent || '').includes('22:31'));
+        if (!row) return;
+        const score = row.querySelector('.lp-result')?.textContent || '';
+        if (!score.trim()) seen.timeBeforeScore = true;
+        if (seen.timeBeforeScore && score.includes('Thom (200)')) seen.scoreAfterTime = true;
+      });
+      observer.observe(body, {subtree:true,childList:true,characterData:true});
+      window.__videSc047TypeProof = {seen,observer};
+    });
     await page.evaluate(() => window.__homeLivePrinterInjectLine('CLA / 22:31 Thom (200) bts Sam (180)'));
-    await page.waitForFunction(() => {
-      const rows = Array.from(document.querySelectorAll('#homeLivePrinterRows tr.lp-row'));
-      const row = rows.find(r => r.querySelector('.lp-game-meta'));
-      if (!row) return false;
-      const meta = row.querySelector('.lp-game-meta')?.textContent || '';
-      const result = row.querySelector('.lp-result')?.textContent || '';
-      return /22:31/.test(meta) && !/Thom/.test(meta) && !result;
-    }, { timeout: 5000 });
-    await page.waitForFunction(() => document.getElementById('homeLivePrinterRows')?.textContent.includes('Thom (200)'), { timeout: 5000 });
+    await page.waitForFunction(() =>
+      window.__videSc047TypeProof?.seen.timeBeforeScore === true &&
+      window.__videSc047TypeProof?.seen.scoreAfterTime === true,
+      null, {timeout:8000});
+    await page.evaluate(() => {
+      window.__videSc047TypeProof?.observer.disconnect();
+      delete window.__videSc047TypeProof;
+    });
     const twoLine = await page.locator('#homeLivePrinterRows tr.lp-row').filter({ hasText: 'Thom (200)' }).last().evaluate(row => {
       const meta = row.querySelector('.lp-game-meta')?.getBoundingClientRect();
       const result = row.querySelector('.lp-result')?.getBoundingClientRect();
@@ -205,6 +220,27 @@ fs.mkdirSync(out, { recursive: true });
     });
     assert(twoLine.hasMeta && twoLine.hasResult, 'game row must expose time and scoreline blocks');
     assert(twoLine.resultTop <= twoLine.metaBottom + 1, 'time and player scores must share a compact row');
+
+    // Source-backed geometry fixture: a legitimate recent game must remain
+    // present during 15-second cloud refreshes. With [] as the test cloud
+    // result, the pre-existing empty-state branch clears the printer DOM even
+    // while transient injected lines are still progressing in displayLines.
+    // Isolate transport in-memory; never write a test game to Supabase.
+    await page.waitForFunction(() => !window.__homeLivePrinterState?.syncing,
+      null, {timeout:8000});
+    await page.evaluate(() => {
+      window.__videSc047GeometryPrior = {
+        visible:window.cloudFetchLatestVisibleGamesAsLocal,
+        latest:window.cloudFetchLatestGamesAsLocal
+      };
+      const game = {
+        ts:'2026-10-10T20:00:00Z',mode:'classic',
+        players:[{name:'CLOUD ANCHOR'},{name:'CLOUD OPPONENT'}],
+        totals:[100,90],archived_at:null,state:{mode:'classic'}
+      };
+      window.cloudFetchLatestVisibleGamesAsLocal = async () => [{...game}];
+      window.cloudFetchLatestGamesAsLocal = async () => [{...game}];
+    });
 
     // Regression: once 6-10 structured rows are populated, the fixed VIDE
     // viewport must not squeeze rows together or leave the top row clipped.
@@ -412,6 +448,13 @@ fs.mkdirSync(out, { recursive: true });
     assert.equal(resumed.pressed, 'false');
     assert.equal(resumed.paused, false);
     assert.equal(resumed.transition, '', 'Reduced motion must not leave a transform transition active');
+    await page.evaluate(() => {
+      const original = window.__videSc047GeometryPrior;
+      if (!original) return;
+      window.cloudFetchLatestVisibleGamesAsLocal = original.visible;
+      window.cloudFetchLatestGamesAsLocal = original.latest;
+      delete window.__videSc047GeometryPrior;
+    });
 
     // Data truth / mode isolation: Practice may appear as a result, but it
     // must never contribute ROUND PB/WR lines. Official and Turbo maintain
