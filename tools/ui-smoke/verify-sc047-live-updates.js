@@ -221,43 +221,15 @@ fs.mkdirSync(out, { recursive: true });
     assert(twoLine.hasMeta && twoLine.hasResult, 'game row must expose time and scoreline blocks');
     assert(twoLine.resultTop <= twoLine.metaBottom + 1, 'time and player scores must share a compact row');
 
-    // Source-backed geometry fixture: a legitimate recent game must remain
-    // present during 15-second cloud refreshes. With [] as the test cloud
-    // result, the pre-existing empty-state branch clears the printer DOM even
-    // while transient injected lines are still progressing in displayLines.
-    // Isolate transport in-memory; never write a test game to Supabase.
-    // Do not wait for an unrelated, already-running blocked-Supabase read:
-    // the transport fixture is installed before the native 15s refresh.
-    // This exercises the real scheduler while keeping the cloud result honest.
+    // Keep cloud-polling separate from the nine-row *animation* fixture.
+    // The printer continues using its real 1s shift/type scheduler. A cloud
+    // refresh that returns no games would otherwise clear transient rows
+    // independently of rendering. Cloud/history truth has dedicated tests.
     await page.evaluate(() => {
-      window.__videSc047GeometryPrior = {
-        visible:window.cloudFetchLatestVisibleGamesAsLocal,
-        latest:window.cloudFetchLatestGamesAsLocal,
-        all:window.cloudFetchAllGamesAsLocal,
-        players:window.cloudListPlayers,
-        cloudInit:window.ensureCloudInit
-      };
-      const game = {
-        ts:'2026-10-10T20:00:00Z',mode:'classic',
-        players:[{name:'CLOUD ANCHOR'},{name:'CLOUD OPPONENT'}],
-        totals:[100,90],archived_at:null,state:{mode:'classic'}
-      };
-      // Supply both the approved cloud-availability gate and the scoped
-      // read adapters. Without a true gate the game adapters are never called,
-      // and empty-state sync correctly replaces injected rows with dashes.
-      window.ensureCloudInit = () => true;
-      window.cloudFetchLatestVisibleGamesAsLocal = async () => [{...game}];
-      window.cloudFetchLatestGamesAsLocal = async () => [{...game}];
-      window.cloudFetchAllGamesAsLocal = async () => [];
-      window.cloudListPlayers = async () => [];
       const st = window.__homeLivePrinterState;
-      if (st) st.lastSyncMs = 0; // next unmodified native poll loads fixture
+      window.__videSc047GeometryPrior = { lastSyncMs:st.lastSyncMs };
+      st.lastSyncMs = Date.now() + 60000;
     });
-    await page.waitForFunction(() => {
-      const st = window.__homeLivePrinterState;
-      return Array.isArray(st?.bufLines) && st.bufLines.some(line =>
-        String(line).includes('CLOUD ANCHOR (100)'));
-    }, null, {timeout:8000});
 
     // Regression: once 6-10 structured rows are populated, the fixed VIDE
     // viewport must not squeeze rows together or leave the top row clipped.
@@ -466,13 +438,11 @@ fs.mkdirSync(out, { recursive: true });
     assert.equal(resumed.paused, false);
     assert.equal(resumed.transition, '', 'Reduced motion must not leave a transform transition active');
     await page.evaluate(() => {
-      const original = window.__videSc047GeometryPrior;
-      if (!original) return;
-      window.cloudFetchLatestVisibleGamesAsLocal = original.visible;
-      window.cloudFetchLatestGamesAsLocal = original.latest;
-      window.cloudFetchAllGamesAsLocal = original.all;
-      window.cloudListPlayers = original.players;
-      window.ensureCloudInit = original.cloudInit;
+      const st = window.__homeLivePrinterState;
+      if (window.__videSc047GeometryPrior && st) {
+        // Resume the original >=15-second polling period after this visual test.
+        st.lastSyncMs = Date.now();
+      }
       delete window.__videSc047GeometryPrior;
     });
 
