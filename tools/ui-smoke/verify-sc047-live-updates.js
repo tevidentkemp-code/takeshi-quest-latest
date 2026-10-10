@@ -219,10 +219,30 @@ fs.mkdirSync(out, { recursive: true });
       lines.forEach(line => window.__homeLivePrinterInjectLine(line));
       if (window.__homeLivePrinterState) window.__homeLivePrinterState.hold = 0;
     }, geometryLines);
-    await page.waitForFunction((expected) => {
-      const text = document.getElementById('homeLivePrinterRows')?.textContent || '';
-      return expected.every(token => text.includes(token));
-    }, [...geometryLines.map((_, i) => `GEOM${i + 1}`), 'James (377)'], { timeout: 30000 });
+    try {
+      await page.waitForFunction((expected) => {
+        const text = document.getElementById('homeLivePrinterRows')?.textContent || '';
+        return expected.every(token => text.includes(token));
+      }, [...geometryLines.map((_, i) => `GEOM${i + 1}`), 'James (377)'], { timeout: 30000 });
+    } catch (error) {
+      // Retain the original scheduler/deadline and assertion. Capture the
+      // actual printer state before diagnosing two exact-head timed failures.
+      const diagnostic = await page.evaluate(() => {
+        const st = window.__homeLivePrinterState || {};
+        const body = document.getElementById('homeLivePrinterRows');
+        return {
+          paused:st.paused, tick:st.tick, hold:st.hold,
+          queued:(st.injectQueue || []).slice(),
+          displayLines:(st.displayLines || []).slice(),
+          bufferSize:(st.bufLines || []).length,
+          rowTexts:[...(body?.querySelectorAll('tr.lp-row') || [])].map(row=>row.textContent || ''),
+          removedRows:[...(body?.querySelectorAll('tr.lp-fit-hidden') || [])].length,
+          pageErrorCount:window.__videDiagPageErrorCount || 0
+        };
+      });
+      console.error('VIDE GEOM scheduler diagnostic', JSON.stringify(diagnostic));
+      throw error;
+    }
     await page.click('#homeLivePauseBtn');
     await page.waitForTimeout(800);
 
