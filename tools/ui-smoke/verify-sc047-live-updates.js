@@ -232,21 +232,32 @@ fs.mkdirSync(out, { recursive: true });
     await page.evaluate(() => {
       window.__videSc047GeometryPrior = {
         visible:window.cloudFetchLatestVisibleGamesAsLocal,
-        latest:window.cloudFetchLatestGamesAsLocal
+        latest:window.cloudFetchLatestGamesAsLocal,
+        all:window.cloudFetchAllGamesAsLocal,
+        players:window.cloudListPlayers,
+        cloudInit:window.ensureCloudInit
       };
       const game = {
         ts:'2026-10-10T20:00:00Z',mode:'classic',
         players:[{name:'CLOUD ANCHOR'},{name:'CLOUD OPPONENT'}],
         totals:[100,90],archived_at:null,state:{mode:'classic'}
       };
+      // Supply both the approved cloud-availability gate and the scoped
+      // read adapters. Without a true gate the game adapters are never called,
+      // and empty-state sync correctly replaces injected rows with dashes.
+      window.ensureCloudInit = () => true;
       window.cloudFetchLatestVisibleGamesAsLocal = async () => [{...game}];
       window.cloudFetchLatestGamesAsLocal = async () => [{...game}];
-      // Prevent a new external fetch from starting during fixture setup.
-      // The canonical 15s polling cadence is unchanged; future polls read
-      // the in-memory game fixture through the original cloud adapter.
+      window.cloudFetchAllGamesAsLocal = async () => [];
+      window.cloudListPlayers = async () => [];
       const st = window.__homeLivePrinterState;
-      if (st) st.lastSyncMs = Date.now();
+      if (st) st.lastSyncMs = 0; // next unmodified native poll loads fixture
     });
+    await page.waitForFunction(() => {
+      const st = window.__homeLivePrinterState;
+      return Array.isArray(st?.bufLines) && st.bufLines.some(line =>
+        String(line).includes('CLOUD ANCHOR (100)'));
+    }, null, {timeout:8000});
 
     // Regression: once 6-10 structured rows are populated, the fixed VIDE
     // viewport must not squeeze rows together or leave the top row clipped.
@@ -273,7 +284,7 @@ fs.mkdirSync(out, { recursive: true });
         const st = window.__homeLivePrinterState || {};
         const body = document.getElementById('homeLivePrinterRows');
         return {
-          paused:st.paused, tick:st.tick, hold:st.hold,
+          paused:st.paused, tick:st.tick, hold:st.hold, syncing:st.syncing,
           queued:(st.injectQueue || []).slice(),
           displayLines:(st.displayLines || []).slice(),
           bufferSize:(st.bufLines || []).length,
@@ -459,6 +470,9 @@ fs.mkdirSync(out, { recursive: true });
       if (!original) return;
       window.cloudFetchLatestVisibleGamesAsLocal = original.visible;
       window.cloudFetchLatestGamesAsLocal = original.latest;
+      window.cloudFetchAllGamesAsLocal = original.all;
+      window.cloudListPlayers = original.players;
+      window.ensureCloudInit = original.cloudInit;
       delete window.__videSc047GeometryPrior;
     });
 
