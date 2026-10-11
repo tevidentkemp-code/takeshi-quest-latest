@@ -23,7 +23,7 @@ if(!fs.existsSync(fixtureFile))fail('existing SC004 test fixture not found');
 for(const [source] of sources)if(!fs.existsSync(path.join(root,source)))fail('missing '+source);
 
 const raw=fs.readFileSync(htmlFile,'utf8');
-assertOne(raw,'<head>','document head');
+assertOne(raw,'<html lang="en">\n<head>','document root head');
 assertOne(raw,'</body>','document body');
 if(raw.includes('__SQ_TEST_LAB')||raw.includes('/lab/network-guard.js'))
   fail('production build was contaminated by Test Lab code');
