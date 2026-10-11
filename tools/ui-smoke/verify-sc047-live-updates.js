@@ -715,13 +715,23 @@ fs.mkdirSync(out, { recursive: true });
         is_practice:mode === 'practice',
         archived_at:null
       });
+      // Older cloud Practice games sometimes carry separate match IDs and
+      // game_number=1 despite a consecutive identical roster on the same day.
+      // Their MODE header is presentation-only; never combine stored matches.
+      const legacyPractice = (id, ts, first, second) => ({
+        ...make(id, ts, 'practice', first, second),
+        mode:null, is_practice:false, game_number:1,
+        state:{mode:'practice', gameMode:'practice', is_practice:true}
+      });
       const samples = [
         make('vide-fixture-a','2026-10-10T20:20:00Z','classic',431,196),
         make('vide-fixture-a','2026-10-10T19:53:00Z','classic',408,282),
         make('vide-fixture-a','2026-10-10T19:14:00Z','classic',444,269),
         make('vide-fixture-b','2026-10-10T18:30:00Z','classic',401,300),
         make('vide-fixture-c','2026-10-10T17:25:00Z','turbo',390,200),
-        make('vide-fixture-d','2026-10-10T17:02:00Z','practice',380,190)
+        make('vide-fixture-d','2026-10-10T17:02:00Z','practice',380,190),
+        legacyPractice('vide-legacy-one','2026-10-10T16:54:00Z',302,210),
+        legacyPractice('vide-legacy-two','2026-10-10T16:43:00Z',315,209)
       ];
       window.cloudFetchLatestVisibleGamesAsLocal = async () => samples.map(g=>({...g}));
       window.cloudFetchLatestGamesAsLocal = async () => samples.map(g=>({...g}));
@@ -791,7 +801,14 @@ fs.mkdirSync(out, { recursive: true });
       };
     });
     assert.deepEqual(compact.headings,['CLASSIC','CLASSIC','TURBO','PRACTICE'],
-      'VIDE must restart a full-name mode header on match identity or mode change');
+      'Classic/Turbo retain match boundaries while legacy same-roster Practice shares a heading');
+    assert.equal(compact.lines.filter(s => s === 'PRACTICE').length, 1,
+      'separate legacy Practice match IDs must not repeat headings for adjacent same-roster games');
+    assert(compact.lines.some(s=>s.includes('Chris (302)')) &&
+      compact.lines.some(s=>s.includes('Chris (315)')),
+      'legacy Practice scores must remain visible and unmodified in the cloud-backed buffer');
+    assert.equal(compact.lines.filter(s=>/CLA RESULT/.test(s)).length, 1,
+      'legacy Practice display grouping must not invent completed match results');
     const matchAt = compact.lines.findIndex(s=>s.includes('( CLA RESULT )'));
     const latestAt = compact.lines.findIndex(s=>s.includes('Chris (431)'));
     assert.equal(matchAt, latestAt - 1, 'completed match result must precede its deciding game');
@@ -802,8 +819,8 @@ fs.mkdirSync(out, { recursive: true });
     assert.equal(compact.oldMedalText,0,'text medals must not remain visible');
     assert.match(compact.medalA11y,/first place Chris.*second place James/i);
     assert.equal(compact.rowCount,15,'printer must retain all 15 stable row nodes');
-    assert.equal(compact.linked.length,3,
-      'only the three consecutive match-A game rows should receive a faint connector');
+    assert.equal(compact.linked.length,6,
+      'the actual Classic match and three adjacent Practice results form separate visual runs');
     assert(compact.linked.every(x=>/Chris\s*\(/.test(x)),
       'connector may not bridge a new match/mode');
     assert(compact.times.length >= 1 &&
