@@ -14061,11 +14061,25 @@ function __sqBindQuickEntryHold(btn, specFactory){
 }
 
 let __sqMissBouncePendingCancel = null;
+let __sqBounceOutPadFlashTimer = null;
+function __sqClearBounceOutPadFlash(){
+  if (__sqBounceOutPadFlashTimer !== null) clearTimeout(__sqBounceOutPadFlashTimer);
+  __sqBounceOutPadFlashTimer = null;
+  try{ document.getElementById('padBar')?.classList.remove('sq-bounce-out-flash'); }catch(_){}
+}
+function __sqFlashBounceOutPad(){
+  const pad = document.getElementById('padBar');
+  if (!pad) return;
+  __sqClearBounceOutPadFlash();
+  try{ pad.classList.remove('sq-bounce-out-flash'); void pad.offsetWidth; pad.classList.add('sq-bounce-out-flash'); }catch(_){ return; }
+  __sqBounceOutPadFlashTimer = setTimeout(__sqClearBounceOutPadFlash, 520);
+}
 function __sqCancelMissBounceFeedback(){
   const cancel = __sqMissBouncePendingCancel;
   __sqMissBouncePendingCancel = null;
   try{ cancel?.(); }catch(_){}
   try{ window.__sqDmdV2?.cancelBounceOut?.(); }catch(_){}
+  __sqClearBounceOutPadFlash();
 }
 
 function __sqBindMissBounceHold(btn){
@@ -14128,6 +14142,7 @@ function __sqBindMissBounceHold(btn){
       const receipt = history[historyLength];
       if (state !== game || state.history !== history || history.length !== historyLength + 1 || receipt?.throw?.bounceOut !== true) return;
       try{ window.__sqDmdV2?.emit?.({ kind:'BOUNCE_OUT' }); }catch(_){}
+      try{ __sqFlashBounceOutPad(); }catch(_){}
       try{ navigator.vibrate?.(35); }catch(_){}
     };
     holdStartedAt = performance.now();
@@ -23175,7 +23190,7 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
-  const RUNNING_VERSION = '0.14.3';
+  const RUNNING_VERSION = '0.14.9';
   const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
   let updateCheckPromise = null;
@@ -24456,7 +24471,10 @@ if(hsBody){
 	        };
 	      };
 
-	      const lpParseMatchResultLine = (line) => {
+	      const lpModeHeading = line => /^(CLASSIC|TURBO|PRACTICE)$/i.test(String(line||'').trim()) ? String(line).trim().toUpperCase() : '';
+        const lpMedal = medal => ({gold:'🥇',silver:'🥈',bronze:'🥉'}[medal] || '');
+        const lpPlace = medal => ({gold:'first place',silver:'second place',bronze:'third place'}[medal] || '');
+        const lpParseMatchResultLine = (line) => {
 	        const text = String(line == null ? '' : line).replace(/\s+/g, ' ').trim();
 	        const m = text.match(/^\(\s*(CLA|TBO)\s+RESULT\s*\)\s*\/\s*(.+)$/i) ||
 	          text.match(/^(CLA|TBO)\s+RESULT\s*\/\s*(.+)$/i);
@@ -24478,7 +24496,7 @@ if(hsBody){
 	          return { medal, label, name: String(pm[2] || '').trim() };
 	        }).filter(x => x && x.name);
 	        if (!placements.length) return null;
-	        return { abbr, label: `( ${abbr} RESULT )`, placements };
+	        return { abbr, label:'MATCH RESULT', placements };
 	      };
 
 	      const lpParseBeerAlertLine = (line) => {
@@ -24509,17 +24527,20 @@ if(hsBody){
 	      };
 
 	      const lpDisplayText = (line) => {
-	        const parsed = lpParseResultLine(line);
-	        if (parsed) return `${parsed.abbr} / ${parsed.time} ${parsed.scoreline}`.trim();
-	        const match = lpParseMatchResultLine(line);
-	        if (match) {
-	          const parts = match.placements.map(p => `${p.medal.toUpperCase()} ${p.name}`);
-	          return `${match.label} / ${parts.join(', ')}`;
-	        }
-	        const alert = lpParseBeerAlertLine(line);
-	        if (alert) return `${alert.label} ${alert.copy}`.trim();
-	        return String(line == null ? '' : line);
-	      };
+          const heading = lpModeHeading(line);
+          if (heading) return heading;
+          const parsed = lpParseResultLine(line);
+          if (parsed) return `${parsed.time} ${parsed.scoreline}`.trim();
+          const match = lpParseMatchResultLine(line);
+          if (match) {
+            const mode = match.abbr === 'TBO' ? 'Turbo' : 'Classic';
+            return `${mode} match result: ` +
+              match.placements.map(p => `${lpPlace(p.medal)} ${p.name}`).join(', ');
+          }
+          const alert = lpParseBeerAlertLine(line);
+          if (alert) return `${alert.label} ${alert.copy}`.trim();
+          return String(line == null ? '' : line);
+        };
 
 	      const lpAppendTextSpan = (parent, className, text) => {
 	        const span = document.createElement('span');
@@ -24529,29 +24550,48 @@ if(hsBody){
 	        return span;
 	      };
 
-	      const lpSetLineContent = (el, line) => {
+	      const lpAppendScoreline = (parent, scoreline) => {
+          const whole = String(scoreline || '');
+          const bts = whole.match(/\s+bts\s+/i);
+          const first = bts ? whole.slice(0, bts.index) : '';
+          const span = lpAppendTextSpan(parent, 'lp-scoreline', '');
+          // The feed's explicit "bts" result identifies the winner; never
+          // infer a winner from a solo or otherwise ambiguous scoreline.
+          if (bts && /^.+\s\(\d+\)$/.test(first)) {
+            lpAppendTextSpan(span, 'lp-winning-score', first);
+            span.appendChild(document.createTextNode(whole.slice(bts.index)));
+          } else span.textContent = whole;
+          return span;
+        };
+        const lpSetLineContent = (el, line) => {
 	        if (!el) return;
 	        const parsed = lpParseResultLine(line);
-	        const match = parsed ? null : lpParseMatchResultLine(line);
-	        const alert = (!parsed && !match) ? lpParseBeerAlertLine(line) : null;
+          const heading = parsed ? '' : lpModeHeading(line);
+          const match = (parsed || heading) ? null : lpParseMatchResultLine(line);
+          const alert = (!parsed && !match && !heading) ? lpParseBeerAlertLine(line) : null;
 	        const record = (!parsed && !match && !alert) ? lpParseRecordLine(line) : null;
 	        el.textContent = '';
 	        try{ el.removeAttribute('aria-label'); }catch(_e){}
-	        el.classList.toggle('lp-structured', !!(parsed || match || alert || record));
+	        el.classList.toggle('lp-structured', !!(parsed || match || alert || record || heading));
 	        el.classList.toggle('lp-matchline', !!match);
 	        el.classList.toggle('lp-alertline', !!alert);
 	        el.classList.toggle('lp-recordline', !!record);
-	        if (match) {
+          el.classList.toggle('lp-modeheading', !!heading);
+          if (heading) {
+            lpAppendTextSpan(el, 'lp-mode lp-mode-heading', heading);
+            return;
+          }
+          if (match) {
 	          el.setAttribute('aria-label', lpDisplayText(line));
 	          lpAppendTextSpan(el, 'lp-result-chip', match.label);
-	          lpAppendTextSpan(el, 'lp-mode-sep', '/');
+          lpAppendTextSpan(el, 'lp-mode-sep', '—');
 	          const wrap = lpAppendTextSpan(el, 'lp-medal-list', '');
-	          match.placements.forEach((p, idx) => {
-	            if (idx) wrap.appendChild(document.createTextNode(', '));
-	            lpAppendTextSpan(wrap, 'lp-medal-name', p.name);
-	            wrap.appendChild(document.createTextNode(' '));
-	            lpAppendTextSpan(wrap, `lp-medal-chip lp-medal-${p.medal}`, p.label || p.medal.toUpperCase());
-	          });
+	          match.placements.forEach(p => {
+              const entry = lpAppendTextSpan(wrap, 'lp-medal-entry', '');
+              const icon = lpAppendTextSpan(entry, 'lp-medal-icon', lpMedal(p.medal));
+              icon.setAttribute('aria-hidden', 'true');
+              lpAppendTextSpan(entry, 'lp-medal-name', p.name);
+            });
 	          return;
 	        }
 	        if (alert) {
@@ -24572,11 +24612,9 @@ if(hsBody){
 	        }
 	        el.setAttribute('aria-label', lpDisplayText(line));
 	        const meta = lpAppendTextSpan(el, 'lp-game-meta', '');
-	        lpAppendTextSpan(meta, 'lp-mode', parsed.abbr);
-	        lpAppendTextSpan(meta, 'lp-mode-sep', '/');
 	        lpAppendTextSpan(meta, 'lp-time', parsed.time);
-	        const result = lpAppendTextSpan(el, 'lp-result', '');
-	        lpAppendTextSpan(result, 'lp-scoreline', parsed.scoreline);
+          const result = lpAppendTextSpan(el, 'lp-result', '');
+          lpAppendScoreline(result, parsed.scoreline);
 	      };
 
 	const lpUpdateMeta = async (games) => {
@@ -24611,7 +24649,7 @@ if(hsBody){
       };
 	      const lpType = (el, text, speedMs = 28, onDone = null) => {
 	        if (!el) return;
-	        try{ el.classList.remove('lp-structured', 'lp-matchline', 'lp-alertline', 'lp-recordline'); el.removeAttribute('aria-label'); }catch(_e){}
+	        try{ el.classList.remove('lp-structured', 'lp-matchline', 'lp-alertline', 'lp-recordline', 'lp-modeheading'); el.removeAttribute('aria-label'); }catch(_e){}
 	        el.textContent = '';
 	        let i = 0;
 	        const t = String(text || '');
@@ -24646,8 +24684,8 @@ if(hsBody){
 	          return;
 	        }
 
-	        // Game rows are structured from the first typed character. Type the
-	        // mode/time line completely, then begin the scoreline underneath.
+	        // Keep structured rows throughout typing. Print the time first and
+	        // then type the compact inline player scoreline beside it.
 	        el.textContent = '';
 	        try{
 	          el.classList.add('lp-structured');
@@ -24656,12 +24694,10 @@ if(hsBody){
 	        }catch(_e){}
 	        const meta = lpAppendTextSpan(el, 'lp-game-meta', '');
 	        const result = lpAppendTextSpan(el, 'lp-result', '');
-	        const metaText = `${parsed.abbr} / ${parsed.time}`;
+	        const metaText = parsed.time;
 
 	        lpType(meta, metaText, speedMs, () => {
 	          meta.textContent = '';
-	          lpAppendTextSpan(meta, 'lp-mode', parsed.abbr);
-	          lpAppendTextSpan(meta, 'lp-mode-sep', '/');
 	          lpAppendTextSpan(meta, 'lp-time', parsed.time);
 	          const score = lpAppendTextSpan(result, 'lp-scoreline', '');
 	          lpType(score, parsed.scoreline, speedMs, () => {
@@ -24726,7 +24762,8 @@ if(hsBody){
 	        const isBeerAlert = lpIsBeerAlertLine(line);
 	        const isAlert = lpIsAlertLine(line);
 	        const isDateHdr = lpIsDateHdrLine(line);
-	        const modeInfo = (!isAlert && !isDateHdr) ? lpModeDisplayFromLine(line) : { mode: '' };
+          const heading = lpModeHeading(line);
+          const modeInfo = (!isAlert && !isDateHdr && !heading) ? lpModeDisplayFromLine(line) : { mode:heading.toLowerCase() };
 	        tr.classList.toggle('lp-record', isRecord);
 	        tr.classList.toggle('lp-world-record', isWorldRecord);
 	        tr.classList.toggle('lp-roundpb', isRoundPB);
@@ -24735,6 +24772,7 @@ if(hsBody){
 	        tr.classList.toggle('lp-alert-row', isBeerAlert);
 	        tr.classList.toggle('lp-alert', isAlert);
 	        tr.classList.toggle('lp-datehdr', isDateHdr);
+          tr.classList.toggle('lp-modehdr', !!heading);
 	        tr.classList.toggle('lp-practice', modeInfo.mode === 'practice');
 	        tr.classList.toggle('lp-turbo', modeInfo.mode === 'turbo');
 	        tr.classList.toggle('lp-classic', modeInfo.mode === 'classic');
@@ -24752,6 +24790,27 @@ if(hsBody){
 	        }catch(_e){}
 	      };
 
+      const lpConnectVisibleGameRows = (rows, lines) => {
+          const cells = Array.isArray(lines) ? lines : [];
+          rows.forEach(row => row.classList.remove('lp-group-linked'));
+          let run = [];
+          const flush = () => {
+            if (run.length >= 2) run.forEach(i => rows[i]?.classList.add('lp-group-linked'));
+            run = [];
+          };
+          cells.forEach((line, index) => {
+            if (lpParseResultLine(line)) { run.push(index); return; }
+            if (lpModeHeading(line) || lpIsDateHdrLine(line) || !String(line||'').trim()) {
+              flush(); return;
+            }
+            // The match result and PB/WR/alert are contextual annotations, not
+            // competing matches. They do not disconnect a single group's rail.
+            if (lpIsMatchResultLine(line) || lpIsRecordLine(line) || lpIsRoundPBLine(line) ||
+                lpIsGamePBLine(line) || lpIsBeerAlertLine(line) || lpIsAlertLine(line)) return;
+            flush();
+          });
+          flush();
+        };
       const lpRoundKey = (roundIndex) => {
         const r = Number(roundIndex);
         if (r >= 0 && r <= 10) return `${10 + r}s`;
@@ -25004,6 +25063,11 @@ if(hsBody){
         if (Array.isArray(st.derivedItems) && st.derivedItems.length && st.derivedFetchedAt && (now - st.derivedFetchedAt) < derivedTtlMs) {
           return st.derivedItems;
         }
+        // Stats covers Home; keep prior derived records until its normal poll
+        // can rebuild them without starting full history behind the modal.
+        if (document.querySelector('.sq-player-stats-directory, .sq-player-stats-hub, .sq-player-stats-content')) {
+          return Array.isArray(st.derivedItems) ? st.derivedItems : [];
+        }
         let events = [];
         try{
           // Records shown in VIDE must come from persistent cloud truth only.
@@ -25194,6 +25258,7 @@ if(hsBody){
           lpApplyRowClasses(tr, line);
           if (sp) lpSetLineContent(sp, line);
         });
+        lpConnectVisibleGameRows(rows, lines || []);
         lpFitRowsToViewport();
       };
 
@@ -25276,11 +25341,12 @@ if(hsBody){
 	          if (!sp) return;
 	          const line = winDisp[i] ?? '—';
 	          if (!opts.skipLastType || i < LP_VISIBLE - 1) {
-	            lpApplyRowClasses(tr, line);
-	            lpSetLineContent(sp, line);
-	          }
-	        });
-        lpFitRowsToViewport();
+              lpApplyRowClasses(tr, line);
+              lpSetLineContent(sp, line);
+            }
+          });
+          lpConnectVisibleGameRows(rows, winDisp);
+          lpFitRowsToViewport();
 	      };
       const lpScrollStep = () => {
         const st = window.__homeLivePrinterState;
@@ -25361,8 +25427,9 @@ if(hsBody){
 	          } else {
               lpFitRowsToViewport();
             }
-	        });
-	      };
+          lpConnectVisibleGameRows(rows2, st.displayLines);
+        });
+      };
       const lpAnimateNewBottom = (bufLines) => {
         const tbody = document.getElementById('homeLivePrinterRows');
         if (!tbody) return;
@@ -25404,6 +25471,7 @@ if(hsBody){
           } else {
             lpFitRowsToViewport();
           }
+          lpConnectVisibleGameRows(rows2, winNew);
         });
       };
       const lpSync = async (forceFull = false) => {
@@ -25516,7 +25584,20 @@ if(hsBody){
           try { if (hold) hold.style.display = 'none'; } catch(_e){}
 
           const _lpGetTs = (g) => g.event_ts || g.ts || g.created_at || g.createdAt;
-          const sorted = items.slice().sort((a,b) => (new Date(_lpGetTs(b))).getTime() - (new Date(_lpGetTs(a))).getTime());
+          const sorted = items.slice().sort((a,b) => new Date(_lpGetTs(b) || 0).getTime() - new Date(_lpGetTs(a) || 0).getTime());
+          // Retain the original timestamps/source items. Reposition each proven
+          // match result immediately ahead of that match's latest visible game.
+          sorted.filter(it => it?.event_kind === 'match_result').forEach(result => {
+            const id = String(result.match_id || '').trim();
+            if (!id) return;
+            const current = sorted.indexOf(result);
+            const game = sorted.findIndex(it => it !== result && it?.event_kind !== 'match_result' &&
+              String(it?.match_id || it?.matchId || '').trim() === id &&
+              Array.isArray(it?.players) && it.winner_score != null);
+            if (game < 0 || current === game - 1) return;
+            sorted.splice(current, 1);
+            sorted.splice(game > current ? game - 1 : game, 0, result);
+          });
           const HIDE_KINDS = new Set();
           const filtered = sorted.filter(it => !(it && it.event_kind && HIDE_KINDS.has(it.event_kind)));
           // >>> PATCH:LIVE_PRINTER_DATE_HEADERS START
@@ -25542,21 +25623,54 @@ if(hsBody){
             return s;
           };
 
+          const _lpIsGameItem = it => it && !it.event_kind && Array.isArray(it.players) && it.winner_score != null;
+          const _lpGroupForGame = it => {
+            const mode = lpIsPracticeGame(it) ? 'PRACTICE' : (lpIsTurboGame(it) || it.isTurbo ? 'TURBO' : 'CLASSIC');
+            const matchId = String(it.match_id || it.matchId || '').trim();
+            const roster = it.players.map(p => String(typeof p === 'string' ? p :
+              (p?.id || p?.player_id || p?.name || p?.nickname || '')
+            ).trim().toLowerCase()).filter(Boolean).sort();
+            // Practice headings group a consecutive same-roster run per day,
+            // including older standalone games with different match IDs.
+            // Classic/Turbo keep real match boundaries; no stored IDs change.
+            const key = mode === 'PRACTICE' && roster.length
+              ? 'practice-roster:' + roster.join('|')
+              : (matchId ? 'match:' + matchId : 'players:' + (roster.join('|') || lpSig(it)));
+            return { mode, key:mode + '/' + key + '/' + roster.join('|') };
+          };
+          const matchGroups = new Map();
+          filtered.forEach(it => {
+            if (!_lpIsGameItem(it)) return;
+            const id = String(it.match_id || it.matchId || '').trim();
+            if (id && !matchGroups.has(id)) matchGroups.set(id, _lpGroupForGame(it));
+          });
           const lines = [];
-          let _lpLastKey = null;
-          filtered.forEach(it=>{
+          let _lpLastKey = null, activeGroup = '';
+          filtered.forEach(it => {
             const ts = _lpGetTs(it);
             const d = ts ? new Date(ts) : null;
-            const key = d ? (d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate()) : null;
-            if(key && key !== _lpLastKey){
-              if (_lpLastKey === null) lines.push('');
-              else lines.push('');
+            const key = d && !isNaN(d.getTime()) ? (d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate()) : null;
+            if (key && key !== _lpLastKey) {
+              lines.push('');
               lines.push(_lpFmtHeader(d));
               _lpLastKey = key;
+              activeGroup = '';
+            }
+            let group = null;
+            if (_lpIsGameItem(it)) group = _lpGroupForGame(it);
+            else if (it?.event_kind === 'match_result') {
+              const id = String(it.match_id || '').trim();
+              const mode = lpParseMatchResultLine(it.line_text || '')?.abbr === 'TBO' ? 'TURBO' : 'CLASSIC';
+              group = matchGroups.get(id) || { mode, key:mode + '/match:' + id };
+            }
+            if (group && group.key !== activeGroup) {
+              lines.push(group.mode);
+              activeGroup = group.key;
             }
             lines.push(_lpStripDate(lpFmtLine(it)));
             const beerAlert = lpBeerAlertLineForGame(it);
             if (beerAlert) lines.push(beerAlert);
+            if (it?.event_kind === 'new_player') activeGroup = '';
           });
           // <<< PATCH:LIVE_PRINTER_DATE_HEADERS END
 
@@ -28870,9 +28984,30 @@ const SQ_XP = {
   },
   async forName(name, force){ return this._one('name', name, force); },
   async forNameState(name, force){
+    const raw = String(name || '').trim();
+    const key = 'name:' + raw.toLowerCase();
+    const before = this._oneCache.get(key);
     const row = await this.forName(name, force);
-    const key = 'name:' + String(name || '').trim().toLowerCase();
-    return { available:!!this._oneAvailable.get(key), row };
+    const available = !!this._oneAvailable.get(key);
+    const one = this._oneCache.get(key);
+    const now = Date.now();
+    const allAge = now - this._cacheAt;
+    const freshEmpty = one && one.row == null && (now - one.at) < 60000;
+    // A selected read remains independent. Reuse only an already successful
+    // fresh directory row when this non-forced result became unavailable.
+    if (!available && !force && raw && one === before && !freshEmpty &&
+        this._allAvailable && Array.isArray(this._cache) && this._cacheAt > 0 &&
+        allAge >= 0 && allAge < 60000){
+      const cached = this._cache.find(value => String((value && value.name) || '').trim().toLowerCase() === raw.toLowerCase());
+      const numeric = value => (typeof value === 'number' && Number.isFinite(value)) ||
+        (typeof value === 'string' && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim()) && Number.isFinite(Number(value)));
+      const id = cached && cached.player_id;
+      if (cached && typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) &&
+          numeric(cached.total_xp) && numeric(cached.misfire_xp)){
+        return { available:true, row:cached, origin:'fresh-directory-cache' };
+      }
+    }
+    return { available, row };
   },
   async forPlayerId(playerId, force){ return this._one('player_id', playerId, force); },
   fmt(n){ return (Number(n) || 0).toLocaleString(); }
@@ -29886,7 +30021,11 @@ function __sqPlayerStatsHistory(name, primary, retry=false){
     }
     return history[key];
   };
-  return { positive:source('positive', SQ_ACH), misfires:source('misfires', SQ_MISFIRE) };
+  const sources = { positive:source('positive', SQ_ACH), misfires:source('misfires', SQ_MISFIRE) };
+  if (typeof primary.historyReadyResolve === 'function'){
+    primary.historyReadyResolve(); primary.historyReadyResolve = null;
+  }
+  return sources;
 }
 
 async function __sqBuildPlayerAchievementsView(name, primary={}){
@@ -29944,6 +30083,7 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, 
   const footer = document.createElement('div'); footer.className = 'modal-footer';
   footer.style.cssText = 'justify-content:flex-start;gap:10px;flex-shrink:0;';
   let returned = false;
+  const mayStartSecondaries = () => !returned && overlay.isConnected;
   const returnToHub = () => {
     if (returned) return;
     returned = true;
@@ -29956,6 +30096,7 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, 
   footer.appendChild(backBtn);
   __sqPlayerStatsSourceMessage(body, 'Loading player statistics…');
   modal.append(body, footer); overlay.appendChild(modal); document.body.appendChild(overlay);
+  if (typeof opts.onOpen === 'function') opts.onOpen(overlay);
   __sqStatsArcade(overlay, modal);
   // SC-028: both child controls return to the profile hub; hub Close exits.
   const closeBtn = document.createElement('button'); closeBtn.className = 'btn sq-pill'; closeBtn.textContent = 'Close';
@@ -29967,8 +30108,8 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, 
   try{
     const tab = Number(opts.tab) || 0;
     const xpHost = tab === 1 ? __sqPlayerStatsXpHost(name, false, opts.primary) : null;
-    if (tab === 0 && !opts.view){
-      opts.primary = opts.primary || __sqPlayerStatsPrimary(name);
+    if (tab === 0 && !(opts.view && opts.view.profile)){
+      opts.primary = opts.primary || __sqPlayerStatsPrimary(name, mayStartSecondaries);
       const primaryCard = __sqPlayerStatsPrimaryMetrics(name, opts.primary);
       const phase = document.createElement('div'); __sqPlayerStatsSourceMessage(phase, opts.primary.phase);
       opts.primary.phaseNodes.add(phase.querySelector('[role=status]'));
@@ -29978,7 +30119,7 @@ window.openPlayerStatsDialog = async function openPlayerStatsDialog(playerName, 
       ? { showTab(mount){ mount.replaceChildren(xpHost); } }
       : (tab === 2 && !(opts.view && opts.view.achievementHistoryAvailable)
         ? await __sqBuildPlayerAchievementsView(name, opts.primary)
-        : (opts.view || await __sqStatsSourceDeadline(__sqBuildPlayerStatsProfile(name, opts.primary), 15000)));
+        : (opts.view ? await opts.view : await __sqStatsSourceDeadline(__sqBuildPlayerStatsProfile(name, opts.primary, mayStartSecondaries), 15000)));
     if (returned || !overlay.isConnected) return;
     view.showTab(body, tab);
   }catch(e){
@@ -30328,13 +30469,32 @@ async function __sqPlayerStatsRankSource(name){
   return { available, dbPower, savedRows };
 }
 
-function __sqPlayerStatsPrimary(name){
-  const games = __sqPlayerStatsGameSummary(name); games.catch(() => {});
-  return {
-    xp:SQ_XP.forNameState(name),
+function __sqPlayerStatsPrimary(name, mayStartSecondaries){
+  const xp = SQ_XP.forNameState(name);
+  const settled = xp.then(() => {}, () => {});
+  let primary;
+  const start = source => settled.then(async () => {
+    if (typeof mayStartSecondaries !== 'function' || !mayStartSecondaries()){
+      throw new Error('Player statistics request is no longer active');
+    }
+    if (primary.historyReady) await primary.historyReady;
+    if (typeof mayStartSecondaries !== 'function' || !mayStartSecondaries()){
+      throw new Error('Player statistics request is no longer active');
+    }
+    const histories = __sqPlayerStatsHistory(name, primary);
+    await Promise.allSettled([histories.positive, histories.misfires]);
+    if (typeof mayStartSecondaries !== 'function' || !mayStartSecondaries()){
+      throw new Error('Player statistics request is no longer active');
+    }
+    return source(name);
+  });
+  const games = start(__sqPlayerStatsGameSummary); games.catch(() => {});
+  const rank = start(__sqPlayerStatsRankSource); rank.catch(() => {});
+  return primary = {
+    xp,
     phase:'Loading player statistics…', phaseNodes:new Set(),
     games,
-    rank:__sqPlayerStatsRankSource(name)
+    rank
   };
 }
 
@@ -30372,8 +30532,8 @@ function __sqPlayerStatsPrimaryMetrics(name, primary){
   return tiles;
 }
 
-function __sqPlayerStatsHubShell(name){
-  const primary = __sqPlayerStatsPrimary(name);
+function __sqPlayerStatsHubShell(name, mayStartSecondaries){
+  const primary = __sqPlayerStatsPrimary(name, mayStartSecondaries);
   const profile = document.createElement('div'); profile.setAttribute('aria-busy', 'true');
   profile.appendChild(__sqPlayerStatsHero(String(name || '').trim() || 'Player', '', __sqPlayerStatsPrimaryMetrics(name, primary), primary));
   const phase = document.createElement('p'); phase.className = 'muted pp-profile-phase'; phase.setAttribute('role', 'status');
@@ -30384,11 +30544,11 @@ function __sqPlayerStatsHubShell(name){
 }
 
 // @CANONICAL:PLAYER_STATS_PROFILE_CARDS
-async function __sqBuildPlayerStatsProfile(name, primary=null){
+async function __sqBuildPlayerStatsProfile(name, primary=null, mayStartSecondaries=null){
   // Supabase client and all calculations below retain their existing sources.
   const SB = (typeof window !== 'undefined') ? (window.sb || window.__sb || window.supabase || window.supabaseClient || null) : null;
-  // Warm independent canonical sources without making Stats wait for them.
-  primary = primary || __sqPlayerStatsPrimary(name);
+  // Preserve canonical sources; automatic games/rank reads wait for initial XP.
+  primary = primary || __sqPlayerStatsPrimary(name, mayStartSecondaries);
   const xpSource = primary.xp;
   let xpRow = null;
   xpSource.then(source => { if (source.available) xpRow = source.row; });
@@ -30416,6 +30576,9 @@ async function __sqBuildPlayerStatsProfile(name, primary=null){
   // Turbo games are excluded here so the whole profile is Standard-Official
   // only ("official" fetch alone doesn't strip Turbo).
   const { __allGamesNorm, games, scores, GAMES, TOTAL, AVG, PB, LOW } = await primary.games;
+  if (typeof mayStartSecondaries === 'function' && !mayStartSecondaries()){
+    throw new Error('Player statistics request is no longer active');
+  }
   // Preserve the existing empty state without inventing profile values.
   if (!games.length){
     const profile = document.createElement('div');
@@ -30913,7 +31076,7 @@ if (Array.isArray(myThrowsFromBoards) && myThrowsFromBoards.length) {
     const notice = () => {
       const host = document.createElement('div');
       __sqPlayerStatsSourceMessage(host, 'Some analytics are unavailable: ' + unavailableSources.join(', ') + '.', () => {
-        host.closest('.modal-backdrop')?.remove(); openPlayerStatsHub(name);
+        host.closest('.modal-backdrop')?.remove(); openPlayerStatsHub(name, { retryAnalytics:true });
       });
       return host;
     };
@@ -31076,9 +31239,8 @@ window.openXpLeaderboard = async function openXpLeaderboard(){
 // first, then openPlayerStatsHub(name) opens the stat-views menu for them.
 window.openPlayerStatsSelect = function openPlayerStatsSelect(){
   var esc = function(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
-  // Warm the caches so the hub + profile open instantly after a name is picked.
+  // Warm player names for the directory; full games load with the profile.
   try{ if (typeof cloudListPlayers === 'function') cloudListPlayers().catch?.(function(){}); }catch(_){ }
-  try{ if (typeof cloudFetchAllGamesAsLocal === 'function') cloudFetchAllGamesAsLocal().catch(function(){}); }catch(_){ }
 
   var overlay = document.createElement('div'); overlay.className = 'modal-backdrop';
   var modal = document.createElement('div'); modal.className = 'modal menu-modal sq-player-stats-directory';
@@ -31128,6 +31290,8 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
     // XP sorting is secondary. The alphabetical directory mounts first.
     var xpByName = {};
     var xpAvailable = false;
+    var xpRequested = false;
+    var topIntent = false;
     var xpOf = function(pl){ return xpByName[String(pl.name || '').trim().toLowerCase()] || 0; };
 
     var av = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>';
@@ -31145,7 +31309,16 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
     chipDefs.forEach(function(c){
       var b = document.createElement('button'); b.type = 'button'; b.className = 'ps-pick-chip' + (c[0] === 'all' ? ' active' : '');
       b.textContent = c[1]; b.dataset.f = c[0];
-      b.onclick = function(){ filter = c[0]; Object.keys(chipEls).forEach(function(k){ chipEls[k].classList.toggle('active', k === filter); }); render(); };
+      b.onclick = function(){
+        if (!overlay.isConnected) return;
+        if (c[0] === 'top' && !xpAvailable){
+          topIntent = true;
+          if (!xpRequested) loadXpRanks(false);
+          return;
+        }
+        topIntent = false;
+        filter = c[0]; Object.keys(chipEls).forEach(function(k){ chipEls[k].classList.toggle('active', k === filter); }); render();
+      };
       chipEls[c[0]] = b; chips.appendChild(b);
     });
     controls.append(search, chips);
@@ -31156,6 +31329,7 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
       var button = document.createElement('button'); button.type = 'button'; button.textContent = letter;
       button.setAttribute('aria-label', 'Jump to names beginning with ' + letter);
       button.onclick = function(){
+        topIntent = false;
         if (filter === 'top') {
           filter = 'all'; Object.keys(chipEls).forEach(function(k){ chipEls[k].classList.toggle('active', k === filter); }); render();
         }
@@ -31223,6 +31397,8 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
     }
     render();
     var loadXpRanks = async function(force){
+      if (!overlay.isConnected) return;
+      xpRequested = true;
       chipEls.top.disabled = true; xpFeedback.textContent = 'Loading XP rankings…';
       var rows;
       try{ rows = await SQ_XP.all(force); xpAvailable = !!SQ_XP._allAvailable; }catch(_){ xpAvailable = false; }
@@ -31231,6 +31407,10 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
         xpByName = {};
         (rows || []).forEach(function(row){ xpByName[__sqPlayerStatsKey(row.name)] = Number(row.total_xp) || 0; });
         xpFeedback.textContent = ''; chipEls.top.disabled = false;
+        if (topIntent){
+          topIntent = false; filter = 'top';
+          Object.keys(chipEls).forEach(function(k){ chipEls[k].classList.toggle('active', k === filter); });
+        }
         if (filter === 'top') render();
       } else {
         xpFeedback.textContent = 'XP rankings unavailable. ';
@@ -31238,11 +31418,10 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
         xpFeedback.appendChild(retry);
       }
     };
-    loadXpRanks(false);
   })();
 };
 
-window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
+window.openPlayerStatsHub = function openPlayerStatsHub(playerName, options){
   var __fromPicker = !!String(playerName || '').trim();
   try{ if (typeof __sqSetStatsOrigin==='function') __sqSetStatsOrigin('home', playerName); }catch(_){ }
   try{ console.debug('[Popup]', window.__sqStatsDebugName || 'New Game Screen Stats'); }catch(_){ }
@@ -31326,12 +31505,25 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
 
   let profileRequest = 0;
   let profileHydrateTimer = 0;
+  let releaseProfileHistory = () => {};
+  let retryAnalyticsPending = !!(options && options.retryAnalytics);
   const syncPlayerHeader = async () => {
     const n = String(currentName || playerSelect.value || '').trim();
     if (n && playerSelect.value !== n) playerSelect.value = n;
     const request = ++profileRequest;
+    releaseProfileHistory();
     clearTimeout(profileHydrateTimer);
-    let hydration = null, activeTab = 0;
+    let hydration = null, hydratedView = null, activeTab = 0, sharedChild = null;
+    const retryAnalytics = retryAnalyticsPending; retryAnalyticsPending = false;
+    const getStatsView = () => {
+      if (!hydration){
+        hydration = __sqStatsSourceDeadline(__sqBuildPlayerStatsProfile(n, shell.primary, () =>
+          request === profileRequest && ((retryAnalytics && overlay.isConnected) ||
+            (activeTab === 0 && !!(sharedChild && sharedChild.isConnected)))), 15000)
+          .then(view => { hydratedView = view; return view; }, error => { hydration = null; throw error; });
+      }
+      return hydration;
+    };
     const wireView = (view, hydrated) => {
       if (request !== profileRequest || !overlay.isConnected || !view || !view.profile) return;
       profileHost.replaceChildren(view.profile);
@@ -31343,36 +31535,71 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
           (view.tabs || []).forEach((control, index) => control.classList.toggle('active', index === tab));
           clearTimeout(profileHydrateTimer);
           overlay.remove();
-          openPlayerStatsDialog(n, { view: hydrated ? view : null, primary:view.primary, tab, onReturn: () => {
+          openPlayerStatsDialog(n, { view: tab === 0 ? getStatsView() : (hydrated ? view : null), primary:view.primary, tab, onOpen: child => { sharedChild = child; }, onReturn: () => {
+            sharedChild = null;
             if (request !== profileRequest) return;
-            if (view.primary && view.primary.xp !== presentedXp){
-              view.profile.querySelector('.pp-progression')?.replaceWith(__sqPlayerStatsXpHost(n, true, view.primary));
-              presentedXp = view.primary.xp;
+            if ([...document.querySelectorAll('.sq-player-stats-hub')].some(hub => hub.isConnected && !overlay.contains(hub))){
+              clearTimeout(profileHydrateTimer);
+              ++profileRequest;
+              releaseHistory();
+              return;
+            }
+            const returnedView = hydratedView || view;
+            if (returnedView !== view){
+              const hero = view.profile.querySelector('.pp-hero');
+              if (hero) returnedView.profile.querySelector('.pp-hero')?.replaceWith(hero);
+            }
+            if (returnedView.primary && returnedView.primary.xp !== presentedXp){
+              returnedView.profile.querySelector('.pp-progression')?.replaceWith(__sqPlayerStatsXpHost(n, true, returnedView.primary));
+              presentedXp = returnedView.primary.xp;
             }
             document.body.appendChild(overlay);
-            modal.focus(); button.focus();
-            if (!hydrated) scheduleHydration();
+            modal.focus();
+            wireView(returnedView, !!hydratedView || hydrated);
+            (returnedView.tabs || [])[activeTab]?.focus();
+            if (!hydratedView && !hydrated) scheduleHydration();
           } });
         };
       });
     };
-    const shell = __sqPlayerStatsHubShell(n);
+    const shell = __sqPlayerStatsHubShell(n, () => request === profileRequest &&
+      (overlay.isConnected || !!(sharedChild && sharedChild.isConnected)));
+    shell.primary.historyReady = new Promise(resolve => { shell.primary.historyReadyResolve = resolve; });
+    const releaseHistory = () => {
+      if (typeof shell.primary.historyReadyResolve === 'function'){
+        shell.primary.historyReadyResolve(); shell.primary.historyReadyResolve = null;
+      }
+    };
+    releaseProfileHistory = releaseHistory;
     const scheduleHydration = () => {
       clearTimeout(profileHydrateTimer);
       profileHydrateTimer = setTimeout(async () => {
         // Do not start secondary reads for a closed or superseded profile.
-        if (request !== profileRequest || !overlay.isConnected) return;
+        if (request !== profileRequest || !overlay.isConnected){
+          if (!(request === profileRequest && sharedChild && sharedChild.isConnected)) releaseHistory();
+          return;
+        }
         try{
           // SC-063: protect the critical progression/history reads from the
           // heavier target-analytics burst. These promises already have their
           // own truthful timeout/error states; this only controls ordering.
           try{ await shell.primary.xp; }catch(_){}
-          if (request !== profileRequest || !overlay.isConnected) return;
+          if (request !== profileRequest || !overlay.isConnected){
+            if (!(request === profileRequest && sharedChild && sharedChild.isConnected)) releaseHistory();
+            return;
+          }
           const criticalHistory = __sqPlayerStatsHistory(n, shell.primary);
           await Promise.allSettled([criticalHistory.positive, criticalHistory.misfires]);
           if (request !== profileRequest || !overlay.isConnected) return;
-          hydration = hydration || __sqStatsSourceDeadline(__sqBuildPlayerStatsProfile(n, shell.primary), 15000);
-          wireView(await hydration, true);
+          const [summary] = await Promise.all([shell.primary.games, shell.primary.rank]);
+          if (request !== profileRequest || !overlay.isConnected) return;
+          shell.profile.setAttribute('aria-busy', 'false');
+          shell.profile.querySelector('.pp-profile-phase')?.remove();
+          if (!summary.games.length && !shell.profile.querySelector('.pp-empty-history')){
+            const empty = document.createElement('p'); empty.className = 'muted pp-empty-history';
+            empty.textContent = 'No official games found for this player.'; shell.profile.appendChild(empty);
+          }
+          if (retryAnalytics) wireView(await getStatsView(), true);
         }catch(e){
           if (request !== profileRequest || !overlay.isConnected) return;
           shell.profile.setAttribute('aria-busy', 'false');
@@ -31384,7 +31611,8 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
         }
       }, 1200);
     };
-    // Primary sources start immediately; only the visible hub hydrates analytics.
+    // XP starts immediately; the existing timer owns automatic critical history.
+    // Full analytics are requested only by Stats or its existing explicit Retry.
     wireView(shell, false); scheduleHydration();
   };
   const selectedName = () => String(currentName || playerSelect.value || '').trim();
@@ -31495,7 +31723,7 @@ window.openPlayerStatsHub = function openPlayerStatsHub(playerName){
     syncPlayerHeader();
   })();
 
-  const close = () => { clearTimeout(profileHydrateTimer); ++profileRequest; try{ overlay.remove(); }catch(_){ overlay.parentNode && overlay.parentNode.removeChild(overlay); } };
+  const close = () => { clearTimeout(profileHydrateTimer); ++profileRequest; releaseProfileHistory(); try{ overlay.remove(); }catch(_){ overlay.parentNode && overlay.parentNode.removeChild(overlay); } };
   // From the picker, Back returns to the name list so you can switch player.
   backBtn.onclick = __fromPicker
     ? () => { close(); try{ if (typeof window.openPlayerStatsSelect === 'function') window.openPlayerStatsSelect(); }catch(_){ } }

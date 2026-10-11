@@ -16,6 +16,15 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
 
   const heroSnapshot = await page.locator('.pp-hero').evaluate(el => ({ html:el.outerHTML, text:el.innerText }));
   await page.locator('.sq-player-stats-hub .pp-tab').filter({ hasText:/^Stats$/i }).click();
+  // Stats now builds on intent; observe its original count-ups before snapshotting.
+  await page.waitForFunction((quick) => {
+    const modal = document.querySelector('.sq-stats-modal');
+    const card = [...(modal?.querySelectorAll('.pp-card') || [])].find(c => c.querySelector('strong')?.textContent === 'Quick Stats');
+    const rows = [...(card?.querySelectorAll('.pp-row') || [])];
+    const text = value => String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
+    return modal?.querySelector('.pp-form-value')?.textContent === '60%' && Object.entries(quick).every(([label, want]) =>
+      rows.some(row => text(row.querySelector('.pp-row-label')?.textContent) === label && text(row.querySelector('.pp-row-value')?.innerText) === text(want)));
+  }, E.quick, { timeout: 3000 });
   const snap = await page.evaluate((heroSnapshot) => {
     const modal = document.querySelector('.sq-stats-modal');
     if (!modal) return null;

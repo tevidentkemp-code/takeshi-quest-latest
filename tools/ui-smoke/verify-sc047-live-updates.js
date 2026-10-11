@@ -183,16 +183,31 @@ fs.mkdirSync(out, { recursive: true });
     });
 
     await page.emulateMedia({ reducedMotion: 'no-preference' });
+    // Observe the actual DOM mutation sequence: a polling assertion can miss
+    // the brief gap between typing a five-character time and the scoreline.
+    await page.evaluate(() => {
+      const body = document.getElementById('homeLivePrinterRows');
+      const seen = { timeBeforeScore:false, scoreAfterTime:false };
+      const observer = new MutationObserver(() => {
+        const row = [...(body?.querySelectorAll('tr.lp-row') || [])].find(r =>
+          (r.querySelector('.lp-game-meta')?.textContent || '').includes('22:31'));
+        if (!row) return;
+        const score = row.querySelector('.lp-result')?.textContent || '';
+        if (!score.trim()) seen.timeBeforeScore = true;
+        if (seen.timeBeforeScore && score.includes('Thom (200)')) seen.scoreAfterTime = true;
+      });
+      observer.observe(body, {subtree:true,childList:true,characterData:true});
+      window.__videSc047TypeProof = {seen,observer};
+    });
     await page.evaluate(() => window.__homeLivePrinterInjectLine('CLA / 22:31 Thom (200) bts Sam (180)'));
-    await page.waitForFunction(() => {
-      const rows = Array.from(document.querySelectorAll('#homeLivePrinterRows tr.lp-row'));
-      const row = rows.find(r => r.querySelector('.lp-game-meta'));
-      if (!row) return false;
-      const meta = row.querySelector('.lp-game-meta')?.textContent || '';
-      const result = row.querySelector('.lp-result')?.textContent || '';
-      return /CLA/.test(meta) && !/Thom/.test(meta) && !result;
-    }, { timeout: 5000 });
-    await page.waitForFunction(() => document.getElementById('homeLivePrinterRows')?.textContent.includes('Thom (200)'), { timeout: 5000 });
+    await page.waitForFunction(() =>
+      window.__videSc047TypeProof?.seen.timeBeforeScore === true &&
+      window.__videSc047TypeProof?.seen.scoreAfterTime === true,
+      null, {timeout:8000});
+    await page.evaluate(() => {
+      window.__videSc047TypeProof?.observer.disconnect();
+      delete window.__videSc047TypeProof;
+    });
     const twoLine = await page.locator('#homeLivePrinterRows tr.lp-row').filter({ hasText: 'Thom (200)' }).last().evaluate(row => {
       const meta = row.querySelector('.lp-game-meta')?.getBoundingClientRect();
       const result = row.querySelector('.lp-result')?.getBoundingClientRect();
@@ -203,8 +218,23 @@ fs.mkdirSync(out, { recursive: true });
         resultTop: result?.top || 0
       };
     });
-    assert(twoLine.hasMeta && twoLine.hasResult, 'game row must expose separate mode/time and scoreline blocks');
-    assert(twoLine.resultTop >= twoLine.metaBottom - 1, 'player names/scoreline must start on the line below CLA / time');
+    assert(twoLine.hasMeta && twoLine.hasResult, 'game row must expose time and scoreline blocks');
+    assert(twoLine.resultTop <= twoLine.metaBottom + 1, 'time and player scores must share a compact row');
+
+    // Settle any already-running cloud read before the animation fixture:
+    // changing the next-poll clock does not cancel an earlier pending read,
+    // which would later repaint nine transient results with empty-state rows.
+    await page.waitForFunction(() => window.__homeLivePrinterState?.syncing === false,
+      null, {timeout:45000});
+    // Keep cloud-polling separate from the nine-row *animation* fixture.
+    // The printer continues using its real 1s shift/type scheduler. A cloud
+    // refresh that returns no games would otherwise clear transient rows
+    // independently of rendering. Cloud/history truth has dedicated tests.
+    await page.evaluate(() => {
+      const st = window.__homeLivePrinterState;
+      window.__videSc047GeometryPrior = { lastSyncMs:st.lastSyncMs };
+      st.lastSyncMs = Date.now() + 60000;
+    });
 
     // Regression: once 6-10 structured rows are populated, the fixed VIDE
     // viewport must not squeeze rows together or leave the top row clipped.
@@ -219,10 +249,30 @@ fs.mkdirSync(out, { recursive: true });
       lines.forEach(line => window.__homeLivePrinterInjectLine(line));
       if (window.__homeLivePrinterState) window.__homeLivePrinterState.hold = 0;
     }, geometryLines);
-    await page.waitForFunction((expected) => {
-      const text = document.getElementById('homeLivePrinterRows')?.textContent || '';
-      return expected.every(token => text.includes(token));
-    }, [...geometryLines.map((_, i) => `GEOM${i + 1}`), 'James (377)'], { timeout: 30000 });
+    try {
+      await page.waitForFunction((expected) => {
+        const text = document.getElementById('homeLivePrinterRows')?.textContent || '';
+        return expected.every(token => text.includes(token));
+      }, [...geometryLines.map((_, i) => `GEOM${i + 1}`), 'James (377)'], { timeout: 30000 });
+    } catch (error) {
+      // Retain the original scheduler/deadline and assertion. Capture the
+      // actual printer state before diagnosing two exact-head timed failures.
+      const diagnostic = await page.evaluate(() => {
+        const st = window.__homeLivePrinterState || {};
+        const body = document.getElementById('homeLivePrinterRows');
+        return {
+          paused:st.paused, tick:st.tick, hold:st.hold, syncing:st.syncing,
+          queued:(st.injectQueue || []).slice(),
+          displayLines:(st.displayLines || []).slice(),
+          bufferSize:(st.bufLines || []).length,
+          rowTexts:[...(body?.querySelectorAll('tr.lp-row') || [])].map(row=>row.textContent || ''),
+          removedRows:[...(body?.querySelectorAll('tr.lp-fit-hidden') || [])].length,
+          pageErrorCount:window.__videDiagPageErrorCount || 0
+        };
+      });
+      console.error('VIDE GEOM scheduler diagnostic', JSON.stringify(diagnostic));
+      throw error;
+    }
     await page.click('#homeLivePauseBtn');
     await page.waitForTimeout(800);
 
@@ -392,6 +442,14 @@ fs.mkdirSync(out, { recursive: true });
     assert.equal(resumed.pressed, 'false');
     assert.equal(resumed.paused, false);
     assert.equal(resumed.transition, '', 'Reduced motion must not leave a transform transition active');
+    await page.evaluate(() => {
+      const st = window.__homeLivePrinterState;
+      if (window.__videSc047GeometryPrior && st) {
+        // Resume the original >=15-second polling period after this visual test.
+        st.lastSyncMs = Date.now();
+      }
+      delete window.__videSc047GeometryPrior;
+    });
 
     // Data truth / mode isolation: Practice may appear as a result, but it
     // must never contribute ROUND PB/WR lines. Official and Turbo maintain
@@ -446,6 +504,130 @@ fs.mkdirSync(out, { recursive: true });
       'Turbo ROUND PB must be derived from the Turbo history bucket, not Official history');
     assert.equal(modePbLines.some(line => /PRACTICE ONLY|\(70\)/i.test(line)), false,
       'Practice must never contribute ROUND PB/WR lines to VIDE');
+
+    // SC063: the current Stats directory covers Home even when a relevant
+    // match request began first. Keep the native poll/clock and all original
+    // SC047 fixtures; only transport seams below park/deliver that response.
+    await page.waitForFunction(() => !window.__homeLivePrinterState?.syncing,
+      { timeout: 8000 });
+    await page.evaluate(() => {
+      const prior = {
+        all: window.cloudFetchAllGamesAsLocal,
+        visible: window.cloudFetchLatestVisibleGamesAsLocal,
+        latest: window.cloudFetchLatestGamesAsLocal,
+        players: window.cloudListPlayers,
+        sb: window.sb
+      };
+      window.__sc063NativeHomePrior = prior;
+      window.__sc063NativeHomeAllCalls = 0;
+      window.__sc063NativeHomeAllAt = 0;
+      window.__sc063NativeHomeMatchCalls = 0;
+      window.__sc063NativeHomeMatchDeliver = null;
+      window.cloudFetchAllGamesAsLocal = async () => {
+        ++window.__sc063NativeHomeAllCalls;
+        window.__sc063NativeHomeAllAt = Date.now();
+        return prior.all();
+      };
+      const recent = {
+        id:'sc063-home-guard-native-game',
+        ts:'2026-10-03T20:05:00Z',
+        archived_at:null,
+        mode:'official',
+        match_id:'sc063-home-guard-native-match',
+        players:[{name:'MODE B'},{name:'FILLER'}],
+        totals:[300,200],
+        state:{mode:'official'}
+      };
+      window.cloudFetchLatestVisibleGamesAsLocal = async () => [{...recent}];
+      window.cloudFetchLatestGamesAsLocal = async () => [{...recent}];
+      window.cloudListPlayers = async () => [{name:'MODE B'}];
+      window.sb = {
+        ...prior.sb,
+        from(table) {
+          if (table !== 'matches') return prior.sb.from(table);
+          return {
+            select() { return this; },
+            in() {
+              ++window.__sc063NativeHomeMatchCalls;
+              return new Promise(resolve => {
+                window.__sc063NativeHomeMatchDeliver = () => resolve({data:[],error:null});
+              });
+            }
+          };
+        }
+      };
+      const st = window.__homeLivePrinterState;
+      st.matchRowsCache = null;
+      st.derivedItems = [];
+      st.derivedFetchedAt = 0;
+      st.lastSyncMs = 0;
+    });
+    await page.waitForFunction(() =>
+      typeof window.__sc063NativeHomeMatchDeliver === 'function' &&
+      !!window.__homeLivePrinterState?.syncing,
+      { timeout: 8000 });
+    await page.click('#playerStatsBtn');
+    await page.waitForSelector('.sq-player-stats-directory .ps-pick-search',
+      { timeout: 8000 });
+    assert.equal(await page.evaluate(() => window.__sc063NativeHomeAllCalls), 0,
+      'Stats directory must not prewarm full game history while the Home match read is pending');
+    await page.evaluate(() => window.__sc063NativeHomeMatchDeliver());
+    await page.waitForFunction(() => !window.__homeLivePrinterState?.syncing,
+      { timeout: 8000 });
+    const coveredHome = await page.evaluate(() => ({
+      allCalls:window.__sc063NativeHomeAllCalls,
+      matchCalls:window.__sc063NativeHomeMatchCalls,
+      fetchedAt:window.__homeLivePrinterState?.derivedFetchedAt,
+      derivedCount:window.__homeLivePrinterState?.derivedItems?.length,
+      lastSyncMs:window.__homeLivePrinterState?.lastSyncMs,
+      recentResult:(window.__homeLivePrinterState?.bufLines || [])
+        .some(line => /MODE B.*300/i.test(String(line)))
+    }));
+    assert.equal(coveredHome.allCalls, 0,
+      'Home must check current Stats visibility after its awaited match response before starting full history');
+    assert.equal(coveredHome.matchCalls, 1, 'relevant match read must remain the original single request');
+    assert.equal(coveredHome.fetchedAt, 0, 'covered Home must not stamp a fabricated derived fetch');
+    assert.equal(coveredHome.derivedCount, 0, 'covered Home must preserve the prior empty derived cache');
+    assert.equal(coveredHome.recentResult, true, 'recent visible results must still enter the Home buffer');
+    await page.click('.sq-player-stats-directory [aria-label="Close"]');
+    await page.waitForFunction(() => !document.querySelector('.sq-player-stats-directory'),
+      { timeout: 8000 });
+    // Observe the existing >=15-second native poll. Do not install a timer,
+    // lower its interval, force another sync or move the clock.
+    await page.waitForTimeout(8000);
+    await page.waitForFunction(() =>
+      window.__sc063NativeHomeAllCalls === 1 &&
+      !window.__homeLivePrinterState?.syncing &&
+      !!window.__homeLivePrinterState?.derivedFetchedAt,
+      { timeout: 8000 });
+    const resumedHome = await page.evaluate(() => ({
+      allCalls:window.__sc063NativeHomeAllCalls,
+      allAt:window.__sc063NativeHomeAllAt,
+      matchCalls:window.__sc063NativeHomeMatchCalls,
+      lines:(window.__homeLivePrinterState?.bufLines || []).map(String)
+        .filter(line => /ROUND\s+(?:PB|WR)\b/i.test(line))
+    }));
+    assert.equal(resumedHome.allCalls, 1, 'closing Stats must permit the next original poll to rebuild full history once');
+    assert(resumedHome.allAt - coveredHome.lastSyncMs >= 15000,
+      'Home must resume on its existing native >=15-second poll');
+    assert.equal(resumedHome.matchCalls, 1, 'the normal poll must retain the relevant-match cache');
+    assert(resumedHome.lines.some(line => /ROUND PB.*MODE B.*\(50\)/i.test(line)),
+      'resumed Home must preserve the original Official ROUND PB fixture');
+    assert(resumedHome.lines.some(line => /ROUND PB.*MODE B.*\(40\)/i.test(line)),
+      'resumed Home must preserve the original Turbo ROUND PB fixture');
+    assert.equal(resumedHome.lines.some(line => /PRACTICE ONLY|\(70\)/i.test(line)), false,
+      'resumed Home must preserve original Practice ROUND isolation');
+    await page.evaluate(() => {
+      const prior = window.__sc063NativeHomePrior;
+      window.cloudFetchAllGamesAsLocal = prior.all;
+      window.cloudFetchLatestVisibleGamesAsLocal = prior.visible;
+      window.cloudFetchLatestGamesAsLocal = prior.latest;
+      window.cloudListPlayers = prior.players;
+      window.sb = prior.sb;
+      delete window.__sc063NativeHomePrior;
+    });
+    console.log('SC063 native Home/Stats match-order and original poll PASS',
+      JSON.stringify({covered:coveredHome, resumed:{...resumedHome, lines:undefined}}));
 
     // WR is a locked semantic colour: verified World Records must be purple,
     // not inherited from the generic alert/PB gold treatment.
@@ -511,6 +693,180 @@ fs.mkdirSync(out, { recursive: true });
     assert.equal(updateAlert.localCache, null,
       'update notice must never persist as browser-local feed history');
     await page.unroute('**/assets/release-metadata.json*');
+
+
+    // VIDE compact grouping: cloud-backed match identities, mode boundaries,
+    // match-result order, medal icons, winner hierarchy and faint rail.
+    await page.waitForFunction(() => !window.__homeLivePrinterState?.syncing, {timeout:8000});
+    await page.evaluate(() => {
+      const prior = {
+        all:window.cloudFetchAllGamesAsLocal,
+        visible:window.cloudFetchLatestVisibleGamesAsLocal,
+        latest:window.cloudFetchLatestGamesAsLocal,
+        players:window.cloudListPlayers,
+        sb:window.sb
+      };
+      window.__videCompactPrior = prior;
+      const players = [{name:'Chris'}, {name:'James'}];
+      const make = (id, ts, mode, first, second) => ({
+        ts, mode, match_id:id, players,
+        totals:[first,second],
+        state:{mode, match_id:id},
+        is_practice:mode === 'practice',
+        archived_at:null
+      });
+      // Older cloud Practice games sometimes carry separate match IDs and
+      // game_number=1 despite a consecutive identical roster on the same day.
+      // Their MODE header is presentation-only; never combine stored matches.
+      const legacyPractice = (id, ts, first, second) => ({
+        ...make(id, ts, 'practice', first, second),
+        mode:null, is_practice:false, game_number:1,
+        state:{mode:'practice', gameMode:'practice', is_practice:true}
+      });
+      const samples = [
+        make('vide-fixture-a','2026-10-10T20:20:00Z','classic',431,196),
+        make('vide-fixture-a','2026-10-10T19:53:00Z','classic',408,282),
+        make('vide-fixture-a','2026-10-10T19:14:00Z','classic',444,269),
+        make('vide-fixture-b','2026-10-10T18:30:00Z','classic',401,300),
+        make('vide-fixture-c','2026-10-10T17:25:00Z','turbo',390,200),
+        make('vide-fixture-d','2026-10-10T17:02:00Z','practice',380,190),
+        legacyPractice('vide-legacy-one','2026-10-10T16:54:00Z',302,210),
+        legacyPractice('vide-legacy-two','2026-10-10T16:43:00Z',315,209)
+      ];
+      window.cloudFetchLatestVisibleGamesAsLocal = async () => samples.map(g=>({...g}));
+      window.cloudFetchLatestGamesAsLocal = async () => samples.map(g=>({...g}));
+      window.cloudFetchAllGamesAsLocal = async () => [];
+      window.cloudListPlayers = async () => [];
+      window.sb = {
+        ...prior.sb,
+        from(table) {
+          if (table !== 'matches') return prior.sb.from(table);
+          return {
+            select() { return this; },
+            in() { return Promise.resolve({data:[{
+              id:'vide-fixture-a', targetWins:3, wins:[3,0],
+              history:[
+                {totals:[444,269]},{totals:[408,282]},{totals:[431,196]}
+              ], players, matchTotals:[1283,747]
+            }],error:null}); }
+          };
+        }
+      };
+      const st = window.__homeLivePrinterState;
+      st.paused = false;
+      st.matchRowsCache = null;
+      st.derivedItems = [];
+      st.derivedFetchedAt = 0;
+      st.lastSyncMs = 0;
+      st.bufLines = [];
+      st.injectQueue = [];
+      st.recentInjectedLines = [];
+      st.lpStarted = false;
+      st.primedFromLocal = true;
+      st.hold = 0;
+    });
+    await page.waitForFunction(() => {
+      const buf = window.__homeLivePrinterState?.bufLines || [];
+      return buf.some(line => String(line).includes('Chris (431)')) &&
+        buf.some(line => String(line).includes('( CLA RESULT )')) &&
+        document.querySelectorAll('#homeLivePrinterRows .lp-medal-icon').length === 2;
+    }, {timeout:8000});
+    const compact = await page.evaluate(() => {
+      const lines = (window.__homeLivePrinterState?.bufLines || []).map(String);
+      const rows = [...document.querySelectorAll('#homeLivePrinterRows tr.lp-row')];
+      const result = rows.find(row => row.classList.contains('lp-match-result'));
+      const games = rows.filter(row => row.querySelector('.lp-winning-score'));
+      const visibleGames = games.filter(row => !row.classList.contains('lp-fit-hidden') && row.getBoundingClientRect().width > 0);
+      const times = visibleGames.map(row => row.querySelector('.lp-game-meta')?.getBoundingClientRect().left || 0);
+      const timeWidths = visibleGames.map(row => row.querySelector('.lp-game-meta')?.getBoundingClientRect().width || 0);
+      const linked = rows.filter(row => row.classList.contains('lp-group-linked'));
+      const medals = [...(result?.querySelectorAll('.lp-medal-entry') || [])].map(entry => [
+        entry.querySelector('.lp-medal-icon')?.textContent || '',
+        entry.querySelector('.lp-medal-name')?.textContent || ''
+      ]);
+      const first = games.find(row => (row.textContent || '').includes('(431)'));
+      const winner = first?.querySelector('.lp-winning-score');
+      const scoreline = first?.querySelector('.lp-scoreline');
+      return {
+        lines, medals, headings:lines.filter(s=>/^(CLASSIC|TURBO|PRACTICE)$/.test(s)),
+        linked:linked.map(row=>row.textContent || ''),
+        oldMedalText:result?.querySelectorAll('.lp-medal-chip').length || 0,
+        times, timeWidths, winnerText:winner?.textContent || '',
+        winnerWeight:winner ? Number.parseInt(getComputedStyle(winner).fontWeight,10) : 0,
+        baseWeight:scoreline ? Number.parseInt(getComputedStyle(scoreline).fontWeight,10) : 0,
+        winnerColor:winner ? getComputedStyle(winner).color : '',
+        loserColor:scoreline ? getComputedStyle(scoreline).color : '',
+        medalA11y:result?.querySelector('.lp-ellipsis')?.getAttribute('aria-label') || '',
+        rowCount:rows.length
+      };
+    });
+    assert.deepEqual(compact.headings,['CLASSIC','CLASSIC','TURBO','PRACTICE'],
+      'Classic/Turbo retain match boundaries while legacy same-roster Practice shares a heading');
+    assert.equal(compact.lines.filter(s => s === 'PRACTICE').length, 1,
+      'separate legacy Practice match IDs must not repeat headings for adjacent same-roster games');
+    assert(compact.lines.some(s=>s.includes('Chris (302)')) &&
+      compact.lines.some(s=>s.includes('Chris (315)')),
+      'legacy Practice scores must remain visible and unmodified in the cloud-backed buffer');
+    assert.equal(compact.lines.filter(s=>/CLA RESULT/.test(s)).length, 1,
+      'legacy Practice display grouping must not invent completed match results');
+    const matchAt = compact.lines.findIndex(s=>s.includes('( CLA RESULT )'));
+    const latestAt = compact.lines.findIndex(s=>s.includes('Chris (431)'));
+    assert.equal(matchAt, latestAt - 1, 'completed match result must precede its deciding game');
+    assert.equal(compact.lines.filter(s=>s==='CLASSIC').length,2,
+      'consecutive games in one match must show a single CLASSIC header');
+    assert.deepEqual(compact.medals,[['🥇','Chris'],['🥈','James']],
+      'result should use medal symbols before names');
+    assert.equal(compact.oldMedalText,0,'text medals must not remain visible');
+    assert.match(compact.medalA11y,/first place Chris.*second place James/i);
+    assert.equal(compact.rowCount,15,'printer must retain all 15 stable row nodes');
+    assert.equal(compact.linked.length,6,
+      'the actual Classic match and three adjacent Practice results form separate visual runs');
+    assert(compact.linked.every(x=>/Chris\s*\(/.test(x)),
+      'connector may not bridge a new match/mode');
+    assert(compact.times.length >= 1 &&
+      compact.times.every(x=>Math.abs(x-compact.times[0])<=1) &&
+      compact.timeWidths.every(x=>Math.abs(x-compact.timeWidths[0])<=1 && x>0),
+      'visible game times must share aligned fixed-width columns');
+    assert.equal(compact.winnerText,'Chris (431)','winner name and score need one emphasised span');
+    assert(compact.winnerWeight > compact.baseWeight,'winner must be visibly bolder than opponents');
+    assert.notEqual(compact.winnerColor,compact.loserColor,
+      'winner must be subtly brighter, not another same-weight label');
+    for (const width of [320, 390, 430]) {
+      await page.setViewportSize({width,height:844});
+      await page.waitForFunction(() => {
+        const mid = document.querySelector('#homeLivePrinter .lp-mid');
+        const table = document.querySelector('#homeLivePrinter .lp-table');
+        return mid && table && table.getBoundingClientRect().bottom <= mid.getBoundingClientRect().bottom + 1;
+      }, null, {timeout:3000});
+      const geo = await page.evaluate(() => {
+        const mid = document.querySelector('#homeLivePrinter .lp-mid')?.getBoundingClientRect();
+        const rows = [...document.querySelectorAll('#homeLivePrinterRows tr.lp-row')];
+        const visible = rows.filter(row => !row.classList.contains('lp-fit-hidden') &&
+          row.textContent.trim() && row.getBoundingClientRect().width>0);
+        return {
+          rows:rows.length,
+          overflow:visible.some(row => row.getBoundingClientRect().right > mid.right + 1),
+          textOverflow:visible.some(row => {
+            const item=row.querySelector('.lp-result');
+            return item && item.scrollWidth > item.clientWidth + 1;
+          })
+        };
+      });
+      assert.equal(geo.rows,15,`VIDE must retain 15 printer slots at ${width}px`);
+      assert.equal(geo.overflow,false,`VIDE rows must fit panel at ${width}px`);
+      assert.equal(geo.textOverflow,false,`VIDE scores must wrap cleanly at ${width}px`);
+    }
+    await page.evaluate(() => {
+      const prior = window.__videCompactPrior;
+      if (!prior) return;
+      window.cloudFetchAllGamesAsLocal = prior.all;
+      window.cloudFetchLatestVisibleGamesAsLocal = prior.visible;
+      window.cloudFetchLatestGamesAsLocal = prior.latest;
+      window.cloudListPlayers = prior.players;
+      window.sb = prior.sb;
+      delete window.__videCompactPrior;
+    });
+    console.log('VIDE compact cloud-group / order / medals / winner / connector PASS');
 
     await page.screenshot({ path: path.join(out, 'live-updates-stable.png') });
     const pageErrors = consoleErrs.filter(x => x.startsWith('pageerror:'));
