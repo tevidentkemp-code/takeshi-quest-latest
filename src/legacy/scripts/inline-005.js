@@ -23178,7 +23178,7 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
-  const RUNNING_VERSION = '0.14.7';
+  const RUNNING_VERSION = '0.14.8';
   const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
   let updateCheckPromise = null;
@@ -25618,9 +25618,12 @@ if(hsBody){
             const roster = it.players.map(p => String(typeof p === 'string' ? p :
               (p?.id || p?.player_id || p?.name || p?.nickname || '')
             ).trim().toLowerCase()).filter(Boolean).sort();
-            // Two matches with the same roster remain different groups when IDs
-            // exist; for legacy games without IDs, use the visible player roster.
-            const key = matchId ? 'match:' + matchId : 'players:' + (roster.join('|') || lpSig(it));
+            // Practice headings group a consecutive same-roster run per day,
+            // including older standalone games with different match IDs.
+            // Classic/Turbo keep real match boundaries; no stored IDs change.
+            const key = mode === 'PRACTICE' && roster.length
+              ? 'practice-roster:' + roster.join('|')
+              : (matchId ? 'match:' + matchId : 'players:' + (roster.join('|') || lpSig(it)));
             return { mode, key:mode + '/' + key + '/' + roster.join('|') };
           };
           const matchGroups = new Map();
