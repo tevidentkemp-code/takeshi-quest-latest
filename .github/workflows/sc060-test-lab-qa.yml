@@ -1,0 +1,93 @@
+name: SC-060 isolated Test Lab QA
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - test-lab/**
+      - scripts/build-test-lab.mjs
+      - tools/test-lab/**
+      - package.json
+      - vercel.json
+      - .github/workflows/sc060-test-lab-qa.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sc060-lab-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lab-build:
+    name: Lab static + production exclusion
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Install pinned tooling
+        run: |
+          set -euo pipefail
+          npm ci --prefix scripts --ignore-scripts
+          npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify Lab isolation and production parity
+        run: |
+          set -euo pipefail
+          npm run build && node scripts/build-test-lab.mjs
+          node tools/test-lab/verify-lab.mjs
+          git diff --check
+      - name: Keep build test receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sc060-static-lab-evidence
+          retention-days: 14
+          path: |
+            test-lab-dist/lab/build-info.json
+            test-lab-dist/index.html
+
+  lab-browser:
+    name: Test Lab browser — ${{ matrix.browser }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Install pinned tooling and browser fixture
+        run: |
+          set -euo pipefail
+          npm ci --prefix scripts --ignore-scripts
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm ci --prefix tools/ui-smoke --ignore-scripts --no-audit --no-fund
+          ./tools/ui-smoke/node_modules/.bin/playwright install --with-deps ${{ matrix.browser }}
+      - name: Build isolated Lab and smoke mobile
+        run: |
+          set -euo pipefail
+          npm run build && node scripts/build-test-lab.mjs
+          node tools/test-lab/verify-lab.mjs
+          python3 -m http.server 8130 --bind 127.0.0.1 --directory test-lab-dist >/tmp/sc060-testlab-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          SQ_BROWSER=${{ matrix.browser }} node tools/test-lab/verify-lab-browser.cjs
+      - name: Keep browser test receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sc060-${{ matrix.browser }}-evidence
+          retention-days: 14
+          path: |
+            /tmp/sc060-testlab-http.log
+            test-lab-dist/lab/build-info.json
