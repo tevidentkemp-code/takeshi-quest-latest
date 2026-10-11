@@ -39,7 +39,7 @@ for(const label of ['quick2','quick5','last','end','xp','won','lost','feed','res
 const info=JSON.parse(read('test-lab-dist/lab/build-info.json'));
 assert.equal(info.lab,true);assert.equal(info.isolated,true);
 const vercel=JSON.parse(read('vercel.json'));
-assert.equal(vercel.buildCommand,'npm run build:testlab');
+assert.equal(vercel.buildCommand,'npm run build && node scripts/build-test-lab.mjs');
 assert.equal(vercel.outputDirectory,'test-lab-dist');
 assert(vercel.headers.some(x=>x.headers?.some(h=>h.key==='Content-Security-Policy'&&h.value.includes("connect-src 'self'"))),'missing server-side CSP');
 assert.equal(JSON.parse(read('package.json')).scripts.build,'npm run materialize && vite build');

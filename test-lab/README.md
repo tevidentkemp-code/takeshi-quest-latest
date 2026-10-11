@@ -4,7 +4,7 @@
 
 ## Output contract
 - Public GitHub Pages continues to build with `npm run build` → `dist/`. No lab script, CSS, offline fixture or banner goes into that output.
-- Test Lab is a **separate deployment target** built with `npm run build:testlab` → `test-lab-dist/`. Vercel's dedicated `shateki-quest-test-lab` project reads root `vercel.json`, enforcing the lab build command and a restrictive CSP.
+- Test Lab is a **separate deployment target** built with `npm run build && node scripts/build-test-lab.mjs` → `test-lab-dist/`. Vercel's dedicated `shateki-quest-test-lab` project reads root `vercel.json`, enforcing the lab build command and a restrictive CSP.
 - The Vercel project production URL tracks the currently shipped `main` source. Vercel Git previews for PR branches are the **candidate test builds**, auto-deployed when a candidate PR is pushed. For pre-release approval, use the PR's exact preview URL and SHA, not the latest-main stable URL.
 - Confirm the displayed commit (top bar / build info) matches the candidate before approving release.
 
