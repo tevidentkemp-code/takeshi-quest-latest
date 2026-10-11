@@ -18,6 +18,33 @@ async function isolate(ctx) {
   });
 }
 
+// SC-077: inspect every wall replacement, before any delayed cleanup.
+// Test-only instrumentation delegates to the native setter unchanged.
+async function installPreStartProbe(ctx) {
+  await ctx.addInitScript(() => {
+    window.__sqPreStartProbe = {commits:0, invalid:[]};
+    const native = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+    Object.defineProperty(Element.prototype, 'innerHTML', {...native, set(value) {
+      native.set.call(this, value);
+      if (this.id !== 'v2Rows' || typeof __sqIsTurboVisualRuntime !== 'function' || !__sqIsTurboVisualRuntime()) return;
+      const probe = window.__sqPreStartProbe;
+      const cutoff = __sqTurboRaceStartIndex(state, ROUNDS.length);
+      probe.commits++;
+      for (const cell of this.querySelectorAll('.v2Cell[data-round],.v2Badge[data-round]')) {
+        if (Number(cell.dataset.round) >= cutoff) continue;
+        const text = cell.textContent.trim();
+        if (text && probe.invalid.length < 32) probe.invalid.push({round:Number(cell.dataset.round), text});
+      }
+    }});
+  });
+}
+async function assertPreStartBlank(page) {
+  const probe = await page.evaluate(() => window.__sqPreStartProbe);
+  assert(probe.commits > 0, 'SC-077 observed actual score-wall renders');
+  if (probe.invalid.length) console.log('SC077_BASELINE_WITNESS=' + JSON.stringify(probe));
+  assert.deepEqual(probe.invalid, [], 'SC077_PRESTART_CONTENT: excluded Turbo rounds must be blank at render time');
+}
+
 async function readPresentation(page) {
   return page.evaluate(() => {
     const css = (selector, pseudo) => {
@@ -46,6 +73,7 @@ async function runTurbo(count) {
   const {browser,ctx,page,consoleErrs} = await H.launch({width:390,height:844});
   const pageErrors=[];page.on('pageerror',e=>pageErrors.push(e.message));
   try {
+    await installPreStartProbe(ctx);
     await isolate(ctx); await H.boot(page,{settle:1000});
     await page.click('#startGameBtn'); await page.click('#questBtn'); await page.click('#matchTurboBtn');
     await H.addGuests(page, Array.from({length:count},(_,i)=>'QA TURBO '+String.fromCharCode(65+i)));
@@ -58,6 +86,8 @@ async function runTurbo(count) {
       await page.setViewportSize({width,height:844});
       await page.waitForFunction(()=>getComputedStyle(document.querySelector('#liveV2Panel .v2ScoreBox.active')).borderColor === 'rgba(0, 245, 255, 0.72)');
       const s=await readPresentation(page); snapshots.push({width,...s});
+      await assertPreStartBlank(page);
+      assert.equal(await page.locator('#v2Rows .v2Cell[data-round="7"][data-p="1"] .v2CellNum').textContent(), '0', 'SC-077 preserves zero scores in the played Turbo range');
       assert.equal(s.active.border,'rgba(0, 245, 255, 0.72)', 'Turbo active card remains cyan after shared styling');
       assert.equal(s.active.overflow,'visible', 'Turbo timer perimeter is not clipped by the shared player-card skin');
       assert.equal(s.badge.border,'rgba(0, 245, 255, 0.58)', 'Turbo target badge remains cyan');
@@ -95,6 +125,8 @@ async function runTurbo(count) {
       await page.waitForFunction(()=>document.querySelector('#liveV2Panel .v2ScoreBox.active.sqTurboDanger'),null,{timeout:9000});
       assert.equal(await page.locator('#liveV2Panel .sqTurboProgress').first().evaluate(e=>getComputedStyle(e).stroke),'rgb(255, 34, 42)','Canonical danger remains red');
     }
+    await assertPreStartBlank(page);
+    console.log('PASS SC-077 no pre-start content across startup, resize, Single, Miss and Undo renders');
     assert.deepEqual(pageErrors,[], 'No uncaught runtime errors');
     const expectedBlockedRead = /TypeError: Load failed/.test.bind(/TypeError: Load failed/);
     assert.deepEqual(consoleErrs.filter(e=>!(/supabase|Failed to fetch|fetch failed|net::|NetworkError|load resource|connect-src/i.test(e)) &&

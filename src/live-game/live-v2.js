@@ -363,6 +363,7 @@ function liveV2Render(){
   if(rowsHost){
     const out = [];
     const totalR = (typeof ROUNDS!=="undefined" && Array.isArray(ROUNDS) && ROUNDS.length) ? ROUNDS.length : Math.max(cr+1, 1);
+    const __sqTurboWallStart = __sqIsTurboVisualRuntime() ? __sqTurboRaceStartIndex(state, totalR) : 0;
 
     // Window behavior: render all rounds up to current (plus next), within a scrollable viewport.
     // Users can scroll back to see completed rounds; on scoring input we auto-scroll back to the live round.
@@ -419,6 +420,17 @@ function liveV2Render(){
       if(r === tableCr && (r > 0 || __sqStartAnchorRow4)){
         out.push('<div class="v2SepNo"></div>');
         out.push('<div class="v2Sep"></div>');
+      }
+
+      // SC-077: emit pre-start Turbo placeholders blank, before any paint.
+      // The delayed legacy cleanup must not expose intermediate zero scores.
+      if(r < __sqTurboWallStart){
+        out.push(`<div class="v2Badge${rowClass} sqTurboPreStartBadge" data-round="${r}"></div>`);
+        for(let i=0; i<pCount; i++){
+          out.push(`<div class="v2Cell${rowClass} sqTurboPreStartCell" data-p="${i}" data-round="${r}"></div>`);
+        }
+        if(pCount === 1) out.push(`<div class="v2Cell${rowClass} v2SoloPbCell sqTurboPreStartCell"></div>`);
+        continue;
       }
 
       // Compute per-round max (for faint green highlight)
