@@ -535,7 +535,14 @@ function updateHero(modal, st) {
   if (winnerEl) {
     winnerEl.classList.add('sq-pg-winner-name');
     winnerEl.innerHTML = '<span class="sq-pg-mainname">' + esc(parts.main) + '</span>'
-      + (parts.nickname ? '<span class="sq-pg-nickname">&ldquo;' + esc(parts.nickname) + '&rdquo;</span>' : '');
+      + '<span class="sq-pg-nickname"></span>';
+    const nicknameEl = winnerEl.querySelector('.sq-pg-nickname');
+    if (typeof window.__sqSetHalloweenText === 'function' && typeof window.__sqHalloweenNickname === 'function') {
+      window.__sqSetHalloweenText(nicknameEl, parts.nickname ? '“' + parts.nickname + '”' : '', '“' + window.__sqHalloweenNickname(player) + '”');
+    } else {
+      nicknameEl.textContent = parts.nickname ? '“' + parts.nickname + '”' : '';
+      nicknameEl.hidden = !parts.nickname;
+    }
     winnerEl.setAttribute('title', [parts.main, parts.nickname ? '"' + parts.nickname + '"' : ''].filter(Boolean).join(' '));
   }
 
@@ -570,12 +577,20 @@ function buildScorecard(modal, st, opts = {}) {
     el.className = 'sq-pg-score-row' + (row.winner ? ' is-winner' : '');
     el.dataset.playerIndex = String(row.index);
     el.innerHTML = `
-      <div class="sq-pg-player-main">${esc(row.parts.main)}${row.parts.nickname ? `<span class="sq-pg-player-nick">&ldquo;${esc(row.parts.nickname)}&rdquo;</span>` : ''}</div>
+      <div class="sq-pg-player-main">${esc(row.parts.main)}<span class="sq-pg-player-nick"></span></div>
       <div class="sq-pg-num">${esc(row.score)}</div>
       <div class="sq-pg-num">${esc(row.average.toFixed(1))}</div>
       <div class="sq-pg-num sq-pg-best">${esc(row.best.label)}</div>
       <div class="sq-pg-records" data-records-for="${row.index}"></div>
     `;
+    const nick = el.querySelector('.sq-pg-player-nick');
+    const player = (st.players || [])[row.index] || { name:row.parts.rawName };
+    if (typeof window.__sqSetHalloweenText === 'function' && typeof window.__sqHalloweenNickname === 'function') {
+      window.__sqSetHalloweenText(nick, row.parts.nickname ? '“' + row.parts.nickname + '”' : '', '“' + window.__sqHalloweenNickname(player) + '”');
+    } else {
+      nick.textContent = row.parts.nickname ? '“' + row.parts.nickname + '”' : '';
+      nick.hidden = !row.parts.nickname;
+    }
     list.appendChild(el);
   });
   return { screen, rows };

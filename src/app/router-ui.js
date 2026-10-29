@@ -2008,6 +2008,8 @@ function __msRenderPlayers(){
       inp.value = p.name || '';
       inp.addEventListener('input', () => {
         __msPlayers[i].name = inp.value;
+        const alias = __sqHalloweenNickname(p);
+        __sqSetHalloweenText(tag, 'Guest · not saved', alias ? 'Guest · ' + alias : 'Guest · not saved');
         __msUpdateStartEnabled();
       });
       inp.addEventListener('keydown', (event) => {
@@ -2019,12 +2021,13 @@ function __msRenderPlayers(){
       info.appendChild(inp);
       const tag = document.createElement('span');
       tag.className = 'ms2-ranks';
-      tag.textContent = 'Guest · not saved';
+      const alias = __sqHalloweenNickname(p);
+      __sqSetHalloweenText(tag, 'Guest · not saved', alias ? 'Guest · ' + alias : 'Guest · not saved');
       info.appendChild(tag);
     } else {
       const nm = document.createElement('span');
       nm.className = 'ms2-nm ms-player-name';
-      nm.textContent = __ms2DisplayName(p) || '—';
+      __sqSetHalloweenText(nm, __ms2DisplayName(p) || '—', String(p.name || '').trim().toUpperCase() + ' “' + __sqHalloweenNickname(p).toUpperCase() + '”');
       info.appendChild(nm);
       info.appendChild(__ms2RankLine(p.name));
     }
@@ -4751,7 +4754,7 @@ async function showSelectPlayerDialog(index){
       info.className = 'ms2-info';
       const nm = document.createElement('span');
       nm.className = 'ms2-nm';
-      nm.textContent = __ms2DisplayName(p) || '—';
+      __sqSetHalloweenText(nm, __ms2DisplayName(p) || '—', String(p.name || '').trim().toUpperCase() + ' “' + __sqHalloweenNickname(p).toUpperCase() + '”');
       info.appendChild(nm);
       info.appendChild(__ms2RankLine(p.name));
       row.appendChild(info);
