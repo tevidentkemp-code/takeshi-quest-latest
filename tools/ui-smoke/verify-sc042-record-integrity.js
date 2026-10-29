@@ -4,6 +4,10 @@ const assert = require('assert');
 (async()=>{
   const {browser,page}=await H.launch({width:390,height:844});
   const errors=[]; page.on('pageerror',e=>errors.push(String(e)));
+  await page.addInitScript(()=>{
+    const start=performance.now(); window.__seasonalTestNow=Date.parse('2026-11-02T00:00:00Z');
+    Date.now=()=>window.__seasonalTestNow+performance.now()-start;
+  });
   await H.boot(page);
   await page.waitForFunction(()=>window.SQ_ACH && typeof window.SQ_ACH.forScoreMilestone==='function' && typeof window.SQ_ACH.forMilestoneProgress==='function' && typeof window.openRoundHighScoresDialog==='function');
 
@@ -108,6 +112,16 @@ const assert = require('assert');
     await page.waitForFunction(()=>document.querySelectorAll('.pp-trophy-detail .pp-trophy-lb-row').length>0);
     const rows=await page.evaluate(()=>Array.from(document.querySelectorAll('.pp-trophy-detail .pp-trophy-lb-row')).map(r=>({name:(r.querySelector('.pp-trophy-lb-name')||{}).textContent||'',value:(r.querySelector('.pp-trophy-lb-value')||{}).textContent||''})));
     assert.deepEqual(rows.map(r=>[r.name,r.value]),expected);
+    if(code==='score_400'){
+      await page.evaluate(()=>{window.__seasonalTestNow=Date.parse('2026-11-01T12:00:00Z');document.dispatchEvent(new Event('visibilitychange'));});
+      const seasonal=await page.evaluate(()=>Array.from(document.querySelectorAll('.pp-trophy-detail .pp-trophy-lb-row')).map(r=>({name:r.querySelector('.pp-trophy-lb-name').textContent,value:r.querySelector('.pp-trophy-lb-value').textContent})));
+      assert.deepEqual(seasonal.map(r=>r.value),expected.map(r=>r[1]),'Halloween must not alter milestone counts');
+      assert(seasonal.every((r,i)=>r.name.startsWith(expected[i][0]+' the ')),'each milestone row must show its player-specific Halloween alias');
+      assert.equal(new Set(seasonal.map(r=>r.name)).size,seasonal.length,'Halloween aliases must be distinct');
+      await page.evaluate(()=>{window.__seasonalTestNow=Date.parse('2026-11-02T00:00:00Z');document.dispatchEvent(new Event('visibilitychange'));});
+      const restored=await page.evaluate(()=>Array.from(document.querySelectorAll('.pp-trophy-detail .pp-trophy-lb-row')).map(r=>[r.querySelector('.pp-trophy-lb-name').textContent,r.querySelector('.pp-trophy-lb-value').textContent]));
+      assert.deepEqual(restored,expected,'milestone names must restore when the event ends');
+    }
     await page.keyboard.press('Escape');
     await page.waitForFunction(()=>!document.querySelector('.pp-trophy-detail'));
   }

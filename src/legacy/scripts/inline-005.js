@@ -5708,7 +5708,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
           const p = state?.players?.[liveP];
           const nm = (typeof p === 'string' ? p : (p?.name || p?.full || p?.nickname || p?.initials || `P${Number(liveP)+1}`)).toString();
           const first = Number(dec.round || 0) === 0 && Number(dec.turn || 0) === 0;
-          setTimeout(()=>{ try{ window.sqDmdShowZones?.({ z2:nm, z3:(first ? 'TO THROW FIRST' : 'TO THROW') }, { type:'wipe', ms:780, fx:'impact', z3Small:true }); }catch(_){} }, 0);
+          setTimeout(()=>{ try{ window.sqDmdShowZones?.({ z2:window.__sqDmdSeasonalLabel?.(p, nm, true) || nm, z3:(first ? 'TO THROW FIRST' : 'TO THROW') }, { type:'wipe', ms:780, fx:'impact', z3Small:true }); }catch(_){} }, 0);
         }
       }
     }catch(_){}
@@ -16193,6 +16193,10 @@ function __sqV3IdleSlides(){
     const p = (state.players || [])[cp];
     const nm = String((p && (p.name || p.player)) || '').split(' ')[0].toUpperCase();
     if (nm) out.push({ lab: 'TO THROW', val: nm });
+    if (p && window.__sqHalloweenActive?.() && typeof window.__sqHalloweenEpithet === 'function') {
+      const alias = window.__sqHalloweenEpithet(p);
+      if (alias) out.push({ lab: 'HALLOWEEN', val: alias.toUpperCase() });
+    }
     const b = (state.score && state.score[cp]) || [];
     const pts = [];
     b.forEach(e => { if (e && e.darts && e.darts.filter(d => d).length >= 3) pts.push(Number(e.roundTotal || 0)); });
@@ -16241,6 +16245,7 @@ function __sqV3DisplayTick(){
     const labEl = labEl0, valEl = valEl0;
     if (labEl) labEl.textContent = lab;
     if (valEl) valEl.textContent = val;
+    disp.classList.toggle('is-halloween-alias', mode === 'idle' && lab === 'HALLOWEEN');
     disp.classList.toggle('gold', mode === 'gold');
     disp.classList.toggle('green', mode === 'green');
     disp.classList.toggle('hit', mode === 'hit');
@@ -17452,6 +17457,17 @@ function __sqGameRenderFailsafe(err){
   window.__sqSc045DmdHelpers = true;
 
   const normName = (v) => String(v == null ? '' : v).trim().toLowerCase();
+  // Presentation only: callers retain the original name for all lookups.
+  window.__sqDmdSeasonalLabel = function(player, original, padded){
+    try{
+      if (window.__sqHalloweenActive?.() && typeof window.__sqHalloweenNickname === 'function') {
+        const alias = window.__sqHalloweenNickname(player);
+        // Reserve room for the status dot over the top-right edge of the canvas.
+        if (alias) return alias + (padded ? '    ' : '');
+      }
+    }catch(_){}
+    return original;
+  };
   const officialMode = () => {
     try { if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime()) return false; } catch(_){}
     let mode = '';
@@ -17534,11 +17550,11 @@ function __sqGameRenderFailsafe(err){
       if (!name || typeof window.sqDmdShowZones !== 'function') return false;
       try{ window.__sqDmdPrimePbCache?.(); }catch(_){}
       const round = Number(state.currentRound || 0), dart = Number(state.currentDart || 0), hist = Array.isArray(state.history) ? state.history.length : 0;
-      window.sqDmdShowZones({ z2:name, z3:(first ? 'TO THROW FIRST' : 'TO THROW') }, { type:'wipe', ms:820, fx:'impact', z3Small:true });
+      window.sqDmdShowZones({ z2:window.__sqDmdSeasonalLabel(p, name, true), z3:(first ? 'TO THROW FIRST' : 'TO THROW') }, { type:'wipe', ms:820, fx:'impact', z3Small:true });
       setTimeout(()=>{
         try{
           if (state.finished || Number(state.currentPlayer || 0) !== idx || Number(state.currentRound || 0) !== round || Number(state.currentDart || 0) !== dart || (Array.isArray(state.history) ? state.history.length : 0) !== hist) return;
-          window.sqDmdShowZones?.({ z2:name, z3:'' }, { type:'hold', ms:1 });
+          window.sqDmdShowZones?.({ z2:window.__sqDmdSeasonalLabel(p, name, true), z3:'' }, { type:'hold', ms:1 });
           window.__sqDmdStartPreThrow?.(name, window.__sqDmdBuildPreThrowInfo?.(idx) || []);
         }catch(_){}
       }, 840);
@@ -18807,7 +18823,7 @@ setTimeout(() => {
         if (!__sqDmdStage3Current()) return;
         try{
           window.sqDmdShowZones?.(
-            { z2:(nextLbl ? `NEXT: ${String(nextLbl).toUpperCase()}` : 'NEXT'), z3:`${nextName} TO THROW`, z3Small:true },
+            { z2:(nextLbl ? `NEXT: ${String(nextLbl).toUpperCase()}` : 'NEXT'), z3:`${window.__sqDmdSeasonalLabel(players[nextPlayerIdx], nextName)} TO THROW`, z3Small:true },
             { type:'wipe', ms:900, revealMs:180, fx:'smear' }
           );
         }catch(_){}
@@ -18817,7 +18833,7 @@ setTimeout(() => {
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2:nextName, z3:'' }, { type:'hold', ms:1 });
+          window.sqDmdShowZones?.({ z2:window.__sqDmdSeasonalLabel(players[nextPlayerIdx], nextName, true), z3:'' }, { type:'hold', ms:1 });
           window.__sqDmdStartPreThrow?.(nextName, infoLines);
         }catch(_){}
       }, __preThrowAt);
@@ -18829,7 +18845,7 @@ setTimeout(() => {
         if (!__sqDmdStage3Current()) return;
         try{
           window.sqDmdShowZones?.(
-            { z2:nextName, z3:'TO THROW', z3Small:true },
+            { z2:window.__sqDmdSeasonalLabel(players[nextPlayerIdx], nextName, true), z3:'TO THROW', z3Small:true },
             { type:'wipe', ms:820, revealMs:160, fx:'smear' }
           );
         }catch(_){}
@@ -18839,7 +18855,7 @@ setTimeout(() => {
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2:nextName, z3:'' }, { type:'hold', ms:1 });
+          window.sqDmdShowZones?.({ z2:window.__sqDmdSeasonalLabel(players[nextPlayerIdx], nextName, true), z3:'' }, { type:'hold', ms:1 });
           window.__sqDmdStartPreThrow?.(nextName, infoLines);
         }catch(_){}
       }, __preThrowAt);
@@ -18868,6 +18884,11 @@ setTimeout(() => {
   let _nick = '';
   let _showNick = false;
   let _lastFlip = 0;
+  let _player = null;
+  const pinnedName = () => window.__sqDmdSeasonalLabel?.(_player, (_showNick ? _nick : _full) || _name, true) || ((_showNick ? _nick : _full) || _name);
+  document.addEventListener('sq:halloween-change', () => {
+    if (_name) window.__sqDmdPinnedZ2Text = pinnedName();
+  });
     try { window.__sqDmdPinnedZ2Text = ''; } catch(_){}
 
   window.__sqDmdStopPreThrow = function(){
@@ -18876,6 +18897,7 @@ setTimeout(() => {
     _lines = [];
     _i = 0;
     _name = '';
+    _player = null;
     try { window.__sqDmdNoScrollZ2 = false; } catch(_){}
     try { window.__sqDmdZ3Small = false; } catch(_){}
     try { /* no idle marquee in prethrow */ } catch(_){}
@@ -18885,6 +18907,11 @@ setTimeout(() => {
     try { window.__sqDmdStopPreThrow(); } catch(_){ }
     _name = (playerName || '').toString();
     try{
+      const candidate = state?.players?.[Number(state.currentPlayer || 0)];
+      const candidates = typeof candidate === 'string' ? [candidate] : [candidate?.name, candidate?.full, candidate?.nickname, candidate?.code, candidate?.initials];
+      _player = candidates.some(v => String(v || '').trim().toLowerCase() === _name.trim().toLowerCase()) ? candidate : null;
+    }catch(_){ _player = null; }
+    try{
       const code = _name.trim().toUpperCase();
       const pm = (window.__sqDmdGetPlayerMeta ? window.__sqDmdGetPlayerMeta(code) : null);
       _full = (pm && pm.full) ? String(pm.full) : _name;
@@ -18893,7 +18920,7 @@ setTimeout(() => {
     }catch(_){ _full = _name; _nick = ''; }
     _showNick = false;
     _lastFlip = performance.now();
-    try { window.__sqDmdPinnedZ2Text = _full || _name; } catch(_){ }
+    try { window.__sqDmdPinnedZ2Text = pinnedName(); } catch(_){ }
     _lines = Array.isArray(lines) ? lines.filter(Boolean).map(String) : [];
     _i = 0;
 
@@ -18905,7 +18932,7 @@ setTimeout(() => {
     // Show first line immediately (no animation)
     try{
       const first = _lines.length ? _lines[0] : '';
-      window.sqDmdShowZones?.({ z2: _name, z3: first }, { type:'hold', ms:1, z3Small:true });
+      window.sqDmdShowZones?.({ z2: pinnedName(), z3: first }, { type:'hold', ms:1, z3Small:true });
     }catch(_){}
 
     if (_lines.length <= 1) return;
@@ -18920,8 +18947,8 @@ setTimeout(() => {
             if (_nick && (now - _lastFlip) >= 1000){
               _showNick = !_showNick;
               _lastFlip = now;
-              try{ window.__sqDmdPinnedZ2Text = (_showNick ? _nick : _full) || _name; window.__sqDmdNoScrollZ2 = true; }catch(_){ }
-              try{ window.sqDmdShowZones?.({ z2: (_showNick ? _nick : _full) || _name }, { type:'hold', ms:1 }); }catch(_){ }
+              try{ window.__sqDmdPinnedZ2Text = pinnedName(); window.__sqDmdNoScrollZ2 = true; }catch(_){ }
+              try{ window.sqDmdShowZones?.({ z2: pinnedName() }, { type:'hold', ms:1 }); }catch(_){ }
             }
             _i = (_i + 1) % _lines.length;
             window.sqDmdShowZones?.({ z3: _lines[_i] }, { type:'roll', ms:520, z3Small:true });

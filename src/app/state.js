@@ -872,7 +872,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
           const p = state?.players?.[liveP];
           const nm = (typeof p === 'string' ? p : (p?.name || p?.full || p?.nickname || p?.initials || `P${Number(liveP)+1}`)).toString();
           const first = Number(dec.round || 0) === 0 && Number(dec.turn || 0) === 0;
-          setTimeout(()=>{ try{ window.sqDmdShowZones?.({ z2:nm, z3:(first ? 'TO THROW FIRST' : 'TO THROW') }, { type:'wipe', ms:780, fx:'impact', z3Small:true }); }catch(_){} }, 0);
+          setTimeout(()=>{ try{ window.sqDmdShowZones?.({ z2:window.__sqDmdSeasonalLabel?.(p, nm, true) || nm, z3:(first ? 'TO THROW FIRST' : 'TO THROW') }, { type:'wipe', ms:780, fx:'impact', z3Small:true }); }catch(_){} }, 0);
         }
       }
     }catch(_){}
