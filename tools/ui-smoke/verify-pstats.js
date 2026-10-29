@@ -9,11 +9,32 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
 
 (async () => {
   const { browser, page } = await H.launch({ width: 390, height: 844 });
+  // Keep the regular profile assertions independent of the date CI runs.
+  await page.addInitScript(() => { const start = performance.now(); Date.now = () => Date.parse('2026-11-02T00:00:00Z') + performance.now() - start; });
   await H.boot(page, { settle: 3000 });
   await FX.install(page);
   await page.evaluate(() => window.openPlayerStatsHub('Alex S'));
   await page.waitForTimeout(4500);
 
+  const seasonal = await page.evaluate(() => {
+    const start = performance.now();
+    Date.now = () => Date.parse('2026-11-01T12:00:00Z') + performance.now() - start;
+    document.dispatchEvent(new Event('visibilitychange'));
+    return {
+      active: window.__sqHalloweenActive(),
+      alias: document.querySelector('.pp-hero-nick').textContent,
+      expected: window.__sqHalloweenNickname({ name:'Alex S' }),
+      stored: (window.__sqPlayerStatsPlayers || []).find(p => p.name === 'Alex S')?.nickname
+    };
+  });
+  check('hero: Halloween alias is displayed without changing the saved nickname',
+    seasonal.active && seasonal.alias === seasonal.expected && seasonal.stored === E.nick, JSON.stringify(seasonal));
+  await page.evaluate(() => {
+    const start = performance.now();
+    Date.now = () => Date.parse('2026-11-02T00:00:00Z') + performance.now() - start;
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  check('hero: original nickname returns at expiry', (await page.locator('.pp-hero-nick').textContent()).trim() === E.nick);
   const heroSnapshot = await page.locator('.pp-hero').evaluate(el => ({ html:el.outerHTML, text:el.innerText }));
   await page.locator('.sq-player-stats-hub .pp-tab').filter({ hasText:/^Stats$/i }).click();
   // Stats now builds on intent; observe its original count-ups before snapshotting.
