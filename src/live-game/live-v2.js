@@ -4198,6 +4198,7 @@ function __sqLiveV3Render(){
         <div class="v3-card-sheen" aria-hidden="true"></div>
         <div class="v3-cardtop">${winDots(i)}${lvlChip}</div>
         <div class="v3-name" style="color:${col}${active ? `;text-shadow:0 0 18px ${col}59` : ''}">${escV3(pName(i).split(' ')[0].toUpperCase())}</div>
+        <div class="v3-nick-slot v3-nick" data-halloween-player="${i}" hidden></div>
         <div class="v3-total ${totalRecClass(i)}">${totals[i]}</div>
         ${diffBadge(i)}
         <div class="v3-foot ${lr}">
@@ -4310,6 +4311,11 @@ function __sqLiveV3Render(){
         </div>
       </div>
     </div>`;
+
+  panel.querySelectorAll('[data-halloween-player]').forEach(node => {
+    const player = state.players[Number(node.dataset.halloweenPlayer)] || {};
+    __sqSetHalloweenText(node, '', __sqHalloweenNickname(player));
+  });
 
   // Boot the animated GAME RACE (the only screen content now — dot-matrix removed).
   try{ __sqV3RaceEnsure(); }catch(_){ }

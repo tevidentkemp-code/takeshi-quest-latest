@@ -32,6 +32,8 @@ function makeRoundRows(values) {
 (async () => {
   const { browser, page, consoleErrs } = await H.launch({ width:390, height:844 });
   try {
+    // Keep the ordinary presentation deterministic regardless of the day CI runs.
+    await page.addInitScript(() => { const start = performance.now(); Date.now = () => Date.parse('2026-11-02T00:00:00Z') + performance.now() - start; });
     await H.boot(page, { settle:3200 });
     stage('booted');
 
@@ -187,6 +189,21 @@ function makeRoundRows(values) {
     assert.equal((await page.locator('.gc-arcade-kicker').textContent()).trim(), 'GAME WINNER');
     assert.equal((await page.locator('.sq-pg-mainname').textContent()).trim(), 'Test Alpha');
     assert.match((await page.locator('.sq-pg-nickname').textContent()).trim(), /Captain Double/);
+    const seasonal = await page.evaluate(() => {
+      const start = performance.now();
+      Date.now = () => Date.parse('2026-11-01T12:00:00Z') + performance.now() - start;
+      document.dispatchEvent(new Event('visibilitychange'));
+      return { active:window.__sqHalloweenActive(), alias:document.querySelector('.sq-pg-nickname').textContent, stored:state.players[0].nickname };
+    });
+    assert.equal(seasonal.active, true, 'Halloween did not activate in its window');
+    assert.notEqual(seasonal.alias, '“Captain Double”', 'Winner alias did not change');
+    assert.equal(seasonal.stored, 'Captain Double', 'Halloween changed the player profile');
+    await page.evaluate(() => {
+      const start = performance.now();
+      Date.now = () => Date.parse('2026-11-02T00:00:00Z') + performance.now() - start;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    assert.match((await page.locator('.sq-pg-nickname').textContent()).trim(), /Captain Double/, 'Winner nickname did not restore at expiry');
     assert.equal((await page.locator('.gc-statRow').filter({ hasText:'Best Round' }).locator('.gc-statValue').textContent()).trim(), 'R11 / 60');
     const statStyle = await page.locator('.gc-statRow').filter({ hasText:'Final Score' }).locator('.gc-statValue').evaluate(el => {
       const s = getComputedStyle(el);

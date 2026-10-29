@@ -1088,6 +1088,40 @@ function __sqNameParts(name){
   return { first: parts[0] || '', last: parts.slice(1).join(' ') };
 }
 
+// Halloween names are display-only and never enter saved profiles or game data.
+function __sqHalloweenNickname(p){
+  const name = String((p && (p.name || p.first_name || p.id)) || '').trim().toLowerCase();
+  if (!name) return '';
+  const names = [
+    'Phantom Finisher', 'Ghoul of the Oche', 'Grim Trebler', 'Midnight Marksman',
+    'Cursed Checkout', 'Bullseye Banshee', 'Spectral Sniper', 'Dartside Ghost',
+    'Crypt Keeper', 'Howling Hunter', 'Wicked Wire', 'Haunted Flight',
+    'Shadow Thrower', 'Pumpkin Punisher', 'Bone Collector', 'Ghost of Doubles',
+    'Tombstone Trebler', 'Oche Vampire', 'Bewitched Bull', 'Night Stalker',
+    'Creeping Checkout', 'Phantom Flight', 'Spooky Scorer', 'Restless Reaper',
+    'Dreaded Double', 'Cobweb Closer', 'Ghostly Gambler', 'Moonlit Marauder',
+    'Cryptic Crusher', 'Wailing Wire', 'Zombie Zoner', 'Ghoulish Gunner'
+  ];
+  let hash = 2166136261;
+  for (let i = 0; i < name.length; i++) hash = Math.imul(hash ^ name.charCodeAt(i), 16777619);
+  return names[(hash >>> 0) % names.length];
+}
+function __sqSetHalloweenText(node, original, seasonal){
+  if (!node) return;
+  node.dataset.sqHalloweenOriginal = String(original || '');
+  node.dataset.sqHalloweenSeasonal = String(seasonal || original || '');
+  node.textContent = (typeof window.__sqHalloweenActive === 'function' && window.__sqHalloweenActive())
+    ? node.dataset.sqHalloweenSeasonal : node.dataset.sqHalloweenOriginal;
+  node.hidden = !node.textContent;
+}
+document.addEventListener('sq:halloween-change', function(){
+  const active = typeof window.__sqHalloweenActive === 'function' && window.__sqHalloweenActive();
+  document.querySelectorAll('[data-sq-halloween-original]').forEach(function(node){
+    node.textContent = active ? node.dataset.sqHalloweenSeasonal : node.dataset.sqHalloweenOriginal;
+    node.hidden = !node.textContent;
+  });
+});
+
 function __sqPlayerPretty(p){
   const nm = (p && p.name != null) ? String(p.name).trim() : '';
   const parts = __sqNameParts(nm);

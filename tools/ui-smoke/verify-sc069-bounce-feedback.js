@@ -144,8 +144,23 @@ fs.mkdirSync(out, { recursive: true });
     const queued = await page.evaluate(() => window.__sqDmdV2.snapshot()); assert.equal(queued.active.headline, 'NEW SHATEKI RECORD'); assert(queued.queue.some(m => m.bounceOut));
     await page.waitForTimeout(1250); r = await read(); committedBO(r); const first = boFrames(r)[0]; r.recordQueueLatencyMs = first ? first.at - r.records[0].at : null; console.log('MEASURE queued BO latency ' + JSON.stringify({ ms: r.recordQueueLatencyMs, frames: boFrames(r).length })); await undoAll();
 
-    await page.evaluate(() => window.__sqDmdV2.emit({ kind: 'SHATEKI_RECORD', gameScore: 900 })); await begin('queued-record-then-undo'); await hold(); await page.locator('#pad .dtActBtn.undo').click(); await page.waitForTimeout(1400); r = await read();
-    assert.equal(r.after.history, 0); assert.equal(boFrames(r).length, 0, 'queued BO cannot replay behind higher record after Undo'); assert(!r.after.controller.queue.some(m => m.bounceOut)); await undoAll();
+    // Hold a presentation-only higher-priority message long enough to prove
+    // that the genuine Bounce Out is queued before the native Undo gesture.
+    // The preceding case still exercises the real SHATEKI_RECORD duration.
+    await page.evaluate(() => window.__sqDmdV2.emit({ kind: 'TEST_BLOCKER', priority: 50, headline: 'TEST BLOCKER', duration: 4000 }));
+    await begin('queued-record-then-undo'); await hold();
+    const beforeUndo = await page.evaluate(() => window.__sqDmdV2.snapshot());
+    assert.equal(beforeUndo.active?.headline, 'TEST BLOCKER', 'higher-priority blocker is still active before Undo');
+    assert(beforeUndo.queue.some(m => m.bounceOut), 'accepted Bounce Out is genuinely queued before Undo');
+    await page.locator('#pad .dtActBtn.undo').click();
+    const afterUndo = await page.evaluate(() => window.__sqDmdV2.snapshot());
+    assert(!afterUndo.queue.some(m => m.bounceOut), 'Undo removes the queued Bounce Out');
+    await page.waitForTimeout(4200); r = await read();
+    const queuedUndo = r.events.find(e => e.type === 'click' && e.text === 'UNDO');
+    assert(queuedUndo, 'a genuine Undo click was observed');
+    assert.equal(r.after.history, 0);
+    assert(!boFrames(r).some(frame => frame.at > queuedUndo.at), 'queued BO cannot replay after Undo');
+    assert(!r.after.controller.queue.some(m => m.bounceOut)); await undoAll();
 
     async function advance(round) { await page.evaluate(round => { for (let n = 0; state.currentRound < round && n < 100; n++) { const type = ROUNDS[state.currentRound].type; recordThrow(type === 'doubles' ? { kind: 'D', sector: 20 } : type === 'triples' ? { kind: 'T', sector: 20 } : { kind: state.currentPlayer === 0 ? 'T' : 'S' }); } if (state.currentRound !== round) throw Error('Canonical round fixture failed'); }, round); await page.waitForFunction(round => document.querySelector('#v2Rows .v2Badge.liveRow')?.dataset.round === String(round), round); }
     for (const [name, round] of [['doubles-hold', 11], ['triples-hold', 12], ['bull-hold', 13]]) { await advance(round); if (round === 13) await page.evaluate(() => recordThrow({ kind: 'B', bull: 'Inner' })); await begin(name); await hold(); r = await read(); committedBO(r); }

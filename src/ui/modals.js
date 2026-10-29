@@ -3551,7 +3551,7 @@ function __sqPlayerStatsHero(name, nick='', tiles=null, primary=null){
   const copy = document.createElement('div'); copy.className = 'pp-identity-copy';
   const title = document.createElement('div'); title.className = 'pp-hero-name'; title.textContent = name;
   const sub = document.createElement('div'); sub.className = 'muted pp-hero-nick';
-  sub.textContent = nick || __sqPlayerStatsNickname(name, window.__sqPlayerStatsPlayers || []) || 'Player profile';
+  __sqSetHalloweenText(sub, nick || __sqPlayerStatsNickname(name, window.__sqPlayerStatsPlayers || []) || 'Player profile', __sqHalloweenNickname({ name:name }));
   copy.append(title, sub); identity.append(avatar, copy);
   hero.append(identity, __sqPlayerStatsXpHost(name, true, primary));
   if (!tiles){
@@ -4705,10 +4705,13 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
         var lvl = xpOf(pl) > 0 && typeof SQ_XP !== 'undefined' && SQ_XP.progress ? SQ_XP.progress(xpOf(pl)).level : 0;
         row.innerHTML = '<span class="menu-row-icon">' + av + '</span>'
           + '<span class="menu-row-text"><span class="menu-row-title">' + esc(pl.name) + (filter === 'top' && lvl ? '<span class="ps-pick-lvl">LV ' + lvl + '</span>' : '') + '</span>'
-          + (pl.nickname ? '<span class="menu-row-sub">' + esc(pl.nickname) + '</span>' : '')
+          + '<span class="menu-row-sub sq-halloween-picker-nick"' + (pl.nickname ? '' : ' hidden') + '>' + esc(pl.nickname || '') + '</span>'
           + '</span>'
           + '<button type="button" class="ps-pick-star' + (favs.has(nk) ? ' on' : '') + '" aria-label="Favourite">' + (favs.has(nk) ? '★' : '☆') + '</button>'
           + '<span class="menu-row-chev">' + chev + '</span>';
+        if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function') {
+          __sqSetHalloweenText(row.querySelector('.sq-halloween-picker-nick'), pl.nickname || '', __sqHalloweenNickname(pl));
+        }
         var star = row.querySelector('.ps-pick-star');
         star.onclick = function(ev){
           ev.stopPropagation();

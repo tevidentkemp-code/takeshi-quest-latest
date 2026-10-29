@@ -82,6 +82,11 @@
         if (!Number.isFinite(avg)) avg = 0;
         return '<tr><td class="mini-rank">' + (i + 1) + '</td><td class="mini-name">' + escText(displayName(r.player)) + '</td><td class="mini-val">' + avg.toFixed(2) + '</td></tr>';
       }).join('');
+      Array.from(body.querySelectorAll('.mini-name')).forEach(function(cell, i){
+        var player = profileFor(rows[i].player) || { name:rows[i].player };
+        var first = String(player.first_name || player.name || '').trim().split(/\s+/)[0];
+        __sqSetHalloweenText(cell, cell.textContent, first + ' "' + __sqHalloweenNickname(player) + '"');
+      });
     }catch(e){
       try { console.warn('[SQ] Fix160 power fast refresh failed:', e && e.message ? e.message : e); } catch(_) {}
     }

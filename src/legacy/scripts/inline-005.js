@@ -1986,6 +1986,40 @@ function __sqNameParts(name){
   return { first: parts[0] || '', last: parts.slice(1).join(' ') };
 }
 
+// Halloween names are display-only and never enter saved profiles or game data.
+function __sqHalloweenNickname(p){
+  const name = String((p && (p.name || p.first_name || p.id)) || '').trim().toLowerCase();
+  if (!name) return '';
+  const names = [
+    'Phantom Finisher', 'Ghoul of the Oche', 'Grim Trebler', 'Midnight Marksman',
+    'Cursed Checkout', 'Bullseye Banshee', 'Spectral Sniper', 'Dartside Ghost',
+    'Crypt Keeper', 'Howling Hunter', 'Wicked Wire', 'Haunted Flight',
+    'Shadow Thrower', 'Pumpkin Punisher', 'Bone Collector', 'Ghost of Doubles',
+    'Tombstone Trebler', 'Oche Vampire', 'Bewitched Bull', 'Night Stalker',
+    'Creeping Checkout', 'Phantom Flight', 'Spooky Scorer', 'Restless Reaper',
+    'Dreaded Double', 'Cobweb Closer', 'Ghostly Gambler', 'Moonlit Marauder',
+    'Cryptic Crusher', 'Wailing Wire', 'Zombie Zoner', 'Ghoulish Gunner'
+  ];
+  let hash = 2166136261;
+  for (let i = 0; i < name.length; i++) hash = Math.imul(hash ^ name.charCodeAt(i), 16777619);
+  return names[(hash >>> 0) % names.length];
+}
+function __sqSetHalloweenText(node, original, seasonal){
+  if (!node) return;
+  node.dataset.sqHalloweenOriginal = String(original || '');
+  node.dataset.sqHalloweenSeasonal = String(seasonal || original || '');
+  node.textContent = (typeof window.__sqHalloweenActive === 'function' && window.__sqHalloweenActive())
+    ? node.dataset.sqHalloweenSeasonal : node.dataset.sqHalloweenOriginal;
+  node.hidden = !node.textContent;
+}
+document.addEventListener('sq:halloween-change', function(){
+  const active = typeof window.__sqHalloweenActive === 'function' && window.__sqHalloweenActive();
+  document.querySelectorAll('[data-sq-halloween-original]').forEach(function(node){
+    node.textContent = active ? node.dataset.sqHalloweenSeasonal : node.dataset.sqHalloweenOriginal;
+    node.hidden = !node.textContent;
+  });
+});
+
 function __sqPlayerPretty(p){
   const nm = (p && p.name != null) ? String(p.name).trim() : '';
   const parts = __sqNameParts(nm);
@@ -8127,6 +8161,8 @@ function __msRenderPlayers(){
       inp.value = p.name || '';
       inp.addEventListener('input', () => {
         __msPlayers[i].name = inp.value;
+        const alias = __sqHalloweenNickname(p);
+        __sqSetHalloweenText(tag, 'Guest · not saved', alias ? 'Guest · ' + alias : 'Guest · not saved');
         __msUpdateStartEnabled();
       });
       inp.addEventListener('keydown', (event) => {
@@ -8138,12 +8174,13 @@ function __msRenderPlayers(){
       info.appendChild(inp);
       const tag = document.createElement('span');
       tag.className = 'ms2-ranks';
-      tag.textContent = 'Guest · not saved';
+      const alias = __sqHalloweenNickname(p);
+      __sqSetHalloweenText(tag, 'Guest · not saved', alias ? 'Guest · ' + alias : 'Guest · not saved');
       info.appendChild(tag);
     } else {
       const nm = document.createElement('span');
       nm.className = 'ms2-nm ms-player-name';
-      nm.textContent = __ms2DisplayName(p) || '—';
+      __sqSetHalloweenText(nm, __ms2DisplayName(p) || '—', String(p.name || '').trim().toUpperCase() + ' “' + __sqHalloweenNickname(p).toUpperCase() + '”');
       info.appendChild(nm);
       info.appendChild(__ms2RankLine(p.name));
     }
@@ -10870,7 +10907,7 @@ async function showSelectPlayerDialog(index){
       info.className = 'ms2-info';
       const nm = document.createElement('span');
       nm.className = 'ms2-nm';
-      nm.textContent = __ms2DisplayName(p) || '—';
+      __sqSetHalloweenText(nm, __ms2DisplayName(p) || '—', String(p.name || '').trim().toUpperCase() + ' “' + __sqHalloweenNickname(p).toUpperCase() + '”');
       info.appendChild(nm);
       info.appendChild(__ms2RankLine(p.name));
       row.appendChild(info);
@@ -16865,6 +16902,7 @@ function __sqLiveV3Render(){
         <div class="v3-card-sheen" aria-hidden="true"></div>
         <div class="v3-cardtop">${winDots(i)}${lvlChip}</div>
         <div class="v3-name" style="color:${col}${active ? `;text-shadow:0 0 18px ${col}59` : ''}">${escV3(pName(i).split(' ')[0].toUpperCase())}</div>
+        <div class="v3-nick-slot v3-nick" data-halloween-player="${i}" hidden></div>
         <div class="v3-total ${totalRecClass(i)}">${totals[i]}</div>
         ${diffBadge(i)}
         <div class="v3-foot ${lr}">
@@ -16977,6 +17015,11 @@ function __sqLiveV3Render(){
         </div>
       </div>
     </div>`;
+
+  panel.querySelectorAll('[data-halloween-player]').forEach(node => {
+    const player = state.players[Number(node.dataset.halloweenPlayer)] || {};
+    __sqSetHalloweenText(node, '', __sqHalloweenNickname(player));
+  });
 
   // Boot the animated GAME RACE (the only screen content now — dot-matrix removed).
   try{ __sqV3RaceEnsure(); }catch(_){ }
@@ -23206,7 +23249,7 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
-  const RUNNING_VERSION = '0.14.10';
+  const RUNNING_VERSION = '0.15.0';
   const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
   let updateCheckPromise = null;
@@ -30235,7 +30278,7 @@ function __sqPlayerStatsHero(name, nick='', tiles=null, primary=null){
   const copy = document.createElement('div'); copy.className = 'pp-identity-copy';
   const title = document.createElement('div'); title.className = 'pp-hero-name'; title.textContent = name;
   const sub = document.createElement('div'); sub.className = 'muted pp-hero-nick';
-  sub.textContent = nick || __sqPlayerStatsNickname(name, window.__sqPlayerStatsPlayers || []) || 'Player profile';
+  __sqSetHalloweenText(sub, nick || __sqPlayerStatsNickname(name, window.__sqPlayerStatsPlayers || []) || 'Player profile', __sqHalloweenNickname({ name:name }));
   copy.append(title, sub); identity.append(avatar, copy);
   hero.append(identity, __sqPlayerStatsXpHost(name, true, primary));
   if (!tiles){
@@ -31389,10 +31432,13 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
         var lvl = xpOf(pl) > 0 && typeof SQ_XP !== 'undefined' && SQ_XP.progress ? SQ_XP.progress(xpOf(pl)).level : 0;
         row.innerHTML = '<span class="menu-row-icon">' + av + '</span>'
           + '<span class="menu-row-text"><span class="menu-row-title">' + esc(pl.name) + (filter === 'top' && lvl ? '<span class="ps-pick-lvl">LV ' + lvl + '</span>' : '') + '</span>'
-          + (pl.nickname ? '<span class="menu-row-sub">' + esc(pl.nickname) + '</span>' : '')
+          + '<span class="menu-row-sub sq-halloween-picker-nick"' + (pl.nickname ? '' : ' hidden') + '>' + esc(pl.nickname || '') + '</span>'
           + '</span>'
           + '<button type="button" class="ps-pick-star' + (favs.has(nk) ? ' on' : '') + '" aria-label="Favourite">' + (favs.has(nk) ? '★' : '☆') + '</button>'
           + '<span class="menu-row-chev">' + chev + '</span>';
+        if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function') {
+          __sqSetHalloweenText(row.querySelector('.sq-halloween-picker-nick'), pl.nickname || '', __sqHalloweenNickname(pl));
+        }
         var star = row.querySelector('.ps-pick-star');
         star.onclick = function(ev){
           ev.stopPropagation();
