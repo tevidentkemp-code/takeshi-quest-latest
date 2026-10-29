@@ -21,6 +21,8 @@ async function fit(page, selector) {
 async function scenario(width) {
   const { browser, page, consoleErrs } = await H.launch({ width, height:844 });
   try {
+    // Keep normal-profile assertions independent of the calendar date.
+    await page.addInitScript(() => { const start = performance.now(); Date.now = () => Date.parse('2026-11-02T00:00:00Z') + performance.now() - start; });
     await H.boot(page);
     await FX.install(page);
     const pageErrors = [];
@@ -67,6 +69,21 @@ async function scenario(width) {
         beforeRows:el.querySelector('.pp-tabs').getBoundingClientRect().bottom < el.querySelector('.menu-list').getBoundingClientRect().top };
     });
     check(width + ': complete existing live profile on hub', /Alex S/.test(original.text) && /The Atomic/.test(original.text) && /LV 2/.test(original.text) && /ROOKIE/.test(original.text) && /151 XP/.test(original.text) && /33 TO LEVEL 3/i.test(original.text));
+    const seasonal = await page.evaluate(() => {
+      const start = performance.now();
+      Date.now = () => Date.parse('2026-11-01T12:00:00Z') + performance.now() - start;
+      document.dispatchEvent(new Event('visibilitychange'));
+      return { active:window.__sqHalloweenActive(), alias:document.querySelector('.pp-hero-nick').textContent,
+        expected:window.__sqHalloweenNickname({ name:'Alex S' }),
+        stored:(window.__sqPlayerStatsPlayers || []).find(p => p.name === 'Alex S')?.nickname };
+    });
+    check(width + ': seasonal nickname is display-only', seasonal.active && seasonal.alias === seasonal.expected && seasonal.stored === 'The Atomic', seasonal);
+    await page.evaluate(() => {
+      const start = performance.now();
+      Date.now = () => Date.parse('2026-11-02T00:00:00Z') + performance.now() - start;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    check(width + ': original nickname returns at expiry', (await page.locator('.pp-hero-nick').textContent()).trim() === 'The Atomic');
     check(width + ': unchanged calculated values', JSON.stringify(original.tiles) === JSON.stringify(['8.75 (#3)','5','126.0']), original.tiles);
     check(width + ': profile and primary buttons before hub rows', original.headerFirst && original.beforeRows);
     check(width + ': exactly three primary controls', JSON.stringify(original.tabs) === JSON.stringify(['Stats','XP','Achievements']));
