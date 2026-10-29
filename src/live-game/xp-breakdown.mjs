@@ -316,6 +316,10 @@ function injectStyles() {
   text-overflow:ellipsis;
   white-space:nowrap;
 }
+.sq-halloween .gc-xp-row.sq-xp-detailed .gc-xp-name .nm{
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
 .gc-xp-row.sq-xp-detailed .gc-xp-gain{
   margin-top:7px;
   font-size:15px;
@@ -815,6 +819,10 @@ function buildDetailedRow(host, data) {
     <div class="gc-xp-breakdown"></div>
   `;
 
+  // Only the visible label changes; data.name remains the canonical award input.
+  if (typeof window.__sqSetHalloweenText === 'function' && typeof window.__sqHalloweenNickname === 'function') {
+    window.__sqSetHalloweenText(el.querySelector('.gc-xp-name .nm'), data.name, window.__sqHalloweenNickname(data.player));
+  }
   applyPlayerAvatar(host, el.querySelector('.gc-xp-avatar-sprite'), data.player);
 
   const breakdown = el.querySelector('.gc-xp-breakdown');

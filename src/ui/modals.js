@@ -420,6 +420,8 @@ window.openStreakLeagueDialog = async function openStreakLeagueDialog(initialMet
         rank.textContent = '#' + (i + 1);
         const main = document.createElement('div'); main.className = 'sk-main';
         const nm = document.createElement('div'); nm.className = 'sk-name'; nm.textContent = r.player_name || r.player_key || '—';
+        if (r.player_name && typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+          __sqSetHalloweenText(nm, r.player_name, __sqHalloweenNickname({name:r.player_name, id:r.player_key}));
         const chain = document.createElement('div'); chain.className = 'sk-chain';
         const lit = streak > 0 ? Math.max(1, Math.round(streak / maxStreak * SEGS)) : 0;
         for (let sIx = 0; sIx < SEGS; sIx++){
@@ -966,7 +968,11 @@ rows.forEach((row) => {
   tdRank.style.fontWeight='800';
 
   const tdName   = document.createElement('td');
-  tdName.textContent = row.name || '—';
+  const nameLabel = document.createElement('span');
+  nameLabel.textContent = row.name || '—';
+  if (row.name && typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+    __sqSetHalloweenText(nameLabel, row.name, __sqHalloweenNickname({name:row.name, id:row.player_id}));
+  tdName.appendChild(nameLabel);
 
   // Append green/red arrow if rank changed since last snapshot
   const keyLC = String(row.name || '').trim().toLowerCase();
@@ -1572,6 +1578,8 @@ function section(title, rows, valueFmt, showMonth, noteText){
       const tr = document.createElement('tr');
       const tdRank  = document.createElement('td'); tdRank.textContent  = String(i+1);
       const tdName  = document.createElement('td'); tdName.textContent  = r.name;
+      if (r.name && typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+        __sqSetHalloweenText(tdName, r.name, __sqHalloweenNickname({name:r.name, id:r.player_id}));
       const tdScore = document.createElement('td'); tdScore.textContent = valueFmt(r);
       const tdMonth = document.createElement('td'); tdMonth.textContent = showMonth ? monthLabel(r.ts) : '';
       tr.append(tdRank, tdName, tdScore, tdMonth);
@@ -2004,6 +2012,8 @@ rowsOut.forEach((p) => {
   tdRank.textContent = qualifies ? String(rank) : '—';
 
   const tdName  = document.createElement('td'); tdName.textContent  = p.player;
+  if (p.player && typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+    __sqSetHalloweenText(tdName, p.player, __sqHalloweenNickname({name:p.player, id:p.player_id}));
   const tdGames = document.createElement('td'); tdGames.textContent = String(p.games);
   const tdAvg   = document.createElement('td'); tdAvg.textContent   = p.avg.toFixed(1);
   const tdBest  = document.createElement('td'); tdBest.textContent  = String(p.best);
@@ -2953,6 +2963,8 @@ async function __sqTrophyDetail(code, earnedMap){
       if (mode === 'average' && !eligible){ row.classList.add('is-average-ineligible'); row.style.opacity = '.38'; row.title = 'Minimum 6 eligible games required to rank'; }
       const rk = document.createElement('span'); rk.className = 'pp-trophy-lb-rank'; rk.textContent = rankIndex >= 0 ? ('#' + (rankIndex + 1)) : '—'; rk.style.cssText = 'font-weight:900;min-width:30px;color:' + (rankIndex >= 0 ? medal(rankIndex) : 'var(--v3-muted,#98a2b8)');
       const nm = document.createElement('span'); nm.className = 'pp-trophy-lb-name'; nm.textContent = r.name; nm.style.cssText = 'flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      if (r.name && typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+        __sqSetHalloweenText(nm, r.name, __sqHalloweenNickname({name:r.name, id:r.player_id}));
       const val = document.createElement('span'); val.className = 'pp-trophy-lb-value';
       val.textContent = mode === 'average' ? __sqLeagueAverageText(r) : (milestone ? String(Number(r.cnt)||0) : ('×' + r.cnt));
       val.title = mode === 'average'
@@ -3200,6 +3212,8 @@ async function __sqMisfireDetail(code, misfireMap){
       if(mode==='average'&&!eligible){row.classList.add('is-average-ineligible');row.style.opacity='.38';row.title='Minimum 6 eligible games required to rank';}
       const rk=document.createElement('span'); rk.className='pp-misfire-lb-rank'; rk.textContent=rankIndex>=0?('#'+(rankIndex+1)):'—'; rk.style.cssText='font-weight:900;min-width:30px;color:'+(rankIndex>=0?medal(rankIndex):'var(--v3-muted,#98a2b8)');
       const nm=document.createElement('span'); nm.className='pp-misfire-lb-name'; nm.textContent=r.name; nm.style.cssText='flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      if (r.name && typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+        __sqSetHalloweenText(nm, r.name, __sqHalloweenNickname({name:r.name, id:r.player_id}));
       const val=document.createElement('span'); val.className='pp-misfire-lb-count'; val.textContent=mode==='average'?__sqLeagueAverageText(r):('×'+r.cnt); val.title=mode==='average'?((Number(r.cnt)||0)+' occurrence(s) over '+(Number(r.games_played)||0)+' eligible games'+(eligible?'':' · Not ranked until 6 eligible games')):''; val.style.cssText='font-weight:900;color:#fca5a5;white-space:nowrap;';
       row.append(rk,nm,val); list.appendChild(row);
     }); mount.appendChild(list);
@@ -3551,7 +3565,7 @@ function __sqPlayerStatsHero(name, nick='', tiles=null, primary=null){
   const copy = document.createElement('div'); copy.className = 'pp-identity-copy';
   const title = document.createElement('div'); title.className = 'pp-hero-name'; title.textContent = name;
   const sub = document.createElement('div'); sub.className = 'muted pp-hero-nick';
-  __sqSetHalloweenText(sub, nick || __sqPlayerStatsNickname(name, window.__sqPlayerStatsPlayers || []) || 'Player profile', __sqHalloweenNickname({ name:name }));
+  __sqSetHalloweenText(sub, nick || __sqPlayerStatsNickname(name, window.__sqPlayerStatsPlayers || []) || 'Player profile', __sqHalloweenEpithet(player ? (player.raw || player) : { name:name }));
   copy.append(title, sub); identity.append(avatar, copy);
   hero.append(identity, __sqPlayerStatsXpHost(name, true, primary));
   if (!tiles){
@@ -4548,6 +4562,8 @@ window.openXpLeaderboard = async function openXpLeaderboard(){
     const mid = document.createElement('div'); mid.style.cssText = 'flex:1;min-width:0;';
     const nmeRow = document.createElement('div'); nmeRow.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
     const nm = document.createElement('b'); nm.textContent = r.name;
+    if (r.name && typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+      __sqSetHalloweenText(nm, r.name, __sqHalloweenNickname({name:r.name, id:r.player_id}));
     nm.style.cssText = 'font-size:15px;';
     nmeRow.append(nm, __sqXpChip(prog));
     const sub = document.createElement('div'); sub.className = 'muted';
@@ -4709,8 +4725,8 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
           + '</span>'
           + '<button type="button" class="ps-pick-star' + (favs.has(nk) ? ' on' : '') + '" aria-label="Favourite">' + (favs.has(nk) ? '★' : '☆') + '</button>'
           + '<span class="menu-row-chev">' + chev + '</span>';
-        if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function') {
-          __sqSetHalloweenText(row.querySelector('.sq-halloween-picker-nick'), pl.nickname || '', __sqHalloweenNickname(pl));
+        if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenEpithet === 'function') {
+          __sqSetHalloweenText(row.querySelector('.sq-halloween-picker-nick'), pl.nickname || '', __sqHalloweenEpithet(pl));
         }
         var star = row.querySelector('.ps-pick-star');
         star.onclick = function(ev){

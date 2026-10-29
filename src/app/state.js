@@ -1305,7 +1305,7 @@ function openShootoutCompleteDialog(dec, baseTotals){
     <div class="gc-body">
       <div class="gc-winnerCard">
         <div class="gc-winnerLabel"><span class="gc-accent">WINNER</span></div>
-        <div class="gc-winnerName" title="${winnerName}">${winnerName}</div>
+        <div class="gc-winnerName"></div>
         <div class="gc-winnerScore">${dec.totals[dec.participants.indexOf(dec.winner)] || 0}</div>
       </div>
 
@@ -1319,6 +1319,14 @@ function openShootoutCompleteDialog(dec, baseTotals){
     </div>
   `;
 
+  const winnerLabel = modal.querySelector('.gc-winnerName');
+  if (winnerLabel) {
+    winnerLabel.textContent = winnerName;
+    winnerLabel.title = winnerName;
+    if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+      __sqSetHalloweenText(winnerLabel, winnerName, __sqHalloweenNickname(state.players[dec.winner]));
+  }
+
   const ranksEl = modal.querySelector('[data-role="gcRanks"]');
   if (ranksEl) {
     ranksEl.innerHTML = '';
@@ -1329,9 +1337,15 @@ function openShootoutCompleteDialog(dec, baseTotals){
       div.className = 'gc-rankRow' + (isWin ? ' win' : '');
       div.innerHTML = `
         <div class="gc-rankPos">${(i+1)===1?'1ST':(i+1)===2?'2ND':(i+1)===3?'3RD':(i+1)+'TH'}</div>
-        <div class="gc-rankName">${nm}</div>
+        <div class="gc-rankName"></div>
         <div class="gc-rankScore">${totals[pIdx] ?? 0}</div>
       `;
+      const label = div.querySelector('.gc-rankName');
+      if (label) {
+        label.textContent = nm;
+        if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+          __sqSetHalloweenText(label, nm, __sqHalloweenNickname(state.players[pIdx]));
+      }
       ranksEl.appendChild(div);
     });
   }

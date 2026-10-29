@@ -2025,6 +2025,7 @@ function updateLeaderboardTable(){
 
     return {
       name: (__sqComputeInitialsFromName(player.name) || ('P' + (idx+1))),
+      player,
       color: player.color || '#fff',
       perGame,
       total,
@@ -2047,6 +2048,7 @@ function updateLeaderboardTable(){
     th.scope = 'col';
     th.className = 'center';
     th.textContent = p.name;
+    __sqSetHalloweenLabel(th, p.name, __sqHalloweenNickname(p.player) || p.name);
     th.style.color = p.color;
     trh.appendChild(th);
   });
@@ -3137,7 +3139,8 @@ function __sqRevealConfirmedThrowOrder(start){
       fighter.style.setProperty('--sq-order-delay',(i*2*step)+'ms');
       const portrait=document.createElement('div');portrait.className='sq-throw-order-portrait';portrait.setAttribute('aria-hidden','true');
       try{__sqApplyAvatarSprite(portrait,__sqAvatarIdForPlayer(p));}catch(_){}
-      const label=document.createElement('div');label.className='sq-throw-order-name';label.textContent=name;
+      const label=document.createElement('div');label.className='sq-throw-order-name';
+      __sqSetHalloweenText(label,name,__sqHalloweenNickname(p)||name);
       fighter.append(portrait,label);lineup.appendChild(fighter);
     });
     const skip=document.createElement('button');skip.type='button';skip.className='btn sq-throw-order-skip';skip.textContent='SKIP';
@@ -3232,7 +3235,8 @@ function showPlayerOrderDialog(opts={}) {
 
       const nm = document.createElement('div');
       nm.className = 'to-name';
-      nm.textContent = (__sqPlayerPretty(p) || String(p.name || '').trim() || ('Player ' + (i+1)));
+      const normalName = __sqPlayerPretty(p) || String(p.name || '').trim() || ('Player ' + (i+1));
+      __sqSetHalloweenText(nm, normalName, __sqHalloweenNickname(p) || normalName);
 
       const small = document.createElement('div');
       small.className = 'to-small';

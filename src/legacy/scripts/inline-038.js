@@ -84,8 +84,7 @@
       }).join('');
       Array.from(body.querySelectorAll('.mini-name')).forEach(function(cell, i){
         var player = profileFor(rows[i].player) || { name:rows[i].player };
-        var first = String(player.first_name || player.name || '').trim().split(/\s+/)[0];
-        __sqSetHalloweenText(cell, cell.textContent, first + ' "' + __sqHalloweenNickname(player) + '"');
+        __sqSetHalloweenText(cell, cell.textContent, __sqHalloweenNickname(player));
       });
     }catch(e){
       try { console.warn('[SQ] Fix160 power fast refresh failed:', e && e.message ? e.message : e); } catch(_) {}

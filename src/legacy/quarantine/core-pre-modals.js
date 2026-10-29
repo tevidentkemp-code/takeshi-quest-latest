@@ -96,7 +96,7 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
-  const RUNNING_VERSION = '0.15.0';
+  const RUNNING_VERSION = '0.16.0';
   const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
   let updateCheckPromise = null;
@@ -924,6 +924,10 @@ if(hsBody){
     hsBody.innerHTML = top.map((x,i)=>
       `<tr><td class="mini-rank">${i+1}</td><td class="mini-name">${esc(sqDisplayNameForPlayerField(x.name))}</td><td class="mini-val">${x.score}</td></tr>`
     ).join('');
+    hsBody.querySelectorAll('.mini-name').forEach((cell, i) => {
+      if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+        __sqSetHalloweenText(cell, cell.textContent, __sqHalloweenNickname({ name:top[i].name }));
+    });
   }
 }
 
@@ -961,6 +965,10 @@ if(hsBody){
           const avg = Number(r.powerRank ?? r.avgRound ?? r.avg_per_round ?? r.avg ?? 0);
           return `<tr><td class="mini-rank">${i+1}</td><td class="mini-name">${esc(sqDisplayNameForPlayerField(r.player))}</td><td class="mini-val">${(Number.isFinite(avg) ? avg : 0).toFixed(2)}</td></tr>`;
         }).join('');
+        prBody.querySelectorAll('.mini-name').forEach((cell, i) => {
+          if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+            __sqSetHalloweenText(cell, cell.textContent, __sqHalloweenNickname({ name:top[i].player }));
+        });
       }
     }
   }catch(e){
@@ -1456,6 +1464,13 @@ if(hsBody){
 	        return span;
 	      };
 
+        // Theme names only at the output boundary: feed lines stay canonical.
+        const lpAppendPlayerName = (parent, className, name) => {
+          const span = lpAppendTextSpan(parent, className, name);
+          if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+            __sqSetHalloweenText(span, name, __sqHalloweenNickname({ name }));
+          return span;
+        };
 	      const lpAppendScoreline = (parent, scoreline) => {
           const whole = String(scoreline || '');
           const bts = whole.match(/\s+bts\s+/i);
@@ -1478,6 +1493,11 @@ if(hsBody){
 	        const record = (!parsed && !match && !alert) ? lpParseRecordLine(line) : null;
 	        el.textContent = '';
 	        try{ el.removeAttribute('aria-label'); }catch(_e){}
+          if (el.dataset.sqHalloweenLabelOriginal !== undefined) {
+            delete el.dataset.sqHalloweenLabelOriginal;
+            delete el.dataset.sqHalloweenLabelSeasonal;
+            el.removeAttribute('title');
+          }
 	        el.classList.toggle('lp-structured', !!(parsed || match || alert || record || heading));
 	        el.classList.toggle('lp-matchline', !!match);
 	        el.classList.toggle('lp-alertline', !!alert);
@@ -1489,6 +1509,11 @@ if(hsBody){
           }
           if (match) {
 	          el.setAttribute('aria-label', lpDisplayText(line));
+            if (typeof __sqSetHalloweenLabel === 'function' && typeof __sqHalloweenNickname === 'function') {
+              const mode = match.abbr === 'TBO' ? 'Turbo' : 'Classic';
+              const seasonal = `${mode} match result: ` + match.placements.map(p => `${lpPlace(p.medal)} ${__sqHalloweenNickname({name:p.name})}`).join(', ');
+              __sqSetHalloweenLabel(el, lpDisplayText(line), seasonal);
+            }
 	          lpAppendTextSpan(el, 'lp-result-chip', match.label);
           lpAppendTextSpan(el, 'lp-mode-sep', '—');
 	          const wrap = lpAppendTextSpan(el, 'lp-medal-list', '');
@@ -1496,7 +1521,7 @@ if(hsBody){
               const entry = lpAppendTextSpan(wrap, 'lp-medal-entry', '');
               const icon = lpAppendTextSpan(entry, 'lp-medal-icon', lpMedal(p.medal));
               icon.setAttribute('aria-hidden', 'true');
-              lpAppendTextSpan(entry, 'lp-medal-name', p.name);
+              lpAppendPlayerName(entry, 'lp-medal-name', p.name);
             });
 	          return;
 	        }

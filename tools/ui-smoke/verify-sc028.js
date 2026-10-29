@@ -74,7 +74,7 @@ async function scenario(width) {
       Date.now = () => Date.parse('2026-11-01T12:00:00Z') + performance.now() - start;
       document.dispatchEvent(new Event('visibilitychange'));
       return { active:window.__sqHalloweenActive(), alias:document.querySelector('.pp-hero-nick').textContent,
-        expected:window.__sqHalloweenNickname({ name:'Alex S' }),
+        expected:window.__sqHalloweenEpithet({ name:'Alex S' }),
         stored:(window.__sqPlayerStatsPlayers || []).find(p => p.name === 'Alex S')?.nickname };
     });
     check(width + ': seasonal nickname is display-only', seasonal.active && seasonal.alias === seasonal.expected && seasonal.stored === 'The Atomic', seasonal);

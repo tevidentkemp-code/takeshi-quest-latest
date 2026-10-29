@@ -4314,7 +4314,9 @@ function __sqLiveV3Render(){
 
   panel.querySelectorAll('[data-halloween-player]').forEach(node => {
     const player = state.players[Number(node.dataset.halloweenPlayer)] || {};
-    __sqSetHalloweenText(node, '', __sqHalloweenNickname(player));
+    __sqSetHalloweenText(node, '', __sqHalloweenEpithet(player));
+    const name = node.parentElement && node.parentElement.querySelector('.v3-name');
+    if (name) __sqSetHalloweenLabel(name, String(player.name || ''), __sqHalloweenNickname(player));
   });
 
   // Boot the animated GAME RACE (the only screen content now — dot-matrix removed).

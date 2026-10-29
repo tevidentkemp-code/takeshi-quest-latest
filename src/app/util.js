@@ -1089,9 +1089,39 @@ function __sqNameParts(name){
 }
 
 // Halloween names are display-only and never enter saved profiles or game data.
+let __sqHalloweenDirectory = null;
+let __sqHalloweenDuplicateNames = new Set();
 function __sqHalloweenNickname(p){
-  const name = String((p && (p.name || p.first_name || p.id)) || '').trim().toLowerCase();
+  const player = typeof p === 'string' ? { name:p } : (p || {});
+  let name = String(player.name || player.first_name || '').trim();
+  let id = String(player.id || player.player_id || '').trim();
+  let directory = null, profile = null, byId = null;
+  try {
+    directory = _sqPlayerDir;
+    byId = (id && directory.byId && directory.byId[id]) || (name && directory.byId && directory.byId[name]) || null;
+    profile = byId || (name && directory.byName && directory.byName[name.toLowerCase()]) || null;
+  } catch (_) {}
+  if (profile && profile.name) { name = String(profile.name).trim(); if (!id && byId) id = String(profile.id || '').trim(); }
   if (!name) return '';
+  // Include the actual name in each title, so even players assigned the same
+  // spooky epithet have distinct, recognisable aliases. If the directory has
+  // duplicate names, append the stable ID when this particular player is known.
+  let disambiguator = '';
+  if (id && directory && Array.isArray(directory.list)) {
+    if (__sqHalloweenDirectory !== directory) {
+      const seen = new Set();
+      __sqHalloweenDuplicateNames = new Set();
+      directory.list.forEach(entry => {
+        const key = String((entry && entry.name) || '').trim().toLowerCase();
+        if (!key) return;
+        if (seen.has(key)) __sqHalloweenDuplicateNames.add(key);
+        seen.add(key);
+      });
+      __sqHalloweenDirectory = directory;
+    }
+    if (directory.byId && directory.byId[id] && __sqHalloweenDuplicateNames.has(name.toLowerCase())) disambiguator = ' #' + id;
+  }
+  const identity = (name + disambiguator).toLowerCase();
   const names = [
     'Phantom Finisher', 'Ghoul of the Oche', 'Grim Trebler', 'Midnight Marksman',
     'Cursed Checkout', 'Bullseye Banshee', 'Spectral Sniper', 'Dartside Ghost',
@@ -1103,8 +1133,13 @@ function __sqHalloweenNickname(p){
     'Cryptic Crusher', 'Wailing Wire', 'Zombie Zoner', 'Ghoulish Gunner'
   ];
   let hash = 2166136261;
-  for (let i = 0; i < name.length; i++) hash = Math.imul(hash ^ name.charCodeAt(i), 16777619);
-  return names[(hash >>> 0) % names.length];
+  for (let i = 0; i < identity.length; i++) hash = Math.imul(hash ^ identity.charCodeAt(i), 16777619);
+  return name + ' the ' + names[(hash >>> 0) % names.length] + disambiguator;
+}
+function __sqHalloweenEpithet(p){
+  const alias = __sqHalloweenNickname(p);
+  const boundary = alias.lastIndexOf(' the ');
+  return boundary >= 0 ? alias.slice(boundary + 1) : alias;
 }
 function __sqSetHalloweenText(node, original, seasonal){
   if (!node) return;
@@ -1114,11 +1149,38 @@ function __sqSetHalloweenText(node, original, seasonal){
     ? node.dataset.sqHalloweenSeasonal : node.dataset.sqHalloweenOriginal;
   node.hidden = !node.textContent;
 }
+function __sqSetHalloweenLabel(node, original, seasonal){
+  if (!node) return;
+  if (!Object.prototype.hasOwnProperty.call(node.dataset, 'sqHalloweenLabelOriginal')) {
+    node.dataset.sqHalloweenHadAria = node.hasAttribute('aria-label') ? '1' : '0';
+    node.dataset.sqHalloweenOldAria = node.getAttribute('aria-label') || '';
+    node.dataset.sqHalloweenHadTitle = node.hasAttribute('title') ? '1' : '0';
+    node.dataset.sqHalloweenOldTitle = node.getAttribute('title') || '';
+  }
+  node.dataset.sqHalloweenLabelOriginal = String(original || '');
+  node.dataset.sqHalloweenLabelSeasonal = String(seasonal || original || '');
+  const active = typeof window.__sqHalloweenActive === 'function' && window.__sqHalloweenActive();
+  __sqApplyHalloweenLabel(node, active);
+}
+function __sqApplyHalloweenLabel(node, active){
+  if (active) {
+    node.setAttribute('aria-label', node.dataset.sqHalloweenLabelSeasonal);
+    node.setAttribute('title', node.dataset.sqHalloweenLabelSeasonal);
+  } else {
+    if (node.dataset.sqHalloweenHadAria === '1') node.setAttribute('aria-label', node.dataset.sqHalloweenOldAria);
+    else node.removeAttribute('aria-label');
+    if (node.dataset.sqHalloweenHadTitle === '1') node.setAttribute('title', node.dataset.sqHalloweenOldTitle);
+    else node.removeAttribute('title');
+  }
+}
 document.addEventListener('sq:halloween-change', function(){
   const active = typeof window.__sqHalloweenActive === 'function' && window.__sqHalloweenActive();
   document.querySelectorAll('[data-sq-halloween-original]').forEach(function(node){
     node.textContent = active ? node.dataset.sqHalloweenSeasonal : node.dataset.sqHalloweenOriginal;
     node.hidden = !node.textContent;
+  });
+  document.querySelectorAll('[data-sq-halloween-label-original]').forEach(function(node){
+    __sqApplyHalloweenLabel(node, active);
   });
 });
 

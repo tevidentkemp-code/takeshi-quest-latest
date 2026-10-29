@@ -2027,7 +2027,7 @@ function __msRenderPlayers(){
     } else {
       const nm = document.createElement('span');
       nm.className = 'ms2-nm ms-player-name';
-      __sqSetHalloweenText(nm, __ms2DisplayName(p) || '—', String(p.name || '').trim().toUpperCase() + ' “' + __sqHalloweenNickname(p).toUpperCase() + '”');
+      __sqSetHalloweenText(nm, __ms2DisplayName(p) || '—', __sqHalloweenNickname(p).toUpperCase());
       info.appendChild(nm);
       info.appendChild(__ms2RankLine(p.name));
     }
@@ -4754,7 +4754,7 @@ async function showSelectPlayerDialog(index){
       info.className = 'ms2-info';
       const nm = document.createElement('span');
       nm.className = 'ms2-nm';
-      __sqSetHalloweenText(nm, __ms2DisplayName(p) || '—', String(p.name || '').trim().toUpperCase() + ' “' + __sqHalloweenNickname(p).toUpperCase() + '”');
+      __sqSetHalloweenText(nm, __ms2DisplayName(p) || '—', __sqHalloweenNickname(p).toUpperCase());
       info.appendChild(nm);
       info.appendChild(__ms2RankLine(p.name));
       row.appendChild(info);
@@ -4994,6 +4994,7 @@ function buildFloatingHeader(){
     const name = document.createElement('div'); 
     name.className = 'th-name'; 
     name.textContent = __sqHeaderLabelForPlayer(state.players[i]); 
+    __sqSetHalloweenLabel(name, name.textContent, __sqHalloweenNickname(state.players[i]) || name.textContent);
 
     wrap.append(wins, name);
     th.appendChild(wrap); 

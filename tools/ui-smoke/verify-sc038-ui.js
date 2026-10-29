@@ -293,6 +293,27 @@ function makeRoundRows(values) {
     assert.ok(await page.locator('.gc-xp-source-chip.positive').count() + await page.locator('.gc-xp-source-chip.milestone').count() >= 1, 'Positive XP source chips did not render');
     assert.ok(await page.locator('.gc-xp-source-chip.negative, .gc-xp-source-chip.empty').count() >= 1, 'Negative XP source row did not render');
 
+    const xpStoredBefore = await page.evaluate(() => state.players.map(p => ({name:p.name, nickname:p.nickname})));
+    const xpAliases = await page.evaluate(() => {
+      const start = performance.now();
+      Date.now = () => Date.parse('2026-11-01T12:00:00Z') + performance.now() - start;
+      document.dispatchEvent(new Event('visibilitychange'));
+      return Array.from(document.querySelectorAll('.sq-pg-xp-screen .gc-xp-name .nm')).map((node, i) => ({
+        shown:node.textContent, expected:window.__sqHalloweenNickname(state.players[i]),
+        original:node.dataset.sqHalloweenOriginal,
+        clipped:node.scrollWidth > node.clientWidth + 1
+      }));
+    });
+    assert.equal(xpAliases.length, 2);
+    xpAliases.forEach(row => { assert.equal(row.shown, row.expected); assert.ok(row.original); assert.equal(row.clipped, false, 'XP alias clips horizontally'); });
+    assert.deepEqual(await page.evaluate(() => state.players.map(p => ({name:p.name, nickname:p.nickname}))), xpStoredBefore, 'XP aliases do not alter player data');
+    await page.evaluate(() => {
+      const start = performance.now();
+      Date.now = () => Date.parse('2026-11-02T00:00:00Z') + performance.now() - start;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    assert.deepEqual(await page.locator('.sq-pg-xp-screen .gc-xp-name .nm').allTextContents(), xpAliases.map(row => row.original), 'XP names restore at expiry');
+
     const infoChip = page.locator('.sq-pg-xp-screen .gc-xp-source-chip[data-xp-info]').first();
     assert.ok(await infoChip.count(), 'Clickable XP award/source chip missing');
     await infoChip.click();
