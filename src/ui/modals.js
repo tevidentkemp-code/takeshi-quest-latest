@@ -4705,11 +4705,13 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
         var lvl = xpOf(pl) > 0 && typeof SQ_XP !== 'undefined' && SQ_XP.progress ? SQ_XP.progress(xpOf(pl)).level : 0;
         row.innerHTML = '<span class="menu-row-icon">' + av + '</span>'
           + '<span class="menu-row-text"><span class="menu-row-title">' + esc(pl.name) + (filter === 'top' && lvl ? '<span class="ps-pick-lvl">LV ' + lvl + '</span>' : '') + '</span>'
-          + '<span class="menu-row-sub sq-halloween-picker-nick"></span>'
+          + '<span class="menu-row-sub sq-halloween-picker-nick"' + (pl.nickname ? '' : ' hidden') + '>' + esc(pl.nickname || '') + '</span>'
           + '</span>'
           + '<button type="button" class="ps-pick-star' + (favs.has(nk) ? ' on' : '') + '" aria-label="Favourite">' + (favs.has(nk) ? '★' : '☆') + '</button>'
           + '<span class="menu-row-chev">' + chev + '</span>';
-        __sqSetHalloweenText(row.querySelector('.sq-halloween-picker-nick'), pl.nickname || '', __sqHalloweenNickname(pl));
+        if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function') {
+          __sqSetHalloweenText(row.querySelector('.sq-halloween-picker-nick'), pl.nickname || '', __sqHalloweenNickname(pl));
+        }
         var star = row.querySelector('.ps-pick-star');
         star.onclick = function(ev){
           ev.stopPropagation();
