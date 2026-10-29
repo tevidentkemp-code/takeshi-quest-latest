@@ -39,7 +39,9 @@ assert(late.includes("target >= 10 && target <= 20"));
 assert(late.includes("Math.max(0, Number(r && r.bull_any) || 0)"));
 
 assert(engine.includes("z2:(nextLbl ? `NEXT: ${String(nextLbl).toUpperCase()}` : 'NEXT')"));
-assert(engine.includes("z3:`${nextName} TO THROW`"));
+assert(engine.includes('const nextName = playerLabel(nextPlayerIdx).trim()'), 'next player identity must stay canonical');
+assert(engine.includes("const nm = nextName;"), 'player metadata lookup must use the canonical identity');
+assert(engine.includes("z3:`${window.__sqDmdSeasonalLabel(players[nextPlayerIdx], nextName)} TO THROW`"), 'next-turn DMD label must retain its TO THROW handoff');
 assert(!engine.includes("{ z2: 'NEXT UP', z3:'' }"));
 assert(!engine.includes("window.sqDmdShowZones?.({ z2:'NEXT UP', z3:String(nextLbl || '').toUpperCase() }"));
 assert(!engine.includes('NEXT UP.. ${nextLbl}'));
