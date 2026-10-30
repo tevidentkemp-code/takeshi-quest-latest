@@ -537,8 +537,8 @@ function updateHero(modal, st) {
     winnerEl.innerHTML = '<span class="sq-pg-mainname">' + esc(parts.main) + '</span>'
       + '<span class="sq-pg-nickname"></span>';
     const nicknameEl = winnerEl.querySelector('.sq-pg-nickname');
-    if (typeof window.__sqSetHalloweenText === 'function' && typeof window.__sqHalloweenNickname === 'function') {
-      window.__sqSetHalloweenText(nicknameEl, parts.nickname ? '“' + parts.nickname + '”' : '', '“' + window.__sqHalloweenNickname(player) + '”');
+    if (typeof window.__sqSetHalloweenText === 'function' && typeof window.__sqHalloweenEpithet === 'function') {
+      window.__sqSetHalloweenText(nicknameEl, parts.nickname ? '“' + parts.nickname + '”' : '', window.__sqHalloweenEpithet(player));
     } else {
       nicknameEl.textContent = parts.nickname ? '“' + parts.nickname + '”' : '';
       nicknameEl.hidden = !parts.nickname;
@@ -585,8 +585,8 @@ function buildScorecard(modal, st, opts = {}) {
     `;
     const nick = el.querySelector('.sq-pg-player-nick');
     const player = (st.players || [])[row.index] || { name:row.parts.rawName };
-    if (typeof window.__sqSetHalloweenText === 'function' && typeof window.__sqHalloweenNickname === 'function') {
-      window.__sqSetHalloweenText(nick, row.parts.nickname ? '“' + row.parts.nickname + '”' : '', '“' + window.__sqHalloweenNickname(player) + '”');
+    if (typeof window.__sqSetHalloweenText === 'function' && typeof window.__sqHalloweenEpithet === 'function') {
+      window.__sqSetHalloweenText(nick, row.parts.nickname ? '“' + row.parts.nickname + '”' : '', window.__sqHalloweenEpithet(player));
     } else {
       nick.textContent = row.parts.nickname ? '“' + row.parts.nickname + '”' : '';
       nick.hidden = !row.parts.nickname;
@@ -673,13 +673,20 @@ function buildMatchWinScreen(st, matchState) {
       + '<div class="sq-pg-match-copy">'
         + '<div class="sq-pg-match-kicker">MATCH WINNER</div>'
         + '<div class="sq-pg-match-name">' + esc(parts.main) + '</div>'
-        + (parts.nickname ? '<div class="sq-pg-match-nick">&ldquo;' + esc(parts.nickname) + '&rdquo;</div>' : '')
+        + '<div class="sq-pg-match-nick"></div>'
         + '<div class="sq-pg-match-score">' + esc(scoreText) + '</div>'
       + '</div>'
       + '<div class="sq-pg-opponent-rail" aria-label="Other match players"></div>'
     + '</div>';
 
   const stage = screen.querySelector('.sq-pg-match-stage');
+  const matchNick = screen.querySelector('.sq-pg-match-nick');
+  if (typeof window.__sqSetHalloweenText === 'function' && typeof window.__sqHalloweenEpithet === 'function') {
+    window.__sqSetHalloweenText(matchNick, parts.nickname ? '“' + parts.nickname + '”' : '', window.__sqHalloweenEpithet(player));
+  } else {
+    matchNick.textContent = parts.nickname ? '“' + parts.nickname + '”' : '';
+    matchNick.hidden = !parts.nickname;
+  }
   if (stage && typeof window !== 'undefined' && typeof window.__sqApplyCelebrationSprite === 'function') {
     const winnerId = (typeof window.__sqAvatarIdForPlayer === 'function') ? window.__sqAvatarIdForPlayer(player) : 1;
     const art = document.createElement('div');

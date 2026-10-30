@@ -23,7 +23,7 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
     return {
       active: window.__sqHalloweenActive(),
       alias: document.querySelector('.pp-hero-nick').textContent,
-      expected: window.__sqHalloweenNickname({ name:'Alex S' }),
+      expected: window.__sqHalloweenEpithet({ name:'Alex S' }),
       stored: (window.__sqPlayerStatsPlayers || []).find(p => p.name === 'Alex S')?.nickname
     };
   });

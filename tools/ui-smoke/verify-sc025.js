@@ -4,6 +4,10 @@ const assert = require('assert');
 (async()=>{
   const { browser, page } = await H.launch({width:390,height:844});
   const errors=[]; page.on('pageerror',e=>errors.push(String(e)));
+  await page.addInitScript(()=>{
+    const start=performance.now(); window.__seasonalTestNow=Date.parse('2026-11-02T00:00:00Z');
+    Date.now=()=>window.__seasonalTestNow+performance.now()-start;
+  });
   await H.boot(page);
   await page.waitForFunction(()=>typeof window.__sqTrophyDetail==='function' && typeof window.__sqMisfireDetail==='function' && typeof window.__sqLeagueAverageRows==='function' && typeof window.__sqLeagueAverageEligible==='function');
 
@@ -137,6 +141,15 @@ const assert = require('assert');
   let m=await read('.pp-misfire-detail','.pp-misfire-lb-row','.pp-misfire-lb-count');
   assert.deepEqual(m.buttons.map(x=>x.text),['ALL TIME','AVERAGE']);
   assert.equal(m.rows[0].name,'Short S'); assert.equal(m.rows[0].value,'×10');
+  const ordinaryMisfires=m.rows.map(r=>[r.name,r.value]);
+  await page.evaluate(()=>{window.__seasonalTestNow=Date.parse('2026-11-01T12:00:00Z');document.dispatchEvent(new Event('visibilitychange'));});
+  const seasonalMisfires=await read('.pp-misfire-detail','.pp-misfire-lb-row','.pp-misfire-lb-count');
+  assert.deepEqual(seasonalMisfires.rows.map(r=>r.value),ordinaryMisfires.map(r=>r[1]),'Halloween must not alter misfire counts');
+  assert(seasonalMisfires.rows.every((r,i)=>r.name.startsWith(ordinaryMisfires[i][0]+' the ')),'misfire rows must show player-specific aliases');
+  assert.equal(new Set(seasonalMisfires.rows.map(r=>r.name)).size,seasonalMisfires.rows.length);
+  await page.evaluate(()=>{window.__seasonalTestNow=Date.parse('2026-11-02T00:00:00Z');document.dispatchEvent(new Event('visibilitychange'));});
+  m=await read('.pp-misfire-detail','.pp-misfire-lb-row','.pp-misfire-lb-count');
+  assert.deepEqual(m.rows.map(r=>[r.name,r.value]),ordinaryMisfires,'misfire names must restore at expiry');
   await page.click('.pp-misfire-detail [data-league-mode="average"]');
   m=await read('.pp-misfire-detail','.pp-misfire-lb-row','.pp-misfire-lb-count');
   assert.equal(m.rows[0].name,'Sam T'); assert.equal(m.rows[0].value,'50.0%'); assert.equal(m.rows[0].rank,'#1');

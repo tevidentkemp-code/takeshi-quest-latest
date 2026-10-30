@@ -3412,6 +3412,10 @@ function __sqV3IdleSlides(){
     const p = (state.players || [])[cp];
     const nm = String((p && (p.name || p.player)) || '').split(' ')[0].toUpperCase();
     if (nm) out.push({ lab: 'TO THROW', val: nm });
+    if (p && window.__sqHalloweenActive?.() && typeof window.__sqHalloweenEpithet === 'function') {
+      const alias = window.__sqHalloweenEpithet(p);
+      if (alias) out.push({ lab: 'HALLOWEEN', val: alias.toUpperCase() });
+    }
     const b = (state.score && state.score[cp]) || [];
     const pts = [];
     b.forEach(e => { if (e && e.darts && e.darts.filter(d => d).length >= 3) pts.push(Number(e.roundTotal || 0)); });
@@ -3460,6 +3464,7 @@ function __sqV3DisplayTick(){
     const labEl = labEl0, valEl = valEl0;
     if (labEl) labEl.textContent = lab;
     if (valEl) valEl.textContent = val;
+    disp.classList.toggle('is-halloween-alias', mode === 'idle' && lab === 'HALLOWEEN');
     disp.classList.toggle('gold', mode === 'gold');
     disp.classList.toggle('green', mode === 'green');
     disp.classList.toggle('hit', mode === 'hit');
@@ -4314,7 +4319,9 @@ function __sqLiveV3Render(){
 
   panel.querySelectorAll('[data-halloween-player]').forEach(node => {
     const player = state.players[Number(node.dataset.halloweenPlayer)] || {};
-    __sqSetHalloweenText(node, '', __sqHalloweenNickname(player));
+    __sqSetHalloweenText(node, '', __sqHalloweenEpithet(player));
+    const name = node.parentElement && node.parentElement.querySelector('.v3-name');
+    if (name) __sqSetHalloweenLabel(name, String(player.name || ''), __sqHalloweenNickname(player));
   });
 
   // Boot the animated GAME RACE (the only screen content now — dot-matrix removed).

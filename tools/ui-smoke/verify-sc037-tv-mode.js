@@ -40,7 +40,23 @@ fs.mkdirSync(out,{recursive:true});
   assert.equal((await page.locator('#sqTvTbody tr').nth(1).locator('td').first().locator('strong').textContent()).trim(),'—','future TV scoreboard rounds must remain empty');
   await page.screenshot({path:path.join(out,'tv-1920x1080.png')});
   await page.evaluate(()=>{state.score[0][0]={roundTotal:30,darts:[{kind:'T',sector:10,points:30},{kind:'Miss',points:0},{kind:'S',sector:10,points:10}]};state.currentPlayer=1;state.currentDart=0;window.__sqTvModeSync();});
-  assert.match(await page.locator('#sqTvDmdMain').textContent(),/BETA TO THROW/);
+  const tvBeforeExpiry=await page.evaluate(()=>({
+    active:window.__sqHalloweenActive(),
+    expected:window.__sqHalloweenNickname(state.players[1]).toUpperCase()+' TO THROW',
+    original:state.players[1].name,
+    shown:document.querySelector('#sqTvDmdMain').textContent
+  }));
+  if(tvBeforeExpiry.active) assert.equal(tvBeforeExpiry.shown,tvBeforeExpiry.expected,'TV uses the same seasonal alias');
+  else assert.match(tvBeforeExpiry.shown,/BETA TO THROW/);
+  assert.equal(tvBeforeExpiry.original,'BETA','TV alias does not alter the player');
+  await page.evaluate(()=>{
+    window.__tvTestNow=Date.now;
+    Date.now=()=>Date.parse('2026-11-02T00:00:00Z');
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.__sqTvModeSync();
+  });
+  assert.match(await page.locator('#sqTvDmdMain').textContent(),/BETA TO THROW/,'TV original name returns at expiry');
+  await page.evaluate(()=>{Date.now=window.__tvTestNow;delete window.__tvTestNow;document.dispatchEvent(new Event('visibilitychange'));window.__sqTvModeSync();});
   assert.equal(await page.locator('#sqTvModeOverlay .sq-tv-player').nth(1).getAttribute('class').then(x=>x.includes('active')),true);
   const during=await page.evaluate(()=>JSON.stringify({players:state.players,score:state.score,currentPlayer:state.currentPlayer,currentRound:state.currentRound,currentDart:state.currentDart,match:state.match}));
   await page.click('#sqTvExit'); await page.waitForSelector('#sqTvModeOverlay',{state:'detached'});

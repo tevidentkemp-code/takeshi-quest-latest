@@ -10,6 +10,8 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
 
 (async () => {
   const { browser, page, consoleErrs } = await H.launch({ width: 390, height: 844 });
+  // Keep ordinary identity assertions independent of the date on which CI runs.
+  await page.addInitScript(() => { const start = performance.now(); Date.now = () => Date.parse('2026-11-02T00:00:00Z') + performance.now() - start; });
   await H.boot(page, { settle: 3000 });
   await FX.install(page);
 
@@ -146,6 +148,23 @@ const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
     check('Misfire detail preserves normal cap + Volde exception', /5 Sep 2026 20:13 UTC/i.test(detail.rule) && /ordinary MISS is never inferred/i.test(detail.rule) && /Normal Misfires use the single worst penalty/i.test(detail.rule) && /capped at -5 XP per game/i.test(detail.rule) && /Volde-D’eux \/ Volde-Trois are exceptions/i.test(detail.rule) && /every qualifying dart is -2 XP/i.test(detail.rule) && /stacks independently/i.test(detail.rule), detail.rule);
     check('Misfire detail now includes all-player leaderboard', norm(detail.title) === 'Misfire leaderboard' && detail.rows.length === 2, JSON.stringify(detail.rows));
     check('Misfire leaderboard ranks historical counts descending', detail.rows[0] && detail.rows[0].rank === '#1' && detail.rows[0].name === 'Alex S' && detail.rows[0].count === '×3' && detail.rows[1] && detail.rows[1].rank === '#2' && detail.rows[1].name === 'Sam T' && detail.rows[1].count === '×2', JSON.stringify(detail.rows));
+    const seasonalRows = await page.evaluate(() => {
+      const start = performance.now(); Date.now = () => Date.parse('2026-11-01T12:00:00Z') + performance.now() - start;
+      document.dispatchEvent(new Event('visibilitychange'));
+      return Array.from(document.querySelectorAll('.pp-misfire-lb-row')).map(row => ({
+        rank:row.querySelector('.pp-misfire-lb-rank').textContent,
+        alias:row.querySelector('.pp-misfire-lb-name').textContent,
+        original:row.querySelector('.pp-misfire-lb-name').dataset.sqHalloweenOriginal,
+        count:row.querySelector('.pp-misfire-lb-count').textContent
+      }));
+    });
+    check('Seasonal Misfire aliases preserve identities, ranks and counts', seasonalRows.length === 2 &&
+      seasonalRows[0].original === 'Alex S' && seasonalRows[1].original === 'Sam T' &&
+      seasonalRows[0].alias !== seasonalRows[1].alias && seasonalRows.every(row => / the /i.test(row.alias)) &&
+      seasonalRows[0].rank === '#1' && seasonalRows[0].count === '×3' && seasonalRows[1].rank === '#2' && seasonalRows[1].count === '×2', JSON.stringify(seasonalRows));
+    await page.evaluate(() => { const start = performance.now(); Date.now = () => Date.parse('2026-11-02T00:00:00Z') + performance.now() - start; document.dispatchEvent(new Event('visibilitychange')); });
+    const restored = await page.locator('.pp-misfire-lb-name').allTextContents();
+    check('Misfire leaderboard restores original names at expiry', JSON.stringify(restored) === JSON.stringify(['Alex S','Sam T']), JSON.stringify(restored));
     check('Misfire leaderboard reads the verified Misfire source only', detail.sourceAudit.some(x => x.table === 'v_player_misfires' && x.code === 'bull_blind'), JSON.stringify(detail.sourceAudit));
     check('Misfire leaderboard modal fits mobile and retains Close', detail.fits && detail.hasClose, JSON.stringify(detail));
   }

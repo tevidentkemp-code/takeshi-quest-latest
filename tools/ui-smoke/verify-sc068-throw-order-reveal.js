@@ -188,6 +188,8 @@ async function shot(page,name){if(process.env.SQ_SCREENSHOTS){fs.mkdirSync(proce
   };
   try{
     await fixture(ctx);await installPreparationControl(ctx);
+    // The ordinary presentation assertions are independent of the day CI runs.
+    await ctx.addInitScript(()=>{const start=performance.now();window.__seasonalTestNow=Date.parse('2026-11-02T00:00:00Z');Date.now=()=>window.__seasonalTestNow+performance.now()-start;});
     // A controlled clock offset exercises the existing 20s cutoff without
     // replacing its formula, key, RAF cadence or canonical Miss implementation.
     await ctx.addInitScript(()=>{const real=performance.now.bind(performance);window.__sqSc068Offset=0;performance.now=()=>real()+window.__sqSc068Offset;});
@@ -210,6 +212,16 @@ async function shot(page,name){if(process.env.SQ_SCREENSHOTS){fs.mkdirSync(proce
     // and mobile width. Only portrait/name are inside each ordered entrant.
     for(const width of [320,390,430])for(const count of [2,3,4,5]){
       await page.setViewportSize({width,height:844});await seed(page,count);
+      if(width===320&&count===2){
+        const normal=await page.evaluate(()=>({names:state.players.map(p=>p.name),labels:[...document.querySelectorAll('.modal-throworder .to-name')].map(e=>e.textContent)}));
+        await page.evaluate(()=>{window.__seasonalTestNow=Date.parse('2026-11-01T12:00:00Z');document.dispatchEvent(new Event('visibilitychange'));});
+        const seasonal=await page.evaluate(()=>({names:state.players.map(p=>p.name),labels:[...document.querySelectorAll('.modal-throworder .to-name')].map(e=>e.textContent),expected:state.players.map(p=>__sqHalloweenNickname(p))}));
+        assert.deepEqual(seasonal.names,normal.names,'Halloween changed player identities');
+        assert.deepEqual(seasonal.labels,seasonal.expected,'Throw order must show player-specific Halloween aliases');
+        assert.equal(new Set(seasonal.labels).size,seasonal.labels.length,'Throw order aliases must be distinct');
+        await page.evaluate(()=>{window.__seasonalTestNow=Date.parse('2026-11-02T00:00:00Z');document.dispatchEvent(new Event('visibilitychange'));});
+        assert.deepEqual(await page.locator('.modal-throworder .to-name').allTextContents(),normal.labels,'Throw-order labels must restore at expiry');
+      }
       await page.locator('.modal-throworder .to-row').first().locator('.to-arrow-btn').nth(1).click();
       const before=await read(page);const initial=await confirm(page,true);assert(initial.pending);assert.equal(initial.token,before.token);
       const fit=await settledLineup(page);

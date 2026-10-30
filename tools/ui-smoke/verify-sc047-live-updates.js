@@ -9,6 +9,15 @@ fs.mkdirSync(out, { recursive: true });
 (async () => {
   const { browser, page, consoleErrs } = await H.launch();
   try {
+    // Keep the real feed clock intact; explicitly control only seasonal presentation.
+    await page.addInitScript(() => {
+      window.__seasonalTestActive = false;
+      Object.defineProperty(window, '__sqHalloweenActive', {
+        configurable: true,
+        get() { return () => window.__seasonalTestActive; },
+        set(value) { window.__seasonalRealWindow = value; }
+      });
+    });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await H.boot(page, { settle: 3000 });
     await page.waitForFunction(() =>
@@ -816,6 +825,18 @@ fs.mkdirSync(out, { recursive: true });
       'consecutive games in one match must show a single CLASSIC header');
     assert.deepEqual(compact.medals,[['🥇','Chris'],['🥈','James']],
       'result should use medal symbols before names');
+    await page.evaluate(()=>{window.__seasonalTestActive=true;document.dispatchEvent(new Event('visibilitychange'));});
+    const seasonalResult=await page.evaluate(()=>({
+      medals:[...document.querySelectorAll('#homeLivePrinterRows .lp-match-result .lp-medal-entry')].map(entry=>[entry.querySelector('.lp-medal-icon')?.textContent||'',entry.querySelector('.lp-medal-name')?.textContent||'']),
+      expected:['Chris','James'].map(name=>__sqHalloweenNickname({name})),
+      lines:(window.__homeLivePrinterState?.bufLines||[]).map(String)
+    }));
+    assert.deepEqual(seasonalResult.medals.map(m=>m[0]),['🥇','🥈'],'Halloween must preserve medal positions');
+    assert.deepEqual(seasonalResult.medals.map(m=>m[1]),seasonalResult.expected,'medals must show player-specific aliases');
+    assert.deepEqual(seasonalResult.lines,compact.lines,'Halloween must not modify the feed data');
+    await page.evaluate(()=>{window.__seasonalTestActive=false;document.dispatchEvent(new Event('visibilitychange'));});
+    const restoredMedals=await page.evaluate(()=>[...document.querySelectorAll('#homeLivePrinterRows .lp-match-result .lp-medal-entry')].map(entry=>[entry.querySelector('.lp-medal-icon')?.textContent||'',entry.querySelector('.lp-medal-name')?.textContent||'']));
+    assert.deepEqual(restoredMedals,compact.medals,'ordinary medal names must return after the event');
     assert.equal(compact.oldMedalText,0,'text medals must not remain visible');
     assert.match(compact.medalA11y,/first place Chris.*second place James/i);
     assert.equal(compact.rowCount,15,'printer must retain all 15 stable row nodes');

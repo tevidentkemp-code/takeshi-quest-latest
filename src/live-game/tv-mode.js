@@ -15,6 +15,10 @@
   function gameState(){ try{return (typeof state!=='undefined'&&state)?state:null;}catch(_){return null;} }
   function playerName(p,i){
     try{
+      if(typeof window.__sqHalloweenActive==='function' && window.__sqHalloweenActive() && typeof window.__sqHalloweenNickname==='function'){
+        var seasonal=window.__sqHalloweenNickname(p);
+        if(seasonal) return seasonal;
+      }
       if(typeof __sqPlayerPretty==='function'){ var pretty=__sqPlayerPretty(p); if(pretty) return pretty; }
     }catch(_){}
     return String((p&&(p.nickname||p.name||p.displayName||p.initials))||('PLAYER '+(i+1))).trim();

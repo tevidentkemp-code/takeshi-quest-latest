@@ -1987,9 +1987,39 @@ function __sqNameParts(name){
 }
 
 // Halloween names are display-only and never enter saved profiles or game data.
+let __sqHalloweenDirectory = null;
+let __sqHalloweenDuplicateNames = new Set();
 function __sqHalloweenNickname(p){
-  const name = String((p && (p.name || p.first_name || p.id)) || '').trim().toLowerCase();
+  const player = typeof p === 'string' ? { name:p } : (p || {});
+  let name = String(player.name || player.first_name || '').trim();
+  let id = String(player.id || player.player_id || '').trim();
+  let directory = null, profile = null, byId = null;
+  try {
+    directory = _sqPlayerDir;
+    byId = (id && directory.byId && directory.byId[id]) || (name && directory.byId && directory.byId[name]) || null;
+    profile = byId || (name && directory.byName && directory.byName[name.toLowerCase()]) || null;
+  } catch (_) {}
+  if (profile && profile.name) { name = String(profile.name).trim(); if (!id && byId) id = String(profile.id || '').trim(); }
   if (!name) return '';
+  // Include the actual name in each title, so even players assigned the same
+  // spooky epithet have distinct, recognisable aliases. If the directory has
+  // duplicate names, append the stable ID when this particular player is known.
+  let disambiguator = '';
+  if (id && directory && Array.isArray(directory.list)) {
+    if (__sqHalloweenDirectory !== directory) {
+      const seen = new Set();
+      __sqHalloweenDuplicateNames = new Set();
+      directory.list.forEach(entry => {
+        const key = String((entry && entry.name) || '').trim().toLowerCase();
+        if (!key) return;
+        if (seen.has(key)) __sqHalloweenDuplicateNames.add(key);
+        seen.add(key);
+      });
+      __sqHalloweenDirectory = directory;
+    }
+    if (directory.byId && directory.byId[id] && __sqHalloweenDuplicateNames.has(name.toLowerCase())) disambiguator = ' #' + id;
+  }
+  const identity = (name + disambiguator).toLowerCase();
   const names = [
     'Phantom Finisher', 'Ghoul of the Oche', 'Grim Trebler', 'Midnight Marksman',
     'Cursed Checkout', 'Bullseye Banshee', 'Spectral Sniper', 'Dartside Ghost',
@@ -2001,8 +2031,13 @@ function __sqHalloweenNickname(p){
     'Cryptic Crusher', 'Wailing Wire', 'Zombie Zoner', 'Ghoulish Gunner'
   ];
   let hash = 2166136261;
-  for (let i = 0; i < name.length; i++) hash = Math.imul(hash ^ name.charCodeAt(i), 16777619);
-  return names[(hash >>> 0) % names.length];
+  for (let i = 0; i < identity.length; i++) hash = Math.imul(hash ^ identity.charCodeAt(i), 16777619);
+  return name + ' the ' + names[(hash >>> 0) % names.length] + disambiguator;
+}
+function __sqHalloweenEpithet(p){
+  const alias = __sqHalloweenNickname(p);
+  const boundary = alias.lastIndexOf(' the ');
+  return boundary >= 0 ? alias.slice(boundary + 1) : alias;
 }
 function __sqSetHalloweenText(node, original, seasonal){
   if (!node) return;
@@ -2012,11 +2047,38 @@ function __sqSetHalloweenText(node, original, seasonal){
     ? node.dataset.sqHalloweenSeasonal : node.dataset.sqHalloweenOriginal;
   node.hidden = !node.textContent;
 }
+function __sqSetHalloweenLabel(node, original, seasonal){
+  if (!node) return;
+  if (!Object.prototype.hasOwnProperty.call(node.dataset, 'sqHalloweenLabelOriginal')) {
+    node.dataset.sqHalloweenHadAria = node.hasAttribute('aria-label') ? '1' : '0';
+    node.dataset.sqHalloweenOldAria = node.getAttribute('aria-label') || '';
+    node.dataset.sqHalloweenHadTitle = node.hasAttribute('title') ? '1' : '0';
+    node.dataset.sqHalloweenOldTitle = node.getAttribute('title') || '';
+  }
+  node.dataset.sqHalloweenLabelOriginal = String(original || '');
+  node.dataset.sqHalloweenLabelSeasonal = String(seasonal || original || '');
+  const active = typeof window.__sqHalloweenActive === 'function' && window.__sqHalloweenActive();
+  __sqApplyHalloweenLabel(node, active);
+}
+function __sqApplyHalloweenLabel(node, active){
+  if (active) {
+    node.setAttribute('aria-label', node.dataset.sqHalloweenLabelSeasonal);
+    node.setAttribute('title', node.dataset.sqHalloweenLabelSeasonal);
+  } else {
+    if (node.dataset.sqHalloweenHadAria === '1') node.setAttribute('aria-label', node.dataset.sqHalloweenOldAria);
+    else node.removeAttribute('aria-label');
+    if (node.dataset.sqHalloweenHadTitle === '1') node.setAttribute('title', node.dataset.sqHalloweenOldTitle);
+    else node.removeAttribute('title');
+  }
+}
 document.addEventListener('sq:halloween-change', function(){
   const active = typeof window.__sqHalloweenActive === 'function' && window.__sqHalloweenActive();
   document.querySelectorAll('[data-sq-halloween-original]').forEach(function(node){
     node.textContent = active ? node.dataset.sqHalloweenSeasonal : node.dataset.sqHalloweenOriginal;
     node.hidden = !node.textContent;
+  });
+  document.querySelectorAll('[data-sq-halloween-label-original]').forEach(function(node){
+    __sqApplyHalloweenLabel(node, active);
   });
 });
 
@@ -5646,7 +5708,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
           const p = state?.players?.[liveP];
           const nm = (typeof p === 'string' ? p : (p?.name || p?.full || p?.nickname || p?.initials || `P${Number(liveP)+1}`)).toString();
           const first = Number(dec.round || 0) === 0 && Number(dec.turn || 0) === 0;
-          setTimeout(()=>{ try{ window.sqDmdShowZones?.({ z2:nm, z3:(first ? 'TO THROW FIRST' : 'TO THROW') }, { type:'wipe', ms:780, fx:'impact', z3Small:true }); }catch(_){} }, 0);
+          setTimeout(()=>{ try{ window.sqDmdShowZones?.({ z2:window.__sqDmdSeasonalLabel?.(p, nm, true) || nm, z3:(first ? 'TO THROW FIRST' : 'TO THROW') }, { type:'wipe', ms:780, fx:'impact', z3Small:true }); }catch(_){} }, 0);
         }
       }
     }catch(_){}
@@ -6079,7 +6141,7 @@ function openShootoutCompleteDialog(dec, baseTotals){
     <div class="gc-body">
       <div class="gc-winnerCard">
         <div class="gc-winnerLabel"><span class="gc-accent">WINNER</span></div>
-        <div class="gc-winnerName" title="${winnerName}">${winnerName}</div>
+        <div class="gc-winnerName"></div>
         <div class="gc-winnerScore">${dec.totals[dec.participants.indexOf(dec.winner)] || 0}</div>
       </div>
 
@@ -6093,6 +6155,14 @@ function openShootoutCompleteDialog(dec, baseTotals){
     </div>
   `;
 
+  const winnerLabel = modal.querySelector('.gc-winnerName');
+  if (winnerLabel) {
+    winnerLabel.textContent = winnerName;
+    winnerLabel.title = winnerName;
+    if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+      __sqSetHalloweenText(winnerLabel, winnerName, __sqHalloweenNickname(state.players[dec.winner]));
+  }
+
   const ranksEl = modal.querySelector('[data-role="gcRanks"]');
   if (ranksEl) {
     ranksEl.innerHTML = '';
@@ -6103,9 +6173,15 @@ function openShootoutCompleteDialog(dec, baseTotals){
       div.className = 'gc-rankRow' + (isWin ? ' win' : '');
       div.innerHTML = `
         <div class="gc-rankPos">${(i+1)===1?'1ST':(i+1)===2?'2ND':(i+1)===3?'3RD':(i+1)+'TH'}</div>
-        <div class="gc-rankName">${nm}</div>
+        <div class="gc-rankName"></div>
         <div class="gc-rankScore">${totals[pIdx] ?? 0}</div>
       `;
+      const label = div.querySelector('.gc-rankName');
+      if (label) {
+        label.textContent = nm;
+        if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+          __sqSetHalloweenText(label, nm, __sqHalloweenNickname(state.players[pIdx]));
+      }
       ranksEl.appendChild(div);
     });
   }
@@ -8180,7 +8256,7 @@ function __msRenderPlayers(){
     } else {
       const nm = document.createElement('span');
       nm.className = 'ms2-nm ms-player-name';
-      __sqSetHalloweenText(nm, __ms2DisplayName(p) || '—', String(p.name || '').trim().toUpperCase() + ' “' + __sqHalloweenNickname(p).toUpperCase() + '”');
+      __sqSetHalloweenText(nm, __ms2DisplayName(p) || '—', __sqHalloweenNickname(p).toUpperCase());
       info.appendChild(nm);
       info.appendChild(__ms2RankLine(p.name));
     }
@@ -10907,7 +10983,7 @@ async function showSelectPlayerDialog(index){
       info.className = 'ms2-info';
       const nm = document.createElement('span');
       nm.className = 'ms2-nm';
-      __sqSetHalloweenText(nm, __ms2DisplayName(p) || '—', String(p.name || '').trim().toUpperCase() + ' “' + __sqHalloweenNickname(p).toUpperCase() + '”');
+      __sqSetHalloweenText(nm, __ms2DisplayName(p) || '—', __sqHalloweenNickname(p).toUpperCase());
       info.appendChild(nm);
       info.appendChild(__ms2RankLine(p.name));
       row.appendChild(info);
@@ -11147,6 +11223,7 @@ function buildFloatingHeader(){
     const name = document.createElement('div'); 
     name.className = 'th-name'; 
     name.textContent = __sqHeaderLabelForPlayer(state.players[i]); 
+    __sqSetHalloweenLabel(name, name.textContent, __sqHalloweenNickname(state.players[i]) || name.textContent);
 
     wrap.append(wins, name);
     th.appendChild(wrap); 
@@ -16116,6 +16193,10 @@ function __sqV3IdleSlides(){
     const p = (state.players || [])[cp];
     const nm = String((p && (p.name || p.player)) || '').split(' ')[0].toUpperCase();
     if (nm) out.push({ lab: 'TO THROW', val: nm });
+    if (p && window.__sqHalloweenActive?.() && typeof window.__sqHalloweenEpithet === 'function') {
+      const alias = window.__sqHalloweenEpithet(p);
+      if (alias) out.push({ lab: 'HALLOWEEN', val: alias.toUpperCase() });
+    }
     const b = (state.score && state.score[cp]) || [];
     const pts = [];
     b.forEach(e => { if (e && e.darts && e.darts.filter(d => d).length >= 3) pts.push(Number(e.roundTotal || 0)); });
@@ -16164,6 +16245,7 @@ function __sqV3DisplayTick(){
     const labEl = labEl0, valEl = valEl0;
     if (labEl) labEl.textContent = lab;
     if (valEl) valEl.textContent = val;
+    disp.classList.toggle('is-halloween-alias', mode === 'idle' && lab === 'HALLOWEEN');
     disp.classList.toggle('gold', mode === 'gold');
     disp.classList.toggle('green', mode === 'green');
     disp.classList.toggle('hit', mode === 'hit');
@@ -17018,7 +17100,9 @@ function __sqLiveV3Render(){
 
   panel.querySelectorAll('[data-halloween-player]').forEach(node => {
     const player = state.players[Number(node.dataset.halloweenPlayer)] || {};
-    __sqSetHalloweenText(node, '', __sqHalloweenNickname(player));
+    __sqSetHalloweenText(node, '', __sqHalloweenEpithet(player));
+    const name = node.parentElement && node.parentElement.querySelector('.v3-name');
+    if (name) __sqSetHalloweenLabel(name, String(player.name || ''), __sqHalloweenNickname(player));
   });
 
   // Boot the animated GAME RACE (the only screen content now — dot-matrix removed).
@@ -17373,6 +17457,17 @@ function __sqGameRenderFailsafe(err){
   window.__sqSc045DmdHelpers = true;
 
   const normName = (v) => String(v == null ? '' : v).trim().toLowerCase();
+  // Presentation only: callers retain the original name for all lookups.
+  window.__sqDmdSeasonalLabel = function(player, original, padded){
+    try{
+      if (window.__sqHalloweenActive?.() && typeof window.__sqHalloweenNickname === 'function') {
+        const alias = window.__sqHalloweenNickname(player);
+        // Reserve room for the status dot over the top-right edge of the canvas.
+        if (alias) return alias + (padded ? '    ' : '');
+      }
+    }catch(_){}
+    return original;
+  };
   const officialMode = () => {
     try { if (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime()) return false; } catch(_){}
     let mode = '';
@@ -17455,11 +17550,11 @@ function __sqGameRenderFailsafe(err){
       if (!name || typeof window.sqDmdShowZones !== 'function') return false;
       try{ window.__sqDmdPrimePbCache?.(); }catch(_){}
       const round = Number(state.currentRound || 0), dart = Number(state.currentDart || 0), hist = Array.isArray(state.history) ? state.history.length : 0;
-      window.sqDmdShowZones({ z2:name, z3:(first ? 'TO THROW FIRST' : 'TO THROW') }, { type:'wipe', ms:820, fx:'impact', z3Small:true });
+      window.sqDmdShowZones({ z2:window.__sqDmdSeasonalLabel(p, name, true), z3:(first ? 'TO THROW FIRST' : 'TO THROW') }, { type:'wipe', ms:820, fx:'impact', z3Small:true });
       setTimeout(()=>{
         try{
           if (state.finished || Number(state.currentPlayer || 0) !== idx || Number(state.currentRound || 0) !== round || Number(state.currentDart || 0) !== dart || (Array.isArray(state.history) ? state.history.length : 0) !== hist) return;
-          window.sqDmdShowZones?.({ z2:name, z3:'' }, { type:'hold', ms:1 });
+          window.sqDmdShowZones?.({ z2:window.__sqDmdSeasonalLabel(p, name, true), z3:'' }, { type:'hold', ms:1 });
           window.__sqDmdStartPreThrow?.(name, window.__sqDmdBuildPreThrowInfo?.(idx) || []);
         }catch(_){}
       }, 840);
@@ -18728,7 +18823,7 @@ setTimeout(() => {
         if (!__sqDmdStage3Current()) return;
         try{
           window.sqDmdShowZones?.(
-            { z2:(nextLbl ? `NEXT: ${String(nextLbl).toUpperCase()}` : 'NEXT'), z3:`${nextName} TO THROW`, z3Small:true },
+            { z2:(nextLbl ? `NEXT: ${String(nextLbl).toUpperCase()}` : 'NEXT'), z3:`${window.__sqDmdSeasonalLabel(players[nextPlayerIdx], nextName)} TO THROW`, z3Small:true },
             { type:'wipe', ms:900, revealMs:180, fx:'smear' }
           );
         }catch(_){}
@@ -18738,7 +18833,7 @@ setTimeout(() => {
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2:nextName, z3:'' }, { type:'hold', ms:1 });
+          window.sqDmdShowZones?.({ z2:window.__sqDmdSeasonalLabel(players[nextPlayerIdx], nextName, true), z3:'' }, { type:'hold', ms:1 });
           window.__sqDmdStartPreThrow?.(nextName, infoLines);
         }catch(_){}
       }, __preThrowAt);
@@ -18750,7 +18845,7 @@ setTimeout(() => {
         if (!__sqDmdStage3Current()) return;
         try{
           window.sqDmdShowZones?.(
-            { z2:nextName, z3:'TO THROW', z3Small:true },
+            { z2:window.__sqDmdSeasonalLabel(players[nextPlayerIdx], nextName, true), z3:'TO THROW', z3Small:true },
             { type:'wipe', ms:820, revealMs:160, fx:'smear' }
           );
         }catch(_){}
@@ -18760,7 +18855,7 @@ setTimeout(() => {
       setTimeout(()=>{
         if (!__sqDmdStage3Current()) return;
         try{
-          window.sqDmdShowZones?.({ z2:nextName, z3:'' }, { type:'hold', ms:1 });
+          window.sqDmdShowZones?.({ z2:window.__sqDmdSeasonalLabel(players[nextPlayerIdx], nextName, true), z3:'' }, { type:'hold', ms:1 });
           window.__sqDmdStartPreThrow?.(nextName, infoLines);
         }catch(_){}
       }, __preThrowAt);
@@ -18789,6 +18884,11 @@ setTimeout(() => {
   let _nick = '';
   let _showNick = false;
   let _lastFlip = 0;
+  let _player = null;
+  const pinnedName = () => window.__sqDmdSeasonalLabel?.(_player, (_showNick ? _nick : _full) || _name, true) || ((_showNick ? _nick : _full) || _name);
+  document.addEventListener('sq:halloween-change', () => {
+    if (_name) window.__sqDmdPinnedZ2Text = pinnedName();
+  });
     try { window.__sqDmdPinnedZ2Text = ''; } catch(_){}
 
   window.__sqDmdStopPreThrow = function(){
@@ -18797,6 +18897,7 @@ setTimeout(() => {
     _lines = [];
     _i = 0;
     _name = '';
+    _player = null;
     try { window.__sqDmdNoScrollZ2 = false; } catch(_){}
     try { window.__sqDmdZ3Small = false; } catch(_){}
     try { /* no idle marquee in prethrow */ } catch(_){}
@@ -18806,6 +18907,11 @@ setTimeout(() => {
     try { window.__sqDmdStopPreThrow(); } catch(_){ }
     _name = (playerName || '').toString();
     try{
+      const candidate = state?.players?.[Number(state.currentPlayer || 0)];
+      const candidates = typeof candidate === 'string' ? [candidate] : [candidate?.name, candidate?.full, candidate?.nickname, candidate?.code, candidate?.initials];
+      _player = candidates.some(v => String(v || '').trim().toLowerCase() === _name.trim().toLowerCase()) ? candidate : null;
+    }catch(_){ _player = null; }
+    try{
       const code = _name.trim().toUpperCase();
       const pm = (window.__sqDmdGetPlayerMeta ? window.__sqDmdGetPlayerMeta(code) : null);
       _full = (pm && pm.full) ? String(pm.full) : _name;
@@ -18814,7 +18920,7 @@ setTimeout(() => {
     }catch(_){ _full = _name; _nick = ''; }
     _showNick = false;
     _lastFlip = performance.now();
-    try { window.__sqDmdPinnedZ2Text = _full || _name; } catch(_){ }
+    try { window.__sqDmdPinnedZ2Text = pinnedName(); } catch(_){ }
     _lines = Array.isArray(lines) ? lines.filter(Boolean).map(String) : [];
     _i = 0;
 
@@ -18826,7 +18932,7 @@ setTimeout(() => {
     // Show first line immediately (no animation)
     try{
       const first = _lines.length ? _lines[0] : '';
-      window.sqDmdShowZones?.({ z2: _name, z3: first }, { type:'hold', ms:1, z3Small:true });
+      window.sqDmdShowZones?.({ z2: pinnedName(), z3: first }, { type:'hold', ms:1, z3Small:true });
     }catch(_){}
 
     if (_lines.length <= 1) return;
@@ -18841,8 +18947,8 @@ setTimeout(() => {
             if (_nick && (now - _lastFlip) >= 1000){
               _showNick = !_showNick;
               _lastFlip = now;
-              try{ window.__sqDmdPinnedZ2Text = (_showNick ? _nick : _full) || _name; window.__sqDmdNoScrollZ2 = true; }catch(_){ }
-              try{ window.sqDmdShowZones?.({ z2: (_showNick ? _nick : _full) || _name }, { type:'hold', ms:1 }); }catch(_){ }
+              try{ window.__sqDmdPinnedZ2Text = pinnedName(); window.__sqDmdNoScrollZ2 = true; }catch(_){ }
+              try{ window.sqDmdShowZones?.({ z2: pinnedName() }, { type:'hold', ms:1 }); }catch(_){ }
             }
             _i = (_i + 1) % _lines.length;
             window.sqDmdShowZones?.({ z3: _lines[_i] }, { type:'roll', ms:520, z3Small:true });
@@ -19391,6 +19497,7 @@ function updateLeaderboardTable(){
 
     return {
       name: (__sqComputeInitialsFromName(player.name) || ('P' + (idx+1))),
+      player,
       color: player.color || '#fff',
       perGame,
       total,
@@ -19413,6 +19520,7 @@ function updateLeaderboardTable(){
     th.scope = 'col';
     th.className = 'center';
     th.textContent = p.name;
+    __sqSetHalloweenLabel(th, p.name, __sqHalloweenNickname(p.player) || p.name);
     th.style.color = p.color;
     trh.appendChild(th);
   });
@@ -20503,7 +20611,8 @@ function __sqRevealConfirmedThrowOrder(start){
       fighter.style.setProperty('--sq-order-delay',(i*2*step)+'ms');
       const portrait=document.createElement('div');portrait.className='sq-throw-order-portrait';portrait.setAttribute('aria-hidden','true');
       try{__sqApplyAvatarSprite(portrait,__sqAvatarIdForPlayer(p));}catch(_){}
-      const label=document.createElement('div');label.className='sq-throw-order-name';label.textContent=name;
+      const label=document.createElement('div');label.className='sq-throw-order-name';
+      __sqSetHalloweenText(label,name,__sqHalloweenNickname(p)||name);
       fighter.append(portrait,label);lineup.appendChild(fighter);
     });
     const skip=document.createElement('button');skip.type='button';skip.className='btn sq-throw-order-skip';skip.textContent='SKIP';
@@ -20598,7 +20707,8 @@ function showPlayerOrderDialog(opts={}) {
 
       const nm = document.createElement('div');
       nm.className = 'to-name';
-      nm.textContent = (__sqPlayerPretty(p) || String(p.name || '').trim() || ('Player ' + (i+1)));
+      const normalName = __sqPlayerPretty(p) || String(p.name || '').trim() || ('Player ' + (i+1));
+      __sqSetHalloweenText(nm, normalName, __sqHalloweenNickname(p) || normalName);
 
       const small = document.createElement('div');
       small.className = 'to-small';
@@ -23249,7 +23359,7 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
-  const RUNNING_VERSION = '0.15.0';
+  const RUNNING_VERSION = '0.16.0';
   const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
   let updateCheckPromise = null;
@@ -24077,6 +24187,10 @@ if(hsBody){
     hsBody.innerHTML = top.map((x,i)=>
       `<tr><td class="mini-rank">${i+1}</td><td class="mini-name">${esc(sqDisplayNameForPlayerField(x.name))}</td><td class="mini-val">${x.score}</td></tr>`
     ).join('');
+    hsBody.querySelectorAll('.mini-name').forEach((cell, i) => {
+      if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+        __sqSetHalloweenText(cell, cell.textContent, __sqHalloweenNickname({ name:top[i].name }));
+    });
   }
 }
 
@@ -24114,6 +24228,10 @@ if(hsBody){
           const avg = Number(r.powerRank ?? r.avgRound ?? r.avg_per_round ?? r.avg ?? 0);
           return `<tr><td class="mini-rank">${i+1}</td><td class="mini-name">${esc(sqDisplayNameForPlayerField(r.player))}</td><td class="mini-val">${(Number.isFinite(avg) ? avg : 0).toFixed(2)}</td></tr>`;
         }).join('');
+        prBody.querySelectorAll('.mini-name').forEach((cell, i) => {
+          if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+            __sqSetHalloweenText(cell, cell.textContent, __sqHalloweenNickname({ name:top[i].player }));
+        });
       }
     }
   }catch(e){
@@ -24609,6 +24727,13 @@ if(hsBody){
 	        return span;
 	      };
 
+        // Theme names only at the output boundary: feed lines stay canonical.
+        const lpAppendPlayerName = (parent, className, name) => {
+          const span = lpAppendTextSpan(parent, className, name);
+          if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+            __sqSetHalloweenText(span, name, __sqHalloweenNickname({ name }));
+          return span;
+        };
 	      const lpAppendScoreline = (parent, scoreline) => {
           const whole = String(scoreline || '');
           const bts = whole.match(/\s+bts\s+/i);
@@ -24631,6 +24756,11 @@ if(hsBody){
 	        const record = (!parsed && !match && !alert) ? lpParseRecordLine(line) : null;
 	        el.textContent = '';
 	        try{ el.removeAttribute('aria-label'); }catch(_e){}
+          if (el.dataset.sqHalloweenLabelOriginal !== undefined) {
+            delete el.dataset.sqHalloweenLabelOriginal;
+            delete el.dataset.sqHalloweenLabelSeasonal;
+            el.removeAttribute('title');
+          }
 	        el.classList.toggle('lp-structured', !!(parsed || match || alert || record || heading));
 	        el.classList.toggle('lp-matchline', !!match);
 	        el.classList.toggle('lp-alertline', !!alert);
@@ -24642,6 +24772,11 @@ if(hsBody){
           }
           if (match) {
 	          el.setAttribute('aria-label', lpDisplayText(line));
+            if (typeof __sqSetHalloweenLabel === 'function' && typeof __sqHalloweenNickname === 'function') {
+              const mode = match.abbr === 'TBO' ? 'Turbo' : 'Classic';
+              const seasonal = `${mode} match result: ` + match.placements.map(p => `${lpPlace(p.medal)} ${__sqHalloweenNickname({name:p.name})}`).join(', ');
+              __sqSetHalloweenLabel(el, lpDisplayText(line), seasonal);
+            }
 	          lpAppendTextSpan(el, 'lp-result-chip', match.label);
           lpAppendTextSpan(el, 'lp-mode-sep', '—');
 	          const wrap = lpAppendTextSpan(el, 'lp-medal-list', '');
@@ -24649,7 +24784,7 @@ if(hsBody){
               const entry = lpAppendTextSpan(wrap, 'lp-medal-entry', '');
               const icon = lpAppendTextSpan(entry, 'lp-medal-icon', lpMedal(p.medal));
               icon.setAttribute('aria-hidden', 'true');
-              lpAppendTextSpan(entry, 'lp-medal-name', p.name);
+              lpAppendPlayerName(entry, 'lp-medal-name', p.name);
             });
 	          return;
 	        }
@@ -27147,6 +27282,8 @@ window.openStreakLeagueDialog = async function openStreakLeagueDialog(initialMet
         rank.textContent = '#' + (i + 1);
         const main = document.createElement('div'); main.className = 'sk-main';
         const nm = document.createElement('div'); nm.className = 'sk-name'; nm.textContent = r.player_name || r.player_key || '—';
+        if (r.player_name && typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+          __sqSetHalloweenText(nm, r.player_name, __sqHalloweenNickname({name:r.player_name, id:r.player_key}));
         const chain = document.createElement('div'); chain.className = 'sk-chain';
         const lit = streak > 0 ? Math.max(1, Math.round(streak / maxStreak * SEGS)) : 0;
         for (let sIx = 0; sIx < SEGS; sIx++){
@@ -27693,7 +27830,11 @@ rows.forEach((row) => {
   tdRank.style.fontWeight='800';
 
   const tdName   = document.createElement('td');
-  tdName.textContent = row.name || '—';
+  const nameLabel = document.createElement('span');
+  nameLabel.textContent = row.name || '—';
+  if (row.name && typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+    __sqSetHalloweenText(nameLabel, row.name, __sqHalloweenNickname({name:row.name, id:row.player_id}));
+  tdName.appendChild(nameLabel);
 
   // Append green/red arrow if rank changed since last snapshot
   const keyLC = String(row.name || '').trim().toLowerCase();
@@ -28299,6 +28440,8 @@ function section(title, rows, valueFmt, showMonth, noteText){
       const tr = document.createElement('tr');
       const tdRank  = document.createElement('td'); tdRank.textContent  = String(i+1);
       const tdName  = document.createElement('td'); tdName.textContent  = r.name;
+      if (r.name && typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+        __sqSetHalloweenText(tdName, r.name, __sqHalloweenNickname({name:r.name, id:r.player_id}));
       const tdScore = document.createElement('td'); tdScore.textContent = valueFmt(r);
       const tdMonth = document.createElement('td'); tdMonth.textContent = showMonth ? monthLabel(r.ts) : '';
       tr.append(tdRank, tdName, tdScore, tdMonth);
@@ -28731,6 +28874,8 @@ rowsOut.forEach((p) => {
   tdRank.textContent = qualifies ? String(rank) : '—';
 
   const tdName  = document.createElement('td'); tdName.textContent  = p.player;
+  if (p.player && typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+    __sqSetHalloweenText(tdName, p.player, __sqHalloweenNickname({name:p.player, id:p.player_id}));
   const tdGames = document.createElement('td'); tdGames.textContent = String(p.games);
   const tdAvg   = document.createElement('td'); tdAvg.textContent   = p.avg.toFixed(1);
   const tdBest  = document.createElement('td'); tdBest.textContent  = String(p.best);
@@ -29680,6 +29825,8 @@ async function __sqTrophyDetail(code, earnedMap){
       if (mode === 'average' && !eligible){ row.classList.add('is-average-ineligible'); row.style.opacity = '.38'; row.title = 'Minimum 6 eligible games required to rank'; }
       const rk = document.createElement('span'); rk.className = 'pp-trophy-lb-rank'; rk.textContent = rankIndex >= 0 ? ('#' + (rankIndex + 1)) : '—'; rk.style.cssText = 'font-weight:900;min-width:30px;color:' + (rankIndex >= 0 ? medal(rankIndex) : 'var(--v3-muted,#98a2b8)');
       const nm = document.createElement('span'); nm.className = 'pp-trophy-lb-name'; nm.textContent = r.name; nm.style.cssText = 'flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      if (r.name && typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+        __sqSetHalloweenText(nm, r.name, __sqHalloweenNickname({name:r.name, id:r.player_id}));
       const val = document.createElement('span'); val.className = 'pp-trophy-lb-value';
       val.textContent = mode === 'average' ? __sqLeagueAverageText(r) : (milestone ? String(Number(r.cnt)||0) : ('×' + r.cnt));
       val.title = mode === 'average'
@@ -29927,6 +30074,8 @@ async function __sqMisfireDetail(code, misfireMap){
       if(mode==='average'&&!eligible){row.classList.add('is-average-ineligible');row.style.opacity='.38';row.title='Minimum 6 eligible games required to rank';}
       const rk=document.createElement('span'); rk.className='pp-misfire-lb-rank'; rk.textContent=rankIndex>=0?('#'+(rankIndex+1)):'—'; rk.style.cssText='font-weight:900;min-width:30px;color:'+(rankIndex>=0?medal(rankIndex):'var(--v3-muted,#98a2b8)');
       const nm=document.createElement('span'); nm.className='pp-misfire-lb-name'; nm.textContent=r.name; nm.style.cssText='flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      if (r.name && typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+        __sqSetHalloweenText(nm, r.name, __sqHalloweenNickname({name:r.name, id:r.player_id}));
       const val=document.createElement('span'); val.className='pp-misfire-lb-count'; val.textContent=mode==='average'?__sqLeagueAverageText(r):('×'+r.cnt); val.title=mode==='average'?((Number(r.cnt)||0)+' occurrence(s) over '+(Number(r.games_played)||0)+' eligible games'+(eligible?'':' · Not ranked until 6 eligible games')):''; val.style.cssText='font-weight:900;color:#fca5a5;white-space:nowrap;';
       row.append(rk,nm,val); list.appendChild(row);
     }); mount.appendChild(list);
@@ -30278,7 +30427,7 @@ function __sqPlayerStatsHero(name, nick='', tiles=null, primary=null){
   const copy = document.createElement('div'); copy.className = 'pp-identity-copy';
   const title = document.createElement('div'); title.className = 'pp-hero-name'; title.textContent = name;
   const sub = document.createElement('div'); sub.className = 'muted pp-hero-nick';
-  __sqSetHalloweenText(sub, nick || __sqPlayerStatsNickname(name, window.__sqPlayerStatsPlayers || []) || 'Player profile', __sqHalloweenNickname({ name:name }));
+  __sqSetHalloweenText(sub, nick || __sqPlayerStatsNickname(name, window.__sqPlayerStatsPlayers || []) || 'Player profile', __sqHalloweenEpithet(player ? (player.raw || player) : { name:name }));
   copy.append(title, sub); identity.append(avatar, copy);
   hero.append(identity, __sqPlayerStatsXpHost(name, true, primary));
   if (!tiles){
@@ -31275,6 +31424,8 @@ window.openXpLeaderboard = async function openXpLeaderboard(){
     const mid = document.createElement('div'); mid.style.cssText = 'flex:1;min-width:0;';
     const nmeRow = document.createElement('div'); nmeRow.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
     const nm = document.createElement('b'); nm.textContent = r.name;
+    if (r.name && typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function')
+      __sqSetHalloweenText(nm, r.name, __sqHalloweenNickname({name:r.name, id:r.player_id}));
     nm.style.cssText = 'font-size:15px;';
     nmeRow.append(nm, __sqXpChip(prog));
     const sub = document.createElement('div'); sub.className = 'muted';
@@ -31436,8 +31587,8 @@ window.openPlayerStatsSelect = function openPlayerStatsSelect(){
           + '</span>'
           + '<button type="button" class="ps-pick-star' + (favs.has(nk) ? ' on' : '') + '" aria-label="Favourite">' + (favs.has(nk) ? '★' : '☆') + '</button>'
           + '<span class="menu-row-chev">' + chev + '</span>';
-        if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenNickname === 'function') {
-          __sqSetHalloweenText(row.querySelector('.sq-halloween-picker-nick'), pl.nickname || '', __sqHalloweenNickname(pl));
+        if (typeof __sqSetHalloweenText === 'function' && typeof __sqHalloweenEpithet === 'function') {
+          __sqSetHalloweenText(row.querySelector('.sq-halloween-picker-nick'), pl.nickname || '', __sqHalloweenEpithet(pl));
         }
         var star = row.querySelector('.ps-pick-star');
         star.onclick = function(ev){
