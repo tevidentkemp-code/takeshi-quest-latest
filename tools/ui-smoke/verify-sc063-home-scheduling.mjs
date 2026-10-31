@@ -43,7 +43,7 @@ function environment({ control = false, parkedMatches = false, parkedAll = false
     sb:{ from(table) { assert.equal(table, 'matches'); const q = { select(columns) { assert.equal(columns,'id,created_at,players,wins,history,total_games,target_wins'); return q; }, in(field, ids) { calls.push({ source:'matches', field, ids:Array.from(ids), at:time.now }); return parkedMatches ? matches.promise : Promise.resolve({ data:[], error:null }); } }; return q; } },
     setInterval(callback, interval) { assert.equal(interval,1000); timer = callback; return 1; },
     lpEnsureRows(lines) { calls.push({ source:'render', lines:Array.from(lines) }); }, lpScrollStep() { calls.push({ source:'motion', at:time.now }); },
-    lpPlayerScoreText:(name,score)=>name + ' (' + score + ')', lpUnder100Names:()=>[], lpBeerAlertLineForGame:()=>'', lpFmtLine:item=>item.line_text || 'recent visible result', lpCollapseRoundPBOverflow:lines=>lines, lpSig:item=>String(item.event_id || item.id || item.ts || item.event_ts || '')
+    lpPlayerScoreText:(name,score)=>name + ' (' + score + ')', lpUnder100Names:()=>[], lpBeerAlertLineForGame:()=>'', lpFmtLine:item=>item.line_text || (/^CYCLE GAME \d+$/.test(String(item.winner_name||'')) ? item.winner_name : 'recent visible result'), lpCollapseRoundPBOverflow:lines=>lines, lpSig:item=>String(item.event_id || item.id || item.ts || item.event_ts || '')
   };
   if (cloudMissing) delete context.cloudFetchAllGamesAsLocal;
   context.window = context; vm.createContext(context); vm.runInContext(constants + '\n' + helpers.join('\n') + '\n' + (control ? original : candidate) + '\n' + poll + '\nglobalThis.derived = lpBuildDerivedPrinterItems; globalThis.sync = lpSync;', context);
@@ -97,7 +97,7 @@ await test('the ticker fetches twenty saved games and retains all their contextu
   const start=Date.parse('2026-10-03T22:00:00Z');
   const gameRows=Array.from({length:25},(_,i)=>({
     id:'cycle-'+i, ts:new Date(start-i*60000).toISOString(), match_id:'cycle-match-'+i,
-    mode:'turbo', isTurbo:true, players:[{name:'ALPHA'},{name:'BETA'}],
+    mode:'turbo', isTurbo:true, players:[{name:'CYCLE GAME '+i},{name:'BETA'}],
     totals:[250,150], winner_score:250, line_text:'CYCLE GAME '+i
   }));
   const e=environment({recentGames:gameRows});
