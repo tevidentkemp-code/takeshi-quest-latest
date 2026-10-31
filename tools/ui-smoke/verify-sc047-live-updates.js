@@ -478,7 +478,12 @@ fs.mkdirSync(out, { recursive: true });
           [{ roundTotal:0, darts:[] }]
         ]
       });
+      const baseline = ['official','turbo'].flatMap((mode,modeIdx) =>
+        Array.from({length:5},(_,i)=>game('pb-baseline-'+mode+'-'+i,
+          new Date(Date.parse('2026-10-02T15:00:00Z')+modeIdx*3600000+i*60000).toISOString(),
+          mode,'MODE B',0)));
       const games = [
+        ...baseline,
         game('official-leader','2026-10-03T20:00:00Z','official','OFFICIAL LEADER',60),
         game('official-player','2026-10-03T20:01:00Z','official','MODE B',50),
         game('turbo-leader','2026-10-03T20:02:00Z','turbo','TURBO LEADER',60),
@@ -547,8 +552,13 @@ fs.mkdirSync(out, { recursive: true });
         totals:[300,200],
         state:{mode:'official'}
       };
-      window.cloudFetchLatestVisibleGamesAsLocal = async () => [{...recent}];
-      window.cloudFetchLatestGamesAsLocal = async () => [{...recent}];
+      // The SC-047 mode-PB assertions need the actual saved games within
+      // the new twenty-game window, not merely in a separate older history.
+      const recentWithModeFixtures = async () => [
+        {...recent}, ...(await prior.all()).slice().reverse()
+      ];
+      window.cloudFetchLatestVisibleGamesAsLocal = recentWithModeFixtures;
+      window.cloudFetchLatestGamesAsLocal = recentWithModeFixtures;
       window.cloudListPlayers = async () => [{name:'MODE B'}];
       window.sb = {
         ...prior.sb,
