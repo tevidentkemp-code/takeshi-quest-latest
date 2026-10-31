@@ -583,6 +583,45 @@ jobs:
           timeout 180s node tools/ui-smoke/verify-sc065-score-wall.js | tee core-source-score-wall.txt
           timeout 180s node tools/ui-smoke/verify-sc034-add-player.js | tee core-source-add-player.txt
           timeout 180s node tools/ui-smoke/verify-sc036-skip-go.js | tee core-source-skip-go.txt
+      - name: Keep source-live evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-release-source-live-evidence
+          retention-days: 14
+          path: |
+            core-source-*.txt
+            qa-artifacts-live-source/
+
+
+  source-live-remainder:
+    name: Source representative — live controls remainder
+    needs: static-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Install browser QA
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps chromium
+      - name: Run representative source live controls
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8123/index.html
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts-live-source-remainder
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/live-source-remainder.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
           timeout 180s node tools/ui-smoke/verify-sxp04-gate3-quick-entry.js | tee core-source-quick-entry.txt
           timeout 180s node tools/ui-smoke/verify-cloud-failure-resilience.js | tee core-source-cloud.txt
           timeout 180s node tools/ui-smoke/verify-sc014.js | tee core-source-setup.txt
@@ -593,11 +632,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: core-release-source-live-evidence
+          name: core-release-source-live-remainder-evidence
           retention-days: 14
           path: |
             core-source-*.txt
-            qa-artifacts-live-source/
+            qa-artifacts-live-source-remainder/
 
   dist-core:
     name: Dist shard A — scoring + setup
