@@ -28,7 +28,12 @@ const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve()
 function deferred() { let resolve, reject; const promise = new Promise((a,b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
 const game = (id, mode, name, points, total = 300) => ({ id, ts:'2026-10-03T20:0' + id.slice(-1) + ':00Z', mode, is_practice: mode === 'practice', state:{ mode, is_practice: mode === 'practice' }, players:[{ name },{ name:'FILLER' }], totals:[total,200], board:[[{ roundTotal:points, darts:[] }],[{ roundTotal:0,darts:[] }]] });
 const fixture = [game('g0','official','OFFICIAL LEADER',60),game('g1','official','MODE B',50),game('g2','turbo','TURBO LEADER',60),game('g3','turbo','MODE B',40),game('g4','practice','PRACTICE ONLY',70,400),{ ...game('g5','official','ARCHIVED',999), archived_at:'2026-10-04' }];
-function environment({ control = false, parkedMatches = false, parkedAll = false, allError = false, visibleError = false, cloudMissing = false, pollMs = 15000, paused = false, recentGames = null, recentPlayers = null } = {}) {
+// Give MODE B five previous games in each mode to retain genuine SC047 PB fixtures.
+fixture.push(...['official','turbo'].flatMap((mode,offset)=>Array.from({length:5},(_,i)=>({
+  ...game('baseline-'+mode+'-'+i,mode,'MODE B',0,0),
+  ts:new Date(Date.parse('2026-10-01T10:00:00Z') + offset*3600000 + i*60000).toISOString()
+}))));
+function environment({ control = false, parkedMatches = false, parkedAll = false, allError = false, visibleError = false, cloudMissing = false, pollMs = 15000, paused = false, recentGames = null, recentPlayers = null, historyGames = null } = {}) {
   const time = { now:Date.parse('2026-10-04T08:00:00Z') }, visible = new Set(), calls = [], nodes = new Map(), all = deferred(), matches = deferred();
   class ModelDate extends Date { constructor(...args) { super(...(args.length ? args : [time.now])); } static now() { return time.now; } }
   const node = { classList:{ add(){}, remove(){} }, style:{} };
@@ -39,7 +44,7 @@ function environment({ control = false, parkedMatches = false, parkedAll = false
     __homeLivePrinterState:state, ensureCloudInit:()=>true,
     cloudFetchLatestVisibleGamesAsLocal:async limit=>{ calls.push({ source:'visible', limit, at:time.now }); if (visibleError) throw Error('visible source failure'); return Array.isArray(recentGames) ? recentGames.slice(0, limit).map(g => ({ ...g })) : [{ ...fixture[0], match_id:'m1' }]; },
     cloudListPlayers:async()=>{ calls.push({ source:'players', at:time.now }); return recentPlayers || []; },
-    cloudFetchAllGamesAsLocal:()=>{ allCalls++; calls.push({ source:'all', at:time.now }); if (allError) return Promise.reject(Error('all source failure')); return parkedAll ? all.promise : Promise.resolve(fixture.map(g=>({ ...g }))); },
+    cloudFetchAllGamesAsLocal:()=>{ allCalls++; calls.push({ source:'all', at:time.now }); if (allError) return Promise.reject(Error('all source failure')); return parkedAll ? all.promise : Promise.resolve((Array.isArray(historyGames) ? historyGames : fixture).map(g=>({ ...g }))); },
     sb:{ from(table) { assert.equal(table, 'matches'); const q = { select(columns) { assert.equal(columns,'id,created_at,players,wins,history,total_games,target_wins'); return q; }, in(field, ids) { calls.push({ source:'matches', field, ids:Array.from(ids), at:time.now }); return parkedMatches ? matches.promise : Promise.resolve({ data:[], error:null }); } }; return q; } },
     setInterval(callback, interval) { assert.equal(interval,1000); timer = callback; return 1; },
     lpEnsureRows(lines) { calls.push({ source:'render', lines:Array.from(lines) }); }, lpScrollStep() { calls.push({ source:'motion', at:time.now }); },
@@ -115,5 +120,32 @@ await test('the ticker fetches twenty saved games and retains all their contextu
   assert.equal(e.calls.find(call=>call.source==='visible')?.limit,30,'retain original shared fetch request size for independent tickers');
   assert.equal(e.state.displayLines.length,15,'the stable visible panel must keep fifteen rows');
   return {gameCount:gameLines.length,formattedLines:lines.length,visibleRows:15,priorGamesSuppressed:true};
+});
+await test('five earlier same-mode games qualify a VIDE PB; WRs bypass the threshold', async()=>{
+  const start=Date.parse('2026-10-03T18:00:00Z');
+  const make=(id,minute,mode,name,roundTotal,score,archived_at=null)=>({
+    ...game('sq081-'+id,mode,name,roundTotal,score),
+    ts:new Date(start+minute*60000).toISOString(),archived_at
+  });
+  const world=make('world',0,'official','WORLD LEADER',100,1000);
+  const turboWorld=make('turbo-wr',1,'turbo','TURBO LEADER',110,900);
+  const official=Array.from({length:6},(_,i)=>make('official-'+i,2+i,'official','ALICE',i===1?0:10+10*i,i===1?0:100+20*i));
+  const archived=make('archived',5.5,'official','ALICE',90,890,'2026-10-03T18:15:00Z');
+  const practice=make('practice',9,'practice','ALICE',70,170);
+  const turboA=make('turbo-1',10,'turbo','ALICE',50,185);
+  const turboB=make('turbo-2',11,'turbo','ALICE',70,190);
+  official[5].ts=new Date(start+12*60000).toISOString();
+  const e=environment({historyGames:[world,turboWorld,...official.slice(0,5),archived,practice,turboA,turboB,official[5]]});
+  const events=await e.derived();
+  const lines=events.map(x=>String(x.line_text));
+  const alicePB=events.filter(x=>['game_pb','round_pb'].includes(x.event_kind)&&/\bALICE\b/.test(x.line_text));
+  assert.equal(alicePB.length,2,'only the sixth Official game may announce both PB types');
+  assert(alicePB.every(x=>x.event_ts===official[5].ts),'no early Official, Turbo or Practice PB can be announced');
+  assert(lines.some(x=>/^GAME PB - ALICE \(200\)$/.test(x)),'sixth game must announce a true GAME PB');
+  assert(lines.some(x=>/^ROUND PB \/ 10s - ALICE \(60\)/.test(x)),'sixth game must announce a true ROUND PB');
+  assert(events.some(x=>x.event_kind==='game_record'&&/WORLD LEADER/.test(x.line_text)),'debut game WR must remain');
+  assert(events.some(x=>x.event_kind==='round_wr'&&/TURBO LEADER/.test(x.line_text)),'debut Turbo round WR must remain');
+  assert(!lines.some(x=>/890/.test(x)),'archived scores must not enter PB history');
+  return {qualifyingPriorGames:5,firstEligibleGame:6,turboGames:2,zeroScoreGameCounted:true,worldRecordBypass:true,practiceAndArchiveIsolated:true};
 });
 console.log(JSON.stringify({status:'SC063 HOME SCHEDULING CONTROLLED REGRESSION PASS',cases:results.length,sourcePath:path,sourceSHA256:hash(source),results,scope:'Actual derived-record helpers, lpSync and original1s interval callback with modeled DOM/clock/cloud seams; existing nativeSC047/realAPI acceptance separate',budgetsChanged:[],browserRuns:[],SQLRuns:[],performanceClaim:false},null,2));

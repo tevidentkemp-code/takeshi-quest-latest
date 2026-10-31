@@ -2013,6 +2013,10 @@ if(hsBody){
             .filter(g => g && !(g.archived_at || g.archivedAt));
           allGames.sort((a,b)=> new Date(a.ts || 0).getTime() - new Date(b.ts || 0).getTime());
           const bestGameByPlayer = new Map();
+          // VIDE-only qualification: five prior same-mode completed games
+          // before PB announcements. Global game/round records bypass the gate.
+          const playerModeCompletedGames = new Map();
+          const LP_PB_PRIOR_GAMES = 5;
           const bestRoundByPlayer = new Map();
           const bestRoundGlobal = new Map();
           let globalGameBest = 0;
@@ -2040,13 +2044,20 @@ if(hsBody){
               if (!nm) return;
               const score = Number((g.totals || [])[idx] || 0);
               const nameKey = nm.toLowerCase();
+              const modeKey = isPractice ? 'practice' : roundMode;
+              const playerModeKey = modeKey + '|' + nameKey;
+              const priorModeGames = Number(playerModeCompletedGames.get(playerModeKey) || 0);
+              const pbMayAnnounce = priorModeGames >= LP_PB_PRIOR_GAMES;
+              // A saved game counts once per participating player, including a
+              // zero-score game. Archived games were removed above.
+              playerModeCompletedGames.set(playerModeKey, priorModeGames + 1);
               const priorGameBest = Number(bestGameByPlayer.get(nameKey) || 0);
               const isGamePB = score > 0 && score > priorGameBest;
               const isGameRecord = score > 0 && score > globalGameBest;
               // Preserve existing GAME PB semantics; this hotfix only changes
               // the source authority and ROUND PB/WR mode isolation.
               if (isGameRecord) pushEvent(ts, `NEW GAME RECORD SCORE - ${nm} - ${score} 🥇`, 'game_record');
-              else if (isGamePB) pushEvent(ts, `GAME PB - ${nm} (${score})`, 'game_pb');
+              else if (isGamePB && pbMayAnnounce) pushEvent(ts, `GAME PB - ${nm} (${score})`, 'game_pb');
               if (isGamePB) bestGameByPlayer.set(nameKey, score);
               if (isGameRecord) globalGameBest = score;
 
@@ -2067,7 +2078,7 @@ if(hsBody){
                 const isRoundPB = total > priorRoundPB;
                 const isRoundRecord = total > priorRoundWR;
                 if (isRoundRecord) pushEvent(ts, `ROUND WR / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_wr');
-                else if (isRoundPB) pushEvent(ts, `ROUND PB / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_pb');
+                else if (isRoundPB && pbMayAnnounce) pushEvent(ts, `ROUND PB / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_pb');
                 if (isRoundPB) bestRoundByPlayer.set(playerRoundKey, total);
                 if (isRoundRecord) bestRoundGlobal.set(globalRoundKey, total);
               }

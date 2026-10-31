@@ -478,7 +478,12 @@ fs.mkdirSync(out, { recursive: true });
           [{ roundTotal:0, darts:[] }]
         ]
       });
+      const baseline = ['official','turbo'].flatMap((mode,modeIdx) =>
+        Array.from({length:5},(_,i)=>game('pb-baseline-'+mode+'-'+i,
+          new Date(Date.parse('2026-10-02T15:00:00Z')+modeIdx*3600000+i*60000).toISOString(),
+          mode,'MODE B',0)));
       const games = [
+        ...baseline,
         game('official-leader','2026-10-03T20:00:00Z','official','OFFICIAL LEADER',60),
         game('official-player','2026-10-03T20:01:00Z','official','MODE B',50),
         game('turbo-leader','2026-10-03T20:02:00Z','turbo','TURBO LEADER',60),
