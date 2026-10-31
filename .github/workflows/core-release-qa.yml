@@ -77,6 +77,8 @@ jobs:
           node tools/ui-smoke/verify-sc063-primary-history-barrier.mjs | tee core-static-sc063-primary-history-barrier.txt
           node tools/ui-smoke/verify-sc063-lazy-stats-intent.mjs | tee core-static-sc063-lazy-stats-intent.txt
           node tools/ui-smoke/verify-sc063-home-scheduling.mjs | tee core-static-sc063-home-scheduling.txt
+          node tools/ui-smoke/verify-history-pagination.mjs | tee core-static-history-pagination.txt
+          node --check tools/ui-smoke/verify-history-pagination-browser.js
           node tools/ui-smoke/verify-sc063-directory-warm-read.mjs | tee core-static-sc063-directory-warm-read.txt
           node tools/ui-smoke/verify-sc063-directory-top-intent.mjs | tee core-static-sc063-directory-top-intent.txt
           node tools/ui-smoke/verify-sc063-fresh-directory-xp.mjs | tee core-static-sc063-fresh-directory-xp.txt
@@ -238,6 +240,8 @@ jobs:
           trap 'kill "$source_pid" "$dist_pid" || true' EXIT
           SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/source timeout 180s node tools/ui-smoke/verify-sc047-live-updates.js | tee core-webkit-source-home.txt
           SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/dist timeout 180s node tools/ui-smoke/verify-sc047-live-updates.js | tee core-webkit-dist-home.txt
+          SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/history-source timeout 90s node tools/ui-smoke/verify-history-pagination-browser.js | tee core-webkit-source-history.txt
+          SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/history-dist timeout 90s node tools/ui-smoke/verify-history-pagination-browser.js | tee core-webkit-dist-history.txt
           SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/turbo-source timeout 180s node tools/ui-smoke/verify-sc067-turbo-identity.js | tee core-webkit-source-turbo.txt
           SQ_APP_URL=http://127.0.0.1:8124/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/turbo-dist timeout 180s node tools/ui-smoke/verify-sc067-turbo-identity.js | tee core-webkit-dist-turbo.txt
           SQ_APP_URL=http://127.0.0.1:8123/index.html SQ_SCREENSHOTS=qa-artifacts-webkit/stats-source timeout 180s node tools/ui-smoke/verify-sc043-player-stats.js | tee core-webkit-source-stats.txt
@@ -533,6 +537,7 @@ jobs:
           timeout 240s node tools/ui-smoke/smoke.js | tee core-source-smoke.txt
           timeout 180s node tools/ui-smoke/verify-saveplayer-card.js | tee core-source-saveplayer.txt
           timeout 180s node tools/ui-smoke/verify-sc047-live-updates.js | tee core-source-sc047.txt
+          timeout 90s node tools/ui-smoke/verify-history-pagination-browser.js | tee core-source-history-pagination.txt
           timeout 180s node tools/ui-smoke/verify-classic-visual-fit.js | tee core-source-classic.txt
           timeout 180s node tools/ui-smoke/verify-sc067-turbo-identity.js | tee core-source-turbo.txt
       - name: Keep source-core evidence
@@ -578,6 +583,45 @@ jobs:
           timeout 180s node tools/ui-smoke/verify-sc065-score-wall.js | tee core-source-score-wall.txt
           timeout 180s node tools/ui-smoke/verify-sc034-add-player.js | tee core-source-add-player.txt
           timeout 180s node tools/ui-smoke/verify-sc036-skip-go.js | tee core-source-skip-go.txt
+      - name: Keep source-live evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: core-release-source-live-evidence
+          retention-days: 14
+          path: |
+            core-source-*.txt
+            qa-artifacts-live-source/
+
+
+  source-live-remainder:
+    name: Source representative — live controls remainder
+    needs: static-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: Install browser QA
+        run: |
+          set -euo pipefail
+          npm ci --prefix tools/ui-smoke --ignore-scripts
+          npx --prefix tools/ui-smoke playwright install --with-deps chromium
+      - name: Run representative source live controls
+        shell: bash
+        env:
+          SQ_APP_URL: http://127.0.0.1:8123/index.html
+          SQ_SCREENSHOTS: ${{ github.workspace }}/qa-artifacts-live-source-remainder
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 >/tmp/live-source-remainder.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" || true' EXIT
           timeout 180s node tools/ui-smoke/verify-sxp04-gate3-quick-entry.js | tee core-source-quick-entry.txt
           timeout 180s node tools/ui-smoke/verify-cloud-failure-resilience.js | tee core-source-cloud.txt
           timeout 180s node tools/ui-smoke/verify-sc014.js | tee core-source-setup.txt
@@ -588,11 +632,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: core-release-source-live-evidence
+          name: core-release-source-live-remainder-evidence
           retention-days: 14
           path: |
             core-source-*.txt
-            qa-artifacts-live-source/
+            qa-artifacts-live-source-remainder/
 
   dist-core:
     name: Dist shard A — scoring + setup
@@ -630,6 +674,7 @@ jobs:
           timeout 180s node tools/ui-smoke/verify-sc014.js | tee core-dist-setup.txt
           timeout 180s node tools/ui-smoke/verify-saveplayer-card.js | tee core-dist-saveplayer.txt
           timeout 180s node tools/ui-smoke/verify-sc047-live-updates.js | tee core-dist-sc047.txt
+          timeout 90s node tools/ui-smoke/verify-history-pagination-browser.js | tee core-dist-history-pagination.txt
       - name: Keep dist-core evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
