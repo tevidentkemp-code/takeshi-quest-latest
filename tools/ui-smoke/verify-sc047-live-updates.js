@@ -547,8 +547,13 @@ fs.mkdirSync(out, { recursive: true });
         totals:[300,200],
         state:{mode:'official'}
       };
-      window.cloudFetchLatestVisibleGamesAsLocal = async () => [{...recent}];
-      window.cloudFetchLatestGamesAsLocal = async () => [{...recent}];
+      // The SC-047 mode-PB assertions need the actual saved games within
+      // the new twenty-game window, not merely in a separate older history.
+      const recentWithModeFixtures = async () => [
+        {...recent}, ...(await prior.all()).slice().reverse()
+      ];
+      window.cloudFetchLatestVisibleGamesAsLocal = recentWithModeFixtures;
+      window.cloudFetchLatestGamesAsLocal = recentWithModeFixtures;
       window.cloudListPlayers = async () => [{name:'MODE B'}];
       window.sb = {
         ...prior.sb,
