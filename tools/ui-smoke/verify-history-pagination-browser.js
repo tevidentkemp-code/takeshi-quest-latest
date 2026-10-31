@@ -30,6 +30,10 @@ const games = Array.from({ length: 1100 }, (_, i) => game(
   i, new Date(Date.UTC(2026, 8, 1) + Math.floor(i / 4) * 60000).toISOString(),
   ['Chris', 'Michael'], [i === 0 ? 900 : 400, 300]
 ));
+// Hassan must already have completed five Official games when scoring 681:
+ // one September game and four October games. The fixture stays at 1,108 rows
+ // and does not change the October/Today/Yesterday/This Week qualifications.
+games[1099] = game(1099, games[1099].created_at, ['Hassan', 'Liam'], [400, 200]);
 games.push(
   game(1100, '2026-10-29T20:00:00.000Z', ['Hassan', 'Liam'], [600, 400]),
   game(1101, '2026-10-29T21:00:00.000Z', ['Hassan', 'Liam'], [650, 410]),
