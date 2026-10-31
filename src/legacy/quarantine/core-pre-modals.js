@@ -2547,6 +2547,9 @@ if(hsBody){
             // Preserve existing derived-event fallback if game reads fail.
             if (!recentGames.length) return true;
             if (_lpIsGameItem(it)) return recentGameItems.has(it);
+            // NEW PLAYER is a separate 30-day cloud event; do not lose it
+            // when more than 20 games have been played since the join.
+            if (it?.event_kind === 'new_player') return true;
             if (it?.event_kind === 'match_result') return recentMatchIds.has(String(it.match_id || '').trim());
             const eventMs = new Date(_lpGetTs(it) || 0).getTime();
             return !Number.isFinite(oldestGameTime) || (Number.isFinite(eventMs) && eventMs >= oldestGameTime);
