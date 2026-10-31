@@ -23369,7 +23369,7 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
-  const RUNNING_VERSION = '0.16.1';
+  const RUNNING_VERSION = '0.16.2';
   const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
   let updateCheckPromise = null;
@@ -24311,7 +24311,8 @@ if(hsBody){
         return '';
       };
 
-      const LP_BUFFER = 30;
+      const LP_BUFFER = 30; // Transient queue / empty-source fallback only.
+      const LP_GAME_WINDOW = 20; // Complete saved games, plus their contextual lines.
       const LP_VISIBLE = 15;
       const LP_SYNC_MS = Math.max(15000, (typeof SQ_GAMES_VISIBLE_MIN_POLL_MS !== 'undefined' ? SQ_GAMES_VISIBLE_MIN_POLL_MS : 15000));
       const LP_LOCAL_EVENT_KEY = 'sq_live_updates_events_v1';
@@ -25694,9 +25695,9 @@ if(hsBody){
             let games = [];
             if (lpCloudOK()) {
               try { if (typeof cloudFetchLatestVisibleGamesAsLocal === 'function') {
-                  games = await cloudFetchLatestVisibleGamesAsLocal(LP_BUFFER);
+                  games = await cloudFetchLatestVisibleGamesAsLocal(LP_GAME_WINDOW);
                 } else {
-                  games = await cloudFetchLatestGamesAsLocal(LP_BUFFER);
+                  games = await cloudFetchLatestGamesAsLocal(LP_GAME_WINDOW);
                 } } catch (_e) { games = []; }
             // Normalize game rows for live printer formatting (avoid "?(?)" when winner fields are absent)
             if (Array.isArray(games) && games.length) {
@@ -25803,7 +25804,26 @@ if(hsBody){
             sorted.splice(game > current ? game - 1 : game, 0, result);
           });
           const HIDE_KINDS = new Set();
-          const filtered = sorted.filter(it => !(it && it.event_kind && HIDE_KINDS.has(it.event_kind)));
+          const _lpIsGameItem = it => it && !it.event_kind && Array.isArray(it.players) && it.winner_score != null;
+          // The rotating window is counted in saved games, never formatted
+          // headings/records. Attach only events belonging to those 20 games.
+          const recentGames = sorted.filter(_lpIsGameItem).slice(0, LP_GAME_WINDOW);
+          const recentGameItems = new Set(recentGames);
+          const recentMatchIds = new Set(recentGames.map(it =>
+            String(it.match_id || it.matchId || '').trim()).filter(Boolean));
+          const oldestGameTime = recentGames.reduce((min, it) => {
+            const ms = new Date(_lpGetTs(it) || 0).getTime();
+            return Number.isFinite(ms) ? Math.min(min, ms) : min;
+          }, Infinity);
+          const filtered = sorted.filter(it => {
+            if (it?.event_kind && HIDE_KINDS.has(it.event_kind)) return false;
+            // Preserve existing derived-event fallback if game reads fail.
+            if (!recentGames.length) return true;
+            if (_lpIsGameItem(it)) return recentGameItems.has(it);
+            if (it?.event_kind === 'match_result') return recentMatchIds.has(String(it.match_id || '').trim());
+            const eventMs = new Date(_lpGetTs(it) || 0).getTime();
+            return !Number.isFinite(oldestGameTime) || (Number.isFinite(eventMs) && eventMs >= oldestGameTime);
+          });
           // >>> PATCH:LIVE_PRINTER_DATE_HEADERS START
 	          // Group lines by date: add a compact date header line when the day changes.
 	          // Then list the match lines with time preserved (no leading DD/MM).
@@ -25827,7 +25847,6 @@ if(hsBody){
             return s;
           };
 
-          const _lpIsGameItem = it => it && !it.event_kind && Array.isArray(it.players) && it.winner_score != null;
           const _lpGroupForGame = it => {
             const mode = lpIsPracticeGame(it) ? 'PRACTICE' : (lpIsTurboGame(it) || it.isTurbo ? 'TURBO' : 'CLASSIC');
             const matchId = String(it.match_id || it.matchId || '').trim();
@@ -25889,8 +25908,9 @@ if(hsBody){
           const sig0 = sorted[0] ? lpSig(sorted[0]) : '';
           const shouldRefresh = forceFull || (sig0 && sig0 !== st.lastSig) || !Array.isArray(st.bufLines);
 
-          // Always keep the buffer for scrolling
-          st.bufLines = collapsedLines.slice(0, LP_BUFFER);
+          // Keep 20 game results plus their context in the scrolling cycle.
+          // Retain the legacy bounded behaviour for a missing game source.
+          st.bufLines = recentGames.length ? collapsedLines : collapsedLines.slice(0, LP_BUFFER);
           if (shouldRefresh) {
             st.lastSig = sig0 || st.lastSig;
           }
