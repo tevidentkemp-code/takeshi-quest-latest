@@ -1055,12 +1055,22 @@ async function cloudFetchAllGamesAsLocal(opts = null){
 
   const generation = Number(window.__sqAllGamesFetchGeneration) || 0;
   const p = (async()=>{
-    const { data, error } = await sb
-      .from(TABLE_GAMES)
-      .select('id,created_at,archived_at,state,totals,match_id,game_number')
-      .order('created_at', { ascending: true });
-    if (error) throw error;
-    const rows = (data || []).map(mapCloudGameRowToLocal);
+    // PostgREST caps each response. Read every page before publishing history
+    // so recent league results and PBs cannot disappear after the first 1,000.
+    const pageSize = 500;
+    const rows = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await sb
+        .from(TABLE_GAMES)
+        .select('id,created_at,archived_at,state,totals,match_id,game_number')
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + pageSize - 1);
+      if (error) throw error;
+      if (!Array.isArray(data)) throw new Error('Cloud game history response is unavailable');
+      rows.push(...data.map(mapCloudGameRowToLocal));
+      if (data.length < pageSize) break;
+    }
     if ((Number(window.__sqAllGamesFetchGeneration) || 0) === generation) {
       window.__sqAllGamesFetchCache = rows;
       window.__sqAllGamesFetchAt = Date.now();
