@@ -25,8 +25,8 @@ Owner: `src/legacy/quarantine/core-pre-modals.js` (generated compatibility mirro
 3. Existing SC-047 source/dist Chromium + WebKit LIVE UPDATES tests: pause, one-second scroll scheduling, 15-row geometry, mobile 320/390/430px, date/mode grouping, Practice isolation and legitimate PB/WR semantics.
 4. Read-only public verification **after a separately authorised release**: 20 actual saved games per repeat cycle; related announcements visible; no record-label rule changes; zero production writes; physical iPhone acceptance remains separately required for STABLE.
 
-## Human gate
-Thomas / Shateki Operations must decide: **Should a player's first recorded positive Turbo result for a particular round be shown as a ROUND PB, or should it establish a baseline silently until a later improvement?** Keep Official and Turbo separate either way. Also obtain separate approval for any v0.16.2 production release after QA.
+## User clarification and release gate
+Thomas clarified later on 31 October that the announcements are Turbo results, withdrew the original PB complaint, and requested no change to record semantics. Keep the existing debut/target PB handling and Official/Turbo isolation unchanged. This work only changes the display cycle. Obtain separate approval for any v0.16.2 production release after QA.
 
 ## Recovery
 Before release, leave the PR draft/unmerged. After release, a scoped forward correction/revert of this Home window selection and generated mirror under the next valid public version; preserve SC-080 pagination and all later releases. No database/schema/RLS/score changes, so no database rollback.
