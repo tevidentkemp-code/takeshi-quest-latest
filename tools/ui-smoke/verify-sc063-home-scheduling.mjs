@@ -112,7 +112,7 @@ await test('the ticker fetches twenty saved games and retains all their contextu
   assert(lines.some(line=>line.includes('NEW PLAYER - NEWJOIN')),'the 30-day NEW PLAYER announcement must survive the separate 20-game cutoff');
   assert.equal(lines.includes('CYCLE GAME 20'),false);
   assert(lines.length>30,'all twenty games and record annotations must survive past thirty formatted lines');
-  assert.equal(e.calls.find(call=>call.source==='visible')?.limit,20);
+  assert.equal(e.calls.find(call=>call.source==='visible')?.limit,30,'retain original shared fetch request size for independent tickers');
   assert.equal(e.state.displayLines.length,15,'the stable visible panel must keep fifteen rows');
   return {gameCount:gameLines.length,formattedLines:lines.length,visibleRows:15,priorGamesSuppressed:true};
 });

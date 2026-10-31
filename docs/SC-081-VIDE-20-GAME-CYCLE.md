@@ -13,7 +13,7 @@ Separate UI defect: the VIDE printer previously fetched up to 30 saved games and
 
 ## Exact bounded change
 Owner: `src/legacy/quarantine/core-pre-modals.js` (generated compatibility mirror: `src/legacy/scripts/inline-005.js`).
-- Request the newest 20 visible saved games, keeping the existing cloud transport.
+- Retain the existing newest-30 shared game fetch, then select the newest 20 for the display cycle. The other Home ticker also uses the cached fetch and must not be shortened by this change.
 - Select those 20 game items, their cloud-backed completed-match results and timestamp-associated record announcements. Preserve separate 30-day NEW PLAYER announcements regardless of the 20-game cutoff.
 - Build mode/date headers and compact PB grouping as before.
 - Do not truncate that fully constructed cycle to 30 formatted lines. The physical 15-row printer, scheduler, animation, 15-second source polling, PAUSE, caches, transient injection queue and the existing empty-source fallback are unchanged.

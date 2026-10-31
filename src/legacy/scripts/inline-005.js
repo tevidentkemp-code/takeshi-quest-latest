@@ -24311,7 +24311,7 @@ if(hsBody){
         return '';
       };
 
-      const LP_BUFFER = 30; // Transient queue / empty-source fallback only.
+      const LP_BUFFER = 30; // Preserve existing shared fetch/queue and no-game fallback.
       const LP_GAME_WINDOW = 20; // Complete saved games, plus their contextual lines.
       const LP_VISIBLE = 15;
       const LP_SYNC_MS = Math.max(15000, (typeof SQ_GAMES_VISIBLE_MIN_POLL_MS !== 'undefined' ? SQ_GAMES_VISIBLE_MIN_POLL_MS : 15000));
@@ -25695,9 +25695,9 @@ if(hsBody){
             let games = [];
             if (lpCloudOK()) {
               try { if (typeof cloudFetchLatestVisibleGamesAsLocal === 'function') {
-                  games = await cloudFetchLatestVisibleGamesAsLocal(LP_GAME_WINDOW);
+                  games = await cloudFetchLatestVisibleGamesAsLocal(LP_BUFFER);
                 } else {
-                  games = await cloudFetchLatestGamesAsLocal(LP_GAME_WINDOW);
+                  games = await cloudFetchLatestGamesAsLocal(LP_BUFFER);
                 } } catch (_e) { games = []; }
             // Normalize game rows for live printer formatting (avoid "?(?)" when winner fields are absent)
             if (Array.isArray(games) && games.length) {
