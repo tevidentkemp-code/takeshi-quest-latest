@@ -14,10 +14,14 @@ const leaderboardCss=fs.readFileSync('src/styles/tournament/leaderboard-bracket.
 
 assert(core.includes('const isGamePB = score > 0 && score > priorGameBest;'));
 assert(core.includes('const isGameRecord = score > 0 && score > globalGameBest;'));
-assert(core.includes("if (isGameRecord) pushEvent(ts, `NEW GAME RECORD SCORE - ${nm} - ${score} 🥇`, 'game_record');\n              else if (isGamePB) pushEvent(ts, `GAME PB - ${nm} (${score})`, 'game_pb');"));
+assert(core.includes('const LP_PB_PRIOR_GAMES = 5;'));
+assert(core.includes('const pbMayAnnounce = priorModeGames >= LP_PB_PRIOR_GAMES;'));
+assert(core.includes("const playerModeKey = modeKey + '|' + nameKey;"));
+assert(core.includes('playerModeCompletedGames.set(playerModeKey, priorModeGames + 1);'));
+assert(core.includes("if (isGameRecord) pushEvent(ts, `NEW GAME RECORD SCORE - ${nm} - ${score} 🥇`, 'game_record');\n              else if (isGamePB && pbMayAnnounce) pushEvent(ts, `GAME PB - ${nm} (${score})`, 'game_pb');"));
 assert(core.includes('const isRoundPB = total > priorRoundPB;'));
 assert(core.includes('const isRoundRecord = total > priorRoundWR;'));
-assert(core.includes("if (isRoundRecord) pushEvent(ts, `ROUND WR / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_wr');\n                else if (isRoundPB) pushEvent(ts, `ROUND PB / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_pb');"));
+assert(core.includes("if (isRoundRecord) pushEvent(ts, `ROUND WR / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_wr');\n                else if (isRoundPB && pbMayAnnounce) pushEvent(ts, `ROUND PB / ${roundKey} - ${nm} (${total}) - ${counts}`, 'round_pb');"));
 
 assert(rhs.includes("replace(/\\s+x\\d+\\s*$/i,'')"));
 assert(rhs.includes("var holder=holders.join(' / ');"));
