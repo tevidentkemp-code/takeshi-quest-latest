@@ -1,0 +1,151 @@
+
+/* >>> PATCH:MOT_STAGE4_LAYOUT_NORMALISATION_V3 START
+   Stage 4: Layout normalisation (iOS Safari + desktop Safari) — V3 fix
+   Goals:
+   - Replace fragile 100vh usage with visualViewport-derived --sqVh
+   - Prevent Cell 3 content hiding under score pad by using measured --sqPadH
+   - Desktop fit: reduce key live block heights proportionally (no user zoom)
+*/
+
+/* Prefer dynamic viewport height (JS sets --sqVh). Fallback to 100dvh/100vh */
+:root{
+  --sqVh: 1vh;
+  --sqPadH: var(--pad-h, 160px);
+  --sqDeskScale: 1;
+}
+
+/* Ensure pages can use the stable height token */
+body[data-page]{
+  min-height: calc(var(--sqVh) * 100);
+}
+
+/* Live/game: reserve exactly the score pad height so Cell 3 never tucks under buttons */
+body[data-page="game"] #gameScrollGate{
+  padding-bottom: calc(var(--sqPadH) + env(safe-area-inset-bottom) + 22px) !important;
+  box-sizing: border-box;
+}
+
+/* Replace older hard-coded bottom padding with measured pad height */
+body[data-page="game"] #game,
+body[data-page="game"] #liveGame,
+body[data-page="game"] #liveGameWrap,
+body[data-page="game"] #liveGameCell{
+  padding-bottom: calc(var(--sqPadH) + env(safe-area-inset-bottom) + 22px) !important;
+}
+
+/* modern live cell must not inherit bottom reserve from legacy wrappers */
+body[data-page="game"] #v2GameCell{
+  padding-bottom: 0 !important;
+}
+
+/* Desktop Safari fit (standard view): shrink vertical rhythm slightly so Cell 3 sits above pad */
+@media (min-width: 900px){
+  :root{
+    --sqLiveBlockGap: 12px;
+    --sqA1H: 78px;
+    --sqB1Gap: 8px;
+    --sqB3H: clamp(104px, 14vh, 150px);
+  }
+  /* Slightly reduce text density on desktop without affecting mobile */
+  body[data-page="game"]{
+    font-size: 15px;
+  }
+}
+
+/* >>> PATCH:MOT_STAGE4_LAYOUT_NORMALISATION_V3 END */
+
+/* >>> PATCH:B3_LAST_WORD_V1 START */
+/* Final authority: keep B3 shorter on phones and stop legacy bottom reserve touching Live V2. */
+body[data-page="game"] #v2GameCell{
+  padding-bottom: 0 !important;
+  min-height: 0 !important;
+}
+body[data-page="game"] #v2InfoPager,
+body[data-page="game"] #v2GeneralInfo,
+body[data-page="game"] #v2InfoCell,
+body[data-page="game"] #v2InfoViewport,
+body[data-page="game"] #v2InfoTrack,
+body[data-page="game"] #v2InfoTrack .v2InfoPage{
+  min-height: 0 !important;
+}
+@media (max-width: 460px){
+  :root{ --sqB3H: clamp(92px, 12vh, 126px); }
+}
+@media (max-width: 460px) and (max-height: 820px){
+  :root{ --sqB3H: clamp(84px, 10.5vh, 110px); }
+}
+/* <<< PATCH:B3_LAST_WORD_V1 END */
+
+/* >>> PATCH:IPHONE_ACTUALSIZE_SAFARI_DESKTOPFIX_V1 START */
+/* Safari Develop > User Agent > iPhone still keeps a desktop-width viewport.
+   So mobile max-width rules do NOT fire. This block targets that exact case:
+   keep A1/B1/B2 visually the same enough, but tighten B3 and C1. */
+@media (min-width: 900px) and (hover:hover) and (pointer:fine){
+  :root{
+    --sqPadH: 128px;                 /* smaller bottom reserve */
+    --sqB3H: clamp(88px, 11vh, 118px);
+  }
+
+  /* B3 yields further in this mode */
+  body[data-page="game"] #v2InfoPager,
+  body[data-page="game"] #v2GeneralInfo,
+  body[data-page="game"] #v2InfoCell{
+    height: var(--sqB3H) !important;
+    min-height: var(--sqB3H) !important;
+    max-height: var(--sqB3H) !important;
+  }
+
+  /* Tighten the fixed score pad */
+  body[data-page="game"] .pad-bar{
+    padding-top: 8px !important;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 6px) !important;
+  }
+
+  /* Slightly shorter button system */
+  body[data-page="game"] .dtNumBtn,
+  body[data-page="game"] .dtActBtn,
+  body[data-page="game"] .dtBullBtn{
+    height: 52px !important;
+    border-radius: 11px !important;
+  }
+
+  body[data-page="game"] .dtActions,
+  body[data-page="game"] .dtBullRow{
+    gap: 6px !important;
+  }
+
+  body[data-page="game"] .dtRight{
+    gap: 5px !important;
+  }
+
+  body[data-page="game"] .dtActBtn .dtLbl{
+    font-size: 14px !important;
+    letter-spacing: .08em !important;
+  }
+
+  body[data-page="game"] .dtActBtn .dtIcon{
+    font-size: 16px !important;
+  }
+
+  /* MISS x3 button can be a touch less tall visually without harming use */
+  body[data-page="game"] .dtX3{
+    min-height: 110px !important;
+  }
+
+  /* Keep the outer game cell clear of any late padding fight */
+  body[data-page="game"] #v2GameCell{
+    padding-bottom: 0 !important;
+  }
+
+  /* Reduce the reserve on the outer wrappers in this desktop-width Safari test mode */
+  body[data-page="game"] #gameScrollGate{
+    padding-bottom: calc(var(--sqPadH) + env(safe-area-inset-bottom) + 10px) !important;
+  }
+  body[data-page="game"] #game,
+  body[data-page="game"] #liveGame,
+  body[data-page="game"] #liveGameWrap,
+  body[data-page="game"] #liveGameCell{
+    padding-bottom: calc(var(--sqPadH) + env(safe-area-inset-bottom) + 10px) !important;
+  }
+}
+/* <<< PATCH:IPHONE_ACTUALSIZE_SAFARI_DESKTOPFIX_V1 END */

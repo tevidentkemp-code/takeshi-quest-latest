@@ -1,0 +1,37 @@
+/* ===== @CSS:GAME_SCROLL_GATE =====
+   Consume initial scroll to collapse B1 before the scoreboard content (A2/D) starts moving under A1/B2/B3. */
+body[data-page="game"] #gameScrollGate{
+  /* Cancel the first part of scroll (used to collapse B1) without creating a gap under the header */
+  transform: translateY(var(--fhScrollGate));
+  margin-top: calc(-1 * var(--fhScrollGate));
+  will-change: transform;
+}
+/* Desktop Safari fit: scale live content block down proportionally (no user zoom) */
+@media (min-width: 900px) and (hover:hover) and (pointer:fine){
+  body[data-page="game"] #gameScrollGate{
+    transform: scale(var(--sqDeskScale));
+    transform-origin: top center;
+    width: calc(100% / var(--sqDeskScale));
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* >>> PATCH:STAGE4_PADBAR_WIDTH_DESKTOP_V1 START
+   Desktop Safari: constrain the fixed throw pad to the same visual width as the top panel (DMD/info cell).
+   Phone/tablet keep full-width for touch ergonomics.
+*/
+@media (min-width: 900px) and (hover:hover) and (pointer:fine){
+  body[data-page="game"] .pad-bar{
+    left: 50% !important;
+    right: auto !important;
+    width: min(var(--sqDeskPadW, 760px), calc(100vw - 24px)) !important;
+    transform: translateX(-50%) !important;
+    border-left: 1px solid #23284a;
+    border-right: 1px solid #23284a;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+  }
+}
+/* <<< PATCH:STAGE4_PADBAR_WIDTH_DESKTOP_V1 END */
+
