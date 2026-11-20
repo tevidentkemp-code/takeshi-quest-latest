@@ -892,6 +892,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
     const focusKey = focused?.getAttributeNames().find(name => name.startsWith('data-'));
     const rDef = R[dec.round];
     const liveP = dec.participants[dec.turn];
+    modal.style.setProperty('--decider-players', String(dec.participants.length));
     try{
       if (Number(dec.dart || 0) === 0) {
         const dmdKey = `${dec.round}|${dec.turn}`;
@@ -908,7 +909,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
     modal.innerHTML = `
       <div class="dec-top">
         <button type="button" class="btn" data-decider-close aria-label="Close decider">Close</button>
-        <div class="dec-title">${dec.repeat ? 'TIED · REPEAT SHOOTOUT' : 'DRAW · DECIDER'}</div>
+        <div class="dec-title">${dec.repeat ? 'REPEAT DECIDER' : 'DECIDER'}</div>
         <div class="dec-round" data-decider-turn></div>
         <div class="dec-sub">Each player gets three darts per round.<br>Any score, followed by doubles, trebles then bulls.<br>Points do not count towards stats.</div>
       </div>

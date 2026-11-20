@@ -14,12 +14,24 @@ const H = require('./harness');
       await startNewGame(true);
     });
     await page.waitForFunction(() => document.body.dataset.page === 'game' && window.SQ_GAMEPLAY.canThrow());
+    await page.locator('#gameLoadOverlay').waitFor({state:'hidden'});
     await page.evaluate(() => {
       for (let i=0; i<126; i++) recordThrow({kind:'Miss'});
     });
     const modal = page.getByRole('dialog',{name:'Draw decider shootout'});
     const action = name => modal.locator('[data-act="'+name+'"]');
     await modal.waitFor({state:'visible'});
+    const mobileLayout = await modal.evaluate(dialog => {
+      const finish = document.querySelector('#pad [data-finish-game]').getBoundingClientRect();
+      const front = document.elementFromPoint(finish.x + finish.width/2, finish.y + finish.height/2);
+      const row = dialog.querySelector('.dec-gridRow');
+      return {
+        padCovered:!!front?.closest('.sq-decider-backdrop'),
+        controlsReachable:dialog.scrollHeight <= dialog.clientHeight || ['auto','scroll'].includes(getComputedStyle(dialog).overflowY),
+        columnsAligned:[...row.children].every(cell => cell.offsetTop === row.children[0].offsetTop)
+      };
+    });
+    assert.deepEqual(mobileLayout,{padCovered:true,controlsReachable:true,columnsAligned:true});
     assert.equal(await page.evaluate(() => state.__sqGameControl.mode),'official');
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem(STORAGE_KEY)).history.length),126);
     await modal.getByRole('button',{name:'Close decider'}).click();
