@@ -1,18 +1,6 @@
-/* SC-037 — Landscape TV Mode (Beta)
-   Presentation-only overlay. Reads canonical live game state; never writes scoring,
-   rankings, XP, match results or Supabase data. */
+/* Arcade TV projects the active board. All inputs use the existing scorer. */
 (function(){
   'use strict';
-
-  var ROOT_ID='sqTvModeOverlay';
-  var timer=0;
-
-  function esc(v){
-    return String(v==null?'':v).replace(/[&<>"']/g,function(ch){
-      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch];
-    });
-  }
-  function gameState(){ try{return (typeof state!=='undefined'&&state)?state:null;}catch(_){return null;} }
   function playerName(p,i){
     try{
       if(typeof window.__sqHalloweenActive==='function' && window.__sqHalloweenActive() && typeof window.__sqHalloweenNickname==='function'){
@@ -32,196 +20,177 @@
     if(bag.indexOf('turbo')>=0) return 'TV Mode beta is currently Classic Match Play only.';
     return '';
   }
-  function totalFor(s,p){
-    try{ if(typeof totalScoreForPlayer==='function') return Number(totalScoreForPlayer(p)||0); }catch(_){}
-    var rows=(s.score&&s.score[p])||[], t=0;
-    rows.forEach(function(e){t+=Number((e&&e.roundTotal)||0);});
-    return t;
-  }
-  function roundLabel(r){
-    try{
-      var d=(typeof ROUNDS!=='undefined'&&ROUNDS)?ROUNDS[r]:null;
-      if(!d) return String(r+1);
-      if(d.type==='number') return String(d.target);
-      if(d.type==='doubles') return 'D';
-      if(d.type==='triples') return 'T';
-      if(d.type==='bull') return 'B';
-      return String(d.target||d.label||r+1);
-    }catch(_){return String(r+1);}
-  }
-  function hasDarts(e){return !!(e&&Array.isArray(e.darts)&&e.darts.some(function(d){return !!d;}));}
-  function cumulative(s,p,r){
-    var rows=(s.score&&s.score[p])||[], t=0, any=false;
-    for(var i=0;i<=r;i++){ var e=rows[i]; if(hasDarts(e)){ any=true; t+=Number(e.roundTotal||0); } }
-    return {value:t,any:any};
-  }
-  function roundScore(s,p,r){ var e=s.score&&s.score[p]&&s.score[p][r]; return hasDarts(e)?Number(e.roundTotal||0):null; }
-  function avgPair(s,p){
-    var rows=(s.score&&s.score[p])||[], vals=[];
-    rows.forEach(function(e){if(hasDarts(e)) vals.push(Number(e.roundTotal||0));});
-    var game=vals.length?vals.reduce(function(a,b){return a+b;},0)/vals.length:0;
-    var last=vals.slice(-3); var a3=last.length?last.reduce(function(a,b){return a+b;},0)/last.length:0;
-    return {a3:a3,game:game};
-  }
-  function dartToken(d){
-    if(!d) return '—';
-    var k=String(d.kind||'').toUpperCase();
-    if(k==='MISS') return 'MISS';
-    if(k==='B') return Number(d.points||d.score||d.value||0)>=50?'BULL 50':'BULL 25';
-    var sec=d.sector!=null?d.sector:'';
-    if(k==='DOUBLE') k='D'; if(k==='TRIPLE') k='T';
-    if(k==='S'||k==='D'||k==='T') return k+sec;
-    var pts=Number(d.points||d.score||d.value);
-    return Number.isFinite(pts)?String(pts):(k||'—');
-  }
-  function shell(){
-    var root=document.getElementById(ROOT_ID);
-    if(root) return root;
-    root=document.createElement('section');
-    root.id=ROOT_ID;
-    root.className='sq-tv-mode';
-    root.setAttribute('aria-label','Shateki Quest TV Mode');
-    root.innerHTML=
-      '<div class="sq-tv-rotate">ROTATE DEVICE FOR TV MODE</div>'+
-      '<header class="sq-tv-head">'+
-        '<div class="sq-tv-brand">SHATEKI<span>QUEST</span></div>'+
-        '<div class="sq-tv-dmd"><div id="sqTvDmdTop"></div><strong id="sqTvDmdMain"></strong><div id="sqTvDmdBottom"></div></div>'+
-        '<div class="sq-tv-avg"><div><span>3R AVG</span><strong id="sqTvAvg3">0.0</strong></div><div><span>GAME AVG</span><strong id="sqTvAvgGame">0.0</strong></div></div>'+
-        '<button class="sq-tv-exit" id="sqTvExit" type="button">EXIT TV MODE</button>'+
-      '</header>'+
-      '<div class="sq-tv-players" id="sqTvPlayers"></div>'+
-      '<main class="sq-tv-main">'+
-        '<section class="sq-tv-table-card"><div class="sq-tv-section-title"><span>SCOREBOARD</span><span id="sqTvRoundMeta"></span></div><div class="sq-tv-table-wrap"><table class="sq-tv-table"><thead id="sqTvThead"></thead><tbody id="sqTvTbody"></tbody></table></div></section>'+
-        '<aside class="sq-tv-race-card"><div class="sq-tv-section-title"><span>GAME RACE</span><span id="sqTvRaceMeta"></span></div><div class="sq-tv-race" id="sqTvRace"></div></aside>'+
-      '</main>'+
-      '<footer class="sq-tv-rail">'+
-        '<div class="sq-tv-darts" id="sqTvDarts"></div>'+
-        '<button class="sq-tv-action" id="sqTvMenu" type="button">MENU</button>'+
-        '<button class="sq-tv-action" id="sqTvFull" type="button">FULLSCREEN</button>'+
-      '</footer>';
-    document.body.appendChild(root);
-    root.querySelector('#sqTvExit').onclick=function(){disable();};
-    root.querySelector('#sqTvMenu').onclick=function(){try{if(window.__sqOpenGameMenu106)window.__sqOpenGameMenu106();}catch(_){}};
-    root.querySelector('#sqTvFull').onclick=function(){
-      try{
-        if(document.fullscreenElement){ document.exitFullscreen&&document.exitFullscreen(); }
-        else if(document.documentElement.requestFullscreen){ document.documentElement.requestFullscreen(); }
-      }catch(_){}
-    };
-    return root;
-  }
-  function syncPadClearance(){
-    try{
-      var pad=document.getElementById('padBar');
-      var clearance=0;
-      if(pad){
-        var style=window.getComputedStyle(pad);
-        var rect=pad.getBoundingClientRect();
-        var visible=style.display!=='none'&&style.visibility!=='hidden'&&rect.height>0&&rect.bottom>0;
-        if(visible) clearance=Math.max(0,Math.ceil(window.innerHeight-rect.top));
-      }
-      document.documentElement.style.setProperty('--sq-tv-pad-h',clearance+'px');
-      var root=document.getElementById(ROOT_ID);
-      if(root) root.style.bottom=clearance+'px';
-    }catch(_){}
-  }
-  function render(){
-    if(!document.body||document.body.dataset.page!=='game'){ if(active()) disable(); return; }
-    syncPadClearance();
-    var s=gameState(); if(!s||!Array.isArray(s.players)) return;
-    var root=document.getElementById(ROOT_ID); if(!root||!active()) return;
-    var players=s.players, cp=Math.max(0,Math.min(players.length-1,Number(s.currentPlayer)||0));
-    root.style.setProperty('--sq-tv-count',String(Math.max(2,Math.min(6,players.length))));
-    var cr=Math.max(0,Number(s.currentRound)||0), cd=Math.max(0,Math.min(2,Number(s.currentDart)||0));
-    var totals=players.map(function(_,i){return totalFor(s,i);}), lead=totals.length?Math.max.apply(null,totals):0;
-    var wins=(s.match&&Array.isArray(s.match.wins))?s.match.wins:[];
-    var targetWins=Math.max(1,Number(s.match&&s.match.targetWins)||1);
-    var roundCount=(typeof MAX_ROUNDS==='number'&&MAX_ROUNDS>0)?MAX_ROUNDS:14;
-    var curName=playerName(players[cp],cp).toUpperCase();
-    var av=avgPair(s,cp);
+  let root, iframe, channel, receiverUrl, cache, pace, activeGame, frame, lastFrame;
+  let pending = 0, tick = 0, trigger, menuObserver;
+  const asset = new URL('assets/tv/arcade.html', document.baseURI);
 
-    root.querySelector('#sqTvDmdTop').textContent='ROUND '+roundLabel(cr)+'  •  DART '+(cd+1)+' OF 3';
-    root.querySelector('#sqTvDmdMain').textContent=curName+' TO THROW';
-    root.querySelector('#sqTvDmdBottom').textContent='CLASSIC MATCH PLAY  •  FIRST TO '+targetWins;
-    root.querySelector('#sqTvAvg3').textContent=av.a3.toFixed(1);
-    root.querySelector('#sqTvAvgGame').textContent=av.game.toFixed(1);
-    root.querySelector('#sqTvRoundMeta').textContent='ROUND '+(cr+1)+' / '+roundCount;
-    root.querySelector('#sqTvRaceMeta').textContent='LEADER '+lead;
-
-    root.querySelector('#sqTvPlayers').innerHTML=players.map(function(p,i){
-      var diff=totals[i]-lead, w=Math.max(0,Number(wins[i]||0));
-      return '<article class="sq-tv-player'+(i===cp?' active':'')+'">'+
-        '<div class="sq-tv-player-name">'+esc(playerName(p,i))+'</div>'+
-        '<div class="sq-tv-player-status">'+(i===cp?'NOW THROWING':'WAITING')+'</div>'+
-        '<div class="sq-tv-player-score">'+totals[i]+' <small>'+(diff===0?'LEAD':diff)+'</small></div>'+
-        '<div class="sq-tv-player-wins">WINS '+w+'/'+targetWins+'</div>'+
-      '</article>';
-    }).join('');
-
-    var visible=6, start=Math.max(0,Math.min(Math.max(0,roundCount-visible),cr-3));
-    if(cr<3) start=0;
-    var end=Math.min(roundCount,start+visible);
-    var thead='<tr><th>TARGET</th>'+players.map(function(p){return '<th>'+esc(playerName(p,0))+'</th>';}).join('')+'</tr>';
-    var body='';
-    for(var r=start;r<end;r++){
-      body+='<tr class="'+(r===cr?'active':'')+'"><th>'+esc(roundLabel(r))+'</th>';
-      for(var p=0;p<players.length;p++){
-        var cum=cumulative(s,p,r), rs=roundScore(s,p,r), skip='';
-        try{
-          if(typeof __sqSkippedRoundState==='function'){
-            var st=__sqSkippedRoundState(p,r); if(st==='pending') skip='»»»'; else if(st==='scratched') skip='X';
-          }
-        }catch(_){}
-        var futureRound=r>cr;
-        var main=futureRound?'—':(skip||(cum.any?String(cum.value):'—'));
-        var sub=(futureRound||skip)?'':(rs==null?'':'('+rs+')');
-        body+='<td class="'+(p===cp?'current-player':'')+'"><strong>'+main+'</strong><small>'+sub+'</small></td>';
-      }
-      body+='</tr>';
+  function displayDart(dart, round) {
+    if (!dart) return null;
+    const points = Number(dart.points) || 0;
+    let label = dart.bounceOut ? 'BO' : 'Miss';
+    if (points && dart.kind === 'B') label = dart.bull === 'Inner' ? 'Inner' : 'Outer';
+    else if (points && ['D','T','S','Double','Triple'].includes(dart.kind)) {
+      label = dart.kind[0] + Number(dart.sector || ROUNDS[round].target);
     }
-    root.querySelector('#sqTvThead').innerHTML=thead;
-    root.querySelector('#sqTvTbody').innerHTML=body;
-
-    var denom=Math.max(lead,100);
-    root.querySelector('#sqTvRace').innerHTML=players.map(function(p,i){
-      var pct=Math.max(2,Math.min(100,totals[i]/denom*100));
-      return '<div class="sq-tv-race-row'+(i===cp?' active':'')+'">'+
-        '<span class="sq-tv-race-name">'+esc(playerName(p,i))+'</span>'+
-        '<div class="sq-tv-race-track"><i style="width:'+pct.toFixed(1)+'%"></i></div>'+
-        '<strong>'+totals[i]+'</strong>'+
-      '</div>';
-    }).join('');
-
-    var entry=s.score&&s.score[cp]&&s.score[cp][cr], darts=(entry&&Array.isArray(entry.darts))?entry.darts:[];
-    root.querySelector('#sqTvDarts').innerHTML=[0,1,2].map(function(i){
-      return '<div class="sq-tv-dart '+(i===cd&&!s.finished?'next':'')+'"><span>DART '+(i+1)+'</span><strong>'+esc(dartToken(darts[i]))+'</strong></div>';
-    }).join('');
-
-    if(s.finished){ disable(); }
+    return {label, points};
   }
-  function active(){return !!(document.body&&document.body.classList.contains('sq-tv-mode-on'));}
+
+  function snapshot() {
+    const round = state.finished ? MAX_ROUNDS : state.currentRound;
+    const current = Math.min(round, MAX_ROUNDS-1);
+    const thrower = Math.min(state.currentPlayer, state.players.length-1);
+    const board = state.players.map((_,i)=>state.score[i].map((row,r)=>
+      (row?.darts || []).map(dart=>displayDart(dart,r))));
+    const visits = board.map(rows=>rows[current]?.filter(Boolean) || []);
+    const keys = ROUNDS.map((_,r)=>__sqRoundKeyForIdx(r));
+    const rows = board.map((player,i)=>player.map((visit,r)=>
+      visit.some(Boolean) ? state.score[i][r].roundTotal : null));
+    // Keep each trace aligned to the target, even during skipped-round catch-up.
+    const traces = board.map(player=>{
+      const points=player.flatMap(visit=>Array.from({length:3},(_,d)=>visit[d]?.points??null));
+      while (points.length && points[points.length-1] === null) points.pop();
+      return points;
+    });
+    const last = state.history?.at(-1);
+    const job = __sqFinalBullReturnTimerActive(thrower) && __sqFinalBullReturnTimerJob(thrower);
+    const records = {
+      world:keys.map(key=>cache?.wrByRound.get(key)??null),
+      personal:state.players.map((_,i)=>{
+        const pb=cache?.pbByBucket.get(__sqResolveBucketKeyForPlayer(i));
+        return keys.map(key=>pb?.get(key)??null);
+      })
+    };
+    return {
+      round, thrower, dartIndex:state.currentDart, visits, darts:visits[thrower], rows,traces,
+      names:state.players.map(playerName),targets:ROUNDS.map(def=>def.type==='number'?def.target:
+        ({doubles:'Doubles',triples:'Triples',bull:'Bull'})[def.type]),
+      totals:state.players.map((_,i)=>totalScoreForPlayer(i)), forms:state.players.map((_,i)=>__sqV3FormData(i)),
+      records,pace, canUndo:Boolean(last), canSkip:Boolean(document.querySelector('#pad .dtActBtn.skip:not(:disabled)')), historyLength:state.history?.length||0,
+      last:last?.throw?{player:last.player,round:last.round,dart:last.dartIndex,
+        hit:displayDart(last.throw,last.round).label,visit:board[last.player][last.round].filter(Boolean)}:null,
+      returnSeconds:job?.bullReturnDeadlineAt?Math.max(0,Math.ceil((job.bullReturnDeadlineAt-Date.now())/1000)):null
+    };
+  }
+
+  function sync() {
+    if (!root) return;
+    if (document.body.dataset.page!=='game' || state!==activeGame) { disable(); return; }
+    const next = snapshot();
+    const signature = JSON.stringify(next);
+    if (signature !== lastFrame) {
+      lastFrame = signature;
+      frame = next;
+      iframe.contentWindow?.showTvFrame?.(frame);
+      channel?.postMessage({frame});
+    }
+    if (state.finished && !root.hidden) {
+      // Give the native finish and shootout dialogs the scorer surface.
+      // Keep mirroring so final-dart correction and spectator refresh work.
+      root.hidden=true;
+      document.body.classList.remove('sq-tv-mode-on');
+      if(document.fullscreenElement===document.documentElement)document.exitFullscreen?.();
+    } else if (!state.finished && root.hidden) {
+      root.hidden=false;
+      document.body.classList.add('sq-tv-mode-on');
+    }
+  }
+  function schedule() {
+    if (!root || pending) return;
+    pending=requestAnimationFrame(()=>{ pending=0; sync(); });
+  }
+
+  function score(label) {
+    if (!root || root.inert || root.hidden || state!==activeGame || state.finished || document.body.dataset.page!=='game') return;
+    const selectors = {Single:'[data-score-label="Single"]',Double:'[data-score-label="Double"]',
+      Treble:'[data-score-label="Treble"]',Miss:'.dtActBtn.miss',undo:'.dtActBtn.undo',
+      skip:'.dtActBtn.skip','Inner 50':'.dtBullBtn.inner','Outer 25':'.dtBullBtn:not(.inner)'};
+    const pad=document.getElementById('pad');
+    const numeric=/^[DT](\d{1,2})$/.exec(label);
+    const button=numeric ? [...pad.querySelectorAll('.dtNumBtn')].find(b=>b.textContent===numeric[1]) :
+      selectors[label] && pad.querySelector(selectors[label]);
+    if (button && !button.disabled) button.click();
+    sync();
+  }
+
+  function openSettings() {
+    if (!root || root.inert || !window.__sqOpenGameMenu106) return;
+    root.inert=true;
+    root.classList.add('menu-open');
+    window.__sqOpenGameMenu106();
+    document.querySelector('.sq-menu106-bd button')?.focus();
+    // Submenus replace the previous dialog through the shared modal stack.
+    menuObserver=new MutationObserver(()=>requestAnimationFrame(()=>{
+      if (!root?.inert || window.__sqModalStack?.some(entry=>entry.overlay?.isConnected) ||
+          document.querySelector('.sq-menu106-bd')) return;
+      menuObserver?.disconnect(); menuObserver=null;
+      root.inert=false;
+      root.classList.remove('menu-open');
+      iframe.contentDocument?.querySelector('.tv-settings')?.focus();
+    }));
+    menuObserver.observe(document.body,{childList:true});
+  }
+
   function enable(){
-    var s=gameState(), reason=modeUnsupported(s);
-    if(document.body.dataset.page!=='game'){ try{if(typeof toast==='function')toast('Start a game before opening TV Mode');}catch(_){} return false; }
-    if(reason){ try{if(typeof toast==='function')toast(reason);}catch(_){} return false; }
-    shell();
+    if (root) return true;
+    const reason=modeUnsupported(state);
+    if (document.body.dataset.page!=='game' || reason || state.finished) {
+      toast(reason || 'Start a game before opening TV Mode'); return false;
+    }
+    activeGame=state;
+    trigger=document.activeElement;
+    root=document.createElement('section');
+    root.id='sqTvModeOverlay';
+    root.setAttribute('aria-label','Arcade TV');
+    root.innerHTML='<nav aria-label="TV controls"><button id="sqTvExit">Exit TV mode</button><button id="sqTvWatch">Spectator window</button><button id="sqTvFull">Fullscreen</button></nav><iframe title="Live arcade scoreboard"></iframe>';
+    iframe=root.querySelector('iframe');
+    iframe.src=asset.href;
+    iframe.onload=()=>{
+      if (!root || !iframe.contentWindow?.showTvFrame) return;
+      iframe.contentWindow.setTvControls({score,settings:openSettings,bindMiss:__sqBindMissBounceHold,exit:disable});
+      if (frame) iframe.contentWindow.showTvFrame(frame);
+    };
+    root.querySelector('#sqTvExit').onclick=()=>disable();
+    root.querySelector('#sqTvFull').onclick=()=>document.fullscreenElement ?
+      document.exitFullscreen?.() : document.documentElement.requestFullscreen?.();
+    const watch=root.querySelector('#sqTvWatch');
+    if (typeof BroadcastChannel==='function') {
+      // The spectator window shares the browser on an extended or mirrored display.
+      // It receives display fields only. It cannot send scoring commands.
+      let id;
+      try {id=sessionStorage.getItem('sq.tv.display');} catch(_){}
+      if (!id) {id=crypto.randomUUID();try{sessionStorage.setItem('sq.tv.display',id);}catch(_){}}
+      receiverUrl=new URL(asset);
+      receiverUrl.hash=id;
+      channel=new BroadcastChannel('sq-tv-'+id);
+      channel.onmessage=event=>{if(event.data==='ready' && frame)channel?.postMessage({frame});};
+      watch.onclick=()=>window.open(receiverUrl.href,'_blank','noopener');
+    } else watch.hidden=true;
+    document.body.append(root);
     document.body.classList.add('sq-tv-mode-on');
-    render();
-    if(timer) clearInterval(timer);
-    timer=setInterval(render,250);
-    try{window.dispatchEvent(new Event('resize'));}catch(_){}
+    root.querySelector('#sqTvExit').focus();
+    sync();
+    const opened=root;
+    __sqEnsureV2PBWR().then(result=>{if(root===opened){cache=result;schedule();}});
+    buildRecordPaceSeries(MAX_ROUNDS,true).then(result=>{if(root===opened){pace=result?[0,...result.data]:null;schedule();}});
+    // Deadline and route changes can occur independently of a throw.
+    tick=setInterval(schedule,1000);
     return true;
   }
-  function disable(){
-    if(timer){clearInterval(timer);timer=0;}
-    document.body&&document.body.classList.remove('sq-tv-mode-on');
-    try{document.documentElement.style.removeProperty('--sq-tv-pad-h');}catch(_){}
-    var root=document.getElementById(ROOT_ID); if(root) root.remove();
-    try{ if(document.fullscreenElement&&document.exitFullscreen) document.exitFullscreen(); }catch(_){}
+  function disable(finished=false){
+    if (!root) return;
+    menuObserver?.disconnect(); menuObserver=null;
+    clearInterval(tick);
+    cancelAnimationFrame(pending); pending=0;
+    if (!finished) channel?.postMessage({closed:true});
+    channel?.close(); channel=null;
+    if(document.fullscreenElement===document.documentElement)document.exitFullscreen?.();
+    root.remove(); root=null; iframe=null; lastFrame=null; frame=null; cache=null; pace=null; activeGame=null;
+    document.body.classList.remove('sq-tv-mode-on');
+    if (!finished) trigger?.focus?.();
   }
-  window.__sqTvModeIsActive=active;
-  window.__sqTvModeSync=render;
-  window.__sqTvModeToggle=function(on){return on===false?(disable(),false):enable();};
-  window.addEventListener('pagehide',disable);
-  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&active()&&!document.querySelector('.modal-backdrop:not(.hidden)'))disable();});
+  window.__sqTvModeToggle=on=>on===false?(disable(),false):enable();
+  window.__sqTvModeIsActive=()=>Boolean(root);
+  window.__sqTvModeSync=schedule;
+  window.addEventListener('pagehide',()=>disable());
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&root&&!root.inert&&!root.hidden)disable();});
 })();

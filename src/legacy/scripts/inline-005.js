@@ -17244,6 +17244,7 @@ window.__sqLiveV3Sync = function(){
 };
 
 function updateUI() {
+  window.__sqTvModeSync?.();
   try {
   try{ if (typeof __sqSyncTurboVisualState === 'function') __sqSyncTurboVisualState(document.body?.dataset?.page || ''); }catch(_){}
   if (!tbody) return;
@@ -19929,7 +19930,7 @@ function ensureGameBuilt(){
 
 // GLOBAL — record pace (#1 official game score) from Supabase games truth
 // >>> PATCH:FIX22_RACE_HS_GAMES_TRUTH START
-async function buildRecordPaceSeries(roundsCount) {
+async function buildRecordPaceSeries(roundsCount, officialBoardOnly = false) {
   try {
     const rc = Math.max(1, Number(roundsCount) || 14);
 
@@ -20007,17 +20008,21 @@ async function buildRecordPaceSeries(roundsCount) {
     }
 
     let best = null;
+    let officialHigh = 0;
     for (const g of (Array.isArray(games) ? games : [])){
       try{
         if (typeof isOfficialGame === 'function' && !isOfficialGame(g)) continue;
+        if (officialBoardOnly && g.archived_at) continue;
         const ps = gamePlayers(g);
         if (!ps.length) continue;
         for (let pIdx = 0; pIdx < ps.length; pIdx++){
           const total = totalFor(g, pIdx);
           if (!Number.isFinite(total) || total <= 0) continue;
+          if (officialBoardOnly) officialHigh = Math.max(officialHigh,total);
           const name = safeName(ps[pIdx]?.name || ps[pIdx]?.fullName || ps[pIdx]?.displayName || ps[pIdx]?.nick || ('P' + (pIdx + 1)));
           const data = cumulativeFor(g, pIdx);
           if (!data.some(v => Number(v) > 0)) continue;
+          if (officialBoardOnly && data.at(-1) !== total) continue;
           const candidate = { game:g, playerIndex:pIdx, name, total, data, ts:gameTime(g) };
           if (!best || candidate.total > best.total || (candidate.total === best.total && candidate.ts > best.ts)){
             best = candidate;
@@ -20026,7 +20031,7 @@ async function buildRecordPaceSeries(roundsCount) {
       }catch(_){ }
     }
 
-    if (best){
+    if (best && (!officialBoardOnly || best.total === officialHigh)){
       return {
         name: `Record: ${best.name} (${best.total})`,
         color: '#ffffff',
@@ -20034,6 +20039,8 @@ async function buildRecordPaceSeries(roundsCount) {
         dotted: true
       };
     }
+
+    if (officialBoardOnly) return null;
 
     // Last-resort fallback: old HS table path, only used when games cannot provide board history.
     const list = await cloudListHighScoresWithBackfill(false, 1);
@@ -23429,7 +23436,7 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
-  const RUNNING_VERSION = '0.16.3';
+  const RUNNING_VERSION = '0.17.0';
   const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
   let updateCheckPromise = null;

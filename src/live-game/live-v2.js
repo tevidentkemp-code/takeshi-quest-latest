@@ -4402,6 +4402,7 @@ window.__sqLiveV3Sync = function(){
 };
 
 function updateUI() {
+  window.__sqTvModeSync?.();
   try {
   try{ if (typeof __sqSyncTurboVisualState === 'function') __sqSyncTurboVisualState(document.body?.dataset?.page || ''); }catch(_){}
   if (!tbody) return;
