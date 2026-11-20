@@ -1574,7 +1574,10 @@ window.__sqQuickEntry = {
 // <<< SXP-04 GATE 3 / SC-049 QUICK ENTRY PROTOTYPE END
 
 // @CANONICAL:THROWPAD_BASE_RENDER
+let unsubscribeMissLabel;
 function buildPad(){ 
+  unsubscribeMissLabel?.();
+  unsubscribeMissLabel = null;
   if (!pad) return; 
   pad.innerHTML = ''; 
 
@@ -1730,6 +1733,7 @@ function buildPad(){
     function __sqSetMissXLabel(btn){
       try{
         const n = __sqMissCountForCurrentThrow();
+        if (btn.dataset.missN === String(n) && btn.textContent === `MISS\nx${n}`) return;
         btn.textContent = `MISS\nx${n}`;
         btn.dataset.missN = String(n);
       }catch(_){}
@@ -1858,6 +1862,7 @@ function buildPad(){
       function __sqSetMissXLabel(btn){
         try{
           const n = __sqMissCountForCurrentThrow();
+          if (btn.dataset.missN === String(n) && btn.textContent === `MISS\nx${n}`) return;
           btn.textContent = `MISS\nx${n}`;
           btn.dataset.missN = String(n);
         }catch(_){}
@@ -2098,7 +2103,7 @@ function buildPad(){
       pad.appendChild(dtWrap);
 
       // Keep x3 label in sync as darts progress
-      try { window.__sqUIMutationBus?.on(()=>__sqSetMissXLabel(x3)); } catch(_) {}
+      try { unsubscribeMissLabel = window.__sqUIMutationBus?.on(()=>__sqSetMissXLabel(x3)); } catch(_) {}
       return;
     }
 
@@ -2182,7 +2187,7 @@ function buildPad(){
       bWrap.appendChild(right);
       pad.appendChild(bWrap);
 
-      try { window.__sqUIMutationBus?.on(()=>__sqSetMissXLabel(x3)); } catch(_) {}
+      try { unsubscribeMissLabel = window.__sqUIMutationBus?.on(()=>__sqSetMissXLabel(x3)); } catch(_) {}
       return;
     }
   }
@@ -2193,8 +2198,9 @@ function buildPad(){
   finishBtn.style.minWidth = '220px';
   const __sqVsShadowRetrySave = !!(typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime() && state.shadow && state.shadow.saveFailed === true);
   finishBtn.textContent = __sqVsShadowRetrySave ? 'Retry Save → Leaderboard' : 'Finish Game → Leaderboard';
+  finishBtn.dataset.finishGame = 'true';
+  if (unresolvedDrawPlayers().length) finishBtn.textContent = 'Resume Decider';
   finishBtn.onclick = async () => {
-    state.finished = false;
     await awardAndShowLeaderboard();
   };
   pad.appendChild(finishBtn);

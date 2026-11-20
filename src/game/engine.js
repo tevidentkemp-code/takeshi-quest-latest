@@ -1737,6 +1737,8 @@ function undo(){
   state.currentRound  = round;
   state.currentDart   = dartIndex;
   state.finished      = false;
+  state._decider = null;
+  delete state.__sqGameCompleteOpen;
 
   entry.darts[dartIndex] = null;
   entry.roundTotal =
@@ -1935,6 +1937,7 @@ async function recordGameToHighScores() {
 async function awardAndShowLeaderboard(){
   if(state.gameAwarded){showLeaderboard();return;}
   if(state.__sqAwardInFlight)return;
+  if(unresolvedDrawPlayers().length){openGameCompleteDialog();return;}
   const isVsShadow=typeof __sqIsVsShadowRuntime==='function'&&__sqIsVsShadowRuntime();
   if(typeof __sqVsShadowCompletionBlocked==='function'&&__sqVsShadowCompletionBlocked()){
     state.finished=false;state.gameAwarded=false;

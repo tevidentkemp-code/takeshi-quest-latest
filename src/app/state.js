@@ -279,6 +279,18 @@ async function __sqGcXpReveal(host, onComplete){
   }catch(_){ if (onComplete) onComplete(); }
 }
 
+function unresolvedDrawPlayers(){
+  if (!state.finished || state.gameAwarded || state.__sqAcceptedGameReceipt || state.__sqCompletionSnapshot ||
+      (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime())) return [];
+  const totals = state.players.map((_, index) => totalScoreForPlayer(index));
+  const highest = Math.max(...totals);
+  const tied = totals.map((score, index) => score === highest ? index : -1).filter(index => index >= 0);
+  const decider = state._decider;
+  if (tied.length < 2 || (decider?.resolved && decider.gameToken === (state.__gameToken || 0) &&
+      tied.includes(decider.winner))) return [];
+  return tied;
+}
+
 function openGameCompleteDialog() {
   if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) {
     try{ state.finished = false; state.gameAwarded = false; }catch(_){ }
@@ -286,6 +298,12 @@ function openGameCompleteDialog() {
     return;
   }
   const __isVsShadowComplete = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
+
+  const tied = unresolvedDrawPlayers();
+  if (tied.length) {
+    openDeciderShootoutDialog(tied, state.players.map((_, index) => totalScoreForPlayer(index)));
+    return;
+  }
 
   // SXP-04: start the Rewards read while the player is still viewing Game Winner.
   // Fire-and-forget; reveal reuses this exact promise/result.
@@ -523,7 +541,7 @@ function openGameCompleteDialog() {
       const gamesPlayedAfterAward = completedGamesInMatch();
       const matchComplete = projectedMatchComplete();
 
-      if (wasVsShadow && state && state.shadow && state.shadow.saveFailed === true && state.gameAwarded !== true) {
+      if (state.gameAwarded !== true) {
         if (btn) {
           btn.disabled = false;
           btn.textContent = matchAdvanceLabel;
@@ -763,14 +781,14 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
   const parts = (participantIdx || []).slice();
   if (parts.length < 2) { toast('No draw to resolve'); return; }
 
-  // remove any old instances
-  document.querySelectorAll('.sq-decider-backdrop').forEach(n=>n.remove());
+  if (document.querySelector('.sq-decider-backdrop')) return;
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop sq-decider-backdrop';
 
   const modal = document.createElement('div');
   modal.className = 'modal modal-decider';
+  modal.setAttribute('aria-label', 'Draw decider shootout');
   modal.setAttribute('role','dialog');
   modal.setAttribute('aria-modal','true');
   modal.tabIndex = -1;
@@ -778,11 +796,14 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
   const R = [
     { key:'any',     label:'R1 — ANY NUMBER' },
     { key:'doubles', label:'R2 — DOUBLES' },
-    { key:'triples', label:'R3 — TRIPPLES' },
+    { key:'triples', label:'R3 — TREBLES' },
     { key:'bull',    label:'R4 — BULLS' }
   ];
 
-  const dec = state._decider = {
+  const saved = state._decider;
+  const resume = saved && !saved.resolved && saved.gameToken === (state.__gameToken || 0) &&
+    saved.participants?.length >= 2 && saved.participants.every(index => parts.includes(index));
+  const dec = state._decider = resume ? saved : {
     resolved:false,
     gameToken: state.__gameToken || 0,
 
@@ -879,7 +900,8 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
 
     modal.innerHTML = `
       <div class="dec-top">
-        <div class="dec-title">DECIDER</div>
+        <button type="button" class="btn" data-decider-close aria-label="Close decider">Close</button>
+        <div class="dec-title">${dec.repeat ? 'TIED · REPEAT SHOOTOUT' : 'DRAW · DECIDER'}</div>
         <div class="dec-sub">Each player gets three darts per round.<br>Any score, followed by doubles, trebles then bulls.<br>Points do not count towards stats.</div>
       </div>
 
@@ -1061,9 +1083,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
     } else {
       modal.classList.remove('dec-hold');
     }
-  // (no CLOSE button in decider)
-    overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
-    overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
+    modal.querySelector('[data-decider-close]').onclick = () => overlay.remove();
   }
 
   function roundKey(){ return R[dec.round].key; }
@@ -1151,6 +1171,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
     // advance dart/turn/round
     if (dec.dart < 2) {
       dec.dart++;
+      save();
       render();
       return;
     }
@@ -1158,35 +1179,35 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
     // last dart for this player/round: hold the filled indicators for 2s
     dec.hold = true;
 
+    save();
+    window.setTimeout(() => {
+      if (overlay.isConnected && state._decider === dec && dec.hold) advanceVisit();
+    }, 2000);
+    render();
+  }
+
+  function advanceVisit(){
     const _turn = dec.turn;
     const _round = dec.round;
+    dec.hold = false;
+    dec.kind = 'S'; // reset kind UI
 
-    window.setTimeout(() => {
-      try{
-        dec.hold = false;
-        dec.kind = 'S'; // reset kind UI
+    // advance to next player / round
+    dec.dart = 0;
+    if (_turn < dec.participants.length - 1) {
+      dec.turn = _turn + 1;
+      dec.round = _round;
+    } else {
+      dec.turn = 0;
+      dec.round = _round + 1;
+    }
 
-        // advance to next player / round
-        dec.dart = 0;
-        if (_turn < dec.participants.length - 1) {
-          dec.turn = _turn + 1;
-          dec.round = _round;
-        } else {
-          dec.turn = 0;
-          dec.round = _round + 1;
-        }
-
-        if (dec.round >= R.length) {
-          finishDecider();
-          return;
-        }
-        render();
-      }catch(_){}
-    }, 2000);
-
+    if (dec.round >= R.length) {
+      finishDecider();
+      return;
+    }
+    save();
     render();
-    return;
-
   }
 
   function deciderUndo(){
@@ -1207,6 +1228,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
     const prev = dec.history.length ? dec.history[dec.history.length-1] : null;
     dec.lastToken = prev ? tokenFromSpec(prev.spec || {}, prev.points || 0) : "-";
 
+    save();
     render();
   }
 
@@ -1226,11 +1248,13 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
     const max = Math.max(...dec.totals);
     const bestIdx = dec.totals.map((t,i)=> t===max?i:null).filter(v=>v!==null);
 
-    // tie-break inside decider: sudden-death bull shootout (single-dart) until resolved
     if (bestIdx.length > 1) {
-      // For now: deterministic tie-breaker by original order
-      // (can be extended later to a real bull sudden-death loop)
-      bestIdx.sort((a,b)=>a-b);
+      const remaining = bestIdx.map(index => dec.participants[index]);
+      Object.assign(dec, {participants:remaining, round:0, turn:0, dart:0, kind:'S',
+        totals:remaining.map(() => 0), history:[], lastToken:'-', hold:false, repeat:true});
+      save();
+      render();
+      return;
     }
     const winP = bestIdx[0];
     // runner-up among participants
@@ -1243,6 +1267,10 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
 
     // Store override winner for award logic
     state._decider = dec;
+    save();
+
+    const finishButton = document.querySelector('#pad [data-finish-game]');
+    if (finishButton) finishButton.textContent = 'Finish Game → Leaderboard';
 
     // Show shootout complete modal in GAME COMPLETE style
     openShootoutCompleteDialog(dec, baseTotals);
@@ -1251,9 +1279,12 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
     overlay.remove();
   }
 
-  render();
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  if (dec.hold) advanceVisit();
+  else render();
   modal.focus();
 }
 
