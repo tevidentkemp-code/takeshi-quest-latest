@@ -33,7 +33,7 @@ async function releaseAway(page){
 }
 
 (async()=>{
-  const {browser,page,consoleErrs}=await H.launch({width:390,height:844});
+  const {browser,page,consoleErrs}=await H.launch({width:390,height:844}, {emptyCloudReads:true});
   try{
     await H.boot(page);
     await H.toMatchCard(page);

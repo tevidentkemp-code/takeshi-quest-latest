@@ -7,7 +7,7 @@ const out = process.env.SQ_SCREENSHOTS || path.join(__dirname, '../../output/pla
 fs.mkdirSync(out, { recursive: true });
 
 (async () => {
-  const { browser, page, consoleErrs } = await H.launch();
+  const { browser, page, consoleErrs } = await H.launch(undefined, {emptyCloudReads:true});
   try {
     // Keep the real feed clock intact; explicitly control only seasonal presentation.
     await page.addInitScript(() => {

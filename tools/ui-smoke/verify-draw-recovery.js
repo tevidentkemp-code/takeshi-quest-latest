@@ -3,12 +3,8 @@ const assert = require('node:assert/strict');
 const H = require('./harness');
 
 (async () => {
-  const { page, ctx, browser } = await H.launch({width:390, height:844});
+  const { page, browser } = await H.launch({width:390, height:844});
   try {
-    await ctx.route('**.supabase.co/rest/v1/**', route => route.fulfill({
-      status:200, contentType:'application/json', body:'[]',
-      headers:{'access-control-allow-origin':'*', 'content-range':'*/0'}
-    }));
     await H.boot(page);
     await page.evaluate(async () => {
       state.players = ['Alpha','Bravo','Charlie'].map(name => ({name,id:crypto.randomUUID()}));
