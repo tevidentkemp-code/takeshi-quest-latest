@@ -27,7 +27,9 @@ const H = require('./harness');
     assert.equal(await page.evaluate(() => state.__sqGameControl.mode),'official');
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem(STORAGE_KEY)).history.length),126);
     await modal.getByRole('button',{name:'Close decider'}).click();
-    await page.getByRole('button',{name:'Resume Decider'}).click();
+    const resumeButton = page.getByRole('button',{name:'Resume Decider'});
+    assert.equal(await resumeButton.evaluate(button => document.activeElement === button), true);
+    await resumeButton.click();
     await modal.waitFor({state:'visible'});
     await modal.locator('[data-kind="T"]').click();
     await modal.locator('[data-decider-sector="20"]').click();
@@ -46,7 +48,23 @@ const H = require('./harness');
     assert.equal(await page.evaluate(() => !!state.__sqAcceptedGameReceipt),false);
     await action('skip').click();
     await modal.locator('[data-decider-sector="20"]').click();
-    for(let i=0; i<7; i++) await action('skip').click();
+    await action('skip').click();
+    // Both players get a visit in each remaining round. Only Bravo scores.
+    for (const [round,selector,points] of [
+      [1,'[data-decider-sector="20"]',40],
+      [2,'[data-decider-sector="20"]',60],
+      [3,'[data-bull="Outer"]',25]
+    ]) {
+      await action('skip').click();
+      await modal.locator(selector).click();
+      assert.deepEqual(await page.evaluate(() => [state._decider.round, state._decider.history.at(-1).points]),[round,points]);
+      if (round === 3) {
+        assert.equal(await modal.locator('[data-role="numRow"]').isVisible(),false);
+        await modal.locator('[data-bull="Inner"]').click();
+        assert.equal(await page.evaluate(() => state._decider.history.at(-1).points),50);
+      }
+      await action('skip').click();
+    }
     const result=page.locator('.sq-shootoutcomplete-backdrop');
     await result.waitFor({state:'visible'});
     assert.equal(await page.evaluate(() => state._decider.winner),1);

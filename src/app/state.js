@@ -882,7 +882,14 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
     return '';
   }
 
+  function closeDecider(){
+    overlay.remove();
+    document.querySelector('#pad [data-finish-game]')?.focus();
+  }
+
   function render(){
+    const focused = modal.contains(document.activeElement) ? document.activeElement : null;
+    const focusKey = focused?.getAttributeNames().find(name => name.startsWith('data-'));
     const rDef = R[dec.round];
     const liveP = dec.participants[dec.turn];
     try{
@@ -902,6 +909,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
       <div class="dec-top">
         <button type="button" class="btn" data-decider-close aria-label="Close decider">Close</button>
         <div class="dec-title">${dec.repeat ? 'TIED · REPEAT SHOOTOUT' : 'DRAW · DECIDER'}</div>
+        <div class="dec-round" data-decider-turn></div>
         <div class="dec-sub">Each player gets three darts per round.<br>Any score, followed by doubles, trebles then bulls.<br>Points do not count towards stats.</div>
       </div>
 
@@ -912,7 +920,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
           
 <div class="dec-gridWrap">
             ${dec.participants.length===2 ? `
-          <div class="dec-dartsTop" aria-label="Dart indicators">
+          <div class="dec-dartsTop" role="group" aria-label="Dart indicators">
             <div class="dec-darts">
               ${[0,1,2].map(i=>{const tok=getDartToken(dec.turn, dec.round, i); return `<span class="dec-dartDot ${tok?'done':''}">${tok?tok:''}</span>`;}).join('')}
             </div>
@@ -920,30 +928,15 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
             </div>
         ` : ''}
 
-        <div class="dec-headStrip" aria-label="Players and totals">
+        <div class="dec-headStrip" role="group" aria-label="Players and totals">
               <div class="dec-headCorner"></div>
-              ${(()=>{ 
-                if(dec.participants.length===2){
-                  const p0 = dec.participants[0], p1 = dec.participants[1];
-                  return `
-                    <div class="dec-headBox ${0===dec.turn?'live':''}">
-                      <div class="dec-headInit">${pInit(p0)}</div>
-                      <div class="dec-headTotal">${dec.totals[0]}</div>
-                    </div>
-<div class="dec-headBox ${1===dec.turn?'live':''}">
-                      <div class="dec-headInit">${pInit(p1)}</div>
-                      <div class="dec-headTotal">${dec.totals[1]}</div>
-                    </div>
-                  `;
-                }
-                return dec.participants.map((pIdx,i)=>`<div class="dec-headBox ${i===dec.turn?'live':''}">
-                  <div class="dec-headInit">${pInit(pIdx)}</div>
-                  <div class="dec-headTotal">${dec.totals[i]}</div>
-                </div>`).join('');
-              })()}
+              ${dec.participants.map((_, i) => `<div class="dec-headBox ${i===dec.turn?'live':''}">
+                <div class="dec-headInit"></div>
+                <div class="dec-headTotal">${dec.totals[i]}</div>
+              </div>`).join('')}
             </div>
 
-            <div class="dec-grid" data-role="grid" aria-label="Decider rounds and scores">
+            <div class="dec-grid" data-role="grid" role="group" aria-label="Decider rounds and scores">
               ${['ANY','D','T','B'].map((lbl,r)=>`
                 <div class="dec-gridRow ${dec.round>r?'done':''} ${dec.round===r?'active':''}">
                   <div class="dec-gridLbl">${lbl}</div>
@@ -976,6 +969,11 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
             </div>
           </div>
     `;
+
+    modal.querySelector('[data-decider-turn]').textContent = rDef.label + ' · ' + pName(liveP);
+    modal.querySelectorAll('.dec-headInit').forEach((label, i) => {
+      label.textContent = pInit(dec.participants[i]);
+    });
 
     // Decider input is delegated at the modal level so score buttons remain live
     // after each render and are not affected by stale inline handlers.
@@ -1036,7 +1034,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
 
     // Number scroller 1..20
     const numRow = modal.querySelector('[data-role="numRow"]');
-    if (numRow) {
+    if (numRow && rDef.key !== 'bull') {
       numRow.innerHTML = '';
       numRow.style.display = 'flex';
       numRow.style.gap = '8px';
@@ -1078,12 +1076,17 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
 
     // disable input during 2s hold
     if (dec.hold){
-      modal.querySelectorAll('button').forEach(b=>{ try{ b.disabled = true; }catch(_){ } });
+      modal.querySelectorAll('button:not([data-decider-close])').forEach(b => { b.disabled = true; });
       modal.classList.add('dec-hold');
     } else {
       modal.classList.remove('dec-hold');
     }
-    modal.querySelector('[data-decider-close]').onclick = () => overlay.remove();
+    modal.querySelector('[data-decider-close]').onclick = closeDecider;
+    if (focusKey) {
+      const next = Array.from(modal.querySelectorAll('button')).find(button =>
+        button.getAttribute(focusKey) === focused.getAttribute(focusKey) && !button.disabled && button.offsetWidth);
+      (next || modal).focus({preventScroll:true});
+    }
   }
 
   function roundKey(){ return R[dec.round].key; }
@@ -1226,7 +1229,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
 
     // restore readout to previous throw
     const prev = dec.history.length ? dec.history[dec.history.length-1] : null;
-    dec.lastToken = prev ? tokenFromSpec(prev.spec || {}, prev.points || 0) : "-";
+    dec.lastToken = prev ? (prev.token || tokenFromSpec(prev.spec || {}, prev.points || 0)) : "-";
 
     save();
     render();
@@ -1281,8 +1284,18 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
 
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeDecider(); });
+  overlay.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); closeDecider(); return; }
+    if (e.key !== 'Tab') return;
+    const buttons = Array.from(modal.querySelectorAll('button:enabled')).filter(button => button.offsetWidth);
+    const first = buttons[0], last = buttons.at(-1);
+    if (e.shiftKey && (document.activeElement === first || document.activeElement === modal)) {
+      e.preventDefault(); last?.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault(); first?.focus();
+    }
+  });
   if (dec.hold) advanceVisit();
   else render();
   modal.focus();
