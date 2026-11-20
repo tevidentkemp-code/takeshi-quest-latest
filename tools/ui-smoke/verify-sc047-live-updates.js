@@ -155,14 +155,20 @@ fs.mkdirSync(out, { recursive: true });
     assert(Math.abs(mobileGeometry.normalCopyFontSize - mobileGeometry.tableFontSize) < 0.05,
       'ordinary VIDE copy must keep the same computed font size as the printer table');
 
+    // Capture the first mounted rows in the document. An empty database may
+    // finish syncing before Playwright's next poll and display its empty state.
+    await page.addInitScript(() => {
+      const firstRows = new MutationObserver(() => {
+        const feed = document.getElementById('homeLivePrinterRows');
+        if (feed?.querySelectorAll('tr.lp-row').length !== 15) return;
+        window.__sc047FirstFeedText = feed.textContent.trim();
+        firstRows.disconnect();
+      });
+      firstRows.observe(document, {childList:true, subtree:true});
+    });
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() =>
-      !!window.__homeLivePrinterState &&
-      document.querySelectorAll('#homeLivePrinterRows tr.lp-row').length === 15
-    , { timeout: 5000 });
-    const bootBlank = await page.evaluate(() =>
-      (document.getElementById('homeLivePrinterRows')?.textContent || '').trim()
-    );
+    await page.waitForFunction(() => typeof window.__sc047FirstFeedText === 'string', null, {timeout:5000});
+    const bootBlank = await page.evaluate(() => window.__sc047FirstFeedText);
     assert.equal(bootBlank, '', 'VIDE must begin visually blank after a full reload');
 
     await page.waitForTimeout(2600);
