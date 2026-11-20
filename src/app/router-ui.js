@@ -5864,6 +5864,7 @@ async function __sqEnsureV2PBWR(){
     const ttl = 5 * 60_000; // 5 minutes
     if (window.__v2PBWRSnapshot && window.__v2PBWRSnapshot.__ts && (Date.now() - window.__v2PBWRSnapshot.__ts) < ttl) return window.__v2PBWRSnapshot;
     if (window.__v2PBWRSnapshotPromise) return window.__v2PBWRSnapshotPromise;
+    if (Date.now() < (window.__v2PBWRRetryAfter || 0)) return window.__v2PBWRSnapshot || null;
     if (typeof sb === 'undefined' || !sb) return window.__v2PBWRSnapshot || null;
 
     window.__v2PBWRSnapshotPromise = (async () => {
@@ -5913,7 +5914,11 @@ async function __sqEnsureV2PBWR(){
       try{ Object.defineProperty(snap, '__ts', { value: Date.now(), enumerable:false }); }catch(_){ snap.__ts = Date.now(); }
       window.__v2PBWRSnapshot = snap;
       return snap;
-    })().finally(() => { window.__v2PBWRSnapshotPromise = null; });
+    })().catch(error => {
+      window.__v2PBWRRetryAfter = Date.now() + 30000;
+      console.warn('[SQ] round records unavailable:', error?.message || 'request failed');
+      return window.__v2PBWRSnapshot || null;
+    }).finally(() => { window.__v2PBWRSnapshotPromise = null; });
 
     return window.__v2PBWRSnapshotPromise;
   }catch(e){

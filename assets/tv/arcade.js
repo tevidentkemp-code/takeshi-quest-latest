@@ -68,12 +68,12 @@ function roundScoreCell(points,round,player,roundHigh,records){
   return `<td class="previous ${top?'round-high':''}"><span class="round-points">${points}</span>${badge}${top?'<span class="sr-only">, round high</span>':''}</td>`;
 }
 function leaderboard(){
-  const last=Array.from({length:3},(_,i)=>Math.max(0,state.round-3)+i);
+  const last=Array.from({length:3},(_,i)=>Math.max(0,state.completedRounds-3)+i);
   const leaders=standings();
   const highest=leaders[0].points;
   const roundHighs=last.map(turn=>Math.max(...state.rows.map(row=>row[turn]??0)));
   const headings=last.map(index=>{
-    if(index>=state.round)return '<th scope="col"></th>';
+    if(index>=state.completedRounds)return '<th scope="col"></th>';
     const target=targets[index];
     return `<th scope="col">${typeof target==='number'?target+'s':target}</th>`;
   }).join('');
@@ -92,7 +92,7 @@ function leaderboard(){
           const tied=leaders[place]?.points===points;
           return `<tr data-player="${index}" data-form="${form}" data-heat="${heat}" style="--beat:${(2.3-(heat/100)*1.5).toFixed(2)}s" class="${points>0&&points===highest?'leading':''}">
             <th scope="row"><span class="identity"><span class="position" style="--trace:${traceColours[index]}" aria-hidden="true">${tied?'=':''}${place}</span><span class="sr-only">${tied?'Tied in position':'Position'} ${place}, </span>${nameMarkup(index)}<span class="sr-only">, ${form} form</span></span></th>
-            ${last.map((turn,i)=>roundScoreCell(turn<state.round?row[turn]:null,turn,index,roundHighs[i],state.records)).join('')}
+            ${last.map((turn,i)=>roundScoreCell(turn<state.completedRounds?row[turn]:null,turn,index,roundHighs[i],state.records)).join('')}
             <td class="total"><span class="running-total">${points}</span>${points<highest?`<span class="deficit" title="${highest-points} points behind first">(−${highest-points})</span>`:''}</td></tr>`;
         }).join('')}</tbody>
       </table>
@@ -101,10 +101,12 @@ function leaderboard(){
 }
 function centrePanel(target,finished,effect){
   const leaders=finished?standings():null;
-  const tied=finished&&leaders[0].points===leaders[1].points;
+  const decided=finished&&Number.isInteger(state.deciderWinner);
+  const tied=finished&&!decided&&leaders[0].points===leaders[1].points;
+  const winner=finished?(decided?state.deciderWinner:leaders[0].index):null;
   const heading=finished?(tied?'Tied for first':'Game winner'):state.paused?'Interval':names[state.thrower];
   const sub=finished?(tied?'Shootout required':''):state.paused?'':'To throw';
-  const title=finished?(tied?'Level':esc(names[leaders[0].index])):typeof target==='number'?`${target}<small>s</small>`:target.toUpperCase();
+  const title=finished?(tied?'Level':esc(names[winner])):typeof target==='number'?`${target}<small>s</small>`:target.toUpperCase();
   const timer=state.returnSeconds!==null;
   const cue=timer?{title:'First dart'}:state.cue;
   const outgoing=effect?.closedDarts;

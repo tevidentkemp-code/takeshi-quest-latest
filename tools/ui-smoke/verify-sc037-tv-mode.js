@@ -70,9 +70,15 @@ const H=require('./harness');
     await page.emulateMedia({reducedMotion:'reduce'});
     await page.evaluate(()=>window.__sqTvModeToggle(true));
     await key('Single').waitFor();
+    await page.evaluate(()=>{for(let n=0;n<85&&state.currentRound<10;n++)recordThrow({kind:'Miss'});});
+    await tv.getByRole('button',{name:'Skip Go'}).click();
+    await page.evaluate(()=>{for(let n=0;n<3;n++)recordThrow({kind:'Miss'});});
+    await key('Single').click();
+    assert.deepEqual(await page.evaluate(()=>[state.history.at(-1).round,state.history.at(-1).throw.points]),[10,20]);
+    await tv.getByRole('button',{name:'Undo'}).click();
     for (const [round,label,points] of [[11,'D16',32],[12,'T4',12],[13,'Inner 50',50]]) {
       await page.evaluate(r=>{
-        while(!state.finished && state.currentRound<r) recordThrow({kind:'Miss'});
+        for (let n=0;n<90 && !state.finished && state.currentRound<r;n++) recordThrow({kind:'Miss'});
       },round);
       await key(label).click();
       assert.equal(await page.evaluate(()=>state.history.at(-1).throw.points),points);
@@ -80,12 +86,25 @@ const H=require('./harness');
       assert.equal(await page.evaluate(()=>state.currentDart),0);
     }
     assert.equal(await tv.locator('#screen').getAttribute('data-motion'),'off');
-    await page.evaluate(()=>{while(!state.finished && state.history.length<83)recordThrow({kind:'Miss'});});
+    const finalHistory=await page.evaluate(()=>{
+      for(let n=0;n<90&&!state.finished;n++){
+        if(state.currentRound===13&&state.currentPlayer===1&&state.currentDart===2)break;
+        recordThrow({kind:'Miss'});
+      }
+      return state.history.length;
+    });
     await key('Miss').click();
     await page.getByRole('dialog',{name:'Draw decider shootout'}).waitFor();
     await watcher.getByRole('heading',{name:'Tied for first'}).waitFor();
     await watcher.reload();
     await watcher.getByRole('heading',{name:'Tied for first'}).waitFor();
+    await page.getByRole('button',{name:'Close decider'}).click();
+    await page.getByRole('button',{name:'Undo final dart'}).click();
+    await key('Inner 50').waitFor();
+    assert.deepEqual(await page.evaluate(()=>[state.history.length,state.currentRound,state.currentDart]),[finalHistory,13,2]);
+    await key('Inner 50').click();
+    await watcher.getByRole('heading',{name:'Game winner'}).waitFor();
+    assert.equal(await watcher.locator('.running-total').first().textContent(),'50');
     assert.deepEqual(consoleErrs.filter(x=>x.startsWith('pageerror:')),[]);
     console.log('PASS game menu, real throw, spectator refresh, Undo, bounce-out, Miss, handover, special rounds, reduced motion, tied finish and spectator reconnect');
   }finally{await browser.close();}

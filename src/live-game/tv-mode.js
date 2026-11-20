@@ -36,7 +36,8 @@
   }
 
   function snapshot() {
-    const round = state.finished ? MAX_ROUNDS : state.currentRound;
+    const view=__sqLiveRoundView(state.currentRound,state.currentPlayer);
+    const round = state.finished ? MAX_ROUNDS : view.scoringRound;
     const current = Math.min(round, MAX_ROUNDS-1);
     const thrower = Math.min(state.currentPlayer, state.players.length-1);
     const board = state.players.map((_,i)=>state.score[i].map((row,r)=>
@@ -61,6 +62,9 @@
       })
     };
     return {
+      completedRounds:state.finished?MAX_ROUNDS:view.tableRound,
+      deciderWinner:state._decider?.resolved && state._decider.gameToken===(state.__gameToken||0) ?
+        state._decider.winner : null,
       round, thrower, dartIndex:state.currentDart, visits, darts:visits[thrower], rows,traces,
       names:state.players.map(playerName),targets:ROUNDS.map(def=>def.type==='number'?def.target:
         ({doubles:'Doubles',triples:'Triples',bull:'Bull'})[def.type]),
@@ -173,7 +177,9 @@
     __sqEnsureV2PBWR().then(result=>{if(root===opened){cache=result;schedule();}});
     buildRecordPaceSeries(MAX_ROUNDS,true).then(result=>{if(root===opened){pace=result?[0,...result.data]:null;schedule();}});
     // Deadline and route changes can occur independently of a throw.
-    tick=setInterval(schedule,1000);
+    tick=setInterval(()=>{
+      if(document.body.dataset.page!=='game' || frame?.returnSeconds!=null || state.finished) schedule();
+    },1000);
     return true;
   }
   function disable(finished=false){
