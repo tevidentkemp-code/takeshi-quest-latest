@@ -2,69 +2,117 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const H=require('./harness');
-const out=process.env.SQ_SCREENSHOTS||path.join(__dirname,'../../output/playwright/sc037');
-fs.mkdirSync(out,{recursive:true});
+
 (async()=>{
- const {browser,page,consoleErrs}=await H.launch({width:1920,height:1080});
- try{
-  await H.boot(page); await H.toMatchCard(page); await H.addGuests(page,['ALPHA','BETA']); await H.startMatch(page,3);
-  const before=await page.evaluate(()=>JSON.stringify({players:state.players,score:state.score,currentPlayer:state.currentPlayer,currentRound:state.currentRound,currentDart:state.currentDart,match:state.match}));
-  await page.evaluate(()=>window.__sqOpenGameMenu106());
-  const row=page.locator('.sq-menu106-bd').getByText(/TV Mode \(Beta\)/,{exact:false}).first();
-  assert(await row.isVisible(),'TV Mode menu row missing');
-  await row.click();
-  await page.waitForSelector('#sqTvModeOverlay');
-  assert.equal(await page.locator('#sqTvModeOverlay .sq-tv-player').count(),2);
-  assert.equal(await page.locator('#sqTvModeOverlay .sq-tv-table tbody tr').count(),6);
-  assert.equal(await page.locator('#sqTvModeOverlay .sq-tv-dart').count(),3);
-  assert(await page.locator('#padBar').isVisible(),'canonical throwpad must stay visible in TV Mode');
-  const padBox=await page.locator('#padBar').boundingBox();
-  const tvBox=await page.locator('#sqTvModeOverlay').boundingBox();
-  const geometry=await page.evaluate(()=>({
-    innerHeight:window.innerHeight,
-    padRect:(()=>{const r=document.getElementById('padBar')?.getBoundingClientRect();return r?{top:r.top,bottom:r.bottom,height:r.height}:null;})(),
-    tvRect:(()=>{const r=document.getElementById('sqTvModeOverlay')?.getBoundingClientRect();return r?{top:r.top,bottom:r.bottom,height:r.height}:null;})(),
-    cssVar:getComputedStyle(document.documentElement).getPropertyValue('--sq-tv-pad-h'),
-    rootBottom:document.getElementById('sqTvModeOverlay')?.style.bottom||'',
-    rootComputedBottom:getComputedStyle(document.getElementById('sqTvModeOverlay')).bottom
-  }));
-  console.log('SC-037 geometry',JSON.stringify(geometry));
-  await page.screenshot({path:path.join(out,'tv-geometry-1920x1080.png')});
-  assert(padBox&&tvBox&&tvBox.y+tvBox.height<=padBox.y+2,'TV overlay must stop above canonical throwpad');
-  const beforeDart=await page.evaluate(()=>state.currentDart);
-  let scoreBtn=page.locator('#pad button.dtBullBtn:not([disabled])').first();
-  if(!(await scoreBtn.count()) || !(await scoreBtn.isVisible())) scoreBtn=page.locator('#pad button:not([disabled])').first();
-  assert(await scoreBtn.isVisible(),'TV Mode must preserve an interactive score button');
-  await scoreBtn.click(); await page.waitForTimeout(300);
-  assert.notEqual(await page.evaluate(()=>state.currentDart),beforeDart,'canonical throwpad did not score while TV Mode was open');
-  assert.equal((await page.locator('#sqTvTbody tr').nth(1).locator('td').first().locator('strong').textContent()).trim(),'—','future TV scoreboard rounds must remain empty');
-  await page.screenshot({path:path.join(out,'tv-1920x1080.png')});
-  await page.evaluate(()=>{state.score[0][0]={roundTotal:30,darts:[{kind:'T',sector:10,points:30},{kind:'Miss',points:0},{kind:'S',sector:10,points:10}]};state.currentPlayer=1;state.currentDart=0;window.__sqTvModeSync();});
-  const tvBeforeExpiry=await page.evaluate(()=>({
-    active:window.__sqHalloweenActive(),
-    expected:window.__sqHalloweenNickname(state.players[1]).toUpperCase()+' TO THROW',
-    original:state.players[1].name,
-    shown:document.querySelector('#sqTvDmdMain').textContent
-  }));
-  if(tvBeforeExpiry.active) assert.equal(tvBeforeExpiry.shown,tvBeforeExpiry.expected,'TV uses the same seasonal alias');
-  else assert.match(tvBeforeExpiry.shown,/BETA TO THROW/);
-  assert.equal(tvBeforeExpiry.original,'BETA','TV alias does not alter the player');
-  await page.evaluate(()=>{
-    window.__tvTestNow=Date.now;
-    Date.now=()=>Date.parse('2026-11-02T00:00:00Z');
-    document.dispatchEvent(new Event('visibilitychange'));
-    window.__sqTvModeSync();
-  });
-  assert.match(await page.locator('#sqTvDmdMain').textContent(),/BETA TO THROW/,'TV original name returns at expiry');
-  await page.evaluate(()=>{Date.now=window.__tvTestNow;delete window.__tvTestNow;document.dispatchEvent(new Event('visibilitychange'));window.__sqTvModeSync();});
-  assert.equal(await page.locator('#sqTvModeOverlay .sq-tv-player').nth(1).getAttribute('class').then(x=>x.includes('active')),true);
-  const during=await page.evaluate(()=>JSON.stringify({players:state.players,score:state.score,currentPlayer:state.currentPlayer,currentRound:state.currentRound,currentDart:state.currentDart,match:state.match}));
-  await page.click('#sqTvExit'); await page.waitForSelector('#sqTvModeOverlay',{state:'detached'});
-  assert(!await page.evaluate(()=>document.body.classList.contains('sq-tv-mode-on')));
-  const after=await page.evaluate(()=>JSON.stringify({players:state.players,score:state.score,currentPlayer:state.currentPlayer,currentRound:state.currentRound,currentDart:state.currentDart,match:state.match}));
-  assert.equal(after,during,'TV close must not mutate game state');
-  assert.notEqual(before,during,'fixture score mutation did not apply');
-  assert.equal(consoleErrs.filter(x=>x.startsWith('pageerror:')).length,0,JSON.stringify(consoleErrs));
-  console.log('SC-037 TV Mode browser acceptance PASS (presentation only; production network blocked)');
- } finally {await browser.close();}
-})().catch(e=>{console.error(e);process.exit(1);});
+  const {browser,ctx,page,consoleErrs}=await H.launch({width:1440,height:810},{emptyCloudReads:true});
+  try{
+    await H.boot(page);
+    await H.toMatchCard(page);
+    await H.addGuests(page,['ALPHA','BETA']);
+    await H.startMatch(page,3);
+    await page.evaluate(()=>{
+      window.__v2PBWRSnapshot={__ts:Date.now(),wrByRound:new Map([['10',30]]),
+        pbByBucket:new Map([['alpha',new Map([['10',20]])]])};
+      window.__sqOpenGameMenu106();
+    });
+    await page.locator('.sq-menu106-bd').getByText(/TV Mode/i).first().click();
+    const tv=page.frameLocator('#sqTvModeOverlay iframe');
+    const key=label=>tv.locator('[data-dart="'+label+'"]');
+    await key('Double').waitFor();
+    assert.equal(await tv.locator('.round-table tbody tr').count(),2);
+    assert.equal(await tv.locator('.hit-tile').count(),3);
+    const view=page.frames().find(f=>f.url().includes('/assets/tv/arcade.html'));
+    assert.deepEqual(await view.evaluate(()=>[state.records.world[0],state.records.world[1],
+      ...state.records.personal.map(row=>row[0])]),[30,null,null,null]);
+    const currentName=()=>page.evaluate(()=>getPlayerName(state.currentPlayer).toUpperCase());
+    const names=await tv.locator('.round-table .name').allTextContents();
+    assert.deepEqual(names.map(n=>n.toUpperCase()),await page.evaluate(()=>state.players.map((_,i)=>getPlayerName(i).toUpperCase())));
+    const spectatorPage=ctx.waitForEvent('page');
+    await page.locator('#sqTvWatch').click();
+    const watcher=await spectatorPage;
+    await watcher.locator('.running-total').first().waitFor();
+    assert.equal(await watcher.locator('.scorepad').count(),0);
+    const settings=tv.getByRole('button',{name:'Settings'});
+    assert.equal(await watcher.getByRole('button',{name:'Settings'}).count(),0);
+    await settings.click();
+    const menu=page.locator('.sq-menu106-bd');
+    await menu.getByText('Match Display',{exact:true}).click();
+    await menu.getByRole('button',{name:'Back'}).click();
+    await menu.locator('.sq-menu106-close').click();
+    await page.waitForFunction(()=>document.querySelector('#sqTvModeOverlay iframe').contentDocument.activeElement?.classList.contains('tv-settings'));
+    assert.equal(await tv.getByRole('button',{name:/Miss ×/}).count(),0);
+    await tv.getByRole('button',{name:'Skip Go'}).click();
+    assert.equal(await page.evaluate(()=>state.history.at(-1)?.type),'absenceSkip');
+    await tv.getByRole('button',{name:'Undo'}).click();
+    assert.equal(await page.evaluate(()=>state.history.length),0);
+    await key('Double').click();
+    await watcher.getByText('D10',{exact:true}).waitFor();
+    assert.equal(await page.evaluate(()=>state.history.length),1);
+    assert.equal(await tv.locator('.running-total').first().textContent(),'20');
+    await watcher.reload();
+    await watcher.getByText('D10',{exact:true}).waitFor();
+    await tv.locator('[data-action="undo"]').click();
+    await page.waitForFunction(()=>state.history.length===0);
+    await watcher.waitForFunction(()=>document.querySelector('.running-total')?.textContent==='0');
+    const miss=key('Miss');
+    const box=await miss.boundingBox();
+    await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
+    await page.mouse.down();
+    await page.waitForFunction(()=>state.history.at(-1)?.throw?.bounceOut===true);
+    await page.mouse.up();
+    assert.equal(await page.evaluate(()=>state.history.length),1);
+    await miss.click();
+    await page.waitForFunction(()=>state.history.length===2);
+    await tv.locator('[data-action="skip"]').click();
+    await page.waitForFunction(()=>state.history.length===3);
+    assert.equal((await tv.locator('.centre-head h2').textContent()).toUpperCase(),await currentName());
+    const out=process.env.SQ_SCREENSHOTS||path.join(__dirname,'../../qa-artifacts/tv');
+    fs.mkdirSync(out,{recursive:true});
+    await page.screenshot({path:path.join(out,'arcade-scoreboard.png')});
+    const game=()=>page.evaluate(()=>JSON.stringify([state.score,state.history,state.currentPlayer,state.currentRound,state.currentDart]));
+    const before=await game();
+    await page.locator('#sqTvExit').click();
+    await watcher.getByText('Waiting for the scorer to reopen TV mode').waitFor();
+    assert.equal(before,await game());
+    await page.emulateMedia({reducedMotion:'reduce'});
+    await page.evaluate(()=>window.__sqTvModeToggle(true));
+    await key('Single').waitFor();
+    await page.evaluate(()=>{for(let n=0;n<85&&state.currentRound<10;n++)recordThrow({kind:'Miss'});});
+    await tv.getByRole('button',{name:'Skip Go'}).click();
+    await page.evaluate(()=>{for(let n=0;n<3;n++)recordThrow({kind:'Miss'});});
+    await key('Single').click();
+    assert.deepEqual(await page.evaluate(()=>[state.history.at(-1).round,state.history.at(-1).throw.points]),[10,20]);
+    await tv.getByRole('button',{name:'Undo'}).click();
+    for (const [round,label,points] of [[11,'D16',32],[12,'T4',12],[13,'Inner 50',50]]) {
+      await page.evaluate(r=>{
+        for (let n=0;n<90 && !state.finished && state.currentRound<r;n++) recordThrow({kind:'Miss'});
+      },round);
+      await key(label).click();
+      assert.equal(await page.evaluate(()=>state.history.at(-1).throw.points),points);
+      await tv.locator('[data-action="undo"]').click();
+      assert.equal(await page.evaluate(()=>state.currentDart),0);
+    }
+    assert.equal(await tv.locator('#screen').getAttribute('data-motion'),'off');
+    const finalHistory=await page.evaluate(()=>{
+      for(let n=0;n<90&&!state.finished;n++){
+        if(state.currentRound===13&&state.currentPlayer===1&&state.currentDart===2)break;
+        recordThrow({kind:'Miss'});
+      }
+      return state.history.length;
+    });
+    await key('Miss').click();
+    await page.getByRole('dialog',{name:'Draw decider shootout'}).waitFor();
+    await watcher.getByRole('heading',{name:'Tied for first'}).waitFor();
+    await watcher.reload();
+    await watcher.getByRole('heading',{name:'Tied for first'}).waitFor();
+    await page.getByRole('button',{name:'Close decider'}).click();
+    await page.getByRole('button',{name:'Undo final dart'}).click();
+    await key('Inner 50').waitFor();
+    assert.deepEqual(await page.evaluate(()=>[state.history.length,state.currentRound,state.currentDart]),[finalHistory,13,2]);
+    await key('Inner 50').click();
+    await watcher.getByRole('heading',{name:'Game winner'}).waitFor();
+    assert.equal(await watcher.locator('.running-total').first().textContent(),'50');
+    assert.deepEqual(consoleErrs.filter(x=>x.startsWith('pageerror:')),[]);
+    console.log('PASS game menu, real throw, spectator refresh, Undo, bounce-out, Miss, handover, special rounds, reduced motion, tied finish and spectator reconnect');
+  }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

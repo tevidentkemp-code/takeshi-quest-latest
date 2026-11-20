@@ -1601,6 +1601,7 @@ if (hasSaved){
           await buildEverythingChunked();
           updateUI();
           if(typeof __sqResumeVsShadowAutoTurnIfNeeded==='function')__sqResumeVsShadowAutoTurnIfNeeded('secure-resume');
+          if (state.finished && !state.gameAwarded) openGameCompleteDialog();
           toast('Resumed last match');
         } catch(error){window.SQ_GAMEPLAY.failure(error);show('details');window.SQ_GAMEPLAY.offerLegacyRecovery();}
         finally {
@@ -5802,7 +5803,9 @@ async function __sqEnsurePBGRSnapshot(){
     window.__pbgrSnapshotPromise = getPBGRSnapshot()
       .then(snap => {
         if (snap && typeof snap === 'object'){
-          try{ Object.defineProperty(snap, '__ts', { value: Date.now(), enumerable:false }); }catch(_){ snap.__ts = Date.now(); }
+          // Keep whichever official view answered. Recheck a partial response sooner.
+      const expiresIn = (wrRes?.error || pbRes?.error) ? 30000 : ttl;
+      Object.defineProperty(snap,'__ts',{value:Date.now()-ttl+expiresIn,enumerable:false});
           window.__pbgrSnapshot = snap;
         }
         window.__pbgrSnapshotPromise = null;
@@ -5863,6 +5866,7 @@ async function __sqEnsureV2PBWR(){
     const ttl = 5 * 60_000; // 5 minutes
     if (window.__v2PBWRSnapshot && window.__v2PBWRSnapshot.__ts && (Date.now() - window.__v2PBWRSnapshot.__ts) < ttl) return window.__v2PBWRSnapshot;
     if (window.__v2PBWRSnapshotPromise) return window.__v2PBWRSnapshotPromise;
+    if (Date.now() < (window.__v2PBWRRetryAfter || 0)) return window.__v2PBWRSnapshot || null;
     if (typeof sb === 'undefined' || !sb) return window.__v2PBWRSnapshot || null;
 
     window.__v2PBWRSnapshotPromise = (async () => {
@@ -5888,17 +5892,16 @@ async function __sqEnsureV2PBWR(){
         sb.from(TABLE_PB_ROUNDS_CLEAN_APP).select('bucket_key, round_key, pb_points')
       ]);
 
-      if (wrRes?.error) throw wrRes.error;
-      if (pbRes?.error) throw pbRes.error;
-
-      const wrByRound = new Map();
+      if (wrRes?.error && pbRes?.error) throw wrRes.error;
+      const previous = window.__v2PBWRSnapshot;
+      const wrByRound = (wrRes?.error && previous?.wrByRound) || new Map();
       for (const r of (wrRes.data || [])){
         const k = String(r.round_key || '').trim();
         if (!k) continue;
         wrByRound.set(k, Number(r.wr_points || 0));
       }
 
-      const pbByBucket = new Map(); // bucket_key -> Map(round_key -> pb_points)
+      const pbByBucket = (pbRes?.error && previous?.pbByBucket) || new Map(); // bucket_key -> round records
       for (const r of (pbRes.data || [])){
         const bk = String(r.bucket_key ?? '').trim();
         const rk = String(r.round_key || '').trim();
@@ -5909,10 +5912,16 @@ async function __sqEnsureV2PBWR(){
       }
 
       const snap = { wrByRound, pbByBucket };
-      try{ Object.defineProperty(snap, '__ts', { value: Date.now(), enumerable:false }); }catch(_){ snap.__ts = Date.now(); }
+      // Keep whichever official view answered. Recheck a partial response sooner.
+      const expiresIn = (wrRes?.error || pbRes?.error) ? 30000 : ttl;
+      Object.defineProperty(snap,'__ts',{value:Date.now()-ttl+expiresIn,enumerable:false});
       window.__v2PBWRSnapshot = snap;
       return snap;
-    })().finally(() => { window.__v2PBWRSnapshotPromise = null; });
+    })().catch(error => {
+      window.__v2PBWRRetryAfter = Date.now() + 30000;
+      console.warn('[SQ] round records unavailable:', error?.message || 'request failed');
+      return window.__v2PBWRSnapshot || null;
+    }).finally(() => { window.__v2PBWRSnapshotPromise = null; });
 
     return window.__v2PBWRSnapshotPromise;
   }catch(e){

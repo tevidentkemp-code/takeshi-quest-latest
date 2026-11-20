@@ -133,6 +133,32 @@ function __sqSyncV2WallMotion(panel, tableRound){
   current.animation = animation;
   animation.onfinish = ()=>{if(panel.__sqV2Wall?.animation === animation) panel.__sqV2Wall.animation=null;};
 }
+function __sqLiveRoundView(cr,turn){
+  const clampRound = v => Math.max(0, Math.min(MAX_ROUNDS - 1, Number(v) || 0));
+  const cu = state && state.__sqCatchUp;
+  let tableRound = clampRound(cr);
+  let scoringRound = clampRound(cr);
+  let preview = false;
+
+  if(cu && cu.active){
+    if(Number.isFinite(Number(cu.resumeRound))) tableRound = clampRound(cu.resumeRound);
+  }else if(cu && Array.isArray(cu.jobs) && Number(state.currentDart || 0) === 0){
+    for(let j=cu.jobs.length-1; j>=0; j--){
+      const job = cu.jobs[j];
+      if(!job || job.kind !== 'absence' || job.completed || job.returned === true || Number(job.playerIndex) !== Number(turn)) continue;
+      const pending = Array.isArray(job.pendingRounds) ? job.pendingRounds.map(Number).filter(Number.isFinite).sort((a,b)=>a-b) : [];
+      if(!pending.length) break;
+      // v11 §§9.8–9.11 permanently close earlier catch-up at scheduled Bull;
+      // only the Bull target may be shown from this visit onward.
+      if(tableRound === MAX_ROUNDS - 1 && pending.some(r=>r < MAX_ROUNDS - 1)) break;
+      scoringRound = clampRound(pending[0]);
+      preview = scoringRound !== tableRound;
+      break;
+    }
+  }
+
+  return { tableRound, scoringRound, active:!!(cu && cu.active), preview };
+}
 function liveV2Render(){
   // Only runs on gameplay screen; prevents start/menu JS from crashing
   const page = document.body && (document.body.getAttribute('data-page') || document.body.dataset && document.body.dataset.page);
@@ -205,32 +231,7 @@ function liveV2Render(){
   // to the missed scoring round, but the table/viewport stays on the scheduled
   // live round. The orange active edge follows the catch-up target independently.
   const cr = state.currentRound ?? 0;
-  const __sqCatchUpView = (()=>{
-    const clampRound = v => Math.max(0, Math.min(MAX_ROUNDS - 1, Number(v) || 0));
-    const cu = state && state.__sqCatchUp;
-    let tableRound = clampRound(cr);
-    let scoringRound = clampRound(cr);
-    let preview = false;
-
-    if(cu && cu.active){
-      if(Number.isFinite(Number(cu.resumeRound))) tableRound = clampRound(cu.resumeRound);
-    }else if(cu && Array.isArray(cu.jobs) && Number(state.currentDart || 0) === 0){
-      for(let j=cu.jobs.length-1; j>=0; j--){
-        const job = cu.jobs[j];
-        if(!job || job.kind !== 'absence' || job.completed || job.returned === true || Number(job.playerIndex) !== Number(turn)) continue;
-        const pending = Array.isArray(job.pendingRounds) ? job.pendingRounds.map(Number).filter(Number.isFinite).sort((a,b)=>a-b) : [];
-        if(!pending.length) break;
-        // v11 §§9.8–9.11 permanently close earlier catch-up at scheduled Bull;
-        // only the Bull target may be shown from this visit onward.
-        if(tableRound === MAX_ROUNDS - 1 && pending.some(r=>r < MAX_ROUNDS - 1)) break;
-        scoringRound = clampRound(pending[0]);
-        preview = scoringRound !== tableRound;
-        break;
-      }
-    }
-
-    return { tableRound, scoringRound, active:!!(cu && cu.active), preview };
-  })();
+  const __sqCatchUpView = __sqLiveRoundView(cr,turn);
   const tableCr = __sqCatchUpView.tableRound;
   const activeCr = __sqCatchUpView.scoringRound;
 
@@ -1574,7 +1575,10 @@ window.__sqQuickEntry = {
 // <<< SXP-04 GATE 3 / SC-049 QUICK ENTRY PROTOTYPE END
 
 // @CANONICAL:THROWPAD_BASE_RENDER
+let unsubscribeMissLabel;
 function buildPad(){ 
+  unsubscribeMissLabel?.();
+  unsubscribeMissLabel = null;
   if (!pad) return; 
   pad.innerHTML = ''; 
 
@@ -1713,7 +1717,7 @@ function buildPad(){
   }
 
   if (!state.finished) {
-    const r = ROUNDS[state.currentRound];
+    const r = ROUNDS[__sqLiveRoundView(state.currentRound,state.currentPlayer).scoringRound];
     if (!r) return;
 
     // @CANONICAL:THROWPAD HELPERS (shared across number / doubles / triples / bull)
@@ -1730,6 +1734,7 @@ function buildPad(){
     function __sqSetMissXLabel(btn){
       try{
         const n = __sqMissCountForCurrentThrow();
+        if (btn.dataset.missN === String(n) && btn.textContent === `MISS\nx${n}`) return;
         btn.textContent = `MISS\nx${n}`;
         btn.dataset.missN = String(n);
       }catch(_){}
@@ -1858,6 +1863,7 @@ function buildPad(){
       function __sqSetMissXLabel(btn){
         try{
           const n = __sqMissCountForCurrentThrow();
+          if (btn.dataset.missN === String(n) && btn.textContent === `MISS\nx${n}`) return;
           btn.textContent = `MISS\nx${n}`;
           btn.dataset.missN = String(n);
         }catch(_){}
@@ -2098,7 +2104,7 @@ function buildPad(){
       pad.appendChild(dtWrap);
 
       // Keep x3 label in sync as darts progress
-      try { window.__sqUIMutationBus?.on(()=>__sqSetMissXLabel(x3)); } catch(_) {}
+      try { unsubscribeMissLabel = window.__sqUIMutationBus?.on(()=>__sqSetMissXLabel(x3)); } catch(_) {}
       return;
     }
 
@@ -2182,7 +2188,7 @@ function buildPad(){
       bWrap.appendChild(right);
       pad.appendChild(bWrap);
 
-      try { window.__sqUIMutationBus?.on(()=>__sqSetMissXLabel(x3)); } catch(_) {}
+      try { unsubscribeMissLabel = window.__sqUIMutationBus?.on(()=>__sqSetMissXLabel(x3)); } catch(_) {}
       return;
     }
   }
@@ -2193,11 +2199,20 @@ function buildPad(){
   finishBtn.style.minWidth = '220px';
   const __sqVsShadowRetrySave = !!(typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime() && state.shadow && state.shadow.saveFailed === true);
   finishBtn.textContent = __sqVsShadowRetrySave ? 'Retry Save → Leaderboard' : 'Finish Game → Leaderboard';
+  finishBtn.dataset.finishGame = 'true';
+  if (unresolvedDrawPlayers().length) finishBtn.textContent = 'Resume Decider';
   finishBtn.onclick = async () => {
-    state.finished = false;
     await awardAndShowLeaderboard();
   };
   pad.appendChild(finishBtn);
+  if (state.history?.length && !state.gameAwarded && !state.__sqCompletionSnapshot && !state.__sqAcceptedGameReceipt) {
+    const correct = document.createElement('button');
+    correct.type = 'button';
+    correct.className = 'btn';
+    correct.textContent = 'Undo final dart';
+    correct.onclick = __sqRunUndoActionWithDmd;
+    pad.appendChild(correct);
+  }
 }
 
 /*****************
@@ -4396,6 +4411,7 @@ window.__sqLiveV3Sync = function(){
 };
 
 function updateUI() {
+  window.__sqTvModeSync?.();
   try {
   try{ if (typeof __sqSyncTurboVisualState === 'function') __sqSyncTurboVisualState(document.body?.dataset?.page || ''); }catch(_){}
   if (!tbody) return;

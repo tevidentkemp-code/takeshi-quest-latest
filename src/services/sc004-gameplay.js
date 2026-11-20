@@ -104,7 +104,12 @@
       const receipt=await client().command('resume',control.match_id);
       const slot=(receipt.games||[]).find(x=>x.game_id===control.game_id);
       if(!slot||slot.status==='cleaned')throw new window.Sc004Error('game_recovery_denied');
-      if(slot.status==='completed'){st.__sqAcceptedGameReceipt=slot.receipt||{game_id:slot.game_id,match_id:control.match_id};}
+      if(slot.status==='completed'){
+        const pending=client().pendingCompletions().some(entry=>entry.game_id===slot.game_id);
+        st.__sqAcceptedGameReceipt=pending ? await client().retryCompletion(slot.game_id) :
+          slot.receipt || {game_id:slot.game_id, match_id:control.match_id};
+        flushAcceptedVisits(slot.game_id);
+      }
       await client().command('renew',control.match_id);
       return receipt;
     }catch(error){throw failure(error);}
@@ -168,32 +173,39 @@
   }
   function canThrow(){const st=current();return !window.__sqSecurityInputBlocked&&!!st.__sqGameControl&&client().hasController(st.__sqGameControl.match_id)&&!st.__sqAcceptedGameReceipt&&!st.__sqCompletionSnapshot;}
   function canDiscard(){const st=current();if(window.__sqSecurityInputBlocked){notice('Wait for the current match update to finish. Your board is preserved.');return false;}if(st.__sqAwardInFlight||(st.__sqCompletionSnapshot&&!st.__sqAcceptedGameReceipt)||client().pendingCompletions().some(x=>x.match_id===st.match?.id)){notice('A completed game is awaiting acceptance. Retry Finish Game before resetting or ending this match.');return false;}return true;}
-  async function saveGoEvents(st,receipt){
-    const indexes=realIndexes(st);const history=st.history||[];
-    for(const i of indexes){const player=st.players[i];const id=player.id||player.player_id;if(!UUID.test(id||''))continue;
-      for(let round=0;round<14;round++){
-        const entries=history.filter(x=>x.player===i&&x.round===round&&x.recorded_at&&Number.isInteger(x.dartIndex));
-        if(!entries.length)continue;
-        const body={game_id:receipt.game_id,player_id:id,round_number:round+1,go_number:1,started_at:entries[0].recorded_at,ended_at:entries.at(-1).recorded_at};
-        try{await client().logGo(receipt.match_id,body);}catch(error){notice('Game accepted; turn history is queued for retry when connected.',error);}
+  function completedVisits(st, gameId){
+    const visits = [];
+    for (const index of realIndexes(st)) {
+      const player = st.players[index];
+      const id = player.id || player.player_id;
+      if (!UUID.test(id || '')) continue;
+      for (let round = 0; round < 14; round++) {
+        const throws = (st.history || []).filter(entry => entry.player === index && entry.round === round &&
+          entry.recorded_at && Number.isInteger(entry.dartIndex));
+        if (throws.length) visits.push({game_id:gameId, player_id:id, round_number:round+1, go_number:1,
+          started_at:throws[0].recorded_at, ended_at:throws.at(-1).recorded_at});
       }
     }
+    return visits;
+  }
+  function flushAcceptedVisits(gameId){
+    void client().retryGoEvents(gameId).catch(error => notice('Game accepted; turn history is queued for retry when connected.',error));
   }
   async function completeCurrentGame(canonicalPayload){
     const st=current();const control=st.__sqGameControl;if(!control)throw failure(new window.Sc004Error('controller_required'));
     if(st.__sqAcceptedGameReceipt?.game_id===control.game_id)return st.__sqAcceptedGameReceipt;
+    if(typeof unresolvedDrawPlayers==='function' && unresolvedDrawPlayers().length) return null;
     if(completions.has(control.game_id))return completions.get(control.game_id);
     const job=(async()=>{
       try{
         await client().command('renew',control.match_id);
         await syncRoster();
         const body=st.__sqCompletionSnapshot||(typeof canonicalPayload==='function'?canonicalPayload():canonicalPayload)||__sqBuildCompletedGamePayload();st.__sqCompletionSnapshot=clone(body);
-        const historyState={players:clone(st.players),history:clone(st.history||[])};
-        const receipt=await client().completeGame(control.match_id,body);
+        const receipt=await client().completeGame(control.match_id,body,completedVisits(st,control.game_id));
         st.__sqAcceptedGameReceipt=receipt;
         try{if(typeof save==='function')save();}catch(_){}
         try{window.__sqClearGamesTruthCache?.('secure-completion');}catch(_){}
-        notice('');void saveGoEvents(historyState,receipt);
+        notice('');flushAcceptedVisits(receipt.game_id);
         return receipt;
       }catch(error){throw failure(error);}
       finally{completions.delete(control.game_id);}
