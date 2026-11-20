@@ -10,13 +10,20 @@ const H=require('./harness');
     await H.toMatchCard(page);
     await H.addGuests(page,['ALPHA','BETA']);
     await H.startMatch(page,3);
-    await page.evaluate(()=>window.__sqOpenGameMenu106());
+    await page.evaluate(()=>{
+      window.__v2PBWRSnapshot={__ts:Date.now(),wrByRound:new Map([['10',30]]),
+        pbByBucket:new Map([['alpha',new Map([['10',20]])]])};
+      window.__sqOpenGameMenu106();
+    });
     await page.locator('.sq-menu106-bd').getByText(/TV Mode/i).first().click();
     const tv=page.frameLocator('#sqTvModeOverlay iframe');
     const key=label=>tv.locator('[data-dart="'+label+'"]');
     await key('Double').waitFor();
     assert.equal(await tv.locator('.round-table tbody tr').count(),2);
     assert.equal(await tv.locator('.hit-tile').count(),3);
+    const view=page.frames().find(f=>f.url().includes('/assets/tv/arcade.html'));
+    assert.deepEqual(await view.evaluate(()=>[state.records.world[0],state.records.world[1],
+      ...state.records.personal.map(row=>row[0])]),[30,null,null,null]);
     const currentName=()=>page.evaluate(()=>getPlayerName(state.currentPlayer).toUpperCase());
     const names=await tv.locator('.round-table .name').allTextContents();
     assert.deepEqual(names.map(n=>n.toUpperCase()),await page.evaluate(()=>state.players.map((_,i)=>getPlayerName(i).toUpperCase())));

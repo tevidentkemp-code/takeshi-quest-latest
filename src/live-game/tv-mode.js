@@ -43,7 +43,11 @@
     const board = state.players.map((_,i)=>state.score[i].map((row,r)=>
       (row?.darts || []).map(dart=>displayDart(dart,r))));
     const visits = board.map(rows=>rows[current]?.filter(Boolean) || []);
-    const keys = ROUNDS.map((_,r)=>__sqRoundKeyForIdx(r));
+    // The clean record views use targets (10..20, D, T, B) and canonical
+    // lower-case player names. Older cached snapshots use indexed round keys.
+    function recordRounds(map) {
+      return ROUNDS.map((_,r)=>map?.get(__sqCatForRoundIdx(r)) ?? map?.get(__sqRoundKeyForIdx(r)) ?? null);
+    }
     const rows = board.map((player,i)=>player.map((visit,r)=>
       visit.some(Boolean) ? state.score[i][r].roundTotal : null));
     // Keep each trace aligned to the target, even during skipped-round catch-up.
@@ -55,10 +59,11 @@
     const last = state.history?.at(-1);
     const job = __sqFinalBullReturnTimerActive(thrower) && __sqFinalBullReturnTimerJob(thrower);
     const records = {
-      world:keys.map(key=>cache?.wrByRound.get(key)??null),
-      personal:state.players.map((_,i)=>{
-        const pb=cache?.pbByBucket.get(__sqResolveBucketKeyForPlayer(i));
-        return keys.map(key=>pb?.get(key)??null);
+      world:recordRounds(cache?.wrByRound),
+      personal:state.players.map((player,i)=>{
+        if (!(player.id || player.player_id || player.bucket_key)) return recordRounds(null);
+        const name=String(player.name || '').trim().toLowerCase();
+        return recordRounds(cache?.pbByBucket.get(name) ?? cache?.pbByBucket.get(__sqResolveBucketKeyForPlayer(i)));
       })
     };
     return {
@@ -79,6 +84,7 @@
   function sync() {
     if (!root) return;
     if (document.body.dataset.page!=='game' || state!==activeGame) { disable(); return; }
+    cache=window.__v2PBWRSnapshot || cache;
     const next = snapshot();
     const signature = JSON.stringify(next);
     if (signature !== lastFrame) {
@@ -178,7 +184,11 @@
     buildRecordPaceSeries(MAX_ROUNDS,true).then(result=>{if(root===opened){pace=result?[0,...result.data]:null;schedule();}});
     // Deadline and route changes can occur independently of a throw.
     tick=setInterval(()=>{
-      if(document.body.dataset.page!=='game' || frame?.returnSeconds!=null || state.finished) schedule();
+      if(document.body.dataset.page!=='game' || frame?.returnSeconds!=null || state.finished ||
+          window.__v2PBWRSnapshot && cache!==window.__v2PBWRSnapshot) schedule();
+      if (!cache && root===opened && Date.now()>=(window.__v2PBWRRetryAfter||0)) {
+        __sqEnsureV2PBWR().then(result=>{if(result && root===opened){cache=result;schedule();}});
+      }
     },1000);
     return true;
   }
