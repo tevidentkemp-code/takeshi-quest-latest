@@ -3,14 +3,26 @@ const screen=document.querySelector('#screen');
 const systemMotion=matchMedia('(prefers-reduced-motion: reduce)');
 let motion=!systemMotion.matches;
 let state, names, targets;
+let presentationInterrupted=false;
 let frameRequest, raceRequest, cueTimer, holdTimer, exitTimer, padTimer, flipSwapTimer, flipEndTimer, boardLightTimer;
 const pressCounts={Single:0,Double:0,Treble:0};
 const esc=value=>String(value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const boardNumbers=[20,1,18,4,13,6,10,15,2,17,3,19,7,16,8,11,14,9,12,5];
 const traceColours=['#ff9f67','#ffe17d','#66ffe6','#d0a2ff','#6fb7ff','#ff8bb0'];
 function dart(label,points){return {label,points};}
+function playerIdentity(index){
+  if(state.identities?.[index])return state.identities[index];
+  // Older scorer windows send only their formatted display name.
+  const display=String(names[index]??('PLAYER '+(index+1)));
+  const nickname=display.match(/["“]([^"”]+)["”]/)?.[1]??'';
+  const name=display.replace(/["“][^"”]+["”]/g,'').replace(/\s+/g,' ').trim()||display;
+  const [first,...last]=name.split(' ');
+  return {name,nickname,shortName:first+(last.length?' '+[...last[0]][0]:'')};
+}
 function nameMarkup(index){
-  return `<span class="name ${names[index].length>8?'long':''}">${esc(names[index])}</span>`;
+  const identity=playerIdentity(index);
+  const length=[...identity.shortName].length;
+  return `<span class="name ${length>10?'long extended':length>8?'long':''}" title="${esc(identity.name)}">${esc(identity.shortName)}</span>`;
 }
 function hitCode(entry){
   if(!entry.points)return {label:'X',kind:'X',spoken:entry.label==='BO'?'Bounce-out':'Miss'};
@@ -104,7 +116,8 @@ function centrePanel(target,finished,effect){
   const decided=finished&&Number.isInteger(state.deciderWinner);
   const tied=finished&&!decided&&leaders[0].points===leaders[1].points;
   const winner=finished?(decided?state.deciderWinner:leaders[0].index):null;
-  const heading=finished?(tied?'Tied for first':'Game winner'):state.paused?'Interval':names[state.thrower];
+  const identity=playerIdentity(state.thrower);
+  const heading=finished?(tied?'Tied for first':'Game winner'):state.paused?'Interval':identity.name;
   const sub=finished?(tied?'Shootout required':''):state.paused?'':'To throw';
   const title=finished?(tied?'Level':esc(names[winner])):typeof target==='number'?`${target}<small>s</small>`:target.toUpperCase();
   const timer=state.returnSeconds!==null;
@@ -117,7 +130,7 @@ function centrePanel(target,finished,effect){
     return `<span class="hit-tile ${stamped?'new-hit':''} ${!item?'pending':item.points?'':'miss'}" aria-label="Dart ${index+1}, ${spoken}">${item?`<span class="tile-value"><span class="scored-number">${item.label}</span></span>`:''}</span>`;
   }).join('');
   return `<section class="panel centre ${finished?'finished':''}" aria-label="Dartboard and current thrower">
-    <header class="centre-head">${!finished&&!state.paused?`<div class="name-slot"><h2>${esc(heading)}</h2></div>`:`<h2>${esc(heading)}</h2>`}${sub?`<p class="sub">${sub}</p>`:''}</header>
+    <header class="centre-head">${!finished&&!state.paused?`<div class="name-slot"><div class="thrower-identity"><h2>${esc(heading)}</h2>${identity.nickname?`<p class="nickname" title="${esc(identity.nickname)}">${esc(identity.nickname)}</p>`:''}</div></div>`:`<h2>${esc(heading)}</h2>`}${sub?`<p class="sub">${sub}</p>`:''}</header>
     <div class="board-face ${timer?'timer':''}">
       <canvas id="dartboard" aria-hidden="true"></canvas>
       ${effect?.hit?`<canvas id="hitSpot" data-hit="${effect.hit}" ${effect.misses?`data-misses="${effect.misses}" style="--miss-count:${effect.misses}"`:''} aria-hidden="true"></canvas>`:''}
@@ -132,11 +145,12 @@ function centrePanel(target,finished,effect){
   </section>`;
 }
 function sidePanel(){
+  const active=!state.paused&&state.round<targets.length;
   return `<aside class="side">
     ${leaderboard()}
     <section class="panel race-card" aria-labelledby="raceTitle">
       <header class="panel-head"><h2 id="raceTitle">Game Race</h2><span class="axis-note">${state.pace?'High score':''}</span></header>
-      <div class="race-area"><canvas id="race" role="img" aria-label="Targets 10 through 20, doubles, triples and bull. Cumulative points by round."></canvas></div>
+      <div class="race-area"><div class="race-plot"><canvas id="race" role="img" aria-label="Targets 10 through 20, doubles, triples and bull. Cumulative points by round.${active?' '+esc(playerIdentity(state.thrower).name)+' to throw.':''}"></canvas><canvas id="raceActive" ${active?`data-player="${state.thrower}"`:''} aria-hidden="true"></canvas></div></div>
     </section>
   </aside>`;
 }
@@ -166,6 +180,7 @@ function scorePad(target,finished){
 }
 function getCanvas(id){
   const canvas=document.getElementById(id);
+  if(!canvas)return null;
   const {width,height}=canvas.getBoundingClientRect();
   if(!width||!height)return null;
   const scale=window.devicePixelRatio||1;
@@ -272,6 +287,7 @@ function drawRace(racePlayer=-1,progress=1,addedSteps=1){
   const surface=getCanvas('race');
   if(!surface)return;
   const {context:ctx,width,height}=surface;
+  const pulse=getCanvas('raceActive')?.context;
   const rounds=targets.length;
   const leaders=standings();
   const played=Math.max(0,...state.traces.map(points=>Math.ceil(points.length/3)));
@@ -321,10 +337,12 @@ function drawRace(racePlayer=-1,progress=1,addedSteps=1){
     const data=state.traces[index];
     let cumulative=0;
     const front=state.totals[index]===leaders[0].points;
-    ctx.globalAlpha=front?1:.78;
+    const active=!state.paused&&state.round<targets.length&&index===state.thrower;
+    ctx.globalAlpha=active?1:(front?0.9:0.68);
     ctx.strokeStyle=traceColours[index];ctx.fillStyle=traceColours[index];
-    ctx.lineWidth=front?Math.max(2.7,width*.005):Math.max(1.55,width*.0035);
+    ctx.lineWidth=active?Math.max(3,width*.006):front?Math.max(2.7,width*.005):Math.max(1.55,width*.0035);
     ctx.lineJoin='round';ctx.lineCap='round';ctx.beginPath();ctx.moveTo(x(0),y(0));
+    if(active&&pulse){pulse.beginPath();pulse.moveTo(x(0),y(0));}
     let endpoint=0;
     const visible=index===racePlayer?Math.max(0,data.length-addedSteps*(1-progress)):data.length;
     for(let step=0;step<Math.ceil(visible);step++){
@@ -332,8 +350,16 @@ function drawRace(racePlayer=-1,progress=1,addedSteps=1){
       endpoint=(step+portion)/3;
       cumulative+=data[step]*portion;
       ctx.lineTo(x(endpoint),y(cumulative));
+      if(active&&pulse)pulse.lineTo(x(endpoint),y(cumulative));
     }
     ctx.stroke();
+    if(active&&pulse){
+      pulse.strokeStyle=traceColours[index];pulse.fillStyle=traceColours[index];
+      pulse.lineWidth=Math.max(4,width*.009);pulse.lineJoin='round';pulse.lineCap='round';
+      pulse.shadowColor=traceColours[index];pulse.shadowBlur=width*.018;pulse.stroke();
+      pulse.beginPath();pulse.arc(x(endpoint),y(cumulative),Math.max(3,width*.008),0,Math.PI*2);pulse.fill();
+      pulse.shadowBlur=0;
+    }
     if(data.length){
       if(front){ctx.shadowColor=traceColours[index];ctx.shadowBlur=width*.015;}
       ctx.beginPath();ctx.arc(x(endpoint),y(cumulative),front?width*.007:width*.005,0,Math.PI*2);ctx.fill();
@@ -342,14 +368,38 @@ function drawRace(racePlayer=-1,progress=1,addedSteps=1){
   }
   ctx.globalAlpha=1;
 }
-function drawGraphics(racePlayer=-1,addedSteps=1){
+function stopGraphics(){
   cancelAnimationFrame(frameRequest);
   cancelAnimationFrame(raceRequest);
+  frameRequest=raceRequest=0;
+}
+function stopPresentation(){
+  stopGraphics();
+  for(const timer of [cueTimer,holdTimer,exitTimer,padTimer,flipSwapTimer,flipEndTimer,boardLightTimer])clearTimeout(timer);
+}
+function settleThrower(){
+  const slot=screen.querySelector('.name-slot');
+  slot?.querySelector('.departing-name')?.remove();
+  slot?.querySelector('.arriving-name')?.classList.remove('arriving-name');
+  slot?.classList.remove('handover');
+}
+function resumePresentation(){
+  if(!state||screen.hidden||document.hidden)return;
+  // Restore a settled board even when the scorer has not sent a new frame yet.
+  render(false,null,false,true);
+  const miss=screen.querySelector('[data-dart="Miss"]');
+  if(miss&&controls)controls.bindMiss(miss);
+}
+function drawGraphics(racePlayer=-1,addedSteps=1){
+  stopGraphics();
+  if(!state||screen.hidden||document.hidden)return;
   frameRequest=requestAnimationFrame(()=>{
+    if(!state||screen.hidden||document.hidden)return;
     drawBoard();
     if(!motion||racePlayer<0){drawRace();return;}
     let began;
     function update(time){
+      if(!state||screen.hidden||document.hidden)return;
       began??=time;
       const elapsed=Math.min((time-began)/350,1);
       const progress=1-(1-elapsed)**3;
@@ -394,17 +444,21 @@ function drawNameDisplay(name){
 }
 function slideThrower(previous){
   const slot=screen.querySelector('.name-slot');
-  const outgoing=document.createElement('span');
-  outgoing.className='matrix-name departing-name';
+  const outgoing=previous;
+  outgoing.classList.remove('arriving-name');
+  outgoing.classList.add('departing-name');
   outgoing.setAttribute('aria-hidden','true');
-  outgoing.style.setProperty('--columns',previous.style.getPropertyValue('--columns'));
-  outgoing.append(previous.querySelector('canvas'));
   slot.style.setProperty('--half-track',slot.clientWidth/2+'px');
-  slot.querySelector('h2').classList.add('arriving-name');
+  const incoming=slot.querySelector('.thrower-identity');
+  incoming.classList.add('arriving-name');
   slot.append(outgoing);
   slot.classList.add('handover');
   outgoing.addEventListener('animationend',event=>{
     if(event.animationName==='name-depart')outgoing.remove();
+  });
+  incoming.addEventListener('animationend',event=>{
+    if(event.animationName!=='name-arrive')return;
+    outgoing.remove();incoming.classList.remove('arriving-name');slot.classList.remove('handover');
   });
 }
 function showRoundFlip(){
@@ -434,25 +488,30 @@ function showRoundFlip(){
     board.classList.remove('flipping');flip.remove();drawBoard();
   },1750);
 }
-function render(focusKey=false,effect=null){
+function render(focusKey=false,effect=null,handover=false,resetName=false){
   clearFeedback();
-  clearTimeout(flipSwapTimer);clearTimeout(flipEndTimer);clearTimeout(boardLightTimer);
-  clearTimeout(holdTimer);
-  clearTimeout(exitTimer);
-  clearTimeout(padTimer);
+  stopPresentation();
   const target=targets[state.round];
   const finished=target===undefined;
   const control=document.activeElement.closest?.('.scorepad button');
   const focus=focusKey&&control?{dart:control.dataset.dart,action:control.dataset.action}:null;
   const effectName=effect?.kind??'';
-  const previousName=motion&&effect?.committed&&!finished?screen.querySelector('.name-slot h2.matrix-name'):null;
+  const identity=playerIdentity(state.thrower);
+  const identityKey=JSON.stringify([state.thrower,identity.name,identity.nickname]);
+  const oldSlot=screen.querySelector('.name-slot');
+  const previousName=motion&&handover&&!finished?oldSlot?.querySelector('.thrower-identity:not(.departing-name)'):null;
+  const retainedSlot=!resetName&&!finished&&!state.paused&&oldSlot?.dataset.identity===identityKey?oldSlot:null;
+  const phases=retainedSlot?.getAnimations({subtree:true}).filter(animation=>
+    animation.animationName==='name-arrive'||animation.animationName==='name-depart').map(animation=>({
+    target:animation.effect.target,name:animation.animationName,start:animation.startTime,time:animation.currentTime
+  }))??[];
   const oldRows=motion&&effect?new Map([...screen.querySelectorAll('.standings tr[data-player]')].map(row=>[
     row.dataset.player,row.getBoundingClientRect().top
   ])):null;
   // Replacing the panels on a throw must not restart their background motion.
   screen.style.setProperty('--ambient-phase',`-${document.timeline.currentTime??0}ms`);
-  screen.dataset.motion=motion?'on':'off';
-  screen.innerHTML=`<div class="tv ${state.returnSeconds!==null?'timer-active':''} ${state.returnSeconds!==null&&state.returnSeconds<=10?'timer-urgent':''}" data-effect="${effectName}" data-handover="${Boolean(effect?.committed&&!finished)}">
+  screen.dataset.motion=motion&&!document.hidden?'on':'off';
+  screen.innerHTML=`<div class="tv ${state.returnSeconds!==null?'timer-active':''} ${state.returnSeconds!==null&&state.returnSeconds<=10?'timer-urgent':''}" data-effect="${effectName}" data-handover="${Boolean(handover&&!finished)}">
     <div class="field">${roundPanel(finished,effect)}${centrePanel(target,finished,effect)}${sidePanel()}</div>
     ${controls?scorePad(target,finished):''}
   </div>`;
@@ -464,8 +523,22 @@ function render(focusKey=false,effect=null){
     }
   }
   if(!finished&&!state.paused){
-    drawNameDisplay(names[state.thrower]);
-    if(previousName)slideThrower(previousName);
+    const slot=screen.querySelector('.name-slot');
+    if(retainedSlot){
+      slot.replaceWith(retainedSlot);
+      // DOM reinsertion can restart CSS animations. Restore their original phase
+      // so record/timer refreshes do not replay or interrupt a turn handover.
+      for(const phase of phases){
+        const animation=phase.target.getAnimations().find(item=>item.animationName===phase.name);
+        if(!animation)continue;
+        if(phase.start!==null)animation.startTime=phase.start;
+        else if(phase.time!==null)animation.currentTime=phase.time;
+      }
+    }else{
+      slot.dataset.identity=identityKey;
+      drawNameDisplay(identity.name);
+      if(previousName)slideThrower(previousName);
+    }
   }
   if(motion&&effect?.roundComplete&&!finished&&!state.returnSeconds)showRoundFlip();
   if(effect?.hit)boardLightTimer=setTimeout(()=>{
@@ -509,7 +582,7 @@ function holdCompletedVisit(misses){
   const strip=screen.querySelector('.hits.outgoing');
   if(!strip)return;
   const settle=()=>{
-    if(!strip.isConnected)return;
+    if(!state||screen.hidden||!strip.isConnected)return;
     if(state.round===targets.length){strip.parentElement.remove();drawGraphics();return;}
     strip.parentElement.querySelector('.last-visit')?.remove();
     strip.className='hits';
@@ -565,8 +638,9 @@ function animatePad(label){
 let controls=null;
 window.setTvControls = handlers=>{controls=handlers;};
 window.showTvFrame = function(next) {
-  const old=state;
-  state=next; names=next.names; targets=next.targets;
+  const old=presentationInterrupted?null:state;
+  presentationInterrupted=false;
+  state=next; names=next.names.map((name,index)=>next.identities?.[index]?.name||name); targets=next.targets;
   document.querySelector('#connection').hidden=true;
   screen.hidden=false;
   const last=next.last;
@@ -579,7 +653,9 @@ window.showTvFrame = function(next) {
     effect.kind=next.round===targets.length?(soleLeader(next.totals)===null?'tie':'win'):
       effect.roundComplete?'round':'';
   }
-  render(true,effect);
+  const handover=Boolean(motion&&!document.hidden&&old&&delta>=0&&next.thrower!==old.thrower&&
+    old.round<old.targets.length&&next.round<targets.length&&!old.paused&&!next.paused);
+  render(true,effect,handover,!old||!motion||document.hidden||delta<0);
   const miss=screen.querySelector('[data-dart="Miss"]');
   if(miss && controls) controls.bindMiss(miss);
   if(effect){
@@ -600,12 +676,25 @@ document.addEventListener('keydown',event=>{if(event.key==='Escape')controls?.ex
 window.addEventListener('resize',()=>{if(state)drawGraphics();});
 systemMotion.addEventListener('change',()=>{motion=!systemMotion.matches;if(state)window.showTvFrame(state);});
 document.fonts.ready.then(()=>{if(state)drawGraphics();});
+document.addEventListener('visibilitychange',()=>{
+  screen.dataset.motion=motion&&!document.hidden?'on':'off';
+  if(document.hidden){presentationInterrupted=true;stopPresentation();settleThrower();}
+  else resumePresentation();
+});
+window.addEventListener('pagehide',()=>{
+  presentationInterrupted=true;stopPresentation();if(state)settleThrower();screen.dataset.motion='off';
+});
+window.addEventListener('pageshow',()=>{
+  screen.dataset.motion=motion&&!document.hidden?'on':'off';
+  resumePresentation();
+});
 if(window===window.top && /^[a-f\d-]{36}$/i.test(location.hash.slice(1)) && typeof BroadcastChannel==='function'){
   const channelName='sq-tv-'+location.hash.slice(1);
   let channel=null;
   const receive=event=>{
     if(event.data?.frame)window.showTvFrame(event.data.frame);
     else if(event.data?.closed){
+      stopPresentation();
       screen.hidden=true;
       const status=document.querySelector('#connection');
       status.textContent='Waiting for the scorer to reopen TV mode';status.hidden=false;
