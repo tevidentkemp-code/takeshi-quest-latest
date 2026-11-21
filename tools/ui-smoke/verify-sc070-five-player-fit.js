@@ -37,7 +37,7 @@ async function seed(page,count=5,mode='match'){
     return expectedToken;
   },{count,mode});
   if(count>1)await page.click('.to-start');
-  // Observe state without layout reads or changing the native readiness poll.
+  // Observe state without layout reads or changing the readiness predicate.
   await page.evaluate(expectedToken=>{
     window.__sc070SeedTiming?.stop();
     const trace={expectedToken,started:performance.now(),samples:[],raf:[]},rafIds=new Set();
@@ -73,7 +73,9 @@ async function seed(page,count=5,mode='match'){
     }catch(captureError){console.error('SC070 seed timing unavailable '+String(captureError));}
     finally{clearTimeout(captureTimer);}
   };
-  try{await page.waitForFunction(expectedToken=>!window.__sqThrowOrderRevealPending&&!document.querySelector('.sq-throw-order-reveal')&&Number(state.__gameToken||0)===expectedToken&&document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&state.__sqGameControl&&window.SQ_GAMEPLAY.hasCachedController(state)&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',expectedToken);}
+  // Logical readiness can precede WebKit's next frame. Poll the same state on
+  // a timer; the 8s deadline and native motion/frame checks remain unchanged.
+  try{await page.waitForFunction(expectedToken=>!window.__sqThrowOrderRevealPending&&!document.querySelector('.sq-throw-order-reveal')&&Number(state.__gameToken||0)===expectedToken&&document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&state.__sqGameControl&&window.SQ_GAMEPLAY.hasCachedController(state)&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',expectedToken,{polling:100});}
   catch(error){await stopTiming(true);throw error;}
   await stopTiming(false);
   if(mode==='turbo'){

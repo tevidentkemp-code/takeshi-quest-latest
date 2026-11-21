@@ -4,6 +4,9 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const H=require('./harness');
+// WebKit's native stability check and scroll took 8.88s in CI before input.
+// Allow 15s for native clicks only; readiness and full-flow deadlines stay fixed.
+const nativeClickOptions=process.env.SQ_BROWSER==='webkit'?{timeout:15000}:undefined;
 const app=new URL(H.APP_URL);
 assert(['localhost','127.0.0.1','[::1]'].includes(app.hostname),'Use a local source/dist server');
 const people=[
@@ -277,7 +280,7 @@ async function pulse(display,label){
     await page.evaluate(()=>window.__sqTvModeToggle(true));
     await page.frameLocator('#sqTvModeOverlay iframe').locator('[data-dart="Single"]').waitFor();
     view=page.frames().find(frame=>new URL(frame.url()).pathname.endsWith('/assets/tv/arcade.html'));
-    const opened=ctx.waitForEvent('page');await page.locator('#sqTvWatch').click();watcher=await opened;
+    const opened=ctx.waitForEvent('page');await page.locator('#sqTvWatch').click(nativeClickOptions);watcher=await opened;
     watcher.on('pageerror',e=>consoleErrs.push('pageerror: spectator '+String(e)));
     await watcher.locator('.running-total').first().waitFor();
     assert.equal(await watcher.locator('.scorepad').count(),0);
@@ -291,7 +294,7 @@ async function pulse(display,label){
     const forward=async(label,selector,from,to)=>{
       receipt.activeAction={label,from,to,startedAt:Date.now()};
       await arm(label,to);
-      if(typeof selector==='function')await selector();else await view.locator(selector).click();
+      if(typeof selector==='function')await selector();else await view.locator(selector).click(nativeClickOptions);
       for(const [index,display] of displays().entries()){
         receipt.activeAction.surface=index?'spectator':'scorer';
         await display.waitForFunction(label=>window.__tvIdentityQa.captures[label]?.ends.length===2,label,{polling:100});
@@ -319,13 +322,13 @@ async function pulse(display,label){
       receipt.activeAction=null;
     };
     await outerGeometry(page,'before initial Double');
-    await view.locator('[data-dart="Double"]').click();await view.locator('[data-dart="Single"]').click();
+    await view.locator('[data-dart="Double"]').click(nativeClickOptions);await view.locator('[data-dart="Single"]').click(nativeClickOptions);
     await outerGeometry(page,'before first Treble');
     await forward('visit finished','[data-dart="Treble"]',0,1);
     assert.equal(await page.evaluate(()=>__sqIsAbsenceSkipEligible()),true,'Fresh Match Play visit must use absence Skip Go');
     await forward('Skip Go','[data-action="skip"]',1,2);
     assert.equal(await page.evaluate(()=>state.history.at(-1)?.type),'absenceSkip');
-    await arm('Undo',1);await view.locator('[data-action="undo"]').click();
+    await arm('Undo',1);await view.locator('[data-action="undo"]').click(nativeClickOptions);
     for(const display of displays()){
       await identity(display,1);
       const undo=await display.evaluate(()=>window.__tvIdentityQa.captures.Undo);
@@ -334,7 +337,7 @@ async function pulse(display,label){
       assert.equal(undo.outgoing,null);assert(Math.abs(undo.incoming.x)<1);
     }
     assert.equal(await page.evaluate(()=>state.history.length),3);
-    await view.locator('[data-dart="Single"]').click();
+    await view.locator('[data-dart="Single"]').click(nativeClickOptions);
     await watcher.waitForFunction(()=>state.historyLength===4,null,{polling:100});
     // Allow only the existing finite score-growth animation to complete.
     await page.waitForTimeout(800);
@@ -377,7 +380,7 @@ async function pulse(display,label){
       await watcher.screenshot({path:path.join(out,'spectator-'+size.width+'x'+size.height+'.png'),fullPage:true});
     }
     assert.equal(await canonical(),beforeLayout,'Viewport changes mutated game state');
-    await view.locator('[data-dart="Miss"]').click();await view.locator('[data-dart="Miss"]').click();
+    await view.locator('[data-dart="Miss"]').click(nativeClickOptions);await view.locator('[data-dart="Miss"]').click(nativeClickOptions);
     await forward('nickname omitted','[data-dart="Miss"]',3,4);
     // Two real completed/skip transitions in one task: the final departure must
     // belong to the most recent player, not the older still-animating identity.
@@ -385,7 +388,7 @@ async function pulse(display,label){
       for(let i=0;i<3;i++)document.querySelector('[data-dart="Miss"]').click();
       document.querySelector('[data-action="skip"]').click();
     }),0,1);
-    await view.locator('[data-action="undo"]').click();
+    await view.locator('[data-action="undo"]').click(nativeClickOptions);
     await Promise.all(displays().map(display=>identity(display,0)));
     await page.emulateMedia({reducedMotion:'reduce'});await watcher.emulateMedia({reducedMotion:'reduce'});
     for(const display of displays())await display.waitForFunction(()=>document.querySelector('#screen').dataset.motion==='off',null,{polling:100});
