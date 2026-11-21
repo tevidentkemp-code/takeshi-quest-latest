@@ -5803,9 +5803,7 @@ async function __sqEnsurePBGRSnapshot(){
     window.__pbgrSnapshotPromise = getPBGRSnapshot()
       .then(snap => {
         if (snap && typeof snap === 'object'){
-          // Keep whichever official view answered. Recheck a partial response sooner.
-      const expiresIn = (wrRes?.error || pbRes?.error) ? 30000 : ttl;
-      Object.defineProperty(snap,'__ts',{value:Date.now()-ttl+expiresIn,enumerable:false});
+          try{ Object.defineProperty(snap, '__ts', { value: Date.now(), enumerable:false }); }catch(_){ snap.__ts = Date.now(); }
           window.__pbgrSnapshot = snap;
         }
         window.__pbgrSnapshotPromise = null;
