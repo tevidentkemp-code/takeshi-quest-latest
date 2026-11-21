@@ -17,6 +17,7 @@ const fixturePlayers = [
 (async () => {
   const { browser, ctx, page, consoleErrs } = await H.launch({ width:390, height:844 }, { emptyCloudReads:true });
   const productionWrites = [];
+  let rankFixtureReads = 0;
   const checkpoints = [];
   try {
     // The harness fulfills Supabase reads and its SDK locally. Add an exact-origin
@@ -24,6 +25,18 @@ const fixturePlayers = [
     await ctx.route('**/*', route => {
       const request = route.request(), target = new URL(request.url());
       if (target.hostname.endsWith('.supabase.co')) {
+        // This exact POST is the existing read-only rank lookup (as in SC068).
+        // Empty rows mean rank unavailable; no rank or production write is faked.
+        if (target.pathname === '/rest/v1/rpc/sq_rank_score' && ['POST', 'OPTIONS'].includes(request.method())) {
+          const headers = {
+            'access-control-allow-origin':'*',
+            'access-control-allow-methods':'POST, OPTIONS',
+            'access-control-allow-headers':request.headers()['access-control-request-headers'] || '*',
+          };
+          if (request.method() === 'OPTIONS') return route.fulfill({ status:204, headers, body:'' });
+          rankFixtureReads++;
+          return route.fulfill({ status:200, headers, contentType:'application/json', body:'[]' });
+        }
         if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
           productionWrites.push(request.method() + ' ' + target.pathname);
           return route.abort('failed');
@@ -175,7 +188,7 @@ const fixturePlayers = [
     await probe('navigation after completion', true);
 
     console.log('THROWPAD cleanup receipt ' + JSON.stringify({
-      browser:process.env.SQ_BROWSER || 'chromium', completed,
+      browser:process.env.SQ_BROWSER || 'chromium', rankFixtureReads, completed,
       checkpoints:checkpoints.map(({ label, active, detachedActive, detachedCalls }) => ({ label, active, detachedActive, detachedCalls })),
     }));
     assert(completed.registered > 0, 'Special-round subscriptions were exercised');
