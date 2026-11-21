@@ -65,7 +65,7 @@ const H=require('./harness');
     await page.waitForFunction(()=>state.history.length===2);
     await tv.locator('[data-action="skip"]').click();
     await page.waitForFunction(()=>state.history.length===3);
-    assert.equal((await tv.locator('.centre-head h2').textContent()).toUpperCase(),await currentName());
+    assert.equal((await tv.locator('.thrower-identity:not(.departing-name) h2').textContent()).toUpperCase(),await currentName());
     const out=process.env.SQ_SCREENSHOTS||path.join(__dirname,'../../qa-artifacts/tv');
     fs.mkdirSync(out,{recursive:true});
     await page.screenshot({path:path.join(out,'arcade-scoreboard.png')});

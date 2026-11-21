@@ -11,6 +11,21 @@
     }catch(_){}
     return String((p&&(p.nickname||p.name||p.displayName||p.initials))||('PLAYER '+(i+1))).trim();
   }
+  function playerIdentity(p,i){
+    const player=typeof p==='string'?{name:p}:(p||{});
+    const parts=__sqNameParts(player.name);
+    const first=String(player.first_name||'').trim()||parts.first;
+    const last=String(player.last_name||'').trim()||parts.last;
+    const name=[first,last].filter(Boolean).join(' ')||('PLAYER '+(i+1));
+    let nickname=String(player.nickname||'').trim();
+    // Seasonal aliases stay on the nickname line, never in the real identity.
+    try{
+      if(typeof window.__sqHalloweenActive==='function' && window.__sqHalloweenActive() && typeof window.__sqHalloweenNickname==='function'){
+        nickname=String(window.__sqHalloweenNickname(player)||nickname).trim();
+      }
+    }catch(_){}
+    return {name,shortName:first?first+(last?' '+[...last][0]:''):name,nickname};
+  }
   function modeUnsupported(s){
     // The viewer retains historical six-player boards; new games are capped upstream.
     if(!s||!Array.isArray(s.players)||s.players.length<2||s.players.length>6) return 'TV Mode currently supports 2–6 player games.';
@@ -22,7 +37,7 @@
   }
   let root, iframe, channel, receiverUrl, cache, pace, activeGame, frame, lastFrame;
   let pending = 0, tick = 0, trigger, menuObserver;
-  const asset = new URL('assets/tv/arcade.html', document.baseURI);
+  const asset = new URL('assets/tv/arcade.html?v=0.17.1', document.baseURI);
 
   function displayDart(dart, round) {
     if (!dart) return null;
@@ -71,6 +86,7 @@
       deciderWinner:state._decider?.resolved && state._decider.gameToken===(state.__gameToken||0) ?
         state._decider.winner : null,
       round, thrower, dartIndex:state.currentDart, visits, darts:visits[thrower], rows,traces,
+      identities:state.players.map(playerIdentity),
       names:state.players.map(playerName),targets:ROUNDS.map(def=>def.type==='number'?def.target:
         ({doubles:'Doubles',triples:'Triples',bull:'Bull'})[def.type]),
       totals:state.players.map((_,i)=>totalScoreForPlayer(i)), forms:state.players.map((_,i)=>__sqV3FormData(i)),

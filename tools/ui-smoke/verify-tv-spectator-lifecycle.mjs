@@ -8,9 +8,13 @@ const sourcePath=process.argv[2] || new URL('../../assets/tv/arcade.js',import.m
 const source=fs.readFileSync(sourcePath,'utf8');
 const channelId='12345678-1234-1234-1234-123456789abc';
 
-function viewer({hash='#'+channelId,embedded=false,available=true}={}){
-  const listeners=new Map(),channels=[],live=new Set(),frames=[];
-  const screen={hidden:true,addEventListener(){}},status={hidden:false,textContent:''};
+function viewer({hash='#'+channelId,embedded=false,available=true,exerciseFrames=false,reducedMotion=true}={}){
+  const listeners=new Map(),channels=[],live=new Set(),frames=[],renders=[];
+  const screen={hidden:true,dataset:{},querySelector(){return null;},addEventListener(){}},status={hidden:false,textContent:''};
+  const listen=(type,handler,options)=>{
+    const handlers=listeners.get(type)||[];
+    handlers.push({handler,once:!!options?.once});listeners.set(type,handlers);
+  };
   class Channel {
     constructor(name){
       this.name=name;this.closed=false;this.messages=[];this.onmessage=null;
@@ -27,27 +31,29 @@ function viewer({hash='#'+channelId,embedded=false,available=true}={}){
   const sandbox={
     console,setTimeout,clearTimeout,requestAnimationFrame:()=>1,cancelAnimationFrame(){},
     location:{hash},BroadcastChannel:available?Channel:undefined,
-    matchMedia:()=>({matches:true,addEventListener(){}}),
+    matchMedia:()=>({matches:reducedMotion,addEventListener(){}}),
     document:{
+      hidden:false,
       querySelector:selector=>selector==='#screen'?screen:status,
-      addEventListener(){},fonts:{ready:Promise.resolve()}
+      addEventListener:listen,fonts:{ready:Promise.resolve()}
     },
-    addEventListener(type,handler,options){
-      const handlers=listeners.get(type)||[];
-      handlers.push({handler,once:!!options?.once});listeners.set(type,handlers);
-    }
+    addEventListener:listen
   };
   sandbox.window=sandbox;sandbox.top=embedded?{}:sandbox;
   vm.runInNewContext(source,sandbox,{filename:String(sourcePath)});
   // Rendering has separate browser coverage; observe the real channel handoff.
-  sandbox.showTvFrame=frame=>frames.push(frame);
+  if(exerciseFrames){
+    // Exercise the actual frame/lifecycle control flow. Browser acceptance owns
+    // the DOM/canvas render; this fixture records its handover/reset decisions.
+    sandbox.render=(focus,effect,handover,resetName)=>renders.push({focus,handover,resetName});
+  }else sandbox.showTvFrame=frame=>frames.push(frame);
   const dispatch=(type,persisted)=>{
     for(const entry of [...(listeners.get(type)||[])]){
       if(entry.once)listeners.set(type,listeners.get(type).filter(item=>item!==entry));
       entry.handler({type,persisted});
     }
   };
-  return {channels,live,frames,screen,status,dispatch};
+  return {channels,live,frames,renders,screen,status,document:sandbox.document,dispatch};
 }
 
 const page=viewer();
@@ -103,4 +109,27 @@ for(const options of [{embedded:true},{hash:'#invalid'},{available:false}]){
   inactive.dispatch('pageshow',true);
   assert.equal(inactive.channels.length,0,'only a standalone valid spectator opens a channel');
 }
-console.log('PASS spectator initial load, repeated bfcache restore, single channel, frame delivery, read-only messages and normal reload');
+
+const flow=viewer({exerciseFrames:true,reducedMotion:false});
+const frame={names:['ALPHA','BETA'],targets:[10,11],round:0,thrower:0,historyLength:0,last:null,totals:[0,0]};
+flow.channels[0].receive({frame});
+assert.equal(flow.renders.at(-1).resetName,true,'first frame settles identity');
+flow.channels[0].receive({frame:{...frame,thrower:1,historyLength:1}});
+assert.equal(flow.renders.at(-1).handover,true,'visible forward turn changes animate');
+flow.document.hidden=true;flow.dispatch('visibilitychange');
+flow.channels[0].receive({frame:{...frame,thrower:0,historyLength:2}});
+flow.channels[0].receive({frame:{...frame,thrower:1,historyLength:3}});
+assert.equal(flow.renders.at(-1).handover,false,'hidden frames cannot queue a future handover');
+assert.equal(flow.renders.at(-1).resetName,true);
+flow.document.hidden=false;flow.dispatch('visibilitychange');
+assert.deepEqual(flow.renders.at(-1),{focus:false,handover:false,resetName:true},'visible restore settles stale transient DOM');
+flow.dispatch('pagehide',true);flow.dispatch('pageshow',true);
+assert.deepEqual(flow.renders.at(-1),{focus:false,handover:false,resetName:true},'bfcache restore renders without waiting for a scorer response');
+flow.channels.at(-1).receive({frame:{...frame,historyLength:4}});
+assert.equal(flow.renders.at(-1).handover,false,'first scorer frame after interruption is a fresh snapshot');
+assert.equal(flow.renders.at(-1).resetName,true);
+flow.channels.at(-1).receive({closed:true});
+flow.channels.at(-1).receive({frame});
+assert.equal(flow.renders.at(-1).resetName,true,'reopening after closed clears old identity motion');
+flow.dispatch('pagehide',false);
+console.log('PASS spectator initial load, repeated bfcache restore, single channel, read-only messages, hidden frame settlement and reconnect reset');
