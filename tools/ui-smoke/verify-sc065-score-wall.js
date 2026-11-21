@@ -154,18 +154,34 @@ async function seed(page, count, round = 10, mode = 'match') {
     startNewGame(n>1?false:true);
     return expectedToken;
   }, {n:count,mode});
-  if(count>1)await page.click('.to-start');
+  if(count>1){
+    const clickStartedAt=Date.now();
+    try{await page.click('.to-start');}
+    catch(error){
+      try{
+        const diagnostic=await page.evaluate(expectedToken=>({
+          at:performance.now(),page:document.body.dataset.page,token:state.__gameToken,expectedToken,
+          modalPresent:!!document.querySelector('.modal-backdrop'),revealPresent:!!document.querySelector('.sq-throw-order-reveal'),revealPending:!!window.__sqThrowOrderRevealPending,
+          buttons:[...document.querySelectorAll('.to-start')].map(button=>{const style=getComputedStyle(button);return{connected:button.isConnected,disabled:button.disabled,display:style.display,visibility:style.visibility,opacity:style.opacity,rect:button.getBoundingClientRect().toJSON()};})
+        }),expectedToken);
+        console.error('SC065 start-button deadline '+JSON.stringify({count,round,mode,elapsed:Date.now()-clickStartedAt,diagnostic}));
+      }catch(captureError){console.error('SC065 start-button diagnostic failed '+String(captureError));}
+      throw error;
+    }
+  }
   if(mode==='turbo'){
     // The real Ready button is available while chunked preparation is still
     // painting. Follow that user flow before waiting for the loader to settle.
     await page.waitForFunction(()=>document.body.dataset.page==='game');
-    await page.waitForFunction(expectedToken=>!window.__sqThrowOrderRevealPending&&!document.querySelector('.sq-throw-order-reveal')&&Number(state.__gameToken||0)===expectedToken&&document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&state.__sqGameControl&&window.SQ_GAMEPLAY.hasCachedController(state)&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',expectedToken);
+    await page.waitForFunction(expectedToken=>!window.__sqThrowOrderRevealPending&&!document.querySelector('.sq-throw-order-reveal')&&Number(state.__gameToken||0)===expectedToken&&document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&state.__sqGameControl&&window.SQ_GAMEPLAY.hasCachedController(state)&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',expectedToken,{polling:100});
     assert.equal(await page.evaluate(()=>state.currentRound),7,'Turbo changed its canonical starting round');
     await page.click('.sq-turbo-ready-start');
     await page.waitForFunction(()=>window.__sqTurboTimerStatus().active && document.querySelector('.sqTurboTimerActive'));
   }
   try{
-    await page.waitForFunction(expectedToken=>!window.__sqThrowOrderRevealPending&&!document.querySelector('.sq-throw-order-reveal')&&Number(state.__gameToken||0)===expectedToken&&document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&state.__sqGameControl&&window.SQ_GAMEPLAY.hasCachedController(state)&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',expectedToken);
+    // State readiness must not depend on the Linux WebKit RAF cadence. Native
+    // score-wall motion still uses frames() and the original animation checks.
+    await page.waitForFunction(expectedToken=>!window.__sqThrowOrderRevealPending&&!document.querySelector('.sq-throw-order-reveal')&&Number(state.__gameToken||0)===expectedToken&&document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&state.__sqGameControl&&window.SQ_GAMEPLAY.hasCachedController(state)&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',expectedToken,{polling:100});
   }catch(error){
     if(observeCold)await finishColdFixtureDiagnostic(page,'loader deadline');
     const diagnostic=await page.evaluate(expectedToken=>{
