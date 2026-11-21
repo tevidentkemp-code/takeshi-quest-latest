@@ -37,8 +37,45 @@ async function seed(page,count=5,mode='match'){
     return expectedToken;
   },{count,mode});
   if(count>1)await page.click('.to-start');
+  // Observe state without layout reads or changing the native readiness poll.
+  await page.evaluate(expectedToken=>{
+    window.__sc070SeedTiming?.stop();
+    const trace={expectedToken,started:performance.now(),samples:[],raf:[]},rafIds=new Set();
+    const read=fn=>{try{return !!fn();}catch(error){return {error:String(error)};}};
+    const sample=phase=>{
+      const predicates={revealSettled:!window.__sqThrowOrderRevealPending,revealAbsent:!document.querySelector('.sq-throw-order-reveal'),
+        tokenEqual:Number(state.__gameToken||0)===expectedToken,pageGame:document.body.dataset.page==='game',
+        securityReady:!state.__sqSecurityPreparing,inputReady:!window.__sqSecurityInputBlocked,controlPresent:!!state.__sqGameControl,
+        cachedController:read(()=>window.SQ_GAMEPLAY.hasCachedController(state)),canThrow:read(()=>window.SQ_GAMEPLAY.canThrow()),
+        loaderHidden:document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true'};
+      trace.samples.push({phase,at:performance.now(),actualToken:Number(state.__gameToken||0),predicates,ready:Object.values(predicates).every(value=>value===true)});
+    };
+    const markRaf=phase=>{
+      const marker={phase,requested:performance.now(),called:null,frameTime:null};trace.raf.push(marker);
+      const id=requestAnimationFrame(frameTime=>{rafIds.delete(id);marker.called=performance.now();marker.frameTime=frameTime;});rafIds.add(id);
+    };
+    const timer=setTimeout(()=>{sample('4s');markRaf('4s');},4000);
+    window.__sc070SeedTiming={stop(){clearTimeout(timer);rafIds.forEach(id=>cancelAnimationFrame(id));rafIds.clear();trace.stopped=performance.now();return trace;}};
+    sample('before-wait');markRaf('before-wait');
+  },expectedToken);
+  const stopTiming=async failed=>{
+    let captureTimer;
+    try{
+      const receipt=await Promise.race([
+        page.evaluate(({expectedToken,failed})=>{
+          const timing=window.__sc070SeedTiming?.stop();delete window.__sc070SeedTiming;
+          return failed?{page:document.body.dataset.page,round:state.currentRound,history:state.history.length,overlay:document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden'),visible:document.visibilityState,tableRows:document.querySelectorAll('#tbody tr').length,
+            expectedToken,actualToken:Number(state.__gameToken||0),tokenEqual:Number(state.__gameToken||0)===expectedToken,timing}:null;
+        },{expectedToken,failed}),
+        new Promise((_,reject)=>{captureTimer=setTimeout(()=>reject(new Error('SC070 seed timing cleanup exceeded 2000ms')),2000);})
+      ]);
+      if(failed)console.error('SC070 fixture deadline '+JSON.stringify(receipt));
+    }catch(captureError){console.error('SC070 seed timing unavailable '+String(captureError));}
+    finally{clearTimeout(captureTimer);}
+  };
   try{await page.waitForFunction(expectedToken=>!window.__sqThrowOrderRevealPending&&!document.querySelector('.sq-throw-order-reveal')&&Number(state.__gameToken||0)===expectedToken&&document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&state.__sqGameControl&&window.SQ_GAMEPLAY.hasCachedController(state)&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',expectedToken);}
-  catch(error){console.error('SC070 fixture deadline '+JSON.stringify(await page.evaluate(()=>({page:document.body.dataset.page,round:state.currentRound,history:state.history.length,overlay:document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden'),visible:document.visibilityState,tableRows:document.querySelectorAll('#tbody tr').length}))));throw error;}
+  catch(error){await stopTiming(true);throw error;}
+  await stopTiming(false);
   if(mode==='turbo'){
     await page.waitForFunction(()=>document.body.dataset.page==='game');assert.equal(await page.evaluate(()=>state.currentRound),7);
     await page.click('.sq-turbo-ready-start');await page.waitForFunction(()=>window.__sqTurboTimerStatus().active&&document.querySelector('.sqTurboTimerActive'));
