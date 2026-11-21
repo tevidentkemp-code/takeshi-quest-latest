@@ -22,7 +22,7 @@ const identities=[
 ];
 const current='.name-slot > .thrower-identity:not(.departing-name)';
 const out=process.env.SQ_SCREENSHOTS||path.join(__dirname,'../../qa-artifacts/tv-identity');
-const receipt={browser:process.env.SQ_BROWSER||'chromium',url:H.APP_URL,initialization:[],geometry:[],motion:[],race:[],lifecycle:[]};
+const receipt={browser:process.env.SQ_BROWSER||'chromium',url:H.APP_URL,initialization:[],outerGeometry:[],geometry:[],motion:[],race:[],lifecycle:[]};
 fs.mkdirSync(out,{recursive:true});
 
 async function observeDisplay(display){
@@ -151,6 +151,51 @@ async function geometry(display){
       headerContained:inside(rect(node),rect(head))&&inside(rect(sub),rect(head)),labels};
   });
 }
+async function outerGeometry(page,label){
+  const result=await page.evaluate(()=>{
+    const overlay=document.getElementById('sqTvModeOverlay'),nav=overlay.querySelector('nav'),iframe=overlay.querySelector('iframe');
+    const child=iframe.contentWindow,doc=iframe.contentDocument;
+    const box=el=>{
+      if(!el)return null;
+      const style=el.ownerDocument.defaultView.getComputedStyle(el);
+      return {rect:el.getBoundingClientRect().toJSON(),clientWidth:el.clientWidth,clientHeight:el.clientHeight,
+        offsetWidth:el.offsetWidth,offsetHeight:el.offsetHeight,scrollWidth:el.scrollWidth,scrollHeight:el.scrollHeight,
+        display:style.display,position:style.position,height:style.height,minHeight:style.minHeight,
+        overflow:style.overflow,gridTemplateRows:style.gridTemplateRows,transform:style.transform};
+    };
+    const describe=el=>el?{tag:el.tagName,id:el.id,class:el.className,text:el.textContent?.slice(0,100)}:null;
+    const frame=box(iframe),scaleX=frame.rect.width/iframe.offsetWidth,scaleY=frame.rect.height/iframe.offsetHeight;
+    const controls=[...doc.querySelectorAll('.scorepad button')].map(button=>{
+      const rect=button.getBoundingClientRect(),centre={x:rect.x+rect.width/2,y:rect.y+rect.height/2};
+      const parentCentre={x:frame.rect.x+(iframe.clientLeft+centre.x)*scaleX,y:frame.rect.y+(iframe.clientTop+centre.y)*scaleY};
+      const childHit=doc.elementFromPoint(centre.x,centre.y),parentHit=document.elementFromPoint(parentCentre.x,parentCentre.y);
+      return {label:button.dataset.dart||button.dataset.action,text:button.textContent,disabled:button.disabled,...box(button),
+        centre,parentCentre,childHit:describe(childHit),parentHit:describe(parentHit),
+        childHitWithinButton:!!childHit&&button.contains(childHit),parentHitsIframe:parentHit===iframe};
+    });
+    return {parent:{width:innerWidth,height:innerHeight,scrollX,scrollY,focused:document.hasFocus()},
+      overlay:box(overlay),nav:box(nav),wrapper:box(overlay.querySelector('.sq-tv-frame')),iframe:frame,
+      child:{width:child.innerWidth,height:child.innerHeight,scrollX:child.scrollX,scrollY:child.scrollY,
+        focused:doc.hasFocus(),visibility:doc.visibilityState,screen:box(doc.getElementById('screen')),scorepad:box(doc.querySelector('.scorepad'))},
+      controls};
+  });
+  receipt.outerGeometry.push({label,...result});
+  fs.writeFileSync(path.join(out,'identity-motion-receipt.json'),JSON.stringify(receipt,null,2));
+  const within=(a,b)=>a.x>=b.x-1&&a.y>=b.y-1&&a.right<=b.right+1&&a.bottom<=b.bottom+1;
+  const viewport={x:0,y:0,right:result.parent.width,bottom:result.parent.height};
+  assert(within(result.iframe.rect,result.overlay.rect)&&within(result.iframe.rect,viewport),label+': iframe must fit inside the overlay and viewport');
+  assert(result.wrapper&&result.iframe.rect.width>0&&result.iframe.rect.height>0,label+': iframe must have a positive containing box');
+  assert(Math.abs(result.iframe.rect.y-result.nav.rect.bottom)<=1&&Math.abs(result.iframe.rect.bottom-result.overlay.rect.bottom)<=1,label+': iframe must fill the space below the toolbar');
+  assert(['x','y','width','height'].every(key=>Math.abs(result.iframe.rect[key]-result.wrapper.rect[key])<=1),label+': iframe must fit its remaining-space wrapper');
+  assert(Math.abs(result.child.height-result.iframe.clientHeight)<=1&&Math.abs(result.child.width-result.iframe.clientWidth)<=1,label+': child viewport must match iframe client dimensions');
+  const targets=result.controls.filter(button=>['Single','Double','Treble'].includes(button.label));
+  assert.equal(targets.length,3,label+': real number-round score controls are present');
+  if(result.parent.width>result.parent.height){
+    const childViewport={x:0,y:0,right:result.child.width,bottom:result.child.height};
+    assert(result.controls.every(button=>within(button.rect,childViewport)),label+': complete scoring controls must fit inside the landscape iframe');
+    assert(targets.every(button=>button.childHitWithinButton&&button.parentHitsIframe),label+': score-button centres must hit the button through the iframe');
+  }
+}
 async function pulse(display,label){
   await display.waitForFunction(()=>window.__tvIdentityQa.pending.size===0,null,{polling:100});
   const result=await display.evaluate(async()=>{
@@ -219,11 +264,12 @@ async function pulse(display,label){
     await page.evaluate(async players=>{
       state.players=players.map(p=>({...p}));assignUniqueColors(state.players);
       setSavedPlayers(state.players.map(p=>({...p,_src:'cloud-cache'})));
-      Object.assign(state.match,{mode:'official',gameFormat:'match_play',gameVariant:'classic',targetWins:3});
+      Object.assign(state.match,{mode:'official',gameFormat:'match_play',gameVariant:'classic',targetWins:3,autoRotateOrder:false});
       await startNewGame(true);
     },people);
     await page.waitForFunction(()=>document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',null,{polling:100});
     assert.equal(await page.evaluate(()=>state.__sqGameControl.mode),'official');
+    assert.equal(await page.evaluate(()=>__sqIsAutoThrowOrderMatch()),true,'Fixture has the canonical fixed-order Match Play policy');
     const playerTruth=await page.evaluate(()=>JSON.stringify(state.players));
     const canonical=()=>page.evaluate(()=>JSON.stringify([state.players,state.score,state.history,state.currentRound,state.currentPlayer,state.currentDart]));
     await page.evaluate(()=>window.__sqTvModeToggle(true));
@@ -270,8 +316,11 @@ async function pulse(display,label){
       }
       receipt.activeAction=null;
     };
+    await outerGeometry(page,'before initial Double');
     await view.locator('[data-dart="Double"]').click();await view.locator('[data-dart="Single"]').click();
+    await outerGeometry(page,'before first Treble');
     await forward('visit finished','[data-dart="Treble"]',0,1);
+    assert.equal(await page.evaluate(()=>__sqIsAbsenceSkipEligible()),true,'Fresh Match Play visit must use absence Skip Go');
     await forward('Skip Go','[data-action="skip"]',1,2);
     assert.equal(await page.evaluate(()=>state.history.at(-1)?.type),'absenceSkip');
     await arm('Undo',1);await view.locator('[data-action="undo"]').click();
@@ -320,6 +369,7 @@ async function pulse(display,label){
         assert(measurement.nicknameFont<measurement.titleFont,'Nickname is secondary');
         assert(measurement.title.bottom<=measurement.nickname.y+1&&measurement.nickname.bottom<=measurement.sub.y+1,'Name, nickname, TO THROW order');
       }
+      await outerGeometry(page,'viewport '+size.width+'x'+size.height);
       assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Scorer overlay/nav horizontal overflow');
       await page.screenshot({path:path.join(out,'scorer-'+size.width+'x'+size.height+'.png')});
       await watcher.screenshot({path:path.join(out,'spectator-'+size.width+'x'+size.height+'.png'),fullPage:true});
@@ -363,6 +413,7 @@ async function pulse(display,label){
     view=page.frames().find(frame=>new URL(frame.url()).pathname.endsWith('/assets/tv/arcade.html'));
     await watcher.waitForFunction(()=>!document.getElementById('screen').hidden&&state?.thrower===2,null,{polling:100});
     await Promise.all([identity(view,2),identity(watcher,2)]);
+    await outerGeometry(page,'after reopening TV');
     assert.equal(await watcher.locator('#raceActive[data-player="2"]').count(),1,'Spectator resumes the same active player once');
     const reopened=await watcher.evaluate(()=>({departing:document.querySelectorAll('.departing-name').length,
       handovers:document.querySelector('.name-slot').getAnimations({subtree:true}).filter(a=>['name-arrive','name-depart'].includes(a.animationName)).length}));

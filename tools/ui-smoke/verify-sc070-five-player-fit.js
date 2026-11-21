@@ -5,14 +5,15 @@ const path = require('path');
 const H = require('./harness');
 // Complete groups keep hosted WebKit within the existing 180s command budget.
 const qaPart = process.env.SQ_SC070_PART || 'all';
-const expectedCases = {all:62,layout:26,numerical:36,identity:12,records:14,'numeric-doubles':12,'numeric-triples':12,'numeric-bull':12,
+const expectedCases = {all:62,layout:26,numerical:36,identity:12,'identity-match':6,'identity-turbo':6,records:14,'numeric-doubles':12,'numeric-triples':12,'numeric-bull':12,
   'numeric-doubles-standard':6,'numeric-doubles-special':6,'numeric-triples-standard':6,'numeric-triples-special':6,'numeric-bull-standard':6,'numeric-bull-special':6};
+const identityModes=['match','turbo'].filter(mode=>!qaPart.startsWith('identity-')||qaPart==='identity-'+mode);
 const numericRoundParts = {11:'numeric-doubles',12:'numeric-triples',13:'numeric-bull'};
 const numericSelection=/^(numeric-(?:doubles|triples|bull))-(standard|special)$/.exec(qaPart);
 const numericRoundPart=numericSelection?numericSelection[1]:qaPart;
 const numericalModes=['match','turbo','practice','tournament'].filter(mode=>!numericSelection||(numericSelection[2]==='standard'?['match','practice']:['turbo','tournament']).includes(mode));
 assert(Object.hasOwn(expectedCases,qaPart),'Invalid SQ_SC070_PART: '+qaPart);
-const inPart = part => qaPart==='all'||qaPart===part||(qaPart==='layout'&&['identity','records'].includes(part))||(part==='numerical'&&qaPart.startsWith('numeric-'));
+const inPart = part => qaPart==='all'||qaPart===part||(qaPart==='layout'&&['identity','records'].includes(part))||(part==='identity'&&qaPart.startsWith('identity-'))||(part==='numerical'&&qaPart.startsWith('numeric-'));
 const qaStarted = Date.now();
 const widths = [320,390,430];
 const shots = process.env.SQ_SCREENSHOTS;
@@ -134,7 +135,7 @@ async function read(page,key,numeric=false){
     await ctx.route('**.supabase.co/rest/v1/**',r=>{const method=r.request().method(),headers={'access-control-allow-origin':'*','access-control-expose-headers':'content-range','content-range':'*/0'};if(method==='GET')return r.fulfill({status:200,headers,contentType:'application/json',body:'[]'});if(method==='HEAD')return r.fulfill({status:200,headers,body:''});if(method==='OPTIONS')return r.fulfill({status:204,headers:{...headers,'access-control-allow-methods':'GET,HEAD,OPTIONS','access-control-allow-headers':r.request().headers()['access-control-request-headers']||'apikey,authorization,content-type,x-client-info'},body:''});return r.abort('failed');});
     await H.boot(page,{settle:800});
     if(inPart('identity')){
-    for(const mode of ['match','turbo'])for(const width of widths)for(const long of [false,true]){
+    for(const mode of identityModes)for(const width of widths)for(const long of [false,true]){
       await page.setViewportSize({width,height:844});await seed(page,5,mode);await advance(page,mode==='turbo'?9:8);await identity(page,long,true,mode==='match'&&long);
       await page.evaluate(()=>{for(const kind of ['S','D','T','Miss','S','D','T','Miss','S','T','D','Miss','S'])recordThrow({kind,number:ROUNDS[state.currentRound].target});});await settled(page,mode==='turbo'?9:8);
       const r=await read(page,mode+'-'+width+'-'+(long?'long':'ordinary'));if(mode==='match')assert.equal(r.headers[0].truth,1080,'Actual canonical1080 fixture changed');

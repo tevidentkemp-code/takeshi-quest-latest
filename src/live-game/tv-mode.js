@@ -167,7 +167,7 @@
     root=document.createElement('section');
     root.id='sqTvModeOverlay';
     root.setAttribute('aria-label','Arcade TV');
-    root.innerHTML='<nav aria-label="TV controls"><button id="sqTvExit">Exit TV mode</button><button id="sqTvWatch">Spectator window</button><button id="sqTvFull">Fullscreen</button></nav><iframe title="Live arcade scoreboard"></iframe>';
+    root.innerHTML='<nav aria-label="TV controls"><button id="sqTvExit">Exit TV mode</button><button id="sqTvWatch">Spectator window</button><button id="sqTvFull">Fullscreen</button></nav><div class="sq-tv-frame"><iframe title="Live arcade scoreboard"></iframe></div>';
     iframe=root.querySelector('iframe');
     iframe.src=asset.href;
     iframe.onload=()=>{
