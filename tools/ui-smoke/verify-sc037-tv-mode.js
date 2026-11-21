@@ -5,6 +5,7 @@ const H=require('./harness');
 
 (async()=>{
   const {browser,ctx,page,consoleErrs}=await H.launch({width:1440,height:810},{emptyCloudReads:true});
+  const out=process.env.SQ_SCREENSHOTS||path.join(__dirname,'../../qa-artifacts/tv');
   try{
     await H.boot(page);
     await H.toMatchCard(page);
@@ -66,7 +67,6 @@ const H=require('./harness');
     await tv.locator('[data-action="skip"]').click();
     await page.waitForFunction(()=>state.history.length===3);
     assert.equal((await tv.locator('.thrower-identity:not(.departing-name) h2').textContent()).toUpperCase(),await currentName());
-    const out=process.env.SQ_SCREENSHOTS||path.join(__dirname,'../../qa-artifacts/tv');
     fs.mkdirSync(out,{recursive:true});
     await page.screenshot({path:path.join(out,'arcade-scoreboard.png')});
     const game=()=>page.evaluate(()=>JSON.stringify([state.score,state.history,state.currentPlayer,state.currentRound,state.currentDart]));
@@ -114,5 +114,39 @@ const H=require('./harness');
     assert.equal(await watcher.locator('.running-total').first().textContent(),'50');
     assert.deepEqual(consoleErrs.filter(x=>x.startsWith('pageerror:')),[]);
     console.log('PASS game menu, real throw, spectator refresh, Undo, bounce-out, Miss, handover, special rounds, reduced motion, tied finish and spectator reconnect');
+  }catch(error){
+    fs.mkdirSync(out,{recursive:true});
+    const diagnostic=await page.evaluate(()=>{
+      const describe=el=>{
+        if(!el)return null;
+        if(!(el instanceof Element))return {type:String(el)};
+        const style=getComputedStyle(el),rect=el.getBoundingClientRect();
+        const centre={x:rect.x+rect.width/2,y:rect.y+rect.height/2};
+        const hit=document.elementFromPoint(centre.x,centre.y);
+        return {tag:el.tagName,id:el.id,class:el.className,text:el.textContent?.slice(0,500),connected:el.isConnected,disabled:el.disabled,
+          hidden:el.hidden,inert:el.inert,rect:rect.toJSON(),scroll:{top:el.scrollTop,left:el.scrollLeft,width:el.scrollWidth,height:el.scrollHeight,clientWidth:el.clientWidth,clientHeight:el.clientHeight},
+          style:{display:style.display,visibility:style.visibility,opacity:style.opacity,position:style.position,overflow:style.overflow,transform:style.transform,animation:style.animationName},
+          hitAtCentre:hit?{tag:hit.tagName,id:hit.id,class:hit.className,text:hit.textContent?.slice(0,160),within:el.contains(hit)}:null};
+      };
+      const menu=document.querySelector('.sq-menu106-bd');
+      return {url:location.href,page:document.body.dataset.page,ready:document.readyState,visibility:document.visibilityState,hidden:document.hidden,
+        viewport:{width:innerWidth,height:innerHeight,scrollX,scrollY,visual:window.visualViewport?{width:visualViewport.width,height:visualViewport.height,offsetTop:visualViewport.offsetTop,offsetLeft:visualViewport.offsetLeft,scale:visualViewport.scale}:null},
+        focus:describe(document.activeElement),body:describe(document.body),menu:describe(menu),menuHtml:menu?.outerHTML,
+        menuButtons:[...document.querySelectorAll('.sq-menu106-bd button')].map(describe),
+        tvLabelMatches:[...document.querySelectorAll('.sq-menu106-bd *')].filter(el=>/TV Mode/i.test(el.textContent||'')&&!el.children.length).map(el=>{
+          const ancestors=[];for(let parent=el.parentElement;parent&&ancestors.length<10;parent=parent.parentElement)ancestors.push(describe(parent));
+          return {target:describe(el),parentButton:describe(el.closest('button')),ancestors};
+        }),
+        animations:document.getAnimations().map(a=>({name:a.animationName||null,state:a.playState,pending:a.pending,start:a.startTime,time:a.currentTime,
+          target:describe(a.effect?.target),timing:a.effect?.getTiming()})),
+        game:typeof state==='undefined'?null:{round:state.currentRound,player:state.currentPlayer,dart:state.currentDart,history:state.history.length,
+          finished:state.finished,preparing:state.__sqSecurityPreparing,blocked:window.__sqSecurityInputBlocked},
+        frames:[...document.querySelectorAll('iframe')].map(el=>({src:el.src,...describe(el)}))};
+    }).catch(captureError=>({captureError:String(captureError)}));
+    const evidence={browser:process.env.SQ_BROWSER||'chromium',error:String(error),console:consoleErrs,diagnostic};
+    fs.writeFileSync(path.join(out,'tv-mode-failure.json'),JSON.stringify(evidence,null,2));
+    console.error('SC037 failure diagnostic '+JSON.stringify(evidence));
+    await page.screenshot({path:path.join(out,'tv-mode-failure.png'),fullPage:true}).catch(()=>{});
+    throw error;
   }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

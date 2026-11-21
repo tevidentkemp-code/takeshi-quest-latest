@@ -32,6 +32,21 @@ async function observeDisplay(display){
     if(!q.initialization.beforeTvScript)throw new Error('Native TV recorder was installed after TV runtime initialization');
     if(q.installed)return;
     q.installed=true;q.captures={};q.targets=new WeakMap();
+    q.recentFrames=[];q.nativeEvents=[];q.visibilityEvents=[];
+    const push=(list,value)=>{list.push(value);if(list.length>60)list.shift();};
+    const seenNativeEvents=new WeakSet();
+    const traceNative=event=>{
+      if(!['name-arrive','name-depart'].includes(event.animationName)||seenNativeEvents.has(event))return;
+      seenNativeEvents.add(event);
+      push(q.nativeEvents,{at:performance.now(),type:event.type,animation:event.animationName,elapsed:event.elapsedTime,
+        capture:q.targets.get(event.target)?.label,connected:event.target.isConnected,
+        target:event.target.className,text:event.target.textContent,hidden:document.hidden});
+    };
+    for(const type of ['animationstart','animationend','animationcancel'])document.addEventListener(type,traceNative,true);
+    const traceVisibility=event=>push(q.visibilityEvents,{at:performance.now(),type:event.type,persisted:event.persisted,
+      hidden:document.hidden,visibility:document.visibilityState,motion:document.querySelector('#screen')?.dataset.motion});
+    document.addEventListener('visibilitychange',traceVisibility);
+    window.addEventListener('pagehide',traceVisibility);window.addEventListener('pageshow',traceVisibility);
     const describe=element=>{
       const style=getComputedStyle(element);
       const slot=element.closest('.name-slot').getBoundingClientRect();
@@ -64,7 +79,15 @@ async function observeDisplay(display){
       capture.refresh={sameSlot:document.querySelector('.name-slot')===slot,sameIncoming:slot.querySelector('.arriving-name')===incoming,before,after:phases()};
     },true);
     window.showTvFrame=function(next){
+      const brief=frame=>frame?{thrower:frame.thrower,round:frame.round,historyLength:frame.historyLength,paused:frame.paused??null,
+        last:frame.last?{player:frame.last.player,round:frame.last.round,hit:frame.last.hit}:null}:null;
+      const trace={at:performance.now(),before:brief(state),next:brief(next),hidden:document.hidden,visibility:document.visibilityState,
+        motion:typeof motion==='undefined'?null:motion,interrupted:typeof presentationInterrupted==='undefined'?null:presentationInterrupted};
+      push(q.recentFrames,trace);
       const result=Reflect.apply(original,this,arguments);
+      trace.after={motion:document.querySelector('#screen')?.dataset.motion,handover:document.querySelector('.tv')?.dataset.handover,
+        names:[...document.querySelectorAll('.name-slot .thrower-identity')].map(el=>({text:el.textContent,class:el.className})),
+        animations:document.querySelector('.name-slot')?.getAnimations({subtree:true}).filter(a=>['name-arrive','name-depart'].includes(a.animationName)).map(a=>({name:a.animationName,state:a.playState,start:a.startTime,time:a.currentTime}))};
       if(q.arm&&next.identities?.[next.thrower]?.name===q.arm.to){
         const slot=document.querySelector('.name-slot');
         const incoming=slot?.querySelector('.thrower-identity:not(.departing-name)');
@@ -75,8 +98,11 @@ async function observeDisplay(display){
             duration:a.effect.getTiming().duration,delay:a.effect.getTiming().delay,playState:a.playState
           }))||[],ends:[]};
         q.captures[q.arm.label]=capture;
-        if(incoming)q.targets.set(incoming,capture);
-        if(outgoing)q.targets.set(outgoing,capture);
+        for(const element of [incoming,outgoing].filter(Boolean)){
+          q.targets.set(element,capture);
+          // Cancellation may be delivered after a target leaves the document.
+          element.addEventListener('animationcancel',traceNative);
+        }
         q.arm=null;
       }
       return result;
@@ -215,9 +241,11 @@ async function pulse(display,label){
     const displays=()=>[view,watcher];
     const arm=async(label,to)=>Promise.all(displays().map(display=>display.evaluate(({label,to})=>window.__tvIdentityQa.arm={label,to},{label,to:identities[to].name})));
     const forward=async(label,selector,from,to)=>{
+      receipt.activeAction={label,from,to,startedAt:Date.now()};
       await arm(label,to);
       if(typeof selector==='function')await selector();else await view.locator(selector).click();
       for(const [index,display] of displays().entries()){
+        receipt.activeAction.surface=index?'spectator':'scorer';
         await display.waitForFunction(label=>window.__tvIdentityQa.captures[label]?.ends.length===2,label,{polling:100});
         const result=await display.evaluate(label=>window.__tvIdentityQa.captures[label],label);
         receipt.motion.push({surface:index?'spectator':'scorer',...result});
@@ -240,6 +268,7 @@ async function pulse(display,label){
         }
         await identity(display,to);
       }
+      receipt.activeAction=null;
     };
     await view.locator('[data-dart="Double"]').click();await view.locator('[data-dart="Single"]').click();
     await forward('visit finished','[data-dart="Treble"]',0,1);
@@ -351,6 +380,34 @@ async function pulse(display,label){
     console.log('PASS TV full/compact identities, nicknames, five viewports, native visit/Skip handovers, static Undo/reduced motion, race pulse without redraw, spectator and completion');
   }catch(error){
     receipt.status='FAIL';receipt.error=String(error);
+    const readFailure=display=>display.evaluate(()=>{
+      const q=window.__tvIdentityQa,screen=document.getElementById('screen');
+      const element=el=>{
+        if(!el)return null;
+        if(!(el instanceof Element))return {type:String(el)};
+        const css=getComputedStyle(el);
+        return {tag:el.tagName,id:el.id,class:el.className,text:el.textContent?.slice(0,500),connected:el.isConnected,
+          rect:el.getBoundingClientRect().toJSON(),display:css.display,visibility:css.visibility,opacity:css.opacity,
+          transform:css.transform,animation:css.animationName,animationPlayState:css.animationPlayState};
+      };
+      const animations=document.getAnimations().map(a=>({name:a.animationName||a.id||null,state:a.playState,pending:a.pending,
+        start:a.startTime,time:a.currentTime,rate:a.playbackRate,target:element(a.effect?.target),
+        timing:a.effect?.getTiming(),computed:a.effect?.getComputedTiming()}));
+      const frame=typeof state==='undefined'?null:state;
+      return {url:location.href,at:performance.now(),ready:document.readyState,visibility:document.visibilityState,hidden:document.hidden,
+        viewport:{width:innerWidth,height:innerHeight,scrollX,scrollY},focused:document.hasFocus(),motion:screen?.dataset.motion,screenHidden:screen?.hidden,
+        frame:frame?{thrower:frame.thrower,round:frame.round,historyLength:frame.historyLength,paused:frame.paused??null,
+          names:frame.names,identities:frame.identities,totals:frame.totals,last:frame.last,darts:frame.darts,visits:frame.visits,
+          currentPlayer:frame.currentPlayer,currentRound:frame.currentRound,currentDart:frame.currentDart,finished:frame.finished,
+          history:frame.history?.slice(-8)}:null,
+        recorder:q?{initialization:q.initialization,arm:q.arm,captures:q.captures,pending:[...q.pending],rafCalls:q.rafCalls,draws:q.draws,
+          recentStrokes:q.strokes.slice(-20),recentFrames:q.recentFrames,nativeEvents:q.nativeEvents,visibilityEvents:q.visibilityEvents}:null,
+        slot:element(document.querySelector('.name-slot')),identities:[...document.querySelectorAll('.name-slot .thrower-identity')].map(element),
+        slotHtml:document.querySelector('.name-slot')?.outerHTML,animations};
+    }).catch(captureError=>({captureError:String(captureError)}));
+    receipt.failure={console:consoleErrs.slice(),scorer:await readFailure(page),
+      embedded:view?await readFailure(view):null,spectator:watcher?await readFailure(watcher):null};
+    console.error('TV identity failure diagnostic '+JSON.stringify({activeAction:receipt.activeAction,...receipt.failure}));
     await page.screenshot({path:path.join(out,'failure-scorer.png')}).catch(()=>{});
     if(watcher)await watcher.screenshot({path:path.join(out,'failure-spectator.png'),fullPage:true}).catch(()=>{});
     throw error;
