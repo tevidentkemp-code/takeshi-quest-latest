@@ -601,8 +601,9 @@ window.addEventListener('resize',()=>{if(state)drawGraphics();});
 systemMotion.addEventListener('change',()=>{motion=!systemMotion.matches;if(state)window.showTvFrame(state);});
 document.fonts.ready.then(()=>{if(state)drawGraphics();});
 if(window===window.top && /^[a-f\d-]{36}$/i.test(location.hash.slice(1)) && typeof BroadcastChannel==='function'){
-  const channel=new BroadcastChannel('sq-tv-'+location.hash.slice(1));
-  channel.onmessage=event=>{
+  const channelName='sq-tv-'+location.hash.slice(1);
+  let channel=null;
+  const receive=event=>{
     if(event.data?.frame)window.showTvFrame(event.data.frame);
     else if(event.data?.closed){
       screen.hidden=true;
@@ -611,7 +612,21 @@ if(window===window.top && /^[a-f\d-]{36}$/i.test(location.hash.slice(1)) && type
       state=null;
     }
   };
-  channel.postMessage('ready');
-  window.addEventListener('pageshow',()=>channel.postMessage('ready'));
-  window.addEventListener('pagehide',()=>channel.close(),{once:true});
+  function connect(){
+    if(!channel){
+      channel=new BroadcastChannel(channelName);
+      channel.onmessage=receive;
+    }
+    channel.postMessage('ready');
+  }
+  function disconnect(){
+    if(!channel)return;
+    channel.onmessage=null;
+    channel.close();
+    channel=null;
+  }
+  connect();
+  // A bfcache restore resumes this script instance with its old channel closed.
+  window.addEventListener('pageshow',connect);
+  window.addEventListener('pagehide',disconnect);
 }
