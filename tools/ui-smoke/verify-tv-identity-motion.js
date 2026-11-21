@@ -22,12 +22,14 @@ const identities=[
 ];
 const current='.name-slot > .thrower-identity:not(.departing-name)';
 const out=process.env.SQ_SCREENSHOTS||path.join(__dirname,'../../qa-artifacts/tv-identity');
-const receipt={browser:process.env.SQ_BROWSER||'chromium',url:H.APP_URL,geometry:[],motion:[],race:[],lifecycle:[]};
+const receipt={browser:process.env.SQ_BROWSER||'chromium',url:H.APP_URL,initialization:[],geometry:[],motion:[],race:[],lifecycle:[]};
 fs.mkdirSync(out,{recursive:true});
 
 async function observeDisplay(display){
   await display.evaluate(()=>{
     const q=window.__tvIdentityQa;
+    if(!q)throw new Error('Native TV recorder missing in '+location.href);
+    if(!q.initialization.beforeTvScript)throw new Error('Native TV recorder was installed after TV runtime initialization');
     if(q.installed)return;
     q.installed=true;q.captures={};q.targets=new WeakMap();
     const describe=element=>{
@@ -169,8 +171,12 @@ async function pulse(display,label){
     });
     await ctx.routeWebSocket('**/*',socket=>socket.close());
     await ctx.addInitScript(()=>{
-      if(!location.pathname.endsWith('/assets/tv/arcade.html'))return;
-      const q=window.__tvIdentityQa={pending:new Set(),rafCalls:0,draws:0,strokes:[]};
+      // Child documents can be initialized before their final URL is available.
+      // Install once in every new document, before application scripts; only the
+      // two TV documents are read below. Never create/reset counters afterwards.
+      if(window.__tvIdentityQa)return;
+      const q=window.__tvIdentityQa={pending:new Set(),rafCalls:0,draws:0,strokes:[],
+        initialization:{url:location.href,readyState:document.readyState,beforeTvScript:typeof window.showTvFrame==='undefined'}};
       const request=window.requestAnimationFrame,cancel=window.cancelAnimationFrame;
       window.requestAnimationFrame=function(callback){let id;id=Reflect.apply(request,this,[function(){q.pending.delete(id);q.rafCalls++;return Reflect.apply(callback,this,arguments);}]);q.pending.add(id);return id;};
       window.cancelAnimationFrame=function(id){q.pending.delete(id);return Reflect.apply(cancel,this,arguments);};
@@ -202,6 +208,9 @@ async function pulse(display,label){
     await watcher.locator('.running-total').first().waitFor();
     assert.equal(await watcher.locator('.scorepad').count(),0);
     await Promise.all([observeDisplay(view),observeDisplay(watcher),view.evaluate(()=>document.fonts.ready),watcher.evaluate(()=>document.fonts.ready)]);
+    for(const [index,display] of [view,watcher].entries()){
+      receipt.initialization.push({surface:index?'spectator':'scorer',...await display.evaluate(()=>window.__tvIdentityQa.initialization)});
+    }
     await Promise.all([identity(view,0),identity(watcher,0)]);
     const displays=()=>[view,watcher];
     const arm=async(label,to)=>Promise.all(displays().map(display=>display.evaluate(({label,to})=>window.__tvIdentityQa.arm={label,to},{label,to:identities[to].name})));

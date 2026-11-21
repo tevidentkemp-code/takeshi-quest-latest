@@ -21,7 +21,8 @@ function playerIdentity(index){
 }
 function nameMarkup(index){
   const identity=playerIdentity(index);
-  return `<span class="name ${identity.shortName.length>8?'long':''}" title="${esc(identity.name)}">${esc(identity.shortName)}</span>`;
+  const length=[...identity.shortName].length;
+  return `<span class="name ${length>10?'long extended':length>8?'long':''}" title="${esc(identity.name)}">${esc(identity.shortName)}</span>`;
 }
 function hitCode(entry){
   if(!entry.points)return {label:'X',kind:'X',spoken:entry.label==='BO'?'Bounce-out':'Miss'};
