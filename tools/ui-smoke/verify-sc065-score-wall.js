@@ -168,11 +168,15 @@ async function seed(page, count, round = 10, mode = 'match') {
     await page.waitForFunction(expectedToken=>!window.__sqThrowOrderRevealPending&&!document.querySelector('.sq-throw-order-reveal')&&Number(state.__gameToken||0)===expectedToken&&document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&state.__sqGameControl&&window.SQ_GAMEPLAY.hasCachedController(state)&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',expectedToken);
   }catch(error){
     if(observeCold)await finishColdFixtureDiagnostic(page,'loader deadline');
-    const diagnostic=await page.evaluate(()=>{
+    const diagnostic=await page.evaluate(expectedToken=>{
       const overlay=document.getElementById('gameLoadOverlay'),boot=document.getElementById('bootSplash'),panel=document.getElementById('liveV2Panel');
       const status=el=>el?{hidden:el.hidden,ariaHidden:el.getAttribute('aria-hidden'),display:getComputedStyle(el).display,opacity:getComputedStyle(el).opacity,rect:el.getBoundingClientRect().toJSON()}:null;
-      return{page:document.body.dataset.page,visibility:document.visibilityState,hidden:document.hidden,ready:document.readyState,fixtureFrame:window.__sqSc065FixtureFrame,yields:window.__sqSc065YieldTrace,overlay:status(overlay),boot:status(boot),panel:status(panel),round:state.currentRound,token:state.__gameToken,history:state.history.length,tableRows:document.querySelectorAll('#tbody tr').length,scriptPaths:[...document.scripts].filter(s=>s.src&&new URL(s.src).origin===location.origin).map(s=>new URL(s.src).pathname)};
-    });
+      return{page:document.body.dataset.page,visibility:document.visibilityState,hidden:document.hidden,ready:document.readyState,fixtureFrame:window.__sqSc065FixtureFrame,yields:window.__sqSc065YieldTrace,overlay:status(overlay),boot:status(boot),panel:status(panel),round:state.currentRound,token:state.__gameToken,expectedToken,tokenMatches:Number(state.__gameToken||0)===expectedToken,
+        throwOrder:{pending:!!window.__sqThrowOrderRevealPending,present:!!document.querySelector('.sq-throw-order-reveal')},
+        security:{preparing:!!state.__sqSecurityPreparing,inputBlocked:!!window.__sqSecurityInputBlocked,hasGameControl:!!state.__sqGameControl,hasCachedController:typeof window.SQ_GAMEPLAY?.hasCachedController==='function'?window.SQ_GAMEPLAY.hasCachedController(state):null,canThrow:typeof window.SQ_GAMEPLAY?.canThrow==='function'?window.SQ_GAMEPLAY.canThrow():null,acceptedReceipt:!!state.__sqAcceptedGameReceipt,completionSnapshot:!!state.__sqCompletionSnapshot},
+        pbgr:{present:!!window.__pbgrSnapshot,ageMs:window.__pbgrSnapshot?.__ts?Date.now()-window.__pbgrSnapshot.__ts:null},
+        history:state.history.length,tableRows:document.querySelectorAll('#tbody tr').length,scriptPaths:[...document.scripts].filter(s=>s.src&&new URL(s.src).origin===location.origin).map(s=>new URL(s.src).pathname)};
+    },expectedToken);
     // Playwright caches its original error stack, so an appended message is
     // absent from Node's normal error print. Emit the credential-free state.
     console.error('SC065 fixture deadline '+JSON.stringify({count,round,mode,diagnostic}));
