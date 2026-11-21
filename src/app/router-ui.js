@@ -1601,6 +1601,7 @@ if (hasSaved){
           await buildEverythingChunked();
           updateUI();
           if(typeof __sqResumeVsShadowAutoTurnIfNeeded==='function')__sqResumeVsShadowAutoTurnIfNeeded('secure-resume');
+          if (state.finished && !state.gameAwarded) openGameCompleteDialog();
           toast('Resumed last match');
         } catch(error){window.SQ_GAMEPLAY.failure(error);show('details');window.SQ_GAMEPLAY.offerLegacyRecovery();}
         finally {

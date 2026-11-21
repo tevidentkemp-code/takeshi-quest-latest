@@ -1,0 +1,88 @@
+// Runs entirely against the existing offline browser and game-control fixture.
+const assert = require('node:assert/strict');
+const H = require('./harness');
+
+(async () => {
+  const { page, browser } = await H.launch({width:390, height:844});
+  try {
+    await H.boot(page);
+    await page.evaluate(async () => {
+      state.players = ['Alpha','Bravo','Charlie'].map(name => ({name,id:crypto.randomUUID()}));
+      setSavedPlayers(state.players.map(p => ({...p,_src:'cloud-cache'})));
+      state.match.mode='official';
+      state.match.targetWins=3;
+      await startNewGame(true);
+    });
+    await page.waitForFunction(() => document.body.dataset.page === 'game' && window.SQ_GAMEPLAY.canThrow());
+    await page.locator('#gameLoadOverlay').waitFor({state:'hidden'});
+    await page.evaluate(() => {
+      for (let i=0; i<126; i++) recordThrow({kind:'Miss'});
+    });
+    const modal = page.getByRole('dialog',{name:'Draw decider shootout'});
+    const action = name => modal.locator('[data-act="'+name+'"]');
+    await modal.waitFor({state:'visible'});
+    const mobileLayout = await modal.evaluate(dialog => {
+      const finish = document.querySelector('#pad [data-finish-game]').getBoundingClientRect();
+      const front = document.elementFromPoint(finish.x + finish.width/2, finish.y + finish.height/2);
+      const row = dialog.querySelector('.dec-gridRow');
+      return {
+        padCovered:!!front?.closest('.sq-decider-backdrop'),
+        controlsReachable:dialog.scrollHeight <= dialog.clientHeight || ['auto','scroll'].includes(getComputedStyle(dialog).overflowY),
+        columnsAligned:[...row.children].every(cell => cell.offsetTop === row.children[0].offsetTop)
+      };
+    });
+    assert.deepEqual(mobileLayout,{padCovered:true,controlsReachable:true,columnsAligned:true});
+    assert.equal(await page.evaluate(() => state.__sqGameControl.mode),'official');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem(STORAGE_KEY)).history.length),126);
+    await modal.getByRole('button',{name:'Close decider'}).click();
+    const resumeButton = page.getByRole('button',{name:'Resume Decider'});
+    assert.equal(await resumeButton.evaluate(button => document.activeElement === button), true);
+    await resumeButton.click();
+    await modal.waitFor({state:'visible'});
+    await modal.locator('[data-kind="T"]').click();
+    await modal.locator('[data-decider-sector="20"]').click();
+    assert.deepEqual(await page.evaluate(() => state._decider.totals),[60,0,0]);
+    await page.reload();
+    await page.locator('#resumeBtn').click();
+    await modal.waitFor({state:'visible'});
+    assert.deepEqual(await page.evaluate(() => [state._decider.dart,...state._decider.totals]),[1,60,0,0]);
+    await action('skip').click();
+    await modal.locator('[data-kind="T"]').click();
+    await modal.locator('[data-decider-sector="20"]').click();
+    // Finish Bravo's first visit, then Charlie's, then all three remaining rounds.
+    for (let i=0; i<11; i++) await action('skip').click();
+    await page.waitForFunction(() => state._decider.repeat && !state._decider.hold);
+    assert.deepEqual(await page.evaluate(() => state._decider.participants),[0,1]);
+    assert.equal(await page.evaluate(() => !!state.__sqAcceptedGameReceipt),false);
+    await action('skip').click();
+    await modal.locator('[data-decider-sector="20"]').click();
+    await action('skip').click();
+    // Both players get a visit in each remaining round. Only Bravo scores.
+    for (const [round,selector,points] of [
+      [1,'[data-decider-sector="20"]',40],
+      [2,'[data-decider-sector="20"]',60],
+      [3,'[data-bull="Outer"]',25]
+    ]) {
+      await action('skip').click();
+      await modal.locator(selector).click();
+      assert.deepEqual(await page.evaluate(() => [state._decider.round, state._decider.history.at(-1).points]),[round,points]);
+      if (round === 3) {
+        assert.equal(await modal.locator('[data-role="numRow"]').isVisible(),false);
+        await modal.locator('[data-bull="Inner"]').click();
+        assert.equal(await page.evaluate(() => state._decider.history.at(-1).points),50);
+      }
+      await action('skip').click();
+    }
+    const result=page.locator('.sq-shootoutcomplete-backdrop');
+    await result.waitFor({state:'visible'});
+    assert.equal(await page.evaluate(() => state._decider.winner),1);
+    await result.getByRole('button',{name:'Close'}).click();
+    await page.getByRole('button',{name:'Finish Game → Leaderboard'}).click();
+    await page.waitForFunction(() => state.gameAwarded && document.body.dataset.page==='leaderboard');
+    const outcome = await page.evaluate(() => ({
+      wins:state.match.wins, totals:state.match.history[0].totals, games:state.match.history.length
+    }));
+    assert.deepEqual(outcome,{wins:[0,1,0],totals:[0,0,0],games:1});
+    console.log('PASS automatic decider, Close and Resume, refresh, any-number triple, three-way narrowing, repeat and single award');
+  } finally { await browser.close(); }
+})().catch(error => {console.error(error);process.exitCode=1;});

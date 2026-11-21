@@ -30,6 +30,23 @@ const tests=[];async function check(name,fn){try{await fn();tests.push({name,sta
 await check('server initiation and reservation precede current-game authority',async()=>{const st=state('official');assert.equal(sandbox.SQ_GAMEPLAY.canThrow(),false);await sandbox.SQ_GAMEPLAY.prepareNewGame();assert.equal(sandbox.SQ_GAMEPLAY.canThrow(),true);assert.equal(st.match.id,st.__sqGameControl.match_id);assert.equal(calls[0].action,'create_match');assert.equal(calls[1].action,'reserve_game');assert.equal(calls[0].body.match_format,'series');assert.equal('capability'in st.match,false);});
 await check('canonical completion preserves full board metadata and decider winner',async()=>{const st=sandbox.state;st.score[0][0]={darts:[{kind:'S',points:10},null,null],roundTotal:10,pins:{preserve:'current metadata'}};st.score[1][0]=structuredClone(st.score[0][0]);st._decider={resolved:true,winner:1};const payload=sandbox.__sqBuildCompletedGamePayload();assert.deepEqual(JSON.parse(JSON.stringify(payload.state.board)),st.score);assert.deepEqual(Array.from(payload.winner_indexes),[1]);});
 await check('lost completion response freezes board and retains identical durable retry',async()=>{const st=sandbox.state;const before=JSON.stringify(st.score);drop=true;await assert.rejects(sandbox.SQ_GAMEPLAY.completeCurrentGame(sandbox.__sqBuildCompletedGamePayload));assert.equal(sandbox.SQ_GAMEPLAY.canThrow(),false);assert.equal(sandbox.SQ_GAMEPLAY.canDiscard(),false);await assert.rejects(sandbox.SQ_GAMEPLAY.prepareNewGame());assert.equal(JSON.stringify(st.score),before);const entries=sandbox.SQ_SECURITY.pendingCompletions();assert.equal(entries.length,1);const first=calls.filter(x=>x.action==='complete_game').at(-1);await sandbox.SQ_GAMEPLAY.completeCurrentGame(sandbox.__sqBuildCompletedGamePayload);const second=calls.filter(x=>x.action==='complete_game').at(-1);assert.equal(JSON.stringify(first.body),JSON.stringify(second.body));assert.equal(sandbox.SQ_SECURITY.pendingCompletions().length,0);assert.equal(accepted.size,1);});
+await check('accepted retry preserves registered visits after the active board changes', async () => {
+  const st = state('official');
+  await sandbox.SQ_GAMEPLAY.prepareNewGame();
+  const gameId = st.__sqGameControl.game_id;
+  st.history = [0,1,2].map(dartIndex => ({player:0,round:0,dartIndex,
+    recorded_at:new Date(Date.UTC(2026,9,4,12,0,dartIndex)).toISOString()}));
+  drop = true;
+  await assert.rejects(sandbox.SQ_GAMEPLAY.completeCurrentGame(sandbox.__sqBuildCompletedGamePayload));
+  state('practice',[pB]);
+  await sandbox.SQ_RETRY_PENDING();
+  await sandbox.SQ_RETRY_PENDING();
+  const visits = calls.filter(call => call.action==='log_go' && call.body.game_id===gameId);
+  assert.equal(visits.length,1);
+  assert.equal(visits[0].body.player_id,pA.id);
+  assert.equal(visits[0].body.started_at,st.history[0].recorded_at);
+  assert.equal(visits[0].body.ended_at,st.history[2].recorded_at);
+});
 await check('guest Practice match preserves series format and target wins',async()=>{const st=state('practice',[pA,{name:'Guest'}]);await sandbox.SQ_GAMEPLAY.prepareNewGame();const start=calls.filter(x=>x.action==='create_match').at(-1);assert.equal(start.body.mode,'practice');assert.equal(start.body.match_format,'series');assert.equal(start.body.target_wins,3);assert.equal(st.match.__sqServerSingle,false);});
 await check('Turbo Tournament provenance remains in canonical completed envelope',async()=>{state('turbo',[pA,pB],{mode:'official',targetWins:1,tournament:true,tournamentType:'turbo',tournamentRules:{strictTimer:true,throwLimitSeconds:20,startTarget:'17'}});await sandbox.SQ_GAMEPLAY.prepareNewGame();const p=sandbox.__sqBuildCompletedGamePayload();assert.equal(p.state.tournament,true);assert.equal(p.state.tournamentType,'turbo');assert.equal(p.state.startTarget,'17');assert.equal(p.state.tournamentRules.throwLimitSeconds,20);});
 await check('Vs Shadow issuance and completion contain only the real player',async()=>{const st=state('practice',[pA,{name:'Shadow',isShadow:true}],{mode:'practice',practiceType:'vsShadow',targetWins:3});await sandbox.SQ_GAMEPLAY.prepareNewGame();const start=calls.filter(x=>x.action==='create_match').at(-1);assert.equal(start.body.mode,'vs_shadow');assert.equal(start.body.match_format,'single');assert.equal(start.body.roster.length,1);const p=sandbox.__sqBuildCompletedGamePayload();assert.equal(p.state.mode,'practice');assert.equal(p.state.gameMode,'practice');assert.equal(p.state.players.length,1);assert.equal(p.state.board.length,1);assert.equal(p.totals.length,1);assert.equal(st.__sqGameControl.roster.length,1);});

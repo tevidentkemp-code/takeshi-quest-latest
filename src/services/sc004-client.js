@@ -110,11 +110,11 @@ function createSc004Client({
     if(key===PENDING_KEY)pending=next;else if(key===START_KEY)starts=next;else if(key===GO_KEY)goQueue=next;else credentials={...credentials,...next};
     return value;
   });}
-  async function enqueue(key,id,body,action,conflict='pending_payload_conflict'){
+  async function enqueue(key,id,body,action,conflict='pending_payload_conflict',localData={}){
     return changeCache(key,current=>{
       const entryKey=typeof id==='function'?id(current):id,prior=current[entryKey];
       if(prior&&!identical(prior.body,body))throw new Sc004Error(conflict);
-      const queued=prior||{request_id:newRequestId(),body:cloneJson(body),...(action?{action}:{})};
+      const queued=prior||{...localData,request_id:newRequestId(),body:cloneJson(body),...(action?{action}:{})};
       return {next:{...current,[entryKey]:queued},value:{key:entryKey,queued}};
     });
   }
@@ -217,20 +217,40 @@ function createSc004Client({
       }
       return publicReceipt(result);
     },
-    async completeGame(matchId, body) {
+    async completeGame(matchId, body, visits = []) {
       if (!object(body) || !UUID.test(body.game_id || '') ||
           ('match_id' in body && body.match_id !== matchId) || authorityFields(body)) {
         throw new Sc004Error('invalid_completion');
       }
       const payload = cloneJson({ ...body, match_id: matchId });
-      const {queued}=await enqueue(PENDING_KEY,body.game_id,payload);
+      // These visit records travel with the durable retry, never in the game API body.
+      const visitQueue = {};
+      for (const visit of visits) {
+        const key = [body.game_id,visit.player_id,visit.round_number,visit.go_number].join(':');
+        visitQueue[key] = {request_id:newRequestId(), body:{...visit, game_id:body.game_id, match_id:matchId}};
+      }
+      const {queued}=await enqueue(PENDING_KEY,body.game_id,payload,null,'pending_payload_conflict',{visitQueue});
       const result = await send('complete_game', queued.body, {
         matchId, requestId: queued.request_id,
       });
       if (result.game_id !== body.game_id || result.match_id !== matchId) {
         throw new Sc004Error('receipt_scope_mismatch');
       }
-      await forget(PENDING_KEY,body.game_id,queued.request_id); // Removes only this accepted envelope.
+      // Make every visit recoverable before retiring the accepted completion.
+      // A crash between writes reuses the same visit request IDs.
+      await locked(() => {
+        const completions = strictLoad(PENDING_KEY);
+        const entry = completions[body.game_id];
+        if (entry?.request_id !== queued.request_id) return;
+        if (Object.keys(entry.visitQueue || {}).length) {
+          const visits = {...entry.visitQueue, ...strictLoad(GO_KEY)};
+          persist(GO_KEY,visits);
+          goQueue = visits;
+        }
+        delete completions[body.game_id];
+        persist(PENDING_KEY,completions);
+        pending = completions;
+      });
       return publicReceipt(result);
     },
     async retryCompletion(gameId) {
@@ -253,9 +273,14 @@ function createSc004Client({
       await forget(GO_KEY,key,queued.request_id);
       return publicReceipt(result);
     },
-    async retryGoEvents() {
-      const results=[];try{goQueue=strictLoad(GO_KEY);}catch(_){}
-      for(const item of Object.values(goQueue)) results.push(await this.logGo(item.body.match_id,item.body));
+    async retryGoEvents(gameId) {
+      const results = [];
+      for (const [key,item] of Object.entries(strictLoad(GO_KEY))) {
+        if (gameId && item.body.game_id !== gameId) continue;
+        const result = await send('log_go',item.body,{matchId:item.body.match_id,requestId:item.request_id});
+        await forget(GO_KEY,key,item.request_id);
+        results.push(publicReceipt(result));
+      }
       return results;
     },
     async createTraining(body,initiationKey) {
