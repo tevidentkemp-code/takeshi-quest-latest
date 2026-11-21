@@ -142,8 +142,10 @@ async function geometry(display){
     const textBox=el=>{const r=document.createRange();r.selectNodeContents(el);const b=r.getBoundingClientRect();return {x:b.x,y:b.y,right:b.right,bottom:b.bottom};};
     const labels=[...document.querySelectorAll('.round-table .name,.standings .name'),title,...(nickname?[nickname]:[])].map(el=>{
       const canvas=el.querySelector('canvas');
+      const textBounds=canvas?rect(canvas):textBox(el),container=rect(el.closest('th')||node);
       return {text:el.textContent,scroll:el.scrollWidth,client:el.clientWidth,
-        fits:el.scrollWidth<=el.clientWidth+1&&inside(canvas?rect(canvas):textBox(el),rect(el.closest('th')||node))};
+        element:rect(el),textBounds,container,font:getComputedStyle(el).font,
+        fits:el.scrollWidth<=el.clientWidth+1&&inside(textBounds,container)};
     });
     return {width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,scrollHeight:document.documentElement.scrollHeight,
       header:rect(head),identity:rect(node),slot:rect(slot),title:rect(title),nickname:nickname&&rect(nickname),sub:rect(sub),

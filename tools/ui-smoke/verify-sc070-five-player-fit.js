@@ -168,5 +168,48 @@ async function read(page,key,numeric=false){
     }
     assert.equal(cases,expectedCases[qaPart],'Complete focused group coverage changed');
     assert.deepEqual(consoleErrs.filter(e=>e.startsWith('pageerror:')),[],'Unexpected page errors');console.log('SC070 five-player fit PASS '+cases+' cases ('+qaPart+', '+(Date.now()-qaStarted)+'ms); production writes blocked');
+  }catch(error){
+    const evidence={browser:process.env.SQ_BROWSER||'chromium',part:qaPart,elapsed:Date.now()-qaStarted,cases,error:String(error),console:consoleErrs};
+    let captureTimer;
+    try{
+      evidence.diagnostic=await Promise.race([
+        page.evaluate(()=>{
+          const ref=el=>el?{tag:el.tagName,id:el.id,class:el.className}:null;
+          const describe=el=>{
+            if(!el)return null;
+            const style=getComputedStyle(el),rect=el.getBoundingClientRect();
+            const hit=document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2);
+            return {...ref(el),connected:el.isConnected,hidden:el.hidden,disabled:el.disabled,inert:el.inert,
+              ariaHidden:el.getAttribute('aria-hidden'),ariaDisabled:el.getAttribute('aria-disabled'),inertAncestor:ref(el.closest('[inert]')),
+              rect:rect.toJSON(),scroll:{top:el.scrollTop,left:el.scrollLeft,width:el.scrollWidth,height:el.scrollHeight,clientWidth:el.clientWidth,clientHeight:el.clientHeight},
+              style:{display:style.display,visibility:style.visibility,opacity:style.opacity,pointerEvents:style.pointerEvents,overflow:style.overflow,transform:style.transform,animation:style.animationName,animationPlayState:style.animationPlayState},
+              hitAtCentre:{element:ref(hit),within:!!hit&&el.contains(hit)}};
+          };
+          const read=fn=>{try{return fn();}catch(readError){return {error:String(readError)};}};
+          const buttons=[...document.querySelectorAll('.to-start')];
+          return {at:performance.now(),page:document.body.dataset.page,ready:document.readyState,visibility:document.visibilityState,hidden:document.hidden,
+            viewport:{width:innerWidth,height:innerHeight,scrollX,scrollY},body:describe(document.body),focus:describe(document.activeElement),
+            loader:describe(document.getElementById('gameLoadOverlay')),revealPending:!!window.__sqThrowOrderRevealPending,reveal:describe(document.querySelector('.sq-throw-order-reveal')),
+            buttons:buttons.map(button=>{const ancestors=[];for(let el=button.parentElement;el&&ancestors.length<5;el=el.parentElement)ancestors.push(describe(el));return {button:describe(button),ancestors};}),
+            overlays:[...document.querySelectorAll('.modal-backdrop')].map(describe).filter(el=>el.rect.width&&el.rect.height&&el.style.display!=='none').slice(0,12),
+            animations:document.getAnimations().slice(-20).map(a=>({name:a.animationName||null,state:a.playState,pending:a.pending,start:a.startTime,time:a.currentTime,target:ref(a.effect?.target)})),
+            game:typeof state==='undefined'||!state?null:{token:state.__gameToken,round:state.currentRound,player:state.currentPlayer,dart:state.currentDart,playerCount:state.players?.length,historyLength:state.history?.length,finished:state.finished,
+              mode:state.match?.mode,variant:state.match?.gameVariant,preparing:!!state.__sqSecurityPreparing,blocked:!!window.__sqSecurityInputBlocked,controlPresent:!!state.__sqGameControl,
+              cachedController:read(()=>window.SQ_GAMEPLAY?.hasCachedController(state)),canThrow:read(()=>window.SQ_GAMEPLAY?.canThrow())}};
+        }),
+        new Promise((_,reject)=>{captureTimer=setTimeout(()=>reject(new Error('SC070 diagnostic capture exceeded 2000ms')),2000);})
+      ]);
+    }catch(captureError){evidence.captureError=String(captureError);}
+    finally{clearTimeout(captureTimer);}
+    try{
+      const out=shots||path.join(__dirname,'../../qa-artifacts/five-player-fit');
+      fs.mkdirSync(out,{recursive:true});
+      const receipt=path.join(out,'sc070-failure.json');
+      fs.writeFileSync(receipt,JSON.stringify(evidence,null,2));
+      try{await page.screenshot({path:path.join(out,'sc070-failure.png'),timeout:2000});}
+      catch(screenshotError){evidence.screenshotError=String(screenshotError);fs.writeFileSync(receipt,JSON.stringify(evidence,null,2));}
+    }catch(artifactError){evidence.artifactError=String(artifactError);}
+    console.error('SC070 failure diagnostic '+JSON.stringify(evidence));
+    throw error;
   }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});
