@@ -4278,7 +4278,12 @@ function __sqIsRecoverableGameStateForLocalCache(o){
     if(!players.length) return false;
     // An unfinished Shadow board is recoverable presentation data too. The
     // secure runtime separately verifies or issues authority before any save.
-    if(o.gameAwarded === true || o.finished === true || o.__sqCompleted === true || o.__sqGameCompleteOpen === true) return false;
+    if(o.gameAwarded || o.__sqCompleted || o.match?.completedLogged) return false;
+    if(o.finished || o.__sqGameCompleteOpen) {
+      // Keep the reserved board through receipt recovery and local match award.
+      // Historical completed boards without a server reservation stay retired.
+      return !!o.__sqGameControl?.game_id && o.__sqGameControl.match_id === o.match?.id;
+    }
     return true;
   }catch(_){ return false; }
 }
@@ -5115,6 +5120,18 @@ async function __sqGcXpReveal(host, onComplete){
   }catch(_){ if (onComplete) onComplete(); }
 }
 
+function unresolvedDrawPlayers(){
+  if (!state.finished || state.gameAwarded || state.__sqAcceptedGameReceipt || state.__sqCompletionSnapshot ||
+      (typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime())) return [];
+  const totals = state.players.map((_, index) => totalScoreForPlayer(index));
+  const highest = Math.max(...totals);
+  const tied = totals.map((score, index) => score === highest ? index : -1).filter(index => index >= 0);
+  const decider = state._decider;
+  if (tied.length < 2 || (decider?.resolved && decider.gameToken === (state.__gameToken || 0) &&
+      tied.includes(decider.winner))) return [];
+  return tied;
+}
+
 function openGameCompleteDialog() {
   if (typeof __sqVsShadowCompletionBlocked === 'function' && __sqVsShadowCompletionBlocked()) {
     try{ state.finished = false; state.gameAwarded = false; }catch(_){ }
@@ -5122,6 +5139,12 @@ function openGameCompleteDialog() {
     return;
   }
   const __isVsShadowComplete = (typeof __sqIsVsShadowRuntime === 'function') ? __sqIsVsShadowRuntime() : false;
+
+  const tied = unresolvedDrawPlayers();
+  if (tied.length) {
+    openDeciderShootoutDialog(tied, state.players.map((_, index) => totalScoreForPlayer(index)));
+    return;
+  }
 
   // SXP-04: start the Rewards read while the player is still viewing Game Winner.
   // Fire-and-forget; reveal reuses this exact promise/result.
@@ -5359,7 +5382,7 @@ function openGameCompleteDialog() {
       const gamesPlayedAfterAward = completedGamesInMatch();
       const matchComplete = projectedMatchComplete();
 
-      if (wasVsShadow && state && state.shadow && state.shadow.saveFailed === true && state.gameAwarded !== true) {
+      if (state.gameAwarded !== true) {
         if (btn) {
           btn.disabled = false;
           btn.textContent = matchAdvanceLabel;
@@ -5599,14 +5622,14 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
   const parts = (participantIdx || []).slice();
   if (parts.length < 2) { toast('No draw to resolve'); return; }
 
-  // remove any old instances
-  document.querySelectorAll('.sq-decider-backdrop').forEach(n=>n.remove());
+  if (document.querySelector('.sq-decider-backdrop')) return;
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-backdrop sq-decider-backdrop';
 
   const modal = document.createElement('div');
   modal.className = 'modal modal-decider';
+  modal.setAttribute('aria-label', 'Draw decider shootout');
   modal.setAttribute('role','dialog');
   modal.setAttribute('aria-modal','true');
   modal.tabIndex = -1;
@@ -5614,11 +5637,14 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
   const R = [
     { key:'any',     label:'R1 — ANY NUMBER' },
     { key:'doubles', label:'R2 — DOUBLES' },
-    { key:'triples', label:'R3 — TRIPPLES' },
+    { key:'triples', label:'R3 — TREBLES' },
     { key:'bull',    label:'R4 — BULLS' }
   ];
 
-  const dec = state._decider = {
+  const saved = state._decider;
+  const resume = saved && !saved.resolved && saved.gameToken === (state.__gameToken || 0) &&
+    saved.participants?.length >= 2 && saved.participants.every(index => parts.includes(index));
+  const dec = state._decider = resume ? saved : {
     resolved:false,
     gameToken: state.__gameToken || 0,
 
@@ -5697,9 +5723,17 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
     return '';
   }
 
+  function closeDecider(){
+    overlay.remove();
+    document.querySelector('#pad [data-finish-game]')?.focus();
+  }
+
   function render(){
+    const focused = modal.contains(document.activeElement) ? document.activeElement : null;
+    const focusKey = focused?.getAttributeNames().find(name => name.startsWith('data-'));
     const rDef = R[dec.round];
     const liveP = dec.participants[dec.turn];
+    modal.style.setProperty('--decider-players', String(dec.participants.length));
     try{
       if (Number(dec.dart || 0) === 0) {
         const dmdKey = `${dec.round}|${dec.turn}`;
@@ -5715,7 +5749,9 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
 
     modal.innerHTML = `
       <div class="dec-top">
-        <div class="dec-title">DECIDER</div>
+        <button type="button" class="btn" data-decider-close aria-label="Close decider">Close</button>
+        <div class="dec-title">${dec.repeat ? 'REPEAT DECIDER' : 'DECIDER'}</div>
+        <div class="dec-round" data-decider-turn></div>
         <div class="dec-sub">Each player gets three darts per round.<br>Any score, followed by doubles, trebles then bulls.<br>Points do not count towards stats.</div>
       </div>
 
@@ -5726,7 +5762,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
           
 <div class="dec-gridWrap">
             ${dec.participants.length===2 ? `
-          <div class="dec-dartsTop" aria-label="Dart indicators">
+          <div class="dec-dartsTop" role="group" aria-label="Dart indicators">
             <div class="dec-darts">
               ${[0,1,2].map(i=>{const tok=getDartToken(dec.turn, dec.round, i); return `<span class="dec-dartDot ${tok?'done':''}">${tok?tok:''}</span>`;}).join('')}
             </div>
@@ -5734,30 +5770,15 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
             </div>
         ` : ''}
 
-        <div class="dec-headStrip" aria-label="Players and totals">
+        <div class="dec-headStrip" role="group" aria-label="Players and totals">
               <div class="dec-headCorner"></div>
-              ${(()=>{ 
-                if(dec.participants.length===2){
-                  const p0 = dec.participants[0], p1 = dec.participants[1];
-                  return `
-                    <div class="dec-headBox ${0===dec.turn?'live':''}">
-                      <div class="dec-headInit">${pInit(p0)}</div>
-                      <div class="dec-headTotal">${dec.totals[0]}</div>
-                    </div>
-<div class="dec-headBox ${1===dec.turn?'live':''}">
-                      <div class="dec-headInit">${pInit(p1)}</div>
-                      <div class="dec-headTotal">${dec.totals[1]}</div>
-                    </div>
-                  `;
-                }
-                return dec.participants.map((pIdx,i)=>`<div class="dec-headBox ${i===dec.turn?'live':''}">
-                  <div class="dec-headInit">${pInit(pIdx)}</div>
-                  <div class="dec-headTotal">${dec.totals[i]}</div>
-                </div>`).join('');
-              })()}
+              ${dec.participants.map((_, i) => `<div class="dec-headBox ${i===dec.turn?'live':''}">
+                <div class="dec-headInit"></div>
+                <div class="dec-headTotal">${dec.totals[i]}</div>
+              </div>`).join('')}
             </div>
 
-            <div class="dec-grid" data-role="grid" aria-label="Decider rounds and scores">
+            <div class="dec-grid" data-role="grid" role="group" aria-label="Decider rounds and scores">
               ${['ANY','D','T','B'].map((lbl,r)=>`
                 <div class="dec-gridRow ${dec.round>r?'done':''} ${dec.round===r?'active':''}">
                   <div class="dec-gridLbl">${lbl}</div>
@@ -5790,6 +5811,11 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
             </div>
           </div>
     `;
+
+    modal.querySelector('[data-decider-turn]').textContent = rDef.label + ' · ' + pName(liveP);
+    modal.querySelectorAll('.dec-headInit').forEach((label, i) => {
+      label.textContent = pInit(dec.participants[i]);
+    });
 
     // Decider input is delegated at the modal level so score buttons remain live
     // after each render and are not affected by stale inline handlers.
@@ -5850,7 +5876,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
 
     // Number scroller 1..20
     const numRow = modal.querySelector('[data-role="numRow"]');
-    if (numRow) {
+    if (numRow && rDef.key !== 'bull') {
       numRow.innerHTML = '';
       numRow.style.display = 'flex';
       numRow.style.gap = '8px';
@@ -5892,14 +5918,17 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
 
     // disable input during 2s hold
     if (dec.hold){
-      modal.querySelectorAll('button').forEach(b=>{ try{ b.disabled = true; }catch(_){ } });
+      modal.querySelectorAll('button:not([data-decider-close])').forEach(b => { b.disabled = true; });
       modal.classList.add('dec-hold');
     } else {
       modal.classList.remove('dec-hold');
     }
-  // (no CLOSE button in decider)
-    overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
-    overlay.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.remove(); });
+    modal.querySelector('[data-decider-close]').onclick = closeDecider;
+    if (focusKey) {
+      const next = Array.from(modal.querySelectorAll('button')).find(button =>
+        button.getAttribute(focusKey) === focused.getAttribute(focusKey) && !button.disabled && button.offsetWidth);
+      (next || modal).focus({preventScroll:true});
+    }
   }
 
   function roundKey(){ return R[dec.round].key; }
@@ -5987,6 +6016,7 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
     // advance dart/turn/round
     if (dec.dart < 2) {
       dec.dart++;
+      save();
       render();
       return;
     }
@@ -5994,35 +6024,35 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
     // last dart for this player/round: hold the filled indicators for 2s
     dec.hold = true;
 
+    save();
+    window.setTimeout(() => {
+      if (overlay.isConnected && state._decider === dec && dec.hold) advanceVisit();
+    }, 2000);
+    render();
+  }
+
+  function advanceVisit(){
     const _turn = dec.turn;
     const _round = dec.round;
+    dec.hold = false;
+    dec.kind = 'S'; // reset kind UI
 
-    window.setTimeout(() => {
-      try{
-        dec.hold = false;
-        dec.kind = 'S'; // reset kind UI
+    // advance to next player / round
+    dec.dart = 0;
+    if (_turn < dec.participants.length - 1) {
+      dec.turn = _turn + 1;
+      dec.round = _round;
+    } else {
+      dec.turn = 0;
+      dec.round = _round + 1;
+    }
 
-        // advance to next player / round
-        dec.dart = 0;
-        if (_turn < dec.participants.length - 1) {
-          dec.turn = _turn + 1;
-          dec.round = _round;
-        } else {
-          dec.turn = 0;
-          dec.round = _round + 1;
-        }
-
-        if (dec.round >= R.length) {
-          finishDecider();
-          return;
-        }
-        render();
-      }catch(_){}
-    }, 2000);
-
+    if (dec.round >= R.length) {
+      finishDecider();
+      return;
+    }
+    save();
     render();
-    return;
-
   }
 
   function deciderUndo(){
@@ -6041,8 +6071,9 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
 
     // restore readout to previous throw
     const prev = dec.history.length ? dec.history[dec.history.length-1] : null;
-    dec.lastToken = prev ? tokenFromSpec(prev.spec || {}, prev.points || 0) : "-";
+    dec.lastToken = prev ? (prev.token || tokenFromSpec(prev.spec || {}, prev.points || 0)) : "-";
 
+    save();
     render();
   }
 
@@ -6062,11 +6093,13 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
     const max = Math.max(...dec.totals);
     const bestIdx = dec.totals.map((t,i)=> t===max?i:null).filter(v=>v!==null);
 
-    // tie-break inside decider: sudden-death bull shootout (single-dart) until resolved
     if (bestIdx.length > 1) {
-      // For now: deterministic tie-breaker by original order
-      // (can be extended later to a real bull sudden-death loop)
-      bestIdx.sort((a,b)=>a-b);
+      const remaining = bestIdx.map(index => dec.participants[index]);
+      Object.assign(dec, {participants:remaining, round:0, turn:0, dart:0, kind:'S',
+        totals:remaining.map(() => 0), history:[], lastToken:'-', hold:false, repeat:true});
+      save();
+      render();
+      return;
     }
     const winP = bestIdx[0];
     // runner-up among participants
@@ -6079,6 +6112,10 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
 
     // Store override winner for award logic
     state._decider = dec;
+    save();
+
+    const finishButton = document.querySelector('#pad [data-finish-game]');
+    if (finishButton) finishButton.textContent = 'Finish Game → Leaderboard';
 
     // Show shootout complete modal in GAME COMPLETE style
     openShootoutCompleteDialog(dec, baseTotals);
@@ -6087,9 +6124,22 @@ function openDeciderShootoutDialog(participantIdx, baseTotals){
     overlay.remove();
   }
 
-  render();
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeDecider(); });
+  overlay.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); closeDecider(); return; }
+    if (e.key !== 'Tab') return;
+    const buttons = Array.from(modal.querySelectorAll('button:enabled')).filter(button => button.offsetWidth);
+    const first = buttons[0], last = buttons.at(-1);
+    if (e.shiftKey && (document.activeElement === first || document.activeElement === modal)) {
+      e.preventDefault(); last?.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault(); first?.focus();
+    }
+  });
+  if (dec.hold) advanceVisit();
+  else render();
   modal.focus();
 }
 
@@ -7830,6 +7880,7 @@ if (hasSaved){
           await buildEverythingChunked();
           updateUI();
           if(typeof __sqResumeVsShadowAutoTurnIfNeeded==='function')__sqResumeVsShadowAutoTurnIfNeeded('secure-resume');
+          if (state.finished && !state.gameAwarded) openGameCompleteDialog();
           toast('Resumed last match');
         } catch(error){window.SQ_GAMEPLAY.failure(error);show('details');window.SQ_GAMEPLAY.offerLegacyRecovery();}
         finally {
@@ -12092,6 +12143,7 @@ async function __sqEnsureV2PBWR(){
     const ttl = 5 * 60_000; // 5 minutes
     if (window.__v2PBWRSnapshot && window.__v2PBWRSnapshot.__ts && (Date.now() - window.__v2PBWRSnapshot.__ts) < ttl) return window.__v2PBWRSnapshot;
     if (window.__v2PBWRSnapshotPromise) return window.__v2PBWRSnapshotPromise;
+    if (Date.now() < (window.__v2PBWRRetryAfter || 0)) return window.__v2PBWRSnapshot || null;
     if (typeof sb === 'undefined' || !sb) return window.__v2PBWRSnapshot || null;
 
     window.__v2PBWRSnapshotPromise = (async () => {
@@ -12117,17 +12169,16 @@ async function __sqEnsureV2PBWR(){
         sb.from(TABLE_PB_ROUNDS_CLEAN_APP).select('bucket_key, round_key, pb_points')
       ]);
 
-      if (wrRes?.error) throw wrRes.error;
-      if (pbRes?.error) throw pbRes.error;
-
-      const wrByRound = new Map();
+      if (wrRes?.error && pbRes?.error) throw wrRes.error;
+      const previous = window.__v2PBWRSnapshot;
+      const wrByRound = (wrRes?.error && previous?.wrByRound) || new Map();
       for (const r of (wrRes.data || [])){
         const k = String(r.round_key || '').trim();
         if (!k) continue;
         wrByRound.set(k, Number(r.wr_points || 0));
       }
 
-      const pbByBucket = new Map(); // bucket_key -> Map(round_key -> pb_points)
+      const pbByBucket = (pbRes?.error && previous?.pbByBucket) || new Map(); // bucket_key -> round records
       for (const r of (pbRes.data || [])){
         const bk = String(r.bucket_key ?? '').trim();
         const rk = String(r.round_key || '').trim();
@@ -12138,10 +12189,16 @@ async function __sqEnsureV2PBWR(){
       }
 
       const snap = { wrByRound, pbByBucket };
-      try{ Object.defineProperty(snap, '__ts', { value: Date.now(), enumerable:false }); }catch(_){ snap.__ts = Date.now(); }
+      // Keep whichever official view answered. Recheck a partial response sooner.
+      const expiresIn = (wrRes?.error || pbRes?.error) ? 30000 : ttl;
+      Object.defineProperty(snap,'__ts',{value:Date.now()-ttl+expiresIn,enumerable:false});
       window.__v2PBWRSnapshot = snap;
       return snap;
-    })().finally(() => { window.__v2PBWRSnapshotPromise = null; });
+    })().catch(error => {
+      window.__v2PBWRRetryAfter = Date.now() + 30000;
+      console.warn('[SQ] round records unavailable:', error?.message || 'request failed');
+      return window.__v2PBWRSnapshot || null;
+    }).finally(() => { window.__v2PBWRSnapshotPromise = null; });
 
     return window.__v2PBWRSnapshotPromise;
   }catch(e){
@@ -12924,6 +12981,32 @@ function __sqSyncV2WallMotion(panel, tableRound){
   current.animation = animation;
   animation.onfinish = ()=>{if(panel.__sqV2Wall?.animation === animation) panel.__sqV2Wall.animation=null;};
 }
+function __sqLiveRoundView(cr,turn){
+  const clampRound = v => Math.max(0, Math.min(MAX_ROUNDS - 1, Number(v) || 0));
+  const cu = state && state.__sqCatchUp;
+  let tableRound = clampRound(cr);
+  let scoringRound = clampRound(cr);
+  let preview = false;
+
+  if(cu && cu.active){
+    if(Number.isFinite(Number(cu.resumeRound))) tableRound = clampRound(cu.resumeRound);
+  }else if(cu && Array.isArray(cu.jobs) && Number(state.currentDart || 0) === 0){
+    for(let j=cu.jobs.length-1; j>=0; j--){
+      const job = cu.jobs[j];
+      if(!job || job.kind !== 'absence' || job.completed || job.returned === true || Number(job.playerIndex) !== Number(turn)) continue;
+      const pending = Array.isArray(job.pendingRounds) ? job.pendingRounds.map(Number).filter(Number.isFinite).sort((a,b)=>a-b) : [];
+      if(!pending.length) break;
+      // v11 §§9.8–9.11 permanently close earlier catch-up at scheduled Bull;
+      // only the Bull target may be shown from this visit onward.
+      if(tableRound === MAX_ROUNDS - 1 && pending.some(r=>r < MAX_ROUNDS - 1)) break;
+      scoringRound = clampRound(pending[0]);
+      preview = scoringRound !== tableRound;
+      break;
+    }
+  }
+
+  return { tableRound, scoringRound, active:!!(cu && cu.active), preview };
+}
 function liveV2Render(){
   // Only runs on gameplay screen; prevents start/menu JS from crashing
   const page = document.body && (document.body.getAttribute('data-page') || document.body.dataset && document.body.dataset.page);
@@ -12996,32 +13079,7 @@ function liveV2Render(){
   // to the missed scoring round, but the table/viewport stays on the scheduled
   // live round. The orange active edge follows the catch-up target independently.
   const cr = state.currentRound ?? 0;
-  const __sqCatchUpView = (()=>{
-    const clampRound = v => Math.max(0, Math.min(MAX_ROUNDS - 1, Number(v) || 0));
-    const cu = state && state.__sqCatchUp;
-    let tableRound = clampRound(cr);
-    let scoringRound = clampRound(cr);
-    let preview = false;
-
-    if(cu && cu.active){
-      if(Number.isFinite(Number(cu.resumeRound))) tableRound = clampRound(cu.resumeRound);
-    }else if(cu && Array.isArray(cu.jobs) && Number(state.currentDart || 0) === 0){
-      for(let j=cu.jobs.length-1; j>=0; j--){
-        const job = cu.jobs[j];
-        if(!job || job.kind !== 'absence' || job.completed || job.returned === true || Number(job.playerIndex) !== Number(turn)) continue;
-        const pending = Array.isArray(job.pendingRounds) ? job.pendingRounds.map(Number).filter(Number.isFinite).sort((a,b)=>a-b) : [];
-        if(!pending.length) break;
-        // v11 §§9.8–9.11 permanently close earlier catch-up at scheduled Bull;
-        // only the Bull target may be shown from this visit onward.
-        if(tableRound === MAX_ROUNDS - 1 && pending.some(r=>r < MAX_ROUNDS - 1)) break;
-        scoringRound = clampRound(pending[0]);
-        preview = scoringRound !== tableRound;
-        break;
-      }
-    }
-
-    return { tableRound, scoringRound, active:!!(cu && cu.active), preview };
-  })();
+  const __sqCatchUpView = __sqLiveRoundView(cr,turn);
   const tableCr = __sqCatchUpView.tableRound;
   const activeCr = __sqCatchUpView.scoringRound;
 
@@ -14365,7 +14423,10 @@ window.__sqQuickEntry = {
 // <<< SXP-04 GATE 3 / SC-049 QUICK ENTRY PROTOTYPE END
 
 // @CANONICAL:THROWPAD_BASE_RENDER
+let unsubscribeMissLabel;
 function buildPad(){ 
+  unsubscribeMissLabel?.();
+  unsubscribeMissLabel = null;
   if (!pad) return; 
   pad.innerHTML = ''; 
 
@@ -14504,7 +14565,7 @@ function buildPad(){
   }
 
   if (!state.finished) {
-    const r = ROUNDS[state.currentRound];
+    const r = ROUNDS[__sqLiveRoundView(state.currentRound,state.currentPlayer).scoringRound];
     if (!r) return;
 
     // @CANONICAL:THROWPAD HELPERS (shared across number / doubles / triples / bull)
@@ -14521,6 +14582,7 @@ function buildPad(){
     function __sqSetMissXLabel(btn){
       try{
         const n = __sqMissCountForCurrentThrow();
+        if (btn.dataset.missN === String(n) && btn.textContent === `MISS\nx${n}`) return;
         btn.textContent = `MISS\nx${n}`;
         btn.dataset.missN = String(n);
       }catch(_){}
@@ -14649,6 +14711,7 @@ function buildPad(){
       function __sqSetMissXLabel(btn){
         try{
           const n = __sqMissCountForCurrentThrow();
+          if (btn.dataset.missN === String(n) && btn.textContent === `MISS\nx${n}`) return;
           btn.textContent = `MISS\nx${n}`;
           btn.dataset.missN = String(n);
         }catch(_){}
@@ -14889,7 +14952,7 @@ function buildPad(){
       pad.appendChild(dtWrap);
 
       // Keep x3 label in sync as darts progress
-      try { window.__sqUIMutationBus?.on(()=>__sqSetMissXLabel(x3)); } catch(_) {}
+      try { unsubscribeMissLabel = window.__sqUIMutationBus?.on(()=>__sqSetMissXLabel(x3)); } catch(_) {}
       return;
     }
 
@@ -14973,7 +15036,7 @@ function buildPad(){
       bWrap.appendChild(right);
       pad.appendChild(bWrap);
 
-      try { window.__sqUIMutationBus?.on(()=>__sqSetMissXLabel(x3)); } catch(_) {}
+      try { unsubscribeMissLabel = window.__sqUIMutationBus?.on(()=>__sqSetMissXLabel(x3)); } catch(_) {}
       return;
     }
   }
@@ -14984,11 +15047,20 @@ function buildPad(){
   finishBtn.style.minWidth = '220px';
   const __sqVsShadowRetrySave = !!(typeof __sqIsVsShadowRuntime === 'function' && __sqIsVsShadowRuntime() && state.shadow && state.shadow.saveFailed === true);
   finishBtn.textContent = __sqVsShadowRetrySave ? 'Retry Save → Leaderboard' : 'Finish Game → Leaderboard';
+  finishBtn.dataset.finishGame = 'true';
+  if (unresolvedDrawPlayers().length) finishBtn.textContent = 'Resume Decider';
   finishBtn.onclick = async () => {
-    state.finished = false;
     await awardAndShowLeaderboard();
   };
   pad.appendChild(finishBtn);
+  if (state.history?.length && !state.gameAwarded && !state.__sqCompletionSnapshot && !state.__sqAcceptedGameReceipt) {
+    const correct = document.createElement('button');
+    correct.type = 'button';
+    correct.className = 'btn';
+    correct.textContent = 'Undo final dart';
+    correct.onclick = __sqRunUndoActionWithDmd;
+    pad.appendChild(correct);
+  }
 }
 
 /*****************
@@ -17187,6 +17259,7 @@ window.__sqLiveV3Sync = function(){
 };
 
 function updateUI() {
+  window.__sqTvModeSync?.();
   try {
   try{ if (typeof __sqSyncTurboVisualState === 'function') __sqSyncTurboVisualState(document.body?.dataset?.page || ''); }catch(_){}
   if (!tbody) return;
@@ -19197,6 +19270,8 @@ function undo(){
   state.currentRound  = round;
   state.currentDart   = dartIndex;
   state.finished      = false;
+  state._decider = null;
+  delete state.__sqGameCompleteOpen;
 
   entry.darts[dartIndex] = null;
   entry.roundTotal =
@@ -19395,6 +19470,7 @@ async function recordGameToHighScores() {
 async function awardAndShowLeaderboard(){
   if(state.gameAwarded){showLeaderboard();return;}
   if(state.__sqAwardInFlight)return;
+  if(unresolvedDrawPlayers().length){openGameCompleteDialog();return;}
   const isVsShadow=typeof __sqIsVsShadowRuntime==='function'&&__sqIsVsShadowRuntime();
   if(typeof __sqVsShadowCompletionBlocked==='function'&&__sqVsShadowCompletionBlocked()){
     state.finished=false;state.gameAwarded=false;
@@ -19869,7 +19945,7 @@ function ensureGameBuilt(){
 
 // GLOBAL — record pace (#1 official game score) from Supabase games truth
 // >>> PATCH:FIX22_RACE_HS_GAMES_TRUTH START
-async function buildRecordPaceSeries(roundsCount) {
+async function buildRecordPaceSeries(roundsCount, officialBoardOnly = false) {
   try {
     const rc = Math.max(1, Number(roundsCount) || 14);
 
@@ -19947,17 +20023,21 @@ async function buildRecordPaceSeries(roundsCount) {
     }
 
     let best = null;
+    let officialHigh = 0;
     for (const g of (Array.isArray(games) ? games : [])){
       try{
         if (typeof isOfficialGame === 'function' && !isOfficialGame(g)) continue;
+        if (officialBoardOnly && g.archived_at) continue;
         const ps = gamePlayers(g);
         if (!ps.length) continue;
         for (let pIdx = 0; pIdx < ps.length; pIdx++){
           const total = totalFor(g, pIdx);
           if (!Number.isFinite(total) || total <= 0) continue;
+          if (officialBoardOnly) officialHigh = Math.max(officialHigh,total);
           const name = safeName(ps[pIdx]?.name || ps[pIdx]?.fullName || ps[pIdx]?.displayName || ps[pIdx]?.nick || ('P' + (pIdx + 1)));
           const data = cumulativeFor(g, pIdx);
           if (!data.some(v => Number(v) > 0)) continue;
+          if (officialBoardOnly && data.at(-1) !== total) continue;
           const candidate = { game:g, playerIndex:pIdx, name, total, data, ts:gameTime(g) };
           if (!best || candidate.total > best.total || (candidate.total === best.total && candidate.ts > best.ts)){
             best = candidate;
@@ -19966,7 +20046,7 @@ async function buildRecordPaceSeries(roundsCount) {
       }catch(_){ }
     }
 
-    if (best){
+    if (best && (!officialBoardOnly || best.total === officialHigh)){
       return {
         name: `Record: ${best.name} (${best.total})`,
         color: '#ffffff',
@@ -19974,6 +20054,8 @@ async function buildRecordPaceSeries(roundsCount) {
         dotted: true
       };
     }
+
+    if (officialBoardOnly) return null;
 
     // Last-resort fallback: old HS table path, only used when games cannot provide board history.
     const list = await cloudListHighScoresWithBackfill(false, 1);
@@ -23369,7 +23451,7 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
-  const RUNNING_VERSION = '0.16.2';
+  const RUNNING_VERSION = '0.17.2';
   const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
   let updateCheckPromise = null;
@@ -23479,13 +23561,13 @@ window.closeModal = window.closeModal || function(id){
   window.__sqApplyReleaseVersionLabel = function(button){
     if (!button) return;
     button.textContent = 'v' + RUNNING_VERSION;
-    button.setAttribute('aria-label', 'Open release notes for Shateki Quest running version ' + RUNNING_VERSION);
+    button.setAttribute('aria-label', 'Open release notes for Shateki Quest v' + RUNNING_VERSION);
     button.title = 'Release Notes';
     loadReleaseMetadata(false).then(function(meta){
       const updateAvailable = compareVersions(meta.currentVersion, RUNNING_VERSION) > 0;
       if (updateAvailable){
         button.title = 'Update available: v' + meta.currentVersion;
-        button.setAttribute('aria-label', 'Open release notes. Running version ' + RUNNING_VERSION + '; update available ' + meta.currentVersion);
+        button.setAttribute('aria-label', 'Open release notes. Running v' + RUNNING_VERSION + '; update available ' + meta.currentVersion);
       }
     }).catch(function(){
       button.title = 'Release notes unavailable';

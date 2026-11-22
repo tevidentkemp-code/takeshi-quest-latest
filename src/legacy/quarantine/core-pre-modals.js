@@ -96,7 +96,7 @@ window.closeModal = window.closeModal || function(id){
 // >>> PATCH:SC050_RELEASE_NOTES START
 (function(){
   const META_URL = './assets/release-metadata.json';
-  const RUNNING_VERSION = '0.16.2';
+  const RUNNING_VERSION = '0.17.2';
   const UPDATE_CHECK_MS = 5 * 60 * 1000;
   let releaseMetaPromise = null;
   let updateCheckPromise = null;
@@ -206,13 +206,13 @@ window.closeModal = window.closeModal || function(id){
   window.__sqApplyReleaseVersionLabel = function(button){
     if (!button) return;
     button.textContent = 'v' + RUNNING_VERSION;
-    button.setAttribute('aria-label', 'Open release notes for Shateki Quest running version ' + RUNNING_VERSION);
+    button.setAttribute('aria-label', 'Open release notes for Shateki Quest v' + RUNNING_VERSION);
     button.title = 'Release Notes';
     loadReleaseMetadata(false).then(function(meta){
       const updateAvailable = compareVersions(meta.currentVersion, RUNNING_VERSION) > 0;
       if (updateAvailable){
         button.title = 'Update available: v' + meta.currentVersion;
-        button.setAttribute('aria-label', 'Open release notes. Running version ' + RUNNING_VERSION + '; update available ' + meta.currentVersion);
+        button.setAttribute('aria-label', 'Open release notes. Running v' + RUNNING_VERSION + '; update available ' + meta.currentVersion);
       }
     }).catch(function(){
       button.title = 'Release notes unavailable';

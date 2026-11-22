@@ -5,14 +5,15 @@ const path = require('path');
 const H = require('./harness');
 // Complete groups keep hosted WebKit within the existing 180s command budget.
 const qaPart = process.env.SQ_SC070_PART || 'all';
-const expectedCases = {all:62,layout:26,numerical:36,identity:12,records:14,'numeric-doubles':12,'numeric-triples':12,'numeric-bull':12,
+const expectedCases = {all:62,layout:26,numerical:36,identity:12,'identity-match':6,'identity-turbo':6,records:14,'numeric-doubles':12,'numeric-triples':12,'numeric-bull':12,
   'numeric-doubles-standard':6,'numeric-doubles-special':6,'numeric-triples-standard':6,'numeric-triples-special':6,'numeric-bull-standard':6,'numeric-bull-special':6};
+const identityModes=['match','turbo'].filter(mode=>!qaPart.startsWith('identity-')||qaPart==='identity-'+mode);
 const numericRoundParts = {11:'numeric-doubles',12:'numeric-triples',13:'numeric-bull'};
 const numericSelection=/^(numeric-(?:doubles|triples|bull))-(standard|special)$/.exec(qaPart);
 const numericRoundPart=numericSelection?numericSelection[1]:qaPart;
 const numericalModes=['match','turbo','practice','tournament'].filter(mode=>!numericSelection||(numericSelection[2]==='standard'?['match','practice']:['turbo','tournament']).includes(mode));
 assert(Object.hasOwn(expectedCases,qaPart),'Invalid SQ_SC070_PART: '+qaPart);
-const inPart = part => qaPart==='all'||qaPart===part||(qaPart==='layout'&&['identity','records'].includes(part))||(part==='numerical'&&qaPart.startsWith('numeric-'));
+const inPart = part => qaPart==='all'||qaPart===part||(qaPart==='layout'&&['identity','records'].includes(part))||(part==='identity'&&qaPart.startsWith('identity-'))||(part==='numerical'&&qaPart.startsWith('numeric-'));
 const qaStarted = Date.now();
 const widths = [320,390,430];
 const shots = process.env.SQ_SCREENSHOTS;
@@ -36,8 +37,47 @@ async function seed(page,count=5,mode='match'){
     return expectedToken;
   },{count,mode});
   if(count>1)await page.click('.to-start');
-  try{await page.waitForFunction(expectedToken=>!window.__sqThrowOrderRevealPending&&!document.querySelector('.sq-throw-order-reveal')&&Number(state.__gameToken||0)===expectedToken&&document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&state.__sqGameControl&&window.SQ_GAMEPLAY.hasCachedController(state)&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',expectedToken);}
-  catch(error){console.error('SC070 fixture deadline '+JSON.stringify(await page.evaluate(()=>({page:document.body.dataset.page,round:state.currentRound,history:state.history.length,overlay:document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden'),visible:document.visibilityState,tableRows:document.querySelectorAll('#tbody tr').length}))));throw error;}
+  // Observe state without layout reads or changing the readiness predicate.
+  await page.evaluate(expectedToken=>{
+    window.__sc070SeedTiming?.stop();
+    const trace={expectedToken,started:performance.now(),samples:[],raf:[]},rafIds=new Set();
+    const read=fn=>{try{return !!fn();}catch(error){return {error:String(error)};}};
+    const sample=phase=>{
+      const predicates={revealSettled:!window.__sqThrowOrderRevealPending,revealAbsent:!document.querySelector('.sq-throw-order-reveal'),
+        tokenEqual:Number(state.__gameToken||0)===expectedToken,pageGame:document.body.dataset.page==='game',
+        securityReady:!state.__sqSecurityPreparing,inputReady:!window.__sqSecurityInputBlocked,controlPresent:!!state.__sqGameControl,
+        cachedController:read(()=>window.SQ_GAMEPLAY.hasCachedController(state)),canThrow:read(()=>window.SQ_GAMEPLAY.canThrow()),
+        loaderHidden:document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true'};
+      trace.samples.push({phase,at:performance.now(),actualToken:Number(state.__gameToken||0),predicates,ready:Object.values(predicates).every(value=>value===true)});
+    };
+    const markRaf=phase=>{
+      const marker={phase,requested:performance.now(),called:null,frameTime:null};trace.raf.push(marker);
+      const id=requestAnimationFrame(frameTime=>{rafIds.delete(id);marker.called=performance.now();marker.frameTime=frameTime;});rafIds.add(id);
+    };
+    const timer=setTimeout(()=>{sample('4s');markRaf('4s');},4000);
+    window.__sc070SeedTiming={stop(){clearTimeout(timer);rafIds.forEach(id=>cancelAnimationFrame(id));rafIds.clear();trace.stopped=performance.now();return trace;}};
+    sample('before-wait');markRaf('before-wait');
+  },expectedToken);
+  const stopTiming=async failed=>{
+    let captureTimer;
+    try{
+      const receipt=await Promise.race([
+        page.evaluate(({expectedToken,failed})=>{
+          const timing=window.__sc070SeedTiming?.stop();delete window.__sc070SeedTiming;
+          return failed?{page:document.body.dataset.page,round:state.currentRound,history:state.history.length,overlay:document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden'),visible:document.visibilityState,tableRows:document.querySelectorAll('#tbody tr').length,
+            expectedToken,actualToken:Number(state.__gameToken||0),tokenEqual:Number(state.__gameToken||0)===expectedToken,timing}:null;
+        },{expectedToken,failed}),
+        new Promise((_,reject)=>{captureTimer=setTimeout(()=>reject(new Error('SC070 seed timing cleanup exceeded 2000ms')),2000);})
+      ]);
+      if(failed)console.error('SC070 fixture deadline '+JSON.stringify(receipt));
+    }catch(captureError){console.error('SC070 seed timing unavailable '+String(captureError));}
+    finally{clearTimeout(captureTimer);}
+  };
+  // Logical readiness can precede WebKit's next frame. Poll the same state on
+  // a timer; the 8s deadline and native motion/frame checks remain unchanged.
+  try{await page.waitForFunction(expectedToken=>!window.__sqThrowOrderRevealPending&&!document.querySelector('.sq-throw-order-reveal')&&Number(state.__gameToken||0)===expectedToken&&document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&state.__sqGameControl&&window.SQ_GAMEPLAY.hasCachedController(state)&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',expectedToken,{polling:100});}
+  catch(error){await stopTiming(true);throw error;}
+  await stopTiming(false);
   if(mode==='turbo'){
     await page.waitForFunction(()=>document.body.dataset.page==='game');assert.equal(await page.evaluate(()=>state.currentRound),7);
     await page.click('.sq-turbo-ready-start');await page.waitForFunction(()=>window.__sqTurboTimerStatus().active&&document.querySelector('.sqTurboTimerActive'));
@@ -134,7 +174,7 @@ async function read(page,key,numeric=false){
     await ctx.route('**.supabase.co/rest/v1/**',r=>{const method=r.request().method(),headers={'access-control-allow-origin':'*','access-control-expose-headers':'content-range','content-range':'*/0'};if(method==='GET')return r.fulfill({status:200,headers,contentType:'application/json',body:'[]'});if(method==='HEAD')return r.fulfill({status:200,headers,body:''});if(method==='OPTIONS')return r.fulfill({status:204,headers:{...headers,'access-control-allow-methods':'GET,HEAD,OPTIONS','access-control-allow-headers':r.request().headers()['access-control-request-headers']||'apikey,authorization,content-type,x-client-info'},body:''});return r.abort('failed');});
     await H.boot(page,{settle:800});
     if(inPart('identity')){
-    for(const mode of ['match','turbo'])for(const width of widths)for(const long of [false,true]){
+    for(const mode of identityModes)for(const width of widths)for(const long of [false,true]){
       await page.setViewportSize({width,height:844});await seed(page,5,mode);await advance(page,mode==='turbo'?9:8);await identity(page,long,true,mode==='match'&&long);
       await page.evaluate(()=>{for(const kind of ['S','D','T','Miss','S','D','T','Miss','S','T','D','Miss','S'])recordThrow({kind,number:ROUNDS[state.currentRound].target});});await settled(page,mode==='turbo'?9:8);
       const r=await read(page,mode+'-'+width+'-'+(long?'long':'ordinary'));if(mode==='match')assert.equal(r.headers[0].truth,1080,'Actual canonical1080 fixture changed');
@@ -167,5 +207,48 @@ async function read(page,key,numeric=false){
     }
     assert.equal(cases,expectedCases[qaPart],'Complete focused group coverage changed');
     assert.deepEqual(consoleErrs.filter(e=>e.startsWith('pageerror:')),[],'Unexpected page errors');console.log('SC070 five-player fit PASS '+cases+' cases ('+qaPart+', '+(Date.now()-qaStarted)+'ms); production writes blocked');
+  }catch(error){
+    const evidence={browser:process.env.SQ_BROWSER||'chromium',part:qaPart,elapsed:Date.now()-qaStarted,cases,error:String(error),console:consoleErrs};
+    let captureTimer;
+    try{
+      evidence.diagnostic=await Promise.race([
+        page.evaluate(()=>{
+          const ref=el=>el?{tag:el.tagName,id:el.id,class:el.className}:null;
+          const describe=el=>{
+            if(!el)return null;
+            const style=getComputedStyle(el),rect=el.getBoundingClientRect();
+            const hit=document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2);
+            return {...ref(el),connected:el.isConnected,hidden:el.hidden,disabled:el.disabled,inert:el.inert,
+              ariaHidden:el.getAttribute('aria-hidden'),ariaDisabled:el.getAttribute('aria-disabled'),inertAncestor:ref(el.closest('[inert]')),
+              rect:rect.toJSON(),scroll:{top:el.scrollTop,left:el.scrollLeft,width:el.scrollWidth,height:el.scrollHeight,clientWidth:el.clientWidth,clientHeight:el.clientHeight},
+              style:{display:style.display,visibility:style.visibility,opacity:style.opacity,pointerEvents:style.pointerEvents,overflow:style.overflow,transform:style.transform,animation:style.animationName,animationPlayState:style.animationPlayState},
+              hitAtCentre:{element:ref(hit),within:!!hit&&el.contains(hit)}};
+          };
+          const read=fn=>{try{return fn();}catch(readError){return {error:String(readError)};}};
+          const buttons=[...document.querySelectorAll('.to-start')];
+          return {at:performance.now(),page:document.body.dataset.page,ready:document.readyState,visibility:document.visibilityState,hidden:document.hidden,
+            viewport:{width:innerWidth,height:innerHeight,scrollX,scrollY},body:describe(document.body),focus:describe(document.activeElement),
+            loader:describe(document.getElementById('gameLoadOverlay')),revealPending:!!window.__sqThrowOrderRevealPending,reveal:describe(document.querySelector('.sq-throw-order-reveal')),
+            buttons:buttons.map(button=>{const ancestors=[];for(let el=button.parentElement;el&&ancestors.length<5;el=el.parentElement)ancestors.push(describe(el));return {button:describe(button),ancestors};}),
+            overlays:[...document.querySelectorAll('.modal-backdrop')].map(describe).filter(el=>el.rect.width&&el.rect.height&&el.style.display!=='none').slice(0,12),
+            animations:document.getAnimations().slice(-20).map(a=>({name:a.animationName||null,state:a.playState,pending:a.pending,start:a.startTime,time:a.currentTime,target:ref(a.effect?.target)})),
+            game:typeof state==='undefined'||!state?null:{token:state.__gameToken,round:state.currentRound,player:state.currentPlayer,dart:state.currentDart,playerCount:state.players?.length,historyLength:state.history?.length,finished:state.finished,
+              mode:state.match?.mode,variant:state.match?.gameVariant,preparing:!!state.__sqSecurityPreparing,blocked:!!window.__sqSecurityInputBlocked,controlPresent:!!state.__sqGameControl,
+              cachedController:read(()=>window.SQ_GAMEPLAY?.hasCachedController(state)),canThrow:read(()=>window.SQ_GAMEPLAY?.canThrow())}};
+        }),
+        new Promise((_,reject)=>{captureTimer=setTimeout(()=>reject(new Error('SC070 diagnostic capture exceeded 2000ms')),2000);})
+      ]);
+    }catch(captureError){evidence.captureError=String(captureError);}
+    finally{clearTimeout(captureTimer);}
+    try{
+      const out=shots||path.join(__dirname,'../../qa-artifacts/five-player-fit');
+      fs.mkdirSync(out,{recursive:true});
+      const receipt=path.join(out,'sc070-failure.json');
+      fs.writeFileSync(receipt,JSON.stringify(evidence,null,2));
+      try{await page.screenshot({path:path.join(out,'sc070-failure.png'),timeout:2000});}
+      catch(screenshotError){evidence.screenshotError=String(screenshotError);fs.writeFileSync(receipt,JSON.stringify(evidence,null,2));}
+    }catch(artifactError){evidence.artifactError=String(artifactError);}
+    console.error('SC070 failure diagnostic '+JSON.stringify(evidence));
+    throw error;
   }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

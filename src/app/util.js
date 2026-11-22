@@ -3380,7 +3380,12 @@ function __sqIsRecoverableGameStateForLocalCache(o){
     if(!players.length) return false;
     // An unfinished Shadow board is recoverable presentation data too. The
     // secure runtime separately verifies or issues authority before any save.
-    if(o.gameAwarded === true || o.finished === true || o.__sqCompleted === true || o.__sqGameCompleteOpen === true) return false;
+    if(o.gameAwarded || o.__sqCompleted || o.match?.completedLogged) return false;
+    if(o.finished || o.__sqGameCompleteOpen) {
+      // Keep the reserved board through receipt recovery and local match award.
+      // Historical completed boards without a server reservation stay retired.
+      return !!o.__sqGameControl?.game_id && o.__sqGameControl.match_id === o.match?.id;
+    }
     return true;
   }catch(_){ return false; }
 }

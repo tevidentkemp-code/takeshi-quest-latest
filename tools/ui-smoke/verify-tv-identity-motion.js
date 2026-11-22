@@ -1,0 +1,604 @@
+// Actual scorer -> embedded TV -> spectator, with isolated offline transport.
+// Observe native CSS motion/canvas output; never replace the scorer or animator.
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const H=require('./harness');
+// WebKit's native stability check and scroll took 8.88s in CI before input.
+// Allow 15s for native clicks only; readiness and full-flow deadlines stay fixed.
+const nativeClickOptions=process.env.SQ_BROWSER==='webkit'?{timeout:15000}:undefined;
+const app=new URL(H.APP_URL);
+assert(['localhost','127.0.0.1','[::1]'].includes(app.hostname),'Use a local source/dist server');
+const people=[
+  {name:'Archi Skinner',first_name:'Archi',last_name:'Skinner',nickname:'The Nasher'},
+  {name:'Élodie O’Neill',first_name:'Élodie',last_name:'O’Neill',nickname:'Double "20"'},
+  {name:'Jean-Luc García',first_name:'Jean-Luc',last_name:'García',nickname:'Dart 007'},
+  {name:'Alexandria Worthington',first_name:'Alexandria',last_name:'Worthington',nickname:'The "Long Shot" 9'},
+  {name:'Alex 2',first_name:'Alex',last_name:'2',nickname:''},
+].map((p,i)=>({...p,id:String(i+1).repeat(8)+'-'+String(i+1).repeat(4)+'-4'+String(i+1).repeat(3)+'-8'+String(i+1).repeat(3)+'-'+String(i+1).repeat(12),initials:'P'+(i+1)}));
+const identities=[
+  {name:'Archi Skinner',shortName:'Archi S',nickname:'The Nasher'},
+  {name:'Élodie O’Neill',shortName:'Élodie O',nickname:'Double "20"'},
+  {name:'Jean-Luc García',shortName:'Jean-Luc G',nickname:'Dart 007'},
+  {name:'Alexandria Worthington',shortName:'Alexandria W',nickname:'The "Long Shot" 9'},
+  {name:'Alex 2',shortName:'Alex 2',nickname:''},
+];
+const current='.name-slot > .thrower-identity:not(.departing-name)';
+const out=process.env.SQ_SCREENSHOTS||path.join(__dirname,'../../qa-artifacts/tv-identity');
+const receipt={browser:process.env.SQ_BROWSER||'chromium',url:H.APP_URL,initialization:[],outerGeometry:[],geometry:[],motion:[],race:[],turns:[],paint:[],lifecycle:[]};
+fs.mkdirSync(out,{recursive:true});
+
+async function observeDisplay(display){
+  await display.evaluate(()=>{
+    const q=window.__tvIdentityQa;
+    if(!q)throw new Error('Native TV recorder missing in '+location.href);
+    if(!q.initialization.beforeTvScript)throw new Error('Native TV recorder was installed after TV runtime initialization');
+    if(q.installed)return;
+    q.installed=true;q.captures={};q.targets=new WeakMap();
+    q.recentFrames=[];q.nativeEvents=[];q.visibilityEvents=[];
+    const push=(list,value)=>{list.push(value);if(list.length>60)list.shift();};
+    const seenNativeEvents=new WeakSet();
+    const traceNative=event=>{
+      if(!['name-arrive','name-depart'].includes(event.animationName)||seenNativeEvents.has(event))return;
+      seenNativeEvents.add(event);
+      push(q.nativeEvents,{at:performance.now(),type:event.type,animation:event.animationName,elapsed:event.elapsedTime,
+        capture:q.targets.get(event.target)?.label,connected:event.target.isConnected,
+        target:event.target.className,text:event.target.textContent,hidden:document.hidden});
+    };
+    for(const type of ['animationstart','animationend','animationcancel'])document.addEventListener(type,traceNative,true);
+    const traceVisibility=event=>push(q.visibilityEvents,{at:performance.now(),type:event.type,persisted:event.persisted,
+      hidden:document.hidden,visibility:document.visibilityState,motion:document.querySelector('#screen')?.dataset.motion});
+    document.addEventListener('visibilitychange',traceVisibility);
+    window.addEventListener('pagehide',traceVisibility);window.addEventListener('pageshow',traceVisibility);
+    const describe=element=>{
+      const style=getComputedStyle(element);
+      const slot=element.closest('.name-slot').getBoundingClientRect();
+      const title=element.querySelector('h2'),nickname=element.querySelector('.nickname');
+      const content=[title.querySelector('canvas')||title,...(nickname?[nickname]:[])].map(el=>el.getBoundingClientRect());
+      return {name:element.querySelector('h2')?.textContent,nickname:element.querySelector('.nickname')?.textContent||'',
+        generic:element.classList.contains('thrower-identity'),x:new DOMMatrixReadOnly(style.transform).m41,
+        width:element.getBoundingClientRect().width,opacity:Number(style.opacity),
+        verticalFits:content.every(r=>r.y>=slot.y-1&&r.bottom<=slot.bottom+1)};
+    };
+    document.addEventListener('animationend',event=>{
+      const owner=q.targets.get(event.target);
+      if(owner&&['name-arrive','name-depart'].includes(event.animationName)){
+        owner.ends.push({animation:event.animationName,...describe(event.target)});
+      }
+    },true);
+    const original=window.showTvFrame;
+    document.addEventListener('animationstart',event=>{
+      const capture=q.targets.get(event.target);
+      if(event.animationName!=='name-arrive'||capture?.label!=='visit finished'||capture.refresh)return;
+      // Exercise two incoming display-only record/timer frames during a real
+      // native handover. Do not seek, pause, finish or replace its animations.
+      capture.refresh={started:true};
+      const saved=state,slot=document.querySelector('.name-slot'),incoming=slot.querySelector('.arriving-name');
+      const phases=()=>slot.getAnimations({subtree:true}).filter(a=>['name-arrive','name-depart'].includes(a.animationName)).map(a=>({name:a.animationName,start:a.startTime,time:a.currentTime}));
+      const before=phases(),records={...saved.records,world:[...saved.records.world]};records.world[0]=90;
+      original.call(window,{...saved,records,returnSeconds:19});
+      original.call(window,{...saved,records,returnSeconds:18});
+      original.call(window,saved);
+      capture.refresh={sameSlot:document.querySelector('.name-slot')===slot,sameIncoming:slot.querySelector('.arriving-name')===incoming,before,after:phases()};
+    },true);
+    window.showTvFrame=function(next){
+      const brief=frame=>frame?{thrower:frame.thrower,round:frame.round,historyLength:frame.historyLength,paused:frame.paused??null,
+        last:frame.last?{player:frame.last.player,round:frame.last.round,hit:frame.last.hit}:null}:null;
+      const trace={at:performance.now(),before:brief(state),next:brief(next),hidden:document.hidden,visibility:document.visibilityState,
+        motion:typeof motion==='undefined'?null:motion,interrupted:typeof presentationInterrupted==='undefined'?null:presentationInterrupted};
+      push(q.recentFrames,trace);
+      const result=Reflect.apply(original,this,arguments);
+      trace.after={motion:document.querySelector('#screen')?.dataset.motion,handover:document.querySelector('.tv')?.dataset.handover,
+        names:[...document.querySelectorAll('.name-slot .thrower-identity')].map(el=>({text:el.textContent,class:el.className})),
+        animations:document.querySelector('.name-slot')?.getAnimations({subtree:true}).filter(a=>['name-arrive','name-depart'].includes(a.animationName)).map(a=>({name:a.animationName,state:a.playState,start:a.startTime,time:a.currentTime}))};
+      if(q.arm&&next.identities?.[next.thrower]?.name===q.arm.to){
+        const slot=document.querySelector('.name-slot');
+        const incoming=slot?.querySelector('.thrower-identity:not(.departing-name)');
+        const outgoing=slot?.querySelector('.departing-name');
+        const capture={label:q.arm.label,incoming:incoming&&describe(incoming),outgoing:outgoing&&describe(outgoing),
+          native:slot?.getAnimations({subtree:true}).filter(a=>['name-arrive','name-depart'].includes(a.animationName)).map(a=>({
+            name:a.animationName,generic:a.effect.target.classList.contains('thrower-identity'),
+            duration:a.effect.getTiming().duration,delay:a.effect.getTiming().delay,playState:a.playState
+          }))||[],ends:[]};
+        q.captures[q.arm.label]=capture;
+        for(const element of [incoming,outgoing].filter(Boolean)){
+          q.targets.set(element,capture);
+          // Cancellation may be delivered after a target leaves the document.
+          element.addEventListener('animationcancel',traceNative);
+        }
+        q.arm=null;
+      }
+      return result;
+    };
+  });
+}
+async function identity(display,index){
+  await display.waitForFunction(expected=>document.querySelector('.name-slot > .thrower-identity:not(.departing-name) h2')?.textContent===expected,identities[index].name,{polling:100});
+  const actual=await display.evaluate(()=>{
+    const node=document.querySelector('.name-slot > .thrower-identity:not(.departing-name)');
+    return {identities:state.identities,name:node.querySelector('h2').textContent,nickname:node.querySelector('.nickname')?.textContent||'',
+      nicknames:node.querySelectorAll('.nickname').length,sub:document.querySelector('.centre-head .sub')?.textContent,
+      round:[...document.querySelectorAll('.round-table .name')].map(el=>el.textContent),
+      standings:[...document.querySelectorAll('.standings tr[data-player]')].sort((a,b)=>Number(a.dataset.player)-Number(b.dataset.player)).map(el=>el.querySelector('.name').textContent)};
+  });
+  assert.deepEqual(actual.identities,identities,'Display identity contract');
+  assert.equal(actual.name,identities[index].name);
+  assert.equal(actual.nickname,identities[index].nickname);
+  assert.equal(actual.nicknames,identities[index].nickname?1:0,'No invented or duplicated nickname');
+  assert.equal(actual.sub.toUpperCase(),'TO THROW');
+  assert.deepEqual(actual.round,identities.map(p=>p.shortName),'Compact round-table identities');
+  assert.deepEqual(actual.standings,identities.map(p=>p.shortName),'Compact standings identities');
+  return actual;
+}
+async function settled(display){
+  await display.waitForFunction(()=>!document.querySelector('.departing-name')&&
+    !document.querySelector('.name-slot')?.getAnimations({subtree:true}).some(a=>['name-arrive','name-depart'].includes(a.animationName)&&a.playState==='running'),null,{polling:100});
+}
+async function turnHighlights(display,label,{round,active,taken}){
+  const result=await display.evaluate(()=>{
+    const read=selector=>[...document.querySelectorAll(selector)].map(row=>{
+      const css=getComputedStyle(row),rect=row.getBoundingClientRect();
+      const dart=getComputedStyle(row.querySelector('th'),'::before');
+      return {player:Number(row.dataset.player),highlight:row.classList.contains('turn-highlight'),active:row.classList.contains('active'),
+        leading:row.classList.contains('leading'),background:css.backgroundImage,shadow:css.boxShadow,
+        glows:[...row.children].map(cell=>getComputedStyle(cell,cell.tagName==='TH'?'::after':'::before').backgroundImage),
+        dart:dart.backgroundImage,dartPointerEvents:dart.pointerEvents,
+        cellsFit:[...row.children].every(cell=>{const box=cell.getBoundingClientRect();return box.x>=rect.x-1&&box.right<=rect.right+1&&box.y>=rect.y-1&&box.bottom<=rect.bottom+1;}),
+        decorativeElements:row.querySelectorAll('img,svg,button,a,[tabindex]').length};
+    });
+    return {round:state.round,thrower:state.thrower,taken:state.turnsTaken,visits:state.visits.map(visit=>visit.length),
+      roundRows:read('.round-table tbody tr'),standings:read('.standings tbody tr')};
+  });
+  receipt.turns.push({label,...result});
+  assert.equal(result.round,round,label+': displayed round');
+  assert.deepEqual(result.taken,identities.map((_,i)=>taken.includes(i)),label+': completed and skipped visits come from the scorer');
+  const highlighted=[...new Set([...taken,...(active===null?[]:[active])])].sort((a,b)=>a-b);
+  for(const [panel,rows] of [['round',result.roundRows],['leaderboard',result.standings]]){
+    assert.deepEqual(rows.map(row=>row.player).sort((a,b)=>a-b),identities.map((_,i)=>i),label+': '+panel+' retains every player identity');
+    assert.deepEqual(rows.filter(row=>row.highlight).map(row=>row.player).sort((a,b)=>a-b),highlighted,label+': '+panel+' retains only current-round turns');
+    assert.deepEqual(rows.filter(row=>row.active).map(row=>row.player),active===null?[]:[active],label+': '+panel+' has only the current player active');
+    assert.deepEqual(rows.filter(row=>row.glows.some(paint=>paint!=='none')).map(row=>row.player),active===null?[]:[active],label+': '+panel+' glow follows the active player only');
+    assert(rows.every(row=>row.glows.every(paint=>(paint!=='none')===row.active)),label+': '+panel+' active glow spans all cells without leaking to completed turns');
+    assert(rows.every(row=>row.cellsFit),label+': '+panel+' cells fit within their rows');
+    if(panel==='leaderboard')for(const row of rows)assert.equal(row.background!=='none',highlighted.includes(row.player),label+': ranking alone must not add a background');
+  }
+  assert(result.roundRows.every(row=>row.dart.includes('dart-outline.svg')&&row.dartPointerEvents==='none'&&row.decorativeElements===0),label+': dart outline is a non-interactive CSS background behind every round row');
+  return result;
+}
+async function dartWatermark(display){
+  const result=await display.evaluate(async()=>{
+    const css=getComputedStyle(document.querySelector('.round-table tbody th'),'::before');
+    const url=css.backgroundImage.match(/url\(["']?([^"')]+)["']?\)/)?.[1];
+    const image=new Image();image.src=url;await image.decode();
+    const canvas=document.createElement('canvas');canvas.width=360;canvas.height=44;
+    const context=canvas.getContext('2d');context.drawImage(image,0,0,360,44);
+    const pixels=context.getImageData(0,0,360,44).data;
+    let visible=0,alpha=0;for(let i=3;i<pixels.length;i+=4)if(pixels[i]){visible++;alpha+=pixels[i];}
+    return {url,visible,meanAlpha:visible?alpha/visible:0};
+  });
+  assert(result.visible>0&&result.meanAlpha>0&&result.meanAlpha<65,'The local dart outline loads and paints faint visible strokes');
+  receipt.turns.push({label:'dart watermark asset',...result});
+}
+async function renderedTurnPaint(host,display,label,baseline){
+  const embedded=host!==display;
+  const viewport=host.viewportSize();
+  const offset=embedded?await host.evaluate(()=>{
+    const iframe=document.querySelector('#sqTvModeOverlay iframe'),box=iframe.getBoundingClientRect();
+    return {x:box.x+iframe.clientLeft,y:box.y+iframe.clientTop,sx:box.width/iframe.offsetWidth,sy:box.height/iframe.offsetHeight};
+  }):{x:0,y:0,sx:1,sy:1};
+  const regions=await display.evaluate(()=>{
+    const box=element=>{const r=element.getBoundingClientRect();return {x:r.x+scrollX,y:r.y+scrollY,width:r.width,height:r.height};};
+    const edges=row=>{const r=box(row),height=Math.min(4,r.height*.12);return [{x:r.x+6,y:r.y+2,width:r.width-12,height},{x:r.x+6,y:r.y+r.height-height-2,width:r.width-12,height}];};
+    const round=document.querySelector('.round-table'),leaderboard=document.querySelector('.standings');
+    const inactive=round.querySelector('tbody tr:not(.turn-highlight)');
+    const rect=box(inactive),masks=[];
+    for(const element of document.querySelectorAll('.round-table tbody .name,.round-table tbody .hit-code,.round-table tbody .round-total,.standings tbody .name,.standings tbody .position,.standings tbody .total')){
+      const range=document.createRange();range.selectNodeContents(element);const r=range.getBoundingClientRect();
+      if(r.width&&r.height)masks.push({x:r.x+scrollX-2,y:r.y+scrollY-2,width:r.width+4,height:r.height+4});
+    }
+    for(const cell of inactive.querySelectorAll('.dart-score.pending')){const r=box(cell);masks.push({x:r.x+r.width/2-8,y:r.y+r.height/2-8,width:16,height:16});}
+    return {dart:[{x:rect.x+3,y:rect.y+3,width:rect.width-6,height:rect.height-6}],
+      roundGlow:edges(round.querySelector('tr.active')),leaderboardGlow:edges(leaderboard.querySelector('tr.active')),
+      control:[...edges(inactive),...edges(leaderboard.querySelector('tbody tr:not(.turn-highlight)'))],masks};
+  });
+  let noDart,noGlow;
+  try{
+    await display.evaluate(()=>{
+      const style=document.createElement('style');style.id='tv-paint-qa';
+      style.textContent='#screen.qa-hide-turn-dart .round-table tbody th::before{visibility:hidden!important}#screen.qa-hide-turn-glow :is(.round-table,.standings) tr.active>th::after,#screen.qa-hide-turn-glow :is(.round-table,.standings) tr.active>td::before{visibility:hidden!important}';
+      document.head.append(style);document.getElementById('screen').classList.add('qa-hide-turn-dart');
+    });
+    noDart=await host.screenshot({path:path.join(out,label+'-paint-without-dart.png'),fullPage:!embedded});
+    await display.evaluate(()=>{const screen=document.getElementById('screen');screen.classList.remove('qa-hide-turn-dart');screen.classList.add('qa-hide-turn-glow');});
+    noGlow=await host.screenshot({path:path.join(out,label+'-paint-without-glow.png'),fullPage:!embedded});
+  }finally{
+    await display.evaluate(()=>{document.getElementById('screen').classList.remove('qa-hide-turn-dart','qa-hide-turn-glow');document.getElementById('tv-paint-qa')?.remove();});
+  }
+  const result=await display.evaluate(async({normal,dart,glow,regions,offset,width})=>{
+    const read=async base64=>{const image=new Image();image.src='data:image/png;base64,'+base64;await image.decode();const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);return {width:canvas.width,height:canvas.height,data:ctx.getImageData(0,0,canvas.width,canvas.height).data};};
+    const [before,withoutDart,withoutGlow]=await Promise.all([normal,dart,glow].map(read));
+    if([withoutDart,withoutGlow].some(image=>image.width!==before.width||image.height!==before.height))throw new Error('Paint comparison changed screenshot dimensions');
+    const scale=before.width/width;
+    const mapped=r=>({x:(offset.x+r.x*offset.sx)*scale,y:(offset.y+r.y*offset.sy)*scale,width:r.width*offset.sx*scale,height:r.height*offset.sy*scale});
+    const masks=regions.masks.map(mapped),inside=(x,y,r)=>x>=r.x&&x<r.x+r.width&&y>=r.y&&y<r.y+r.height;
+    const compare=(rects,after)=>{
+      let pixels=0,changed=0;
+      for(const rect of rects.map(mapped))for(let y=Math.max(0,Math.ceil(rect.y));y<Math.min(before.height,Math.floor(rect.y+rect.height));y++)for(let x=Math.max(0,Math.ceil(rect.x));x<Math.min(before.width,Math.floor(rect.x+rect.width));x++){
+        if(masks.some(mask=>inside(x,y,mask)))continue;
+        const i=(y*before.width+x)*4;pixels++;
+        if(Math.max(...[0,1,2].map(c=>Math.abs(before.data[i+c]-after.data[i+c])))>=5)changed++;
+      }
+      return {pixels,changed};
+    };
+    return {width:before.width,height:before.height,scale,offset,
+      dart:compare(regions.dart,withoutDart),roundGlow:compare(regions.roundGlow,withoutGlow),leaderboardGlow:compare(regions.leaderboardGlow,withoutGlow),
+      dartControl:compare(regions.control,withoutDart),glowControl:compare(regions.control,withoutGlow)};
+  },{normal:baseline.toString('base64'),dart:noDart.toString('base64'),glow:noGlow.toString('base64'),regions,offset,width:viewport.width});
+  receipt.paint.push({label,...result});
+  assert(result.dart.changed>=20,label+': dart must change actual rendered pixels behind the inactive round row');
+  for(const name of ['roundGlow','leaderboardGlow'])assert(result[name].pixels>0&&result[name].changed>=Math.max(12,result[name].pixels*.02),label+': '+name+' must paint active-row edge pixels');
+  for(const name of ['dartControl','glowControl'])assert(result[name].pixels>0&&result[name].changed<=Math.max(2,result[name].pixels*.001),label+': decoration suppression must leave inactive control edges unchanged');
+}
+async function geometry(display){
+  await settled(display);
+  await display.evaluate(()=>document.fonts.ready);
+  return display.evaluate(()=>{
+    const rect=el=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
+    const inside=(a,b)=>a.x>=b.x-1&&a.right<=b.right+1&&a.y>=b.y-1&&a.bottom<=b.bottom+1;
+    const node=document.querySelector('.name-slot > .thrower-identity:not(.departing-name)');
+    const head=document.querySelector('.centre-head'),slot=document.querySelector('.name-slot'),title=node.querySelector('h2'),nickname=node.querySelector('.nickname'),sub=head.querySelector('.sub');
+    const textBox=el=>{const r=document.createRange();r.selectNodeContents(el);const b=r.getBoundingClientRect();return {x:b.x,y:b.y,right:b.right,bottom:b.bottom};};
+    const labels=[...document.querySelectorAll('.round-table .name,.standings .name'),title,...(nickname?[nickname]:[])].map(el=>{
+      const canvas=el.querySelector('canvas');
+      const textBounds=canvas?rect(canvas):textBox(el),container=rect(el.closest('th')||node);
+      return {text:el.textContent,scroll:el.scrollWidth,client:el.clientWidth,
+        element:rect(el),textBounds,container,font:getComputedStyle(el).font,
+        fits:el.scrollWidth<=el.clientWidth+1&&inside(textBounds,container)};
+    });
+    return {width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,scrollHeight:document.documentElement.scrollHeight,
+      header:rect(head),identity:rect(node),slot:rect(slot),title:rect(title),nickname:nickname&&rect(nickname),sub:rect(sub),
+      titleFont:parseFloat(getComputedStyle(title).fontSize),nicknameFont:nickname&&parseFloat(getComputedStyle(nickname).fontSize),
+      headerContained:inside(rect(node),rect(head))&&inside(rect(sub),rect(head)),labels};
+  });
+}
+async function outerGeometry(page,label){
+  const result=await page.evaluate(()=>{
+    const overlay=document.getElementById('sqTvModeOverlay'),nav=overlay.querySelector('nav'),iframe=overlay.querySelector('iframe');
+    const child=iframe.contentWindow,doc=iframe.contentDocument;
+    const box=el=>{
+      if(!el)return null;
+      const style=el.ownerDocument.defaultView.getComputedStyle(el);
+      return {rect:el.getBoundingClientRect().toJSON(),clientWidth:el.clientWidth,clientHeight:el.clientHeight,
+        offsetWidth:el.offsetWidth,offsetHeight:el.offsetHeight,scrollWidth:el.scrollWidth,scrollHeight:el.scrollHeight,
+        display:style.display,position:style.position,height:style.height,minHeight:style.minHeight,
+        overflow:style.overflow,gridTemplateRows:style.gridTemplateRows,transform:style.transform};
+    };
+    const describe=el=>el?{tag:el.tagName,id:el.id,class:el.className,text:el.textContent?.slice(0,100)}:null;
+    const frame=box(iframe),scaleX=frame.rect.width/iframe.offsetWidth,scaleY=frame.rect.height/iframe.offsetHeight;
+    const controls=[...doc.querySelectorAll('.scorepad button')].map(button=>{
+      const rect=button.getBoundingClientRect(),centre={x:rect.x+rect.width/2,y:rect.y+rect.height/2};
+      const parentCentre={x:frame.rect.x+(iframe.clientLeft+centre.x)*scaleX,y:frame.rect.y+(iframe.clientTop+centre.y)*scaleY};
+      const childHit=doc.elementFromPoint(centre.x,centre.y),parentHit=document.elementFromPoint(parentCentre.x,parentCentre.y);
+      return {label:button.dataset.dart||button.dataset.action,text:button.textContent,disabled:button.disabled,...box(button),
+        centre,parentCentre,childHit:describe(childHit),parentHit:describe(parentHit),
+        childHitWithinButton:!!childHit&&button.contains(childHit),parentHitsIframe:parentHit===iframe};
+    });
+    return {parent:{width:innerWidth,height:innerHeight,scrollX,scrollY,focused:document.hasFocus()},
+      overlay:box(overlay),nav:box(nav),wrapper:box(overlay.querySelector('.sq-tv-frame')),iframe:frame,
+      child:{width:child.innerWidth,height:child.innerHeight,scrollX:child.scrollX,scrollY:child.scrollY,
+        focused:doc.hasFocus(),visibility:doc.visibilityState,screen:box(doc.getElementById('screen')),scorepad:box(doc.querySelector('.scorepad'))},
+      controls};
+  });
+  receipt.outerGeometry.push({label,...result});
+  fs.writeFileSync(path.join(out,'identity-motion-receipt.json'),JSON.stringify(receipt,null,2));
+  const within=(a,b)=>a.x>=b.x-1&&a.y>=b.y-1&&a.right<=b.right+1&&a.bottom<=b.bottom+1;
+  const viewport={x:0,y:0,right:result.parent.width,bottom:result.parent.height};
+  assert(within(result.iframe.rect,result.overlay.rect)&&within(result.iframe.rect,viewport),label+': iframe must fit inside the overlay and viewport');
+  assert(result.wrapper&&result.iframe.rect.width>0&&result.iframe.rect.height>0,label+': iframe must have a positive containing box');
+  assert(Math.abs(result.iframe.rect.y-result.nav.rect.bottom)<=1&&Math.abs(result.iframe.rect.bottom-result.overlay.rect.bottom)<=1,label+': iframe must fill the space below the toolbar');
+  assert(['x','y','width','height'].every(key=>Math.abs(result.iframe.rect[key]-result.wrapper.rect[key])<=1),label+': iframe must fit its remaining-space wrapper');
+  assert(Math.abs(result.child.height-result.iframe.clientHeight)<=1&&Math.abs(result.child.width-result.iframe.clientWidth)<=1,label+': child viewport must match iframe client dimensions');
+  const targets=result.controls.filter(button=>['Single','Double','Treble'].includes(button.label));
+  assert.equal(targets.length,3,label+': real number-round score controls are present');
+  if(result.parent.width>result.parent.height){
+    const childViewport={x:0,y:0,right:result.child.width,bottom:result.child.height};
+    assert(result.controls.every(button=>within(button.rect,childViewport)),label+': complete scoring controls must fit inside the landscape iframe');
+    assert(targets.every(button=>button.childHitWithinButton&&button.parentHitsIframe),label+': score-button centres must hit the button through the iframe');
+  }
+}
+async function pulse(display,label){
+  await display.waitForFunction(()=>window.__tvIdentityQa.pending.size===0,null,{polling:100});
+  const result=await display.evaluate(async()=>{
+    const q=window.__tvIdentityQa,canvas=document.getElementById('raceActive'),base=document.getElementById('race');
+    const before={raf:q.rafCalls,draws:q.draws,base:base.toDataURL(),overlay:canvas.toDataURL()};
+    const samples=[];
+    for(let i=0;i<6;i++){samples.push(Number(getComputedStyle(canvas).opacity));await new Promise(r=>setTimeout(r,100));}
+    const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+    let coloured=0;for(let i=0;i<pixels.length;i+=4)if(pixels[i+3]>20&&(pixels[i]!==pixels[i+1]||pixels[i+1]!==pixels[i+2]))coloured++;
+    const colour=i=>document.querySelector('.standings tr[data-player="'+i+'"] .position').style.getPropertyValue('--trace').trim();
+    const lastStroke=colour=>q.strokes.findLast(s=>s.canvas==='race'&&s.colour===colour);
+    return {active:canvas.dataset.player,coloured,samples,pulses:canvas.getAnimations().filter(a=>a.animationName==='race-active-pulse').map(a=>({state:a.playState,iterations:a.effect.getTiming().iterations===Infinity?'infinite':a.effect.getTiming().iterations})),
+      leader:document.querySelector('.standings tr.leading')?.dataset.player,activeStyle:lastStroke(colour(1)),leaderStyle:lastStroke(colour(0)),inactiveStyle:lastStroke(colour(2)),
+      stableBase:base.toDataURL()===before.base,stableOverlay:canvas.toDataURL()===before.overlay,extraRaf:q.rafCalls-before.raf,extraDraws:q.draws-before.draws,pending:q.pending.size};
+  });
+  receipt.race.push({label,...result});
+  assert.equal(result.active,'1');assert.equal(result.leader,'0');
+  assert(result.coloured>0,'Active trace contains rendered coloured pixels');
+  assert.equal(result.pulses.length,1,'Exactly one active trace pulse');
+  assert.equal(result.pulses[0].state,'running');assert.equal(result.pulses[0].iterations,'infinite');
+  assert(Math.max(...result.samples)-Math.min(...result.samples)>.02,'Native opacity changes over time');
+  assert(result.activeStyle&&result.leaderStyle&&result.inactiveStyle,'Actual base traces were painted');
+  assert(result.activeStyle.width>result.leaderStyle.width&&result.leaderStyle.width>result.inactiveStyle.width,'Active trace and static leader remain distinct');
+  assert(result.stableBase&&result.stableOverlay,'Pulse must not repeatedly redraw either canvas');
+  assert.equal(result.extraDraws,0);assert.equal(result.extraRaf,0);assert.equal(result.pending,0);
+}
+
+(async()=>{
+  const {browser,ctx,page,consoleErrs}=await H.launch({width:1440,height:810},{emptyCloudReads:true});
+  let watcher,view;const blockedWrites=[];
+  try{
+    await ctx.route('**/*',route=>{
+      const request=route.request(),url=new URL(request.url()),method=request.method();
+      if(url.hostname.endsWith('.supabase.co')){
+        const headers={'access-control-allow-origin':'*','access-control-allow-headers':request.headers()['access-control-request-headers']||'*','access-control-allow-methods':'GET, HEAD, OPTIONS, POST'};
+        if(url.pathname==='/rest/v1/rpc/sq_rank_score'&&['POST','OPTIONS'].includes(method))return route.fulfill({status:method==='OPTIONS'?204:200,headers,contentType:'application/json',body:method==='OPTIONS'?'':'[]'});
+        if(!['GET','HEAD','OPTIONS'].includes(method)){blockedWrites.push(method+' '+url.pathname);return route.abort('failed');}
+        if(url.pathname==='/rest/v1/players')return route.fulfill({status:method==='OPTIONS'?204:200,headers,contentType:'application/json',body:method==='GET'?JSON.stringify(people):''});
+        return route.fallback();
+      }
+      if(url.hostname==='cdn.jsdelivr.net'&&url.pathname.includes('supabase'))return route.fallback();
+      if(url.origin===app.origin&&['GET','HEAD','OPTIONS'].includes(method))return route.fallback();
+      return route.abort('failed');
+    });
+    await ctx.routeWebSocket('**/*',socket=>socket.close());
+    await ctx.addInitScript(()=>{
+      // Child documents can be initialized before their final URL is available.
+      // Install once in every new document, before application scripts; only the
+      // two TV documents are read below. Never create/reset counters afterwards.
+      if(window.__tvIdentityQa)return;
+      const q=window.__tvIdentityQa={pending:new Set(),rafCalls:0,draws:0,strokes:[],
+        initialization:{url:location.href,readyState:document.readyState,beforeTvScript:typeof window.showTvFrame==='undefined'}};
+      const request=window.requestAnimationFrame,cancel=window.cancelAnimationFrame;
+      window.requestAnimationFrame=function(callback){let id;id=Reflect.apply(request,this,[function(){q.pending.delete(id);q.rafCalls++;return Reflect.apply(callback,this,arguments);}]);q.pending.add(id);return id;};
+      window.cancelAnimationFrame=function(id){q.pending.delete(id);return Reflect.apply(cancel,this,arguments);};
+      const stroke=CanvasRenderingContext2D.prototype.stroke;
+      CanvasRenderingContext2D.prototype.stroke=function(){
+        if(['race','raceActive'].includes(this.canvas.id)){
+          q.draws++;q.strokes.push({canvas:this.canvas.id,colour:this.strokeStyle,width:this.lineWidth,alpha:this.globalAlpha});
+          if(q.strokes.length>200)q.strokes.shift();
+        }
+        return Reflect.apply(stroke,this,arguments);
+      };
+    });
+    await H.boot(page,{settle:800});
+    await page.evaluate(async players=>{
+      state.players=players.map(p=>({...p}));assignUniqueColors(state.players);
+      setSavedPlayers(state.players.map(p=>({...p,_src:'cloud-cache'})));
+      Object.assign(state.match,{mode:'official',gameFormat:'match_play',gameVariant:'classic',targetWins:3,autoRotateOrder:false});
+      await startNewGame(true);
+    },people);
+    await page.waitForFunction(()=>document.body.dataset.page==='game'&&!state.__sqSecurityPreparing&&!window.__sqSecurityInputBlocked&&window.SQ_GAMEPLAY.canThrow()&&document.getElementById('gameLoadOverlay')?.getAttribute('aria-hidden')==='true',null,{polling:100});
+    assert.equal(await page.evaluate(()=>state.__sqGameControl.mode),'official');
+    assert.equal(await page.evaluate(()=>__sqIsAutoThrowOrderMatch()),true,'Fixture has the canonical fixed-order Match Play policy');
+    const playerTruth=await page.evaluate(()=>JSON.stringify(state.players));
+    const canonical=()=>page.evaluate(()=>JSON.stringify([state.players,state.score,state.history,state.currentRound,state.currentPlayer,state.currentDart]));
+    await page.evaluate(()=>window.__sqTvModeToggle(true));
+    await page.frameLocator('#sqTvModeOverlay iframe').locator('[data-dart="Single"]').waitFor();
+    view=page.frames().find(frame=>new URL(frame.url()).pathname.endsWith('/assets/tv/arcade.html'));
+    const opened=ctx.waitForEvent('page');await page.locator('#sqTvWatch').click(nativeClickOptions);watcher=await opened;
+    watcher.on('pageerror',e=>consoleErrs.push('pageerror: spectator '+String(e)));
+    await watcher.locator('.running-total').first().waitFor();
+    assert.equal(await watcher.locator('.scorepad').count(),0);
+    await Promise.all([observeDisplay(view),observeDisplay(watcher),view.evaluate(()=>document.fonts.ready),watcher.evaluate(()=>document.fonts.ready)]);
+    for(const [index,display] of [view,watcher].entries()){
+      receipt.initialization.push({surface:index?'spectator':'scorer',...await display.evaluate(()=>window.__tvIdentityQa.initialization)});
+    }
+    await Promise.all([identity(view,0),identity(watcher,0)]);
+    const displays=()=>[view,watcher];
+    const turns=async(label,expected)=>{
+      for(const [index,display] of displays().entries())await turnHighlights(display,(index?'spectator: ':'scorer: ')+label,expected);
+    };
+    await turns('initial player',{round:0,active:0,taken:[]});
+    await Promise.all(displays().map(dartWatermark));
+    const arm=async(label,to)=>Promise.all(displays().map(display=>display.evaluate(({label,to})=>window.__tvIdentityQa.arm={label,to},{label,to:identities[to].name})));
+    const forward=async(label,selector,from,to)=>{
+      receipt.activeAction={label,from,to,startedAt:Date.now()};
+      await arm(label,to);
+      if(typeof selector==='function')await selector();else await view.locator(selector).click(nativeClickOptions);
+      for(const [index,display] of displays().entries()){
+        receipt.activeAction.surface=index?'spectator':'scorer';
+        await display.waitForFunction(label=>window.__tvIdentityQa.captures[label]?.ends.length===2,label,{polling:100});
+        const result=await display.evaluate(label=>window.__tvIdentityQa.captures[label],label);
+        receipt.motion.push({surface:index?'spectator':'scorer',...result});
+        assert.equal(result.outgoing.name,identities[from].name);assert.equal(result.incoming.name,identities[to].name);
+        assert.equal(result.outgoing.nickname,identities[from].nickname);assert.equal(result.incoming.nickname,identities[to].nickname);
+        assert(result.outgoing.generic&&result.incoming.generic&&result.native.length===2&&result.native.every(a=>a.generic),'Animate the complete generic identity');
+        assert(result.outgoing.verticalFits&&result.incoming.verticalFits,'Both identities fit vertically during the handover');
+        assert(result.incoming.x>result.incoming.width/2,'New identity enters from the right');
+        assert(result.ends.find(e=>e.animation==='name-depart').x<-result.outgoing.width/2,'Old identity leaves to the left');
+        assert(Math.abs(result.ends.find(e=>e.animation==='name-arrive').x)<1,'Incoming identity settles centrally');
+        if(label==='visit finished'){
+          const refresh=result.refresh;
+          assert(refresh?.sameSlot&&refresh.sameIncoming&&refresh.before.length,'In-flight refresh retained the native identity');
+          for(const before of refresh.before){
+            const after=refresh.after.find(a=>a.name===before.name);
+            assert(after,'In-flight refresh removed a handover animation');
+            if(before.start!==null)assert(Math.abs(after.start-before.start)<1,'Refresh restarted the native animation phase');
+            else assert(after.time>=before.time,'Refresh rewound pending native motion');
+          }
+        }
+        await identity(display,to);
+      }
+      receipt.activeAction=null;
+    };
+    await outerGeometry(page,'before initial Double');
+    await view.locator('[data-dart="Double"]').click(nativeClickOptions);await view.locator('[data-dart="Single"]').click(nativeClickOptions);
+    await outerGeometry(page,'before first Treble');
+    await forward('visit finished','[data-dart="Treble"]',0,1);
+    await turns('scored visit retained',{round:0,active:1,taken:[0]});
+    assert.equal(await page.evaluate(()=>__sqIsAbsenceSkipEligible()),true,'Fresh Match Play visit must use absence Skip Go');
+    await forward('Skip Go','[data-action="skip"]',1,2);
+    assert.equal(await page.evaluate(()=>state.history.at(-1)?.type),'absenceSkip');
+    const skipped=await turnHighlights(view,'scorer: deferred Skip Go retained',{round:0,active:2,taken:[0,1]});
+    assert.equal(skipped.visits[1],0,'Deferred Skip Go is retained even before catch-up has supplied any darts');
+    await turnHighlights(watcher,'spectator: deferred Skip Go retained',{round:0,active:2,taken:[0,1]});
+    await arm('Undo',1);await view.locator('[data-action="undo"]').click(nativeClickOptions);
+    for(const display of displays()){
+      await identity(display,1);
+      const undo=await display.evaluate(()=>window.__tvIdentityQa.captures.Undo);
+      receipt.motion.push({label:'Undo',...undo});
+      assert.equal(undo.native.length,0,'Undo restores truth without a completed-go animation');
+      assert.equal(undo.outgoing,null);assert(Math.abs(undo.incoming.x)<1);
+    }
+    assert.equal(await page.evaluate(()=>state.history.length),3);
+    await turns('Undo restores active turn',{round:0,active:1,taken:[0]});
+    await view.locator('[data-dart="Single"]').click(nativeClickOptions);
+    await watcher.waitForFunction(()=>state.historyLength===4,null,{polling:100});
+    await turns('partial visit is still active',{round:0,active:1,taken:[0]});
+    // Allow only the existing finite score-growth animation to complete.
+    await page.waitForTimeout(800);
+    const beforePulse=await canonical();
+    await pulse(view,'scorer');await pulse(watcher,'spectator');
+    assert.equal(await canonical(),beforePulse,'Race presentation changed the canonical board');
+    for(const display of displays()){
+      const refresh=await display.evaluate(()=>{
+        const original=state,slot=document.querySelector('.name-slot'),node=slot.querySelector('.thrower-identity');
+        const records={...original.records,world:[...original.records.world]};records.world[0]=90;
+        window.showTvFrame({...original,records,returnSeconds:19});
+        const recordSame=document.querySelector('.name-slot')===slot&&slot.querySelector('.thrower-identity')===node;
+        window.showTvFrame({...original,records,returnSeconds:18});
+        const timerSame=document.querySelector('.name-slot')===slot&&slot.querySelector('.thrower-identity')===node;
+        window.showTvFrame(original);
+        return {recordSame,timerSame,handovers:document.querySelectorAll('.departing-name').length};
+      });
+      assert(refresh.recordSame&&refresh.timerSame&&refresh.handovers===0,'Same-player record/timer frames retain identity without replay');
+    }
+    assert.equal(await canonical(),beforePulse,'Display-only refresh changed canonical state');
+    await page.evaluate(()=>{recordThrow({kind:'Miss'});recordThrow({kind:'Miss'});});
+    await Promise.all(displays().map(display=>identity(display,2)));
+    await turns('second visit retained',{round:0,active:2,taken:[0,1]});
+    await page.evaluate(()=>{for(let i=0;i<3;i++)recordThrow({kind:'Miss'});});
+    await Promise.all(displays().map(display=>identity(display,3)));
+    await turns('third visit retained',{round:0,active:3,taken:[0,1,2]});
+    const beforeLayout=await canonical();
+    for(const size of [{width:320,height:844},{width:390,height:844},{width:430,height:844},{width:1440,height:810},{width:1920,height:1080}]){
+      await page.setViewportSize(size);await watcher.setViewportSize(size);
+      for(const [index,display] of displays().entries()){
+        const measurement=await geometry(display);
+        receipt.geometry.push({surface:index?'spectator':'scorer',...measurement});
+        assert(measurement.scrollWidth<=measurement.width,'Horizontal viewport overflow');
+        if(size.width>size.height)assert(measurement.scrollHeight<=measurement.height+1,'Landscape vertical overflow');
+        assert(measurement.headerContained&&measurement.labels.every(l=>l.fits),'Full identities must fit without clipping');
+        assert(measurement.nicknameFont<measurement.titleFont,'Nickname is secondary');
+        assert(measurement.title.bottom<=measurement.nickname.y+1&&measurement.nickname.bottom<=measurement.sub.y+1,'Name, nickname, TO THROW order');
+      }
+      await outerGeometry(page,'viewport '+size.width+'x'+size.height);
+      await turns('viewport '+size.width+'x'+size.height,{round:0,active:3,taken:[0,1,2]});
+      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Scorer overlay/nav horizontal overflow');
+      const scorerImage=await page.screenshot({path:path.join(out,'scorer-'+size.width+'x'+size.height+'.png')});
+      const spectatorImage=await watcher.screenshot({path:path.join(out,'spectator-'+size.width+'x'+size.height+'.png'),fullPage:true});
+      if(size.width===1440){
+        await renderedTurnPaint(page,view,'scorer-1440',scorerImage);
+        await renderedTurnPaint(watcher,watcher,'spectator-1440',spectatorImage);
+      }
+    }
+    assert.equal(await canonical(),beforeLayout,'Viewport changes mutated game state');
+    await view.locator('[data-dart="Miss"]').click(nativeClickOptions);await view.locator('[data-dart="Miss"]').click(nativeClickOptions);
+    await forward('nickname omitted','[data-dart="Miss"]',3,4);
+    await turns('fourth visit retained',{round:0,active:4,taken:[0,1,2,3]});
+    // Two real completed/skip transitions in one task: the final departure must
+    // belong to the most recent player, not the older still-animating identity.
+    await forward('rapid supersession',()=>view.evaluate(()=>{
+      for(let i=0;i<3;i++)document.querySelector('[data-dart="Miss"]').click();
+      document.querySelector('[data-action="skip"]').click();
+    }),0,1);
+    await turns('new round Skip Go',{round:1,active:1,taken:[0]});
+    await view.locator('[data-action="undo"]').click(nativeClickOptions);
+    await Promise.all(displays().map(display=>identity(display,0)));
+    await turns('new round reset and Skip Undo',{round:1,active:0,taken:[]});
+    await page.emulateMedia({reducedMotion:'reduce'});await watcher.emulateMedia({reducedMotion:'reduce'});
+    for(const display of displays())await display.waitForFunction(()=>document.querySelector('#screen').dataset.motion==='off',null,{polling:100});
+    await arm('reduced motion visit',1);
+    await view.evaluate(()=>{for(let i=0;i<3;i++)document.querySelector('[data-dart="Miss"]').click();});
+    for(const display of displays()){
+      await identity(display,1);
+      const staticState=await display.evaluate(()=>({capture:window.__tvIdentityQa.captures['reduced motion visit'],pulse:document.getElementById('raceActive').getAnimations().length,display:getComputedStyle(document.getElementById('raceActive')).display}));
+      receipt.lifecycle.push({label:'reduced motion',...staticState});
+      assert.equal(staticState.capture.native.length,0);assert.equal(staticState.capture.outgoing,null);
+      assert.equal(staticState.pulse,0);assert.equal(staticState.display,'none');
+    }
+    await turns('reduced motion keeps static active glow',{round:1,active:1,taken:[0]});
+    await page.emulateMedia({reducedMotion:'no-preference'});await watcher.emulateMedia({reducedMotion:'no-preference'});
+    const beforeClose=await page.evaluate(()=>{
+      const doc=document.querySelector('#sqTvModeOverlay iframe').contentDocument;
+      for(let i=0;i<3;i++)doc.querySelector('[data-dart="Miss"]').click();
+      const board=JSON.stringify([state.players,state.score,state.history,state.currentRound,state.currentPlayer,state.currentDart]);
+      document.getElementById('sqTvExit').click();
+      return board;
+    });
+    await watcher.getByText('Waiting for the scorer to reopen TV mode').waitFor();
+    const closed=await watcher.evaluate(()=>({hidden:document.getElementById('screen').hidden,pending:window.__tvIdentityQa.pending.size,pulses:document.getElementById('raceActive').getAnimations().length}));
+    receipt.lifecycle.push({label:'closed during handover',...closed});assert(closed.hidden);assert.equal(closed.pending,0);assert.equal(closed.pulses,0);
+    assert.equal(await canonical(),beforeClose,'Closing TV changed the board');
+    await page.evaluate(()=>window.__sqTvModeToggle(true));
+    await page.frameLocator('#sqTvModeOverlay iframe').locator('[data-dart="Single"]').waitFor();
+    view=page.frames().find(frame=>new URL(frame.url()).pathname.endsWith('/assets/tv/arcade.html'));
+    await watcher.waitForFunction(()=>!document.getElementById('screen').hidden&&state?.thrower===2,null,{polling:100});
+    await Promise.all([identity(view,2),identity(watcher,2)]);
+    await turns('reopened from scorer truth',{round:1,active:2,taken:[0,1]});
+    await outerGeometry(page,'after reopening TV');
+    assert.equal(await watcher.locator('#raceActive[data-player="2"]').count(),1,'Spectator resumes the same active player once');
+    const reopened=await watcher.evaluate(()=>({departing:document.querySelectorAll('.departing-name').length,
+      handovers:document.querySelector('.name-slot').getAnimations({subtree:true}).filter(a=>['name-arrive','name-depart'].includes(a.animationName)).length}));
+    receipt.lifecycle.push({label:'reopened static',...reopened});assert.equal(reopened.departing,0);assert.equal(reopened.handovers,0);
+    await page.evaluate(()=>{for(let i=0;i<230&&!state.finished;i++)recordThrow({kind:'Miss'});if(!state.finished)throw new Error('Fixture did not finish');});
+    await watcher.getByRole('heading',{name:'Game winner',exact:true}).waitFor();
+    await watcher.waitForFunction(()=>window.__tvIdentityQa.pending.size===0,null,{polling:100});
+    const finished=await watcher.evaluate(()=>({active:document.querySelector('#raceActive').dataset.player||null,pulses:document.querySelector('#raceActive').getAnimations().length,pending:window.__tvIdentityQa.pending.size}));
+    receipt.lifecycle.push({label:'finished',...finished});assert.equal(finished.active,null);assert.equal(finished.pulses,0);assert.equal(finished.pending,0);
+    await turnHighlights(watcher,'spectator: final round retained without glow',{round:14,active:null,taken:[0,1,2,3,4]});
+    assert.deepEqual(await page.evaluate(()=>[state.history.length,state.__sqGameControl.mode]),[210,'official']);
+    assert.equal(await page.evaluate(()=>JSON.stringify(state.players)),playerTruth,'TV changed canonical player identities');
+    assert.deepEqual(blockedWrites,[],'Unexpected attempted production mutations');
+    assert.deepEqual(consoleErrs.filter(e=>e.startsWith('pageerror:')),[],'Unexpected page errors');
+    receipt.status='PASS';
+    console.log('PASS TV full/compact identities, nicknames, five viewports, native visit/Skip handovers, retained round highlights, active-only glow, faint dart watermark, static Undo/reduced motion, race pulse without redraw, spectator and completion');
+  }catch(error){
+    receipt.status='FAIL';receipt.error=String(error);
+    const readFailure=display=>display.evaluate(()=>{
+      const q=window.__tvIdentityQa,screen=document.getElementById('screen');
+      const element=el=>{
+        if(!el)return null;
+        if(!(el instanceof Element))return {type:String(el)};
+        const css=getComputedStyle(el);
+        return {tag:el.tagName,id:el.id,class:el.className,text:el.textContent?.slice(0,500),connected:el.isConnected,
+          rect:el.getBoundingClientRect().toJSON(),display:css.display,visibility:css.visibility,opacity:css.opacity,
+          transform:css.transform,animation:css.animationName,animationPlayState:css.animationPlayState};
+      };
+      const animations=document.getAnimations().map(a=>({name:a.animationName||a.id||null,state:a.playState,pending:a.pending,
+        start:a.startTime,time:a.currentTime,rate:a.playbackRate,target:element(a.effect?.target),
+        timing:a.effect?.getTiming(),computed:a.effect?.getComputedTiming()}));
+      const frame=typeof state==='undefined'?null:state;
+      return {url:location.href,at:performance.now(),ready:document.readyState,visibility:document.visibilityState,hidden:document.hidden,
+        viewport:{width:innerWidth,height:innerHeight,scrollX,scrollY},focused:document.hasFocus(),motion:screen?.dataset.motion,screenHidden:screen?.hidden,
+        frame:frame?{thrower:frame.thrower,round:frame.round,historyLength:frame.historyLength,paused:frame.paused??null,
+          names:frame.names,identities:frame.identities,totals:frame.totals,last:frame.last,darts:frame.darts,visits:frame.visits,turnsTaken:frame.turnsTaken,
+          currentPlayer:frame.currentPlayer,currentRound:frame.currentRound,currentDart:frame.currentDart,finished:frame.finished,
+          history:frame.history?.slice(-8)}:null,
+        recorder:q?{initialization:q.initialization,arm:q.arm,captures:q.captures,pending:[...q.pending],rafCalls:q.rafCalls,draws:q.draws,
+          recentStrokes:q.strokes.slice(-20),recentFrames:q.recentFrames,nativeEvents:q.nativeEvents,visibilityEvents:q.visibilityEvents}:null,
+        slot:element(document.querySelector('.name-slot')),identities:[...document.querySelectorAll('.name-slot .thrower-identity')].map(element),
+        slotHtml:document.querySelector('.name-slot')?.outerHTML,animations};
+    }).catch(captureError=>({captureError:String(captureError)}));
+    receipt.failure={console:consoleErrs.slice(),scorer:await readFailure(page),
+      embedded:view?await readFailure(view):null,spectator:watcher?await readFailure(watcher):null};
+    console.error('TV identity failure diagnostic '+JSON.stringify({activeAction:receipt.activeAction,...receipt.failure}));
+    await page.screenshot({path:path.join(out,'failure-scorer.png')}).catch(()=>{});
+    if(watcher)await watcher.screenshot({path:path.join(out,'failure-spectator.png'),fullPage:true}).catch(()=>{});
+    throw error;
+  }finally{
+    receipt.blockedWrites=blockedWrites;
+    fs.writeFileSync(path.join(out,'identity-motion-receipt.json'),JSON.stringify(receipt,null,2));
+    await browser.close();
+  }
+})().catch(error=>{console.error(error);process.exitCode=1;});

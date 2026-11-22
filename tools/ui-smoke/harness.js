@@ -1,7 +1,6 @@
 // Playwright harness for SHATEKI-QUEST UI verification.
-// Safety guarantee: every request to *.supabase.co is aborted at the network
-// layer, so no run can ever read or write production data. The supabase-js
-// CDN script is served from the locally installed npm copy instead.
+// Supabase requests stay local. Tests may opt into empty REST reads. All other
+// production requests are blocked, and the SDK is served from the installed copy.
 const { chromium, webkit } = require('playwright');
 const path = require('path');
 const fs = require('fs');
@@ -41,6 +40,18 @@ async function launch(viewport, opts = {}) {
     const url = route.request().url();
     if (url.includes('cdn.jsdelivr.net') && url.includes('supabase')) {
       return route.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync(UMD, 'utf8') });
+    }
+    const target = new URL(url);
+    if (opts.emptyCloudReads && target.hostname.endsWith('.supabase.co') && target.pathname.startsWith('/rest/v1/')) {
+      const method = route.request().method();
+      const headers = {
+        'access-control-allow-origin':'*', 'access-control-allow-methods':'GET, HEAD, OPTIONS',
+        'access-control-allow-headers':route.request().headers()['access-control-request-headers'] || '*',
+        'access-control-expose-headers':'content-range', 'content-range':'*/0'
+      };
+      if (method === 'OPTIONS') return route.fulfill({status:204,headers,body:''});
+      if (method === 'HEAD') return route.fulfill({status:200,headers,body:''});
+      if (method === 'GET') return route.fulfill({status:200,headers,contentType:'application/json',body:'[]'});
     }
     if (url.includes('supabase.co')) return route.abort('failed');
     if (url.startsWith(APP_URL.split('/index.html')[0])) return route.continue();

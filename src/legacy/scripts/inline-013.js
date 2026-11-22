@@ -6,8 +6,10 @@
   function rawGet(k){ try{ var fn = window.__sqNativeLocalStorageGetItem || Storage.prototype.getItem; return fn.call(localStorage, k); }catch(_){ return null; } }
   function rawRemove(k){ try{ var fn = window.__sqNativeLocalStorageRemoveItem || Storage.prototype.removeItem; fn.call(localStorage, k); return true; }catch(_){ return false; } }
   function parse(raw){ try{ return raw ? JSON.parse(raw) : null; }catch(_){ return null; } }
-  function isCompletedState(obj){ try{ return !!(obj && (obj.gameAwarded === true || obj.finished === true || obj.__sqCompleted === true || obj.__sqGameCompleteOpen === true || (obj.match && obj.match.completedLogged === true))); } catch(_){ return false; } }
-  function isRecoverableState(obj){ try{ if(!obj || typeof obj !== 'object') return false; if(isCompletedState(obj)) return false; var players = Array.isArray(obj.players) ? obj.players : []; if(!players.length) return false; return true; }catch(_){ return false; } }
+  function isRecoverableState(obj){
+    return typeof __sqIsRecoverableGameStateForLocalCache === 'function' &&
+      __sqIsRecoverableGameStateForLocalCache(obj);
+  }
   window.__sqRecoveryCacheReport = function(){
     var rows = RECOVERY_KEYS.map(function(k){ var raw = rawGet(k); var obj = parse(raw); return { key:k, exists:raw != null, bytes:raw ? String(raw).length : 0, players:Array.isArray(obj && obj.players) ? obj.players.length : null, finished:!!(obj && obj.finished), gameAwarded:!!(obj && obj.gameAwarded), matchCompleted:!!(obj && obj.match && obj.match.completedLogged), recoverable:isRecoverableState(obj), action:raw == null ? 'none' : (isRecoverableState(obj) ? 'keep-for-recovery' : 'purge-stale-or-completed') }; });
     try{ console.table(rows); }catch(_){ console.log(rows); }
@@ -25,5 +27,5 @@
   };
   window.sqRecoveryCacheReport = window.__sqRecoveryCacheReport;
   window.sqPurgeStaleRecoveryCaches = window.__sqPurgeStaleRecoveryCaches;
-  try{ window.__sqPurgeStaleRecoveryCaches(); }catch(_){ }
+  try{ if(typeof __sqIsRecoverableGameStateForLocalCache === 'function') window.__sqPurgeStaleRecoveryCaches(); }catch(_){ }
 })();
