@@ -25,7 +25,7 @@ const identities=[
 ];
 const current='.name-slot > .thrower-identity:not(.departing-name)';
 const out=process.env.SQ_SCREENSHOTS||path.join(__dirname,'../../qa-artifacts/tv-identity');
-const receipt={browser:process.env.SQ_BROWSER||'chromium',url:H.APP_URL,initialization:[],outerGeometry:[],geometry:[],motion:[],race:[],turns:[],lifecycle:[]};
+const receipt={browser:process.env.SQ_BROWSER||'chromium',url:H.APP_URL,initialization:[],outerGeometry:[],geometry:[],motion:[],race:[],turns:[],paint:[],lifecycle:[]};
 fs.mkdirSync(out,{recursive:true});
 
 async function observeDisplay(display){
@@ -138,8 +138,11 @@ async function turnHighlights(display,label,{round,active,taken}){
   const result=await display.evaluate(()=>{
     const read=selector=>[...document.querySelectorAll(selector)].map(row=>{
       const css=getComputedStyle(row),rect=row.getBoundingClientRect();
+      const dart=getComputedStyle(row.querySelector('th'),'::before');
       return {player:Number(row.dataset.player),highlight:row.classList.contains('turn-highlight'),active:row.classList.contains('active'),
         leading:row.classList.contains('leading'),background:css.backgroundImage,shadow:css.boxShadow,
+        glows:[...row.children].map(cell=>getComputedStyle(cell,cell.tagName==='TH'?'::after':'::before').boxShadow),
+        dart:dart.backgroundImage,dartPointerEvents:dart.pointerEvents,
         cellsFit:[...row.children].every(cell=>{const box=cell.getBoundingClientRect();return box.x>=rect.x-1&&box.right<=rect.right+1&&box.y>=rect.y-1&&box.bottom<=rect.bottom+1;}),
         decorativeElements:row.querySelectorAll('img,svg,button,a,[tabindex]').length};
     });
@@ -154,16 +157,17 @@ async function turnHighlights(display,label,{round,active,taken}){
     assert.deepEqual(rows.map(row=>row.player).sort((a,b)=>a-b),identities.map((_,i)=>i),label+': '+panel+' retains every player identity');
     assert.deepEqual(rows.filter(row=>row.highlight).map(row=>row.player).sort((a,b)=>a-b),highlighted,label+': '+panel+' retains only current-round turns');
     assert.deepEqual(rows.filter(row=>row.active).map(row=>row.player),active===null?[]:[active],label+': '+panel+' has only the current player active');
-    assert.deepEqual(rows.filter(row=>row.shadow!=='none').map(row=>row.player),active===null?[]:[active],label+': '+panel+' glow follows the active player only');
+    assert.deepEqual(rows.filter(row=>row.glows.some(shadow=>shadow!=='none')).map(row=>row.player),active===null?[]:[active],label+': '+panel+' glow follows the active player only');
+    assert(rows.every(row=>row.glows.every(shadow=>(shadow!=='none')===row.active)),label+': '+panel+' active glow spans all cells without leaking to completed turns');
     assert(rows.every(row=>row.cellsFit),label+': '+panel+' cells fit within their rows');
     if(panel==='leaderboard')for(const row of rows)assert.equal(row.background!=='none',highlighted.includes(row.player),label+': ranking alone must not add a background');
   }
-  assert(result.roundRows.every(row=>row.background.includes('dart-outline.svg')&&row.decorativeElements===0),label+': dart outline is a non-interactive CSS background behind every round row');
+  assert(result.roundRows.every(row=>row.dart.includes('dart-outline.svg')&&row.dartPointerEvents==='none'&&row.decorativeElements===0),label+': dart outline is a non-interactive CSS background behind every round row');
   return result;
 }
 async function dartWatermark(display){
   const result=await display.evaluate(async()=>{
-    const css=getComputedStyle(document.querySelector('.round-table tbody tr'));
+    const css=getComputedStyle(document.querySelector('.round-table tbody th'),'::before');
     const url=css.backgroundImage.match(/url\(["']?([^"')]+)["']?\)/)?.[1];
     const image=new Image();image.src=url;await image.decode();
     const canvas=document.createElement('canvas');canvas.width=360;canvas.height=44;
@@ -174,6 +178,66 @@ async function dartWatermark(display){
   });
   assert(result.visible>0&&result.meanAlpha>0&&result.meanAlpha<65,'The local dart outline loads and paints faint visible strokes');
   receipt.turns.push({label:'dart watermark asset',...result});
+}
+async function renderedTurnPaint(host,display,label,baseline){
+  const embedded=host!==display;
+  const viewport=host.viewportSize();
+  const offset=embedded?await host.evaluate(()=>{
+    const iframe=document.querySelector('#sqTvModeOverlay iframe'),box=iframe.getBoundingClientRect();
+    return {x:box.x+iframe.clientLeft,y:box.y+iframe.clientTop,sx:box.width/iframe.offsetWidth,sy:box.height/iframe.offsetHeight};
+  }):{x:0,y:0,sx:1,sy:1};
+  const regions=await display.evaluate(()=>{
+    const box=element=>{const r=element.getBoundingClientRect();return {x:r.x+scrollX,y:r.y+scrollY,width:r.width,height:r.height};};
+    const edges=row=>{const r=box(row),height=Math.min(4,r.height*.12);return [{x:r.x+6,y:r.y+2,width:r.width-12,height},{x:r.x+6,y:r.y+r.height-height-2,width:r.width-12,height}];};
+    const round=document.querySelector('.round-table'),leaderboard=document.querySelector('.standings');
+    const inactive=round.querySelector('tbody tr:not(.turn-highlight)');
+    const rect=box(inactive),masks=[];
+    for(const element of document.querySelectorAll('.round-table tbody .name,.round-table tbody .hit-code,.round-table tbody .round-total,.standings tbody .name,.standings tbody .position,.standings tbody .total')){
+      const range=document.createRange();range.selectNodeContents(element);const r=range.getBoundingClientRect();
+      if(r.width&&r.height)masks.push({x:r.x+scrollX-2,y:r.y+scrollY-2,width:r.width+4,height:r.height+4});
+    }
+    for(const cell of inactive.querySelectorAll('.dart-score.pending')){const r=box(cell);masks.push({x:r.x+r.width/2-8,y:r.y+r.height/2-8,width:16,height:16});}
+    return {dart:[{x:rect.x+3,y:rect.y+3,width:rect.width-6,height:rect.height-6}],
+      roundGlow:edges(round.querySelector('tr.active')),leaderboardGlow:edges(leaderboard.querySelector('tr.active')),
+      control:[...edges(inactive),...edges(leaderboard.querySelector('tbody tr:not(.turn-highlight)'))],masks};
+  });
+  let noDart,noGlow;
+  try{
+    await display.evaluate(()=>{
+      const style=document.createElement('style');style.id='tv-paint-qa';
+      style.textContent='#screen.qa-hide-turn-dart .round-table tbody th::before{visibility:hidden!important}#screen.qa-hide-turn-glow :is(.round-table,.standings) tr.active>th::after,#screen.qa-hide-turn-glow :is(.round-table,.standings) tr.active>td::before{visibility:hidden!important}';
+      document.head.append(style);document.getElementById('screen').classList.add('qa-hide-turn-dart');
+    });
+    noDart=await host.screenshot({path:path.join(out,label+'-paint-without-dart.png'),fullPage:!embedded});
+    await display.evaluate(()=>{const screen=document.getElementById('screen');screen.classList.remove('qa-hide-turn-dart');screen.classList.add('qa-hide-turn-glow');});
+    noGlow=await host.screenshot({path:path.join(out,label+'-paint-without-glow.png'),fullPage:!embedded});
+  }finally{
+    await display.evaluate(()=>{document.getElementById('screen').classList.remove('qa-hide-turn-dart','qa-hide-turn-glow');document.getElementById('tv-paint-qa')?.remove();});
+  }
+  const result=await display.evaluate(async({normal,dart,glow,regions,offset,width})=>{
+    const read=async base64=>{const image=new Image();image.src='data:image/png;base64,'+base64;await image.decode();const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);return {width:canvas.width,height:canvas.height,data:ctx.getImageData(0,0,canvas.width,canvas.height).data};};
+    const [before,withoutDart,withoutGlow]=await Promise.all([normal,dart,glow].map(read));
+    if([withoutDart,withoutGlow].some(image=>image.width!==before.width||image.height!==before.height))throw new Error('Paint comparison changed screenshot dimensions');
+    const scale=before.width/width;
+    const mapped=r=>({x:(offset.x+r.x*offset.sx)*scale,y:(offset.y+r.y*offset.sy)*scale,width:r.width*offset.sx*scale,height:r.height*offset.sy*scale});
+    const masks=regions.masks.map(mapped),inside=(x,y,r)=>x>=r.x&&x<r.x+r.width&&y>=r.y&&y<r.y+r.height;
+    const compare=(rects,after)=>{
+      let pixels=0,changed=0;
+      for(const rect of rects.map(mapped))for(let y=Math.max(0,Math.ceil(rect.y));y<Math.min(before.height,Math.floor(rect.y+rect.height));y++)for(let x=Math.max(0,Math.ceil(rect.x));x<Math.min(before.width,Math.floor(rect.x+rect.width));x++){
+        if(masks.some(mask=>inside(x,y,mask)))continue;
+        const i=(y*before.width+x)*4;pixels++;
+        if(Math.max(...[0,1,2].map(c=>Math.abs(before.data[i+c]-after.data[i+c])))>=5)changed++;
+      }
+      return {pixels,changed};
+    };
+    return {width:before.width,height:before.height,scale,offset,
+      dart:compare(regions.dart,withoutDart),roundGlow:compare(regions.roundGlow,withoutGlow),leaderboardGlow:compare(regions.leaderboardGlow,withoutGlow),
+      dartControl:compare(regions.control,withoutDart),glowControl:compare(regions.control,withoutGlow)};
+  },{normal:baseline.toString('base64'),dart:noDart.toString('base64'),glow:noGlow.toString('base64'),regions,offset,width:viewport.width});
+  receipt.paint.push({label,...result});
+  assert(result.dart.changed>=20,label+': dart must change actual rendered pixels behind the inactive round row');
+  for(const name of ['roundGlow','leaderboardGlow'])assert(result[name].pixels>0&&result[name].changed>=Math.max(12,result[name].pixels*.02),label+': '+name+' must paint active-row edge pixels');
+  for(const name of ['dartControl','glowControl'])assert(result[name].changed<=Math.max(2,result[name].pixels*.001),label+': decoration suppression must leave inactive control edges unchanged');
 }
 async function geometry(display){
   await settled(display);
@@ -431,8 +495,12 @@ async function pulse(display,label){
       await outerGeometry(page,'viewport '+size.width+'x'+size.height);
       await turns('viewport '+size.width+'x'+size.height,{round:0,active:3,taken:[0,1,2]});
       assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Scorer overlay/nav horizontal overflow');
-      await page.screenshot({path:path.join(out,'scorer-'+size.width+'x'+size.height+'.png')});
-      await watcher.screenshot({path:path.join(out,'spectator-'+size.width+'x'+size.height+'.png'),fullPage:true});
+      const scorerImage=await page.screenshot({path:path.join(out,'scorer-'+size.width+'x'+size.height+'.png')});
+      const spectatorImage=await watcher.screenshot({path:path.join(out,'spectator-'+size.width+'x'+size.height+'.png'),fullPage:true});
+      if(size.width===1440){
+        await renderedTurnPaint(page,view,'scorer-1440',scorerImage);
+        await renderedTurnPaint(watcher,watcher,'spectator-1440',spectatorImage);
+      }
     }
     assert.equal(await canonical(),beforeLayout,'Viewport changes mutated game state');
     await view.locator('[data-dart="Miss"]').click(nativeClickOptions);await view.locator('[data-dart="Miss"]').click(nativeClickOptions);
