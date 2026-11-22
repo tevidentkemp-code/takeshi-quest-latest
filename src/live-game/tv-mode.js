@@ -37,7 +37,7 @@
   }
   let root, iframe, channel, receiverUrl, cache, pace, activeGame, frame, lastFrame;
   let pending = 0, tick = 0, trigger, menuObserver;
-  const asset = new URL('assets/tv/arcade.html?v=0.17.1', document.baseURI);
+  const asset = new URL('assets/tv/arcade.html?v=0.17.2', document.baseURI);
 
   function displayDart(dart, round) {
     if (!dart) return null;
@@ -86,6 +86,9 @@
       deciderWinner:state._decider?.resolved && state._decider.gameToken===(state.__gameToken||0) ?
         state._decider.winner : null,
       round, thrower, dartIndex:state.currentDart, visits, darts:visits[thrower], rows,traces,
+      // A deferred absence skip has taken its turn without three scored darts.
+      // Derive this from the displayed round so Undo/catch-up/reopen stay truthful.
+      turnsTaken:visits.map((visit,i)=>visit.length===3||Boolean(__sqSkippedRoundState(i,current))),
       identities:state.players.map(playerIdentity),
       names:state.players.map(playerName),targets:ROUNDS.map(def=>def.type==='number'?def.target:
         ({doubles:'Doubles',triples:'Triples',bull:'Bull'})[def.type]),

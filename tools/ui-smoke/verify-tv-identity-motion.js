@@ -25,7 +25,7 @@ const identities=[
 ];
 const current='.name-slot > .thrower-identity:not(.departing-name)';
 const out=process.env.SQ_SCREENSHOTS||path.join(__dirname,'../../qa-artifacts/tv-identity');
-const receipt={browser:process.env.SQ_BROWSER||'chromium',url:H.APP_URL,initialization:[],outerGeometry:[],geometry:[],motion:[],race:[],lifecycle:[]};
+const receipt={browser:process.env.SQ_BROWSER||'chromium',url:H.APP_URL,initialization:[],outerGeometry:[],geometry:[],motion:[],race:[],turns:[],lifecycle:[]};
 fs.mkdirSync(out,{recursive:true});
 
 async function observeDisplay(display){
@@ -133,6 +133,47 @@ async function identity(display,index){
 async function settled(display){
   await display.waitForFunction(()=>!document.querySelector('.departing-name')&&
     !document.querySelector('.name-slot')?.getAnimations({subtree:true}).some(a=>['name-arrive','name-depart'].includes(a.animationName)&&a.playState==='running'),null,{polling:100});
+}
+async function turnHighlights(display,label,{round,active,taken}){
+  const result=await display.evaluate(()=>{
+    const read=selector=>[...document.querySelectorAll(selector)].map(row=>{
+      const css=getComputedStyle(row),rect=row.getBoundingClientRect();
+      return {player:Number(row.dataset.player),highlight:row.classList.contains('turn-highlight'),active:row.classList.contains('active'),
+        leading:row.classList.contains('leading'),background:css.backgroundImage,shadow:css.boxShadow,
+        cellsFit:[...row.children].every(cell=>{const box=cell.getBoundingClientRect();return box.x>=rect.x-1&&box.right<=rect.right+1&&box.y>=rect.y-1&&box.bottom<=rect.bottom+1;}),
+        decorativeElements:row.querySelectorAll('img,svg,button,a,[tabindex]').length};
+    });
+    return {round:state.round,thrower:state.thrower,taken:state.turnsTaken,visits:state.visits.map(visit=>visit.length),
+      roundRows:read('.round-table tbody tr'),standings:read('.standings tbody tr')};
+  });
+  receipt.turns.push({label,...result});
+  assert.equal(result.round,round,label+': displayed round');
+  assert.deepEqual(result.taken,identities.map((_,i)=>taken.includes(i)),label+': completed and skipped visits come from the scorer');
+  const highlighted=[...new Set([...taken,...(active===null?[]:[active])])].sort((a,b)=>a-b);
+  for(const [panel,rows] of [['round',result.roundRows],['leaderboard',result.standings]]){
+    assert.deepEqual(rows.map(row=>row.player).sort((a,b)=>a-b),identities.map((_,i)=>i),label+': '+panel+' retains every player identity');
+    assert.deepEqual(rows.filter(row=>row.highlight).map(row=>row.player).sort((a,b)=>a-b),highlighted,label+': '+panel+' retains only current-round turns');
+    assert.deepEqual(rows.filter(row=>row.active).map(row=>row.player),active===null?[]:[active],label+': '+panel+' has only the current player active');
+    assert.deepEqual(rows.filter(row=>row.shadow!=='none').map(row=>row.player),active===null?[]:[active],label+': '+panel+' glow follows the active player only');
+    assert(rows.every(row=>row.cellsFit),label+': '+panel+' cells fit within their rows');
+    if(panel==='leaderboard')for(const row of rows)assert.equal(row.background!=='none',highlighted.includes(row.player),label+': ranking alone must not add a background');
+  }
+  assert(result.roundRows.every(row=>row.background.includes('dart-outline.svg')&&row.decorativeElements===0),label+': dart outline is a non-interactive CSS background behind every round row');
+  return result;
+}
+async function dartWatermark(display){
+  const result=await display.evaluate(async()=>{
+    const css=getComputedStyle(document.querySelector('.round-table tbody tr'));
+    const url=css.backgroundImage.match(/url\(["']?([^"')]+)["']?\)/)?.[1];
+    const image=new Image();image.src=url;await image.decode();
+    const canvas=document.createElement('canvas');canvas.width=360;canvas.height=44;
+    const context=canvas.getContext('2d');context.drawImage(image,0,0,360,44);
+    const pixels=context.getImageData(0,0,360,44).data;
+    let visible=0,alpha=0;for(let i=3;i<pixels.length;i+=4)if(pixels[i]){visible++;alpha+=pixels[i];}
+    return {url,visible,meanAlpha:visible?alpha/visible:0};
+  });
+  assert(result.visible>0&&result.meanAlpha>0&&result.meanAlpha<65,'The local dart outline loads and paints faint visible strokes');
+  receipt.turns.push({label:'dart watermark asset',...result});
 }
 async function geometry(display){
   await settled(display);
@@ -290,6 +331,11 @@ async function pulse(display,label){
     }
     await Promise.all([identity(view,0),identity(watcher,0)]);
     const displays=()=>[view,watcher];
+    const turns=async(label,expected)=>{
+      for(const [index,display] of displays().entries())await turnHighlights(display,(index?'spectator: ':'scorer: ')+label,expected);
+    };
+    await turns('initial player',{round:0,active:0,taken:[]});
+    await Promise.all(displays().map(dartWatermark));
     const arm=async(label,to)=>Promise.all(displays().map(display=>display.evaluate(({label,to})=>window.__tvIdentityQa.arm={label,to},{label,to:identities[to].name})));
     const forward=async(label,selector,from,to)=>{
       receipt.activeAction={label,from,to,startedAt:Date.now()};
@@ -325,9 +371,13 @@ async function pulse(display,label){
     await view.locator('[data-dart="Double"]').click(nativeClickOptions);await view.locator('[data-dart="Single"]').click(nativeClickOptions);
     await outerGeometry(page,'before first Treble');
     await forward('visit finished','[data-dart="Treble"]',0,1);
+    await turns('scored visit retained',{round:0,active:1,taken:[0]});
     assert.equal(await page.evaluate(()=>__sqIsAbsenceSkipEligible()),true,'Fresh Match Play visit must use absence Skip Go');
     await forward('Skip Go','[data-action="skip"]',1,2);
     assert.equal(await page.evaluate(()=>state.history.at(-1)?.type),'absenceSkip');
+    const skipped=await turnHighlights(view,'scorer: deferred Skip Go retained',{round:0,active:2,taken:[0,1]});
+    assert.equal(skipped.visits[1],0,'Deferred Skip Go is retained even before catch-up has supplied any darts');
+    await turnHighlights(watcher,'spectator: deferred Skip Go retained',{round:0,active:2,taken:[0,1]});
     await arm('Undo',1);await view.locator('[data-action="undo"]').click(nativeClickOptions);
     for(const display of displays()){
       await identity(display,1);
@@ -337,8 +387,10 @@ async function pulse(display,label){
       assert.equal(undo.outgoing,null);assert(Math.abs(undo.incoming.x)<1);
     }
     assert.equal(await page.evaluate(()=>state.history.length),3);
+    await turns('Undo restores active turn',{round:0,active:1,taken:[0]});
     await view.locator('[data-dart="Single"]').click(nativeClickOptions);
     await watcher.waitForFunction(()=>state.historyLength===4,null,{polling:100});
+    await turns('partial visit is still active',{round:0,active:1,taken:[0]});
     // Allow only the existing finite score-growth animation to complete.
     await page.waitForTimeout(800);
     const beforePulse=await canonical();
@@ -360,8 +412,10 @@ async function pulse(display,label){
     assert.equal(await canonical(),beforePulse,'Display-only refresh changed canonical state');
     await page.evaluate(()=>{recordThrow({kind:'Miss'});recordThrow({kind:'Miss'});});
     await Promise.all(displays().map(display=>identity(display,2)));
+    await turns('second visit retained',{round:0,active:2,taken:[0,1]});
     await page.evaluate(()=>{for(let i=0;i<3;i++)recordThrow({kind:'Miss'});});
     await Promise.all(displays().map(display=>identity(display,3)));
+    await turns('third visit retained',{round:0,active:3,taken:[0,1,2]});
     const beforeLayout=await canonical();
     for(const size of [{width:320,height:844},{width:390,height:844},{width:430,height:844},{width:1440,height:810},{width:1920,height:1080}]){
       await page.setViewportSize(size);await watcher.setViewportSize(size);
@@ -375,6 +429,7 @@ async function pulse(display,label){
         assert(measurement.title.bottom<=measurement.nickname.y+1&&measurement.nickname.bottom<=measurement.sub.y+1,'Name, nickname, TO THROW order');
       }
       await outerGeometry(page,'viewport '+size.width+'x'+size.height);
+      await turns('viewport '+size.width+'x'+size.height,{round:0,active:3,taken:[0,1,2]});
       assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Scorer overlay/nav horizontal overflow');
       await page.screenshot({path:path.join(out,'scorer-'+size.width+'x'+size.height+'.png')});
       await watcher.screenshot({path:path.join(out,'spectator-'+size.width+'x'+size.height+'.png'),fullPage:true});
@@ -382,14 +437,17 @@ async function pulse(display,label){
     assert.equal(await canonical(),beforeLayout,'Viewport changes mutated game state');
     await view.locator('[data-dart="Miss"]').click(nativeClickOptions);await view.locator('[data-dart="Miss"]').click(nativeClickOptions);
     await forward('nickname omitted','[data-dart="Miss"]',3,4);
+    await turns('fourth visit retained',{round:0,active:4,taken:[0,1,2,3]});
     // Two real completed/skip transitions in one task: the final departure must
     // belong to the most recent player, not the older still-animating identity.
     await forward('rapid supersession',()=>view.evaluate(()=>{
       for(let i=0;i<3;i++)document.querySelector('[data-dart="Miss"]').click();
       document.querySelector('[data-action="skip"]').click();
     }),0,1);
+    await turns('new round Skip Go',{round:1,active:1,taken:[0]});
     await view.locator('[data-action="undo"]').click(nativeClickOptions);
     await Promise.all(displays().map(display=>identity(display,0)));
+    await turns('new round reset and Skip Undo',{round:1,active:0,taken:[]});
     await page.emulateMedia({reducedMotion:'reduce'});await watcher.emulateMedia({reducedMotion:'reduce'});
     for(const display of displays())await display.waitForFunction(()=>document.querySelector('#screen').dataset.motion==='off',null,{polling:100});
     await arm('reduced motion visit',1);
@@ -401,6 +459,7 @@ async function pulse(display,label){
       assert.equal(staticState.capture.native.length,0);assert.equal(staticState.capture.outgoing,null);
       assert.equal(staticState.pulse,0);assert.equal(staticState.display,'none');
     }
+    await turns('reduced motion keeps static active glow',{round:1,active:1,taken:[0]});
     await page.emulateMedia({reducedMotion:'no-preference'});await watcher.emulateMedia({reducedMotion:'no-preference'});
     const beforeClose=await page.evaluate(()=>{
       const doc=document.querySelector('#sqTvModeOverlay iframe').contentDocument;
@@ -418,6 +477,7 @@ async function pulse(display,label){
     view=page.frames().find(frame=>new URL(frame.url()).pathname.endsWith('/assets/tv/arcade.html'));
     await watcher.waitForFunction(()=>!document.getElementById('screen').hidden&&state?.thrower===2,null,{polling:100});
     await Promise.all([identity(view,2),identity(watcher,2)]);
+    await turns('reopened from scorer truth',{round:1,active:2,taken:[0,1]});
     await outerGeometry(page,'after reopening TV');
     assert.equal(await watcher.locator('#raceActive[data-player="2"]').count(),1,'Spectator resumes the same active player once');
     const reopened=await watcher.evaluate(()=>({departing:document.querySelectorAll('.departing-name').length,
@@ -428,12 +488,13 @@ async function pulse(display,label){
     await watcher.waitForFunction(()=>window.__tvIdentityQa.pending.size===0,null,{polling:100});
     const finished=await watcher.evaluate(()=>({active:document.querySelector('#raceActive').dataset.player||null,pulses:document.querySelector('#raceActive').getAnimations().length,pending:window.__tvIdentityQa.pending.size}));
     receipt.lifecycle.push({label:'finished',...finished});assert.equal(finished.active,null);assert.equal(finished.pulses,0);assert.equal(finished.pending,0);
+    await turnHighlights(watcher,'spectator: final round retained without glow',{round:14,active:null,taken:[0,1,2,3,4]});
     assert.deepEqual(await page.evaluate(()=>[state.history.length,state.__sqGameControl.mode]),[210,'official']);
     assert.equal(await page.evaluate(()=>JSON.stringify(state.players)),playerTruth,'TV changed canonical player identities');
     assert.deepEqual(blockedWrites,[],'Unexpected attempted production mutations');
     assert.deepEqual(consoleErrs.filter(e=>e.startsWith('pageerror:')),[],'Unexpected page errors');
     receipt.status='PASS';
-    console.log('PASS TV full/compact identities, nicknames, five viewports, native visit/Skip handovers, static Undo/reduced motion, race pulse without redraw, spectator and completion');
+    console.log('PASS TV full/compact identities, nicknames, five viewports, native visit/Skip handovers, retained round highlights, active-only glow, faint dart watermark, static Undo/reduced motion, race pulse without redraw, spectator and completion');
   }catch(error){
     receipt.status='FAIL';receipt.error=String(error);
     const readFailure=display=>display.evaluate(()=>{
@@ -453,7 +514,7 @@ async function pulse(display,label){
       return {url:location.href,at:performance.now(),ready:document.readyState,visibility:document.visibilityState,hidden:document.hidden,
         viewport:{width:innerWidth,height:innerHeight,scrollX,scrollY},focused:document.hasFocus(),motion:screen?.dataset.motion,screenHidden:screen?.hidden,
         frame:frame?{thrower:frame.thrower,round:frame.round,historyLength:frame.historyLength,paused:frame.paused??null,
-          names:frame.names,identities:frame.identities,totals:frame.totals,last:frame.last,darts:frame.darts,visits:frame.visits,
+          names:frame.names,identities:frame.identities,totals:frame.totals,last:frame.last,darts:frame.darts,visits:frame.visits,turnsTaken:frame.turnsTaken,
           currentPlayer:frame.currentPlayer,currentRound:frame.currentRound,currentDart:frame.currentDart,finished:frame.finished,
           history:frame.history?.slice(-8)}:null,
         recorder:q?{initialization:q.initialization,arm:q.arm,captures:q.captures,pending:[...q.pending],rafCalls:q.rafCalls,draws:q.draws,

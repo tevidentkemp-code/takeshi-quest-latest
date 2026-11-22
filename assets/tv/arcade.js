@@ -33,6 +33,11 @@ function hitCode(entry){
   const label=typeof targets[Math.min(state.round,targets.length-1)]==='number'?kind:entry.label;
   return {label,kind,spoken:entry.label};
 }
+function turnClasses(index){
+  const current=state.round<targets.length&&index===state.thrower;
+  const taken=state.turnsTaken?.[index]??(state.visits[index]?.length===3);
+  return (current||taken?'turn-highlight':'')+(current&&!state.paused?' active':'');
+}
 function roundPanel(finished,effect){
   const currentRound=Math.min(state.round+1,targets.length);
   return `<section class="panel round-card" aria-labelledby="roundTitle">
@@ -46,7 +51,7 @@ function roundPanel(finished,effect){
           const active=!finished&&!state.paused&&index===state.thrower;
           const visit=active?state.darts:state.visits[index]??[];
           const roundTotal=row[currentRound-1]??null;
-          return `<tr class="${active?'active':''}"><th scope="row">${nameMarkup(index)}</th>
+          return `<tr data-player="${index}" class="${turnClasses(index)}"><th scope="row">${nameMarkup(index)}</th>
             ${Array.from({length:3},(_,dartIndex)=>{
               const entry=visit[dartIndex];
               if(!entry)return '<td class="dart-score pending"><span class="sr-only">No dart</span></td>';
@@ -102,7 +107,7 @@ function leaderboard(){
           const form=heat>=80?'hot':heat>=52?'warm':heat<28?'cold':'neutral';
           const place=leaders.findIndex(entry=>entry.points===points)+1;
           const tied=leaders[place]?.points===points;
-          return `<tr data-player="${index}" data-form="${form}" data-heat="${heat}" style="--beat:${(2.3-(heat/100)*1.5).toFixed(2)}s" class="${points>0&&points===highest?'leading':''}">
+          return `<tr data-player="${index}" data-form="${form}" data-heat="${heat}" style="--beat:${(2.3-(heat/100)*1.5).toFixed(2)}s" class="${turnClasses(index)}${points>0&&points===highest?' leading':''}">
             <th scope="row"><span class="identity"><span class="position" style="--trace:${traceColours[index]}" aria-hidden="true">${tied?'=':''}${place}</span><span class="sr-only">${tied?'Tied in position':'Position'} ${place}, </span>${nameMarkup(index)}<span class="sr-only">, ${form} form</span></span></th>
             ${last.map((turn,i)=>roundScoreCell(turn<state.completedRounds?row[turn]:null,turn,index,roundHighs[i],state.records)).join('')}
             <td class="total"><span class="running-total">${points}</span>${points<highest?`<span class="deficit" title="${highest-points} points behind first">(−${highest-points})</span>`:''}</td></tr>`;
