@@ -237,7 +237,7 @@ async function renderedTurnPaint(host,display,label,baseline){
   receipt.paint.push({label,...result});
   assert(result.dart.changed>=20,label+': dart must change actual rendered pixels behind the inactive round row');
   for(const name of ['roundGlow','leaderboardGlow'])assert(result[name].pixels>0&&result[name].changed>=Math.max(12,result[name].pixels*.02),label+': '+name+' must paint active-row edge pixels');
-  for(const name of ['dartControl','glowControl'])assert(result[name].changed<=Math.max(2,result[name].pixels*.001),label+': decoration suppression must leave inactive control edges unchanged');
+  for(const name of ['dartControl','glowControl'])assert(result[name].pixels>0&&result[name].changed<=Math.max(2,result[name].pixels*.001),label+': decoration suppression must leave inactive control edges unchanged');
 }
 async function geometry(display){
   await settled(display);
