@@ -102,13 +102,23 @@ thead th{font:600 1.08cqw/1 var(--mono);color:var(--muted);text-align:center;whi
 thead tr{height:3cqw}
 tbody th{padding:0 .5cqw 0 .82cqw;text-align:left;white-space:nowrap}
 tbody tr:nth-child(even){background:#fff2dc04}
-.round-card .col-name{width:48%}
+.round-card{--round-name-share:.48}
+.round-card .col-name{width:calc(100% * var(--round-name-share))}
 .round-card .name{font:800 2.35cqw/.91 var(--display);text-transform:uppercase;display:block}
 .round-card .name.long{font-size:1.78cqw}
-.round-card .round-table tbody tr{background-image:url("dart-outline.svg"),var(--turn-background,linear-gradient(transparent,transparent));background-size:92% 82%,100% 100%;background-position:center;background-repeat:no-repeat}
+.round-card .round-table tbody tr{background-image:var(--turn-background,linear-gradient(transparent,transparent))}
+.round-table tbody :is(th,td),.standings tbody :is(th,td){position:relative}
+.round-table tbody th{isolation:isolate}
+.round-table tbody th::before{content:"";position:absolute;inset:0 auto 0 0;width:calc(100% / var(--round-name-share));z-index:0;pointer-events:none;background:url("dart-outline.svg") center/92% 82% no-repeat}
+.round-table tbody th .name{position:relative;z-index:1}
 .round-card .turn-highlight{--turn-background:linear-gradient(90deg,#51301f,#35241b)}
 .round-card .active th{border-left:.29cqw solid var(--orange);padding-left:.53cqw}
-.round-card tr.active,.leaderboard tr.active{box-shadow:inset 0 0 max(12px,1.1cqw) #ffb07055,inset 0 0 1px #ffd3b280}
+/* Paint on ordinary boxes: WebKit can compute shadows on collapsed table rows
+   without painting them. Keep the glow continuous across the cell boundaries. */
+.round-table tr.active,.standings tr.active{--turn-glow:max(12px,1.1cqw)}
+:is(.round-table,.standings) tr.active>th::after,:is(.round-table,.standings) tr.active>td::before{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;box-shadow:inset 0 calc(var(--turn-glow) * .6) var(--turn-glow) calc(var(--turn-glow) * -.65) #ffb070aa,inset 0 calc(var(--turn-glow) * -.6) var(--turn-glow) calc(var(--turn-glow) * -.65) #ffb070aa,var(--turn-edge-glow,0 0 transparent)}
+:is(.round-table,.standings) tr.active>th:first-child{--turn-edge-glow:inset calc(var(--turn-glow) * .6) 0 var(--turn-glow) calc(var(--turn-glow) * -.65) #ffb070aa}
+:is(.round-table,.standings) tr.active>td:last-child{--turn-edge-glow:inset calc(var(--turn-glow) * -.6) 0 var(--turn-glow) calc(var(--turn-glow) * -.65) #ffb070aa}
 .dart-score{font:800 2.48cqw/1 var(--display);font-variant-numeric:tabular-nums;text-align:center}
 .dart-score.pending::after{content:"";display:inline-block;width:.32cqw;height:.32cqw;border-radius:50%;border:1px solid #998571;vertical-align:middle}
 .centre{position:relative;display:grid;grid-template-rows:8.6cqw minmax(0,1fr) 6.5cqw;overflow:hidden;background:radial-gradient(ellipse at 51% 50%,#403021,#261f19 38%,#171716 75%);isolation:isolate}
@@ -246,7 +256,7 @@ body{background:#080e20}
 .round-card,.leaderboard{background:linear-gradient(160deg,#102455 0%,#0b1a3e 53%,#0a1530)}
 thead th{color:#c0d4ff;background:#0916327d}
 tbody tr:nth-child(even){background:#9abaff09}
-.round-card .col-name{width:42%}
+.round-card{--round-name-share:.42}
 .round-card .col-round-total{width:21%}
 .round-card .name.long{font-size:1.61cqw}
 .round-card .name.extended{font-size:1.35cqw}
