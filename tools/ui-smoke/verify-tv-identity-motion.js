@@ -141,7 +141,7 @@ async function turnHighlights(display,label,{round,active,taken}){
       const dart=getComputedStyle(row.querySelector('th'),'::before');
       return {player:Number(row.dataset.player),highlight:row.classList.contains('turn-highlight'),active:row.classList.contains('active'),
         leading:row.classList.contains('leading'),background:css.backgroundImage,shadow:css.boxShadow,
-        glows:[...row.children].map(cell=>getComputedStyle(cell,cell.tagName==='TH'?'::after':'::before').boxShadow),
+        glows:[...row.children].map(cell=>getComputedStyle(cell,cell.tagName==='TH'?'::after':'::before').backgroundImage),
         dart:dart.backgroundImage,dartPointerEvents:dart.pointerEvents,
         cellsFit:[...row.children].every(cell=>{const box=cell.getBoundingClientRect();return box.x>=rect.x-1&&box.right<=rect.right+1&&box.y>=rect.y-1&&box.bottom<=rect.bottom+1;}),
         decorativeElements:row.querySelectorAll('img,svg,button,a,[tabindex]').length};
@@ -157,8 +157,8 @@ async function turnHighlights(display,label,{round,active,taken}){
     assert.deepEqual(rows.map(row=>row.player).sort((a,b)=>a-b),identities.map((_,i)=>i),label+': '+panel+' retains every player identity');
     assert.deepEqual(rows.filter(row=>row.highlight).map(row=>row.player).sort((a,b)=>a-b),highlighted,label+': '+panel+' retains only current-round turns');
     assert.deepEqual(rows.filter(row=>row.active).map(row=>row.player),active===null?[]:[active],label+': '+panel+' has only the current player active');
-    assert.deepEqual(rows.filter(row=>row.glows.some(shadow=>shadow!=='none')).map(row=>row.player),active===null?[]:[active],label+': '+panel+' glow follows the active player only');
-    assert(rows.every(row=>row.glows.every(shadow=>(shadow!=='none')===row.active)),label+': '+panel+' active glow spans all cells without leaking to completed turns');
+    assert.deepEqual(rows.filter(row=>row.glows.some(paint=>paint!=='none')).map(row=>row.player),active===null?[]:[active],label+': '+panel+' glow follows the active player only');
+    assert(rows.every(row=>row.glows.every(paint=>(paint!=='none')===row.active)),label+': '+panel+' active glow spans all cells without leaking to completed turns');
     assert(rows.every(row=>row.cellsFit),label+': '+panel+' cells fit within their rows');
     if(panel==='leaderboard')for(const row of rows)assert.equal(row.background!=='none',highlighted.includes(row.player),label+': ranking alone must not add a background');
   }
