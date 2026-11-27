@@ -13,6 +13,19 @@ const shots = process.env.SQ_SCREENSHOTS || 'output/playwright/vis002';
 fs.mkdirSync(shots, {recursive:true});
 const longName = 'Alexandria Montgomery The Unhurried Dart Thrower';
 const fixture = JSON.parse(JSON.stringify(L.FIXTURE));
+
+const hsOfficial=fixture.views.v_high_score_league_official_from_games_clean;
+hsOfficial.forEach(r=>{r.player_key=String(r.player).trim().toLowerCase();});
+const hsRecord=hsOfficial.find(r=>r.player==='Alex S');
+assert.ok(hsRecord&&Number(hsRecord.best_score)===168,'known Official scorecard fixture');
+const hsBoard=Array.from({length:14},(_,i)=>({darts:i<11?[{kind:'S',points:i+10},{kind:'Miss',points:0},{kind:'Miss',points:0}]:i===12?[{kind:'Triple',sector:1,points:3},{kind:'Miss',points:0},{kind:'Miss',points:0}]:Array.from({length:3},()=>({kind:'Miss',points:0}))}));
+const turboBoard=Array.from({length:14},(_,i)=>({darts:i<7?[]:[i<11?{kind:'S',points:i+10}:i===11?{kind:'Double',sector:20,points:40}:i===12?{kind:'Triple',sector:20,points:60}:{kind:'Bull',bull:'Outer',points:25},{kind:'Miss',points:0},{kind:'Miss',points:0}]}));
+const turboRec={...hsRecord,player_key:'alex s',game_id:'g-turbo-hsl',best_score:199,rounds:7,avg_round:199/7};
+fixture.views.v_high_score_league_turbo_from_games_clean=[turboRec];
+function hsRoundFixture(record,mode,board,pi){return board.map((r,i)=>({game_id:record.game_id,mode_key:mode,player_key:record.player_key,player_index:pi,round_index:i,round_score:r.darts.reduce((a,d)=>a+d.points,0)})).slice(mode==='turbo'?7:0);}
+fixture.views.v_player_round_scores_mode_clean=[...hsRoundFixture(hsRecord,'official',hsBoard,1),...hsRoundFixture(turboRec,'turbo',turboBoard,0)];
+fixture.views.v_games_mode_classified=[{id:hsRecord.game_id,mode_key:'official',finished:true,is_tiebreak:false,archived_at:null,player_name:'Alex S',board:hsBoard},{id:turboRec.game_id,mode_key:'turbo',finished:true,is_tiebreak:false,archived_at:null,player_name:'Alex S',board:turboBoard}];
+
 fixture.views.v_power_rankings_official_current_clean[0].rank_pos = 3;
 fixture.views.v_power_rankings_official_current_clean[1].rank_pos = 5;
 fixture.views.v_power_rankings_official_current_clean[2].rank_pos = 6;
@@ -137,6 +150,20 @@ async function main(width) {
         await page.waitForFunction(s=>document.querySelector(s)&&!document.querySelector(s+' .sq-modal-loading'),selector);
         await geometry(page,selector,width+' '+name+' '+mode);
         check(width+' '+name+' '+mode+' selected state retained',await page.locator(selector+' [data-mode="'+mode+'"].active').count()===1);
+      if(name==='high-score'){
+        const scorecardTrigger=page.locator(selector+' .hs-row').filter({hasText:'Alex S'}).first();
+        await scorecardTrigger.click();
+        await page.waitForSelector(selector+' .hs-scorecard-table');
+        check(width+' '+mode+' scorecard has actual round count',await page.locator(selector+' .hs-scorecard-table tbody tr').count()===(mode==='turbo'?7:14));
+        check(width+' '+mode+' scorecard reconciles to record',await page.locator(selector+' .hs-running-total').last().innerText()===(mode==='turbo'?'199':'168'));
+        check(width+' '+mode+' scorecard starts at correct target',await page.locator(selector+' .hs-scorecard-table tbody th').first().innerText()===(mode==='turbo'?'17':'10'));
+        check(width+' '+mode+' scorecard shows recorded hit',await page.locator(selector+' .hs-hit-chip').first().innerText()===(mode==='turbo'?'S17':'S10'));
+        check(width+' '+mode+' scorecard stays in same modal',await page.locator(selector).count()===1);
+        await geometry(page,selector,width+' '+mode+' scorecard');
+        await page.screenshot({path:path.join(shots,'hsl-scorecard-'+mode+'-'+width+'.png')});
+        await page.locator(selector+' button').filter({hasText:/^Back$/i}).last().click();
+        check(width+' '+mode+' scorecard Back retains mode and list',await page.locator(selector+' .hs-row').first().isVisible()&&await page.locator(selector+' [data-mode="'+mode+'"].active').count()===1);
+      }
       }
       if(name==='streak'){
         await page.locator(selector+' [data-mode=official]').click();
