@@ -161,6 +161,23 @@ async function main(width) {
         check(width+' '+mode+' scorecard shows recorded hit',await page.locator(selector+' .hs-hit-chip').first().innerText()===(mode==='turbo'?'S17':'S10'));
         check(width+' '+mode+' scorecard stays in same modal',await page.locator(selector).count()===1);
         await geometry(page,selector,width+' '+mode+' scorecard');
+        const scorecardGeometry=await page.locator(selector+' .hs-scorecard-table').evaluate(table=>{
+          const head=[...table.tHead.rows[0].cells].map(cell=>{
+            const range=document.createRange();range.selectNodeContents(cell);
+            const text=range.getBoundingClientRect(),box=cell.getBoundingClientRect();
+            return {left:text.left,right:text.right,cellLeft:box.left,cellRight:box.right};
+          });
+          const heights=[...table.tBodies[0].rows].map(row=>row.getBoundingClientRect().height);
+          const last=table.tBodies[0].rows[table.tBodies[0].rows.length-1];
+          const body=table.closest('.modal-body'),footer=body.parentElement.querySelector('.modal-footer');
+          const prior=body.scrollTop;body.scrollTop=body.scrollHeight;
+          const reachable=last.getBoundingClientRect().bottom<=footer.getBoundingClientRect().top+1&&last.getBoundingClientRect().top>=body.getBoundingClientRect().top-1;
+          body.scrollTop=prior;
+          return {head,heights,reachable};
+        });
+        check(width+' '+mode+' headings fit their own columns',scorecardGeometry.head.every(h=>h.left>=h.cellLeft-1&&h.right<=h.cellRight+1)&&scorecardGeometry.head.slice(1).every((h,i)=>h.left>=scorecardGeometry.head[i].right),scorecardGeometry);
+        check(width+' '+mode+' scorecard rows stay compact',scorecardGeometry.heights.every(h=>h<=38),scorecardGeometry);
+        check(width+' '+mode+' final round scrolls above footer',scorecardGeometry.reachable,scorecardGeometry);
         await page.screenshot({path:path.join(shots,'hsl-scorecard-'+mode+'-'+width+'.png')});
         await page.locator(selector+' button').filter({hasText:/^Back$/i}).last().click();
         check(width+' '+mode+' scorecard Back retains mode and list',await page.locator(selector+' .hs-row').first().isVisible()&&await page.locator(selector+' [data-mode="'+mode+'"].active').count()===1);
