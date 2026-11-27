@@ -187,7 +187,7 @@
 
     var detail=null,detailEpoch=0,renderEpoch=0,origin=null,savedScroll=0;
     var heading=ui.head.querySelector('h3'),sub=ui.head.querySelector('.sq-league-clean-sub');
-    var originalBack=ui.back.onclick,originalSub=sub?sub.textContent:'';
+    var originalSub=sub?sub.textContent:'';
     function element(tag,cls,value){var node=document.createElement(tag);if(cls)node.className=cls;if(value!=null)node.textContent=value;return node;}
     function leaveDetail(){
       detailEpoch++;
@@ -197,7 +197,13 @@
       ui.body.scrollTop=savedScroll;
       if(origin&&origin.isConnected)origin.focus({preventScroll:true});origin=null;
     }
-    ui.back.onclick=function(){if(detail)leaveDetail();else originalBack();};
+    // The legacy HSL Back patch in app/util.js rewrites onclick on modal insertion.
+    // Intercept only the scorecard Back in capture phase; retain the established
+    // league/admin Back handler for the ordinary league view.
+    ui.back.addEventListener('click',function(e){
+      if(!detail)return;
+      e.preventDefault();e.stopImmediatePropagation();leaveDetail();
+    },true);
     function scoreButton(btn,r,selectedMode){
       btn.type='button';btn.classList.add('hs-scorecard-trigger');
       btn.setAttribute('aria-label','View '+r.player+' '+r.score+' '+selectedMode+' scorecard');

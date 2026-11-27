@@ -152,6 +152,7 @@ async function main(width) {
         check(width+' '+name+' '+mode+' selected state retained',await page.locator(selector+' [data-mode="'+mode+'"].active').count()===1);
       if(name==='high-score'){
         const scorecardTrigger=page.locator(selector+' .hs-row').filter({hasText:'Alex S'}).first();
+        const leagueReadsBefore=await page.evaluate(()=>__vis002Reads.filter(r=>r.table.startsWith('v_high_score_league_')).length);
         await scorecardTrigger.click();
         await page.waitForSelector(selector+' .hs-scorecard-table');
         check(width+' '+mode+' scorecard has actual round count',await page.locator(selector+' .hs-scorecard-table tbody tr').count()===(mode==='turbo'?7:14));
@@ -163,6 +164,12 @@ async function main(width) {
         await page.screenshot({path:path.join(shots,'hsl-scorecard-'+mode+'-'+width+'.png')});
         await page.locator(selector+' button').filter({hasText:/^Back$/i}).last().click();
         check(width+' '+mode+' scorecard Back retains mode and list',await page.locator(selector+' .hs-row').first().isVisible()&&await page.locator(selector+' [data-mode="'+mode+'"].active').count()===1);
+        check(width+' '+mode+' Back restores trigger focus',await scorecardTrigger.evaluate(el=>document.activeElement===el));
+        check(width+' '+mode+' Back does not refetch the league',await page.evaluate(()=>__vis002Reads.filter(r=>r.table.startsWith('v_high_score_league_')).length)===leagueReadsBefore);
+        await page.locator(selector+' .hs-record.hs-scorecard-trigger').click();
+        await page.waitForSelector(selector+' .hs-scorecard-table');
+        check(width+' '+mode+' record banner opens the same scorecard',await page.locator(selector+' .hs-running-total').last().innerText()===(mode==='turbo'?'199':'168'));
+        await page.locator(selector+' button').filter({hasText:/^Back$/i}).last().click();
       }
       }
       if(name==='streak'){
@@ -189,7 +196,12 @@ async function main(width) {
       await page.locator('.sq-league-rankings-backdrop [aria-label=Close]').click();
       check(width+' '+name+' menu Close leaves no visible dialogs',await visibleDialogs(page)===0);
       // Verify the detail Close destination independently of Back.
-      await open(page,entry,selector); await close(page,selector);
+      await open(page,entry,selector);
+      if(name==='high-score'){
+        await page.locator(selector+' .hs-record.hs-scorecard-trigger').click();
+        await page.waitForSelector(selector+' .hs-scorecard-table');
+      }
+      await close(page,selector);
     }
     for(const state of ['empty','failed']){
       await install(page,state);
